@@ -23,7 +23,7 @@ import {preserveInstalledChromiumIdentity} from './isracard-group-utils.mjs';
 export const CREDIT_CONNECTOR_CONTRACT_VERSION=2;
 export const CREDIT_PROVIDER_SCHEMA_VERSION='israeli-bank-scrapers-6.10.0';
 export const MAX_PROVIDER_SCHEMA_VERSION='max-netunim-v2+upstream-login-6.10.0';
-export const VISA_CAL_PROVIDER_SCHEMA_VERSION='visa-cal-netunim-v6+upstream-6.12.1-balance+state-login+native-browser-identity';
+export const VISA_CAL_PROVIDER_SCHEMA_VERSION='visa-cal-netunim-v7+upstream-6.12.1-balance+pr1184-invalid-password+pr1193-browser-api';
 export const CREDIT_CORE_FUTURE_MONTHS=1;
 export const CREDIT_RECENT_HISTORY_DAYS=30;
 export const CREDIT_SYNC_MODE_QUICK='quick';
@@ -45,6 +45,7 @@ const CAL_STATIC_HEADERS={
 };
 const CAL_TRANSACTION_TYPES={regular:'5',credit:'6',installments:'8',standingOrder:'9'};
 const CAL_FRAMES_NOT_RELEVANT_STATUS=87;
+const CAL_INVALID_PASSWORD_MESSAGE='שם המשתמש או הסיסמה שהוזנו שגויים';
 const MAX_BASE_API_ACTIONS_URL='https://onlinelcapi.max.co.il';
 const MAX_BASE_WELCOME_URL='https://www.max.co.il';
 const MAX_HOME_PAGE_DATA_URL=`${MAX_BASE_WELCOME_URL}/api/registered/getHomePageData`;
@@ -129,16 +130,41 @@ export function classifyCreditHttpResponse({status=0,text:body='',stage='',retry
   return null;
 }
 
+function parseCreditJsonResponse(responseText,{status=0,stage='',retryAfter='',now=Date.now()}={}){
+  const failure=classifyCreditHttpResponse({status,text:responseText,stage,retryAfter,now});
+  if(failure)throw failure;
+  try{return responseText?JSON.parse(responseText):null}catch{throw safeError('חברת האשראי החזירה תשובה שאינה JSON תקין.','CREDIT_PROVIDER_RESPONSE_NOT_JSON',{stage,httpStatus:Number(status)||0})}
+}
+
 async function postJson(fetchImpl,url,data,{headers={},stage='',timeoutMs=60_000,now=Date.now()}={}){
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
   try{
     let response;
-    try{response=await fetchImpl(url,{method:'POST',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify(data),signal:controller.signal})}
+    try{response=await fetchImpl(url,{method:'POST',headers:{Accept:'application/json','Content-Type':'application/json',...headers},body:JSON.stringify(data),signal:controller.signal})}
     catch(error){throw safeError(error?.name==='AbortError'?'קריאת הנתונים מחברת האשראי לא הסתיימה בזמן.':'החיבור לשירות הנתונים של חברת האשראי נקטע.','CREDIT_PROVIDER_NETWORK_ERROR',{stage,causeName:text(error?.name,40)})}
-    const responseText=await response.text(),failure=classifyCreditHttpResponse({status:response.status,text:responseText,stage,retryAfter:response.headers?.get?.('retry-after')||'',now});
-    if(failure)throw failure;
-    try{return responseText?JSON.parse(responseText):null}catch{throw safeError('חברת האשראי החזירה תשובה שאינה JSON תקין.','CREDIT_PROVIDER_RESPONSE_NOT_JSON',{stage,httpStatus:Number(response.status)||0})}
+    const responseText=await response.text();
+    return parseCreditJsonResponse(responseText,{status:response.status,stage,retryAfter:response.headers?.get?.('retry-after')||'',now});
   }finally{clearTimeout(timer)}
+}
+
+export async function postVisaCalJson(page,fetchImpl,url,data,{browserHeaders={},nodeHeaders={},stage='',timeoutMs=60_000,now=Date.now()}={}){
+  let inPageError='';
+  let pageResponse;
+  try{
+    pageResponse=await page.evaluate(async(innerUrl,innerData,innerHeaders,innerTimeoutMs)=>{
+      const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),innerTimeoutMs);
+      try{
+        const response=await fetch(innerUrl,{method:'POST',body:JSON.stringify(innerData),credentials:'include',headers:{Accept:'application/json','Content-Type':'application/json',...innerHeaders},signal:controller.signal});
+        return {status:response.status,body:await response.text(),retryAfter:response.headers.get('retry-after')||''};
+      }finally{clearTimeout(timer)}
+    },url,data,browserHeaders,timeoutMs);
+  }catch(error){inPageError=text(error?.message||error,180)}
+  if(!inPageError){
+    try{return {data:parseCreditJsonResponse(String(pageResponse?.body??''),{status:pageResponse?.status,stage,retryAfter:pageResponse?.retryAfter||'',now}),transport:'browser'}}
+    catch(error){error.transport='browser';throw error}
+  }
+  try{return {data:await postJson(fetchImpl,url,data,{headers:nodeHeaders,stage,timeoutMs,now}),transport:'node-fallback',browserError:inPageError}}
+  catch(error){error.transport='node-fallback';error.browserRequestError=inPageError;throw error}
 }
 
 function shiftMonthDate(value,delta){
@@ -264,6 +290,12 @@ function coverageError(profile,error,{month='',tier='',accountNumber='',at=new D
 const VISA_CAL_LOGIN_RESULT_TIMEOUT_MS=45_000;
 const VISA_CAL_LOGIN_RESULT_POLL_MS=200;
 
+function safeDecodeVisaCalUrl(value){try{return decodeURIComponent(String(value||''))}catch{return String(value||'')}}
+export function isVisaCalInvalidPasswordErrorUrl(value){const decoded=safeDecodeVisaCalUrl(value);return decoded.includes('/calconnect/error')&&decoded.includes(CAL_INVALID_PASSWORD_MESSAGE)}
+function visaCalHasInvalidPasswordErrorFrame(page){
+  try{return (typeof page?.frames==='function'?page.frames():[]).some(frame=>{try{return isVisaCalInvalidPasswordErrorUrl(frame?.url?.())}catch{return false}})}catch{return false}
+}
+
 async function visaCalClientUrl(page){
   try{if(typeof page?.evaluate==='function')return String(await page.evaluate(()=>window.location.href)||'')}catch{}
   try{return String(page?.url?.()||'')}catch{return ''}
@@ -313,6 +345,8 @@ export function applyVisaCalLoginNavigationPolicy(scraper,{loginResultTimeoutMs=
     const options=getLoginOptions(credentials);
     if(!options||typeof options!=='object'||Array.isArray(options))throw safeError('מחבר כאל המותקן החזיר חוזה LoginOptions לא תקין.','CREDIT_CONNECTOR_COMPATIBILITY_ERROR',{stage:'LoginSetup'});
     if(!options.possibleResults||typeof options.possibleResults!=='object'||Array.isArray(options.possibleResults))throw safeError('מחבר כאל המותקן אינו חושף possibleResults תקין לזיהוי תוצאת הכניסה.','CREDIT_CONNECTOR_COMPATIBILITY_ERROR',{stage:'LoginSetup'});
+    const possibleResults={...options.possibleResults},invalidPasswordKey=Object.keys(possibleResults).find(key=>key==='INVALID_PASSWORD'||/invalid.*password/i.test(key));
+    if(invalidPasswordKey)possibleResults[invalidPasswordKey]=[async({page}={})=>visaCalHasInvalidPasswordErrorFrame(page),...(Array.isArray(possibleResults[invalidPasswordKey])?possibleResults[invalidPasswordKey]:[])];
     const wrapStep=(step,nextStep,action)=>typeof action==='function'?async(...args)=>{scraper.__netunimLoginStep=step;const result=await action(...args);if(nextStep)scraper.__netunimLoginStep=nextStep;return result}:action;
     // Cal is an SPA and the credential form lives in a cross-origin iframe. Upstream
     // clicks Submit and only afterwards starts waitForNavigation() on the main page.
@@ -320,10 +354,10 @@ export function applyVisaCalLoginNavigationPolicy(scraper,{loginResultTimeoutMs=
     // does not have to create a main-page navigation event at all. Use the installed
     // scraper's own possibleResults contract as the authority instead of duplicating
     // Cal selectors/messages locally. The 45-second bound and one credential submit stay unchanged.
-    const postAction=async()=>{scraper.__netunimLoginStep='result-detection';await waitForVisaCalUpstreamLoginResult(scraper,options.possibleResults,{timeoutMs:loginResultTimeoutMs,pollMs:loginResultPollMs})};
+    const postAction=async()=>{scraper.__netunimLoginStep='result-detection';await waitForVisaCalUpstreamLoginResult(scraper,possibleResults,{timeoutMs:loginResultTimeoutMs,pollMs:loginResultPollMs})};
     // The landing document itself only needs DOMContentLoaded because upstream already
     // owns the explicit #ccLoginDesktopBtn readiness check.
-    return {...options,waitUntil:'domcontentloaded',checkReadiness:wrapStep('landing-readiness','open-login-popup',options.checkReadiness),preAction:wrapStep('open-login-popup','credentials-submit',options.preAction),postAction};
+    return {...options,possibleResults,waitUntil:'domcontentloaded',checkReadiness:wrapStep('landing-readiness','open-login-popup',options.checkReadiness),preAction:wrapStep('open-login-popup','credentials-submit',options.preAction),postAction};
   };
   return scraper;
 }
@@ -336,7 +370,7 @@ export class CreditProviderAdapter {
 
 export class VisaCalAdapter extends CreditProviderAdapter {
   constructor(options={}){super(options);this.connectorVersion=VISA_CAL_PROVIDER_SCHEMA_VERSION;Object.assign(this,{createScraper:options.createScraper,CompanyTypes:options.CompanyTypes,browserPath:options.browserPath,identityProbeUrl:options.identityProbeUrl||'',interactive:!!options.interactive,fetchImpl:options.fetchImpl||globalThis.fetch,requestDelayMs:Number.isFinite(options.requestDelayMs)?options.requestDelayMs:650,excludedAccountNumbers:this.excludedAccountNumbers})}
-  async request(url,data,stage){if(this.blockingError)throw this.blockingError;const started=Date.now();try{const result=await postJson(this.fetchImpl,url,data,{headers:this.headers,stage,now:this.now().getTime()});this.event({stage,durationMs:Date.now()-started,responseShape:safeCreditResponseShape(result)});return result}catch(error){if(['CREDIT_AUTOMATION_BLOCKED','CREDIT_PROVIDER_RATE_LIMITED'].includes(String(error?.code||''))){error.originalFailureAt=error.originalFailureAt||this.now().toISOString();this.blockingError=error}this.event({stage,durationMs:Date.now()-started,errorClass:error?.code,httpStatus:error?.httpStatus,retryAfterAt:error?.retryAfterAt});throw error}}
+  async request(url,data,stage){if(this.blockingError)throw this.blockingError;const started=Date.now();try{const result=await postVisaCalJson(this.page,this.fetchImpl,url,data,{browserHeaders:this.browserHeaders,nodeHeaders:this.nodeHeaders,stage,now:this.now().getTime()});this.event({stage,durationMs:Date.now()-started,transport:result.transport,responseShape:safeCreditResponseShape(result.data)});return result.data}catch(error){if(['CREDIT_AUTOMATION_BLOCKED','CREDIT_PROVIDER_RATE_LIMITED'].includes(String(error?.code||''))){error.originalFailureAt=error.originalFailureAt||this.now().toISOString();this.blockingError=error}this.event({stage,durationMs:Date.now()-started,transport:error?.transport||'',errorClass:error?.code,httpStatus:error?.httpStatus,retryAfterAt:error?.retryAfterAt});throw error}}
   async scrape(){
     const profile=this.profile,scope=creditSyncScope({syncMode:this.syncMode,now:this.now()}),startDate=scope.startDate,plan=buildCreditMonthPlan({startDate,futureMonths:scope.futureMonths,now:this.now()}),scraper=applyVisaCalLoginNavigationPolicy(this.createScraper({companyId:this.CompanyTypes.visaCal,startDate,futureMonthsToScrape:0,combineInstallments:false,showBrowser:this.interactive,executablePath:this.browserPath,navigationRetryCount:1,defaultTimeout:45_000,timeout:90_000,additionalTransactionInformation:false,includeRawTransaction:false}));let initialized=false,success=false;
     try{
@@ -348,7 +382,7 @@ export class VisaCalAdapter extends CreditProviderAdapter {
       if(!Array.isArray(cards)||!cards.length)throw safeError('כאל לא החזירה רשימת כרטיסים תקינה.','CREDIT_PROVIDER_SCHEMA_ERROR',{stage:'DashboardInit'});
       let authorization;try{authorization=await scraper.getAuthorizationHeader()}catch{throw safeError('אסימון ההרשאה של כאל לא נמצא לאחר הכניסה.','CREDIT_AUTH_TOKEN_MISSING',{stage:'AuthToken'})}
       if(!String(authorization||'').trim())throw safeError('אסימון ההרשאה של כאל ריק.','CREDIT_AUTH_TOKEN_MISSING',{stage:'AuthToken'});
-      const xSiteId=await scraper.getXSiteId();this.headers={Authorization:authorization,'X-Site-Id':xSiteId,...browserIdentity.requestHeaders,...CAL_STATIC_HEADERS};
+      const xSiteId=await scraper.getXSiteId();this.page=scraper.page;this.browserHeaders={Authorization:authorization,'X-Site-Id':xSiteId};this.nodeHeaders={...this.browserHeaders,...browserIdentity.requestHeaders,...CAL_STATIC_HEADERS};
       const accounts=[],errors=[],dataDiagnostics=[];
       for(const card of cards){
         const accountNumber=text(card?.last4Digits,80);

@@ -18,6 +18,7 @@ import {
   HAPOALIM_DATA_RETRY_LIMIT,
   HAPOALIM_TRANSACTION_LOOKBACK_DAYS,
   HAPOALIM_TRANSACTION_LIMIT,
+  hapoalimTransactionPageState,
   buildHapoalimAdditionalDetailsUrl,
   hapoalimCreditSettlementProvider,
   isHapoalimCompletedCreditSettlement,
@@ -198,6 +199,10 @@ assert.equal(navRecoveries,2,'navigation recovery callback runs only between tra
 await assert.rejects(()=>retryTransientNavigation(async()=>{throw new Error('bank rejected request')},{attempts:3}),/bank rejected request/,'non-navigation failures are never retried as if they were transient');
 assert.equal(HAPOALIM_TRANSACTION_LOOKBACK_DAYS,30,'recent transaction fetch is intentionally bounded to thirty days');
 assert.equal(HAPOALIM_TRANSACTION_LIMIT,1000,'bridge requests the full thirty-day window with a 1000-row bank page size');
+const fullServerPage=hapoalimTransactionPageState({numItemsPerPage:'150',transactions:Array.from({length:150},(_,index)=>({index}))});
+assert.deepEqual({reportedPageSize:fullServerPage.reportedPageSize,effectivePageSize:fullServerPage.effectivePageSize,isFull:fullServerPage.isFull},{reportedPageSize:150,effectivePageSize:150,isFull:true},'Hapoalim paging trusts the page size the server actually applied, so the current 150-row cap triggers recursive date splitting even though the request asks for 1000');
+assert.equal(hapoalimTransactionPageState({numItemsPerPage:'150',transactions:Array.from({length:149})}).isFull,false,'a partial server page is treated as complete without unnecessary splitting');
+assert.equal(hapoalimTransactionPageState({transactions:Array.from({length:1000})}).isFull,true,'if the bank omits numItemsPerPage, the previous local 1000-row safeguard remains active instead of regressing');
 assert.equal(BANK_FEED_TRANSACTION_LIMIT,20000,'shared Kupa bank feed preserves complete multi-page bank snapshots without silently trimming them');
 assert.equal(ymdDate(new Date(2026,7,30,12,0,0)),'20260830','Hapoalim request dates use local YYYYMMDD');
 

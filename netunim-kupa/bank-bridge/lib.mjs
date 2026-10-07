@@ -7,6 +7,14 @@ export const HAPOALIM_TRANSACTION_LOOKBACK_DAYS=30;
 export const HAPOALIM_INITIAL_BACKFILL_DAYS=365;
 export const HAPOALIM_TRANSACTION_LIMIT=1000;
 
+export function hapoalimTransactionPageState(data,requestedLimit=HAPOALIM_TRANSACTION_LIMIT){
+  const transactions=Array.isArray(data?.transactions)?data.transactions:[];
+  const reported=Number(data?.numItemsPerPage),requested=Number(requestedLimit);
+  const reportedPageSize=Number.isFinite(reported)&&reported>0?Math.trunc(reported):null;
+  const effectivePageSize=reportedPageSize||(Number.isFinite(requested)&&requested>0?Math.trunc(requested):0);
+  return {transactions,reportedPageSize,effectivePageSize,isFull:effectivePageSize>0&&transactions.length>=effectivePageSize};
+}
+
 function sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms))}
 
 export function isTransientNavigationError(error){

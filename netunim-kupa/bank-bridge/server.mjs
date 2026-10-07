@@ -11,6 +11,7 @@ import {
   HAPOALIM_TRANSACTION_LOOKBACK_DAYS,
   HAPOALIM_INITIAL_BACKFILL_DAYS,
   HAPOALIM_TRANSACTION_LIMIT,
+  hapoalimTransactionPageState,
   buildHapoalimAdditionalDetailsUrl,
   hapoalimChequeTransactionKind,
   hapoalimCreditSettlementProvider,
@@ -51,7 +52,7 @@ import {bankDiagnosticExportPayload,bankDiagnosticFilename,createBankDiagnosticR
 
 const HOST='127.0.0.1';
 const PORT=8765;
-const BRIDGE_VERSION=70;
+const BRIDGE_VERSION=71;
 const BROWSER_IDENTITY_PROBE_URL=`http://${HOST}:${PORT}/health`;
 const HAPOALIM_BASE_URL='https://login.bankhapoalim.co.il';
 const APP_DIR=path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimKupaBankBridge');
@@ -538,7 +539,7 @@ async function fetchHapoalimAccountSnapshot(page,selected,ready,historyDays=HAPO
   let transactions=[],transactionWarning='',reusableReady=balanceReady;
   let transactionCoverage={complete:false,from:isoLocalDate(coverageStart),to:isoLocalDate(end),days};
   try{
-    const all=[];
+    const all=[],coverageWarnings=[];
     async function fetchWindow(windowStart,windowEnd){
       const txResult=await pageFetchJson(page,async current=>{
         const restContext=String(current.restContext||'').replace(/^\/+/, '');
@@ -547,13 +548,16 @@ async function fetchHapoalimAccountSnapshot(page,selected,ready,historyDays=HAPO
         const headers={'Content-Type':'application/json;charset=UTF-8','pageUuid':'/current-account/transactions','uuid':randomUUID()};if(xsrf)headers['X-XSRF-TOKEN']=xsrf;
         return {url:`${apiSiteUrl}/current-account/transactions?accountId=${encodeURIComponent(accountId)}&numItemsPerPage=${HAPOALIM_TRANSACTION_LIMIT}&retrievalEndDate=${ymdDate(windowEnd)}&retrievalStartDate=${ymdDate(windowStart)}&sortCode=1`,method:'POST',headers,body:'[]'};
       },{initialReady:reusableReady});
-      reusableReady=txResult.ready;const raw=Array.isArray(txResult.data?.transactions)?txResult.data.transactions:[];
-      const spanDays=Math.floor((windowEnd-windowStart)/86400000)+1;
-      if(raw.length>=HAPOALIM_TRANSACTION_LIMIT){
-        if(spanDays<=1)throw Object.assign(new Error('יום יחיד החזיר 1000 תנועות או יותר; אי אפשר להבטיח היסטוריה מלאה בלי pagination של הבנק'),{code:'BANK_HISTORY_DAY_FULL'});
-        const mid=new Date(windowStart.getTime()+Math.floor((windowEnd-windowStart)/2));
+      reusableReady=txResult.ready;const pageState=hapoalimTransactionPageState(txResult.data,HAPOALIM_TRANSACTION_LIMIT),raw=pageState.transactions;
+      const startDay=ymdDate(windowStart),endDay=ymdDate(windowEnd),dayIndex=value=>Date.UTC(Number(value.slice(0,4)),Number(value.slice(4,6))-1,Number(value.slice(6,8)))/86400000,spanDays=Math.max(1,dayIndex(endDay)-dayIndex(startDay)+1);
+      if(pageState.isFull&&spanDays>1){
+        const mid=new Date(windowStart);mid.setDate(mid.getDate()+Math.floor((spanDays-1)/2));
         const next=new Date(mid);next.setDate(next.getDate()+1);
         await fetchWindow(windowStart,mid);await fetchWindow(next,windowEnd);return;
+      }
+      if(pageState.isFull){
+        const day=isoLocalDate(windowStart),limit=pageState.effectivePageSize||raw.length;
+        coverageWarnings.push(`ב-${day} הבנק החזיר ${raw.length} תנועות בגבול העמוד (${limit}); התנועות שהתקבלו נשמרו, אך ייתכן שחסרות תנועות נוספות באותו יום.`);
       }
       const enriched=await enrichHapoalimTransactions(page,raw,accountId,{initialReady:reusableReady,role,diagnosticRun});reusableReady=enriched.ready||reusableReady;all.push(...enriched.transactions);
     }
@@ -564,7 +568,8 @@ async function fetchHapoalimAccountSnapshot(page,selected,ready,historyDays=HAPO
       await fetchWindow(chunkStart,chunkEnd);
     }
     transactions=normalizeRecentTransactions(all,all.length);
-    transactionCoverage={...transactionCoverage,complete:true};
+    transactionCoverage={...transactionCoverage,complete:coverageWarnings.length===0};
+    if(coverageWarnings.length)transactionWarning=coverageWarnings.join(' ');
   }catch(e){transactionWarning=`היתרה התקבלה, אבל לא ניתן היה לטעון כרגע תנועות אחרונות: ${e?.message||e}`}
 
   recordBankAccountDiagnostic(diagnosticRun,{role,bankNumber:selected.bankNumber||'12',branchNumber:selected.branchNumber,accountNumber:selected.accountNumber,balance,availableBalance,creditLimit,creditLimitUsed,creditLimitUsedPercent,transactionCoverage,transactionWarning,normalizedTransactionCount:transactions.length});
