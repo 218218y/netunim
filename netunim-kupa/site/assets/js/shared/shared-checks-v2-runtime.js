@@ -82,14 +82,15 @@ export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readS
     const cloud=await store.cloudState();if(cloud.base||cloud.flight||cloud.control)throw new Error('shared_checks_local_birth_cloud_head_exists');
     assertContext(store);active=true;cursorReady=false;workPending=false;diagnostics.initializations++;applyState(snapshot);return recovered;
   }
-  function persist(operations,{generation=0,surface='shared-checks',mutationType='edit',deleteIds=[],storageBoundary=''}={}){
+  function persist(operations,options={}){
+    const {generation=0,surface='shared-checks',mutationType='edit',deleteIds=[]}=options;
     if(boundaryGate())throw new Error('storage_boundary_in_progress');
     if(mode()==='preparing')throw new Error('storage_v2_preparation_locked');
     if(mode()!=='primary')return {handled:false};
     // Primary is fail-closed. It must never silently resume either V1 or the
     // main journal when the checks owner is unavailable or the contract is bad.
     assertContext();if(!active)throw new Error('shared_checks_not_recovered');
-    if(storageBoundary)throw new Error('shared_checks_coordinated_boundary_required');
+    if(Object.hasOwn(options,'storageBoundary'))throw new Error('shared_checks_legacy_boundary_forbidden');
     const store=storage,write=store.append(operations,readState(),{generation,surface,mutationType,deleteIds});
     diagnostics.operations++;
     workPending=true;commitsInFlight++;

@@ -28,15 +28,17 @@ function operationContractFailures(){
       const file=path.join(sourceRoot,relative),source=fs.readFileSync(file,'utf8'),ast=parse(source,{ecmaVersion:'latest',sourceType:'module',locations:true});
       walk(ast,node=>{
         if(node.type!=='CallExpression'||node.callee.type!=='Identifier'||!SAVE_CALLS.has(node.callee.name))return;
-        const options=node.arguments[1],declared=options?.type==='ObjectExpression'&&options.properties.some(property=>['operations','storageBoundary'].includes(property.key?.name||property.key?.value));
+        const options=node.arguments[1],declared=options?.type==='ObjectExpression'&&options.properties.some(property=>(property.key?.name||property.key?.value)==='operations');
         if(!declared)failures.push(`${path.relative(ROOT,file)}:${node.loc.start.line} ${node.callee.name}`);
+        if(options?.type==='ObjectExpression'&&options.properties.some(property=>(property.key?.name||property.key?.value)==='storageBoundary'))
+          failures.push(`${path.relative(ROOT,file)}:${node.loc.start.line} legacy storageBoundary`);
       });
     }
   }
   return failures;
 }
 
-test('every application mutation owner declares complete operations or an explicit checkpoint boundary',()=>{
+test('every application mutation owner declares typed operations',()=>{
   assert.deepEqual(operationContractFailures(),[]);
 });
 

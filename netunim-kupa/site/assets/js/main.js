@@ -142,10 +142,8 @@ const restoreGroupStore=createRestoreGroupStore({
 });
 
 const syncChecksState=createSyncChecksState({
-  session,
   checksSession,
   model,
-  normalizeState:(...args)=>stateNormalization.normalizeState(...args),
   sharedChecksHasLocalWork:()=>sharedChecksV2.hasLocalWork,
 });
 
@@ -218,10 +216,7 @@ const storagePersistence=createStoragePersistence({
   normalizeState:(...args)=>stateNormalization.normalizeState(...args),
   showSecondaryTabGuard:(...args)=>uiConnection.showSecondaryTabGuard(...args),
   saveSharedChecksToCloud:(...args)=>syncChecks.saveSharedChecksToCloud(...args),
-  render:(...args)=>uiNavigation.render(...args),
-  lastSavedState:(...args)=>syncChecksState.lastSavedState(...args),
   writeJsonHandleVerified:(...args)=>storageFiles.writeJsonHandleVerified(...args),
-  mergeState3Way:(...args)=>syncMerge.mergeState3Way(...args),
   persistSupabaseState:(...args)=>syncDocument.persistSupabaseState(...args),
   toast:(...args)=>uiStatus.toast(...args),
 });
@@ -309,10 +304,8 @@ const syncDocument=createSyncDocument({
   setSaveStatus:(...args)=>uiStatus.setSaveStatus(...args),
   setConnectedStatus:(...args)=>uiStatus.setConnectedStatus(...args),
   setCloudHeaderStatus:(...args)=>uiStatus.setCloudHeaderStatus(...args),
-  persistImmediateBrowserSnapshot:(...args)=>storageBrowser.persistImmediateBrowserSnapshot(...args),
   listBackups:(...args)=>storageBackup.listBackups(...args),
   backupSnapshotToComputer:(...args)=>storageBackup.backupSnapshotToComputer(...args),
-  saveState:(...args)=>storagePersistence.saveState(...args),
   syncSharedChecksFromCloud:(...args)=>syncChecks.syncSharedChecksFromCloud(...args),
   render:(...args)=>uiNavigation.render(...args),
   readSupabaseDocument:(...args)=>cloudTransport.readSupabaseDocument(...args),
@@ -695,7 +688,6 @@ const uiBackup=createUiBackup({
   createManualBackup:(...args)=>storageBackup.createManualBackup(...args),
   toast:(...args)=>uiStatus.toast(...args),
   renderSettings:(...args)=>uiSettings.renderSettings(...args),
-  normalizeState:(...args)=>stateNormalization.normalizeState(...args),
   stateFromPayload:(...args)=>stateNormalization.stateFromPayload(...args),
   persistSupabaseState:(...args)=>syncDocument.persistSupabaseState(...args),
   restoreGroupStore,
@@ -734,7 +726,6 @@ const lifecycle=createLifecycle({
   session,
   ...storageV2Cloud,
   tab,
-  checksSession,
   prepareKupaCloudState:(...args)=>stateNormalization.prepareKupaCloudState(...args),
   normalizeState:(...args)=>stateNormalization.normalizeState(...args),
   saveChecksState:(...args)=>storagePersistence.saveChecksState(...args),

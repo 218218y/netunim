@@ -413,8 +413,8 @@ ok(-1 not in (folder_slot_pos, save_pill_pos, cloud_pill_pos, settings_pos)
 runtime_events = (O / "site/assets/js/runtime-events.js").read_text(encoding="utf-8")
 orders_persistence = (O / "site/assets/js/storage/persistence.js").read_text(encoding="utf-8")
 kupa_runtime = (K / "site/assets/js/main.js").read_text(encoding="utf-8")
-ok("saveNowButton" not in runtime_events and "manualSaveNow" not in runtime_events and "async function manualSaveNow()" in orders_persistence
-   and "const generation=++session.localGeneration,localOk=localSnapshot(undefined,{operations,storageBoundary,generation,mutationType,surface,deleteIntents})" in orders_persistence
+ok("saveNowButton" not in runtime_events and "manualSaveNow" not in orders_persistence
+   and "const generation=++session.localGeneration,localOk=localSnapshot(undefined,{operations,generation,mutationType,surface,deleteIntents})" in orders_persistence
    and "window.addEventListener('pagehide'" not in runtime_events
    and "storageV2?.durabilityAtRisk||sharedChecksV2?.durabilityAtRisk" in runtime_events,
    "orders: autosave uses the journal and page exit warns only when a V2 commit is not durable")

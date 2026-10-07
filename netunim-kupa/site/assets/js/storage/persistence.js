@@ -2,14 +2,13 @@ import {measureStorage} from '../shared/storage-metrics.js';
 import {beginMeasure} from '../shared/runtime-performance.js';
 import {clone} from '../core/values.js';
 import {payloadFromState} from '../state/serialization.js';
-import {assertKupaEntityInvariants} from '../state/validation.js';
-import {jsonEq} from '../sync/merge-records.js';
+import {assertKupaEntityInvariants,assertPortablePayload} from '../state/validation.js';
 import {inactiveCreditExpired} from '../domains/credit/model.js';
 import {equalSyncJson} from '../shared/cloud-sync.js';
 import {applyStorageV2LocalImport} from '../shared/storage-v2-local-import.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createStoragePersistence({sharedChecksV2=null,storageV2Boundary=null,refreshStorageV2CloudState=async()=>null,recoverStorageV2State=async()=>null,captureLegacyWorkbook=async()=>{},storageV2Primary=()=>false,storageV2CommitPromise=()=>Promise.resolve(),storageV2DurabilityAtRisk=()=>false,replaceStorageV2AuthoritativeState=async()=>false,replaceStorageV2CurrentState=async()=>false,reportError, model, session, files, tab, checksSession, domainRevisions, stateFromPayload, setSaveStatus, setConnectedStatus, persistImmediateBrowserSnapshot, readJsonHandle, listBackups, backupSnapshotToComputer, prepareKupaCloudState, normalizeState, showSecondaryTabGuard, saveSharedChecksToCloud, render, lastSavedState, writeJsonHandleVerified, mergeState3Way, persistSupabaseState, toast}){
+export function createStoragePersistence({sharedChecksV2=null,storageV2Boundary=null,refreshStorageV2CloudState=async()=>null,recoverStorageV2State=async()=>null,captureLegacyWorkbook=async()=>{},storageV2Primary=()=>false,storageV2CommitPromise=()=>Promise.resolve(),storageV2DurabilityAtRisk=()=>false,reportError, model, session, files, tab, checksSession, domainRevisions, stateFromPayload, setSaveStatus, setConnectedStatus, persistImmediateBrowserSnapshot, readJsonHandle, listBackups, backupSnapshotToComputer, prepareKupaCloudState, normalizeState, showSecondaryTabGuard, saveSharedChecksToCloud, writeJsonHandleVerified, persistSupabaseState, toast}){
 let cloudSaveRequest=null;
 function beginLocalRisk(token){(session.localUndurableGenerations??=new Set()).add(token)}
 function clearLocalRisk(token){session.localUndurableGenerations?.delete(token)}
@@ -36,42 +35,39 @@ function mergeDeleteIntents(...values){const out={};for(const value of values){i
 function mainBusinessState(value){const copy=clone(value);delete copy.checks;delete copy._meta;return copy}
 const nextTurn=work=>new Promise(resolve=>setTimeout(resolve,0)).then(work);
 async function loadState({automatic=false}={}){
+  if(tab?.primaryTab===false){showSecondaryTabGuard();throw new Error('storage_v2_local_file_primary_tab_required')}
+  if(!storageV2Primary()||!storageV2Boundary||!(sharedChecksV2?.primaryReady||sharedChecksV2?.localReady))throw new Error('storage_v2_local_file_journals_required');
   if(!files.dataFileHandle)throw new Error('לא נבחר קובץ נתונים');
   const payload=await readJsonHandle(files.dataFileHandle);
   const parsed=stateFromPayload(payload);
-  if(automatic&&storageV2Primary()){
-    const recovered=await recoverStorageV2State();
-    if(!recovered||!equalSyncJson(recovered.state,parsed.state))throw new Error('storage_v2_local_file_requires_confirmation');
+  if(automatic){
+    const [main,shared]=await Promise.all([recoverStorageV2State(),sharedChecksV2.recover()]);
+    if(!main||!shared||!equalSyncJson(mainBusinessState(main.state),mainBusinessState(parsed.state))||
+      !equalSyncJson(shared.state?.checks,parsed.state.checks))throw new Error('storage_v2_local_file_requires_confirmation');
   }
   await captureLegacyWorkbook(payload.notesSheet);
-  const removed=model.lastNormalizeRemovedCredits;
-  const removedCreditIds=[...(model.lastNormalizeRemovedCreditIds||[])];
-  let preservedCloudHead=false;
-  if(storageV2Primary()){
-    const cloud=await refreshStorageV2CloudState();
-    if(cloud?.base){
-      // A local file is never evidence of a cloud ACK. Preserve both cloud
-      // cursors and make the complete file state pending in both journals.
-      if(!sharedChecksV2?.primaryReady||!storageV2Boundary)throw new Error('storage_v2_local_file_shared_head_required');
-      preservedCloudHead=true;
-      if(!equalSyncJson(model.state,parsed.state)){
-        await applyStorageV2LocalImport({
-          boundary:storageV2Boundary,
-          mainCloud:cloud,
-          sharedCloud:await sharedChecksV2.cloudState(),
-          mainState:parsed.state,
-          sharedState:{checks:parsed.state.checks,bankEvents:checksSession.sharedChecksBankEvents||[]},
-        });
-        await refreshStorageV2CloudState();
-      }
-    }else{
-      if(!sharedChecksV2?.localReady||!storageV2Boundary)throw new Error('storage_v2_local_file_shared_head_required');
-      if(!equalSyncJson(model.state,parsed.state)){
-        const mainLocal=await recoverStorageV2State(),sharedLocal=await sharedChecksV2.recover();
-        if(!mainLocal||!sharedLocal)throw new Error('storage_v2_local_file_checkpoint_missing');
-        await applyStorageV2LocalImport({boundary:storageV2Boundary,mode:'local-only',mainLocal,sharedLocal,
-          mainState:parsed.state,sharedState:{checks:parsed.state.checks,bankEvents:checksSession.sharedChecksBankEvents||[]}});
-      }
+  const cloud=await refreshStorageV2CloudState();
+  if(cloud?.base){
+    // A local file is never evidence of a cloud ACK. Preserve both cloud
+    // cursors and make the complete file state pending in both journals.
+    if(!sharedChecksV2.primaryReady)throw new Error('storage_v2_local_file_shared_head_required');
+    if(!equalSyncJson(model.state,parsed.state)){
+      await applyStorageV2LocalImport({
+        boundary:storageV2Boundary,
+        mainCloud:cloud,
+        sharedCloud:await sharedChecksV2.cloudState(),
+        mainState:parsed.state,
+        sharedState:{checks:parsed.state.checks,bankEvents:checksSession.sharedChecksBankEvents||[]},
+      });
+      await refreshStorageV2CloudState();
+    }
+  }else{
+    if(!sharedChecksV2.localReady)throw new Error('storage_v2_local_file_shared_head_required');
+    if(!equalSyncJson(model.state,parsed.state)){
+      const mainLocal=await recoverStorageV2State(),sharedLocal=await sharedChecksV2.recover();
+      if(!mainLocal||!sharedLocal)throw new Error('storage_v2_local_file_checkpoint_missing');
+      await applyStorageV2LocalImport({boundary:storageV2Boundary,mode:'local-only',mainLocal,sharedLocal,
+        mainState:parsed.state,sharedState:{checks:parsed.state.checks,bankEvents:checksSession.sharedChecksBankEvents||[]}});
     }
   }
   const previous=model.state;
@@ -82,22 +78,19 @@ async function loadState({automatic=false}={}){
   session.localFileConflictPending=false;
   session.lastSavedSnapshot=JSON.stringify(model.state);
   session.serverInfo={schemaVersion:Number(parsed.meta.schemaVersion||6),lastSavedAt:parsed.meta.savedAt||null,databaseFile:files.dataFileHandle.name,backups:await listBackups()};
-  if(!storageV2Primary())persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'local-file-load'});
   if(files.backupsDirHandle)await backupSnapshotToComputer(model.state,session.dbRevision);
   setConnectedStatus(session.connectionMode==='directory'?'תיקיית קופה מחוברת':'קובץ נתונים מחובר');
   setSaveStatus('נשמר בקובץ','ok');
-  // The complete pending import already contains normalization removals.
-  if(removed>0&&!preservedCloudHead&&!storageV2Primary())setTimeout(()=>saveState(`נוקו אוטומטית ${removed} רשומות אשראי ישנות במסגרת ניקוי/מעבר למודל הסנכרון החדש`,{deleteIntents:{credits:removedCreditIds},operations:removedCreditIds.map(id=>({type:'delete',collection:'credits',id}))}),0);
   return model.state;
 }
 
-function saveState(msg='נשמר',{deleteIntents={},mutationType='autosave',surface='kupa',domains=null,operations=null,storageBoundary=''}={}){
+function saveState(msg='נשמר',{deleteIntents={},mutationType='autosave',surface='kupa',domains=null,operations=null}={}){
   if(!tab.primaryTab){showSecondaryTabGuard();return Promise.resolve(false)}
   if(!storageV2Primary()){setSaveStatus('אחסון V2 אינו מוכן — השמירה נעצרה','error');return Promise.resolve(false)}
   measureStorage('validate',()=>assertKupaEntityInvariants(model.state,{includeChecks:true,required:true}));
   if(mutationType==='restore'||mutationType==='import')domainRevisions?.touchAll();else if(Array.isArray(domains)&&domains.length)domainRevisions?.touch(domains);else domainRevisions?.touchAll();
   const localDone=beginMeasure('kupa:save-local',{paint:true});
-  const generation=++session.localGeneration,typed=Array.isArray(operations)&&operations.length>0,normalizationMayDelete=(model.state.credits||[]).some(inactiveCreditExpired),fastLocal=storageV2Primary()&&typed&&!storageBoundary&&!normalizationMayDelete;
+  const generation=++session.localGeneration,typed=Array.isArray(operations)&&operations.length>0,normalizationMayDelete=(model.state.credits||[]).some(inactiveCreditExpired),fastLocal=typed&&!normalizationMayDelete;
   if(fastLocal){
     const localOk=persistImmediateBrowserSnapshot(model.state,session.dbRevision,{operations,generation,mutationType,surface,deleteIntents});localDone();
     const idbPending=!localOk&&storageV2DurabilityAtRisk();
@@ -125,7 +118,7 @@ function saveState(msg='נשמר',{deleteIntents={},mutationType='autosave',surf
   }
   const fullSnapshot=measureStorage('normalize',()=>normalizeState(model.state)),autoCreditDeleteIds=[...(model.lastNormalizeRemovedCreditIds||[])],effectiveDeleteIntents=mergeDeleteIntents(deleteIntents,autoCreditDeleteIds.length?{credits:autoCreditDeleteIds}:{}),snapshot=session.connectionMode==='supabase'?prepareKupaCloudState(fullSnapshot,{normalized:true}):fullSnapshot;
   if(typed&&autoCreditDeleteIds.length){const described=new Set(operations.filter(operation=>operation.type==='delete'&&operation.collection==='credits').map(operation=>operation.id));operations=[...operations,...autoCreditDeleteIds.filter(id=>!described.has(id)).map(id=>({type:'delete',collection:'credits',id}))]}
-  else if(autoCreditDeleteIds.length&&!storageBoundary&&storageV2Primary()){
+  else if(autoCreditDeleteIds.length){
     // A caller without a typed mutation may be doing more than normalization.
     // Read the committed journal and prove that only these credits disappeared
     // before turning the deletion into typed operations. Never infer a full
@@ -142,8 +135,7 @@ function saveState(msg='נשמר',{deleteIntents={},mutationType='autosave',surf
       return saved;
     })().catch(error=>{console.error('Kupa V2 credit normalization',error);setSaveStatus('השינוי לא נשמר — נדרשת בדיקת נתונים','error');return false});
   }
-  else if(autoCreditDeleteIds.length&&!storageBoundary)storageBoundary='normalize-expired-credits';
-  const localOk=persistImmediateBrowserSnapshot(fullSnapshot,session.dbRevision,{normalized:true,owned:true,operations,storageBoundary,generation,mutationType,surface,deleteIntents:effectiveDeleteIntents});
+  const localOk=persistImmediateBrowserSnapshot(fullSnapshot,session.dbRevision,{normalized:true,owned:true,operations,generation,mutationType,surface,deleteIntents:effectiveDeleteIntents});
   localDone();
   const idbPending=!localOk&&storageV2DurabilityAtRisk();
   const riskToken=`state:${generation}`;if(!localOk)beginLocalRisk(riskToken);
@@ -151,8 +143,6 @@ function saveState(msg='נשמר',{deleteIntents={},mutationType='autosave',surf
   if(!localOk&&!idbPending)setSaveStatus('שגיאת עותק מקומי','error');
   if(idbPending)setSaveStatus('ממתין לאישור שמירה ב־IndexedDB','saving');
   if(!localOk&&!idbPending)return Promise.resolve(false);
-  // Generic boundaries are a pre-cutover compatibility path. V2-only rejects
-  // them; restore/import and cloud normalization have explicit durable APIs.
   const continueSave=async()=>{
     if(session.connectionMode==='supabase'&&session.backendReady){
       const head=await refreshStorageV2CloudState();
@@ -165,12 +155,12 @@ function saveState(msg='נשמר',{deleteIntents={},mutationType='autosave',surf
   return idbPending?storageV2CommitPromise().then(continueSave,()=>{setSaveStatus('השינוי לא נשמר — אין לסגור את החלון','error');return false}):continueSave()
 }
 
-function saveChecksState(msg='הצק נשמר',{deletedIds=[],mutationType='autosave',surface='kupa.checks',operations=null,storageBoundary=''}={}){
+function saveChecksState(msg='הצק נשמר',{deletedIds=[],mutationType='autosave',surface='kupa.checks',operations=null}={}){
   if(!tab.primaryTab){showSecondaryTabGuard();return Promise.resolve(false)}
   if(sharedChecksV2?.requested){
     const generation=Number(checksSession.sharedChecksGeneration||0)+1,riskToken=`checks:${generation}`;let write;
     domainRevisions?.touch('checks');
-    try{write=sharedChecksV2.persist(operations,{generation,surface,mutationType,deleteIds:deletedIds,storageBoundary})}
+    try{write=sharedChecksV2.persist(operations,{generation,surface,mutationType,deleteIds:deletedIds})}
     catch(error){beginLocalRisk(riskToken);setSaveStatus('הצקים לא נשמרו — אין לסגור את החלון','error');console.error('Shared Checks V2 save',error);return Promise.resolve(false)}
     checksSession.sharedChecksGeneration=generation;checksSession.sharedChecksSaveRequested=true;
     if(!write.emergencyDurable){beginLocalRisk(riskToken);clearLocalRiskAfter(riskToken,write.committed)}
@@ -186,50 +176,39 @@ function saveChecksState(msg='הצק נשמר',{deletedIds=[],mutationType='auto
   return Promise.resolve(false);
 }
 
-async function persistState(snapshot,msg,generation=session.localGeneration,deleteIntents={}){
+async function persistState(snapshot,msg,generation=session.localGeneration){
+  if(!storageV2Primary()){setSaveStatus('אחסון V2 אינו מוכן — השמירה נעצרה','error');return false}
   if(!session.backendReady){setSaveStatus('לא מחובר למקור נתונים','error');return false}
   if(generation===session.localGeneration)snapshot=session.connectionMode==='supabase'?prepareKupaCloudState(model.state):normalizeState(model.state);
   if(session.connectionMode==='supabase')return persistSupabaseState(prepareKupaCloudState(snapshot),msg,generation);
   if(!files.dataFileHandle){setSaveStatus('אין קובץ נתונים','error');return false}
-  if(session.localFileConflictPending){if(!storageV2Primary())persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'local-file-conflict-mirror'});setSaveStatus('התנגשות בקובץ — העותק המקומי שמור','error');return false}
+  if(session.localFileConflictPending){setSaveStatus('התנגשות בקובץ — השינוי שמור ב־V2','error');return false}
   setSaveStatus(generation===session.localGeneration?'שומר…':'שומר תור שינויים…','saving');
   try{
-    const v2CloudHead=storageV2Primary()?await refreshStorageV2CloudState():null;
-    if(v2CloudHead?.base){
-      const recovered=await recoverStorageV2State();
-      if(!recovered||!equalSyncJson(mainBusinessState(recovered.state),mainBusinessState(model.state)))throw new Error('storage_v2_local_file_unjournaled_state');
-      if(generation===session.localGeneration&&!equalSyncJson(mainBusinessState(snapshot),mainBusinessState(recovered.state)))throw new Error('storage_v2_local_file_unjournaled_normalization');
-    }
-    const current=await readJsonHandle(files.dataFileHandle),curMeta=current?._meta||{},curRev=Number(curMeta.revision||0),remote=stateFromPayload(current).state;
-    let candidate=clone(snapshot),expected=curRev;
+    // A file is an export of the journals. Never let it create or replace a
+    // Main checkpoint, even when the owner has no cloud cursor.
+    await storageV2CommitPromise();
+    if(!sharedChecksV2?.flush||!sharedChecksV2?.recoverReadOnly)throw new Error('storage_v2_local_file_shared_head_required');
+    await sharedChecksV2.flush();
+    const [recovered,shared]=await Promise.all([recoverStorageV2State(),sharedChecksV2.recoverReadOnly()]);
+    if(!recovered||!equalSyncJson(mainBusinessState(recovered.state),mainBusinessState(model.state)))throw new Error('storage_v2_local_file_unjournaled_state');
+    if(generation===session.localGeneration&&!equalSyncJson(mainBusinessState(snapshot),mainBusinessState(recovered.state)))throw new Error('storage_v2_local_file_unjournaled_normalization');
+    if(!shared||!equalSyncJson(shared.state?.checks,snapshot.checks))throw new Error('storage_v2_local_file_unjournaled_checks');
+    const current=await readJsonHandle(files.dataFileHandle),curMeta=current?._meta||{},curRev=Number(curMeta.revision||0);
+    assertPortablePayload(current); // Reject a malformed file instead of overwriting it.
     if(curRev!==session.dbRevision){
-      if(v2CloudHead?.base){session.localFileConflictPending=true;throw new Error('storage_v2_local_file_external_change')}
-      const base=lastSavedState();
-      if(!base){session.localFileConflictPending=true;if(!storageV2Primary())persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'local-file-missing-base'});setSaveStatus('קובץ השתנה — נדרשת בדיקה','error');reportError('קובץ הנתונים השתנה ולא קיימת גרסת בסיס בטוחה למיזוג. השינויים שעל המסך נשמרו בעותק הדפדפן ולא נדרסו. מומלץ לייצא JSON ולפתוח מחדש את הקופה.');return false}
-      const merged=mergeState3Way(base,snapshot,remote,{deleteIntents});
-      if(merged.conflicts.length){session.localFileConflictPending=true;if(!storageV2Primary())persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'local-file-merge-conflict'});setSaveStatus('התנגשות בקובץ — העותק המקומי שמור','error');reportError('אותה רשומה שונתה גם בקובץ וגם במסך הזה. כדי למנוע דריסה השמירה לקובץ נעצרה; השינויים המקומיים נשמרו בעותק הדפדפן. ייצא גיבוי JSON ופתח מחדש את הקופה לפני המשך עריכה.');return false}
-      candidate=merged.state;
+      session.localFileConflictPending=true;
+      setSaveStatus('קובץ הנתונים השתנה — השמירה לקובץ נעצרה','error');
+      reportError('קובץ הנתונים השתנה מחוץ לאפליקציה. השינוי המקומי שמור ב־Storage V2 ולא ייכתב על הקובץ שהשתנה. ייצא גיבוי לפני פתיחה מחדש: פתיחת הקובץ תייבא את תוכנו ותחליף את המצב המקומי.');
+      return false;
     }
-    const nextRev=expected+1,payload=payloadFromState(candidate,nextRev);
+    const nextRev=curRev+1,payload=payloadFromState(snapshot,nextRev);
     await writeJsonHandleVerified(files.dataFileHandle,payload);
-    session.dbRevision=nextRev;session.lastSavedSnapshot=JSON.stringify(candidate);session.serverInfo.lastSavedAt=payload._meta.savedAt;
-    const visibleBefore=model.state;
-    if(generation===session.localGeneration){model.state=normalizeState(clone(candidate))}else{
-      const rebased=mergeState3Way(snapshot,model.state,candidate,{deleteIntents});
-      if(rebased.conflicts.length){session.localFileConflictPending=true;setSaveStatus('שינוי נוסף התנגש — נשמר בדפדפן','error')}else model.state=rebased.state
-    }
-    const visibleChanged=!jsonEq(visibleBefore,model.state);if(visibleChanged)domainRevisions?.reconcile(visibleBefore,model.state);
-    if(storageV2Primary()){
-      if(v2CloudHead?.base){
-        const recovered=await recoverStorageV2State();
-        if(!recovered||!equalSyncJson(mainBusinessState(recovered.state),mainBusinessState(model.state)))throw new Error('storage_v2_local_file_unjournaled_state');
-      }else if(await replaceStorageV2CurrentState(model.state)===false)throw new Error('storage_v2_local_file_checkpoint_failed');
-    }else persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'local-file-authoritative-write'});
-    if(visibleChanged)render();
-    if(files.backupsDirHandle)await backupSnapshotToComputer(candidate,nextRev);session.serverInfo.backups=await listBackups();
+    session.dbRevision=nextRev;session.lastSavedSnapshot=JSON.stringify(snapshot);session.serverInfo.lastSavedAt=payload._meta.savedAt;
+    if(files.backupsDirHandle)await backupSnapshotToComputer(snapshot,nextRev);session.serverInfo.backups=await listBackups();
     if(generation===session.localGeneration&&!session.localFileConflictPending){setSaveStatus('נשמר בקובץ','ok');toast(msg)}else if(!session.localFileConflictPending)setSaveStatus('שומר שינוי נוסף…','saving');
     return !session.localFileConflictPending
-  }catch(e){console.error(e);if(!storageV2Primary())persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'local-file-write-error'});setSaveStatus('שגיאת שמירה — העותק המקומי שמור','error');reportError('השמירה לקובץ נכשלה. השינוי נשמר בעותק התאוששות בדפדפן ולא יידרס בלי אזהרה. מומלץ לייצא גיבוי JSON ולטפל בגישה לתיקייה.');return false}
+  }catch(e){console.error(e);setSaveStatus('שגיאת שמירה לקובץ — בדוק את מצב V2','error');reportError('השמירה לקובץ נכשלה. בדוק את מצב Storage V2 ואת הגישה לתיקייה לפני ניסיון נוסף; הקובץ הקיים לא יידרס אוטומטית.');return false}
 }
 
 return { loadState, saveState, saveChecksState, persistState };

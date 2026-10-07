@@ -27,7 +27,8 @@ test('Kupa legacy workbook is frozen with the birth plan and retried after a cra
 test('Kupa remembered file cannot silently replace a different local V2 checkpoint',async()=>{
   let captured=0,applied=0;
   const persistence=createStoragePersistence({model:{state:{checks:[],cash:[{id:'browser'}]}},session:{},files:{dataFileHandle:{name:'kupa.json'}},checksSession:{},
-    storageV2Primary:()=>true,recoverStorageV2State:async()=>({state:{checks:[],cash:[{id:'browser'}]}}),
+    storageV2Primary:()=>true,storageV2Boundary:{},sharedChecksV2:{localReady:true,recover:async()=>({state:{checks:[]}})},
+    recoverStorageV2State:async()=>({state:{cash:[{id:'browser'}]}}),
     readJsonHandle:async()=>({checks:[],cash:[{id:'file'}]}),stateFromPayload:()=>({state:{checks:[],cash:[{id:'file'}]},meta:{}}),
     captureLegacyWorkbook:async()=>{captured++},replaceStorageV2CurrentState:async()=>{applied++}});
   await assert.rejects(persistence.loadState({automatic:true}),/storage_v2_local_file_requires_confirmation/);
