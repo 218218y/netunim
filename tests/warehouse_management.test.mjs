@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {applyBulkRangeSelection} from '../netunim-orders/site/assets/js/ui/bulk-selection.js';
+import {applyBulkRangeSelection} from '../netunim-orders/site/assets/js/core/bulk-selection.js';
 import {createStateNormalization} from '../netunim-orders/site/assets/js/state/normalization.js';
 import {createDomainsWarehouseView} from '../netunim-orders/site/assets/js/domains/warehouse/view.js';
 import {createDomainsInventoryView} from '../netunim-orders/site/assets/js/domains/inventory/view.js';

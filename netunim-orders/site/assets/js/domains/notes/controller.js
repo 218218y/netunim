@@ -5,7 +5,7 @@ import {normalizeNoteReminderDate} from './alerts.js';
 import {noteReminderCalendarMarkup,noteReminderMonthKey,shiftNoteReminderFocusDate,shiftNoteReminderMonth} from './reminder-calendar.js';
 import {layoutStickyNoteCard,layoutStickyNoteGrid} from './layout.js';
 import {$} from '../../state/constants.js';
-import {applyBulkRangeSelection} from '../../ui/bulk-selection.js';
+import {applyBulkRangeSelection} from '../../core/bulk-selection.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createDomainsNotesController({workspace=null,model, notesUi, scheduleSave, toast=()=>{}, mountViewLayout, confirmDialog, modal=()=>{}, closeModal=()=>{}, refreshAlertCenter=()=>{}, currentView=()=>'', dateEditorMarkup=()=>'', setDateValue=()=>{}}){

@@ -1,4 +1,4 @@
-// Shared Windows-style range selection for bulk checkboxes.
+// Domain-agnostic range selection for bulk checkboxes.
 // A normal click establishes the anchor. Shift-click applies the new checked
 // state to every visible row between the anchor and the clicked row.
 export function applyBulkRangeSelection({selected,orderedIds,id,checked,shiftKey=false,anchorId=null}){
