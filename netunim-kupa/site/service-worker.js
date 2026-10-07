@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='kupa-app-shell-';
-const CACHE='kupa-app-shell-esm-e8b04733c376';
+const CACHE='kupa-app-shell-esm-8682975ac954';
 const SHELL=[
   './',
   './index.html',
@@ -65,6 +65,7 @@ const SHELL=[
   './assets/js/domains/search/model.js',
   './assets/js/lifecycle.js',
   './assets/js/main.js',
+  './assets/js/shared/action-registry.js',
   './assets/js/shared/bank-cheque-images.js',
   './assets/js/shared/bank-recurring-debits.js',
   './assets/js/shared/bank-transaction-order.js',
@@ -164,6 +165,16 @@ const SHELL=[
   './assets/js/sync/merge.js',
   './assets/js/sync/recovery.js',
   './assets/js/ui-primitives/local-search.js',
+  './assets/js/ui/action-packs/backup.js',
+  './assets/js/ui/action-packs/bank.js',
+  './assets/js/ui/action-packs/cash.js',
+  './assets/js/ui/action-packs/checks.js',
+  './assets/js/ui/action-packs/cloud.js',
+  './assets/js/ui/action-packs/credit.js',
+  './assets/js/ui/action-packs/expenses.js',
+  './assets/js/ui/action-packs/notes.js',
+  './assets/js/ui/action-packs/settings.js',
+  './assets/js/ui/action-packs/shell.js',
   './assets/js/ui/actions.js',
   './assets/js/ui/backup.js',
   './assets/js/ui/bulk.js',

@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {createDomainsCashView} from '../netunim-kupa/site/assets/js/domains/cash/view.js';
 import {createDomainsCashEditor} from '../netunim-kupa/site/assets/js/domains/cash/editor.js';
 import {createDomainsCashController} from '../netunim-kupa/site/assets/js/domains/cash/controller.js';
-import {createUiActions} from '../netunim-kupa/site/assets/js/ui/actions.js';
+import {createCashActions} from '../netunim-kupa/site/assets/js/ui/actions.js';
 import {createUiDateEditor} from '../netunim-kupa/site/assets/js/ui/date-editor.js';
 import {createStateNormalization} from '../netunim-kupa/site/assets/js/composition/state-normalization.js';
 import {moneyWithCents} from '../netunim-kupa/site/assets/js/core/money.js';
@@ -60,7 +60,7 @@ test('rights editor keeps canonical types, shows requested labels and applies th
   model.state.rights[0].note='הערה ישנה';fields.mType.value='הוצאה';fields.mAmount.value='12.34';editor.saveRight(model.state.rights[0].id);assert.equal(model.state.rights[0].amount,-12.34);assert.equal(model.state.rights[0].note,'הערה ישנה','removing the note field must not erase historical note data');
   fields.mAmount.value='-9.99';editor.saveRight(model.state.rights[0].id);assert.equal(model.state.rights[0].amount,-9.99,'a typed minus must not invert a debit into a credit');
   assert.equal(renders,3,'each local ledger mutation refreshes the cash view immediately');
-  const actions=createUiActions({ui:{},openCashModal:()=>cashOpened++,openRightModal:()=>rightOpened++});
+  const actions=createCashActions({ui:{},domainsCashView:{setCashSearch(){}},domainsCashEditor:{openCashModal:()=>cashOpened++,openRightModal:()=>rightOpened++}});
   actions['open-cash-modal']({dataset:{}},{});actions['open-right-modal']({dataset:{}},{});
   assert.equal(cashOpened,1);assert.equal(rightOpened,1);
 });

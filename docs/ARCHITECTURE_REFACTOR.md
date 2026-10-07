@@ -45,6 +45,20 @@ remain separate from structural refactors.
 - Orders reminder-date normalization is one app contract used by both persisted
   state and note alerts. State snapshots compare shared checks with the shared
   JSON equality contract instead of importing sync merge code.
+- Stage 1 was merged to `main` after the full branch verification matrix passed.
+- Kupa's delegated actions are now owned by ten capability packs plus the
+  existing workbook, spreadsheet, and credit-card order capabilities. The
+  composition root passes each pack its concrete collaborators; it no longer
+  supplies 104 individual callbacks to one factory. The shared action registry
+  rejects duplicate pack/action names and invalid handlers, retains mutation
+  metadata, and exposes a frozen map without prototype actions. Orders uses
+  the same registry around its existing actions and external packs, preserving
+  its startup mutation guards while its larger factory awaits decomposition.
+- A Kupa action-reference test checks literal rendered `data-*` actions and
+  unreferenced registrations, including the cash-flow date action constructed
+  from its base action name. This surfaced an unused cash-flow cutoff editor
+  action; its unreachable writer was removed while persisted cutoff settings
+  and their read behavior remain intact.
 
 ## Dependency direction
 
@@ -58,13 +72,13 @@ and presentation primitives should have explicit owners.
 
 ## Next reviewable slices
 
-1. **Action registry:** `createUiActions` currently takes 104 inputs in Kupa and
-   250 in Orders. Record each action's owner, event channel, mutation guard, and
-   rendered `data-*` reference. Introduce a small registry that rejects duplicate
-   names and preserves guard metadata. Extract one complete capability action
-   pack at a time; verify registered, referenced, and dead actions before
-   removing the monolithic factory. The registry must not become a context of
-   hundreds of callbacks.
+1. **Orders action packs:** Kupa's 104-input factory has been removed. Orders
+   still takes roughly 250 inputs. Extract its cohesive suppliers, warehouse,
+   customers, documents, finance, checks, and shell actions through bounded
+   capability ports. Move startup mutation classification with each extracted
+   pack and verify every rendered action, including dynamic action names. The
+   shared registry already rejects collisions between existing external packs
+   and the Orders core map; the core itself is the remaining monolith.
 2. **Composition roots:** map each capability's inputs, outputs, startup phase,
    and deferred callbacks. Orders suppliers and Kupa cash are the next cohesive
    candidates. Keep public behavior fixed and run browser startup and sync gates

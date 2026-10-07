@@ -66,7 +66,7 @@ check("rollingOffset" in orders_transport and "offset=${safeOffset}" in orders_t
 check("saved_at=lte." in kupa_transport and "shared_checks_periodic_backups" in kupa_transport, "kupa: shared checks are paired at-or-before the primary backup time")
 check("saved_at=lte." in orders_transport and "shared_checks_periodic_backups" in orders_transport, "orders: shared checks are paired at-or-before the primary backup time")
 
-kupa_actions = read("netunim-kupa/site/assets/js/ui/actions.js")
+kupa_actions = read("netunim-kupa/site/assets/js/ui/action-packs/backup.js")
 orders_actions = read("netunim-orders/site/assets/js/ui/actions.js")
 check("'restore-cloud-backup':(element,event)=>{previewCloudBackup" in kupa_actions, "kupa: list restore action is preview-first")
 check("load-more-cloud-backups" in kupa_actions, "kupa: older backup pages are explicit user actions")

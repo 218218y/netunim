@@ -764,7 +764,7 @@ expense_view=(K / "site/assets/js/domains/expenses/view.js").read_text(encoding=
 bank_view=(K / "site/assets/js/domains/bank/view.js").read_text(encoding="utf-8")
 orders_bank_detail_view=(O / "site/assets/js/domains/finance/bank-transaction-detail-view.js").read_text(encoding="utf-8")
 orders_actions=(O / "site/assets/js/ui/actions.js").read_text(encoding="utf-8")
-kupa_actions=(K / "site/assets/js/ui/actions.js").read_text(encoding="utf-8")
+kupa_actions=(K / "site/assets/js/ui/action-packs/bank.js").read_text(encoding="utf-8")
 ok(all('כל התנועות' in source and 'class="bank-date-menu"' in source and "'bank-date-from'" in source and "'bank-date-to'" in source and 'class="btn primary bank-date-apply"' in source and '<select class="bank-date-mode"' not in source for source in (orders_finance_view,bank_view))
    and "setOrdersBankDateMode('range',host?.querySelector('[data-bank-date-from]')?.value||'',host?.querySelector('[data-bank-date-to]')?.value||'')" in orders_actions
    and "setBankDateMode('range',host?.querySelector('[data-bank-date-from]')?.value||'',host?.querySelector('[data-bank-date-to]')?.value||'')" in kupa_actions,
@@ -827,7 +827,7 @@ ok("function applyKupaCoreState" in kupa_sync_document
    and "businessChanged=applyAcknowledgedCoreState(authoritative)" in kupa_sync_document
    and "getCloudPending" not in kupa_sync_document,
    "kupa save ownership: V2 ACK preserves the finance overlay and has no V1 outbox")
-kupa_actions=(K / "site/assets/js/ui/actions.js").read_text(encoding="utf-8")
+kupa_actions=(K / "site/assets/js/ui/action-packs/shell.js").read_text(encoding="utf-8")
 kupa_navigation=(K / "site/assets/js/ui/navigation.js").read_text(encoding="utf-8")
 ok('button data-action="set-page"' in kupa_dashboard_view
    and 'dashboard-go' not in kupa_dashboard_view and 'dashboard-keyboard' not in kupa_dashboard_view
@@ -1160,7 +1160,7 @@ orders_finance_controller=(ROOT/'netunim-orders/site/assets/js/domains/finance/c
 orders_actions=(ROOT/'netunim-orders/site/assets/js/ui/actions.js').read_text(encoding='utf-8')
 kupa_credit_view=(ROOT/'netunim-kupa/site/assets/js/domains/credit/view.js').read_text(encoding='utf-8')
 kupa_credit_editor=(ROOT/'netunim-kupa/site/assets/js/domains/credit/editor.js').read_text(encoding='utf-8')
-kupa_actions=(ROOT/'netunim-kupa/site/assets/js/ui/actions.js').read_text(encoding='utf-8')
+kupa_actions=(ROOT/'netunim-kupa/site/assets/js/ui/action-packs/credit.js').read_text(encoding='utf-8')
 kupa_index=(ROOT/'netunim-kupa/site/index.html').read_text(encoding='utf-8')
 kupa_contexts=(ROOT/'netunim-kupa/site/assets/js/state/contexts.js').read_text(encoding='utf-8')
 kupa_checks_view=(ROOT/'netunim-kupa/site/assets/js/domains/checks/view.js').read_text(encoding='utf-8')

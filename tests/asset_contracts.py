@@ -132,7 +132,7 @@ for label, project in APPS.items():
     site = project / "site"
     deployed_reset = (site / "assets/js/shared/local-site-reset.js").read_text(encoding="utf-8")
     settings = (site / "assets/js/ui/settings.js").read_text(encoding="utf-8")
-    actions = (site / "assets/js/ui/actions.js").read_text(encoding="utf-8")
+    actions = (site / ("assets/js/ui/action-packs/cloud.js" if label == "kupa" else "assets/js/ui/actions.js")).read_text(encoding="utf-8")
     main = (site / "assets/js/main.js").read_text(encoding="utf-8")
     status = (site / "assets/js/ui/status.js").read_text(encoding="utf-8")
     cloud = (site / "assets/js/ui/cloud.js").read_text(encoding="utf-8")
@@ -143,7 +143,9 @@ for label, project in APPS.items():
     ok('data-action="reset-local-site-storage"' in settings, f"{label}: Supabase settings expose the local-storage reset action")
     ok("'reset-local-site-storage'" in actions and "resetLocalSiteStorage" in actions,
        f"{label}: reset action is wired through the UI action map")
-    ok("installLocalSiteResetPeerListener" in main and "resetLocalSiteStorage:(...args)=>uiCloud.resetLocalSiteStorage(...args)" in main,
+    reset_wiring = ("createCloudActions({syncDocument,uiCloud})" in main and
+                    "resetLocalSiteStorage=(...args)=>uiCloud.resetLocalSiteStorage(...args)" in actions) if label == "kupa" else "resetLocalSiteStorage:(...args)=>uiCloud.resetLocalSiteStorage(...args)" in main
+    ok("installLocalSiteResetPeerListener" in main and reset_wiring,
        f"{label}: composition root parks peer tabs and supplies the reset recovery port")
     ok("confirmDialog('איפוס אחסון מקומי'" in cloud and "beginLocalSiteResetNavigation" in cloud,
        f"{label}: reset requires explicit destructive confirmation before leaving the live app")

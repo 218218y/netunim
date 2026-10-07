@@ -40,7 +40,7 @@ test('orders capability checking blocks mutations but never supplier navigation'
  const status=createUiStatus({session,checksSession});let supplierSelections=0,writes=0;
  const chooseSupplier=()=>supplierSelections++,save=()=>writes++;Object.defineProperty(save,'startupMutationDomain',{value:'orders'});
  const actions=wrapMutationActions({'choose-supplier':chooseSupplier,save},domain=>status.guardStartupMutation(domain));
- actions['choose-supplier']();actions.save();assert.equal(supplierSelections,1);assert.equal(writes,0);assert.equal(actions.save.startupMutationDomain,'orders');
+ actions['choose-supplier']();actions.save();assert.equal(supplierSelections,1);assert.equal(writes,0);assert.equal(actions.save.startupMutationDomain,'orders');assert.equal(Object.getPrototypeOf(actions),null);
  session.syncCapabilitiesChecking=false;actions.save();assert.equal(writes,1);
  session.syncCapabilitiesError=new Error('DB mismatch');actions['choose-supplier']();actions.save();assert.equal(supplierSelections,2);assert.equal(writes,1);
 });

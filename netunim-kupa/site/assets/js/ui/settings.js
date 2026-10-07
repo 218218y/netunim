@@ -45,8 +45,7 @@ function renderSettings(){
 
 function updateCard(i,k,v){const card=model.state.cards[i];if(!card)return;const old=card[k];card[k]=v;const affected=[];if(k==='name'&&old!==v){model.state.credits.forEach(cr=>{if(cr.card===old){cr.card=v;affected.push(cr)}})}saveState('ההגדרה נשמרה',{domains:['credits'],operations:[{type:'put',collection:'cards',id:card.id,mode:'replace',record:card},...affected.map(record=>({type:'put',collection:'credits',id:record.id,mode:'replace',record}))]})}
 function updateCashflowMinimum(account,value){const raw=String(value??'').trim(),parsed=raw===''?null:Number(raw);if(parsed!==null&&!Number.isFinite(parsed))return;const settings=normalizeCashflowSettings(model.state.cashflowSettings);if(account==='home')settings.homeMinimum=parsed;else settings.businessMinimum=parsed;model.state.cashflowSettings=normalizeCashflowSettings(settings);saveState('סף ההתראה התזרימי נשמר',{domains:['cashflowSettings'],operations:[{type:'set',field:'cashflowSettings',value:model.state.cashflowSettings}]})}
-function updateCashflowCheckCutoff(account,value){const parsed=Number(value);if(!Number.isInteger(parsed)||parsed<1||parsed>31){renderSettings();return}const settings=normalizeCashflowSettings(model.state.cashflowSettings);if(account==='home')settings.homeCheckCutoffDay=parsed;else settings.businessCheckCutoffDay=parsed;model.state.cashflowSettings=normalizeCashflowSettings(settings);saveState('יום חישוב הצ׳קים בתזרים נשמר',{domains:['cashflowSettings'],operations:[{type:'set',field:'cashflowSettings',value:model.state.cashflowSettings}]})}
 
 
-return { renderSettings, updateCard, updateCashflowMinimum, updateCashflowCheckCutoff };
+return { renderSettings, updateCard, updateCashflowMinimum };
 }
