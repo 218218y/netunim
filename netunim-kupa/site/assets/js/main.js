@@ -6,7 +6,6 @@ import {createFinanceDerivationStore} from './shared/finance-derivations.js';
 import {createSpreadsheetWorkspace} from './shared/spreadsheet-workspace.js';
 import {esc} from './core/values.js';
 import {createCreditCardOrderView} from './shared/credit-card-order-view.js';
-import {createFinanceConnectionImporter} from './shared/finance-connection-import.js';
 import {createUiConnection} from './ui/connection.js';
 import {createStateNormalization} from './state/normalization.js';
 import {createUiStatus} from './ui/status.js';
@@ -43,16 +42,13 @@ import {createDomainsCreditView} from './domains/credit/view.js';
 import {createDomainsCashView} from './domains/cash/view.js';
 import {createDomainsCashController} from './domains/cash/controller.js';
 import {createDomainsNotesController} from './domains/notes/controller.js';
-import {createDomainsBankView} from './domains/bank/view.js';
 import {createDomainsBankAlerts} from './domains/bank/alerts.js';
-import {createDomainsBankBridge} from './domains/bank/bridge.js';
 import {composeDocumentSearch} from './shared/document-search-composition.js';
-import {createDomainsBankController} from './domains/bank/controller.js';
+import {composeKupaFinance} from './composition/finance.js';
 import {createUiSettings} from './ui/settings.js';
 import {createUiModal} from './ui/modal.js';
 import {createDomainsChecksEditor} from './domains/checks/editor.js';
 import {createDomainsCreditEditor} from './domains/credit/editor.js';
-import {createDomainsCreditController} from './domains/credit/controller.js';
 import {inactiveCreditExpired} from './domains/credit/model.js';
 import {createDomainsCashEditor} from './domains/cash/editor.js';
 import {createDomainsExpensesEditor} from './domains/expenses/editor.js';
@@ -66,7 +62,6 @@ import {createUiActions} from './ui/actions.js';
 import {createContexts} from './state/contexts.js';
 import {createKupaDomainRevisions,kupaPageRevision} from './state/revisions.js';
 import {createRestoreGroupStore} from './shared/restore-groups.js';
-import {createBankChequeImageStorage} from './shared/bank-cheque-images.js';
 
 
 
@@ -483,94 +478,16 @@ const domainsNotesController=createDomainsNotesController({
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
 
-const domainsBankBridge=createDomainsBankBridge();
-
-const bankChequeImageStorage=createBankChequeImageStorage({supaFetch:(...args)=>cloudAuth.supaRest(...args),ensureSession:(...args)=>cloudAuth.supaEnsureSession(...args),fetchBridgeImage:(...args)=>domainsBankBridge.fetchChequeImage(...args)});
-
-async function refreshFinanceCloudSnapshot(){
-  if(session.connectionMode!=='supabase'||!session.backendReady)return {verified:true,state:model.state,revision:Number(session.dbRevision||0),financeRevision:Number(session.financeRevision||0)};
-  if(!navigator.onLine)return {verified:false,state:null};
-  try{
-    const row=await cloudTransport.readSupabaseDocument();
-    if(!row?.state)return {verified:false,state:null};
-    const kupaChanged=Number(row.revision||0)>Number(session.dbRevision||0),financeChanged=Number(row.financeRevision||0)>Number(session.financeRevision||0);
-    if(kupaChanged||financeChanged)await syncDocument.cloudPoll();
-    return {verified:true,state:row.state,revision:Number(row.revision||0),financeRevision:Number(row.financeRevision||0)};
-  }catch(error){console.error('finance cloud freshness',error);return {verified:false,state:null}}
-}
-async function saveFinancePatchTracked(...args){
-  const result=await cloudTransport.saveFinancePatch(...args),row=result?.row;
-  if(row){session.financeRevision=Number(row.revision||session.financeRevision||0);session.financeUpdatedAt=row.updated_at||session.financeUpdatedAt||null}
-  return result
-}
-const remoteFinanceLeaseTokens=new Set();
-async function claimSharedFinanceSyncLease(kind,token){
-  if(session.connectionMode!=='supabase'||!session.backendReady)return {acquired:true,localOnly:true};
-  const result=await cloudTransport.claimFinanceSyncLease(kind,token);if(result?.acquired)remoteFinanceLeaseTokens.add(String(token));return result
-}
-async function releaseSharedFinanceSyncLease(kind,token){
-  const key=String(token||'');if(!remoteFinanceLeaseTokens.has(key))return true;
-  try{return await cloudTransport.releaseFinanceSyncLease(kind,key)}finally{remoteFinanceLeaseTokens.delete(key)}
-}
-
-const domainsCreditController=createDomainsCreditController({
-  model,
-  saveState:(message,options={})=>storagePersistence.saveState(message,{...options,domains:['creditSync']}),
-  toast:(...args)=>uiStatus.toast(...args),
-  render:(...args)=>uiNavigation.render(...args),
-  renderStatus:()=>{if(ui.currentPage==='credit')uiNavigation.render()},
-  bridge:domainsBankBridge,
-  modal:(...args)=>uiModal.modal(...args),
-  armModalDraftGuard:(...args)=>uiModal.armModalDraftGuard(...args),
-  closeModal:(...args)=>uiModal.closeModal(...args),
-  confirmDialog:(...args)=>uiModal.confirmDialog(...args),
-  refreshFinanceCloudSnapshot,
-  saveFinancePatch:(...args)=>saveFinancePatchTracked(...args),
-  claimFinanceSyncLease:(...args)=>claimSharedFinanceSyncLease(...args),
-  releaseFinanceSyncLease:(...args)=>releaseSharedFinanceSyncLease(...args),
-});
-
-const domainsBankController=createDomainsBankController({
-  model,
-  session,
-  checksSession,
-  sharedChecksHaveLocalWork:(...args)=>syncChecksState.sharedChecksHaveLocalWork(...args),
-  saveSharedChecksToCloud:(...args)=>syncChecks.saveSharedChecksToCloud(...args),
-  saveState:(message,options={})=>storagePersistence.saveState(message,{...options,domains:['bank','bankFeed']}),
-  syncSharedChecksFromCloud:(...args)=>syncChecks.syncSharedChecksFromCloud(...args),
-  sharedChecksObservedSequence:(...args)=>domainsBankSelectors.sharedChecksObservedSequence(...args),
-  toast:(...args)=>uiStatus.toast(...args),
-  render:(...args)=>uiNavigation.render(...args),
-  bridge:domainsBankBridge,
-  refreshFinanceCloudSnapshot,
-  saveFinancePatch:(...args)=>saveFinancePatchTracked(...args),
-  claimFinanceSyncLease:(...args)=>claimSharedFinanceSyncLease(...args),
-  releaseFinanceSyncLease:(...args)=>releaseSharedFinanceSyncLease(...args),
-  saveBankSyncSnapshot:(...args)=>cloudTransport.saveBankSyncSnapshot(...args),
-  mergeBankTransactions:(...args)=>cloudTransport.mergeBankTransactions(...args),
-  syncBankTransactionsSnapshot:(...args)=>cloudTransport.syncBankTransactionsSnapshot(...args),
-  readBankTransactions:(...args)=>cloudTransport.readBankTransactions(...args),
-  readBankTransactionSnapshot:(...args)=>cloudTransport.readBankTransactionSnapshot(...args),
-  acknowledgeBankTransactionMissing:(...args)=>cloudTransport.acknowledgeBankTransactionMissing(...args),
-  syncBankChequeImages:(...args)=>bankChequeImageStorage.sync(...args),
-  touchBankDataRevision:()=>domainRevisions.touch(['bank','bankFeed']),
-  touchBankDisplayRevision:()=>domainRevisions.touch('bankDisplay'),
-});
-
-const domainsBankView=createDomainsBankView({
-  runFinance:financeDerivations.run,
-  modal:(...args)=>uiModal.modal(...args),
-  closeModal:(...args)=>uiModal.closeModal(...args),
-  model,
-  ui,
-  bankHomeBalance:(...args)=>domainsBankSelectors.bankHomeBalance(...args),
-  bankNextCycleCommitments:(...args)=>domainsBankSelectors.bankNextCycleCommitments(...args),
-  bankHomeNextCycleCommitments:(...args)=>domainsBankSelectors.bankHomeNextCycleCommitments(...args),
-  bankBridgeUiState:(...args)=>domainsBankController.bankBridgeUiState(...args),
-  refreshBankBridgeStatus:(...args)=>domainsBankController.refreshBankBridgeStatus(...args),
-  ensureBankDisplayArchive:(...args)=>domainsBankController.ensureBankDisplayArchive(...args),
-  downloadBankChequeImage:(...args)=>bankChequeImageStorage.download(...args),
-  dateEditorMarkup:(...args)=>uiDateEditor.dateEditorMarkup(...args),
+const {
+  creditController:domainsCreditController,
+  bankController:domainsBankController,
+  bankView:domainsBankView,
+  createConnectionImporter:composeFinanceConnectionImporter,
+}=composeKupaFinance({
+  model,session,checksSession,ui,cloudAuth,cloudTransport,syncDocument,
+  syncChecksState,syncChecks,storagePersistence,uiStatus,uiNavigation,
+  uiDateEditor,financeDerivations,domainsBankSelectors,domainRevisions,
+  getUiModal:()=>uiModal,
 });
 
 const uiSettings=createUiSettings({
@@ -589,13 +506,7 @@ const uiModal=createUiModal({
   ui,
 });
 
-const importFinanceConnections=createFinanceConnectionImporter({
-  bridge:domainsBankBridge,
-  getCreditProfiles:()=>model.state.creditSync?.profiles||[],
-  confirmDialog:(...args)=>uiModal.confirmDialog(...args),
-  toast:(...args)=>uiStatus.toast(...args),
-  afterImport:async()=>{await Promise.all([domainsBankController.refreshBankBridgeStatus(),domainsCreditController.refreshCreditBridgeStatus({quiet:true})]);uiNavigation.render()},
-});
+const importFinanceConnections=composeFinanceConnectionImporter();
 
 const domainsBankAlerts=createDomainsBankAlerts({
   model,
