@@ -1,5 +1,6 @@
 import {createIndexedDbConnection} from './indexed-db-connection.js';
 import {readStorageRecord,sealStorageRecord} from './storage-journal-model.js';
+import {historicalShadowRoleForSide} from './storage-v2-persisted-compat.js';
 
 export function createStorageJournalDb({name='netunim-storage-v2'}={}){
   const stores=['checkpoints','journal','metadata','bases','flights','controls'];
@@ -423,7 +424,7 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
         }
         for(const side of heads){
           const key=side.role==='primary'?'main':'shared',checkpoint=requests[`${key}:checkpoints`].result;
-          const prior=checkpoint&&readStorageRecord(checkpoint),expected=key==='main'?'shadow':'shared-checks-shadow';
+          const prior=checkpoint&&readStorageRecord(checkpoint),expected=historicalShadowRoleForSide(key);
           // Never replace an unfinished V2 primary, pending flight or control.
           // Only an old shadow copy (or no V2 data) may be superseded by cloud.
           const metadata=requests[`${key}:metadata`].result,entries=requests[`${key}:journal`].result||[];

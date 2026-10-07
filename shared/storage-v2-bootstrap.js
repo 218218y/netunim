@@ -1,11 +1,10 @@
 import {createStorageJournalDb} from './storage-journal-idb.js';
 import {assertStorageJson} from './storage-journal-model.js';
+import {isHistoricalBootstrapIntent,isHistoricalBootstrapSideIntent,completedHistoricalBootstrapGroup} from './storage-v2-persisted-compat.js';
 
 export const STORAGE_BOOTSTRAP_PHASES=Object.freeze(['prepared','main-initialized','shared-initialized','main-synced','shared-synced','verified','complete']);
 const VALID_APPS=new Set(['orders','kupa']);
 export const CURRENT_TRANSFER_INTENTS=Object.freeze(['upload-local','load-account','account-switch']);
-const HISTORICAL_TRANSFER_INTENTS=new Set(['first-cloud','legacy-upgrade']);
-const TRANSFER_INTENTS=new Set([...CURRENT_TRANSFER_INTENTS,...HISTORICAL_TRANSFER_INTENTS]);
 const NEXT_PHASE=new Map(STORAGE_BOOTSTRAP_PHASES.slice(0,-1).map((phase,index)=>[phase,STORAGE_BOOTSTRAP_PHASES[index+1]]));
 
 function copy(value){return value==null?value:structuredClone(value)}
@@ -23,7 +22,7 @@ async function sha256(value,cryptoImpl=globalThis.crypto){
 }
 function validHash(value){return /^[0-9a-f]{64}$/.test(String(value||''))}
 function validateSide(side){
-  if(!side||!['main','shared'].includes(side.role)||!['cloud-authoritative','upload-local','upload-owner'].includes(side.intent)||integer(side.sourceSeq)===null||!validHash(side.sourceHash)||!String(side.operationId||'').trim())throw new Error('storage_bootstrap_side_invalid');
+  if(!side||!['main','shared'].includes(side.role)||!(['cloud-authoritative','upload-local'].includes(side.intent)||isHistoricalBootstrapSideIntent(side.intent))||integer(side.sourceSeq)===null||!validHash(side.sourceHash)||!String(side.operationId||'').trim())throw new Error('storage_bootstrap_side_invalid');
   if(side.intent==='cloud-authoritative'){
     if(side.remoteExists!==true||integer(side.remoteRevision)===null||!validHash(side.remoteHash))throw new Error('storage_bootstrap_remote_invalid');
   }else if(side.remoteExists!==false||side.remoteRevision!==0||side.remoteHash!==null)throw new Error('storage_bootstrap_upload_target_invalid');
@@ -31,7 +30,7 @@ function validateSide(side){
 }
 export function assertStorageV2BootstrapGroup(group){
   assertStorageJson(group);
-  if(!group||group.version!==2||!VALID_APPS.has(group.app)||group.scope!==`${group.app}:${group.owner}`||!String(group.id||'').trim()||!identity(group.owner)||!identity(group.sourceOwner)||!TRANSFER_INTENTS.has(group.transferIntent)||!STORAGE_BOOTSTRAP_PHASES.includes(group.phase)||!validHash(group.planHash)||!String(group.createdAt||'').trim()||!String(group.updatedAt||'').trim())throw new Error('storage_bootstrap_group_invalid');
+  if(!group||group.version!==2||!VALID_APPS.has(group.app)||group.scope!==`${group.app}:${group.owner}`||!String(group.id||'').trim()||!identity(group.owner)||!identity(group.sourceOwner)||!(CURRENT_TRANSFER_INTENTS.includes(group.transferIntent)||isHistoricalBootstrapIntent(group.transferIntent))||!STORAGE_BOOTSTRAP_PHASES.includes(group.phase)||!validHash(group.planHash)||!String(group.createdAt||'').trim()||!String(group.updatedAt||'').trim())throw new Error('storage_bootstrap_group_invalid');
   validateSide(group.main);validateSide(group.shared);
   return group;
 }
@@ -96,8 +95,7 @@ export function createStorageV2BootstrapCoordinator({app,owner,primary=()=>true,
     const scoped=scope();guard(scoped);const target=identity(owner()),existing=await db.readBootstrapGroup(scoped);guard(scoped);
     if(existing){
       const durable=assertStorageV2BootstrapGroup(existing);
-      if(HISTORICAL_TRANSFER_INTENTS.has(durable.transferIntent)){
-        if(durable.phase!=='complete')throw new Error('storage_bootstrap_historical_incomplete');
+      if(completedHistoricalBootstrapGroup(durable)){
         const next=await createStorageV2BootstrapGroup({app:site,owner:target,id:operationId(),now,cryptoImpl,...options});guard(scoped);
         const replaced=await db.beginBootstrapGroup(scoped,next);guard(scoped);return remember(replaced);
       }
@@ -121,7 +119,7 @@ export function createStorageV2BootstrapCoordinator({app,owner,primary=()=>true,
   }
   async function advance(expectedPhase,details={}){
     const scoped=scope();guard(scoped);const current=await db.readBootstrapGroup(scoped);guard(scoped);if(!current)throw new Error('storage_bootstrap_group_missing');assertStorageV2BootstrapGroup(current);
-    if(HISTORICAL_TRANSFER_INTENTS.has(current.transferIntent))throw new Error('storage_bootstrap_historical_incomplete');
+    if(completedHistoricalBootstrapGroup(current))throw new Error('storage_bootstrap_historical_incomplete');
     const next=NEXT_PHASE.get(expectedPhase);if(!next||current.phase!==expectedPhase)throw new Error('storage_bootstrap_phase_invalid');
     const updated=await db.advanceBootstrapGroup(scoped,current.id,expectedPhase,next,{...copy(details),updatedAt:String(typeof now==='function'?now():now)});guard(scoped);return remember(updated);
   }
@@ -139,10 +137,7 @@ export function createStorageV2BootstrapExecutor({coordinator,primary=()=>true,i
     let current=group;
     while(current){
       guard();
-      if(HISTORICAL_TRANSFER_INTENTS.has(current.transferIntent)){
-        if(current.phase==='complete')return current;
-        throw new Error('storage_bootstrap_historical_incomplete');
-      }
+      if(completedHistoricalBootstrapGroup(current))return current;
       if(current.phase==='prepared'){
         const proof=await initializeMain(copy(current.main),copy(current));guard();current=await coordinator.advance('prepared',{mainProof:copy(proof)});continue;
       }

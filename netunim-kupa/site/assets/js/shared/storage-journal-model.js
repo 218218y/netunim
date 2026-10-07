@@ -1,6 +1,7 @@
 // Storage operations contain final values, never clocks, random IDs or callbacks.
 // This is a local persistence contract, independent of the cloud RPC protocol.
 import {measureStorage,storageBytes} from './storage-metrics.js';
+import {isHistoricalUploadOwnerBootstrap} from './storage-v2-persisted-compat.js';
 export const STORAGE_JOURNAL_VERSION=2;
 const forbidden=new Set(['__proto__','prototype','constructor']);
 export function assertStorageJson(value){
@@ -32,7 +33,7 @@ export function validateStoredOperation(operation,{collections=[],fields=[]}={})
   for(const change of operation.changes){
     if(change.type==='replace-state'){
       const durableBoundary=['import','cloud-normalization'].includes(operation.mutationType)&&identity(operation.appMetadata?.boundaryId);
-      const firstCloudBootstrap=operation.mutationType==='bootstrap'&&operation.seq===1&&operation.appMetadata?.storageRole==='primary'&&((operation.appMetadata?.migrationIntent==='upload-local'&&operation.appMetadata?.sourceOwner==='local')||(operation.appMetadata?.migrationIntent==='upload-owner'&&identity(operation.appMetadata?.targetOwner)&&operation.appMetadata?.sourceOwner===operation.appMetadata?.targetOwner));
+      const firstCloudBootstrap=operation.mutationType==='bootstrap'&&operation.seq===1&&operation.appMetadata?.storageRole==='primary'&&((operation.appMetadata?.migrationIntent==='upload-local'&&operation.appMetadata?.sourceOwner==='local')||isHistoricalUploadOwnerBootstrap(operation));
       if(operation.changes.length!==1||(!durableBoundary&&!firstCloudBootstrap)||!change.state||typeof change.state!=='object'||Array.isArray(change.state))throw new Error('storage_invalid_local_import');
       continue;
     }
