@@ -1,7 +1,7 @@
 import {checkFutureTotalData,checkMonthSummaryMarkup} from '../../shared/check-summary.js';
 import {money} from '../../core/money.js';
 import {esc} from '../../core/values.js';
-import {applyBulkRangeSelection} from '../../ui/bulk-selection.js';
+import {applyBulkRangeSelection} from '../../core/bulk-selection.js';
 import {checkUrgency, checkBelongsToAccountData, checkIsClosedStatus, futureCheckMonthsData} from './model.js';
 import {checkMonthKey, checkMonthLabel, checkDateFmt, checkTodayISO} from '../../core/dates.js';
 import {searchMatch} from '../../core/search.js';

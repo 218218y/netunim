@@ -1,7 +1,7 @@
 import {esc} from '../../core/values.js';
 import {money} from '../../core/money.js';
 import {$} from '../../state/constants.js';
-import {applyBulkRangeSelection} from '../../ui/bulk-selection.js';
+import {applyBulkRangeSelection} from '../../core/bulk-selection.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createDomainsCustomersBulk({customerUi, model, renderCustomers, toast, scheduleSave, confirmDialog, onTabChange=()=>{},rejectDebtRecoveryMutation=()=>false}){

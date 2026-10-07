@@ -32,19 +32,25 @@ remain separate from structural refactors.
   preflight, tracked finance revision, and shared remote lease state. `main.js`
   supplies app contexts and late UI ports. The importer is still constructed
   after the modal, preserving startup order.
+- Orders calendar composition now owns calendar controller construction and
+  startup wiring. Its IndexedDB adapter retries a failed open on a later call
+  instead of retaining a rejected open promise.
+- Orders bulk range selection is a pure `core/` policy used by six domains.
+  The module graph now rejects direct imports from Orders domains into `ui/`.
 
 ## Dependency direction
 
 Pure core and protocol contracts may be imported by domain and application
 logic. Storage and cloud implement infrastructure ports; composition supplies
 their domain policies and UI callbacks. Views may use browser APIs. The enforced
-part today is `storage/cloud/sync -/-> domains/ui`; this is an incremental boundary,
+part today is `storage/cloud/sync -/-> domains/ui` in both apps and
+`Orders domains -/-> ui`; this is an incremental boundary,
 not a claim that every remaining dependency follows the final direction.
 
 ## Next reviewable slices
 
 1. **Composition roots:** map the inputs and outputs of one cohesive capability
-   at a time. The Orders calendar wiring is the next candidate visible in
+   at a time. Orders suppliers wiring is the next candidate visible in
    `main.js`. Extract only after recording lifecycle
    order and deferred callback dependencies; keep the public runtime behavior
    fixed and run the browser startup and sync gates for each extraction.

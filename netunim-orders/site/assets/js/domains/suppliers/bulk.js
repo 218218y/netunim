@@ -1,7 +1,7 @@
 import {validSupplierYear} from './model.js';
 import {esc} from '../../core/values.js';
 import {$} from '../../state/constants.js';
-import {applyBulkRangeSelection} from '../../ui/bulk-selection.js';
+import {applyBulkRangeSelection} from '../../core/bulk-selection.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createDomainsSuppliersBulk({supplierUi, model, renderSupplier, toast, supplierTx, supplierYearContext, modal, resequenceSupplier, moveTransactionAfter, supplierBalance, scheduleSave, closeModal, confirmDialog}){
