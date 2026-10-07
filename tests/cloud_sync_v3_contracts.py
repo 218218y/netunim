@@ -151,11 +151,14 @@ ok("verifyLegacyChecksClean" not in kupa_checks and "getSharedChecksPending" not
    and "idbPut" not in kupa_checks and "writePendingCache" not in kupa_checks,
    "Kupa checks: retired outbox cannot be read, repaired or ACKed")
 
+tab_lock = (ROOT / "shared/tab-lock.js").read_text(encoding="utf-8")
+ok("BroadcastChannel" in tab_lock and "localStorage" in tab_lock and "expiresAt" in tab_lock,
+   "shared tab lock: no-Web-Locks fallback uses broadcast plus expiring local heartbeat")
 for label, path in (("Orders", ORDERS / "site/assets/js/storage/tab-lock.js"),
                     ("Kupa", KUPA / "site/assets/js/storage/tab-lock.js")):
     source = path.read_text(encoding="utf-8")
-    ok("BroadcastChannel" in source and "localStorage" in source and "expiresAt" in source,
-       f"{label}: no-Web-Locks fallback uses broadcast plus expiring local heartbeat")
+    ok("createPrimaryTabLock({lockName:TAB_LOCK" in source and "../shared/tab-lock.js" in source,
+       f"{label}: app-specific lock name is bound to the canonical shared implementation")
 
 calendar = (ORDERS / "site/assets/js/domains/calendar/controller.js").read_text(encoding="utf-8")
 main = (ORDERS / "site/assets/js/main.js").read_text(encoding="utf-8")

@@ -1,7 +1,6 @@
 import {beginMeasure} from '../shared/runtime-performance.js';
 import {financeFencePayload} from '../shared/finance-fence.js';
 import {assertValidOrderCloudState,validOrderCloudState} from '../state/validation.js';
-import {normalizeSharedChecks} from '../domains/checks/model.js';
 import {CLOUD_DOC, CLOUD_TABLE, CLOUD_RPC, SHARED_CHECKS_DOC, SHARED_CHECKS_TABLE, KUPA_READ_DOC, KUPA_READ_TABLE, SHARED_CHECKS_RPC} from '../state/constants.js';
 import {restoreGroupRpcPayload} from '../shared/restore-groups.js';
 import {assertEntityCollections} from '../shared/data-invariants.js';
@@ -9,7 +8,11 @@ import {assertEntityCollections} from '../shared/data-invariants.js';
 const FINANCE_DOC='main',FINANCE_TABLE='finance_sync_documents',FINANCE_RPC='save_finance_sync_document',FINANCE_LEASE_TTL_SECONDS=20*60;
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createCloudTransport({supaFetch,localResetReadOnlyFetch}){
+export function createCloudTransport({supaFetch,localResetReadOnlyFetch,normalizeSharedChecks}){
+function normalizeChecksForWrite(checks){
+  if(typeof normalizeSharedChecks!=='function')throw new Error('shared_checks_normalizer_required');
+  return normalizeSharedChecks(checks);
+}
 async function readCloud(){const r=await supaFetch(`/rest/v1/${CLOUD_TABLE}?document_name=eq.${encodeURIComponent(CLOUD_DOC)}&select=document_name,revision,state,updated_at`,{method:'GET'});const j=await r.json().catch(()=>null);if(!r.ok)throw new Error(j?.message||'קריאת הענן נכשלה');const row=Array.isArray(j)&&j.length?j[0]:null;if(row&&!validOrderCloudState(row.state))throw new Error('מסמך ניהול ההזמנות בענן עדיין אינו במבנה ה-cutover החדש. הסנכרון נעצר כדי למנוע מצב מפוצל.');return row}
 
 async function verifyLocalResetCloud(resetSession){
@@ -89,7 +92,7 @@ async function readKupaReadOnlyMeta(){const [kr,finance]=await Promise.all([supa
 
 async function rpcSaveKupaDocument(state,expectedRevision,operationId,audit={}){assertEntityCollections(state,['credits','cash','rights','notes','expenses','cards',...(state.notesSheet?['notesSheet.rows','notesSheet.columns']:[])],{required:true});const expected=Number(expectedRevision||0),op=String(operationId||'').trim();if(!Number.isSafeInteger(expected)||expected<0)throw new Error('Revision הקופה אינו תקין');if(!op)throw new Error('מזהה פעולת הקופה חסר');const r=await supaFetch('/rest/v1/rpc/save_kupa_document_v6',{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify({p_document_name:KUPA_READ_DOC,p_expected_revision:expected,p_state:state,p_operation_id:op,p_delete_intents:{},p_audit:audit})});const txt=await r.text();let j;try{j=txt?JSON.parse(txt):null}catch(e){j=null}return {r,j,txt,row:Array.isArray(j)?j[0]:j}}
 
-async function rpcSaveSharedChecksV2(checks,expectedRevision,operationId,deletedCheckIds=[],audit={}){const payload={version:1,checks:normalizeSharedChecks(checks)},expected=Number(expectedRevision||0),op=String(operationId||'').trim();const deletedIds=[...new Set((Array.isArray(deletedCheckIds)?deletedCheckIds:[]).map(x=>String(x||'').trim()).filter(Boolean))].sort();if(!Number.isSafeInteger(expected)||expected<0)throw new Error('Revision הצ\'קים המקומי אינו תקין');if(!op)throw new Error('מזהה פעולת הצ\'קים חסר');const rpc=audit?.mutationType==='bulk-delete'?`bulk_delete_${SHARED_CHECKS_RPC}_v6`:`${SHARED_CHECKS_RPC}_v6`,r=await supaFetch(`/rest/v1/rpc/${rpc}`,{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify({p_document_name:SHARED_CHECKS_DOC,p_expected_revision:expected,p_state:payload,p_operation_id:op,p_deleted_check_ids:deletedIds,p_audit:audit})});const txt=await r.text();let j;try{j=txt?JSON.parse(txt):null}catch(e){j=null}return {r,j,txt,row:Array.isArray(j)?j[0]:j}}
+async function rpcSaveSharedChecksV2(checks,expectedRevision,operationId,deletedCheckIds=[],audit={}){const payload={version:1,checks:normalizeChecksForWrite(checks)},expected=Number(expectedRevision||0),op=String(operationId||'').trim();const deletedIds=[...new Set((Array.isArray(deletedCheckIds)?deletedCheckIds:[]).map(x=>String(x||'').trim()).filter(Boolean))].sort();if(!Number.isSafeInteger(expected)||expected<0)throw new Error('Revision הצ\'קים המקומי אינו תקין');if(!op)throw new Error('מזהה פעולת הצ\'קים חסר');const rpc=audit?.mutationType==='bulk-delete'?`bulk_delete_${SHARED_CHECKS_RPC}_v6`:`${SHARED_CHECKS_RPC}_v6`,r=await supaFetch(`/rest/v1/rpc/${rpc}`,{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify({p_document_name:SHARED_CHECKS_DOC,p_expected_revision:expected,p_state:payload,p_operation_id:op,p_deleted_check_ids:deletedIds,p_audit:audit})});const txt=await r.text();let j;try{j=txt?JSON.parse(txt):null}catch(e){j=null}return {r,j,txt,row:Array.isArray(j)?j[0]:j}}
 
 async function restoreRpc(name,body){const r=await supaFetch(`/rest/v1/rpc/${name}`,{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify(body)}),txt=await r.text();let j;try{j=txt?JSON.parse(txt):null}catch{j=null}if(!r.ok)throw new Error(j?.message||j?.hint||txt||`restore rpc failed: ${name}`);return Array.isArray(j)?j[0]:j}
 async function stageRestoreGroup(group){return restoreRpc('stage_restore_group_v6',restoreGroupRpcPayload(group))}

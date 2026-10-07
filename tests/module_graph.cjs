@@ -27,6 +27,10 @@ for(const app of ['kupa','orders']){
         const spec=node.source.value;assert.ok(spec.startsWith('.'),relative+': runtime must use local relative imports');
         const target=path.resolve(path.dirname(file),spec);
         assert.ok(target.startsWith(site+path.sep)&&fs.existsSync(target),relative+': missing or cross-site dependency '+spec);edges.push(target);
+        if(/^assets\/js\/(storage|cloud)\//.test(relative)){
+          const dependency=path.relative(path.join(site,'assets','js'),target).split(path.sep).join('/');
+          assert.ok(!/^((domains|ui)\/)/.test(dependency),relative+': infrastructure must receive domain/UI behavior through composition ports: '+dependency);
+        }
       }
       if(/assets\/js\/(storage|cloud|sync)\//.test(relative)&&node.type==='Identifier')assert.notEqual(node.name,'document',relative+': DOM belongs behind a UI port');
       if(/\/(model|readout)\.js$/.test(relative)&&node.type==='Identifier')assert.ok(!['document','window','localStorage','fetch','indexedDB'].includes(node.name),relative+': calculation module has side effects');

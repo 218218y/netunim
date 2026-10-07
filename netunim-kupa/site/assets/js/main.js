@@ -33,6 +33,7 @@ import {createDomainsExpensesSelectors} from './domains/expenses/selectors.js';
 import {createDomainsExpensesView} from './domains/expenses/view.js';
 import {createDomainsBankSelectors} from './domains/bank/selectors.js';
 import {createDomainsChecksView} from './domains/checks/view.js';
+import {normalizeSharedChecks} from './domains/checks/model.js';
 import {createUiNavigation} from './ui/navigation.js';
 import {createUiSidebar} from './ui/sidebar.js';
 import {createUiGlobalSearch} from './ui/global-search.js';
@@ -55,6 +56,7 @@ import {createUiModal} from './ui/modal.js';
 import {createDomainsChecksEditor} from './domains/checks/editor.js';
 import {createDomainsCreditEditor} from './domains/credit/editor.js';
 import {createDomainsCreditController} from './domains/credit/controller.js';
+import {inactiveCreditExpired} from './domains/credit/model.js';
 import {createDomainsCashEditor} from './domains/cash/editor.js';
 import {createDomainsExpensesEditor} from './domains/expenses/editor.js';
 import {createDomainsRecordsCommands} from './domains/records/commands.js';
@@ -191,6 +193,7 @@ const storageBackup=createStorageBackup({
 });
 
 const storagePersistence=createStoragePersistence({
+  creditNormalizationMayDelete:inactiveCreditExpired,
   sharedChecksV2,
   storageV2Boundary:sharedChecksV2Composition.boundary,
   captureLegacyWorkbook,
@@ -258,6 +261,7 @@ const domainsGoogleDriveSearch=createDomainsGoogleDriveSearch({supaFetch:(...arg
 const domainsDocumentBridge=createDomainsDocumentSearch({localBridge:domainsDocumentLocalBridge,googleDrive:domainsGoogleDriveSearch});
 
 const cloudTransport=createCloudTransport({
+  normalizeSharedChecks,
   session,
   supaRest:(...args)=>cloudAuth.supaRest(...args),
   localResetReadOnlyFetch:(...args)=>cloudAuth.localResetReadOnlyFetch(...args),

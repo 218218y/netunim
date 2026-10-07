@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-b63fe65a58b1';
+const CACHE='orders-app-shell-esm-caae744f157f';
 const SHELL=[
   './',
   './index.html',
@@ -159,6 +159,7 @@ const SHELL=[
   './assets/js/shared/runtime-performance.js',
   './assets/js/shared/search-fragments.js',
   './assets/js/shared/search-scheduler.js',
+  './assets/js/shared/search.js',
   './assets/js/shared/shared-checks-flight.js',
   './assets/js/shared/shared-checks-storage-v2.js',
   './assets/js/shared/shared-checks-v2-composition.js',
@@ -188,6 +189,7 @@ const SHELL=[
   './assets/js/shared/storage-v2-server-protocol.js',
   './assets/js/shared/sync-capabilities.js',
   './assets/js/shared/sync-status.js',
+  './assets/js/shared/tab-lock.js',
   './assets/js/state/constants.js',
   './assets/js/state/contexts.js',
   './assets/js/state/normalization.js',

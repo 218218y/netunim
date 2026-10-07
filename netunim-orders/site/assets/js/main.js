@@ -20,6 +20,7 @@ import {createStateSnapshots} from './state/snapshots.js';
 import {createUiLayout} from './ui/layout.js';
 import {createUiNavigation} from './ui/navigation.js';
 import {createDomainsChecksView} from './domains/checks/view.js';
+import {normalizeSharedChecks} from './domains/checks/model.js';
 import {createDomainsBankSelectors} from './domains/bank/selectors.js';
 import {createDomainsBankCache} from './domains/bank/cache.js';
 import {createUiAlertCenter} from './ui/alert-center.js';
@@ -547,6 +548,7 @@ const uiFolders=createUiFolders({
 });
 
 const cloudTransport=createCloudTransport({
+  normalizeSharedChecks,
   supaFetch:(...args)=>cloudAuth.supaFetch(...args),
   localResetReadOnlyFetch:(...args)=>cloudAuth.localResetReadOnlyFetch(...args),
 });

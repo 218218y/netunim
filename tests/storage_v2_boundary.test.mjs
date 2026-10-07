@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {createStorageV2Boundary} from '../shared/storage-v2-boundary.js';
 import {createStoragePersistence as createKupaStoragePersistence} from '../netunim-kupa/site/assets/js/storage/persistence.js';
 import {createStateNormalization} from '../netunim-kupa/site/assets/js/state/normalization.js';
+import {inactiveCreditExpired} from '../netunim-kupa/site/assets/js/domains/credit/model.js';
 import {INITIAL_STATE as KUPA_INITIAL_STATE} from '../netunim-kupa/site/assets/js/state/constants.js';
 
 const clone=structuredClone;
@@ -14,7 +15,7 @@ test('Kupa V2 turns isolated expired-credit cleanup into a typed delete and reje
   const oldCredit={id:'expired',card:'old',account:'עסקי',active:false,firstChargeDate:'2024-01-01',totalAmount:100,installments:1};
   model.state.credits.push(oldCredit);
   const recovered=clone(model.state),writes=[],session={connectionMode:'supabase',backendReady:true,dbRevision:3,localGeneration:0,saveQueue:Promise.resolve()};
-  const storage=createKupaStoragePersistence({model,session,files:{},tab:{primaryTab:true},checksSession:{},
+  const storage=createKupaStoragePersistence({model,session,files:{},tab:{primaryTab:true},checksSession:{},creditNormalizationMayDelete:inactiveCreditExpired,
     storageV2Primary:()=>true,refreshStorageV2CloudState:async()=>({base:{revision:3,ackSeq:0,state:clone(recovered)},seq:0,pending:true}),recoverStorageV2State:async()=>({state:clone(recovered)}),
     normalizeState:normalization.normalizeState,prepareKupaCloudState:normalization.prepareKupaCloudState,
     persistImmediateBrowserSnapshot:(_state,_revision,options)=>{writes.push(clone(options));return true},
