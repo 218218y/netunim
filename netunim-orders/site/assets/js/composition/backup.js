@@ -1,6 +1,6 @@
 import {createUiBackup} from '../ui/backup.js';
 
-export function composeBackup({tab,ui,model,session,checksSession,storageV2Cloud,storageV2Runtime,storageOwner,sharedChecksV2Composition,sharedChecksV2,stateNormalization,stateSelectors,uiTabGuard,uiModal,storageBrowser,uiStatus,uiFolderStatus,uiNavigation,uiSettings,storageFiles,cloudAuth,cloudTransport,syncDocument,restoreGroupStore,domainsSuppliersSelectors,domainsSuppliersView,domainRevisions}){
+export function composeBackup({tab,ui,model,session,checksSession,storageV2Cloud,storageV2Runtime,storageOwner,sharedChecksV2Composition,sharedChecksV2,stateNormalization,stateSelectors,uiTabGuard,uiModal,storageBrowser,uiStatus,uiFolderStatus,uiNavigation,uiSettings,storageFiles,cloudAuth,cloudTransport,syncDocument,restoreGroupStore,supplierBackup,domainRevisions}){
   return createUiBackup({
     ...storageV2Cloud,
     storageV2Boundary:sharedChecksV2Composition.boundary,sharedChecksV2,
@@ -31,9 +31,9 @@ export function composeBackup({tab,ui,model,session,checksSession,storageV2Cloud
     listIncompleteRestoreGroups:(...args)=>cloudTransport().listIncompleteRestoreGroups(...args),
     listOrdersCloudBackups:(...args)=>cloudTransport().listOrdersCloudBackups(...args),
     readOrdersCloudBackupPoint:(...args)=>cloudTransport().readOrdersCloudBackupPoint(...args),
-    balanceRows:(...args)=>domainsSuppliersSelectors.balanceRows(...args),
-    supplierYearContext:(...args)=>domainsSuppliersSelectors.supplierYearContext(...args),
-    boolText:(...args)=>domainsSuppliersView.boolText(...args),
+    balanceRows:(...args)=>supplierBackup.balanceRows(...args),
+    supplierYearContext:(...args)=>supplierBackup.supplierYearContext(...args),
+    boolText:(...args)=>supplierBackup.boolText(...args),
     confirmDialog:(...args)=>uiModal.confirmDialog(...args),
     invalidateAllViewDomains:()=>domainRevisions.touchAll(),
   });

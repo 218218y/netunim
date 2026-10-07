@@ -8,9 +8,7 @@ import {createCreditCardOrderView} from './shared/credit-card-order-view.js';
 import {createFinanceConnectionImporter} from './shared/finance-connection-import.js';
 import {createStateNormalization} from './state/normalization.js';
 import {createStorageBrowser} from './storage/browser.js';
-import {createDomainsSuppliersSelectors} from './domains/suppliers/selectors.js';
-import {createDomainsSuppliersCommands} from './domains/suppliers/commands.js';
-import {createDomainsSuppliersNavigation} from './domains/suppliers/navigation.js';
+import {createOrdersSuppliersRuntime} from './composition/suppliers.js';
 import {createUiStatus} from './ui/status.js';
 import {createUiFolderStatus} from './ui/folder-status.js';
 import {createUiTabGuard} from './ui/tab-guard.js';
@@ -31,11 +29,7 @@ import {createUiDateEditor} from './ui/date-editor.js';
 import {createDomainsChecksEditor} from './domains/checks/editor.js';
 import {composeChecksPersistence} from './composition/checks-persistence.js';
 import {createDomainsDashboardView} from './domains/dashboard/view.js';
-import {createDomainsSuppliersOrder} from './domains/suppliers/order.js';
-import {createDomainsSuppliersBulk} from './domains/suppliers/bulk.js';
-import {createDomainsSuppliersView} from './domains/suppliers/view.js';
 import {createUiModal} from './ui/modal.js';
-import {createDomainsSuppliersEditor} from './domains/suppliers/editor.js';
 import {createDomainsCustomers} from './domains/customers/composition.js';
 import {createDomainsServiceBulk} from './domains/service/bulk.js';
 import {createDomainsServiceView} from './domains/service/view.js';
@@ -68,7 +62,7 @@ import {createLifecycle} from './lifecycle.js';
 import {verifyStorageV2LocalEngine} from './shared/storage-v2-local-birth.js';
 import {bindActionEvents,bindDismissibleDetails,bindNumberInputWheelGuard} from './shared/events.js';
 import {composeActionRegistry} from './shared/action-registry.js';
-import {wrapMutationActions,createExternalActionPacks,createAlertsActions,createFinanceBankActions,createFinanceCreditActions,createChecksActions,createShellActions,createDashboardActions,createSuppliersActions,createCustomersActions,createMorningActions,createServiceActions,createWarehouseActions,createBackupActions,createCloudActions,createNotesActions,createCalendarActions} from './ui/actions.js';
+import {wrapMutationActions,createExternalActionPacks,createAlertsActions,createFinanceBankActions,createFinanceCreditActions,createChecksActions,createShellActions,createDashboardActions,createCustomersActions,createMorningActions,createServiceActions,createWarehouseActions,createBackupActions,createCloudActions,createNotesActions,createCalendarActions} from './ui/actions.js';
 import {createUiGlobalSearch} from './ui/global-search.js';
 import {createUiKeyboardNavigation} from './ui/keyboard-navigation.js';
 import {createContexts} from './state/contexts.js';
@@ -151,21 +145,7 @@ const calendarRuntime=createOrdersCalendarRuntime({
   calendarSession,supaFetch:(...args)=>cloudAuth.supaFetch(...args),
 });
 
-const domainsSuppliersSelectors=createDomainsSuppliersSelectors({
-  model,
-});
-
-const domainsSuppliersCommands=createDomainsSuppliersCommands({
-  supplierTx:(...args)=>domainsSuppliersSelectors.supplierTx(...args),
-});
-
-const domainsSuppliersNavigation=createDomainsSuppliersNavigation({
-  supplierUi,
-  ui,
-  supplierYearContext:(...args)=>domainsSuppliersSelectors.supplierYearContext(...args),
-  renderSupplier:(...args)=>domainsSuppliersView.renderSupplier(...args),
-  render:(...args)=>uiNavigation.render(...args),
-});
+const suppliers=createOrdersSuppliersRuntime({model,supplierUi,ui});
 
 const uiStatus=createUiStatus({
   session,
@@ -235,7 +215,7 @@ const uiNavigation=createUiNavigation({
   renderKupa:(...args)=>domainsFinanceView.renderKupa(...args),
   renderChecks:(...args)=>domainsChecksView.renderChecks(...args),
   renderSummary:(...args)=>domainsDashboardView.renderSummary(...args),
-  renderSupplier:(...args)=>domainsSuppliersView.renderSupplier(...args),
+  renderSupplier:(...args)=>suppliers.renderSupplier(...args),
   renderCustomers:(...args)=>domainsCustomers.renderCustomers(...args),
   renderService:(...args)=>domainsServiceView.renderService(...args),
   renderWarehouse:(...args)=>domainsWarehouseView.renderWarehouse(...args),
@@ -299,76 +279,14 @@ const domainsDashboardView=createDomainsDashboardView({
   model,
   ui,
   checksSession,
-  supplierBalance:(...args)=>domainsSuppliersSelectors.supplierBalance(...args),
-  supplierArchiveYears:(...args)=>domainsSuppliersSelectors.supplierArchiveYears(...args),
-  supplierPeriodTx:(...args)=>domainsSuppliersSelectors.supplierPeriodTx(...args),
-  supplierFinancialStats:(...args)=>domainsSuppliersSelectors.supplierFinancialStats(...args),
-  totalStats:(...args)=>domainsSuppliersSelectors.totalStats(...args),
+  ...suppliers.dashboardPorts(),
   mountViewLayout:(...args)=>uiLayout.mountViewLayout(...args),
   customerStats:(...args)=>domainsCustomers.selectors.customerStats(...args),
 });
 
-const domainsSuppliersOrder=createDomainsSuppliersOrder({
-  model,
-  supplierUi,
-  ui,
-  modal:(...args)=>uiModal.modal(...args),
-  scheduleSave:(message,options={})=>storagePersistence.scheduleSave(message,{...options,domains:['suppliers','transactions']}),
-  render:(...args)=>uiNavigation.render(...args),
-  renderSupplier:(...args)=>domainsSuppliersView.renderSupplier(...args),
-  closeModal:(...args)=>uiModal.closeModal(...args),
-});
-
-const domainsSuppliersBulk=createDomainsSuppliersBulk({
-  supplierUi,
-  model,
-  renderSupplier:(...args)=>domainsSuppliersView.renderSupplier(...args),
-  toast:(...args)=>uiStatus.toast(...args),
-  supplierTx:(...args)=>domainsSuppliersSelectors.supplierTx(...args),
-  supplierYearContext:(...args)=>domainsSuppliersSelectors.supplierYearContext(...args),
-  modal:(...args)=>uiModal.modal(...args),
-  resequenceSupplier:(...args)=>domainsSuppliersCommands.resequenceSupplier(...args),
-  moveTransactionAfter:(...args)=>domainsSuppliersCommands.moveTransactionAfter(...args),
-  supplierBalance:(...args)=>domainsSuppliersSelectors.supplierBalance(...args),
-  scheduleSave:(message,options={})=>storagePersistence.scheduleSave(message,{...options,domains:['suppliers','transactions']}),
-  closeModal:(...args)=>uiModal.closeModal(...args),
-  confirmDialog:(...args)=>uiModal.confirmDialog(...args),
-});
-
-const domainsSuppliersView=createDomainsSuppliersView({
-  model,
-  supplierUi,
-  mountViewLayout:(...args)=>uiLayout.mountViewLayout(...args),
-  orderedSuppliers:(...args)=>domainsSuppliersSelectors.orderedSuppliers(...args),
-  captureSupplierViewport:(...args)=>uiLayout.captureSupplierViewport(...args),
-  restoreSupplierViewport:(...args)=>uiLayout.restoreSupplierViewport(...args),
-  syncSupplierBulkUi:(...args)=>domainsSuppliersBulk.syncSupplierBulkUi(...args),
-  supplierMoveTargetRow:(...args)=>domainsSuppliersBulk.supplierMoveTargetRow(...args),
-  storeSupplierViewport:(...args)=>uiLayout.storeSupplierViewport(...args),
-  scrollSupplierTransactionsEnd:(...args)=>uiLayout.scrollSupplierTransactionsEnd(...args),
-  scheduleSave:(message,options={})=>storagePersistence.scheduleSave(message,{...options,domains:['suppliers','transactions']}),
-});
-
-const uiModal=createUiModal({
-
-});
-
-const domainsSuppliersEditor=createDomainsSuppliersEditor({
-  model,
-  supplierUi,
-  ui,
-  modal:(...args)=>uiModal.modal(...args),
-  triSelect:(...args)=>uiModal.triSelect(...args),
-  resequenceSupplier:(...args)=>domainsSuppliersCommands.resequenceSupplier(...args),
-  insertTransactionAfter:(...args)=>domainsSuppliersCommands.insertTransactionAfter(...args),
-  toast:(...args)=>uiStatus.toast(...args),
-  scheduleSave:(message,options={})=>storagePersistence.scheduleSave(message,{...options,domains:['suppliers','transactions']}),
-  render:(...args)=>uiNavigation.render(...args),
-  renderSupplier:(...args)=>domainsSuppliersView.renderSupplier(...args),
-  closeModal:(...args)=>uiModal.closeModal(...args),
-  parseTri:(...args)=>uiModal.parseTri(...args),
-  confirmDialog:(...args)=>uiModal.confirmDialog(...args),
-});
+const uiModal=createUiModal({});
+suppliers.bindUi({uiLayout,uiNavigation,uiModal,uiStatus,storagePersistence});
+suppliers.assertReady();
 
 const domainsCustomers=createDomainsCustomers({
   customerRevision:()=>domainRevisions.stamp(['customerDebts','customerOrders']),
@@ -494,7 +412,7 @@ const domainsWarehouseEditor=createDomainsWarehouseEditor({
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
 
-const uiBackup=composeBackup({tab,ui,model,session,checksSession,storageV2Cloud,storageV2Runtime:mainStorageV2,storageOwner,sharedChecksV2Composition,sharedChecksV2,stateNormalization,stateSelectors:()=>stateSelectors,uiTabGuard,uiModal,storageBrowser,uiStatus,uiFolderStatus,stateSnapshots,uiNavigation,uiSettings:()=>uiSettings,storageFiles:()=>storageFiles,cloudAuth,cloudTransport:()=>cloudTransport,syncDocument:()=>syncDocument,restoreGroupStore,domainsSuppliersSelectors,domainsSuppliersView,domainRevisions});
+const uiBackup=composeBackup({tab,ui,model,session,checksSession,storageV2Cloud,storageV2Runtime:mainStorageV2,storageOwner,sharedChecksV2Composition,sharedChecksV2,stateNormalization,stateSelectors:()=>stateSelectors,uiTabGuard,uiModal,storageBrowser,uiStatus,uiFolderStatus,stateSnapshots,uiNavigation,uiSettings:()=>uiSettings,storageFiles:()=>storageFiles,cloudAuth,cloudTransport:()=>cloudTransport,syncDocument:()=>syncDocument,restoreGroupStore,supplierBackup:suppliers.backupPorts(),domainRevisions});
 
 const stateSelectors=createStateSelectors({
   model,
@@ -671,7 +589,7 @@ const uiSettings=createUiSettings({
   session,
   checksSession,
   mountViewLayout:(...args)=>uiLayout.mountViewLayout(...args),
-  orderedSuppliers:(...args)=>domainsSuppliersSelectors.orderedSuppliers(...args),
+  orderedSuppliers:(...args)=>suppliers.orderedSuppliers(...args),
   orderedInventoryCategoryNames:(...args)=>domainsInventorySelectors.orderedInventoryCategoryNames(...args),
   cloudEnabled:(...args)=>cloudAuth.cloudEnabled(...args),
   financeSnapshot:(...args)=>domainsFinanceController.readSnapshot(...args),
@@ -740,7 +658,7 @@ const uiActions=composeActionRegistry([
   {name:'checks',actions:createChecksActions({domainsBankCache,domainsChecksEditor,domainsChecksView,domainsFinanceView,ui,uiDateEditor,uiModal})},
   {name:'shell',actions:createShellActions({uiModal})},
   {name:'dashboard',actions:createDashboardActions({domainsDashboardView,domainsFinanceView,ui})},
-  {name:'suppliers',actions:createSuppliersActions({domainsSuppliersBulk,domainsSuppliersEditor,domainsSuppliersNavigation,domainsSuppliersOrder,domainsSuppliersView,supplierUi})},
+  {name:'suppliers',actions:suppliers.actions},
   {name:'customers',actions:createCustomersActions({customerUi,domainsCustomers})},
   {name:'morning',actions:createMorningActions({domainsCustomers})},
   {name:'service',actions:createServiceActions({domainsServiceView,servicePorts,serviceUi})},
@@ -774,10 +692,10 @@ const uiGlobalSearch=createUiGlobalSearch({
 // The visible model starts empty and is hydrated only from the verified V2
 // Main and Shared journals during boot. Retired V1 browser keys are inert.
 model.state=stateNormalization.normalizeState(structuredClone(INITIAL_STATE));
-supplierUi.currentSupplierId=domainsSuppliersSelectors.orderedSuppliers()[0]?.id||null;
+suppliers.initializeSelection();
 checksSession.checksCloudBase=[];
 checksSession.checksBankEvents=[];
-bindOrdersRuntimeEvents({uiModal,uiNavigation,domainsSuppliersNavigation,cloudAuth,uiStatus,syncChecks,tab,session,domainsCustomers,domainsFinanceController,stateSnapshots,syncDocument,uiFolders,uiAlertCenter,uiTabGuard,storageV2:mainStorageV2,sharedChecksV2});
+bindOrdersRuntimeEvents({uiModal,uiNavigation,domainsSuppliersNavigation:suppliers.navigation,cloudAuth,uiStatus,syncChecks,tab,session,domainsCustomers,domainsFinanceController,stateSnapshots,syncDocument,uiFolders,uiAlertCenter,uiTabGuard,storageV2:mainStorageV2,sharedChecksV2});
 const startupUiActions=wrapMutationActions(uiActions,(domain)=>uiStatus.guardStartupMutation(domain));
 uiEvents.bindActionEvents(document.getElementById('main'),startupUiActions);
 bindDismissibleDetails(document);

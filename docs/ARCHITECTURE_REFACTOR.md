@@ -66,6 +66,12 @@ remain separate from structural refactors.
   once, while each pack declares its own startup mutation domain. A rendered
   action test checks registrations, including the generated cash-flow date
   name, and removed obsolete registrations for controls absent from the UI.
+- Orders Suppliers now has a capability composition root. Its selectors are
+  available to Dashboard before UI construction; one explicit bind phase then
+  creates navigation, ordering, bulk operations, view, editor, and actions after
+  the shell ports exist. The runtime rejects access before binding and a second
+  bind. Dashboard and backup receive focused ports, and `main.js` no longer
+  constructs individual Suppliers controllers or owns their save-domain rule.
 
 ## Dependency direction
 
@@ -79,10 +85,12 @@ and presentation primitives should have explicit owners.
 
 ## Next reviewable slices
 
-1. **Composition roots:** map each capability's inputs, outputs, startup phase,
-   and deferred callbacks. Orders suppliers and Kupa cash are the next cohesive
-   candidates. Keep public behavior fixed and run browser startup and sync gates
-   for each extraction. Do not create a broad application service locator.
+1. **Composition roots:** continue with Kupa cash and the remaining Orders
+   capabilities. Map each capability's inputs, outputs, startup phase, and
+   deferred callbacks. Keep public behavior fixed and run browser startup and
+   sync gates for each extraction. Do not create a broad application service
+   locator. Retire deferred callbacks where a leaf dependency can be built
+   earlier; use an explicit bind phase for genuine construction cycles.
 2. **Lifecycle:** once capabilities own their actions and startup ports, replace
    individual callbacks with a small set of explicit phases: preflight, local
    recovery, hydration, first render, remote reconciliation, background jobs.
