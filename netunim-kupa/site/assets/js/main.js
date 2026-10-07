@@ -142,10 +142,8 @@ const restoreGroupStore=createRestoreGroupStore({
 });
 
 const syncChecksState=createSyncChecksState({
-  session,
   checksSession,
   model,
-  normalizeState:(...args)=>stateNormalization.normalizeState(...args),
   sharedChecksHasLocalWork:()=>sharedChecksV2.hasLocalWork,
 });
 
@@ -218,10 +216,7 @@ const storagePersistence=createStoragePersistence({
   normalizeState:(...args)=>stateNormalization.normalizeState(...args),
   showSecondaryTabGuard:(...args)=>uiConnection.showSecondaryTabGuard(...args),
   saveSharedChecksToCloud:(...args)=>syncChecks.saveSharedChecksToCloud(...args),
-  render:(...args)=>uiNavigation.render(...args),
-  lastSavedState:(...args)=>syncChecksState.lastSavedState(...args),
   writeJsonHandleVerified:(...args)=>storageFiles.writeJsonHandleVerified(...args),
-  mergeState3Way:(...args)=>syncMerge.mergeState3Way(...args),
   persistSupabaseState:(...args)=>syncDocument.persistSupabaseState(...args),
   toast:(...args)=>uiStatus.toast(...args),
 });

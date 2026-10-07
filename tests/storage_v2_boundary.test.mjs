@@ -74,13 +74,65 @@ test('Kupa opening a file under local-only V2 replaces Main and Shared without c
   assert.deepEqual(model.state,imported);
 });
 
+test('Kupa refuses a local file before both V2 journals are ready',async()=>{
+  const model={state:{notes:[],checks:[]}},session={connectionMode:'file'},files={dataFileHandle:{name:'local.json'}};
+  let reads=0;
+  const storage=createKupaStoragePersistence({model,session,files,storageV2Primary:()=>false,
+    readJsonHandle:async()=>{reads++;return {}},stateFromPayload:()=>({state:{notes:[{id:'unsafe'}],checks:[]},meta:{}})});
+  await assert.rejects(storage.loadState(),/storage_v2_local_file_journals_required/);
+  assert.equal(reads,0);assert.deepEqual(model.state,{notes:[],checks:[]});
+});
+
+test('Kupa local-only file save never merges external checks or replaces the Main checkpoint',async()=>{
+  const state={notes:[{id:'n',content:'journaled'}],checks:[{id:'local-check'}]};
+  const model={state:clone(state)},session={connectionMode:'file',backendReady:true,dbRevision:3,localGeneration:1,serverInfo:{}};
+  let revision=3,writes=0,replacements=0,commits=0;const errors=[];
+  const storage=createKupaStoragePersistence({model,session,files:{dataFileHandle:{name:'local.json'}},checksSession:{},
+    storageV2Primary:()=>true,storageV2CommitPromise:async()=>{commits++},
+    sharedChecksV2:{flush:async()=>{},recoverReadOnly:async()=>({state:{checks:clone(state.checks)}})},
+    recoverStorageV2State:async()=>({state:{notes:clone(state.notes)}}),normalizeState:clone,
+    readJsonHandle:async()=>({...clone(KUPA_INITIAL_STATE),_meta:{revision}}),stateFromPayload:()=>({state:{notes:[],checks:[{id:'external-check'}]}}),
+    writeJsonHandleVerified:async()=>{writes++},replaceStorageV2CurrentState:async()=>{replacements++},
+    setSaveStatus:()=>{},reportError:value=>errors.push(value),listBackups:async()=>[],toast:()=>{}});
+  assert.equal(await storage.persistState(clone(state),'saved',1),true);
+  assert.equal(writes,1);assert.equal(commits,1);assert.equal(replacements,0);
+  revision=8;
+  assert.equal(await storage.persistState(clone(state),'external',1),false);
+  assert.equal(writes,1);assert.equal(replacements,0);
+  assert.equal(session.localFileConflictPending,true);
+  assert.equal(errors.length,1);assert.deepEqual(model.state,state);
+});
+
+test('Kupa never writes a file when the Main journal commit fails',async()=>{
+  const state={notes:[],checks:[]},model={state:clone(state)};let fileReads=0;
+  const storage=createKupaStoragePersistence({model,session:{connectionMode:'file',backendReady:true,dbRevision:2,localGeneration:1,serverInfo:{}},
+    files:{dataFileHandle:{name:'local.json'}},storageV2Primary:()=>true,storageV2CommitPromise:()=>Promise.reject(Error('IDB failed')),
+    normalizeState:clone,readJsonHandle:async()=>{fileReads++;return clone(KUPA_INITIAL_STATE)},setSaveStatus:()=>{},reportError:()=>{}});
+  const priorError=console.error;console.error=()=>{};
+  try{assert.equal(await storage.persistState(state,'saved',1),false)}finally{console.error=priorError}
+  assert.equal(fileReads,0);
+});
+
+test('Kupa file export requires the Shared journal to own the checks being written',async()=>{
+  const state={notes:[],checks:[{id:'visible-only'}]},model={state:clone(state)};let fileReads=0;
+  const storage=createKupaStoragePersistence({model,session:{connectionMode:'file',backendReady:true,dbRevision:2,localGeneration:1,serverInfo:{}},
+    files:{dataFileHandle:{name:'local.json'}},storageV2Primary:()=>true,storageV2CommitPromise:async()=>{},
+    sharedChecksV2:{flush:async()=>{},recoverReadOnly:async()=>({state:{checks:[]}})},
+    recoverStorageV2State:async()=>({state:{notes:[]}}),normalizeState:clone,
+    readJsonHandle:async()=>{fileReads++;return clone(KUPA_INITIAL_STATE)},setSaveStatus:()=>{},reportError:()=>{}});
+  const priorError=console.error;console.error=()=>{};
+  try{assert.equal(await storage.persistState(state,'saved',1),false)}finally{console.error=priorError}
+  assert.equal(fileReads,0,'an unjournaled check cannot reach the file');
+});
+
 test('Kupa file save with a V2 cloud cursor requires a journaled state and preserves its cursor',async()=>{
   const state={notes:[{id:'n',content:'journaled'}],checks:[]},model={state:clone(state)},session={connectionMode:'file',backendReady:true,dbRevision:3,localGeneration:1,serverInfo:{}};
   const calls=[],files={dataFileHandle:{name:'local.json'}};
   let fileRevision=3,journaled=clone(state);
   const storage=createKupaStoragePersistence({model,session,files,checksSession:{},storageV2Primary:()=>true,
+    sharedChecksV2:{flush:async()=>{},recoverReadOnly:async()=>({state:{checks:clone(model.state.checks)}})},
     refreshStorageV2CloudState:async()=>({seq:1,base:{revision:8,ackSeq:0},pending:true}),recoverStorageV2State:async()=>({state:clone(journaled)}),
-    normalizeState:clone,readJsonHandle:async()=>({_meta:{revision:fileRevision}}),stateFromPayload:()=>({state:clone(state)}),
+    normalizeState:clone,readJsonHandle:async()=>({...clone(KUPA_INITIAL_STATE),_meta:{revision:fileRevision}}),stateFromPayload:()=>({state:clone(state)}),
     writeJsonHandleVerified:async(_handle,payload)=>calls.push(payload),replaceStorageV2CurrentState:async()=>{throw Error('cloud cursor must stay intact')},
     persistImmediateBrowserSnapshot:()=>{throw Error('legacy snapshot')},setSaveStatus:()=>{},reportError:()=>{},listBackups:async()=>[],toast:()=>{}});
   assert.equal(await storage.persistState(clone(state),'saved',1),true);

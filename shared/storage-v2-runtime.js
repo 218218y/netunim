@@ -11,7 +11,6 @@ export function storageRecoveryFailure(error){
   return /^(storage_(checksum_mismatch|non_json_value|unsafe_key|checkpoint_metadata|committed_metadata_mismatch|committed_journal_missing|invalid_checkpoint|invalid_operation|invalid_local_import|invalid_field|invalid_collection|invalid_put|unknown_operation|foreign_operation|duplicate_sequence|journal_gap_or_duplicate|missing_collection|delete_target_missing|insert_conflict|update_target_missing|emergency_owner|main_projection_invalid))$/.test(message)?'fatal':'retryable';
 }
 
-const LIFECYCLE_BOUNDARIES=new Set(['manual-flush']);
 
 export function storageV2Mode(app,storage=globalThis.localStorage,owner='local',{preparing=false}={}){
   try{
@@ -28,7 +27,7 @@ export function storageV2Mode(app,storage=globalThis.localStorage,owner='local',
 // committed to IndexedDB. Durable boundaries install coordinated checkpoints.
 export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckpoint=state=>structuredClone(state),prepareOperation=operation=>structuredClone(operation),mode=()=>storageV2Mode(app,globalThis.localStorage,owner()),createJournal=createStorageJournal,scheduleIdle=callback=>globalThis.requestIdleCallback?requestIdleCallback(callback,{timeout:5000}):setTimeout(callback,1000),compactEvery=128,compactAfterMs=5*60*1000}={}){
   if(!STORAGE_SCHEMAS[app]||typeof owner!=='function'||typeof primary!=='function'||typeof validate!=='function')throw new Error('storage_v2_runtime_configuration');
-  const diagnostics={mode:'off',recoveries:0,operations:0,boundaries:0,emergencyFailures:0,commitFailures:0,errors:0,lastError:''};
+  const diagnostics={mode:'off',recoveries:0,operations:0,emergencyFailures:0,commitFailures:0,errors:0,lastError:''};
   let journal=null,identity='',authoritative=false,starting=null,startingIdentity='',commits=Promise.resolve(),corruptIdentity='',operationsSinceCheckpoint=0,lastCheckpointAt=Date.now(),compactionScheduled=false,undurableCount=0,boundaryGate=()=>false;
   const guardCloudMutation=()=>{if(boundaryGate())throw new Error('storage_boundary_in_progress')};
   const undurableFailures=new Map();
@@ -146,15 +145,14 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
     if(compactionScheduled||!journal?.ready)return;compactionScheduled=true;
     scheduleIdle(async()=>{compactionScheduled=false;if(!readyForCurrentOwner()||(!operationsSinceCheckpoint&&Date.now()-lastCheckpointAt<compactAfterMs))return;try{await commits;await journal.compact();operationsSinceCheckpoint=0;lastCheckpointAt=Date.now()}catch(error){diagnostics.errors++;diagnostics.lastError=error.message}});
   }
-  function persist(state,{operations=null,storageBoundary='',generation=0,surface='',mutationType='autosave',deleteIntents={}}={},appMetadata={}){
+  function persist(state,options={},appMetadata={}){
+    const {operations=null,generation=0,surface='',mutationType='autosave',deleteIntents={}}=options;
     if(boundaryGate())throw new Error('storage_boundary_in_progress');
     const runtimeMode=mode();if(runtimeMode==='preparing')throw new Error('storage_v2_preparation_locked');
     if(runtimeMode!=='primary'||!primary())return {handled:false,reason:'inactive'};
-    diagnostics.mode='primary';const active=create(),boundary=String(storageBoundary||'').trim(),typed=Array.isArray(operations)&&operations.length>0;
+    diagnostics.mode='primary';const active=create(),typed=Array.isArray(operations)&&operations.length>0;
     if(!authoritative||!active.ready)return {handled:false,reason:'not-ready'};
-    if(boundary&&typed){diagnostics.errors++;diagnostics.lastError='storage_mutation_contract_ambiguous';return {handled:false,reason:'ambiguous'} }
-    if(boundary&&LIFECYCLE_BOUNDARIES.has(boundary)&&active.ready)return {handled:true,emergencyDurable:true,committed:active.settled(),reason:'already-durable'};
-    if(boundary){diagnostics.boundaries++;return {handled:false,reason:'boundary'} }
+    if(Object.hasOwn(options,'storageBoundary')){diagnostics.errors++;diagnostics.lastError='storage_legacy_boundary_forbidden';return {handled:false,reason:'legacy-boundary'} }
     if(!typed){diagnostics.errors++;diagnostics.lastError='storage_mutation_contract_required';return {handled:false,reason:'contract'} }
     try{
       const write=active.append(canonicalOperations(state,operations),{generation,surface,mutationType,deleteIntents,appMetadata:{...appMetadata,storageRole:'primary'}});diagnostics.operations++;operationsSinceCheckpoint++;

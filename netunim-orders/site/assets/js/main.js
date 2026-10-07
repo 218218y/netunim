@@ -201,10 +201,8 @@ const storageTabLock=createStorageTabLock({
 });
 
 const storagePersistence=createStoragePersistence({
-  model,
   tab,
   session,
-  ui,
   domainRevisions,
   showSecondaryTabGuard:(...args)=>uiTabGuard.showSecondaryTabGuard(...args),
   localSnapshot:(...args)=>storageBrowser.localSnapshot(...args),
@@ -217,14 +215,7 @@ const storagePersistence=createStoragePersistence({
   writeStateToFolder:(...args)=>storageFiles.writeStateToFolder(...args),
   cloudEnabled:(...args)=>cloudAuth.cloudEnabled(...args),
   requestCloudSave:(...args)=>syncDocument.requestCloudSave(...args),
-  toast:(...args)=>uiStatus.toast(...args),
   setCloud:(...args)=>uiStatus.setCloud(...args),
-  folderPermissionPending:(...args)=>uiFolderStatus.folderPermissionPending(...args),
-  cloudHasLocalWork:(...args)=>stateSnapshots.cloudHasLocalWork(...args),
-  checksHaveLocalWork:(...args)=>stateSnapshots.checksHaveLocalWork(...args),
-  loadSession:(...args)=>cloudAuth.loadSession(...args),
-  saveSharedChecksToCloud:(...args)=>syncChecks.saveSharedChecksToCloud(...args),
-  storageV2:mainStorageV2,
 });
 
 const stateSnapshots=createStateSnapshots({
