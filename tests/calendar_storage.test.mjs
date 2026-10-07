@@ -23,4 +23,29 @@ assert.equal(selectCoveringRangeSnapshot(snapshots,{startKey:'2026-08-23',endKey
 assert.equal(selectCoveringRangeSnapshot(snapshots,{startKey:'2026-09-20',endKey:'2026-09-27',accountId:'owner@example.com'})?.key,'wide-old');
 assert.equal(selectCoveringRangeSnapshot(snapshots,{startKey:'2026-11-01',endKey:'2026-11-02',accountId:'owner@example.com'}),null);
 assert.equal(selectCoveringRangeSnapshot(snapshots,{startKey:'2026-08-23',endKey:'2026-08-30',accountId:'missing@example.com'}),null);
+
+const previousIndexedDb=globalThis.indexedDB;
+try{
+  const recoveredDb={name:'calendar-recovered'};
+  let openCalls=0;
+  globalThis.indexedDB={open:()=>{
+    const request={result:recoveredDb,error:null};
+    openCalls++;
+    queueMicrotask(()=>{
+      if(openCalls===1){request.error=new Error('transient IndexedDB failure');request.onerror()}
+      else request.onsuccess();
+    });
+    return request;
+  }};
+  const retryingStorage=createCalendarStorage();
+  const first=await Promise.allSettled([retryingStorage.openDb(),retryingStorage.openDb()]);
+  assert.deepEqual(first.map(result=>result.status),['rejected','rejected']);
+  assert.equal(openCalls,1,'concurrent callers share one open attempt');
+  assert.equal(await retryingStorage.openDb(),recoveredDb,'a failed open must be retryable');
+  assert.equal(await retryingStorage.openDb(),recoveredDb,'successful opens remain cached');
+  assert.equal(openCalls,2);
+}finally{
+  if(previousIndexedDb===undefined)delete globalThis.indexedDB;
+  else globalThis.indexedDB=previousIndexedDb;
+}
 console.log('CALENDAR STORAGE TESTS PASSED');

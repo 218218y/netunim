@@ -62,12 +62,7 @@ import {composeChecksSync} from './composition/checks-sync.js';
 import {createSyncDocument} from './sync/document.js';
 import {composeCloudUi} from './composition/cloud.js';
 import {createNotesDomain} from './domains/notes/index.js';
-import {createCalendarStorage} from './calendar/storage.js';
-import {createCalendarAuth} from './calendar/auth.js';
-import {createCalendarApi} from './calendar/api.js';
-import {createCalendarJournal} from './calendar/journal.js';
-import {createDomainsCalendarController} from './domains/calendar/controller.js';
-import {createCalendarActionPorts} from './domains/calendar/action-ports.js';
+import {createOrdersCalendarRuntime} from './composition/calendar.js';
 import {createUiSettings} from './ui/settings.js';
 import {createLifecycle} from './lifecycle.js';
 import {verifyStorageV2LocalEngine} from './shared/storage-v2-local-birth.js';
@@ -151,13 +146,9 @@ const domainsFinanceBridge=createDomainsFinanceBridge();
 const domainsDocumentBridge=composeDocumentSearch({supaFetch:(...args)=>cloudAuth.supaFetch(...args)});
 const bankChequeImages=createOrdersBankChequeImageRuntime({cloudAuth,bridge:domainsFinanceBridge});
 
-const calendarStorage=createCalendarStorage();
-const calendarAuth=createCalendarAuth({
-  calendarSession,
-  supaFetch:(...args)=>cloudAuth.supaFetch(...args),
+const calendarRuntime=createOrdersCalendarRuntime({
+  calendarSession,supaFetch:(...args)=>cloudAuth.supaFetch(...args),
 });
-const calendarApi=createCalendarApi({calendarAuth});
-const calendarJournal=createCalendarJournal({calendarStorage,calendarApi});
 
 const domainsSuppliersSelectors=createDomainsSuppliersSelectors({
   model,
@@ -665,23 +656,8 @@ const importFinanceConnections=createFinanceConnectionImporter({
   afterImport:async()=>{await Promise.all([domainsFinanceController.refreshBankBridgeStatus({quiet:true}),domainsFinanceController.refreshCreditBridgeStatus({quiet:true})]);domainsFinanceView.renderKupa()},
 });
 
-const domainsCalendarController=createDomainsCalendarController({
-  ui,
-  tab,
-  calendarUi,
-  calendarSession,
-  calendarStorage,
-  calendarAuth,
-  calendarApi,
-  calendarJournal,
-  mountViewLayout:(...args)=>uiLayout.mountViewLayout(...args),
-  modal:(...args)=>uiModal.modal(...args),
-  closeModal:(...args)=>uiModal.closeModal(...args),
-  toast:(...args)=>uiStatus.toast(...args),
-  requestCloudLogin:()=>uiCloud.loginModal('calendar'),
-  confirmDialog:(...args)=>uiModal.confirmDialog(...args),
-  dateEditorMarkup:(...args)=>uiDateEditor.dateEditorMarkup(...args),
-  setDateValue:(...args)=>uiDateEditor.setDateValue(...args),
+const domainsCalendarController=calendarRuntime.createController({
+  ui,tab,calendarUi,uiLayout,uiModal,uiStatus,uiCloud,uiDateEditor,
 });
 
 const {spreadsheetWorkspace,domainsNotesController}=createNotesDomain({cloudAuth,tab,ui,notesUi,model,uiModal,storagePersistence,uiStatus,uiLayout,uiAlertCenter,uiDateEditor});
@@ -940,7 +916,7 @@ const uiActions=createUiActions({
   toggleNotesBulkRow:(...args)=>domainsNotesController.toggleNotesBulkRow(...args),
   toggleNotesBulkVisible:(...args)=>domainsNotesController.toggleNotesBulkVisible(...args),
   deleteSelectedStickyNotes:(...args)=>domainsNotesController.deleteSelectedStickyNotes(...args),
-  ...createCalendarActionPorts(domainsCalendarController),
+  ...calendarRuntime.actionPorts(),
 });
 
 const uiKeyboardNavigation=createUiKeyboardNavigation({
