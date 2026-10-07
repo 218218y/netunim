@@ -6,7 +6,7 @@
     "machine": "x86_64",
     "libc": "glibc"
   },
-  "npmClosureSha256": "d75354a946e2fd0290a19ec50a7bc5246af76169bd49fefaada6bea7c5b466b7",
+  "npmClosureSha256": "2d79fefa2e5576dbe79b551b83e540c9831c0ae453cfd7a9267a4ae1ef4f6674",
   "configSemanticSha256": "2c9fa55342f48f0a61ffc00398aabad13083a3c5cedccf0937861f363d4b1ba7",
   "node": {
     "version": "24.21.0",
@@ -178,10 +178,10 @@
     {
       "lockPath": "node_modules/acorn",
       "name": "acorn",
-      "version": "8.18.0",
-      "url": "https://registry.npmjs.org/acorn/-/acorn-8.18.0.tgz",
-      "integrity": "sha512-lGq+9yr1/GuAWaVYIHRjvvySG5/4VfKIvC8EWxStPdcDh/Ka7FG3twP6v4d5BkravUilhIAsG4Qj83t02LWUPQ==",
-      "file": "npm/acorn-8.18.0.tgz"
+      "version": "8.19.0",
+      "url": "https://registry.npmjs.org/acorn/-/acorn-8.19.0.tgz",
+      "integrity": "sha512-oJlA3XiRm7Cyk6qFD2Jn8ak9B7jSy0qy00ADO3+8dpT0LSjFihQYv4C02LFCSYJV3Q37xYwwRy5m+IpIiUzqWw==",
+      "file": "npm/acorn-8.19.0.tgz"
     },
     {
       "lockPath": "node_modules/acorn-jsx",
