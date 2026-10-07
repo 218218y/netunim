@@ -23,7 +23,7 @@ import {preserveInstalledChromiumIdentity} from './isracard-group-utils.mjs';
 export const CREDIT_CONNECTOR_CONTRACT_VERSION=2;
 export const CREDIT_PROVIDER_SCHEMA_VERSION='israeli-bank-scrapers-6.10.0';
 export const MAX_PROVIDER_SCHEMA_VERSION='max-netunim-v2+upstream-login-6.10.0';
-export const VISA_CAL_PROVIDER_SCHEMA_VERSION='visa-cal-netunim-v7+upstream-6.12.1-balance+pr1184-invalid-password+pr1193-browser-api';
+export const VISA_CAL_PROVIDER_SCHEMA_VERSION='visa-cal-netunim-v8+upstream-6.12.1-balance+pr1184-invalid-password+pr1193-browser-api+authenticated-session-result';
 export const CREDIT_CORE_FUTURE_MONTHS=1;
 export const CREDIT_RECENT_HISTORY_DAYS=30;
 export const CREDIT_SYNC_MODE_QUICK='quick';
@@ -295,6 +295,30 @@ export function isVisaCalInvalidPasswordErrorUrl(value){const decoded=safeDecode
 function visaCalHasInvalidPasswordErrorFrame(page){
   try{return (typeof page?.frames==='function'?page.frames():[]).some(frame=>{try{return isVisaCalInvalidPasswordErrorUrl(frame?.url?.())}catch{return false}})}catch{return false}
 }
+async function visaCalSessionState(page){
+  try{
+    return await page.evaluate(()=>{
+      const parse=value=>{try{return value?JSON.parse(value):null}catch{return null}},init=parse(sessionStorage.getItem('init')),auth=parse(sessionStorage.getItem('auth-module')),hasInit=Array.isArray(init?.result?.cards),hasToken=typeof auth?.auth?.calConnectToken==='string'&&auth.auth.calConnectToken.trim().length>0;
+      if(hasInit&&hasToken)return 'authenticated';
+      if(hasInit)return 'init-only';
+      if(hasToken)return 'auth-only';
+      return 'missing';
+    });
+  }catch{return 'unavailable'}
+}
+export async function visaCalHasAuthenticatedSessionState(page){return await visaCalSessionState(page)==='authenticated'}
+async function visaCalSafeLoginState(page){
+  const sessionState=await visaCalSessionState(page);
+  if(sessionState==='authenticated')return 'authenticated-session';
+  if(sessionState==='init-only')return 'session-init-only';
+  if(sessionState==='auth-only')return 'session-auth-only';
+  if(visaCalHasInvalidPasswordErrorFrame(page))return 'invalid-password-route';
+  let frames=[];try{frames=typeof page?.frames==='function'?page.frames():[]}catch{}
+  if(frames.some(frame=>{try{return /change-password/i.test(String(frame?.url?.()||''))}catch{return false}}))return 'change-password-route';
+  if(frames.some(frame=>{try{return /connect/i.test(String(frame?.url?.()||''))}catch{return false}}))return 'connect-frame';
+  const currentUrl=await visaCalClientUrl(page);if(/dashboard/i.test(currentUrl))return 'dashboard-url';
+  return 'no-connect-frame';
+}
 
 async function visaCalClientUrl(page){
   try{if(typeof page?.evaluate==='function')return String(await page.evaluate(()=>window.location.href)||'')}catch{}
@@ -305,8 +329,12 @@ function visaCalStaticLoginConditionMatches(condition,currentUrl){
   return typeof condition==='string'&&currentUrl.toLowerCase()===condition.toLowerCase();
 }
 async function visaCalUpstreamLoginResult(page,possibleResults){
-  const currentUrl=await visaCalClientUrl(page),entries=Object.entries(possibleResults&&typeof possibleResults==='object'?possibleResults:{});
+  const currentUrl=await visaCalClientUrl(page),entries=Object.entries(possibleResults&&typeof possibleResults==='object'?possibleResults:{}),successKey=entries.find(([result])=>result==='SUCCESS'||/success/i.test(result))?.[0];
   for(const [result,conditions] of entries)for(const condition of Array.isArray(conditions)?conditions:[])if(typeof condition!=='function'&&visaCalStaticLoginConditionMatches(condition,currentUrl))return {result,currentUrl};
+  // Cal's SPA can establish the authenticated session before (or without) committing the main page URL to /dashboard.
+  // The pinned scraper itself requires both of these sessionStorage objects immediately after login, so their joint
+  // presence is stronger success evidence than URL navigation and does not expose the token or card data.
+  if(successKey&&await visaCalHasAuthenticatedSessionState(page))return {result:successKey,currentUrl};
   const frames=typeof page?.frames==='function'?page.frames():[],hasConnectFrame=frames.some(frame=>{try{return /connect/i.test(String(frame?.url?.()||''))}catch{return false}});
   if(!hasConnectFrame)return null;
   for(const [result,conditions] of entries){
@@ -326,7 +354,7 @@ async function waitForVisaCalUpstreamLoginResult(scraper,possibleResults,{timeou
     const recognized=await visaCalUpstreamLoginResult(page,possibleResults);if(recognized)return recognized;
     const remaining=deadline-Date.now();if(remaining<=0)break;await sleep(Math.min(poll,remaining));
   }
-  const error=new Error(`Visa Cal login did not reach an upstream-recognized result within ${timeout} ms`);error.name='TimeoutError';throw error;
+  const error=new Error(`Visa Cal login did not reach an upstream-recognized result within ${timeout} ms`);error.name='TimeoutError';error.loginState=await visaCalSafeLoginState(page);throw error;
 }
 
 export async function prepareVisaCalBrowserIdentity(page,{identityProbeUrl=''}={}){
@@ -345,7 +373,8 @@ export function applyVisaCalLoginNavigationPolicy(scraper,{loginResultTimeoutMs=
     const options=getLoginOptions(credentials);
     if(!options||typeof options!=='object'||Array.isArray(options))throw safeError('מחבר כאל המותקן החזיר חוזה LoginOptions לא תקין.','CREDIT_CONNECTOR_COMPATIBILITY_ERROR',{stage:'LoginSetup'});
     if(!options.possibleResults||typeof options.possibleResults!=='object'||Array.isArray(options.possibleResults))throw safeError('מחבר כאל המותקן אינו חושף possibleResults תקין לזיהוי תוצאת הכניסה.','CREDIT_CONNECTOR_COMPATIBILITY_ERROR',{stage:'LoginSetup'});
-    const possibleResults={...options.possibleResults},invalidPasswordKey=Object.keys(possibleResults).find(key=>key==='INVALID_PASSWORD'||/invalid.*password/i.test(key));
+    const possibleResults={...options.possibleResults},successKey=Object.keys(possibleResults).find(key=>key==='SUCCESS'||/success/i.test(key)),invalidPasswordKey=Object.keys(possibleResults).find(key=>key==='INVALID_PASSWORD'||/invalid.*password/i.test(key));
+    if(successKey)possibleResults[successKey]=[async({page}={})=>visaCalHasAuthenticatedSessionState(page),...(Array.isArray(possibleResults[successKey])?possibleResults[successKey]:[])];
     if(invalidPasswordKey)possibleResults[invalidPasswordKey]=[async({page}={})=>visaCalHasInvalidPasswordErrorFrame(page),...(Array.isArray(possibleResults[invalidPasswordKey])?possibleResults[invalidPasswordKey]:[])];
     const wrapStep=(step,nextStep,action)=>typeof action==='function'?async(...args)=>{scraper.__netunimLoginStep=step;const result=await action(...args);if(nextStep)scraper.__netunimLoginStep=nextStep;return result}:action;
     // Cal is an SPA and the credential form lives in a cross-origin iframe. Upstream
@@ -376,7 +405,7 @@ export class VisaCalAdapter extends CreditProviderAdapter {
     try{
       await scraper.initialize();initialized=true;this.event({stage:'BrowserInit'});
       let browserIdentity;try{browserIdentity=await prepareVisaCalBrowserIdentity(scraper.page,{identityProbeUrl:this.identityProbeUrl});this.event({stage:'BrowserIdentity',clientHintsState:browserIdentity.clientHintsState,browserMajorVersion:browserIdentity.browserMajorVersion})}catch(error){this.event({stage:'BrowserIdentity',errorClass:error?.code||'CREDIT_BROWSER_IDENTITY_UNAVAILABLE',clientHintsState:error?.clientHintsState||'',browserMajorVersion:error?.browserMajorVersion||0});throw error}
-      let loginResult,loginStarted=Date.now();try{loginResult=await scraper.login(profile.credentials)}catch(error){const loginStep=['navigation','landing-readiness','open-login-popup','credentials-submit','post-submit-navigation','result-detection'].includes(String(scraper.__netunimLoginStep||''))?String(scraper.__netunimLoginStep):'';const failure=creditLoginThrownScrapeFailure(error,profile);if(loginStep)failure.loginStep=loginStep;this.event({stage:failure.stage||'LoginFlow',durationMs:Date.now()-loginStarted,errorClass:failure.code,loginStep});throw failure}
+      let loginResult,loginStarted=Date.now();try{loginResult=await scraper.login(profile.credentials)}catch(error){const loginStep=['navigation','landing-readiness','open-login-popup','credentials-submit','post-submit-navigation','result-detection'].includes(String(scraper.__netunimLoginStep||''))?String(scraper.__netunimLoginStep):'',loginState=String(error?.loginState||'');const failure=creditLoginThrownScrapeFailure(error,profile);if(loginStep)failure.loginStep=loginStep;if(loginState)failure.loginState=loginState;this.event({stage:failure.stage||'LoginFlow',durationMs:Date.now()-loginStarted,errorClass:failure.code,loginStep,loginState});throw failure}
       if(!loginResult?.success)throw creditScrapeFailure(loginResult,profile);this.event({stage:'Login',durationMs:Date.now()-loginStarted});
       let cards;try{cards=await scraper.getCards()}catch{throw safeError('נתוני init ורשימת הכרטיסים של כאל לא נמצאו לאחר הכניסה.','CREDIT_SESSION_INIT_MISSING',{stage:'DashboardInit'})}
       if(!Array.isArray(cards)||!cards.length)throw safeError('כאל לא החזירה רשימת כרטיסים תקינה.','CREDIT_PROVIDER_SCHEMA_ERROR',{stage:'DashboardInit'});
