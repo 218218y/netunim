@@ -33,9 +33,14 @@ async function restoreDbExists(){
   return entries.some(entry=>entry?.name===LOCAL_DB);
 }
 
-async function idbSyncPut(key,value){if(key!==RESTORE_GROUP_KEY)throw new Error('storage_v1_write_forbidden');const db=await openRestoreDb();return await new Promise((resolve,reject)=>{const tx=db.transaction(LOCAL_SYNC_STORE,'readwrite');tx.objectStore(LOCAL_SYNC_STORE).put(value,key);tx.oncomplete=()=>resolve(value);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||new Error('IndexedDB sync write aborted'))})}
-async function idbSyncGet(key){if(key!==RESTORE_GROUP_KEY)throw new Error('storage_restore_group_key_required');if(!await restoreDbExists())return null;const db=await openRestoreDb();return await new Promise((resolve,reject)=>{const r=db.transaction(LOCAL_SYNC_STORE,'readonly').objectStore(LOCAL_SYNC_STORE).get(key);r.onsuccess=()=>resolve(r.result??null);r.onerror=()=>reject(r.error)})}
-async function idbSyncDelete(key){if(key!==RESTORE_GROUP_KEY)throw new Error('storage_restore_group_key_required');const db=await openRestoreDb();return await new Promise((resolve,reject)=>{const tx=db.transaction(LOCAL_SYNC_STORE,'readwrite');tx.objectStore(LOCAL_SYNC_STORE).delete(key);tx.oncomplete=()=>resolve(true);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||new Error('IndexedDB sync delete aborted'))})}
+function restoreGroupStorageKey(key){
+  const value=String(key||''),current=`${RESTORE_GROUP_KEY}:current`,archivePrefix=`${RESTORE_GROUP_KEY}:archive:`;
+  if(value===current||(value.startsWith(archivePrefix)&&value.length>archivePrefix.length))return value;
+  throw new Error('storage_restore_group_key_required');
+}
+async function idbSyncPut(key,value){const restoreKey=restoreGroupStorageKey(key);const db=await openRestoreDb();return await new Promise((resolve,reject)=>{const tx=db.transaction(LOCAL_SYNC_STORE,'readwrite');tx.objectStore(LOCAL_SYNC_STORE).put(value,restoreKey);tx.oncomplete=()=>resolve(value);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||new Error('IndexedDB sync write aborted'))})}
+async function idbSyncGet(key){const restoreKey=restoreGroupStorageKey(key);if(!await restoreDbExists())return null;const db=await openRestoreDb();return await new Promise((resolve,reject)=>{const r=db.transaction(LOCAL_SYNC_STORE,'readonly').objectStore(LOCAL_SYNC_STORE).get(restoreKey);r.onsuccess=()=>resolve(r.result??null);r.onerror=()=>reject(r.error)})}
+async function idbSyncDelete(key){const restoreKey=restoreGroupStorageKey(key);const db=await openRestoreDb();return await new Promise((resolve,reject)=>{const tx=db.transaction(LOCAL_SYNC_STORE,'readwrite');tx.objectStore(LOCAL_SYNC_STORE).delete(restoreKey);tx.oncomplete=()=>resolve(true);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||new Error('IndexedDB sync delete aborted'))})}
 
 async function recoverLocalV2State(){
   const recovered=await storageV2?.recover?.(null);

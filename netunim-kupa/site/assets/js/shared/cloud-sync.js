@@ -178,6 +178,22 @@ export function cloudWriteError(input,fallbackMessage='cloud_write_failed'){
   return error;
 }
 
+export function documentWriteAckRevision(row,{baseRevision,authoritativeState,sentState,equalState=equalSyncJson,errorCode='document_write_ack_revision_invalid'}={}){
+  const base=Number(baseRevision),revision=Number(row?.revision),hasOperationRevision=row?.operation_revision!==undefined&&row?.operation_revision!==null,operationRevision=hasOperationRevision?Number(row.operation_revision):null,replayed=row?.operation_replayed===true;
+  const invalid=()=>{throw new Error(errorCode)};
+  if(!Number.isSafeInteger(base)||base<0||!Number.isSafeInteger(revision)||revision<base)invalid();
+  if(hasOperationRevision){
+    if(!Number.isSafeInteger(operationRevision)||operationRevision<base||operationRevision>revision||operationRevision>base+1)invalid();
+    if(row?.operation_replayed===false&&operationRevision!==revision)invalid();
+  }
+  // The server intentionally treats an identical state as an idempotent no-op.
+  // A successful no-op therefore keeps the current revision.  V6 proves that
+  // outcome with operation_revision; legacy-compatible responses are accepted
+  // only when the authoritative state is exactly the sent state.
+  if(revision===base&&!(hasOperationRevision&&operationRevision===base)&&!equalState(authoritativeState,sentState))invalid();
+  return {revision,operationRevision,replayed};
+}
+
 export function contentionDelay(attempt=0,{baseMs=300,maxMs=2400,jitterMs=200,random=Math.random}={}){
   return Math.min(maxMs,baseMs*Math.pow(2,Math.max(0,Number(attempt)||0)))+Math.floor(random()*Math.max(0,jitterMs));
 }

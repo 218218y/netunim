@@ -1,6 +1,6 @@
 import {structuredSyncConflict} from '../shared/cloud-sync.js';
 import {clone} from '../core/values.js';
-import {CLOUD_WRITE_POLICY,cloudWriteError,contentionDelay,createOutboxRetryScheduler,normalizeCloudError,operationAuditMetadata,runBusyCloudWriteWithPolicy} from '../shared/cloud-sync.js';
+import {CLOUD_WRITE_POLICY,cloudWriteError,contentionDelay,createOutboxRetryScheduler,documentWriteAckRevision,normalizeCloudError,operationAuditMetadata,runBusyCloudWriteWithPolicy} from '../shared/cloud-sync.js';
 
 function revisionConflict(res){return !res?.r?.ok&&normalizeCloudError(res).kind==='revision_conflict'}
 function saveBusy(res){return !res?.r?.ok&&normalizeCloudError(res).kind==='busy'}
@@ -95,8 +95,7 @@ async function saveStorageV2CloudFlight(initialFlight){
     if(!flight||flight.operationId===previousOperationId)throw new Error('orders_v2_rebase_flight_not_rotated');
   }
   if(!res?.r?.ok)throw cloudWriteError(res,'שמירה לענן נכשלה');
-  const authoritative=prepareCloudState(res.row?.state||serverSnapshot),newRevision=Number(res.row?.revision||expected+1);
-  if(!Number.isSafeInteger(newRevision)||newRevision<=Number(flight.baseRevision))throw new Error('orders_v2_ack_revision_invalid');
+  const authoritative=prepareCloudState(res.row?.state||serverSnapshot),newRevision=documentWriteAckRevision(res.row,{baseRevision:flight.baseRevision,authoritativeState:authoritative,sentState:serverSnapshot,equalState:sameOrderCloudData,errorCode:'orders_v2_ack_revision_invalid'}).revision;
   // Reconcile edits that arrived while this immutable flight was in progress
   // before ACK.  ACK + current checkpoint are then committed in one IDB
   // transaction, so a crash cannot advance the cloud cursor without persisting

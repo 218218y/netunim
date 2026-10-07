@@ -131,18 +131,23 @@ test('check edits without a ready Shared V2 runtime fail before any legacy write
   }finally{if(prior===undefined)delete globalThis.localStorage;else globalThis.localStorage=prior}
 });
 
-test('Orders V2 fails closed on missing Main checkpoint and exposes no V1 outbox writer',async()=>{
-  const prior=globalThis.localStorage;globalThis.localStorage=localStore();
+test('Orders V2 fails closed on missing Main checkpoint and exposes only the restore-group IndexedDB namespace',async()=>{
+  const prior=globalThis.localStorage,priorIndexedDb=globalThis.indexedDB;globalThis.localStorage=localStore();globalThis.indexedDB={databases:async()=>[]};
   try{
     const browser=createOrdersBrowser({storageV2:{accountV2Active:true,recover:async()=>null,persist:()=>({handled:false})},model:{state:{}},files:{},session:{localSnapshotSeq:0,cloudRevision:0},prepareState:()=>({}),prepareCloudState:()=>({}),normalizeState:value=>value});
     await assert.rejects(browser.recoverLocalV2State(),/v2_main_recovery_required/);
     assert.equal(browser.markCloudPending,undefined);
-    await assert.rejects(browser.idbSyncPut('orders-outbox-v3',{}),/storage_v1_write_forbidden/);
-    await assert.rejects(browser.idbSyncPut('shared-checks-outbox-v3',{}),/storage_v1_write_forbidden/);
+    assert.equal(await browser.idbSyncGet('orders.restore.group.v1:current'),null);
+    assert.equal(await browser.idbSyncGet('orders.restore.group.v1:archive:11111111-1111-4111-8111-111111111111'),null);
+    await assert.rejects(browser.idbSyncPut('orders-outbox-v3',{}),/storage_restore_group_key_required/);
+    await assert.rejects(browser.idbSyncPut('shared-checks-outbox-v3',{}),/storage_restore_group_key_required/);
     await assert.rejects(browser.idbSyncGet('orders-outbox-v3'),/storage_restore_group_key_required/);
     await assert.rejects(browser.idbSyncDelete('shared-checks-outbox-v3'),/storage_restore_group_key_required/);
     assert.equal(globalThis.localStorage.length,0);
-  }finally{if(prior===undefined)delete globalThis.localStorage;else globalThis.localStorage=prior}
+  }finally{
+    if(prior===undefined)delete globalThis.localStorage;else globalThis.localStorage=prior;
+    if(priorIndexedDb===undefined)delete globalThis.indexedDB;else globalThis.indexedDB=priorIndexedDb;
+  }
 });
 
 test('account V2 marker forbids Kupa V1 browser snapshots and cloud outboxes',async()=>{

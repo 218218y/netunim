@@ -35,6 +35,11 @@ test('Orders V2 keeps the exact immutable flight across a lost ACK retry',async(
   assert.equal(await f.api.requestCloudSave('retry'),true);assert.equal(f.sent.length,2);assert.equal(f.sent[1].operationId,firstId);assert.equal(f.getState().flight,null);assert.equal(f.getState().pending,false);assert.equal(f.legacyWrites.includes(CLOUD_BASE_KEY),false,'V2 ACK must not mirror a full cloud base to localStorage');
 });
 
+test('Orders V2 accepts a successful idempotent no-op ACK without forcing a revision bump',async()=>{
+  const f=fixture({rpcSave:async(snapshot,expected)=>({r:{ok:true},row:{revision:expected,state:clone(snapshot),operation_replayed:false,operation_revision:expected}})});
+  assert.equal(await f.api.requestCloudSave('noop'),true);assert.equal(f.sent.length,1);assert.equal(f.acks.length,1);assert.equal(f.acks[0].newRevision,10);assert.equal(f.getState().flight,null);assert.equal(f.getState().pending,false);
+});
+
 test('Orders V2 confirmed revision conflict rejects the old flight and rotates operation id after rebase',async()=>{
   let calls=0;const remote={notes:[{id:'A',content:'remote'}]};
   const f=fixture({readCloud:async()=>({revision:11,state:clone(remote)}),merge3:(_base,_local,remoteState)=>({state:{notes:[{id:'A',content:`merged-${remoteState.notes[0].content}`}]},conflicts:[]}),rpcSave:async(snapshot,expected)=>{if(++calls===1)return {r:{ok:false,status:409},j:{code:'PT409',message:'revision_conflict'}};return {r:{ok:true},row:{revision:expected+1,state:clone(snapshot)}}}});

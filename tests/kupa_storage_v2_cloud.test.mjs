@@ -126,6 +126,11 @@ test('Kupa V2 keeps the immutable flight across a lost ACK retry and never falls
   assert.equal(await f.api.persistSupabaseState(f.cloud(),'retry',1),true);assert.equal(f.sent.length,2);assert.equal(f.sent[1].operationId,firstId);assert.equal(f.getState().flight,null);assert.equal(f.getState().pending,false);
 });
 
+test('Kupa V2 accepts a successful idempotent no-op ACK without forcing a revision bump',async()=>{
+  const f=fixture({write:body=>response(true,{revision:body.p_expected_revision,state:clone(body.p_state),operation_replayed:false,operation_revision:body.p_expected_revision})});
+  assert.equal(await f.api.persistSupabaseState(f.cloud(),'noop',1),true);assert.equal(f.sent.length,1);assert.equal(f.acks.length,1);assert.equal(f.acks[0].newRevision,10);assert.equal(f.getState().flight,null);assert.equal(f.getState().pending,false);
+});
+
 test('Kupa V2 account load reads and applies the cloud document with a clean local head',async()=>{
   globalThis.localStorage={getItem:()=>null,setItem:noop,removeItem:noop};
   const model={state:clone(INITIAL_STATE)},normalization=createStateNormalization({model});
