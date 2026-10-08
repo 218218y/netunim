@@ -2,7 +2,7 @@ const fs=require('node:fs');
 const path=require('node:path');
 const assert=require('node:assert/strict');
 const acorn=require('acorn');
-function walk(n,visit){if(!n?.type)return;visit(n);for(const x of Object.values(n))for(const v of Array.isArray(x)?x:[x])if(v?.type)walk(v,visit)}
+function walk(n,visit,parent=null){if(!n?.type)return;visit(n,parent);for(const x of Object.values(n))for(const v of Array.isArray(x)?x:[x])if(v?.type)walk(v,visit,n)}
 for(const app of ['kupa','orders']){
   const site=path.resolve(`netunim-${app}/site`), files=[], htmlFiles=[];
   const vendorRoot=path.join(site,'assets','vendor');
@@ -13,7 +13,11 @@ for(const app of ['kupa','orders']){
     const ast=acorn.parse(code,{ecmaVersion:'latest',sourceType:'module'}),edges=[];
     assert.ok(!code.includes('__testBindings'),relative+': test API leaked into deployable source');
     assert.ok(!relative.startsWith('assets/')||Buffer.byteLength(code.replace(/\r\n/g,'\n'))<60000,relative+': oversized responsibility module');
-    walk(ast,node=>{
+    walk(ast,(node,parent)=>{
+      if(node.type==='FunctionDeclaration'&&['createBankBridgeClient','createBrowserBridgePlatform','createBankBridgeIntegration','createFinanceBridgeIntegration'].includes(node.id?.name)){
+        const parameter=node.params[0]?.type==='AssignmentPattern'?node.params[0].left:node.params[0];
+        assert.ok(parameter?.type==='ObjectPattern'&&parameter.properties.length<=5,relative+': Bridge factory exceeds five collaborators');
+      }
       if(node.type==='FunctionDeclaration'&&node.id?.name==='createLifecycle'&&relative==='assets/js/lifecycle.js')
         assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=(app==='kupa'?23:24),relative+': startup collaborators must not grow; introduce a capability port');
       if(node.type==='FunctionDeclaration'&&node.id?.name==='createPollingTask'&&relative==='assets/js/shared/runtime-polling.js')
@@ -47,12 +51,16 @@ for(const app of ['kupa','orders']){
           assert.ok(!/^(domains|sync)\//.test(dependency),relative+': state must use contracts or composition ports: '+dependency);
         if(relative.startsWith('assets/js/domains/'))
           assert.ok(!dependency.startsWith('ui/'),relative+': domains must use shared presentation primitives or UI ports: '+dependency);
+        if(relative.startsWith('assets/js/domains/'))
+          assert.ok(!/^(integrations|platform)\//.test(dependency)&&!['shared/bank-bridge-client.js','shared/browser-bridge-platform.js'].includes(dependency),relative+': domains must receive Bridge/platform implementations through ports: '+dependency);
       }
       if(/assets\/js\/(storage|cloud|sync)\//.test(relative)&&node.type==='Identifier')assert.notEqual(node.name,'document',relative+': DOM belongs behind a UI port');
       if(relative==='assets/js/lifecycle.js'&&node.type==='Identifier')assert.notEqual(node.name,'document',relative+': lifecycle must receive DOM bindings through a port');
       if(relative.startsWith('assets/js/startup/')&&node.type==='Identifier')assert.ok(!['window','document','navigator','localStorage','fetch','indexedDB','setTimeout','setInterval','clearTimeout','clearInterval'].includes(node.name),relative+': startup I/O belongs behind a port');
       if(/\/(model|readout)\.js$/.test(relative)&&node.type==='Identifier')assert.ok(!['document','window','localStorage','fetch','indexedDB'].includes(node.name),relative+': calculation module has side effects');
       if(relative.endsWith('/shared/cloud-checkpoint-publication.js')&&node.type==='Identifier')assert.ok(!['document','window','navigator','localStorage','fetch','indexedDB','setTimeout','setInterval'].includes(node.name),relative+': cloud publication must use explicit ports');
+      if(relative.endsWith('/shared/bank-bridge-client.js')&&node.type==='Identifier'&&!(parent?.type==='MemberExpression'&&parent.property===node&&!parent.computed))
+        assert.ok(!['globalThis','window','document','navigator','localStorage','fetch','AbortController','setTimeout','clearTimeout','setInterval','clearInterval'].includes(node.name),relative+': canonical Bridge client must use injected I/O ports');
     });
     graph.set(file,edges);
   }

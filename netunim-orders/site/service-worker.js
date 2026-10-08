@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-4ef584d19dcf';
+const CACHE='orders-app-shell-esm-820d1f977c63';
 const SHELL=[
   './',
   './index.html',
@@ -81,7 +81,6 @@ const SHELL=[
   './assets/js/domains/finance/bank-reconciliation-view.js',
   './assets/js/domains/finance/bank-transaction-detail-view.js',
   './assets/js/domains/finance/bank-view-helpers.js',
-  './assets/js/domains/finance/bridge.js',
   './assets/js/domains/finance/controller.js',
   './assets/js/domains/finance/credit-connection-view.js',
   './assets/js/domains/finance/credit-detail-view.js',
@@ -119,13 +118,16 @@ const SHELL=[
   './assets/js/domains/warehouse/editor.js',
   './assets/js/domains/warehouse/model.js',
   './assets/js/domains/warehouse/view.js',
+  './assets/js/integrations/bank-bridge.js',
   './assets/js/lifecycle.js',
   './assets/js/main.js',
   './assets/js/runtime-events.js',
   './assets/js/shared/action-registry.js',
+  './assets/js/shared/bank-bridge-client.js',
   './assets/js/shared/bank-cheque-images.js',
   './assets/js/shared/bank-recurring-debits.js',
   './assets/js/shared/bank-transaction-order.js',
+  './assets/js/shared/browser-bridge-platform.js',
   './assets/js/shared/calendar.js',
   './assets/js/shared/cashflow-breakdown.js',
   './assets/js/shared/cashflow-notification.js',
@@ -152,6 +154,7 @@ const SHELL=[
   './assets/js/shared/finance-connection-import.js',
   './assets/js/shared/finance-derivations.js',
   './assets/js/shared/finance-fence.js',
+  './assets/js/shared/finance-refresh-policy.js',
   './assets/js/shared/global-document-search.css',
   './assets/js/shared/global-document-search.js',
   './assets/js/shared/html.js',

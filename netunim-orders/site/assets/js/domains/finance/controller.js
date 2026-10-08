@@ -9,7 +9,7 @@ import {kupaWholeMoney} from '../../core/money.js';
 import {normalizeSharedBankEvents} from '../checks/model.js';
 import {normalizeBankFeed} from './bank-feed.js';
 import {CREDIT_CONNECTOR_CONTRACT_VERSION,creditCardMappingKey,creditSyncScrapeSelection,mergeCreditSyncResult,normalizeCreditSync} from './credit-feed.js';
-import {BANK_AUTO_INTERVAL_MS,CREDIT_AUTO_INTERVAL_MS,bankRefreshDue,creditRefreshDue} from './bridge.js';
+import {BANK_AUTO_INTERVAL_MS,CREDIT_AUTO_INTERVAL_MS,bankAutoRefreshDue as bankRefreshDue,creditRefreshDue} from '../../shared/finance-refresh-policy.js';
 import {normalizeCashflowSettings} from '../../shared/cashflow.js';
 import {CLOUD_WRITE_POLICY,contentionDelay,createOperationId,normalizeCloudError,operationAuditMetadata,runBusyCloudWriteWithPolicy} from '../../shared/cloud-sync.js';
 

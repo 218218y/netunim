@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {bankAutoRefreshDue,BANK_AUTO_INTERVAL_MS} from '../netunim-kupa/site/assets/js/domains/bank/bridge.js';
+import {bankAutoRefreshDue,BANK_AUTO_INTERVAL_MS} from '../netunim-kupa/site/assets/js/shared/finance-refresh-policy.js';
 import {bankDiagnosticExportPayload,createBankDiagnosticRun,finishBankDiagnosticRun,recordBankAccountDiagnostic,recordBankTransactionDiagnostic,sanitizeBankDiagnosticValue} from '../netunim-kupa/bank-bridge/bank-diagnostics.mjs';
 import {createDomainsBankController} from '../netunim-kupa/site/assets/js/domains/bank/controller.js';
 import {normalizeBankFeed,BANK_FEED_TRANSACTION_LIMIT} from '../netunim-kupa/site/assets/js/domains/bank/feed.js';

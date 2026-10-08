@@ -1,6 +1,6 @@
 import {createFinanceConnectionImporter} from '../shared/finance-connection-import.js';
 import {createBankChequeImageStorage} from '../shared/bank-cheque-images.js';
-import {createDomainsBankBridge} from '../domains/bank/bridge.js';
+import {createBankBridgeIntegration} from '../integrations/bank-bridge.js';
 import {createDomainsBankController} from '../domains/bank/controller.js';
 import {createDomainsBankView} from '../domains/bank/view.js';
 import {createDomainsCreditController} from '../domains/credit/controller.js';
@@ -12,7 +12,7 @@ export function composeKupaFinance({
   uiDateEditor,financeDerivations,domainsBankSelectors,domainRevisions,
   getUiModal,
 }){
-  const bridge=createDomainsBankBridge();
+  const bridge=createBankBridgeIntegration();
   const chequeImages=createBankChequeImageStorage({
     supaFetch:(...args)=>cloudAuth.supaRest(...args),
     ensureSession:(...args)=>cloudAuth.supaEnsureSession(...args),

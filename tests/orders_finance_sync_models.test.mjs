@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {mock} from 'node:test';
-import {createDomainsFinanceBridge,bankRefreshDue,creditRefreshDue,BANK_AUTO_INTERVAL_MS,CREDIT_AUTO_INTERVAL_MS} from '../netunim-orders/site/assets/js/domains/finance/bridge.js';
+import {createFinanceBridgeIntegration} from '../netunim-orders/site/assets/js/integrations/bank-bridge.js';
+import {bankAutoRefreshDue as bankRefreshDue,creditRefreshDue,BANK_AUTO_INTERVAL_MS,CREDIT_AUTO_INTERVAL_MS} from '../shared/finance-refresh-policy.js';
 import {normalizeBankFeed} from '../netunim-orders/site/assets/js/domains/finance/bank-feed.js';
 import {creditFrameStatus,creditUpcomingCharge,creditSyncScrapeSelection,mergeCreditSyncResult,normalizeCreditSync} from '../netunim-orders/site/assets/js/domains/finance/credit-feed.js';
 import {createDomainsFinanceController} from '../netunim-orders/site/assets/js/domains/finance/controller.js';
@@ -175,7 +176,7 @@ const septemberDetails=creditDetailMonths(detailSortState,{asOf:'2026-09-01'}).f
 assert.deepEqual(septemberDetails.items.map(row=>row.description),['עסקה חדשה','עסקה ישנה'],'Orders transaction/payment detail is sorted by purchase date newest-first, independent of card or billing-date order');
 
 const ordersStorage=new Map();globalThis.localStorage={getItem:key=>ordersStorage.has(key)?ordersStorage.get(key):'',setItem:(key,value)=>ordersStorage.set(key,String(value)),removeItem:key=>ordersStorage.delete(key)};
-const ordersBridgePreference=createDomainsFinanceBridge();assert.equal(ordersBridgePreference.creditAutoMode(),'smart');ordersBridgePreference.setCreditAutoMode('forecast');assert.equal(ordersBridgePreference.creditAutoMode(),'forecast','Orders stores an explicit automatic forecast policy');ordersBridgePreference.setCreditAutoMode('full');assert.equal(ordersBridgePreference.creditAutoMode(),'recovery','Orders migrates the legacy full automatic preference to the recovery policy');
+const ordersBridgePreference=createFinanceBridgeIntegration();assert.equal(ordersBridgePreference.creditAutoMode(),'smart');ordersBridgePreference.setCreditAutoMode('forecast');assert.equal(ordersBridgePreference.creditAutoMode(),'forecast','Orders stores an explicit automatic forecast policy');ordersBridgePreference.setCreditAutoMode('full');assert.equal(ordersBridgePreference.creditAutoMode(),'recovery','Orders migrates the legacy full automatic preference to the recovery policy');
 
 Object.defineProperty(globalThis,'navigator',{value:{onLine:true},configurable:true});
 const testDateEditorMarkup=()=>'<input type="date">';

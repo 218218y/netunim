@@ -34,7 +34,7 @@ import {
 import {creditSyncHeadlineState} from '../netunim-kupa/site/assets/js/domains/credit/view.js';
 import {parseVisaCalMonthData} from '../netunim-kupa/bank-bridge/credit-adapters.mjs';
 import {allInstallmentsData,businessInstallmentsData,homeInstallmentsData,creditForecastInstallmentsData,nextCreditCycleData,nextBusinessCreditCycleData,nextHomeCreditCycleData,creditMonthlyDetailData,CREDIT_DETAIL_HISTORY_MONTHS} from '../netunim-kupa/site/assets/js/domains/credit/model.js';
-import {createDomainsBankBridge} from '../netunim-kupa/site/assets/js/domains/bank/bridge.js';
+import {createBankBridgeIntegration} from '../netunim-kupa/site/assets/js/integrations/bank-bridge.js';
 import {bankLongTermPositionData,bankNextCycleCommitmentsData,bankHomeNextCycleCommitmentsData,bankProjectedThisMonthData,bankHomeProjectedThisMonthData} from '../netunim-kupa/site/assets/js/domains/bank/model.js';
 import {createDomainsCreditController} from '../netunim-kupa/site/assets/js/domains/credit/controller.js';
 import {createStateNormalization} from '../netunim-kupa/site/assets/js/composition/state-normalization.js';
@@ -562,7 +562,7 @@ assert.equal(normalizedAgain.credits[0].id,'new-manual','manual additions create
 const v3ManualPreserved=stateNormalization.normalizeState({version:4,creditSync:{version:3,profiles:[],cardMappings:{}},credits:[{id:'v3-manual',active:true,firstChargeDate:'2026-09-10',totalAmount:42,installments:1,card:'חדש',account:'עסקי'}]});
 assert.equal(v3ManualPreserved.credits[0].id,'v3-manual','the v4 monthly-LKG upgrade never repeats the destructive v2-to-v3 migration');
 
-const bridgeApi=createDomainsBankBridge();
+const bridgeApi=createBankBridgeIntegration();
 for(const method of ['creditStatus','saveCreditProfile','deleteCreditProfile','resetCreditProfiles','creditDiagnostics','syncCreditCards']){
   assert.equal(typeof bridgeApi[method],'function',`browser bridge exposes ${method} as a callable local API method`);
 }

@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='kupa-app-shell-';
-const CACHE='kupa-app-shell-esm-ed1ad06c1eca';
+const CACHE='kupa-app-shell-esm-4098a2279c7c';
 const SHELL=[
   './',
   './index.html',
@@ -25,7 +25,6 @@ const SHELL=[
   './assets/js/core/search.js',
   './assets/js/core/values.js',
   './assets/js/domains/bank/alerts.js',
-  './assets/js/domains/bank/bridge.js',
   './assets/js/domains/bank/controller.js',
   './assets/js/domains/bank/feed.js',
   './assets/js/domains/bank/model.js',
@@ -68,12 +67,15 @@ const SHELL=[
   './assets/js/domains/notes/controller.js',
   './assets/js/domains/records/commands.js',
   './assets/js/domains/search/model.js',
+  './assets/js/integrations/bank-bridge.js',
   './assets/js/lifecycle.js',
   './assets/js/main.js',
   './assets/js/shared/action-registry.js',
+  './assets/js/shared/bank-bridge-client.js',
   './assets/js/shared/bank-cheque-images.js',
   './assets/js/shared/bank-recurring-debits.js',
   './assets/js/shared/bank-transaction-order.js',
+  './assets/js/shared/browser-bridge-platform.js',
   './assets/js/shared/calendar.js',
   './assets/js/shared/cashflow-breakdown.js',
   './assets/js/shared/cashflow-notification.js',
@@ -100,6 +102,7 @@ const SHELL=[
   './assets/js/shared/finance-connection-import.js',
   './assets/js/shared/finance-derivations.js',
   './assets/js/shared/finance-fence.js',
+  './assets/js/shared/finance-refresh-policy.js',
   './assets/js/shared/global-document-search.css',
   './assets/js/shared/global-document-search.js',
   './assets/js/shared/html.js',
