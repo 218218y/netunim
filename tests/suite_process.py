@@ -1,7 +1,8 @@
 """Own one suite's process tree and temporary files, including on cancellation.
 
 Windows uses a Job Object assigned before the child can start test code. POSIX
-uses a new process group. Neither cleanup path enumerates unrelated processes.
+uses a new process group and observes its live members before releasing resources.
+Only the owned job/group is terminated; unrelated processes are never signalled.
 """
 from __future__ import annotations
 
@@ -168,6 +169,61 @@ runpy.run_path(path, run_name='__main__')
 """
 
 
+def live_posix_group(pgid: int, *, proc_root: Path | None = None):
+    """Observe live members without relying on the already-exited parent.
+
+    Zombies have finished releasing files/sockets but can remain until their new
+    parent reaps them. Waiting for killpg(pgid, 0) alone would wait on those too.
+    Linux procfs avoids launching a process on every observation. Other POSIX
+    hosts use only pid/group/state columns from ps, never command lines.
+    """
+    if proc_root is None and sys.platform == "linux":
+        proc_root = Path("/proc")
+    if proc_root is not None:
+        live = []
+        for entry in proc_root.iterdir():
+            if not entry.name.isdecimal():
+                continue
+            try:
+                record = (entry / "stat").read_text()
+            except (FileNotFoundError, ProcessLookupError):
+                continue  # A process exited during observation.
+            # comm may itself contain spaces and parentheses. The fields after
+            # its final closing parenthesis start with state, ppid, pgrp.
+            fields = record.rsplit(") ", 1)[1].split()
+            if int(fields[2]) == pgid and fields[0] not in ("Z", "X"):
+                live.append(int(entry.name))
+        return live
+    result = subprocess.run(["ps", "-axo", "pid=,pgid=,stat="],
+                            check=True, capture_output=True, text=True, timeout=1)
+    live = []
+    for row in result.stdout.splitlines():
+        pid, group, state = row.split()
+        if int(group) == pgid and state[0] not in ("Z", "X"):
+            live.append(int(pid))
+    return live
+
+
+def terminate_posix_group(pgid: int, *, timeout: float = 10):
+    if pgid <= 1:
+        raise ValueError("suite process group must be an owned child group")
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            os.killpg(pgid, signal.SIGKILL)
+        except ProcessLookupError:
+            return
+        live = live_posix_group(pgid)
+        if not live:
+            return
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError(f"POSIX suite process group {pgid} did not terminate: {live}")
+        # A bounded condition wait, not a grace delay that assumes cleanup.
+        # Signal again in case a member forked while the first signal arrived.
+        time.sleep(min(.01, remaining))
+
+
 class SuiteProcess:
     def __init__(self, path: Path, log_path: Path, *, cwd: Path):
         self.closed = False
@@ -207,10 +263,7 @@ class SuiteProcess:
             if self.job:
                 self.job.close()
             elif self.proc and os.name != "nt":
-                try:
-                    os.killpg(self.proc.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
+                terminate_posix_group(self.proc.pid)
         finally:
             try:
                 if self.proc:

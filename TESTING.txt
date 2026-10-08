@@ -173,7 +173,14 @@ start/end offset; summed suite seconds can exceed elapsed time during parallel e
 On failure, already running suites finish and queued suites remain explicitly not-run. --keep-going runs
 the rest and still returns failure. Ctrl+C and suite timeouts stop owned processes and retain failure reports.
 Windows Job Objects contain the suite's descendants (including Chromium's nested jobs) and wait for their
-termination; POSIX uses separate process groups. Each suite has its own temporary directory, browser profiles,
+termination; POSIX uses separate process groups and confirms that no live group members remain after SIGKILL.
+Reaping only the suite parent is insufficient when it exited before its descendants. The POSIX wait is bounded
+to 10 seconds, ignores zombies that have released their resources, and fails the gate on timeout/observation
+failure. Cleanup is not reported complete and scratch remains for diagnostics on failure. Linux uses procfs;
+other POSIX hosts use only pid/group/state columns from ps. No unrelated group is signalled. runner_contracts.py
+checks 200 real Linux process trees with an immediate socket probe and no grace sleep, plus timeout,
+cancellation, sibling isolation and fail-closed cleanup. See docs/VERIFICATION_PROCESS_OWNERSHIP.md.
+Each suite has its own temporary directory, browser profiles,
 loopback ports, and disposable database. Running suites never share a test database or browser profile.
 On Windows, the browser harness keeps a dedicated host-state seed under `.work/browser-host-state/`, keyed to the
 current user, machine and selected Chrome/Edge executable. Its first boot uses a dedicated test profile. Chromium
