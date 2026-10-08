@@ -141,6 +141,17 @@ remain separate from structural refactors.
   Orders now uses the activated owner to choose Main recovery, fixing a stale
   local-owner decision when a local-to-account transfer resumes during boot.
 
+- Network/foreground wakeups in both apps now have dedicated connectivity
+  runtimes with at most eight collaborators, including the injected browser and
+  timers. A canonical resource owner registers their listeners, coalesces tasks
+  by identity while queued or running, reports failures without automatic retry,
+  and disposes only owned resources. Delayed calls recheck leadership, protocol,
+  auth and domain gates as applicable. Offline/hidden events cancel pending
+  wakeups; in-flight capability operations finish normally. Finance wakeups are
+  coalesced on the next timer turn; provider auto-sync loops retain their existing
+  policies and owners. Other shell listeners and capability pollers remain a
+  separate lifecycle slice.
+
 ## Dependency direction
 
 Pure core and protocol contracts may be imported by domain and application

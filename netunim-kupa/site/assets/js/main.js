@@ -1,3 +1,4 @@
+import {createKupaConnectivityRuntime} from './connectivity.js';
 import {createKupaStorageV2Coordinator} from './composition/storage-v2.js';
 import {installLocalSiteResetPeerListener} from './shared/local-site-reset.js';
 import {assertKupaEntityInvariants} from './state/validation.js';
@@ -570,9 +571,8 @@ const uiActions=composeActionRegistry([
 ]);
 
 
-window.addEventListener('online',()=>{if(!tab.primaryTab||session.storageProtocolBlocked)return;if(session.connectionMode==='supabase')setTimeout(()=>void syncDocument.resumeAfterReconnect(),250);domainsBankController.maybeAutoRefreshBankBalance();domainsCreditController.maybeAutoRefreshCreditSync()});
-window.addEventListener('offline',()=>{if(!tab.primaryTab||session.storageProtocolBlocked)return;if(session.connectionMode==='supabase'){uiStatus.setSaveStatus('אופליין — שינויים יישמרו מקומית','saving');uiStatus.setCloudHeaderStatus('offline','ענן: אופליין')}});
-document.addEventListener('visibilitychange',()=>{if(document.hidden||!tab.primaryTab||session.storageProtocolBlocked)return;if(session.connectionMode==='supabase')setTimeout(syncDocument.cloudPoll,100);domainsBankController.maybeAutoRefreshBankBalance();domainsCreditController.maybeAutoRefreshCreditSync()});
+const connectivity=createKupaConnectivityRuntime({tab,session,syncDocument,bank:domainsBankController,credit:domainsCreditController,status:uiStatus});
+connectivity.start();
 uiSidebar.bind();
 document.getElementById('backupTop').addEventListener('click',()=>{if(uiStatus.canRunInteractiveAction('manual-backup'))uiBackup.manualBackup()});
 bindBackdropDismissal(document.getElementById('modalBackdrop'),()=>uiModal.closeModal());
