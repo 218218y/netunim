@@ -620,3 +620,58 @@ with BrowserSession(ROOT/'netunim-kupa/site', 'clean-conflict-review') as browse
     })()""",timeout=40)
     assert not browser.drain_serious_errors()
     print(f'PASS real IndexedDB clean-conflict review: {len(result)} assertions for cursor preservation, Finance isolation, races, leadership fencing and transaction abort')
+
+# A remote GET is not an ACK. It may replace only the clean head it observed,
+# and cannot delete a control or checkpoint installed while adoption was queued.
+with BrowserSession(ROOT/'netunim-kupa/site', 'cloud-adoption-recovery') as browser:
+    result=browser.evaluate(r"""(async()=>{
+      const {createStorageJournal}=await import('./assets/js/shared/storage-journal.js');
+      const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
+      const {readStorageRecord}=await import('./assets/js/shared/storage-journal-model.js');
+      const done=[],check=(condition,label)=>{if(!condition)throw Error(label);done.push(label)};
+      const initial={notes:[{id:'N',content:'local'}],financeRevision:2},remote={notes:[{id:'N',content:'remote'},{id:'R',content:'other computer'}],financeRevision:2};
+      const db=createStorageJournalDb(),schema={collections:['notes'],fields:['financeRevision']},validate=state=>{if(!Array.isArray(state.notes))throw Error('notes required')};
+      let serial=0;
+      async function make(){
+        const owner='adoption-'+(++serial),journal=createStorageJournal({owner,schema,db,validate});
+        await journal.initializeCloudHead(10,initial);return {owner,journal};
+      }
+      const adopt=db.adoptCloudHead;
+      for(const race of ['edit','control','checkpoint','base','leadership']){
+        const f=await make();
+        db.adoptCloudHead=async(...args)=>{
+          if(race==='edit')await f.journal.append([{type:'put',collection:'notes',id:'N',mode:'replace',record:{id:'N',content:'later edit'}}]).committed;
+          if(race==='control')await f.journal.setCloudControl({conflict:{kind:'entity-conflict'}});
+          if(race==='checkpoint')await f.journal.replaceCurrentState({...initial,financeRevision:3});
+          if(race==='base')await f.journal.setCloudBase(12,initial,{ackSeq:0});
+          if(race==='leadership')await db.claim(f.owner,f.journal.epoch,'new-writer');
+          return adopt(...args);
+        };
+        let error=null;try{await f.journal.adoptCloudHead(11,remote,remote,{expectedHead:{seq:0,baseRevision:10}})}catch(cause){error=cause}finally{db.adoptCloudHead=adopt}
+        check(error?.message===(race==='leadership'?'storage_writer_fenced':'storage_cloud_adoption_stale'),race+' race is fenced in the real transaction');
+        const stored=await db.load(f.owner),state=readStorageRecord(stored.checkpoints).state;
+        check(state.notes[0].content==='local',race+' race cannot publish a stale remote checkpoint');
+        if(race==='edit')check(stored.metadata.seq===1&&readStorageRecord(stored.journal[0]).changes[0].record.content==='later edit','new local edit remains pending with its original identity');
+        if(race==='control')check(readStorageRecord(stored.controls).conflict.kind==='entity-conflict','conflict evidence survives adoption');
+        if(race==='checkpoint')check(state.financeRevision===3,'independent Finance checkpoint survives adoption');
+        if(race==='base')check(readStorageRecord(stored.bases).revision===12,'newer cloud base survives adoption');
+      }
+      const f=await make(),before=await db.load(f.owner),put=IDBObjectStore.prototype.put;
+      IDBObjectStore.prototype.put=function(...args){const result=put.apply(this,args);if(this.name==='bases'){this.transaction.abort();throw new DOMException('injected adoption abort','AbortError')}return result};
+      let aborted=false;try{await f.journal.adoptCloudHead(11,remote,remote)}catch(error){aborted=error.name==='AbortError'}finally{IDBObjectStore.prototype.put=put}
+      check(aborted,'adoption abort is reported');
+      check(JSON.stringify(await db.load(f.owner))===JSON.stringify(before),'abort changes no checkpoint, cursor, journal or control');
+      let restarted=createStorageJournal({owner:f.owner,schema,db,validate});
+      check((await restarted.open()).state.notes[0].content==='local','fresh runtime recovers the original local state after abort');
+      await restarted.adoptCloudHead(11,remote,remote,{expectedHead:{seq:0,baseRevision:10}});
+      restarted=createStorageJournal({owner:f.owner,schema,db,validate});
+      const recovered=await restarted.open(),cloud=await restarted.cloudState();
+      check(JSON.stringify(recovered.state)===JSON.stringify(remote),'retry and fresh recovery preserve both computers and all record IDs');
+      check(cloud.base.revision===11&&cloud.base.ackSeq===0&&!cloud.pending&&!cloud.flight&&!cloud.control,'retry advances only the clean cloud head');
+      await restarted.setCloudControl({conflict:{kind:'concurrent-hydration'}});
+      let blocked=false;try{await restarted.adoptCloudHead(12,remote,remote)}catch(error){blocked=error.message==='storage_cloud_pending'}
+      check(blocked&&(await restarted.cloudState()).control.conflict.kind==='concurrent-hydration','restart cannot retire a publication fence via another GET');
+      return done;
+    })()""",timeout=40)
+    assert not browser.drain_serious_errors()
+    print(f'PASS real IndexedDB cloud adoption: {len(result)} assertions for identity, concurrent edits, controls, checkpoint/base races, leader fencing, abort, retry and restart')

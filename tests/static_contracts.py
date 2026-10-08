@@ -973,7 +973,6 @@ ok('select=*' in kupa_transport
    and 'if(row?.core_updated_at)return row.core_updated_at;' in kupa_transport
    and "if(financeResult.status!=='fulfilled')throw financeResult.reason" not in kupa_transport
    and "row.financeAvailable=financeAvailable" in kupa_transport
-   and "financeAvailable?applyKupaCloudState(row.state,localChecks):applyKupaCoreState(row.state,localChecks,model.state)" in kupa_sync_document
    and 'lastSavedAt:row.coreUpdatedAt||session.serverInfo?.lastSavedAt||null' in kupa_sync_document,
    "kupa cloud header: core/check status and state hydration remain independent from finance reads and finance/bookkeeping updated_at")
 

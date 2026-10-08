@@ -222,10 +222,14 @@ export function createStorageJournal({owner,schema,validate,primary=()=>true,db=
     await db.replaceLocalCheckpoint(owner,epoch,writer,checkpoint,expectedSeq);
     return {epoch,seq:expectedSeq};
   }
-  async function adoptCloudHead(revision,cloudState,currentState,{validateBase=validate,appMetadata={}}={}){
-    guard();if(!Number.isSafeInteger(revision)||revision<0)throw new Error('storage_base_revision');validateBase(cloudState);validate(currentState);await queue;const recovered=await recover(),base=recovered.stored.bases&&readStorageRecord(recovered.stored.bases);if(!base||recovered.stored.flights||base.ackSeq!==recovered.seq)throw new Error('storage_cloud_pending');
-    const checkpoint=sealStorageRecord({version:2,owner,epoch,seq:recovered.seq,state:structuredClone(currentState),appMetadata:{...(recovered.appMetadata||{}),...structuredClone(appMetadata)},savedAt:now()},{kind:'checkpoint'}),nextBase=sealStorageRecord({version:2,owner,epoch,revision,state:structuredClone(cloudState),projection:'cloud',ackSeq:recovered.seq},{kind:'cloud-base'});
-    await db.adoptCloudHead(owner,epoch,writer,checkpoint,nextBase);return {seq:recovered.seq,revision};
+  async function adoptCloudHead(revision,cloudState,currentState,{validateBase=validate,appMetadata={},expectedHead=null}={}){
+    guard();if(!Number.isSafeInteger(revision)||revision<0)throw new Error('storage_base_revision');validateBase(cloudState);validate(currentState);
+    const durableCloud=structuredClone(cloudState),durableCurrent=structuredClone(currentState),durableMetadata=structuredClone(appMetadata),observed=expectedHead&&structuredClone(expectedHead);
+    await queue;const recovered=await recover(),stored=recovered.stored,base=stored.bases&&readStorageRecord(stored.bases);
+    if(!base||stored.flights||base.ackSeq!==recovered.seq||stored.controls&&readStorageRecord(stored.controls).conflict)throw new Error('storage_cloud_pending');
+    if(observed&&(observed.seq!==recovered.seq||observed.baseRevision!==base.revision))throw new Error('storage_cloud_adoption_stale');
+    const checkpoint=sealStorageRecord({version:2,owner,epoch,seq:recovered.seq,state:durableCurrent,appMetadata:{...(recovered.appMetadata||{}),...durableMetadata},savedAt:now()},{kind:'checkpoint'}),nextBase=sealStorageRecord({version:2,owner,epoch,revision,state:durableCloud,projection:'cloud',ackSeq:recovered.seq},{kind:'cloud-base'});
+    guard();await db.adoptCloudHead(owner,epoch,writer,checkpoint,nextBase,{expectedHead:{seq:recovered.seq,checkpointChecksum:stored.checkpoints.checksum,baseChecksum:stored.bases.checksum,controlChecksum:stored.controls?.checksum??null}});return {seq:recovered.seq,revision};
   }
   async function replaceAuthoritativeState(currentState,{appMetadata={},expectedLocalHead=null}={}){
     guard();validate(currentState);const durableState=structuredClone(currentState),durableMetadata=structuredClone(appMetadata),nextEpoch=operationId();

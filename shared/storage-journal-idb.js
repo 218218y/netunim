@@ -127,10 +127,11 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
     if(expectedHead&&(current.metadata.seq!==expectedHead.seq||current.flights||current.checkpoints?.checksum!==expectedHead.checkpointChecksum||current.bases?.checksum!==expectedHead.baseChecksum||current.controls?.checksum!==expectedHead.controlChecksum))throw new Error('storage_control_head_changed');
     tx.objectStore('controls').delete(owner);done(true);
   })}
-  function adoptCloudHead(owner,epoch,writer,checkpoint,base){return change(owner,(tx,current,done)=>{
+  function adoptCloudHead(owner,epoch,writer,checkpoint,base,{expectedHead=null}={}){return change(owner,(tx,current,done)=>{
     assertFence(current,epoch,writer);if(current.flights)throw new Error('storage_flight_pending');
+    if(expectedHead&&(current.metadata.seq!==expectedHead.seq||current.checkpoints?.checksum!==expectedHead.checkpointChecksum||current.bases?.checksum!==expectedHead.baseChecksum||(current.controls?.checksum??null)!==expectedHead.controlChecksum))throw new Error('storage_cloud_adoption_stale');
     const nextCheckpoint=readStorageRecord(checkpoint),nextBase=readStorageRecord(base),prior=current.bases&&readStorageRecord(current.bases);
-    if(!prior||prior.ackSeq!==current.metadata.seq)throw new Error('storage_cloud_pending');
+    if(!prior||prior.ackSeq!==current.metadata.seq||current.controls&&readStorageRecord(current.controls).conflict)throw new Error('storage_cloud_pending');
     if(nextCheckpoint.owner!==owner||nextCheckpoint.epoch!==epoch||nextCheckpoint.seq!==current.metadata.seq)throw new Error('storage_checkpoint_stale');
     if(nextBase.owner!==owner||nextBase.epoch!==epoch||nextBase.ackSeq!==current.metadata.seq||!Number.isSafeInteger(nextBase.revision)||nextBase.revision<prior.revision)throw new Error('storage_cloud_base_mismatch');
     tx.objectStore('checkpoints').put(checkpoint,owner);tx.objectStore('bases').put(base,owner);tx.objectStore('controls').delete(owner);done(true);

@@ -39,6 +39,21 @@ function fixture(site='orders',options={}){
 }
 
 for(const site of ['orders','kupa']){
+  test(`${site}: an edit racing a clean Shared adoption is reconciled without losing either computer`,async()=>{
+    const f=fixture(site),runtime=await f.start();
+    f.head={revision:8,state:state([{id:'C',amount:100},{id:'D',amount:500}])};
+    const db=f.databases.get('A'),adopt=db.adoptCloudHead;let injected=false;
+    db.adoptCloudHead=async(...args)=>{
+      if(!injected){injected=true;await f.edit(runtime,'C',{amount:150}).committed}
+      return adopt(...args);
+    };
+    assert.equal(await runtime.sync(),true);
+    assert.equal(f.visible.checks.find(row=>row.id==='C').amount,150);
+    assert.equal(f.visible.checks.find(row=>row.id==='D').amount,500);
+    const cloud=await runtime.cloudState();assert.equal(cloud.pending,false);assert.equal(cloud.control,null);
+    assert.deepEqual(f.head.state.checks,f.visible.checks);assert.equal(f.calls.length,2);
+  });
+
   test(`${site}: account cutover routes Shared polling to V2 before recovery`,()=>{
     const prior=Object.getOwnPropertyDescriptor(globalThis,'localStorage');
     Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:key=>key===`netunim-storage-cutover-version:${site}:A`?'2':null}});

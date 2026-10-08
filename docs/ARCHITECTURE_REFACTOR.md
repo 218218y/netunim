@@ -305,6 +305,10 @@ full branch deployment gate; full Windows verification remains a separate gate.
    revision invariants end to end; extend fault injection only where coverage is
    missing. Preserve valid no-op acknowledgements and pending data. Do not change
    serialization, SQL or compatibility as part of composition cleanup.
+   Non-destructive Main hydration now commits before publication and fences the
+   observed journal head, leadership and authorization. See the
+   [hydration contract](STORAGE_CLOUD_HYDRATION_CONTRACT.md) for failure outcomes
+   and independent Main/Shared/Finance ownership.
 4. **I/O ports and static contracts:** move browser/network adapters behind small
    integration ports and add incremental checkJs to critical persisted/runtime
    boundaries. Preserve credential rules, CSP, cancellation and error semantics.
