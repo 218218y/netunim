@@ -36,14 +36,18 @@ FLOW = r"""(async()=>{
    if(CASE==='owner')session.supaSession={user:{id:'fixture-owner-B'}};
    if(CASE==='secondary')tab.primaryTab=false;
    if(CASE==='logout')assert(uiCloud.logoutSupabase()===true,'actual UI logout must stop automation');
-   held[0].resolve(reply());await one;
+   // Simulate the pending status response failing as connectivity disappears.
+   // A successful status is cached; reconnect correctly reuses that cache.
+   held[0].resolve(CASE==='offline'?new Response(JSON.stringify({error:'fixture offline'}),{status:503}):reply());await one;
    assert(providerCalls===0,'lost access must stop before provider entry');
    assert(domainsCreditController.creditSyncUiState().autoTimer===null,'lost access must retain no credit timer');
    assert(JSON.stringify(state)===before,'cancelled preparation must preserve state');
    const headAfter=await mainStorageV2.cloudState();assert(headAfter.seq===headBefore.seq,'cancelled preparation must append no journal record');
    if(CASE==='offline'){
      online=true;window.dispatchEvent(new Event('online'));await waitFor(()=>statusCalls===2);
-     financeAutomation.stop();held[1].resolve(reply());await waitFor(()=>domainsCreditController.creditSyncUiState().autoTimer===null);
+     const resumed=domainsCreditController.maybeAutoRefreshCreditSync();
+     financeAutomation.stop();held[1].resolve(reply());await resumed;
+     assert(domainsCreditController.creditSyncUiState().autoTimer===null,'reconnect stop must clear the timer');
      assert(providerCalls===0,'reconnect must respect a later stop');
    }
    return {singleStatus:true,noProvider:true,noTimer:true,stateRetained:true,journalRetained:true,reconnect:CASE!=='offline'||statusCalls===2};
