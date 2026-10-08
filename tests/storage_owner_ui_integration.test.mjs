@@ -26,7 +26,7 @@ function ordersHarness({remote={state:{rows:['remote']},revision:4,updated_at:'t
     prepareAuthenticatedStorageOwner:async intent=>{events.push(`reserve:${intent}`);reservation??={targetOwner:'B',intent};return reservation},storageOwnerCurrent:()=>owner,storageOwnerAdoption:()=>reservation,
     adoptAuthenticatedStorageOwner:async intent=>{events.push(`adopt:${intent}`);owner='B';reservation=null;return true},
     startStorageV2OwnerTransfer:async({targetOwner,intent})=>{events.push(`transfer:${intent}`);assert.equal(targetOwner,'B');if(sharedFails)throw new Error('shared-failed');owner='B';return {mainRevision:5,sharedRevision:6}},
-    storageV2CloudOutboxActive:()=>owner!=='local',storageV2PrimaryRequested:()=>v2,refreshStorageV2CloudState:async()=>({seq:0,base:{revision:3,state:{rows:['base']},ackSeq:0},pending:false,flight:null,control:null}),adoptStorageV2CloudHead:async()=>{events.push('adopt-v2-head');if(adoptThrows)throw new Error('injected-v2-adoption-failure');return true},
+    storageV2CloudOutboxActive:()=>owner!=='local',storageV2PrimaryRequested:()=>v2,refreshStorageV2CloudState:async()=>({seq:0,base:{revision:3,state:{rows:['base']},ackSeq:0},pending:false,flight:null,control:null}),adoptStorageV2CloudHead:async()=>{events.push('adopt-v2-head');if(adoptThrows)throw new Error('injected-v2-adoption-failure');return {seq:0,revision:remote.revision}},
   });
   return {ui,events,model,session,get owner(){return owner}};
 }

@@ -2,7 +2,7 @@ import {createSharedChecksStorageV2,validateSharedChecksState} from './shared-ch
 import {CLOUD_WRITE_POLICY,cloudWriteError,createOperationId,equalSyncJson,normalizeCloudError,operationAuditMetadata,runBusyCloudWriteWithPolicy,structuredSyncConflict} from './cloud-sync.js';
 
 const canonical=state=>{validateSharedChecksState(state);return structuredClone({checks:state.checks,bankEvents:state.bankEvents})};
-const stale=error=>/^storage_(ack_checkpoint_stale|rebase_checkpoint_stale|checkpoint_stale)$/.test(error?.message||'');
+const stale=error=>/^storage_(ack_checkpoint_stale|rebase_checkpoint_stale|checkpoint_stale|cloud_adoption_stale)$/.test(error?.message||'');
 
 // One owner, one journal and one immutable RPC payload. Application adapters
 // supply their existing check merge/normalization; this module owns durability.

@@ -45,13 +45,6 @@ function applyAcknowledgedCoreState(snapshot){
   if(changed)replaceVisibleState(next);
   return changed;
 }
-async function persistAuthoritativeCloudHead(revision,cloudState=null){
-  const cloud=await refreshStorageV2CloudState();
-  if(!cloud?.base||!storageV2CloudOutboxActive())throw new Error('kupa_v2_account_head_required');
-  if(cloud.pending||cloud.flight||cloud.control)throw new Error('kupa_v2_cloud_pending_during_authoritative_apply');
-  await adoptStorageV2CloudHead(Number(revision),model.state,{cloudState});
-  return true;
-}
 async function applyFinanceOnlyRow(row){
   if(row?.financeAvailable===false)return false;
   const revision=Number(row?.financeRevision);
@@ -97,8 +90,47 @@ async function applyCloudRow(row,{renderNow=true}={}){
   if(!currentV2?.base)throw new Error('kupa_v2_account_head_initialization_required');
   if(!storageV2CloudOutboxActive())throw new Error('kupa_v2_account_head_not_ready');
   assertAccountOwner();
-  const legacyCards=Array.isArray(row?.state?.cards)&&row.state.cards.some(card=>typeof card?.id!=='string'||!card.id.trim()),localChecks=normalizeSharedChecks(model.state.checks),financeAvailable=row?.financeAvailable!==false;
-  replaceVisibleState(financeAvailable?applyKupaCloudState(row.state,localChecks):applyKupaCoreState(row.state,localChecks,model.state));const removed=model.lastNormalizeRemovedCredits,normalizationBase=canonicalCloudSyncBase(row.state,prepareKupaCloudState);session.dbRevision=Number(row.revision||0);if(financeAvailable){session.financeRevision=Number(row.financeRevision||0);session.financeUpdatedAt=row.financeUpdatedAt||session.financeUpdatedAt||null}session.connectionMode='supabase';session.backendReady=true;session.lastSavedSnapshot=JSON.stringify(normalizationBase);session.serverInfo={schemaVersion:6,lastSavedAt:row.coreUpdatedAt||session.serverInfo?.lastSavedAt||null,databaseFile:'Supabase',backups:await listBackups()};await syncSharedChecksFromCloud({quiet:true,required:true});await refreshOrdersFinanceSummary({force:true,renderIfChanged:false});await persistAuthoritativeCloudHead(session.dbRevision,normalizationBase);const v2Normalization=storageV2CloudOutboxActive()&&(removed>0||legacyCards);if(v2Normalization)await queueStorageV2CloudNormalization(model.state,session.dbRevision);await backupSnapshotToComputer(model.state,session.dbRevision);localStorage.setItem(STORAGE_PREF_KEY,'supabase');setConnectedStatus('Supabase מחובר');setSaveStatus('מסונכרן לענן','ok');setCloudHeaderStatus('synced','ענן: מסונכרן');session.cloudAuthNoDocument=false;localStorage.setItem(SUPA_AUTO_KEY,'1');hideConnectScreen();session.cloudConflictPending=false;if(renderNow)render();if(v2Normalization)void requestStorageV2CloudSave().catch(error=>console.error('Kupa cloud normalization sync',error));startCloudPolling();return model.state
+  if(currentV2.pending||currentV2.flight||currentV2.control)throw new Error('kupa_v2_cloud_pending_during_authoritative_apply');
+  const revision=Number(row?.revision),generation=Number(session.localGeneration||0),financeRevision=Number(session.financeRevision||0);
+  if(!Number.isSafeInteger(revision)||revision<1||revision<currentV2.base.revision)throw new Error('kupa_v2_remote_revision_invalid');
+  const legacyCards=Array.isArray(row?.state?.cards)&&row.state.cards.some(card=>typeof card?.id!=='string'||!card.id.trim()),financeAvailable=row?.financeAvailable!==false&&Number(row.financeRevision||0)>=financeRevision;
+  const next=financeAvailable?applyKupaCloudState(row.state,model.state.checks):applyKupaCoreState(row.state,model.state.checks,model.state);
+  const removed=model.lastNormalizeRemovedCredits,normalizationBase=canonicalCloudSyncBase(row.state,prepareKupaCloudState);
+  const publication=await commitCloudCheckpoint({
+    commit:()=>adoptStorageV2CloudHead(revision,next,{cloudState:normalizationBase,expectedHead:{seq:currentV2.seq,baseRevision:currentV2.base.revision}}),
+    isCurrent:committed=>{assertAccountOwner();return committed?.seq===currentV2.seq&&committed?.revision===revision&&!committed.pending&&!committed.control&&tab.primaryTab&&storageV2CloudOutboxActive()&&Number(session.localGeneration||0)===generation},
+    // Shared Checks owns its own journal and can advance while Main commits.
+    publish:()=>{next.checks=normalizeSharedChecks(model.state.checks);replaceVisibleState(Number(session.financeRevision||0)===financeRevision?next:applyKupaCoreState(next,model.state.checks,model.state))},
+  });
+  if(!publication.published){
+    if(tab.primaryTab&&storageV2CloudOutboxActive()){
+      session.cloudConflictPending=true;
+      if(!publication.committed?.control?.conflict)await setStorageV2CloudControl({conflict:{kind:publication.reason==='publication-error'?'cloud-publication-failed':'concurrent-hydration',domain:'kupa',baseRevision:currentV2.base.revision,currentRemoteRevision:revision}});
+      setSaveStatus('הנתונים נשמרו מקומית; נדרשת בדיקת סנכרון','error');setCloudHeaderStatus('conflict','ענן: נדרשת בדיקה');
+    }
+    if(publication.reason==='publication-error')throw publication.error;
+    throw new Error('cloud_hydration_publication_stale');
+  }
+  session.dbRevision=revision;session.lastSavedSnapshot=JSON.stringify(normalizationBase);
+  if(financeAvailable&&Number(session.financeRevision||0)===financeRevision){session.financeRevision=Number(row.financeRevision||0);session.financeUpdatedAt=row.financeUpdatedAt||session.financeUpdatedAt||null}
+  session.connectionMode='supabase';session.backendReady=true;session.cloudConflictPending=false;
+  session.serverInfo={...session.serverInfo,schemaVersion:6,lastSavedAt:row.coreUpdatedAt||session.serverInfo?.lastSavedAt||null,databaseFile:'Supabase'};
+  const v2Normalization=removed>0||legacyCards;
+  if(v2Normalization)await queueStorageV2CloudNormalization(model.state,revision);
+  localStorage.setItem(STORAGE_PREF_KEY,'supabase');localStorage.setItem(SUPA_AUTO_KEY,'1');session.cloudAuthNoDocument=false;hideConnectScreen();
+  if(renderNow)render();
+  // Secondary hydration must not prevent Main's checkpoint from committing.
+  // Its failure remains visible to the caller and is retried by the next poll.
+  startCloudPolling();
+  await syncSharedChecksFromCloud({quiet:true,required:true});
+  await refreshOrdersFinanceSummary({force:true,renderIfChanged:false});
+  try{session.serverInfo.backups=await listBackups();await backupSnapshotToComputer(model.state,revision)}catch(error){console.error('post-hydration local backup',error)}
+  assertAccountOwner();
+  setConnectedStatus('Supabase מחובר');
+  if(Number(session.localGeneration||0)!==generation||v2Normalization){setSaveStatus('שינוי שמור מקומית וממתין לסנכרון','saving');setCloudHeaderStatus('syncing','ענן: מסנכרן…')}
+  else{setSaveStatus('מסונכרן לענן','ok');setCloudHeaderStatus('synced','ענן: מסונכרן')}
+  if(v2Normalization)void requestStorageV2CloudSave().catch(error=>console.error('Kupa cloud normalization sync',error));
+  return model.state;
 }
 
 async function loadSupabaseState({discardLocalV2=false}={}){

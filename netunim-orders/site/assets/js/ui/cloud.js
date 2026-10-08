@@ -1,3 +1,4 @@
+import {commitCloudCheckpoint} from '../shared/cloud-checkpoint-publication.js';
 import {esc} from '../core/values.js';
 import {CLOUD_EMAIL_KEY, $, CLOUD_AUTO_KEY} from '../state/constants.js';
 import {beginLocalSiteResetNavigation} from '../shared/local-site-reset.js';
@@ -5,7 +6,7 @@ import {beginLocalSiteResetNavigation} from '../shared/local-site-reset.js';
 const CLOUD_RECOVERY_DELAYS_MS=[15_000,30_000,60_000,120_000];
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createUiCloud({model, files, tab, session, checksSession, ui, modal, confirmDialog, supaConfigured, toast, closeModal, authPassword, authPasswordForLocalReset, setCloud, showSecondaryTabGuard, prepareCloudState, render, writeStateToFolder, loadSession, readCloud, verifyLocalResetCloud, applyOrderCloudState, composeOrderCloudState=(cloud,current)=>({...structuredClone(cloud),checks:structuredClone(current.checks||[])}), refreshKupaReadout, syncSharedChecksFromCloud, requestCloudSave, startPolling, saveSession, renderSettings, resumeCalendarAfterCloudLogin, startFinanceAutoSync=()=>{}, storageOwnerCurrent=()=>null, storageOwnerAdoption=()=>null, startStorageV2OwnerTransfer=async()=>{throw new Error('storage_transfer_unavailable')}, storageV2CloudOutboxActive=()=>false, storageV2PrimaryRequested=()=>false, refreshStorageV2CloudState=async()=>null, adoptStorageV2CloudHead=async()=>null, storageV2CommitPromise=()=>Promise.resolve()}){
+export function createUiCloud({model, files, tab, session, checksSession, ui, modal, confirmDialog, supaConfigured, toast, closeModal, authPassword, authPasswordForLocalReset, setCloud, showSecondaryTabGuard, prepareCloudState, render, writeStateToFolder, loadSession, readCloud, verifyLocalResetCloud, applyOrderCloudState, composeOrderCloudState=(cloud,current)=>({...structuredClone(cloud),checks:structuredClone(current.checks||[])}), refreshKupaReadout, syncSharedChecksFromCloud, requestCloudSave, startPolling, saveSession, renderSettings, resumeCalendarAfterCloudLogin, startFinanceAutoSync=()=>{}, storageOwnerCurrent=()=>null, storageOwnerAdoption=()=>null, startStorageV2OwnerTransfer=async()=>{throw new Error('storage_transfer_unavailable')}, storageV2CloudOutboxActive=()=>false, storageV2PrimaryRequested=()=>false, refreshStorageV2CloudState=async()=>null, adoptStorageV2CloudHead=async()=>null, setStorageV2CloudControl=async()=>null, storageV2CommitPromise=()=>Promise.resolve()}){
 function clearCloudRecovery(){if(session.cloudRecoveryTimer){clearTimeout(session.cloudRecoveryTimer);session.cloudRecoveryTimer=null}session.cloudRecoveryAttempt=0}
 function scheduleCloudRecovery(){
   if(!tab.primaryTab||!navigator.onLine||localStorage.getItem(CLOUD_AUTO_KEY)!=='1'||!loadSession()||session.cloudRecoveryTimer)return;
@@ -78,7 +79,8 @@ async function openCloud({renderAfter=true,quiet=false,hydrateSecondary=true,man
     if(!v2Head?.base||!storageV2CloudOutboxActive())throw new Error('orders_v2_account_head_required');
     const observedSeq=Number(v2Head.seq);
     if(!Number.isSafeInteger(observedSeq)||observedSeq<0)throw new Error('orders_v2_account_seq_invalid');
-    const observedGeneration=Number(session.localGeneration||0);
+    const observedGeneration=Number(session.localGeneration||0),authenticatedOwner=loadSession()?.user?.id;
+    const sameAccount=()=>{const current=loadSession();return !!current&&current.user?.id===authenticatedOwner};
     const row=await readCloud();
     if(!row){clearCloudRecovery();if(manageStatus)setCloud('ענן: אין מסמך','error');return false}
     const rowRevision=Number(row.revision);
@@ -89,13 +91,19 @@ async function openCloud({renderAfter=true,quiet=false,hydrateSecondary=true,man
     if(rowRevision<Number(v2Head.base.revision))throw new Error('orders_v2_remote_revision_behind_local_base');
     localStorage.setItem(CLOUD_AUTO_KEY,'1');
     const nextState=composeOrderCloudState(row.state,model.state);
-    await adoptStorageV2CloudHead(rowRevision,nextState);
-    if(Number(session.localGeneration||0)!==observedGeneration)throw new Error('orders_v2_local_change_during_cloud_adoption');
-    session.cloudConflictBlocked=false;
-    applyOrderCloudState(row.state);
-    session.cloudRevision=rowRevision;
-    session.cloudUpdatedAt=row.updated_at||session.cloudUpdatedAt;
-    session.lastCloudState=prepareCloudState(model.state);
+    const publication=await commitCloudCheckpoint({
+      commit:()=>adoptStorageV2CloudHead(rowRevision,nextState,{expectedHead:{seq:observedSeq,baseRevision:v2Head.base.revision}}),
+      isCurrent:committed=>committed?.seq===observedSeq&&committed?.revision===rowRevision&&!committed.pending&&!committed.control&&tab.primaryTab&&storageV2CloudOutboxActive()&&sameAccount()&&Number(session.localGeneration||0)===observedGeneration,
+      publish:()=>{applyOrderCloudState(row.state);session.cloudRevision=rowRevision;session.cloudUpdatedAt=row.updated_at||session.cloudUpdatedAt;session.lastCloudState=prepareCloudState(model.state);session.cloudConflictBlocked=false},
+    });
+    if(!publication.published){
+      if(tab.primaryTab&&storageV2CloudOutboxActive()&&sameAccount()){
+        session.cloudConflictBlocked=true;session.cloudSaveRequested=false;
+        if(!publication.committed?.control?.conflict)await setStorageV2CloudControl({conflict:{kind:publication.reason==='publication-error'?'cloud-publication-failed':'concurrent-hydration',domain:'orders',baseRevision:v2Head.base.revision,currentRemoteRevision:rowRevision}});
+      }
+      if(publication.reason==='publication-error')throw publication.error;
+      throw new Error('cloud_hydration_publication_stale');
+    }
     try{if(files.dirHandle)await writeStateToFolder()}catch(localError){console.error('local backup/mirror',localError)}
     // The account owner is already bound; secondary domains hydrate after Main.
     if(renderAfter)render();

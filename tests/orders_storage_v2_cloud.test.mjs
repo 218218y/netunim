@@ -138,6 +138,7 @@ test('Orders remote refresh leaves the visible state unchanged when durable V2 a
       cloudEnabled:()=>true,sameOrderCloudData:(a,b)=>JSON.stringify(a.notes)===JSON.stringify(b.notes),
       cloudHasLocalWork:()=>false,render:()=>{rendered++},readCloudMeta:async()=>({revision:11}),
       refreshKupaReadout:async()=>true,pollSharedChecks:async()=>{},refreshCloudTimestamp:noop,
+      refreshStorageV2CloudState:async()=>({seq:0,base:{revision:10},pending:false,flight:null,control:null}),
       adoptStorageV2CloudHead:async(_revision,state)=>{adopted++;assert.deepEqual(state.checks,local.checks);throw new Error('idb adoption failed')}
     });
     assert.equal(await api[method](),false,method);

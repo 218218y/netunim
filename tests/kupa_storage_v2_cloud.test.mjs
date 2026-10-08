@@ -85,7 +85,7 @@ test('Kupa legacy card IDs are queued as one V2 cloud normalization without a V1
     readSupabaseDocument:async()=>null,supaRest:async()=>{throw Error('offline')},putCloudPending:async()=>{},clearCloudPending:async()=>true,
     mergeKupaCloudState3Way:noop,rebaseNewerPending:async()=>null,lastSavedCloudState:()=>null,showSecondaryTabGuard:noop,
     stageCloudPendingLocal:()=>{throw Error('V1 outbox')},toast:noop,pollSharedChecks:async()=>{},refreshOrdersFinanceSummary:async()=>false,
-    storageV2CloudOutboxActive:()=>true,refreshStorageV2CloudState:async()=>clone(cloud),adoptStorageV2CloudHead:async(_revision,_state,options)=>{calls.push({adoptedBase:clone(options.cloudState)})},
+    storageV2CloudOutboxActive:()=>true,refreshStorageV2CloudState:async()=>clone(cloud),adoptStorageV2CloudHead:async(_revision,_state,options)=>{calls.push({adoptedBase:clone(options.cloudState)});return {seq:cloud.seq,revision:_revision}},
     queueStorageV2CloudNormalization:async(state,revision)=>{calls.push({state:clone(state),revision});cloud.seq=1;cloud.pending=true},
     storageV2CommitPromise:()=>Promise.resolve(),assertAccountOwner:()=>true});
   try{
@@ -94,6 +94,7 @@ test('Kupa legacy card IDs are queued as one V2 cloud normalization without a V1
     assert.ok(calls[0].adoptedBase.cards[0].id);
     assert.deepEqual(calls[0].adoptedBase.credits.map(row=>row.id),['expired-credit']);
     assert.ok(calls[1].state.cards[0].id);
+    assert.equal(calls[1].state.cards[0].id,calls[0].adoptedBase.cards[0].id,'normalization retains the durable card identity');
     assert.deepEqual(calls[1].state.credits,[]);
     assert.equal(cloud.pending,true);
   }finally{session.cloudPollingEnabled=false;clearTimeout(session.cloudPollTimer)}
@@ -116,7 +117,7 @@ function fixture({write,readRemote,merge,failRefreshAfterAck=false,backupSnapsho
   const supaRest=async(path,options)=>{const body=JSON.parse(options.body);sent.push({path,snapshot:clone(body.p_state),expected:body.p_expected_revision,operationId:body.p_operation_id,deleteIntents:clone(body.p_delete_intents)});if(write)return write(body);return response(true,{revision:body.p_expected_revision+1,state:clone(body.p_state),updated_at:'2026-09-22T00:00:00Z'})};
   const defaultMerge=(_base,local)=>({state:clone(local),conflicts:[]});
   const refreshState=async()=>{if(failRefreshAfterAck&&acks.length)throw new Error('injected post-ACK refresh failure');return state()};
-  const api=createSyncDocument({hideConnectScreen:noop,reportError:noop,model,session,checksSession,tab,prepareKupaCloudState:normalization.prepareKupaCloudState,applyKupaCloudState:normalization.applyKupaCloudState,domainRevisions:{reconcile:onPublication},setSaveStatus:noop,setConnectedStatus:noop,setCloudHeaderStatus:noop,persistImmediateBrowserSnapshot:()=>true,loadSharedChecksBase:()=>[],loadSharedChecksBankEvents:()=>[],listBackups:async()=>[],backupSnapshotToComputer,saveState:async()=>true,syncSharedChecksFromCloud:async()=>true,render:noop,getCloudPending:async()=>null,readSupabaseDocument:readRemote||(async()=>null),supaRest,putCloudPending:async()=>{},clearCloudPending:async()=>true,mergeKupaCloudState3Way:merge||defaultMerge,rebaseNewerPending:async()=>null,lastSavedCloudState:()=>clone(baseState),showSecondaryTabGuard:noop,stageCloudPendingLocal:()=>{throw new Error('legacy outbox must not be used')},toast:noop,pollSharedChecks:async()=>{},refreshOrdersFinanceSummary:async()=>false,storageV2CloudOutboxActive:()=>true,refreshStorageV2CloudState:refreshState,materializeStorageV2CloudFlight:materialize,acknowledgeStorageV2CloudFlight:acknowledge,rejectStorageV2CloudFlight:reject,setStorageV2CloudControl:async value=>{control=clone(value);return clone(value)},replaceStorageV2CurrentState:async()=>true,adoptStorageV2CloudHead:async()=>true,resetStorageV2CloudHead:async()=>true,storageV2CommitPromise:()=>Promise.resolve()});
+  const api=createSyncDocument({hideConnectScreen:noop,reportError:noop,model,session,checksSession,tab,prepareKupaCloudState:normalization.prepareKupaCloudState,applyKupaCloudState:normalization.applyKupaCloudState,domainRevisions:{reconcile:onPublication},setSaveStatus:noop,setConnectedStatus:noop,setCloudHeaderStatus:noop,persistImmediateBrowserSnapshot:()=>true,loadSharedChecksBase:()=>[],loadSharedChecksBankEvents:()=>[],listBackups:async()=>[],backupSnapshotToComputer,saveState:async()=>true,syncSharedChecksFromCloud:async()=>true,render:noop,getCloudPending:async()=>null,readSupabaseDocument:readRemote||(async()=>null),supaRest,putCloudPending:async()=>{},clearCloudPending:async()=>true,mergeKupaCloudState3Way:merge||defaultMerge,rebaseNewerPending:async()=>null,lastSavedCloudState:()=>clone(baseState),showSecondaryTabGuard:noop,stageCloudPendingLocal:()=>{throw new Error('legacy outbox must not be used')},toast:noop,pollSharedChecks:async()=>{},refreshOrdersFinanceSummary:async()=>false,storageV2CloudOutboxActive:()=>true,refreshStorageV2CloudState:refreshState,materializeStorageV2CloudFlight:materialize,acknowledgeStorageV2CloudFlight:acknowledge,rejectStorageV2CloudFlight:reject,setStorageV2CloudControl:async value=>{control=clone(value);return clone(value)},replaceStorageV2CurrentState:async()=>true,adoptStorageV2CloudHead:async revision=>({seq:0,revision}),resetStorageV2CloudHead:async()=>true,storageV2CommitPromise:()=>Promise.resolve()});
   return {api,model,session,sent,acks,rejects,getState:state,getControl:()=>clone(control),cloud:()=>normalization.prepareKupaCloudState(model.state),mutateNote(content){model.state.notes=[{id:'N1',content,createdAt:'2026-09-22',updatedAt:'2026-09-22'}];seq++;session.localGeneration++}};
 }
 
@@ -189,7 +190,7 @@ test('Kupa V2 account load reads and applies the cloud document with a clean loc
     refreshStorageV2CloudState:async()=>({seq:0,base:{revision:6,ackSeq:0,state:normalization.prepareKupaCloudState(remote)},pending:false,flight:null,control:null}),
     storageV2CloudOutboxActive:()=>true,readSupabaseDocument:async()=>{reads++;return {state:remote,revision:6,coreUpdatedAt:'2026-10-05T00:00:00Z'}},
     syncSharedChecksFromCloud:async()=>true,refreshOrdersFinanceSummary:async()=>false,
-    adoptStorageV2CloudHead:async()=>{adopted++},assertAccountOwner:()=>true,
+    adoptStorageV2CloudHead:async revision=>{adopted++;return {seq:0,revision}},assertAccountOwner:()=>true,
     listBackups:async()=>[],backupSnapshotToComputer:async()=>{},setConnectedStatus:noop,setSaveStatus:noop,setCloudHeaderStatus:noop,hideConnectScreen:noop,render:noop});
   try{
     await api.loadSupabaseState();

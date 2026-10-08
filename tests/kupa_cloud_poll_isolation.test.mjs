@@ -36,7 +36,7 @@ function fixture({onCheckpoint=async()=>{},financeReadError=null}={}){
     clearStorageV2CloudControl:async({onlyIfClean})=>{assert.equal(onlyIfClean.kind,cloud.control.conflict.kind);assert.equal(onlyIfClean.seq,cloud.seq);assert.equal(onlyIfClean.baseRevision,cloud.base.revision);cloud.control=null;return true},
     assertAccountOwner:()=>true,syncSharedChecksFromCloud:checks.syncSharedChecksFromCloud,
     listBackups:async()=>[],backupSnapshotToComputer:async()=>{},setConnectedStatus:noop,hideConnectScreen:noop,
-    adoptStorageV2CloudHead:async(revision,state,{cloudState})=>{cloud.base={revision,state:clone(cloudState),ackSeq:cloud.seq};checkpoints.push(clone(state))},
+    adoptStorageV2CloudHead:async(revision,state,{cloudState})=>{cloud.base={revision,state:clone(cloudState),ackSeq:cloud.seq};checkpoints.push(clone(state));return {seq:cloud.seq,revision}},
     pollSharedChecks:checks.pollSharedChecks,setCloudHeaderStatus,setSaveStatus,
     render:noop,toast:noop,refreshOrdersFinanceSummary:async()=>false,
   });
