@@ -397,6 +397,14 @@ pass is not a deployment baseline; record the full CI result for this change.
 
 ## Main remaining workstreams (after local Bridge ports)
 
+The Kupa save-confirmation review reproduced false no-flight success with a
+real IndexedDB append. Save/poll now share a fresh scoped confirmation decision
+after asynchronous boundaries; a committed Flight is distinct from a fully
+clean Main head. See [the save confirmation contract](KUPA_CLOUD_SAVE_CONFIRMATION.md).
+Historical journal compatibility, ACK/SQL/merge semantics and existing polling
+owners remain intact. New reviews of transfer UI receipts and remaining jobs
+must begin with behavior evidence rather than assuming similar bugs.
+
 These are completion tracks, each delivered through separate focused changes;
 they are not a claim that every older audit finding is still present.
 

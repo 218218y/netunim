@@ -516,7 +516,7 @@ for app in ('kupa', 'orders'):
               applyOrderCloudState:raw=>{model.state=normalization.normalizeState({...clone(raw),checks:clone(model.state.checks)})},
               rpcSaveV2:rpc,cloudHasLocalWork:()=>!!(session.storageV2CloudPending||session.cloudSaveRequested)}):createSyncDocument({...ports,checksSession:{},hideConnectScreen:noop,reportError:noop,
               prepareKupaCloudState:project,applyKupaCloudState:normalization.applyKupaCloudState,mergeKupaCloudState3Way:merge.mergeKupaCloudState3Way,
-              storageV2CloudOutboxActive:()=>true,setSaveStatus:noop,setCloudHeaderStatus:noop,showSecondaryTabGuard:noop,backupSnapshotToComputer:async()=>{},
+              storageV2CloudOutboxActive:()=>true,assertAccountOwner:()=>owner,setSaveStatus:noop,setCloudHeaderStatus:noop,showSecondaryTabGuard:noop,backupSnapshotToComputer:async()=>{},
               supaRest:async(_path,options)=>{const body=JSON.parse(options.body),result=await rpc(body.p_state,body.p_expected_revision,body.p_operation_id);return {ok:true,text:async()=>JSON.stringify(result.row)}}});
             return {model,session,storage,driver,save:()=>app==='orders'?api.requestCloudSave(''):api.persistSupabaseState(project(model.state),'')};
           }
