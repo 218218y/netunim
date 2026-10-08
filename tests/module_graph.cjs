@@ -15,8 +15,8 @@ for(const app of ['kupa','orders']){
     assert.ok(!relative.startsWith('assets/')||Buffer.byteLength(code.replace(/\r\n/g,'\n'))<60000,relative+': oversized responsibility module');
     walk(ast,node=>{
       if(node.type==='FunctionDeclaration'&&node.id?.name==='createLifecycle'&&relative==='assets/js/lifecycle.js')
-        assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=(app==='kupa'?34:42),relative+': startup collaborators must not grow; introduce a capability port');
-      if(node.type==='FunctionDeclaration'&&['createStorageStartupRecovery','createKupaConnectivityRuntime','createOrdersConnectivityRuntime'].includes(node.id?.name)){
+        assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=(app==='kupa'?34:24),relative+': startup collaborators must not grow; introduce a capability port');
+      if(node.type==='FunctionDeclaration'&&['createStorageStartupRecovery','createKupaConnectivityRuntime','createOrdersConnectivityRuntime','createOrdersCloudStartup','createOrdersLocalServices','createOrdersBackgroundStartup'].includes(node.id?.name)){
         const parameter=node.params[0]?.type==='AssignmentPattern'?node.params[0].left:node.params[0];
         assert.ok(parameter?.type==='ObjectPattern'&&parameter.properties.length<=8,relative+': startup capability factory exceeds eight collaborators');
       }
@@ -39,12 +39,15 @@ for(const app of ['kupa','orders']){
         }
         if(relative==='assets/js/lifecycle.js')
           assert.ok(!dependency.startsWith('domains/'),relative+': startup must use capability ports instead of importing business helpers: '+dependency);
+        if(relative.startsWith('assets/js/startup/'))
+          assert.ok(!/^(domains|ui|storage|cloud|sync|integrations|platform)\//.test(dependency),relative+': startup orchestration must receive concrete adapters and business/UI behavior through ports: '+dependency);
         if(relative.startsWith('assets/js/state/'))
           assert.ok(!/^(domains|sync)\//.test(dependency),relative+': state must use contracts or composition ports: '+dependency);
         if(relative.startsWith('assets/js/domains/'))
           assert.ok(!dependency.startsWith('ui/'),relative+': domains must use shared presentation primitives or UI ports: '+dependency);
       }
       if(/assets\/js\/(storage|cloud|sync)\//.test(relative)&&node.type==='Identifier')assert.notEqual(node.name,'document',relative+': DOM belongs behind a UI port');
+      if(relative.startsWith('assets/js/startup/')&&node.type==='Identifier')assert.ok(!['window','document','navigator','localStorage','fetch','indexedDB','setTimeout','setInterval','clearTimeout','clearInterval'].includes(node.name),relative+': startup I/O belongs behind a port');
       if(/\/(model|readout)\.js$/.test(relative)&&node.type==='Identifier')assert.ok(!['document','window','localStorage','fetch','indexedDB'].includes(node.name),relative+': calculation module has side effects');
     });
     graph.set(file,edges);

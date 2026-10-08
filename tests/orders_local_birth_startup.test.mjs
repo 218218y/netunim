@@ -1,4 +1,4 @@
-import {withStorageProtocol} from './startup_ports.mjs';
+import {withOrdersStartup} from './startup_ports.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createLifecycle} from '../netunim-orders/site/assets/js/lifecycle.js';
@@ -25,7 +25,7 @@ function fixture(overrides={}){
     showStartupAlerts:()=>{},startFinanceAutoSync:()=>{},
     ...overrides,
   };
-  return {lifecycle:createLifecycle(withStorageProtocol(ports)),calls,session,setMarker:value=>{marker=value}};
+  return {lifecycle:createLifecycle(withOrdersStartup(ports)),calls,session,setMarker:value=>{marker=value}};
 }
 
 test('Orders fresh local startup commits birth then hydrates both V2 journals before render',async()=>{
@@ -40,6 +40,46 @@ test('Orders restart with local marker recovers V2 without rereading V1 or rerun
   assert.equal(f.calls.includes('birth'),false);
   assert.ok(f.calls.indexOf('main-v2')<f.calls.indexOf('shared-v2'));
   assert.ok(f.calls.indexOf('shared-v2')<f.calls.indexOf('render'));
+});
+
+test('Orders an alert display failure cannot replay startup effects or suppress finance scheduling',async t=>{
+  t.mock.method(console,'error',()=>{});
+  let alerts=0,finance=0;
+  const f=fixture({showStartupAlerts:()=>{alerts++;throw new Error('alert_dom_failed')},startFinanceAutoSync:()=>{finance++}});
+  f.setMarker(true);await f.lifecycle.boot();
+  const error=await f.session.startupHydrationPromise.then(()=>null,error=>error);
+  assert.equal(alerts,1);assert.equal(finance,1);assert.equal(error,null);
+});
+
+test('Orders a failed background job start is retained without a second invocation',async t=>{
+  t.mock.method(console,'error',()=>{});
+  let starts=0;const failure=new Error('finance_start_failed');
+  const f=fixture({startFinanceAutoSync:()=>{starts++;throw failure}});
+  f.setMarker(true);await f.lifecycle.boot();
+  const error=await f.session.startupHydrationPromise.then(()=>null,error=>error);
+  assert.equal(starts,1);assert.equal(error,failure);
+});
+
+test('Orders lost leadership during alert preparation cannot start background writers',async()=>{
+  const tab={primaryTab:true};let alerts=0,finance=0;
+  const f=fixture({tab,prepareStartupAlerts:async()=>{tab.primaryTab=false},showStartupAlerts:()=>{alerts++},startFinanceAutoSync:()=>{finance++}});
+  f.setMarker(true);await f.lifecycle.boot();await f.session.startupHydrationPromise;
+  assert.equal(alerts,0);assert.equal(finance,0);
+});
+
+test('Orders a connection lost after Main hydration does not fan out Shared and finance reads',async t=>{
+  const previous=Object.getOwnPropertyDescriptor(globalThis,'navigator');
+  Object.defineProperty(globalThis,'navigator',{configurable:true,value:{onLine:true}});
+  t.after(()=>{if(previous)Object.defineProperty(globalThis,'navigator',previous);else delete globalThis.navigator});
+  let checks=0,finance=0;
+  const f=fixture({storageOwnerCurrent:()=> 'account',verifyStorageV2AccountMarker:async()=>true,
+    loadSession:()=>({access_token:'present'}),cloudEnabled:()=>true,
+    refreshStorageV2CloudState:async()=>({base:{state:{checks:[]},revision:3}}),
+    openCloud:async()=>{globalThis.navigator.onLine=false;return true},
+    syncSharedChecksFromCloud:async()=>{checks++;return true},refreshKupaReadout:async()=>{finance++;return true},
+  });
+  await f.lifecycle.boot();await f.session.startupHydrationPromise;
+  assert.equal(checks,0);assert.equal(finance,0);
 });
 
 test('Orders interrupted local birth keeps the business model off screen and locked',async()=>{

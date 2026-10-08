@@ -1,13 +1,15 @@
-import {clone} from './core/values.js';
 import {createStartupTask} from './shared/startup-task.js';
+import {startupMark} from './startup/marks.js';
 
-function startupMark(name){try{globalThis.performance?.mark?.(`orders-startup:${name}`)}catch{}}
 function nextTurn(){return new Promise(resolve=>setTimeout(resolve,0))}
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createLifecycle({
   storageProtocol,
   storageRecovery,
+  cloudStartup,
+  localServices,
+  backgroundStartup,
   hydrateStorageOwner=async()=>{},
   hydrateStorageV2OwnerTransfer=async()=>null,
   resumeStorageV2OwnerTransfer=async()=>null,
@@ -16,91 +18,25 @@ export function createLifecycle({
   ensureLocalBirth=async()=>null,
   localBirthPreparing=()=>false,
   ensureSyncCapabilities=async()=>true,
-  files,
   tab,
   session,
-  checksSession,
   resumeIncompleteRestore=async()=>false,
-  refreshStorageV2CloudState=async()=>null,
-  cloudHasLocalWork=()=>false,
-  sharedChecksHasLocalWork=()=>true,
   setSave=()=>{},
   setCloud=()=>{},
-  beginStartupSync=()=>{},
-  setStartupDomain=()=>{},
   syncFolderAccessButton,
-  folderBackupAvailable,
   folderSaveTitle=()=>'',
   showSecondaryTabGuard,
   acquirePrimaryTabLock,
   render,
-  prepareState,
-  maybeCreateAutomaticFolderBackup,
-  loadDirHandle,
-  requestPersistentBrowserStorage,
-  refreshDirPermission,
   loadSession,
-  cloudEnabled,
-  refreshKupaReadout,
-  syncSharedChecksFromCloud,
-  openCloud,
-  startOrderPolling=()=>{},
-  startFinanceAutoSync=()=>{},
-  prepareStartupAlerts=async()=>false,
-  showStartupAlerts=()=>{}
 }){
 for(const method of ['check','readMarkers','verifyLocal'])if(typeof storageProtocol?.[method]!=='function')throw new TypeError(`lifecycle_storage_protocol_${method}_required`);
 for(const method of ['assertBound','primary','readOnly','activate'])if(typeof storageRecovery?.[method]!=='function')throw new TypeError(`lifecycle_storage_recovery_${method}_required`);
 storageRecovery.assertBound();
-
-async function recoverOrdersLocalState(){
-  const v2=await refreshStorageV2CloudState();
-  if(!v2?.base)throw new Error('orders_v2_cloud_head_missing');
-  session.lastCloudState=clone(v2.base.state);
-  session.cloudRevision=Number(v2.base.revision||0);
-  session.storageV2CloudPending=!!(v2.pending||v2.flight);
-  session.cloudConflictBlocked=!!v2.control?.conflict;
-  session.cloudSaveRequested=!!(v2.pending||v2.flight)&&!session.cloudConflictBlocked;
-}
-
-async function initializeLocalServices(){
-  try{await requestPersistentBrowserStorage()}catch(e){console.error('persistent browser storage',e)}
-  try{files.dirHandle=await loadDirHandle();if(files.dirHandle)await refreshDirPermission(false);else syncFolderAccessButton()}catch(e){console.error('folder startup',e);syncFolderAccessButton()}
-}
-
-async function backupAfterHydration(localServicesPromise){
-  try{await localServicesPromise}catch(e){console.error('local services startup',e)}
-  if(folderBackupAvailable())try{await maybeCreateAutomaticFolderBackup(prepareState())}catch(e){console.error('automatic folder backup',e)}
-}
-
-async function prepareAlertsBeforeDisplay(){
-  try{await prepareStartupAlerts()}catch(error){console.error('startup bank alerts preparation',error)}
-}
-
-async function hydrateSecondaryDomains({sharedOnline,ordersOnline,localServicesPromise}){
-  if(sharedOnline){
-    setStartupDomain('checks','loading');startupMark('checks-start');
-    let checksOk=false;
-    try{checksOk=await syncSharedChecksFromCloud({quiet:true,required:false})}catch(error){console.error('shared checks startup',error);checksSession.checksCloudLastError=error?.message||String(error)}
-    startupMark('checks-end');
-    if(checksOk)setStartupDomain('checks','ready');
-    else if(sharedChecksHasLocalWork()||checksSession.checksSaveRequested)setStartupDomain('checks','deferred',checksSession.checksCloudLastError||'שינויי הצ׳קים נשמרו מקומית וממתינים לסנכרון');
-    else setStartupDomain('checks','error',checksSession.checksCloudLastError||'טעינת הצ׳קים מהענן נכשלה; נשמר העותק המקומי האחרון התקין');
-
-    setStartupDomain('finance','loading');startupMark('finance-start');
-    let financeOk=false;
-    try{financeOk=await refreshKupaReadout({force:true,renderIfChanged:true})}catch(error){console.error('finance startup readout',error)}
-    startupMark('finance-end');
-    if(financeOk)setStartupDomain('finance','ready');
-    else setStartupDomain('finance','error','טעינת נתוני הבנק והאשראי נכשלה; נשמר העותק האחרון התקין');
-  }
-  if(ordersOnline)startOrderPolling();
-  await backupAfterHydration(localServicesPromise);
-  await prepareAlertsBeforeDisplay();
-  showStartupAlerts();
-  startFinanceAutoSync();
-  startupMark('background-ready');
-}
+for(const [name,port,methods] of [
+  ['cloud',cloudStartup,['prepare','hydrateMain','hydrateSecondary']],
+  ['local',localServices,['start']],['background',backgroundStartup,['start']],
+])for(const method of methods)if(typeof port?.[method]!=='function')throw new TypeError(`lifecycle_${name}_${method}_required`);
 
 async function boot(){
   session.storageProtocolBlocked=true;
@@ -160,39 +96,19 @@ async function boot(){
 
   try{await resumeIncompleteRestore()}catch(error){console.error('restore group startup recovery',error);setCloud('ענן: שחזור ממתין','error')}
 
-  if(!localEngineActive)await recoverOrdersLocalState();startupMark('orders-local-recovered');
-  const sessionAvailable=!!loadSession(),online=!!navigator.onLine,ordersOnline=!localEngineActive&&cloudEnabled()&&online&&sessionAvailable,sharedOnline=!localEngineActive&&sessionAvailable&&online;
-  beginStartupSync({orders:ordersOnline,checks:sharedOnline,finance:sharedOnline});
-
+  const plan=await cloudStartup.prepare({localEngineActive});
   storageRecovery.activate();
   render({supplierScrollMode:'end'});startupMark('first-render');
   syncFolderAccessButton();
   setSave(session.cloudDurabilityDegraded?'מקומי: מצב התאוששות':'מקומי: שמור',session.cloudDurabilityDegraded?'error':'',folderSaveTitle());
 
-  const localServicesPromise=initializeLocalServices();
+  void localServices.start().catch(error=>console.error('local services startup',error));
   await nextTurn();
-
-  if(cloudEnabled()&&!online)setCloud('ענן: אופליין','offline');
-
-  if(ordersOnline){
-    setStartupDomain('orders','loading');startupMark('orders-cloud-start');
-    let coreOk=false;
-    try{coreOk=await openCloud({renderAfter:true,quiet:true,hydrateSecondary:false,manageStatus:false,startPoll:false})}catch(error){console.error('orders startup cloud',error)}
-    startupMark('orders-cloud-end');
-    if(!coreOk)setStartupDomain('orders','error','אימות נתוני ניהול ההזמנות מול הענן נכשל; העותק המקומי נשמר');
-    else if(session.cloudConflictBlocked)setStartupDomain('orders','error','נמצאה התנגשות מול הענן; הנתונים המקומיים נשמרו ולא נדרסו');
-    else{
-      const pending=await refreshStorageV2CloudState();
-      if(pending?.pending||pending?.flight||cloudHasLocalWork())setStartupDomain('orders','deferred','שינויים מקומיים שמורים וממתינים למועד הסנכרון');
-      else setStartupDomain('orders','ready');
-    }
-  }
-
-  if(sharedOnline){
-    session.startupHydrationPromise=hydrateSecondaryDomains({sharedOnline,ordersOnline,localServicesPromise}).catch(async error=>{console.error('secondary startup hydration',error);await prepareAlertsBeforeDisplay();showStartupAlerts();startFinanceAutoSync()});
-  }else{
-    session.startupHydrationPromise=backupAfterHydration(localServicesPromise).then(async()=>{await prepareAlertsBeforeDisplay();showStartupAlerts();startFinanceAutoSync();startupMark('background-ready')}).catch(async error=>{console.error('startup background',error);await prepareAlertsBeforeDisplay();showStartupAlerts();startFinanceAutoSync()});
-  }
+  await cloudStartup.hydrateMain();
+  session.startupHydrationPromise=cloudStartup.hydrateSecondary().then(()=>backgroundStartup.start(plan));
+  // Observe unexpected failures without replacing the original rejected task or
+  // replaying completed effects. Normal network failures are domain outcomes.
+  void session.startupHydrationPromise.catch(error=>console.error('startup hydration/background',error));
 }
 
 return { boot:createStartupTask(boot) };
