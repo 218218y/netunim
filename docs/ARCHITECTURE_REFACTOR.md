@@ -178,6 +178,16 @@ remain separate from structural refactors.
   dependent remote reads. Separate optional-error boundaries and live access
   checks now preserve the intended sequence without replaying completed effects.
 
+- Kupa now has separate cloud hydration, optional local services and connection
+  binding owners. Lifecycle activates recovered Main/Shared and displays the
+  account view before waiting for optional browser persistence/backup-target
+  preparation. Three regressions reproduced the old delayed display and stale
+  auth/leadership decisions during that preparation. Cloud startup rechecks live
+  eligibility between remote phases; connection startup owns four registrations
+  with retained binding failure and explicit disposal. The factories expose only
+  phase methods and receive the exact required ports. See the
+  [Kupa startup contract](KUPA_STARTUP_CONTRACT.md) for order and failure policy.
+
 ### Startup recovery contract
 
 `construct -> bind journals -> validate binding -> lock/owner/protocol -> birth or
@@ -203,6 +213,7 @@ mistake an early local recovery failure for successful startup.
 | Both journals recovered, startup preparation pending | No editing | Await lifecycle activation |
 | Secondary activated | Read-only display and permitted exports | Existing secondary-tab rules |
 | Cloud hydration pending | Local display; applicable mutations remain blocked | Existing hydration owner |
+| Kupa account recovered, optional services pending | Recovered display; existing cloud hydration gate applies | Await services before remote hydration |
 | Cloud unavailable after verified local recovery | Retain existing offline/deferred policy | Existing sync policy and durable pending data |
 | DB capability mismatch | Local display; editing and connectivity jobs blocked | Explicit upgrade/revalidation |
 
@@ -265,7 +276,7 @@ pre-slice main commit `85ea9278`):
 
 | Factory | Before | Current |
 | --- | ---: | ---: |
-| Kupa lifecycle | 76 | 34 |
+| Kupa lifecycle | 76 | 23 |
 | Orders lifecycle | 50 | 24 |
 | Shared startup protocol | - | 3 |
 | Shared startup recovery | - | 1 optional scheduler; 2 bound journal ports |
@@ -275,6 +286,9 @@ pre-slice main commit `85ea9278`):
 | Orders cloud startup | - | 6; public API: prepare, hydrateMain, hydrateSecondary |
 | Orders local services | - | 5; public API: start, backupAfterHydration |
 | Orders background startup | - | 6; public API: start |
+| Kupa cloud startup | - | 6; public API: prepare, hydrate |
+| Kupa local services | - | 3; public API: start |
+| Kupa connection startup | - | 4; public API: bind, openLocal, dispose |
 
 Lifecycle still has too many collaborators. These slices establish real owners
 and contracts; they do not complete all startup phase decomposition or dispose
@@ -282,10 +296,11 @@ all shell listeners, timers and integration pollers.
 Module graph now caps lifecycle collaborators at these measured counts and new
 startup recovery/connectivity/hydration/background factories at eight.
 
-Baseline for this slice: main `9a68ff40`, full GitHub verification run
-`37737850535` passed (all CI groups, including browser and PostgreSQL). Focused
+Baseline for the Kupa phase slice: main `20dbb7a9`, preceding full branch GitHub
+verification run `37752034470` passed (all CI groups, including browser,
+PostgreSQL and Windows contracts). Focused
 local tests distinguish deterministic behavior/architecture checks from the
-full branch deployment gate; full Windows verification remains a separate gate.
+full branch deployment gate.
 
 ## Next reviewable slices
 
@@ -296,8 +311,9 @@ full branch deployment gate; full Windows verification remains a separate gate.
    construction cycles explicitly. Do not introduce an application service locator.
 2. **Lifecycle phases:** local/shared startup recovery and its UI-readiness
    boundary are now explicit. Orders remote hydration, local services and
-   background startup now have phase ports. Continue Kupa phase decomposition
-   and explicit job/resource ownership from their capability owners. Preserve
+   background startup, and Kupa cloud/local/connection startup have phase ports.
+   Continue owner-transition/preflight decomposition and explicit job/resource
+   ownership from their capability owners. Preserve
    lock/owner/protocol ordering and first safe render after Main and Shared.
    Test partial failure, write gating and resource cleanup. Expand resource
    ownership beyond connectivity without aborting in-flight durability commits.

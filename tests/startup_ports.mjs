@@ -4,6 +4,9 @@ import {createOrdersCloudStartup} from '../netunim-orders/site/assets/js/startup
 import {createOrdersLocalServices} from '../netunim-orders/site/assets/js/startup/local-services.js';
 import {createOrdersBackgroundStartup} from '../netunim-orders/site/assets/js/startup/background.js';
 import {createStorageBrowser} from '../netunim-orders/site/assets/js/storage/browser.js';
+import {createKupaCloudStartup} from '../netunim-kupa/site/assets/js/startup/cloud-hydration.js';
+import {createKupaLocalServices} from '../netunim-kupa/site/assets/js/startup/local-services.js';
+import {createKupaConnectionStartup} from '../netunim-kupa/site/assets/js/startup/connection.js';
 
 // Test controls expose independent failure/owner scenarios. Production obtains
 // this protocol port directly from its configured Storage V2 coordinator.
@@ -47,4 +50,27 @@ export function withOrdersStartup(controls){
     alerts:{prepare:p.prepareStartupAlerts||(async()=>false),show:p.showStartupAlerts||noop},localServices,access:{allowed},
   });
   return {...p,cloudStartup,localServices,backgroundStartup};
+}
+
+export function withKupaStartup(controls){
+  const p=controls.storageProtocol&&controls.storageRecovery?controls:withStorageProtocol(controls),noop=()=>{};
+  const session=p.session||{},tab=p.tab||{primaryTab:true};let restored=null;
+  const restoreSupaSession=async(...args)=>{restored=await p.restoreSupaSession?.(...args);return restored};
+  const authenticated=()=>!!(p.loadSupaSession?p.loadSupaSession():restored);
+  const allowed=()=>tab.primaryTab&&!session.storageProtocolBlocked&&p.storageRecovery.isReady();
+  const cloudStartup=createKupaCloudStartup({session,access:{allowed,online:()=>globalThis.navigator?.onLine!==false,authenticated},
+    capabilities:{ensure:p.ensureSyncCapabilities||(async()=>true)},restore:{resume:p.resumeIncompleteRestore||(async()=>false)},
+    cloud:{configured:p.supaConfigured||(()=>false),openAutomatic:p.tryAutoOpenSupabase||(async()=>false),
+      noDocument:()=>!!session.cloudAuthNoDocument,showNoDocument:p.showCloudNoDocument||(async()=>{}),startPolling:p.startCloudPolling||noop},
+    status:{setCloudHeaderStatus:p.setCloudHeaderStatus||noop,setConnectUI:p.setConnectUI||noop},
+  });
+  const localServices=createKupaLocalServices({storage:{requestPersistentBrowserStorage:p.requestPersistentBrowserStorage||(async()=>{})},
+    backup:{restoreTarget:p.restoreRememberedBackupTarget||(async()=>false)},
+  });
+  const connectionStartup=createKupaConnectionStartup({
+    events:{listen:(id,handler)=>globalThis.document?.getElementById(id)?.addEventListener('click',handler),dispose:noop},
+    actions:{chooseFolder:p.chooseFolder||noop,chooseDataFile:p.chooseDataFile||noop,openLastFolder:p.openLastFolder||noop,openCloud:p.handleCloudConnectButton||noop},
+    presentation:{tryAutoOpenRemembered:p.tryAutoOpenRemembered||(async()=>false),showFirstRun:p.showFirstRun||noop},access:{allowed},
+  });
+  return {...p,restoreSupaSession,cloudStartup,localServices,connectionStartup};
 }

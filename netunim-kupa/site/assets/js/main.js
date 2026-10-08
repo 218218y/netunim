@@ -1,5 +1,9 @@
 import {createKupaConnectivityRuntime} from './connectivity.js';
 import {createStorageStartupRecovery} from './shared/storage-startup-recovery.js';
+import {createRuntimeResources} from './shared/runtime-resources.js';
+import {createKupaCloudStartup} from './startup/cloud-hydration.js';
+import {createKupaLocalServices} from './startup/local-services.js';
+import {createKupaConnectionStartup} from './startup/connection.js';
 import {createKupaStorageV2Coordinator} from './composition/storage-v2.js';
 import {installLocalSiteResetPeerListener} from './shared/local-site-reset.js';
 import {assertKupaEntityInvariants} from './state/validation.js';
@@ -522,36 +526,39 @@ storageRecovery.bind({
   shared:{primary:recoverSharedChecksV2Primary,readOnly:()=>sharedChecksV2.recoverReadOnly()},
 });
 
+const startupAccess=()=>tab.primaryTab&&!session.storageProtocolBlocked&&storageRecovery.isReady();
+const connectionResources=createRuntimeResources();
+const connectionStartup=createKupaConnectionStartup({
+  events:{listen:(id,handler)=>connectionResources.listen(document.getElementById(id),'click',handler),dispose:()=>connectionResources.dispose()},
+  actions:{chooseFolder:uiFolders.chooseFolder,chooseDataFile:uiFolders.chooseDataFile,openLastFolder:uiFolders.openLastFolder,openCloud:uiConnection.handleCloudConnectButton},
+  presentation:{tryAutoOpenRemembered:uiConnection.tryAutoOpenRemembered,showFirstRun:uiConnection.showFirstRun},access:{allowed:startupAccess},
+});
+const localServices=createKupaLocalServices({storage:{requestPersistentBrowserStorage:storageBrowser.requestPersistentBrowserStorage},backup:{restoreTarget:uiFolders.restoreRememberedBackupTarget}});
+const cloudStartup=createKupaCloudStartup({
+  session,access:{allowed:startupAccess,online:()=>navigator.onLine!==false,authenticated:()=>!!cloudAuth.loadSupaSession()},
+  capabilities:{ensure:cloudAuth.ensureSyncCapabilities},restore:{resume:uiBackup.resumeIncompleteRestore},
+  cloud:{configured:cloudAuth.supaConfigured,openAutomatic:uiCloud.tryAutoOpenSupabase,noDocument:()=>session.cloudAuthNoDocument,
+    showNoDocument:uiCloud.showCloudNoDocument,startPolling:syncDocument.startCloudPolling},
+  status:{setCloudHeaderStatus:uiStatus.setCloudHeaderStatus,setConnectUI:uiConnection.setConnectUI},
+});
+
 const lifecycle=createLifecycle({
   storageProtocol:storageV2Coordinator.startupProtocol,
   storageRecovery,
+  cloudStartup,localServices,connectionStartup,
   hydrateStorageOwner:()=>storageOwner.hydrate({initialOwner:async()=> (await cloudAuth.restoreSupaSession())?.user?.id}),
   hideConnectScreen:()=>uiStatus.hideConnectScreen(),
   ...storageV2Coordinator.lifecyclePorts(),
   render:(...args)=>uiNavigation.render(...args),
-  ensureSyncCapabilities:(...args)=>cloudAuth.ensureSyncCapabilities(...args),
   session,
   tab,
-  openLastFolder:(...args)=>uiFolders.openLastFolder(...args),
-  handleCloudConnectButton:(...args)=>uiConnection.handleCloudConnectButton(...args),
   setCloudHeaderStatus:(...args)=>uiStatus.setCloudHeaderStatus(...args),
   setSaveStatus:(...args)=>uiStatus.setSaveStatus(...args),
   setConnectedStatus:(...args)=>uiStatus.setConnectedStatus(...args),
-  requestPersistentBrowserStorage:(...args)=>storageBrowser.requestPersistentBrowserStorage(...args),
   showSecondaryTabGuard:(...args)=>uiConnection.showSecondaryTabGuard(...args),
   acquirePrimaryTabLock:(...args)=>storageTabLock.acquirePrimaryTabLock(...args),
-  chooseFolder:(...args)=>uiFolders.chooseFolder(...args),
-  chooseDataFile:(...args)=>uiFolders.chooseDataFile(...args),
-  restoreRememberedBackupTarget:(...args)=>uiFolders.restoreRememberedBackupTarget(...args),
-  supaConfigured:(...args)=>cloudAuth.supaConfigured(...args),
   restoreSupaSession:(...args)=>cloudAuth.restoreSupaSession(...args),
-  resumeIncompleteRestore:(...args)=>uiBackup.resumeIncompleteRestore(...args),
-  showCloudNoDocument:(...args)=>uiCloud.showCloudNoDocument(...args),
-  tryAutoOpenSupabase:(...args)=>uiCloud.tryAutoOpenSupabase(...args),
   setConnectUI:(...args)=>uiConnection.setConnectUI(...args),
-  showFirstRun:(...args)=>uiConnection.showFirstRun(...args),
-  tryAutoOpenRemembered:(...args)=>uiConnection.tryAutoOpenRemembered(...args),
-  startCloudPolling:()=>syncDocument.startCloudPolling(),
 });
 
 const uiEvents={bindActionEvents:(root,actions)=>bindActionEvents(root,actions,{canRun:(...args)=>uiStatus.canRunInteractiveAction(...args)})};

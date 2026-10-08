@@ -4,6 +4,9 @@ import {createStartupTask} from './shared/startup-task.js';
 export function createLifecycle({
   storageProtocol,
   storageRecovery,
+  cloudStartup,
+  localServices,
+  connectionStartup,
   hydrateStorageOwner=async()=>{},
   hydrateLocalBirth=async()=>null,
   ensureLocalBirth=async()=>false,
@@ -11,35 +14,25 @@ export function createLifecycle({
   hydrateStorageV2OwnerTransfer=async()=>null,
   resumeStorageV2OwnerTransfer=async()=>null,
   storageV2OwnerTransferPreparing=()=>false,
-  ensureSyncCapabilities=async()=>true,
   render=()=>{},
   hideConnectScreen=()=>{},
   session,
   tab,
-  openLastFolder,
-  handleCloudConnectButton,
   setCloudHeaderStatus,
   setSaveStatus=()=>{},
   setConnectedStatus=()=>{},
-  requestPersistentBrowserStorage,
   showSecondaryTabGuard,
   acquirePrimaryTabLock,
-  chooseFolder,
-  chooseDataFile,
-  restoreRememberedBackupTarget,
-  supaConfigured,
   restoreSupaSession,
-  resumeIncompleteRestore=async()=>false,
-  showCloudNoDocument,
-  tryAutoOpenSupabase,
   setConnectUI,
-  showFirstRun,
-  tryAutoOpenRemembered,
-  startCloudPolling=()=>{}
 }){
 for(const method of ['check','readMarkers','verifyLocal'])if(typeof storageProtocol?.[method]!=='function')throw new TypeError(`lifecycle_storage_protocol_${method}_required`);
 for(const method of ['assertBound','primary','readOnly','activate'])if(typeof storageRecovery?.[method]!=='function')throw new TypeError(`lifecycle_storage_recovery_${method}_required`);
 storageRecovery.assertBound();
+for(const [name,port,methods] of [
+  ['cloud',cloudStartup,['prepare','hydrate']],['local',localServices,['start']],
+  ['connection',connectionStartup,['bind','openLocal']],
+])for(const method of methods)if(typeof port?.[method]!=='function')throw new TypeError(`lifecycle_${name}_${method}_required`);
 
 async function boot(){
   session.storageProtocolBlocked=true;
@@ -78,35 +71,22 @@ async function boot(){
     try{await ensureLocalBirth();localEngineActive=await storageProtocol.verifyLocal();if(!localEngineActive)throw new Error('kupa_local_engine_marker_required')}
     catch(error){console.error('Kupa local V2 birth',error);setConnectUI({title:'מעבר האחסון המקומי נעצר',text:'הנתונים הישנים נשארו שמורים. העריכה חסומה עד להשלמת מעבר האחסון או בדיקת התקלה.',showCloud:false});return}
   }
-  document.getElementById('chooseFolder').addEventListener('click',chooseFolder);
-  document.getElementById('chooseDataFile').addEventListener('click',chooseDataFile);
-  document.getElementById('openLastFolder').addEventListener('click',openLastFolder);
-  document.getElementById('openCloud').addEventListener('click',handleCloudConnectButton);
+  await connectionStartup.bind();
 
-  session.startupCloudHydrating=!localEngineActive&&!!navigator.onLine;
+  await cloudStartup.prepare({localEngineActive});
   try{await storageRecovery.primary({localEngineActive})}
   catch(error){session.backendReady=false;setConnectUI({title:'שחזור הנתונים המקומיים נעצר',text:'הנתונים נשארו שמורים והעריכה חסומה. יש לבדוק את התקלה ולרענן לאחר השלמת השחזור.',showCloud:!localEngineActive});throw error}
-  const startupLocalShown=!localEngineActive;
-
-  if(supaConfigured())setCloudHeaderStatus('syncing',startupLocalShown&&navigator.onLine?'ענן: מסנכרן…':'ענן: בודק…');else setCloudHeaderStatus('off','ענן: לא מוגדר');
-  const persistentStoragePromise=requestPersistentBrowserStorage().catch(error=>console.error('persistent browser storage',error));
-  await restoreRememberedBackupTarget();
-  await persistentStoragePromise;
-
   // Shared Checks owns checks independently of Main. Hydrate it before an
   // offline or cloud-capability exit can show composed business data.
   storageRecovery.activate();
-  if(startupLocalShown){session.backendReady=true;hideConnectScreen();render()}
-  if(localEngineActive){session.startupCloudHydrating=false;if(await tryAutoOpenRemembered())return;showFirstRun();return}
-  if(!navigator.onLine&&startupLocalShown){session.startupCloudHydrating=false;startCloudPolling();return}
-  if(navigator.onLine&&restoredAuth){try{await ensureSyncCapabilities();session.syncCapabilitiesError=null}catch(error){session.syncCapabilitiesError=error;setCloudHeaderStatus('conflict',error.message);setConnectUI({title:'ה־DB אינו תואם לגרסת האתר',text:error.message,showCloud:false});}}
-  if(session.syncCapabilitiesError){session.startupCloudHydrating=false;setCloudHeaderStatus('conflict',session.syncCapabilitiesError.message);return}
-  try{await resumeIncompleteRestore()}catch(error){console.error('restore group startup recovery',error);setCloudHeaderStatus('conflict','ענן: שחזור ממתין')}
-  let autoOpened=false;
-  try{autoOpened=await tryAutoOpenSupabase()}finally{session.startupCloudHydrating=false}
-  if(autoOpened)return;
-  if(session.cloudAuthNoDocument){await showCloudNoDocument();return}
-  if(!restoredAuth)setCloudHeaderStatus('off','ענן: נדרשת התחברות');
+  if(!localEngineActive){session.backendReady=true;hideConnectScreen();render()}
+  // Optional browser/folder services no longer delay the first recovered view.
+  // They still finish before remote hydration/automatic file opening so backup
+  // target selection keeps its existing ordering and ownership.
+  session.startupLocalServicesPromise=localServices.start();
+  await session.startupLocalServicesPromise;
+  await cloudStartup.hydrate();
+  if(localEngineActive)await connectionStartup.openLocal();
 }
 
 return { boot:createStartupTask(boot) };
