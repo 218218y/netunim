@@ -291,6 +291,7 @@ pre-slice main commit `85ea9278`):
 | Kupa connectivity (including browser/timers) | - | 7 |
 | Orders connectivity (including browser/timers) | - | 8 |
 | Shared runtime resource owner | - | 2 |
+| Shared recurring polling owner | - | 6; public API: start, stop |
 | Orders cloud startup | - | 6; public API: prepare, hydrateMain, hydrateSecondary |
 | Orders local services | - | 5; public API: start, backupAfterHydration |
 | Orders background startup | - | 6; public API: start |
@@ -303,6 +304,15 @@ and contracts; they do not complete all startup phase decomposition or dispose
 all shell listeners, timers and integration pollers.
 Module graph now caps lifecycle collaborators at these measured counts and new
 startup recovery/connectivity/hydration/background factories at eight.
+
+Main cloud polling in both apps now owns its recurring timer through the
+canonical `shared/runtime-polling.js`. Repeated start joins the existing cycle;
+stop invalidates queued callbacks and drains already-started operations through
+the existing sync/cutover ports. Cloud UI logout delegates to this owner.
+Unexpected background failures are reported, including Shared/Finance finally
+work; direct poll callers retain the original rejection. See
+[polling ownership](CLOUD_POLLING_RESOURCE_CONTRACT.md). Other integration and
+Shared-specific pollers still need their own ownership review.
 
 Baseline for the Kupa phase slice: main `20dbb7a9`, preceding full branch GitHub
 verification run `37752034470` passed (all CI groups, including browser,

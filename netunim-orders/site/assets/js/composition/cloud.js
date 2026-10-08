@@ -35,6 +35,7 @@ export function composeCloudUi({
     requestCloudSave:(...args)=>syncDocument.requestCloudSave(...args),
     storageV2CommitPromise:()=>storageBrowser.storageV2CommitPromise,
     startPolling:(...args)=>syncDocument.startPolling(...args),
+    stopPolling:(...args)=>syncDocument.stopPolling(...args),
     saveSession:(...args)=>cloudAuth.saveSession(...args),
     renderSettings:(...args)=>getUiSettings().renderSettings(...args),
     resumeCalendarAfterCloudLogin:(...args)=>getCalendarController().resumeAfterCloudLogin(...args),

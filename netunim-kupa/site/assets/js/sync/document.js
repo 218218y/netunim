@@ -1,6 +1,7 @@
 import {beginMeasure} from '../shared/runtime-performance.js';
 import {commitCloudCheckpoint} from '../shared/cloud-checkpoint-publication.js';
 import {cloudHeadIsSynced} from '../shared/storage-cloud-status.js';
+import {createPollingTask} from '../shared/runtime-polling.js';
 import {structuredSyncConflict} from '../shared/cloud-sync.js';
 import {normalizeSharedChecks} from '../shared/shared-checks-contract.js';
 import {assertValidCloudState} from '../state/validation.js';
@@ -28,6 +29,10 @@ function cloudAudit(pending,before,after,baseRevision,intents){const deletes=Obj
 export function createSyncDocument({hideConnectScreen, reportError, model, session, checksSession, tab, prepareKupaCloudState, applyKupaCloudState, setSaveStatus, setConnectedStatus, setCloudHeaderStatus, listBackups, backupSnapshotToComputer, syncSharedChecksFromCloud, render, readSupabaseDocument, readFinanceSyncDocument=async()=>null, supaRest, mergeKupaCloudState3Way, showSecondaryTabGuard, toast, pollSharedChecks, refreshOrdersFinanceSummary=async()=>false, storageV2CloudOutboxActive=()=>false, refreshStorageV2CloudState=async()=>null, materializeStorageV2CloudFlight=async()=>null, acknowledgeStorageV2CloudFlight=async()=>null, rejectStorageV2CloudFlight=async()=>null, setStorageV2CloudControl=async()=>null, clearStorageV2CloudControl=async()=>false, replaceStorageV2CurrentState=async()=>null, queueStorageV2CloudNormalization=async()=>null, adoptStorageV2CloudHead=async()=>null, resetStorageV2CloudHead=async()=>null, storageV2CommitPromise=()=>Promise.resolve(), storageV2PreparationActive=()=>false, assertAccountOwner=()=>{throw new Error('storage_owner_account_required')}, domainRevisions}){
 const outboxRetryScheduler=createOutboxRetryScheduler();
 let cloudPollPromise=null;
+const cloudPoller=createPollingTask({run:()=>trackedCloudPoll(),delay:()=>12_000+Math.floor(Math.random()*2_000),
+  canRun:()=>session.cloudPollingEnabled&&!storageV2PreparationActive(),
+  onError:error=>console.error('kupa background cloud poll',error),
+  onState:({enabled,timer})=>{session.cloudPollingEnabled=enabled;session.cloudPollTimer=timer}});
 function replaceVisibleState(next,{forceAll=false}={}){const previous=model.state;model.state=next;domainRevisions?.reconcile(previous,model.state,{forceAll});return model.state}
 function applyKupaCoreState(coreState,checks=model.state.checks,financeSource=model.state){
   const next=structuredClone(coreState&&typeof coreState==='object'?coreState:{}),finance=financeSource&&typeof financeSource==='object'?financeSource:{},coreBank=next.bank&&typeof next.bank==='object'?next.bank:{},financeBank=finance.bank&&typeof finance.bank==='object'?structuredClone(finance.bank):null;
@@ -299,9 +304,10 @@ async function resumeAfterReconnect(){
 }
 
 function trackedCloudPoll(){if(cloudPollPromise)return cloudPollPromise;cloudPollPromise=cloudPoll().finally(()=>{cloudPollPromise=null});return cloudPollPromise}
-function startCloudPolling(){if(session.cloudPollTimer)clearTimeout(session.cloudPollTimer);if(storageV2PreparationActive()){session.cloudPollingEnabled=false;session.cloudPollTimer=null;return}session.cloudPollingEnabled=true;const schedule=()=>{if(!session.cloudPollingEnabled||storageV2PreparationActive())return;session.cloudPollTimer=setTimeout(async()=>{try{await trackedCloudPoll()}finally{schedule()}},12_000+Math.floor(Math.random()*2_000))};schedule()}
+function startCloudPolling(){return cloudPoller.start()}
+function stopCloudPolling(){return cloudPoller.stop()}
 async function quiesceForStorageCutover(){
-  session.cloudPollingEnabled=false;if(session.cloudPollTimer){clearTimeout(session.cloudPollTimer);session.cloudPollTimer=null}
+  stopCloudPolling();
   if(session.cloudRecoveryTimer){clearTimeout(session.cloudRecoveryTimer);session.cloudRecoveryTimer=null}
   outboxRetryScheduler.cancel();
   if(cloudPollPromise)await Promise.allSettled([cloudPollPromise]);
@@ -310,5 +316,5 @@ async function quiesceForStorageCutover(){
   outboxRetryScheduler.cancel();return true;
 }
 
-return { applyCloudRow, loadSupabaseState, rpcSaveCloudV2, persistSupabaseState, requestStorageV2CloudSave, cloudPoll:trackedCloudPoll, resumeAfterReconnect, startCloudPolling,quiesceForStorageCutover };
+return { applyCloudRow, loadSupabaseState, rpcSaveCloudV2, persistSupabaseState, requestStorageV2CloudSave, cloudPoll:trackedCloudPoll, resumeAfterReconnect, startCloudPolling,stopCloudPolling,quiesceForStorageCutover };
 }
