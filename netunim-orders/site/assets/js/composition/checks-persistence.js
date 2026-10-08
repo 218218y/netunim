@@ -5,6 +5,7 @@ export function composeChecksPersistence({model,session,checksSession,storageBro
     model,session,checksSession,sharedChecksV2,
     toast:(...args)=>uiStatus.toast(...args),
     setSave:(...args)=>uiStatus.setSave(...args),
+    setCloud:(...args)=>uiStatus.setChecksCloud(...args),
     syncFolderAccessButton:(...args)=>uiFolderStatus.syncFolderAccessButton(...args),
     folderBackupAvailable:(...args)=>uiFolderStatus.folderBackupAvailable(...args),
     folderSaveTitle:(...args)=>uiFolderStatus.folderSaveTitle(...args),

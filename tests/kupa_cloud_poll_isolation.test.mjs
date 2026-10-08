@@ -25,8 +25,8 @@ function fixture({onCheckpoint=async()=>{},financeReadError=null}={}){
   globalThis.document={getElementById:id=>id==='cloudHeaderStatus'?header:id==='saveIndicator'?save:null,createElement:()=>({}),createTextNode:text=>text};
   const status=createUiStatus({session,checksSession,tab,storageRecovery:{isReady:()=>true}});
   const setCloudHeaderStatus=(...args)=>status.setCloudHeaderStatus(...args),setSaveStatus=(...args)=>{status.setSaveStatus(...args);saveStatuses.push([save.textContent,save.className.split(' ').at(-1)])};
-  const sharedChecksV2={requested:true,primaryReady:true,lastRemoteUpdatedAt:'2026-10-08T07:00:00Z',sync:async()=>true,cloudState:async()=>({base:{revision:139,state:{checks:[],bankEvents:[]}},pending:false,control:null})};
-  const checks=createSyncChecks({sharedChecksV2,checksSession,model,session,tab,toast:noop,render:noop,setSaveStatus:(text,mode)=>setSaveStatus(text,mode,'shared-checks'),setCloudHeaderStatus:(mode,text)=>setCloudHeaderStatus(mode,text,'shared-checks'),refreshCloudHeaderTimestamp:status.refreshCloudHeaderTimestamp});
+  const sharedChecksV2={requested:true,primaryReady:true,hasLocalWork:false,lastRemoteUpdatedAt:'2026-10-08T07:00:00Z',sync:async()=>true,cloudState:async()=>({seq:0,base:{revision:139,ackSeq:0,owner:'A',epoch:'E',state:{checks:[],bankEvents:[]}},pending:false,flight:null,control:null})};
+  const checks=createSyncChecks({sharedChecksV2,checksSession,model,session,tab,loadSession:()=>({user:{id:'A'}}),toast:noop,render:noop,setSaveStatus:(text,mode)=>setSaveStatus(text,mode,'shared-checks'),setCloudHeaderStatus:(mode,text)=>setCloudHeaderStatus(mode,text,'shared-checks'),refreshCloudHeaderTimestamp:status.refreshCloudHeaderTimestamp});
   const api=createSyncDocument({model,session,checksSession,tab,
     prepareKupaCloudState:normalization.prepareKupaCloudState,applyKupaCloudState:normalization.applyKupaCloudState,
     refreshStorageV2CloudState:async()=>clone(cloud),storageV2CloudOutboxActive:()=>true,

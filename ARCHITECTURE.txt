@@ -26,6 +26,12 @@ Editor/controllers read forms and coordinate mutations and persistence. Views ne
 Callbacks from the composition root connect layers without circular imports or a global service locator.
 The model context owns business state; session/checksSession own synchronization state; files owns handles/queues;
 UI contexts own filters, selections and modal drafts. Orders lastCloudState belongs to session.
+Main and Shared Checks publish cloud status through separate UI ports; a success in one
+cannot clear pending work or an error in the other. Orders startup status is a fallback
+until the live document publisher runs. Finance retains its independent readout status.
+Local appends invalidate prior cloud success immediately; Shared confirmation requires
+a clean acknowledged journal head, no live local work and matching visible check data.
+See docs/CLOUD_STATUS_CONFIRMATION_CONTRACT.md for receipt and source ownership rules.
 
 Data ownership and recovery
 ---------------------------

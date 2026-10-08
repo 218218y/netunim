@@ -314,6 +314,17 @@ work; direct poll callers retain the original rejection. See
 [polling ownership](CLOUD_POLLING_RESOURCE_CONTRACT.md). Other integration and
 Shared-specific pollers still need their own ownership review.
 
+Orders ongoing cloud status now has separate Main and Shared Checks publishers.
+Startup records stop owning a document outcome after its live publisher runs;
+Finance startup completion and timestamp refresh cannot erase that outcome.
+Shared confirmation in both apps uses a canonical clean-head/visible-checks
+predicate with live auth, leadership and local-work checks. Local Main and Shared
+appends immediately invalidate old success, and optional backup awaits require a
+fresh receipt. Kupa check persistence publishes through its existing Shared
+status slot. These changes preserve the storage/RPC/retry protocols. Controlled
+races and real IndexedDB restart/lost-response/held-ACK fixtures verify the
+[source and confirmation contract](CLOUD_STATUS_CONFIRMATION_CONTRACT.md).
+
 Baseline for the Kupa phase slice: main `20dbb7a9`, preceding full branch GitHub
 verification run `37752034470` passed (all CI groups, including browser,
 PostgreSQL and Windows contracts). Focused

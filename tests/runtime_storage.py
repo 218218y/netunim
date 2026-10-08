@@ -728,3 +728,105 @@ with BrowserSession(ROOT/'netunim-orders/site', 'poll-status-durable-ack') as br
     })()""",timeout=40)
     assert not browser.drain_serious_errors()
     print(f'PASS real IndexedDB poll status: {len(result)} assertions for concurrent GET edit, immutable flight, durable no-op ACK and identity after restart')
+
+# Exercise the real Shared journal through each application's status/persistence
+# adapters. Network and ACK boundaries are controlled; IndexedDB is not mocked.
+for app in ('orders', 'kupa'):
+    with BrowserSession(ROOT/f'netunim-{app}/site', f'{app}-shared-status-recovery') as browser:
+        script = r"""(async()=>{
+          const app=APP,clone=structuredClone,noop=()=>{},done=[];
+          const check=(condition,label)=>{if(!condition)throw Error(label);done.push(label)};
+          const gate=()=>{let resolve;const promise=new Promise(done=>{resolve=done});return {promise,resolve}};
+          document.body.innerHTML='<span id="cloudPill"></span><span id="savePill"></span><span id="cloudHeaderStatus"></span><span id="saveStatus"></span><span id="toast"></span>';
+          const {createUiStatus}=await import('./assets/js/ui/status.js');
+          const {createSyncChecks}=await import('./assets/js/sync/checks.js');
+          const {normalizeSharedChecks}=await import('./assets/js/shared/shared-checks-contract.js');
+          const {createSharedChecksV2Runtime}=await import('./assets/js/shared/shared-checks-v2-runtime.js');
+          const {createSharedChecksStorageV2}=await import('./assets/js/shared/shared-checks-storage-v2.js');
+          const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
+          const persistenceModule=await import(app==='orders'?'./assets/js/sync/checks-persistence.js':'./assets/js/storage/persistence.js');
+          const owner='shared-status-owner',db=createStorageJournalDb(),tab={primaryTab:true};
+          let authenticated=owner,n=0,lostResponse=true,holdAck=false,backupEdit=false,readHold=null;
+          const ackEntered=gate(),ackRelease=gate(),ledger=new Map(),calls=[];
+          const session={localGeneration:0,connectionMode:'supabase',backendReady:true,serverInfo:{},dbRevision:10,cloudRevision:10};
+          const checksSession={checksGeneration:0,sharedChecksGeneration:0},files={};
+          const model={state:{checks:normalizeSharedChecks([{id:'C',amount:100,note:'original'},{id:'D',amount:200,note:'original'}])}};
+          let remote={revision:7,state:{checks:clone(model.state.checks),bankEvents:[]}},runtime;
+          const merge=createSyncChecks({}).mergeSharedChecks;
+          const make=()=>createSharedChecksV2Runtime({site:app,owner:()=>owner,primary:()=>tab.primaryTab,mode:()=> 'primary',
+            readState:()=>({checks:model.state.checks,bankEvents:checksSession.checksBankEvents||checksSession.sharedChecksBankEvents||[]}),
+            applyState:state=>{model.state.checks=clone(state.checks);checksSession.checksBankEvents=clone(state.bankEvents);checksSession.sharedChecksBankEvents=clone(state.bankEvents)},
+            merge,operationId:()=>`shared-status-flight-${++n}`,
+            createStorage:options=>{
+              const store=createSharedChecksStorageV2({...options,db}),ack=store.acknowledge;
+              store.acknowledge=async(...args)=>{if(holdAck){holdAck=false;ackEntered.resolve();await ackRelease.promise}return ack(...args)};
+              return store;
+            },
+            readRemote:async()=>{if(readHold){readHold.entered.resolve();await readHold.release.promise}return clone(remote)},
+            rpc:async(checks,revision,id,deleted,audit)=>{
+              calls.push(clone({checks,revision,id,deleted,audit}));
+              if(!ledger.has(id)){
+                check(revision===remote.revision,'new flight uses the current remote revision');
+                remote={revision:revision+1,state:{checks:clone(checks),bankEvents:[{seq:42,checkId:'C',delta:100}]},updated_at:'2026-10-08T10:00:00Z'};
+                ledger.set(id,clone(remote));
+              }
+              if(lostResponse){lostResponse=false;throw new TypeError('injected lost RPC response')}
+              return {r:{ok:true},row:clone(ledger.get(id))};
+            }});
+          runtime=make();await runtime.initialize({state:clone(remote.state),revision:7,intent:'cloud-authoritative',sourceOwner:owner});
+          const status=createUiStatus({session,checksSession,tab,storageRecovery:{isReady:()=>true}});
+          const main=(text,mode)=>app==='orders'?status.setCloud(text,mode):status.setCloudHeaderStatus(mode,text);
+          const header=()=>document.getElementById(app==='orders'?'cloudPill':'cloudHeaderStatus');
+          const synced=()=>header().classList.contains('synced');
+          const ports=()=>({model,session,checksSession,tab,files,sharedChecksV2:runtime,
+            loadSession:()=>authenticated?{user:{id:authenticated}}:null,
+            toast:noop,render:noop,setSave:noop,setSaveStatus:(text,mode)=>status.setSaveStatus(text,mode,'shared-checks'),
+            setCloud:(...args)=>status.setChecksCloud(...args),setCloudHeaderStatus:(mode,text)=>status.setCloudHeaderStatus(mode,text,'shared-checks'),
+            checksStatus:{save:(text,mode)=>status.setSaveStatus(text,mode,'shared-checks'),cloud:(mode,text)=>status.setCloudHeaderStatus(mode,text,'shared-checks')},
+            refreshCloudTimestamp:status.refreshCloudTimestamp,refreshCloudHeaderTimestamp:status.refreshCloudHeaderTimestamp,
+            recomputeKupaNetFromCache:noop,renderKupaDependentView:noop,
+            folderSaveTitle:()=>'',folderBackupAvailable:()=>false,syncFolderAccessButton:noop,rejectSecondaryMutation:()=>false,
+            saveSharedChecksToCloud:async()=>{},domainRevisions:{touch:noop},
+            writeStateToFolder:backup,backupSnapshotToComputer:backup});
+          const api=()=>createSyncChecks(ports());
+          async function edit(id,note){
+            model.state.checks=model.state.checks.map(row=>row.id===id?{...row,note}:row);
+            const p=app==='orders'?persistenceModule.createSyncChecksPersistence(ports()):persistenceModule.createStoragePersistence(ports());
+            const options={operations:[{type:'put',collection:'checks',id,mode:'replace'}]};
+            const committed=app==='orders'?p.scheduleCheckSave('edit',options):p.saveChecksState('edit',options);
+            clearTimeout(session.saveTimer);clearTimeout(checksSession.sharedChecksSaveTimer);
+            await committed;await runtime.flush();
+          }
+          async function backup(){if(backupEdit){backupEdit=false;await edit('D','edit-during-backup')}}
+          main('Main clean','synced');check(await api().syncSharedChecksFromCloud({quiet:true})===true&&synced(),'both documents initially confirmed clean');
+          await edit('C','offline-change');check(!synced(),'local append immediately invalidates the old cloud success');
+          check(await api().saveSharedChecksToCloud()===false&&!synced(),'lost RPC response never confirms cloud success');
+          const failed=await runtime.cloudState(),first=clone(calls[0]);
+          check(failed.pending&&failed.flight&&failed.base.ackSeq===0&&failed.seq===1,'lost response retains the real pending journal and immutable flight');
+          runtime=make();await runtime.recover();check(model.state.checks[0].id==='C'&&model.state.checks[0].note==='offline-change','restart restores the original ID and offline edit');
+          await edit('D','during-outage');holdAck=true;
+          const saving=api().saveSharedChecksToCloud();await ackEntered.promise;
+          const held=await runtime.cloudState();
+          check(!synced()&&held.pending&&held.flight&&held.base.ackSeq===0&&held.seq===2,'RPC success cannot confirm Shared status before durable ACK');
+          check(JSON.stringify(calls[1])===JSON.stringify(first),'lost response replays the identical operation, checks, audit and revision');
+          ackRelease.resolve();check(await saving===true&&synced(),'durable ACK of all pending work permits cloud success');
+          let clean=await runtime.cloudState();
+          check(clean.seq===2&&clean.base.ackSeq===2&&!clean.pending&&!clean.flight&&!clean.control,'all pending generations receive the exact clean durable receipt');
+          check(ledger.size===2&&remote.state.checks[0].note==='offline-change'&&remote.state.checks[1].note==='during-outage','retry does not duplicate the first cloud commit or lose a newer edit');
+          files[app==='orders'?'dirHandle':'backupsDirHandle']={};backupEdit=true;
+          check(await api().syncSharedChecksFromCloud({quiet:true})===false&&!synced(),'an edit during the optional backup prevents a stale Shared success');
+          delete files.dirHandle;delete files.backupsDirHandle;
+          runtime=make();await runtime.recover();const pending=await runtime.cloudState();
+          check(pending.seq===3&&pending.base.ackSeq===2&&pending.pending&&model.state.checks[1].id==='D'&&model.state.checks[1].note==='edit-during-backup','restart preserves the backup-time edit and identity as pending');
+          main('Main conflict',app==='orders'?'error':'conflict');
+          check(await api().saveSharedChecksToCloud()===true&&!synced()&&header().textContent.includes('Main conflict'),'independent Shared success cannot erase Main conflict');
+          readHold={entered:gate(),release:gate()};const pulling=api().syncSharedChecksFromCloud({quiet:true});await readHold.entered.promise;
+          authenticated=null;session.backendReady=false;main('Cloud inactive','off');readHold.release.resolve();
+          check(await pulling===false&&!synced()&&header().textContent.includes('Cloud inactive'),'late Shared response cannot repaint a logged-out header');
+          clean=await runtime.cloudState();
+          check(clean.seq===3&&clean.base.ackSeq===3&&model.state.checks.map(row=>row.id).join(',')==='C,D','status failures preserve the durable ACK and original check identities');
+          return done;
+        })()""".replace('APP', json.dumps(app))
+        result = browser.evaluate(script, timeout=40)
+        assert not browser.drain_serious_errors()
+        print(f'PASS {app} real IndexedDB Shared status recovery: {len(result)} assertions for lost response, restart, immutable replay, held ACK, backup edits, Main conflict and logout')

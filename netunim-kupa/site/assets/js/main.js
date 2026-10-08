@@ -184,6 +184,12 @@ const storageBackup=createStorageBackup({
 });
 
 const storagePersistence=createStoragePersistence({
+  loadSession:(...args)=>cloudAuth.loadSupaSession(...args),
+  setCloudHeaderStatus:(...args)=>uiStatus.setCloudHeaderStatus(...args),
+  checksStatus:{
+    save:(text,mode)=>uiStatus.setSaveStatus(text,mode,'shared-checks'),
+    cloud:(mode,text)=>uiStatus.setCloudHeaderStatus(mode,text,'shared-checks'),
+  },
   creditNormalizationMayDelete:inactiveCreditExpired,
   sharedChecksV2,
   storageV2Boundary:sharedChecksV2Composition.boundary,
@@ -271,6 +277,7 @@ const syncChecks=createSyncChecks({
   session,
   files,
   tab,
+  loadSession:(...args)=>cloudAuth.loadSupaSession(...args),
   toast:(...args)=>uiStatus.toast(...args),
   render:(...args)=>uiNavigation.checksChanged(...args),
   setSaveStatus:(text,mode)=>uiStatus.setSaveStatus(text,mode,'shared-checks'),
