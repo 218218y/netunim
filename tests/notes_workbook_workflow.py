@@ -10,9 +10,9 @@ def run():
           const legacyState={notesSheet:{version:2,sheets:[{id:'S1',name:'Keep'},{id:'S2',name:'Delete'}],
             columns:[{id:'C1',sheetId:'S1',title:'Value'},{id:'C2',sheetId:'S2',title:'Value'}],
             rows:[{id:'R1',sheetId:'S1',cells:{C1:'kept'}},{id:'R2',sheetId:'S2',cells:{C2:'removed'}}]}};
-          cloudAuth.loadSupaSession=()=>({user:{id:'workbook-test'}});await spreadsheetWorkspace.sync.captureLegacy(legacyState.notesSheet);state=normalizeState(legacyState);
+          cloudAuth.loadSupaSession=()=>({user:{id:'workbook-test'}});await notes.captureLegacyWorkbook(legacyState.notesSheet);state=normalizeState(legacyState);
           backendReady=true;connectionMode='supabase';dbRevision=1;lastSavedSnapshot=JSON.stringify(prepareKupaCloudState(state));
-          cloudAuth.loadSupaSession=()=>({user:{id:'workbook-test'}});setPage('notes');document.querySelector('[data-action="notes-workspace-sheet"]').click();await spreadsheetWorkspace.sync.open();return true;
+          cloudAuth.loadSupaSession=()=>({user:{id:'workbook-test'}});setPage('notes');document.querySelector('[data-action="notes-workspace-sheet"]').click();await notes.workbook.sync.open();return true;
         })()""")
         for width in (1280, 390):
             browser.call('Emulation.setDeviceMetricsOverride', {'width': width, 'height': 900, 'deviceScaleFactor': 1, 'mobile': False})
@@ -34,10 +34,10 @@ def run():
           document.querySelector('[data-action="delete-notes-sheet"]').click();
           await waitFor(()=>document.getElementById('confirmBackdrop').classList.contains('open'));
           document.getElementById('confirmAccept').click();
-          await waitFor(()=>spreadsheetWorkspace.model.state.notesSheet.sheets.length===1);
-          if(spreadsheetWorkspace.model.state.notesSheet.rows.length!==1||spreadsheetWorkspace.model.state.notesSheet.rows[0].cells.C1!=='kept')throw new Error('Wrong sheet content removed');
+          await waitFor(()=>notes.workbook.model.state.notesSheet.sheets.length===1);
+          if(notes.workbook.model.state.notesSheet.rows.length!==1||notes.workbook.model.state.notesSheet.rows[0].cells.C1!=='kept')throw new Error('Wrong sheet content removed');
           document.querySelector('.notes-actions [data-action="add-notes-sheet-row"]').click();
-          await spreadsheetWorkspace.sync.flush({send:false});
+          await notes.workbook.sync.flush({send:false});
           const store=createSpreadsheetStore(),saved=await store.load('workbook-test:kupa:main');
           if(saved.record.working.sheets.length!==1||saved.record.base.sheets.length!==2)throw new Error('Deletion was not durably staged');
           const requests=[];cloudAuth.supaRest=async(path,options)=>{
@@ -46,10 +46,10 @@ def run():
             return new Response(JSON.stringify([{revision:2,state:body.p_state}]));
           };
           Object.defineProperty(navigator,'onLine',{value:true,configurable:true});
-          await spreadsheetWorkspace.sync.flush();await spreadsheetWorkspace.sync.flush();
+          await notes.workbook.sync.flush();await notes.workbook.sync.flush();
           const request=requests.find(row=>row.path.includes('save_spreadsheet_document_v1'));
           if(!request||request.body.p_delete_intents['notesSheet.sheets'][0]!=='S2'||request.body.p_kind!=='delete')throw new Error('Sheet deletion lost its exact intent');
-          if(spreadsheetWorkspace.sync.status!=='saved')throw new Error('Acknowledged deletion remains pending');
+          if(notes.workbook.sync.status!=='saved')throw new Error('Acknowledged deletion remains pending');
           if(localStorage.getItem('orders.supabase.pending.v1')!==null)throw new Error('Workbook must not create a retired Main outbox');
           return true;
         })()""", timeout=30)

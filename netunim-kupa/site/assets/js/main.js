@@ -3,7 +3,6 @@ import {installLocalSiteResetPeerListener} from './shared/local-site-reset.js';
 import {assertKupaEntityInvariants} from './state/validation.js';
 import {KUPA_FINANCE_DOMAINS} from './state/revisions.js';
 import {createFinanceDerivationStore} from './shared/finance-derivations.js';
-import {createSpreadsheetWorkspace} from './shared/spreadsheet-workspace.js';
 import {esc} from './core/values.js';
 import {createCreditCardOrderView} from './shared/credit-card-order-view.js';
 import {createUiConnection} from './ui/connection.js';
@@ -37,7 +36,7 @@ import {createDomainsDashboardView} from './domains/dashboard/view.js';
 import {createDomainsDashboardController} from './domains/dashboard/controller.js';
 import {createUiBulk} from './ui/bulk.js';
 import {createDomainsCreditView} from './domains/credit/view.js';
-import {createDomainsNotesController} from './domains/notes/controller.js';
+import {createKupaNotesRuntime} from './composition/notes.js';
 import {createDomainsBankAlerts} from './domains/bank/alerts.js';
 import {composeDocumentSearch} from './shared/document-search-composition.js';
 import {composeKupaFinance} from './composition/finance.js';
@@ -52,7 +51,7 @@ import {verifyStorageV2LocalEngine} from './shared/storage-v2-local-birth.js';
 import {bindActionEvents,bindBackdropDismissal,bindDismissibleDetails,bindNumberInputWheelGuard} from './shared/events.js';
 import {checkBankReviewItems,checkBankReviewMarkup} from './shared/check-bank-review.js';
 import {composeActionRegistry} from './shared/action-registry.js';
-import {createBankActions,createShellActions,createCreditActions,createNotesActions,createSettingsActions,createBackupActions,createCloudActions} from './ui/actions.js';
+import {createBankActions,createShellActions,createCreditActions,createSettingsActions,createBackupActions,createCloudActions} from './ui/actions.js';
 import {createContexts} from './state/contexts.js';
 import {createKupaDomainRevisions,kupaPageRevision} from './state/revisions.js';
 import {createRestoreGroupStore} from './shared/restore-groups.js';
@@ -109,7 +108,8 @@ const uiStatus=createUiStatus({
 const storageIndexedDb=createStorageIndexedDb({
 
 });
-const captureLegacyWorkbook=(...args)=>spreadsheetWorkspace.sync.captureLegacy(...args);
+const notes=createKupaNotesRuntime({model,ui,session,tab});
+const captureLegacyWorkbook=(...args)=>notes.captureLegacyWorkbook(...args);
 
 const mainStorageV2=storageV2Coordinator.createRuntime({validate:state=>assertKupaEntityInvariants(state,{includeChecks:Object.hasOwn(state||{},'checks'),required:true}),prepareCheckpoint:state=>stateNormalization.prepareKupaStorageState(state),prepareOperation:operation=>stateNormalization.prepareKupaStorageOperation(operation)});
 const storageBrowser=createStorageBrowser({
@@ -348,13 +348,13 @@ const uiNavigation=createUiNavigation({
   renderCredit:(...args)=>domainsCreditView.renderCredit(...args),
   renderCash:(...args)=>cash.renderCash(...args),
   renderBank:(...args)=>domainsBankView.renderBank(...args),
-  renderNotes:(...args)=>domainsNotesController.renderNotes(...args),
+  renderNotes:(...args)=>notes.renderNotes(...args),
   renderSettings:(...args)=>uiSettings.renderSettings(...args),
   maybeAutoRefreshBankBalance:(...args)=>domainsBankController.maybeAutoRefreshBankBalance(...args),
   maybeAutoRefreshCreditSync:(...args)=>domainsCreditController.maybeAutoRefreshCreditSync(...args),
   maybeShowCashflowStartupAlert:(...args)=>domainsBankAlerts.maybeShowStartupCashflowAlert(...args),
-  onPageActivated:page=>{if(page==='notes'&&ui.notesTab==='sheet')void spreadsheetWorkspace.activate()},
-  dataRevision:page=>kupaPageRevision(domainRevisions,page)+':'+new Date().toLocaleDateString('en-CA')+(page==='notes'&&ui.notesTab==='sheet'?':'+spreadsheetWorkspace.sync.cacheStamp:''),
+  onPageActivated:page=>{void notes.activateSheetIfVisible(page)},
+  dataRevision:page=>kupaPageRevision(domainRevisions,page)+':'+new Date().toLocaleDateString('en-CA')+notes.revisionSuffix(page),
 });
 
 const uiGlobalSearch=createUiGlobalSearch({
@@ -420,20 +420,6 @@ const domainsCreditView=createDomainsCreditView({
   expensesMarkup:(...args)=>expenses.expensesMarkup(...args),
 });
 
-const spreadsheetWorkspace=createSpreadsheetWorkspace({
-  domain:'kupa',request:(...args)=>cloudAuth.supaRest(...args),account:()=>cloudAuth.loadSupaSession()?.user?.id,enabled:()=>session.connectionMode==='supabase'&&!!cloudAuth.loadSupaSession(),primary:()=>tab.primaryTab,
-  active:()=>ui.currentPage==='notes'&&ui.notesTab==='sheet',render:()=>domainsNotesController.renderNotes(),legacy:()=>model.legacyNotesSheet,
-  esc,confirmDialog:(...args)=>uiModal.confirmDialog(...args),modal:(title,body)=>uiModal.modal(title,body,'סגור',()=>uiModal.closeModal()),closeModal:()=>uiModal.closeModal(),
-});
-
-const domainsNotesController=createDomainsNotesController({
-  workspace:spreadsheetWorkspace,
-  model,
-  ui,
-  saveState:(message,options={})=>storagePersistence.saveState(message,{...options,domains:['notes']}),
-  confirmDialog:(...args)=>uiModal.confirmDialog(...args),
-});
-
 const {
   creditController:domainsCreditController,
   bankController:domainsBankController,
@@ -466,6 +452,9 @@ const uiSettings=createUiSettings({
 const uiModal=createUiModal({
   ui,
 });
+
+notes.bind({cloudAuth,uiModal,storagePersistence});
+notes.assertReady();
 
 const importFinanceConnections=composeFinanceConnectionImporter();
 
@@ -636,9 +625,9 @@ const uiActions=composeActionRegistry([
   {name:'credit',actions:createCreditActions({domainsCreditController,domainsCreditEditor,domainsCreditView,ui})},
   {name:'credit-order',actions:creditCardOrderView.actions},
   {name:'cash',actions:cash.actions},
-  {name:'notes',actions:createNotesActions({domainsNotesController,ui})},
-  {name:'notes-sheet',actions:domainsNotesController.sheetActions},
-  {name:'spreadsheet-workspace',actions:spreadsheetWorkspace.actions},
+  {name:'notes',actions:notes.actions},
+  {name:'notes-sheet',actions:notes.sheetActions},
+  {name:'spreadsheet-workspace',actions:notes.workspaceActions},
   {name:'expenses',actions:expenses.actions},
   {name:'settings',actions:createSettingsActions({uiSettings})},
   {name:'backup',actions:createBackupActions({uiBackup,uiFolders})},
