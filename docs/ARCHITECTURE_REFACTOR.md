@@ -90,6 +90,12 @@ remain separate from structural refactors.
   date editing, persistence and record commands exist. Date editor callbacks
   target explicit guarded commands instead of a later main-scope variable.
   Check mutations continue to use the shared-checks persistence port.
+- Kupa Notes now composes its workbook, spreadsheet sync workspace, sticky-note
+  controller and action packs behind one runtime. Storage recovery and
+  navigation receive guarded ports early; construction binds once after cloud,
+  modal and persistence ports exist, before lifecycle startup. Sticky-note
+  writes retain the notes domain scope, and spreadsheet actions keep their
+  existing independent sync owner.
 
 ## Dependency direction
 
@@ -103,7 +109,7 @@ and presentation primitives should have explicit owners.
 
 ## Next reviewable slices
 
-1. **Composition roots:** continue with Kupa Notes and the remaining Kupa and
+1. **Composition roots:** continue with the remaining Kupa and
    Orders capabilities. Map each capability's inputs, outputs, startup phase, and
    deferred callbacks. Keep public behavior fixed and run browser startup and
    sync gates for each extraction. Do not create a broad application service

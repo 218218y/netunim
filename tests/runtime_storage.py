@@ -295,14 +295,14 @@ with BrowserSession(ROOT/'netunim-kupa/site','sheet-warm-navigation-freshness') 
       let remote={revision:1,state:book},reads=0;
       cloudAuth.loadSupaSession=()=>({user:{id:'freshness-owner'}});cloudAuth.supaRest=async()=>{reads++;return new Response(JSON.stringify([remote]))};
       session.connectionMode='supabase';session.backendReady=false;ui.notesTab='sheet';
-      await spreadsheetWorkspace.sync.open();setPage('notes');await spreadsheetWorkspace.activate();
+      await notes.workbook.sync.open();setPage('notes');await notes.workbook.activate();
       // Establish the navigation stamp after the asynchronous initial load.
       render();const previous=document.getElementById('content').firstChild;setPage('cash');
       remote=structuredClone(remote);remote.revision=2;remote.state.rows[0].cells[book.columns[0].id]='updated elsewhere';
       const before=reads;setPage('notes');
       const restoredImmediately=document.getElementById('content').firstChild===previous;
-      await spreadsheetWorkspace.activate();
-      if(!restoredImmediately||reads<=before||spreadsheetWorkspace.sync.revision!==2)throw Error('Warm sheet navigation did not poll immediately');
+      await notes.workbook.activate();
+      if(!restoredImmediately||reads<=before||notes.workbook.sync.revision!==2)throw Error('Warm sheet navigation did not poll immediately');
       const cell=document.querySelector('[data-sheet-cell][data-sheet-row-id="fresh-row"]');
       if(!cell||cell.value!=='updated elsewhere')throw Error('Remote sheet change was not rendered');
       return true;
