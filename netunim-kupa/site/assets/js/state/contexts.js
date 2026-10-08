@@ -30,6 +30,7 @@ return {
     cloudConflictPending:false,
     cloudAuthNoDocument:false,
     startupCloudHydrating:false,
+    startupLocalServicesPromise:null,
     localFileConflictPending:false,
     cloudConnectAction:'open'
   },

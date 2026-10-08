@@ -63,8 +63,18 @@ ok("restorePayloadHash" in restore_client and "await put(currentKey" in restore_
 for site in (ORDERS, KUPA):
     ui = (site / "site/assets/js/ui/backup.js").read_text(encoding="utf-8")
     lifecycle = (site / "site/assets/js/lifecycle.js").read_text(encoding="utf-8")
+    if site == KUPA:
+        main = (site / "site/assets/js/main.js").read_text(encoding="utf-8")
+        cloud_startup = (site / "site/assets/js/startup/cloud-hydration.js").read_text(encoding="utf-8")
+        # Keep the deployment restore invariant across the explicit startup port:
+        # lifecycle starts hydration, which resumes the concrete restore owner.
+        startup_resumes = ("awaitcloudStartup.hydrate()" in "".join(lifecycle.split())
+                           and "restore:{resume:uiBackup.resumeIncompleteRestore}" in "".join(main.split())
+                           and "awaitrestore.resume()" in "".join(cloud_startup.split()))
+    else:
+        startup_resumes = "resumeIncompleteRestore" in lifecycle
     ok("applyStorageV2LocalImport" in ui and "applyStorageV2RestoreGroup" in ui
-       and "resumeIncompleteRestore" in ui and "resumeIncompleteRestore" in lifecycle,
+       and "resumeIncompleteRestore" in ui and startup_resumes,
        f"{site.name}: V2 restore is coordinated and startup-resumable")
 
 ok("create table if not exists netunim_internal.safety_snapshots" in lower

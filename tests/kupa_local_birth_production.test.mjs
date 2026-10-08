@@ -1,4 +1,4 @@
-import {withStorageProtocol} from './startup_ports.mjs';
+import {withKupaStartup} from './startup_ports.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createLifecycle} from '../netunim-kupa/site/assets/js/lifecycle.js';
@@ -53,7 +53,7 @@ function bootFixture({primary=true,failBirth=false}={}){
     requestPersistentBrowserStorage:async()=>{},restoreRememberedBackupTarget:async()=>{},
     tryAutoOpenRemembered:async()=>false,showFirstRun:()=>events.push('first-run'),
   });
-  return {lifecycle:createLifecycle(withStorageProtocol(ports)),events,session};
+  return {lifecycle:createLifecycle(withKupaStartup(ports)),events,session};
 }
 
 test('Kupa production startup finishes local birth and hydrates Shared before presenting data',async()=>{
@@ -79,7 +79,7 @@ test('Kupa unmarked browser for a fenced account stops before V1 recovery and re
       acquirePrimaryTabLock:async()=>{},hydrateStorageOwner:async()=>{},restoreSupaSession:async()=>({user:{id:'account'}}),storageOwnerCurrent:()=> 'account',authenticatedOwner:()=> 'account',
       readStorageProtocolState:async()=>({orders:2,kupa:2,sharedChecks:2}),verifyStorageV2AccountMarker:async()=>false,verifyLocalStorageEngine:async()=>false,
       recoverBrowserV2State:async()=>{throw Error('stale V1 loaded')},render:()=>{throw Error('stale state displayed')},setConnectUI:()=>events.push('blocked')});
-    await createLifecycle(withStorageProtocol(ports)).boot();assert.deepEqual(events,['blocked']);assert.equal(ports.session.storageProtocolBlocked,true);
+    await createLifecycle(withKupaStartup(ports)).boot();assert.deepEqual(events,['blocked']);assert.equal(ports.session.storageProtocolBlocked,true);
   }finally{if(previous)Object.defineProperty(globalThis,'navigator',previous);else delete globalThis.navigator}
 });
 
@@ -98,7 +98,7 @@ test('Kupa fenced stale browser hydrates cloud V2 before opening the screen',asy
       recoverSharedChecksV2Primary:async()=>{events.push('shared-v2');return true},
       ensureSyncCapabilities:async()=>true,requestPersistentBrowserStorage:async()=>{},restoreRememberedBackupTarget:async()=>{},
       supaConfigured:()=>true,render:()=>events.push('render'),tryAutoOpenSupabase:async()=>true,setCloudHeaderStatus:noop,setConnectUI:()=>events.push('blocked')});
-    await createLifecycle(withStorageProtocol(ports)).boot();
+    await createLifecycle(withKupaStartup(ports)).boot();
     assert.ok(events.indexOf('cloud-adoption')<events.indexOf('main-v2'));
     assert.ok(events.indexOf('main-v2')<events.indexOf('shared-v2'));
     assert.equal(events.includes('blocked'),false);assert.equal(ports.session.storageProtocolBlocked,false);
