@@ -77,11 +77,12 @@ test('Kupa reconnect replaces a failed online probe with explicit recovery state
   assert.deepEqual(saveStatuses.at(-1),['ממתין לחידוש חיבור הענן','saving']);
 });
 
-test('Browser online handlers delegate reconnect ownership to sync modules',()=>{
-  const orders=fs.readFileSync(new URL('../netunim-orders/site/assets/js/runtime-events.js',import.meta.url),'utf8');
-  const kupa=fs.readFileSync(new URL('../netunim-kupa/site/assets/js/main.js',import.meta.url),'utf8');
-  assert.match(orders,/tab\.primaryTab&&cloudAuth\.cloudEnabled\(\).*syncDocument\.resumeAfterReconnect\(\)/);
-  assert.doesNotMatch(orders,/uiStatus\.setCloud\('ענן: חזרה רשת…'/);
-  assert.match(kupa,/session\.connectionMode==='supabase'\)setTimeout\(\(\)=>void syncDocument\.resumeAfterReconnect\(\),250\)/);
-  assert.doesNotMatch(kupa,/uiStatus\.setCloudHeaderStatus\('syncing','ענן: חזרה רשת…'\)/);
+test('Browser connectivity delegates reconnect status ownership to sync modules',()=>{
+  for(const [app,entrypoint] of [['orders','runtime-events'],['kupa','main']]){
+    const root=fs.readFileSync(new URL(`../netunim-${app}/site/assets/js/${entrypoint}.js`,import.meta.url),'utf8');
+    const connectivity=fs.readFileSync(new URL(`../netunim-${app}/site/assets/js/connectivity.js`,import.meta.url),'utf8');
+    assert.match(root,/connectivity\.start\(\)/);
+    assert.match(connectivity,/\.resumeAfterReconnect\(\)/);
+    assert.doesNotMatch(root+connectivity,/setCloud(?:HeaderStatus)?\([^\n]*???? ???/);
+  }
 });
