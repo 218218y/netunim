@@ -43,7 +43,7 @@ test('Kupa root constructs record commands before editors and owns Cash through 
   const main=fs.readFileSync(new URL('../netunim-kupa/site/assets/js/main.js',import.meta.url),'utf8');
   assert.doesNotMatch(main,/from ['"]\.\/domains\/cash\//);
   assert.ok(main.indexOf('const domainsRecordsCommands=')<main.indexOf('checks.bindEditor('));
-  assert.ok(main.indexOf('const domainsRecordsCommands=')<main.indexOf('const domainsCreditEditor='));
+  assert.ok(main.indexOf('const domainsRecordsCommands=')<main.indexOf('credit.bindEditor('));
   assert.match(main,/cash\.bindUi\(/);
   assert.match(main,/cash\.assertReady\(/);
   assert.match(main,/name:'cash',actions:cash\.actions/);
