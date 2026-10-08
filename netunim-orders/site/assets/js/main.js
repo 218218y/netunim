@@ -1,7 +1,6 @@
 import {createOrdersStorageV2Coordinator} from './composition/storage-v2.js';
 import {installLocalSiteResetPeerListener} from './shared/local-site-reset.js';
 import {assertOrderEntityInvariants} from './state/validation.js';
-import {createInventoryRenderStore} from './domains/inventory/model.js';
 import {createFinanceDerivationStore} from './shared/finance-derivations.js';
 import {esc} from './core/values.js';
 import {createCreditCardOrderView} from './shared/credit-card-order-view.js';
@@ -9,6 +8,7 @@ import {createFinanceConnectionImporter} from './shared/finance-connection-impor
 import {createStateNormalization} from './state/normalization.js';
 import {createStorageBrowser} from './storage/browser.js';
 import {createOrdersSuppliersRuntime} from './composition/suppliers.js';
+import {createOrdersWarehouseRuntime} from './composition/warehouse.js';
 import {createUiStatus} from './ui/status.js';
 import {createUiFolderStatus} from './ui/folder-status.js';
 import {createUiTabGuard} from './ui/tab-guard.js';
@@ -35,14 +35,6 @@ import {createDomainsServiceBulk} from './domains/service/bulk.js';
 import {createDomainsServiceView} from './domains/service/view.js';
 import {createDomainsServiceEditor} from './domains/service/editor.js';
 import {createServiceActionPorts} from './domains/service/action-ports.js';
-import {createDomainsInventorySelectors} from './domains/inventory/selectors.js';
-import {createDomainsInventoryOrder} from './domains/inventory/order.js';
-import {createDomainsInventoryView} from './domains/inventory/view.js';
-import {createDomainsWarehouseBulk} from './domains/warehouse/bulk.js';
-import {createDomainsWarehouseView} from './domains/warehouse/view.js';
-import {createDomainsInventoryEditor} from './domains/inventory/editor.js';
-import {createDomainsWarehouseEditor} from './domains/warehouse/editor.js';
-import {createWarehouseActionPorts} from './domains/warehouse/action-ports.js';
 import {composeBackup} from './composition/backup.js';
 import {createStateSelectors} from './state/selectors.js';
 import {createStorageFiles} from './storage/files.js';
@@ -62,7 +54,7 @@ import {createLifecycle} from './lifecycle.js';
 import {verifyStorageV2LocalEngine} from './shared/storage-v2-local-birth.js';
 import {bindActionEvents,bindDismissibleDetails,bindNumberInputWheelGuard} from './shared/events.js';
 import {composeActionRegistry} from './shared/action-registry.js';
-import {wrapMutationActions,createExternalActionPacks,createAlertsActions,createFinanceBankActions,createFinanceCreditActions,createChecksActions,createShellActions,createDashboardActions,createCustomersActions,createMorningActions,createServiceActions,createWarehouseActions,createBackupActions,createCloudActions,createNotesActions,createCalendarActions} from './ui/actions.js';
+import {wrapMutationActions,createExternalActionPacks,createAlertsActions,createFinanceBankActions,createFinanceCreditActions,createChecksActions,createShellActions,createDashboardActions,createCustomersActions,createMorningActions,createServiceActions,createBackupActions,createCloudActions,createNotesActions,createCalendarActions} from './ui/actions.js';
 import {createUiGlobalSearch} from './ui/global-search.js';
 import {createUiKeyboardNavigation} from './ui/keyboard-navigation.js';
 import {createContexts} from './state/contexts.js';
@@ -91,7 +83,6 @@ installLocalSiteResetPeerListener();
 // Event handlers are installed before the async owner/protocol preflight finishes.
 session.storageProtocolBlocked=true;
 const domainRevisions=createOrderDomainRevisions(session);
-const inventoryRenderStore=createInventoryRenderStore({state:()=>model.state,revision:()=>domainRevisions.stamp(['inventory'])});
 const financeDerivations=createFinanceDerivationStore({revision:()=>domainRevisions.stamp(['finance','checks'])});
 
 const storageV2Coordinator=createOrdersStorageV2Coordinator({tab,session});
@@ -146,6 +137,7 @@ const calendarRuntime=createOrdersCalendarRuntime({
 });
 
 const suppliers=createOrdersSuppliersRuntime({model,supplierUi,ui});
+const warehouse=createOrdersWarehouseRuntime({model,warehouseUi,ui,inventoryRevision:()=>domainRevisions.stamp(['inventory'])});
 
 const uiStatus=createUiStatus({
   session,
@@ -218,7 +210,7 @@ const uiNavigation=createUiNavigation({
   renderSupplier:(...args)=>suppliers.renderSupplier(...args),
   renderCustomers:(...args)=>domainsCustomers.renderCustomers(...args),
   renderService:(...args)=>domainsServiceView.renderService(...args),
-  renderWarehouse:(...args)=>domainsWarehouseView.renderWarehouse(...args),
+  renderWarehouse:(...args)=>warehouse.renderWarehouse(...args),
   renderNotes:(...args)=>domainsNotesController.renderNotes(...args),
   renderCalendar:(...args)=>domainsCalendarController.renderCalendar(...args),
   renderSettings:(...args)=>uiSettings.renderSettings(...args),
@@ -335,81 +327,6 @@ const domainsServiceEditor=createDomainsServiceEditor({
   renderService:(...args)=>domainsServiceView.renderService(...args),
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
   dateEditorMarkup:(...args)=>uiDateEditor.dateEditorMarkup(...args),
-});
-
-const domainsInventorySelectors=createDomainsInventorySelectors({
-  model,
-  warehouseUi,
-  renderWarehouse:(...args)=>domainsWarehouseView.renderWarehouse(...args),
-});
-
-const domainsInventoryOrder=createDomainsInventoryOrder({
-  model,
-  warehouseUi,
-  ui,
-  modal:(...args)=>uiModal.modal(...args),
-  orderedInventoryCategoryNames:(...args)=>domainsInventorySelectors.orderedInventoryCategoryNames(...args),
-  scheduleSave:(message,options={})=>storagePersistence.scheduleSave(message,{...options,domains:['inventory']}),
-  closeModal:(...args)=>uiModal.closeModal(...args),
-  inventoryCategoryNames:(...args)=>domainsInventorySelectors.inventoryCategoryNames(...args),
-  renderWarehouse:(...args)=>domainsWarehouseView.renderWarehouse(...args),
-  renderSettings:(...args)=>uiSettings.renderSettings(...args),
-});
-
-const domainsInventoryView=createDomainsInventoryView({
-  warehouseUi,
-  model,
-  orderedInventoryCategoryNames:(...args)=>domainsInventorySelectors.orderedInventoryCategoryNames(...args),
-  inventoryStats:(...args)=>domainsInventorySelectors.inventoryStats(...args),
-  inventoryCategoryGroups:(...args)=>domainsInventorySelectors.inventoryCategoryGroups(...args),
-});
-
-const domainsWarehouseBulk=createDomainsWarehouseBulk({
-  warehouseUi,
-  model,
-  renderWarehouse:(...args)=>domainsWarehouseView.renderWarehouse(...args),
-  toast:(...args)=>uiStatus.toast(...args),
-  scheduleSave:(message,options={})=>storagePersistence.scheduleSave(message,{...options,domains:['inventory','warehouseOrders']}),
-  confirmDialog:(...args)=>uiModal.confirmDialog(...args),
-});
-
-const domainsWarehouseView=createDomainsWarehouseView({
-  runInventory:inventoryRenderStore.run,
-  warehouseUi,
-  model,
-  mountViewLayout:(...args)=>uiLayout.mountViewLayout(...args),
-  inventoryTotals:(...args)=>domainsInventorySelectors.inventoryTotals(...args),
-  inventoryStockViewData:(...args)=>domainsInventoryView.inventoryStockViewData(...args),
-  renderStockGrid:(...args)=>domainsInventoryView.renderStockGrid(...args),
-  renderWarehouseLocations:(...args)=>domainsInventoryView.renderWarehouseLocations(...args),
-  warehouseBulkControls:(...args)=>domainsWarehouseBulk.warehouseBulkControls(...args),
-  syncWarehouseBulkUi:(...args)=>domainsWarehouseBulk.syncWarehouseBulkUi(...args),
-  inventoryEventView:(...args)=>domainsInventorySelectors.inventoryEventView(...args),
-});
-
-const domainsInventoryEditor=createDomainsInventoryEditor({
-  dateEditorMarkup:(...args)=>uiDateEditor.dateEditorMarkup(...args),
-  model,
-  modal:(...args)=>uiModal.modal(...args),
-  inventoryStats:(...args)=>domainsInventorySelectors.inventoryStats(...args),
-  inventoryLocationOptions:(...args)=>domainsInventoryView.inventoryLocationOptions(...args),
-  inventoryCategoryDatalist:(...args)=>domainsInventoryView.inventoryCategoryDatalist(...args),
-  toast:(...args)=>uiStatus.toast(...args),
-  scheduleSave:(message,options={})=>storagePersistence.scheduleSave(message,{...options,domains:['inventory']}),
-  closeModal:(...args)=>uiModal.closeModal(...args),
-  ensureInventoryCategoryOrder:(...args)=>domainsInventoryOrder.ensureInventoryCategoryOrder(...args),
-  renderWarehouse:(...args)=>domainsWarehouseView.renderWarehouse(...args),
-  confirmDialog:(...args)=>uiModal.confirmDialog(...args),
-});
-
-const domainsWarehouseEditor=createDomainsWarehouseEditor({
-  model,
-  modal:(...args)=>uiModal.modal(...args),
-  toast:(...args)=>uiStatus.toast(...args),
-  scheduleSave:(message,options={})=>storagePersistence.scheduleSave(message,{...options,domains:['warehouseOrders']}),
-  closeModal:(...args)=>uiModal.closeModal(...args),
-  renderWarehouse:(...args)=>domainsWarehouseView.renderWarehouse(...args),
-  confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
 
 const uiBackup=composeBackup({tab,ui,model,session,checksSession,storageV2Cloud,storageV2Runtime:mainStorageV2,storageOwner,sharedChecksV2Composition,sharedChecksV2,stateNormalization,stateSelectors:()=>stateSelectors,uiTabGuard,uiModal,storageBrowser,uiStatus,uiFolderStatus,stateSnapshots,uiNavigation,uiSettings:()=>uiSettings,storageFiles:()=>storageFiles,cloudAuth,cloudTransport:()=>cloudTransport,syncDocument:()=>syncDocument,restoreGroupStore,supplierBackup:suppliers.backupPorts(),domainRevisions});
@@ -590,10 +507,13 @@ const uiSettings=createUiSettings({
   checksSession,
   mountViewLayout:(...args)=>uiLayout.mountViewLayout(...args),
   orderedSuppliers:(...args)=>suppliers.orderedSuppliers(...args),
-  orderedInventoryCategoryNames:(...args)=>domainsInventorySelectors.orderedInventoryCategoryNames(...args),
+  orderedInventoryCategoryNames:(...args)=>warehouse.orderedInventoryCategoryNames(...args),
   cloudEnabled:(...args)=>cloudAuth.cloudEnabled(...args),
   financeSnapshot:(...args)=>domainsFinanceController.readSnapshot(...args),
 });
+
+warehouse.bindUi({uiLayout,uiModal,uiStatus,storagePersistence,uiDateEditor,uiSettings});
+warehouse.assertReady();
 
 const lifecycle=createLifecycle({
   hydrateStorageOwner:()=>storageOwner.hydrate({initialOwner:()=>cloudAuth.loadSession()?.user?.id}),
@@ -648,7 +568,6 @@ const uiEvents={bindActionEvents:(root,actions)=>bindActionEvents(root,actions)}
 const creditCardOrderView=createCreditCardOrderView({getSync:()=>domainsFinanceController.snapshot().creditSync,saveOrder:(...args)=>domainsFinanceController.saveCreditCardOrder(...args),modal:(...args)=>uiModal.modal(...args),closeModal:()=>uiModal.closeModal(),render:()=>domainsFinanceView.renderKupa(),escapeHtml:esc});
 
 const servicePorts=createServiceActionPorts({bulk:domainsServiceBulk,view:domainsServiceView,editor:domainsServiceEditor});
-const warehousePorts=createWarehouseActionPorts({inventoryOrder:domainsInventoryOrder,inventorySelectors:domainsInventorySelectors,bulk:domainsWarehouseBulk,view:domainsWarehouseView,inventoryEditor:domainsInventoryEditor,editor:domainsWarehouseEditor});
 const calendarPorts=calendarRuntime.actionPorts();
 const uiActions=composeActionRegistry([
   ...createExternalActionPacks({notesSheetActions:domainsNotesController.sheetActions,creditOrderActions:creditCardOrderView.actions}),
@@ -662,7 +581,7 @@ const uiActions=composeActionRegistry([
   {name:'customers',actions:createCustomersActions({customerUi,domainsCustomers})},
   {name:'morning',actions:createMorningActions({domainsCustomers})},
   {name:'service',actions:createServiceActions({domainsServiceView,servicePorts,serviceUi})},
-  {name:'warehouse',actions:createWarehouseActions({domainsWarehouseView,uiModal,warehousePorts,warehouseUi})},
+  {name:'warehouse',actions:warehouse.actions},
   {name:'backup',actions:createBackupActions({ui,uiBackup,uiFolders,uiModal})},
   {name:'cloud',actions:createCloudActions({uiCloud})},
   {name:'notes',actions:createNotesActions({domainsNotesController})},
@@ -685,7 +604,7 @@ const uiGlobalSearch=createUiGlobalSearch({
   warehouseUi,
   prepareView:(...args)=>uiNavigation.prepareView(...args),
   render:(...args)=>uiNavigation.render(...args),
-  openInventoryItemModal:(...args)=>{if(!tab.primaryTab){uiStatus.toast('לקריאה בלבד — עריכת פריט זמינה בטאב הראשי.');return}return domainsInventoryEditor.openInventoryItemModal(...args)},
+  openInventoryItemModal:(...args)=>{if(!tab.primaryTab){uiStatus.toast('לקריאה בלבד — עריכת פריט זמינה בטאב הראשי.');return}return warehouse.openInventoryItemModal(...args)},
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
 

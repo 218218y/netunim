@@ -96,6 +96,14 @@ remain separate from structural refactors.
   modal and persistence ports exist, before lifecycle startup. Sticky-note
   writes retain the notes domain scope, and spreadsheet actions keep their
   existing independent sync owner.
+- Orders Warehouse now owns Inventory and Warehouse selectors, category ordering,
+  inventory projections, bulk operations, views, editors and the bounded action
+  pack. Read-only category selectors are available before shell construction;
+  one validated bind phase supplies layout, modal, date, status, persistence
+  and settings ports after the shell is ready. The composition root no longer
+  knows individual Inventory/Warehouse controllers. Existing journal save
+  domains remain distinct: inventory, inventory+warehouseOrders bulk actions,
+  and warehouseOrders. Startup actions are guarded until binding completes.
 - Kupa Credit now owns its selectors, view, legacy-card editor and actions in a
   capability runtime. The finance controller remains in Finance composition;
   Credit binds its view after that controller exists, removing late controller
