@@ -162,28 +162,46 @@ and `domains -/-> ui` in both apps. These rules check direct imports. `shared/`
 is a code-sharing location, not an unrestricted low-level layer; new contracts
 and presentation primitives should have explicit owners.
 
+## Startup progress
+
+Factory parameter counts (AST object-pattern properties, measured against the
+pre-slice main commit `85ea9278`):
+
+| Factory | Before | Current |
+| --- | ---: | ---: |
+| Kupa lifecycle | 76 | 38 |
+| Orders lifecycle | 50 | 45 |
+| Shared startup protocol | - | 3 |
+| Connectivity runtime, each app (including browser/timers) | - | 8 |
+| Shared runtime resource owner | - | 2 |
+
+Lifecycle still has too many collaborators. These slices establish real owners
+and contracts; they do not complete all startup phase decomposition or dispose
+all shell listeners, timers and integration pollers.
+
 ## Next reviewable slices
 
-1. **Composition roots:** continue with the remaining Kupa and
-   Orders capabilities. Map each capability's inputs, outputs, startup phase, and
-   deferred callbacks. Keep public behavior fixed and run browser startup and
-   sync gates for each extraction. Do not create a broad application service
-   locator. Retire deferred callbacks where a leaf dependency can be built
-   earlier; use an explicit bind phase for genuine construction cycles.
-2. **Lifecycle:** once capabilities own their actions and startup ports, replace
-   individual callbacks with a small set of explicit phases: preflight, local
-   recovery, hydration, first render, remote reconciliation, background jobs.
-   Test phase order, partial failure, retry, and shutdown where applicable.
-3. **Integrations:** move browser and network adapters from domains behind
-   explicit platform/integration ports. Preserve credential and persistence
-   semantics while moving each adapter.
-4. **Compatibility inventory:** for every legacy reader, persisted key, and old
-   RPC, record read/write use, production data dependency, retirement condition,
-   and a proving test. Do not delete a reader on name alone.
-5. **Contracts and sources of truth:** introduce JSDoc/checkJs at storage, cloud,
-   sync and composition boundaries. Inventory SQL setup/operator copies, generated
-   assets, and CSS overrides before adding deterministic generation or splitting
-   files. Keep release receipts and postflight checks as gates.
+1. **Capability boundaries:** Orders Warehouse, Service and Customers/Morning
+   already have composition roots. Continue with Kupa Bank/Dashboard/shell and
+   remaining Orders Finance/Checks wiring; narrow public APIs to actual consumers.
+   Retire lazy references where producer ordering is possible, and bind genuine
+   construction cycles explicitly. Do not introduce an application service locator.
+2. **Lifecycle phases:** build focused local/shared recovery, remote hydration,
+   UI-readiness and background-job ports from their capability owners. Preserve
+   lock/owner/protocol ordering and first safe render after Main and Shared.
+   Test partial failure, write gating and resource cleanup. Expand resource
+   ownership beyond connectivity without aborting in-flight durability commits.
+3. **Storage/Cloud correctness:** document sequence, flight, owner/epoch and ACK
+   revision invariants end to end; extend fault injection only where coverage is
+   missing. Preserve valid no-op acknowledgements and pending data. Do not change
+   serialization, SQL or compatibility as part of composition cleanup.
+4. **I/O ports and static contracts:** move browser/network adapters behind small
+   integration ports and add incremental checkJs to critical persisted/runtime
+   boundaries. Preserve credential rules, CSP, cancellation and error semantics.
+5. **Sources of truth and retirement:** inventory generated assets and SQL
+   deployment copies before generation changes. Keep deployed migrations immutable.
+   Inventory legacy readers/writers and supported clients; remove persisted-data
+   readers only with migration and recovery evidence. CSS remains a later slice.
 
 Use focused local tests for each slice. The full verification matrix includes
 browser and PostgreSQL suites and must pass before deployment. A local focused
