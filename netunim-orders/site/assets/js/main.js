@@ -48,7 +48,6 @@ import {createNotesDomain} from './domains/notes/index.js';
 import {createOrdersCalendarRuntime} from './composition/calendar.js';
 import {createUiSettings} from './ui/settings.js';
 import {createLifecycle} from './lifecycle.js';
-import {verifyStorageV2LocalEngine} from './shared/storage-v2-local-birth.js';
 import {bindActionEvents,bindDismissibleDetails,bindNumberInputWheelGuard} from './shared/events.js';
 import {composeActionRegistry} from './shared/action-registry.js';
 import {wrapMutationActions,createExternalActionPacks,createAlertsActions,createFinanceBankActions,createFinanceCreditActions,createChecksActions,createShellActions,createDashboardActions,createBackupActions,createCloudActions,createNotesActions,createCalendarActions} from './ui/actions.js';
@@ -465,14 +464,10 @@ warehouse.bindUi({uiLayout,uiModal,uiStatus,storagePersistence,uiDateEditor,uiSe
 warehouse.assertReady();
 
 const lifecycle=createLifecycle({
+  storageProtocol:storageV2Coordinator.startupProtocol,
   hydrateStorageOwner:()=>storageOwner.hydrate({initialOwner:()=>cloudAuth.loadSession()?.user?.id}),
-  verifyLocalStorageEngine:()=>verifyStorageV2LocalEngine({app:'orders',owner:()=>storageOwner.current()}),
   ...storageV2Coordinator.localBirthLifecyclePorts(),
   ...storageV2Coordinator.ownerTransferLifecyclePorts(),
-  verifyStorageV2AccountMarker,
-  authenticatedOwner:()=>cloudAuth.loadSession()?.user?.id||null,
-  readStorageProtocolState:()=>cloudTransport.readStorageProtocolState(),
-  recoverFencedAccount:()=>storageV2Coordinator.recoverFencedAccount(),
   recoverSharedChecksV2Primary,
   recoverSharedChecksV2ReadOnly:(...args)=>sharedChecksV2.recoverReadOnly(...args),
   ensureSyncCapabilities:(...args)=>cloudAuth.ensureSyncCapabilities(...args),

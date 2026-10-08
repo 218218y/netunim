@@ -1,3 +1,4 @@
+import {createStorageStartupProtocol} from '../shared/storage-startup-protocol.js';
 import {createStorageOwnerBinding} from '../shared/storage-owner.js';
 import {createStorageV2BootstrapCoordinator} from '../shared/storage-v2-bootstrap.js';
 import {createStorageV2Runtime,storageV2Mode} from '../shared/storage-v2-runtime.js';
@@ -26,6 +27,11 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
   const bootstrap=createStorageV2BootstrapCoordinator({app:'kupa',owner:()=>owner.current(),primary:()=>tab.primaryTab});
   let localBirth=null,ownerTransfer=null,fencedRecovery=null,transferRebinding=false,ports=null;
   const requirePorts=()=>{if(!ports)throw new Error('kupa_storage_v2_not_configured');return ports};
+  const startupProtocol=createStorageStartupProtocol({
+    ownership:{current:()=>owner.current(),authenticated:()=>requirePorts().cloudAuth.loadSupaSession()?.user?.id||null},
+    markers:{account:()=>requirePorts().verifyStorageV2AccountMarker(),local:()=>{requirePorts();return verifyStorageV2LocalEngine({app:'kupa',owner:()=>owner.current()})}},
+    account:{read:()=>requirePorts().cloudTransport.readStorageProtocolState(),recoverAccount:()=>{requirePorts();return fencedRecovery.recover()}},
+  });
   const preparing=()=>owner.locked||transferRebinding||!!ownerTransfer?.preparing||!!localBirth?.preparing||!!(bootstrap.hasGroup&&bootstrap.group?.phase!=='complete');
   const mode=()=>storageV2Mode('kupa',storage,owner.current(),{preparing:preparing()});
   const createRuntime=options=>createStorageV2Runtime({app:'kupa',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,mode,...options});
@@ -183,7 +189,7 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
     const p=requirePorts(),recovered=await p.sharedChecksV2Composition.recoverPrimary();
     return recovered;
   }
-  return {owner,bootstrap,preparing,mode,createRuntime,createCloudPorts,createSharedComposition,recoverShared,configure,ownerAdoption,recoverFencedAccount:()=>fencedRecovery.recover(),recoverLocalV2State,recoverReadOnlyV2State,
+  return {owner,bootstrap,preparing,mode,createRuntime,createCloudPorts,createSharedComposition,recoverShared,configure,ownerAdoption,startupProtocol,recoverLocalV2State,recoverReadOnlyV2State,
     ownerUiPorts:()=>({storageOwnerCurrent:()=>owner.current(),storageOwnerAdoption:()=>ownerAdoption(),
       startStorageV2OwnerTransfer,storageV2OwnerTransferPreparing:()=>!!ownerTransfer?.preparing||transferRebinding}),
     accountContextPort:()=>({assertAccountOwner:assertAuthenticatedAccountOwner}),

@@ -1,3 +1,4 @@
+import {createStorageStartupProtocol} from '../shared/storage-startup-protocol.js';
 import {createStorageOwnerBinding} from '../shared/storage-owner.js';
 import {createStorageV2BootstrapCoordinator} from '../shared/storage-v2-bootstrap.js';
 import {createStorageV2LocalBirth,verifyStorageV2LocalEngine} from '../shared/storage-v2-local-birth.js';
@@ -18,6 +19,11 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
   const bootstrap=createStorageV2BootstrapCoordinator({app:'orders',owner:()=>owner.current(),primary:()=>tab.primaryTab});
   let localBirth=null,ownerTransfer=null,fencedRecovery=null,transferRebinding=false,ports=null;
   const requirePorts=()=>{if(!ports)throw new Error('orders_storage_v2_not_configured');return ports};
+  const startupProtocol=createStorageStartupProtocol({
+    ownership:{current:()=>owner.current(),authenticated:()=>requirePorts().cloudAuth.loadSession()?.user?.id||null},
+    markers:{account:()=>requirePorts().verifyStorageV2AccountMarker(),local:()=>{requirePorts();return verifyStorageV2LocalEngine({app:'orders',owner:()=>owner.current()})}},
+    account:{read:()=>requirePorts().cloudTransport.readStorageProtocolState(),recoverAccount:()=>{requirePorts();return fencedRecovery.recover()}},
+  });
   const preparing=()=>owner.locked||transferRebinding||!!ownerTransfer?.preparing||!!localBirth?.preparing||!!(bootstrap.hasGroup&&bootstrap.group?.phase!=='complete');
   const mode=()=>storageV2Mode('orders',storage,owner.current(),{preparing:preparing()});
   const createRuntime=options=>createStorageV2Runtime({app:'orders',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,mode,...options});
@@ -146,9 +152,9 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
     const p=requirePorts(),recovered=await p.sharedChecksV2Composition.recoverPrimary();
     return recovered;
   }
-  return {owner,bootstrap,preparing,mode,createRuntime,createCloudPorts,createSharedComposition,recoverShared,configure,ownerAdoption,recoverFencedAccount:()=>fencedRecovery.recover(),startStorageV2OwnerTransfer,resumeStorageV2OwnerTransfer,
+  return {owner,bootstrap,preparing,mode,createRuntime,createCloudPorts,createSharedComposition,recoverShared,configure,ownerAdoption,startupProtocol,startStorageV2OwnerTransfer,resumeStorageV2OwnerTransfer,
     ownerUiPorts:()=>({storageOwnerCurrent:()=>owner.current(),storageOwnerAdoption:()=>ownerAdoption()}),
-    localBirthLifecyclePorts:()=>({hydrateLocalBirth:()=>localBirth.hydrate(),ensureLocalBirth:()=>localBirth.begin(),resumeLocalBirth:()=>localBirth.resume(),localBirthPreparing:()=>!!localBirth?.preparing,storageOwnerCurrent:()=>owner.current()}),
+    localBirthLifecyclePorts:()=>({hydrateLocalBirth:()=>localBirth.hydrate(),ensureLocalBirth:()=>localBirth.begin(),localBirthPreparing:()=>!!localBirth?.preparing}),
     ownerTransferLifecyclePorts:()=>({hydrateStorageV2OwnerTransfer:()=>ownerTransfer.hydrate(),resumeStorageV2OwnerTransfer,storageV2OwnerTransferPreparing:()=>!!ownerTransfer?.preparing||transferRebinding}),
     ownerTransferUiPorts:()=>({startStorageV2OwnerTransfer,resumeStorageV2OwnerTransfer,storageV2OwnerTransferPreparing:()=>!!ownerTransfer?.preparing||transferRebinding}),
   };

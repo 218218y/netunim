@@ -1,12 +1,59 @@
 import {clone} from './core/values.js';
 import {createStartupTask} from './shared/startup-task.js';
-import {checkStorageProtocolStartup} from './shared/storage-v2-server-protocol.js';
 
 function startupMark(name){try{globalThis.performance?.mark?.(`orders-startup:${name}`)}catch{}}
 function nextTurn(){return new Promise(resolve=>setTimeout(resolve,0))}
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createLifecycle({hydrateStorageOwner=async()=>{},hydrateStorageV2OwnerTransfer=async()=>null,resumeStorageV2OwnerTransfer=async()=>null,storageV2OwnerTransferPreparing=()=>false,hydrateLocalBirth=async()=>null,ensureLocalBirth=async()=>null,localBirthPreparing=()=>false,storageOwnerCurrent=()=>null,verifyStorageV2AccountMarker=async()=>false,verifyLocalStorageEngine=async()=>false,readStorageProtocolState,authenticatedOwner=()=>null,recoverFencedAccount=async()=>false,recoverLocalV2State=async()=>null,recoverReadOnlyV2State=async()=>null,recoverSharedChecksV2Primary=async()=>false,recoverSharedChecksV2ReadOnly=async()=>false,ensureSyncCapabilities=async()=>true,files, tab, session, checksSession, resumeIncompleteRestore=async()=>false, refreshStorageV2CloudState=async()=>null, cloudHasLocalWork=()=>false, sharedChecksHasLocalWork=()=>true, setSave=()=>{}, setCloud=()=>{}, beginStartupSync=()=>{}, setStartupDomain=()=>{}, syncFolderAccessButton, folderBackupAvailable, folderSaveTitle=()=>'', showSecondaryTabGuard, acquirePrimaryTabLock, render, prepareState, maybeCreateAutomaticFolderBackup, loadDirHandle, requestPersistentBrowserStorage, refreshDirPermission, loadSession, cloudEnabled, refreshKupaReadout, syncSharedChecksFromCloud, openCloud, startOrderPolling=()=>{}, startFinanceAutoSync=()=>{}, prepareStartupAlerts=async()=>false, showStartupAlerts=()=>{}}){
+export function createLifecycle({
+  storageProtocol,
+  hydrateStorageOwner=async()=>{},
+  hydrateStorageV2OwnerTransfer=async()=>null,
+  resumeStorageV2OwnerTransfer=async()=>null,
+  storageV2OwnerTransferPreparing=()=>false,
+  hydrateLocalBirth=async()=>null,
+  ensureLocalBirth=async()=>null,
+  localBirthPreparing=()=>false,
+  recoverLocalV2State=async()=>null,
+  recoverReadOnlyV2State=async()=>null,
+  recoverSharedChecksV2Primary=async()=>false,
+  recoverSharedChecksV2ReadOnly=async()=>false,
+  ensureSyncCapabilities=async()=>true,
+  files,
+  tab,
+  session,
+  checksSession,
+  resumeIncompleteRestore=async()=>false,
+  refreshStorageV2CloudState=async()=>null,
+  cloudHasLocalWork=()=>false,
+  sharedChecksHasLocalWork=()=>true,
+  setSave=()=>{},
+  setCloud=()=>{},
+  beginStartupSync=()=>{},
+  setStartupDomain=()=>{},
+  syncFolderAccessButton,
+  folderBackupAvailable,
+  folderSaveTitle=()=>'',
+  showSecondaryTabGuard,
+  acquirePrimaryTabLock,
+  render,
+  prepareState,
+  maybeCreateAutomaticFolderBackup,
+  loadDirHandle,
+  requestPersistentBrowserStorage,
+  refreshDirPermission,
+  loadSession,
+  cloudEnabled,
+  refreshKupaReadout,
+  syncSharedChecksFromCloud,
+  openCloud,
+  startOrderPolling=()=>{},
+  startFinanceAutoSync=()=>{},
+  prepareStartupAlerts=async()=>false,
+  showStartupAlerts=()=>{}
+}){
+for(const method of ['check','readMarkers','verifyLocal'])if(typeof storageProtocol?.[method]!=='function')throw new TypeError(`lifecycle_storage_protocol_${method}_required`);
+
 async function recoverOrdersLocalState(){
   const v2=await refreshStorageV2CloudState();
   if(!v2?.base)throw new Error('orders_v2_cloud_head_missing');
@@ -73,18 +120,8 @@ async function boot(){
   loadSession();
   const transfer=await hydrateStorageV2OwnerTransfer();
   await hydrateLocalBirth();
-  let localOwner=storageOwnerCurrent()==='local';
-  let accountV2Active=await verifyStorageV2AccountMarker(),localEngineActive=await verifyLocalStorageEngine();
-  let protocol=await checkStorageProtocolStartup({owner:storageOwnerCurrent(),accountV2Active,localEngineActive,online:globalThis.navigator?.onLine!==false,authenticatedOwner:authenticatedOwner(),readProtocolState:readStorageProtocolState});
-  if(protocol.reason==='server-v2'&&tab.primaryTab){
-    try{
-      await recoverFencedAccount();
-      localOwner=storageOwnerCurrent()==='local';
-      accountV2Active=await verifyStorageV2AccountMarker();
-      if(!accountV2Active)throw new Error('storage_fenced_recovery_marker_missing');
-      protocol={allowed:true,reason:'v2-ready'};
-    }catch(error){console.error('Orders fenced account recovery',error)}
-  }
+  let {owner,accountV2Active,localEngineActive,protocol,recoveryError}=await storageProtocol.check({primary:tab.primaryTab,online:globalThis.navigator?.onLine!==false});
+  if(recoveryError)console.error('Orders fenced account recovery',recoveryError);
   if(!protocol.allowed){
     session.storageProtocolBlocked=true;
     const oldBrowser=protocol.reason==='server-v2',upgradeRequired=protocol.reason==='upgrade-required';
@@ -115,11 +152,11 @@ async function boot(){
       setSave('העריכה נעולה עד השלמת מעבר החשבון','error');
       syncFolderAccessButton();return;
     }
-    accountV2Active=await verifyStorageV2AccountMarker();localEngineActive=await verifyLocalStorageEngine();
+    ({owner,accountV2Active,localEngineActive}=await storageProtocol.readMarkers());
   }
-  if(localOwner){
+  if(owner==='local'){
     try{
-      if(!localEngineActive){await ensureLocalBirth();localEngineActive=await verifyLocalStorageEngine()}
+      if(!localEngineActive){await ensureLocalBirth();localEngineActive=await storageProtocol.verifyLocal()}
       if(!localEngineActive)throw new Error('orders_local_engine_marker_required');
       await recoverLocalV2State();
     }catch(error){

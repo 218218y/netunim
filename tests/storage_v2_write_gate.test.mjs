@@ -1,3 +1,4 @@
+import {withStorageProtocol} from './startup_ports.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createSyncChecksState} from '../netunim-kupa/site/assets/js/sync/checks-state.js';
@@ -283,7 +284,7 @@ for(const marker of ['cloud','local'])test(`Orders secondary tab recovers Main a
   const previous=globalThis.localStorage;globalThis.localStorage=localStore();
   try{
     const calls=[],model={state:{checks:[{id:'obsolete'}]}};
-    const lifecycle=createOrdersLifecycle({model,session:{},tab:{primaryTab:false},verifyStorageV2AccountMarker:async()=>marker==='cloud',verifyLocalStorageEngine:async()=>marker==='local',
+    const lifecycle=createOrdersLifecycle(withStorageProtocol({model,session:{},tab:{primaryTab:false},verifyStorageV2AccountMarker:async()=>marker==='cloud',verifyLocalStorageEngine:async()=>marker==='local',
       storageOwnerCurrent:()=>marker==='local'?'local':'account',
       acquirePrimaryTabLock:async()=>{},loadSession:()=>null,
       restoreBrowserStateFallback:async()=>{throw new Error('secondary used legacy Main recovery')},
@@ -292,7 +293,7 @@ for(const marker of ['cloud','local'])test(`Orders secondary tab recovers Main a
       recoverSharedChecksV2ReadOnly:async()=>{calls.push('shared-readonly');model.state.checks=[];return {seq:1}},
       recoverSharedChecksV2Primary:async()=>{throw new Error('secondary acquired Shared Checks writer')},
       render:()=>{assert.deepEqual(model.state.checks,[]);calls.push('render')},showSecondaryTabGuard:()=>calls.push('guard'),
-      syncFolderAccessButton:()=>calls.push('folder')});
+      syncFolderAccessButton:()=>calls.push('folder')}));
     await lifecycle.boot();
     assert.deepEqual(calls,['main-readonly','shared-readonly','render','guard','folder']);
   }finally{if(previous===undefined)delete globalThis.localStorage;else globalThis.localStorage=previous}
