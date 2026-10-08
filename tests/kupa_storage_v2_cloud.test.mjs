@@ -99,7 +99,7 @@ test('Kupa legacy card IDs are queued as one V2 cloud normalization without a V1
   }finally{session.cloudPollingEnabled=false;clearTimeout(session.cloudPollTimer)}
 });
 
-function fixture({write,readRemote,merge,failRefreshAfterAck=false,backupSnapshotToComputer=async()=>{},onRejected=()=>{},baseOverride=null,deleteIntents={},mutationType='edit'}={}){
+function fixture({write,readRemote,merge,failRefreshAfterAck=false,backupSnapshotToComputer=async()=>{},onRejected=()=>{},onAcknowledge=async()=>{},onAcknowledged=()=>{},tab={primaryTab:true},onPublication=()=>{},baseOverride=null,deleteIntents={},mutationType='edit'}={}){
   Object.defineProperty(globalThis,'navigator',{configurable:true,value:{onLine:true}});
   globalThis.localStorage={getItem:()=>null,setItem:noop,removeItem:noop};
   const model={state:clone(INITIAL_STATE)},normalization=createStateNormalization({model});
@@ -111,14 +111,61 @@ function fixture({write,readRemote,merge,failRefreshAfterAck=false,backupSnapsho
   const checksSession={sharedChecksBase:[],sharedChecksBankEvents:[]};
   const state=()=>({seq,base:{revision,state:clone(baseState),ackSeq},flight:flight&&clone(flight),control:control&&clone(control),pending:seq>ackSeq,pendingDeleteIntents:clone(deleteIntents),pendingGeneration:seq,pendingMutationType:'edit',pendingSurface:'kupa',afterFlightPending:!!flight&&seq>flight.endSeq,afterFlightDeleteIntents:{},afterFlightGeneration:seq,afterFlightMutationType:'edit',afterFlightSurface:'kupa'});
   const materialize=async({throughSeq,snapshot}={})=>{if(flight)return clone(flight);const end=throughSeq??seq;if(end===ackSeq)return null;flight={version:2,operationId:`kupa-op-${++op}`,baseRevision:revision,startSeq:ackSeq+1,endSeq:end,snapshot:clone(snapshot??normalization.prepareKupaCloudState(model.state)),deleteIntents:clone(deleteIntents),generation:end,mutationType,surface:'kupa'};return clone(flight)};
-  const acknowledge=async(operationId,newRevision,cloud,{currentState,control:nextControl=null}={})=>{assert.equal(operationId,flight?.operationId);acks.push({operationId,newRevision,cloud:clone(cloud),currentState:clone(currentState),control:clone(nextControl)});ackSeq=flight.endSeq;revision=newRevision;baseState=clone(cloud);flight=null;control=nextControl&&clone(nextControl);return state()};
+  const acknowledge=async(operationId,newRevision,cloud,{currentState,control:nextControl=null}={})=>{assert.equal(operationId,flight?.operationId);await onAcknowledge();acks.push({operationId,newRevision,cloud:clone(cloud),currentState:clone(currentState),control:clone(nextControl)});ackSeq=flight.endSeq;revision=newRevision;baseState=clone(cloud);flight=null;control=nextControl&&clone(nextControl);onAcknowledged();return state()};
   const reject=async(operationId,newRevision,cloud,{currentState,expectedSeq,control:nextControl=null}={})=>{assert.equal(operationId,flight?.operationId);assert.equal(expectedSeq,seq);assert.ok(currentState,'rebase must checkpoint the merged local head');rejects.push({operationId,newRevision,cloud:clone(cloud),currentState:clone(currentState),expectedSeq,control:clone(nextControl)});revision=newRevision;baseState=clone(cloud);flight=null;control=nextControl&&clone(nextControl);onRejected();return state()};
   const supaRest=async(path,options)=>{const body=JSON.parse(options.body);sent.push({path,snapshot:clone(body.p_state),expected:body.p_expected_revision,operationId:body.p_operation_id,deleteIntents:clone(body.p_delete_intents)});if(write)return write(body);return response(true,{revision:body.p_expected_revision+1,state:clone(body.p_state),updated_at:'2026-09-22T00:00:00Z'})};
   const defaultMerge=(_base,local)=>({state:clone(local),conflicts:[]});
   const refreshState=async()=>{if(failRefreshAfterAck&&acks.length)throw new Error('injected post-ACK refresh failure');return state()};
-  const api=createSyncDocument({hideConnectScreen:noop,reportError:noop,model,session,checksSession,tab:{primaryTab:true},prepareKupaCloudState:normalization.prepareKupaCloudState,applyKupaCloudState:normalization.applyKupaCloudState,setSaveStatus:noop,setConnectedStatus:noop,setCloudHeaderStatus:noop,persistImmediateBrowserSnapshot:()=>true,loadSharedChecksBase:()=>[],loadSharedChecksBankEvents:()=>[],listBackups:async()=>[],backupSnapshotToComputer,saveState:async()=>true,syncSharedChecksFromCloud:async()=>true,render:noop,getCloudPending:async()=>null,readSupabaseDocument:readRemote||(async()=>null),supaRest,putCloudPending:async()=>{},clearCloudPending:async()=>true,mergeKupaCloudState3Way:merge||defaultMerge,rebaseNewerPending:async()=>null,lastSavedCloudState:()=>clone(baseState),showSecondaryTabGuard:noop,stageCloudPendingLocal:()=>{throw new Error('legacy outbox must not be used')},toast:noop,pollSharedChecks:async()=>{},refreshOrdersFinanceSummary:async()=>false,storageV2CloudOutboxActive:()=>true,refreshStorageV2CloudState:refreshState,materializeStorageV2CloudFlight:materialize,acknowledgeStorageV2CloudFlight:acknowledge,rejectStorageV2CloudFlight:reject,setStorageV2CloudControl:async value=>{control=clone(value);return clone(value)},replaceStorageV2CurrentState:async()=>true,adoptStorageV2CloudHead:async()=>true,resetStorageV2CloudHead:async()=>true,storageV2CommitPromise:()=>Promise.resolve()});
+  const api=createSyncDocument({hideConnectScreen:noop,reportError:noop,model,session,checksSession,tab,prepareKupaCloudState:normalization.prepareKupaCloudState,applyKupaCloudState:normalization.applyKupaCloudState,domainRevisions:{reconcile:onPublication},setSaveStatus:noop,setConnectedStatus:noop,setCloudHeaderStatus:noop,persistImmediateBrowserSnapshot:()=>true,loadSharedChecksBase:()=>[],loadSharedChecksBankEvents:()=>[],listBackups:async()=>[],backupSnapshotToComputer,saveState:async()=>true,syncSharedChecksFromCloud:async()=>true,render:noop,getCloudPending:async()=>null,readSupabaseDocument:readRemote||(async()=>null),supaRest,putCloudPending:async()=>{},clearCloudPending:async()=>true,mergeKupaCloudState3Way:merge||defaultMerge,rebaseNewerPending:async()=>null,lastSavedCloudState:()=>clone(baseState),showSecondaryTabGuard:noop,stageCloudPendingLocal:()=>{throw new Error('legacy outbox must not be used')},toast:noop,pollSharedChecks:async()=>{},refreshOrdersFinanceSummary:async()=>false,storageV2CloudOutboxActive:()=>true,refreshStorageV2CloudState:refreshState,materializeStorageV2CloudFlight:materialize,acknowledgeStorageV2CloudFlight:acknowledge,rejectStorageV2CloudFlight:reject,setStorageV2CloudControl:async value=>{control=clone(value);return clone(value)},replaceStorageV2CurrentState:async()=>true,adoptStorageV2CloudHead:async()=>true,resetStorageV2CloudHead:async()=>true,storageV2CommitPromise:()=>Promise.resolve()});
   return {api,model,session,sent,acks,rejects,getState:state,getControl:()=>clone(control),cloud:()=>normalization.prepareKupaCloudState(model.state),mutateNote(content){model.state.notes=[{id:'N1',content,createdAt:'2026-09-22',updatedAt:'2026-09-22'}];seq++;session.localGeneration++}};
 }
+
+test('Kupa does not publish the cloud ACK while its checkpoint transaction is unfinished',async()=>{
+  const entered=deferred(),release=deferred();
+  const f=fixture({write:body=>response(true,{revision:12,state:{...body.p_state,notes:[{id:'N1',content:'remote-head',createdAt:'2026-09-22',updatedAt:'2026-09-22'}]},operation_replayed:true,operation_revision:11}),
+    onAcknowledge:async()=>{entered.resolve();await release.promise}});
+  const saving=f.api.persistSupabaseState(f.cloud(),'sync',1);await entered.promise;
+  const visible=clone(f.model.state),revision=f.session.dbRevision;release.resolve();await saving;
+  assert.equal(visible.notes[0].content,'sent');assert.equal(revision,10);
+  assert.equal(f.model.state.notes[0].content,'remote-head');assert.equal(f.session.dbRevision,12);
+});
+
+test('Kupa a failed ACK checkpoint preserves local data and retries the identical committed cloud operation',async t=>{
+  t.mock.method(console,'error',noop);let fail=true;
+  const f=fixture({write:body=>response(true,{revision:12,state:{...body.p_state,notes:[{id:'N1',content:'remote-head',createdAt:'2026-09-22',updatedAt:'2026-09-22'}]},operation_replayed:true,operation_revision:11}),
+    onAcknowledge:async()=>{if(fail)throw new DOMException('disk quota','QuotaExceededError')}});
+  const before=clone(f.model.state);assert.equal(await f.api.persistSupabaseState(f.cloud(),'sync',1),false);
+  assert.deepEqual(f.model.state,before);assert.equal(f.session.dbRevision,10);assert.equal(f.acks.length,0);
+  const flight=clone(f.getState().flight);assert.ok(flight);assert.equal(f.getState().pending,true);
+  fail=false;assert.equal(await f.api.persistSupabaseState(f.cloud(),'reconnect',1),true);
+  assert.deepEqual(f.sent.map(row=>row.operationId),[flight.operationId,flight.operationId]);
+  assert.deepEqual(f.sent[0],f.sent[1]);assert.equal(f.acks.length,1);assert.equal(f.model.state.notes[0].content,'remote-head');
+});
+
+test('Kupa an edit during ACK commit remains visible and pending without a stale follow-up send',async()=>{
+  let f;f=fixture({onAcknowledged:()=>{if(f.acks.length===1)f.mutateNote('edited-during-ack')}});
+  assert.equal(await f.api.persistSupabaseState(f.cloud(),'sync',1),false);
+  assert.equal(f.model.state.notes[0].content,'edited-during-ack');assert.equal(f.sent.length,1);
+  assert.equal(f.getState().base.ackSeq,1);assert.equal(f.getState().seq,2);assert.equal(f.getState().pending,true);
+  assert.equal(f.getState().flight,null);assert.equal(f.getControl().conflict.kind,'concurrent-ack');
+});
+
+test('Kupa leadership lost during ACK cannot publish the earlier view or write another control',async()=>{
+  const tab={primaryTab:true};
+  const f=fixture({tab,write:body=>response(true,{revision:12,state:{...body.p_state,notes:[{id:'N1',content:'remote-head',createdAt:'2026-09-22',updatedAt:'2026-09-22'}]},operation_replayed:true,operation_revision:11}),onAcknowledged:()=>{tab.primaryTab=false}});
+  assert.equal(await f.api.persistSupabaseState(f.cloud(),'sync',1),false);
+  assert.equal(f.model.state.notes[0].content,'sent');assert.equal(f.session.dbRevision,12);
+  assert.equal(f.sent.length,1);assert.equal(f.acks.length,1);assert.equal(f.getControl(),null);
+  assert.equal(f.getState().flight,null);assert.equal(f.session.cloudConflictPending,true);
+});
+
+test('Kupa a post-commit publication failure retains the ACK and prevents another send',async t=>{
+  const failure=new Error('projection_failed'),errors=[];t.mock.method(console,'error',(...args)=>errors.push(args));
+  const f=fixture({write:body=>response(true,{revision:12,state:{...body.p_state,notes:[{id:'N1',content:'remote-head',createdAt:'2026-09-22',updatedAt:'2026-09-22'}]},operation_replayed:true,operation_revision:11}),onPublication:()=>{throw failure}});
+  assert.equal(await f.api.persistSupabaseState(f.cloud(),'sync',1),false);assert.equal(f.acks.length,1);assert.equal(f.getState().flight,null);
+  assert.equal(f.getState().base.revision,12);assert.equal(f.getControl().conflict.kind,'ack-publication-failed');
+  assert.ok(errors.some(args=>args.includes(failure)));assert.equal(await f.api.persistSupabaseState(f.cloud(),'reconnect',1),false);assert.equal(f.sent.length,1);
+});
 
 test('Kupa V2 keeps the immutable flight across a lost ACK retry and never falls back to V1 outbox',async()=>{
   let calls=0;const f=fixture({write:body=>{if(++calls===1)throw new TypeError('Failed to fetch');return response(true,{revision:body.p_expected_revision+1,state:clone(body.p_state)})}});

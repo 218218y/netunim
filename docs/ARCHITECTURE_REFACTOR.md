@@ -243,6 +243,13 @@ ACK, owner/epoch or SQL semantics changed in this slice.
 
 ## Dependency direction
 
+Main ACK publication now has a canonical commit-before-publish boundary in both
+apps, with sequence, generation and leadership checks. Six reproduced regressions
+and real IndexedDB fault/restart scenarios protect it. See
+[the ACK contract](STORAGE_CLOUD_ACK_CONTRACT.md) for ordering, local/cloud head
+invariants and failure outcomes. Concurrent ACK edits retain pending journal data
+and persist the same explicit-review fence policy used by concurrent rebase.
+
 Pure core and protocol contracts may be imported by domain and application
 logic. Storage and cloud implement infrastructure ports; composition supplies
 their domain policies and UI callbacks. Views may use browser APIs. The enforced
@@ -275,8 +282,8 @@ all shell listeners, timers and integration pollers.
 Module graph now caps lifecycle collaborators at these measured counts and new
 startup recovery/connectivity/hydration/background factories at eight.
 
-Baseline for this slice: main `5f9ebf79`, full GitHub verification run
-`37724254603` passed (all CI groups, including browser and PostgreSQL). Focused
+Baseline for this slice: main `9a68ff40`, full GitHub verification run
+`37737850535` passed (all CI groups, including browser and PostgreSQL). Focused
 local tests distinguish deterministic behavior/architecture checks from the
 full branch deployment gate; full Windows verification remains a separate gate.
 

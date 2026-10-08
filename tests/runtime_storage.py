@@ -455,3 +455,117 @@ with BrowserSession(ROOT/'netunim-orders/site','v2-restore-group-only') as brows
     })()""",timeout=30)
     assert not browser.drain_serious_errors()
     print('PASS Orders V2 restore group: '+result)
+
+# Exercise the public application sync API with real IndexedDB, journal,
+# checkpoint projection, browser adapter and business merge. The controlled
+# RPC ledger models a committed write whose response is lost, then another
+# computer's write. SQL/network end-to-end coverage remains in the DB suites.
+for app in ('kupa', 'orders'):
+    with BrowserSession(ROOT/f'netunim-{app}/site', f'{app}-ack-publication-recovery') as browser:
+        script=r"""(async()=>{
+          const app=APP_NAME,clone=structuredClone,noop=()=>{},done=[];
+          const check=(condition,label)=>{if(!condition)throw Error(label);done.push(label)};
+          const {INITIAL_STATE}=await import('./assets/js/state/constants.js');
+          const {createStateNormalization}=await import(app==='kupa'?'./assets/js/composition/state-normalization.js':'./assets/js/state/normalization.js');
+          const {createSyncMerge}=await import('./assets/js/sync/merge.js');
+          const {createStorageV2Runtime}=await import('./assets/js/shared/storage-v2-runtime.js');
+          const {createStorageJournal}=await import('./assets/js/shared/storage-journal.js');
+          const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
+          const {createStorageBrowser}=await import('./assets/js/storage/browser.js');
+          const {createSyncDocument}=await import('./assets/js/sync/document.js');
+          const validation=await import('./assets/js/state/validation.js');
+          const validate=state=>app==='kupa'?validation.assertKupaEntityInvariants(state,{required:true}):validation.assertOrderEntityInvariants(state,{required:true});
+          const owner='ack-recovery-'+app,db=createStorageJournalDb(),calls=[],ledger=new Map();
+          let lostResponse=true,server=null,commits=0;
+          const note=content=>({id:'N',content,createdAt:'2026-10-08',updatedAt:'2026-10-08'});
+          async function rpc(snapshot,expected,operationId){
+            calls.push({snapshot:clone(snapshot),expected,operationId});
+            if(!ledger.has(operationId)){
+              check(expected===server.revision,'new flight targets the current cloud revision');
+              server={state:clone(snapshot),revision:server.revision+1};commits++;
+              ledger.set(operationId,{snapshot:clone(snapshot),revision:server.revision});
+              if(lostResponse){lostResponse=false;throw new TypeError('injected lost ACK response')}
+            }else check(JSON.stringify(snapshot)===JSON.stringify(ledger.get(operationId).snapshot),'replay keeps the immutable RPC snapshot');
+            return {r:{ok:true},row:{revision:server.revision,state:clone(server.state),operation_replayed:ledger.get(operationId).revision!==server.revision,operation_revision:ledger.get(operationId).revision}};
+          }
+          async function make(initial=false){
+            const model={state:clone(INITIAL_STATE)},normalization=createStateNormalization({model});
+            model.state=normalization.normalizeState(model.state);
+            const project=app==='kupa'?normalization.prepareKupaCloudState:state=>{const value=clone(state);delete value.checks;return value};
+            const merge=createSyncMerge({normalizeState:normalization.normalizeState,prepareKupaCloudState:project});
+            const tab={primaryTab:true},session={localGeneration:0,localSnapshotSeq:0,dbRevision:10,cloudRevision:10,connectionMode:'supabase',backendReady:true,cloudDocumentName:'main',serverInfo:{}},files={};
+            const storage=createStorageV2Runtime({app,owner:()=>owner,primary:()=>tab.primaryTab,mode:()=> 'primary',validate,
+              prepareCheckpoint:app==='kupa'?normalization.prepareKupaStorageState:clone,
+              createJournal:options=>createStorageJournal({...options,db})});
+            if(initial){
+              model.state.notes=[note('base')];server={revision:10,state:project(model.state)};
+              await storage.initializeCloudHead(10,model.state,{sourceOwner:owner,intent:'cloud-authoritative',cloudState:server.state});
+            }
+            const recovered=await storage.recoverForOwner({intent:'load-account'});
+            model.state=normalization.normalizeState({...recovered.state,checks:[]});
+            session.localGeneration=recovered.seq;
+            const driver=createStorageBrowser({storageV2:storage,model,session,files,normalizeState:normalization.normalizeState,prepareCloudState:project,prepareKupaCloudState:project});
+            const head=await driver.refreshStorageV2CloudState();session.dbRevision=head.base.revision;session.cloudRevision=head.base.revision;
+            const ports={model,session,files,tab,render:noop,toast:noop,
+              refreshStorageV2CloudState:()=>driver.refreshStorageV2CloudState(),materializeStorageV2CloudFlight:options=>driver.materializeStorageV2CloudFlight(options),
+              acknowledgeStorageV2CloudFlight:(...args)=>driver.acknowledgeStorageV2CloudFlight(...args),rejectStorageV2CloudFlight:(...args)=>driver.rejectStorageV2CloudFlight(...args),
+              setStorageV2CloudControl:value=>driver.setStorageV2CloudControl(value),storageV2CommitPromise:()=>storage.commitPromise};
+            const api=app==='orders'?createSyncDocument({...ports,prepareCloudState:project,cloudEnabled:()=>true,setCloud:noop,
+              sameOrderCloudData:(a,b)=>JSON.stringify(project(a))===JSON.stringify(project(b)),merge3:merge.merge3,
+              composeOrderCloudState:(raw,current)=>({...normalization.normalizeState(clone(raw)),checks:clone(current.checks)}),
+              applyOrderCloudState:raw=>{model.state=normalization.normalizeState({...clone(raw),checks:clone(model.state.checks)})},
+              rpcSaveV2:rpc,cloudHasLocalWork:()=>true}):createSyncDocument({...ports,checksSession:{},hideConnectScreen:noop,reportError:noop,
+              prepareKupaCloudState:project,applyKupaCloudState:normalization.applyKupaCloudState,mergeKupaCloudState3Way:merge.mergeKupaCloudState3Way,
+              storageV2CloudOutboxActive:()=>true,setSaveStatus:noop,setCloudHeaderStatus:noop,showSecondaryTabGuard:noop,backupSnapshotToComputer:async()=>{},
+              supaRest:async(_path,options)=>{const body=JSON.parse(options.body),result=await rpc(body.p_state,body.p_expected_revision,body.p_operation_id);return {ok:true,text:async()=>JSON.stringify(result.row)}}});
+            return {model,session,storage,driver,save:()=>app==='orders'?api.requestCloudSave(''):api.persistSupabaseState(project(model.state),'')};
+          }
+          async function edit(runtime,content){
+            runtime.model.state.notes=runtime.model.state.notes.map(row=>row.id==='N'?note(content):row);runtime.session.localGeneration++;
+            const edited=runtime.model.state.notes.find(row=>row.id==='N');
+            const write=runtime.storage.persist(runtime.model.state,{generation:runtime.session.localGeneration,mutationType:'edit',surface:'notes',operations:[{type:'put',collection:'notes',mode:'replace',id:'N',record:clone(edited)}]});
+            check(write.handled&&write.emergencyDurable,'local edit has emergency durability');await write.committed;
+          }
+          const originalError=console.error,expectedErrors=[];console.error=(...args)=>expectedErrors.push(args);
+          const previousOnline=Object.getOwnPropertyDescriptor(navigator,'onLine'),put=IDBObjectStore.prototype.put;
+          try{
+            let runtime=await make(true);await edit(runtime,'offline-A');
+            check(await runtime.save()===false,'lost RPC response retains pending work');
+            const firstFlight=(await runtime.driver.refreshStorageV2CloudState()).flight;
+            check(firstFlight&&firstFlight.endSeq===1&&server.revision===11,'server committed while the immutable local flight survives');
+            Object.defineProperty(navigator,'onLine',{configurable:true,value:false});await edit(runtime,'offline-B');
+            check(await runtime.save()===false&&calls.length===1,'offline edit is journaled without another RPC');
+            server.state.notes.push({id:'R',content:'other-computer',createdAt:'2026-10-08',updatedAt:'2026-10-08'});server.revision++;
+            Object.defineProperty(navigator,'onLine',{configurable:true,value:true});
+            let aborted=false;
+            IDBObjectStore.prototype.put=function(...args){const result=put.apply(this,args);if(!aborted&&this.name==='bases'){aborted=true;this.transaction.abort();throw new DOMException('injected ACK abort','AbortError')}return result};
+            try{check(await runtime.save()===false,'aborted ACK transaction is not reported as successful')}finally{IDBObjectStore.prototype.put=put}
+            check(aborted,'real IndexedDB ACK transaction was aborted');
+            check(runtime.model.state.notes.length===1&&runtime.model.state.notes[0].content==='offline-B','failed ACK does not publish the remote merge');
+            const pending=await runtime.driver.refreshStorageV2CloudState();
+            check(pending.base.revision===10&&pending.base.ackSeq===0&&pending.seq===2&&pending.flight.operationId===firstFlight.operationId,'aborted ACK leaves cursor, pending generations and flight atomic');
+            runtime=await make();
+            check(runtime.model.state.notes[0].content==='offline-B','fresh application runtime replays both offline edits from IndexedDB');
+            check(await runtime.save()===true,'restarted runtime retries and acknowledges both generations');
+            const final=await runtime.driver.refreshStorageV2CloudState(),recovered=await runtime.storage.recoverForOwner({intent:'load-account'});
+            for(const state of [runtime.model.state,recovered.state,server.state])check(state.notes.some(row=>row.id==='N'&&row.content==='offline-B')&&state.notes.some(row=>row.id==='R'&&row.content==='other-computer'),'visible, durable and cloud heads preserve both computers');
+            check(!final.pending&&!final.flight&&final.base.ackSeq===2&&final.base.revision===13,'only acknowledged generations advance the durable cursor');
+            check(calls.length===4&&calls.slice(0,3).every(call=>call.operationId===firstFlight.operationId)&&calls[3].operationId!==firstFlight.operationId&&commits===2,'lost-response and aborted-ACK retries do not duplicate cloud commits');
+            await edit(runtime,'flight-C');let lateWrite=null;
+            IDBObjectStore.prototype.put=function(...args){const result=put.apply(this,args);if(!lateWrite&&this.name==='bases')lateWrite=edit(runtime,'edited-during-ack');return result};
+            try{check(await runtime.save()===false,'an edit during a real ACK commit stops stale follow-up sends')}finally{IDBObjectStore.prototype.put=put}
+            check(lateWrite!==null,'concurrent edit overlapped the real IndexedDB ACK transaction');await lateWrite;
+            const concurrent=await runtime.driver.refreshStorageV2CloudState(),late=await runtime.storage.recoverForOwner({intent:'load-account'});
+            check(runtime.model.state.notes.some(row=>row.id==='N'&&row.content==='edited-during-ack')&&late.state.notes.some(row=>row.id==='N'&&row.content==='edited-during-ack'),'late edit survives in the visible model and durable journal');
+            check(concurrent.pending&&!concurrent.flight&&concurrent.seq===4&&concurrent.base.ackSeq===3&&concurrent.control.conflict.kind==='concurrent-ack'&&calls.length===5,'only the sent generation is ACKed; the late generation and explicit fence survive');
+            runtime=await make();check(await runtime.save()===false&&calls.length===5,'fresh runtime respects the persisted concurrent-ACK fence');
+            check(expectedErrors.length>=2,'expected transport and IndexedDB failures were observed');
+            return done;
+          }finally{
+            console.error=originalError;IDBObjectStore.prototype.put=put;
+            if(previousOnline)Object.defineProperty(navigator,'onLine',previousOnline);else delete navigator.onLine;
+          }
+        })()""".replace('APP_NAME', json.dumps(app))
+        result=browser.evaluate(script, timeout=60)
+        assert not browser.drain_serious_errors()
+        print(f'PASS {app} real IndexedDB ACK recovery: {len(result)} assertions for lost response, offline edits, transaction abort, restart, remote writes and concurrent ACK fencing')

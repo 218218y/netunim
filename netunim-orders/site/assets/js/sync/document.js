@@ -1,5 +1,6 @@
 import {structuredSyncConflict} from '../shared/cloud-sync.js';
 import {clone} from '../core/values.js';
+import {commitCloudCheckpoint} from '../shared/cloud-checkpoint-publication.js';
 import {CLOUD_WRITE_POLICY,cloudWriteError,contentionDelay,createOutboxRetryScheduler,documentWriteAckRevision,normalizeCloudError,operationAuditMetadata,runBusyCloudWriteWithPolicy} from '../shared/cloud-sync.js';
 
 function revisionConflict(res){return !res?.r?.ok&&normalizeCloudError(res).kind==='revision_conflict'}
@@ -102,6 +103,7 @@ async function saveStorageV2CloudFlight(initialFlight){
   // the corresponding rebased local head.
   state=await refreshStorageV2CloudState();
   if(!state?.flight||state.flight.operationId!==flight.operationId)throw new Error('orders_v2_flight_changed_before_ack');
+  let currentCloud=authoritative;
   if(state.afterFlightPending){
     const local=prepareCloudState(model.state),rebased=merge3(serverSnapshot,local,authoritative,{deleteIntents:state.afterFlightDeleteIntents||{}});
     if(rebased.conflicts.length){
@@ -110,10 +112,27 @@ async function saveStorageV2CloudFlight(initialFlight){
       session.cloudRevision=newRevision;session.cloudUpdatedAt=res.row?.updated_at||session.cloudUpdatedAt;session.lastCloudState=clone(authoritative);session.cloudConflictBlocked=true;session.cloudSaveRequested=false;
       setCloud('ענן: התנגשות','error');return false
     }
-    applyOrderCloudState(rebased.state);session.cloudSaveRequested=true
-  }else if(!sameOrderCloudData(model.state,authoritative))applyOrderCloudState(authoritative);
-  const committedState=await acknowledgeStorageV2CloudFlight(flight.operationId,newRevision,authoritative,{currentState:model.state});
+    currentCloud=rebased.state;
+  }
+  const expectedGeneration=Number(session.localGeneration||0),expectedSeq=state.seq,currentState=composeOrderCloudState(currentCloud,model.state);
+  const publication=await commitCloudCheckpoint({
+    commit:()=>acknowledgeStorageV2CloudFlight(flight.operationId,newRevision,authoritative,{currentState}),
+    isCurrent:committed=>tab.primaryTab&&Number(session.localGeneration||0)===expectedGeneration&&committed?.seq===expectedSeq,
+    publish:()=>{if(!sameOrderCloudData(model.state,currentCloud))applyOrderCloudState(currentCloud)},
+  });
+  const committedState=publication.committed;
   session.cloudRevision=newRevision;session.cloudUpdatedAt=res.row?.updated_at||session.cloudUpdatedAt;session.lastCloudState=clone(authoritative);session.cloudConflictBlocked=false;
+  if(!publication.published){
+    // The sent flight is durably acknowledged, but a newer visible/journal head
+    // must not be overwritten or sent with an earlier reconciliation snapshot.
+    session.cloudConflictBlocked=true;session.cloudSaveRequested=false;
+    if(!tab.primaryTab)return false;
+    if(publication.reason==='publication-error')console.error('post-ACK model publication',publication.error);
+    await setStorageV2CloudControl({conflict:{kind:publication.reason==='publication-error'?'ack-publication-failed':'concurrent-ack',domain:'orders',baseRevision:flight.baseRevision,currentRemoteRevision:newRevision}});
+    setCloud('ענן: הסנכרון נעצר לשמירת שינוי מקביל','error');
+    toast(publication.reason==='publication-error'?'אישור הענן נשמר, אבל עדכון הנתונים לתצוגה נכשל. הסנכרון נעצר לבדיקה; הנתונים נשמרו באחסון המקומי.':'שינוי בוצע בזמן שמירת אישור הענן. הנתונים נשמרו מקומית; ייצא גיבוי ובדוק את המצב לפני חידוש הסנכרון.');
+    return false;
+  }
   try{if(files.dirHandle)await writeStateToFolder()}catch(localError){console.error('local backup/mirror',localError)}
   return {committed:true,state:committedState}
 }
@@ -126,7 +145,7 @@ async function requestStorageV2CloudSave(message='השינויים סונכרנ�
   if(session.cloudConflictBlocked){setCloud('ענן: התנגשות','error');return false}
   if(!navigator.onLine){try{await storageV2CommitPromise()}catch(error){console.error('orders V2 journal offline commit',error)}setCloud('ענן: אופליין','offline');return false}
   if(session.cloudSavePromise)return session.cloudSavePromise;
-  session.cloudSavePromise=(async()=>{let allOk=true;while(session.cloudSaveRequested&&(force||cloudEnabled())&&navigator.onLine&&!session.cloudConflictBlocked){
+  session.cloudSavePromise=(async()=>{let allOk=true;while(tab.primaryTab&&session.cloudSaveRequested&&(force||cloudEnabled())&&navigator.onLine&&!session.cloudConflictBlocked){
     session.cloudSaveRequested=false;const msg=session.cloudSaveMessage||'השינויים סונכרנו';session.cloudSaveMessage='';state=await refreshStorageV2CloudState();
     if(!state?.base){allOk=false;break}
     if(state.control?.conflict){session.cloudConflictBlocked=true;session.cloudSaveRequested=false;setCloud('ענן: התנגשות','error');return false}
