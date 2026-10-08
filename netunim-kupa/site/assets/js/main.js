@@ -25,12 +25,11 @@ import {createSyncMerge} from './sync/merge.js';
 import {createSyncDocument} from './sync/document.js';
 import {composeCloudUi} from './composition/cloud.js';
 import {createUiDateEditor} from './ui/date-editor.js';
-import {createDomainsChecksSelectors} from './domains/checks/selectors.js';
+import {createKupaChecksRuntime} from './composition/checks.js';
 import {createKupaCashRuntime} from './composition/cash.js';
 import {createDomainsCreditSelectors} from './domains/credit/selectors.js';
 import {createKupaExpensesRuntime} from './composition/expenses.js';
 import {createDomainsBankSelectors} from './domains/bank/selectors.js';
-import {createDomainsChecksView} from './domains/checks/view.js';
 import {createUiNavigation} from './ui/navigation.js';
 import {createUiSidebar} from './ui/sidebar.js';
 import {createUiGlobalSearch} from './ui/global-search.js';
@@ -44,7 +43,6 @@ import {composeDocumentSearch} from './shared/document-search-composition.js';
 import {composeKupaFinance} from './composition/finance.js';
 import {createUiSettings} from './ui/settings.js';
 import {createUiModal} from './ui/modal.js';
-import {createDomainsChecksEditor} from './domains/checks/editor.js';
 import {createDomainsCreditEditor} from './domains/credit/editor.js';
 import {inactiveCreditExpired} from './domains/credit/model.js';
 import {createDomainsRecordsCommands} from './domains/records/commands.js';
@@ -54,7 +52,7 @@ import {verifyStorageV2LocalEngine} from './shared/storage-v2-local-birth.js';
 import {bindActionEvents,bindBackdropDismissal,bindDismissibleDetails,bindNumberInputWheelGuard} from './shared/events.js';
 import {checkBankReviewItems,checkBankReviewMarkup} from './shared/check-bank-review.js';
 import {composeActionRegistry} from './shared/action-registry.js';
-import {createChecksActions,createBankActions,createShellActions,createCreditActions,createNotesActions,createSettingsActions,createBackupActions,createCloudActions} from './ui/actions.js';
+import {createBankActions,createShellActions,createCreditActions,createNotesActions,createSettingsActions,createBackupActions,createCloudActions} from './ui/actions.js';
 import {createContexts} from './state/contexts.js';
 import {createKupaDomainRevisions,kupaPageRevision} from './state/revisions.js';
 import {createRestoreGroupStore} from './shared/restore-groups.js';
@@ -323,14 +321,11 @@ const uiCloud=composeCloudUi({
   getUiModal:()=>uiModal,uiConnection,stateNormalization,syncChecksState,syncRecovery,cloudTransport,syncChecks,getUiNavigation:()=>uiNavigation,
 });
 
+const checks=createKupaChecksRuntime({model,ui});
 const uiDateEditor=createUiDateEditor({
-  markCheckSeriesManual:(...args)=>domainsChecksEditor.markCheckSeriesManual(...args),
-  syncCheckSeriesFromFirst:(...args)=>domainsChecksEditor.syncCheckSeriesFromFirst(...args),
+  markCheckSeriesManual:(...args)=>checks.markCheckSeriesManual(...args),
+  syncCheckSeriesFromFirst:(...args)=>checks.syncCheckSeriesFromFirst(...args),
   toast:(...args)=>uiStatus.toast(...args),
-});
-
-const domainsChecksSelectors=createDomainsChecksSelectors({
-  model,
 });
 
 const cash=createKupaCashRuntime({model,ui});
@@ -344,23 +339,12 @@ const domainsBankSelectors=createDomainsBankSelectors({
   checksSession,
 });
 
-const domainsChecksView=createDomainsChecksView({
-  getBankImageContext:()=>({bank:domainsBankController.bankBridgeUiState(),imageAction:'view-bank-cheque-image'}),
-  ui,
-  model,
-  syncBulkUi:(...args)=>uiBulk.syncBulkUi(...args),
-  bulkControls:(...args)=>uiBulk.bulkControls(...args),
-  bulkHeader:(...args)=>uiBulk.bulkHeader(...args),
-  bulkCell:(...args)=>uiBulk.bulkCell(...args),
-  futureCheckMonths:(...args)=>domainsChecksSelectors.futureCheckMonths(...args),
-});
-
 const uiNavigation=createUiNavigation({
   runFinance:financeDerivations.run,
   refreshCheckBankIndicator:()=>{const b=document.getElementById('checkBankAlerts');if(b){const count=checkBankReviewItems(model.state.checks).length;b.hidden=!count;b.textContent=`⚠ צ׳קים (${count})`}},
   ui,
   renderDashboard:(...args)=>domainsDashboardView.renderDashboard(...args),
-  renderChecks:(...args)=>domainsChecksView.renderChecks(...args),
+  renderChecks:(...args)=>checks.renderChecks(...args),
   renderCredit:(...args)=>domainsCreditView.renderCredit(...args),
   renderCash:(...args)=>cash.renderCash(...args),
   renderBank:(...args)=>domainsBankView.renderBank(...args),
@@ -388,8 +372,8 @@ const uiSidebar=createUiSidebar({setPage:(...args)=>uiNavigation.setPage(...args
 const domainsDashboardView=createDomainsDashboardView({
   runFinance:financeDerivations.run,
   model,
-  activeChecks:(...args)=>domainsChecksSelectors.activeChecks(...args),
-  depositedChecks:(...args)=>domainsChecksSelectors.depositedChecks(...args),
+  activeChecks:(...args)=>checks.activeChecks(...args),
+  depositedChecks:(...args)=>checks.depositedChecks(...args),
   bankLongTermPosition:(...args)=>domainsBankSelectors.bankLongTermPosition(...args),
   bankAsOfDate:(...args)=>domainsBankSelectors.bankAsOfDate(...args),
   bankHomeAsOfDate:(...args)=>domainsBankSelectors.bankHomeAsOfDate(...args),
@@ -462,6 +446,11 @@ const {
   getUiModal:()=>uiModal,
 });
 
+checks.bindView({
+  uiBulk,
+  getBankImageContext:()=>({bank:domainsBankController.bankBridgeUiState(),imageAction:'view-bank-cheque-image'}),
+});
+
 const uiSettings=createUiSettings({
   model,
   session,
@@ -504,19 +493,8 @@ const domainsRecordsCommands=createDomainsRecordsCommands({
 cash.bindUi({uiBulk,uiDateEditor,domainsDashboardView,uiModal,uiStatus,storagePersistence,domainsRecordsCommands});
 cash.assertReady();
 
-const domainsChecksEditor=createDomainsChecksEditor({
-  onChecksChanged:()=>uiNavigation.checksChanged(),
-  model,
-  checkDateEditorMarkup:(...args)=>uiDateEditor.checkDateEditorMarkup(...args),
-  toast:(...args)=>uiStatus.toast(...args),
-  armModalDraftGuard:(...args)=>uiModal.armModalDraftGuard(...args),
-  modal:(...args)=>uiModal.modal(...args),
-  deleteRecord:(...args)=>domainsRecordsCommands.deleteRecord(...args),
-  setCheckDateValue:(...args)=>uiDateEditor.setCheckDateValue(...args),
-  saveChecksState:(...args)=>storagePersistence.saveChecksState(...args),
-  normalizeCheckModalDates:(...args)=>uiDateEditor.normalizeCheckModalDates(...args),
-  closeModal:(...args)=>uiModal.closeModal(...args),
-});
+checks.bindEditor({uiDateEditor,uiModal,uiStatus,storagePersistence,domainsRecordsCommands,uiNavigation,uiBulk});
+checks.assertReady();
 
 const domainsCreditEditor=createDomainsCreditEditor({
   model,
@@ -604,11 +582,11 @@ const lifecycle=createLifecycle({
   commitCheckDateEditor:(...args)=>uiDateEditor.commitCheckDateEditor(...args),
   setCheckDateValue:(...args)=>uiDateEditor.setCheckDateValue(...args),
   normalizeCheckModalDates:(...args)=>uiDateEditor.normalizeCheckModalDates(...args),
-  activeChecks:(...args)=>domainsChecksSelectors.activeChecks(...args),
-  depositedChecks:(...args)=>domainsChecksSelectors.depositedChecks(...args),
+  activeChecks:(...args)=>checks.activeChecks(...args),
+  depositedChecks:(...args)=>checks.depositedChecks(...args),
   cashBalance:(...args)=>cash.cashBalance(...args),
-  checksBalance:(...args)=>domainsChecksSelectors.checksBalance(...args),
-  depositedBalance:(...args)=>domainsChecksSelectors.depositedBalance(...args),
+  checksBalance:(...args)=>checks.checksBalance(...args),
+  depositedBalance:(...args)=>checks.depositedBalance(...args),
   pendingInstallments:(...args)=>domainsCreditSelectors.pendingInstallments(...args),
   allInstallments:(...args)=>domainsCreditSelectors.allInstallments(...args),
   monthSumInstallments:(...args)=>domainsCreditSelectors.monthSumInstallments(...args),
@@ -652,7 +630,7 @@ document.getElementById('checkBankAlerts').addEventListener('click',()=>{if(uiSt
 const creditCardOrderView=createCreditCardOrderView({getSync:()=>model.state.creditSync,saveOrder:(...args)=>domainsCreditController.saveCreditCardOrder(...args),modal:(title,body,footer)=>{uiModal.modal(title,body,'',()=>{});document.querySelector('#modal .modal-foot').innerHTML=footer},closeModal:()=>uiModal.closeModal(),render:()=>domainsCreditView.renderCredit(),escapeHtml:esc});
 
 const uiActions=composeActionRegistry([
-  {name:'checks',actions:createChecksActions({domainsChecksEditor,domainsChecksView,ui,uiBulk,uiDateEditor,uiModal})},
+  {name:'checks',actions:checks.actions},
   {name:'bank',actions:createBankActions({domainsBankController,domainsBankView,importFinanceConnections,ui,uiStatus})},
   {name:'shell',actions:createShellActions({uiModal,uiNavigation})},
   {name:'credit',actions:createCreditActions({domainsCreditController,domainsCreditEditor,domainsCreditView,ui})},
