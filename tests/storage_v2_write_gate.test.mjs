@@ -94,11 +94,11 @@ test('V2 logout clears authorization without moving visible account data into th
   const prior=globalThis.localStorage,priorDocument=globalThis.document;globalThis.localStorage=localStore();
   globalThis.document={getElementById:()=>({style:{}})};
   try{
-    let ordersSessionWrites=0,kupaSessionWrites=0;
+    let ordersSessionWrites=0,kupaSessionWrites=0,ordersStops=0,kupaStops=0;
     const ordersSession={cloudRecoveryTimer:null,cloudPollTimer:null},ordersChecks={};
-    const orders=createOrdersUiCloud({session:ordersSession,checksSession:ordersChecks,storageV2PrimaryRequested:()=>true,saveSession:value=>{assert.equal(value,null);ordersSessionWrites++},toast:()=>{},setCloud:()=>{},renderSettings:()=>{}});
+    const orders=createOrdersUiCloud({session:ordersSession,checksSession:ordersChecks,storageV2PrimaryRequested:()=>true,stopPolling:()=>{ordersStops++;ordersSession.cloudPollingEnabled=false},saveSession:value=>{assert.equal(value,null);assert.equal(ordersStops,1);ordersSessionWrites++},toast:()=>{},setCloud:()=>{},renderSettings:()=>{}});
     const kupaSession={cloudRecoveryTimer:null,cloudPollTimer:null,serverInfo:{}},kupaChecks={};
-    const kupa=createKupaUiCloud({session:kupaSession,checksSession:kupaChecks,storageV2PrimaryRequested:()=>true,tab:{primaryTab:true},storeSupaSession:value=>{assert.equal(value,null);kupaSessionWrites++},toast:()=>{},setCloudHeaderStatus:()=>{},showFirstRun:()=>{}});
+    const kupa=createKupaUiCloud({session:kupaSession,checksSession:kupaChecks,storageV2PrimaryRequested:()=>true,tab:{primaryTab:true},stopCloudPolling:()=>{kupaStops++;kupaSession.cloudPollingEnabled=false},storeSupaSession:value=>{assert.equal(value,null);assert.equal(kupaStops,1);kupaSessionWrites++},toast:()=>{},setCloudHeaderStatus:()=>{},showFirstRun:()=>{}});
     assert.equal(orders.logoutCloud(),true);
     assert.equal(kupa.logoutSupabase(),true);
     assert.equal(ordersSessionWrites,1);

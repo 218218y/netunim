@@ -2,6 +2,7 @@ import {structuredSyncConflict} from '../shared/cloud-sync.js';
 import {clone} from '../core/values.js';
 import {commitCloudCheckpoint} from '../shared/cloud-checkpoint-publication.js';
 import {cloudHeadIsSynced} from '../shared/storage-cloud-status.js';
+import {createPollingTask} from '../shared/runtime-polling.js';
 import {CLOUD_WRITE_POLICY,cloudWriteError,contentionDelay,createOutboxRetryScheduler,documentWriteAckRevision,normalizeCloudError,operationAuditMetadata,runBusyCloudWriteWithPolicy} from '../shared/cloud-sync.js';
 
 function revisionConflict(res){return !res?.r?.ok&&normalizeCloudError(res).kind==='revision_conflict'}
@@ -15,6 +16,10 @@ function effectiveDeleteIntents(base,candidate,intents){const out={},declared=no
 export function createSyncDocument({model,files,session,tab,toast,setCloud,prepareCloudState,writeStateToFolder,readCloud,rpcSaveV2,merge3,applyOrderCloudState,composeOrderCloudState=(cloud,current)=>({...clone(cloud),checks:clone(current.checks||[])}),cloudEnabled,sameOrderCloudData,cloudHasLocalWork,render,readCloudMeta,refreshKupaReadout,pollSharedChecks,refreshCloudTimestamp,refreshStorageV2CloudState=async()=>null,materializeStorageV2CloudFlight=async()=>null,acknowledgeStorageV2CloudFlight=async()=>null,rejectStorageV2CloudFlight=async()=>null,setStorageV2CloudControl=async()=>null,adoptStorageV2CloudHead=async()=>null,storageV2CommitPromise=()=>Promise.resolve(),storageV2PreparationActive=()=>false}){
 const outboxRetryScheduler=createOutboxRetryScheduler();
 let cloudPollPromise=null,morningRefreshPromise=null;
+const cloudPoller=createPollingTask({run:()=>trackedCloudPoll(),delay:()=>12_000+Math.floor(Math.random()*2_000),
+  canRun:()=>session.cloudPollingEnabled&&!storageV2PreparationActive(),
+  onError:error=>console.error('orders background cloud poll',error),
+  onState:({enabled,timer})=>{session.cloudPollingEnabled=enabled;session.cloudPollTimer=timer}});
 
 async function adoptRemoteRow(row,generation,head,{applyState=true}={}){
   if(!head?.base)throw new Error('orders_v2_account_head_required');
@@ -264,14 +269,15 @@ async function resumeAfterReconnect(){
 }
 
 function trackedCloudPoll(){if(cloudPollPromise)return cloudPollPromise;cloudPollPromise=cloudPoll().finally(()=>{cloudPollPromise=null});return cloudPollPromise}
-function startPolling(){clearTimeout(session.cloudPollTimer);if(storageV2PreparationActive()){session.cloudPollingEnabled=false;session.cloudPollTimer=null;return}session.cloudPollingEnabled=true;const schedule=()=>{if(!session.cloudPollingEnabled||storageV2PreparationActive())return;session.cloudPollTimer=setTimeout(async()=>{try{await trackedCloudPoll()}finally{schedule()}},12_000+Math.floor(Math.random()*2_000))};schedule()}
+function startPolling(){return cloudPoller.start()}
+function stopPolling(){return cloudPoller.stop()}
 async function quiesceForStorageCutover(){
-  session.cloudPollingEnabled=false;clearTimeout(session.cloudPollTimer);session.cloudPollTimer=null;
+  stopPolling();
   if(session.cloudRecoveryTimer){clearTimeout(session.cloudRecoveryTimer);session.cloudRecoveryTimer=null}
   outboxRetryScheduler.cancel();
   const pending=[cloudPollPromise,session.cloudSavePromise].filter(Boolean);if(pending.length)await Promise.allSettled(pending);
   outboxRetryScheduler.cancel();return true;
 }
 
-return { requestCloudSave, requestStorageV2CloudSave, cloudPoll:trackedCloudPoll, resumeAfterReconnect, startPolling,quiesceForStorageCutover,refreshForMorningRecovery };
+return { requestCloudSave, requestStorageV2CloudSave, cloudPoll:trackedCloudPoll, resumeAfterReconnect, startPolling,stopPolling,quiesceForStorageCutover,refreshForMorningRecovery };
 }

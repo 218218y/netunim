@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-1b4faab98e85';
+const CACHE='orders-app-shell-esm-6d182af17352';
 const SHELL=[
   './',
   './index.html',
@@ -168,6 +168,7 @@ const SHELL=[
   './assets/js/shared/result-pages.js',
   './assets/js/shared/revision-selector.js',
   './assets/js/shared/runtime-performance.js',
+  './assets/js/shared/runtime-polling.js',
   './assets/js/shared/runtime-resources.js',
   './assets/js/shared/search-fragments.js',
   './assets/js/shared/search-scheduler.js',

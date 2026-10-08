@@ -35,6 +35,7 @@ export function composeCloudUi({
     applyCloudRow:(...args)=>syncDocument.applyCloudRow(...args),
     requestStorageV2CloudSave:(...args)=>syncDocument.requestStorageV2CloudSave(...args),
     startCloudPolling:(...args)=>syncDocument.startCloudPolling(...args),
+    stopCloudPolling:(...args)=>syncDocument.stopCloudPolling(...args),
     render:(...args)=>getUiNavigation().render(...args),
     setConnectedStatus:(...args)=>uiStatus.setConnectedStatus(...args),
     supaAuthPassword:(...args)=>cloudAuth.supaAuthPassword(...args),
