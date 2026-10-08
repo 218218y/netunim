@@ -48,7 +48,7 @@ export function createDomainsDocumentSearch({localBridge,googleDrive,userAgent=g
   async function selectFolder(){if(android||!localBridge?.selectFolder)throw Object.assign(new Error('בחירת תיקיית חיפוש זמינה רק דרך Everything במחשב זה.'),{code:'DOCUMENT_FOLDER_SCOPE_UNAVAILABLE'});const data=await localBridge.selectFolder();mark('local');return data}
   async function recent(options){return withFallback('recent',[options],{rows:true})}
   async function search(query,options){return withFallback('search',[query,options],{rows:true})}
-  async function preview(id){return routed('preview',id)}
+  async function preview(id,options){return routed('preview',id,options)}
   async function previewFile(id,options){return routed('previewFile',id,options)}
   async function matches(id,options){const decoded=decodeId(id),source=decoded.source||active;if(source==='drive')return {ok:true,active:false,query:'',count:0,snippets:[],source:'google-drive-viewer'};return routed('matches',id,options)}
   async function openDocument(id){return routed('openDocument',id)}

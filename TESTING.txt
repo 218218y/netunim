@@ -281,6 +281,9 @@ secondary-tab access and actual UI logout with held Bridge responses and real jo
 runtime_kupa_save_confirmation.py holds actual IndexedDB read delivery and post-ACK backup across a
 committed note edit. Stale save completion must stay pending; a fresh runtime preserves the exact ID/content
 and reaches the cloud with one effect per Flight.
+runtime_document_deadlines.py exercises the production Document Bridge client, routed source and Global
+Search controller in both app DOMs. Controlled body deadlines must settle recent/file/content/paging/preview
+and match requests with visible retry; old query/preview cancellation must preserve the newer view and clear timers.
 Browser tests copy site/ into temporary directories, use disposable Chromium profiles and replace public cloud
 configuration with fake endpoints. Production data, credentials, database and deployment are never contacted.
 Most integration suites instrument ONLY these temporary copies with lexical test access via module_probe.cjs.

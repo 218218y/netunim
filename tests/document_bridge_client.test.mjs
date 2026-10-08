@@ -55,7 +55,7 @@ for(const [app,create] of [['kupa',createKupa],['orders',createOrders]]){
     await assert.rejects(f.api.status(),error=>error.code==='DOCUMENT_BRIDGE_RESPONSE_INVALID');
     assert.equal(f.timers.size,0);
   });
-  for(const method of ['search','previewFile'])test(`${app} ${method} respects a signal cancelled before the request`,async t=>{
+  for(const method of ['search','preview','previewFile'])test(`${app} ${method} respects a signal cancelled before the request`,async t=>{
     const f=fixture(create,t),controller=new AbortController();controller.abort();
     await assert.rejects(f.api[method]('opaque-id',{signal:controller.signal}),error=>error.code==='DOCUMENT_BRIDGE_ABORTED');
     assert.equal(f.calls.length,0);assert.equal(f.timers.size,0);
@@ -87,13 +87,13 @@ for(const [app,create] of [['kupa',createKupa],['orders',createOrders]]){
     const f=fixture(create);f.reply(()=>new Response('<html>proxy</html>',{status:503}));
     await assert.rejects(f.api.status(),error=>error.code==='HTTP_503'&&error.httpStatus===503);
   });
-  for(const method of ['search','previewFile'])test(`${app} ${method} deadline covers response-body consumption`,async()=>{
+  for(const method of ['search','preview','previewFile'])test(`${app} ${method} deadline covers response-body consumption`,async()=>{
     const f=fixture(create),started=deferred();f.reply((_url,{signal})=>{
       const consume=()=>{started.resolve();return new Promise((_resolve,reject)=>signal.addEventListener('abort',()=>reject(new DOMException('timeout','AbortError')),{once:true}))};
       return {ok:true,status:200,text:consume,blob:consume};
     });
     const pending=f.api[method]('opaque-id');await started.promise;
-    const rejected=assert.rejects(pending,error=>error.code==='DOCUMENT_BRIDGE_ABORTED');
+    const rejected=assert.rejects(pending,error=>error.code==='DOCUMENT_BRIDGE_TIMEOUT');
     assert.equal(f.timers.size,1);[...f.timers.values()][0].fn();await rejected;assert.equal(f.timers.size,0);
   });
   test(`${app} independent requests cancel separately and detach caller listeners`,async t=>{
