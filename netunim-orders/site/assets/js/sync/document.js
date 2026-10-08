@@ -1,6 +1,7 @@
 import {structuredSyncConflict} from '../shared/cloud-sync.js';
 import {clone} from '../core/values.js';
 import {commitCloudCheckpoint} from '../shared/cloud-checkpoint-publication.js';
+import {cloudHeadIsSynced} from '../shared/storage-cloud-status.js';
 import {CLOUD_WRITE_POLICY,cloudWriteError,contentionDelay,createOutboxRetryScheduler,documentWriteAckRevision,normalizeCloudError,operationAuditMetadata,runBusyCloudWriteWithPolicy} from '../shared/cloud-sync.js';
 
 function revisionConflict(res){return !res?.r?.ok&&normalizeCloudError(res).kind==='revision_conflict'}
@@ -148,7 +149,7 @@ async function saveStorageV2CloudFlight(initialFlight){
     return false;
   }
   try{if(files.dirHandle)await writeStateToFolder()}catch(localError){console.error('local backup/mirror',localError)}
-  return {committed:true,state:committedState}
+  return {committed:true,state:committedState,generation:expectedGeneration}
 }
 
 async function requestStorageV2CloudSave(message='השינויים סונכרנו',{force=false}={}){
@@ -165,13 +166,13 @@ async function requestStorageV2CloudSave(message='השינויים סונכרנ�
     if(state.control?.conflict){session.cloudConflictBlocked=true;session.cloudSaveRequested=false;setCloud('ענן: התנגשות','error');return false}
     const currentFlight=state.flight||null,retryRecord=v2RetryRecord(state,currentFlight),retryDelay=outboxRetryScheduler.schedule(retryRecord,()=>requestStorageV2CloudSave(msg,{force}));
     if(retryDelay>0){setCloud('ענן: ממתין למועד הסנכרון');allOk=false;break}
-    const flight=currentFlight||await materializeStorageV2CloudFlight();
-    if(!flight){setCloud('ענן: מסונכרן','synced');if(msg)toast(msg);continue}
+    const generation=Number(session.localGeneration||0),flight=currentFlight||await materializeStorageV2CloudFlight();
+    if(!flight){if(await confirmCloudPollSynced({generation})){if(msg)toast(msg)}else allOk=false;continue}
     session.cloudBusy=true;setCloud('ענן: מסנכרן…');
     try{
       const saved=await saveStorageV2CloudFlight(flight);if(!saved){allOk=false;break}
       outboxRetryScheduler.cancel();state=saved.state||state;if(state?.pending||state?.flight)session.cloudSaveRequested=true;
-      if(!session.cloudSaveRequested&&!state?.pending&&!state?.flight){setCloud('ענן: מסונכרן','synced');if(msg)toast(msg)}else setCloud('ענן: מסנכרן…')
+      if(markCloudSynced(state,{generation:saved.generation})){if(msg)toast(msg)}else if(state?.pending||state?.flight||session.cloudSaveRequested)setCloud('ענן: מסנכרן…');else allOk=false
     }catch(error){
       console.error('cloud save V2',error);state=await refreshStorageV2CloudState();const normalized=normalizeCloudError(error),attempts=Number(state?.control?.retry?.attempts||0)+1,nextAttemptAt=normalized.retryAfterMs?new Date(Date.now()+normalized.retryAfterMs).toISOString():null,retry={attempts,lastErrorCode:normalized.code||normalized.kind,lastAttemptAt:new Date().toISOString(),nextAttemptAt};
       await setStorageV2CloudControl({retry});state=await refreshStorageV2CloudState();outboxRetryScheduler.schedule(v2RetryRecord(state,state?.flight),()=>requestStorageV2CloudSave(msg,{force}));setCloud(navigator.onLine?'ענן: ממתין לסנכרון':'ענן: אופליין',navigator.onLine?'':'offline');allOk=false;break
@@ -182,7 +183,23 @@ async function requestStorageV2CloudSave(message='השינויים סונכרנ�
 
 const requestCloudSave=requestStorageV2CloudSave;
 
-function markCloudPollSynced(){setCloud('ענן: מסונכרן','synced');refreshCloudTimestamp();return true}
+function pollAccessCurrent(){return !storageV2PreparationActive()&&tab.primaryTab&&cloudEnabled()&&navigator.onLine&&!session.syncCapabilitiesError&&!session.syncCapabilitiesChecking}
+function pollViewCurrent({generation,local}={}){return pollAccessCurrent()&&!session.cloudConflictBlocked&&Number(session.localGeneration||0)===generation&&!session.cloudSaveRequested&&!cloudHasLocalWork()&&(!local||sameOrderCloudData(model.state,local))}
+function markCloudPollDeferred(head){
+  if(storageV2PreparationActive()||!tab.primaryTab||!cloudEnabled())return false;
+  if(!navigator.onLine)setCloud('ענן: אופליין','offline');
+  else if(head?.control?.conflict||session.cloudConflictBlocked)setCloud('ענן: התנגשות','error');
+  else setCloud('ענן: ממתין לסנכרון');
+  return false;
+}
+function markCloudSynced(head,observation){
+  if(!pollViewCurrent(observation)||!cloudHeadIsSynced(head,{revision:Number(session.cloudRevision||0),observedHead:observation.head}))return markCloudPollDeferred(head);
+  setCloud('ענן: מסונכרן','synced');return true;
+}
+async function confirmCloudPollSynced(observation,{refreshTimestamp=false}={}){
+  const synced=markCloudSynced(await refreshStorageV2CloudState(),observation);
+  if(synced&&refreshTimestamp)refreshCloudTimestamp();return synced;
+}
 function markCloudPollFailure(error){
   const normalized=normalizeCloudError(error),transient=['network','timeout','service_unavailable','rate_limited'].includes(normalized.kind);
   if(!navigator.onLine)setCloud('ענן: אופליין','offline');
@@ -196,29 +213,41 @@ async function cloudPoll(){
   if(storageV2PreparationActive()||!tab.primaryTab||!cloudEnabled()||session.cloudBusy||!navigator.onLine)return false;
   if(cloudHasLocalWork()){const saved=await requestCloudSave('סונכרנו שינויים מקומיים ועדכון מרחוק');await pollSharedChecks();return saved}
   let dataApiReadOk=false;
-  try{
-    session.cloudBusy=true;
-    const head=await refreshStorageV2CloudState(),pollGeneration=Number(session.localGeneration||0),localBefore=prepareCloudState(model.state),meta=await readCloudMeta();dataApiReadOk=true;
+  const observation={generation:Number(session.localGeneration||0),local:prepareCloudState(model.state),head:null};
+  let ready=false;
+  async function readMain(){
+    const head=await refreshStorageV2CloudState();observation.head=head;
+    if(!pollViewCurrent(observation)||!cloudHeadIsSynced(head,{revision:Number(session.cloudRevision||0)}))return markCloudPollDeferred(head);
+    const meta=await readCloudMeta();dataApiReadOk=true;
+    if(!pollViewCurrent(observation))return markCloudPollDeferred();
     if(!meta){setCloud('ענן: מסמך לא נמצא','error');return false}
     const metaRevision=Number(meta.revision||0);
-    if(metaRevision<=session.cloudRevision){session.cloudUpdatedAt=meta.updated_at||session.cloudUpdatedAt;return markCloudPollSynced()}
+    if(!Number.isSafeInteger(metaRevision)||metaRevision<1)throw new Error('orders_v2_remote_revision_invalid');
+    if(metaRevision<=session.cloudRevision){session.cloudUpdatedAt=meta.updated_at||session.cloudUpdatedAt;return true}
     const row=await readCloud();
+    if(!pollViewCurrent(observation))return markCloudPollDeferred();
     if(!row){setCloud('ענן: מסמך לא נמצא','error');return false}
-    if(Number(row.revision||0)<=session.cloudRevision){session.cloudUpdatedAt=row.updated_at||meta.updated_at||session.cloudUpdatedAt;return markCloudPollSynced()}
-    // A user edit may arrive while the GET is in flight. Never replace that
-    // newer local head with a remote row fetched from the earlier generation.
-    if(Number(session.localGeneration||0)!==pollGeneration||cloudHasLocalWork()||!sameOrderCloudData(model.state,localBefore)){session.cloudSaveRequested=true;setCloud('ענן: מסנכרן…');return false}
-    const rowRevision=Number(row.revision||0),meaningful=!sameOrderCloudData(model.state,row.state);
-    if(!Number.isSafeInteger(rowRevision)||rowRevision<=0)throw new Error('orders_v2_remote_revision_invalid');
-    if(!await adoptRemoteRow(row,pollGeneration,head,{applyState:meaningful}))return false;
-    if(!meaningful){
-      session.lastCloudState=prepareCloudState(row.state||model.state);
-      return markCloudPollSynced()
-    }
+    const rowRevision=Number(row.revision||0);
+    if(!Number.isSafeInteger(rowRevision)||rowRevision<1)throw new Error('orders_v2_remote_revision_invalid');
+    if(rowRevision<=session.cloudRevision){session.cloudUpdatedAt=row.updated_at||meta.updated_at||session.cloudUpdatedAt;return true}
+    const meaningful=!sameOrderCloudData(model.state,row.state);
+    if(!await adoptRemoteRow(row,observation.generation,head,{applyState:meaningful}))return false;
+    // The adopted projection replaces the earlier comparison candidate. Shared
+    // checks remain independent; only Main's projection is compared here.
+    observation.local=prepareCloudState(model.state);
+    if(!meaningful){session.lastCloudState=prepareCloudState(row.state||model.state);return true}
     try{if(files.dirHandle)await writeStateToFolder()}catch(localError){console.error('local backup/mirror',localError)}
-    markCloudPollSynced();render();toast('התקבל עדכון מהענן');return true
+    render();toast('התקבל עדכון מהענן');return true;
+  }
+  try{
+    session.cloudBusy=true;
+    ready=await readMain();
   }catch(error){return markCloudPollFailure(error)}
   finally{session.cloudBusy=false;if(dataApiReadOk){await pollSharedChecks();await refreshKupaReadout({renderIfChanged:true})}}
+  // The final authoritative read occurs after independent hydration too. An edit
+  // during any of those awaits cannot publish a stale "synced" assertion.
+  if(!ready)return false;
+  try{return await confirmCloudPollSynced(observation,{refreshTimestamp:true})}catch(error){return markCloudPollFailure(error)}
 }
 
 async function resumeAfterReconnect(){

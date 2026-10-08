@@ -514,7 +514,7 @@ for app in ('kupa', 'orders'):
               sameOrderCloudData:(a,b)=>JSON.stringify(project(a))===JSON.stringify(project(b)),merge3:merge.merge3,
               composeOrderCloudState:(raw,current)=>({...normalization.normalizeState(clone(raw)),checks:clone(current.checks)}),
               applyOrderCloudState:raw=>{model.state=normalization.normalizeState({...clone(raw),checks:clone(model.state.checks)})},
-              rpcSaveV2:rpc,cloudHasLocalWork:()=>true}):createSyncDocument({...ports,checksSession:{},hideConnectScreen:noop,reportError:noop,
+              rpcSaveV2:rpc,cloudHasLocalWork:()=>!!(session.storageV2CloudPending||session.cloudSaveRequested)}):createSyncDocument({...ports,checksSession:{},hideConnectScreen:noop,reportError:noop,
               prepareKupaCloudState:project,applyKupaCloudState:normalization.applyKupaCloudState,mergeKupaCloudState3Way:merge.mergeKupaCloudState3Way,
               storageV2CloudOutboxActive:()=>true,setSaveStatus:noop,setCloudHeaderStatus:noop,showSecondaryTabGuard:noop,backupSnapshotToComputer:async()=>{},
               supaRest:async(_path,options)=>{const body=JSON.parse(options.body),result=await rpc(body.p_state,body.p_expected_revision,body.p_operation_id);return {ok:true,text:async()=>JSON.stringify(result.row)}}});
@@ -675,3 +675,56 @@ with BrowserSession(ROOT/'netunim-kupa/site', 'cloud-adoption-recovery') as brow
     })()""",timeout=40)
     assert not browser.drain_serious_errors()
     print(f'PASS real IndexedDB cloud adoption: {len(result)} assertions for identity, concurrent edits, controls, checkpoint/base races, leader fencing, abort, retry and restart')
+
+with BrowserSession(ROOT/'netunim-orders/site', 'poll-status-durable-ack') as browser:
+    result=browser.evaluate(r"""(async()=>{
+      const clone=structuredClone,noop=()=>{},done=[],statuses=[];
+      const check=(condition,label)=>{if(!condition)throw Error(label);done.push(label)};
+      const deferred=()=>{let resolve;const promise=new Promise(done=>{resolve=done});return {promise,resolve}};
+      const {INITIAL_STATE}=await import('./assets/js/state/constants.js');
+      const {createStateNormalization}=await import('./assets/js/state/normalization.js');
+      const {createStorageV2Runtime}=await import('./assets/js/shared/storage-v2-runtime.js');
+      const {createStorageJournal}=await import('./assets/js/shared/storage-journal.js');
+      const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
+      const {createStorageBrowser}=await import('./assets/js/storage/browser.js');
+      const {createSyncDocument}=await import('./assets/js/sync/document.js');
+      const {assertOrderEntityInvariants}=await import('./assets/js/state/validation.js');
+      const model={state:clone(INITIAL_STATE)},normalization=createStateNormalization({model});
+      model.state=normalization.normalizeState(model.state);
+      model.state.notes=[{id:'N',content:'original',createdAt:'2026-10-08',updatedAt:'2026-10-08'}];
+      const project=state=>{const next=clone(state);delete next.checks;return next},db=createStorageJournalDb(),tab={primaryTab:true};
+      const options={app:'orders',owner:()=> 'poll-status-owner',primary:()=>tab.primaryTab,mode:()=> 'primary',
+        validate:state=>assertOrderEntityInvariants(state,{required:true}),prepareCheckpoint:clone,createJournal:options=>createStorageJournal({...options,db})};
+      const storage=createStorageV2Runtime(options),session={localGeneration:0,cloudRevision:10},files={};
+      await storage.initializeCloudHead(10,model.state,{sourceOwner:'poll-status-owner',intent:'cloud-authoritative',cloudState:project(model.state)});
+      const driver=createStorageBrowser({storageV2:storage,model,session,files,normalizeState:normalization.normalizeState,prepareCloudState:project});
+      const metaEntered=deferred(),metaRelease=deferred(),ackEntered=deferred(),ackRelease=deferred();
+      const api=createSyncDocument({model,files,session,tab,toast:noop,render:noop,setCloud:(...args)=>statuses.push(args),
+        prepareCloudState:project,cloudEnabled:()=>true,cloudHasLocalWork:()=>!!(session.storageV2CloudPending||session.cloudSaveRequested),
+        sameOrderCloudData:(a,b)=>JSON.stringify(project(a))===JSON.stringify(project(b)),writeStateToFolder:async()=>{},refreshCloudTimestamp:noop,
+        pollSharedChecks:async()=>{},refreshKupaReadout:async()=>false,
+        readCloudMeta:async()=>{metaEntered.resolve();await metaRelease.promise;return {revision:10}},
+        refreshStorageV2CloudState:()=>driver.refreshStorageV2CloudState(),materializeStorageV2CloudFlight:options=>driver.materializeStorageV2CloudFlight(options),
+        acknowledgeStorageV2CloudFlight:async(...args)=>{ackEntered.resolve();await ackRelease.promise;return driver.acknowledgeStorageV2CloudFlight(...args)},
+        storageV2CommitPromise:()=>storage.commitPromise,setStorageV2CloudControl:value=>driver.setStorageV2CloudControl(value),
+        rpcSaveV2:async snapshot=>({r:{ok:true},row:{revision:10,state:clone(snapshot)}}),applyOrderCloudState:noop});
+      const poll=api.cloudPoll();await metaEntered.promise;
+      model.state.notes[0].content='edit-during-meta';session.localGeneration++;
+      const write=storage.persist(model.state,{generation:1,mutationType:'edit',surface:'notes',operations:[{type:'put',collection:'notes',mode:'replace',id:'N',record:clone(model.state.notes[0])}]});
+      await write.committed;metaRelease.resolve();
+      check(await poll===false&&!statuses.some(([,mode])=>mode==='synced'),'meta GET cannot acknowledge a concurrent real journal edit');
+      const pending=await driver.refreshStorageV2CloudState();
+      check(pending.pending&&pending.seq===1&&pending.base.ackSeq===0,'GET leaves the local pending sequence and ACK unchanged');
+      const saving=api.requestCloudSave('');await ackEntered.promise;
+      check(!statuses.some(([,mode])=>mode==='synced'),'RPC success does not confirm synced before durable ACK');
+      const held=await driver.refreshStorageV2CloudState();
+      check(held.pending&&held.flight&&held.base.ackSeq===0,'unfinished ACK retains its immutable flight and pending journal');
+      ackRelease.resolve();check(await saving===true,'durable no-op ACK can confirm sync without a revision bump');
+      check(statuses.at(-1)[1]==='synced','status becomes synced only after the ACK transaction');
+      const restarted=createStorageV2Runtime(options),recovered=await restarted.recoverForOwner({intent:'load-account'}),cloud=await restarted.cloudState();
+      check(recovered.state.notes[0].id==='N'&&recovered.state.notes[0].content==='edit-during-meta','fresh runtime retains the edit and record identity');
+      check(cloud.seq===1&&cloud.base.ackSeq===1&&cloud.base.revision===10&&!cloud.pending&&!cloud.flight&&!cloud.control,'fresh runtime recovers the exact acknowledged clean head');
+      return done;
+    })()""",timeout=40)
+    assert not browser.drain_serious_errors()
+    print(f'PASS real IndexedDB poll status: {len(result)} assertions for concurrent GET edit, immutable flight, durable no-op ACK and identity after restart')

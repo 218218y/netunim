@@ -15,6 +15,7 @@ function ordersFixture({primaryTab=true,readCloudMeta=async()=>({revision:7,upda
     toast:noop,setCloud:(...args)=>statuses.push(args),prepareCloudState:(value=model.state)=>structuredClone(value),writeStateToFolder:async()=>{},readCloud:async()=>({revision:7,state:structuredClone(model.state),updated_at:'2026-09-30T08:00:00Z'}),
     rpcSave:async()=>{},merge3:()=>({state:model.state,conflicts:[]}),applyOrderCloudState:noop,cloudPendingExists:()=>false,setSave:noop,cloudEnabled:()=>true,loadCloudPendingState:()=>null,
     sameOrderCloudData:(a,b)=>JSON.stringify(a)===JSON.stringify(b),cloudHasLocalWork:()=>false,render:noop,readCloudMeta,refreshKupaReadout:async()=>true,pollSharedChecks:async()=>{},refreshCloudTimestamp:noop,
+    refreshStorageV2CloudState:async()=>({seq:0,base:{revision:7,ackSeq:0,state:structuredClone(model.state)},pending:false,flight:null,control:null}),
   });
   return {api,statuses,session};
 }
@@ -31,7 +32,7 @@ function kupaFixture({financeRevision=3,rowFinanceRevision=3,readSupabaseDocumen
     putCloudPending:async()=>{},clearCloudPending:async()=>true,mergeKupaCloudState3Way:()=>({state:cloudState,conflicts:[]}),rebaseNewerPending:async()=>null,lastSavedCloudState:()=>null,showSecondaryTabGuard:noop,
     stageCloudPendingLocal:noop,toast:noop,pollSharedChecks:async()=>{},refreshOrdersFinanceSummary:async()=>false,
     refreshStorageV2CloudState:async()=>({seq:0,base:{revision:9,ackSeq:0,state:structuredClone(cloudState)},pending:false,flight:null,control:null}),storageV2CloudOutboxActive:()=>true,
-    replaceStorageV2CurrentState:async()=>0,
+    replaceStorageV2CurrentState:async()=>0,assertAccountOwner:()=>true,
   });
   return {api,statuses,saveStatuses,session};
 }
