@@ -1,4 +1,4 @@
-import {withStorageProtocol} from './startup_ports.mjs';
+import {withStorageProtocol,withOrdersStartup} from './startup_ports.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createStartupTask} from '../shared/startup-task.js';
@@ -40,7 +40,7 @@ test('startup retains synchronous and asynchronous failures without acquiring re
 for(const [app,createLifecycle] of [['Kupa',createKupaLifecycle],['Orders',createOrdersLifecycle]]){
   test(`${app} boot cannot repeat a blocked preflight or bypass the write gate`,async()=>{
     const events=[],session={};
-    const lifecycle=createLifecycle(withStorageProtocol({session,tab:{primaryTab:true},
+    const lifecycle=createLifecycle((app==='Orders'?withOrdersStartup:withStorageProtocol)({session,tab:{primaryTab:true},
       acquirePrimaryTabLock:async()=>events.push('lock'),
       hydrateStorageOwner:async()=>events.push('owner'),
       storageOwnerCurrent:()=> 'account-A',authenticatedOwner:()=> 'account-B',
@@ -58,7 +58,7 @@ for(const [app,createLifecycle] of [['Kupa',createKupaLifecycle],['Orders',creat
 
   test(`${app} boot cannot retry a failed lock in a partially constructed runtime`,async()=>{
     let locks=0;
-    const session={},lifecycle=createLifecycle(withStorageProtocol({session,
+    const session={},lifecycle=createLifecycle((app==='Orders'?withOrdersStartup:withStorageProtocol)({session,
       acquirePrimaryTabLock:()=>{locks++;throw new Error('lock_failed')},
       hydrateStorageOwner:()=>assert.fail('owner must follow lock')}));
     await assert.rejects(lifecycle.boot(),/lock_failed/);

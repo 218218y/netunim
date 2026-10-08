@@ -165,6 +165,19 @@ remain separate from structural refactors.
   coalesced wakeup with reconnect/foreground recovery, retaining `quiet:false`
   at startup and rechecking auth, ownership and Main hydration before execution.
 
+- Orders now composes three startup owners: cloud hydration, optional local
+  services, and background startup. Lifecycle receives their small phase APIs
+  rather than individual cloud, folder, backup and alert callbacks. Storage owns
+  recovery of the durable cloud cursor. The startup modules receive adapters
+  through validated ports; they do not import domain/UI/infrastructure modules
+  or access browser I/O directly. Each phase retains one execution task.
+  Four regressions failed on the previous main: an alert-display exception
+  replayed alerts and prevented Finance startup, a Finance-start exception
+  repeated that job, leadership loss during alert preparation still displayed
+  alerts/started jobs, and offline transition after Main hydration still issued
+  dependent remote reads. Separate optional-error boundaries and live access
+  checks now preserve the intended sequence without replaying completed effects.
+
 ### Startup recovery contract
 
 `construct -> bind journals -> validate binding -> lock/owner/protocol -> birth or
@@ -198,6 +211,36 @@ Incomplete remote restore reconciliation retains its existing failure policy;
 typed reconciliation errors and the remaining background resources need their
 own review rather than a blanket retry or blanket failure classification.
 
+### Orders hydration and background contract
+
+After Main/Shared recovery, cloud preparation restores the account cursor and
+installs domain mutation guards before publishing a frozen hydration plan.
+Only then can lifecycle activate recovery and render. Optional persistence and
+folder initialization starts after that display. Remote Main completes before
+Shared and Finance hydration; background startup then runs polling, the optional
+folder backup, bank-alert archive preparation, alert display and Finance jobs.
+The backup waits for folder readiness and captures the current hydrated model.
+Local/offline/signed-out startup retains the existing local path and skips the
+applicable remote reads. Each remote call and background phase rechecks live
+access; losing auth, connectivity or leadership cannot authorize the next read
+using an earlier startup snapshot. In-flight operations retain their own fences
+and are not cancelled by these orchestration ports.
+
+| Failure | Outcome |
+| --- | --- |
+| Missing/unreadable durable cursor or post-hydration cloud head | Reject the phase with the original cause; no dependent hydration/jobs |
+| UI guard installation fails | No published plan or recovery activation |
+| Main remote unavailable/conflicted/pending | Preserve existing error/deferred domain status and durable local data |
+| Shared/Finance remote unavailable | Preserve per-domain status; independently eligible domains may still hydrate |
+| Optional persistence/folder/backup/alert failure | Report that failure once and continue independently eligible phases |
+| Polling/Finance job start throws | Retain the failed task; never replay a partially started job |
+| Access lost between phases | Skip subsequent effects; existing connectivity owners handle later wakeups |
+
+`session.startupHydrationPromise` retains secondary/background completion or
+failure. Its error observer only reports; it cannot turn a failed task into a
+successful result or start alerts/jobs again. No schema, serialization, RPC,
+ACK, owner/epoch or SQL semantics changed in this slice.
+
 ## Dependency direction
 
 Pure core and protocol contracts may be imported by domain and application
@@ -216,21 +259,24 @@ pre-slice main commit `85ea9278`):
 | Factory | Before | Current |
 | --- | ---: | ---: |
 | Kupa lifecycle | 76 | 34 |
-| Orders lifecycle | 50 | 42 |
+| Orders lifecycle | 50 | 24 |
 | Shared startup protocol | - | 3 |
 | Shared startup recovery | - | 1 optional scheduler; 2 bound journal ports |
 | Kupa connectivity (including browser/timers) | - | 7 |
 | Orders connectivity (including browser/timers) | - | 8 |
 | Shared runtime resource owner | - | 2 |
+| Orders cloud startup | - | 6; public API: prepare, hydrateMain, hydrateSecondary |
+| Orders local services | - | 5; public API: start, backupAfterHydration |
+| Orders background startup | - | 6; public API: start |
 
 Lifecycle still has too many collaborators. These slices establish real owners
 and contracts; they do not complete all startup phase decomposition or dispose
 all shell listeners, timers and integration pollers.
 Module graph now caps lifecycle collaborators at these measured counts and new
-startup recovery/connectivity factories at eight.
+startup recovery/connectivity/hydration/background factories at eight.
 
-Baseline for this slice: main `c64f567a`, full GitHub verification run
-`37720954991` passed (all CI groups, including browser and PostgreSQL). Focused
+Baseline for this slice: main `5f9ebf79`, full GitHub verification run
+`37724254603` passed (all CI groups, including browser and PostgreSQL). Focused
 local tests distinguish deterministic behavior/architecture checks from the
 full branch deployment gate; full Windows verification remains a separate gate.
 
@@ -242,8 +288,9 @@ full branch deployment gate; full Windows verification remains a separate gate.
    Retire lazy references where producer ordering is possible, and bind genuine
    construction cycles explicitly. Do not introduce an application service locator.
 2. **Lifecycle phases:** local/shared startup recovery and its UI-readiness
-   boundary are now explicit. Continue remote hydration, local services and
-   background-job ports from their capability owners. Preserve
+   boundary are now explicit. Orders remote hydration, local services and
+   background startup now have phase ports. Continue Kupa phase decomposition
+   and explicit job/resource ownership from their capability owners. Preserve
    lock/owner/protocol ordering and first safe render after Main and Shared.
    Test partial failure, write gating and resource cleanup. Expand resource
    ownership beyond connectivity without aborting in-flight durability commits.

@@ -1,4 +1,4 @@
-import {withStorageProtocol} from './startup_ports.mjs';
+import {withOrdersStartup} from './startup_ports.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createSyncChecksState} from '../netunim-kupa/site/assets/js/sync/checks-state.js';
@@ -284,7 +284,7 @@ for(const marker of ['cloud','local'])test(`Orders secondary tab recovers Main a
   const previous=globalThis.localStorage;globalThis.localStorage=localStore();
   try{
     const calls=[],model={state:{checks:[{id:'obsolete'}]}};
-    const lifecycle=createOrdersLifecycle(withStorageProtocol({model,session:{},tab:{primaryTab:false},verifyStorageV2AccountMarker:async()=>marker==='cloud',verifyLocalStorageEngine:async()=>marker==='local',
+    const lifecycle=createOrdersLifecycle(withOrdersStartup({model,session:{},tab:{primaryTab:false},verifyStorageV2AccountMarker:async()=>marker==='cloud',verifyLocalStorageEngine:async()=>marker==='local',
       storageOwnerCurrent:()=>marker==='local'?'local':'account',
       acquirePrimaryTabLock:async()=>{},loadSession:()=>null,
       restoreBrowserStateFallback:async()=>{throw new Error('secondary used legacy Main recovery')},

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {withStorageProtocol} from './startup_ports.mjs';
+import {withStorageProtocol,withOrdersStartup} from './startup_ports.mjs';
 import {createLifecycle as createOrdersLifecycle} from '../netunim-orders/site/assets/js/lifecycle.js';
 import {createLifecycle as createKupaLifecycle} from '../netunim-kupa/site/assets/js/lifecycle.js';
 import {createUiStatus as createOrdersStatus} from '../netunim-orders/site/assets/js/ui/status.js';
@@ -36,8 +36,8 @@ function fixture(app,overrides={}){
     ...overrides,
   });
   const status=(app==='Orders'?createOrdersStatus:createKupaStatus)({...ports,storageRecovery:ports.storageRecovery});
-  const lifecycle=(app==='Orders'?createOrdersLifecycle:createKupaLifecycle)({...ports,
-    beginStartupSync:required=>status.beginStartupSync(required),setStartupDomain:(...args)=>status.setStartupDomain(...args)});
+  const startupPorts=app==='Orders'?withOrdersStartup({...ports,beginStartupSync:required=>status.beginStartupSync(required),setStartupDomain:(...args)=>status.setStartupDomain(...args)}):ports;
+  const lifecycle=(app==='Orders'?createOrdersLifecycle:createKupaLifecycle)(startupPorts);
   return {ports,lifecycle,status,session,events,allowed:()=>app==='Orders'?status.guardStartupMutation('orders'):status.canRunInteractiveAction('save-check')};
 }
 

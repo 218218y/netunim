@@ -1,5 +1,8 @@
 import {createOrdersStorageV2Coordinator} from './composition/storage-v2.js';
 import {createStorageStartupRecovery} from './shared/storage-startup-recovery.js';
+import {createOrdersCloudStartup} from './startup/cloud-hydration.js';
+import {createOrdersLocalServices} from './startup/local-services.js';
+import {createOrdersBackgroundStartup} from './startup/background.js';
 import {installLocalSiteResetPeerListener} from './shared/local-site-reset.js';
 import {assertOrderEntityInvariants} from './state/validation.js';
 import {createFinanceDerivationStore} from './shared/finance-derivations.js';
@@ -471,45 +474,49 @@ storageRecovery.bind({
   shared:{primary:recoverSharedChecksV2Primary,readOnly:()=>sharedChecksV2.recoverReadOnly()},
 });
 
+const startupWritable=()=>tab.primaryTab&&!session.storageProtocolBlocked&&storageRecovery.isReady()&&!storagePreparationActive()&&!session.syncCapabilitiesError&&!session.syncCapabilitiesChecking;
+const cloudStartup=createOrdersCloudStartup({
+  main:{recoverCursor:()=>storageBrowser.recoverCloudCursor(),open:options=>uiCloud.openCloud(options),
+    cloudState:()=>storageBrowser.refreshStorageV2CloudState(),hasLocalWork:()=>stateSnapshots.cloudHasLocalWork(),conflictBlocked:()=>session.cloudConflictBlocked},
+  checks:{sync:options=>syncChecks.syncSharedChecksFromCloud(options),pending:()=>sharedChecksV2.hasLocalWork||checksSession.checksSaveRequested,
+    lastError:()=>checksSession.checksCloudLastError,recordError:error=>{checksSession.checksCloudLastError=error?.message||String(error)}},
+  finance:{hydrate:options=>domainsBankCache.refreshKupaReadout(options)},
+  status:uiStatus,
+  access:{authenticated:()=>!!cloudAuth.loadSession(),online:()=>navigator.onLine,cloudEnabled:()=>cloudAuth.cloudEnabled(),
+    canHydrate:()=>startupWritable()&&navigator.onLine&&!!cloudAuth.loadSession()},
+});
+const localServices=createOrdersLocalServices({
+  files,storage:storageIndexedDb,
+  folder:{refreshPermission:interactive=>storageFiles.refreshDirPermission(interactive),syncStatus:()=>uiFolderStatus.syncFolderAccessButton(),backupAvailable:()=>uiFolderStatus.folderBackupAvailable()},
+  backup:{capture:()=>stateSelectors.prepareState(),save:state=>storageBackup.maybeCreateAutomaticFolderBackup(state)},
+});
+const backgroundStartup=createOrdersBackgroundStartup({
+  polling:{start:()=>syncDocument.startPolling()},finance:{start:()=>domainsFinanceController.startAutoSync()},
+  alerts:{prepare:()=>domainsFinanceController.ensureBankDisplayArchive(),show:()=>uiAlertCenter.showStartupAlerts()},
+  localServices,access:{allowed:startupWritable},
+});
+
 const lifecycle=createLifecycle({
   storageProtocol:storageV2Coordinator.startupProtocol,
   storageRecovery,
+  cloudStartup,
+  localServices,
+  backgroundStartup,
   hydrateStorageOwner:()=>storageOwner.hydrate({initialOwner:()=>cloudAuth.loadSession()?.user?.id}),
   ...storageV2Coordinator.localBirthLifecyclePorts(),
   ...storageV2Coordinator.ownerTransferLifecyclePorts(),
   ensureSyncCapabilities:(...args)=>cloudAuth.ensureSyncCapabilities(...args),
-  files,
   tab,
   session,
-  checksSession,
   resumeIncompleteRestore:(...args)=>uiBackup.resumeIncompleteRestore(...args),
-  ...storageV2Cloud,
-  cloudHasLocalWork:(...args)=>stateSnapshots.cloudHasLocalWork(...args),
-  sharedChecksHasLocalWork:()=>sharedChecksV2.hasLocalWork,
   setSave:(...args)=>uiStatus.setSave(...args),
   setCloud:(...args)=>uiStatus.setCloud(...args),
-  beginStartupSync:(...args)=>uiStatus.beginStartupSync(...args),
-  setStartupDomain:(...args)=>uiStatus.setStartupDomain(...args),
   syncFolderAccessButton:(...args)=>uiFolderStatus.syncFolderAccessButton(...args),
-  folderBackupAvailable:(...args)=>uiFolderStatus.folderBackupAvailable(...args),
   folderSaveTitle:(...args)=>uiFolderStatus.folderSaveTitle(...args),
   showSecondaryTabGuard:(...args)=>uiTabGuard.showSecondaryTabGuard(...args),
   acquirePrimaryTabLock:(...args)=>storageTabLock.acquirePrimaryTabLock(...args),
   render:(...args)=>uiNavigation.render(...args),
-  prepareState:(...args)=>stateSelectors.prepareState(...args),
-  maybeCreateAutomaticFolderBackup:(...args)=>storageBackup.maybeCreateAutomaticFolderBackup(...args),
-  loadDirHandle:(...args)=>storageIndexedDb.loadDirHandle(...args),
-  requestPersistentBrowserStorage:(...args)=>storageIndexedDb.requestPersistentBrowserStorage(...args),
-  refreshDirPermission:(...args)=>storageFiles.refreshDirPermission(...args),
   loadSession:(...args)=>cloudAuth.loadSession(...args),
-  cloudEnabled:(...args)=>cloudAuth.cloudEnabled(...args),
-  refreshKupaReadout:(...args)=>domainsBankCache.refreshKupaReadout(...args),
-  syncSharedChecksFromCloud:(...args)=>syncChecks.syncSharedChecksFromCloud(...args),
-  openCloud:(...args)=>uiCloud.openCloud(...args),
-  startOrderPolling:(...args)=>syncDocument.startPolling(...args),
-  startFinanceAutoSync:(...args)=>domainsFinanceController.startAutoSync(...args),
-  prepareStartupAlerts:(...args)=>domainsFinanceController.ensureBankDisplayArchive(...args),
-  showStartupAlerts:(...args)=>uiAlertCenter.showStartupAlerts(...args),
 });
 
 const uiEvents={bindActionEvents:(root,actions)=>bindActionEvents(root,actions)};
