@@ -9,10 +9,11 @@ import stat
 import tempfile
 import time
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import local_scheduler as scheduler
 import run_all
+import suite_process
 from suite_process import SuiteProcess
 from verification_plan import CORE_SUITES, RUNTIME_SUITES
 
@@ -146,12 +147,15 @@ print('met peer')
 
     def tree_fixture(self, stem, leave_parent=False):
         marker = self.root / f"{stem}.port"
-        grandchild = self.script(f"{stem}_child.py", f"""import socket, time, tempfile
+        grandchild = self.script(f"{stem}_child.py", f"""import json, os, socket, time, tempfile
 from pathlib import Path
 sock = socket.socket()
 sock.bind(('127.0.0.1', 0))
 sock.listen()
 Path(tempfile.gettempdir(), 'owned.tmp').write_text('disposable')
+Path({str(marker.with_suffix('.owner'))!r}).write_text(json.dumps({{
+    'pid': os.getpid(), 'pgid': os.getpgid(0) if os.name != 'nt' else None,
+}}))
 Path({str(marker)!r}).write_text(str(sock.getsockname()[1]))
 time.sleep(60)
 """)
@@ -210,6 +214,28 @@ print('grandchild ready', flush=True)
                 self.assertFalse(self.can_connect(int(marker.read_text())))
                 self.assertEqual(report["suites"][0]["status"], "passed" if normal else "failed")
 
+    @unittest.skipIf(os.name == "nt", "POSIX process-group termination")
+    def test_normal_exit_releases_descendant_sockets_in_200_real_process_trees(self):
+        # Wait for the parent, not the descendant. Every listener is confirmed
+        # live before close; probe immediately afterwards without a grace sleep.
+        leaked = []
+        for iteration in range(200):
+            parent, marker = self.tree_fixture(f"stress-{iteration}", leave_parent=True)
+            process = SuiteProcess(parent, self.root / f"stress-{iteration}.log", cwd=self.root)
+            try:
+                port = self.wait_port(marker)
+                owner = json.loads(marker.with_suffix(".owner").read_text())
+                self.assertEqual(owner["pgid"], process.proc.pid)
+                self.assertTrue(self.can_connect(port))
+                self.assertEqual(process.proc.wait(timeout=10), 0)
+                process.close()
+                if self.can_connect(port):
+                    leaked.append({"iteration": iteration, "port": port, **owner})
+                self.assertFalse(process.scratch.exists())
+            finally:
+                process.close()
+        self.assertEqual(leaked, [], f"Listeners still reachable after cleanup: {leaked}")
+
     @unittest.skipUnless(os.name == "nt", "Windows read-only directory attributes")
     def test_readonly_copied_site_is_removed_without_changing_source(self):
         source = self.root / "source" / "supabase"
@@ -237,6 +263,77 @@ print(root, flush=True)
         finally:
             source.chmod(stat.S_IWRITE)
             config.chmod(stat.S_IWRITE)
+
+
+class PosixCleanupContracts(unittest.TestCase):
+    def setUp(self):
+        # Exercise the POSIX decision contract on Windows too, without signals
+        # to real processes. Windows Job ownership retains its own real tests.
+        kill_signal = patch.object(suite_process.signal, "SIGKILL", 9, create=True)
+        kill_signal.start()
+        self.addCleanup(kill_signal.stop)
+
+    def test_observation_filters_owned_live_members_and_tolerates_exit_races(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for pid, state, group in ((11, "S", 10), (12, "Z", 10), (13, "X", 10), (14, "S", 20)):
+                entry = root / str(pid)
+                entry.mkdir()
+                (entry / "stat").write_text(f"{pid} (name with ) parentheses) {state} 1 {group} 10 0\n")
+            (root / "15").mkdir()  # Exited before its stat could be read.
+            (root / "self").mkdir()
+            self.assertEqual(suite_process.live_posix_group(10, proc_root=root), [11])
+
+    def test_other_posix_hosts_use_group_and_state_without_command_lines(self):
+        with patch.object(suite_process.sys, "platform", "darwin"), \
+                patch.object(suite_process.subprocess, "run", return_value=Mock(stdout="11 10 S\n12 10 Z\n13 20 S\n")) as ps:
+            self.assertEqual(suite_process.live_posix_group(10), [11])
+        self.assertEqual(ps.call_args.args[0], ["ps", "-axo", "pid=,pgid=,stat="])
+        self.assertTrue(ps.call_args.kwargs["check"])
+
+    def test_group_wait_observes_new_members_and_returns_only_when_all_are_done(self):
+        with patch.object(suite_process.os, "killpg", create=True) as kill, \
+                patch.object(suite_process, "live_posix_group", side_effect=[[11], [12], []]), \
+                patch.object(suite_process.time, "sleep"):
+            suite_process.terminate_posix_group(10)
+        self.assertEqual(kill.call_count, 3)
+        self.assertTrue(all(call.args == (10, suite_process.signal.SIGKILL) for call in kill.call_args_list))
+
+    def test_finished_group_requires_no_wait(self):
+        with patch.object(suite_process.os, "killpg", create=True, side_effect=ProcessLookupError), \
+                patch.object(suite_process, "live_posix_group") as observe:
+            suite_process.terminate_posix_group(10)
+        observe.assert_not_called()
+
+    def test_timeout_and_observation_errors_are_not_reported_as_cleanup_success(self):
+        with patch.object(suite_process.os, "killpg", create=True), \
+                patch.object(suite_process, "live_posix_group", return_value=[11]):
+            with self.assertRaisesRegex(TimeoutError, "group 10 did not terminate"):
+                suite_process.terminate_posix_group(10, timeout=0)
+        with patch.object(suite_process.os, "killpg", create=True), \
+                patch.object(suite_process, "live_posix_group", side_effect=PermissionError("observation denied")):
+            with self.assertRaisesRegex(PermissionError, "observation denied"):
+                suite_process.terminate_posix_group(10)
+        with patch.object(suite_process.os, "killpg", create=True) as kill:
+            with self.assertRaises(ValueError):
+                suite_process.terminate_posix_group(0)
+        kill.assert_not_called()
+
+    def test_cleanup_timeout_keeps_the_gate_failed_and_scratch_for_diagnostics(self):
+        with tempfile.TemporaryDirectory() as directory:
+            process = object.__new__(SuiteProcess)
+            process.closed, process.job, process.log = False, None, None
+            process.scratch = Path(directory) / "scratch"
+            process.scratch.mkdir()
+            process.proc = Mock(pid=10, stdin=None)
+            process.proc.poll.return_value = 0
+            with patch.object(suite_process.os, "name", "posix"), \
+                    patch.object(suite_process, "terminate_posix_group", side_effect=TimeoutError("group still live")):
+                with self.assertRaisesRegex(TimeoutError, "group still live"):
+                    process.close()
+            process.proc.wait.assert_called_once_with(timeout=10)
+            self.assertFalse(process.closed)
+            self.assertTrue(process.scratch.is_dir())
 
 
 if __name__ == "__main__":
