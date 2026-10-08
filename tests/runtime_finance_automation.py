@@ -29,7 +29,10 @@ FLOW = r"""(async()=>{
    session.connectionMode=CASE==='owner'||CASE==='logout'?'supabase':'local';session.backendReady=true;
    if(session.connectionMode==='supabase')session.supaSession={user:{id:'fixture-owner-A'}};
    state=normalizeState({...state,creditSync:{version:4,syncedAt:'2020-01-01T00:00:00Z',profiles:[],errors:[]}});
-   const before=JSON.stringify(state),headBefore=await mainStorageV2.cloudState();
+   const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
+   const database=createStorageJournalDb(),identity=storageOwner.current()+':kupa';
+   const before=JSON.stringify(state),storedBefore=await database.load(identity);
+   assert(storedBefore.checkpoints&&storedBefore.metadata,'fixture requires a durable Main journal');
    const one=financeAutomation.start(),two=financeAutomation.start();assert(one===two,'parallel start must join one operation');
    await waitFor(()=>statusCalls===1);
    if(CASE==='offline'){online=false;window.dispatchEvent(new Event('offline'))}
@@ -42,7 +45,10 @@ FLOW = r"""(async()=>{
    assert(providerCalls===0,'lost access must stop before provider entry');
    assert(domainsCreditController.creditSyncUiState().autoTimer===null,'lost access must retain no credit timer');
    assert(JSON.stringify(state)===before,'cancelled preparation must preserve state');
-   const headAfter=await mainStorageV2.cloudState();assert(headAfter.seq===headBefore.seq,'cancelled preparation must append no journal record');
+   // cloudState intentionally denies primary-only access after leadership loss.
+   // Inspect the same captured durable owner through a readonly IDB transaction.
+   const storedAfter=await database.load(identity);
+   assert(JSON.stringify(storedAfter)===JSON.stringify(storedBefore),'cancelled preparation must preserve the entire durable journal');
    if(CASE==='offline'){
      online=true;window.dispatchEvent(new Event('online'));await waitFor(()=>statusCalls===2);
      const resumed=domainsCreditController.maybeAutoRefreshCreditSync();
