@@ -24,7 +24,7 @@ function effectiveDeleteIntents(base,candidate,intents){const out={},declared=no
 function cloudAudit(pending,before,after,baseRevision,intents){const deletes=Object.values(intents).reduce((sum,ids)=>sum+ids.length,0);return operationAuditMetadata({site:'kupa',mutationType:intents['notesSheet.sheets']?.length||pending?.mutationType==='cloud-normalization'&&deletes?'bulk-delete':pending?.mutationType||'autosave',surface:pending?.surface||'kupa',baseRevision,beforeState:before,afterState:after,collections:['credits','cash','rights','notes','expenses','cards','notesSheet.rows','notesSheet.columns','notesSheet.sheets'],deleteCount:deletes,restoreGroupId:pending?.restoreGroupId})}
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createSyncDocument({hideConnectScreen, reportError, model, session, checksSession, tab, prepareKupaCloudState, applyKupaCloudState, setSaveStatus, setConnectedStatus, setCloudHeaderStatus, listBackups, backupSnapshotToComputer, syncSharedChecksFromCloud, render, readSupabaseDocument, supaRest, mergeKupaCloudState3Way, showSecondaryTabGuard, toast, pollSharedChecks, refreshOrdersFinanceSummary=async()=>false, storageV2CloudOutboxActive=()=>false, refreshStorageV2CloudState=async()=>null, materializeStorageV2CloudFlight=async()=>null, acknowledgeStorageV2CloudFlight=async()=>null, rejectStorageV2CloudFlight=async()=>null, setStorageV2CloudControl=async()=>null, replaceStorageV2CurrentState=async()=>null, queueStorageV2CloudNormalization=async()=>null, adoptStorageV2CloudHead=async()=>null, resetStorageV2CloudHead=async()=>null, storageV2CommitPromise=()=>Promise.resolve(), storageV2PreparationActive=()=>false, assertAccountOwner=()=>{throw new Error('storage_owner_account_required')}, domainRevisions}){
+export function createSyncDocument({hideConnectScreen, reportError, model, session, checksSession, tab, prepareKupaCloudState, applyKupaCloudState, setSaveStatus, setConnectedStatus, setCloudHeaderStatus, listBackups, backupSnapshotToComputer, syncSharedChecksFromCloud, render, readSupabaseDocument, readFinanceSyncDocument=async()=>null, supaRest, mergeKupaCloudState3Way, showSecondaryTabGuard, toast, pollSharedChecks, refreshOrdersFinanceSummary=async()=>false, storageV2CloudOutboxActive=()=>false, refreshStorageV2CloudState=async()=>null, materializeStorageV2CloudFlight=async()=>null, acknowledgeStorageV2CloudFlight=async()=>null, rejectStorageV2CloudFlight=async()=>null, setStorageV2CloudControl=async()=>null, clearStorageV2CloudControl=async()=>false, replaceStorageV2CurrentState=async()=>null, queueStorageV2CloudNormalization=async()=>null, adoptStorageV2CloudHead=async()=>null, resetStorageV2CloudHead=async()=>null, storageV2CommitPromise=()=>Promise.resolve(), storageV2PreparationActive=()=>false, assertAccountOwner=()=>{throw new Error('storage_owner_account_required')}, domainRevisions}){
 const outboxRetryScheduler=createOutboxRetryScheduler();
 let cloudPollPromise=null;
 function replaceVisibleState(next,{forceAll=false}={}){const previous=model.state;model.state=next;domainRevisions?.reconcile(previous,model.state,{forceAll});return model.state}
@@ -45,12 +45,6 @@ function applyAcknowledgedCoreState(snapshot){
   if(changed)replaceVisibleState(next);
   return changed;
 }
-async function persistCurrentCheckpoint(){
-  const cloud=await refreshStorageV2CloudState();
-  if(!cloud)throw new Error('kupa_v2_checkpoint_required');
-  await replaceStorageV2CurrentState(model.state);
-  return true;
-}
 async function persistAuthoritativeCloudHead(revision,cloudState=null){
   const cloud=await refreshStorageV2CloudState();
   if(!cloud?.base||!storageV2CloudOutboxActive())throw new Error('kupa_v2_account_head_required');
@@ -59,12 +53,44 @@ async function persistAuthoritativeCloudHead(revision,cloudState=null){
   return true;
 }
 async function applyFinanceOnlyRow(row){
-  const localCloud=prepareKupaCloudState(model.state),remote=row?.state&&typeof row.state==='object'?row.state:{},localBank=localCloud.bank&&typeof localCloud.bank==='object'?localCloud.bank:{};
-  if(remote.bank&&typeof remote.bank==='object')localCloud.bank={...localBank,...structuredClone(remote.bank),adjustments:Array.isArray(localBank.adjustments)?structuredClone(localBank.adjustments):[],snapshotToken:localBank.snapshotToken??null,snapshotSeq:localBank.snapshotSeq??null};
-  if(remote.creditSync&&typeof remote.creditSync==='object')localCloud.creditSync=structuredClone(remote.creditSync);
-  replaceVisibleState(applyKupaCloudState(localCloud,normalizeSharedChecks(model.state.checks)));
-  session.financeRevision=Number(row?.financeRevision||0);session.financeUpdatedAt=row?.financeUpdatedAt||session.financeUpdatedAt||null;
-  await persistCurrentCheckpoint();render();return model.state
+  if(row?.financeAvailable===false)return false;
+  const revision=Number(row?.financeRevision);
+  if(!Number.isSafeInteger(revision)||revision<1)throw new Error('finance_read_revision_invalid');
+  if(revision<=Number(session.financeRevision||0))return false;
+  const cloud=await refreshStorageV2CloudState();if(!cloud?.base)throw new Error('kupa_v2_checkpoint_required');
+  const generation=Number(session.localGeneration||0),previousRevision=Number(session.financeRevision||0),current=structuredClone(model.state),remote=row.state||{},bank=current.bank||{};
+  const financeBank=remote.bank?{...bank,...structuredClone(remote.bank),adjustments:structuredClone(bank.adjustments||[]),snapshotToken:bank.snapshotToken??null,snapshotSeq:bank.snapshotSeq??null}:bank;
+  if(bank.source==='manual')for(const key of ['currentBalance','updatedAt','asOfDate','source','sourceAccount'])financeBank[key]=bank[key];
+  const normalized=applyKupaCloudState({...current,bank:financeBank,creditSync:remote.creditSync||current.creditSync},current.checks);
+  const next={...current,bank:normalized.bank,creditSync:normalized.creditSync};
+  if(!jsonEq(prepareKupaCloudState(current),prepareKupaCloudState(next)))throw new Error('finance_hydration_main_changed');
+  const publication=await commitCloudCheckpoint({
+    commit:()=>replaceStorageV2CurrentState(next,{expectedSeq:cloud.seq}),
+    isCurrent:committed=>committed===cloud.seq&&tab.primaryTab&&Number(session.localGeneration||0)===generation&&Number(session.financeRevision||0)===previousRevision,
+    publish:()=>replaceVisibleState(next),
+  });
+  if(!publication.published){if(publication.reason==='publication-error')throw publication.error;return false}
+  session.financeRevision=revision;session.financeUpdatedAt=row.financeUpdatedAt||session.financeUpdatedAt||null;
+  render();return true;
+}
+
+async function pollIndependentFinance(){
+  try{
+    const row=await readFinanceSyncDocument();if(!row)return false;
+    return await applyFinanceOnlyRow({state:row.state,financeRevision:row.revision,financeUpdatedAt:row.updated_at});
+  }catch(error){console.warn('Independent Finance hydration deferred; Kupa local work retained',error);return false}
+}
+
+async function reviewCleanConflict(cloud){
+  const conflict=cloud.control?.conflict;
+  // This fence records a dirty projection, not a server rejection or an ACK
+  // failure. Only its disproved condition can be retired automatically.
+  if(conflict?.kind!=='storage-v2-dirty-head'||conflict.domain!=='kupa'||cloud.pending||cloud.flight||!cloud.base||!jsonEq(prepareKupaCloudState(model.state),cloud.base.state))return cloud;
+  try{
+    const cleared=await clearStorageV2CloudControl({onlyIfClean:{kind:conflict.kind,seq:cloud.seq,baseRevision:cloud.base.revision}});
+    if(!cleared)return cloud;
+    const current=await refreshStorageV2CloudState();session.cloudConflictPending=!!current?.control?.conflict;return current;
+  }catch(error){console.warn('Kupa conflict review deferred; local journal retained',error);return cloud}
 }
 async function applyCloudRow(row,{renderNow=true}={}){
   const currentV2=await refreshStorageV2CloudState();
@@ -191,9 +217,11 @@ async function cloudPoll(){
   if(session.cloudSyncBusy||session.cloudWriteBusy){await pollSharedChecks();return false}
   let v2=await refreshStorageV2CloudState();
   if(!storageV2CloudOutboxActive()){setSaveStatus('ראש ענן V2 חסר — הסנכרון נעצר','error');setCloudHeaderStatus('conflict','ענן: נדרש שחזור אחסון מקומי');return false}
-  if(v2?.control?.conflict){session.cloudConflictPending=true;setCloudHeaderStatus('conflict','ענן: התנגשות');await pollSharedChecks();return false}
-  if(v2?.pending||v2?.flight){const saved=await requestStorageV2CloudSave();await pollSharedChecks();return saved}
-  if(session.cloudConflictPending){await pollSharedChecks();return false}
+  if(v2?.control?.conflict)v2=await reviewCleanConflict(v2);
+  if(!tab.primaryTab||!v2?.base||!storageV2CloudOutboxActive())return false;
+  if(v2?.control?.conflict){session.cloudConflictPending=true;setCloudHeaderStatus('conflict','ענן: התנגשות');await pollIndependentFinance();await pollSharedChecks();return false}
+  if(v2?.pending||v2?.flight){const saved=await requestStorageV2CloudSave();await pollIndependentFinance();await pollSharedChecks();return saved}
+  if(session.cloudConflictPending){await pollIndependentFinance();await pollSharedChecks();return false}
   const pollGeneration=Number(session.localGeneration||0),localBefore=prepareKupaCloudState(model.state);
   try{
     session.cloudSyncBusy=true;const row=await readSupabaseDocument();
@@ -201,7 +229,7 @@ async function cloudPoll(){
     v2=await refreshStorageV2CloudState();const localAdvanced=Number(session.localGeneration||0)!==pollGeneration||!!(v2?.pending||v2?.flight)||!jsonEq(localBefore,prepareKupaCloudState(model.state));
     if(localAdvanced){session.cloudSyncBusy=false;await requestStorageV2CloudSave();return false}
     const kupaChanged=Number(row.revision||0)>Number(session.dbRevision||0),financeChanged=!!row&&Number(row.financeRevision||0)>Number(session.financeRevision||0);if(!(kupaChanged||financeChanged))return markCloudPollSynced();
-    if(!kupaChanged){await applyFinanceOnlyRow(row);return markCloudPollSynced()}
+    if(!kupaChanged){if(!await applyFinanceOnlyRow(row))return false;return markCloudPollSynced()}
     const base=v2?.base?.state,clean=!!base&&jsonEq(prepareKupaCloudState(model.state),base);
     if(clean){await applyCloudRow(row);toast(kupaChanged?'התקבל עדכון ממחשב אחר':'התקבל עדכון פיננסי ממקור אחר');return true}
     if(kupaChanged){

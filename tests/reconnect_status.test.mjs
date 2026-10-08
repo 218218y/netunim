@@ -31,7 +31,7 @@ function kupaFixture({financeRevision=3,rowFinanceRevision=3,readSupabaseDocumen
     putCloudPending:async()=>{},clearCloudPending:async()=>true,mergeKupaCloudState3Way:()=>({state:cloudState,conflicts:[]}),rebaseNewerPending:async()=>null,lastSavedCloudState:()=>null,showSecondaryTabGuard:noop,
     stageCloudPendingLocal:noop,toast:noop,pollSharedChecks:async()=>{},refreshOrdersFinanceSummary:async()=>false,
     refreshStorageV2CloudState:async()=>({seq:0,base:{revision:9,ackSeq:0,state:structuredClone(cloudState)},pending:false,flight:null,control:null}),storageV2CloudOutboxActive:()=>true,
-    replaceStorageV2CurrentState:async()=>true,
+    replaceStorageV2CurrentState:async()=>0,
   });
   return {api,statuses,saveStatuses,session};
 }

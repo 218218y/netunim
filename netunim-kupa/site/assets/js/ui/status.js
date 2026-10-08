@@ -5,12 +5,19 @@ import {SECONDARY_READ_ONLY_ACTIONS} from './secondary-read-only-actions.js';
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createUiStatus({session, checksSession, tab, storageRecovery}){
 if(typeof storageRecovery?.isReady!=='function')throw new TypeError('ui_storage_recovery_required');
-function setSaveStatus(text,cls=''){
+// Main and Shared Checks own separate sync outcomes. A successful read of one
+// document cannot acknowledge pending work or an error in the other document.
+const cloudStatuses=new Map(),saveStatuses=new Map();
+function selectStatus(statuses,priority){return [...statuses.values()].reduce((selected,status)=>!selected||(priority[status.mode]||0)>(priority[selected.mode]||0)?status:selected,null)}
+function setSaveStatus(text,cls='',source='main'){
+  saveStatuses.set(source,{text,mode:cls});
+  const status=selectStatus(saveStatuses,{error:3,saving:2,ok:1});
   const el=document.getElementById('saveIndicator');if(!el)return;
   const cloud=session.connectionMode==='supabase';
-  el.hidden=cloud&&cls==='ok';
-  el.textContent=text;
-  el.className='save-indicator hide-mobile '+cls;
+  const blocked=cloud&&session.cloudConflictPending;
+  el.hidden=cloud&&!blocked&&status.mode==='ok';
+  el.textContent=blocked?'סנכרון הקופה נעצר — נדרשת בדיקת המצב המקומי':status.text;
+  el.className='save-indicator hide-mobile '+(blocked?'error':status.mode);
 }
 
 function setConnectedStatus(text='קובץ נתונים מחובר'){
@@ -26,9 +33,21 @@ function supaProjectRef(){try{return new URL(SUPA_CONFIG.url).hostname.split('.'
 function latestSyncedAt(){return latestCloudUpdatedAt(session.serverInfo?.lastSavedAt,checksSession.sharedChecksUpdatedAt)}
 function syncedHeaderText(text='ענן: מסונכרן'){const at=latestSyncedAt();return at?`${text} ${formatCloudSyncTime(at)}`:text}
 
-function setCloudHeaderStatus(mode='off',text='ענן: לא מחובר'){const el=document.getElementById('cloudHeaderStatus');if(!el)return;const shown=mode==='synced'?syncedHeaderText(text):text;el.className='cloud-head-status hide-mobile '+(mode||'');el.replaceChildren(document.createElement('i'),document.createTextNode(' '+shown));el.title=`Supabase · project ${supaProjectRef()}`}
+function renderCloudHeader(){
+  const el=document.getElementById('cloudHeaderStatus');if(!el)return;
+  const status=selectStatus(cloudStatuses,{conflict:5,auth:4,offline:3,syncing:2,synced:1})||{mode:'off',text:'ענן: לא מחובר'};
+  const blocked=session.connectionMode==='supabase'&&session.cloudConflictPending&&status.mode!=='off';
+  const mode=blocked?'conflict':status.mode,text=blocked?'ענן: התנגשות':status.text;
+  const shown=mode==='synced'?syncedHeaderText(text):text;
+  el.className='cloud-head-status hide-mobile '+mode;
+  el.replaceChildren(document.createElement('i'),document.createTextNode(' '+shown));el.title=`Supabase · project ${supaProjectRef()}`;
+}
+function setCloudHeaderStatus(mode='off',text='ענן: לא מחובר',source='main'){
+  if(source==='main'&&mode==='off'){cloudStatuses.clear();saveStatuses.clear()}
+  cloudStatuses.set(source,{mode,text});renderCloudHeader();
+}
 
-function refreshCloudHeaderTimestamp(){const el=document.getElementById('cloudHeaderStatus');if(el?.classList.contains('synced'))setCloudHeaderStatus('synced','ענן: מסונכרן')}
+function refreshCloudHeaderTimestamp(){renderCloudHeader()}
 
 function toast(t){const el=document.getElementById('toast');el.textContent=t;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),1800)}
 
