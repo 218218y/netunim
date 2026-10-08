@@ -4,23 +4,13 @@ import {createLifecycle} from '../netunim-kupa/site/assets/js/lifecycle.js';
 import {createSyncRecovery} from '../netunim-kupa/site/assets/js/sync/recovery.js';
 
 const noop=()=>{};
-const requiredCallbacks=[
-  'saveChecksState','syncSharedChecksFromCloud','saveSharedChecksToCloud','pollSharedChecks',
-  'openLastFolder','checkDateEditorMarkup','checkDateEditorValue','commitCheckDateEditor',
-  'setCheckDateValue','normalizeCheckModalDates','activeChecks','depositedChecks',
-  'cashBalance','checksBalance','depositedBalance','pendingInstallments',
-  'allInstallments','monthSumInstallments','expenseOccurrencesForMonth',
-  'monthSumExpenses','bankBaseBalance','bankAdjustments','bankAdjustmentsTotal',
-  'bankAsOfDate','sharedChecksObservedSequence','bankCurrentBalance',
-  'nextCreditCycle','modalFormSnapshot','armModalDraftGuard',
-  'modalHasUnsavedDraft','clearModalDraftGuard',
-];
+
 
 function lifecycleFixture({sharedRecovered=true,authenticated=false,capabilityFailure=false}={}){
-  const events=[],model={state:{checks:[{id:'prior-visible-check'}]}},session={},ports=Object.fromEntries(requiredCallbacks.map(key=>[key,noop]));
+  const events=[],model={state:{checks:[{id:'prior-visible-check'}]}},session={},ports={openLastFolder:noop};
   Object.assign(ports,{
     model,session,tab:{primaryTab:true},checksSession:{},
-    normalizeState:value=>value,prepareKupaCloudState:value=>value,
+    
     acquirePrimaryTabLock:async()=>events.push('primary-lock'),
     hydrateStorageOwner:async()=>events.push('owner'),
     restoreSupaSession:async()=>authenticated?{user:{id:'account-A'}}:null,

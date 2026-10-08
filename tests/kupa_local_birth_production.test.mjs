@@ -35,18 +35,11 @@ test('Kupa remembered file cannot silently replace a different local V2 checkpoi
   assert.equal(captured,0);assert.equal(applied,0);
 });
 
-const requiredCallbacks=[
-  'saveChecksState','syncSharedChecksFromCloud','saveSharedChecksToCloud','pollSharedChecks','openLastFolder',
-  'checkDateEditorMarkup','checkDateEditorValue','commitCheckDateEditor','setCheckDateValue','normalizeCheckModalDates',
-  'activeChecks','depositedChecks','cashBalance','checksBalance','depositedBalance','pendingInstallments',
-  'allInstallments','monthSumInstallments','expenseOccurrencesForMonth','monthSumExpenses','bankBaseBalance',
-  'bankAdjustments','bankAdjustmentsTotal','bankAsOfDate','sharedChecksObservedSequence','bankCurrentBalance',
-  'nextCreditCycle','modalFormSnapshot','armModalDraftGuard','modalHasUnsavedDraft','clearModalDraftGuard',
-];
+
 
 function bootFixture({primary=true,failBirth=false}={}){
-  const events=[],model={state:{checks:[]}},session={},ports=Object.fromEntries(requiredCallbacks.map(key=>[key,noop]));let marker=false;
-  Object.assign(ports,{model,session,checksSession:{},tab:{primaryTab:primary},normalizeState:value=>value,prepareKupaCloudState:value=>value,
+  const events=[],model={state:{checks:[]}},session={},ports={openLastFolder:noop};let marker=false;
+  Object.assign(ports,{model,session,checksSession:{},tab:{primaryTab:primary},
     acquirePrimaryTabLock:async()=>events.push('lock'),hydrateStorageOwner:async()=>events.push('owner'),
     restoreSupaSession:async()=>null,storageOwnerCurrent:()=> 'local',
     hydrateLocalBirth:async()=>events.push('birth-hydrated'),verifyStorageV2AccountMarker:async()=>false,
@@ -66,7 +59,7 @@ test('Kupa production startup finishes local birth and hydrates Shared before pr
   const previous={navigator:Object.getOwnPropertyDescriptor(globalThis,'navigator'),localStorage:Object.getOwnPropertyDescriptor(globalThis,'localStorage'),document:Object.getOwnPropertyDescriptor(globalThis,'document')};
   Object.defineProperties(globalThis,{navigator:{configurable:true,value:{onLine:false}},localStorage:{configurable:true,value:storage()},document:{configurable:true,value:{getElementById:()=>({addEventListener:noop})}}});
   try{
-    const ready=bootFixture();await ready.lifecycle.boot();
+    const ready=bootFixture();const boot=ready.lifecycle.boot();assert.equal(ready.lifecycle.boot(),boot);await boot;await ready.lifecycle.boot();
     assert.deepEqual(ready.events,['lock','owner','birth-hydrated','birth','main','shared','first-run']);
     assert.equal(ready.session.storageProtocolBlocked,false);
     const blocked=bootFixture({failBirth:true});await blocked.lifecycle.boot();
@@ -80,8 +73,8 @@ test('Kupa unmarked browser for a fenced account stops before V1 recovery and re
   const previous=Object.getOwnPropertyDescriptor(globalThis,'navigator');
   Object.defineProperty(globalThis,'navigator',{configurable:true,value:{onLine:true}});
   try{
-    const events=[],ports=Object.fromEntries(requiredCallbacks.map(key=>[key,noop]));
-    Object.assign(ports,{model:{state:{checks:[]}},session:{},checksSession:{},tab:{primaryTab:true},normalizeState:value=>value,prepareKupaCloudState:value=>value,
+    const events=[],ports={openLastFolder:noop};
+    Object.assign(ports,{model:{state:{checks:[]}},session:{},checksSession:{},tab:{primaryTab:true},
       acquirePrimaryTabLock:async()=>{},hydrateStorageOwner:async()=>{},restoreSupaSession:async()=>({user:{id:'account'}}),storageOwnerCurrent:()=> 'account',authenticatedOwner:()=> 'account',
       readStorageProtocolState:async()=>({orders:2,kupa:2,sharedChecks:2}),verifyStorageV2AccountMarker:async()=>false,verifyLocalStorageEngine:async()=>false,
       recoverBrowserV2State:async()=>{throw Error('stale V1 loaded')},render:()=>{throw Error('stale state displayed')},setConnectUI:()=>events.push('blocked')});
@@ -94,8 +87,8 @@ test('Kupa fenced stale browser hydrates cloud V2 before opening the screen',asy
   Object.defineProperties(globalThis,{navigator:{configurable:true,value:{onLine:true}},localStorage:{configurable:true,value:storage()},
     document:{configurable:true,value:{getElementById:()=>({addEventListener:noop})}}});
   try{
-    let marker=false;const events=[],ports=Object.fromEntries(requiredCallbacks.map(key=>[key,noop]));
-    Object.assign(ports,{model:{state:{checks:[]}},session:{},checksSession:{},tab:{primaryTab:true},normalizeState:value=>value,prepareKupaCloudState:value=>value,
+    let marker=false;const events=[],ports={openLastFolder:noop};
+    Object.assign(ports,{model:{state:{checks:[]}},session:{},checksSession:{},tab:{primaryTab:true},
       acquirePrimaryTabLock:async()=>{},hydrateStorageOwner:async()=>{},restoreSupaSession:async()=>({user:{id:'account'}}),
       storageOwnerCurrent:()=> 'account',authenticatedOwner:()=> 'account',readStorageProtocolState:async()=>({orders:2,kupa:2,sharedChecks:2}),
       verifyStorageV2AccountMarker:async()=>marker,verifyLocalStorageEngine:async()=>false,
