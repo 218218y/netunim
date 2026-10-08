@@ -12,18 +12,18 @@ export function financeFencePayload(lease){return {p_lease_name:lease?.leaseName
 export function createFinanceOperationScope({readAccess}){
   if(typeof readAccess!=='function')throw new Error('finance_operation_access_required');
   const failure=()=>Object.assign(new Error('ההתחברות או בעלות האחסון השתנתה במהלך הסנכרון. הנתונים הקודמים נשמרו; יש להתחבר ולרענן שוב.'),{code:'FINANCE_OPERATION_SCOPE_CHANGED'});
-  function observe(){
+  function observe(readOnly=false){
     const value=readAccess();
-    if(!value?.writable||!value.storageOwner||!value.connectionMode)throw failure();
+    if(!(readOnly?value?.readable:value?.writable)||!value.storageOwner||!value.connectionMode)throw failure();
     const accountOwner=value.account?.owner??null,accountEpoch=value.account?.epoch??null;
     if((value.connectionMode==='supabase'||value.storageOwner!=='local')&&(!accountOwner||accountOwner!==value.storageOwner))throw failure();
     return {connectionMode:value.connectionMode,storageOwner:value.storageOwner,accountOwner,accountEpoch};
   }
-  function capture(){
-    const observed=observe();
-    return ()=>{const live=observe();if(Object.keys(observed).some(key=>live[key]!==observed[key]))throw failure()};
+  function capture(readOnly=false){
+    const observed=observe(readOnly);
+    return ()=>{const live=observe(readOnly);if(Object.keys(observed).some(key=>live[key]!==observed[key]))throw failure()};
   }
-  return {capture};
+  return {capture:()=>capture(),captureRead:()=>capture(true)};
 }
 
 // Manual changes share the issuer lease but do not start an issuer login. Queue

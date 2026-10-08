@@ -19,10 +19,11 @@ function fixture(kind,t){
   const ports={model,session,checksSession:{},captureOperation:()=>{const observed=scope;return ()=>{if(!scope||observed!==scope||!tab.primaryTab||!session.backendReady)throw Object.assign(new Error('fixture finance access changed'),{code:'FINANCE_OPERATION_SCOPE_CHANGED'})}},autoScope:()=>session.backendReady&&tab.primaryTab&&navigator.onLine!==false?scope:null,saveState:async(...args)=>{writes.push(args);return true},saveFinancePatch:async()=>({saved:true}),toast:()=>{},render:()=>{},modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,
     sharedChecksHaveLocalWork:()=>false,syncSharedChecksFromCloud:async()=>true,sharedChecksObservedSequence:()=>0,
     refreshFinanceCloudSnapshot:()=>cloud.promise,
-    claimFinanceSyncLease:async()=>{claims++;return leaseRead?leaseRead():{acquired:true,leaseName:kind,leaseToken:'L',fenceEpoch:1}},releaseFinanceSyncLease:async()=>{releases++;return true},
+    claimFinanceSyncLease:async()=>{claims++;return leaseRead?leaseRead():{acquired:true,leaseName:kind,leaseToken:'L',fenceEpoch:1}},releaseFinanceSyncLease:async(_kind,_token,options)=>{options?.assertCurrent?.();releases++;return true},
     bridge:{getBridgeToken:()=> 'paired',autoEnabled:()=>values.get('bank-auto')!=='0',setAutoEnabled:on=>values.set('bank-auto',on?'1':'0'),autoAttemptDelayMs:()=>0,markAutoAttempt:()=>{},creditStatus:()=>{statusReads++;return status.promise},
       syncCreditCards:async()=>{attempts++;throw new Error('fixture provider attempt')},fetchBalance:async()=>{attempts++;throw new Error('fixture provider attempt')}},
   };
+  ports.operationScope={capture:ports.captureOperation,captureRead:ports.captureOperation};
   const api=(kind==='credit'?createDomainsCreditController:createDomainsBankController)(ports);
   return {api,ports,model,session,tab,values,jobs,reports,writes,scope:value=>{scope=value},lease:fn=>{leaseRead=fn},attempts:()=>attempts,claims:()=>claims,releases:()=>releases,statusReads:()=>statusReads,
     releaseStatus:()=>status.resolve({bridgeVersion:73,contractVersion:2,profiles:[{profileId:'P'}]}),releaseCloud:()=>cloud.resolve({verified:true,state:model.state})};
@@ -61,11 +62,11 @@ for(const kind of ['bank','credit']){
     f.api.stopAutoSync();held.resolve({acquired:true,leaseName:kind,leaseToken:'L',fenceEpoch:1});await pending;
     assert.equal(f.releases(),1);assert.equal(f.attempts(),0);assert.equal(f.jobs.size,0);
   });
-  test(`${kind} owner change in the second cloud read prevents provider entry and releases its lease`,async t=>{
+  test(`${kind} owner change in the second cloud read prevents provider entry and defers the old lease to expiry`,async t=>{
     const f=fixture(kind,t);let reads=0;
     const create=kind==='bank'?createDomainsBankController:createDomainsCreditController;
     const api=create({...f.ports,refreshFinanceCloudSnapshot:async()=>{if(++reads===2)f.scope('account:B');return {verified:true,state:f.model.state}}});f.releaseStatus();
-    await (kind==='bank'?api.refreshBankBalance({auto:true}):api.refreshCreditSync({auto:true}));assert.equal(f.claims(),1);assert.equal(f.releases(),1);assert.equal(f.attempts(),0);
+    await (kind==='bank'?api.refreshBankBalance({auto:true}):api.refreshCreditSync({auto:true}));assert.equal(f.claims(),1);assert.equal(f.releases(),0);assert.equal(f.attempts(),0);
     api.stopAutoSync();
   });
 }

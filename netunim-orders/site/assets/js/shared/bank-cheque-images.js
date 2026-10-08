@@ -56,28 +56,72 @@ function parseOwnedObject(userId,item){const raw=String(item?.name||'').trim();i
 
 export function createBankChequeImageStorage({supaFetch,ensureSession,fetchBridgeImage,now=Date.now}={}){
   if(typeof supaFetch!=='function'||typeof ensureSession!=='function')throw new Error('bank cheque image storage dependencies are missing');
-  async function identity(){const session=await ensureSession(),userId=uidFromSession(session);if(!userId)throw Object.assign(new Error('לא ניתן לזהות את משתמש הענן עבור תמונות השיקים'),{code:'CHEQUE_IMAGE_CLOUD_IDENTITY_MISSING'});return {session,userId}}
-  async function listOwned(userId){
-    const out=[];for(let offset=0;offset<10000;offset+=1000){const response=await supaFetch(`/storage/v1/object/list/${BANK_CHEQUE_IMAGE_BUCKET}`,{method:'POST',body:JSON.stringify({prefix:userId,limit:1000,offset,sortBy:{column:'name',order:'asc'}}),networkTimeoutMs:30000});if(!response.ok){const message=await responseMessage(response);throw Object.assign(new Error(message||'אחסון תמונות השיקים בענן עדיין לא הוכן'),{code:'CHEQUE_IMAGE_STORAGE_NOT_READY',httpStatus:response.status})}const rows=await response.json().catch(()=>[]);if(!Array.isArray(rows))break;out.push(...rows);if(rows.length<1000)break}return out.map(item=>parseOwnedObject(userId,item)).filter(Boolean)
+  const requestScope=assertCurrent=>assertCurrent?{assertRequestScope:assertCurrent}:{};
+  async function identity(assertCurrent){
+    assertCurrent?.();const session=await ensureSession();assertCurrent?.();
+    const userId=uidFromSession(session);
+    if(!userId)throw Object.assign(new Error('לא ניתן לזהות את משתמש הענן עבור תמונות השיקים'),{code:'CHEQUE_IMAGE_CLOUD_IDENTITY_MISSING'});
+    return {session,userId};
   }
-  async function upload(userId,ref){
+  async function message(response,assertCurrent){const text=await responseMessage(response);assertCurrent?.();return text}
+  async function listOwned(userId,{assertCurrent}={}){
+    const out=[];
+    for(let offset=0;offset<10000;offset+=1000){
+      assertCurrent?.();
+      const response=await supaFetch(`/storage/v1/object/list/${BANK_CHEQUE_IMAGE_BUCKET}`,{method:'POST',body:JSON.stringify({prefix:userId,limit:1000,offset,sortBy:{column:'name',order:'asc'}}),networkTimeoutMs:30000,...requestScope(assertCurrent)});
+      assertCurrent?.();
+      if(!response.ok)throw Object.assign(new Error(await message(response,assertCurrent)||'אחסון תמונות השיקים בענן עדיין לא הוכן'),{code:'CHEQUE_IMAGE_STORAGE_NOT_READY',httpStatus:response.status});
+      const rows=await response.json().catch(()=>[]);assertCurrent?.();
+      if(!Array.isArray(rows))break;out.push(...rows);if(rows.length<1000)break;
+    }
+    return out.map(item=>parseOwnedObject(userId,item)).filter(Boolean);
+  }
+  async function upload(userId,ref,assertCurrent){
+    assertCurrent?.();
     if(typeof fetchBridgeImage!=='function')return {uploaded:false,reason:'bridge-image-reader-missing'};
     const path=bankChequeImageObjectPath(userId,ref.eventDate,ref.key);if(!path)return {uploaded:false,reason:'invalid-reference'};
-    const blob=await fetchBridgeImage(ref.key);if(!validImageBlob(blob))return {uploaded:false,reason:'invalid-image'};
-    const bytes=await blob.arrayBuffer();
-    const response=await supaFetch(`/storage/v1/object/${BANK_CHEQUE_IMAGE_BUCKET}/${encodeStoragePath(path)}`,{method:'POST',headers:{'Content-Type':blob.type,'cache-control':'max-age=3600','x-upsert':'false'},body:bytes,networkTimeoutMs:60000});
-    if(response.ok)return {uploaded:true,path};const message=await responseMessage(response);if(alreadyExists(response.status,message))return {uploaded:false,exists:true,path};throw Object.assign(new Error(message||`העלאת תמונת שיק נכשלה (${response.status})`),{code:'CHEQUE_IMAGE_UPLOAD_FAILED',httpStatus:response.status})
+    const blob=await fetchBridgeImage(ref.key);assertCurrent?.();if(!validImageBlob(blob))return {uploaded:false,reason:'invalid-image'};
+    const bytes=await blob.arrayBuffer();assertCurrent?.();
+    const response=await supaFetch(`/storage/v1/object/${BANK_CHEQUE_IMAGE_BUCKET}/${encodeStoragePath(path)}`,{method:'POST',headers:{'Content-Type':blob.type,'cache-control':'max-age=3600','x-upsert':'false'},body:bytes,networkTimeoutMs:60000,...requestScope(assertCurrent)});
+    assertCurrent?.();
+    if(response.ok)return {uploaded:true,path};
+    const text=await message(response,assertCurrent);if(alreadyExists(response.status,text))return {uploaded:false,exists:true,path};
+    throw Object.assign(new Error(text||`העלאת תמונת שיק נכשלה (${response.status})`),{code:'CHEQUE_IMAGE_UPLOAD_FAILED',httpStatus:response.status});
   }
-  async function removePaths(paths){let removed=0;for(let i=0;i<paths.length;i+=1000){const batch=paths.slice(i,i+1000);if(!batch.length)continue;const response=await supaFetch(`/storage/v1/object/${BANK_CHEQUE_IMAGE_BUCKET}`,{method:'DELETE',body:JSON.stringify({prefixes:batch}),networkTimeoutMs:30000});if(!response.ok)throw Object.assign(new Error(await responseMessage(response)||'מחיקת תמונות שיקים ישנות נכשלה'),{code:'CHEQUE_IMAGE_RETENTION_DELETE_FAILED',httpStatus:response.status});removed+=batch.length}return removed}
-  async function sync(transactions){
-    const {userId}=await identity(),refs=bankChequeImageReferences(transactions,{now}),owned=await listOwned(userId),existing=new Set(owned.map(x=>x.path));let uploaded=0,already=0,missingLocal=0;const warnings=[];
-    for(const ref of refs){const path=bankChequeImageObjectPath(userId,ref.eventDate,ref.key);if(existing.has(path)){already++;continue}try{const result=await upload(userId,ref);if(result.uploaded){uploaded++;existing.add(path)}else if(result.exists){already++;existing.add(path)}else missingLocal++}catch(error){warnings.push(error?.message||String(error))}}
-    const obsolete=owned.filter(item=>!bankChequeImageWithinRetention(item.date,{now})).map(item=>item.path);let removed=0;if(obsolete.length)try{removed=await removePaths(obsolete)}catch(error){warnings.push(error?.message||String(error))}
-    return {ok:warnings.length===0,retentionDays:BANK_CHEQUE_IMAGE_RETENTION_DAYS,referenced:refs.length,uploaded,alreadyPresent:already,missingLocal,removed,warnings:[...new Set(warnings)].slice(0,5)}
+  async function removePaths(paths,assertCurrent){
+    let removed=0;
+    for(let i=0;i<paths.length;i+=1000){
+      assertCurrent?.();const batch=paths.slice(i,i+1000);if(!batch.length)continue;
+      const response=await supaFetch(`/storage/v1/object/${BANK_CHEQUE_IMAGE_BUCKET}`,{method:'DELETE',body:JSON.stringify({prefixes:batch}),networkTimeoutMs:30000,...requestScope(assertCurrent)});
+      assertCurrent?.();
+      if(!response.ok)throw Object.assign(new Error(await message(response,assertCurrent)||'מחיקת תמונות שיקים ישנות נכשלה'),{code:'CHEQUE_IMAGE_RETENTION_DELETE_FAILED',httpStatus:response.status});
+      removed+=batch.length;
+    }
+    return removed;
   }
-  async function download(eventDate,imageKey){
-    if(!bankChequeImageWithinRetention(eventDate,{now}))return null;const {userId}=await identity(),path=bankChequeImageObjectPath(userId,eventDate,imageKey);if(!path)return null;
-    const response=await supaFetch(`/storage/v1/object/${BANK_CHEQUE_IMAGE_BUCKET}/${encodeStoragePath(path)}`,{method:'GET',headers:{Accept:'image/*'},networkTimeoutMs:30000});if(response.status===404)return typeof fetchBridgeImage==='function'?fetchBridgeImage(cleanImageKey(imageKey)):null;if(!response.ok)throw Object.assign(new Error(await responseMessage(response)||'טעינת תמונת השיק מהענן נכשלה'),{code:'CHEQUE_IMAGE_DOWNLOAD_FAILED',httpStatus:response.status});const blob=await response.blob();if(!validImageBlob(blob))throw Object.assign(new Error('קובץ תמונת השיק בענן אינו בפורמט תמונה נתמך'),{code:'CHEQUE_IMAGE_INVALID_CLOUD_OBJECT'});return blob
+  async function sync(transactions,{assertCurrent}={}){
+    const {userId}=await identity(assertCurrent),refs=bankChequeImageReferences(transactions,{now}),owned=await listOwned(userId,{assertCurrent}),existing=new Set(owned.map(x=>x.path));
+    let uploaded=0,already=0,missingLocal=0;const warnings=[];
+    for(const ref of refs){
+      assertCurrent?.();const path=bankChequeImageObjectPath(userId,ref.eventDate,ref.key);if(existing.has(path)){already++;continue}
+      try{const result=await upload(userId,ref,assertCurrent);if(result.uploaded){uploaded++;existing.add(path)}else if(result.exists){already++;existing.add(path)}else missingLocal++}
+      catch(error){assertCurrent?.();if(error.code==='FINANCE_OPERATION_SCOPE_CHANGED')throw error;warnings.push(error?.message||String(error))}
+    }
+    const obsolete=owned.filter(item=>!bankChequeImageWithinRetention(item.date,{now})).map(item=>item.path);let removed=0;
+    if(obsolete.length)try{removed=await removePaths(obsolete,assertCurrent)}catch(error){assertCurrent?.();if(error.code==='FINANCE_OPERATION_SCOPE_CHANGED')throw error;warnings.push(error?.message||String(error))}
+    assertCurrent?.();
+    return {ok:warnings.length===0,retentionDays:BANK_CHEQUE_IMAGE_RETENTION_DAYS,referenced:refs.length,uploaded,alreadyPresent:already,missingLocal,removed,warnings:[...new Set(warnings)].slice(0,5)};
+  }
+  async function download(eventDate,imageKey,{assertCurrent}={}){
+    assertCurrent?.();if(!bankChequeImageWithinRetention(eventDate,{now}))return null;
+    const {userId}=await identity(assertCurrent),path=bankChequeImageObjectPath(userId,eventDate,imageKey);if(!path)return null;
+    const response=await supaFetch(`/storage/v1/object/${BANK_CHEQUE_IMAGE_BUCKET}/${encodeStoragePath(path)}`,{method:'GET',headers:{Accept:'image/*'},networkTimeoutMs:30000,...requestScope(assertCurrent)});
+    assertCurrent?.();
+    if(response.status===404){const blob=typeof fetchBridgeImage==='function'?await fetchBridgeImage(cleanImageKey(imageKey)):null;assertCurrent?.();return blob}
+    if(!response.ok)throw Object.assign(new Error(await message(response,assertCurrent)||'טעינת תמונת השיק מהענן נכשלה'),{code:'CHEQUE_IMAGE_DOWNLOAD_FAILED',httpStatus:response.status});
+    const blob=await response.blob();assertCurrent?.();
+    if(!validImageBlob(blob))throw Object.assign(new Error('קובץ תמונת השיק בענן אינו בפורמט תמונה נתמך'),{code:'CHEQUE_IMAGE_INVALID_CLOUD_OBJECT'});
+    return blob;
   }
   return {sync,download,listOwned};
 }

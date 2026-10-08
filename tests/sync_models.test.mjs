@@ -47,7 +47,7 @@ for(const [app,api]of [['kupa',kupaChecks({checksSession:{sharedChecksBootstrapA
 
 test('Kupa bank snapshot flushes local shared-check work and treats an in-flight pull as joinable verification',async()=>{
  const model={state:{bank:{adjustments:[]}}};let syncCalls=0,saveCalls=0,checkFlushCalls=0,hasLocalWork=true;
- const api=createKupaBankController({autoScope:()=> 'test-owner',
+ const api=createKupaBankController({autoScope:()=> 'test-owner',operationScope:{capture:()=>()=>{},captureRead:()=>()=>{}},
    model,session:{connectionMode:'supabase'},checksSession:{sharedChecksBusy:true},
    sharedChecksHaveLocalWork:()=>hasLocalWork,
    saveSharedChecksToCloud:async()=>{checkFlushCalls++;hasLocalWork=false;return true},

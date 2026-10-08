@@ -426,8 +426,12 @@ scheduling. A real-browser logout race proved stale projection publication;
 refresh/reset/settings and structured diagnostics now publish only after a
 scoped finance confirmation. Lease waiting/renewal and authenticated network
 retries retain the captured scope. See [the credit operation contract](KUPA_CREDIT_OPERATION_OWNERSHIP.md).
-Bank and remaining Orders Finance post-provider paths still need their own
-behavior review; this is not a claim of universal controller coverage.
+Kupa Bank now has separate operation read/write ownership, scoped archive/image
+transport and commit-before-cache publication. Real-browser logout and controlled
+archive races reproduced stale success and cache replacement; the operator's
+post-commit refresh warning is retained. See [the Bank operation contract](KUPA_BANK_OPERATION_OWNERSHIP.md).
+Remaining Orders Finance post-provider paths still need their own behavior
+review; this is not a claim of universal controller coverage.
 
 These are completion tracks, each delivered through separate focused changes;
 they are not a claim that every older audit finding is still present.
