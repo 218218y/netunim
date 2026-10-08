@@ -40,6 +40,7 @@ export function composeCloudUi({
     renderSettings:(...args)=>getUiSettings().renderSettings(...args),
     resumeCalendarAfterCloudLogin:(...args)=>getCalendarController().resumeAfterCloudLogin(...args),
     startFinanceAutoSync:(...args)=>domainsFinanceController.startAutoSync(...args),
+    stopFinanceAutoSync:()=>domainsFinanceController.stopAutoSync(),
     ...storageV2Coordinator.ownerUiPorts(),
     ...storageV2Coordinator.ownerTransferUiPorts(),
     ...storageV2Cloud,

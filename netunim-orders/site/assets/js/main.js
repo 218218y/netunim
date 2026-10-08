@@ -6,6 +6,7 @@ import {createOrdersBackgroundStartup} from './startup/background.js';
 import {installLocalSiteResetPeerListener} from './shared/local-site-reset.js';
 import {assertOrderEntityInvariants} from './state/validation.js';
 import {createFinanceDerivationStore} from './shared/finance-derivations.js';
+import {createFinanceOperationScope} from './shared/finance-fence.js';
 import {esc} from './core/values.js';
 import {createCreditCardOrderView} from './shared/credit-card-order-view.js';
 import {createFinanceConnectionImporter} from './shared/finance-connection-import.js';
@@ -116,8 +117,13 @@ const cloudAuth=createCloudAuth({
 });
 
 const financeBridge=createFinanceBridgeIntegration();
+const financeOperationScope=createFinanceOperationScope({readAccess:()=>({
+  account:cloudAuth.getAccountScope(),connectionMode:'supabase',storageOwner:storageOwner.current(),
+  readable:storageOwner.ready&&!storagePreparationActive()&&!session.storageProtocolBlocked&&storageRecovery.isReady(),
+  writable:tab.primaryTab&&storageOwner.writable&&!storagePreparationActive()&&!session.storageProtocolBlocked&&storageRecovery.isReady(),
+})});
 const domainsDocumentBridge=composeDocumentSearch({supaFetch:(...args)=>cloudAuth.supaFetch(...args),accountScope:()=>cloudAuth.getAccountScope()});
-const bankChequeImages=createOrdersBankChequeImageRuntime({cloudAuth,bridge:financeBridge});
+const bankChequeImages=createOrdersBankChequeImageRuntime({cloudAuth,bridge:financeBridge,operationScope:financeOperationScope});
 
 const calendarRuntime=createOrdersCalendarRuntime({
   calendarSession,supaFetch:(...args)=>cloudAuth.supaFetch(...args),
@@ -222,6 +228,7 @@ const domainsBankSelectors=createDomainsBankSelectors({
 });
 
 const domainsBankCache=createDomainsBankCache({
+  operationScope:financeOperationScope,
   checksSession,
   ui,
   computeKupaNetReadout:(...args)=>domainsBankSelectors.computeKupaNetReadout(...args),
@@ -323,6 +330,7 @@ const syncMerge=createSyncMerge({
 const syncChecks=composeChecksSync({model,files,checksSession,tab,uiStatus,domainsBankCache,storageFiles,cloudAuth,sharedChecksV2});
 
 const domainsFinanceController=createDomainsFinanceController({
+  operationScope:financeOperationScope,
   readRevision:()=>domainRevisions.stamp(['finance','checks','bankDisplay']),
   tab,
   checksSession,

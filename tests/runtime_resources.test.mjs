@@ -105,15 +105,20 @@ test('Kupa offline, hidden document and disposal remove pending wakeups',async()
 });
 
 function orders(){
-  const timers=clock(),environment=browser(),events=[],morningOptions=[],state={primary:true,blocked:false,authenticated:true,cloud:true,locks:new Set()};
+  const timers=clock(),environment=browser(),events=[],stops=[],morningOptions=[],state={primary:true,blocked:false,authenticated:true,cloud:true,locks:new Set()};
   const runtime=createOrdersConnectivityRuntime({timers,environment,
     access:{primary:()=>state.primary,blocked:()=>state.blocked,authenticated:()=>state.authenticated},
     cloud:{enabled:()=>state.cloud,resumeAfterReconnect:async()=>events.push('reconnect')},
-    checks:{pollSharedChecks:async()=>events.push('checks')},finance:{startAutoSync:()=>events.push('finance')},
+    checks:{pollSharedChecks:async()=>events.push('checks')},finance:{startAutoSync:()=>events.push('finance'),stopAutoSync:()=>stops.push('finance')},
     morning:{recoverPendingMorningOperation:async options=>{morningOptions.push(options);events.push('morning')}},
     status:{startupDomainLocked:domain=>state.locks.has(domain),setCloud:()=>events.push('offline')}});
-  return {timers,environment,events,morningOptions,state,runtime};
+  return {timers,environment,events,stops,morningOptions,state,runtime};
 }
+
+test('Orders connectivity owns Finance timer stop on offline and idempotent disposal',()=>{
+  const f=orders();f.runtime.start();emit(f.environment.window,'offline');assert.deepEqual(f.stops,['finance']);
+  assert.equal(f.runtime.dispose(),true);assert.equal(f.runtime.dispose(),false);assert.deepEqual(f.stops,['finance','finance']);
+});
 
 test('Orders online wakeup preserves Main reconnect, Morning recovery and finance scheduling',async()=>{
   const f=orders();f.runtime.start();

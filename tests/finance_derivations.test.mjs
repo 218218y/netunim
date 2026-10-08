@@ -61,7 +61,7 @@ test('nested scopes share work, exceptions discard it, and work outside a scope 
 test('Orders finance snapshot stays isolated from the authoritative source after removing redundant copies',()=>{
   const state=fixture();state.cards=[{id:'card',label:'original'}];state.bank.adjustments=[{id:'adjustment',amount:5}];
   const before=structuredClone(state),checks=[{id:'check',amount:10}];
-  const controller=createDomainsFinanceController({checksSession:{kupaCloudReadState:state},getSharedChecks:()=>checks,bridge:{bankAutoEnabled:()=>false,creditAutoEnabled:()=>false,creditAutoMode:()=> 'daily',getBridgeToken:()=>''}});
+  const controller=createDomainsFinanceController({operationScope:{capture:()=>()=>{},captureRead:()=>()=>{}},checksSession:{kupaCloudReadState:state},getSharedChecks:()=>checks,bridge:{bankAutoEnabled:()=>false,creditAutoEnabled:()=>false,creditAutoMode:()=> 'daily',getBridgeToken:()=>''}});
   const snapshot=controller.snapshot();snapshot.cards[0].label='changed';snapshot.credits[0].totalAmount=0;snapshot.bank.adjustments[0].amount=0;snapshot.kupa.checks[0].amount=0;
   assert.deepEqual(state,before);assert.equal(checks[0].amount,10);
   assert.equal(controller.snapshot().cards[0].label,'original');assert.equal(controller.snapshot().bank.adjustments[0].amount,5);

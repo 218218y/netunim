@@ -35,7 +35,7 @@ test('read selectors clone only on invalidation and never expose authoritative m
 
 test('Orders read snapshot reuses business data while keeping connection status fresh and mutation snapshots independent',()=>{
   let revision=0,token='';const state={bank:{currentBalance:10,adjustments:[]},cards:[],credits:[],creditSync:{profiles:[]}},checks=[{id:'C',amount:10}];
-  const controller=createDomainsFinanceController({checksSession:{kupaCloudReadState:state},getSharedChecks:()=>checks,readRevision:()=>revision,bridge:{bankAutoEnabled:()=>false,creditAutoEnabled:()=>false,creditAutoMode:()=> 'daily',getBridgeToken:()=>token}});
+  const controller=createDomainsFinanceController({operationScope:{capture:()=>()=>{},captureRead:()=>()=>{}},checksSession:{kupaCloudReadState:state},getSharedChecks:()=>checks,readRevision:()=>revision,bridge:{bankAutoEnabled:()=>false,creditAutoEnabled:()=>false,creditAutoMode:()=> 'daily',getBridgeToken:()=>token}});
   const first=controller.readSnapshot();token='configured';const second=controller.readSnapshot();
   assert.equal(first.kupa,second.kupa);assert.equal(first.bank,second.bank);assert.equal(second.bridgeTokenConfigured,true);
   assert.throws(()=>{first.kupa.checks[0].amount=1},TypeError);controller.snapshot().kupa.bank.currentBalance=999;assert.equal(state.bank.currentBalance,10);
