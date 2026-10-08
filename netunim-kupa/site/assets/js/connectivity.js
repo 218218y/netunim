@@ -1,9 +1,9 @@
 import {createRuntimeResources} from './shared/runtime-resources.js';
 
-export function createKupaConnectivityRuntime({tab,session,syncDocument,bank,credit,status,environment=globalThis,timers=globalThis}){
-  if(!tab||!session)throw new TypeError('kupa_connectivity_context_required');
+export function createKupaConnectivityRuntime({access,cloud,bank,credit,status,environment=globalThis,timers=globalThis}){
   for(const [name,port,methods] of [
-    ['cloud',syncDocument,['resumeAfterReconnect','cloudPoll']],
+    ['access',access,['primary','blocked']],
+    ['cloud',cloud,['connected','resumeAfterReconnect','cloudPoll']],
     ['bank',bank,['maybeAutoRefreshBankBalance']],
     ['credit',credit,['maybeAutoRefreshCreditSync']],
     ['status',status,['setSaveStatus','setCloudHeaderStatus']],
@@ -11,8 +11,8 @@ export function createKupaConnectivityRuntime({tab,session,syncDocument,bank,cre
   const {window,document,navigator}=environment;
   const resources=createRuntimeResources({timers});
   let started=false,disposed=false;
-  const allowed=()=>tab.primaryTab&&!session.storageProtocolBlocked;
-  const cloudReady=()=>allowed()&&navigator.onLine!==false&&session.connectionMode==='supabase';
+  const allowed=()=>access.primary()&&!access.blocked();
+  const cloudReady=()=>allowed()&&navigator.onLine!==false&&cloud.connected();
 
   function refreshFinance(){
     resources.schedule('finance',0,()=>{
@@ -24,13 +24,13 @@ export function createKupaConnectivityRuntime({tab,session,syncDocument,bank,cre
 
   function online(){
     if(!allowed())return;
-    if(session.connectionMode==='supabase')resources.schedule('reconnect',250,()=>{if(cloudReady())return syncDocument.resumeAfterReconnect()});
+    if(cloud.connected())resources.schedule('reconnect',250,()=>{if(cloudReady())return cloud.resumeAfterReconnect()});
     refreshFinance();
   }
 
   function offline(){
     for(const key of ['reconnect','poll','finance'])resources.cancel(key);
-    if(!allowed()||session.connectionMode!=='supabase')return;
+    if(!allowed()||!cloud.connected())return;
     status.setSaveStatus('אופליין — שינויים יישמרו מקומית','saving');
     status.setCloudHeaderStatus('offline','ענן: אופליין');
   }
@@ -38,7 +38,7 @@ export function createKupaConnectivityRuntime({tab,session,syncDocument,bank,cre
   function visibility(){
     if(document.hidden){resources.cancel('poll');resources.cancel('finance');return}
     if(!allowed())return;
-    if(session.connectionMode==='supabase')resources.schedule('poll',100,()=>{if(!document.hidden&&cloudReady())return syncDocument.cloudPoll()});
+    if(cloud.connected())resources.schedule('poll',100,()=>{if(!document.hidden&&cloudReady())return cloud.cloudPoll()});
     refreshFinance();
   }
 

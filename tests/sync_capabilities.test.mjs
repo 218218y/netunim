@@ -37,7 +37,7 @@ test('orders capability checking blocks mutations but never supplier navigation'
  const classified=createSuppliersActions({domainsSuppliersNavigation:{chooseSupplier(){},toggleSupplierMenu(){},filterSupplierMenu(){},supplierMenuSearchKeydown(){}},supplierUi:{}});
  assert.equal(classified['choose-supplier'].startupMutationDomain,undefined);assert.equal(classified['open-supplier'].startupMutationDomain,undefined);assert.equal(classified['save-supplier'].startupMutationDomain,'orders');
  const session={syncCapabilitiesChecking:true,startupSync:{active:false,domains:{orders:{required:false,state:'idle',error:''},checks:{required:false,state:'idle',error:''},finance:{required:false,state:'idle',error:''}}}},checksSession={};
- const status=createUiStatus({session,checksSession});let supplierSelections=0,writes=0;
+ const status=createUiStatus({session,checksSession,storageRecovery:{isReady:()=>true}});let supplierSelections=0,writes=0;
  const chooseSupplier=()=>supplierSelections++,save=()=>writes++;Object.defineProperty(save,'startupMutationDomain',{value:'orders'});
  const actions=wrapMutationActions({'choose-supplier':chooseSupplier,save},domain=>status.guardStartupMutation(domain));
  actions['choose-supplier']();actions.save();assert.equal(supplierSelections,1);assert.equal(writes,0);assert.equal(actions.save.startupMutationDomain,'orders');assert.equal(Object.getPrototypeOf(actions),null);

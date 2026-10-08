@@ -7,6 +7,7 @@ function nextTurn(){return new Promise(resolve=>setTimeout(resolve,0))}
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createLifecycle({
   storageProtocol,
+  storageRecovery,
   hydrateStorageOwner=async()=>{},
   hydrateStorageV2OwnerTransfer=async()=>null,
   resumeStorageV2OwnerTransfer=async()=>null,
@@ -14,10 +15,6 @@ export function createLifecycle({
   hydrateLocalBirth=async()=>null,
   ensureLocalBirth=async()=>null,
   localBirthPreparing=()=>false,
-  recoverLocalV2State=async()=>null,
-  recoverReadOnlyV2State=async()=>null,
-  recoverSharedChecksV2Primary=async()=>false,
-  recoverSharedChecksV2ReadOnly=async()=>false,
   ensureSyncCapabilities=async()=>true,
   files,
   tab,
@@ -53,6 +50,8 @@ export function createLifecycle({
   showStartupAlerts=()=>{}
 }){
 for(const method of ['check','readMarkers','verifyLocal'])if(typeof storageProtocol?.[method]!=='function')throw new TypeError(`lifecycle_storage_protocol_${method}_required`);
+for(const method of ['assertBound','primary','readOnly','activate'])if(typeof storageRecovery?.[method]!=='function')throw new TypeError(`lifecycle_storage_recovery_${method}_required`);
+storageRecovery.assertBound();
 
 async function recoverOrdersLocalState(){
   const v2=await refreshStorageV2CloudState();
@@ -78,8 +77,7 @@ async function prepareAlertsBeforeDisplay(){
   try{await prepareStartupAlerts()}catch(error){console.error('startup bank alerts preparation',error)}
 }
 
-async function hydrateSecondaryDomains({sharedOnline,ordersOnline,checksRecoveryPromise,localServicesPromise}){
-  try{await checksRecoveryPromise}catch(e){console.error('checks recovery wait',e)}
+async function hydrateSecondaryDomains({sharedOnline,ordersOnline,localServicesPromise}){
   if(sharedOnline){
     setStartupDomain('checks','loading');startupMark('checks-start');
     let checksOk=false;
@@ -104,14 +102,6 @@ async function hydrateSecondaryDomains({sharedOnline,ordersOnline,checksRecovery
   startupMark('background-ready');
 }
 
-async function retryReadOnlyRecovery(fn,{attempts=6,delay=60}={}){
-  for(let attempt=0;attempt<attempts;attempt++){
-    try{const result=await fn();if(result)return result}catch(error){if(attempt===attempts-1)console.error('secondary read-only recovery',error)}
-    if(attempt<attempts-1)await new Promise(resolve=>setTimeout(resolve,delay));
-  }
-  return null;
-}
-
 async function boot(){
   session.storageProtocolBlocked=true;
   startupMark('boot-start');
@@ -134,12 +124,8 @@ async function boot(){
   if(!tab.primaryTab){
     const v2Required=!!(transfer||storageV2OwnerTransferPreparing()||accountV2Active||localEngineActive||localBirthPreparing());
     let shown=false;
-    if(v2Required){
-      const mainRecovered=await retryReadOnlyRecovery(()=>recoverReadOnlyV2State());
-      const sharedRecovered=mainRecovered&&await retryReadOnlyRecovery(()=>recoverSharedChecksV2ReadOnly());
-      shown=!!(mainRecovered&&sharedRecovered);
-    }
-    if(shown){render({supplierScrollMode:'end'});startupMark('first-render');setCloud('ענן: קריאה בלבד','offline');setSave('מקומי: קריאה בלבד','',folderSaveTitle())}
+    if(v2Required)shown=!!(await storageRecovery.readOnly());
+    if(shown){storageRecovery.activate();render({supplierScrollMode:'end'});startupMark('first-render');setCloud('ענן: קריאה בלבד','offline');setSave('מקומי: קריאה בלבד','',folderSaveTitle())}
     else{setCloud('ענן: קריאה בלבד — הנתונים טרם זמינים','offline');setSave('קריאה בלבד — רענן לאחר סיום האתחול בטאב הראשי','error')}
     showSecondaryTabGuard();syncFolderAccessButton();return;
   }
@@ -158,26 +144,19 @@ async function boot(){
     try{
       if(!localEngineActive){await ensureLocalBirth();localEngineActive=await storageProtocol.verifyLocal()}
       if(!localEngineActive)throw new Error('orders_local_engine_marker_required');
-      await recoverLocalV2State();
     }catch(error){
-      console.error('Orders local Storage V2 birth/recovery',error);
+      console.error('Orders local Storage V2 birth',error);
       setCloud('ענן: אחסון מקומי דורש השלמה','error');
       setSave('העריכה נעולה עד השלמת מעבר האחסון המקומי','error');
       syncFolderAccessButton();return;
     }
-  }else{if(!accountV2Active)throw new Error('orders_v2_account_marker_required');await recoverLocalV2State()}
+  }else if(!accountV2Active)throw new Error('orders_v2_account_marker_required');
 
   // Shared Checks must recover before business state is rendered.
-  let sharedPrimary=false;
-  if((accountV2Active||localEngineActive)){
-    sharedPrimary=await recoverSharedChecksV2Primary();
-    if(!sharedPrimary)throw new Error('orders_shared_v2_recovery_required');
-  }
+  try{await storageRecovery.primary({localEngineActive})}
+  catch(error){setSave('שחזור הנתונים המקומיים נעצר; העריכה נשארת חסומה','error');setCloud('ענן: ממתין לשחזור מקומי תקין','error');syncFolderAccessButton();throw error}
   if(!localEngineActive&&navigator.onLine&&loadSession()){try{await ensureSyncCapabilities();session.syncCapabilitiesError=null}catch(error){session.syncCapabilitiesError=error;setCloud(error.message,'error');}}
-  if(session.syncCapabilitiesError){if(!accountV2Active||sharedPrimary)render();setCloud(session.syncCapabilitiesError.message,'error');setSave(session.syncCapabilitiesError.message,'error');return}
-
-  if(!sharedPrimary)sharedPrimary=await recoverSharedChecksV2Primary();
-  if(localEngineActive&&!sharedPrimary)throw new Error('orders_local_shared_v2_recovery_required');
+  if(session.syncCapabilitiesError){storageRecovery.activate();render();setCloud(session.syncCapabilitiesError.message,'error');setSave(session.syncCapabilitiesError.message,'error');return}
 
   try{await resumeIncompleteRestore()}catch(error){console.error('restore group startup recovery',error);setCloud('ענן: שחזור ממתין','error')}
 
@@ -185,12 +164,12 @@ async function boot(){
   const sessionAvailable=!!loadSession(),online=!!navigator.onLine,ordersOnline=!localEngineActive&&cloudEnabled()&&online&&sessionAvailable,sharedOnline=!localEngineActive&&sessionAvailable&&online;
   beginStartupSync({orders:ordersOnline,checks:sharedOnline,finance:sharedOnline});
 
+  storageRecovery.activate();
   render({supplierScrollMode:'end'});startupMark('first-render');
   syncFolderAccessButton();
   setSave(session.cloudDurabilityDegraded?'מקומי: מצב התאוששות':'מקומי: שמור',session.cloudDurabilityDegraded?'error':'',folderSaveTitle());
 
   const localServicesPromise=initializeLocalServices();
-  const checksRecoveryPromise=Promise.resolve(true);
   await nextTurn();
 
   if(cloudEnabled()&&!online)setCloud('ענן: אופליין','offline');
@@ -210,9 +189,8 @@ async function boot(){
   }
 
   if(sharedOnline){
-    session.startupHydrationPromise=hydrateSecondaryDomains({sharedOnline,ordersOnline,checksRecoveryPromise,localServicesPromise}).catch(async error=>{console.error('secondary startup hydration',error);await prepareAlertsBeforeDisplay();showStartupAlerts();startFinanceAutoSync()});
+    session.startupHydrationPromise=hydrateSecondaryDomains({sharedOnline,ordersOnline,localServicesPromise}).catch(async error=>{console.error('secondary startup hydration',error);await prepareAlertsBeforeDisplay();showStartupAlerts();startFinanceAutoSync()});
   }else{
-    await checksRecoveryPromise;
     session.startupHydrationPromise=backupAfterHydration(localServicesPromise).then(async()=>{await prepareAlertsBeforeDisplay();showStartupAlerts();startFinanceAutoSync();startupMark('background-ready')}).catch(async error=>{console.error('startup background',error);await prepareAlertsBeforeDisplay();showStartupAlerts();startFinanceAutoSync()});
   }
 }

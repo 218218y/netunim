@@ -35,8 +35,8 @@ export function createSyncRecovery({captureLegacyWorkbook=async()=>{},hideConnec
     session.storageV2CloudPending=!!(v2?.pending||v2?.flight);
     session.cloudConflictPending=!!v2?.control?.conflict;
     session.connectionMode='supabase';
-    session.backendReady=true;
-    hideConnectScreen();
+    session.backendReady=!deferRender;
+    if(!deferRender)hideConnectScreen();
     setConnectedStatus('Supabase — עותק מקומי');
     const anyPending=!!(v2?.pending||v2?.flight||v2?.control?.conflict);
     if(startup&&navigator.onLine){
@@ -47,7 +47,7 @@ export function createSyncRecovery({captureLegacyWorkbook=async()=>{},hideConnec
       setCloudHeaderStatus(v2?.control?.conflict?'conflict':'offline',v2?.control?.conflict?'ענן: התנגשות':'ענן: אופליין');
     }
     if(!deferRender)render();
-    if(!startup||!navigator.onLine)startCloudPolling();
+    if(!deferRender&&(!startup||!navigator.onLine))startCloudPolling();
     return true;
   }
 

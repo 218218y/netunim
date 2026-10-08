@@ -152,6 +152,52 @@ remain separate from structural refactors.
   policies and owners. Other shell listeners and capability pollers remain a
   separate lifecycle slice.
 
+- Both apps now bind Main/Shared startup recovery once, before constructing
+  lifecycle. A canonical recovery port owns ordered primary recovery and bounded
+  secondary reads. Missing/failed primary recovery retains the same failed task;
+  it never retries writers or falls back to another store. Lifecycle explicitly
+  activates the recovered pair after installing the applicable startup guards.
+  UI mutation guards and connectivity wakeups consult this readiness boundary.
+  Seven behavior regressions reproduced premature editing in the previous main
+  during recovery, after a Shared failure, and after interrupted local birth.
+  Kupa deferred Main hydration now retains the connect screen and defers polling
+  until Shared has recovered. Orders initial Morning recovery shares the owned,
+  coalesced wakeup with reconnect/foreground recovery, retaining `quiet:false`
+  at startup and rechecking auth, ownership and Main hydration before execution.
+
+### Startup recovery contract
+
+`construct -> bind journals -> validate binding -> lock/owner/protocol -> birth or
+owner-transfer completion -> Main -> Shared -> recovered -> activate -> first
+safe display -> remote hydration -> background jobs`.
+
+`recovered` is not UI readiness. Orders installs cloud domain gates and restores
+its cloud cursor before activation; Kupa establishes its cloud hydration gate
+before recovery. Existing protocol, tab, capability and domain guards continue
+to apply after activation. Primary failures preserve the original error and
+failed journal in the recovery snapshot. One runtime cannot switch between
+primary and secondary recovery or restart a failed task.
+Local Main failure now rejects boot just as account/Shared failure does, while
+reporting the locked recovery state in the UI; completion callbacks cannot
+mistake an early local recovery failure for successful startup.
+
+| Outcome | Editing/display | Retry policy |
+| --- | --- | --- |
+| Preflight, birth or transfer stopped | No startup readiness | New runtime after resolving the cause |
+| Main/Shared pending | No startup readiness or connectivity jobs | Await the current recovery |
+| Primary Main/Shared missing or failed | No business render or editing | Retain failed task; no automatic writer retry |
+| Secondary checkpoint unavailable | No partial composed display | At most six reads per journal, 60ms apart; no writes |
+| Both journals recovered, startup preparation pending | No editing | Await lifecycle activation |
+| Secondary activated | Read-only display and permitted exports | Existing secondary-tab rules |
+| Cloud hydration pending | Local display; applicable mutations remain blocked | Existing hydration owner |
+| Cloud unavailable after verified local recovery | Retain existing offline/deferred policy | Existing sync policy and durable pending data |
+| DB capability mismatch | Local display; editing and connectivity jobs blocked | Explicit upgrade/revalidation |
+
+Persisted schemas, owner/epoch fences, ACK semantics and SQL are unchanged.
+Incomplete remote restore reconciliation retains its existing failure policy;
+typed reconciliation errors and the remaining background resources need their
+own review rather than a blanket retry or blanket failure classification.
+
 ## Dependency direction
 
 Pure core and protocol contracts may be imported by domain and application
@@ -169,15 +215,24 @@ pre-slice main commit `85ea9278`):
 
 | Factory | Before | Current |
 | --- | ---: | ---: |
-| Kupa lifecycle | 76 | 38 |
-| Orders lifecycle | 50 | 45 |
+| Kupa lifecycle | 76 | 34 |
+| Orders lifecycle | 50 | 42 |
 | Shared startup protocol | - | 3 |
-| Connectivity runtime, each app (including browser/timers) | - | 8 |
+| Shared startup recovery | - | 1 optional scheduler; 2 bound journal ports |
+| Kupa connectivity (including browser/timers) | - | 7 |
+| Orders connectivity (including browser/timers) | - | 8 |
 | Shared runtime resource owner | - | 2 |
 
 Lifecycle still has too many collaborators. These slices establish real owners
 and contracts; they do not complete all startup phase decomposition or dispose
 all shell listeners, timers and integration pollers.
+Module graph now caps lifecycle collaborators at these measured counts and new
+startup recovery/connectivity factories at eight.
+
+Baseline for this slice: main `c64f567a`, full GitHub verification run
+`37720954991` passed (all CI groups, including browser and PostgreSQL). Focused
+local tests distinguish deterministic behavior/architecture checks from the
+full branch deployment gate; full Windows verification remains a separate gate.
 
 ## Next reviewable slices
 
@@ -186,8 +241,9 @@ all shell listeners, timers and integration pollers.
    remaining Orders Finance/Checks wiring; narrow public APIs to actual consumers.
    Retire lazy references where producer ordering is possible, and bind genuine
    construction cycles explicitly. Do not introduce an application service locator.
-2. **Lifecycle phases:** build focused local/shared recovery, remote hydration,
-   UI-readiness and background-job ports from their capability owners. Preserve
+2. **Lifecycle phases:** local/shared startup recovery and its UI-readiness
+   boundary are now explicit. Continue remote hydration, local services and
+   background-job ports from their capability owners. Preserve
    lock/owner/protocol ordering and first safe render after Main and Shared.
    Test partial failure, write gating and resource cleanup. Expand resource
    ownership beyond connectivity without aborting in-flight durability commits.
