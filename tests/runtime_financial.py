@@ -129,7 +129,7 @@ def run_breakdown(app):
               document.querySelector('#modal .modal-foot [data-action="close-modal"],#modal .modal-foot [data-modal-save]').click();
               return true;
             }})()""")
-        credit_setup = "state=normalizeState(fixture);domainRevisions.touchAll();domainsCreditView.renderCredit();" if app == 'kupa' else "kupaCloudReadState=fixture;state.checks=[];domainRevisions.touchAll();ui.kupaSubView='credit';domainsFinanceView.renderKupa();"
+        credit_setup = "state=normalizeState(fixture);domainRevisions.touchAll();credit.renderCredit();" if app == 'kupa' else "kupaCloudReadState=fixture;state.checks=[];domainRevisions.touchAll();ui.kupaSubView='credit';domainsFinanceView.renderKupa();"
         browser.evaluate("(()=>{"+breakdown_fixture+f"""
           fixture.creditSync.profiles=[{{profileId:'test',provider:'visaCal',accounts:[{{accountNumber:'2222',txns:[
             {{id:'billed',status:'completed',processedDate:due,transactionDate:today,chargedAmount:-1369.78,chargedCurrency:'ILS',originalAmount:-1369.78,originalCurrency:'ILS',chargeAmountStatus:'reported',description:'חיוב מאומת'}},

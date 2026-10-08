@@ -50,8 +50,8 @@ test('Expenses exposes its Credit view before editing and saves through the expe
 test('Kupa root composes Expenses through a view port and a later editor bind',()=>{
   const main=fs.readFileSync(new URL('../netunim-kupa/site/assets/js/main.js',import.meta.url),'utf8');
   assert.doesNotMatch(main,/from ['"]\.\/domains\/expenses\//);
-  assert.ok(main.indexOf('const expenses=createKupaExpensesRuntime(')<main.indexOf('const domainsCreditView='));
-  assert.ok(main.indexOf('expenses.bindEditor(')>main.indexOf('const domainsCreditView='));
+  assert.ok(main.indexOf('const expenses=createKupaExpensesRuntime(')<main.indexOf('credit.bindView('));
+  assert.ok(main.indexOf('expenses.bindEditor(')>main.indexOf('credit.bindView('));
   assert.match(main,/expensesMarkup:\(\.\.\.args\)=>expenses\.expensesMarkup/);
   assert.match(main,/name:'expenses',actions:expenses\.actions/);
 });

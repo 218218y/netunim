@@ -96,6 +96,12 @@ remain separate from structural refactors.
   modal and persistence ports exist, before lifecycle startup. Sticky-note
   writes retain the notes domain scope, and spreadsheet actions keep their
   existing independent sync owner.
+- Kupa Credit now owns its selectors, view, legacy-card editor and actions in a
+  capability runtime. The finance controller remains in Finance composition;
+  Credit binds its view after that controller exists, removing late controller
+  references from view construction. Editing binds after record commands and
+  continues to scope legacy-card writes to credits, while credit sync policy
+  stays with the finance controller.
 
 ## Dependency direction
 
