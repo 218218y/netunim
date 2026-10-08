@@ -116,7 +116,7 @@ async function openCloud({renderAfter=true,quiet=false,hydrateSecondary=true,man
 function logoutCloud(){
   // Logout clears authorization only. activeStorageOwner is durable and remains
   // unchanged, so account data can never fall through to the local namespace.
-  clearCloudRecovery();stopPolling();saveSession(null);localStorage.removeItem(CLOUD_AUTO_KEY);session.cloudRevision=0;session.cloudUpdatedAt=null;checksSession.checksCloudRevision=0;checksSession.checksCloudUpdatedAt=null;session.cloudConflictBlocked=false;session.cloudSaveRequested=false;setCloud('ענן: לא פעיל');renderSettings();toast('נותקת מהענן; בעלות האחסון והנתונים המקומיים נשמרו עד להתחברות מחדש');return true
+  clearCloudRecovery();stopPolling();saveSession(null);localStorage.removeItem(CLOUD_AUTO_KEY);session.cloudRevision=0;session.cloudUpdatedAt=null;checksSession.checksCloudRevision=0;checksSession.checksCloudUpdatedAt=null;session.cloudConflictBlocked=false;session.cloudSaveRequested=false;setCloud('ענן: לא פעיל','off');renderSettings();toast('נותקת מהענן; בעלות האחסון והנתונים המקומיים נשמרו עד להתחברות מחדש');return true
 }
 
 async function resetLocalSiteStorage({allowAuthPrompt=true,resetSession=null}={}){

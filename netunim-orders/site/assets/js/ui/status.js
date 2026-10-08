@@ -15,8 +15,36 @@ function setSave(text,cls='',title=''){const e=$('#savePill');if(e){e.textConten
 
 function latestSyncedAt(){return latestCloudUpdatedAt(session.cloudUpdatedAt,checksSession.checksCloudUpdatedAt)}
 function syncedCloudText(text='ענן: מסונכרן'){const at=latestSyncedAt();return at?`${text} ${formatCloudSyncTime(at)}`:text}
-function setCloud(text,cls='',title=''){const e=$('#cloudPill');if(e){e.textContent=cls==='synced'?syncedCloudText(text):text;e.className='cloud-pill '+cls;e.title=title||''}}
-function refreshCloudTimestamp(){const e=$('#cloudPill');if(e?.classList.contains('synced'))setCloud('ענן: מסונכרן','synced',e.title)}
+const cloudStatuses=new Map();
+function renderCloudStatus(){
+  const e=$('#cloudPill');if(!e)return;
+  const main=cloudStatuses.get('orders');
+  if(main?.cls==='off'){e.textContent=main.text;e.className='cloud-pill';e.title=main.title;return}
+  const domains=startupDomains(),statuses=HEADER_DOMAIN_ORDER.map(domain=>{
+    // Once the live capability publishes, startup bookkeeping no longer owns
+    // this document's outcome. Finance never owns an Orders/Checks header slot.
+    const live=cloudStatuses.get(domain);if(live)return {...live,domain};
+    const item=domains[domain];if(item.required){
+      const cls=item.state==='ready'?'synced':item.state==='error'||item.state==='deferred'?'error':'';
+      const text=item.state==='ready'?'ענן: מסונכרן':cls==='error'?'ענן: סנכרון חלקי ⚠':STARTUP_LOADING_TEXT[domain];
+      return {domain,cls,text,title:item.error};
+    }
+    if(domain==='checks'&&main?.cls==='synced')return {domain,cls:'',text:'ענן: צ׳קים טרם אומתו',title:''};
+    return null;
+  }).filter(Boolean);
+  if(!statuses.length)return;
+  const priority={error:4,offline:3,'':2,synced:1};
+  const selected=statuses.reduce((best,item)=>!best||(priority[item.cls]||0)>(priority[best.cls]||0)?item:best,null);
+  e.textContent=selected.cls==='synced'?syncedCloudText(selected.text):selected.text;
+  e.className='cloud-pill '+selected.cls;
+  e.title=statuses.map(item=>`${STARTUP_DOMAIN_LABELS[item.domain]} — ${item.text}${item.title?`: ${item.title}`:''}`).join('\n');
+}
+function setCloud(text,cls='',title=''){
+  if(cls==='off')cloudStatuses.clear();
+  cloudStatuses.set('orders',{text,cls,title});renderCloudStatus();
+}
+function setChecksCloud(text,cls='',title=''){cloudStatuses.set('checks',{text,cls,title});renderCloudStatus()}
+function refreshCloudTimestamp(){renderCloudStatus()}
 
 function startupDomains(){
   if(!session.startupSync||typeof session.startupSync!=='object')session.startupSync={active:false,domains:{}};
@@ -26,28 +54,16 @@ function startupDomains(){
   }
   return session.startupSync.domains;
 }
-function startupDetail(){
-  const domains=startupDomains();
-  return HEADER_DOMAIN_ORDER.filter(domain=>domains[domain].required).map(domain=>{
-    const item=domains[domain],label=STARTUP_DOMAIN_LABELS[domain],state=item.state;
-    if(state==='ready')return `${label} — מסונכרן`;
-    if(state==='deferred')return `${label} — נשמר מקומית וממתין לסנכרון`;
-    if(state==='error')return `${label} — טעינה נכשלה${item.error?`: ${item.error}`:''}`;
-    if(state==='loading'||state==='pending')return `${label} — בתהליך`;
-    return `${label} — לא נדרש`;
-  }).join('\n');
-}
 function refreshStartupCloudStatus(){
   const sync=session.startupSync,domains=startupDomains(),required=HEADER_DOMAIN_ORDER.filter(domain=>domains[domain].required);
   if(!required.length){sync.active=false;return}
   const busy=required.find(domain=>domains[domain].state==='loading'||domains[domain].state==='pending');
-  if(busy){sync.active=true;setCloud(STARTUP_LOADING_TEXT[busy],'',startupDetail());return}
+  if(busy){sync.active=true;renderCloudStatus();return}
   sync.active=false;
-  const partial=required.some(domain=>domains[domain].state==='error'||domains[domain].state==='deferred');
-  if(partial)setCloud('ענן: סנכרון חלקי ⚠','error',startupDetail());
-  else setCloud('ענן: מסונכרן','synced',startupDetail());
+  renderCloudStatus();
 }
 function beginStartupSync(required={}){
+  cloudStatuses.clear();
   const domains=startupDomains();
   for(const domain of STARTUP_DOMAIN_ORDER){const needed=!!required[domain];domains[domain]={required:needed,state:needed?'pending':'skipped',error:''}}
   session.startupSync.active=STARTUP_DOMAIN_ORDER.some(domain=>domains[domain].required);
@@ -83,5 +99,5 @@ function guardStartupMutation(domain='orders'){
 function reportError(message){alert(message)}
 function hideConnectScreen(){document.getElementById('connectScreen').style.display='none'}
 
-return { reportError, hideConnectScreen, toast, setSave, setCloud, refreshCloudTimestamp, beginStartupSync, setStartupDomain, startupDomainLocked, guardStartupMutation };
+return { reportError, hideConnectScreen, toast, setSave, setCloud, setChecksCloud, refreshCloudTimestamp, beginStartupSync, setStartupDomain, startupDomainLocked, guardStartupMutation };
 }

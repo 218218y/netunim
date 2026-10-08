@@ -7,7 +7,7 @@ import {equalSyncJson} from '../shared/cloud-sync.js';
 import {applyStorageV2LocalImport} from '../shared/storage-v2-local-import.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createStoragePersistence({sharedChecksV2=null,storageV2Boundary=null,refreshStorageV2CloudState=async()=>null,recoverStorageV2State=async()=>null,captureLegacyWorkbook=async()=>{},storageV2Primary=()=>false,storageV2CommitPromise=()=>Promise.resolve(),storageV2DurabilityAtRisk=()=>false,creditNormalizationMayDelete=()=>true,reportError, model, session, files, tab, checksSession, domainRevisions, stateFromPayload, setSaveStatus, setConnectedStatus, persistImmediateBrowserSnapshot, readJsonHandle, listBackups, backupSnapshotToComputer, prepareKupaCloudState, normalizeState, showSecondaryTabGuard, saveSharedChecksToCloud, writeJsonHandleVerified, persistSupabaseState, toast}){
+export function createStoragePersistence({checksStatus,loadSession=()=>null,setCloudHeaderStatus=()=>{},sharedChecksV2=null,storageV2Boundary=null,refreshStorageV2CloudState=async()=>null,recoverStorageV2State=async()=>null,captureLegacyWorkbook=async()=>{},storageV2Primary=()=>false,storageV2CommitPromise=()=>Promise.resolve(),storageV2DurabilityAtRisk=()=>false,creditNormalizationMayDelete=()=>true,reportError, model, session, files, tab, checksSession, domainRevisions, stateFromPayload, setSaveStatus, setConnectedStatus, persistImmediateBrowserSnapshot, readJsonHandle, listBackups, backupSnapshotToComputer, prepareKupaCloudState, normalizeState, showSecondaryTabGuard, saveSharedChecksToCloud, writeJsonHandleVerified, persistSupabaseState, toast}){
 let cloudSaveRequest=null;
 function beginLocalRisk(token){(session.localUndurableGenerations??=new Set()).add(token)}
 function clearLocalRisk(token){session.localUndurableGenerations?.delete(token)}
@@ -33,6 +33,7 @@ function requestCloudSave(snapshot,msg,generation){
 function mergeDeleteIntents(...values){const out={};for(const value of values){if(!value||typeof value!=='object'||Array.isArray(value))continue;for(const [key,ids] of Object.entries(value)){const clean=[...new Set((Array.isArray(ids)?ids:[]).map(x=>String(x||'').trim()).filter(Boolean))];if(clean.length)out[key]=[...new Set([...(out[key]||[]),...clean])].sort()}}return out}
 function mainBusinessState(value){const copy=clone(value);delete copy.checks;delete copy._meta;return copy}
 const nextTurn=work=>new Promise(resolve=>setTimeout(resolve,0)).then(work);
+function markMainPending(){if(session.connectionMode==='supabase'&&session.backendReady)setCloudHeaderStatus(globalThis.navigator?.onLine===false?'offline':'syncing',globalThis.navigator?.onLine===false?'ענן: אופליין':'ענן: ממתין לסנכרון')}
 async function loadState({automatic=false}={}){
   if(tab?.primaryTab===false){showSecondaryTabGuard();throw new Error('storage_v2_local_file_primary_tab_required')}
   if(!storageV2Primary()||!storageV2Boundary||!(sharedChecksV2?.primaryReady||sharedChecksV2?.localReady))throw new Error('storage_v2_local_file_journals_required');
@@ -104,6 +105,7 @@ function saveState(msg='נשמר',{deleteIntents={},mutationType='autosave',surf
       }else setSaveStatus('שגיאת עותק מקומי','error');
     }
     if(!localOk&&!idbPending)return Promise.resolve(false);
+    markMainPending();
     // The operation is already durable. Yield so normalization, cloud projection
     // and file I/O cannot delay the paint caused by the user's edit.
     return nextTurn(async()=>{
@@ -144,6 +146,7 @@ function saveState(msg='נשמר',{deleteIntents={},mutationType='autosave',surf
   if(!localOk&&!idbPending)setSaveStatus('שגיאת עותק מקומי','error');
   if(idbPending)setSaveStatus('ממתין לאישור שמירה ב־IndexedDB','saving');
   if(!localOk&&!idbPending)return Promise.resolve(false);
+  markMainPending();
   const continueSave=async()=>{
     if(session.connectionMode==='supabase'&&session.backendReady){
       const head=await refreshStorageV2CloudState();
@@ -159,14 +162,19 @@ function saveState(msg='נשמר',{deleteIntents={},mutationType='autosave',surf
 function saveChecksState(msg='הצק נשמר',{deletedIds=[],mutationType='autosave',surface='kupa.checks',operations=null}={}){
   if(!tab.primaryTab){showSecondaryTabGuard();return Promise.resolve(false)}
   if(sharedChecksV2?.requested){
+    if(typeof checksStatus?.save!=='function'||typeof checksStatus?.cloud!=='function')throw new Error('shared_checks_status_port_required');
+    const account=loadSession()?.user?.id;
+    const cloudCurrent=()=>!!account&&loadSession()?.user?.id===account&&session.connectionMode==='supabase'&&session.backendReady&&sharedChecksV2.cloudReady;
+    const failed=()=>{checksStatus.save('הצקים לא נשמרו — אין לסגור את החלון','error');if(cloudCurrent())checksStatus.cloud('conflict','ענן: שמירת הצ׳קים נעצרה — אחסון מקומי נכשל')};
     const generation=Number(checksSession.sharedChecksGeneration||0)+1,riskToken=`checks:${generation}`;let write;
     domainRevisions?.touch('checks');
     try{write=sharedChecksV2.persist(operations,{generation,surface,mutationType,deleteIds:deletedIds})}
-    catch(error){beginLocalRisk(riskToken);setSaveStatus('הצקים לא נשמרו — אין לסגור את החלון','error');console.error('Shared Checks V2 save',error);return Promise.resolve(false)}
+    catch(error){beginLocalRisk(riskToken);failed();console.error('Shared Checks V2 save',error);return Promise.resolve(false)}
     checksSession.sharedChecksGeneration=generation;checksSession.sharedChecksSaveRequested=true;
+    if(cloudCurrent())checksStatus.cloud(globalThis.navigator?.onLine===false?'offline':'syncing',globalThis.navigator?.onLine===false?'ענן: אופליין':'ענן: צ׳קים ממתינים לסנכרון');
     if(!write.emergencyDurable){beginLocalRisk(riskToken);clearLocalRiskAfter(riskToken,write.committed)}
-    setSaveStatus(write.emergencyDurable?'הצקים שמורים מקומית':'ממתין לאישור שמירת הצקים ב־IndexedDB','saving');
-    write.committed.catch(()=>setSaveStatus('הצקים לא נשמרו — אין לסגור את החלון','error'));
+    checksStatus.save(write.emergencyDurable?'הצקים שמורים מקומית':'ממתין לאישור שמירת הצקים ב־IndexedDB','saving');
+    write.committed.catch(failed);
     if(files.backupsDirHandle)write.committed.then(()=>nextTurn(()=>backupSnapshotToComputer(normalizeState(model.state),session.dbRevision))).catch(error=>console.error('checks backup',error));
     clearTimeout(checksSession.sharedChecksSaveTimer);
     if(session.connectionMode==='supabase'&&session.backendReady)checksSession.sharedChecksSaveTimer=setTimeout(async()=>{checksSession.sharedChecksSaveTimer=null;try{await write.committed;await saveSharedChecksToCloud(msg)}catch(error){console.error('checks sync',error)}},220);

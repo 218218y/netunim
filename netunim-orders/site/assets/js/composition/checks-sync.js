@@ -8,6 +8,7 @@ export function composeChecksSync({model,files,checksSession,tab,uiStatus,domain
     renderKupaDependentView:(...args)=>domainsBankCache.renderKupaDependentView(...args),
     writeStateToFolder:(...args)=>storageFiles.writeStateToFolder(...args),
     loadSession:(...args)=>cloudAuth.loadSession(...args),
+    setCloud:(...args)=>uiStatus.setChecksCloud(...args),
     refreshCloudTimestamp:(...args)=>uiStatus.refreshCloudTimestamp(...args),
   });
 }

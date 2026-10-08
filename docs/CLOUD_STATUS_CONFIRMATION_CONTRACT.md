@@ -1,4 +1,4 @@
-# Main cloud status confirmation
+# Main and Shared cloud status confirmation
 
 ## Evidence and scope
 
@@ -11,8 +11,8 @@ This proves a status/return-value defect; it does not prove data overwrite.
 `cloudPoll() === true` confirms that Main's current scoped, acknowledged head
 was still clean at the final check. It does not mean merely that a GET succeeded,
 or acknowledge Shared Checks/Finance work. Those domains retain their separate
-sync owners and status/error policy. Full ongoing header aggregation across all
-Orders domains remains a separate review.
+sync owners and status/error policy. The ongoing Orders header now aggregates
+Main and Shared Checks, with Finance remaining an independent readout.
 
 ## Confirmation boundary
 
@@ -56,6 +56,43 @@ The ACK and hydration protocols remain defined in
 [the hydration contract](STORAGE_CLOUD_HYDRATION_CONTRACT.md). No SQL, schema,
 serialization, credential or RPC behavior changes in this slice.
 
+## Source ownership and Shared confirmation
+
+Baseline for this extension: main `c4a16a84`, full verification `37772871012`
+passed. Eighteen controlled regressions exposed stale startup status overwriting
+a live Main error, Shared conflicts missing from the Orders header, and Shared
+success despite pending work or a late edit/logout. Four additional regressions
+proved that Main and Shared local appends left an old success visible until the
+scheduled cloud send started. These are status defects; they do not prove data
+overwrite.
+
+Orders `setCloud` owns the Main slot; `setChecksCloud` owns the Shared slot.
+Startup records supply a fallback only until that capability publishes a live
+outcome. A late Finance startup completion and timestamp refresh cannot replace
+a live document outcome. Main logout clears the ledger and pins the inactive
+header until Main publishes again. Finance remains outside this header, with its
+existing independent view/error policy. Kupa keeps its existing separate Main
+and Shared slots; check persistence now uses the Shared save/cloud ports.
+
+Both applications publish pending status synchronously when a local append is
+accepted, including an IDB-only commit still in progress. Offline indication
+remains offline. This event never clears a journal, flight, conflict or ACK.
+
+The canonical `shared/shared-checks-status.js` confirmation requires a clean,
+acknowledged scoped head, `hasLocalWork === false`, and the normalized visible
+checks equal to the acknowledged checks. App adapters additionally recheck the
+authenticated account, primary leadership and connection eligibility after
+awaits. The scoped sequence/owner/epoch observed after sync must still match the
+final receipt. Optional backup receives updated Shared metadata in the existing
+order; after its await the adapter reads and validates the head again. A raw
+`runtime.sync() === true` is insufficient. Shared sync returns true only for
+this confirmed document, without implying Main or Finance success.
+
+Local commit failure retains the existing undurable-work guard and reports the
+owning save source. A late Shared cloud error/result cannot publish against a
+different authenticated account. No ACK, merge, serialization or network retry
+policy changes are needed to enforce this presentation boundary.
+
 ## Verification
 
 `cloud_poll_status_races.test.mjs` exercises controlled meta/row/journal/Shared
@@ -71,3 +108,12 @@ commit, accepts a valid no-op ACK, and recovers the exact note ID/content and
 clean sequence/revision from a fresh runtime. The full CI gate additionally
 checks real PostgreSQL, two-tab/two-computer, offline/PWA, restore and Windows
 deployment contracts.
+
+`cloud_document_status.test.mjs` covers source ownership, pending/flight/control,
+sequence and visible-state mismatches, delayed durable reads, optional backups,
+account/leadership/network changes and immediate local pending events. The Shared
+fixtures in `runtime_storage.py` exercise both actual application adapters with
+real IndexedDB: lost RPC response, exact immutable replay after restart, newer
+offline edits, held ACK, backup-time edits, retained Main conflict and logout.
+They assert original check IDs, durable sequences/revisions and no duplicate
+remote commit. Only the network/ACK scheduling boundary is controlled.

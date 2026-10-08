@@ -104,7 +104,7 @@ test('Kupa does not send V2 cloud work before an IDB-only journal commit',async(
     storageV2Primary:()=>true,refreshStorageV2CloudState:async()=>({base:{revision:1,ackSeq:0},pending:true}),storageV2CommitPromise:()=>commit.promise,storageV2DurabilityAtRisk:()=>true,
     persistImmediateBrowserSnapshot:()=>false,normalizeState:normalization.normalizeState,prepareKupaCloudState:normalization.prepareKupaCloudState,
     persistSupabaseState:async()=>{sent.push('sent');return true},
-    setSaveStatus:noop,
+    setSaveStatus:noop,checksStatus:{save:noop,cloud:noop},
   });
   const saving=persistence.saveState('edit',{domains:['notes'],operations:[{type:'put',collection:'notes',id:'N1',record:{id:'N1'}}]});
   await tick();await tick();assert.deepEqual(sent,[]);
@@ -134,7 +134,7 @@ test('Kupa Shared V2 does not start a cloud write when its IDB journal commit fa
     model,session,checksSession,tab:{primaryTab:true},files:{},domainRevisions:{touch:noop},storageV2Primary:()=>true,
     sharedChecksV2:{requested:true,persist:()=>({emergencyDurable:false,committed:commit.promise})},
     normalizeState:normalization.normalizeState,saveSharedChecksToCloud:async()=>{sent.push('sent')},
-    setSaveStatus:noop,
+    setSaveStatus:noop,checksStatus:{save:noop,cloud:noop},
   });
   const saving=persistence.saveChecksState('edit',{operations:[{type:'put',collection:'checks',id:'C1',record:{id:'C1'}}]});
   await new Promise(resolve=>setTimeout(resolve,250));assert.deepEqual(sent,[]);
@@ -150,7 +150,7 @@ test('Kupa does not send a cloud write after local V2 durability fails',async()=
     tab:{primaryTab:true},files:{},checksSession:{},domainRevisions:{touch:noop},storageV2Primary:()=>true,
     storageV2DurabilityAtRisk:()=>false,persistImmediateBrowserSnapshot:()=>false,
     normalizeState:normalization.normalizeState,prepareKupaCloudState:normalization.prepareKupaCloudState,
-    persistSupabaseState:async()=>{sent.push('sent')},setSaveStatus:value=>statuses.push(value),
+    persistSupabaseState:async()=>{sent.push('sent')},setSaveStatus:value=>statuses.push(value),checksStatus:{save:value=>statuses.push(value),cloud:noop},
   });
   const original=console.error;console.error=noop;
   try{assert.equal(await persistence.saveState('edit',{domains:['notes'],operations:[{type:'put',collection:'notes',id:'N1',record:{id:'N1'}}]}),false)}

@@ -22,11 +22,11 @@ test('shared-check flight serializes pull and save and releases its busy slot',a
 
 for(const app of ['orders','kupa'])test(`${app}: Shared Checks V2 joins concurrent pull and verifies the same cloud head`,async()=>{
   const model={state:{checks:[]}},checksSession={},wait=gate(),started=gate(),calls=[];
-  const sharedChecksV2={requested:true,primaryReady:true,lastRemoteUpdatedAt:'2026-09-27T10:00:00Z',
+  const sharedChecksV2={requested:true,primaryReady:true,hasLocalWork:false,lastRemoteUpdatedAt:'2026-09-27T10:00:00Z',
     async sync(){calls.push('sync');started.resolve();await wait.promise;model.state.checks=[{id:'C',amount:25}];return true},
-    async cloudState(){return {base:{revision:8,state:{checks:[{id:'C',amount:25}],bankEvents:[{seq:1,checkId:'C'}]}},pending:false,control:null}}};
-  const common={sharedChecksV2,model,checksSession,tab:{primaryTab:true},files:{},toast:noop};
-  const api=app==='orders'?ordersChecks({...common,loadSession:()=>true,recomputeKupaNetFromCache:noop,refreshCloudTimestamp:noop,renderKupaDependentView:noop})
+    async cloudState(){return {seq:0,base:{revision:8,ackSeq:0,owner:'A',epoch:'E',state:{checks:[{id:'C',amount:25}],bankEvents:[{seq:1,checkId:'C'}]}},pending:false,flight:null,control:null}}};
+  const common={sharedChecksV2,model,checksSession,tab:{primaryTab:true},files:{},toast:noop,loadSession:()=>({user:{id:'A'}}),setCloud:noop};
+  const api=app==='orders'?ordersChecks({...common,recomputeKupaNetFromCache:noop,refreshCloudTimestamp:noop,renderKupaDependentView:noop})
     :kupaChecks({...common,session:{backendReady:true,connectionMode:'supabase'},setSaveStatus:noop,setCloudHeaderStatus:noop,refreshCloudHeaderTimestamp:noop,render:noop});
   const first=api.syncSharedChecksFromCloud({quiet:true});await started.promise;
   const joined=api.syncSharedChecksFromCloud({required:true,quiet:true});assert.equal(calls.length,1);
@@ -46,11 +46,11 @@ for(const app of ['orders','kupa'])test(`${app}: no Shared V2 runtime cannot fal
 for(const app of ['orders','kupa'])test(`${app}: V2 poll renders a changed check once`,async()=>{
   const model={state:{checks:[{id:'C',amount:10}]}},checksSession={},session={backendReady:true,connectionMode:'supabase'};
   let renders=0,amount=25;
-  const sharedChecksV2={requested:true,primaryReady:true,
+  const sharedChecksV2={requested:true,primaryReady:true,hasLocalWork:false,
     async sync(){model.state.checks=[{id:'C',amount}];return true},
-    async cloudState(){return {base:{revision:8,state:{checks:model.state.checks,bankEvents:[]}},pending:false,control:null}}};
-  const common={sharedChecksV2,model,checksSession,session,tab:{primaryTab:true},files:{},toast:noop};
-  const api=app==='orders'?ordersChecks({...common,loadSession:()=>true,recomputeKupaNetFromCache:noop,refreshCloudTimestamp:noop,renderKupaDependentView:()=>{renders++}})
+    async cloudState(){return {seq:0,base:{revision:8,ackSeq:0,owner:'A',epoch:'E',state:{checks:model.state.checks,bankEvents:[]}},pending:false,flight:null,control:null}}};
+  const common={sharedChecksV2,model,checksSession,session,tab:{primaryTab:true},files:{},toast:noop,loadSession:()=>({user:{id:'A'}}),setCloud:noop};
+  const api=app==='orders'?ordersChecks({...common,recomputeKupaNetFromCache:noop,refreshCloudTimestamp:noop,renderKupaDependentView:()=>{renders++}})
     :kupaChecks({...common,setSaveStatus:noop,setCloudHeaderStatus:noop,refreshCloudHeaderTimestamp:noop,render:()=>{renders++}});
   await api.pollSharedChecks();assert.equal(renders,1);
   await api.pollSharedChecks();assert.equal(renders,1);

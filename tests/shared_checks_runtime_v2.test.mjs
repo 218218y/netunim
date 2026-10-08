@@ -206,7 +206,7 @@ for(const site of ['orders','kupa'])test(`${site}: application save and RPC adap
   const f=fixture(site),runtime=await f.start(),checksSession={checksGeneration:0,sharedChecksGeneration:0},session={localGeneration:0,connectionMode:'supabase',backendReady:true};
   const model={get state(){return f.visible}},common={model,session,checksSession,tab:{primaryTab:true},files:{},sharedChecksV2:runtime,domainRevisions:{touch:noop},
     localSnapshot:forbidden,persistImmediateBrowserSnapshot:forbidden,markChecksPending:forbidden,markSharedChecksPending:forbidden,
-    toast:noop,setSave:noop,setSaveStatus:noop,setCloudHeaderStatus:noop,folderSaveTitle:()=>'',rejectSecondaryMutation:()=>false,loadSession:()=>true,
+    toast:noop,setSave:noop,setCloud:noop,setSaveStatus:noop,checksStatus:{save:noop,cloud:noop},setCloudHeaderStatus:noop,folderSaveTitle:()=>'',rejectSecondaryMutation:()=>false,loadSession:()=>({user:{id:'A'}}),
     observeSharedChecks:forbidden,saveSharedChecksToCloud:noop};
   const persistence=site==='orders'?createSyncChecksPersistence(common):createStoragePersistence(common);
   f.visible.checks[0].note='app edit';const result=site==='orders'?persistence.scheduleCheckSave('edit',{operations:[put('C')]}):await persistence.saveChecksState('edit',{operations:[put('C')]});assert.equal(result,true);
