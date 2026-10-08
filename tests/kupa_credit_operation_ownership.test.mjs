@@ -100,3 +100,27 @@ test('credit no-op save cannot publish or clear the previous data',async t=>{
 test('credit rejects construction without an operation authorization port',()=>{
   assert.throws(()=>createDomainsCreditController({autoScope:()=> 'A'}),/credit_operation_scope_required/);
 });
+
+test('credit reset confirmation remains bound to the account that opened it',async t=>{
+  const f=fixture(t),confirmation=deferred(),opened=deferred();let resets=0;
+  f.ports.confirmDialog=()=>{opened.resolve();return confirmation.promise};f.ports.bridge.resetCreditProfiles=async()=>{resets++};
+  const api=f.create(),pending=api.resetCreditSync();await opened.promise;f.change();confirmation.resolve(true);await pending;
+  assert.equal(resets,0);assert.equal(f.counts().patches,0);assert.deepEqual(f.model.state,f.before);api.stopAutoSync();
+});
+test('credit logout during local profile reset cannot clear the former account finance data',async t=>{
+  const f=fixture(t),reset=deferred(),entered=deferred();f.ports.confirmDialog=async()=>true;f.ports.bridge.resetCreditProfiles=()=>{entered.resolve();return reset.promise};
+  f.model.state.creditSync=structuredClone(result);const before=structuredClone(f.model.state);
+  const api=f.create(),pending=api.resetCreditSync();await entered.promise;f.logout();reset.resolve();await pending;
+  assert.equal(f.counts().patches,0);assert.equal(f.counts().saves,0);assert.deepEqual(f.model.state,before);api.stopAutoSync();
+});
+test('credit reset keeps prior financial data when cloud confirmation fails',async t=>{
+  const f=fixture(t);f.ports.confirmDialog=async()=>true;f.ports.bridge.resetCreditProfiles=async()=>{};f.ports.saveFinancePatch=async()=>{throw new Error('fixture reset offline')};
+  f.model.state.creditSync=structuredClone(result);const before=structuredClone(f.model.state);const api=f.create();await api.resetCreditSync();
+  assert.deepEqual(f.model.state,before);assert.equal(f.counts().saves,0);assert.match(api.creditSyncUiState().error,/offline/);api.stopAutoSync();
+});
+test('failed diagnostic publication keeps successful profiles and reports the publication error',async t=>{
+  const f=fixture(t);f.ports.saveFinancePatch=async()=>{throw new Error('fixture diagnostic offline')};
+  f.model.state.creditSync=structuredClone(result);const before=structuredClone(f.model.state),api=f.create(),pending=api.refreshCreditSync();await f.entered.promise;
+  f.provider.reject(Object.assign(new Error('issuer failed'),{creditErrors:[{profileId:'P',message:'issuer diagnostic'}]}));await pending;
+  assert.deepEqual(f.model.state,before);assert.equal(f.counts().saves,0);assert.match(api.creditSyncUiState().error,/diagnostic offline/);api.stopAutoSync();
+});

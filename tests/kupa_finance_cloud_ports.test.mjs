@@ -106,3 +106,14 @@ test('late finance receipt cannot update the new runtime revision',async()=>{
   await assert.rejects(ports.saveFinancePatchTracked(()=>({}),null,{assertCurrent}),{code:'FINANCE_OPERATION_SCOPE_CHANGED'});
   assert.deepEqual(session,{financeRevision:3,financeUpdatedAt:'old'});
 });
+
+test('finance composition forwards renewal TTL and authorization to lease transport',async()=>{
+  const calls=[],session={connectionMode:'supabase',backendReady:true};let checks=0;
+  const options={ttlSeconds:60,assertCurrent:()=>{checks++}};
+  const ports=createKupaFinanceCloudPorts({session,cloudTransport:{
+    claimFinanceSyncLease:async(...args)=>{calls.push(['claim',...args]);return {acquired:true}},
+    releaseFinanceSyncLease:async(...args)=>{calls.push(['release',...args]);return true},
+  }});
+  await ports.claimFinanceSyncLease('credit','L',options);await ports.releaseFinanceSyncLease('credit','L',options);
+  assert.deepEqual(calls,[['claim','credit','L',options],['release','credit','L',options]]);assert.equal(checks,2);
+});
