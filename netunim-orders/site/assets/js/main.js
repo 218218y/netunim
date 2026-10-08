@@ -25,7 +25,7 @@ import {createDomainsChecksView} from './domains/checks/view.js';
 import {createDomainsBankSelectors} from './domains/bank/selectors.js';
 import {createDomainsBankCache} from './domains/bank/cache.js';
 import {createUiAlertCenter} from './ui/alert-center.js';
-import {createDomainsFinanceBridge} from './domains/finance/bridge.js';
+import {createFinanceBridgeIntegration} from './integrations/bank-bridge.js';
 import {composeDocumentSearch} from './shared/document-search-composition.js';
 import {createDomainsFinanceController} from './domains/finance/controller.js';
 import {createDomainsFinanceView} from './domains/finance/view.js';
@@ -115,9 +115,9 @@ const cloudAuth=createCloudAuth({
   assertSessionOwner:(...args)=>storageOwner.assertSessionOwner(...args),
 });
 
-const domainsFinanceBridge=createDomainsFinanceBridge();
+const financeBridge=createFinanceBridgeIntegration();
 const domainsDocumentBridge=composeDocumentSearch({supaFetch:(...args)=>cloudAuth.supaFetch(...args)});
-const bankChequeImages=createOrdersBankChequeImageRuntime({cloudAuth,bridge:domainsFinanceBridge});
+const bankChequeImages=createOrdersBankChequeImageRuntime({cloudAuth,bridge:financeBridge});
 
 const calendarRuntime=createOrdersCalendarRuntime({
   calendarSession,supaFetch:(...args)=>cloudAuth.supaFetch(...args),
@@ -326,7 +326,7 @@ const domainsFinanceController=createDomainsFinanceController({
   readRevision:()=>domainRevisions.stamp(['finance','checks','bankDisplay']),
   tab,
   checksSession,
-  bridge:domainsFinanceBridge,
+  bridge:financeBridge,
   loadSession:(...args)=>cloudAuth.loadSession(...args),
   refreshKupaReadout:(...args)=>domainsBankCache.refreshKupaReadout(...args),
   readKupaReadOnlyCloud:(...args)=>cloudTransport.readKupaReadOnlyCloud(...args),
@@ -439,7 +439,7 @@ const uiCloud=composeCloudUi({
 });
 
 const importFinanceConnections=createFinanceConnectionImporter({
-  bridge:domainsFinanceBridge,
+  bridge:financeBridge,
   getCreditProfiles:()=>domainsFinanceController.snapshot().creditSync?.profiles||[],
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
   toast:(...args)=>uiStatus.toast(...args),

@@ -15,6 +15,7 @@ core: numbers, money, dates and IDs; no DOM or persistence.
 state: initial schema, context ownership, normalization, portable serialization and validation.
 storage: browser snapshots, IndexedDB, pending mirrors, File System Access, verified backups and writer locks.
 cloud: authentication and HTTP/RPC contracts; no DOM.
+integrations: local Bank Bridge adapter and installed device preferences; injected into domains by composition.
 sync: document/check queues, three-way merge, revision retries, rebase, pending recovery and polling.
 ui: modal lifecycle, notifications, navigation, folders, connection controls and action dispatch.
 domains: calculation models, state selectors, views and editor/controllers for each business area.
@@ -24,6 +25,9 @@ Orders domains: checks, suppliers, customers, service, inventory, warehouse, not
 Factories receive named contexts and callbacks. Calculation models receive explicit data and can run in Node.
 Editor/controllers read forms and coordinate mutations and persistence. Views never call RPC directly.
 Callbacks from the composition root connect layers without circular imports or a global service locator.
+The Bank Bridge client is canonical in shared/bank-bridge-client.js and receives explicit
+network/token/timer/abort ports. shared/browser-bridge-platform.js implements browser I/O;
+shared/finance-refresh-policy.js owns pure bank/credit freshness. See docs/BANK_BRIDGE_PORT_CONTRACT.md.
 The model context owns business state; session/checksSession own synchronization state; files owns handles/queues;
 UI contexts own filters, selections and modal drafts. Orders lastCloudState belongs to session.
 Main and Shared Checks publish cloud status through separate UI ports; a success in one

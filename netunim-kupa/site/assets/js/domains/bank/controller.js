@@ -3,7 +3,7 @@ import {startFinanceLeaseHeartbeat} from '../../shared/finance-fence.js';
 import {uid} from '../../core/values.js';
 import {wholeMoney} from '../../core/money.js';
 import {todayISO} from '../../core/dates.js';
-import {BANK_AUTO_INTERVAL_MS,bankAutoRefreshDue} from './bridge.js';
+import {BANK_AUTO_INTERVAL_MS,bankAutoRefreshDue} from '../../shared/finance-refresh-policy.js';
 import {normalizeBankFeed} from './feed.js';
 
 const BANK_BRIDGE_VERSION=72;

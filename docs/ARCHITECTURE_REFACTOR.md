@@ -325,6 +325,18 @@ status slot. These changes preserve the storage/RPC/retry protocols. Controlled
 races and real IndexedDB restart/lost-response/held-ACK fixtures verify the
 [source and confirmation contract](CLOUD_STATUS_CONFIRMATION_CONTRACT.md).
 
+Local Bank Bridge HTTP is now canonical in `shared/bank-bridge-client.js`, with
+explicit token/network/timer/abort ports and browser implementation in
+`shared/browser-bridge-platform.js`. App-specific pairing/preferences remain
+under `integrations/`; bank and credit due policy is pure and canonical.
+Controllers receive the Bridge and no longer import its concrete adapter for
+refresh constants. Malformed HTTP success fails as invalid protocol data;
+authenticated local requests cannot follow redirects. Existing timeout,
+endpoint fallback, cooldown, credential and finance publication policies remain.
+See [the Bridge port contract](BANK_BRIDGE_PORT_CONTRACT.md). Document adapters,
+Kupa credit preference/timer I/O and remaining Finance capability boundaries
+still require their own slices.
+
 Baseline for the Kupa phase slice: main `20dbb7a9`, preceding full branch GitHub
 verification run `37752034470` passed (all CI groups, including browser,
 PostgreSQL and Windows contracts). Focused
