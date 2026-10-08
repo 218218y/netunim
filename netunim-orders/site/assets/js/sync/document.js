@@ -194,9 +194,12 @@ function markCloudPollDeferred(head){
 }
 function markCloudSynced(head,observation){
   if(!pollViewCurrent(observation)||!cloudHeadIsSynced(head,{revision:Number(session.cloudRevision||0),observedHead:observation.head}))return markCloudPollDeferred(head);
-  setCloud('ענן: מסונכרן','synced');refreshCloudTimestamp();return true;
+  setCloud('ענן: מסונכרן','synced');return true;
 }
-async function confirmCloudPollSynced(observation){return markCloudSynced(await refreshStorageV2CloudState(),observation)}
+async function confirmCloudPollSynced(observation,{refreshTimestamp=false}={}){
+  const synced=markCloudSynced(await refreshStorageV2CloudState(),observation);
+  if(synced&&refreshTimestamp)refreshCloudTimestamp();return synced;
+}
 function markCloudPollFailure(error){
   const normalized=normalizeCloudError(error),transient=['network','timeout','service_unavailable','rate_limited'].includes(normalized.kind);
   if(!navigator.onLine)setCloud('ענן: אופליין','offline');
@@ -244,7 +247,7 @@ async function cloudPoll(){
   // The final authoritative read occurs after independent hydration too. An edit
   // during any of those awaits cannot publish a stale "synced" assertion.
   if(!ready)return false;
-  try{return await confirmCloudPollSynced(observation)}catch(error){return markCloudPollFailure(error)}
+  try{return await confirmCloudPollSynced(observation,{refreshTimestamp:true})}catch(error){return markCloudPollFailure(error)}
 }
 
 async function resumeAfterReconnect(){

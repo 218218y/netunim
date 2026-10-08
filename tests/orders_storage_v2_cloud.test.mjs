@@ -6,7 +6,7 @@ import {ORDERS_CLOUD_BASE_KEY as CLOUD_BASE_KEY} from './retired_business_storag
 const clone=structuredClone,noop=()=>{};
 function deferred(){let resolve;const promise=new Promise(r=>{resolve=r});return {promise,resolve}}
 
-function fixture({rpcSave,readCloud=async()=>null,merge3=(_base,local)=>({state:clone(local),conflicts:[]}),failRefreshAfterAck=false,onRejected=()=>{},onAcknowledge=async()=>{},onAcknowledged=()=>{},tab={primaryTab:true},onPublication=()=>{},files={},writeStateToFolder=async()=>{}}={}){
+function fixture({rpcSave,readCloud=async()=>null,merge3=(_base,local)=>({state:clone(local),conflicts:[]}),failRefreshAfterAck=false,onRejected=()=>{},onAcknowledge=async()=>{},onAcknowledged=()=>{},tab={primaryTab:true},onPublication=()=>{},files={},writeStateToFolder=async()=>{},refreshCloudTimestamp=()=>{}}={}){
   const base={notes:[{id:'A',content:'base'}]},model={state:{notes:[{id:'A',content:'sent'}]}},session={localGeneration:1,cloudRevision:10,lastCloudState:clone(base),cloudSaveRequested:false,cloudConflictBlocked:false,cloudBusy:false};
   let seq=1,ackSeq=0,revision=10,baseState=clone(base),flight=null,control=null,op=0;
   const sent=[],acks=[],rejects=[],legacyWrites=[],statuses=[];
@@ -25,7 +25,7 @@ function fixture({rpcSave,readCloud=async()=>null,merge3=(_base,local)=>({state:
   };
   const wrappedRpc=async(...args)=>{sent.push({snapshot:clone(args[0]),expected:args[1],operationId:args[2]});return rpcSave?rpcSave(...args):{r:{ok:true},row:{revision:args[1]+1,state:clone(args[0]),updated_at:'2026-09-22T00:00:00Z'}}};
   const refreshState=async()=>{if(failRefreshAfterAck&&acks.length)throw new Error('injected post-ACK refresh failure');return state()};
-  const api=createSyncDocument({model,files,session,tab,toast:noop,setCloud:(...args)=>statuses.push(args),prepareCloudState:(value=model.state)=>clone(value),writeStateToFolder,readCloud,rpcSaveV2:wrappedRpc,merge3,applyOrderCloudState:value=>{onPublication();model.state=clone(value)},cloudEnabled:()=>true,sameOrderCloudData:(a,b)=>JSON.stringify(a)===JSON.stringify(b),cloudHasLocalWork:()=>seq>ackSeq,render:noop,readCloudMeta:async()=>null,refreshKupaReadout:async()=>true,pollSharedChecks:async()=>{},refreshCloudTimestamp:noop,refreshStorageV2CloudState:refreshState,materializeStorageV2CloudFlight:materialize,acknowledgeStorageV2CloudFlight:acknowledge,rejectStorageV2CloudFlight:reject,setStorageV2CloudControl:async value=>{control=clone(value);return clone(value)},storageV2CommitPromise:()=>Promise.resolve()});
+  const api=createSyncDocument({model,files,session,tab,toast:noop,setCloud:(...args)=>statuses.push(args),prepareCloudState:(value=model.state)=>clone(value),writeStateToFolder,readCloud,rpcSaveV2:wrappedRpc,merge3,applyOrderCloudState:value=>{onPublication();model.state=clone(value)},cloudEnabled:()=>true,sameOrderCloudData:(a,b)=>JSON.stringify(a)===JSON.stringify(b),cloudHasLocalWork:()=>seq>ackSeq,render:noop,readCloudMeta:async()=>null,refreshKupaReadout:async()=>true,pollSharedChecks:async()=>{},refreshCloudTimestamp,refreshStorageV2CloudState:refreshState,materializeStorageV2CloudFlight:materialize,acknowledgeStorageV2CloudFlight:acknowledge,rejectStorageV2CloudFlight:reject,setStorageV2CloudControl:async value=>{control=clone(value);return clone(value)},storageV2CommitPromise:()=>Promise.resolve()});
   return {api,model,session,sent,acks,rejects,legacyWrites,statuses,getState:state,getControl:()=>clone(control),mutate(value){model.state=clone(value);seq++;session.localGeneration++},setControl(value){control=clone(value)}};
 }
 
@@ -45,6 +45,12 @@ test('Orders an edit during the post-ACK folder backup cannot confirm the older 
   assert.equal(await f.api.requestCloudSave('sync'),false);
   assert.equal(f.acks.length,1);assert.equal(f.sent.length,1);assert.equal(f.getState().pending,true);
   assert.equal(f.model.state.notes[0].content,'newer-during-backup');assert.ok(!f.statuses.some(([,mode])=>mode==='synced'));
+});
+
+test('Orders ACK and no-flight saves do not invoke the GET timestamp callback or create retry controls',async()=>{
+  const f=fixture({refreshCloudTimestamp:()=>{throw new Error('GET callback must not participate in ACK')}});
+  assert.equal(await f.api.requestCloudSave('sync'),true);assert.equal(f.acks.length,1);assert.equal(f.getControl(),null);
+  assert.equal(await f.api.requestCloudSave('already synced'),true);assert.equal(f.sent.length,1);assert.equal(f.getControl(),null);
 });
 
 test('Orders does not publish the cloud ACK while its checkpoint transaction is unfinished',async()=>{
