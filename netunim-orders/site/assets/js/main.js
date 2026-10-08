@@ -116,7 +116,7 @@ const cloudAuth=createCloudAuth({
 });
 
 const financeBridge=createFinanceBridgeIntegration();
-const domainsDocumentBridge=composeDocumentSearch({supaFetch:(...args)=>cloudAuth.supaFetch(...args)});
+const domainsDocumentBridge=composeDocumentSearch({supaFetch:(...args)=>cloudAuth.supaFetch(...args),accountScope:()=>cloudAuth.getAccountScope()});
 const bankChequeImages=createOrdersBankChequeImageRuntime({cloudAuth,bridge:financeBridge});
 
 const calendarRuntime=createOrdersCalendarRuntime({

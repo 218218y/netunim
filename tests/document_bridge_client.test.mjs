@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createDocumentBridgeIntegration as createKupa} from '../netunim-kupa/site/assets/js/integrations/document-bridge.js';
 import {createDocumentBridgeIntegration as createOrders} from '../netunim-orders/site/assets/js/integrations/document-bridge.js';
 import {createDocumentBridgeClient} from '../shared/document-bridge-client.js';
-import {createDomainsDocumentSearch} from '../shared/document-search/domains/documents/search-source.js';
+import {createDomainsDocumentSearch} from '../netunim-orders/site/assets/js/domains/documents/search-source.js';
 
 const TOKEN_KEY='netunim_document_bridge_token_v1';
 const LEGACY_KEYS=['netunim_orders_document_bridge_token_v1','netunim_kupa_document_bridge_token_v1'];

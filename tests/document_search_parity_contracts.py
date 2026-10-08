@@ -56,7 +56,7 @@ for app,site in (('orders',ORDERS),('kupa',KUPA)):
         assert (site/f'assets/vendor/{vendor}/_runtime-manifest.txt').is_file(), f'{app}: missing {vendor}'
 
 composition=shared_composition.decode('utf-8')
-assert all(name in composition for name in ('createDocumentBridgeIntegration','createDomainsGoogleDriveSearch','createDomainsDocumentSearch'))
+assert all(name in composition for name in ('createDocumentBridgeIntegration','createDocumentGoogleDriveIntegration','createDomainsDocumentSearch'))
 
 for source in CANONICAL.rglob('*.js'):
     relative=source.relative_to(CANONICAL)

@@ -509,7 +509,7 @@ test('unified search uses a full-screen header search, four result filters and a
 test('orders service worker contains both current document search providers after asset synchronization',()=>{
   const sw=read('netunim-orders/site/service-worker.js');
   assert.match(sw,/\.\/assets\/js\/integrations\/document-bridge\.js/);
-  assert.match(sw,/\.\/assets\/js\/domains\/documents\/google-drive\.js/);
+  assert.match(sw,/\.\/assets\/js\/integrations\/document-google-drive\.js/);
   assert.match(sw,/\.\/assets\/js\/domains\/documents\/search-source\.js/);
 });
 

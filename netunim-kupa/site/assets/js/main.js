@@ -253,7 +253,7 @@ const cloudAuth=createCloudAuth({
   assertSessionOwner:(...args)=>storageOwner.assertSessionOwner(...args),
 });
 
-const domainsDocumentBridge=composeDocumentSearch({supaFetch:(...args)=>cloudAuth.supaRest(...args)});
+const domainsDocumentBridge=composeDocumentSearch({supaFetch:(...args)=>cloudAuth.supaRest(...args),accountScope:()=>cloudAuth.getAccountScope()});
 
 const cloudTransport=createCloudTransport({
   session,

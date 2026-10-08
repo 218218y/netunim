@@ -6,7 +6,8 @@ import {composeDocumentSearch as composeKupa} from '../netunim-kupa/site/assets/
 test('both apps expose one document-search capability with a required cloud port',()=>{
   for(const compose of [composeOrders,composeKupa]){
     assert.throws(()=>compose({}),/document_search_cloud_port_required/);
-    const search=compose({supaFetch:async()=>{throw new Error('unexpected network request')}});
+    assert.throws(()=>compose({supaFetch:async()=>{}}),/google_drive_ports_required/);
+    const search=compose({supaFetch:async()=>{throw new Error('unexpected network request')},accountScope:()=>({owner:null,epoch:0})});
     assert.equal(search.providerFor('local:opaque-id'),'everything');
     assert.equal(search.providerFor('drive:opaque-id'),'google-drive');
     assert.equal(typeof search.search,'function');

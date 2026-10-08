@@ -1,6 +1,10 @@
 import {esc} from '../core/values.js';
 import {documentAuthError,documentPairingHtml} from './document-search-connection-view.js';
 
+export function documentAccountScopeError(error){
+  return ['GOOGLE_DRIVE_ACCOUNT_CHANGED','google_drive_cloud_auth_required'].includes(String(error?.code||''));
+}
+
 function errorDetails(error,retry,hint=''){
   const code=String(error?.code||'');
   return `<p>${esc(error?.message||'לא ניתן להשלים את הבקשה.')}${hint?`<br>${esc(hint)}`:''}</p>${code?`<small>${esc(code)}</small>`:''}<button type="button" class="document-preview-open" data-document-retry="${esc(retry)}">נסה שוב</button>`;

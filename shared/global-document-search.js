@@ -11,7 +11,7 @@ import {createDocumentFileTypeFilter} from '../ui/document-search-file-type.js';
 import {createDocumentIndexRefresh} from '../ui/document-index-refresh.js';
 import {globalSearchRefs} from '../ui/global-search-refs.js';
 import {documentAuthError,documentIntroHtml,documentLocalPairingHtml,documentPairingHtml,documentProviderNoticeHtml} from '../ui/document-search-connection-view.js';
-import {documentPreviewErrorHtml,documentSearchErrorHtml} from '../ui/document-search-error-view.js';
+import {documentSearchErrorHtml,documentPreviewErrorHtml,documentAccountScopeError} from '../ui/document-search-error-view.js';
 import {createDocumentContentSearchOptions} from '../ui/document-search-content-options.js';
 import {appendUniqueDocumentRows,createDocumentSearchLanes} from '../ui/document-search-pipeline.js';
 import {DOCUMENT_SORT_FIELDS,nextDocumentSort,normalizeDocumentSort,sortedDocumentRows} from '../domains/documents/document-result-sort.js';
@@ -150,7 +150,7 @@ export function createGlobalDocumentSearch({documentBridge=null,siteSearch,siteR
         const viewer=await createTextSearchViewer({host:previewBody,text:data.text||'',query:'',label:previewTextLabel(data),truncated:!!data.truncated});attachViewer(viewer);return;
       }
       previewBody.innerHTML=`<div class="document-preview-empty"><span>FILE</span><b>אין תצוגה מקדימה זמינה</b><p>אפשר לפתוח את הקובץ בתוכנה המותקנת במחשב בלחיצה כפולה על התוצאה.</p>${previewDetailsHtml(data)}</div>`;
-    }catch(error){if(controller.signal.aborted||sequence!==previewSequence||error?.code==='DOCUMENT_BRIDGE_ABORTED')return;if(previewBody&&isGoogleDriveResult(id)){const url=safeCloudViewUrl(item?.webViewLink),name=item?.name||'הקובץ',reason=error?.code==='PREVIEW_TOO_LARGE'?'הקובץ גדול מדי לתצוגה מקדימה מהירה בתוך האתר.':`לא ניתן לטעון את התצוגה המקדימה דרך Google Drive${error?.message?`: ${error.message}`:'.'}`;if(previewMatches){previewMatches.hidden=true;previewMatches.innerHTML=''}previewBody.innerHTML=`<div class="document-preview-cloud"><span>DRIVE</span><b>${esc(name)}</b><p>${esc(reason)}</p>${url?`<a class="document-preview-open" data-document-open-link href="${esc(url)}" target="_blank" rel="noopener noreferrer">פתח את הקובץ ב-Google Drive</a>`:''}${previewDetailsHtml(item||{})}</div>`;return}if(previewBody)previewBody.innerHTML=documentPreviewErrorHtml(error)}
+    }catch(error){if(controller.signal.aborted||sequence!==previewSequence||error?.code==='DOCUMENT_BRIDGE_ABORTED')return;if(previewBody&&isGoogleDriveResult(id)&&!documentAccountScopeError(error)){const url=safeCloudViewUrl(item?.webViewLink),name=item?.name||'הקובץ',reason=error?.code==='PREVIEW_TOO_LARGE'?'הקובץ גדול מדי לתצוגה מקדימה מהירה בתוך האתר.':`לא ניתן לטעון את התצוגה המקדימה דרך Google Drive${error?.message?`: ${error.message}`:'.'}`;if(previewMatches){previewMatches.hidden=true;previewMatches.innerHTML=''}previewBody.innerHTML=`<div class="document-preview-cloud"><span>DRIVE</span><b>${esc(name)}</b><p>${esc(reason)}</p>${url?`<a class="document-preview-open" data-document-open-link href="${esc(url)}" target="_blank" rel="noopener noreferrer">פתח את הקובץ ב-Google Drive</a>`:''}${previewDetailsHtml(item||{})}</div>`;return}if(previewBody)previewBody.innerHTML=documentPreviewErrorHtml(error)}
   }
 
 

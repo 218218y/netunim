@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createDocumentBridgeClient} from '../shared/document-bridge-client.js';
-import {createDomainsDocumentSearch} from '../shared/document-search/domains/documents/search-source.js';
+import {createDomainsDocumentSearch} from '../netunim-kupa/site/assets/js/domains/documents/search-source.js';
 import {documentPreviewErrorHtml,documentSearchErrorHtml} from '../netunim-kupa/site/assets/js/ui/document-search-error-view.js';
 
 function fixture(){
