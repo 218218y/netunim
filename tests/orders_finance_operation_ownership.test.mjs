@@ -217,3 +217,9 @@ for(const kind of ['Bank','Credit'])test(`Orders rejected ${kind} provider respo
   await f.entered.promise;f.handoff();f.release.resolve();assert.equal(await pending,false);assert.equal(api.snapshot()[kind.toLowerCase()+'Error'].includes('private'),false);
   assert.equal(api.snapshot().bankStatus?.availableAccounts,undefined);assert.equal(f.counts['finance-save']||0,0);api.stopAutoSync();
 });
+
+test('Orders projection invalidates once per authorization transition and stays warm while unauthenticated',t=>{
+  const f=fixture(t);f.ports.readRevision=()=>1;const api=f.create(),authorized=api.readSnapshot();assert.equal(api.readSnapshot().kupa,authorized.kupa);
+  f.logout();const loggedOut=api.readSnapshot();assert.notEqual(loggedOut.kupa,authorized.kupa);assert.equal(api.readSnapshot().kupa,loggedOut.kupa);
+  f.handoff();const replacement=api.readSnapshot();assert.notEqual(replacement.kupa,loggedOut.kupa);assert.equal(api.readSnapshot().kupa,replacement.kupa);api.stopAutoSync();
+});

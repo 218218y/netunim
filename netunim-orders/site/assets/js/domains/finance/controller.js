@@ -61,9 +61,12 @@ export function createDomainsFinanceController({tab,checksSession,bridge,operati
   const manualFinanceQueue=createFinanceManualQueue({claim:claimFinanceSyncLease,release:releaseFinanceSyncLease,createToken:()=>createOperationId('finance-manual')});
   const bankDisplayArchive={business:{accountKey:'',syncKey:'',rows:null,directSnapshot:null},home:{accountKey:'',syncKey:'',rows:null,directSnapshot:null}};
   let bankDisplayArchiveTask=null;
-  let projectionScope=null,projectionEpoch=0;
+  let projectionScope=null,projectionUnavailable=false,projectionEpoch=0;
   function projectionRevision(){
-    if(!scopeIsCurrent(projectionScope)){projectionEpoch++;try{projectionScope=operationScope.captureRead()}catch(error){if(!scopeChanged(error))throw error;projectionScope=null}}
+    if(!scopeIsCurrent(projectionScope)){
+      try{projectionScope=operationScope.captureRead();projectionUnavailable=false;projectionEpoch++}
+      catch(error){if(!scopeChanged(error))throw error;projectionScope=null;if(!projectionUnavailable)projectionEpoch++;projectionUnavailable=true}
+    }
     const revision=readRevision?.();return revision===undefined||revision===null?revision:`${revision}:${projectionEpoch}`;
   }
   function publishDisplayArchive(candidate){bankDisplayArchiveTask=null;Object.assign(bankDisplayArchive,candidate);touchBankDisplayRevision();projectionEpoch++}

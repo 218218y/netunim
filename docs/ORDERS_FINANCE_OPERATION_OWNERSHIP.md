@@ -58,6 +58,9 @@ Coalescing requires both live authorization and matching account/feed targets.
 The memoized projection includes an authorization/cache epoch. An older query
 cannot replace a newer query or a committed snapshot; incident acknowledgements
 invalidate the projection after confirmation.
+Full CI caught repeated invalidation while unauthenticated. An unavailable
+authorization now invalidates once per transition, so warm local/read-only
+renders reuse their detached projection; login/logout still invalidate it.
 
 Main and Finance readout revisions cannot regress within one publication owner.
 A new authorization must read before reusing metadata fast paths. Post-commit
@@ -84,7 +87,7 @@ cannot stop a new scheduler that was explicitly started under a new login.
 
 ## Verification and limits
 
-- `tests/orders_finance_operation_ownership.test.mjs`: 74 controlled regressions
+- `tests/orders_finance_operation_ownership.test.mjs`: 75 controlled regressions
   and contracts covering ownership, readout/cache races, manual settings,
   scheduler lifetime, stale body/pagination, revision confirmation, lost-response
   recovery and record identity.
