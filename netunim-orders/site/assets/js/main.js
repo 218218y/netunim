@@ -30,11 +30,8 @@ import {createDomainsChecksEditor} from './domains/checks/editor.js';
 import {composeChecksPersistence} from './composition/checks-persistence.js';
 import {createDomainsDashboardView} from './domains/dashboard/view.js';
 import {createUiModal} from './ui/modal.js';
-import {createDomainsCustomers} from './domains/customers/composition.js';
-import {createDomainsServiceBulk} from './domains/service/bulk.js';
-import {createDomainsServiceView} from './domains/service/view.js';
-import {createDomainsServiceEditor} from './domains/service/editor.js';
-import {createServiceActionPorts} from './domains/service/action-ports.js';
+import {createOrdersCustomersRuntime} from './composition/customers.js';
+import {createOrdersServiceRuntime} from './composition/service.js';
 import {composeBackup} from './composition/backup.js';
 import {createStateSelectors} from './state/selectors.js';
 import {createStorageFiles} from './storage/files.js';
@@ -54,7 +51,7 @@ import {createLifecycle} from './lifecycle.js';
 import {verifyStorageV2LocalEngine} from './shared/storage-v2-local-birth.js';
 import {bindActionEvents,bindDismissibleDetails,bindNumberInputWheelGuard} from './shared/events.js';
 import {composeActionRegistry} from './shared/action-registry.js';
-import {wrapMutationActions,createExternalActionPacks,createAlertsActions,createFinanceBankActions,createFinanceCreditActions,createChecksActions,createShellActions,createDashboardActions,createCustomersActions,createMorningActions,createServiceActions,createBackupActions,createCloudActions,createNotesActions,createCalendarActions} from './ui/actions.js';
+import {wrapMutationActions,createExternalActionPacks,createAlertsActions,createFinanceBankActions,createFinanceCreditActions,createChecksActions,createShellActions,createDashboardActions,createBackupActions,createCloudActions,createNotesActions,createCalendarActions} from './ui/actions.js';
 import {createUiGlobalSearch} from './ui/global-search.js';
 import {createUiKeyboardNavigation} from './ui/keyboard-navigation.js';
 import {createContexts} from './state/contexts.js';
@@ -63,20 +60,6 @@ import {createRestoreGroupStore} from './shared/restore-groups.js';
 import {createOrdersBankChequeImageRuntime} from './domains/finance/bank-cheque-image-runtime.js';
 import {INITIAL_STATE} from "./state/constants.js";
 import {bindOrdersRuntimeEvents} from './runtime-events.js';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 const {model, ui, supplierUi, customerUi, serviceUi, warehouseUi, notesUi, calendarUi, calendarSession, files, tab, session, checksSession}=createContexts();
 installLocalSiteResetPeerListener();
@@ -138,6 +121,8 @@ const calendarRuntime=createOrdersCalendarRuntime({
 
 const suppliers=createOrdersSuppliersRuntime({model,supplierUi,ui});
 const warehouse=createOrdersWarehouseRuntime({model,warehouseUi,ui,inventoryRevision:()=>domainRevisions.stamp(['inventory'])});
+const domainsCustomers=createOrdersCustomersRuntime({model,customerUi,customerRevision:()=>domainRevisions.stamp(['customerDebts','customerOrders'])});
+const service=createOrdersServiceRuntime({model,serviceUi,serviceRevision:()=>domainRevisions.stamp(['service'])});
 
 const uiStatus=createUiStatus({
   session,
@@ -209,7 +194,7 @@ const uiNavigation=createUiNavigation({
   renderSummary:(...args)=>domainsDashboardView.renderSummary(...args),
   renderSupplier:(...args)=>suppliers.renderSupplier(...args),
   renderCustomers:(...args)=>domainsCustomers.renderCustomers(...args),
-  renderService:(...args)=>domainsServiceView.renderService(...args),
+  renderService:(...args)=>service.renderService(...args),
   renderWarehouse:(...args)=>warehouse.renderWarehouse(...args),
   renderNotes:(...args)=>domainsNotesController.renderNotes(...args),
   renderCalendar:(...args)=>domainsCalendarController.renderCalendar(...args),
@@ -273,61 +258,12 @@ const domainsDashboardView=createDomainsDashboardView({
   checksSession,
   ...suppliers.dashboardPorts(),
   mountViewLayout:(...args)=>uiLayout.mountViewLayout(...args),
-  customerStats:(...args)=>domainsCustomers.selectors.customerStats(...args),
+  customerStats:(...args)=>domainsCustomers.customerStats(...args),
 });
 
 const uiModal=createUiModal({});
 suppliers.bindUi({uiLayout,uiNavigation,uiModal,uiStatus,storagePersistence});
 suppliers.assertReady();
-
-const domainsCustomers=createDomainsCustomers({
-  customerRevision:()=>domainRevisions.stamp(['customerDebts','customerOrders']),
-  model,
-  refreshForMorningRecovery:(...args)=>syncDocument.refreshForMorningRecovery(...args),
-  customerUi,
-  uiLayout,
-  uiModal,
-  uiStatus,
-  storagePersistence,
-  cloudAuth,
-  uiNavigation,
-  uiDateEditor,
-  getBusinessBankTransactions:()=>domainsFinanceController.snapshot().bank?.feed?.transactions||[],
-  ensureBusinessBankTransactions:async()=>{await domainsFinanceController.ensureBankDisplayArchive();return domainsFinanceController.snapshot().bank?.feed?.transactions||[]},
-  onBankDocumentVerified:(...args)=>domainsFinanceController.markBankMorningVerified(...args),
-});
-
-
-const domainsServiceBulk=createDomainsServiceBulk({
-  serviceUi,
-  model,
-  renderService:(...args)=>domainsServiceView.renderService(...args),
-  toast:(...args)=>uiStatus.toast(...args),
-  scheduleSave:(message,options={})=>storagePersistence.scheduleSave(message,{...options,domains:['service']}),
-  confirmDialog:(...args)=>uiModal.confirmDialog(...args),
-});
-
-const domainsServiceView=createDomainsServiceView({
-  serviceRevision:()=>domainRevisions.stamp(['service']),
-  model,
-  serviceUi,
-  mountViewLayout:(...args)=>uiLayout.mountViewLayout(...args),
-  serviceBulkControls:(...args)=>domainsServiceBulk.serviceBulkControls(...args),
-  syncServiceBulkUi:(...args)=>domainsServiceBulk.syncServiceBulkUi(...args),
-  toast:(...args)=>uiStatus.toast(...args),
-  scheduleSave:(message,options={})=>storagePersistence.scheduleSave(message,{...options,domains:['service']}),
-});
-
-const domainsServiceEditor=createDomainsServiceEditor({
-  model,
-  modal:(...args)=>uiModal.modal(...args),
-  toast:(...args)=>uiStatus.toast(...args),
-  scheduleSave:(message,options={})=>storagePersistence.scheduleSave(message,{...options,domains:['service']}),
-  closeModal:(...args)=>uiModal.closeModal(...args),
-  renderService:(...args)=>domainsServiceView.renderService(...args),
-  confirmDialog:(...args)=>uiModal.confirmDialog(...args),
-  dateEditorMarkup:(...args)=>uiDateEditor.dateEditorMarkup(...args),
-});
 
 const uiBackup=composeBackup({tab,ui,model,session,checksSession,storageV2Cloud,storageV2Runtime:mainStorageV2,storageOwner,sharedChecksV2Composition,sharedChecksV2,stateNormalization,stateSelectors:()=>stateSelectors,uiTabGuard,uiModal,storageBrowser,uiStatus,uiFolderStatus,stateSnapshots,uiNavigation,uiSettings:()=>uiSettings,storageFiles:()=>storageFiles,cloudAuth,cloudTransport:()=>cloudTransport,syncDocument:()=>syncDocument,restoreGroupStore,supplierBackup:suppliers.backupPorts(),domainRevisions});
 
@@ -478,6 +414,19 @@ storageV2Coordinator.configure({
   cloudTransport,cloudAuth,mainStorageV2,verifyStorageV2AccountMarker:()=>verifyStorageV2AccountMarker(),
 });
 
+domainsCustomers.bindUi({
+  uiLayout,uiModal,uiStatus,storagePersistence,cloudAuth,uiNavigation,uiDateEditor,
+  refreshForMorningRecovery:(...args)=>syncDocument.refreshForMorningRecovery(...args),
+  bankTransactions:{
+    getTransactions:()=>domainsFinanceController.snapshot().bank?.feed?.transactions||[],
+    ensureTransactions:async()=>{await domainsFinanceController.ensureBankDisplayArchive();return domainsFinanceController.snapshot().bank?.feed?.transactions||[]},
+    onDocumentVerified:(...args)=>domainsFinanceController.markBankMorningVerified(...args),
+  },
+});
+domainsCustomers.assertReady();
+service.bindUi({uiLayout,uiModal,uiStatus,storagePersistence,uiDateEditor});
+service.assertReady();
+
 const uiCloud=composeCloudUi({
   model,files,tab,session,checksSession,ui,uiModal,cloudAuth,uiStatus,storageBrowser,uiTabGuard,stateSnapshots,uiNavigation,storageFiles,
   cloudTransport,domainsBankCache,syncChecks,syncDocument,getUiSettings:()=>uiSettings,getCalendarController:()=>domainsCalendarController,
@@ -567,7 +516,6 @@ const uiEvents={bindActionEvents:(root,actions)=>bindActionEvents(root,actions)}
 
 const creditCardOrderView=createCreditCardOrderView({getSync:()=>domainsFinanceController.snapshot().creditSync,saveOrder:(...args)=>domainsFinanceController.saveCreditCardOrder(...args),modal:(...args)=>uiModal.modal(...args),closeModal:()=>uiModal.closeModal(),render:()=>domainsFinanceView.renderKupa(),escapeHtml:esc});
 
-const servicePorts=createServiceActionPorts({bulk:domainsServiceBulk,view:domainsServiceView,editor:domainsServiceEditor});
 const calendarPorts=calendarRuntime.actionPorts();
 const uiActions=composeActionRegistry([
   ...createExternalActionPacks({notesSheetActions:domainsNotesController.sheetActions,creditOrderActions:creditCardOrderView.actions}),
@@ -578,9 +526,9 @@ const uiActions=composeActionRegistry([
   {name:'shell',actions:createShellActions({uiModal})},
   {name:'dashboard',actions:createDashboardActions({domainsDashboardView,domainsFinanceView,ui})},
   {name:'suppliers',actions:suppliers.actions},
-  {name:'customers',actions:createCustomersActions({customerUi,domainsCustomers})},
-  {name:'morning',actions:createMorningActions({domainsCustomers})},
-  {name:'service',actions:createServiceActions({domainsServiceView,servicePorts,serviceUi})},
+  {name:'customers',actions:domainsCustomers.actions},
+  {name:'morning',actions:domainsCustomers.morningActions},
+  {name:'service',actions:service.actions},
   {name:'warehouse',actions:warehouse.actions},
   {name:'backup',actions:createBackupActions({ui,uiBackup,uiFolders,uiModal})},
   {name:'cloud',actions:createCloudActions({uiCloud})},
@@ -614,7 +562,7 @@ model.state=stateNormalization.normalizeState(structuredClone(INITIAL_STATE));
 suppliers.initializeSelection();
 checksSession.checksCloudBase=[];
 checksSession.checksBankEvents=[];
-bindOrdersRuntimeEvents({uiModal,uiNavigation,domainsSuppliersNavigation:suppliers.navigation,cloudAuth,uiStatus,syncChecks,tab,session,domainsCustomers,domainsFinanceController,stateSnapshots,syncDocument,uiFolders,uiAlertCenter,uiTabGuard,storageV2:mainStorageV2,sharedChecksV2});
+bindOrdersRuntimeEvents({uiModal,uiNavigation,domainsSuppliersNavigation:suppliers.navigation,cloudAuth,uiStatus,syncChecks,tab,session,recoverPendingMorningOperation:(...args)=>domainsCustomers.recoverPendingMorningOperation(...args),domainsFinanceController,stateSnapshots,syncDocument,uiFolders,uiAlertCenter,uiTabGuard,storageV2:mainStorageV2,sharedChecksV2});
 const startupUiActions=wrapMutationActions(uiActions,(domain)=>uiStatus.guardStartupMutation(domain));
 uiEvents.bindActionEvents(document.getElementById('main'),startupUiActions);
 bindDismissibleDetails(document);

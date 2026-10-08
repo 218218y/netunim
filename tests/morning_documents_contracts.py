@@ -26,6 +26,7 @@ browser=(SITE/'assets/js/domains/customers/documents-browser.js').read_text(enco
 persistence=(SITE/'assets/js/storage/persistence.js').read_text(encoding='utf-8')
 bulk=(SITE/'assets/js/domains/customers/bulk.js').read_text(encoding='utf-8')
 composition=(SITE/'assets/js/domains/customers/composition.js').read_text(encoding='utf-8')
+capability=(SITE/'assets/js/composition/customers.js').read_text(encoding='utf-8')
 document_types=(SITE/'assets/js/core/morning-document-types.js').read_text(encoding='utf-8')
 actions=(SITE/'assets/js/ui/action-packs/morning.js').read_text(encoding='utf-8')
 main=(SITE/'assets/js/main.js').read_text(encoding='utf-8')
@@ -74,8 +75,8 @@ ok(not re.search(r'\b(pdf|base64|blob|document_content)\b\s+(?:text|jsonb|bytea)
    'Morning storage: ledger schema does not store PDF/base64/document bodies')
 ok('on delete cascade' not in sql.lower() and 'drop constraint if exists morning_document_operations_owner_id_fkey' in owner_retention.lower(),
    'Morning ledger retention: deleting an app user cannot erase issuance/idempotency evidence')
-ok("createDomainsCustomers" in composition and "createMorningActions({domainsCustomers})" in main and "openMorningDocument=(...args)=>domainsCustomers.openMorningDocument(...args)" in actions and main.count("./domains/customers/") <= 1 and len(main.encode('utf-8')) < 60_000,
-   'Customer composition: Morning stays behind one customer-domain composition boundary and main.js remains below the architecture size limit')
+ok("createDomainsCustomers" in composition and "createMorningActions({domainsCustomers:domain})" in capability and "openMorningDocument=(...args)=>domainsCustomers.openMorningDocument(...args)" in actions and "from './composition/customers.js'" in main and main.count("./domains/customers/") == 0 and len(main.encode('utf-8')) < 60_000,
+   'Customer composition: the shell uses one capability boundary, and Morning actions stay with the customer domain')
 for action in ('open-morning-document','open-morning-standalone','morning-document-type','morning-payment-type','morning-payment-add','morning-payment-remove','morning-payment-amount','morning-bank-debt-select','morning-bank-debt-clear','morning-bank-transaction-select','morning-bank-transaction-clear','morning-bank-transaction-search','morning-preview','morning-create','morning-open-document','morning-reconcile'):
     ok(f"'{action}':" in actions, f'Morning UI action registered: {action}')
 
@@ -117,9 +118,10 @@ morning_config=config.split('[functions.morning-documents]',1)[1]
 ok('verify_jwt = false' in morning_config and 'requireUser(req)' in edge and 'client.auth.getUser(token)' in edge and "if(req.method==='OPTIONS')" in edge and "'Access-Control-Allow-Origin':'*'" in edge,
    'Morning function auth/CORS: preflight reaches the handler while every POST still requires a Supabase-authenticated user')
 customer_pack=(SITE/'assets/js/ui/action-packs/customers.js').read_text(encoding='utf-8')
-ok('const domainsCustomers=createDomainsCustomers({' in main and 'const renderCustomers=' not in main
-   and 'createCustomersActions({customerUi,domainsCustomers})' in main and 'renderCustomers=(...args)=>domainsCustomers.renderCustomers(...args)' in customer_pack,
-   'Customer composition: deferred navigation uses the public domain API without a test-only lexical facade')
+ok('const domainsCustomers=createOrdersCustomersRuntime({' in main and 'const renderCustomers=' not in main
+   and 'createCustomersActions({customerUi,domainsCustomers:domain})' in capability and 'renderCustomers=(...args)=>domainsCustomers.renderCustomers(...args)' in customer_pack
+   and 'domainsCustomers.bindUi({' in main and 'domainsCustomers.assertReady()' in main,
+   'Customer composition: navigation uses the guarded capability API after its explicitly validated bind phase')
 customer_actions=(
   'setCustomerTab','toggleCustomerBulkMode','toggleCustomerBulkRow','toggleCustomerBulkVisible','deleteSelectedCustomerRows',
   'addCustomerOrder','saveCustomerOrderField','deleteCustomerOrder','setCustomerFlag','saveDebtField','openDebtModal','saveDebt','deleteDebt',
@@ -129,8 +131,9 @@ composition=(ROOT/'netunim-orders/site/assets/js/domains/customers/composition.j
 action_ports=customer_pack+'\n'+actions
 ok(all(f'{name}:(...args)=>' in composition for name in customer_actions)
    and all(f'{name}=(...args)=>domainsCustomers.{name}(...args)' in action_ports for name in customer_actions)
-   and 'createCustomersActions({customerUi,domainsCustomers})' in main and 'createMorningActions({domainsCustomers})' in main,
-   'Customer composition: customer/debt/Morning actions are wired through the same public API used by tests')
+   and 'createCustomersActions({customerUi,domainsCustomers:domain})' in capability and 'createMorningActions({domainsCustomers:domain})' in capability
+   and "name:'customers',actions:domainsCustomers.actions" in main and "name:'morning',actions:domainsCustomers.morningActions" in main,
+   'Customer composition: both delegated action maps come from one bound domain runtime')
 
 
 

@@ -1,4 +1,3 @@
-import {createDomainsCustomersSelectors} from './selectors.js';
 import {createDomainsCustomersBulk} from './bulk.js';
 import {createDomainsCustomersView} from './view.js';
 import {createDomainsCustomersEditor} from './editor.js';
@@ -6,7 +5,7 @@ import {createDomainsCustomersDocuments} from './documents.js';
 import {createDomainsCustomersDocumentsBrowser} from './documents-browser.js';
 import {morningDebtDocuments,upsertVerifiedMorningDebtDocument} from './morning-debt-documents.js';
 
-export function createDomainsCustomers({customerRevision,model,customerUi,uiLayout,uiModal,uiStatus,storagePersistence,cloudAuth,uiNavigation,uiDateEditor,refreshForMorningRecovery,getBusinessBankTransactions,ensureBusinessBankTransactions,onBankDocumentVerified}){
+export function createDomainsCustomers({customerRevision,model,customerUi,selectors,uiLayout,uiModal,uiStatus,storagePersistence,cloudAuth,uiNavigation,uiDateEditor,refreshForMorningRecovery,getBusinessBankTransactions,ensureBusinessBankTransactions,onBankDocumentVerified}){
   let view,editor;
   function persistResolvedDebtDocumentMetadata(metadata={}){
     if(storagePersistence.canMutate?.()===false)return false;
@@ -15,7 +14,7 @@ export function createDomainsCustomers({customerRevision,model,customerUi,uiLayo
     if(!upsertVerifiedMorningDebtDocument(debt,metadata))return false;
     return storagePersistence.scheduleSave('פרטי מסמך Morning נשמרו בחוב',{surface:'orders.morning.customerDebtMetadata',domains:['customerDebts'],operations:[{type:'put',collection:'customerDebts',id:debt.id,mode:'replace',record:debt}]})!==false;
   }
-  const selectors=createDomainsCustomersSelectors({model});
+  if(typeof selectors?.customerStats!=='function')throw new TypeError('customers_selectors_required');
   const bulk=createDomainsCustomersBulk({
     customerUi,model,
     rejectDebtRecoveryMutation:(...args)=>documents.rejectDebtRecoveryMutation(...args),

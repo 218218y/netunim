@@ -37,6 +37,7 @@ debt_picker=(SITE/'domains/customers/morning-bank-debt-picker.js').read_text(enc
 transaction_picker=(SITE/'domains/customers/morning-bank-transaction-picker.js').read_text(encoding='utf-8')
 transaction_link=(SITE/'domains/customers/morning-bank-transaction-link.js').read_text(encoding='utf-8')
 composition=(SITE/'domains/customers/composition.js').read_text(encoding='utf-8')
+customer_runtime=(SITE/'composition/customers.js').read_text(encoding='utf-8')
 main=(SITE/'main.js').read_text(encoding='utf-8')
 banks=(SITE/'domains/customers/morning-banks.js').read_text(encoding='utf-8')
 app_css=(ROOT/'netunim-orders/site/assets/app.css').read_text(encoding='utf-8')
@@ -108,7 +109,7 @@ ok('morning-bank-transaction-select' in transaction_picker and 'morning-bank-tra
    'Reverse bank picker is searchable, restricted to eligible credits from the latest 45 calendar days and visibly blocks already-linked transactions')
 ok('.morning-bank-transaction-results{display:none;' in app_css and '.morning-bank-transaction-search-shell:focus-within .morning-bank-transaction-results{display:block}' in app_css and 'overflow-y:auto;overflow-x:hidden' in app_css and 'grid-template-columns:minmax(62px,.65fr)' in app_css,
    'Reverse bank picker stays collapsed until focus and fits inside the Morning modal without horizontal scrolling')
-ok('getBusinessBankTransactions:()=>domainsFinanceController.snapshot().bank?.feed?.transactions||[]' in main and 'ensureBusinessBankTransactions' in main and 'getBusinessBankTransactions' in composition,
+ok('getTransactions:()=>domainsFinanceController.snapshot().bank?.feed?.transactions||[]' in main and 'ensureTransactions:async()=>{await domainsFinanceController.ensureBankDisplayArchive()' in main and 'getBusinessBankTransactions:bankTransactions.getTransactions' in customer_runtime and 'ensureBusinessBankTransactions:bankTransactions.ensureTransactions' in customer_runtime and 'getBusinessBankTransactions' in composition,
    'Morning bank picker consumes the existing finance archive projection instead of creating a second bank-data path')
 ok('bankMorningLinkedDocumentsMarkup' in bank_view and 'data-action="morning-open-document"' in bank_view and 'bankMorningLinkedDocumentsMarkup(row)' in bank_table,
    'Verified Morning documents are directly visible and openable from their bank movement row')

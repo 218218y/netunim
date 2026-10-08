@@ -104,6 +104,16 @@ remain separate from structural refactors.
   knows individual Inventory/Warehouse controllers. Existing journal save
   domains remain distinct: inventory, inventory+warehouseOrders bulk actions,
   and warehouseOrders. Startup actions are guarded until binding completes.
+- Orders Customers now exposes Dashboard totals before UI binding and binds its
+  customer/debt/Morning domain once, after the recovery and finance bank ports
+  are available. Both delegated action packs are owned by this capability;
+  external navigation and bank views receive guarded, purpose-specific commands.
+  Existing Morning server issuance, idempotent recovery, secondary-tab guards,
+  and customer-debt journal operations were not changed. The existing domain
+  editor/view remain accessible for browser recovery fault-injection tests.
+- Orders Service now owns its bulk selection, view, editor, actions, and service
+  persistence scope behind one validated UI bind. The shell uses only render and
+  actions ports, with no individual Service controller construction.
 - Kupa Credit now owns its selectors, view, legacy-card editor and actions in a
   capability runtime. The finance controller remains in Finance composition;
   Credit binds its view after that controller exists, removing late controller
