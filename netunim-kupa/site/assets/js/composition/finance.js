@@ -43,6 +43,7 @@ export function composeKupaFinance({
   });
 
   const bankController=createDomainsBankController({
+    operationScope,
     autoScope:automaticAccess,
     model,session,checksSession,
     sharedChecksHaveLocalWork:(...args)=>syncChecksState.sharedChecksHaveLocalWork(...args),
@@ -79,7 +80,7 @@ export function composeKupaFinance({
     bankBridgeUiState:(...args)=>bankController.bankBridgeUiState(...args),
     refreshBankBridgeStatus:(...args)=>bankController.refreshBankBridgeStatus(...args),
     ensureBankDisplayArchive:(...args)=>bankController.ensureBankDisplayArchive(...args),
-    downloadBankChequeImage:(...args)=>chequeImages.download(...args),
+    downloadBankChequeImage:(date,key)=>chequeImages.download(date,key,{assertCurrent:operationScope.captureRead()}),
     dateEditorMarkup:(...args)=>uiDateEditor.dateEditorMarkup(...args),
   });
 

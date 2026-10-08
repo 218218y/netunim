@@ -59,7 +59,7 @@ for(const app of ['orders','kupa'])test(`${app}: V2 poll renders a changed check
 
 test('bank snapshot refuses a check mutation in its final guard continuation',async()=>{
   let local=false,observations=0,writes=0;
-  const bank=createDomainsBankController({autoScope:()=> 'test-owner',model:{state:{bank:{}}},session:{connectionMode:'supabase'},checksSession:{},
+  const bank=createDomainsBankController({autoScope:()=> 'test-owner',operationScope:{capture:()=>()=>{},captureRead:()=>()=>{}},model:{state:{bank:{}}},session:{connectionMode:'supabase'},checksSession:{},
     sharedChecksHaveLocalWork:()=>{observations++;if(observations===2)queueMicrotask(()=>{local=true});return local},
     syncSharedChecksFromCloud:async()=>true,saveSharedChecksToCloud:async()=>assert.fail('mutation arrived after the drain check'),
     sharedChecksObservedSequence:()=>0,saveState:async()=>{writes++;return true},toast:noop,render:noop,bridge:{}});

@@ -422,6 +422,7 @@ const {
   getUiModal:()=>uiModal,
   operationAccess:()=>({
     account:cloudAuth.getAccountScope(),connectionMode:session.connectionMode,storageOwner:storageOwner.current(),
+    readable:storageOwner.ready&&!storagePreparationActive()&&!session.storageProtocolBlocked&&storageRecovery.isReady()&&!session.startupCloudHydrating,
     writable:tab.primaryTab&&storageOwner.writable&&!storagePreparationActive()&&!session.storageProtocolBlocked&&storageRecovery.isReady()&&!session.startupCloudHydrating,
   }),
   automaticAccess:()=>{

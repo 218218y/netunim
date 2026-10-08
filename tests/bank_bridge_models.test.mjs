@@ -384,7 +384,7 @@ const dualStamp='2026-08-30T06:20:00.000Z';
 const controllerModel={state:{bank:{currentBalance:900,updatedAt:null,asOfDate:null,adjustments:[],feed:null,homeFeed:null}}};
 let controllerSaves=0;
 let dualBridgeResult={fetchedAt:dualStamp,accounts:{business:{balance:5100,branchNumber:'345',accountNumber:'111222',accountId:'12-345-111222',transactions:[]},home:{balance:2600,branchNumber:'345',accountNumber:'333444',accountId:'12-345-333444',transactions:[]}}};
-const dualController=createDomainsBankController({autoScope:()=> 'test-owner',
+const dualController=createDomainsBankController({autoScope:()=> 'test-owner',operationScope:{capture:()=>()=>{},captureRead:()=>()=>{}},
   model:controllerModel,session:{connectionMode:'local',backendReady:true},checksSession:{},sharedChecksHaveLocalWork:()=>false,
   saveState:async()=>{controllerSaves++;return true},syncSharedChecksFromCloud:async()=>true,sharedChecksObservedSequence:()=>17,toast:()=>{},render:()=>{},
   bridge:{getBridgeToken:()=> 'paired',fetchBalance:async()=>dualBridgeResult,autoEnabled:()=>false,markAutoAttempt:()=>{},autoAttemptDelayMs:()=>0},
@@ -406,7 +406,7 @@ assert.equal(dualController.bankBridgeUiState().lastWarningStage,'account','part
 
 const earlyHomeFeed=normalizeBankFeed({provider:'hapoalim',accountNumber:'12-345-777888',balance:1800,syncedAt:'2026-08-29T06:20:00.000Z',transactions:[]});
 const earlyModel={state:{bank:{currentBalance:4900,updatedAt:null,asOfDate:null,adjustments:[],feed:null,homeFeed:earlyHomeFeed}}};
-const earlyController=createDomainsBankController({autoScope:()=> 'test-owner',
+const earlyController=createDomainsBankController({autoScope:()=> 'test-owner',operationScope:{capture:()=>()=>{},captureRead:()=>()=>{}},
   model:earlyModel,session:{connectionMode:'local',backendReady:true},checksSession:{},sharedChecksHaveLocalWork:()=>false,saveState:async()=>true,syncSharedChecksFromCloud:async()=>true,sharedChecksObservedSequence:()=>18,toast:()=>{},render:()=>{},
   bridge:{getBridgeToken:()=> 'paired',fetchBalance:async()=>({fetchedAt:'2026-08-30T08:20:00.000Z',accounts:{business:{balance:5250,branchNumber:'345',accountNumber:'111222',accountId:'12-345-111222',transactions:[]},home:null},accountFailures:{home:{code:'ACCOUNT_NOT_FOUND',stage:'account',message:'החשבון הביתי לא נמצא',availableAccounts:[],accountRole:'home'}}}),autoEnabled:()=>false,markAutoAttempt:()=>{},autoAttemptDelayMs:()=>0},
 });

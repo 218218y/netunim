@@ -65,13 +65,16 @@ function overlayFinanceState(base,finance){
   if(fs.creditSync&&typeof fs.creditSync==='object')out.creditSync=structuredClone(fs.creditSync);
   return out;
 }
-async function readSupabaseDocument(){
+async function readSupabaseDocument({assertCurrent}={}){
+  assertCurrent?.();
   const q=`/rest/v1/kupa_documents?document_name=eq.${encodeURIComponent(session.cloudDocumentName)}&select=*`;
-  const [docResult,financeResult]=await Promise.allSettled([supaRest(q,{method:'GET'}),readFinanceSyncDocument()]);
+  const [docResult,financeResult]=await Promise.allSettled([supaRest(q,{method:'GET',...(assertCurrent?{assertRequestScope:assertCurrent}:{})}),readFinanceSyncDocument({assertCurrent})]);
+  assertCurrent?.();
   if(docResult.status!=='fulfilled')throw docResult.reason;
   const financeAvailable=financeResult.status==='fulfilled';
   if(!financeAvailable)console.warn('finance document read unavailable; Kupa core cloud read continues independently',financeResult.reason);
   const r=docResult.value,j=await r.json().catch(()=>null);
+  assertCurrent?.();
   if(!r.ok)throw new Error(j?.message||j?.hint||'קריאת הקופה מהענן נכשלה');
   const row=Array.isArray(j)&&j.length?j[0]:null;
   if(row){
@@ -130,10 +133,11 @@ async function saveFinancePatch(mutator,lease=null,{assertCurrent=lease?.assertC
   throw new Error('נתוני הסינכרון הפיננסי השתנו במקביל; לא נדרס שום נתון');
 }
 async function saveBankSyncSnapshot(bankState,snapshotToken,snapshotSeq,lease=null){
+  const assertCurrent=lease?.assertCurrent;assertCurrent?.();
   const seq=Number(snapshotSeq);if(!Number.isSafeInteger(seq)||seq<0)throw new Error('snapshotSeq של הבנק אינו תקין');
   const token=String(snapshotToken||'').trim();if(!token)throw new Error('snapshotToken של הבנק חסר');
-  const r=await supaRest('/rest/v1/rpc/save_bank_sync_snapshot_v6',{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify({p_document_name:FINANCE_DOC,p_bank_state:bankState,p_snapshot_token:token,p_snapshot_seq:seq,...financeFencePayload(lease)})});
-  const body=await r.text();let j;try{j=body?JSON.parse(body):null}catch{j=null}if(!r.ok)throw new Error(j?.message||j?.hint||body||'שמירת צילום הבנק האטומי נכשלה');return Array.isArray(j)?j[0]:j;
+  const r=await supaRest('/rest/v1/rpc/save_bank_sync_snapshot_v6',{method:'POST',networkRetry:true,dataPriority:'high',...(assertCurrent?{assertRequestScope:assertCurrent}:{}),body:JSON.stringify({p_document_name:FINANCE_DOC,p_bank_state:bankState,p_snapshot_token:token,p_snapshot_seq:seq,...financeFencePayload(lease)})});
+  const body=await r.text();assertCurrent?.();let j;try{j=body?JSON.parse(body):null}catch{j=null}if(!r.ok)throw new Error(j?.message||j?.hint||body||'שמירת צילום הבנק האטומי נכשלה');return Array.isArray(j)?j[0]:j;
 }
 function bankArchivePayload(transactions){
   const occurrences=new Map();
@@ -145,40 +149,47 @@ function bankArchivePayload(transactions){
   });
 }
 async function mergeBankTransactions(accountKey,accountRole,transactions,lease=null){
+  const assertCurrent=lease?.assertCurrent;assertCurrent?.();
   const payload=bankArchivePayload(transactions);
-  const r=await supaRest('/rest/v1/rpc/merge_bank_transactions_v6',{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify({p_account_key:String(accountKey||''),p_account_role:accountRole==='home'?'home':'business',p_transactions:payload,...financeFencePayload(lease)})});
-  const body=await r.text();let j;try{j=body?JSON.parse(body):null}catch{j=null}if(!r.ok)throw new Error(j?.message||body||'מיזוג תנועות הבנק נכשל');const result=Array.isArray(j)?j[0]:j;return {result,sourcePayload:payload};
+  const r=await supaRest('/rest/v1/rpc/merge_bank_transactions_v6',{method:'POST',networkRetry:true,dataPriority:'high',...(assertCurrent?{assertRequestScope:assertCurrent}:{}),body:JSON.stringify({p_account_key:String(accountKey||''),p_account_role:accountRole==='home'?'home':'business',p_transactions:payload,...financeFencePayload(lease)})});
+  const body=await r.text();assertCurrent?.();let j;try{j=body?JSON.parse(body):null}catch{j=null}if(!r.ok)throw new Error(j?.message||body||'מיזוג תנועות הבנק נכשל');const result=Array.isArray(j)?j[0]:j;return {result,sourcePayload:payload};
 }
 async function syncBankTransactionsSnapshot(accountKey,accountRole,transactions,{snapshotAt,coverage=null,complete=false,lease=null}={}){
+  const assertCurrent=lease?.assertCurrent;assertCurrent?.();
   const payload=bankArchivePayload(transactions),when=String(snapshotAt||'').trim(),from=String(coverage?.from||'').slice(0,10),to=String(coverage?.to||'').slice(0,10),isComplete=complete===true&&coverage?.complete===true&&!coverage?.warning&&/^\d{4}-\d{2}-\d{2}$/.test(from)&&/^\d{4}-\d{2}-\d{2}$/.test(to);
   if(!when||!Number.isFinite(Date.parse(when)))throw new Error('זמן צילום תנועות הבנק אינו תקין');
-  const r=await supaRest('/rest/v1/rpc/sync_bank_transactions_snapshot_v6',{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify({p_account_key:String(accountKey||''),p_account_role:accountRole==='home'?'home':'business',p_transactions:payload,p_snapshot_at:new Date(when).toISOString(),p_coverage_from:isComplete?from:null,p_coverage_to:isComplete?to:null,p_complete:isComplete,...financeFencePayload(lease)})});
-  const body=await r.text();let j;try{j=body?JSON.parse(body):null}catch{j=null}if(!r.ok)throw new Error(j?.message||j?.hint||body||'שמירת צילום תנועות הבנק נכשלה');const result=Array.isArray(j)?j[0]:j;return {result,sourcePayload:payload,complete:isComplete};
+  const r=await supaRest('/rest/v1/rpc/sync_bank_transactions_snapshot_v6',{method:'POST',networkRetry:true,dataPriority:'high',...(assertCurrent?{assertRequestScope:assertCurrent}:{}),body:JSON.stringify({p_account_key:String(accountKey||''),p_account_role:accountRole==='home'?'home':'business',p_transactions:payload,p_snapshot_at:new Date(when).toISOString(),p_coverage_from:isComplete?from:null,p_coverage_to:isComplete?to:null,p_complete:isComplete,...financeFencePayload(lease)})});
+  const body=await r.text();assertCurrent?.();let j;try{j=body?JSON.parse(body):null}catch{j=null}if(!r.ok)throw new Error(j?.message||j?.hint||body||'שמירת צילום תנועות הבנק נכשלה');const result=Array.isArray(j)?j[0]:j;return {result,sourcePayload:payload,complete:isComplete};
 }
-async function readBankTransactions(accountKey,accountRole,{days=370,maxRows=20000}={}){
+async function readBankTransactions(accountKey,accountRole,{days=370,maxRows=20000,assertCurrent}={}){
+  assertCurrent?.();
   const dayCount=days===null||days==='all'?null:Number(days),since=Number.isFinite(dayCount)&&dayCount>0?new Date(Date.now()-dayCount*86400000).toISOString():'',dateClause=since?`&transaction_date=gte.${encodeURIComponent(since)}`:'',pageSize=1000,cap=Math.max(pageSize,Number(maxRows)||20000),rows=[];
   for(let offset=0;offset<cap;offset+=pageSize){
+    assertCurrent?.();
     const q=`/rest/v1/bank_transactions?account_key=eq.${encodeURIComponent(accountKey)}&account_role=eq.${accountRole==='home'?'home':'business'}${dateClause}&select=id,merge_key,transaction_date,processed_date,amount,currency,description,memo,party_name,party_headline,message_headline,message_detail,status,balance_after,bank_reference,bank_serial,activity_type_code,cheque,check_details,credit_settlement_details,first_seen_at,presence_state,last_seen_at,missing_since,missing_acknowledged_at,alert_acknowledgements&order=transaction_date.desc,id.desc&limit=${pageSize}&offset=${offset}`;
-    const r=await supaRest(q,{method:'GET'}),j=await r.json().catch(()=>null);if(!r.ok)throw new Error(j?.message||'קריאת ארכיון הבנק נכשלה');
+    const r=await supaRest(q,{method:'GET',...(assertCurrent?{assertRequestScope:assertCurrent}:{})}),j=await r.json().catch(()=>null);assertCurrent?.();if(!r.ok)throw new Error(j?.message||'קריאת ארכיון הבנק נכשלה');
     const page=Array.isArray(j)?j:[];rows.push(...page);if(page.length<pageSize)return rows.map(x=>({archiveId:Number(x.id),id:x.merge_key,date:x.transaction_date,processedDate:x.processed_date,amount:Number(x.amount),currency:x.currency,description:x.description,memo:x.memo,partyName:x.party_name,partyHeadline:x.party_headline,messageHeadline:x.message_headline,messageDetail:x.message_detail,status:x.status,balanceAfter:x.balance_after===null?null:Number(x.balance_after),bankReference:x.bank_reference,bankSerial:x.bank_serial,activityTypeCode:x.activity_type_code,cheque:!!x.cheque,checkDetails:x.check_details,creditSettlementDetails:x.credit_settlement_details,firstSeenAt:x.first_seen_at,presenceState:x.presence_state||'unknown',lastSeenAt:x.last_seen_at,missingSince:x.missing_since,missingAcknowledgedAt:x.missing_acknowledged_at,alertAcknowledgements:x.alert_acknowledgements&&typeof x.alert_acknowledgements==='object'?x.alert_acknowledgements:{}}));
   }
   throw new Error('ארכיון הבנק גדול ממגבלת הקריאה הבטוחה; התצוגה נעצרה במקום להציג היסטוריה חלקית');
 }
-async function readBankTransactionSnapshot(accountKey,accountRole){
+async function readBankTransactionSnapshot(accountKey,accountRole,{assertCurrent}={}){
+  assertCurrent?.();
   const q=`/rest/v1/bank_transaction_snapshots?account_key=eq.${encodeURIComponent(accountKey)}&account_role=eq.${accountRole==='home'?'home':'business'}&select=snapshot_at,coverage_from,coverage_to,transaction_count,transactions&limit=1`;
-  const r=await supaRest(q,{method:'GET'}),j=await r.json().catch(()=>null);if(!r.ok)throw new Error(j?.message||'קריאת צילום הבנק הישיר נכשלה');const row=Array.isArray(j)&&j.length?j[0]:null;if(!row)return null;
+  const r=await supaRest(q,{method:'GET',...(assertCurrent?{assertRequestScope:assertCurrent}:{})}),j=await r.json().catch(()=>null);assertCurrent?.();if(!r.ok)throw new Error(j?.message||'קריאת צילום הבנק הישיר נכשלה');const row=Array.isArray(j)&&j.length?j[0]:null;if(!row)return null;
   const transactions=(Array.isArray(row.transactions)?row.transactions:[]).map(tx=>({...tx,id:String(tx?.mergeKey||tx?.id||'')}));
   return {snapshotAt:row.snapshot_at,coverageFrom:row.coverage_from,coverageTo:row.coverage_to,transactionCount:Number(row.transaction_count)||transactions.length,transactions};
 }
-async function acknowledgeBankTransactionMissing(transactionId){
+async function acknowledgeBankTransactionMissing(transactionId,{assertCurrent}={}){
+  assertCurrent?.();
   const id=Number(transactionId);if(!Number.isSafeInteger(id)||id<=0)throw new Error('מזהה תנועת הבנק אינו תקין');
-  const r=await supaRest('/rest/v1/rpc/acknowledge_bank_transaction_missing',{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify({p_transaction_id:id})});
-  const body=await r.text();let j;try{j=body?JSON.parse(body):null}catch{j=null}if(!r.ok)throw new Error(j?.message||j?.hint||body||'סימון תנועת הבנק כנבדקה נכשל');return Array.isArray(j)?j[0]:j;
+  const r=await supaRest('/rest/v1/rpc/acknowledge_bank_transaction_missing',{method:'POST',networkRetry:true,dataPriority:'high',...(assertCurrent?{assertRequestScope:assertCurrent}:{}),body:JSON.stringify({p_transaction_id:id})});
+  const body=await r.text();assertCurrent?.();let j;try{j=body?JSON.parse(body):null}catch{j=null}if(!r.ok)throw new Error(j?.message||j?.hint||body||'סימון תנועת הבנק כנבדקה נכשל');return Array.isArray(j)?j[0]:j;
 }
-async function acknowledgeBankTransactionAlert(transactionId,alertKind){
+async function acknowledgeBankTransactionAlert(transactionId,alertKind,{assertCurrent}={}){
+  assertCurrent?.();
   const id=Number(transactionId),kind=String(alertKind||'').trim();if(!Number.isSafeInteger(id)||id<=0)throw new Error('מזהה תנועת הבנק אינו תקין');if(kind!=='returned_cheque')throw new Error('סוג התראת הבנק אינו נתמך');
-  const r=await supaRest('/rest/v1/rpc/acknowledge_bank_transaction_alert',{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify({p_transaction_id:id,p_alert_kind:kind})});
-  const body=await r.text();let j;try{j=body?JSON.parse(body):null}catch{j=null}if(!r.ok)throw new Error(j?.message||j?.hint||body||'הסרת התראת הבנק נכשלה');return Array.isArray(j)?j[0]:j;
+  const r=await supaRest('/rest/v1/rpc/acknowledge_bank_transaction_alert',{method:'POST',networkRetry:true,dataPriority:'high',...(assertCurrent?{assertRequestScope:assertCurrent}:{}),body:JSON.stringify({p_transaction_id:id,p_alert_kind:kind})});
+  const body=await r.text();assertCurrent?.();let j;try{j=body?JSON.parse(body):null}catch{j=null}if(!r.ok)throw new Error(j?.message||j?.hint||body||'הסרת התראת הבנק נכשלה');return Array.isArray(j)?j[0]:j;
 }
 
 

@@ -7,7 +7,8 @@ export function createKupaFinanceCloudPorts({
 }){
   const remoteLeaseTokens=new Set();
 
-  async function refreshFinanceCloudSnapshot(){
+  async function refreshFinanceCloudSnapshot({assertCurrent}={}){
+    assertCurrent?.();
     if(session.connectionMode!=='supabase'||!session.backendReady){
       return {
         verified:true,
@@ -18,11 +19,13 @@ export function createKupaFinanceCloudPorts({
     }
     if(!isOnline())return {verified:false,state:null};
     try{
-      const row=await cloudTransport.readSupabaseDocument();
+      const row=await cloudTransport.readSupabaseDocument(...(assertCurrent?[{assertCurrent}]:[]));
+      assertCurrent?.();
       if(!row?.state)return {verified:false,state:null};
       const kupaChanged=Number(row.revision||0)>Number(session.dbRevision||0);
       const financeChanged=Number(row.financeRevision||0)>Number(session.financeRevision||0);
       if(kupaChanged||financeChanged)await syncDocument.cloudPoll();
+      assertCurrent?.();
       return {
         verified:true,
         state:row.state,
@@ -30,6 +33,7 @@ export function createKupaFinanceCloudPorts({
         financeRevision:Number(row.financeRevision||0),
       };
     }catch(error){
+      if(error.code==='FINANCE_OPERATION_SCOPE_CHANGED')throw error;
       reportError(error);
       return {verified:false,state:null};
     }

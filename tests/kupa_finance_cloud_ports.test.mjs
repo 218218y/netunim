@@ -117,3 +117,21 @@ test('finance composition forwards renewal TTL and authorization to lease transp
   await ports.claimFinanceSyncLease('credit','L',options);await ports.releaseFinanceSyncLease('credit','L',options);
   assert.deepEqual(calls,[['claim','credit','L',options],['release','credit','L',options]]);assert.equal(checks,2);
 });
+
+for(const phase of ['read','poll'])test(`finance preflight rejects scope loss during ${phase} rather than returning a verified former-owner row`,async()=>{
+  let valid=true,polls=0;const assertCurrent=()=>{if(!valid)throw Object.assign(new Error('changed login'),{code:'FINANCE_OPERATION_SCOPE_CHANGED'})};
+  const session={connectionMode:'supabase',backendReady:true,dbRevision:1,financeRevision:1};
+  const ports=createKupaFinanceCloudPorts({session,isOnline:()=>true,reportError:()=>assert.fail('expected scope loss was logged as a network failure'),
+    cloudTransport:{readSupabaseDocument:async options=>{options.assertCurrent();if(phase==='read')valid=false;return {state:{},revision:2,financeRevision:2}}},
+    syncDocument:{cloudPoll:async()=>{polls++;valid=false}},
+  });
+  await assert.rejects(ports.refreshFinanceCloudSnapshot({assertCurrent}),{code:'FINANCE_OPERATION_SCOPE_CHANGED'});assert.equal(polls,phase==='read'?0:1);
+});
+
+test('discarding a former-owner lease clears runtime tracking without sending a release RPC',async()=>{
+  let requests=0,valid=true;const session={connectionMode:'supabase',backendReady:true},assertCurrent=()=>{if(!valid)throw Object.assign(new Error('changed login'),{code:'FINANCE_OPERATION_SCOPE_CHANGED'})};
+  const ports=createKupaFinanceCloudPorts({session,cloudTransport:{claimFinanceSyncLease:async()=>({acquired:true}),releaseFinanceSyncLease:async()=>{requests++;return true}}});
+  await ports.claimFinanceSyncLease('bank','old');valid=false;
+  await assert.rejects(ports.releaseFinanceSyncLease('bank','old',{assertCurrent}),{code:'FINANCE_OPERATION_SCOPE_CHANGED'});
+  valid=true;await ports.releaseFinanceSyncLease('bank','old',{assertCurrent});assert.equal(requests,0);
+});
