@@ -420,6 +420,10 @@ const {
   syncChecksState,syncChecks,storagePersistence,uiStatus,uiNavigation,
   uiDateEditor,financeDerivations,domainsBankSelectors,domainRevisions,
   getUiModal:()=>uiModal,
+  operationAccess:()=>({
+    account:cloudAuth.getAccountScope(),connectionMode:session.connectionMode,storageOwner:storageOwner.current(),
+    writable:tab.primaryTab&&storageOwner.writable&&!storagePreparationActive()&&!session.storageProtocolBlocked&&storageRecovery.isReady()&&!session.startupCloudHydrating,
+  }),
   automaticAccess:()=>{
     if(!tab.primaryTab||!session.backendReady||navigator.onLine===false||session.storageProtocolBlocked||!storageRecovery.isReady()||session.startupCloudHydrating||session.syncCapabilitiesChecking||session.syncCapabilitiesError)return null;
     if(session.connectionMode!=='supabase')return 'local:'+session.connectionMode;

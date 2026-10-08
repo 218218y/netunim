@@ -421,6 +421,14 @@ logout/relogin of the same user; ordinary access-token refresh preserves the
 scope. See [the Drive scope contract](GOOGLE_DRIVE_ACCOUNT_SCOPE.md). The review
 reproduced cached-token use after account change/logout in both app runtimes.
 
+Kupa credit now captures operation authorization independently of automatic
+scheduling. A real-browser logout race proved stale projection publication;
+refresh/reset/settings and structured diagnostics now publish only after a
+scoped finance confirmation. Lease waiting/renewal and authenticated network
+retries retain the captured scope. See [the credit operation contract](KUPA_CREDIT_OPERATION_OWNERSHIP.md).
+Bank and remaining Orders Finance post-provider paths still need their own
+behavior review; this is not a claim of universal controller coverage.
+
 These are completion tracks, each delivered through separate focused changes;
 they are not a claim that every older audit finding is still present.
 

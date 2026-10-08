@@ -16,7 +16,7 @@ function fixture(kind,t){
   const old='2020-01-01T00:00:00.000Z',model={state:{bank:{source:'hapoalim',bankSyncAt:old},creditSync:{version:3,syncedAt:old,profiles:[],errors:[]},checks:[]}};
   const session={backendReady:true,connectionMode:'supabase'},tab={primaryTab:true},status=deferred(),cloud=deferred(),writes=[];
   let leaseRead=null,statusReads=0;
-  const ports={model,session,checksSession:{},autoScope:()=>session.backendReady&&tab.primaryTab&&navigator.onLine!==false?scope:null,saveState:async(...args)=>{writes.push(args);return true},saveFinancePatch:async()=>({saved:true}),toast:()=>{},render:()=>{},modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,
+  const ports={model,session,checksSession:{},captureOperation:()=>{const observed=scope;return ()=>{if(!scope||observed!==scope||!tab.primaryTab||!session.backendReady)throw Object.assign(new Error('fixture finance access changed'),{code:'FINANCE_OPERATION_SCOPE_CHANGED'})}},autoScope:()=>session.backendReady&&tab.primaryTab&&navigator.onLine!==false?scope:null,saveState:async(...args)=>{writes.push(args);return true},saveFinancePatch:async()=>({saved:true}),toast:()=>{},render:()=>{},modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,
     sharedChecksHaveLocalWork:()=>false,syncSharedChecksFromCloud:async()=>true,sharedChecksObservedSequence:()=>0,
     refreshFinanceCloudSnapshot:()=>cloud.promise,
     claimFinanceSyncLease:async()=>{claims++;return leaseRead?leaseRead():{acquired:true,leaseName:kind,leaseToken:'L',fenceEpoch:1}},releaseFinanceSyncLease:async()=>{releases++;return true},

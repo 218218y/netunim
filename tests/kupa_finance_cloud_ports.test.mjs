@@ -6,7 +6,7 @@ import {composeKupaFinance} from '../netunim-kupa/site/assets/js/composition/fin
 test('finance capability can be assembled before the modal and binds its importer afterward',()=>{
   let modalReady=false;
   const unexpected=()=>assert.fail('composition performed I/O or used the modal during construction');
-  const capability=composeKupaFinance({automaticAccess:unexpected,
+  const capability=composeKupaFinance({automaticAccess:unexpected,operationAccess:unexpected,
     model:{state:{creditSync:{}}},session:{},checksSession:{},ui:{currentPage:'cash'},
     cloudAuth:{supaRest:unexpected,supaEnsureSession:unexpected},
     cloudTransport:{},syncDocument:{},syncChecksState:{},syncChecks:{},
@@ -97,4 +97,23 @@ test('finance patch tracks the returned revision and only releases leases acquir
   assert.deepEqual(await ports.claimFinanceSyncLease('bank','local'),{acquired:true,localOnly:true});
   await ports.releaseFinanceSyncLease('bank','local');
   assert.deepEqual(releases,[['credit','lease-2']]);
+});
+
+test('late finance receipt cannot update the new runtime revision',async()=>{
+  const session={financeRevision:3,financeUpdatedAt:'old'};let valid=true;
+  const assertCurrent=()=>{if(!valid)throw Object.assign(new Error('changed login'),{code:'FINANCE_OPERATION_SCOPE_CHANGED'})};
+  const ports=createKupaFinanceCloudPorts({session,cloudTransport:{saveFinancePatch:async()=>{valid=false;return {saved:true,row:{revision:9,updated_at:'new'}}}}});
+  await assert.rejects(ports.saveFinancePatchTracked(()=>({}),null,{assertCurrent}),{code:'FINANCE_OPERATION_SCOPE_CHANGED'});
+  assert.deepEqual(session,{financeRevision:3,financeUpdatedAt:'old'});
+});
+
+test('finance composition forwards renewal TTL and authorization to lease transport',async()=>{
+  const calls=[],session={connectionMode:'supabase',backendReady:true};let checks=0;
+  const options={ttlSeconds:60,assertCurrent:()=>{checks++}};
+  const ports=createKupaFinanceCloudPorts({session,cloudTransport:{
+    claimFinanceSyncLease:async(...args)=>{calls.push(['claim',...args]);return {acquired:true}},
+    releaseFinanceSyncLease:async(...args)=>{calls.push(['release',...args]);return true},
+  }});
+  await ports.claimFinanceSyncLease('credit','L',options);await ports.releaseFinanceSyncLease('credit','L',options);
+  assert.deepEqual(calls,[['claim','credit','L',options],['release','credit','L',options]]);assert.equal(checks,2);
 });

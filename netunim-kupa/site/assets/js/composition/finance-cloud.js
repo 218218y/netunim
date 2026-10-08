@@ -36,7 +36,9 @@ export function createKupaFinanceCloudPorts({
   }
 
   async function saveFinancePatchTracked(...args){
+    const assertCurrent=args[1]?.assertCurrent||args[2]?.assertCurrent;assertCurrent?.();
     const result=await cloudTransport.saveFinancePatch(...args);
+    assertCurrent?.();
     const row=result?.row;
     if(row){
       session.financeRevision=Number(row.revision||session.financeRevision||0);
@@ -45,17 +47,18 @@ export function createKupaFinanceCloudPorts({
     return result;
   }
 
-  async function claimFinanceSyncLease(kind,token){
+  async function claimFinanceSyncLease(kind,token,options){
+    options?.assertCurrent?.();
     if(session.connectionMode!=='supabase'||!session.backendReady)return {acquired:true,localOnly:true};
-    const result=await cloudTransport.claimFinanceSyncLease(kind,token);
+    const result=await cloudTransport.claimFinanceSyncLease(kind,token,...(options?[options]:[]));
     if(result?.acquired)remoteLeaseTokens.add(String(token));
     return result;
   }
 
-  async function releaseFinanceSyncLease(kind,token){
+  async function releaseFinanceSyncLease(kind,token,options){
     const key=String(token||'');
     if(!remoteLeaseTokens.has(key))return true;
-    try{return await cloudTransport.releaseFinanceSyncLease(kind,key)}
+    try{options?.assertCurrent?.();return await cloudTransport.releaseFinanceSyncLease(kind,key,...(options?[options]:[]))}
     finally{remoteLeaseTokens.delete(key)}
   }
 

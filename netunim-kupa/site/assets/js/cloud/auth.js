@@ -42,9 +42,10 @@ async function withSupaDataApiSlot(path,request,{priority='low',coalesceKey=''}=
 function sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms))}
 function isSupaNetworkError(error){const name=String(error?.name||''),message=String(error?.message||error||'').toLowerCase();return name==='AbortError'||name==='TypeError'||message.includes('failed to fetch')||message.includes('networkerror')||message.includes('load failed')}
 function supaNetworkFailure(error){const timedOut=String(error?.name||'')==='AbortError',e=new Error(timedOut?'החיבור ל-Supabase לא הגיב בזמן גם לאחר ניסיונות חוזרים.':'לא ניתן להגיע כרגע ל-Supabase גם לאחר ניסיונות חוזרים.');e.code=timedOut?'SUPABASE_NETWORK_TIMEOUT':'SUPABASE_NETWORK_UNAVAILABLE';e.cause=error;return e}
-async function fetchSupaNetwork(url,options,{retry=false,timeoutMs=SUPA_NETWORK_TIMEOUT_MS}={}){
+async function fetchSupaNetwork(url,options,{retry=false,timeoutMs=SUPA_NETWORK_TIMEOUT_MS,assertRequestScope}={}){
   const attempts=retry?SUPA_NETWORK_ATTEMPTS:1;let lastError=null;
   for(let attempt=0;attempt<attempts;attempt++){
+    assertRequestScope?.();
     const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),Math.max(1000,Number(timeoutMs)||SUPA_NETWORK_TIMEOUT_MS));
     try{return await fetch(url,{...options,signal:controller.signal})}
     catch(error){lastError=error;if(!isSupaNetworkError(error)||attempt+1>=attempts)throw supaNetworkFailure(error);await sleep(SUPA_NETWORK_BACKOFF_MS[Math.min(attempt,SUPA_NETWORK_BACKOFF_MS.length-1)])}
@@ -104,8 +105,8 @@ async function supaEnsureSession(){let s=loadSupaSession();if(!s)throw new Error
 async function supaRest(path,options={}){if(syncRequestNeedsCapabilities(path,options.method))await ensureSyncCapabilities();
   const {networkRetry,networkTimeoutMs,dataPriority,coalesceKey,assertRequestScope,...requestOptions}=options,method=String(requestOptions.method||'GET').toUpperCase(),safeRead=method==='GET'||method==='HEAD',priority=dataPriority||(safeRead?'low':'high'),retry=networkRetry===undefined?(safeRead&&priority==='high'):!!networkRetry,timeoutMs=networkTimeoutMs??(priority==='low'?SUPA_BACKGROUND_TIMEOUT_MS:SUPA_NETWORK_TIMEOUT_MS);
   const request=async()=>{
-    assertRequestScope?.();let s=await supaEnsureSession();assertRequestScope?.();let r=await fetchSupaNetwork(`${SUPA_CONFIG.url}${path}`,{...requestOptions,headers:{...supaBaseHeaders(s.access_token),...(requestOptions.headers||{})}},{retry,timeoutMs});
-    if(r.status===401){assertRequestScope?.();const observed=s.access_token;s=await supaRefresh({force:true,observedAccessToken:observed});assertRequestScope?.();r=await fetchSupaNetwork(`${SUPA_CONFIG.url}${path}`,{...requestOptions,headers:{...supaBaseHeaders(s.access_token),...(requestOptions.headers||{})}},{retry,timeoutMs})}
+    assertRequestScope?.();let s=await supaEnsureSession();assertRequestScope?.();let r=await fetchSupaNetwork(`${SUPA_CONFIG.url}${path}`,{...requestOptions,headers:{...supaBaseHeaders(s.access_token),...(requestOptions.headers||{})}},{retry,timeoutMs,assertRequestScope});
+    if(r.status===401){assertRequestScope?.();const observed=s.access_token;s=await supaRefresh({force:true,observedAccessToken:observed});assertRequestScope?.();r=await fetchSupaNetwork(`${SUPA_CONFIG.url}${path}`,{...requestOptions,headers:{...supaBaseHeaders(s.access_token),...(requestOptions.headers||{})}},{retry,timeoutMs,assertRequestScope})}
     return r
   };
   return withSupaDataApiSlot(path,request,{priority,coalesceKey:coalesceKey||(priority==='low'&&safeRead?`${method}:${path}`:'')})

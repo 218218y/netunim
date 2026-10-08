@@ -913,7 +913,8 @@ for controller, kind, bridge_call in ((kupa_bank_controller,"bank","bridge.fetch
     claim=f"claimFinanceSyncLease('{kind}'"
     ok(claim in controller and controller.index(claim)<controller.index(bridge_call),
        f"distributed finance lease: {kind} claim happens before opening the local Bridge session")
-ok("remoteLeaseTokens" in kupa_finance_cloud and "cloudTransport.claimFinanceSyncLease(kind,token)" in kupa_finance_cloud
+ok("remoteLeaseTokens" in kupa_finance_cloud and "cloudTransport.claimFinanceSyncLease(" in kupa_finance_cloud
+   and "return {acquired:true,localOnly:true}" in kupa_finance_cloud
    and "claimFinanceSyncLease:financeCloud.claimFinanceSyncLease" in kupa_finance_composition and "composeKupaFinance({" in kupa_main
    and "claimFinanceSyncLease:(...args)=>cloudTransport.claimFinanceSyncLease(...args)" in orders_main,
    "distributed finance lease: both composition roots wire the shared Supabase lease and Kupa preserves local-only mode")
