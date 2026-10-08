@@ -101,7 +101,7 @@ for(const app of ['Orders','Kupa']){
     let next=0;const timers={setTimeout:run=>{jobs.set(++next,run);return next},clearTimeout:id=>jobs.delete(id)};
     const access={primary:()=>true,authenticated:()=>true,blocked:()=>f.session.storageProtocolBlocked||!f.ports.storageRecovery.isReady()};
     const ports={access,timers,environment,cloud:{enabled:()=>true,connected:()=>true,resumeAfterReconnect:async()=>calls.push('cloud'),cloudPoll:async()=>calls.push('poll')},
-      bank:{maybeAutoRefreshBankBalance:()=>calls.push('bank')},credit:{maybeAutoRefreshCreditSync:async()=>calls.push('credit')},
+      bank:{startAutoSync:()=>calls.push('bank'),stopAutoSync:noop},credit:{startAutoSync:async()=>calls.push('credit'),stopAutoSync:noop},
       checks:{pollSharedChecks:async()=>calls.push('checks')},finance:{startAutoSync:()=>calls.push('finance')},morning:{recoverPendingMorningOperation:async()=>calls.push('morning')},
       status:{startupDomainLocked:()=>false,setCloud:noop,setSaveStatus:noop,setCloudHeaderStatus:noop}};
     const runtime=(app==='Orders'?createOrdersConnectivityRuntime:createKupaConnectivityRuntime)(ports);

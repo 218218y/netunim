@@ -2,9 +2,10 @@ import {createUiCloud} from '../ui/cloud.js';
 
 export function composeCloudUi({
   session,tab,checksSession,model,storageV2Cloud,storageV2Coordinator,syncDocument,uiStatus,cloudAuth,
-  getUiModal,uiConnection,stateNormalization,syncChecksState,syncRecovery,cloudTransport,syncChecks,getUiNavigation,
+  getUiModal,uiConnection,stateNormalization,syncChecksState,syncRecovery,cloudTransport,syncChecks,getUiNavigation,financeAutomation,
 }){
   if(typeof getUiModal!=='function'||typeof getUiNavigation!=='function')throw new Error('kupa_cloud_ui_ports_required');
+  if(typeof financeAutomation?.start!=='function'||typeof financeAutomation?.stop!=='function')throw new Error('kupa_cloud_finance_automation_required');
   return createUiCloud({
     session,
     tab,
@@ -34,8 +35,8 @@ export function composeCloudUi({
     syncSharedChecksFromCloud:(...args)=>syncChecks.syncSharedChecksFromCloud(...args),
     applyCloudRow:(...args)=>syncDocument.applyCloudRow(...args),
     requestStorageV2CloudSave:(...args)=>syncDocument.requestStorageV2CloudSave(...args),
-    startCloudPolling:(...args)=>syncDocument.startCloudPolling(...args),
-    stopCloudPolling:(...args)=>syncDocument.stopCloudPolling(...args),
+    startCloudPolling:(...args)=>{const result=syncDocument.startCloudPolling(...args);financeAutomation.start();return result},
+    stopCloudPolling:(...args)=>{financeAutomation.stop();return syncDocument.stopCloudPolling(...args)},
     render:(...args)=>getUiNavigation().render(...args),
     setConnectedStatus:(...args)=>uiStatus.setConnectedStatus(...args),
     supaAuthPassword:(...args)=>cloudAuth.supaAuthPassword(...args),

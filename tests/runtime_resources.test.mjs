@@ -59,13 +59,13 @@ test('wakeup failures retain their task identity and do not schedule retries',as
 });
 
 function kupa(){
-  const timers=clock(),environment=browser(),events=[],tab={primaryTab:true},session={storageProtocolBlocked:false,connectionMode:'supabase'};
+  const timers=clock(),environment=browser(),events=[],stops=[],tab={primaryTab:true},session={storageProtocolBlocked:false,connectionMode:'supabase'};
   const runtime=createKupaConnectivityRuntime({timers,environment,
     access:{primary:()=>tab.primaryTab,blocked:()=>session.storageProtocolBlocked},
     cloud:{connected:()=>session.connectionMode==='supabase',resumeAfterReconnect:async()=>events.push('reconnect'),cloudPoll:async()=>events.push('poll')},
-    bank:{maybeAutoRefreshBankBalance:()=>events.push('bank')},credit:{maybeAutoRefreshCreditSync:async()=>events.push('credit')},
+    bank:{startAutoSync:()=>events.push('bank'),stopAutoSync:()=>stops.push('bank')},credit:{startAutoSync:async()=>events.push('credit'),stopAutoSync:()=>stops.push('credit')},
     status:{setSaveStatus:()=>events.push('offline-save'),setCloudHeaderStatus:()=>events.push('offline-cloud')}});
-  return {timers,environment,events,tab,session,runtime};
+  return {timers,environment,events,stops,tab,session,runtime};
 }
 
 test('Kupa connectivity starts once and coalesces repeated reconnect and finance wakeups',async()=>{
@@ -95,8 +95,10 @@ test('Kupa offline, hidden document and disposal remove pending wakeups',async()
   emit(f.environment.window,'online');f.environment.navigator.onLine=false;emit(f.environment.window,'offline');
   assert.equal(f.timers.jobs.size,0);
   assert.deepEqual(f.events,['offline-save','offline-cloud']);
+  assert.deepEqual(f.stops,['bank','credit']);
   f.environment.navigator.onLine=true;emit(f.environment.window,'online');
   assert.equal(f.runtime.dispose(),true);assert.equal(f.runtime.dispose(),false);
+  assert.deepEqual(f.stops,['bank','credit','bank','credit']);
   f.timers.fire();await settle();emit(f.environment.window,'online');
   assert.equal(f.timers.jobs.size,0);
   assert.throws(()=>f.runtime.start(),/connectivity_disposed/);

@@ -291,7 +291,7 @@ pre-slice main commit `85ea9278`):
 | Kupa connectivity (including browser/timers) | - | 7 |
 | Orders connectivity (including browser/timers) | - | 8 |
 | Shared runtime resource owner | - | 2 |
-| Shared recurring polling owner | - | 6; public API: start, stop |
+| Shared recurring polling owner | - | 6; public API: start, stop, wake |
 | Orders cloud startup | - | 6; public API: prepare, hydrateMain, hydrateSecondary |
 | Orders local services | - | 5; public API: start, backupAfterHydration |
 | Orders background startup | - | 6; public API: start |
@@ -313,6 +313,16 @@ Unexpected background failures are reported, including Shared/Finance finally
 work; direct poll callers retain the original rejection. See
 [polling ownership](CLOUD_POLLING_RESOURCE_CONTRACT.md). Other integration and
 Shared-specific pollers still need their own ownership review.
+
+Kupa bank and credit now use that recurring owner too. Immediate credit wakeups
+join one active operation; timers stop on offline/dispose/logout and explicitly
+resume through connectivity/cloud composition. Required owner/access scopes are
+revalidated across preparation awaits before provider entry, while already-started
+provider/durable work keeps its existing publication path. Five baseline races
+were reproduced, with controlled lease/timer tests and real-browser journal
+invariance coverage. See [finance automation ownership](KUPA_FINANCE_AUTOMATION_CONTRACT.md).
+Orders finance jobs, other Shared-specific resources and Kupa credit preference
+I/O remain separate slices.
 
 Orders ongoing cloud status now has separate Main and Shared Checks publishers.
 Startup records stop owning a document outcome after its live publisher runs;

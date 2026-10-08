@@ -233,7 +233,7 @@ test('Kupa refresh persists recognized bank sources across a rolling snapshot an
   // controller's wall clock on that date so this historical case stays stable.
   t.mock.timers.enable({apis:['Date'],now:new Date('2026-09-20T12:00:00Z')});
   const model={state:state()},saved=[];
-  const controller=createDomainsBankController({model,session:{connectionMode:'local'},checksSession:{},sharedChecksHaveLocalWork:()=>false,
+  const controller=createDomainsBankController({autoScope:()=> 'test-owner',model,session:{connectionMode:'local'},checksSession:{},sharedChecksHaveLocalWork:()=>false,
     saveState:async()=>{saved.push(structuredClone(model.state));return true},syncSharedChecksFromCloud:async()=>true,sharedChecksObservedSequence:()=>0,toast:()=>{},render:()=>{},
     bridge:{getBridgeToken:()=> 'paired',autoEnabled:()=>false,fetchBalance:async()=>({fetchedAt:'2026-09-20',accounts:{
       business:{accountId:'business',balance:20000,transactions:[],transactionCoverage:{complete:true,from:'2026-08-21',to:'2026-09-20'}},

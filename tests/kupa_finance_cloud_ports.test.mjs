@@ -6,7 +6,7 @@ import {composeKupaFinance} from '../netunim-kupa/site/assets/js/composition/fin
 test('finance capability can be assembled before the modal and binds its importer afterward',()=>{
   let modalReady=false;
   const unexpected=()=>assert.fail('composition performed I/O or used the modal during construction');
-  const capability=composeKupaFinance({
+  const capability=composeKupaFinance({automaticAccess:unexpected,
     model:{state:{creditSync:{}}},session:{},checksSession:{},ui:{currentPage:'cash'},
     cloudAuth:{supaRest:unexpected,supaEnsureSession:unexpected},
     cloudTransport:{},syncDocument:{},syncChecksState:{},syncChecks:{},
