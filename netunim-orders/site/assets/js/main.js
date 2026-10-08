@@ -1,4 +1,5 @@
 import {createOrdersStorageV2Coordinator} from './composition/storage-v2.js';
+import {createStorageStartupRecovery} from './shared/storage-startup-recovery.js';
 import {installLocalSiteResetPeerListener} from './shared/local-site-reset.js';
 import {assertOrderEntityInvariants} from './state/validation.js';
 import {createFinanceDerivationStore} from './shared/finance-derivations.js';
@@ -64,6 +65,7 @@ const {model, ui, supplierUi, customerUi, serviceUi, warehouseUi, notesUi, calen
 installLocalSiteResetPeerListener();
 // Event handlers are installed before the async owner/protocol preflight finishes.
 session.storageProtocolBlocked=true;
+const storageRecovery=createStorageStartupRecovery();
 const domainRevisions=createOrderDomainRevisions(session);
 const financeDerivations=createFinanceDerivationStore({revision:()=>domainRevisions.stamp(['finance','checks'])});
 
@@ -124,6 +126,7 @@ const domainsCustomers=createOrdersCustomersRuntime({model,customerUi,customerRe
 const service=createOrdersServiceRuntime({model,serviceUi,serviceRevision:()=>domainRevisions.stamp(['service'])});
 
 const uiStatus=createUiStatus({
+  storageRecovery,
   session,
   checksSession,
   tab,
@@ -463,20 +466,22 @@ const uiSettings=createUiSettings({
 warehouse.bindUi({uiLayout,uiModal,uiStatus,storagePersistence,uiDateEditor,uiSettings});
 warehouse.assertReady();
 
+storageRecovery.bind({
+  main:{primary:()=>storageBrowser.recoverLocalV2State(),readOnly:()=>storageBrowser.recoverReadOnlyV2State()},
+  shared:{primary:recoverSharedChecksV2Primary,readOnly:()=>sharedChecksV2.recoverReadOnly()},
+});
+
 const lifecycle=createLifecycle({
   storageProtocol:storageV2Coordinator.startupProtocol,
+  storageRecovery,
   hydrateStorageOwner:()=>storageOwner.hydrate({initialOwner:()=>cloudAuth.loadSession()?.user?.id}),
   ...storageV2Coordinator.localBirthLifecyclePorts(),
   ...storageV2Coordinator.ownerTransferLifecyclePorts(),
-  recoverSharedChecksV2Primary,
-  recoverSharedChecksV2ReadOnly:(...args)=>sharedChecksV2.recoverReadOnly(...args),
   ensureSyncCapabilities:(...args)=>cloudAuth.ensureSyncCapabilities(...args),
   files,
   tab,
   session,
   checksSession,
-  recoverLocalV2State:(...args)=>storageBrowser.recoverLocalV2State(...args),
-  recoverReadOnlyV2State:(...args)=>storageBrowser.recoverReadOnlyV2State(...args),
   resumeIncompleteRestore:(...args)=>uiBackup.resumeIncompleteRestore(...args),
   ...storageV2Cloud,
   cloudHasLocalWork:(...args)=>stateSnapshots.cloudHasLocalWork(...args),
@@ -557,7 +562,7 @@ model.state=stateNormalization.normalizeState(structuredClone(INITIAL_STATE));
 suppliers.initializeSelection();
 checksSession.checksCloudBase=[];
 checksSession.checksBankEvents=[];
-bindOrdersRuntimeEvents({uiModal,uiNavigation,domainsSuppliersNavigation:suppliers.navigation,cloudAuth,uiStatus,syncChecks,tab,session,recoverPendingMorningOperation:(...args)=>domainsCustomers.recoverPendingMorningOperation(...args),domainsFinanceController,stateSnapshots,syncDocument,uiFolders,uiAlertCenter,uiTabGuard,storageV2:mainStorageV2,sharedChecksV2});
+const connectivity=bindOrdersRuntimeEvents({uiModal,uiNavigation,domainsSuppliersNavigation:suppliers.navigation,cloudAuth,uiStatus,syncChecks,tab,session,storageRecovery,recoverPendingMorningOperation:(...args)=>domainsCustomers.recoverPendingMorningOperation(...args),domainsFinanceController,stateSnapshots,syncDocument,uiFolders,uiAlertCenter,uiTabGuard,storageV2:mainStorageV2,sharedChecksV2});
 const startupUiActions=wrapMutationActions(uiActions,(domain)=>uiStatus.guardStartupMutation(domain));
 uiEvents.bindActionEvents(document.getElementById('main'),startupUiActions);
 bindDismissibleDetails(document);
@@ -565,6 +570,6 @@ bindNumberInputWheelGuard(document);
 uiEvents.bindActionEvents(document.getElementById('modal'),startupUiActions);
 uiGlobalSearch.bind();
 uiKeyboardNavigation.bind();
-export const appReady=lifecycle.boot().then(()=>{if(session.storageProtocolBlocked)return false;domainsCalendarController.start();if(tab.primaryTab&&navigator.onLine&&cloudAuth.loadSession())setTimeout(()=>void domainsCustomers.recoverPendingMorningOperation({quiet:false}),350);return true});
+export const appReady=lifecycle.boot().then(()=>{if(session.storageProtocolBlocked||!storageRecovery.isReady()||session.syncCapabilitiesError)return false;domainsCalendarController.start();connectivity.resumeStartup();return true});
 export async function sharedChecksStorageV2Diagnostics(){await sharedChecksV2.flush();return {...sharedChecksV2.diagnostics}}
 void appReady.then(ready=>{if(ready)uiAlertCenter.startDateWatcher()});

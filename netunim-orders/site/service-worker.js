@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-71742023619d';
+const CACHE='orders-app-shell-esm-bc5b59accaad';
 const SHELL=[
   './',
   './index.html',
@@ -187,6 +187,7 @@ const SHELL=[
   './assets/js/shared/storage-metrics.js',
   './assets/js/shared/storage-owner.js',
   './assets/js/shared/storage-startup-protocol.js',
+  './assets/js/shared/storage-startup-recovery.js',
   './assets/js/shared/storage-v2-account-marker.js',
   './assets/js/shared/storage-v2-activation-cache.js',
   './assets/js/shared/storage-v2-bootstrap.js',

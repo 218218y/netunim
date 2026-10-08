@@ -3,7 +3,8 @@ import {formatCloudSyncTime, latestCloudUpdatedAt} from '../core/dates.js';
 import {SECONDARY_READ_ONLY_ACTIONS} from './secondary-read-only-actions.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createUiStatus({session, checksSession, tab}){
+export function createUiStatus({session, checksSession, tab, storageRecovery}){
+if(typeof storageRecovery?.isReady!=='function')throw new TypeError('ui_storage_recovery_required');
 function setSaveStatus(text,cls=''){
   const el=document.getElementById('saveIndicator');if(!el)return;
   const cloud=session.connectionMode==='supabase';
@@ -36,6 +37,7 @@ function canRunInteractiveAction(name=''){
   if(!tab.primaryTab&&!SECONDARY_READ_ONLY_ACTIONS.has(name)){toast('לקריאה בלבד — העריכה זמינה בטאב הראשי.');return false}
   if(name==='reset-local-site-storage')return true;
   if(session.storageProtocolBlocked){toast('העריכה חסומה עד לאימות שדרוג האחסון. יש לרענן לאחר התחברות וחיבור לרשת.');return false}
+  if(!storageRecovery.isReady()){toast('העריכה חסומה עד להשלמת שחזור הנתונים המקומיים והצ׳קים המשותפים.');return false}
   if(session.syncCapabilitiesError){toast('העריכה חסומה עד להשלמת התאמת מסד הנתונים לגרסת האתר.');return false}
   if(session.syncCapabilitiesChecking||session.startupCloudHydrating){toast('הנתונים המקומיים כבר מוצגים; העריכה תיפתח מיד לאחר אימות הענן.');return false}
   return true

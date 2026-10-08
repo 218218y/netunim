@@ -1,9 +1,9 @@
-import {STORAGE_PREF_KEY} from './state/constants.js';
 import {createStartupTask} from './shared/startup-task.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createLifecycle({
   storageProtocol,
+  storageRecovery,
   hydrateStorageOwner=async()=>{},
   hydrateLocalBirth=async()=>null,
   ensureLocalBirth=async()=>false,
@@ -11,18 +11,12 @@ export function createLifecycle({
   hydrateStorageV2OwnerTransfer=async()=>null,
   resumeStorageV2OwnerTransfer=async()=>null,
   storageV2OwnerTransferPreparing=()=>false,
-  recoverLocalV2State=async()=>false,
-  recoverReadOnlyV2State=async()=>false,
-  recoverSharedChecksV2Primary=async()=>false,
-  recoverSharedChecksV2ReadOnly=async()=>false,
-  recoverBrowserV2State=async()=>false,
-  recoverBrowserV2StateReadOnly=async()=>false,
   ensureSyncCapabilities=async()=>true,
   render=()=>{},
+  hideConnectScreen=()=>{},
   session,
   tab,
   openLastFolder,
-  configureCloudConnectButton,
   handleCloudConnectButton,
   setCloudHeaderStatus,
   setSaveStatus=()=>{},
@@ -40,17 +34,12 @@ export function createLifecycle({
   tryAutoOpenSupabase,
   setConnectUI,
   showFirstRun,
-  tryAutoOpenRemembered
+  tryAutoOpenRemembered,
+  startCloudPolling=()=>{}
 }){
 for(const method of ['check','readMarkers','verifyLocal'])if(typeof storageProtocol?.[method]!=='function')throw new TypeError(`lifecycle_storage_protocol_${method}_required`);
-
-async function retryReadOnlyRecovery(fn,{attempts=6,delay=60}={}){
-  for(let attempt=0;attempt<attempts;attempt++){
-    try{const result=await fn();if(result)return result}catch(error){if(attempt===attempts-1)console.error('secondary read-only recovery',error)}
-    if(attempt<attempts-1)await new Promise(resolve=>setTimeout(resolve,delay));
-  }
-  return false;
-}
+for(const method of ['assertBound','primary','readOnly','activate'])if(typeof storageRecovery?.[method]!=='function')throw new TypeError(`lifecycle_storage_recovery_${method}_required`);
+storageRecovery.assertBound();
 
 async function boot(){
   session.storageProtocolBlocked=true;
@@ -71,12 +60,8 @@ async function boot(){
   if(!tab.primaryTab){
     const v2Required=storageV2OwnerTransferPreparing()||accountV2Active||localEngineActive||localBirthPreparing();
     let shown=false;
-    if(v2Required){
-      const mainRecovered=await retryReadOnlyRecovery(()=>recoverReadOnlyV2State());
-      const sharedRecovered=mainRecovered&&await retryReadOnlyRecovery(()=>recoverSharedChecksV2ReadOnly());
-      shown=!!(mainRecovered&&sharedRecovered);
-      if(shown)render();
-    }else shown=await recoverBrowserV2StateReadOnly();
+    if(v2Required)shown=!!(await storageRecovery.readOnly());
+    if(shown){storageRecovery.activate();render()}
     showSecondaryTabGuard();
     setConnectedStatus('לקריאה בלבד');setSaveStatus(shown?'לקריאה בלבד':'קריאה בלבד — רענן לאחר סיום האתחול בטאב הראשי',shown?'':'error');
     setCloudHeaderStatus('offline',shown?'ענן: קריאה בלבד':'ענן: קריאה בלבד — הנתונים טרם זמינים');
@@ -90,7 +75,7 @@ async function boot(){
   // Birth is a durable transition, and its Main checkpoint is not complete
   // until Shared and the local marker are verified. Keep the screen closed.
   if(!accountV2Active){
-    try{await ensureLocalBirth();localEngineActive=await storageProtocol.verifyLocal()}
+    try{await ensureLocalBirth();localEngineActive=await storageProtocol.verifyLocal();if(!localEngineActive)throw new Error('kupa_local_engine_marker_required')}
     catch(error){console.error('Kupa local V2 birth',error);setConnectUI({title:'מעבר האחסון המקומי נעצר',text:'הנתונים הישנים נשארו שמורים. העריכה חסומה עד להשלמת מעבר האחסון או בדיקת התקלה.',showCloud:false});return}
   }
   document.getElementById('chooseFolder').addEventListener('click',chooseFolder);
@@ -98,15 +83,10 @@ async function boot(){
   document.getElementById('openLastFolder').addEventListener('click',openLastFolder);
   document.getElementById('openCloud').addEventListener('click',handleCloudConnectButton);
 
-  const cloudPreferred=localStorage.getItem(STORAGE_PREF_KEY)==='supabase';
-  let startupLocalShown=false;
-  if(localEngineActive)await recoverLocalV2State();
-  else if(cloudPreferred||accountV2Active){
-    session.startupCloudHydrating=!!navigator.onLine;
-    try{startupLocalShown=await recoverBrowserV2State({startup:true,deferRender:accountV2Active})}catch(error){if(accountV2Active)throw error;console.error('startup browser state recovery',error)}
-  }
-
-  let sharedPrimary=false;
+  session.startupCloudHydrating=!localEngineActive&&!!navigator.onLine;
+  try{await storageRecovery.primary({localEngineActive})}
+  catch(error){session.backendReady=false;setConnectUI({title:'שחזור הנתונים המקומיים נעצר',text:'הנתונים נשארו שמורים והעריכה חסומה. יש לבדוק את התקלה ולרענן לאחר השלמת השחזור.',showCloud:!localEngineActive});throw error}
+  const startupLocalShown=!localEngineActive;
 
   if(supaConfigured())setCloudHeaderStatus('syncing',startupLocalShown&&navigator.onLine?'ענן: מסנכרן…':'ענן: בודק…');else setCloudHeaderStatus('off','ענן: לא מוגדר');
   const persistentStoragePromise=requestPersistentBrowserStorage().catch(error=>console.error('persistent browser storage',error));
@@ -115,25 +95,18 @@ async function boot(){
 
   // Shared Checks owns checks independently of Main. Hydrate it before an
   // offline or cloud-capability exit can show composed business data.
-  if((accountV2Active||localEngineActive)){sharedPrimary=await recoverSharedChecksV2Primary();if(!sharedPrimary)throw new Error('shared_checks_cutover_recovery_required');if(startupLocalShown)render()}
+  storageRecovery.activate();
+  if(startupLocalShown){session.backendReady=true;hideConnectScreen();render()}
   if(localEngineActive){session.startupCloudHydrating=false;if(await tryAutoOpenRemembered())return;showFirstRun();return}
-  if(!navigator.onLine&&startupLocalShown){session.startupCloudHydrating=false;return}
+  if(!navigator.onLine&&startupLocalShown){session.startupCloudHydrating=false;startCloudPolling();return}
   if(navigator.onLine&&restoredAuth){try{await ensureSyncCapabilities();session.syncCapabilitiesError=null}catch(error){session.syncCapabilitiesError=error;setCloudHeaderStatus('conflict',error.message);setConnectUI({title:'ה־DB אינו תואם לגרסת האתר',text:error.message,showCloud:false});}}
-  if(session.syncCapabilitiesError){if(!startupLocalShown)await recoverBrowserV2State();session.startupCloudHydrating=false;setCloudHeaderStatus('conflict',session.syncCapabilitiesError.message);return}
-  if(!sharedPrimary)throw new Error('shared_checks_v2_recovery_required');
+  if(session.syncCapabilitiesError){session.startupCloudHydrating=false;setCloudHeaderStatus('conflict',session.syncCapabilitiesError.message);return}
   try{await resumeIncompleteRestore()}catch(error){console.error('restore group startup recovery',error);setCloudHeaderStatus('conflict','ענן: שחזור ממתין')}
   let autoOpened=false;
   try{autoOpened=await tryAutoOpenSupabase()}finally{session.startupCloudHydrating=false}
   if(autoOpened)return;
   if(session.cloudAuthNoDocument){await showCloudNoDocument();return}
-  if(startupLocalShown){if(!restoredAuth)setCloudHeaderStatus('off','ענן: נדרשת התחברות');return}
-  if(!window.isSecureContext){
-    configureCloudConnectButton('פתח קופה מהענן','open');
-    setConnectUI({title:'נדרשת פתיחה ב־Chrome או Edge',text:'הדפדפן לא פתח את הקובץ כהקשר מקומי מאובטח.',note:'אפשר עדיין לפתוח קופה בענן Supabase, או לפתוח את <b>site/index.html</b> דרך HTTPS או שרת פיתוח מקומי (localhost) ב־Chrome/Edge עדכני.',showChoose:!!window.showDirectoryPicker,showFile:!window.showDirectoryPicker,showCloud:supaConfigured()});
-    return;
-  }
-  if(await tryAutoOpenRemembered())return;
-  showFirstRun();
+  if(!restoredAuth)setCloudHeaderStatus('off','ענן: נדרשת התחברות');
 }
 
 return { boot:createStartupTask(boot) };

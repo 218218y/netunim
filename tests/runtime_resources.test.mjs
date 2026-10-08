@@ -60,8 +60,9 @@ test('wakeup failures retain their task identity and do not schedule retries',as
 
 function kupa(){
   const timers=clock(),environment=browser(),events=[],tab={primaryTab:true},session={storageProtocolBlocked:false,connectionMode:'supabase'};
-  const runtime=createKupaConnectivityRuntime({tab,session,timers,environment,
-    syncDocument:{resumeAfterReconnect:async()=>events.push('reconnect'),cloudPoll:async()=>events.push('poll')},
+  const runtime=createKupaConnectivityRuntime({timers,environment,
+    access:{primary:()=>tab.primaryTab,blocked:()=>session.storageProtocolBlocked},
+    cloud:{connected:()=>session.connectionMode==='supabase',resumeAfterReconnect:async()=>events.push('reconnect'),cloudPoll:async()=>events.push('poll')},
     bank:{maybeAutoRefreshBankBalance:()=>events.push('bank')},credit:{maybeAutoRefreshCreditSync:async()=>events.push('credit')},
     status:{setSaveStatus:()=>events.push('offline-save'),setCloudHeaderStatus:()=>events.push('offline-cloud')}});
   return {timers,environment,events,tab,session,runtime};
@@ -102,14 +103,14 @@ test('Kupa offline, hidden document and disposal remove pending wakeups',async()
 });
 
 function orders(){
-  const timers=clock(),environment=browser(),events=[],state={primary:true,blocked:false,authenticated:true,cloud:true,locks:new Set()};
+  const timers=clock(),environment=browser(),events=[],morningOptions=[],state={primary:true,blocked:false,authenticated:true,cloud:true,locks:new Set()};
   const runtime=createOrdersConnectivityRuntime({timers,environment,
     access:{primary:()=>state.primary,blocked:()=>state.blocked,authenticated:()=>state.authenticated},
     cloud:{enabled:()=>state.cloud,resumeAfterReconnect:async()=>events.push('reconnect')},
     checks:{pollSharedChecks:async()=>events.push('checks')},finance:{startAutoSync:()=>events.push('finance')},
-    morning:{recoverPendingMorningOperation:async options=>{assert.deepEqual(options,{quiet:true});events.push('morning')}},
+    morning:{recoverPendingMorningOperation:async options=>{morningOptions.push(options);events.push('morning')}},
     status:{startupDomainLocked:domain=>state.locks.has(domain),setCloud:()=>events.push('offline')}});
-  return {timers,environment,events,state,runtime};
+  return {timers,environment,events,morningOptions,state,runtime};
 }
 
 test('Orders online wakeup preserves Main reconnect, Morning recovery and finance scheduling',async()=>{
@@ -119,6 +120,7 @@ test('Orders online wakeup preserves Main reconnect, Morning recovery and financ
   f.timers.fire();await settle();
   assert.deepEqual(new Set(f.events),new Set(['reconnect','morning','finance']));
   assert.equal(f.events.length,3);
+  assert.deepEqual(f.morningOptions,[{quiet:true}]);
   f.runtime.dispose();
 });
 
@@ -155,4 +157,25 @@ test('Orders offline and disposal cancel pending work without affecting unrelate
   f.timers.fire();await settle();emit(f.environment.document,'visibilitychange');
   assert.deepEqual(f.events,['offline']);assert.equal(f.timers.jobs.size,0);
   assert.throws(()=>f.runtime.start(),/connectivity_disposed/);
+});
+
+test('Orders initial Morning recovery shares the owned wakeup and retains interactive feedback',async()=>{
+  const f=orders();assert.equal(f.runtime.resumeStartup(),false);f.runtime.start();
+  assert.equal(f.runtime.resumeStartup(),true);assert.equal(f.runtime.resumeStartup(),false);
+  emit(f.environment.document,'visibilitychange');
+  assert.equal([...f.timers.jobs.values()].filter(job=>job.delay===350).length,1);
+  f.timers.fire();await settle();
+  assert.equal(f.events.filter(event=>event==='morning').length,1);
+  assert.deepEqual(f.morningOptions,[{quiet:false}]);
+  f.runtime.dispose();assert.equal(f.runtime.resumeStartup(),false);
+});
+
+test('Orders Main hydration prevents reconnect and Morning writes until its domain gate opens',async()=>{
+  const f=orders();f.runtime.start();f.state.locks.add('orders');
+  assert.equal(f.runtime.resumeStartup(),false);emit(f.environment.window,'online');
+  f.timers.fire();await settle();
+  assert.equal(f.events.includes('reconnect'),false);assert.equal(f.events.includes('morning'),false);
+  f.state.locks.delete('orders');assert.equal(f.runtime.resumeStartup(),true);
+  f.state.blocked=true;f.timers.fire();await settle();assert.equal(f.events.includes('morning'),false);
+  f.runtime.dispose();
 });

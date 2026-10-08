@@ -14,15 +14,15 @@ export function createOrdersConnectivityRuntime({access,cloud,checks,finance,mor
   let started=false,disposed=false;
   const allowed=()=>!access.blocked()&&navigator.onLine!==false;
   const checksReady=()=>allowed()&&access.authenticated()&&!status.startupDomainLocked('checks');
-  const morningReady=()=>allowed()&&access.primary()&&access.authenticated();
+  const morningReady=()=>allowed()&&access.primary()&&access.authenticated()&&!status.startupDomainLocked('orders');
 
   function scheduleChecks(delay){resources.schedule('checks',delay,()=>{if(checksReady())return checks.pollSharedChecks()})}
-  function scheduleMorning(delay){resources.schedule('morning',delay,()=>{if(morningReady())return morning.recoverPendingMorningOperation({quiet:true})})}
+  function scheduleMorning(delay,quiet=true){return resources.schedule('morning',delay,()=>{if(morningReady())return morning.recoverPendingMorningOperation({quiet})})}
   function scheduleFinance(){resources.schedule('finance',0,()=>{if(allowed()&&!status.startupDomainLocked('finance'))return finance.startAutoSync()})}
 
   function online(){
     if(access.blocked())return;
-    if(access.primary()&&cloud.enabled())resources.schedule('reconnect',250,()=>{if(allowed()&&access.primary()&&cloud.enabled())return cloud.resumeAfterReconnect()});
+    if(access.primary()&&cloud.enabled())resources.schedule('reconnect',250,()=>{if(allowed()&&access.primary()&&cloud.enabled()&&!status.startupDomainLocked('orders'))return cloud.resumeAfterReconnect()});
     else if(checksReady())scheduleChecks(300);
     if(morningReady())scheduleMorning(450);
     if(!status.startupDomainLocked('finance'))scheduleFinance();
@@ -52,5 +52,6 @@ export function createOrdersConnectivityRuntime({access,cloud,checks,finance,mor
   }
 
   function dispose(){disposed=true;return resources.dispose()}
-  return {start,dispose};
+  function resumeStartup(){return started&&!disposed&&morningReady()?scheduleMorning(350,false):false}
+  return {start,resumeStartup,dispose};
 }

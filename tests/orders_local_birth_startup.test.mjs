@@ -59,7 +59,7 @@ test('Orders local secondary tab never renders a V1 snapshot while primary birth
 
 test('Orders missing Shared V2 checkpoint fails before business render',async()=>{
   const f=fixture({recoverSharedChecksV2Primary:async()=>false});f.setMarker(true);
-  await assert.rejects(f.lifecycle.boot(),/shared_v2_recovery_required/);
+  await assert.rejects(f.lifecycle.boot(),/startup_shared_recovery_required/);
   assert.equal(f.calls.includes('render'),false);
 });
 
@@ -85,7 +85,7 @@ test('Orders resumed local-to-account transfer uses the activated owner for Main
     hydrateStorageV2OwnerTransfer:async()=>({phase:'target-recovered'}),
     resumeStorageV2OwnerTransfer:async()=>{f.calls.push('transfer-resumed');owner='account'},
     ensureLocalBirth:async()=>assert.fail('account target must not enter local birth'),
-    recoverLocalV2State:async()=>{assert.equal(owner,'account');f.calls.push('account-main')},
+    recoverLocalV2State:async()=>{assert.equal(owner,'account');f.calls.push('account-main');return {state:{checks:[]}}},
     refreshStorageV2CloudState:async()=>({base:{state:{checks:[]},revision:4},seq:0,pending:false,flight:null,control:null}),
   });
   await f.lifecycle.boot();await f.session.startupHydrationPromise;
@@ -117,7 +117,7 @@ test('Orders fenced stale browser installs cloud V2 before any business render',
   let marker=false;const f=fixture({storageOwnerCurrent:()=> 'account',authenticatedOwner:()=> 'account',
     readStorageProtocolState:async()=>({orders:2,kupa:2,sharedChecks:2}),verifyStorageV2AccountMarker:async()=>marker,
     recoverFencedAccount:async()=>{f.calls.push('cloud-adoption');marker=true},
-    recoverLocalV2State:async()=>{assert.equal(marker,true);f.calls.push('main-v2')},
+    recoverLocalV2State:async()=>{assert.equal(marker,true);f.calls.push('main-v2');return {state:{checks:[]}}},
     refreshStorageV2CloudState:async()=>({base:{state:{},revision:7},seq:0,pending:false,flight:null,control:null}),
   });
   await f.lifecycle.boot();await f.session.startupHydrationPromise;
@@ -142,7 +142,7 @@ test('Orders stale local binding adopts a fenced account before local birth or V
     readStorageProtocolState:async()=>({orders:2,kupa:2,sharedChecks:2}),verifyStorageV2AccountMarker:async()=>marker,
     recoverFencedAccount:async()=>{f.calls.push('cloud-adoption');owner='account';marker=true},
     ensureLocalBirth:async()=>{throw Error('stale local V1 migrated')},
-    recoverLocalV2State:async()=>{assert.equal(owner,'account');f.calls.push('main-v2')},
+    recoverLocalV2State:async()=>{assert.equal(owner,'account');f.calls.push('main-v2');return {state:{checks:[]}}},
     refreshStorageV2CloudState:async()=>({base:{state:{},revision:7},seq:0,pending:false,flight:null,control:null}),
   });
   await f.lifecycle.boot();await f.session.startupHydrationPromise;

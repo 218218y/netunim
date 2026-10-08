@@ -50,7 +50,7 @@ test('Kupa V2 recovers Shared Checks before offline or cloud-capability recovery
     assert.equal(ready.session.startupCloudHydrating,false);
 
     const missing=lifecycleFixture({sharedRecovered:false});
-    await assert.rejects(missing.lifecycle.boot(),/shared_checks_cutover_recovery_required/);
+    await assert.rejects(missing.lifecycle.boot(),/startup_shared_recovery_required/);
     assert.equal(missing.events.some(event=>event.startsWith('render:')),false);
 
     Object.defineProperty(globalThis,'navigator',{configurable:true,value:{onLine:true}});
@@ -77,9 +77,11 @@ test('Kupa V2 browser recovery preserves hydrated Shared state and never reads l
       refreshStorageV2CloudState:async()=>null,
       normalizeState:value=>structuredClone(value),prepareKupaCloudState:value=>structuredClone(value),
       loadSharedChecksBase:()=>assert.fail('legacy checks read'),loadSharedChecksBankEvents:()=>assert.fail('legacy bank events read'),
-      hideConnectScreen:noop,setSaveStatus:noop,setConnectedStatus:noop,setCloudHeaderStatus:noop,startCloudPolling:noop,render:()=>assert.fail('deferred recovery must not render')});
+      hideConnectScreen:()=>assert.fail('deferred recovery must not expose Main alone'),setSaveStatus:noop,setConnectedStatus:noop,setCloudHeaderStatus:noop,
+      startCloudPolling:()=>assert.fail('deferred recovery must not start jobs'),render:()=>assert.fail('deferred recovery must not render')});
     assert.equal(await recovery.recoverBrowserV2State({startup:true,deferRender:true}),true);
     assert.deepEqual(model.state.checks,sharedChecks);
     assert.deepEqual(checksSession.sharedChecksBankEvents,bankEvents);
+    assert.equal(session.backendReady,false);
   }finally{if(priorNavigator)Object.defineProperty(globalThis,'navigator',priorNavigator);else delete globalThis.navigator}
 });

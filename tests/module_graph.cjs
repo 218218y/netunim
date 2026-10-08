@@ -14,6 +14,12 @@ for(const app of ['kupa','orders']){
     assert.ok(!code.includes('__testBindings'),relative+': test API leaked into deployable source');
     assert.ok(!relative.startsWith('assets/')||Buffer.byteLength(code.replace(/\r\n/g,'\n'))<60000,relative+': oversized responsibility module');
     walk(ast,node=>{
+      if(node.type==='FunctionDeclaration'&&node.id?.name==='createLifecycle'&&relative==='assets/js/lifecycle.js')
+        assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=(app==='kupa'?34:42),relative+': startup collaborators must not grow; introduce a capability port');
+      if(node.type==='FunctionDeclaration'&&['createStorageStartupRecovery','createKupaConnectivityRuntime','createOrdersConnectivityRuntime'].includes(node.id?.name)){
+        const parameter=node.params[0]?.type==='AssignmentPattern'?node.params[0].left:node.params[0];
+        assert.ok(parameter?.type==='ObjectPattern'&&parameter.properties.length<=8,relative+': startup capability factory exceeds eight collaborators');
+      }
       const string=node.type==='Literal'&&typeof node.value==='string'?node.value:node.type==='TemplateElement'?node.value.cooked:null;
       if(string!==null)assert.ok(!/(?:^|[\s<])on[a-z]+\s*=/i.test(string),relative+': executable event attribute in HTML fragment');
       if(node.type==='AssignmentExpression'&&node.left.type==='MemberExpression')assert.ok(!['window','globalThis'].includes(node.left.object.name),relative+': global compatibility assignment');

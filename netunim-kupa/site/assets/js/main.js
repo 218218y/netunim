@@ -1,4 +1,5 @@
 import {createKupaConnectivityRuntime} from './connectivity.js';
+import {createStorageStartupRecovery} from './shared/storage-startup-recovery.js';
 import {createKupaStorageV2Coordinator} from './composition/storage-v2.js';
 import {installLocalSiteResetPeerListener} from './shared/local-site-reset.js';
 import {assertKupaEntityInvariants} from './state/validation.js';
@@ -70,6 +71,7 @@ const {model, session, ui, files, tab, checksSession}=createContexts();
 installLocalSiteResetPeerListener();
 // Event handlers are installed before the async owner/protocol preflight finishes.
 session.storageProtocolBlocked=true;
+const storageRecovery=createStorageStartupRecovery();
 const domainRevisions=createKupaDomainRevisions(session);
 const financeDerivations=createFinanceDerivationStore({revision:()=>domainRevisions.stamp(KUPA_FINANCE_DOMAINS)});
 
@@ -98,6 +100,7 @@ const stateNormalization=createStateNormalization({
 });
 
 const uiStatus=createUiStatus({
+  storageRecovery,
   session,
   checksSession,
   tab,
@@ -512,22 +515,23 @@ const uiBackup=createUiBackup({
   invalidateAllViewDomains:()=>domainRevisions.touchAll(),
 });
 
+storageRecovery.bind({
+  main:{primary:({localEngineActive})=>localEngineActive?storageV2Coordinator.recoverLocalV2State():syncRecovery.recoverBrowserV2State({startup:true,deferRender:true}),
+    readOnly:()=>storageV2Coordinator.recoverReadOnlyV2State()},
+  shared:{primary:recoverSharedChecksV2Primary,readOnly:()=>sharedChecksV2.recoverReadOnly()},
+});
+
 const lifecycle=createLifecycle({
   storageProtocol:storageV2Coordinator.startupProtocol,
+  storageRecovery,
   hydrateStorageOwner:()=>storageOwner.hydrate({initialOwner:async()=> (await cloudAuth.restoreSupaSession())?.user?.id}),
-  recoverLocalV2State:()=>storageV2Coordinator.recoverLocalV2State(),
-  recoverReadOnlyV2State:()=>storageV2Coordinator.recoverReadOnlyV2State(),
+  hideConnectScreen:()=>uiStatus.hideConnectScreen(),
   ...storageV2Coordinator.lifecyclePorts(),
-  recoverSharedChecksV2Primary,
-  recoverSharedChecksV2ReadOnly:(...args)=>sharedChecksV2.recoverReadOnly(...args),
-  recoverBrowserV2State:(...args)=>syncRecovery.recoverBrowserV2State(...args),
-  recoverBrowserV2StateReadOnly:(...args)=>syncRecovery.recoverBrowserV2StateReadOnly(...args),
   render:(...args)=>uiNavigation.render(...args),
   ensureSyncCapabilities:(...args)=>cloudAuth.ensureSyncCapabilities(...args),
   session,
   tab,
   openLastFolder:(...args)=>uiFolders.openLastFolder(...args),
-  configureCloudConnectButton:(...args)=>uiConnection.configureCloudConnectButton(...args),
   handleCloudConnectButton:(...args)=>uiConnection.handleCloudConnectButton(...args),
   setCloudHeaderStatus:(...args)=>uiStatus.setCloudHeaderStatus(...args),
   setSaveStatus:(...args)=>uiStatus.setSaveStatus(...args),
@@ -546,6 +550,7 @@ const lifecycle=createLifecycle({
   setConnectUI:(...args)=>uiConnection.setConnectUI(...args),
   showFirstRun:(...args)=>uiConnection.showFirstRun(...args),
   tryAutoOpenRemembered:(...args)=>uiConnection.tryAutoOpenRemembered(...args),
+  startCloudPolling:()=>syncDocument.startCloudPolling(),
 });
 
 const uiEvents={bindActionEvents:(root,actions)=>bindActionEvents(root,actions,{canRun:(...args)=>uiStatus.canRunInteractiveAction(...args)})};
@@ -571,7 +576,11 @@ const uiActions=composeActionRegistry([
 ]);
 
 
-const connectivity=createKupaConnectivityRuntime({tab,session,syncDocument,bank:domainsBankController,credit:domainsCreditController,status:uiStatus});
+const connectivity=createKupaConnectivityRuntime({
+  access:{primary:()=>tab.primaryTab,blocked:()=>session.storageProtocolBlocked||!storageRecovery.isReady()||session.startupCloudHydrating||session.syncCapabilitiesChecking||!!session.syncCapabilitiesError},
+  cloud:{connected:()=>session.connectionMode==='supabase',resumeAfterReconnect:()=>syncDocument.resumeAfterReconnect(),cloudPoll:()=>syncDocument.cloudPoll()},
+  bank:domainsBankController,credit:domainsCreditController,status:uiStatus,
+});
 connectivity.start();
 uiSidebar.bind();
 document.getElementById('backupTop').addEventListener('click',()=>{if(uiStatus.canRunInteractiveAction('manual-backup'))uiBackup.manualBackup()});
