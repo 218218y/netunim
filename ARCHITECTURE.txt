@@ -15,7 +15,7 @@ core: numbers, money, dates and IDs; no DOM or persistence.
 state: initial schema, context ownership, normalization, portable serialization and validation.
 storage: browser snapshots, IndexedDB, pending mirrors, File System Access, verified backups and writer locks.
 cloud: authentication and HTTP/RPC contracts; no DOM.
-integrations: local Bank Bridge adapter and installed device preferences; injected into domains by composition.
+integrations: local Bank/Document Bridge adapters and installed device preferences; injected into domains by composition.
 sync: document/check queues, three-way merge, revision retries, rebase, pending recovery and polling.
 ui: modal lifecycle, notifications, navigation, folders, connection controls and action dispatch.
 domains: calculation models, state selectors, views and editor/controllers for each business area.
@@ -25,6 +25,8 @@ Orders domains: checks, suppliers, customers, service, inventory, warehouse, not
 Factories receive named contexts and callbacks. Calculation models receive explicit data and can run in Node.
 Editor/controllers read forms and coordinate mutations and persistence. Views never call RPC directly.
 Callbacks from the composition root connect layers without circular imports or a global service locator.
+The Document Bridge client is canonical in shared/document-bridge-client.js, with request-owned
+cancellation/deadlines and installed pairing preferences under integrations/document-bridge.js.
 The Bank Bridge client is canonical in shared/bank-bridge-client.js and receives explicit
 network/token/timer/abort ports. shared/browser-bridge-platform.js implements browser I/O;
 shared/finance-refresh-policy.js owns pure bank/credit freshness. See docs/BANK_BRIDGE_PORT_CONTRACT.md.
@@ -71,7 +73,7 @@ viewer module tree. Orders and Kupa keep thin app-specific adapters only for the
 Everything, Google Drive, document previews, match modes, folder scope and document-result actions are implemented once.
 Do not merge app helpers by name: cloning, invalid money and date behavior intentionally differ.
 python tools/sync-assets.py copies root shared files byte-for-byte to each site's assets/js/shared, synchronizes
-shared/document-search into each site's original domains/documents and ui/document-* deployment paths, and refreshes the
+shared/document-search into each site's domains/documents, integrations/document-* and ui/document-* deployment paths, and refreshes the
 complete shell list and content-derived cache version. Text hashing normalizes LF, CRLF and lone CR so the same
 commit produces the same cache name on every checkout; binary image bytes remain exact. A real asset-content
 change still requires regeneration. --check is read-only and fails on drift. There is no cross-site runtime import.

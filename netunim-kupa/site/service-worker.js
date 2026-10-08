@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='kupa-app-shell-';
-const CACHE='kupa-app-shell-esm-4098a2279c7c';
+const CACHE='kupa-app-shell-esm-624d25769f22';
 const SHELL=[
   './',
   './index.html',
@@ -49,7 +49,6 @@ const SHELL=[
   './assets/js/domains/dashboard/controller.js',
   './assets/js/domains/dashboard/model.js',
   './assets/js/domains/dashboard/view.js',
-  './assets/js/domains/documents/bridge.js',
   './assets/js/domains/documents/document-result-sort.js',
   './assets/js/domains/documents/document-search-navigator.js',
   './assets/js/domains/documents/docx-search-viewer.js',
@@ -68,6 +67,7 @@ const SHELL=[
   './assets/js/domains/records/commands.js',
   './assets/js/domains/search/model.js',
   './assets/js/integrations/bank-bridge.js',
+  './assets/js/integrations/document-bridge.js',
   './assets/js/lifecycle.js',
   './assets/js/main.js',
   './assets/js/shared/action-registry.js',
@@ -96,6 +96,7 @@ const SHELL=[
   './assets/js/shared/credit-sync-policy.js',
   './assets/js/shared/customer-debt-progress.js',
   './assets/js/shared/data-invariants.js',
+  './assets/js/shared/document-bridge-client.js',
   './assets/js/shared/document-search-composition.js',
   './assets/js/shared/domain-revisions.js',
   './assets/js/shared/events.js',

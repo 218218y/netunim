@@ -1,45 +1,56 @@
 const BRIDGE_URL='http://127.0.0.1:8766';
-const TOKEN_KEY='netunim_document_bridge_token_v1';
-const LEGACY_TOKEN_KEYS=['netunim_orders_document_bridge_token_v1','netunim_kupa_document_bridge_token_v1'];
 const REQUEST_TIMEOUT_MS=25000;
 const EXPECTED_BRIDGE_VERSION=38;
 
 function bridgeError(message,code='DOCUMENT_BRIDGE_ERROR',extra={}){const error=new Error(message);error.code=code;error.httpStatus=Number(extra?.httpStatus)||0;error.rootErrors=Array.isArray(extra?.rootErrors)?extra.rootErrors:[];return error}
 function requireBridgeVersion(value,purpose='לטעון את גרסת החיפוש הנכונה'){const version=Number(value)||0;if(version!==EXPECTED_BRIDGE_VERSION)throw bridgeError(`Document Bridge פעיל בגרסה ${version||'ישנה'} במקום ${EXPECTED_BRIDGE_VERSION}. הרץ מחדש את install_document_bridge.bat כדי ${purpose}.`,'DOCUMENT_BRIDGE_UPGRADE_REQUIRED')}
 
-export function createDomainsDocumentBridge(){
-  function getToken(){
-    const current=localStorage.getItem(TOKEN_KEY)||'';if(current)return current;
-    for(const legacyKey of LEGACY_TOKEN_KEYS){const legacy=localStorage.getItem(legacyKey)||'';if(!legacy)continue;try{localStorage.setItem(TOKEN_KEY,legacy)}catch{}return legacy}
-    return '';
-  }
-  function setToken(value){const token=String(value||'').trim();if(token)localStorage.setItem(TOKEN_KEY,token);else localStorage.removeItem(TOKEN_KEY);for(const legacyKey of LEGACY_TOKEN_KEYS)try{localStorage.removeItem(legacyKey)}catch{}return token}
-  async function request(path,{method='GET',body=null,timeoutMs=REQUEST_TIMEOUT_MS,signal=null,auth=true}={}){
-    const token=getToken();if(auth&&!token)throw bridgeError('חסר מפתח Document Bridge במחשב זה.','DOCUMENT_BRIDGE_NOT_PAIRED');
-    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);const onAbort=()=>controller.abort();signal?.addEventListener?.('abort',onAbort,{once:true});
+// One local protocol owner. Pairing storage, network and scheduling are supplied
+// through ports; caller cancellation and the request deadline share one scope.
+export function createDocumentBridgeClient({tokenStore,fetchRequest,timers,createAbortController}){
+  if([tokenStore?.get,tokenStore?.set,fetchRequest,timers?.setTimeout,timers?.clearTimeout,createAbortController].some(port=>typeof port!=='function'))throw new Error('document_bridge_ports_required');
+  const getToken=()=>tokenStore.get(),setToken=value=>tokenStore.set(value);
+  function cancelled(preview=false,timedOut=false){return bridgeError(timedOut?'Document Bridge לא הגיב בזמן.':preview?'התצוגה הקודמת בוטלה.':'החיפוש הקודם בוטל.','DOCUMENT_BRIDGE_ABORTED')}
+  async function withResponse(path,{method='GET',body=null,timeoutMs=REQUEST_TIMEOUT_MS,signal=null,auth=true,preview=false}={},consume){
+    // A signal is one-shot: registering a listener after abort does not replay it.
+    if(signal?.aborted)throw cancelled(preview);
+    const token=auth?getToken():'';
+    if(auth&&!token)throw bridgeError('חסר מפתח Document Bridge במחשב זה.','DOCUMENT_BRIDGE_NOT_PAIRED');
+    const controller=createAbortController(),onAbort=()=>controller.abort();let timer=null;
+    function assertActive(){if(signal?.aborted||controller.signal.aborted)throw cancelled(preview,!signal?.aborted)}
     try{
-      const response=await fetch(BRIDGE_URL+path,{method,headers:{...(auth?{Authorization:`Bearer ${token}`}:{Accept:'application/json'}),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,signal:controller.signal,cache:'no-store'});
-      const text=await response.text();let data={};try{data=text?JSON.parse(text):{}}catch{}
-      if(!response.ok||data.ok===false)throw bridgeError(data.message||`Document Bridge החזיר שגיאה (${response.status})`,data.code||`HTTP_${response.status}`,{httpStatus:response.status,rootErrors:data.rootErrors});
-      return data;
+      signal?.addEventListener?.('abort',onAbort,{once:true});
+      assertActive();
+      timer=timers.setTimeout(()=>controller.abort(),timeoutMs);
+      const response=await fetchRequest(BRIDGE_URL+path,{method,headers:{...(auth?{Authorization:`Bearer ${token}`}:{Accept:'application/json'}),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,signal:controller.signal,cache:'no-store',redirect:'error'});
+      assertActive();
+      const result=await consume(response);assertActive();return result;
     }catch(error){
-      if(error?.name==='AbortError')throw bridgeError(signal?.aborted?'החיפוש הקודם בוטל.':'Document Bridge לא הגיב בזמן.','DOCUMENT_BRIDGE_ABORTED');
+      if(signal?.aborted||controller.signal.aborted||error?.name==='AbortError')throw cancelled(preview,!signal?.aborted);
       if(error?.code)throw error;
       throw bridgeError('לא ניתן להתחבר ל-Document Bridge במחשב זה.','DOCUMENT_BRIDGE_UNAVAILABLE');
-    }finally{clearTimeout(timer);signal?.removeEventListener?.('abort',onAbort)}
+    }finally{if(timer!==null)timers.clearTimeout(timer);signal?.removeEventListener?.('abort',onAbort)}
+  }
+  function parseObject(text){let data;try{data=JSON.parse(text)}catch{return null}return data!==null&&typeof data==='object'&&!Array.isArray(data)?data:null}
+  function responseError(response,data={}){return bridgeError(data.message||`Document Bridge החזיר שגיאה (${response.status})`,data.code||`HTTP_${response.status}`,{httpStatus:response.status,rootErrors:data.rootErrors})}
+  async function request(path,options){
+    return withResponse(path,options,async response=>{
+      const data=parseObject(await response.text());
+      if(!data){if(!response.ok)throw responseError(response);throw bridgeError('Document Bridge החזיר תשובה לא תקינה.','DOCUMENT_BRIDGE_RESPONSE_INVALID',{httpStatus:response.status})}
+      if(!response.ok||data.ok===false)throw responseError(response,data);
+      return data;
+    });
   }
   async function requestBlob(path,{body,timeoutMs=REQUEST_TIMEOUT_MS,signal=null}={}){
-    const token=getToken();if(!token)throw bridgeError('חסר מפתח Document Bridge במחשב זה.','DOCUMENT_BRIDGE_NOT_PAIRED');
-    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);const onAbort=()=>controller.abort();signal?.addEventListener?.('abort',onAbort,{once:true});
-    try{
-      const response=await fetch(BRIDGE_URL+path,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify(body||{}),signal:controller.signal,cache:'no-store'});
-      if(!response.ok){let data={};try{data=await response.json()}catch{}throw bridgeError(data.message||`Document Bridge החזיר שגיאה (${response.status})`,data.code||`HTTP_${response.status}`,{httpStatus:response.status})}
+    return withResponse(path,{method:'POST',body:body||{},timeoutMs,signal,preview:true},async response=>{
+      if(!response.ok){
+        let data=null;try{data=parseObject(await response.text())}catch(error){if(error?.name==='AbortError')throw error}
+        throw responseError(response,data||{});
+      }
       return await response.blob();
-    }catch(error){
-      if(error?.name==='AbortError')throw bridgeError(signal?.aborted?'התצוגה הקודמת בוטלה.':'Document Bridge לא הגיב בזמן.','DOCUMENT_BRIDGE_ABORTED');
-      if(error?.code)throw error;throw bridgeError('לא ניתן להתחבר ל-Document Bridge במחשב זה.','DOCUMENT_BRIDGE_UNAVAILABLE');
-    }finally{clearTimeout(timer);signal?.removeEventListener?.('abort',onAbort)}
+    });
   }
+
   const health=()=>request('/health',{auth:false,timeoutMs:2500});
   const status=()=>request('/status',{timeoutMs:5000});
   const warm=()=>request('/documents/warm',{method:'POST',body:{},timeoutMs:8000});

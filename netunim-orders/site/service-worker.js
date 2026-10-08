@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-820d1f977c63';
+const CACHE='orders-app-shell-esm-f1cdb122413a';
 const SHELL=[
   './',
   './index.html',
@@ -60,7 +60,6 @@ const SHELL=[
   './assets/js/domains/customers/selectors.js',
   './assets/js/domains/customers/view.js',
   './assets/js/domains/dashboard/view.js',
-  './assets/js/domains/documents/bridge.js',
   './assets/js/domains/documents/document-result-sort.js',
   './assets/js/domains/documents/document-search-navigator.js',
   './assets/js/domains/documents/docx-search-viewer.js',
@@ -119,6 +118,7 @@ const SHELL=[
   './assets/js/domains/warehouse/model.js',
   './assets/js/domains/warehouse/view.js',
   './assets/js/integrations/bank-bridge.js',
+  './assets/js/integrations/document-bridge.js',
   './assets/js/lifecycle.js',
   './assets/js/main.js',
   './assets/js/runtime-events.js',
@@ -148,6 +148,7 @@ const SHELL=[
   './assets/js/shared/credit-sync-policy.js',
   './assets/js/shared/customer-debt-progress.js',
   './assets/js/shared/data-invariants.js',
+  './assets/js/shared/document-bridge-client.js',
   './assets/js/shared/document-search-composition.js',
   './assets/js/shared/domain-revisions.js',
   './assets/js/shared/events.js',
