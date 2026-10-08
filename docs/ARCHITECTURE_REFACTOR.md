@@ -333,8 +333,15 @@ Controllers receive the Bridge and no longer import its concrete adapter for
 refresh constants. Malformed HTTP success fails as invalid protocol data;
 authenticated local requests cannot follow redirects. Existing timeout,
 endpoint fallback, cooldown, credential and finance publication policies remain.
-See [the Bridge port contract](BANK_BRIDGE_PORT_CONTRACT.md). Document adapters,
-Kupa credit preference/timer I/O and remaining Finance capability boundaries
+See [the Bridge port contract](BANK_BRIDGE_PORT_CONTRACT.md). Local Document
+Bridge now has the same explicit I/O direction: one canonical protocol client,
+one generated integration owning installed pairing preferences, and the shared
+browser platform. Eighteen baseline regressions proved malformed success,
+pre-cancelled requests, anonymous-health storage coupling and swallowed preview
+cancellation. One request scope now owns its controller/deadline/listener through
+body consumption. Endpoint/version/Drive fallback contracts remain unchanged.
+See [the Document Bridge contract](DOCUMENT_BRIDGE_PORT_CONTRACT.md). Google Drive
+I/O, Kupa credit preference/timer I/O and remaining Finance capability boundaries
 still require their own slices.
 
 Baseline for the Kupa phase slice: main `20dbb7a9`, preceding full branch GitHub
@@ -377,3 +384,23 @@ full branch deployment gate.
 Use focused local tests for each slice. The full verification matrix includes
 browser and PostgreSQL suites and must pass before deployment. A local focused
 pass is not a deployment baseline; record the full CI result for this change.
+
+## Main remaining workstreams (after local Bridge ports)
+
+These are completion tracks, each delivered through separate focused changes;
+they are not a claim that every older audit finding is still present.
+
+| Track | Remaining scope | Completion evidence |
+| --- | --- | --- |
+| Capability APIs | Orders Finance/Checks and shell/Notes interactions; Kupa Dashboard/Bank read-model and remaining shell wiring | Narrow public commands/queries, explicit binding and representative cross-capability behavior tests |
+| Runtime/resource ownership | Remaining Shared-specific and finance/integration jobs, shell listeners, reconnect/owner transitions and preflight | Start/stop/dispose idempotence, no duplicate/orphan jobs, live access fences and controlled failure tests |
+| Remaining I/O ports | Google Drive OAuth/API transport, Kupa credit preferences/timers and other concrete browser effects after inventory | Injected fake ports, adapter contracts and import enforcement; installed settings/auth compatibility |
+| Static contracts | Incremental checkJs for persisted/runtime storage, ACK/read candidates, owner transitions and capability/startup ports | A real mismatch fails CI; runtime validation and historical record readers remain intact |
+| Bridge decomposition | Bank HTTP/vault/session/provider/retry diagnostics; Document HTTP/auth/index/preview | Existing external contracts preserved, classified failures and provider tests before live scraper changes |
+| Canonical sources and compatibility | SQL deployment inventory/generation; historical keys/RPC/readers and supported-client inventory | Immutable deployed migrations, deterministic generation, proven retirement criteria and restore tests |
+| Readability/UI/release | Large modules by responsibility, dependency budgets, CSS/RTL/performance, final docs/rollback | Behavioral and visual regression checks, measured performance and full release gates |
+
+Storage correctness is a mandatory gate across these tracks, not a new blanket
+rewrite. Existing ACK/hydration/status contracts and real IndexedDB, offline,
+lost-response, restart, owner-change and two-computer scenarios must stay green;
+extend fault injection only for uncovered paths found during each review.

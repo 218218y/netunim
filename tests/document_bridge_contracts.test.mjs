@@ -7,7 +7,7 @@ const read=path=>fs.readFileSync(new URL(`../${path}`,import.meta.url),'utf8');
 test('orders site exposes one unified search with site, file and content filters over loopback bridge',()=>{
   const html=read('netunim-orders/site/index.html');
   const main=read('netunim-orders/site/assets/js/main.js');
-  const client=read('netunim-orders/site/assets/js/domains/documents/bridge.js');
+  const client=read('shared/document-bridge-client.js');
   const headers=read('netunim-orders/site/_headers');
   assert.match(html,/global-search-head[\s\S]*global-search-input-wrap/);
   assert.doesNotMatch(html,/globalSearchSiteMode|globalSearchDocumentsMode|globalSearchDocumentNameMode|globalSearchDocumentContentMode/);
@@ -18,7 +18,7 @@ test('orders site exposes one unified search with site, file and content filters
   assert.doesNotMatch(html,/globalSearchPreviewTitle|globalSearchPreviewMeta|globalSearchPreviewOpen|פתח במחשב/);
   assert.match(html,/globalSearchPreviewMatches/);
   assert.match(main,/composeDocumentSearch\(\{supaFetch:/);
-  assert.match(read('shared/document-search-composition.js'),/createDomainsDocumentBridge/);
+  assert.match(read('shared/document-search-composition.js'),/createDocumentBridgeIntegration/);
   assert.match(main,/documentBridge:domainsDocumentBridge/);
   assert.match(client,/http:\/\/127\.0\.0\.1:8766/);
   assert.match(client,/mode==='content'\?'content':'everything'/);
@@ -39,7 +39,7 @@ test('orders site exposes one unified search with site, file and content filters
 test('manual PDF refresh is a separate search action backed by the short-lived maintenance worker',()=>{
   const orders=read('netunim-orders/site/index.html'),kupa=read('netunim-kupa/site/index.html');
   const server=read('netunim-orders/document-bridge/server.mjs');
-  const client=read('shared/document-search/domains/documents/bridge.js');
+  const client=read('shared/document-bridge-client.js');
   const source=read('shared/document-search/domains/documents/search-source.js');
   for(const html of [orders,kupa]){
     const inputIndex=html.indexOf('id="globalSearchInput"');
@@ -69,7 +69,7 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   const lib=read('netunim-orders/document-bridge/lib.mjs');
   const pdfIndex=read('netunim-orders/document-bridge/pdf_form_index.mjs');
   const policy=read('netunim-orders/document-bridge/pdf-index-policy.mjs');
-  const client=read('shared/document-search/domains/documents/bridge.js');
+  const client=read('shared/document-bridge-client.js');
   assert.match(installer,/--ensure-everything/);
   assert.doesNotMatch(installer,/configure_document_bridge\.ps1/);
   assert.match(server,/scope=everything-index/);
@@ -259,7 +259,7 @@ test('file and folder opening use the Windows graphical shell through UseShellEx
 
 test('local document results expose Explorer reveal and recycle-bin delete through opaque result ids',()=>{
   const server=read('netunim-orders/document-bridge/server.mjs');
-  const client=read('netunim-orders/site/assets/js/domains/documents/bridge.js');
+  const client=read('shared/document-bridge-client.js');
   const ui=read('shared/global-document-search.js');
   const menu=read('netunim-orders/site/assets/js/ui/document-result-menu.js');
   const modal=read('netunim-orders/site/assets/js/ui/modal.js');
@@ -292,7 +292,7 @@ test('preview stays local: filename Office preview stays native while content se
   const documentView=read('netunim-orders/site/assets/js/ui/document-search-view.js');
   const folderScope=read('netunim-orders/site/assets/js/ui/document-search-folder-scope.js');
   const contentOptions=read('netunim-orders/site/assets/js/ui/document-search-content-options.js');
-  const client=read('netunim-orders/site/assets/js/domains/documents/bridge.js');
+  const client=read('shared/document-bridge-client.js');
   const installer=read('netunim-orders/document-bridge/install_document_bridge.bat');
   const build=read('netunim-orders/document-bridge/build_native_preview.ps1');
   const host=read('netunim-orders/document-bridge/native_preview_host.cs');
@@ -508,7 +508,7 @@ test('unified search uses a full-screen header search, four result filters and a
 
 test('orders service worker contains both current document search providers after asset synchronization',()=>{
   const sw=read('netunim-orders/site/service-worker.js');
-  assert.match(sw,/\.\/assets\/js\/domains\/documents\/bridge\.js/);
+  assert.match(sw,/\.\/assets\/js\/integrations\/document-bridge\.js/);
   assert.match(sw,/\.\/assets\/js\/domains\/documents\/google-drive\.js/);
   assert.match(sw,/\.\/assets\/js\/domains\/documents\/search-source\.js/);
 });
@@ -534,7 +534,7 @@ test('Drive fallback keeps local Document Bridge pairing visible when the browse
 test('document search rejects stale bridge runtimes instead of silently using a broken newer process',()=>{
   const lib=read('netunim-orders/document-bridge/lib.mjs');
   const server=read('netunim-orders/document-bridge/server.mjs');
-  const client=read('netunim-orders/site/assets/js/domains/documents/bridge.js');
+  const client=read('shared/document-bridge-client.js');
   assert.match(lib,/BRIDGE_VERSION=38/);
   assert.match(server,/bridgeVersion:BRIDGE_VERSION/);
   assert.match(server,/normalizeDocumentFileType\(fileType\)/);

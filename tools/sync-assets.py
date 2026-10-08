@@ -209,6 +209,10 @@ def plan_sync(snapshot: WorktreeSnapshot | IndexSnapshot) -> list[Change]:
             if (
                 PurePosixPath(path).parent == target_root / 'domains/documents'
                 or (
+                    PurePosixPath(path).parent == target_root / 'integrations'
+                    and PurePosixPath(path).name.startswith('document-')
+                )
+                or (
                     PurePosixPath(path).parent == target_root / 'ui'
                     and PurePosixPath(path).name.startswith('document-')
                 )

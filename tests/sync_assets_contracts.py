@@ -180,6 +180,19 @@ class SyncAssetContracts(unittest.TestCase):
         self.assertTrue(all(not path.exists() for path in copies))
         self.run_sync(check=True)
 
+    def test_removed_document_integration_removes_only_generated_public_copies(self):
+        source = self.root / 'shared/document-search/integrations/document-bridge.js'
+        source.unlink()
+        before = self.snapshot()
+        self.run_sync(check=True, expected=1)
+        self.assertEqual(before, self.snapshot(), 'check mode must not remove a stale integration')
+        self.run_sync()
+        for app in ('kupa', 'orders'):
+            integration = self.root / f'netunim-{app}/site/assets/js/integrations'
+            self.assertFalse((integration / 'document-bridge.js').exists())
+            self.assertTrue((integration / 'bank-bridge.js').exists(), 'app-owned Bank preferences must remain')
+        self.run_sync(check=True)
+
     def test_removed_shared_source_removes_obsolete_public_copies(self):
         source = self.root / 'shared/html.js'
         copies = [self.root / f'netunim-{app}/site/assets/js/shared/html.js' for app in ('kupa', 'orders')]
