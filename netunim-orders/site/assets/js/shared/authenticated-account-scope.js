@@ -11,5 +11,10 @@ export function createAuthenticatedAccountScope({loadSession}){
     if(!refresh||live!==owner)epoch+=1;
     owner=live;
   }
-  return {current,replace};
+  function assertCurrent(observed){
+    const live=current();
+    if(!live.owner||live.owner!==observed.owner||live.epoch!==observed.epoch)
+      throw Object.assign(new Error('ההתחברות לענן השתנתה במהלך הבקשה. יש לבצע את הפעולה מחדש.'),{code:'cloud_auth_scope_changed'});
+  }
+  return {current,replace,assertCurrent};
 }

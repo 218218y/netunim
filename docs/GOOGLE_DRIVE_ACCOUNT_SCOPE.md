@@ -23,6 +23,14 @@ The canonical implementations now have distinct owners:
   epoch. Explicit session replacement/logout changes the epoch. A successful
   access-token refresh within the same user preserves it.
 
+Four additional regressions through the production auth transport reproduced
+OAuth disconnect replay for B after A's 401, and a stale OAuth intent sent
+after refresh plus same-user relogin. Auth transport now consumes the client's
+`assertRequestScope` before sending, after session acquisition, and around its
+existing 401 refresh/replay. The guard is removed from fetch options. A refresh
+also captures its own auth scope: an obsolete success/failure cannot replace
+or clear credentials belonging to a newer login.
+
 `sync-assets.py` generates both app implementations. Domains consume the pure
 policy and injected source API; the old domain network module is removed. The
 module graph enforces those import/I/O boundaries and factory budgets.
@@ -84,7 +92,8 @@ below is distinct from the full branch release gate.
   response bodies, account change, same-user relogin, cancellation, concurrent
   acquisition, revocation, offline/retry, 401/403 and malformed responses.
 - The production auth modules are tested for refresh versus explicit login
-  epochs. Existing query/pagination/Workspace preview and fallback tests remain.
+  epochs, outgoing OAuth scope and obsolete refresh success/failure. Existing
+  query/pagination/Workspace preview and fallback tests remain.
 - `runtime_google_drive_scope.py` uses actual app DOMs and production auth ->
   composition -> integration -> source -> Global Search with disposable profiles
   and fake transports. It proves late body rejection, cache isolation, login

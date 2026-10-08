@@ -93,3 +93,15 @@ for(const app of ['orders','kupa'])test(`${app} auth scope survives refresh and 
   store(null);await login('a@example.test','fixture');const next=api.getAccountScope();
   assert.equal(next.owner,'A');assert.ok(next.epoch>initial.epoch,'logout/login must fence earlier requests even without an intervening scope read');
 }));
+
+for(const app of ['orders','kupa'])for(const success of [false,true])test(`${app} obsolete refresh ${success?'success':'failure'} preserves a newer account session`,async()=>withGlobals(async()=>{
+  const active={value:'A'},assertSessionOwner=ownerFence(active);
+  const api=app==='orders'?createOrdersAuth({assertSessionOwner}):createKupaAuth({assertSessionOwner,session:{},idbGet:async()=>null,idbPut:async()=>{},idbDelete:async()=>{},supaProjectRef:()=> 'fixture',setCloudHeaderStatus:()=>{}});
+  const store=app==='orders'?api.saveSession:api.storeSupaSession,refresh=app==='orders'?api.refreshSession:api.supaRefresh;
+  let release,entered;const gate=new Promise(resolve=>{release=resolve}),started=new Promise(resolve=>{entered=resolve});
+  store(sessionFor('A'));globalThis.fetch=async()=>{entered();return gate};
+  const pending=assert.rejects(refresh(),error=>error.code==='cloud_auth_scope_changed');await started;
+  active.value='B';store(sessionFor('B'));const scope=api.getAccountScope();
+  release(response(success,success?sessionFor('A'):{message:'invalid refresh token'}));await pending;
+  assert.deepEqual(api.getAccountScope(),scope);assert.equal((app==='orders'?api.loadSession:api.loadSupaSession)().user.id,'B');
+}));

@@ -60,7 +60,7 @@ export function createGoogleDriveClient({accountScope,transport,browser,clock}){
     check(context);
     let response;
     try{
-      response=await transport.authenticatedRequest(BACKEND_PATH,{method:'POST',networkRetry:false,dataPriority:'high',body:JSON.stringify({action,...payload})});
+      response=await transport.authenticatedRequest(BACKEND_PATH,{method:'POST',networkRetry:false,dataPriority:'high',body:JSON.stringify({action,...payload}),assertRequestScope:()=>check(context)});
     }catch(error){
       check(context);
       if(error?.code==='cloud_auth_required'||String(error?.message||'').includes('לענן'))
