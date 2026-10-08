@@ -405,6 +405,14 @@ Historical journal compatibility, ACK/SQL/merge semantics and existing polling
 owners remain intact. New reviews of transfer UI receipts and remaining jobs
 must begin with behavior evidence rather than assuming similar bugs.
 
+The Document Bridge deadline review also reproduced an actual Global Search
+spinner after request-body timeout. The canonical client now distinguishes
+`DOCUMENT_BRIDGE_TIMEOUT` from caller cancellation, retains the first cause and
+supports preview metadata cancellation. Current recent/search/paging/preview and
+match failures offer scoped retry; pagination retains its rows and old requests
+cannot replace a newer query/preview. See [the deadline contract](DOCUMENT_BRIDGE_DEADLINE_CONTRACT.md).
+Timeout remains outside automatic Drive fallback and does not introduce retries.
+
 These are completion tracks, each delivered through separate focused changes;
 they are not a claim that every older audit finding is still present.
 
