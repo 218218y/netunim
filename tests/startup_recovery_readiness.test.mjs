@@ -102,7 +102,7 @@ for(const app of ['Orders','Kupa']){
     const access={primary:()=>true,authenticated:()=>true,blocked:()=>f.session.storageProtocolBlocked||!f.ports.storageRecovery.isReady()};
     const ports={access,timers,environment,cloud:{enabled:()=>true,connected:()=>true,resumeAfterReconnect:async()=>calls.push('cloud'),cloudPoll:async()=>calls.push('poll')},
       bank:{startAutoSync:()=>calls.push('bank'),stopAutoSync:noop},credit:{startAutoSync:async()=>calls.push('credit'),stopAutoSync:noop},
-      checks:{pollSharedChecks:async()=>calls.push('checks')},finance:{startAutoSync:()=>calls.push('finance')},morning:{recoverPendingMorningOperation:async()=>calls.push('morning')},
+      checks:{pollSharedChecks:async()=>calls.push('checks')},finance:{startAutoSync:()=>calls.push('finance'),stopAutoSync:()=>{}},morning:{recoverPendingMorningOperation:async()=>calls.push('morning')},
       status:{startupDomainLocked:()=>false,setCloud:noop,setSaveStatus:noop,setCloudHeaderStatus:noop}};
     const runtime=(app==='Orders'?createOrdersConnectivityRuntime:createKupaConnectivityRuntime)(ports);
     t.after(()=>runtime.dispose());runtime.start();

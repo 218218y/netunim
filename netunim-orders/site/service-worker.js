@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-b1b7e91ecebf';
+const CACHE='orders-app-shell-esm-1bdde8f3b2be';
 const SHELL=[
   './',
   './index.html',
@@ -70,6 +70,7 @@ const SHELL=[
   './assets/js/domains/documents/spreadsheet-preview-worker.js',
   './assets/js/domains/documents/spreadsheet-search-viewer.js',
   './assets/js/domains/documents/text-search-viewer.js',
+  './assets/js/domains/finance/automation.js',
   './assets/js/domains/finance/bank-cashflow-view.js',
   './assets/js/domains/finance/bank-cheque-image-runtime.js',
   './assets/js/domains/finance/bank-connection-view.js',

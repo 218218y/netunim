@@ -430,8 +430,14 @@ Kupa Bank now has separate operation read/write ownership, scoped archive/image
 transport and commit-before-cache publication. Real-browser logout and controlled
 archive races reproduced stale success and cache replacement; the operator's
 post-commit refresh warning is retained. See [the Bank operation contract](KUPA_BANK_OPERATION_OWNERSHIP.md).
-Remaining Orders Finance post-provider paths still need their own behavior
-review; this is not a claim of universal controller coverage.
+Orders Bank/Credit and manual Finance operations now retain explicit read/write
+authorization through provider results, leases, response parsing and publication.
+Bank archive publication and post-commit readout are scoped and revision-confirmed;
+the separate Finance scheduler owns stop/restart across logout/offline/disposal.
+Real-browser logout and lost-response cases preserve Main/Shared journals and
+recover the same record identities. See [the Orders Finance operation contract](ORDERS_FINANCE_OPERATION_OWNERSHIP.md).
+Morning orchestration, other jobs and narrower Finance capability APIs remain
+separate review tracks; this is not a claim of universal controller coverage.
 
 These are completion tracks, each delivered through separate focused changes;
 they are not a claim that every older audit finding is still present.

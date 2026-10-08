@@ -153,7 +153,7 @@ test('shared check transport validates revisions and preserves RPC request contr
 test('Orders Kupa readout refresh invalidates the visible dependent view only when the Kupa revision changes',async()=>{
  Object.defineProperty(globalThis,'navigator',{value:{onLine:true},configurable:true});
  const checksSession={kupaReadRevision:0,kupaCloudReadState:null,kupaNetReadout:null},ui={currentView:'summary'};let fullReads=0,summaryRenders=0,metaRevision=1;
- const api=orderBankCache({checksSession,ui,computeKupaNetReadout:kupa=>({net:kupa.bank.currentBalance}),renderChecks:()=>{},renderSummary:()=>{summaryRenders++},loadSession:()=>({access_token:'x'}),readKupaReadOnlyMeta:async()=>({revision:metaRevision}),readKupaReadOnlyCloud:async()=>{fullReads++;return {revision:metaRevision,state:{bank:{currentBalance:400+metaRevision}}}}});
+ const api=orderBankCache({operationScope:{captureRead:()=>()=>{}},checksSession,ui,computeKupaNetReadout:kupa=>({net:kupa.bank.currentBalance}),renderChecks:()=>{},renderSummary:()=>{summaryRenders++},loadSession:()=>({access_token:'x'}),readKupaReadOnlyMeta:async()=>({revision:metaRevision}),readKupaReadOnlyCloud:async()=>{fullReads++;return {revision:metaRevision,state:{bank:{currentBalance:400+metaRevision}}}}});
  assert.equal(await api.refreshKupaReadout({renderIfChanged:true}),true);assert.equal(checksSession.kupaNetReadout.net,401);assert.equal(summaryRenders,1);assert.equal(fullReads,1);
  assert.equal(await api.refreshKupaReadout({renderIfChanged:true}),true);assert.equal(summaryRenders,1);assert.equal(fullReads,1);
  metaRevision=2;assert.equal(await api.refreshKupaReadout({renderIfChanged:true}),true);assert.equal(checksSession.kupaNetReadout.net,402);assert.equal(summaryRenders,2);assert.equal(fullReads,2);

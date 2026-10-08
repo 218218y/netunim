@@ -5,7 +5,7 @@ export function createOrdersConnectivityRuntime({access,cloud,checks,finance,mor
     ['access',access,['primary','blocked','authenticated']],
     ['cloud',cloud,['enabled','resumeAfterReconnect']],
     ['checks',checks,['pollSharedChecks']],
-    ['finance',finance,['startAutoSync']],
+    ['finance',finance,['startAutoSync','stopAutoSync']],
     ['morning',morning,['recoverPendingMorningOperation']],
     ['status',status,['startupDomainLocked','setCloud']],
   ])for(const method of methods)if(typeof port?.[method]!=='function')throw new TypeError(`orders_connectivity_${name}_${method}_required`);
@@ -30,6 +30,7 @@ export function createOrdersConnectivityRuntime({access,cloud,checks,finance,mor
 
   function offline(){
     for(const key of ['reconnect','checks','morning','finance'])resources.cancel(key);
+    finance.stopAutoSync();
     if(cloud.enabled())status.setCloud('ענן: אופליין','offline');
   }
 
@@ -51,7 +52,7 @@ export function createOrdersConnectivityRuntime({access,cloud,checks,finance,mor
     return true;
   }
 
-  function dispose(){disposed=true;return resources.dispose()}
+  function dispose(){if(disposed)return false;disposed=true;finance.stopAutoSync();return resources.dispose()}
   function resumeStartup(){return started&&!disposed&&morningReady()?scheduleMorning(350,false):false}
   return {start,resumeStartup,dispose};
 }
