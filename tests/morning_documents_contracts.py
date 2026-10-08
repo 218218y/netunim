@@ -31,6 +31,7 @@ document_types=(SITE/'assets/js/core/morning-document-types.js').read_text(encod
 actions=(SITE/'assets/js/ui/action-packs/morning.js').read_text(encoding='utf-8')
 main=(SITE/'assets/js/main.js').read_text(encoding='utf-8')
 runtime_events=(SITE/'assets/js/runtime-events.js').read_text(encoding='utf-8')
+connectivity=(SITE/'assets/js/connectivity.js').read_text(encoding='utf-8')
 setup=DOCS.read_text(encoding='utf-8')
 owner_retention=OWNER_RETENTION.read_text(encoding='utf-8')
 preissue=PREISSUE.read_text(encoding='utf-8')
@@ -167,7 +168,7 @@ ok("const record={version:2,operationId:operation,debtId:debt,type:documentType,
    'Morning reload recovery storage stays minimal: source identity is durable without PDF, signed URL, customer payload or permanent document metadata')
 ok('record.operationId===clean(operationId,80)' in morning_debt_recovery and 'record.type===Number(type)' in morning_debt_recovery and 'moneyCents(record.amount)===moneyCents(amount)' in morning_debt_recovery,
    'Morning reload recovery verification: operation, document type and exact cent amount must match before a recovered debt can mutate')
-ok("recoverPendingMorningOperation:(...args)=>documents.recoverPendingMorningOperation(...args)" in composition and (main+runtime_events).count('recoverPendingMorningOperation({quiet:')>=3,
+ok("recoverPendingMorningOperation:(...args)=>documents.recoverPendingMorningOperation(...args)" in composition and 'recoverPendingMorningOperation({quiet:false})' in main and 'recoverPendingMorningOperation({quiet:true})' in connectivity and 'scheduleMorning(450)' in connectivity and 'scheduleMorning(180)' in connectivity and 'morning:{recoverPendingMorningOperation}' in runtime_events,
    'Morning reload recovery lifecycle: startup, online return and tab visibility all resume pending verification through the customer-domain API')
 reserve_edge=edge.split('async function reserve(ownerId:string,body:any)',1)[1].split('async function abandonReservation',1)[0]
 ok("action==='reserve'" in edge and 'reserveOperation(ownerId,input,fingerprint)' in reserve_edge and "morningRequest('/documents'" not in reserve_edge,
