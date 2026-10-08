@@ -254,6 +254,14 @@ ACK, owner/epoch or SQL semantics changed in this slice.
 
 ## Dependency direction
 
+Main polling now confirms status against a clean acknowledged journal head and
+live generation/access after the relevant awaits. Ten controlled regressions
+reproduced false positive status in Orders fast paths and both apps after access
+or control changes. Canonical status evidence is shared; each app retains its
+access, projection and independent-domain policy. See the
+[status confirmation contract](CLOUD_STATUS_CONFIRMATION_CONTRACT.md). This
+slice changes status/return-value correctness, not ACK or data merge semantics.
+
 Main ACK publication now has a canonical commit-before-publish boundary in both
 apps, with sequence, generation and leadership checks. Six reproduced regressions
 and real IndexedDB fault/restart scenarios protect it. See

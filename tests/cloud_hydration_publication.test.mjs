@@ -102,7 +102,7 @@ test('Orders interactive cloud opening cannot publish after leadership changes d
   const before=clone(model.state),controls=[];
   const api=createOrdersCloudUi({model,files:{},tab,session,checksSession:{},loadSession:()=>({user:{id:'account-A'}}),
     storageOwnerCurrent:()=> 'account-A',storageV2CloudOutboxActive:()=>true,
-    storageV2CommitPromise:()=>Promise.resolve(),refreshStorageV2CloudState:async()=>({seq:0,base:{revision:10},pending:false,flight:null,control:null}),
+    storageV2CommitPromise:()=>Promise.resolve(),refreshStorageV2CloudState:async()=>({seq:0,base:{revision:10,ackSeq:0},pending:false,flight:null,control:null}),
     readCloud:async()=>({revision:11,state:{notes:[{id:'N',content:'remote'}]}}),adoptStorageV2CloudHead:async()=>{tab.primaryTab=false;return {seq:0,revision:11}},
     setStorageV2CloudControl:async value=>controls.push(value),applyOrderCloudState:state=>{model.state=clone(state)},prepareCloudState:clone,
     setCloud:noop,render:noop,toast:noop});
@@ -117,7 +117,7 @@ for(const method of ['cloudPoll','refreshForMorningRecovery'])test(`Orders ${met
   const api=createOrdersSync({model,session,tab,files:{},toast:noop,setCloud:noop,prepareCloudState:clone,
     cloudEnabled:()=>true,cloudHasLocalWork:()=>false,sameOrderCloudData:(a,b)=>JSON.stringify(a.notes)===JSON.stringify(b.notes),
     readCloud:async()=>clone(remote),readCloudMeta:async()=>({revision:11}),
-    refreshStorageV2CloudState:async()=>({seq:0,base:{revision:10},pending:false,flight:null,control:null}),
+    refreshStorageV2CloudState:async()=>({seq:0,base:{revision:10,ackSeq:0},pending:false,flight:null,control:null}),
     adoptStorageV2CloudHead:async()=>{tab.primaryTab=false;return {seq:0,revision:11}},
     applyOrderCloudState:state=>{model.state=clone(state)},render:noop,refreshCloudTimestamp:noop,pollSharedChecks:async()=>{},refreshKupaReadout:async()=>false});
   assert.equal(await api[method](),false);assert.deepEqual(model.state,before);assert.equal(session.cloudRevision,10);
@@ -128,7 +128,7 @@ for(const method of ['cloudPoll','refreshForMorningRecovery'])test(`Orders ${met
   const api=createOrdersSync({model,session,tab,files:{},toast:noop,setCloud:noop,prepareCloudState:clone,
     cloudEnabled:()=>true,cloudHasLocalWork:()=>false,sameOrderCloudData:(a,b)=>JSON.stringify(a.notes)===JSON.stringify(b.notes),
     readCloud:async()=>({revision:11,state:{notes:[{id:'N',content:'remote'}]}}),readCloudMeta:async()=>({revision:11}),
-    refreshStorageV2CloudState:async()=>({seq:0,base:{revision:10},pending:false,flight:null,control:null}),
+    refreshStorageV2CloudState:async()=>({seq:0,base:{revision:10,ackSeq:0},pending:false,flight:null,control:null}),
     adoptStorageV2CloudHead:async()=>{session.localGeneration++;model.state.notes[0].content='later edit';return {seq:0,revision:11}},
     setStorageV2CloudControl:async value=>controls.push(value),
     applyOrderCloudState:state=>{model.state=clone(state)},render:noop,refreshCloudTimestamp:noop,pollSharedChecks:async()=>{},refreshKupaReadout:async()=>false});
