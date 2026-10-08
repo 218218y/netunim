@@ -198,9 +198,18 @@ export function createStorageJournal({owner,schema,validate,primary=()=>true,db=
     await db.rejectFlight(owner,epoch,writer,flightId,nextBase,{checkpoint,expectedSeq,control:sealedControl});return {rejected:structuredClone(flight),base:readStorageRecord(nextBase),checkpoint:readStorageRecord(checkpoint),control:sealedControl&&readStorageRecord(sealedControl),cloudState:cloudSnapshot({...stored,checkpoints:checkpoint,bases:nextBase,flights:null,controls:sealedControl},validateBase)};
   }
   async function setCloudControl(control={}){guard();await queue;const sealed=sealStorageRecord({version:2,owner,epoch,updatedAt:now(),...structuredClone(control)},{kind:'cloud-control'});await db.setControl(owner,epoch,writer,sealed);return readStorageRecord(sealed)}
-  async function clearCloudControl(){guard();await queue;return db.clearControl(owner,epoch,writer)}
-  async function replaceCurrentState(state,{appMetadata={}}={}){
+  async function clearCloudControl({onlyIfClean=null,project=state=>state,validateBase=validate}={}){
+    guard();await queue;
+    if(!onlyIfClean)return db.clearControl(owner,epoch,writer);
+    const recovered=await recover(),stored=recovered.stored,cloud=cloudSnapshot(stored,validateBase);
+    if(!cloud.base||cloud.pending||cloud.flight||cloud.control?.retry||cloud.control?.conflict?.kind!==onlyIfClean.kind||cloud.seq!==onlyIfClean.seq||cloud.base.revision!==onlyIfClean.baseRevision)return false;
+    const projected=project(structuredClone(recovered.state));validateBase(projected);
+    if(!equalSyncJson(projected,cloud.base.state))return false;
+    return db.clearControl(owner,epoch,writer,{expectedHead:{seq:cloud.seq,checkpointChecksum:stored.checkpoints.checksum,baseChecksum:stored.bases.checksum,controlChecksum:stored.controls.checksum}});
+  }
+  async function replaceCurrentState(state,{appMetadata={},expectedSeq=null}={}){
     guard();validate(state);await queue;const recovered=await recover();if(recovered.seq!==seq)throw new Error('storage_checkpoint_stale');
+    if(expectedSeq!==null&&recovered.seq!==expectedSeq)throw new Error('storage_checkpoint_stale');
     const checkpoint=sealStorageRecord({version:2,owner,epoch,seq:recovered.seq,state,appMetadata:{...(recovered.appMetadata||{}),...structuredClone(appMetadata)},savedAt:now()},{kind:'checkpoint'});await db.replaceCheckpoint(owner,epoch,writer,checkpoint);return recovered.seq;
   }
   async function replaceLocalAuthoritativeState(state,{boundaryId,expectedSeq}={}){

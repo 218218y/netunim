@@ -122,7 +122,11 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
     if(control){const nextControl=readStorageRecord(control);if(nextControl.owner!==owner||nextControl.epoch!==epoch)throw new Error('storage_control_scope');tx.objectStore('controls').put(control,owner)}else tx.objectStore('controls').delete(owner);done(true);
   })}
   function setControl(owner,epoch,writer,control){return change(owner,(tx,current,done)=>{assertFence(current,epoch,writer);const data=readStorageRecord(control);if(data.owner!==owner||data.epoch!==epoch)throw new Error('storage_control_scope');tx.objectStore('controls').put(control,owner);done(true)})}
-  function clearControl(owner,epoch,writer){return change(owner,(tx,current,done)=>{assertFence(current,epoch,writer);tx.objectStore('controls').delete(owner);done(true)})}
+  function clearControl(owner,epoch,writer,{expectedHead=null}={}){return change(owner,(tx,current,done)=>{
+    assertFence(current,epoch,writer);
+    if(expectedHead&&(current.metadata.seq!==expectedHead.seq||current.flights||current.checkpoints?.checksum!==expectedHead.checkpointChecksum||current.bases?.checksum!==expectedHead.baseChecksum||current.controls?.checksum!==expectedHead.controlChecksum))throw new Error('storage_control_head_changed');
+    tx.objectStore('controls').delete(owner);done(true);
+  })}
   function adoptCloudHead(owner,epoch,writer,checkpoint,base){return change(owner,(tx,current,done)=>{
     assertFence(current,epoch,writer);if(current.flights)throw new Error('storage_flight_pending');
     const nextCheckpoint=readStorageRecord(checkpoint),nextBase=readStorageRecord(base),prior=current.bases&&readStorageRecord(current.bases);

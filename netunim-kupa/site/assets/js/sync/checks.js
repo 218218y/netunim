@@ -18,10 +18,11 @@ async function syncChecksV2({required=false,quiet=false}={}){
     checksSession.sharedChecksUpdatedAt=sharedChecksV2.lastRemoteUpdatedAt||checksSession.sharedChecksUpdatedAt;
     checksSession.sharedChecksBankEvents=clone(cloud.base.state.bankEvents);checksSession.sharedChecksSaveRequested=!!cloud.pending&&!cloud.control?.conflict;
     checksSession.sharedChecksLastError=cloud.control?.conflict?'אותו צק שונה במקביל — נדרשת הכרעה':'';
-    setSaveStatus(ok?'מסונכרן לענן':checksSession.sharedChecksLastError||'צקים ממתינים לסנכרון',ok?'ok':'saving');
-    setCloudHeaderStatus(ok?'synced':'syncing',ok?'ענן: מסונכרן':'ענן: ממתין לסנכרון');refreshCloudHeaderTimestamp();
+    const conflict=!!cloud.control?.conflict;
+    setSaveStatus(ok?'מסונכרן לענן':checksSession.sharedChecksLastError||'צקים ממתינים לסנכרון',conflict?'error':ok?'ok':'saving');
+    setCloudHeaderStatus(conflict?'conflict':ok?'synced':'syncing',conflict?'ענן: התנגשות בצ׳קים':ok?'ענן: מסונכרן':'ענן: ממתין לסנכרון');refreshCloudHeaderTimestamp();
     if(files.backupsDirHandle)await backupSnapshotToComputer(model.state,session.dbRevision);if(!quiet)render();return ok;
-  }catch(error){checksSession.sharedChecksLastError=error.message;if(required)throw error;if(!quiet)toast(error.message);return false}
+  }catch(error){checksSession.sharedChecksLastError=error.message;setSaveStatus('בדיקת ענן הצ׳קים נכשלה','error');setCloudHeaderStatus(navigator.onLine?'syncing':'offline',navigator.onLine?'ענן: ממתין להתאוששות הצ׳קים':'ענן: אופליין');if(required)throw error;if(!quiet)toast(error.message);return false}
 }
 
 

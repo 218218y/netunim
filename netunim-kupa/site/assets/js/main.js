@@ -269,8 +269,8 @@ const syncChecks=createSyncChecks({
   tab,
   toast:(...args)=>uiStatus.toast(...args),
   render:(...args)=>uiNavigation.checksChanged(...args),
-  setSaveStatus:(...args)=>uiStatus.setSaveStatus(...args),
-  setCloudHeaderStatus:(...args)=>uiStatus.setCloudHeaderStatus(...args),
+  setSaveStatus:(text,mode)=>uiStatus.setSaveStatus(text,mode,'shared-checks'),
+  setCloudHeaderStatus:(mode,text)=>uiStatus.setCloudHeaderStatus(mode,text,'shared-checks'),
   backupSnapshotToComputer:(...args)=>storageBackup.backupSnapshotToComputer(...args),
   refreshCloudHeaderTimestamp:(...args)=>uiStatus.refreshCloudHeaderTimestamp(...args),
 });
@@ -297,6 +297,7 @@ const syncDocument=createSyncDocument({
   syncSharedChecksFromCloud:(...args)=>syncChecks.syncSharedChecksFromCloud(...args),
   render:(...args)=>uiNavigation.render(...args),
   readSupabaseDocument:(...args)=>cloudTransport.readSupabaseDocument(...args),
+  readFinanceSyncDocument:(...args)=>cloudTransport.readFinanceSyncDocument(...args),
   supaRest:(...args)=>cloudAuth.supaRest(...args),
   mergeKupaCloudState3Way:(...args)=>syncMerge.mergeKupaCloudState3Way(...args),
   showSecondaryTabGuard:(...args)=>uiConnection.showSecondaryTabGuard(...args),

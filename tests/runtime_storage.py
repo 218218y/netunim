@@ -569,3 +569,54 @@ for app in ('kupa', 'orders'):
         result=browser.evaluate(script, timeout=60)
         assert not browser.drain_serious_errors()
         print(f'PASS {app} real IndexedDB ACK recovery: {len(result)} assertions for lost response, offline edits, transaction abort, restart, remote writes and concurrent ACK fencing')
+
+# A dirty-head fence can outlive the condition that created it. Reviewing it
+# must compare the durable projection and retire only the exact reviewed head.
+with BrowserSession(ROOT/'netunim-kupa/site', 'clean-conflict-review') as browser:
+    result=browser.evaluate(r"""(async()=>{
+      const {createStorageJournal}=await import('./assets/js/shared/storage-journal.js');
+      const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
+      const {readStorageRecord}=await import('./assets/js/shared/storage-journal-model.js');
+      const done=[],check=(condition,label)=>{if(!condition)throw Error(label);done.push(label)};
+      const initial={notes:[{id:'N',content:'acknowledged work'}],setting:1,financeCache:{revision:10}};
+      const project=state=>({notes:structuredClone(state.notes),setting:state.setting});
+      const conflict={kind:'storage-v2-dirty-head',domain:'kupa',baseRevision:479,currentRemoteRevision:480};
+      const db=createStorageJournalDb(),schema={collections:['notes'],fields:['setting','financeCache']};
+      let serial=0;
+      async function make(){
+        const owner='review-'+(++serial),journal=createStorageJournal({owner,schema,db,validate:state=>{if(!Array.isArray(state.notes))throw Error('notes required')}});
+        await journal.initializeCloudHead(479,initial,{cloudState:project(initial)});await journal.setCloudControl({conflict});
+        return {owner,journal,options:{onlyIfClean:{kind:conflict.kind,seq:0,baseRevision:479},project}};
+      }
+      let f=await make();
+      await f.journal.replaceCurrentState({...initial,financeCache:{revision:11}},{expectedSeq:0});
+      check(await f.journal.clearCloudControl(f.options)===true,'independent Finance cache does not make Main dirty');
+      const clean=await f.journal.cloudState();
+      check(!clean.control&&!clean.pending&&!clean.flight&&clean.base.revision===479&&clean.base.ackSeq===0,'clean review preserves the exact acknowledged cursor');
+      check((await f.journal.recover()).state.financeCache.revision===11,'clean review retains newer Finance data');
+      const originalClear=db.clearControl;
+      for(const race of ['edit','control','checkpoint','leadership']){
+        f=await make();
+        db.clearControl=async(...args)=>{
+          if(race==='edit')await f.journal.append([{type:'put',collection:'notes',id:'N',mode:'replace',record:{id:'N',content:'newer edit'}}]).committed;
+          if(race==='control')await f.journal.setCloudControl({conflict:{kind:'entity-conflict',domain:'kupa'}});
+          if(race==='checkpoint')await f.journal.replaceCurrentState({...initial,financeCache:{revision:12}});
+          if(race==='leadership')await db.claim(f.owner,f.journal.epoch,'other-writer');
+          return originalClear(...args);
+        };
+        let error=null;try{await f.journal.clearCloudControl(f.options)}catch(cause){error=cause}finally{db.clearControl=originalClear}
+        check(error?.message===(race==='leadership'?'storage_writer_fenced':'storage_control_head_changed'),race+' race is fenced inside the real transaction');
+        const stored=await db.load(f.owner);check(!!stored.controls,race+' race retains durable conflict evidence');
+        if(race==='edit')check(stored.metadata.seq===1&&readStorageRecord(stored.bases).ackSeq===0,'new local sequence is never acknowledged by a conflict review');
+        if(race==='checkpoint')check(readStorageRecord(stored.checkpoints).state.financeCache.revision===12,'new Finance checkpoint survives rejected review');
+      }
+      f=await make();const before=await db.load(f.owner),remove=IDBObjectStore.prototype.delete;
+      IDBObjectStore.prototype.delete=function(...args){const result=remove.apply(this,args);if(this.name==='controls'){this.transaction.abort();throw new DOMException('injected control abort','AbortError')}return result};
+      let aborted=false;try{await f.journal.clearCloudControl(f.options)}catch(error){aborted=error.name==='AbortError'}finally{IDBObjectStore.prototype.delete=remove}
+      check(aborted,'an aborted review transaction is reported');
+      check(JSON.stringify(await db.load(f.owner))===JSON.stringify(before),'an aborted review changes no checkpoint, journal, cursor or control');
+      check(await f.journal.clearCloudControl(f.options)===true,'review safely retries after the transaction abort');
+      return done;
+    })()""",timeout=40)
+    assert not browser.drain_serious_errors()
+    print(f'PASS real IndexedDB clean-conflict review: {len(result)} assertions for cursor preservation, Finance isolation, races, leadership fencing and transaction abort')
