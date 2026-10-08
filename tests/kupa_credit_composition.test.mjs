@@ -7,7 +7,6 @@ test('Credit waits for its finance controller, then binds editing without enabli
   const model={state:{credits:[],cards:[],creditSync:{profiles:[],cardMappings:{}}}};
   const ui={creditSearchValue:''};
   const credit=createKupaCreditRuntime({model,ui});
-  assert.equal(typeof credit.backupPorts().nextCreditCycle,'function');
   assert.throws(()=>credit.renderCredit(),/credit_view_not_bound/);
   assert.throws(()=>credit.bindEditor(),/credit_view_not_bound/);
   assert.throws(()=>credit.bindView({}),/credit_controller_creditSyncUiState_required/);
@@ -34,12 +33,11 @@ test('Credit waits for its finance controller, then binds editing without enabli
   assert.equal(messages.length,1);
 });
 
-test('Kupa root binds Credit after finance, then delegates UI and backup through its public ports',()=>{
+test('Kupa root binds Credit after finance, then delegates UI through its public ports',()=>{
   const main=fs.readFileSync(new URL('../netunim-kupa/site/assets/js/main.js',import.meta.url),'utf8');
   assert.doesNotMatch(main,/from ['"]\.\/domains\/credit\/(?:selectors|view|editor)\.js['"]/);
   assert.ok(main.indexOf('const credit=createKupaCreditRuntime(')<main.indexOf('const uiNavigation='));
   assert.ok(main.indexOf('credit.bindView(')>main.indexOf('}=composeKupaFinance('));
   assert.ok(main.indexOf('credit.bindEditor(')>main.indexOf('const domainsRecordsCommands='));
   assert.match(main,/name:'credit',actions:credit\.actions/);
-  assert.match(main,/\.\.\.credit\.backupPorts\(\)/);
 });

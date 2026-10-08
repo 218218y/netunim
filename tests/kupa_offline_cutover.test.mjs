@@ -10,7 +10,7 @@ function lifecycleFixture({sharedRecovered=true,authenticated=false,capabilityFa
   const events=[],model={state:{checks:[{id:'prior-visible-check'}]}},session={},ports={openLastFolder:noop};
   Object.assign(ports,{
     model,session,tab:{primaryTab:true},checksSession:{},
-    
+
     acquirePrimaryTabLock:async()=>events.push('primary-lock'),
     hydrateStorageOwner:async()=>events.push('owner'),
     restoreSupaSession:async()=>authenticated?{user:{id:'account-A'}}:null,

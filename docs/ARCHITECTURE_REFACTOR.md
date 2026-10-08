@@ -127,7 +127,9 @@ remain separate from structural refactors.
   bounded policies. Kupa no longer imports business helpers or injects selectors,
   editors and modal internals merely to check their existence at runtime. Module
   graph validation enforces that boundary; the initial state is validated against
-  local and cloud data contracts during tests. Runtime checks of untrusted data,
+  local and cloud data contracts during tests. Unused Credit/Expenses backup
+  facades that only served that inventory have been removed after a usage search.
+  Deployment checks require the current startup contract marker. Runtime checks of untrusted data,
   account ownership, markers and storage protocol remain in place.
 
 ## Dependency direction

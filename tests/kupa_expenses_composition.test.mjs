@@ -21,7 +21,6 @@ test('Expenses exposes its Credit view before editing and saves through the expe
   assert.match(expenses.expensesMarkup(),/expenses-surface/);
   assert.equal(businessReads,1);
   assert.equal(homeReads,1);
-  assert.equal(expenses.backupPorts().monthSumExpenses('2026-10'),0);
   assert.throws(()=>expenses.actions,/expenses_editor_not_bound/);
   assert.throws(()=>expenses.bindEditor({}),/expenses_modal_armModalDraftGuard_required/);
 
@@ -44,7 +43,6 @@ test('Expenses exposes its Credit view before editing and saves through the expe
   assert.equal(saves[0].options.operations[0].collection,'expenses');
   assert.equal(rendered,1);
   assert.equal(closed,1);
-  assert.equal(expenses.backupPorts().monthSumExpenses('2026-10'),120);
 });
 
 test('Kupa root composes Expenses through a view port and a later editor bind',()=>{
