@@ -820,11 +820,13 @@ ok("bankAccountNextCycleCommitmentsData" in bank_model and "kupaAccountCashflowD
    and all(label in kupa_dashboard_view for label in ('חשבון עסקי','חשבון ביתי','אשראי עסקי עד אופק התזרים','הוצאות עסקיות עד אופק התזרים','עו״ש עסקי באופק','אשראי ביתי עד אופק התזרים','הוצאות ביתיות עד אופק התזרים','עו״ש ביתי באופק'))
    and '.bank-account-summary-label' in kupa_css and '.expense-account-divider' in kupa_css,
    "kupa account ownership: business/home bank, credit and expenses use one role-aware exact-horizon model and render as two explicit five-metric Dashboard groups with separated expense tables")
+# Keep the ownership wiring contract; ACK timing, independent Finance fields and
+# failure outcomes are verified by behavior tests in kupa_storage_v2_cloud.
 ok("function applyKupaCoreState" in kupa_sync_document
    and "function applyAcknowledgedCoreState" in kupa_sync_document
    and "const next=applyKupaCoreState(snapshot,model.state.checks)" in kupa_sync_document
-   and "businessChanged=applyAcknowledgedCoreState(rebased.state)" in kupa_sync_document
-   and "businessChanged=applyAcknowledgedCoreState(authoritative)" in kupa_sync_document
+   and "const publication=await commitCloudCheckpoint({" in kupa_sync_document
+   and "publish:()=>{if(reconcile)businessChanged=applyAcknowledgedCoreState(currentCore)}" in kupa_sync_document
    and "getCloudPending" not in kupa_sync_document,
    "kupa save ownership: V2 ACK preserves the finance overlay and has no V1 outbox")
 kupa_actions=(K / "site/assets/js/ui/action-packs/shell.js").read_text(encoding="utf-8")
