@@ -83,6 +83,6 @@ test('Browser connectivity delegates reconnect status ownership to sync modules'
     const connectivity=fs.readFileSync(new URL(`../netunim-${app}/site/assets/js/connectivity.js`,import.meta.url),'utf8');
     assert.match(root,/connectivity\.start\(\)/);
     assert.match(connectivity,/\.resumeAfterReconnect\(\)/);
-    assert.doesNotMatch(root+connectivity,/setCloud(?:HeaderStatus)?\([^\n]*???? ???/);
+    assert.doesNotMatch(root+connectivity,/setCloud(?:HeaderStatus)?\([^\n]*חזרה רשת/);
   }
 });
