@@ -22,8 +22,8 @@ set "NODE_USE_SYSTEM_CA=1"
 set "PROJECT_DIR=%~f1"
 set "PROJECT_NAME=%~2"
 set "BUILD_MARKER=%~3"
-set "RUNTIME_SELF_CHECK_MARKER=%~4"
-set "RUNTIME_SELF_CHECK_FILE=%~5"
+set "STARTUP_CONTRACT_MARKER=%~4"
+set "STARTUP_CONTRACT_FILE=%~5"
 set "WRANGLER_VERSION_FILE=%~dp0wrangler-version.txt"
 if not exist "%WRANGLER_VERSION_FILE%" (
   echo ERROR: Wrangler version file was not found:
@@ -133,14 +133,14 @@ if errorlevel 1 (
   echo Remove dynamic-code execution before deployment.
   exit /b 2
 )
-if defined RUNTIME_SELF_CHECK_MARKER (
-  if not defined RUNTIME_SELF_CHECK_FILE (
-    echo ERROR: runtime self-check marker was configured without a target file.
+if defined STARTUP_CONTRACT_MARKER (
+  if not defined STARTUP_CONTRACT_FILE (
+    echo ERROR: startup contract marker was configured without a target file.
     exit /b 2
   )
-  findstr /C:"%RUNTIME_SELF_CHECK_MARKER%" "%SITE_DIR%\%RUNTIME_SELF_CHECK_FILE%" >nul 2>&1
+  findstr /C:"%STARTUP_CONTRACT_MARKER%" "%SITE_DIR%\%STARTUP_CONTRACT_FILE%" >nul 2>&1
   if errorlevel 1 (
-    echo ERROR: site\%RUNTIME_SELF_CHECK_FILE% does not contain the expected CSP-safe runtime self-check.
+    echo ERROR: site\%STARTUP_CONTRACT_FILE% does not contain the expected startup contract.
     exit /b 2
   )
 )

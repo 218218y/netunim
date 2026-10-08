@@ -28,9 +28,10 @@ function fixture(overrides={}){
 }
 
 test('Orders fresh local startup commits birth then hydrates both V2 journals before render',async()=>{
-  const f=fixture();await f.lifecycle.boot();await f.session.startupHydrationPromise;
+  const f=fixture();const boot=f.lifecycle.boot();assert.equal(f.lifecycle.boot(),boot);await boot;await f.session.startupHydrationPromise;await f.lifecycle.boot();
   assert.deepEqual(f.calls.slice(0,7),['tab-lock','owner','birth-hydrated','birth','main-v2','shared-v2','render']);
   assert.equal(f.session.storageProtocolBlocked,false);
+  assert.equal(f.calls.filter(value=>value==='render').length,1);
 });
 
 test('Orders restart with local marker recovers V2 without rereading V1 or rerunning birth',async()=>{

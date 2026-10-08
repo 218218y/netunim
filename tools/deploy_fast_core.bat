@@ -34,5 +34,5 @@ call "%~dp0deploy_site_core.bat" "%~dp0..\netunim-orders" "bargig-orders" "order
 if errorlevel 1 exit /b %ERRORLEVEL%
 if /I "%TARGET%"=="orders" exit /b 0
 :kupa
-call "%~dp0deploy_site_core.bat" "%~dp0..\netunim-kupa" "bargig-kupa" "kupa-public-data-free-v1" "runtimeSelfCheck" "assets\js\lifecycle.js" "%~1"
+call "%~dp0deploy_site_core.bat" "%~dp0..\netunim-kupa" "bargig-kupa" "kupa-public-data-free-v1" "createStartupTask" "assets\js\lifecycle.js" "%~1"
 exit /b %ERRORLEVEL%

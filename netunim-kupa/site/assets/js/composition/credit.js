@@ -75,12 +75,6 @@ export function createKupaCreditRuntime({model,ui}){
   return {
     bindView,bindEditor,
     renderCredit:(...args)=>requireView().renderCredit(...args),
-    backupPorts:()=>({
-      pendingInstallments:selectors.pendingInstallments,
-      allInstallments:selectors.allInstallments,
-      monthSumInstallments:selectors.monthSumInstallments,
-      nextCreditCycle:selectors.nextCreditCycle,
-    }),
     assertReady:()=>{if(!actions)throw new Error('credit_editor_not_bound');return true},
     get actions(){if(!actions)throw new Error('credit_editor_not_bound');return actions},
   };

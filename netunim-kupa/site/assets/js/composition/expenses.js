@@ -1,4 +1,3 @@
-import {createDomainsExpensesSelectors} from '../domains/expenses/selectors.js';
 import {createDomainsExpensesView} from '../domains/expenses/view.js';
 import {createDomainsExpensesEditor} from '../domains/expenses/editor.js';
 import {createExpensesActions} from '../ui/action-packs/expenses.js';
@@ -8,7 +7,6 @@ import {createExpensesActions} from '../ui/action-packs/expenses.js';
 export function createKupaExpensesRuntime({model,ui,bankForecast}){
   if(!model||!ui)throw new TypeError('expenses_context_required');
   if(typeof bankForecast?.business!=='function'||typeof bankForecast?.home!=='function')throw new TypeError('expenses_bank_forecast_required');
-  const selectors=createDomainsExpensesSelectors({model});
   const view=createDomainsExpensesView({
     model,ui,
     bankNextCycleCommitments:(...args)=>bankForecast.business(...args),
@@ -48,10 +46,6 @@ export function createKupaExpensesRuntime({model,ui,bankForecast}){
 
   return {
     bindEditor,expensesMarkup:(...args)=>view.expensesMarkup(...args),
-    backupPorts:()=>({
-      expenseOccurrencesForMonth:selectors.expenseOccurrencesForMonth,
-      monthSumExpenses:selectors.monthSumExpenses,
-    }),
     assertReady:()=>{ready();return true},
     get actions(){return ready()},
   };

@@ -1,26 +1,9 @@
-import {uid} from './core/values.js';
-import {num, money} from './core/money.js';
-import {dateFmt, todayISO, localISO, dObj, daysFromToday, monthKey, monthLabel, addMonthsISO, monthKeysBetween, checkDateParts} from './core/dates.js';
-import {assertValidCloudState} from './state/validation.js';
-import {normalizeSharedBankEvents, normalizeSharedChecks, checkUrgency} from './domains/checks/model.js';
-import {rawCreditSchedule, creditSchedule, inactiveCreditExpired, creditProgress} from './domains/credit/model.js';
-import {INITIAL_STATE, STORAGE_PREF_KEY} from './state/constants.js';
+import {STORAGE_PREF_KEY} from './state/constants.js';
 import {checkStorageProtocolStartup} from './shared/storage-v2-server-protocol.js';
+import {createStartupTask} from './shared/startup-task.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createLifecycle({hydrateStorageOwner=async()=>{},hydrateLocalBirth=async()=>null,ensureLocalBirth=async()=>false,localBirthPreparing=()=>false,hydrateStorageV2OwnerTransfer=async()=>null,resumeStorageV2OwnerTransfer=async()=>null,storageV2OwnerTransferPreparing=()=>false,verifyStorageV2AccountMarker=async()=>false,verifyLocalStorageEngine=async()=>false,storageOwnerCurrent=()=>null,authenticatedOwner=()=>null,readStorageProtocolState,recoverFencedAccount=async()=>false,recoverLocalV2State=async()=>false,recoverReadOnlyV2State=async()=>false,recoverSharedChecksV2Primary=async()=>false,recoverSharedChecksV2ReadOnly=async()=>false,recoverBrowserV2State=async()=>false,recoverBrowserV2StateReadOnly=async()=>false,ensureSyncCapabilities=async()=>true,render=()=>{},model,session, tab, prepareKupaCloudState, normalizeState, saveChecksState, syncSharedChecksFromCloud, saveSharedChecksToCloud, pollSharedChecks, openLastFolder, checkDateEditorMarkup, checkDateEditorValue, commitCheckDateEditor, setCheckDateValue, normalizeCheckModalDates, activeChecks, depositedChecks, cashBalance, checksBalance, depositedBalance, pendingInstallments, allInstallments, monthSumInstallments, expenseOccurrencesForMonth, monthSumExpenses, bankBaseBalance, bankAdjustments, bankAdjustmentsTotal, bankAsOfDate, sharedChecksObservedSequence, bankCurrentBalance, nextCreditCycle, modalFormSnapshot, armModalDraftGuard, modalHasUnsavedDraft, clearModalDraftGuard, configureCloudConnectButton, handleCloudConnectButton, setCloudHeaderStatus, setSaveStatus=()=>{}, setConnectedStatus=()=>{}, requestPersistentBrowserStorage, showSecondaryTabGuard, acquirePrimaryTabLock, chooseFolder, chooseDataFile, restoreRememberedBackupTarget, supaConfigured, restoreSupaSession, resumeIncompleteRestore=async()=>false, showCloudNoDocument, tryAutoOpenSupabase, setConnectUI, showFirstRun, tryAutoOpenRemembered}){
-function runtimeSelfCheck(){
-  const required={assertValidCloudState,normalizeSharedChecks,prepareKupaCloudState,saveChecksState,saveSharedChecksToCloud,syncSharedChecksFromCloud,pollSharedChecks,num,money,dateFmt,todayISO,localISO,dObj,daysFromToday,monthKey,monthLabel,addMonthsISO,checkDateParts,checkDateEditorMarkup,checkDateEditorValue,commitCheckDateEditor,setCheckDateValue,normalizeCheckModalDates,uid,activeChecks,depositedChecks,cashBalance,checksBalance,depositedBalance,checkUrgency,rawCreditSchedule,creditSchedule,inactiveCreditExpired,creditProgress,pendingInstallments,allInstallments,monthSumInstallments,expenseOccurrencesForMonth,monthSumExpenses,bankBaseBalance,bankAdjustments,bankAdjustmentsTotal,bankCurrentBalance,bankAsOfDate,sharedChecksObservedSequence,normalizeSharedBankEvents,monthKeysBetween,nextCreditCycle,modalFormSnapshot,armModalDraftGuard,modalHasUnsavedDraft,clearModalDraftGuard,openLastFolder};
-  const missing=Object.entries(required).filter(([,fn])=>typeof fn!=='function').map(([name])=>name);
-  if(missing.length){
-    console.error('Kupa runtime self-check failed. Missing helpers:',missing);
-    alert('קובץ המערכת אינו שלם. חסרים רכיבי ליבה: '+missing.join(', ')+'.\nיש להחליף את site/index.html בגרסה התקינה.');
-    return false;
-  }
-  try{normalizeState(INITIAL_STATE)}catch(e){console.error('Kupa state self-check failed:',e);alert('בדיקת תקינות נתוני המערכת נכשלה: '+e.message);return false}
-  return true;
-}
-
+export function createLifecycle({hydrateStorageOwner=async()=>{},hydrateLocalBirth=async()=>null,ensureLocalBirth=async()=>false,localBirthPreparing=()=>false,hydrateStorageV2OwnerTransfer=async()=>null,resumeStorageV2OwnerTransfer=async()=>null,storageV2OwnerTransferPreparing=()=>false,verifyStorageV2AccountMarker=async()=>false,verifyLocalStorageEngine=async()=>false,storageOwnerCurrent=()=>null,authenticatedOwner=()=>null,readStorageProtocolState,recoverFencedAccount=async()=>false,recoverLocalV2State=async()=>false,recoverReadOnlyV2State=async()=>false,recoverSharedChecksV2Primary=async()=>false,recoverSharedChecksV2ReadOnly=async()=>false,recoverBrowserV2State=async()=>false,recoverBrowserV2StateReadOnly=async()=>false,ensureSyncCapabilities=async()=>true,render=()=>{},session,tab,openLastFolder,configureCloudConnectButton,handleCloudConnectButton,setCloudHeaderStatus,setSaveStatus=()=>{},setConnectedStatus=()=>{},requestPersistentBrowserStorage,showSecondaryTabGuard,acquirePrimaryTabLock,chooseFolder,chooseDataFile,restoreRememberedBackupTarget,supaConfigured,restoreSupaSession,resumeIncompleteRestore=async()=>false,showCloudNoDocument,tryAutoOpenSupabase,setConnectUI,showFirstRun,tryAutoOpenRemembered}){
 async function retryReadOnlyRecovery(fn,{attempts=6,delay=60}={}){
   for(let attempt=0;attempt<attempts;attempt++){
     try{const result=await fn();if(result)return result}catch(error){if(attempt===attempts-1)console.error('secondary read-only recovery',error)}
@@ -31,7 +14,6 @@ async function retryReadOnlyRecovery(fn,{attempts=6,delay=60}={}){
 
 async function boot(){
   session.storageProtocolBlocked=true;
-  if(!runtimeSelfCheck())return;
   await acquirePrimaryTabLock();
   // Storage ownership is durable and independent from the auth token. Establish
   // it before any account-scoped marker, snapshot or writer can be consulted.
@@ -122,5 +104,5 @@ async function boot(){
   showFirstRun();
 }
 
-return { runtimeSelfCheck, boot };
+return { boot:createStartupTask(boot) };
 }

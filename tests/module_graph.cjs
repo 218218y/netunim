@@ -31,6 +31,8 @@ for(const app of ['kupa','orders']){
         if(/^assets\/js\/(storage|cloud|sync)\//.test(relative)){
           assert.ok(!/^((domains|ui)\/)/.test(dependency),relative+': infrastructure must receive domain/UI behavior through composition ports: '+dependency);
         }
+        if(relative==='assets/js/lifecycle.js')
+          assert.ok(!dependency.startsWith('domains/'),relative+': startup must use capability ports instead of importing business helpers: '+dependency);
         if(relative.startsWith('assets/js/state/'))
           assert.ok(!/^(domains|sync)\//.test(dependency),relative+': state must use contracts or composition ports: '+dependency);
         if(relative.startsWith('assets/js/domains/'))

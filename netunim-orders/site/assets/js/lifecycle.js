@@ -1,4 +1,5 @@
 import {clone} from './core/values.js';
+import {createStartupTask} from './shared/startup-task.js';
 import {checkStorageProtocolStartup} from './shared/storage-v2-server-protocol.js';
 
 function startupMark(name){try{globalThis.performance?.mark?.(`orders-startup:${name}`)}catch{}}
@@ -179,5 +180,5 @@ async function boot(){
   }
 }
 
-return { boot };
+return { boot:createStartupTask(boot) };
 }

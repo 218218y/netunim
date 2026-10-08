@@ -121,6 +121,17 @@ remain separate from structural refactors.
   continues to scope legacy-card writes to credits, while credit sync policy
   stays with the finance controller.
 
+- Lifecycle boot in both apps now shares a single execution task: concurrent
+  callers join the same promise, and completion or failure cannot run startup
+  again in the same runtime. Recovery retries still belong to their existing
+  bounded policies. Kupa no longer imports business helpers or injects selectors,
+  editors and modal internals merely to check their existence at runtime. Module
+  graph validation enforces that boundary; the initial state is validated against
+  local and cloud data contracts during tests. Unused Credit/Expenses backup
+  facades that only served that inventory have been removed after a usage search.
+  Deployment checks require the current startup contract marker. Runtime checks of untrusted data,
+  account ownership, markers and storage protocol remain in place.
+
 ## Dependency direction
 
 Pure core and protocol contracts may be imported by domain and application
