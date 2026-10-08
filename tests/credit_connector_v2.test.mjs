@@ -6,6 +6,7 @@ import {
   CREDIT_CONNECTOR_CONTRACT_VERSION,
   MAX_PROVIDER_SCHEMA_VERSION,
   VISA_CAL_PROVIDER_SCHEMA_VERSION,
+  attachCamoufoxFallbackContext,
   VisaCalAdapter,
   applyVisaCalLoginNavigationPolicy,
   MaxAdapter,
@@ -277,6 +278,11 @@ const amexRejectedLogin=createCreditProviderAdapter({profile:amexProfile,Company
 await assert.rejects(()=>amexRejectedLogin.scrape(),error=>error.code==='CREDIT_LOGIN_REJECTED'&&error.browserEngine==='chromium'&&error.providerStatus==='2'&&error.providerReturnCode==='E','an Amex provider rejection is terminal for that run and never causes a duplicate credential attempt in Camoufox');
 const amexCamoufoxPaused=createCreditProviderAdapter({profile:amexProfile,CompanyTypes:{amex:'amex'},amexScrapeImpl:async()=>{const error=new Error('html');error.code='CREDIT_LOGIN_HTML_RESPONSE';error.stage='LoginApi';throw error},browserPath:'chrome.exe',allowCamoufoxFallback:false,now:()=>new Date(fixedNow)});
 await assert.rejects(()=>amexCamoufoxPaused.scrape(),error=>error.code==='CREDIT_LOGIN_HTML_RESPONSE'&&error.browserEngine==='chromium','a Camoufox cooldown disables only the fallback; DigitalV3 Chromium is still attempted and its current failure remains explicit');
+const primaryBlocked=Object.assign(new Error('primary'),{code:'CREDIT_AUTOMATION_BLOCKED',stage:'LoginApi',httpStatus:403,browserEngine:'chromium'}),fallbackBlocked=Object.assign(new Error('fallback'),{code:'CREDIT_AUTOMATION_BLOCKED',stage:'LoginPage',httpStatus:403,browserEngine:'camoufox'}),dualBlocked=attachCamoufoxFallbackContext(fallbackBlocked,primaryBlocked);
+assert.deepEqual({engine:dualBlocked.fallbackFromBrowserEngine,code:dualBlocked.fallbackFromCode,stage:dualBlocked.fallbackFromStage,httpStatus:dualBlocked.fallbackFromHttpStatus},{engine:'chromium',code:'CREDIT_AUTOMATION_BLOCKED',stage:'LoginApi',httpStatus:403},'a failed Camoufox fallback preserves the safe Chromium failure summary that caused the fallback');
+assert.match(dualBlocked.message,/שני מסלולי הסנכרון נדחו/);assert.match(dualBlocked.message,/Chrome\/Edge קיבל HTTP 403/);assert.match(dualBlocked.message,/Camoufox קיבל HTTP 403/,'dual-path 403 is reported as one accurate chain instead of pretending only Camoufox failed');
+const chainedDiagnostic=sanitizeCreditDiagnosticEvent({provider:'isracard',browserEngine:'camoufox',stage:'LoginPage',errorClass:'CREDIT_AUTOMATION_BLOCKED',httpStatus:403,fallbackFromBrowserEngine:'chromium',fallbackFromCode:'CREDIT_AUTOMATION_BLOCKED',fallbackFromStage:'LoginApi',fallbackFromHttpStatus:403,secret:'must-not-survive'});
+assert.deepEqual({engine:chainedDiagnostic.fallbackFromBrowserEngine,code:chainedDiagnostic.fallbackFromCode,stage:chainedDiagnostic.fallbackFromStage,httpStatus:chainedDiagnostic.fallbackFromHttpStatus},{engine:'chromium',code:'CREDIT_AUTOMATION_BLOCKED',stage:'LoginApi',httpStatus:403},'safe diagnostics retain only the bounded fallback provenance');assert.equal(JSON.stringify(chainedDiagnostic).includes('must-not-survive'),false);
 
 const excludedFixture=fakeScraper(),excludedRequests=[],excludedFetch=fetchFixture(),excludedResult=await adapterFor(excludedFixture.scraper,async(url,options)=>{excludedRequests.push({url,body:JSON.parse(options.body)});return excludedFetch(url,options)},'recovery',{excludedAccountNumbers:['1111']}).scrape();
 assert.equal(excludedRequests.length,20,'a known excluded Cal card sends zero Frames/Pending/month requests while one included card keeps the complete recovery horizon');

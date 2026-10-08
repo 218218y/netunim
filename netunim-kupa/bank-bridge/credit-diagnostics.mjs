@@ -30,7 +30,7 @@ export function safeCreditResponseShape(value){
 export function responseShapeFingerprint(value={}){const shape=sanitizeStoredResponseShape(value),{statusCode:_,...structural}=shape;return createHash('sha256').update(JSON.stringify(structural)).digest('hex').slice(0,24)}
 
 export function diagnosticFingerprint(value={}){
-  const parts=[value.provider,value.browserEngine,value.stage,value.month,value.errorClass||value.code,value.httpStatus,value.providerStatus,value.providerReturnCode].map(item=>text(item,80));if(value.loginStep)parts.push(text(value.loginStep,40));if(value.loginState)parts.push(text(value.loginState,40));const stable=parts.join('|');
+  const parts=[value.provider,value.browserEngine,value.stage,value.month,value.errorClass||value.code,value.httpStatus,value.providerStatus,value.providerReturnCode].map(item=>text(item,80));if(value.loginStep)parts.push(text(value.loginStep,40));if(value.loginState)parts.push(text(value.loginState,40));if(value.fallbackFromBrowserEngine||value.fallbackFromCode||value.fallbackFromStage||value.fallbackFromHttpStatus)parts.push(text(value.fallbackFromBrowserEngine,20),text(value.fallbackFromCode,80),text(value.fallbackFromStage,80),text(value.fallbackFromHttpStatus,12));const stable=parts.join('|');
   return createHash('sha256').update(stable).digest('hex').slice(0,16);
 }
 
@@ -49,6 +49,8 @@ export function sanitizeCreditDiagnosticEvent(value={}){
     identityState:['new','legacy_unverified','verified'].includes(String(value.identityState||''))?String(value.identityState):'',
     profileRecovery:['none','fresh_profile','identity_rotated','legacy_profile_reset'].includes(String(value.profileRecovery||''))?String(value.profileRecovery):'',
     launchAttempt:Math.max(0,Math.min(3,Math.trunc(Number(value.launchAttempt)||0))),
+    fallbackFromBrowserEngine:['chromium','camoufox'].includes(String(value.fallbackFromBrowserEngine||''))?String(value.fallbackFromBrowserEngine):'',
+    fallbackFromCode:text(value.fallbackFromCode,80),fallbackFromStage:text(value.fallbackFromStage,80),fallbackFromHttpStatus:Math.max(0,Math.trunc(Number(value.fallbackFromHttpStatus)||0)),
   };
   if(responseShape){event.responseShape=responseShape;event.responseShapeFingerprint=responseShapeFingerprint(responseShape)}
   event.fingerprint=diagnosticFingerprint(event);return event;

@@ -635,6 +635,18 @@ export class MaxAdapter extends CreditProviderAdapter {
   async scrape(){return scrapeMaxDirect(this)}
 }
 
+export function attachCamoufoxFallbackContext(fallbackFailure,primaryFailure){
+  if(!fallbackFailure||!primaryFailure)return fallbackFailure;
+  const primaryCode=text(primaryFailure?.code,80),primaryStage=text(primaryFailure?.stage,80),primaryStatus=Math.max(0,Math.trunc(Number(primaryFailure?.httpStatus)||0));
+  fallbackFailure.fallbackFromBrowserEngine='chromium';fallbackFailure.fallbackFromCode=primaryCode;fallbackFailure.fallbackFromStage=primaryStage;fallbackFailure.fallbackFromHttpStatus=primaryStatus;
+  const fallbackStage=text(fallbackFailure?.stage,80),dual403=String(fallbackFailure?.code||'')==='CREDIT_AUTOMATION_BLOCKED'&&Number(fallbackFailure?.httpStatus)===403&&primaryCode==='CREDIT_AUTOMATION_BLOCKED'&&primaryStatus===403;
+  if(dual403){
+    const primaryWhere=primaryStage?` בשלב ${primaryStage}`:'',fallbackWhere=fallbackStage?` בשלב ${fallbackStage}`:'',preCredentials=fallbackStage==='LoginPage'?' לפני שליחת פרטי ההתחברות במסלול Camoufox':'';
+    fallbackFailure.message=`שני מסלולי הסנכרון נדחו באותה ריצה: Chrome/Edge קיבל HTTP 403${primaryWhere}, ולאחר מכן Camoufox קיבל HTTP 403${fallbackWhere}${preCredentials}. Camoufox יושהה עד תום ה-cooldown; Chrome/Edge אינו נכנס להשעיית Camoufox ויישאר זכאי לניסיון חדש בריצה הבאה.`;
+  }
+  return fallbackFailure;
+}
+
 class IsracardGroupDigitalV3Adapter extends CreditProviderAdapter {
   constructor(options={},schemaVersion='',scrapeImpl=null){
     super(options);this.connectorVersion=schemaVersion;Object.assign(this,{browserPath:options.browserPath,identityProbeUrl:options.identityProbeUrl||'',interactive:!!options.interactive,identityDir:options.identityDir,allowCamoufoxFallback:options.allowCamoufoxFallback!==false,digitalScrapeImpl:scrapeImpl});
@@ -651,7 +663,7 @@ class IsracardGroupDigitalV3Adapter extends CreditProviderAdapter {
       const failure=creditThrownScrapeFailure(error,profile);if(!failure.browserEngine)failure.browserEngine='chromium';
       this.event({browserEngine:'chromium',stage:failure?.stage||'Scrape',durationMs:Date.now()-started,errorClass:failure?.code,httpStatus:failure?.httpStatus,providerStatus:failure?.providerStatus,providerReturnCode:failure?.providerReturnCode});
       if(!this.allowCamoufoxFallback||!isCamoufoxRetryableNativeFailure(failure)||!camoufoxCreditSupported(profile.provider))throw failure;
-      return this.scrapeCamoufox();
+      try{return await this.scrapeCamoufox()}catch(error){throw attachCamoufoxFallbackContext(creditThrownScrapeFailure(error,profile),failure)}
     }
   }
   async scrapeCamoufox(){const scope=creditSyncScope({syncMode:this.syncMode,now:this.now()});return camoufoxProfileResult(this,{provider:this.profile.provider,credentials:this.profile.credentials,startDate:scope.startDate,futureMonthsToScrape:scope.futureMonths,interactive:this.interactive,identityDir:this.identityDir,excludedAccountNumbers:[...this.excludedAccountNumbers],onDiagnostic:event=>this.event({browserEngine:'camoufox',...event}),correlationId:this.correlationId,now:this.now})}
