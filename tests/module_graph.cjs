@@ -14,7 +14,7 @@ for(const app of ['kupa','orders']){
     assert.ok(!code.includes('__testBindings'),relative+': test API leaked into deployable source');
     assert.ok(!relative.startsWith('assets/')||Buffer.byteLength(code.replace(/\r\n/g,'\n'))<60000,relative+': oversized responsibility module');
     walk(ast,(node,parent)=>{
-      if(node.type==='FunctionDeclaration'&&['createBankBridgeClient','createDocumentBridgeClient','createBrowserBridgePlatform','createBankBridgeIntegration','createFinanceBridgeIntegration','createDocumentBridgeIntegration'].includes(node.id?.name)){
+      if(node.type==='FunctionDeclaration'&&['createBankBridgeClient','createDocumentBridgeClient','createBrowserBridgePlatform','createBankBridgeIntegration','createFinanceBridgeIntegration','createDocumentBridgeIntegration','createGoogleDriveClient','createBrowserGoogleDrivePlatform','createDocumentGoogleDriveIntegration','composeDocumentSearch'].includes(node.id?.name)){
         const parameter=node.params[0]?.type==='AssignmentPattern'?node.params[0].left:node.params[0];
         assert.ok(parameter?.type==='ObjectPattern'&&parameter.properties.length<=5,relative+': Bridge factory exceeds five collaborators');
       }
@@ -52,14 +52,14 @@ for(const app of ['kupa','orders']){
         if(relative.startsWith('assets/js/domains/'))
           assert.ok(!dependency.startsWith('ui/'),relative+': domains must use shared presentation primitives or UI ports: '+dependency);
         if(relative.startsWith('assets/js/domains/'))
-          assert.ok(!/^(integrations|platform)\//.test(dependency)&&!['shared/bank-bridge-client.js','shared/document-bridge-client.js','shared/browser-bridge-platform.js'].includes(dependency),relative+': domains must receive Bridge/platform implementations through ports: '+dependency);
+          assert.ok(!/^(integrations|platform)\//.test(dependency)&&!['shared/bank-bridge-client.js','shared/document-bridge-client.js','shared/browser-bridge-platform.js','shared/google-drive-client.js','shared/browser-google-drive-platform.js'].includes(dependency),relative+': domains must receive Bridge/platform implementations through ports: '+dependency);
       }
       if(/assets\/js\/(storage|cloud|sync)\//.test(relative)&&node.type==='Identifier')assert.notEqual(node.name,'document',relative+': DOM belongs behind a UI port');
       if(relative==='assets/js/lifecycle.js'&&node.type==='Identifier')assert.notEqual(node.name,'document',relative+': lifecycle must receive DOM bindings through a port');
       if(relative.startsWith('assets/js/startup/')&&node.type==='Identifier')assert.ok(!['window','document','navigator','localStorage','fetch','indexedDB','setTimeout','setInterval','clearTimeout','clearInterval'].includes(node.name),relative+': startup I/O belongs behind a port');
       if(/\/(model|readout)\.js$/.test(relative)&&node.type==='Identifier')assert.ok(!['document','window','localStorage','fetch','indexedDB'].includes(node.name),relative+': calculation module has side effects');
       if(relative.endsWith('/shared/cloud-checkpoint-publication.js')&&node.type==='Identifier')assert.ok(!['document','window','navigator','localStorage','fetch','indexedDB','setTimeout','setInterval'].includes(node.name),relative+': cloud publication must use explicit ports');
-      if(/\/shared\/(bank|document)-bridge-client\.js$/.test(relative)&&node.type==='Identifier'&&!(parent?.type==='MemberExpression'&&parent.property===node&&!parent.computed))
+      if(/\/(?:shared\/(?:(bank|document)-bridge-client|google-drive-client|google-drive-document-policy|authenticated-account-scope)|domains\/documents\/search-source)\.js$/.test(relative)&&node.type==='Identifier'&&!(parent?.type==='MemberExpression'&&parent.property===node&&!parent.computed))
         assert.ok(!['globalThis','window','document','navigator','localStorage','fetch','AbortController','setTimeout','clearTimeout','setInterval','clearInterval'].includes(node.name),relative+': canonical Bridge client must use injected I/O ports');
     });
     graph.set(file,edges);

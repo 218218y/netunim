@@ -1,3 +1,4 @@
+import {createAuthenticatedAccountScope} from '../shared/authenticated-account-scope.js';
 import {createSyncCapabilityGate,syncRequestNeedsCapabilities} from '../shared/sync-capabilities.js';
 import {supabaseConfig as SUPA_CONFIG} from '../../../supabase/config.js';
 import {CLOUD_SESSION_KEY, CLOUD_EMAIL_KEY, CLOUD_AUTO_KEY} from '../state/constants.js';
@@ -51,9 +52,11 @@ function supaConfigured(){return /^https:\/\//.test(SUPA_CONFIG.url||'')&&String
 
 function supaHeaders(token){return {'Content-Type':'application/json','apikey':SUPA_CONFIG.publishableKey,...(token?{'Authorization':'Bearer '+token}:{})}}
 
+const accountScope=createAuthenticatedAccountScope({loadSession:loadSession});
+
 function loadSession(){try{return JSON.parse(localStorage.getItem(CLOUD_SESSION_KEY)||'null')}catch(e){return null}}
 
-function saveSession(s){capabilityGate.reset();if(s)localStorage.setItem(CLOUD_SESSION_KEY,JSON.stringify(s));else localStorage.removeItem(CLOUD_SESSION_KEY)}
+function saveSession(s,{refresh=false}={}){accountScope.replace(s,{refresh});capabilityGate.reset();if(s)localStorage.setItem(CLOUD_SESSION_KEY,JSON.stringify(s));else localStorage.removeItem(CLOUD_SESSION_KEY)}
 
 function cloudAuthRequired(message='נדרשת התחברות לענן'){const error=new Error(message);error.code='cloud_auth_required';return error}
 
@@ -63,7 +66,7 @@ async function authPasswordForLocalReset(email,password){if(!supaConfigured())th
 
 async function localResetReadOnlyFetch(resetSession,path){const token=String(resetSession?.access_token||'').trim(),safePath=String(path||'');if(!token)throw Object.assign(new Error('נדרשת התחברות מחדש לענן לצורך האיפוס'),{code:'local_reset_auth_required'});if(!safePath.startsWith('/rest/v1/')||safePath.includes('/rpc/'))throw new Error('local_reset_read_only_path_rejected');const r=await fetchSupaNetwork(SUPA_CONFIG.url+safePath,{method:'GET',headers:supaHeaders(token)},{retry:true,timeoutMs:SUPA_NETWORK_TIMEOUT_MS});if(r.status===401)throw Object.assign(new Error('פג תוקף אימות הענן לצורך האיפוס'),{code:'local_reset_auth_required'});return r}
 
-async function refreshSession({force=true,observedAccessToken=''}={}){if(refreshPromise)return refreshPromise;refreshPromise=(async()=>{const refresh=async()=>{const s=loadSession();if(!s?.refresh_token)throw cloudAuthRequired('נדרשת התחברות מחדש לענן');assertSessionOwner(s);if(observedAccessToken&&s.access_token&&s.access_token!==observedAccessToken)return s;if(!force&&Number(s.expires_at||0)>=Math.floor(Date.now()/1000)+60)return s;const r=await fetch(`${SUPA_CONFIG.url}/auth/v1/token?grant_type=refresh_token`,{method:'POST',headers:supaHeaders(),body:JSON.stringify({refresh_token:s.refresh_token})});const j=await r.json().catch(()=>({}));if(!r.ok){saveSession(null);throw cloudAuthRequired('פג תוקף ההתחברות לענן')};j.expires_at=Math.floor(Date.now()/1000)+Number(j.expires_in||3600);assertSessionOwner(j);saveSession(j);return j};return globalThis.navigator?.locks?.request?navigator.locks.request('netunim-orders-auth-refresh',{mode:'exclusive'},refresh):refresh()})().finally(()=>{refreshPromise=null});return refreshPromise}
+async function refreshSession({force=true,observedAccessToken=''}={}){if(refreshPromise)return refreshPromise;refreshPromise=(async()=>{const refresh=async()=>{const s=loadSession();if(!s?.refresh_token)throw cloudAuthRequired('נדרשת התחברות מחדש לענן');assertSessionOwner(s);if(observedAccessToken&&s.access_token&&s.access_token!==observedAccessToken)return s;if(!force&&Number(s.expires_at||0)>=Math.floor(Date.now()/1000)+60)return s;const r=await fetch(`${SUPA_CONFIG.url}/auth/v1/token?grant_type=refresh_token`,{method:'POST',headers:supaHeaders(),body:JSON.stringify({refresh_token:s.refresh_token})});const j=await r.json().catch(()=>({}));if(!r.ok){saveSession(null);throw cloudAuthRequired('פג תוקף ההתחברות לענן')};j.expires_at=Math.floor(Date.now()/1000)+Number(j.expires_in||3600);assertSessionOwner(j);saveSession(j,{refresh:true});return j};return globalThis.navigator?.locks?.request?navigator.locks.request('netunim-orders-auth-refresh',{mode:'exclusive'},refresh):refresh()})().finally(()=>{refreshPromise=null});return refreshPromise}
 
 async function ensureSession(){let s=loadSession();if(!s)throw cloudAuthRequired();assertSessionOwner(s);if(Number(s.expires_at||0)<Math.floor(Date.now()/1000)+60)s=await refreshSession({force:false,observedAccessToken:s.access_token});return s}
 
@@ -71,5 +74,5 @@ async function supaFetch(path,opt={}){if(syncRequestNeedsCapabilities(path,opt.m
 
 function cloudEnabled(){const current=loadSession();if(localStorage.getItem(CLOUD_AUTO_KEY)!=='1'||!current)return false;try{return assertSessionOwner(current,{allowMissing:true})===true}catch{return false}}
 
-return { ensureSyncCapabilities, supaConfigured, supaHeaders, loadSession, saveSession, authPassword, authPasswordForLocalReset, localResetReadOnlyFetch, refreshSession, ensureSession, supaFetch, cloudEnabled };
+return { getAccountScope:accountScope.current, ensureSyncCapabilities, supaConfigured, supaHeaders, loadSession, saveSession, authPassword, authPasswordForLocalReset, localResetReadOnlyFetch, refreshSession, ensureSession, supaFetch, cloudEnabled };
 }

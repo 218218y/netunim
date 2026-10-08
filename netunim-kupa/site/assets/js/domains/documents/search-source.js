@@ -1,4 +1,4 @@
-import {isAndroidDocumentSearch} from './google-drive.js';
+import {isAndroidDocumentSearch} from '../../shared/google-drive-document-policy.js';
 
 const LOCAL_FALLBACK_CODES=new Set([
   'DOCUMENT_BRIDGE_NOT_PAIRED','DOCUMENT_BRIDGE_UNAVAILABLE','DOCUMENT_BRIDGE_UPGRADE_REQUIRED','UNAUTHORIZED',
@@ -12,7 +12,7 @@ function decodeId(id){const raw=String(id||'');if(raw.startsWith(SOURCE_PREFIX.d
 function normalizeRows(rows,source){return (Array.isArray(rows)?rows:[]).map(row=>({...row,id:prefixId(row?.id,source),sourceProvider:sourceName(source)}))}
 function localFallbackError(error){return LOCAL_FALLBACK_CODES.has(String(error?.code||''))}
 
-export function createDomainsDocumentSearch({localBridge,googleDrive,userAgent=globalThis.navigator?.userAgent||''}={}){
+export function createDomainsDocumentSearch({localBridge,googleDrive,userAgent=''}={}){
   const android=isAndroidDocumentSearch(userAgent);
   if(android&&!googleDrive)throw new Error('Google Drive document search source is missing');
   if(!android&&!localBridge&&!googleDrive)throw new Error('Document search source is missing');

@@ -25,7 +25,7 @@ remain separate from structural refactors.
   manifests.
 - Both apps now construct local/Drive document search through the generated
   `shared/document-search-composition.js` capability, with one authenticated
-  transport port supplied by each app. The construction point remains in the
+  transport and live authorization-scope ports supplied by each app. The construction point remains in the
   same startup sequence.
 - Kupa finance composition now owns its bank Bridge, cheque-image adapter,
   bank and credit controllers, bank view, connection importer, cloud freshness
@@ -351,8 +351,9 @@ pre-cancelled requests, anonymous-health storage coupling and swallowed preview
 cancellation. One request scope now owns its controller/deadline/listener through
 body consumption. Endpoint/version/Drive fallback contracts remain unchanged.
 See [the Document Bridge contract](DOCUMENT_BRIDGE_PORT_CONTRACT.md). Google Drive
-I/O, Kupa credit preference/timer I/O and remaining Finance capability boundaries
-still require their own slices.
+I/O now also has an explicit integration and login scope; Kupa credit
+preference/timer I/O and remaining Finance capability boundaries require their
+own slices.
 
 Baseline for the Kupa phase slice: main `20dbb7a9`, preceding full branch GitHub
 verification run `37752034470` passed (all CI groups, including browser,
@@ -413,6 +414,13 @@ match failures offer scoped retry; pagination retains its rows and old requests
 cannot replace a newer query/preview. See [the deadline contract](DOCUMENT_BRIDGE_DEADLINE_CONTRACT.md).
 Timeout remains outside automatic Drive fallback and does not introduce retries.
 
+Google Drive now has canonical policy, transport and browser-platform owners,
+with a small generated integration. Token/result caches and asynchronous
+responses are fenced to the authenticated account and login epoch, including
+logout/relogin of the same user; ordinary access-token refresh preserves the
+scope. See [the Drive scope contract](GOOGLE_DRIVE_ACCOUNT_SCOPE.md). The review
+reproduced cached-token use after account change/logout in both app runtimes.
+
 These are completion tracks, each delivered through separate focused changes;
 they are not a claim that every older audit finding is still present.
 
@@ -420,7 +428,7 @@ they are not a claim that every older audit finding is still present.
 | --- | --- | --- |
 | Capability APIs | Orders Finance/Checks and shell/Notes interactions; Kupa Dashboard/Bank read-model and remaining shell wiring | Narrow public commands/queries, explicit binding and representative cross-capability behavior tests |
 | Runtime/resource ownership | Remaining Shared-specific and finance/integration jobs, shell listeners, reconnect/owner transitions and preflight | Start/stop/dispose idempotence, no duplicate/orphan jobs, live access fences and controlled failure tests |
-| Remaining I/O ports | Google Drive OAuth/API transport, Kupa credit preferences/timers and other concrete browser effects after inventory | Injected fake ports, adapter contracts and import enforcement; installed settings/auth compatibility |
+| Remaining I/O ports | Kupa credit preferences/timers and other concrete browser effects after inventory; Google Drive and local Bridge clients now have explicit ports | Injected fake ports, adapter contracts and import enforcement; installed settings/auth compatibility |
 | Static contracts | Incremental checkJs for persisted/runtime storage, ACK/read candidates, owner transitions and capability/startup ports | A real mismatch fails CI; runtime validation and historical record readers remain intact |
 | Bridge decomposition | Bank HTTP/vault/session/provider/retry diagnostics; Document HTTP/auth/index/preview | Existing external contracts preserved, classified failures and provider tests before live scraper changes |
 | Canonical sources and compatibility | SQL deployment inventory/generation; historical keys/RPC/readers and supported-client inventory | Immutable deployed migrations, deterministic generation, proven retirement criteria and restore tests |

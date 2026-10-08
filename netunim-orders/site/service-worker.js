@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-f4f15007a99d';
+const CACHE='orders-app-shell-esm-7ed95a76c639';
 const SHELL=[
   './',
   './index.html',
@@ -63,7 +63,6 @@ const SHELL=[
   './assets/js/domains/documents/document-result-sort.js',
   './assets/js/domains/documents/document-search-navigator.js',
   './assets/js/domains/documents/docx-search-viewer.js',
-  './assets/js/domains/documents/google-drive.js',
   './assets/js/domains/documents/pdf-search-viewer.js',
   './assets/js/domains/documents/pdf-text-fragments.js',
   './assets/js/domains/documents/pdfjs-runtime-config.js',
@@ -119,15 +118,18 @@ const SHELL=[
   './assets/js/domains/warehouse/view.js',
   './assets/js/integrations/bank-bridge.js',
   './assets/js/integrations/document-bridge.js',
+  './assets/js/integrations/document-google-drive.js',
   './assets/js/lifecycle.js',
   './assets/js/main.js',
   './assets/js/runtime-events.js',
   './assets/js/shared/action-registry.js',
+  './assets/js/shared/authenticated-account-scope.js',
   './assets/js/shared/bank-bridge-client.js',
   './assets/js/shared/bank-cheque-images.js',
   './assets/js/shared/bank-recurring-debits.js',
   './assets/js/shared/bank-transaction-order.js',
   './assets/js/shared/browser-bridge-platform.js',
+  './assets/js/shared/browser-google-drive-platform.js',
   './assets/js/shared/calendar.js',
   './assets/js/shared/cashflow-breakdown.js',
   './assets/js/shared/cashflow-notification.js',
@@ -158,6 +160,8 @@ const SHELL=[
   './assets/js/shared/finance-refresh-policy.js',
   './assets/js/shared/global-document-search.css',
   './assets/js/shared/global-document-search.js',
+  './assets/js/shared/google-drive-client.js',
+  './assets/js/shared/google-drive-document-policy.js',
   './assets/js/shared/html.js',
   './assets/js/shared/indexed-db-connection.js',
   './assets/js/shared/kupa-cashflow.js',

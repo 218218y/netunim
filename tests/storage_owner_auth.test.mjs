@@ -81,3 +81,15 @@ test('Kupa auth expiry clears credentials but cannot change the durable storage 
   assert.equal(restored.user.id,'account-A');
   assert.equal(api.loadSupaSession().user.id,'account-A');
 }));
+
+for(const app of ['orders','kupa'])test(`${app} auth scope survives refresh and fences logout plus same-user login`,async()=>withGlobals(async()=>{
+  const api=app==='orders'?createOrdersAuth({}):createKupaAuth({session:{},idbGet:async()=>null,idbPut:async()=>{},idbDelete:async()=>{},supaProjectRef:()=> 'fixture',setCloudHeaderStatus:()=>{}});
+  const store=app==='orders'?api.saveSession:api.storeSupaSession;
+  const refresh=app==='orders'?api.refreshSession:api.supaRefresh;
+  const login=app==='orders'?api.authPassword:api.supaAuthPassword;
+  store(sessionFor('A'));const initial=api.getAccountScope();
+  globalThis.fetch=async()=>response(true,sessionFor('A',{access_token:'refreshed-A'}));
+  await refresh();assert.deepEqual(api.getAccountScope(),initial,'access-token refresh must preserve active Drive work');
+  store(null);await login('a@example.test','fixture');const next=api.getAccountScope();
+  assert.equal(next.owner,'A');assert.ok(next.epoch>initial.epoch,'logout/login must fence earlier requests even without an intervening scope read');
+}));

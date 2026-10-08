@@ -1,7 +1,13 @@
-import test from 'node:test';
+﻿import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildGoogleDriveQuery,createDomainsGoogleDriveSearch,isAndroidDocumentSearch,safeGoogleDriveViewUrl} from '../netunim-orders/site/assets/js/domains/documents/google-drive.js';
+import {buildGoogleDriveQuery,isAndroidDocumentSearch,safeGoogleDriveViewUrl} from '../netunim-orders/site/assets/js/shared/google-drive-document-policy.js';
+import {createDocumentGoogleDriveIntegration} from '../netunim-orders/site/assets/js/integrations/document-google-drive.js';
+import {createBrowserGoogleDrivePlatform} from '../netunim-orders/site/assets/js/shared/browser-google-drive-platform.js';
 import {createDomainsDocumentSearch} from '../netunim-orders/site/assets/js/domains/documents/search-source.js';
+
+function createDriveFixture({supaFetch,locationRef,historyRef}){
+  return createDocumentGoogleDriveIntegration({supaFetch,accountScope:()=>({owner:'fixture',epoch:1}),platform:createBrowserGoogleDrivePlatform({locationRef,historyRef})});
+}
 
 test('Google Drive search query separates filename and indexed-content semantics',()=>{
   assert.equal(buildGoogleDriveQuery('budget 2026','everything'),"trashed = false and name contains 'budget' and name contains '2026'");
@@ -98,7 +104,7 @@ test('Google Drive source refreshes token, paginates and downloads a PDF preview
     throw new Error(`unexpected Drive URL ${url}`);
   };
   try{
-    const drive=createDomainsGoogleDriveSearch({supaFetch,locationRef,historyRef});
+    const drive=createDriveFixture({supaFetch,locationRef,historyRef});
     assert.equal(historyRef.replaced,'/orders');
     const data=await drive.search('invoice paid',{mode:'content',limit:2});
     assert.deepEqual(data.results.map(row=>row.id),['a','b']);
@@ -136,7 +142,7 @@ test('native Google Docs are exported to PDF for the in-site preview',async()=>{
     throw new Error(`unexpected Drive URL ${url}`);
   };
   try{
-    const drive=createDomainsGoogleDriveSearch({supaFetch,locationRef:{href:'https://example.test/orders'},historyRef:{}});
+    const drive=createDriveFixture({supaFetch,locationRef:{href:'https://example.test/orders'},historyRef:{}});
     const preview=await drive.preview('doc-1');
     assert.equal(preview.kind,'binary');
     assert.equal(preview.mime,'application/pdf');
@@ -172,7 +178,7 @@ test('Google Drive fallback applies the same file-type filter before paging rece
     throw new Error(`unexpected Drive URL ${url}`);
   };
   try{
-    const drive=createDomainsGoogleDriveSearch({supaFetch,locationRef:{href:'https://example.test/orders'},historyRef:{}});
+    const drive=createDriveFixture({supaFetch,locationRef:{href:'https://example.test/orders'},historyRef:{}});
     assert.deepEqual((await drive.search('item',{mode:'everything',fileType:'pdf'})).results.map(row=>row.id),['pdf']);
     assert.deepEqual((await drive.search('item',{mode:'everything',fileType:'word'})).results.map(row=>row.id),['word']);
     assert.deepEqual((await drive.search('item',{mode:'everything',fileType:'folders'})).results.map(row=>row.id),['folder']);
@@ -191,7 +197,7 @@ test('Drive preview respects canDownload=false and does not fetch file content',
     contentFetches+=1;throw new Error(`unexpected content request ${url}`);
   };
   try{
-    const drive=createDomainsGoogleDriveSearch({supaFetch,locationRef:{href:'https://example.test/orders'},historyRef:{}});
+    const drive=createDriveFixture({supaFetch,locationRef:{href:'https://example.test/orders'},historyRef:{}});
     const data=await drive.search('locked',{mode:'everything',limit:1});
     const preview=await drive.preview(data.results[0].id);
     assert.equal(preview.kind,'cloud');
@@ -215,7 +221,7 @@ test('Google Drive search pages from a 150-capable window and reports more rows 
     throw new Error(`unexpected Drive URL ${url}`);
   };
   try{
-    const drive=createDomainsGoogleDriveSearch({supaFetch,locationRef:{href:'https://example.test/orders'},historyRef:{}});
+    const drive=createDriveFixture({supaFetch,locationRef:{href:'https://example.test/orders'},historyRef:{}});
     const data=await drive.search('pdf',{mode:'everything',limit:2,offset:1});
     assert.deepEqual(data.results.map(row=>row.id),['b','c']);
     assert.equal(data.offset,1);
@@ -236,7 +242,7 @@ test('Google Drive mirrors document header sorting where the API supports it and
     throw new Error(`unexpected Drive URL ${url}`);
   };
   try{
-    const drive=createDomainsGoogleDriveSearch({supaFetch,locationRef:{href:'https://example.test/orders'},historyRef:{}});
+    const drive=createDriveFixture({supaFetch,locationRef:{href:'https://example.test/orders'},historyRef:{}});
     await drive.search('txt',{mode:'everything',sort:{field:'name',direction:'desc'}});
     assert.equal(calls.at(-1).searchParams.get('orderBy'),'name_natural desc');
     const bySize=await drive.search('txt',{mode:'everything',sort:{field:'size',direction:'asc'}});
@@ -244,3 +250,4 @@ test('Google Drive mirrors document header sorting where the API supports it and
     assert.deepEqual(bySize.results.map(row=>row.id),['small','big']);
   }finally{globalThis.fetch=previousFetch}
 });
+
