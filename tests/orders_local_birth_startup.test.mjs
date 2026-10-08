@@ -1,3 +1,4 @@
+import {withStorageProtocol} from './startup_ports.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createLifecycle} from '../netunim-orders/site/assets/js/lifecycle.js';
@@ -24,7 +25,7 @@ function fixture(overrides={}){
     showStartupAlerts:()=>{},startFinanceAutoSync:()=>{},
     ...overrides,
   };
-  return {lifecycle:createLifecycle(ports),calls,session,setMarker:value=>{marker=value}};
+  return {lifecycle:createLifecycle(withStorageProtocol(ports)),calls,session,setMarker:value=>{marker=value}};
 }
 
 test('Orders fresh local startup commits birth then hydrates both V2 journals before render',async()=>{
@@ -73,6 +74,22 @@ test('Orders resumes a durable owner transfer before Main V2 recovery or busines
   await f.lifecycle.boot();await f.session.startupHydrationPromise;
   assert.ok(f.calls.indexOf('transfer-resumed')<f.calls.indexOf('account-main-recovered'));
   assert.ok(f.calls.indexOf('account-main-recovered')<f.calls.indexOf('render'));
+});
+
+test('Orders resumed local-to-account transfer uses the activated owner for Main recovery',async()=>{
+  let owner='local';
+  const f=fixture({
+    storageOwnerCurrent:()=>owner,
+    verifyStorageV2AccountMarker:async()=>owner==='account',
+    verifyLocalStorageEngine:async()=>owner==='local',
+    hydrateStorageV2OwnerTransfer:async()=>({phase:'target-recovered'}),
+    resumeStorageV2OwnerTransfer:async()=>{f.calls.push('transfer-resumed');owner='account'},
+    ensureLocalBirth:async()=>assert.fail('account target must not enter local birth'),
+    recoverLocalV2State:async()=>{assert.equal(owner,'account');f.calls.push('account-main')},
+    refreshStorageV2CloudState:async()=>({base:{state:{checks:[]},revision:4},seq:0,pending:false,flight:null,control:null}),
+  });
+  await f.lifecycle.boot();await f.session.startupHydrationPromise;
+  assert.deepEqual(f.calls.slice(0,7),['tab-lock','owner','birth-hydrated','transfer-resumed','account-main','shared-v2','render']);
 });
 
 test('Orders missing target authentication keeps a pending transfer locked off screen',async()=>{

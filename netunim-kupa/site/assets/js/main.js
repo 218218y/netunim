@@ -45,7 +45,6 @@ import {inactiveCreditExpired} from './domains/credit/model.js';
 import {createDomainsRecordsCommands} from './domains/records/commands.js';
 import {createUiBackup} from './ui/backup.js';
 import {createLifecycle} from './lifecycle.js';
-import {verifyStorageV2LocalEngine} from './shared/storage-v2-local-birth.js';
 import {bindActionEvents,bindBackdropDismissal,bindDismissibleDetails,bindNumberInputWheelGuard} from './shared/events.js';
 import {checkBankReviewItems,checkBankReviewMarkup} from './shared/check-bank-review.js';
 import {composeActionRegistry} from './shared/action-registry.js';
@@ -513,16 +512,11 @@ const uiBackup=createUiBackup({
 });
 
 const lifecycle=createLifecycle({
+  storageProtocol:storageV2Coordinator.startupProtocol,
   hydrateStorageOwner:()=>storageOwner.hydrate({initialOwner:async()=> (await cloudAuth.restoreSupaSession())?.user?.id}),
-  verifyLocalStorageEngine:()=>verifyStorageV2LocalEngine({app:'kupa',owner:()=>storageOwner.current()}),
   recoverLocalV2State:()=>storageV2Coordinator.recoverLocalV2State(),
   recoverReadOnlyV2State:()=>storageV2Coordinator.recoverReadOnlyV2State(),
   ...storageV2Coordinator.lifecyclePorts(),
-  verifyStorageV2AccountMarker,
-  storageOwnerCurrent:()=>storageOwner.current(),
-  authenticatedOwner:()=>cloudAuth.loadSupaSession()?.user?.id||null,
-  readStorageProtocolState:()=>cloudTransport.readStorageProtocolState(),
-  recoverFencedAccount:()=>storageV2Coordinator.recoverFencedAccount(),
   recoverSharedChecksV2Primary,
   recoverSharedChecksV2ReadOnly:(...args)=>sharedChecksV2.recoverReadOnly(...args),
   recoverBrowserV2State:(...args)=>syncRecovery.recoverBrowserV2State(...args),

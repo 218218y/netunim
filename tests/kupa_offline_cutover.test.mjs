@@ -1,3 +1,4 @@
+import {withStorageProtocol} from './startup_ports.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createLifecycle} from '../netunim-kupa/site/assets/js/lifecycle.js';
@@ -32,7 +33,7 @@ function lifecycleFixture({sharedRecovered=true,authenticated=false,capabilityFa
     restoreRememberedBackupTarget:async()=>{},
     tryAutoOpenSupabase:async()=>{throw new Error('offline cloud request')},
   });
-  return {lifecycle:createLifecycle(ports),events,session};
+  return {lifecycle:createLifecycle(withStorageProtocol(ports)),events,session};
 }
 
 test('Kupa V2 recovers Shared Checks before offline or cloud-capability recovery displays Main',async()=>{

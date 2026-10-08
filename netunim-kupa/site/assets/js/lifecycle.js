@@ -1,9 +1,49 @@
 import {STORAGE_PREF_KEY} from './state/constants.js';
-import {checkStorageProtocolStartup} from './shared/storage-v2-server-protocol.js';
 import {createStartupTask} from './shared/startup-task.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createLifecycle({hydrateStorageOwner=async()=>{},hydrateLocalBirth=async()=>null,ensureLocalBirth=async()=>false,localBirthPreparing=()=>false,hydrateStorageV2OwnerTransfer=async()=>null,resumeStorageV2OwnerTransfer=async()=>null,storageV2OwnerTransferPreparing=()=>false,verifyStorageV2AccountMarker=async()=>false,verifyLocalStorageEngine=async()=>false,storageOwnerCurrent=()=>null,authenticatedOwner=()=>null,readStorageProtocolState,recoverFencedAccount=async()=>false,recoverLocalV2State=async()=>false,recoverReadOnlyV2State=async()=>false,recoverSharedChecksV2Primary=async()=>false,recoverSharedChecksV2ReadOnly=async()=>false,recoverBrowserV2State=async()=>false,recoverBrowserV2StateReadOnly=async()=>false,ensureSyncCapabilities=async()=>true,render=()=>{},session,tab,openLastFolder,configureCloudConnectButton,handleCloudConnectButton,setCloudHeaderStatus,setSaveStatus=()=>{},setConnectedStatus=()=>{},requestPersistentBrowserStorage,showSecondaryTabGuard,acquirePrimaryTabLock,chooseFolder,chooseDataFile,restoreRememberedBackupTarget,supaConfigured,restoreSupaSession,resumeIncompleteRestore=async()=>false,showCloudNoDocument,tryAutoOpenSupabase,setConnectUI,showFirstRun,tryAutoOpenRemembered}){
+export function createLifecycle({
+  storageProtocol,
+  hydrateStorageOwner=async()=>{},
+  hydrateLocalBirth=async()=>null,
+  ensureLocalBirth=async()=>false,
+  localBirthPreparing=()=>false,
+  hydrateStorageV2OwnerTransfer=async()=>null,
+  resumeStorageV2OwnerTransfer=async()=>null,
+  storageV2OwnerTransferPreparing=()=>false,
+  recoverLocalV2State=async()=>false,
+  recoverReadOnlyV2State=async()=>false,
+  recoverSharedChecksV2Primary=async()=>false,
+  recoverSharedChecksV2ReadOnly=async()=>false,
+  recoverBrowserV2State=async()=>false,
+  recoverBrowserV2StateReadOnly=async()=>false,
+  ensureSyncCapabilities=async()=>true,
+  render=()=>{},
+  session,
+  tab,
+  openLastFolder,
+  configureCloudConnectButton,
+  handleCloudConnectButton,
+  setCloudHeaderStatus,
+  setSaveStatus=()=>{},
+  setConnectedStatus=()=>{},
+  requestPersistentBrowserStorage,
+  showSecondaryTabGuard,
+  acquirePrimaryTabLock,
+  chooseFolder,
+  chooseDataFile,
+  restoreRememberedBackupTarget,
+  supaConfigured,
+  restoreSupaSession,
+  resumeIncompleteRestore=async()=>false,
+  showCloudNoDocument,
+  tryAutoOpenSupabase,
+  setConnectUI,
+  showFirstRun,
+  tryAutoOpenRemembered
+}){
+for(const method of ['check','readMarkers','verifyLocal'])if(typeof storageProtocol?.[method]!=='function')throw new TypeError(`lifecycle_storage_protocol_${method}_required`);
+
 async function retryReadOnlyRecovery(fn,{attempts=6,delay=60}={}){
   for(let attempt=0;attempt<attempts;attempt++){
     try{const result=await fn();if(result)return result}catch(error){if(attempt===attempts-1)console.error('secondary read-only recovery',error)}
@@ -19,16 +59,8 @@ async function boot(){
   // it before any account-scoped marker, snapshot or writer can be consulted.
   await hydrateStorageOwner();
   const restoredAuth=await restoreSupaSession();await hydrateLocalBirth();await hydrateStorageV2OwnerTransfer();
-  let accountV2Active=await verifyStorageV2AccountMarker(),localEngineActive=await verifyLocalStorageEngine();
-  let protocol=await checkStorageProtocolStartup({owner:storageOwnerCurrent(),accountV2Active,localEngineActive,online:globalThis.navigator?.onLine!==false,authenticatedOwner:authenticatedOwner(),readProtocolState:readStorageProtocolState});
-  if(protocol.reason==='server-v2'&&tab.primaryTab){
-    try{
-      await recoverFencedAccount();
-      accountV2Active=await verifyStorageV2AccountMarker();
-      if(!accountV2Active)throw new Error('storage_fenced_recovery_marker_missing');
-      protocol={allowed:true,reason:'v2-ready'};
-    }catch(error){console.error('Kupa fenced account recovery',error)}
-  }
+  let {accountV2Active,localEngineActive,protocol,recoveryError}=await storageProtocol.check({primary:tab.primaryTab,online:globalThis.navigator?.onLine!==false});
+  if(recoveryError)console.error('Kupa fenced account recovery',recoveryError);
   if(!protocol.allowed){
     session.storageProtocolBlocked=true;
     const oldBrowser=protocol.reason==='server-v2',upgradeRequired=protocol.reason==='upgrade-required';
@@ -52,13 +84,13 @@ async function boot(){
   }
   if(storageV2OwnerTransferPreparing()){
     if(!navigator.onLine||!restoredAuth){session.backendReady=false;setConnectUI({title:'מעבר החשבון ממתין',text:'העריכה נעולה עד לחיבור מחדש לחשבון היעד ולהשלמת המעבר.',showCloud:true});return}
-    try{await resumeStorageV2OwnerTransfer();accountV2Active=await verifyStorageV2AccountMarker();localEngineActive=await verifyLocalStorageEngine()}
+    try{await resumeStorageV2OwnerTransfer();({accountV2Active,localEngineActive}=await storageProtocol.readMarkers())}
     catch(error){console.error('Kupa V2 owner transfer resume',error);session.backendReady=false;setConnectUI({title:'מעבר החשבון נעצר בבטחה',text:'הנתונים נשמרו. יש להתחבר לחשבון היעד ולהשלים את המעבר לפני עריכה.',showCloud:true});return}
   }
   // Birth is a durable transition, and its Main checkpoint is not complete
   // until Shared and the local marker are verified. Keep the screen closed.
   if(!accountV2Active){
-    try{await ensureLocalBirth();localEngineActive=await verifyLocalStorageEngine()}
+    try{await ensureLocalBirth();localEngineActive=await storageProtocol.verifyLocal()}
     catch(error){console.error('Kupa local V2 birth',error);setConnectUI({title:'מעבר האחסון המקומי נעצר',text:'הנתונים הישנים נשארו שמורים. העריכה חסומה עד להשלמת מעבר האחסון או בדיקת התקלה.',showCloud:false});return}
   }
   document.getElementById('chooseFolder').addEventListener('click',chooseFolder);

@@ -132,6 +132,15 @@ remain separate from structural refactors.
   Deployment checks require the current startup contract marker. Runtime checks of untrusted data,
   account ownership, markers and storage protocol remain in place.
 
+- Storage V2 now owns a shared startup protocol port with three collaborators:
+  ownership queries, durable marker verification, and account protocol/recovery.
+  Each configured storage coordinator supplies it to lifecycle. The port preserves
+  offline/local decisions and reports fenced-recovery failures without retries or
+  opening writes. Lock acquisition and ownership hydration still precede protocol
+  verification in each app. Marker state is read again after owner transfer;
+  Orders now uses the activated owner to choose Main recovery, fixing a stale
+  local-owner decision when a local-to-account transfer resumes during boot.
+
 ## Dependency direction
 
 Pure core and protocol contracts may be imported by domain and application
