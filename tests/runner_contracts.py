@@ -146,12 +146,15 @@ print('met peer')
 
     def tree_fixture(self, stem, leave_parent=False):
         marker = self.root / f"{stem}.port"
-        grandchild = self.script(f"{stem}_child.py", f"""import socket, time, tempfile
+        grandchild = self.script(f"{stem}_child.py", f"""import json, os, socket, time, tempfile
 from pathlib import Path
 sock = socket.socket()
 sock.bind(('127.0.0.1', 0))
 sock.listen()
 Path(tempfile.gettempdir(), 'owned.tmp').write_text('disposable')
+Path({str(marker.with_suffix('.owner'))!r}).write_text(json.dumps({{
+    'pid': os.getpid(), 'pgid': os.getpgid(0) if os.name != 'nt' else None,
+}}))
 Path({str(marker)!r}).write_text(str(sock.getsockname()[1]))
 time.sleep(60)
 """)
@@ -209,6 +212,28 @@ print('grandchild ready', flush=True)
                 self.assertIn("grandchild ready", (self.root / f"report/{parent.name}.log").read_text())
                 self.assertFalse(self.can_connect(int(marker.read_text())))
                 self.assertEqual(report["suites"][0]["status"], "passed" if normal else "failed")
+
+    @unittest.skipIf(os.name == "nt", "POSIX process-group termination")
+    def test_normal_exit_releases_descendant_sockets_in_200_real_process_trees(self):
+        # Wait for the parent, not the descendant. Every listener is confirmed
+        # live before close; probe immediately afterwards without a grace sleep.
+        leaked = []
+        for iteration in range(200):
+            parent, marker = self.tree_fixture(f"stress-{iteration}", leave_parent=True)
+            process = SuiteProcess(parent, self.root / f"stress-{iteration}.log", cwd=self.root)
+            try:
+                port = self.wait_port(marker)
+                owner = json.loads(marker.with_suffix(".owner").read_text())
+                self.assertEqual(owner["pgid"], process.proc.pid)
+                self.assertTrue(self.can_connect(port))
+                self.assertEqual(process.proc.wait(timeout=10), 0)
+                process.close()
+                if self.can_connect(port):
+                    leaked.append({"iteration": iteration, "port": port, **owner})
+                self.assertFalse(process.scratch.exists())
+            finally:
+                process.close()
+        self.assertEqual(leaked, [], f"Listeners still reachable after cleanup: {leaked}")
 
     @unittest.skipUnless(os.name == "nt", "Windows read-only directory attributes")
     def test_readonly_copied_site_is_removed_without_changing_source(self):
