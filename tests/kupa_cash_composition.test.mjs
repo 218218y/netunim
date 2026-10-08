@@ -42,7 +42,7 @@ test('Cash binds once after its shell ports exist and keeps rights writes scoped
 test('Kupa root constructs record commands before editors and owns Cash through composition',()=>{
   const main=fs.readFileSync(new URL('../netunim-kupa/site/assets/js/main.js',import.meta.url),'utf8');
   assert.doesNotMatch(main,/from ['"]\.\/domains\/cash\//);
-  assert.ok(main.indexOf('const domainsRecordsCommands=')<main.indexOf('const domainsChecksEditor='));
+  assert.ok(main.indexOf('const domainsRecordsCommands=')<main.indexOf('checks.bindEditor('));
   assert.ok(main.indexOf('const domainsRecordsCommands=')<main.indexOf('const domainsCreditEditor='));
   assert.match(main,/cash\.bindUi\(/);
   assert.match(main,/cash\.assertReady\(/);

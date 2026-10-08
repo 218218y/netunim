@@ -84,6 +84,12 @@ remain separate from structural refactors.
   after Credit rendering, modal, persistence and record deletion exist, and its
   writes stay scoped to the expenses domain. Actions are unavailable before
   binding, making the startup dependency explicit.
+- Kupa Checks now has a capability composition root. Its balance selectors are
+  available before Dashboard construction. The view binds after the bank
+  controller and bulk controls exist; the editor and actions bind after modal,
+  date editing, persistence and record commands exist. Date editor callbacks
+  target explicit guarded commands instead of a later main-scope variable.
+  Check mutations continue to use the shared-checks persistence port.
 
 ## Dependency direction
 
@@ -97,7 +103,7 @@ and presentation primitives should have explicit owners.
 
 ## Next reviewable slices
 
-1. **Composition roots:** continue with Kupa Checks and the remaining Kupa and
+1. **Composition roots:** continue with Kupa Notes and the remaining Kupa and
    Orders capabilities. Map each capability's inputs, outputs, startup phase, and
    deferred callbacks. Keep public behavior fixed and run browser startup and
    sync gates for each extraction. Do not create a broad application service
