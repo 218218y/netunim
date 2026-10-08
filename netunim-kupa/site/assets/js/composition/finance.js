@@ -5,12 +5,13 @@ import {createDomainsBankController} from '../domains/bank/controller.js';
 import {createDomainsBankView} from '../domains/bank/view.js';
 import {createDomainsCreditController} from '../domains/credit/controller.js';
 import {createKupaFinanceCloudPorts} from './finance-cloud.js';
+import {createFinanceOperationScope} from '../shared/finance-fence.js';
 
 export function composeKupaFinance({
   model,session,checksSession,ui,cloudAuth,cloudTransport,syncDocument,
   syncChecksState,syncChecks,storagePersistence,uiStatus,uiNavigation,
   uiDateEditor,financeDerivations,domainsBankSelectors,domainRevisions,
-  getUiModal,automaticAccess,
+  getUiModal,automaticAccess,operationAccess,
 }){
   if(typeof automaticAccess!=='function')throw new Error('finance_automatic_access_required');
   const bridge=createBankBridgeIntegration();
@@ -20,8 +21,10 @@ export function composeKupaFinance({
     fetchBridgeImage:(...args)=>bridge.fetchChequeImage(...args),
   });
   const financeCloud=createKupaFinanceCloudPorts({model,session,cloudTransport,syncDocument});
+  const operationScope=createFinanceOperationScope({readAccess:operationAccess});
 
   const creditController=createDomainsCreditController({
+    captureOperation:operationScope.capture,
     autoScope:automaticAccess,
     model,
     saveState:(message,options={})=>storagePersistence.saveState(message,{...options,domains:['creditSync']}),

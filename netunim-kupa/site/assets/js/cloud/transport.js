@@ -51,9 +51,11 @@ async function readOrdersReadOnlyCloud(){
   if(row){const rev=Number(row.revision);if(!Number.isSafeInteger(rev)||rev<1||!row.state||typeof row.state!=='object')throw new Error('מסמך ניהול ההזמנות בענן אינו תקין')}
   return row;
 }
-async function readFinanceSyncDocument(){
+async function readFinanceSyncDocument({assertCurrent}={}){
+  assertCurrent?.();
   const q=`/rest/v1/${FINANCE_TABLE}?document_name=eq.${encodeURIComponent(FINANCE_DOC)}&select=document_name,revision,state,updated_at`;
-  const r=await supaRest(q,{method:'GET'}),j=await r.json().catch(()=>null);
+  const r=await supaRest(q,{method:'GET',...(assertCurrent?{assertRequestScope:assertCurrent}:{})}),j=await r.json().catch(()=>null);
+  assertCurrent?.();
   if(!r.ok)throw new Error(j?.message||j?.hint||'קריאת נתוני הסינכרון הפיננסי נכשלה');
   return Array.isArray(j)&&j.length?j[0]:null;
 }
@@ -87,36 +89,42 @@ async function readSupabaseDocument(){
   return row;
 }
 async function rpcSaveFinanceSync(state,expectedRevision,operationId,audit={},lease=null){
+  const assertCurrent=lease?.assertCurrent;assertCurrent?.();
   const expected=Number(expectedRevision||0),op=String(operationId||'').trim();if(!Number.isSafeInteger(expected)||expected<0)throw new Error('Revision הסינכרון הפיננסי אינו תקין');if(!op)throw new Error('מזהה פעולת הסינכרון הפיננסי חסר');
-  const r=await supaRest(`/rest/v1/rpc/${FINANCE_RPC}_v6`,{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify({p_document_name:FINANCE_DOC,p_expected_revision:expected,p_state:state,p_operation_id:op,p_audit:audit,...financeFencePayload(lease)})});
-  const body=await r.text();let j;try{j=body?JSON.parse(body):null}catch{j=null}return {r,j,body,row:Array.isArray(j)?j[0]:j};
+  const r=await supaRest(`/rest/v1/rpc/${FINANCE_RPC}_v6`,{method:'POST',networkRetry:true,dataPriority:'high',...(assertCurrent?{assertRequestScope:assertCurrent}:{}),body:JSON.stringify({p_document_name:FINANCE_DOC,p_expected_revision:expected,p_state:state,p_operation_id:op,p_audit:audit,...financeFencePayload(lease)})});
+  const body=await r.text();assertCurrent?.();let j;try{j=body?JSON.parse(body):null}catch{j=null}return {r,j,body,row:Array.isArray(j)?j[0]:j};
 }
 function financeLeaseName(value){const name=String(value||'').trim();if(name!=='bank'&&name!=='credit')throw new Error('סוג נעילת הסינכרון הפיננסי אינו תקין');return name}
-async function claimFinanceSyncLease(leaseName,leaseToken,{ttlSeconds=FINANCE_LEASE_TTL_SECONDS}={}){
+async function claimFinanceSyncLease(leaseName,leaseToken,{ttlSeconds=FINANCE_LEASE_TTL_SECONDS,assertCurrent}={}){
+  assertCurrent?.();
   const name=financeLeaseName(leaseName),token=String(leaseToken||'').trim(),ttl=Math.max(60,Math.min(1800,Math.trunc(Number(ttlSeconds)||FINANCE_LEASE_TTL_SECONDS)));
   if(!token)throw new Error('מזהה נעילת הסינכרון הפיננסי חסר');
-  let r;try{r=await supaRest('/rest/v1/rpc/claim_finance_sync_lease',{method:'POST',body:JSON.stringify({p_lease_name:name,p_lease_token:token,p_ttl_seconds:ttl}),networkRetry:true})}catch(error){if(String(error?.code||'').startsWith('SUPABASE_NETWORK_')){const e=new Error('לא ניתן לקבל כרגע נעילת סינכרון מהענן. לא נפתחה כניסה לבנק או לחברת האשראי כדי למנוע סינכרון כפול ממחשב אחר.');e.code='FINANCE_LEASE_CLOUD_UNAVAILABLE';e.cause=error;throw e}throw error}
+  let r;try{r=await supaRest('/rest/v1/rpc/claim_finance_sync_lease',{method:'POST',body:JSON.stringify({p_lease_name:name,p_lease_token:token,p_ttl_seconds:ttl}),networkRetry:true,...(assertCurrent?{assertRequestScope:assertCurrent}:{})})}catch(error){if(String(error?.code||'').startsWith('SUPABASE_NETWORK_')){const e=new Error('לא ניתן לקבל כרגע נעילת סינכרון מהענן. לא נפתחה כניסה לבנק או לחברת האשראי כדי למנוע סינכרון כפול ממחשב אחר.');e.code='FINANCE_LEASE_CLOUD_UNAVAILABLE';e.cause=error;throw e}throw error}
   const body=await r.text();let j;try{j=body?JSON.parse(body):null}catch{j=null}
   if(!r.ok)throw new Error(j?.message||j?.hint||body||'תפיסת נעילת הסינכרון המשותפת נכשלה');
   const row=Array.isArray(j)?j[0]:j;return {acquired:row?.acquired===true,leasedUntil:row?.leased_until||null,leaseName:name,leaseToken:row?.lease_token||token,fenceEpoch:row?.fence_epoch??null};
 }
-async function releaseFinanceSyncLease(leaseName,leaseToken){
+async function releaseFinanceSyncLease(leaseName,leaseToken,{assertCurrent}={}){
+  assertCurrent?.();
   const name=financeLeaseName(leaseName),token=String(leaseToken||'').trim();if(!token)return false;
-  const r=await supaRest('/rest/v1/rpc/release_finance_sync_lease',{method:'POST',body:JSON.stringify({p_lease_name:name,p_lease_token:token}),networkRetry:true});
+  const r=await supaRest('/rest/v1/rpc/release_finance_sync_lease',{method:'POST',body:JSON.stringify({p_lease_name:name,p_lease_token:token}),networkRetry:true,...(assertCurrent?{assertRequestScope:assertCurrent}:{})});
   const body=await r.text();let j;try{j=body?JSON.parse(body):null}catch{j=null}
   if(!r.ok)throw new Error(j?.message||j?.hint||body||'שחרור נעילת הסינכרון המשותפת נכשל');
   const value=Array.isArray(j)?j[0]:j;return value===true||value?.released===true;
 }
-async function saveFinancePatch(mutator,lease=null){
-  if(!lease)return manualFinanceQueue(held=>saveFinancePatch(mutator,held));
+async function saveFinancePatch(mutator,lease=null,{assertCurrent=lease?.assertCurrent}={}){
+  assertCurrent?.();
+  if(!lease)return manualFinanceQueue(held=>saveFinancePatch(mutator,held),{assertCurrent});
+  if(assertCurrent)lease={...lease,assertCurrent};
   const operationId=createOperationId('finance');
-  let row=await readFinanceSyncDocument();
+  let row=await readFinanceSyncDocument({assertCurrent});
   for(let conflictAttempt=0;conflictAttempt<CLOUD_WRITE_POLICY.conflictAttempts;conflictAttempt++){
+    assertCurrent?.();
     const base=row?.state&&typeof row.state==='object'?structuredClone(row.state):{},next=mutator(base);if(!next)return {saved:false,row};
     const audit=operationAuditMetadata({site:'kupa',mutationType:'finance-update',surface:'kupa.finance.sync-document',baseRevision:Number(row?.revision||0),beforeState:base,afterState:next});
     const res=await runBusyCloudWriteWithPolicy(()=>rpcSaveFinanceSync(next,Number(row?.revision||0),operationId,audit,lease));
     if(res?.r?.ok)return {saved:true,row:res.row};
-    const error=normalizeCloudError(res);if(error.kind==='revision_conflict'){await contentionBackoff(conflictAttempt);row=await readFinanceSyncDocument();continue}
+    const error=normalizeCloudError(res);if(error.kind==='revision_conflict'){await contentionBackoff(conflictAttempt);row=await readFinanceSyncDocument({assertCurrent});continue}
     throw new Error(res?.j?.message||res?.body||'שמירת הסינכרון הפיננסי נכשלה');
   }
   throw new Error('נתוני הסינכרון הפיננסי השתנו במקביל; לא נדרס שום נתון');
