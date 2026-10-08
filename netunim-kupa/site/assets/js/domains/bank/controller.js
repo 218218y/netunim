@@ -1,5 +1,6 @@
 import {bankRecurringDebitHistoryData} from '../../shared/bank-recurring-debits.js';
 import {startFinanceLeaseHeartbeat} from '../../shared/finance-fence.js';
+import {createPollingTask} from '../../shared/runtime-polling.js';
 import {uid} from '../../core/values.js';
 import {wholeMoney} from '../../core/money.js';
 import {todayISO} from '../../core/dates.js';
@@ -30,9 +31,16 @@ function assertBankArchiveCoverage(mergeResult,archive,{role,requireExactCount=f
 }
 
 
-export function createDomainsBankController({model,session,checksSession,sharedChecksHaveLocalWork,saveSharedChecksToCloud,saveState,syncSharedChecksFromCloud,sharedChecksObservedSequence,toast,render,bridge,refreshFinanceCloudSnapshot=async()=>({verified:true,state:model.state}),saveFinancePatch=async()=>({saved:false}),claimFinanceSyncLease=async()=>({acquired:true}),releaseFinanceSyncLease=async()=>true,saveBankSyncSnapshot:publishBankSyncSnapshot=null,mergeBankTransactions=async()=>null,syncBankTransactionsSnapshot=async()=>null,readBankTransactions=async()=>[],readBankTransactionSnapshot=async()=>null,acknowledgeBankTransactionMissing=async()=>null,syncBankChequeImages=async()=>({ok:true,warnings:[]}),touchBankDataRevision=()=>{},touchBankDisplayRevision=()=>{}}){
+export function createDomainsBankController({model,session,checksSession,sharedChecksHaveLocalWork,saveSharedChecksToCloud,saveState,syncSharedChecksFromCloud,sharedChecksObservedSequence,toast,render,bridge,autoScope,timers=globalThis,refreshFinanceCloudSnapshot=async()=>({verified:true,state:model.state}),saveFinancePatch=async()=>({saved:false}),claimFinanceSyncLease=async()=>({acquired:true}),releaseFinanceSyncLease=async()=>true,saveBankSyncSnapshot:publishBankSyncSnapshot=null,mergeBankTransactions=async()=>null,syncBankTransactionsSnapshot=async()=>null,readBankTransactions=async()=>[],readBankTransactionSnapshot=async()=>null,acknowledgeBankTransactionMissing=async()=>null,syncBankChequeImages=async()=>({ok:true,warnings:[]}),touchBankDataRevision=()=>{},touchBankDisplayRevision=()=>{}}){
 const bridgeState={checked:false,available:null,configured:false,busy:false,resultReady:false,upgradeRequired:false,bridgeVersion:0,branchNumber:'',accountNumber:'',businessBranchNumber:'',businessAccountNumber:'',homeBranchNumber:'',homeAccountNumber:'',availableAccounts:[],accountSelectionRole:'',lastScrapeAt:null,lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:'',lastWarningCode:'',lastWarningStage:'',lastWarningHttpStatus:0,availabilityError:'',availabilityErrorAt:null,message:''};
-let autoTimer=null;
+if(typeof autoScope!=='function')throw new Error('bank_auto_scope_required');
+let automaticActive=true,automaticOwner=null;
+const automaticAllowed=()=>{
+  const scope=autoScope();if(!automaticActive||typeof scope!=='string'||!scope.length)return false;
+  if(automaticOwner===null)automaticOwner=scope;
+  return scope===automaticOwner&&session.backendReady&&!bridgeState.upgradeRequired&&bridge.autoEnabled()&&!!bridge.getBridgeToken();
+};
+const autoTask=createPollingTask({timers,canRun:automaticAllowed,delay:autoDelay,run:({isCurrent})=>refreshBankBalance({interactive:false,auto:true,isCurrent}),onError:error=>console.error('bank auto refresh',error)});
 const bankDisplayArchive={business:{accountKey:'',syncKey:'',rows:null,directSnapshot:null},home:{accountKey:'',syncKey:'',rows:null,directSnapshot:null}};
 let bankDisplayArchivePromise=null;
 
@@ -195,9 +203,11 @@ async function exportBankChequeDiagnostics(){
   }catch(error){toast(error?.message||'ייצוא אבחון הבנק נכשל');return false}
 }
 
-function setBankAutoRefresh(enabled){bridge.setAutoEnabled(!!enabled);toast(enabled?'עדכון אוטומטי כל 4 שעות הופעל':'עדכון אוטומטי כובה');maybeAutoRefreshBankBalance()}
+function setBankAutoRefresh(enabled){bridge.setAutoEnabled(!!enabled);toast(enabled?'עדכון אוטומטי כל 4 שעות הופעל':'עדכון אוטומטי כובה');if(enabled)startAutoSync();else stopAutoSync()}
 
-async function refreshBankBalance({interactive=false,auto=false}={}){
+async function refreshBankBalance({interactive=false,auto=false,isCurrent=()=>true}={}){
+  const scope=auto?autoScope():null,allowed=()=>isCurrent()&&automaticAllowed()&&autoScope()===scope;
+  if(auto&&!allowed())return false;
   if(bridgeState.busy)return false;
   if(!bridge.getBridgeToken()){if(!auto)toast('החיבור לבנק עדיין לא הוגדר');return false}
   if(bridgeState.upgradeRequired){if(!auto)toast('יש להריץ מחדש install_bank_bridge.bat במחשב זה לפני עדכון מול הבנק');return false}
@@ -209,19 +219,22 @@ async function refreshBankBalance({interactive=false,auto=false}={}){
   try{
     if(auto){
       const latest=await refreshFinanceCloudSnapshot();
+      if(!allowed())return false;
       if(!latest?.verified){bridge.markAutoAttempt();throw new Error('לא ניתן לאמת את זמן סנכרון הבנק המשותף בענן');}
       if(!bankAutoRefreshDue(sharedBankLastSyncAt(latest.state||model.state))){bridge.markAutoAttempt();return true}
       bridge.markAutoAttempt();
     }
     leaseToken=uid('FINLEASE');
     lease=await claimFinanceSyncLease('bank',leaseToken);leaseHeld=lease?.acquired===true;
+    if(auto&&!allowed())return false;
     if(!leaseHeld){bridgeState.message='סינכרון הבנק כבר מתבצע ממחשב או חלון אחר; לא נפתחה כניסה נוספת לבנק.';if(!auto)toast(bridgeState.message);return false}
       heartbeat=startFinanceLeaseHeartbeat(lease,claimFinanceSyncLease);
     const finance=await refreshFinanceCloudSnapshot();
-    if(auto){if(!finance?.verified)throw new Error('לא ניתן לאמת מחדש את זמן סנכרון הבנק לאחר תפיסת הנעילה');if(!bankAutoRefreshDue(sharedBankLastSyncAt(finance.state||model.state)))return true}
+    if(auto){if(!allowed())return false;if(!finance?.verified)throw new Error('לא ניתן לאמת מחדש את זמן סנכרון הבנק לאחר תפיסת הנעילה');if(!bankAutoRefreshDue(sharedBankLastSyncAt(finance.state||model.state)))return true}
     const archiveInitialized=finance?.state?.bank?.archiveInitialized===true,archiveVersion=Number(finance?.state?.bank?.archiveVersion||0),archiveReady=archiveInitialized&&archiveVersion>=2;
     const cloudArchive=session.connectionMode==='supabase',historyDays=cloudArchive&&!auto&&!archiveReady?365:30;
     await prepareBankSnapshot();
+    if(auto&&!allowed())return false;
     const result=await bridge.fetchBalance({interactive,historyDays}),business=result.accounts?.business||result,home=result.accounts?.home??null,homeFailure=result.accountFailures?.home||null;
     if(!Number.isFinite(Number(business?.balance)))throw new Error('Bank Bridge לא החזיר יתרה עסקית תקינה');
     if(home&&!Number.isFinite(Number(home.balance)))throw new Error('Bank Bridge לא החזיר יתרה ביתית תקינה');
@@ -282,17 +295,15 @@ async function acknowledgeMissingBankTransaction(transactionId){
   }catch(error){toast(error?.message||'סימון התנועה כנבדקה נכשל');return false}
 }
 
-function maybeAutoRefreshBankBalance(){
-  if(autoTimer){clearTimeout(autoTimer);autoTimer=null}
-  if(!session.backendReady||!bridge.autoEnabled()||!bridge.getBridgeToken()||bridgeState.busy)return;
+function autoDelay(){
   const now=Date.now(),lastSyncAt=sharedBankLastSyncAt(),lastSyncMs=lastSyncAt?Date.parse(lastSyncAt):NaN;
-  if(!bankAutoRefreshDue(lastSyncAt,now)){
-    const dueIn=Math.max(1000,lastSyncMs+BANK_AUTO_INTERVAL_MS-now+250);autoTimer=setTimeout(maybeAutoRefreshBankBalance,dueIn);return;
-  }
+  if(!bankAutoRefreshDue(lastSyncAt,now))return Math.max(1000,lastSyncMs+BANK_AUTO_INTERVAL_MS-now+250);
   const retryIn=bridge.autoAttemptDelayMs(now);
-  if(retryIn>0){autoTimer=setTimeout(maybeAutoRefreshBankBalance,Math.max(1000,retryIn+250));return}
-  autoTimer=setTimeout(()=>{autoTimer=null;refreshBankBalance({interactive:false,auto:true}).catch(e=>console.error('bank auto refresh',e))},300);
+  return retryIn>0?Math.max(1000,retryIn+250):300;
 }
+function maybeAutoRefreshBankBalance(){return automaticActive?autoTask.start():false}
+function startAutoSync(){automaticActive=true;automaticOwner=null;return autoTask.start()}
+function stopAutoSync(){automaticActive=false;return autoTask.stop()}
 
-return {bankBridgeUiState,ensureBankDisplayArchive,refreshBankBridgeStatus,saveBankBridgeToken,configureBankBridge,selectBankBridgeAccount,deleteBankBridgeCredentials,exportBankChequeDiagnostics,setBankAutoRefresh,refreshBankBalance,acknowledgeMissingBankTransaction,maybeAutoRefreshBankBalance,commitBankSnapshot};
+return {bankBridgeUiState,ensureBankDisplayArchive,refreshBankBridgeStatus,saveBankBridgeToken,configureBankBridge,selectBankBridgeAccount,deleteBankBridgeCredentials,exportBankChequeDiagnostics,setBankAutoRefresh,refreshBankBalance,acknowledgeMissingBankTransaction,maybeAutoRefreshBankBalance,startAutoSync,stopAutoSync,commitBankSnapshot};
 }

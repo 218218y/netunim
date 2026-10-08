@@ -276,6 +276,8 @@ serialized writes and preservation of pre-existing folder data. They do not writ
 
 Isolation and limits
 --------------------
+runtime_finance_automation.py covers real Kupa preparation across offline/reconnect, account changes,
+secondary-tab access and actual UI logout with held Bridge responses and real journal-sequence checks.
 Browser tests copy site/ into temporary directories, use disposable Chromium profiles and replace public cloud
 configuration with fake endpoints. Production data, credentials, database and deployment are never contacted.
 Most integration suites instrument ONLY these temporary copies with lexical test access via module_probe.cjs.

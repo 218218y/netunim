@@ -10,8 +10,9 @@ export function composeKupaFinance({
   model,session,checksSession,ui,cloudAuth,cloudTransport,syncDocument,
   syncChecksState,syncChecks,storagePersistence,uiStatus,uiNavigation,
   uiDateEditor,financeDerivations,domainsBankSelectors,domainRevisions,
-  getUiModal,
+  getUiModal,automaticAccess,
 }){
+  if(typeof automaticAccess!=='function')throw new Error('finance_automatic_access_required');
   const bridge=createBankBridgeIntegration();
   const chequeImages=createBankChequeImageStorage({
     supaFetch:(...args)=>cloudAuth.supaRest(...args),
@@ -21,6 +22,7 @@ export function composeKupaFinance({
   const financeCloud=createKupaFinanceCloudPorts({model,session,cloudTransport,syncDocument});
 
   const creditController=createDomainsCreditController({
+    autoScope:automaticAccess,
     model,
     saveState:(message,options={})=>storagePersistence.saveState(message,{...options,domains:['creditSync']}),
     toast:(...args)=>uiStatus.toast(...args),
@@ -38,6 +40,7 @@ export function composeKupaFinance({
   });
 
   const bankController=createDomainsBankController({
+    autoScope:automaticAccess,
     model,session,checksSession,
     sharedChecksHaveLocalWork:(...args)=>syncChecksState.sharedChecksHaveLocalWork(...args),
     saveSharedChecksToCloud:(...args)=>syncChecks.saveSharedChecksToCloud(...args),
@@ -90,5 +93,9 @@ export function composeKupaFinance({
     });
   }
 
-  return {creditController,bankController,bankView,createConnectionImporter};
+  const automation={
+    start(){bankController.startAutoSync();return creditController.startAutoSync()},
+    stop(){bankController.stopAutoSync();creditController.stopAutoSync()},
+  };
+  return {creditController,bankController,bankView,createConnectionImporter,automation};
 }

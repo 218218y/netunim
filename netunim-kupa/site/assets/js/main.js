@@ -329,11 +329,6 @@ storageV2Coordinator.configure({
   cloudTransport,cloudAuth,mainStorageV2,verifyStorageV2AccountMarker:()=>verifyStorageV2AccountMarker(),
 });
 
-const uiCloud=composeCloudUi({
-  session,tab,checksSession,model,storageV2Cloud,storageV2Coordinator,syncDocument,uiStatus,cloudAuth,
-  getUiModal:()=>uiModal,uiConnection,stateNormalization,syncChecksState,syncRecovery,cloudTransport,syncChecks,getUiNavigation:()=>uiNavigation,
-});
-
 const checks=createKupaChecksRuntime({model,ui});
 const uiDateEditor=createUiDateEditor({
   markCheckSeriesManual:(...args)=>checks.markCheckSeriesManual(...args),
@@ -419,12 +414,22 @@ const {
   creditController:domainsCreditController,
   bankController:domainsBankController,
   bankView:domainsBankView,
-  createConnectionImporter:composeFinanceConnectionImporter,
+  createConnectionImporter:composeFinanceConnectionImporter,automation:financeAutomation,
 }=composeKupaFinance({
   model,session,checksSession,ui,cloudAuth,cloudTransport,syncDocument,
   syncChecksState,syncChecks,storagePersistence,uiStatus,uiNavigation,
   uiDateEditor,financeDerivations,domainsBankSelectors,domainRevisions,
   getUiModal:()=>uiModal,
+  automaticAccess:()=>{
+    if(!tab.primaryTab||!session.backendReady||navigator.onLine===false||session.storageProtocolBlocked||!storageRecovery.isReady()||session.startupCloudHydrating||session.syncCapabilitiesChecking||session.syncCapabilitiesError)return null;
+    if(session.connectionMode!=='supabase')return 'local:'+session.connectionMode;
+    const owner=cloudAuth.loadSupaSession()?.user?.id;return owner?'supabase:'+owner:null;
+  },
+});
+
+const uiCloud=composeCloudUi({
+  session,tab,checksSession,model,storageV2Cloud,storageV2Coordinator,syncDocument,uiStatus,cloudAuth,
+  getUiModal:()=>uiModal,uiConnection,stateNormalization,syncChecksState,syncRecovery,cloudTransport,syncChecks,getUiNavigation:()=>uiNavigation,financeAutomation,
 });
 
 credit.bindView({

@@ -4,8 +4,8 @@ export function createKupaConnectivityRuntime({access,cloud,bank,credit,status,e
   for(const [name,port,methods] of [
     ['access',access,['primary','blocked']],
     ['cloud',cloud,['connected','resumeAfterReconnect','cloudPoll']],
-    ['bank',bank,['maybeAutoRefreshBankBalance']],
-    ['credit',credit,['maybeAutoRefreshCreditSync']],
+    ['bank',bank,['startAutoSync','stopAutoSync']],
+    ['credit',credit,['startAutoSync','stopAutoSync']],
     ['status',status,['setSaveStatus','setCloudHeaderStatus']],
   ])for(const method of methods)if(typeof port?.[method]!=='function')throw new TypeError(`kupa_connectivity_${name}_${method}_required`);
   const {window,document,navigator}=environment;
@@ -17,8 +17,8 @@ export function createKupaConnectivityRuntime({access,cloud,bank,credit,status,e
   function refreshFinance(){
     resources.schedule('finance',0,()=>{
       if(!allowed()||navigator.onLine===false)return;
-      bank.maybeAutoRefreshBankBalance();
-      return credit.maybeAutoRefreshCreditSync();
+      bank.startAutoSync();
+      return credit.startAutoSync();
     });
   }
 
@@ -30,6 +30,7 @@ export function createKupaConnectivityRuntime({access,cloud,bank,credit,status,e
 
   function offline(){
     for(const key of ['reconnect','poll','finance'])resources.cancel(key);
+    bank.stopAutoSync();credit.stopAutoSync();
     if(!allowed()||!cloud.connected())return;
     status.setSaveStatus('אופליין — שינויים יישמרו מקומית','saving');
     status.setCloudHeaderStatus('offline','ענן: אופליין');
@@ -52,6 +53,6 @@ export function createKupaConnectivityRuntime({access,cloud,bank,credit,status,e
     return true;
   }
 
-  function dispose(){disposed=true;return resources.dispose()}
+  function dispose(){if(disposed)return false;disposed=true;bank.stopAutoSync();credit.stopAutoSync();return resources.dispose()}
   return {start,dispose};
 }

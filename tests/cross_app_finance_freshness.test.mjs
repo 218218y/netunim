@@ -11,7 +11,7 @@ Date.now=()=>Date.parse('2026-09-01T05:00:00.000Z');
 const old='2026-08-30T00:00:00.000Z',fresh='2026-09-01T04:00:00.000Z';
 let bankFetches=0,bankMarks=0;
 const bankModel={state:{bank:{source:'hapoalim',updatedAt:old,bankSyncAt:old,feed:{version:4,provider:'hapoalim',balance:100,syncedAt:old,transactions:[]}},checks:[]}};
-const bankController=createDomainsBankController({
+const bankController=createDomainsBankController({autoScope:()=> 'test-owner',
   model:bankModel,session:{backendReady:true,connectionMode:'supabase'},checksSession:{},
   sharedChecksHaveLocalWork:()=>false,saveState:async()=>true,syncSharedChecksFromCloud:async()=>true,sharedChecksObservedSequence:()=>0,
   toast:()=>{},render:()=>{},
@@ -23,7 +23,7 @@ assert.equal(bankFetches,0,'Kupa bank auto refresh must not scrape when Orders a
 assert.equal(bankMarks,1,'Kupa records a local cooldown when a remote fresh snapshot suppresses a stale local auto attempt');
 
 let bankUnavailableFetches=0;
-const bankUnavailable=createDomainsBankController({
+const bankUnavailable=createDomainsBankController({autoScope:()=> 'test-owner',
   model:bankModel,session:{backendReady:true,connectionMode:'supabase'},checksSession:{},sharedChecksHaveLocalWork:()=>false,saveState:async()=>true,
   syncSharedChecksFromCloud:async()=>true,sharedChecksObservedSequence:()=>0,toast:()=>{},render:()=>{},
   bridge:{getBridgeToken:()=> 'paired',markAutoAttempt:()=>{},fetchBalance:async()=>{bankUnavailableFetches++},autoEnabled:()=>true,autoAttemptDelayMs:()=>0},
@@ -34,18 +34,18 @@ assert.equal(bankUnavailableFetches,0,'Kupa bank auto refresh fails closed when 
 
 let creditFetches=0;
 const creditModel={state:{creditSync:{version:3,mode:'synced',syncedAt:old,profiles:[],errors:[],cardMappings:{}}}};
-const creditController=createDomainsCreditController({
+const creditController=createDomainsCreditController({autoScope:()=> 'test-owner',
   model:creditModel,saveState:async()=>true,toast:()=>{},render:()=>{},modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,
-  bridge:{creditStatus:async()=>{throw new Error('must not query bridge status')},syncCreditCards:async()=>{creditFetches++;throw new Error('must not scrape')}},
+  bridge:{getBridgeToken:()=> 'test-token',creditStatus:async()=>{throw new Error('must not query bridge status')},syncCreditCards:async()=>{creditFetches++;throw new Error('must not scrape')}},
   refreshFinanceCloudSnapshot:async()=>({verified:true,state:{creditSync:{version:3,mode:'synced',syncedAt:fresh,profiles:[],errors:[],cardMappings:{}}}}),
 });
 assert.equal(await creditController.refreshCreditSync({auto:true}),true);
 assert.equal(creditFetches,0,'Kupa credit auto refresh must not scrape when Orders already refreshed the shared Kupa document');
 
 let creditUnavailableFetches=0;
-const creditUnavailable=createDomainsCreditController({
+const creditUnavailable=createDomainsCreditController({autoScope:()=> 'test-owner',
   model:creditModel,saveState:async()=>true,toast:()=>{},render:()=>{},modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,
-  bridge:{creditStatus:async()=>({bridgeVersion:24,profiles:[{profileId:'p1'}]}),syncCreditCards:async()=>{creditUnavailableFetches++}},
+  bridge:{getBridgeToken:()=> 'test-token',creditStatus:async()=>({bridgeVersion:24,profiles:[{profileId:'p1'}]}),syncCreditCards:async()=>{creditUnavailableFetches++}},
   refreshFinanceCloudSnapshot:async()=>({verified:false,state:null}),
 });
 await creditUnavailable.refreshCreditSync({auto:true});
@@ -53,7 +53,7 @@ assert.equal(creditUnavailableFetches,0,'Kupa credit auto refresh fails closed w
 
 
 let lockedBankFetches=0,lockedBankReleases=0;
-const lockedBank=createDomainsBankController({
+const lockedBank=createDomainsBankController({autoScope:()=> 'test-owner',
   model:bankModel,session:{backendReady:true,connectionMode:'supabase'},checksSession:{},sharedChecksHaveLocalWork:()=>false,saveState:async()=>true,
   syncSharedChecksFromCloud:async()=>true,sharedChecksObservedSequence:()=>0,toast:()=>{},render:()=>{},
   bridge:{getBridgeToken:()=> 'paired',fetchBalance:async()=>{lockedBankFetches++},autoEnabled:()=>true,autoAttemptDelayMs:()=>0},
@@ -65,9 +65,9 @@ assert.equal(lockedBankFetches,0,'a denied shared bank lease must stop before th
 assert.equal(lockedBankReleases,0,'a client must not release a lease it never acquired');
 
 let lockedCreditFetches=0,lockedCreditReleases=0;
-const lockedCredit=createDomainsCreditController({
+const lockedCredit=createDomainsCreditController({autoScope:()=> 'test-owner',
   model:creditModel,saveState:async()=>true,toast:()=>{},render:()=>{},modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,
-  bridge:{creditStatus:async()=>({bridgeVersion:24,profiles:[{profileId:'p1'}]}),syncCreditCards:async()=>{lockedCreditFetches++}},
+  bridge:{getBridgeToken:()=> 'test-token',creditStatus:async()=>({bridgeVersion:24,profiles:[{profileId:'p1'}]}),syncCreditCards:async()=>{lockedCreditFetches++}},
   claimFinanceSyncLease:async kind=>{assert.equal(kind,'credit');return {acquired:false,leasedUntil:'2026-09-01T05:10:00.000Z'}},
   releaseFinanceSyncLease:async()=>{lockedCreditReleases++;return true},
 });
@@ -76,7 +76,7 @@ assert.equal(lockedCreditFetches,0,'a denied shared credit lease must stop befor
 assert.equal(lockedCreditReleases,0,'a client must not release a credit lease it never acquired');
 
 let raceBankReads=0,raceBankFetches=0,raceBankReleases=0;
-const raceBank=createDomainsBankController({
+const raceBank=createDomainsBankController({autoScope:()=> 'test-owner',
   model:bankModel,session:{backendReady:true,connectionMode:'supabase'},checksSession:{},sharedChecksHaveLocalWork:()=>false,saveState:async()=>true,
   syncSharedChecksFromCloud:async()=>true,sharedChecksObservedSequence:()=>0,toast:()=>{},render:()=>{},
   bridge:{getBridgeToken:()=> 'paired',markAutoAttempt:()=>{},fetchBalance:async()=>{raceBankFetches++},autoEnabled:()=>true,autoAttemptDelayMs:()=>0},
@@ -90,9 +90,9 @@ assert.equal(raceBankFetches,0,'if another machine completed while this machine 
 assert.equal(raceBankReleases,1,'an acquired bank lease is released even when the post-claim freshness check suppresses scraping');
 
 let raceCreditReads=0,raceCreditFetches=0,raceCreditReleases=0;
-const raceCredit=createDomainsCreditController({
+const raceCredit=createDomainsCreditController({autoScope:()=> 'test-owner',
   model:creditModel,saveState:async()=>true,toast:()=>{},render:()=>{},modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,
-  bridge:{creditStatus:async()=>({bridgeVersion:24,profiles:[{profileId:'p1'}]}),syncCreditCards:async()=>{raceCreditFetches++}},
+  bridge:{getBridgeToken:()=> 'test-token',creditStatus:async()=>({bridgeVersion:24,profiles:[{profileId:'p1'}]}),syncCreditCards:async()=>{raceCreditFetches++}},
   refreshFinanceCloudSnapshot:async()=>({verified:true,state:{creditSync:{version:3,mode:'synced',syncedAt:++raceCreditReads===1?old:fresh,profiles:[],errors:[],cardMappings:{}}}}),
   claimFinanceSyncLease:async()=>({acquired:true,leasedUntil:'2026-09-01T05:20:00.000Z'}),
   releaseFinanceSyncLease:async()=>{raceCreditReleases++;return true},
