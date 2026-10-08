@@ -66,6 +66,13 @@ before returning its final success.
 - Existing ACK lost-response/abort/restart, immutable replay, cloud adoption,
   Shared status, two-profile and PostgreSQL suites remain required full gates.
 
+The existing lost-response browser fixture and cloud unit fixture explicitly
+bind account access, and the unit Flight/base carry the same owner/epoch as
+production. An unbound account port fails closed before transport. The prior
+post-ACK read-failure test now distinguishes the retained committed ACK from
+the overall completion result: a failed final read returns false without
+recreating a Flight, retry Control or discarding that ACK.
+
 Document Bridge deadline/cancellation is a separate change. Owner-transfer UI
 confirmation and the remaining resource/I/O/type/Bridge/SQL tracks remain
 review work, not additional bugs inferred from this finding.
