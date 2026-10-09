@@ -15,6 +15,10 @@ if(localStorage.getItem('audit.startup')){
   const fixture=JSON.parse(localStorage.getItem('audit.startup'));
   globalThis.startupCloudReads=0;
   globalThis.startupCloudGate=new Promise(resolve=>{globalThis.releaseStartupCloud=resolve});
+  // Synthetic local-cloud authority must be installed before appReady's recovery
+  // callback; the fake session below intentionally has no production account.
+  const startupMorningAuthority=createMorningOperationScope({readAccess:()=>({account:{owner:'startup-fixture',epoch:1},storageOwner:'startup-fixture',readable:true,writable:tab.primaryTab})});
+  morningOperationScope.capture=startupMorningAuthority.capture;morningOperationScope.captureRead=startupMorningAuthority.captureRead;
   cloudAuth.loadSession=()=>({access_token:'fixture',expires_at:9999999999});
   cloudAuth.cloudEnabled=()=>true;cloudAuth.ensureSyncCapabilities=async()=>true;
   uiBackup.resumeIncompleteRestore=async()=>false;

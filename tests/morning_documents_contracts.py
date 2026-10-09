@@ -17,6 +17,8 @@ def ok(condition,message):
 edge=FUNCTION.read_text(encoding='utf-8')
 sql=SQL.read_text(encoding='utf-8')
 documents=(SITE/'assets/js/domains/customers/documents.js').read_text(encoding='utf-8')
+request=(SITE/'assets/js/integrations/morning.js').read_text(encoding='utf-8')
+issuance=(SITE/'assets/js/domains/customers/morning-issuance.js').read_text(encoding='utf-8')
 view=(SITE/'assets/js/domains/customers/view.js').read_text(encoding='utf-8')
 editor=(SITE/'assets/js/domains/customers/editor.js').read_text(encoding='utf-8')
 morning_debt=(SITE/'assets/js/domains/customers/morning-debt.js').read_text(encoding='utf-8')
@@ -48,7 +50,7 @@ ok("api.sandbox.morning.dev/idp/v1/oauth/token" in edge and "sandbox.d.greeninvo
    'Morning auth: sandbox is a separate explicit environment with separate endpoints')
 ok("MORNING_CLIENT_ID" in edge and "MORNING_CLIENT_SECRET" in edge and "MORNING_CLIENT_ID" not in ''.join(p.read_text(encoding='utf-8',errors='ignore') for p in SITE.rglob('*') if p.is_file()),
    'Morning secrets: credential names and values stay outside browser assets')
-ok("requireUser(req)" in edge and "morning_cloud_auth_required" in edge and "supaFetch(BACKEND_PATH" in documents,
+ok("requireUser(req)" in edge and "morning_cloud_auth_required" in edge and "supaFetch(PATH" in request and "'/functions/v1/morning-documents'" in request and 'request:morningRequest' in composition,
    'Morning security: browser uses authenticated Supabase Edge Function, never Morning directly')
 ok("client:any={name:clientName,add:false}" in edge and "vatType:0" in edge and "vatType:1" in edge,
    'Morning payload: one-off client and the existing gross-amount VAT-included row behavior are explicit and unchanged by reliability hardening')
@@ -144,7 +146,7 @@ migration=next((ROOT/'supabase/migrations').glob('*_morning_operation_ledger.sql
 ok(all(name not in documents for name in ('scheduleSave','renderCustomers','__standalone__','activeScopeId')) and 'customerDebts' not in edge and 'customerDebts' not in migration
    and 'applyVerifiedDebtDocument' in documents and 'applyVerifiedMorningDocument' in editor and 'applyVerifiedMorningDocumentToDebt' in morning_debt,
    'Morning debt boundary: server/ledger stay debt-agnostic while the customer domain applies only a verified client-side progress event')
-ok("data.verified!==true" in documents and "data.operation?.state==='created'&&!!data.operation?.verified_at" in documents and documents.count('applyVerifiedOperation(')>=3,
+ok("data.verified!==true" in issuance and "data.operation?.state==='created'&&!!data.operation?.verified_at" in documents and 'await issuance.issue(payload,context,assertCurrent);assertCurrent()' in documents and documents.count('applyVerifiedOperation(')>=2,
    'Morning debt application gate: immediate create and reconciliation reach debt progress only after canonical verification')
 ok("MORNING:${operation}:" in morning_debt and "source:'morning'" in morning_debt and 'existingIds.has(id)' in morning_debt,
    'Morning debt idempotency: one deterministic progress entry per operation and side prevents double credit on replay/reconciliation')
@@ -159,9 +161,10 @@ ok('applyPayment=true,applyInvoice=true' in morning_debt and "reason:'skipped-by
    'Morning debt allocation engine: verified documents can independently affect payment, invoice, both, or neither without weakening idempotency')
 ok('Math.min(documentCents,paymentRemainingCents)' in morning_debt and 'Math.min(documentCents,invoiceRemainingCents)' in morning_debt and 'paymentUnapplied' in morning_debt and 'invoiceUnapplied' in morning_debt,
    'Morning debt caps: document value can close remaining balances but can never overpay or over-invoice the local debt')
-reserve_call_pos=documents.find("backend('reserve',payload)")
-recovery_save_pos=documents.find('persistRecoveryContext(recoveryContext(type,amount,policy))')
-create_call_pos=documents.find("backend('create',payload)")
+issuance=(SITE/"assets/js/domains/customers/morning-issuance.js").read_text(encoding="utf-8")
+reserve_call_pos=issuance.find("backend('reserve',payload,assertCurrent)")
+recovery_save_pos=issuance.find('recovery.persist(context)')
+create_call_pos=issuance.find("backend('create',payload,assertCurrent)")
 ok(0 <= reserve_call_pos < recovery_save_pos < create_call_pos and 'orders.morning.pending-issuance.v1' in morning_debt_recovery and 'localStorage' in morning_debt_recovery,
    'Morning reload recovery: a server pre-issue reservation and the exact local debt/type/amount/allocation policy are both durable before any official POST')
 ok("const record={version:2,operationId:operation,debtId:debt,type:documentType,amount:amountCents/100,applyPayment:applyPayment===true,applyInvoice:applyInvoice===true,createdAt:time,sourceKind:kind}" in morning_debt_recovery and "if(kind==='bank')record.bankTransactionId=bankId" in morning_debt_recovery and all(token not in morning_debt_recovery for token in ('pdfBase64','document_url','allocationNumber','clientName')),
@@ -208,7 +211,7 @@ ok('timestampMs(' in edge and "Date.parse(text)" in edge,
    'Morning reconciliation accepts both epoch and ISO creation timestamps without weakening the matching window')
 ok('ambiguousWriteStatus(' in edge and 'value===408||(value>=500&&value<=599)' in edge,
    'Morning issuance ambiguity: HTTP 408 and every 5xx remain non-retryable until reconciliation')
-ok("documentsBrowser.viewDocument(data.document.id,null,{quiet:true})" in documents and "data.verified!==true" in documents and "מסמך רשמי שנשלף מ-Morning" in browser,
+ok("documentsBrowser.viewDocument(data.document.id,null,{quiet:true})" in documents and "data.verified!==true" in issuance and "מסמך רשמי שנשלף מ-Morning" in browser,
    'Issued-document UI: browser fails closed without server verification and automatically loads the official Morning PDF after verified issuance')
 ok("if(createBusy||blocked||completed)return" in documents and "button.disabled=blocked||completed" in documents and "הופק ואומת" in documents,
    'Issued-document UI: a verified success locks the same issuance dialog so a second click cannot create an accidental duplicate')
@@ -230,7 +233,7 @@ ok('Number.isSafeInteger(page)' in edge and 'pageSize>50' in edge and 'SEARCH_TY
    'Search uses a server whitelist for dates, pagination, types, statuses, client and sort')
 ok('MAX_DOCUMENT_PDF_BYTES=20*1024*1024' in edge and "Content-Type':'application/pdf'" in edge and "bytes[0]!==0x25" in edge and "Cache-Control':'no-store'" in edge,
    'Existing-document preview validates PDF magic bytes, caps payload size and disables storage/cache')
-ok('morningBrowserPreviewFrame' in browser and "action:'document_pdf'" in browser and "opened.length===0" not in browser,
+ok('morningBrowserPreviewFrame' in browser and "response('document_pdf'" in request and 'request.pdf' in browser and "opened.length===0" not in browser,
    'Existing-document view is rendered inside the app rather than navigating to Morning')
 ok('.morning-browser-table{width:100%;min-width:0!important;table-layout:fixed' in app_css and '#morningBrowserResults{width:100%;max-width:100%;overflow:hidden}' in app_css,
    'Morning document browser layout: the results table overrides the global wide-table minimum and fits the modal without horizontal scrolling')
@@ -238,7 +241,7 @@ ok('grid-template-rows:auto 40px' in app_css and '.morning-browser-filters input
    'Morning document browser filters: text, select and date controls share the same control height and aligned labels')
 ok('function allocationMarkup(value)' in browser and 'morning-browser-allocation-text' in browser and 'title=\"${esc(allocation)}\"' in browser and '.morning-browser-allocation-text{display:none}' in app_css,
    'Morning document browser allocation: allocation IDs are compact, expose the full value on hover and collapse to an existence marker at tighter widths')
-ok('localStorage' not in browser and 'sessionStorage' not in browser and 'document_links' in browser and 'document_pdf' in browser and 'URL.createObjectURL' in browser and 'noopener noreferrer' in browser,
+ok('localStorage' not in browser and 'sessionStorage' not in browser and 'document_links' in browser and 'document_pdf' in request and 'request.pdf' in browser and 'URL.createObjectURL' in browser and 'noopener noreferrer' in browser,
    'Browser keeps PDF viewing transient in a local Blob, requests fresh download links and persists neither documents nor signed URLs')
 ok('morning-document-hero' not in documents and "modal('בודק חיבור ל-Morning…'" in documents and 'mountMorningConnectionStatus()' in documents and 'morning-document-fields' in documents and 'morning-payment-fields' in morning_payments and 'מספר הזמנה <small>(רשות)</small>' in documents,
    'Morning compact issuance UI: connection status owns the modal header while document/payment fields use scoped compact grids')

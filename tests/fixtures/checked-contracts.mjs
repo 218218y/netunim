@@ -1,6 +1,21 @@
 // Compile-only consumers of the actual JavaScript implementations. Never run
 // this file: the invalid calls deliberately prove that the contracts are closed.
 import {createAuthenticatedAccountScope} from '../../shared/authenticated-account-scope.js';
+import {createMorningOperationScope} from '../../netunim-orders/site/assets/js/core/morning-operation-scope.js';
+import {createMorningRequest} from '../../netunim-orders/site/assets/js/integrations/morning.js';
+
+const morningScope=createMorningOperationScope({readAccess:()=>({account:{owner:'A',epoch:1},storageOwner:'A',readable:true,writable:true})});
+// @ts-expect-error login epoch must be numeric and cannot be silently stringified
+createMorningOperationScope({readAccess:()=>({account:{owner:'A',epoch:'1'},storageOwner:'A',readable:true,writable:true})});
+// @ts-expect-error current authority is checked synchronously before publication
+createMorningRequest({supaFetch:async()=>new Response('{}'),operationScope:{capture:()=>async()=>{},captureRead:()=>async()=>{}}});
+// @ts-expect-error a raw auth client cannot replace the explicit authority port
+createMorningRequest({supaFetch:async()=>new Response('{}')});
+const morningClient=createMorningRequest({supaFetch:async(_path,options)=>{options.assertRequestScope();return new Response('{}')},operationScope:morningScope});
+// @ts-expect-error boolean snapshots cannot fence a queued Morning request
+morningClient.json('create',{},true);
+// @ts-expect-error PDF publication must use a synchronous authority receipt
+morningClient.pdf('id',async()=>{});
 import {commitCloudCheckpoint} from '../../shared/cloud-checkpoint-publication.js';
 import {createPollingTask} from '../../shared/runtime-polling.js';
 import {createStartupTask} from '../../shared/startup-task.js';

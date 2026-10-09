@@ -7,6 +7,7 @@ import {installLocalSiteResetPeerListener} from './shared/local-site-reset.js';
 import {assertOrderEntityInvariants} from './state/validation.js';
 import {createFinanceDerivationStore} from './shared/finance-derivations.js';
 import {createFinanceOperationScope} from './shared/finance-fence.js';
+import {createMorningOperationScope} from './core/morning-operation-scope.js';
 import {esc} from './core/values.js';
 import {createCreditCardOrderView} from './shared/credit-card-order-view.js';
 import {createFinanceConnectionImporter} from './shared/finance-connection-import.js';
@@ -119,6 +120,11 @@ const cloudAuth=createCloudAuth({
 const financeBridge=createFinanceBridgeIntegration();
 const financeOperationScope=createFinanceOperationScope({readAccess:()=>({
   account:cloudAuth.getAccountScope(),connectionMode:'supabase',storageOwner:storageOwner.current(),
+  readable:storageOwner.ready&&!storagePreparationActive()&&!session.storageProtocolBlocked&&storageRecovery.isReady(),
+  writable:tab.primaryTab&&storageOwner.writable&&!storagePreparationActive()&&!session.storageProtocolBlocked&&storageRecovery.isReady(),
+})});
+const morningOperationScope=createMorningOperationScope({readAccess:()=>({
+  account:cloudAuth.getAccountScope(),storageOwner:storageOwner.current(),
   readable:storageOwner.ready&&!storagePreparationActive()&&!session.storageProtocolBlocked&&storageRecovery.isReady(),
   writable:tab.primaryTab&&storageOwner.writable&&!storagePreparationActive()&&!session.storageProtocolBlocked&&storageRecovery.isReady(),
 })});
@@ -428,7 +434,7 @@ storageV2Coordinator.configure({
 });
 
 domainsCustomers.bindUi({
-  uiLayout,uiModal,uiStatus,storagePersistence,cloudAuth,uiNavigation,uiDateEditor,
+  morningOperationScope,uiLayout,uiModal,uiStatus,storagePersistence,cloudAuth,uiNavigation,uiDateEditor,
   refreshForMorningRecovery:(...args)=>syncDocument.refreshForMorningRecovery(...args),
   bankTransactions:{
     getTransactions:()=>domainsFinanceController.snapshot().bank?.feed?.transactions||[],

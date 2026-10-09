@@ -1,3 +1,4 @@
+import {createMorningRequest} from '../integrations/morning.js';
 import {createDomainsCustomersSelectors} from '../domains/customers/selectors.js';
 import {createDomainsCustomers} from '../domains/customers/composition.js';
 import {createCustomersActions} from '../ui/action-packs/customers.js';
@@ -16,7 +17,7 @@ export function createOrdersCustomersRuntime({model,customerUi,customerRevision}
     return bound;
   }
 
-  function bindUi({uiLayout,uiModal,uiStatus,storagePersistence,cloudAuth,uiNavigation,uiDateEditor,refreshForMorningRecovery,bankTransactions}={}){
+  function bindUi({morningOperationScope,uiLayout,uiModal,uiStatus,storagePersistence,cloudAuth,uiNavigation,uiDateEditor,refreshForMorningRecovery,bankTransactions}={}){
     if(bound)throw new Error('customers_ui_already_bound');
     for(const [name,port,methods] of [
       ['layout',uiLayout,['bindScrollViewport','mountViewLayout']],
@@ -24,6 +25,7 @@ export function createOrdersCustomersRuntime({model,customerUi,customerRevision}
       ['status',uiStatus,['toast']],
       ['persistence',storagePersistence,['scheduleSave','rejectSecondaryAction','rejectSecondaryMutation']],
       ['cloud',cloudAuth,['supaFetch']],
+      ['morning',morningOperationScope,['capture','captureRead']],
       ['navigation',uiNavigation,['setCustomerRoute']],
       ['date',uiDateEditor,['dateEditorMarkup','setDateValue']],
       ['bank',bankTransactions,['getTransactions','ensureTransactions','onDocumentVerified']],
@@ -31,8 +33,8 @@ export function createOrdersCustomersRuntime({model,customerUi,customerRevision}
     if(typeof refreshForMorningRecovery!=='function')throw new TypeError('customers_recovery_refresh_required');
 
     const domain=createDomainsCustomers({
-      customerRevision,model,customerUi,selectors,
-      uiLayout,uiModal,uiStatus,storagePersistence,cloudAuth,uiNavigation,uiDateEditor,
+      morningOperationScope,morningRequest:createMorningRequest({supaFetch:(...args)=>cloudAuth.supaFetch(...args),operationScope:morningOperationScope}),customerRevision,model,customerUi,selectors,
+      uiLayout,uiModal,uiStatus,storagePersistence,uiNavigation,uiDateEditor,
       refreshForMorningRecovery,
       getBusinessBankTransactions:bankTransactions.getTransactions,
       ensureBusinessBankTransactions:bankTransactions.ensureTransactions,
@@ -45,6 +47,7 @@ export function createOrdersCustomersRuntime({model,customerUi,customerRevision}
 
   return {
     customerStats:selectors.customerStats,
+    dispose:()=>bound?.domain.dispose(),
     bindUi,
     assertReady:()=>{ready();return true},
     renderCustomers:(...args)=>ready().domain.renderCustomers(...args),

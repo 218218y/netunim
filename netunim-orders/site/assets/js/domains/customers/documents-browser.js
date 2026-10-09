@@ -2,7 +2,6 @@ import {esc} from '../../core/values.js';
 import {$} from '../../state/constants.js';
 import {MORNING_DOCUMENT_TYPES,morningDocumentLabel} from '../../core/morning-document-types.js';
 
-const BACKEND_PATH='/functions/v1/morning-documents';
 const CACHE_TTL_MS=90_000;
 const TYPES=MORNING_DOCUMENT_TYPES;
 const SEARCH_TYPE_CODES=Object.freeze([10,20,100,200,210,300,305,320,330,400]);
@@ -16,40 +15,44 @@ export function defaultDocumentSearch(now=new Date()){
 function options(values){return '<option value="">הכל</option>'+Object.entries(values).map(([value,label])=>`<option value="${value}">${esc(label)}</option>`).join('')}
 function amount(value,currency){return new Intl.NumberFormat('he-IL',{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(value)||0)+' '+String(currency||'')}
 
-export function createDomainsCustomersDocumentsBrowser({modal,toast,supaFetch,dateEditorMarkup,onDebtDocumentMetadataResolved=()=>false}){
-  const cache=new Map(),operationMetadataCache=new Map();let query=defaultDocumentSearch(),sequence=0,picker=false,busy=false,lastItems=[],previewObjectUrl='';
-  async function backend(action,payload={}){
-    const response=await supaFetch(BACKEND_PATH,{method:'POST',networkRetry:false,body:JSON.stringify({action,...payload})});
-    const data=await response.json();if(!response.ok||data.ok===false)throw new Error(data.message||'לא ניתן לקרוא מסמכים מ-Morning');return data;
-  }
+export function createDomainsCustomersDocumentsBrowser({operationScope,modal,toast,request,dateEditorMarkup,onDebtDocumentMetadataResolved=()=>false}){
+  if(typeof operationScope?.captureRead!=='function')throw new TypeError('morning_operation_scope_required');
+  if(typeof request?.json!=='function'||typeof request?.pdf!=='function')throw new TypeError('morning_request_required');
+  let disposed=false,browserAssert=null;const scopeChanged=error=>error?.code==='MORNING_OPERATION_SCOPE_CHANGED';
+  function captureScope(){const assertAuth=operationScope.captureRead();return ()=>{if(disposed)throw Object.assign(new Error('Morning נעצר'),{code:'MORNING_OPERATION_SCOPE_CHANGED'});assertAuth()}}
+  const cache=new Map(),operationMetadataCache=new Map();let query=defaultDocumentSearch(),sequence=0,previewSequence=0,picker=false,busy=false,lastItems=[],previewObjectUrl='';
+  const backend=(action,payload={},assertCurrent=captureScope())=>request.json(action,payload,assertCurrent);
   async function verifiedOperationMetadata(operationId){
     const operation=String(operationId||'').trim();if(!operation)return null;
-    if(operationMetadataCache.has(operation))return operationMetadataCache.get(operation);
-    const pending=backend('status',{operation_id:operation}).then(async data=>{
-      const row=data?.operation;if(row?.state!=='created'||!row.verified_at||!row.document_id)return null;
+    const assertCurrent=captureScope(),cached=operationMetadataCache.get(operation);
+    if(cached){try{cached.assertCurrent();return cached.promise}catch{operationMetadataCache.delete(operation)}}
+    let entry;const forget=()=>{if(operationMetadataCache.get(operation)===entry)operationMetadataCache.delete(operation)};
+    const pending=backend('status',{operation_id:operation},assertCurrent).then(async data=>{
+      assertCurrent();const row=data?.operation;if(row?.state!=='created'||!row.verified_at||!row.document_id)return null;
       const metadata={documentId:String(row.document_id),documentNumber:String(row.document_number||''),documentType:Number(row.document_type)||0,verifiedAt:String(row.verified_at||'')};
       if(!metadata.documentNumber||!metadata.documentType){
-        try{const detail=await backend('get_document',{document_id:metadata.documentId}),document=detail?.document||{};metadata.documentNumber=String(document.number||metadata.documentNumber);metadata.documentType=Number(document.type)||metadata.documentType}
-        catch{operationMetadataCache.delete(operation);return null}
+        try{const detail=await backend('get_document',{document_id:metadata.documentId},assertCurrent);assertCurrent();const document=detail?.document||{};metadata.documentNumber=String(document.number||metadata.documentNumber);metadata.documentType=Number(document.type)||metadata.documentType}
+        catch{forget();return null}
       }
-      if(!metadata.documentNumber||!metadata.documentType){operationMetadataCache.delete(operation);return null}
+      if(!metadata.documentNumber||!metadata.documentType){forget();return null}
       return metadata;
-    }).catch(()=>{operationMetadataCache.delete(operation);return null});
-    operationMetadataCache.set(operation,pending);return pending;
+    }).catch(()=>{forget();return null});
+    entry={promise:pending,assertCurrent};operationMetadataCache.set(operation,entry);return pending;
   }
   async function hydrateDebtDocumentLinks(root=globalThis.document){
+    let assertCurrent;try{assertCurrent=captureScope()}catch{return 0}
     const buttons=Array.from(root?.querySelectorAll?.('[data-morning-debt-operation]')||[]);
-    await Promise.all(buttons.map(async button=>{
-      const operationId=String(button?.dataset?.morningDebtOperation||'').trim(),metadata=await verifiedOperationMetadata(operationId);if(!metadata)return;
+    await Promise.all(buttons.map(async button=>{try{
+      const operationId=String(button?.dataset?.morningDebtOperation||'').trim(),metadata=await verifiedOperationMetadata(operationId);assertCurrent();if(!metadata)return;
       if(button?.isConnected===false&&globalThis.document?.contains?.(button)===false)return;
       button.dataset.clickArg0=metadata.documentId;button.title=`צפה במסמך Morning ${metadata.documentNumber}`;
       const label=button.querySelector?.('[data-morning-debt-label]');if(label)label.textContent=morningDocumentLabel(metadata);
       try{onDebtDocumentMetadataResolved({operationId,...metadata})}catch(error){console.error('morning debt metadata persistence',error)}
       delete button.dataset.morningDebtOperation;
-    }));
+    }catch(error){if(!scopeChanged(error))console.error('Morning debt metadata',error)}}));
     return buttons.length;
   }
-  function invalidateCache(){cache.clear()}
+  function invalidateCache(){cache.clear();operationMetadataCache.clear()}
   function root(){return $('#morningDocumentsBrowser')}
   function markup(){return `<section id="morningDocumentsBrowser" class="morning-documents-browser" dir="rtl">
     <div class="morning-browser-filters">
@@ -66,9 +69,10 @@ export function createDomainsCustomersDocumentsBrowser({modal,toast,supaFetch,da
     <nav class="morning-browser-pagination" aria-label="עמודי מסמכים"><button class="btn" id="morningPrevious" data-action="morning-page" data-click-arg0="-1" disabled>הקודם</button><span id="morningPageLabel">עמוד 1</span><button class="btn" id="morningNext" data-action="morning-page" data-click-arg0="1" disabled>הבא</button></nav>
   </section>`}
   function releasePreviewUrl(){if(previewObjectUrl){URL.revokeObjectURL(previewObjectUrl);previewObjectUrl=''}}
-  function clearBrowserPreview(){releasePreviewUrl();const box=$('#morningBrowserPreview'),frame=$('#morningBrowserPreviewFrame');if(frame)frame.removeAttribute('src');if(box)box.hidden=true}
-  async function openDocuments(){releasePreviewUrl();picker=false;sequence++;query=defaultDocumentSearch();invalidateCache();modal('הצגה וחיפוש במסמכי Morning',markup(),'<button class="btn" data-action="close-modal">סגור</button>');return runSearch()}
+  function clearBrowserPreview(){previewSequence++;releasePreviewUrl();const box=$('#morningBrowserPreview'),frame=$('#morningBrowserPreviewFrame');if(frame)frame.removeAttribute('src');if(box)box.hidden=true}
+  async function openDocuments(){try{browserAssert=captureScope()}catch(error){if(!scopeChanged(error))toast(error.message);return}releasePreviewUrl();picker=false;sequence++;query=defaultDocumentSearch();invalidateCache();modal('הצגה וחיפוש במסמכי Morning',markup(),'<button class="btn" data-action="close-modal">סגור</button>');return runSearch()}
   async function openInvoicePicker(){
+    try{browserAssert=captureScope()}catch(error){if(!scopeChanged(error))toast(error.message);return}
     const panel=$('#morningInvoicePicker');if(!panel)return;
     releasePreviewUrl();picker=true;sequence++;invalidateCache();query={...defaultDocumentSearch(),type:[305],status:[0],clientName:$('#morningClientName')?.value||''};
     panel.hidden=false;panel.innerHTML=markup();return runSearch();
@@ -81,13 +85,14 @@ export function createDomainsCustomersDocumentsBrowser({modal,toast,supaFetch,da
   }
   function setBusy(value){busy=value;root()?.setAttribute('aria-busy',String(value));for(const id of ['morningPrevious','morningNext']){const button=$('#'+id);if(button&&value)button.disabled=true}root()?.querySelectorAll('[data-action="morning-search"],[data-action="morning-refresh"]').forEach(button=>{button.disabled=value})}
   async function runSearch({refresh=false}={}){
+    let assertCurrent;try{browserAssert?.();assertCurrent=captureScope()}catch(error){if(!scopeChanged(error))toast(error.message);return}
     const ticket=++sequence,element=root();if(!element)return;setBusy(true);clearBrowserPreview();
     $('#morningBrowserStatus').textContent='מחפש ב-Morning…';$('#morningBrowserResults').replaceChildren();$('#morningBrowserDetails').hidden=true;
     try{
-      const key=JSON.stringify(query),cached=cache.get(key);
-      const data=!refresh&&cached&&cached.expires>Date.now()?cached.data:await backend('search_documents',query);
+      const key=JSON.stringify(query);let cached=cache.get(key);if(cached){try{cached.assertCurrent()}catch{cached=null;invalidateCache()}}
+      const data=!refresh&&cached&&cached.expires>Date.now()?cached.data:await backend('search_documents',query,assertCurrent);assertCurrent();
       if(ticket!==sequence||root()!==element)return;
-      if(cache.size>=20)cache.delete(cache.keys().next().value);cache.set(key,{data,expires:Date.now()+CACHE_TTL_MS});
+      if(cache.size>=20)cache.delete(cache.keys().next().value);cache.set(key,{data,assertCurrent,expires:Date.now()+CACHE_TTL_MS});
       lastItems=data.items||[];renderResults(lastItems);
       $('#morningBrowserStatus').textContent=lastItems.length?`${data.total} מסמכים נמצאו`:'לא נמצאו מסמכים בטווח ובמסננים שנבחרו';
       $('#morningPageLabel').textContent=`עמוד ${query.page+1}${data.pages?' מתוך '+data.pages:''}`;
@@ -95,7 +100,7 @@ export function createDomainsCustomersDocumentsBrowser({modal,toast,supaFetch,da
     }catch(error){if(ticket===sequence&&root()===element){$('#morningBrowserStatus').textContent=error.message;$('#morningPrevious').disabled=query.page===0}}
     finally{if(ticket===sequence&&root()===element)setBusy(false)}
   }
-  async function search(refresh=false){try{query={...readFilters(),page:0};return await runSearch({refresh})}catch(error){toast(error.message)}}
+  async function search(refresh=false){try{query={...readFilters(),page:0};return await runSearch({refresh})}catch(error){if(!scopeChanged(error))toast(error.message)}}
   function page(delta){if(busy)return;query={...query,page:Math.max(0,query.page+Number(delta))};return runSearch()}
   function allocationMarkup(value){
     const allocation=String(value||'').trim();if(!allocation)return '<span class="morning-browser-allocation empty">—</span>';
@@ -110,22 +115,20 @@ export function createDomainsCustomersDocumentsBrowser({modal,toast,supaFetch,da
     }).join('')}</tbody></table>`;
   }
   function selectInvoice(id){
+    try{browserAssert?.();captureScope()()}catch(error){toast(error.message);return false}
     const doc=lastItems.find(item=>item.id===id),select=$('#morningLinkedDocument');if(!doc||!select)return;
     select.innerHTML=`<option value="">ללא קישור</option><option value="${esc(id)}">${esc(doc.number)} · ${esc(doc.clientName)} · ${esc(amount(doc.amount,doc.currency))}</option>`;select.value=id;
     sequence++;releasePreviewUrl();$('#morningInvoicePicker').hidden=true;$('#morningInvoicePicker').replaceChildren();
   }
-  async function details(id,button){if(button)button.disabled=true;const element=root();try{const data=await backend('get_document',{document_id:id});if(root()!==element)return;const doc=data.document,panel=$('#morningBrowserDetails');panel.hidden=false;panel.innerHTML=`<div class="morning-form-card"><b>${esc(TYPES[doc.type]||doc.type)} ${esc(doc.number)}</b><p>${esc(doc.description)}</p><p>${esc(doc.clientName)} · ${esc(amount(doc.amount,doc.currency))}</p><p>מספר הקצאה: ${esc(doc.allocationNumber||'—')}</p></div>`}catch(error){toast(error.message)}finally{if(button)button.disabled=false}}
-  async function fetchDocumentPdf(id){
-    const response=await supaFetch(BACKEND_PATH,{method:'POST',networkRetry:false,dataPriority:'high',body:JSON.stringify({action:'document_pdf',document_id:String(id)})});
-    if(!response.ok){const data=await response.json().catch(()=>({}));throw new Error(data.message||'לא ניתן לטעון את קובץ המסמך מ-Morning')}
-    const contentType=String(response.headers.get('Content-Type')||'').toLowerCase();if(!contentType.includes('application/pdf'))throw new Error('Morning החזירה קובץ שאינו PDF');
-    const blob=await response.blob();if(!blob.size)throw new Error('Morning החזירה קובץ PDF ריק');return blob;
-  }
-  async function viewDocument(id,button,{quiet=false}={}){
+  async function details(id,button){
+    let assertCurrent;try{browserAssert?.();assertCurrent=captureScope()}catch(error){if(!scopeChanged(error))toast(error.message);return}if(button)button.disabled=true;const element=root();try{const data=await backend('get_document',{document_id:id},assertCurrent);assertCurrent();if(root()!==element)return;const doc=data.document,panel=$('#morningBrowserDetails');panel.hidden=false;panel.innerHTML=`<div class="morning-form-card"><b>${esc(TYPES[doc.type]||doc.type)} ${esc(doc.number)}</b><p>${esc(doc.description)}</p><p>${esc(doc.clientName)} · ${esc(amount(doc.amount,doc.currency))}</p><p>מספר הקצאה: ${esc(doc.allocationNumber||'—')}</p></div>`}catch(error){if(!scopeChanged(error))toast(error.message)}finally{if(button)button.disabled=false}}
+  const fetchDocumentPdf=(id,assertCurrent)=>request.pdf(String(id),assertCurrent);
+  async function viewDocument(id,button,{quiet=false,assertCurrent,previewTicket=++previewSequence}={}){
+    try{if(root())browserAssert?.();assertCurrent??=captureScope();assertCurrent()}catch(error){if(!quiet&&!scopeChanged(error))toast(error.message);return false}
     const modalOpen=()=>!$('#modalBackdrop')||$('#modalBackdrop').classList.contains('open');
     if(button)button.disabled=true;const element=modalOpen()?root():null,issuanceElement=modalOpen()?$('#morningPreviewBox'):null;
     try{
-      const blob=await fetchDocumentPdf(id);if(element&&(!modalOpen()||root()!==element))return false;
+      const blob=await fetchDocumentPdf(id,assertCurrent);assertCurrent();if(previewTicket!==previewSequence)return false;if(element&&(!modalOpen()||root()!==element))return false;
       if(issuanceElement&&(!modalOpen()||$('#morningPreviewBox')!==issuanceElement))return false;
       if(button?.isConnected===false)return false;
       const browserBox=modalOpen()?$('#morningBrowserPreview'):null,browserFrame=modalOpen()?$('#morningBrowserPreviewFrame'):null,issuanceBox=modalOpen()?$('#morningPreviewBox'):null,issuanceFrame=modalOpen()?$('#morningPreviewFrame'):null,issuanceNote=modalOpen()?$('#morningPreviewNote'):null;
@@ -137,24 +140,28 @@ export function createDomainsCustomersDocumentsBrowser({modal,toast,supaFetch,da
       // re-reads the iframe source when its built-in Download action is used; revoking on
       // iframe load leaves the PDF visible/printable but makes that later download fail.
       frame.src=url;box.hidden=false;box.scrollIntoView({block:'nearest',behavior:'smooth'});return true;
-    }catch(error){if(!quiet)toast(error.message||'טעינת המסמך נכשלה');return false}finally{if(button)button.disabled=false}
+    }catch(error){if(!quiet&&!scopeChanged(error))toast(error.message||'טעינת המסמך נכשלה');return false}finally{if(button)button.disabled=false}
   }
   async function viewVerifiedOperation(operationId,button){
+    const previewTicket=++previewSequence;
+    let assertCurrent;try{assertCurrent=captureScope()}catch(error){if(!scopeChanged(error))toast(error.message);return false}
     if(button)button.disabled=true;
     try{
-      const data=await backend('status',{operation_id:String(operationId||'')});
+      const data=await backend('status',{operation_id:String(operationId||'')},assertCurrent);assertCurrent();
       const operation=data.operation;
       if(operation?.state!=='created'||!operation.verified_at||!operation.document_id)throw new Error('לא נמצא מסמך Morning מאומת לתנועה זו');
-      return await viewDocument(operation.document_id,button);
-    }catch(error){toast(error.message||'טעינת מסמך Morning נכשלה');return false}
+      if(previewTicket!==previewSequence)return false;return await viewDocument(operation.document_id,button,{assertCurrent,previewTicket});
+    }catch(error){if(!scopeChanged(error))toast(error.message||'טעינת מסמך Morning נכשלה');return false}
     finally{if(button)button.disabled=false}
   }
   async function downloadDocument(id,button){
+    let assertCurrent;try{if(root())browserAssert?.();assertCurrent=captureScope()}catch(error){if(!scopeChanged(error))toast(error.message);return}
     if(button)button.disabled=true;
-    try{const data=await backend('document_links',{document_id:String(id)}),url=new URL(data.url);if(url.protocol!=='https:')throw new Error('קישור מסמך אינו תקין');
+    try{const data=await backend('document_links',{document_id:String(id)},assertCurrent);assertCurrent();const url=new URL(data.url);if(url.protocol!=='https:')throw new Error('קישור מסמך אינו תקין');
       const anchor=document.createElement('a');anchor.href=url.href;anchor.target='_blank';anchor.rel='noopener noreferrer';anchor.download='morning-document.pdf';anchor.className='btn small';anchor.textContent='לחץ כאן אם ההורדה לא התחילה';
       const host=$('#morningBrowserStatus')||$('#morningOperationResult');if(host)host.appendChild(anchor);else document.body.appendChild(anchor);anchor.click();setTimeout(()=>anchor.remove(),60_000);
-    }catch(error){toast(error.message||'הורדת המסמך נכשלה')}finally{if(button)button.disabled=false}
+    }catch(error){if(!scopeChanged(error))toast(error.message||'הורדת המסמך נכשלה')}finally{if(button)button.disabled=false}
   }
-  return {openDocuments,openInvoicePicker,search,page,selectInvoice,details,invalidateCache,viewDocument,viewVerifiedOperation,downloadDocument,hydrateDebtDocumentLinks};
+  function dispose(){if(disposed)return false;disposed=true;sequence++;invalidateCache();releasePreviewUrl();return true}
+  return {dispose,openDocuments,openInvoicePicker,search,page,selectInvoice,details,invalidateCache,viewDocument,viewVerifiedOperation,downloadDocument,hydrateDebtDocumentLinks};
 }

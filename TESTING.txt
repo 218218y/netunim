@@ -340,3 +340,7 @@ and stale writers. Every failed transaction retains all stores; exact test-fixtu
 and immutable replay recover the same IDs/content once through a fresh durable ACK.
 See docs/STORAGE_CLOUD_RECORD_RECOVERY_CONTRACT.md for the deliberately failing baseline
 and remaining business/transaction typing and live-provider gates.
+
+Morning authority regression: tests/morning_operation_ownership.test.mjs, tests/morning_ports.test.mjs,
+tests/runtime_morning_ownership.py (browser-morning): native IDB account/login/primary races,
+original operation replay, production composition. See docs/MORNING_OPERATION_OWNERSHIP.md.

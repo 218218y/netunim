@@ -82,7 +82,7 @@ test('negative fixture assertions fail if an invalid consumer is accidentally ac
 
 test('a cloud flight decoder cannot publish an unchecked string sequence',()=>{
   const source=path.join(root,'shared/storage-cloud-records.js');
-  const original=readFileSync(source,'utf8');
+  const original=readFileSync(source,'utf8').replace(/\r\n/g,'\n');
   const changed=original.replace("return data}\n/** @param {unknown} record @returns {StoredCloudControl}","return {...data,endSeq:String(data.endSeq)}}\n/** @param {unknown} record @returns {StoredCloudControl}");
   assert.notEqual(changed,original);
   const diagnostics=check(new Map([[source,changed]]));
