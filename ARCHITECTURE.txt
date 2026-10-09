@@ -84,14 +84,16 @@ bypass interception. Cleanup is app-scoped.
 
 Static contracts
 ----------------
-tsconfig.contracts.json checks ten canonical authorization, publication, cloud-status,
-startup, polling, current-record writer and durable-ACK policy implementations with
+tsconfig.contracts.json checks twelve canonical authorization, publication, cloud-status,
+startup, polling, current-record writer, Main RPC receipt/JSON equality and durable-ACK policy implementations with
 strict checkJs/noEmit. JSDoc lives beside the
 implementation; typed consumer fixtures reject invalid fields/results and async publication.
 The full models gate runs the compiler, including through the offline dependency path.
 Data-only recursive JSON interfaces declare no function facade. Writer byte/checksum
 parity and real-IDB ACK abort/handoff/restart tests preserve existing record semantics.
-See docs/STATIC_CONTRACTS.md for exact coverage and remaining decoder/IDB/RPC work.
+Main RPC success requires a returned object document: the sent snapshot is never a
+substitute for a missing replay head. This receipt is evidence, not durable commit.
+See docs/STATIC_CONTRACTS.md for exact coverage and remaining decoder/IDB/business-RPC work.
 This is a development gate; both sites remain native JavaScript ESM with runtime validation.
 
 Development contract

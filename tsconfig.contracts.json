@@ -15,6 +15,7 @@
   "files": [
     "shared/authenticated-account-scope.js",
     "shared/cloud-checkpoint-publication.js",
+    "shared/document-write-ack.js",
     "shared/runtime-polling.js",
     "shared/startup-task.js",
     "shared/storage-cloud-status.js",
@@ -23,7 +24,9 @@
     "shared/storage-startup-protocol.js",
     "shared/storage-startup-recovery.js",
     "shared/storage-v2-server-protocol.js",
+    "shared/sync-json.js",
     "tests/fixtures/checked-contracts.mjs",
-    "tests/fixtures/checked-storage-records.mjs"
+    "tests/fixtures/checked-storage-records.mjs",
+    "tests/fixtures/checked-document-write-ack.mjs"
   ]
 }

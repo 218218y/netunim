@@ -24,7 +24,8 @@ The data-only definition remains outside the public sites. The checker's
 `rootDirs` resolves it for both generated writers from the canonical shared
 directory; real runtime imports must still resolve within each site through
 the module-graph gate. No declaration file, browser script or precached asset
-is added to deployment.
+is added to deployment by the type checker. Runtime JavaScript modules still
+use the ordinary generated-asset and service-worker gates.
 
 | Canonical module | Contract checked |
 | --- | --- |
@@ -38,6 +39,8 @@ is added to deployment.
 | `runtime-polling.js` | Live ownership receipt, browser timer ports, numeric delays, mandatory error observation and scheduling state |
 | `storage-records.js` | Current Checkpoint, Journal, Cloud Base and Flight writer shapes; JSON-compatible state/metadata, explicit operation variants and retained state field types |
 | `storage-cloud-ack.js` | Minimal durable ACK cursor, captured flight range and journal owner/epoch scope |
+| `document-write-ack.js` | Untrusted Main response envelope, revision/no-op/replay evidence and generic authoritative document through synchronous preparation/equality ports |
+| `sync-json.js` | Unknown inputs with retained JSON wire equality semantics |
 
 The login epoch is numeric; the journal epoch is a string. They are different
 identities. Status evidence is a narrow read contract, not a new persisted
@@ -91,6 +94,42 @@ control, base and flight-delete request, and writer handoff. Rejected/aborted
 transactions retain every sealed store. The same flight is replayed, no-op ACK
 retains newer pending work, and a fresh page/runtime verifies final IDs/content.
 
+## Main RPC response evidence
+
+This slice starts from `79396a7951c00ea983b00cdfcaf5ac408841f0d3`, whose
+[full branch gate passed](https://github.com/218218y/netunim/actions/runs/37872709053)
+before merging. Two new regression tests failed against that baseline: Kupa
+and Orders returned success and ACKed a replay response without `state`.
+Both substituted their sent snapshot for the missing authoritative head.
+This is reproduced client behavior under an injected malformed response,
+not evidence that production PostgreSQL emitted that response or lost data.
+
+The v6 Main RPCs return current `revision/state` plus the original
+`operation_revision` on replay. The SQL owner is the existing
+`20260924120000_storage_writer_protocol_v2.sql` wrapper over the v5 ledger
+implementation in `20260906200304_production_schema_baseline.sql`. A later
+remote edit can therefore make the returned state differ from the immutable
+snapshot that was sent. Substitution would acknowledge an unreceived head.
+
+`readDocumentWriteAck` rejects a missing/null/scalar/array state before domain
+preparation. It returns the actual prepared authoritative document and existing
+revision evidence together. Invalid envelopes never reach durable ACK or
+publication; the existing error owner retains the immutable flight and pending
+work. Valid no-op, legacy operation-metadata compatibility and numeric wire
+revision handling retain their prior policy. The existing `cloud-sync` exports
+forward to the checked revision and JSON implementations.
+
+This envelope check does not replace business-schema validation, the fenced
+IDB transaction, generation checks or final synced confirmation. Preparation
+retains its app owner, and most app consumers are still unchecked. Shared
+Checks and Finance have different contracts and do not use this Main receipt.
+
+Both app sync APIs are exercised with real IDB in `runtime_storage.py`: a lost
+response followed by an offline edit and another computer's write; a malformed
+successful replay; fresh-runtime recovery; an aborted ACK; exact replay and
+final recovery of both note IDs/content. The RPC ledger remains controlled
+fault injection; the separate Browser/PostgreSQL suites own actual SQL evidence.
+
 ## Gates and commands
 
 ```text
@@ -111,14 +150,16 @@ normal and offline gates use the same locked compiler and configuration.
 Missing compiler files fail the command and invalidate offline install readiness.
 
 `tests/module_contracts.py` invokes the check in the full local and GitHub
-`models` gate. The compile-only fixtures include valid calls and 68 intentional
+`models` gate. The compile-only fixtures include valid calls and 84 intentional
 invalid consumers using `@ts-expect-error`. A newly accepted invalid call makes
 its directive unused and fails compilation. Never execute this fixture.
 The Node gate tests additionally prove that an implementation mismatch is
-detected (including a writer returning a string sequence), an unused expectation
+detected (including a writer's string sequence and an RPC receipt's string revision), an unused expectation
 fails, and a missing compiler cannot pass.
 The storage fixture also imports both generated site writers: unresolved data
-types or accepted invalid inputs fail checking. Existing generator contracts
+types or accepted invalid inputs fail checking. The Main receipt fixture also
+checks both generated implementations and rejects async preparation/equality.
+Existing generator contracts
 continue to own source parity and runtime cache keys.
 
 Contracts live next to the actual implementation, following TypeScript's
@@ -130,7 +171,8 @@ failure with `@ts-ignore`, `@ts-nocheck` or broad assertions.
 ## Remaining coverage
 
 This gate does **not** yet check all application consumers, full persisted
-checkpoint/journal/Flight decoders, complete IDB transactions, RPC ACK parsing, Finance
+checkpoint/journal/Flight decoders, complete IDB transactions, full business RPC
+payload validation and cloud read candidates, Finance
 leases or capability APIs. Their existing runtime validation and historical
 readers remain intact. Add static coverage at those owners with behavior and
 negative consumer fixtures, rather than assuming the status-head contract is
@@ -140,6 +182,8 @@ The unchecked journal/IDB callers now use these checked constructors and ACK
 policy, but their full input flow is not yet checked. This slice does not claim
 that all callers or historical record variants satisfy the current writer type.
 
-No persisted schema, SQL, ACK semantics, merge, RPC, retry or installed-user data
-changes are part of this slice. Full Browser/PostgreSQL/recovery/Windows verification
+Persisted schema, SQL, durable ACK semantics, merge, RPC payloads, retry and
+installed-user data are unchanged. Main now rejects malformed successful
+response envelopes instead of inventing their authoritative state.
+Full Browser/PostgreSQL/recovery/Windows verification
 is required before merging; a static pass alone is insufficient for deployment.

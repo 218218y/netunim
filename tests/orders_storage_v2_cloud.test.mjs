@@ -35,6 +35,21 @@ test('Orders V2 keeps the exact immutable flight across a lost ACK retry',async(
   assert.equal(await f.api.requestCloudSave('retry'),true);assert.equal(f.sent.length,2);assert.equal(f.sent[1].operationId,firstId);assert.equal(f.getState().flight,null);assert.equal(f.getState().pending,false);assert.equal(f.legacyWrites.includes(CLOUD_BASE_KEY),false,'V2 ACK must not mirror a full cloud base to localStorage');
 });
 
+test('Orders rejects a successful RPC without its authoritative state and replays the retained flight',async t=>{
+  t.mock.method(console,'error',noop);let malformed=true;
+  const f=fixture({rpcSave:async(snapshot)=>({r:{ok:true},row:{revision:12,operation_replayed:true,operation_revision:11,
+    ...(malformed?{}:{state:{...snapshot,notes:[...snapshot.notes,{id:'R',content:'other-computer'}]}})}})});
+  const before=clone(f.model.state);
+  assert.equal(await f.api.requestCloudSave('malformed replay'),false);
+  assert.equal(f.acks.length,0);assert.deepEqual(f.model.state,before);
+  const head=f.getState(),flight=clone(head.flight);
+  assert.ok(flight);assert.equal(head.pending,true);assert.equal(head.base.revision,10);assert.equal(head.base.ackSeq,0);
+  assert.ok(!f.statuses.some(([,mode])=>mode==='synced'));
+  malformed=false;assert.equal(await f.api.requestCloudSave('valid replay'),true);
+  assert.deepEqual(f.sent[0],f.sent[1]);assert.equal(f.acks.length,1);
+  assert.deepEqual(f.model.state.notes.map(row=>row.id),['A','R']);assert.equal(f.getState().pending,false);
+});
+
 test('Orders V2 accepts a successful idempotent no-op ACK without forcing a revision bump',async()=>{
   const f=fixture({rpcSave:async(snapshot,expected)=>({r:{ok:true},row:{revision:expected,state:clone(snapshot),operation_replayed:false,operation_revision:expected}})});
   assert.equal(await f.api.requestCloudSave('noop'),true);assert.equal(f.sent.length,1);assert.equal(f.acks.length,1);assert.equal(f.acks[0].newRevision,10);assert.equal(f.getState().flight,null);assert.equal(f.getState().pending,false);

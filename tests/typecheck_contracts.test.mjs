@@ -47,6 +47,15 @@ test('a current writer returning a string sequence fails its actual implementati
   assert.ok(diagnostics.some(item=>path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
 });
 
+test('an RPC receipt returning a string revision fails its actual implementation contract',()=>{
+  const source=path.join(root,'shared/document-write-ack.js');
+  const original=readFileSync(source,'utf8');
+  const changed=original.replace('return {...receipt,state}', 'return {...receipt,revision:String(receipt.revision),state}');
+  assert.notEqual(changed,original);
+  const diagnostics=check(new Map([[source,changed]]));
+  assert.ok(diagnostics.some(item=>path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+});
+
 test('negative fixture assertions fail if an invalid consumer is accidentally accepted',()=>{
   const diagnostics=check(new Map([[fixture,readFileSync(fixture,'utf8')+
     '\n// @ts-expect-error deliberately unused: must make the gate fail\nconst validRevision=7;\n']]));

@@ -72,10 +72,15 @@ Normal local setup:
 Focused static-contract gate:
   npm run typecheck
   node --test tests/typecheck_contracts.test.mjs
-This checks ten canonical JavaScript implementations and 68 negative consumer cases
+This checks twelve canonical JavaScript implementations and 84 negative consumer cases
 without emitting assets. The full models group also runs it. It reads
 NETUNIM_OFFLINE_NODE_MODULES for the pinned offline compiler. Exact scope and remaining
-decoder/IDB/RPC/application coverage are documented in docs/STATIC_CONTRACTS.md.
+decoder/IDB/business-RPC/application coverage are documented in docs/STATIC_CONTRACTS.md.
+  node --test tests/document_write_ack.test.mjs tests/kupa_storage_v2_cloud.test.mjs tests/orders_storage_v2_cloud.test.mjs
+verifies Main response envelopes, no-op/replay revision policy and retention/replay
+after missing authoritative state. runtime_storage.py combines this malformed-success
+fault with offline edits, another computer's write, real IDB abort and fresh-runtime
+recovery; actual SQL is exercised separately by Browser/PostgreSQL suites.
   node --test tests/storage_record_contracts.test.mjs
 compares eight production writer stages against baseline sealed bytes/checksums and
 recovers the original record IDs/content. runtime_storage.py exercises real IDB ACK

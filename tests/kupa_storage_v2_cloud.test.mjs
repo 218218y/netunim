@@ -174,6 +174,20 @@ test('Kupa V2 keeps the immutable flight across a lost ACK retry and never falls
   assert.equal(await f.api.persistSupabaseState(f.cloud(),'retry',1),true);assert.equal(f.sent.length,2);assert.equal(f.sent[1].operationId,firstId);assert.equal(f.getState().flight,null);assert.equal(f.getState().pending,false);
 });
 
+test('Kupa rejects a successful RPC without its authoritative state and replays the retained flight',async t=>{
+  t.mock.method(console,'error',noop);let malformed=true;
+  const f=fixture({write:body=>response(true,{revision:12,operation_replayed:true,operation_revision:11,
+    ...(malformed?{}:{state:{...body.p_state,notes:[...body.p_state.notes,{id:'R',content:'other-computer',createdAt:'2026-09-22',updatedAt:'2026-09-22'}]}})})});
+  const before=clone(f.model.state);
+  assert.equal(await f.api.persistSupabaseState(f.cloud(),'malformed replay',1),false);
+  assert.equal(f.acks.length,0);assert.deepEqual(f.model.state,before);
+  const head=f.getState(),flight=clone(head.flight);
+  assert.ok(flight);assert.equal(head.pending,true);assert.equal(head.base.revision,10);assert.equal(head.base.ackSeq,0);
+  malformed=false;assert.equal(await f.api.persistSupabaseState(f.cloud(),'valid replay',1),true);
+  assert.deepEqual(f.sent[0],f.sent[1]);assert.equal(f.acks.length,1);
+  assert.deepEqual(f.model.state.notes.map(row=>row.id),['N1','R']);assert.equal(f.getState().pending,false);
+});
+
 test('Kupa V2 accepts a successful idempotent no-op ACK without forcing a revision bump',async()=>{
   const f=fixture({write:body=>response(true,{revision:body.p_expected_revision,state:clone(body.p_state),operation_replayed:false,operation_revision:body.p_expected_revision})});
   assert.equal(await f.api.persistSupabaseState(f.cloud(),'noop',1),true);assert.equal(f.sent.length,1);assert.equal(f.acks.length,1);assert.equal(f.acks[0].newRevision,10);assert.equal(f.getState().flight,null);assert.equal(f.getState().pending,false);

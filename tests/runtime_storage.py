@@ -572,7 +572,7 @@ for app in ('kupa', 'orders'):
           const validation=await import('./assets/js/state/validation.js');
           const validate=state=>app==='kupa'?validation.assertKupaEntityInvariants(state,{required:true}):validation.assertOrderEntityInvariants(state,{required:true});
           const owner='ack-recovery-'+app,db=createStorageJournalDb(),calls=[],ledger=new Map();
-          let lostResponse=true,server=null,commits=0;
+          let lostResponse=true,omitNextState=false,server=null,commits=0;
           const note=content=>({id:'N',content,createdAt:'2026-10-08',updatedAt:'2026-10-08'});
           async function rpc(snapshot,expected,operationId){
             calls.push({snapshot:clone(snapshot),expected,operationId});
@@ -582,7 +582,9 @@ for app in ('kupa', 'orders'):
               ledger.set(operationId,{snapshot:clone(snapshot),revision:server.revision});
               if(lostResponse){lostResponse=false;throw new TypeError('injected lost ACK response')}
             }else check(JSON.stringify(snapshot)===JSON.stringify(ledger.get(operationId).snapshot),'replay keeps the immutable RPC snapshot');
-            return {r:{ok:true},row:{revision:server.revision,state:clone(server.state),operation_replayed:ledger.get(operationId).revision!==server.revision,operation_revision:ledger.get(operationId).revision}};
+            const row={revision:server.revision,state:clone(server.state),operation_replayed:ledger.get(operationId).revision!==server.revision,operation_revision:ledger.get(operationId).revision};
+            if(omitNextState){omitNextState=false;delete row.state}
+            return {r:{ok:true},row};
           }
           async function make(initial=false){
             const model={state:clone(INITIAL_STATE)},normalization=createStateNormalization({model});
@@ -633,6 +635,13 @@ for app in ('kupa', 'orders'):
             check(await runtime.save()===false&&calls.length===1,'offline edit is journaled without another RPC');
             server.state.notes.push({id:'R',content:'other-computer',createdAt:'2026-10-08',updatedAt:'2026-10-08'});server.revision++;
             Object.defineProperty(navigator,'onLine',{configurable:true,value:true});
+            omitNextState=true;
+            check(await runtime.save()===false,'successful replay without its authoritative state is not ACKed');
+            const malformed=await runtime.driver.refreshStorageV2CloudState(),malformedRecovery=await runtime.storage.recoverForOwner({intent:'load-account'});
+            check(malformed.base.revision===10&&malformed.base.ackSeq===0&&malformed.seq===2&&malformed.pending&&JSON.stringify(malformed.flight)===JSON.stringify(firstFlight),'missing response state retains the exact flight, cursor and newer pending generation');
+            check(runtime.model.state.notes.some(row=>row.id==='N'&&row.content==='offline-B')&&malformedRecovery.state.notes.some(row=>row.id==='N'&&row.content==='offline-B'),'malformed success preserves note identity and content in memory and IndexedDB');
+            runtime=await make();
+            check(runtime.model.state.notes.some(row=>row.id==='N'&&row.content==='offline-B'),'fresh runtime recovers the retained edit after malformed success');
             let aborted=false;
             IDBObjectStore.prototype.put=function(...args){const result=put.apply(this,args);if(!aborted&&this.name==='bases'){aborted=true;this.transaction.abort();throw new DOMException('injected ACK abort','AbortError')}return result};
             try{check(await runtime.save()===false,'aborted ACK transaction is not reported as successful')}finally{IDBObjectStore.prototype.put=put}
@@ -646,15 +655,15 @@ for app in ('kupa', 'orders'):
             const final=await runtime.driver.refreshStorageV2CloudState(),recovered=await runtime.storage.recoverForOwner({intent:'load-account'});
             for(const state of [runtime.model.state,recovered.state,server.state])check(state.notes.some(row=>row.id==='N'&&row.content==='offline-B')&&state.notes.some(row=>row.id==='R'&&row.content==='other-computer'),'visible, durable and cloud heads preserve both computers');
             check(!final.pending&&!final.flight&&final.base.ackSeq===2&&final.base.revision===13,'only acknowledged generations advance the durable cursor');
-            check(calls.length===4&&calls.slice(0,3).every(call=>call.operationId===firstFlight.operationId)&&calls[3].operationId!==firstFlight.operationId&&commits===2,'lost-response and aborted-ACK retries do not duplicate cloud commits');
+            check(calls.length===5&&calls.slice(0,4).every(call=>call.operationId===firstFlight.operationId)&&calls[4].operationId!==firstFlight.operationId&&commits===2,'lost-response, malformed-success and aborted-ACK retries do not duplicate cloud commits');
             await edit(runtime,'flight-C');let lateWrite=null;
             IDBObjectStore.prototype.put=function(...args){const result=put.apply(this,args);if(!lateWrite&&this.name==='bases')lateWrite=edit(runtime,'edited-during-ack');return result};
             try{check(await runtime.save()===false,'an edit during a real ACK commit stops stale follow-up sends')}finally{IDBObjectStore.prototype.put=put}
             check(lateWrite!==null,'concurrent edit overlapped the real IndexedDB ACK transaction');await lateWrite;
             const concurrent=await runtime.driver.refreshStorageV2CloudState(),late=await runtime.storage.recoverForOwner({intent:'load-account'});
             check(runtime.model.state.notes.some(row=>row.id==='N'&&row.content==='edited-during-ack')&&late.state.notes.some(row=>row.id==='N'&&row.content==='edited-during-ack'),'late edit survives in the visible model and durable journal');
-            check(concurrent.pending&&!concurrent.flight&&concurrent.seq===4&&concurrent.base.ackSeq===3&&concurrent.control.conflict.kind==='concurrent-ack'&&calls.length===5,'only the sent generation is ACKed; the late generation and explicit fence survive');
-            runtime=await make();check(await runtime.save()===false&&calls.length===5,'fresh runtime respects the persisted concurrent-ACK fence');
+            check(concurrent.pending&&!concurrent.flight&&concurrent.seq===4&&concurrent.base.ackSeq===3&&concurrent.control.conflict.kind==='concurrent-ack'&&calls.length===6,'only the sent generation is ACKed; the late generation and explicit fence survive');
+            runtime=await make();check(await runtime.save()===false&&calls.length===6,'fresh runtime respects the persisted concurrent-ACK fence');
             check(expectedErrors.length>=2,'expected transport and IndexedDB failures were observed');
             return done;
           }finally{
@@ -664,7 +673,7 @@ for app in ('kupa', 'orders'):
         })()""".replace('APP_NAME', json.dumps(app))
         result=browser.evaluate(script, timeout=60)
         assert not browser.drain_serious_errors()
-        print(f'PASS {app} real IndexedDB ACK recovery: {len(result)} assertions for lost response, offline edits, transaction abort, restart, remote writes and concurrent ACK fencing')
+        print(f'PASS {app} real IndexedDB ACK recovery: {len(result)} assertions for lost response, malformed success, offline edits, transaction abort, restart, remote writes and concurrent ACK fencing')
 
 # A dirty-head fence can outlive the condition that created it. Reviewing it
 # must compare the durable projection and retire only the exact reviewed head.

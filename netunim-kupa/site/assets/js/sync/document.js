@@ -7,7 +7,8 @@ import {normalizeSharedChecks} from '../shared/shared-checks-contract.js';
 import {assertValidCloudState} from '../state/validation.js';
 import {jsonEq} from './merge-records.js';
 import {SUPA_AUTO_KEY, STORAGE_PREF_KEY} from '../state/constants.js';
-import {CLOUD_WRITE_POLICY,cloudWriteError,contentionDelay,createOutboxRetryScheduler,documentWriteAckRevision,normalizeCloudError,operationAuditMetadata,runBusyCloudWriteWithPolicy} from '../shared/cloud-sync.js';
+import {CLOUD_WRITE_POLICY,cloudWriteError,contentionDelay,createOutboxRetryScheduler,normalizeCloudError,operationAuditMetadata,runBusyCloudWriteWithPolicy} from '../shared/cloud-sync.js';
+import {readDocumentWriteAck} from '../shared/document-write-ack.js';
 
 function revisionConflict(res){return !res?.r?.ok&&normalizeCloudError(res).kind==='revision_conflict'}
 function saveBusy(res){return !res?.r?.ok&&normalizeCloudError(res).kind==='busy'}
@@ -192,7 +193,8 @@ async function saveStorageV2CloudFlight(initialFlight){
     if(!jsonEq(model.state,rebasedCurrent)){replaceVisibleState(rebasedCurrent);render()}
     base=remoteState;serverSnapshot=prepareKupaCloudState(merged.state);expected=remoteRevision;flight=await materializeStorageV2CloudFlight({throughSeq,snapshot:serverSnapshot});if(!flight||flight.operationId===previousOperationId)throw new Error('kupa_v2_rebase_flight_not_rotated')
   }
-  if(!res?.r?.ok)throw cloudWriteError(res,'שמירה לענן נכשלה');const authoritative=prepareKupaCloudState(res.row?.state||serverSnapshot),newRevision=documentWriteAckRevision(res.row,{baseRevision:flight.baseRevision,authoritativeState:authoritative,sentState:serverSnapshot,equalState:jsonEq,errorCode:'kupa_v2_ack_revision_invalid'}).revision;
+  if(!res?.r?.ok)throw cloudWriteError(res,'שמירה לענן נכשלה');
+  const {state:authoritative,revision:newRevision}=readDocumentWriteAck(res.row,{baseRevision:flight.baseRevision,sentState:serverSnapshot,prepareState:prepareKupaCloudState,equalState:jsonEq,errorCode:'kupa_v2_ack_revision_invalid',stateErrorCode:'kupa_v2_ack_state_invalid'});
   state=await refreshStorageV2CloudState();if(!state?.flight||state.flight.operationId!==flight.operationId)throw new Error('kupa_v2_flight_changed_before_ack');
   let currentCore=authoritative;
   if(state.afterFlightPending){
