@@ -22,12 +22,12 @@ FLOW = r"""(async()=>{
  const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');const db=createStorageJournalDb(),identity=owner+':kupa',durableBefore=JSON.stringify(await db.load(identity));
  localStorage.setItem('netunim_kupa_bank_bridge_token_v1','fixture-pairing');localStorage.setItem('netunim_kupa_credit_auto_daily_v1','0');
  cloudTransport.claimFinanceSyncLease=async()=>({acquired:true,leaseName:'credit',leaseToken:'fixture',fenceEpoch:1});cloudTransport.releaseFinanceSyncLease=async()=>true;
- cloudTransport.saveFinancePatch=async(mutator,_lease,options)=>{options?.assertCurrent?.();commits++;finance=structuredClone(mutator({creditSync:state.creditSync}));return {saved:true,row:{revision:2,state:finance}}};
+ cloudTransport.saveFinancePatch=async(mutator,_lease,options)=>{options?.assertCurrent?.();commits++;finance=JSON.parse(JSON.stringify(mutator({creditSync:state.creditSync})));return {saved:true,row:{revision:2,state:finance}}};
  cloudTransport.readSupabaseDocument=async()=>{reads++;return unavailable?null:{revision:main.revision,financeRevision:finance?2:session.financeRevision,state:{...structuredClone(main.state),...structuredClone(finance||{creditSync:state.creditSync})}}};
  globalThis.fetch=(url,options)=>{
    if(String(url).includes('/v2/credit/status'))return Promise.resolve(new Response(JSON.stringify({ok:true,bridgeVersion:73,contractVersion:2,profiles:[{profileId:'P'}]})));
    if(String(url).includes('/v2/credit/reset')){resets++;return Promise.resolve(new Response(JSON.stringify({ok:true})))}
-   if(String(url).includes('/v2/credit/sync')){providerRuns++;return Promise.resolve(new Response(JSON.stringify({ok:true,syncedAt:'2026-10-09T10:00:00Z',attemptedCount:1,profiles:[{profileId:'P',provider:'max',accounts:[{accountNumber:'card',txns:[{id:'stable-issuer-tx',date:'2026-10-09',amount:12}]}]}],errors:[]})))}
+   if(String(url).includes('/v2/credit/sync')){providerRuns++;return Promise.resolve(new Response(JSON.stringify({ok:true,syncedAt:'2026-10-09T10:00:00Z',attemptedCount:1,profiles:[{profileId:'P',provider:'max',accounts:[{accountNumber:'card',txns:[{id:'stable-issuer-tx',date:'2026-10-09',processedDate:'2026-10-09',chargedAmount:12}]}]}],errors:[]})))}
    return originalFetch(url,options);
  };
  const save=storagePersistence.saveState;let followupFailure=failure,followups=0;
@@ -51,7 +51,8 @@ FLOW = r"""(async()=>{
  check(!domainsCreditController.creditSyncUiState().publicationWarning,'completed follow-up retained the warning');
  check(!document.querySelector('[data-action="retry-credit-publication"]'),'completed recovery left a stale action');
  const recovered=await mainStorageV2.recoverReadOnly();check(recovered.state.notes.find(row=>row.id===note.id)?.content===note.content,'note identity/content lost');
- if(action==='refresh')check(recovered.state.creditSync.profiles[0].accounts[0].txns[0].id==='stable-issuer-tx','real journal recovery changed the issuer transaction ID');
+ const {normalizeCreditSync}=await import('./assets/js/domains/credit/sync-feed.js');
+ if(action==='refresh'){const tx=normalizeCreditSync(recovered.state.creditSync).profiles[0].accounts[0].txns[0];check(tx.id==='stable-issuer-tx'&&tx.chargedAmount===12,'real journal recovery changed the issuer transaction ID/content')}
  globalThis.fetch=originalFetch;storagePersistence.saveState=save;financeAutomation.stop();cloudAuth.storeSupaSession(null);
  return {truthfulWarning:true,journalRetained:true,readBasedRecovery:true,noRepeatedEffect:true,exactIds:true};
 })()"""
@@ -62,8 +63,10 @@ for action in ('refresh', 'settings', 'reset'):
             result = browser.evaluate(FLOW.replace('__ACTION__', json.dumps(action)).replace('__FAILURE__', json.dumps(failure)), timeout=45)
             assert result and all(result.values()), result
             browser._navigate()
-            restored = browser.evaluate("""(async()=>{await appReady;const recovered=await mainStorageV2.recoverReadOnly();return recovered?.state?.notes?.find(row=>row.id==='credit-publication-note')?.content})()""")
-            assert restored == 'retained through ancillary failure', restored
+            restored = browser.evaluate("""(async()=>{await appReady;const recovered=await mainStorageV2.recoverReadOnly();const {normalizeCreditSync}=await import('./assets/js/domains/credit/sync-feed.js');return {note:recovered?.state?.notes?.find(row=>row.id==='credit-publication-note')?.content,transactions:normalizeCreditSync(recovered?.state?.creditSync).profiles.flatMap(profile=>profile.accounts.flatMap(account=>account.txns)).map(tx=>({id:tx.id,chargedAmount:tx.chargedAmount}))}})()""")
+            assert restored['note'] == 'retained through ancillary failure', restored
+            if action == 'refresh':
+                assert {'id': 'stable-issuer-tx', 'chargedAmount': 12} in restored['transactions'], restored
             errors = browser.drain_serious_errors()
             assert not errors, errors
             print('PASS Kupa Credit publication ' + action + '/' + failure + ': ' + json.dumps(result))

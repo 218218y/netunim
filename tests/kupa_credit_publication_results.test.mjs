@@ -12,7 +12,7 @@ function fixture(t,fail){
   const captureOperation=()=>()=>{if(!live)throw Object.assign(Error('owner changed'),{code:'FINANCE_OPERATION_SCOPE_CHANGED'})};
   const ports={model,captureOperation,autoScope:()=>null,toast:message=>messages.push(message),render(){},confirmDialog:async()=>true,
     saveState:async()=>{checkpoints++;if(fail==='throw')throw new DOMException('fixture quota','QuotaExceededError');return fail!=='false'},
-    bridge:{getBridgeToken:()=> 'fixture',creditStatus:async()=>({bridgeVersion:73,contractVersion:2,profiles:[{profileId:'P'}]}),resetCreditProfiles:async()=>true,syncCreditCards:async()=>{providerRuns++;return {attemptedCount:1,syncedAt:'2026-10-09T08:00:00Z',profiles:[{profileId:'P',provider:'max',accounts:[{accountNumber:'card',txns:[{id:'same-transaction',date:'2026-10-09',amount:12}]}]}],errors:[]}}},
+    bridge:{getBridgeToken:()=> 'fixture',creditStatus:async()=>({bridgeVersion:73,contractVersion:2,profiles:[{profileId:'P'}]}),resetCreditProfiles:async()=>true,syncCreditCards:async()=>{providerRuns++;return {attemptedCount:1,syncedAt:'2026-10-09T08:00:00Z',profiles:[{profileId:'P',provider:'max',accounts:[{accountNumber:'card',txns:[{id:'same-transaction',date:'2026-10-09',processedDate:'2026-10-09',chargedAmount:12}]}]}],errors:[]}}},
     saveFinancePatch:async mutator=>{remote=mutator({creditSync:model.state.creditSync});commits++;return {saved:true,row:{revision:2,state:remote}}},
   };
   const api=createDomainsCreditController(ports);t.after(()=>api.stopAutoSync());

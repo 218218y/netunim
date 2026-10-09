@@ -16,14 +16,13 @@ function fixture(kind,t){
   const old='2020-01-01T00:00:00.000Z',model={state:{bank:{source:'hapoalim',bankSyncAt:old},creditSync:{version:3,syncedAt:old,profiles:[],errors:[]},checks:[]}};
   const session={backendReady:true,connectionMode:'supabase'},tab={primaryTab:true},status=deferred(),cloud=deferred(),writes=[];
   let leaseRead=null,statusReads=0;
-  const ports={model,session,checksSession:{},captureOperation:()=>{const observed=scope;return ()=>{if(!scope||observed!==scope||!tab.primaryTab||!session.backendReady)throw Object.assign(new Error('fixture finance access changed'),{code:'FINANCE_OPERATION_SCOPE_CHANGED'})}},autoScope:()=>session.backendReady&&tab.primaryTab&&navigator.onLine!==false?scope:null,saveState:async(...args)=>{writes.push(args);return true},saveFinancePatch:async()=>({saved:true}),toast:()=>{},render:()=>{},modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,
+  const ports={model,session,checksSession:{},captureOperation:()=>{const observed=scope;return ()=>{if(!scope||observed!==scope||!tab.primaryTab||!session.backendReady)throw Object.assign(new Error('fixture finance access changed'),{code:'FINANCE_OPERATION_SCOPE_CHANGED'})}},autoScope:()=>session.backendReady&&tab.primaryTab&&navigator.onLine!==false?scope:null,saveState:async(...args)=>{writes.push(args);return true},saveFinancePatch:async mutator=>({saved:true,row:{revision:2,state:mutator(model.state)}}),toast:()=>{},render:()=>{},modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,
     sharedChecksHaveLocalWork:()=>false,syncSharedChecksFromCloud:async()=>true,sharedChecksObservedSequence:()=>0,
     refreshFinanceCloudSnapshot:()=>cloud.promise,
     claimFinanceSyncLease:async()=>{claims++;return leaseRead?leaseRead():{acquired:true,leaseName:kind,leaseToken:'L',fenceEpoch:1}},releaseFinanceSyncLease:async(_kind,_token,options)=>{options?.assertCurrent?.();releases++;return true},
     bridge:{getBridgeToken:()=> 'paired',autoEnabled:()=>values.get('bank-auto')!=='0',setAutoEnabled:on=>values.set('bank-auto',on?'1':'0'),autoAttemptDelayMs:()=>0,markAutoAttempt:()=>{},creditStatus:()=>{statusReads++;return status.promise},
       syncCreditCards:async()=>{attempts++;throw new Error('fixture provider attempt')},fetchBalance:async()=>{attempts++;throw new Error('fixture provider attempt')}},
   };
-  ports.saveFinancePatch=async mutator=>({saved:true,row:{revision:2,state:mutator(model.state)}});
   ports.operationScope={capture:ports.captureOperation,captureRead:ports.captureOperation};
   const api=(kind==='credit'?createDomainsCreditController:createDomainsBankController)(ports);
   return {api,ports,model,session,tab,values,jobs,reports,writes,scope:value=>{scope=value},lease:fn=>{leaseRead=fn},attempts:()=>attempts,claims:()=>claims,releases:()=>releases,statusReads:()=>statusReads,
