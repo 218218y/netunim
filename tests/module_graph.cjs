@@ -61,6 +61,8 @@ for(const app of ['kupa','orders']){
       if(relative.startsWith('assets/js/startup/')&&node.type==='Identifier')assert.ok(!['window','document','navigator','localStorage','fetch','indexedDB','setTimeout','setInterval','clearTimeout','clearInterval'].includes(node.name),relative+': startup I/O belongs behind a port');
       if(/\/(model|readout)\.js$/.test(relative)&&node.type==='Identifier')assert.ok(!['document','window','localStorage','fetch','indexedDB'].includes(node.name),relative+': calculation module has side effects');
       if(relative.endsWith('/shared/cloud-checkpoint-publication.js')&&node.type==='Identifier')assert.ok(!['document','window','navigator','localStorage','fetch','indexedDB','setTimeout','setInterval'].includes(node.name),relative+': cloud publication must use explicit ports');
+      if(relative==='assets/js/domains/credit/controller.js'&&node.type==='Identifier')
+        assert.notEqual(node.name,'localStorage',relative+': Credit preferences require an explicit port');
       if(/\/(?:shared\/(?:(bank|document)-bridge-client|google-drive-client|google-drive-document-policy|authenticated-account-scope)|domains\/documents\/search-source)\.js$/.test(relative)&&node.type==='Identifier'&&!(parent?.type==='MemberExpression'&&parent.property===node&&!parent.computed))
         assert.ok(!['globalThis','window','document','navigator','localStorage','fetch','AbortController','setTimeout','clearTimeout','setInterval','clearInterval'].includes(node.name),relative+': canonical Bridge client must use injected I/O ports');
     });

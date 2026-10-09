@@ -1,3 +1,4 @@
+import {createCreditPreferences} from '../netunim-kupa/site/assets/js/platform/credit-preferences.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createDomainsCreditController} from '../netunim-kupa/site/assets/js/domains/credit/controller.js';
@@ -15,7 +16,7 @@ function fixture(t,fail){
     bridge:{getBridgeToken:()=> 'fixture',creditStatus:async()=>({bridgeVersion:73,contractVersion:2,profiles:[{profileId:'P'}]}),resetCreditProfiles:async()=>true,syncCreditCards:async()=>{providerRuns++;return {attemptedCount:1,syncedAt:'2026-10-09T08:00:00Z',profiles:[{profileId:'P',provider:'max',accounts:[{accountNumber:'card',txns:[{id:'same-transaction',date:'2026-10-09',processedDate:'2026-10-09',chargedAmount:12}]}]}],errors:[]}}},
     saveFinancePatch:async mutator=>{remote=mutator({creditSync:model.state.creditSync});commits++;return {saved:true,row:{revision:2,state:remote}}},
   };
-  const api=createDomainsCreditController(ports);t.after(()=>api.stopAutoSync());
+  const api=createDomainsCreditController({...ports,preferences:createCreditPreferences()});t.after(()=>api.stopAutoSync());
   return {api,ports,model,messages,change:()=>{live=false},counts:()=>({commits,checkpoints,providerRuns}),remote:()=>remote};
 }
 for(const action of ['refresh','settings','reset'])for(const failure of ['false','throw'])test(`credit ${action}: confirmed remote commit survives ${failure} in follow-up with an explicit warning`,async t=>{

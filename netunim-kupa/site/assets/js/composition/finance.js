@@ -6,6 +6,7 @@ import {createDomainsBankView} from '../domains/bank/view.js';
 import {createDomainsCreditController} from '../domains/credit/controller.js';
 import {createKupaFinanceCloudPorts} from './finance-cloud.js';
 import {createFinanceOperationScope} from '../shared/finance-fence.js';
+import {createCreditPreferences} from '../platform/credit-preferences.js';
 
 export function composeKupaFinance({
   model,session,checksSession,ui,cloudAuth,cloudTransport,syncDocument,
@@ -24,6 +25,7 @@ export function composeKupaFinance({
   const operationScope=createFinanceOperationScope({readAccess:operationAccess});
 
   const creditController=createDomainsCreditController({
+    preferences:createCreditPreferences(),
     captureOperation:operationScope.capture,
     autoScope:automaticAccess,
     model,
