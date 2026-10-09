@@ -29,7 +29,7 @@ let authMode='cloud_required';
 let tokenUsable=false;
 let beginCount=0;
 let restoreCount=0;
-const calendarAuth={
+const calendarAuth={captureOperation:()=>({assertCurrent(){}}),
   hasUsableToken:()=>tokenUsable,
   configured:()=>true,
   ready:()=>true,

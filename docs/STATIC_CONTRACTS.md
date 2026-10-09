@@ -15,6 +15,12 @@ gates continue to own runtime and recovery evidence.
 
 ## Checked implementations
 
+Calendar authorization is checked from its Orders JavaScript body with negative
+consumers for missing account ports, malformed epochs, asynchronous authority
+and incorrect credential/account types. This does not check the whole Calendar
+API, journal or controller. See [Calendar ownership](CALENDAR_OPERATION_OWNERSHIP.md)
+for runtime/native-IDB evidence and the limits of this slice.
+
 The atomic Bank snapshot receipt decoder is also checked from its JavaScript
 body. Negative consumers reject incomplete/non-numeric dual-head evidence and
 mutation of decoded receipts. Runtime validation remains mandatory for HTTP
@@ -183,7 +189,7 @@ normal and offline gates use the same locked compiler and configuration.
 Missing compiler files fail the command and invalidate offline install readiness.
 
 `tests/module_contracts.py` invokes the check in the full local and GitHub
-`models` gate. The compile-only fixtures include valid calls and 118 intentional
+`models` gate. The compile-only fixtures include valid calls and intentional
 invalid consumers using `@ts-expect-error`. A newly accepted invalid call makes
 its directive unused and fails compilation. Never execute this fixture.
 The Node gate tests additionally prove that an implementation mismatch is

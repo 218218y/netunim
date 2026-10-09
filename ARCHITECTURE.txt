@@ -84,7 +84,7 @@ bypass interception. Cleanup is app-scoped.
 
 Static contracts
 ----------------
-tsconfig.contracts.json checks sixteen canonical authorization, publication, cloud-status,
+tsconfig.contracts.json checks canonical and app-owned authorization, publication, cloud-status,
 startup, polling, current-record writer, JSON/checkpoint/operation/cloud-record decoder, historical bootstrap, Main RPC receipt/JSON equality and durable-ACK policy implementations with
 strict checkJs/noEmit. JSDoc lives beside the
 implementation; typed consumer fixtures reject invalid fields/results and async publication.
@@ -110,6 +110,13 @@ docs/STORAGE_CLOUD_RECORD_RECOVERY_CONTRACT.md for native-IDB evidence and resto
 
 Development contract
 --------------------
+Calendar credentials and batches capture the authenticated cloud owner/login and
+connection epoch. OAuth/Google/local-delivery awaits retain that operation;
+old tasks cannot publish in or release a newer login. Unknown server completion
+retains the stable event ID for verified replay. Calendar IDB remains independent
+of Main/Shared. See docs/CALENDAR_OPERATION_OWNERSHIP.md for the recovery contract,
+typed auth boundary and remaining cross-tab privacy/resource work.
+
 Atomic Bank snapshot receipts are decoded from the published dual Main/Finance
 revision contract before candidate publication. Kupa and Orders readouts must meet
 both committed heads; an unknown response never implies a safe provider retry or

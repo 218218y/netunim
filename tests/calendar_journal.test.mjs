@@ -19,7 +19,7 @@ function storageWith(rows){
     async insertEvent(){calls.push('insert');throw statusError(409,'already exists')},
     async getEvent(){calls.push('get');return{id:'abc123',summary:'תור'}},
   };
-  const journal=createCalendarJournal({calendarStorage:storage,calendarApi:api});
+  const journal=createCalendarJournal({calendarStorage:storage,calendarApi:api,operationScope:{captureOperation:()=>({assertCurrent(){}})}});
   assert.equal(await journal.flushPending(),1);
   assert.deepEqual(calls,['insert','get']);
   assert.equal(storage.state[0].deleted,true);
@@ -33,7 +33,7 @@ function storageWith(rows){
     async insertEvent(){throw statusError(409,'already exists')},
     async getEvent(){return{id:'sameid',summary:'אירוע אחר',start:{date:'2026-08-20'},end:{date:'2026-08-21'}}},
   };
-  const journal=createCalendarJournal({calendarStorage:storage,calendarApi:api});
+  const journal=createCalendarJournal({calendarStorage:storage,calendarApi:api,operationScope:{captureOperation:()=>({assertCurrent(){}})}});
   await assert.rejects(()=>journal.flushPending(),error=>error?.code==='calendar_duplicate_id_conflict');
   assert.notEqual(storage.state[0].deleted,true);
   assert.equal(storage.state[0].lastError,'מזהה האירוע כבר קיים ב-Google אך תוכן האירוע שונה. הפעולה נשמרה בתור ולא אושרה אוטומטית.');
@@ -42,7 +42,7 @@ function storageWith(rows){
 {
   const storage=storageWith([{seq:1,type:'delete',calendarId:'primary',eventId:'gone',body:null,attempts:2}]);
   const api={async deleteEvent(){throw statusError(404,'not found')}};
-  const journal=createCalendarJournal({calendarStorage:storage,calendarApi:api});
+  const journal=createCalendarJournal({calendarStorage:storage,calendarApi:api,operationScope:{captureOperation:()=>({assertCurrent(){}})}});
   assert.equal(await journal.flushPending(),1);
   assert.equal(storage.state[0].deleted,true);
   assert.equal(storage.state[0].attempts,3);
@@ -60,7 +60,7 @@ function storageWith(rows){
     async patchEvent(){calls.push('patch:e1');return{id:'e1'}},
     async deleteEvent(){calls.push('delete:e2');return null},
   };
-  const journal=createCalendarJournal({calendarStorage:storage,calendarApi:api});
+  const journal=createCalendarJournal({calendarStorage:storage,calendarApi:api,operationScope:{captureOperation:()=>({assertCurrent(){}})}});
   assert.equal(await journal.flushPending(),3);
   assert.deepEqual(calls,['insert:e1','patch:e1','delete:e2']);
   assert.ok(storage.state.every(row=>row.deleted));
@@ -69,7 +69,7 @@ function storageWith(rows){
 {
   const storage=storageWith([{seq:1,type:'patch',calendarId:'primary',eventId:'e1',body:{summary:'חדש'},attempts:0}]);
   const api={async patchEvent(){throw statusError(0,'network down')}};
-  const journal=createCalendarJournal({calendarStorage:storage,calendarApi:api});
+  const journal=createCalendarJournal({calendarStorage:storage,calendarApi:api,operationScope:{captureOperation:()=>({assertCurrent(){}})}});
   await assert.rejects(()=>journal.flushPending(),/network down/);
   assert.notEqual(storage.state[0].deleted,true);
   assert.equal(storage.state[0].attempts,1);
