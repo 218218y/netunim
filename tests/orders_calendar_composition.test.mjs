@@ -7,7 +7,7 @@ test('Calendar composition keeps infrastructure, UI binding, and delegated actio
   assert.throws(()=>createOrdersCalendarRuntime({calendarSession:{}}),/calendar_cloud_port_required/);
 
   const calendarSession={};
-  const runtime=createOrdersCalendarRuntime({calendarSession,supaFetch:unexpected});
+  const runtime=createOrdersCalendarRuntime({calendarSession,supaFetch:unexpected,accountScope:()=>({owner:'fixture',epoch:1})});
   assert.throws(()=>runtime.actionPorts(),/calendar_controller_not_composed/);
 
   const controller=runtime.createController({

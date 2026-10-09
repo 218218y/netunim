@@ -7,13 +7,13 @@ import {createCalendarActionPorts} from '../domains/calendar/action-ports.js';
 
 // Infrastructure is created early; the controller is composed after the UI
 // ports exist. The caller starts it only after the app's boot promise resolves.
-export function createOrdersCalendarRuntime({calendarSession,supaFetch}){
+export function createOrdersCalendarRuntime({calendarSession,supaFetch,accountScope}){
   if(!calendarSession||typeof calendarSession!=='object')throw new Error('calendar_session_required');
   if(typeof supaFetch!=='function')throw new Error('calendar_cloud_port_required');
   const calendarStorage=createCalendarStorage();
-  const calendarAuth=createCalendarAuth({calendarSession,supaFetch});
+  const calendarAuth=createCalendarAuth({calendarSession,supaFetch,accountScope});
   const calendarApi=createCalendarApi({calendarAuth});
-  const calendarJournal=createCalendarJournal({calendarStorage,calendarApi});
+  const calendarJournal=createCalendarJournal({calendarStorage,calendarApi,operationScope:calendarAuth});
   let controller=null;
 
   function createController({ui,tab,calendarUi,uiLayout,uiModal,uiStatus,uiCloud,uiDateEditor}){

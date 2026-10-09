@@ -17,7 +17,7 @@ async function supaFetch(path,opt={}){
   return new Response(JSON.stringify({access_token:'server-token',expires_in:3600,account_id:'owner@example.com'}),{status:200,headers:{'Content-Type':'application/json'}});
 }
 
-const auth=createCalendarAuth({calendarSession:session,supaFetch});
+const auth=createCalendarAuth({calendarSession:session,supaFetch,accountScope:()=>({owner:'fixture',epoch:1})});
 assert.equal(auth.configured(),true);
 assert.equal(auth.ready(),true);
 assert.equal(await auth.restore(),'server-token');

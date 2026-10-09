@@ -357,3 +357,12 @@ tests/runtime_bank_snapshot_confirmation.py (browser-lifecycle), through both ac
 HTTP decoders/controllers and real Main/Shared IDB. Malformed success replies retain
 Last Known Good; read-based recovery preserves IDs without another provider/write effect.
 See docs/BANK_SNAPSHOT_CONFIRMATION_CONTRACT.md for dual-head freshness and limits.
+
+Calendar login/delivery ownership: tests/calendar_account_scope.test.mjs,
+tests/calendar_sync_scope.test.mjs and tests/runtime_calendar_ownership.py
+(browser-ui). Native IDB exercises actual production composition with controlled
+token headers/body and committed Google event responses. Pending retains exact
+ID/content on a fresh runtime; recovery verifies the same server ID without a
+duplicate effect and leaves raw Main/Shared stores unchanged. Existing
+runtime_calendar.py keeps offline/UI behavior covered. See
+docs/CALENDAR_OPERATION_OWNERSHIP.md for evidence, recovery and scope limits.

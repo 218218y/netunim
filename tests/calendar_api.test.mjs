@@ -12,7 +12,7 @@ globalThis.fetch=async(url,options={})=>{
   if(!response)throw new Error('Unexpected request: '+key);
   return response;
 };
-const auth={accessToken(){return 'token'},clearToken(){}};
+const auth={accessToken(){return 'token'},clearToken(){},rejectToken(){},captureOperation(){return {assertCurrent(){},accessToken:()=> 'token'}}};
 const api=createCalendarApi({calendarAuth:auth});
 
 responses.set('/calendar/v3/users/me/calendarList?maxResults=250&showHidden=true',jsonResponse({items:[
