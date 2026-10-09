@@ -43,6 +43,8 @@ use the ordinary generated-asset and service-worker gates.
 | `sync-json.js` | Unknown inputs with retained JSON wire equality semantics |
 | `storage-json-codec.js` | Unknown JSON/envelope validation, unchanged checksum, generic sealed data, detached reads and synchronous instrumentation |
 | `storage-checkpoint.js` | Validated persisted checkpoint header/object state with historical optional/null metadata; distinct from current writer types |
+| `storage-operation.js` | Unknown operation decoding, discriminated changes, schema permissions and historical optional/null annotations; replacement index is not ordering authority |
+| `storage-v2-persisted-compat.js` | Existing historical bootstrap eligibility, group completion and shadow-role decisions |
 
 The login epoch is numeric; the journal epoch is a string. They are different
 identities. Status evidence is a narrow read contract, not a new persisted
@@ -169,18 +171,23 @@ normal and offline gates use the same locked compiler and configuration.
 Missing compiler files fail the command and invalidate offline install readiness.
 
 `tests/module_contracts.py` invokes the check in the full local and GitHub
-`models` gate. The compile-only fixtures include valid calls and 100 intentional
+`models` gate. The compile-only fixtures include valid calls and 118 intentional
 invalid consumers using `@ts-expect-error`. A newly accepted invalid call makes
 its directive unused and fails compilation. Never execute this fixture.
 The Node gate tests additionally prove that an implementation mismatch is
 detected (including a writer's string sequence, an RPC receipt's string revision
-and a decoder's numeric owner), an unused expectation
+and a decoder's numeric owner/string sequence), an unused expectation
 fails, and a missing compiler cannot pass.
 The storage fixture also imports both generated site writers: unresolved data
 types or accepted invalid inputs fail checking. The Main receipt fixture also
 checks both generated implementations and rejects async preparation/equality.
 The decoding fixture checks both generated checkpoint readers and prevents
 raw JSON from being treated as a business checkpoint without decoding.
+The operation fixture checks both generated operation readers, historical nullable
+annotations and discriminated changes without inventing business record types.
+The actual validation policy is shared with replay and pending-work reads.
+See [the operation recovery contract](STORAGE_OPERATION_RECOVERY_CONTRACT.md)
+for the thirteen pre-change failures and real-IDB restoration matrix.
 Existing generator contracts
 continue to own source parity and runtime cache keys.
 
@@ -192,8 +199,8 @@ failure with `@ts-ignore`, `@ts-nocheck` or broad assertions.
 
 ## Remaining coverage
 
-This gate does **not** yet check all application consumers, full persisted
-full journal/Flight/base/control decoders, complete IDB transactions, full business RPC
+This gate does **not** yet check all application consumers, persisted
+Flight/base/control decoders, complete journal/IDB transactions, full business RPC
 payload validation and cloud read candidates, Finance
 leases or capability APIs. Their existing runtime validation and historical
 readers remain intact. Add static coverage at those owners with behavior and

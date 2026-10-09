@@ -84,5 +84,6 @@ runtime must prove the restored checkpoint plus retained journal again.
 - Full CI must pass Browser/PostgreSQL, offline/PWA, two-tab/two-profile,
   recovery, performance and Windows gates before merge.
 
-Full operation/Flight/base/control decoders, complete IDB transaction typing
+Operation decoding is now covered by [its follow-up contract](STORAGE_OPERATION_RECOVERY_CONTRACT.md).
+Flight/base/control decoders, complete IDB transaction typing
 and all business schemas/application consumers remain separate coverage work.

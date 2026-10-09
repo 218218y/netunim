@@ -2,7 +2,7 @@ import {createStorageCheckpoint,createStorageJournalRecord,createStorageCloudBas
 import {createOperationId,equalSyncJson} from './cloud-sync.js';
 import {beginMeasure,recordPerformanceValue} from './runtime-performance.js';
 import {createStorageJournalDb} from './storage-journal-idb.js';
-import {sealStorageRecord,readStorageRecord,validateStoredOperation,replayStorageJournal} from './storage-journal-model.js';
+import {sealStorageRecord,readStorageRecord,validateStoredOperation,readStorageOperation,replayStorageJournal} from './storage-journal-model.js';
 import {readStorageCheckpoint} from './storage-checkpoint.js';
 
 function normalizeDeleteIntents(value){
@@ -30,6 +30,11 @@ export function createStorageJournal({owner,schema,validate,primary=()=>true,db=
   const prefix='netunim-storage-v2-emergency:'+encodeURIComponent(owner)+':',writer=operationId();
   let epoch=null,seq=0,queue=Promise.resolve(),ready=false,failed=null,transition=null;
   const pending=new Map();
+  function readScopedOperation(record,expectedEpoch){
+    const operation=readStorageOperation(record,schema);
+    if(operation.owner!==owner||operation.epoch!==expectedEpoch)throw new Error('storage_foreign_operation');
+    return operation;
+  }
   const guard=()=>{if(!primary())throw new Error('storage_secondary_tab');if(!ready)throw new Error('storage_not_ready');if(failed)throw failed};
   function enqueue(work){const result=queue.then(work);queue=result.catch(error=>{failed=error});return result}
   function enqueueEpochTransition(nextEpoch,work){
@@ -64,7 +69,7 @@ export function createStorageJournal({owner,schema,validate,primary=()=>true,db=
     const stored=await db.load(owner);if(!stored.checkpoints)return null;
     const base=readStorageCheckpoint(stored.checkpoints);
     if(base.owner!==owner||stored.metadata?.epoch!==base.epoch)throw new Error('storage_checkpoint_metadata');
-    const committedSeq=stored.journal.reduce((maximum,record)=>Math.max(maximum,record.data.seq),base.seq);
+    const committedSeq=stored.journal.map(record=>readScopedOperation(record,base.epoch)).reduce((maximum,operation)=>Math.max(maximum,operation.seq),base.seq);
     if(!Number.isSafeInteger(stored.metadata.seq)||committedSeq!==stored.metadata.seq)throw new Error('storage_committed_metadata_mismatch');
     const records=readEmergency();
     // A prior epoch is retained for diagnostics, but cannot cross a restore boundary.
@@ -161,7 +166,7 @@ export function createStorageJournal({owner,schema,validate,primary=()=>true,db=
     if(base){if(base.owner!==owner||base.epoch!==epoch||!Number.isSafeInteger(base.revision)||base.revision<0||!Number.isSafeInteger(base.ackSeq)||base.ackSeq<0||base.ackSeq>committedSeq)throw new Error('storage_cloud_base_mismatch');validateBase(base.state)}
     if(flight){if(flight.owner!==owner||flight.epoch!==epoch||!base||flight.baseRevision!==base.revision||!String(flight.operationId||'').trim()||!Number.isSafeInteger(flight.startSeq)||!Number.isSafeInteger(flight.endSeq)||flight.startSeq!==base.ackSeq+1||flight.endSeq<flight.startSeq||flight.endSeq>committedSeq)throw new Error('storage_cloud_flight_mismatch');validateBase(flight.snapshot)}
     if(control&&(control.owner!==owner||control.epoch!==epoch))throw new Error('storage_control_scope');
-    const pendingRecords=base?stored.journal.map(readStorageRecord).filter(operation=>operation.epoch===epoch&&operation.seq>base.ackSeq&&operation.seq<=committedSeq).sort((a,b)=>a.seq-b.seq):[];
+    const pendingRecords=base?stored.journal.map(record=>readScopedOperation(record,epoch)).filter(operation=>operation.seq>base.ackSeq&&operation.seq<=committedSeq).sort((a,b)=>a.seq-b.seq):[];
     if(base)for(let expected=base.ackSeq+1;expected<=committedSeq;expected++)if(pendingRecords[expected-base.ackSeq-1]?.seq!==expected)throw new Error('storage_cloud_journal_gap');
     const latest=pendingRecords.at(-1)||{},afterFlightRecords=flight?pendingRecords.filter(operation=>operation.seq>flight.endSeq):pendingRecords,afterFlightLatest=afterFlightRecords.at(-1)||{};
     return {seq:committedSeq,base,flight,control,pending:!!base&&committedSeq>base.ackSeq,pendingDeleteIntents:mergeDeleteIntents(...pendingRecords.map(operation=>operation.deleteIntents||{})),pendingGeneration:Math.max(0,...pendingRecords.map(operation=>Number(operation.generation||0))),pendingMutationType:pendingRecords.some(operation=>operation.mutationType==='bulk-delete')?'bulk-delete':latest.mutationType||'autosave',pendingSurface:latest.surface||'unknown',afterFlightPending:!!flight&&committedSeq>flight.endSeq,afterFlightDeleteIntents:mergeDeleteIntents(...afterFlightRecords.map(operation=>operation.deleteIntents||{})),afterFlightGeneration:Math.max(0,...afterFlightRecords.map(operation=>Number(operation.generation||0))),afterFlightMutationType:afterFlightRecords.some(operation=>operation.mutationType==='bulk-delete')?'bulk-delete':afterFlightLatest.mutationType||'autosave',afterFlightSurface:afterFlightLatest.surface||'unknown'};
@@ -176,7 +181,7 @@ export function createStorageJournal({owner,schema,validate,primary=()=>true,db=
     if(!Number.isSafeInteger(targetSeq)||targetSeq<base.ackSeq||targetSeq>recovered.seq)throw new Error('storage_flight_range');
     if(targetSeq===base.ackSeq)return null;
     if(targetSeq<recovered.seq&&exactSnapshot===undefined)throw new Error('storage_historical_snapshot_required');
-    const pendingRecords=recovered.stored.journal.map(readStorageRecord).filter(operation=>operation.epoch===epoch&&operation.seq>base.ackSeq&&operation.seq<=targetSeq).sort((a,b)=>a.seq-b.seq);
+    const pendingRecords=recovered.stored.journal.map(record=>readScopedOperation(record,epoch)).filter(operation=>operation.seq>base.ackSeq&&operation.seq<=targetSeq).sort((a,b)=>a.seq-b.seq);
     for(let expected=base.ackSeq+1;expected<=targetSeq;expected++)if(pendingRecords[expected-base.ackSeq-1]?.seq!==expected)throw new Error('storage_cloud_journal_gap');
     const done=beginMeasure('storage:outbox-materialize');let snapshot;
     try{snapshot=exactSnapshot===undefined?project(recovered.state):structuredClone(exactSnapshot);validateCloud(snapshot)}finally{done()}
