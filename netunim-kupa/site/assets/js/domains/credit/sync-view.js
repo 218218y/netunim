@@ -15,6 +15,7 @@ export function creditSyncHeadlineState(syncUi,summary){
   if(syncUi?.busy)return {tone:'busy',icon:'↻',title:'מסנכרן',meta:'כעת'};
   if(syncUi?.error&&syncEventCurrent(syncUi.errorAt,lastSync))return {tone:'error',icon:'!',title:'נכשל',meta:errorAt?syncDate(errorAt):'כעת'};
   if(syncUi?.publicationWarning)return {tone:'warn',icon:'!',title:'נשמר בענן',meta:'השמירה הנלווית בבדיקה'};
+  if(syncUi?.preferenceWarning)return {tone:'warn',icon:'⏸',title:'עדכון אוטומטי הושהה',meta:'העדפות המחשב דורשות טיפול'};
   const hard=errors.find(error=>error?.severity==='error'),warnings=errors.filter(error=>error?.severity==='warning'),deferred=errors.find(error=>error?.severity==='deferred'||error?.deferred===true);
   if(hard){const partial=lastSyncTime&&(!errorTime||lastSyncTime>=errorTime-5000);return {tone:partial?'warn':'error',icon:'!',title:partial?'הושלם עם אזהרות':'נכשל',meta:(partial?lastSync:errorAt)?syncDate(partial?lastSync:errorAt):'זמן לא זמין'};}
   if(deferred)return {tone:'warn',icon:'⏸',title:'מושהה',meta:deferred.retryAfterAt?`עד ${syncDate(deferred.retryAfterAt)}`:'עקב חסימה קודמת'};
@@ -25,6 +26,7 @@ export function creditSyncHeadlineState(syncUi,summary){
 export function creditSyncHeadlineMarkup(state){return `<span class="credit-sync-state-icon" aria-hidden="true">${esc(state.icon)}</span><span class="credit-sync-state-copy"><b>${esc(state.title)}</b><small>${esc(state.meta)}</small></span>`}
 export function creditSyncDiagnosticsMarkup(syncUi,summary){
   const errors=creditErrorRows(syncUi,summary),rows=[];
+  if(syncUi?.preferenceWarning)rows.push(`<div class="credit-sync-detail warn"><b>העדפות העדכון האוטומטי לא אושרו</b><span>${esc(syncUi.preferenceWarning)}</span><small>קוד: ${esc(syncUi.preferenceWarningCode)}</small></div>`);
   const currentLocalError=syncUi?.error&&syncEventCurrent(syncUi.errorAt,summary?.sync?.syncedAt)?syncUi.error:'',localCovered=currentLocalError&&errors.some(error=>String(currentLocalError).includes(String(error?.message||''))&&String(error?.message||'').length>0);
   if(currentLocalError&&!localCovered)rows.push(`<div class="credit-sync-detail error"><b>הסנכרון האחרון נכשל</b><span>${esc(currentLocalError)}</span>${syncUi.errorAt?`<small>${esc(syncDate(syncUi.errorAt))}</small>`:''}</div>`);
   if(syncUi?.publicationWarning)rows.push(`<div class="credit-sync-detail warn"><b>נתוני האשראי נשמרו בענן</b><span>${esc(syncUi.publicationWarning)}</span>${syncUi.publicationWarningCode?`<small>קוד: ${esc(syncUi.publicationWarningCode)}</small>`:''}<button type="button" class="btn small" data-action="retry-credit-publication" ${syncUi.busy?'disabled':''}>בדוק וטען מהענן ללא סריקה</button></div>`);

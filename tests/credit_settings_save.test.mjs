@@ -1,3 +1,4 @@
+import {createCreditPreferences} from '../netunim-kupa/site/assets/js/platform/credit-preferences.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createFinanceManualQueue} from '../shared/finance-fence.js';
@@ -36,7 +37,7 @@ test('alphabetical reset clears every stored rank, while reorder preserves remot
 test('Kupa settings commit only after cloud confirmation and rebase on fresh issuer data',async()=>{
   const model={state:{creditSync:fixture()}},before=structuredClone(model.state),messages=[];let fail=true,localSaves=0;
   const fresh=fixture();fresh.profiles[0].accounts[0].txns=[{id:'remote-new',date:'2026-09-16'}];fresh.cardMappings['p:a'].hidden=true;
-  const controller=createDomainsCreditController({autoScope:()=> 'test-owner',captureOperation:()=>()=>{},model,saveState:async()=>localSaves++,toast:value=>messages.push(value),render:()=>{},saveFinancePatch:async mutator=>{
+  const controller=createDomainsCreditController({preferences:createCreditPreferences(),autoScope:()=> 'test-owner',captureOperation:()=>()=>{},model,saveState:async()=>localSaves++,toast:value=>messages.push(value),render:()=>{},saveFinancePatch:async mutator=>{
     if(fail)throw Object.assign(new Error('busy'),{code:'finance_sync_lease_busy'});
     const next=mutator({creditSync:structuredClone(fresh),bank:{balance:123}});assert.equal(next.bank.balance,123);
     assert.deepEqual(model.state,before,'nothing is changed before the server confirms');return {saved:true,row:{state:next}};

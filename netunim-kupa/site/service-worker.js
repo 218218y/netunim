@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='kupa-app-shell-';
-const CACHE='kupa-app-shell-esm-6a1ff6d49a35';
+const CACHE='kupa-app-shell-esm-d9907014b485';
 const SHELL=[
   './',
   './index.html',
@@ -71,6 +71,7 @@ const SHELL=[
   './assets/js/integrations/document-google-drive.js',
   './assets/js/lifecycle.js',
   './assets/js/main.js',
+  './assets/js/platform/credit-preferences.js',
   './assets/js/shared/action-registry.js',
   './assets/js/shared/authenticated-account-scope.js',
   './assets/js/shared/bank-bridge-client.js',

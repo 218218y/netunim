@@ -1,3 +1,4 @@
+import {createCreditPreferences} from '../netunim-kupa/site/assets/js/platform/credit-preferences.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createDomainsCreditController} from '../netunim-kupa/site/assets/js/domains/credit/controller.js';
@@ -21,7 +22,7 @@ function fixture(t){
     releaseFinanceSyncLease:async(_kind,_token,options)=>{options?.assertCurrent?.();releases++},
     saveFinancePatch:async mutator=>{patches++;return {saved:true,row:{state:mutator({creditSync:model.state.creditSync})}}},
   };
-  return {ports,model,before,provider,entered,create:()=>createDomainsCreditController(ports),change:()=>{owner='B';epoch++},logout:()=>{owner=null;epoch++},relogin:()=>{epoch++},secondary:()=>{primary=false},captureOperation,
+  return {ports,model,before,provider,entered,create:()=>createDomainsCreditController({...ports,preferences:createCreditPreferences()}),change:()=>{owner='B';epoch++},logout:()=>{owner=null;epoch++},relogin:()=>{epoch++},secondary:()=>{primary=false},captureOperation,
     counts:()=>({saves,patches,releases})};
 }
 
@@ -98,7 +99,7 @@ test('credit no-op save cannot publish or clear the previous data',async t=>{
 });
 
 test('credit rejects construction without an operation authorization port',()=>{
-  assert.throws(()=>createDomainsCreditController({autoScope:()=> 'A'}),/credit_operation_scope_required/);
+  assert.throws(()=>createDomainsCreditController({preferences:createCreditPreferences(),autoScope:()=> 'A'}),/credit_operation_scope_required/);
 });
 
 test('credit reset confirmation remains bound to the account that opened it',async t=>{

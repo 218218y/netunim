@@ -375,3 +375,13 @@ survive continuation and reload without duplicate effects or Main/Shared changes
 The --baseline option replays the old controller only in a disposable site copy;
 --phase limits focused local runs. CI runs all cases. See
 docs/CALENDAR_PENDING_CONFIRMATION.md for the failing native baseline and limits.
+
+Credit preferences: tests/credit_preferences_failure.test.mjs and
+tests/credit_preferences_port.test.mjs cover domain/adapter failure semantics;
+tests/runtime_credit_preferences.py (browser-lifecycle) checks actual composition,
+UI, partial reset and real Main/Shared journal retention/fresh-page recovery.
+--baseline replays the previous controller in a disposable copy; --phase limits
+focused local cases. CI runs all four profiles. The storage exceptions and
+Finance/Bridge replies are controlled fixtures, not disk exhaustion/live issuers.
+The actual adapter body and negative consumers are strict checkJs inputs. See
+docs/KUPA_CREDIT_PREFERENCES_CONTRACT.md for operator recovery and limits.

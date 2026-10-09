@@ -224,6 +224,13 @@ failure with `@ts-ignore`, `@ts-nocheck` or broad assertions.
 
 ## Remaining coverage
 
+Kupa `platform/credit-preferences.js` checks the actual synchronous storage
+adapter, classified results and attempt timestamp. Negative consumers reject
+un-narrowed failures, raw modes, string toggles and async storage. A mutated
+reader returning a string timestamp fails the implementation gate. The whole
+Credit controller remains outside static coverage. See
+[the preferences contract](KUPA_CREDIT_PREFERENCES_CONTRACT.md).
+
 Kupa `domains/credit/publication.js` now checks confirmed Finance commit,
 synchronous read-model publication, local follow-up result and authorized read
 recovery. Negative consumers reject async publication, cached authority and

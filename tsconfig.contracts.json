@@ -13,6 +13,8 @@
     "types": []
   },
   "files": [
+    "netunim-kupa/site/assets/js/platform/credit-preferences.js",
+    "tests/fixtures/checked-credit-preferences.mjs",
     "netunim-orders/site/assets/js/calendar/queue-observation.js",
     "tests/fixtures/checked-calendar-queue-observation.mjs",
     "netunim-orders/site/assets/js/calendar/auth.js",

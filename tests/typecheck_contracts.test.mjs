@@ -25,6 +25,13 @@ function check(overrides=new Map()){
 }
 function describe(diagnostics){return ts.formatDiagnostics(diagnostics,{getCanonicalFileName:file=>file,getCurrentDirectory:()=>root,getNewLine:()=> '\n'})}
 
+test('an actual Credit preference reader cannot return a string attempt timestamp',()=>{
+  const source=path.join(root,'netunim-kupa/site/assets/js/platform/credit-preferences.js');
+  const original=readFileSync(source,'utf8'),changed=original.replace('attemptAt:Number(storage.getItem(ATTEMPT)||0)','attemptAt:storage.getItem(ATTEMPT)||"0"');
+  assert.notEqual(changed,original);const diagnostics=check(new Map([[source,changed]]));
+  assert.ok(diagnostics.some(item=>path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+});
+
 test('strict implementation and consumer checking passes, including every negative type fixture',()=>{
   const diagnostics=check();
   assert.equal(diagnostics.length,0,describe(diagnostics));

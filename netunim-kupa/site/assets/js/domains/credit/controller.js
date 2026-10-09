@@ -7,33 +7,44 @@ import {normalizeCreditAutoMode,normalizeCreditFetchMode,resolveCreditAutoSyncMo
 import {esc,uid} from '../../core/values.js';
 import {creditCardMappingKey,creditSyncScrapeSelection,mergeCreditSyncResult,normalizeCreditSync,CREDIT_PROVIDER_LABELS,CREDIT_CONNECTOR_CONTRACT_VERSION} from './sync-feed.js';
 
-const CREDIT_AUTO_KEY='netunim_kupa_credit_auto_daily_v1';
-const CREDIT_AUTO_MODE_KEY='netunim_kupa_credit_auto_mode_v1';
 const CREDIT_BRIDGE_VERSION=73;
-const CREDIT_AUTO_ATTEMPT_KEY='netunim_kupa_credit_auto_attempt_v1';
 const CREDIT_AUTO_RETRY_MS=24*60*60*1000;
 
 function supportedCreditBridge(status){const version=Number(status?.bridgeVersion||0),contract=Number(status?.contractVersion||0);return version>=CREDIT_BRIDGE_VERSION&&contract>=CREDIT_CONNECTOR_CONTRACT_VERSION}
 function providerFields(provider){return provider==='isracard'||provider==='amex'?['id','card6Digits','password']:['username','password']}
 
-export function createDomainsCreditController({model,saveState,toast,render,renderStatus=render,bridge,modal,armModalDraftGuard,closeModal,confirmDialog,autoScope,captureOperation,timers=globalThis,refreshFinanceCloudSnapshot=async()=>({verified:true,state:model.state}),saveFinancePatch=async()=>({saved:false}),claimFinanceSyncLease=async()=>({acquired:true}),releaseFinanceSyncLease=async()=>true}){
+export function createDomainsCreditController({model,saveState,toast,render,renderStatus=render,bridge,preferences,modal,armModalDraftGuard,closeModal,confirmDialog,autoScope,captureOperation,timers=globalThis,refreshFinanceCloudSnapshot=async()=>({verified:true,state:model.state}),saveFinancePatch=async()=>({saved:false}),claimFinanceSyncLease=async()=>({acquired:true}),releaseFinanceSyncLease=async()=>true}){
   if(typeof autoScope!=='function')throw new Error('credit_auto_scope_required');
   if(typeof captureOperation!=='function')throw new Error('credit_operation_scope_required');
-  const local={busy:false,status:null,error:'',errorAt:null,bridgeError:'',bridgeErrorAt:null,autoTimer:null};
+  if(!preferences||!['read','setEnabled','setMode','markAttempt','reset'].every(key=>typeof preferences[key]==='function'))throw new Error('credit_preferences_port_required');
+  const local={busy:false,status:null,error:'',errorAt:null,bridgeError:'',bridgeErrorAt:null,autoTimer:null,preferenceWarning:'',preferenceWarningCode:''};
   const publication=createCreditPublication({commit:saveFinancePatch,read:refreshFinanceCloudSnapshot,publish:state=>{model.state.creditSync=normalizeCreditSync(state.creditSync)},checkpoint:message=>saveState(message,{operations:[{type:'set',field:'creditSync',value:model.state.creditSync}]})});
-  let automaticActive=true,automaticOwner=null;
+  let automaticActive=true,automaticOwner=null,preferencesPaused=false;
   const automaticAllowed=()=>{
     const scope=autoScope();if(!automaticActive||typeof scope!=='string'||!scope.length)return false;
     if(automaticOwner===null)automaticOwner=scope;
     return scope===automaticOwner&&autoEnabled()&&!!bridge.getBridgeToken();
   };
   const autoTask=createPollingTask({timers,canRun:automaticAllowed,delay:autoDelay,run:runAutomaticCredit,onError:error=>console.error('credit auto refresh',error),onState:({timer})=>{local.autoTimer=timer}});
-  function autoEnabled(){return localStorage.getItem(CREDIT_AUTO_KEY)!=='0'}
-  function autoMode(){return normalizeCreditAutoMode(localStorage.getItem(CREDIT_AUTO_MODE_KEY))}
-  function markAutoAttempt(){localStorage.setItem(CREDIT_AUTO_ATTEMPT_KEY,String(Date.now()))}
-  function autoAttemptDelayMs(){const n=Number(localStorage.getItem(CREDIT_AUTO_ATTEMPT_KEY)||0);return n?Math.max(0,n+CREDIT_AUTO_RETRY_MS-Date.now()):0}
+  function preferenceResult(result){
+    if(result.ok)return true;
+    const changed=!preferencesPaused||local.preferenceWarningCode!==result.error.code;
+    preferencesPaused=true;autoTask.stop();
+    local.preferenceWarningCode=result.error.code;
+    local.preferenceWarning='לא ניתן לקרוא או לשמור את העדפות האשראי במחשב זה. העדכון האוטומטי הושהה בחלון זה; ניתן לרענן ידנית. לאחר תיקון האחסון הפעל מחדש עדכון אוטומטי. ההשהיה לא נשמרה בהכרח לפתיחה הבאה.';
+    // A background gate may stop before entering the task's finally/render.
+    // Publish the transition once; repeated reads during rendering stay quiet.
+    if(changed)renderStatus();
+    return false;
+  }
+  function readPreferences(){const result=preferences.read();return preferenceResult(result)?result.value:null}
+  function clearPreferenceFailure(){preferencesPaused=false;local.preferenceWarning='';local.preferenceWarningCode=''}
+  function autoEnabled(){const settings=readPreferences();return !preferencesPaused&&settings?.enabled===true}
+  function autoMode(){return normalizeCreditAutoMode(readPreferences()?.mode)}
+  function markAutoAttempt(){return preferenceResult(preferences.markAttempt())}
+  function autoAttemptDelayMs(){const settings=readPreferences();if(!settings)return Infinity;const n=settings.attemptAt;return n?Math.max(0,n+CREDIT_AUTO_RETRY_MS-Date.now()):0}
   function autoAttemptReady(){return autoAttemptDelayMs()===0}
-  function creditSyncUiState(){return {...local,...publication.status(),autoEnabled:autoEnabled(),autoMode:autoMode(),sync:normalizeCreditSync(model.state.creditSync)}}
+  function creditSyncUiState(){const settings=readPreferences();return {...local,...publication.status(),autoEnabled:!preferencesPaused&&settings?.enabled===true,autoMode:normalizeCreditAutoMode(settings?.mode),sync:normalizeCreditSync(model.state.creditSync)}}
   async function copySafeCreditDiagnostics(){
     try{const result=await bridge.creditDiagnostics(),events=Array.isArray(result?.events)?result.events:[],content=JSON.stringify({contractVersion:result?.contractVersion||CREDIT_CONNECTOR_CONTRACT_VERSION,events},null,2);if(!navigator?.clipboard?.writeText)throw new Error('הדפדפן אינו מאפשר העתקה מאובטחת ללוח');await navigator.clipboard.writeText(content);toast(`הועתק אבחון טכני בטוח (${events.length} אירועים מסוננים)`);return true}catch(error){toast(error?.message||'העתקת האבחון נכשלה');return false}
   }
@@ -110,11 +121,12 @@ export function createDomainsCreditController({model,saveState,toast,render,rend
       if(!supportedCreditBridge(status))throw new Error('יש לשדרג את Bank Bridge לפני איפוס מלא של סנכרון האשראי');
       await bridge.resetCreditProfiles();
       assertCurrent();
-      localStorage.setItem(CREDIT_AUTO_KEY,'0');localStorage.setItem(CREDIT_AUTO_MODE_KEY,'smart');localStorage.removeItem(CREDIT_AUTO_ATTEMPT_KEY);
+      automaticActive=false;autoTask.stop();if(preferenceResult(preferences.reset()))clearPreferenceFailure();
       await publishCreditSync(normalizeCreditSync({}),'סנכרון האשראי אופס והופרד מגיבויי הקופה',null,assertCurrent);
       await refreshCreditBridgeStatus();
       assertCurrent();
       toast(publication.status().publicationWarning||'סנכרון האשראי אופס. אפשר להגדיר מחדש חיבור אחד לכל בעל חשבון וחברה.');
+      if(local.preferenceWarning)toast(local.preferenceWarning);
     }catch(e){local.error=e?.message||String(e);local.errorAt=new Date().toISOString();toast(local.error)}
     finally{local.busy=false;render();scheduleAuto()}
   }
@@ -131,10 +143,10 @@ export function createDomainsCreditController({model,saveState,toast,render,rend
         const latest=await refreshFinanceCloudSnapshot();
         assertCurrent();
         if(!allowed())return false;
-        if(!latest?.verified){markAutoAttempt();throw new Error('לא ניתן לאמת את זמן סנכרון האשראי המשותף בענן');}
+        if(!latest?.verified){if(!markAutoAttempt())return false;throw new Error('לא ניתן לאמת את זמן סנכרון האשראי המשותף בענן');}
         autoCreditSync=latest.state?.creditSync||autoCreditSync;
-        if(!due(autoCreditSync?.syncedAt)){markAutoAttempt();return true}
-        markAutoAttempt();
+        if(!due(autoCreditSync?.syncedAt))return markAutoAttempt();
+        if(!markAutoAttempt())return false;
       }
       leaseToken=uid('FINLEASE');
       lease=await claimFinanceSyncLease('credit',leaseToken,{assertCurrent});leaseHeld=lease?.acquired===true;
@@ -151,6 +163,7 @@ export function createDomainsCreditController({model,saveState,toast,render,rend
       if(!(status.profiles||[]).length)throw new Error('לא הוגדר עדיין חיבור לחברת אשראי במחשב זה');
       const requestedMode=auto?resolveCreditAutoSyncMode(autoMode(),autoCreditSync,{profileIds:(status.profiles||[]).map(profile=>profile.profileId)}):normalizeCreditFetchMode(syncMode,'forecast');
       const selectionSource=auto?autoCreditSync:model.state.creditSync;
+      if(auto&&!allowed())return false;
       const result=await bridge.syncCreditCards({interactive,syncMode:requestedMode,selection:creditSyncScrapeSelection(selectionSource)});
       assertCurrent();
       if(Number(result.attemptedCount)===0&&Number(result.deferredCount)>0){await refreshCreditBridgeStatus();assertCurrent();local.error='';local.errorAt=null;if(!auto)toast('לא נשלחה בקשה חדשה: החיבור מושהה עד מועד ה־403/429 הקודם. גם רענון עם חלון אבחון מכבד את ההשהיה.');return true}
@@ -208,8 +221,14 @@ export function createDomainsCreditController({model,saveState,toast,render,rend
     }catch(error){toast(error?.message||'שמירת הגדרת הכרטיס נכשלה');render();return false}
   }
 
-  function setCreditAutoRefresh(enabled){localStorage.setItem(CREDIT_AUTO_KEY,enabled?'1':'0');if(enabled){automaticActive=true;automaticOwner=null;autoTask.start()}else autoTask.stop();render()}
-  function setCreditAutoMode(mode){localStorage.setItem(CREDIT_AUTO_MODE_KEY,normalizeCreditAutoMode(mode));scheduleAuto();render()}
+  function setCreditAutoRefresh(enabled){
+    if(!enabled)autoTask.stop();
+    const readable=!enabled||!!readPreferences(),saved=readable&&preferenceResult(preferences.setEnabled(enabled));
+    if(saved){clearPreferenceFailure();if(enabled){automaticActive=true;automaticOwner=null;autoTask.start()}}
+    else toast(local.preferenceWarning);
+    render();return !!saved;
+  }
+  function setCreditAutoMode(mode){const saved=preferenceResult(preferences.setMode(normalizeCreditAutoMode(mode)));if(saved)scheduleAuto();else toast(local.preferenceWarning);render();return saved}
   function autoDelay(){
     const syncedAt=model.state.creditSync?.syncedAt,t=syncedAt?Date.parse(syncedAt):NaN;
     const wait=Number.isFinite(t)?Math.max(0,t+CREDIT_AUTO_INTERVAL_MS-Date.now()):0,retryWait=autoAttemptDelayMs();
