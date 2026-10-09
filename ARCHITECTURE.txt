@@ -84,10 +84,12 @@ bypass interception. Cleanup is app-scoped.
 
 Static contracts
 ----------------
-tsconfig.contracts.json checks fourteen canonical authorization, publication, cloud-status,
-startup, polling, current-record writer, JSON codec/checkpoint decoder, Main RPC receipt/JSON equality and durable-ACK policy implementations with
+tsconfig.contracts.json checks sixteen canonical authorization, publication, cloud-status,
+startup, polling, current-record writer, JSON/checkpoint/operation decoder, historical bootstrap, Main RPC receipt/JSON equality and durable-ACK policy implementations with
 strict checkJs/noEmit. JSDoc lives beside the
 implementation; typed consumer fixtures reject invalid fields/results and async publication.
+Journal readers select the existing physical [owner,epoch,seq] namespace before
+validating payload owner/epoch; mutable owner-index fields cannot hide or inject work.
 The full models gate runs the compiler, including through the offline dependency path.
 Data-only recursive JSON interfaces declare no function facade. Writer byte/checksum
 parity and real-IDB ACK abort/handoff/restart tests preserve existing record semantics.

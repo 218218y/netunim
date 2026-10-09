@@ -25,9 +25,15 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
     try{work(tx,value=>{result=value},fail)}catch(cause){fail(cause)}
     tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_transaction_aborted'));tx.onerror=()=>{error??=tx.error};
   })}
+  // Every journal writer, including schema v1, keys records by
+  // [owner, epoch, seq]. Select that physical namespace before decoding the
+  // payload: the mutable data.owner index cannot prove presence or ownership.
+  // String epochs sort below the array sentinel; adjacent owner prefixes do
+  // not enter this range. Keep the historical index/schema without migrating.
+  function readJournal(tx,owner){return tx.objectStore('journal').getAll(IDBKeyRange.bound([owner],[owner,[]],false,true))}
   function read(tx,owner,done,fail){
     const result={},names=['checkpoints','metadata','bases','flights','controls','journal'];let pending=names.length;
-    for(const name of names){const request=name==='journal'?tx.objectStore(name).index('owner').getAll(owner):tx.objectStore(name).get(owner);request.onsuccess=()=>{result[name]=request.result??(name==='journal'?[]:null);if(!--pending){try{done(result)}catch(error){fail(error)}}}}
+    for(const name of names){const request=name==='journal'?readJournal(tx,owner):tx.objectStore(name).get(owner);request.onsuccess=()=>{result[name]=request.result??(name==='journal'?[]:null);if(!--pending){try{done(result)}catch(error){fail(error)}}}}
   }
   function load(owner){return transact('readonly',(tx,done,fail)=>read(tx,owner,done,fail))}
   function change(owner,edit){return transact('readwrite',(tx,done,fail)=>read(tx,owner,current=>{edit(tx,current,done)},fail))}
@@ -406,13 +412,13 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
         requests.localBirth=tx.objectStore('local-births').get(`${app}:local`);
         requests.localBoundary=tx.objectStore('boundaries').get('local');
         for(const name of stores){
-          requests[`local:${name}`]=name==='journal'?tx.objectStore('journal').index('owner').getAll(`local:${app}`):tx.objectStore(name).get(`local:${app}`);
-          requests[`local-shared:${name}`]=name==='journal'?tx.objectStore('journal').index('owner').getAll('local:shared-checks'):tx.objectStore(name).get('local:shared-checks');
+          requests[`local:${name}`]=name==='journal'?readJournal(tx,`local:${app}`):tx.objectStore(name).get(`local:${app}`);
+          requests[`local-shared:${name}`]=name==='journal'?readJournal(tx,'local:shared-checks'):tx.objectStore(name).get('local:shared-checks');
         }
       }
       for(const side of heads){
         const key=side.role==='primary'?'main':'shared';
-        for(const name of stores)requests[`${key}:${name}`]=name==='journal'?tx.objectStore('journal').index('owner').getAll(side.owner):tx.objectStore(name).get(side.owner);
+        for(const name of stores)requests[`${key}:${name}`]=name==='journal'?readJournal(tx,side.owner):tx.objectStore(name).get(side.owner);
       }
       let remaining=Object.keys(requests).length;
       const fail=cause=>{error=cause;try{tx.abort()}catch{reject(cause)}};

@@ -72,7 +72,7 @@ Normal local setup:
 Focused static-contract gate:
   npm run typecheck
   node --test tests/typecheck_contracts.test.mjs
-This checks fourteen canonical JavaScript implementations and 100 negative consumer cases
+This checks sixteen canonical JavaScript implementations and 118 negative consumer cases
 without emitting assets. The full models group also runs it. It reads
 NETUNIM_OFFLINE_NODE_MODULES for the pinned offline compiler. Exact scope and remaining
 decoder/IDB/business-RPC/application coverage are documented in docs/STATIC_CONTRACTS.md.
@@ -92,6 +92,13 @@ injects malformed state/metadata and native BigInt into real IDB in Main/Shared,
 that primary/secondary recovery retain all stores/writers, then restores the exact
 captured checkpoint and recovers pending identity/content in a fresh runtime.
 See docs/STORAGE_CHECKPOINT_RECOVERY_CONTRACT.md; this is test-only fault injection.
+  node --test tests/storage_operation_decoding.test.mjs
+proves classified operation failures, historical optional annotations/indices and scoped
+pending reads. runtime_storage.py injects operation faults after compaction while the
+cloud flight is still pending; active cloud reads and primary/secondary Main/Shared
+recovery must retain every store/writer. Exact test-only restoration plus emergency
+duplicate replay and durable ACK recover the original ID/content once in a fresh runtime.
+See docs/STORAGE_OPERATION_RECOVERY_CONTRACT.md.
 
 PDF.js upgrade gate:
   npm run pdfjs:check

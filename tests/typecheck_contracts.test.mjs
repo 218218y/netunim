@@ -65,6 +65,15 @@ test('a decoder claiming an unvalidated numeric owner fails its actual implement
   assert.ok(diagnostics.some(item=>path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
 });
 
+test('a persisted operation decoder cannot return an unvalidated string sequence',()=>{
+  const source=path.join(root,'shared/storage-operation.js');
+  const original=readFileSync(source,'utf8');
+  const changed=original.replace('return data;', 'return {...data,seq:String(data.seq)};');
+  assert.notEqual(changed,original);
+  const diagnostics=check(new Map([[source,changed]]));
+  assert.ok(diagnostics.some(item=>path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+});
+
 test('negative fixture assertions fail if an invalid consumer is accidentally accepted',()=>{
   const diagnostics=check(new Map([[fixture,readFileSync(fixture,'utf8')+
     '\n// @ts-expect-error deliberately unused: must make the gate fail\nconst validRevision=7;\n']]));

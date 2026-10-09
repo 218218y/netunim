@@ -439,10 +439,10 @@ recover the same record identities. See [the Orders Finance operation contract](
 Morning orchestration, other jobs and narrower Finance capability APIs remain
 separate review tracks; this is not a claim of universal controller coverage.
 
-Strict JavaScript checking now covers fourteen canonical authorization, publication,
+Strict JavaScript checking now covers sixteen canonical authorization, publication,
 status, startup, polling, current-record writer, Main RPC receipt/JSON equality
-and durable-ACK policy modules, including the persisted JSON codec and checkpoint
-decoder. Their actual implementations and 100 negative
+and durable-ACK policy modules, including the persisted JSON/checkpoint/operation
+decoders and historical bootstrap compatibility. Their actual implementations and 118 negative
 consumer cases are compiled in the models gate, including offline tooling.
 Pre-refactor sealed records retain exact bytes/checksums, and both sites have
 real-IDB ACK rejection/abort/handoff tests with fresh-runtime ID/content recovery.
@@ -455,7 +455,13 @@ JSON/state/metadata fails closed without discarding pending records. Both sites
 have real-IDB restoration drills for these boundaries.
 See [the static contracts scope](STATIC_CONTRACTS.md) and
 [checkpoint recovery contract](STORAGE_CHECKPOINT_RECOVERY_CONTRACT.md).
-Remaining operation/Flight/base/control decoders, full IDB
+Operation replay and cloud pending-state reads now share checked validation and
+owner/epoch scope. Persistent deletion-intent corruption is classified as fatal;
+historical annotations/indices and writer bytes remain intact. Real-IDB tests cover
+compacted pending operations and retained emergency copies through exact test-only
+restoration, durable ACK and fresh recovery of original IDs/content.
+See [the operation recovery contract](STORAGE_OPERATION_RECOVERY_CONTRACT.md).
+Remaining Flight/base/control decoders, full journal/IDB
 transactions/business RPC payload validation, Finance leases and most application consumers remain separate
 coverage slices; this does not replace runtime validation or recovery gates.
 
@@ -467,7 +473,7 @@ they are not a claim that every older audit finding is still present.
 | Capability APIs | Orders Finance/Checks and shell/Notes interactions; Kupa Dashboard/Bank read-model and remaining shell wiring | Narrow public commands/queries, explicit binding and representative cross-capability behavior tests |
 | Runtime/resource ownership | Remaining Shared-specific and finance/integration jobs, shell listeners, reconnect/owner transitions and preflight | Start/stop/dispose idempotence, no duplicate/orphan jobs, live access fences and controlled failure tests |
 | Remaining I/O ports | Kupa credit preferences/timers and other concrete browser effects after inventory; Google Drive and local Bridge clients now have explicit ports | Injected fake ports, adapter contracts and import enforcement; installed settings/auth compatibility |
-| Static contracts | Extend the existing strict JS gate beyond current writers/checkpoint decoding/Main receipt/ACK policy to operation/Flight/base/control decoders, full IDB transactions/business RPC/read candidates, Finance leases, capability ports and application consumers | A real mismatch fails CI; runtime validation and historical record readers remain intact |
+| Static contracts | Extend the existing strict JS gate beyond current writers/checkpoint/operation decoding/Main receipt/ACK policy to Flight/base/control decoders, full journal/IDB transactions/business RPC/read candidates, Finance leases, capability ports and application consumers | A real mismatch fails CI; runtime validation and historical record readers remain intact |
 | Bridge decomposition | Bank HTTP/vault/session/provider/retry diagnostics; Document HTTP/auth/index/preview | Existing external contracts preserved, classified failures and provider tests before live scraper changes |
 | Canonical sources and compatibility | SQL deployment inventory/generation; historical keys/RPC/readers and supported-client inventory | Immutable deployed migrations, deterministic generation, proven retirement criteria and restore tests |
 | Readability/UI/release | Large modules by responsibility, dependency budgets, CSS/RTL/performance, final docs/rollback | Behavioral and visual regression checks, measured performance and full release gates |
