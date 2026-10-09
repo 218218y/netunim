@@ -20,8 +20,11 @@ their compile-only consumer fixtures. There are no handwritten function
 declaration facades, emitted files, application runtime dependencies or blanket
 `any` types. `storage-json.d.ts` defines recursive JSON data interfaces only;
 the constructors and ACK policy are checked from their JavaScript bodies.
-The data-only definition is generated into both sites by `sync-assets`, so
-their writer types resolve too. It adds no browser script or precached asset.
+The data-only definition remains outside the public sites. The checker's
+`rootDirs` resolves it for both generated writers from the canonical shared
+directory; real runtime imports must still resolve within each site through
+the module-graph gate. No declaration file, browser script or precached asset
+is added to deployment.
 
 | Canonical module | Contract checked |
 | --- | --- |
@@ -115,8 +118,8 @@ The Node gate tests additionally prove that an implementation mismatch is
 detected (including a writer returning a string sequence), an unused expectation
 fails, and a missing compiler cannot pass.
 The storage fixture also imports both generated site writers: unresolved data
-types or accepted invalid inputs fail checking. Generator contracts cover type
-drift, obsolete copies, staged-only generation and unchanged runtime cache keys.
+types or accepted invalid inputs fail checking. Existing generator contracts
+continue to own source parity and runtime cache keys.
 
 Contracts live next to the actual implementation, following TypeScript's
 [JavaScript checking](https://www.typescriptlang.org/docs/handbook/type-checking-javascript-files.html)

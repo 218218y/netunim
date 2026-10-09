@@ -8,6 +8,7 @@
     "exactOptionalPropertyTypes": true,
     "target": "ES2022",
     "module": "NodeNext",
+    "rootDirs": ["shared", "netunim-kupa/site/assets/js/shared", "netunim-orders/site/assets/js/shared"],
     "lib": ["ES2022", "DOM"],
     "types": []
   },

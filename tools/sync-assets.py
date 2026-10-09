@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 APPS = ('kupa', 'orders')
 DOCUMENT_SEARCH_SHARED_ROOT = PurePosixPath('shared/document-search')
 DOCUMENT_SEARCH_TARGET_ROOT = PurePosixPath('assets/js')
-TEXT_ASSET_SUFFIXES = {'.html', '.css', '.js', '.mjs', '.ts', '.txt', '.webmanifest'}
+TEXT_ASSET_SUFFIXES = {'.html', '.css', '.js', '.mjs', '.txt', '.webmanifest'}
 
 
 def asset_hash_bytes(path: str | PurePosixPath, data: bytes | None = None) -> bytes:
@@ -47,7 +47,7 @@ class Change(NamedTuple):
 class WorktreeSnapshot:
     def __init__(self, root: Path):
         self.root = root
-        paths = list((root / 'shared').glob('*.js')) + list((root / 'shared').glob('*.css')) + list((root / 'shared').glob('*.d.ts'))
+        paths = list((root / 'shared').glob('*.js')) + list((root / 'shared').glob('*.css'))
         document_search = root / DOCUMENT_SEARCH_SHARED_ROOT
         if document_search.is_dir():
             paths.extend(path for path in document_search.rglob('*.js') if path.is_file())
@@ -60,7 +60,6 @@ class WorktreeSnapshot:
             site = root / f'netunim-{label}/site'
             paths.extend((site / 'assets').rglob('*.js'))
             paths.extend((site / 'assets/js/shared').glob('*.css'))
-            paths.extend((site / 'assets/js/shared').glob('*.d.ts'))
             vendor = site / 'assets/vendor'
             if vendor.is_dir():
                 paths.extend(path for path in vendor.rglob('*') if path.is_file())
@@ -180,11 +179,11 @@ def render_worker(label: str, snapshot: OverlaySnapshot, worker_path: str) -> by
 def plan_sync(snapshot: WorktreeSnapshot | IndexSnapshot) -> list[Change]:
     """Calculate every change before writing, so structural errors are atomic."""
     changes: list[Change] = []
-    sources = direct_javascript_files(snapshot.files, 'shared') | {path for path in snapshot.files if str(PurePosixPath(path).parent) == 'shared' and path.endswith(('.css','.d.ts'))}
+    sources = direct_javascript_files(snapshot.files, 'shared') | {path for path in snapshot.files if str(PurePosixPath(path).parent) == 'shared' and path.endswith('.css')}
     source_names = {PurePosixPath(path).name for path in sources}
     for label in APPS:
         target_dir = f'netunim-{label}/site/assets/js/shared'
-        targets = direct_javascript_files(snapshot.files, target_dir) | {path for path in snapshot.files if str(PurePosixPath(path).parent) == target_dir and path.endswith(('.css','.d.ts'))}
+        targets = direct_javascript_files(snapshot.files, target_dir) | {path for path in snapshot.files if str(PurePosixPath(path).parent) == target_dir and path.endswith('.css')}
         for target in sorted(targets):
             if PurePosixPath(target).name not in source_names:
                 changes.append(Change(target, None, f'{label}: removed obsolete shared copy: {PurePosixPath(target).name}'))
