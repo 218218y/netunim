@@ -2,29 +2,14 @@
 // This is a local persistence contract, independent of the cloud RPC protocol.
 import {measureStorage,storageBytes} from './storage-metrics.js';
 import {isHistoricalUploadOwnerBootstrap} from './storage-v2-persisted-compat.js';
+import {assertStorageJson,sealStorageJsonRecord,readStorageJsonRecord as readStorageRecord} from './storage-json-codec.js';
+import {readStorageCheckpoint} from './storage-checkpoint.js';
+export {assertStorageJson,storageChecksum,readStorageJsonRecord as readStorageRecord} from './storage-json-codec.js';
 export const STORAGE_JOURNAL_VERSION=2;
 const forbidden=new Set(['__proto__','prototype','constructor']);
-export function assertStorageJson(value){
-  const seen=new Set();
-  function visit(item){
-    if(item===null||typeof item==='string'||typeof item==='boolean')return;
-    if(typeof item==='number'&&Number.isFinite(item))return;
-    if(!item||typeof item!=='object'||seen.has(item)||(!Array.isArray(item)&&Object.getPrototypeOf(item)!==Object.prototype))throw new Error('storage_non_json_value');
-    seen.add(item);for(const [key,child] of Object.entries(item)){if(forbidden.has(key))throw new Error('storage_unsafe_key');visit(child)}seen.delete(item);
-  }
-  visit(value);return value;
-}
-// Corruption detection, not a cryptographic signature or authentication boundary.
-export function storageChecksum(text){let a=2166136261,b=0x9e3779b9;for(let i=0;i<text.length;i++){const c=text.charCodeAt(i);a=Math.imul(a^c,16777619);b=Math.imul(b^c,2246822519)}return (a>>>0).toString(16).padStart(8,'0')+(b>>>0).toString(16).padStart(8,'0')}
 export function sealStorageRecord(value,{kind=null}={}){
-  const run=(name,work)=>kind?measureStorage(name,work):work();
-  run('validate',()=>assertStorageJson(value));
-  const data=run(`${kind}-clone`,()=>structuredClone(value));
-  const text=run(`${kind}-stringify`,()=>JSON.stringify(data));
-  if(kind)storageBytes(kind,text);
-  return {data,checksum:storageChecksum(text)};
+  return sealStorageJsonRecord(value,{kind,measure:(name,work)=>kind?measureStorage(name,work):work(),onSerialized:text=>{if(kind)storageBytes(kind,text)}});
 }
-export function readStorageRecord(record){if(!record?.data||storageChecksum(JSON.stringify(record.data))!==record.checksum)throw new Error('storage_checksum_mismatch');assertStorageJson(record.data);return structuredClone(record.data)}
 function integer(value,min=0){return Number.isSafeInteger(value)&&value>=min}
 function identity(value){return typeof value==='string'&&value.length>0&&value.length<=512}
 export function validateStoredOperation(operation,{collections=[],fields=[]}={}){
@@ -73,8 +58,7 @@ export function applyStoredOperation(state,operation,schema){
   return state;
 }
 export function replayStorageJournal(checkpoint,records,schema){
-  const base=readStorageRecord(checkpoint);
-  if(base.version!==2||!identity(base.owner)||!identity(base.epoch)||!integer(base.seq)||!base.state)throw new Error('storage_invalid_checkpoint');
+  const base=readStorageCheckpoint(checkpoint);
   // A Main checkpoint from the transition era cannot be mistaken for current
   // authority. An old device must explicitly reset and adopt the cloud head.
   if(schema.mainProjection===2&&(base.appMetadata?.mainProjectionVersion!==2||Object.hasOwn(base.state,'checks')))throw new Error('storage_main_projection_invalid');

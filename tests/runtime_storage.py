@@ -935,3 +935,69 @@ for app in ('orders', 'kupa'):
         result = browser.evaluate(script, timeout=40)
         assert not browser.drain_serious_errors()
         print(f'PASS {app} real IndexedDB Shared status recovery: {len(result)} assertions for lost response, restart, immutable replay, held ACK, backup edits, Main conflict and logout')
+
+# Checkpoint kind validation must precede claiming a writer or granting recovery.
+# Inject only into disposable browser profiles; retain every pending store and
+# recover from the exact previously captured checkpoint, never synthesized data.
+for app in ('kupa', 'orders'):
+    with BrowserSession(ROOT/f'netunim-{app}/site', f'{app}-checkpoint-decoding') as browser:
+        result=browser.evaluate(r"""(async()=>{
+          const app=APP,clone=structuredClone,done=[],check=(condition,label)=>{if(!condition)throw Error(label);done.push(label)};
+          const dump=value=>JSON.stringify(value,(_key,item)=>typeof item==='bigint'?{testBigInt:String(item)}:item);
+          const {INITIAL_STATE}=await import('./assets/js/state/constants.js');
+          const {createStateNormalization}=await import(app==='kupa'?'./assets/js/composition/state-normalization.js':'./assets/js/state/normalization.js');
+          const validation=await import('./assets/js/state/validation.js');
+          const {createStorageV2Runtime}=await import('./assets/js/shared/storage-v2-runtime.js');
+          const {createSharedChecksStorageV2,validateSharedChecksState}=await import('./assets/js/shared/shared-checks-storage-v2.js');
+          const {createStorageJournal}=await import('./assets/js/shared/storage-journal.js');
+          const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
+          const {STORAGE_SCHEMAS}=await import('./assets/js/shared/storage-v2-schema.js');
+          const {sealStorageRecord}=await import('./assets/js/shared/storage-journal-model.js');
+          const db=createStorageJournalDb();
+          async function replaceCheckpoint(owner,record){
+            const handle=await new Promise((resolve,reject)=>{const request=indexedDB.open('netunim-storage-v2');request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error)});
+            try{await new Promise((resolve,reject)=>{const tx=handle.transaction('checkpoints','readwrite');tx.objectStore('checkpoints').put(record,owner);tx.oncomplete=()=>resolve();tx.onabort=()=>reject(tx.error);tx.onerror=()=>reject(tx.error)})}finally{handle.close()}
+          }
+          const rejects=async(work,code)=>{try{await work();throw Error('expected rejection: '+code)}catch(error){check(error.message===code,code)}};
+          for(const domain of ['main','shared']){
+            const account='checkpoint-'+domain,owner=account+':'+(domain==='main'?app:'shared-checks');
+            const model={state:clone(INITIAL_STATE)},normalization=createStateNormalization({model});model.state=normalization.normalizeState(model.state);
+            const initial=domain==='shared'?{checks:[],bankEvents:[]}:app==='kupa'?normalization.prepareKupaStorageState(model.state):clone(model.state);
+            if(domain==='main'){delete initial.checks;initial.notes=[]}
+            const validate=domain==='shared'?validateSharedChecksState:state=>app==='kupa'?validation.assertKupaEntityInvariants(state,{required:true,includeChecks:false}):validation.assertOrderEntityInvariants(state,{required:true});
+            const schema=domain==='main'?STORAGE_SCHEMAS[app]:{collections:['checks'],fields:['bankEvents']};
+            const seed=createStorageJournal({owner,schema,validate,db});
+            await seed.initializeCloudHead(7,initial,{cloudState:initial,appMetadata:{storageRole:domain==='main'?'primary':'shared-checks-primary',...(domain==='main'?{mainProjectionVersion:2}:{})}});
+            const collection=domain==='main'?'notes':'checks',entry=domain==='main'?{id:'N',content:'pending note'}:{id:'C',amount:125};
+            await seed.append([{type:'put',collection,mode:'insert',index:0,id:entry.id,record:entry}],{generation:1}).committed;
+            await seed.materializeFlight({operationId:'immutable-'+domain,baseRevision:7});await seed.setCloudControl({retry:{kind:'network',attempt:1}});
+            const original=(await db.load(owner)).checkpoints;
+            const make=(primary=true)=>domain==='shared'?createSharedChecksStorageV2({owner:()=>account,primary:()=>primary,db}):
+              createStorageV2Runtime({app,owner:()=>account,primary:()=>primary,mode:()=> 'primary',validate,createJournal:options=>createStorageJournal({...options,db})});
+            for(const [patch,errorCode] of [[{state:[]},'storage_invalid_checkpoint'],[{state:true},'storage_invalid_checkpoint'],[{appMetadata:[]},'storage_invalid_checkpoint'],[{unsupported:1n},'storage_non_json_value']]){
+              const data={...original.data,...patch},injected=errorCode==='storage_non_json_value'?{data,checksum:original.checksum}:sealStorageRecord(data);
+              await replaceCheckpoint(owner,injected);const before=dump(await db.load(owner));
+              const runtime=make();
+              if(domain==='main'){
+                check(await runtime.recover()===null&&runtime.diagnostics.lastError===errorCode&&runtime.diagnostics.recoveryFailure==='fatal'&&!runtime.primaryReady,'Main rejects malformed checkpoint without readiness');
+                check(runtime.persist({...clone(initial),notes:[entry]},{operations:[{type:'put',collection:'notes',mode:'insert',index:0,id:entry.id,record:entry}]}).handled===false,'Main cannot append after failed decoding');
+              }else{
+                await rejects(()=>runtime.open(),errorCode);
+                await rejects(()=>runtime.append([{type:'put',collection:'checks',mode:'replace',id:'C',record:entry}],{checks:[entry],bankEvents:[]}),'shared_checks_storage_not_open');
+              }
+              const secondary=make(false);
+              if(domain==='main')check(await secondary.recoverReadOnly()===null&&secondary.diagnostics.lastError===errorCode,'secondary Main rejects malformed checkpoint');
+              else await rejects(()=>secondary.recoverReadOnly(),errorCode);
+              const retained=await db.load(owner);
+              check(dump(retained)===before&&(errorCode!=='storage_non_json_value'||retained.checkpoints.data.unsupported===1n),'failed primary/secondary recovery retains every sealed store and writer');
+              await replaceCheckpoint(owner,original);
+              const restarted=make(),recovered=domain==='main'?await restarted.recover():await restarted.open();
+              check(recovered.state[collection].some(row=>row.id===entry.id&&(domain==='shared'?row.amount===125:row.content==='pending note')),'verified checkpoint plus retained journal recovers exact ID/content');
+              const cloud=await restarted.cloudState();
+              check(cloud.pending&&cloud.seq===1&&cloud.base.revision===7&&cloud.base.ackSeq===0&&cloud.flight.operationId==='immutable-'+domain&&cloud.control.retry.kind==='network','fresh runtime retains pending flight/cursor/control after verified restoration');
+            }
+          }
+          return done;
+        })()""".replace('APP',json.dumps(app)),timeout=40)
+        assert not browser.drain_serious_errors()
+        print(f'PASS {app} real IDB checkpoint decoding: {len(result)} assertions for Main/Shared, primary/secondary, retained stores, verified restoration and pending identity')

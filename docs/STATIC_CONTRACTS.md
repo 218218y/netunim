@@ -41,6 +41,8 @@ use the ordinary generated-asset and service-worker gates.
 | `storage-cloud-ack.js` | Minimal durable ACK cursor, captured flight range and journal owner/epoch scope |
 | `document-write-ack.js` | Untrusted Main response envelope, revision/no-op/replay evidence and generic authoritative document through synchronous preparation/equality ports |
 | `sync-json.js` | Unknown inputs with retained JSON wire equality semantics |
+| `storage-json-codec.js` | Unknown JSON/envelope validation, unchanged checksum, generic sealed data, detached reads and synchronous instrumentation |
+| `storage-checkpoint.js` | Validated persisted checkpoint header/object state with historical optional/null metadata; distinct from current writer types |
 
 The login epoch is numeric; the journal epoch is a string. They are different
 identities. Status evidence is a narrow read contract, not a new persisted
@@ -130,6 +132,23 @@ successful replay; fresh-runtime recovery; an aborted ACK; exact replay and
 final recovery of both note IDs/content. The RPC ledger remains controlled
 fault injection; the separate Browser/PostgreSQL suites own actual SQL evidence.
 
+## Persisted checkpoint boundary
+
+The next slice starts from `a20eadd6383b56d3af2cd3e13087472ac749db54`.
+Eight pre-change tests proved checksum-valid malformed state/metadata could
+pass generic replay. Another reproduced a serialization TypeError for non-JSON
+persisted data, previously classified as retryable. JSON validation now precedes
+checksum serialization, and structural checkpoint validation precedes recovery
+and writer claims in Main/Shared. Existing corruption codes own the failures;
+there are no new defaults or automatic repair.
+
+The codec is checked from its actual implementation, including generic result
+preservation through synchronous measurement ports. The checkpoint reader does
+not infer business fields, require historical savedAt or manufacture metadata.
+Baseline sealed bytes/checksums and legacy missing/null metadata remain tested.
+See [the checkpoint recovery contract](STORAGE_CHECKPOINT_RECOVERY_CONTRACT.md)
+for failure ownership, real-IDB restoration drills and exact remaining scope.
+
 ## Gates and commands
 
 ```text
@@ -150,15 +169,18 @@ normal and offline gates use the same locked compiler and configuration.
 Missing compiler files fail the command and invalidate offline install readiness.
 
 `tests/module_contracts.py` invokes the check in the full local and GitHub
-`models` gate. The compile-only fixtures include valid calls and 84 intentional
+`models` gate. The compile-only fixtures include valid calls and 100 intentional
 invalid consumers using `@ts-expect-error`. A newly accepted invalid call makes
 its directive unused and fails compilation. Never execute this fixture.
 The Node gate tests additionally prove that an implementation mismatch is
-detected (including a writer's string sequence and an RPC receipt's string revision), an unused expectation
+detected (including a writer's string sequence, an RPC receipt's string revision
+and a decoder's numeric owner), an unused expectation
 fails, and a missing compiler cannot pass.
 The storage fixture also imports both generated site writers: unresolved data
 types or accepted invalid inputs fail checking. The Main receipt fixture also
 checks both generated implementations and rejects async preparation/equality.
+The decoding fixture checks both generated checkpoint readers and prevents
+raw JSON from being treated as a business checkpoint without decoding.
 Existing generator contracts
 continue to own source parity and runtime cache keys.
 
@@ -171,7 +193,7 @@ failure with `@ts-ignore`, `@ts-nocheck` or broad assertions.
 ## Remaining coverage
 
 This gate does **not** yet check all application consumers, full persisted
-checkpoint/journal/Flight decoders, complete IDB transactions, full business RPC
+full journal/Flight/base/control decoders, complete IDB transactions, full business RPC
 payload validation and cloud read candidates, Finance
 leases or capability APIs. Their existing runtime validation and historical
 readers remain intact. Add static coverage at those owners with behavior and
@@ -183,7 +205,9 @@ policy, but their full input flow is not yet checked. This slice does not claim
 that all callers or historical record variants satisfy the current writer type.
 
 Persisted schema, SQL, durable ACK semantics, merge, RPC payloads, retry and
-installed-user data are unchanged. Main now rejects malformed successful
-response envelopes instead of inventing their authoritative state.
+installed-user data are unchanged. Main rejects malformed successful response
+envelopes instead of inventing their authoritative state. Main/Shared recovery
+now rejects malformed checkpoint state/metadata and classifies non-JSON
+persisted data before serialization.
 Full Browser/PostgreSQL/recovery/Windows verification
 is required before merging; a static pass alone is insufficient for deployment.

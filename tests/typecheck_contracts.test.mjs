@@ -56,6 +56,15 @@ test('an RPC receipt returning a string revision fails its actual implementation
   assert.ok(diagnostics.some(item=>path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
 });
 
+test('a decoder claiming an unvalidated numeric owner fails its actual implementation contract',()=>{
+  const source=path.join(root,'shared/storage-checkpoint.js');
+  const original=readFileSync(source,'utf8');
+  const changed=original.replace('return data;', 'return {...data,owner:1};');
+  assert.notEqual(changed,original);
+  const diagnostics=check(new Map([[source,changed]]));
+  assert.ok(diagnostics.some(item=>path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+});
+
 test('negative fixture assertions fail if an invalid consumer is accidentally accepted',()=>{
   const diagnostics=check(new Map([[fixture,readFileSync(fixture,'utf8')+
     '\n// @ts-expect-error deliberately unused: must make the gate fail\nconst validRevision=7;\n']]));

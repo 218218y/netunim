@@ -1,6 +1,7 @@
 import {createStorageJournal} from './storage-journal.js';
 import {createStorageJournalDb} from './storage-journal-idb.js';
-import {assertStorageJson,readStorageRecord} from './storage-journal-model.js';
+import {assertStorageJson} from './storage-journal-model.js';
+import {readStorageCheckpoint} from './storage-checkpoint.js';
 import {equalSyncJson} from './cloud-sync.js';
 
 const SCHEMA=Object.freeze({collections:['checks'],fields:['bankEvents']});
@@ -41,7 +42,7 @@ export function createSharedChecksStorageV2({owner,primary,role='primary',valida
   async function recoverReadOnly(){
     if(String(owner()||'').trim()!==identity)throw new Error('shared_checks_owner_changed');
     const stored=await database.load(scopedOwner);
-    if(stored.checkpoints&&readStorageRecord(stored.checkpoints).appMetadata?.storageRole!=='shared-checks-primary')throw new Error('shared_checks_storage_role_mismatch');
+    if(stored.checkpoints&&readStorageCheckpoint(stored.checkpoints).appMetadata?.storageRole!=='shared-checks-primary')throw new Error('shared_checks_storage_role_mismatch');
     const recovered=await journal.recover();
     if(String(owner()||'').trim()!==identity)throw new Error('shared_checks_owner_changed');
     if(recovered?.appMetadata?.storageRole!=='shared-checks-primary')throw new Error('shared_checks_storage_role_mismatch');
@@ -49,7 +50,7 @@ export function createSharedChecksStorageV2({owner,primary,role='primary',valida
   }
   async function open({migrationState=null,migrationIntent=null,sourceOwner=null}={}){
     assertOwner();const stored=await database.load(scopedOwner);
-    if(stored.checkpoints&&readStorageRecord(stored.checkpoints).appMetadata?.storageRole!=='shared-checks-primary')throw new Error('shared_checks_storage_role_mismatch');
+    if(stored.checkpoints&&readStorageCheckpoint(stored.checkpoints).appMetadata?.storageRole!=='shared-checks-primary')throw new Error('shared_checks_storage_role_mismatch');
     const recovered=await journal.open();
     if(recovered){if(recovered.appMetadata?.storageRole!=='shared-checks-primary')throw new Error('shared_checks_storage_role_mismatch');trusted=true;return recovered}
     if(migrationState===null)return null;
