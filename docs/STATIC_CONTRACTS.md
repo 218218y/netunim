@@ -44,6 +44,7 @@ use the ordinary generated-asset and service-worker gates.
 | `storage-json-codec.js` | Unknown JSON/envelope validation, unchanged checksum, generic sealed data, detached reads and synchronous instrumentation |
 | `storage-checkpoint.js` | Validated persisted checkpoint header/object state with historical optional/null metadata; distinct from current writer types |
 | `storage-operation.js` | Unknown operation decoding, discriminated changes, schema permissions and historical optional/null annotations; replacement index is not ordering authority |
+| `storage-cloud-records.js` | Persisted Base/Flight/Control kind decoders, historical nullable annotations, retry deadline and one scoped head/pair decision |
 | `storage-v2-persisted-compat.js` | Existing historical bootstrap eligibility, group completion and shadow-role decisions |
 
 The login epoch is numeric; the journal epoch is a string. They are different
@@ -202,7 +203,7 @@ failure with `@ts-ignore`, `@ts-nocheck` or broad assertions.
 ## Remaining coverage
 
 This gate does **not** yet check all application consumers, persisted
-Flight/base/control decoders, complete journal/IDB transactions, full business RPC
+complete journal/IDB transactions, full business RPC
 payload validation and cloud read candidates, Finance
 leases or capability APIs. Their existing runtime validation and historical
 readers remain intact. Add static coverage at those owners with behavior and
@@ -212,6 +213,10 @@ a substitute for persisted-data validation.
 The unchecked journal/IDB callers now use these checked constructors and ACK
 policy, but their full input flow is not yet checked. This slice does not claim
 that all callers or historical record variants satisfy the current writer type.
+
+Persisted Base/Flight/Control reader bodies and both generated decoders are now
+checked; see [the cloud-record recovery contract](STORAGE_CLOUD_RECORD_RECOVERY_CONTRACT.md)
+for native-IDB pre-change evidence and retained historical annotations.
 
 Persisted schema, SQL, durable ACK semantics, merge, RPC payloads, retry and
 installed-user data are unchanged. Main rejects malformed successful response

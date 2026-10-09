@@ -80,6 +80,15 @@ test('negative fixture assertions fail if an invalid consumer is accidentally ac
   assert.ok(diagnostics.some(item=>path.resolve(item.file.fileName)===fixture&&item.code===2578),describe(diagnostics));
 });
 
+test('a cloud flight decoder cannot publish an unchecked string sequence',()=>{
+  const source=path.join(root,'shared/storage-cloud-records.js');
+  const original=readFileSync(source,'utf8');
+  const changed=original.replace("return data}\n/** @param {unknown} record @returns {StoredCloudControl}","return {...data,endSeq:String(data.endSeq)}}\n/** @param {unknown} record @returns {StoredCloudControl}");
+  assert.notEqual(changed,original);
+  const diagnostics=check(new Map([[source,changed]]));
+  assert.ok(diagnostics.some(item=>path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+});
+
 test('the command fails closed when the configured offline compiler is absent',()=>{
   const result=spawnSync(process.execPath,[path.join(root,'tools/typecheck.mjs')],{
     cwd:root,encoding:'utf8',env:{...process.env,NETUNIM_OFFLINE_NODE_MODULES:path.join(root,'tests/fixtures/no-installed-node-modules')},
