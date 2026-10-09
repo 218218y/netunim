@@ -28,7 +28,7 @@ GROUPS = {
     ],
     "models": ["module_contracts.py", "node_models.py"],
     "database": ["spreadsheet_documents.py", "supabase_candidate.py", "storage_writer_protocol_server.py", "supabase_retention.py", "morning_ledger.py"],
-    "browser-ui": ["runtime_browser_isolation.py", "runtime_smoke.py", "runtime_responsive.py", "runtime_calendar.py", "runtime_calendar_ownership.py", "runtime_events.py", "runtime_document_deadlines.py", "runtime_google_drive_scope.py"],
+    "browser-ui": ["runtime_browser_isolation.py", "runtime_smoke.py", "runtime_responsive.py", "runtime_calendar.py", "runtime_calendar_ownership.py", "runtime_calendar_pending.py", "runtime_events.py", "runtime_document_deadlines.py", "runtime_google_drive_scope.py"],
     "browser-morning": ["runtime_morning.py", "runtime_morning_ownership.py"],
     "browser-lifecycle": ["runtime_security.py", "runtime_pwa.py", "runtime_performance.py", "runtime_data_integrity.py", "runtime_finance_automation.py", "runtime_credit_operation_ownership.py", "runtime_credit_publication.py", "runtime_bank_operation_ownership.py", "runtime_bank_snapshot_confirmation.py", "runtime_orders_finance_ownership.py"],
     "browser-sync": ["runtime_local_birth_gate.py", "runtime_owner_transfer.py", "runtime_storage.py", "runtime_cloud_record_recovery.py", "runtime_kupa_save_confirmation.py", "spreadsheet_runtime.py", "runtime_workflows.py", "runtime_sync_multitab.py", "runtime_sync_two_computers.py", "runtime_financial.py"],

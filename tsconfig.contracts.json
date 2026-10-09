@@ -13,6 +13,8 @@
     "types": []
   },
   "files": [
+    "netunim-orders/site/assets/js/calendar/queue-observation.js",
+    "tests/fixtures/checked-calendar-queue-observation.mjs",
     "netunim-orders/site/assets/js/calendar/auth.js",
     "tests/fixtures/checked-calendar-authority.mjs",
     "shared/bank-snapshot-receipt.js",

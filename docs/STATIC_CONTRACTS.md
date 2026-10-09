@@ -21,6 +21,11 @@ and incorrect credential/account types. This does not check the whole Calendar
 API, journal or controller. See [Calendar ownership](CALENDAR_OPERATION_OWNERSHIP.md)
 for runtime/native-IDB evidence and the limits of this slice.
 
+The Calendar queue-observation JavaScript body is also checked: a live receipt
+cannot be used as a cached boolean, and settlement must remain synchronous.
+This checks an in-memory observation, not the full IDB adapter/transaction flow.
+See [Calendar pending confirmation](CALENDAR_PENDING_CONFIRMATION.md).
+
 The atomic Bank snapshot receipt decoder is also checked from its JavaScript
 body. Negative consumers reject incomplete/non-numeric dual-head evidence and
 mutation of decoded receipts. Runtime validation remains mandatory for HTTP

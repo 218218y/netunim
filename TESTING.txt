@@ -366,3 +366,12 @@ ID/content on a fresh runtime; recovery verifies the same server ID without a
 duplicate effect and leaves raw Main/Shared stores unchanged. Existing
 runtime_calendar.py keeps offline/UI behavior covered. See
 docs/CALENDAR_OPERATION_OWNERSHIP.md for evidence, recovery and scope limits.
+
+Calendar pending confirmation: tests/calendar_pending_confirmation.test.mjs,
+tests/calendar_queue_observation.test.mjs and tests/runtime_calendar_pending.py
+(browser-ui). Five native-IDB cases cover concurrent append at Google/cache/queue
+awaits, a deferred local transaction completion and revocation. Stable IDs/content
+survive continuation and reload without duplicate effects or Main/Shared changes.
+The --baseline option replays the old controller only in a disposable site copy;
+--phase limits focused local runs. CI runs all cases. See
+docs/CALENDAR_PENDING_CONFIRMATION.md for the failing native baseline and limits.
