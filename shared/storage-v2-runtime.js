@@ -1,4 +1,5 @@
 import {createStorageJournal} from './storage-journal.js';
+import {StorageCloudRecordError} from './storage-cloud-records.js';
 import {STORAGE_SCHEMAS} from './storage-v2-schema.js';
 import {equalSyncJson} from './cloud-sync.js';
 import {storageOwnerReady} from './storage-owner.js';
@@ -7,7 +8,7 @@ import {isStorageV2ActivationCached} from './storage-v2-activation-cache.js';
 // Only invalid persisted data poisons an identity. IDB open/abort, blocked
 // connections and owner fencing may recover without a page reload.
 export function storageRecoveryFailure(error){
-  if(error?.name==='DataInvariantError'||error instanceof SyntaxError)return 'fatal';
+  if(error instanceof StorageCloudRecordError||error?.name==='DataInvariantError'||error instanceof SyntaxError)return 'fatal';
   const message=String(error?.message||'');
   return /^(storage_(checksum_mismatch|non_json_value|unsafe_key|checkpoint_metadata|committed_metadata_mismatch|committed_journal_missing|invalid_checkpoint|invalid_operation|invalid_local_import|invalid_field|invalid_collection|invalid_put|unknown_operation|foreign_operation|duplicate_sequence|journal_gap_or_duplicate|missing_collection|delete_target_missing|insert_conflict|update_target_missing|delete_intents_invalid|emergency_owner|main_projection_invalid))$/.test(message)?'fatal':'retryable';
 }

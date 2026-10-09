@@ -99,6 +99,7 @@ Neighboring physical owners cannot inject rows by forging a payload owner, and
 changing an owned row's payload owner cannot hide it from validation.
 
 Full Browser/PostgreSQL, two-tab/two-profile, offline/PWA, performance and Windows
-verification remain required before merge. Flight/base/control kind decoders,
-complete transaction typing and full application/business input typing remain
-separate coverage work; this slice does not certify them.
+verification remain required before merge. The subsequent
+[cloud-record recovery slice](STORAGE_CLOUD_RECORD_RECOVERY_CONTRACT.md) closes
+the Base/Flight/Control kind-decoder gap. Complete transaction typing and full
+application/business input typing remain separate coverage work.

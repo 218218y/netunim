@@ -85,7 +85,7 @@ bypass interception. Cleanup is app-scoped.
 Static contracts
 ----------------
 tsconfig.contracts.json checks sixteen canonical authorization, publication, cloud-status,
-startup, polling, current-record writer, JSON/checkpoint/operation decoder, historical bootstrap, Main RPC receipt/JSON equality and durable-ACK policy implementations with
+startup, polling, current-record writer, JSON/checkpoint/operation/cloud-record decoder, historical bootstrap, Main RPC receipt/JSON equality and durable-ACK policy implementations with
 strict checkJs/noEmit. JSDoc lives beside the
 implementation; typed consumer fixtures reject invalid fields/results and async publication.
 Journal readers select the existing physical [owner,epoch,seq] namespace before
@@ -101,6 +101,12 @@ Checkpoint recovery validates JSON/checksum, record structure, then domain/owner
 authority before a writer is claimed. Historical missing/null metadata stays readable;
 malformed state/metadata fails closed while retaining every pending store. See
 docs/STORAGE_CHECKPOINT_RECOVERY_CONTRACT.md for evidence, restoration and scope.
+
+Persisted cloud heads use one kind/scope/pair decision across recovery, pending/status,
+retained Flight replay and fenced IDB transactions before ACK/compaction/control deletion.
+Malformed heads retain raw stores and block readiness; generic optimistic races remain
+retryable. Historical optional/null annotations and writer bytes are unchanged. See
+docs/STORAGE_CLOUD_RECORD_RECOVERY_CONTRACT.md for native-IDB evidence and restore policy.
 
 Development contract
 --------------------

@@ -21,6 +21,7 @@
     "shared/storage-cloud-status.js",
     "shared/storage-records.js",
     "shared/storage-cloud-ack.js",
+    "shared/storage-cloud-records.js",
     "shared/storage-checkpoint.js",
     "shared/storage-json-codec.js",
     "shared/storage-operation.js",
@@ -33,6 +34,7 @@
     "tests/fixtures/checked-storage-records.mjs",
     "tests/fixtures/checked-document-write-ack.mjs",
     "tests/fixtures/checked-storage-decoding.mjs",
-    "tests/fixtures/checked-storage-operation.mjs"
+    "tests/fixtures/checked-storage-operation.mjs",
+    "tests/fixtures/checked-storage-cloud-records.mjs"
   ]
 }

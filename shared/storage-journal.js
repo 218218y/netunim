@@ -4,6 +4,7 @@ import {beginMeasure,recordPerformanceValue} from './runtime-performance.js';
 import {createStorageJournalDb} from './storage-journal-idb.js';
 import {sealStorageRecord,readStorageRecord,validateStoredOperation,readStorageOperation,replayStorageJournal} from './storage-journal-model.js';
 import {readStorageCheckpoint} from './storage-checkpoint.js';
+import {readStorageCloudBase,readStorageCloudFlight,readStorageCloudControl,readStorageCloudHead} from './storage-cloud-records.js';
 
 function normalizeDeleteIntents(value){
   if(value==null)return {};
@@ -71,6 +72,7 @@ export function createStorageJournal({owner,schema,validate,primary=()=>true,db=
     if(base.owner!==owner||stored.metadata?.epoch!==base.epoch)throw new Error('storage_checkpoint_metadata');
     const committedSeq=stored.journal.map(record=>readScopedOperation(record,base.epoch)).reduce((maximum,operation)=>Math.max(maximum,operation.seq),base.seq);
     if(!Number.isSafeInteger(stored.metadata.seq)||committedSeq!==stored.metadata.seq)throw new Error('storage_committed_metadata_mismatch');
+    readStorageCloudHead({base:stored.bases,flight:stored.flights,control:stored.controls},{owner,epoch:base.epoch,seq:stored.metadata.seq});
     const records=readEmergency();
     // A prior epoch is retained for diagnostics, but cannot cross a restore boundary.
     const applicable=records.filter(record=>record.data.epoch===base.epoch);
@@ -161,11 +163,8 @@ export function createStorageJournal({owner,schema,validate,primary=()=>true,db=
     guard();await queue;return cloudSnapshot(await db.load(owner),validateBase);
   }
   function cloudSnapshot(stored,validateBase){
-    const base=stored.bases&&readStorageRecord(stored.bases),flight=stored.flights&&readStorageRecord(stored.flights),control=stored.controls&&readStorageRecord(stored.controls),committedSeq=Number(stored.metadata?.seq);
-    if(!Number.isSafeInteger(committedSeq)||committedSeq<0)throw new Error('storage_committed_metadata_mismatch');
-    if(base){if(base.owner!==owner||base.epoch!==epoch||!Number.isSafeInteger(base.revision)||base.revision<0||!Number.isSafeInteger(base.ackSeq)||base.ackSeq<0||base.ackSeq>committedSeq)throw new Error('storage_cloud_base_mismatch');validateBase(base.state)}
-    if(flight){if(flight.owner!==owner||flight.epoch!==epoch||!base||flight.baseRevision!==base.revision||!String(flight.operationId||'').trim()||!Number.isSafeInteger(flight.startSeq)||!Number.isSafeInteger(flight.endSeq)||flight.startSeq!==base.ackSeq+1||flight.endSeq<flight.startSeq||flight.endSeq>committedSeq)throw new Error('storage_cloud_flight_mismatch');validateBase(flight.snapshot)}
-    if(control&&(control.owner!==owner||control.epoch!==epoch))throw new Error('storage_control_scope');
+    const {base,flight,control,seq:committedSeq}=readStorageCloudHead({base:stored.bases,flight:stored.flights,control:stored.controls},{owner,epoch,seq:stored.metadata?.seq});
+    if(base)validateBase(base.state);if(flight)validateBase(flight.snapshot);
     const pendingRecords=base?stored.journal.map(record=>readScopedOperation(record,epoch)).filter(operation=>operation.seq>base.ackSeq&&operation.seq<=committedSeq).sort((a,b)=>a.seq-b.seq):[];
     if(base)for(let expected=base.ackSeq+1;expected<=committedSeq;expected++)if(pendingRecords[expected-base.ackSeq-1]?.seq!==expected)throw new Error('storage_cloud_journal_gap');
     const latest=pendingRecords.at(-1)||{},afterFlightRecords=flight?pendingRecords.filter(operation=>operation.seq>flight.endSeq):pendingRecords,afterFlightLatest=afterFlightRecords.at(-1)||{};
@@ -173,10 +172,10 @@ export function createStorageJournal({owner,schema,validate,primary=()=>true,db=
   }
   async function materializeFlight({operationId:flightId,baseRevision,throughSeq,snapshot:exactSnapshot,project=state=>state,validateCloud=validate,prepareAudit=null}={}){
     guard();await queue;const recovered=await recover();
-    if(recovered.stored.flights)return readStorageRecord(recovered.stored.flights);
+    if(recovered.stored.flights){const flight=readStorageCloudFlight(recovered.stored.flights);validateCloud(flight.snapshot);return flight}
     if(!flightId)throw new Error('storage_flight_id_required');
     if(!Number.isSafeInteger(baseRevision)||baseRevision<0||!recovered.stored.bases)throw new Error('storage_cloud_base_mismatch');
-    const base=readStorageRecord(recovered.stored.bases),targetSeq=throughSeq===undefined?recovered.seq:Number(throughSeq);
+    const base=readStorageCloudBase(recovered.stored.bases),targetSeq=throughSeq===undefined?recovered.seq:Number(throughSeq);
     if(base.revision!==baseRevision||!Number.isSafeInteger(base.ackSeq)||base.ackSeq<0||base.ackSeq>recovered.seq)throw new Error('storage_cloud_base_mismatch');
     if(!Number.isSafeInteger(targetSeq)||targetSeq<base.ackSeq||targetSeq>recovered.seq)throw new Error('storage_flight_range');
     if(targetSeq===base.ackSeq)return null;
@@ -189,22 +188,23 @@ export function createStorageJournal({owner,schema,validate,primary=()=>true,db=
     const value=createStorageCloudFlight({owner,epoch,operationId:flightId,baseRevision,startSeq:base.ackSeq+1,endSeq:targetSeq,snapshot,deleteIntents:pendingDeleteIntents,generation:Math.max(0,...pendingRecords.map(operation=>Number(operation.generation||0))),mutationType:pendingRecords.some(operation=>operation.mutationType==='bulk-delete')?'bulk-delete':latest.mutationType||'autosave',surface:latest.surface||'unknown'});
     if(prepareAudit)value.audit=prepareAudit(structuredClone(value));
     const sealed=sealStorageRecord(value,{kind:'flight-payload'}),flightDone=beginMeasure('storage:flight-write');
-    try{await db.beginFlight(owner,epoch,writer,sealed);return readStorageRecord(sealed)}finally{flightDone()}
+    readStorageCloudFlight(sealed);
+    try{await db.beginFlight(owner,epoch,writer,sealed);return readStorageCloudFlight(sealed)}finally{flightDone()}
   }
   async function acknowledge(flightId,revision,state,{validateBase=validate,checkpointState=null,expectedSeq=null,appMetadata={},control=null}={}){
-    guard();validateBase(state);if(checkpointState!==null)validate(checkpointState);await queue;const recovered=await recover(),flight=recovered.stored.flights&&readStorageRecord(recovered.stored.flights);if(!flight||flight.operationId!==flightId)throw new Error('storage_ack_mismatch');
+    guard();validateBase(state);if(checkpointState!==null)validate(checkpointState);await queue;const recovered=await recover(),flight=recovered.stored.flights&&readStorageCloudFlight(recovered.stored.flights);if(!flight||flight.operationId!==flightId)throw new Error('storage_ack_mismatch');
     if(expectedSeq!==null&&recovered.seq!==expectedSeq)throw new Error('storage_ack_checkpoint_stale');
     const base=sealStorageRecord(createStorageCloudBase({owner,epoch,revision,state,ackSeq:flight.endSeq}),{kind:'cloud-base'}),checkpoint=checkpointState===null?null:sealStorageRecord(createStorageCheckpoint({owner,epoch,seq:recovered.seq,state:structuredClone(checkpointState),appMetadata:{...(recovered.appMetadata||{}),...structuredClone(appMetadata)},savedAt:now()}),{kind:'checkpoint'}),sealedControl=control?sealStorageRecord({version:2,owner,epoch,updatedAt:now(),...structuredClone(control)},{kind:'cloud-control'}):null;
     await db.acknowledge(owner,epoch,writer,flightId,base,{checkpoint,control:sealedControl});return {operationId:flightId,revision,ackSeq:flight.endSeq};
   }
   async function rejectAndRebase(flightId,revision,state,{validateBase=validate,checkpointState,expectedSeq,appMetadata={},control=null}={}){
     guard();if(!Number.isSafeInteger(revision)||revision<0)throw new Error('storage_rebase_revision_invalid');validateBase(state);if(checkpointState===undefined||!Number.isSafeInteger(expectedSeq)||expectedSeq<0)throw new Error('storage_rebase_checkpoint_required');validate(checkpointState);
-    await queue;const recovered=await recover(),stored=recovered.stored,flight=stored.flights&&readStorageRecord(stored.flights),base=stored.bases&&readStorageRecord(stored.bases);if(!flight||flight.operationId!==flightId)throw new Error('storage_reject_mismatch');if(!base)throw new Error('storage_cloud_base_mismatch');
+    await queue;const recovered=await recover(),stored=recovered.stored,flight=stored.flights&&readStorageCloudFlight(stored.flights),base=stored.bases&&readStorageCloudBase(stored.bases);if(!flight||flight.operationId!==flightId)throw new Error('storage_reject_mismatch');if(!base)throw new Error('storage_cloud_base_mismatch');
     if(recovered.seq!==expectedSeq)throw new Error('storage_rebase_checkpoint_stale');
     const nextBase=sealStorageRecord(createStorageCloudBase({owner,epoch,revision,state,ackSeq:base.ackSeq}),{kind:'cloud-base'}),checkpoint=sealStorageRecord(createStorageCheckpoint({owner,epoch,seq:expectedSeq,state:structuredClone(checkpointState),appMetadata:{...(recovered.appMetadata||{}),...structuredClone(appMetadata)},savedAt:now()}),{kind:'checkpoint'}),sealedControl=control?sealStorageRecord({version:2,owner,epoch,updatedAt:now(),...structuredClone(control)},{kind:'cloud-control'}):null;
-    await db.rejectFlight(owner,epoch,writer,flightId,nextBase,{checkpoint,expectedSeq,control:sealedControl});return {rejected:structuredClone(flight),base:readStorageRecord(nextBase),checkpoint:readStorageRecord(checkpoint),control:sealedControl&&readStorageRecord(sealedControl),cloudState:cloudSnapshot({...stored,checkpoints:checkpoint,bases:nextBase,flights:null,controls:sealedControl},validateBase)};
+    await db.rejectFlight(owner,epoch,writer,flightId,nextBase,{checkpoint,expectedSeq,control:sealedControl});return {rejected:structuredClone(flight),base:readStorageCloudBase(nextBase),checkpoint:readStorageRecord(checkpoint),control:sealedControl&&readStorageCloudControl(sealedControl),cloudState:cloudSnapshot({...stored,checkpoints:checkpoint,bases:nextBase,flights:null,controls:sealedControl},validateBase)};
   }
-  async function setCloudControl(control={}){guard();await queue;const sealed=sealStorageRecord({version:2,owner,epoch,updatedAt:now(),...structuredClone(control)},{kind:'cloud-control'});await db.setControl(owner,epoch,writer,sealed);return readStorageRecord(sealed)}
+  async function setCloudControl(control={}){guard();await queue;const sealed=sealStorageRecord({version:2,owner,epoch,updatedAt:now(),...structuredClone(control)},{kind:'cloud-control'});readStorageCloudControl(sealed);await db.setControl(owner,epoch,writer,sealed);return readStorageCloudControl(sealed)}
   async function clearCloudControl({onlyIfClean=null,project=state=>state,validateBase=validate}={}){
     guard();await queue;
     if(!onlyIfClean)return db.clearControl(owner,epoch,writer);
@@ -232,8 +232,8 @@ export function createStorageJournal({owner,schema,validate,primary=()=>true,db=
   async function adoptCloudHead(revision,cloudState,currentState,{validateBase=validate,appMetadata={},expectedHead=null}={}){
     guard();if(!Number.isSafeInteger(revision)||revision<0)throw new Error('storage_base_revision');validateBase(cloudState);validate(currentState);
     const durableCloud=structuredClone(cloudState),durableCurrent=structuredClone(currentState),durableMetadata=structuredClone(appMetadata),observed=expectedHead&&structuredClone(expectedHead);
-    await queue;const recovered=await recover(),stored=recovered.stored,base=stored.bases&&readStorageRecord(stored.bases);
-    if(!base||stored.flights||base.ackSeq!==recovered.seq||stored.controls&&readStorageRecord(stored.controls).conflict)throw new Error('storage_cloud_pending');
+    await queue;const recovered=await recover(),stored=recovered.stored,base=stored.bases&&readStorageCloudBase(stored.bases);
+    if(!base||stored.flights||base.ackSeq!==recovered.seq||stored.controls&&readStorageCloudControl(stored.controls).conflict)throw new Error('storage_cloud_pending');
     if(observed&&(observed.seq!==recovered.seq||observed.baseRevision!==base.revision))throw new Error('storage_cloud_adoption_stale');
     const checkpoint=sealStorageRecord(createStorageCheckpoint({owner,epoch,seq:recovered.seq,state:durableCurrent,appMetadata:{...(recovered.appMetadata||{}),...durableMetadata},savedAt:now()}),{kind:'checkpoint'}),nextBase=sealStorageRecord(createStorageCloudBase({owner,epoch,revision,state:durableCloud,ackSeq:recovered.seq}),{kind:'cloud-base'});
     guard();await db.adoptCloudHead(owner,epoch,writer,checkpoint,nextBase,{expectedHead:{seq:recovered.seq,checkpointChecksum:stored.checkpoints.checksum,baseChecksum:stored.bases.checksum,controlChecksum:stored.controls?.checksum??null}});return {seq:recovered.seq,revision};

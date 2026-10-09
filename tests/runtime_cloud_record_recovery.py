@@ -16,6 +16,7 @@ for app in ('kupa', 'orders'):
           const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
           const {STORAGE_SCHEMAS}=await import('./assets/js/shared/storage-v2-schema.js');
           const {sealStorageRecord}=await import('./assets/js/shared/storage-journal-model.js');
+          const {createStorageCheckpoint,createStorageCloudBase}=await import('./assets/js/shared/storage-records.js');
           const db=createStorageJournalDb(),slots=['checkpoints','metadata','journal','bases','flights','controls'];
           async function write(owner,values){
             const handle=await new Promise((resolve,reject)=>{const request=indexedDB.open('netunim-storage-v2');request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error)});
@@ -33,6 +34,21 @@ for app in ('kupa', 'orders'):
             ['ack','flights',{owner:'foreign-account'},'storage_cloud_flight_mismatch'],
             ['recover','controls',{retry:{attempts:-1}},'storage_invalid_cloud_control'],
             ['cloud','bases',{version:1},'storage_invalid_cloud_base'],
+            ['recover','flights',{generation:'1'},'storage_invalid_cloud_flight'],
+            ['recover','flights',{audit:[]},'storage_invalid_cloud_flight'],
+            ['readOnly','bases',{state:[]},'storage_invalid_cloud_base'],
+            ['recover','bases',{owner:'foreign-account'},'storage_cloud_base_mismatch'],
+            ['recover','controls',{epoch:'foreign-epoch'},'storage_control_scope'],
+            ['cloud','controls',{retry:{nextAttemptAt:'not-a-deadline'}},'storage_invalid_cloud_control'],
+            ['materialize','flights',{baseRevision:6},'storage_cloud_flight_mismatch'],
+            ['materialize','flights',{endSeq:2},'storage_cloud_flight_mismatch'],
+            ['materialize','flights',{startSeq:2,endSeq:2},'storage_cloud_flight_mismatch'],
+            ['directAck','flights',{owner:'foreign-account'},'storage_cloud_flight_mismatch'],
+            ['directCompact','bases',{ackSeq:2},'storage_cloud_base_mismatch'],
+            ['directClear','controls',{retry:[]},'storage_invalid_cloud_control'],
+            ['directClaim','controls',{conflict:true},'storage_invalid_cloud_control'],
+            ['badAckControl',null,null,'storage_invalid_cloud_control'],
+            ['staleWriter',null,null,'storage_writer_fenced'],
           ]){
             const account='cloud-record-'+(++serial),owner=account+':'+(domain==='main'?app:'shared-checks');
             const model={state:clone(INITIAL_STATE)},normalization=createStateNormalization({model});model.state=normalization.normalizeState(model.state);
@@ -45,12 +61,24 @@ for app in ('kupa', 'orders'):
             const collection=domain==='main'?'notes':'checks',entry=domain==='main'?{id:'N',content:'retained'}:{id:'C',amount:125};
             await seed.append([{type:'put',collection,mode:'insert',index:0,id:entry.id,record:entry}],{generation:1}).committed;
             const flight=await seed.materializeFlight({operationId:'immutable-'+serial,baseRevision:7});await seed.setCloudControl({retry:{attempts:1}});
-            const original=await db.load(owner);await write(owner,{[slot]:sealStorageRecord({...original[slot].data,...patch})});const before=dump(await db.load(owner));
+            const original=await db.load(owner);if(slot)await write(owner,{[slot]:sealStorageRecord({...original[slot].data,...patch})});const before=dump(await db.load(owner));
             let code=null,ready=false,fatal=true;
             try{
               if(scenario==='materialize')await seed.materializeFlight({operationId:'replacement',baseRevision:7});
               else if(scenario==='ack')await seed.acknowledge(flight.operationId,8,flight.snapshot);
               else if(scenario==='cloud')await seed.cloudState();
+              else if(scenario==='readOnly')await make().recover();
+              else if(scenario==='directClaim')await db.claim(owner,original.metadata.epoch,'new-writer');
+              else if(scenario==='directClear')await db.clearControl(owner,original.metadata.epoch,original.metadata.writer);
+              else if(scenario==='directCompact'){
+                const cp=sealStorageRecord(createStorageCheckpoint({...original.checkpoints.data,seq:1,state:flight.snapshot}));
+                await db.compact(owner,original.metadata.epoch,original.metadata.writer,cp);
+              }else if(['directAck','badAckControl','staleWriter'].includes(scenario)){
+                const base=sealStorageRecord(createStorageCloudBase({owner,epoch:original.metadata.epoch,revision:8,ackSeq:1,state:flight.snapshot}));
+                const cp=sealStorageRecord(createStorageCheckpoint({...original.checkpoints.data,seq:1,state:flight.snapshot}));
+                const control=scenario==='badAckControl'?sealStorageRecord({...original.controls.data,retry:{attempts:-1}}):null;
+                await db.acknowledge(owner,original.metadata.epoch,scenario==='staleWriter'?'stale-writer':original.metadata.writer,flight.operationId,base,{checkpoint:cp,control});
+              }
               else if(domain==='main'){
                 const runtime=createStorageV2Runtime({app,owner:()=>account,primary:()=>true,mode:()=> 'primary',validate,createJournal:options=>createStorageJournal({...options,db})});
                 await runtime.recover();code=runtime.diagnostics.lastError;ready=runtime.primaryReady;fatal=runtime.diagnostics.recoveryFailure==='fatal';
@@ -69,7 +97,7 @@ for app in ('kupa', 'orders'):
             report.push({domain,scenario,slot,expected,code,ready,fatal,unchanged,retained,replay});
           }
           return report;
-        })()""".replace('APP',json.dumps(app)),timeout=40)
+        })()""".replace('APP',json.dumps(app)),timeout=50)
         failures=[row for row in result if not (row['code']==row['expected'] and not row['ready'] and row['fatal'] and row['unchanged'] and row['retained'] and row['replay'])]
         print(f'{app} cloud-record recovery: {json.dumps(result,ensure_ascii=False)}',flush=True)
         assert not browser.drain_serious_errors()

@@ -330,3 +330,13 @@ Performance limits catch pathological regressions, not small machine-dependent t
 and fake file handles cannot certify native folder-picker UI, installation on every OS, live Supabase/RLS, Access
 policies or a production rollout. Check those separately with authorized accounts and data before release.
 The compatibility scripts under netunim-orders/supabase/shared/validation remain thin forwarding entrypoints.
+
+Persisted cloud record authority
+-------------------------------
+runtime_cloud_record_recovery.py uses real IDB in both app roots for Main/Shared Base,
+Flight and Control kind/scope/range failures. It exercises recovery before writer claim,
+read-only recovery, direct ACK/compaction/clear/claim, invalid Control after checkpoint put
+and stale writers. Every failed transaction retains all stores; exact test-fixture restore
+and immutable replay recover the same IDs/content once through a fresh durable ACK.
+See docs/STORAGE_CLOUD_RECORD_RECOVERY_CONTRACT.md for the deliberately failing baseline
+and remaining business/transaction typing and live-provider gates.
