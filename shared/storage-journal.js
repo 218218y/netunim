@@ -3,6 +3,7 @@ import {createOperationId,equalSyncJson} from './cloud-sync.js';
 import {beginMeasure,recordPerformanceValue} from './runtime-performance.js';
 import {createStorageJournalDb} from './storage-journal-idb.js';
 import {sealStorageRecord,readStorageRecord,validateStoredOperation,replayStorageJournal} from './storage-journal-model.js';
+import {readStorageCheckpoint} from './storage-checkpoint.js';
 
 function normalizeDeleteIntents(value){
   if(value==null)return {};
@@ -61,7 +62,7 @@ export function createStorageJournal({owner,schema,validate,primary=()=>true,db=
   }catch{/* A committed duplicate is safe; recovery checks its exact identity. */}}
   async function recover(){const done=beginMeasure('storage:replay');try{
     const stored=await db.load(owner);if(!stored.checkpoints)return null;
-    const base=readStorageRecord(stored.checkpoints);
+    const base=readStorageCheckpoint(stored.checkpoints);
     if(base.owner!==owner||stored.metadata?.epoch!==base.epoch)throw new Error('storage_checkpoint_metadata');
     const committedSeq=stored.journal.reduce((maximum,record)=>Math.max(maximum,record.data.seq),base.seq);
     if(!Number.isSafeInteger(stored.metadata.seq)||committedSeq!==stored.metadata.seq)throw new Error('storage_committed_metadata_mismatch');

@@ -21,12 +21,15 @@
     "shared/storage-cloud-status.js",
     "shared/storage-records.js",
     "shared/storage-cloud-ack.js",
+    "shared/storage-checkpoint.js",
+    "shared/storage-json-codec.js",
     "shared/storage-startup-protocol.js",
     "shared/storage-startup-recovery.js",
     "shared/storage-v2-server-protocol.js",
     "shared/sync-json.js",
     "tests/fixtures/checked-contracts.mjs",
     "tests/fixtures/checked-storage-records.mjs",
-    "tests/fixtures/checked-document-write-ack.mjs"
+    "tests/fixtures/checked-document-write-ack.mjs",
+    "tests/fixtures/checked-storage-decoding.mjs"
   ]
 }
