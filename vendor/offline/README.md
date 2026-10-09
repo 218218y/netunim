@@ -4,7 +4,7 @@ This directory is intentionally populated by `npm run offline:download` rather t
 It is the minimal Linux x86_64 + glibc package toolchain used by the ChatGPT repair environment:
 
 - the repository-pinned Node 24 runtime;
-- the exact npm development dependency closure from `package-lock.json` (ESLint + Acorn tooling);
+- the exact npm development dependency closure from `package-lock.json` (ESLint, Acorn and the pinned portable TypeScript checker);
 - the pinned pure-Python `websocket-client` wheel used by the Chromium DevTools harness.
 
 Chrome/Chromium itself is **not** vendored. Browser binaries are normally supplied by the ChatGPT host, but a host
@@ -12,6 +12,11 @@ policy can make an installed browser unusable for localhost runtime tests. `npm 
 CDP + localhost navigation probe instead of assuming that an executable in PATH is usable. `NETUNIM_BROWSER` can
 point to an explicit unmanaged Chrome/Chromium/Chrome-for-Testing executable when such a test browser is available.
 The tooling never changes or bypasses host browser policy.
+
+The models gate includes strict incremental JavaScript checking via
+`tools/typecheck.mjs`. It reads `NETUNIM_OFFLINE_NODE_MODULES`, so the compiler
+comes from the same verified offline install. Both the compiler launcher and
+implementation must be present for that install to be considered ready.
 
 Wrangler is also excluded because it is a deployment-only CLI, not part of the verification dependency closure.
 

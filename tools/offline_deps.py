@@ -406,6 +406,10 @@ def install_is_ready(root: Path, stamp_value: str) -> bool:
         stamp.get("manifestSha256") == stamp_value
         and (root / "node" / "bin" / "node").is_file()
         and (root / "node_modules" / "eslint" / "bin" / "eslint.js").is_file()
+        and (root / "node_modules" / "typescript" / "bin" / "tsc").is_file()
+        and (root / "node_modules" / "typescript" / "lib" / "tsc.js").is_file()
+        and (root / "node_modules" / "typescript" / "lib" / "_tsc.js").is_file()
+        and (root / "node_modules" / "typescript" / "lib" / "typescript.js").is_file()
     )
 
 

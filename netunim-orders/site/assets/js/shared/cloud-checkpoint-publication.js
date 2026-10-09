@@ -1,12 +1,19 @@
 // @ts-check
 
 /**
+ * @template T
+ * @typedef {{committed:T,published:true}|{committed:T,published:false,reason:'stale'}|{committed:T,published:false,reason:'publication-error',error:unknown}} CloudPublicationReceipt
+ */
+
+/**
  * Commit the reconciled cloud cursor/checkpoint before publishing its view.
  * A failed commit keeps its original error. A concurrent local head prevents
  * publication; the caller owns fencing and recovery, never replaying the ACK.
  * @template T
- * @param {{commit:()=>Promise<T>,isCurrent:(committed:T)=>boolean,publish:()=>void}} ports
- * @returns {Promise<{committed:T,published:true}|{committed:T,published:false,reason:'stale'}|{committed:T,published:false,reason:'publication-error',error:unknown}>}
+ * Publication must finish synchronously. A Promise would escape the receipt's
+ * error boundary; `undefined` rejects async callbacks which `void` accepts.
+ * @param {{commit:()=>Promise<T>,isCurrent:(committed:T)=>boolean,publish:()=>undefined}} ports
+ * @returns {Promise<CloudPublicationReceipt<T>>}
  */
 export async function commitCloudCheckpoint({commit,isCurrent,publish}){
   const committed=await commit();

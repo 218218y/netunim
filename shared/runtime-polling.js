@@ -1,8 +1,26 @@
+// @ts-check
+
+/**
+ * @typedef {{isCurrent:()=>boolean}} PollingReceipt
+ * @typedef {{enabled:boolean,timer:number|null}} PollingState
+ * @typedef {{setTimeout:(run:()=>void,delay:number)=>number,clearTimeout:(timer:number)=>void}} PollingTimers
+ */
+
 // Owns a recurring wakeup, not the durability operation it invokes. Stop cancels
 // queued work; an operation already running is allowed to finish before restart.
+/**
+ * @template T
+ * @param {{run:(receipt:PollingReceipt)=>T|PromiseLike<T>,delay:()=>number,onError:(error:unknown)=>void,canRun?:()=>boolean,onState?:(state:PollingState)=>void,timers?:PollingTimers}} ports
+ */
 export function createPollingTask({run,delay,onError,canRun=()=>true,onState=()=>{},timers=globalThis}){
   if(typeof run!=='function'||typeof delay!=='function'||typeof onError!=='function')throw new Error('polling_task_ports_required');
-  let enabled=false,timer=null,running=false,epoch=0,queued=null,current=null;
+  let enabled=false,running=false,epoch=0;
+  /** @type {number|null} */
+  let timer=null;
+  /** @type {{epoch:number}|null} */
+  let queued=null;
+  /** @type {Promise<T|void>|null} */
+  let current=null;
   const publish=()=>onState({enabled,timer});
   function stop(){
     const changed=enabled||timer!==null;
@@ -24,6 +42,7 @@ export function createPollingTask({run,delay,onError,canRun=()=>true,onState=()=
     }catch(error){stop();onError(error)}
   }
   function allowed(){try{if(canRun())return true;stop()}catch(error){stop();onError(error)}return false}
+  /** @param {{epoch:number}} task */
   function execute(task){
     running=true;
     // Immediate wakeups and timer delivery join one operation. The live receipt

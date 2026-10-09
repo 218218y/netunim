@@ -6,6 +6,7 @@
     "hooks:install": "python tools/install-git-hooks.py",
     "hooks:check": "python tools/install-git-hooks.py --check",
     "lint": "eslint .",
+    "typecheck": "node tools/typecheck.mjs",
     "test": "python tests/run_all.py",
     "updates:check": "node tools/check-updates.mjs",
     "deps:update": "npm update",
@@ -30,7 +31,8 @@
     "acorn": "^8.18.0",
     "eslint": "^10.11.0",
     "eslint-scope": "^9.1.2",
-    "globals": "^17.12.0"
+    "globals": "^17.12.0",
+    "typescript": "6.0.3"
   },
   "engines": {
     "node": "^22.13.0 || >=24"

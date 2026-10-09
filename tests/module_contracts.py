@@ -18,10 +18,11 @@ for command in (
     [sys.executable, 'tests/document_search_parity_contracts.py'],
     [sys.executable, 'tests/sync_assets_contracts.py'],
     ['node', 'tests/module_graph.cjs'],
+    ['node', 'tools/typecheck.mjs'],
     ['node', str(DEV_NODE_MODULES / 'eslint/bin/eslint.js'), 'netunim-kupa/site', 'netunim-orders/site', 'shared'],
 
 ):
     result = subprocess.run(command, cwd=ROOT)
     if result.returncode:
         raise SystemExit(result.returncode)
-print('ALL MODULE, ASSET AND LINT CONTRACTS PASSED')
+print('ALL MODULE, ASSET, TYPE AND LINT CONTRACTS PASSED')

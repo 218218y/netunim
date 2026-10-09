@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "target": "ES2022",
+    "module": "NodeNext",
+    "lib": ["ES2022", "DOM"],
+    "types": []
+  },
+  "files": [
+    "shared/authenticated-account-scope.js",
+    "shared/cloud-checkpoint-publication.js",
+    "shared/runtime-polling.js",
+    "shared/startup-task.js",
+    "shared/storage-cloud-status.js",
+    "shared/storage-startup-protocol.js",
+    "shared/storage-startup-recovery.js",
+    "shared/storage-v2-server-protocol.js",
+    "tests/fixtures/checked-contracts.mjs"
+  ]
+}

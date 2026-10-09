@@ -439,6 +439,13 @@ recover the same record identities. See [the Orders Finance operation contract](
 Morning orchestration, other jobs and narrower Finance capability APIs remain
 separate review tracks; this is not a claim of universal controller coverage.
 
+Strict JavaScript checking now covers eight canonical authorization, publication,
+status, startup and polling modules. Their actual implementations and 32 negative
+consumer cases are compiled in the models gate, including offline tooling.
+See [the static contracts scope](STATIC_CONTRACTS.md). Persisted codecs, IDB/RPC
+ACK boundaries, Finance leases and most application consumers remain separate
+coverage slices; this does not replace runtime validation or recovery gates.
+
 These are completion tracks, each delivered through separate focused changes;
 they are not a claim that every older audit finding is still present.
 
@@ -447,7 +454,7 @@ they are not a claim that every older audit finding is still present.
 | Capability APIs | Orders Finance/Checks and shell/Notes interactions; Kupa Dashboard/Bank read-model and remaining shell wiring | Narrow public commands/queries, explicit binding and representative cross-capability behavior tests |
 | Runtime/resource ownership | Remaining Shared-specific and finance/integration jobs, shell listeners, reconnect/owner transitions and preflight | Start/stop/dispose idempotence, no duplicate/orphan jobs, live access fences and controlled failure tests |
 | Remaining I/O ports | Kupa credit preferences/timers and other concrete browser effects after inventory; Google Drive and local Bridge clients now have explicit ports | Injected fake ports, adapter contracts and import enforcement; installed settings/auth compatibility |
-| Static contracts | Incremental checkJs for persisted/runtime storage, ACK/read candidates, owner transitions and capability/startup ports | A real mismatch fails CI; runtime validation and historical record readers remain intact |
+| Static contracts | Extend the existing strict JS gate to persisted codecs, IDB/RPC ACK/read candidates, Finance leases, capability ports and application consumers | A real mismatch fails CI; runtime validation and historical record readers remain intact |
 | Bridge decomposition | Bank HTTP/vault/session/provider/retry diagnostics; Document HTTP/auth/index/preview | Existing external contracts preserved, classified failures and provider tests before live scraper changes |
 | Canonical sources and compatibility | SQL deployment inventory/generation; historical keys/RPC/readers and supported-client inventory | Immutable deployed migrations, deterministic generation, proven retirement criteria and restore tests |
 | Readability/UI/release | Large modules by responsibility, dependency budgets, CSS/RTL/performance, final docs/rollback | Behavioral and visual regression checks, measured performance and full release gates |
