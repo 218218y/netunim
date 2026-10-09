@@ -1,3 +1,6 @@
+export {equalSyncJson} from './sync-json.js';
+export {documentWriteAckRevision} from './document-write-ack.js';
+
 export const OUTBOX_SCHEMA_VERSION=4;
 export const CLOUD_WRITE_POLICY=Object.freeze({busyAttempts:3,conflictAttempts:3});
 
@@ -178,22 +181,6 @@ export function cloudWriteError(input,fallbackMessage='cloud_write_failed'){
   return error;
 }
 
-export function documentWriteAckRevision(row,{baseRevision,authoritativeState,sentState,equalState=equalSyncJson,errorCode='document_write_ack_revision_invalid'}={}){
-  const base=Number(baseRevision),revision=Number(row?.revision),hasOperationRevision=row?.operation_revision!==undefined&&row?.operation_revision!==null,operationRevision=hasOperationRevision?Number(row.operation_revision):null,replayed=row?.operation_replayed===true;
-  const invalid=()=>{throw new Error(errorCode)};
-  if(!Number.isSafeInteger(base)||base<0||!Number.isSafeInteger(revision)||revision<base)invalid();
-  if(hasOperationRevision){
-    if(!Number.isSafeInteger(operationRevision)||operationRevision<base||operationRevision>revision||operationRevision>base+1)invalid();
-    if(row?.operation_replayed===false&&operationRevision!==revision)invalid();
-  }
-  // The server intentionally treats an identical state as an idempotent no-op.
-  // A successful no-op therefore keeps the current revision.  V6 proves that
-  // outcome with operation_revision; legacy-compatible responses are accepted
-  // only when the authoritative state is exactly the sent state.
-  if(revision===base&&!(hasOperationRevision&&operationRevision===base)&&!equalState(authoritativeState,sentState))invalid();
-  return {revision,operationRevision,replayed};
-}
-
 export function contentionDelay(attempt=0,{baseMs=300,maxMs=2400,jitterMs=200,random=Math.random}={}){
   return Math.min(maxMs,baseMs*Math.pow(2,Math.max(0,Number(attempt)||0)))+Math.floor(random()*Math.max(0,jitterMs));
 }
@@ -228,10 +215,4 @@ export function structuredSyncConflict({domain,conflicts,base,local,remote,gener
   const aliases={supplier:'suppliers',transaction:'transactions',customerDebt:'customerDebts',customerOrder:'customerOrders',serviceCall:'serviceCalls',note:'notes',inventoryItem:'inventoryItems',inventoryEvent:'inventoryEvents',warehouseOrder:'warehouseOrders',check:'checks'};
   const value=(state,type,id)=>{const path=aliases[type]||type;const data=Array.isArray(state)?state:path.split('.').reduce((v,k)=>v?.[k],state);return structuredClone((id&&Array.isArray(data)?data.find(row=>String(row?.id??row?.name)===id):data)??null)};
   return {kind:'entity-conflict',domain,generation,baseRevision,currentRemoteRevision,items:conflicts.map(key=>{const [entityType,...parts]=String(key).split(':'),entityId=parts.join(':')||null;return {domain,entityType,entityId,base:value(base,entityType,entityId),local:value(local,entityType,entityId),remote:value(remote,entityType,entityId),generation,baseRevision,currentRemoteRevision}})};
-}
-// JSONB object-key ordering is not a mutation. Preserve JSON wire semantics for
-// omitted optional fields, nulls and arrays while comparing object keys canonically.
-export function equalSyncJson(a,b){
-  const canonical=value=>JSON.stringify(value??null,(_key,item)=>item&&typeof item==='object'&&!Array.isArray(item)?Object.fromEntries(Object.keys(item).sort().map(key=>[key,item[key]])):item);
-  return canonical(a)===canonical(b);
 }

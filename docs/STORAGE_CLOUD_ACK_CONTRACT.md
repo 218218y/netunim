@@ -47,6 +47,12 @@ Main cloud result is composed for display.
     Preserve/report its original cause and committed receipt, persist an
     `ack-publication-failed` control, and stop further sends. An optional render
     exception after the model was published is reported without replaying the ACK.
+11. An HTTP-success Main response must contain its authoritative object document.
+    `readDocumentWriteAck` owns this envelope and the existing revision/no-op/replay
+    decision. Never replace absent/null/scalar/array state with the sent snapshot:
+    an operation replay returns the current cloud head, which may include another
+    computer's later write. The returned receipt is not a durable ACK; the same
+    fenced transaction, generation checks and publication sequence still apply.
 
 ## Failure outcomes
 
@@ -57,6 +63,7 @@ Main cloud result is composed for display.
 | Another computer writes before that replay | Validate the current returned head, merge later local edits against the sent snapshot, retain both computers' work |
 | IndexedDB ACK abort/quota failure | No publication or cursor advance; retain flight/pending; a later explicit/reconnect attempt can retry the identical operation |
 | Invalid ACK revision | No ACK or publication; pending remains under existing error policy |
+| Successful RPC without authoritative state | No ACK/publication/cursor advance; retain the exact flight and newer pending work; replay under the existing owner policy |
 | Edit overlaps ACK commit | Confirm only the sent generation, retain later work, persist conflict fence and require review |
 | Leadership changes during commit | No continuation from the old primary; new primary recovers from the durable journal |
 | Post-commit cache/backup unavailable | ACK stays committed; report/defer the optional work without replaying the write |
@@ -78,7 +85,11 @@ post-commit cache failures, rebase, delete intents and Main/Shared ownership.
 lost response, offline mutation, another computer's write, aborted ACK transaction,
 fresh runtime recovery, exact operation replay and an edit during actual ACK commit.
 The full CI gate includes Browser+PostgreSQL, two-tab/two-computer, PWA/offline and
-Windows suites. Controlled RPC fault injection complements the real SQL suites;
+Windows suites. Both apps additionally reject a malformed successful replay,
+recover its retained journal in a fresh runtime, and eventually retain both
+computers' note IDs/content without duplicate cloud commits. The standalone
+receipt tests cover envelope, revision, no-op and JSON wire compatibility.
+Controlled RPC fault injection complements the real SQL suites;
 it is not a claim that every possible OS/browser/provider failure is simulated.
 
 Persisted schema/protocol versions, SQL and RPC payloads are unchanged. Conflict

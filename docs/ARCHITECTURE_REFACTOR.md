@@ -439,14 +439,17 @@ recover the same record identities. See [the Orders Finance operation contract](
 Morning orchestration, other jobs and narrower Finance capability APIs remain
 separate review tracks; this is not a claim of universal controller coverage.
 
-Strict JavaScript checking now covers ten canonical authorization, publication,
-status, startup, polling, current-record writer and durable-ACK policy modules.
-Their actual implementations and 68 negative
+Strict JavaScript checking now covers twelve canonical authorization, publication,
+status, startup, polling, current-record writer, Main RPC receipt/JSON equality
+and durable-ACK policy modules. Their actual implementations and 84 negative
 consumer cases are compiled in the models gate, including offline tooling.
 Pre-refactor sealed records retain exact bytes/checksums, and both sites have
 real-IDB ACK rejection/abort/handoff tests with fresh-runtime ID/content recovery.
+Main RPC success no longer substitutes the sent snapshot for missing authoritative
+state. Both app regressions failed before the change; a controlled malformed-success
+replay retains the flight and newer pending work through real IDB recovery.
 See [the static contracts scope](STATIC_CONTRACTS.md). Persisted decoders, full IDB
-transactions/RPC parsing, Finance leases and most application consumers remain separate
+transactions/business RPC payload validation, Finance leases and most application consumers remain separate
 coverage slices; this does not replace runtime validation or recovery gates.
 
 These are completion tracks, each delivered through separate focused changes;
@@ -457,7 +460,7 @@ they are not a claim that every older audit finding is still present.
 | Capability APIs | Orders Finance/Checks and shell/Notes interactions; Kupa Dashboard/Bank read-model and remaining shell wiring | Narrow public commands/queries, explicit binding and representative cross-capability behavior tests |
 | Runtime/resource ownership | Remaining Shared-specific and finance/integration jobs, shell listeners, reconnect/owner transitions and preflight | Start/stop/dispose idempotence, no duplicate/orphan jobs, live access fences and controlled failure tests |
 | Remaining I/O ports | Kupa credit preferences/timers and other concrete browser effects after inventory; Google Drive and local Bridge clients now have explicit ports | Injected fake ports, adapter contracts and import enforcement; installed settings/auth compatibility |
-| Static contracts | Extend the existing strict JS gate beyond current writers/ACK policy to persisted decoders, full IDB transactions/RPC ACK/read candidates, Finance leases, capability ports and application consumers | A real mismatch fails CI; runtime validation and historical record readers remain intact |
+| Static contracts | Extend the existing strict JS gate beyond current writers/Main receipt/ACK policy to persisted decoders, full IDB transactions/business RPC/read candidates, Finance leases, capability ports and application consumers | A real mismatch fails CI; runtime validation and historical record readers remain intact |
 | Bridge decomposition | Bank HTTP/vault/session/provider/retry diagnostics; Document HTTP/auth/index/preview | Existing external contracts preserved, classified failures and provider tests before live scraper changes |
 | Canonical sources and compatibility | SQL deployment inventory/generation; historical keys/RPC/readers and supported-client inventory | Immutable deployed migrations, deterministic generation, proven retirement criteria and restore tests |
 | Readability/UI/release | Large modules by responsibility, dependency budgets, CSS/RTL/performance, final docs/rollback | Behavioral and visual regression checks, measured performance and full release gates |
