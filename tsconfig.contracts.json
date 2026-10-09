@@ -13,6 +13,8 @@
     "types": []
   },
   "files": [
+    "shared/bank-snapshot-receipt.js",
+    "tests/fixtures/checked-bank-snapshot-receipt.mjs",
     "netunim-kupa/site/assets/js/domains/credit/publication.js",
     "shared/authenticated-account-scope.js",
     "netunim-orders/site/assets/js/core/morning-operation-scope.js",

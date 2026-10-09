@@ -1,4 +1,5 @@
 import {createOrdersFinanceAutomation} from './automation.js';
+import {readBankSnapshotReceipt} from '../../shared/bank-snapshot-receipt.js';
 import {createRevisionSelector} from '../../shared/revision-selector.js';
 import {applyCreditCardOrderData} from '../../shared/credit-card-order.js';
 import {bankRecurringDebitHistoryData} from '../../shared/bank-recurring-debits.js';
@@ -270,8 +271,8 @@ export function createDomainsFinanceController({tab,checksSession,bridge,operati
       const nextBank={...previousBank,currentBalance:kupaWholeMoney(business.balance),availableBalance:Number.isFinite(Number(business.availableBalance))?Number(business.availableBalance):null,creditLimit:Number.isFinite(Number(business.creditLimit))?Number(business.creditLimit):null,creditLimitUsed:Number.isFinite(Number(business.creditLimitUsed))?Number(business.creditLimitUsed):null,creditLimitUsedPercent:Number.isFinite(Number(business.creditLimitUsedPercent))?Number(business.creditLimitUsedPercent):null,updatedAt:new Date().toISOString(),asOfDate:checkTodayISO(),source:'hapoalim',sourceAccount:businessAccount||null,bankSyncAt:fetchedAt,feed:businessFeed,homeFeed:nextHomeFeed,archiveInitialized:archiveReady||exactBackfillVerified,archiveVersion:exactBackfillVerified?2:archiveVersion,archiveInitializedAt:archiveReady?previousBank.archiveInitializedAt||null:(exactBackfillVerified?fetchedAt:null),archiveAudit,archiveBaselineAudit};
       let saved={saved:true,skipped:false},readoutVerified=true;
       if(typeof saveBankSyncSnapshot==='function'){
-        const committed=await saveBankSyncSnapshot(financeBankPayload(nextBank),snapshotToken,snapshotSeq);assertCurrent();
-        const publication=await confirmCommittedReadout(assertCurrent,{minimumRevision:Number(committed?.kupa_revision||0),minimumFinanceRevision:Number(committed?.finance_revision||0)});readoutVerified=publication.published;
+        const committed=readBankSnapshotReceipt(await saveBankSyncSnapshot(financeBankPayload(nextBank),snapshotToken,snapshotSeq));assertCurrent();
+        const publication=await confirmCommittedReadout(assertCurrent,{minimumRevision:committed.kupa_revision,minimumFinanceRevision:committed.finance_revision});readoutVerified=publication.published;
       }else{
         saved=await mutateFinanceCloud(finance=>{finance.bank=financeBankPayload(nextBank);return finance},lease);
         const watermark=await mutateKupaCloud(kupaState=>{const bank=kupaState.bank&&typeof kupaState.bank==='object'?kupaState.bank:{};kupaState.bank={...bank,adjustments:[],snapshotToken,snapshotSeq};return kupaState},{assertCurrent});assertCurrent();readoutVerified=saved.published===true&&watermark.published===true;

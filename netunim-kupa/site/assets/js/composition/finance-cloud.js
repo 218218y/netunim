@@ -7,8 +7,11 @@ export function createKupaFinanceCloudPorts({
 }){
   const remoteLeaseTokens=new Set();
 
-  async function refreshFinanceCloudSnapshot({assertCurrent}={}){
+  async function refreshFinanceCloudSnapshot({assertCurrent,minimumRevision=0,minimumFinanceRevision=0}={}){
     assertCurrent?.();
+    const meetsMinimum=(revision,financeRevision)=>
+      (minimumRevision===0||Number.isSafeInteger(revision)&&revision>=minimumRevision)&&
+      (minimumFinanceRevision===0||Number.isSafeInteger(financeRevision)&&financeRevision>=minimumFinanceRevision);
     if(session.connectionMode!=='supabase'||!session.backendReady){
       return {
         verified:true,
@@ -22,10 +25,16 @@ export function createKupaFinanceCloudPorts({
       const row=await cloudTransport.readSupabaseDocument(...(assertCurrent?[{assertCurrent}]:[]));
       assertCurrent?.();
       if(!row?.state)return {verified:false,state:null};
+      // Bank receipts confirm both documents. Refuse an older/malformed read
+      // before cloudPoll can publish it over the confirmed Bank candidate.
+      if(!meetsMinimum(row.revision,row.financeRevision))return {verified:false,state:null};
       const kupaChanged=Number(row.revision||0)>Number(session.dbRevision||0);
       const financeChanged=Number(row.financeRevision||0)>Number(session.financeRevision||0);
       if(kupaChanged||financeChanged)await syncDocument.cloudPoll();
       assertCurrent?.();
+      // A fresh GET is not evidence that the separate poll actually published
+      // it (pending work, a stale second GET or ownership may block adoption).
+      if(!meetsMinimum(session.dbRevision,session.financeRevision))return {verified:false,state:null};
       return {
         verified:true,
         state:row.state,

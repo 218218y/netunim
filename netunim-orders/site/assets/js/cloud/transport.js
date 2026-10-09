@@ -1,4 +1,5 @@
 import {beginMeasure} from '../shared/runtime-performance.js';
+import {readBankSnapshotReceipt} from '../shared/bank-snapshot-receipt.js';
 import {financeFencePayload} from '../shared/finance-fence.js';
 import {assertValidOrderCloudState,validOrderCloudState} from '../state/validation.js';
 import {normalizeSharedChecks} from '../shared/shared-checks-contract.js';
@@ -52,7 +53,7 @@ async function saveBankSyncSnapshot(bankState,snapshotToken,snapshotSeq,lease=nu
   const seq=Number(snapshotSeq);if(!Number.isSafeInteger(seq)||seq<0)throw new Error('snapshotSeq של הבנק אינו תקין');
   const token=String(snapshotToken||'').trim();if(!token)throw new Error('snapshotToken של הבנק חסר');
   const r=await supaFetch('/rest/v1/rpc/save_bank_sync_snapshot_v6',{method:'POST',networkRetry:true,...(assertCurrent?{assertRequestScope:assertCurrent}:{}),dataPriority:'high',body:JSON.stringify({p_document_name:FINANCE_DOC,p_bank_state:bankState,p_snapshot_token:token,p_snapshot_seq:seq,...financeFencePayload(lease)})});
-  const body=await r.text();assertCurrent?.();let j;try{j=body?JSON.parse(body):null}catch{j=null}if(!r.ok)throw new Error(j?.message||j?.hint||body||'שמירת צילום הבנק האטומי נכשלה');return Array.isArray(j)?j[0]:j;
+  const body=await r.text();assertCurrent?.();let j;try{j=body?JSON.parse(body):null}catch{j=null}if(!r.ok)throw new Error(j?.message||j?.hint||body||'שמירת צילום הבנק האטומי נכשלה');return readBankSnapshotReceipt(j);
 }
 function bankArchivePayload(transactions){
   const occurrences=new Map();

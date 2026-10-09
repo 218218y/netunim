@@ -24,7 +24,7 @@ function fixture(t,{hold=null}={}){
     readFinanceSyncDocument:options=>{options?.assertCurrent?.();return phase('finance-read',{revision:1,state:remote})},
     rpcSaveFinanceSync:async(candidate)=>{await phase('finance-save',null);remote=structuredClone(candidate);return {r:{ok:true},row:{revision:2,state:remote}}},
     claimFinanceSyncLease:()=>phase('claim',{acquired:true,leaseName:'bank',leaseToken:'L',fenceEpoch:1}),releaseFinanceSyncLease:(_kind,_token,options)=>{options?.assertCurrent?.();return phase('release',true)},
-    saveBankSyncSnapshot:async bank=>{await phase('atomic',null);remote={...remote,bank};return {revision:2}},
+    saveBankSyncSnapshot:async bank=>{await phase('atomic',null);remote={...remote,bank};return {finance_revision:2,kupa_revision:2}},
     syncBankTransactionsSnapshot:()=>phase('archive',{sourcePayload:[],result:{total_count:0}}),readBankTransactions:()=>phase('archive-read',[]),readBankTransactionSnapshot:async()=>null,syncBankChequeImages:()=>phase('images',{warnings:[]}),
     setBankTransactionHandled:()=>phase('handled',{handled_at:stamp}),acknowledgeBankTransactionMissing:()=>phase('missing',{acknowledged_at:stamp}),acknowledgeBankTransactionAlert:()=>phase('alert',{acknowledged_at:stamp}),
     bridge:{getBridgeToken:()=> 'fixture',bankAutoEnabled:()=>true,creditAutoEnabled:()=>true,creditAutoMode:()=> 'smart',markBankAttempt:()=>{},markCreditAttempt:()=>{},bankAttemptReady:()=>true,creditAttemptReady:()=>true,

@@ -22,7 +22,7 @@ function fixture(t,{hold=null,home=false}={}){
       fetchBalance:()=>phase('provider',{fetchedAt:stamp,accounts:{business:{balance:500,accountId:'same-account',transactions:[]},...(home?{home:{balance:250,accountId:'home-account',transactions:[]}}:{})}})},
     refreshFinanceCloudSnapshot:()=>phase('finance-'+(++financeReads),{verified:true,state:model.state}),
     claimFinanceSyncLease:async()=>({acquired:true,leaseName:'bank',leaseToken:'L',fenceEpoch:1}),releaseFinanceSyncLease:(_kind,_token,options)=>{options?.assertCurrent?.();return phase('release',true)},
-    saveFinancePatch:()=>phase('patch',{saved:true}),saveBankSyncSnapshot:()=>phase('atomic',{revision:2}),
+    saveFinancePatch:()=>phase('patch',{saved:true}),saveBankSyncSnapshot:()=>phase('atomic',{finance_revision:2,kupa_revision:2}),
     syncBankTransactionsSnapshot:(_key,role)=>phase('archive-'+role,{sourcePayload:[],result:{total_count:0}}),syncBankChequeImages:()=>phase('images',{warnings:[]}),
     readBankTransactions:(_key,role)=>phase('read-'+role,[]),readBankTransactionSnapshot:()=>phase('read-snapshot',null),touchBankDataRevision:()=>{},touchBankDisplayRevision:()=>{},
   };
@@ -101,7 +101,7 @@ test('read scope remains usable by an authorized secondary tab and closes on rec
 for(const committed of [false,true])test(`bank retry after ${committed?'lost atomic response':'offline atomic failure'} retains transaction identity`,async t=>{
   const f=fixture(t),rows=[transaction('provider-transaction')];let fail=true,remote=f.model.state.bank;
   f.ports.readBankTransactions=async()=>rows;
-  f.ports.saveBankSyncSnapshot=async bank=>{if(!fail||committed)remote=structuredClone(bank);if(fail)throw Error('fixture missing response');return {revision:2}};
+  f.ports.saveBankSyncSnapshot=async bank=>{if(!fail||committed)remote=structuredClone(bank);if(fail)throw Error('fixture missing response');return {finance_revision:2,kupa_revision:2}};
   const api=f.create();assert.equal(await api.refreshBankBalance(),false);assert.deepEqual(f.model.state,f.before);
   fail=false;assert.equal(await api.refreshBankBalance(),true);
   assert.equal(f.model.state.bank.feed.transactions.length,1);assert.equal(f.model.state.bank.feed.transactions[0].id,'provider-transaction');assert.deepEqual(f.model.state.bank.feed,remote.feed);api.stopAutoSync();

@@ -25,7 +25,7 @@ FLOW = r"""(async()=>{
  cloudTransport.syncBankTransactionsSnapshot=async()=>{archives++;return {sourcePayload:[],result:{total_count:0}}};
  cloudTransport.readBankTransactions=async()=>caseName==='network'?[{id:'uncommitted',date:stamp,processedDate:stamp,amount:12,currency:'ILS',status:'completed',description:'uncommitted'}]:[];
  cloudTransport.readBankTransactionSnapshot=async()=>null;
- cloudTransport.saveBankSyncSnapshot=async()=>{publications++;if(caseName==='publication'){saving.resolve();await saved.promise}if(caseName==='network')throw Error('fixture atomic network failure');return {revision:2}};
+ cloudTransport.saveBankSyncSnapshot=async()=>{publications++;if(caseName==='publication'){saving.resolve();await saved.promise}if(caseName==='network')throw Error('fixture atomic network failure');return {finance_revision:2,kupa_revision:2}};
  globalThis.fetch=(url,options)=>{
    if(String(url).includes('/balance')){entered.resolve();return provider.promise}
    if(String(url).includes('/storage/v1/object/list/'))return Promise.resolve(new Response('[]'));
