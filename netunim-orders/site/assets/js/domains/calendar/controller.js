@@ -52,7 +52,7 @@ function applyPending(snapshot,pending){const calendars=snapshot?.calendars||cal
 function rebuildEventMap(){calendarUi.eventMap=new Map();for(const event of calendarUi.displayEvents||[])calendarUi.eventMap.set(eventKey(event._calendarId,event.id),event)}
 function loadSnapshotIntoUi(snapshot,pending){calendarUi.calendars=snapshot?.calendars||[];calendarUi.events=snapshot?.events||[];calendarUi.pending=pending||[];calendarUi.displayEvents=applyPending(snapshot,pending);if(snapshot?.rangeStart&&snapshot?.rangeEnd){calendarUi.cacheRangeStart=String(snapshot.rangeStart);calendarUi.cacheRangeEnd=String(snapshot.rangeEnd)}if(snapshot?.fetchedAt)calendarUi.cacheFetchedAt=snapshot.fetchedAt;rebuildEventMap()}
 function lastSyncText(){if(!calendarSession.lastSyncAt)return '';const date=new Date(calendarSession.lastSyncAt);return Number.isNaN(date.getTime())?'':shortDateTimeFormatter.format(date)}
-function statusDescriptor(){const pending=(calendarUi.pending||[]).length;if(calendarSession.authResumePromise)return{className:'pending',text:`מתחבר מחדש ל-Google${pending?` · ${pending} ממתינים`:''}`};if(calendarSession.syncing)return{className:'pending',text:`מסנכרן מול Google${pending?` · ${pending} ממתינים`:''}`};if(!navigator.onLine)return{className:'offline',text:`אופליין${pending?` · ${pending} שינויים שמורים וממתינים`:''}`};if(calendarSession.lastError)return{className:'error',text:`${calendarSession.lastError}${pending?` · ${pending} ממתינים`:''}`};if(calendarAuth.hasUsableToken())return{className:'synced',text:`מחובר ל-Google${pending?` · ${pending} ממתינים`:lastSyncText()?` · עודכן ${lastSyncText()}`:''}`};if(pending)return{className:'offline',text:`${pending} שינויים שמורים מקומית · התחבר ל-Google כדי לשלוח`};return{className:'offline',text:calendarAuth.configured()?'לא מחובר ל-Google':'נדרשת הגדרת Google OAuth'}}
+function statusDescriptor(){const pending=(calendarUi.pending||[]).length;if(calendarSession.authResumePromise)return{className:'pending',text:`מתחבר מחדש ל-Google${pending?` · ${pending} ממתינים`:''}`};if(calendarSession.syncing)return{className:'pending',text:`מסנכרן מול Google${pending?` · ${pending} ממתינים`:''}`};if(!navigator.onLine)return{className:'offline',text:`אופליין${pending?` · ${pending} שינויים שמורים וממתינים`:''}`};if(calendarSession.lastError)return{className:'error',text:`${calendarSession.lastError}${pending?` · ${pending} ממתינים`:''}`};if(calendarAuth.hasUsableToken())return{className:pending?'pending':'synced',text:`מחובר ל-Google${pending?` · ${pending} ממתינים`:lastSyncText()?` · עודכן ${lastSyncText()}`:''}`};if(pending)return{className:'offline',text:`${pending} שינויים שמורים מקומית · התחבר ל-Google כדי לשלוח`};return{className:'offline',text:calendarAuth.configured()?'לא מחובר ל-Google':'נדרשת הגדרת Google OAuth'}}
 function updateCalendarStatus(){const el=$('#calendarStatus');if(!el)return;const descriptor=statusDescriptor();el.className=`calendar-status ${descriptor.className}`;el.textContent=descriptor.text;const authButton=$('#calendarAuthButton');if(authButton){authButton.textContent=calendarSession.authResumePromise?'מתחבר…':calendarAuth.hasUsableToken()?'נתק Google':'התחבר ל-Google';authButton.disabled=!!calendarSession.authResumePromise}const newButton=$('#calendarNewButton');if(newButton)newButton.disabled=!primaryWritableCalendar()||(calendarAuth.hasUsableToken()&&!calendarSession.accountVerified)}
 
 function periodTitle(range){
@@ -111,7 +111,7 @@ async function syncNow({quiet=false,force=true}={}){
   const {assertCurrent}=authority,scope={assertCurrent},task={assertCurrent,promise:null};syncTask=task;
   const current=()=>{try{assertCurrent();return true}catch(error){if(error?.code!=='CALENDAR_OPERATION_SCOPE_CHANGED')throw error;return false}};
   task.promise=Promise.resolve().then(async()=>{
-    let syncedSnapshot=null,syncSucceeded=false;
+    let syncedSnapshot=null,syncSucceeded=false,continuePending=false;
     try{
       assertCurrent();calendarSession.syncing=true;calendarSession.lastError='';updateCalendarStatus();
       if(!navigator.onLine)throw new Error('אין חיבור לרשת');
@@ -125,8 +125,15 @@ async function syncNow({quiet=false,force=true}={}){
       const events=await calendarApi.fetchEvents(calendars,range,scope);assertCurrent();
       const snapshot={key:range.key,accountId,rangeStart:range.startKey,rangeEnd:range.endKey,fetchedAt:new Date().toISOString(),calendars,events};
       await calendarStorage.putRangeCache(snapshot);assertCurrent();
-      syncedSnapshot=snapshot;syncSucceeded=true;calendarSession.lastSyncAt=snapshot.fetchedAt;calendarSession.lastError='';
+      // A fresh remote read proves neither queue emptiness nor durable delivery
+      // of an edit that arrived during the read/cache awaits.
+      const receipt=await calendarStorage.readPendingSnapshot();assertCurrent();
+      if(!receipt.isCurrent()){continuePending=receipt.isSettled();return false}
+      pending=receipt.operations;calendarUi.pending=pending;
+      syncedSnapshot=snapshot;syncSucceeded=true;calendarSession.lastError='';
       if(ui.currentView==='calendar'&&calendarRangeContains(snapshot,calendarRange())){loadSnapshotIntoUi(snapshot,pending);renderCalendarBody()}
+      if(pending.length){continuePending=true;return false}
+      calendarSession.lastSyncAt=snapshot.fetchedAt;
       if(!quiet)toast('יומן Google עודכן');return true;
     }catch(error){
       if(error?.code==='CALENDAR_OPERATION_SCOPE_CHANGED'||!current())return false;
@@ -138,7 +145,12 @@ async function syncNow({quiet=false,force=true}={}){
     }finally{
       // A former task cannot clear a newer login's busy flag or promise.
       if(syncTask===task){syncTask=null;calendarSession.syncing=false;if(calendarSession.syncPromise===task.promise)calendarSession.syncPromise=null;if(current()&&ui.currentView==='calendar')updateCalendarStatus()}
-      if(syncSucceeded&&current()&&ui.currentView==='calendar'&&calendarAuth.hasUsableToken()&&navigator.onLine&&!calendarRangeContains(syncedSnapshot,prefetchRange()))queueMicrotask(()=>{if(current())void syncNow({quiet:true,force:false})});
+      const changedRange=syncSucceeded&&ui.currentView==='calendar'&&!calendarRangeContains(syncedSnapshot,prefetchRange());
+      if((continuePending||changedRange)&&current()){
+        // Only known new work after a successful delivery/read requests another
+        // pass. Failed or uncertain delivery keeps the existing retry policy.
+        void Promise.resolve().then(()=>{if(current()&&calendarAuth.hasUsableToken()&&navigator.onLine)return syncNow({quiet:true,force:continuePending})}).catch(error=>console.error('calendar continuation',error));
+      }
     }
   });
   calendarSession.syncPromise=task.promise;return task.promise;

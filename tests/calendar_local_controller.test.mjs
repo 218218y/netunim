@@ -20,6 +20,7 @@ const calendarStorage={
   getMeta:async key=>meta.get(key)||'',
   putMeta:async(key,value)=>meta.set(key,value),
   listOperations:async()=>[],
+  readPendingSnapshot:async()=>({operations:[],isCurrent:()=>true,isSettled:()=>true}),
   getRangeCache:async()=>null,
   putRangeCache:async()=>{},
   clearRangeCache:async()=>{},

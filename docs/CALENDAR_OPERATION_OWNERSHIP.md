@@ -94,6 +94,8 @@ existing event remains a visible conflict instead of an automatic ACK.
 This change does not add an authentication event bus between tabs or clear
 already displayed offline cache on another tab's logout. It does not claim
 complete Calendar listener/timer disposal, fence every local editor dialog,
-or certify all concurrent-append/status interleavings. Those require their own
+or certify all concurrent-append/status interleavings. The subsequent
+CALENDAR_PENDING_CONFIRMATION.md documents the now-covered read/cache/queue
+append races and owned wakeup. Other interleavings still require their own
 behavioral evidence, privacy/product policy and ownership slices. Main/Shared
 Journal, SQL migrations, remote ACK and other providers are unchanged.
