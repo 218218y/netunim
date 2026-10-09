@@ -37,7 +37,7 @@ for(const boundary of ['headers','body','refresh','application'])for(const trans
     assert.equal(applied,boundary==='application'?1:0,'a verified result cannot allocate debt under changed authority');
     assert.deepEqual(loadMorningDebtRecoveryContext(),context,'old completion cannot clear durable recovery');
     assert.equal(result.ok,false,'stale completion cannot report success');assert.equal(notifications,0);
-    assert.equal(messages.some(message=>message.includes('saved')),false);
+    assert.deepEqual(messages,[],'revoked completion cannot publish a recovery success');
   }finally{for(const [key,descriptor] of previous){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}}
 });
 

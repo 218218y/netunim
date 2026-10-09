@@ -83,7 +83,7 @@ and 100 resource cycles. Browser tests protect latest PDF publication/disposal.
 Strict checkJs compiles the actual scope/transport bodies and negative consumers.
 
 `runtime_morning_ownership.py` repeats 12 races with native IndexedDB, then resumes
-the original account and proves exact event IDs/content, retained notes and no
+the original account and proves exact event IDs/content after browser reload, retained notes and no
 foreign-journal change or duplicate effect. Three additional cases exercise the
 production customer composition, real login epochs and owner activation.
 Existing Morning UI/audit/resolution, PostgreSQL ledger/idempotency, Main/Shared

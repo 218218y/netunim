@@ -49,6 +49,16 @@ with BrowserSession(ROOT/'netunim-orders/site','morning-operation-ownership') as
     failures=[row for row in result if not (row['applied']==(1 if row['boundary']=='application' else 0) and row['stopped'] and row['retained'] and row['unchangedA'] and row['unchangedB'] and row['notes'] and row['restored'])]
     assert not failures, 'Morning authority failures: '+json.dumps(failures,ensure_ascii=False)
     assert not browser.drain_serious_errors()
+    browser._navigate()
+    restarted=browser.evaluate(r"""(async()=>{
+      await appReady;const {createStorageJournal}=await import('./assets/js/shared/storage-journal.js'),{createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js'),{STORAGE_SCHEMAS}=await import('./assets/js/shared/storage-v2-schema.js');const db=createStorageJournalDb(),report=[];
+      for(let id=1;id<=12;id++){
+        const a=await createStorageJournal({owner:'morning-'+id+'-A:orders',schema:STORAGE_SCHEMAS.orders,db}).recover(),b=await createStorageJournal({owner:'morning-'+id+'-B:orders',schema:STORAGE_SCHEMAS.orders,db}).recover(),operationId='11111111-1111-4111-8111-'+String(id).padStart(12,'0');
+        report.push(a.state.notes[0].id==='note-A'&&b.state.notes[0].id==='note-B'&&a.state.customerDebts[0].debtProgress.length===2&&a.state.customerDebts[0].debtProgress.every(row=>row.id.startsWith('MORNING:'+operationId+':'))&&!b.state.customerDebts[0].debtProgress?.length);
+      }return report;
+    })()""",timeout=45)
+    assert len(restarted)==12 and all(restarted),restarted
+    assert not browser.drain_serious_errors()
 print('PASS Morning operation authority: 12 real IDB races, retained recovery, independent account journals and original IDs')
 
 for transition in ('account','relogin','primary'):
