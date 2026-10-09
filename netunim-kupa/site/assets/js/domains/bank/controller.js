@@ -1,4 +1,5 @@
 import {bankRecurringDebitHistoryData} from '../../shared/bank-recurring-debits.js';
+import {readBankSnapshotReceipt,bankSnapshotReadoutIsCurrent} from '../../shared/bank-snapshot-receipt.js';
 import {startFinanceLeaseHeartbeat} from '../../shared/finance-fence.js';
 import {createPollingTask} from '../../shared/runtime-polling.js';
 import {uid} from '../../core/values.js';
@@ -299,12 +300,12 @@ async function refreshBankBalance({interactive=false,auto=false,isCurrent=()=>tr
     if(session.connectionMode==='supabase'&&sharedChecksHaveLocalWork())throw new Error('הצקים השתנו לפני השמירה. יש להמתין לסנכרון ולנסות שוב.');
     const nextBank={...previousBank,currentBalance:wholeMoney(business.balance),availableBalance:Number.isFinite(Number(business.availableBalance))?Number(business.availableBalance):null,creditLimit:Number.isFinite(Number(business.creditLimit))?Number(business.creditLimit):null,creditLimitUsed:Number.isFinite(Number(business.creditLimitUsed))?Number(business.creditLimitUsed):null,creditLimitUsedPercent:Number.isFinite(Number(business.creditLimitUsedPercent))?Number(business.creditLimitUsedPercent):null,updatedAt:new Date().toISOString(),asOfDate:todayISO(),snapshotToken:uid('BANK'),snapshotSeq:sharedChecksObservedSequence(),adjustments:[],source:'hapoalim',sourceAccount:businessAccount||null,bankSyncAt:fetchedAt,feed:businessFeed,homeFeed:home?homeFeed:(homeFailure?previousBank.homeFeed??null:null),archiveInitialized:cloudArchive?(archiveReady||exactBackfillVerified):previousBank.archiveInitialized===true,archiveVersion:exactBackfillVerified?2:archiveVersion,archiveInitializedAt:cloudArchive?(archiveReady?previousBank.archiveInitializedAt||null:(exactBackfillVerified?fetchedAt:null)):(previousBank.archiveInitializedAt||null),archiveAudit:cloudArchive?archiveAudit:(previousBank.archiveAudit||null),archiveBaselineAudit:cloudArchive?archiveBaselineAudit:(previousBank.archiveBaselineAudit||null)};
     if(session.connectionMode==='supabase'&&typeof saveBankSyncSnapshot==='function'){
-      await saveBankSyncSnapshot(financeBankPayload(nextBank),nextBank.snapshotToken,nextBank.snapshotSeq);assertCurrent();
+      const committed=readBankSnapshotReceipt(await saveBankSyncSnapshot(financeBankPayload(nextBank),nextBank.snapshotToken,nextBank.snapshotSeq));assertCurrent();
       model.state.bank=nextBank;
       publishDisplayArchive(archiveCandidate);
       touchBankDataRevision();
-      const refreshed=await refreshFinanceCloudSnapshot({assertCurrent});assertCurrent();
-      if(!refreshed?.verified)warnings.push('הנתונים נשמרו בענן בשלמותם, אך הרענון המקומי לאחר השמירה לא אומת. פתיחה מחדש תטען את העותק בענן.');
+      const refreshed=await refreshFinanceCloudSnapshot({assertCurrent,minimumRevision:committed.kupa_revision,minimumFinanceRevision:committed.finance_revision});assertCurrent();
+      if(!bankSnapshotReadoutIsCurrent(committed,refreshed))warnings.push('הנתונים נשמרו בענן בשלמותם, אך הרענון המקומי לאחר השמירה לא אומת. יש לרענן מהענן לפני סריקה נוספת.');
       toast(historyDays>=365?'ארכיון הבנק אומת ואותחל בכתיבה אטומית':auto?'נתוני הבנק עודכנו':'נתוני הבנק עודכנו ונשמרו בארכיון נפרד');
     }else{
       await saveFinancePatch(state=>({...state,bank:financeBankPayload(nextBank)}),lease);assertCurrent();

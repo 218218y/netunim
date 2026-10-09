@@ -3,6 +3,32 @@ import assert from 'node:assert/strict';
 import {createKupaFinanceCloudPorts} from '../netunim-kupa/site/assets/js/composition/finance-cloud.js';
 import {composeKupaFinance} from '../netunim-kupa/site/assets/js/composition/finance.js';
 
+test('fresh first read does not certify a Bank display when cloud publication did not reach both heads',async()=>{
+  const session={connectionMode:'supabase',backendReady:true,dbRevision:3,financeRevision:8};let polls=0;
+  const ports=createKupaFinanceCloudPorts({model:{state:{}},session,isOnline:()=>true,
+    cloudTransport:{readSupabaseDocument:async()=>({state:{bank:{balance:500}},revision:4,financeRevision:9})},
+    syncDocument:{cloudPoll:async()=>{polls++;return false}}});
+  assert.equal((await ports.refreshFinanceCloudSnapshot({minimumRevision:4,minimumFinanceRevision:9})).verified,false);
+  assert.equal(polls,1);
+});
+
+for(const alreadyPublished of [false,true])test(`Bank refresh confirms both live heads after ${alreadyPublished?'a clean no-op read':'actual publication'}`,async()=>{
+  const state={bank:{balance:500}},session={connectionMode:'supabase',backendReady:true,dbRevision:alreadyPublished?4:3,financeRevision:alreadyPublished?9:8};let polls=0;
+  const ports=createKupaFinanceCloudPorts({model:{state},session,isOnline:()=>true,
+    cloudTransport:{readSupabaseDocument:async()=>({state,revision:4,financeRevision:9})},
+    syncDocument:{cloudPoll:async()=>{polls++;session.dbRevision=4;session.financeRevision=9;return true}}});
+  assert.equal((await ports.refreshFinanceCloudSnapshot({minimumRevision:4,minimumFinanceRevision:9})).verified,true);
+  assert.equal(polls,alreadyPublished?0:1);
+});
+
+for(const [revision,financeRevision] of [[3,9],[4,8],[4,'9'],[NaN,9]])test(`confirmed Bank refresh refuses to publish heads ${revision}/${financeRevision} below the receipt`,async()=>{
+  const state={bank:{balance:500}},session={connectionMode:'supabase',backendReady:true,dbRevision:2,financeRevision:7};let polls=0;
+  const ports=createKupaFinanceCloudPorts({model:{state},session,isOnline:()=>true,
+    cloudTransport:{readSupabaseDocument:async()=>({state:{bank:{balance:100}},revision,financeRevision})},syncDocument:{cloudPoll:async()=>{polls++}},reportError:()=>assert.fail('unexpected cloud error')});
+  assert.equal((await ports.refreshFinanceCloudSnapshot({minimumRevision:4,minimumFinanceRevision:9})).verified,false);
+  assert.equal(polls,0,'a stale read must not enter publication before freshness is checked');assert.equal(state.bank.balance,500);
+});
+
 test('finance capability can be assembled before the modal and binds its importer afterward',()=>{
   let modalReady=false;
   const unexpected=()=>assert.fail('composition performed I/O or used the modal during construction');

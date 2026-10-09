@@ -351,3 +351,9 @@ The native suite uses actual composition/IDB with controlled Finance responses a
 false/quota-shaped follow-up failures; read-based retry cannot repeat provider/remote writes.
 It checks original note/transaction IDs, truthful warning and fresh-page recovery.
 See docs/KUPA_CREDIT_PUBLICATION_CONTRACT.md for result semantics and injection limits.
+
+Atomic Bank confirmation: tests/bank_snapshot_confirmation.test.mjs and
+tests/runtime_bank_snapshot_confirmation.py (browser-lifecycle), through both actual
+HTTP decoders/controllers and real Main/Shared IDB. Malformed success replies retain
+Last Known Good; read-based recovery preserves IDs without another provider/write effect.
+See docs/BANK_SNAPSHOT_CONFIRMATION_CONTRACT.md for dual-head freshness and limits.

@@ -110,6 +110,11 @@ docs/STORAGE_CLOUD_RECORD_RECOVERY_CONTRACT.md for native-IDB evidence and resto
 
 Development contract
 --------------------
+Atomic Bank snapshot receipts are decoded from the published dual Main/Finance
+revision contract before candidate publication. Kupa and Orders readouts must meet
+both committed heads; an unknown response never implies a safe provider retry or
+a journal ACK. See docs/BANK_SNAPSHOT_CONFIRMATION_CONTRACT.md.
+
 Run verify.bat before and after changes. ESLint, module-graph, security, public-root, direct unit, UI, recovery,
 financial and real offline PWA tests are mandatory. See TESTING.txt and each application's DEPLOYMENT.txt.
 Legacy supabase/shared/validation entrypoints intentionally forward to tests/ for existing commands.

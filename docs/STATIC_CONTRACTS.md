@@ -15,6 +15,11 @@ gates continue to own runtime and recovery evidence.
 
 ## Checked implementations
 
+The atomic Bank snapshot receipt decoder is also checked from its JavaScript
+body. Negative consumers reject incomplete/non-numeric dual-head evidence and
+mutation of decoded receipts. Runtime validation remains mandatory for HTTP
+JSON; see [Bank confirmation](BANK_SNAPSHOT_CONFIRMATION_CONTRACT.md).
+
 The Orders-owned Morning authority and transport JavaScript bodies are now
 checked as well, with negative consumers for login epochs, missing scope ports,
 cached boolean guards and async publication assertions. They are composed into
