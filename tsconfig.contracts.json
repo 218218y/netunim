@@ -13,6 +13,7 @@
     "types": []
   },
   "files": [
+    "netunim-kupa/site/assets/js/domains/credit/publication.js",
     "shared/authenticated-account-scope.js",
     "netunim-orders/site/assets/js/core/morning-operation-scope.js",
     "netunim-orders/site/assets/js/integrations/morning.js",

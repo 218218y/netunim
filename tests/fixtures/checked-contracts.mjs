@@ -141,3 +141,20 @@ createPollingTask({run:receipt=>requireBoolean(receipt.isCurrent),delay:()=>1000
 createPollingTask({run:()=>true,delay:()=>1000});
 // @ts-expect-error scheduling state does not expose mutable account authorization
 createPollingTask({run:()=>true,delay:()=>1000,onError:()=>{},onState:state=>state.owner});
+
+const {createCreditPublication}=await import('../../netunim-kupa/site/assets/js/domains/credit/publication.js');
+const creditPorts={commit:async()=>({saved:true,row:{revision:2,state:{creditSync:{}}}}),publish:()=>undefined,checkpoint:async()=>true,read:async()=>({verified:true,state:{creditSync:{}},financeRevision:2})};
+const creditPublication=createCreditPublication(creditPorts);
+const creditResult=await creditPublication.commit(state=>state,'fixture',null,()=>undefined);
+/** @type {true} */ const remoteCreditCommitted=creditResult.remoteCommitted;
+/** @type {boolean} */ const localFollowupConfirmed=creditResult.followupConfirmed;
+// @ts-expect-error remote commitment is distinct from local follow-up confirmation
+/** @type {true} */ const unsafeFollowup=localFollowupConfirmed;
+// @ts-expect-error publication must be synchronous, without late mutation after a guard
+createCreditPublication({...creditPorts,publish:async()=>undefined});
+// @ts-expect-error live assertion is a function, not a cached authorization boolean
+creditPublication.retry(true);
+// @ts-expect-error Finance read revision must be numeric, never a serialized value
+createCreditPublication({...creditPorts,read:async()=>({verified:true,state:{},financeRevision:'2'})});
+// @ts-expect-error a confirmed server receipt cannot use a truthy string
+createCreditPublication({...creditPorts,commit:async()=>({saved:'true'})});

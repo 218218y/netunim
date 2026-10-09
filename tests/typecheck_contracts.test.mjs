@@ -96,3 +96,11 @@ test('the command fails closed when the configured offline compiler is absent',(
   assert.equal(result.status,1);
   assert.match(result.stderr,/MODULE_NOT_FOUND/);
 });
+
+test('a Credit implementation cannot replace an explicit remote commit result with a string',()=>{
+  const source=path.join(root,'netunim-kupa/site/assets/js/domains/credit/publication.js');
+  const original=readFileSync(source,'utf8'),changed=original.replace('remoteCommitted:true,displayPublished:true',"remoteCommitted:'true',displayPublished:true");
+  assert.notEqual(changed,original);
+  const diagnostics=check(new Map([[source,changed]]));
+  assert.ok(diagnostics.some(item=>path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+});

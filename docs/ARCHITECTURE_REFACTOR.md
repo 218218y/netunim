@@ -442,7 +442,7 @@ separate review tracks; this is not a claim of universal controller coverage.
 Strict JavaScript checking now covers seventeen canonical authorization, publication,
 status, startup, polling, current-record writer, Main RPC receipt/JSON equality
 and durable-ACK policy modules, including the persisted JSON/checkpoint/operation
-and cloud-record decoders and historical bootstrap compatibility. Their actual implementations and 131 negative
+and cloud-record decoders and historical bootstrap compatibility. Their actual implementations and negative
 consumer cases are compiled in the models gate, including offline tooling.
 Pre-refactor sealed records retain exact bytes/checksums, and both sites have
 real-IDB ACK rejection/abort/handoff tests with fresh-runtime ID/content recovery.
@@ -476,7 +476,7 @@ they are not a claim that every older audit finding is still present.
 | --- | --- | --- |
 | Capability APIs | Orders Finance/Checks and shell/Notes interactions; Kupa Dashboard/Bank read-model and remaining shell wiring | Narrow public commands/queries, explicit binding and representative cross-capability behavior tests |
 | Morning ownership | Captured account/login/write authority now spans reservation, issuance, recovery and PDF publication; remaining cross-tab cached-display policy and full business workflow inventory | Native IDB pre-change reproduction, original-operation replay and production composition races; see MORNING_OPERATION_OWNERSHIP.md |
-| Finance/read models and privacy | Distinguish non-outbox failures, unsaved projection and optional backup warnings; define cross-tab cached document display policy | Truthful separate commit/publication/backup results and controlled two-tab auth/visibility scenarios |
+| Finance/read models and privacy | Kupa Credit now separates confirmed Finance commit, displayed result and unconfirmed local follow-up, with read-based recovery; remaining Bank/Finance unsaved projection, auxiliary backup warnings and cross-tab cached document display policy | Six pre-change regressions, controlled real-IDB recovery and strict publication contract; see KUPA_CREDIT_PUBLICATION_CONTRACT.md. Other paths still require focused evidence |
 | Runtime/resource ownership | Remaining Shared-specific and finance/integration jobs, shell listeners, reconnect/owner transitions and preflight | Start/stop/dispose idempotence, no duplicate/orphan jobs, live access fences and controlled failure tests |
 | Remaining I/O ports | Kupa credit preferences/timers and other concrete browser effects after inventory; Google Drive and local Bridge clients now have explicit ports | Injected fake ports, adapter contracts and import enforcement; installed settings/auth compatibility |
 | Static contracts | Extend the existing strict JS gate beyond current writers/checkpoint/operation/cloud-record decoding/Main receipt/ACK policy to full journal/IDB transactions/business RPC/read candidates, Finance leases, capability ports and application consumers | A real mismatch fails CI; runtime validation and historical record readers remain intact |
