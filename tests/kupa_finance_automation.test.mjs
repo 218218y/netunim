@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createDomainsCreditController} from '../netunim-kupa/site/assets/js/domains/credit/controller.js';
 import {createDomainsBankController} from '../netunim-kupa/site/assets/js/domains/bank/controller.js';
+import {createCreditPreferences} from '../netunim-kupa/site/assets/js/platform/credit-preferences.js';
 
 const deferred=()=>{let resolve;const promise=new Promise(done=>{resolve=done});return {promise,resolve}};
 async function settle(){for(let i=0;i<40;i++)await Promise.resolve()}
@@ -24,6 +25,7 @@ function fixture(kind,t){
       syncCreditCards:async()=>{attempts++;throw new Error('fixture provider attempt')},fetchBalance:async()=>{attempts++;throw new Error('fixture provider attempt')}},
   };
   ports.operationScope={capture:ports.captureOperation,captureRead:ports.captureOperation};
+  if(kind==='credit')ports.preferences=createCreditPreferences();
   const api=(kind==='credit'?createDomainsCreditController:createDomainsBankController)(ports);
   return {api,ports,model,session,tab,values,jobs,reports,writes,scope:value=>{scope=value},lease:fn=>{leaseRead=fn},attempts:()=>attempts,claims:()=>claims,releases:()=>releases,statusReads:()=>statusReads,
     releaseStatus:()=>status.resolve({bridgeVersion:73,contractVersion:2,profiles:[{profileId:'P'}]}),releaseCloud:()=>cloud.resolve({verified:true,state:model.state})};
