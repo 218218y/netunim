@@ -72,7 +72,7 @@ Normal local setup:
 Focused static-contract gate:
   npm run typecheck
   node --test tests/typecheck_contracts.test.mjs
-This checks sixteen canonical JavaScript implementations and 118 negative consumer cases
+This checks the explicit canonical and application JavaScript implementations and negative consumer cases
 without emitting assets. The full models group also runs it. It reads
 NETUNIM_OFFLINE_NODE_MODULES for the pinned offline compiler. Exact scope and remaining
 decoder/IDB/business-RPC/application coverage are documented in docs/STATIC_CONTRACTS.md.
@@ -344,3 +344,10 @@ and remaining business/transaction typing and live-provider gates.
 Morning authority regression: tests/morning_operation_ownership.test.mjs, tests/morning_ports.test.mjs,
 tests/runtime_morning_ownership.py (browser-morning): native IDB account/login/primary races,
 original operation replay, production composition. See docs/MORNING_OPERATION_OWNERSHIP.md.
+
+Credit commit/local-follow-up regression: tests/kupa_credit_publication_results.test.mjs,
+tests/credit_publication.test.mjs and tests/runtime_credit_publication.py (browser-lifecycle).
+The native suite uses actual composition/IDB with controlled Finance responses and
+false/quota-shaped follow-up failures; read-based retry cannot repeat provider/remote writes.
+It checks original note/transaction IDs, truthful warning and fresh-page recovery.
+See docs/KUPA_CREDIT_PUBLICATION_CONTRACT.md for result semantics and injection limits.

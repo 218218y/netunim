@@ -44,6 +44,9 @@ claim that every Bank/Orders Finance controller is already covered.
 4. Local projection persistence follows cloud confirmation under the same
    operation. An already committed cloud write is not undone on later logout or
    local backup failure. A fresh authorized read can recover that cloud state.
+   Credit now exposes unconfirmed local follow-up as an independent warning and
+   offers read-based retry without another issuer action; see
+   [the publication contract](KUPA_CREDIT_PUBLICATION_CONTRACT.md).
 5. Structured failure diagnostics follow the same publication contract; they
    cannot be attached to another account or silently delete good profile data.
 

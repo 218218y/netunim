@@ -43,6 +43,7 @@ return {
   'delete-credit-connection':(element,event)=>{event?.preventDefault();event?.stopPropagation();deleteCreditConnection(element.dataset.clickArg0||'')},
   'reset-credit-sync':(element,event)=>{event?.preventDefault();event?.stopPropagation();resetCreditSync()},
   'refresh-credit-sync':(element,event)=>{event?.preventDefault();event?.stopPropagation();refreshCreditSync({interactive:false,auto:false,syncMode:'forecast'})},
+  'retry-credit-publication':(element,event)=>{event?.preventDefault();event?.stopPropagation();return domainsCreditController.retryCreditPublication()},
   'refresh-credit-sync-quick':(element,event)=>{event?.preventDefault();event?.stopPropagation();refreshCreditSync({interactive:false,auto:false,syncMode:'quick'})},
   'refresh-credit-sync-recovery':(element,event)=>{event?.preventDefault();event?.stopPropagation();refreshCreditSync({interactive:false,auto:false,syncMode:'recovery'})},
   'refresh-credit-sync-interactive':(element,event)=>{event?.preventDefault();event?.stopPropagation();refreshCreditSync({interactive:true,auto:false,syncMode:'quick'})},

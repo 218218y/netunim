@@ -208,6 +208,13 @@ failure with `@ts-ignore`, `@ts-nocheck` or broad assertions.
 
 ## Remaining coverage
 
+Kupa `domains/credit/publication.js` now checks confirmed Finance commit,
+synchronous read-model publication, local follow-up result and authorized read
+recovery. Negative consumers reject async publication, cached authority and
+string revisions/confirmations; a mutated implementation result fails the gate.
+See [the Credit publication contract](KUPA_CREDIT_PUBLICATION_CONTRACT.md).
+This does not typecheck the whole Credit controller or Finance transport.
+
 This gate does **not** yet check all application consumers, persisted
 complete journal/IDB transactions, full business RPC
 payload validation and cloud read candidates, Finance

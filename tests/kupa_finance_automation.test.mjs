@@ -23,6 +23,7 @@ function fixture(kind,t){
     bridge:{getBridgeToken:()=> 'paired',autoEnabled:()=>values.get('bank-auto')!=='0',setAutoEnabled:on=>values.set('bank-auto',on?'1':'0'),autoAttemptDelayMs:()=>0,markAutoAttempt:()=>{},creditStatus:()=>{statusReads++;return status.promise},
       syncCreditCards:async()=>{attempts++;throw new Error('fixture provider attempt')},fetchBalance:async()=>{attempts++;throw new Error('fixture provider attempt')}},
   };
+  ports.saveFinancePatch=async mutator=>({saved:true,row:{revision:2,state:mutator(model.state)}});
   ports.operationScope={capture:ports.captureOperation,captureRead:ports.captureOperation};
   const api=(kind==='credit'?createDomainsCreditController:createDomainsBankController)(ports);
   return {api,ports,model,session,tab,values,jobs,reports,writes,scope:value=>{scope=value},lease:fn=>{leaseRead=fn},attempts:()=>attempts,claims:()=>claims,releases:()=>releases,statusReads:()=>statusReads,
