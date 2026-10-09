@@ -1,3 +1,5 @@
+import {createMorningLifetime} from './morning-lifetime.js';
+import {createMorningIssuance} from './morning-issuance.js';
 import {esc} from '../../core/values.js';
 import {money} from '../../core/money.js';
 import {$} from '../../state/constants.js';
@@ -9,11 +11,9 @@ import {createMorningPayments,morningPaymentTotalCents} from './morning-payments
 import {activeMorningBankDebts,collapseMorningBankDebtPicker,filterMorningBankDebtPicker,morningBankDebtPickerMarkup,syncMorningBankDebtPickerSelection} from './morning-bank-debt-picker.js';
 import {createMorningBankTransactionLinker} from './morning-bank-transaction-link.js';
 
-const BACKEND_PATH='/functions/v1/morning-documents';
 const DOCUMENT_TYPES=Object.freeze({305:'חשבונית מס',320:'חשבונית מס / קבלה',400:'קבלה'});
 const DOCUMENT_TYPE_ORDER=Object.freeze([320,305,400]);
 const DEFAULT_DOCUMENT_TYPE=320;
-let previewObjectUrl='';
 
 function todayLocal(){const d=new Date(),shift=d.getTimezoneOffset()*60_000;return new Date(d.getTime()-shift).toISOString().slice(0,10)}
 function documentLabel(type){return DOCUMENT_TYPES[Number(type)]||`מסמך ${Number(type)||''}`}
@@ -23,12 +23,16 @@ function setBusy(button,busy,label=''){if(!button)return;button.disabled=!!busy;
 
 export function debtMorningPrefill(debt={}){const clearingApproval=String(debt?.clearingApproval||'').replace(/\D/g,'').slice(0,20),customerId=String(debt?.customerId||'').replace(/\D/g,'').slice(0,9),amount=Number(debt?.amount),payment=clearingApproval?{type:3,date:todayLocal(),price:Number.isFinite(amount)&&amount>0?amount:'',currency:'ILS',cardType:1,cardNum:'****'}:undefined;return {customerName:debt?.customerName||'',amount:debt?.amount,orderNumber:'',phone:debt?.phone||'',email:debt?.email||'',taxId:customerId,remarks:clearingApproval?`אשראי נסלק באתר ת.ב.י רהיטים. אישור סליקה באתר - ${clearingApproval}`:'',...(payment?{payment}:{})}}
 
-export function createDomainsCustomersDocuments({model,modal,toast,confirmDialog,markModalDraftSaved,supaFetch,dateEditorMarkup,setDateValue=()=>{},documentsBrowser,applyVerifiedDebtDocument,rejectSecondaryIssuance,rejectSecondaryMutation,refreshForMorningRecovery,getBusinessBankTransactions=()=>[],ensureBusinessBankTransactions=async()=>false,onBankDocumentVerified=()=>{}}){
-let activeOperationId='',activeDebtId='',activeSource={kind:'standalone'},issuanceContext=null,modalGeneration=0,createBusy=false,blocked=false,completed=false,recoveryTimer=null;
-let applicationPromise=null,recoveryPromise=null,decisionView=null;
+export function createDomainsCustomersDocuments({operationScope,model,modal,toast,confirmDialog,markModalDraftSaved,request,dateEditorMarkup,setDateValue=()=>{},documentsBrowser,applyVerifiedDebtDocument,rejectSecondaryIssuance,rejectSecondaryMutation,refreshForMorningRecovery,getBusinessBankTransactions=()=>[],ensureBusinessBankTransactions=async()=>false,onBankDocumentVerified=()=>{}}){
+if(typeof operationScope?.capture!=='function'||typeof operationScope?.captureRead!=='function')throw new TypeError('morning_operation_scope_required');
+if(typeof request?.json!=='function')throw new TypeError('morning_request_required');
+let disposed=false,modalAssert=null,previewObjectUrl='',previewRequest=0;
+const scopeChanged=error=>error?.code==='MORNING_OPERATION_SCOPE_CHANGED';
+let activeOperationId='',activeDebtId='',activeSource={kind:'standalone'},issuanceContext=null,modalGeneration=0,createBusy=false,blocked=false,completed=false;
+let decisionView=null;
 let issuanceInterruptionEpoch=0;
-globalThis.addEventListener?.('offline',()=>{issuanceInterruptionEpoch++});
-globalThis.document?.addEventListener?.('visibilitychange',()=>{if(document.hidden)issuanceInterruptionEpoch++});
+const lifetime=createMorningLifetime({operationScope,getPendingOperationId:()=>pendingRecovery?.operationId,recover:recoverPendingMorningOperation,onInterrupt:()=>{issuanceInterruptionEpoch++}});
+const captureScope=lifetime.capture,scheduleRecoveryCheck=lifetime.scheduleRecovery;
 let pendingRecovery=loadMorningDebtRecoveryContext();
 if(pendingRecovery){activeOperationId=pendingRecovery.operationId;activeDebtId=pendingRecovery.debtId;activeSource=sourceFromRecovery(pendingRecovery);issuanceContext=pendingRecovery;blocked=true}
 const {paymentFields,readPaymentRows,replaceMorningPayments,addMorningPayment,removeMorningPayment,syncPaymentType,syncPaymentBank,syncPaymentTotal}=createMorningPayments({dateEditorMarkup,toast,currentField,getSource:()=>activeSource,getSelectedType:()=>selectedType()});
@@ -47,14 +51,8 @@ function hydrateRecoveredSource(recovered,requested){if(recovered?.kind!=='bank'
 function defaultDescription(d,kind='standalone'){if(kind==='standalone')return'';if(kind==='bank')return cleanText(d?.description,250)||`תקבול בנקאי מ${cleanText(d?.customerName,120)||'לקוח'}`;return `עבור ${cleanText(d?.customerName,120)||'לקוח'}`}
 function newOperationId(){return globalThis.crypto.randomUUID()}
 
-async function backend(action,payload={}){
-  let response;
-  try{response=await supaFetch(BACKEND_PATH,{method:'POST',networkRetry:false,dataPriority:'high',body:JSON.stringify({action,...payload})})}
-  catch(error){const wrapped=new Error(error?.message||'לא ניתן להגיע לשירות Morning');wrapped.code=error?.code||'morning_backend_unreachable';throw wrapped}
-  const data=await response.json().catch(()=>({}));
-  if(!response.ok||data?.ok===false){const error=new Error(String(data?.message||'שירות Morning החזיר שגיאה'));error.code=String(data?.code||'morning_backend_error');error.status=response.status;error.details=data;throw error}
-  return data;
-}
+const backend=(action,payload={},assertCurrent=captureScope(true))=>request.json(action,payload,assertCurrent);
+const issuance=createMorningIssuance({backend,recovery:{persist:persistRecoveryContext,reset:resetOperationAfterTerminal,block:()=>{blocked=true}}});
 
 function documentButton(d){
   return `<button class="icon-btn morning-document-button" title="הפק מסמך ב-Morning" aria-label="הפק מסמך ב-Morning" data-action="open-morning-document" data-click-arg0="${esc(d.id)}"><span aria-hidden="true">▤</span></button>`;
@@ -130,6 +128,7 @@ function openBankMorningDocument(transaction,type=DEFAULT_DOCUMENT_TYPE){
   return openMorningDocumentModal({prefill,debtId:'',source:{...prefill.source,bankTransaction:transaction},initialType:requestedType});
 }
 async function openMorningDocumentModal({prefill=null,debtId='',source=null,initialType=DEFAULT_DOCUMENT_TYPE}={}){
+  try{modalAssert=captureScope(true)}catch(error){toast(error.message);return}
   const requestedDebtId=String(debtId||''),requestedSource=source&&typeof source==='object'?source:{kind:requestedDebtId?'debt':'standalone'},requestedKey=requestedSource.kind==='bank'?`bank:${Number(requestedSource.bankTransactionId)||0}`:requestedSource.kind==='debt'?`debt:${requestedDebtId}`:'standalone';
   if(createBusy){toast('הפקת Morning קודמת עדיין מתבצעת. יש להמתין לתוצאתה לפני פתיחת מסמך נוסף.');return}
   pendingRecovery=loadMorningDebtRecoveryContext()||pendingRecovery;
@@ -143,7 +142,7 @@ async function openMorningDocumentModal({prefill=null,debtId='',source=null,init
   mountMorningConnectionStatus();
   syncDocumentType();syncPaymentType();syncPaymentTotal();syncBankDebtPickerSelection();if(currentField('morningBankTransactionRows'))void bankTransactionLinker.refresh();await refreshStatus();
 }
-function isActive(generation){return generation===modalGeneration&&!!document.querySelector(`[data-morning-generation="${generation}"]`)}
+function isActive(generation){try{modalAssert?.()}catch{return false}return !disposed&&generation===modalGeneration&&!!document.querySelector(`[data-morning-generation="${generation}"]`)}
 
 function selectedType(){return Number(document.querySelector('input[name="morningDocumentType"]:checked')?.value||0)}
 function debtUpdatePolicy(type=selectedType()){
@@ -237,17 +236,19 @@ function showRecoveryDecision(context,current){
   connectionStatus('warning','המסמך מאומת. החוב ממתין להכרעה מפורשת.');markModalDraftSaved?.();
 }
 function saveRecoveryChoice(){
+  try{modalAssert?.();captureScope()()}catch(error){toast(error.message);return false}
   const context=loadMorningDebtRecoveryContext();if(!context||context.operationId!==decisionView?.operationId||rejectSecondaryMutation?.()===true)return false;
   const next=createMorningDebtRecoveryContext({...context,resolution:{financialSnapshot:decisionView.financialSnapshot,applyPayment:currentField('morningRecoveryPayment')?.checked===true,applyInvoice:currentField('morningRecoveryInvoice')?.checked===true,confirmedAt:''}});
   if(!saveMorningDebtRecoveryContext(next)){toast('לא ניתן לשמור את ההכרעה. החוב לא יעודכן ונקודת ההתאוששות נשארת נעולה.');return false}
   pendingRecovery=next;issuanceContext=next;markModalDraftSaved?.();return true;
 }
 async function confirmRecoveryChoice(button){
-  if(applicationPromise||recoveryPromise||!saveRecoveryChoice())return;
-  const chosen=loadMorningDebtRecoveryContext();if(!chosen?.resolution)return;
+  if(lifetime.pending('application')||lifetime.pending('recovery')||!saveRecoveryChoice())return;
+  const assertCurrent=captureScope(),chosen=loadMorningDebtRecoveryContext();if(!chosen?.resolution)return;
   setBusy(button,true,'מסנכרן ובודק…');
   try{
-    if(await refreshForMorningRecovery?.()!==true){toast('לא ניתן להשלים רענון מהענן. ההכרעה נשמרה אך החוב לא עודכן.');return}
+    const refreshed=await refreshForMorningRecovery?.();assertCurrent();
+    if(refreshed!==true){toast('לא ניתן להשלים רענון מהענן. ההכרעה נשמרה אך החוב לא עודכן.');return}
     if(rejectSecondaryMutation?.()===true)return;
     const current=morningFinancialSnapshot((model.state.customerDebts||[]).find(d=>d.id===chosen.debtId),chosen.operationId);
     if(!current){toast('החוב אינו קיים. נקודת ההתאוששות נשמרה.');return}
@@ -256,21 +257,24 @@ async function confirmRecoveryChoice(button){
     const approved=createMorningDebtRecoveryContext({...chosen,resolution:{...chosen.resolution,confirmedAt:new Date().toISOString()}});
     if(!saveMorningDebtRecoveryContext(approved)){toast('שמירת האישור נכשלה. לא בוצעה זקיפה.');return}
     pendingRecovery=approved;issuanceContext=approved;markModalDraftSaved?.();await recoverPendingMorningOperation();
-  }catch(error){toast('ההכרעה נשמרה להתאוששות; לא ניתן להשלים כרגע: '+error.message)}finally{setBusy(button,false)}
+  }catch(error){if(!scopeChanged(error))toast('ההכרעה נשמרה להתאוששות; לא ניתן להשלים כרגע: '+error.message)}finally{setBusy(button,false)}
 }
 
 function applyVerifiedContext(context,args={},options={}){
-  if(applicationPromise)return applicationPromise;
-  applicationPromise=applyVerifiedContextOnce(context,args,options).finally(()=>{applicationPromise=null});return applicationPromise;
+  const assertCurrent=options.assertCurrent||captureScope();
+  return lifetime.join('application',assertCurrent,()=>applyVerifiedContextOnce(context,args,{...options,assertCurrent}));
 }
-async function applyVerifiedContextOnce(context,{operationId,documentId,documentNumber,type,amount,verifiedAt}={}, {immediate=false}={}){
+async function applyVerifiedContextOnce(context,{operationId,documentId,documentNumber,type,amount,verifiedAt}={}, {immediate=false,assertCurrent=captureScope()}={}){
+  assertCurrent();
   if(!context||!operationId||context.operationId!==operationId)return {changed:false,reason:'unbound-operation'};
   if(!morningDebtRecoveryMatchesVerified(context,{operationId,type,amount})){toast('המסמך אומת ב-Morning, אך פרטי האימות אינם תואמים לנקודת ההתאוששות המקומית. החוב לא עודכן אוטומטית.');return {changed:false,reason:'verification-mismatch'}}
   if(!context.debtId)return {changed:false,reason:'standalone'};
   if(!immediate){
     connectionStatus('loading','ממתין להשלמת רענון החוב מהענן לפני זקיפה…');
-    if(await refreshForMorningRecovery?.()!==true){connectionStatus('warning','רענון החוב מהענן לא הושלם. לא בוצעה זקיפה; נקודת ההתאוששות נשארת נעולה.');return {changed:false,reason:'cloud-refresh-pending'}}
+    const refreshed=await refreshForMorningRecovery?.();assertCurrent();
+    if(refreshed!==true){connectionStatus('warning','רענון החוב מהענן לא הושלם. לא בוצעה זקיפה; נקודת ההתאוששות נשארת נעולה.');return {changed:false,reason:'cloud-refresh-pending'}}
   }
+  assertCurrent();captureScope()();
   if(rejectSecondaryMutation?.()===true)return {changed:false,reason:'write-blocked'};
   const stored=loadMorningDebtRecoveryContext();if(stored?.operationId!==operationId)return {changed:false,reason:'recovery-changed'};context=stored;
   const debt=(model.state.customerDebts||[]).find(d=>d.id===context.debtId),current=morningFinancialSnapshot(debt,operationId);
@@ -303,28 +307,28 @@ function renderOperation(op){
   if(op?.state!=='created'||!op?.verified_at)return;
   result.innerHTML=`<div class="morning-form-card"><b>המסמך הופק ואומת ב-Morning ${esc(op.document_number||'')}</b><span class="morning-allocation">מספר הקצאה: ${esc(op.allocation_number||'—')}</span><button class="btn small" data-action="morning-open-document" data-click-arg0="${esc(op.document_id)}">צפה</button></div>`;
 }
-function scheduleRecoveryCheck(delay=60_000){if(recoveryTimer||!pendingRecovery)return;recoveryTimer=setTimeout(()=>{recoveryTimer=null;void recoverPendingMorningOperation({quiet:true})},delay)}
 function resetOperationAfterTerminal(operationId){
   if(!clearRecoveryContext(operationId)){blocked=true;scheduleRecoveryCheck();return false}
   const debtId=issuanceContext?.debtId??activeDebtId,recovered=issuanceContext?sourceFromRecovery(issuanceContext):activeSource,source=hydrateRecoveredSource(recovered,activeSource);blocked=false;completed=false;activeOperationId=newOperationId();activeDebtId=String(debtId||'');activeSource=source;issuanceContext=null;return true;
 }
-async function abandonRecoveredReservation(operationId,{quiet=false}={}){
-  const data=await backend('abandon_reservation',{operation_id:operationId});
+async function abandonRecoveredReservation(operationId,{quiet=false,assertCurrent=captureScope()}={}){
+  const data=await backend('abandon_reservation',{operation_id:operationId},assertCurrent);assertCurrent();
   if(data.abandoned===true){const cleared=resetOperationAfterTerminal(operationId);if(cleared&&!quiet)toast('ניסיון ההפקה הקודם נעצר לפני שנשלח ל-Morning. לא הופק מסמך ולא בוצע שינוי בחוב.');return {abandoned:cleared,operation:data.operation}}
   return {abandoned:false,operation:data.operation||null};
 }
 async function refreshStatus({reconcile=false}={}){
+  let assertCurrent;try{modalAssert?.();assertCurrent=captureScope(!reconcile)}catch(error){return null}
   const generation=modalGeneration,operationId=activeOperationId;
   connectionStatus('loading','בודק חיבור ל-Morning…');
   try{
-    let data=await backend('status',{operation_id:operationId,reconcile});
+    let data=await backend('status',{operation_id:operationId,reconcile},assertCurrent);assertCurrent();
     if(!isActive(generation)||operationId!==activeOperationId||createBusy)return data;
-    if(reconcile&&data.retryable_reserved&&operationId){const abandoned=await abandonRecoveredReservation(operationId);if(abandoned.abandoned){if(isActive(generation)){connectionStatus('ready','הניסיון הקודם נעצר לפני שליחה. אפשר לערוך ולהפיק מחדש בבטחה.');const button=document.querySelector('[data-action="morning-create"]');if(button)button.disabled=false}return data}data={...data,operation:abandoned.operation}}
+    if(reconcile&&data.retryable_reserved&&operationId){const abandoned=await abandonRecoveredReservation(operationId,{assertCurrent});assertCurrent();if(abandoned.abandoned){if(isActive(generation)){connectionStatus('ready','הניסיון הקודם נעצר לפני שליחה. אפשר לערוך ולהפיק מחדש בבטחה.');const button=document.querySelector('[data-action="morning-create"]');if(button)button.disabled=false}return data}data={...data,operation:abandoned.operation}}
     // A persisted recovery context stays fail-closed even if a status read races before the Edge reservation becomes visible.
     const recoveryStillPending=pendingRecovery?.operationId===operationId;
     blocked=!!data.unresolved||!!data.retryable_reserved||recoveryStillPending;renderOperation(data.operation);
     const verifiedCreated=data.operation?.state==='created'&&!!data.operation?.verified_at,needsLocalRecovery=!completed||pendingRecovery?.operationId===operationId;let recoveryCleanupPending=false;
-    if(verifiedCreated&&needsLocalRecovery){const context=issuanceContext||pendingRecovery,result=await applyVerifiedOperation({operationId:data.operation.operation_id,documentId:data.operation.document_id,documentNumber:data.operation.document_number,type:data.operation.document_type,amount:Number(data.operation.amount),verifiedAt:data.operation.verified_at}),settlement=settleVerifiedRecovery(operationId,result,{serverLinkPending:!!data.bank_link_pending});blocked=settlement.blocked;completed=settlement.durable;recoveryCleanupPending=settlement.durable&&!settlement.recoveryCleared;if(settlement.recoveryCleared)notifyBankVerified(context,data.bank_link);markModalDraftSaved?.()}
+    if(verifiedCreated&&needsLocalRecovery){const context=issuanceContext||pendingRecovery,assertWrite=captureScope(),result=await applyVerifiedOperation({operationId:data.operation.operation_id,documentId:data.operation.document_id,documentNumber:data.operation.document_number,type:data.operation.document_type,amount:Number(data.operation.amount),verifiedAt:data.operation.verified_at},{assertCurrent:assertWrite});assertCurrent();assertWrite();const settlement=settleVerifiedRecovery(operationId,result,{serverLinkPending:!!data.bank_link_pending});blocked=settlement.blocked;completed=settlement.durable;recoveryCleanupPending=settlement.durable&&!settlement.recoveryCleared;if(settlement.recoveryCleared)notifyBankVerified(context,data.bank_link);markModalDraftSaved?.()}
     if(data.operation?.state==='failed'){resetOperationAfterTerminal(operationId)}
     const envLabel=data.environment==='sandbox'?'Sandbox':'Production';
     if(!data.configured)connectionStatus('error','Morning אינו מוגדר בשרת');
@@ -334,62 +338,57 @@ async function refreshStatus({reconcile=false}={}){
     else if(recoveryCleanupPending)connectionStatus('warning','המסמך אומת והעדכון המקומי נשמר, אך נקודת ההתאוששות עדיין לא נמחקה בבטחה. ההפקה נשארת נעולה והמערכת תנסה שוב.');
     else connectionStatus(blocked||data.environment==='sandbox'?'warning':'ready',blocked?'ניסיון ההפקה עדיין בבדיקה. לחץ „בדוק מצב הפקה”.':`מחובר ל-Morning ${envLabel}`);
     const button=document.querySelector('[data-action="morning-create"]');if(button){button.disabled=!data.configured||data.available===false||blocked||completed||createBusy;if(completed){button.dataset.idleLabel='הופק ואומת';button.textContent='הופק ואומת'}}
-    if(blocked&&recoveryStillPending)scheduleRecoveryCheck();
+    if(blocked&&recoveryStillPending)scheduleRecoveryCheck(60_000,assertCurrent);
     return data;
-  }catch(error){if(isActive(generation)){connectionStatus('error',error.message||'לא ניתן לאמת את החיבור');const button=document.querySelector('[data-action="morning-create"]');if(button)button.disabled=true}if(pendingRecovery?.operationId===operationId)scheduleRecoveryCheck(90_000);return null}
+  }catch(error){if(scopeChanged(error))return null;if(isActive(generation)){connectionStatus('error',error.message||'לא ניתן לאמת את החיבור');const button=document.querySelector('[data-action="morning-create"]');if(button)button.disabled=true}if(pendingRecovery?.operationId===operationId)scheduleRecoveryCheck(90_000,assertCurrent);return null}
 }
 
-async function recoverPendingMorningOperation({quiet=false}={}){
-  if(recoveryPromise)return recoveryPromise;
+async function recoverPendingMorningOperation({quiet=false,assertCurrent}={}){
+  try{assertCurrent??=captureScope();assertCurrent()}catch(error){return {ok:false,state:'scope-changed',error}}
+  return lifetime.join('recovery',assertCurrent,async()=>{
   const stored=loadMorningDebtRecoveryContext();if(stored)pendingRecovery=stored;
   const context=pendingRecovery;if(!context||createBusy)return {ok:true,state:context?'busy':'none'};
-  recoveryPromise=(async()=>{
     try{
-      let data=await backend('status',{operation_id:context.operationId,reconcile:true}),operation=data.operation;
+      let data=await backend('status',{operation_id:context.operationId,reconcile:true},assertCurrent);assertCurrent();let operation=data.operation;
       if(operation?.state==='reserved'){
-        const abandoned=await abandonRecoveredReservation(context.operationId,{quiet});
+        const abandoned=await abandonRecoveredReservation(context.operationId,{quiet,assertCurrent});assertCurrent();
         if(abandoned.abandoned)return {ok:true,state:'abandoned'};
         operation=abandoned.operation;
       }
       if(operation?.state==='created'&&operation.verified_at){
-        const result=await applyVerifiedContext(context,{operationId:operation.operation_id,documentId:operation.document_id,documentNumber:operation.document_number,type:operation.document_type,amount:Number(operation.amount),verifiedAt:operation.verified_at}),settlement=settleVerifiedRecovery(context.operationId,result,{serverLinkPending:!!data.bank_link_pending});if(settlement.recoveryCleared)notifyBankVerified(context,data.bank_link);
+        const result=await applyVerifiedContext(context,{operationId:operation.operation_id,documentId:operation.document_id,documentNumber:operation.document_number,type:operation.document_type,amount:Number(operation.amount),verifiedAt:operation.verified_at},{assertCurrent});assertCurrent();const settlement=settleVerifiedRecovery(context.operationId,result,{serverLinkPending:!!data.bank_link_pending});if(settlement.recoveryCleared)notifyBankVerified(context,data.bank_link);
         if(settlement.durable&&settlement.recoveryCleared){blocked=false;completed=true;toast(context.debtId?'הפקת Morning הקודמת אומתה לאחר ההתאוששות והחוב עודכן לפי הבחירות שנשמרו.':'הפקת Morning הקודמת אומתה לאחר ההתאוששות.');return {ok:true,state:'created',result}}
-        blocked=true;completed=settlement.durable;scheduleRecoveryCheck();if(settlement.durable&&!quiet)toast('המסמך אומת והעדכון המקומי נשמר, אך נקודת ההתאוששות עדיין לא נמחקה בבטחה. ההפקה נשארת נעולה עד לניקוי מוצלח.');return {ok:false,state:settlement.durable?'cleanup-pending':'local-pending',result};
+        blocked=true;completed=settlement.durable;scheduleRecoveryCheck(60_000,assertCurrent);if(settlement.durable&&!quiet)toast('המסמך אומת והעדכון המקומי נשמר, אך נקודת ההתאוששות עדיין לא נמחקה בבטחה. ההפקה נשארת נעולה עד לניקוי מוצלח.');return {ok:false,state:settlement.durable?'cleanup-pending':'local-pending',result};
       }
       if(operation?.state==='failed'){if(!resetOperationAfterTerminal(context.operationId))return {ok:false,state:'cleanup-pending'};toast('ניסיון Morning הקודם הסתיים ללא מסמך מאומת; החוב לא שונה.');return {ok:true,state:'failed'}}
-      blocked=true;scheduleRecoveryCheck(operation?60_000:30_000);if(!quiet)toast('נמצא ניסיון Morning שעדיין ממתין לאימות. המערכת תשמור את הקשר לחוב ולא תזקוף אותו עד לאימות ודאי.');return {ok:true,state:operation?.state||'waiting'};
-    }catch(error){scheduleRecoveryCheck(90_000);if(!quiet)toast('ניסיון Morning קודם עדיין ממתין להתאוששות: '+(error?.message||'לא ניתן לבדוק כרגע'));return {ok:false,state:'unavailable',error}}
-  })().finally(()=>{recoveryPromise=null});
-  return recoveryPromise;
+      blocked=true;scheduleRecoveryCheck(operation?60_000:30_000,assertCurrent);if(!quiet)toast('נמצא ניסיון Morning שעדיין ממתין לאימות. המערכת תשמור את הקשר לחוב ולא תזקוף אותו עד לאימות ודאי.');return {ok:true,state:operation?.state||'waiting'};
+    }catch(error){if(scopeChanged(error))return {ok:false,state:'scope-changed',error};scheduleRecoveryCheck(90_000,assertCurrent);if(!quiet)toast('ניסיון Morning קודם עדיין ממתין להתאוששות: '+(error?.message||'לא ניתן לבדוק כרגע'));return {ok:false,state:'unavailable',error}}
+  });
 }
 
 async function previewMorningDocument(button){
-  let payload;try{payload=readForm()}catch(error){return toast(error.message)}setBusy(button,true,'מכין…');
-  try{const data=await backend('preview',payload),base64=String(data.pdfBase64||'');if(!base64)throw new Error('Morning לא החזירה קובץ תצוגה מקדימה');const binary=atob(base64),bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);if(previewObjectUrl)URL.revokeObjectURL(previewObjectUrl);previewObjectUrl=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));const box=currentField('morningPreviewBox'),frame=currentField('morningPreviewFrame'),note=currentField('morningPreviewNote');if(note)note.textContent='הקובץ עדיין לא הופק רשמית';if(frame)frame.src=previewObjectUrl;if(box){box.hidden=false;box.scrollIntoView({block:'nearest',behavior:'smooth'})}}
-  catch(error){toast(error.message||'יצירת התצוגה המקדימה נכשלה')}finally{setBusy(button,false)}
+  let payload,assertCurrent;try{modalAssert?.();assertCurrent=captureScope(true);payload=readForm()}catch(error){return toast(error.message)}setBusy(button,true,'מכין…');
+  const generation=modalGeneration,ticket=++previewRequest;
+  try{const data=await backend('preview',payload,assertCurrent);assertCurrent();if(!isActive(generation)||ticket!==previewRequest)return false;const base64=String(data.pdfBase64||'');if(!base64)throw new Error('Morning לא החזירה קובץ תצוגה מקדימה');const binary=atob(base64),bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);if(previewObjectUrl)URL.revokeObjectURL(previewObjectUrl);previewObjectUrl=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));const box=currentField('morningPreviewBox'),frame=currentField('morningPreviewFrame'),note=currentField('morningPreviewNote');if(note)note.textContent='הקובץ עדיין לא הופק רשמית';if(frame)frame.src=previewObjectUrl;if(box){box.hidden=false;box.scrollIntoView({block:'nearest',behavior:'smooth'})}}
+  catch(error){if(!scopeChanged(error)&&isActive(generation)&&ticket===previewRequest)toast(error.message||'יצירת התצוגה המקדימה נכשלה')}finally{setBusy(button,false)}
 }
 
 async function createMorningDocument(button){
   if(createBusy||blocked||completed)return;
   const rejectCurrentIssuance=()=>activeDebtId?rejectSecondaryMutation?.()===true:rejectSecondaryIssuance?.()===true;
   if(rejectCurrentIssuance())return;
-  let payload;try{payload=readForm()}catch(error){return toast(error.message)}
+  let payload,assertCurrent;try{modalAssert?.();assertCurrent=captureScope();payload=readForm()}catch(error){return toast(error.message)}
   const generation=modalGeneration,issuanceEpoch=issuanceInterruptionEpoch,type=payload.document.type,amount=payload.document.amount,clientName=payload.document.client.name,policy=debtUpdatePolicy(type);
+  let context;try{context=recoveryContext(type,amount,policy,payload.operation_id)}catch(error){return toast(error.message)}
   createBusy=true;setBusy(button,true,'מפיק…');
   try{
     const confirmed=await confirmDialog('הפקת מסמך רשמי',`להפיק ${documentLabel(type)} על סך ${money(amount)} עבור ${clientName}?\nלאחר ההפקה המסמך יקבל מספר רשמי ב-Morning.${debtImpactConfirmation(type,amount,policy)}`,{confirmText:'הפק מסמך',cancelText:'חזור לעריכה',tone:'primary'});
-    if(!confirmed||!isActive(generation))return;
+    assertCurrent();if(!confirmed||!isActive(generation))return;
     if(rejectCurrentIssuance())return;
-    // Establish a durable server-side pre-issuance reservation before local recovery is armed.
-    const reservation=await backend('reserve',payload);if(reservation.reserved!==true||reservation.operation?.state!=='reserved')throw new Error('השרת לא אישר הזמנה מוקדמת בטוחה לפעולת ההפקה. המסמך לא נשלח ל-Morning.');
-    try{persistRecoveryContext(recoveryContext(type,amount,policy))}
-    catch(error){const reservedOperation=activeOperationId;try{const cleanup=await backend('abandon_reservation',{operation_id:reservedOperation});if(cleanup.abandoned===true)resetOperationAfterTerminal(reservedOperation);else blocked=true}catch(abandonError){console.error('Morning pre-issue reservation cleanup failed',abandonError);blocked=true}throw error}
-    // From this point both the server reservation and the exact local debt/update policy are durable before any official POST.
-    blocked=true;
-    const data=await backend('create',payload);if(data.verified!==true||!data.document?.id)throw new Error('השרת לא החזיר אימות קנוני למסמך. לא יישלח ניסיון נוסף לפני בדיקת מצב ההפקה.');
-    const context=issuanceContext,result=await applyVerifiedOperation({operationId:activeOperationId,documentId:data.document.id,documentNumber:data.document.number,type:data.document.type??type,amount:data.document.amount??amount,verifiedAt:new Date().toISOString()},{immediate:issuanceEpoch===issuanceInterruptionEpoch&&navigator.onLine!==false}),settlement=settleVerifiedRecovery(activeOperationId,result,{serverLinkPending:!!data.local_link_pending||!!data.bank_link_pending}),durable=settlement.durable,recoveryCleared=settlement.recoveryCleared;if(recoveryCleared)notifyBankVerified(context,data.bank_link);
+    const data=await issuance.issue(payload,context,assertCurrent);assertCurrent();
+    const result=await applyVerifiedContext(context,{operationId:context.operationId,documentId:data.document.id,documentNumber:data.document.number,type:data.document.type??type,amount:data.document.amount??amount,verifiedAt:new Date().toISOString()},{immediate:issuanceEpoch===issuanceInterruptionEpoch&&navigator.onLine!==false,assertCurrent});assertCurrent();const settlement=settleVerifiedRecovery(context.operationId,result,{serverLinkPending:!!data.local_link_pending||!!data.bank_link_pending}),durable=settlement.durable,recoveryCleared=settlement.recoveryCleared;if(recoveryCleared)notifyBankVerified(context,data.bank_link);
     documentsBrowser.invalidateCache();
-    let pdfLoaded=false;if(isActive(generation))pdfLoaded=await documentsBrowser.viewDocument(data.document.id,null,{quiet:true});
+    let pdfLoaded=false;if(isActive(generation))pdfLoaded=await documentsBrowser.viewDocument(data.document.id,null,{quiet:true});assertCurrent();
     if(isActive(generation)){
       renderOperation({state:'created',verified_at:new Date().toISOString(),document_id:data.document.id,document_number:data.document.number,allocation_number:data.document.allocationNumber});
       const message=!durable?'המסמך הופק ואומת ב-Morning, אך עדכון החוב עדיין ממתין לשמירה מקומית בטוחה.':(data.local_link_pending||data.bank_link_pending)?'המסמך הופק ואומת ב-Morning. שמירת הקישור המקומי עדיין בבדיקה.':!recoveryCleared?'המסמך הופק ואומת, אך נקודת ההתאוששות המקומית לא נמחקה ולכן ההפקה נשארת נעולה עד בדיקה נוספת.':pdfLoaded?'המסמך הופק, אומת וה-PDF הרשמי נטען מ-Morning.':'המסמך הופק ואומת ב-Morning. ה-PDF הרשמי לא נטען כרגע; אפשר ללחוץ „צפה”.';
@@ -397,14 +396,15 @@ async function createMorningDocument(button){
       if(button){button.dataset.idleLabel='הופק ואומת';button.textContent='הופק ואומת'}
     }
     blocked=settlement.blocked;completed=true;if(isActive(generation))markModalDraftSaved?.();
-    if(blocked)scheduleRecoveryCheck();
+    if(blocked)scheduleRecoveryCheck(60_000,assertCurrent);
     toast(`${documentLabel(type)} ${data.document.number||''} הופק ואומת ב-Morning`);
   }catch(error){
+    if(scopeChanged(error)){blocked=true;return false}
     if(error?.details?.operation_id)adoptRecoveryOperationId(error.details.operation_id);
     if(error?.details?.prevent_retry){
       blocked=true;completed=true;if(isActive(generation))markModalDraftSaved?.();const existing=error.details.document;if(existing?.id)renderOperation({state:'created',verified_at:new Date().toISOString(),document_id:existing.id,document_number:existing.number,allocation_number:existing.allocationNumber});
       if(isActive(generation))connectionStatus('warning','ניסיון זהה קודם כבר אומת. לא יופק מסמך נוסף; לחץ „בדוק מצב הפקה” כדי להשלים את עדכון החוב לפי נקודת ההתאוששות שנשמרה.');
-      if(button){button.dataset.idleLabel='ננעל למניעת כפילות';button.textContent='ננעל למניעת כפילות'}scheduleRecoveryCheck(15_000);
+      if(button){button.dataset.idleLabel='ננעל למניעת כפילות';button.textContent='ננעל למניעת כפילות'}scheduleRecoveryCheck(15_000,assertCurrent);
     }else{
       // Only explicit server rejection is safely retryable; transport loss remains uncertain.
       if(error?.status&&error.status<500&&!error?.details?.uncertain){const failedOperation=issuanceContext?.operationId||activeOperationId;resetOperationAfterTerminal(failedOperation)}
@@ -414,8 +414,9 @@ async function createMorningDocument(button){
   }finally{createBusy=false;setBusy(button,false);if(button)button.disabled=blocked||completed}
 }
 
-function openExistingDocument(documentId,button,operationId){return documentId?documentsBrowser.viewDocument(documentId,button):documentsBrowser.viewVerifiedOperation(operationId,button)}
+function openExistingDocument(documentId,button,operationId){try{modalAssert?.();captureScope(true)()}catch(error){toast(error.message);return false}return documentId?documentsBrowser.viewDocument(documentId,button):documentsBrowser.viewVerifiedOperation(operationId,button)}
 async function reconcile(button){if(createBusy)return;setBusy(button,true,'בודק…');try{await refreshStatus({reconcile:true})}finally{setBusy(button,false)}}
 
-return {saveRecoveryChoice,confirmRecoveryChoice,isDebtRecoveryPending,rejectDebtRecoveryMutation,documentButton,openMorningDocumentModal,openMorningDocument,openStandaloneMorningDocument,openBankMorningDocument,linkBankDebt,filterBankDebtPicker,linkBankTransaction,clearBankTransactionLink,filterBankTransactionPicker,addMorningPayment,removeMorningPayment,syncPaymentTotal,syncDocumentType,syncPaymentType,syncPaymentBank,previewMorningDocument,createMorningDocument,openExistingDocument,reconcile,refreshStatus,recoverPendingMorningOperation};
+function dispose(){if(disposed)return false;disposed=true;lifetime.dispose();if(previewObjectUrl){URL.revokeObjectURL(previewObjectUrl);previewObjectUrl=''}return true}
+return {dispose,saveRecoveryChoice,confirmRecoveryChoice,isDebtRecoveryPending,rejectDebtRecoveryMutation,documentButton,openMorningDocumentModal,openMorningDocument,openStandaloneMorningDocument,openBankMorningDocument,linkBankDebt,filterBankDebtPicker,linkBankTransaction,clearBankTransactionLink,filterBankTransactionPicker,addMorningPayment,removeMorningPayment,syncPaymentTotal,syncDocumentType,syncPaymentType,syncPaymentBank,previewMorningDocument,createMorningDocument,openExistingDocument,reconcile,refreshStatus,recoverPendingMorningOperation};
 }

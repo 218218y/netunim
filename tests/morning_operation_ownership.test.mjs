@@ -1,6 +1,9 @@
+import {createMorningRequest} from '../netunim-orders/site/assets/js/integrations/morning.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createDomainsCustomersDocuments} from '../netunim-orders/site/assets/js/domains/customers/documents.js';
+import {createDomainsCustomersDocuments as buildMorning} from '../netunim-orders/site/assets/js/domains/customers/documents.js';
+function createDomainsCustomersDocuments(ports){return buildMorning({...ports,request:createMorningRequest({supaFetch:ports.supaFetch,operationScope:ports.operationScope})})}
+
 import {createMorningDebtRecoveryContext,saveMorningDebtRecoveryContext,loadMorningDebtRecoveryContext,morningFinancialSnapshot} from '../netunim-orders/site/assets/js/domains/customers/morning-debt-recovery.js';
 
 const OP='11111111-1111-4111-8111-111111111111',stamp='2026-10-09T00:00:00Z';
@@ -34,6 +37,6 @@ for(const boundary of ['headers','body','refresh','application'])for(const trans
     assert.equal(applied,boundary==='application'?1:0,'a verified result cannot allocate debt under changed authority');
     assert.deepEqual(loadMorningDebtRecoveryContext(),context,'old completion cannot clear durable recovery');
     assert.equal(result.ok,false,'stale completion cannot report success');assert.equal(notifications,0);
-    assert.equal(messages.some(message=>message.includes('????? ??? ???????')),false);
+    assert.equal(messages.some(message=>message.includes('saved')),false);
   }finally{for(const [key,descriptor] of previous){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}}
 });

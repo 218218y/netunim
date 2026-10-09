@@ -5,9 +5,10 @@ import {createDomainsCustomersDocuments} from './documents.js';
 import {createDomainsCustomersDocumentsBrowser} from './documents-browser.js';
 import {morningDebtDocuments,upsertVerifiedMorningDebtDocument} from './morning-debt-documents.js';
 
-export function createDomainsCustomers({customerRevision,model,customerUi,selectors,uiLayout,uiModal,uiStatus,storagePersistence,cloudAuth,uiNavigation,uiDateEditor,refreshForMorningRecovery,getBusinessBankTransactions,ensureBusinessBankTransactions,onBankDocumentVerified}){
+export function createDomainsCustomers({morningOperationScope,morningRequest,customerRevision,model,customerUi,selectors,uiLayout,uiModal,uiStatus,storagePersistence,uiNavigation,uiDateEditor,refreshForMorningRecovery,getBusinessBankTransactions,ensureBusinessBankTransactions,onBankDocumentVerified}){
   let view,editor;
   function persistResolvedDebtDocumentMetadata(metadata={}){
+    try{morningOperationScope.capture()()}catch{return false}
     if(storagePersistence.canMutate?.()===false)return false;
     const operationId=String(metadata.operationId||'').trim();if(!operationId)return false;
     const debt=(model.state.customerDebts||[]).find(row=>morningDebtDocuments(row).some(link=>link.operationId===operationId));if(!debt)return false;
@@ -25,20 +26,22 @@ export function createDomainsCustomers({customerRevision,model,customerUi,select
     onTabChange:(tab)=>uiNavigation.setCustomerRoute(tab),
   });
   const documentsBrowser=createDomainsCustomersDocumentsBrowser({
+    operationScope:morningOperationScope,
     modal:(...args)=>uiModal.modal(...args),
     toast:(...args)=>uiStatus.toast(...args),
-    supaFetch:(...args)=>cloudAuth.supaFetch(...args),
+    request:morningRequest,
     dateEditorMarkup:(...args)=>uiDateEditor.dateEditorMarkup(...args),
     onDebtDocumentMetadataResolved:persistResolvedDebtDocumentMetadata,
   });
   const documents=createDomainsCustomersDocuments({
+    operationScope:morningOperationScope,
     model,
     refreshForMorningRecovery,
     modal:(...args)=>uiModal.modal(...args),
     toast:(...args)=>uiStatus.toast(...args),
     confirmDialog:(...args)=>uiModal.confirmDialog(...args),
     markModalDraftSaved:(...args)=>uiModal.markModalDraftSaved(...args),
-    supaFetch:(...args)=>cloudAuth.supaFetch(...args),
+    request:morningRequest,
     documentsBrowser,
     dateEditorMarkup:(...args)=>uiDateEditor.dateEditorMarkup(...args),
     setDateValue:(...args)=>uiDateEditor.setDateValue(...args),
@@ -79,6 +82,7 @@ export function createDomainsCustomers({customerRevision,model,customerUi,select
   });
   return {
     selectors,bulk,view,editor,documents,documentsBrowser,
+    dispose:()=>{documents.dispose();documentsBrowser.dispose()},
     renderCustomers:(...args)=>view.renderCustomers(...args),
     openMorningDocuments:(...args)=>documentsBrowser.openDocuments(...args),
     searchMorningDocuments:(...args)=>documentsBrowser.search(...args),

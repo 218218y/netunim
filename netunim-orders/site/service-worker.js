@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-cdcdb9cd34eb';
+const CACHE='orders-app-shell-esm-e6a63e156c0b';
 const SHELL=[
   './',
   './index.html',
@@ -31,6 +31,7 @@ const SHELL=[
   './assets/js/core/dates.js',
   './assets/js/core/money.js',
   './assets/js/core/morning-document-types.js',
+  './assets/js/core/morning-operation-scope.js',
   './assets/js/core/search.js',
   './assets/js/core/values.js',
   './assets/js/domains/bank/alerts.js',
@@ -56,6 +57,8 @@ const SHELL=[
   './assets/js/domains/customers/morning-debt-documents.js',
   './assets/js/domains/customers/morning-debt-recovery.js',
   './assets/js/domains/customers/morning-debt.js',
+  './assets/js/domains/customers/morning-issuance.js',
+  './assets/js/domains/customers/morning-lifetime.js',
   './assets/js/domains/customers/morning-payments.js',
   './assets/js/domains/customers/selectors.js',
   './assets/js/domains/customers/view.js',
@@ -120,6 +123,7 @@ const SHELL=[
   './assets/js/integrations/bank-bridge.js',
   './assets/js/integrations/document-bridge.js',
   './assets/js/integrations/document-google-drive.js',
+  './assets/js/integrations/morning.js',
   './assets/js/lifecycle.js',
   './assets/js/main.js',
   './assets/js/runtime-events.js',

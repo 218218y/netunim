@@ -15,6 +15,12 @@ gates continue to own runtime and recovery evidence.
 
 ## Checked implementations
 
+The Orders-owned Morning authority and transport JavaScript bodies are now
+checked as well, with negative consumers for login epochs, missing scope ports,
+cached boolean guards and async publication assertions. They are composed into
+Orders; unused copies are not deployed to Kupa. See
+[the Morning ownership contract](MORNING_OPERATION_OWNERSHIP.md).
+
 `tsconfig.contracts.json` checks these canonical JavaScript implementations and
 their compile-only consumer fixtures. There are no handwritten function
 declaration facades, emitted files, application runtime dependencies or blanket

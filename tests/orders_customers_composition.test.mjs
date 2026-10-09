@@ -10,6 +10,7 @@ function ports(onSave=()=>{}){
     uiModal:{modal:()=>{},closeModal:()=>{},confirmDialog:async()=>true,markModalDraftSaved:()=>{}},
     uiStatus:{toast:()=>{}},
     storagePersistence:{scheduleSave:onSave,canMutate:()=>true,rejectSecondaryAction:()=>false,rejectSecondaryMutation:()=>false},
+    morningOperationScope:{capture:()=>()=>{},captureRead:()=>()=>{}},
     cloudAuth:{supaFetch:async()=>({})},
     uiNavigation:{setCustomerRoute:()=>{}},
     uiDateEditor:{dateEditorMarkup:()=>'',setDateValue:()=>{}},

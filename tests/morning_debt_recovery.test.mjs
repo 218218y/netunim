@@ -1,3 +1,4 @@
+import {createMorningRequest} from '../netunim-orders/site/assets/js/integrations/morning.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {withExpectedConsoleErrors} from './helpers/expected-console.mjs';
@@ -14,7 +15,9 @@ import {
   morningFinancialChanges,
 } from '../netunim-orders/site/assets/js/domains/customers/morning-debt-recovery.js';
 import {applyVerifiedMorningDocumentToDebt} from '../netunim-orders/site/assets/js/domains/customers/morning-debt.js';
-import {createDomainsCustomersDocuments} from '../netunim-orders/site/assets/js/domains/customers/documents.js';
+import {createDomainsCustomersDocuments as buildMorning} from '../netunim-orders/site/assets/js/domains/customers/documents.js';
+function createDomainsCustomersDocuments(ports){return buildMorning({...ports,request:createMorningRequest({supaFetch:ports.supaFetch,operationScope:ports.operationScope})})}
+
 import {customerDebtProgressData} from '../netunim-orders/site/assets/js/shared/customer-debt-progress.js';
 
 class MemoryStorage {
@@ -171,6 +174,7 @@ test('concurrent recovery callers join the same in-flight verification instead o
     const statusStarted=new Promise(resolve=>{statusStartedResolve=resolve});
     const statusGate=new Promise(resolve=>{releaseStatus=resolve});
     const documents=createDomainsCustomersDocuments({
+      operationScope:{capture:()=>()=>{},captureRead:()=>()=>{}},
       model:{state:{customerDebts:[debt]}},
       modal:()=>{},toast:()=>{},confirmDialog:async()=>true,markModalDraftSaved:()=>{},dateEditorMarkup:()=>'',
       documentsBrowser:{invalidateCache:()=>{},viewDocument:async()=>false},

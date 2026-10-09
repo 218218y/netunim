@@ -1,5 +1,8 @@
 """Local cloud transport fixture for Morning recovery and V2 flights."""
 LOCAL_CLOUD = r"""
+// Existing local-cloud workflows declare isolated synthetic authority.
+const fixtureMorningScope=(await import('./assets/js/core/morning-operation-scope.js')).createMorningOperationScope({readAccess:()=>({account:{owner:'morning-fixture',epoch:1},storageOwner:'morning-fixture',readable:true,writable:tab.primaryTab})});
+morningOperationScope.capture=fixtureMorningScope.capture;morningOperationScope.captureRead=fixtureMorningScope.captureRead;
 window.auditCloudReads=0;
 window.auditCloudFail=false;
 window.auditCloudReadGate=null;

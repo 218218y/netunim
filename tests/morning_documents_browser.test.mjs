@@ -1,3 +1,4 @@
+import {createMorningRequest} from '../netunim-orders/site/assets/js/integrations/morning.js';
 import assert from 'node:assert/strict';
 
 const elements=new Map();
@@ -24,8 +25,11 @@ URL.createObjectURL=()=>{const url=`blob:morning-test-${created.length+1}`;creat
 URL.revokeObjectURL=url=>{revoked.push(String(url))};
 
 try{
-  const {createDomainsCustomersDocumentsBrowser}=await import('../netunim-orders/site/assets/js/domains/customers/documents-browser.js');
+  const {createDomainsCustomersDocumentsBrowser:buildMorning}=await import('../netunim-orders/site/assets/js/domains/customers/documents-browser.js');
+function createDomainsCustomersDocumentsBrowser(ports){return buildMorning({...ports,request:createMorningRequest({supaFetch:ports.supaFetch,operationScope:ports.operationScope})})}
+
   const browser=createDomainsCustomersDocumentsBrowser({
+    operationScope:{capture:()=>()=>{},captureRead:()=>()=>{}},
     modal(){},
     toast(message){throw new Error(`Unexpected toast: ${message}`)},
     dateEditorMarkup(){return''},
@@ -49,6 +53,7 @@ try{
   elements.delete('#morningDocumentsBrowser');elements.delete('#morningBrowserPreview');elements.delete('#morningBrowserPreviewFrame');
   const standaloneBox={hidden:true,scrollIntoView(){}},standaloneFrame={src:''};let opened=0;
   const linkedBrowser=createDomainsCustomersDocumentsBrowser({
+    operationScope:{capture:()=>()=>{},captureRead:()=>()=>{}},
     modal(_title,body){opened++;assert.match(body,/morningStandalonePreviewFrame/);elements.set('#morningStandalonePreview',standaloneBox);elements.set('#morningStandalonePreviewFrame',standaloneFrame)},
     toast(message){throw new Error(`Unexpected toast: ${message}`)},
     dateEditorMarkup(){return''},
@@ -60,6 +65,7 @@ try{
 
   let statusReads=0;
   const legacyBrowser=createDomainsCustomersDocumentsBrowser({
+    operationScope:{capture:()=>()=>{},captureRead:()=>()=>{}},
     modal(){throw new Error('Existing standalone viewer should be reused')},
     toast(message){throw new Error(`Unexpected toast: ${message}`)},
     dateEditorMarkup(){return''},
@@ -81,6 +87,7 @@ try{
 
   let metadataReads=0;const resolvedMetadata=[];
   const metadataBrowser=createDomainsCustomersDocumentsBrowser({
+    operationScope:{capture:()=>()=>{},captureRead:()=>()=>{}},
     modal(){},toast(message){throw new Error(`Unexpected toast: ${message}`)},dateEditorMarkup(){return''},
     supaFetch:async(_path,options)=>{const body=JSON.parse(options.body);assert.equal(body.action,'status');metadataReads++;return new Response(JSON.stringify({ok:true,operation:{state:'created',verified_at:'2026-09-09T10:00:00Z',document_id:'doc-3889',document_number:'3889',document_type:320}}),{status:200,headers:{'Content-Type':'application/json'}})},
     onDebtDocumentMetadataResolved:metadata=>resolvedMetadata.push(metadata),
@@ -88,7 +95,20 @@ try{
   const richLabel={textContent:'מסמך Morning'},richButton={dataset:{morningDebtOperation:'operation-3889'},title:'',isConnected:true,querySelector(){return richLabel}},richRoot={querySelectorAll(){return[richButton]}};
   assert.equal(await metadataBrowser.hydrateDebtDocumentLinks(richRoot),1);assert.equal(metadataReads,1);assert.equal(richButton.dataset.clickArg0,'doc-3889');assert.equal(richLabel.textContent,'חשבונית מס / קבלה 3889');assert.equal(richButton.dataset.morningDebtOperation,undefined);assert.deepEqual(resolvedMetadata,[{operationId:'operation-3889',documentId:'doc-3889',documentNumber:'3889',documentType:320,verifiedAt:'2026-09-09T10:00:00Z'}]);
 
-  console.log('PASS Morning embedded PDF keeps its Blob URL alive until the preview is replaced');
+  const {createMorningOperationScope}=await import('../netunim-orders/site/assets/js/core/morning-operation-scope.js');
+  const live={account:{owner:'A',epoch:1},storageOwner:'A',readable:true,writable:true},scope=createMorningOperationScope({readAccess:()=>live});
+  const gates=new Map(),messages=[];
+  const racingBrowser=createDomainsCustomersDocumentsBrowser({operationScope:scope,modal(){},toast:message=>messages.push(message),dateEditorMarkup:()=>'',supaFetch:async(_path,options)=>{
+    const id=JSON.parse(options.body).document_id;let resolve;const promise=new Promise(done=>{resolve=done});gates.set(id,resolve);await promise;
+    return new Response(new Blob(['%PDF-'+id]),{headers:{'Content-Type':'application/pdf'}});
+  }});
+  const stale=racingBrowser.viewDocument('old');live.account.epoch++;const current=racingBrowser.viewDocument('new');
+  gates.get('new')();assert.equal(await current,true);const currentUrl=standaloneFrame.src;
+  gates.get('old')();assert.equal(await stale,false);assert.equal(standaloneFrame.src,currentUrl);assert.deepEqual(messages,[]);
+  const earlier=racingBrowser.viewDocument('earlier'),latest=racingBrowser.viewDocument('latest');
+  gates.get('latest')();assert.equal(await latest,true);const latestUrl=standaloneFrame.src;gates.get('earlier')();assert.equal(await earlier,false);assert.equal(standaloneFrame.src,latestUrl);
+  const closing=racingBrowser.viewDocument('closing');racingBrowser.dispose();gates.get('closing')();assert.equal(await closing,false);
+  console.log('PASS Morning PDF lifetime, immutable account and latest-preview publication');
 } finally {
   URL.createObjectURL=originalCreateObjectURL;
   URL.revokeObjectURL=originalRevokeObjectURL;
