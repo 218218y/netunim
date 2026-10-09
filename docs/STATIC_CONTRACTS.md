@@ -186,6 +186,8 @@ raw JSON from being treated as a business checkpoint without decoding.
 The operation fixture checks both generated operation readers, historical nullable
 annotations and discriminated changes without inventing business record types.
 The actual validation policy is shared with replay and pending-work reads.
+Real-IDB journal queries select the historical physical owner-key namespace
+before decoding mutable payload ownership; index drift cannot hide or inject rows.
 See [the operation recovery contract](STORAGE_OPERATION_RECOVERY_CONTRACT.md)
 for the thirteen pre-change failures and real-IDB restoration matrix.
 Existing generator contracts

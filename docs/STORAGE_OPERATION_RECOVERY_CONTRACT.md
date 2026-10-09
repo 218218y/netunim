@@ -17,6 +17,14 @@ Thirteen new regressions failed before this change:
 These are controlled component/fault-injection findings. They are not evidence
 that production user journals were corrupted or that user data was lost.
 
+The first full browser run of `3c9e2efca1b868651484055d4cc5ad5538459375`
+failed the new foreign-owner drill. Real IDB's secondary index selects on
+`data.owner`; changing that payload field hides an entry whose primary key still
+belongs to the original owner. Conversely, another namespace's entry can claim
+the original owner's payload name and enter that index query. Memory fixtures
+do not implement that index, so their passing tests did not cover this boundary.
+The browser finding is addressed at the query owner, not by weakening the drill.
+
 ## One validation policy
 
 `storage-operation.js` owns both validation of a proposed operation and decoding
@@ -41,6 +49,11 @@ implementation; replay and cloud pending-work reads use the same policy.
    sequence as committed metadata. Cloud pending reads and newly materialized
    flights also require the current journal owner/epoch before deriving
    generation, mutation metadata or deletions.
+6. IDB selects the physical `[owner, epoch, seq]` primary-key namespace before
+   decoding payload ownership. All journal writers use this key form starting
+   with schema v1 (`d59bfbdb`); current append/boundary/bootstrap writers retain
+   it. Local/account fenced-recovery reads use the same query. No store, key or
+   index is migrated; the historical index remains installed.
 
 The decoder proves a storage operation, not a business record schema, an
 authenticated account, an immutable Flight or a durable ACK. Existing domain
@@ -81,6 +94,9 @@ exact captured operation then recovers the same ID/content once, with the same
 flight, revision and pending cursor. A malformed emergency duplicate is retained
 until its exact known-good replacement is proved; a final durable ACK and fresh
 runtime verify that only acknowledged work is cleared.
+Raw journal keys and values are also compared independently of the owner index.
+Neighboring physical owners cannot inject rows by forging a payload owner, and
+changing an owned row's payload owner cannot hide it from validation.
 
 Full Browser/PostgreSQL, two-tab/two-profile, offline/PWA, performance and Windows
 verification remain required before merge. Flight/base/control kind decoders,

@@ -1023,7 +1023,15 @@ for app in ('kupa', 'orders'):
             const handle=await new Promise((resolve,reject)=>{const request=indexedDB.open('netunim-storage-v2');request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error)});
             try{await new Promise((resolve,reject)=>{const tx=handle.transaction('journal','readwrite');tx.objectStore('journal').put(record,[owner,original.data.epoch,original.data.seq]);tx.oncomplete=()=>resolve();tx.onabort=()=>reject(tx.error);tx.onerror=()=>reject(tx.error)})}finally{handle.close()}
           }
-          const rejects=async(work,code)=>{try{await work();throw Error('expected rejection: '+code)}catch(error){check(error.message===code,code)}};
+          async function rawJournal(){
+            const handle=await new Promise((resolve,reject)=>{const request=indexedDB.open('netunim-storage-v2');request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error)});
+            try{
+              const store=handle.transaction('journal','readonly').objectStore('journal');
+              const read=request=>new Promise((resolve,reject)=>{request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error)});
+              return dump(await Promise.all([read(store.getAllKeys()),read(store.getAll())]));
+            }finally{handle.close()}
+          }
+          const rejects=async(work,code)=>{try{await work();throw Error('expected rejection: '+code)}catch(error){check(error.message===code,code+' (received '+error.message+')')}};
           for(const domain of ['main','shared']){
             const account='operation-'+domain,owner=account+':'+(domain==='main'?app:'shared-checks');
             const model={state:clone(INITIAL_STATE)},normalization=createStateNormalization({model});model.state=normalization.normalizeState(model.state);
@@ -1038,6 +1046,10 @@ for app in ('kupa', 'orders'):
             const flight=await seed.materializeFlight({operationId:'immutable-'+domain,baseRevision:7});await seed.setCloudControl({retry:{kind:'network',attempt:1}});
             await seed.compact();const original=(await db.load(owner)).journal[0];
             check(original.data.seq===1&&(await db.load(owner)).checkpoints.data.seq===1,'compaction retains unacknowledged operation despite durable local checkpoint');
+            // A neighboring physical namespace cannot inject an entry merely
+            // by claiming this owner's name in its indexed payload.
+            await replaceOperation(owner+'-neighbor',original,sealStorageRecord({...original.data,changes:[null]}));
+            check((await db.load(owner)).journal.length===1&&(await seed.cloudState()).pending,'primary-key namespace excludes adjacent owner with forged payload owner');
             const make=(primary=true)=>domain==='shared'?createSharedChecksStorageV2({owner:()=>account,primary:()=>primary,db}):
               createStorageV2Runtime({app,owner:()=>account,primary:()=>primary,mode:()=> 'primary',validate,createJournal:options=>createStorageJournal({...options,db})});
             const recover=async runtime=>domain==='main'?runtime.recover():runtime.open();
@@ -1048,7 +1060,8 @@ for app in ('kupa', 'orders'):
               [{seq:'1'},'storage_invalid_operation'],
             ]){
               const active=make();await recover(active);
-              await replaceOperation(owner,original,sealStorageRecord({...original.data,...patch}));const before=dump(await db.load(owner));
+              await replaceOperation(owner,original,sealStorageRecord({...original.data,...patch}));const before=dump(await db.load(owner)),rawBefore=await rawJournal();
+              check((await db.load(owner)).journal.length===1,'physical owner namespace retains the row independently of indexed payload');
               await rejects(()=>active.cloudState(),errorCode);
               const runtime=make();
               if(domain==='main'){
@@ -1061,7 +1074,7 @@ for app in ('kupa', 'orders'):
               const secondary=make(false);
               if(domain==='main')check(await secondary.recoverReadOnly()===null&&secondary.diagnostics.lastError===errorCode,'secondary Main rejects corrupt journal');
               else await rejects(()=>secondary.recoverReadOnly(),errorCode);
-              check(dump(await db.load(owner))===before,'failed cloud/primary/secondary reads retain all stores and writer');
+              check(dump(await db.load(owner))===before&&await rawJournal()===rawBefore,'failed cloud/primary/secondary reads retain all stores, raw journal keys/values and writer');
               await replaceOperation(owner,original,original);
               const restarted=make(),recovered=await recover(restarted),cloud=await restarted.cloudState();
               check(recovered.state[collection].length===1&&dump(recovered.state[collection][0])===dump(entry),'verified restoration retains exact record ID/content once');
@@ -1069,10 +1082,10 @@ for app in ('kupa', 'orders'):
             }
             const emergencyKey='netunim-storage-v2-emergency:'+encodeURIComponent(owner)+':'+encodeURIComponent(original.data.epoch)+':1';
             const badEmergency=JSON.stringify(sealStorageRecord({...original.data,changes:[null]}));localStorage.setItem(emergencyKey,badEmergency);
-            const before=dump(await db.load(owner)),blocked=make();
+            const before=dump(await db.load(owner)),rawBefore=await rawJournal(),blocked=make();
             if(domain==='main')check(await blocked.recover()===null&&blocked.diagnostics.recoveryFailure==='fatal'&&blocked.diagnostics.lastError==='storage_invalid_operation','malformed emergency operation blocks Main recovery');
             else await rejects(()=>blocked.open(),'storage_invalid_operation');
-            check(dump(await db.load(owner))===before&&localStorage.getItem(emergencyKey)===badEmergency,'emergency corruption preserves IDB writer/stores and emergency copy');
+            check(dump(await db.load(owner))===before&&await rawJournal()===rawBefore&&localStorage.getItem(emergencyKey)===badEmergency,'emergency corruption preserves IDB writer/stores/raw journal and emergency copy');
             localStorage.setItem(emergencyKey,JSON.stringify(original));
             const resumed=journal(),recovered=await resumed.open();
             check(dump(recovered.state[collection])===dump([entry])&&localStorage.getItem(emergencyKey)===null,'verified duplicate emergency replay has one effect and cleans only after recovery');
