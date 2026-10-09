@@ -1,3 +1,4 @@
+import {createStorageCheckpoint,createStorageJournalRecord,createStorageCloudBase,createStorageCloudFlight} from './storage-records.js';
 import {createOperationId,equalSyncJson} from './cloud-sync.js';
 import {beginMeasure,recordPerformanceValue} from './runtime-performance.js';
 import {createStorageJournalDb} from './storage-journal-idb.js';
@@ -87,7 +88,7 @@ export function createStorageJournal({owner,schema,validate,primary=()=>true,db=
   async function install(state,{expectedEpoch,appMetadata={}}={}){
     if(!primary())throw new Error('storage_secondary_tab');validate(state);const durableState=structuredClone(state),durableMetadata=structuredClone(appMetadata),nextEpoch=operationId();
     return enqueueEpochTransition(nextEpoch,async active=>{
-      if(!primary())throw new Error('storage_secondary_tab');const requiredEpoch=expectedEpoch===undefined?epoch:expectedEpoch,checkpoint=sealStorageRecord({version:2,owner,epoch:active.epoch,seq:0,state:durableState,appMetadata:durableMetadata,savedAt:now()},{kind:'checkpoint'});
+      if(!primary())throw new Error('storage_secondary_tab');const requiredEpoch=expectedEpoch===undefined?epoch:expectedEpoch,checkpoint=sealStorageRecord(createStorageCheckpoint({owner,epoch:active.epoch,seq:0,state:durableState,appMetadata:durableMetadata,savedAt:now()}),{kind:'checkpoint'});
       const done=beginMeasure('storage:checkpoint');try{await db.install(owner,checkpoint,writer,{expectedEpoch:requiredEpoch});epoch=active.epoch;seq=active.seq;ready=true;failed=null;
         // The new epoch is durable before obsolete emergency entries are retired.
         for(const record of readEmergency())if(record.data.epoch!==epoch)cleanEmergency(record);
@@ -96,7 +97,7 @@ export function createStorageJournal({owner,schema,validate,primary=()=>true,db=
     });
   }
   function append(changes,{generation=0,surface='unknown',mutationType='edit',deleteIntents={},appMetadata={}}={}){
-    guard();const activeTransition=transition,targetEpoch=activeTransition?.epoch||epoch,targetSeq=activeTransition?activeTransition.seq+1:seq+1,operation={version:2,owner,epoch:targetEpoch,seq:targetSeq,generation,operationId:operationId(),at:now(),surface,mutationType,changes:structuredClone(changes),deleteIntents:normalizeDeleteIntents(deleteIntents),appMetadata:structuredClone(appMetadata)};
+    guard();const activeTransition=transition,targetEpoch=activeTransition?.epoch||epoch,targetSeq=activeTransition?activeTransition.seq+1:seq+1,operation=createStorageJournalRecord({owner,epoch:targetEpoch,seq:targetSeq,generation,operationId:operationId(),at:now(),surface,mutationType,changes:structuredClone(changes),deleteIntents:normalizeDeleteIntents(deleteIntents),appMetadata:structuredClone(appMetadata)});
     validateStoredOperation(operation,schema);const record=sealStorageRecord(operation,{kind:'journal'});
     // Until the reset transaction commits, either epoch may be authoritative
     // after a crash. Keep the same operation in both emergency namespaces.
@@ -121,7 +122,7 @@ export function createStorageJournal({owner,schema,validate,primary=()=>true,db=
       const removed=before.map(row=>row.id).filter(id=>!retained.has(id));
       if(removed.length)deleteIntents[collection]=removed;
     }
-    const operation={version:2,owner,epoch,seq:seq+1,generation:1,operationId:operationId(),at:now(),surface,mutationType,changes:[{type:'replace-state',state:target}],deleteIntents:normalizeDeleteIntents(deleteIntents),appMetadata:{boundaryId}};
+    const operation=createStorageJournalRecord({owner,epoch,seq:seq+1,generation:1,operationId:operationId(),at:now(),surface,mutationType,changes:[{type:'replace-state',state:target}],deleteIntents:normalizeDeleteIntents(deleteIntents),appMetadata:{boundaryId}});
     validateStoredOperation(operation,schema);
     await db.appendBoundary(owner,epoch,writer,sealStorageRecord(operation,{kind:'journal'}),{expectedSeq,expectedBaseRevision});
     seq=operation.seq;return {seq,operationId:operation.operationId,deleteIntents:operation.deleteIntents};
@@ -133,22 +134,22 @@ export function createStorageJournal({owner,schema,validate,primary=()=>true,db=
     validate(state);validateBase(cloudBaseState);
     if(ready)throw new Error('storage_initialization_exists');
     const nextEpoch=operationId(),metadata=structuredClone(appMetadata);
-    const checkpoint=sealStorageRecord({version:2,owner,epoch:nextEpoch,seq:0,state,appMetadata:metadata,savedAt:now()},{kind:'checkpoint'});
-    const base=sealStorageRecord({version:2,owner,epoch:nextEpoch,revision,state:cloudBaseState,projection:'cloud',ackSeq:0},{kind:'cloud-base'});
-    const entry=changes===null?null:sealStorageRecord({version:2,owner,epoch:nextEpoch,seq:1,generation:1,operationId:operationId(),at:now(),surface:'storage.bootstrap',mutationType:'bootstrap',changes,deleteIntents:{},appMetadata:metadata},{kind:'journal'});
+    const checkpoint=sealStorageRecord(createStorageCheckpoint({owner,epoch:nextEpoch,seq:0,state,appMetadata:metadata,savedAt:now()}),{kind:'checkpoint'});
+    const base=sealStorageRecord(createStorageCloudBase({owner,epoch:nextEpoch,revision,state:cloudBaseState,ackSeq:0}),{kind:'cloud-base'});
+    const entry=changes===null?null:sealStorageRecord(createStorageJournalRecord({owner,epoch:nextEpoch,seq:1,generation:1,operationId:operationId(),at:now(),surface:'storage.bootstrap',mutationType:'bootstrap',changes,deleteIntents:{},appMetadata:metadata}),{kind:'journal'});
     const replay=replayStorageJournal(checkpoint,entry?[entry]:[],schema);validate(replay.state);
     await queue;if(!primary())throw new Error('storage_secondary_tab');
     await db.initializeCloudHead(owner,checkpoint,base,writer,entry);
     epoch=nextEpoch;seq=replay.seq;ready=true;failed=null;return replay;
   }
   async function compact(){guard();await queue;if(failed)throw failed;const recovered=await recover();validate(recovered.state);
-    const checkpoint=sealStorageRecord({version:2,owner,epoch:recovered.epoch,seq:recovered.seq,state:recovered.state,appMetadata:recovered.appMetadata||{},savedAt:now()},{kind:'checkpoint'}),done=beginMeasure('storage:checkpoint');
+    const checkpoint=sealStorageRecord(createStorageCheckpoint({owner,epoch:recovered.epoch,seq:recovered.seq,state:recovered.state,appMetadata:recovered.appMetadata||{},savedAt:now()}),{kind:'checkpoint'}),done=beginMeasure('storage:checkpoint');
     try{await db.compact(owner,recovered.epoch,writer,checkpoint);return recovered.seq}finally{done()}
   }
-  async function setCloudBase(revision,state,{validateBase=validate,ackSeq}={}){guard();if(!Number.isSafeInteger(revision)||revision<0)throw new Error('storage_base_revision');if(!Number.isSafeInteger(ackSeq)||ackSeq<0||ackSeq>seq)throw new Error('storage_base_sequence');validateBase(state);await queue;return db.setBase(owner,epoch,writer,sealStorageRecord({version:2,owner,epoch,revision,state,projection:'cloud',ackSeq},{kind:'cloud-base'}))}
+  async function setCloudBase(revision,state,{validateBase=validate,ackSeq}={}){guard();if(!Number.isSafeInteger(revision)||revision<0)throw new Error('storage_base_revision');if(!Number.isSafeInteger(ackSeq)||ackSeq<0||ackSeq>seq)throw new Error('storage_base_sequence');validateBase(state);await queue;return db.setBase(owner,epoch,writer,sealStorageRecord(createStorageCloudBase({owner,epoch,revision,state,ackSeq}),{kind:'cloud-base'}))}
   async function captureCloudCursor(revision,{project=state=>state,validateBase=validate}={}){
     guard();if(!Number.isSafeInteger(revision)||revision<0)throw new Error('storage_base_revision');await queue;const recovered=await recover(),state=project(recovered.state);validateBase(state);
-    const base={version:2,owner,epoch,revision,state,projection:'cloud',ackSeq:recovered.seq};await db.setBase(owner,epoch,writer,sealStorageRecord(base,{kind:'cloud-base'}));await db.clearControl(owner,epoch,writer);return structuredClone(base);
+    const base=createStorageCloudBase({owner,epoch,revision,state,ackSeq:recovered.seq});await db.setBase(owner,epoch,writer,sealStorageRecord(base,{kind:'cloud-base'}));await db.clearControl(owner,epoch,writer);return structuredClone(base);
   }
   async function cloudState({validateBase=validate}={}){
     guard();await queue;return cloudSnapshot(await db.load(owner),validateBase);
@@ -179,7 +180,7 @@ export function createStorageJournal({owner,schema,validate,primary=()=>true,db=
     const done=beginMeasure('storage:outbox-materialize');let snapshot;
     try{snapshot=exactSnapshot===undefined?project(recovered.state):structuredClone(exactSnapshot);validateCloud(snapshot)}finally{done()}
     const pendingDeleteIntents=mergeDeleteIntents(...pendingRecords.map(operation=>operation.deleteIntents||{})),latest=pendingRecords.at(-1)||{};
-    const value={version:2,owner,epoch,operationId:flightId,baseRevision,startSeq:base.ackSeq+1,endSeq:targetSeq,snapshot,deleteIntents:pendingDeleteIntents,generation:Math.max(0,...pendingRecords.map(operation=>Number(operation.generation||0))),mutationType:pendingRecords.some(operation=>operation.mutationType==='bulk-delete')?'bulk-delete':latest.mutationType||'autosave',surface:latest.surface||'unknown'};
+    const value=createStorageCloudFlight({owner,epoch,operationId:flightId,baseRevision,startSeq:base.ackSeq+1,endSeq:targetSeq,snapshot,deleteIntents:pendingDeleteIntents,generation:Math.max(0,...pendingRecords.map(operation=>Number(operation.generation||0))),mutationType:pendingRecords.some(operation=>operation.mutationType==='bulk-delete')?'bulk-delete':latest.mutationType||'autosave',surface:latest.surface||'unknown'});
     if(prepareAudit)value.audit=prepareAudit(structuredClone(value));
     const sealed=sealStorageRecord(value,{kind:'flight-payload'}),flightDone=beginMeasure('storage:flight-write');
     try{await db.beginFlight(owner,epoch,writer,sealed);return readStorageRecord(sealed)}finally{flightDone()}
@@ -187,14 +188,14 @@ export function createStorageJournal({owner,schema,validate,primary=()=>true,db=
   async function acknowledge(flightId,revision,state,{validateBase=validate,checkpointState=null,expectedSeq=null,appMetadata={},control=null}={}){
     guard();validateBase(state);if(checkpointState!==null)validate(checkpointState);await queue;const recovered=await recover(),flight=recovered.stored.flights&&readStorageRecord(recovered.stored.flights);if(!flight||flight.operationId!==flightId)throw new Error('storage_ack_mismatch');
     if(expectedSeq!==null&&recovered.seq!==expectedSeq)throw new Error('storage_ack_checkpoint_stale');
-    const base=sealStorageRecord({version:2,owner,epoch,revision,state,projection:'cloud',ackSeq:flight.endSeq},{kind:'cloud-base'}),checkpoint=checkpointState===null?null:sealStorageRecord({version:2,owner,epoch,seq:recovered.seq,state:structuredClone(checkpointState),appMetadata:{...(recovered.appMetadata||{}),...structuredClone(appMetadata)},savedAt:now()},{kind:'checkpoint'}),sealedControl=control?sealStorageRecord({version:2,owner,epoch,updatedAt:now(),...structuredClone(control)},{kind:'cloud-control'}):null;
+    const base=sealStorageRecord(createStorageCloudBase({owner,epoch,revision,state,ackSeq:flight.endSeq}),{kind:'cloud-base'}),checkpoint=checkpointState===null?null:sealStorageRecord(createStorageCheckpoint({owner,epoch,seq:recovered.seq,state:structuredClone(checkpointState),appMetadata:{...(recovered.appMetadata||{}),...structuredClone(appMetadata)},savedAt:now()}),{kind:'checkpoint'}),sealedControl=control?sealStorageRecord({version:2,owner,epoch,updatedAt:now(),...structuredClone(control)},{kind:'cloud-control'}):null;
     await db.acknowledge(owner,epoch,writer,flightId,base,{checkpoint,control:sealedControl});return {operationId:flightId,revision,ackSeq:flight.endSeq};
   }
   async function rejectAndRebase(flightId,revision,state,{validateBase=validate,checkpointState,expectedSeq,appMetadata={},control=null}={}){
     guard();if(!Number.isSafeInteger(revision)||revision<0)throw new Error('storage_rebase_revision_invalid');validateBase(state);if(checkpointState===undefined||!Number.isSafeInteger(expectedSeq)||expectedSeq<0)throw new Error('storage_rebase_checkpoint_required');validate(checkpointState);
     await queue;const recovered=await recover(),stored=recovered.stored,flight=stored.flights&&readStorageRecord(stored.flights),base=stored.bases&&readStorageRecord(stored.bases);if(!flight||flight.operationId!==flightId)throw new Error('storage_reject_mismatch');if(!base)throw new Error('storage_cloud_base_mismatch');
     if(recovered.seq!==expectedSeq)throw new Error('storage_rebase_checkpoint_stale');
-    const nextBase=sealStorageRecord({version:2,owner,epoch,revision,state,projection:'cloud',ackSeq:base.ackSeq},{kind:'cloud-base'}),checkpoint=sealStorageRecord({version:2,owner,epoch,seq:expectedSeq,state:structuredClone(checkpointState),appMetadata:{...(recovered.appMetadata||{}),...structuredClone(appMetadata)},savedAt:now()},{kind:'checkpoint'}),sealedControl=control?sealStorageRecord({version:2,owner,epoch,updatedAt:now(),...structuredClone(control)},{kind:'cloud-control'}):null;
+    const nextBase=sealStorageRecord(createStorageCloudBase({owner,epoch,revision,state,ackSeq:base.ackSeq}),{kind:'cloud-base'}),checkpoint=sealStorageRecord(createStorageCheckpoint({owner,epoch,seq:expectedSeq,state:structuredClone(checkpointState),appMetadata:{...(recovered.appMetadata||{}),...structuredClone(appMetadata)},savedAt:now()}),{kind:'checkpoint'}),sealedControl=control?sealStorageRecord({version:2,owner,epoch,updatedAt:now(),...structuredClone(control)},{kind:'cloud-control'}):null;
     await db.rejectFlight(owner,epoch,writer,flightId,nextBase,{checkpoint,expectedSeq,control:sealedControl});return {rejected:structuredClone(flight),base:readStorageRecord(nextBase),checkpoint:readStorageRecord(checkpoint),control:sealedControl&&readStorageRecord(sealedControl),cloudState:cloudSnapshot({...stored,checkpoints:checkpoint,bases:nextBase,flights:null,controls:sealedControl},validateBase)};
   }
   async function setCloudControl(control={}){guard();await queue;const sealed=sealStorageRecord({version:2,owner,epoch,updatedAt:now(),...structuredClone(control)},{kind:'cloud-control'});await db.setControl(owner,epoch,writer,sealed);return readStorageRecord(sealed)}
@@ -210,7 +211,7 @@ export function createStorageJournal({owner,schema,validate,primary=()=>true,db=
   async function replaceCurrentState(state,{appMetadata={},expectedSeq=null}={}){
     guard();validate(state);await queue;const recovered=await recover();if(recovered.seq!==seq)throw new Error('storage_checkpoint_stale');
     if(expectedSeq!==null&&recovered.seq!==expectedSeq)throw new Error('storage_checkpoint_stale');
-    const checkpoint=sealStorageRecord({version:2,owner,epoch,seq:recovered.seq,state,appMetadata:{...(recovered.appMetadata||{}),...structuredClone(appMetadata)},savedAt:now()},{kind:'checkpoint'});await db.replaceCheckpoint(owner,epoch,writer,checkpoint);return recovered.seq;
+    const checkpoint=sealStorageRecord(createStorageCheckpoint({owner,epoch,seq:recovered.seq,state,appMetadata:{...(recovered.appMetadata||{}),...structuredClone(appMetadata)},savedAt:now()}),{kind:'checkpoint'});await db.replaceCheckpoint(owner,epoch,writer,checkpoint);return recovered.seq;
   }
   async function replaceLocalAuthoritativeState(state,{boundaryId,expectedSeq}={}){
     guard();validate(state);
@@ -218,7 +219,7 @@ export function createStorageJournal({owner,schema,validate,primary=()=>true,db=
     await queue;guard();const recovered=await recover();
     if(recovered.seq!==expectedSeq||seq!==expectedSeq||recovered.stored.metadata.seq!==expectedSeq)throw new Error('storage_boundary_source_changed');
     if(recovered.stored.bases||recovered.stored.flights||recovered.stored.controls)throw new Error('storage_boundary_local_cloud_head_exists');
-    const checkpoint=sealStorageRecord({version:2,owner,epoch,seq:expectedSeq,state:structuredClone(state),appMetadata:{...(recovered.appMetadata||{}),boundaryId},savedAt:now()},{kind:'checkpoint'});
+    const checkpoint=sealStorageRecord(createStorageCheckpoint({owner,epoch,seq:expectedSeq,state:structuredClone(state),appMetadata:{...(recovered.appMetadata||{}),boundaryId},savedAt:now()}),{kind:'checkpoint'});
     await db.replaceLocalCheckpoint(owner,epoch,writer,checkpoint,expectedSeq);
     return {epoch,seq:expectedSeq};
   }
@@ -228,20 +229,20 @@ export function createStorageJournal({owner,schema,validate,primary=()=>true,db=
     await queue;const recovered=await recover(),stored=recovered.stored,base=stored.bases&&readStorageRecord(stored.bases);
     if(!base||stored.flights||base.ackSeq!==recovered.seq||stored.controls&&readStorageRecord(stored.controls).conflict)throw new Error('storage_cloud_pending');
     if(observed&&(observed.seq!==recovered.seq||observed.baseRevision!==base.revision))throw new Error('storage_cloud_adoption_stale');
-    const checkpoint=sealStorageRecord({version:2,owner,epoch,seq:recovered.seq,state:durableCurrent,appMetadata:{...(recovered.appMetadata||{}),...durableMetadata},savedAt:now()},{kind:'checkpoint'}),nextBase=sealStorageRecord({version:2,owner,epoch,revision,state:durableCloud,projection:'cloud',ackSeq:recovered.seq},{kind:'cloud-base'});
+    const checkpoint=sealStorageRecord(createStorageCheckpoint({owner,epoch,seq:recovered.seq,state:durableCurrent,appMetadata:{...(recovered.appMetadata||{}),...durableMetadata},savedAt:now()}),{kind:'checkpoint'}),nextBase=sealStorageRecord(createStorageCloudBase({owner,epoch,revision,state:durableCloud,ackSeq:recovered.seq}),{kind:'cloud-base'});
     guard();await db.adoptCloudHead(owner,epoch,writer,checkpoint,nextBase,{expectedHead:{seq:recovered.seq,checkpointChecksum:stored.checkpoints.checksum,baseChecksum:stored.bases.checksum,controlChecksum:stored.controls?.checksum??null}});return {seq:recovered.seq,revision};
   }
   async function replaceAuthoritativeState(currentState,{appMetadata={},expectedLocalHead=null}={}){
     guard();validate(currentState);const durableState=structuredClone(currentState),durableMetadata=structuredClone(appMetadata),nextEpoch=operationId();
     return enqueueEpochTransition(nextEpoch,async active=>{
-      if(!primary())throw new Error('storage_secondary_tab');const previousEpoch=epoch,checkpoint=sealStorageRecord({version:2,owner,epoch:active.epoch,seq:0,state:durableState,appMetadata:durableMetadata,savedAt:now()},{kind:'checkpoint'});
+      if(!primary())throw new Error('storage_secondary_tab');const previousEpoch=epoch,checkpoint=sealStorageRecord(createStorageCheckpoint({owner,epoch:active.epoch,seq:0,state:durableState,appMetadata:durableMetadata,savedAt:now()}),{kind:'checkpoint'});
       await db.resetState(owner,previousEpoch,writer,checkpoint,{expectedLocalHead});epoch=active.epoch;seq=active.seq;ready=true;failed=null;for(const record of readEmergency())if(record.data.epoch!==epoch)cleanEmergency(record);return {epoch,seq};
     });
   }
   async function resetCloudHead(revision,cloudState,currentState,{validateBase=validate,appMetadata={},expectedCleanHead=null}={}){
     guard();if(!Number.isSafeInteger(revision)||revision<0)throw new Error('storage_base_revision');validateBase(cloudState);validate(currentState);const durableCloudState=structuredClone(cloudState),durableCurrentState=structuredClone(currentState),durableMetadata=structuredClone(appMetadata),nextEpoch=operationId();
     return enqueueEpochTransition(nextEpoch,async active=>{
-      if(!primary())throw new Error('storage_secondary_tab');const previousEpoch=epoch,checkpoint=sealStorageRecord({version:2,owner,epoch:active.epoch,seq:0,state:durableCurrentState,appMetadata:durableMetadata,savedAt:now()},{kind:'checkpoint'}),nextBase=sealStorageRecord({version:2,owner,epoch:active.epoch,revision,state:durableCloudState,projection:'cloud',ackSeq:0},{kind:'cloud-base'});
+      if(!primary())throw new Error('storage_secondary_tab');const previousEpoch=epoch,checkpoint=sealStorageRecord(createStorageCheckpoint({owner,epoch:active.epoch,seq:0,state:durableCurrentState,appMetadata:durableMetadata,savedAt:now()}),{kind:'checkpoint'}),nextBase=sealStorageRecord(createStorageCloudBase({owner,epoch:active.epoch,revision,state:durableCloudState,ackSeq:0}),{kind:'cloud-base'});
       await db.resetCloudHead(owner,previousEpoch,writer,checkpoint,nextBase,{expectedCleanHead});epoch=active.epoch;seq=active.seq;ready=true;failed=null;for(const record of readEmergency())if(record.data.epoch!==epoch)cleanEmergency(record);return {epoch,seq,revision,ackSeq:0};
     });
   }

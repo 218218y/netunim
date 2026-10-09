@@ -8,6 +8,7 @@
     "exactOptionalPropertyTypes": true,
     "target": "ES2022",
     "module": "NodeNext",
+    "rootDirs": ["shared", "netunim-kupa/site/assets/js/shared", "netunim-orders/site/assets/js/shared"],
     "lib": ["ES2022", "DOM"],
     "types": []
   },
@@ -17,9 +18,12 @@
     "shared/runtime-polling.js",
     "shared/startup-task.js",
     "shared/storage-cloud-status.js",
+    "shared/storage-records.js",
+    "shared/storage-cloud-ack.js",
     "shared/storage-startup-protocol.js",
     "shared/storage-startup-recovery.js",
     "shared/storage-v2-server-protocol.js",
-    "tests/fixtures/checked-contracts.mjs"
+    "tests/fixtures/checked-contracts.mjs",
+    "tests/fixtures/checked-storage-records.mjs"
   ]
 }

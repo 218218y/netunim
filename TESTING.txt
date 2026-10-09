@@ -72,10 +72,14 @@ Normal local setup:
 Focused static-contract gate:
   npm run typecheck
   node --test tests/typecheck_contracts.test.mjs
-This checks eight canonical JavaScript implementations and 32 negative consumer cases
+This checks ten canonical JavaScript implementations and 68 negative consumer cases
 without emitting assets. The full models group also runs it. It reads
 NETUNIM_OFFLINE_NODE_MODULES for the pinned offline compiler. Exact scope and remaining
-codec/ACK/application coverage are documented in docs/STATIC_CONTRACTS.md.
+decoder/IDB/RPC/application coverage are documented in docs/STATIC_CONTRACTS.md.
+  node --test tests/storage_record_contracts.test.mjs
+compares eight production writer stages against baseline sealed bytes/checksums and
+recovers the original record IDs/content. runtime_storage.py exercises real IDB ACK
+rejection, per-write transaction abort, writer handoff and fresh-page recovery in both sites.
 
 PDF.js upgrade gate:
   npm run pdfjs:check

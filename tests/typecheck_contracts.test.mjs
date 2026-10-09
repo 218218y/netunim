@@ -37,6 +37,16 @@ test('an actual typed implementation mistake is rejected rather than masked by a
   assert.ok(diagnostics.some(item=>path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
 });
 
+test('a current writer returning a string sequence fails its actual implementation contract',()=>{
+  const source=path.join(root,'shared/storage-records.js');
+  const original=readFileSync(source,'utf8');
+  const changed=original.replace('return {version:2,owner,epoch,seq,state,appMetadata,savedAt}',
+    'return {version:2,owner,epoch,seq:String(seq),state,appMetadata,savedAt}');
+  assert.notEqual(changed,original);
+  const diagnostics=check(new Map([[source,changed]]));
+  assert.ok(diagnostics.some(item=>path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+});
+
 test('negative fixture assertions fail if an invalid consumer is accidentally accepted',()=>{
   const diagnostics=check(new Map([[fixture,readFileSync(fixture,'utf8')+
     '\n// @ts-expect-error deliberately unused: must make the gate fail\nconst validRevision=7;\n']]));

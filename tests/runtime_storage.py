@@ -162,6 +162,102 @@ with BrowserSession(ROOT/'netunim-kupa/site','storage-v2-crash-matrix') as brows
     (directory/'latest.json').write_text(json.dumps(result,indent=2),encoding='utf-8')
     print('PASS real IndexedDB crash/restart matrix and constant emergency bytes: '+json.dumps(result))
 
+for app in ('kupa','orders'):
+    with BrowserSession(ROOT/f'netunim-{app}/site','storage-ack-contracts-'+app) as browser:
+        result=browser.evaluate(r"""(async()=>{
+          const {createStorageJournal}=await import('./assets/js/shared/storage-journal.js');
+          const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
+          const {createStorageCloudBase,createStorageCheckpoint}=await import('./assets/js/shared/storage-records.js');
+          const {readStorageRecord,sealStorageRecord}=await import('./assets/js/shared/storage-journal-model.js');
+          const db=createStorageJournalDb({name:'storage-ack-contracts'}),owner='ack-contract-owner',done=[];
+          const schema={collections:['notes'],fields:['setting']},validate=state=>{
+            if(!Array.isArray(state.notes)||new Set(state.notes.map(note=>note.id)).size!==state.notes.length)throw Error('invalid ACK fixture state');
+          };
+          const make=()=>createStorageJournal({owner,schema,validate,db});
+          const check=(condition,label)=>{if(!condition)throw Error(label);done.push(label)};
+          const rejects=async(work,message)=>{let error;try{await work()}catch(cause){error=cause}check(error?.message===message,'reject '+message)};
+          let journal=make();const initial={notes:[{id:'N',text:'original'}],setting:1};
+          await journal.install(initial);await journal.setCloudBase(5,initial,{ackSeq:0});
+          await journal.append([{type:'put',collection:'notes',id:'N',mode:'replace',record:{id:'N',text:'sent'}}],{generation:1}).committed;
+          await journal.append([{type:'put',collection:'notes',id:'M',mode:'insert',index:1,record:{id:'M',text:'inserted'}}],{generation:2}).committed;
+          const flight=await journal.materializeFlight({operationId:'immutable-ack-flight',baseRevision:5});
+          await journal.append([{type:'put',collection:'notes',id:'N',mode:'replace',record:{id:'N',text:'newer pending'}}],{generation:3}).committed;
+          await journal.setCloudControl({retry:{attempts:1}});
+          const before=await db.load(owner),epoch=before.metadata.epoch,writer=before.metadata.writer;
+          const current=(await journal.recover()).state;
+          const cursor=createStorageCloudBase({owner,epoch,revision:5,state:flight.snapshot,ackSeq:flight.endSeq});
+          const checkpoint=createStorageCheckpoint({owner,epoch,seq:3,state:current,appMetadata:{},savedAt:'2026-10-09T00:00:00Z'});
+          const seal=value=>sealStorageRecord(value);
+          const unchanged=async label=>check(JSON.stringify(await db.load(owner))===JSON.stringify(before),label);
+          for(const [label,patch] of [
+            ['other account',{owner:'other-account'}],['old epoch',{epoch:'old-epoch'}],
+            ['regression',{revision:4}],['string revision',{revision:'5'}],['fractional revision',{revision:5.5}],
+            ['unsafe revision',{revision:Number.MAX_SAFE_INTEGER+1}],['negative revision',{revision:-1}],
+            ['short range',{ackSeq:1}],['newer pending range',{ackSeq:3}],['string range',{ackSeq:'2'}],
+          ]){
+            await rejects(()=>db.acknowledge(owner,epoch,writer,flight.operationId,seal({...cursor,...patch})),'storage_ack_revision');
+            await unchanged('invalid '+label+' preserves all sealed stores');
+          }
+          await rejects(()=>db.acknowledge(owner,epoch,writer,'other-flight',seal(cursor)),'storage_ack_mismatch');
+          await unchanged('wrong flight preserves journal');
+          const corrupted={...seal(cursor),checksum:'broken'};
+          await rejects(()=>db.acknowledge(owner,epoch,writer,flight.operationId,corrupted),'storage_checksum_mismatch');
+          await unchanged('corrupt ACK preserves journal');
+          for(const patch of [{owner:'other-account'},{epoch:'old-epoch'},{seq:2}]){
+            await rejects(()=>db.acknowledge(owner,epoch,writer,flight.operationId,seal(cursor),{checkpoint:seal({...checkpoint,...patch})}),'storage_checkpoint_stale');
+            await unchanged('stale checkpoint cannot partially ACK');
+          }
+          for(const patch of [{owner:'other-account'},{epoch:'old-epoch'}]){
+            await rejects(()=>db.acknowledge(owner,epoch,writer,flight.operationId,seal(cursor),{
+              checkpoint:seal(checkpoint),control:seal({...readStorageRecord(before.controls),...patch}),
+            }),'storage_control_scope');
+            await unchanged('bad control aborts the preceding checkpoint write');
+          }
+          // Abort after a real write/delete request, at each transaction boundary.
+          // No timing sleeps: the actual IDB transaction is deterministically aborted.
+          for(const [store,method] of [['checkpoints','put'],['controls','put'],['bases','put'],['flights','delete']]){
+            const original=IDBObjectStore.prototype[method];let injected=false;
+            IDBObjectStore.prototype[method]=function(...args){
+              const value=original.apply(this,args);
+              if(this.name===store){injected=true;this.transaction.abort();throw Error('injected ACK abort')}
+              return value;
+            };
+            try{await rejects(()=>db.acknowledge(owner,epoch,writer,flight.operationId,seal(cursor),{
+              checkpoint:seal(checkpoint),control:before.controls,
+            }),'injected ACK abort')}finally{IDBObjectStore.prototype[method]=original}
+            check(injected,'fault reached '+store+' '+method);await unchanged('aborted '+store+' ACK is atomic');
+          }
+          const successor=make();await successor.open();const handedOff=await db.load(owner);
+          await rejects(()=>db.acknowledge(owner,epoch,writer,flight.operationId,corrupted),'storage_writer_fenced');
+          check(JSON.stringify(await db.load(owner))===JSON.stringify(handedOff),'old writer rejected before ACK decoding');
+          const replay=await successor.materializeFlight({operationId:'must-not-replace',baseRevision:5});
+          check(JSON.stringify(replay)===JSON.stringify(flight),'handoff retains exact immutable flight');
+          await successor.acknowledge(flight.operationId,5,flight.snapshot,{checkpointState:current,expectedSeq:3});
+          let head=await successor.cloudState();
+          check(head.base.revision===5&&head.base.ackSeq===2&&head.seq===3&&head.pending&&!head.flight&&!head.control,
+            'no-op ACK advances only its own range and retains newer pending');
+          check((await db.load(owner)).journal.length===3,'ACK does not compact any journal entry');
+          journal=make();await journal.open();
+          const next=await journal.materializeFlight({operationId:'newer-ack-flight',baseRevision:5});
+          check(next.startSeq===3&&next.endSeq===3&&next.snapshot.notes[0].text==='newer pending','restart sends newer generation with original IDs');
+          await journal.acknowledge(next.operationId,6,next.snapshot);await journal.compact();
+          head=await journal.cloudState();
+          check(!head.pending&&!head.flight&&head.base.ackSeq===3&&head.base.revision===6,'newer generation becomes durably clean');
+          return done;
+        })()""",timeout=60)
+        browser._navigate()
+        assert browser.evaluate(r"""(async()=>{
+          const {createStorageJournal}=await import('./assets/js/shared/storage-journal.js');
+          const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
+          const journal=createStorageJournal({owner:'ack-contract-owner',schema:{collections:['notes'],fields:['setting']},
+            validate:()=>{},db:createStorageJournalDb({name:'storage-ack-contracts'})});
+          const recovered=await journal.open(),head=await journal.cloudState();
+          return JSON.stringify(recovered.state.notes)===JSON.stringify([{id:'N',text:'newer pending'},{id:'M',text:'inserted'}])&&
+            head.base.revision===6&&head.base.ackSeq===3&&!head.pending&&!head.flight;
+        })()""")
+        assert not browser.drain_serious_errors()
+        print('PASS real IndexedDB ACK contracts, aborted commit and fresh-runtime recovery '+app+': '+json.dumps(result))
+
 with BrowserSession(ROOT/'netunim-kupa/site','shared-checks-v2-primary-crash-matrix') as browser:
     result=browser.evaluate(r"""(async()=>{
       const {createSharedChecksStorageV2}=await import('./assets/js/shared/shared-checks-storage-v2.js');
