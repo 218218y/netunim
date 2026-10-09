@@ -1,3 +1,5 @@
+import {createStorageCheckpoint,createStorageCloudBase} from './storage-records.js';
+import {assertStorageCloudAck} from './storage-cloud-ack.js';
 import {createIndexedDbConnection} from './indexed-db-connection.js';
 import {readStorageRecord,sealStorageRecord} from './storage-journal-model.js';
 import {historicalShadowRoleForSide} from './storage-v2-persisted-compat.js';
@@ -100,10 +102,7 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
   function acknowledge(owner,epoch,writer,operationId,base,{checkpoint=null,control=null}={}){return change(owner,(tx,current,done)=>{
     assertFence(current,epoch,writer);if(!current.flights||readStorageRecord(current.flights).operationId!==operationId)throw new Error('storage_ack_mismatch');
     const acknowledged=readStorageRecord(base),flight=readStorageRecord(current.flights);
-    // A confirmed cloud write may be an idempotent no-op, so ACK revisions are
-    // monotonic rather than strictly increasing. Semantic ACK validation lives
-    // in the cloud protocol layer; this durable layer only rejects regression.
-    if(acknowledged.owner!==owner||acknowledged.epoch!==epoch||!Number.isSafeInteger(acknowledged.revision)||acknowledged.revision<flight.baseRevision||acknowledged.ackSeq!==flight.endSeq)throw new Error('storage_ack_revision');
+    assertStorageCloudAck(acknowledged,flight,{owner,epoch});
     if(checkpoint){const nextCheckpoint=readStorageRecord(checkpoint);if(nextCheckpoint.owner!==owner||nextCheckpoint.epoch!==epoch||nextCheckpoint.seq!==current.metadata.seq)throw new Error('storage_checkpoint_stale');tx.objectStore('checkpoints').put(checkpoint,owner)}
     if(control){const nextControl=readStorageRecord(control);if(nextControl.owner!==owner||nextControl.epoch!==epoch)throw new Error('storage_control_scope');tx.objectStore('controls').put(control,owner)}else tx.objectStore('controls').delete(owner);
     tx.objectStore('bases').put(base,owner);tx.objectStore('flights').delete(owner);done(true);
@@ -394,8 +393,8 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
       {owner:sharedOwner,role:'shared-checks-primary',state:sharedState,cloud:sharedState,revision:sharedRevision},
     ].map(side=>{
       const epoch=globalThis.crypto?.randomUUID?.();if(!epoch)throw new Error('storage_fenced_recovery_epoch_unavailable');
-      return {...side,epoch,checkpoint:sealStorageRecord({version:2,owner:side.owner,epoch,seq:0,state:side.state,appMetadata:{storageRole:side.role,migrationIntent:'cloud-authoritative',sourceOwner:identity,targetOwner:identity,...(side.role==='primary'?{mainProjectionVersion:2}:{})},savedAt:stamp},{kind:'checkpoint'}),
-        base:sealStorageRecord({version:2,owner:side.owner,epoch,revision:side.revision,state:side.cloud,projection:'cloud',ackSeq:0},{kind:'cloud-base'})};
+      return {...side,epoch,checkpoint:sealStorageRecord(createStorageCheckpoint({owner:side.owner,epoch,seq:0,state:side.state,appMetadata:{storageRole:side.role,migrationIntent:'cloud-authoritative',sourceOwner:identity,targetOwner:identity,...(side.role==='primary'?{mainProjectionVersion:2}:{})},savedAt:stamp}),{kind:'checkpoint'}),
+        base:sealStorageRecord(createStorageCloudBase({owner:side.owner,epoch,revision:side.revision,state:side.cloud,ackSeq:0}),{kind:'cloud-base'})};
     });
     return open().then(db=>new Promise((resolve,reject)=>{
       const names=['cutovers','owner-bindings','owner-handoffs','bootstrap-groups','local-births','boundaries',...stores];

@@ -1,0 +1,978 @@
+{
+  "sourceRef": "83b57651f0c70bdef1fe1192dda0d0f75154c6fb",
+  "sourceSha256": "088fd80179099cf91c8b6aa0696e482828f4d24602642b10b981b039e95ffe27",
+  "snapshots": {
+    "initialized": {
+      "checkpoints": {
+        "data": {
+          "version": 2,
+          "owner": "writer-contract",
+          "epoch": "id-2",
+          "seq": 0,
+          "state": {
+            "notes": [
+              {
+                "id": "N",
+                "text": "original"
+              }
+            ],
+            "setting": true
+          },
+          "appMetadata": {
+            "storageRole": "primary",
+            "mainProjectionVersion": 2
+          },
+          "savedAt": "2026-10-09T00:00:00.000Z"
+        },
+        "checksum": "1910d50873f622d0"
+      },
+      "metadata": {
+        "epoch": "id-2",
+        "seq": 0,
+        "writer": "id-1"
+      },
+      "journal": [],
+      "bases": {
+        "data": {
+          "version": 2,
+          "owner": "writer-contract",
+          "epoch": "id-2",
+          "revision": 5,
+          "state": {
+            "notes": [
+              {
+                "id": "N",
+                "text": "original"
+              }
+            ],
+            "setting": true
+          },
+          "projection": "cloud",
+          "ackSeq": 0
+        },
+        "checksum": "682577743809d624"
+      },
+      "flights": null,
+      "controls": null
+    },
+    "appended": {
+      "checkpoints": {
+        "data": {
+          "version": 2,
+          "owner": "writer-contract",
+          "epoch": "id-2",
+          "seq": 0,
+          "state": {
+            "notes": [
+              {
+                "id": "N",
+                "text": "original"
+              }
+            ],
+            "setting": true
+          },
+          "appMetadata": {
+            "storageRole": "primary",
+            "mainProjectionVersion": 2
+          },
+          "savedAt": "2026-10-09T00:00:00.000Z"
+        },
+        "checksum": "1910d50873f622d0"
+      },
+      "metadata": {
+        "epoch": "id-2",
+        "seq": 2,
+        "writer": "id-1"
+      },
+      "journal": [
+        {
+          "data": {
+            "version": 2,
+            "owner": "writer-contract",
+            "epoch": "id-2",
+            "seq": 1,
+            "generation": 1,
+            "operationId": "id-3",
+            "at": "2026-10-09T00:00:00.000Z",
+            "surface": "notes",
+            "mutationType": "edit",
+            "changes": [
+              {
+                "type": "put",
+                "collection": "notes",
+                "id": "N",
+                "mode": "replace",
+                "record": {
+                  "id": "N",
+                  "text": "sent"
+                }
+              }
+            ],
+            "deleteIntents": {},
+            "appMetadata": {}
+          },
+          "checksum": "565d9efd9320c715"
+        },
+        {
+          "data": {
+            "version": 2,
+            "owner": "writer-contract",
+            "epoch": "id-2",
+            "seq": 2,
+            "generation": 2,
+            "operationId": "id-4",
+            "at": "2026-10-09T00:00:00.000Z",
+            "surface": "notes",
+            "mutationType": "edit",
+            "changes": [
+              {
+                "type": "put",
+                "collection": "notes",
+                "id": "M",
+                "mode": "insert",
+                "index": 1,
+                "record": {
+                  "id": "M",
+                  "text": "inserted"
+                }
+              }
+            ],
+            "deleteIntents": {},
+            "appMetadata": {}
+          },
+          "checksum": "b240c9a85d594724"
+        }
+      ],
+      "bases": {
+        "data": {
+          "version": 2,
+          "owner": "writer-contract",
+          "epoch": "id-2",
+          "revision": 5,
+          "state": {
+            "notes": [
+              {
+                "id": "N",
+                "text": "original"
+              }
+            ],
+            "setting": true
+          },
+          "projection": "cloud",
+          "ackSeq": 0
+        },
+        "checksum": "682577743809d624"
+      },
+      "flights": null,
+      "controls": null
+    },
+    "compactedPending": {
+      "checkpoints": {
+        "data": {
+          "version": 2,
+          "owner": "writer-contract",
+          "epoch": "id-2",
+          "seq": 2,
+          "state": {
+            "notes": [
+              {
+                "id": "N",
+                "text": "sent"
+              },
+              {
+                "id": "M",
+                "text": "inserted"
+              }
+            ],
+            "setting": true
+          },
+          "appMetadata": {
+            "storageRole": "primary",
+            "mainProjectionVersion": 2
+          },
+          "savedAt": "2026-10-09T00:00:00.000Z"
+        },
+        "checksum": "3cd4457212e0f5aa"
+      },
+      "metadata": {
+        "epoch": "id-2",
+        "seq": 2,
+        "writer": "id-1"
+      },
+      "journal": [
+        {
+          "data": {
+            "version": 2,
+            "owner": "writer-contract",
+            "epoch": "id-2",
+            "seq": 1,
+            "generation": 1,
+            "operationId": "id-3",
+            "at": "2026-10-09T00:00:00.000Z",
+            "surface": "notes",
+            "mutationType": "edit",
+            "changes": [
+              {
+                "type": "put",
+                "collection": "notes",
+                "id": "N",
+                "mode": "replace",
+                "record": {
+                  "id": "N",
+                  "text": "sent"
+                }
+              }
+            ],
+            "deleteIntents": {},
+            "appMetadata": {}
+          },
+          "checksum": "565d9efd9320c715"
+        },
+        {
+          "data": {
+            "version": 2,
+            "owner": "writer-contract",
+            "epoch": "id-2",
+            "seq": 2,
+            "generation": 2,
+            "operationId": "id-4",
+            "at": "2026-10-09T00:00:00.000Z",
+            "surface": "notes",
+            "mutationType": "edit",
+            "changes": [
+              {
+                "type": "put",
+                "collection": "notes",
+                "id": "M",
+                "mode": "insert",
+                "index": 1,
+                "record": {
+                  "id": "M",
+                  "text": "inserted"
+                }
+              }
+            ],
+            "deleteIntents": {},
+            "appMetadata": {}
+          },
+          "checksum": "b240c9a85d594724"
+        }
+      ],
+      "bases": {
+        "data": {
+          "version": 2,
+          "owner": "writer-contract",
+          "epoch": "id-2",
+          "revision": 5,
+          "state": {
+            "notes": [
+              {
+                "id": "N",
+                "text": "original"
+              }
+            ],
+            "setting": true
+          },
+          "projection": "cloud",
+          "ackSeq": 0
+        },
+        "checksum": "682577743809d624"
+      },
+      "flights": null,
+      "controls": null
+    },
+    "flight": {
+      "checkpoints": {
+        "data": {
+          "version": 2,
+          "owner": "writer-contract",
+          "epoch": "id-2",
+          "seq": 2,
+          "state": {
+            "notes": [
+              {
+                "id": "N",
+                "text": "sent"
+              },
+              {
+                "id": "M",
+                "text": "inserted"
+              }
+            ],
+            "setting": true
+          },
+          "appMetadata": {
+            "storageRole": "primary",
+            "mainProjectionVersion": 2
+          },
+          "savedAt": "2026-10-09T00:00:00.000Z"
+        },
+        "checksum": "3cd4457212e0f5aa"
+      },
+      "metadata": {
+        "epoch": "id-2",
+        "seq": 2,
+        "writer": "id-1"
+      },
+      "journal": [
+        {
+          "data": {
+            "version": 2,
+            "owner": "writer-contract",
+            "epoch": "id-2",
+            "seq": 1,
+            "generation": 1,
+            "operationId": "id-3",
+            "at": "2026-10-09T00:00:00.000Z",
+            "surface": "notes",
+            "mutationType": "edit",
+            "changes": [
+              {
+                "type": "put",
+                "collection": "notes",
+                "id": "N",
+                "mode": "replace",
+                "record": {
+                  "id": "N",
+                  "text": "sent"
+                }
+              }
+            ],
+            "deleteIntents": {},
+            "appMetadata": {}
+          },
+          "checksum": "565d9efd9320c715"
+        },
+        {
+          "data": {
+            "version": 2,
+            "owner": "writer-contract",
+            "epoch": "id-2",
+            "seq": 2,
+            "generation": 2,
+            "operationId": "id-4",
+            "at": "2026-10-09T00:00:00.000Z",
+            "surface": "notes",
+            "mutationType": "edit",
+            "changes": [
+              {
+                "type": "put",
+                "collection": "notes",
+                "id": "M",
+                "mode": "insert",
+                "index": 1,
+                "record": {
+                  "id": "M",
+                  "text": "inserted"
+                }
+              }
+            ],
+            "deleteIntents": {},
+            "appMetadata": {}
+          },
+          "checksum": "b240c9a85d594724"
+        }
+      ],
+      "bases": {
+        "data": {
+          "version": 2,
+          "owner": "writer-contract",
+          "epoch": "id-2",
+          "revision": 5,
+          "state": {
+            "notes": [
+              {
+                "id": "N",
+                "text": "original"
+              }
+            ],
+            "setting": true
+          },
+          "projection": "cloud",
+          "ackSeq": 0
+        },
+        "checksum": "682577743809d624"
+      },
+      "flights": {
+        "data": {
+          "version": 2,
+          "owner": "writer-contract",
+          "epoch": "id-2",
+          "operationId": "send-1",
+          "baseRevision": 5,
+          "startSeq": 1,
+          "endSeq": 2,
+          "snapshot": {
+            "notes": [
+              {
+                "id": "N",
+                "text": "sent"
+              },
+              {
+                "id": "M",
+                "text": "inserted"
+              }
+            ],
+            "setting": true
+          },
+          "deleteIntents": {},
+          "generation": 2,
+          "mutationType": "edit",
+          "surface": "notes",
+          "audit": {
+            "deviceLabel": "fixture",
+            "generation": 2
+          }
+        },
+        "checksum": "9b89e15df9b72421"
+      },
+      "controls": null
+    },
+    "newerPending": {
+      "checkpoints": {
+        "data": {
+          "version": 2,
+          "owner": "writer-contract",
+          "epoch": "id-2",
+          "seq": 2,
+          "state": {
+            "notes": [
+              {
+                "id": "N",
+                "text": "sent"
+              },
+              {
+                "id": "M",
+                "text": "inserted"
+              }
+            ],
+            "setting": true
+          },
+          "appMetadata": {
+            "storageRole": "primary",
+            "mainProjectionVersion": 2
+          },
+          "savedAt": "2026-10-09T00:00:00.000Z"
+        },
+        "checksum": "3cd4457212e0f5aa"
+      },
+      "metadata": {
+        "epoch": "id-2",
+        "seq": 3,
+        "writer": "id-1"
+      },
+      "journal": [
+        {
+          "data": {
+            "version": 2,
+            "owner": "writer-contract",
+            "epoch": "id-2",
+            "seq": 1,
+            "generation": 1,
+            "operationId": "id-3",
+            "at": "2026-10-09T00:00:00.000Z",
+            "surface": "notes",
+            "mutationType": "edit",
+            "changes": [
+              {
+                "type": "put",
+                "collection": "notes",
+                "id": "N",
+                "mode": "replace",
+                "record": {
+                  "id": "N",
+                  "text": "sent"
+                }
+              }
+            ],
+            "deleteIntents": {},
+            "appMetadata": {}
+          },
+          "checksum": "565d9efd9320c715"
+        },
+        {
+          "data": {
+            "version": 2,
+            "owner": "writer-contract",
+            "epoch": "id-2",
+            "seq": 2,
+            "generation": 2,
+            "operationId": "id-4",
+            "at": "2026-10-09T00:00:00.000Z",
+            "surface": "notes",
+            "mutationType": "edit",
+            "changes": [
+              {
+                "type": "put",
+                "collection": "notes",
+                "id": "M",
+                "mode": "insert",
+                "index": 1,
+                "record": {
+                  "id": "M",
+                  "text": "inserted"
+                }
+              }
+            ],
+            "deleteIntents": {},
+            "appMetadata": {}
+          },
+          "checksum": "b240c9a85d594724"
+        },
+        {
+          "data": {
+            "version": 2,
+            "owner": "writer-contract",
+            "epoch": "id-2",
+            "seq": 3,
+            "generation": 3,
+            "operationId": "id-5",
+            "at": "2026-10-09T00:00:00.000Z",
+            "surface": "notes",
+            "mutationType": "edit",
+            "changes": [
+              {
+                "type": "put",
+                "collection": "notes",
+                "id": "N",
+                "mode": "replace",
+                "record": {
+                  "id": "N",
+                  "text": "newer pending"
+                }
+              }
+            ],
+            "deleteIntents": {},
+            "appMetadata": {}
+          },
+          "checksum": "819ecabd724ab1b9"
+        }
+      ],
+      "bases": {
+        "data": {
+          "version": 2,
+          "owner": "writer-contract",
+          "epoch": "id-2",
+          "revision": 5,
+          "state": {
+            "notes": [
+              {
+                "id": "N",
+                "text": "original"
+              }
+            ],
+            "setting": true
+          },
+          "projection": "cloud",
+          "ackSeq": 0
+        },
+        "checksum": "682577743809d624"
+      },
+      "flights": {
+        "data": {
+          "version": 2,
+          "owner": "writer-contract",
+          "epoch": "id-2",
+          "operationId": "send-1",
+          "baseRevision": 5,
+          "startSeq": 1,
+          "endSeq": 2,
+          "snapshot": {
+            "notes": [
+              {
+                "id": "N",
+                "text": "sent"
+              },
+              {
+                "id": "M",
+                "text": "inserted"
+              }
+            ],
+            "setting": true
+          },
+          "deleteIntents": {},
+          "generation": 2,
+          "mutationType": "edit",
+          "surface": "notes",
+          "audit": {
+            "deviceLabel": "fixture",
+            "generation": 2
+          }
+        },
+        "checksum": "9b89e15df9b72421"
+      },
+      "controls": null
+    },
+    "acknowledged": {
+      "checkpoints": {
+        "data": {
+          "version": 2,
+          "owner": "writer-contract",
+          "epoch": "id-2",
+          "seq": 3,
+          "state": {
+            "notes": [
+              {
+                "id": "N",
+                "text": "newer pending"
+              },
+              {
+                "id": "M",
+                "text": "inserted"
+              }
+            ],
+            "setting": true
+          },
+          "appMetadata": {
+            "storageRole": "primary",
+            "mainProjectionVersion": 2,
+            "revision": 6
+          },
+          "savedAt": "2026-10-09T00:00:00.000Z"
+        },
+        "checksum": "02e2e0ba97c56196"
+      },
+      "metadata": {
+        "epoch": "id-2",
+        "seq": 3,
+        "writer": "id-1"
+      },
+      "journal": [
+        {
+          "data": {
+            "version": 2,
+            "owner": "writer-contract",
+            "epoch": "id-2",
+            "seq": 1,
+            "generation": 1,
+            "operationId": "id-3",
+            "at": "2026-10-09T00:00:00.000Z",
+            "surface": "notes",
+            "mutationType": "edit",
+            "changes": [
+              {
+                "type": "put",
+                "collection": "notes",
+                "id": "N",
+                "mode": "replace",
+                "record": {
+                  "id": "N",
+                  "text": "sent"
+                }
+              }
+            ],
+            "deleteIntents": {},
+            "appMetadata": {}
+          },
+          "checksum": "565d9efd9320c715"
+        },
+        {
+          "data": {
+            "version": 2,
+            "owner": "writer-contract",
+            "epoch": "id-2",
+            "seq": 2,
+            "generation": 2,
+            "operationId": "id-4",
+            "at": "2026-10-09T00:00:00.000Z",
+            "surface": "notes",
+            "mutationType": "edit",
+            "changes": [
+              {
+                "type": "put",
+                "collection": "notes",
+                "id": "M",
+                "mode": "insert",
+                "index": 1,
+                "record": {
+                  "id": "M",
+                  "text": "inserted"
+                }
+              }
+            ],
+            "deleteIntents": {},
+            "appMetadata": {}
+          },
+          "checksum": "b240c9a85d594724"
+        },
+        {
+          "data": {
+            "version": 2,
+            "owner": "writer-contract",
+            "epoch": "id-2",
+            "seq": 3,
+            "generation": 3,
+            "operationId": "id-5",
+            "at": "2026-10-09T00:00:00.000Z",
+            "surface": "notes",
+            "mutationType": "edit",
+            "changes": [
+              {
+                "type": "put",
+                "collection": "notes",
+                "id": "N",
+                "mode": "replace",
+                "record": {
+                  "id": "N",
+                  "text": "newer pending"
+                }
+              }
+            ],
+            "deleteIntents": {},
+            "appMetadata": {}
+          },
+          "checksum": "819ecabd724ab1b9"
+        }
+      ],
+      "bases": {
+        "data": {
+          "version": 2,
+          "owner": "writer-contract",
+          "epoch": "id-2",
+          "revision": 6,
+          "state": {
+            "notes": [
+              {
+                "id": "N",
+                "text": "sent"
+              },
+              {
+                "id": "M",
+                "text": "inserted"
+              }
+            ],
+            "setting": true
+          },
+          "projection": "cloud",
+          "ackSeq": 2
+        },
+        "checksum": "347ebe719c78d311"
+      },
+      "flights": null,
+      "controls": {
+        "data": {
+          "version": 2,
+          "owner": "writer-contract",
+          "epoch": "id-2",
+          "updatedAt": "2026-10-09T00:00:00.000Z",
+          "retry": {
+            "attempts": 1
+          }
+        },
+        "checksum": "9a4d35e6c1c8cfc2"
+      }
+    },
+    "compactedAcknowledged": {
+      "checkpoints": {
+        "data": {
+          "version": 2,
+          "owner": "writer-contract",
+          "epoch": "id-2",
+          "seq": 3,
+          "state": {
+            "notes": [
+              {
+                "id": "N",
+                "text": "newer pending"
+              },
+              {
+                "id": "M",
+                "text": "inserted"
+              }
+            ],
+            "setting": true
+          },
+          "appMetadata": {
+            "storageRole": "primary",
+            "mainProjectionVersion": 2,
+            "revision": 6
+          },
+          "savedAt": "2026-10-09T00:00:00.000Z"
+        },
+        "checksum": "02e2e0ba97c56196"
+      },
+      "metadata": {
+        "epoch": "id-2",
+        "seq": 3,
+        "writer": "id-1"
+      },
+      "journal": [
+        {
+          "data": {
+            "version": 2,
+            "owner": "writer-contract",
+            "epoch": "id-2",
+            "seq": 3,
+            "generation": 3,
+            "operationId": "id-5",
+            "at": "2026-10-09T00:00:00.000Z",
+            "surface": "notes",
+            "mutationType": "edit",
+            "changes": [
+              {
+                "type": "put",
+                "collection": "notes",
+                "id": "N",
+                "mode": "replace",
+                "record": {
+                  "id": "N",
+                  "text": "newer pending"
+                }
+              }
+            ],
+            "deleteIntents": {},
+            "appMetadata": {}
+          },
+          "checksum": "819ecabd724ab1b9"
+        }
+      ],
+      "bases": {
+        "data": {
+          "version": 2,
+          "owner": "writer-contract",
+          "epoch": "id-2",
+          "revision": 6,
+          "state": {
+            "notes": [
+              {
+                "id": "N",
+                "text": "sent"
+              },
+              {
+                "id": "M",
+                "text": "inserted"
+              }
+            ],
+            "setting": true
+          },
+          "projection": "cloud",
+          "ackSeq": 2
+        },
+        "checksum": "347ebe719c78d311"
+      },
+      "flights": null,
+      "controls": {
+        "data": {
+          "version": 2,
+          "owner": "writer-contract",
+          "epoch": "id-2",
+          "updatedAt": "2026-10-09T00:00:00.000Z",
+          "retry": {
+            "attempts": 1
+          }
+        },
+        "checksum": "9a4d35e6c1c8cfc2"
+      }
+    },
+    "rebased": {
+      "checkpoints": {
+        "data": {
+          "version": 2,
+          "owner": "writer-contract",
+          "epoch": "id-2",
+          "seq": 3,
+          "state": {
+            "notes": [
+              {
+                "id": "N",
+                "text": "newer pending"
+              },
+              {
+                "id": "M",
+                "text": "inserted"
+              },
+              {
+                "id": "R",
+                "text": "other device"
+              }
+            ],
+            "setting": false
+          },
+          "appMetadata": {
+            "storageRole": "primary",
+            "mainProjectionVersion": 2,
+            "revision": 7
+          },
+          "savedAt": "2026-10-09T00:00:00.000Z"
+        },
+        "checksum": "6a8b36449a8fb5a0"
+      },
+      "metadata": {
+        "epoch": "id-2",
+        "seq": 3,
+        "writer": "id-1"
+      },
+      "journal": [
+        {
+          "data": {
+            "version": 2,
+            "owner": "writer-contract",
+            "epoch": "id-2",
+            "seq": 3,
+            "generation": 3,
+            "operationId": "id-5",
+            "at": "2026-10-09T00:00:00.000Z",
+            "surface": "notes",
+            "mutationType": "edit",
+            "changes": [
+              {
+                "type": "put",
+                "collection": "notes",
+                "id": "N",
+                "mode": "replace",
+                "record": {
+                  "id": "N",
+                  "text": "newer pending"
+                }
+              }
+            ],
+            "deleteIntents": {},
+            "appMetadata": {}
+          },
+          "checksum": "819ecabd724ab1b9"
+        }
+      ],
+      "bases": {
+        "data": {
+          "version": 2,
+          "owner": "writer-contract",
+          "epoch": "id-2",
+          "revision": 7,
+          "state": {
+            "notes": [
+              {
+                "id": "N",
+                "text": "newer pending"
+              },
+              {
+                "id": "M",
+                "text": "inserted"
+              },
+              {
+                "id": "R",
+                "text": "other device"
+              }
+            ],
+            "setting": false
+          },
+          "projection": "cloud",
+          "ackSeq": 2
+        },
+        "checksum": "b3e0e63f091098df"
+      },
+      "flights": null,
+      "controls": {
+        "data": {
+          "version": 2,
+          "owner": "writer-contract",
+          "epoch": "id-2",
+          "updatedAt": "2026-10-09T00:00:00.000Z",
+          "conflict": {
+            "kind": "remote"
+          }
+        },
+        "checksum": "f3530c8130292111"
+      }
+    }
+  }
+}

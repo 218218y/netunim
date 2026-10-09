@@ -3,7 +3,7 @@
 /**
  * A status read needs cursor evidence, not the whole persisted checkpoint.
  * State/Flight validation remains the journal owner's responsibility.
- * @typedef {{owner:string,epoch:string,ackSeq:number,revision:number}} CloudCursor
+ * @typedef {import('./storage-cloud-ack.js').StorageAckCursor} CloudCursor
  * @typedef {{seq:number,base:CloudCursor|null,pending:boolean,flight:object|null,control:object|null}} CloudStatusHead
  * @typedef {{seq:number,base:{owner:string,epoch:string}|null}} ObservedCloudHead
  */

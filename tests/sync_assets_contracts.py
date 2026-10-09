@@ -12,7 +12,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-TEXT_SUFFIXES = {'.html', '.css', '.js', '.webmanifest'}
+TEXT_SUFFIXES = {'.html', '.css', '.js', '.ts', '.webmanifest'}
 
 
 def load_sync_module():
@@ -171,6 +171,24 @@ class SyncAssetContracts(unittest.TestCase):
             self.assertEqual(target.read_bytes(), source.read_bytes())
         self.run_sync(check=True)
 
+    def test_shared_data_types_are_generated_without_changing_runtime_cache(self):
+        source = self.root / 'shared/storage-json.d.ts'
+        before_hashes = self.hashes()
+        source.write_bytes(source.read_bytes() + b'\n// data type change\n')
+        before = self.snapshot()
+        self.run_sync(check=True, expected=1)
+        self.assertEqual(self.snapshot(), before, 'type drift check must be read-only')
+        self.run_sync()
+        copies = [self.root / f'netunim-{app}/site/assets/js/shared/storage-json.d.ts' for app in ('kupa', 'orders')]
+        self.assertTrue(all(path.read_bytes() == source.read_bytes() for path in copies))
+        self.assertEqual(self.hashes(), before_hashes, 'data-only contracts are not runtime cache assets')
+        self.run_sync(check=True)
+        source.unlink()
+        self.run_sync(check=True, expected=1)
+        self.run_sync()
+        self.assertTrue(all(not path.exists() for path in copies))
+        self.assertEqual(self.hashes(), before_hashes)
+
     def test_removed_document_search_source_removes_obsolete_public_copies(self):
         source = self.root / 'shared/document-search/ui/document-search-view.js'
         copies = [self.root / f'netunim-{app}/site/assets/js/ui/document-search-view.js' for app in ('kupa', 'orders')]
@@ -304,6 +322,20 @@ class StagedAssetContracts(unittest.TestCase):
             copy = f'netunim-{app}/site/assets/js/shared/html.js'
             self.assertEqual(self.git('show', f'HEAD:{copy}'), updated)
         self.assertEqual(self.git('status', '--porcelain'), b'')
+
+    def test_staged_data_types_use_only_the_proposed_commit(self):
+        source = 'shared/storage-json.d.ts'
+        staged = (self.root / source).read_bytes() + b'\n// staged data type\n'
+        unstaged = staged + b'// uncommitted data type\n'
+        (self.root / source).write_bytes(staged)
+        self.git('add', '--', source)
+        (self.root / source).write_bytes(unstaged)
+        self.run_tool('--staged')
+        for app in ('kupa', 'orders'):
+            copy = f'netunim-{app}/site/assets/js/shared/storage-json.d.ts'
+            self.assertEqual(self.index_bytes(copy), staged)
+        self.assertEqual((self.root / source).read_bytes(), unstaged)
+        self.assertEqual(self.run_tool('--staged').stdout, '')
 
 
 if __name__ == '__main__':
