@@ -344,7 +344,7 @@ async function refreshStatus({reconcile=false}={}){
 }
 
 async function recoverPendingMorningOperation({quiet=false,assertCurrent}={}){
-  try{assertCurrent??=captureScope();assertCurrent()}catch(error){return {ok:false,state:'scope-changed',error}}
+  try{const assertSource=assertCurrent||(()=>{}),assertWrite=captureScope();assertCurrent=()=>{assertSource();assertWrite()};assertCurrent()}catch(error){return {ok:false,state:'scope-changed',error}}
   return lifetime.join('recovery',assertCurrent,async()=>{
   const stored=loadMorningDebtRecoveryContext();if(stored)pendingRecovery=stored;
   const context=pendingRecovery;if(!context||createBusy)return {ok:true,state:context?'busy':'none'};

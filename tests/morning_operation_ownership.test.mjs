@@ -40,3 +40,10 @@ for(const boundary of ['headers','body','refresh','application'])for(const trans
     assert.equal(messages.some(message=>message.includes('saved')),false);
   }finally{for(const [key,descriptor] of previous){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}}
 });
+
+test('a read-only timer receipt cannot authorize Morning server reconciliation',async()=>{
+  let writes=0;
+  const read=()=>{},operationScope={capture:()=>{throw Object.assign(Error('secondary'),{code:'MORNING_OPERATION_SCOPE_CHANGED'})},captureRead:()=>read};
+  const documents=createDomainsCustomersDocuments({operationScope,model:{state:{customerDebts:[]}},modal(){},toast(){},confirmDialog:async()=>true,markModalDraftSaved(){},dateEditorMarkup:()=>'',supaFetch:async()=>{writes++;throw Error('unexpected reconcile')},documentsBrowser:{invalidateCache(){}}});
+  assert.equal((await documents.recoverPendingMorningOperation({assertCurrent:read})).ok,false);assert.equal(writes,0);documents.dispose();
+});
