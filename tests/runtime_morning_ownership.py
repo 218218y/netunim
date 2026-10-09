@@ -52,8 +52,9 @@ with BrowserSession(ROOT/'netunim-orders/site','morning-operation-ownership') as
     browser._navigate()
     restarted=browser.evaluate(r"""(async()=>{
       await appReady;const {createStorageJournal}=await import('./assets/js/shared/storage-journal.js'),{createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js'),{STORAGE_SCHEMAS}=await import('./assets/js/shared/storage-v2-schema.js');const db=createStorageJournalDb(),report=[];
+      const {assertOrderEntityInvariants}=await import('./assets/js/state/validation.js'),validate=state=>assertOrderEntityInvariants(state,{required:true});
       for(let id=1;id<=12;id++){
-        const a=await createStorageJournal({owner:'morning-'+id+'-A:orders',schema:STORAGE_SCHEMAS.orders,db}).recover(),b=await createStorageJournal({owner:'morning-'+id+'-B:orders',schema:STORAGE_SCHEMAS.orders,db}).recover(),operationId='11111111-1111-4111-8111-'+String(id).padStart(12,'0');
+        const a=await createStorageJournal({owner:'morning-'+id+'-A:orders',schema:STORAGE_SCHEMAS.orders,db,validate}).recover(),b=await createStorageJournal({owner:'morning-'+id+'-B:orders',schema:STORAGE_SCHEMAS.orders,db,validate}).recover(),operationId='11111111-1111-4111-8111-'+String(id).padStart(12,'0');
         report.push(a.state.notes[0].id==='note-A'&&b.state.notes[0].id==='note-B'&&a.state.customerDebts[0].debtProgress.length===2&&a.state.customerDebts[0].debtProgress.every(row=>row.id.startsWith('MORNING:'+operationId+':'))&&!b.state.customerDebts[0].debtProgress?.length);
       }return report;
     })()""",timeout=45)
