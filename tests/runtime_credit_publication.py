@@ -19,6 +19,14 @@ FLOW = r"""(async()=>{
  cloudTransport.rpcSaveSharedChecksV2=async rows=>{checks={revision:1,state:{version:1,checks:structuredClone(rows),bankEvents:[]}};return {r:{ok:true},row:checks}};
  await storageV2Coordinator.ownerUiPorts().startStorageV2OwnerTransfer({targetOwner:owner,intent:'upload-local'});
  session.connectionMode='supabase';session.backendReady=true;session.storageProtocolBlocked=false;
+ // The initial transfer uses the public command. Subsequent Main saves use
+ // the RPC closure's auth transport; bind that controlled server boundary too.
+ cloudAuth.supaRest=async(path,options)=>{
+   check(String(path).endsWith('/save_kupa_document_v6'),'unexpected fixture RPC: '+path);
+   const request=JSON.parse(options.body);check(request.p_expected_revision===main.revision,'unexpected fixture Main revision');
+   main={revision:main.revision+1,state:JSON.parse(JSON.stringify(request.p_state))};
+   return new Response(JSON.stringify(main));
+ };
  const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');const db=createStorageJournalDb(),identity=owner+':kupa',durableBefore=JSON.stringify(await db.load(identity));
  localStorage.setItem('netunim_kupa_bank_bridge_token_v1','fixture-pairing');localStorage.setItem('netunim_kupa_credit_auto_daily_v1','0');
  cloudTransport.claimFinanceSyncLease=async()=>({acquired:true,leaseName:'credit',leaseToken:'fixture',fenceEpoch:1});cloudTransport.releaseFinanceSyncLease=async()=>true;
@@ -30,8 +38,8 @@ FLOW = r"""(async()=>{
    if(String(url).includes('/v2/credit/sync')){providerRuns++;return Promise.resolve(new Response(JSON.stringify({ok:true,syncedAt:'2026-10-09T10:00:00Z',attemptedCount:1,profiles:[{profileId:'P',provider:'max',accounts:[{accountNumber:'card',txns:[{id:'stable-issuer-tx',date:'2026-10-09',processedDate:'2026-10-09',chargedAmount:12}]}]}],errors:[]})))}
    return originalFetch(url,options);
  };
- const save=storagePersistence.saveState;let followupFailure=failure,followups=0;
- storagePersistence.saveState=async(...args)=>{followups++;if(followupFailure==='throw')throw new DOMException('controlled ancillary failure','QuotaExceededError');if(followupFailure==='false')return false;return save(...args)};
+ const save=storagePersistence.saveState;let followupFailure=failure,followups=0,localResult=null;
+ storagePersistence.saveState=async(...args)=>{followups++;if(followupFailure==='throw')throw new DOMException('controlled ancillary failure','QuotaExceededError');if(followupFailure==='false')return false;try{localResult=await save(...args);return localResult}catch(error){localResult={error:error.message,stack:error.stack};throw error}};
  uiModal.confirmDialog=async()=>true;const messages=[];uiStatus.toast=message=>messages.push(message);
  uiNavigation.setPage('credit');
  const result=action==='refresh'?await domainsCreditController.refreshCreditSync():action==='settings'?await domainsCreditController.saveCreditCardOrder([]):await domainsCreditController.resetCreditSync();
@@ -45,7 +53,9 @@ FLOW = r"""(async()=>{
  unavailable=true;const before=JSON.stringify(state.creditSync);check(await domainsCreditController.retryCreditPublication()===false,'unavailable read confirmed recovery');
  check(JSON.stringify(state.creditSync)===before&&domainsCreditController.creditSyncUiState().publicationWarning,'unverified read discarded the last confirmed result');
  unavailable=false;followupFailure=null;const beforeReads=reads;
- check(await uiActions['retry-credit-publication']({},null)===true,'real local follow-up did not complete');await mainStorageV2.commitPromise;
+ const completed=await uiActions['retry-credit-publication']({},null);
+ const head=await mainStorageV2.cloudState();
+ check(completed===true,'real local follow-up did not complete: '+JSON.stringify({localResult,messages,warning:domainsCreditController.creditSyncUiState().publicationWarningCode,main:mainStorageV2.diagnostics,cloudConflict:session.cloudConflictPending,revision:session.dbRevision,head:{seq:head.seq,baseRevision:head.base.revision,ackSeq:head.base.ackSeq,pending:head.pending,flight:!!head.flight,control:head.control},saveStatus:document.getElementById('saveIndicator')?.textContent}));await mainStorageV2.commitPromise;
  check(reads>beforeReads,'recovery did not re-read the authoritative Finance document');
  check(commits===1&&providerRuns===(action==='refresh'?1:0)&&resets===(action==='reset'?1:0),'recovery repeated a provider or remote effect');
  check(!domainsCreditController.creditSyncUiState().publicationWarning,'completed follow-up retained the warning');

@@ -90,6 +90,12 @@ tab; its controller also captures live write authority.
   fresh-page recovery. Finance/provider responses and false/quota-shaped
   follow-up failures are injected; this is not actual quota exhaustion or a
   live issuer/production Supabase experiment.
+  The first full-gate attempt at `45e7d06c4687423ed09e94d1dc9bdff1614c017f`
+  exposed an incomplete fixture: initial owner-transfer Main RPC was bound,
+  but the subsequent production save's internal auth transport was not.
+  Binding that controlled RPC with revision validation completed all six
+  real-IDB/reload cases locally on Windows. No application fence or success
+  assertion was relaxed; the final branch revision needs a new full CI pass.
 - Existing Browser/PostgreSQL, offline/reconnect, lost response, Main/Shared,
   ownership and two-computer suites remain full gates. No schema, wire format,
   SQL, ACK, provider fallback, cooldown or retry budget changed.
