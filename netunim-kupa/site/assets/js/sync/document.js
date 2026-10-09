@@ -66,7 +66,7 @@ async function applyFinanceOnlyRow(row){
   const publication=await commitCloudCheckpoint({
     commit:()=>replaceStorageV2CurrentState(next,{expectedSeq:cloud.seq}),
     isCurrent:committed=>committed===cloud.seq&&tab.primaryTab&&Number(session.localGeneration||0)===generation&&Number(session.financeRevision||0)===previousRevision,
-    publish:()=>replaceVisibleState(next),
+    publish:()=>{replaceVisibleState(next)},
   });
   if(!publication.published){if(publication.reason==='publication-error')throw publication.error;return false}
   session.financeRevision=revision;session.financeUpdatedAt=row.financeUpdatedAt||session.financeUpdatedAt||null;

@@ -82,6 +82,15 @@ public shell assets. Offline reads are scoped explicitly to the current CACHE; u
 but can never supply application assets or navigation fallback. Cross-origin, non-GET and business-data requests
 bypass interception. Cleanup is app-scoped.
 
+Static contracts
+----------------
+tsconfig.contracts.json checks eight canonical authorization, publication, cloud-status,
+startup and polling implementations with strict checkJs/noEmit. JSDoc lives beside the
+implementation; typed consumer fixtures reject invalid fields/results and async publication.
+The full models gate runs the compiler, including through the offline dependency path.
+See docs/STATIC_CONTRACTS.md for precise coverage and remaining persisted-data/ACK work.
+This is a development gate; both sites remain native JavaScript ESM with runtime validation.
+
 Development contract
 --------------------
 Run verify.bat before and after changes. ESLint, module-graph, security, public-root, direct unit, UI, recovery,

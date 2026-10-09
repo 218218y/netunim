@@ -81,6 +81,7 @@ def _exercise_external_cache(module) -> None:
 
         node_archive = vendor / 'node/node.tar.gz'
         npm_archive = vendor / 'npm/eslint.tgz'
+        typescript_archive = vendor / 'npm/typescript.tgz'
         _write_tar(node_archive, {
             'node-v1.2.3-linux-x64/bin/node': (b'#!/bin/sh\necho v1.2.3\n', 0o755),
         })
@@ -88,11 +89,21 @@ def _exercise_external_cache(module) -> None:
             'package/bin/eslint.js': (b'// tiny eslint contract\n', 0o644),
             'package/package.json': (b'{"name":"eslint"}\n', 0o644),
         })
+        _write_tar(typescript_archive, {
+            'package/bin/tsc': (b'// tiny tsc contract\n', 0o644),
+            'package/lib/tsc.js': (b'// tiny tsc loader contract\n', 0o644),
+            'package/lib/_tsc.js': (b'// tiny cli compiler contract\n', 0o644),
+            'package/lib/typescript.js': (b'// tiny compiler contract\n', 0o644),
+            'package/package.json': (b'{"name":"typescript"}\n', 0o644),
+        })
         manifest = {
             'schema': 1,
             'profile': 'contract-linux-x64-glibc',
             'node': {'version': '1.2.3', 'file': 'node/node.tar.gz'},
-            'npm': [{'lockPath': 'node_modules/eslint', 'file': 'npm/eslint.tgz'}],
+            'npm': [
+                {'lockPath': 'node_modules/eslint', 'file': 'npm/eslint.tgz'},
+                {'lockPath': 'node_modules/typescript', 'file': 'npm/typescript.tgz'},
+            ],
             'python': [],
         }
         manifest_path.parent.mkdir(parents=True, exist_ok=True)
@@ -122,6 +133,11 @@ def _exercise_external_cache(module) -> None:
             (root / 'node_modules/eslint/bin/eslint.js').unlink()
             module.install()
             ok((root / 'node_modules/eslint/bin/eslint.js').is_file(), 'offline deps: incomplete/corrupt cache entry is rebuilt transactionally')
+
+            for compiler_file in ('bin/tsc', 'lib/tsc.js', 'lib/_tsc.js', 'lib/typescript.js'):
+                (root / 'node_modules/typescript' / compiler_file).unlink()
+                module.install()
+                ok((root / 'node_modules/typescript' / compiler_file).is_file(), f'offline deps: missing {compiler_file} invalidates and rebuilds the compiler cache')
 
             env = module.offline_env(manifest)
             ok(Path(env['NETUNIM_OFFLINE_NODE_MODULES']) == root / 'node_modules' and Path(env['NETUNIM_OFFLINE_INSTALL_ROOT']) == root, 'offline deps: child verification processes receive the external cache paths explicitly')
@@ -198,7 +214,7 @@ lock_paths = {item['lockPath'] for item in targets}
 expected_roots = {f'node_modules/{name}' for name in package.get('devDependencies', {})}
 ok(expected_roots <= lock_paths, 'offline deps: every declared npm development dependency is in the lock-derived offline closure')
 ok(all(item['url'].startswith('https://registry.npmjs.org/') and item['integrity'].startswith('sha') for item in targets), 'offline deps: npm archives are sourced from lockfile URLs with integrity metadata')
-ok(len(targets) < 100, f'offline deps: focused npm closure stays small ({len(targets)} archives; no Vite/React/TypeScript toolchain copied)')
+ok(len(targets) < 100, f'offline deps: focused npm closure stays small ({len(targets)} archives; no application framework/bundler or native compiler closure copied)')
 
 manifest = json.loads((ROOT / 'vendor/offline/manifest.json').read_text(encoding='utf-8'))
 ok(manifest.get('schema') == 2, 'offline deps: manifest uses semantic dependency metadata schema v2')

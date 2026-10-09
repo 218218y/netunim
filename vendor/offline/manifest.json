@@ -6,7 +6,7 @@
     "machine": "x86_64",
     "libc": "glibc"
   },
-  "npmClosureSha256": "2d79fefa2e5576dbe79b551b83e540c9831c0ae453cfd7a9267a4ae1ef4f6674",
+  "npmClosureSha256": "db74f870743c3112cfd811f0ddff4077577ab464bedb908add04e8024d2a0beb",
   "configSemanticSha256": "2c9fa55342f48f0a61ffc00398aabad13083a3c5cedccf0937861f363d4b1ba7",
   "node": {
     "version": "24.21.0",
@@ -606,6 +606,14 @@
       "url": "https://registry.npmjs.org/type-check/-/type-check-0.4.0.tgz",
       "integrity": "sha512-XleUoc9uwGXqjWwXaUTZAmzMcFZ5858QA2vvx1Ur5xIcixXIP+8LnFDgRplU30us6teqdlskFfu+ae4K79Ooew==",
       "file": "npm/type-check-0.4.0.tgz"
+    },
+    {
+      "lockPath": "node_modules/typescript",
+      "name": "typescript",
+      "version": "6.0.3",
+      "url": "https://registry.npmjs.org/typescript/-/typescript-6.0.3.tgz",
+      "integrity": "sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw==",
+      "file": "npm/typescript-6.0.3.tgz"
     },
     {
       "lockPath": "node_modules/uri-js",

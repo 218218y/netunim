@@ -69,6 +69,14 @@ Normal local setup:
   npm ci
   python tools/install-git-hooks.py
 
+Focused static-contract gate:
+  npm run typecheck
+  node --test tests/typecheck_contracts.test.mjs
+This checks eight canonical JavaScript implementations and 32 negative consumer cases
+without emitting assets. The full models group also runs it. It reads
+NETUNIM_OFFLINE_NODE_MODULES for the pinned offline compiler. Exact scope and remaining
+codec/ACK/application coverage are documented in docs/STATIC_CONTRACTS.md.
+
 PDF.js upgrade gate:
   npm run pdfjs:check
 This verifies the pinned PDF.js runtime and synchronized assets, then runs the immutable
@@ -248,7 +256,7 @@ service_worker_contracts.py: complete shell, install/activate, app-scoped cleanu
   offline fallback that rejects conflicting assets from unrelated origin caches.
 module_contracts.py: deterministic shared copies/cache manifest, normalized cross-platform text hashing,
   byte-exact binary hashing, read-only/idempotent generation, acyclic local module graph, layer boundaries,
-  no runtime globals/test APIs and pinned ESLint rules.
+  no runtime globals/test APIs, strict incremental JavaScript contracts and pinned ESLint rules.
 node_models.py: all tests/*.test.mjs files discovered automatically, with two isolated Node workers.
 verification_plan.py: one complete suite inventory for local full verification and the GitHub Actions matrix.
 runtime_sync_postgres.py: real browser/HTTP/PostgreSQL synchronization, lost acknowledgements and merge conflicts.
