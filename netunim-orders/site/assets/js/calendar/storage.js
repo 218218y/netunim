@@ -1,5 +1,6 @@
 import {createCalendarQueueObservation} from './queue-observation.js';
 import {confirmCalendarPendingSnapshot} from './queue-confirmation.js';
+import {authorizeCalendarDisplay} from './display-access.js';
 
 const DB_NAME='order-management-google-calendar';
 const DB_VERSION=1;
@@ -11,12 +12,12 @@ const CONNECTION_PREF_KEY='orders.google-calendar.connection.v1';
 // them together so an inspection/second adapter cannot bypass the live receipt.
 const queueObservation=createCalendarQueueObservation();
 
-export function selectCoveringRangeSnapshot(rows,{startKey='',endKey='',accountId=''}={}){
+export function selectCoveringRangeSnapshot(rows,{startKey='',endKey='',accountId='',owner=null}={}){
   const wantedStart=String(startKey||''),wantedEnd=String(endKey||''),wantedAccount=String(accountId||'').trim();
   if(!wantedStart||!wantedEnd)return null;
   const candidates=(Array.isArray(rows)?rows:[]).filter(row=>{
     const rangeStart=String(row?.rangeStart||''),rangeEnd=String(row?.rangeEnd||''),rowAccount=String(row?.accountId||'').trim();
-    return rangeStart&&rangeEnd&&rangeStart<=wantedStart&&rangeEnd>=wantedEnd&&(!wantedAccount||rowAccount===wantedAccount);
+    return rangeStart&&rangeEnd&&rangeStart<=wantedStart&&rangeEnd>=wantedEnd&&(!wantedAccount||rowAccount===wantedAccount)&&(owner===null||row.owner===owner);
   });
   candidates.sort((a,b)=>{
     const aFetched=Date.parse(String(a?.fetchedAt||'')),bFetched=Date.parse(String(b?.fetchedAt||''));
@@ -65,10 +66,18 @@ async function pendingCount(){const db=await openDb(),tx=db.transaction(QUEUE_ST
 async function putRangeCache(snapshot){const db=await openDb(),tx=db.transaction(CACHE_STORE,'readwrite');tx.objectStore(CACHE_STORE).put(structuredClone(snapshot));await transactionDone(tx)}
 async function getRangeCache(key){const db=await openDb(),tx=db.transaction(CACHE_STORE,'readonly');const value=await requestResult(tx.objectStore(CACHE_STORE).get(String(key)));await transactionDone(tx);return value||null}
 async function getRangeCacheCovering(startKey,endKey,accountId=''){const db=await openDb(),tx=db.transaction(CACHE_STORE,'readonly');const rows=await requestResult(tx.objectStore(CACHE_STORE).getAll());await transactionDone(tx);return selectCoveringRangeSnapshot(rows,{startKey,endKey,accountId})}
+// Read cache attribution, queue, and Google account in the same native snapshot.
+// The caller still fences its login epoch after this await, before publication.
+async function readDisplaySnapshot(owner,startKey,endKey){
+  if(typeof owner!=='string'||!owner)return null;
+  const db=await openDb(),tx=db.transaction([CACHE_STORE,QUEUE_STORE,META_STORE],'readonly'),done=transactionDone(tx);
+  const [rows,operations,account]=await Promise.all([requestResult(tx.objectStore(CACHE_STORE).getAll()),requestResult(tx.objectStore(QUEUE_STORE).getAll()),requestResult(tx.objectStore(META_STORE).get('accountId')),done]);
+  return authorizeCalendarDisplay(selectCoveringRangeSnapshot(rows,{startKey,endKey,owner,accountId:String(account?.value||'')}),operations.sort((a,b)=>Number(a.seq)-Number(b.seq)),account?.value,owner);
+}
 async function clearRangeCache(){const db=await openDb(),tx=db.transaction(CACHE_STORE,'readwrite');tx.objectStore(CACHE_STORE).clear();await transactionDone(tx)}
 
 async function getMeta(key){const db=await openDb(),tx=db.transaction(META_STORE,'readonly');const row=await requestResult(tx.objectStore(META_STORE).get(String(key)));await transactionDone(tx);return row?.value??null}
 async function putMeta(key,value){const db=await openDb(),tx=db.transaction(META_STORE,'readwrite');tx.objectStore(META_STORE).put({key:String(key),value:structuredClone(value)});await transactionDone(tx)}
 
-return {openDb,addOperation,listOperations,readPendingSnapshot,confirmPendingSnapshot,updateOperation,deleteOperation,pendingCount,putRangeCache,getRangeCache,getRangeCacheCovering,clearRangeCache,getMeta,putMeta,connectionPreference,saveConnectionPreference};
+return {openDb,addOperation,listOperations,readPendingSnapshot,confirmPendingSnapshot,updateOperation,deleteOperation,pendingCount,putRangeCache,getRangeCache,getRangeCacheCovering,readDisplaySnapshot,clearRangeCache,getMeta,putMeta,connectionPreference,saveConnectionPreference};
 }

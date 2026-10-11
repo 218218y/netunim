@@ -2,7 +2,7 @@
 import {googleCalendarConfig} from './config.js';
 /** @typedef {{owner:string|null,epoch:number}} AccountScope */
 /** @typedef {{accessToken:string,tokenExpiresAt:number,connected:boolean,accountVerified:boolean,accountId:string,expectedAccountId:string}} CalendarAuthState */
-/** @typedef {{assertCurrent:()=>void,accessToken:()=>string}} CalendarOperation */
+/** @typedef {{owner:string,assertCurrent:()=>void,accessToken:()=>string}} CalendarOperation */
 /** @param {unknown} value @returns {value is Record<string,unknown>} */
 function object(value){return value!==null&&typeof value==='object'&&!Array.isArray(value)}
 /** @param {unknown} error */
@@ -96,7 +96,7 @@ export function createCalendarAuth({calendarSession,supaFetch,accountScope}){
   }
   function accessToken(){enter();if(!hasUsableToken())throw authRequiredError();return calendarSession.accessToken}
   /** @returns {CalendarOperation} */
-  function captureOperation(){const assertCurrent=enter();return {assertCurrent,accessToken:()=>{assertCurrent();return accessToken()}}}
+  function captureOperation(){const assertCurrent=enter();return {owner:String(owner),assertCurrent,accessToken:()=>{assertCurrent();return accessToken()}}}
   async function disconnect(){const assertCurrent=enter();await backend(assertCurrent,'disconnect');assertCurrent();clearToken()}
   async function prepare(){return configured()}
   function ready(){return configured()}

@@ -13,6 +13,9 @@
     "types": []
   },
   "files": [
+    "netunim-orders/site/assets/js/calendar/display-access.js",
+    "netunim-orders/site/assets/js/calendar/display-lifetime.js",
+    "tests/fixtures/checked-calendar-display.mjs",
     "netunim-orders/site/assets/js/domains/customers/morning-display-lifetime.js",
     "tests/fixtures/checked-morning-display-lifetime.mjs",
     "netunim-kupa/site/assets/js/domains/bank/local-snapshot.js",

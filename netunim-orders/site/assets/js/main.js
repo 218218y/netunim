@@ -132,7 +132,7 @@ const domainsDocumentBridge=composeDocumentSearch({supaFetch:(...args)=>cloudAut
 const bankChequeImages=createOrdersBankChequeImageRuntime({cloudAuth,bridge:financeBridge,operationScope:financeOperationScope});
 
 const calendarRuntime=createOrdersCalendarRuntime({
-  calendarSession,supaFetch:(...args)=>cloudAuth.supaFetch(...args),accountScope:()=>cloudAuth.getAccountScope(),
+  calendarSession,supaFetch:(...args)=>cloudAuth.supaFetch(...args),accountScope:()=>cloudAuth.getAccountScope(),subscribeAccountScope:cloudAuth.subscribeAccountScope,
 });
 
 const suppliers=createOrdersSuppliersRuntime({model,supplierUi,ui});
