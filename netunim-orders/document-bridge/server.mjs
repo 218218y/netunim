@@ -3,17 +3,19 @@ import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import crypto,{timingSafeEqual} from 'node:crypto';
+import crypto from 'node:crypto';
 import {execFile as execFileCb,spawn} from 'node:child_process';
 import {promisify} from 'node:util';
 import {fileURLToPath} from 'node:url';
 import {
   BRIDGE_PORT,BRIDGE_SERVICE,BRIDGE_VERSION,BRIDGE_NODE_VERSION,BRIDGE_NODE_WIN_X64_SHA256,assertBridgeNodeVersion,DEFAULT_ALLOWED_ORIGINS,DEFAULT_RESULT_LIMIT,MAX_RESULTS,RECENT_RESULT_LIMIT,RESULT_TTL_MS,
   buildContentMatchInfo,buildDocumentQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsPdfInventoryArgs,buildEsRawSearchArgs,buildEsRecentFilesArgs,buildEsSearchArgs,compareDocumentRows,contentSearchMatches,documentExtension,documentFileTypeIncludesPdf,mergeDocumentResults,normalizeContentSearchOptions,normalizeDocumentFileType,normalizeDocumentSearchMode,normalizeDocumentSort,normalizeSearchScopePath,normalizeSearchText,
-  officePreviewKind,structuredPreviewKind,originAllowed,parseEsContentPreview,parseEsCount,parseEsJson,parseRegistryInstallLocation,
+  officePreviewKind,structuredPreviewKind,parseEsContentPreview,parseEsCount,parseEsJson,parseRegistryInstallLocation,
 } from './lib.mjs';
 import {buildPdfFormMatchAnchors,extractInteractivePdfText,PDF_FORM_MAX_BYTES,verifyNodePdfJsRuntime} from './pdf_form_index.mjs';
 import {pdfIndexNeedsInspection,pdfMaintenanceInventoryPlan,pdfMaintenanceRunLimits} from './pdf-index-policy.mjs';
+import {createDocumentBridgeRoutes} from './http-routes.mjs';
+import {createDocumentBridgeHttpHandler,documentBridgeErrorResponse as safeError} from './http-handler.mjs';
 
 const execFile=promisify(execFileCb);
 const APP_ROOT=process.env.NETUNIM_DOCUMENT_BRIDGE_HOME||path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimDocumentBridge');
@@ -689,14 +691,6 @@ async function readBinaryPreview(id){
   if(stat.size>limit){const e=new Error('הקובץ גדול מדי לתצוגה מקדימה מהירה.');e.code='PREVIEW_TOO_LARGE';throw e}
   return {buffer:await fs.readFile(row.fullPath),mime,name:path.win32.basename(row.fullPath)};
 }
-function sendBinary(req,res,status,{buffer,mime,name},config){res.writeHead(status,{'Content-Type':mime,'Content-Length':String(buffer.length),'Content-Disposition':`inline; filename*=UTF-8''${encodeURIComponent(name)}`,...corsHeaders(req,config)});res.end(buffer)}
-
-function tokenEqual(expected,actual){const a=Buffer.from(String(expected||'')),b=Buffer.from(String(actual||''));return a.length===b.length&&a.length>0&&timingSafeEqual(a,b)}
-function authToken(req){const value=String(req.headers.authorization||'');return value.startsWith('Bearer ')?value.slice(7).trim():''}
-function corsHeaders(req,config){const origin=String(req.headers.origin||'');return {'Access-Control-Allow-Origin':origin&&originAllowed(origin,config.allowedOrigins)?origin:'null','Access-Control-Allow-Methods':'GET,POST,OPTIONS','Access-Control-Allow-Headers':'Authorization,Content-Type','Access-Control-Allow-Private-Network':'true','Access-Control-Max-Age':'600','Cache-Control':'no-store','Vary':'Origin'}}
-function sendJson(req,res,status,data,config){res.writeHead(status,{'Content-Type':'application/json; charset=utf-8',...corsHeaders(req,config)});res.end(JSON.stringify(data))}
-async function readJson(req){let size=0,chunks=[];for await(const chunk of req){size+=chunk.length;if(size>8192){const e=new Error('הבקשה גדולה מדי');e.code='REQUEST_TOO_LARGE';throw e}chunks.push(chunk)}if(!chunks.length)return {};try{return JSON.parse(Buffer.concat(chunks).toString('utf8'))}catch{const e=new Error('JSON לא תקין');e.code='INVALID_JSON';throw e}}
-function safeError(error){return {ok:false,code:error?.code||'DOCUMENT_BRIDGE_ERROR',message:error?.message||'שגיאת Document Bridge',rootErrors:Array.isArray(error?.rootErrors)?error.rootErrors:[]}}
 
 async function openDocument(id){
   const {row,stat}=await resolveResult(id);
@@ -742,37 +736,30 @@ async function deleteDocument(id){
   return {ok:true,type:stat.isDirectory()?'folder':'file',invalidatedIds};
 }
 
-async function handle(req,res){
-  const config=await loadConfig(),origin=String(req.headers.origin||'');
-  if(origin&&!originAllowed(origin,config.allowedOrigins)){res.writeHead(403,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Vary':'Origin'});res.end(JSON.stringify({ok:false,code:'ORIGIN_NOT_ALLOWED',message:'מקור האתר אינו מורשה לגשת ל-Document Bridge.'}));return}
-  if(req.method==='OPTIONS'){res.writeHead(204,corsHeaders(req,config));res.end();return}
-  if(req.method==='GET'&&req.url==='/health'){sendJson(req,res,200,{ok:true,service:BRIDGE_SERVICE,version:BRIDGE_VERSION,pid:process.pid},config);return}
-  const expected=await ensureToken();if(!tokenEqual(expected,authToken(req))){sendJson(req,res,401,{ok:false,code:'UNAUTHORIZED',message:'מפתח Document Bridge שגוי או חסר.'},config);return}
-  try{
-    if(req.method==='GET'&&req.url==='/status'){
-      const {probe,diagnostics}=await diagnoseIndex({freshProbe:true});
-      let pdfIndexError='';try{await loadPdfFormIndex()}catch(error){pdfIndexError=String(error?.message||error)}
-      const interactivePdfCount=[...pdfFormIndex.values()].filter(entry=>entry.hasForm&&!entry.failed).length,maintenance=await readJsonFile(PDF_FORM_MAINTENANCE_PATH,{});sendJson(req,res,200,{ok:true,service:BRIDGE_SERVICE,version:BRIDGE_VERSION,esVersion:probe.esVersion,everythingVersion:probe.everythingVersion,everythingExecutable:probe.everythingExecutable||'',instance:probe.instance,index:{fileCount:diagnostics.fileCount,indexedContentCount:diagnostics.indexedContentCount,sampleOk:diagnostics.sampleOk,error:[diagnostics.error,pdfIndexError].filter(Boolean).join('; '),interactivePdfCount,inspectedPdfCount:pdfFormIndex.size,interactivePdfPending:pdfFormIndexPending,interactivePdfUpdatedAt:pdfFormIndexLastRefresh?new Date(pdfFormIndexLastRefresh).toISOString():'',maintenanceLastAttemptAt:maintenance.lastAttemptAt||'',maintenanceLastSuccessfulAt:maintenance.lastSuccessfulAt||'',maintenanceLastFailureAt:maintenance.lastFailureAt||'',maintenanceLastFailure:maintenance.lastFailure||'',maintenanceLastResult:maintenance.lastResult||null}},config);return;
-    }
-    if(req.method==='POST'&&req.url==='/documents/warm'){const probe=await probeEverything({autoStart:true});sendJson(req,res,200,{ok:true,service:BRIDGE_SERVICE,version:BRIDGE_VERSION,everythingVersion:probe.everythingVersion,instance:probe.instance},config);return}
-    if(req.method==='GET'&&req.url==='/documents/pdf-index/status'){sendJson(req,res,200,await pdfMaintenanceStatus(),config);return}
-    if(req.method==='POST'&&req.url==='/documents/pdf-index/start'){sendJson(req,res,200,await startManualPdfMaintenance(),config);return}
-    if(req.method==='POST'&&req.url==='/documents/pdf-index/stop'){sendJson(req,res,200,await stopManualPdfMaintenance(),config);return}
-    if(req.method==='POST'&&req.url==='/documents/select-folder'){const result=await selectSearchFolder();sendJson(req,res,200,result,config);return}
-    if(req.method==='POST'&&req.url==='/documents/recent'){const body=await readJson(req),result=await recentDocuments(body.limit,body.scopePath,body.fileType);sendJson(req,res,200,result,config);return}
-    if(req.method==='POST'&&req.url==='/documents/search'){const body=await readJson(req),result=await searchDocuments(body.query,body.limit,body.mode,body.contentSearch,body.scopePath,body.offset,body.sort,body.fileType);sendJson(req,res,200,result,config);return}
-    if(req.method==='POST'&&req.url==='/documents/preview'){const body=await readJson(req),result=await previewDocument(body.id);sendJson(req,res,200,result,config);return}
-    if(req.method==='POST'&&req.url==='/documents/matches'){const body=await readJson(req),result=await previewMatches(body.id);sendJson(req,res,200,result,config);return}
-    if(req.method==='POST'&&req.url==='/documents/preview-file'){const body=await readJson(req),result=await readBinaryPreview(body.id);sendBinary(req,res,200,result,config);return}
-    if(req.method==='POST'&&req.url==='/documents/native-preview'){const body=await readJson(req),result=await openNativePreview(body.id,body.geometry);sendJson(req,res,200,result,config);return}
-    if(req.method==='POST'&&req.url==='/documents/native-preview/move'){const body=await readJson(req),result=await moveNativePreview(body.geometry);sendJson(req,res,200,result,config);return}
-    if(req.method==='POST'&&req.url==='/documents/native-preview/hide'){const result=await hideNativePreview();sendJson(req,res,200,result,config);return}
-    if(req.method==='POST'&&req.url==='/documents/open'){const body=await readJson(req),result=await openDocument(body.id);sendJson(req,res,200,result,config);return}
-    if(req.method==='POST'&&req.url==='/documents/reveal'){const body=await readJson(req),result=await revealDocument(body.id);sendJson(req,res,200,result,config);return}
-    if(req.method==='POST'&&req.url==='/documents/delete'){const body=await readJson(req),result=await deleteDocument(body.id);sendJson(req,res,200,result,config);return}
-    if(req.method==='POST'&&req.url==='/shutdown'){shuttingDown=true;await stopManualPdfMaintenance().catch(()=>{});await stopNativePreview();sendJson(req,res,200,{ok:true,pid:process.pid},config);setTimeout(()=>{server?.close(async()=>{await appendLog('STOP graceful shutdown complete');process.exitCode=0})},20);setTimeout(()=>{process.exit(0)},2500).unref?.();return}
-    sendJson(req,res,404,{ok:false,code:'NOT_FOUND',message:'נתיב לא קיים'},config);
-  }catch(error){await appendLog(`${req.method} ${req.url} ${error?.code||'ERROR'} ${error?.message||error}`);const status=error?.code==='QUERY_TOO_SHORT'?400:error?.code==='RESULT_EXPIRED'?410:503;sendJson(req,res,status,safeError(error),config)}
+async function documentBridgeStatus(){
+  const {probe,diagnostics}=await diagnoseIndex({freshProbe:true});
+  let pdfIndexError='';try{await loadPdfFormIndex()}catch(error){pdfIndexError=String(error?.message||error)}
+  const interactivePdfCount=[...pdfFormIndex.values()].filter(entry=>entry.hasForm&&!entry.failed).length,maintenance=await readJsonFile(PDF_FORM_MAINTENANCE_PATH,{});
+  return {ok:true,service:BRIDGE_SERVICE,version:BRIDGE_VERSION,esVersion:probe.esVersion,everythingVersion:probe.everythingVersion,everythingExecutable:probe.everythingExecutable||'',instance:probe.instance,index:{fileCount:diagnostics.fileCount,indexedContentCount:diagnostics.indexedContentCount,sampleOk:diagnostics.sampleOk,error:[diagnostics.error,pdfIndexError].filter(Boolean).join('; '),interactivePdfCount,inspectedPdfCount:pdfFormIndex.size,interactivePdfPending:pdfFormIndexPending,interactivePdfUpdatedAt:pdfFormIndexLastRefresh?new Date(pdfFormIndexLastRefresh).toISOString():'',maintenanceLastAttemptAt:maintenance.lastAttemptAt||'',maintenanceLastSuccessfulAt:maintenance.lastSuccessfulAt||'',maintenanceLastFailureAt:maintenance.lastFailureAt||'',maintenanceLastFailure:maintenance.lastFailure||'',maintenanceLastResult:maintenance.lastResult||null}};
+}
+function bridgeHealth(){return {ok:true,service:BRIDGE_SERVICE,version:BRIDGE_VERSION,pid:process.pid}}
+async function warmDocumentSearch(){const probe=await probeEverything({autoStart:true});return {ok:true,service:BRIDGE_SERVICE,version:BRIDGE_VERSION,everythingVersion:probe.everythingVersion,instance:probe.instance}}
+async function prepareShutdown(){shuttingDown=true;await stopManualPdfMaintenance().catch(()=>{});await stopNativePreview();return {ok:true,pid:process.pid}}
+function finishShutdown(){
+  setTimeout(()=>{server?.close(async()=>{await appendLog('STOP graceful shutdown complete');process.exitCode=0})},20);
+  setTimeout(()=>{process.exit(0)},2500).unref?.();
+}
+function createRequestHandler(){
+  const routes=createDocumentBridgeRoutes({
+    service:{status:documentBridgeStatus,warm:warmDocumentSearch},
+    maintenance:{status:pdfMaintenanceStatus,start:startManualPdfMaintenance,stop:stopManualPdfMaintenance},
+    search:{selectFolder:selectSearchFolder,recent:recentDocuments,search:searchDocuments},
+    preview:{document:previewDocument,matches:previewMatches,file:readBinaryPreview},
+    nativePreview:{open:openNativePreview,move:moveNativePreview,hide:hideNativePreview},
+    files:{open:openDocument,reveal:revealDocument,delete:deleteDocument},
+    shutdown:{prepare:prepareShutdown,afterResponse:finishShutdown},
+  });
+  return createDocumentBridgeHttpHandler({loadConfig,readToken:ensureToken,routes,health:bridgeHealth,appendLog});
 }
 
 function loopbackRequest(urlPath,{method='GET',token='',timeoutMs=2500}={}){
@@ -898,6 +885,6 @@ async function main(){
     console.log(`Interactive PDF index: ${result.cached} inspected cache entries, ${result.interactive} interactive PDFs, ${result.processed}/${result.changed} inspected now, ${result.pending} pending, ${result.failed} failed`);return
   }if(arg==='--print-token'){console.log(await ensureToken());return}if(arg==='--stop-existing'){await stopExisting();return}if(arg==='--check-running'){await checkRunning();return}if(arg==='--write-install-summary'){await writeInstallSummary();return}
   if(process.platform!=='win32')throw new Error('Document Bridge is intended for Windows.');
-  await init();server=http.createServer((req,res)=>{handle(req,res).catch(async error=>{await appendLog(`UNHANDLED ${error?.stack||error}`);try{res.writeHead(500,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(safeError(error)))}catch{}})});server.on('error',error=>appendLog(`SERVER ${error?.code||''} ${error?.message||error}`));server.listen(BRIDGE_PORT,'127.0.0.1',()=>{appendLog(`START ${BRIDGE_SERVICE} v${BRIDGE_VERSION} node=${process.versions.node} on 127.0.0.1:${BRIDGE_PORT}`);probeEverything({fresh:true,autoStart:true}).then(probe=>appendLog(`EVERYTHING_READY version=${probe.everythingVersion} instance=${probe.instance||'(default)'}`)).catch(error=>appendLog(`EVERYTHING_BACKGROUND_START_FAILED ${error?.code||'ERROR'} ${error?.message||error}`))});
+  await init();const handle=createRequestHandler();server=http.createServer((req,res)=>{handle(req,res).catch(async error=>{await appendLog(`UNHANDLED ${error?.stack||error}`);try{res.writeHead(500,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(safeError(error)))}catch{}})});server.on('error',error=>appendLog(`SERVER ${error?.code||''} ${error?.message||error}`));server.listen(BRIDGE_PORT,'127.0.0.1',()=>{appendLog(`START ${BRIDGE_SERVICE} v${BRIDGE_VERSION} node=${process.versions.node} on 127.0.0.1:${BRIDGE_PORT}`);probeEverything({fresh:true,autoStart:true}).then(probe=>appendLog(`EVERYTHING_READY version=${probe.everythingVersion} instance=${probe.instance||'(default)'}`)).catch(error=>appendLog(`EVERYTHING_BACKGROUND_START_FAILED ${error?.code||'ERROR'} ${error?.message||error}`))});
 }
 main().catch(async error=>{await appendLog(`FATAL ${error?.stack||error}`);console.error(error?.message||error);process.exitCode=1});

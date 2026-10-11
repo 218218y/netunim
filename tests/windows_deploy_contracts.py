@@ -1,10 +1,17 @@
 """Execute real BAT control flow in disposable copies with all uploads stubbed."""
 import os
+import hashlib
+import http.client
+import json
 from pathlib import Path
+import re
 import shutil
+import socket
 import subprocess
 import tempfile
+import time
 import unittest
+import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -128,6 +135,98 @@ class WindowsDeploymentContracts(unittest.TestCase):
             result, _ = self.run_bat('deploy_all_fast.bat')
             self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertIn('dynamic code', result.stdout)
+
+
+@unittest.skipUnless(os.name == "nt", "Production Document Bridge startup runs in the required Windows CI job")
+class WindowsDocumentBridgeRuntimeContracts(unittest.TestCase):
+    def test_staged_runtime_uses_its_http_modules_and_preserves_private_file_gates(self):
+        # Isolated application root and reviewed private executable. Do not stop
+        # or pair with an operator's installed service if this port is occupied.
+        with socket.socket() as probe:
+            occupied = probe.connect_ex(("127.0.0.1", 8766)) == 0
+        if occupied and os.environ.get("GITHUB_ACTIONS") != "true":
+            self.skipTest("Installed loopback service occupies port 8766; isolated production startup remains required in Windows CI")
+        self.assertFalse(occupied, "Windows CI requires an unused bridge port; never stop another listener")
+        source = ROOT / "netunim-orders/document-bridge"
+        with tempfile.TemporaryDirectory(prefix="netunim bridge stage ") as directory:
+            app = Path(directory)
+            runtime = app / "app-staging-test"
+            runtime.mkdir()
+            installer = (source / "install_document_bridge.bat").read_text(encoding="utf8")
+            staged = re.search(r"for %%F in \((server\.mjs[^)]+)\)", installer).group(1).split()
+            for name in staged:
+                shutil.copyfile(source / name, runtime / name)
+            private_name = "node-v24.21.0-win-x64-20261011-000000-1-1234abcd"
+            private = app / private_name
+            private.mkdir()
+            with zipfile.ZipFile(source / "node-v24.21.0-win-x64.zip") as archive:
+                binary = archive.read("node-v24.21.0-win-x64/node.exe")
+            expected = re.search(r"BRIDGE_NODE_WIN_X64_SHA256='([a-f0-9]+)'", (source / "lib.mjs").read_text()).group(1)
+            self.assertEqual(hashlib.sha256(binary).hexdigest(), expected)
+            executable = private / "node.exe"
+            executable.write_bytes(binary)
+            (app / "node-runtime.txt").write_text(private_name, encoding="utf8")
+            # Node rejects ES-only argv with exit 9, rather than Everything's
+            # not-running exit 8. No real Everything lookup/start or file access.
+            fake_es = app / "not-everything.exe"
+            shutil.copyfile(executable, fake_es)
+            env = {**os.environ, "NETUNIM_DOCUMENT_BRIDGE_HOME": str(app),
+                   "NETUNIM_EVERYTHING_ES_PATH": str(fake_es)}
+            init = subprocess.run([str(executable), str(runtime / "server.mjs"), "--init"],
+                                  env=env, cwd=app, capture_output=True, timeout=15,
+                                  creationflags=subprocess.CREATE_NO_WINDOW)
+            self.assertEqual(init.returncode, 0, init.stderr.decode("utf8", errors="replace"))
+            token = (app / "bridge-token.txt").read_text().strip()
+            process = subprocess.Popen([str(executable), str(runtime / "server.mjs")],
+                                       env=env, cwd=app, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                       creationflags=subprocess.CREATE_NO_WINDOW)
+
+            def request(target, method="GET", body=None, headers=None):
+                connection = http.client.HTTPConnection("127.0.0.1", 8766, timeout=3)
+                try:
+                    connection.request(method, target, body=body, headers=headers or {})
+                    response = connection.getresponse()
+                    return response.status, json.loads(response.read()), dict(response.getheaders())
+                finally:
+                    connection.close()
+
+            try:
+                deadline = time.monotonic() + 10
+                while True:
+                    try:
+                        status, health, _ = request("/health")
+                        break
+                    except OSError:
+                        if process.poll() is not None or time.monotonic() >= deadline:
+                            self.fail("Staged Document Bridge did not start its listener")
+                        # Readiness probing only, never a synchronization fence.
+                        time.sleep(0.025)
+                self.assertEqual(status, 200)
+                self.assertEqual(health["service"], "netunim-orders-document-bridge")
+                self.assertEqual(health["version"], 38)
+                self.assertEqual(health["pid"], process.pid)
+                status, data, _ = request("/health", headers={"Origin": "https://untrusted.example"})
+                self.assertEqual((status, data["code"]), (403, "ORIGIN_NOT_ALLOWED"))
+                for target in ("/documents/delete", "/documents/preview-file", "/shutdown"):
+                    status, data, _ = request(target, "POST", '{}')
+                    self.assertEqual((status, data["code"]), (401, "UNAUTHORIZED"))
+                auth = {"Authorization": f"Bearer {token}", "Origin": "https://bargig-furniture.com"}
+                status, data, headers = request("/documents/open", "POST", json.dumps({"id": "unknown-result", "path": str(app / "must-not-open")}), auth)
+                self.assertEqual((status, data["code"]), (410, "RESULT_EXPIRED"))
+                self.assertEqual(headers["Access-Control-Allow-Origin"], "https://bargig-furniture.com")
+                self.assertEqual(headers["Cache-Control"], "no-store")
+                status, data, _ = request("/shutdown", "POST", '{}', auth)
+                self.assertEqual(status, 200)
+                self.assertTrue(data["ok"])
+                self.assertEqual(data["pid"], process.pid)
+                stdout, stderr = process.communicate(timeout=10)
+                self.assertEqual(process.returncode, 0, (stdout + stderr).decode("utf8", errors="replace"))
+                self.assertEqual((app / "bridge-token.txt").read_text().strip(), token)
+                self.assertTrue((app / "config.json").is_file())
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                    process.communicate(timeout=10)
 
 
 if __name__ == "__main__":
