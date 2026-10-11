@@ -76,3 +76,25 @@ test('100 lifetime cycles remove listeners, coalesce wakes and fence stale callb
     assert.equal(listeners.size,0);assert.equal(timers.size,0);assert.throws(receipt,changed);
   }
 });
+test('recovery wake follows the pending operation within the same login',async()=>{
+  const {scope}=authority(),queued=new Map(),delivered=[];let id=0,operation='A';
+  const timers={setTimeout(fn){queued.set(++id,fn);return id},clearTimeout(key){queued.delete(key)}};
+  const lifetime=createMorningLifetime({operationScope:scope,getPendingOperationId:()=>operation,recover:async()=>{delivered.push(operation)},onInterrupt(){},events:{},timers});
+  assert.equal(lifetime.scheduleRecovery(),true);const stale=queued.get(id);
+  operation='B';assert.equal(lifetime.scheduleRecovery(),true,'B must replace the completed operation A wake');
+  assert.equal(queued.size,1);assert.equal(lifetime.scheduleRecovery(),false,'same B coalesces');
+  stale();assert.equal(queued.size,1);assert.deepEqual(delivered,[]);
+  const activeId=id,active=queued.get(activeId);queued.delete(activeId);active();await Promise.resolve();
+  assert.deepEqual(delivered,['B']);lifetime.dispose();assert.equal(queued.size,0);
+});
+test('100 operation replacements retain exactly one live wake and dispose without recovery',()=>{
+  const {scope}=authority(),queued=new Map(),stale=[];let id=0,operation='initial';
+  const timers={setTimeout(fn){queued.set(++id,fn);return id},clearTimeout(key){queued.delete(key)}};
+  const lifetime=createMorningLifetime({operationScope:scope,getPendingOperationId:()=>operation,recover:()=>assert.fail('stale/disposed wake'),onInterrupt(){},events:{},timers});
+  for(let cycle=0;cycle<100;cycle++){
+    operation=String(cycle);assert.equal(lifetime.scheduleRecovery(),true);assert.equal(queued.size,1);
+    for(const fn of stale)fn();assert.equal(queued.size,1);assert.equal(lifetime.scheduleRecovery(),false);
+    stale.push(queued.get(id));
+  }
+  lifetime.dispose();for(const fn of stale)fn();assert.equal(queued.size,0);
+});

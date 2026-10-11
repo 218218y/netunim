@@ -15,8 +15,14 @@ export function createMorningLifetime({operationScope,getPendingOperationId,reco
   function scheduleRecovery(delay=60_000,assertCurrent){
     try{assertCurrent??=capture();assertCurrent()}catch{return false}
     const operationId=getPendingOperationId();if(disposed||!operationId)return false;
-    if(timer!==null){try{timer.assertCurrent();return false}catch(error){if(!scopeChanged(error))throw error;timers.clearTimeout(timer.id);timer=null}}
-    const wake={assertCurrent,id:null};timer=wake;
+    // A may finish while its wake is still queued, then B starts in the same
+    // login. Coalesce only A -> A; replacing a queued wake never cancels work
+    // that has already started.
+    if(timer!==null){
+      try{timer.assertCurrent();if(timer.operationId===operationId)return false}catch(error){if(!scopeChanged(error))throw error}
+      timers.clearTimeout(timer.id);timer=null;
+    }
+    const wake={operationId,assertCurrent,id:null};timer=wake;
     wake.id=timers.setTimeout(()=>{
       if(timer!==wake)return;timer=null;
       try{assertCurrent();if(getPendingOperationId()!==operationId)return;Promise.resolve(recover({quiet:true,assertCurrent})).catch(observe)}catch(error){observe(error)}
