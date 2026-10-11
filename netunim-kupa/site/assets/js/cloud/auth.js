@@ -18,6 +18,7 @@ let supaDataApiBackgroundFailures=0;
 let supaDataApiBlockedUntil=0;
 let supaDataApiBlockCode='';
 let refreshPromise=null;
+let cloudAuthInstanceSequence=0;
 
 function isSupaDataApiPath(path){return /^\/rest\/v1(?:\/|\?|$)/.test(String(path||''))}
 function responseRetryAfterMs(response){const raw=String(response?.headers?.get?.('retry-after')||'').trim();if(!raw)return 0;const seconds=Number(raw);if(Number.isFinite(seconds)&&seconds>=0)return Math.round(seconds*1000);const at=Date.parse(raw);return Number.isFinite(at)?Math.max(0,at-Date.now()):0}
@@ -71,6 +72,14 @@ async function ensureSyncCapabilities(){session.syncCapabilitiesChecking=true;tr
 function supaConfigured(){return !!(SUPA_CONFIG.url&&SUPA_CONFIG.publishableKey)}
 
 const accountScope=createAuthenticatedAccountScope({loadSession:loadSupaSession});
+const cloudAuthInstance=++cloudAuthInstanceSequence;
+const requestGuards=new WeakMap();let requestGuardSequence=0;
+function guardCoalesceIdentity(guard){
+  if(typeof guard!=='function')return 'none';
+  let id=requestGuards.get(guard);
+  if(!id){id=++requestGuardSequence;requestGuards.set(guard,id)}
+  return String(id);
+}
 const accountObservation=createBrowserAccountObservation({scope:accountScope,sessionKey:SUPA_SESSION_KEY,rereadSession:()=>{session.supaSession=null;return loadSupaSession()}});
 
 function loadSupaSession(){if(session.supaSession)return session.supaSession;try{session.supaSession=JSON.parse(localStorage.getItem(SUPA_SESSION_KEY)||'null')}catch(e){session.supaSession=null}return session.supaSession}
@@ -113,14 +122,33 @@ async function supaRefresh({force=true,observedAccessToken=''}={}){if(refreshPro
 
 async function supaEnsureSession(){let s=loadSupaSession();if(!s)throw new Error('נדרשת התחברות לענן');assertSessionOwner(s);if(Number(s.expires_at||0)<=Math.floor(Date.now()/1000)+60)s=await supaRefresh({force:false,observedAccessToken:s.access_token});return s}
 
-async function supaRest(path,options={}){if(syncRequestNeedsCapabilities(path,options.method))await ensureSyncCapabilities();
-  const {networkRetry,networkTimeoutMs,dataPriority,coalesceKey,assertRequestScope,...requestOptions}=options,method=String(requestOptions.method||'GET').toUpperCase(),safeRead=method==='GET'||method==='HEAD',priority=dataPriority||(safeRead?'low':'high'),retry=networkRetry===undefined?(safeRead&&priority==='high'):!!networkRetry,timeoutMs=networkTimeoutMs??(priority==='low'?SUPA_BACKGROUND_TIMEOUT_MS:SUPA_NETWORK_TIMEOUT_MS);
-  const request=async()=>{
-    assertRequestScope?.();let s=await supaEnsureSession();assertRequestScope?.();let r=await fetchSupaNetwork(`${SUPA_CONFIG.url}${path}`,{...requestOptions,headers:{...supaBaseHeaders(s.access_token),...(requestOptions.headers||{})}},{retry,timeoutMs,assertRequestScope});
-    if(r.status===401){assertRequestScope?.();const observed=s.access_token;s=await supaRefresh({force:true,observedAccessToken:observed});assertRequestScope?.();r=await fetchSupaNetwork(`${SUPA_CONFIG.url}${path}`,{...requestOptions,headers:{...supaBaseHeaders(s.access_token),...(requestOptions.headers||{})}},{retry,timeoutMs,assertRequestScope})}
-    return r
+async function supaRest(path,options={}){
+  // Capture the caller's login before any asynchronous capability/session work.
+  // Neither a queued request nor an in-flight response may cross a login epoch.
+  const requestScope=accountScope.current(),assertRequestScope=options.assertRequestScope;
+  const assertCurrent=()=>{
+    // Caller-owned cancellation keeps its specific error semantics.
+    assertRequestScope?.();
+    // With no session, preserve the normal 'login required' path; still fence any later login.
+    if(requestScope.owner||accountScope.current().epoch!==requestScope.epoch)accountScope.assertCurrent(requestScope);
   };
-  return withSupaDataApiSlot(path,request,{priority,safeRead,retried:retry,coalesceKey:coalesceKey||(priority==='low'&&safeRead?`${method}:${path}`:'')})
+  if(syncRequestNeedsCapabilities(path,options.method))await ensureSyncCapabilities();
+  assertCurrent();
+  const {networkRetry,networkTimeoutMs,dataPriority,coalesceKey,assertRequestScope:_callerGuard,...requestOptions}=options,
+    method=String(requestOptions.method||'GET').toUpperCase(),safeRead=method==='GET'||method==='HEAD',
+    priority=dataPriority||(safeRead?'low':'high'),retry=networkRetry===undefined?(safeRead&&priority==='high'):!!networkRetry,
+    timeoutMs=networkTimeoutMs??(priority==='low'?SUPA_BACKGROUND_TIMEOUT_MS:SUPA_NETWORK_TIMEOUT_MS);
+  const request=async()=>{
+    assertCurrent();let s=await supaEnsureSession();assertCurrent();
+    let r=await fetchSupaNetwork(`${SUPA_CONFIG.url}${path}`,{...requestOptions,headers:{...supaBaseHeaders(s.access_token),...(requestOptions.headers||{})}},{retry,timeoutMs,assertRequestScope:assertCurrent});
+    assertCurrent();
+    if(r.status===401){const observed=s.access_token;s=await supaRefresh({force:true,observedAccessToken:observed});assertCurrent();r=await fetchSupaNetwork(`${SUPA_CONFIG.url}${path}`,{...requestOptions,headers:{...supaBaseHeaders(s.access_token),...(requestOptions.headers||{})}},{retry,timeoutMs,assertRequestScope:assertCurrent});assertCurrent()}
+    return r;
+  };
+  // De-duplicate only for the same login AND operation guard, including explicit keys.
+  const key=coalesceKey||(priority==='low'&&safeRead?`${method}:${path}`:'');
+  const scopedKey=key?`${cloudAuthInstance}:${requestScope.epoch}:${requestScope.owner||''}:${guardCoalesceIdentity(assertRequestScope)}:${key}`:'';
+  return withSupaDataApiSlot(path,request,{priority,safeRead,retried:retry,coalesceKey:scopedKey});
 }
 
 return { getAccountScope:accountScope.current, subscribeAccountScope:accountObservation.subscribe, ensureSyncCapabilities, supaConfigured, loadSupaSession, restoreSupaSession, storeSupaSession, isSupabaseAuthError, friendlySupabaseError, supaBaseHeaders, supaAuthPassword, supaAuthPasswordForLocalReset, localResetReadOnlyFetch, supaRefresh, supaEnsureSession, supaRest };
