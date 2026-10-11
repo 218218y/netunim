@@ -69,9 +69,18 @@ if(phase.startsWith('review')){
  }
  await driver.refreshStorageV2CloudState();const before=await db.load(runtime.cloudScope.owner),view=clone(model.state),review=await api.prepareConcurrentAckRecovery();
  check(review.pendingCount===34,'34 pending operations expected');check(JSON.stringify(await db.load(runtime.cloudScope.owner))===JSON.stringify(before),'review wrote storage');
- if(phase==='review-abort'){
-   wrapped.commitCloudRecovery=()=>{throw new DOMException('controlled IDB abort','AbortError')};let failure;try{await review.resume()}catch(error){failure=error}
-   check(failure?.name==='AbortError','abort not propagated');check(JSON.stringify(await db.load(runtime.cloudScope.owner))===JSON.stringify(before),'abort changed stores');check(calls.length===0,'abort sent remote write');
+ if(phase==='review-abort'||phase==='review-quota'){
+   const put=IDBObjectStore.prototype.put;let failure,writes=0;
+   IDBObjectStore.prototype.put=function(...args){
+     if(this.name==='checkpoints'){
+       writes++;
+       if(phase==='review-quota')throw new DOMException('controlled checkpoint quota','QuotaExceededError');
+       put.apply(this,args);this.transaction.abort();throw Error('controlled checkpoint abort');
+     }return put.apply(this,args);
+   };
+   try{await review.resume()}catch(error){failure=error}finally{IDBObjectStore.prototype.put=put}
+   check(writes===1&&(phase==='review-quota'?failure?.name==='QuotaExceededError':failure?.message==='controlled checkpoint abort'),'native transaction fault not propagated');
+   check(JSON.stringify(await db.load(runtime.cloudScope.owner))===JSON.stringify(before),'aborted transaction changed stores');check(calls.length===0,'aborted transaction sent remote write');
  }else{
    if(phase==='review-ui'){
      const {createUiCloud}=await import('./assets/js/ui/cloud.js'),{createCloudActions}=await import('./assets/js/ui/action-packs/cloud.js');let accepts=false,downloads=0;
@@ -137,14 +146,14 @@ return {records:expected.notes.length,seq:head.seq,revision:head.base.revision,a
 """
 parser=argparse.ArgumentParser()
 parser.add_argument('--app',choices=('orders','kupa'))
-parser.add_argument('--phase',action='append',choices=('benign','cas-race','conflict','draft','owner-loss','review','review-abort','review-ui'))
+parser.add_argument('--phase',action='append',choices=('benign','cas-race','conflict','draft','owner-loss','review','review-abort','review-quota','review-ui'))
 parser.add_argument('--baseline',action='store_true')
 parser.add_argument('--private-snapshot',type=Path)
 args=parser.parse_args()
 if args.private_snapshot and (args.app!='orders' or args.phase!=['review']):parser.error('private replay requires --app orders --phase review')
 private=json.loads(args.private_snapshot.read_text(encoding='utf-8')) if args.private_snapshot else None
 for app in (args.app,) if args.app else ('orders','kupa'):
-    for phase in args.phase or (('benign','cas-race','conflict','draft','owner-loss','review','review-abort','review-ui') if app=='orders' else ('benign','cas-race','conflict','draft','owner-loss')):
+    for phase in args.phase or (('benign','cas-race','conflict','draft','owner-loss','review','review-abort','review-quota','review-ui') if app=='orders' else ('benign','cas-race','conflict','draft','owner-loss')):
         setup=SETUP.replace('__APP__',json.dumps(app)).replace('__PHASE__',json.dumps(phase))
         with BrowserSession(ROOT/f'netunim-{app}/site',f'post-ack-{app}-{phase}') as browser:
             if args.baseline:
