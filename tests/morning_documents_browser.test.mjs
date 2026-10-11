@@ -51,7 +51,7 @@ function createDomainsCustomersDocumentsBrowser(ports){return buildMorning({...p
   assert.equal(revoked.includes(frame.src),false,'The replacement PDF must remain backed by a live Blob URL');
 
   elements.delete('#morningDocumentsBrowser');elements.delete('#morningBrowserPreview');elements.delete('#morningBrowserPreviewFrame');
-  const standaloneBox={hidden:true,scrollIntoView(){}},standaloneFrame={src:''};let opened=0;
+  const standaloneBox={hidden:true,scrollIntoView(){}},standaloneFrame={src:'',removeAttribute(name){if(name==='src')this.src=''}};let opened=0;
   const linkedBrowser=createDomainsCustomersDocumentsBrowser({
     operationScope:{capture:()=>()=>{},captureRead:()=>()=>{}},
     modal(_title,body){opened++;assert.match(body,/morningStandalonePreviewFrame/);elements.set('#morningStandalonePreview',standaloneBox);elements.set('#morningStandalonePreviewFrame',standaloneFrame)},

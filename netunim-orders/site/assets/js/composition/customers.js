@@ -24,7 +24,7 @@ export function createOrdersCustomersRuntime({model,customerUi,customerRevision}
       ['modal',uiModal,['modal','closeModal','confirmDialog','markModalDraftSaved']],
       ['status',uiStatus,['toast']],
       ['persistence',storagePersistence,['scheduleSave','commitSave','rejectSecondaryAction','rejectSecondaryMutation']],
-      ['cloud',cloudAuth,['supaFetch']],
+      ['cloud',cloudAuth,['supaFetch','subscribeAccountScope']],
       ['morning',morningOperationScope,['capture','captureRead']],
       ['navigation',uiNavigation,['setCustomerRoute']],
       ['date',uiDateEditor,['dateEditorMarkup','setDateValue']],
@@ -35,7 +35,7 @@ export function createOrdersCustomersRuntime({model,customerUi,customerRevision}
     const domain=createDomainsCustomers({
       morningOperationScope,morningRequest:createMorningRequest({supaFetch:(...args)=>cloudAuth.supaFetch(...args),operationScope:morningOperationScope}),customerRevision,model,customerUi,selectors,
       uiLayout,uiModal,uiStatus,storagePersistence,uiNavigation,uiDateEditor,
-      refreshForMorningRecovery,
+      refreshForMorningRecovery,subscribeAccountScope:cloudAuth.subscribeAccountScope,
       getBusinessBankTransactions:bankTransactions.getTransactions,
       ensureBusinessBankTransactions:bankTransactions.ensureTransactions,
       onBankDocumentVerified:bankTransactions.onDocumentVerified,

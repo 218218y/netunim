@@ -11,7 +11,7 @@ function ports(onSave=()=>{}){
     uiStatus:{toast:()=>{}},
     storagePersistence:{scheduleSave:onSave,commitSave:async(...args)=>onSave(...args),canMutate:()=>true,rejectSecondaryAction:()=>false,rejectSecondaryMutation:()=>false},
     morningOperationScope:{capture:()=>()=>{},captureRead:()=>()=>{}},
-    cloudAuth:{supaFetch:async()=>({})},
+    cloudAuth:{supaFetch:async()=>({}),subscribeAccountScope:()=>()=>{}},
     uiNavigation:{setCustomerRoute:()=>{}},
     uiDateEditor:{dateEditorMarkup:()=>'',setDateValue:()=>{}},
     refreshForMorningRecovery:async()=>{},
