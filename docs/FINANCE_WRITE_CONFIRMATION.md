@@ -85,6 +85,13 @@ Operator instructions:
   consumers. Existing ownership, post-commit warnings, Main/Shared ACK,
   Browser/PostgreSQL, offline/PWA, two-computer and Windows gates remain required.
 
+The first wider CI pass exposed two old model assertions reading derived `txns`
+directly from a wire snapshot, and a private decoder name colliding with native
+`document` in the browser test probe. Identity assertions now use the existing
+Credit decoder, and the private helper has an explicit Finance name. Native
+event characterization and Morning recovery pass without removing assertions
+or changing application DOM behavior. The final commit requires a new full gate.
+
 These tests simulate Finance responses, not live issuer/bank effects or physical
 machine crashes. Full CI must pass for the exact branch commit before merge.
 Install the compatible generated site assets and refresh loaded tabs. Rollback
