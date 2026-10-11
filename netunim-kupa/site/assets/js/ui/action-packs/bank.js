@@ -9,6 +9,7 @@ const exportBankChequeDiagnostics=(...args)=>domainsBankController.exportBankChe
 const openBankChequeImage=(...args)=>domainsBankView.openBankChequeImage(...args).catch(error=>uiStatus.toast(error?.message||String(error)));
 const openCashflowBreakdown=(...args)=>domainsBankView.openCashflowBreakdown(...args);
 const refreshBankBalance=(...args)=>domainsBankController.refreshBankBalance(...args);
+const retryLocalBankSnapshot=(...args)=>domainsBankController.retryLocalBankSnapshot(...args);
 const saveBankBridgeToken=(...args)=>domainsBankController.saveBankBridgeToken(...args);
 const selectBankBridgeAccount=(...args)=>domainsBankController.selectBankBridgeAccount(...args);
 const setBankAccountView=(...args)=>domainsBankView.setBankAccountView(...args);
@@ -37,6 +38,7 @@ return {
   'bank-date-to':(element,event)=>{setBankDateBoundary('to',element.value)},
   'toggle-bank-sync-options':(element,event)=>{toggleBankSyncOptions()},
   'refresh-bank-from-hapoalim':(element,event)=>{event?.preventDefault();event?.stopPropagation();refreshBankBalance({interactive:false,auto:false})},
+  'retry-local-bank-snapshot':(element,event)=>{event?.preventDefault();event?.stopPropagation();return retryLocalBankSnapshot()},
   'open-bank-auth':(element,event)=>{event?.preventDefault();event?.stopPropagation();refreshBankBalance({interactive:true,auto:false})},
   'delete-bank-bridge-credentials':(element,event)=>{deleteBankBridgeCredentials()},
   'export-bank-cheque-diagnostics':(element,event)=>{event?.preventDefault();event?.stopPropagation();exportBankChequeDiagnostics()},

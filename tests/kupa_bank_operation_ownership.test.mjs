@@ -130,6 +130,24 @@ test('local bank refresh cannot report success when persistence explicitly decli
   assert.equal(api.bankBridgeUiState().lastScrapeAt,null);assert.equal(f.model.state.bank.currentBalance,500,'retain the staged edit for the persistence recovery path');api.stopAutoSync();
 });
 
+test('a healthy Bridge status cannot erase an unconfirmed local bank write',async t=>{
+  const f=fixture(t);f.ports.session.connectionMode='local';f.ports.saveState=async()=>false;
+  f.ports.bridge.status=async()=>({bridgeVersion:72,configured:true,lastScrapeAt:stamp});
+  const api=f.create();assert.equal(await api.refreshBankBalance(),false);
+  const failure=api.bankBridgeUiState().lastError;assert.match(failure,/שמירה/);
+  await api.refreshBankBridgeStatus();
+  assert.equal(api.bankBridgeUiState().lastError,failure,'Bridge availability is not a local save receipt');
+  api.stopAutoSync();
+});
+
+test('a manual bank write failure is exposed independently of Bridge availability',async t=>{
+  const f=fixture(t);f.ports.session.connectionMode='local';f.ports.saveState=async()=>false;
+  f.ports.bridge.status=async()=>({bridgeVersion:72,configured:true,lastScrapeAt:stamp});
+  const api=f.create();assert.equal(await api.commitBankSnapshot(1234),false);
+  await api.refreshBankBridgeStatus();assert.match(api.bankBridgeUiState().lastError,/שמירה/);
+  assert.equal(f.model.state.bank.currentBalance,1234);api.stopAutoSync();
+});
+
 for(const name of ['saveBankSyncSnapshot','mergeBankTransactions','syncBankTransactionsSnapshot','readBankTransactionSnapshot','acknowledgeBankTransactionMissing','acknowledgeBankTransactionAlert'])test(`bank ${name} fences its authenticated request and response body`,async()=>{
   let valid=true,requests=0;const assertCurrent=()=>{if(!valid)throw changed()},lease={assertCurrent};
   const api=createCloudTransport({supaRest:async(_path,options)=>{options.assertRequestScope();requests++;return {ok:true,text:async()=>{valid=false;return '{}'},json:async()=>{valid=false;return []}}}});

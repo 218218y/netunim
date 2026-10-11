@@ -374,24 +374,6 @@ const uiGlobalSearch=createUiGlobalSearch({
 
 const uiSidebar=createUiSidebar({setPage:(...args)=>uiNavigation.setPage(...args)});
 
-const domainsDashboardView=createDomainsDashboardView({
-  runFinance:financeDerivations.run,
-  model,
-  activeChecks:(...args)=>checks.activeChecks(...args),
-  depositedChecks:(...args)=>checks.depositedChecks(...args),
-  bankLongTermPosition:(...args)=>domainsBankSelectors.bankLongTermPosition(...args),
-  bankAsOfDate:(...args)=>domainsBankSelectors.bankAsOfDate(...args),
-  bankHomeAsOfDate:(...args)=>domainsBankSelectors.bankHomeAsOfDate(...args),
-  bankCurrentBalance:(...args)=>domainsBankSelectors.bankCurrentBalance(...args),
-  bankHomeBalance:(...args)=>domainsBankSelectors.bankHomeBalance(...args),
-  bankNextCycleCommitments:(...args)=>domainsBankSelectors.bankNextCycleCommitments(...args),
-  bankHomeNextCycleCommitments:(...args)=>domainsBankSelectors.bankHomeNextCycleCommitments(...args),
-  bankProjectedThisMonth:(...args)=>domainsBankSelectors.bankProjectedThisMonth(...args),
-  bankHomeProjectedThisMonth:(...args)=>domainsBankSelectors.bankHomeProjectedThisMonth(...args),
-  ordersFinanceSummary:(...args)=>domainsDashboardController.summary(...args),
-  refreshOrdersFinanceSummary:(...args)=>domainsDashboardController.refreshOrdersFinanceSummary(...args),
-});
-
 const uiBulk=createUiBulk({
   ui,
   model,
@@ -430,6 +412,25 @@ const {
     if(session.connectionMode!=='supabase')return 'local:'+session.connectionMode;
     const owner=cloudAuth.loadSupaSession()?.user?.id;return owner?'supabase:'+owner:null;
   },
+});
+
+const domainsDashboardView=createDomainsDashboardView({
+  runFinance:financeDerivations.run,
+  model,
+  bankLocalSnapshotState:domainsBankController.bankLocalSnapshotState,
+  activeChecks:(...args)=>checks.activeChecks(...args),
+  depositedChecks:(...args)=>checks.depositedChecks(...args),
+  bankLongTermPosition:(...args)=>domainsBankSelectors.bankLongTermPosition(...args),
+  bankAsOfDate:(...args)=>domainsBankSelectors.bankAsOfDate(...args),
+  bankHomeAsOfDate:(...args)=>domainsBankSelectors.bankHomeAsOfDate(...args),
+  bankCurrentBalance:(...args)=>domainsBankSelectors.bankCurrentBalance(...args),
+  bankHomeBalance:(...args)=>domainsBankSelectors.bankHomeBalance(...args),
+  bankNextCycleCommitments:(...args)=>domainsBankSelectors.bankNextCycleCommitments(...args),
+  bankHomeNextCycleCommitments:(...args)=>domainsBankSelectors.bankHomeNextCycleCommitments(...args),
+  bankProjectedThisMonth:(...args)=>domainsBankSelectors.bankProjectedThisMonth(...args),
+  bankHomeProjectedThisMonth:(...args)=>domainsBankSelectors.bankHomeProjectedThisMonth(...args),
+  ordersFinanceSummary:(...args)=>domainsDashboardController.summary(...args),
+  refreshOrdersFinanceSummary:(...args)=>domainsDashboardController.refreshOrdersFinanceSummary(...args),
 });
 
 const uiCloud=composeCloudUi({

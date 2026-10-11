@@ -224,6 +224,14 @@ failure with `@ts-ignore`, `@ts-nocheck` or broad assertions.
 
 ## Remaining coverage
 
+Kupa `domains/bank/local-snapshot.js` checks the actual staged-snapshot owner,
+stable string token, typed Bank `set` port, local recovery result and narrow
+disclosure phases. Negative consumers reject numeric snapshot IDs, invalid
+authority ports and treating a pending disclosure as `synced`. The Bank
+controller, full Bank record shape and file/backup persistence implementation
+remain outside this slice's new static coverage. See
+[the local Bank contract](KUPA_BANK_LOCAL_PUBLICATION.md).
+
 Kupa `platform/credit-preferences.js` checks the actual synchronous storage
 adapter, classified results and attempt timestamp. Negative consumers reject
 un-narrowed failures, raw modes, string toggles and async storage. A mutated

@@ -36,7 +36,7 @@ test('finance capability can be assembled before the modal and binds its importe
     model:{state:{creditSync:{}}},session:{},checksSession:{},ui:{currentPage:'cash'},
     cloudAuth:{supaRest:unexpected,supaEnsureSession:unexpected},
     cloudTransport:{},syncDocument:{},syncChecksState:{},syncChecks:{},
-    storagePersistence:{},uiStatus:{},uiNavigation:{},uiDateEditor:{},
+    storagePersistence:{recoverLocalState:unexpected},uiStatus:{},uiNavigation:{},uiDateEditor:{},
     financeDerivations:{run:unexpected},domainsBankSelectors:{},domainRevisions:{},
     getUiModal:()=>modalReady?{}:unexpected(),
   });
@@ -45,6 +45,10 @@ test('finance capability can be assembled before the modal and binds its importe
   assert.equal(typeof capability.bankView.renderBank,'function');
   modalReady=true;
   assert.equal(typeof capability.createConnectionImporter(),'function');
+});
+
+test('finance composition requires the explicit local recovery port before creating consumers',()=>{
+  assert.throws(()=>composeKupaFinance({automaticAccess:()=>null,storagePersistence:{}}),/finance_local_recovery_required/);
 });
 
 test('finance snapshot uses local state without cloud work and refuses an offline remote read',async()=>{

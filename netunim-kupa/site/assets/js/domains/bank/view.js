@@ -10,6 +10,7 @@ import {localSearchMarkup} from '../../ui-primitives/local-search.js';
 import {bankTransactionIdentity} from './feed.js';
 import {bankSmartHistoryRows} from '../../shared/bank-transaction-order.js';
 import {bankChequeImageDownloadName,bankChequeImageWithinRetention,retainBankChequeImagePreviewUrl} from '../../shared/bank-cheque-images.js';
+import {bankLocalSnapshotNotice} from './local-snapshot-view.js';
 
 export function createDomainsBankView({runFinance=withFinanceDerivations, modal,closeModal,model,ui,bankHomeBalance,bankNextCycleCommitments,bankHomeNextCycleCommitments,bankBridgeUiState,refreshBankBridgeStatus,ensureBankDisplayArchive=async()=>false,downloadBankChequeImage=async()=>null,dateEditorMarkup}){
 function accountLabel(branch,account){return branch&&account?`סניף ${branch} · חשבון ${account}`:account?`חשבון ${account}`:''}
@@ -54,10 +55,11 @@ function bankRowMatchesDateRange(row){return !bankDateFilterActive()||dateInRang
 function dateInput(value,key){return dateEditorMarkup('',value,{data:{[key]:''},compact:true})}
 function bankDateFilterMarkup(){const range=bankDateFilterActive(),label=range?'טווח תאריכים':'כל התנועות';return `<details class="bank-date-filter" data-dismiss-on-outside><summary class="bank-date-filter-trigger" aria-label="סינון תנועות הבנק לפי תאריך"><span>${label}</span><span class="bank-date-filter-chevron" aria-hidden="true">⌄</span></summary><div class="bank-date-menu" data-menu-panel><button type="button" class="bank-date-menu-all ${range?'':'active'}" data-action="bank-date-mode" data-click-arg0="all"><span>כל התנועות</span>${range?'':'<b aria-hidden="true">✓</b>'}</button><div class="bank-date-range-card ${range?'active':''}"><div class="bank-date-range-title"><span>טווח תאריכים</span>${range?'<b aria-hidden="true">✓</b>':''}</div><div class="bank-date-range-fields" data-menu-keep-open><div class="bank-date-range-field"><span>מ־</span>${dateInput(ui.bankDateFrom||'','bank-date-from')}</div><div class="bank-date-range-field"><span>עד</span>${dateInput(ui.bankDateTo||'','bank-date-to')}</div></div><button type="button" class="btn primary bank-date-apply" data-action="bank-date-apply">החל</button></div></div></details>`}
 
-function currentBankError(s){return s?.lastError&&syncEventCurrent(s.lastErrorAt,s.sharedLastSyncAt)?s.lastError:''}
-function currentBankWarning(s){return s?.lastWarning&&syncEventCurrent(s.lastScrapeAt,s.sharedLastSyncAt)?s.lastWarning:''}
+function currentBankError(s){if(s?.localSnapshot&&s.localSnapshot.phase!=='saving')return s.localSnapshot.message;return s?.lastError&&syncEventCurrent(s.lastErrorAt,s.sharedLastSyncAt)?s.lastError:''}
+function currentBankWarning(s){return !s?.localSnapshot&&s?.lastWarning&&syncEventCurrent(s.lastScrapeAt,s.sharedLastSyncAt)?s.lastWarning:''}
 function bankSyncHeadlineState(s){
   const lastSync=s?.sharedLastSyncAt,lastFailure=s?.lastErrorAt,error=currentBankError(s),warning=currentBankWarning(s);
+  if(s?.localSnapshot)return {tone:s.localSnapshot.phase==='saving'?'busy':'error',icon:'!',title:s.localSnapshot.phase==='saving'?'ממתין לשמירה':'לא אושר',meta:'צילום זמני'};
   if(s?.busy&&!s?.resultReady)return {tone:'busy',icon:'↻',title:'מסנכרן',meta:'כעת'};
   if(s?.upgradeRequired)return {tone:'error',icon:'!',title:'נדרש עדכון',meta:`Bridge v${String(s.bridgeVersion||'?')}`};
   if(error)return {tone:'error',icon:'!',title:'נכשל',meta:lastFailure?syncTimeLabel(lastFailure):'זמן הכשל לא זמין'};
@@ -204,8 +206,8 @@ function updateBridgePanel(){
   const diagnostics=document.getElementById('bankBridgeDiagnostics');if(diagnostics)diagnostics.innerHTML=bankBridgeDiagnosticsMarkup(s);
   const choices=document.getElementById('bankBridgeAccountChoices');if(choices)choices.innerHTML=bankAccountChoicesMarkup(s.availableAccounts,s.accountSelectionRole);
   for(const [id,value] of [['bankBusinessBranchNumberInput',s.businessBranchNumber||s.branchNumber],['bankBusinessAccountNumberInput',s.businessAccountNumber||s.accountNumber],['bankHomeBranchNumberInput',s.homeBranchNumber],['bankHomeAccountNumberInput',s.homeAccountNumber]]){const input=document.getElementById(id);if(input&&document.activeElement!==input&&!input.value)input.value=value||''}
-  const refresh=document.querySelector('[data-action="refresh-bank-from-hapoalim"]');if(refresh)refresh.disabled=!!s.busy||!s.tokenConfigured||!!s.upgradeRequired;
-  const auth=document.querySelector('[data-action="open-bank-auth"]');if(auth)auth.disabled=!!s.busy||!s.tokenConfigured||!!s.upgradeRequired;
+  const refresh=document.querySelector('[data-action="refresh-bank-from-hapoalim"]');if(refresh)refresh.disabled=!!s.busy||!!s.localSnapshot||!s.tokenConfigured||!!s.upgradeRequired;
+  const auth=document.querySelector('[data-action="open-bank-auth"]');if(auth)auth.disabled=!!s.busy||!!s.localSnapshot||!s.tokenConfigured||!!s.upgradeRequired;
   const exportDiagnostics=document.querySelector('[data-action="export-bank-cheque-diagnostics"]');if(exportDiagnostics)exportDiagnostics.disabled=!!s.busy||!s.tokenConfigured||!!s.upgradeRequired;
   const remove=document.querySelector('[data-action="delete-bank-bridge-credentials"]');if(remove)remove.disabled=!!s.busy||!s.configured;
   const save=document.querySelector('[data-action="configure-bank-bridge"]');if(save)save.disabled=!!s.busy;
@@ -221,10 +223,11 @@ function renderBankContent(){
   const cycle=bankNextCycleCommitments(),homeCycle=bankHomeNextCycleCommitments(),homeBank=bankHomeBalance();
   const bridgeUi=bankBridgeUiState(),staleTotal=cycle.elapsedCredit+cycle.elapsedExpenses,homeStaleTotal=homeCycle.elapsedCredit+homeCycle.elapsedExpenses;
   document.getElementById('content').innerHTML=`
+  ${bankLocalSnapshotNotice(bridgeUi.localSnapshot,{retry:true})}
   <section class="section bank-sync-section">
     <div class="bank-command-row">
       <div class="bank-view-tools">${bankAccountTabsMarkup()}${localSearchMarkup({value:ui.bankSearchValue||'',placeholder:'חיפוש תנועות…',label:'חיפוש בתנועות הבנק המוצגות',inputAction:'bank-search',className:'bank-search-field'})}${bankHeaderCashflowMarkup()}</div>
-      <div class="bank-sync-quick-actions"><button id="bankSyncHeadline" type="button" class="bank-sync-toggle ${bankSyncHeadlineState(bridgeUi).tone} ${ui.bankSyncOpen?'open':''}" data-action="toggle-bank-sync-options" aria-expanded="${ui.bankSyncOpen===true}" aria-controls="bankSyncPanel">${bankSyncHeadlineMarkup(bridgeUi)}<span class="bank-sync-chevron" aria-hidden="true">⌄</span></button><button type="button" class="btn primary bank-sync-refresh" data-action="refresh-bank-from-hapoalim" ${bridgeUi.busy||!bridgeUi.tokenConfigured||bridgeUi.upgradeRequired?'disabled':''}>${bridgeUi.busy?(bridgeUi.resultReady?'מסיים…':'מעדכן…'):'רענן'}</button></div>
+      <div class="bank-sync-quick-actions"><button id="bankSyncHeadline" type="button" class="bank-sync-toggle ${bankSyncHeadlineState(bridgeUi).tone} ${ui.bankSyncOpen?'open':''}" data-action="toggle-bank-sync-options" aria-expanded="${ui.bankSyncOpen===true}" aria-controls="bankSyncPanel">${bankSyncHeadlineMarkup(bridgeUi)}<span class="bank-sync-chevron" aria-hidden="true">⌄</span></button><button type="button" class="btn primary bank-sync-refresh" data-action="refresh-bank-from-hapoalim" ${bridgeUi.busy||bridgeUi.localSnapshot||!bridgeUi.tokenConfigured||bridgeUi.upgradeRequired?'disabled':''}>${bridgeUi.busy?(bridgeUi.resultReady?'מסיים…':'מעדכן…'):'רענן'}</button></div>
     </div>
     <div id="bankSyncPanel" class="bank-sync-settings-body" ${ui.bankSyncOpen?'':'hidden'}>
       <div class="bank-sync-settings-top"><div><b>אפשרויות סינכרון</b><small>פתח אימות רק כשהבנק דורש הזדהות מחדש; פירוט מלא של כשל מופיע כאן.</small></div><div class="bank-sync-panel-actions"><button type="button" class="btn" data-action="import-finance-connections" ${bridgeUi.busy||!bridgeUi.tokenConfigured||bridgeUi.upgradeRequired?'disabled':''}>ייבוא בנק + אשראי</button><button type="button" class="btn" data-action="export-bank-cheque-diagnostics" ${bridgeUi.busy||!bridgeUi.tokenConfigured||bridgeUi.upgradeRequired?'disabled':''}>ייצוא אבחון בנק (JSON)</button><button type="button" class="btn" data-action="open-bank-auth" ${bridgeUi.busy||!bridgeUi.tokenConfigured||bridgeUi.upgradeRequired?'disabled':''}>פתח אימות בבנק</button></div></div>

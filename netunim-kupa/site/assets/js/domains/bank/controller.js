@@ -7,6 +7,7 @@ import {wholeMoney} from '../../core/money.js';
 import {todayISO} from '../../core/dates.js';
 import {BANK_AUTO_INTERVAL_MS,bankAutoRefreshDue} from '../../shared/finance-refresh-policy.js';
 import {normalizeBankFeed} from './feed.js';
+import {createBankLocalSnapshot} from './local-snapshot.js';
 
 const BANK_BRIDGE_VERSION=72;
 
@@ -32,13 +33,14 @@ function assertBankArchiveCoverage(mergeResult,archive,{role,requireExactCount=f
 }
 
 
-export function createDomainsBankController({model,session,checksSession,sharedChecksHaveLocalWork,saveSharedChecksToCloud,saveState,syncSharedChecksFromCloud,sharedChecksObservedSequence,toast,render,bridge,autoScope,operationScope,timers=globalThis,refreshFinanceCloudSnapshot=async()=>({verified:true,state:model.state}),saveFinancePatch=async()=>({saved:false}),claimFinanceSyncLease=async()=>({acquired:true}),releaseFinanceSyncLease=async()=>true,saveBankSyncSnapshot:publishBankSyncSnapshot=null,mergeBankTransactions=async()=>null,syncBankTransactionsSnapshot=async()=>null,readBankTransactions=async()=>[],readBankTransactionSnapshot=async()=>null,acknowledgeBankTransactionMissing=async()=>null,syncBankChequeImages=async()=>({ok:true,warnings:[]}),touchBankDataRevision=()=>{},touchBankDisplayRevision=()=>{}}){
+export function createDomainsBankController({model,session,checksSession,sharedChecksHaveLocalWork,saveSharedChecksToCloud,saveState,recoverLocalState=async()=>false,syncSharedChecksFromCloud,sharedChecksObservedSequence,toast,render,bridge,autoScope,operationScope,timers=globalThis,refreshFinanceCloudSnapshot=async()=>({verified:true,state:model.state}),saveFinancePatch=async()=>({saved:false}),claimFinanceSyncLease=async()=>({acquired:true}),releaseFinanceSyncLease=async()=>true,saveBankSyncSnapshot:publishBankSyncSnapshot=null,mergeBankTransactions=async()=>null,syncBankTransactionsSnapshot=async()=>null,readBankTransactions=async()=>[],readBankTransactionSnapshot=async()=>null,acknowledgeBankTransactionMissing=async()=>null,syncBankChequeImages=async()=>({ok:true,warnings:[]}),touchBankDataRevision=()=>{},touchBankDisplayRevision=()=>{}}){
 const bridgeState={checked:false,available:null,configured:false,busy:false,resultReady:false,upgradeRequired:false,bridgeVersion:0,branchNumber:'',accountNumber:'',businessBranchNumber:'',businessAccountNumber:'',homeBranchNumber:'',homeAccountNumber:'',availableAccounts:[],accountSelectionRole:'',lastScrapeAt:null,lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:'',lastWarningCode:'',lastWarningStage:'',lastWarningHttpStatus:0,availabilityError:'',availabilityErrorAt:null,message:''};
 if(typeof autoScope!=='function')throw new Error('bank_auto_scope_required');
 if(typeof operationScope?.capture!=='function'||typeof operationScope?.captureRead!=='function')throw new Error('bank_operation_scope_required');
+const localSnapshot=createBankLocalSnapshot({model,saveState,recoverLocalState,render});
 let automaticActive=true,automaticOwner=null;
 const automaticAllowed=()=>{
-  const scope=autoScope();if(!automaticActive||typeof scope!=='string'||!scope.length)return false;
+  const scope=autoScope();if(!automaticActive||localSnapshot.state()||typeof scope!=='string'||!scope.length)return false;
   if(automaticOwner===null)automaticOwner=scope;
   return scope===automaticOwner&&session.backendReady&&!bridgeState.upgradeRequired&&bridge.autoEnabled()&&!!bridge.getBridgeToken();
 };
@@ -87,6 +89,7 @@ async function prepareBankSnapshot(assertCurrent){
 
 async function commitBankSnapshot(balance,{source='manual',accountNumber=null,bankSyncAt=undefined,bankFeed=undefined,homeBankFeed=undefined,message='יתרת העו״ש נשמרה כצילום מצב חדש'}={}){
   const assertCurrent=operationScope.capture();
+  if(localSnapshot.state())return false;
   const numeric=Number(balance);
   if(!Number.isFinite(numeric))throw new Error('התקבלה יתרת בנק לא תקינה');
   await prepareBankSnapshot(assertCurrent);
@@ -99,9 +102,14 @@ async function commitBankSnapshot(balance,{source='manual',accountNumber=null,ba
   const nextFeed=bankFeed===undefined?previousFeed:normalizeBankFeed(bankFeed);
   const previousHomeFeed=model.state.bank?.homeFeed||null;
   const nextHomeFeed=homeBankFeed===undefined?previousHomeFeed:normalizeBankFeed(homeBankFeed);
-  model.state.bank={...model.state.bank,currentBalance:wholeMoney(numeric),updatedAt:new Date().toISOString(),asOfDate:todayISO(),snapshotToken:uid('BANK'),snapshotSeq:observedSeq,adjustments:[],source,sourceAccount:accountNumber||null,bankSyncAt:nextSyncAt,feed:nextFeed,homeFeed:nextHomeFeed};
-  const saved=await saveState(message,{operations:[{type:'set',field:'bank',value:model.state.bank}]});
+  const nextBank={...model.state.bank,currentBalance:wholeMoney(numeric),updatedAt:new Date().toISOString(),asOfDate:todayISO(),snapshotToken:uid('BANK'),snapshotSeq:observedSeq,adjustments:[],source,sourceAccount:accountNumber||null,bankSyncAt:nextSyncAt,feed:nextFeed,homeFeed:nextHomeFeed};
+  const saved=await localSnapshot.save(nextBank,message,assertCurrent);
   assertCurrent();return saved;
+}
+
+async function retryLocalBankSnapshot(){
+  try{const saved=await localSnapshot.retry();if(saved&&automaticActive)autoTask.start();return saved}
+  catch(error){toast(error?.code==='FINANCE_OPERATION_SCOPE_CHANGED'?error.message:'לא ניתן לאשר את הצילום הקיים. יש לבדוק את מצב האחסון; לא בוצעה סריקה נוספת מהבנק.');return false}
 }
 
 function displayArchiveFeed(role,feed){const normalized=normalizeBankFeed(feed);if(!normalized)return null;const cache=bankDisplayArchive[role],accountKey=String(normalized.accountNumber||''),syncKey=String(normalized.syncedAt||'');return cacheIsCurrent(cache)&&cache.accountKey===accountKey&&cache.syncKey===syncKey&&Array.isArray(cache.rows)?normalizeBankFeed({...normalized,transactions:cache.rows,directSnapshot:cache.directSnapshot}):normalized}
@@ -109,7 +117,8 @@ function bankBridgeUiState(){
   const feed=displayArchiveFeed('business',model.state.bank?.feed),homeFeed=displayArchiveFeed('home',model.state.bank?.homeFeed);
   const sharedLastSyncAt=sharedBankLastSyncAt();
   const homeLastSyncAt=homeFeed?.syncedAt||null;
-  return {...bridgeState,tokenConfigured:!!bridge.getBridgeToken(),autoEnabled:bridge.autoEnabled(),sharedLastSyncAt,homeLastSyncAt,feed,homeFeed};
+  const local=localSnapshot.state();
+  return {...bridgeState,...(local&&local.phase!=='saving'?{lastError:local.message}:{}),localSnapshot:local,tokenConfigured:!!bridge.getBridgeToken(),autoEnabled:bridge.autoEnabled(),sharedLastSyncAt,homeLastSyncAt,feed,homeFeed};
 }
 
 async function ensureBankDisplayArchive(){
@@ -239,6 +248,7 @@ async function exportBankChequeDiagnostics(){
 function setBankAutoRefresh(enabled){bridge.setAutoEnabled(!!enabled);toast(enabled?'עדכון אוטומטי כל 4 שעות הופעל':'עדכון אוטומטי כובה');if(enabled)startAutoSync();else stopAutoSync()}
 
 async function refreshBankBalance({interactive=false,auto=false,isCurrent=()=>true}={}){
+  const pending=localSnapshot.state();if(pending){if(!auto)toast(pending.message);return false}
   const scope=auto?autoScope():null,allowed=()=>isCurrent()&&automaticAllowed()&&autoScope()===scope;
   if(auto&&!allowed())return false;
   if(bridgeState.busy)return false;
@@ -309,8 +319,7 @@ async function refreshBankBalance({interactive=false,auto=false,isCurrent=()=>tr
       toast(historyDays>=365?'ארכיון הבנק אומת ואותחל בכתיבה אטומית':auto?'נתוני הבנק עודכנו':'נתוני הבנק עודכנו ונשמרו בארכיון נפרד');
     }else{
       await saveFinancePatch(state=>({...state,bank:financeBankPayload(nextBank)}),lease);assertCurrent();
-      model.state.bank=nextBank;
-      const saved=await saveState(historyDays>=365?'ארכיון הבנק אותחל והופרד מגיבויי הקופה':auto?'נתוני הבנק עודכנו':'נתוני הבנק עודכנו ונשמרו בארכיון נפרד',{operations:[{type:'set',field:'bank',value:model.state.bank}]});assertCurrent();
+      const saved=await localSnapshot.save(nextBank,historyDays>=365?'ארכיון הבנק אותחל והופרד מגיבויי הקופה':auto?'נתוני הבנק עודכנו':'נתוני הבנק עודכנו ונשמרו בארכיון נפרד',assertCurrent);assertCurrent();
       if(saved!==true)throw new Error('לא התקבל אישור שמירה לנתוני הבנק. אין לסגור את החלון; יש לבדוק את מצב השמירה המקומית.');
       publishDisplayArchive(archiveCandidate);
     }
@@ -321,8 +330,8 @@ async function refreshBankBalance({interactive=false,auto=false,isCurrent=()=>tr
     bridgeState.resultReady=true;render();
     return true;
   }catch(e){
-    bridgeState.lastError=e.message||String(e);bridgeState.lastErrorAt=new Date().toISOString();bridgeState.lastErrorCode=e.code||'';bridgeState.lastErrorStage=e.stage||'';bridgeState.lastErrorHttpStatus=Number(e.httpStatus)||0;bridgeState.availableAccounts=Array.isArray(e.availableAccounts)?e.availableAccounts:[];bridgeState.accountSelectionRole=e.accountRole||'';bridgeState.message=bridgeState.lastError;
-    if(!auto)toast(bridgeState.lastError);
+    if(!localSnapshot.state()){bridgeState.lastError=e.message||String(e);bridgeState.lastErrorAt=new Date().toISOString();bridgeState.lastErrorCode=e.code||'';bridgeState.lastErrorStage=e.stage||'';bridgeState.lastErrorHttpStatus=Number(e.httpStatus)||0;bridgeState.availableAccounts=Array.isArray(e.availableAccounts)?e.availableAccounts:[];bridgeState.accountSelectionRole=e.accountRole||'';bridgeState.message=bridgeState.lastError}
+    if(!auto)toast(bankBridgeUiState().lastError);
     bridgeState.resultReady=true;render();
     return false;
   }finally{heartbeat?.stop();if(leaseHeld)try{await releaseFinanceSyncLease('bank',leaseToken,{assertCurrent:assertOwner})}catch(error){if(!scopeChanged(error))console.error('bank sync lease release',error)}bridgeState.busy=false;bridgeState.resultReady=false;render()}
@@ -350,5 +359,5 @@ function maybeAutoRefreshBankBalance(){return automaticActive?autoTask.start():f
 function startAutoSync(){automaticActive=true;automaticOwner=null;return autoTask.start()}
 function stopAutoSync(){automaticActive=false;return autoTask.stop()}
 
-return {bankBridgeUiState,ensureBankDisplayArchive,refreshBankBridgeStatus,saveBankBridgeToken,configureBankBridge,selectBankBridgeAccount,deleteBankBridgeCredentials,exportBankChequeDiagnostics,setBankAutoRefresh,refreshBankBalance,acknowledgeMissingBankTransaction,maybeAutoRefreshBankBalance,startAutoSync,stopAutoSync,commitBankSnapshot};
+return {bankBridgeUiState,bankLocalSnapshotState:localSnapshot.state,retryLocalBankSnapshot,ensureBankDisplayArchive,refreshBankBridgeStatus,saveBankBridgeToken,configureBankBridge,selectBankBridgeAccount,deleteBankBridgeCredentials,exportBankChequeDiagnostics,setBankAutoRefresh,refreshBankBalance,acknowledgeMissingBankTransaction,maybeAutoRefreshBankBalance,startAutoSync,stopAutoSync,commitBankSnapshot};
 }

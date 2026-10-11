@@ -84,6 +84,11 @@ async function loadState({automatic=false}={}){
   return model.state;
 }
 
+async function recoverLocalState(assertCurrent){
+  assertCurrent();const recovered=await recoverStorageV2State();assertCurrent();
+  return !!recovered&&storageV2Primary();
+}
+
 function saveState(msg='נשמר',{deleteIntents={},mutationType='autosave',surface='kupa',domains=null,operations=null}={}){
   if(!tab.primaryTab){showSecondaryTabGuard();return Promise.resolve(false)}
   if(!storageV2Primary()){setSaveStatus('אחסון V2 אינו מוכן — השמירה נעצרה','error');return Promise.resolve(false)}
@@ -220,5 +225,5 @@ async function persistState(snapshot,msg,generation=session.localGeneration){
   }catch(e){console.error(e);setSaveStatus('שגיאת שמירה לקובץ — בדוק את מצב V2','error');reportError('השמירה לקובץ נכשלה. בדוק את מצב Storage V2 ואת הגישה לתיקייה לפני ניסיון נוסף; הקובץ הקיים לא יידרס אוטומטית.');return false}
 }
 
-return { loadState, saveState, saveChecksState, persistState };
+return { loadState, saveState, saveChecksState, persistState, recoverLocalState };
 }

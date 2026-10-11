@@ -56,6 +56,11 @@ they validate ownership before staging and after durability. Local-mode provider
 refresh retains its existing local journal path and staged edit if persistence
 fails; a declined persistence confirmation cannot report refresh success. This
 additional regression reproduced `true` after `saveState` returned `false`.
+The local snapshot now retains a separate scoped confirmation/disclosure owner:
+healthy Bridge status cannot clear its warning, Bank/dashboard show temporary
+values, and explicit recovery/retry keeps the same snapshot/transaction IDs
+without another provider retrieval. See
+[the local publication contract](KUPA_BANK_LOCAL_PUBLICATION.md).
 These are distinct from cloud
 snapshot publication. Main/Shared journal, ACK, merge, serialization, SQL and
 compatibility semantics are unchanged.

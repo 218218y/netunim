@@ -414,3 +414,14 @@ focused local cases. CI runs all four profiles. The storage exceptions and
 Finance/Bridge replies are controlled fixtures, not disk exhaustion/live issuers.
 The actual adapter body and negative consumers are strict checkJs inputs. See
 docs/KUPA_CREDIT_PREFERENCES_CONTRACT.md for operator recovery and limits.
+
+Kupa local Bank publication: kupa_bank_local_snapshot.test.mjs and the added
+kupa_bank_operation_ownership regressions separate a healthy Bridge from a local
+save receipt. runtime_bank_local_publication.py (browser-lifecycle) uses actual
+composition/delegated actions/native IDB in two profiles: aborted journal with
+emergency quota, retained Bank/dashboard warning, explicit scoped recovery/retry,
+primary loss and fresh reload. Snapshot/transaction IDs and an independent note
+survive; raw Shared is unchanged; only one provider retrieval occurs. Provider
+responses and file handles are synthetic. --baseline must reproduce false green.
+The actual local snapshot owner and negative consumer fixture are strict checkJs
+inputs. See docs/KUPA_BANK_LOCAL_PUBLICATION.md for recovery and limits.
