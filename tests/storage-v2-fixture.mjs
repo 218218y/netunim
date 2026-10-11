@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {readStorageRecord} from '../shared/storage-journal-model.js';
+import {assertCloudRecoveryHead} from '../shared/storage-cloud-recovery.js';
 const clone=structuredClone;
 export function emergencyStore({failWrites=false}={}){const rows=new Map();return {get length(){return rows.size},key:index=>[...rows.keys()][index]??null,getItem:key=>rows.get(key)??null,setItem:(key,value)=>{if(failWrites)throw new Error('quota');rows.set(key,value)},removeItem:key=>rows.delete(key)}}
 export function memoryDb(){
@@ -23,6 +24,7 @@ export function memoryDb(){
     async rejectFlight(_owner,epoch,writer,id,base,{checkpoint,expectedSeq,control=null}={}){scoped(epoch,writer);assert.equal(readStorageRecord(flights).operationId,id);assert.equal(expectedSeq,metadata.seq);checkpoints=clone(checkpoint);bases=clone(base);flights=null;controls=control&&clone(control)},
     async setControl(_owner,epoch,writer,control){scoped(epoch,writer);controls=clone(control)},
     async clearControl(_owner,epoch,writer,{expectedHead=null}={}){scoped(epoch,writer);if(expectedHead&&(metadata.seq!==expectedHead.seq||flights||checkpoints?.checksum!==expectedHead.checkpointChecksum||bases?.checksum!==expectedHead.baseChecksum||controls?.checksum!==expectedHead.controlChecksum))throw new Error('storage_control_head_changed');controls=null;return true},
+    async commitCloudRecovery(_owner,epoch,writer,checkpoint,{expectedHead,conflictKind=null,isCurrent=()=>true}){scoped(epoch,writer);if(!isCurrent())throw new Error('storage_cloud_scope_changed');assertCloudRecoveryHead({seq:metadata.seq,base:readStorageRecord(bases),flight:flights,control:controls&&readStorageRecord(controls)},expectedHead,conflictKind);if(checkpoints.checksum!==expectedHead.checkpointChecksum||bases.checksum!==expectedHead.baseChecksum||(controls?.checksum??null)!==expectedHead.controlChecksum)throw new Error('storage_cloud_recovery_stale');checkpoints=clone(checkpoint);if(conflictKind)controls=null;return true},
     async adoptCloudHead(_owner,epoch,writer,checkpoint,base,{expectedHead=null}={}){scoped(epoch,writer);assert.equal(flights,null);if(expectedHead&&(metadata.seq!==expectedHead.seq||checkpoints?.checksum!==expectedHead.checkpointChecksum||bases?.checksum!==expectedHead.baseChecksum||(controls?.checksum??null)!==expectedHead.controlChecksum))throw new Error('storage_cloud_adoption_stale');if(controls&&readStorageRecord(controls).conflict)throw new Error('storage_cloud_pending');assert.equal(readStorageRecord(bases).ackSeq,metadata.seq);checkpoints=clone(checkpoint);bases=clone(base);controls=null},
     async resetState(_owner,epoch,writer,checkpoint){scoped(epoch,writer);const next=readStorageRecord(checkpoint);checkpoints=clone(checkpoint);metadata={epoch:next.epoch,seq:0,writer};journal=[];bases=null;flights=null;controls=null},
   };

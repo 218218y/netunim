@@ -1,6 +1,8 @@
 export function createStorageV2CloudPorts(browser){
   return {
     storageV2CloudOutboxActive:(...args)=>browser.storageV2CloudOutboxActive(...args),
+    readStorageV2CloudRecovery:(...args)=>browser.readStorageV2CloudRecovery(...args),
+    commitStorageV2CloudRecovery:(...args)=>browser.commitStorageV2CloudRecovery(...args),
     refreshStorageV2CloudState:(...args)=>browser.refreshStorageV2CloudState(...args),
     materializeStorageV2CloudFlight:(...args)=>browser.materializeStorageV2CloudFlight(...args),
     acknowledgeStorageV2CloudFlight:(...args)=>browser.acknowledgeStorageV2CloudFlight(...args),

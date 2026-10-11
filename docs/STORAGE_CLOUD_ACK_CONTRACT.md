@@ -230,7 +230,7 @@ or physical two-computer validation. No persisted schema, RPC or SQL changes.
 | IndexedDB ACK abort/quota failure | No publication or cursor advance; retain flight/pending; a later explicit/reconnect attempt can retry the identical operation |
 | Invalid ACK revision | No ACK or publication; pending remains under existing error policy |
 | Successful RPC without authoritative state | No ACK/publication/cursor advance; retain the exact flight and newer pending work; replay under the existing owner policy |
-| Edit overlaps ACK commit | Confirm only the sent generation, retain later work, persist conflict fence and require review |
+| Edit overlaps ACK commit | Confirm only the sent generation; prove and CAS a conflict-free journal delta before publication/normal pending drain, otherwise retain work with a review fence |
 | Leadership changes during commit | No continuation from the old primary; new primary recovers from the durable journal |
 | Post-commit cache/backup unavailable | ACK stays committed; report/defer the optional work without replaying the write |
 | Post-commit model publication fails | ACK stays committed; preserve the cause, persist a review fence and stop further sends |
@@ -261,3 +261,23 @@ it is not a claim that every possible OS/browser/provider failure is simulated.
 Persisted schema/protocol versions, SQL and RPC payloads are unchanged. Conflict
 controls already accept an opaque `kind`; both new reasons use that existing
 shape and readers keep their existing generic conflict gate.
+
+## Committed ACK with later local work
+
+ACK durability and publication permission are separate facts. A generation or
+sequence change after ACK commit is not by itself a business conflict. Both apps
+now use the bounded proof/replay/three-way-merge/CAS described in
+[ORDERS_CONCURRENT_ACK_RECOVERY.md](ORDERS_CONCURRENT_ACK_RECOVERY.md).
+
+The captured pre-ACK candidate sequence remains immutable. Every later displayed
+edit must be explained by the validated post-candidate durable journal; the base
+must still equal the authoritative ACK receipt. CAS validates live owner/login
+epoch/primary, writer/epoch, sequence and checkpoint/base/control checksums.
+Only the local projection changes; ACK, base, journal rows and flight identity do
+not. Publication remains scope/generation fenced after the transaction.
+
+Immediate recovery is bounded to two attempts. A real record conflict, unjournaled
+draft, corrupt/stale head or ownership loss never becomes silent success.
+Historical `concurrent-ack` controls require the explicit reviewed recovery action
+and a fresh remote read; only that exact control can be retired. No blanket
+`clearCloudControl`, synthetic ACK or new operation ID for the old flight.

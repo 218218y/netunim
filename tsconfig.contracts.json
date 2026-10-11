@@ -13,6 +13,8 @@
     "types": []
   },
   "files": [
+    "shared/storage-cloud-recovery.js",
+    "tests/fixtures/checked-cloud-recovery.mjs",
     "shared/cloud-write-scope.js",
     "shared/cloud-ack-diagnostic.js",
     "tests/fixtures/checked-cloud-write-scope.mjs",
