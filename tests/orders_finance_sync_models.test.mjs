@@ -425,7 +425,7 @@ assert.equal(saveCalls,bankSaveCalls,'credit refresh does not write the Kupa bac
 assert.equal(financeSaveCalls,bankFinanceSaveCalls+1,'credit refresh writes only the isolated revision-checked finance document');
 assert.equal(creditFetchCalls,1);
 assert.deepEqual(lastCreditSyncOptions,{interactive:false,syncMode:'forecast',selection:[]},'ordinary Orders manual credit refresh rechecks the recent 30 days and refreshes the 12-month forecast with the explicit excluded-card selection');
-assert.equal(financeRow.state.creditSync.profiles.find(p=>p.profileId==='p1').accounts[0].txns[0].id,'fresh');
+assert.equal(normalizeCreditSync(financeRow.state.creditSync).profiles.find(p=>p.profileId==='p1').accounts[0].txns[0].id,'fresh');
 assert.equal(financeRow.state.creditSync.cardMappings['p1:1111'].included,true,'Orders refresh keeps credit card mapping choices in finance state');
 
 const acceptsBeforeThreshold=acceptKupaCalls,refreshesBeforeThreshold=refreshKupaCalls,financeBeforeThreshold=structuredClone(financeRow.state);
@@ -437,7 +437,7 @@ assert.equal(acceptKupaCalls,acceptsBeforeThreshold,'raw Kupa RPC rows are not a
 assert.equal(refreshKupaCalls,refreshesBeforeThreshold+1,'a successful Kupa core write re-reads the merged Kupa+finance view before rendering');
 assert.equal(checksSession.kupaCloudReadState.cashflowSettings.businessMinimum,5000);
 assert.equal(checksSession.kupaCloudReadState.bank.feed.balance,1500,'bank feed remains visible immediately after saving the shared threshold');
-assert.equal(checksSession.kupaCloudReadState.creditSync.profiles[0].accounts[0].txns[0].id,'fresh','credit feed remains visible immediately after saving the shared threshold');
+assert.equal(normalizeCreditSync(checksSession.kupaCloudReadState.creditSync).profiles[0].accounts[0].txns[0].id,'fresh','credit feed remains visible immediately after saving the shared threshold');
 const savesBeforeCutoff=saveCalls,refreshesBeforeCutoff=refreshKupaCalls;
 assert.equal(await controller.saveCashflowCheckCutoff('business','16'),true,'Orders can persist the shared business check cutoff day');
 assert.equal(saveCalls,savesBeforeCutoff+1);assert.equal(cloudRow.state.cashflowSettings.businessCheckCutoffDay,16);assert.equal(checksSession.kupaCloudReadState.cashflowSettings.businessCheckCutoffDay,16);assert.equal(refreshKupaCalls,refreshesBeforeCutoff+1);

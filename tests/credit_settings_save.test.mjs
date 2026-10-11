@@ -5,6 +5,7 @@ import {createFinanceManualQueue} from '../shared/finance-fence.js';
 import {applyCreditCardOrderData,creditOrderCardsData} from '../shared/credit-card-order.js';
 import {createDomainsCreditController} from '../netunim-kupa/site/assets/js/domains/credit/controller.js';
 import {createDomainsFinanceController} from '../netunim-orders/site/assets/js/domains/finance/controller.js';
+import {normalizeCreditSync} from '../netunim-orders/site/assets/js/domains/finance/credit-feed.js';
 
 const fixture=()=>({version:4,profiles:[{profileId:'p',provider:'max',accounts:[{accountNumber:'a',txns:[{id:'old',date:'2026-09-01'}]},{accountNumber:'b',txns:[]}]}],cardMappings:{'p:a':{included:true,cardName:'א',sortOrder:1},'p:b':{included:true,cardName:'ב',sortOrder:2}}});
 
@@ -52,7 +53,7 @@ test('Orders saves card order once, preserves fresh financial data and leaves sy
   let row={revision:5,state:{bank:{balance:123},creditSync:fixture()}},writes=0,fail=false;const checksSession={kupaCloudReadState:structuredClone(row.state),checksBankEvents:[]};
   const controller=createDomainsFinanceController({operationScope:{capture:()=>()=>{},captureRead:()=>()=>{}},tab:{primaryTab:true},checksSession,bridge:{getBridgeToken:()=>'',bankAutoEnabled:()=>false,creditAutoEnabled:()=>false,creditAutoMode:()=> 'daily'},loadSession:()=>({}),toast:()=>{},readFinanceSyncDocument:async()=>structuredClone(row),claimFinanceSyncLease:async()=>({acquired:true,leaseToken:'manual',leaseName:'credit',fenceEpoch:1}),releaseFinanceSyncLease:async()=>true,refreshKupaReadout:async()=>{checksSession.kupaCloudReadState=structuredClone(row.state)},rpcSaveFinanceSync:async(state,revision)=>{if(fail)throw new Error('network failed');assert.equal(revision,row.revision);writes++;row={revision:revision+1,state};return {r:{ok:true},row}}});
   row.state.creditSync.profiles[0].accounts[0].txns=[{id:'fresh',date:'2026-09-16'}];
-  assert.equal(await controller.saveCreditCardOrder(['p:b','p:a']),true);assert.equal(writes,1);assert.equal(row.state.bank.balance,123);assert.equal(row.state.creditSync.profiles[0].accounts[0].txns[0].id,'fresh');
+  assert.equal(await controller.saveCreditCardOrder(['p:b','p:a']),true);assert.equal(writes,1);assert.equal(row.state.bank.balance,123);assert.equal(normalizeCreditSync(row.state.creditSync).profiles[0].accounts[0].txns[0].id,'fresh');
   fail=true;const saved=structuredClone(row);assert.equal(await controller.setCreditCardMapping('p','a','sortOrder',''),false);assert.deepEqual(row,saved);assert.equal(controller.snapshot().creditError,'');
   fail=false;await controller.saveCreditCardOrder(null);assert.equal(row.state.creditSync.cardMappings['p:a'].sortOrder,null);
 });

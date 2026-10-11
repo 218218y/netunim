@@ -13,6 +13,8 @@
     "types": []
   },
   "files": [
+    "shared/finance-write-receipt.js",
+    "tests/fixtures/checked-finance-write-receipt.mjs",
     "netunim-orders/site/assets/js/platform/calendar-delivery-owner.js",
     "tests/fixtures/checked-calendar-delivery-owner.mjs",
     "netunim-orders/site/assets/js/domains/finance/automation-preferences.js",

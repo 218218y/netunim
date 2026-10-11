@@ -1,5 +1,6 @@
 import {financeFencePayload,createFinanceManualQueue} from '../shared/finance-fence.js';
 import {readBankSnapshotReceipt} from '../shared/bank-snapshot-receipt.js';
+import {readFinanceWriteReceipt} from '../shared/finance-write-receipt.js';
 import {assertReadableCloudState} from '../state/validation.js';
 import {normalizeSharedChecks} from '../shared/shared-checks-contract.js';
 import {SHARED_CHECKS_DOC, SHARED_CHECKS_TABLE, SHARED_CHECKS_RPC} from '../state/constants.js';
@@ -124,10 +125,12 @@ async function saveFinancePatch(mutator,lease=null,{assertCurrent=lease?.assertC
   let row=await readFinanceSyncDocument({assertCurrent});
   for(let conflictAttempt=0;conflictAttempt<CLOUD_WRITE_POLICY.conflictAttempts;conflictAttempt++){
     assertCurrent?.();
-    const base=row?.state&&typeof row.state==='object'?structuredClone(row.state):{},next=mutator(base);if(!next)return {saved:false,row};
-    const audit=operationAuditMetadata({site:'kupa',mutationType:'finance-update',surface:'kupa.finance.sync-document',baseRevision:Number(row?.revision||0),beforeState:base,afterState:next});
-    const res=await runBusyCloudWriteWithPolicy(()=>rpcSaveFinanceSync(next,Number(row?.revision||0),operationId,audit,lease));
-    if(res?.r?.ok)return {saved:true,row:res.row};
+    const base=row?.state&&typeof row.state==='object'?structuredClone(row.state):{},candidate=mutator(base);if(!candidate)return {saved:false,row};
+    // Capture exactly the JSON sent by the RPC, including domain toJSON views.
+    const next=JSON.parse(JSON.stringify(candidate));
+    const baseRevision=Number(row?.revision||0),audit=operationAuditMetadata({site:'kupa',mutationType:'finance-update',surface:'kupa.finance.sync-document',baseRevision,beforeState:base,afterState:next});
+    const res=await runBusyCloudWriteWithPolicy(()=>rpcSaveFinanceSync(next,baseRevision,operationId,audit,lease));assertCurrent?.();
+    if(res?.r?.ok)return {saved:true,row:readFinanceWriteReceipt(Object.hasOwn(res,'j')?res.j:res.row,{baseRevision,sentState:next})};
     const error=normalizeCloudError(res);if(error.kind==='revision_conflict'){await contentionBackoff(conflictAttempt);row=await readFinanceSyncDocument({assertCurrent});continue}
     throw new Error(res?.j?.message||res?.body||'שמירת הסינכרון הפיננסי נכשלה');
   }

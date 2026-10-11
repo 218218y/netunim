@@ -118,3 +118,9 @@ response, preserve the local data and explicitly refresh Finance before another
 provider run: the server may already have committed the result. A post-commit
 refresh warning means the remote commit is confirmed but the view needs another
 read. Main/Shared conflicts retain their independent recovery/export workflow.
+
+Finance mutations and manual Kupa settings now require the canonical validated
+document receipt before asking the readout to reach its confirmed revision.
+Malformed HTTP-success evidence remains an unknown outcome and cannot invent a
+revision or publish success. See [Finance write confirmation](FINANCE_WRITE_CONFIRMATION.md)
+for native before-change evidence and read-only recovery.
