@@ -26,5 +26,18 @@ function scheduleSave(message='השינויים נשמרו',{deleteIntents={},mu
   return localOk;
 }
 
-return { canMutate, rejectSecondaryAction, rejectSecondaryMutation, scheduleSave };
+// Confirms this scheduled local generation, not the cloud or all newer work.
+// A false synchronous result can still become durable through IDB-only staging.
+// Callers retain their own account/operation fence across the await.
+async function commitSave(message,{operations,...options}={}){
+  if(!Array.isArray(operations)||!operations.length)throw new TypeError('storage_mutation_contract_required');
+  const before=session.localGeneration,localOk=scheduleSave(message,{...options,operations}),generation=session.localGeneration;
+  if(generation===before||(!localOk&&!storageV2DurabilityAtRisk()))return false;
+  const committed=storageV2CommitPromise();
+  if(typeof committed?.then!=='function')throw new Error('storage_local_commit_receipt_required');
+  const confirmed=await committed;
+  return confirmed===true&&!session.localUndurableGenerations?.has(generation);
+}
+
+return { canMutate, rejectSecondaryAction, rejectSecondaryMutation, scheduleSave, commitSave };
 }

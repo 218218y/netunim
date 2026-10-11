@@ -7,7 +7,7 @@ import {morningDocumentLabel} from '../../core/morning-document-types.js';
 import {$} from '../../state/constants.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createDomainsCustomersEditor({model, customerUi, modal, toast, scheduleSave, closeModal, renderCustomers, confirmDialog,hydrateMorningDebtDocuments=()=>{},isDebtRecoveryPending=()=>false,rejectDebtRecoveryMutation=()=>false}){
+export function createDomainsCustomersEditor({model, customerUi, modal, toast, scheduleSave, closeModal, renderCustomers, confirmDialog,hydrateMorningDebtDocuments=()=>{},isDebtRecoveryPending=()=>false,rejectDebtRecoveryMutation=()=>false,morningMetadataState=()=> ''}){
 
 const persistedMorningDebts=new WeakMap();
 
@@ -130,7 +130,7 @@ function progressHistoryMarkup(debt,rows){
     const operation=/^MORNING:([^:]+):(payment|invoice)$/.exec(String(row.id||''))?.[1],link=links.get(operation);
     if(!link||shown.has(operation))return progressEntryMarkup(row);
     shown.add(operation);
-    const unresolved=!link.documentId||!link.documentNumber||!Number(link.documentType),label=morningDocumentLabel(link,unresolved?'טוען פרטי מסמך…':'מסמך Morning');
+    const status=morningMetadataState(debt,link.operationId),unresolved=!link.documentId||!link.documentNumber||!Number(link.documentType)||!!status,label=morningDocumentLabel(link,unresolved?'טוען פרטי מסמך…':'מסמך Morning')+(status==='unconfirmed'?' · לא נשמר בחוב':status==='pending'?' · שומר פרטים…':'');
     return `<div class="debt-progress-linked-row">${progressEntryMarkup(row)}<button type="button" class="bank-row-morning-doc" data-action="morning-open-document" data-click-arg0="${esc(link.documentId)}" data-click-arg1="${esc(link.operationId)}" ${unresolved?`data-morning-debt-operation="${esc(link.operationId)}"`:''} title="צפה במסמך Morning ${esc(link.documentNumber||'')}"><span aria-hidden="true">▤</span><span data-morning-debt-label>${esc(label)}</span></button></div>`;
   }).join('');
 }

@@ -28,6 +28,7 @@ browser=(SITE/'assets/js/domains/customers/documents-browser.js').read_text(enco
 persistence=(SITE/'assets/js/storage/persistence.js').read_text(encoding='utf-8')
 bulk=(SITE/'assets/js/domains/customers/bulk.js').read_text(encoding='utf-8')
 composition=(SITE/'assets/js/domains/customers/composition.js').read_text(encoding='utf-8')
+metadata_persistence=(SITE/'assets/js/domains/customers/morning-metadata-persistence.js').read_text(encoding='utf-8')
 capability=(SITE/'assets/js/composition/customers.js').read_text(encoding='utf-8')
 document_types=(SITE/'assets/js/core/morning-document-types.js').read_text(encoding='utf-8')
 actions=(SITE/'assets/js/ui/action-packs/morning.js').read_text(encoding='utf-8')
@@ -180,8 +181,8 @@ ok("action==='abandon_reservation'" in edge and "eq('state','reserved')" in edge
    'Morning reload pre-POST recovery: only a still-reserved operation can be atomically abandoned; pending/external issuance is never canceled and must reconcile')
 ok('return localOk' in persistence and 'if(rejectSecondaryMutation())return false' in persistence and "result.changed||linkChanged||linked||result.reason==='already-applied'" in editor and 'persistedMorningDebts.get(d)===JSON.stringify(d)' in editor and "reason:alreadyApplied?'already-applied':'no-balance'" in morning_debt,
    'Morning local durability handshake: progress and document links are durably saved, and replay re-persists an in-memory event before recovery clears')
-ok('onDebtDocumentMetadataResolved:persistResolvedDebtDocumentMetadata' in composition and 'upsertVerifiedMorningDebtDocument(debt,metadata)' in composition and "surface:'orders.morning.customerDebtMetadata'" in composition and 'function canMutate()' in persistence,
-   'Morning historical metadata backfill: authoritative operation metadata is persisted once through the normal single-writer customer-debt save path')
+ok('onDebtDocumentMetadataResolved:persistResolvedDebtDocumentMetadata' in composition and 'upsertVerifiedMorningDebtDocument(debt,metadata)' in metadata_persistence and "surface:'orders.morning.customerDebtMetadata'" in metadata_persistence and 'await commitSave(' in metadata_persistence and 'function canMutate()' in persistence,
+   'Morning historical metadata backfill: authoritative metadata confirms a local single-writer commit and retains unconfirmed staging for retry')
 ok('morningVerifiedApplicationDurable' in morning_debt_recovery and 'DURABLE_NO_MUTATION_REASONS' in morning_debt_recovery and 'function settleVerifiedRecovery' in documents and 'blocked:!durable||serverLinkPending||!recoveryCleared' in documents and documents.count('settleVerifiedRecovery(')>=4,
    'Morning recovery cleanup: verified outcomes use an explicit durability allowlist and every verified path stays fail-closed until local recovery storage is actually cleared')
 ok("activeDebtId?rejectSecondaryMutation?.()===true:rejectSecondaryIssuance?.()===true" in documents and documents.count('if(rejectCurrentIssuance())return;')>=2 and "reason:'write-blocked'" in composition,

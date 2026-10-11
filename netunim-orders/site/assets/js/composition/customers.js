@@ -23,7 +23,7 @@ export function createOrdersCustomersRuntime({model,customerUi,customerRevision}
       ['layout',uiLayout,['bindScrollViewport','mountViewLayout']],
       ['modal',uiModal,['modal','closeModal','confirmDialog','markModalDraftSaved']],
       ['status',uiStatus,['toast']],
-      ['persistence',storagePersistence,['scheduleSave','rejectSecondaryAction','rejectSecondaryMutation']],
+      ['persistence',storagePersistence,['scheduleSave','commitSave','rejectSecondaryAction','rejectSecondaryMutation']],
       ['cloud',cloudAuth,['supaFetch']],
       ['morning',morningOperationScope,['capture','captureRead']],
       ['navigation',uiNavigation,['setCustomerRoute']],
