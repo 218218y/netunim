@@ -1,6 +1,6 @@
 const POLL_MS=1800;
 
-export function createDocumentIndexRefresh({bridge,button,status,onCompleted=()=>{}}){
+export function createDocumentIndexRefresh({bridge,button,status,onCompleted=()=>{},listen=(target,...args)=>target?.addEventListener?.(...args)}){
   let open=false,busy=false,timer=null,current=null,startedHere=false,wasRunning=false;
   const available=()=>!!bridge?.supportsPdfIndexRefresh;
   const paired=()=>!!bridge?.localToken;
@@ -57,6 +57,6 @@ export function createDocumentIndexRefresh({bridge,button,status,onCompleted=()=
   }
   function show(){open=true;render(messageFor(current));void load()}
   function hide(){open=false;clearTimeout(timer);timer=null}
-  function bind(){button?.addEventListener('click',()=>{void activate()});render()}
+  function bind(){listen(button,'click',()=>{void activate()});render()}
   return {bind,show,hide,load};
 }

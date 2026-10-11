@@ -3,7 +3,7 @@ const WORD_MATCHES=new Set(['partial','whole']);
 const MODE_LABELS=Object.freeze({phrase:'ביטוי מדויק',all:'כל המילים',any:'מילה כלשהי',proximity:'קרבה לפי הסדר'});
 const WORD_LABELS=Object.freeze({partial:'חלק',whole:'שלם'});
 
-export function createDocumentContentSearchOptions({refs,isEnabled,onChanged}){
+export function createDocumentContentSearchOptions({refs,isEnabled,onChanged,listen=(target,...args)=>target?.addEventListener?.(...args)}){
   let matchMode='phrase',wordMatch='partial',proximityWords=10,menuOpen=false;
   const normalized=()=>({matchMode:MATCH_MODES.has(matchMode)?matchMode:'phrase',wordMatch:WORD_MATCHES.has(wordMatch)?wordMatch:'partial',proximityWords:Math.max(0,Math.min(50,Math.trunc(Number(proximityWords)||0)))});
 
@@ -32,15 +32,15 @@ export function createDocumentContentSearchOptions({refs,isEnabled,onChanged}){
 
   function bind(){
     const {input,contentOptions,contentOptionsButton:button,contentOptionsMenu:menu,proximityWords:wordsControl}=refs();
-    button?.addEventListener('click',event=>{event.preventDefault();setMenu(!menuOpen)});
-    menu?.addEventListener('click',event=>{
+    listen(button,'click',event=>{event.preventDefault();setMenu(!menuOpen)});
+    listen(menu,'click',event=>{
       const modeControl=event.target.closest?.('[data-content-match-mode]');if(modeControl){const next=String(modeControl.dataset.contentMatchMode||'');if(MATCH_MODES.has(next)&&next!==matchMode){matchMode=next;update();onChanged?.()}return}
       const wordControl=event.target.closest?.('[data-content-word-match]');if(wordControl){const next=String(wordControl.dataset.contentWordMatch||'');if(WORD_MATCHES.has(next)&&next!==wordMatch){wordMatch=next;update();onChanged?.()}return}
     });
-    wordsControl?.addEventListener('change',()=>{proximityWords=Math.max(0,Math.min(50,Math.trunc(Number(wordsControl.value)||0)));update();onChanged?.();requestAnimationFrame(()=>input?.focus())});
-    document.addEventListener('pointerdown',event=>{if(menuOpen&&!contentOptions?.contains(event.target)&&!menu?.contains(event.target))setMenu(false)});
-    document.addEventListener('keydown',event=>{if(menuOpen&&event.key==='Escape'){event.preventDefault();event.stopPropagation();setMenu(false,{restoreFocus:true})}},true);
-    globalThis.addEventListener?.('resize',()=>{if(menuOpen)placeMenu()},{passive:true});
+    listen(wordsControl,'change',()=>{proximityWords=Math.max(0,Math.min(50,Math.trunc(Number(wordsControl.value)||0)));update();onChanged?.();requestAnimationFrame(()=>input?.focus())});
+    listen(document,'pointerdown',event=>{if(menuOpen&&!contentOptions?.contains(event.target)&&!menu?.contains(event.target))setMenu(false)});
+    listen(document,'keydown',event=>{if(menuOpen&&event.key==='Escape'){event.preventDefault();event.stopPropagation();setMenu(false,{restoreFocus:true})}},true);
+    listen(globalThis,'resize',()=>{if(menuOpen)placeMenu()},{passive:true});
   }
 
   return {value:normalized,update,bind,close:()=>setMenu(false)};

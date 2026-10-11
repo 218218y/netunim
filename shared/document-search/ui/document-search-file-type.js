@@ -2,7 +2,7 @@ const FILE_TYPES=new Set(['all','audio','documents','folders','images','video','
 
 export function normalizeDocumentFileType(value){const key=String(value||'').trim().toLowerCase();return FILE_TYPES.has(key)?key:'all'}
 
-export function createDocumentFileTypeFilter({refs,isEnabled=()=>true,onChanged=()=>{}}={}){
+export function createDocumentFileTypeFilter({refs,isEnabled=()=>true,onChanged=()=>{},listen=(target,...args)=>target?.addEventListener?.(...args)}={}){
   let current='all';
   function value(){return current}
   function update(){
@@ -15,7 +15,7 @@ export function createDocumentFileTypeFilter({refs,isEnabled=()=>true,onChanged=
     current=normalized;update();onChanged(current);return true;
   }
   function bind(){
-    const {fileType}=refs?.()||{};fileType?.addEventListener('change',()=>set(fileType.value));update();
+    const {fileType}=refs?.()||{};listen(fileType,'change',()=>set(fileType.value));update();
   }
   return {bind,update,value,set};
 }

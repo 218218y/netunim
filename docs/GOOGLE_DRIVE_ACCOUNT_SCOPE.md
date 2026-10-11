@@ -55,10 +55,12 @@ A late disconnect/connect response for an older login fails before clearing a
 new login's cache or navigating. No token/result cache is persisted. Google
 refresh credentials remain exclusively in the existing backend.
 
-This scope describes the calling runtime's auth capability. It does not add a
-global auth event bus, interrupt another tab's auth storage, or scrub results
-already rendered by a completed authorized search. Newly started operations and
-late responses are fenced; a new search replaces the displayed results.
+Auth now offers a scoped observer: same-origin auth storage events reread the
+current session, and focus/visibility recheck the owner. Global Search subscribes
+to clear completed results, links and owned previews on login invalidation,
+without deleting queues or changing another tab's credential storage. See
+DOCUMENT_SEARCH_ACCOUNT_PRIVACY.md for evidence, resource ownership and the
+remaining standalone Calendar/Morning display scope.
 
 ## Error and recovery policy
 
