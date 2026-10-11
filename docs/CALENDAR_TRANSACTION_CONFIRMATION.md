@@ -80,9 +80,11 @@ error; do not clear the queue, assign a different ID or create a replacement eve
 An older compatible site can be restored without a DB migration/reset. Reverting
 this slice restores the old status race, but does not change readable data bytes.
 
-Idle cross-tab notification/wake, cached-display privacy after logout, full
-Calendar resource disposal and concurrent delivery-owner policy are separate
-reviews. This slice closes the demonstrated **commit-before-publication** window
-and retains existing visibility/poll/producer wake behavior. It does not certify
-live Google, physical devices or global exactly-once PATCH effects from competing
-consumers. Broader claims require separate controlled ownership/provider drills.
+Idle cross-tab notification/wake remains a separate review. Subsequent slices
+cover cached-display privacy and Calendar resource disposal in
+CALENDAR_ACCOUNT_DISPLAY_PRIVACY.md, and exclusive competing client delivery in
+CALENDAR_DELIVERY_OWNERSHIP.md. This slice closes the demonstrated
+**commit-before-publication** window and retains existing visibility/poll/producer
+wake behavior. None of these slices certifies live Google, physical devices or
+global exactly-once PATCH effects across independent computers or unknown remote
+completion. Broader claims require separate controlled provider drills.

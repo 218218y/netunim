@@ -2,6 +2,7 @@ import {createCalendarStorage} from '../calendar/storage.js';
 import {createCalendarAuth} from '../calendar/auth.js';
 import {createCalendarApi} from '../calendar/api.js';
 import {createCalendarJournal} from '../calendar/journal.js';
+import {createCalendarDeliveryOwner} from '../platform/calendar-delivery-owner.js';
 import {createDomainsCalendarController} from '../domains/calendar/controller.js';
 import {createCalendarActionPorts} from '../domains/calendar/action-ports.js';
 
@@ -14,7 +15,7 @@ export function createOrdersCalendarRuntime({calendarSession,supaFetch,accountSc
   const calendarStorage=createCalendarStorage();
   const calendarAuth=createCalendarAuth({calendarSession,supaFetch,accountScope});
   const calendarApi=createCalendarApi({calendarAuth});
-  const calendarJournal=createCalendarJournal({calendarStorage,calendarApi,operationScope:calendarAuth});
+  const calendarJournal=createCalendarJournal({calendarStorage,calendarApi,operationScope:calendarAuth,deliveryOwner:createCalendarDeliveryOwner()});
   let controller=null;
 
   function createController({ui,tab,calendarUi,uiLayout,uiModal,uiStatus,uiCloud,uiDateEditor}){

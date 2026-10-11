@@ -157,7 +157,7 @@ async function syncNow({quiet=false,force=true}={}){
   const range=prefetchRange();if(!force&&loadedRangeCovers(range)&&cacheIsFresh())return false;
   let authority;
   try{authority=lifetime.capture()}catch(error){if(!quiet)toast(error.message);return false}
-  const {assertCurrent}=authority,scope={assertCurrent},task={assertCurrent,promise:null};syncTask=task;
+  const {assertCurrent}=authority,scope={assertCurrent,signal:authority.signal},task={assertCurrent,promise:null};syncTask=task;
   const current=()=>{try{assertCurrent();return true}catch(error){if(error?.code!=='CALENDAR_OPERATION_SCOPE_CHANGED')throw error;return false}};
   task.promise=Promise.resolve().then(async()=>{
     let syncedSnapshot=null,syncSucceeded=false,continuePending=false;

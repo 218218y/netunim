@@ -1,7 +1,8 @@
 // Ordered durable delivery for Google Calendar mutations. The storage layer commits
 // operations before this module sees them, so a browser/network failure cannot erase work.
-export function createCalendarJournal({calendarStorage,calendarApi,operationScope}){
+export function createCalendarJournal({calendarStorage,calendarApi,operationScope,deliveryOwner}){
 if(typeof operationScope?.captureOperation!=='function')throw new TypeError('calendar_journal_authority_required');
+if(typeof deliveryOwner?.run!=='function')throw new TypeError('calendar_journal_delivery_owner_required');
 function sameInstant(left,right){const a=new Date(left||''),b=new Date(right||'');return !Number.isNaN(a.getTime())&&!Number.isNaN(b.getTime())&&a.getTime()===b.getTime()}
 function sameBoundary(expected,actual){if(expected?.date!=null)return String(expected.date)===String(actual?.date||'');if(expected?.dateTime!=null)return sameInstant(expected.dateTime,actual?.dateTime);return expected==null&&actual==null}
 function insertMatches(operation,event){const body=operation?.body||{};return String(event?.id||'')===String(operation?.eventId||'')&&String(event?.summary||'')===String(body.summary||'')&&String(event?.description||'')===String(body.description||'')&&String(event?.location||'')===String(body.location||'')&&sameBoundary(body.start,event?.start)&&sameBoundary(body.end,event?.end)}
@@ -29,26 +30,31 @@ async function deliver(operation,options){
 }
 
 async function flushPending(options){
-  const assertCurrent=capture(options),operations=await calendarStorage.listOperations();assertCurrent();
-  let delivered=0;
-  for(const operation of operations){
-    assertCurrent();
-    await calendarStorage.updateOperation(operation.seq,{attempts:Number(operation.attempts||0)+1,lastAttemptAt:new Date().toISOString(),lastError:''});
-    assertCurrent();
-    try{
-      await deliver(operation,{assertCurrent});assertCurrent();
-      await calendarStorage.deleteOperation(operation.seq);
-      delivered++;
+  const assertCurrent=capture(options);
+  // Capture authority before waiting, but read the queue only after this origin's
+  // delivery owner grants the lock. Another tab may already have acknowledged it.
+  return deliveryOwner.run(assertCurrent,async()=>{
+    assertCurrent();const operations=await calendarStorage.listOperations();assertCurrent();
+    let delivered=0;
+    for(const operation of operations){
       assertCurrent();
-    }catch(error){
-      if(error?.code==='CALENDAR_OPERATION_SCOPE_CHANGED')throw error;
+      await calendarStorage.updateOperation(operation.seq,{attempts:Number(operation.attempts||0)+1,lastAttemptAt:new Date().toISOString(),lastError:''});
       assertCurrent();
-      await calendarStorage.updateOperation(operation.seq,{lastError:error?.message||'השליחה ל-Google נכשלה'});
-      throw error;
+      try{
+        await deliver(operation,{assertCurrent});assertCurrent();
+        await calendarStorage.deleteOperation(operation.seq);
+        delivered++;
+        assertCurrent();
+      }catch(error){
+        if(error?.code==='CALENDAR_OPERATION_SCOPE_CHANGED')throw error;
+        assertCurrent();
+        await calendarStorage.updateOperation(operation.seq,{lastError:error?.message||'השליחה ל-Google נכשלה'});
+        throw error;
+      }
     }
-  }
-  return delivered;
+    return delivered;
+  },options?.signal?{signal:options.signal}:{});
 }
 
-return {deliver,flushPending};
+return {flushPending};
 }

@@ -293,3 +293,10 @@ now enforce synchronous reads/writes and failure notification, typed Bank/Credit
 resource identity, boolean permissions and narrowed classified failures. This
 does not typecheck the entire Finance controller/integration or create a durable
 outbox. See ORDERS_FINANCE_PREFERENCES_CONTRACT.md.
+
+Calendar's native delivery ownership adapter now checks its actual body and
+negative consumers. Live authority, asynchronous work settlement and an optional
+real AbortSignal are distinct from a synchronous success value. Missing native
+ownership fails closed; no browser-global access is introduced into the journal.
+This slice does not typecheck the full Calendar journal/controller or add a
+server-side ledger. See CALENDAR_DELIVERY_OWNERSHIP.md.
