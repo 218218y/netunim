@@ -35,6 +35,32 @@ function fixture(t,{hold=null}={}){
   return {ports,before,counts,jobs,entered,release,checksSession,operationScope,create:()=>createDomainsFinanceController(ports),handoff:()=>{owner='B';epoch++},logout:()=>{owner=null;epoch++},relogin:()=>epoch++,secondary:()=>{primary=false},remote:()=>remote};
 }
 
+for(const kind of ['Bank','Credit'])test(`Orders ${kind} failed automatic attempt persistence never leaves the controller busy`,async t=>{
+  const f=fixture(t);f.ports.bridge['mark'+kind+'Attempt']=()=>{throw new DOMException('private storage detail','QuotaExceededError')};
+  const api=f.create();t.after(()=>api.stopAutoSync());
+  assert.equal(await api['refresh'+kind]({auto:true}),false);
+  assert.equal(api.snapshot()[kind.toLowerCase()+'Busy'],false);
+  assert.equal(f.counts.claim||0,0);assert.equal(f.counts[kind.toLowerCase()+'-provider']||0,0);
+  assert.deepEqual(f.checksSession,f.before);
+});
+
+for(const kind of ['Bank','Credit'])test(`Orders ${kind} unavailable preferences preserve the read model and stop automatic retries`,t=>{
+  const f=fixture(t);f.ports.bridge[kind.toLowerCase()+'AutoEnabled']=()=>{throw new DOMException('private storage detail','SecurityError')};
+  const api=f.create();t.after(()=>api.stopAutoSync());
+  const snapshot=api.snapshot();assert.equal(snapshot[kind.toLowerCase()+'AutoEnabled'],false);
+  assert.deepEqual(snapshot.kupa.notes,f.before.kupaCloudReadState.notes);
+  assert.match(snapshot[kind.toLowerCase()+'AutomationWarningCode'],/^FINANCE_PREFERENCES_/);
+  api.startAutoSync();assert.equal(f.counts.claim||0,0);
+});
+
+for(const kind of ['Bank','Credit'])test(`Orders ${kind} manual refresh remains available after failed automatic attempt persistence`,async t=>{
+  const f=fixture(t);f.ports.bridge['mark'+kind+'Attempt']=()=>{throw new DOMException('quota','QuotaExceededError')};const api=f.create();t.after(()=>api.stopAutoSync());
+  assert.equal(await api['refresh'+kind]({auto:true}),false);assert.equal(await api['refresh'+kind](),true);
+  assert.equal(f.counts[kind==='Bank'?'atomic':'finance-save'],1);assert.equal(f.counts[kind.toLowerCase()+'-provider'],1);
+  assert.equal(api.snapshot()[kind.toLowerCase()+'AutoEnabled'],false);assert.equal(api.snapshot()[kind.toLowerCase()+'Error'],'');
+  assert.equal(f.jobs.size,0);assert.deepEqual(api.snapshot().kupa.notes,f.before.kupaCloudReadState.notes);
+});
+
 for(const kind of ['Bank','Credit'])for(const auto of [false,true])for(const [name,change] of [['logout',f=>f.logout()],['account change',f=>f.handoff()],['same-user relogin',f=>f.relogin()],['leadership loss',f=>f.secondary()]])test(`Orders ${kind} ${auto?'automatic':'manual'} ${name} after provider entry prevents further publication`,async t=>{
   const f=fixture(t,{hold:kind.toLowerCase()+'-provider'}),api=f.create(),pending=api['refresh'+kind]({auto});await f.entered.promise;change(f);f.release.resolve();
   assert.equal(await pending,false);assert.deepEqual(f.checksSession,f.before);assert.equal(f.counts.atomic||0,0);assert.equal(f.counts['finance-save']||0,0);assert.equal(f.counts.archive||0,0);assert.equal(f.counts.release||0,0);api.stopAutoSync?.();

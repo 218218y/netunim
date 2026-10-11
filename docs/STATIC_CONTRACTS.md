@@ -287,3 +287,9 @@ at runtime, app owner and Google account are distinct, and account invalidation
 and subscription cleanup finish synchronously. This does not typecheck the full
 Calendar controller/storage transaction implementation. See
 CALENDAR_ACCOUNT_DISPLAY_PRIVACY.md for native transaction and privacy evidence.
+
+Orders Finance's actual automatic-preference policy body and negative consumers
+now enforce synchronous reads/writes and failure notification, typed Bank/Credit
+resource identity, boolean permissions and narrowed classified failures. This
+does not typecheck the entire Finance controller/integration or create a durable
+outbox. See ORDERS_FINANCE_PREFERENCES_CONTRACT.md.

@@ -414,8 +414,10 @@ assert.equal(financeRow.state.bank.archiveAudit.historyDays,30,'rolling refresh 
 assert.equal(bankFetchCalls,2);
 
 checksSession.kupaCloudReadState=overlayReadout();
+bridge.bankAutoEnabled=()=>true;
 assert.equal(await controller.refreshBank({auto:true}),true);
 assert.equal(bankFetchCalls,2,'fresh shared cloud timestamp suppresses a second automatic bank scrape');
+controller.stopAutoSync();bridge.bankAutoEnabled=()=>false;
 
 const bankSaveCalls=saveCalls,bankFinanceSaveCalls=financeSaveCalls;
 assert.equal(await controller.refreshCredit({auto:false}),true);

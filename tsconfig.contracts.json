@@ -13,6 +13,8 @@
     "types": []
   },
   "files": [
+    "netunim-orders/site/assets/js/domains/finance/automation-preferences.js",
+    "tests/fixtures/checked-finance-preferences.mjs",
     "netunim-orders/site/assets/js/calendar/display-access.js",
     "netunim-orders/site/assets/js/calendar/display-lifetime.js",
     "tests/fixtures/checked-calendar-display.mjs",
