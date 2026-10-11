@@ -47,6 +47,10 @@ test('missing token storage suspends both resources without manufacturing a new 
   const f=fixture();f.inject('read','netunim_kupa_bank_bridge_token_v1');const view=f.owner.view();
   assert.equal(view.bridgeTokenConfigured,false);assert.equal(view.bankAutoEnabled,false);assert.equal(view.creditAutoEnabled,false);assert.equal(f.values.get('netunim_kupa_bank_bridge_token_v1'),'synthetic-pairing');
 });
+test('Finance preference projection never publishes the computer pairing token',()=>{
+  const f=fixture(),view=f.owner.view();assert.equal(view.bridgeTokenConfigured,true);
+  assert.equal(JSON.stringify(view).includes('synthetic-pairing'),false);assert.equal(JSON.stringify(view).includes('getBridgeToken'),false);
+});
 test('automatic warning remains independent of a confirmed latest Finance result',()=>{
   const f=fixture();f.inject('write',key('bank','attempt'));f.owner.markAttempt('bank');f.inject('write',key('credit','attempt'));f.owner.markAttempt('credit');
   const snapshot={...f.owner.view(),bankLastSyncAt:'2026-10-11T10:00:00Z',creditLastSyncAt:'2026-10-11T10:00:00Z',bankStatus:{configured:true},creditSync:{profiles:[],errors:[]}};
