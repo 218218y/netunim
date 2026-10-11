@@ -115,7 +115,7 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
     assertFence(current,owner,epoch,writer);if(!current.flights||readStorageCloudFlight(current.flights).operationId!==operationId)throw new Error('storage_ack_mismatch');
     const acknowledged=readStorageRecord(base),flight=readStorageCloudFlight(current.flights);
     assertStorageCloudAck(acknowledged,flight,{owner,epoch});readStorageCloudBase(base);
-    if(checkpoint){const nextCheckpoint=readStorageRecord(checkpoint);if(nextCheckpoint.owner!==owner||nextCheckpoint.epoch!==epoch||nextCheckpoint.seq!==current.metadata.seq)throw new Error('storage_checkpoint_stale');tx.objectStore('checkpoints').put(checkpoint,owner)}
+    if(checkpoint){const nextCheckpoint=readStorageRecord(checkpoint);if(nextCheckpoint.owner!==owner||nextCheckpoint.epoch!==epoch||nextCheckpoint.seq!==current.metadata.seq)throw Object.assign(new Error('storage_checkpoint_stale'),{code:'storage_ack_checkpoint_stale',candidateSeq:nextCheckpoint.seq,observedSeq:current.metadata.seq});tx.objectStore('checkpoints').put(checkpoint,owner)}
     if(control){const nextControl=readStorageRecord(control);if(nextControl.owner!==owner||nextControl.epoch!==epoch)throw new Error('storage_control_scope');readStorageCloudControl(control);tx.objectStore('controls').put(control,owner)}else tx.objectStore('controls').delete(owner);
     tx.objectStore('bases').put(base,owner);tx.objectStore('flights').delete(owner);done(true);
     // ACK never deletes journal entries. Only an atomic checkpoint can compact.

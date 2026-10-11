@@ -95,8 +95,8 @@ async function materializeStorageV2CloudFlight({throughSeq,snapshot}={}){
   const fallback=flight?{...state,flight:clone(flight),pending:true,afterFlightPending:Number(state.seq||0)>Number(flight.endSeq||0)}:state;await refreshStorageV2CloudStateAfterCommit('flight materialization',fallback);return flight
 }
 
-async function acknowledgeStorageV2CloudFlight(operationId,revision,state,{currentState=model.state,control=null}={}){
-  assertValidOrderCloudState(state,'Orders V2 ACK base');const prior=v2CloudStateCache,receipt=await storageV2.acknowledgeFlight(operationId,Number(revision),state,{validateBase:value=>assertValidOrderCloudState(value,'Orders V2 ACK base'),currentState,expectedSeq:Number.isSafeInteger(prior?.seq)?prior.seq:null,control,appMetadata:{snapshotSeq:Number(session.localSnapshotSeq||0),revision:Number(revision||0),storageRole:'primary'}}),fallback=acknowledgedStorageV2CloudState(prior,operationId,receipt,revision,state,control);return refreshStorageV2CloudStateAfterCommit('ACK',fallback)
+async function acknowledgeStorageV2CloudFlight(operationId,revision,state,{currentState=model.state,expectedSeq,control=null}={}){
+  assertValidOrderCloudState(state,'Orders V2 ACK base');const prior=v2CloudStateCache,receipt=await storageV2.acknowledgeFlight(operationId,Number(revision),state,{validateBase:value=>assertValidOrderCloudState(value,'Orders V2 ACK base'),currentState,expectedSeq,control,appMetadata:{snapshotSeq:Number(session.localSnapshotSeq||0),revision:Number(revision||0),storageRole:'primary'}}),fallback=acknowledgedStorageV2CloudState(prior,operationId,receipt,revision,state,control);return refreshStorageV2CloudStateAfterCommit('ACK',fallback)
 }
 
 async function rejectStorageV2CloudFlight(operationId,revision,state,{currentState,expectedSeq,control=null}={}){

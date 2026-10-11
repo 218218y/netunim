@@ -124,20 +124,21 @@ async function saveStorageV2CloudFlight(initialFlight){
   // the corresponding rebased local head.
   state=await refreshStorageV2CloudState();
   if(!state?.flight||state.flight.operationId!==flight.operationId)throw new Error('orders_v2_flight_changed_before_ack');
+  const expectedSeq=state.seq;
   let currentCloud=authoritative;
   if(state.afterFlightPending){
     const local=prepareCloudState(model.state),rebased=merge3(serverSnapshot,local,authoritative,{deleteIntents:state.afterFlightDeleteIntents||{}});
     if(rebased.conflicts.length){
       const conflict=structuredSyncConflict({domain:'orders',conflicts:rebased.conflicts,base:serverSnapshot,local,remote:authoritative,generation:state.afterFlightGeneration,baseRevision:flight.baseRevision,currentRemoteRevision:newRevision});
-      await acknowledgeStorageV2CloudFlight(flight.operationId,newRevision,authoritative,{currentState:model.state,control:{conflict}});
+      await acknowledgeStorageV2CloudFlight(flight.operationId,newRevision,authoritative,{currentState:model.state,expectedSeq,control:{conflict}});
       session.cloudRevision=newRevision;session.cloudUpdatedAt=res.row?.updated_at||session.cloudUpdatedAt;session.lastCloudState=clone(authoritative);session.cloudConflictBlocked=true;session.cloudSaveRequested=false;
       setCloud('ענן: התנגשות','error');return false
     }
     currentCloud=rebased.state;
   }
-  const expectedGeneration=Number(session.localGeneration||0),expectedSeq=state.seq,currentState=composeOrderCloudState(currentCloud,model.state);
+  const expectedGeneration=Number(session.localGeneration||0),currentState=composeOrderCloudState(currentCloud,model.state);
   const publication=await commitCloudCheckpoint({
-    commit:()=>acknowledgeStorageV2CloudFlight(flight.operationId,newRevision,authoritative,{currentState}),
+    commit:()=>acknowledgeStorageV2CloudFlight(flight.operationId,newRevision,authoritative,{currentState,expectedSeq}),
     isCurrent:committed=>tab.primaryTab&&Number(session.localGeneration||0)===expectedGeneration&&committed?.seq===expectedSeq,
     publish:()=>{if(!sameOrderCloudData(model.state,currentCloud))applyOrderCloudState(currentCloud)},
   });
@@ -174,14 +175,21 @@ async function requestStorageV2CloudSave(message='השינויים סונכרנ�
     if(retryDelay>0){setCloud('ענן: ממתין למועד הסנכרון');allOk=false;break}
     const generation=Number(session.localGeneration||0),flight=currentFlight||await materializeStorageV2CloudFlight();
     if(!flight){if(await confirmCloudPollSynced({generation})){if(msg)toast(msg)}else allOk=false;continue}
+    const writeScope={owner:state.base.owner,epoch:state.base.epoch};
     session.cloudBusy=true;setCloud('ענן: מסנכרן…');
     try{
       const saved=await saveStorageV2CloudFlight(flight);if(!saved){allOk=false;break}
       outboxRetryScheduler.cancel();state=saved.state||state;if(state?.pending||state?.flight)session.cloudSaveRequested=true;
       if(markCloudSynced(state,{generation:saved.generation})){if(msg)toast(msg)}else if(state?.pending||state?.flight||session.cloudSaveRequested)setCloud('ענן: מסנכרן…');else allOk=false
     }catch(error){
-      console.error('cloud save V2',error);state=await refreshStorageV2CloudState();const normalized=normalizeCloudError(error),attempts=Number(state?.control?.retry?.attempts||0)+1,nextAttemptAt=normalized.retryAfterMs?new Date(Date.now()+normalized.retryAfterMs).toISOString():null,retry={attempts,lastErrorCode:normalized.code||normalized.kind,lastAttemptAt:new Date().toISOString(),nextAttemptAt};
-      await setStorageV2CloudControl({retry});state=await refreshStorageV2CloudState();outboxRetryScheduler.schedule(v2RetryRecord(state,state?.flight),()=>requestStorageV2CloudSave(msg,{force}));setCloud(navigator.onLine?'ענן: ממתין לסנכרון':'ענן: אופליין',navigator.onLine?'':'offline');allOk=false;break
+      console.error('cloud save V2',error);
+      if(!tab.primaryTab||(!force&&!cloudEnabled()))return false;
+      state=await refreshStorageV2CloudState();
+      if(!tab.primaryTab||(!force&&!cloudEnabled())||!state?.base||state.base.owner!==writeScope.owner||state.base.epoch!==writeScope.epoch)return false;
+      const normalized=normalizeCloudError(error),attempts=Number(state?.control?.retry?.attempts||0)+1,nextAttemptAt=normalized.retryAfterMs?new Date(Date.now()+normalized.retryAfterMs).toISOString():null,retry={attempts,lastErrorCode:normalized.code||normalized.kind,lastAttemptAt:new Date().toISOString(),nextAttemptAt};
+      await setStorageV2CloudControl({retry});state=await refreshStorageV2CloudState();
+      if(!tab.primaryTab||(!force&&!cloudEnabled())||!state?.base||state.base.owner!==writeScope.owner||state.base.epoch!==writeScope.epoch)return false;
+      outboxRetryScheduler.schedule(v2RetryRecord(state,state?.flight),()=>requestStorageV2CloudSave(msg,{force}));setCloud(navigator.onLine?'ענן: ממתין לסנכרון':'ענן: אופליין',navigator.onLine?'':'offline');allOk=false;break
     }finally{session.cloudBusy=false}
   }return allOk&&!state?.pending&&!state?.flight})().finally(()=>{session.cloudSavePromise=null;if(session.cloudSaveRequested&&navigator.onLine&&!session.cloudConflictBlocked)setTimeout(()=>requestStorageV2CloudSave(session.cloudSaveMessage||'השינויים סונכרנו',{force}),0)});
   return session.cloudSavePromise

@@ -572,7 +572,7 @@ for app in ('kupa', 'orders'):
           const validation=await import('./assets/js/state/validation.js');
           const validate=state=>app==='kupa'?validation.assertKupaEntityInvariants(state,{required:true}):validation.assertOrderEntityInvariants(state,{required:true});
           const owner='ack-recovery-'+app,db=createStorageJournalDb(),calls=[],ledger=new Map();
-          let lostResponse=true,omitNextState=false,server=null,commits=0;
+          let lostResponse=true,omitNextState=false,server=null,commits=0,beforeAck=null;
           const note=content=>({id:'N',content,createdAt:'2026-10-08',updatedAt:'2026-10-08'});
           async function rpc(snapshot,expected,operationId){
             calls.push({snapshot:clone(snapshot),expected,operationId});
@@ -606,7 +606,7 @@ for app in ('kupa', 'orders'):
             const head=await driver.refreshStorageV2CloudState();session.dbRevision=head.base.revision;session.cloudRevision=head.base.revision;
             const ports={model,session,files,tab,render:noop,toast:noop,
               refreshStorageV2CloudState:()=>driver.refreshStorageV2CloudState(),materializeStorageV2CloudFlight:options=>driver.materializeStorageV2CloudFlight(options),
-              acknowledgeStorageV2CloudFlight:(...args)=>driver.acknowledgeStorageV2CloudFlight(...args),rejectStorageV2CloudFlight:(...args)=>driver.rejectStorageV2CloudFlight(...args),
+              acknowledgeStorageV2CloudFlight:async(...args)=>{if(beforeAck){const hook=beforeAck;beforeAck=null;await hook(args)}return driver.acknowledgeStorageV2CloudFlight(...args)},rejectStorageV2CloudFlight:(...args)=>driver.rejectStorageV2CloudFlight(...args),
               setStorageV2CloudControl:value=>driver.setStorageV2CloudControl(value),storageV2CommitPromise:()=>storage.commitPromise};
             const api=app==='orders'?createSyncDocument({...ports,prepareCloudState:project,cloudEnabled:()=>true,setCloud:noop,
               sameOrderCloudData:(a,b)=>JSON.stringify(project(a))===JSON.stringify(project(b)),merge3:merge.merge3,
@@ -656,14 +656,30 @@ for app in ('kupa', 'orders'):
             for(const state of [runtime.model.state,recovered.state,server.state])check(state.notes.some(row=>row.id==='N'&&row.content==='offline-B')&&state.notes.some(row=>row.id==='R'&&row.content==='other-computer'),'visible, durable and cloud heads preserve both computers');
             check(!final.pending&&!final.flight&&final.base.ackSeq===2&&final.base.revision===13,'only acknowledged generations advance the durable cursor');
             check(calls.length===5&&calls.slice(0,4).every(call=>call.operationId===firstFlight.operationId)&&calls[4].operationId!==firstFlight.operationId&&commits===2,'lost-response, malformed-success and aborted-ACK retries do not duplicate cloud commits');
+            await edit(runtime,'prepared-ACK');
+            beforeAck=async args=>{
+              check(args[3].expectedSeq===3,'sync captures candidate sequence before the browser ACK adapter');
+              await edit(runtime,'late-before-adapter');
+              await runtime.driver.refreshStorageV2CloudState();
+            };
+            check(await runtime.save()===false,'late edit before the browser ACK adapter rejects the old checkpoint');
+            const stale=await runtime.driver.refreshStorageV2CloudState(),staleRecovery=await runtime.storage.recoverForOwner({intent:'load-account'});
+            check(stale.seq===4&&stale.base.ackSeq===2&&stale.base.revision===13&&stale.flight.endSeq===3&&stale.pending&&!stale.control?.conflict,'stale checkpoint preserves its original flight, cursor and later work');
+            check(runtime.model.state.notes.find(row=>row.id==='N').content==='late-before-adapter'&&staleRecovery.state.notes.find(row=>row.id==='N').content==='late-before-adapter','stale candidate cannot lose the late edit in memory or real IDB');
+            runtime=await make();
+            check(await runtime.save()===true,'fresh runtime replays the retained flight and drains the late edit');
+            const afterStale=await runtime.driver.refreshStorageV2CloudState();
+            check(!afterStale.pending&&!afterStale.flight&&!afterStale.control&&afterStale.base.ackSeq===4,'new candidate is acknowledged only at its own sequence');
+            for(const state of [runtime.model.state,(await runtime.storage.recover()).state,server.state])check(state.notes.some(row=>row.id==='N'&&row.content==='late-before-adapter')&&state.notes.some(row=>row.id==='R'&&row.content==='other-computer'),'late candidate race retains exact IDs/content in all three heads');
+            check(calls.length===8&&JSON.stringify(calls[5])===JSON.stringify(calls[6])&&calls[7].operationId!==stale.flight.operationId&&commits===4,'stale candidate replay uses the same RPC ID/snapshot and one server effect');
             await edit(runtime,'flight-C');let lateWrite=null;
             IDBObjectStore.prototype.put=function(...args){const result=put.apply(this,args);if(!lateWrite&&this.name==='bases')lateWrite=edit(runtime,'edited-during-ack');return result};
             try{check(await runtime.save()===false,'an edit during a real ACK commit stops stale follow-up sends')}finally{IDBObjectStore.prototype.put=put}
             check(lateWrite!==null,'concurrent edit overlapped the real IndexedDB ACK transaction');await lateWrite;
             const concurrent=await runtime.driver.refreshStorageV2CloudState(),late=await runtime.storage.recoverForOwner({intent:'load-account'});
             check(runtime.model.state.notes.some(row=>row.id==='N'&&row.content==='edited-during-ack')&&late.state.notes.some(row=>row.id==='N'&&row.content==='edited-during-ack'),'late edit survives in the visible model and durable journal');
-            check(concurrent.pending&&!concurrent.flight&&concurrent.seq===4&&concurrent.base.ackSeq===3&&concurrent.control.conflict.kind==='concurrent-ack'&&calls.length===6,'only the sent generation is ACKed; the late generation and explicit fence survive');
-            runtime=await make();check(await runtime.save()===false&&calls.length===6,'fresh runtime respects the persisted concurrent-ACK fence');
+            check(concurrent.pending&&!concurrent.flight&&concurrent.seq===6&&concurrent.base.ackSeq===5&&concurrent.control.conflict.kind==='concurrent-ack'&&calls.length===9,'only the sent generation is ACKed; the late generation and explicit fence survive');
+            runtime=await make();check(await runtime.save()===false&&calls.length===9,'fresh runtime respects the persisted concurrent-ACK fence');
             check(expectedErrors.length>=2,'expected transport and IndexedDB failures were observed');
             return done;
           }finally{

@@ -196,17 +196,18 @@ async function saveStorageV2CloudFlight(initialFlight){
   if(!res?.r?.ok)throw cloudWriteError(res,'שמירה לענן נכשלה');
   const {state:authoritative,revision:newRevision}=readDocumentWriteAck(res.row,{baseRevision:flight.baseRevision,sentState:serverSnapshot,prepareState:prepareKupaCloudState,equalState:jsonEq,errorCode:'kupa_v2_ack_revision_invalid',stateErrorCode:'kupa_v2_ack_state_invalid'});
   state=await refreshStorageV2CloudState();if(!state?.flight||state.flight.operationId!==flight.operationId)throw new Error('kupa_v2_flight_changed_before_ack');
+  const expectedSeq=state.seq;
   let currentCore=authoritative;
   if(state.afterFlightPending){
     const local=prepareKupaCloudState(model.state),rebased=mergeKupaCloudState3Way(serverSnapshot,local,authoritative,{deleteIntents:state.afterFlightDeleteIntents||{}});
-    if(rebased.conflicts.length){const conflict=structuredSyncConflict({domain:'kupa',conflicts:rebased.conflicts,base:serverSnapshot,local,remote:authoritative,generation:state.afterFlightGeneration,baseRevision:flight.baseRevision,currentRemoteRevision:newRevision});await acknowledgeStorageV2CloudFlight(flight.operationId,newRevision,authoritative,{currentState:model.state,control:{conflict}});session.dbRevision=newRevision;session.lastSavedSnapshot=JSON.stringify(authoritative);session.cloudConflictPending=true;setSaveStatus('התנגשות שמורה מקומית','error');setCloudHeaderStatus('conflict','ענן: התנגשות');return false}
+    if(rebased.conflicts.length){const conflict=structuredSyncConflict({domain:'kupa',conflicts:rebased.conflicts,base:serverSnapshot,local,remote:authoritative,generation:state.afterFlightGeneration,baseRevision:flight.baseRevision,currentRemoteRevision:newRevision});await acknowledgeStorageV2CloudFlight(flight.operationId,newRevision,authoritative,{currentState:model.state,expectedSeq,control:{conflict}});session.dbRevision=newRevision;session.lastSavedSnapshot=JSON.stringify(authoritative);session.cloudConflictPending=true;setSaveStatus('התנגשות שמורה מקומית','error');setCloudHeaderStatus('conflict','ענן: התנגשות');return false}
     currentCore=rebased.state;
   }
   const reconcile=state.afterFlightPending||!jsonEq(prepareKupaCloudState(model.state),authoritative);
-  const expectedGeneration=Number(session.localGeneration||0),expectedSeq=state.seq,currentState=reconcile?applyKupaCoreState(currentCore,model.state.checks,model.state):structuredClone(model.state);
+  const expectedGeneration=Number(session.localGeneration||0),currentState=reconcile?applyKupaCoreState(currentCore,model.state.checks,model.state):structuredClone(model.state);
   let businessChanged=false;
   const publication=await commitCloudCheckpoint({
-    commit:()=>acknowledgeStorageV2CloudFlight(flight.operationId,newRevision,authoritative,{currentState}),
+    commit:()=>acknowledgeStorageV2CloudFlight(flight.operationId,newRevision,authoritative,{currentState,expectedSeq}),
     isCurrent:committed=>tab.primaryTab&&Number(session.localGeneration||0)===expectedGeneration&&committed?.seq===expectedSeq,
     publish:()=>{if(reconcile)businessChanged=applyAcknowledgedCoreState(currentCore)},
   });
