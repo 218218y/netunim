@@ -6,7 +6,7 @@ import {ORDERS_CLOUD_BASE_KEY as CLOUD_BASE_KEY} from './retired_business_storag
 const clone=structuredClone,noop=()=>{};
 function deferred(){let resolve;const promise=new Promise(r=>{resolve=r});return {promise,resolve}}
 
-function fixture({rpcSave,readCloud=async()=>null,merge3=(_base,local)=>({state:clone(local),conflicts:[]}),failRefreshAfterAck=false,returnCommittedScope=false,onRejected=()=>{},onAcknowledge=async()=>{},onAcknowledged=()=>{},tab={primaryTab:true},onPublication=()=>{},files={},writeStateToFolder=async()=>{},refreshCloudTimestamp=()=>{}}={}){
+function fixture({rpcSave,readCloud=async()=>null,merge3=(_base,local)=>({state:clone(local),conflicts:[]}),failRefreshAfterAck=false,returnCommittedScope=false,onControl=async()=>{},onRejected=()=>{},onAcknowledge=async()=>{},onAcknowledged=()=>{},tab={primaryTab:true},onPublication=()=>{},files={},writeStateToFolder=async()=>{},refreshCloudTimestamp=()=>{}}={}){
   const base={notes:[{id:'A',content:'base'}]},model={state:{notes:[{id:'A',content:'sent'}]}},session={localGeneration:1,cloudRevision:10,lastCloudState:clone(base),cloudSaveRequested:false,cloudConflictBlocked:false,cloudBusy:false};
   let seq=1,ackSeq=0,revision=10,baseState=clone(base),flight=null,control=null,op=0,owner="test-account",epoch="test-epoch";
   const sent=[],acks=[],rejects=[],legacyWrites=[],statuses=[];
@@ -26,9 +26,28 @@ function fixture({rpcSave,readCloud=async()=>null,merge3=(_base,local)=>({state:
   const wrappedRpc=async(...args)=>{sent.push({snapshot:clone(args[0]),expected:args[1],operationId:args[2]});return rpcSave?rpcSave(...args):{r:{ok:true},row:{revision:args[1]+1,state:clone(args[0]),updated_at:'2026-09-22T00:00:00Z'}}};
   const refreshState=async()=>{if(failRefreshAfterAck&&acks.length)throw new Error('injected post-ACK refresh failure');return state()};
   let loginEpoch=1;const getCloudWriteScope=()=>({owner,epoch,writable:true,accountOwner:'test-user',loginEpoch});
-  const api=createSyncDocument({getCloudWriteScope,model,files,session,tab,toast:noop,setCloud:(...args)=>statuses.push(args),prepareCloudState:(value=model.state)=>clone(value),writeStateToFolder,readCloud,rpcSaveV2:wrappedRpc,merge3,applyOrderCloudState:value=>{onPublication();model.state=clone(value)},cloudEnabled:()=>true,sameOrderCloudData:(a,b)=>JSON.stringify(a)===JSON.stringify(b),cloudHasLocalWork:()=>seq>ackSeq,render:noop,readCloudMeta:async()=>null,refreshKupaReadout:async()=>true,pollSharedChecks:async()=>{},refreshCloudTimestamp,refreshStorageV2CloudState:refreshState,materializeStorageV2CloudFlight:materialize,acknowledgeStorageV2CloudFlight:acknowledge,rejectStorageV2CloudFlight:reject,setStorageV2CloudControl:async value=>{control=clone(value);return clone(value)},storageV2CommitPromise:()=>Promise.resolve()});
+  const api=createSyncDocument({getCloudWriteScope,model,files,session,tab,toast:noop,setCloud:(...args)=>statuses.push(args),prepareCloudState:(value=model.state)=>clone(value),writeStateToFolder,readCloud,rpcSaveV2:wrappedRpc,merge3,applyOrderCloudState:value=>{onPublication();model.state=clone(value)},cloudEnabled:()=>true,sameOrderCloudData:(a,b)=>JSON.stringify(a)===JSON.stringify(b),cloudHasLocalWork:()=>seq>ackSeq,render:noop,readCloudMeta:async()=>null,refreshKupaReadout:async()=>true,pollSharedChecks:async()=>{},refreshCloudTimestamp,refreshStorageV2CloudState:refreshState,materializeStorageV2CloudFlight:materialize,acknowledgeStorageV2CloudFlight:acknowledge,rejectStorageV2CloudFlight:reject,setStorageV2CloudControl:async(value,options)=>{await onControl(options);control=clone(value);return clone(value)},storageV2CommitPromise:()=>Promise.resolve()});
   return {api,model,session,sent,acks,rejects,legacyWrites,statuses,getState:state,getControl:()=>clone(control),setScope(nextOwner,nextEpoch){owner=nextOwner;epoch=nextEpoch},relogin(){loginEpoch++},mutate(value){model.state=clone(value);seq++;session.localGeneration++},setControl(value){control=clone(value)}};
 }
+
+for(const change of ['owner','epoch','primary'])test(`Orders scope loss while retry control is queued completes safely (${change})`,async()=>{
+  const tab={primaryTab:true};let f;
+  f=fixture({tab,rpcSave:async()=>{throw Error('controlled network failure')},onControl:async(options)=>{
+    assert.ok(options.expectedScope);assert.equal(options.isCurrent(),true);
+    if(change==='primary')tab.primaryTab=false;else f.setScope(change==='owner'?'new-account':'test-account',change==='epoch'?'new-epoch':'test-epoch');
+    throw Object.assign(Error('storage_cloud_scope_changed'),{code:'storage_cloud_scope_changed'});
+  }});
+  f.mutate({notes:[{id:'N1',content:'retained'}]});
+  assert.equal(await f.api.requestCloudSave(),false);
+  assert.equal(f.getControl(),null);assert.ok(f.getState().flight);assert.equal(f.sent.length,1);
+});
+
+test('Orders retry-control storage failure under unchanged authority remains visible',async()=>{
+  const failure=Error('controlled quota failure'),f=fixture({rpcSave:async()=>{throw Error('controlled network failure')},onControl:async()=>{throw failure}});
+  f.mutate({notes:[{id:'N1',content:'retained'}]});
+  await assert.rejects(f.api.requestCloudSave(),error=>error===failure);
+  assert.equal(f.getControl(),null);assert.ok(f.getState().flight);
+});
 
 for(const change of ['owner','epoch','login'])test(`Orders post-ACK ${change} change with identical seq/generation cannot publish or mutate the new session`,async()=>{
   let f;f=fixture({rpcSave:async(snapshot)=>({r:{ok:true},row:{revision:12,state:{...snapshot,notes:[{id:'A',content:'REMOTE_OLD_SCOPE'}]}}}),onAcknowledged:()=>{

@@ -607,7 +607,7 @@ for app in ('kupa', 'orders'):
             const ports={getCloudWriteScope:()=>storage.cloudScope&&({...storage.cloudScope,accountOwner:owner,loginEpoch:1}),model,session,files,tab,render:noop,toast:noop,
               refreshStorageV2CloudState:()=>driver.refreshStorageV2CloudState(),materializeStorageV2CloudFlight:options=>driver.materializeStorageV2CloudFlight(options),
               acknowledgeStorageV2CloudFlight:async(...args)=>{if(beforeAck){const hook=beforeAck;beforeAck=null;await hook(args)}return driver.acknowledgeStorageV2CloudFlight(...args)},rejectStorageV2CloudFlight:(...args)=>driver.rejectStorageV2CloudFlight(...args),
-              setStorageV2CloudControl:value=>driver.setStorageV2CloudControl(value),storageV2CommitPromise:()=>storage.commitPromise};
+              setStorageV2CloudControl:(...args)=>driver.setStorageV2CloudControl(...args),storageV2CommitPromise:()=>storage.commitPromise};
             const api=app==='orders'?createSyncDocument({...ports,prepareCloudState:project,cloudEnabled:()=>true,setCloud:noop,
               sameOrderCloudData:(a,b)=>JSON.stringify(project(a))===JSON.stringify(project(b)),merge3:merge.merge3,
               composeOrderCloudState:(raw,current)=>({...normalization.normalizeState(clone(raw)),checks:clone(current.checks)}),
@@ -827,7 +827,7 @@ with BrowserSession(ROOT/'netunim-orders/site', 'poll-status-durable-ack') as br
         readCloudMeta:async()=>{metaEntered.resolve();await metaRelease.promise;return {revision:10}},
         refreshStorageV2CloudState:()=>driver.refreshStorageV2CloudState(),materializeStorageV2CloudFlight:options=>driver.materializeStorageV2CloudFlight(options),
         acknowledgeStorageV2CloudFlight:async(...args)=>{ackEntered.resolve();await ackRelease.promise;return driver.acknowledgeStorageV2CloudFlight(...args)},
-        storageV2CommitPromise:()=>storage.commitPromise,setStorageV2CloudControl:value=>driver.setStorageV2CloudControl(value),
+        storageV2CommitPromise:()=>storage.commitPromise,setStorageV2CloudControl:(...args)=>driver.setStorageV2CloudControl(...args),
         rpcSaveV2:async snapshot=>({r:{ok:true},row:{revision:10,state:clone(snapshot)}}),applyOrderCloudState:noop});
       const poll=api.cloudPoll();await metaEntered.promise;
       model.state.notes[0].content='edit-during-meta';session.localGeneration++;

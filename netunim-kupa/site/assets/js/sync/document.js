@@ -33,6 +33,10 @@ export function createSyncDocument({getCloudWriteScope=()=>null,hideConnectScree
 const outboxRetryScheduler=createOutboxRetryScheduler();
 let savingScope=null;
 const writeScopeCurrent=(scope,head=null)=>tab.primaryTab&&!storageV2PreparationActive()&&cloudWriteScopeIsCurrent(scope,getCloudWriteScope(),head);
+async function setWriteControl(scope,control){
+  try{return await setStorageV2CloudControl(control,{expectedScope:scope,isCurrent:()=>writeScopeCurrent(scope)})}
+  catch(error){if(!writeScopeCurrent(scope))return false;throw error}
+}
 let cloudPollPromise=null;
 const cloudPoller=createPollingTask({run:()=>trackedCloudPoll(),delay:()=>12_000+Math.floor(Math.random()*2_000),
   canRun:()=>session.cloudPollingEnabled&&!storageV2PreparationActive(),
@@ -191,7 +195,7 @@ async function saveStorageV2CloudFlight(initialFlight,scope){
     const postRebase=await refreshStorageV2CloudState();
     if(!writeScopeCurrent(scope,postRebase))return false;
     if(postRebase?.seq!==expectedSeq||Number(session.localGeneration||0)!==expectedGeneration){
-      await setStorageV2CloudControl({conflict:{kind:'concurrent-rebase',domain:'kupa',baseRevision:expected,currentRemoteRevision:remoteRevision}});
+      await setWriteControl(scope,{conflict:{kind:'concurrent-rebase',domain:'kupa',baseRevision:expected,currentRemoteRevision:remoteRevision}});
       if(!writeScopeCurrent(scope))return false;
       session.cloudConflictPending=true;setSaveStatus('שינוי מקביל נשמר מקומית; הסנכרון נעצר לבדיקה','error');setCloudHeaderStatus('conflict','ענן: נדרשת בדיקה');
       reportError('שינוי בוצע בזמן מיזוג הענן. הנתונים נשמרו מקומית; ייצא גיבוי JSON ובדוק את המצב לפני חידוש הסנכרון.');
@@ -227,7 +231,7 @@ async function saveStorageV2CloudFlight(initialFlight,scope){
     session.cloudConflictPending=true;
     if(!tab.primaryTab)return false;
     if(publication.reason==='publication-error')console.error('post-ACK model publication',publication.error);
-    await setStorageV2CloudControl({conflict:{kind:publication.reason==='publication-error'?'ack-publication-failed':'concurrent-ack',domain:'kupa',baseRevision:flight.baseRevision,currentRemoteRevision:newRevision}});
+    await setWriteControl(scope,{conflict:{kind:publication.reason==='publication-error'?'ack-publication-failed':'concurrent-ack',domain:'kupa',baseRevision:flight.baseRevision,currentRemoteRevision:newRevision}});
     if(!writeScopeCurrent(scope))return false;
     setSaveStatus('שינוי מקביל נשמר מקומית; הסנכרון נעצר לבדיקה','error');setCloudHeaderStatus('conflict','ענן: נדרשת בדיקה');
     reportError(publication.reason==='publication-error'?'אישור הענן נשמר, אבל עדכון הנתונים לתצוגה נכשל. הסנכרון נעצר לבדיקה; הנתונים נשמרו באחסון המקומי.':'שינוי בוצע בזמן שמירת אישור הענן. הנתונים נשמרו מקומית; ייצא גיבוי JSON ובדוק את המצב לפני חידוש הסנכרון.');
@@ -279,7 +283,7 @@ async function requestStorageV2CloudSave(message='הקופה סונכרנה לע
         if(!writeScopeCurrent(scope)||!cloudScopeAccess(force))return false;
         state=await refreshStorageV2CloudState();if(!cloudScopeAccess(force)||!writeScopeCurrent(scope,state))return false;
         const normalized=normalizeCloudError(error),attempts=Number(state?.control?.retry?.attempts||0)+1,nextAttemptAt=normalized.retryAfterMs?new Date(Date.now()+normalized.retryAfterMs).toISOString():null,retry={attempts,lastErrorCode:normalized.code||normalized.kind,lastAttemptAt:new Date().toISOString(),nextAttemptAt};
-        await setStorageV2CloudControl({retry});state=await refreshStorageV2CloudState();
+        await setWriteControl(scope,{retry});state=await refreshStorageV2CloudState();
         if(!cloudScopeAccess(force)||!writeScopeCurrent(scope,state))return false;
         outboxRetryScheduler.schedule(v2RetryRecord(state,state?.flight),()=>writeScopeCurrent(scope)?requestStorageV2CloudSave(message,{force}):false);
         setSaveStatus(navigator.onLine?'ממתין לסנכרון':'אופליין — שינוי שמור מקומית','saving');setCloudHeaderStatus(navigator.onLine?'syncing':'offline',navigator.onLine?'ענן: ממתין לסנכרון':'ענן: אופליין');return false;

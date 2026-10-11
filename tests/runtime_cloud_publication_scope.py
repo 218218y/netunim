@@ -53,7 +53,7 @@ const rpc=async(snapshot,expected,operationId)=>{calls.push({operationId,expecte
 const ports={getCloudWriteScope:()=>runtime.cloudScope&&({...runtime.cloudScope,accountOwner:owner,loginEpoch}),model,session,files,tab,toast:noop,render:noop,
  refreshStorageV2CloudState:()=>driver.refreshStorageV2CloudState(),materializeStorageV2CloudFlight:args=>driver.materializeStorageV2CloudFlight(args),
  acknowledgeStorageV2CloudFlight:(...args)=>driver.acknowledgeStorageV2CloudFlight(...args),rejectStorageV2CloudFlight:(...args)=>driver.rejectStorageV2CloudFlight(...args),
- setStorageV2CloudControl:value=>driver.setStorageV2CloudControl(value),storageV2CommitPromise:()=>runtime.commitPromise};
+ setStorageV2CloudControl:(...args)=>driver.setStorageV2CloudControl(...args),storageV2CommitPromise:()=>runtime.commitPromise};
 const merge=(_base,local)=>({state:clone(local),conflicts:[]});
 const api=app==='orders'?createSyncDocument({...ports,prepareCloudState:project,cloudEnabled:()=>true,cloudHasLocalWork:()=>!!session.storageV2CloudPending,
  sameOrderCloudData:(a,b)=>JSON.stringify(project(a))===JSON.stringify(project(b)),applyOrderCloudState:value=>{model.state={...clone(value),checks:[]}},
@@ -101,18 +101,34 @@ for(const entry of epochChange?[['publication-A',expected.b]]:[['publication-A',
  const recovered=await fresh.recoverForOwner({intent:'load-account'}),head=await fresh.cloudState(),want=entry[1];
  check(JSON.stringify(recovered.state.notes)===JSON.stringify(want.notes),'fresh runtime changed IDs/content '+owner);
  check(head.base.revision===want.revision&&head.base.ackSeq===want.ackSeq&&head.pending===want.pending&&!head.flight&&!head.control,'fresh runtime changed cursor/control '+owner);
- if(want.seq)check(head.seq===want.seq,'fresh runtime changed sequence');
+ if(typeof want.seq==='number')check(head.seq===want.seq,'fresh runtime changed sequence');
 }
-return {phase:expected.phase,ids:expected.b.notes.map(note=>note.id),pending:true,oldCommitRevision:expected.a.revision};
+return {phase:expected.phase,ids:expected.b.notes.map(note=>note.id),pending:expected.b.pending,oldCommitRevision:expected.a.revision};
+"""
+
+CONTROL = r"""
+model.state.notes=[{id:'note-A',content:'UNCHANGED_RESET',createdAt:'2026-10-11',updatedAt:'2026-10-11'}];
+await runtime.initializeCloudHead(10,model.state,{sourceOwner:owner,intent:'cloud-authoritative',cloudState:project(model.state)});
+const old=clone(runtime.cloudScope),state=clone(model.state);
+wrapped.resetCloudHead=async(...args)=>{entered.resolve();await release.promise;return db.resetCloudHead(...args)};
+const reset=runtime.resetCloudHead(3,project(state),state,{appMetadata:{storageRole:'primary'}});await entered.promise;
+const control=driver.setStorageV2CloudControl({retry:{attempts:1,lastErrorCode:'old-retry'}},{expectedScope:old});
+const failure=control.catch(error=>error);release.resolve();await reset;
+const before=JSON.stringify(await db.load(old.owner)),error=await failure;
+check(error?.code==='storage_cloud_scope_changed','queued old control accepted after epoch reset');
+check(JSON.stringify(await db.load(old.owner))===before,'rejected control changed native stores');
+const head=await driver.refreshStorageV2CloudState();
+check(head.base.epoch!==old.epoch&&head.base.revision===3&&!head.control&&!head.pending,'old retry attached to new epoch');
+return {phase:'control-epoch',a:{revision:10},b:{revision:3,ackSeq:0,seq:0,pending:false,notes:state.notes}};
 """
 
 parser=argparse.ArgumentParser()
 parser.add_argument('--app',choices=('kupa','orders'))
-parser.add_argument('--phase',action='append',choices=('ack-owner','ack-epoch','rebase-owner','rebase-epoch','ack-owner-fallback'))
+parser.add_argument('--phase',action='append',choices=('ack-owner','ack-epoch','rebase-owner','rebase-epoch','ack-owner-fallback','control-epoch'))
 parser.add_argument('--baseline',action='store_true',help='Use previous main sync source, expecting regression assertions to fail.')
 args=parser.parse_args()
 for app in (args.app,) if args.app else ('kupa','orders'):
-    for phase in args.phase or ('ack-owner','ack-epoch','rebase-owner','rebase-epoch','ack-owner-fallback'):
+    for phase in args.phase or ('ack-owner','ack-epoch','rebase-owner','rebase-epoch','ack-owner-fallback','control-epoch'):
         setup=SETUP.replace('__APP__',json.dumps(app))
         with BrowserSession(ROOT/f'netunim-{app}/site',f'publication-scope-{app}-{phase}') as browser:
             if args.baseline:
@@ -124,7 +140,8 @@ for app in (args.app,) if args.app else ('kupa','orders'):
                     old+=('\nexport const __testBindings='+trailer[1]).encode('utf-8')
                 target.write_bytes(old)
                 browser._navigate()
-            outcome=browser.evaluate('(async()=>{'+setup+FLOW.replace('__PHASE__',json.dumps(phase))+'})()',timeout=50)
+            flow=CONTROL if phase=='control-epoch' else FLOW.replace('__PHASE__',json.dumps(phase))
+            outcome=browser.evaluate('(async()=>{'+setup+flow+'})()',timeout=50)
             browser._navigate()
             restored=browser.evaluate('(async()=>{'+setup+RESTORE.replace('__EXPECTED__',json.dumps(outcome))+'})()',timeout=45)
             errors=browser.drain_serious_errors()

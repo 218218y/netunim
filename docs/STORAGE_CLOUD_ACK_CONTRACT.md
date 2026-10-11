@@ -117,6 +117,17 @@ a replacement flight or making another RPC, including both merge-conflict
 branches. Generation and candidate-sequence checks remain additional fences.
 An older promise's `finally` cannot clear a newer request's promise or busy flags.
 
+Control writes additionally carry the captured expected owner/epoch and live
+authorization check through the browser/runtime ports. The journal checks that
+epoch and authorization again **after** its queue drains, before sealing control;
+the existing IDB writer/epoch check remains atomic. A controlled regression
+reproduced an old retry attaching to a reset epoch while waiting behind the
+reset. Rejection preserves the new checkpoint/base and adds no control.
+The obsolete sync owner returns false if it loses authority during that control
+wait, without retrying or publishing the failure under the new identity. Control
+storage failures under unchanged authority still reject visibly; regressions
+distinguish this from normal scope cancellation.
+
 If owner, storage epoch, login epoch or leadership changes after commit, return
 false without publishing the old candidate, advancing the new session's revision,
 adding concurrent-ACK/retry control to the new identity or starting its follow-up.
@@ -161,7 +172,7 @@ Additional regressions exercise committed old-cache fallback, all conflict
 branches, publication exceptions and primary loss. This demonstrates a boundary
 bug, not a known production incident.
 
-`runtime_cloud_publication_scope.py` runs ten disposable native-IDB profiles:
+`runtime_cloud_publication_scope.py` runs twelve disposable native-IDB profiles:
 ACK/rebase × account/epoch replacement × both applications. A controlled promise
 pauses **after** the native transaction completes; the next identity is recovered
 and a synthetic note appended at the same seq/generation before release. It
@@ -170,6 +181,8 @@ failed post-commit cache refresh. The suite verifies no old publication,
 session advance, status, backup, control or follow-up
 RPC. A fresh document recovers both accounts with unchanged IDs/content/cursors;
 epoch-reset cases preserve the acknowledged note alongside the new pending note.
+Two further native profiles reject old control waiting behind an epoch reset,
+retaining the new raw stores and recovering their note IDs/content unchanged.
 The native pre-fix ACK/account test failed for both apps with old-scope publication.
 
 These tests exercise actual storage and sync adapters with synthetic RPC receipts.

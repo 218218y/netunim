@@ -186,7 +186,11 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
   async function materializeFlight(options={}){guardCloudMutation();return (await settledJournal()).materializeFlight(options)}
   async function acknowledgeFlight(operationId,revision,state,options={}){guardCloudMutation();const next={...options};if(Object.hasOwn(next,'currentState')){next.checkpointState=checkpointState(next.currentState);delete next.currentState}const active=await settledJournal();guardCloudMutation();return active.acknowledge(operationId,revision,state,next)}
   async function rejectFlight(operationId,revision,state,options={}){guardCloudMutation();const next={...options};if(Object.hasOwn(next,'currentState')){next.checkpointState=checkpointState(next.currentState);delete next.currentState}const active=await settledJournal();guardCloudMutation();return active.rejectAndRebase(operationId,revision,state,next)}
-  async function setCloudControl(control={}){guardCloudMutation();return (await settledJournal()).setCloudControl(control)}
+  async function setCloudControl(control={},options={}){
+    guardCloudMutation();const expected=options.expectedScope||{owner:`${identity}:${app}`,epoch:journal?.epoch},active=await settledJournal();guardCloudMutation();
+    if(expected.owner!==`${identity}:${app}`||expected.epoch!==active.epoch)throw Object.assign(new Error('storage_cloud_scope_changed'),{code:'storage_cloud_scope_changed'});
+    return active.setCloudControl(control,{expectedEpoch:expected.epoch,isCurrent:options.isCurrent});
+  }
   async function clearCloudControl(options={}){guardCloudMutation();if(!readyForCurrentOwner())return false;const active=await settledJournal();guardCloudMutation();return active.clearCloudControl(options)}
   async function replaceCurrentState(state,options={}){const active=await settledJournal(),result=await active.replaceCurrentState(checkpointState(state),options);operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
   async function replaceLocalAuthoritativeState(state,{boundaryId,expectedSeq}={}){

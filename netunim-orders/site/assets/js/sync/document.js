@@ -20,6 +20,10 @@ export function createSyncDocument({getCloudWriteScope=()=>null,model,files,sess
 const outboxRetryScheduler=createOutboxRetryScheduler();
 let savingScope=null;
 const writeScopeCurrent=(scope,head=null)=>tab.primaryTab&&!storageV2PreparationActive()&&cloudWriteScopeIsCurrent(scope,getCloudWriteScope(),head);
+async function setWriteControl(scope,control){
+  try{return await setStorageV2CloudControl(control,{expectedScope:scope,isCurrent:()=>writeScopeCurrent(scope)})}
+  catch(error){if(!writeScopeCurrent(scope))return false;throw error}
+}
 let cloudPollPromise=null,morningRefreshPromise=null;
 const cloudPoller=createPollingTask({run:()=>trackedCloudPoll(),delay:()=>12_000+Math.floor(Math.random()*2_000),
   canRun:()=>session.cloudPollingEnabled&&!storageV2PreparationActive(),
@@ -115,7 +119,7 @@ async function saveStorageV2CloudFlight(initialFlight,scope){
     const postRebase=await refreshStorageV2CloudState();
     if(!writeScopeCurrent(scope,postRebase))return false;
     if(postRebase?.seq!==expectedSeq||Number(session.localGeneration||0)!==expectedGeneration){
-      await setStorageV2CloudControl({conflict:{kind:'concurrent-rebase',domain:'orders',baseRevision:expected,currentRemoteRevision:remoteRevision}});
+      await setWriteControl(scope,{conflict:{kind:'concurrent-rebase',domain:'orders',baseRevision:expected,currentRemoteRevision:remoteRevision}});
       if(!writeScopeCurrent(scope))return false;
       session.cloudConflictBlocked=true;session.cloudSaveRequested=false;setCloud('ענן: הסנכרון נעצר לשמירת שינוי מקביל','error');
       toast('שינוי בוצע בזמן מיזוג הענן. הנתונים נשמרו מקומית; ייצא גיבוי ובדוק את המצב לפני חידוש הסנכרון.');
@@ -164,7 +168,7 @@ async function saveStorageV2CloudFlight(initialFlight,scope){
     session.cloudConflictBlocked=true;session.cloudSaveRequested=false;
     if(!tab.primaryTab)return false;
     if(publication.reason==='publication-error')console.error('post-ACK model publication',publication.error);
-    await setStorageV2CloudControl({conflict:{kind:publication.reason==='publication-error'?'ack-publication-failed':'concurrent-ack',domain:'orders',baseRevision:flight.baseRevision,currentRemoteRevision:newRevision}});
+    await setWriteControl(scope,{conflict:{kind:publication.reason==='publication-error'?'ack-publication-failed':'concurrent-ack',domain:'orders',baseRevision:flight.baseRevision,currentRemoteRevision:newRevision}});
     if(!writeScopeCurrent(scope))return false;
     setCloud('ענן: הסנכרון נעצר לשמירת שינוי מקביל','error');
     toast(publication.reason==='publication-error'?'אישור הענן נשמר, אבל עדכון הנתונים לתצוגה נכשל. הסנכרון נעצר לבדיקה; הנתונים נשמרו באחסון המקומי.':'שינוי בוצע בזמן שמירת אישור הענן. הנתונים נשמרו מקומית; ייצא גיבוי ובדוק את המצב לפני חידוש הסנכרון.');
@@ -207,7 +211,7 @@ async function requestStorageV2CloudSave(message='השינויים סונכרנ�
       state=await refreshStorageV2CloudState();
       if(!tab.primaryTab||(!force&&!cloudEnabled())||!writeScopeCurrent(scope,state))return false;
       const normalized=normalizeCloudError(error),attempts=Number(state?.control?.retry?.attempts||0)+1,nextAttemptAt=normalized.retryAfterMs?new Date(Date.now()+normalized.retryAfterMs).toISOString():null,retry={attempts,lastErrorCode:normalized.code||normalized.kind,lastAttemptAt:new Date().toISOString(),nextAttemptAt};
-      await setStorageV2CloudControl({retry});state=await refreshStorageV2CloudState();if(!writeScopeCurrent(scope,state))return false;
+      await setWriteControl(scope,{retry});state=await refreshStorageV2CloudState();if(!writeScopeCurrent(scope,state))return false;
       if(!tab.primaryTab||(!force&&!cloudEnabled())||!writeScopeCurrent(scope,state))return false;
       outboxRetryScheduler.schedule(v2RetryRecord(state,state?.flight),()=>writeScopeCurrent(scope)?requestStorageV2CloudSave(msg,{force}):false);setCloud(navigator.onLine?'ענן: ממתין לסנכרון':'ענן: אופליין',navigator.onLine?'':'offline');allOk=false;break
     }finally{if(cloudWriteScopeHasIdentity(scope,getCloudWriteScope()))session.cloudBusy=false}
