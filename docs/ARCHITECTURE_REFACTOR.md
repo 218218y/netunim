@@ -498,3 +498,12 @@ before-fix native reproductions, unchanged-store rejection, fresh-document repla
 and full sync-owner recovery coverage. See [the ACK contract](STORAGE_CLOUD_ACK_CONTRACT.md).
 This closes a proven local recovery gap without changing schemas, SQL, RPC
 idempotency, no-op revisions or the independent Shared/Finance owners.
+
+The remaining Finance document writers and Orders' manual Kupa settings now
+require a validated authoritative receipt before cursor advancement or success
+publication. Three before-change native reproductions proved false success for
+malformed HTTP 200 responses. Captured wire JSON, delegated no-op/replay policy,
+classified unknown outcomes and read-only recovery preserve Main/Shared stores
+and record IDs. See [Finance write confirmation](FINANCE_WRITE_CONFIRMATION.md).
+This completes one receipt boundary; full Finance lease/business input typing,
+broader unknown-outcome policy and narrower capability APIs remain separate work.

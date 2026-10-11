@@ -300,3 +300,10 @@ real AbortSignal are distinct from a synchronous success value. Missing native
 ownership fails closed; no browser-global access is introduced into the journal.
 This slice does not typecheck the full Calendar journal/controller or add a
 server-side ledger. See CALENDAR_DELIVERY_OWNERSHIP.md.
+
+Finance write confirmation now checks its actual canonical decoder body, both
+generated implementations and negative consumers. Numeric captured base revisions,
+JSON documents, synchronous receipts and immutable decoded revision evidence
+are enforced. It delegates revision/no-op/replay policy to the existing Main
+receipt module; this is not a typecheck of the full Finance controller, lease
+protocol or business schema. See FINANCE_WRITE_CONFIRMATION.md.

@@ -1,5 +1,6 @@
 import {createOrdersFinanceAutomation} from './automation.js';
 import {readBankSnapshotReceipt} from '../../shared/bank-snapshot-receipt.js';
+import {readFinanceWriteReceipt} from '../../shared/finance-write-receipt.js';
 import {createRevisionSelector} from '../../shared/revision-selector.js';
 import {applyCreditCardOrderData} from '../../shared/credit-card-order.js';
 import {bankRecurringDebitHistoryData} from '../../shared/bank-recurring-debits.js';
@@ -125,9 +126,9 @@ export function createDomainsFinanceController({tab,checksSession,bridge,operati
       if(!row?.state)throw new Error('מסמך הקופה בענן לא נמצא');
       assertCurrent();const candidate=mutator(clone(row.state));
       if(!candidate){acceptKupaCloudRow(row,{renderIfChanged:true,assertCurrent});return {saved:false,skipped:true,row}}
-      const before=prepareKupaWriteState(row.state),after=prepareKupaWriteState(candidate),audit=operationAuditMetadata({site:'orders',mutationType:'finance-update',surface:'orders.finance.kupa-settings',baseRevision:Number(row.revision||0),beforeState:before,afterState:after,collections:['credits','cash','rights','notes','expenses','cards','notesSheet.rows','notesSheet.columns']});
-      const result=await runBusyCloudWriteWithPolicy(()=>rpcSaveKupaDocument(after,Number(row.revision||0),operationId,audit,{assertCurrent}));assertCurrent();
-      if(result.r.ok){const savedRow={revision:Number(result.row?.revision||Number(row.revision||0)+1),updated_at:result.row?.updated_at||row.updated_at,state:result.row?.state||candidate},publication=await confirmCommittedReadout(assertCurrent,{minimumRevision:savedRow.revision});return {saved:true,skipped:false,row:savedRow,...publication}}
+      const before=prepareKupaWriteState(row.state),after=prepareKupaWriteState(candidate),baseRevision=Number(row.revision||0),audit=operationAuditMetadata({site:'orders',mutationType:'finance-update',surface:'orders.finance.kupa-settings',baseRevision,beforeState:before,afterState:after,collections:['credits','cash','rights','notes','expenses','cards','notesSheet.rows','notesSheet.columns']});
+      const result=await runBusyCloudWriteWithPolicy(()=>rpcSaveKupaDocument(after,baseRevision,operationId,audit,{assertCurrent}));assertCurrent();
+      if(result.r.ok){const savedRow=readFinanceWriteReceipt(Object.hasOwn(result,'j')?result.j:result.row,{baseRevision,sentState:after}),publication=await confirmCommittedReadout(assertCurrent,{minimumRevision:savedRow.revision});return {saved:true,skipped:false,row:savedRow,...publication}}
       if(normalizeCloudError(result).kind==='revision_conflict'){await contentionBackoff(conflictAttempt);row=await readKupaReadOnlyCloud({assertCurrent});continue}
       throw new Error(result.j?.message||result.txt||'שמירת נתוני הקופה המשותפים נכשלה');
     }
@@ -168,10 +169,11 @@ export function createDomainsFinanceController({tab,checksSession,bridge,operati
     for(let conflictAttempt=0;conflictAttempt<CLOUD_WRITE_POLICY.conflictAttempts;conflictAttempt++){
       assertCurrent();
       const base=row?.state&&typeof row.state==='object'?clone(row.state):{};
-      const candidate=mutator(base);if(!candidate)return {saved:false,skipped:true,row};
-      const audit=operationAuditMetadata({site:'orders',mutationType:'finance-update',surface:'orders.finance.sync-document',baseRevision:Number(row?.revision||0),beforeState:base,afterState:candidate});
-      const result=await runBusyCloudWriteWithPolicy(()=>rpcSaveFinanceSync(candidate,Number(row?.revision||0),operationId,audit,lease));assertCurrent();
-      if(result.r.ok){const publication=await confirmCommittedReadout(assertCurrent,{minimumFinanceRevision:Number(result.row?.revision||0)});return {saved:true,skipped:false,row:result.row,...publication}}
+      const next=mutator(base);if(!next)return {saved:false,skipped:true,row};
+      const candidate=JSON.parse(JSON.stringify(next));
+      const baseRevision=Number(row?.revision||0),audit=operationAuditMetadata({site:'orders',mutationType:'finance-update',surface:'orders.finance.sync-document',baseRevision,beforeState:base,afterState:candidate});
+      const result=await runBusyCloudWriteWithPolicy(()=>rpcSaveFinanceSync(candidate,baseRevision,operationId,audit,lease));assertCurrent();
+      if(result.r.ok){const savedRow=readFinanceWriteReceipt(Object.hasOwn(result,'j')?result.j:result.row,{baseRevision,sentState:candidate}),publication=await confirmCommittedReadout(assertCurrent,{minimumFinanceRevision:savedRow.revision});return {saved:true,skipped:false,row:savedRow,...publication}}
       if(normalizeCloudError(result).kind==='revision_conflict'){await contentionBackoff(conflictAttempt);row=await readFinanceSyncDocument({assertCurrent});continue}
       throw new Error(result.j?.message||result.txt||'שמירת נתוני הסינכרון הפיננסי נכשלה');
     }
