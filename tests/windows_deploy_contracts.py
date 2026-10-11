@@ -161,7 +161,7 @@ class WindowsDocumentBridgeRuntimeContracts(unittest.TestCase):
             private.mkdir()
             with zipfile.ZipFile(source / "node-v24.21.0-win-x64.zip") as archive:
                 binary = archive.read("node-v24.21.0-win-x64/node.exe")
-            expected = re.search(r"BRIDGE_NODE_WIN_X64_SHA256='([a-f0-9]+)'", (source / "lib.mjs").read_text()).group(1)
+            expected = re.search(r"BRIDGE_NODE_WIN_X64_SHA256='([a-f0-9]+)'", (source / "lib.mjs").read_text(encoding="utf8")).group(1)
             self.assertEqual(hashlib.sha256(binary).hexdigest(), expected)
             executable = private / "node.exe"
             executable.write_bytes(binary)
