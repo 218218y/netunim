@@ -280,3 +280,10 @@ synchronous subscription cleanup, a visual invalidation callback, and an
 AbortSignal for unaccepted confirmation only. Its body is checked directly;
 this does not typecheck the full customer controller or create a persistence
 contract. See MORNING_ACCOUNT_DISPLAY_PRIVACY.md.
+
+Calendar display authorization and presentation lifetime now check their actual
+bodies and negative consumers: unknown persisted cache attribution is narrowed
+at runtime, app owner and Google account are distinct, and account invalidation
+and subscription cleanup finish synchronously. This does not typecheck the full
+Calendar controller/storage transaction implementation. See
+CALENDAR_ACCOUNT_DISPLAY_PRIVACY.md for native transaction and privacy evidence.

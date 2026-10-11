@@ -7,9 +7,10 @@ import {createCalendarActionPorts} from '../domains/calendar/action-ports.js';
 
 // Infrastructure is created early; the controller is composed after the UI
 // ports exist. The caller starts it only after the app's boot promise resolves.
-export function createOrdersCalendarRuntime({calendarSession,supaFetch,accountScope}){
+export function createOrdersCalendarRuntime({calendarSession,supaFetch,accountScope,subscribeAccountScope}){
   if(!calendarSession||typeof calendarSession!=='object')throw new Error('calendar_session_required');
   if(typeof supaFetch!=='function')throw new Error('calendar_cloud_port_required');
+  if(typeof subscribeAccountScope!=='function')throw new Error('calendar_account_observation_required');
   const calendarStorage=createCalendarStorage();
   const calendarAuth=createCalendarAuth({calendarSession,supaFetch,accountScope});
   const calendarApi=createCalendarApi({calendarAuth});
@@ -20,7 +21,7 @@ export function createOrdersCalendarRuntime({calendarSession,supaFetch,accountSc
     if(controller)throw new Error('calendar_controller_already_composed');
     controller=createDomainsCalendarController({
       ui,tab,calendarUi,calendarSession,
-      calendarStorage,calendarAuth,calendarApi,calendarJournal,
+      calendarStorage,calendarAuth,calendarApi,calendarJournal,subscribeAccountScope,
       mountViewLayout:(...args)=>uiLayout.mountViewLayout(...args),
       modal:(...args)=>uiModal.modal(...args),
       closeModal:(...args)=>uiModal.closeModal(...args),
@@ -38,5 +39,5 @@ export function createOrdersCalendarRuntime({calendarSession,supaFetch,accountSc
     return createCalendarActionPorts(controller);
   }
 
-  return {createController,actionPorts};
+  return {createController,actionPorts,dispose:()=>controller?.dispose()??false};
 }

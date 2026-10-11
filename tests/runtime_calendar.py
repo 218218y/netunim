@@ -4,10 +4,22 @@ from browser_harness import BrowserSession, ROOT
 site=ROOT/'netunim-orders/site'
 ok=True
 try:
-    with BrowserSession(site,'orders-calendar',instrument=False) as browser:
+    with BrowserSession(site,'orders-calendar',auto_navigate=False) as browser:
+        # The cache now belongs to an authenticated application owner. Keep the
+        # whole disposable profile offline, including startup after reload;
+        # unrelated Supabase work must never contact a real/configured service.
+        browser.call('Page.addScriptToEvaluateOnNewDocument', {'source': r"""
+          Object.defineProperty(navigator,'onLine',{value:false,configurable:true});
+          const fetch=globalThis.fetch;globalThis.fetch=(url,...args)=>{
+            if(new URL(url,location.href).hostname==='example.invalid')return Promise.reject(new TypeError('synthetic offline Calendar profile'));
+            return fetch(url,...args);
+          };
+        """})
+        browser._navigate()
         browser.evaluate("import('./assets/js/main.js').then(m=>m.appReady).then(()=>true)")
         result=browser.evaluate(r"""(async()=>{
           Object.defineProperty(navigator,'onLine',{value:false,configurable:true});
+          cloudAuth.saveSession({user:{id:'calendar-offline-fixture'},access_token:'synthetic-offline',expires_at:9999999999});
           const {createCalendarStorage}=await import('./assets/js/calendar/storage.js');
           const storage=createCalendarStorage();
           const pad=v=>String(v).padStart(2,'0');
@@ -23,7 +35,7 @@ try:
             {id:'birthday1',summary:'יום הולדת בדיקה',start:{date:today},end:{date:key(new Date(now.getFullYear(),now.getMonth(),now.getDate()+1))},eventType:'birthday',_calendarId:'birthdays@example.com',_calendarSummary:'ימי הולדת',_calendarAccessRole:'reader',_calendarColor:'#397455'}
           ];
           await storage.putMeta('accountId','owner@example.com');
-          await storage.putRangeCache({key:rangeKey,accountId:'owner@example.com',rangeStart:key(gridStart),rangeEnd:key(gridEnd),fetchedAt:new Date().toISOString(),calendars,events});
+          await storage.putRangeCache({key:rangeKey,owner:'calendar-offline-fixture',accountId:'owner@example.com',rangeStart:key(gridStart),rangeEnd:key(gridEnd),fetchedAt:new Date().toISOString(),calendars,events});
           document.querySelector('[data-view="calendar"]').click();
           for(let i=0;i<40&&!document.querySelector('.calendar-board');i++)await new Promise(r=>setTimeout(r,25));
           await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
@@ -122,6 +134,7 @@ try:
         browser.evaluate("import('./assets/js/main.js').then(m=>m.appReady).then(()=>true)")
         survived=browser.evaluate(r"""(async()=>{
           Object.defineProperty(navigator,'onLine',{value:false,configurable:true});
+          cloudAuth.saveSession({user:{id:'calendar-offline-fixture'},access_token:'synthetic-offline',expires_at:9999999999});
           const {createCalendarStorage}=await import('./assets/js/calendar/storage.js');
           const storage=createCalendarStorage();
           document.querySelector('[data-view="calendar"]').click();

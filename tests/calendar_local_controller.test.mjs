@@ -31,7 +31,7 @@ let authMode='cloud_required';
 let tokenUsable=false;
 let beginCount=0;
 let restoreCount=0;
-const calendarAuth={captureOperation:()=>({assertCurrent(){}}),
+const calendarAuth={captureOperation:()=>({owner:'fixture',assertCurrent(){}}),
   hasUsableToken:()=>tokenUsable,
   configured:()=>true,
   ready:()=>true,
@@ -57,7 +57,7 @@ const calendarApi={
 };
 const calendarJournal={flushPending:async()=>{}};
 let cloudLoginCount=0;
-const controller=createDomainsCalendarController({
+const controller=createDomainsCalendarController({subscribeAccountScope:()=>()=>{},
   ui,calendarUi,calendarSession,calendarStorage,calendarAuth,calendarApi,calendarJournal,
   mountViewLayout:()=>{},modal:()=>{},closeModal:()=>{},toast:()=>{},requestCloudLogin:()=>{cloudLoginCount++},
 });

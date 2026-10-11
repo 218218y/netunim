@@ -91,11 +91,11 @@ existing event remains a visible conflict instead of an automatic ACK.
 
 ## Remaining scope
 
-This change does not add an authentication event bus between tabs or clear
-already displayed offline cache on another tab's logout. It does not claim
-complete Calendar listener/timer disposal, fence every local editor dialog,
-or certify all concurrent-append/status interleavings. The subsequent
-CALENDAR_PENDING_CONFIRMATION.md documents the now-covered read/cache/queue
-append races and owned wakeup. Other interleavings still require their own
-behavioral evidence, privacy/product policy and ownership slices. Main/Shared
-Journal, SQL migrations, remote ACK and other providers are unchanged.
+Subsequent CALENDAR_ACCOUNT_DISPLAY_PRIVACY.md now documents the production
+cross-tab account observer, attributed offline display cache, local editor and
+confirmation fences, and owned disposal of Calendar listeners/timers/frames.
+CALENDAR_PENDING_CONFIRMATION.md and CALENDAR_TRANSACTION_CONFIRMATION.md cover
+the read/cache/queue append races and native final queue confirmation.
+Idle cross-tab pending notification, competing delivery ownership and other
+interleavings still require their own behavioral evidence. Main/Shared Journal,
+SQL migrations, remote ACK and other providers are unchanged.
