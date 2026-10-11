@@ -32,7 +32,7 @@ FLOW = r"""(async()=>{
  cloudTransport.claimFinanceSyncLease=async()=>({acquired:true,leaseName:'credit',leaseToken:'fixture',fenceEpoch:1});cloudTransport.releaseFinanceSyncLease=async()=>true;
  const request=async(path,options)=>{
    if(String(path).includes('/finance_sync_documents?'))return new Response(JSON.stringify([{revision:financeRevision,state:finance}]));
-   if(String(path).endsWith('/claim_finance_sync_lease'))return new Response(JSON.stringify([{acquired:true,lease_token:'fixture',fence_epoch:1}]));
+   if(String(path).endsWith('/claim_finance_sync_lease'))return new Response(JSON.stringify([{acquired:true,lease_token:JSON.parse(options.body).p_lease_token,fence_epoch:1,leased_until:'2030-01-01T00:00:00Z'}]));
    if(String(path).endsWith('/release_finance_sync_lease'))return new Response('true');
    options.assertRequestScope?.();check(String(path).endsWith(kind==='main'?'/save_kupa_document_v6':'/save_finance_sync_document_v6'),'unexpected fixture RPC '+path);
    const send=JSON.parse(options.body);check(send.p_expected_revision===5,'wrong captured base');commits++;

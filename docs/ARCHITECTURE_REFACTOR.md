@@ -505,5 +505,12 @@ publication. Three before-change native reproductions proved false success for
 malformed HTTP 200 responses. Captured wire JSON, delegated no-op/replay policy,
 classified unknown outcomes and read-only recovery preserve Main/Shared stores
 and record IDs. See [Finance write confirmation](FINANCE_WRITE_CONFIRMATION.md).
-This completes one receipt boundary; full Finance lease/business input typing,
-broader unknown-outcome policy and narrower capability APIs remain separate work.
+This completes one write receipt boundary. Remote lease grants now also use a
+canonical checked receipt tied to the requested token, a positive server fence
+and a valid deadline. Incomplete grants, foreign granted tokens and malformed
+renewals cannot authorize provider entry; real contention remains separate.
+Four pre-change native reproductions and retained Main/Shared recovery evidence
+cover both Bank/Credit owners in both apps. See
+[Finance lease confirmation](FINANCE_LEASE_CONFIRMATION.md).
+Full Finance transaction/business input typing, broader unknown-outcome policy
+and narrower capability APIs remain separate work.
