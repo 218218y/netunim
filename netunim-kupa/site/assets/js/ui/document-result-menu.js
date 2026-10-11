@@ -39,7 +39,8 @@ export function createDocumentResultMenu({results,available,open,reveal,remove,s
     node.style.top=`${Math.max(6,Math.min(window.innerHeight-rect.height-6,y))}px`;
   }
   function contains(target){return !!menu&&!menu.hidden&&menu.contains(target)}
-  return {hide,show,contains};
+  function dispose(){hide();menu?.remove();menu=null;current=null}
+  return {hide,show,contains,dispose};
 }
 
 export async function deleteLocalDocumentResult({id,button,item,bridge,confirmDialog,beforeDelete,afterDelete,showStatus}){

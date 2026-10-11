@@ -374,7 +374,7 @@ test('preview stays local: filename Office preview stays native while content se
   assert.match(ui,/DOCUMENT_BRIDGE_WARM_TTL_MS=25000/);
   assert.ok((ui.match(/warmDocumentSearchBridge\(\);/g)||[]).length>=2,'Bridge warm-up should run at bind time and when the search opens');
   assert.match(ui,/window\.devicePixelRatio/);
-  assert.match(ui,/window\.addEventListener\('focus'/);
+  assert.match(ui,/listen\(window,'focus'/,'native preview focus geometry uses the search event owner');
   assert.match(ui,/data.kind==='native'/);
   assert.match(ui,/dblclick/);
   assert.match(ui,/selectDocumentResult/);

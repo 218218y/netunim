@@ -1,4 +1,5 @@
 import {createAuthenticatedAccountScope} from '../shared/authenticated-account-scope.js';
+import {createBrowserAccountObservation} from '../shared/browser-account-observation.js';
 import {createSyncCapabilityGate,syncRequestNeedsCapabilities} from '../shared/sync-capabilities.js';
 import {supabaseConfig as SUPA_CONFIG} from '../../../supabase/config.js';
 import {CLOUD_SESSION_KEY, CLOUD_EMAIL_KEY, CLOUD_AUTO_KEY} from '../state/constants.js';
@@ -53,10 +54,11 @@ function supaConfigured(){return /^https:\/\//.test(SUPA_CONFIG.url||'')&&String
 function supaHeaders(token){return {'Content-Type':'application/json','apikey':SUPA_CONFIG.publishableKey,...(token?{'Authorization':'Bearer '+token}:{})}}
 
 const accountScope=createAuthenticatedAccountScope({loadSession:loadSession});
+const accountObservation=createBrowserAccountObservation({scope:accountScope,sessionKey:CLOUD_SESSION_KEY,rereadSession:loadSession});
 
 function loadSession(){try{return JSON.parse(localStorage.getItem(CLOUD_SESSION_KEY)||'null')}catch(e){return null}}
 
-function saveSession(s,{refresh=false}={}){accountScope.replace(s,{refresh});capabilityGate.reset();if(s)localStorage.setItem(CLOUD_SESSION_KEY,JSON.stringify(s));else localStorage.removeItem(CLOUD_SESSION_KEY)}
+function saveSession(s,{refresh=false}={}){capabilityGate.reset();if(s)localStorage.setItem(CLOUD_SESSION_KEY,JSON.stringify(s));else localStorage.removeItem(CLOUD_SESSION_KEY);accountScope.replace(s,{refresh})}
 
 function cloudAuthRequired(message='נדרשת התחברות לענן'){const error=new Error(message);error.code='cloud_auth_required';return error}
 
@@ -74,5 +76,5 @@ async function supaFetch(path,opt={}){if(syncRequestNeedsCapabilities(path,opt.m
 
 function cloudEnabled(){const current=loadSession();if(localStorage.getItem(CLOUD_AUTO_KEY)!=='1'||!current)return false;try{return assertSessionOwner(current,{allowMissing:true})===true}catch{return false}}
 
-return { getAccountScope:accountScope.current, ensureSyncCapabilities, supaConfigured, supaHeaders, loadSession, saveSession, authPassword, authPasswordForLocalReset, localResetReadOnlyFetch, refreshSession, ensureSession, supaFetch, cloudEnabled };
+return { getAccountScope:accountScope.current, subscribeAccountScope:accountObservation.subscribe, ensureSyncCapabilities, supaConfigured, supaHeaders, loadSession, saveSession, authPassword, authPasswordForLocalReset, localResetReadOnlyFetch, refreshSession, ensureSession, supaFetch, cloudEnabled };
 }

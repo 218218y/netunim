@@ -269,3 +269,8 @@ now rejects malformed checkpoint state/metadata and classifies non-JSON
 persisted data before serialization.
 Full Browser/PostgreSQL/recovery/Windows verification
 is required before merging; a static pass alone is insufficient for deployment.
+
+The actual browser account-observation body and its negative consumer fixture
+are now checked alongside the existing auth scope. Synchronous credential reads
+and the owner/login epoch callback shape are enforced. This adds no persisted
+auth format or cross-tab durable ledger; see DOCUMENT_SEARCH_ACCOUNT_PRIVACY.md.

@@ -128,7 +128,7 @@ const morningOperationScope=createMorningOperationScope({readAccess:()=>({
   readable:storageOwner.ready&&!storagePreparationActive()&&!session.storageProtocolBlocked&&storageRecovery.isReady(),
   writable:tab.primaryTab&&storageOwner.writable&&!storagePreparationActive()&&!session.storageProtocolBlocked&&storageRecovery.isReady(),
 })});
-const domainsDocumentBridge=composeDocumentSearch({supaFetch:(...args)=>cloudAuth.supaFetch(...args),accountScope:()=>cloudAuth.getAccountScope()});
+const domainsDocumentBridge=composeDocumentSearch({supaFetch:(...args)=>cloudAuth.supaFetch(...args),accountScope:()=>cloudAuth.getAccountScope(),subscribeAccountScope:cloudAuth.subscribeAccountScope});
 const bankChequeImages=createOrdersBankChequeImageRuntime({cloudAuth,bridge:financeBridge,operationScope:financeOperationScope});
 
 const calendarRuntime=createOrdersCalendarRuntime({

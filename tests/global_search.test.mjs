@@ -98,7 +98,7 @@ test('document filename search is dispatched ahead of slower content search and 
 
 test('global file-type filter affects document sources but never site search',()=>{
  const source=fs.readFileSync(new URL('../shared/global-document-search.js',import.meta.url),'utf8'),filterModule=fs.readFileSync(new URL('../shared/document-search/ui/document-search-file-type.js',import.meta.url),'utf8');
- assert.match(source,/createDocumentFileTypeFilter\(\{refs,isEnabled:\(\)=>filter!=='site'/,'site-only search must leave the file-type filter out of the site-search path');
+ assert.match(source,/createDocumentFileTypeFilter\(\{listen,refs,isEnabled:\(\)=>filter!=='site'/,'the owned file-type filter must leave site-only search out of the document path');
  assert.match(source,/documentBridge\.recent\(\{limit:RECENT_DOCUMENT_LIMIT,scopePath:documentFolderScope\.path,fileType:documentFileType\.value\(\)/);
  assert.match(source,/documentBridge\.search\(raw,\{mode,.*fileType:documentFileType\.value\(\)/);
  assert.match(filterModule,/const FILE_TYPES=new Set\(\['all','audio','documents','folders','images','video','pdf','word'\]\)/);

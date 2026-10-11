@@ -5,10 +5,12 @@ import {createBrowserGoogleDrivePlatform} from './browser-google-drive-platform.
 
 // Both apps use the same provider selection and fallback policy. The caller
 // supplies authenticated transport and the live account identity.
-export function composeDocumentSearch({supaFetch,accountScope,drivePlatform}){
+export function composeDocumentSearch({supaFetch,accountScope,subscribeAccountScope,drivePlatform}){
   if(typeof supaFetch!=='function')throw new Error('document_search_cloud_port_required');
   const platform=drivePlatform||createBrowserGoogleDrivePlatform();
   const localBridge=createDocumentBridgeIntegration();
   const googleDrive=createDocumentGoogleDriveIntegration({supaFetch,accountScope,platform});
-  return createDomainsDocumentSearch({localBridge,googleDrive,userAgent:platform.userAgent||''});
+  const source=createDomainsDocumentSearch({localBridge,googleDrive,userAgent:platform.userAgent||''});
+  source.subscribeAuthorization=subscribeAccountScope;
+  return source;
 }
