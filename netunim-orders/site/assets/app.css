@@ -813,3 +813,5 @@ button.bank-cashflow-projected:focus-visible,button.bank-current-balance:focus-v
 .nav.keytips-active button[data-nav-keytip]{padding-inline-start:29px}
 .nav.keytips-active button[data-nav-keytip]::before{display:inline-flex}
 .nav.keytips-active button[data-nav-keytip]:hover::before,.nav.keytips-active button[data-nav-keytip].active::before{background:#ffedaa;border-color:#b88d3d;color:#49330d}
+
+.credit-cycle-explanation{margin:0;padding:5px 11px 8px;color:var(--muted);font-size:11px;line-height:1.5;background:#fff}

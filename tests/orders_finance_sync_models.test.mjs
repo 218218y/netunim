@@ -284,7 +284,7 @@ const rangeView=createDomainsFinanceView({ui:rangeUi,controller:{snapshot:rangeS
 rangeView.renderKupa();
 assert.ok(rangeUiMain.innerHTML.indexOf('data-click-arg0="2026-08"')<rangeUiMain.innerHTML.indexOf('data-action="orders-credit-detail-upcoming"'),'past transaction months stay in the transactions heading before nearest charge');
 assert.match(rangeUiMain.innerHTML,/<details class="credit-cycle-menu credit-history-menu[^>]*data-dismiss-on-outside[\s\S]*<b>חיובים קודמים<\/b>[\s\S]*data-click-arg0="2026-08"/,'past months use a dismissible compact menu instead of a horizontal heading rail');
-assert.match(rangeUiMain.innerHTML,/<details class="credit-cycle-menu credit-future-menu[^>]*data-dismiss-on-outside[\s\S]*<b>חיובים הבאים<\/b>[\s\S]*data-click-arg0="2026-11"/,'future charges menu starts after the month already represented by nearest charge');
+assert.match(rangeUiMain.innerHTML,/<details class="credit-cycle-menu credit-future-menu[^>]*data-dismiss-on-outside[\s\S]*<b>פירוט לפי חודש<\/b>[\s\S]*data-click-arg0="2026-11"/,'future charges menu starts after the month already represented by nearest charge');
 assert.doesNotMatch(rangeUiMain.innerHTML,/credit-detail-month-tabs|credit-detail-history-selectors/,'transaction month choices do not render a horizontal rail that can widen the credit page');
 assert.match(rangeUiMain.innerHTML,/data-change="orders-credit-view"[\s\S]*value="2026" selected/,'credit horizon selector is rendered in the main credit filter toolbar');
 assert.match(rangeUiMain.innerHTML,/data-action="orders-credit-detail-upcoming"[\s\S]*data-action="orders-credit-detail-month" data-click-arg0="2026-11"/,'selected 2026 horizon keeps the current nearest cycle in its dedicated selector and later 2026 months in future charges');

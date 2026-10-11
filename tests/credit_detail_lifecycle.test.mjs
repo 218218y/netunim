@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {creditDetailMonthIsPast,creditDetailRangeMatch,creditDetailRecentThreeRange,creditDetailQuickPeriodMatch,creditDateRangeMarkup,creditDateRangeFromControl,creditDetailDayMatch,creditDetailNominalChargeDay,creditDetailChargeCycleKey,creditDetailFutureMonths} from '../shared/credit-detail-controls.js';
+import {creditDetailMonthIsPast,creditDetailRangeMatch,creditDetailRecentThreeRange,creditDetailQuickPeriodMatch,creditDateRangeMarkup,creditDateRangeFromControl,creditDetailDayMatch,creditDetailNominalChargeDay,creditDetailChargeCycleKey,creditUpcomingCycleHeadingData,creditDetailFutureMonths} from '../shared/credit-detail-controls.js';
 import {creditHistoryCutoffMonth,creditCardCompare} from '../shared/credit-history.js';
 import {kupaReconciledCreditDetailMonthsData,kupaReconciledCreditUpcomingDetailData} from '../shared/kupa-cashflow.js';
 import * as kupaFeed from '../netunim-kupa/site/assets/js/domains/credit/sync-feed.js';
@@ -29,6 +29,13 @@ test('custom card order outranks billing date in both monthly and nearest detail
   for(const mapping of Object.values(state.creditSync.cardMappings))delete mapping.sortOrder;
   assert.deepEqual(kupaReconciledCreditUpcomingDetailData(state,'2026-09-01').items.map(row=>row.accountNumber),['a','b','c']);
   assert.ok(creditCardCompare({creditAccountKey:'sync:p:1',card:'זהה'},{creditAccountKey:'sync:q:1',card:'זהה'})<0,'same names still have deterministic distinct card identities');
+});
+
+test('upcoming cycle headers identify the actual month and moved billing date',()=>{
+  const format=date=>date.split('-').reverse().join('.');
+  assert.equal(creditUpcomingCycleHeadingData({date:'2026-10-11'},format),'חיוב 10 בחודש · מועד 11.10.2026');
+  assert.equal(creditUpcomingCycleHeadingData({date:'2026-11-10'},format),'חיוב 10 בחודש · מועד 10.11.2026');
+  assert.notEqual(creditUpcomingCycleHeadingData({date:'2026-10-11'},format),creditUpcomingCycleHeadingData({date:'2026-11-10'},format));
 });
 
 test('Saturday-shifted actual debit stays in the nominal day-10 cycle',()=>{
@@ -63,7 +70,9 @@ test('foreign immediate debits are assigned to the enclosing statement cycle wit
   assert.equal(after.date,'2026-10-12');assert.equal(after.detailCycleBillingDate,'2026-11-10','a debit after the current cycle closes belongs to the following statement cycle');
   assert.equal(creditDetailRangeMatch(before,'2026-10-02','2026-10-02'),true);assert.equal(creditDetailRangeMatch(before,'2026-10-11','2026-10-11'),false,'date range filtering continues to mean the actual debit date');
   assert.equal(creditDetailMonthIsPast({key:'2026-10',items:[{...before,bankSettlementState:'settled'}]},'2026-10-04'),false,'an already-settled immediate debit does not make its still-open statement cycle historical');
-  assert.equal(kupaReconciledCreditUpcomingDetailData(state,'2026-10-04').items.some(row=>row.description==='AKUSOLI'),true,'the default upcoming statement includes the immediate foreign debit inside the open cycle window');
+  const beforeDebitState=structuredClone(state);beforeDebitState.creditSync.profiles[0].accounts[0].txns=beforeDebitState.creditSync.profiles[0].accounts[0].txns.filter(row=>row.id==='before');
+  assert.equal(kupaReconciledCreditUpcomingDetailData(beforeDebitState,'2026-10-01').items.some(row=>row.description==='AKUSOLI'),true,'before its real debit date the immediate foreign charge is still forecast when there is no older open debit');
+  assert.equal(kupaReconciledCreditUpcomingDetailData(state,'2026-10-04').items.some(row=>row.description==='AKUSOLI'),false,'after the actual debit the foreign charge remains in the monthly statement but is never charged again in upcoming');
 });
 
 test('credit quick periods include all cached detail and the current plus two prior calendar months through today',()=>{
