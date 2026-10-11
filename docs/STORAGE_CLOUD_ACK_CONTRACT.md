@@ -30,7 +30,8 @@ Main cloud result is composed for display.
    writer and expected-sequence checks. A failed transaction retains the old base,
    flight and journal. It cannot authorize a visible model or session cursor update.
 6. Prepare a candidate without modifying the visible model. Commit it, then
-   publish only while leadership, local generation and returned sequence still
+   publish only while the live account/login epoch, storage owner/epoch,
+   leadership, local generation and returned sequence still
    match the captured head. Live Shared/Finance data retains its composition owner.
 7. If an edit arrives during ACK commit, the confirmed flight remains ACKed but
    its earlier candidate cannot overwrite that edit. Persist a `concurrent-ack`
@@ -44,8 +45,8 @@ Main cloud result is composed for display.
    already committed ACK into another cloud write. The adapter retains its exact
    receipt-derived cache when a verification read is unavailable.
 10. A model-publication exception is a post-commit failure, not a failed ACK.
-    Preserve/report its original cause and committed receipt, persist an
-    `ack-publication-failed` control, and stop further sends. An optional render
+    Preserve/report its original cause and committed receipt. Only the same live
+    identity may persist an `ack-publication-failed` control and stop further sends. An optional render
     exception after the model was published is reported without replaying the ACK.
 11. An HTTP-success Main response must contain its authoritative object document.
     `readDocumentWriteAck` owns this envelope and the existing revision/no-op/replay
@@ -94,6 +95,103 @@ Both pre-transaction and transaction rejection expose `code` =
 messages remain compatible (`storage_ack_checkpoint_stale` and
 `storage_checkpoint_stale`, respectively). The persisted retry code can identify
 this failure without logging snapshots, business IDs, account names or tokens.
+Missing/invalid candidate sequence also exposes the existing message as `code` =
+`storage_ack_checkpoint_required`; normalization and persisted retry retain it.
+
+## Scope-bound post-commit publication (2026-10-11)
+
+The Main sync owner captures a frozen storage owner/epoch and authenticated
+account/login epoch **before its first head read**. The composition root provides
+`getCloudWriteScope`, joining the runtime's synchronous `cloudScope` identity
+with `cloudAuth.getAccountScope()`. They must name the same raw account. A cached
+cloud head, committed receipt or repeated seq/generation is never live authority.
+The runtime query does not create a journal, claim a writer, read IDB or advance
+an epoch. It can expose the same identity as non-writable after leadership loss
+so only that operation's busy flag may finish; it cannot authorize publication.
+
+Before ACK publication and every subsequent session/status/control/backup
+continuation, compare that captured identity with the **live** writable identity
+and the committed head. Re-check after asynchronous backup and in scheduled
+retry callbacks. The same fence applies after rejection/rebase, before composing
+a replacement flight or making another RPC, including both merge-conflict
+branches. Generation and candidate-sequence checks remain additional fences.
+An older promise's `finally` cannot clear a newer request's promise or busy flags.
+
+Control writes additionally carry the captured expected owner/epoch and live
+authorization check through the browser/runtime ports. The journal checks that
+epoch and authorization again **after** its queue drains, before sealing control;
+the existing IDB writer/epoch check remains atomic. A controlled regression
+reproduced an old retry attaching to a reset epoch while waiting behind the
+reset. Rejection preserves the new checkpoint/base and adds no control.
+The obsolete sync owner returns false if it loses authority during that control
+wait, without retrying or publishing the failure under the new identity. Control
+storage failures under unchanged authority still reject visibly; regressions
+distinguish this from normal scope cancellation.
+
+If owner, storage epoch, login epoch or leadership changes after commit, return
+false without publishing the old candidate, advancing the new session's revision,
+adding concurrent-ACK/retry control to the new identity or starting its follow-up.
+The completed transaction belongs to the old identity and stays committed there;
+the new owner recovers its own head. This is not a transaction failure and does
+not authorize replay as a different account. Optional adapter cache fallback after
+commit is retained as evidence of the old commit, not as authorization for display.
+Normal same-scope replay/no-op and bounded pre-commit retries are unchanged.
+
+The browser cache has its own live owner/epoch fence. A late IDB read or old
+receipt fallback can be returned as evidence, but cannot replace the new cache,
+clear its pending flag or transfer a conflict flag to it. Orders cursor hydration
+also checks the live scope before updating the session. An old cache cannot
+activate the current owner's outbox. A native fault injection reproduced the
+old fallback clearing the new pending flag before the adapter fix.
+
+| After commit | Permitted continuation |
+| --- | --- |
+| Same owner/epoch/login, same head and primary | Publish; update that session; confirm clean state separately |
+| Same owner but different login epoch | Retain commit; no old continuation under the new login |
+| New owner or storage epoch with identical seq/generation | Retain commit; no old model/session/control/flight/backup publication |
+| Same identity, secondary tab | Retain commit; release only its own busy flag; no publication/control/follow-up |
+| Old receipt returned after refresh failure | Require live identity independently; receipt alone grants no authority |
+| Publication throws after an identity transition | Retain commit/cause; do not fence the new identity with old failure control |
+
+Post-commit diagnostics have explicit scalar fields only: phase, fixed error code,
+base/ACK revision, flight endSeq, candidateSeq and observedSeq. Phases distinguish
+`SCOPE_CHANGED_AFTER_COMMIT`, `ACK_COMMITTED_PUBLICATION_STALE` and
+`ACK_PUBLICATION_EXCEPTION`. They omit snapshots, exception messages, owner IDs,
+operation IDs and credentials. Pre-commit/atomic sequence errors keep their
+existing codes and candidate/observed sequence evidence; diagnostics do not
+change ACK or retry decisions.
+
+### Isolation regression evidence
+
+Main baseline `99ca5607ddd47540c2849eaec9be1a2c28b28f11` passed all eleven
+[CI jobs](https://github.com/218218y/netunim/actions/runs/38156903674) on its
+identical tested branch tree. Twelve controlled Node regressions nevertheless
+failed: both applications published or updated session state after owner, storage
+epoch or login-epoch replacement at ACK/rebase with seq/generation kept identical.
+Additional regressions exercise committed old-cache fallback, all conflict
+branches, publication exceptions and primary loss. This demonstrates a boundary
+bug, not a known production incident.
+
+`runtime_cloud_publication_scope.py` runs twelve disposable native-IDB profiles:
+ACK/rebase × account/epoch replacement × both applications. A controlled promise
+pauses **after** the native transaction completes; the next identity is recovered
+and a synthetic note appended at the same seq/generation before release. It
+Two additional account-change profiles reject an old fallback after a deliberately
+failed post-commit cache refresh. The suite verifies no old publication,
+session advance, status, backup, control or follow-up
+RPC. A fresh document recovers both accounts with unchanged IDs/content/cursors;
+epoch-reset cases preserve the acknowledged note alongside the new pending note.
+Two further native profiles reject old control waiting behind an epoch reset,
+retaining the new raw stores and recovering their note IDs/content unchanged.
+The native pre-fix ACK/account test failed for both apps with old-scope publication.
+
+These tests exercise actual storage and sync adapters with synthetic RPC receipts.
+The identity transition is deliberately injected at their boundary; the production
+login UI may additionally serialize/drain transitions. This is not evidence of a
+production cross-account leak, live-provider validation or physical two-computer
+testing. Existing native transaction, lost-response, no-op, PostgreSQL, multitab
+and two-browser-device gates remain required. No RPC, SQL, persisted format or
+operation-ID policy changes are introduced.
 
 ### Regression evidence (2026-10-11)
 

@@ -21,6 +21,14 @@ gates continue to own runtime and recovery evidence.
 
 ## Checked implementations
 
+The canonical Main cloud-write identity guard and post-commit diagnostic bodies
+are checked with strict checkJs. Negative consumers reject numeric storage epochs,
+text login epochs, a committed head substituted for live authority, and mutation
+of captured identity. Scope capture requires matching authenticated and durable
+accounts. This slice checks these actual helpers; it does not claim full static
+coverage of application sync owners or storage transactions. See
+[the Main ACK contract](STORAGE_CLOUD_ACK_CONTRACT.md).
+
 Calendar authorization is checked from its Orders JavaScript body with negative
 consumers for missing account ports, malformed epochs, asynchronous authority
 and incorrect credential/account types. This does not check the whole Calendar

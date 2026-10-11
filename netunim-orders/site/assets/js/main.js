@@ -1,3 +1,4 @@
+import {readCloudWriteScope} from './shared/cloud-write-scope.js';
 import {createOrdersStorageV2Coordinator} from './composition/storage-v2.js';
 import {createStorageStartupRecovery} from './shared/storage-startup-recovery.js';
 import {createOrdersCloudStartup} from './startup/cloud-hydration.js';
@@ -401,6 +402,7 @@ const uiAlertCenter=createUiAlertCenter({
 });
 
 const syncDocument=createSyncDocument({
+  getCloudWriteScope:()=>readCloudWriteScope(mainStorageV2.cloudScope,cloudAuth.getAccountScope()),
   model,
   files,
   session,

@@ -946,7 +946,8 @@ for label,ui_cloud in (("Kupa",kupa_ui_cloud),("Orders",orders_ui_cloud)):
 kupa_sync_checks=(K / "site/assets/js/sync/checks.js").read_text(encoding="utf-8")
 shared_checks_v2=(ROOT / "shared/shared-checks-v2-runtime.js").read_text(encoding="utf-8")
 kupa_cloud_policy=(K / "site/assets/js/shared/cloud-sync.js").read_text(encoding="utf-8")
-ok(kupa_sync_document.count("runBusyCloudWriteWithPolicy(()=>rpcSaveCloudV2")>=1
+ok("runBusyCloudWriteWithPolicy(()=>{if(!writeScopeCurrent(scope))throw" in kupa_sync_document
+   and "return rpcSaveCloudV2(serverSnapshot,expected,flight.operationId" in kupa_sync_document
    and "runBusyCloudWriteWithPolicy(()=>{assertContext(store);return rpc(" in shared_checks_v2
    and "runBusyCloudWriteWithPolicy(()=>rpcSaveFinanceSync" in kupa_transport
    and "attempts=CLOUD_WRITE_POLICY.busyAttempts" in kupa_cloud_policy

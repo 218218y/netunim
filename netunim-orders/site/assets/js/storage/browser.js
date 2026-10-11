@@ -1,3 +1,4 @@
+import {storageCloudHeadIsCurrent} from '../shared/cloud-write-scope.js';
 import {measureStorage} from '../shared/storage-metrics.js';
 import {beginMeasure} from '../shared/runtime-performance.js';
 import {createIndexedDbConnection} from '../shared/indexed-db-connection.js';
@@ -59,10 +60,10 @@ async function recoverReadOnlyV2State(){
   return recovered;
 }
 
-function storageV2CloudOutboxActive(){return !!(storageV2?.primaryReady&&v2CloudStateCache?.base)}
+function storageV2CloudOutboxActive(){return !!storageV2?.primaryReady&&storageCloudHeadIsCurrent(v2CloudStateCache,storageV2?.cloudScope)}
 function cloudPendingExists(){return !!(storageV2CloudOutboxActive()&&(session.storageV2CloudPending||v2CloudStateCache?.pending||v2CloudStateCache?.flight))}
 
-function cacheStorageV2CloudState(state){v2CloudStateCache=state;session.storageV2CloudPending=!!(state?.pending||state?.flight);return state}
+function cacheStorageV2CloudState(state){if(state?.base&&!storageCloudHeadIsCurrent(state,storageV2?.cloudScope))return state;v2CloudStateCache=state;session.storageV2CloudPending=!!(state?.pending||state?.flight);return state}
 function settledStorageV2CloudState(seq,base,control=null){return {seq:Number(seq||0),base:base?clone(base):null,flight:null,control:control?clone(control):null,pending:false,pendingDeleteIntents:{},pendingGeneration:0,pendingMutationType:'autosave',pendingSurface:'unknown',afterFlightPending:false,afterFlightDeleteIntents:{},afterFlightGeneration:0,afterFlightMutationType:'autosave',afterFlightSurface:'unknown'}}
 function resetStorageV2CloudState(seq,base){const current=Number(seq||0),ackSeq=Number(base?.ackSeq||0),pending=current>ackSeq;return {seq:current,base:base?clone(base):null,flight:null,control:null,pending,pendingDeleteIntents:{},pendingGeneration:pending?Number(session.localGeneration||0):0,pendingMutationType:'autosave',pendingSurface:pending?'epoch-transition':'unknown',afterFlightPending:false,afterFlightDeleteIntents:{},afterFlightGeneration:0,afterFlightMutationType:'autosave',afterFlightSurface:'unknown'}}
 function acknowledgedStorageV2CloudState(prior,operationId,receipt,revision,state,control){
@@ -71,11 +72,12 @@ function acknowledgedStorageV2CloudState(prior,operationId,receipt,revision,stat
 }
 async function refreshStorageV2CloudState(){
   if(!storageV2?.primaryReady){cacheStorageV2CloudState(null);return null}
-  const state=await storageV2.cloudState({validateBase:value=>assertValidOrderCloudState(value,'Orders V2 cloud base')});cacheStorageV2CloudState(state);if(state?.control?.conflict)session.cloudConflictBlocked=true;return state
+  const state=await storageV2.cloudState({validateBase:value=>assertValidOrderCloudState(value,'Orders V2 cloud base')});cacheStorageV2CloudState(state);if(storageCloudHeadIsCurrent(state,storageV2.cloudScope)&&state?.control?.conflict)session.cloudConflictBlocked=true;return state
 }
 async function recoverCloudCursor(){
   const state=await refreshStorageV2CloudState();
   if(!state?.base)throw new Error('orders_v2_cloud_head_missing');
+  if(!storageCloudHeadIsCurrent(state,storageV2?.cloudScope))throw new Error('storage_cloud_scope_changed');
   session.lastCloudState=clone(state.base.state);
   session.cloudRevision=Number(state.base.revision||0);
   session.storageV2CloudPending=!!(state.pending||state.flight);
@@ -103,7 +105,7 @@ async function rejectStorageV2CloudFlight(operationId,revision,state,{currentSta
   assertValidOrderCloudState(state,'Orders V2 rebase base');const prior=v2CloudStateCache,result=await storageV2.rejectFlight(operationId,Number(revision),state,{validateBase:value=>assertValidOrderCloudState(value,'Orders V2 rebase base'),currentState,expectedSeq,control,appMetadata:{snapshotSeq:Number(session.localSnapshotSeq||0),revision:Number(revision||0),storageRole:'primary'}}),fallback=result?.cloudState||{...(prior||{}),base:clone(result?.base||{...(prior?.base||{}),revision:Number(revision),state:clone(state)}),flight:null,control:result?.control?clone(result.control):control?clone(control):null,pending:!!prior?.pending,afterFlightPending:false,afterFlightDeleteIntents:clone(prior?.pendingDeleteIntents||{}),afterFlightGeneration:Number(prior?.pendingGeneration||0),afterFlightMutationType:prior?.pendingMutationType||'autosave',afterFlightSurface:prior?.pendingSurface||'unknown'};await refreshStorageV2CloudStateAfterCommit('confirmed flight rejection',fallback);return result
 }
 
-async function setStorageV2CloudControl(control={}){const result=await storageV2.setCloudControl(control),fallback=v2CloudStateCache?{...v2CloudStateCache,control:clone(result||control)}:v2CloudStateCache;await refreshStorageV2CloudStateAfterCommit('control update',fallback);return result}
+async function setStorageV2CloudControl(control={},options={}){const prior=v2CloudStateCache,result=await storageV2.setCloudControl(control,options),fallback=prior?{...prior,control:clone(result||control)}:prior;await refreshStorageV2CloudStateAfterCommit('control update',fallback);return result}
 async function clearStorageV2CloudControl(){const result=await storageV2.clearCloudControl(),fallback=v2CloudStateCache?{...v2CloudStateCache,control:null}:v2CloudStateCache;await refreshStorageV2CloudStateAfterCommit('control clear',fallback);return result}
 async function replaceStorageV2AuthoritativeState(state=model.state,revision=session.cloudRevision){if(!storageV2?.primaryReady)return false;nextSnapshotSequence();const result=await storageV2.replaceAuthoritativeState(state,{appMetadata:{snapshotSeq:Number(session.localSnapshotSeq||0),revision:Number(revision||0),storageRole:'primary'}});await refreshStorageV2CloudStateAfterCommit('authoritative replacement',settledStorageV2CloudState(Number(result?.seq||0),null));return result}
 async function replaceStorageV2CurrentState(state=model.state){const result=await storageV2.replaceCurrentState(state,{appMetadata:{snapshotSeq:Number(session.localSnapshotSeq||0),revision:Number(session.cloudRevision||0),storageRole:'primary'}});await refreshStorageV2CloudStateAfterCommit('checkpoint replacement',v2CloudStateCache);return result}

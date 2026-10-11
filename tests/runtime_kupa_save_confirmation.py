@@ -44,7 +44,7 @@ FLOW = r"""(async()=>{
      return result;
    };
    const merge=createSyncMerge({normalizeState:normalization.normalizeState,prepareKupaCloudState:project});
-   const api=createSyncDocument({model,session,tab,checksSession:{},...normalization,
+   const api=createSyncDocument({getCloudWriteScope:()=>storage.cloudScope&&({...storage.cloudScope,accountOwner:owner,loginEpoch:1}),model,session,tab,checksSession:{},...normalization,
      storageV2CloudOutboxActive:()=>driver.storageV2CloudOutboxActive(),assertAccountOwner:noop,
      refreshStorageV2CloudState:()=>driver.refreshStorageV2CloudState(),materializeStorageV2CloudFlight:options=>driver.materializeStorageV2CloudFlight(options),
      acknowledgeStorageV2CloudFlight:(...args)=>driver.acknowledgeStorageV2CloudFlight(...args),rejectStorageV2CloudFlight:(...args)=>driver.rejectStorageV2CloudFlight(...args),

@@ -499,6 +499,15 @@ and full sync-owner recovery coverage. See [the ACK contract](STORAGE_CLOUD_ACK_
 This closes a proven local recovery gap without changing schemas, SQL, RPC
 idempotency, no-op revisions or the independent Shared/Finance owners.
 
+Main post-commit publication now also requires the captured live storage
+owner/epoch and authenticated login epoch. Colliding sequence/generation values
+and an old adapter cache receipt cannot authorize another identity's model,
+session, retry/conflict control, backup or follow-up flight. The browser cache
+has its own scope fence for pending/conflict flags and outbox activation.
+Native ACK/rebase identity transitions and fresh recovery extend the existing
+contract; this does not redesign the ACK protocol or claim every other
+application publication path has been audited.
+
 The remaining Finance document writers and Orders' manual Kupa settings now
 require a validated authoritative receipt before cursor advancement or success
 publication. Three before-change native reproductions proved false success for

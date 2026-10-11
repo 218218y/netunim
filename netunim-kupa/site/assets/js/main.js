@@ -1,3 +1,4 @@
+import {readCloudWriteScope} from './shared/cloud-write-scope.js';
 import {createKupaConnectivityRuntime} from './connectivity.js';
 import {createStorageStartupRecovery} from './shared/storage-startup-recovery.js';
 import {createRuntimeResources} from './shared/runtime-resources.js';
@@ -292,6 +293,7 @@ const syncMerge=createSyncMerge({
 });
 
 const syncDocument=createSyncDocument({
+  getCloudWriteScope:()=>readCloudWriteScope(mainStorageV2.cloudScope,cloudAuth.getAccountScope()),
   hideConnectScreen:(...args)=>uiStatus.hideConnectScreen(...args),
   reportError:(...args)=>uiStatus.reportError(...args),
   model,

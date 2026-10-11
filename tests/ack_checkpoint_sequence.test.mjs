@@ -46,7 +46,7 @@ for(const app of ['orders','kupa'])test(`${app}: ACK candidate sequence remains 
 for(const app of ['orders','kupa'])test(`${app}: a checkpoint ACK requires an explicit valid sequence and preserves the cursor-only contract`,async()=>{
   const f=await fixture(app);await f.edit('flight-A');const flight=await f.browser.materializeStorageV2CloudFlight(),before=await f.db.load();
   for(const expectedSeq of [undefined,null,-1,1.5,NaN,Infinity,'1',Number.MAX_SAFE_INTEGER+1]){
-    await assert.rejects(f.runtime.acknowledgeFlight(flight.operationId,6,flight.snapshot,{currentState:clone(f.model.state),expectedSeq}),/storage_ack_checkpoint_required/);
+    await assert.rejects(f.runtime.acknowledgeFlight(flight.operationId,6,flight.snapshot,{currentState:clone(f.model.state),expectedSeq}),{message:'storage_ack_checkpoint_required',code:'storage_ack_checkpoint_required'});
     assert.deepEqual(await f.db.load(),before);
   }
   // Detached owner-transfer consumers ACK only the flight cursor, without a

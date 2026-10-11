@@ -29,7 +29,14 @@ export function withOrdersStartup(controls){
   const p=controls.storageProtocol&&controls.storageRecovery?controls:withStorageProtocol(controls),noop=()=>{};
   const session=p.session||{},checksSession=p.checksSession||{},tab=p.tab||{primaryTab:true};
   const allowed=()=>tab.primaryTab&&!session.storageProtocolBlocked&&p.storageRecovery.isReady()&&!session.syncCapabilitiesError&&!session.syncCapabilitiesChecking;
-  const browser=createStorageBrowser({session,storageV2:{primaryReady:true,cloudState:p.refreshStorageV2CloudState||(async()=>null)}});
+  // Startup controls supply a synthetic payload; the runtime double also owns
+  // a live identity. Capture that identity before the controlled async read.
+  const scope=()=>({owner:(p.storageOwnerCurrent?.()||'startup-owner')+':orders',epoch:'startup-epoch',writable:tab.primaryTab});
+  const runtime={primaryReady:true,get cloudScope(){return scope()},cloudState:async()=>{
+    const captured=scope(),head=await p.refreshStorageV2CloudState?.();
+    return head?.base?{...head,base:{owner:captured.owner,epoch:captured.epoch,...head.base}}:head;
+  }};
+  const browser=createStorageBrowser({session,storageV2:runtime});
   const cloudStartup=createOrdersCloudStartup({
     main:{recoverCursor:()=>browser.recoverCloudCursor(),open:p.openCloud||(async()=>false),cloudState:p.refreshStorageV2CloudState||(async()=>null),
       hasLocalWork:p.cloudHasLocalWork||(()=>false),conflictBlocked:()=>session.cloudConflictBlocked},
