@@ -80,7 +80,8 @@ error; do not clear the queue, assign a different ID or create a replacement eve
 An older compatible site can be restored without a DB migration/reset. Reverting
 this slice restores the old status race, but does not change readable data bytes.
 
-Idle cross-tab notification/wake remains a separate review. Subsequent slices
+Idle cross-tab committed-work observation is covered separately in
+CALENDAR_COMMIT_OBSERVATION.md, with no provider delivery on a hint. Other slices
 cover cached-display privacy and Calendar resource disposal in
 CALENDAR_ACCOUNT_DISPLAY_PRIVACY.md, and exclusive competing client delivery in
 CALENDAR_DELIVERY_OWNERSHIP.md. This slice closes the demonstrated

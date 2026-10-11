@@ -44,11 +44,15 @@ test('Kupa future forecast labels a strongly matched pending bank debit without 
   assert.doesNotMatch(view.creditMonthCard({...base,inst:[{...base.inst[0],bankPendingSettlementDetected:false}]}),/החיוב זוהה בבנק/);
 });
 
-test('nearest-charge detail selects each card next unelapsed cycle even across different months',()=>{
+test('nearest open card charge does not skip an unverified overdue debit, in either app',()=>{
   const asOf='2026-09-13',kupaRows=kupaReconciledCreditUpcomingDetailData(twoCards,asOf).items,ordersRows=ordersUpcomingDetailRows(twoCards,{asOf});
   const summary=rows=>rows.map(row=>[row.accountNumber,row.date,row.amount]).sort((a,b)=>String(a[0]).localeCompare(String(b[0])));
-  assert.deepEqual(summary(kupaRows),[['1010','2026-10-10',1100],['1515','2026-09-15',2000]]);
-  assert.deepEqual(summary(ordersRows),summary(kupaRows),'Orders and Kupa use the same reconciled nearest-charge selection');
+  assert.deepEqual(summary(kupaRows),[['1010','2026-09-10',1000],['1515','2026-09-15',2000]],'a 10th debit not proved paid by the bank precedes the October commitment');
+  assert.deepEqual(summary(ordersRows),summary(kupaRows),'Orders and Kupa use the same reconciled nearest-open-charge selection');
+  const paid=structuredClone(twoCards);
+  paid.bank.asOfDate='2026-09-13';paid.bank.feed.syncedAt='2026-09-13T08:00:00Z';
+  paid.bank.feed.transactions=[{id:'posted-card',date:'2026-09-10',amount:-1000,currency:'ILS',status:'completed',description:'MAX',creditSettlementDetails:{provider:'max',cardLast4s:['1010']}}];
+  assert.deepEqual(summary(kupaReconciledCreditUpcomingDetailData(paid,asOf).items),[['1010','2026-10-10',1100],['1515','2026-09-15',2000]],'a proven settlement advances exactly that card to its next open cycle');
 });
 
 test('pending bank card debit is annotated for display but cannot settle or advance the cycle',()=>{
@@ -796,4 +800,28 @@ test('an identified positive bank refund settles only an exact known refund cycl
     assert.equal(cashflow(state,'\u05e2\u05e1\u05e7\u05d9','2026-09-10').credit,0,'an already credited refund must not be counted twice');
     state.bank.feed.transactions[0].amount=50;assert.equal(cashflow(state,'\u05e2\u05e1\u05e7\u05d9','2026-09-10').credit,-100,'a positive credit of a different amount is not proof that the whole refund cycle settled');
   }
+});
+
+test('issuer next-cycle overlaps are alternative views, not separate debits; actual immediate FX stays paid',()=>{
+  const state=stateFor([
+    {accountNumber:'1000',balanceDate:'2026-11-10',txns:[
+      {id:'current',status:'completed',processedDate:'2026-10-10',chargedAmount:-350,chargedCurrency:'ILS'},
+      {id:'later',status:'completed',processedDate:'2026-11-10',chargedAmount:-500,chargedCurrency:'ILS'},
+    ]},
+    {accountNumber:'2000',balanceDate:'2026-11-10',txns:[
+      {id:'sunday',status:'completed',processedDate:'2026-10-11',chargedAmount:-200,chargedCurrency:'ILS'},
+      {id:'fx-immediate',status:'completed',processedDate:'2026-10-02',transactionDate:'2026-09-30',chargedAmount:-70,chargedCurrency:'ILS',originalAmount:-70,originalCurrency:'ILS',foreignTransaction:true},
+      {id:'future',status:'completed',processedDate:'2026-11-10',chargedAmount:-40,chargedCurrency:'ILS'},
+    ]},
+  ]);
+  state.bank.asOfDate='2026-10-11';state.bank.feed.syncedAt='2026-10-11T08:00:00Z';
+  const at='2026-10-11',months=creditMonthlyDetailData(state,at).months;
+  const october=months.find(month=>month.key==='2026-10'),november=months.find(month=>month.key==='2026-11');
+  assert.equal(october.total,620,'full October detail includes actual already-charged FX and expired cycles');
+  assert.equal(november.total,540,'the following month remains separate and is not summed with October');
+  const nearest=kupaReconciledCreditUpcomingDetailData(state,at).items;
+  assert.deepEqual(nearest.filter(row=>row.includedInIlsTotal).map(row=>[row.accountNumber,row.date,row.amount]).sort((a,b)=>a[0].localeCompare(b[0])),[['1000','2026-10-10',350],['2000','2026-10-11',200]],'a past but still open monthly cycle is not replaced by next month, and paid immediate FX is not counted again');
+  assert.equal(new Set(nearest.map(row=>row.creditId)).size,nearest.length,'an individual charge is selected only once within the nearest view');
+  const cards=kupaReconciledCreditRowsData(state,'all',at);
+  assert.equal(cards.filter(row=>row.date==='2026-10-10').length,1,'original obligation rows are not duplicated by display projections');
 });

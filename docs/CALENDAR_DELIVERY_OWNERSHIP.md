@@ -66,7 +66,9 @@ It is not a server-side idempotency ledger, an owner across separate computers,
 or proof of when Google finishes an unknown request after a transport disconnect.
 Existing same-event-ID replay/reconciliation remains the recovery policy; no
 automatic new operation/event ID or blanket provider retry was introduced.
-Idle cross-tab enqueue notification remains a separate scope.
+Idle cross-tab committed-work observation is now owned separately by the local
+read observer; see CALENDAR_COMMIT_OBSERVATION.md. Its hint does not deliver or
+retry provider work, and cannot substitute for the delivery lock or remote ACK.
 
 After a delivery error, keep the queue and use the existing reconnect/manual
 sync path under the original Google account. The next granted owner rereads it;

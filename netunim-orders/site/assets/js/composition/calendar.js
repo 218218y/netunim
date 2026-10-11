@@ -3,6 +3,7 @@ import {createCalendarAuth} from '../calendar/auth.js';
 import {createCalendarApi} from '../calendar/api.js';
 import {createCalendarJournal} from '../calendar/journal.js';
 import {createCalendarDeliveryOwner} from '../platform/calendar-delivery-owner.js';
+import {createCalendarCommitNotifications} from '../platform/calendar-commit-notifications.js';
 import {createDomainsCalendarController} from '../domains/calendar/controller.js';
 import {createCalendarActionPorts} from '../domains/calendar/action-ports.js';
 
@@ -12,7 +13,8 @@ export function createOrdersCalendarRuntime({calendarSession,supaFetch,accountSc
   if(!calendarSession||typeof calendarSession!=='object')throw new Error('calendar_session_required');
   if(typeof supaFetch!=='function')throw new Error('calendar_cloud_port_required');
   if(typeof subscribeAccountScope!=='function')throw new Error('calendar_account_observation_required');
-  const calendarStorage=createCalendarStorage();
+  const commitNotifications=createCalendarCommitNotifications();
+  const calendarStorage=createCalendarStorage({onLocalCommit:commitNotifications.notify});
   const calendarAuth=createCalendarAuth({calendarSession,supaFetch,accountScope});
   const calendarApi=createCalendarApi({calendarAuth});
   const calendarJournal=createCalendarJournal({calendarStorage,calendarApi,operationScope:calendarAuth,deliveryOwner:createCalendarDeliveryOwner()});
@@ -22,7 +24,7 @@ export function createOrdersCalendarRuntime({calendarSession,supaFetch,accountSc
     if(controller)throw new Error('calendar_controller_already_composed');
     controller=createDomainsCalendarController({
       ui,tab,calendarUi,calendarSession,
-      calendarStorage,calendarAuth,calendarApi,calendarJournal,subscribeAccountScope,
+      calendarStorage,calendarAuth,calendarApi,calendarJournal,subscribeAccountScope,subscribeCalendarCommits:commitNotifications.subscribe,
       mountViewLayout:(...args)=>uiLayout.mountViewLayout(...args),
       modal:(...args)=>uiModal.modal(...args),
       closeModal:(...args)=>uiModal.closeModal(...args),

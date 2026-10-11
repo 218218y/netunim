@@ -436,9 +436,21 @@ function calculateCreditDetailMonths(kupa,reference,historyMonths){
 
 export function kupaReconciledCreditUpcomingDetailData(kupa,reference=localTodayISO(),historyMonths=CREDIT_DETAIL_HISTORY_MONTHS){
   const ref=isoDay(reference)||localTodayISO(),detail=kupaReconciledCreditDetailMonthsData(kupa,ref,historyMonths),rows=detail.months.flatMap(month=>month.items),nextByCard=new Map();
-  const displayDate=row=>isoDay(row?.detailCycleBillingDate)||isoDay(row?.detailDisplayBillingDate)||isoDay(row?.date),settledBlocks=row=>row?.bankSettlementState==='settled'&&!row?.detailCycleBillingDate;
-  for(const row of rows){const date=displayDate(row);if(!date||date<ref||settledBlocks(row))continue;const key=creditCardKey(row),current=nextByCard.get(key);if(!current||date<current)nextByCard.set(key,date)}
-  const items=rows.filter(row=>{const date=displayDate(row);return !settledBlocks(row)&&date&&nextByCard.get(creditCardKey(row))===date}).sort((a,b)=>creditCardConfiguredOrderCompare(a,b,kupa?.creditSync?.cardMappings)||displayDate(a).localeCompare(displayDate(b))||creditCardCompare(a,b,kupa?.creditSync?.cardMappings)||creditDetailRowSort(a,b));
+  const displayDate=row=>isoDay(row?.detailCycleBillingDate)||isoDay(row?.detailDisplayBillingDate)||isoDay(row?.date);
+  const eligible=row=>{
+    if(row?.bankSettlementState==='settled')return false;
+    const date=displayDate(row),actualDate=isoDay(row?.date);
+    if(!date)return false;
+    // A foreign immediate debit is listed under its statement cycle for
+    // browsing only. It has already been charged on its actual debit date;
+    // the statement-cycle projection must never resurrect it as future cash.
+    if(row.foreignCurrency===true&&row.status!=='pending'&&actualDate&&actualDate<ref)return false;
+    // Reconciliation keeps due-but-unverified cycles in the cashflow. Do not
+    // silently skip one in favor of next month's cycle on the same card.
+    return date>=ref||(actualDate&&actualDate<ref&&row.bankSettlementState==='awaiting');
+  };
+  for(const row of rows){if(!eligible(row))continue;const date=displayDate(row),key=creditCardKey(row),current=nextByCard.get(key);if(!current||date<current)nextByCard.set(key,date)}
+  const items=rows.filter(row=>eligible(row)&&nextByCard.get(creditCardKey(row))===displayDate(row)).sort((a,b)=>creditCardConfiguredOrderCompare(a,b,kupa?.creditSync?.cardMappings)||displayDate(a).localeCompare(displayDate(b))||creditCardCompare(a,b,kupa?.creditSync?.cardMappings)||creditDetailRowSort(a,b));
   return {items,nextByCard,reference:ref};
 }
 
@@ -455,10 +467,14 @@ export function kupaCardDisplayBillingDateFromRowsData(inputRows,creditAccountKe
 }
 
 export function kupaCardUpcomingChargeFromRowsData(inputRows,creditAccountKey,reference=localTodayISO()){
-  const ref=isoDay(reference)||localTodayISO(),rows=inputRows.filter(row=>row.creditAccountKey===creditAccountKey),unassigned=rows.filter(row=>!row.date),elapsed=rows.filter(row=>row.date<ref&&row.bankSettlementState==='awaiting'&&(!row.includedInIlsTotal||row.coverageIncomplete)),extra=[...unassigned,...elapsed],cycle=creditCyclesThroughHorizonRowsData(rows,'all',ref,unassigned).nextCycles[0];
+  const ref=isoDay(reference)||localTodayISO(),rows=inputRows.filter(row=>row.creditAccountKey===creditAccountKey),unassigned=rows.filter(row=>!row.date),elapsed=rows.filter(row=>row.date<ref&&row.bankSettlementState==='awaiting'&&(!row.includedInIlsTotal||row.coverageIncomplete)),extra=[...unassigned,...elapsed];
+  // Same open-cycle policy as the transaction detail: an unproven elapsed
+  // debit precedes next month's commitment, but completed immediate FX
+  // debits must not be forecast a second time as an upcoming card charge.
+  const overdue=rows.filter(row=>row.date&&row.date<ref&&row.bankSettlementState==='awaiting'&&row.status!=='pending'&&row.foreignCurrency!==true),forecast=rows.filter(row=>row.date>=ref||overdue.includes(row)),floor=overdue.reduce((earliest,row)=>!earliest||row.date<earliest?row.date:earliest,'')||ref,cycle=creditCyclesThroughHorizonRowsData(forecast,'all',floor,unassigned).nextCycles[0];
   if(!cycle&&!extra.length)return null;
   const incomplete=[...(cycle?.rows.filter(row=>!row.includedInIlsTotal||row.coverageIncomplete)||[]),...extra],missingAmountCount=incomplete.filter(row=>row.amountStatus!=='known_ils').length;
-  return {amount:cycle?.total||0,date:cycle?.billingDate||'',source:'transactions',pendingAmount:cycle?.pendingTotal||0,estimated:!cycle||cycle.status!=='finalized'||extra.length>0,status:incomplete.length?'incomplete':cycle.status,incompleteCount:incomplete.length,missingAmountCount,coverageGapCount:incomplete.filter(row=>row.coverageIncomplete).length,stalePendingCount:incomplete.filter(row=>row.status==='pending'&&!row.pendingFresh).length,unconvertedCount:incomplete.filter(row=>row.amountStatus==='foreign_unconverted').length,unknownAmountCount:incomplete.filter(row=>row.amountStatus==='unknown_amount').length,unassignedCount:unassigned.length,amountKnown:!!cycle&&missingAmountCount===0,complete:incomplete.length===0};
+  return {amount:cycle?.total||0,date:cycle?.billingDate||'',source:'transactions',pendingAmount:cycle?.pendingTotal||0,estimated:!cycle||cycle.status!=='finalized'||extra.length>0,awaitingSettlement:!!cycle&&cycle.billingDate<ref,status:incomplete.length?'incomplete':cycle.status,incompleteCount:incomplete.length,missingAmountCount,coverageGapCount:incomplete.filter(row=>row.coverageIncomplete).length,stalePendingCount:incomplete.filter(row=>row.status==='pending'&&!row.pendingFresh).length,unconvertedCount:incomplete.filter(row=>row.amountStatus==='foreign_unconverted').length,unknownAmountCount:incomplete.filter(row=>row.amountStatus==='unknown_amount').length,unassignedCount:unassigned.length,amountKnown:!!cycle&&missingAmountCount===0,complete:incomplete.length===0};
 }
 
 export function kupaCreditScheduleData(cr){

@@ -358,3 +358,6 @@ button.bank-cashflow-projected:focus-visible,.cashflow-breakdown-trigger:focus-v
 .ledger-amount-field.is-negative>label{color:#b5443c}.ledger-amount-field.is-negative #mAmount{color:#b5443c;border-color:#e6c8c5;background:#fffafa}
 .ledger-amount-field.is-neutral>label{color:#526274}
 .ledger-amount-guide{font-weight:650}.ledger-amount-guide.is-positive{background:#f0f8f3;border-color:#d3e7da;color:#396c4d}.ledger-amount-guide.is-negative{background:#fff3f1;border-color:#ecd3cf;color:#98453f}.ledger-amount-guide.is-neutral{background:#f5f7f5;border-color:#e3e8e4;color:#65726f}
+
+/* Keep alternate credit detail views explicit: monthly totals and per-card upcoming are not additive. */
+.credit-cycle-explanation{margin:0;padding:5px 11px 8px;color:var(--muted);font-size:11px;line-height:1.5;background:#fff}

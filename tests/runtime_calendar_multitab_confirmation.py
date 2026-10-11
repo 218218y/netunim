@@ -24,12 +24,14 @@ SETUP = r"""(async()=>{
    if(audit.armAbort&&this.name==='pending-operations'){audit.armAbort=false;const tx=this.transaction;queueMicrotask(()=>tx.abort())}
    return request;
  };
- let reads=0,armed=true;
+ let cacheCommitted=false,armed=true;
+ // This is the delivery owner's post-cache queue read, not the independent
+ // observer's cache+queue+account read. The injection must survive new readers.
  Object.defineProperty(IDBTransaction.prototype,'oncomplete',{...descriptor,set(handler){
    const tx=this,queue=tx.objectStoreNames.contains('pending-operations'),cache=tx.objectStoreNames.contains('range-cache');
-   const hold=armed&&((['receipt','receipt-abort'].includes(phase)&&queue&&tx.mode==='readonly'&&++reads===4)||(phase==='cache'&&cache&&tx.mode==='readwrite'));
+   const hold=armed&&((['receipt','receipt-abort'].includes(phase)&&cacheCommitted&&queue&&tx.objectStoreNames.length===1&&tx.mode==='readonly')||(phase==='cache'&&cache&&tx.mode==='readwrite'));
    if(hold)armed=false;
-   descriptor.set.call(tx,function(event){if(hold){audit.entered.resolve();void audit.held.promise.then(()=>handler.call(tx,event))}else handler.call(tx,event)});
+   descriptor.set.call(tx,function(event){if(cache&&tx.mode==='readwrite')cacheCommitted=true;if(hold){audit.entered.resolve();void audit.held.promise.then(()=>handler.call(tx,event))}else handler.call(tx,event)});
  }});
  cloudAuth.saveSession({user:{id:'calendar-owner-fixture'},access_token:'fixture',expires_at:9999999999});
  cloudAuth.supaFetch=async(_path,options)=>{options.assertRequestScope();if(JSON.parse(options.body).action!=='token')throw Error('unexpected OAuth');return new Response(JSON.stringify({access_token:'fixture-Google',expires_in:3600,account_id:'calendar@example.test'}))};

@@ -101,7 +101,7 @@ test('MAX provider-marked foreign transactions settled in ILS remain visible as 
   assert.ok(cycleRow);assert.equal(cycleRow.date,'2026-10-02','the real immediate debit date stays authoritative for the row and exact date filtering');assert.equal(cycleRow.detailCycleBillingDate,'2026-10-11','the immediate debit is attached to the card statement cycle that closes after it');
   assert.equal(cycleRow.detailCycleNominalDay,10,'Saturday-shifted 11 October remains the nominal day-10 cycle');assert.equal(creditDetailChargeCycleKey(cycleRow),'2026-10:10');
   assert.equal(creditDetailRangeMatch(cycleRow,'2026-10-02','2026-10-02'),true,'exact-date mode still targets the real immediate debit date, not the statement grouping date');
-  assert.ok(upcoming);assert.equal(upcoming.detailCycleBillingDate,'2026-10-11','the current statement view includes foreign immediate charges already debited inside this cycle window');
+  assert.equal(upcoming,undefined,'already debited immediate FX belongs to October statement history but is excluded from the future charge total');
   assert.equal(ordersNormalize(merged).profiles[0].accounts[0].months.find(month=>month.month==='2026-10').transactions[0].foreignTransaction,true,'Orders preserves the same explicit foreign marker');
 });
 

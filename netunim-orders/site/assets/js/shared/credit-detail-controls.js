@@ -92,6 +92,14 @@ export function creditDetailNominalChargeDay(row){
   return '';
 }
 
+// The same nominal debit day can represent different calendar months. Always
+// expose the full actual cycle date in upcoming-section headers.
+export function creditUpcomingCycleHeadingData(row,formatDate){
+  const date=creditDetailCycleDisplayDate(row),nominal=creditDetailNominalChargeDay(row);
+  if(!date)return 'מועד חיוב לא ידוע';
+  return nominal?`חיוב ${nominal} בחודש · מועד ${formatDate(date)}`:`חיוב במועד ${formatDate(date)}`;
+}
+
 export function creditDetailChargeCycleKey(row){
   const date=creditDetailCycleDisplayDate(row),nominal=creditDetailNominalChargeDay(row);
   return date&&nominal?`${date.slice(0,7)}:${nominal}`:date;
@@ -159,7 +167,7 @@ function cycleSelectorMarkup({month,active,selectedDay,formatMoney,formatMonth,e
 }
 
 export function creditUpcomingSelectorMarkup({active,selectedDay,total,formatMoney,escapeHtml,upcomingAction,upcomingDayAction}){
-  return `<span class="credit-cycle-selector credit-cycle-selector-header ${active?'active':''}"><button type="button" class="credit-cycle-main credit-upcoming-toggle ${active?'active':''}" data-action="${safe(upcomingAction,escapeHtml)}" aria-pressed="${active?'true':'false'}"><span>החיוב הקרוב</span><b>${safe(formatMoney(Number(total)||0),escapeHtml)}</b></button>${chargeDayButtonsMarkup({action:upcomingDayAction,selectedDay:active?selectedDay:'all',escapeHtml})}</span>`;
+  return `<span class="credit-cycle-selector credit-cycle-selector-header ${active?'active':''}"><button type="button" class="credit-cycle-main credit-upcoming-toggle ${active?'active':''}" data-action="${safe(upcomingAction,escapeHtml)}" aria-label="המחזור הפתוח הקרוב בכל כרטיס, על פני חודשים שונים" aria-pressed="${active?'true':'false'}"><span>קרוב · לכל כרטיס</span><b>${safe(formatMoney(Number(total)||0),escapeHtml)}</b></button>${chargeDayButtonsMarkup({action:upcomingDayAction,selectedDay:active?selectedDay:'all',escapeHtml})}</span>`;
 }
 
 function creditCycleMenuMarkup({months=[],selectedKey='',selectedDay='all',formatMoney,formatMonth,escapeHtml,monthAction,monthDayAction,label,ariaLabel,reverse=false,className=''}){
@@ -170,7 +178,7 @@ function creditCycleMenuMarkup({months=[],selectedKey='',selectedDay='all',forma
 }
 
 export function creditHistoryMenuMarkup(options){return creditCycleMenuMarkup({...options,label:'חיובים קודמים',ariaLabel:'בחירת חיובים קודמים',reverse:true,className:'credit-history-menu'})}
-export function creditFutureMenuMarkup(options){return creditCycleMenuMarkup({...options,label:'חיובים הבאים',ariaLabel:'בחירת חיובים הבאים',reverse:false,className:'credit-future-menu'})}
+export function creditFutureMenuMarkup(options){return creditCycleMenuMarkup({...options,label:'פירוט לפי חודש',ariaLabel:'פירוט חיובים לפי חודש כולל מועדים שחלפו',reverse:false,className:'credit-future-menu'})}
 
 export function creditDetailChargeHeadingMarkup(items,formatMoney,escapeHtml){
   const {total,partial}=creditDetailSelectionTotal(items);
