@@ -73,6 +73,12 @@ unconfirmed write returns `false`; no artificial ACK or rollback is performed.
 
 ## Automatic resources
 
+Blocked computer preferences now suspend each future automatic owner and report
+an independent warning instead of stranding busy flags or failing Finance
+rendering. A recorded attempt precedes preflight; explicit confirmed permission
+is required after failure. Existing started commits drain. See
+ORDERS_FINANCE_PREFERENCES_CONTRACT.md for native-IDB evidence and restart limits.
+
 `domains/finance/automation.js` owns future Bank/Credit starts through five ports:
 access, preferences, last-sync query, commands and timers. It preserves four-hour
 Bank freshness, daily Credit freshness and existing failure cooldowns. It observes
