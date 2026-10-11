@@ -125,13 +125,13 @@ test('Storage V2 cloud cursor preserves later journal across ACK, supports confi
   const flight1=await journal.materializeFlight({operationId:'flight-1',baseRevision:10});assert.equal(flight1.endSeq,1);assert.equal(flight1.snapshot.notes[0].text,'sent');
   const second=journal.append([put('A','later')],{generation:2,surface:'orders',mutationType:'edit',deleteIntents:{notes:['B']}});await second.committed;
   let cloud=await journal.cloudState();assert.equal(cloud.afterFlightPending,true);assert.deepEqual(cloud.afterFlightDeleteIntents,{notes:['B']});
-  await journal.acknowledge('flight-1',11,{notes:[{id:'A',text:'sent'}]},{checkpointState:{notes:[{id:'A',text:'later'}]},appMetadata:{revision:11}});
+  await journal.acknowledge('flight-1',11,{notes:[{id:'A',text:'sent'}]},{checkpointState:{notes:[{id:'A',text:'later'}]},expectedSeq:2,appMetadata:{revision:11}});
   assert.equal((await journal.recover()).state.notes[0].text,'later');cloud=await journal.cloudState();assert.equal(cloud.base.ackSeq,1);assert.equal(cloud.pending,true);assert.deepEqual(cloud.pendingDeleteIntents,{notes:['B']});
 
   const flight2=await journal.materializeFlight({operationId:'flight-2',baseRevision:11});assert.equal(flight2.startSeq,2);assert.equal(flight2.endSeq,2);
   await journal.rejectAndRebase('flight-2',12,{notes:[{id:'A',text:'remote'}]},{checkpointState:{notes:[{id:'A',text:'later'}]},expectedSeq:2,control:{conflict:{kind:'entity-conflict'}}});cloud=await journal.cloudState();assert.equal(cloud.flight,null);assert.equal(cloud.base.revision,12);assert.equal(cloud.base.ackSeq,1);assert.equal(cloud.control.conflict.kind,'entity-conflict');
   await journal.clearCloudControl();const flight3=await journal.materializeFlight({operationId:'flight-3',baseRevision:12,snapshot:{notes:[{id:'A',text:'merged'}]}});assert.equal(flight3.endSeq,2);
-  await journal.acknowledge('flight-3',13,{notes:[{id:'A',text:'merged'}]},{checkpointState:{notes:[{id:'A',text:'merged'}]}});cloud=await journal.cloudState();assert.equal(cloud.pending,false);assert.equal(cloud.base.ackSeq,2);
+  await journal.acknowledge('flight-3',13,{notes:[{id:'A',text:'merged'}]},{checkpointState:{notes:[{id:'A',text:'merged'}]},expectedSeq:2});cloud=await journal.cloudState();assert.equal(cloud.pending,false);assert.equal(cloud.base.ackSeq,2);
   await journal.adoptCloudHead(14,{notes:[{id:'A',text:'remote-head'}]},{notes:[{id:'A',text:'remote-head'}]});cloud=await journal.cloudState();assert.equal(cloud.base.revision,14);assert.equal((await journal.recover()).state.notes[0].text,'remote-head');
 });
 
@@ -326,9 +326,9 @@ function postAckStorageV2({kind}){
 }
 
 test('Orders browser adapter keeps an exact post-ACK cache when the verification read fails after commit',async()=>{
-  const f=postAckStorageV2({kind:'orders'});await f.browser.refreshStorageV2CloudState();const state=await f.browser.acknowledgeStorageV2CloudFlight(f.operationId,11,f.sentState,{currentState:clone(ORDERS_INITIAL_STATE)});assert.equal(state.base.revision,11);assert.equal(state.base.ackSeq,1);assert.equal(state.flight,null);assert.equal(state.control,null);assert.equal(state.pending,false);assert.equal(f.session.storageV2CloudPending,false);
+  const f=postAckStorageV2({kind:'orders'});await f.browser.refreshStorageV2CloudState();const state=await f.browser.acknowledgeStorageV2CloudFlight(f.operationId,11,f.sentState,{currentState:clone(ORDERS_INITIAL_STATE),expectedSeq:1});assert.equal(state.base.revision,11);assert.equal(state.base.ackSeq,1);assert.equal(state.flight,null);assert.equal(state.control,null);assert.equal(state.pending,false);assert.equal(f.session.storageV2CloudPending,false);
 });
 
 test('Kupa browser adapter keeps an exact post-ACK cache when the verification read fails after commit',async()=>{
-  const f=postAckStorageV2({kind:'kupa'});await f.browser.refreshStorageV2CloudState();const state=await f.browser.acknowledgeStorageV2CloudFlight(f.operationId,11,f.sentState,{currentState:clone(KUPA_INITIAL_STATE)});assert.equal(state.base.revision,11);assert.equal(state.base.ackSeq,1);assert.equal(state.flight,null);assert.equal(state.control,null);assert.equal(state.pending,false);assert.equal(f.session.storageV2CloudPending,false);
+  const f=postAckStorageV2({kind:'kupa'});await f.browser.refreshStorageV2CloudState();const state=await f.browser.acknowledgeStorageV2CloudFlight(f.operationId,11,f.sentState,{currentState:clone(KUPA_INITIAL_STATE),expectedSeq:1});assert.equal(state.base.revision,11);assert.equal(state.base.ackSeq,1);assert.equal(state.flight,null);assert.equal(state.control,null);assert.equal(state.pending,false);assert.equal(f.session.storageV2CloudPending,false);
 });

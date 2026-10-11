@@ -54,6 +54,74 @@ Main cloud result is composed for display.
     computer's later write. The returned receipt is not a durable ACK; the same
     fenced transaction, generation checks and publication sequence still apply.
 
+## Candidate sequence is part of the ACK input
+
+Both Main sync owners capture `expectedSeq` from the durable head used for
+reconciliation. It travels with `currentState` in **every** ACK, including a
+post-RPC merge-conflict checkpoint. The browser adapter forwards it unchanged;
+its mutable cloud cache is not evidence for the candidate's sequence.
+
+The journal requires a nonnegative safe integer sequence whenever an ACK contains
+`checkpointState` (`storage_ack_checkpoint_required` otherwise). It compares
+that sequence with recovered operations **before** sealing the checkpoint. The
+existing IndexedDB transaction separately compares the sealed checkpoint with
+the live metadata sequence, owner, epoch and writer. An append committed between
+these checks must abort the entire ACK. Neither check replaces the other.
+
+Cursor-only ACKs used by detached owner transfer do not supply a reconciled
+checkpoint and retain their existing contract. Shared Checks already supplies
+its own captured sequence; Finance receipts remain independent.
+
+| Transition | Evidence and local action |
+| --- | --- |
+| New cloud write | Valid authoritative RPC state; matching candidate sequence; atomic flight ACK/checkpoint; then scoped publication |
+| Valid no-op | Same revision is permitted; acknowledge the exact flight range with the same candidate fence |
+| Replayed operation | Reuse the original operation ID/snapshot; reconcile with the returned current cloud head and newly captured local sequence |
+| Stale candidate before commit | No ACK, publication or cursor advance; keep the immutable flight and newer journal; an eligible explicit/reconnect/poll retry re-reads and reconciles |
+| Wrong operation | Reject without changing base, checkpoint, flight or journal |
+| Malformed authoritative state | Reject before ACK; never substitute the sent snapshot |
+
+A stale **uncommitted** candidate is different from a new edit **after** a
+successful ACK transaction. The latter retains the existing post-commit
+publication/review policy. A stale candidate retry uses the existing owner and
+retry path, without a new operation ID, artificial ACK, journal cleanup or
+immediate unbounded retry loop. Orders checks primary access and the captured
+owner/epoch again before writing retry control after an ACK failure. An old
+primary cannot add control to another scope; Kupa retains its existing scope fence.
+
+Both pre-transaction and transaction rejection expose `code` =
+`storage_ack_checkpoint_stale`, `candidateSeq` and `observedSeq`. Existing error
+messages remain compatible (`storage_ack_checkpoint_stale` and
+`storage_checkpoint_stale`, respectively). The persisted retry code can identify
+this failure without logging snapshots, business IDs, account names or tokens.
+
+### Regression evidence (2026-10-11)
+
+Baseline `214cf3869af173405c5c4c4d975ec6376282a7c6` passed all eleven
+[CI jobs](https://github.com/218218y/netunim/actions/runs/38133113602).
+Nevertheless, both production browser adapters accepted a sequence-1 candidate
+after a sequence-2 append in `memoryDb` and native IndexedDB. Recovery returned
+`flight-A` instead of `late-B` under the unchanged synthetic note ID. The
+regression failed before this fix in both native application profiles; this is
+not evidence that a production account suffered data loss.
+
+`ack_checkpoint_sequence.test.mjs` verifies unchanged raw stores on rejection,
+exact flight retention, late content/ID recovery, valid replay and mandatory
+sequence inputs. Both application sync suites cover plain, after-flight and
+post-RPC merge-conflict candidates plus leadership loss. Orders also covers an
+account/epoch change before retry control.
+
+`runtime_ack_checkpoint_sequence.py` adds ten isolated native-IDB profiles:
+append before the browser adapter, append before the ACK transaction, transaction
+abort, quota and primary loss, for each app. A fresh document recovers the same
+flight and note, then acknowledges only the original range. `runtime_storage.py`
+also injects the race into the actual sync owners, business merge and production
+adapters, using a synthetic server ledger. Restart replays the exact RPC and
+preserves visible, durable and remote IDs/content without duplicate effects.
+Browser+PostgreSQL, lost response, no-op, multitab and two-browser-device gates
+remain mandatory in CI. Synthetic ledgers/native IDB do not replace live provider
+or physical two-computer validation. No persisted schema, RPC or SQL changes.
+
 ## Failure outcomes
 
 | Failure point | Preserved state and continuation |

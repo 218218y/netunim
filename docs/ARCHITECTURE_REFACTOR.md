@@ -489,3 +489,12 @@ Storage correctness is a mandatory gate across these tracks, not a new blanket
 rewrite. Existing ACK/hydration/status contracts and real IndexedDB, offline,
 lost-response, restart, owner-change and two-computer scenarios must stay green;
 extend fault injection only for uncovered paths found during each review.
+
+The Main ACK boundary now binds every reconciled checkpoint to the sequence
+captured by its sync owner, including merge-conflict checkpoints. Browser caches
+cannot infer that fence. The journal rejects missing/stale candidate sequences,
+and native IndexedDB preserves its atomic metadata fence. Both apps have
+before-fix native reproductions, unchanged-store rejection, fresh-document replay
+and full sync-owner recovery coverage. See [the ACK contract](STORAGE_CLOUD_ACK_CONTRACT.md).
+This closes a proven local recovery gap without changing schemas, SQL, RPC
+idempotency, no-op revisions or the independent Shared/Finance owners.

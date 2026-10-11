@@ -192,8 +192,12 @@ export function createStorageJournal({owner,schema,validate,primary=()=>true,db=
     try{await db.beginFlight(owner,epoch,writer,sealed);return readStorageCloudFlight(sealed)}finally{flightDone()}
   }
   async function acknowledge(flightId,revision,state,{validateBase=validate,checkpointState=null,expectedSeq=null,appMetadata={},control=null}={}){
+    // A checkpoint is a projection of a specific journal head. Its caller must
+    // supply that captured sequence; a later recovered/cache sequence cannot
+    // certify the earlier image. Cursor-only ACKs have no checkpoint to bind.
+    if(checkpointState!==null&&(!Number.isSafeInteger(expectedSeq)||expectedSeq<0))throw new Error('storage_ack_checkpoint_required');
     guard();validateBase(state);if(checkpointState!==null)validate(checkpointState);await queue;const recovered=await recover(),flight=recovered.stored.flights&&readStorageCloudFlight(recovered.stored.flights);if(!flight||flight.operationId!==flightId)throw new Error('storage_ack_mismatch');
-    if(expectedSeq!==null&&recovered.seq!==expectedSeq)throw new Error('storage_ack_checkpoint_stale');
+    if(expectedSeq!==null&&recovered.seq!==expectedSeq)throw Object.assign(new Error('storage_ack_checkpoint_stale'),{code:'storage_ack_checkpoint_stale',candidateSeq:expectedSeq,observedSeq:recovered.seq});
     const base=sealStorageRecord(createStorageCloudBase({owner,epoch,revision,state,ackSeq:flight.endSeq}),{kind:'cloud-base'}),checkpoint=checkpointState===null?null:sealStorageRecord(createStorageCheckpoint({owner,epoch,seq:recovered.seq,state:structuredClone(checkpointState),appMetadata:{...(recovered.appMetadata||{}),...structuredClone(appMetadata)},savedAt:now()}),{kind:'checkpoint'}),sealedControl=control?sealStorageRecord({version:2,owner,epoch,updatedAt:now(),...structuredClone(control)},{kind:'cloud-control'}):null;
     await db.acknowledge(owner,epoch,writer,flightId,base,{checkpoint,control:sealedControl});return {operationId:flightId,revision,ackSeq:flight.endSeq};
   }
