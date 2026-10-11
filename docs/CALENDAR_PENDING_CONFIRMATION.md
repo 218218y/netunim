@@ -85,7 +85,9 @@ a replacement event ID. A confirmed remote read alone cannot acknowledge work.
 ## Limits and remaining work
 
 The observer is in memory and does not claim to detect another tab's writes
-after this transaction's snapshot. Each read still uses real durable IDB data;
+after this transaction's snapshot. [Transaction-bound publication](CALENDAR_TRANSACTION_CONFIRMATION.md)
+now adds a fresh native read before synchronous publication to close the proven
+cross-tab commit-before-publication window. Each read uses real durable IDB data;
 cross-tab notification/privacy, complete resource disposal and local editor/
 overlay publication ownership remain separate reviews. Main/Shared/Finance
 protocols and provider retry/fallback policy are untouched. Failed uncommitted
