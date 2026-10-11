@@ -1,4 +1,5 @@
 import {createCalendarQueueObservation} from './queue-observation.js';
+import {confirmCalendarPendingSnapshot} from './queue-confirmation.js';
 
 const DB_NAME='order-management-google-calendar';
 const DB_VERSION=1;
@@ -56,6 +57,7 @@ async function writeQueue(run){const settle=queueObservation.beginWrite();try{re
 async function addOperation(operation){return writeQueue(async()=>{const db=await openDb(),tx=db.transaction(QUEUE_STORE,'readwrite'),store=tx.objectStore(QUEUE_STORE);const record={...structuredClone(operation),createdAt:operation.createdAt||new Date().toISOString(),attempts:Number(operation.attempts||0),lastError:String(operation.lastError||'')};delete record.seq;const seq=await requestResult(store.add(record));await transactionDone(tx);return Number(seq)})}
 async function listOperations(){const db=await openDb(),tx=db.transaction(QUEUE_STORE,'readonly');const rows=await requestResult(tx.objectStore(QUEUE_STORE).getAll());await transactionDone(tx);return rows.sort((a,b)=>Number(a.seq)-Number(b.seq))}
 async function readPendingSnapshot(){const isCurrent=queueObservation.capture(),operations=await listOperations();return Object.freeze({operations,isCurrent,isSettled:queueObservation.isSettled})}
+async function confirmPendingSnapshot(publish){return confirmCalendarPendingSnapshot(await openDb(),queueObservation,publish)}
 async function updateOperation(seq,patch){return writeQueue(async()=>{const db=await openDb(),tx=db.transaction(QUEUE_STORE,'readwrite'),store=tx.objectStore(QUEUE_STORE),current=await requestResult(store.get(Number(seq)));if(current)store.put({...current,...structuredClone(patch),seq:Number(seq)});await transactionDone(tx)})}
 async function deleteOperation(seq){return writeQueue(async()=>{const db=await openDb(),tx=db.transaction(QUEUE_STORE,'readwrite');tx.objectStore(QUEUE_STORE).delete(Number(seq));await transactionDone(tx)})}
 async function pendingCount(){const db=await openDb(),tx=db.transaction(QUEUE_STORE,'readonly');const count=await requestResult(tx.objectStore(QUEUE_STORE).count());await transactionDone(tx);return Number(count||0)}
@@ -68,5 +70,5 @@ async function clearRangeCache(){const db=await openDb(),tx=db.transaction(CACHE
 async function getMeta(key){const db=await openDb(),tx=db.transaction(META_STORE,'readonly');const row=await requestResult(tx.objectStore(META_STORE).get(String(key)));await transactionDone(tx);return row?.value??null}
 async function putMeta(key,value){const db=await openDb(),tx=db.transaction(META_STORE,'readwrite');tx.objectStore(META_STORE).put({key:String(key),value:structuredClone(value)});await transactionDone(tx)}
 
-return {openDb,addOperation,listOperations,readPendingSnapshot,updateOperation,deleteOperation,pendingCount,putRangeCache,getRangeCache,getRangeCacheCovering,clearRangeCache,getMeta,putMeta,connectionPreference,saveConnectionPreference};
+return {openDb,addOperation,listOperations,readPendingSnapshot,confirmPendingSnapshot,updateOperation,deleteOperation,pendingCount,putRangeCache,getRangeCache,getRangeCacheCovering,clearRangeCache,getMeta,putMeta,connectionPreference,saveConnectionPreference};
 }

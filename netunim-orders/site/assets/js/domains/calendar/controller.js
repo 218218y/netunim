@@ -129,13 +129,26 @@ async function syncNow({quiet=false,force=true}={}){
       // of an edit that arrived during the read/cache awaits.
       const receipt=await calendarStorage.readPendingSnapshot();assertCurrent();
       if(!receipt.isCurrent()){continuePending=receipt.isSettled();return false}
-      pending=receipt.operations;calendarUi.pending=pending;
-      syncedSnapshot=snapshot;syncSucceeded=true;calendarSession.lastError='';
-      if(ui.currentView==='calendar'&&calendarRangeContains(snapshot,calendarRange())){loadSnapshotIntoUi(snapshot,pending);renderCalendarBody()}
-      if(pending.length){continuePending=true;return false}
-      calendarSession.lastSyncAt=snapshot.fetchedAt;
-      if(!quiet)toast('יומן Google עודכן');return true;
+      // The earlier receipt can become stale in another realm without changing
+      // our generation. The storage port rereads and owns synchronous publication
+      // inside its native read transaction; there is no await in this callback.
+      let publicationReceipt=null;
+      const confirmedResult=await calendarStorage.confirmPendingSnapshot(confirmed=>{
+        assertCurrent();
+        publicationReceipt=confirmed;
+        if(!confirmed.isCurrent()){continuePending=confirmed.isSettled();return false}
+        pending=confirmed.operations;calendarUi.pending=pending;
+        syncedSnapshot=snapshot;syncSucceeded=true;calendarSession.lastError='';
+        if(ui.currentView==='calendar'&&calendarRangeContains(snapshot,calendarRange())){loadSnapshotIntoUi(snapshot,pending);renderCalendarBody()}
+        if(pending.length){continuePending=true;return false}
+        calendarSession.lastSyncAt=snapshot.fetchedAt;
+        if(!quiet)toast('יומן Google עודכן');return true;
+      });
+      assertCurrent();
+      if(!publicationReceipt?.isCurrent()){continuePending=publicationReceipt?.isSettled()===true;return false}
+      return confirmedResult;
     }catch(error){
+      syncSucceeded=false;continuePending=false;
       if(error?.code==='CALENDAR_OPERATION_SCOPE_CHANGED'||!current())return false;
       calendarSession.lastError=error?.code==='calendar_auth_required'?'נדרשת התחברות ל-Google':error?.message||'סנכרון היומן נכשל';
       try{const pending=await calendarStorage.listOperations();if(!current())return false;calendarUi.pending=pending}catch(error){if(!current())return false;console.error(error)}

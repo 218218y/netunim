@@ -383,6 +383,17 @@ The --baseline option replays the old controller only in a disposable site copy;
 --phase limits focused local runs. CI runs all cases. See
 docs/CALENDAR_PENDING_CONFIRMATION.md for the failing native baseline and limits.
 
+Calendar transaction confirmation: tests/calendar_queue_confirmation.test.mjs
+and runtime_calendar_multitab_confirmation.py (browser-ui), four real two-tab
+profiles with actual shared IDB, Google/cache/final-read races and native abort.
+The consumer rereads and publishes synchronously inside a native read transaction;
+abort retains exact queue IDs/content and requires explicit recovery. Reload
+retains the confirmed event/cache and independent note; Main/Shared stay unchanged.
+Google/token responses are synthetic; the secondary producer uses the queue port
+as controlled injection. --baseline must reproduce stale success; --phase limits
+local runs. See docs/CALENDAR_TRANSACTION_CONFIRMATION.md for point-in-time proof,
+typed implementation/consumer contracts and remaining delivery/privacy ownership.
+
 Credit preferences: tests/credit_preferences_failure.test.mjs and
 tests/credit_preferences_port.test.mjs cover domain/adapter failure semantics;
 tests/runtime_credit_preferences.py (browser-lifecycle) checks actual composition,
