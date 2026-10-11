@@ -50,9 +50,9 @@ test('manual PDF refresh is a separate search action backed by the short-lived m
     assert.ok(inputIndex>=0&&menuIndex>inputIndex&&refreshIndex>wholeWordIndex&&refreshIndex<folderIndex,'PDF refresh must live at the end of the content-options popover, not in the search header row');
     assert.match(html,/globalSearchPdfRefreshStatus[^>]*role="status"[^>]*aria-live="polite"/);
   }
-  assert.match(server,/documents\/pdf-index\/status/);
-  assert.match(server,/documents\/pdf-index\/start/);
-  assert.match(server,/documents\/pdf-index\/stop/);
+  assert.match(read('netunim-orders/document-bridge/http-routes.mjs'),/documents\/pdf-index\/status/);
+  assert.match(read('netunim-orders/document-bridge/http-routes.mjs'),/documents\/pdf-index\/start/);
+  assert.match(read('netunim-orders/document-bridge/http-routes.mjs'),/documents\/pdf-index\/stop/);
   assert.match(server,/spawn\(process\.execPath,\[fileURLToPath\(import\.meta\.url\),'--refresh-pdf-index','--force'\]/);
   assert.match(server,/manualPdfMaintenance\?\.running\|\|await activePdfMaintenanceLock\(\)/);
   assert.match(server,/pdfFormIndexRefreshAbortController\?\.abort\(\)/);
@@ -87,9 +87,9 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.match(server,/everythingProbePromise/);
   assert.match(server,/Promise\.any\(candidates\.map\(instance=>probeOne\(instance\)\)\)/);
   assert.match(server,/filter\(instance=>!preferred\|\|instance!==preferred\)/);
-  assert.match(server,/documents\/warm/);
-  assert.match(server,/documents\/recent/);
-  assert.match(server,/documents\/select-folder/);
+  assert.match(read('netunim-orders/document-bridge/http-routes.mjs'),/documents\/warm/);
+  assert.match(read('netunim-orders/document-bridge/http-routes.mjs'),/documents\/recent/);
+  assert.match(read('netunim-orders/document-bridge/http-routes.mjs'),/documents\/select-folder/);
   assert.match(server,/PICK_FOLDER/);
   assert.match(server,/RECENT scope=everything-index scopePath=.* fileType=\$\{normalizedFileType\} sort=date-modified-descending/);
   assert.match(server,/cachedEsPath/);
@@ -253,7 +253,7 @@ test('file and folder opening use the Windows graphical shell through UseShellEx
   assert.doesNotMatch(server,/execFile\('explorer\.exe'/);
   assert.match(server,/await fs\.stat\(row\.fullPath\)/);
   assert.match(server,/shell=UseShellExecute/);
-  assert.match(server,/body\.id/);
+  assert.match(read('netunim-orders/document-bridge/http-routes.mjs'),/body\.id/);
   assert.doesNotMatch(server,/body\.path/);
 });
 
@@ -264,8 +264,8 @@ test('local document results expose Explorer reveal and recycle-bin delete throu
   const menu=read('netunim-orders/site/assets/js/ui/document-result-menu.js');
   const modal=read('netunim-orders/site/assets/js/ui/modal.js');
   const css=read('shared/global-document-search.css');
-  assert.match(server,/documents\/reveal/);
-  assert.match(server,/documents\/delete/);
+  assert.match(read('netunim-orders/document-bridge/http-routes.mjs'),/documents\/reveal/);
+  assert.match(read('netunim-orders/document-bridge/http-routes.mjs'),/documents\/delete/);
   assert.match(server,/NETUNIM_REVEAL_TARGET/);
   assert.match(server,/NETUNIM_DELETE_TARGET/);
   assert.match(server,/RecycleOption\]::SendToRecycleBin/);
@@ -296,10 +296,10 @@ test('preview stays local: filename Office preview stays native while content se
   const installer=read('netunim-orders/document-bridge/install_document_bridge.bat');
   const build=read('netunim-orders/document-bridge/build_native_preview.ps1');
   const host=read('netunim-orders/document-bridge/native_preview_host.cs');
-  assert.match(server,/documents\/preview/);
-  assert.match(server,/documents\/preview-file/);
-  assert.match(server,/documents\/matches/);
-  assert.match(server,/documents\/native-preview/);
+  assert.match(read('netunim-orders/document-bridge/http-routes.mjs'),/documents\/preview/);
+  assert.match(read('netunim-orders/document-bridge/http-routes.mjs'),/documents\/preview-file/);
+  assert.match(read('netunim-orders/document-bridge/http-routes.mjs'),/documents\/matches/);
+  assert.match(read('netunim-orders/document-bridge/http-routes.mjs'),/documents\/native-preview/);
   assert.match(server,/NATIVE_PREVIEW_HOST/);
   assert.match(server,/source:'windows-preview-handler'/);
   assert.match(server,/kind:'structured'/);
@@ -361,7 +361,7 @@ test('preview stays local: filename Office preview stays native while content se
   assert.match(ui,/data-site-load-more/);
   assert.match(ui,/data-document-load-more/);
   assert.match(ui,/maybeLoadMoreDocumentResults\(\)/);
-  assert.match(server,/body\.offset/);
+  assert.match(read('netunim-orders/document-bridge/http-routes.mjs'),/body\.offset/);
   assert.match(server,/hasMore/);
   assert.match(client,/limit=150,offset=0/);
   assert.match(ui,/function recentDocumentLabel\(\).*?'פריטים אחרונים'.*?'תיקיות אחרונות'.*?'קבצים אחרונים'/s);

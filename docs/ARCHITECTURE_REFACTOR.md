@@ -481,7 +481,7 @@ they are not a claim that every older audit finding is still present.
 | Runtime/resource ownership | Orders Finance preference/attempt failures now own queued-timer cancellation and preserve started commits; remaining Shared-specific and finance/integration jobs, other shell listeners, reconnect/owner transitions and preflight; Global Search owns nested control/auth listeners and preview cleanup | Start/stop/dispose idempotence, no duplicate/orphan jobs, live access fences and controlled failure tests |
 | Remaining I/O ports | Remaining timers and other concrete browser effects after inventory; Kupa credit preferences, Google Drive and local Bridge clients now have explicit ports. Credit preference failure/restart policy still needs broader review | Injected fake ports, adapter contracts and import enforcement; installed settings/auth compatibility |
 | Static contracts | Extend the existing strict JS gate beyond current writers/checkpoint/operation/cloud-record decoding/Main receipt/ACK policy, Credit preferences and Calendar authority/queue observation/confirmation to full journal/IDB transactions/business RPC/read candidates, Finance lease callers, capability ports and application consumers | A real mismatch fails CI; actual implementation bodies and negative consumers are checked, runtime validation and historical record readers remain intact |
-| Bridge decomposition | Bank HTTP/vault/session/provider/retry diagnostics; Document HTTP/auth/index/preview | Existing external contracts preserved, classified failures and provider tests before live scraper changes |
+| Bridge decomposition | Document HTTP/access gate and typed capability routing now have explicit owners and transactional packaging/native Windows startup coverage. Remaining Document index/preview and Bank HTTP/vault/session/provider/retry diagnostics | Existing external contracts preserved, classified failures and provider tests before live scraper changes; see DOCUMENT_BRIDGE_HTTP_BOUNDARY.md |
 | Canonical sources and compatibility | SQL deployment inventory/generation; historical keys/RPC/readers and supported-client inventory | Immutable deployed migrations, deterministic generation, proven retirement criteria and restore tests |
 | Readability/UI/release | Large modules by responsibility, dependency budgets, CSS/RTL/performance, final docs/rollback | Behavioral and visual regression checks, measured performance and full release gates |
 
@@ -531,3 +531,18 @@ keeps the responsibility budget intact while preserving per-card open-cycle
 selection and full-month overlap. Native UI coverage verifies partial bank
 settlement, mixed-month headings and unchanged issuer record IDs.
 See [Credit display contract](CREDIT_NEAREST_CYCLE_DISPLAY.md).
+
+Committed Main ACKs now also distinguish safe publication from a later local
+edit. A bounded post-ACK recovery proves the new journal delta against the visible
+model and authoritative base, then uses an atomic writer/head/checksum CAS to
+retain pending work without a permanent benign `concurrent-ack` fence. Real
+conflicts and changed authority still require review. Orders has a backup-first,
+guarded recovery action for an existing fence, with native abort/quota/reload
+coverage. See [the recovery contract](ORDERS_CONCURRENT_ACK_RECOVERY.md).
+
+Document Bridge now separates its common HTTP/origin/token/body/response boundary
+from typed private routing and command implementations. Seven explicit command
+facades preserve existing file/search/preview/maintenance ownership. Installer
+dependency checks and actual isolated Windows startup protect the new module
+boundary; remaining index/preview and Bank server decomposition continue as
+separate slices. See [the HTTP contract](DOCUMENT_BRIDGE_HTTP_BOUNDARY.md).
