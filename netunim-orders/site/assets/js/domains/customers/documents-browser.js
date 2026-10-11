@@ -45,10 +45,14 @@ export function createDomainsCustomersDocumentsBrowser({operationScope,modal,toa
     await Promise.all(buttons.map(async button=>{try{
       const operationId=String(button?.dataset?.morningDebtOperation||'').trim(),metadata=await verifiedOperationMetadata(operationId);assertCurrent();if(!metadata)return;
       if(button?.isConnected===false&&globalThis.document?.contains?.(button)===false)return;
+      let committed=false;
+      try{committed=await onDebtDocumentMetadataResolved({operationId,...metadata})===true}catch(error){assertCurrent();console.error('morning debt metadata persistence',error)}
+      assertCurrent();
+      if(button.dataset.morningDebtOperation!==operationId||button?.isConnected===false&&globalThis.document?.contains?.(button)===false)return;
       button.dataset.clickArg0=metadata.documentId;button.title=`צפה במסמך Morning ${metadata.documentNumber}`;
-      const label=button.querySelector?.('[data-morning-debt-label]');if(label)label.textContent=morningDocumentLabel(metadata);
-      try{onDebtDocumentMetadataResolved({operationId,...metadata})}catch(error){console.error('morning debt metadata persistence',error)}
-      delete button.dataset.morningDebtOperation;
+      const label=button.querySelector?.('[data-morning-debt-label]');if(label)label.textContent=morningDocumentLabel(metadata)+(committed?'':' · לא נשמר בחוב');
+      if(committed){delete button.dataset.morningDebtOperation;delete button.dataset.morningDebtPersistence}
+      else{button.dataset.morningDebtPersistence='unconfirmed';button.title+=' — המסמך מאומת ב-Morning; פרטי הקישור בחוב לא אושרו לשמירה. יש לבדוק את אזהרת השמירה המקומית לפני רענון.'}
     }catch(error){if(!scopeChanged(error))console.error('Morning debt metadata',error)}}));
     return buttons.length;
   }

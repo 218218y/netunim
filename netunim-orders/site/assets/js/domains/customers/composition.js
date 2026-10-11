@@ -3,18 +3,12 @@ import {createDomainsCustomersView} from './view.js';
 import {createDomainsCustomersEditor} from './editor.js';
 import {createDomainsCustomersDocuments} from './documents.js';
 import {createDomainsCustomersDocumentsBrowser} from './documents-browser.js';
-import {morningDebtDocuments,upsertVerifiedMorningDebtDocument} from './morning-debt-documents.js';
+import {createMorningMetadataPersistence} from './morning-metadata-persistence.js';
 
 export function createDomainsCustomers({morningOperationScope,morningRequest,customerRevision,model,customerUi,selectors,uiLayout,uiModal,uiStatus,storagePersistence,uiNavigation,uiDateEditor,refreshForMorningRecovery,getBusinessBankTransactions,ensureBusinessBankTransactions,onBankDocumentVerified}){
   let view,editor;
-  function persistResolvedDebtDocumentMetadata(metadata={}){
-    try{morningOperationScope.capture()()}catch{return false}
-    if(storagePersistence.canMutate?.()===false)return false;
-    const operationId=String(metadata.operationId||'').trim();if(!operationId)return false;
-    const debt=(model.state.customerDebts||[]).find(row=>morningDebtDocuments(row).some(link=>link.operationId===operationId));if(!debt)return false;
-    if(!upsertVerifiedMorningDebtDocument(debt,metadata))return false;
-    return storagePersistence.scheduleSave('פרטי מסמך Morning נשמרו בחוב',{surface:'orders.morning.customerDebtMetadata',domains:['customerDebts'],operations:[{type:'put',collection:'customerDebts',id:debt.id,mode:'replace',record:debt}]})!==false;
-  }
+  const metadataPersistence=createMorningMetadataPersistence({model,operationScope:morningOperationScope,commitSave:(...args)=>storagePersistence.commitSave(...args),canMutate:()=>storagePersistence.canMutate?.()!==false});
+  const persistResolvedDebtDocumentMetadata=metadataPersistence.persist;
   if(typeof selectors?.customerStats!=='function')throw new TypeError('customers_selectors_required');
   const bulk=createDomainsCustomersBulk({
     customerUi,model,
@@ -55,6 +49,7 @@ export function createDomainsCustomers({morningOperationScope,morningRequest,cus
   view=createDomainsCustomersView({
     customerRevision,
     model,customerUi,
+    morningMetadataState:metadataPersistence.state,
     rejectDebtRecoveryMutation:(...args)=>documents.rejectDebtRecoveryMutation(...args),
     bindScrollViewport:(...args)=>uiLayout.bindScrollViewport(...args),
     mountViewLayout:(...args)=>uiLayout.mountViewLayout(...args),
@@ -70,6 +65,7 @@ export function createDomainsCustomers({morningOperationScope,morningRequest,cus
   });
   editor=createDomainsCustomersEditor({
     model,customerUi,
+    morningMetadataState:metadataPersistence.state,
     isDebtRecoveryPending:(...args)=>documents.isDebtRecoveryPending(...args),
     rejectDebtRecoveryMutation:(...args)=>documents.rejectDebtRecoveryMutation(...args),
     modal:(...args)=>uiModal.modal(...args),

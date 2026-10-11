@@ -9,7 +9,7 @@ function ports(onSave=()=>{}){
     uiLayout:{bindScrollViewport:()=>{},mountViewLayout:()=>{}},
     uiModal:{modal:()=>{},closeModal:()=>{},confirmDialog:async()=>true,markModalDraftSaved:()=>{}},
     uiStatus:{toast:()=>{}},
-    storagePersistence:{scheduleSave:onSave,canMutate:()=>true,rejectSecondaryAction:()=>false,rejectSecondaryMutation:()=>false},
+    storagePersistence:{scheduleSave:onSave,commitSave:async(...args)=>onSave(...args),canMutate:()=>true,rejectSecondaryAction:()=>false,rejectSecondaryMutation:()=>false},
     morningOperationScope:{capture:()=>()=>{},captureRead:()=>()=>{}},
     cloudAuth:{supaFetch:async()=>({})},
     uiNavigation:{setCustomerRoute:()=>{}},
@@ -37,6 +37,7 @@ test('Customers exposes totals before UI and rejects partial or double binding',
   assert.throws(()=>customers.recoverPendingMorningOperation(),/customers_ui_not_bound/);
   assert.throws(()=>customers.bindUi({}),/customers_layout_bindScrollViewport_required/);
   const dependencies=ports();
+  assert.throws(()=>customers.bindUi({...dependencies,storagePersistence:{...dependencies.storagePersistence,commitSave:null}}),/customers_persistence_commitSave_required/);
   assert.throws(()=>customers.bindUi({...dependencies,bankTransactions:{}}),/customers_bank_getTransactions_required/);
   assert.throws(()=>customers.bindUi({...dependencies,refreshForMorningRecovery:null}),/customers_recovery_refresh_required/);
   customers.bindUi(dependencies);

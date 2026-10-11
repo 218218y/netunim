@@ -394,6 +394,17 @@ as controlled injection. --baseline must reproduce stale success; --phase limits
 local runs. See docs/CALENDAR_TRANSACTION_CONFIRMATION.md for point-in-time proof,
 typed implementation/consumer contracts and remaining delivery/privacy ownership.
 
+Morning historical metadata: morning_metadata_durability.test.mjs and
+orders_local_commit_receipt.test.mjs separate staging/provider verification from
+an explicit local commit. runtime_morning_metadata.py (browser-morning) exercises
+the actual UI and journal in three disposable profiles: delayed completion,
+native abort plus emergency quota injection and relogin. Failed storage remains
+visible/retryable; exact document/operation IDs, financial progress, Main baseline
+and raw Shared are retained, and fresh reload restores confirmed metadata/note.
+Provider responses/auth are synthetic and read-only. --baseline reproduces the
+old premature completion; see docs/MORNING_METADATA_DURABILITY.md for the contract,
+unsaved-generation/unload guard, recovery and remaining scope.
+
 Credit preferences: tests/credit_preferences_failure.test.mjs and
 tests/credit_preferences_port.test.mjs cover domain/adapter failure semantics;
 tests/runtime_credit_preferences.py (browser-lifecycle) checks actual composition,

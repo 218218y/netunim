@@ -8,7 +8,7 @@ const require=createRequire(import.meta.url);
 const {parse}=require('acorn');
 
 const ROOT=path.resolve(import.meta.dirname,'..');
-const SAVE_CALLS=new Set(['saveState','saveChecksState','scheduleSave','scheduleCheckSave']);
+const SAVE_CALLS=new Set(['saveState','saveChecksState','scheduleSave','scheduleCheckSave','commitSave']);
 
 function walk(node,visit){
   if(!node||typeof node!=='object')return;

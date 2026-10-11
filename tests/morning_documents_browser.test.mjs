@@ -83,14 +83,15 @@ function createDomainsCustomersDocumentsBrowser(ports){return buildMorning({...p
   const hydrateRoot={querySelectorAll(selector){assert.equal(selector,'[data-morning-debt-operation]');return[button]}};
   assert.equal(await legacyBrowser.hydrateDebtDocumentLinks(hydrateRoot),1);
   assert.equal(statusReads,2,'legacy metadata hydration reads the same authoritative operation ledger');
-  assert.equal(button.dataset.clickArg0,'legacy-doc');assert.equal(label.textContent,'קבלה 2001','missing ledger metadata is read back from the official Morning document instead of guessed');
+  assert.equal(button.dataset.clickArg0,'legacy-doc');assert.equal(label.textContent,'קבלה 2001 · לא נשמר בחוב','verified provider metadata without a local commit is displayed separately');
+  assert.equal(button.dataset.morningDebtOperation,'legacy-operation','read-only resolution cannot remove the local recovery marker');
 
   let metadataReads=0;const resolvedMetadata=[];
   const metadataBrowser=createDomainsCustomersDocumentsBrowser({
     operationScope:{capture:()=>()=>{},captureRead:()=>()=>{}},
     modal(){},toast(message){throw new Error(`Unexpected toast: ${message}`)},dateEditorMarkup(){return''},
     supaFetch:async(_path,options)=>{const body=JSON.parse(options.body);assert.equal(body.action,'status');metadataReads++;return new Response(JSON.stringify({ok:true,operation:{state:'created',verified_at:'2026-09-09T10:00:00Z',document_id:'doc-3889',document_number:'3889',document_type:320}}),{status:200,headers:{'Content-Type':'application/json'}})},
-    onDebtDocumentMetadataResolved:metadata=>resolvedMetadata.push(metadata),
+    onDebtDocumentMetadataResolved:metadata=>{resolvedMetadata.push(metadata);return true},
   });
   const richLabel={textContent:'מסמך Morning'},richButton={dataset:{morningDebtOperation:'operation-3889'},title:'',isConnected:true,querySelector(){return richLabel}},richRoot={querySelectorAll(){return[richButton]}};
   assert.equal(await metadataBrowser.hydrateDebtDocumentLinks(richRoot),1);assert.equal(metadataReads,1);assert.equal(richButton.dataset.clickArg0,'doc-3889');assert.equal(richLabel.textContent,'חשבונית מס / קבלה 3889');assert.equal(richButton.dataset.morningDebtOperation,undefined);assert.deepEqual(resolvedMetadata,[{operationId:'operation-3889',documentId:'doc-3889',documentNumber:'3889',documentType:320,verifiedAt:'2026-09-09T10:00:00Z'}]);
