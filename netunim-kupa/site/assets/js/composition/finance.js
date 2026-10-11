@@ -15,6 +15,7 @@ export function composeKupaFinance({
   getUiModal,automaticAccess,operationAccess,
 }){
   if(typeof automaticAccess!=='function')throw new Error('finance_automatic_access_required');
+  if(typeof storagePersistence?.recoverLocalState!=='function')throw new TypeError('finance_local_recovery_required');
   const bridge=createBankBridgeIntegration();
   const chequeImages=createBankChequeImageStorage({
     supaFetch:(...args)=>cloudAuth.supaRest(...args),
@@ -51,6 +52,7 @@ export function composeKupaFinance({
     sharedChecksHaveLocalWork:(...args)=>syncChecksState.sharedChecksHaveLocalWork(...args),
     saveSharedChecksToCloud:(...args)=>syncChecks.saveSharedChecksToCloud(...args),
     saveState:(message,options={})=>storagePersistence.saveState(message,{...options,domains:['bank','bankFeed']}),
+    recoverLocalState:assertCurrent=>storagePersistence.recoverLocalState(assertCurrent),
     syncSharedChecksFromCloud:(...args)=>syncChecks.syncSharedChecksFromCloud(...args),
     sharedChecksObservedSequence:(...args)=>domainsBankSelectors.sharedChecksObservedSequence(...args),
     toast:(...args)=>uiStatus.toast(...args),

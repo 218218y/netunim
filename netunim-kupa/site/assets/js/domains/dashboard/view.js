@@ -4,9 +4,10 @@ import {money, moneyWithCents, formatNullableMoney} from '../../core/money.js';
 import {dateFmt, daysFromToday, monthLabel} from '../../core/dates.js';
 import {cashflowBreachMarkup} from '../../shared/cashflow-breakdown.js';
 import {dashboardNetPositionData} from './model.js';
+import {bankLocalSnapshotNotice} from '../bank/local-snapshot-view.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createDomainsDashboardView({runFinance=withFinanceDerivations, model, activeChecks, depositedChecks, bankLongTermPosition, bankAsOfDate, bankHomeAsOfDate, bankCurrentBalance, bankHomeBalance, bankNextCycleCommitments, bankHomeNextCycleCommitments, bankProjectedThisMonth, bankHomeProjectedThisMonth, ordersFinanceSummary=()=>null, refreshOrdersFinanceSummary=async()=>false}){
+export function createDomainsDashboardView({runFinance=withFinanceDerivations, model, activeChecks, depositedChecks, bankLongTermPosition, bankAsOfDate, bankHomeAsOfDate, bankCurrentBalance, bankHomeBalance, bankNextCycleCommitments, bankHomeNextCycleCommitments, bankProjectedThisMonth, bankHomeProjectedThisMonth, bankLocalSnapshotState=()=>null, ordersFinanceSummary=()=>null, refreshOrdersFinanceSummary=async()=>false}){
 function bankSnapshotLabel(){
   if(!model.state.bank?.updatedAt)return 'היתרה העסקית טרם סונכרנה.';
   const source=model.state.bank.source==='hapoalim'?'בנק הפועלים':'נתון קודם — מומלץ לרענן מהבנק';
@@ -81,6 +82,7 @@ function renderDashboardContent(){
   const long=dashboardNetPositionData(bankLongTermPosition(),ordersFinanceSummary());
   const partial=long.forecastIncomplete===true,partialFacts=[long.missingAmountCount?`${long.missingAmountCount} ללא סכום ₪`:null,long.coverageGapCount?`${long.coverageGapCount} בכיסוי חברה חסר/ישן`:null,long.unassignedCount?`${long.unassignedCount} ללא מועד חיוב ודאי`:null].filter(Boolean);
   document.getElementById('content').innerHTML=`
+  ${bankLocalSnapshotNotice(bankLocalSnapshotState())}
   ${bankOverviewMarkup()}
   <div class="net-summary dashboard-net-summary"><div class="net-mini"><span>סה״כ קופה</span><b>+ ${money(long.kupa)}</b><small>מזומן + צקים שטרם הופקדו</small></div><div class="net-mini"><span>חוב לקוחות פתוח</span><b>${long.customerOpen===null?'—':`+ ${money(long.customerOpen)}`}</b></div><div class="net-mini"><span>נטו ספקים</span><b>${long.supplierNet===null?'—':money(long.supplierNet)}</b></div><div class="net-total"><span>מאזן כולל נטו${partial?' · חלקי':''}</span><b>${formatNullableMoney(long.net)}</b><small>עו״ש עסקי − כל האשראים העסקיים העתידיים − חודש הוצאות עסקיות + קופה + חוב לקוחות פתוח + נטו ספקים${partial?' · מבוסס על סכומי ₪ הידועים כרגע':''}${partialFacts.length?` · ${esc(partialFacts.join(' · '))}`:''}</small></div></div>
   <div class="grid two" style="margin-top:16px">

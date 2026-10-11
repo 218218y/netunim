@@ -35,6 +35,7 @@ function fixture(t,site,body,{heads={revision:4,financeRevision:9}}={}){
   const bridge={getBridgeToken:()=> 'paired',autoEnabled:()=>false,bankAutoEnabled:()=>false,creditAutoEnabled:()=>false,creditAutoMode:()=> 'smart',autoAttemptDelayMs:()=>0,markAutoAttempt(){},bankAttemptReady:()=>true,creditAttemptReady:()=>true,
     status:async()=>({bridgeVersion:73,configured:true}),fetchBalance:async()=>{scrapes++;return {fetchedAt:stamp,accounts:{business:{balance:500,accountId:'account',transactions:[]}}}}};
   const ports={model,session:{connectionMode:'supabase',backendReady:true},checksSession,operationScope,autoScope:()=>null,tab:{primaryTab:true},loadSession:()=>({user:{id:'fixture'}}),toast:message=>messages.push(message),render(){},readRevision:()=>0,
+    saveState:()=>assert.fail('cloud Bank receipt entered the local snapshot writer'),recoverLocalState:()=>assert.fail('cloud Bank receipt entered local recovery'),
     sharedChecksHaveLocalWork:()=>false,checksHaveLocalWork:()=>false,getSharedChecks:()=>[],saveSharedChecksToCloud:async()=>true,syncSharedChecksFromCloud:async()=>true,sharedChecksObservedSequence:()=>0,bridge,
     refreshFinanceCloudSnapshot:async()=>{reads++;return {verified:true,state:model.state,...heads}},
     refreshKupaReadout:async()=>{reads++;if(serverBank)checksSession.kupaCloudReadState={...structuredClone(state),bank:structuredClone(serverBank)};return true},
