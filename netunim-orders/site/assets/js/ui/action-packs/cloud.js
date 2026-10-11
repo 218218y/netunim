@@ -14,6 +14,7 @@ const actions={
   'open-cloud':(element,event)=>{openCloud()},
   'logout-cloud':(element,event)=>{logoutCloud()},
   'reset-local-site-storage':()=>resetLocalSiteStorage(),
+  'recover-orders-sync':()=>uiCloud.recoverOrdersSync(),
 };
-return markMutationActions(actions,{all:['finish-cloud-login', 'enable-cloud', 'open-cloud', 'logout-cloud']});
+return markMutationActions(actions,{all:['finish-cloud-login', 'enable-cloud', 'open-cloud', 'logout-cloud'],orders:['recover-orders-sync']});
 }

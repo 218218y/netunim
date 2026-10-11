@@ -6,7 +6,7 @@ import {beginLocalSiteResetNavigation} from '../shared/local-site-reset.js';
 const CLOUD_RECOVERY_DELAYS_MS=[15_000,30_000,60_000,120_000];
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createUiCloud({model, files, tab, session, checksSession, ui, modal, confirmDialog, supaConfigured, toast, closeModal, authPassword, authPasswordForLocalReset, setCloud, showSecondaryTabGuard, prepareCloudState, render, writeStateToFolder, loadSession, readCloud, verifyLocalResetCloud, applyOrderCloudState, composeOrderCloudState=(cloud,current)=>({...structuredClone(cloud),checks:structuredClone(current.checks||[])}), refreshKupaReadout, syncSharedChecksFromCloud, requestCloudSave, startPolling, stopPolling, saveSession, renderSettings, resumeCalendarAfterCloudLogin, startFinanceAutoSync=()=>{}, stopFinanceAutoSync=()=>{}, storageOwnerCurrent=()=>null, storageOwnerAdoption=()=>null, startStorageV2OwnerTransfer=async()=>{throw new Error('storage_transfer_unavailable')}, storageV2CloudOutboxActive=()=>false, storageV2PrimaryRequested=()=>false, refreshStorageV2CloudState=async()=>null, adoptStorageV2CloudHead=async()=>null, setStorageV2CloudControl=async()=>null, storageV2CommitPromise=()=>Promise.resolve()}){
+export function createUiCloud({prepareConcurrentAckRecovery=null,downloadRecoveryBackup=null,model, files, tab, session, checksSession, ui, modal, confirmDialog, supaConfigured, toast, closeModal, authPassword, authPasswordForLocalReset, setCloud, showSecondaryTabGuard, prepareCloudState, render, writeStateToFolder, loadSession, readCloud, verifyLocalResetCloud, applyOrderCloudState, composeOrderCloudState=(cloud,current)=>({...structuredClone(cloud),checks:structuredClone(current.checks||[])}), refreshKupaReadout, syncSharedChecksFromCloud, requestCloudSave, startPolling, stopPolling, saveSession, renderSettings, resumeCalendarAfterCloudLogin, startFinanceAutoSync=()=>{}, stopFinanceAutoSync=()=>{}, storageOwnerCurrent=()=>null, storageOwnerAdoption=()=>null, startStorageV2OwnerTransfer=async()=>{throw new Error('storage_transfer_unavailable')}, storageV2CloudOutboxActive=()=>false, storageV2PrimaryRequested=()=>false, refreshStorageV2CloudState=async()=>null, adoptStorageV2CloudHead=async()=>null, setStorageV2CloudControl=async()=>null, storageV2CommitPromise=()=>Promise.resolve()}){
 function clearCloudRecovery(){if(session.cloudRecoveryTimer){clearTimeout(session.cloudRecoveryTimer);session.cloudRecoveryTimer=null}session.cloudRecoveryAttempt=0}
 function scheduleCloudRecovery(){
   if(!tab.primaryTab||!navigator.onLine||localStorage.getItem(CLOUD_AUTO_KEY)!=='1'||!loadSession()||session.cloudRecoveryTimer)return;
@@ -113,6 +113,33 @@ async function openCloud({renderAfter=true,quiet=false,hydrateSecondary=true,man
   }catch(e){console.error(e);if(!quiet)toast('פתיחת הענן נכשלה: '+e.message);if(manageStatus)setCloud(navigator.onLine?'ענן: ממתין להתאוששות':'ענן: אופליין',navigator.onLine?'':'offline');scheduleCloudRecovery();return false}
 }
 
+async function recoverOrdersSync(){
+  if(!tab.primaryTab)return showSecondaryTabGuard();
+  if(!navigator.onLine||!loadSession()){toast('נדרש חיבור לענן כדי לבדוק את השינויים המקומיים.');return false}
+  if(!prepareConcurrentAckRecovery||!downloadRecoveryBackup){toast('פעולת השחזור אינה זמינה בגרסה זו.');return false}
+  try{
+    const review=await prepareConcurrentAckRecovery();
+    downloadRecoveryBackup(review.backup);
+    const approved=await confirmDialog('בדיקה וחידוש סנכרון',`נתוני הענן r${review.revision} תואמים לבסיס שנשמר במחשב. אישור הענן נשמר עד פעולה ${review.ackSeq}; ${review.pendingCount} פעולות מקומיות עדיין ממתינות.
+
+הבדלים מהענן:
+${review.diffText||'הפירוט נמצא בקובץ הגיבוי.'}
+
+הורד קובץ גיבוי הכולל את הנתונים המקומיים, הענן ויומן השינויים. ודא שהקובץ נשמר לפני המשך.
+
+חידוש הסנכרון ישמור את השינויים המקומיים במסלול השמירה הרגיל. אם הנתונים או החשבון ישתנו, הבדיקה תיעצר ותידרש בדיקה חדשה.`,{confirmText:'הגיבוי נשמר — חדש סנכרון',cancelText:'ביטול'});
+    if(!approved)return false;
+    const result=await review.resume();
+    if(result){render();renderSettings()}
+    else toast('השינויים נשמרו מקומית; הסנכרון עדיין לא אושר. בדוק את מצב הענן.');
+    return result;
+  }catch(error){
+    console.error('Orders guarded sync recovery',error);
+    const messages={orders_recovery_remote_changed:'הענן התקדם או אינו תואם לבסיס המקומי. נדרשת בדיקת מיזוג; השחזור לא שינה את הנתונים.',orders_recovery_unsaved_view:'התצוגה כוללת שינוי שאין לו עדיין אישור שמירה מקומי. השחזור לא התחיל.',orders_recovery_not_concurrent_ack:'החסימה אינה מסוג שמתאים לשחזור הזה. נדרשת בדיקה של ההתנגשות.',orders_recovery_view_changed:'הנתונים השתנו בזמן הבדיקה. יש לבצע בדיקה חדשה.',storage_cloud_recovery_stale:'יומן השינויים השתנה בזמן הבדיקה. יש לבצע בדיקה חדשה.'};
+    toast(messages[error?.code||error?.message]||'בדיקת הסנכרון נעצרה; הגיבוי והשינויים המקומיים נשמרו.');
+    return false;
+  }
+}
 function logoutCloud(){
   // Logout clears authorization only. activeStorageOwner is durable and remains
   // unchanged, so account data can never fall through to the local namespace.
@@ -144,5 +171,5 @@ Supabase, קובצי data וגיבויים מחוץ לדפדפן לא ישתנו
   }
 }
 
-return { loginModal, finishCloudLogin, finishLocalResetLogin, enableCloud, openCloud, logoutCloud, resetLocalSiteStorage };
+return { recoverOrdersSync, loginModal, finishCloudLogin, finishLocalResetLogin, enableCloud, openCloud, logoutCloud, resetLocalSiteStorage };
 }

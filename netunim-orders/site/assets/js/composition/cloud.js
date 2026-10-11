@@ -1,7 +1,7 @@
 import {createUiCloud} from '../ui/cloud.js';
 
 export function composeCloudUi({
-  model,files,tab,session,checksSession,ui,uiModal,cloudAuth,uiStatus,storageBrowser,uiTabGuard,stateSnapshots,uiNavigation,storageFiles,
+  model,files,tab,session,checksSession,ui,uiModal,cloudAuth,uiStatus,storageBrowser,uiTabGuard,stateSnapshots,uiNavigation,storageFiles,uiBackup,
   cloudTransport,domainsBankCache,syncChecks,syncDocument,getUiSettings,getCalendarController,domainsFinanceController,storageV2Coordinator,storageV2Cloud,
 }){
   if(typeof getUiSettings!=='function'||typeof getCalendarController!=='function')throw new Error('orders_cloud_ui_ports_required');
@@ -33,6 +33,8 @@ export function composeCloudUi({
     refreshKupaReadout:(...args)=>domainsBankCache.refreshKupaReadout(...args),
     syncSharedChecksFromCloud:(...args)=>syncChecks.syncSharedChecksFromCloud(...args),
     requestCloudSave:(...args)=>syncDocument.requestCloudSave(...args),
+    prepareConcurrentAckRecovery:async()=>{const review=await syncDocument.prepareConcurrentAckRecovery();return {...review,diffText:uiBackup.syncRecoveryDiffText(review.backup.remote.state,review.backup.localState)}},
+    downloadRecoveryBackup:payload=>uiBackup.downloadBlob(new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),`orders-sync-recovery_${new Date().toISOString().replace(/[:.]/g,'-')}.json`),
     storageV2CommitPromise:()=>storageBrowser.storageV2CommitPromise,
     startPolling:(...args)=>syncDocument.startPolling(...args),
     stopPolling:(...args)=>syncDocument.stopPolling(...args),

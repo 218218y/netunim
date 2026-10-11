@@ -449,6 +449,7 @@ service.bindUi({uiLayout,uiModal,uiStatus,storagePersistence,uiDateEditor});
 service.assertReady();
 
 const uiCloud=composeCloudUi({
+  uiBackup,
   model,files,tab,session,checksSession,ui,uiModal,cloudAuth,uiStatus,storageBrowser,uiTabGuard,stateSnapshots,uiNavigation,storageFiles,
   cloudTransport,domainsBankCache,syncChecks,syncDocument,getUiSettings:()=>uiSettings,getCalendarController:()=>domainsCalendarController,
   domainsFinanceController,storageV2Coordinator,storageV2Cloud,

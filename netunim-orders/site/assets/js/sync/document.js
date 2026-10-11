@@ -1,3 +1,4 @@
+import {recoverPostAckPublication} from '../shared/cloud-post-ack-recovery.js';
 import {cloudAckPublicationDiagnostic} from '../shared/cloud-ack-diagnostic.js';
 import {captureCloudWriteScope,cloudWriteScopeIsCurrent,cloudWriteScopeHasIdentity} from '../shared/cloud-write-scope.js';
 import {structuredSyncConflict} from '../shared/cloud-sync.js';
@@ -16,9 +17,10 @@ function collectionRows(state,key){const value=key.split('.').reduce((obj,part)=
 function effectiveDeleteIntents(base,candidate,intents){const out={},declared=normalizeDeleteIntents(intents);for(const [key,ids] of Object.entries(declared)){const before=collectionRows(base,key),after=collectionRows(candidate,key),keyField=key==='cards'?'name':'id',kept=new Set(after.map(x=>String(x?.[keyField]??'')));const removed=before.map(x=>String(x?.[keyField]??'')).filter(id=>id&&ids.includes(id)&&!kept.has(id)).sort();if(removed.length)out[key]=removed}return out}
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createSyncDocument({getCloudWriteScope=()=>null,model,files,session,tab,toast,setCloud,prepareCloudState,writeStateToFolder,readCloud,rpcSaveV2,merge3,applyOrderCloudState,composeOrderCloudState=(cloud,current)=>({...clone(cloud),checks:clone(current.checks||[])}),cloudEnabled,sameOrderCloudData,cloudHasLocalWork,render,readCloudMeta,refreshKupaReadout,pollSharedChecks,refreshCloudTimestamp,refreshStorageV2CloudState=async()=>null,materializeStorageV2CloudFlight=async()=>null,acknowledgeStorageV2CloudFlight=async()=>null,rejectStorageV2CloudFlight=async()=>null,setStorageV2CloudControl=async()=>null,adoptStorageV2CloudHead=async()=>null,storageV2CommitPromise=()=>Promise.resolve(),storageV2PreparationActive=()=>false}){
+export function createSyncDocument({readStorageV2CloudRecovery=null,commitStorageV2CloudRecovery=null,getCloudWriteScope=()=>null,model,files,session,tab,toast,setCloud,prepareCloudState,writeStateToFolder,readCloud,rpcSaveV2,merge3,applyOrderCloudState,composeOrderCloudState=(cloud,current)=>({...clone(cloud),checks:clone(current.checks||[])}),cloudEnabled,sameOrderCloudData,cloudHasLocalWork,render,readCloudMeta,refreshKupaReadout,pollSharedChecks,refreshCloudTimestamp,refreshStorageV2CloudState=async()=>null,materializeStorageV2CloudFlight=async()=>null,acknowledgeStorageV2CloudFlight=async()=>null,rejectStorageV2CloudFlight=async()=>null,setStorageV2CloudControl=async()=>null,adoptStorageV2CloudHead=async()=>null,storageV2CommitPromise=()=>Promise.resolve(),storageV2PreparationActive=()=>false}){
 const outboxRetryScheduler=createOutboxRetryScheduler();
 let savingScope=null;
+let concurrentAckReview=null;
 const writeScopeCurrent=(scope,head=null)=>tab.primaryTab&&!storageV2PreparationActive()&&cloudWriteScopeIsCurrent(scope,getCloudWriteScope(),head);
 async function setWriteControl(scope,control){
   try{return await setStorageV2CloudControl(control,{expectedScope:scope,isCurrent:()=>writeScopeCurrent(scope)})}
@@ -152,12 +154,22 @@ async function saveStorageV2CloudFlight(initialFlight,scope){
     }
     currentCloud=rebased.state;
   }
-  const expectedGeneration=Number(session.localGeneration||0),currentState=composeOrderCloudState(currentCloud,model.state);
-  const publication=await commitCloudCheckpoint({
+  let expectedGeneration=Number(session.localGeneration||0);
+  const previousState=clone(model.state),currentState=composeOrderCloudState(currentCloud,model.state);
+  let publication=await commitCloudCheckpoint({
     commit:()=>acknowledgeStorageV2CloudFlight(flight.operationId,newRevision,authoritative,{currentState,expectedSeq}),
     isCurrent:committed=>writeScopeCurrent(scope,committed)&&Number(session.localGeneration||0)===expectedGeneration&&committed?.seq===expectedSeq,
     publish:()=>{if(!sameOrderCloudData(model.state,currentCloud))applyOrderCloudState(currentCloud)},
   });
+  if(!publication.published&&publication.reason==='stale'&&writeScopeCurrent(scope,publication.committed)&&readStorageV2CloudRecovery&&commitStorageV2CloudRecovery){
+    try{
+      const recovered=await recoverPostAckPublication({isCurrent:head=>writeScopeCurrent(scope,head),generation:()=>Number(session.localGeneration||0),visible:()=>model.state,
+        equal:sameOrderCloudData,merge:(before,local,candidate,deleteIntents)=>merge3(prepareCloudState(before),prepareCloudState(local),prepareCloudState(candidate),{deleteIntents}),
+        read:readStorageV2CloudRecovery,commit:commitStorageV2CloudRecovery,publish:state=>{applyOrderCloudState(state)}},
+        {previousState,candidateState:currentState,candidateSeq:expectedSeq,baseState:authoritative,ackRevision:newRevision,ackSeq:flight.endSeq});
+      if(recovered){publication={committed:recovered.state,published:true};expectedGeneration=recovered.generation}
+    }catch(error){console.error('post-ACK recovery retained for review',error)}
+  }
   const committedState=publication.committed;
   if(!writeScopeCurrent(scope,committedState)){console.warn('Main cloud ACK',cloudAckPublicationDiagnostic('SCOPE_CHANGED_AFTER_COMMIT',{baseRevision:flight.baseRevision,ackRevision:newRevision,endSeq:flight.endSeq,candidateSeq:expectedSeq,observedSeq:committedState?.seq}));return false}
   session.cloudRevision=newRevision;session.cloudUpdatedAt=res.row?.updated_at||session.cloudUpdatedAt;session.lastCloudState=clone(authoritative);session.cloudConflictBlocked=false;
@@ -220,6 +232,50 @@ async function requestStorageV2CloudSave(message='השינויים סונכרנ�
 }
 
 const requestCloudSave=requestStorageV2CloudSave;
+
+// Review only the committed-ACK fence, never business conflicts or retries.
+// The remote must still equal the retained authoritative base. An advanced
+// remote head requires ordinary three-way conflict review, not an overwrite.
+async function prepareConcurrentAckRecovery(){
+  concurrentAckReview=null;
+  if(session.cloudBusy||session.cloudSavePromise||!readStorageV2CloudRecovery||!commitStorageV2CloudRecovery)throw new Error('orders_recovery_unavailable');
+  const generation=Number(session.localGeneration||0),visible=clone(model.state),live=getCloudWriteScope();
+  let evidence=await readStorageV2CloudRecovery();
+  const scope=captureCloudWriteScope(live,evidence.head),head=evidence.head;
+  if(!writeScopeCurrent(scope,head)||Number(session.localGeneration||0)!==generation)throw new Error('orders_recovery_scope_changed');
+  if(head.flight||head.control?.retry||head.control?.conflict?.kind!=='concurrent-ack'||head.control.conflict.currentRemoteRevision!==head.base.revision)throw new Error('orders_recovery_not_concurrent_ack');
+  if(!sameOrderCloudData(evidence.state,visible))throw new Error('orders_recovery_unsaved_view');
+  const expected=evidence.expectedHead;
+  evidence=await readStorageV2CloudRecovery({afterSeq:head.base.ackSeq,previousState:composeOrderCloudState(head.base.state,evidence.state)});
+  if(Object.keys(expected).some(key=>expected[key]!==evidence.expectedHead[key]))throw new Error('storage_cloud_recovery_stale');
+  if(!sameOrderCloudData(evidence.replayedPrevious,evidence.state))throw new Error('orders_recovery_journal_mismatch');
+  const remote=await readCloud();
+  if(!writeScopeCurrent(scope,head)||Number(session.localGeneration||0)!==generation||!sameOrderCloudData(model.state,visible))throw new Error('orders_recovery_view_changed');
+  if(!remote?.state||Number(remote.revision)!==head.base.revision||!sameOrderCloudData(remote.state,head.base.state))throw new Error('orders_recovery_remote_changed');
+  const review={scope,generation,visible,evidence,remote};concurrentAckReview=review;
+  return {revision:head.base.revision,ackSeq:head.base.ackSeq,pendingCount:head.seq-head.base.ackSeq,
+    backup:{kind:'orders-concurrent-ack-review',version:1,capturedAt:new Date().toISOString(),localState:visible,remote:clone(remote),storage:clone(evidence.backup)},
+    resume:()=>resumeConcurrentAckRecovery(review)};
+}
+async function resumeConcurrentAckRecovery(review){
+  if(!review||review!==concurrentAckReview)throw new Error('orders_recovery_review_required');
+  concurrentAckReview=null;
+  const {scope,generation,visible,evidence,remote}=review;
+  const current=()=>writeScopeCurrent(scope)&&!session.cloudBusy&&!session.cloudSavePromise&&Number(session.localGeneration||0)===generation&&sameOrderCloudData(model.state,visible);
+  if(!current())throw new Error('orders_recovery_view_changed');
+  const freshRemote=await readCloud();
+  if(!current())throw new Error('orders_recovery_scope_changed');
+  if(Number(freshRemote?.revision)!==Number(remote.revision)||!freshRemote?.state||!sameOrderCloudData(freshRemote.state,remote.state))throw new Error('orders_recovery_remote_changed');
+  const committed=await commitStorageV2CloudRecovery(evidence.state,{expectedHead:evidence.expectedHead,conflictKind:'concurrent-ack',isCurrent:current});
+  if(!writeScopeCurrent(scope,committed))return false;
+  // No model replacement: it was proven identical to the durable recovered
+  // state. A later edit remains live and will use the ordinary pending flight.
+  session.cloudConflictBlocked=false;session.cloudRevision=committed.base.revision;session.cloudUpdatedAt=freshRemote.updated_at||session.cloudUpdatedAt;session.lastCloudState=clone(committed.base.state);
+  setCloud('ענן: שינוי מקומי ממתין לסנכרון');
+  const saved=await requestCloudSave('השינויים המקומיים אומתו וסונכרנו');
+  if(!writeScopeCurrent(scope))return false;
+  startPolling();return saved;
+}
 
 function pollAccessCurrent(){return !storageV2PreparationActive()&&tab.primaryTab&&cloudEnabled()&&navigator.onLine&&!session.syncCapabilitiesError&&!session.syncCapabilitiesChecking}
 function pollViewCurrent({generation,local}={}){return pollAccessCurrent()&&!session.cloudConflictBlocked&&Number(session.localGeneration||0)===generation&&!session.cloudSaveRequested&&!cloudHasLocalWork()&&(!local||sameOrderCloudData(model.state,local))}
@@ -314,5 +370,5 @@ async function quiesceForStorageCutover(){
   outboxRetryScheduler.cancel();return true;
 }
 
-return { requestCloudSave, requestStorageV2CloudSave, cloudPoll:trackedCloudPoll, resumeAfterReconnect, startPolling,stopPolling,quiesceForStorageCutover,refreshForMorningRecovery };
+return { requestCloudSave, requestStorageV2CloudSave, prepareConcurrentAckRecovery, cloudPoll:trackedCloudPoll, resumeAfterReconnect, startPolling,stopPolling,quiesceForStorageCutover,refreshForMorningRecovery };
 }

@@ -4,6 +4,8 @@ import {readStorageCloudBase,readStorageCloudFlight,readStorageCloudControl,read
 import {createIndexedDbConnection} from './indexed-db-connection.js';
 import {readStorageRecord,sealStorageRecord} from './storage-journal-model.js';
 import {historicalShadowRoleForSide} from './storage-v2-persisted-compat.js';
+import {assertCloudRecoveryHead} from './storage-cloud-recovery.js';
+import {readStorageCheckpoint} from './storage-checkpoint.js';
 
 export function createStorageJournalDb({name='netunim-storage-v2'}={}){
   const stores=['checkpoints','journal','metadata','bases','flights','controls'];
@@ -138,6 +140,19 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
     assertFence(current,owner,epoch,writer);
     if(expectedHead&&(current.metadata.seq!==expectedHead.seq||current.flights||current.checkpoints?.checksum!==expectedHead.checkpointChecksum||current.bases?.checksum!==expectedHead.baseChecksum||current.controls?.checksum!==expectedHead.controlChecksum))throw new Error('storage_control_head_changed');
     tx.objectStore('controls').delete(owner);done(true);
+  })}
+  function commitCloudRecovery(owner,epoch,writer,checkpoint,{expectedHead,conflictKind=null,isCurrent=()=>true}={}){return change(owner,(tx,current,done)=>{
+    assertFence(current,owner,epoch,writer);
+    if(!isCurrent())throw new Error('storage_cloud_scope_changed');
+    const decoded=readStorageCloudHead({base:current.bases,flight:current.flights,control:current.controls},{owner,epoch,seq:current.metadata.seq});
+    assertCloudRecoveryHead(decoded,expectedHead,conflictKind);
+    if(current.checkpoints?.checksum!==expectedHead.checkpointChecksum||current.bases?.checksum!==expectedHead.baseChecksum||(current.controls?.checksum??null)!==expectedHead.controlChecksum)throw new Error('storage_cloud_recovery_stale');
+    const next=readStorageCheckpoint(checkpoint);
+    if(next.owner!==owner||next.epoch!==epoch||next.seq!==current.metadata.seq)throw new Error('storage_cloud_recovery_stale');
+    tx.objectStore('checkpoints').put(checkpoint,owner);
+    if(conflictKind==='concurrent-ack')tx.objectStore('controls').delete(owner);
+    // The base/ACK, journal, physical keys and operation IDs are untouched.
+    done(true);
   })}
   function adoptCloudHead(owner,epoch,writer,checkpoint,base,{expectedHead=null}={}){return change(owner,(tx,current,done)=>{
     assertFence(current,owner,epoch,writer);if(current.flights)throw new Error('storage_flight_pending');
@@ -465,5 +480,5 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
       tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_fenced_recovery_aborted'));tx.onerror=()=>{error??=tx.error};
     }))
   }
-  return {load,install,initializeCloudHead,claim,append,compact,appendBoundary,replaceCheckpoint,replaceLocalCheckpoint,setBase,beginFlight,acknowledge,rejectFlight,setControl,clearControl,adoptCloudHead,resetState,resetCloudHead,readBoundary,beginBoundary,advanceBoundary,completeBoundary,readOwnerBinding,readOwnerHandoff,initializeOwnerBinding,reserveLocalOwnerTarget,adoptPreparedLocalOwner,beginOwnerHandoff,advanceOwnerHandoff,activateOwnerHandoff,completeOwnerHandoff,readBootstrapGroup,beginBootstrapGroup,advanceBootstrapGroup,readV2Marker,markAccountMarker,readLocalBirth,beginLocalBirth,advanceLocalBirth,markLocalEngine,readLocalEngine,adoptFencedAccount};
+  return {load,install,initializeCloudHead,claim,append,compact,appendBoundary,replaceCheckpoint,replaceLocalCheckpoint,setBase,beginFlight,acknowledge,rejectFlight,setControl,clearControl,commitCloudRecovery,adoptCloudHead,resetState,resetCloudHead,readBoundary,beginBoundary,advanceBoundary,completeBoundary,readOwnerBinding,readOwnerHandoff,initializeOwnerBinding,reserveLocalOwnerTarget,adoptPreparedLocalOwner,beginOwnerHandoff,advanceOwnerHandoff,activateOwnerHandoff,completeOwnerHandoff,readBootstrapGroup,beginBootstrapGroup,advanceBootstrapGroup,readV2Marker,markAccountMarker,readLocalBirth,beginLocalBirth,advanceLocalBirth,markLocalEngine,readLocalEngine,adoptFencedAccount};
 }
