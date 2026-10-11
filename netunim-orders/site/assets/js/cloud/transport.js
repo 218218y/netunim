@@ -1,6 +1,7 @@
 import {beginMeasure} from '../shared/runtime-performance.js';
 import {readBankSnapshotReceipt} from '../shared/bank-snapshot-receipt.js';
 import {financeFencePayload} from '../shared/finance-fence.js';
+import {readFinanceLeaseReceipt} from '../shared/finance-lease-receipt.js';
 import {assertValidOrderCloudState,validOrderCloudState} from '../state/validation.js';
 import {normalizeSharedChecks} from '../shared/shared-checks-contract.js';
 import {CLOUD_DOC, CLOUD_TABLE, CLOUD_RPC, SHARED_CHECKS_DOC, SHARED_CHECKS_TABLE, KUPA_READ_DOC, KUPA_READ_TABLE, SHARED_CHECKS_RPC} from '../state/constants.js';
@@ -46,7 +47,15 @@ async function readKupaReadOnlyCloud({assertCurrent}={}){assertCurrent?.();const
 async function rpcSaveFinanceSync(state,expectedRevision,operationId,audit={},lease=null){
   const assertCurrent=lease?.assertCurrent;assertCurrent?.();const op=String(operationId||'').trim();if(!op)throw new Error('מזהה פעולת הסינכרון הפיננסי חסר');const r=await supaFetch(`/rest/v1/rpc/${FINANCE_RPC}_v6`,{method:'POST',networkRetry:true,...(assertCurrent?{assertRequestScope:assertCurrent}:{}),dataPriority:'high',body:JSON.stringify({p_document_name:FINANCE_DOC,p_expected_revision:Number(expectedRevision||0),p_state:state,p_operation_id:op,p_audit:audit,...financeFencePayload(lease)})});const txt=await r.text();assertCurrent?.();let j;try{j=txt?JSON.parse(txt):null}catch{j=null}return {r,j,txt,row:Array.isArray(j)?j[0]:j}}
 function financeLeaseName(value){const name=String(value||'').trim();if(name!=='bank'&&name!=='credit')throw new Error('סוג נעילת הסינכרון הפיננסי אינו תקין');return name}
-async function claimFinanceSyncLease(leaseName,leaseToken,{ttlSeconds=FINANCE_LEASE_TTL_SECONDS,assertCurrent}={}){assertCurrent?.();const name=financeLeaseName(leaseName),token=String(leaseToken||'').trim(),ttl=Math.max(60,Math.min(1800,Math.trunc(Number(ttlSeconds)||FINANCE_LEASE_TTL_SECONDS)));if(!token)throw new Error('מזהה נעילת הסינכרון הפיננסי חסר');let r;try{r=await supaFetch('/rest/v1/rpc/claim_finance_sync_lease',{method:'POST',body:JSON.stringify({p_lease_name:name,p_lease_token:token,p_ttl_seconds:ttl}),networkRetry:true,...(assertCurrent?{assertRequestScope:assertCurrent}:{})})}catch(error){if(String(error?.code||'').startsWith('SUPABASE_NETWORK_')){const e=new Error('לא ניתן לקבל כרגע נעילת סינכרון מהענן. לא נפתחה כניסה לבנק או לחברת האשראי כדי למנוע סינכרון כפול ממחשב אחר.');e.code='FINANCE_LEASE_CLOUD_UNAVAILABLE';e.cause=error;throw e}throw error}const txt=await r.text();assertCurrent?.();let j;try{j=txt?JSON.parse(txt):null}catch{j=null}if(!r.ok)throw new Error(j?.message||j?.hint||txt||'תפיסת נעילת הסינכרון המשותפת נכשלה');const row=Array.isArray(j)?j[0]:j;return {acquired:row?.acquired===true,leasedUntil:row?.leased_until||null,leaseName:name,leaseToken:row?.lease_token||token,fenceEpoch:row?.fence_epoch??null}}
+async function claimFinanceSyncLease(leaseName,leaseToken,{ttlSeconds=FINANCE_LEASE_TTL_SECONDS,assertCurrent}={}){
+  assertCurrent?.();
+  const name=financeLeaseName(leaseName),token=String(leaseToken||'').trim(),ttl=Math.max(60,Math.min(1800,Math.trunc(Number(ttlSeconds)||FINANCE_LEASE_TTL_SECONDS)));
+  if(!token)throw new Error('מזהה נעילת הסינכרון הפיננסי חסר');
+  let r;try{r=await supaFetch('/rest/v1/rpc/claim_finance_sync_lease',{method:'POST',body:JSON.stringify({p_lease_name:name,p_lease_token:token,p_ttl_seconds:ttl}),networkRetry:true,...(assertCurrent?{assertRequestScope:assertCurrent}:{})})}catch(error){if(String(error?.code||'').startsWith('SUPABASE_NETWORK_')){const e=new Error('לא ניתן לקבל כרגע נעילת סינכרון מהענן. לא נפתחה כניסה לבנק או לחברת האשראי כדי למנוע סינכרון כפול ממחשב אחר.');e.code='FINANCE_LEASE_CLOUD_UNAVAILABLE';e.cause=error;throw e}throw error}
+  const body=await r.text();assertCurrent?.();let j;try{j=body?JSON.parse(body):null}catch{j=null}
+  if(!r.ok)throw new Error(j?.message||j?.hint||body||'תפיסת נעילת הסינכרון המשותפת נכשלה');
+  return readFinanceLeaseReceipt(j,{leaseName:name,leaseToken:token});
+}
 async function releaseFinanceSyncLease(leaseName,leaseToken,{assertCurrent}={}){assertCurrent?.();const name=financeLeaseName(leaseName),token=String(leaseToken||'').trim();if(!token)return false;const r=await supaFetch('/rest/v1/rpc/release_finance_sync_lease',{method:'POST',body:JSON.stringify({p_lease_name:name,p_lease_token:token}),networkRetry:true,...(assertCurrent?{assertRequestScope:assertCurrent}:{})});const txt=await r.text();assertCurrent?.();let j;try{j=txt?JSON.parse(txt):null}catch{j=null}if(!r.ok)throw new Error(j?.message||j?.hint||txt||'שחרור נעילת הסינכרון המשותפת נכשל');const value=Array.isArray(j)?j[0]:j;return value===true||value?.released===true}
 async function saveBankSyncSnapshot(bankState,snapshotToken,snapshotSeq,lease=null){
   const assertCurrent=lease?.assertCurrent;assertCurrent?.();

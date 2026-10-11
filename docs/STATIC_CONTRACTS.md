@@ -307,3 +307,12 @@ JSON documents, synchronous receipts and immutable decoded revision evidence
 are enforced. It delegates revision/no-op/replay policy to the existing Main
 receipt module; this is not a typecheck of the full Finance controller, lease
 protocol or business schema. See FINANCE_WRITE_CONFIRMATION.md.
+
+## Finance lease receipt slice
+
+The strict gate also checks the actual `shared/finance-lease-receipt.js` body and
+negative consumers of its generated copies. Its readonly grant/refusal union
+requires a captured resource name and request token, and exposes a numeric
+fence and server deadline. Runtime decoding remains necessary for untrusted
+RPC JSON. This slice does not statically check entire transports, controllers,
+lease SQL, all heartbeat/queue consumers or the broader Finance lifecycle.
