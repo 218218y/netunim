@@ -18,15 +18,17 @@ FLOW = r"""(async()=>{
  const raw=async()=>JSON.stringify({main:await db.load('local:orders'),checks:await db.load('local:shared-checks')});
  const note={id:'calendar-pending-note',content:'independent durable note'};state.notes.push(note);
  storagePersistence.scheduleSave('Calendar pending fixture',{domains:['notes'],operations:[{type:'put',collection:'notes',id:note.id,mode:'insert',index:state.notes.length-1,record:note}]});await mainStorageV2.commitPromise;
- const before=await raw(),calendarId='calendar@example.test',remote=new Map();let effects=0,queueReads=0,armed=false,appendArmed=false;
+ const before=await raw(),calendarId='calendar@example.test',remote=new Map();let effects=0,cacheCommitted=false,armed=false,appendArmed=false;
  const deferred=()=>{let resolve;const promise=new Promise(done=>{resolve=done});return {promise,resolve}};
  const held=deferred(),entered=deferred(),delivery=deferred(),deliveryEntered=deferred(),appendHeld=deferred(),appendEntered=deferred();
+ // Hold the queue-only read after the remote cache commit. Counting all reads
+ // would intercept the independent display observer's multi-store transaction.
  Object.defineProperty(IDBTransaction.prototype,'oncomplete',{...descriptor,set(handler){
    const tx=this,cache=tx.objectStoreNames.contains('range-cache'),queue=tx.objectStoreNames.contains('pending-operations');
    let wait=null;
-   if(armed&&((phase==='cache'&&cache&&tx.mode==='readwrite')||(phase==='receipt'&&queue&&tx.mode==='readonly'&&++queueReads===4))){armed=false;wait={held,entered}}
+   if(armed&&((phase==='cache'&&cache&&tx.mode==='readwrite')||(phase==='receipt'&&cacheCommitted&&queue&&tx.objectStoreNames.length===1&&tx.mode==='readonly'))){armed=false;wait={held,entered}}
    if(appendArmed&&queue&&tx.mode==='readwrite'){appendArmed=false;wait={held:appendHeld,entered:appendEntered}}
-   descriptor.set.call(tx,function(event){if(wait){wait.entered.resolve();void wait.held.promise.then(()=>handler.call(tx,event))}else handler.call(tx,event)});
+   descriptor.set.call(tx,function(event){if(cache&&tx.mode==='readwrite')cacheCommitted=true;if(wait){wait.entered.resolve();void wait.held.promise.then(()=>handler.call(tx,event))}else handler.call(tx,event)});
  }});
  const authenticate=user=>cloudAuth.saveSession(user?{user:{id:user},access_token:'fixture',expires_at:9999999999}:null);
  cloudAuth.supaFetch=async(_path,options)=>{options.assertRequestScope?.();check(JSON.parse(options.body).action==='token','unexpected OAuth action');return new Response(JSON.stringify({access_token:'fixture-Google',expires_in:3600,account_id:calendarId}))};

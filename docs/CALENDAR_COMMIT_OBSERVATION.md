@@ -78,6 +78,13 @@ or manual recovery; a local notification is no provider receipt.
   Windows suites. Physical devices/live providers remain separate operational
   drills; no global exactly-once guarantee is asserted here.
 
+The existing pending/transaction race drills now identify their held read by
+the native cache-commit boundary and queue-only store scope, rather than an
+ordinal across all reads. The new observer adds independent multi-store reads;
+holding those instead would no longer test the delivery owner's pending
+confirmation. Acceptance assertions are unchanged, and the earlier controller
+still fails the baseline cross-tab confirmation drill.
+
 Rollback deploys previous compatible assets. No data migration/reset is needed;
 queues and caches remain readable. Old tabs do not emit/listen for the new hint,
 so refresh them during rollout. Without hints, existing explicit refresh,
