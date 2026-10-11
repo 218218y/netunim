@@ -514,3 +514,11 @@ cover both Bank/Credit owners in both apps. See
 [Finance lease confirmation](FINANCE_LEASE_CONFIRMATION.md).
 Full Finance transaction/business input typing, broader unknown-outcome policy
 and narrower capability APIs remain separate work.
+
+The Credit nearest-cycle table body now has one canonical presentation owner,
+`shared/credit-detail-sections.js`, used by both application views with four
+explicit formatting/rendering ports. This removes duplicate cycle grouping and
+keeps the responsibility budget intact while preserving per-card open-cycle
+selection and full-month overlap. Native UI coverage verifies partial bank
+settlement, mixed-month headings and unchanged issuer record IDs.
+See [Credit display contract](CREDIT_NEAREST_CYCLE_DISPLAY.md).

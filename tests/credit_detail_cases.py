@@ -18,8 +18,10 @@ def run_credit_detail(app):
           const check=(value,message)=>{{if(!value)throw new Error(message)}},region=()=>document.querySelector('.credit-detail-section'),rows=()=>[...region().querySelectorAll('tbody tr')].filter(row=>row.children.length>1);
           check(region().querySelector('.credit-history-menu [data-click-arg0="2026-09"]'),'September was not moved to history');
           check(!region().querySelector('.credit-future-menu [data-click-arg0="2026-09"]'),'September still appears in future');
-          check(!region().querySelector('.credit-future-menu [data-click-arg0="2026-10"]'),'October duplicates the complete nearest-charge view in future');
+          check(region().querySelector('.credit-future-menu [data-click-arg0="2026-10"]'),'October must remain reachable while the nearest open cycles are still September');
           check(region().querySelector('.credit-future-menu [data-click-arg0="2026-11"]'),'November missing from future');
+          check(rows().length===73&&rows().every(row=>row.textContent.includes('2026-09 transaction')),'Elapsed September debits disappeared without bank settlement evidence');
+          check(region().querySelector('.credit-cycle-explanation')?.textContent.includes('טרם אומת'),'Nearest-cycle explanation does not disclose unverified settlement');
           check(rows()[0].textContent.includes('ב קודם לפי בחירה'),'Custom card order was ignored');
           let menu=region().querySelector('.credit-date-filter'),future=region().querySelector('.credit-future-menu');
           check(menu&&future,'Missing credit period controls');
@@ -65,7 +67,7 @@ def run_credit_detail(app):
           check(!rows().some(row=>row.textContent.includes('2026-11 transaction')),'Range includes November');
           region().querySelector('[data-action="{prefix}credit-detail-upcoming"]').click();await frames();
           check(!region().querySelector('.credit-date-filter.active'),'Upcoming should exit the date range');
-          check(rows().length===73,'Upcoming should restore October rows');
+          check(rows().length===73&&rows().every(row=>row.textContent.includes('2026-09 transaction')),'Upcoming must restore the unverified September cycles after leaving the range');
           return true;
         }})()""")
         for width in (1280, 390):
@@ -116,6 +118,40 @@ def run_credit_detail(app):
           check(Object.values(sync.cardMappings).every(mapping=>mapping.sortOrder===null),'Retry failed to clear the old numeric rank');
           host.remove();return true;
         })()""")
+        # A confirmed debit advances only its card. Full monthly detail remains
+        # independently accessible when the nearest view spans several months.
+        live_state = 'state' if app == 'kupa' else 'kupaCloudReadState'
+        render = 'credit.renderCredit()' if app == 'kupa' else 'domainsFinanceView.renderKupa()'
+        browser.evaluate(f"""(async()=>{{
+          const frames=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+          const check=(value,message)=>{{if(!value)throw new Error(message)}},model={live_state},region=()=>document.querySelector('.credit-detail-section'),rows=()=>[...region().querySelectorAll('tbody tr')].filter(row=>row.children.length>1);
+          const before=JSON.stringify(model.creditSync);
+          // Use a fresh September 11 snapshot for this independent settlement
+          // scenario. Older unverified debits retain the existing expiry-warning
+          // policy; this test must not redefine that policy to force a forecast.
+          const OriginalDate=Object.getPrototypeOf(Date),setToday=value=>{{globalThis.Date=class extends OriginalDate{{constructor(...args){{super(...(args.length?args:[value+'T12:00:00Z']))}}static now(){{return new OriginalDate(value+'T12:00:00Z').getTime()}}}}}};
+          setToday('2026-09-11');
+          model.bank={{asOfDate:'2026-09-11',feed:{{syncedAt:'2026-09-11T08:00:00Z',transactions:[{{date:'2026-09-10',amount:-20,description:'MAX'}}]}}}};
+          domainRevisions.touchAll();{render};await frames();
+          check(rows().length===73,'Settling one card changed the number of nearest-cycle transactions');
+          check(rows().filter(row=>row.textContent.includes('b 2026-10 transaction')).length===2,'The confirmed card did not advance to October');
+          check(rows().filter(row=>row.textContent.includes('2026-09 transaction')).length===71,'Unverified cards advanced without a posted debit');
+          check(!rows().some(row=>row.textContent.includes('b 2026-09 transaction')),'A settled card-cycle is still included in nearest charges');
+          const headings=[...region().querySelectorAll('.credit-detail-cycle-divider.upcoming b')].map(node=>node.textContent);
+          check(headings.some(text=>text.includes('09')&&text.includes('2026'))&&headings.some(text=>text.includes('10')&&text.includes('2026')),'Mixed-month cycle headings must identify both actual billing months');
+          region().querySelector('.credit-future-menu [data-click-arg0="2026-10"]').click();await frames();
+          check(rows().length===73&&rows().every(row=>row.textContent.includes('2026-10 transaction')),'Full October detail was replaced by the partial per-card nearest view');
+          check(region().querySelector('.credit-cycle-explanation')?.textContent.includes('אין לחבר'),'Monthly detail does not explain its overlap with nearest charges');
+          region().querySelector('[data-action="{prefix}credit-detail-upcoming"]').click();await frames();
+          setToday('2026-09-16');model.bank.asOfDate='2026-09-16';model.bank.feed.syncedAt='2026-09-16T08:00:00Z';
+          model.bank.feed.transactions.push({{date:'2026-09-10',amount:-700,description:'MAX'}},{{date:'2026-09-15',amount:-10,description:'MAX'}});
+          domainRevisions.touchAll();{render};await frames();
+          check(rows().length===73&&rows().every(row=>row.textContent.includes('2026-10 transaction')),'Complete bank settlement did not advance all cards to October');
+          check(!region().querySelector('.credit-future-menu [data-click-arg0="2026-10"]'),'A full month identical to every nearest card-cycle is duplicated in the menu');
+          check(region().querySelector('.credit-future-menu [data-click-arg0="2026-11"]'),'Later month disappeared after settlement');
+          check(JSON.stringify(model.creditSync)===before,'Changing credit views or reconciling bank evidence mutated issuer records/IDs');
+          return true;
+        }})()""")
         errors=browser.drain_serious_errors()
         assert not errors, errors
-        print(f'{app}: credit period menus, inclusive date range, custom order and short-to-long scroll pass in Chromium')
+        print(f'{app}: unverified overdue/mixed-month nearest cycles, confirmed bank settlement, full-month overlap, period menus, inclusive range, custom order and scroll pass in Chromium')
