@@ -8,7 +8,7 @@ const deferred=()=>{let resolve;const promise=new Promise(done=>{resolve=done});
 const changed=()=>Object.assign(Error('scope changed'),{code:'CALENDAR_OPERATION_SCOPE_CHANGED'});
 test('Calendar journal cannot continue an old account after its durable queue read',async()=>{
   let current=true,deleted=0,sent=0;const held=deferred(),entered=deferred();
-  const journal=createCalendarJournal({operationScope:{captureOperation:()=>({owner:'fixture',assertCurrent:()=>{if(!current)throw changed()}})},
+  const journal=createCalendarJournal({deliveryOwner:{run:async(assertCurrent,work)=>{assertCurrent();return work()}},operationScope:{captureOperation:()=>({owner:'fixture',assertCurrent:()=>{if(!current)throw changed()}})},
     calendarStorage:{listOperations:()=>{entered.resolve();return held.promise},updateOperation:async()=>{},deleteOperation:async()=>{deleted++}},
     calendarApi:{insertEvent:async()=>{sent++}}});
   const outcome=journal.flushPending().then(()=>null,error=>error);await entered.promise;current=false;

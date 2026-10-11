@@ -53,7 +53,7 @@ ok('createCalendarActionPorts(controller)' in composition and 'const calendarPor
 infrastructure_at=main.find('const calendarRuntime=createOrdersCalendarRuntime(')
 controller_at=main.find('const domainsCalendarController=calendarRuntime.createController(')
 action_ports_at=main.find('const calendarPorts=calendarRuntime.actionPorts()')
-ok(0<=infrastructure_at<controller_at<action_ports_at and 'const calendarStorage=createCalendarStorage()' in composition and 'const calendarJournal=createCalendarJournal({calendarStorage,calendarApi,operationScope:calendarAuth})' in composition,'calendar composition: infrastructure, scoped journal, controller, and action ports retain their startup order')
+ok(0<=infrastructure_at<controller_at<action_ports_at and 'const calendarStorage=createCalendarStorage()' in composition and 'const calendarJournal=createCalendarJournal(' in composition and 'operationScope:calendarAuth' in composition and 'deliveryOwner:createCalendarDeliveryOwner()' in composition,'calendar composition: infrastructure, scoped delivery ownership, controller, and action ports retain their startup order')
 lifecycle=(SITE/'assets/js/lifecycle.js').read_text(encoding='utf-8')
 boot_lock=lifecycle.find('await acquirePrimaryTabLock()')
 boot_ready=lifecycle.find("startupMark('primary-tab-ready')",boot_lock)
@@ -95,7 +95,7 @@ ok("autoIncrement:true" in storage and "pending-operations" in storage,'calendar
 ok("error?.status!==409" in journal and 'getEvent' in journal and 'insertMatches' in journal,'calendar journal: duplicate create retry confirms both the preassigned ID and intended event content')
 ok("error?.status===404||error?.status===410" in journal,'calendar journal: repeated deletes acknowledge already-deleted events')
 ok('accounts.google.com/gsi' not in headers and 'https://www.googleapis.com' in headers and "script-src 'self'" in headers and "frame-src blob:;" in headers and 'Cross-Origin-Opener-Policy: same-origin' in headers,'calendar security: CSP/COOP prohibit remote iframes; local Morning PDF blobs and Calendar API access remain allowed')
-ok('./assets/js/composition/calendar.js' in worker and './assets/js/calendar/journal.js' in worker and './assets/js/calendar/view.js' in worker and './assets/js/domains/calendar/controller.js' in worker and './assets/js/domains/calendar/action-ports.js' in worker,'calendar PWA: composition, journal, view, controller, and action ports are part of the deterministic app shell')
+ok('./assets/js/composition/calendar.js' in worker and './assets/js/calendar/journal.js' in worker and './assets/js/platform/calendar-delivery-owner.js' in worker and './assets/js/calendar/view.js' in worker and './assets/js/domains/calendar/controller.js' in worker and './assets/js/domains/calendar/action-ports.js' in worker,'calendar PWA: composition, delivery ownership, journal, view, controller, and action ports are part of the deterministic app shell')
 ok((ROOT/'netunim-orders/GOOGLE_CALENDAR_SETUP.txt').is_file(),'calendar setup: deployment/OAuth instructions are included')
 
 if errors:
