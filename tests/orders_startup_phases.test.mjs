@@ -168,8 +168,8 @@ test('background access rejection has no effects, and offline local startup omit
 
 test('storage owns cursor hydration, clones the cloud base and retains pending/conflict semantics',async()=>{
   for(const conflict of [false,true]){
-    const session={},base={state:{suppliers:[{id:'S'}]},revision:17},head={base,pending:false,flight:{operationId:'in-flight'},control:conflict?{conflict:{kind:'rebase'}}:null};
-    const browser=createStorageBrowser({session,storageV2:{primaryReady:true,cloudState:async()=>head}});
+    const session={},base={owner:'startup:orders',epoch:'startup-epoch',state:{suppliers:[{id:'S'}]},revision:17},head={base,pending:false,flight:{operationId:'in-flight'},control:conflict?{conflict:{kind:'rebase'}}:null};
+    const browser=createStorageBrowser({session,storageV2:{primaryReady:true,cloudScope:{owner:base.owner,epoch:base.epoch,writable:true},cloudState:async()=>head}});
     assert.equal(await browser.recoverCloudCursor(),head);assert.deepEqual(session.lastCloudState,base.state);assert.notEqual(session.lastCloudState,base.state);
     assert.equal(session.cloudRevision,17);assert.equal(session.storageV2CloudPending,true);assert.equal(session.cloudConflictBlocked,conflict);assert.equal(session.cloudSaveRequested,!conflict);
     session.lastCloudState.suppliers[0].id='view-mutated';assert.equal(base.state.suppliers[0].id,'S');

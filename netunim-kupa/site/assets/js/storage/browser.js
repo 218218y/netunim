@@ -1,3 +1,4 @@
+import {storageCloudHeadIsCurrent} from '../shared/cloud-write-scope.js';
 import {beginMeasure} from '../shared/runtime-performance.js';
 import {clone} from '../core/values.js';
 import {createOperationId} from '../shared/cloud-sync.js';
@@ -32,14 +33,14 @@ async function loadBrowserStateReadOnly(){
 
 async function requestPersistentBrowserStorage(){try{if(navigator.storage?.persist)await navigator.storage.persist()}catch(e){console.error('persistent storage request',e)}}
 
-function storageV2CloudOutboxActive(){return !!(storageV2?.primaryReady&&v2CloudStateCache?.base)}
-function cacheStorageV2CloudState(state){v2CloudStateCache=state;session.storageV2CloudPending=!!(state?.pending||state?.flight);return state}
+function storageV2CloudOutboxActive(){return !!storageV2?.primaryReady&&storageCloudHeadIsCurrent(v2CloudStateCache,storageV2?.cloudScope)}
+function cacheStorageV2CloudState(state){if(state?.base&&!storageCloudHeadIsCurrent(state,storageV2?.cloudScope))return state;v2CloudStateCache=state;session.storageV2CloudPending=!!(state?.pending||state?.flight);return state}
 function settledStorageV2CloudState(seq,base,control=null){return {seq:Number(seq||0),base:base?clone(base):null,flight:null,control:control?clone(control):null,pending:false,pendingDeleteIntents:{},pendingGeneration:0,pendingMutationType:'autosave',pendingSurface:'unknown',afterFlightPending:false,afterFlightDeleteIntents:{},afterFlightGeneration:0,afterFlightMutationType:'autosave',afterFlightSurface:'unknown'}}
 function resetStorageV2CloudState(seq,base){const current=Number(seq||0),ackSeq=Number(base?.ackSeq||0),pending=current>ackSeq;return {seq:current,base:base?clone(base):null,flight:null,control:null,pending,pendingDeleteIntents:{},pendingGeneration:pending?Number(session.localGeneration||0):0,pendingMutationType:'autosave',pendingSurface:pending?'epoch-transition':'unknown',afterFlightPending:false,afterFlightDeleteIntents:{},afterFlightGeneration:0,afterFlightMutationType:'autosave',afterFlightSurface:'unknown'}}
 function acknowledgedStorageV2CloudState(prior,operationId,receipt,revision,state,control){const sent=prior?.flight?.operationId===operationId?prior.flight:null,ackSeq=Number(receipt?.ackSeq??sent?.endSeq??prior?.base?.ackSeq??0),seq=Math.max(ackSeq,Number(prior?.seq||0)),pending=seq>ackSeq,pendingDeleteIntents=pending&&sent?clone(prior?.afterFlightDeleteIntents||{}):{},pendingGeneration=pending&&sent?Number(prior?.afterFlightGeneration||0):0,pendingMutationType=pending&&sent?(prior?.afterFlightMutationType||'autosave'):'autosave',pendingSurface=pending&&sent?(prior?.afterFlightSurface||'unknown'):'unknown';return {...(prior||{}),seq,base:{...(prior?.base||{}),version:2,revision:Number(revision),state:clone(state),projection:'cloud',ackSeq},flight:null,control:control?clone(control):null,pending,pendingDeleteIntents,pendingGeneration,pendingMutationType,pendingSurface,afterFlightPending:false,afterFlightDeleteIntents:clone(pendingDeleteIntents),afterFlightGeneration:pendingGeneration,afterFlightMutationType:pendingMutationType,afterFlightSurface:pendingSurface}}
 async function refreshStorageV2CloudState(){
   if(!storageV2?.primaryReady){cacheStorageV2CloudState(null);return null}
-  const state=await storageV2.cloudState({validateBase:value=>assertValidCloudState(value,'Kupa V2 cloud base')});cacheStorageV2CloudState(state);if(state?.control?.conflict)session.cloudConflictPending=true;return state
+  const state=await storageV2.cloudState({validateBase:value=>assertValidCloudState(value,'Kupa V2 cloud base')});cacheStorageV2CloudState(state);if(storageCloudHeadIsCurrent(state,storageV2.cloudScope)&&state?.control?.conflict)session.cloudConflictPending=true;return state
 }
 async function refreshStorageV2CloudStateAfterCommit(label,committedState){
   cacheStorageV2CloudState(committedState);

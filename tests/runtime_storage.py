@@ -604,7 +604,7 @@ for app in ('kupa', 'orders'):
             session.localGeneration=recovered.seq;
             const driver=createStorageBrowser({storageV2:storage,model,session,files,normalizeState:normalization.normalizeState,prepareCloudState:project,prepareKupaCloudState:project});
             const head=await driver.refreshStorageV2CloudState();session.dbRevision=head.base.revision;session.cloudRevision=head.base.revision;
-            const ports={model,session,files,tab,render:noop,toast:noop,
+            const ports={getCloudWriteScope:()=>storage.cloudScope&&({...storage.cloudScope,accountOwner:owner,loginEpoch:1}),model,session,files,tab,render:noop,toast:noop,
               refreshStorageV2CloudState:()=>driver.refreshStorageV2CloudState(),materializeStorageV2CloudFlight:options=>driver.materializeStorageV2CloudFlight(options),
               acknowledgeStorageV2CloudFlight:async(...args)=>{if(beforeAck){const hook=beforeAck;beforeAck=null;await hook(args)}return driver.acknowledgeStorageV2CloudFlight(...args)},rejectStorageV2CloudFlight:(...args)=>driver.rejectStorageV2CloudFlight(...args),
               setStorageV2CloudControl:value=>driver.setStorageV2CloudControl(value),storageV2CommitPromise:()=>storage.commitPromise};
@@ -820,7 +820,7 @@ with BrowserSession(ROOT/'netunim-orders/site', 'poll-status-durable-ack') as br
       await storage.initializeCloudHead(10,model.state,{sourceOwner:'poll-status-owner',intent:'cloud-authoritative',cloudState:project(model.state)});
       const driver=createStorageBrowser({storageV2:storage,model,session,files,normalizeState:normalization.normalizeState,prepareCloudState:project});
       const metaEntered=deferred(),metaRelease=deferred(),ackEntered=deferred(),ackRelease=deferred();
-      const api=createSyncDocument({model,files,session,tab,toast:noop,render:noop,setCloud:(...args)=>statuses.push(args),
+      const api=createSyncDocument({getCloudWriteScope:()=>storage.cloudScope&&({...storage.cloudScope,accountOwner:'poll-status-owner',loginEpoch:1}),model,files,session,tab,toast:noop,render:noop,setCloud:(...args)=>statuses.push(args),
         prepareCloudState:project,cloudEnabled:()=>true,cloudHasLocalWork:()=>!!(session.storageV2CloudPending||session.cloudSaveRequested),
         sameOrderCloudData:(a,b)=>JSON.stringify(project(a))===JSON.stringify(project(b)),writeStateToFolder:async()=>{},refreshCloudTimestamp:noop,
         pollSharedChecks:async()=>{},refreshKupaReadout:async()=>false,

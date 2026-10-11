@@ -14,7 +14,7 @@ function fixture(t){
   const session={connectionMode:'supabase',backendReady:true,dbRevision:5,localGeneration:0,serverInfo:{}};
   const tab={primaryTab:true},events=[],head={seq:0,base:{revision:5,ackSeq:0,owner:'A:kupa',epoch:'E',state:normalization.prepareKupaCloudState(model.state)},pending:false,flight:null,control:null};
   let authorized=true;
-  const ports={model,session,tab,checksSession:{},...normalization,
+  const ports={getCloudWriteScope:()=>authorized?{owner:head.base.owner,epoch:head.base.epoch,writable:true,accountOwner:'A',loginEpoch:1}:null,model,session,tab,checksSession:{},...normalization,
     storageV2CloudOutboxActive:()=>authorized,assertAccountOwner:()=>{if(!authorized)throw new Error('storage_owner_session_mismatch')},
     refreshStorageV2CloudState:async()=>clone(head),materializeStorageV2CloudFlight:async()=>null,
     setSaveStatus:(...args)=>events.push(['save',...args]),setCloudHeaderStatus:(...args)=>events.push(['cloud',...args]),toast:(...args)=>events.push(['toast',...args]),

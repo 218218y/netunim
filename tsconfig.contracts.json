@@ -13,6 +13,9 @@
     "types": []
   },
   "files": [
+    "shared/cloud-write-scope.js",
+    "shared/cloud-ack-diagnostic.js",
+    "tests/fixtures/checked-cloud-write-scope.mjs",
     "netunim-orders/site/assets/js/calendar/commit-observer.js",
     "netunim-orders/site/assets/js/platform/calendar-commit-notifications.js",
     "tests/fixtures/checked-calendar-commit-observation.mjs",
