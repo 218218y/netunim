@@ -69,11 +69,12 @@ or task's `finally` cannot remove a newer login's task. PDF/metadata publication
 is fenced; the latest preview wins within an account and old account responses
 cannot overwrite it. Capability disposal releases its Blob URLs.
 
-Previously displayed content is not automatically cleared in every other tab
-when auth changes. A cross-tab cached-display/privacy policy, remaining download
-link cleanup and broader runtime resource inventory are separate completion
-tracks. This slice does not claim a durable offline issuance outbox or live
-provider verification.
+Completed issuance/browser/standalone PDF displays now have explicit account
+subscriptions, preview/cache/link cleanup and scoped confirmation cancellation;
+see [the display privacy contract](MORNING_ACCOUNT_DISPLAY_PRIVACY.md). Main/Shared
+and pending issuance recovery are retained. Other business-page cached views and
+the broader runtime resource inventory remain separate completion tracks. This
+does not claim a durable offline issuance outbox or live provider verification.
 
 ## Verification
 

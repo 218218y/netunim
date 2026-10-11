@@ -74,9 +74,10 @@ new search. Do not reset storage or discard pending work to restore a preview.
 A compatible site rollback changes no persisted format, but restores the old
 completed-result privacy limitation.
 
-This slice owns Global Search and its Drive previews. Standalone Morning PDFs,
-Calendar views, other domain readouts and business-page caches retain separate
-owners and need their own cross-tab review. Focus reread detects a different
+This slice owns Global Search and its Drive previews. Morning's separate display
+owner now covers forms/browser/standalone PDFs and confirmations; see
+MORNING_ACCOUNT_DISPLAY_PRIVACY.md. Calendar views, other domain readouts and
+business-page caches need their own cross-tab review. Focus reread detects a different
 current owner; it cannot reconstruct an unobserved same-user logout/relogin
 from identical stored credentials. Queued browser auth storage events invalidate
 that epoch when delivered; visibility checks do not fabricate a durable auth ledger.

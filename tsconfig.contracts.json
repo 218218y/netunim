@@ -13,6 +13,8 @@
     "types": []
   },
   "files": [
+    "netunim-orders/site/assets/js/domains/customers/morning-display-lifetime.js",
+    "tests/fixtures/checked-morning-display-lifetime.mjs",
     "netunim-kupa/site/assets/js/domains/bank/local-snapshot.js",
     "tests/fixtures/checked-bank-local-snapshot.mjs",
     "netunim-kupa/site/assets/js/platform/credit-preferences.js",

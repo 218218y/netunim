@@ -1,6 +1,7 @@
 import {esc} from '../../core/values.js';
 import {$} from '../../state/constants.js';
 import {MORNING_DOCUMENT_TYPES,morningDocumentLabel} from '../../core/morning-document-types.js';
+import {createMorningDisplayLifetime,clearMorningDisplay} from './morning-display-lifetime.js';
 
 const CACHE_TTL_MS=90_000;
 const TYPES=MORNING_DOCUMENT_TYPES;
@@ -15,12 +16,20 @@ export function defaultDocumentSearch(now=new Date()){
 function options(values){return '<option value="">הכל</option>'+Object.entries(values).map(([value,label])=>`<option value="${value}">${esc(label)}</option>`).join('')}
 function amount(value,currency){return new Intl.NumberFormat('he-IL',{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(value)||0)+' '+String(currency||'')}
 
-export function createDomainsCustomersDocumentsBrowser({operationScope,modal,toast,request,dateEditorMarkup,onDebtDocumentMetadataResolved=()=>false}){
+export function createDomainsCustomersDocumentsBrowser({operationScope,subscribeAccountScope=()=>()=>{},modal,toast,request,dateEditorMarkup,onDebtDocumentMetadataResolved=()=>false}){
   if(typeof operationScope?.captureRead!=='function')throw new TypeError('morning_operation_scope_required');
   if(typeof request?.json!=='function'||typeof request?.pdf!=='function')throw new TypeError('morning_request_required');
   let disposed=false,browserAssert=null;const scopeChanged=error=>error?.code==='MORNING_OPERATION_SCOPE_CHANGED';
   function captureScope(){const assertAuth=operationScope.captureRead();return ()=>{if(disposed)throw Object.assign(new Error('Morning נעצר'),{code:'MORNING_OPERATION_SCOPE_CHANGED'});assertAuth()}}
   const cache=new Map(),operationMetadataCache=new Map();let query=defaultDocumentSearch(),sequence=0,previewSequence=0,picker=false,busy=false,lastItems=[],previewObjectUrl='';
+  const downloads=new Map();let ownedSurface=null,previewFrame=null;
+  const display=createMorningDisplayLifetime({subscribeAccountScope,onInvalidate:()=>{
+    const owned=ownedSurface;ownedSurface=null;
+    if(previewFrame?.src===previewObjectUrl)previewFrame.removeAttribute('src');previewFrame=null;
+    sequence++;previewSequence++;browserAssert=null;busy=false;lastItems=[];query=defaultDocumentSearch();invalidateCache();releasePreviewUrl();
+    for(const [anchor,timer] of downloads){clearTimeout(timer);anchor.remove()}downloads.clear();
+    clearMorningDisplay(owned,modal);
+  }});
   const backend=(action,payload={},assertCurrent=captureScope())=>request.json(action,payload,assertCurrent);
   async function verifiedOperationMetadata(operationId){
     const operation=String(operationId||'').trim();if(!operation)return null;
@@ -74,12 +83,12 @@ export function createDomainsCustomersDocumentsBrowser({operationScope,modal,toa
   </section>`}
   function releasePreviewUrl(){if(previewObjectUrl){URL.revokeObjectURL(previewObjectUrl);previewObjectUrl=''}}
   function clearBrowserPreview(){previewSequence++;releasePreviewUrl();const box=$('#morningBrowserPreview'),frame=$('#morningBrowserPreviewFrame');if(frame)frame.removeAttribute('src');if(box)box.hidden=true}
-  async function openDocuments(){try{browserAssert=captureScope()}catch(error){if(!scopeChanged(error))toast(error.message);return}releasePreviewUrl();picker=false;sequence++;query=defaultDocumentSearch();invalidateCache();modal('הצגה וחיפוש במסמכי Morning',markup(),'<button class="btn" data-action="close-modal">סגור</button>');return runSearch()}
+  async function openDocuments(){try{browserAssert=captureScope()}catch(error){if(!scopeChanged(error))toast(error.message);return}releasePreviewUrl();picker=false;sequence++;query=defaultDocumentSearch();invalidateCache();modal('הצגה וחיפוש במסמכי Morning',markup(),'<button class="btn" data-action="close-modal">סגור</button>');ownedSurface=root();return runSearch()}
   async function openInvoicePicker(){
     try{browserAssert=captureScope()}catch(error){if(!scopeChanged(error))toast(error.message);return}
     const panel=$('#morningInvoicePicker');if(!panel)return;
     releasePreviewUrl();picker=true;sequence++;invalidateCache();query={...defaultDocumentSearch(),type:[305],status:[0],clientName:$('#morningClientName')?.value||''};
-    panel.hidden=false;panel.innerHTML=markup();return runSearch();
+    panel.hidden=false;panel.innerHTML=markup();ownedSurface=root();return runSearch();
   }
   function readFilters(){
     const fromDate=$('#morningSearchFrom')?.value||'',toDate=$('#morningSearchTo')?.value||'';
@@ -136,14 +145,14 @@ export function createDomainsCustomersDocumentsBrowser({operationScope,modal,toa
       if(issuanceElement&&(!modalOpen()||$('#morningPreviewBox')!==issuanceElement))return false;
       if(button?.isConnected===false)return false;
       const browserBox=modalOpen()?$('#morningBrowserPreview'):null,browserFrame=modalOpen()?$('#morningBrowserPreviewFrame'):null,issuanceBox=modalOpen()?$('#morningPreviewBox'):null,issuanceFrame=modalOpen()?$('#morningPreviewFrame'):null,issuanceNote=modalOpen()?$('#morningPreviewNote'):null;
-      if(!browserBox&&!issuanceBox&&!(modalOpen()&&$('#morningStandalonePreview')))modal('צפייה במסמך Morning',`<div id="morningStandalonePreview" class="morning-preview-box"><div class="morning-preview-head"><b>מסמך Morning</b><span>מסמך רשמי שנשלף מ-Morning ואינו נשמר באתר</span></div><iframe id="morningStandalonePreviewFrame" title="צפייה במסמך Morning"></iframe></div>`,'<button class="btn" data-action="close-modal">סגור</button>');
+      if(!browserBox&&!issuanceBox&&!(modalOpen()&&$('#morningStandalonePreview'))){modal('צפייה במסמך Morning',`<div id="morningStandalonePreview" class="morning-preview-box"><div class="morning-preview-head"><b>מסמך Morning</b><span>מסמך רשמי שנשלף מ-Morning ואינו נשמר באתר</span></div><iframe id="morningStandalonePreviewFrame" title="צפייה במסמך Morning"></iframe></div>`,'<button class="btn" data-action="close-modal">סגור</button>');ownedSurface=$('#morningStandalonePreview')}
       const box=browserBox||issuanceBox||$('#morningStandalonePreview'),frame=browserFrame||issuanceFrame||$('#morningStandalonePreviewFrame');if(!box||!frame)throw new Error('אזור תצוגת המסמך אינו זמין');
       releasePreviewUrl();const url=URL.createObjectURL(blob);previewObjectUrl=url;
       if(issuanceNote&&!browserBox)issuanceNote.textContent='מסמך רשמי שנשלף מ-Morning ואינו נשמר באתר';
       // Keep the Blob URL alive for the full embedded-viewer lifetime. Chrome's PDF toolbar
       // re-reads the iframe source when its built-in Download action is used; revoking on
       // iframe load leaves the PDF visible/printable but makes that later download fail.
-      frame.src=url;box.hidden=false;box.scrollIntoView({block:'nearest',behavior:'smooth'});return true;
+      previewFrame=frame;frame.src=url;box.hidden=false;box.scrollIntoView({block:'nearest',behavior:'smooth'});return true;
     }catch(error){if(!quiet&&!scopeChanged(error))toast(error.message||'טעינת המסמך נכשלה');return false}finally{if(button)button.disabled=false}
   }
   async function viewVerifiedOperation(operationId,button){
@@ -163,9 +172,10 @@ export function createDomainsCustomersDocumentsBrowser({operationScope,modal,toa
     if(button)button.disabled=true;
     try{const data=await backend('document_links',{document_id:String(id)},assertCurrent);assertCurrent();const url=new URL(data.url);if(url.protocol!=='https:')throw new Error('קישור מסמך אינו תקין');
       const anchor=document.createElement('a');anchor.href=url.href;anchor.target='_blank';anchor.rel='noopener noreferrer';anchor.download='morning-document.pdf';anchor.className='btn small';anchor.textContent='לחץ כאן אם ההורדה לא התחילה';
-      const host=$('#morningBrowserStatus')||$('#morningOperationResult');if(host)host.appendChild(anchor);else document.body.appendChild(anchor);anchor.click();setTimeout(()=>anchor.remove(),60_000);
+      const host=$('#morningBrowserStatus')||$('#morningOperationResult');if(host)host.appendChild(anchor);else document.body.appendChild(anchor);
+      const timer=setTimeout(()=>{downloads.delete(anchor);anchor.remove()},60_000);downloads.set(anchor,timer);anchor.click();
     }catch(error){if(!scopeChanged(error))toast(error.message||'הורדת המסמך נכשלה')}finally{if(button)button.disabled=false}
   }
-  function dispose(){if(disposed)return false;disposed=true;sequence++;invalidateCache();releasePreviewUrl();return true}
+  function dispose(){if(disposed)return false;disposed=true;display.dispose();return true}
   return {dispose,openDocuments,openInvoicePicker,search,page,selectInvoice,details,invalidateCache,viewDocument,viewVerifiedOperation,downloadDocument,hydrateDebtDocumentLinks};
 }

@@ -434,5 +434,16 @@ request is sent, B gets B's results, raw Main/Shared and independent native pend
 data stay unchanged. Each profile runs 100 bind/dispose cycles. --baseline restores
 old modules only in the disposable copy and must fail the retained-private-view
 assertion. Provider/OAuth responses are synthetic. Browser observer bodies and
-negative consumers are strict checkJs inputs; standalone Morning/Calendar cached
-views remain a separate scope. See docs/DOCUMENT_SEARCH_ACCOUNT_PRIVACY.md.
+negative consumers are strict checkJs inputs. See docs/DOCUMENT_SEARCH_ACCOUNT_PRIVACY.md.
+
+Morning completed-display privacy: runtime_morning_account_privacy.py uses the
+production customer composition, native auth/IDB/Blob URLs and real second tabs.
+Form, browser/details/downloads, standalone PDF and unaccepted confirmation clear
+on logout/account change. Pending recovery and raw Main/Shared stay identical;
+each profile runs 100 domain construct/dispose cycles without retained listeners.
+--baseline --surface form --phase local must fail the retained-view assertion in
+a disposable copy. Morning server/PDF responses are synthetic. Modal cancellation
+and display lifetime tests cover scoped queue behavior and accepted work surviving
+teardown. The actual lifetime body/negative consumers are checked statically.
+Calendar and other cached business views remain separate completion tracks.
+See docs/MORNING_ACCOUNT_DISPLAY_PRIVACY.md.

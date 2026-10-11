@@ -101,6 +101,8 @@ function settleConfirmation(confirmed){
   activeConfirm=null;
   els.back?.classList.remove('open');
   els.back?.setAttribute('aria-hidden','true');
+  if(els.title)els.title.textContent='';
+  if(els.message)els.message.textContent='';
   request.resolve(!!confirmed);
   const returnFocus=request.returnFocus;
   if(returnFocus?.isConnected)queueMicrotask(()=>returnFocus.focus());
@@ -109,7 +111,15 @@ function settleConfirmation(confirmed){
 
 function confirmDialog(title,message,options={}){
   return new Promise(resolve=>{
-    confirmQueue.push({title:String(title??''),message:String(message??''),options,resolve});
+    const signal=options.signal;
+    if(signal?.aborted){resolve(false);return}
+    const request={title:String(title??''),message:String(message??''),options,resolve:value=>{signal?.removeEventListener('abort',cancel);resolve(value)}};
+    function cancel(){
+      if(activeConfirm?.resolve===request.resolve){settleConfirmation(false);return}
+      const index=confirmQueue.indexOf(request);if(index!==-1){confirmQueue.splice(index,1);request.resolve(false)}
+    }
+    signal?.addEventListener('abort',cancel,{once:true});
+    confirmQueue.push(request);
     pumpConfirmQueue();
   });
 }

@@ -5,7 +5,7 @@ import {createDomainsCustomersDocuments} from './documents.js';
 import {createDomainsCustomersDocumentsBrowser} from './documents-browser.js';
 import {createMorningMetadataPersistence} from './morning-metadata-persistence.js';
 
-export function createDomainsCustomers({morningOperationScope,morningRequest,customerRevision,model,customerUi,selectors,uiLayout,uiModal,uiStatus,storagePersistence,uiNavigation,uiDateEditor,refreshForMorningRecovery,getBusinessBankTransactions,ensureBusinessBankTransactions,onBankDocumentVerified}){
+export function createDomainsCustomers({morningOperationScope,morningRequest,customerRevision,model,customerUi,selectors,uiLayout,uiModal,uiStatus,storagePersistence,uiNavigation,uiDateEditor,refreshForMorningRecovery,subscribeAccountScope,getBusinessBankTransactions,ensureBusinessBankTransactions,onBankDocumentVerified}){
   let view,editor;
   const metadataPersistence=createMorningMetadataPersistence({model,operationScope:morningOperationScope,commitSave:(...args)=>storagePersistence.commitSave(...args),canMutate:()=>storagePersistence.canMutate?.()!==false});
   const persistResolvedDebtDocumentMetadata=metadataPersistence.persist;
@@ -21,6 +21,7 @@ export function createDomainsCustomers({morningOperationScope,morningRequest,cus
   });
   const documentsBrowser=createDomainsCustomersDocumentsBrowser({
     operationScope:morningOperationScope,
+    subscribeAccountScope,
     modal:(...args)=>uiModal.modal(...args),
     toast:(...args)=>uiStatus.toast(...args),
     request:morningRequest,
@@ -29,6 +30,7 @@ export function createDomainsCustomers({morningOperationScope,morningRequest,cus
   });
   const documents=createDomainsCustomersDocuments({
     operationScope:morningOperationScope,
+    subscribeAccountScope,
     model,
     refreshForMorningRecovery,
     modal:(...args)=>uiModal.modal(...args),

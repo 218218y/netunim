@@ -274,3 +274,9 @@ The actual browser account-observation body and its negative consumer fixture
 are now checked alongside the existing auth scope. Synchronous credential reads
 and the owner/login epoch callback shape are enforced. This adds no persisted
 auth format or cross-tab durable ledger; see DOCUMENT_SEARCH_ACCOUNT_PRIVACY.md.
+
+The actual Morning presentation lifetime and negative consumers now enforce
+synchronous subscription cleanup, a visual invalidation callback, and an
+AbortSignal for unaccepted confirmation only. Its body is checked directly;
+this does not typecheck the full customer controller or create a persistence
+contract. See MORNING_ACCOUNT_DISPLAY_PRIVACY.md.
