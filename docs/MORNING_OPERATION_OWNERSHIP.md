@@ -61,7 +61,8 @@ schema or backup serialization is introduced.
 
 ## Runtime and display
 
-The Morning lifetime owns interruption listeners, one recovery wakeup and
+The Morning lifetime owns interruption listeners, one recovery wakeup per current
+operation identity (see [the wake contract](MORNING_RECOVERY_WAKE_IDENTITY.md)) and
 scope-specific in-flight joins. Disposal removes listeners, cancels future work
 and revokes publication without discarding started durability work. A stale timer
 or task's `finally` cannot remove a newer login's task. PDF/metadata publication

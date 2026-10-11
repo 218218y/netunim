@@ -345,6 +345,13 @@ Morning authority regression: tests/morning_operation_ownership.test.mjs, tests/
 tests/runtime_morning_ownership.py (browser-morning): native IDB account/login/primary races,
 original operation replay, production composition. See docs/MORNING_OPERATION_OWNERSHIP.md.
 
+Morning recovery timer identity: tests/runtime_morning_recovery_timer.py
+(browser-morning) uses production documents/editor/persistence with native IDB
+for A terminal -> B unknown response under the same login, then automatic read
+recovery without another issuance. Reload retains exact B effect IDs and note
+content; Shared remains unchanged. --baseline must fail at B's missing wake.
+See docs/MORNING_RECOVERY_WAKE_IDENTITY.md for timer ownership and scope limits.
+
 Credit commit/local-follow-up regression: tests/kupa_credit_publication_results.test.mjs,
 tests/credit_publication.test.mjs and tests/runtime_credit_publication.py (browser-lifecycle).
 The native suite uses actual composition/IDB with controlled Finance responses and
