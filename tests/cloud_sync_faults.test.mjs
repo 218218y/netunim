@@ -288,3 +288,59 @@ test('Shared Checks merges independent cross-app edits and fails closed on same-
   const stalePartial=mergeSharedChecks(base,[base[0]],base);assert.deepEqual(stalePartial.checks.map(check=>check.id),['A','B'],'stale incomplete snapshots cannot imply deletion');
   const explicitDelete=mergeSharedChecks(base,[base[0]],base,{deleteIds:['B']});assert.deepEqual(explicitDelete.checks.map(check=>check.id),['A'],'explicit deletion intent is honored');
 });
+
+// Integration test against both browser auth facades (not a copy of the breaker algorithm).
+// The real network is replaced with deterministic fetch responses so this does not require Supabase credentials.
+test('isolated background read abort does not trip the Data API breaker for unrelated writes, but a confirmed outage does',async()=>{
+  const previousFetch=globalThis.fetch,previousStorage=globalThis.localStorage;
+  const store=new Map(),requests=[];
+  globalThis.localStorage={getItem:key=>store.get(key)||null,setItem:(key,value)=>store.set(key,String(value)),removeItem:key=>store.delete(key)};
+  const {MIN_SYNC_CAPABILITIES}=await import('../netunim-kupa/site/assets/js/shared/sync-capabilities.js');
+  globalThis.fetch=async(url,options={})=>{
+    const path=new URL(url).pathname;requests.push({path,method:options.method||'GET'});
+    if(path==='/rest/v1/transient')throw new DOMException('signal is aborted without reason','AbortError');
+    if(path==='/rest/v1/programming-error')throw new RangeError('invalid fetch init');
+    if(path==='/rest/v1/unavailable')return Response.json({message:'service unavailable'},{status:503});
+    if(path==='/rest/v1/rpc/get_netunim_sync_capabilities')return Response.json(MIN_SYNC_CAPABILITIES);
+    return Response.json({ok:true});
+  };
+  try{
+    for(const app of ['netunim-kupa','netunim-orders']){
+      const {createCloudAuth}=await import(`../${app}/site/assets/js/cloud/auth.js?background-failure-regression`);
+      const session={supaSession:{access_token:'test-token',expires_at:Math.floor(Date.now()/1000)+3600,user:{id:'user-1'}}};
+      const auth=app==='netunim-kupa'
+        ?createCloudAuth({session,idbGet:async()=>null,idbPut:async()=>{},idbDelete:async()=>{},supaProjectRef:()=>'',setCloudHeaderStatus:()=>{}})
+        :createCloudAuth({session});
+      if(app==='netunim-orders')auth.saveSession(session.supaSession);
+      const rest=app==='netunim-kupa'?auth.supaRest:auth.supaFetch;
+      const read=()=>rest('/rest/v1/transient',{method:'GET',networkRetry:false});
+      const write=()=>rest('/rest/v1/write',{method:'POST',body:'{}'});
+      const first=await read().then(()=>null,error=>error);
+      assert.equal(first.code,'SUPABASE_NETWORK_TIMEOUT');
+      assert.equal(first.message.includes('גם לאחר ניסיונות חוזרים'),false,'one attempt must not be reported as repeated retries');
+      assert.equal((await write()).ok,true,`${app}: first background timeout must not block a write`);
+      // Successful traffic, including the write, resets the evidence of an outage.
+      await assert.rejects(read(),{code:'SUPABASE_NETWORK_TIMEOUT'});
+      assert.equal((await rest('/rest/v1/healthy')).ok,true);
+      await assert.rejects(read(),{code:'SUPABASE_NETWORK_TIMEOUT'});
+      assert.equal((await write()).ok,true,`${app}: a success between aborts must clear the streak`);
+      // Consecutive background read aborts are sufficient evidence to cool down.
+      await assert.rejects(read(),{code:'SUPABASE_NETWORK_TIMEOUT'});
+      await assert.rejects(read(),{code:'SUPABASE_NETWORK_TIMEOUT'});
+      const requestsBefore=requests.length;
+      const rejected=await write().then(()=>null,error=>error);
+      assert.equal(rejected?.code,'SUPABASE_DATA_API_BACKOFF',`${app}: repeated failures must open the breaker`);
+      assert.ok(rejected.retryAfterMs>0&&rejected.retryAfterMs<=15_000);
+      assert.equal(requests.length,requestsBefore,`${app}: blocked writes cannot reach the network`);
+    }
+    // A programming mistake in fetch is NOT proof of a broken network.
+    const {createCloudAuth}=await import('../netunim-kupa/site/assets/js/cloud/auth.js?non-network-regression');
+    const session={supaSession:{access_token:'test-token',expires_at:Math.floor(Date.now()/1000)+3600,user:{id:'user-1'}}};
+    const auth=createCloudAuth({session,idbGet:async()=>null,idbPut:async()=>{},idbDelete:async()=>{},supaProjectRef:()=>'',setCloudHeaderStatus:()=>{}});
+    await assert.rejects(auth.supaRest('/rest/v1/programming-error'),{name:'RangeError',message:'invalid fetch init'});
+    assert.equal((await auth.supaRest('/rest/v1/healthy')).ok,true);
+    // An explicit HTTP 503 still trips immediately; do not create a request storm on a service outage.
+    const unavailable=await auth.supaRest('/rest/v1/unavailable');assert.equal(unavailable.status,503);
+    await assert.rejects(auth.supaRest('/rest/v1/healthy'),{code:'SUPABASE_DATA_API_BACKOFF'});
+  }finally{globalThis.fetch=previousFetch;globalThis.localStorage=previousStorage}
+});
