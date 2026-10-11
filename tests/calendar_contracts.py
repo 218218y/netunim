@@ -53,7 +53,7 @@ ok('createCalendarActionPorts(controller)' in composition and 'const calendarPor
 infrastructure_at=main.find('const calendarRuntime=createOrdersCalendarRuntime(')
 controller_at=main.find('const domainsCalendarController=calendarRuntime.createController(')
 action_ports_at=main.find('const calendarPorts=calendarRuntime.actionPorts()')
-ok(0<=infrastructure_at<controller_at<action_ports_at and 'const calendarStorage=createCalendarStorage()' in composition and 'const calendarJournal=createCalendarJournal(' in composition and 'operationScope:calendarAuth' in composition and 'deliveryOwner:createCalendarDeliveryOwner()' in composition,'calendar composition: infrastructure, scoped delivery ownership, controller, and action ports retain their startup order')
+ok(0<=infrastructure_at<controller_at<action_ports_at and 'const calendarStorage=createCalendarStorage(' in composition and 'onLocalCommit:commitNotifications.notify' in composition and 'subscribeCalendarCommits:commitNotifications.subscribe' in composition and 'const calendarJournal=createCalendarJournal(' in composition and 'operationScope:calendarAuth' in composition and 'deliveryOwner:createCalendarDeliveryOwner()' in composition,'calendar composition: infrastructure, scoped delivery ownership, controller, and action ports retain their startup order')
 lifecycle=(SITE/'assets/js/lifecycle.js').read_text(encoding='utf-8')
 boot_lock=lifecycle.find('await acquirePrimaryTabLock()')
 boot_ready=lifecycle.find("startupMark('primary-tab-ready')",boot_lock)

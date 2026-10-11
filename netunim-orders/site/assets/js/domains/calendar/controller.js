@@ -2,17 +2,43 @@ import {esc} from '../../core/values.js';
 import {$} from '../../state/constants.js';
 import {createRuntimeResources} from '../../shared/runtime-resources.js';
 import {createCalendarDisplayLifetime} from '../../calendar/display-lifetime.js';
+import {createCalendarCommitObserver} from '../../calendar/commit-observer.js';
+import {authorizeCalendarDisplay} from '../../calendar/display-access.js';
 import {googleCalendarConfig} from '../../calendar/config.js';
 import {addDaysKey,calendarPrefetchRangeFor,calendarRangeContains,calendarRangeFor,localDateKey,moveFocusDate,normalizeFocusDate,normalizeViewMode,parseDateKey,reconcileCalendarEndDate} from '../../calendar/view.js';
 
 const HEBREW_WEEKDAYS=['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','שבת'];
 const DEFAULT_EVENT_COLOR='#8f6d55';
 
-export function createDomainsCalendarController({ui,tab,calendarUi,calendarSession,calendarStorage,calendarAuth,calendarApi,calendarJournal,mountViewLayout,modal,closeModal,toast,requestCloudLogin=()=>{},confirmDialog,dateEditorMarkup,setDateValue,subscribeAccountScope}){
+export function createDomainsCalendarController({ui,tab,calendarUi,calendarSession,calendarStorage,calendarAuth,calendarApi,calendarJournal,mountViewLayout,modal,closeModal,toast,requestCloudLogin=()=>{},confirmDialog,dateEditorMarkup,setDateValue,subscribeAccountScope,subscribeCalendarCommits=()=>()=>{}}){
 let started=false,disposed=false,reconnectTimer=null,calendarDayClickTimer=null,syncTask=null,reconnectTask=null;
 let ownedView=null,ownedModal=null,editorAuthority=null,displayOwner='',renderGeneration=0;
 const frames=new Set(),resources=createRuntimeResources();
 const lifetime=createCalendarDisplayLifetime({captureOperation:()=>calendarAuth.captureOperation(),subscribeAccountScope,onInvalidate:invalidateDisplay});
+const commitObserver=createCalendarCommitObserver({
+  subscribe:subscribeCalendarCommits,
+  capture(){
+    if(!calendarSession.accountVerified)return null;
+    const authority=lifetime.capture(),accountId=calendarSession.accountId;
+    return {owner:authority.owner,assertCurrent(){authority.assertCurrent();if(!calendarSession.accountVerified||accountId!==calendarSession.accountId)throw Object.assign(new Error('Calendar display account changed'),{code:'CALENDAR_OPERATION_SCOPE_CHANGED'})}};
+  },
+  refresh:observeCommittedCalendar,
+  onError(error,authority){authority.assertCurrent();calendarSession.queueObservationError='לא ניתן לאמת את השינויים המקומיים ביומן. רענן כדי לבדוק שוב; התור נשמר.';updateCalendarStatus();console.warn('Calendar committed queue read failed',error)},
+});
+async function observeCommittedCalendar(authority){
+  const range=calendarRange(),display=await calendarStorage.readDisplaySnapshot(authority.owner,range.startKey,range.endKey);
+  authority.assertCurrent();
+  if(calendarRange().key!==range.key)return false;
+  if(!display||display.snapshot.accountId!==calendarSession.accountId){clearDisplayModel();renderCalendarBody();throw new Error('calendar_committed_display_unavailable')}
+  // Publication is synchronous inside a fresh native queue transaction. A hint
+  // neither acknowledges Google nor authorizes retry of an uncertain delivery.
+  return calendarStorage.confirmPendingSnapshot(receipt=>{
+    authority.assertCurrent();if(calendarRange().key!==range.key||!receipt.isCurrent())return false;
+    const current=authorizeCalendarDisplay(display.snapshot,receipt.operations,calendarSession.accountId,authority.owner);
+    if(!current)throw new Error('calendar_committed_display_unavailable');
+    loadSnapshotIntoUi(current.snapshot,current.pending);calendarSession.queueObservationError='';renderCalendarBody();updateCalendarStatus();return true;
+  });
+}
 function stale(error){return ['CALENDAR_OPERATION_SCOPE_CHANGED','calendar_cloud_auth_required'].includes(error?.code)}
 function captureEdit({fresh=false}={}){const authority=!fresh&&ownedModal?.isConnected&&editorAuthority?editorAuthority:lifetime.capture();authority.assertCurrent();if(displayOwner!==authority.owner&&!calendarSession.accountVerified)throw new Error('יש לאמת את חשבון היומן לפני הצגת המטמון או שמירת שינוי. התור המקומי נשמר.');return authority}
 function clearDisplayModel(){displayOwner='';calendarUi.calendars=[];calendarUi.events=[];calendarUi.displayEvents=[];calendarUi.pending=[];calendarUi.eventMap=new Map();calendarUi.cacheFetchedAt=null;calendarUi.cacheRangeStart='';calendarUi.cacheRangeEnd=''}
@@ -20,7 +46,7 @@ function lockedMarkup(){return '<p class="notice" role="status">התצוגה ה�
 function invalidateDisplay(){
   renderGeneration++;clearTimeout(calendarDayClickTimer);calendarDayClickTimer=null;clearTimeout(reconnectTimer);reconnectTimer=null;
   for(const id of frames)cancelAnimationFrame(id);frames.clear();
-  editorAuthority=null;clearDisplayModel();calendarAuth.hasUsableToken();calendarSession.lastSyncAt=null;calendarSession.lastError='';
+  editorAuthority=null;clearDisplayModel();calendarAuth.hasUsableToken();calendarSession.lastSyncAt=null;calendarSession.lastError='';calendarSession.queueObservationError='';
   if(ownedModal?.isConnected)modal('יומן — יש לאמת את ההתחברות',lockedMarkup(),'<button class="btn" data-action="close-modal">סגור</button>');ownedModal=null;
   if(ownedView?.isConnected){const body=ownedView.querySelector('#calendarBody');if(body)body.innerHTML=lockedMarkup();updateCalendarStatus()}
 }
@@ -72,8 +98,8 @@ function applyPending(snapshot,pending){const calendars=snapshot?.calendars||cal
 function rebuildEventMap(){calendarUi.eventMap=new Map();for(const event of calendarUi.displayEvents||[])calendarUi.eventMap.set(eventKey(event._calendarId,event.id),event)}
 function loadSnapshotIntoUi(snapshot,pending){displayOwner=snapshot?.owner||'';calendarUi.calendars=snapshot?.calendars||[];calendarUi.events=snapshot?.events||[];calendarUi.pending=pending||[];calendarUi.displayEvents=applyPending(snapshot,pending);if(snapshot?.rangeStart&&snapshot?.rangeEnd){calendarUi.cacheRangeStart=String(snapshot.rangeStart);calendarUi.cacheRangeEnd=String(snapshot.rangeEnd)}if(snapshot?.fetchedAt)calendarUi.cacheFetchedAt=snapshot.fetchedAt;rebuildEventMap()}
 function lastSyncText(){if(!calendarSession.lastSyncAt)return '';const date=new Date(calendarSession.lastSyncAt);return Number.isNaN(date.getTime())?'':shortDateTimeFormatter.format(date)}
-function statusDescriptor(){if(!displayOwner&&!calendarSession.accountVerified&&!calendarSession.syncing&&!calendarSession.authResumePromise)return{className:'offline',text:'נדרש אימות חשבון להצגת היומן השמור'};const pending=(calendarUi.pending||[]).length;if(calendarSession.authResumePromise)return{className:'pending',text:`מתחבר מחדש ל-Google${pending?` · ${pending} ממתינים`:''}`};if(calendarSession.syncing)return{className:'pending',text:`מסנכרן מול Google${pending?` · ${pending} ממתינים`:''}`};if(!navigator.onLine)return{className:'offline',text:`אופליין${pending?` · ${pending} שינויים שמורים וממתינים`:''}`};if(calendarSession.lastError)return{className:'error',text:`${calendarSession.lastError}${pending?` · ${pending} ממתינים`:''}`};if(calendarAuth.hasUsableToken())return{className:pending?'pending':'synced',text:`מחובר ל-Google${pending?` · ${pending} ממתינים`:lastSyncText()?` · עודכן ${lastSyncText()}`:''}`};if(pending)return{className:'offline',text:`${pending} שינויים שמורים מקומית · התחבר ל-Google כדי לשלוח`};return{className:'offline',text:calendarAuth.configured()?'לא מחובר ל-Google':'נדרשת הגדרת Google OAuth'}}
-function updateCalendarStatus(){const el=$('#calendarStatus');if(!el)return;const descriptor=statusDescriptor();el.className=`calendar-status ${descriptor.className}`;el.textContent=descriptor.text;const authButton=$('#calendarAuthButton');if(authButton){authButton.textContent=calendarSession.authResumePromise?'מתחבר…':calendarAuth.hasUsableToken()?'נתק Google':'התחבר ל-Google';authButton.disabled=!!calendarSession.authResumePromise}const newButton=$('#calendarNewButton');if(newButton)newButton.disabled=!primaryWritableCalendar()||(calendarAuth.hasUsableToken()&&!calendarSession.accountVerified)}
+function statusDescriptor(){if(!displayOwner&&!calendarSession.accountVerified&&!calendarSession.syncing&&!calendarSession.authResumePromise)return{className:'offline',text:'נדרש אימות חשבון להצגת היומן השמור'};const pending=(calendarUi.pending||[]).length;if(calendarSession.authResumePromise)return{className:'pending',text:`מתחבר מחדש ל-Google${pending?` · ${pending} ממתינים`:''}`};if(calendarSession.syncing)return{className:'pending',text:`מסנכרן מול Google${pending?` · ${pending} ממתינים`:''}`};if(!navigator.onLine)return{className:'offline',text:`אופליין${pending?` · ${pending} שינויים שמורים וממתינים`:''}`};if(calendarSession.queueObservationError)return{className:'error',text:calendarSession.queueObservationError};if(calendarSession.lastError)return{className:'error',text:`${calendarSession.lastError}${pending?` · ${pending} ממתינים`:''}`};if(calendarAuth.hasUsableToken())return{className:pending?'pending':'synced',text:`מחובר ל-Google${pending?` · ${pending} ממתינים`:lastSyncText()?` · עודכן ${lastSyncText()}`:''}`};if(pending)return{className:'offline',text:`${pending} שינויים שמורים מקומית · התחבר ל-Google כדי לשלוח`};return{className:'offline',text:calendarAuth.configured()?'לא מחובר ל-Google':'נדרשת הגדרת Google OAuth'}}
+function updateCalendarStatus(){const el=$('#calendarStatus');if(!el)return;const descriptor=disposed?{className:'offline',text:'תצוגת היומן נסגרה. רענן כדי לפתוח אותה שוב.'}:statusDescriptor();el.className=`calendar-status ${descriptor.className}`;el.textContent=descriptor.text;const authButton=$('#calendarAuthButton');if(authButton){authButton.textContent=calendarSession.authResumePromise?'מתחבר…':calendarAuth.hasUsableToken()?'נתק Google':'התחבר ל-Google';authButton.disabled=disposed||!!calendarSession.authResumePromise}const newButton=$('#calendarNewButton');if(newButton)newButton.disabled=disposed||!primaryWritableCalendar()||(calendarAuth.hasUsableToken()&&!calendarSession.accountVerified)}
 
 function periodTitle(range){
   if(range.mode==='month')return monthFormatter.format(range.month);
@@ -187,7 +213,7 @@ async function syncNow({quiet=false,force=true}={}){
         publicationReceipt=confirmed;
         if(!confirmed.isCurrent()){continuePending=confirmed.isSettled();return false}
         pending=confirmed.operations;calendarUi.pending=pending;
-        syncedSnapshot=snapshot;syncSucceeded=true;calendarSession.lastError='';
+        syncedSnapshot=snapshot;syncSucceeded=true;calendarSession.lastError='';calendarSession.queueObservationError='';
         if(ui.currentView==='calendar'&&calendarRangeContains(snapshot,calendarRange())){loadSnapshotIntoUi(snapshot,pending);renderCalendarBody()}
         if(pending.length){continuePending=true;return false}
         calendarSession.lastSyncAt=snapshot.fetchedAt;
@@ -284,6 +310,7 @@ function beginRememberedReconnect({syncRegardlessOfView=false}={}){
 function resumeKnownConnectionSilently(){return beginRememberedReconnect({syncRegardlessOfView:true})}
 function start(){
   if(disposed||started)return false;started=true;
+  commitObserver.start();
   const assertActive=lifetime.checkpoint();
   wake(async()=>{await hydrateLegacyConnectionPreference();assertActive();if(!calendarAuth.configured()||(!tab.primaryTab&&ui.currentView!=='calendar'))return;await calendarAuth.prepare();assertActive();await resumeKnownConnectionSilently()});
   const resume=()=>{if(!tab.primaryTab&&ui.currentView!=='calendar')return;if(calendarAuth.hasUsableToken()){if(ui.currentView==='calendar')wake(()=>syncNow({quiet:true}));return}wake(resumeKnownConnectionSilently)};
@@ -294,7 +321,7 @@ function start(){
   return true;
 }
 function dispose(){
-  if(disposed)return false;disposed=true;resources.dispose();clearInterval(calendarSession.pollTimer);calendarSession.pollTimer=null;lifetime.dispose();return true;
+  if(disposed)return false;disposed=true;commitObserver.dispose();resources.dispose();clearInterval(calendarSession.pollTimer);calendarSession.pollTimer=null;lifetime.dispose();return true;
 }
 
 

@@ -1,5 +1,11 @@
 # Incremental JavaScript contracts
 
+Calendar's committed-work observer and optional BroadcastChannel transport check
+their actual implementation bodies with strict checkJs and negative consumers:
+live authority, asynchronous boolean read results, subscription cleanup and
+payload-free hints. Full Calendar controller/storage/journal typing remains
+outside this slice. See [committed peer observation](CALENDAR_COMMIT_OBSERVATION.md).
+
 ## Scope and evidence
 
 The pre-change baseline is `f0a0f874bd118a73ccb1496c7b57686263cadcec`.

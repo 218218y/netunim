@@ -29,8 +29,10 @@ export function selectCoveringRangeSnapshot(rows,{startKey='',endKey='',accountI
 
 // Calendar business data remains owned by Google. IndexedDB holds only a display cache
 // and durable outbound operations that have not yet been acknowledged by Google.
-export function createCalendarStorage(){
+export function createCalendarStorage({onLocalCommit=()=>{}}={}){
 let dbPromise=null;
+// This optional hint follows commit. Its failure cannot undo a durable write.
+function committed(){try{onLocalCommit()}catch(error){console.warn('Calendar commit notification failed',error)}}
 function connectionPreference(){try{const raw=localStorage.getItem(CONNECTION_PREF_KEY);if(raw===null)return{known:false,autoConnect:false,accountId:''};const value=JSON.parse(raw);return{known:true,autoConnect:value?.autoConnect===true,accountId:String(value?.accountId||'')}}catch(e){return{known:false,autoConnect:false,accountId:''}}}
 function saveConnectionPreference({autoConnect=false,accountId=''}={}){try{localStorage.setItem(CONNECTION_PREF_KEY,JSON.stringify({autoConnect:autoConnect===true,accountId:String(accountId||'').trim()}));return true}catch(e){return false}}
 
@@ -54,7 +56,7 @@ function openDb(){
   return dbPromise;
 }
 
-async function writeQueue(run){const settle=queueObservation.beginWrite();try{return await run()}finally{settle()}}
+async function writeQueue(run){const settle=queueObservation.beginWrite();let succeeded=false;try{const result=await run();succeeded=true;return result}finally{settle();if(succeeded)committed()}}
 async function addOperation(operation){return writeQueue(async()=>{const db=await openDb(),tx=db.transaction(QUEUE_STORE,'readwrite'),store=tx.objectStore(QUEUE_STORE);const record={...structuredClone(operation),createdAt:operation.createdAt||new Date().toISOString(),attempts:Number(operation.attempts||0),lastError:String(operation.lastError||'')};delete record.seq;const seq=await requestResult(store.add(record));await transactionDone(tx);return Number(seq)})}
 async function listOperations(){const db=await openDb(),tx=db.transaction(QUEUE_STORE,'readonly');const rows=await requestResult(tx.objectStore(QUEUE_STORE).getAll());await transactionDone(tx);return rows.sort((a,b)=>Number(a.seq)-Number(b.seq))}
 async function readPendingSnapshot(){const isCurrent=queueObservation.capture(),operations=await listOperations();return Object.freeze({operations,isCurrent,isSettled:queueObservation.isSettled})}
@@ -63,7 +65,7 @@ async function updateOperation(seq,patch){return writeQueue(async()=>{const db=a
 async function deleteOperation(seq){return writeQueue(async()=>{const db=await openDb(),tx=db.transaction(QUEUE_STORE,'readwrite');tx.objectStore(QUEUE_STORE).delete(Number(seq));await transactionDone(tx)})}
 async function pendingCount(){const db=await openDb(),tx=db.transaction(QUEUE_STORE,'readonly');const count=await requestResult(tx.objectStore(QUEUE_STORE).count());await transactionDone(tx);return Number(count||0)}
 
-async function putRangeCache(snapshot){const db=await openDb(),tx=db.transaction(CACHE_STORE,'readwrite');tx.objectStore(CACHE_STORE).put(structuredClone(snapshot));await transactionDone(tx)}
+async function putRangeCache(snapshot){const db=await openDb(),tx=db.transaction(CACHE_STORE,'readwrite');tx.objectStore(CACHE_STORE).put(structuredClone(snapshot));await transactionDone(tx);committed()}
 async function getRangeCache(key){const db=await openDb(),tx=db.transaction(CACHE_STORE,'readonly');const value=await requestResult(tx.objectStore(CACHE_STORE).get(String(key)));await transactionDone(tx);return value||null}
 async function getRangeCacheCovering(startKey,endKey,accountId=''){const db=await openDb(),tx=db.transaction(CACHE_STORE,'readonly');const rows=await requestResult(tx.objectStore(CACHE_STORE).getAll());await transactionDone(tx);return selectCoveringRangeSnapshot(rows,{startKey,endKey,accountId})}
 // Read cache attribution, queue, and Google account in the same native snapshot.
@@ -74,7 +76,7 @@ async function readDisplaySnapshot(owner,startKey,endKey){
   const [rows,operations,account]=await Promise.all([requestResult(tx.objectStore(CACHE_STORE).getAll()),requestResult(tx.objectStore(QUEUE_STORE).getAll()),requestResult(tx.objectStore(META_STORE).get('accountId')),done]);
   return authorizeCalendarDisplay(selectCoveringRangeSnapshot(rows,{startKey,endKey,owner,accountId:String(account?.value||'')}),operations.sort((a,b)=>Number(a.seq)-Number(b.seq)),account?.value,owner);
 }
-async function clearRangeCache(){const db=await openDb(),tx=db.transaction(CACHE_STORE,'readwrite');tx.objectStore(CACHE_STORE).clear();await transactionDone(tx)}
+async function clearRangeCache(){const db=await openDb(),tx=db.transaction(CACHE_STORE,'readwrite');tx.objectStore(CACHE_STORE).clear();await transactionDone(tx);committed()}
 
 async function getMeta(key){const db=await openDb(),tx=db.transaction(META_STORE,'readonly');const row=await requestResult(tx.objectStore(META_STORE).get(String(key)));await transactionDone(tx);return row?.value??null}
 async function putMeta(key,value){const db=await openDb(),tx=db.transaction(META_STORE,'readwrite');tx.objectStore(META_STORE).put({key:String(key),value:structuredClone(value)});await transactionDone(tx)}
