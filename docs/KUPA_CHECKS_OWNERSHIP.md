@@ -48,7 +48,8 @@ An accepted receipt that settles later cannot create a new backup or cloud wakeu
 after cancellation. A later accepted save can schedule normally.
 
 Call cancellation or disposal before `drain()` to quiesce pending timers. Drain
-waits for accepted appends, started backups, cloud follow-ups and reserved
+waits for accepted appends (including an append accepted during started I/O),
+started backups, cloud follow-ups and reserved
 pull/save flights. It does not infer a cloud ACK or retry failed work. Existing
 V2 pending/head checks remain authoritative at ownership transfer.
 

@@ -20,8 +20,10 @@ export function createChecksPersistence({
     isPending:()=>pending.size>0||cloudTask.isPending()||backupTask.isPending(),
     cancelPending(){followupEpoch++;const cloud=cloudTask.cancel(),backup=backupTask.cancel();return cloud||backup},
     async drain(){
-      while(pending.size)await Promise.allSettled([...pending]);
-      await Promise.all([cloudTask.drain(),backupTask.drain()]);
+      do{
+        while(pending.size)await Promise.allSettled([...pending]);
+        await Promise.all([cloudTask.drain(),backupTask.drain()]);
+      }while(pending.size);
     },
     dispose(){
       if(disposed)return false;

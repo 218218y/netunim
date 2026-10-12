@@ -42,7 +42,14 @@ export function createKupaChecksRuntime({model,ui,checksSession={},sharedChecksH
     poll:(...args)=>disposed?Promise.resolve():requireSync().pollSharedChecks(...args),
     cancelPending:()=>persistence?.runtime.cancelPending()??false,
     isPending:()=>!!(sync?.runtime.isPending()||persistence?.runtime.isPending()),
-    async drain(){await persistence?.runtime.drain();await sync?.runtime.drain()},
+    async drain(){
+      do{
+        await persistence?.runtime.drain();
+        await sync?.runtime.drain();
+        // A sync/backup continuation may accept another local receipt.
+        await persistence?.runtime.drain();
+      }while(sync?.runtime.isPending());
+    },
     dispose(){
       if(disposed)return false;
       disposed=true;search.cancel();persistence?.runtime.dispose();sync?.runtime.dispose();return true;

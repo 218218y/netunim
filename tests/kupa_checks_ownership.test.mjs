@@ -92,6 +92,20 @@ test('Checks drain waits for a started backup after cancellation',async()=>{
   held.resolve();await drain;assert.equal(api.runtime.isPending(),false);
 });
 
+test('Checks drain also waits for an append accepted during a started backup',async()=>{
+  const receipt=gate(),entered=gate(),resume=gate(),jobs=new Map();let writes=0;
+  const api=createChecksPersistence({session:{},checksSession:{},model:{state:{}},tab:{primaryTab:true},files:{backupsDirHandle:{}},
+    timers:{setTimeout(run){jobs.set(1,run);return 1},clearTimeout:id=>jobs.delete(id)},
+    sharedChecksV2:{requested:true,persist:()=>({emergencyDurable:false,committed:++writes===1?Promise.resolve():receipt.promise})},
+    checksStatus:{save:noop,cloud:noop},normalizeState:x=>x,
+    backupSnapshotToComputer:async()=>{entered.resolve();await resume.promise;void api.saveChecksState('edit during backup')}});
+  await api.saveChecksState('first');const run=jobs.get(1);jobs.delete(1);run();await entered.promise;
+  api.runtime.cancelPending();let drained=false;const drain=api.runtime.drain().then(()=>{drained=true});
+  try{
+    resume.resolve();await tick();assert.equal(writes,2);assert.equal(drained,false);
+  }finally{receipt.resolve();await drain;api.runtime.cancelPending();await api.runtime.drain()}
+});
+
 test('Kupa one-shot bootstrap policy survives extraction and explicit deletions remain required',()=>{
   const checksSession={sharedChecksBootstrapActive:true},merge=createSharedChecksMerge({checksSession});
   const base=[{id:'C',amount:10,status:'בקופה'}];
