@@ -348,3 +348,12 @@ numeric, file ports return bytes or explicit text/truncation, and response kinds
 form a discriminated union. An implementation mutation returning a string as
 binary bytes fails this gate. The native filesystem adapter, full server and
 index/cache remain separate tested slices. See DOCUMENT_PREVIEW_FILE_BOUNDARY.md.
+
+## Document match-text cache
+
+The actual `preview-text-cache.mjs` body and negative consumers now check numeric
+clock/expiry/capacity, captured fingerprint strings, asynchronous loaders and
+explicit text source/truncation/form geometry. An implementation mutation storing
+a string as expiry evidence fails the gate. This covers cache ownership, not full
+PDF normalization, persisted index transactions or server request authorization.
+See DOCUMENT_PREVIEW_CACHE_OWNERSHIP.md.
