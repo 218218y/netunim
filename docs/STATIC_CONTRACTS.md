@@ -330,3 +330,12 @@ requires a captured resource name and request token, and exposes a numeric
 fence and server deadline. Runtime decoding remains necessary for untrusted
 RPC JSON. This slice does not statically check entire transports, controllers,
 lease SQL, all heartbeat/queue consumers or the broader Finance lifecycle.
+
+## Native preview process session
+
+The actual `native-preview-session.mjs` body and negative consumers are checked
+strictly: child stream/event ports, scalar wire arguments, numeric deadlines and
+asynchronous termination are explicit. The session owns startup/readiness,
+per-child pending and cleanup; the Node/Windows adapter remains a tested/linted
+separate implementation. This slice does not claim full server, Office COM,
+HTTP implementation or index typing. See DOCUMENT_NATIVE_PREVIEW_OWNERSHIP.md.

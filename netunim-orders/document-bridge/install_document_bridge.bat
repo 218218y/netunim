@@ -58,7 +58,7 @@ if errorlevel 1 goto :node_error
 if not "%ERRORLEVEL%"=="0" goto :node_error
 if exist "%STAGING%" rmdir /S /Q "%STAGING%" >nul 2>nul
 mkdir "%STAGING%" >nul 2>nul || goto :stage_error
-for %%F in (server.mjs lib.mjs http-handler.mjs http-routes.mjs pdf_form_index.mjs pdf-index-policy.mjs pdf-extract-worker.mjs start_document_bridge.bat) do (
+for %%F in (server.mjs lib.mjs http-handler.mjs http-routes.mjs native-preview-session.mjs native-preview-platform.mjs pdf_form_index.mjs pdf-index-policy.mjs pdf-extract-worker.mjs start_document_bridge.bat) do (
   copy /Y "%~dp0%%F" "%STAGING%\%%F" >nul || goto :stage_error
 )
 if exist "%STAGING%\pdfjs" rmdir /S /Q "%STAGING%\pdfjs" >nul 2>nul

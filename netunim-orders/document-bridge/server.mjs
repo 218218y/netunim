@@ -15,6 +15,8 @@ import {
 import {buildPdfFormMatchAnchors,extractInteractivePdfText,PDF_FORM_MAX_BYTES,verifyNodePdfJsRuntime} from './pdf_form_index.mjs';
 import {pdfIndexNeedsInspection,pdfMaintenanceInventoryPlan,pdfMaintenanceRunLimits} from './pdf-index-policy.mjs';
 import {createDocumentBridgeRoutes} from './http-routes.mjs';
+import {createNativePreviewSession} from './native-preview-session.mjs';
+import {createNativePreviewHostPlatform} from './native-preview-platform.mjs';
 import {createDocumentBridgeHttpHandler,documentBridgeErrorResponse as safeError} from './http-handler.mjs';
 
 const execFile=promisify(execFileCb);
@@ -55,12 +57,11 @@ const PDF_FORM_MAINTENANCE_LOCK_PATH=path.join(APP_ROOT,'pdf-form-maintenance.lo
 const TEXT_EXTENSIONS=new Set(['txt','log','md','markdown','csv','tsv','json','xml','yaml','yml','ini','cfg','conf','sql','js','mjs','cjs','ts','tsx','jsx','css','scss','less','html','htm']);
 const BINARY_PREVIEW_MIME=new Map([['pdf','application/pdf'],['png','image/png'],['jpg','image/jpeg'],['jpeg','image/jpeg'],['gif','image/gif'],['webp','image/webp'],['bmp','image/bmp'],['svg','image/svg+xml']]);
 const STRUCTURED_PREVIEW_MIME=new Map([['docx','application/vnd.openxmlformats-officedocument.wordprocessingml.document'],['docm','application/vnd.ms-word.document.macroEnabled.12'],['dotx','application/vnd.openxmlformats-officedocument.wordprocessingml.template'],['dotm','application/vnd.ms-word.template.macroEnabled.12'],['xls','application/vnd.ms-excel'],['xlsx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],['xlsm','application/vnd.ms-excel.sheet.macroEnabled.12'],['xlsb','application/vnd.ms-excel.sheet.binary.macroEnabled.12'],['xlt','application/vnd.ms-excel'],['xltx','application/vnd.openxmlformats-officedocument.spreadsheetml.template'],['xltm','application/vnd.ms-excel.template.macroEnabled.12']]);
-let server=null,cachedProbe=null,cachedEsPath='',everythingProbePromise=null,everythingStartPromise=null,nativePreviewProcess=null,nativePreviewBuffer='',nativePreviewSequence=0;
+let server=null,cachedProbe=null,cachedEsPath='',everythingProbePromise=null,everythingStartPromise=null;
 let pdfFormIndexLoaded=false,pdfFormIndexRefreshPromise=null,pdfFormIndexRefreshAbortController=null,pdfFormIndexLastRefresh=0,pdfFormIndexPending=0,pdfFormIndexInventoryCount=0,shuttingDown=false,pdfFormIndexSignature='';
 let manualPdfMaintenanceChild=null,manualPdfMaintenance=null,manualPdfMaintenanceStartPromise=null,pdfMaintenanceStopRequested=false;
 let pdfFormIndexBacklog=[];
 const pdfFormIndex=new Map();
-const nativePreviewPending=new Map();
 
 async function ensureRoot(){await fs.mkdir(APP_ROOT,{recursive:true})}
 async function appendLog(message){try{await ensureRoot();await fs.appendFile(LOG_PATH,`${new Date().toISOString()} ${message}\n`,'utf8')}catch{}}
@@ -567,38 +568,12 @@ async function readTextPreview(fullPath,stat){
   const length=Math.min(Number(stat.size)||0,TEXT_PREVIEW_MAX_BYTES),handle=await fs.open(fullPath,'r');
   try{const buffer=Buffer.alloc(length);const {bytesRead}=await handle.read(buffer,0,length,0);const decoded=decodeTextBuffer(buffer.subarray(0,bytesRead));const result=trimPreviewText(decoded);return {...result,truncated:result.truncated||Number(stat.size)>length}}finally{await handle.close()}
 }
-function rejectNativePreviewPending(error){
-  for(const [,pending] of nativePreviewPending){clearTimeout(pending.timer);pending.reject(error)}
-  nativePreviewPending.clear();
-}
-function handleNativePreviewOutput(chunk){
-  nativePreviewBuffer+=String(chunk||'');
-  while(true){
-    const index=nativePreviewBuffer.indexOf('\n');if(index<0)break;
-    const line=nativePreviewBuffer.slice(0,index).replace(/\r$/,'');nativePreviewBuffer=nativePreviewBuffer.slice(index+1);
-    if(!line)continue;
-    const [id,status,...rest]=line.split('\t'),pending=nativePreviewPending.get(id);if(!pending)continue;
-    nativePreviewPending.delete(id);clearTimeout(pending.timer);const message=rest.join('\t');
-    if(status==='OK')pending.resolve(message);else{const error=new Error(message||'Windows Preview Handler failed.');error.code='NATIVE_PREVIEW_FAILED';pending.reject(error)}
-  }
-}
-async function ensureNativePreviewProcess(){
-  if(process.platform!=='win32'){const e=new Error('Windows Preview Handler זמין רק ב-Windows.');e.code='WINDOWS_REQUIRED';throw e}
-  if(nativePreviewProcess&&!nativePreviewProcess.killed&&nativePreviewProcess.exitCode===null)return nativePreviewProcess;
-  if(!(await existsFile(NATIVE_PREVIEW_HOST))){const e=new Error('רכיב Windows Preview Handler לא הותקן. הרץ מחדש את מתקין Document Bridge.');e.code='NATIVE_PREVIEW_HOST_MISSING';throw e}
-  nativePreviewBuffer='';
-  const child=spawn(NATIVE_PREVIEW_HOST,[],{windowsHide:true,stdio:['pipe','pipe','pipe'],cwd:APP_ROOT});nativePreviewProcess=child;
-  child.stdout.setEncoding('utf8');child.stderr.setEncoding('utf8');child.stdout.on('data',handleNativePreviewOutput);child.stderr.on('data',data=>appendLog(`NATIVE_PREVIEW_STDERR ${JSON.stringify(String(data||'').trim())}`));
-  child.on('error',error=>{if(nativePreviewProcess===child)nativePreviewProcess=null;rejectNativePreviewPending(Object.assign(new Error(`Windows Preview Handler host failed: ${error.message}`),{code:'NATIVE_PREVIEW_HOST_FAILED'}))});
-  child.on('exit',(code,signal)=>{if(nativePreviewProcess===child)nativePreviewProcess=null;rejectNativePreviewPending(Object.assign(new Error(`Windows Preview Handler host exited (${code??signal??'unknown'}).`),{code:'NATIVE_PREVIEW_HOST_EXITED'}))});
-  await nativePreviewCommand('PING',[],4000);return child;
-}
-async function nativePreviewCommand(command,args=[],timeoutMs=6000){
-  const child=command==='PING'&&nativePreviewProcess?nativePreviewProcess:await ensureNativePreviewProcess();
-  if(!child?.stdin?.writable){const e=new Error('Windows Preview Handler host is not writable.');e.code='NATIVE_PREVIEW_HOST_FAILED';throw e}
-  const id=String(++nativePreviewSequence),fields=[id,String(command),...args.map(value=>String(value??'').replace(/[\r\n\t]/g,' '))];
-  return await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{nativePreviewPending.delete(id);const e=new Error('Windows Preview Handler did not respond in time.');e.code='NATIVE_PREVIEW_TIMEOUT';reject(e)},timeoutMs);nativePreviewPending.set(id,{resolve,reject,timer});child.stdin.write(fields.join('\t')+'\n','utf8',error=>{if(!error)return;const pending=nativePreviewPending.get(id);if(!pending)return;nativePreviewPending.delete(id);clearTimeout(timer);reject(error)})});
-}
+const nativePreviewSession=createNativePreviewSession({
+  host:createNativePreviewHostPlatform({hostPath:NATIVE_PREVIEW_HOST,applicationRoot:APP_ROOT,
+    processes:{waitForExit:waitForProcessExit,alive:processAlive,forceStopTree:forceStopProcessTree},log:appendLog}),
+  timers:{setTimeout,clearTimeout},log:appendLog,
+});
+const nativePreviewCommand=(command,args=[],timeoutMs=6000)=>nativePreviewSession.command(command,args,timeoutMs);
 function normalizePreviewGeometry(value){
   const source=value&&typeof value==='object'?value:{};
   const integer=(name,fallback,min,max)=>Math.max(min,Math.min(max,Math.round(Number(source[name])||fallback)));
@@ -610,8 +585,8 @@ async function openNativePreview(id,geometry){
   const box=normalizePreviewGeometry(geometry),encoded=Buffer.from(row.fullPath,'utf8').toString('base64');
   const response=await nativePreviewCommand('OPEN',[encoded,box.x,box.y,box.width,box.height],9000);await appendLog(`NATIVE_PREVIEW_OPEN kind=${officeKind} geometry=${box.x},${box.y},${box.width}x${box.height} handler=${JSON.stringify(response)} path=${JSON.stringify(row.fullPath)}`);return {ok:true,kind:'native',officeKind};
 }
-async function moveNativePreview(geometry){const box=normalizePreviewGeometry(geometry);if(!nativePreviewProcess)return {ok:true,visible:false};await nativePreviewCommand('MOVE',[box.x,box.y,box.width,box.height],2500);return {ok:true,visible:true}}
-async function hideNativePreview(){if(!nativePreviewProcess)return {ok:true};try{await nativePreviewCommand('HIDE',[],2500)}catch{}return {ok:true}}
+async function moveNativePreview(geometry){const box=normalizePreviewGeometry(geometry);if(!nativePreviewSession.isRunning())return {ok:true,visible:false};await nativePreviewCommand('MOVE',[box.x,box.y,box.width,box.height],2500);return {ok:true,visible:true}}
+async function hideNativePreview(){if(!nativePreviewSession.isRunning())return {ok:true};try{await nativePreviewCommand('HIDE',[],2500)}catch{}return {ok:true}}
 async function selectSearchFolder(){
   if(process.platform!=='win32'){const e=new Error('בחירת תיקיית חיפוש נתמכת רק ב-Windows.');e.code='WINDOWS_REQUIRED';throw e}
   const response=await nativePreviewCommand('PICK_FOLDER',[],120000);
@@ -622,13 +597,6 @@ async function selectSearchFolder(){
   const label=path.win32.basename(normalized)||path.win32.parse(normalized).root.replace(/[\\]+$/,'')||normalized;
   await appendLog(`SEARCH_SCOPE_PICK path=${JSON.stringify(normalized)}`);
   return {ok:true,bridgeVersion:BRIDGE_VERSION,cancelled:false,path:normalized,label};
-}
-async function stopNativePreview(){
-  const child=nativePreviewProcess;if(!child)return;const pid=Number(child.pid)||0;
-  try{await nativePreviewCommand('EXIT',[],1500)}catch{}
-  if(pid&&!(await waitForProcessExit(pid,1200))){try{child.kill()}catch{};await waitForProcessExit(pid,800)}
-  if(pid&&await processAlive(pid)){await appendLog(`NATIVE_PREVIEW_FORCE_STOP pid=${pid}`);await forceStopProcessTree(pid);await waitForProcessExit(pid,1500)}
-  nativePreviewProcess=null;
 }
 async function readEverythingContentPreview(fullPath){
   try{
@@ -744,7 +712,7 @@ async function documentBridgeStatus(){
 }
 function bridgeHealth(){return {ok:true,service:BRIDGE_SERVICE,version:BRIDGE_VERSION,pid:process.pid}}
 async function warmDocumentSearch(){const probe=await probeEverything({autoStart:true});return {ok:true,service:BRIDGE_SERVICE,version:BRIDGE_VERSION,everythingVersion:probe.everythingVersion,instance:probe.instance}}
-async function prepareShutdown(){shuttingDown=true;await stopManualPdfMaintenance().catch(()=>{});await stopNativePreview();return {ok:true,pid:process.pid}}
+async function prepareShutdown(){shuttingDown=true;await stopManualPdfMaintenance().catch(()=>{});await nativePreviewSession.dispose();return {ok:true,pid:process.pid}}
 function finishShutdown(){
   setTimeout(()=>{server?.close(async()=>{await appendLog('STOP graceful shutdown complete');process.exitCode=0})},20);
   setTimeout(()=>{process.exit(0)},2500).unref?.();

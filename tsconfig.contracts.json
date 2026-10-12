@@ -13,6 +13,8 @@
     "types": []
   },
   "files": [
+    "netunim-orders/document-bridge/native-preview-session.mjs",
+    "tests/fixtures/checked-native-preview-session.mjs",
     "netunim-orders/document-bridge/http-routes.mjs",
     "tests/fixtures/checked-document-bridge-routes.mjs",
     "shared/storage-cloud-recovery.js",
