@@ -65,7 +65,7 @@ print('PASS Morning operation authority: 12 real IDB races, retained recovery, i
 for transition in ('account','relogin','primary'):
     with BrowserSession(ROOT/'netunim-orders/site','morning-composed-'+transition) as browser:
         composed=browser.evaluate(r"""(async()=>{
-          await appReady;syncDocument.stopPolling();domainsFinanceController.stopAutoSync?.();
+          await appReady;syncDocument.stopPolling();finance.runtime.stop?.();
           const transition=__TRANSITION__,owner='aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa';
           const debt={id:'composed-morning-debt',customerName:'Ownership fixture',amount:100,paid:false,invoiceIssued:false,closedAt:null};state.customerDebts.push(debt);
           storagePersistence.scheduleSave('Morning composed fixture',{domains:['customerDebts'],operations:[{type:'put',collection:'customerDebts',mode:'insert',id:debt.id,record:debt,index:state.customerDebts.length-1}]});await mainStorageV2.commitPromise;

@@ -1,4 +1,4 @@
-export function createFinanceStatusView({ui,currentSection,snapshot,headerContextMarkup,bankSyncPanelMarkup,creditSyncPanelMarkup,controller,renderKupa,renderedData}){
+export function createFinanceStatusView({ui,currentSection,snapshot,headerContextMarkup,bankSyncPanelMarkup,creditSyncPanelMarkup,controller,renderKupa,renderedData,isActive=()=>true}){
   function replacePanel(panel,markup,findNext=()=>document.getElementById(panel.id)){
     const key=element=>element.id||[element.tagName,element.name,element.dataset.input,element.dataset.change,element.dataset.changeArg0,element.dataset.changeArg1].join(':');
     const controls=new Map([...panel.querySelectorAll('input,select,textarea')].map(element=>[key(element),element]));
@@ -11,7 +11,7 @@ export function createFinanceStatusView({ui,currentSection,snapshot,headerContex
     if(focused?.isConnected&&controls.has(key(focused))){focused.focus({preventScroll:true});if(selection!==null&&selection!==undefined)focused.setSelectionRange?.(selection,selectionEnd)}
   }
   function refreshFinanceStatus(section){
-    if(ui.currentView!=='kupa'||currentSection()!==section)return;
+    if(!isActive()||ui.currentView!=='kupa'||currentSection()!==section)return;
     const data=snapshot(),command=document.querySelector('[data-finance-command]');
     if(command)replacePanel(command,headerContextMarkup(data),()=>document.querySelector('[data-finance-command]'));
     const panel=document.getElementById(section==='bank'?'ordersBankSyncPanel':'ordersCreditSyncPanel');
@@ -21,7 +21,7 @@ export function createFinanceStatusView({ui,currentSection,snapshot,headerContex
   async function refreshFinanceOperation(section,start){
     const task=start();refreshFinanceStatus(section);
     try{return await task}finally{
-      if(ui.currentView==='kupa'&&currentSection()===section){
+      if(isActive()&&ui.currentView==='kupa'&&currentSection()===section){
         const data=snapshot(),lastRenderedData=renderedData();
         if(!controller.readSnapshot||!lastRenderedData||data.kupa!==lastRenderedData.kupa||data.bank!==lastRenderedData.bank)renderKupa();
         else refreshFinanceStatus(section);

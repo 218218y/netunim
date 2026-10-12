@@ -17,7 +17,7 @@ test('Orders capability packs compose with the exact startup mutation domains',(
     {name:'alerts',actions:createAlertsActions({uiAlertCenter:port})},
     {name:'finance-bank',actions:createFinanceBankActions({domainsFinanceController:port,domainsFinanceView:port,importFinanceConnections:()=>{},ui,uiStatus:port})},
     {name:'finance-credit',actions:createFinanceCreditActions({domainsFinanceView:port,ui})},
-    {name:'checks',actions:createChecksActions({domainsBankCache:port,domainsChecksEditor:port,domainsChecksView:port,domainsFinanceView:port,ui,uiDateEditor:port,uiModal:port})},
+    {name:'checks',actions:createChecksActions({financeReadout:port,domainsChecksEditor:port,domainsChecksView:port,domainsFinanceView:port,ui,uiDateEditor:port,uiModal:port})},
     {name:'shell',actions:createShellActions({uiModal:port})},
     {name:'dashboard',actions:createDashboardActions({domainsDashboardView:port,domainsFinanceView:port,ui})},
     {name:'suppliers',actions:createSuppliersActions({domainsSuppliersBulk:port,domainsSuppliersEditor:port,domainsSuppliersNavigation:port,domainsSuppliersOrder:port,domainsSuppliersView:port,supplierUi:{}})},

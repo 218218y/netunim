@@ -10,7 +10,7 @@ from pathlib import Path
 from browser_harness import BrowserSession, ROOT
 
 FLOW = r"""(async()=>{
- await appReady;syncDocument.stopPolling();domainsFinanceController.stopAutoSync();
+ await appReady;syncDocument.stopPolling();finance.runtime.stop();
  const phase=__PHASE__,check=(ok,message)=>{if(!ok)throw Error(message)},op='00000000-0000-4000-8000-000000000001';
  const debt={id:'metadata-debt',customerName:'Metadata fixture',amount:100,paid:false,invoiceIssued:false,debtProgress:[{id:'MORNING:'+op+':payment',kind:'payment',action:'add',amount:30,source:'morning',createdAt:'2026-10-11T00:00:00Z'}]};
  state.customerDebts.push(debt);state.notes.push({id:'metadata-note',content:'independent durable content'});

@@ -1,0 +1,208 @@
+import {createFinanceBridgeIntegration} from '../integrations/bank-bridge.js';
+import {createFinanceBrowserEffects} from '../platform/finance-effects.js';
+import {createFinanceOperationScope} from '../shared/finance-fence.js';
+import {createDomainsBankSelectors} from '../domains/bank/selectors.js';
+import {createDomainsBankCache} from '../domains/bank/cache.js';
+import {createDomainsFinanceController} from '../domains/finance/controller.js';
+import {createDomainsFinanceView} from '../domains/finance/view.js';
+import {createOrdersBankChequeImageRuntime} from '../domains/finance/bank-cheque-image-runtime.js';
+import {createFinanceConnectionImporter} from '../shared/finance-connection-import.js';
+import {createCreditCardOrderView} from '../shared/credit-card-order-view.js';
+import {createFinanceBankActions} from '../ui/action-packs/finance-bank.js';
+import {createFinanceCreditActions} from '../ui/action-packs/finance-credit.js';
+import {markMutationActions} from '../shared/action-registry.js';
+import {esc} from '../core/values.js';
+
+function requireMethods(name, port, methods) {
+  for (const method of methods) {
+    if (typeof port?.[method] !== 'function') throw new TypeError(`orders_finance_${name}_${method}_required`);
+  }
+}
+
+// Finance owns its adapters, readout, controller and presentation. Binding is
+// staged because Checks and the shell need readout ports before cloud/UI exist.
+export function createOrdersFinanceCapability({
+  model, ui, checksSession, tab, auth, readAccess, revisions, runFinance, platform={},
+}) {
+  if (!model || !ui || !checksSession || !tab || typeof readAccess !== 'function' || typeof runFinance !== 'function') {
+    throw new TypeError('orders_finance_context_required');
+  }
+  requireMethods('auth', auth, ['loadSession', 'supaFetch', 'ensureSession']);
+  requireMethods('revisions', revisions, ['read', 'touchFinance', 'touchBankDisplay']);
+  const effects = platform.effects ?? createFinanceBrowserEffects();
+  requireMethods('effects', effects, ['isOnline', 'writeText', 'saveJson', 'delay', 'dispose']);
+  const bridge = createFinanceBridgeIntegration(platform.bridge ? {platform:platform.bridge} : undefined);
+  let disposed = false, cache = null, controller = null, presentation = null;
+  const operationScope = createFinanceOperationScope({readAccess:() => {
+    const access = readAccess();
+    return {...access, readable:access.readable && !disposed, writable:access.writable && !disposed};
+  }});
+  const selectors = createDomainsBankSelectors({model});
+  const images = createOrdersBankChequeImageRuntime({cloudAuth:auth, bridge, operationScope});
+
+  function active() { if (disposed) throw new Error('orders_finance_disposed'); }
+  function readoutReady() { active(); if (!cache) throw new Error('orders_finance_readout_not_bound'); return cache; }
+  function coreReady() { active(); if (!controller) throw new Error('orders_finance_core_not_bound'); return controller; }
+  function uiReady() { active(); if (!presentation) throw new Error('orders_finance_ui_not_bound'); return presentation; }
+  const controllerEffects = {
+    isOnline:() => !disposed && effects.isOnline(),
+    writeText:(...args) => { active(); return effects.writeText(...args); },
+    saveJson:(...args) => { active(); return effects.saveJson(...args); },
+    delay:(...args) => { active(); return effects.delay(...args); },
+  };
+
+  function bindReadout({cloud, display}) {
+    active();
+    if (cache) throw new Error('orders_finance_readout_already_bound');
+    requireMethods('readout_cloud', cloud, ['readKupaReadOnlyCloud', 'readKupaReadOnlyMeta']);
+    requireMethods('display', display, ['renderChecks', 'renderSummary', 'refreshAlerts']);
+    cache = createDomainsBankCache({
+      checksSession, ui, operationScope,
+      isOnline:controllerEffects.isOnline,
+      computeKupaNetReadout:selectors.computeKupaNetReadout,
+      loadSession:auth.loadSession,
+      readKupaReadOnlyCloud:(...args) => cloud.readKupaReadOnlyCloud(...args),
+      readKupaReadOnlyMeta:(...args) => cloud.readKupaReadOnlyMeta(...args),
+      renderKupa:(...args) => uiReady().view.renderKupa(...args),
+      renderChecks:display.renderChecks, renderSummary:display.renderSummary,
+      refreshAlertCenter:display.refreshAlerts,
+      refreshBankAlertArchive:(...args) => coreReady().ensureBankDisplayArchive(...args),
+      touchFinanceRevision:revisions.touchFinance,
+    });
+  }
+
+  function bindCore({cloud, checks, toast}) {
+    readoutReady();
+    if (controller) throw new Error('orders_finance_core_already_bound');
+    requireMethods('cloud', cloud, [
+      'readKupaReadOnlyCloud', 'rpcSaveKupaDocument', 'readFinanceSyncDocument', 'rpcSaveFinanceSync',
+      'claimFinanceSyncLease', 'releaseFinanceSyncLease', 'saveBankSyncSnapshot', 'mergeBankTransactions',
+      'syncBankTransactionsSnapshot', 'readBankTransactions', 'readBankTransactionSnapshot',
+      'setBankTransactionHandled', 'acknowledgeBankTransactionMissing', 'acknowledgeBankTransactionAlert',
+    ]);
+    requireMethods('checks', checks, ['syncSharedChecksFromCloud', 'saveSharedChecksToCloud', 'hasLocalWork']);
+    if (typeof toast !== 'function') throw new TypeError('orders_finance_toast_required');
+    controller = createDomainsFinanceController({
+      tab, checksSession, bridge, operationScope, effects:controllerEffects, readRevision:revisions.read,
+      loadSession:auth.loadSession, toast:(...args) => { if (!disposed) toast(...args); }, getSharedChecks:() => model.state.checks,
+      refreshKupaReadout:(...args) => cache.refreshKupaReadout(...args),
+      acceptKupaCloudRow:(...args) => cache.acceptKupaCloudRow(...args),
+      readKupaReadOnlyCloud:(...args) => cloud.readKupaReadOnlyCloud(...args),
+      rpcSaveKupaDocument:(...args) => cloud.rpcSaveKupaDocument(...args),
+      syncSharedChecksFromCloud:(...args) => checks.syncSharedChecksFromCloud(...args),
+      saveSharedChecksToCloud:(...args) => checks.saveSharedChecksToCloud(...args),
+      checksHaveLocalWork:checks.hasLocalWork,
+      readFinanceSyncDocument:(...args) => cloud.readFinanceSyncDocument(...args),
+      rpcSaveFinanceSync:(...args) => cloud.rpcSaveFinanceSync(...args),
+      claimFinanceSyncLease:(...args) => cloud.claimFinanceSyncLease(...args),
+      releaseFinanceSyncLease:(...args) => cloud.releaseFinanceSyncLease(...args),
+      saveBankSyncSnapshot:(...args) => cloud.saveBankSyncSnapshot(...args),
+      mergeBankTransactions:(...args) => cloud.mergeBankTransactions(...args),
+      syncBankTransactionsSnapshot:(...args) => cloud.syncBankTransactionsSnapshot(...args),
+      readBankTransactions:(...args) => cloud.readBankTransactions(...args),
+      readBankTransactionSnapshot:(...args) => cloud.readBankTransactionSnapshot(...args),
+      setBankTransactionHandled:(...args) => cloud.setBankTransactionHandled(...args),
+      acknowledgeBankTransactionMissing:(...args) => cloud.acknowledgeBankTransactionMissing(...args),
+      acknowledgeBankTransactionAlert:(...args) => cloud.acknowledgeBankTransactionAlert(...args),
+      syncBankChequeImages:images.sync, touchBankDisplayRevision:revisions.touchBankDisplay,
+    });
+  }
+
+  function bindUi({layout, modal, date, checksView, dashboard, openBankMorningDocument, toast}) {
+    coreReady();
+    if (presentation) throw new Error('orders_finance_ui_already_bound');
+    requireMethods('layout', layout, ['mountViewLayout']);
+    requireMethods('modal', modal, ['modal', 'closeModal', 'confirmDialog']);
+    requireMethods('date', date, ['dateEditorMarkup']);
+    requireMethods('checks_view', checksView, ['checksMarkup', 'checksHeaderContextMarkup', 'syncChecksBulkUi']);
+    requireMethods('dashboard', dashboard, ['summaryMarkup']);
+    if (typeof openBankMorningDocument !== 'function' || typeof toast !== 'function') throw new TypeError('orders_finance_ui_commands_required');
+    const ownedModal = {
+      modal:(...args) => { if (!disposed) return modal.modal(...args); },
+      closeModal:(...args) => { if (!disposed) return modal.closeModal(...args); },
+      confirmDialog:async (...args) => {
+        if (disposed) return false;
+        const confirmed = await modal.confirmDialog(...args);
+        return !disposed && confirmed;
+      },
+    };
+    const notify = (...args) => { if (!disposed) toast(...args); };
+    const view = createDomainsFinanceView({
+      ui, controller, checksView, dashboardView:dashboard, runFinance, isActive:() => !disposed,
+      mountViewLayout:layout.mountViewLayout, modal:ownedModal.modal, closeModal:ownedModal.closeModal,
+      confirmDialog:ownedModal.confirmDialog, dateEditorMarkup:date.dateEditorMarkup,
+      downloadBankChequeImage:images.download, openBankMorningDocument,
+    });
+    const importConnections = createFinanceConnectionImporter({
+      bridge, getCreditProfiles:() => controller.snapshot().creditSync?.profiles || [],
+      confirmDialog:ownedModal.confirmDialog, toast:notify,
+      afterImport:async () => {
+        await Promise.all([controller.refreshBankBridgeStatus({quiet:true}), controller.refreshCreditBridgeStatus({quiet:true})]);
+        if (!disposed) view.renderKupa();
+      },
+    });
+    const creditOrder = createCreditCardOrderView({
+      getSync:() => controller.snapshot().creditSync,
+      saveOrder:(...args) => controller.saveCreditCardOrder(...args),
+      modal:ownedModal.modal, closeModal:ownedModal.closeModal, render:view.renderKupa, escapeHtml:esc,
+    });
+    const packs = [
+      {name:'credit-order', actions:markMutationActions(creditOrder.actions, {finance:['credit-card-order-save']})},
+      {name:'finance-bank', actions:createFinanceBankActions({domainsFinanceController:controller, domainsFinanceView:view, importFinanceConnections:importConnections, ui, uiStatus:{toast:notify}})},
+      {name:'finance-credit', actions:createFinanceCreditActions({domainsFinanceView:view, ui})},
+    ];
+    const guardedPacks = packs.map(pack => ({...pack, actions:Object.fromEntries(
+      Object.entries(pack.actions).map(([name, handler]) => {
+        const guarded = (...args) => disposed ? false : handler(...args);
+        if (handler.startupMutationDomain !== undefined) {
+          Object.defineProperty(guarded, 'startupMutationDomain', {value:handler.startupMutationDomain});
+        }
+        return [name, guarded];
+      }),
+    )}));
+    presentation = {view, packs:guardedPacks};
+  }
+
+  const queries = {
+    snapshot:(...args) => coreReady().snapshot(...args),
+    readSnapshot:(...args) => coreReady().readSnapshot(...args),
+    ensureBankDisplayArchive:(...args) => coreReady().ensureBankDisplayArchive(...args),
+    refreshFinanceData:(...args) => coreReady().refreshFinanceData(...args),
+  };
+  const commands = {
+    acknowledgeMissingBankTransaction:(...args) => coreReady().acknowledgeMissingBankTransaction(...args),
+    acknowledgePersistentBankAlert:(...args) => coreReady().acknowledgePersistentBankAlert(...args),
+    markBankMorningVerified:(...args) => coreReady().markBankMorningVerified(...args),
+    saveCashflowMinimum:(...args) => coreReady().saveCashflowMinimum(...args),
+    setCreditAutoMode:(...args) => coreReady().setCreditAutoMode(...args),
+    resetCreditSync:(...args) => coreReady().resetCreditSync(...args),
+  };
+  const readout = {
+    refreshKupaReadout:(...args) => readoutReady().refreshKupaReadout(...args),
+    recomputeKupaNetFromCache:(...args) => readoutReady().recomputeKupaNetFromCache(...args),
+    renderKupaDependentView:(...args) => readoutReady().renderKupaDependentView(...args),
+  };
+  const runtime = {
+    start() { uiReady(); return controller.startAutoSync(); },
+    stop() { return controller?.stopAutoSync(); },
+    dispose() {
+      if (disposed) return false;
+      disposed = true;
+      controller?.stopAutoSync();
+      controller?.setFinanceStatusListener(() => {});
+      effects.dispose();
+      return true;
+    },
+  };
+  return {
+    bindReadout, bindCore, bindUi, assertReady:() => { uiReady(); return true; },
+    queries, commands, readout, runtime,
+    presentation:{renderKupa:(...args) => uiReady().view.renderKupa(...args)},
+    customerBankPort:() => ({
+      getTransactions:() => queries.snapshot().bank?.feed?.transactions || [],
+      ensureTransactions:async () => { await queries.ensureBankDisplayArchive(); return queries.snapshot().bank?.feed?.transactions || []; },
+      onDocumentVerified:commands.markBankMorningVerified,
+    }),
+    actionPacks:() => uiReady().packs,
+  };
+}

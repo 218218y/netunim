@@ -8,7 +8,7 @@ FLOW = r"""(async()=>{
  await appReady;
  const check=(ok,message)=>{if(!ok)throw Error(message)},kind=__KIND__,phase=__PHASE__,owner='aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',stamp='2026-10-11T10:00:00Z';
  const deferred=()=>{let resolve;const promise=new Promise(done=>{resolve=done});return {promise,resolve}};
- syncDocument.stopPolling();domainsFinanceController.stopAutoSync();
+ syncDocument.stopPolling();finance.runtime.stop();
  const note={id:'orders-preferences-note',content:'exact retained durable content'};state.notes.push(note);
  storagePersistence.scheduleSave('preferences fixture',{domains:['notes'],operations:[{type:'put',collection:'notes',id:note.id,mode:'insert',index:state.notes.length-1,record:note}]});await mainStorageV2.commitPromise;
  cloudAuth.saveSession({user:{id:owner},access_token:'fixture',expires_at:9999999999});let main=null,shared=null;
@@ -46,19 +46,19 @@ FLOW = r"""(async()=>{
  try{
    if(phase==='attempt')check(await domainsFinanceController['refresh'+command]({auto:true})===false,'attempt persistence rejection reported success');
    if(phase==='disable')check(domainsFinanceController[toggle](false)===false,'failed disable reported success');
-   if(phase==='mode')check(domainsFinanceController.setCreditAutoMode('quick')===false,'failed mode reported success');
-   if(phase==='malformed'){set.call(localStorage,attempt,'not-a-time');domainsFinanceController.snapshot()}
-   if(phase==='reset')check(await domainsFinanceController.resetCreditSync()===true,'confirmed Finance reset was negated by optional preferences');
+   if(phase==='mode')check(finance.commands.setCreditAutoMode('quick')===false,'failed mode reported success');
+   if(phase==='malformed'){set.call(localStorage,attempt,'not-a-time');finance.queries.snapshot()}
+   if(phase==='reset')check(await finance.commands.resetCreditSync()===true,'confirmed Finance reset was negated by optional preferences');
    if(phase==='drain'){
      injecting=false;const pending=domainsFinanceController['refresh'+command]();await entered.promise;
      injecting=true;check(domainsFinanceController[toggle](false)===false,'failed disable reported success');
      provider.resolve(new Response(JSON.stringify(kind==='bank'?{ok:true,fetchedAt:stamp,accounts:{business:{balance:500,accountId:'synthetic-account',transactions:[]}}}:{ok:true,syncedAt:stamp,attemptedCount:1,profiles:[{profileId:'P',provider:'max',accounts:[{accountNumber:'card',txns:[{id:'exact-card-id',date:stamp,chargedAmount:-12}]}]}],errors:[]})));
      check(await pending===true,'preference failure aborted an already-started remote commit');
    }
-   const snapshot=domainsFinanceController.snapshot();check(snapshot[kind+'Busy']===false,'preference failure stranded a busy flag');
+   const snapshot=finance.queries.snapshot();check(snapshot[kind+'Busy']===false,'preference failure stranded a busy flag');
    check(snapshot[kind+'AutoEnabled']===false&&snapshot[kind+'AutomationWarningCode'],'automatic permission remained effective without preference proof');
    check(snapshot[kind+'Error']==='','preference failure masqueraded as an unsuccessful Finance commit');
-   ui.currentView='kupa';ui.kupaSubView=kind;domainsFinanceView.renderKupa();
+   ui.currentView='kupa';ui.kupaSubView=kind;finance.presentation.renderKupa();
    check(document.querySelector('[data-action="toggle-orders-'+kind+'-sync-options"]')?.classList.contains('warn'),'preference warning absent from mounted headline');
    check(document.getElementById(kind==='bank'?'ordersBankSyncPanel':'ordersCreditSyncPanel')?.textContent.includes(snapshot[kind+'AutomationWarningCode']),'preference diagnostic absent');
    check(!document.querySelector('[data-change="set-orders-'+kind+'-auto"]')?.checked,'effective automatic checkbox remained enabled');
@@ -67,16 +67,16 @@ FLOW = r"""(async()=>{
    injecting=false;
    // A valid login and reconnect/start do not clear the failed permission.
    cloudAuth.saveSession({user:{id:owner},access_token:'refreshed',expires_at:9999999999});
-   domainsFinanceController.startAutoSync();await domainsFinanceController['maybeAutoRefresh'+command]();domainsFinanceController.stopAutoSync();
+   finance.runtime.start();await domainsFinanceController['maybeAutoRefresh'+command]();finance.runtime.stop();
    check(providers===(phase==='drain'?1:0),'recovery/reconnect rescanned a provider');check(commits===(phase==='drain'||phase==='reset'?1:0),'unexpected Finance commit');check(resets===(phase==='reset'?1:0),'unexpected Bridge reset');
    check(leases===(phase==='drain'||phase==='reset'?1:0),'preference failure acquired a lease');
    check(JSON.stringify(await db.load(identity))===beforeMain,'preference failure changed Main records');check(JSON.stringify(await db.load(sharedIdentity))===beforeShared,'preference failure changed Shared records');
    const recovered=await mainStorageV2.recoverReadOnly();check(recovered.state.notes.find(row=>row.id===note.id)?.content===note.content,'retained note changed identity/content');
-   if(phase==='drain'&&kind==='credit')check(domainsFinanceController.snapshot().creditSync.profiles[0].accounts[0].txns[0].id==='exact-card-id','drained Credit lost its stable ID');
+   if(phase==='drain'&&kind==='credit')check(finance.queries.snapshot().creditSync.profiles[0].accounts[0].txns[0].id==='exact-card-id','drained Credit lost its stable ID');
    if(phase==='malformed')set.call(localStorage,attempt,'0');
-   check(domainsFinanceController[toggle](true)===true,'explicit re-enable could not confirm recovered preferences');check(!domainsFinanceController.snapshot()[kind+'AutomationWarningCode'],'explicit re-enable kept obsolete warning');domainsFinanceController.stopAutoSync();
+   check(domainsFinanceController[toggle](true)===true,'explicit re-enable could not confirm recovered preferences');check(!finance.queries.snapshot()[kind+'AutomationWarningCode'],'explicit re-enable kept obsolete warning');finance.runtime.stop();
    return {truthfulWarning:true,busyReleased:true,noDuplicateProvider:true,mainRetained:true,sharedRetained:true,noteRetained:true,explicitRecovery:true};
- }finally{Storage.prototype.getItem=get;Storage.prototype.setItem=set;globalThis.fetch=fetch;domainsFinanceController.stopAutoSync();cloudAuth.saveSession(null)}
+ }finally{Storage.prototype.getItem=get;Storage.prototype.setItem=set;globalThis.fetch=fetch;finance.runtime.stop();cloudAuth.saveSession(null)}
 })()"""
 
 parser = argparse.ArgumentParser()

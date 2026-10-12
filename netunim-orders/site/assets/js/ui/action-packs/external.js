@@ -11,7 +11,7 @@ const notesMutations=[
 
 export function createExternalActionPacks({notesSheetActions,creditOrderActions}){
   return [
-    {name:'credit-order',actions:markMutationActions(creditOrderActions,{finance:['credit-card-order-save']})},
+    ...(creditOrderActions?[{name:'credit-order',actions:markMutationActions(creditOrderActions,{finance:['credit-card-order-save']})}]:[]),
     {name:'notes-sheet',actions:markMutationActions(notesSheetActions,{notes:notesMutations})},
   ];
 }

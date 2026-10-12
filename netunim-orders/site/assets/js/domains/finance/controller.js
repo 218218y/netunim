@@ -23,7 +23,6 @@ function supportedCreditBridge(status){const version=Number(status?.bridgeVersio
 function accountIdOf(snapshot){return snapshot?.accountId||[snapshot?.branchNumber,snapshot?.accountNumber].filter(Boolean).join('-')||snapshot?.accountNumber||''}
 function completeTransactionCoverage(snapshot){const coverage=snapshot?.transactionCoverage&&typeof snapshot.transactionCoverage==='object'?snapshot.transactionCoverage:{},from=String(coverage.from||''),to=String(coverage.to||''),valid=/^\d{4}-\d{2}-\d{2}$/.test(from)&&/^\d{4}-\d{2}-\d{2}$/.test(to)&&from<=to,warning=String(snapshot?.transactionWarning||'');return {complete:coverage.complete===true&&!warning&&valid,from:valid?from:null,to:valid?to:null,days:Number(coverage.days)||null,warning}}
 function bankFeedFromSnapshot(snapshot,fetchedAt){if(!snapshot||!Number.isFinite(Number(snapshot.balance)))return null;return normalizeBankFeed({provider:'hapoalim',accountNumber:accountIdOf(snapshot),balance:Number(snapshot.balance),availableBalance:snapshot.availableBalance,creditLimit:snapshot.creditLimit,creditLimitUsed:snapshot.creditLimitUsed,creditLimitUsedPercent:snapshot.creditLimitUsedPercent,syncedAt:fetchedAt,transactions:snapshot.transactions||[],transactionWarning:snapshot.transactionWarning||''})}
-function contentionBackoff(attempt){return new Promise(resolve=>setTimeout(resolve,contentionDelay(attempt)))}
 function cleanDigits(value){return String(value||'').replace(/\D/g,'')}
 function financeBankPayload(bank){const out={...bank};delete out.adjustments;delete out.snapshotToken;delete out.snapshotSeq;return out}
 function prepareKupaWriteState(kupa){const out=clone(kupa||{});delete out.creditSync;out.cashflowSettings=normalizeCashflowSettings(out.cashflowSettings);const bank=out.bank&&typeof out.bank==='object'?out.bank:{};out.bank={currentBalance:bank.source==='manual'?bank.currentBalance:null,updatedAt:bank.source==='manual'?bank.updatedAt:null,asOfDate:bank.source==='manual'?bank.asOfDate:null,adjustments:Array.isArray(bank.adjustments)?bank.adjustments.filter(x=>x?.type!=='check_deposit'):[],source:bank.source==='manual'?'manual':null,sourceAccount:null,snapshotToken:bank.snapshotToken??null,snapshotSeq:bank.snapshotSeq??null};return out}
@@ -53,8 +52,10 @@ function assertBankArchiveCoverage(mergeResult,archive,{role,requireExactCount=f
 }
 
 
-export function createDomainsFinanceController({tab,checksSession,bridge,operationScope,loadSession,refreshKupaReadout,readKupaReadOnlyCloud,rpcSaveKupaDocument,acceptKupaCloudRow,syncSharedChecksFromCloud,saveSharedChecksToCloud,checksHaveLocalWork,getSharedChecks=()=>[],toast,readFinanceSyncDocument=null,rpcSaveFinanceSync=null,claimFinanceSyncLease=async()=>({acquired:true}),releaseFinanceSyncLease=async()=>true,saveBankSyncSnapshot:publishBankSyncSnapshot=null,mergeBankTransactions=async()=>null,syncBankTransactionsSnapshot=async()=>null,readBankTransactions=async()=>[],readBankTransactionSnapshot=async()=>null,setBankTransactionHandled:saveBankTransactionHandled=async()=>null,acknowledgeBankTransactionMissing=async()=>null,acknowledgeBankTransactionAlert=async()=>null,syncBankChequeImages=async()=>({ok:true,warnings:[]}),touchBankDisplayRevision=()=>{},readRevision} ){
+export function createDomainsFinanceController({tab,checksSession,bridge,operationScope,loadSession,refreshKupaReadout,readKupaReadOnlyCloud,rpcSaveKupaDocument,acceptKupaCloudRow,syncSharedChecksFromCloud,saveSharedChecksToCloud,checksHaveLocalWork,getSharedChecks=()=>[],toast,readFinanceSyncDocument=null,rpcSaveFinanceSync=null,claimFinanceSyncLease=async()=>({acquired:true}),releaseFinanceSyncLease=async()=>true,saveBankSyncSnapshot:publishBankSyncSnapshot=null,mergeBankTransactions=async()=>null,syncBankTransactionsSnapshot=async()=>null,readBankTransactions=async()=>[],readBankTransactionSnapshot=async()=>null,setBankTransactionHandled:saveBankTransactionHandled=async()=>null,acknowledgeBankTransactionMissing=async()=>null,acknowledgeBankTransactionAlert=async()=>null,syncBankChequeImages=async()=>({ok:true,warnings:[]}),touchBankDisplayRevision=()=>{},readRevision,effects} ){
   if(typeof operationScope?.capture!=='function'||typeof operationScope?.captureRead!=='function')throw new Error('orders_finance_operation_scope_required');
+  for(const method of ['isOnline','writeText','saveJson','delay'])if(typeof effects?.[method]!=='function')throw new TypeError(`orders_finance_effect_${method}_required`);
+  const contentionBackoff=attempt=>effects.delay(contentionDelay(attempt));
   const scopeChanged=error=>error?.code==='FINANCE_OPERATION_SCOPE_CHANGED';
   function scopeIsCurrent(assertCurrent){try{if(!assertCurrent)return false;assertCurrent();return true}catch(error){if(!scopeChanged(error))throw error;return false}}
   function currentOperationError(error,assertOwner){try{assertOwner?.();return error}catch(ownerError){return ownerError}}
@@ -84,7 +85,7 @@ export function createDomainsFinanceController({tab,checksSession,bridge,operati
 
   async function ensureBankDisplayArchive(){
     // Bank refresh owns publication until its snapshot/readout confirmation.
-    if(local.bankBusy||!loadSession()||!navigator.onLine||typeof readBankTransactions!=='function')return false;
+    if(local.bankBusy||!loadSession()||!effects.isOnline()||typeof readBankTransactions!=='function')return false;
     let assertCurrent;try{assertCurrent=operationScope.captureRead()}catch(error){if(scopeChanged(error))return false;throw error}
     const targets=bankArchiveTargets(),signature=JSON.stringify(targets.map(([role,feed])=>[role,feed.accountNumber,feed.syncedAt]));
     if(bankDisplayArchiveTask?.signature===signature&&scopeIsCurrent(bankDisplayArchiveTask.assertCurrent))return bankDisplayArchiveTask.promise;
@@ -107,7 +108,7 @@ export function createDomainsFinanceController({tab,checksSession,bridge,operati
     try{return await task.promise}finally{if(bankDisplayArchiveTask===task)bankDisplayArchiveTask=null}
   }
 
-  async function refreshFinanceData({force=true,renderIfChanged=true}={}){if(!loadSession()||!navigator.onLine)return snapshot();const assertCurrent=operationScope.captureRead();await refreshKupaReadout({force,renderIfChanged,assertCurrent});assertCurrent();return snapshot()}
+  async function refreshFinanceData({force=true,renderIfChanged=true}={}){if(!loadSession()||!effects.isOnline())return snapshot();const assertCurrent=operationScope.captureRead();await refreshKupaReadout({force,renderIfChanged,assertCurrent});assertCurrent();return snapshot()}
 
   function observedChecksSequence(kupa){const floor=Number(kupa?.bank?.snapshotSeq),start=Number.isSafeInteger(floor)&&floor>=0?floor:0;return normalizeSharedBankEvents(checksSession.checksBankEvents).reduce((max,event)=>Math.max(max,event.seq),start)}
 
@@ -193,9 +194,8 @@ export function createDomainsFinanceController({tab,checksSession,bridge,operati
     try{const status=await bridge.creditStatus();local.creditStatus=status;local.creditBridgeError=supportedCreditBridge(status)?'':'Bank Bridge ישן. יש להריץ מחדש install_bank_bridge.bat במחשב זה.';return status}
     catch(error){local.creditStatus=null;local.creditBridgeError=error?.message||String(error);if(!quiet)toast(local.creditBridgeError);return null}
   }
-  async function copySafeCreditDiagnostics(){try{const result=await bridge.creditDiagnostics(),events=Array.isArray(result?.events)?result.events:[],content=JSON.stringify({contractVersion:result?.contractVersion||CREDIT_CONNECTOR_CONTRACT_VERSION,events},null,2);if(!navigator?.clipboard?.writeText)throw new Error('הדפדפן אינו מאפשר העתקה מאובטחת ללוח');await navigator.clipboard.writeText(content);toast(`הועתק אבחון טכני בטוח (${events.length} אירועים מסוננים)`);return true}catch(error){toast(error?.message||'העתקת האבחון נכשלה');return false}}
-  function downloadCreditDataDiagnosticJson(filename,data){const safeName=/^[A-Za-z0-9._-]+$/.test(String(filename||''))?String(filename):'netunim-credit-data-diagnostics.json',blob=new Blob([JSON.stringify(data??{},null,2)+'\n'],{type:'application/json;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=safeName;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(url);a.remove()},1000)}
-  async function exportCreditDataDiagnostics(){if(local.bankBusy||local.creditBusy)return false;if(!financeAutomation.tokenConfigured()){toast('יש לצמד את ניהול ההזמנות ל-Bank Bridge לפני ייצוא אבחון אשראי');return false}if(local.creditStatus&&!supportedCreditBridge(local.creditStatus)){toast('יש להריץ מחדש install_bank_bridge.bat לפני ייצוא אבחון נתוני אשראי');return false}try{const result=await bridge.creditDataDiagnostics();if(!result?.available||!result?.data)throw new Error(result?.message||'עדיין אין אבחון נתוני אשראי מקומי. בצע רענון אשראי ולאחריו נסה שוב.');downloadCreditDataDiagnosticJson(result.filename,result.data);toast(`קובץ אבחון אשראי JSON נוצר מהסנכרון האחרון (${Number(result.cardCount)||0} כרטיסים)`);return true}catch(error){toast(error?.message||'ייצוא אבחון האשראי נכשל');return false}}
+  async function copySafeCreditDiagnostics(){try{const result=await bridge.creditDiagnostics(),events=Array.isArray(result?.events)?result.events:[],content=JSON.stringify({contractVersion:result?.contractVersion||CREDIT_CONNECTOR_CONTRACT_VERSION,events},null,2);await effects.writeText(content);toast(`הועתק אבחון טכני בטוח (${events.length} אירועים מסוננים)`);return true}catch(error){toast(error?.message||'העתקת האבחון נכשלה');return false}}
+  async function exportCreditDataDiagnostics(){if(local.bankBusy||local.creditBusy)return false;if(!financeAutomation.tokenConfigured()){toast('יש לצמד את ניהול ההזמנות ל-Bank Bridge לפני ייצוא אבחון אשראי');return false}if(local.creditStatus&&!supportedCreditBridge(local.creditStatus)){toast('יש להריץ מחדש install_bank_bridge.bat לפני ייצוא אבחון נתוני אשראי');return false}try{const result=await bridge.creditDataDiagnostics();if(!result?.available||!result?.data)throw new Error(result?.message||'עדיין אין אבחון נתוני אשראי מקומי. בצע רענון אשראי ולאחריו נסה שוב.');effects.saveJson(result.filename,result.data,'netunim-credit-data-diagnostics.json');toast(`קובץ אבחון אשראי JSON נוצר מהסנכרון האחרון (${Number(result.cardCount)||0} כרטיסים)`);return true}catch(error){toast(error?.message||'ייצוא אבחון האשראי נכשל');return false}}
 
   async function saveBridgeToken(value){const token=bridge.setBridgeToken(value);local.bankError='';local.creditError='';local.bankErrorAt=null;local.creditErrorAt=null;local.bankBridgeError='';local.creditBridgeError='';local.bankStatusChecked=false;local.creditStatusChecked=false;if(token){await Promise.all([refreshBankBridgeStatus({quiet:true}),refreshCreditBridgeStatus({quiet:true})]);toast('מפתח Bank Bridge נשמר במחשב זה')}else{local.bankStatus=null;local.creditStatus=null;toast('מפתח Bank Bridge הוסר מהמחשב הזה')}startAutoSync();return token}
 
@@ -210,8 +210,7 @@ export function createDomainsFinanceController({tab,checksSession,bridge,operati
 
   async function deleteBankBridgeCredentials(){if(local.bankBusy)return false;local.bankBusy=true;try{await bridge.deleteCredentials();local.bankStatus={...(local.bankStatus||{}),configured:false,businessBranchNumber:'',businessAccountNumber:'',homeBranchNumber:'',homeAccountNumber:'',availableAccounts:[]};local.bankError='';local.bankErrorAt=null;toast('פרטי בנק הפועלים נמחקו מה-Bank Bridge המקומי');return true}catch(error){if(scopeChanged(error))stopAutoSync();local.bankError=error?.message||String(error);local.bankErrorAt=new Date().toISOString();toast(local.bankError);return false}finally{local.bankBusy=false}}
 
-  function downloadBankDiagnosticJson(filename,data){const safeName=/^[A-Za-z0-9._-]+$/.test(String(filename||''))?String(filename):'netunim-bank-diagnostic.json',blob=new Blob([JSON.stringify(data??{},null,2)+'\n'],{type:'application/json;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=safeName;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(url);a.remove()},1000)}
-  async function exportBankChequeDiagnostics(){if(local.bankBusy||local.creditBusy)return false;if(!financeAutomation.tokenConfigured()){toast('יש לצמד את ניהול ההזמנות ל-Bank Bridge לפני ייצוא אבחון');return false}try{const result=await bridge.bankDiagnostics();if(!result?.available||!result?.data)throw new Error(result?.message||'עדיין אין אבחון בנק מקומי. בצע רענון בנק ולאחריו נסה שוב.');downloadBankDiagnosticJson(result.filename,result.data);toast(`קובץ אבחון בנק JSON נוצר מהסנכרון האחרון (${Number(result.transactionCount)||0} תנועות)`);return true}catch(error){toast(error?.message||'ייצוא אבחון הבנק נכשל');return false}}
+  async function exportBankChequeDiagnostics(){if(local.bankBusy||local.creditBusy)return false;if(!financeAutomation.tokenConfigured()){toast('יש לצמד את ניהול ההזמנות ל-Bank Bridge לפני ייצוא אבחון');return false}try{const result=await bridge.bankDiagnostics();if(!result?.available||!result?.data)throw new Error(result?.message||'עדיין אין אבחון בנק מקומי. בצע רענון בנק ולאחריו נסה שוב.');effects.saveJson(result.filename,result.data,'netunim-bank-diagnostic.json');toast(`קובץ אבחון בנק JSON נוצר מהסנכרון האחרון (${Number(result.transactionCount)||0} תנועות)`);return true}catch(error){toast(error?.message||'ייצוא אבחון הבנק נכשל');return false}}
 
   async function prepareBankSnapshot(assertCurrent){
     assertCurrent();
@@ -226,7 +225,7 @@ export function createDomainsFinanceController({tab,checksSession,bridge,operati
 
   async function refreshBank({interactive=false,auto=false,isCurrent=()=>true}={}){
     if(local.bankBusy||local.creditBusy)return false;
-    if(!tab.primaryTab||!loadSession()||!navigator.onLine)return false;
+    if(!tab.primaryTab||!loadSession()||!effects.isOnline())return false;
     if(!financeAutomation.tokenConfigured()){if(!auto)toast('יש לצמד את ניהול ההזמנות ל-Bank Bridge במחשב זה');return false}
     bankDisplayArchiveTask=null;
     if(auto&&!financeAutomation.markAttempt('bank'))return false;
@@ -326,7 +325,7 @@ export function createDomainsFinanceController({tab,checksSession,bridge,operati
 
   async function refreshCredit({interactive=false,auto=false,syncMode='forecast',isCurrent=()=>true}={}){
     if(local.creditBusy||local.bankBusy)return false;
-    if(!tab.primaryTab||!loadSession()||!navigator.onLine)return false;
+    if(!tab.primaryTab||!loadSession()||!effects.isOnline())return false;
     if(!financeAutomation.tokenConfigured()){if(!auto)toast('יש לצמד את ניהול ההזמנות ל-Bank Bridge במחשב זה');return false}
     if(auto&&!financeAutomation.markAttempt('credit'))return false;
     local.creditBusy=true;local.creditError='';local.creditErrorAt=null;notifyFinanceStatus('credit');
@@ -406,7 +405,7 @@ export function createDomainsFinanceController({tab,checksSession,bridge,operati
   }
 
   const financeAutomation=createOrdersFinanceAutomation({
-    access:{primary:()=>tab.primaryTab,authenticated:()=>!!loadSession(),online:()=>navigator.onLine,busy:()=>local.bankBusy||local.creditBusy,capture:()=>operationScope.capture()},
+    access:{primary:()=>tab.primaryTab,authenticated:()=>!!loadSession(),online:()=>effects.isOnline(),busy:()=>local.bankBusy||local.creditBusy,capture:()=>operationScope.capture()},
     preferences:bridge,readLastSyncAt:kind=>kind==='bank'?bankLastSyncAt(checksSession.kupaCloudReadState):creditLastSyncAt(checksSession.kupaCloudReadState),
     commands:{bank:options=>refreshBank(options),credit:options=>refreshCredit(options)},onPreferenceFailure:kind=>notifyFinanceStatus(kind),
   });

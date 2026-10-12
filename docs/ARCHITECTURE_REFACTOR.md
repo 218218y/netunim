@@ -6,6 +6,16 @@ remain separate from structural refactors.
 
 ## Verified now
 
+- Orders Finance now owns Bridge/scope/image adapters, scoped readout, controller,
+  presentation/import/card ordering and three action packs behind one staged
+  capability. Main imports drop from 68 to 59; consumers receive query, command,
+  readout, rendering and runtime ports. Controller/cache browser effects use a
+  strict platform adapter. Two pre-change tests reproduced leaked diagnostic
+  URLs/anchors after click failure. Resource cleanup and closed-capability
+  confirmation/status/action behavior have dedicated Node/native-IDB coverage.
+  See `ORDERS_FINANCE_CAPABILITY.md`; large private controller decomposition and
+  full business-payload typing remain separate work.
+
 - Orders Main and Shared Checks no longer share a context save timer. Two
   pre-change tests reproduced lost cloud/backup wakeups at a 50ms edit interval.
   Persistence runtimes now own independent debounced tasks, cancellation,

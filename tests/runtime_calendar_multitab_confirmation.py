@@ -10,7 +10,7 @@ import subprocess
 from browser_harness import BrowserSession, ROOT
 
 SETUP = r"""(async()=>{
- await appReady;syncDocument.stopPolling();domainsFinanceController.stopAutoSync();
+ await appReady;syncDocument.stopPolling();finance.runtime.stop();
  const phase=__PHASE__,descriptor=Object.getOwnPropertyDescriptor(IDBTransaction.prototype,'oncomplete');
  const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');const db=createStorageJournalDb();
  const note={id:'calendar-cross-tab-note',content:'independent durable note'};state.notes.push(note);

@@ -109,7 +109,8 @@ ok('morning-bank-transaction-select' in transaction_picker and 'morning-bank-tra
    'Reverse bank picker is searchable, restricted to eligible credits from the latest 45 calendar days and visibly blocks already-linked transactions')
 ok('.morning-bank-transaction-results{display:none;' in app_css and '.morning-bank-transaction-search-shell:focus-within .morning-bank-transaction-results{display:block}' in app_css and 'overflow-y:auto;overflow-x:hidden' in app_css and 'grid-template-columns:minmax(62px,.65fr)' in app_css,
    'Reverse bank picker stays collapsed until focus and fits inside the Morning modal without horizontal scrolling')
-ok('getTransactions:()=>domainsFinanceController.snapshot().bank?.feed?.transactions||[]' in main and 'ensureTransactions:async()=>{await domainsFinanceController.ensureBankDisplayArchive()' in main and 'getBusinessBankTransactions:bankTransactions.getTransactions' in customer_runtime and 'ensureBusinessBankTransactions:bankTransactions.ensureTransactions' in customer_runtime and 'getBusinessBankTransactions' in composition,
+finance_capability=''.join((SITE/'composition/finance.js').read_text(encoding='utf-8').split())
+ok('bankTransactions:finance.customerBankPort()' in main and 'getTransactions:()=>queries.snapshot().bank?.feed?.transactions||[]' in finance_capability and 'ensureTransactions:async()=>{awaitqueries.ensureBankDisplayArchive()' in finance_capability and 'getBusinessBankTransactions:bankTransactions.getTransactions' in customer_runtime and 'ensureBusinessBankTransactions:bankTransactions.ensureTransactions' in customer_runtime and 'getBusinessBankTransactions' in composition,
    'Morning bank picker consumes the existing finance archive projection instead of creating a second bank-data path')
 ok('bankMorningLinkedDocumentsMarkup' in bank_view and 'data-action="morning-open-document"' in bank_view and 'bankMorningLinkedDocumentsMarkup(row)' in bank_table,
    'Verified Morning documents are directly visible and openable from their bank movement row')
@@ -127,7 +128,7 @@ ok('hydrateRecoveredSource' in documents and 'activeSource=hydrateRecoveredSourc
    'Recovered bank issuance rehydrates fresh bank amount/row details without persisting them in recovery storage')
 ok('bank_link_pending' in edge and 'record_verified_bank_morning_document' in edge,
    'A verified Morning document remains fail-closed until the durable bank link is saved')
-ok("try{const result=await saveBankTransactionHandled(id,handled===true),at=result?.handled_at||result?.handledAt||null;updateLocalBankTransaction" in finance_controller and 'bank_handled_rpc_security_fix' in transport and 'הפעולה לא נשמרה ולא נוצר שינוי ממתין' in transport,
+ok("result=await saveBankTransactionHandled(id,handled===true,{assertCurrent});assertCurrent();const at=result?.handled_at||result?.handledAt||null;updateLocalBankTransaction" in finance_controller and 'bank_handled_rpc_security_fix' in transport and 'הפעולה לא נשמרה ולא נוצר שינוי ממתין' in transport,
    'Manual handled-state UI mutates local state only after server acknowledgement and reports permission failures as non-pending')
 ok('v_multi_check_deposit' in migration_v2 and "jsonb_array_length(v_tx.check_details->'checkItems')>1" in migration_v2 and 'and not v_multi_check_deposit' in migration_v2 and 'if v_multi_check_deposit then' in migration_v2 and 'handled_at:=v_tx.handled_at' in migration_v2,
    'Multi-cheque subset documents may link durably without falsely marking the entire aggregate deposit handled')

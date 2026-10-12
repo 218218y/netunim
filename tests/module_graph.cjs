@@ -24,6 +24,12 @@ for(const app of ['kupa','orders']){
         assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=6,relative+': recurring task owner exceeds six collaborators');
       if(node.type==='FunctionDeclaration'&&node.id?.name==='createDebouncedTask'&&relative==='assets/js/platform/debounced-task.js')
         assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=3,relative+': debounced task owner exceeds three collaborators');
+      if(node.type==='FunctionDeclaration'&&node.id?.name==='createOrdersFinanceCapability')
+        assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=9,relative+': Finance composition requires focused ports, not another app context');
+      if(node.type==='FunctionDeclaration'&&node.id?.name==='createFinanceBrowserEffects'){
+        const parameter=node.params[0]?.type==='AssignmentPattern'?node.params[0].left:node.params[0];
+        assert.ok(parameter?.type==='ObjectPattern'&&parameter.properties.length<=2,relative+': Finance browser effects exceed two platform collaborators');
+      }
       if(app==='orders'&&node.type==='MemberExpression'&&['saveTimer','sharedChecksSaveTimer'].includes(node.property?.name))
         assert.fail(relative+': save wakeups belong to persistence runtimes, not context timer fields');
       if(node.type==='FunctionDeclaration'&&node.id?.name==='createFinanceOperationScope')
@@ -46,6 +52,7 @@ for(const app of ['kupa','orders']){
         const target=path.resolve(path.dirname(file),spec);
         assert.ok(target.startsWith(site+path.sep)&&fs.existsSync(target),relative+': missing or cross-site dependency '+spec);edges.push(target);
         const dependency=path.relative(path.join(site,'assets','js'),target).split(path.sep).join('/');
+        if(app==='orders'&&relative==='assets/js/main.js')assert.ok(!/^(domains\/(finance|bank)\/|integrations\/bank-bridge\.js|shared\/(finance-fence|finance-connection-import|credit-card-order-view)\.js)/.test(dependency),relative+': Finance internals belong to the capability composition');
         if(/^assets\/js\/(storage|cloud|sync)\//.test(relative)){
           assert.ok(!/^((domains|ui)\/)/.test(dependency),relative+': infrastructure must receive domain/UI behavior through composition ports: '+dependency);
         }
@@ -67,6 +74,8 @@ for(const app of ['kupa','orders']){
       if(relative.endsWith('/shared/cloud-checkpoint-publication.js')&&node.type==='Identifier')assert.ok(!['document','window','navigator','localStorage','fetch','indexedDB','setTimeout','setInterval'].includes(node.name),relative+': cloud publication must use explicit ports');
       if(relative==='assets/js/domains/credit/controller.js'&&node.type==='Identifier')
         assert.notEqual(node.name,'localStorage',relative+': Credit preferences require an explicit port');
+      if(app==='orders'&&['assets/js/domains/finance/controller.js','assets/js/domains/bank/cache.js'].includes(relative)&&node.type==='Identifier'&&!(parent?.type==='MemberExpression'&&parent.property===node&&!parent.computed))
+        assert.ok(!['globalThis','window','navigator','document','Blob','URL','setTimeout','clearTimeout'].includes(node.name),relative+': Finance orchestration uses explicit browser ports');
       if(/\/(?:shared\/(?:(bank|document)-bridge-client|google-drive-client|google-drive-document-policy|authenticated-account-scope)|domains\/documents\/search-source)\.js$/.test(relative)&&node.type==='Identifier'&&!(parent?.type==='MemberExpression'&&parent.property===node&&!parent.computed))
         assert.ok(!['globalThis','window','document','navigator','localStorage','fetch','AbortController','setTimeout','clearTimeout','setInterval','clearInterval'].includes(node.name),relative+': canonical Bridge client must use injected I/O ports');
     });

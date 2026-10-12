@@ -1,3 +1,4 @@
+import {createFinanceBrowserEffects} from '../netunim-orders/site/assets/js/platform/finance-effects.js';
 import assert from 'node:assert/strict';
 import {bankReturnedCheque,bankReturnedChequeReason,bankWarningItems} from '../netunim-orders/site/assets/js/domains/bank/alerts.js';
 import {createDomainsFinanceController} from '../netunim-orders/site/assets/js/domains/finance/controller.js';
@@ -55,7 +56,7 @@ Object.defineProperty(globalThis,'navigator',{value:{onLine:true},configurable:t
 
 const baselinedAt='2026-09-06T12:10:00.000Z';
 const staleChecksSession={kupaCloudReadState:{bank:{feed:{provider:'hapoalim',accountNumber:'12-655-1',balance:5000,syncedAt:'2026-09-06T12:00:00.000Z',transactions:[{...returned,alertAcknowledgements:{}}]}},creditSync:{},cards:[],credits:[]},checksBankEvents:[]};
-const staleController=createDomainsFinanceController({operationScope:{capture:()=>()=>{},captureRead:()=>()=>{}},
+const staleController=createDomainsFinanceController({effects:createFinanceBrowserEffects(),operationScope:{capture:()=>()=>{},captureRead:()=>()=>{}},
   tab:{primaryTab:true},checksSession:staleChecksSession,
   bridge:{bankAutoEnabled:()=>false,creditAutoEnabled:()=>false,creditAutoMode:()=>'daily',getBridgeToken:()=>'',setBankAutoEnabled(){},setCreditAutoEnabled(){},setCreditAutoMode(){}},
   loadSession:()=>({access_token:'x'}),refreshKupaReadout:async()=>true,readKupaReadOnlyCloud:async()=>null,rpcSaveKupaDocument:async()=>null,acceptKupaCloudRow:()=>true,
@@ -73,7 +74,7 @@ let releaseOldArchive;
 const oldArchiveRead=new Promise(resolve=>{releaseOldArchive=resolve});
 let raceArchiveReads=0;
 const raceChecksSession={kupaCloudReadState:{bank:{feed:{provider:'hapoalim',accountNumber:'12-655-1',balance:5000,syncedAt:'2026-09-06T12:00:00.000Z',transactions:[{...returned,alertAcknowledgements:{}}]}},creditSync:{},cards:[],credits:[]},checksBankEvents:[]};
-const raceController=createDomainsFinanceController({operationScope:{capture:()=>()=>{},captureRead:()=>()=>{}},
+const raceController=createDomainsFinanceController({effects:createFinanceBrowserEffects(),operationScope:{capture:()=>()=>{},captureRead:()=>()=>{}},
   tab:{primaryTab:true},checksSession:raceChecksSession,
   bridge:{bankAutoEnabled:()=>false,creditAutoEnabled:()=>false,creditAutoMode:()=>'daily',getBridgeToken:()=>'',setBankAutoEnabled(){},setCreditAutoEnabled(){},setCreditAutoMode(){}},
   loadSession:()=>({access_token:'x'}),refreshKupaReadout:async()=>true,readKupaReadOnlyCloud:async()=>null,rpcSaveKupaDocument:async()=>null,acceptKupaCloudRow:()=>true,
@@ -92,7 +93,7 @@ assert.equal(bankWarningItems(raceController.snapshot().bank).length,0,'the stal
 const acknowledgementAt='2026-09-06T12:30:00.000Z';
 const checksSession={kupaCloudReadState:{bank:{feed:{provider:'hapoalim',accountNumber:'12-655-1',balance:5000,syncedAt:'2026-09-06T12:00:00.000Z',transactions:[]}},creditSync:{},cards:[],credits:[]},checksBankEvents:[]};
 let archiveReads=0,ackCalls=0,missingAckCalls=0;
-const controller=createDomainsFinanceController({operationScope:{capture:()=>()=>{},captureRead:()=>()=>{}},
+const controller=createDomainsFinanceController({effects:createFinanceBrowserEffects(),operationScope:{capture:()=>()=>{},captureRead:()=>()=>{}},
   tab:{primaryTab:true},checksSession,
   bridge:{bankAutoEnabled:()=>false,creditAutoEnabled:()=>false,creditAutoMode:()=>'daily',getBridgeToken:()=>'',setBankAutoEnabled(){},setCreditAutoEnabled(){},setCreditAutoMode(){}},
   loadSession:()=>({access_token:'x'}),refreshKupaReadout:async()=>true,readKupaReadOnlyCloud:async()=>null,rpcSaveKupaDocument:async()=>null,acceptKupaCloudRow:()=>true,

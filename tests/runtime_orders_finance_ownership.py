@@ -5,7 +5,7 @@ from browser_harness import BrowserSession, ROOT
 FLOW = r"""(async()=>{
  const check=(ok,message)=>{if(!ok)throw Error(message)},deferred=()=>{let resolve;const promise=new Promise(done=>{resolve=done});return {promise,resolve}};
  const kind=__KIND__,caseName=__CASE__,owner='aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',stamp='2026-10-08T10:00:00.000Z',originalFetch=globalThis.fetch;
- syncDocument.stopPolling();domainsFinanceController.stopAutoSync?.();
+ syncDocument.stopPolling();finance.runtime.stop?.();
  const note={id:'orders-finance-note',content:'durable before finance request'};state.notes.push(note);
  storagePersistence.scheduleSave('finance ownership fixture',{domains:['notes'],operations:[{type:'put',collection:'notes',id:note.id,mode:'insert',index:state.notes.length-1,record:note}]});await mainStorageV2.commitPromise;
  cloudAuth.saveSession({user:{id:owner},access_token:'fixture',expires_at:9999999999});let main=null,shared=null;
@@ -46,20 +46,20 @@ FLOW = r"""(async()=>{
  if(caseName==='publication'){await saving.promise;cloudAuth.saveSession(null);saved.resolve()}
  check(await pending===false,'former/failed Finance operation reported success');
  check(JSON.stringify(checksSession.kupaCloudReadState)===before,'former/failed Finance result replaced readout');
- check(domainsFinanceController.snapshot().bank.feed.transactions.length===0,'uncommitted archive replaced display');
+ check(finance.queries.snapshot().bank.feed.transactions.length===0,'uncommitted archive replaced display');
  check(publications===(['publication','network','lost-response'].includes(caseName)?1:0),'unexpected Finance write');
  check(archives===(kind==='Bank'&&['publication','network','lost-response'].includes(caseName)?1:0),'former result entered Bank archive transport');
  check(JSON.stringify(await db.load(identity))===beforeMain,'Finance failure changed Main durable journal');
  check(state.notes.find(row=>row.id===note.id)?.content===note.content,'note identity/content lost');
- check(domainsFinanceController.snapshot()[kind.toLowerCase()+'Error'].length>0,'missing operator failure');
+ check(finance.queries.snapshot()[kind.toLowerCase()+'Error'].length>0,'missing operator failure');
  check(['network','lost-response'].includes(caseName)||releases===0,'former scope released lease under replacement authorization');
  if(caseName==='lost-response'){
-   await domainsFinanceController.refreshFinanceData();const recovered=domainsFinanceController.snapshot();
+   await finance.queries.refreshFinanceData();const recovered=finance.queries.snapshot();
    if(kind==='Bank'){check(recovered.bank.currentBalance===500,'committed Bank balance not recoverable');check(JSON.stringify(recovered.bank.feed.transactions.map(row=>row.id))==='["uncommitted"]','Bank record identity duplicated or lost')}
    else check(JSON.stringify(recovered.creditSync.profiles[0].accounts[0].txns.map(row=>row.id))==='["issuer-tx"]','Credit record identity duplicated or lost');
    check(publications===1,'recovery replayed a provider commit');check(JSON.stringify(await db.load(identity))===beforeMain,'readout recovery changed Main journal');
  }
- globalThis.fetch=originalFetch;domainsFinanceController.stopAutoSync?.();cloudAuth.saveSession(null);
+ globalThis.fetch=originalFetch;finance.runtime.stop?.();cloudAuth.saveSession(null);
  return {projectionRetained:true,archiveRetained:true,journalRetained:true,noteRetained:true,scopedPublication:true,visibleError:true};
 })()"""
 

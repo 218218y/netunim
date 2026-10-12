@@ -12,7 +12,7 @@ FLOW = r"""(async()=>{
  const stable=value=>JSON.stringify(value,(_key,item)=>item&&typeof item==='object'&&!Array.isArray(item)?Object.fromEntries(Object.keys(item).sort().map(key=>[key,item[key]])):item);
  const site=__SITE__,body=__BODY__,owner='fixture-bank-confirmation',stamp='2026-10-09T10:00:00.000Z',originalFetch=globalThis.fetch;
  const kupa=site==='kupa';
- if(kupa){financeAutomation.stop();syncDocument.stopCloudPolling()}else{syncDocument.stopPolling();domainsFinanceController.stopAutoSync()}
+ if(kupa){financeAutomation.stop();syncDocument.stopCloudPolling()}else{syncDocument.stopPolling();finance.runtime.stop()}
  const note={id:'bank-confirmation-note',content:'durable before unconfirmed Bank result'};state.notes.push(note);
  const operation={domains:['notes'],operations:[{type:'put',collection:'notes',id:note.id,mode:'insert',index:state.notes.length-1,record:note}]};
  if(kupa)await storagePersistence.saveState('Bank confirmation fixture',operation);else storagePersistence.scheduleSave('Bank confirmation fixture',operation);

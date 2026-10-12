@@ -9,7 +9,7 @@ from browser_harness import BrowserSession, ROOT
 
 FLOW = r"""(async()=>{
  const check=(ok,message)=>{if(!ok)throw Error(message)},site=__SITE__,kind=__KIND__,caseName=__CASE__,kupa=site==='kupa',owner='fixture-lease-owner',originalFetch=globalThis.fetch;
- if(kupa){financeAutomation.stop();syncDocument.stopCloudPolling()}else{syncDocument.stopPolling();domainsFinanceController.stopAutoSync()}
+ if(kupa){financeAutomation.stop();syncDocument.stopCloudPolling()}else{syncDocument.stopPolling();finance.runtime.stop()}
  const note={id:'lease-confirmation-note',content:'durable before lease confirmation'};state.notes.push(note);
  const mutation={domains:['notes'],operations:[{type:'put',collection:'notes',id:note.id,mode:'insert',index:state.notes.length-1,record:note}]};
  if(kupa)await storagePersistence.saveState('lease fixture',mutation);else storagePersistence.scheduleSave('lease fixture',mutation);

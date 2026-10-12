@@ -5,7 +5,7 @@ import subprocess
 from browser_harness import BrowserSession, ROOT
 
 SETUP = r"""(async()=>{
- await appReady;syncDocument.stopPolling();domainsFinanceController.stopAutoSync();
+ await appReady;syncDocument.stopPolling();finance.runtime.stop();
  const check=(ok,message)=>{if(!ok)throw Error(message)},owner='calendar-display-A',other='calendar-display-B',calendarId='calendar@example.test';
  const login=id=>cloudAuth.saveSession(id?{user:{id},access_token:'synthetic-'+id,expires_at:9999999999}:null);
  const frame=()=>new Promise(resolve=>requestAnimationFrame(resolve)),wait=async(predicate,message)=>{const end=performance.now()+4000;while(!predicate()){if(performance.now()>end)throw Error(message);await frame()}};

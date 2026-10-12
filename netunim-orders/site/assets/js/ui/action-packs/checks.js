@@ -1,7 +1,7 @@
 import {createLazyDeferredSearchUpdater} from '../../shared/search-scheduler.js';
 import {markMutationActions} from '../../shared/action-registry.js';
 
-export function createChecksActions({domainsBankCache,domainsChecksEditor,domainsChecksView,domainsFinanceView,ui,uiDateEditor,uiModal}){
+export function createChecksActions({financeReadout,domainsChecksEditor,domainsChecksView,domainsFinanceView,ui,uiDateEditor,uiModal}){
 const applyCheckDatePicker=(...args)=>uiDateEditor.applyCheckDatePicker(...args);
 const changeCheckSeriesCount=(...args)=>domainsChecksEditor.changeCheckSeriesCount(...args);
 const deleteCheck=(...args)=>domainsChecksEditor.deleteCheck(...args);
@@ -16,7 +16,7 @@ const openCheckDatePicker=(...args)=>uiDateEditor.openCheckDatePicker(...args);
 const openCheckModal=(...args)=>domainsChecksEditor.openCheckModal(...args);
 const renderChecks=(...args)=>ui.currentView==='kupa'?domainsFinanceView.renderKupa(...args):domainsChecksView.renderChecks(...args);
 const renderChecksSearch=(...args)=>domainsChecksView.renderChecksSearch(...args);
-const reviewCheckBank=(...args)=>{if(domainsChecksEditor.reviewCheckBank(...args)){uiModal.closeModal();domainsBankCache.renderKupaDependentView()}};
+const reviewCheckBank=(...args)=>{if(domainsChecksEditor.reviewCheckBank(...args)){uiModal.closeModal();financeReadout.renderKupaDependentView()}};
 const saveCheck=(...args)=>domainsChecksEditor.saveCheck(...args);
 const saveCheckSeries=(...args)=>domainsChecksEditor.saveCheckSeries(...args);
 const syncCheckSeriesFromFirst=(...args)=>domainsChecksEditor.syncCheckSeriesFromFirst(...args);

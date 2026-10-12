@@ -81,5 +81,5 @@ test('Orders assembles customers and Morning once after their required producers
   assert.match(main,/name:'customers',actions:domainsCustomers\.actions/);
   assert.match(main,/name:'morning',actions:domainsCustomers\.morningActions/);
   assert.ok(main.indexOf('const syncDocument=createSyncDocument(')<main.indexOf('domainsCustomers.bindUi('));
-  assert.ok(main.indexOf('const domainsFinanceController=createDomainsFinanceController(')<main.indexOf('domainsCustomers.bindUi('));
+  assert.ok(main.indexOf('finance.bindCore(')<main.indexOf('domainsCustomers.bindUi('));
 });

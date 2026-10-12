@@ -9,7 +9,7 @@ from browser_harness import BrowserSession, ROOT
 
 FLOW = r"""(async()=>{
  const check=(ok,message)=>{if(!ok)throw Error(message)},site=__SITE__,kind=__KIND__,body=__BODY__,kupa=site==='kupa',owner='fixture-finance-receipt';
- if(kupa){financeAutomation.stop();syncDocument.stopCloudPolling()}else{syncDocument.stopPolling();domainsFinanceController.stopAutoSync()}
+ if(kupa){financeAutomation.stop();syncDocument.stopCloudPolling()}else{syncDocument.stopPolling();finance.runtime.stop()}
  const note={id:'finance-receipt-note',content:'durable before unknown Finance response'};state.notes.push(note);
  const operation={domains:['notes'],operations:[{type:'put',collection:'notes',id:note.id,mode:'insert',index:state.notes.length-1,record:note}]};
  if(kupa)await storagePersistence.saveState('Finance receipt fixture',operation);else storagePersistence.scheduleSave('Finance receipt fixture',operation);
@@ -40,7 +40,7 @@ FLOW = r"""(async()=>{
    return new Response(body);
  };
  if(kupa)cloudAuth.supaRest=request;else cloudAuth.supaFetch=request;
- let result,error;try{result=kind==='main'?await domainsFinanceController.saveCashflowMinimum('business','321'):await (kupa?domainsCreditController:domainsFinanceController).saveCreditCardOrder([])}catch(caught){error=caught;result=false}
+ let result,error;try{result=kind==='main'?await finance.commands.saveCashflowMinimum('business','321'):await (kupa?domainsCreditController:domainsFinanceController).saveCreditCardOrder([])}catch(caught){error=caught;result=false}
  check(result===false,'malformed HTTP 200 was reported as a successful write');
  if(kind!=='main')check(error?.code==='FINANCE_WRITE_RECEIPT_INVALID'&&error.kind==='confirmation_unknown','missing explicit unknown confirmation '+JSON.stringify({commits,message:error?.message,code:error?.code}));
  check(JSON.stringify(kupa?state.creditSync:checksSession.kupaCloudReadState)===before,'unknown response replaced confirmed projection');
@@ -48,7 +48,7 @@ FLOW = r"""(async()=>{
  check(JSON.stringify(await db.load(identity))===mainBefore,'unknown Finance response changed Main journal');
  check(JSON.stringify(await db.load(owner+':shared-checks'))===sharedBefore,'unknown Finance response changed Shared journal');
  check(commits===1,'unexpected write count '+commits+'; result '+JSON.stringify({result,error:error?.message}));
- if(kupa)await syncDocument.cloudPoll();else await domainsFinanceController.refreshFinanceData();
+ if(kupa)await syncDocument.cloudPoll();else await finance.queries.refreshFinanceData();
  const recovered=kupa?state:checksSession.kupaCloudReadState;
  if(kind==='main')check(recovered.cashflowSettings.businessMinimum===321,'read recovery lost committed settings');
  else {const {normalizeCreditSync}=await import(kupa?'./assets/js/domains/credit/sync-feed.js':'./assets/js/domains/finance/credit-feed.js');check(normalizeCreditSync(recovered.creditSync).profiles[0]?.accounts[0]?.txns[0]?.id==='stable-issuer-tx','read recovery lost issuer identity')}

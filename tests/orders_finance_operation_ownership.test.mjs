@@ -1,3 +1,4 @@
+import {createFinanceBrowserEffects} from '../netunim-orders/site/assets/js/platform/finance-effects.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createDomainsFinanceController} from '../netunim-orders/site/assets/js/domains/finance/controller.js';
@@ -32,7 +33,7 @@ function fixture(t,{hold=null}={}){
       fetchBalance:()=>phase('bank-provider',{fetchedAt:stamp,accounts:{business:{balance:500,accountId:'same-account',transactions:[]}}}),
       syncCreditCards:()=>phase('credit-provider',{syncedAt:stamp,attemptedCount:1,profiles:[{profileId:'P',provider:'max',accounts:[{accountNumber:'card',txns:[{id:'issuer-tx',date:stamp,chargedAmount:-12}]}]}],errors:[]}),resetCreditProfiles:()=>phase('reset',true)},
   };
-  return {ports,before,counts,jobs,entered,release,checksSession,operationScope,create:()=>createDomainsFinanceController(ports),handoff:()=>{owner='B';epoch++},logout:()=>{owner=null;epoch++},relogin:()=>epoch++,secondary:()=>{primary=false},remote:()=>remote};
+  return {ports,before,counts,jobs,entered,release,checksSession,operationScope,create:()=>createDomainsFinanceController({effects:createFinanceBrowserEffects(),...ports}),handoff:()=>{owner='B';epoch++},logout:()=>{owner=null;epoch++},relogin:()=>epoch++,secondary:()=>{primary=false},remote:()=>remote};
 }
 
 for(const kind of ['Bank','Credit'])test(`Orders ${kind} failed automatic attempt persistence never leaves the controller busy`,async t=>{
@@ -91,7 +92,7 @@ for(const method of ['saveCreditCardOrder','setCreditCardMapping','acknowledgeCr
 
 for(const force of [false,true])test(`Orders readout ${force?'GET':'meta fast path'} cannot publish after logout`,async t=>{
   const f=fixture(t),gate=deferred(),entered=deferred(),before=structuredClone(f.checksSession);f.checksSession.kupaReadRevision=7;f.checksSession.financeReadRevision=7;
-  const api=createDomainsBankCache({operationScope:f.operationScope,checksSession:f.checksSession,ui:{currentView:'kupa'},loadSession:f.ports.loadSession,computeKupaNetReadout:()=>0,renderChecks:()=>{},renderSummary:()=>{},
+  const api=createDomainsBankCache({isOnline:()=>globalThis.navigator?.onLine===true,operationScope:f.operationScope,checksSession:f.checksSession,ui:{currentView:'kupa'},loadSession:f.ports.loadSession,computeKupaNetReadout:()=>0,renderChecks:()=>{},renderSummary:()=>{},
     readKupaReadOnlyCloud:async()=>{entered.resolve();await gate.promise;return {revision:8,financeRevision:8,state:{bank:{currentBalance:888}}}},readKupaReadOnlyMeta:async()=>{entered.resolve();await gate.promise;return {revision:7,financeRevision:7}}});
   const pending=api.refreshKupaReadout({force});await entered.promise;f.logout();gate.resolve();assert.equal(await pending,false);assert.deepEqual(f.checksSession.kupaCloudReadState,before.kupaCloudReadState);
 });
@@ -104,7 +105,7 @@ test('Orders Finance RPC carries scope into the authenticated transport and reje
 
 test('Orders older parallel readout cannot replace a newer published Main/Finance head',async t=>{
   const f=fixture(t),gate=deferred(),entered=deferred();let reads=0;
-  const api=createDomainsBankCache({operationScope:f.operationScope,checksSession:f.checksSession,ui:{currentView:'kupa'},loadSession:f.ports.loadSession,computeKupaNetReadout:()=>0,renderChecks:()=>{},renderSummary:()=>{},
+  const api=createDomainsBankCache({isOnline:()=>globalThis.navigator?.onLine===true,operationScope:f.operationScope,checksSession:f.checksSession,ui:{currentView:'kupa'},loadSession:f.ports.loadSession,computeKupaNetReadout:()=>0,renderChecks:()=>{},renderSummary:()=>{},
     readKupaReadOnlyCloud:async()=>{if(++reads===1){entered.resolve();return gate.promise}return {revision:2,financeRevision:2,state:{bank:{currentBalance:222}}}}});
   const old=api.refreshKupaReadout({force:true});await entered.promise;assert.equal(await api.refreshKupaReadout({force:true}),true);gate.resolve({revision:1,financeRevision:1,state:{bank:{currentBalance:111}}});await old;
   assert.equal(f.checksSession.kupaCloudReadState.bank.currentBalance,222);assert.equal(f.checksSession.kupaReadRevision,2);assert.equal(f.checksSession.financeReadRevision,2);
@@ -190,7 +191,7 @@ for(const [method,args,field] of [['acknowledgeMissingBankTransaction',[1],'miss
 });
 
 test('Orders commit readout refuses a Main or Finance response behind the acknowledged head',async t=>{
-  const f=fixture(t),api=createDomainsBankCache({operationScope:f.operationScope,checksSession:f.checksSession,ui:{currentView:'kupa'},loadSession:f.ports.loadSession,computeKupaNetReadout:()=>0,renderChecks:()=>{},renderSummary:()=>{},readKupaReadOnlyCloud:async()=>({revision:1,financeRevision:1,state:{bank:{currentBalance:111}}})});
+  const f=fixture(t),api=createDomainsBankCache({isOnline:()=>globalThis.navigator?.onLine===true,operationScope:f.operationScope,checksSession:f.checksSession,ui:{currentView:'kupa'},loadSession:f.ports.loadSession,computeKupaNetReadout:()=>0,renderChecks:()=>{},renderSummary:()=>{},readKupaReadOnlyCloud:async()=>({revision:1,financeRevision:1,state:{bank:{currentBalance:111}}})});
   for(const minimum of [{minimumRevision:2},{minimumFinanceRevision:2}])assert.equal(await api.refreshKupaReadout({force:true,...minimum}),false);
   assert.deepEqual(f.checksSession.kupaCloudReadState,f.before.kupaCloudReadState);
 });

@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-663efe720006';
+const CACHE='orders-app-shell-esm-f4be6a791888';
 const SHELL=[
   './',
   './index.html',
@@ -26,6 +26,7 @@ const SHELL=[
   './assets/js/composition/checks-sync.js',
   './assets/js/composition/cloud.js',
   './assets/js/composition/customers.js',
+  './assets/js/composition/finance.js',
   './assets/js/composition/service.js',
   './assets/js/composition/storage-v2.js',
   './assets/js/composition/suppliers.js',
@@ -138,6 +139,7 @@ const SHELL=[
   './assets/js/platform/calendar-commit-notifications.js',
   './assets/js/platform/calendar-delivery-owner.js',
   './assets/js/platform/debounced-task.js',
+  './assets/js/platform/finance-effects.js',
   './assets/js/runtime-events.js',
   './assets/js/shared/action-registry.js',
   './assets/js/shared/authenticated-account-scope.js',

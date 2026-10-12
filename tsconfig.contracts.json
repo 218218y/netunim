@@ -76,6 +76,8 @@
     "shared/runtime-polling.js",
     "netunim-orders/site/assets/js/platform/debounced-task.js",
     "tests/fixtures/checked-runtime-debounce.mjs",
+    "netunim-orders/site/assets/js/platform/finance-effects.js",
+    "tests/fixtures/checked-finance-effects.mjs",
     "shared/startup-task.js",
     "shared/storage-cloud-status.js",
     "shared/storage-records.js",

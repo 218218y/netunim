@@ -10,7 +10,7 @@ import argparse
 from browser_harness import BrowserSession, ROOT
 
 FLOW = r"""(async()=>{
- await appReady;syncDocument.stopPolling();domainsFinanceController.stopAutoSync();
+ await appReady;syncDocument.stopPolling();finance.runtime.stop();
  const check=(ok,message)=>{if(!ok)throw Error(message)},phase=__PHASE__;
  const originalFetch=globalThis.fetch,descriptor=Object.getOwnPropertyDescriptor(IDBTransaction.prototype,'oncomplete');
  const {createCalendarStorage}=await import('./assets/js/calendar/storage.js');const storage=createCalendarStorage();

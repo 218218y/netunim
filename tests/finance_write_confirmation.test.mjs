@@ -1,3 +1,4 @@
+import {createFinanceBrowserEffects} from '../netunim-orders/site/assets/js/platform/finance-effects.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createCloudTransport} from '../netunim-kupa/site/assets/js/cloud/transport.js';
@@ -24,7 +25,7 @@ function fixture(owner,reply){
     }});
     return {run:()=>transport.saveFinancePatch(base=>({...base,marker:'new'}),lease),recover:()=>transport.readFinanceSyncDocument({assertCurrent}),events,messages,before,state,writes:()=>writes};
   }
-  const controller=createDomainsFinanceController({
+  const controller=createDomainsFinanceController({effects:createFinanceBrowserEffects(),
     operationScope:{capture:()=>assertCurrent,captureRead:()=>assertCurrent},tab:{primaryTab:true},checksSession:{kupaCloudReadState:state,checksBankEvents:[]},
     bridge:{getBridgeToken:()=>'',bankAutoEnabled:()=>false,creditAutoEnabled:()=>false,creditAutoMode:()=> 'daily'},loadSession:()=>({}),toast:message=>messages.push(message),
     readKupaReadOnlyCloud:async()=>structuredClone(remote),readFinanceSyncDocument:async()=>structuredClone(remote),
@@ -56,7 +57,7 @@ test('receipt preserves legacy no-op equality and numeric revision strings witho
 });
 
 test('Orders refuses a raw ambiguous envelope even when its first parsed row looks valid',async()=>{
-  const controller=createDomainsFinanceController({operationScope:{capture:()=>()=>{},captureRead:()=>()=>{}},tab:{primaryTab:true},checksSession:{},
+  const controller=createDomainsFinanceController({effects:createFinanceBrowserEffects(),operationScope:{capture:()=>()=>{},captureRead:()=>()=>{}},tab:{primaryTab:true},checksSession:{},
     bridge:{getBridgeToken:()=>'',bankAutoEnabled:()=>false,creditAutoEnabled:()=>false,creditAutoMode:()=> 'daily'},loadSession:()=>({}),toast:()=>{},
     readKupaReadOnlyCloud:async()=>({revision:5,state:initial()}),rpcSaveKupaDocument:async()=>({r:{ok:true},j:[{revision:6,state:initial()},{revision:7,state:initial()}],row:{revision:6,state:initial()}}),
     refreshKupaReadout:async()=>{assert.fail('ambiguous success must not enter publication')},
