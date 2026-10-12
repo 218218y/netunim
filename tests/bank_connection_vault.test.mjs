@@ -87,7 +87,10 @@ test('import ownership includes cleanup, and the next edit sees the replaced per
   const editing=commands.saveCreditProfile({profileId:'later',provider:'max',username:'later',password:'later'});
   try{await assert.rejects(operations.provider(()=>{}),{code:'SCRAPE_BUSY'});assert.equal((await f.vault.readCreditProfiles()).length,1)}
   finally{release()}
-  assert.deepEqual((await importing).cleanupWarnings,['fixture-cleanup-warning']);await editing;
+  const receipt=await importing;await editing;
+  assert.deepEqual(receipt.cleanupWarnings,['fixture-cleanup-warning']);
+  assert.ok(!JSON.stringify(receipt).includes('secret'),'the command receipt must contain public projections only');
+  assert.equal(receipt.credentials,undefined);
   assert.deepEqual((await f.vault.readCreditProfiles()).map(row=>row.profileId),['import:portable','later']);
 });
 

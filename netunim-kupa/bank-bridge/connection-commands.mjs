@@ -83,7 +83,17 @@ export function createConnectionCommands({ operations, vault, artifacts }) {
         const normalized = normalizeConnectionImportDocument(body);
         await vault.replaceConnections(normalized);
         const cleanupWarnings = await artifacts.clearImported();
-        return { ...normalized, cleanupWarnings };
+        const credentials = normalized.credentials;
+        return {
+            bank: {
+                businessBranchNumber: credentials.businessBranchNumber,
+                businessAccountNumber: credentials.businessAccountNumber,
+                homeBranchNumber: credentials.homeBranchNumber,
+                homeAccountNumber: credentials.homeAccountNumber,
+            },
+            profiles: publicCreditProfiles(normalized.profiles),
+            cleanupWarnings,
+        };
     });
     return Object.freeze({ saveCreditProfile, deleteCreditProfile, resetCreditProfiles, saveCredentials, selectAccount, deleteCredentials, importConnectionSettings });
 }

@@ -130,3 +130,13 @@ test('HTTP status waits for accepted configuration cleanup and exposes no creden
   finally{held.resolve();await changing}
   const status=await query;assert.equal(status.status,200);assert.equal(status.data.profiles[0].profileId,'accepted');assert.ok(!JSON.stringify(status.data).includes('synthetic password'));assert.equal(reads,2);
 });
+
+test('import command public projection preserves the HTTP envelope and persists exact secret strings',async t=>{
+  let stored;
+  const f=await fixture(t,{readProfiles:async()=>[],writeProfiles:async()=>{},resetProfiles:async()=>{},vault:{replaceConnections:async value=>{stored=structuredClone(value)}}});
+  const response=await f.request('/settings/import',{schema:'netunim-finance-connections',version:1,mode:'replace',bank:{provider:'hapoalim',userCode:'0012',password:' padded bank secret ',accounts:{business:{branchNumber:'001',accountNumber:'000123'}}},credit:{profiles:[{connectionKey:'fixture',provider:'max',username:'fixture',password:' padded credit secret '}]}});
+  assert.equal(response.status,200);assert.equal(response.data.bridgeVersion,73);assert.equal(response.data.configured,true);assert.equal(response.data.credit.contractVersion,2);
+  assert.deepEqual(response.data.bank,{businessBranchNumber:'001',businessAccountNumber:'000123',homeBranchNumber:'',homeAccountNumber:''});
+  assert.equal(response.data.credit.profiles[0].profileId,'import:fixture');assert.deepEqual(response.data.cleanupWarnings,[]);assert.ok(!JSON.stringify(response.data).includes('secret'));
+  assert.equal(stored.credentials.password,' padded bank secret ');assert.equal(stored.profiles[0].credentials.password,' padded credit secret ');
+});

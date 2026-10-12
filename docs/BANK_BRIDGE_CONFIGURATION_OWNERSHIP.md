@@ -34,6 +34,8 @@ Parallel cleanup uses an all-settled barrier before propagating the first
 failure. A failed metadata deletion therefore cannot release the owner while
 an outstanding vault deletion can still erase a later save. Import retains its
 existing per-cleanup warning labels and exact-byte rollback behavior.
+All configuration command receipts contain public projections only, including
+import: saved credential values do not travel back through its command result.
 
 ## Compatibility and evidence
 
