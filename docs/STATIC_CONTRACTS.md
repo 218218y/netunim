@@ -366,3 +366,13 @@ string path identity and numeric publication metadata. Candidates expose a
 read-only entry map. An implementation mutation returning a formatted pending
 count fails the gate. Native I/O and full PDF entry normalization/write/locking
 remain separate tested slices. See DOCUMENT_PDF_INDEX_READ_CONTRACT.md.
+
+## Document file-lock coordinator
+
+The actual `file-lock-owner.mjs` body and negative consumers now check scoped
+owner observations, numeric deadlines, asynchronous process liveness and task
+settlement, and preservation of generic task results through cleanup. A body
+mutation returning formatted text in place of a task result fails the gate.
+The Node/filesystem adapter is separately linted/native-tested; this does not
+typecheck the full server or create a cloud/Storage V2 lease contract. See
+DOCUMENT_FILE_LOCK_OWNERSHIP.md.

@@ -481,7 +481,7 @@ they are not a claim that every older audit finding is still present.
 | Runtime/resource ownership | Orders Finance preference/attempt failures now own queued-timer cancellation and preserve started commits; remaining Shared-specific and finance/integration jobs, other shell listeners, reconnect/owner transitions and preflight; Global Search owns nested control/auth listeners and preview cleanup | Start/stop/dispose idempotence, no duplicate/orphan jobs, live access fences and controlled failure tests |
 | Remaining I/O ports | Remaining timers and other concrete browser effects after inventory; Kupa credit preferences, Google Drive and local Bridge clients now have explicit ports. Credit preference failure/restart policy still needs broader review | Injected fake ports, adapter contracts and import enforcement; installed settings/auth compatibility |
 | Static contracts | Extend the existing strict JS gate beyond current writers/checkpoint/operation/cloud-record decoding/Main receipt/ACK policy, Credit preferences and Calendar authority/queue observation/confirmation to full journal/IDB transactions/business RPC/read candidates, Finance lease callers, capability ports and application consumers | A real mismatch fails CI; actual implementation bodies and negative consumers are checked, runtime validation and historical record readers remain intact |
-| Bridge decomposition | Document HTTP/access gate, typed routing, native preview process/session, text/binary preview/file reads, match-text cache and complete persisted PDF index reads now have explicit owners and transactional packaging/native Windows coverage. Remaining Document index write/lock/search/maintenance ownership and Bank HTTP/vault/session/provider/retry diagnostics | Existing external contracts preserved, classified failures and provider tests before live scraper changes; see DOCUMENT_BRIDGE_HTTP_BOUNDARY.md, DOCUMENT_NATIVE_PREVIEW_OWNERSHIP.md, DOCUMENT_PREVIEW_FILE_BOUNDARY.md, DOCUMENT_PREVIEW_CACHE_OWNERSHIP.md and DOCUMENT_PDF_INDEX_READ_CONTRACT.md |
+| Bridge decomposition | Document HTTP/access gate, typed routing, native preview process/session, text/binary preview/file reads, match-text cache, complete persisted PDF index reads and file-lock ownership now have explicit owners and transactional packaging/native Windows coverage. Remaining Document index write/search/maintenance process ownership and Bank HTTP/vault/session/provider/retry diagnostics | Existing external contracts preserved, classified failures and provider tests before live scraper changes; see DOCUMENT_FILE_LOCK_OWNERSHIP.md and related Bridge contracts |
 | Canonical sources and compatibility | SQL deployment inventory/generation; historical keys/RPC/readers and supported-client inventory | Immutable deployed migrations, deterministic generation, proven retirement criteria and restore tests |
 | Readability/UI/release | Large modules by responsibility, dependency budgets, CSS/RTL/performance, final docs/rollback | Behavioral and visual regression checks, measured performance and full release gates |
 
@@ -581,3 +581,31 @@ truncation and recover the same paths/text/form geometry after exact restoration
 and fresh read. Successful reload retires related match text. Existing writer
 format/schema and business storage remain independent. See
 [PDF index read contract](DOCUMENT_PDF_INDEX_READ_CONTRACT.md).
+
+Document index/maintenance locking now uses captured process/token identity,
+live-PID exclusion, serialized dead-owner reclamation and confirmed scoped
+release. A before-change native test proved age-based takeover of a live owner.
+Unknown ownership/probe/cleanup failures remain visible; started work drains.
+Two native contender processes and 100 scoped cycles extend the checked contract.
+Legacy PID metadata remains readable; transient tokens do not change index or
+business wire formats. See [file-lock ownership](DOCUMENT_FILE_LOCK_OWNERSHIP.md).
+
+## Major completion stages from the current code
+
+These are bounded completion tracks, not a restart of completed refactors.
+Structural changes stay separate from SQL, persisted formats, provider policy
+and CSS. Each slice needs concrete evidence/contracts and its appropriate gate.
+
+| Order | Remaining stage | Exit criterion |
+| --- | --- | --- |
+| 1 | Finish Bridge responsibility boundaries: Document maintenance child lifetime, index write/search ownership; then Bank HTTP/auth/vault and session/provider orchestration | Small public APIs; native process/file and endpoint/failure tests; existing provider retry/fallback semantics preserved |
+| 2 | Complete application capability APIs and runtime ownership: Orders Finance/Checks, Kupa Dashboard/Bank queries, remaining shell and Shared/finance listeners/jobs | Explicit commands/queries and start/dispose; no broad app context, stale callback publication or duplicate jobs |
+| 3 | Extend strict contracts to real transaction/RPC/business consumers: journal/IDB callers, Finance lease callers, Morning/Calendar commands and capability ports | Implementation bodies and negative consumers fail on mismatch; unknown payload validation and historical fixtures stay covered |
+| 4 | Canonical SQL deployment sources and compatibility inventory | Deterministic generated-current checks; immutable deployed migrations/receipts; removal only with consumer evidence and restore coverage |
+| 5 | Large view/controller responsibilities, measured performance, then CSS/RTL | Representative behavior/visual regression and measured budgets; no split based only on file length |
+| 6 | Final recovery/rollout drill and runbooks | Full CI plus controlled actual two-computer/live-provider checks where required; backup/rollback and unknown-outcome procedures exercised |
+
+Types and failure tests accompany their relevant stage. Physical two-computer
+and live provider behavior are separate evidence from synthetic CI ports; CI
+does not certify them automatically. Existing Storage V2 ACK/owner/recovery
+contracts remain mandatory regression gates throughout.

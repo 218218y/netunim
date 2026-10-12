@@ -25,6 +25,13 @@ function check(overrides=new Map()){
 }
 function describe(diagnostics){return ts.formatDiagnostics(diagnostics,{getCanonicalFileName:file=>file,getCurrentDirectory:()=>root,getNewLine:()=> '\n'})}
 
+test('the actual file lock cannot replace a settled task result with formatted text',()=>{
+  const source=path.join(root,'netunim-orders/document-bridge/file-lock-owner.mjs');
+  const original=readFileSync(source,'utf8'),changed=original.replace('return outcome.value;', 'return String(outcome.value);');
+  assert.notEqual(changed,original);const diagnostics=check(new Map([[source,changed]]));
+  assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+});
+
 test('the actual PDF index reader cannot publish a string as pending-count evidence',()=>{
   const source=path.join(root,'netunim-orders/document-bridge/pdf-index-reader.mjs');
   const original=readFileSync(source,'utf8'),changed=original.replace('return {entries, pending, pdfCount, updatedAt, signature};', 'return {entries, pending:String(pending), pdfCount, updatedAt, signature};');
