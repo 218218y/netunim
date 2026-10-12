@@ -66,7 +66,7 @@ FLOW = r"""(async()=>{
  const diagnostic=kupa?controller.bankBridgeUiState():finance.queries.snapshot();
  check((kupa?diagnostic.lastError:diagnostic.bankError).includes('אישור'),'unknown confirmation not visible to operator');
  // Recovery is an authorized read of the committed effect, never another scan.
- if(kupa){await syncDocument.cloudPoll();await controller.ensureBankDisplayArchive()}else await controller.refreshFinanceData();
+ if(kupa){await syncDocument.cloudPoll();await controller.ensureBankDisplayArchive()}else await finance.queries.refreshFinanceData();
  const bank=kupa?controller.bankBridgeUiState():finance.queries.snapshot().bank;
  check((kupa?state.bank.currentBalance:bank.currentBalance)===500,'confirmed read did not recover the server Bank effect');
  check(JSON.stringify(bank.feed.transactions.map(row=>row.id))==='["stable-bank-transaction"]','Bank transaction identity lost/duplicated');
