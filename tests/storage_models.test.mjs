@@ -55,7 +55,7 @@ test('Orders folder writes serialize and back up pre-existing data before replac
  const file=data.files.get('orders-data.json');assert.equal(file.maxActive,1);
  assert.equal(JSON.parse(file.text).businessName,'latest');
  assert.equal(backups[0].payload.businessName,'old');assert.ok(backups[0].name.includes('before-connect'));
- assert.equal(backups.at(-1).payload.businessName,'latest');assert.equal(files.folderWritePromise,null);
+ assert.equal(backups.at(-1).payload.businessName,'latest');await api.runtime.drain();assert.equal(api.runtime.isPending(),false);
 });
 
 

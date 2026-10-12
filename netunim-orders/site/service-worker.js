@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-6937bfdd3565';
+const CACHE='orders-app-shell-esm-f38b9103e26c';
 const SHELL=[
   './',
   './index.html',
@@ -26,6 +26,7 @@ const SHELL=[
   './assets/js/composition/cloud.js',
   './assets/js/composition/customers.js',
   './assets/js/composition/finance.js',
+  './assets/js/composition/folders.js',
   './assets/js/composition/service.js',
   './assets/js/composition/storage-v2.js',
   './assets/js/composition/suppliers.js',
@@ -137,6 +138,7 @@ const SHELL=[
   './assets/js/main.js',
   './assets/js/platform/calendar-commit-notifications.js',
   './assets/js/platform/calendar-delivery-owner.js',
+  './assets/js/platform/folder-picker.js',
   './assets/js/runtime-events.js',
   './assets/js/shared/action-registry.js',
   './assets/js/shared/authenticated-account-scope.js',
@@ -270,6 +272,7 @@ const SHELL=[
   './assets/js/storage/backup.js',
   './assets/js/storage/browser.js',
   './assets/js/storage/files.js',
+  './assets/js/storage/folder-write-runtime.js',
   './assets/js/storage/indexed-db.js',
   './assets/js/storage/persistence.js',
   './assets/js/storage/tab-lock.js',
