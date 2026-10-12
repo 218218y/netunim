@@ -68,10 +68,14 @@ export function createCreditDiagnosticLog({directory,bridgeVersion=0,contractVer
   }
   async function append(value){await fs.mkdir(directory,{recursive:true,mode:0o700});await prune();await rotate();const event=sanitizeCreditDiagnosticEvent({...value,bridgeVersion,contractVersion,connectorVersion:value?.connectorVersion||connectorVersion});await fs.appendFile(logPath,`${JSON.stringify(event)}\n`,{encoding:'utf8',mode:0o600});await prune();return event}
   function record(value){queue=queue.then(()=>append(value)).catch(()=>{});return queue}
+  async function drain(){
+    let observed;
+    do{observed=queue;await observed}while(observed!==queue);
+  }
   async function summary({limit=100}={}){
     await queue;const files=[logPath,...Array.from({length:fileCount-1},(_,index)=>`${logPath}.${index+1}`)],events=[];
     for(const file of files){try{const content=await fs.readFile(file,'utf8');for(const line of content.split(/\r?\n/)){if(!line.trim())continue;try{events.push(sanitizeCreditDiagnosticEvent(JSON.parse(line)))}catch{}}}catch(error){if(error?.code!=='ENOENT')throw error}}
     return events.sort((a,b)=>Date.parse(b.timestamp)-Date.parse(a.timestamp)).slice(0,Math.max(1,Math.min(500,Math.trunc(Number(limit)||100))));
   }
-  return {record,summary,logPath};
+  return {record,summary,drain,logPath};
 }

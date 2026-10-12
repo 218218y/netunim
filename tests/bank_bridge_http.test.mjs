@@ -21,6 +21,22 @@ test('shutdown replies before teardown and retains the existing no-body route',a
   assert.equal(response.status,200);assert.deepEqual(response.data,{ok:true});assert.equal(stopped,1);
 });
 
+test('closed admission rejects private work before reading bodies while allowing health and shutdown retry',async t=>{
+  let reads=0,writes=0,stops=0;
+  const f=await httpFixture(t,{vault:{readCredentials:async()=>{reads++;return null},writeCredentials:async()=>{writes++}},afterResponse:()=>{stops++}});
+  f.api.operations.close();
+  for(const [target,method] of [['/status','GET'],['/credentials','POST'],['/bank/diagnostics','GET'],['/bank/cheque-image/'+'a'.repeat(64),'GET']]){
+    const response=await f.request(target,{method,body:'not JSON'});
+    assert.equal(response.status,400);assert.equal(response.data.code,'BRIDGE_STOPPING');
+  }
+  assert.equal(reads,0);assert.equal(writes,0);
+  assert.equal((await f.request('/credentials',{method:'POST',token:'wrong',body:'not JSON'})).status,401);
+  assert.equal((await f.request('/health',{token:'wrong'})).status,200);
+  assert.equal((await f.request('/unknown',{method:'OPTIONS'})).status,204);
+  for(let n=0;n<2;n++)assert.deepEqual((await f.request('/shutdown',{method:'POST',body:'not JSON'})).data,{ok:true});
+  assert.equal(stops,2);
+});
+
 test('public health/preflight and private token gates preserve existing Bank CORS policy',async t=>{
   let reads=0;const f=await httpFixture(t,{vault:{readCredentials:async()=>{reads++;return null}}});
   const health=await f.request('/health?probe=1',{token:'wrong'});

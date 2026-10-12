@@ -32,7 +32,7 @@ mkdir "%STAGING%" >nul 2>nul || (
 )
 
 rem Build the new runtime first. The currently installed bridge stays untouched until all checks pass.
-for %%F in (server.mjs http-handler.mjs http-routes.mjs wire-errors.mjs finance-commands.mjs connection-queries.mjs diagnostic-queries.mjs operation-owner.mjs connection-commands.mjs connection-settings.mjs connection-vault.mjs windows-platform.mjs lib.mjs bank-diagnostics.mjs credit-adapters.mjs credit-diagnostics.mjs credit-data-diagnostics.mjs credit-identity.mjs amex-digitalv3.mjs isracard-digitalv3.mjs isracard-group-utils.mjs isracard-camoufox.mjs provision-camoufox.mjs package.json package-lock.json start_bank_bridge.bat) do (
+for %%F in (server.mjs shutdown-owner.mjs replacement-command.mjs loopback-port.mjs http-handler.mjs http-routes.mjs wire-errors.mjs finance-commands.mjs connection-queries.mjs diagnostic-queries.mjs operation-owner.mjs connection-commands.mjs connection-settings.mjs connection-vault.mjs windows-platform.mjs lib.mjs bank-diagnostics.mjs credit-adapters.mjs credit-diagnostics.mjs credit-data-diagnostics.mjs credit-identity.mjs amex-digitalv3.mjs isracard-digitalv3.mjs isracard-group-utils.mjs isracard-camoufox.mjs provision-camoufox.mjs package.json package-lock.json start_bank_bridge.bat) do (
   copy /Y "%~dp0%%F" "%STAGING%\%%F" >nul || (
     echo ERROR: Could not copy %%F into the Bank Bridge staging folder.
     rmdir /S /Q "%STAGING%" >nul 2>nul
@@ -151,7 +151,13 @@ start "" wscript.exe "%AUTOSTART%"
 timeout /t 2 /nobreak >nul
 node -e "fetch('http://127.0.0.1:8765/health',{cache:'no-store'}).then(r=>r.json()).then(j=>{if(j.service!=='netunim-kupa-bank-bridge'||!(Number(j.version)>=73)||Number(j.creditContractVersion)!==2)process.exit(2)}).catch(()=>process.exit(1))"
 if errorlevel 1 (
-  node "%APPDIR%\server.mjs" --stop-existing >nul 2>nul
+  node "%APPDIR%\server.mjs" --stop-existing
+  if errorlevel 1 (
+    echo ERROR: Startup failed, but shutdown is still unconfirmed. The active and rollback runtimes were preserved.
+    echo Wait for accepted work to finish, then retry the installation. See: %APPROOT%\bridge.log
+    pause
+    exit /b 1
+  )
   if exist "%APPFAILED%" rmdir /S /Q "%APPFAILED%" >nul 2>nul
   if exist "%APPDIR%" move "%APPDIR%" "%APPFAILED%" >nul 2>nul
   if exist "%APPBACKUP%" move "%APPBACKUP%" "%APPDIR%" >nul 2>nul

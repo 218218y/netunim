@@ -9,7 +9,7 @@ private HTTP function independently of production startup.
 
 | Module | Public boundary | Required collaborators |
 | --- | --- | --- |
-| `http-handler.mjs` | Inert listener factory; token/CORS/body/response handling | token, route resolver, public health |
+| `http-handler.mjs` | Inert listener factory; token/CORS/body/response handling | token, route resolver, public health, operation admission |
 | `http-routes.mjs` | Typed private registry/resolver; no filesystem or provider authority | versions plus service, connections, finance, diagnostics, cheques and shutdown facades |
 | `connection-queries.mjs` | Coherent public bank/credit status snapshots | operation owner, vault, metadata readers |
 | `finance-commands.mjs` | Bank and credit sync commands; public results after publication | operation owner, bank port, credit port |
@@ -69,7 +69,8 @@ PostgreSQL, native browser, recovery, ACK and fault gates.
 
 Bank session acquisition/read stages and credit profile orchestration still live
 in the composition module and require later ownership reviews. HTTP teardown and
-installer replacement semantics are preserved here; this stage does not claim
-graceful drainage across process termination or cross-process vault exclusivity.
+installer replacement semantics were preserved in this stage. The subsequent
+[shutdown ownership stage](BANK_BRIDGE_SHUTDOWN_OWNERSHIP.md) adds accepted-work
+drainage and confirmed replacement, without claiming cross-process vault exclusivity.
 No schema, deployed migration, encrypted format, provider policy or live login is
 changed. Live issuer and physical two-computer rollout remain separate evidence.

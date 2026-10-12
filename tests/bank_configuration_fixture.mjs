@@ -27,7 +27,7 @@ export function configurationHandler({readProfiles=async()=>[],writeProfiles=asy
   const routes=createBankBridgeRoutes({version:73,contractVersion:2,service,connections,finance,diagnostics,
     cheques:{read:async key=>{const image=await ports.readCachedChequeImage(key);return image&&ports.chequeImageInRetention(image.eventDate)?image:null}},
     shutdown:{afterResponse:overrides.afterResponse||(()=>{})}});
-  const handler=createBankBridgeHttpHandler({token:'fixture-token',routes,health:()=>({ok:true,service:'netunim-kupa-bank-bridge',version:73,creditContractVersion:2})});
+  const handler=createBankBridgeHttpHandler({token:'fixture-token',routes,admission:{assertAccepting:operations.assertAccepting},health:()=>({ok:true,service:'netunim-kupa-bank-bridge',version:73,creditContractVersion:2})});
   return {handler,operations,connections,finance,service,diagnostics,ports};
 }
 export const profile=id=>({profileId:id,provider:'max',label:id,username:id,password:' synthetic password '});

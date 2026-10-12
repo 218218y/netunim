@@ -26,8 +26,8 @@ async function readJson(req) {
 function authToken(req) { const value = String(req.headers.authorization || ''); return value.startsWith('Bearer ') ? value.slice(7).trim() : ''; }
 // One entry gate precedes all private routes, body consumption and capability
 // entry. Bank pathname/query aliases and reflected CORS remain its own policy.
-export function createBankBridgeHttpHandler({ token, routes, health }) {
-    if (typeof token !== 'string' || !token || typeof routes?.resolve !== 'function' || typeof health !== 'function') {
+export function createBankBridgeHttpHandler({ token, routes, health, admission }) {
+    if (typeof token !== 'string' || !token || typeof routes?.resolve !== 'function' || typeof health !== 'function' || typeof admission?.assertAccepting !== 'function') {
         throw new Error('bank_bridge_http_ports_required');
     }
     async function handle(req, res) {
@@ -46,6 +46,7 @@ export function createBankBridgeHttpHandler({ token, routes, health }) {
             return;
         }
         try {
+            if(pathname!=='/shutdown')admission.assertAccepting();
             const route = routes.resolve(req.method, pathname);
             if (!route) {
                 sendBankBridgeJson(req, res, 404, { ok: false, code: 'NOT_FOUND', message: 'נתיב Bank Bridge לא קיים' });

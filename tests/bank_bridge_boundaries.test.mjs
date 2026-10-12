@@ -7,7 +7,9 @@ import {createBankBridgeHttpHandler} from '../netunim-kupa/bank-bridge/http-hand
 
 test('Bank HTTP/capability boundaries have explicit dependency and collaborator budgets',()=>{
   const contracts=[
-    ['http-handler',['node:crypto','./wire-errors.mjs'],'createBankBridgeHttpHandler',3],
+    ['shutdown-owner',[],'createBridgeShutdownOwner',3],
+    ['replacement-command',[],'createBridgeReplacementCommand',4],
+    ['http-handler',['node:crypto','./wire-errors.mjs'],'createBankBridgeHttpHandler',4],
     ['http-routes',[],'createBankBridgeRoutes',8],
     ['finance-commands',['./lib.mjs','./credit-adapters.mjs','./credit-data-diagnostics.mjs'],'createFinanceCommands',3],
     ['connection-queries',['./connection-commands.mjs'],'createConnectionQueries',3],

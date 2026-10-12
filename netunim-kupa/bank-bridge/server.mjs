@@ -1,3 +1,6 @@
+import {createBridgeShutdownOwner} from './shutdown-owner.mjs';
+import {createBridgeReplacementCommand} from './replacement-command.mjs';
+import {isLoopbackPortClosed} from './loopback-port.mjs';
 import {createBankBridgeHttpHandler} from './http-handler.mjs';
 import {createBankBridgeRoutes} from './http-routes.mjs';
 import {bankBridgeErrorResponse as safeError} from './wire-errors.mjs';
@@ -11,7 +14,7 @@ import {createConnectionCommands,settleConnectionJobs} from './connection-comman
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs/promises';
-import {runProcess,runPowerShell,protectText,unprotectText} from './windows-platform.mjs';
+import {runProcess,protectText,unprotectText} from './windows-platform.mjs';
 import {createHash,randomBytes,randomUUID} from 'node:crypto';
 import {
   HAPOALIM_POST_LOGIN_TIMEOUT_MS,
@@ -630,23 +633,16 @@ async function fetchLocal(pathname,{method='GET',token='',timeoutMs=1200}={}){
   }finally{clearTimeout(timer)}
 }
 async function waitForPortToClose(timeoutMs=5000){
-  const deadline=Date.now()+timeoutMs;while(Date.now()<deadline){try{await fetchLocal('/health',{timeoutMs:400})}catch{return true}await new Promise(r=>setTimeout(r,150))}return false;
+  const deadline=Date.now()+timeoutMs;while(Date.now()<deadline){if(await isLoopbackPortClosed({host:HOST,port:PORT}))return true;await new Promise(r=>setTimeout(r,150))}return false;
 }
-async function stopVerifiedListener(){
-  if(process.platform!=='win32')throw new Error('Automatic Bank Bridge replacement is supported on Windows only');
-  const script=`$ErrorActionPreference='Stop';$c=Get-NetTCPConnection -LocalPort ${PORT} -State Listen -ErrorAction SilentlyContinue | Where-Object {$_.LocalAddress -eq '127.0.0.1' -or $_.LocalAddress -eq '0.0.0.0'} | Select-Object -First 1;if(-not $c){exit 0};$p=Get-CimInstance Win32_Process -Filter ("ProcessId="+$c.OwningProcess);if(-not $p){exit 0};if($p.Name -notmatch '^node(.exe)?$'){throw 'Listener is not Node.js'};if($p.CommandLine -notmatch 'server\\.mjs'){throw 'Listener is not the Netunim Bank Bridge'};Stop-Process -Id $p.ProcessId -Force`;
-  await runPowerShell(script);
-}
-async function stopExistingBridge(){
-  let health;try{health=await fetchLocal('/health')}catch{return}
-  if(health.data?.service!=='netunim-kupa-bank-bridge')throw new Error(`Port ${PORT} is occupied by another local service`);
-  let token='';try{token=(await fs.readFile(TOKEN_FILE,'utf8')).trim()}catch{}
-  if(token){try{const r=await fetchLocal('/shutdown',{method:'POST',token,timeoutMs:1500});if(r.response.ok&&await waitForPortToClose())return}catch{}}
-  await stopVerifiedListener();if(!await waitForPortToClose())throw new Error('The existing Bank Bridge process did not stop');
-}
+const replacement=createBridgeReplacementCommand({
+  probe:async()=>{try{return await fetchLocal('/health')}catch(error){if(await isLoopbackPortClosed({host:HOST,port:PORT}))return null;throw error}},readToken:()=>fs.readFile(TOKEN_FILE,'utf8'),
+  shutdown:token=>fetchLocal('/shutdown',{method:'POST',token,timeoutMs:1500}),
+  waitUntilStopped:()=>waitForPortToClose(),
+});
 
 const args=new Set(process.argv.slice(2));
-if(args.has('--stop-existing')){try{await stopExistingBridge();process.exit(0)}catch(e){console.error(e?.message||e);process.exit(1)}}
+if(args.has('--stop-existing')){try{await replacement.stop();process.exit(0)}catch(e){console.error(e?.message||e);process.exit(1)}}
 if(args.has('--doctor')){
   try{
     const browserPath=await findInstalledBrowser();
@@ -674,12 +670,19 @@ const finance=createFinanceCommands({operations,
   credit:{readProfiles:vault.readCreditProfiles,readMeta:readCreditMeta,scrape:scrapeAllCreditProfiles,writeDataDiagnostic:writeCreditDataDiagnostic,writeMeta:writeCreditMeta},
 });
 const diagnostics=createDiagnosticQueries({creditLog:creditDiagnostics,read:{bank:readBankDiagnostic,creditData:readCreditDataDiagnostic}});
+const shutdown=createBridgeShutdownOwner({operations,diagnostics:creditDiagnostics,platform:{
+  schedule:(run,delayMs)=>{const timer=setTimeout(run,delayMs);return ()=>clearTimeout(timer)},
+  subscribeStop:listener=>{process.on('SIGINT',listener);process.on('SIGTERM',listener);return ()=>{process.off('SIGINT',listener);process.off('SIGTERM',listener)}},
+  closeListener:()=>new Promise((resolve,reject)=>activeServer.close(error=>error?reject(error):resolve())),
+  exit:()=>process.exit(0),reportError:error=>console.error('Bank Bridge shutdown failed; accepted work was not force-stopped:',error?.message||error),
+}});
 const routes=createBankBridgeRoutes({version:BRIDGE_VERSION,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION,
   service,connections,finance,diagnostics,
   cheques:{read:async key=>{const image=await readCachedChequeImage(key);return image&&chequeImageInRetention(image.eventDate)?image:null}},
-  shutdown:{afterResponse:()=>setTimeout(()=>activeServer?.close(()=>process.exit(0)),50)},
+  shutdown:{afterResponse:()=>{void shutdown.request()}},
 });
-const handler=createBankBridgeHttpHandler({token,routes,health:()=>({ok:true,service:'netunim-kupa-bank-bridge',version:BRIDGE_VERSION,creditContractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION})});
+const handler=createBankBridgeHttpHandler({token,routes,admission:{assertAccepting:operations.assertAccepting},health:()=>({ok:true,service:'netunim-kupa-bank-bridge',version:BRIDGE_VERSION,creditContractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION})});
 activeServer=http.createServer(handler);
+shutdown.start();
 activeServer.on('error',e=>{if(e?.code==='EADDRINUSE'){console.error(`Bank Bridge already appears to be running on ${HOST}:${PORT}`);process.exit(0)}console.error(e);process.exit(1)});
 activeServer.listen(PORT,HOST,()=>console.log(`Netunim Kupa Bank Bridge v${BRIDGE_VERSION} listening on http://${HOST}:${PORT}`));

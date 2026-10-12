@@ -775,3 +775,13 @@ with Windows HTTP/DPAPI writes cover concrete composition. Import/collaborator
 budgets guard these boundaries. See
 [Bank HTTP capabilities](BANK_BRIDGE_HTTP_CAPABILITIES.md) for the preserved Bank
 alias/CORS policy and remaining session/provider/process lifecycle scope.
+
+Bank process shutdown now closes admission and joins accepted configuration,
+read and provider tasks, followed by the diagnostic queue, listener closure and
+exit. Its idempotent owner retains work after client disconnect and owns signals
+and the delayed shutdown flight. Replacement has no kill authority: positive
+shutdown acknowledgement and refused loopback TCP establish normal closure;
+timeouts and lost responses stop replacement. Native cmd.exe coverage also
+protects startup-failure rollback from swapping an unconfirmed active runtime.
+See [Bank shutdown ownership](BANK_BRIDGE_SHUTDOWN_OWNERSHIP.md) for the reproduced
+failures, strict contracts, native staging evidence and remaining provider scope.
