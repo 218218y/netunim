@@ -14,7 +14,7 @@ FLOW = r"""(async()=>{
  const phase=__PHASE__,check=(ok,message)=>{if(!ok)throw Error(message)},op='00000000-0000-4000-8000-000000000001';
  const debt={id:'metadata-debt',customerName:'Metadata fixture',amount:100,paid:false,invoiceIssued:false,debtProgress:[{id:'MORNING:'+op+':payment',kind:'payment',action:'add',amount:30,source:'morning',createdAt:'2026-10-11T00:00:00Z'}]};
  state.customerDebts.push(debt);state.notes.push({id:'metadata-note',content:'independent durable content'});
- storagePersistence.scheduleSave('metadata fixture',{domains:['customerDebts','notes'],operations:[{type:'put',collection:'customerDebts',id:debt.id,mode:'insert',index:state.customerDebts.length-1,record:debt},{type:'put',collection:'notes',id:'metadata-note',mode:'insert',index:state.notes.length-1,record:state.notes.at(-1)}]});await mainStorageV2.commitPromise;clearTimeout(session.saveTimer);session.saveTimer=null;
+ storagePersistence.scheduleSave('metadata fixture',{domains:['customerDebts','notes'],operations:[{type:'put',collection:'customerDebts',id:debt.id,mode:'insert',index:state.customerDebts.length-1,record:debt},{type:'put',collection:'notes',id:'metadata-note',mode:'insert',index:state.notes.length-1,record:state.notes.at(-1)}]});await mainStorageV2.commitPromise;storagePersistence.runtime.cancelPending();
  const {createMorningOperationScope}=await import('./assets/js/core/morning-operation-scope.js'),{createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js'),db=createStorageJournalDb();
  const access={account:{owner:'local',epoch:1},storageOwner:'local',readable:true,writable:true},authority=createMorningOperationScope({readAccess:()=>access});morningOperationScope.capture=authority.capture;morningOperationScope.captureRead=authority.captureRead;
  let statusReads=0;cloudAuth.supaFetch=async(_path,options)=>{options.assertRequestScope();check(JSON.parse(options.body).action==='status','unexpected issuance/provider action');statusReads++;return new Response(JSON.stringify({ok:true,operation:{state:'created',verified_at:'2026-10-11T01:00:00Z',document_id:'metadata-doc',document_number:'4001',document_type:400}}))};
@@ -44,7 +44,7 @@ FLOW = r"""(async()=>{
      held.resolve();await work;
      if(phase==='relogin'){check(button.dataset.morningDebtOperation===op,'former login published metadata completion');await hydrateDebtDocumentLinks(document)}
    }
-   await mainStorageV2.commitPromise;clearTimeout(session.saveTimer);session.saveTimer=null;
+   await mainStorageV2.commitPromise;storagePersistence.runtime.cancelPending();
    if(phase==='abort'){check(await mainStorageV2.recover(),'successful retry did not recover');check(!mainStorageV2.durabilityAtRisk,'same-epoch recovered retry still undurable')}
    check(!button.dataset.morningDebtOperation,'confirmed metadata remained unacknowledged');check(button.textContent.includes('קבלה 4001'),'confirmed metadata not shown');
    const recovered=await mainStorageV2.recoverReadOnly(),row=recovered.state.customerDebts.find(item=>item.id===debt.id);

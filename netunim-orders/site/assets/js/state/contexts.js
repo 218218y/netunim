@@ -145,7 +145,6 @@ return {
     cloudPollTimer:null,
     cloudRecoveryTimer:null,
     cloudRecoveryAttempt:0,
-    saveTimer:null,
     localGeneration:0,
     cloudSaveRequested:false,
     cloudSavePromise:null,
@@ -177,7 +176,6 @@ return {
     kupaReadRevision:0,
     financeReadRevision:0,
     financeReadUpdatedAt:null,
-    sharedChecksSaveTimer:null,
     sharedChecksSaveMessage:''
   }
 };

@@ -22,6 +22,10 @@ for(const app of ['kupa','orders']){
         assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=(app==='kupa'?23:24),relative+': startup collaborators must not grow; introduce a capability port');
       if(node.type==='FunctionDeclaration'&&node.id?.name==='createPollingTask'&&relative==='assets/js/shared/runtime-polling.js')
         assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=6,relative+': recurring task owner exceeds six collaborators');
+      if(node.type==='FunctionDeclaration'&&node.id?.name==='createDebouncedTask'&&relative==='assets/js/platform/debounced-task.js')
+        assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=3,relative+': debounced task owner exceeds three collaborators');
+      if(app==='orders'&&node.type==='MemberExpression'&&['saveTimer','sharedChecksSaveTimer'].includes(node.property?.name))
+        assert.fail(relative+': save wakeups belong to persistence runtimes, not context timer fields');
       if(node.type==='FunctionDeclaration'&&node.id?.name==='createFinanceOperationScope')
         assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length===1,relative+': finance operation scope must receive one explicit access snapshot port');
       if(node.type==='FunctionDeclaration'&&['createStorageStartupRecovery','createKupaConnectivityRuntime','createOrdersConnectivityRuntime','createOrdersCloudStartup','createOrdersLocalServices','createOrdersBackgroundStartup','createKupaCloudStartup','createKupaLocalServices','createKupaConnectionStartup'].includes(node.id?.name)){

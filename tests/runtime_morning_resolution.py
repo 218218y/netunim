@@ -62,13 +62,13 @@ def startup_barrier():
 
 def pending(a,kind=320):
     seed(a)
-    js(a,f"window.auditSetServer({{uncertain:true}});await window.auditIssue({kind},30);await requestCloudSave('fixture baseline');clearTimeout(saveTimer);saveTimer=null;return true;")
+    js(a,f"window.auditSetServer({{uncertain:true}});await window.auditIssue({kind},30);await requestCloudSave('fixture baseline');storagePersistence.runtime.cancelPending();return true;")
     return a.evaluate('({revision:cloudRevision,state:prepareCloudState(state)})')
 
 
 def remote_edit(b,head,change):
     seed(b)
-    js(b,'state=normalizeState('+json.dumps(head['state'])+');await adoptStorageV2CloudHead('+str(head['revision'])+',state);cloudRevision='+str(head['revision'])+';lastCloudState=prepareCloudState(state);window.auditCloudHead='+json.dumps(head)+';'+change+";await requestCloudSave('computer B');clearTimeout(saveTimer);saveTimer=null;return true;")
+    js(b,'state=normalizeState('+json.dumps(head['state'])+');await adoptStorageV2CloudHead('+str(head['revision'])+',state);cloudRevision='+str(head['revision'])+';lastCloudState=prepareCloudState(state);window.auditCloudHead='+json.dumps(head)+';'+change+";await requestCloudSave('computer B');storagePersistence.runtime.cancelPending();return true;")
     return b.evaluate('window.auditCloudHead')
 
 
@@ -239,7 +239,7 @@ def disconnected_create_response():
     with BrowserSession(ROOT/'netunim-orders/site','morning-delayed-create') as a:
         seed(a)
         js(a,r"""
-        await requestCloudSave('fixture');clearTimeout(saveTimer);saveTimer=null;
+        await requestCloudSave('fixture');storagePersistence.runtime.cancelPending();
         window.auditCloudHead={revision:cloudRevision,state:prepareCloudState(state)};
         const transport=cloudAuth.supaFetch;
         cloudAuth.supaFetch=async(path,options)=>{
@@ -270,7 +270,7 @@ def approved_replay_after_cleanup_failure():
         Storage.prototype.removeItem=function(key){if(key==='orders.morning.pending-issuance.v1')throw new Error('fixture cleanup failure');return remove.call(this,key)};
         await confirmMorningRecoveryChoice(document.querySelector('[data-action="morning-recovery-confirm"]'));
         window.auditAssert(window.auditDebt().debtProgress.length===2&&!!localStorage.getItem('orders.morning.pending-issuance.v1'),'approved effect/cleanup fixture missing');
-        await requestCloudSave('fixture approved effect');clearTimeout(saveTimer);saveTimer=null;
+        await requestCloudSave('fixture approved effect');storagePersistence.runtime.cancelPending();
         Storage.prototype.removeItem=remove;return true;
         """)
         head=a.evaluate('window.auditCloudHead')

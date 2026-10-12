@@ -72,19 +72,19 @@ for label,setup in fixtures.items():
               wrap.scrollTop=100;await frame();const scroll=wrap.scrollTop,times=[],paints=[];
               for(let i=0;i<8;i++){
                 const start=performance.now();setInlineTri('T10','signed',i%2===0);times.push(performance.now()-start);
-                clearTimeout(saveTimer);saveTimer=null;await frame();paints.push(performance.now()-start);
+                storagePersistence.runtime.cancelPending();await frame();paints.push(performance.now()-start);
               }
               const local=(await mainStorageV2.recover()).state;
               const stable=table===document.querySelector('#main table')&&untouched===document.querySelector('tr[data-tx-id="T900"]');
               const preservedScroll=Math.abs(scroll-wrap.scrollTop)<2,durable=local.transactions.find(t=>t.id==='T10').signed===state.transactions.find(t=>t.id==='T10').signed;
               // A status change that removes a filtered row still updates the structure and totals.
               state.transactions[10].supplied=false;filterMode='pending';renderSupplier();
-              setInlineTri('T10','supplied',true);clearTimeout(saveTimer);saveTimer=null;
+              setInlineTri('T10','supplied',true);storagePersistence.runtime.cancelPending();
               const removed=!document.querySelector('tr[data-tx-id="T10"]');
               // A closed-year carry row disappears when its workflow completes.
               filterMode='all';state.transactions[0].yearEnd=2025;state.transactions[0].invoiceReceived=true;state.transactions[0].signed=true;state.transactions[0].supplied=false;
               renderSupplier();const carryWasVisible=!!document.querySelector('tr[data-tx-id="T0"]');
-              setInlineTri('T0','supplied',true);clearTimeout(saveTimer);saveTimer=null;
+              setInlineTri('T0','supplied',true);storagePersistence.runtime.cancelPending();
               times.sort((a,b)=>a-b);paints.sort((a,b)=>a-b);
               return {stable,preservedScroll,durable,removed,carryRemoved:carryWasVisible&&!document.querySelector('tr[data-tx-id="T0"]'),p95ActionMs:Math.round(times[7]),p95PaintOpportunityMs:Math.round(paints[7])};
             })()""",timeout=20)
@@ -178,7 +178,7 @@ with BrowserSession(ROOT/'netunim-orders/site','orders-domain-performance') as b
         metrics.clearPerformance();started=performance.now();uiGlobalSearch.open();uiGlobalSearch.renderResults('Service');results.globalWarm={ms:Math.round(performance.now()-started),metrics:metrics.performanceSummary()};uiGlobalSearch.close();
         // A status toggle keeps unrelated cards and the surrounding DOM alive.
         switchView('service');const untouched=document.querySelector('[data-service-bulk-id="SV1"]'),host=document.getElementById('serviceSearchResults');
-        toggleServiceFlag('SV0','sent');clearTimeout(saveTimer);saveTimer=null;
+        toggleServiceFlag('SV0','sent');storagePersistence.runtime.cancelPending();
         results.servicePatch=untouched===document.querySelector('[data-service-bulk-id="SV1"]')&&host===document.getElementById('serviceSearchResults');
       }finally{metrics.configurePerformance(false);metrics.clearPerformance()}
       return results;
