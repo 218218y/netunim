@@ -40,15 +40,19 @@ async function verifyLocalResetCloud(resetSession){
   if(shared){if(!shared.state||!Array.isArray(shared.state.checks)||!Array.isArray(shared.state.bankEvents))throw new Error('מסמך הצקים המשותף בענן במבנה לא תקין');const rev=Number(shared.revision);if(!Number.isSafeInteger(rev)||rev<1)throw new Error('Revision הצקים המשותף אינו תקין')}
   return {main,shared};
 }
-async function readOrdersReadOnlyMeta(){
+async function readOrdersReadOnlyMeta({assertCurrent}={}){
+  assertCurrent?.();
   const q=`/rest/v1/${ORDERS_TABLE}?document_name=eq.${encodeURIComponent(ORDERS_DOC)}&select=document_name,revision,updated_at`;
-  const r=await supaRest(q,{method:'GET'}),j=await r.json().catch(()=>null);
+  const r=await supaRest(q,{method:'GET',...(assertCurrent?{assertRequestScope:assertCurrent}:{})}),j=await r.json().catch(()=>null);
+  assertCurrent?.();
   if(!r.ok)throw new Error(j?.message||j?.hint||'קריאת סטטוס ניהול ההזמנות נכשלה');
   return Array.isArray(j)&&j.length?j[0]:null;
 }
-async function readOrdersReadOnlyCloud(){
+async function readOrdersReadOnlyCloud({assertCurrent}={}){
+  assertCurrent?.();
   const q=`/rest/v1/${ORDERS_TABLE}?document_name=eq.${encodeURIComponent(ORDERS_DOC)}&select=document_name,revision,state,updated_at`;
-  const r=await supaRest(q,{method:'GET'}),j=await r.json().catch(()=>null);
+  const r=await supaRest(q,{method:'GET',...(assertCurrent?{assertRequestScope:assertCurrent}:{})}),j=await r.json().catch(()=>null);
+  assertCurrent?.();
   if(!r.ok)throw new Error(j?.message||j?.hint||'קריאת נתוני ניהול ההזמנות נכשלה');
   const row=Array.isArray(j)&&j.length?j[0]:null;
   if(row){const rev=Number(row.revision);if(!Number.isSafeInteger(rev)||rev<1||!row.state||typeof row.state!=='object')throw new Error('מסמך ניהול ההזמנות בענן אינו תקין')}

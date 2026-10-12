@@ -24,6 +24,12 @@ for(const app of ['kupa','orders']){
         assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=6,relative+': recurring task owner exceeds six collaborators');
       if(node.type==='FunctionDeclaration'&&node.id?.name==='createDebouncedTask'&&relative==='assets/js/platform/debounced-task.js')
         assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=3,relative+': debounced task owner exceeds three collaborators');
+      if(node.type==='FunctionDeclaration'&&node.id?.name==='createKupaDashboardCapability')
+        assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=7,relative+': Dashboard composition requires focused ports');
+      if(node.type==='FunctionDeclaration'&&['createDomainsDashboardController','createDomainsDashboardView'].includes(node.id?.name)&&app==='kupa')
+        assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=6,relative+': Dashboard read/view owner exceeds six collaborators');
+      if(node.type==='FunctionDeclaration'&&node.id?.name==='createKupaBankQueries')
+        assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=2,relative+': Bank queries should only read model and checks observations');
       if(node.type==='FunctionDeclaration'&&node.id?.name==='createOrdersChecksCapability')
         assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=10,relative+': Checks composition requires focused ports');
       if(node.type==='FunctionDeclaration'&&node.id?.name==='createOrdersFinanceCapability')
@@ -34,6 +40,8 @@ for(const app of ['kupa','orders']){
       }
       if(app==='orders'&&node.type==='MemberExpression'&&['saveTimer','sharedChecksSaveTimer','checksPullPromise','checksSavePromise'].includes(node.property?.name))
         assert.fail(relative+': save and Checks sync resources belong to their runtimes, not context fields');
+      if(app==='kupa'&&node.type==='MemberExpression'&&node.property?.name==='ordersFinanceReadPromise')
+        assert.fail(relative+': Dashboard flights belong to the readout owner');
       if(node.type==='FunctionDeclaration'&&node.id?.name==='createFinanceOperationScope')
         assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length===1,relative+': finance operation scope must receive one explicit access snapshot port');
       if(node.type==='FunctionDeclaration'&&['createStorageStartupRecovery','createKupaConnectivityRuntime','createOrdersConnectivityRuntime','createOrdersCloudStartup','createOrdersLocalServices','createOrdersBackgroundStartup','createKupaCloudStartup','createKupaLocalServices','createKupaConnectionStartup'].includes(node.id?.name)){
@@ -54,6 +62,7 @@ for(const app of ['kupa','orders']){
         const target=path.resolve(path.dirname(file),spec);
         assert.ok(target.startsWith(site+path.sep)&&fs.existsSync(target),relative+': missing or cross-site dependency '+spec);edges.push(target);
         const dependency=path.relative(path.join(site,'assets','js'),target).split(path.sep).join('/');
+        if(app==='kupa'&&relative==='assets/js/main.js')assert.ok(!/^(domains\/dashboard\/|domains\/bank\/selectors\.js$)/.test(dependency),relative+': Dashboard and Bank selectors belong behind capability/query ports');
         if(app==='orders'&&relative==='assets/js/main.js')assert.ok(!/^(domains\/(finance|bank|checks)\/|integrations\/bank-bridge\.js|shared\/(finance-fence|finance-connection-import|credit-card-order-view)\.js)/.test(dependency),relative+': Finance and Checks internals belong to their capability compositions');
         if(app==='orders'&&relative==='assets/js/main.js')assert.ok(!/^sync\/checks(?:-persistence|-merge)?\.js$/.test(dependency),relative+': Checks sync belongs to its capability');
         if(/^assets\/js\/(storage|cloud|sync)\//.test(relative)){
@@ -77,6 +86,8 @@ for(const app of ['kupa','orders']){
       if(relative.endsWith('/shared/cloud-checkpoint-publication.js')&&node.type==='Identifier')assert.ok(!['document','window','navigator','localStorage','fetch','indexedDB','setTimeout','setInterval'].includes(node.name),relative+': cloud publication must use explicit ports');
       if(relative==='assets/js/domains/credit/controller.js'&&node.type==='Identifier')
         assert.notEqual(node.name,'localStorage',relative+': Credit preferences require an explicit port');
+      if(app==='kupa'&&relative==='assets/js/domains/dashboard/controller.js'&&node.type==='Identifier'&&!(parent?.type==='MemberExpression'&&parent.property===node&&!parent.computed))
+        assert.ok(!['globalThis','window','document','navigator','Date','localStorage','fetch','setTimeout','setInterval'].includes(node.name),relative+': Dashboard reads use access/remote/clock ports');
       if(app==='orders'&&['assets/js/domains/finance/controller.js','assets/js/domains/bank/cache.js'].includes(relative)&&node.type==='Identifier'&&!(parent?.type==='MemberExpression'&&parent.property===node&&!parent.computed))
         assert.ok(!['globalThis','window','navigator','document','Blob','URL','setTimeout','clearTimeout'].includes(node.name),relative+': Finance orchestration uses explicit browser ports');
       if(/\/(?:shared\/(?:(bank|document)-bridge-client|google-drive-client|google-drive-document-policy|authenticated-account-scope)|domains\/documents\/search-source)\.js$/.test(relative)&&node.type==='Identifier'&&!(parent?.type==='MemberExpression'&&parent.property===node&&!parent.computed))

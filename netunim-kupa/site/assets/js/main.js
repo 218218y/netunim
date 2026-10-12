@@ -1,3 +1,5 @@
+import {createKupaDashboardCapability} from './composition/dashboard.js';
+import {createKupaBankQueries} from './composition/bank-queries.js';
 import {readCloudWriteScope} from './shared/cloud-write-scope.js';
 import {createKupaConnectivityRuntime} from './connectivity.js';
 import {createStorageStartupRecovery} from './shared/storage-startup-recovery.js';
@@ -35,12 +37,9 @@ import {createKupaChecksRuntime} from './composition/checks.js';
 import {createKupaCashRuntime} from './composition/cash.js';
 import {createKupaCreditRuntime} from './composition/credit.js';
 import {createKupaExpensesRuntime} from './composition/expenses.js';
-import {createDomainsBankSelectors} from './domains/bank/selectors.js';
 import {createUiNavigation} from './ui/navigation.js';
 import {createUiSidebar} from './ui/sidebar.js';
 import {createUiGlobalSearch} from './ui/global-search.js';
-import {createDomainsDashboardView} from './domains/dashboard/view.js';
-import {createDomainsDashboardController} from './domains/dashboard/controller.js';
 import {createUiBulk} from './ui/bulk.js';
 import {createKupaNotesRuntime} from './composition/notes.js';
 import {createDomainsBankAlerts} from './domains/bank/alerts.js';
@@ -262,13 +261,14 @@ const cloudTransport=createCloudTransport({
   localResetReadOnlyFetch:(...args)=>cloudAuth.localResetReadOnlyFetch(...args),
 });
 
-const domainsDashboardController=createDomainsDashboardController({
-  session,
-  ui,
-  readOrdersReadOnlyMeta:(...args)=>cloudTransport.readOrdersReadOnlyMeta(...args),
-  readOrdersReadOnlyCloud:(...args)=>cloudTransport.readOrdersReadOnlyCloud(...args),
-  renderDashboard:(...args)=>domainsDashboardView.renderDashboard(...args),
-  touchOrdersFinanceRevision:()=>domainRevisions.touch('ordersFinance'),
+const dashboard=createKupaDashboardCapability({
+  model,ui,runFinance:financeDerivations.run,
+  access:{
+    current:()=>({account:cloudAuth.getAccountScope(),readable:session.connectionMode==='supabase'&&session.backendReady}),
+    subscribe:cloudAuth.subscribeAccountScope,
+  },
+  remote:{readMeta:(...args)=>cloudTransport.readOrdersReadOnlyMeta(...args),readDocument:(...args)=>cloudTransport.readOrdersReadOnlyCloud(...args)},
+  touchRevision:()=>domainRevisions.touch('ordersFinance'),
 });
 
 const syncChecks=createSyncChecks({
@@ -316,7 +316,7 @@ const syncDocument=createSyncDocument({
   showSecondaryTabGuard:(...args)=>uiConnection.showSecondaryTabGuard(...args),
   toast:(...args)=>uiStatus.toast(...args),
   pollSharedChecks:(...args)=>syncChecks.pollSharedChecks(...args),
-  refreshOrdersFinanceSummary:(...args)=>domainsDashboardController.refreshOrdersFinanceSummary(...args),
+  refreshOrdersFinanceSummary:(...args)=>dashboard.commands.refreshOrdersSummary(...args),
   ...storageV2Cloud,
   storageV2PreparationActive:storagePreparationActive,
   ...storageV2Coordinator.accountContextPort(),
@@ -341,16 +341,13 @@ const uiDateEditor=createUiDateEditor({
 const cash=createKupaCashRuntime({model,ui});
 const credit=createKupaCreditRuntime({model,ui});
 
-const domainsBankSelectors=createDomainsBankSelectors({
-  model,
-  checksSession,
-});
+const bankQueries=createKupaBankQueries({model,checksSession});
 
 const uiNavigation=createUiNavigation({
   runFinance:financeDerivations.run,
   refreshCheckBankIndicator:()=>{const b=document.getElementById('checkBankAlerts');if(b){const count=checkBankReviewItems(model.state.checks).length;b.hidden=!count;b.textContent=`⚠ צ׳קים (${count})`}},
   ui,
-  renderDashboard:(...args)=>domainsDashboardView.renderDashboard(...args),
+  renderDashboard:(...args)=>dashboard.presentation.renderDashboard(...args),
   renderChecks:(...args)=>checks.renderChecks(...args),
   renderCredit:(...args)=>credit.renderCredit(...args),
   renderCash:(...args)=>cash.renderCash(...args),
@@ -389,8 +386,8 @@ const uiBulk=createUiBulk({
 const expenses=createKupaExpensesRuntime({
   model,ui,
   bankForecast:{
-    business:(...args)=>domainsBankSelectors.bankNextCycleCommitments(...args),
-    home:(...args)=>domainsBankSelectors.bankHomeNextCycleCommitments(...args),
+    business:(...args)=>bankQueries.forecast('business',...args),
+    home:(...args)=>bankQueries.forecast('home',...args),
   },
 });
 
@@ -402,7 +399,7 @@ const {
 }=composeKupaFinance({
   model,session,checksSession,ui,cloudAuth,cloudTransport,syncDocument,
   syncChecksState,syncChecks,storagePersistence,uiStatus,uiNavigation,
-  uiDateEditor,financeDerivations,domainsBankSelectors,domainRevisions,
+  uiDateEditor,financeDerivations,bankQueries,domainRevisions,
   getUiModal:()=>uiModal,
   operationAccess:()=>({
     account:cloudAuth.getAccountScope(),connectionMode:session.connectionMode,storageOwner:storageOwner.current(),
@@ -416,24 +413,12 @@ const {
   },
 });
 
-const domainsDashboardView=createDomainsDashboardView({
-  runFinance:financeDerivations.run,
-  model,
-  bankLocalSnapshotState:domainsBankController.bankLocalSnapshotState,
-  activeChecks:(...args)=>checks.activeChecks(...args),
-  depositedChecks:(...args)=>checks.depositedChecks(...args),
-  bankLongTermPosition:(...args)=>domainsBankSelectors.bankLongTermPosition(...args),
-  bankAsOfDate:(...args)=>domainsBankSelectors.bankAsOfDate(...args),
-  bankHomeAsOfDate:(...args)=>domainsBankSelectors.bankHomeAsOfDate(...args),
-  bankCurrentBalance:(...args)=>domainsBankSelectors.bankCurrentBalance(...args),
-  bankHomeBalance:(...args)=>domainsBankSelectors.bankHomeBalance(...args),
-  bankNextCycleCommitments:(...args)=>domainsBankSelectors.bankNextCycleCommitments(...args),
-  bankHomeNextCycleCommitments:(...args)=>domainsBankSelectors.bankHomeNextCycleCommitments(...args),
-  bankProjectedThisMonth:(...args)=>domainsBankSelectors.bankProjectedThisMonth(...args),
-  bankHomeProjectedThisMonth:(...args)=>domainsBankSelectors.bankHomeProjectedThisMonth(...args),
-  ordersFinanceSummary:(...args)=>domainsDashboardController.summary(...args),
-  refreshOrdersFinanceSummary:(...args)=>domainsDashboardController.refreshOrdersFinanceSummary(...args),
+dashboard.bindView({
+  bank:bankQueries,
+  checks:{active:(...args)=>checks.activeChecks(...args),deposited:(...args)=>checks.depositedChecks(...args)},
+  localBankSnapshot:(...args)=>domainsBankController.bankLocalSnapshotState(...args),
 });
+dashboard.assertReady();
 
 const uiCloud=composeCloudUi({
   session,tab,checksSession,model,storageV2Cloud,storageV2Coordinator,syncDocument,uiStatus,cloudAuth,
@@ -458,7 +443,7 @@ const uiSettings=createUiSettings({
   files,
   supaProjectRef:(...args)=>uiStatus.supaProjectRef(...args),
   supaConfigured:(...args)=>cloudAuth.supaConfigured(...args),
-  bankCurrentBalance:(...args)=>domainsBankSelectors.bankCurrentBalance(...args),
+  bankCurrentBalance:(...args)=>bankQueries.balance('business',...args),
   saveState:(...args)=>storagePersistence.saveState(...args),
 });
 
@@ -473,8 +458,8 @@ const importFinanceConnections=composeFinanceConnectionImporter();
 
 const domainsBankAlerts=createDomainsBankAlerts({
   model,
-  bankProjectedThisMonth:(...args)=>domainsBankSelectors.bankProjectedThisMonth(...args),
-  bankHomeProjectedThisMonth:(...args)=>domainsBankSelectors.bankHomeProjectedThisMonth(...args),
+  bankProjectedThisMonth:(...args)=>bankQueries.projectedBalance('business',...args),
+  bankHomeProjectedThisMonth:(...args)=>bankQueries.projectedBalance('home',...args),
   modal:(...args)=>uiModal.modal(...args),
   closeModal:(...args)=>uiModal.closeModal(...args),
 });
@@ -492,7 +477,7 @@ const domainsRecordsCommands=createDomainsRecordsCommands({
   },
 });
 
-cash.bindUi({uiBulk,uiDateEditor,domainsDashboardView,uiModal,uiStatus,storagePersistence,domainsRecordsCommands});
+cash.bindUi({uiBulk,uiDateEditor,domainsDashboardView:dashboard.presentation,uiModal,uiStatus,storagePersistence,domainsRecordsCommands});
 cash.assertReady();
 
 checks.bindEditor({uiDateEditor,uiModal,uiStatus,storagePersistence,domainsRecordsCommands,uiNavigation,uiBulk});
@@ -624,5 +609,6 @@ bindDismissibleDetails(document);
 bindNumberInputWheelGuard(document);
 uiEvents.bindActionEvents(document.getElementById('modal'),uiActions);
 uiGlobalSearch.bind();
+dashboard.runtime.start();
 export const appReady=lifecycle.boot();
 export async function sharedChecksStorageV2Diagnostics(){await sharedChecksV2.flush();return {...sharedChecksV2.diagnostics}}

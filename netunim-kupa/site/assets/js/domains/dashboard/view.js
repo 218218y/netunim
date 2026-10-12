@@ -7,23 +7,23 @@ import {dashboardNetPositionData} from './model.js';
 import {bankLocalSnapshotNotice} from '../bank/local-snapshot-view.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createDomainsDashboardView({runFinance=withFinanceDerivations, model, activeChecks, depositedChecks, bankLongTermPosition, bankAsOfDate, bankHomeAsOfDate, bankCurrentBalance, bankHomeBalance, bankNextCycleCommitments, bankHomeNextCycleCommitments, bankProjectedThisMonth, bankHomeProjectedThisMonth, bankLocalSnapshotState=()=>null, ordersFinanceSummary=()=>null, refreshOrdersFinanceSummary=async()=>false}){
+export function createDomainsDashboardView({runFinance=withFinanceDerivations, model, bankQueries, checks, localBankSnapshot, orders}){
 function bankSnapshotLabel(){
   if(!model.state.bank?.updatedAt)return 'היתרה העסקית טרם סונכרנה.';
   const source=model.state.bank.source==='hapoalim'?'בנק הפועלים':'נתון קודם — מומלץ לרענן מהבנק';
   const account=model.state.bank.sourceAccount?` · חשבון עסקי ${model.state.bank.sourceAccount}`:'';
-  return `${source} · ${dateFmt(bankAsOfDate())} · ${new Date(model.state.bank.updatedAt).toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'})}${account}`;
+  return `${source} · ${dateFmt(bankQueries.asOfDate('business'))} · ${new Date(model.state.bank.updatedAt).toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'})}${account}`;
 }
 
 function homeBankSnapshotLabel(){
   const feed=model.state.bank?.homeFeed;if(!feed?.syncedAt)return 'היתרה הביתית טרם סונכרנה.';
   const account=feed.accountNumber?` · חשבון ביתי ${feed.accountNumber}`:'';
-  return `בנק הפועלים · ${dateFmt(bankHomeAsOfDate())} · ${new Date(feed.syncedAt).toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'})}${account}`;
+  return `בנק הפועלים · ${dateFmt(bankQueries.asOfDate('home'))} · ${new Date(feed.syncedAt).toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'})}${account}`;
 }
 
 function bankOverviewMarkup(){
-  const bank=bankCurrentBalance(),cycle=bankNextCycleCommitments(),after=bankProjectedThisMonth(),cycleLabel=monthLabel(cycle.targetMonth),cycleDate=dateFmt(cycle.targetDate);
-  const homeBank=bankHomeBalance(),homeCycle=bankHomeNextCycleCommitments(),homeAfter=bankHomeProjectedThisMonth(),homeCycleLabel=monthLabel(homeCycle.targetMonth),homeCycleDate=dateFmt(homeCycle.targetDate);
+  const bank=bankQueries.balance('business'),cycle=bankQueries.forecast('business'),after=bankQueries.projectedBalance('business'),cycleLabel=monthLabel(cycle.targetMonth),cycleDate=dateFmt(cycle.targetDate);
+  const homeBank=bankQueries.balance('home'),homeCycle=bankQueries.forecast('home'),homeAfter=bankQueries.projectedBalance('home'),homeCycleLabel=monthLabel(homeCycle.targetMonth),homeCycleDate=dateFmt(homeCycle.targetDate);
   const businessCashflowAlert={active:!!cycle.breach.breachDate},homeCashflowAlert={active:!!homeCycle.breach.breachDate};
   return `<div class="bank-balance-card dashboard-bank-overview">
     <section class="bank-account-overview business">
@@ -67,9 +67,9 @@ function bankOverviewMarkup(){
 
 function renderDashboard(...args){return runFinance(()=>renderDashboardContent(...args))}
 function renderDashboardContent(){
-  const due7=activeChecks().filter(c=>{const d=daysFromToday(c.dueDate);return d>=0&&d<=7}).sort((a,b)=>(a.dueDate||'').localeCompare(b.dueDate||''));
-  const overdue=activeChecks().filter(c=>daysFromToday(c.dueDate)<0).sort((a,b)=>(a.dueDate||'').localeCompare(b.dueDate||''));
-  const depOver=depositedChecks().filter(c=>daysFromToday(c.dueDate)<0).sort((a,b)=>(a.dueDate||'').localeCompare(b.dueDate||''));
+  const due7=checks.active().filter(c=>{const d=daysFromToday(c.dueDate);return d>=0&&d<=7}).sort((a,b)=>(a.dueDate||'').localeCompare(b.dueDate||''));
+  const overdue=checks.active().filter(c=>daysFromToday(c.dueDate)<0).sort((a,b)=>(a.dueDate||'').localeCompare(b.dueDate||''));
+  const depOver=checks.deposited().filter(c=>daysFromToday(c.dueDate)<0).sort((a,b)=>(a.dueDate||'').localeCompare(b.dueDate||''));
   const criticalAlerts=[
     ...overdue.map(c=>({kind:'open',id:c.id,c:'#b86561',t:`${c.name} — ${money(c.amount)}`,s:`צק בקופה עבר מועד (${dateFmt(c.dueDate)})`})),
     ...depOver.map(c=>({kind:'deposited',id:c.id,c:'#8b7ca0',t:`${c.name} — ${money(c.amount)}`,s:`הופקד וממתין לסימון נפרע · פירעון ${dateFmt(c.dueDate)}`}))
@@ -79,10 +79,10 @@ function renderDashboardContent(){
   });
   const upcomingAlerts=due7.map(c=>({kind:'open',id:c.id,c:'#c59661',t:`${c.name} — ${money(c.amount)}`,s:`פירעון קרוב ${dateFmt(c.dueDate)}`}));
   const alerts=[...criticalAlerts,...upcomingAlerts];
-  const long=dashboardNetPositionData(bankLongTermPosition(),ordersFinanceSummary());
+  const long=dashboardNetPositionData(bankQueries.longTermPosition(),orders.summary());
   const partial=long.forecastIncomplete===true,partialFacts=[long.missingAmountCount?`${long.missingAmountCount} ללא סכום ₪`:null,long.coverageGapCount?`${long.coverageGapCount} בכיסוי חברה חסר/ישן`:null,long.unassignedCount?`${long.unassignedCount} ללא מועד חיוב ודאי`:null].filter(Boolean);
   document.getElementById('content').innerHTML=`
-  ${bankLocalSnapshotNotice(bankLocalSnapshotState())}
+  ${bankLocalSnapshotNotice(localBankSnapshot())}
   ${bankOverviewMarkup()}
   <div class="net-summary dashboard-net-summary"><div class="net-mini"><span>סה״כ קופה</span><b>+ ${money(long.kupa)}</b><small>מזומן + צקים שטרם הופקדו</small></div><div class="net-mini"><span>חוב לקוחות פתוח</span><b>${long.customerOpen===null?'—':`+ ${money(long.customerOpen)}`}</b></div><div class="net-mini"><span>נטו ספקים</span><b>${long.supplierNet===null?'—':money(long.supplierNet)}</b></div><div class="net-total"><span>מאזן כולל נטו${partial?' · חלקי':''}</span><b>${formatNullableMoney(long.net)}</b><small>עו״ש עסקי − כל האשראים העסקיים העתידיים − חודש הוצאות עסקיות + קופה + חוב לקוחות פתוח + נטו ספקים${partial?' · מבוסס על סכומי ₪ הידועים כרגע':''}${partialFacts.length?` · ${esc(partialFacts.join(' · '))}`:''}</small></div></div>
   <div class="grid two" style="margin-top:16px">
@@ -91,7 +91,7 @@ function renderDashboardContent(){
    </div></div></section>
    <section class="section"><div class="section-head"><div><h3>דורש תשומת לב</h3></div><span class="badge ${esc(criticalAlerts.length?'red':'green')}">${esc(criticalAlerts.length)} חריגים${upcomingAlerts.length?` · ${upcomingAlerts.length} קרובים`:''}</span></div><div class="section-body"><div class="alert-list">${alerts.length?alerts.map(a=>`<div class="alert" style="--c:${esc(a.c)}"><div><b>${esc(a.t)}</b><small>${esc(a.s)}</small></div><div class="alert-actions">${a.kind==='deposited'?`<button class="iconbtn" data-action="mark-cleared" data-click-arg0="${esc(a.id)}">נפרע</button>`:`<button class="iconbtn" data-action="mark-deposited" data-click-arg0="${esc(a.id)}">הופקד</button>`}<button class="iconbtn" data-action="open-check-modal-2" data-click-arg0="${esc(a.id)}">עריכה</button></div></div>`).join(''):'<div class="empty">אין כרגע חריגים או פירעונות קרובים.</div>'}</div></div></section>
   </div>`;
-  refreshOrdersFinanceSummary({renderIfChanged:true})
+  orders.refresh({renderIfChanged:true})
 }
 
 function kpi(label,value,accent,dot,hint,formatValue=money){return `<div class="kpi" style="--accent:${esc(accent)};--dot:${esc(dot)}"><div class="label"><span class="dot"></span>${esc(label)}</div><div class="value">${formatValue(value)}</div><div class="hint">${esc(hint)}</div></div>`}
