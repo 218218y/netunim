@@ -111,6 +111,8 @@
     "tests/fixtures/checked-storage-operation.mjs",
     "tests/fixtures/checked-storage-cloud-records.mjs",
     "netunim-kupa/site/assets/js/domains/dashboard/controller.js",
-    "tests/fixtures/checked-dashboard-readout.mjs"
+    "tests/fixtures/checked-dashboard-readout.mjs",
+    "netunim-kupa/site/assets/js/ui/credit-connection-input.js",
+    "tests/fixtures/checked-credit-connection-input.mjs"
   ]
 }

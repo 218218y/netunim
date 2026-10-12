@@ -1,3 +1,4 @@
+import {createFinanceBrowserEffects} from '../shared/finance-browser-effects.js';
 import {createCreditPreferences} from '../netunim-kupa/site/assets/js/platform/credit-preferences.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -16,7 +17,7 @@ function fixture(t){
     saveFinancePatch:async mutator=>{commits++;const state=mutator(model.state);afterCommit();return {saved:true,row:{revision:2,state}}},
     claimFinanceSyncLease:async()=>{leaseClaims++;return {acquired:true}},
   };
-  const api=createDomainsCreditController({...ports,preferences:createCreditPreferences({storage})});t.after(()=>api.stopAutoSync());
+  const api=createDomainsCreditController({effects:createFinanceBrowserEffects(),...ports,preferences:createCreditPreferences({storage})});t.after(()=>api.stopAutoSync());
   return {api,ports,storage,values,model,messages,fail:value=>{failure=value},afterCommit:fn=>{afterCommit=fn},statusRenders:()=>statusRenders,leases:()=>leaseClaims,counts:()=>({resets,commits,providerRuns})};
 }
 

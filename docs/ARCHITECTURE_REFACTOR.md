@@ -706,3 +706,11 @@ Types and failure tests accompany their relevant stage. Physical two-computer
 and live provider behavior are separate evidence from synthetic CI ports; CI
 does not certify them automatically. Existing Storage V2 ACK/owner/recovery
 contracts remain mandatory regression gates throughout.
+
+Kupa Credit now joins the explicit capability boundaries. Finance composition,
+navigation/connectivity and UI actions use commands, queries and runtime ports;
+the controller is private. Its browser effects and connection form have owners,
+disposal fences late publication, and drainage includes renewal requests and
+accepted editor receipts. Strict input contracts preserve credential strings.
+See [Credit capability ownership](KUPA_CREDIT_CAPABILITY.md) for evidence, native
+retained-journal verification and the remaining scope.

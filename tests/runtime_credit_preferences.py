@@ -45,15 +45,15 @@ FLOW = r"""(async()=>{
  Storage.prototype.setItem=function(key,value){if(injecting&&(phase==='attempt'&&key===attempt||phase==='disable'&&key===enabled||phase==='reset'&&key===mode))throw new DOMException('controlled preference write','QuotaExceededError');return set.call(this,key,value)};
  uiModal.confirmDialog=async()=>true;const messages=[];uiStatus.toast=message=>messages.push(message);
  try{
-   if(phase==='reset')await domainsCreditController.resetCreditSync();
-   else if(phase==='disable')check(domainsCreditController.setCreditAutoRefresh(false)===false,'failed preference write falsely confirmed');
-   else if(phase==='attempt'||phase==='read')await domainsCreditController.startAutoSync();
-   const status=domainsCreditController.creditSyncUiState();check(status.autoEnabled===false&&status.preferenceWarning,'blocked preferences did not report a paused state');
+   if(phase==='reset')await credit.commands.resetCreditSync();
+   else if(phase==='disable')check(credit.commands.setCreditAutoRefresh(false)===false,'failed preference write falsely confirmed');
+   else if(phase==='attempt'||phase==='read')await credit.runtime.start();
+   const status=credit.queries.uiState();check(status.autoEnabled===false&&status.preferenceWarning,'blocked preferences did not report a paused state');
    check(status.error==='','preference failure masqueraded as a Finance commit failure');
    if(phase!=='read')uiNavigation.setPage('credit');check(document.getElementById('creditSyncToggle')?.classList.contains('warn'),'Credit headline did not expose the preference warning');
    check(document.getElementById('creditSyncPanel')?.textContent.includes(status.preferenceWarningCode),'missing preference diagnostic code');
    check(!document.querySelector('[data-change="set-credit-auto-refresh"]')?.checked,'UI falsely displayed active automatic refresh');
-   injecting=false;await domainsCreditController.startAutoSync();check(providerRuns===0&&leases===0,'storage recovery restarted a suspended provider operation');
+   injecting=false;await credit.runtime.start();check(providerRuns===0&&leases===0,'storage recovery restarted a suspended provider operation');
    check(JSON.stringify(await db.load(shared))===sharedBefore,'optional preference failure changed Shared records');
    if(phase==='reset'){
      check(resets===1&&commits===1,'partial preferences interrupted the confirmed reset');check(finance.creditSync.profiles.length===0,'Finance reset not committed');
@@ -63,7 +63,7 @@ FLOW = r"""(async()=>{
    }
    const recovered=await mainStorageV2.recoverReadOnly();check(recovered.state.notes.find(row=>row.id===note.id)?.content===note.content,'note identity/content changed');
    if(phase==='disable'||phase==='read'){
-     check(domainsCreditController.setCreditAutoRefresh(true)===true,'explicit enable did not recover preferences');check(!domainsCreditController.creditSyncUiState().preferenceWarning,'successful enable retained stale warning');
+     check(credit.commands.setCreditAutoRefresh(true)===true,'explicit enable did not recover preferences');check(!credit.queries.uiState().preferenceWarning,'successful enable retained stale warning');
    }
    return {truthfulWarning:true,noProviderRetry:true,financeResetCompleted:phase!=='reset'||commits===1,sharedRetained:true,exactNote:true};
  }finally{Storage.prototype.getItem=get;Storage.prototype.setItem=set;globalThis.fetch=originalFetch;financeAutomation.stop();cloudAuth.storeSupaSession(null)}

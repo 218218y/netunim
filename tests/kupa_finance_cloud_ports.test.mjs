@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createKupaFinanceCloudPorts} from '../netunim-kupa/site/assets/js/composition/finance-cloud.js';
 import {composeKupaFinance} from '../netunim-kupa/site/assets/js/composition/finance.js';
+import {createKupaCreditRuntime} from '../netunim-kupa/site/assets/js/composition/credit.js';
 
 test('fresh first read does not certify a Bank display when cloud publication did not reach both heads',async()=>{
   const session={connectionMode:'supabase',backendReady:true,dbRevision:3,financeRevision:8};let polls=0;
@@ -32,15 +33,17 @@ for(const [revision,financeRevision] of [[3,9],[4,8],[4,'9'],[NaN,9]])test(`conf
 test('finance capability can be assembled before the modal without constructing Bank presentation',()=>{
   let modalReady=false;
   const unexpected=()=>assert.fail('composition performed I/O or used the modal during construction');
+  const model={state:{creditSync:{}}},ui={currentPage:'cash'},credit=createKupaCreditRuntime({model,ui});
   const capability=composeKupaFinance({automaticAccess:unexpected,operationAccess:unexpected,
-    model:{state:{creditSync:{}}},session:{},checksSession:{},ui:{currentPage:'cash'},
+    model,ui,credit,session:{},checksSession:{},
     cloudAuth:{supaRest:unexpected,supaEnsureSession:unexpected},
     cloudTransport:{},syncDocument:{},checks:{queries:{},commands:{}},
     storagePersistence:{recoverLocalState:unexpected},uiStatus:{},uiNavigation:{},uiDateEditor:{},
     financeDerivations:{run:unexpected},bankQueries:{balance:unexpected,forecast:unexpected,observedCheckSequence:unexpected},domainRevisions:{},
     getUiModal:()=>modalReady?{}:unexpected(),
   });
-  assert.equal(typeof capability.creditController.refreshCreditSync,'function');
+  assert.equal(capability.creditController,undefined);
+  assert.equal(typeof credit.commands.refreshCreditSync,'function');
   assert.equal(typeof capability.bank.commands.refreshBankBalance,'function');
   assert.equal(typeof capability.bank.presentation.renderBank,'function');
   modalReady=true;

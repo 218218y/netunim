@@ -49,7 +49,7 @@ FLOW = r"""(async()=>{
    if(path.includes('/storage/v1/object/list/'))return Promise.resolve(new Response('[]'));
    return originalFetch(url,options);
  };
- const controller=kupa?(kind==='bank'?bank.commands:domainsCreditController):finance.commands;
+ const controller=kupa?(kind==='bank'?bank.commands:credit.commands):finance.commands;
  await controller[kupa?(kind==='bank'?'refreshBankBalance':'refreshCreditSync'):(kind==='bank'?'refreshBank':'refreshCredit')]();
  check(providers===(caseName==='valid'?1:0),'provider opened without confirmed ownership: '+providers);
  check(claims===1,'unexpected lease retry '+claims);check(releases===(caseName==='valid'?1:0),'unconfirmed/foreign lease was released '+releases);

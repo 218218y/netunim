@@ -354,7 +354,7 @@ const uiNavigation=createUiNavigation({
   renderNotes:(...args)=>notes.renderNotes(...args),
   renderSettings:(...args)=>uiSettings.renderSettings(...args),
   maybeAutoRefreshBankBalance:(...args)=>bank.runtime.wake(...args),
-  maybeAutoRefreshCreditSync:(...args)=>domainsCreditController.maybeAutoRefreshCreditSync(...args),
+  maybeAutoRefreshCreditSync:(...args)=>credit.runtime.wake(...args),
   maybeShowCashflowStartupAlert:(...args)=>domainsBankAlerts.maybeShowStartupCashflowAlert(...args),
   onPageActivated:page=>{void notes.activateSheetIfVisible(page)},
   dataRevision:page=>kupaPageRevision(domainRevisions,page)+':'+new Date().toLocaleDateString('en-CA')+notes.revisionSuffix(page),
@@ -391,11 +391,10 @@ const expenses=createKupaExpensesRuntime({
 });
 
 const {
-  creditController:domainsCreditController,
   bank,bindBankUi,automation:financeAutomation,
 }=composeKupaFinance({
   model,session,ui,cloudAuth,cloudTransport,syncDocument,
-  checks,storagePersistence,uiStatus,uiNavigation,
+  checks,credit,storagePersistence,uiStatus,uiNavigation,
   uiDateEditor,financeDerivations,bankQueries,domainRevisions,
   getUiModal:()=>uiModal,
   operationAccess:()=>({
@@ -423,7 +422,7 @@ const uiCloud=composeCloudUi({
 });
 
 credit.bindView({
-  controller:domainsCreditController,uiBulk,uiDateEditor,financeDerivations,domainRevisions,
+  uiBulk,uiDateEditor,financeDerivations,domainRevisions,
   expensesMarkup:(...args)=>expenses.expensesMarkup(...args),
 });
 
@@ -566,7 +565,7 @@ const uiEvents={bindActionEvents:(root,actions)=>bindActionEvents(root,actions,{
 
 document.getElementById('checkBankAlerts').addEventListener('click',()=>{if(uiStatus.canRunInteractiveAction('view-check-bank-alerts'))uiModal.modal('התאמות צ׳קים בבנק',checkBankReviewMarkup(model.state.checks),'סגור',()=>uiModal.closeModal(true))});
 
-const creditCardOrderView=createCreditCardOrderView({getSync:()=>model.state.creditSync,saveOrder:(...args)=>domainsCreditController.saveCreditCardOrder(...args),modal:(title,body,footer)=>{uiModal.modal(title,body,'',()=>{});document.querySelector('#modal .modal-foot').innerHTML=footer},closeModal:()=>uiModal.closeModal(),render:()=>credit.renderCredit(),escapeHtml:esc});
+const creditCardOrderView=createCreditCardOrderView({getSync:()=>model.state.creditSync,saveOrder:(...args)=>credit.commands.saveCreditCardOrder(...args),modal:(title,body,footer)=>{uiModal.modal(title,body,'',()=>{});document.querySelector('#modal .modal-foot').innerHTML=footer},closeModal:()=>uiModal.closeModal(),render:()=>credit.renderCredit(),escapeHtml:esc});
 
 const uiActions=composeActionRegistry([
   {name:'checks',actions:checks.actions},
@@ -588,7 +587,7 @@ const uiActions=composeActionRegistry([
 const connectivity=createKupaConnectivityRuntime({
   access:{primary:()=>tab.primaryTab,blocked:()=>session.storageProtocolBlocked||!storageRecovery.isReady()||session.startupCloudHydrating||session.syncCapabilitiesChecking||!!session.syncCapabilitiesError},
   cloud:{connected:()=>session.connectionMode==='supabase',resumeAfterReconnect:()=>syncDocument.resumeAfterReconnect(),cloudPoll:()=>syncDocument.cloudPoll()},
-  bank:{startAutoSync:(...args)=>bank.runtime.start(...args),stopAutoSync:()=>bank.runtime.stop()},credit:domainsCreditController,status:uiStatus,
+  bank:{startAutoSync:(...args)=>bank.runtime.start(...args),stopAutoSync:()=>bank.runtime.stop()},credit:{startAutoSync:credit.runtime.start,stopAutoSync:credit.runtime.stop},status:uiStatus,
 });
 connectivity.start();
 uiSidebar.bind();

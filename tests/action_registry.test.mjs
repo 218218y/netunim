@@ -41,7 +41,7 @@ test('Kupa capability action packs compose with the workbook, spreadsheet, and c
     {name:'checks',actions:createChecksActions({domainsChecksEditor:port,domainsChecksView:port,ui,uiBulk:port,uiDateEditor:port,uiModal:port})},
     {name:'bank',actions:createBankActions({bankCommands:port,bankPresentation:port,importFinanceConnections:()=>{},ui,toast:port.toast})},
     {name:'shell',actions:createShellActions({uiModal:port,uiNavigation:port})},
-    {name:'credit',actions:createCreditActions({domainsCreditController:port,domainsCreditEditor:port,domainsCreditView:port,ui})},
+    {name:'credit',actions:createCreditActions({creditCommands:port,domainsCreditEditor:port,domainsCreditView:port,ui})},
     {name:'credit-order',actions:creditOrder.actions},
     {name:'cash',actions:createCashActions({domainsCashController:port,domainsCashEditor:port,domainsCashView:port,ui})},
     {name:'notes',actions:createNotesActions({domainsNotesController:port,ui})},

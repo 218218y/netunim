@@ -72,7 +72,7 @@ function creditHistoryControl(months,selectedKey='',selectedDay='all'){return cr
 function creditFutureControl(months,selectedKey='',selectedDay='all'){return creditFutureMenuMarkup({...creditControlBase,months,selectedKey,selectedDay})}
 function creditChargeHeading(items){return creditDetailChargeHeadingMarkup(items,money,esc)}
 
-export function createDomainsCreditView({detailRevision,runFinance=withFinanceDerivations, model, ui, syncBulkUi, bulkControls, bulkHeader, bulkCell,creditSyncUiState,refreshCreditBridgeStatus,expensesMarkup,dateEditorMarkup}){
+export function createDomainsCreditView({isActive=()=>true,detailRevision,runFinance=withFinanceDerivations, model, ui, syncBulkUi, bulkControls, bulkHeader, bulkCell,creditSyncUiState,refreshCreditBridgeStatus,expensesMarkup,dateEditorMarkup}){
 const resultPages=createResultPages({ui,action:'credit-details-page'});
 const detailModel=createRevisionSelector({revision:detailRevision?()=>`${detailRevision()}:${todayISO()}`:undefined,name:'kupa-credit-detail',select:()=>runFinance(()=>{
   const detail=creditMonthlyDetailData(model.state),upcoming=creditUpcomingDetailData(model.state);
@@ -224,7 +224,7 @@ function renderCreditContent(){
     </div>`;
 
   syncBulkUi('credits');
-  if(!syncUi.status&&!syncUi.busy)refreshCreditBridgeStatus({quiet:true}).then(status=>{if(ui.currentPage==='credit'&&status)renderCredit()}).catch(()=>{});
+  if(!syncUi.status&&!syncUi.busy)refreshCreditBridgeStatus({quiet:true}).then(status=>{if(isActive()&&ui.currentPage==='credit'&&status)renderCredit()}).catch(()=>{});
 }
 
 function creditLocalProfileRow(p){return `<div class="credit-profile-row"><span><b>${esc(p.label)}</b><small>${esc(CREDIT_PROVIDER_LABELS[p.provider]||p.provider)}${p.ownerLabel?` · ${esc(p.ownerLabel)}`:''} · ברירת מחדל ${esc(p.defaultAccount)}</small></span><span class="credit-profile-actions"><button class="btn" type="button" data-action="open-credit-connection" data-click-arg0="${esc(p.profileId)}">עריכה</button><button class="btn danger-soft" type="button" data-action="delete-credit-connection" data-click-arg0="${esc(p.profileId)}">מחיקה מהמחשב</button></span></div>`}

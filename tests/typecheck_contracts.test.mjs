@@ -25,6 +25,14 @@ function check(overrides=new Map()){
 }
 function describe(diagnostics){return ts.formatDiagnostics(diagnostics,{getCanonicalFileName:file=>file,getCurrentDirectory:()=>root,getNewLine:()=> '\n'})}
 
+test('the actual Credit form cannot convert credential strings into numbers',()=>{
+  const source=path.join(root,'netunim-kupa/site/assets/js/ui/credit-connection-input.js');
+  const original=readFileSync(source,'utf8'),changed=original.replace("card6Digits:readField('ccCard6')", "card6Digits:Number(readField('ccCard6'))");
+  assert.notEqual(changed,original);
+  const diagnostics=check(new Map([[source,changed]]));
+  assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+});
+
 test('the actual Dashboard read owner cannot report a string as read completion',()=>{
   const source=path.join(root,'netunim-kupa/site/assets/js/domains/dashboard/controller.js');
   const original=readFileSync(source,'utf8'),changed=original.replace('return changed;', "return 'confirmed';");

@@ -34,7 +34,7 @@ FLOW = r"""(async()=>{
    if(String(url).includes('/v2/credit/sync')){entered.resolve();return provider.promise}
    return originalFetch(url,options);
  };
- const before=JSON.stringify(state.creditSync),pending=domainsCreditController.refreshCreditSync();await entered.promise;
+ const before=JSON.stringify(state.creditSync),pending=credit.commands.refreshCreditSync();await entered.promise;
  if(caseName==='logout')check(uiCloud.logoutSupabase()===true,'production logout rejected');
  if(caseName==='account')cloudAuth.storeSupaSession({user:{id:'fixture-other-owner'},access_token:'fixture-other',expires_at:9999999999});
  if(caseName==='relogin'){cloudAuth.storeSupaSession(null);cloudAuth.storeSupaSession({user:{id:owner},access_token:'fixture-2',expires_at:9999999999})}
@@ -46,7 +46,7 @@ FLOW = r"""(async()=>{
  check(publications===(caseName==='network'||caseName==='publication'?1:0),'unexpected finance publication');
  check(JSON.stringify(await db.load(identity))===durableBefore,'credit failure changed durable Main/pending journal');
  check(state.notes.find(row=>row.id===note.id)?.content===note.content,'durable note identity/content lost');
- check(domainsCreditController.creditSyncUiState().error.length>0,'failure did not offer an operator error');
+ check(credit.queries.uiState().error.length>0,'failure did not offer an operator error');
  check(caseName==='network'||releases===0,'former authorization released a lease under the new scope');
  globalThis.fetch=originalFetch;financeAutomation.stop();cloudAuth.storeSupaSession(null);return {projectionRetained:true,journalRetained:true,noteRetained:true,visibleError:true,scopedPublication:true};
 })()"""
