@@ -28,7 +28,7 @@ export function createPreviewFilePlatform({open = fs.open} = {}) {
       const truncated = length > maxBytes;
       if (truncated && !prefix) throw tooLarge();
       const buffer = Buffer.concat(chunks, length).subarray(0, maxBytes);
-      return {buffer, truncated: truncated || (prefix && stat.size > maxBytes)};
+      return {buffer, truncated};
     } finally { await handle.close(); }
   }
   return {

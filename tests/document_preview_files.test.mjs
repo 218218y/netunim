@@ -81,6 +81,16 @@ test('text reads use the opened file rather than stale search size', async t => 
   assert.deepEqual(await files.readText(fullPath), {text: 'expanded עברית', truncated: false});
 });
 
+test('text that shrinks after stat is not falsely marked truncated', async t => {
+  const {fullPath} = await fixture(t, Buffer.alloc(TEXT_PREVIEW_MAX_BYTES + 1, 65));
+  const files = createPreviewFilePlatform({open: async (...args) => {
+    const handle = await fs.open(...args);
+    return {stat: async () => { const stat = await handle.stat(); await fs.truncate(fullPath, 3); return stat; },
+      read: (...readArgs) => handle.read(...readArgs), close: () => handle.close()};
+  }});
+  assert.deepEqual(await files.readText(fullPath), {text: 'AAA', truncated: false});
+});
+
 test('text byte and character budgets disclose truncation without returning the lookahead', async t => {
   const {fullPath, files} = await fixture(t, Buffer.alloc(TEXT_PREVIEW_MAX_BYTES + 1, 65));
   const data = await files.readText(fullPath);
@@ -110,10 +120,17 @@ test('invalid budgets fail before opening a file', async () => {
 });
 
 test('repeated failed and successful previews leave no held file handles', async t => {
-  const {fullPath, files} = await fixture(t, 'synthetic');
+  const {fullPath} = await fixture(t, 'synthetic');
+  let opened = 0, closed = 0;
+  const files = createPreviewFilePlatform({open: async (...args) => {
+    const handle = await fs.open(...args); opened++;
+    return {stat: () => handle.stat(), read: (...readArgs) => handle.read(...readArgs), close: async () => { await handle.close(); closed++; }};
+  }});
   for (let cycle = 0; cycle < 100; cycle++) {
     await assert.rejects(files.readBinary(fullPath, 3), {code: 'PREVIEW_TOO_LARGE'});
     assert.equal((await files.readBinary(fullPath, 9)).toString(), 'synthetic');
+    assert.equal(closed, opened, 'each completed request closes its own native handle');
     await fs.rename(fullPath, fullPath + '.moved'); await fs.rename(fullPath + '.moved', fullPath);
   }
+  assert.equal(opened, 200); assert.equal(closed, 200);
 });
