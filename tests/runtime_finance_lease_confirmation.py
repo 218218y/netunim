@@ -20,10 +20,10 @@ FLOW = r"""(async()=>{
  if(kupa){cloudTransport.readSupabaseDocument=async()=>main;cloudTransport.readSharedChecksDocument=async()=>shared;syncDocument.rpcSaveCloudV2=writeMain;cloudTransport.rpcSaveSharedChecksV2=writeChecks;await storageV2Coordinator.ownerUiPorts().startStorageV2OwnerTransfer({targetOwner:owner,intent:'upload-local'})}
  else{cloudTransport.readCloud=async()=>main;cloudTransport.readSharedChecksCloud=async()=>shared;cloudTransport.rpcSaveV2=writeMain;cloudTransport.rpcSaveSharedChecksV2=writeChecks;await storageV2Coordinator.startStorageV2OwnerTransfer({targetOwner:owner,intent:'upload-local'})}
  session.connectionMode='supabase';session.backendReady=true;session.storageProtocolBlocked=false;
- const finance={bank:{source:'hapoalim',currentBalance:100,feed:{accountNumber:'stable-account',transactions:[]}},creditSync:{version:4,profiles:[],errors:[]}};
- if(kupa){state.bank={...state.bank,...finance.bank};state.creditSync=finance.creditSync;session.financeRevision=1;cloudTransport.readSupabaseDocument=async()=>({revision:1,financeRevision:1,state:structuredClone(state)})}
- else{checksSession.kupaCloudReadState=structuredClone(finance);checksSession.kupaReadRevision=1;checksSession.financeReadRevision=1;cloudTransport.readKupaReadOnlyCloud=async()=>({revision:1,financeRevision:1,state:structuredClone(finance)})}
- cloudTransport.readFinanceSyncDocument=async()=>({revision:1,state:structuredClone(finance)});
+ const remoteFinance={bank:{source:'hapoalim',currentBalance:100,feed:{accountNumber:'stable-account',transactions:[]}},creditSync:{version:4,profiles:[],errors:[]}};
+ if(kupa){state.bank={...state.bank,...remoteFinance.bank};state.creditSync=remoteFinance.creditSync;session.financeRevision=1;cloudTransport.readSupabaseDocument=async()=>({revision:1,financeRevision:1,state:structuredClone(state)})}
+ else{checksSession.kupaCloudReadState=structuredClone(remoteFinance);checksSession.kupaReadRevision=1;checksSession.financeReadRevision=1;cloudTransport.readKupaReadOnlyCloud=async()=>({revision:1,financeRevision:1,state:structuredClone(remoteFinance)})}
+ cloudTransport.readFinanceSyncDocument=async()=>({revision:1,state:structuredClone(remoteFinance)});
  syncChecks.syncSharedChecksFromCloud=async()=>true;
  if(kupa)syncChecksState.sharedChecksHaveLocalWork=()=>false;else stateSnapshots.checksHaveLocalWork=()=>false;
  localStorage.setItem('netunim_kupa_bank_bridge_token_v1','fixture-pairing');
@@ -49,11 +49,11 @@ FLOW = r"""(async()=>{
    if(path.includes('/storage/v1/object/list/'))return Promise.resolve(new Response('[]'));
    return originalFetch(url,options);
  };
- const controller=kupa?(kind==='bank'?domainsBankController:domainsCreditController):domainsFinanceController;
+ const controller=kupa?(kind==='bank'?domainsBankController:domainsCreditController):finance.commands;
  await controller[kupa?(kind==='bank'?'refreshBankBalance':'refreshCreditSync'):(kind==='bank'?'refreshBank':'refreshCredit')]();
  check(providers===(caseName==='valid'?1:0),'provider opened without confirmed ownership: '+providers);
  check(claims===1,'unexpected lease retry '+claims);check(releases===(caseName==='valid'?1:0),'unconfirmed/foreign lease was released '+releases);
- const warning=kupa?(kind==='bank'?controller.bankBridgeUiState().lastError:controller.creditSyncUiState().error):controller.snapshot()[kind+'Error'];
+ const warning=kupa?(kind==='bank'?controller.bankBridgeUiState().lastError:controller.creditSyncUiState().error):finance.queries.snapshot()[kind+'Error'];
  if(caseName!=='busy')check(warning.length>0,'missing visible lease/provider error');
  if(caseName==='invalid')check(warning.includes('אישור'),'invalid grant was not classified visibly');
  check(JSON.stringify(kupa?{bank:state.bank,creditSync:state.creditSync}:checksSession.kupaCloudReadState)===projectionBefore,'lease failure replaced confirmed projection');

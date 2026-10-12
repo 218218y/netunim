@@ -16,10 +16,10 @@ with BrowserSession(ROOT/'netunim-orders/site', 'orders-finance-capability') as 
       localStorage.setItem('netunim_kupa_bank_bridge_token_v1','synthetic-download-fixture');
       const fetch=globalThis.fetch,createUrl=URL.createObjectURL,revokeUrl=URL.revokeObjectURL,createElement=document.createElement,click=HTMLAnchorElement.prototype.click;
       const set=globalThis.setTimeout,clear=globalThis.clearTimeout,toast=uiStatus.toast;
-      const urls=new Set(),anchors=[],callbacks=[],cleanupJobs=new Map(),calls=[];
+      const urls=new Set(),blobs=new Map(),anchors=[],callbacks=[],cleanupJobs=new Map(),calls=[];
       let failClick=false,outcome=null;
-      URL.createObjectURL=blob=>{const url=createUrl(blob);urls.add(url);return url};
-      URL.revokeObjectURL=url=>{urls.delete(url);revokeUrl(url)};
+      URL.createObjectURL=blob=>{const url=createUrl(blob);urls.add(url);blobs.set(url,blob);return url};
+      URL.revokeObjectURL=url=>{urls.delete(url);blobs.delete(url);revokeUrl(url)};
       document.createElement=function(tag,...args){const element=createElement.call(this,tag,...args);if(String(tag).toLowerCase()==='a')anchors.push(element);return element};
       HTMLAnchorElement.prototype.click=function(){if(failClick)throw Error('injected native click failure')};
       globalThis.setTimeout=(run,delay,...args)=>{const id=set(run,delay,...args);if(delay===1000){cleanupJobs.set(id,run);callbacks.push(run)}return id};
@@ -44,7 +44,7 @@ with BrowserSession(ROOT/'netunim-orders/site', 'orders-finance-capability') as 
           uiActions[kind==='bank'?'export-orders-bank-cheque-diagnostics':'export-orders-credit-data-diagnostics']({dataset:{}},{preventDefault:noop,stopPropagation:noop});
           const message=await outcome.promise;
           check(!String(message).includes('failure'),kind+': successful synthetic export retains its normal UI outcome');
-          const anchor=anchors.at(-1),payload=await (await fetch(anchor.href)).text();
+          const anchor=anchors.at(-1),payload=await blobs.get(anchor.href).text();
           check(anchor.download==='fixture.json'&&JSON.parse(payload).fixture==='safe',kind+': native Blob download preserves filename and JSON');
         }
         check(urls.size===2&&anchors.filter(anchor=>anchor.isConnected).length===2&&cleanupJobs.size===2,'successful exports have exactly two owned pending cleanups');

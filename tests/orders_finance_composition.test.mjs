@@ -122,6 +122,18 @@ test('a held Finance read cannot publish after its capability is disposed', asyn
   assert.deepEqual(f.session, before);
 });
 
+test('an explicit automatic wake retains opt-out policy and the other resource owner', async t => {
+  const f = fixture(t); f.cap.bindReadout(f.readout); f.cap.bindCore(f.core); f.cap.bindUi(f.view);
+  f.preferences.set('netunim_kupa_bank_bridge_token_v1', 'synthetic');
+  f.cap.runtime.start(); assert.equal(f.jobs.size, 2);
+  assert.equal(f.cap.commands.setAutomaticEnabled('bank', false), true);
+  assert.equal(f.jobs.size, 1);
+  assert.equal(await f.cap.runtime.wake('bank'), false);
+  assert.equal(f.jobs.size, 1); assert.equal(f.network(), 0);
+  assert.throws(() => f.cap.runtime.wake('unknown'), /finance_kind_required/);
+  assert.throws(() => f.cap.commands.setAutomaticEnabled('unknown', true), /finance_kind_required/);
+});
+
 test('disposal while a confirmation is open cannot enter a later computer-owned Bridge write', async t => {
   const f = fixture(t), confirmation = gate();
   f.view.modal.confirmDialog = () => confirmation.promise;

@@ -15,20 +15,20 @@ FLOW = r"""(async()=>{
  await storageV2Coordinator.startStorageV2OwnerTransfer({targetOwner:owner,intent:'upload-local'});session.storageProtocolBlocked=false;
  const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js'),db=createStorageJournalDb(),identity=owner+':orders';
  const beforeMain=JSON.stringify(await db.load(identity));
- let financeRevision=1,kupaReadRevision=1,finance={bank:{source:'hapoalim',currentBalance:100,bankSyncAt:'2020-01-01T00:00:00Z',archiveInitialized:true,archiveVersion:2,feed:{accountNumber:'same-account',balance:100,syncedAt:stamp,transactions:[]}},creditSync:{version:3,syncedAt:'2020-01-01T00:00:00Z',profiles:[],errors:[]}};
- checksSession.kupaCloudReadState=structuredClone(finance);checksSession.kupaReadRevision=1;checksSession.financeReadRevision=1;
+ let financeRevision=1,kupaReadRevision=1,remoteFinance={bank:{source:'hapoalim',currentBalance:100,bankSyncAt:'2020-01-01T00:00:00Z',archiveInitialized:true,archiveVersion:2,feed:{accountNumber:'same-account',balance:100,syncedAt:stamp,transactions:[]}},creditSync:{version:3,syncedAt:'2020-01-01T00:00:00Z',profiles:[],errors:[]}};
+ checksSession.kupaCloudReadState=structuredClone(remoteFinance);checksSession.kupaReadRevision=1;checksSession.financeReadRevision=1;
  localStorage.setItem('netunim_kupa_bank_bridge_token_v1','fixture-pairing');
  localStorage.setItem('netunim_orders_bank_auto_daily_v1','0');localStorage.setItem('netunim_orders_credit_auto_daily_v1','0');
  const entered=deferred(),provider=deferred(),saving=deferred(),saved=deferred();let publications=0,archives=0,releases=0;
  cloudTransport.claimFinanceSyncLease=async()=>({acquired:true,leaseName:kind.toLowerCase(),leaseToken:'fixture',fenceEpoch:1});
  cloudTransport.releaseFinanceSyncLease=async(_kind,_token,options)=>{options?.assertCurrent?.();releases++;return true};
- cloudTransport.readKupaReadOnlyCloud=async()=>({revision:kupaReadRevision,financeRevision,state:structuredClone(finance)});
- cloudTransport.readFinanceSyncDocument=async()=>({revision:financeRevision,state:structuredClone(finance)});
+ cloudTransport.readKupaReadOnlyCloud=async()=>({revision:kupaReadRevision,financeRevision,state:structuredClone(remoteFinance)});
+ cloudTransport.readFinanceSyncDocument=async()=>({revision:financeRevision,state:structuredClone(remoteFinance)});
  syncChecks.syncSharedChecksFromCloud=async()=>true;stateSnapshots.checksHaveLocalWork=()=>false;
  cloudTransport.syncBankTransactionsSnapshot=async()=>{archives++;return {sourcePayload:[],result:{total_count:0}}};
  cloudTransport.readBankTransactions=async()=>kind==='Bank'&&['network','lost-response'].includes(caseName)?[{id:'uncommitted',date:stamp,processedDate:stamp,amount:12,currency:'ILS',status:'completed',description:'uncommitted'}]:[];cloudTransport.readBankTransactionSnapshot=async()=>null;
- const publish=async next=>{publications++;if(caseName==='publication'){saving.resolve();await saved.promise}if(caseName==='network')throw Error('fixture Finance request failed');finance=next;financeRevision=2;if(kind==='Bank')kupaReadRevision=2;if(caseName==='lost-response')throw Error('fixture committed Finance response lost');return {revision:2,finance_revision:financeRevision,kupa_revision:kupaReadRevision,state:next}};
- cloudTransport.saveBankSyncSnapshot=async bank=>publish({...finance,bank});cloudTransport.rpcSaveFinanceSync=async next=>({r:{ok:true},row:await publish(next)});
+ const publish=async next=>{publications++;if(caseName==='publication'){saving.resolve();await saved.promise}if(caseName==='network')throw Error('fixture Finance request failed');remoteFinance=next;financeRevision=2;if(kind==='Bank')kupaReadRevision=2;if(caseName==='lost-response')throw Error('fixture committed Finance response lost');return {revision:2,finance_revision:financeRevision,kupa_revision:kupaReadRevision,state:next}};
+ cloudTransport.saveBankSyncSnapshot=async bank=>publish({...remoteFinance,bank});cloudTransport.rpcSaveFinanceSync=async next=>({r:{ok:true},row:await publish(next)});
  globalThis.fetch=(url,options)=>{
    const path=String(url);
    if(path.includes('/v2/credit/status'))return Promise.resolve(new Response(JSON.stringify({ok:true,bridgeVersion:73,contractVersion:2,profiles:[{profileId:'P'}]})));
@@ -37,7 +37,7 @@ FLOW = r"""(async()=>{
    if(path.includes('/storage/v1/object/list/'))return Promise.resolve(new Response('[]'));
    return originalFetch(url,options);
  };
- const before=JSON.stringify(checksSession.kupaCloudReadState),pending=domainsFinanceController['refresh'+kind]();await entered.promise;
+ const before=JSON.stringify(checksSession.kupaCloudReadState),pending=finance.commands['refresh'+kind]();await entered.promise;
  if(caseName==='logout')check(uiCloud.logoutCloud()===true,'production logout rejected');
  if(caseName==='account')cloudAuth.saveSession({user:{id:'bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb'},access_token:'other',expires_at:9999999999});
  if(caseName==='relogin'){cloudAuth.saveSession(null);cloudAuth.saveSession({user:{id:owner},access_token:'fixture-2',expires_at:9999999999})}

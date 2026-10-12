@@ -28,11 +28,11 @@ request, render or timer registration. Unhydrated model state is not read.
 | `bindCore` | Existing Bank/Credit orchestration, Finance/Kupa RPC and lease ports, Shared Checks preparation and image transport |
 | `bindUi` | Finance view, import confirmation, card ordering, and the three existing action packs after producers/UI exist |
 | `queries` | Snapshot, memoized snapshot, archive availability and explicit Finance refresh |
-| `commands` | The six commands used by peer integration/operation consumers; no generic controller, Bridge or image adapter is exposed |
+| `commands` | Bank/Credit refresh, automatic permission, card order and the peer integration/operation commands; no generic controller, Bridge or image adapter is exposed |
 | `readout` | Refresh/recompute and dependent-view publication used by Main/Shared/cloud startup |
 | `customerBankPort()` | Transaction query/ensure and verified Morning-link publication only |
 | `presentation` | Finance rendering only |
-| `runtime` | Start, stop and idempotent dispose |
+| `runtime` | Start, policy-preserving wake for one resource, stop and idempotent dispose |
 | `actionPacks()` | Finance bank, credit and card-order delegation with unchanged action names and mutation metadata |
 
 Each bind validates its actual required methods before installing its phase,

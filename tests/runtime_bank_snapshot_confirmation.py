@@ -57,7 +57,7 @@ FLOW = r"""(async()=>{
    if(path.includes('/storage/v1/object/list/'))return Promise.resolve(new Response('[]'));
    return originalFetch(url,options);
  };
- const controller=kupa?domainsBankController:domainsFinanceController;
+ const controller=kupa?domainsBankController:finance.commands;
  const before=stable(kupa?state.bank:checksSession.kupaCloudReadState);
  check(await (kupa?controller.refreshBankBalance():controller.refreshBank())===false,'malformed HTTP 200 was accepted as a confirmed commit');
  check(stable(kupa?state.bank:checksSession.kupaCloudReadState)===before,'unconfirmed result replaced Last Known Good: '+JSON.stringify({site,before,after:kupa?state.bank:checksSession.kupaCloudReadState,commits,scrapes}));

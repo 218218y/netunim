@@ -890,7 +890,8 @@ ok("browserEngine:['chromium','camoufox'].includes" in (O / "site/assets/js/doma
 ok("תוספת ידנית · קריאה בלבד" in orders_credit_detail_view and "+ תוספת ידנית" not in orders_finance_view
    and "toggle-credit-selection" not in orders_finance_view,
    "orders Kupa UI: manual credit rows are read-only and manual-add/bulk-delete controls stay Kupa-only")
-ok("kupa_documents" in os and "rpcSaveKupaDocument" in orders_main,
+ok("kupa_documents" in os and "rpcSaveKupaDocument:(...args)=>cloud.rpcSaveKupaDocument(...args)" in orders_finance_composition_compact
+   and 'finance.bindCore({cloud:cloudTransport,' in re.sub(r'\s+','',orders_main),
    "orders Kupa UI: Bank/Credit writes remain on the shared Kupa document")
 
 kupa_main=(K / "site/assets/js/main.js").read_text(encoding="utf-8")
@@ -921,7 +922,8 @@ for controller, kind, bridge_call in ((kupa_bank_controller,"bank","bridge.fetch
 ok("remoteLeaseTokens" in kupa_finance_cloud and "cloudTransport.claimFinanceSyncLease(" in kupa_finance_cloud
    and "return {acquired:true,localOnly:true}" in kupa_finance_cloud
    and "claimFinanceSyncLease:financeCloud.claimFinanceSyncLease" in kupa_finance_composition and "composeKupaFinance({" in kupa_main
-   and "claimFinanceSyncLease:(...args)=>cloudTransport.claimFinanceSyncLease(...args)" in orders_main,
+   and "claimFinanceSyncLease:(...args)=>cloud.claimFinanceSyncLease(...args)" in orders_finance_composition_compact
+   and 'finance.bindCore({cloud:cloudTransport,' in re.sub(r'\s+','',orders_main),
    "distributed finance lease: both composition roots wire the shared Supabase lease and Kupa preserves local-only mode")
 ok("SUPA_NETWORK_ATTEMPTS=3" in kupa_cloud_auth and "fetchSupaNetwork" in kupa_cloud_auth and "method==='GET'||method==='HEAD'" in kupa_cloud_auth
    and kupa_transport.count("networkRetry:true")>=2,

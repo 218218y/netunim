@@ -170,6 +170,13 @@ export function createOrdersFinanceCapability({
     refreshFinanceData:(...args) => coreReady().refreshFinanceData(...args),
   };
   const commands = {
+    refreshBank:(...args) => coreReady().refreshBank(...args),
+    refreshCredit:(...args) => coreReady().refreshCredit(...args),
+    saveCreditCardOrder:(...args) => coreReady().saveCreditCardOrder(...args),
+    setAutomaticEnabled(kind, enabled) {
+      if (kind !== 'bank' && kind !== 'credit') throw new TypeError('orders_finance_kind_required');
+      return coreReady()[kind === 'bank' ? 'setBankAutoEnabled' : 'setCreditAutoEnabled'](enabled);
+    },
     acknowledgeMissingBankTransaction:(...args) => coreReady().acknowledgeMissingBankTransaction(...args),
     acknowledgePersistentBankAlert:(...args) => coreReady().acknowledgePersistentBankAlert(...args),
     markBankMorningVerified:(...args) => coreReady().markBankMorningVerified(...args),
@@ -185,6 +192,11 @@ export function createOrdersFinanceCapability({
   const runtime = {
     start() { uiReady(); return controller.startAutoSync(); },
     stop() { return controller?.stopAutoSync(); },
+    wake(kind) {
+      uiReady();
+      if (kind !== 'bank' && kind !== 'credit') throw new TypeError('orders_finance_kind_required');
+      return controller[kind === 'bank' ? 'maybeAutoRefreshBank' : 'maybeAutoRefreshCredit']();
+    },
     dispose() {
       if (disposed) return false;
       disposed = true;

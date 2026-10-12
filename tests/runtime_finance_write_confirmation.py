@@ -20,27 +20,27 @@ FLOW = r"""(async()=>{
  if(kupa){cloudTransport.readSupabaseDocument=async()=>main;cloudTransport.readSharedChecksDocument=async()=>shared;syncDocument.rpcSaveCloudV2=writeMain;cloudTransport.rpcSaveSharedChecksV2=writeChecks;await storageV2Coordinator.ownerUiPorts().startStorageV2OwnerTransfer({targetOwner:owner,intent:'upload-local'})}
  else{cloudTransport.readCloud=async()=>main;cloudTransport.readSharedChecksCloud=async()=>shared;cloudTransport.rpcSaveV2=writeMain;cloudTransport.rpcSaveSharedChecksV2=writeChecks;await storageV2Coordinator.startStorageV2OwnerTransfer({targetOwner:owner,intent:'upload-local'})}
  session.connectionMode='supabase';session.backendReady=true;session.storageProtocolBlocked=false;
- let finance={bank:{currentBalance:100},creditSync:{version:4,profiles:[{profileId:'P',provider:'max',accounts:[{accountNumber:'card',txns:[{id:'stable-issuer-tx',date:'2026-10-11',chargedAmount:12}]}]}],cardMappings:{'P:card':{included:true,sortOrder:1}}}},remoteKupa={...structuredClone(main.state),bank:structuredClone(finance.bank),creditSync:structuredClone(finance.creditSync)};
+ let remoteFinance={bank:{currentBalance:100},creditSync:{version:4,profiles:[{profileId:'P',provider:'max',accounts:[{accountNumber:'card',txns:[{id:'stable-issuer-tx',date:'2026-10-11',chargedAmount:12}]}]}],cardMappings:{'P:card':{included:true,sortOrder:1}}}},remoteKupa={...structuredClone(main.state),bank:structuredClone(remoteFinance.bank),creditSync:structuredClone(remoteFinance.creditSync)};
  if(!kupa)Object.assign(remoteKupa,{credits:[],cash:[],rights:[],expenses:[],cards:[],notes:[note]});
- const readout=()=>({revision:kupaRevision,financeRevision,state:structuredClone({...remoteKupa,...finance})});
- cloudTransport.readFinanceSyncDocument=async()=>({revision:financeRevision,state:structuredClone(finance)});
- if(kupa){state.creditSync=structuredClone(finance.creditSync);session.financeRevision=5;session.dbRevision=kupaRevision;cloudTransport.readSupabaseDocument=async()=>readout()}
+ const readout=()=>({revision:kupaRevision,financeRevision,state:structuredClone({...remoteKupa,...remoteFinance})});
+ cloudTransport.readFinanceSyncDocument=async()=>({revision:financeRevision,state:structuredClone(remoteFinance)});
+ if(kupa){state.creditSync=structuredClone(remoteFinance.creditSync);session.financeRevision=5;session.dbRevision=kupaRevision;cloudTransport.readSupabaseDocument=async()=>readout()}
  else{checksSession.kupaCloudReadState=structuredClone(readout().state);checksSession.kupaReadRevision=5;checksSession.financeReadRevision=5;cloudTransport.readKupaReadOnlyCloud=async()=>readout()}
  const before=JSON.stringify(kupa?state.creditSync:checksSession.kupaCloudReadState);
  const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js'),db=createStorageJournalDb(),identity=owner+':'+site;
  const mainBefore=JSON.stringify(await db.load(identity)),sharedBefore=JSON.stringify(await db.load(owner+':shared-checks'));
  cloudTransport.claimFinanceSyncLease=async()=>({acquired:true,leaseName:'credit',leaseToken:'fixture',fenceEpoch:1});cloudTransport.releaseFinanceSyncLease=async()=>true;
  const request=async(path,options)=>{
-   if(String(path).includes('/finance_sync_documents?'))return new Response(JSON.stringify([{revision:financeRevision,state:finance}]));
+   if(String(path).includes('/finance_sync_documents?'))return new Response(JSON.stringify([{revision:financeRevision,state:remoteFinance}]));
    if(String(path).endsWith('/claim_finance_sync_lease'))return new Response(JSON.stringify([{acquired:true,lease_token:JSON.parse(options.body).p_lease_token,fence_epoch:1,leased_until:'2030-01-01T00:00:00Z'}]));
    if(String(path).endsWith('/release_finance_sync_lease'))return new Response('true');
    options.assertRequestScope?.();check(String(path).endsWith(kind==='main'?'/save_kupa_document_v6':'/save_finance_sync_document_v6'),'unexpected fixture RPC '+path);
    const send=JSON.parse(options.body);check(send.p_expected_revision===5,'wrong captured base');commits++;
-   if(kind==='main'){remoteKupa=structuredClone(send.p_state);kupaRevision=6}else{finance=structuredClone(send.p_state);financeRevision=6}
+   if(kind==='main'){remoteKupa=structuredClone(send.p_state);kupaRevision=6}else{remoteFinance=structuredClone(send.p_state);financeRevision=6}
    return new Response(body);
  };
  if(kupa)cloudAuth.supaRest=request;else cloudAuth.supaFetch=request;
- let result,error;try{result=kind==='main'?await finance.commands.saveCashflowMinimum('business','321'):await (kupa?domainsCreditController:domainsFinanceController).saveCreditCardOrder([])}catch(caught){error=caught;result=false}
+ let result,error;try{result=kind==='main'?await finance.commands.saveCashflowMinimum('business','321'):await (kupa?domainsCreditController:finance.commands).saveCreditCardOrder([])}catch(caught){error=caught;result=false}
  check(result===false,'malformed HTTP 200 was reported as a successful write');
  if(kind!=='main')check(error?.code==='FINANCE_WRITE_RECEIPT_INVALID'&&error.kind==='confirmation_unknown','missing explicit unknown confirmation '+JSON.stringify({commits,message:error?.message,code:error?.code}));
  check(JSON.stringify(kupa?state.creditSync:checksSession.kupaCloudReadState)===before,'unknown response replaced confirmed projection');
