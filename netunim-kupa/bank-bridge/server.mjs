@@ -1,12 +1,18 @@
+import {createBankBridgeHttpHandler} from './http-handler.mjs';
+import {createBankBridgeRoutes} from './http-routes.mjs';
+import {bankBridgeErrorResponse as safeError} from './wire-errors.mjs';
+import {createConnectionQueries} from './connection-queries.mjs';
+import {createFinanceCommands} from './finance-commands.mjs';
+import {createDiagnosticQueries} from './diagnostic-queries.mjs';
 import http from 'node:http';
 import {createBridgeOperationOwner} from './operation-owner.mjs';
 import {createConnectionVault} from './connection-vault.mjs';
-import {createConnectionCommands,publicCreditProfiles,settleConnectionJobs} from './connection-commands.mjs';
+import {createConnectionCommands,settleConnectionJobs} from './connection-commands.mjs';
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import {runProcess,runPowerShell,protectText,unprotectText} from './windows-platform.mjs';
-import {createHash,randomBytes,randomUUID,timingSafeEqual} from 'node:crypto';
+import {createHash,randomBytes,randomUUID} from 'node:crypto';
 import {
   HAPOALIM_POST_LOGIN_TIMEOUT_MS,
   HAPOALIM_NAVIGATION_STABLE_MS,
@@ -45,9 +51,8 @@ import {
 import {doctorCamoufox} from './isracard-camoufox.mjs';
 import {CREDIT_CONNECTOR_CONTRACT_VERSION,createCreditProviderAdapter,normalizeCreditSyncMode} from './credit-adapters.mjs';
 import {createCreditDiagnosticLog,diagnosticFingerprint} from './credit-diagnostics.mjs';
-import {buildCreditDataDiagnosticPayload,creditDataDiagnosticFilename} from './credit-data-diagnostics.mjs';
 import {creditIdentityDirectory,deleteCreditIdentity,resetCreditIdentities} from './credit-identity.mjs';
-import {bankDiagnosticExportPayload,bankDiagnosticFilename,createBankDiagnosticRun,finishBankDiagnosticRun,recordBankAccountDiagnostic,recordBankTransactionDiagnostic} from './bank-diagnostics.mjs';
+import {createBankDiagnosticRun,finishBankDiagnosticRun,recordBankAccountDiagnostic,recordBankTransactionDiagnostic} from './bank-diagnostics.mjs';
 
 const HOST='127.0.0.1';
 const PORT=8765;
@@ -81,7 +86,6 @@ const connections=createConnectionCommands({operations,vault,artifacts:{
   resetCredit:()=>settleConnectionJobs([fs.rm(CREDIT_META_FILE,{force:true}),deleteCreditDataDiagnostic(),resetCreditIdentities(CREDIT_IDENTITIES_DIR)]),
   clearImported:clearImportedConnectionArtifacts,
 }});
-const MAX_JSON_REQUEST_BYTES=32*1024;
 let activeServer=null;
 let cachedBrowserPath='';
 
@@ -228,15 +232,6 @@ async function doctorModernPuppeteer(browserPath){
   }finally{if(browser)try{await browser.close()}catch{}}
 }
 
-function tokenEqual(expected,actual){const a=Buffer.from(String(expected||'')),b=Buffer.from(String(actual||''));return a.length===b.length&&a.length>0&&timingSafeEqual(a,b)}
-function corsHeaders(req){const origin=req.headers.origin||'*';return {'Access-Control-Allow-Origin':origin,'Access-Control-Allow-Methods':'GET,POST,DELETE,OPTIONS','Access-Control-Allow-Headers':'Authorization,Content-Type','Access-Control-Allow-Private-Network':'true','Access-Control-Max-Age':'600','Cache-Control':'no-store','Vary':'Origin'}}
-function sendJson(req,res,status,data){res.writeHead(status,{'Content-Type':'application/json; charset=utf-8',...corsHeaders(req)});res.end(JSON.stringify(data))}
-async function readJson(req){
-  let size=0,chunks=[];for await(const chunk of req){size+=chunk.length;if(size>MAX_JSON_REQUEST_BYTES)throw Object.assign(new Error('הבקשה גדולה מדי'),{code:'REQUEST_TOO_LARGE'});chunks.push(chunk)}
-  if(!chunks.length)return {};try{return JSON.parse(Buffer.concat(chunks).toString('utf8'))}catch{throw Object.assign(new Error('JSON לא תקין'),{code:'INVALID_JSON'})}
-}
-function authToken(req){const value=String(req.headers.authorization||'');return value.startsWith('Bearer ')?value.slice(7).trim():''}
-function safeError(error){return {ok:false,code:error?.code||'BRIDGE_ERROR',stage:error?.stage||'',message:error?.message||'שגיאת Bank Bridge',httpStatus:Number(error?.httpStatus)||0,availableAccounts:Array.isArray(error?.availableAccounts)?error.availableAccounts:[],accountRole:error?.accountRole==='home'?'home':error?.accountRole==='business'?'business':'',creditErrors:Array.isArray(error?.creditErrors)?error.creditErrors:[]}}
 function stageError(stage,error,code='BANK_DATA_ERROR'){
   const e=error instanceof Error?error:new Error(String(error||'שגיאה לא ידועה'));
   if(!e.stage)e.stage=stage;if(!e.code)e.code=code;return e;
@@ -585,7 +580,6 @@ async function scrapeHapoalimSnapshot(credentials,{interactive=false,historyDays
   }
 }
 
-function normalizeCreditSyncSelection(value){return (Array.isArray(value)?value:[]).slice(0,100).map(row=>({profileId:String(row?.profileId||'').trim().slice(0,80),excludedAccounts:[...new Set((Array.isArray(row?.excludedAccounts)?row.excludedAccounts:[]).slice(0,100).map(account=>String(account||'').trim().slice(0,80)).filter(Boolean))]})).filter(row=>row.profileId&&row.excludedAccounts.length)}
 function excludedAccountsForProfile(selection,profileId){return selection.find(row=>row.profileId===profileId)?.excludedAccounts||[]}
 
 async function scrapeCreditProfile(profile,{interactive=false,correlationId='',syncMode='quick',excludedAccountNumbers=[],allowCamoufoxFallback=true}={}){
@@ -625,96 +619,6 @@ async function scrapeAllCreditProfiles(profiles,{interactive=false,previousError
   }
   const syncedAt=coreSuccessCount?new Date().toISOString():null;
   return {contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION,correlationId,profiles:success,errors,syncedAt,attemptedCount,deferredCount,coreSuccessCount,_dataDiagnostics:dataDiagnostics};
-}
-
-async function handler(req,res,token){
-  const pathname=new URL(req.url||'/',`http://${HOST}:${PORT}`).pathname,route=pathname.startsWith('/v2/credit')?pathname.slice(3):pathname;
-  if(req.method==='OPTIONS'){res.writeHead(204,corsHeaders(req));res.end();return}
-  if(req.method==='GET'&&pathname==='/health'){sendJson(req,res,200,{ok:true,service:'netunim-kupa-bank-bridge',version:BRIDGE_VERSION,creditContractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION});return}
-  if(!tokenEqual(token,authToken(req))){sendJson(req,res,401,{ok:false,code:'UNAUTHORIZED',message:'מפתח Bank Bridge שגוי'});return}
-  try{
-    if(req.method==='GET'&&pathname==='/status'){
-      const {credentials,meta}=await operations.read(async()=>({credentials:await vault.readCredentials(),meta:await readMeta()}));
-      sendJson(req,res,200,{ok:true,bridgeVersion:BRIDGE_VERSION,configured:!!credentials,branchNumber:credentials?.businessBranchNumber||credentials?.branchNumber||'',accountNumber:credentials?.businessAccountNumber||credentials?.accountNumber||'',businessBranchNumber:credentials?.businessBranchNumber||credentials?.branchNumber||'',businessAccountNumber:credentials?.businessAccountNumber||credentials?.accountNumber||'',homeBranchNumber:credentials?.homeBranchNumber||'',homeAccountNumber:credentials?.homeAccountNumber||'',lastScrapeAt:meta.lastScrapeAt||null,lastError:meta.lastError||'',lastErrorAt:meta.lastErrorAt||null,lastErrorCode:meta.lastErrorCode||'',lastErrorStage:meta.lastErrorStage||'',lastErrorHttpStatus:Number(meta.lastErrorHttpStatus)||0,lastWarning:meta.lastWarning||'',lastWarningCode:meta.lastWarningCode||'',lastWarningStage:meta.lastWarningStage||'',lastWarningHttpStatus:Number(meta.lastWarningHttpStatus)||0,accountRole:meta.lastAccountRole==='home'?'home':meta.lastAccountRole==='business'?'business':'',availableAccounts:Array.isArray(meta.lastAvailableAccounts)?meta.lastAvailableAccounts:[]});return;
-    }
-    if(req.method==='POST'&&pathname==='/settings/import'){
-      const imported=await connections.importConnectionSettings(await readJson(req));
-      sendJson(req,res,200,{ok:true,bridgeVersion:BRIDGE_VERSION,configured:true,bank:imported.bank,credit:{contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION,profiles:imported.profiles},cleanupWarnings:imported.cleanupWarnings});return;
-    }
-    if(req.method==='GET'&&route==='/credit/status'){
-      const {profiles,meta}=await operations.read(async()=>({profiles:await vault.readCreditProfiles(),meta:await readCreditMeta()}));
-      sendJson(req,res,200,{ok:true,bridgeVersion:BRIDGE_VERSION,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION,profiles:publicCreditProfiles(profiles),lastSyncAt:meta.lastSyncAt||null,lastErrors:Array.isArray(meta.lastErrors)?meta.lastErrors:[],lastCorrelationId:meta.lastCorrelationId||null,lastAttemptedCount:Math.max(0,Math.trunc(Number(meta.lastAttemptedCount)||0)),lastDeferredCount:Math.max(0,Math.trunc(Number(meta.lastDeferredCount)||0))});return;
-    }
-    if(req.method==='GET'&&route==='/credit/diagnostics'){
-      sendJson(req,res,200,{ok:true,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION,events:await creditDiagnostics.summary({limit:500})});return;
-    }
-    if(req.method==='GET'&&route==='/credit/data-diagnostics'){
-      const payload=await readCreditDataDiagnostic();
-      if(!payload){sendJson(req,res,200,{ok:true,available:false,message:'עדיין אין אבחון נתוני אשראי מקומי. בצע רענון אשראי ולאחריו ייצא את הקובץ.'});return}
-      const cardCount=(Array.isArray(payload.profiles)?payload.profiles:[]).reduce((sum,profile)=>sum+(Array.isArray(profile?.accounts)?profile.accounts.length:0),0);
-      sendJson(req,res,200,{ok:true,available:true,generatedAt:payload.generatedAt||null,filename:creditDataDiagnosticFilename(payload),data:payload,cardCount,schemaVersion:Number(payload.schemaVersion)||1});return;
-    }
-    if(req.method==='GET'&&pathname==='/bank/diagnostics'){
-      const diagnostic=await readBankDiagnostic();
-      if(!diagnostic){sendJson(req,res,200,{ok:true,available:false,message:'עדיין אין אבחון בנק מקומי. בצע רענון בנק ולאחריו ייצא את הקובץ.'});return}
-      const payload=bankDiagnosticExportPayload(diagnostic),accounts=payload?.accounts||{};
-      const transactionCount=['business','home'].reduce((sum,role)=>sum+Number(accounts?.[role]?.captured||0),0);
-      sendJson(req,res,200,{ok:true,available:true,generatedAt:payload.finishedAt||payload.startedAt||null,filename:bankDiagnosticFilename(payload),data:payload,transactionCount,schemaVersion:Number(payload.schemaVersion)||1});return;
-    }
-    const chequeImageMatch=req.method==='GET'?pathname.match(/^\/bank\/cheque-image\/([a-f0-9]{64})$/):null;
-    if(chequeImageMatch){const image=await readCachedChequeImage(chequeImageMatch[1]);if(!image||!chequeImageInRetention(image.eventDate)){sendJson(req,res,404,{ok:false,code:'CHEQUE_IMAGE_NOT_FOUND',message:'תמונת השיק אינה זמינה עוד ב-Bank Bridge המקומי'});return}res.writeHead(200,{...corsHeaders(req),'Content-Type':image.contentType,'Content-Length':String(image.size),'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(image.data);return}
-    if(req.method==='POST'&&route==='/credit/profiles'){
-      const result=await connections.saveCreditProfile(await readJson(req));
-      sendJson(req,res,200,{ok:true,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION,...result});return;
-    }
-    if(req.method==='POST'&&route==='/credit/reset'){
-      await connections.resetCreditProfiles();sendJson(req,res,200,{ok:true,profiles:[],lastSyncAt:null,lastErrors:[]});return;
-    }
-    if(req.method==='DELETE'&&route==='/credit/profiles'){
-      const result=await connections.deleteCreditProfile(await readJson(req));
-      sendJson(req,res,200,{ok:true,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION,...result});return;
-    }
-    if(req.method==='POST'&&route==='/credit/sync'){
-      const body=await readJson(req);
-      await operations.provider(async()=>{
-        const profiles=await vault.readCreditProfiles(),meta=await readCreditMeta(),syncMode=normalizeCreditSyncMode(body.syncMode),selection=normalizeCreditSyncSelection(body.selection);
-        const result=await scrapeAllCreditProfiles(profiles,{interactive:!!body.interactive,previousErrors:meta.lastErrors,syncMode,selection}),rawSamples=Array.isArray(result?._dataDiagnostics)?result._dataDiagnostics:[],publicResult={...result};delete publicResult._dataDiagnostics;
-        if(publicResult.profiles.length)await writeCreditDataDiagnostic(buildCreditDataDiagnosticPayload({correlationId:publicResult.correlationId,profiles:publicResult.profiles,rawSamples}));
-        await writeCreditMeta({...(publicResult.syncedAt?{lastSyncAt:publicResult.syncedAt}:{}),lastErrors:publicResult.errors,lastCorrelationId:publicResult.correlationId,lastAttemptedCount:publicResult.attemptedCount,lastDeferredCount:publicResult.deferredCount});
-        if(!publicResult.profiles.length&&publicResult.errors.length&&publicResult.attemptedCount>0){const e=new Error(publicResult.errors.map(x=>x.message).join(' | '));e.code='CREDIT_SYNC_FAILED';e.creditErrors=publicResult.errors;throw e}
-        sendJson(req,res,200,{ok:true,...publicResult});
-      });return;
-    }
-    if(req.method==='POST'&&pathname==='/credentials'){
-      const result=await connections.saveCredentials(await readJson(req));
-      sendJson(req,res,200,{ok:true,...result});return;
-    }
-    if(req.method==='POST'&&pathname==='/account-selection'){
-      const result=await connections.selectAccount(await readJson(req));
-      sendJson(req,res,200,{ok:true,...result});return;
-    }
-    if(req.method==='DELETE'&&pathname==='/credentials'){
-      const result=await connections.deleteCredentials();sendJson(req,res,200,{ok:true,...result});return;
-    }
-    if(req.method==='POST'&&pathname==='/balance'){
-      const body=await readJson(req);
-      await operations.provider(async()=>{
-        const credentials=await vault.readCredentials();if(!credentials)throw Object.assign(new Error('לא נשמרו פרטי בנק הפועלים ב-Bank Bridge'),{code:'NOT_CONFIGURED'});
-        try{
-          const historyDays=Math.min(HAPOALIM_INITIAL_BACKFILL_DAYS,Math.max(HAPOALIM_TRANSACTION_LOOKBACK_DAYS,Number(body.historyDays)||HAPOALIM_TRANSACTION_LOOKBACK_DAYS));
-          const result=await scrapeHapoalimSnapshot(credentials,{interactive:!!body.interactive,historyDays});
-          const homeFailure=result.accountFailures?.home||null;
-          const warnings=[result.accounts?.business?.transactionWarning?`עסקי: ${result.accounts.business.transactionWarning}`:'',result.accounts?.home?.transactionWarning?`ביתי: ${result.accounts.home.transactionWarning}`:'',homeFailure?.message?`ביתי: ${homeFailure.message}`:''].filter(Boolean).join(' | ');
-          await writeMeta({lastScrapeAt:result.fetchedAt,lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:warnings,lastWarningCode:homeFailure?.code||'',lastWarningStage:homeFailure?.stage||'',lastWarningHttpStatus:Number(homeFailure?.httpStatus)||0,lastAvailableAccounts:Array.isArray(homeFailure?.availableAccounts)?homeFailure.availableAccounts:[],lastAccountRole:homeFailure?'home':''});
-          sendJson(req,res,200,{ok:true,...result});
-        }catch(e){await writeMeta({lastError:e?.message||String(e),lastErrorAt:new Date().toISOString(),lastErrorCode:e?.code||'BRIDGE_ERROR',lastErrorStage:e?.stage||'',lastErrorHttpStatus:Number(e?.httpStatus)||0,lastWarning:'',lastWarningCode:'',lastWarningStage:'',lastWarningHttpStatus:0,lastAvailableAccounts:Array.isArray(e?.availableAccounts)?e.availableAccounts:[],lastAccountRole:e?.accountRole==='home'?'home':e?.accountRole==='business'?'business':''});throw e}
-      });return;
-    }
-    if(req.method==='POST'&&pathname==='/shutdown'){
-      sendJson(req,res,200,{ok:true});setTimeout(()=>activeServer?.close(()=>process.exit(0)),50);return;
-    }
-    sendJson(req,res,404,{ok:false,code:'NOT_FOUND',message:'נתיב Bank Bridge לא קיים'});
-  }catch(e){sendJson(req,res,e?.code==='REQUEST_TOO_LARGE'?413:400,safeError(e))}
 }
 
 async function fetchLocal(pathname,{method='GET',token='',timeoutMs=1200}={}){
@@ -764,6 +668,18 @@ if(args.has('--doctor')){
 const token=await ensureToken();
 if(args.has('--init')||args.has('--print-token')){console.log('Bank Bridge key:');console.log(token);console.log(`Credentials directory: ${APP_DIR}`);process.exit(0)}
 
-activeServer=http.createServer((req,res)=>{handler(req,res,token).catch(e=>sendJson(req,res,500,safeError(e)))});
+const service=createConnectionQueries({operations,vault,metadata:{bank:readMeta,credit:readCreditMeta}});
+const finance=createFinanceCommands({operations,
+  bank:{readCredentials:vault.readCredentials,scrape:scrapeHapoalimSnapshot,writeMeta},
+  credit:{readProfiles:vault.readCreditProfiles,readMeta:readCreditMeta,scrape:scrapeAllCreditProfiles,writeDataDiagnostic:writeCreditDataDiagnostic,writeMeta:writeCreditMeta},
+});
+const diagnostics=createDiagnosticQueries({creditLog:creditDiagnostics,read:{bank:readBankDiagnostic,creditData:readCreditDataDiagnostic}});
+const routes=createBankBridgeRoutes({version:BRIDGE_VERSION,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION,
+  service,connections,finance,diagnostics,
+  cheques:{read:async key=>{const image=await readCachedChequeImage(key);return image&&chequeImageInRetention(image.eventDate)?image:null}},
+  shutdown:{afterResponse:()=>setTimeout(()=>activeServer?.close(()=>process.exit(0)),50)},
+});
+const handler=createBankBridgeHttpHandler({token,routes,health:()=>({ok:true,service:'netunim-kupa-bank-bridge',version:BRIDGE_VERSION,creditContractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION})});
+activeServer=http.createServer(handler);
 activeServer.on('error',e=>{if(e?.code==='EADDRINUSE'){console.error(`Bank Bridge already appears to be running on ${HOST}:${PORT}`);process.exit(0)}console.error(e);process.exit(1)});
 activeServer.listen(PORT,HOST,()=>console.log(`Netunim Kupa Bank Bridge v${BRIDGE_VERSION} listening on http://${HOST}:${PORT}`));

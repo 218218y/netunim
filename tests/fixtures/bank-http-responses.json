@@ -1,0 +1,246 @@
+{
+  "baseline": "3d32defb1fd35639315ecb60ae65ffdb7b1081ba",
+  "inputs": {
+    "bankCredentials": {
+      "businessBranchNumber": "001",
+      "businessAccountNumber": "000123",
+      "homeBranchNumber": "002",
+      "homeAccountNumber": "000456"
+    },
+    "bankMeta": {
+      "lastScrapeAt": "2026-10-12T10:00:00Z",
+      "lastError": "fixture error",
+      "lastErrorAt": "2026-10-12T09:00:00Z",
+      "lastErrorCode": "ACCOUNT_NOT_FOUND",
+      "lastErrorStage": "account",
+      "lastErrorHttpStatus": "404",
+      "lastWarning": "fixture warning",
+      "lastWarningCode": "PARTIAL",
+      "lastWarningStage": "transactions",
+      "lastWarningHttpStatus": "503",
+      "lastAccountRole": "home",
+      "lastAvailableAccounts": [
+        {
+          "branchNumber": "002",
+          "accountNumber": "000456"
+        }
+      ]
+    },
+    "creditProfiles": [
+      {
+        "profileId": "P",
+        "provider": "max",
+        "label": "fixture",
+        "defaultAccount": "ביתי",
+        "active": true
+      },
+      {
+        "profileId": "unsupported",
+        "provider": "no-provider"
+      }
+    ],
+    "creditMeta": {
+      "lastSyncAt": "2026-10-12T10:00:00Z",
+      "lastErrors": [
+        {
+          "code": "FIXTURE",
+          "message": "fixture issuer"
+        }
+      ],
+      "lastCorrelationId": "fixture-correlation",
+      "lastAttemptedCount": "3.9",
+      "lastDeferredCount": -2
+    },
+    "creditData": {
+      "generatedAt": "2026-10-12T10:00:00Z",
+      "schemaVersion": 1,
+      "profiles": [
+        {
+          "accounts": [
+            {},
+            {}
+          ]
+        },
+        {
+          "accounts": [
+            {}
+          ]
+        }
+      ],
+      "privacyNote": "fixture"
+    },
+    "bankDiagnostic": {
+      "schemaVersion": 3,
+      "startedAt": "2026-10-12T09:00:00Z",
+      "finishedAt": "2026-10-12T10:00:00Z",
+      "accounts": {
+        "business": {
+          "captured": 2,
+          "transactions": []
+        },
+        "home": {
+          "captured": 1,
+          "transactions": []
+        }
+      }
+    }
+  },
+  "responses": {
+    "/status": {
+      "status": 200,
+      "data": {
+        "ok": true,
+        "bridgeVersion": 73,
+        "configured": true,
+        "branchNumber": "001",
+        "accountNumber": "000123",
+        "businessBranchNumber": "001",
+        "businessAccountNumber": "000123",
+        "homeBranchNumber": "002",
+        "homeAccountNumber": "000456",
+        "lastScrapeAt": "2026-10-12T10:00:00Z",
+        "lastError": "fixture error",
+        "lastErrorAt": "2026-10-12T09:00:00Z",
+        "lastErrorCode": "ACCOUNT_NOT_FOUND",
+        "lastErrorStage": "account",
+        "lastErrorHttpStatus": 404,
+        "lastWarning": "fixture warning",
+        "lastWarningCode": "PARTIAL",
+        "lastWarningStage": "transactions",
+        "lastWarningHttpStatus": 503,
+        "accountRole": "home",
+        "availableAccounts": [
+          {
+            "branchNumber": "002",
+            "accountNumber": "000456"
+          }
+        ]
+      }
+    },
+    "/credit/status": {
+      "status": 200,
+      "data": {
+        "ok": true,
+        "bridgeVersion": 73,
+        "contractVersion": 2,
+        "profiles": [
+          {
+            "profileId": "P",
+            "provider": "max",
+            "label": "fixture",
+            "ownerLabel": "",
+            "defaultAccount": "ביתי",
+            "active": true,
+            "configured": true
+          }
+        ],
+        "lastSyncAt": "2026-10-12T10:00:00Z",
+        "lastErrors": [
+          {
+            "code": "FIXTURE",
+            "message": "fixture issuer"
+          }
+        ],
+        "lastCorrelationId": "fixture-correlation",
+        "lastAttemptedCount": 3,
+        "lastDeferredCount": 0
+      }
+    },
+    "/v2/credit/status": {
+      "status": 200,
+      "data": {
+        "ok": true,
+        "bridgeVersion": 73,
+        "contractVersion": 2,
+        "profiles": [
+          {
+            "profileId": "P",
+            "provider": "max",
+            "label": "fixture",
+            "ownerLabel": "",
+            "defaultAccount": "ביתי",
+            "active": true,
+            "configured": true
+          }
+        ],
+        "lastSyncAt": "2026-10-12T10:00:00Z",
+        "lastErrors": [
+          {
+            "code": "FIXTURE",
+            "message": "fixture issuer"
+          }
+        ],
+        "lastCorrelationId": "fixture-correlation",
+        "lastAttemptedCount": 3,
+        "lastDeferredCount": 0
+      }
+    },
+    "/credit/diagnostics": {
+      "status": 200,
+      "data": {
+        "ok": true,
+        "contractVersion": 2,
+        "events": [
+          {
+            "stage": "fixture"
+          }
+        ]
+      }
+    },
+    "/credit/data-diagnostics": {
+      "status": 200,
+      "data": {
+        "ok": true,
+        "available": true,
+        "generatedAt": "2026-10-12T10:00:00Z",
+        "filename": "netunim-credit-data-diagnostics_2026-10-12T10-00-00Z.json",
+        "data": {
+          "generatedAt": "2026-10-12T10:00:00Z",
+          "schemaVersion": 1,
+          "profiles": [
+            {
+              "accounts": [
+                {},
+                {}
+              ]
+            },
+            {
+              "accounts": [
+                {}
+              ]
+            }
+          ],
+          "privacyNote": "fixture"
+        },
+        "cardCount": 3,
+        "schemaVersion": 1
+      }
+    },
+    "/bank/diagnostics": {
+      "status": 200,
+      "data": {
+        "ok": true,
+        "available": true,
+        "generatedAt": "2026-10-12T10:00:00Z",
+        "filename": "netunim-bank-diagnostic_2026-10-12T10-00-00Z.json",
+        "data": {
+          "schemaVersion": 3,
+          "startedAt": "2026-10-12T09:00:00Z",
+          "finishedAt": "2026-10-12T10:00:00Z",
+          "accounts": {
+            "business": {
+              "captured": 2,
+              "transactions": []
+            },
+            "home": {
+              "captured": 1,
+              "transactions": []
+            }
+          }
+        },
+        "transactionCount": 3,
+        "schemaVersion": 3
+      }
+    }
+  }
+}

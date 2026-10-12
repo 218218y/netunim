@@ -7,10 +7,10 @@ import fs from 'node:fs';
 import {parse} from 'acorn';
 import {createHash} from 'node:crypto';
 const names=["normalizeCreditSyncSelection","excludedAccountsForProfile","scrapeCreditProfile","scrapeAllCreditProfiles","scrapeHapoalimSnapshot"];
-function policies(source){
-  const ast=parse(source,{ecmaVersion:'latest',sourceType:'module'}),out={};
+function policies(sources){
+  const declarations=sources.flatMap(source=>parse(source,{ecmaVersion:'latest',sourceType:'module'}).body),out={};
   for(const name of names){
-    const node=structuredClone(ast.body.find(node=>node.type==='FunctionDeclaration'&&node.id.name===name));
+    const node=structuredClone(declarations.find(node=>node.type==='FunctionDeclaration'&&node.id.name===name));
     if(!node)throw new Error(`missing provider function: ${name}`);
     node.body.body=node.body.body.filter(statement=>!(statement.type==='IfStatement'&&statement.test.type==='Identifier'&&statement.test.name==='scrapeBusy')&&!(statement.type==='ExpressionStatement'&&statement.expression.type==='AssignmentExpression'&&statement.expression.left.name==='scrapeBusy'));
     if(name==='scrapeAllCreditProfiles'&&node.body.body[0].type==='TryStatement')node.body.body=node.body.body[0].block.body;
@@ -26,5 +26,6 @@ function policies(source){
 test('Bank and credit provider policies match their reviewed pre-refactor AST fixtures',()=>{
   const fixture=JSON.parse(fs.readFileSync(new URL('./fixtures/bank-provider-policy.json',import.meta.url),'utf8'));
   const source=fs.readFileSync(new URL('../netunim-kupa/bank-bridge/server.mjs',import.meta.url),'utf8');
-  assert.deepEqual(policies(source),fixture.policies);
+  const commands=fs.readFileSync(new URL('../netunim-kupa/bank-bridge/finance-commands.mjs',import.meta.url),'utf8');
+  assert.deepEqual(policies([source,commands]),fixture.policies);
 });
