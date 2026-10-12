@@ -74,6 +74,8 @@
     "shared/cloud-checkpoint-publication.js",
     "shared/document-write-ack.js",
     "shared/runtime-polling.js",
+    "netunim-orders/site/assets/js/platform/debounced-task.js",
+    "tests/fixtures/checked-runtime-debounce.mjs",
     "shared/startup-task.js",
     "shared/storage-cloud-status.js",
     "shared/storage-records.js",

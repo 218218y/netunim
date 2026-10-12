@@ -8,7 +8,7 @@ function fixture(t,{emergency=true,risk=false,primary=true}={}){
   const session={localGeneration:0},tab={primaryTab:primary},gate=deferred(),messages=[];let receipt=gate.promise,reads=0;
   const persistence=createStoragePersistence({tab,session,localSnapshot:()=>emergency,storageV2DurabilityAtRisk:()=>risk,storageV2CommitPromise:()=>{reads++;return receipt},
     showSecondaryTabGuard(){},setSave:(...args)=>messages.push(args),setCloud(){},cloudEnabled:()=>false,folderSaveTitle:()=>'',folderBackupAvailable:()=>false,syncFolderAccessButton(){}});
-  t.after(()=>clearTimeout(session.saveTimer));
+  t.after(()=>persistence.runtime.dispose());
   return {persistence,session,tab,gate,messages,reads:()=>reads,setReceipt(value){receipt=value}};
 }
 test('commitSave requires the captured local commit, not a synchronous emergency success',async t=>{

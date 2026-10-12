@@ -36,8 +36,16 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
   });
 
   function configure(next){
-    if(ports)throw new Error('orders_storage_v2_already_configured');ports=next;
+    if(ports)throw new Error('orders_storage_v2_already_configured');
+    for(const name of ['main','checks'])for(const method of ['cancelPending','drain']){
+      if(typeof next.saveRuntime?.[name]?.[method]!=='function')throw new TypeError(`orders_save_runtime_${name}_${method}_required`);
+    }
+    ports=next;
     const p=requirePorts();
+    async function quiesceSaves(){
+      p.saveRuntime.main.cancelPending();p.saveRuntime.checks.cancelPending();
+      await Promise.all([p.saveRuntime.main.drain(),p.saveRuntime.checks.drain()]);
+    }
     fencedRecovery=createStorageV2FencedRecovery({app:'orders',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,refreshOwnerBinding:()=>owner.refresh(),
       authenticatedOwner:()=>p.cloudAuth.loadSession()?.user?.id||null,readProtocolState:()=>p.cloudTransport.readStorageProtocolState(),
       readMainRemote:()=>p.cloudTransport.readCloud(),projectMainRemote:row=>p.stateSnapshots.prepareCloudState(row.state),
@@ -54,7 +62,7 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
         return {mainState,sharedState:{checks:[],bankEvents:[]}};
       },
       quiesce:async()=>{
-        clearTimeout(p.checksSession.sharedChecksSaveTimer);p.checksSession.sharedChecksSaveTimer=null;
+        await quiesceSaves();
         await p.syncDocument.quiesceForStorageCutover();
         const pending=[p.files.storageV2CommitPromise,p.checksSession.checksSavePromise,p.checksSession.checksPullPromise].filter(Boolean);
         if(pending.length)await Promise.all(pending);
@@ -80,7 +88,7 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
         ?await verifyStorageV2LocalEngine({app:'orders',owner:()=>sourceOwner})
         :await p.verifyStorageV2AccountMarker();
       if(marked!==true||owner.current()!==sourceOwner||!owner.locked)throw new Error('orders_transfer_source_not_primary');
-      clearTimeout(p.checksSession.sharedChecksSaveTimer);p.checksSession.sharedChecksSaveTimer=null;
+      await quiesceSaves();
       await p.syncDocument.quiesceForStorageCutover();
       const pending=[p.files.storageV2CommitPromise,p.session.cloudSavePromise,p.checksSession.checksSavePromise,p.checksSession.checksPullPromise,p.sharedChecksV2.commitPromise].filter(Boolean);
       if(pending.length)await Promise.all(pending);

@@ -1,8 +1,8 @@
 import {createSyncChecksPersistence} from '../sync/checks-persistence.js';
 
-export function composeChecksPersistence({model,session,checksSession,storageBrowser,uiStatus,uiFolderStatus,storagePersistence,storageFiles,cloudAuth,syncChecks,uiAlertCenter,domainRevisions,sharedChecksV2}){
+export function composeChecksPersistence({session,checksSession,uiStatus,uiFolderStatus,storagePersistence,storageFiles,cloudAuth,syncChecks,uiAlertCenter,domainRevisions,sharedChecksV2}){
   return createSyncChecksPersistence({
-    model,session,checksSession,sharedChecksV2,
+    session,checksSession,sharedChecksV2,
     toast:(...args)=>uiStatus.toast(...args),
     setSave:(...args)=>uiStatus.setSave(...args),
     setCloud:(...args)=>uiStatus.setChecksCloud(...args),

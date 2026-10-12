@@ -269,7 +269,7 @@ const domainsChecksEditor=createDomainsChecksEditor({
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
 
-const syncChecksPersistence=composeChecksPersistence({model,session,checksSession,storageBrowser,uiStatus,uiFolderStatus,storagePersistence,storageFiles:()=>storageFiles,cloudAuth,syncChecks:()=>syncChecks,uiAlertCenter:()=>uiAlertCenter,domainRevisions,sharedChecksV2});
+const syncChecksPersistence=composeChecksPersistence({session,checksSession,uiStatus,uiFolderStatus,storagePersistence,storageFiles:()=>storageFiles,cloudAuth,syncChecks:()=>syncChecks,uiAlertCenter:()=>uiAlertCenter,domainRevisions,sharedChecksV2});
 
 const domainsDashboardView=createDomainsDashboardView({
   model,
@@ -431,6 +431,7 @@ const syncDocument=createSyncDocument({
 
 storageV2Coordinator.configure({
   storageBrowser,syncDocument,syncChecks,model,session,checksSession,files,
+  saveRuntime:{main:storagePersistence.runtime,checks:syncChecksPersistence.runtime},
   stateSnapshots,stateNormalization,prepareV2Checkpoint,validateMainState:state=>assertOrderEntityInvariants(state,{includeChecks:Object.hasOwn(state||{},'checks'),required:true}),domainRevisions,sharedChecksV2Composition,sharedChecksV2,
   cloudTransport,cloudAuth,mainStorageV2,verifyStorageV2AccountMarker:()=>verifyStorageV2AccountMarker(),
 });

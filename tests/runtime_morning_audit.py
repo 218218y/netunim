@@ -64,7 +64,7 @@ def seed(browser):
       if(scheduleSave('V2 audit fixture seed',{operations:[{type:'put',collection:'customerDebts',id:debt.id,mode:'insert',index,record:debt}]})!==true)
         throw new Error('V2 audit fixture debt write failed');
     }
-    clearTimeout(saveTimer);saveTimer=null;
+    storagePersistence.runtime.cancelPending();
     if(!await mainStorageV2.flush())throw new Error('V2 audit fixture flush failed');
     const head=await mainStorageV2.cloudState();
     await mainStorageV2.setCloudBase(1,prepareCloudState(state),{ackSeq:head.seq});
@@ -298,7 +298,7 @@ def remotely_missing_debt():
         seed(browser)
         js(browser, r"""
         window.auditSetServer({uncertain:true});await window.auditIssue(320,30);
-        await requestCloudSave('fixture before remote removal');clearTimeout(saveTimer);saveTimer=null;
+        await requestCloudSave('fixture before remote removal');storagePersistence.runtime.cancelPending();
         const original=structuredClone(window.auditDebt());
         window.auditCloudHead={revision:cloudRevision+1,state:prepareCloudState(state)};
         window.auditCloudHead.state.customerDebts=window.auditCloudHead.state.customerDebts.filter(d=>d.id!=='AUDIT');
@@ -316,7 +316,7 @@ def two_computers():
         with BrowserSession(ROOT/'netunim-orders/site', 'morning-device-A') as a, BrowserSession(ROOT/'netunim-orders/site', 'morning-device-B') as b:
             seed(a)
             if scenario=='reset-and-new-payment':
-                js(a, "window.auditDebt().debtProgress=[{id:'KNOWN',kind:'payment',action:'add',amount:30,source:'manual',createdAt:'2026-09-09T09:00:00.000Z'}];if(scheduleSave('fixture known payment',{operations:[{type:'put',collection:'customerDebts',id:'AUDIT',mode:'replace',record:window.auditDebt()}]})!==true)throw Error('fixture payment not durable');clearTimeout(saveTimer);saveTimer=null;await mainStorageV2.commitPromise;return true;")
+                js(a, "window.auditDebt().debtProgress=[{id:'KNOWN',kind:'payment',action:'add',amount:30,source:'manual',createdAt:'2026-09-09T09:00:00.000Z'}];if(scheduleSave('fixture known payment',{operations:[{type:'put',collection:'customerDebts',id:'AUDIT',mode:'replace',record:window.auditDebt()}]})!==true)throw Error('fixture payment not durable');storagePersistence.runtime.cancelPending();await mainStorageV2.commitPromise;return true;")
             initial=a.evaluate('state')
             for browser in (a,b):
                 if browser is b:
@@ -328,10 +328,10 @@ def two_computers():
                     # Morning transport is online; Orders cloud is unavailable until the
                     # profiles reconnect below. A verified network response while navigator
                     # is offline now correctly enters the refresh-required recovery path.
-                    js(browser, f"Object.defineProperty(navigator,'onLine',{{value:true,configurable:true}});cloudAuth.cloudEnabled=()=>false;await window.auditIssue(320,{60 if index==0 else 70});cloudAuth.cloudEnabled=()=>true;Object.defineProperty(navigator,'onLine',{{value:false,configurable:true}});clearTimeout(saveTimer);saveTimer=null;await mainStorageV2.commitPromise;return true;")
+                    js(browser, f"Object.defineProperty(navigator,'onLine',{{value:true,configurable:true}});cloudAuth.cloudEnabled=()=>false;await window.auditIssue(320,{60 if index==0 else 70});cloudAuth.cloudEnabled=()=>true;Object.defineProperty(navigator,'onLine',{{value:false,configurable:true}});storagePersistence.runtime.cancelPending();await mainStorageV2.commitPromise;return true;")
                 else:
                     change="setCustomerFlag('AUDIT','paid',false);" if scenario=='reset-and-new-payment' and index==0 else "openDebtModal('AUDIT');document.getElementById('dPaid').value='partial';document.getElementById('dAddPayment').value='"+('20' if index==0 else '25')+"';saveDebt('AUDIT');"
-                    js(browser, change+"clearTimeout(saveTimer);saveTimer=null;await mainStorageV2.commitPromise;return true;")
+                    js(browser, change+"storagePersistence.runtime.cancelPending();await mainStorageV2.commitPromise;return true;")
             # Each profile has separate LocalStorage/IndexedDB and a production V2 flight.
             server=r"""
             cloudTransport.readCloud=async()=>clone(window.fixtureHead);

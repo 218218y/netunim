@@ -15,7 +15,7 @@ const closeSavedMorningModal=async context=>{click('close-modal');const confirma
 const fill=(id,value)=>{document.getElementById(id).value=value};
 const setReceiptAmount=value=>{const payment=document.querySelector('[data-payment-row] [data-payment-field="price"]');assert(payment,'Missing editable receipt amount');payment.value=String(value);payment.dispatchEvent(new Event('input',{bubbles:true}));};
 const setDocumentAmount=value=>{const amount=document.getElementById('morningAmount');assert(amount,'Missing document amount');amount.value=String(value);amount.dispatchEvent(new Event('input',{bubbles:true}));};
-const stageFixtureState=message=>{const debt=state.customerDebts.at(-1);if(scheduleSave(message,{operations:[{type:'put',collection:'customerDebts',id:debt.id,mode:'insert',index:state.customerDebts.length-1,record:debt}]})!==true)throw new Error('fixture V2 debt write was not durable');clearTimeout(saveTimer);saveTimer=null};
+const stageFixtureState=message=>{const debt=state.customerDebts.at(-1);if(scheduleSave(message,{operations:[{type:'put',collection:'customerDebts',id:debt.id,mode:'insert',index:state.customerDebts.length-1,record:debt}]})!==true)throw new Error('fixture V2 debt write was not durable');storagePersistence.runtime.cancelPending()};
 const calls=[],docs=Array.from({length:26},(_,i)=>({id:'00000000-0000-4000-8000-'+String(i+1).padStart(12,'0'),number:100+i,type:305,date:'2026-09-08',amount:100,currency:'ILS',clientName:i===0?'Manual Morning':'App document',status:0,allocationNumber:'123'}));
 let uncertain=false,resolveStatus=false,operation=null;
 cloudAuth.supaFetch=async(path,options)=>{

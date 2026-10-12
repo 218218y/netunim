@@ -915,7 +915,7 @@ for app in ('orders', 'kupa'):
             const p=app==='orders'?persistenceModule.createSyncChecksPersistence(ports()):persistenceModule.createStoragePersistence(ports());
             const options={operations:[{type:'put',collection:'checks',id,mode:'replace'}]};
             const committed=app==='orders'?p.scheduleCheckSave('edit',options):p.saveChecksState('edit',options);
-            clearTimeout(session.saveTimer);clearTimeout(checksSession.sharedChecksSaveTimer);
+            if(app==='orders')p.runtime.cancelPending();else clearTimeout(checksSession.sharedChecksSaveTimer);
             await committed;await runtime.flush();
           }
           async function backup(){if(backupEdit){backupEdit=false;await edit('D','edit-during-backup')}}

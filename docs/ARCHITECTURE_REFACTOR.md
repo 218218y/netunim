@@ -6,6 +6,14 @@ remain separate from structural refactors.
 
 ## Verified now
 
+- Orders Main and Shared Checks no longer share a context save timer. Two
+  pre-change tests reproduced lost cloud/backup wakeups at a 50ms edit interval.
+  Persistence runtimes now own independent debounced tasks, cancellation,
+  drain and idempotent disposal. Local-birth/owner-transfer quiescence uses
+  those ports. Strict implementation/negative-consumer checks and native IDB
+  commit/abort/restart tests accompany the change. See
+  `ORDERS_SAVE_SCHEDULING_CONTRACT.md` for behavior and retained policies.
+
 - `tests/module_graph.cjs` parses the deployed ESM graph with Acorn. It checks
   local reachability and cycles, and now rejects imports from `storage/`,
   `cloud/`, or `sync/` into `domains/` or `ui/` in either app.
@@ -622,11 +630,33 @@ These are bounded completion tracks, not a restart of completed refactors.
 Structural changes stay separate from SQL, persisted formats, provider policy
 and CSS. Each slice needs concrete evidence/contracts and its appropriate gate.
 
+The October 12, 2026 review of the supplied continuation plan confirms the
+composition width: Kupa/Orders roots still have 61/68 static imports; their Main
+sync factories have 41/32 collaborators, Cloud UI has 41/44, Backup UI has 31/39,
+and Kupa Bank/Orders Finance controllers have 28/29. These counts justify
+consumer-driven capability boundaries; they do not by themselves prove bugs
+or justify arbitrary splits. Orders Finance still contains connectivity,
+clipboard and diagnostic-download browser effects. Bank Bridge still requires
+HTTP/vault/session/provider boundaries and fixtures before policy-preserving
+decomposition. The canonical migration manifest matches the unchanged SQL.
+
+The proposed direction is sound, with two qualifications: existing capability,
+startup and polling owners must be reused, and a context timer notification
+must not be mistaken for an independently owned scheduler. Main cloud polling
+already has an explicit owner (see CLOUD_POLLING_RESOURCE_CONTRACT.md).
+Historical persisted readers remain compatibility boundaries, not evidence of
+parallel V1 writes. Wide factories, resource fields, file size and long lines
+are review signals; each change needs a responsibility/consumer inventory and
+behavior evidence. The proven save collision therefore comes first, followed
+by capability/runtime work and strict boundaries, before larger Bridge or
+cosmetic restructuring.
+
 | Order | Remaining stage | Exit criterion |
 | --- | --- | --- |
-| 1 | Finish Bridge responsibility boundaries: Document search merge/pagination orchestration and scheduled maintenance/installer process boundaries; then Bank HTTP/auth/vault and session/provider orchestration | Small public APIs; native process/file and endpoint/failure tests; existing provider retry/fallback semantics preserved |
-| 2 | Complete application capability APIs and runtime ownership: Orders Finance/Checks, Kupa Dashboard/Bank queries, remaining shell and Shared/finance listeners/jobs | Explicit commands/queries and start/dispose; no broad app context, stale callback publication or duplicate jobs |
-| 3 | Extend strict contracts to real transaction/RPC/business consumers: journal/IDB callers, Finance lease callers, Morning/Calendar commands and capability ports | Implementation bodies and negative consumers fail on mismatch; unknown payload validation and historical fixtures stay covered |
+| 0 | Close proven application save scheduling defects before broader structural work; Orders Main/Checks timer collision has a bounded owner/receipt slice | Pre-change failing regression, independent obligations, quiescence, strict owner contracts and full branch CI; see ORDERS_SAVE_SCHEDULING_CONTRACT.md |
+| 1 | Complete application capability APIs and runtime ownership: Orders Finance/Checks, Kupa Dashboard/Bank queries, remaining shell and Shared/finance listeners/jobs | Explicit commands/queries and start/dispose; no broad app context, stale callback publication or duplicate jobs |
+| 2 | Extend strict contracts to real transaction/RPC/business consumers: journal/IDB callers, Finance lease callers, Morning/Calendar commands and capability ports | Implementation bodies and negative consumers fail on mismatch; unknown payload validation and historical fixtures stay covered |
+| 3 | Finish Bridge responsibility boundaries: Document search merge/pagination orchestration and scheduled maintenance/installer process boundaries; then Bank HTTP/auth/vault and session/provider orchestration | Small public APIs; native process/file and endpoint/failure tests; existing provider retry/fallback semantics preserved |
 | 4 | Canonical SQL deployment sources and compatibility inventory | Deterministic generated-current checks; immutable deployed migrations/receipts; removal only with consumer evidence and restore coverage |
 | 5 | Large view/controller responsibilities, measured performance, then CSS/RTL | Representative behavior/visual regression and measured budgets; no split based only on file length |
 | 6 | Final recovery/rollout drill and runbooks | Full CI plus controlled actual two-computer/live-provider checks where required; backup/rollback and unknown-outcome procedures exercised |
