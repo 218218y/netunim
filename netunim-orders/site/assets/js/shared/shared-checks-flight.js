@@ -4,7 +4,7 @@
 // Never await a nested flight from inside an operation (that would await itself).
 /**
  * @template T
- * @param {{state:Record<string,Promise<T>|null>,pullKey:string,saveKey:string,busyKey:string}} ports
+ * @param {{state:Record<string,Promise<T>|boolean|null>,pullKey:string,saveKey:string,busyKey:string}} ports
  */
 export function createSharedChecksFlight({state,pullKey,saveKey,busyKey}){
   /** @type {'pulling'|'saving'|null} */
@@ -13,7 +13,8 @@ export function createSharedChecksFlight({state,pullKey,saveKey,busyKey}){
   /** @param {'pulling'|'saving'} kind @param {()=>T|PromiseLike<T>} work */
   function run(kind,work){
     const key=kind==='pulling'?pullKey:saveKey,other=kind==='pulling'?saveKey:pullKey;
-    if(state[key])return state[key];
+    const reserved=state[key];
+    if(reserved&&typeof reserved!=='boolean')return reserved;
     const predecessor=state[other];
     const tracked=Promise.resolve(predecessor).catch(()=>{}).then(async()=>{
       active=kind;

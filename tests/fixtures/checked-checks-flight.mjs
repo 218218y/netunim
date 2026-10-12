@@ -1,12 +1,14 @@
 import {createSharedChecksFlight} from '../../shared/shared-checks-flight.js';
 
-/** @type {Record<string,Promise<boolean>|null>} */
-const slots={};
+/** @type {{pull:Promise<boolean>|null,save:Promise<boolean>|null,busy:boolean,[key:string]:Promise<boolean>|boolean|null}} */
+const slots={pull:null,save:null,busy:false};
 const flight=createSharedChecksFlight({state:slots,pullKey:'pull',saveKey:'save',busyKey:'busy'});
 /** @type {Promise<boolean>} */
 export const receipt=flight.save(async()=>true);
 /** @type {'pulling'|'saving'|'offline'|'conflict'|'deferred'|'idle'} */
 export const status=flight.status({online:true,localWork:false});
+/** @type {boolean} */
+export const busy=slots.busy;
 
 // @ts-expect-error A serialized operation must supply a callable command.
 flight.pull(Promise.resolve(true));
