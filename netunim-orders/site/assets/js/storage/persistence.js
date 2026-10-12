@@ -18,7 +18,7 @@ export function createStoragePersistence({
     dispose:() => { disposed = true; return saveTask.dispose(); },
   };
 
-  function canMutate() { return tab.primaryTab === true && !session.syncCapabilitiesError; }
+  function canMutate() { return !disposed && tab.primaryTab === true && !session.syncCapabilitiesError; }
   function rejectSecondaryAction() {
     if (tab.primaryTab) return false;
     showSecondaryTabGuard();

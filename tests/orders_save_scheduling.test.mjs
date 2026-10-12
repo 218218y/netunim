@@ -101,6 +101,7 @@ test('dispose prevents new edits and drains started follow-ups without aborting 
   let drained = false;
   const drain = Promise.all([f.main.runtime.drain(), f.checks.runtime.drain()]).then(() => { drained = true; });
   await settle(); assert.equal(drained, false);
+  assert.equal(f.main.canMutate(), false);
   assert.equal(f.main.scheduleSave('rejected', {operations:mainOperations}), false);
   assert.equal(f.checks.scheduleCheckSave('rejected', {operations:checkOperations}), false);
   assert.equal(f.staged.length, 2);
