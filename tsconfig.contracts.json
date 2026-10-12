@@ -20,6 +20,9 @@
     "types": []
   },
   "files": [
+    "netunim-kupa/bank-bridge/shutdown-owner.mjs",
+    "netunim-kupa/bank-bridge/replacement-command.mjs",
+    "tests/fixtures/checked-bank-shutdown.mjs",
     "netunim-kupa/bank-bridge/http-routes.mjs",
     "tests/fixtures/checked-bank-bridge-routes.mjs",
     "netunim-kupa/bank-bridge/operation-owner.mjs",

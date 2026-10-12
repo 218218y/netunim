@@ -137,16 +137,51 @@ class WindowsDeploymentContracts(unittest.TestCase):
             self.assertIn('dynamic code', result.stdout)
 
 
+@unittest.skipUnless(os.name == "nt", "Actual cmd.exe coverage runs in the required Windows CI job")
+class WindowsBankInstallerRollbackContracts(unittest.TestCase):
+    def test_startup_failure_cannot_swap_a_runtime_without_confirmed_shutdown(self):
+        source = (ROOT/'netunim-kupa/bank-bridge/install_bank_bridge.bat').read_text(encoding='utf8')
+        start = source.index('if errorlevel 1 (', source.index('start "" wscript.exe "%AUTOSTART%"'))
+        end = source.index('\nif exist "%APPROOT%\\bridge-token.txt"', start)
+        block = source[start:end].replace('start "" wscript.exe "%AUTOSTART%"', 'echo restarted>>"%CI_CALLS%"')
+        for stop_exit in (1, 0):
+            with self.subTest(stop_exit=stop_exit), tempfile.TemporaryDirectory(prefix='bank rollback spaces ') as scratch:
+                base = Path(scratch)
+                for name in ('app', 'app-rollback', 'app-failed'):
+                    (base/name).mkdir()
+                    (base/name/'marker.txt').write_text(name)
+                (base/'app/server.mjs').write_text("import fs from 'node:fs';fs.appendFileSync(process.env.CI_CALLS,'stop\\n');process.exit(Number(process.env.STOP_EXIT));")
+                script = base/'verify.bat'
+                script.write_text('@echo off\nsetlocal EnableExtensions DisableDelayedExpansion\n'
+                                  'node -e "process.exit(1)"\n'+block, newline='\r\n')
+                log = base/'calls.txt'
+                env = {**os.environ, 'APPROOT': str(base), 'APPDIR': str(base/'app'), 'APPBACKUP': str(base/'app-rollback'),
+                       'APPFAILED': str(base/'app-failed'), 'AUTOSTART': 'unused', 'CI_CALLS': str(log), 'STOP_EXIT': str(stop_exit)}
+                result = subprocess.run(['cmd.exe','/d','/c','call',str(script)], cwd=base, env=env,
+                                        input='\n'*4, capture_output=True, encoding='utf8', errors='replace', timeout=10)
+                self.assertEqual(result.returncode, 1, result.stdout+result.stderr)
+                if stop_exit:
+                    for name in ('app','app-rollback','app-failed'):
+                        self.assertEqual((base/name/'marker.txt').read_text(), name)
+                    self.assertEqual(log.read_text().splitlines(), ['stop'])
+                else:
+                    self.assertEqual((base/'app/marker.txt').read_text(), 'app-rollback')
+                    self.assertEqual((base/'app-failed/marker.txt').read_text(), 'app')
+                    self.assertEqual(log.read_text().splitlines(), ['stop','restarted'])
+
+
 @unittest.skipUnless(os.name == "nt", "CurrentUser DPAPI vault coverage runs in the required Windows CI job")
 class WindowsBankVaultContracts(unittest.TestCase):
     def test_native_configuration_vault_and_current_user_protection(self):
-        result = subprocess.run(["node", "--test", str(ROOT / "tests/bank_connection_vault.test.mjs"), str(ROOT / "tests/bank_bridge_runtime.test.mjs")],
+        result = subprocess.run(["node", "--test", str(ROOT / "tests/bank_connection_vault.test.mjs"), str(ROOT / "tests/bank_bridge_runtime.test.mjs"), str(ROOT / "tests/bank_shutdown_native.test.mjs")],
                                 cwd=ROOT, capture_output=True, timeout=45,
                                 creationflags=subprocess.CREATE_NO_WINDOW)
         output = (result.stdout + result.stderr).decode("utf8", errors="replace")
         self.assertEqual(result.returncode, 0, output)
         self.assertIn("Windows CurrentUser DPAPI round-trips", output)
         self.assertIn("staged Bank runtime starts", output)
+        self.assertIn("native shutdown retains an accepted vault deletion", output)
+        self.assertIn("actual replacement CLI refuses", output)
         self.assertNotIn("# SKIP", output)
 
 
