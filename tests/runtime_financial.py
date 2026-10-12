@@ -35,9 +35,9 @@ kexpr = r"""(()=>{
  state=mkState(10,localRet);sharedChecksBase=normalizeSharedChecks(baseDep);sharedChecksBankEvents=[];out.pendingReturn=bankCurrentBalance();
  const repairRemote=[{id:'R1',amount:75,status:'בקופה',dueDate:'2026-09-02'}];
  sharedChecksBootstrapActive=true;
- const repaired=mergeSharedChecks(repairRemote,[],repairRemote);out.bootRepairCount=repaired.checks.length;out.bootRepairApplied=repaired.repairedEmptyBootstrap;
- const laterProtected=mergeSharedChecks(repairRemote,[],repairRemote);out.postRepairProtectedCount=laterProtected.checks.length;
- const explicitDelete=mergeSharedChecks(repairRemote,[],repairRemote,{deleteIds:['R1']});out.explicitDeleteCount=explicitDelete.checks.length;
+ const repaired=checks.mergeSharedChecks(repairRemote,[],repairRemote);out.bootRepairCount=repaired.checks.length;out.bootRepairApplied=repaired.repairedEmptyBootstrap;
+ const laterProtected=checks.mergeSharedChecks(repairRemote,[],repairRemote);out.postRepairProtectedCount=laterProtected.checks.length;
+ const explicitDelete=checks.mergeSharedChecks(repairRemote,[],repairRemote,{deleteIds:['R1']});out.explicitDeleteCount=explicitDelete.checks.length;
  return out;
 })()"""
 kexpected = {
