@@ -55,6 +55,10 @@ for(const app of ['kupa','orders']){
         assert.ok(!['window','navigator','localStorage','sessionStorage','crypto','BroadcastChannel','setTimeout','setInterval','clearTimeout','clearInterval'].includes(node.name),relative+': primary ownership uses explicit browser adapter ports');
       if(app==='orders'&&['folderWritePrepared','folderWritePending','folderForceBackupPending','folderWritePromise'].includes(resourceKey))
         assert.fail(relative+': working-file coordination belongs to its private selection/runtime');
+      if(app==='orders'&&['authResumePromise','syncPromise','pollTimer'].includes(resourceKey))
+        assert.fail(relative+': Calendar flights and polling resources belong to their private owners');
+      if(app==='orders'&&relative==='assets/js/domains/calendar/controller.js'&&node.type==='Identifier'&&!(parent?.type==='MemberExpression'&&parent.property===node&&!parent.computed))
+        assert.ok(!['navigator','setTimeout','clearTimeout','setInterval','clearInterval','requestAnimationFrame','cancelAnimationFrame'].includes(node.name),relative+': Calendar connectivity and scheduled resources require effects ports');
       if(app==='orders'&&relative==='assets/js/storage/files.js'&&node.type==='Identifier')
         assert.ok(!['setTimeout','clearTimeout','setInterval','clearInterval'].includes(node.name),relative+': working-file retries must be owned by the serialized runtime');
       if(app==='orders'&&relative==='assets/js/storage/folder-write-runtime.js'&&node.type==='Identifier')

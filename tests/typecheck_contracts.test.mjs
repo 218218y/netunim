@@ -25,6 +25,22 @@ function check(overrides=new Map()){
 }
 function describe(diagnostics){return ts.formatDiagnostics(diagnostics,{getCanonicalFileName:file=>file,getCurrentDirectory:()=>root,getNewLine:()=> '\n'})}
 
+test('the actual Calendar flight cannot replace a promised receipt with status text',()=>{
+  const source=path.join(root,'netunim-orders/site/assets/js/calendar/operation-flight.js');
+  const original=readFileSync(source,'utf8'),changed=original.replace('return task.promise;', 'return "completed";');
+  assert.notEqual(changed,original);
+  const diagnostics=check(new Map([[source,changed]]));
+  assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+});
+
+test('the actual Calendar effects cannot publish text as connectivity evidence',()=>{
+  const source=path.join(root,'netunim-orders/site/assets/js/platform/calendar-browser-effects.js');
+  const original=readFileSync(source,'utf8'),changed=original.replace('active&&environment.navigator.onLine===true', '"online"');
+  assert.notEqual(changed,original);
+  const diagnostics=check(new Map([[source,changed]]));
+  assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+});
+
 test('the actual primary lock cannot publish text as writer authority',()=>{
   const source=path.join(root,'shared/tab-lock.js');
   const original=readFileSync(source,'utf8'),changed=original.replace('tab.primaryTab=value;', 'tab.primaryTab="primary";');

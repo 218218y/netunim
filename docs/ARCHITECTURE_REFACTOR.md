@@ -742,3 +742,14 @@ and Orders tab-guard collaborators are removed. See
 [primary tab lock ownership](PRIMARY_TAB_LOCK_OWNERSHIP.md), including the explicit
 limits of the non-atomic storage fallback and the unchanged read-only-until-reload
 policy.
+
+Calendar sync/reconnect flights and browser resources now have private owners.
+Before-change regressions proved new-login gestures blocked by old context
+promises, superseded day-editor callbacks and non-final pre-composition disposal.
+Async commands and accepted native queue writes can drain after final disposal;
+exact Calendar/Main/Shared records and original identities are retained. The
+three Calendar resource fields are removed from contexts and its controller uses
+connectivity/scheduling ports. See
+[Calendar runtime resource ownership](CALENDAR_RUNTIME_RESOURCE_OWNERSHIP.md) for
+scope, strict boundary evidence and the remaining presentation/OAuth/controller
+decomposition.

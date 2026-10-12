@@ -1,3 +1,4 @@
+import {createCalendarBrowserEffects} from '../netunim-orders/site/assets/js/platform/calendar-browser-effects.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createDomainsCalendarController} from '../netunim-orders/site/assets/js/domains/calendar/controller.js';
@@ -11,7 +12,7 @@ test('a started Calendar owner observes committed peer work without starting Goo
   const queue=[],calendarSession={syncing:false,accountId:'A',accountVerified:false,lastSyncAt:null},calendarUi={focusDate:'2026-10-11',viewMode:'month',pending:[],events:[],calendars:[]};
   const snapshot={owner:'fixture',accountId:'A',calendars:[{id:'A',primary:true,accessRole:'owner'}],events:[],rangeStart:'2026-01-01',rangeEnd:'2027-01-01'};
   const receipt=()=>({operations:structuredClone(queue),isCurrent:()=>true,isSettled:()=>true});
-  const controller=createDomainsCalendarController({ui:{currentView:'dashboard'},tab:{primaryTab:true},calendarSession,calendarUi,toast(){},subscribeAccountScope:()=>()=>{},
+  const controller=createDomainsCalendarController({effects:createCalendarBrowserEffects(),ui:{currentView:'dashboard'},tab:{primaryTab:true},calendarSession,calendarUi,toast(){},subscribeAccountScope:()=>()=>{},
     subscribeCalendarCommits:fn=>{listener=fn;subscriptions++;return ()=>{listener=null;subscriptions--}},
     calendarAuth:{configured:()=>false,hasUsableToken:()=>true,captureOperation:()=>({owner:'fixture',assertCurrent(){}})},
     calendarApi:{listCalendars:async()=>snapshot.calendars,fetchEvents:async()=>[]},calendarJournal:{flushPending:async()=>{delivered++}},

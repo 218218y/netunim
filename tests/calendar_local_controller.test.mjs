@@ -1,3 +1,4 @@
+import {createCalendarBrowserEffects} from '../netunim-orders/site/assets/js/platform/calendar-browser-effects.js';
 import assert from 'node:assert/strict';
 import {createDomainsCalendarController} from '../netunim-orders/site/assets/js/domains/calendar/controller.js';
 
@@ -10,7 +11,7 @@ const ui={currentView:'calendar'};
 const calendarUi={viewMode:'month',focusDate:'2026-08-28',calendars:[],events:[],displayEvents:[],pending:[],eventMap:new Map(),cacheFetchedAt:null};
 const calendarSession={
   accessToken:'',tokenExpiresAt:0,connected:false,accountVerified:false,accountId:'',expectedAccountId:'',
-  autoConnect:false,authResumePromise:null,syncPromise:null,syncing:false,lastError:'',lastSyncAt:null,pollTimer:null,
+  autoConnect:false,authResumePromise:null,syncing:false,lastError:'',lastSyncAt:null,pollTimer:null,
 };
 let preference={known:true,autoConnect:false,accountId:''};
 const meta=new Map();
@@ -57,7 +58,7 @@ const calendarApi={
 };
 const calendarJournal={flushPending:async()=>{}};
 let cloudLoginCount=0;
-const controller=createDomainsCalendarController({subscribeAccountScope:()=>()=>{},
+const controller=createDomainsCalendarController({effects:createCalendarBrowserEffects(),subscribeAccountScope:()=>()=>{},
   ui,calendarUi,calendarSession,calendarStorage,calendarAuth,calendarApi,calendarJournal,
   mountViewLayout:()=>{},modal:()=>{},closeModal:()=>{},toast:()=>{},requestCloudLogin:()=>{cloudLoginCount++},
 });
