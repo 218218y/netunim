@@ -63,11 +63,11 @@ FLOW = r"""(async()=>{
  check(stable(kupa?state.bank:checksSession.kupaCloudReadState)===before,'unconfirmed result replaced Last Known Good: '+JSON.stringify({site,before,after:kupa?state.bank:checksSession.kupaCloudReadState,commits,scrapes}));
  check(JSON.stringify(await db.load(identity))===durableBefore,'unknown confirmation changed durable Main records');
  check(JSON.stringify(await db.load(owner+':shared-checks'))===sharedBefore,'unknown confirmation changed Shared Checks');
- const diagnostic=kupa?controller.bankBridgeUiState():controller.snapshot();
+ const diagnostic=kupa?controller.bankBridgeUiState():finance.queries.snapshot();
  check((kupa?diagnostic.lastError:diagnostic.bankError).includes('אישור'),'unknown confirmation not visible to operator');
  // Recovery is an authorized read of the committed effect, never another scan.
  if(kupa){await syncDocument.cloudPoll();await controller.ensureBankDisplayArchive()}else await controller.refreshFinanceData();
- const bank=kupa?controller.bankBridgeUiState():controller.snapshot().bank;
+ const bank=kupa?controller.bankBridgeUiState():finance.queries.snapshot().bank;
  check((kupa?state.bank.currentBalance:bank.currentBalance)===500,'confirmed read did not recover the server Bank effect');
  check(JSON.stringify(bank.feed.transactions.map(row=>row.id))==='["stable-bank-transaction"]','Bank transaction identity lost/duplicated');
  check(commits===1&&scrapes===1,'recovery repeated a remote write/provider effect');
