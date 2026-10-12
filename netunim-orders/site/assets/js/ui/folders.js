@@ -1,14 +1,58 @@
-
-
-// Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createUiFolders({files, tab, ui, showSecondaryTabGuard, toast, syncFolderAccessButton, requestPersistentBrowserStorage, refreshDirPermission, isFolderPermissionError, preserveExistingFolderState, writeStateToFolder, renderSettings, saveDirHandle}){
-async function handleTopFolderAccess(){if(!tab.primaryTab)return showSecondaryTabGuard();return files.dirHandle?activateSavedFolder():chooseFolder()}
-
-async function activateSavedFolder(){if(!files.dirHandle)return chooseFolder();if(!tab.primaryTab)return showSecondaryTabGuard();try{await requestPersistentBrowserStorage();if(!(await refreshDirPermission(true)))throw new Error('אין הרשאת כתיבה');await preserveExistingFolderState();const ok=await writeStateToFolder(true);if(!ok)throw new Error('שמירת התיקייה לא הושלמה');files.folderLastError='';syncFolderAccessButton();toast('הגישה לתיקייה אושרה והנתונים נשמרו');if(ui.currentView==='settings')renderSettings()}catch(e){console.error(e);if(!isFolderPermissionError(e))files.folderLastError=e.message||String(e);syncFolderAccessButton();toast('לא ניתן לאשר גישה לתיקייה')}}
-
-async function chooseFolder(){if(!tab.primaryTab)return showSecondaryTabGuard();if(!window.showDirectoryPicker){toast('הדפדפן אינו תומך בשמירה ישירה לתיקייה; אפשר להשתמש בייצוא JSON.');return}try{const h=await showDirectoryPicker({mode:'readwrite'});files.dirHandle=h;files.folderWritePrepared=false;files.folderLastError='';await saveDirHandle(h);await requestPersistentBrowserStorage();if(!(await refreshDirPermission(true)))throw new Error('permission denied');await preserveExistingFolderState();const ok=await writeStateToFolder(true);if(!ok)throw new Error('שמירת התיקייה לא הושלמה');syncFolderAccessButton();toast('התיקייה חוברה והנתונים נשמרו');if(ui.currentView==='settings')renderSettings()}catch(e){if(e.name!=='AbortError'){console.error(e);if(!isFolderPermissionError(e))files.folderLastError=e.message||String(e);syncFolderAccessButton();toast('לא ניתן לחבר את התיקייה')}}}
-
-async function backupToFolder(){if(!tab.primaryTab)return showSecondaryTabGuard();if(!files.dirHandle)return chooseFolder();try{if(!(await refreshDirPermission(true)))throw new Error('אין הרשאת כתיבה');await requestPersistentBrowserStorage();const ok=await writeStateToFolder(true);if(!ok)throw new Error('גיבוי התיקייה לא הושלם');toast('נוצר גיבוי בתיקיית backups')}catch(e){console.error(e);if(!isFolderPermissionError(e))files.folderLastError=e.message||String(e);syncFolderAccessButton();toast('גיבוי לתיקייה נכשל')}}
-
-return { handleTopFolderAccess, activateSavedFolder, chooseFolder, backupToFolder };
+// Commands retain the selected directory across browser/storage awaits. A late
+// completion cannot publish status or start a write for another selection.
+export function createUiFolders({selection,authority,persistence,picker,view}){
+  let pickerGeneration=0;
+  function publishFailure(error,message,current){
+    if(!current()||error.name==='AbortError')return;
+    view.failure(error,message);
+  }
+  async function connect(current){
+    await persistence.requestPersistence();if(!current())return false;
+    const granted=await persistence.refreshPermission(true);if(!current())return false;
+    if(!granted)throw new Error('אין הרשאת כתיבה');
+    const preserved=await persistence.preserve();if(!current())return false;
+    if(!preserved)throw new Error('שמירת התיקייה לא הושלמה');
+    const saved=await persistence.write(true);if(!current())return false;
+    if(!saved)throw new Error('שמירת התיקייה לא הושלמה');
+    return true;
+  }
+  async function handleTopFolderAccess(){
+    if(!authority.isPrimary())return authority.rejectSecondary();
+    return selection.available()?activateSavedFolder():chooseFolder();
+  }
+  async function activateSavedFolder(){
+    if(!authority.isPrimary())return authority.rejectSecondary();
+    if(!selection.available())return chooseFolder();
+    const current=selection.capture();
+    try{if(await connect(current))view.success('הגישה לתיקייה אושרה והנתונים נשמרו')}
+    catch(error){publishFailure(error,'לא ניתן לאשר גישה לתיקייה',current)}
+  }
+  async function chooseFolder(){
+    if(!authority.isPrimary())return authority.rejectSecondary();
+    if(!picker.isAvailable()){view.toast('הדפדפן אינו תומך בשמירה ישירה לתיקייה; אפשר להשתמש בייצוא JSON.');return}
+    const generation=++pickerGeneration;
+    let current=()=>authority.isPrimary()&&generation===pickerGeneration;
+    try{
+      const handle=await picker.pick();if(!current())return;
+      if(!selection.select(handle))return;
+      const selected=selection.capture();current=()=>generation===pickerGeneration&&selected();
+      if(!current())return;
+      await persistence.saveDirectory(handle);if(!current())return;
+      if(await connect(current))view.success('התיקייה חוברה והנתונים נשמרו');
+    }catch(error){publishFailure(error,'לא ניתן לחבר את התיקייה',current)}
+  }
+  async function backupToFolder(){
+    if(!authority.isPrimary())return authority.rejectSecondary();
+    if(!selection.available())return chooseFolder();
+    const current=selection.capture();
+    try{
+      const granted=await persistence.refreshPermission(true);if(!current())return;
+      if(!granted)throw new Error('אין הרשאת כתיבה');
+      await persistence.requestPersistence();if(!current())return;
+      const saved=await persistence.write(true);if(!current())return;
+      if(!saved)throw new Error('גיבוי התיקייה לא הושלם');
+      view.toast('נוצר גיבוי בתיקיית backups');
+    }catch(error){publishFailure(error,'גיבוי לתיקייה נכשל',current)}
+  }
+  return {handleTopFolderAccess,activateSavedFolder,chooseFolder,backupToFolder};
 }

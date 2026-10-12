@@ -49,6 +49,18 @@ for(const app of ['kupa','orders']){
       const resourceKey=node.type==='MemberExpression'?node.property?.name:relative==='assets/js/state/contexts.js'&&node.type==='Property'?node.key?.name:null;
       if(['cloudSavePromise','storageV2CloudSavePromise','cloudPollTimer','cloudRecoveryTimer','cloudRecoveryAttempt','saveQueue','autoBackupTimer','pendingAutoBackupPayload','startupLocalServicesPromise'].includes(resourceKey))
         assert.fail(relative+': Main cloud/save resources belong to their explicit owners');
+      if(app==='orders'&&['folderWritePrepared','folderWritePending','folderForceBackupPending','folderWritePromise'].includes(resourceKey))
+        assert.fail(relative+': working-file coordination belongs to its private selection/runtime');
+      if(app==='orders'&&relative==='assets/js/storage/files.js'&&node.type==='Identifier')
+        assert.ok(!['setTimeout','clearTimeout','setInterval','clearInterval'].includes(node.name),relative+': working-file retries must be owned by the serialized runtime');
+      if(app==='orders'&&relative==='assets/js/storage/folder-write-runtime.js'&&node.type==='Identifier')
+        assert.ok(!['window','document','navigator','fetch','localStorage','indexedDB','setTimeout','setInterval'].includes(node.name),relative+': working-file owner requires explicit I/O ports');
+      if(app==='orders'&&node.type==='FunctionDeclaration'&&['createFolderWriteRuntime','createUiFolders','createOrdersFolderCapability','createStorageFiles'].includes(node.id?.name)){
+        const limit={createFolderWriteRuntime:5,createUiFolders:5,createOrdersFolderCapability:7,createStorageFiles:8}[node.id.name];
+        assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=limit,relative+': folder capability/owner exceeds its focused collaborator budget');
+      }
+      if(app==='orders'&&relative==='assets/js/ui/folders.js'&&node.type==='Identifier')
+        assert.ok(!['window','document','navigator','showDirectoryPicker','localStorage','indexedDB','setTimeout','setInterval'].includes(node.name),relative+': folder commands require native picker and persistence ports');
       if(node.type==='FunctionDeclaration'&&node.id?.name==='createAutomaticBackupRuntime')
         assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=5,relative+': automatic backup owner requires focused ports');
       if(relative==='assets/js/storage/backup.js'&&node.type==='FunctionDeclaration'&&node.id?.name==='createStorageBackup'){

@@ -34,7 +34,7 @@ import {createStateSelectors} from './state/selectors.js';
 import {createStorageFiles} from './storage/files.js';
 import {createStorageBackup} from './storage/backup.js';
 import {createStorageIndexedDb} from './storage/indexed-db.js';
-import {createUiFolders} from './ui/folders.js';
+import {createOrdersFolderCapability} from './composition/folders.js';
 import {createCloudAuth} from './cloud/auth.js';
 import {createCloudTransport} from './cloud/transport.js';
 import {createSyncMerge} from './sync/merge.js';
@@ -270,6 +270,7 @@ const stateSelectors=createStateSelectors({
 const storageFiles=createStorageFiles({
   files,
   tab,
+  canWrite:()=>tab.primaryTab&&storageOwner.writable&&!storagePreparationActive()&&!session.storageProtocolBlocked&&storageRecovery.isReady(),
   syncFolderAccessButton:(...args)=>uiFolderStatus.syncFolderAccessButton(...args),
   prepareState:(...args)=>stateSelectors.prepareState(...args),
   writeVerifiedFolderBackup:(...args)=>storageBackup.writeVerifiedFolderBackup(...args),
@@ -285,20 +286,10 @@ const storageIndexedDb=createStorageIndexedDb({
 
 });
 
-const uiFolders=createUiFolders({
-  files,
-  tab,
-  ui,
-  showSecondaryTabGuard:(...args)=>uiTabGuard.showSecondaryTabGuard(...args),
-  toast:(...args)=>uiStatus.toast(...args),
-  syncFolderAccessButton:(...args)=>uiFolderStatus.syncFolderAccessButton(...args),
-  requestPersistentBrowserStorage:(...args)=>storageIndexedDb.requestPersistentBrowserStorage(...args),
-  refreshDirPermission:(...args)=>storageFiles.refreshDirPermission(...args),
-  isFolderPermissionError:(...args)=>storageFiles.isFolderPermissionError(...args),
-  preserveExistingFolderState:(...args)=>storageFiles.preserveExistingFolderState(...args),
-  writeStateToFolder:(...args)=>storageFiles.writeStateToFolder(...args),
-  renderSettings:(...args)=>uiSettings.renderSettings(...args),
-  saveDirHandle:(...args)=>storageIndexedDb.saveDirHandle(...args),
+const uiFolders=createOrdersFolderCapability({
+  files,tab,ui,storage:storageFiles,preferences:storageIndexedDb,
+  presentation:{rejectSecondary:()=>uiTabGuard.showSecondaryTabGuard(),toast:message=>uiStatus.toast(message),
+    syncStatus:()=>uiFolderStatus.syncFolderAccessButton(),renderSettings:()=>uiSettings.renderSettings()},
 });
 
 const cloudTransport=createCloudTransport({
@@ -376,7 +367,7 @@ const syncDocument=createSyncDocument({
 
 storageV2Coordinator.configure({
   storageBrowser,syncDocument,model,session,checksSession,files,
-  saveRuntime:{main:storagePersistence.runtime,checks:checks.runtime,backup:storageBackup.runtime},
+  saveRuntime:{main:storagePersistence.runtime,checks:checks.runtime,folder:storageFiles.runtime,backup:storageBackup.runtime},
   stateSnapshots,stateNormalization,prepareV2Checkpoint,validateMainState:state=>assertOrderEntityInvariants(state,{includeChecks:Object.hasOwn(state||{},'checks'),required:true}),domainRevisions,sharedChecksV2Composition,sharedChecksV2,
   cloudTransport,cloudAuth,mainStorageV2,verifyStorageV2AccountMarker:()=>verifyStorageV2AccountMarker(),
 });

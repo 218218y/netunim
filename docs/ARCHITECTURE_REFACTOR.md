@@ -722,3 +722,12 @@ wrong-directory verification cleanup are fixed; V2 source quiescence drains
 accepted backup commands. The redundant Kupa startup service promise alias is
 removed. See [automatic backup ownership](AUTOMATIC_BACKUP_OWNERSHIP.md) for
 contracts, native file/journal evidence and the remaining folder/UI scope.
+
+Orders working-file writes and explicit restore snapshots now share one private
+queue with captured selections, detached inputs and FIFO safety barriers. Proven
+late permission publication, cross-directory forced backups and parallel restore
+streams are fixed. Folder UI uses focused selection/authority/persistence/picker/
+presentation ports; V2 source quiescence drains file and permission work before
+automatic backups. Context preparation/queue/promise fields are removed. See
+[Orders folder write ownership](ORDERS_FOLDER_WRITE_OWNERSHIP.md) for behavioral,
+native file/journal and strict boundary evidence.

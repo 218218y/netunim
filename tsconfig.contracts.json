@@ -115,6 +115,8 @@
     "netunim-kupa/site/assets/js/ui/credit-connection-input.js",
     "tests/fixtures/checked-credit-connection-input.mjs",
     "shared/automatic-backup-runtime.js",
-    "tests/fixtures/checked-automatic-backup-runtime.mjs"
+    "tests/fixtures/checked-automatic-backup-runtime.mjs",
+    "netunim-orders/site/assets/js/storage/folder-write-runtime.js",
+    "tests/fixtures/checked-folder-write-runtime.mjs"
   ]
 }

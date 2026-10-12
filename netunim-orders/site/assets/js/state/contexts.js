@@ -123,11 +123,7 @@ return {
   files:{
     dirHandle:null,
     dirPermission:'unknown',
-    folderLastError:'',
-    folderWritePrepared:false,
-    folderWritePending:false,
-    folderForceBackupPending:false,
-    folderWritePromise:null
+    folderLastError:''
   },
   tab:{
     primaryTab:true,

@@ -1,26 +1,119 @@
 import {stamp} from '../core/dates.js';
 import {comparableBackupData} from '../state/serialization.js';
 import {DATA_FILE} from '../state/constants.js';
+import {createRuntimeTaskOwner} from '../shared/runtime-task-owner.js';
+import {createFolderWriteRuntime} from './folder-write-runtime.js';
 
-// Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createStorageFiles({files, tab, syncFolderAccessButton, prepareState, writeVerifiedFolderBackup, maybeCreateAutomaticFolderBackup}){
-async function writeTextHandle(handle,text){const w=await handle.createWritable();await w.write(text);await w.close()}
-
-async function refreshDirPermission(interactive=false){if(!files.dirHandle){files.dirPermission='missing';files.folderLastError='';syncFolderAccessButton();return false}try{let p=await files.dirHandle.queryPermission({mode:'readwrite'});if(p!=='granted'&&interactive)p=await files.dirHandle.requestPermission({mode:'readwrite'});files.dirPermission=p||'prompt';if(files.dirPermission==='granted')files.folderLastError='';syncFolderAccessButton();return p==='granted'}catch(e){console.error('folder permission',e);files.dirPermission='prompt';files.folderLastError='';syncFolderAccessButton();return false}}
-
-function isFolderPermissionError(e){return ['NotAllowedError','SecurityError'].includes(e?.name)||/הרשא|permission|not allowed/i.test(String(e?.message||''))}
-
-async function localDataDirectory(create=false){if(!files.dirHandle)return null;return await files.dirHandle.getDirectoryHandle('data',{create})}
-
-async function readJsonHandle(handle){try{return JSON.parse(await (await handle.getFile()).text())}catch(e){return null}}
-
-async function findExistingFolderState(){if(!files.dirHandle)return null;try{const d=await localDataDirectory(false),h=await d.getFileHandle(DATA_FILE),payload=await readJsonHandle(h);return payload?{source:'data/'+DATA_FILE,payload}:null}catch(e){if(isFolderPermissionError(e))throw e;return null}}
-
-async function preserveExistingFolderState(){if(files.folderWritePrepared||!files.dirHandle)return;const existing=await findExistingFolderState();if(existing){const incoming=prepareState(),a=comparableBackupData(existing.payload),b=comparableBackupData(incoming);if(a!==b){const bdir=await files.dirHandle.getDirectoryHandle('backups',{create:true});await writeVerifiedFolderBackup(bdir,`orders-backup-before-connect_${stamp()}.json`,existing.payload)}}files.folderWritePrepared=true}
-
-async function writeStateSnapshotToFolder(payload,forceBackup=false){if(!files.dirHandle)return false;if(!(await refreshDirPermission(false))){syncFolderAccessButton();return false}try{await preserveExistingFolderState();const data=JSON.stringify(payload,null,2),ddir=await localDataDirectory(true),fh=await ddir.getFileHandle(DATA_FILE,{create:true});await writeTextHandle(fh,data);const saved=await readJsonHandle(fh);if(!saved||comparableBackupData(saved)!==comparableBackupData(payload))throw new Error('אימות קובץ העבודה המקומי נכשל');const bdir=await files.dirHandle.getDirectoryHandle('backups',{create:true});if(forceBackup)await writeVerifiedFolderBackup(bdir,`orders-backup_${stamp()}.json`,payload);else await maybeCreateAutomaticFolderBackup(payload);files.folderLastError='';syncFolderAccessButton();return true}catch(e){if(isFolderPermissionError(e)){files.dirPermission='prompt';files.folderLastError='';syncFolderAccessButton();return false}files.folderLastError=e.message||String(e);syncFolderAccessButton();console.error('folder write',e);return false}}
-
-async function writeStateToFolder(forceBackup=false){if(!files.dirHandle||!tab.primaryTab)return false;if(files.dirPermission!=='granted'){syncFolderAccessButton();return false}files.folderWritePending=true;files.folderForceBackupPending=files.folderForceBackupPending||forceBackup;if(files.folderWritePromise)return files.folderWritePromise;let lastResult=true;files.folderWritePromise=(async()=>{while(files.folderWritePending){files.folderWritePending=false;const force=files.folderForceBackupPending;files.folderForceBackupPending=false;const payload=prepareState();lastResult=await writeStateSnapshotToFolder(payload,force);if(!lastResult)break}return lastResult})();try{return await files.folderWritePromise}finally{files.folderWritePromise=null;if(files.folderWritePending&&files.dirPermission==='granted')setTimeout(()=>writeStateToFolder(),0)}}
-
-return { writeTextHandle, refreshDirPermission, isFolderPermissionError, localDataDirectory, readJsonHandle, findExistingFolderState, preserveExistingFolderState, writeStateSnapshotToFolder, writeStateToFolder };
+// Native I/O stays at this boundary. The private selection owns preparation;
+// every command captures that selection and its detached input at submission.
+export function createStorageFiles({files,tab,syncFolderAccessButton,prepareState,writeVerifiedFolderBackup,maybeCreateAutomaticFolderBackup,canWrite=()=>tab.primaryTab}){
+  const permissions=createRuntimeTaskOwner();
+  let selection=null,active=true,generation=0;
+  function readTarget(){
+    if(selection?.handle!==files.dirHandle)selection=files.dirHandle?{handle:files.dirHandle,prepared:false}:null;
+    return selection;
+  }
+  const isCurrent=target=>active&&readTarget()===target;
+  function selectDirectory(handle){
+    if(!active)return false;
+    cancelPending();files.dirHandle=handle;
+    selection=handle?{handle,prepared:false}:null;
+    files.dirPermission=handle?'unknown':'missing';files.folderLastError='';
+    syncFolderAccessButton();return true;
+  }
+  // UI callers retain this identity across awaits, including reselection of the
+  // same native handle. It exposes no timer, queue or preparation state.
+  const captureSelection=()=>{const target=readTarget(),captured=generation;return ()=>!!target&&captured===generation&&isCurrent(target)&&canWrite()};
+  async function writeTextHandle(handle,text){
+    const stream=await handle.createWritable();await stream.write(text);await stream.close();
+  }
+  async function permissionAt(target,interactive){
+    const captured=generation,current=()=>captured===generation&&isCurrent(target);
+    if(!target){
+      if(current()){files.dirPermission='missing';files.folderLastError='';syncFolderAccessButton()}
+      return false;
+    }
+    try{
+      let permission=await target.handle.queryPermission({mode:'readwrite'});
+      if(!current())return false;
+      if(permission!=='granted'&&interactive){
+        if(!canWrite())return false;
+        permission=await target.handle.requestPermission({mode:'readwrite'});
+      }
+      if(!current())return false;
+      files.dirPermission=permission||'prompt';
+      if(permission==='granted')files.folderLastError='';
+      syncFolderAccessButton();return permission==='granted';
+    }catch(error){
+      if(current()){files.dirPermission='prompt';files.folderLastError='';syncFolderAccessButton();console.error('folder permission',error)}
+      return false;
+    }
+  }
+  function refreshDirPermission(interactive=false){
+    if(!active)return Promise.resolve(false);
+    const target=readTarget();return permissions.run(()=>permissionAt(target,interactive));
+  }
+  function isFolderPermissionError(error){
+    return ['NotAllowedError','SecurityError'].includes(error?.name)||/הרשא|permission|not allowed/i.test(String(error?.message||''));
+  }
+  async function readJsonHandle(handle){
+    try{return JSON.parse(await (await handle.getFile()).text())}catch{return null}
+  }
+  async function findExistingFolderState(target){
+    try{
+      const dir=await target.handle.getDirectoryHandle('data'),handle=await dir.getFileHandle(DATA_FILE);
+      const payload=await readJsonHandle(handle);return payload?{source:'data/'+DATA_FILE,payload}:null;
+    }catch(error){if(isFolderPermissionError(error))throw error;return null}
+  }
+  async function preserveAt(target,incoming,scope){
+    if(target.prepared)return scope.begin();
+    const existing=await findExistingFolderState(target);
+    if(!scope.begin())return false;
+    if(existing&&comparableBackupData(existing.payload)!==comparableBackupData(incoming)){
+      const dir=await target.handle.getDirectoryHandle('backups',{create:true});
+      await writeVerifiedFolderBackup(dir,`orders-backup-before-connect_${stamp()}.json`,existing.payload);
+    }
+    target.prepared=true;return true;
+  }
+  async function writeAt(target,payload,command,scope){
+    if(!(await permissionAt(target,false))||!scope.isCurrent())return false;
+    try{
+      if(!(await preserveAt(target,payload,scope)))return false;
+      if(command.kind==='preserve')return true;
+      const dir=await target.handle.getDirectoryHandle('data',{create:true});
+      const handle=await dir.getFileHandle(DATA_FILE,{create:true});
+      await writeTextHandle(handle,JSON.stringify(payload,null,2));
+      const saved=await readJsonHandle(handle);
+      if(!saved||comparableBackupData(saved)!==comparableBackupData(payload))throw new Error('אימות קובץ העבודה המקומי נכשל');
+      if(command.forceBackup){
+        const backups=await target.handle.getDirectoryHandle('backups',{create:true});
+        await writeVerifiedFolderBackup(backups,`orders-backup_${stamp()}.json`,payload);
+      }else if(scope.isCurrent())await maybeCreateAutomaticFolderBackup(payload);
+      if(scope.isCurrent()){files.folderLastError='';syncFolderAccessButton()}
+      return true;
+    }catch(error){
+      if(scope.isCurrent()){
+        if(isFolderPermissionError(error)){files.dirPermission='prompt';files.folderLastError=''}
+        else{files.folderLastError=error.message||String(error);console.error('folder write',error)}
+        syncFolderAccessButton();
+      }
+      return false;
+    }
+  }
+  const writer=createFolderWriteRuntime({readTarget,clonePayload:payload=>structuredClone(payload),canStart:()=>active&&canWrite(),write:writeAt,onError:error=>console.error('folder writer',error)});
+  const preserveExistingFolderState=()=>writer.preserve(prepareState());
+  const writeStateSnapshotToFolder=(payload,forceBackup=false)=>writer.snapshot(payload,forceBackup);
+  function writeStateToFolder(forceBackup=false){
+    if(!active||!canWrite()||!files.dirHandle)return Promise.resolve(false);
+    if(files.dirPermission!=='granted'){syncFolderAccessButton();return Promise.resolve(false)}
+    return writer.mirror(prepareState(),forceBackup);
+  }
+  function cancelPending(){generation++;writer.cancelPending()}
+  const runtime={
+    cancelPending,
+    drain:async()=>{await Promise.all([writer.drain(),permissions.drain()])},
+    dispose:()=>{if(!active)return false;active=false;writer.dispose();permissions.close();return true},
+    isPending:()=>writer.isPending()||permissions.isPending(),
+  };
+  return {writeTextHandle,refreshDirPermission,isFolderPermissionError,preserveExistingFolderState,writeStateSnapshotToFolder,writeStateToFolder,selectDirectory,captureSelection,runtime};
 }
