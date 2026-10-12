@@ -386,3 +386,13 @@ assigning formatted text to `running` fails the implementation gate. Native
 Node/process adapters and full index writing remain separately behavior-tested;
 this slice does not statically check the entire server or scheduled task runner.
 See DOCUMENT_MAINTENANCE_PROCESS_OWNERSHIP.md.
+
+## Document PDF index writer
+
+The actual `pdf-index-writer.mjs` body and its reader staging implementation are
+checked strictly: generic entries retain string identity, file/lock work settles
+asynchronously, publication is synchronous, and metadata stays numeric. Negative
+consumers reject asynchronous publication and malformed ports; a mutation that
+publishes a string timestamp fails in the actual body. The native file adapter
+and full server are independently behavior-tested/linted, not declared as fully
+typed. See DOCUMENT_PDF_INDEX_WRITE_CONTRACT.md.

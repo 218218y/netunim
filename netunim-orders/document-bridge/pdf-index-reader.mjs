@@ -44,6 +44,24 @@ export function createPdfIndexReader({files, normalizeEntry}) {
     if (!normalized || normalized.fullPath !== raw.fullPath) throw invalid(kind, lineNumber);
     return normalized;
   }
+  /** @param {Map<string, Entry>} entries @param {unknown} record @param {number} [lineNumber] */
+  function applyRecord(entries, record, lineNumber) {
+    if (!object(record)) throw invalid('JOURNAL', lineNumber);
+    if (record.op === 'upsert') {
+      const normalized = entry(record.entry, 'JOURNAL', lineNumber); entries.set(normalized.fullPath.toLocaleLowerCase('en-US'), normalized);
+    } else if (record.op === 'remove' && typeof record.fullPath === 'string' && record.fullPath) {
+      entries.delete(record.fullPath.toLocaleLowerCase('en-US'));
+    } else throw invalid('JOURNAL', lineNumber);
+  }
+  /** Validate the exact serialized operations before writing, using the same
+   * decoder as recovery. The source candidate remains untouched.
+   * @param {PdfIndexCandidate<Entry>} candidate @param {readonly unknown[]} records
+   * @returns {PdfIndexCandidate<Entry>} */
+  function stage(candidate, records) {
+    const entries = new Map(candidate.entries);
+    for (const record of records) applyRecord(entries, record);
+    return {...candidate, entries};
+  }
   /** Caller holds the existing index lock across read and synchronous publication.
    * All JSON is decoded into a candidate; no active model or file is modified here.
    * @returns {Promise<PdfIndexCandidate<Entry>>} */
@@ -68,16 +86,11 @@ export function createPdfIndexReader({files, normalizeEntry}) {
     for (let index = 0; index < lines.length; index++) {
       const line = lines[index]; if (!line?.trim()) continue;
       const record = parse(line, 'JOURNAL', index + 1);
-      if (!object(record)) throw invalid('JOURNAL', index + 1);
-      if (record.op === 'upsert') {
-        const normalized = entry(record.entry, 'JOURNAL', index + 1); entries.set(normalized.fullPath.toLocaleLowerCase('en-US'), normalized);
-      } else if (record.op === 'remove' && typeof record.fullPath === 'string' && record.fullPath) {
-        entries.delete(record.fullPath.toLocaleLowerCase('en-US'));
-      } else throw invalid('JOURNAL', index + 1);
+      applyRecord(entries, record, index + 1);
     }
     const signature = await files.signature();
     if (before !== signature) throw Object.assign(new Error('PDF index files changed during read; retry under the index lock'), {code: 'PDF_INDEX_READ_CHANGED'});
     return {entries, pending, pdfCount, updatedAt, signature};
   }
-  return {read};
+  return {read, stage};
 }
