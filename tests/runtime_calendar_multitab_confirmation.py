@@ -18,20 +18,43 @@ SETUP = r"""(async()=>{
  const deferred=()=>{let resolve;const promise=new Promise(done=>{resolve=done});return {promise,resolve}};
  const raw=async()=>JSON.stringify({main:await db.load('local:orders'),checks:await db.load('local:shared-checks')});
  const audit=globalThis.calendarCrossTabAudit={held:deferred(),entered:deferred(),delivery:deferred(),deliveryEntered:deferred(),before:await raw(),raw,remote:new Map(),effects:0,descriptor,phase,armAbort:false};
+ const {publicBindings}=await import('./test-probe-runtime.js');
+ // Retain this instance's test-only descriptor even when later fixture storage
+ // instances are exposed. Pause the actual delivery receipt port, after its
+ // native read, rather than an arbitrary queue-only transaction completion.
+ audit.receiptPort=Object.getOwnPropertyDescriptor(publicBindings,'readPendingSnapshot');
+ audit.originalReadPendingSnapshot=audit.receiptPort.get();
+ audit.receiptPort.set(async(...args)=>{
+   const receipt=await audit.originalReadPendingSnapshot(...args);
+   if(['receipt','receipt-abort'].includes(phase)&&!audit.receiptHeld){
+     audit.receiptHeld=true;audit.entered.resolve();await audit.held.promise;
+     // Arm in the receipt continuation: its next native queue-only read is the
+     // delivery confirmation. Earlier/background display reads cannot steal it.
+     audit.armAbort=phase==='receipt-abort';
+   }
+   return receipt;
+ });
  audit.originalGetAll=IDBObjectStore.prototype.getAll;
  IDBObjectStore.prototype.getAll=function(...args){
    const request=audit.originalGetAll.apply(this,args);
-   if(audit.armAbort&&this.name==='pending-operations'){audit.armAbort=false;const tx=this.transaction;queueMicrotask(()=>tx.abort())}
+   if(audit.armAbort&&this.name==='pending-operations'&&this.transaction.objectStoreNames.length===1){audit.armAbort=false;const tx=this.transaction;queueMicrotask(()=>tx.abort())}
    return request;
  };
- let cacheCommitted=false,armed=true;
- // This is the delivery owner's post-cache queue read, not the independent
- // observer's cache+queue+account read. The injection must survive new readers.
+ let armed=true;
+ // Cache completion still uses a native transaction gate. Queue readers have
+ // multiple owners, so the receipt gate above selects its explicit API.
  Object.defineProperty(IDBTransaction.prototype,'oncomplete',{...descriptor,set(handler){
-   const tx=this,queue=tx.objectStoreNames.contains('pending-operations'),cache=tx.objectStoreNames.contains('range-cache');
-   const hold=armed&&((['receipt','receipt-abort'].includes(phase)&&cacheCommitted&&queue&&tx.objectStoreNames.length===1&&tx.mode==='readonly')||(phase==='cache'&&cache&&tx.mode==='readwrite'));
+   const tx=this,cache=tx.objectStoreNames.contains('range-cache');
+   const hold=armed&&phase==='cache'&&cache&&tx.mode==='readwrite';
    if(hold)armed=false;
-   descriptor.set.call(tx,function(event){if(cache&&tx.mode==='readwrite')cacheCommitted=true;if(hold){audit.entered.resolve();void audit.held.promise.then(()=>handler.call(tx,event))}else handler.call(tx,event)});
+   descriptor.set.call(tx,function(event){
+     if(cache&&tx.mode==='readwrite'){
+       // A legitimate background confirmer may overtake the delivery receipt
+       // reader. Force that ordering rather than relying on IDB task timing.
+       if(['receipt','receipt-abort'].includes(phase)&&!audit.background){audit.background=confirmPendingSnapshot(()=>true)}
+     }
+     if(hold){audit.entered.resolve();void audit.held.promise.then(()=>handler.call(tx,event))}else handler.call(tx,event)
+   });
  }});
  cloudAuth.saveSession({user:{id:'calendar-owner-fixture'},access_token:'fixture',expires_at:9999999999});
  cloudAuth.supaFetch=async(_path,options)=>{options.assertRequestScope();if(JSON.parse(options.body).action!=='token')throw Error('unexpected OAuth');return new Response(JSON.stringify({access_token:'fixture-Google',expires_in:3600,account_id:'calendar@example.test'}))};
@@ -65,7 +88,8 @@ VERIFY = r"""(async()=>{
  const audit=globalThis.calendarCrossTabAudit,check=(ok,message)=>{if(!ok)throw Error(message)};
  const {createCalendarStorage}=await import('./assets/js/calendar/storage.js');const storage=createCalendarStorage();
  try{
-   audit.armAbort=audit.phase==='receipt-abort';audit.held.resolve();check(await audit.sync===false,'cross-tab commit was falsely reported as synchronized');
+   if(['receipt','receipt-abort'].includes(audit.phase))check(audit.receiptHeld&&audit.background,'delivery receipt gate must be independent of the background confirmer');
+   audit.held.resolve();check(await audit.sync===false,'cross-tab commit was falsely reported as synchronized');
    check(!calendarSession.lastSyncAt,'cross-tab pending advanced completed sync time');
    check(calendarUi.pending[0]?.eventId==='abcd0123abcd0123abcd0123abcd0123','new durable pending not published');
    if(audit.phase==='receipt-abort'){
@@ -80,6 +104,7 @@ VERIFY = r"""(async()=>{
    check(await audit.raw()===audit.before,'Calendar changed Main/Shared raw records');
    return {staleSuccessBlocked:true,pendingPublished:true,oneEffect:true,originalId:true,mainSharedRetained:true};
  }finally{
+   audit.receiptPort.set(audit.originalReadPendingSnapshot);if(audit.background)await audit.background;
    Object.defineProperty(IDBTransaction.prototype,'oncomplete',audit.descriptor);IDBObjectStore.prototype.getAll=audit.originalGetAll;globalThis.fetch=audit.originalFetch;
    cloudAuth.saveSession(null);storage.saveConnectionPreference({autoConnect:false,accountId:'calendar@example.test'});
  }
