@@ -13,6 +13,8 @@
     "types": []
   },
   "files": [
+    "netunim-orders/document-bridge/preview-content.mjs",
+    "tests/fixtures/checked-document-preview.mjs",
     "netunim-orders/document-bridge/native-preview-session.mjs",
     "tests/fixtures/checked-native-preview-session.mjs",
     "netunim-orders/document-bridge/http-routes.mjs",

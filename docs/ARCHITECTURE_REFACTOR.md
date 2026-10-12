@@ -481,7 +481,7 @@ they are not a claim that every older audit finding is still present.
 | Runtime/resource ownership | Orders Finance preference/attempt failures now own queued-timer cancellation and preserve started commits; remaining Shared-specific and finance/integration jobs, other shell listeners, reconnect/owner transitions and preflight; Global Search owns nested control/auth listeners and preview cleanup | Start/stop/dispose idempotence, no duplicate/orphan jobs, live access fences and controlled failure tests |
 | Remaining I/O ports | Remaining timers and other concrete browser effects after inventory; Kupa credit preferences, Google Drive and local Bridge clients now have explicit ports. Credit preference failure/restart policy still needs broader review | Injected fake ports, adapter contracts and import enforcement; installed settings/auth compatibility |
 | Static contracts | Extend the existing strict JS gate beyond current writers/checkpoint/operation/cloud-record decoding/Main receipt/ACK policy, Credit preferences and Calendar authority/queue observation/confirmation to full journal/IDB transactions/business RPC/read candidates, Finance lease callers, capability ports and application consumers | A real mismatch fails CI; actual implementation bodies and negative consumers are checked, runtime validation and historical record readers remain intact |
-| Bridge decomposition | Document HTTP/access gate, typed routing and native preview process/session now have explicit owners and transactional packaging/native Windows coverage. Remaining Document index/text/binary preview and Bank HTTP/vault/session/provider/retry diagnostics | Existing external contracts preserved, classified failures and provider tests before live scraper changes; see DOCUMENT_BRIDGE_HTTP_BOUNDARY.md and DOCUMENT_NATIVE_PREVIEW_OWNERSHIP.md |
+| Bridge decomposition | Document HTTP/access gate, typed routing, native preview process/session and text/binary preview policy/file reads now have explicit owners and transactional packaging/native Windows coverage. Remaining Document index/cache and Bank HTTP/vault/session/provider/retry diagnostics | Existing external contracts preserved, classified failures and provider tests before live scraper changes; see DOCUMENT_BRIDGE_HTTP_BOUNDARY.md, DOCUMENT_NATIVE_PREVIEW_OWNERSHIP.md and DOCUMENT_PREVIEW_FILE_BOUNDARY.md |
 | Canonical sources and compatibility | SQL deployment inventory/generation; historical keys/RPC/readers and supported-client inventory | Immutable deployed migrations, deterministic generation, proven retirement criteria and restore tests |
 | Readability/UI/release | Large modules by responsibility, dependency budgets, CSS/RTL/performance, final docs/rollback | Behavioral and visual regression checks, measured performance and full release gates |
 
@@ -554,3 +554,12 @@ per-child streams/pending, bounded deadlines, stopped-owner recovery and termina
 disposal now prevent those races, with 100 resource cycles, real child pipes and
 the compiled C# host exercised without operator files or dialogs. See
 [native preview ownership](DOCUMENT_NATIVE_PREVIEW_OWNERSHIP.md).
+
+Document text/binary preview policy now has three explicit ports and checked
+response kinds, while a separate native file adapter owns bounded reads and
+handle cleanup. A before-change native growth test proved that the old binary
+path could exceed its budget after search metadata was captured. Bounded
+lookahead, short-read accumulation and native HTTP/client integration now enforce
+that limit without changing Office routing or wire formats. Remaining Document
+index/cache and Bank server decomposition are separate slices. See
+[preview file boundary](DOCUMENT_PREVIEW_FILE_BOUNDARY.md).

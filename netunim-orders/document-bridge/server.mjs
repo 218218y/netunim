@@ -15,6 +15,8 @@ import {
 import {buildPdfFormMatchAnchors,extractInteractivePdfText,PDF_FORM_MAX_BYTES,verifyNodePdfJsRuntime} from './pdf_form_index.mjs';
 import {pdfIndexNeedsInspection,pdfMaintenanceInventoryPlan,pdfMaintenanceRunLimits} from './pdf-index-policy.mjs';
 import {createDocumentBridgeRoutes} from './http-routes.mjs';
+import {createDocumentPreview,isTextPreview,trimPreviewText} from './preview-content.mjs';
+import {createPreviewFilePlatform} from './preview-file-platform.mjs';
 import {createNativePreviewSession} from './native-preview-session.mjs';
 import {createNativePreviewHostPlatform} from './native-preview-platform.mjs';
 import {createDocumentBridgeHttpHandler,documentBridgeErrorResponse as safeError} from './http-handler.mjs';
@@ -34,10 +36,6 @@ const TOOL_ES=path.join(APP_ROOT,'tools','es.exe');
 const NATIVE_PREVIEW_HOST=path.join(RUNTIME_ROOT,'NetunimPreviewHost.exe');
 const requestResults=new Map();
 const previewTextCache=new Map();
-const TEXT_PREVIEW_MAX_BYTES=1024*1024;
-const BINARY_PREVIEW_MAX_BYTES=64*1024*1024;
-const STRUCTURED_PREVIEW_MAX_BYTES=64*1024*1024;
-const TEXT_PREVIEW_MAX_CHARS=600000;
 const PREVIEW_TEXT_CACHE_TTL_MS=10*60*1000;
 const PREVIEW_TEXT_CACHE_MAX=24;
 const PDF_FORM_INDEX_SCHEMA=3;
@@ -54,9 +52,6 @@ const PDF_FORM_MAINTENANCE_MAX_MS=15*60*1000;
 const PDF_FORM_MAINTENANCE_PATH=path.join(APP_ROOT,'pdf-form-maintenance.json');
 const PDF_FORM_INDEX_LOCK_PATH=path.join(APP_ROOT,'pdf-form-index.lock');
 const PDF_FORM_MAINTENANCE_LOCK_PATH=path.join(APP_ROOT,'pdf-form-maintenance.lock');
-const TEXT_EXTENSIONS=new Set(['txt','log','md','markdown','csv','tsv','json','xml','yaml','yml','ini','cfg','conf','sql','js','mjs','cjs','ts','tsx','jsx','css','scss','less','html','htm']);
-const BINARY_PREVIEW_MIME=new Map([['pdf','application/pdf'],['png','image/png'],['jpg','image/jpeg'],['jpeg','image/jpeg'],['gif','image/gif'],['webp','image/webp'],['bmp','image/bmp'],['svg','image/svg+xml']]);
-const STRUCTURED_PREVIEW_MIME=new Map([['docx','application/vnd.openxmlformats-officedocument.wordprocessingml.document'],['docm','application/vnd.ms-word.document.macroEnabled.12'],['dotx','application/vnd.openxmlformats-officedocument.wordprocessingml.template'],['dotm','application/vnd.ms-word.template.macroEnabled.12'],['xls','application/vnd.ms-excel'],['xlsx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],['xlsm','application/vnd.ms-excel.sheet.macroEnabled.12'],['xlsb','application/vnd.ms-excel.sheet.binary.macroEnabled.12'],['xlt','application/vnd.ms-excel'],['xltx','application/vnd.openxmlformats-officedocument.spreadsheetml.template'],['xltm','application/vnd.ms-excel.template.macroEnabled.12']]);
 let server=null,cachedProbe=null,cachedEsPath='',everythingProbePromise=null,everythingStartPromise=null;
 let pdfFormIndexLoaded=false,pdfFormIndexRefreshPromise=null,pdfFormIndexRefreshAbortController=null,pdfFormIndexLastRefresh=0,pdfFormIndexPending=0,pdfFormIndexInventoryCount=0,shuttingDown=false,pdfFormIndexSignature='';
 let manualPdfMaintenanceChild=null,manualPdfMaintenance=null,manualPdfMaintenanceStartPromise=null,pdfMaintenanceStopRequested=false;
@@ -556,18 +551,7 @@ async function resolveResult(id){
   return {row,stat};
 }
 
-function decodeTextBuffer(buffer){
-  if(buffer.length>=3&&buffer[0]===0xef&&buffer[1]===0xbb&&buffer[2]===0xbf)return new TextDecoder('utf-8').decode(buffer.subarray(3));
-  if(buffer.length>=2&&buffer[0]===0xff&&buffer[1]===0xfe)return new TextDecoder('utf-16le').decode(buffer.subarray(2));
-  if(buffer.length>=2&&buffer[0]===0xfe&&buffer[1]===0xff)return new TextDecoder('utf-16be').decode(buffer.subarray(2));
-  try{return new TextDecoder('utf-8',{fatal:true}).decode(buffer)}catch{}
-  try{return new TextDecoder('windows-1255').decode(buffer)}catch{return buffer.toString('latin1')}
-}
-function trimPreviewText(value){const text=String(value??'').replace(/\u0000/g,'');return {text:text.slice(0,TEXT_PREVIEW_MAX_CHARS),truncated:text.length>TEXT_PREVIEW_MAX_CHARS}}
-async function readTextPreview(fullPath,stat){
-  const length=Math.min(Number(stat.size)||0,TEXT_PREVIEW_MAX_BYTES),handle=await fs.open(fullPath,'r');
-  try{const buffer=Buffer.alloc(length);const {bytesRead}=await handle.read(buffer,0,length,0);const decoded=decodeTextBuffer(buffer.subarray(0,bytesRead));const result=trimPreviewText(decoded);return {...result,truncated:result.truncated||Number(stat.size)>length}}finally{await handle.close()}
-}
+const previewFiles=createPreviewFilePlatform();
 const nativePreviewSession=createNativePreviewSession({
   host:createNativePreviewHostPlatform({hostPath:NATIVE_PREVIEW_HOST,applicationRoot:APP_ROOT,
     processes:{waitForExit:waitForProcessExit,alive:processAlive,forceStopTree:forceStopProcessTree},log:appendLog}),
@@ -614,7 +598,7 @@ async function searchablePreviewText(row,stat){
   prunePreviewTextCache();const key=String(row.fullPath||'').toLocaleLowerCase('en-US'),extension=documentExtension(row.fullPath),fingerprint=`${Number(stat.size)||0}:${Number(stat.mtimeMs)||0}${extension==='pdf'?`:pdf-search-${PDF_FORM_SEARCH_TEXT_REVISION}:geometry-${PDF_FORM_GEOMETRY_REVISION}`:''}`;
   const cached=previewTextCache.get(key);if(cached&&cached.fingerprint===fingerprint){cached.at=Date.now();previewTextCache.delete(key);previewTextCache.set(key,cached);return cached.data}
   let data=null;
-  if(TEXT_EXTENSIONS.has(extension)){const direct=await readTextPreview(row.fullPath,stat);data={...direct,source:'file'}}
+  if(isTextPreview(extension)){const direct=await previewFiles.readText(row.fullPath);data={...direct,source:'file'}}
   else if(extension==='pdf'){
     const [everythingText,pdfData]=await Promise.all([readEverythingContentPreview(row.fullPath),supplementalPdfData(row,stat)]);
     if(pdfData?.text)data={...pdfData,source:'pdfjs-acroform'};else if(everythingText?.text)data={...everythingText,source:'everything-content'};
@@ -634,31 +618,13 @@ async function previewMatches(id){
   return {ok:true,bridgeVersion:BRIDGE_VERSION,active:true,...matches,formAnchors:formMatchInfo.anchors,formAnchorsCapped:formMatchInfo.capped,formAnchorsAuthoritative,truncated:!!content.truncated,source:content.source,elapsedMs:Date.now()-started};
 }
 function previewMetadata(row,stat){const extension=documentExtension(row.fullPath);return {name:path.win32.basename(row.fullPath),path:path.win32.dirname(row.fullPath),fullPath:row.fullPath,extension,size:Number(stat.size)||0,isDirectory:stat.isDirectory(),modified:stat.mtime?.toISOString?.()||''}}
-async function previewDocument(id){
-  const {row,stat}=await resolveResult(id),meta=previewMetadata(row,stat);
-  if(stat.isDirectory())return {ok:true,kind:'folder',...meta};
-  const mime=BINARY_PREVIEW_MIME.get(meta.extension);
-  if(mime&&stat.size<=BINARY_PREVIEW_MAX_BYTES)return {ok:true,kind:'binary',mime,source:'file',...meta};
-  const officeKind=officePreviewKind(meta.extension),structuredKind=structuredPreviewKind(meta.extension);
-  if(row.mode==='content'&&structuredKind&&stat.size<=STRUCTURED_PREVIEW_MAX_BYTES)return {ok:true,kind:'structured',documentKind:structuredKind,mime:STRUCTURED_PREVIEW_MIME.get(meta.extension)||'application/octet-stream',source:'local-renderer',...meta};
-  if(TEXT_EXTENSIONS.has(meta.extension)){const data=await readTextPreview(row.fullPath,stat);return {ok:true,kind:'text',source:'file',...meta,...data}}
-  if(row.mode==='content'&&officeKind){
-    const indexed=await readEverythingContentPreview(row.fullPath);if(indexed)return {ok:true,kind:'text',source:'office-text-fallback',...meta,...indexed};
-  }
-  if(officeKind)return {ok:true,kind:'native',source:'windows-preview-handler',officeKind,...meta};
-  const indexed=await readEverythingContentPreview(row.fullPath);
-  if(indexed)return {ok:true,kind:'text',source:'everything-content',...meta,...indexed};
-  if(mime||structuredKind)return {ok:true,kind:'unavailable',reason:'too-large',...meta};
-  return {ok:true,kind:'unavailable',reason:'no-preview-handler',...meta};
-}
-async function readBinaryPreview(id){
-  const {row,stat}=await resolveResult(id);if(stat.isDirectory()){const e=new Error('תיקייה אינה קובץ לתצוגה מקדימה.');e.code='PREVIEW_NOT_FILE';throw e}
-  const extension=documentExtension(row.fullPath);
-  const mime=BINARY_PREVIEW_MIME.get(extension)||STRUCTURED_PREVIEW_MIME.get(extension);if(!mime){const e=new Error('סוג הקובץ אינו נתמך בתצוגה בינארית.');e.code='PREVIEW_UNSUPPORTED';throw e}
-  const limit=STRUCTURED_PREVIEW_MIME.has(extension)?STRUCTURED_PREVIEW_MAX_BYTES:BINARY_PREVIEW_MAX_BYTES;
-  if(stat.size>limit){const e=new Error('הקובץ גדול מדי לתצוגה מקדימה מהירה.');e.code='PREVIEW_TOO_LARGE';throw e}
-  return {buffer:await fs.readFile(row.fullPath),mime,name:path.win32.basename(row.fullPath)};
-}
+const documentPreview=createDocumentPreview({
+  resolve:async id=>{const {row,stat}=await resolveResult(id),metadata=previewMetadata(row,stat);return {
+    mode:row.mode,metadata,officeKind:officePreviewKind(metadata.extension)||'',structuredKind:structuredPreviewKind(metadata.extension)||'',
+  }},
+  files:previewFiles,indexedText:readEverythingContentPreview,
+});
+const previewDocument=documentPreview.document,readBinaryPreview=documentPreview.file;
 
 async function openDocument(id){
   const {row,stat}=await resolveResult(id);

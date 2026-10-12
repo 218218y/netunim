@@ -301,10 +301,10 @@ test('preview stays local: filename Office preview stays native while content se
   assert.match(read('netunim-orders/document-bridge/http-routes.mjs'),/documents\/matches/);
   assert.match(read('netunim-orders/document-bridge/http-routes.mjs'),/documents\/native-preview/);
   assert.match(server,/NATIVE_PREVIEW_HOST/);
-  assert.match(server,/source:'windows-preview-handler'/);
-  assert.match(server,/kind:'structured'/);
+  assert.match(read('netunim-orders/document-bridge/preview-content.mjs'),/source: 'windows-preview-handler'/);
+  assert.match(read('netunim-orders/document-bridge/preview-content.mjs'),/kind: 'structured'/);
   assert.match(server,/structuredPreviewKind/);
-  assert.match(server,/STRUCTURED_PREVIEW_MIME/);
+  assert.match(read('netunim-orders/document-bridge/preview-content.mjs'),/STRUCTURED_PREVIEW_MIME/);
   assert.doesNotMatch(server,/OFFICE_PREVIEW_SCRIPT/);
   assert.doesNotMatch(server,/ensureOfficePreview/);
   assert.doesNotMatch(server,/source:'office-pdf'/);

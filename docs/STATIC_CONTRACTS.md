@@ -339,3 +339,12 @@ asynchronous termination are explicit. The session owns startup/readiness,
 per-child pending and cleanup; the Node/Windows adapter remains a tested/linted
 separate implementation. This slice does not claim full server, Office COM,
 HTTP implementation or index typing. See DOCUMENT_NATIVE_PREVIEW_OWNERSHIP.md.
+
+## Document preview content
+
+The actual `preview-content.mjs` policy/codec body and negative consumers are
+checked: opaque resolution produces normalized metadata, byte budgets are
+numeric, file ports return bytes or explicit text/truncation, and response kinds
+form a discriminated union. An implementation mutation returning a string as
+binary bytes fails this gate. The native filesystem adapter, full server and
+index/cache remain separate tested slices. See DOCUMENT_PREVIEW_FILE_BOUNDARY.md.
