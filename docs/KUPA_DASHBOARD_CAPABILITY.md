@@ -82,3 +82,7 @@ No persisted formats, migrations, RPC payloads, provider retry/fallback policy
 or shared ledger ownership change. Other runtime resources, complete Bank and
 shell capabilities, broader business typing and Bridge decomposition remain
 separate completion tracks.
+
+The subsequent Bank capability/effects slice is recorded in
+`KUPA_BANK_CAPABILITY.md`; its private controller decomposition and Bridge
+provider boundaries remain separate work.

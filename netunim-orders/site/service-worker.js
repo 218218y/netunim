@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-3b591fdd3931';
+const CACHE='orders-app-shell-esm-0365bfbb23fd';
 const SHELL=[
   './',
   './index.html',
@@ -138,7 +138,6 @@ const SHELL=[
   './assets/js/platform/calendar-commit-notifications.js',
   './assets/js/platform/calendar-delivery-owner.js',
   './assets/js/platform/debounced-task.js',
-  './assets/js/platform/finance-effects.js',
   './assets/js/runtime-events.js',
   './assets/js/shared/action-registry.js',
   './assets/js/shared/authenticated-account-scope.js',
@@ -179,6 +178,7 @@ const SHELL=[
   './assets/js/shared/document-write-ack.js',
   './assets/js/shared/domain-revisions.js',
   './assets/js/shared/events.js',
+  './assets/js/shared/finance-browser-effects.js',
   './assets/js/shared/finance-connection-import.js',
   './assets/js/shared/finance-derivations.js',
   './assets/js/shared/finance-fence.js',

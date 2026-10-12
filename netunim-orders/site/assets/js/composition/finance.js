@@ -1,5 +1,5 @@
 import {createFinanceBridgeIntegration} from '../integrations/bank-bridge.js';
-import {createFinanceBrowserEffects} from '../platform/finance-effects.js';
+import {createFinanceBrowserEffects} from '../shared/finance-browser-effects.js';
 import {createFinanceOperationScope} from '../shared/finance-fence.js';
 import {createDomainsBankSelectors} from '../domains/bank/selectors.js';
 import {createDomainsBankCache} from '../domains/bank/cache.js';

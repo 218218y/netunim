@@ -31,7 +31,7 @@ FLOW = r"""(async()=>{
    if(String(url).includes('/storage/v1/object/list/'))return Promise.resolve(new Response('[]'));
    return realFetch(url,options);
  };
- const before=JSON.stringify(state.bank),pending=domainsBankController.refreshBankBalance();await entered.promise;
+ const before=JSON.stringify(state.bank),pending=bank.commands.refreshBankBalance();await entered.promise;
  if(caseName==='logout')check(uiCloud.logoutSupabase()===true,'production logout rejected');
  if(caseName==='account')cloudAuth.storeSupaSession({user:{id:'bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb'},access_token:'other',expires_at:9999999999});
  if(caseName==='relogin'){cloudAuth.storeSupaSession(null);cloudAuth.storeSupaSession({user:{id:owner},access_token:'fixture-2',expires_at:9999999999})}
@@ -40,12 +40,12 @@ FLOW = r"""(async()=>{
  if(caseName==='publication'){await saving.promise;cloudAuth.storeSupaSession(null);saved.resolve()}
  check(await pending===false,'former/failed bank operation reported success');
  check(JSON.stringify(state.bank)===before,'former/failed bank operation changed displayed balance');
- check(domainsBankController.bankBridgeUiState().feed.transactions.length===0,'uncommitted archive rows replaced displayed Last Known Good');
+ check(bank.queries.snapshot().feed.transactions.length===0,'uncommitted archive rows replaced displayed Last Known Good');
  check(archives===(caseName==='network'||caseName==='publication'?1:0),'former owner result entered archive transport');
  check(publications===(caseName==='network'||caseName==='publication'?1:0),'unexpected atomic bank publication');
  check(JSON.stringify(await db.load(identity))===durableBefore,'bank failure changed durable Main journal');
  check(state.notes.find(row=>row.id===note.id)?.content===note.content,'durable note lost identity/content');
- check(domainsBankController.bankBridgeUiState().lastError.length>0,'missing operator error');
+ check(bank.queries.snapshot().lastError.length>0,'missing operator error');
  check(caseName==='network'||releases===0,'former login released a lease under current authorization');
  globalThis.fetch=realFetch;financeAutomation.stop();cloudAuth.storeSupaSession(null);return {balanceRetained:true,archiveRetained:true,journalRetained:true,noteRetained:true,scopedPublication:true,visibleError:true};
 })()"""

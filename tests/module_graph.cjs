@@ -24,6 +24,8 @@ for(const app of ['kupa','orders']){
         assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=6,relative+': recurring task owner exceeds six collaborators');
       if(node.type==='FunctionDeclaration'&&node.id?.name==='createDebouncedTask'&&relative==='assets/js/platform/debounced-task.js')
         assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=3,relative+': debounced task owner exceeds three collaborators');
+      if(node.type==='FunctionDeclaration'&&node.id?.name==='createKupaBankCapability')
+        assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=10,relative+': Bank composition requires focused capability ports');
       if(node.type==='FunctionDeclaration'&&node.id?.name==='createKupaDashboardCapability')
         assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=7,relative+': Dashboard composition requires focused ports');
       if(node.type==='FunctionDeclaration'&&['createDomainsDashboardController','createDomainsDashboardView'].includes(node.id?.name)&&app==='kupa')
@@ -62,7 +64,7 @@ for(const app of ['kupa','orders']){
         const target=path.resolve(path.dirname(file),spec);
         assert.ok(target.startsWith(site+path.sep)&&fs.existsSync(target),relative+': missing or cross-site dependency '+spec);edges.push(target);
         const dependency=path.relative(path.join(site,'assets','js'),target).split(path.sep).join('/');
-        if(app==='kupa'&&relative==='assets/js/main.js')assert.ok(!/^(domains\/dashboard\/|domains\/bank\/selectors\.js$)/.test(dependency),relative+': Dashboard and Bank selectors belong behind capability/query ports');
+        if(app==='kupa'&&relative==='assets/js/main.js')assert.ok(!/^(domains\/dashboard\/|domains\/bank\/(?:selectors|controller|view)\.js$)/.test(dependency),relative+': Dashboard and Bank selectors belong behind capability/query ports');
         if(app==='orders'&&relative==='assets/js/main.js')assert.ok(!/^(domains\/(finance|bank|checks)\/|integrations\/bank-bridge\.js|shared\/(finance-fence|finance-connection-import|credit-card-order-view)\.js)/.test(dependency),relative+': Finance and Checks internals belong to their capability compositions');
         if(app==='orders'&&relative==='assets/js/main.js')assert.ok(!/^sync\/checks(?:-persistence|-merge)?\.js$/.test(dependency),relative+': Checks sync belongs to its capability');
         if(/^assets\/js\/(storage|cloud|sync)\//.test(relative)){
@@ -86,6 +88,8 @@ for(const app of ['kupa','orders']){
       if(relative.endsWith('/shared/cloud-checkpoint-publication.js')&&node.type==='Identifier')assert.ok(!['document','window','navigator','localStorage','fetch','indexedDB','setTimeout','setInterval'].includes(node.name),relative+': cloud publication must use explicit ports');
       if(relative==='assets/js/domains/credit/controller.js'&&node.type==='Identifier')
         assert.notEqual(node.name,'localStorage',relative+': Credit preferences require an explicit port');
+      if(app==='kupa'&&relative==='assets/js/domains/bank/controller.js'&&node.type==='Identifier'&&!(parent?.type==='MemberExpression'&&parent.property===node&&!parent.computed))
+        assert.ok(!['document','window','navigator','Blob','URL','setTimeout','clearTimeout','setInterval','clearInterval'].includes(node.name),relative+': Bank forms/downloads and timer implementations belong behind ports');
       if(app==='kupa'&&relative==='assets/js/domains/dashboard/controller.js'&&node.type==='Identifier'&&!(parent?.type==='MemberExpression'&&parent.property===node&&!parent.computed))
         assert.ok(!['globalThis','window','document','navigator','Date','localStorage','fetch','setTimeout','setInterval'].includes(node.name),relative+': Dashboard reads use access/remote/clock ports');
       if(app==='orders'&&['assets/js/domains/finance/controller.js','assets/js/domains/bank/cache.js'].includes(relative)&&node.type==='Identifier'&&!(parent?.type==='MemberExpression'&&parent.property===node&&!parent.computed))

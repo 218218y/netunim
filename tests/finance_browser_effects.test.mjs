@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createFinanceBrowserEffects} from '../netunim-orders/site/assets/js/platform/finance-effects.js';
+import {createFinanceBrowserEffects} from '../shared/finance-browser-effects.js';
 
 function fixture(failure=null) {
   let next = 0, online = true;

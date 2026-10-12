@@ -32,30 +32,30 @@ FLOW=r"""(async()=>{
  IDBObjectStore.prototype.put=function(...args){const request=put.apply(this,args);if(abort&&this.name==='journal'){abort=false;const tx=this.transaction;queueMicrotask(()=>tx.abort())}return request};
  Storage.prototype.setItem=function(key,value){if(String(key).startsWith('netunim-storage-v2-emergency:'))throw new DOMException('controlled emergency quota','QuotaExceededError');return set.call(this,key,value)};
  try{
-   uiNavigation.setPage('bank');check(await domainsBankController.refreshBankBalance()===false,'aborted local bank write reported success');
-   const snapshotToken=state.bank.snapshotToken,bank=JSON.stringify(state.bank);
+   uiNavigation.setPage('bank');check(await bank.commands.refreshBankBalance()===false,'aborted local bank write reported success');
+   const snapshotToken=state.bank.snapshotToken,bankSnapshot=JSON.stringify(state.bank);
    check(state.bank.currentBalance===500,'unconfirmed projection was not retained');
    check(JSON.stringify(await db.load('local:kupa'))===mainBefore,'aborted bank write changed durable Main');
    IDBObjectStore.prototype.put=put;Storage.prototype.setItem=set;
-   await domainsBankController.refreshBankBridgeStatus();domainsBankView.renderBank();
+   await bank.queries.refreshStatus();bank.presentation.renderBank();
    check(!document.getElementById('bankSyncHeadline').textContent.includes('הצליח'),'healthy Bridge status presented an unconfirmed bank write as success');
    check(document.querySelector('[data-bank-local-snapshot]')?.textContent.includes('לא אושר'),'unconfirmed bank projection warning missing outside settings');
    if(phase==='baseline')return true;
    uiNavigation.setPage('dashboard');check(document.querySelector('[data-bank-local-snapshot]')?.textContent.includes('לא אושר'),'dashboard uses unconfirmed balance without warning');
-   uiNavigation.setPage('bank');check(await domainsBankController.refreshBankBalance()===false&&scans===1,'unconfirmed snapshot triggered another provider scan');
+   uiNavigation.setPage('bank');check(await bank.commands.refreshBankBalance()===false&&scans===1,'unconfirmed snapshot triggered another provider scan');
    const {payloadFromState}=await import('./assets/js/state/serialization.js');let file=JSON.stringify(payloadFromState({...((await mainStorageV2.recoverReadOnly()).state),checks:state.checks},session.dbRevision));
    files.dataFileHandle={name:'synthetic-kupa.json',getFile:async()=>({text:async()=>file}),createWritable:async()=>({write:async value=>{file=value},close:async()=>{}})};
-   if(phase==='leadership'){tab.primaryTab=false;check(await domainsBankController.retryLocalBankSnapshot()===false,'secondary tab retried a bank mutation');tab.primaryTab=true}
-   const retry=domainsBankController.retryLocalBankSnapshot;let first;
-   domainsBankController.retryLocalBankSnapshot=(...args)=>{first=retry(...args);return first};
-   try{document.querySelector('[data-action="retry-local-bank-snapshot"]').click()}finally{domainsBankController.retryLocalBankSnapshot=retry}
-   check(first,'actual retry action did not reach the captured owner');const second=domainsBankController.retryLocalBankSnapshot();
+   if(phase==='leadership'){tab.primaryTab=false;check(await bank.commands.retryLocalBankSnapshot()===false,'secondary tab retried a bank mutation');tab.primaryTab=true}
+   const retry=bank.commands.retryLocalBankSnapshot;let first;
+   bank.commands.retryLocalBankSnapshot=(...args)=>{first=retry(...args);return first};
+   try{document.querySelector('[data-action="retry-local-bank-snapshot"]').click()}finally{bank.commands.retryLocalBankSnapshot=retry}
+   check(first,'actual retry action did not reach the captured owner');const second=bank.commands.retryLocalBankSnapshot();
    const a=await first,b=await second;check(a===true&&b===true,'local snapshot retry did not confirm existing data: '+JSON.stringify({a,b,errors}));
-   check(scans===1,'snapshot retry rescanned the provider');check(state.bank.snapshotToken===snapshotToken&&JSON.stringify(state.bank)===bank,'retry changed the original bank snapshot');
+   check(scans===1,'snapshot retry rescanned the provider');check(state.bank.snapshotToken===snapshotToken&&JSON.stringify(state.bank)===bankSnapshot,'retry changed the original bank snapshot');
    const recovered=await mainStorageV2.recoverReadOnly();check(recovered.state.bank.snapshotToken===snapshotToken&&recovered.state.bank.feed.transactions[0].id==='bank-local-tx','recovered snapshot lost transaction identity');
    check(recovered.state.notes.find(row=>row.id==='bank-local-note')?.content==='independent durable note','bank retry changed independent note');
    check(JSON.stringify(await db.load('local:shared-checks'))===sharedBefore,'bank retry changed Shared');
-   domainsBankView.renderBank();check(!document.querySelector('[data-bank-local-snapshot]'),'confirmed snapshot still warned');
+   bank.presentation.renderBank();check(!document.querySelector('[data-bank-local-snapshot]'),'confirmed snapshot still warned');
    return {sameSnapshot:true,sameTransaction:true,noteRetained:true,sharedRetained:true,scans,statusReads};
  }finally{globalThis.fetch=fetch;IDBObjectStore.prototype.put=put;Storage.prototype.setItem=set;uiStatus.reportError=report;console.error=consoleError}
 })()"""

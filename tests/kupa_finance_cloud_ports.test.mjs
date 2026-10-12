@@ -29,7 +29,7 @@ for(const [revision,financeRevision] of [[3,9],[4,8],[4,'9'],[NaN,9]])test(`conf
   assert.equal(polls,0,'a stale read must not enter publication before freshness is checked');assert.equal(state.bank.balance,500);
 });
 
-test('finance capability can be assembled before the modal and binds its importer afterward',()=>{
+test('finance capability can be assembled before the modal without constructing Bank presentation',()=>{
   let modalReady=false;
   const unexpected=()=>assert.fail('composition performed I/O or used the modal during construction');
   const capability=composeKupaFinance({automaticAccess:unexpected,operationAccess:unexpected,
@@ -37,14 +37,14 @@ test('finance capability can be assembled before the modal and binds its importe
     cloudAuth:{supaRest:unexpected,supaEnsureSession:unexpected},
     cloudTransport:{},syncDocument:{},syncChecksState:{},syncChecks:{},
     storagePersistence:{recoverLocalState:unexpected},uiStatus:{},uiNavigation:{},uiDateEditor:{},
-    financeDerivations:{run:unexpected},bankQueries:{},domainRevisions:{},
+    financeDerivations:{run:unexpected},bankQueries:{balance:unexpected,forecast:unexpected,observedCheckSequence:unexpected},domainRevisions:{},
     getUiModal:()=>modalReady?{}:unexpected(),
   });
   assert.equal(typeof capability.creditController.refreshCreditSync,'function');
-  assert.equal(typeof capability.bankController.refreshBankBalance,'function');
-  assert.equal(typeof capability.bankView.renderBank,'function');
+  assert.equal(typeof capability.bank.commands.refreshBankBalance,'function');
+  assert.equal(typeof capability.bank.presentation.renderBank,'function');
   modalReady=true;
-  assert.equal(typeof capability.createConnectionImporter(),'function');
+  assert.throws(()=>capability.bank.assertReady(),/ui_not_bound/);
 });
 
 test('finance composition requires the explicit local recovery port before creating consumers',()=>{

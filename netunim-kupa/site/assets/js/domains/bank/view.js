@@ -12,7 +12,8 @@ import {bankSmartHistoryRows} from '../../shared/bank-transaction-order.js';
 import {bankChequeImageDownloadName,bankChequeImageWithinRetention,retainBankChequeImagePreviewUrl} from '../../shared/bank-cheque-images.js';
 import {bankLocalSnapshotNotice} from './local-snapshot-view.js';
 
-export function createDomainsBankView({runFinance=withFinanceDerivations, modal,closeModal,model,ui,bankHomeBalance,bankNextCycleCommitments,bankHomeNextCycleCommitments,bankBridgeUiState,refreshBankBridgeStatus,ensureBankDisplayArchive=async()=>false,downloadBankChequeImage=async()=>null,dateEditorMarkup}){
+export function createDomainsBankView({isActive=()=>true,runFinance=withFinanceDerivations, modal,closeModal,model,ui,bankHomeBalance,bankNextCycleCommitments,bankHomeNextCycleCommitments,bankBridgeUiState,refreshBankBridgeStatus,ensureBankDisplayArchive=async()=>false,downloadBankChequeImage=async()=>null,dateEditorMarkup}){
+let releasePreview=null;
 function accountLabel(branch,account){return branch&&account?`סניף ${branch} · חשבון ${account}`:account?`חשבון ${account}`:''}
 function bridgeStatusText(s){
   if(s.busy&&!s.resultReady)return s.message||'מתבצע עדכון מול Bank Bridge…';
@@ -101,7 +102,23 @@ function bankBridgeDiagnosticsMarkup(s){
 
 
 function bankChequeImageButtons(row,item){if(!bankChequeImageWithinRetention(row?.date||row?.processedDate))return item.hasDocumentReference?'קיים בבנק':'—';const buttons=[];if(item.imageFrontKey)buttons.push(`<button type="button" class="btn bank-cheque-image-btn" data-action="view-bank-cheque-image" data-click-arg0="${esc(row?.date||row?.processedDate||'')}" data-click-arg1="${esc(item.imageFrontKey)}" data-click-arg2="חזית">חזית</button>`);if(item.imageBackKey)buttons.push(`<button type="button" class="btn bank-cheque-image-btn" data-action="view-bank-cheque-image" data-click-arg0="${esc(row?.date||row?.processedDate||'')}" data-click-arg1="${esc(item.imageBackKey)}" data-click-arg2="גב">גב</button>`);return buttons.length?`<span class="bank-cheque-image-actions">${buttons.join('')}</span>`:item.hasDocumentReference?'קיים בבנק':'—'}
-async function openBankChequeImage(eventDate,imageKey,label='תמונת שיק'){const blob=await downloadBankChequeImage(eventDate,imageKey);if(!blob)throw new Error('תמונת השיק אינה זמינה בענן (ייתכן שהיא מחוץ לחלון השמירה או שהאחסון טרם הוכן).');const url=URL.createObjectURL(blob),filename=bankChequeImageDownloadName(eventDate,label,blob.type);modal(`שיק · ${label}`,`<div class="bank-cheque-image-preview"><img src="${esc(url)}" alt="${esc(label)}"></div>`,'הורד תמונה',()=>{const link=document.createElement('a');link.href=url;link.download=filename;link.click()});const img=document.querySelector('.bank-cheque-image-preview img'),backdrop=document.getElementById('modalBackdrop');retainBankChequeImagePreviewUrl(url,{image:img,backdrop});return true}
+async function openBankChequeImage(eventDate,imageKey,label='תמונת שיק'){
+  if(!isActive())return false;
+  const blob=await downloadBankChequeImage(eventDate,imageKey);
+  if(!isActive())return false;
+  if(!blob)throw new Error('תמונת השיק אינה זמינה בענן (ייתכן שהיא מחוץ לחלון השמירה או שהאחסון טרם הוכן).');
+  releasePreview?.();releasePreview=null;
+  const url=URL.createObjectURL(blob),filename=bankChequeImageDownloadName(eventDate,label,blob.type);
+  try{
+    modal(`שיק · ${label}`,`<div class="bank-cheque-image-preview"><img src="${esc(url)}" alt="${esc(label)}"></div>`,'הורד תמונה',()=>{
+      if(!isActive())return;
+      const link=document.createElement('a');link.href=url;link.download=filename;link.click();
+    });
+    const img=document.querySelector('.bank-cheque-image-preview img'),backdrop=document.getElementById('modalBackdrop');
+    releasePreview=retainBankChequeImagePreviewUrl(url,{image:img,backdrop});
+  }catch(error){URL.revokeObjectURL(url);throw error}
+  return true;
+}
 
 function bankCreditSettlementDetailsMarkup(row,identity={}){
   const details=row?.creditSettlementDetails&&typeof row.creditSettlementDetails==='object'?row.creditSettlementDetails:null;if(!details)return '';
@@ -200,6 +217,7 @@ function setBankDateBoundary(side,value){const key=side==='to'?'bankDateTo':'ban
 function toggleBankSyncOptions(){ui.bankSyncOpen=!ui.bankSyncOpen;const panel=document.getElementById('bankSyncPanel'),button=document.getElementById('bankSyncHeadline');if(panel)panel.hidden=!ui.bankSyncOpen;if(button){button.classList.toggle('open',ui.bankSyncOpen);button.setAttribute('aria-expanded',String(ui.bankSyncOpen))}}
 
 function updateBridgePanel(){
+  if(!isActive())return;
   const s=bankBridgeUiState(),headline=document.getElementById('bankSyncHeadline'),status=document.getElementById('bankBridgeStatus');
   if(headline){const state=bankSyncHeadlineState(s);headline.innerHTML=`${bankSyncHeadlineMarkup(s)}<span class="bank-sync-chevron" aria-hidden="true">⌄</span>`;headline.className=`bank-sync-toggle ${state.tone} ${ui.bankSyncOpen?'open':''}`;headline.setAttribute('aria-expanded',String(ui.bankSyncOpen))}
   if(status){status.textContent=bridgeStatusText(s);status.className=`bank-sync-status ${s.available===false||currentBankError(s)?'error':s.configured?'ok':''}`}
@@ -218,7 +236,7 @@ function updateBridgePanel(){
 
 function openCashflowBreakdown(role,targetDate='',input=null){const account=role==='home'?'ביתי':'עסקי';if(input)return updateCashflowExplorer(input,date=>kupaAccountCashflowData(model.state,account,undefined,{targetDate:date}));modal(`פירוט שינוי צפוי · ${account}`,cashflowExplorerMarkup(kupaAccountCashflowData(model.state,account,undefined,{targetDate}),'cashflow-breakdown',role,dateEditorMarkup),'סגור',()=>closeModal(true))}
 
-function renderBank(...args){return runFinance(()=>renderBankContent(...args))}
+function renderBank(...args){if(!isActive())return false;return runFinance(()=>isActive()?renderBankContent(...args):false)}
 function renderBankContent(){
   const cycle=bankNextCycleCommitments(),homeCycle=bankHomeNextCycleCommitments(),homeBank=bankHomeBalance();
   const bridgeUi=bankBridgeUiState(),staleTotal=cycle.elapsedCredit+cycle.elapsedExpenses,homeStaleTotal=homeCycle.elapsedCredit+homeCycle.elapsedExpenses;
@@ -266,5 +284,5 @@ function renderBankContent(){
   ensureBankDisplayArchive().catch(error=>console.error('bank display archive',error));
 }
 
-return {renderBank,openCashflowBreakdown,openBankChequeImage,setBankAccountView,setBankDataView,setBankSearch,setBankDateMode,setBankDateBoundary,toggleBankSyncOptions};
+return {runtime:{dispose(){releasePreview?.();releasePreview=null}},renderBank,openCashflowBreakdown,openBankChequeImage,setBankAccountView,setBankDataView,setBankSearch,setBankDateMode,setBankDateBoundary,toggleBankSyncOptions};
 }

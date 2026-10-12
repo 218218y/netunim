@@ -54,7 +54,7 @@ import {createLifecycle} from './lifecycle.js';
 import {bindActionEvents,bindBackdropDismissal,bindDismissibleDetails,bindNumberInputWheelGuard} from './shared/events.js';
 import {checkBankReviewItems,checkBankReviewMarkup} from './shared/check-bank-review.js';
 import {composeActionRegistry} from './shared/action-registry.js';
-import {createBankActions,createShellActions,createSettingsActions,createBackupActions,createCloudActions} from './ui/actions.js';
+import {createShellActions,createSettingsActions,createBackupActions,createCloudActions} from './ui/actions.js';
 import {createContexts} from './state/contexts.js';
 import {createKupaDomainRevisions,kupaPageRevision} from './state/revisions.js';
 import {createRestoreGroupStore} from './shared/restore-groups.js';
@@ -351,10 +351,10 @@ const uiNavigation=createUiNavigation({
   renderChecks:(...args)=>checks.renderChecks(...args),
   renderCredit:(...args)=>credit.renderCredit(...args),
   renderCash:(...args)=>cash.renderCash(...args),
-  renderBank:(...args)=>domainsBankView.renderBank(...args),
+  renderBank:(...args)=>bank.presentation.renderBank(...args),
   renderNotes:(...args)=>notes.renderNotes(...args),
   renderSettings:(...args)=>uiSettings.renderSettings(...args),
-  maybeAutoRefreshBankBalance:(...args)=>domainsBankController.maybeAutoRefreshBankBalance(...args),
+  maybeAutoRefreshBankBalance:(...args)=>bank.runtime.wake(...args),
   maybeAutoRefreshCreditSync:(...args)=>domainsCreditController.maybeAutoRefreshCreditSync(...args),
   maybeShowCashflowStartupAlert:(...args)=>domainsBankAlerts.maybeShowStartupCashflowAlert(...args),
   onPageActivated:page=>{void notes.activateSheetIfVisible(page)},
@@ -393,11 +393,9 @@ const expenses=createKupaExpensesRuntime({
 
 const {
   creditController:domainsCreditController,
-  bankController:domainsBankController,
-  bankView:domainsBankView,
-  createConnectionImporter:composeFinanceConnectionImporter,automation:financeAutomation,
+  bank,bindBankUi,automation:financeAutomation,
 }=composeKupaFinance({
-  model,session,checksSession,ui,cloudAuth,cloudTransport,syncDocument,
+  model,session,ui,cloudAuth,cloudTransport,syncDocument,
   syncChecksState,syncChecks,storagePersistence,uiStatus,uiNavigation,
   uiDateEditor,financeDerivations,bankQueries,domainRevisions,
   getUiModal:()=>uiModal,
@@ -416,7 +414,7 @@ const {
 dashboard.bindView({
   bank:bankQueries,
   checks:{active:(...args)=>checks.activeChecks(...args),deposited:(...args)=>checks.depositedChecks(...args)},
-  localBankSnapshot:(...args)=>domainsBankController.bankLocalSnapshotState(...args),
+  localBankSnapshot:(...args)=>bank.queries.localSnapshot(...args),
 });
 dashboard.assertReady();
 
@@ -432,7 +430,7 @@ credit.bindView({
 
 checks.bindView({
   uiBulk,
-  getBankImageContext:()=>({bank:domainsBankController.bankBridgeUiState(),imageAction:'view-bank-cheque-image'}),
+  getBankImageContext:()=>({bank:bank.queries.snapshot(),imageAction:'view-bank-cheque-image'}),
 });
 
 const uiSettings=createUiSettings({
@@ -453,8 +451,7 @@ const uiModal=createUiModal({
 
 notes.bind({cloudAuth,uiModal,storagePersistence});
 notes.assertReady();
-
-const importFinanceConnections=composeFinanceConnectionImporter();
+bindBankUi();bank.assertReady();
 
 const domainsBankAlerts=createDomainsBankAlerts({
   model,
@@ -574,7 +571,7 @@ const creditCardOrderView=createCreditCardOrderView({getSync:()=>model.state.cre
 
 const uiActions=composeActionRegistry([
   {name:'checks',actions:checks.actions},
-  {name:'bank',actions:createBankActions({domainsBankController,domainsBankView,importFinanceConnections,ui,uiStatus})},
+  bank.actionPack(),
   {name:'shell',actions:createShellActions({uiModal,uiNavigation})},
   {name:'credit',actions:credit.actions},
   {name:'credit-order',actions:creditCardOrderView.actions},
@@ -592,7 +589,7 @@ const uiActions=composeActionRegistry([
 const connectivity=createKupaConnectivityRuntime({
   access:{primary:()=>tab.primaryTab,blocked:()=>session.storageProtocolBlocked||!storageRecovery.isReady()||session.startupCloudHydrating||session.syncCapabilitiesChecking||!!session.syncCapabilitiesError},
   cloud:{connected:()=>session.connectionMode==='supabase',resumeAfterReconnect:()=>syncDocument.resumeAfterReconnect(),cloudPoll:()=>syncDocument.cloudPoll()},
-  bank:domainsBankController,credit:domainsCreditController,status:uiStatus,
+  bank:{startAutoSync:(...args)=>bank.runtime.start(...args),stopAutoSync:()=>bank.runtime.stop()},credit:domainsCreditController,status:uiStatus,
 });
 connectivity.start();
 uiSidebar.bind();

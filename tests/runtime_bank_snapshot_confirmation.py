@@ -57,19 +57,19 @@ FLOW = r"""(async()=>{
    if(path.includes('/storage/v1/object/list/'))return Promise.resolve(new Response('[]'));
    return originalFetch(url,options);
  };
- const controller=kupa?domainsBankController:finance.commands;
+ const controller=kupa?bank.commands:finance.commands;
  const before=stable(kupa?state.bank:checksSession.kupaCloudReadState);
  check(await (kupa?controller.refreshBankBalance():controller.refreshBank())===false,'malformed HTTP 200 was accepted as a confirmed commit');
  check(stable(kupa?state.bank:checksSession.kupaCloudReadState)===before,'unconfirmed result replaced Last Known Good: '+JSON.stringify({site,before,after:kupa?state.bank:checksSession.kupaCloudReadState,commits,scrapes}));
  check(JSON.stringify(await db.load(identity))===durableBefore,'unknown confirmation changed durable Main records');
  check(JSON.stringify(await db.load(owner+':shared-checks'))===sharedBefore,'unknown confirmation changed Shared Checks');
- const diagnostic=kupa?controller.bankBridgeUiState():finance.queries.snapshot();
+ const diagnostic=kupa?bank.queries.snapshot():finance.queries.snapshot();
  check((kupa?diagnostic.lastError:diagnostic.bankError).includes('אישור'),'unknown confirmation not visible to operator');
  // Recovery is an authorized read of the committed effect, never another scan.
- if(kupa){await syncDocument.cloudPoll();await controller.ensureBankDisplayArchive()}else await finance.queries.refreshFinanceData();
- const bank=kupa?controller.bankBridgeUiState():finance.queries.snapshot().bank;
- check((kupa?state.bank.currentBalance:bank.currentBalance)===500,'confirmed read did not recover the server Bank effect');
- check(JSON.stringify(bank.feed.transactions.map(row=>row.id))==='["stable-bank-transaction"]','Bank transaction identity lost/duplicated');
+ if(kupa){await syncDocument.cloudPoll();await bank.queries.ensureDisplayArchive()}else await finance.queries.refreshFinanceData();
+ const bankSnapshot=kupa?bank.queries.snapshot():finance.queries.snapshot().bank;
+ check((kupa?state.bank.currentBalance:bankSnapshot.currentBalance)===500,'confirmed read did not recover the server Bank effect');
+ check(JSON.stringify(bankSnapshot.feed.transactions.map(row=>row.id))==='["stable-bank-transaction"]','Bank transaction identity lost/duplicated');
  check(commits===1&&scrapes===1,'recovery repeated a remote write/provider effect');
  check(state.notes.find(row=>row.id===note.id)?.content===note.content,'note identity/content lost');
  check(JSON.stringify((await sharedChecksV2.recoverReadOnly()).state)===sharedStateBefore,'readout recovery changed Shared Checks content');

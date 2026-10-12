@@ -1,3 +1,4 @@
+import {createFinanceBrowserEffects} from '../shared/finance-browser-effects.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createDomainsBankController} from '../netunim-kupa/site/assets/js/domains/bank/controller.js';
@@ -26,7 +27,7 @@ function fixture(t,{hold=null,home=false}={}){
     syncBankTransactionsSnapshot:(_key,role)=>phase('archive-'+role,{sourcePayload:[],result:{total_count:0}}),syncBankChequeImages:()=>phase('images',{warnings:[]}),
     readBankTransactions:(_key,role)=>phase('read-'+role,[]),readBankTransactionSnapshot:()=>phase('read-snapshot',null),touchBankDataRevision:()=>{},touchBankDisplayRevision:()=>{},
   };
-  return {ports,model,before,counts,entered,release,create:()=>createDomainsBankController(ports),handoff:()=>{owner='B';epoch++},logout:()=>{owner=null;epoch++},relogin:()=>{epoch++},secondary:()=>{primary=false}};
+  return {ports,model,before,counts,entered,release,create:()=>createDomainsBankController({...ports,effects:createFinanceBrowserEffects()}),handoff:()=>{owner='B';epoch++},logout:()=>{owner=null;epoch++},relogin:()=>{epoch++},secondary:()=>{primary=false}};
 }
 
 for(const [name,change] of [['account handoff',f=>f.handoff()],['logout',f=>f.logout()],['same-account relogin',f=>f.relogin()],['leadership loss',f=>f.secondary()]]){
