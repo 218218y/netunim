@@ -121,8 +121,28 @@ ok("shared_checks_documents" in os and "save_shared_checks_document" in os,
    "orders: shared checks endpoint configured")
 ok("ensureSharedChecksForNewCloud" not in ks and "startStorageV2OwnerTransfer" in ks,
    "kupa: greenfield Shared Checks onboarding uses the durable V2 owner transfer")
-ok("checksSession.sharedChecksBootstrapActive&&!rawLocal.length&&r.length>0&&b.length>0&&jsonEq(b,r)&&!normalizeDeleteIds(deleteIds).length" in ks and "repairedEmptyBootstrap" in ks and "SHARED_CHECKS_BOOT_REPAIR_KEY" not in ks,
+checks_merge_url = (K / "site/assets/js/sync/checks-merge.js").as_uri()
+bootstrap_probe = subprocess.run([
+    "node", "--input-type=module", "-e",
+    "import assert from 'node:assert/strict'; import {createSharedChecksMerge} from "
+    + json.dumps(checks_merge_url) + ";" + """
+    const state={sharedChecksBootstrapActive:true},merge=createSharedChecksMerge({checksSession:state});
+    const base=[{id:'C',amount:10,status:'open'}];
+    assert.equal(merge(base,[],base).repairedEmptyBootstrap,true);
+    assert.equal(state.sharedChecksBootstrapActive,false);
+    assert.equal(merge(base,[],base).repairedEmptyBootstrap,false);
+    assert.equal(merge(base,[],base).checks.length,1);
+    assert.equal(merge(base,[],base,{deleteIds:['C']}).checks.length,0);
+    state.sharedChecksBootstrapActive=true;
+    assert.equal(merge(base,[],base,{deleteIds:['C']}).repairedEmptyBootstrap,false);
+    const edited=[{...base[0],amount:20}];
+    assert.ok(merge(base,[],edited,{deleteIds:['C']}).conflicts.length);
+    """,
+], cwd=ROOT, capture_output=True, text=True)
+ok(bootstrap_probe.returncode == 0 and "SHARED_CHECKS_BOOT_REPAIR_KEY" not in ks,
    "kupa: shared bootstrap protection is state-based, not stale-marker based, and never overrides explicit deletion intent")
+if bootstrap_probe.returncode:
+    print(bootstrap_probe.stderr)
 ok("shared_checks_v2_required" in ks and "shared_checks_v2_required" in os
    and "sharedChecksV2.sync()" in ks and "sharedChecksV2.sync()" in os,
    "clients: missing Shared V2 runtime fails closed without a legacy writer")
