@@ -36,7 +36,7 @@ assert.equal(bankUnavailableFetches,0,'Kupa bank auto refresh fails closed when 
 
 let creditFetches=0;
 const creditModel={state:{creditSync:{version:3,mode:'synced',syncedAt:old,profiles:[],errors:[],cardMappings:{}}}};
-const creditController=createDomainsCreditController({preferences:createCreditPreferences(),autoScope:()=> 'test-owner',captureOperation:()=>()=>{},
+const creditController=createDomainsCreditController({effects:createFinanceBrowserEffects(),preferences:createCreditPreferences(),autoScope:()=> 'test-owner',captureOperation:()=>()=>{},
   model:creditModel,saveState:async()=>true,toast:()=>{},render:()=>{},modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,
   bridge:{getBridgeToken:()=> 'test-token',creditStatus:async()=>{throw new Error('must not query bridge status')},syncCreditCards:async()=>{creditFetches++;throw new Error('must not scrape')}},
   refreshFinanceCloudSnapshot:async()=>({verified:true,state:{creditSync:{version:3,mode:'synced',syncedAt:fresh,profiles:[],errors:[],cardMappings:{}}}}),
@@ -45,7 +45,7 @@ assert.equal(await creditController.refreshCreditSync({auto:true}),true);
 assert.equal(creditFetches,0,'Kupa credit auto refresh must not scrape when Orders already refreshed the shared Kupa document');
 
 let creditUnavailableFetches=0;
-const creditUnavailable=createDomainsCreditController({preferences:createCreditPreferences(),autoScope:()=> 'test-owner',captureOperation:()=>()=>{},
+const creditUnavailable=createDomainsCreditController({effects:createFinanceBrowserEffects(),preferences:createCreditPreferences(),autoScope:()=> 'test-owner',captureOperation:()=>()=>{},
   model:creditModel,saveState:async()=>true,toast:()=>{},render:()=>{},modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,
   bridge:{getBridgeToken:()=> 'test-token',creditStatus:async()=>({bridgeVersion:24,profiles:[{profileId:'p1'}]}),syncCreditCards:async()=>{creditUnavailableFetches++}},
   refreshFinanceCloudSnapshot:async()=>({verified:false,state:null}),
@@ -67,7 +67,7 @@ assert.equal(lockedBankFetches,0,'a denied shared bank lease must stop before th
 assert.equal(lockedBankReleases,0,'a client must not release a lease it never acquired');
 
 let lockedCreditFetches=0,lockedCreditReleases=0;
-const lockedCredit=createDomainsCreditController({preferences:createCreditPreferences(),autoScope:()=> 'test-owner',captureOperation:()=>()=>{},
+const lockedCredit=createDomainsCreditController({effects:createFinanceBrowserEffects(),preferences:createCreditPreferences(),autoScope:()=> 'test-owner',captureOperation:()=>()=>{},
   model:creditModel,saveState:async()=>true,toast:()=>{},render:()=>{},modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,
   bridge:{getBridgeToken:()=> 'test-token',creditStatus:async()=>({bridgeVersion:24,profiles:[{profileId:'p1'}]}),syncCreditCards:async()=>{lockedCreditFetches++}},
   claimFinanceSyncLease:async kind=>{assert.equal(kind,'credit');return {acquired:false,leasedUntil:'2026-09-01T05:10:00.000Z'}},
@@ -92,7 +92,7 @@ assert.equal(raceBankFetches,0,'if another machine completed while this machine 
 assert.equal(raceBankReleases,1,'an acquired bank lease is released even when the post-claim freshness check suppresses scraping');
 
 let raceCreditReads=0,raceCreditFetches=0,raceCreditReleases=0;
-const raceCredit=createDomainsCreditController({preferences:createCreditPreferences(),autoScope:()=> 'test-owner',captureOperation:()=>()=>{},
+const raceCredit=createDomainsCreditController({effects:createFinanceBrowserEffects(),preferences:createCreditPreferences(),autoScope:()=> 'test-owner',captureOperation:()=>()=>{},
   model:creditModel,saveState:async()=>true,toast:()=>{},render:()=>{},modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,
   bridge:{getBridgeToken:()=> 'test-token',creditStatus:async()=>({bridgeVersion:24,profiles:[{profileId:'p1'}]}),syncCreditCards:async()=>{raceCreditFetches++}},
   refreshFinanceCloudSnapshot:async()=>({verified:true,state:{creditSync:{version:3,mode:'synced',syncedAt:++raceCreditReads===1?old:fresh,profiles:[],errors:[],cardMappings:{}}}}),

@@ -2,24 +2,24 @@ import {createLazyDeferredSearchUpdater} from '../../shared/search-scheduler.js'
 import {creditDateRangeFromControl} from '../../shared/credit-detail-controls.js';
 
 // Credit owns these delegated UI actions and its local event ports.
-export function createCreditActions({domainsCreditController,domainsCreditEditor,domainsCreditView,ui}){
-const copySafeCreditDiagnostics=(...args)=>domainsCreditController.copySafeCreditDiagnostics(...args);
-const deleteCreditConnection=(...args)=>domainsCreditController.deleteCreditConnection(...args);
-const exportCreditDataDiagnostics=(...args)=>domainsCreditController.exportCreditDataDiagnostics(...args);
-const openCreditConnectionModal=(...args)=>domainsCreditController.openCreditConnectionModal(...args);
+export function createCreditActions({creditCommands,domainsCreditEditor,domainsCreditView,ui,search=null,isActive=()=>true}){
+const copySafeCreditDiagnostics=(...args)=>creditCommands.copySafeCreditDiagnostics(...args);
+const deleteCreditConnection=(...args)=>creditCommands.deleteCreditConnection(...args);
+const exportCreditDataDiagnostics=(...args)=>creditCommands.exportCreditDataDiagnostics(...args);
+const openCreditConnectionModal=(...args)=>creditCommands.openCreditConnectionModal(...args);
 const openCreditModal=(...args)=>domainsCreditEditor.openCreditModal(...args);
 const pageCreditDetails=(...args)=>domainsCreditView.pageCreditDetails(...args);
 const prefillChargeDate=(...args)=>domainsCreditEditor.prefillChargeDate(...args);
-const refreshCreditSync=(...args)=>domainsCreditController.refreshCreditSync(...args);
+const refreshCreditSync=(...args)=>creditCommands.refreshCreditSync(...args);
 const renderCredit=(...args)=>domainsCreditView.renderCredit(...args);
 const renderCreditDetails=(...args)=>domainsCreditView.renderCreditDetails(...args);
-const resetCreditSync=(...args)=>domainsCreditController.resetCreditSync(...args);
-const setCreditAutoMode=(...args)=>domainsCreditController.setCreditAutoMode(...args);
-const setCreditAutoRefresh=(...args)=>domainsCreditController.setCreditAutoRefresh(...args);
-const setCreditCardMapping=(...args)=>domainsCreditController.setCreditCardMapping(...args);
+const resetCreditSync=(...args)=>creditCommands.resetCreditSync(...args);
+const setCreditAutoMode=(...args)=>creditCommands.setCreditAutoMode(...args);
+const setCreditAutoRefresh=(...args)=>creditCommands.setCreditAutoRefresh(...args);
+const setCreditCardMapping=(...args)=>creditCommands.setCreditCardMapping(...args);
 const setCreditSearch=(...args)=>domainsCreditView.setCreditSearch(...args);
 const toggleCreditSyncOptions=(...args)=>domainsCreditView.toggleCreditSyncOptions(...args);
-const creditSearch=createLazyDeferredSearchUpdater(value=>{ui.creditSearchValue=value},setCreditSearch);
+const creditSearch=search||createLazyDeferredSearchUpdater(value=>{ui.creditSearchValue=value},setCreditSearch);
 return {
   'expenses-hub-tab':(element,event)=>{ui.expensesTab=element.dataset.clickArg0==='expenses'?'expenses':'credit';renderCredit()},
   'credit-details-page':element=>pageCreditDetails(element.dataset.clickArg0,element.dataset.clickArg1),
@@ -36,14 +36,14 @@ return {
   'credit-detail-upcoming-day':(element,event)=>{const day=element.dataset.clickArg0==='10'?'10':'15',active=ui.creditDetailMode==='upcoming'&&ui.creditDetailChargeDay===day;ui.creditDetailMode='upcoming';ui.creditDetailChargeDay=active?'all':day;ui.creditDetailFocus=null;renderCreditDetails()},
   'credit-detail-month':(element,event)=>{ui.creditDetailMode='month';ui.creditDetailChargeDay='all';ui.creditDetailFocus={monthKey:element.dataset.clickArg0||'',cardKey:''};renderCreditDetails()},
   'credit-detail-month-day':(element,event)=>{const monthKey=element.dataset.clickArg0||'',day=element.dataset.clickArg1==='10'?'10':'15',active=ui.creditDetailMode==='month'&&ui.creditDetailFocus?.monthKey===monthKey&&ui.creditDetailChargeDay===day;ui.creditDetailMode='month';ui.creditDetailChargeDay=active?'all':day;ui.creditDetailFocus={monthKey,cardKey:''};renderCreditDetails()},
-  'credit-detail-focus':(element,event)=>{ui.creditDetailMode='month';ui.creditDetailChargeDay='all';ui.creditDetailFocus={monthKey:element.dataset.clickArg0||'',cardKey:element.dataset.clickArg1||''};renderCredit();requestAnimationFrame(()=>document.getElementById('credit-active-transactions')?.scrollIntoView({behavior:'smooth',block:'start'}))},
+  'credit-detail-focus':(element,event)=>{ui.creditDetailMode='month';ui.creditDetailChargeDay='all';ui.creditDetailFocus={monthKey:element.dataset.clickArg0||'',cardKey:element.dataset.clickArg1||''};renderCredit();requestAnimationFrame(()=>isActive()&&document.getElementById('credit-active-transactions')?.scrollIntoView({behavior:'smooth',block:'start'}))},
   'clear-credit-detail-focus':(element,event)=>{ui.creditDetailMode='month';ui.creditDetailFocus={monthKey:element.dataset.clickArg0||ui.creditDetailFocus?.monthKey||'',cardKey:''};renderCreditDetails()},
   'open-credit-modal-2':(element,event)=>{openCreditModal(element.dataset.clickArg0)},
   'open-credit-connection':(element,event)=>{event?.preventDefault();event?.stopPropagation();openCreditConnectionModal(element.dataset.clickArg0||'')},
   'delete-credit-connection':(element,event)=>{event?.preventDefault();event?.stopPropagation();deleteCreditConnection(element.dataset.clickArg0||'')},
   'reset-credit-sync':(element,event)=>{event?.preventDefault();event?.stopPropagation();resetCreditSync()},
   'refresh-credit-sync':(element,event)=>{event?.preventDefault();event?.stopPropagation();refreshCreditSync({interactive:false,auto:false,syncMode:'forecast'})},
-  'retry-credit-publication':(element,event)=>{event?.preventDefault();event?.stopPropagation();return domainsCreditController.retryCreditPublication()},
+  'retry-credit-publication':(element,event)=>{event?.preventDefault();event?.stopPropagation();return creditCommands.retryCreditPublication()},
   'refresh-credit-sync-quick':(element,event)=>{event?.preventDefault();event?.stopPropagation();refreshCreditSync({interactive:false,auto:false,syncMode:'quick'})},
   'refresh-credit-sync-recovery':(element,event)=>{event?.preventDefault();event?.stopPropagation();refreshCreditSync({interactive:false,auto:false,syncMode:'recovery'})},
   'refresh-credit-sync-interactive':(element,event)=>{event?.preventDefault();event?.stopPropagation();refreshCreditSync({interactive:true,auto:false,syncMode:'quick'})},

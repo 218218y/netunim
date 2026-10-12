@@ -1,8 +1,9 @@
 import {creditOrderCardsData} from './credit-card-order.js';
 
-export function createCreditCardOrderView({getSync,saveOrder,modal,closeModal,render,escapeHtml:esc}){
+export function createCreditCardOrderView({getSync,saveOrder,modal,closeModal,render,escapeHtml:esc,isActive=()=>true}){
   let cards=[],draft=[],alphabetical=false,saving=false,generation=0;
   function paint(){
+    if(!isActive())return;
     const list=document.getElementById('creditCardOrderList');if(!list)return;
     const byKey=new Map(cards.map(card=>[card.key,card]));
     list.innerHTML=draft.map((key,index)=>{const card=byKey.get(key);return `<div class="credit-order-row" draggable="${!saving}" data-modal-draft="${esc(key)}" data-dragstart="credit-card-order-drag-start" data-dragover="credit-card-order-drag-over" data-drop="credit-card-order-drop" data-dragend="credit-card-order-drag-end" data-card-key="${esc(key)}"><span class="credit-order-handle" title="גרור לשינוי סדר">⋮⋮</span><span class="credit-order-name"><b>${esc(card.card)}</b><small>${esc(card.detail)}</small></span><span class="credit-order-actions"><button type="button" class="btn" aria-label="העבר ${esc(card.card)} למעלה" data-action="credit-card-order-move" data-click-arg0="${esc(key)}" data-click-arg1="-1" ${saving||index===0?'disabled':''}>↑</button><button type="button" class="btn" aria-label="העבר ${esc(card.card)} למטה" data-action="credit-card-order-move" data-click-arg0="${esc(key)}" data-click-arg1="1" ${saving||index===draft.length-1?'disabled':''}>↓</button></span></div>`}).join('');
@@ -19,12 +20,13 @@ export function createCreditCardOrderView({getSync,saveOrder,modal,closeModal,re
     if(saving)return;const current=generation;saving=true;paint();
     try{
       const result=await saveOrder(alphabetical?null:draft.slice());
+      if(!isActive())return false;
       if(result!==true)throw new Error('הסדר לא נשמר. הרשימה נשארה פתוחה לניסיון נוסף.');
       if(current===generation&&document.getElementById('creditCardOrderList'))closeModal();render();
-    }catch(error){const target=document.getElementById('creditCardOrderError');if(current===generation&&target)target.textContent=error?.message||'שמירת הסדר נכשלה'}
+    }catch(error){if(!isActive())return false;const target=document.getElementById('creditCardOrderError');if(current===generation&&target)target.textContent=error?.message||'שמירת הסדר נכשלה'}
     finally{saving=false;if(current===generation)paint()}
   }
-  return {actions:{
+  const actions={
     'open-credit-card-order':open,
     'credit-card-order-save':save,
     'credit-card-order-reset':()=>{if(saving)return;draft=cards.slice().sort((a,b)=>a.card.localeCompare(b.card,'he')||a.key.localeCompare(b.key)).map(card=>card.key);alphabetical=true;paint()},
@@ -33,5 +35,6 @@ export function createCreditCardOrderView({getSync,saveOrder,modal,closeModal,re
     'credit-card-order-drag-over':(element,event)=>{event.preventDefault();event.dataTransfer.dropEffect='move'},
     'credit-card-order-drop':(element,event)=>{event.preventDefault();move(event.dataTransfer.getData('text/plain'),draft.indexOf(element.dataset.cardKey))},
     'credit-card-order-drag-end':element=>element.classList.remove('dragging'),
-  }};
+  };
+  return {actions:Object.fromEntries(Object.entries(actions).map(([name,run])=>[name,(...args)=>isActive()?run(...args):false]))};
 }

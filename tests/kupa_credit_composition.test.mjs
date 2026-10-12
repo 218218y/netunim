@@ -3,18 +3,24 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {createKupaCreditRuntime} from '../netunim-kupa/site/assets/js/composition/credit.js';
 
-test('Credit waits for its finance controller, then binds editing without enabling manual creation',()=>{
+test('Credit privately binds finance services, then editing without enabling manual creation',()=>{
   const model={state:{credits:[],cards:[],creditSync:{profiles:[],cardMappings:{}}}};
   const ui={creditSearchValue:''};
   const credit=createKupaCreditRuntime({model,ui});
   assert.throws(()=>credit.renderCredit(),/credit_view_not_bound/);
   assert.throws(()=>credit.bindEditor(),/credit_view_not_bound/);
-  assert.throws(()=>credit.bindView({}),/credit_controller_creditSyncUiState_required/);
+  assert.throws(()=>credit.bindView({}),/credit_services_not_bound/);
 
-  const controller={creditSyncUiState:()=>({}),refreshCreditBridgeStatus:()=>{}};
+  const noop=()=>{};
+  credit.bindServices({bridge:{},cloud:{refresh:noop,commit:noop,claimLease:noop,releaseLease:noop},
+    persistence:{save:noop},authority:{scope:{capture:()=>noop},automaticAccess:()=>null},
+    presentation:{toast:noop,render:noop,renderStatus:noop,closeModal:noop,confirmDialog:async()=>false}});
+  assert.equal(credit.creditController,undefined);
+  assert.equal(typeof credit.commands.refreshCreditSync,'function');
+  assert.throws(()=>credit.bindServices({}),/credit_services_already_bound/);
   const uiBulk=Object.fromEntries(['syncBulkUi','bulkControls','bulkHeader','bulkCell'].map(name=>[name,()=>{}]));
   const uiDateEditor={dateEditorMarkup:()=>'<input>',setDateValue:()=>{}};
-  const viewPorts={controller,uiBulk,uiDateEditor,financeDerivations:{run:fn=>fn()},domainRevisions:{stamp:()=>0},expensesMarkup:()=>''};
+  const viewPorts={uiBulk,uiDateEditor,financeDerivations:{run:fn=>fn()},domainRevisions:{stamp:()=>0},expensesMarkup:()=>''};
   credit.bindView(viewPorts);
   assert.throws(()=>credit.bindView(viewPorts),/credit_view_already_bound/);
   assert.throws(()=>credit.actions,/credit_editor_not_bound/);
@@ -30,6 +36,10 @@ test('Credit waits for its finance controller, then binds editing without enabli
   assert.throws(()=>credit.bindEditor(editorPorts),/credit_editor_already_bound/);
   credit.actions['open-credit-modal-2']({dataset:{clickArg0:''}});
   assert.equal(model.state.credits.length,0);
+  assert.equal(messages.length,1);
+  assert.equal(credit.runtime.dispose(),true);
+  assert.equal(credit.runtime.dispose(),false);
+  assert.equal(credit.actions['open-credit-modal-2']({dataset:{clickArg0:''}}),false);
   assert.equal(messages.length,1);
 });
 

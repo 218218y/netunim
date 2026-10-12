@@ -40,7 +40,7 @@ FLOW = r"""(async()=>{
    return new Response(body);
  };
  if(kupa)cloudAuth.supaRest=request;else cloudAuth.supaFetch=request;
- let result,error;try{result=kind==='main'?await finance.commands.saveCashflowMinimum('business','321'):await (kupa?domainsCreditController:finance.commands).saveCreditCardOrder([])}catch(caught){error=caught;result=false}
+ let result,error;try{result=kind==='main'?await finance.commands.saveCashflowMinimum('business','321'):await (kupa?credit.commands:finance.commands).saveCreditCardOrder([])}catch(caught){error=caught;result=false}
  check(result===false,'malformed HTTP 200 was reported as a successful write');
  if(kind!=='main')check(error?.code==='FINANCE_WRITE_RECEIPT_INVALID'&&error.kind==='confirmation_unknown','missing explicit unknown confirmation '+JSON.stringify({commits,message:error?.message,code:error?.code}));
  check(JSON.stringify(kupa?state.creditSync:checksSession.kupaCloudReadState)===before,'unknown response replaced confirmed projection');

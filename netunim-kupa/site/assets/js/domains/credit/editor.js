@@ -6,7 +6,7 @@ import {CREDIT_PROVIDER_LABELS,creditCardMappingKey,normalizeCreditSync} from '.
 function uniqueSorted(values){return [...new Set(values.map(v=>String(v||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'he'))}
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createDomainsCreditEditor({model, armModalDraftGuard, modal, nextChargeDate, deleteRecord, saveState, toast, closeModal, dateEditorMarkup, setDateValue, renderCredit}){
+export function createDomainsCreditEditor({isActive=()=>true,model, armModalDraftGuard, modal, nextChargeDate, deleteRecord, saveState, toast, closeModal, dateEditorMarkup, setDateValue, renderCredit}){
 function suggestions(){
   const sync=normalizeCreditSync(model.state.creditSync),cards=(model.state.cards||[]).filter(x=>x.active).map(x=>x.name),owners=sync.profiles.map(p=>p.ownerLabel);
   for(const profile of sync.profiles)for(const account of profile.accounts){
@@ -17,7 +17,7 @@ function suggestions(){
   for(const cr of model.state.credits||[])if(cr.ownerLabel)owners.push(cr.ownerLabel);
   return {cards:uniqueSorted(cards),owners:uniqueSorted(owners)};
 }
-function openCreditModal(id){
+function openCreditModal(id){if(!isActive())return false;
   if(!id)return toast('הוספה ידנית לאשראי הוסרה; הנתונים מתווספים דרך סנכרון האשראי.');
   const opts=suggestions(),cr=model.state.credits.find(x=>x.id===id);if(!cr)return toast('רשומת האשראי הידנית לא נמצאה.');
   const defaultFirst=cr.firstChargeDate||nextChargeDate(cr.card,cr.transactionDate);
@@ -36,9 +36,9 @@ function openCreditModal(id){
   </div>`,'שמור שינויים',()=>saveCredit(id),()=>deleteRecord('credits',id));armModalDraftGuard()
 }
 
-function prefillChargeDate(){const tx=document.getElementById('cTx').value,card=document.getElementById('cCard').value;setDateValue(document.getElementById('cFirst'),nextChargeDate(card,tx))}
+function prefillChargeDate(){if(!isActive())return false;const tx=document.getElementById('cTx').value,card=document.getElementById('cCard').value;setDateValue(document.getElementById('cFirst'),nextChargeDate(card,tx))}
 
-function saveCredit(id){if(!id)return toast('הוספה ידנית לאשראי אינה זמינה.');const index=model.state.credits.findIndex(x=>x.id===id);if(index<0)return toast('רשומת האשראי הידנית לא נמצאה.');const rec={id,account:document.getElementById('cAccount').value,ownerLabel:document.getElementById('cOwner').value.trim(),card:document.getElementById('cCard').value.trim(),description:document.getElementById('cDesc').value.trim(),transactionDate:document.getElementById('cTx').value,totalAmount:wholeMoney(document.getElementById('cTotal').value),installments:Number(document.getElementById('cParts').value),firstChargeDate:document.getElementById('cFirst').value,active:document.getElementById('cActive').value==='כן',note:document.getElementById('cNote').value.trim(),createdAt:model.state.credits[index]?.createdAt||todayISO()};if(!rec.card||!rec.totalAmount||!rec.installments||!rec.firstChargeDate)return toast('יש למלא כרטיס, סכום, תשלומים וחיוב ראשון');model.state.credits[index]=rec;closeModal(true);saveState('התוספת הידנית עודכנה',{operations:[{type:'put',collection:'credits',id:rec.id,mode:'replace',record:rec}]});renderCredit()}
+function saveCredit(id){if(!isActive())return false;if(!id)return toast('הוספה ידנית לאשראי אינה זמינה.');const index=model.state.credits.findIndex(x=>x.id===id);if(index<0)return toast('רשומת האשראי הידנית לא נמצאה.');const rec={id,account:document.getElementById('cAccount').value,ownerLabel:document.getElementById('cOwner').value.trim(),card:document.getElementById('cCard').value.trim(),description:document.getElementById('cDesc').value.trim(),transactionDate:document.getElementById('cTx').value,totalAmount:wholeMoney(document.getElementById('cTotal').value),installments:Number(document.getElementById('cParts').value),firstChargeDate:document.getElementById('cFirst').value,active:document.getElementById('cActive').value==='כן',note:document.getElementById('cNote').value.trim(),createdAt:model.state.credits[index]?.createdAt||todayISO()};if(!rec.card||!rec.totalAmount||!rec.installments||!rec.firstChargeDate)return toast('יש למלא כרטיס, סכום, תשלומים וחיוב ראשון');model.state.credits[index]=rec;closeModal(true);saveState('התוספת הידנית עודכנה',{operations:[{type:'put',collection:'credits',id:rec.id,mode:'replace',record:rec}]});renderCredit()}
 
 return { openCreditModal, prefillChargeDate, saveCredit };
 }

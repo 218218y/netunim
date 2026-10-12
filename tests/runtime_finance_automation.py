@@ -43,7 +43,7 @@ FLOW = r"""(async()=>{
    // A successful status is cached; reconnect correctly reuses that cache.
    held[0].resolve(CASE==='offline'?new Response(JSON.stringify({error:'fixture offline'}),{status:503}):reply());await one;
    assert(providerCalls===0,'lost access must stop before provider entry');
-   assert(domainsCreditController.creditSyncUiState().autoTimer===null,'lost access must retain no credit timer');
+   assert(credit.queries.uiState().autoScheduled===false,'lost access must retain no credit timer');
    assert(JSON.stringify(state)===before,'cancelled preparation must preserve state');
    // cloudState intentionally denies primary-only access after leadership loss.
    // Inspect the same captured durable owner through a readonly IDB transaction.
@@ -51,9 +51,9 @@ FLOW = r"""(async()=>{
    assert(JSON.stringify(storedAfter)===JSON.stringify(storedBefore),'cancelled preparation must preserve the entire durable journal');
    if(CASE==='offline'){
      online=true;window.dispatchEvent(new Event('online'));await waitFor(()=>statusCalls===2);
-     const resumed=domainsCreditController.maybeAutoRefreshCreditSync();
+     const resumed=credit.runtime.wake();
      financeAutomation.stop();held[1].resolve(reply());await resumed;
-     assert(domainsCreditController.creditSyncUiState().autoTimer===null,'reconnect stop must clear the timer');
+     assert(credit.queries.uiState().autoScheduled===false,'reconnect stop must clear the timer');
      assert(providerCalls===0,'reconnect must respect a later stop');
    }
    return {singleStatus:true,noProvider:true,noTimer:true,stateRetained:true,journalRetained:true,reconnect:CASE!=='offline'||statusCalls===2};
