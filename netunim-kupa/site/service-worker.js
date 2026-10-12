@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='kupa-app-shell-';
-const CACHE='kupa-app-shell-esm-90c5d92a657b';
+const CACHE='kupa-app-shell-esm-c3e4cc30527c';
 const SHELL=[
   './',
   './index.html',
@@ -111,6 +111,7 @@ const SHELL=[
   './assets/js/shared/credit-sync-policy.js',
   './assets/js/shared/customer-debt-progress.js',
   './assets/js/shared/data-invariants.js',
+  './assets/js/shared/debounced-task.js',
   './assets/js/shared/document-bridge-client.js',
   './assets/js/shared/document-search-composition.js',
   './assets/js/shared/document-write-ack.js',
@@ -206,6 +207,8 @@ const SHELL=[
   './assets/js/storage/persistence.js',
   './assets/js/storage/tab-lock.js',
   './assets/js/storage/v2-cloud-ports.js',
+  './assets/js/sync/checks-merge.js',
+  './assets/js/sync/checks-persistence.js',
   './assets/js/sync/checks-state.js',
   './assets/js/sync/checks.js',
   './assets/js/sync/document.js',

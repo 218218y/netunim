@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {createChecksPersistence} from '../netunim-kupa/site/assets/js/sync/checks-persistence.js';
 import {createStoragePersistence} from '../netunim-kupa/site/assets/js/storage/persistence.js';
 import {createStateNormalization} from '../netunim-kupa/site/assets/js/composition/state-normalization.js';
 import {createSyncMerge} from '../netunim-kupa/site/assets/js/sync/merge.js';
@@ -29,7 +30,7 @@ function fixture(t,{cloud=true,v2=false,v2InstallFails=false}={}){
     persistImmediateBrowserSnapshot:state=>{snapshots.push(structuredClone(state));journalState=structuredClone(state);return true},markSharedChecksPending:()=>{stages++},saveSharedChecksToCloud:noop,
     stateFromPayload:p=>({state:normalizer.normalizeState(p),meta:p._meta}),lastSavedState:()=>structuredClone(base),
     readJsonHandle:async()=>({...structuredClone(remote),_meta:{revision}}),writeJsonHandleVerified:async(_handle,payload)=>{written.push(structuredClone(payload));if(writeGate)await writeGate()}};
-  const api=createStoragePersistence({...deps,...createSyncMerge(deps)});
+  const api={...createStoragePersistence({...deps,...createSyncMerge(deps)}),...createChecksPersistence(deps)};
   const editor=createDomainsChecksEditor({model,saveChecksState:api.saveChecksState,onChecksChanged:nav.checksChanged});
   return {api,editor,model,session,ui,snapshots,sharedWrites,written,replacements,checksSession,get renders(){return renders},get indicators(){return indicators},get stages(){return stages},remote:state=>{remote=state;revision++},holdWrite:fn=>{writeGate=fn}};
 }

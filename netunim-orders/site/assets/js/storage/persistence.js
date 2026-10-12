@@ -1,5 +1,5 @@
 import {beginMeasure} from '../shared/runtime-performance.js';
-import {createDebouncedTask} from '../platform/debounced-task.js';
+import {createDebouncedTask} from '../shared/debounced-task.js';
 
 // Dependencies are supplied by the composition root; construction starts no work.
 export function createStoragePersistence({

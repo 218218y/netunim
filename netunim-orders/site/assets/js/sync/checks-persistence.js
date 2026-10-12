@@ -1,4 +1,4 @@
-import {createDebouncedTask} from '../platform/debounced-task.js';
+import {createDebouncedTask} from '../shared/debounced-task.js';
 
 // Shared Checks owns its backup and cloud wakeups independently of Main saves.
 export function createSyncChecksPersistence({

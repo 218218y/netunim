@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createDebouncedTask} from '../netunim-orders/site/assets/js/platform/debounced-task.js';
+import {createDebouncedTask} from '../shared/debounced-task.js';
 
 const deferred = () => {
   let resolve, reject;

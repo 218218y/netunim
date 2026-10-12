@@ -15,7 +15,7 @@ import {createSharedChecksV2Runtime} from '../shared/shared-checks-v2-runtime.js
 import {createSharedChecksStorageV2} from '../shared/shared-checks-storage-v2.js';
 import {createStorageJournalDb} from '../shared/storage-journal-idb.js';
 import {createStateNormalization} from './state-normalization.js';
-import {createSyncChecks} from '../sync/checks.js';
+import {mergeSharedChecks} from '../sync/checks-merge.js';
 import {normalizeSharedChecks} from '../shared/shared-checks-contract.js';
 import {assertKupaEntityInvariants,assertValidCloudState} from '../state/validation.js';
 import {INITIAL_STATE} from '../state/constants.js';
@@ -36,10 +36,10 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
   const mode=()=>storageV2Mode('kupa',storage,owner.current(),{preparing:preparing()});
   const createRuntime=options=>createStorageV2Runtime({app:'kupa',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,mode,...options});
   const createCloudPorts=storageBrowser=>({...createStorageV2CloudPorts(storageBrowser),storageV2PrimaryRequested:()=>['primary','preparing'].includes(mode())});
-  const createSharedComposition=({model,checksSession,domainRevisions,main,stateNormalization,getSyncChecks,getCloudTransport})=>createSharedChecksV2Composition({
+  const createSharedComposition=({model,checksSession,domainRevisions,main,stateNormalization,mergeSharedChecks,getCloudTransport})=>createSharedChecksV2Composition({
     site:'kupa',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,preparing,
     model,checksSession,eventsKey:'sharedChecksBankEvents',domainRevisions,main,
-    merge:(...args)=>getSyncChecks().mergeSharedChecks(...args),readRemote:(...args)=>getCloudTransport().readSharedChecksDocument(...args),rpc:(...args)=>getCloudTransport().rpcSaveSharedChecksV2(...args),
+    merge:(...args)=>mergeSharedChecks(...args),readRemote:(...args)=>getCloudTransport().readSharedChecksDocument(...args),rpc:(...args)=>getCloudTransport().rpcSaveSharedChecksV2(...args),
     validateMainCloud:state=>assertValidCloudState(state,'Kupa V2 restore cloud state'),applyMainState:state=>{model.state=stateNormalization.normalizeState({...state,checks:model.state.checks});domainRevisions.touchAll()},
   });
 
@@ -53,9 +53,10 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
       ?await verifyStorageV2LocalEngine({app:'kupa',owner:()=>sourceOwner})
       :await p.verifyStorageV2AccountMarker();
     if(marked!==true||sourceOwner!==owner.current()||!owner.locked)throw new Error('kupa_transfer_source_not_primary');
+    p.checksRuntime.cancelPending();
+    await p.checksRuntime.drain();
     await Promise.all([p.mainStorageV2.commitPromise,p.sharedChecksV2.commitPromise,p.files.storageV2CommitPromise,
-      p.session.saveQueue,p.session.cloudSavePromise,p.checksSession.sharedChecksSavePromise,
-      p.checksSession.sharedChecksPullPromise].filter(Boolean));
+      p.session.saveQueue,p.session.cloudSavePromise].filter(Boolean));
     if(p.session.cloudSyncBusy||p.session.cloudWriteBusy||p.checksSession.sharedChecksBusy)throw new Error('kupa_transfer_source_unsettled');
     const boundary=await createStorageJournalDb().readBoundary(sourceOwner);
     if(boundary&&boundary.phase!=='complete')throw new Error('kupa_transfer_source_boundary_pending');
@@ -79,7 +80,7 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
     const targetMain=createStorageV2Runtime({app:'kupa',owner:target,primary:()=>tab.primaryTab,mode:()=> 'preparing',
       validate:state=>assertKupaEntityInvariants(state,{includeChecks:Object.hasOwn(state||{},'checks'),required:true}),prepareCheckpoint:state=>normalization.prepareKupaStorageState(state),prepareOperation:operation=>normalization.prepareKupaStorageOperation(operation)});
     let detachedSharedState={checks:[],bankEvents:[]};
-    const merge=createSyncChecks({checksSession:{sharedChecksBootstrapActive:false},model:{state:{checks:[]}}}).mergeSharedChecks;
+    const merge=mergeSharedChecks;
     const targetShared=createSharedChecksV2Runtime({site:'kupa',owner:target,primary:()=>tab.primaryTab,mode:()=> 'preparing',
       readState:()=>detachedSharedState,applyState:value=>{detachedSharedState=structuredClone(value)},merge,
       readRemote:()=>p.cloudTransport.readSharedChecksDocument(),rpc:(...args)=>p.cloudTransport.rpcSaveSharedChecksV2(...args)});
@@ -118,7 +119,11 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
     return result;
   }
   function configure(next){
-    if(ports)throw new Error('kupa_storage_v2_already_configured');ports=next;
+    if(ports)throw new Error('kupa_storage_v2_already_configured');
+    for(const method of ['cancelPending','drain']){
+      if(typeof next?.checksRuntime?.[method]!=='function')throw new TypeError(`kupa_checks_runtime_${method}_required`);
+    }
+    ports=next;
     const p=requirePorts();
     fencedRecovery=createStorageV2FencedRecovery({app:'kupa',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,refreshOwnerBinding:()=>owner.refresh(),
       authenticatedOwner:()=>p.cloudAuth.loadSupaSession()?.user?.id||null,readProtocolState:()=>p.cloudTransport.readStorageProtocolState(),
@@ -149,8 +154,9 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
         return equalSyncJson(record.legacy,source)||equalSyncJson(record.legacyRecovery,source)||equalSyncJson(record.working,migrateLegacySpreadsheet(source));
       },
       quiesce:async()=>{
-        clearTimeout(p.checksSession.sharedChecksSaveTimer);p.checksSession.sharedChecksSaveTimer=null;
-        await Promise.all([p.files.storageV2CommitPromise,p.checksSession.sharedChecksSavePromise,p.session.saveQueue].filter(Boolean));
+        p.checksRuntime.cancelPending();
+        await p.checksRuntime.drain();
+        await Promise.all([p.files.storageV2CommitPromise,p.session.saveQueue].filter(Boolean));
       },
     });
     ownerTransfer=createStorageV2OwnerTransfer({app:'kupa',ownerBinding:owner,primary:()=>tab.primaryTab,

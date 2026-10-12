@@ -7,7 +7,7 @@ import {createStorageJournal} from '../shared/storage-journal.js';
 import {createSyncChecks as ordersChecks} from '../netunim-orders/site/assets/js/sync/checks.js';
 import {createSyncChecks as kupaChecks} from '../netunim-kupa/site/assets/js/sync/checks.js';
 import {createSyncChecksPersistence} from '../netunim-orders/site/assets/js/sync/checks-persistence.js';
-import {createStoragePersistence} from '../netunim-kupa/site/assets/js/storage/persistence.js';
+import {createChecksPersistence} from '../netunim-kupa/site/assets/js/sync/checks-persistence.js';
 import {normalizeSharedChecks} from '../netunim-kupa/site/assets/js/domains/checks/model.js';
 import {memoryDb,emergencyStore} from './storage-v2-fixture.mjs';
 
@@ -208,7 +208,7 @@ for(const site of ['orders','kupa'])test(`${site}: application save and RPC adap
     localSnapshot:forbidden,persistImmediateBrowserSnapshot:forbidden,markChecksPending:forbidden,markSharedChecksPending:forbidden,
     toast:noop,setSave:noop,setCloud:noop,setSaveStatus:noop,checksStatus:{save:noop,cloud:noop},setCloudHeaderStatus:noop,folderSaveTitle:()=>'',rejectSecondaryMutation:()=>false,loadSession:()=>({user:{id:'A'}}),
     observeSharedChecks:forbidden,saveSharedChecksToCloud:noop};
-  const persistence=site==='orders'?createSyncChecksPersistence(common):createStoragePersistence(common);
+  const persistence=site==='orders'?createSyncChecksPersistence(common):createChecksPersistence(common);
   f.visible.checks[0].note='app edit';const result=site==='orders'?persistence.scheduleCheckSave('edit',{operations:[put('C')]}):await persistence.saveChecksState('edit',{operations:[put('C')]});assert.equal(result,true);
   await runtime.flush();
   const sync=(site==='orders'?ordersChecks:kupaChecks)({...common,refreshStorageV2CloudState:forbidden,replaceStorageV2CurrentState:forbidden,persistChecksBase:forbidden,persistSharedChecksBase:forbidden,

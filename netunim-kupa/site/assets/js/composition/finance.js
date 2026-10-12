@@ -9,7 +9,7 @@ import {createCreditPreferences} from '../platform/credit-preferences.js';
 
 export function composeKupaFinance({
   model,session,ui,cloudAuth,cloudTransport,syncDocument,
-  syncChecksState,syncChecks,storagePersistence,uiStatus,uiNavigation,
+  checks,storagePersistence,uiStatus,uiNavigation,
   uiDateEditor,financeDerivations,bankQueries,domainRevisions,
   getUiModal,automaticAccess,operationAccess,
 }){
@@ -47,8 +47,8 @@ export function composeKupaFinance({
   const bank=createKupaBankCapability({
     model,session,bridge,readout:bankQueries,
     authority:{scope:operationScope,automaticAccess},
-    checks:{hasLocalWork:(...args)=>syncChecksState.sharedChecksHaveLocalWork(...args),
-      sync:(...args)=>syncChecks.syncSharedChecksFromCloud(...args),save:(...args)=>syncChecks.saveSharedChecksToCloud(...args)},
+    checks:{hasLocalWork:(...args)=>checks.queries.hasLocalWork(...args),
+      sync:(...args)=>checks.commands.sync(...args),save:(...args)=>checks.commands.saveCloud(...args)},
     persistence:{save:(message,options={})=>storagePersistence.saveState(message,{...options,domains:['bank','bankFeed']}),
       recover:assertCurrent=>storagePersistence.recoverLocalState(assertCurrent)},
     cloud:{refreshFinance:financeCloud.refreshFinanceCloudSnapshot,saveFinancePatch:(...args)=>financeCloud.saveFinancePatchTracked(...args),

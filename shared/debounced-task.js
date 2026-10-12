@@ -71,5 +71,5 @@ export function createDebouncedTask({delay, onError, timers=globalThis}) {
     while (current) await current;
   }
 
-  return {schedule, cancel, dispose, drain};
+  return {schedule, cancel, dispose, drain, isPending:() => !!(pending || current)};
 }

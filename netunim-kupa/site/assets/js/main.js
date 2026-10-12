@@ -19,7 +19,6 @@ import {createStateNormalization} from './composition/state-normalization.js';
 import {createUiStatus} from './ui/status.js';
 import {createStorageIndexedDb} from './storage/indexed-db.js';
 import {createStorageBrowser} from './storage/browser.js';
-import {createSyncChecksState} from './sync/checks-state.js';
 import {createStorageTabLock} from './storage/tab-lock.js';
 import {createSyncRecovery} from './sync/recovery.js';
 import {createStorageFiles} from './storage/files.js';
@@ -28,7 +27,6 @@ import {createStoragePersistence} from './storage/persistence.js';
 import {createUiFolders} from './ui/folders.js';
 import {createCloudAuth} from './cloud/auth.js';
 import {createCloudTransport} from './cloud/transport.js';
-import {createSyncChecks} from './sync/checks.js';
 import {createSyncMerge} from './sync/merge.js';
 import {createSyncDocument} from './sync/document.js';
 import {composeCloudUi} from './composition/cloud.js';
@@ -134,14 +132,10 @@ const restoreGroupStore=createRestoreGroupStore({
   remove:key=>storageIndexedDb.idbDelete('sync',key),
 });
 
-const syncChecksState=createSyncChecksState({
-  checksSession,
-  model,
-  sharedChecksHasLocalWork:()=>sharedChecksV2.hasLocalWork,
-});
+const checks=createKupaChecksRuntime({model,ui,checksSession,sharedChecksHasLocalWork:()=>sharedChecksV2.hasLocalWork});
 
 const sharedChecksV2Composition=storageV2Coordinator.createSharedComposition({
-  model,checksSession,domainRevisions,main:mainStorageV2,stateNormalization,getSyncChecks:()=>syncChecks,getCloudTransport:()=>cloudTransport,
+  model,checksSession,domainRevisions,main:mainStorageV2,stateNormalization,mergeSharedChecks:checks.mergeSharedChecks,getCloudTransport:()=>cloudTransport,
 });
 const sharedChecksV2=sharedChecksV2Composition.runtime;
 const recoverSharedChecksV2Primary=()=>storageV2Coordinator.recoverShared();
@@ -184,12 +178,7 @@ const storageBackup=createStorageBackup({
 });
 
 const storagePersistence=createStoragePersistence({
-  loadSession:(...args)=>cloudAuth.loadSupaSession(...args),
   setCloudHeaderStatus:(...args)=>uiStatus.setCloudHeaderStatus(...args),
-  checksStatus:{
-    save:(text,mode)=>uiStatus.setSaveStatus(text,mode,'shared-checks'),
-    cloud:(mode,text)=>uiStatus.setCloudHeaderStatus(mode,text,'shared-checks'),
-  },
   creditNormalizationMayDelete:inactiveCreditExpired,
   sharedChecksV2,
   storageV2Boundary:sharedChecksV2Composition.boundary,
@@ -215,10 +204,22 @@ const storagePersistence=createStoragePersistence({
   prepareKupaCloudState:(...args)=>stateNormalization.prepareKupaCloudState(...args),
   normalizeState:(...args)=>stateNormalization.normalizeState(...args),
   showSecondaryTabGuard:(...args)=>uiConnection.showSecondaryTabGuard(...args),
-  saveSharedChecksToCloud:(...args)=>syncChecks.saveSharedChecksToCloud(...args),
   writeJsonHandleVerified:(...args)=>storageFiles.writeJsonHandleVerified(...args),
   persistSupabaseState:(...args)=>syncDocument.persistSupabaseState(...args),
   toast:(...args)=>uiStatus.toast(...args),
+});
+
+checks.bindPersistence({
+  loadSession:(...args)=>cloudAuth.loadSupaSession(...args),
+  checksStatus:{
+    save:(text,mode)=>uiStatus.setSaveStatus(text,mode,'shared-checks'),
+    cloud:(mode,text)=>uiStatus.setCloudHeaderStatus(mode,text,'shared-checks'),
+  },
+  sharedChecksV2,session,files,tab,domainRevisions,
+  showSecondaryTabGuard:(...args)=>uiConnection.showSecondaryTabGuard(...args),
+  setSaveStatus:(...args)=>uiStatus.setSaveStatus(...args),
+  normalizeState:(...args)=>stateNormalization.normalizeState(...args),
+  backupSnapshotToComputer:(...args)=>storageBackup.backupSnapshotToComputer(...args),
 });
 
 const uiFolders=createUiFolders({
@@ -271,10 +272,8 @@ const dashboard=createKupaDashboardCapability({
   touchRevision:()=>domainRevisions.touch('ordersFinance'),
 });
 
-const syncChecks=createSyncChecks({
+checks.bindSync({
   sharedChecksV2,
-  checksSession,
-  model,
   session,
   files,
   tab,
@@ -307,7 +306,7 @@ const syncDocument=createSyncDocument({
   setCloudHeaderStatus:(...args)=>uiStatus.setCloudHeaderStatus(...args),
   listBackups:(...args)=>storageBackup.listBackups(...args),
   backupSnapshotToComputer:(...args)=>storageBackup.backupSnapshotToComputer(...args),
-  syncSharedChecksFromCloud:(...args)=>syncChecks.syncSharedChecksFromCloud(...args),
+  syncSharedChecksFromCloud:(...args)=>checks.commands.sync(...args),
   render:(...args)=>uiNavigation.render(...args),
   readSupabaseDocument:(...args)=>cloudTransport.readSupabaseDocument(...args),
   readFinanceSyncDocument:(...args)=>cloudTransport.readFinanceSyncDocument(...args),
@@ -315,7 +314,7 @@ const syncDocument=createSyncDocument({
   mergeKupaCloudState3Way:(...args)=>syncMerge.mergeKupaCloudState3Way(...args),
   showSecondaryTabGuard:(...args)=>uiConnection.showSecondaryTabGuard(...args),
   toast:(...args)=>uiStatus.toast(...args),
-  pollSharedChecks:(...args)=>syncChecks.pollSharedChecks(...args),
+  pollSharedChecks:(...args)=>checks.runtime.poll(...args),
   refreshOrdersFinanceSummary:(...args)=>dashboard.commands.refreshOrdersSummary(...args),
   ...storageV2Cloud,
   storageV2PreparationActive:storagePreparationActive,
@@ -325,13 +324,12 @@ const syncDocument=createSyncDocument({
 
 
 storageV2Coordinator.configure({
-  storageBrowser,syncDocument,syncChecks,model,session,checksSession,files,
+  storageBrowser,syncDocument,checksRuntime:checks.runtime,model,session,checksSession,files,
   captureLegacyWorkbook,
   stateNormalization,domainRevisions,sharedChecksV2Composition,sharedChecksV2,
   cloudTransport,cloudAuth,mainStorageV2,verifyStorageV2AccountMarker:()=>verifyStorageV2AccountMarker(),
 });
 
-const checks=createKupaChecksRuntime({model,ui});
 const uiDateEditor=createUiDateEditor({
   markCheckSeriesManual:(...args)=>checks.markCheckSeriesManual(...args),
   syncCheckSeriesFromFirst:(...args)=>checks.syncCheckSeriesFromFirst(...args),
@@ -378,7 +376,7 @@ const uiBulk=createUiBulk({
   model,
   render:(...args)=>uiNavigation.render(...args),
   saveState:(...args)=>storagePersistence.saveState(...args),
-  saveChecksState:(...args)=>storagePersistence.saveChecksState(...args),
+  saveChecksState:(...args)=>checks.commands.saveLocal(...args),
   toast:(...args)=>uiStatus.toast(...args),
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
@@ -396,7 +394,7 @@ const {
   bank,bindBankUi,automation:financeAutomation,
 }=composeKupaFinance({
   model,session,ui,cloudAuth,cloudTransport,syncDocument,
-  syncChecksState,syncChecks,storagePersistence,uiStatus,uiNavigation,
+  checks,storagePersistence,uiStatus,uiNavigation,
   uiDateEditor,financeDerivations,bankQueries,domainRevisions,
   getUiModal:()=>uiModal,
   operationAccess:()=>({
@@ -420,7 +418,7 @@ dashboard.assertReady();
 
 const uiCloud=composeCloudUi({
   session,tab,checksSession,model,storageV2Cloud,storageV2Coordinator,syncDocument,uiStatus,cloudAuth,
-  getUiModal:()=>uiModal,uiConnection,stateNormalization,syncChecksState,syncRecovery,cloudTransport,syncChecks,getUiNavigation:()=>uiNavigation,financeAutomation,
+  getUiModal:()=>uiModal,uiConnection,stateNormalization,syncRecovery,cloudTransport,checks,getUiNavigation:()=>uiNavigation,financeAutomation,
 });
 
 credit.bindView({
@@ -464,7 +462,7 @@ const domainsBankAlerts=createDomainsBankAlerts({
 const domainsRecordsCommands=createDomainsRecordsCommands({
   model,
   saveState:(...args)=>storagePersistence.saveState(...args),
-  saveChecksState:(...args)=>storagePersistence.saveChecksState(...args),
+  saveChecksState:(...args)=>checks.commands.saveLocal(...args),
   closeModal:(...args)=>uiModal.closeModal(...args),
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
   renderCollection:collection=>{
@@ -477,7 +475,7 @@ const domainsRecordsCommands=createDomainsRecordsCommands({
 cash.bindUi({uiBulk,uiDateEditor,domainsDashboardView:dashboard.presentation,uiModal,uiStatus,storagePersistence,domainsRecordsCommands});
 cash.assertReady();
 
-checks.bindEditor({uiDateEditor,uiModal,uiStatus,storagePersistence,domainsRecordsCommands,uiNavigation,uiBulk});
+checks.bindEditor({uiDateEditor,uiModal,uiStatus,domainsRecordsCommands,uiNavigation,uiBulk});
 checks.assertReady();
 
 credit.bindEditor({uiModal,uiDateEditor,uiStatus,storagePersistence,domainsRecordsCommands});

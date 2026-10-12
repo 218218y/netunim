@@ -1,4 +1,4 @@
-import {createDebouncedTask} from '../../netunim-orders/site/assets/js/platform/debounced-task.js';
+import {createDebouncedTask} from '../../shared/debounced-task.js';
 
 const task = createDebouncedTask({delay:180, onError:error => String(error)});
 /** @type {boolean} */

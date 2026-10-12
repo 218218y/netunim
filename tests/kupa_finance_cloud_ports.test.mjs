@@ -35,7 +35,7 @@ test('finance capability can be assembled before the modal without constructing 
   const capability=composeKupaFinance({automaticAccess:unexpected,operationAccess:unexpected,
     model:{state:{creditSync:{}}},session:{},checksSession:{},ui:{currentPage:'cash'},
     cloudAuth:{supaRest:unexpected,supaEnsureSession:unexpected},
-    cloudTransport:{},syncDocument:{},syncChecksState:{},syncChecks:{},
+    cloudTransport:{},syncDocument:{},checks:{queries:{},commands:{}},
     storagePersistence:{recoverLocalState:unexpected},uiStatus:{},uiNavigation:{},uiDateEditor:{},
     financeDerivations:{run:unexpected},bankQueries:{balance:unexpected,forecast:unexpected,observedCheckSequence:unexpected},domainRevisions:{},
     getUiModal:()=>modalReady?{}:unexpected(),

@@ -1,7 +1,7 @@
 import {createLazyDeferredSearchUpdater} from '../../shared/search-scheduler.js';
 
 // Checks owns these delegated UI actions and its local event ports.
-export function createChecksActions({domainsChecksEditor,domainsChecksView,ui,uiBulk,uiDateEditor,uiModal}){
+export function createChecksActions({domainsChecksEditor,domainsChecksView,ui,uiBulk,uiDateEditor,uiModal,search=null}){
 const applyCheckDatePicker=(...args)=>uiDateEditor.applyCheckDatePicker(...args);
 const changeCheckSeriesCount=(...args)=>domainsChecksEditor.changeCheckSeriesCount(...args);
 const clearCheckFocus=(...args)=>domainsChecksView.clearCheckFocus(...args);
@@ -21,7 +21,7 @@ const syncCheckSeriesFromFirst=(...args)=>domainsChecksEditor.syncCheckSeriesFro
 const toggleBulkMode=(...args)=>uiBulk.toggleBulkMode(...args);
 const toggleBulkRow=(...args)=>uiBulk.toggleBulkRow(...args);
 const toggleBulkVisible=(...args)=>uiBulk.toggleBulkVisible(...args);
-const checksSearch=createLazyDeferredSearchUpdater(value=>{ui.checkSearchValue=value},renderChecksSearch);
+const checksSearch=search||createLazyDeferredSearchUpdater(value=>{ui.checkSearchValue=value},renderChecksSearch);
 return {
   'review-check-bank':element=>reviewCheckBank(element.dataset.clickArg2==='remove-selected'?[...ui.bulkSelected]:element.dataset.clickArg0,element.dataset.clickArg1,element.dataset.clickArg2),
   'handle-check-date-part-input':(element,event)=>{handleCheckDatePartInput(element)},

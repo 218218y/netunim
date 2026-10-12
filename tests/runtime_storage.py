@@ -865,7 +865,7 @@ for app in ('orders', 'kupa'):
           const {createSharedChecksV2Runtime}=await import('./assets/js/shared/shared-checks-v2-runtime.js');
           const {createSharedChecksStorageV2}=await import('./assets/js/shared/shared-checks-storage-v2.js');
           const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
-          const persistenceModule=await import(app==='orders'?'./assets/js/sync/checks-persistence.js':'./assets/js/storage/persistence.js');
+          const persistenceModule=await import('./assets/js/sync/checks-persistence.js');
           const owner='shared-status-owner',db=createStorageJournalDb(),tab={primaryTab:true};
           let authenticated=owner,n=0,lostResponse=true,holdAck=false,backupEdit=false,readHold=null;
           const ackEntered=gate(),ackRelease=gate(),ledger=new Map(),calls=[];
@@ -909,13 +909,17 @@ for app in ('orders', 'kupa'):
             folderSaveTitle:()=>'',folderBackupAvailable:()=>false,syncFolderAccessButton:noop,rejectSecondaryMutation:()=>false,
             saveSharedChecksToCloud:async()=>{},domainRevisions:{touch:noop},
             writeStateToFolder:backup,backupSnapshotToComputer:backup});
-          const api=()=>createSyncChecks(ports());
+          let syncApi=createSyncChecks(ports());const api=()=>syncApi;
+          async function restart(){
+            syncApi.runtime.dispose();await syncApi.runtime.drain();
+            runtime=make();await runtime.recover();syncApi=createSyncChecks(ports());
+          }
           async function edit(id,note){
             model.state.checks=model.state.checks.map(row=>row.id===id?{...row,note}:row);
-            const p=app==='orders'?persistenceModule.createSyncChecksPersistence(ports()):persistenceModule.createStoragePersistence(ports());
+            const p=app==='orders'?persistenceModule.createSyncChecksPersistence(ports()):persistenceModule.createChecksPersistence(ports());
             const options={operations:[{type:'put',collection:'checks',id,mode:'replace'}]};
             const committed=app==='orders'?p.scheduleCheckSave('edit',options):p.saveChecksState('edit',options);
-            if(app==='orders')p.runtime.cancelPending();else clearTimeout(checksSession.sharedChecksSaveTimer);
+            p.runtime.cancelPending();
             await committed;await runtime.flush();
           }
           async function backup(){if(backupEdit){backupEdit=false;await edit('D','edit-during-backup')}}
@@ -924,7 +928,7 @@ for app in ('orders', 'kupa'):
           check(await api().saveSharedChecksToCloud()===false&&!synced(),'lost RPC response never confirms cloud success');
           const failed=await runtime.cloudState(),first=clone(calls[0]);
           check(failed.pending&&failed.flight&&failed.base.ackSeq===0&&failed.seq===1,'lost response retains the real pending journal and immutable flight');
-          runtime=make();await runtime.recover();check(model.state.checks[0].id==='C'&&model.state.checks[0].note==='offline-change','restart restores the original ID and offline edit');
+          await restart();check(model.state.checks[0].id==='C'&&model.state.checks[0].note==='offline-change','restart restores the original ID and offline edit');
           await edit('D','during-outage');holdAck=true;
           const saving=api().saveSharedChecksToCloud();await ackEntered.promise;
           const held=await runtime.cloudState();
@@ -937,7 +941,7 @@ for app in ('orders', 'kupa'):
           files[app==='orders'?'dirHandle':'backupsDirHandle']={};backupEdit=true;
           check(await api().syncSharedChecksFromCloud({quiet:true})===false&&!synced(),'an edit during the optional backup prevents a stale Shared success');
           delete files.dirHandle;delete files.backupsDirHandle;
-          runtime=make();await runtime.recover();const pending=await runtime.cloudState();
+          await restart();const pending=await runtime.cloudState();
           check(pending.seq===3&&pending.base.ackSeq===2&&pending.pending&&model.state.checks[1].id==='D'&&model.state.checks[1].note==='edit-during-backup','restart preserves the backup-time edit and identity as pending');
           main('Main conflict',app==='orders'?'error':'conflict');
           check(await api().saveSharedChecksToCloud()===true&&!synced()&&header().textContent.includes('Main conflict'),'independent Shared success cannot erase Main conflict');
