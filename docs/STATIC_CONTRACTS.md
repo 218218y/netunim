@@ -396,3 +396,12 @@ consumers reject asynchronous publication and malformed ports; a mutation that
 publishes a string timestamp fails in the actual body. The native file adapter
 and full server are independently behavior-tested/linted, not declared as fully
 typed. See DOCUMENT_PDF_INDEX_WRITE_CONTRACT.md.
+
+## Everything result and PDF inventory boundary
+
+The actual `everything-result-codec.mjs` and `pdf-inventory.mjs` bodies now check
+unknown JSON narrowing, synchronous row normalization, numeric count/offset/page
+contracts and generic row identity. Negative consumers reject malformed result
+ports/signals; a mutation that sends a formatted offset fails the actual body.
+The native source adapter, path/attribute normalization policy and full server
+are separately behavior-tested/linted. See DOCUMENT_INVENTORY_BOUNDARY.md.

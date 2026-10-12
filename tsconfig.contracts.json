@@ -13,6 +13,9 @@
     "types": []
   },
   "files": [
+    "netunim-orders/document-bridge/everything-result-codec.mjs",
+    "netunim-orders/document-bridge/pdf-inventory.mjs",
+    "tests/fixtures/checked-pdf-inventory.mjs",
     "netunim-orders/document-bridge/pdf-index-writer.mjs",
     "tests/fixtures/checked-pdf-index-writer.mjs",
     "netunim-orders/document-bridge/maintenance-process-owner.mjs",

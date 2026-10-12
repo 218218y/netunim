@@ -25,6 +25,13 @@ function check(overrides=new Map()){
 }
 function describe(diagnostics){return ts.formatDiagnostics(diagnostics,{getCanonicalFileName:file=>file,getCurrentDirectory:()=>root,getNewLine:()=> '\n'})}
 
+test('the actual PDF inventory cannot send a formatted string as its paging offset',()=>{
+  const source=path.join(root,'netunim-orders/document-bridge/pdf-inventory.mjs');
+  const original=readFileSync(source,'utf8'),changed=original.replace('session.page({offset, limit: pageSize', 'session.page({offset:String(offset), limit: pageSize');
+  assert.notEqual(changed,original);const diagnostics=check(new Map([[source,changed]]));
+  assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+});
+
 test('the actual PDF index writer cannot publish text as committed numeric metadata',()=>{
   const source=path.join(root,'netunim-orders/document-bridge/pdf-index-writer.mjs');
   const original=readFileSync(source,'utf8'),changed=original.replace('...candidate, ...metadata, updatedAt, signature', '...candidate, ...metadata, updatedAt:String(updatedAt), signature');

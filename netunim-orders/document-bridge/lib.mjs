@@ -1,4 +1,5 @@
 import path from 'node:path';
+import {decodeEverythingCount,decodeEverythingRows} from './everything-result-codec.mjs';
 
 export const BRIDGE_PORT=8766;
 export const BRIDGE_SERVICE='netunim-orders-document-bridge';
@@ -398,24 +399,15 @@ export function buildEsCountArgs({search='*',timeoutMs=15000,instance='',filesOn
 }
 
 export function parseEsCount(stdout){
-  const raw=String(stdout??'').replace(/^\uFEFF/,'').trim();
-  const match=raw.match(/-?\d+/);
-  const value=match?Number(match[0]):NaN;
-  if(!Number.isSafeInteger(value)||value<0){const error=new Error(`ES returned an invalid result count: ${raw||'(empty)'}`);error.code='ES_INVALID_COUNT';throw error}
-  return value;
+  return decodeEverythingCount(stdout);
 }
 
-export function parseEsJson(stdout){
-  const raw=String(stdout??'').replace(/^\uFEFF/,'').trim();
-  if(!raw)return [];
-  let parsed;
-  try{parsed=JSON.parse(raw)}catch(error){const e=new Error('ES returned invalid JSON');e.code='ES_INVALID_JSON';e.cause=error;throw e}
-  return jsonRows(parsed).map(row=>{
-    const name=text(field(row,['name','filename','file name']));
-    const parent=normalizeWindowsPath(field(row,['path','parent path','parent_path']));
-    const direct=normalizeWindowsPath(field(row,['full path and name','full-path-and-name','filename column','fullpath','full path']));
-    const fullPath=direct||(parent&&name?path.win32.join(parent,name):'');
-    if(!fullPath||!name)return null;
+function normalizeEsResultRow(row){
+    const rawName=field(row,['name','filename','file name']),rawParent=field(row,['path','parent path','parent_path']),rawDirect=field(row,['full path and name','full-path-and-name','filename column','fullpath','full path']);
+    if(typeof rawName!=='string'||(rawParent!=null&&typeof rawParent!=='string')||(rawDirect!=null&&typeof rawDirect!=='string'))return null;
+    const name=text(rawName),parent=normalizeWindowsPath(rawParent),direct=normalizeWindowsPath(rawDirect);
+    const fullPath=direct||(parent&&name?path.win32.join(parent,name):path.win32.isAbsolute(name)?normalizeWindowsPath(name):'');
+    if(!fullPath||!name||!path.win32.isAbsolute(fullPath)||fullPath.includes('\u0000')||name.includes('\u0000'))return null;
     const modified=text(field(row,['date modified','date-modified','datemodified','date_modified','dm']));
     const sizeRaw=field(row,['size']);
     const size=Number(String(sizeRaw??'').replace(/[,_\s]/g,''));
@@ -423,8 +415,8 @@ export function parseEsJson(stdout){
     const attributes=text(field(row,['attributes','attribs','attrib']));
     const isDirectory=esRowIsDirectory(row,attributes);
     return {name,fullPath,relativePath:parent,modified,size:Number.isFinite(size)?size:null,extension,attributes,isDirectory,rootId:'everything',rootLabel:'Everything'};
-  }).filter(Boolean);
 }
+export function parseEsJson(stdout){return decodeEverythingRows(stdout,normalizeEsResultRow)}
 
 export function parseEsContentPreview(stdout){
   const raw=String(stdout??'').replace(/^\uFEFF/,'').trim();

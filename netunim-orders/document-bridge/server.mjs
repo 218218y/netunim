@@ -9,7 +9,7 @@ import {promisify} from 'node:util';
 import {fileURLToPath} from 'node:url';
 import {
   BRIDGE_PORT,BRIDGE_SERVICE,BRIDGE_VERSION,BRIDGE_NODE_VERSION,BRIDGE_NODE_WIN_X64_SHA256,assertBridgeNodeVersion,DEFAULT_ALLOWED_ORIGINS,DEFAULT_RESULT_LIMIT,MAX_RESULTS,RECENT_RESULT_LIMIT,RESULT_TTL_MS,
-  buildContentMatchInfo,buildDocumentQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsPdfInventoryArgs,buildEsRawSearchArgs,buildEsRecentFilesArgs,buildEsSearchArgs,compareDocumentRows,contentSearchMatches,documentExtension,documentFileTypeIncludesPdf,mergeDocumentResults,normalizeContentSearchOptions,normalizeDocumentFileType,normalizeDocumentSearchMode,normalizeDocumentSort,normalizeSearchScopePath,normalizeSearchText,
+  buildContentMatchInfo,buildDocumentQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsRawSearchArgs,buildEsRecentFilesArgs,buildEsSearchArgs,compareDocumentRows,contentSearchMatches,documentExtension,documentFileTypeIncludesPdf,mergeDocumentResults,normalizeContentSearchOptions,normalizeDocumentFileType,normalizeDocumentSearchMode,normalizeDocumentSort,normalizeSearchScopePath,normalizeSearchText,
   officePreviewKind,structuredPreviewKind,parseEsContentPreview,parseEsCount,parseEsJson,parseRegistryInstallLocation,
 } from './lib.mjs';
 import {buildPdfFormMatchAnchors,extractInteractivePdfText,PDF_FORM_MAX_BYTES,verifyNodePdfJsRuntime} from './pdf_form_index.mjs';
@@ -18,6 +18,8 @@ import {createPdfIndexReader} from './pdf-index-reader.mjs';
 import {createPdfIndexFilePlatform} from './pdf-index-file-platform.mjs';
 import {createPdfIndexWriter} from './pdf-index-writer.mjs';
 import {createPdfIndexWritePlatform} from './pdf-index-write-platform.mjs';
+import {createPdfInventory} from './pdf-inventory.mjs';
+import {createEverythingInventorySource} from './everything-inventory-source.mjs';
 import {createFileLockOwner} from './file-lock-owner.mjs';
 import {createFileLockPlatform} from './file-lock-platform.mjs';
 import {createMaintenanceProcessOwner,runMaintenanceWorker} from './maintenance-process-owner.mjs';
@@ -320,25 +322,14 @@ async function appendPdfIndexJournal(records){
 async function compactPdfFormIndex({pending=pdfFormIndexPending,pdfCount=pdfFormIndexInventoryCount}={}){
   await pdfIndexWriter.compact({pending,pdfCount});
 }
-async function listEverythingPdfs({signal=null,modifiedSince='',verifyComplete=false}={}){
-  const rows=[];let offset=0,expected=null,probe=null,config=null;
-  if(verifyComplete){config=await loadConfig();probe=await probeEverything({autoStart:true});expected=await countIndex(probe,config,'ext:pdf')}
-  while(true){
-    if(shuttingDown||signal?.aborted)throw new Error('PDF inventory interrupted');
-    const page=await runEverythingJson((config,probe)=>buildEsPdfInventoryArgs({limit:PDF_FORM_INDEX_PAGE_SIZE,offset,timeoutMs:config.searchTimeoutMs,instance:probe.instance,modifiedSince}),{signal});
-    rows.push(...page.rows.filter(row=>row.extension==='pdf'&&!row.isDirectory));
-    if(page.rows.length<PDF_FORM_INDEX_PAGE_SIZE)break;
-    offset+=page.rows.length;
-  }
-  if(verifyComplete){
-    const finalCount=await countIndex(probe,config,'ext:pdf'),unique=new Set(rows.map(row=>pdfIndexKey(row.fullPath))).size;
-    if(expected!==finalCount||unique!==finalCount)throw new Error(`PDF inventory changed during paging (before=${expected}, after=${finalCount}, unique=${unique}); reconciliation deferred`);
-  }
-  return rows;
-}
+const pdfInventory=createPdfInventory({...createEverythingInventorySource({loadConfig,probeEverything,runEs}),
+  isStopping:()=>shuttingDown||pdfMaintenanceStopRequested,
+},{pageSize:PDF_FORM_INDEX_PAGE_SIZE});
+async function listEverythingPdfs(options={}){return pdfInventory.read(options)}
 function isAbortError(error){return error?.name==='AbortError'||String(error?.code||'')==='ABORT_ERR'}
 async function rebuildPdfFormIndexBacklog({signal=null,full=false,modifiedSince=''}={}){
   const rows=await listEverythingPdfs({signal,modifiedSince:full?'':modifiedSince,verifyComplete:full});
+  pdfInventory.assertActive(signal);
   const seen=new Set(),changed=[];let removed=0;
   for(const row of rows){
     const key=pdfIndexKey(row.fullPath),fingerprint=pdfIndexFingerprint(row);seen.add(key);
@@ -353,6 +344,7 @@ async function rebuildPdfFormIndexBacklog({signal=null,full=false,modifiedSince=
     for(const [key,entry] of [...pdfFormIndex.entries()])if(!seen.has(key)){removalRecords.push({op:'remove',fullPath:entry.fullPath});removed+=1}
   }
   if(removalRecords.length)await appendPdfIndexJournal(removalRecords);
+  pdfInventory.assertActive(signal);
   pdfFormIndexBacklog=changed;pdfFormIndexPending=changed.length;pdfFormIndexInventoryCount=full?rows.length:pdfFormIndexInventoryCount;
   return {pdfCount:rows.length,changed:changed.length,removed};
 }

@@ -607,6 +607,15 @@ extend the index recovery contract without format changes. A committed head is
 reused only after signature revalidation to avoid repeated full journal parsing.
 See [PDF index write contract](DOCUMENT_PDF_INDEX_WRITE_CONTRACT.md).
 
+Everything result decoding and PDF inventory enumeration now have explicit,
+checked boundaries. Before-change production regressions proved false-empty
+JSON/count acceptance, silent row loss and last-page cancellation publication.
+One captured native source, whole-page validation, unique progress and before/
+after-await stop fences now refuse invalid reconciliation while retaining index
+bytes and backlog. The actual pinned ES source confirms blank zero-result output
+compatibility. Search/recent normalization use the same decoder. See
+[inventory boundary](DOCUMENT_INVENTORY_BOUNDARY.md).
+
 ## Major completion stages from the current code
 
 These are bounded completion tracks, not a restart of completed refactors.
@@ -615,7 +624,7 @@ and CSS. Each slice needs concrete evidence/contracts and its appropriate gate.
 
 | Order | Remaining stage | Exit criterion |
 | --- | --- | --- |
-| 1 | Finish Bridge responsibility boundaries: Document search/inventory orchestration and scheduled maintenance/installer process boundaries; then Bank HTTP/auth/vault and session/provider orchestration | Small public APIs; native process/file and endpoint/failure tests; existing provider retry/fallback semantics preserved |
+| 1 | Finish Bridge responsibility boundaries: Document search merge/pagination orchestration and scheduled maintenance/installer process boundaries; then Bank HTTP/auth/vault and session/provider orchestration | Small public APIs; native process/file and endpoint/failure tests; existing provider retry/fallback semantics preserved |
 | 2 | Complete application capability APIs and runtime ownership: Orders Finance/Checks, Kupa Dashboard/Bank queries, remaining shell and Shared/finance listeners/jobs | Explicit commands/queries and start/dispose; no broad app context, stale callback publication or duplicate jobs |
 | 3 | Extend strict contracts to real transaction/RPC/business consumers: journal/IDB callers, Finance lease callers, Morning/Calendar commands and capability ports | Implementation bodies and negative consumers fail on mismatch; unknown payload validation and historical fixtures stay covered |
 | 4 | Canonical SQL deployment sources and compatibility inventory | Deterministic generated-current checks; immutable deployed migrations/receipts; removal only with consumer evidence and restore coverage |
