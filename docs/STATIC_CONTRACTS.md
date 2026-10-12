@@ -376,3 +376,13 @@ mutation returning formatted text in place of a task result fails the gate.
 The Node/filesystem adapter is separately linted/native-tested; this does not
 typecheck the full server or create a cloud/Storage V2 lease contract. See
 DOCUMENT_FILE_LOCK_OWNERSHIP.md.
+
+## Document maintenance process owner
+
+The actual `maintenance-process-owner.mjs` body and negative consumers check
+asynchronous lock/stop evidence, captured child event ports, boolean run state,
+numeric disposal budgets and worker settlement before IPC release. A mutation
+assigning formatted text to `running` fails the implementation gate. Native
+Node/process adapters and full index writing remain separately behavior-tested;
+this slice does not statically check the entire server or scheduled task runner.
+See DOCUMENT_MAINTENANCE_PROCESS_OWNERSHIP.md.

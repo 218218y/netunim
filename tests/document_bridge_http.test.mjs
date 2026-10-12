@@ -4,6 +4,7 @@ import http from 'node:http';
 import {createDocumentBridgeRoutes} from '../netunim-orders/document-bridge/http-routes.mjs';
 import {createDocumentBridgeHttpHandler, documentBridgeErrorResponse} from '../netunim-orders/document-bridge/http-handler.mjs';
 import {createDocumentBridgeClient} from '../shared/document-bridge-client.js';
+import {fixture as maintenanceFixture,finish as finishMaintenance} from './maintenance_process_fixture.mjs';
 
 const origin = 'https://bargig-furniture.com';
 const identity = {ok: true, service: 'netunim-orders-document-bridge', version: 38, pid: 123};
@@ -230,6 +231,15 @@ test('shutdown sends its response before starting listener teardown', async t =>
   });
   assert.deepEqual(writes, ['headers', 'response']);
   assert.deepEqual(f.calls.at(-1), ['shutdown-after-response']);
+});
+
+test('HTTP shutdown refuses listener teardown until the owned maintenance worker drains', async t => {
+  const maintenance=maintenanceFixture();await maintenance.owner.start();let teardown=0;let drainStarted;
+  const draining=new Promise(resolve=>{drainStarted=resolve});
+  const f=await fixture(t,{shutdown:{prepare:()=>{const work=maintenance.owner.dispose();drainStarted();return work.then(()=>({ok:true}))},afterResponse:()=>{teardown++}}});
+  const request=f.request('/shutdown');await draining;[...maintenance.timers.values()][0]();const blocked=await request;
+  assert.equal(blocked.status,503);assert.equal(blocked.data.code,'PDF_MAINTENANCE_DRAIN_TIMEOUT');assert.equal(teardown,0);assert.equal(maintenance.owner.view().manual.running,true);
+  finishMaintenance(maintenance.children[0],{aborted:true});assert.equal((await f.request('/shutdown')).status,200);assert.equal(teardown,1);
 });
 
 test('route and HTTP factories reject unbound ports before starting a listener', () => {

@@ -18,6 +18,8 @@ import {createPdfIndexReader,PDF_INDEX_SCHEMA} from './pdf-index-reader.mjs';
 import {createPdfIndexFilePlatform} from './pdf-index-file-platform.mjs';
 import {createFileLockOwner} from './file-lock-owner.mjs';
 import {createFileLockPlatform} from './file-lock-platform.mjs';
+import {createMaintenanceProcessOwner,runMaintenanceWorker} from './maintenance-process-owner.mjs';
+import {createMaintenanceProcessPlatform,createMaintenanceWorkerPlatform} from './maintenance-process-platform.mjs';
 import {createDocumentBridgeRoutes} from './http-routes.mjs';
 import {createDocumentPreview,isTextPreview,trimPreviewText} from './preview-content.mjs';
 import {createPreviewTextCache} from './preview-text-cache.mjs';
@@ -58,7 +60,7 @@ const PDF_FORM_INDEX_LOCK_PATH=path.join(APP_ROOT,'pdf-form-index.lock');
 const PDF_FORM_MAINTENANCE_LOCK_PATH=path.join(APP_ROOT,'pdf-form-maintenance.lock');
 let server=null,cachedProbe=null,cachedEsPath='',everythingProbePromise=null,everythingStartPromise=null;
 let pdfFormIndexLoaded=false,pdfFormIndexRefreshPromise=null,pdfFormIndexRefreshAbortController=null,pdfFormIndexLastRefresh=0,pdfFormIndexPending=0,pdfFormIndexInventoryCount=0,shuttingDown=false,pdfFormIndexSignature='';
-let manualPdfMaintenanceChild=null,manualPdfMaintenance=null,manualPdfMaintenanceStartPromise=null,pdfMaintenanceStopRequested=false;
+let pdfMaintenanceStopRequested=false;
 let pdfFormIndexBacklog=[];
 const pdfFormIndex=new Map();
 
@@ -268,49 +270,26 @@ const fileLocks=createFileLockOwner({...createFileLockPlatform({root:APP_ROOT}),
 });
 const withFileLock=(lockPath,task,options)=>fileLocks.run(lockPath,task,options);
 async function activePdfMaintenanceLock(){return fileLocks.isHeld(PDF_FORM_MAINTENANCE_LOCK_PATH)}
+const manualMaintenance=createMaintenanceProcessOwner({
+  host:createMaintenanceProcessPlatform({executable:process.execPath,script:fileURLToPath(import.meta.url),cwd:APP_ROOT,isHeld:activePdfMaintenanceLock}),
+  timers:{setTimeout,clearTimeout},now:()=>new Date().toISOString(),log:appendLog,
+});
 async function sendMaintenanceIpc(message){
   if(!process.send||!process.connected)return;
   await new Promise(resolve=>process.send(message,()=>resolve()));
 }
 async function pdfMaintenanceStatus(){
   const maintenance=await readJsonFile(PDF_FORM_MAINTENANCE_PATH,{});
-  const manual=manualPdfMaintenance,running=!!manual?.running||await activePdfMaintenanceLock();
-  return {ok:true,bridgeVersion:BRIDGE_VERSION,running,source:manual?.running?'manual':running?'scheduled':'',cancelable:!!manual?.running&&!manual.stopRequested&&!!manualPdfMaintenanceChild?.connected,stopRequested:!!manual?.running&&!!manual.stopRequested,phase:manual?.running?manual.phase||'starting':'',progress:manual?.running?manual.progress||null:null,lastRun:!manual?.running?manual?.result||null:null,lastError:!manual?.running?manual?.error||'':'',lastResult:maintenance.lastResult||null,lastFailure:maintenance.lastFailure||''};
+  let {manual,cancelable}=manualMaintenance.view(),scheduled=false;
+  if(!manual?.running){scheduled=await activePdfMaintenanceLock();({manual,cancelable}=manualMaintenance.view())}
+  const running=!!manual?.running||scheduled;
+  return {ok:true,bridgeVersion:BRIDGE_VERSION,running,source:manual?.running?'manual':running?'scheduled':'',cancelable,stopRequested:!!manual?.running&&!!manual.stopRequested,phase:manual?.running?manual.phase||'starting':'',progress:manual?.running?manual.progress||null:null,lastRun:!manual?.running?manual?.result||null:null,lastError:!manual?.running?manual?.error||'':'',lastResult:maintenance.lastResult||null,lastFailure:maintenance.lastFailure||''};
 }
 async function startManualPdfMaintenance(){
-  if(manualPdfMaintenanceStartPromise)return manualPdfMaintenanceStartPromise;
-  const task=(async()=>{
-    if(manualPdfMaintenance?.running||await activePdfMaintenanceLock())return pdfMaintenanceStatus();
-    const child=spawn(process.execPath,[fileURLToPath(import.meta.url),'--refresh-pdf-index','--force'],{cwd:APP_ROOT,windowsHide:true,stdio:['ignore','ignore','ignore','ipc']});
-    const run={running:true,stopRequested:false,phase:'starting',progress:null,result:null,error:'',startedAt:new Date().toISOString()};
-    manualPdfMaintenanceChild=child;manualPdfMaintenance=run;
-    child.on('message',message=>{
-      if(manualPdfMaintenance!==run||!message||typeof message!=='object')return;
-      if(message.type==='pdf-maintenance-progress'){run.phase=message.progress?.phase||'scan';run.progress=message.progress||null}
-      if(message.type==='pdf-maintenance-result'){run.result=message.result||null;run.phase=run.result?.aborted?'stopped':'finished'}
-    });
-    child.on('error',error=>{run.error=String(error?.message||error)});
-    child.on('exit',(code,signal)=>{
-      run.running=false;run.finishedAt=new Date().toISOString();
-      if(code!==0&&!run.error)run.error=`עדכון אינדקס PDF נכשל (${signal||code}).`;
-      if(run.stopRequested&&!run.error)run.phase='stopped';
-      if(manualPdfMaintenanceChild===child)manualPdfMaintenanceChild=null;
-    });
-    await appendLog(`PDF_FORM_INDEX_MANUAL_START pid=${child.pid||0}`);
-    return pdfMaintenanceStatus();
-  })();
-  manualPdfMaintenanceStartPromise=task;
-  try{return await task}finally{if(manualPdfMaintenanceStartPromise===task)manualPdfMaintenanceStartPromise=null}
+  await manualMaintenance.start();return pdfMaintenanceStatus();
 }
 async function stopManualPdfMaintenance(){
-  const child=manualPdfMaintenanceChild,run=manualPdfMaintenance;
-  if(!run?.running||!child?.connected)return pdfMaintenanceStatus();
-  if(!run.stopRequested){
-    await new Promise((resolve,reject)=>child.send({type:'stop-pdf-maintenance'},error=>error?reject(error):resolve()));
-    run.stopRequested=true;run.phase='stopping';
-    await appendLog(`PDF_FORM_INDEX_MANUAL_STOP_REQUESTED pid=${child.pid||0}`);
-  }
-  return pdfMaintenanceStatus();
+  await manualMaintenance.stop();return pdfMaintenanceStatus();
 }
 const pdfIndexFiles=createPdfIndexFilePlatform({snapshotPath:PDF_FORM_INDEX_PATH,journalPath:PDF_FORM_INDEX_JOURNAL_PATH});
 const pdfIndexReader=createPdfIndexReader({files:pdfIndexFiles,normalizeEntry:normalizePdfIndexEntry});
@@ -653,7 +632,7 @@ async function documentBridgeStatus(){
 }
 function bridgeHealth(){return {ok:true,service:BRIDGE_SERVICE,version:BRIDGE_VERSION,pid:process.pid}}
 async function warmDocumentSearch(){const probe=await probeEverything({autoStart:true});return {ok:true,service:BRIDGE_SERVICE,version:BRIDGE_VERSION,everythingVersion:probe.everythingVersion,instance:probe.instance}}
-async function prepareShutdown(){shuttingDown=true;previewTextCache.dispose();await stopManualPdfMaintenance().catch(()=>{});await nativePreviewSession.dispose();return {ok:true,pid:process.pid}}
+async function prepareShutdown(){shuttingDown=true;previewTextCache.dispose();await Promise.all([manualMaintenance.dispose(),nativePreviewSession.dispose()]);return {ok:true,pid:process.pid}}
 function finishShutdown(){
   setTimeout(()=>{server?.close(async()=>{await appendLog('STOP graceful shutdown complete');process.exitCode=0})},20);
   setTimeout(()=>{process.exit(0)},2500).unref?.();
@@ -778,7 +757,7 @@ async function main(){
   if(process.platform==='win32')privateNodeRuntimeInfoSync();
   const arg=process.argv[2]||'';
   if(arg==='--init'){await init();return}if(arg==='--doctor'){await printDoctor({allowUnreadyScheduledTask:process.argv.slice(3).includes('--allow-unready-task')});return}if(arg==='--ensure-everything'){await init();const probe=await probeEverything({fresh:true,autoStart:true});console.log(`${probe.everythingVersion||'unknown'} ${probe.everythingExecutable||''}`.trim());return}if(arg==='--refresh-pdf-index'){
-    if(process.send)process.on('message',message=>{if(message?.type==='stop-pdf-maintenance'){pdfMaintenanceStopRequested=true;pdfFormIndexRefreshAbortController?.abort()}});
+    return runMaintenanceWorker(createMaintenanceWorkerPlatform({requestStop:()=>{pdfMaintenanceStopRequested=true;pdfFormIndexRefreshAbortController?.abort()}}),async()=>{
     await init();await probeEverything({fresh:true,autoStart:true});
     const extraArgs=process.argv.slice(3),maxArg=extraArgs.find(value=>/^--max-files=\d+$/.test(String(value))),manual=extraArgs.includes('--force');
     const {maxChanged,maxMs}=pdfMaintenanceRunLimits({manual,requestedMaxFiles:maxArg?Number(maxArg.split('=')[1]):null,scheduledMaxFiles:PDF_FORM_MAINTENANCE_MAX_FILES,scheduledMaxMs:PDF_FORM_MAINTENANCE_MAX_MS});
@@ -789,9 +768,9 @@ async function main(){
       if(progress.processed===progress.selected||progress.processed-lastPrinted>=4){lastPrinted=progress.processed;console.log(`Interactive PDF index progress: ${progress.processed}/${progress.selected}`)}
     }}),{waitMs:process.send?0:10000});
     await sendMaintenanceIpc({type:'pdf-maintenance-result',result});
-    if(process.send&&process.connected)process.disconnect();
     if(result.skipped){console.log('Interactive PDF maintenance is not due yet.');return}
-    console.log(`Interactive PDF index: ${result.cached} inspected cache entries, ${result.interactive} interactive PDFs, ${result.processed}/${result.changed} inspected now, ${result.pending} pending, ${result.failed} failed`);return
+    console.log(`Interactive PDF index: ${result.cached} inspected cache entries, ${result.interactive} interactive PDFs, ${result.processed}/${result.changed} inspected now, ${result.pending} pending, ${result.failed} failed`);
+    });
   }if(arg==='--print-token'){console.log(await ensureToken());return}if(arg==='--stop-existing'){await stopExisting();return}if(arg==='--check-running'){await checkRunning();return}if(arg==='--write-install-summary'){await writeInstallSummary();return}
   if(process.platform!=='win32')throw new Error('Document Bridge is intended for Windows.');
   await init();const handle=createRequestHandler();server=http.createServer((req,res)=>{handle(req,res).catch(async error=>{await appendLog(`UNHANDLED ${error?.stack||error}`);try{res.writeHead(500,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(safeError(error)))}catch{}})});server.on('error',error=>appendLog(`SERVER ${error?.code||''} ${error?.message||error}`));server.listen(BRIDGE_PORT,'127.0.0.1',()=>{appendLog(`START ${BRIDGE_SERVICE} v${BRIDGE_VERSION} node=${process.versions.node} on 127.0.0.1:${BRIDGE_PORT}`);probeEverything({fresh:true,autoStart:true}).then(probe=>appendLog(`EVERYTHING_READY version=${probe.everythingVersion} instance=${probe.instance||'(default)'}`)).catch(error=>appendLog(`EVERYTHING_BACKGROUND_START_FAILED ${error?.code||'ERROR'} ${error?.message||error}`))});
