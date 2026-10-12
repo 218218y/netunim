@@ -19,7 +19,7 @@ FLOW = r"""(async()=>{
  const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');const db=createStorageJournalDb(),identity=owner+':kupa',durableBefore=JSON.stringify(await db.load(identity));
  localStorage.setItem('netunim_kupa_bank_bridge_token_v1','fixture-pairing');localStorage.setItem('netunim_kupa_bank_auto_daily_v1','0');
  const entered=deferred(),provider=deferred(),saving=deferred(),saved=deferred();let publications=0,archives=0,releases=0;
- syncChecks.syncSharedChecksFromCloud=async()=>true;syncChecksState.sharedChecksHaveLocalWork=()=>false;
+ checks.commands.sync=async()=>true;checks.queries.hasLocalWork=()=>false;
  cloudTransport.claimFinanceSyncLease=async()=>({acquired:true,leaseName:'bank',leaseToken:'fixture',fenceEpoch:1});cloudTransport.releaseFinanceSyncLease=async()=>{releases++;return true};
  cloudTransport.readSupabaseDocument=async()=>({revision:session.dbRevision,financeRevision:session.financeRevision,state:structuredClone(state)});
  cloudTransport.syncBankTransactionsSnapshot=async()=>{archives++;return {sourcePayload:[],result:{total_count:0}}};

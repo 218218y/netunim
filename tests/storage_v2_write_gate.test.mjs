@@ -1,3 +1,4 @@
+import {createChecksPersistence} from '../netunim-kupa/site/assets/js/sync/checks-persistence.js';
 import {withOrdersStartup} from './startup_ports.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -123,7 +124,7 @@ test('check edits without a ready Shared V2 runtime fail before any legacy write
     assert.equal(orders.scheduleCheckSave('edit'),false);
     assert.equal(ordersSession.localUndurableGenerations.size,1);
     const kupaSession={},kupaStatus=[];
-    const kupa=createKupaPersistence({session:kupaSession,checksSession:{},tab:{primaryTab:true},sharedChecksV2:null,
+    const kupa=createChecksPersistence({session:kupaSession,checksSession:{},tab:{primaryTab:true},sharedChecksV2:null,
       setSaveStatus:value=>kupaStatus.push(value)});
     assert.equal(await kupa.saveChecksState('edit'),false);
     assert.equal(kupaSession.localUndurableGenerations.size,1);

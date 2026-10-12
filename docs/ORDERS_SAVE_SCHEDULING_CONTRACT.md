@@ -30,9 +30,10 @@ Main commit before cloud submission; Checks waits for its captured Shared
 commit before backup/cloud submission. The existing serialized folder writer
 continues to own actual folder I/O across both documents.
 
-`platform/debounced-task.js` owns each wakeup. Its only construction ports are
-delay, timers and failure reporting. It is Orders-local because Kupa does not
-currently consume this policy. There are no generated unused shared copies.
+`shared/debounced-task.js` owns each wakeup. Its only construction ports are
+delay, timers and failure reporting. Kupa Checks now consumes the same owner
+with its existing 220ms cloud policy and 0ms optional backup policy. Generated
+copies are used by both applications; scheduling semantics remain app-specific.
 
 Each persistence capability exposes a focused `runtime`:
 

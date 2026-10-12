@@ -90,11 +90,8 @@ return {
     sharedChecksBase:null,
     sharedChecksBankEvents:[],
     sharedChecksBusy:false,
-    sharedChecksPullPromise:null,
-    sharedChecksSavePromise:null,
     sharedChecksSaveRequested:false,
     sharedChecksGeneration:0,
-    sharedChecksSaveTimer:null,
     sharedChecksLastError:'',
     sharedChecksBootstrapActive:true
   }

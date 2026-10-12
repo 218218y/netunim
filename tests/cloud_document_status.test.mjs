@@ -1,3 +1,4 @@
+import {createChecksPersistence} from '../netunim-kupa/site/assets/js/sync/checks-persistence.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createUiStatus as ordersStatus} from '../netunim-orders/site/assets/js/ui/status.js';
@@ -87,7 +88,7 @@ for(const app of ['orders','kupa']){
     const ports={...f.ports,setSave:noop,folderSaveTitle:()=>'',refreshAlertCenter:noop,touchChecksRevision:noop,
       rejectSecondaryMutation:()=>false,saveSharedChecksToCloud:async()=>{},showSecondaryTabGuard:noop,
       checksStatus:{save:(text,mode)=>f.status.setSaveStatus(text,mode,'shared-checks'),cloud:(mode,text)=>f.status.setCloudHeaderStatus(mode,text,'shared-checks')}};
-    const persistence=app==='orders'?createSyncChecksPersistence(ports):createKupaPersistence(ports);
+    const persistence=app==='orders'?createSyncChecksPersistence(ports):createChecksPersistence(ports);
     f.model.state.checks[0].note='saved-locally';
     const saving=app==='orders'?persistence.scheduleCheckSave('edit',{operations:[]}):persistence.saveChecksState('edit',{operations:[]});
     assert.equal(f.synced(),false,'the pending event is published synchronously at append submission');
@@ -101,7 +102,7 @@ for(const app of ['orders','kupa']){
     const ports={...f.ports,setSave:noop,folderSaveTitle:()=>'',rejectSecondaryMutation:()=>false,saveSharedChecksToCloud:async()=>{},
       setCloud:(...args)=>{events.push(args);f.ports.setCloud(...args)},
       checksStatus:{save:noop,cloud:(...args)=>{events.push(args);f.ports.setCloudHeaderStatus(...args)}}};
-    const p=app==='orders'?createSyncChecksPersistence(ports):createKupaPersistence(ports);
+    const p=app==='orders'?createSyncChecksPersistence(ports):createChecksPersistence(ports);
     const saving=app==='orders'?p.scheduleCheckSave('edit',{operations:[]}):p.saveChecksState('edit',{operations:[]});
     assert.equal(events.length,1);f.account('B');commit.reject(new Error('injected local commit failure'));
     await saving;await commit.promise.catch(noop);await Promise.resolve();

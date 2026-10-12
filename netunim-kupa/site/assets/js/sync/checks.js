@@ -1,14 +1,21 @@
 import {createSharedChecksFlight} from '../shared/shared-checks-flight.js';
 import {clone} from '../core/values.js';
-import {normalizeSharedChecks} from '../shared/shared-checks-contract.js';
-import {jsonEq,mergeRecordArray,mergeRecordArrayPreferLocal} from './merge-records.js';
+import {createSharedChecksMerge} from './checks-merge.js';
+import {jsonEq} from './merge-records.js';
 import {sharedChecksHeadIsSynced} from '../shared/shared-checks-status.js';
 
-export function createSyncChecks({sharedChecksV2,checksSession={},model,session,files={},tab,toast,render,setSaveStatus,setCloudHeaderStatus,backupSnapshotToComputer,refreshCloudHeaderTimestamp,loadSession=()=>null}){
-const flight=createSharedChecksFlight({state:checksSession,pullKey:'sharedChecksPullPromise',saveKey:'sharedChecksSavePromise',busyKey:'sharedChecksBusy'});
-function normalizeDeleteIds(value){return [...new Set((Array.isArray(value)?value:[]).map(x=>String(x||'').trim()).filter(Boolean))].sort()}
-function protectImplicitDeletes(base,local,deleteIds){const allowed=new Set(normalizeDeleteIds(deleteIds)),safe=normalizeSharedChecks(local||[]),present=new Set(safe.map(x=>x.id));for(const item of normalizeSharedChecks(base||[])){if(item?.id&&!present.has(item.id)&&!allowed.has(item.id)){safe.push(clone(item));present.add(item.id)}}return safe}
-function mergeSharedChecks(base,local,remote,{preferLocalConflicts=false,deleteIds=[]}={}){const b=normalizeSharedChecks(base||[]),rawLocal=normalizeSharedChecks(local||[]),r=normalizeSharedChecks(remote||[]),repair=checksSession.sharedChecksBootstrapActive&&!rawLocal.length&&r.length>0&&b.length>0&&jsonEq(b,r)&&!normalizeDeleteIds(deleteIds).length;checksSession.sharedChecksBootstrapActive=false;if(repair)return{checks:clone(r),conflicts:[],repairedEmptyBootstrap:true};const l=protectImplicitDeletes(b,rawLocal,deleteIds),conflicts=[];let checks=mergeRecordArray(b,l,r,'id','checks',conflicts);if(preferLocalConflicts&&conflicts.length)checks=mergeRecordArrayPreferLocal(b,l,r,'id');return{checks:normalizeSharedChecks(checks),conflicts,repairedEmptyBootstrap:false}}
+export function createSyncChecks({sharedChecksV2,checksSession={},model,session,files={},tab,toast,render,setSaveStatus,setCloudHeaderStatus,backupSnapshotToComputer,refreshCloudHeaderTimestamp,loadSession=()=>null,isOnline=()=>globalThis.navigator?.onLine!==false}){
+const slots={};
+let disposed=false;
+const flight=createSharedChecksFlight({state:slots,pullKey:'pull',saveKey:'save',busyKey:'busy'});
+Object.defineProperty(checksSession,'sharedChecksBusy',{configurable:true,enumerable:true,get:()=>slots.busy});
+const runtime={
+  isSaving:()=>!!slots.save,
+  isPending:()=>!!(slots.pull||slots.save),
+  async drain(){while(slots.pull||slots.save)await Promise.allSettled([slots.pull,slots.save].filter(Boolean))},
+  dispose(){if(disposed)return false;disposed=true;return true},
+};
+const mergeSharedChecks=createSharedChecksMerge({checksSession});
 
 function rememberCloud(cloud){
   checksSession.sharedChecksBase=clone(cloud.base.state.checks);checksSession.sharedChecksRevision=cloud.base.revision;
@@ -18,7 +25,7 @@ function rememberCloud(cloud){
 }
 async function syncChecksV2({required=false,quiet=false}={}){
   const account=loadSession()?.user?.id;
-  const current=()=>!!account&&loadSession()?.user?.id===account&&tab.primaryTab&&session.backendReady&&session.connectionMode==='supabase'&&navigator.onLine;
+  const current=()=>!disposed&&!!account&&loadSession()?.user?.id===account&&tab.primaryTab&&session.backendReady&&session.connectionMode==='supabase'&&isOnline();
   if(!current())return false;
   setCloudHeaderStatus('syncing','ענן: בודק צ׳קים…');
   try{
@@ -42,11 +49,13 @@ async function syncChecksV2({required=false,quiet=false}={}){
 
 
 async function syncSharedChecksFromCloud({quiet=false,required=false}={}){
+  if(disposed)return false;
   if(!sharedChecksV2?.requested){const error=new Error('shared_checks_v2_required');checksSession.sharedChecksLastError=error.message;if(required)throw error;return false}
   return flight.pull(()=>syncChecksV2({quiet,required}));
 }
 
 async function saveSharedChecksToCloud(){
+  if(disposed)return false;
   if(!sharedChecksV2?.requested){checksSession.sharedChecksLastError='shared_checks_v2_required';return false}
   if(!tab.primaryTab)return false;
   checksSession.sharedChecksSaveRequested=true;
@@ -54,10 +63,10 @@ async function saveSharedChecksToCloud(){
 }
 
 async function pollSharedChecks(){
-  if(!sharedChecksV2?.requested||!tab.primaryTab||session.connectionMode!=='supabase'||!session.backendReady||!navigator.onLine||checksSession.sharedChecksSavePromise||checksSession.sharedChecksPullPromise)return;
+  if(disposed||!sharedChecksV2?.requested||!tab.primaryTab||session.connectionMode!=='supabase'||!session.backendReady||!isOnline()||runtime.isPending())return;
   const before=clone(model.state.checks),synced=await syncSharedChecksFromCloud({quiet:true});
-  if(synced&&!jsonEq(before,model.state.checks)){render();refreshCloudHeaderTimestamp()}
+  if(!disposed&&synced&&!jsonEq(before,model.state.checks)){render();refreshCloudHeaderTimestamp()}
 }
 
-return {mergeSharedChecks,syncSharedChecksFromCloud,saveSharedChecksToCloud,pollSharedChecks};
+return {mergeSharedChecks,syncSharedChecksFromCloud,saveSharedChecksToCloud,pollSharedChecks,runtime};
 }

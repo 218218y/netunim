@@ -22,7 +22,7 @@ for(const app of ['kupa','orders']){
         assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=(app==='kupa'?23:24),relative+': startup collaborators must not grow; introduce a capability port');
       if(node.type==='FunctionDeclaration'&&node.id?.name==='createPollingTask'&&relative==='assets/js/shared/runtime-polling.js')
         assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=6,relative+': recurring task owner exceeds six collaborators');
-      if(node.type==='FunctionDeclaration'&&node.id?.name==='createDebouncedTask'&&relative==='assets/js/platform/debounced-task.js')
+      if(node.type==='FunctionDeclaration'&&node.id?.name==='createDebouncedTask'&&relative==='assets/js/shared/debounced-task.js')
         assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=3,relative+': debounced task owner exceeds three collaborators');
       if(node.type==='FunctionDeclaration'&&node.id?.name==='createKupaBankCapability')
         assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=10,relative+': Bank composition requires focused capability ports');
@@ -42,7 +42,7 @@ for(const app of ['kupa','orders']){
       }
       if(app==='orders'&&node.type==='MemberExpression'&&['saveTimer','sharedChecksSaveTimer','checksPullPromise','checksSavePromise'].includes(node.property?.name))
         assert.fail(relative+': save and Checks sync resources belong to their runtimes, not context fields');
-      if(app==='kupa'&&node.type==='MemberExpression'&&node.property?.name==='ordersFinanceReadPromise')
+      if(app==='kupa'&&node.type==='MemberExpression'&&['ordersFinanceReadPromise','sharedChecksSaveTimer','sharedChecksSavePromise','sharedChecksPullPromise'].includes(node.property?.name))
         assert.fail(relative+': Dashboard flights belong to the readout owner');
       if(node.type==='FunctionDeclaration'&&node.id?.name==='createFinanceOperationScope')
         assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length===1,relative+': finance operation scope must receive one explicit access snapshot port');
@@ -66,7 +66,7 @@ for(const app of ['kupa','orders']){
         const dependency=path.relative(path.join(site,'assets','js'),target).split(path.sep).join('/');
         if(app==='kupa'&&relative==='assets/js/main.js')assert.ok(!/^(domains\/dashboard\/|domains\/bank\/(?:selectors|controller|view)\.js$)/.test(dependency),relative+': Dashboard and Bank selectors belong behind capability/query ports');
         if(app==='orders'&&relative==='assets/js/main.js')assert.ok(!/^(domains\/(finance|bank|checks)\/|integrations\/bank-bridge\.js|shared\/(finance-fence|finance-connection-import|credit-card-order-view)\.js)/.test(dependency),relative+': Finance and Checks internals belong to their capability compositions');
-        if(app==='orders'&&relative==='assets/js/main.js')assert.ok(!/^sync\/checks(?:-persistence|-merge)?\.js$/.test(dependency),relative+': Checks sync belongs to its capability');
+        if(relative==='assets/js/main.js')assert.ok(!/^sync\/checks(?:-persistence|-merge|-state)?\.js$/.test(dependency),relative+': Checks sync belongs to its capability');
         if(/^assets\/js\/(storage|cloud|sync)\//.test(relative)){
           assert.ok(!/^((domains|ui)\/)/.test(dependency),relative+': infrastructure must receive domain/UI behavior through composition ports: '+dependency);
         }

@@ -41,8 +41,15 @@ test('the actual Finance platform cannot return text as connectivity evidence',(
 });
 
 test('the actual debounced task cannot publish text as wakeup readiness',()=>{
-  const source=path.join(root,'netunim-orders/site/assets/js/platform/debounced-task.js');
+  const source=path.join(root,'shared/debounced-task.js');
   const original=readFileSync(source,'utf8'),changed=original.replace('task.ready = true;', 'task.ready = "ready";');
+  assert.notEqual(changed,original);const diagnostics=check(new Map([[source,changed]]));
+  assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+});
+
+test('the actual Checks flight cannot replace a tracked operation with a timer ID',()=>{
+  const source=path.join(root,'shared/shared-checks-flight.js');
+  const original=readFileSync(source,'utf8'),changed=original.replace('state[key]=tracked;', 'state[key]=123;');
   assert.notEqual(changed,original);const diagnostics=check(new Map([[source,changed]]));
   assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
 });

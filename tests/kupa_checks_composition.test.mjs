@@ -17,16 +17,19 @@ test('Checks binds view and editor in order, and persists check mutations throug
 
   const uiBulk=Object.fromEntries(['syncBulkUi','bulkControls','bulkHeader','bulkCell','deleteBulkSelected','toggleBulkMode','toggleBulkRow','toggleBulkVisible'].map(name=>[name,()=>{}]));
   checks.bindView({uiBulk,getBankImageContext:()=>({})});
+  const saved=[];
+  checks.bindSync({});
+  checks.bindPersistence({sharedChecksV2:{requested:true,persist:(operations,options)=>{saved.push({operations,options});return {emergencyDurable:true,committed:Promise.resolve()}}},
+    session:{},files:{},tab:{primaryTab:true},checksStatus:{save:()=>{},cloud:()=>{}}});
   assert.throws(()=>checks.bindView({uiBulk,getBankImageContext:()=>({})}),/checks_view_already_bound/);
   assert.throws(()=>checks.actions,/checks_editor_not_bound/);
 
-  const saved=[];
   let changed=0;
   const uiDateEditor=Object.fromEntries(['checkDateEditorMarkup','setCheckDateValue','normalizeCheckModalDates','applyCheckDatePicker','handleCheckDatePartBlur','handleCheckDatePartInput','handleCheckDatePartKeydown','openCheckDatePicker'].map(name=>[name,()=>{}]));
   const ports={
     uiBulk,uiDateEditor,
     uiModal:{armModalDraftGuard:()=>{},modal:()=>{},closeModal:()=>{}},
-    uiStatus:{toast:()=>{}},storagePersistence:{saveChecksState:(message,options)=>saved.push({message,options})},
+    uiStatus:{toast:()=>{}},
     domainsRecordsCommands:{deleteRecord:()=>{}},uiNavigation:{checksChanged:()=>{changed++}},
   };
   checks.bindEditor(ports);
@@ -36,7 +39,7 @@ test('Checks binds view and editor in order, and persists check mutations throug
   assert.equal(checks.checksBalance(),0);
   assert.equal(checks.depositedBalance(),120);
   assert.equal(saved.length,1);
-  assert.deepEqual(saved[0].options.operations.map(({collection,id,mode})=>({collection,id,mode})),[{collection:'checks',id:check.id,mode:'replace'}]);
+  assert.deepEqual(saved[0].operations.map(({collection,id,mode})=>({collection,id,mode})),[{collection:'checks',id:check.id,mode:'replace'}]);
   assert.equal(changed,1);
 });
 

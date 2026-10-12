@@ -865,7 +865,7 @@ for app in ('orders', 'kupa'):
           const {createSharedChecksV2Runtime}=await import('./assets/js/shared/shared-checks-v2-runtime.js');
           const {createSharedChecksStorageV2}=await import('./assets/js/shared/shared-checks-storage-v2.js');
           const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
-          const persistenceModule=await import(app==='orders'?'./assets/js/sync/checks-persistence.js':'./assets/js/storage/persistence.js');
+          const persistenceModule=await import('./assets/js/sync/checks-persistence.js');
           const owner='shared-status-owner',db=createStorageJournalDb(),tab={primaryTab:true};
           let authenticated=owner,n=0,lostResponse=true,holdAck=false,backupEdit=false,readHold=null;
           const ackEntered=gate(),ackRelease=gate(),ledger=new Map(),calls=[];
@@ -909,13 +909,13 @@ for app in ('orders', 'kupa'):
             folderSaveTitle:()=>'',folderBackupAvailable:()=>false,syncFolderAccessButton:noop,rejectSecondaryMutation:()=>false,
             saveSharedChecksToCloud:async()=>{},domainRevisions:{touch:noop},
             writeStateToFolder:backup,backupSnapshotToComputer:backup});
-          const api=()=>createSyncChecks(ports());
+          const syncApi=createSyncChecks(ports()),api=()=>syncApi;
           async function edit(id,note){
             model.state.checks=model.state.checks.map(row=>row.id===id?{...row,note}:row);
-            const p=app==='orders'?persistenceModule.createSyncChecksPersistence(ports()):persistenceModule.createStoragePersistence(ports());
+            const p=app==='orders'?persistenceModule.createSyncChecksPersistence(ports()):persistenceModule.createChecksPersistence(ports());
             const options={operations:[{type:'put',collection:'checks',id,mode:'replace'}]};
             const committed=app==='orders'?p.scheduleCheckSave('edit',options):p.saveChecksState('edit',options);
-            if(app==='orders')p.runtime.cancelPending();else clearTimeout(checksSession.sharedChecksSaveTimer);
+            p.runtime.cancelPending();
             await committed;await runtime.flush();
           }
           async function backup(){if(backupEdit){backupEdit=false;await edit('D','edit-during-backup')}}

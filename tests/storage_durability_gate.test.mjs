@@ -1,3 +1,4 @@
+import {createChecksPersistence} from '../netunim-kupa/site/assets/js/sync/checks-persistence.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createStoragePersistence as createOrdersPersistence} from '../netunim-orders/site/assets/js/storage/persistence.js';
@@ -130,7 +131,7 @@ test('Kupa Shared V2 does not start a cloud write when its IDB journal commit fa
   const normalization=createStateNormalization({model});model.state=normalization.normalizeState(model.state);
   const checksSession={sharedChecksGeneration:0},session={localGeneration:0,dbRevision:1,connectionMode:'supabase',backendReady:true,saveQueue:Promise.resolve()};
   Object.defineProperty(globalThis,'navigator',{configurable:true,value:{onLine:true}});
-  const persistence=createKupaPersistence({
+  const persistence=createChecksPersistence({
     model,session,checksSession,tab:{primaryTab:true},files:{},domainRevisions:{touch:noop},storageV2Primary:()=>true,
     sharedChecksV2:{requested:true,persist:()=>({emergencyDurable:false,committed:commit.promise})},
     normalizeState:normalization.normalizeState,saveSharedChecksToCloud:async()=>{sent.push('sent')},

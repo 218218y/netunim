@@ -6,8 +6,8 @@ import {addMonthsISO, todayISO} from '../../core/dates.js';
 import {applyCheckBankReview,removableCheckBankEvents,removeCheckBankEvents} from '../../shared/check-bank-review.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createDomainsChecksEditor({model, checkDateEditorMarkup, toast, armModalDraftGuard, modal, deleteRecord, setCheckDateValue, saveChecksState, onChecksChanged=()=>{}, normalizeCheckModalDates, closeModal}){
-function openCheckModal(id){
+export function createDomainsChecksEditor({isActive=()=>true,model, checkDateEditorMarkup, toast, armModalDraftGuard, modal, deleteRecord, setCheckDateValue, saveChecksState, onChecksChanged=()=>{}, normalizeCheckModalDates, closeModal}){
+function openCheckModal(id){if(!isActive())return false;
   if(id){
     const c=model.state.checks.find(x=>x.id===id);if(!c)return toast('הצק לא נמצא');
     modal('עריכת צק',`<div class="form-grid"><div class="form-group"><label>שם</label><input id="fName" value="${esc(c.name)}" autofocus></div><div class="form-group"><label>סכום</label><input id="fAmount" type="number" min="0" step="1" inputmode="numeric" value="${esc(c.amount||'')}"></div><div class="form-group"><label>תאריך פירעון</label>${checkDateEditorMarkup('fDue',c.dueDate||'',{label:'תאריך פירעון'})}<div class="check-date-hint">יום / חודש / 2 ספרות שנה</div></div><div class="form-group"><label>סטטוס</label><select id="fStatus">${['בקופה','הופקד - במעקב','נפרע','חזר','בוטל'].map(s=>`<option ${c.status===s?'selected':''}>${esc(s)}</option>`).join('')}</select></div><div class="form-group"><label>סיווג</label><label class="check-account-checkbox"><input id="fCheckHome" type="checkbox" ${c.account==='ביתי'?'checked':''}> צ׳ק ביתי</label></div><div class="form-group"><label>מספר צק</label><input id="fNum" value="${esc(c.checkNumber)}"></div><div class="form-group full"><label>הערה</label><textarea id="fNote">${esc(c.note)}</textarea><label><input type="checkbox" id="fCheckAuto" ${c.bankAutomationDisabled===true?'':'checked'}> זיהוי הפקדה ומעקב אוטומטי בבנק</label></div></div>`,'שמור שינויים',()=>saveCheck(id),()=>deleteRecord('checks',id));armModalDraftGuard();return;
@@ -27,7 +27,7 @@ function changeCheckSeriesCount(){const input=document.getElementById('fCheckCou
 
 function syncCheckSeriesFromFirst(){const rows=[...document.querySelectorAll('#checkSeriesRows .check-series-row')];if(!rows.length)return;const first={date:rows[0].querySelector('[data-series-field="date"]')?.value||'',amount:rows[0].querySelector('[data-series-field="amount"]')?.value||'',number:rows[0].querySelector('[data-series-field="number"]')?.value.trim()||''};rows.slice(1).forEach((row,j)=>{const i=j+1,date=row.querySelector('[data-series-field="date"]'),amount=row.querySelector('[data-series-field="amount"]'),number=row.querySelector('[data-series-field="number"]');if(date?.dataset.manual!=='1')setCheckDateValue(date,first.date?addMonthsISO(first.date,i):'');if(amount?.dataset.manual!=='1')amount.value=first.amount;if(number?.dataset.manual!=='1')number.value=nextSeriesCheckNumber(first.number,i)})}
 
-function saveCheckSeries(){
+function saveCheckSeries(){if(!isActive())return false;
   if(!normalizeCheckModalDates())return;
   syncCheckSeriesFromFirst();
   const name=document.getElementById('fName').value.trim(),status=document.getElementById('fStatus').value,account=document.getElementById('fCheckHome')?.checked?'ביתי':'עסקי',note=document.getElementById('fNote').value.trim();const drafts=checkSeriesDrafts();
@@ -40,7 +40,7 @@ function saveCheckSeries(){
   closeModal(true);saveChecksState(records.length===1?'הצק נוסף':`${records.length} צקים נוספו`,{operations:records.map(record=>({type:'put',collection:'checks',id:record.id,mode:'insert',index:model.state.checks.findIndex(row=>row.id===record.id),record}))});onChecksChanged();
 }
 
-function saveCheck(id){
+function saveCheck(id){if(!isActive())return false;
   if(!normalizeCheckModalDates())return;
   const oldRec=clone(model.state.checks.find(x=>x.id===id));if(!oldRec)return toast('הצק לא נמצא');
   const rec={...oldRec,id,name:document.getElementById('fName').value.trim(),account:document.getElementById('fCheckHome')?.checked?'ביתי':'עסקי',amount:wholeMoney(document.getElementById('fAmount').value),dueDate:document.getElementById('fDue').value,bankAutomationDisabled:document.getElementById('fCheckAuto')?.checked===false,status:document.getElementById('fStatus').value,depositDate:null,depositedAt:oldRec.depositedAt||null,depositSeq:oldRec.depositSeq||null,clearedDate:oldRec.clearedDate||null,checkNumber:document.getElementById('fNum').value.trim(),note:document.getElementById('fNote').value.trim(),createdAt:oldRec.createdAt||todayISO()};
@@ -50,11 +50,11 @@ function saveCheck(id){
   closeModal(true);saveChecksState('הצק עודכן',{operations:[{type:'put',collection:'checks',id:rec.id,mode:'replace',record:rec}]});onChecksChanged();
 }
 
-function markDeposited(id){const c=model.state.checks.find(x=>x.id===id);if(!c||c.status!=='בקופה')return false;c.status='הופקד - במעקב';c.depositDate=c.dueDate;c.depositedAt=new Date().toISOString();c.depositSeq=null;c.clearedDate=null;saveChecksState('הצק סומן כהופקד',{operations:[{type:'put',collection:'checks',id:c.id,mode:'replace',record:c}]});onChecksChanged();return true}
+function markDeposited(id){if(!isActive())return false;const c=model.state.checks.find(x=>x.id===id);if(!c||c.status!=='בקופה')return false;c.status='הופקד - במעקב';c.depositDate=c.dueDate;c.depositedAt=new Date().toISOString();c.depositSeq=null;c.clearedDate=null;saveChecksState('הצק סומן כהופקד',{operations:[{type:'put',collection:'checks',id:c.id,mode:'replace',record:c}]});onChecksChanged();return true}
 
-function markCleared(id){const c=model.state.checks.find(x=>x.id===id);if(!c)return;const wasDeposited=['הופקד - במעקב','נפרע'].includes(c.status);c.status='נפרע';c.clearedDate=todayISO();c.depositDate=c.depositDate||c.dueDate;if(!wasDeposited){c.depositedAt=new Date().toISOString();c.depositSeq=null}saveChecksState('הצק סומן כנפרע',{operations:[{type:'put',collection:'checks',id:c.id,mode:'replace',record:c}]});onChecksChanged()}
+function markCleared(id){if(!isActive())return false;const c=model.state.checks.find(x=>x.id===id);if(!c)return;const wasDeposited=['הופקד - במעקב','נפרע'].includes(c.status);c.status='נפרע';c.clearedDate=todayISO();c.depositDate=c.depositDate||c.dueDate;if(!wasDeposited){c.depositedAt=new Date().toISOString();c.depositSeq=null}saveChecksState('הצק סומן כנפרע',{operations:[{type:'put',collection:'checks',id:c.id,mode:'replace',record:c}]});onChecksChanged()}
 
-function reviewCheckBank(id,eventId,action){if(action==='remove-selected'){const selected=new Set(Array.isArray(id)?id:[]),changedRows=[];for(const check of model.state.checks){if(selected.has(check.id)&&removeCheckBankEvents(check,removableCheckBankEvents(check,{bulk:true}).map(m=>m.eventId)))changedRows.push(check)}if(changedRows.length){saveChecksState('הודעות שטופלו הוסרו',{operations:changedRows.map(record=>({type:'put',collection:'checks',id:record.id,mode:'replace',record}))});onChecksChanged()}return !!changedRows.length;}if(!applyCheckBankReview(model.state.checks,id,eventId,action))return false;const check=model.state.checks.find(row=>row.id===id);if(!check)throw new Error('check_bank_review_target_missing');saveChecksState('בדיקת התאמת הצ׳ק נשמרה',{operations:[{type:'put',collection:'checks',id:check.id,mode:'replace',record:check}]});onChecksChanged();return true}
+function reviewCheckBank(id,eventId,action){if(!isActive())return false;if(action==='remove-selected'){const selected=new Set(Array.isArray(id)?id:[]),changedRows=[];for(const check of model.state.checks){if(selected.has(check.id)&&removeCheckBankEvents(check,removableCheckBankEvents(check,{bulk:true}).map(m=>m.eventId)))changedRows.push(check)}if(changedRows.length){saveChecksState('הודעות שטופלו הוסרו',{operations:changedRows.map(record=>({type:'put',collection:'checks',id:record.id,mode:'replace',record}))});onChecksChanged()}return !!changedRows.length;}if(!applyCheckBankReview(model.state.checks,id,eventId,action))return false;const check=model.state.checks.find(row=>row.id===id);if(!check)throw new Error('check_bank_review_target_missing');saveChecksState('בדיקת התאמת הצ׳ק נשמרה',{operations:[{type:'put',collection:'checks',id:check.id,mode:'replace',record:check}]});onChecksChanged();return true}
 
 return { reviewCheckBank, openCheckModal, checkSeriesDrafts, renderCheckSeriesRows, markCheckSeriesManual, changeCheckSeriesCount, syncCheckSeriesFromFirst, saveCheckSeries, saveCheck, markDeposited, markCleared };
 }
