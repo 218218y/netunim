@@ -97,7 +97,7 @@ test('Kupa legacy card IDs are queued as one V2 cloud normalization without a V1
     assert.equal(calls[1].state.cards[0].id,calls[0].adoptedBase.cards[0].id,'normalization retains the durable card identity');
     assert.deepEqual(calls[1].state.credits,[]);
     assert.equal(cloud.pending,true);
-  }finally{session.cloudPollingEnabled=false;clearTimeout(session.cloudPollTimer)}
+  }finally{api.stopCloudPolling()}
 });
 
 function fixture({write,readRemote,merge,failRefreshAfterAck=false,returnCommittedScope=false,backupSnapshotToComputer=async()=>{},onControl=async()=>{},onRejected=()=>{},onAcknowledge=async()=>{},onAcknowledged=()=>{},tab={primaryTab:true},onPublication=()=>{},baseOverride=null,deleteIntents={},mutationType='edit'}={}){
@@ -250,7 +250,7 @@ test('Kupa V2 account load reads and applies the cloud document with a clean loc
     await api.loadSupabaseState();
     assert.equal(reads,1);assert.equal(adopted,1);
     assert.equal(model.state.notes[0].id,'cloud-note');
-  }finally{session.cloudPollingEnabled=false;clearTimeout(session.cloudPollTimer)}
+  }finally{api.stopCloudPolling()}
 });
 
 test('Kupa V2 ACK preserves independent bank and credit sync fields',async()=>{
@@ -382,5 +382,5 @@ for(const branch of ['ack-conflict','rebase-conflict','rebase-after-flight-confl
 test('kupa an unowned earlier promise cannot make a fresh identity join the old save',async()=>{
  const old=deferred(),f=fixture();f.session.storageV2CloudSavePromise=old.promise;
  assert.equal(await f.api.persistSupabaseState(f.cloud(),'scope',1),true);assert.equal(f.sent.length,1);assert.equal(f.acks.length,1);
- assert.equal(f.session.storageV2CloudSavePromise,null);old.resolve(false);
+ assert.equal(f.session.storageV2CloudSavePromise,old.promise);old.resolve(false);
 });

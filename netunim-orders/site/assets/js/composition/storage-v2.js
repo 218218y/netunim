@@ -93,7 +93,7 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
       await quiesceSaves();
       await p.syncDocument.quiesceForStorageCutover();
       await p.saveRuntime.checks.drain();
-      const pending=[p.files.storageV2CommitPromise,p.session.cloudSavePromise,p.sharedChecksV2.commitPromise].filter(Boolean);
+      const pending=[p.files.storageV2CommitPromise,p.sharedChecksV2.commitPromise].filter(Boolean);
       if(pending.length)await Promise.all(pending);
       // The durable V2 source marker and the recovered Main/Shared heads below
       // decide transfer safety. Retired V1 records have no authority here.

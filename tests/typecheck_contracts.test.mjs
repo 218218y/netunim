@@ -54,6 +54,13 @@ test('the actual Checks flight cannot replace a tracked operation with a timer I
   assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
 });
 
+test('the actual task owner cannot replace closed state with a formatted label',()=>{
+  const source=path.join(root,'shared/runtime-task-owner.js');
+  const original=readFileSync(source,'utf8'),changed=original.replace('active=false;', 'active="closed";');
+  assert.notEqual(changed,original);const diagnostics=check(new Map([[source,changed]]));
+  assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+});
+
 test('the actual PDF inventory cannot send a formatted string as its paging offset',()=>{
   const source=path.join(root,'netunim-orders/document-bridge/pdf-inventory.mjs');
   const original=readFileSync(source,'utf8'),changed=original.replace('session.page({offset, limit: pageSize', 'session.page({offset:String(offset), limit: pageSize');

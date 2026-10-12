@@ -292,6 +292,7 @@ const syncMerge=createSyncMerge({
 });
 
 const syncDocument=createSyncDocument({
+  cancelCloudRecovery:()=>uiCloud.recoveryRuntime.cancel(),
   getCloudWriteScope:()=>readCloudWriteScope(mainStorageV2.cloudScope,cloudAuth.getAccountScope()),
   hideConnectScreen:(...args)=>uiStatus.hideConnectScreen(...args),
   reportError:(...args)=>uiStatus.reportError(...args),
@@ -324,7 +325,7 @@ const syncDocument=createSyncDocument({
 
 
 storageV2Coordinator.configure({
-  storageBrowser,syncDocument,checksRuntime:checks.runtime,model,session,checksSession,files,
+  storageBrowser,syncDocument,saveRuntime:storagePersistence.runtime,checksRuntime:checks.runtime,model,session,checksSession,files,
   captureLegacyWorkbook,
   stateNormalization,domainRevisions,sharedChecksV2Composition,sharedChecksV2,
   cloudTransport,cloudAuth,mainStorageV2,verifyStorageV2AccountMarker:()=>verifyStorageV2AccountMarker(),

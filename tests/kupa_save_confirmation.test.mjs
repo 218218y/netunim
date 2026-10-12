@@ -71,6 +71,19 @@ test('Kupa a clean no-op save confirms the existing durable head without mutatin
   assert.equal(f.success(),true);assert.deepEqual(f.head,before);
 });
 
+for(const boundary of ['preflight','materialization'])test(`Kupa cutover waits for a held save ${boundary} before any busy flag is raised`,async t=>{
+  const f=fixture(t),entered=gate(),release=gate();
+  if(boundary==='preflight')f.ports.refreshStorageV2CloudState=async()=>{entered.resolve();await release.promise;return clone(f.head)};
+  else f.ports.materializeStorageV2CloudFlight=async()=>{entered.resolve();await release.promise;return null};
+  const save=f.api.requestStorageV2CloudSave('');await entered.promise;
+  let drained=false;const drain=f.api.quiesceForStorageCutover().then(()=>{drained=true});
+  try{
+    for(let i=0;i<30;i++)await Promise.resolve();
+    assert.equal(!!f.session.cloudSyncBusy,false);assert.equal(!!f.session.cloudWriteBusy,false);
+    assert.equal(drained,false,'cutover observes accepted work, not just later busy flags');
+  }finally{release.resolve();await save;await drain}
+});
+
 for(const change of ['local-edit','logout','leadership','owner','epoch','retry'])test(`Kupa a committed flight cannot confirm stale success after ${change} during post-ACK backup`,async t=>{
   const f=fixture(t);stageFlight(f);const entered=gate(),release=gate();
   f.ports.backupSnapshotToComputer=async()=>{entered.resolve();await release.promise};

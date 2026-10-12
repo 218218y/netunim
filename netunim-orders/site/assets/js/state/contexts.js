@@ -142,12 +142,8 @@ return {
     cloudRevision:0,
     cloudUpdatedAt:null,
     cloudBusy:false,
-    cloudPollTimer:null,
-    cloudRecoveryTimer:null,
-    cloudRecoveryAttempt:0,
     localGeneration:0,
     cloudSaveRequested:false,
-    cloudSavePromise:null,
     cloudSaveMessage:'',
     cloudConflictBlocked:false,
     startupSync:{

@@ -968,8 +968,9 @@ for label,auth in (("Kupa",kupa_cloud_auth),("Orders",orders_cloud_auth)):
 orders_ui_cloud=(O / "site/assets/js/ui/cloud.js").read_text(encoding="utf-8")
 kupa_ui_cloud=(K / "site/assets/js/ui/cloud.js").read_text(encoding="utf-8")
 for label,ui_cloud in (("Kupa",kupa_ui_cloud),("Orders",orders_ui_cloud)):
-    ok("CLOUD_RECOVERY_DELAYS_MS=[15_000,30_000,60_000,120_000]" in ui_cloud
-       and "scheduleCloudRecovery" in ui_cloud and "cloudRecoveryTimer" in ui_cloud,
+    ok("createCloudRecoveryRuntime" in ui_cloud
+       and "scheduleCloudRecovery" in ui_cloud and "recoveryRuntime.reset()" in ui_cloud
+       and "const DELAYS=[15_000,30_000,60_000,120_000]" in (ROOT / "shared/cloud-recovery-runtime.js").read_text(encoding="utf-8"),
        f"{label} cloud startup: transient Data API failure schedules bounded automatic recovery instead of requiring a reload")
 kupa_sync_checks=(K / "site/assets/js/sync/checks.js").read_text(encoding="utf-8")
 shared_checks_v2=(ROOT / "shared/shared-checks-v2-runtime.js").read_text(encoding="utf-8")

@@ -25,12 +25,14 @@ function fixture(app,t){
     sameOrderCloudData:(a,b)=>JSON.stringify(a)===JSON.stringify(b),
     refreshStorageV2CloudState:async()=>clone(head),storageV2CloudOutboxActive:()=>true,assertAccountOwner:noop,
     readCloudMeta:async()=>({revision:7}),readSupabaseDocument:async()=>({revision:7,financeRevision:0}),
+    readCloud:async()=>({revision:7,state:clone(model.state)}),
     pollSharedChecks:async()=>{},refreshKupaReadout:async()=>false,refreshOrdersFinanceSummary:async()=>false,
     refreshCloudTimestamp:noop,storageV2PreparationActive:()=>preparing,
   };
   const api=(app==='orders'?createOrdersSync:createKupaSync)({...ports,
     readCloudMeta:()=>{reads++;return ports.readCloudMeta()},readSupabaseDocument:()=>{reads++;return ports.readSupabaseDocument()},
     pollSharedChecks:()=>ports.pollSharedChecks(),
+    readCloud:()=>ports.readCloud(),
   });
   t.after(async()=>{
     for(const gate of gates)gate.resolve();
@@ -46,6 +48,14 @@ function fixture(app,t){
     fire(){const [id,job]=jobs.entries().next().value;jobs.delete(id);const result=job.run();if(result?.catch)result.catch(error=>timerErrors.push(error));return result},
   };
 }
+
+test('Orders cutover drains a held Morning Main refresh as well as saves and polls',async t=>{
+  const f=fixture('orders',t),entered=f.gate(),release=f.gate();
+  f.ports.readCloud=async()=>{entered.resolve();await release.promise;return {revision:7,state:clone(f.model.state)}};
+  const refreshing=f.api.refreshForMorningRecovery();await entered.promise;
+  let drained=false;const drain=f.api.quiesceForStorageCutover().then(()=>{drained=true});
+  try{await settle();assert.equal(drained,false)}finally{release.resolve();await refreshing;await drain}
+});
 
 for(const app of ['orders','kupa']){
   test(`${app} repeated start during a held poll owns only one future timer`,async t=>{
@@ -77,9 +87,9 @@ for(const app of ['orders','kupa']){
     const f=fixture(app,t);f.start();
     const stale=[...f.jobs.values()][0].run;
     assert.equal(f.stop(),true);assert.equal(f.stop(),false);assert.equal(f.jobs.size,0);
-    assert.equal(f.start(),true);const current=f.session.cloudPollTimer;
+    assert.equal(f.start(),true);const current=[...f.jobs.keys()][0];
     stale();await settle();
-    assert.equal(f.reads(),0);assert.equal(f.session.cloudPollTimer,current);assert.equal(f.jobs.size,1);
+    assert.equal(f.reads(),0);assert.equal([...f.jobs.keys()][0],current);assert.equal(Object.hasOwn(f.session,'cloudPollTimer'),false);assert.equal(f.jobs.size,1);
     f.fire();await settle();assert.equal(f.reads(),1);assert.equal(f.jobs.size,1);
   });
 
@@ -100,7 +110,7 @@ for(const app of ['orders','kupa']){
     let drained=false;const cutover=f.api.quiesceForStorageCutover().then(()=>{drained=true});
     await settle();assert.equal(drained,false);assert.equal(f.jobs.size,0);
     release.resolve();await cutover;await settle();
-    assert.equal(f.session.cloudPollingEnabled,false);assert.equal(f.session.cloudPollTimer,null);assert.equal(f.jobs.size,0);
+    assert.equal(f.session.cloudPollingEnabled,false);assert.equal(Object.hasOwn(f.session,'cloudPollTimer'),false);assert.equal(f.jobs.size,0);
   });
 
   for(const loss of ['network','leadership','preparation'])test(`${app} scheduled work rechecks ${loss} and can resume with one timer`,async t=>{
