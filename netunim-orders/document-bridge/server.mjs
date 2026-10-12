@@ -16,6 +16,8 @@ import {buildPdfFormMatchAnchors,extractInteractivePdfText,PDF_FORM_MAX_BYTES,ve
 import {pdfIndexNeedsInspection,pdfMaintenanceInventoryPlan,pdfMaintenanceRunLimits} from './pdf-index-policy.mjs';
 import {createPdfIndexReader,PDF_INDEX_SCHEMA} from './pdf-index-reader.mjs';
 import {createPdfIndexFilePlatform} from './pdf-index-file-platform.mjs';
+import {createFileLockOwner} from './file-lock-owner.mjs';
+import {createFileLockPlatform} from './file-lock-platform.mjs';
 import {createDocumentBridgeRoutes} from './http-routes.mjs';
 import {createDocumentPreview,isTextPreview,trimPreviewText} from './preview-content.mjs';
 import {createPreviewTextCache} from './preview-text-cache.mjs';
@@ -261,36 +263,11 @@ function normalizePdfIndexEntry(entry){
   return {fullPath,name:String(entry.name||path.win32.basename(fullPath)),relativePath:String(entry.relativePath||path.win32.dirname(fullPath)),modified:String(entry.modified||''),size:Number.isFinite(Number(entry.size))?Number(entry.size):null,fileMtimeMs:Number(entry.fileMtimeMs)||0,extension:'pdf',attributes:String(entry.attributes||''),isDirectory:false,rootId:'everything',rootLabel:'Everything',fingerprint:String(entry.fingerprint||''),detectionRevision:Math.max(0,Number(entry.detectionRevision)||legacyRevision),searchTextRevision:Math.max(0,Number(entry.searchTextRevision)||legacyRevision),geometryRevision:Math.max(0,Number(entry.geometryRevision)||((hasForm&&formFields.length)?legacyRevision:0)),hasForm,text:String(entry.text||''),formFields,formFieldCount:Math.max(formFields.length,Math.max(0,Number(entry.formFieldCount)||0)),failed:!!entry.failed,error:String(entry.error||''),retryAfter:String(entry.retryAfter||''),retryCount:Math.max(0,Number(entry.retryCount)||0)};
 }
 function serializePdfIndexEntry(entry){return {fullPath:entry.fullPath,name:entry.name,relativePath:entry.relativePath,modified:entry.modified,size:entry.size,fileMtimeMs:entry.fileMtimeMs||0,attributes:entry.attributes||'',fingerprint:entry.fingerprint,detectionRevision:Math.max(0,Number(entry.detectionRevision)||0),searchTextRevision:Math.max(0,Number(entry.searchTextRevision)||0),geometryRevision:Math.max(0,Number(entry.geometryRevision)||0),hasForm:!!entry.hasForm,text:entry.text||'',formFields:normalizePdfFormFields(entry.formFields),formFieldCount:entry.formFieldCount||0,failed:!!entry.failed,error:entry.error||'',retryAfter:entry.retryAfter||'',retryCount:entry.retryCount||0}}
-async function withFileLock(lockPath,task,{waitMs=10000,staleMs=10*60*1000}={}){
-  await ensureRoot();const deadline=Date.now()+waitMs,ownerPath=path.join(lockPath,'owner.json');
-  while(true){
-    try{await fs.mkdir(lockPath)}catch(error){
-      if(error?.code!=='EEXIST')throw error;
-      const stat=await fs.stat(lockPath).catch(()=>null);
-      const owner=await readJsonFile(ownerPath,null),pid=Number(owner?.pid);
-      let ownerAlive=false;
-      if(Number.isInteger(pid)&&pid>0)try{process.kill(pid,0);ownerAlive=true}catch(checkError){ownerAlive=checkError?.code==='EPERM'}
-      if(stat&&((owner&&!ownerAlive)||(Date.now()-stat.mtimeMs>staleMs)||(!owner&&Date.now()-stat.mtimeMs>30000))){
-        await fs.unlink(ownerPath).catch(()=>{});
-        const removed=await fs.rmdir(lockPath).then(()=>true).catch(()=>false);
-        if(removed)continue;
-      }
-      if(Date.now()>=deadline)throw new Error(`Timed out waiting for ${path.basename(lockPath)}`);
-      await new Promise(resolve=>setTimeout(resolve,80));
-      continue;
-    }
-    try{await fs.writeFile(ownerPath,JSON.stringify({pid:process.pid,startedAt:new Date().toISOString()}),'utf8')}catch(error){await fs.rmdir(lockPath).catch(()=>{});throw error}
-    break;
-  }
-  try{return await task()}finally{await fs.unlink(ownerPath).catch(()=>{});await fs.rmdir(lockPath).catch(()=>{})}
-}
-async function activePdfMaintenanceLock(){
-  const stat=await fs.stat(PDF_FORM_MAINTENANCE_LOCK_PATH).catch(()=>null);
-  if(!stat)return false;
-  const owner=await readJsonFile(path.join(PDF_FORM_MAINTENANCE_LOCK_PATH,'owner.json'),null),pid=Number(owner?.pid);
-  if(Number.isInteger(pid)&&pid>0){try{process.kill(pid,0);return true}catch(error){return error?.code==='EPERM'}}
-  return !owner&&Date.now()-stat.mtimeMs<30000;
-}
+const fileLocks=createFileLockOwner({...createFileLockPlatform({root:APP_ROOT}),
+  clock:()=>performance.now(),wait:ms=>new Promise(resolve=>setTimeout(resolve,ms)),
+});
+const withFileLock=(lockPath,task,options)=>fileLocks.run(lockPath,task,options);
+async function activePdfMaintenanceLock(){return fileLocks.isHeld(PDF_FORM_MAINTENANCE_LOCK_PATH)}
 async function sendMaintenanceIpc(message){
   if(!process.send||!process.connected)return;
   await new Promise(resolve=>process.send(message,()=>resolve()));
@@ -810,7 +787,7 @@ async function main(){
       if(process.send)void sendMaintenanceIpc({type:'pdf-maintenance-progress',progress});
       if(progress.phase==='start'){console.log(`Interactive PDF index scan: ${progress.pdfCount} PDF files, ${progress.changed} need inspection; processing ${progress.selected} now.`);return}
       if(progress.processed===progress.selected||progress.processed-lastPrinted>=4){lastPrinted=progress.processed;console.log(`Interactive PDF index progress: ${progress.processed}/${progress.selected}`)}
-    }}),{waitMs:process.send?0:10000,staleMs:60*60*1000});
+    }}),{waitMs:process.send?0:10000});
     await sendMaintenanceIpc({type:'pdf-maintenance-result',result});
     if(process.send&&process.connected)process.disconnect();
     if(result.skipped){console.log('Interactive PDF maintenance is not due yet.');return}
