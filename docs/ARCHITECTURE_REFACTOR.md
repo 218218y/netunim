@@ -731,3 +731,14 @@ presentation ports; V2 source quiescence drains file and permission work before
 automatic backups. Context preparation/queue/promise fields are removed. See
 [Orders folder write ownership](ORDERS_FOLDER_WRITE_OWNERSHIP.md) for behavioral,
 native file/journal and strict boundary evidence.
+
+Primary tab locks now privately own native release, coalesced acquisition,
+fallback identity and all heartbeat/channel/listener resources in both apps.
+Before-change tests proved self-demotion on native reacquisition, duplicate
+fallback registration and two accepted writers with an inherited session ID.
+An inert browser adapter, final disposal/pagehide fences and native fresh/secondary
+tab/journal tests cover the corrected boundary. The unused context release callback
+and Orders tab-guard collaborators are removed. See
+[primary tab lock ownership](PRIMARY_TAB_LOCK_OWNERSHIP.md), including the explicit
+limits of the non-atomic storage fallback and the unchanged read-only-until-reload
+policy.

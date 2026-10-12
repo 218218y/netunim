@@ -74,8 +74,7 @@ return {
   tab:{
     primaryTab:true,
     primaryTabReady:false,
-    readOnlyTab:false,
-    primaryLockRelease:null
+    readOnlyTab:false
   },
   checksSession:{
     sharedChecksRevision:0,

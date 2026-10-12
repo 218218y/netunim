@@ -17,7 +17,7 @@ async function exercise(factory){
   Object.defineProperty(globalThis,'navigator',{value:{},configurable:true});
   Object.defineProperty(globalThis,'localStorage',{value:new StorageMock(),configurable:true});
   Object.defineProperty(globalThis,'BroadcastChannel',{value:undefined,configurable:true});
-  Object.defineProperty(globalThis,'window',{value:{addEventListener(type,callback){if(type==='pagehide')pagehide.push(callback)}},configurable:true});
+  Object.defineProperty(globalThis,'window',{value:{addEventListener(type,callback){if(type==='pagehide')pagehide.push(callback)},removeEventListener(){}},configurable:true});
   try{
     Object.defineProperty(globalThis,'sessionStorage',{value:new StorageMock(),configurable:true});
     const first={primaryTab:true,primaryTabReady:false,readOnlyTab:false},firstLock=factory({tab:first,showSecondaryTabGuard(){}});
@@ -42,7 +42,7 @@ test('Kupa fallback elects one writer when Web Locks is unavailable',()=>exercis
 async function failClosedExercise(factory,mode){
   const prior={navigator:globalThis.navigator,window:globalThis.window,localStorage:globalThis.localStorage,sessionStorage:globalThis.sessionStorage,BroadcastChannel:globalThis.BroadcastChannel,setTimeout:globalThis.setTimeout,clearTimeout:globalThis.clearTimeout};
   const pagehide=[];Object.defineProperty(globalThis,'navigator',{value:{},configurable:true});Object.defineProperty(globalThis,'sessionStorage',{value:new StorageMock(),configurable:true});
-  Object.defineProperty(globalThis,'window',{value:{addEventListener(type,callback){if(type==='pagehide')pagehide.push(callback)}},configurable:true});
+  Object.defineProperty(globalThis,'window',{value:{addEventListener(type,callback){if(type==='pagehide')pagehide.push(callback)},removeEventListener(){}},configurable:true});
   if(mode==='storage')Object.defineProperty(globalThis,'localStorage',{value:{getItem(){throw new Error('blocked')},setItem(){throw new Error('blocked')},removeItem(){throw new Error('blocked')}},configurable:true});
   else if(mode==='corrupt'){const storage=new StorageMock();storage.setItem('netunim:primary:orders-management-primary-writer','{bad');storage.setItem('netunim:primary:kupa-primary-writer','{bad');Object.defineProperty(globalThis,'localStorage',{value:storage,configurable:true})}
   else Object.defineProperty(globalThis,'localStorage',{value:new StorageMock(),configurable:true});
@@ -51,7 +51,7 @@ async function failClosedExercise(factory,mode){
     Object.defineProperty(globalThis,'setTimeout',{value:()=>1,configurable:true});Object.defineProperty(globalThis,'clearTimeout',{value:()=>{},configurable:true});
   }else Object.defineProperty(globalThis,'BroadcastChannel',{value:undefined,configurable:true});
   const expected=mode==='storage'?[
-    ['tab writer fallback','blocked'],['tab writer fallback','blocked'],['tab writer fallback','blocked'],
+    ['tab writer fallback','blocked'],['tab writer fallback','blocked'],
   ]:mode==='broadcast'?[['tab writer fallback','broadcast unavailable']]:[];
   return withExpectedConsoleErrors(expected,async()=>{
     try{const tab={primaryTab:true,primaryTabReady:false},lock=factory({tab,showSecondaryTabGuard(){}});assert.equal(await lock.acquirePrimaryTabLock(),false);assert.equal(tab.primaryTab,false);assert.ok(tab.lockDiagnostic);}

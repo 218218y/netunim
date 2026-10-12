@@ -128,8 +128,7 @@ return {
   tab:{
     primaryTab:true,
     primaryTabReady:false,
-    readOnlyTab:false,
-    primaryLockRelease:null
+    readOnlyTab:false
   },
   session:{
     lastCloudState:null,

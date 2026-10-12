@@ -25,6 +25,14 @@ function check(overrides=new Map()){
 }
 function describe(diagnostics){return ts.formatDiagnostics(diagnostics,{getCanonicalFileName:file=>file,getCurrentDirectory:()=>root,getNewLine:()=> '\n'})}
 
+test('the actual primary lock cannot publish text as writer authority',()=>{
+  const source=path.join(root,'shared/tab-lock.js');
+  const original=readFileSync(source,'utf8'),changed=original.replace('tab.primaryTab=value;', 'tab.primaryTab="primary";');
+  assert.notEqual(changed,original);
+  const diagnostics=check(new Map([[source,changed]]));
+  assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+});
+
 test('the actual folder writer cannot replace a detached input with a timestamp',()=>{
   const source=path.join(root,'netunim-orders/site/assets/js/storage/folder-write-runtime.js');
   const original=readFileSync(source,'utf8'),changed=original.replace('last.payload=captured;', 'last.payload=Date.now();');
