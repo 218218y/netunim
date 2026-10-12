@@ -1,7 +1,7 @@
 import {createLazyDeferredSearchUpdater} from '../../shared/search-scheduler.js';
 import {markMutationActions} from '../../shared/action-registry.js';
 
-export function createChecksActions({financeReadout,domainsChecksEditor,domainsChecksView,domainsFinanceView,ui,uiDateEditor,uiModal}){
+export function createChecksActions({financeReadout,domainsChecksEditor,domainsChecksView,domainsFinanceView,ui,uiDateEditor,uiModal,search=null}){
 const applyCheckDatePicker=(...args)=>uiDateEditor.applyCheckDatePicker(...args);
 const changeCheckSeriesCount=(...args)=>domainsChecksEditor.changeCheckSeriesCount(...args);
 const deleteCheck=(...args)=>domainsChecksEditor.deleteCheck(...args);
@@ -23,7 +23,7 @@ const syncCheckSeriesFromFirst=(...args)=>domainsChecksEditor.syncCheckSeriesFro
 const toggleChecksBulkMode=(...args)=>domainsChecksView.toggleChecksBulkMode(...args);
 const toggleChecksBulkRow=(...args)=>domainsChecksView.toggleChecksBulkRow(...args);
 const toggleChecksBulkVisible=(...args)=>domainsChecksView.toggleChecksBulkVisible(...args);
-const checksSearch=createLazyDeferredSearchUpdater(value=>{ui.checkSearchValue=value},renderChecksSearch);
+const checksSearch=search??createLazyDeferredSearchUpdater(value=>{ui.checkSearchValue=value},renderChecksSearch);
 const actions={
   'review-check-bank':element=>reviewCheckBank(element.dataset.clickArg2==='remove-selected'?[...ui.checksBulkSelected]:element.dataset.clickArg0,element.dataset.clickArg1,element.dataset.clickArg2),
   'handle-check-date-part-input':(element,event)=>{handleCheckDatePartInput(element)},

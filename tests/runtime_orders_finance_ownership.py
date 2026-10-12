@@ -24,7 +24,7 @@ FLOW = r"""(async()=>{
  cloudTransport.releaseFinanceSyncLease=async(_kind,_token,options)=>{options?.assertCurrent?.();releases++;return true};
  cloudTransport.readKupaReadOnlyCloud=async()=>({revision:kupaReadRevision,financeRevision,state:structuredClone(remoteFinance)});
  cloudTransport.readFinanceSyncDocument=async()=>({revision:financeRevision,state:structuredClone(remoteFinance)});
- syncChecks.syncSharedChecksFromCloud=async()=>true;stateSnapshots.checksHaveLocalWork=()=>false;
+ checks.commands.sync=async()=>true;stateSnapshots.checksHaveLocalWork=()=>false;
  cloudTransport.syncBankTransactionsSnapshot=async()=>{archives++;return {sourcePayload:[],result:{total_count:0}}};
  cloudTransport.readBankTransactions=async()=>kind==='Bank'&&['network','lost-response'].includes(caseName)?[{id:'uncommitted',date:stamp,processedDate:stamp,amount:12,currency:'ILS',status:'completed',description:'uncommitted'}]:[];cloudTransport.readBankTransactionSnapshot=async()=>null;
  const publish=async next=>{publications++;if(caseName==='publication'){saving.resolve();await saved.promise}if(caseName==='network')throw Error('fixture Finance request failed');remoteFinance=next;financeRevision=2;if(kind==='Bank')kupaReadRevision=2;if(caseName==='lost-response')throw Error('fixture committed Finance response lost');return {revision:2,finance_revision:financeRevision,kupa_revision:kupaReadRevision,state:next}};

@@ -26,7 +26,7 @@ FLOW = r"""(async()=>{
  cloudTransport.saveBankSyncSnapshot=async bank=>{commits++;remote={...remote,bank};revision++;return {finance_revision:revision,kupa_revision:revision}};
  cloudTransport.rpcSaveFinanceSync=async next=>{commits++;remote=structuredClone(next);revision++;return {r:{ok:true},row:{revision,state:remote}}};
  cloudTransport.syncBankTransactionsSnapshot=async()=>({sourcePayload:[],result:{total_count:0}});cloudTransport.readBankTransactions=async()=>[];cloudTransport.readBankTransactionSnapshot=async()=>null;
- syncChecks.syncSharedChecksFromCloud=async()=>true;stateSnapshots.checksHaveLocalWork=()=>false;
+ checks.commands.sync=async()=>true;stateSnapshots.checksHaveLocalWork=()=>false;
  const token='netunim_kupa_bank_bridge_token_v1',enabled=`netunim_orders_${kind}_auto_daily_v1`,attempt=`netunim_orders_${kind}_auto_attempt_v1`,mode='netunim_orders_credit_auto_mode_v1';
  localStorage.setItem(token,'synthetic-pairing');localStorage.setItem('netunim_orders_bank_auto_daily_v1','0');localStorage.setItem('netunim_orders_credit_auto_daily_v1','0');localStorage.setItem(enabled,'1');localStorage.setItem(mode,'forecast');localStorage.removeItem(attempt);
  const fetch=globalThis.fetch,get=Storage.prototype.getItem,set=Storage.prototype.setItem,entered=deferred(),provider=deferred();let injecting=true;

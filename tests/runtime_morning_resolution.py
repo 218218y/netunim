@@ -25,7 +25,7 @@ if(localStorage.getItem('audit.startup')){
   // Model a failed initial hydration. The real appReady Morning timer still runs.
   uiCloud.openCloud=async()=>false;
   domainsCalendarController.start=()=>{};finance.runtime.start=()=>{};
-  finance.readout.refreshKupaReadout=async()=>true;syncChecks.syncSharedChecksFromCloud=async()=>true;
+  finance.readout.refreshKupaReadout=async()=>true;checks.commands.sync=async()=>true;
   cloudTransport.readCloud=async()=>{globalThis.startupCloudReads++;await globalThis.startupCloudGate;return structuredClone(fixture.head)};
   cloudTransport.rpcSave=async(snapshot,expected)=>({r:{ok:true},row:{revision:expected+1,state:structuredClone(snapshot)}});
   cloudTransport.rpcSaveV2=(...args)=>cloudTransport.rpcSave(...args);
@@ -137,7 +137,7 @@ def refresh_barrier():
             js(a,r"""
             window.auditCloudReadGate=new Promise(resolve=>{window.auditReleaseCloud=resolve});
             cloudAuth.loadSession=()=>({access_token:'fixture',expires_at:9999999999});
-            syncChecks.pollSharedChecks=async()=>true;
+            checks.runtime.poll=async()=>true;
             finance.readout.refreshKupaReadout=async()=>true;
             return true;
             """)

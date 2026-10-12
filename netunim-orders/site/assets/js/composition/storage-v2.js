@@ -1,3 +1,4 @@
+import {mergeSharedChecks} from '../sync/checks-merge.js';
 import {createStorageStartupProtocol} from '../shared/storage-startup-protocol.js';
 import {createStorageOwnerBinding} from '../shared/storage-owner.js';
 import {createStorageV2BootstrapCoordinator} from '../shared/storage-v2-bootstrap.js';
@@ -28,10 +29,10 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
   const mode=()=>storageV2Mode('orders',storage,owner.current(),{preparing:preparing()});
   const createRuntime=options=>createStorageV2Runtime({app:'orders',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,mode,...options});
   const createCloudPorts=storageBrowser=>({...createStorageV2CloudPorts(storageBrowser),storageV2PrimaryRequested:()=>['primary','preparing'].includes(mode())});
-  const createSharedComposition=({model,checksSession,domainRevisions,main,stateNormalization,getSyncChecks,getCloudTransport})=>createSharedChecksV2Composition({
+  const createSharedComposition=({model,checksSession,domainRevisions,main,stateNormalization,getCloudTransport})=>createSharedChecksV2Composition({
     site:'orders',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,preparing,
     model,checksSession,eventsKey:'checksBankEvents',domainRevisions,main,
-    merge:(...args)=>getSyncChecks().mergeSharedChecks(...args),readRemote:(...args)=>getCloudTransport().readSharedChecksCloud(...args),rpc:(...args)=>getCloudTransport().rpcSaveSharedChecksV2(...args),
+    merge:mergeSharedChecks,readRemote:(...args)=>getCloudTransport().readSharedChecksCloud(...args),rpc:(...args)=>getCloudTransport().rpcSaveSharedChecksV2(...args),
     validateMainCloud:state=>assertValidOrderCloudState(state,'Orders V2 restore cloud state'),applyMainState:state=>{const previous=model.state;model.state=stateNormalization.normalizeState({...state,checks:previous.checks});domainRevisions.reconcile(previous,model.state,{forceAll:true})},
   });
 
@@ -64,7 +65,8 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
       quiesce:async()=>{
         await quiesceSaves();
         await p.syncDocument.quiesceForStorageCutover();
-        const pending=[p.files.storageV2CommitPromise,p.checksSession.checksSavePromise,p.checksSession.checksPullPromise].filter(Boolean);
+        await p.saveRuntime.checks.drain();
+        const pending=[p.files.storageV2CommitPromise].filter(Boolean);
         if(pending.length)await Promise.all(pending);
       },
     });
@@ -77,7 +79,7 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
       return createSharedChecksV2Runtime({
         site:'orders',owner:()=>identity,primary:()=>tab.primaryTab,mode:()=> 'preparing',
         readState:()=>snapshot,applyState:state=>{snapshot=structuredClone(state)},
-        merge:(...args)=>p.syncChecks.mergeSharedChecks(...args),
+        merge:mergeSharedChecks,
         readRemote:()=>p.cloudTransport.readSharedChecksCloud(),
         rpc:(...args)=>p.cloudTransport.rpcSaveSharedChecksV2(...args),
       });
@@ -90,7 +92,8 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
       if(marked!==true||owner.current()!==sourceOwner||!owner.locked)throw new Error('orders_transfer_source_not_primary');
       await quiesceSaves();
       await p.syncDocument.quiesceForStorageCutover();
-      const pending=[p.files.storageV2CommitPromise,p.session.cloudSavePromise,p.checksSession.checksSavePromise,p.checksSession.checksPullPromise,p.sharedChecksV2.commitPromise].filter(Boolean);
+      await p.saveRuntime.checks.drain();
+      const pending=[p.files.storageV2CommitPromise,p.session.cloudSavePromise,p.sharedChecksV2.commitPromise].filter(Boolean);
       if(pending.length)await Promise.all(pending);
       // The durable V2 source marker and the recovered Main/Shared heads below
       // decide transfer safety. Retired V1 records have no authority here.

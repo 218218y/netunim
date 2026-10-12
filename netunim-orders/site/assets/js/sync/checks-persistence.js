@@ -6,6 +6,7 @@ export function createSyncChecksPersistence({
   folderBackupAvailable, folderSaveTitle, rejectSecondaryMutation,
   writeStateToFolder, loadSession, saveSharedChecksToCloud, sharedChecksV2=null,
   refreshAlertCenter=() => {}, touchChecksRevision=() => {}, timers=globalThis,
+  isSaving=() => false, isOnline=() => globalThis.navigator?.onLine !== false,
 }) {
   let disposed = false;
   const backupTask = createDebouncedTask({
@@ -51,7 +52,7 @@ export function createSyncChecksPersistence({
       checksSession.checksGeneration++;
       checksSession.checksSaveRequested = true;
       if (cloudCurrent()) {
-        const offline = globalThis.navigator?.onLine === false;
+        const offline = !isOnline();
         setCloud(offline ? 'ענן: אופליין' : 'ענן: צ׳קים ממתינים לסנכרון', offline ? 'offline' : '');
       }
       if (!write.emergencyDurable) (session.localUndurableGenerations ??= new Set()).add(riskToken);
@@ -82,7 +83,7 @@ export function createSyncChecksPersistence({
     checksSession.checksSaveMessage = message;
     checksSession.checksSaveRequested = true;
     cloudTask.cancel();
-    if (checksSession.checksSavePromise) return;
+    if (isSaving()) return;
     cloudTask.schedule(async () => {
       if (durable) {
         try { await durable; }
