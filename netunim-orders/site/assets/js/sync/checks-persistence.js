@@ -19,7 +19,7 @@ export function createSyncChecksPersistence({
       const backup = backupTask.cancel(), cloud = cloudTask.cancel();
       return backup || cloud;
     },
-    drain:() => Promise.all([backupTask.drain(), cloudTask.drain()]),
+    async drain() { await Promise.all([backupTask.drain(), cloudTask.drain()]); },
     dispose() {
       disposed = true;
       const backup = backupTask.dispose(), cloud = cloudTask.dispose();

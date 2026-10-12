@@ -20,11 +20,13 @@ export function createStoragePersistence({
 
   function canMutate() { return !disposed && tab.primaryTab === true && !session.syncCapabilitiesError; }
   function rejectSecondaryAction() {
+    if (disposed) return true;
     if (tab.primaryTab) return false;
     showSecondaryTabGuard();
     return true;
   }
   function rejectSecondaryMutation() {
+    if (disposed) return true;
     if (session.syncCapabilitiesError) { setCloud(session.syncCapabilitiesError.message, 'error'); return true; }
     if (tab.primaryTab) return false;
     // Startup restores authoritative V2 journals after a rejected in-memory edit.
