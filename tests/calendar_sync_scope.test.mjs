@@ -1,3 +1,4 @@
+import {createCalendarBrowserEffects} from '../netunim-orders/site/assets/js/platform/calendar-browser-effects.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createCalendarJournal} from '../netunim-orders/site/assets/js/calendar/journal.js';
@@ -22,13 +23,13 @@ for(const phase of ['list','meta','journal','events','cache','receipt','confirma
   const nav=Object.getOwnPropertyDescriptor(globalThis,'navigator'),doc=Object.getOwnPropertyDescriptor(globalThis,'document');
   Object.defineProperty(globalThis,'navigator',{configurable:true,value:{onLine:true}});Object.defineProperty(globalThis,'document',{configurable:true,value:{querySelector:()=>null}});
   t.after(()=>{for(const [name,prior] of [['navigator',nav],['document',doc]]){if(prior)Object.defineProperty(globalThis,name,prior);else delete globalThis[name]}});
-  const calendarSession={syncPromise:null,syncing:false,accountId:'A',expectedAccountId:'',lastSyncAt:null},calendarUi={focusDate:'2026-10-09',viewMode:'month',events:[],calendars:[],pending:[]};
-  const controller=createDomainsCalendarController({subscribeAccountScope:()=>()=>{},ui:{currentView:'dashboard'},tab:{primaryTab:true},calendarUi,calendarSession,
+  const calendarSession={syncing:false,accountId:'A',expectedAccountId:'',lastSyncAt:null},calendarUi={focusDate:'2026-10-09',viewMode:'month',events:[],calendars:[],pending:[]};
+  const controller=createDomainsCalendarController({effects:createCalendarBrowserEffects(),subscribeAccountScope:()=>()=>{},ui:{currentView:'dashboard'},tab:{primaryTab:true},calendarUi,calendarSession,
     calendarAuth:{captureOperation:()=>({owner:'fixture',assertCurrent}),hasUsableToken:()=>true,authRequiredError:()=>Error('auth'),restore:async()=> 'fixture'},
     calendarStorage:{connectionPreference:()=>({known:true,autoConnect:false,accountId:'A'}),getMeta:()=>step('meta','A'),putMeta:async()=>{},saveConnectionPreference(){},listOperations:()=>step('list',[]),readPendingSnapshot:()=>step('receipt',{operations:[],isCurrent:()=>true,isSettled:()=>true}),confirmPendingSnapshot:async publish=>{await step('confirmation',null);return publish({operations:[],isCurrent:()=>true,isSettled:()=>true})},putRangeCache:()=>step('cache',null)},
     calendarApi:{listCalendars:async()=>[{id:'A',primary:true,accessRole:'owner'}],fetchEvents:()=>step('events',[])},calendarJournal:{flushPending:()=>step('journal',0)},toast:()=>{toasts++}});
   const pending=(phase==='resume'?controller.resumeAfterCloudLogin():controller.syncNow()).catch(error=>{assert.equal(error.code,'CALENDAR_OPERATION_SCOPE_CHANGED');return false});await entered.promise;current=false;held.resolve();
-  assert.equal(await pending,false);assert.equal(calendarSession.lastSyncAt,null);assert.equal(toasts,0);assert.equal(calendarSession.syncPromise,null);
+  assert.equal(await pending,false);assert.equal(calendarSession.lastSyncAt,null);assert.equal(toasts,0);assert.equal(Object.hasOwn(calendarSession,'syncPromise'),false);
 });
 
 test('A completed old sync cannot release the newer login task or busy flag',async t=>{
@@ -36,17 +37,17 @@ test('A completed old sync cannot release the newer login task or busy flag',asy
   const nav=Object.getOwnPropertyDescriptor(globalThis,'navigator'),doc=Object.getOwnPropertyDescriptor(globalThis,'document');
   Object.defineProperty(globalThis,'navigator',{configurable:true,value:{onLine:true}});Object.defineProperty(globalThis,'document',{configurable:true,value:{querySelector:()=>null}});
   t.after(()=>{for(const [name,prior] of [['navigator',nav],['document',doc]]){if(prior)Object.defineProperty(globalThis,name,prior);else delete globalThis[name]}});
-  const calendarSession={syncPromise:null,syncing:false,accountId:'A',expectedAccountId:'',lastSyncAt:null},calendarUi={focusDate:'2026-10-09',viewMode:'month',events:[],calendars:[],pending:[]};
-  const controller=createDomainsCalendarController({subscribeAccountScope:()=>()=>{},ui:{currentView:'dashboard'},tab:{primaryTab:true},calendarUi,calendarSession,
+  const calendarSession={syncing:false,accountId:'A',expectedAccountId:'',lastSyncAt:null},calendarUi={focusDate:'2026-10-09',viewMode:'month',events:[],calendars:[],pending:[]};
+  const controller=createDomainsCalendarController({effects:createCalendarBrowserEffects(),subscribeAccountScope:()=>()=>{},ui:{currentView:'dashboard'},tab:{primaryTab:true},calendarUi,calendarSession,
     calendarAuth:{captureOperation:()=>{const captured=epoch;return {owner:'fixture',assertCurrent(){if(captured!==epoch)throw changed()}}},hasUsableToken:()=>true},
     calendarStorage:{connectionPreference:()=>({known:true,autoConnect:false,accountId:'A'}),getMeta:async()=> 'A',putMeta:async()=>{},saveConnectionPreference(){},listOperations:async()=>[],readPendingSnapshot:async()=>({operations:[],isCurrent:()=>true,isSettled:()=>true}),confirmPendingSnapshot:async publish=>publish({operations:[],isCurrent:()=>true,isSettled:()=>true}),putRangeCache:async()=>{nextEntered.resolve();await next.promise}},
     calendarApi:{listCalendars:async()=>[{id:'A',primary:true,accessRole:'owner'}],fetchEvents:async()=>{if(++reads===1){oldEntered.resolve();await old.promise}return []}},calendarJournal:{flushPending:async()=>0},toast(){}});
   const first=controller.syncNow();await oldEntered.promise;epoch++;
-  const second=controller.syncNow();await nextEntered.promise;const promise=calendarSession.syncPromise;
+  const second=controller.syncNow();await nextEntered.promise;const pendingOwner=controller.runtime.isPending();
   const coalesced=controller.syncNow();old.resolve();assert.equal(await first,false);
-  assert.equal(calendarSession.syncing,true);assert.equal(calendarSession.syncPromise,promise);assert.equal(reads,2);
+  assert.equal(calendarSession.syncing,true);assert.equal(controller.runtime.isPending(),pendingOwner);assert.equal(reads,2);
   next.resolve();assert.equal(await second,true);assert.equal(await coalesced,true);
-  assert.equal(calendarSession.syncPromise,null);assert.equal(calendarSession.syncing,false);assert.ok(calendarSession.lastSyncAt);
+  assert.equal(Object.hasOwn(calendarSession,'syncPromise'),false);assert.equal(calendarSession.syncing,false);assert.ok(calendarSession.lastSyncAt);
 });
 
 test('Rejecting the wrong Google account still reports its error and retains the queue',async t=>{
@@ -57,7 +58,7 @@ test('Rejecting the wrong Google account still reports its error and retains the
   const calendarAuth=createCalendarAuth({calendarSession,accountScope:()=>({owner:'fixture',epoch:1}),supaFetch:async()=>new Response(JSON.stringify({access_token:'fixture',expires_in:3600,account_id:'A'}))});
   await calendarAuth.restore();let delivered=0;
   const pending=[{seq:1,eventId:'retained',calendarId:'A',body:{id:'retained'}}];
-  const controller=createDomainsCalendarController({subscribeAccountScope:()=>()=>{},ui:{currentView:'dashboard'},tab:{primaryTab:true},calendarUi,calendarSession,calendarAuth,
+  const controller=createDomainsCalendarController({effects:createCalendarBrowserEffects(),subscribeAccountScope:()=>()=>{},ui:{currentView:'dashboard'},tab:{primaryTab:true},calendarUi,calendarSession,calendarAuth,
     calendarStorage:{connectionPreference:()=>({known:true,autoConnect:false,accountId:'A'}),listOperations:async()=>pending},
     calendarApi:{listCalendars:async()=>[{id:'B',primary:true,accessRole:'owner'}]},calendarJournal:{flushPending:async()=>{delivered++}},toast(){}});
   assert.equal(await controller.syncNow(),false);assert.equal(calendarAuth.hasUsableToken(),false);

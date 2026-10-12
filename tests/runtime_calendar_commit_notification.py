@@ -14,7 +14,6 @@ SETUP = r"""(async()=>{
  let network=0;const requests=[];globalThis.fetch=async(url,options)=>{network++;requests.push({url:String(url),method:options?.method||'GET'});return new Response(JSON.stringify({items:new URL(url).pathname.endsWith('/calendarList')?[{id:calendarId,primary:true,accessRole:'owner'}]:[]}))};
  check(await domainsCalendarController.resumeAfterCloudLogin()===true,'Calendar fixture failed');
  ui.currentView='calendar';await domainsCalendarController.renderCalendar();
- clearInterval(calendarSession.pollTimer);calendarSession.pollTimer=null;
  Object.defineProperty(document,'visibilityState',{configurable:true,value:'hidden'});
  const {createCalendarStorage}=await import('./assets/js/calendar/storage.js'),storage=createCalendarStorage();
  const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js'),db=createStorageJournalDb();

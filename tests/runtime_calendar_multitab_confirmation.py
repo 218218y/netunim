@@ -69,12 +69,12 @@ VERIFY = r"""(async()=>{
    check(!calendarSession.lastSyncAt,'cross-tab pending advanced completed sync time');
    check(calendarUi.pending[0]?.eventId==='abcd0123abcd0123abcd0123abcd0123','new durable pending not published');
    if(audit.phase==='receipt-abort'){
-     check(!calendarSession.syncPromise&&audit.effects===0&&calendarSession.lastError,'failed confirmation started an automatic delivery');
+     check(!calendarSession.syncing&&audit.effects===0&&calendarSession.lastError,'failed confirmation started an automatic delivery');
      audit.manual=domainsCalendarController.syncNow({quiet:true});
    }
    await audit.deliveryEntered.promise;const queued=await storage.listOperations();
    check(queued.length===1&&queued[0].body.summary==='cross-tab committed event','queue lost before confirmed Google delivery');
-   const resumed=calendarSession.syncPromise;check(resumed,'pending work lost its owner wake');audit.delivery.resolve();
+   check(domainsCalendarController.runtime.isPending(),'pending work lost its owner wake');const resumed=domainsCalendarController.syncNow({quiet:true});audit.delivery.resolve();
    check(await resumed===true,'owned continuation failed');if(audit.manual)check(await audit.manual===true,'manual recovery failed');check(audit.effects===1&&audit.remote.size===1,'duplicate Google effect');
    check((await storage.listOperations()).length===0&&calendarSession.lastSyncAt,'confirmation did not settle queue');
    check(await audit.raw()===audit.before,'Calendar changed Main/Shared raw records');

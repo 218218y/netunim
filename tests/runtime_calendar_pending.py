@@ -69,7 +69,7 @@ FLOW = r"""(async()=>{
    }
    await deliveryEntered.promise;
    check((await storage.listOperations())[0]?.eventId===original.eventId,'queue deleted before Google response confirmed');
-   const resumed=calendarSession.syncPromise;check(resumed,'known new work was not scheduled by the owner');
+   check(domainsCalendarController.runtime.isPending(),'known new work was not scheduled by the owner');const resumed=domainsCalendarController.syncNow({quiet:true});
    delivery.resolve();check(await resumed===true,'authorized continuation failed to confirm settled queue');if(reacquire)check(await reacquire===true,'reacquired login did not confirm recovery');
    check(effects===1&&remote.size===1,'continuation duplicated provider effect');
    check(remote.get(original.eventId)?.summary===original.body.summary,'provider identity/content differs');

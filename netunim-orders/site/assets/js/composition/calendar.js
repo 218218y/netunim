@@ -6,6 +6,7 @@ import {createCalendarDeliveryOwner} from '../platform/calendar-delivery-owner.j
 import {createCalendarCommitNotifications} from '../platform/calendar-commit-notifications.js';
 import {createDomainsCalendarController} from '../domains/calendar/controller.js';
 import {createCalendarActionPorts} from '../domains/calendar/action-ports.js';
+import {createCalendarBrowserEffects} from '../platform/calendar-browser-effects.js';
 
 // Infrastructure is created early; the controller is composed after the UI
 // ports exist. The caller starts it only after the app's boot promise resolves.
@@ -18,12 +19,14 @@ export function createOrdersCalendarRuntime({calendarSession,supaFetch,accountSc
   const calendarAuth=createCalendarAuth({calendarSession,supaFetch,accountScope});
   const calendarApi=createCalendarApi({calendarAuth});
   const calendarJournal=createCalendarJournal({calendarStorage,calendarApi,operationScope:calendarAuth,deliveryOwner:createCalendarDeliveryOwner()});
-  let controller=null;
+  const effects=createCalendarBrowserEffects();
+  let controller=null,disposed=false;
 
   function createController({ui,tab,calendarUi,uiLayout,uiModal,uiStatus,uiCloud,uiDateEditor}){
+    if(disposed)throw new Error('calendar_runtime_disposed');
     if(controller)throw new Error('calendar_controller_already_composed');
     controller=createDomainsCalendarController({
-      ui,tab,calendarUi,calendarSession,
+      ui,tab,calendarUi,calendarSession,effects,
       calendarStorage,calendarAuth,calendarApi,calendarJournal,subscribeAccountScope,subscribeCalendarCommits:commitNotifications.subscribe,
       mountViewLayout:(...args)=>uiLayout.mountViewLayout(...args),
       modal:(...args)=>uiModal.modal(...args),
@@ -42,5 +45,6 @@ export function createOrdersCalendarRuntime({calendarSession,supaFetch,accountSc
     return createCalendarActionPorts(controller);
   }
 
-  return {createController,actionPorts,dispose:()=>controller?.dispose()??false};
+  function dispose(){if(disposed)return false;disposed=true;if(controller)controller.dispose();else effects.dispose();return true}
+  return {createController,actionPorts,dispose,drain:()=>controller?controller.runtime.drain():effects.drain()};
 }

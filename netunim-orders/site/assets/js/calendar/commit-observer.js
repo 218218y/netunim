@@ -35,5 +35,6 @@ export function createCalendarCommitObserver({subscribe,capture,refresh,onError}
   }
   function start(){if(disposed||started)return false;unsubscribe=subscribe(()=>{void wake()});started=true;void wake();return true}
   function dispose(){if(disposed)return false;disposed=true;dirty=false;unsubscribe?.();unsubscribe=null;return true}
-  return {start,wake,dispose};
+  async function drain(){while(running)await Promise.allSettled([running.promise])}
+  return {start,wake,dispose,drain,isPending:()=>!!running};
 }

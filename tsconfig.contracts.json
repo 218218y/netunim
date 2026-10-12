@@ -120,6 +120,9 @@
     "tests/fixtures/checked-folder-write-runtime.mjs",
     "shared/tab-lock.js",
     "shared/browser-tab-lock-platform.js",
-    "tests/fixtures/checked-primary-tab-lock.mjs"
+    "tests/fixtures/checked-primary-tab-lock.mjs",
+    "netunim-orders/site/assets/js/calendar/operation-flight.js",
+    "netunim-orders/site/assets/js/platform/calendar-browser-effects.js",
+    "tests/fixtures/checked-calendar-runtime.mjs"
   ]
 }

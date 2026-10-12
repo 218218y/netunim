@@ -43,7 +43,9 @@ ok('beginConnect' in auth and 'restore' in auth and "action:'token'" not in auth
 ok('function ready()' in auth and "backend(assertCurrent,'token'" in auth and "backend(assertCurrent,'start'" in auth,'calendar auth: startup refresh and interactive linking are separate scoped server actions')
 ok('async function prepare()' in auth and 'calendarAuth.prepare()' in controller and 'accounts.google.com/gsi/client' not in auth,'calendar auth: no Google Identity script or popup preload remains in the browser')
 ok('initTokenClient' not in auth and 'requestAccessToken' not in auth and 'beginConnect' in auth,'calendar auth: popup-only Google token model is fully removed')
-ok('calendarUi:{' in contexts and "viewMode:'week'" in contexts and "focusDate:''" in contexts and 'calendarSession:{' in contexts and 'eventMap:new Map()' in contexts and 'syncPromise:null' in contexts and 'pollTimer:null' in contexts and 'authResumePromise:null' in contexts,'calendar composition: view/focus plus UI/session state are initialized before the controller starts')
+ok('calendarUi:{' in contexts and "viewMode:'week'" in contexts and "focusDate:''" in contexts and 'calendarSession:{' in contexts and 'eventMap:new Map()' in contexts and 'syncing:false' in contexts
+   and all(name not in contexts for name in ('syncPromise','pollTimer','authResumePromise')),
+   'calendar composition: initialized view/status state contains no operation promises or poll handle')
 ok('renderCalendar, renderSettings' in navigation and "ui.currentView==='calendar')renderCalendar()" in navigation,'calendar navigation: the Calendar tab renders Calendar instead of falling through to Settings')
 controller_actions=set(re.findall(r'data-(?:action|change)="(calendar-[^"]+)"',controller))
 registered_actions=set(re.findall(r"'(calendar-[^']+)'\s*:\s*\(",(SITE/'assets/js/ui/action-packs/calendar.js').read_text(encoding='utf-8')))
@@ -73,7 +75,10 @@ ok('resumeKnownConnectionSilently' in controller and 'calendarAuth.restore()' in
 ok('hydrateLegacyConnectionPreference' in controller and "getMeta('accountId')" in controller,'calendar reconnect migration: existing installations inherit their previously verified Calendar account once')
 
 ok('data-click-arg0="month"' in controller and 'data-click-arg0="week"' in controller and 'data-click-arg0="day"' in controller and 'calendar-prev-period' in controller and 'calendar-next-period' in controller,'calendar view controls: month/week/day and period navigation are rendered from one focused-date model')
-ok('calendar-day-create-zone' in controller and 'calendar-day-create' in controller and 'CALENDAR_DAY_SINGLE_CLICK_DELAY_MS' in controller,'calendar creation UX: blank day space has a dedicated click target and single/double clicks are disambiguated before opening an editor')
+effects=(SITE/'assets/js/platform/calendar-browser-effects.js').read_text(encoding='utf-8')
+ok('calendar-day-create-zone' in controller and 'calendar-day-create' in controller and 'effects.dayClick.cancel()' in controller and 'effects.dayClick.schedule' in controller
+   and 'createDebouncedTask({delay:320' in effects,
+   'calendar creation UX: a privately owned 320ms day-click task disambiguates single/double clicks and fences cancellation')
 ok("change:'calendar-start-date-change'" in controller and "change:'calendar-end-date-change'" in controller and 'reconcileCalendarEndDate' in controller and 'setDateValue' in controller,'calendar date range: editor start/end dates are linked through the shared date editor instead of waiting for save-time validation')
 toolbar_markup=re.search(r'function toolbarMarkup\(\)\{.*?return `(.*?)`\}',controller,re.S)
 toolbar_source=toolbar_markup.group(1) if toolbar_markup else ''

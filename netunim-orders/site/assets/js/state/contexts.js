@@ -113,12 +113,9 @@ return {
     accountId:'',
     autoConnect:false,
     expectedAccountId:'',
-    authResumePromise:null,
     syncing:false,
-    syncPromise:null,
     lastSyncAt:null,
-    lastError:'',
-    pollTimer:null
+    lastError:''
   },
   files:{
     dirHandle:null,

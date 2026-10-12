@@ -1,3 +1,4 @@
+import {createCalendarBrowserEffects} from '../netunim-orders/site/assets/js/platform/calendar-browser-effects.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createDomainsCalendarController} from '../netunim-orders/site/assets/js/domains/calendar/controller.js';
@@ -9,8 +10,8 @@ function fixture(t,phase){
   t.after(()=>{for(const [name,prior] of [['navigator',nav],['document',doc]]){if(prior)Object.defineProperty(globalThis,name,prior);else delete globalThis[name]}});
   const held=deferred(),entered=deferred(),again=deferred(),next=deferred(),queue=[],delivered=[],toasts=[];let reads=0,version=0,current=true,settled=true;
   if(phase.endsWith('error')){const prior=console.error;console.error=()=>{};t.after(()=>{console.error=prior})}
-  const calendarSession={syncPromise:null,syncing:false,accountId:'A',expectedAccountId:'',lastSyncAt:null},calendarUi={focusDate:'2026-10-09',viewMode:'month',events:[],calendars:[],pending:[]};
-  const controller=createDomainsCalendarController({subscribeAccountScope:()=>()=>{},ui:{currentView:'dashboard'},tab:{primaryTab:true},calendarUi,calendarSession,
+  const calendarSession={syncing:false,accountId:'A',expectedAccountId:'',lastSyncAt:null},calendarUi={focusDate:'2026-10-09',viewMode:'month',events:[],calendars:[],pending:[]};
+  const controller=createDomainsCalendarController({effects:createCalendarBrowserEffects(),subscribeAccountScope:()=>()=>{},ui:{currentView:'dashboard'},tab:{primaryTab:true},calendarUi,calendarSession,
     calendarAuth:{captureOperation:()=>({owner:'fixture',assertCurrent(){if(!current)throw Object.assign(Error('revoked'),{code:'CALENDAR_OPERATION_SCOPE_CHANGED'})}}),hasUsableToken:()=>current},
     calendarStorage:{connectionPreference:()=>({known:true,autoConnect:false,accountId:'A'}),getMeta:async()=> 'A',putMeta:async()=>{},saveConnectionPreference(){},listOperations:async()=>structuredClone(queue),
       readPendingSnapshot:async()=>{if(phase==='receipt-error')throw Error('queue read failed');const observed=version,operations=structuredClone(queue);if(['receipt','foreign-receipt'].includes(phase)&&reads===1){entered.resolve();await held.promise}return {operations,isCurrent:()=>settled&&version===observed,isSettled:()=>settled}},
@@ -29,13 +30,13 @@ test('A queue commit in another realm after the completed receipt read blocks sy
   const f=fixture(t,'foreign-receipt'),pending=f.controller.syncNow();await f.entered.promise;f.append({foreign:true});f.held.resolve();
   assert.equal(await pending,false,'foreign commit must be seen without a local generation change');
   assert.equal(f.calendarSession.lastSyncAt,null);assert.equal(f.toasts.length,0);assert.equal(f.calendarUi.pending[0]?.eventId,'retained-ID');
-  await f.again.promise;const resumed=f.calendarSession.syncPromise;f.next.resolve();assert.equal(await resumed,true);assert.deepEqual(f.delivered,['retained-ID']);
+  await f.again.promise;const resumed=f.controller.syncNow({quiet:true});f.next.resolve();assert.equal(await resumed,true);assert.deepEqual(f.delivered,['retained-ID']);
 });
 for(const phase of ['events','cache','receipt'])test(`Calendar does not confirm complete sync when a durable event arrives during ${phase}`,async t=>{
   const f=fixture(t,phase),pending=f.controller.syncNow();await f.entered.promise;f.append();f.held.resolve();
   assert.equal(await pending,false);assert.equal(f.calendarSession.lastSyncAt,null);assert.equal(f.toasts.length,0);
   if(phase!=='receipt')assert.equal(f.calendarUi.pending[0]?.eventId,'retained-ID');
-  await f.again.promise;const resumed=f.calendarSession.syncPromise;f.next.resolve();assert.equal(await resumed,true);
+  await f.again.promise;const resumed=f.controller.syncNow({quiet:true});f.next.resolve();assert.equal(await resumed,true);
 });
 test('A clean Calendar queue still confirms success',async t=>{
   const f=fixture(t,'clean');assert.equal(await f.controller.syncNow(),true);assert.ok(f.calendarSession.lastSyncAt);assert.equal(f.reads(),1);
@@ -44,7 +45,7 @@ test('New durable pending work wakes its current owner after the existing task s
   const f=fixture(t,'events'),pending=f.controller.syncNow();await f.entered.promise;f.append();f.held.resolve();await pending;
   // Delivery must be requested by the continuation, without waiting for a poll timer.
   await f.again.promise;
-  assert.equal(f.reads(),2);assert.deepEqual(f.delivered,['retained-ID']);const resumed=f.calendarSession.syncPromise;f.next.resolve();assert.equal(await resumed,true);
+  assert.equal(f.reads(),2);assert.deepEqual(f.delivered,['retained-ID']);const resumed=f.controller.syncNow({quiet:true});f.next.resolve();assert.equal(await resumed,true);
 });
 test('Revocation retains new pending work and cancels its old-owner continuation',async t=>{
   const f=fixture(t,'events'),pending=f.controller.syncNow();await f.entered.promise;f.append();f.revoke();f.held.resolve();
@@ -71,5 +72,5 @@ test('A revoked completion cannot return a former login confirmation',async t=>{
 test('A same-realm edit during confirmation completion wakes without accepting whole-head success',async t=>{
   const f=fixture(t,'confirmation-completion'),pending=f.controller.syncNow();await f.entered.promise;
   f.append();f.held.resolve();assert.equal(await pending,false);await f.again.promise;
-  const resumed=f.calendarSession.syncPromise;f.next.resolve();assert.equal(await resumed,true);assert.deepEqual(f.delivered,['retained-ID']);
+  const resumed=f.controller.syncNow({quiet:true});f.next.resolve();assert.equal(await resumed,true);assert.deepEqual(f.delivered,['retained-ID']);
 });
