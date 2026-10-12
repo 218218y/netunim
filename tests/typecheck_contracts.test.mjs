@@ -25,6 +25,14 @@ function check(overrides=new Map()){
 }
 function describe(diagnostics){return ts.formatDiagnostics(diagnostics,{getCanonicalFileName:file=>file,getCurrentDirectory:()=>root,getNewLine:()=> '\n'})}
 
+test('the actual automatic backup owner cannot replace a detached payload with a timestamp',()=>{
+  const source=path.join(root,'shared/automatic-backup-runtime.js');
+  const original=readFileSync(source,'utf8'),changed=original.replace('payload:clonePayload(payload)', 'payload:Date.now()');
+  assert.notEqual(changed,original);
+  const diagnostics=check(new Map([[source,changed]]));
+  assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+});
+
 test('the actual Credit form cannot convert credential strings into numbers',()=>{
   const source=path.join(root,'netunim-kupa/site/assets/js/ui/credit-connection-input.js');
   const original=readFileSync(source,'utf8'),changed=original.replace("card6Digits:readField('ccCard6')", "card6Digits:Number(readField('ccCard6'))");

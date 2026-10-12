@@ -113,6 +113,8 @@
     "netunim-kupa/site/assets/js/domains/dashboard/controller.js",
     "tests/fixtures/checked-dashboard-readout.mjs",
     "netunim-kupa/site/assets/js/ui/credit-connection-input.js",
-    "tests/fixtures/checked-credit-connection-input.mjs"
+    "tests/fixtures/checked-credit-connection-input.mjs",
+    "shared/automatic-backup-runtime.js",
+    "tests/fixtures/checked-automatic-backup-runtime.mjs"
   ]
 }

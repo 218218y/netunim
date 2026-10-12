@@ -44,6 +44,14 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
   });
 
   function detachedNormalization(){return createStateNormalization({model:{state:{},lastNormalizeRemovedCredits:0},externalWorkbooks:true})}
+  async function quiesceSaves(){
+    const p=requirePorts();
+    p.checksRuntime.cancelPending();p.backupRuntime.cancelPending();
+    await p.syncDocument.quiesceForStorageCutover();
+    await p.saveRuntime.drain();await p.checksRuntime.drain();
+    // Accepted Main/Checks completion can submit a later backup wakeup.
+    p.backupRuntime.cancelPending();await p.backupRuntime.drain();
+  }
   async function settleTransferSource({sourceOwner}){
     const p=requirePorts();
     // beginHandoff intentionally changes the live mode to "preparing". Verify
@@ -53,9 +61,7 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
       ?await verifyStorageV2LocalEngine({app:'kupa',owner:()=>sourceOwner})
       :await p.verifyStorageV2AccountMarker();
     if(marked!==true||sourceOwner!==owner.current()||!owner.locked)throw new Error('kupa_transfer_source_not_primary');
-    p.checksRuntime.cancelPending();
-    await p.syncDocument.quiesceForStorageCutover();
-    await p.saveRuntime.drain();await p.checksRuntime.drain();
+    await quiesceSaves();
     await Promise.all([p.mainStorageV2.commitPromise,p.sharedChecksV2.commitPromise,p.files.storageV2CommitPromise].filter(Boolean));
     if(p.session.cloudSyncBusy||p.session.cloudWriteBusy||p.checksSession.sharedChecksBusy)throw new Error('kupa_transfer_source_unsettled');
     const boundary=await createStorageJournalDb().readBoundary(sourceOwner);
@@ -124,6 +130,9 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
       if(typeof next?.checksRuntime?.[method]!=='function')throw new TypeError(`kupa_checks_runtime_${method}_required`);
     }
     if(typeof next?.saveRuntime?.drain!=='function')throw new TypeError('kupa_save_runtime_drain_required');
+    for(const method of ['cancelPending','drain']){
+      if(typeof next?.backupRuntime?.[method]!=='function')throw new TypeError(`kupa_backup_runtime_${method}_required`);
+    }
     ports=next;
     const p=requirePorts();
     fencedRecovery=createStorageV2FencedRecovery({app:'kupa',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,refreshOwnerBinding:()=>owner.refresh(),
@@ -155,9 +164,7 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
         return equalSyncJson(record.legacy,source)||equalSyncJson(record.legacyRecovery,source)||equalSyncJson(record.working,migrateLegacySpreadsheet(source));
       },
       quiesce:async()=>{
-        p.checksRuntime.cancelPending();
-        await p.syncDocument.quiesceForStorageCutover();
-        await p.saveRuntime.drain();await p.checksRuntime.drain();
+        await quiesceSaves();
         await Promise.all([p.files.storageV2CommitPromise].filter(Boolean));
       },
     });

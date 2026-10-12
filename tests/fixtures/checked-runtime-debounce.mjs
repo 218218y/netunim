@@ -18,6 +18,8 @@ createDebouncedTask({delay:180});
 createDebouncedTask({delay:180, onError:() => {}, timers:{setTimeout:() => 'timer', clearTimeout:() => {}}});
 // @ts-expect-error A wakeup must supply a callable operation.
 task.schedule(Promise.resolve());
+// @ts-expect-error An individual deadline must also be numeric.
+task.schedule(()=>{},'1000');
 /** @type {Promise<boolean>} */
 // @ts-expect-error Draining a background operation does not produce a durability receipt.
 export const notAReceipt = task.drain();
