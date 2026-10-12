@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-f38b9103e26c';
+const CACHE='orders-app-shell-esm-213c64ce6a60';
 const SHELL=[
   './',
   './index.html',
@@ -151,6 +151,7 @@ const SHELL=[
   './assets/js/shared/browser-account-observation.js',
   './assets/js/shared/browser-bridge-platform.js',
   './assets/js/shared/browser-google-drive-platform.js',
+  './assets/js/shared/browser-tab-lock-platform.js',
   './assets/js/shared/calendar.js',
   './assets/js/shared/cashflow-breakdown.js',
   './assets/js/shared/cashflow-notification.js',

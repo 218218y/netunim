@@ -9,6 +9,22 @@ import {execFileSync} from 'node:child_process';
 const probe=resolve('tests/module_probe.cjs');
 function run(input){return JSON.parse(execFileSync(process.execPath,[probe],{input:JSON.stringify(input),encoding:'utf8'}))}
 
+test('rewritten free host calls keep their original receiver instead of using the probe proxy',async()=>{
+  const site=mkdtempSync(join(tmpdir(),'netunim-host-receiver-probe-'));
+  const original=Object.getOwnPropertyDescriptor(globalThis,'setTimeout');
+  try{
+    mkdirSync(join(site,'assets/js'),{recursive:true});writeFileSync(join(site,'package.json'),'{"type":"module"}');
+    // A platform capability legitimately exposes a timer method; this must not
+    // change the receiver of an unrelated free native setTimeout call in a test.
+    writeFileSync(join(site,'assets/js/platform.js'),'export function platform(){return {clock:{setTimeout:()=>0}}} export const instance=platform();');
+    const inventory=run({mode:'instrument',site}),{bindings}=await import(pathToFileURL(join(site,'test-access.js')));
+    Object.defineProperty(globalThis,'setTimeout',{value:function(){return this},configurable:true,writable:true});
+    const expression=run({mode:'expression',names:inventory,expression:'setTimeout(()=>{},20)'});
+    const receiver=Function('__netunimProbe','"use strict";return '+expression)(bindings);
+    assert.equal(receiver,undefined,'a free host function must not receive the probe Proxy as this');
+  }finally{if(original)Object.defineProperty(globalThis,'setTimeout',original);rmSync(site,{recursive:true,force:true})}
+});
+
 test('public APIs are discovered by structure, with aliases, destructuring, composition and receivers',async()=>{
   const site=mkdtempSync(join(tmpdir(),'netunim-public-probe-'));
   try{
@@ -56,7 +72,7 @@ export const direct={setTimeout:()=>123,child:{weight:2,weigh(n){return this.wei
     assert.equal(bindings.composition.leaf.advance(),90);
     assert.equal(bindings.hiddenImplementation,undefined);
     const expression=run({mode:'expression',names:inventory,expression:'(()=>{const spark=()=>1;return {spark:spark(),advance:advance()}})()'});
-    assert.ok(expression.includes('advance:__netunimProbe.advance()'));
+    assert.ok(expression.includes('advance:(0,__netunimProbe.advance)()'));
     assert.ok(expression.includes('spark:spark()'),'local bindings are never rewritten');
     assert.ok(!original.includes('__testBindings'));
     assert.ok(readFileSync(join(site,'assets/js/factory.js'),'utf8').includes('test-probe-runtime.js'));

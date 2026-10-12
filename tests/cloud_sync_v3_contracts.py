@@ -152,8 +152,16 @@ ok("verifyLegacyChecksClean" not in kupa_checks and "getSharedChecksPending" not
    "Kupa checks: retired outbox cannot be read, repaired or ACKed")
 
 tab_lock = (ROOT / "shared/tab-lock.js").read_text(encoding="utf-8")
-ok("BroadcastChannel" in tab_lock and "localStorage" in tab_lock and "expiresAt" in tab_lock,
-   "shared tab lock: no-Web-Locks fallback uses broadcast plus expiring local heartbeat")
+tab_platform = (ROOT / "shared/browser-tab-lock-platform.js").read_text(encoding="utf-8")
+ok("import {createBrowserTabLockPlatform} from './browser-tab-lock-platform.js'" in tab_lock
+   and "platform=createBrowserTabLockPlatform()" in tab_lock
+   and "platform.events.channel" in tab_lock and "platform.lease.getItem" in tab_lock
+   and "platform.lease.setItem" in tab_lock and "clock.setInterval(heartbeat,HEARTBEAT_MS)" in tab_lock
+   and "const HEARTBEAT_MS=1500" in tab_lock and "const LEASE_MS=5000" in tab_lock
+   and "expiresAt:clock.now()+LEASE_MS" in tab_lock and "lease.expiresAt>clock.now()" in tab_lock
+   and "new globalThis.BroadcastChannel(name)" in tab_platform
+   and "globalThis.localStorage.getItem" in tab_platform and "globalThis.localStorage.setItem" in tab_platform,
+   "shared tab lock: owned no-Web-Locks fallback binds broadcast/storage ports and retains expiring heartbeat")
 for label, path in (("Orders", ORDERS / "site/assets/js/storage/tab-lock.js"),
                     ("Kupa", KUPA / "site/assets/js/storage/tab-lock.js")):
     source = path.read_text(encoding="utf-8")

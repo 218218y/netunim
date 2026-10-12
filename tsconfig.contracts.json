@@ -117,6 +117,9 @@
     "shared/automatic-backup-runtime.js",
     "tests/fixtures/checked-automatic-backup-runtime.mjs",
     "netunim-orders/site/assets/js/storage/folder-write-runtime.js",
-    "tests/fixtures/checked-folder-write-runtime.mjs"
+    "tests/fixtures/checked-folder-write-runtime.mjs",
+    "shared/tab-lock.js",
+    "shared/browser-tab-lock-platform.js",
+    "tests/fixtures/checked-primary-tab-lock.mjs"
   ]
 }

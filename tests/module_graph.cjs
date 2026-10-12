@@ -47,8 +47,12 @@ for(const app of ['kupa','orders']){
         assert.ok(parameter?.type==='ObjectPattern'&&parameter.properties.length<=2,relative+': Finance browser effects exceed two platform collaborators');
       }
       const resourceKey=node.type==='MemberExpression'?node.property?.name:relative==='assets/js/state/contexts.js'&&node.type==='Property'?node.key?.name:null;
-      if(['cloudSavePromise','storageV2CloudSavePromise','cloudPollTimer','cloudRecoveryTimer','cloudRecoveryAttempt','saveQueue','autoBackupTimer','pendingAutoBackupPayload','startupLocalServicesPromise'].includes(resourceKey))
+      if(['cloudSavePromise','storageV2CloudSavePromise','cloudPollTimer','cloudRecoveryTimer','cloudRecoveryAttempt','saveQueue','autoBackupTimer','pendingAutoBackupPayload','startupLocalServicesPromise','primaryLockRelease'].includes(resourceKey))
         assert.fail(relative+': Main cloud/save resources belong to their explicit owners');
+      if(relative==='assets/js/shared/tab-lock.js'&&node.type==='FunctionDeclaration'&&node.id?.name==='createPrimaryTabLock')
+        assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=5,relative+': primary lock ownership requires focused authority/platform ports');
+      if(relative==='assets/js/shared/tab-lock.js'&&node.type==='Identifier'&&!(parent?.type==='MemberExpression'&&parent.property===node&&!parent.computed))
+        assert.ok(!['window','navigator','localStorage','sessionStorage','crypto','BroadcastChannel','setTimeout','setInterval','clearTimeout','clearInterval'].includes(node.name),relative+': primary ownership uses explicit browser adapter ports');
       if(app==='orders'&&['folderWritePrepared','folderWritePending','folderForceBackupPending','folderWritePromise'].includes(resourceKey))
         assert.fail(relative+': working-file coordination belongs to its private selection/runtime');
       if(app==='orders'&&relative==='assets/js/storage/files.js'&&node.type==='Identifier')

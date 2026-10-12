@@ -152,8 +152,6 @@ const uiFolderStatus=createUiFolderStatus({
 
 const uiTabGuard=createUiTabGuard({
   tab,
-  toast:(...args)=>uiStatus.toast(...args),
-  acquirePrimaryTabLock:(...args)=>storageTabLock.acquirePrimaryTabLock(...args),
 });
 
 const storageTabLock=createStorageTabLock({
