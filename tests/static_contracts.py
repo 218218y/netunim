@@ -815,7 +815,8 @@ ok("ordersFinanceSummaryData" in orders_finance_shared
    and (O / "site/assets/js/shared/orders-finance.js").read_text(encoding="utf-8") == orders_finance_shared
    and "ORDERS_TABLE='order_management_documents'" in kupa_cloud_transport
    and 'readOrdersReadOnlyMeta' in kupa_cloud_transport and 'readOrdersReadOnlyCloud' in kupa_cloud_transport
-   and 'ordersFinanceSummaryData(row.state)' in kupa_dashboard_controller,
+   and 'project(row.state)' in kupa_dashboard_controller
+   and 'project:ordersFinanceSummaryData' in (K / 'site/assets/js/composition/dashboard.js').read_text(encoding='utf-8'),
    "cross-app dashboard balances: Kupa reads Orders read-only and both apps share one customer/supplier summary definition")
 ok("bankAccountNextCycleCommitmentsData" in bank_model and "kupaAccountCashflowData(state,account,reference)" in bank_model
    and "from '../../shared/kupa-cashflow.js'" in bank_model and "from '../../shared/kupa-cashflow.js'" in orders_bank_readout

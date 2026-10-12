@@ -11,7 +11,7 @@ import {createCreditPreferences} from '../platform/credit-preferences.js';
 export function composeKupaFinance({
   model,session,checksSession,ui,cloudAuth,cloudTransport,syncDocument,
   syncChecksState,syncChecks,storagePersistence,uiStatus,uiNavigation,
-  uiDateEditor,financeDerivations,domainsBankSelectors,domainRevisions,
+  uiDateEditor,financeDerivations,bankQueries,domainRevisions,
   getUiModal,automaticAccess,operationAccess,
 }){
   if(typeof automaticAccess!=='function')throw new Error('finance_automatic_access_required');
@@ -54,7 +54,7 @@ export function composeKupaFinance({
     saveState:(message,options={})=>storagePersistence.saveState(message,{...options,domains:['bank','bankFeed']}),
     recoverLocalState:assertCurrent=>storagePersistence.recoverLocalState(assertCurrent),
     syncSharedChecksFromCloud:(...args)=>syncChecks.syncSharedChecksFromCloud(...args),
-    sharedChecksObservedSequence:(...args)=>domainsBankSelectors.sharedChecksObservedSequence(...args),
+    sharedChecksObservedSequence:(...args)=>bankQueries.observedCheckSequence(...args),
     toast:(...args)=>uiStatus.toast(...args),
     render:(...args)=>uiNavigation.render(...args),
     bridge,
@@ -78,9 +78,9 @@ export function composeKupaFinance({
     modal:(...args)=>getUiModal().modal(...args),
     closeModal:(...args)=>getUiModal().closeModal(...args),
     model,ui,
-    bankHomeBalance:(...args)=>domainsBankSelectors.bankHomeBalance(...args),
-    bankNextCycleCommitments:(...args)=>domainsBankSelectors.bankNextCycleCommitments(...args),
-    bankHomeNextCycleCommitments:(...args)=>domainsBankSelectors.bankHomeNextCycleCommitments(...args),
+    bankHomeBalance:(...args)=>bankQueries.balance('home',...args),
+    bankNextCycleCommitments:(...args)=>bankQueries.forecast('business',...args),
+    bankHomeNextCycleCommitments:(...args)=>bankQueries.forecast('home',...args),
     bankBridgeUiState:(...args)=>bankController.bankBridgeUiState(...args),
     refreshBankBridgeStatus:(...args)=>bankController.refreshBankBridgeStatus(...args),
     ensureBankDisplayArchive:(...args)=>bankController.ensureBankDisplayArchive(...args),

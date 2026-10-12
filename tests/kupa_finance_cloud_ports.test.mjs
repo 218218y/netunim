@@ -37,7 +37,7 @@ test('finance capability can be assembled before the modal and binds its importe
     cloudAuth:{supaRest:unexpected,supaEnsureSession:unexpected},
     cloudTransport:{},syncDocument:{},syncChecksState:{},syncChecks:{},
     storagePersistence:{recoverLocalState:unexpected},uiStatus:{},uiNavigation:{},uiDateEditor:{},
-    financeDerivations:{run:unexpected},domainsBankSelectors:{},domainRevisions:{},
+    financeDerivations:{run:unexpected},bankQueries:{},domainRevisions:{},
     getUiModal:()=>modalReady?{}:unexpected(),
   });
   assert.equal(typeof capability.creditController.refreshCreditSync,'function');

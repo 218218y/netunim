@@ -8,8 +8,15 @@
     "exactOptionalPropertyTypes": true,
     "target": "ES2022",
     "module": "NodeNext",
-    "rootDirs": ["shared", "netunim-kupa/site/assets/js/shared", "netunim-orders/site/assets/js/shared"],
-    "lib": ["ES2022", "DOM"],
+    "rootDirs": [
+      "shared",
+      "netunim-kupa/site/assets/js/shared",
+      "netunim-orders/site/assets/js/shared"
+    ],
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
     "types": []
   },
   "files": [
@@ -96,6 +103,8 @@
     "tests/fixtures/checked-document-write-ack.mjs",
     "tests/fixtures/checked-storage-decoding.mjs",
     "tests/fixtures/checked-storage-operation.mjs",
-    "tests/fixtures/checked-storage-cloud-records.mjs"
+    "tests/fixtures/checked-storage-cloud-records.mjs",
+    "netunim-kupa/site/assets/js/domains/dashboard/controller.js",
+    "tests/fixtures/checked-dashboard-readout.mjs"
   ]
 }
