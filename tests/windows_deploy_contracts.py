@@ -223,6 +223,18 @@ class WindowsDocumentBridgeRuntimeContracts(unittest.TestCase):
                 self.assertEqual(process.returncode, 0, (stdout + stderr).decode("utf8", errors="replace"))
                 self.assertEqual((app / "bridge-token.txt").read_text().strip(), token)
                 self.assertTrue((app / "config.json").is_file())
+                build = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+                                        "-File", str(source / "build_native_preview.ps1"),
+                                        "-Source", str(source / "native_preview_host.cs"),
+                                        "-Output", str(runtime / "NetunimPreviewHost.exe")],
+                                       cwd=app, capture_output=True, timeout=30,
+                                       creationflags=subprocess.CREATE_NO_WINDOW)
+                self.assertEqual(build.returncode, 0, (build.stdout + build.stderr).decode("utf8", errors="replace"))
+                native = subprocess.run([str(executable), str(ROOT / "tests/fixtures/native_preview_windows_smoke.mjs"),
+                                         str(runtime), str(app)], cwd=app, capture_output=True, timeout=30,
+                                        creationflags=subprocess.CREATE_NO_WINDOW)
+                self.assertEqual(native.returncode, 0, (native.stdout + native.stderr).decode("utf8", errors="replace"))
+                self.assertIn(b"PASS native C# preview host", native.stdout)
             finally:
                 if process.poll() is None:
                     process.kill()

@@ -15,7 +15,7 @@ const globals = await loadGlobals();
 export default [
   {ignores:['.work/**','.offline/**','node_modules/**','**/data/**','**/backups/**','**/assets/vendor/**','**/document-bridge/pdfjs/**']},
   {
-    files:['netunim-orders/document-bridge/http-*.mjs','tests/document_bridge_http.test.mjs','tests/document_bridge_packaging.test.mjs','tests/fixtures/checked-document-bridge-routes.mjs'],
+    files:['netunim-orders/document-bridge/http-*.mjs','netunim-orders/document-bridge/native-preview-*.mjs','tests/native_preview_*.mjs','tests/fixtures/checked-native-preview-session.mjs','tests/document_bridge_http.test.mjs','tests/document_bridge_packaging.test.mjs','tests/fixtures/checked-document-bridge-routes.mjs'],
     languageOptions:{ecmaVersion:'latest',sourceType:'module',globals:globals.node},
     linterOptions:{noInlineConfig:true},
     rules:{'no-undef':'error','no-dupe-keys':'error','no-unreachable':'error','no-async-promise-executor':'error',
