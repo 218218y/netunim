@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {spawn} from 'node:child_process';
 import {fileURLToPath,pathToFileURL} from 'node:url';
+import {stageBridgeModules} from './document_bridge_staging_fixture.mjs';
 import {buildPdfFormMatchAnchors,collectPdfFormFields,collectPdfFormValues,extractInteractivePdfText,LocalPdfBinaryDataFactory,textContentToLogicalText} from '../netunim-orders/document-bridge/pdf_form_index.mjs';
 
 test('AcroForm extraction keeps logical Hebrew field values and ignores passwords',()=>{
@@ -88,7 +89,7 @@ test('short-lived PDF extraction worker opens the vendored Node PDF.js build and
     const pdf=path.join(root,'ordinary.pdf');await fs.writeFile(pdf,source);
     const sourceRuntime=fileURLToPath(new URL('../netunim-orders/document-bridge/',import.meta.url));
     const runtime=path.join(root,'runtime');await fs.mkdir(runtime);
-    for(const name of ['lib.mjs','pdf_form_index.mjs','pdf-extract-worker.mjs'])await fs.copyFile(path.join(sourceRuntime,name),path.join(runtime,name));
+    await stageBridgeModules(sourceRuntime,runtime,['pdf-extract-worker.mjs']);
     await fs.cp(fileURLToPath(new URL('../netunim-orders/document-bridge/pdfjs/',import.meta.url)),path.join(runtime,'pdfjs'),{recursive:true});
     const verifyScript=path.join(runtime,'verify-runtime.mjs');
     await fs.writeFile(verifyScript,[
@@ -96,7 +97,7 @@ test('short-lived PDF extraction worker opens the vendored Node PDF.js build and
       "try{const runtime=await verifyNodePdfJsRuntime();process.stdout.write(JSON.stringify({ok:true,...runtime}))}catch(error){process.stdout.write(JSON.stringify({ok:false,code:error?.code||'',message:error?.message||String(error)}));process.exitCode=2}",
     ].join('\n'));
     const runVerification=()=>new Promise((resolve,reject)=>{
-      const child=spawn(process.execPath,[verifyScript],{stdio:['ignore','pipe','pipe']});let stdout='',stderr='';
+      const child=spawn(process.execPath,[verifyScript],{windowsHide:true,stdio:['ignore','pipe','pipe']});let stdout='',stderr='';
       child.stdout.on('data',part=>stdout+=part);child.stderr.on('data',part=>stderr+=part);
       child.on('error',reject);child.on('close',code=>resolve({code,stdout,stderr}));
     });
@@ -126,7 +127,7 @@ test('short-lived PDF extraction worker opens the vendored Node PDF.js build and
     await fs.rm(unexpected);
     const worker=path.join(runtime,'pdf-extract-worker.mjs');
     const result=await new Promise((resolve,reject)=>{
-      const child=spawn(process.execPath,[worker],{stdio:['pipe','pipe','pipe']});let stdout='',stderr='';
+      const child=spawn(process.execPath,[worker],{windowsHide:true,stdio:['pipe','pipe','pipe']});let stdout='',stderr='';
       child.stdout.on('data',part=>stdout+=part);child.stderr.on('data',part=>stderr+=part);
       child.on('error',reject);child.on('close',code=>resolve({code,stdout,stderr}));
       child.stdin.end(JSON.stringify({fullPath:pdf,includePageText:false}));
@@ -150,7 +151,7 @@ test('short-lived PDF extraction worker opens the vendored Node PDF.js build and
     formSource+=`trailer\n<< /Root 1 0 R /Size ${formObjects.length+1} >>\nstartxref\n${formXref}\n%%EOF\n`;
     const interactivePdf=path.join(root,'interactive.pdf');await fs.writeFile(interactivePdf,formSource);
     const interactiveResult=await new Promise((resolve,reject)=>{
-      const child=spawn(process.execPath,[worker],{stdio:['pipe','pipe','pipe']});let stdout='',stderr='';
+      const child=spawn(process.execPath,[worker],{windowsHide:true,stdio:['pipe','pipe','pipe']});let stdout='',stderr='';
       child.stdout.on('data',part=>stdout+=part);child.stderr.on('data',part=>stderr+=part);
       child.on('error',reject);child.on('close',code=>resolve({code,stdout,stderr}));
       child.stdin.end(JSON.stringify({fullPath:interactivePdf,includePageText:false}));
