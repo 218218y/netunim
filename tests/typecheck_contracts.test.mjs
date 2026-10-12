@@ -25,6 +25,14 @@ function check(overrides=new Map()){
 }
 function describe(diagnostics){return ts.formatDiagnostics(diagnostics,{getCanonicalFileName:file=>file,getCurrentDirectory:()=>root,getNewLine:()=> '\n'})}
 
+test('the actual Bank route cannot publish JSON fields in place of binary response bytes',()=>{
+  const source=path.join(root,'netunim-kupa/bank-bridge/http-routes.mjs');
+  const original=readFileSync(source,'utf8'),changed=original.replace('run:()=>cheques.read(key)', 'run:async()=>({path:key})');
+  assert.notEqual(changed,original);
+  const diagnostics=check(new Map([[source,changed]]));
+  assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+});
+
 test('the actual Bank Bridge owner cannot replace provider exclusivity with formatted status',()=>{
   const source=path.join(root,'netunim-kupa/bank-bridge/operation-owner.mjs');
   const original=readFileSync(source,'utf8'),changed=original.replace('providerActive = true;', 'providerActive = "busy";');

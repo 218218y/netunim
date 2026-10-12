@@ -20,6 +20,6 @@ test('Bank installer stages every transitive configuration/platform dependency b
     }
   }
   visit('server.mjs');
-  for(const file of ['operation-owner.mjs','connection-commands.mjs','connection-settings.mjs','connection-vault.mjs','windows-platform.mjs'])assert.ok(seen.has(file));
+  for(const file of ['operation-owner.mjs','connection-commands.mjs','connection-settings.mjs','connection-vault.mjs','windows-platform.mjs','http-handler.mjs','http-routes.mjs','wire-errors.mjs','connection-queries.mjs','finance-commands.mjs','diagnostic-queries.mjs'])assert.ok(seen.has(file));
   assert.ok(installer.indexOf('for %%F in')<installer.indexOf('node server.mjs --doctor'));
 });

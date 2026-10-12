@@ -1,18 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import http from 'node:http';
-import {configurationHandler,profile} from './bank_configuration_fixture.mjs';
+import {profile} from './bank_configuration_fixture.mjs';
+import {httpFixture} from './bank_http_fixture.mjs';
 const gate=()=>{let resolve;const promise=new Promise(done=>{resolve=done});return {promise,resolve}};
 async function fixture(t,ports){
-  const api=configurationHandler(ports);
-  const server=http.createServer((req,res)=>api.handler(req,res,'fixture-token').catch(error=>{res.writeHead(500);res.end(JSON.stringify({message:error.message}))}));
-  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
-  t.after(async()=>{server.closeAllConnections();await new Promise(resolve=>server.close(resolve))});
-  const request=async(path,body={},method='POST')=>{
-    const response=await fetch(`http://127.0.0.1:${server.address().port}${path}`,{method,headers:{Authorization:'Bearer fixture-token','Content-Type':'application/json'},...(method==='GET'?{}:{body:JSON.stringify(body)})});
-    return {status:response.status,data:await response.json()};
-  };
-  return {api,request};
+  const f=await httpFixture(t,ports);
+  return {...f,request:(target,body={},method='POST')=>f.request(target,{method,body:method==='GET'?'':JSON.stringify(body)})};
 }
 test('two accepted credit profile updates retain both connections',async t=>{
   let stored=[],reads=0;const entered=gate(),held=gate();

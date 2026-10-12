@@ -764,3 +764,14 @@ real CurrentUser DPAPI, installer dependency closure and frozen provider policy
 fixtures cover the boundary. See
 [Bank Bridge configuration ownership](BANK_BRIDGE_CONFIGURATION_OWNERSHIP.md)
 for scope and remaining HTTP/provider/process decomposition.
+
+Bank HTTP now has an inert handler and strictly checked private route registry.
+Status queries, financial commands and safe diagnostic queries expose focused
+facades; HTTP has no vault/browser/metadata authority. Command ownership retains
+accepted provider work through publication even after client disconnect. Existing
+native HTTP characterization and frozen public-response/provider-policy fixtures
+protect the wire and issuer behavior; installer graph and actual staged startup
+with Windows HTTP/DPAPI writes cover concrete composition. Import/collaborator
+budgets guard these boundaries. See
+[Bank HTTP capabilities](BANK_BRIDGE_HTTP_CAPABILITIES.md) for the preserved Bank
+alias/CORS policy and remaining session/provider/process lifecycle scope.
