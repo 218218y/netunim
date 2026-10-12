@@ -7,17 +7,17 @@
  */
 export function createBridgeOperationOwner() {
   let tail = Promise.resolve();
-  let pending = 0;
+  let pendingConfigurations = 0;
   let providerActive = false;
   const busy = () => Object.assign(
     new Error('לא ניתן לשנות הגדרות או להתחיל סנכרון נוסף בזמן שמתבצעת פעולה פיננסית'),
     {code: 'SCRAPE_BUSY'},
   );
 
-  /** @template T @param {() => T | PromiseLike<T>} command @returns {Promise<T>} */
-  function enqueue(command) {
-    pending++;
-    const task = tail.then(command).finally(() => { pending--; });
+  /** @template T @param {() => T | PromiseLike<T>} command @param {boolean} [mutating=false] @returns {Promise<T>} */
+  function enqueue(command, mutating = false) {
+    if (mutating) pendingConfigurations++;
+    const task = tail.then(command).finally(() => { if (mutating) pendingConfigurations--; });
     // A rejected command releases ownership without poisoning later commands.
     tail = task.then(() => {}, () => {});
     return task;
@@ -26,7 +26,7 @@ export function createBridgeOperationOwner() {
   /** @template T @param {() => T | PromiseLike<T>} command @returns {Promise<T>} */
   function configuration(command) {
     if (providerActive) return Promise.reject(busy());
-    return enqueue(command);
+    return enqueue(command, true);
   }
 
   // Status may be queried during a provider session, but cannot read the vault
@@ -36,7 +36,7 @@ export function createBridgeOperationOwner() {
 
   /** @template T @param {() => T | PromiseLike<T>} command @returns {Promise<T>} */
   async function provider(command) {
-    if (providerActive || pending) throw busy();
+    if (providerActive || pendingConfigurations) throw busy();
     providerActive = true;
     try { return await command(); }
     finally { providerActive = false; }

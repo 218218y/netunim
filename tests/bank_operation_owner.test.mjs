@@ -31,3 +31,17 @@ test('accepted commands remain FIFO after failure while queued work blocks provi
   await assert.rejects(owner.provider(()=>{}),{code:'SCRAPE_BUSY'});
   held.resolve();await Promise.all([rejection,second,third]);assert.deepEqual(order,['first','second','third']);
 });
+
+test('read-only status queries do not claim provider exclusivity',async()=>{
+  const owner=createBridgeOperationOwner(),held=gate(),reading=owner.read(()=>held.promise);
+  try{
+    assert.equal(await owner.provider(()=>42),42);
+  }finally{held.resolve();await reading}
+});
+
+test('a mutation waiting behind a read still reserves provider exclusivity',async()=>{
+  const owner=createBridgeOperationOwner(),held=gate(),reading=owner.read(()=>held.promise);
+  const changing=owner.configuration(()=>42);
+  try{await assert.rejects(owner.provider(()=>{}),{code:'SCRAPE_BUSY'})}
+  finally{held.resolve();await reading;await changing}
+});

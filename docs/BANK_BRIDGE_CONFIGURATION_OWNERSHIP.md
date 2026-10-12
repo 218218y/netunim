@@ -27,7 +27,8 @@ with the existing HTTP 400 / `SCRAPE_BUSY` taxonomy while configuration work is
 reserved, and every mutation fails before validation or persistence during a
 provider session. Bank and credit sessions remain mutually exclusive. Status
 queries queue behind accepted configuration, while remaining available during
-provider work.
+provider work. Read-only queries do not claim provider exclusivity; mutations
+queued behind a read still reserve it immediately.
 
 Parallel cleanup uses an all-settled barrier before propagating the first
 failure. A failed metadata deletion therefore cannot release the owner while
