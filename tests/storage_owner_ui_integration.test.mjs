@@ -43,7 +43,7 @@ test('Orders local V2 -> existing account activates only after detached Main+Sha
 test('Orders local owner stays unchanged when detached Shared preparation fails',async()=>{
   const cleanup=installGlobals();try{
     const h=ordersHarness({sharedFails:true});assert.equal(await h.ui.openCloud({quiet:true,startPoll:false}),false);assert.equal(h.owner,'local');
-    assert.equal(h.events.some(x=>x.startsWith('adopt:')),false);assert.equal(h.events.includes('apply-main'),false);assert.equal(h.events.includes('render'),false);if(h.session.cloudRecoveryTimer)clearTimeout(h.session.cloudRecoveryTimer);
+    assert.equal(h.events.some(x=>x.startsWith('adopt:')),false);assert.equal(h.events.includes('apply-main'),false);assert.equal(h.events.includes('render'),false);h.ui.recoveryRuntime.cancel();
   }finally{cleanup()}
 });
 
@@ -63,7 +63,7 @@ test('Orders account open never applies a cloud read over a concurrent local V2 
     assert.deepEqual(h.model.state.rows,['newer-local']);
     assert.equal(h.events.includes('adopt-v2-head'),false);
     assert.equal(h.events.includes('apply-main'),false);
-    if(h.session.cloudRecoveryTimer)clearTimeout(h.session.cloudRecoveryTimer);
+    h.ui.recoveryRuntime.cancel();
   }finally{cleanup()}
 });
 
@@ -73,7 +73,7 @@ test('Orders account open leaves the visible model intact if V2 adoption fails',
     assert.equal(await h.ui.openCloud({quiet:true,startPoll:false}),false);
     assert.deepEqual(h.model.state.rows,['local']);
     assert.equal(h.events.includes('apply-main'),false);
-    if(h.session.cloudRecoveryTimer)clearTimeout(h.session.cloudRecoveryTimer);
+    h.ui.recoveryRuntime.cancel();
   }finally{cleanup()}
 });
 
@@ -98,7 +98,7 @@ test('Orders V2 account load leaves the local view and owner intact on detached 
   const cleanup=installGlobals();try{
     const h=ordersHarness({v2:true,sharedFails:true});assert.equal(await h.ui.openCloud({quiet:true,startPoll:false}),false);
     assert.equal(h.owner,'local');assert.equal(h.events.includes('apply-main'),false);assert.equal(h.events.includes('render'),false);
-    if(h.session.cloudRecoveryTimer)clearTimeout(h.session.cloudRecoveryTimer);
+    h.ui.recoveryRuntime.cancel();
   }finally{cleanup()}
 });
 

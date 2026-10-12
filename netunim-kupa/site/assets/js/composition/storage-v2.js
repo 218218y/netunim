@@ -54,9 +54,9 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
       :await p.verifyStorageV2AccountMarker();
     if(marked!==true||sourceOwner!==owner.current()||!owner.locked)throw new Error('kupa_transfer_source_not_primary');
     p.checksRuntime.cancelPending();
-    await p.checksRuntime.drain();
-    await Promise.all([p.mainStorageV2.commitPromise,p.sharedChecksV2.commitPromise,p.files.storageV2CommitPromise,
-      p.session.saveQueue,p.session.cloudSavePromise].filter(Boolean));
+    await p.syncDocument.quiesceForStorageCutover();
+    await p.saveRuntime.drain();await p.checksRuntime.drain();
+    await Promise.all([p.mainStorageV2.commitPromise,p.sharedChecksV2.commitPromise,p.files.storageV2CommitPromise].filter(Boolean));
     if(p.session.cloudSyncBusy||p.session.cloudWriteBusy||p.checksSession.sharedChecksBusy)throw new Error('kupa_transfer_source_unsettled');
     const boundary=await createStorageJournalDb().readBoundary(sourceOwner);
     if(boundary&&boundary.phase!=='complete')throw new Error('kupa_transfer_source_boundary_pending');
@@ -123,6 +123,7 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
     for(const method of ['cancelPending','drain']){
       if(typeof next?.checksRuntime?.[method]!=='function')throw new TypeError(`kupa_checks_runtime_${method}_required`);
     }
+    if(typeof next?.saveRuntime?.drain!=='function')throw new TypeError('kupa_save_runtime_drain_required');
     ports=next;
     const p=requirePorts();
     fencedRecovery=createStorageV2FencedRecovery({app:'kupa',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,refreshOwnerBinding:()=>owner.refresh(),
@@ -155,8 +156,9 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
       },
       quiesce:async()=>{
         p.checksRuntime.cancelPending();
-        await p.checksRuntime.drain();
-        await Promise.all([p.files.storageV2CommitPromise,p.session.saveQueue].filter(Boolean));
+        await p.syncDocument.quiesceForStorageCutover();
+        await p.saveRuntime.drain();await p.checksRuntime.drain();
+        await Promise.all([p.files.storageV2CommitPromise].filter(Boolean));
       },
     });
     ownerTransfer=createStorageV2OwnerTransfer({app:'kupa',ownerBinding:owner,primary:()=>tab.primaryTab,

@@ -277,5 +277,5 @@ for(const branch of ['ack-conflict','rebase-conflict','rebase-after-flight-confl
 test('orders an unowned earlier promise cannot make a fresh identity join the old save',async()=>{
  const old=deferred(),f=fixture();f.session.cloudSavePromise=old.promise;
  assert.equal(await f.api.requestCloudSave('scope'),true);assert.equal(f.sent.length,1);assert.equal(f.acks.length,1);
- assert.equal(f.session.cloudSavePromise,null);old.resolve(false);
+ assert.equal(f.session.cloudSavePromise,old.promise);old.resolve(false);
 });

@@ -1,3 +1,4 @@
+import {createRuntimeTaskOwner} from '../shared/runtime-task-owner.js';
 import {recoverPostAckPublication} from '../shared/cloud-post-ack-recovery.js';
 import {cloudAckPublicationDiagnostic} from '../shared/cloud-ack-diagnostic.js';
 import {captureCloudWriteScope,cloudWriteScopeIsCurrent,cloudWriteScopeHasIdentity} from '../shared/cloud-write-scope.js';
@@ -30,9 +31,10 @@ function effectiveDeleteIntents(base,candidate,intents){const out={},declared=no
 function cloudAudit(pending,before,after,baseRevision,intents){const deletes=Object.values(intents).reduce((sum,ids)=>sum+ids.length,0);return operationAuditMetadata({site:'kupa',mutationType:intents['notesSheet.sheets']?.length||pending?.mutationType==='cloud-normalization'&&deletes?'bulk-delete':pending?.mutationType||'autosave',surface:pending?.surface||'kupa',baseRevision,beforeState:before,afterState:after,collections:['credits','cash','rights','notes','expenses','cards','notesSheet.rows','notesSheet.columns','notesSheet.sheets'],deleteCount:deletes,restoreGroupId:pending?.restoreGroupId})}
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createSyncDocument({readStorageV2CloudRecovery=null,commitStorageV2CloudRecovery=null,getCloudWriteScope=()=>null,hideConnectScreen, reportError, model, session, checksSession, tab, prepareKupaCloudState, applyKupaCloudState, setSaveStatus, setConnectedStatus, setCloudHeaderStatus, listBackups, backupSnapshotToComputer, syncSharedChecksFromCloud, render, readSupabaseDocument, readFinanceSyncDocument=async()=>null, supaRest, mergeKupaCloudState3Way, showSecondaryTabGuard, toast, pollSharedChecks, refreshOrdersFinanceSummary=async()=>false, storageV2CloudOutboxActive=()=>false, refreshStorageV2CloudState=async()=>null, materializeStorageV2CloudFlight=async()=>null, acknowledgeStorageV2CloudFlight=async()=>null, rejectStorageV2CloudFlight=async()=>null, setStorageV2CloudControl=async()=>null, clearStorageV2CloudControl=async()=>false, replaceStorageV2CurrentState=async()=>null, queueStorageV2CloudNormalization=async()=>null, adoptStorageV2CloudHead=async()=>null, resetStorageV2CloudHead=async()=>null, storageV2CommitPromise=()=>Promise.resolve(), storageV2PreparationActive=()=>false, assertAccountOwner=()=>{throw new Error('storage_owner_account_required')}, domainRevisions}){
+export function createSyncDocument({readStorageV2CloudRecovery=null,commitStorageV2CloudRecovery=null,getCloudWriteScope=()=>null,cancelCloudRecovery=()=>{},hideConnectScreen, reportError, model, session, checksSession, tab, prepareKupaCloudState, applyKupaCloudState, setSaveStatus, setConnectedStatus, setCloudHeaderStatus, listBackups, backupSnapshotToComputer, syncSharedChecksFromCloud, render, readSupabaseDocument, readFinanceSyncDocument=async()=>null, supaRest, mergeKupaCloudState3Way, showSecondaryTabGuard, toast, pollSharedChecks, refreshOrdersFinanceSummary=async()=>false, storageV2CloudOutboxActive=()=>false, refreshStorageV2CloudState=async()=>null, materializeStorageV2CloudFlight=async()=>null, acknowledgeStorageV2CloudFlight=async()=>null, rejectStorageV2CloudFlight=async()=>null, setStorageV2CloudControl=async()=>null, clearStorageV2CloudControl=async()=>false, replaceStorageV2CurrentState=async()=>null, queueStorageV2CloudNormalization=async()=>null, adoptStorageV2CloudHead=async()=>null, resetStorageV2CloudHead=async()=>null, storageV2CommitPromise=()=>Promise.resolve(), storageV2PreparationActive=()=>false, assertAccountOwner=()=>{throw new Error('storage_owner_account_required')}, domainRevisions}){
 const outboxRetryScheduler=createOutboxRetryScheduler();
-let savingScope=null;
+let savingScope=null,cloudSavePromise=null,wakeEpoch=0;
+const saveWork=createRuntimeTaskOwner();
 const writeScopeCurrent=(scope,head=null)=>tab.primaryTab&&!storageV2PreparationActive()&&cloudWriteScopeIsCurrent(scope,getCloudWriteScope(),head);
 async function setWriteControl(scope,control){
   try{return await setStorageV2CloudControl(control,{expectedScope:scope,isCurrent:()=>writeScopeCurrent(scope)})}
@@ -42,7 +44,7 @@ let cloudPollPromise=null;
 const cloudPoller=createPollingTask({run:()=>trackedCloudPoll(),delay:()=>12_000+Math.floor(Math.random()*2_000),
   canRun:()=>session.cloudPollingEnabled&&!storageV2PreparationActive(),
   onError:error=>console.error('kupa background cloud poll',error),
-  onState:({enabled,timer})=>{session.cloudPollingEnabled=enabled;session.cloudPollTimer=timer}});
+  onState:({enabled})=>{session.cloudPollingEnabled=enabled}});
 function replaceVisibleState(next,{forceAll=false}={}){const previous=model.state;model.state=next;domainRevisions?.reconcile(previous,model.state,{forceAll});return model.state}
 function applyKupaCoreState(coreState,checks=model.state.checks,financeSource=model.state){
   const next=structuredClone(coreState&&typeof coreState==='object'?coreState:{}),finance=financeSource&&typeof financeSource==='object'?financeSource:{},coreBank=next.bank&&typeof next.bank==='object'?next.bank:{},financeBank=finance.bank&&typeof finance.bank==='object'?structuredClone(finance.bank):null;
@@ -254,10 +256,14 @@ async function saveStorageV2CloudFlight(initialFlight,scope){
   return {committed:true,state:committedState};
 }
 
-async function requestStorageV2CloudSave(message='הקופה סונכרנה לענן',{force=false}={}){
+function requestStorageV2CloudSave(...args){
+  return saveWork.run(()=>runStorageV2CloudSave(...args));
+}
+async function runStorageV2CloudSave(message='הקופה סונכרנה לענן',{force=false}={}){
+  const wakeGeneration=wakeEpoch;
   const liveScope=getCloudWriteScope();if(!tab.primaryTab){showSecondaryTabGuard();return false}if(!force&&(session.connectionMode!=='supabase'||!session.backendReady))return false;let state=await refreshStorageV2CloudState();const scope=captureCloudWriteScope(liveScope,state);if(!writeScopeCurrent(scope,state))return false;if(!state?.base)return false;if(state.control?.conflict){session.cloudConflictPending=true;setSaveStatus('התנגשות שמורה מקומית','error');setCloudHeaderStatus('conflict','ענן: התנגשות');return false}
   if(!navigator.onLine){try{await storageV2CommitPromise()}catch(error){console.error('kupa V2 journal offline commit',error)}if(!writeScopeCurrent(scope))return false;setSaveStatus('אופליין — שינוי שמור מקומית וממתין','saving');setCloudHeaderStatus('offline','ענן: אופליין');return false}
-  if(session.storageV2CloudSavePromise&&cloudWriteScopeHasIdentity(scope,savingScope))return session.storageV2CloudSavePromise;
+  if(cloudSavePromise&&cloudWriteScopeHasIdentity(scope,savingScope))return cloudSavePromise;
   savingScope=scope;
   let followup=false;
   const saving=(async()=>{
@@ -301,11 +307,11 @@ async function requestStorageV2CloudSave(message='הקופה סונכרנה לע
     }
     return false;
   })().finally(()=>{
-    if(session.storageV2CloudSavePromise===saving){session.storageV2CloudSavePromise=null;savingScope=null}
+    if(cloudSavePromise===saving){cloudSavePromise=null;savingScope=null}
     // Consume a newer generation through the existing owner, after clearing the
     // joined promise. Explicitly stopped/denied owners cannot be restarted here.
-    if(writeScopeCurrent(scope)&&followup&&session.cloudPollingEnabled&&cloudConfirmationAccess(force))void cloudPoller.wake();
-  });session.storageV2CloudSavePromise=saving;return saving
+    if(wakeGeneration===wakeEpoch&&writeScopeCurrent(scope)&&followup&&session.cloudPollingEnabled&&cloudConfirmationAccess(force))void cloudPoller.wake();
+  });cloudSavePromise=saving;return saving
 }
 
 async function persistSupabaseState(_snapshot,msg){
@@ -396,16 +402,23 @@ async function resumeAfterReconnect(){
 
 function trackedCloudPoll(){if(cloudPollPromise)return cloudPollPromise;cloudPollPromise=cloudPoll().finally(()=>{cloudPollPromise=null});return cloudPollPromise}
 function startCloudPolling(){return cloudPoller.start()}
-function stopCloudPolling(){return cloudPoller.stop()}
+function stopCloudPolling(){wakeEpoch++;return cloudPoller.stop()}
+const runtime={
+  isPending:()=>saveWork.isPending()||!!cloudPollPromise,
+  async drain(){
+    do{
+      await saveWork.drain();await cloudPoller.drain();
+      if(cloudPollPromise)await Promise.allSettled([cloudPollPromise]);
+    }while(saveWork.isPending()||cloudPollPromise);
+  },
+};
 async function quiesceForStorageCutover(){
   stopCloudPolling();
-  if(session.cloudRecoveryTimer){clearTimeout(session.cloudRecoveryTimer);session.cloudRecoveryTimer=null}
+  cancelCloudRecovery();
   outboxRetryScheduler.cancel();
-  if(cloudPollPromise)await Promise.allSettled([cloudPollPromise]);
-  const deadline=Date.now()+30_000;
-  while(session.cloudWriteBusy||session.cloudSyncBusy){if(Date.now()>=deadline)throw new Error('storage_cutover_cloud_busy');await new Promise(resolve=>setTimeout(resolve,25))}
+  await runtime.drain();
   outboxRetryScheduler.cancel();return true;
 }
 
-return { applyCloudRow, loadSupabaseState, rpcSaveCloudV2, persistSupabaseState, requestStorageV2CloudSave, cloudPoll:trackedCloudPoll, resumeAfterReconnect, startCloudPolling,stopCloudPolling,quiesceForStorageCutover };
+return { applyCloudRow, loadSupabaseState, rpcSaveCloudV2, persistSupabaseState, requestStorageV2CloudSave, cloudPoll:trackedCloudPoll, resumeAfterReconnect, startCloudPolling,stopCloudPolling,quiesceForStorageCutover,runtime };
 }

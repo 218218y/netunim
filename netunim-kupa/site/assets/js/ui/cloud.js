@@ -1,18 +1,19 @@
+import {createCloudRecoveryRuntime} from '../shared/cloud-recovery-runtime.js';
 import {beginLocalSiteResetNavigation} from '../shared/local-site-reset.js';
 
 import {esc} from '../core/values.js';
 import {SUPA_EMAIL_KEY, SUPA_AUTO_KEY, STORAGE_PREF_KEY} from '../state/constants.js';
 
-const CLOUD_RECOVERY_DELAYS_MS=[15_000,30_000,60_000,120_000];
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createUiCloud({session, tab, checksSession, model, loadSupabaseState, toast, supaConfigured, modal, configureCloudConnectButton, supaProjectRef, setCloudHeaderStatus, loadSupaSession, setConnectUI, prepareKupaCloudState, storageV2CloudOutboxActive=()=>false, storageV2PrimaryRequested=()=>false, refreshStorageV2CloudState=async()=>null, showSecondaryTabGuard, recoverBrowserV2State, restoreSupaSession, storeSupaSession, isSupabaseAuthError, friendlySupabaseError, supaEnsureSession, readSupabaseDocument, readSharedChecksDocument, verifyLocalResetCloud, applyCloudRow, requestStorageV2CloudSave, startCloudPolling, stopCloudPolling, render, setConnectedStatus, supaAuthPassword, supaAuthPasswordForLocalReset, closeModal, showFirstRun, confirmDialog, storageOwnerCurrent=()=> 'local', storageOwnerAdoption=()=>null, startStorageV2OwnerTransfer=async()=>{throw new Error('storage_transfer_unavailable')}}){
-function clearCloudRecovery(){if(session.cloudRecoveryTimer){clearTimeout(session.cloudRecoveryTimer);session.cloudRecoveryTimer=null}session.cloudRecoveryAttempt=0}
-function scheduleCloudRecovery(){
-  if(!tab.primaryTab||!navigator.onLine||localStorage.getItem(SUPA_AUTO_KEY)!=='1'||!loadSupaSession()||session.cloudRecoveryTimer)return;
-  const index=Math.min(Number(session.cloudRecoveryAttempt||0),CLOUD_RECOVERY_DELAYS_MS.length-1),delay=CLOUD_RECOVERY_DELAYS_MS[index];session.cloudRecoveryAttempt=Math.min(index+1,CLOUD_RECOVERY_DELAYS_MS.length-1);
-  session.cloudRecoveryTimer=setTimeout(()=>{session.cloudRecoveryTimer=null;void tryAutoOpenSupabase()},delay);
-}
+const recoveryRuntime=createCloudRecoveryRuntime({
+  isEligible:()=>tab.primaryTab&&globalThis.navigator?.onLine!==false&&localStorage.getItem(SUPA_AUTO_KEY)==='1'&&!!loadSupaSession(),
+  run:()=>tryAutoOpenSupabase(),onError:error=>console.error('kupa cloud recovery',error),
+});
+const clearCloudRecovery=()=>recoveryRuntime.reset();
+const scheduleCloudRecovery=()=>recoveryRuntime.schedule();
+
 async function deferPendingRecovery(){
   const v2=await refreshStorageV2CloudState();
   if(!v2?.base||!storageV2CloudOutboxActive())throw new Error('kupa_v2_owner_head_required');
@@ -163,5 +164,5 @@ Supabase, קובצי data וגיבויים מחוץ לדפדפן לא ישתנו
   }
 }
 
-return { discardCloudPendingAndLoadRemote, openSupabaseLoginModal, showCloudNoDocument, openCloudUsingSavedSession, enableCloudFromCurrentState, connectSupabaseFromLogin, tryAutoOpenSupabase, logoutSupabase, resetLocalSiteStorage };
+return {recoveryRuntime, discardCloudPendingAndLoadRemote, openSupabaseLoginModal, showCloudNoDocument, openCloudUsingSavedSession, enableCloudFromCurrentState, connectSupabaseFromLogin, tryAutoOpenSupabase, logoutSupabase, resetLocalSiteStorage };
 }

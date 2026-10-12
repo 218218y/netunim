@@ -346,6 +346,7 @@ const uiAlertCenter=createUiAlertCenter({
 });
 
 const syncDocument=createSyncDocument({
+  cancelCloudRecovery:()=>uiCloud.recoveryRuntime.cancel(),
   getCloudWriteScope:()=>readCloudWriteScope(mainStorageV2.cloudScope,cloudAuth.getAccountScope()),
   model,
   files,

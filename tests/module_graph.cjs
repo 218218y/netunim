@@ -40,6 +40,9 @@ for(const app of ['kupa','orders']){
         const parameter=node.params[0]?.type==='AssignmentPattern'?node.params[0].left:node.params[0];
         assert.ok(parameter?.type==='ObjectPattern'&&parameter.properties.length<=2,relative+': Finance browser effects exceed two platform collaborators');
       }
+      const resourceKey=node.type==='MemberExpression'?node.property?.name:relative==='assets/js/state/contexts.js'&&node.type==='Property'?node.key?.name:null;
+      if(['cloudSavePromise','storageV2CloudSavePromise','cloudPollTimer','cloudRecoveryTimer','cloudRecoveryAttempt','saveQueue'].includes(resourceKey))
+        assert.fail(relative+': Main cloud/save resources belong to their explicit owners');
       if(app==='orders'&&node.type==='MemberExpression'&&['saveTimer','sharedChecksSaveTimer','checksPullPromise','checksSavePromise'].includes(node.property?.name))
         assert.fail(relative+': save and Checks sync resources belong to their runtimes, not context fields');
       if(app==='kupa'&&node.type==='MemberExpression'&&['ordersFinanceReadPromise','sharedChecksSaveTimer','sharedChecksSavePromise','sharedChecksPullPromise'].includes(node.property?.name))

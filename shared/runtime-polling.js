@@ -60,5 +60,6 @@ export function createPollingTask({run,delay,onError,canRun=()=>true,onState=()=
     if(timer!==null)timers.clearTimeout(timer);
     timer=null;queued=null;publish();return execute({epoch});
   }
-  return {start,stop,wake};
+  async function drain(){while(current)await Promise.allSettled([current])}
+  return {start,stop,wake,drain};
 }

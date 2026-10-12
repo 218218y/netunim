@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-5f26b05d9b52';
+const CACHE='orders-app-shell-esm-425fb1b678ed';
 const SHELL=[
   './',
   './index.html',
@@ -161,6 +161,7 @@ const SHELL=[
   './assets/js/shared/cloud-backups.js',
   './assets/js/shared/cloud-checkpoint-publication.js',
   './assets/js/shared/cloud-post-ack-recovery.js',
+  './assets/js/shared/cloud-recovery-runtime.js',
   './assets/js/shared/cloud-sync.js',
   './assets/js/shared/cloud-write-scope.js',
   './assets/js/shared/credit-billing-cycles.js',
@@ -205,6 +206,7 @@ const SHELL=[
   './assets/js/shared/runtime-performance.js',
   './assets/js/shared/runtime-polling.js',
   './assets/js/shared/runtime-resources.js',
+  './assets/js/shared/runtime-task-owner.js',
   './assets/js/shared/search-fragments.js',
   './assets/js/shared/search-scheduler.js',
   './assets/js/shared/search.js',

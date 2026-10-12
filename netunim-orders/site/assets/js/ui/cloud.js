@@ -1,18 +1,19 @@
+import {createCloudRecoveryRuntime} from '../shared/cloud-recovery-runtime.js';
 import {commitCloudCheckpoint} from '../shared/cloud-checkpoint-publication.js';
 import {esc} from '../core/values.js';
 import {CLOUD_EMAIL_KEY, $, CLOUD_AUTO_KEY} from '../state/constants.js';
 import {beginLocalSiteResetNavigation} from '../shared/local-site-reset.js';
 
-const CLOUD_RECOVERY_DELAYS_MS=[15_000,30_000,60_000,120_000];
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createUiCloud({prepareConcurrentAckRecovery=null,downloadRecoveryBackup=null,model, files, tab, session, checksSession, ui, modal, confirmDialog, supaConfigured, toast, closeModal, authPassword, authPasswordForLocalReset, setCloud, showSecondaryTabGuard, prepareCloudState, render, writeStateToFolder, loadSession, readCloud, verifyLocalResetCloud, applyOrderCloudState, composeOrderCloudState=(cloud,current)=>({...structuredClone(cloud),checks:structuredClone(current.checks||[])}), refreshKupaReadout, syncSharedChecksFromCloud, requestCloudSave, startPolling, stopPolling, saveSession, renderSettings, resumeCalendarAfterCloudLogin, startFinanceAutoSync=()=>{}, stopFinanceAutoSync=()=>{}, storageOwnerCurrent=()=>null, storageOwnerAdoption=()=>null, startStorageV2OwnerTransfer=async()=>{throw new Error('storage_transfer_unavailable')}, storageV2CloudOutboxActive=()=>false, storageV2PrimaryRequested=()=>false, refreshStorageV2CloudState=async()=>null, adoptStorageV2CloudHead=async()=>null, setStorageV2CloudControl=async()=>null, storageV2CommitPromise=()=>Promise.resolve()}){
-function clearCloudRecovery(){if(session.cloudRecoveryTimer){clearTimeout(session.cloudRecoveryTimer);session.cloudRecoveryTimer=null}session.cloudRecoveryAttempt=0}
-function scheduleCloudRecovery(){
-  if(!tab.primaryTab||!navigator.onLine||localStorage.getItem(CLOUD_AUTO_KEY)!=='1'||!loadSession()||session.cloudRecoveryTimer)return;
-  const index=Math.min(Number(session.cloudRecoveryAttempt||0),CLOUD_RECOVERY_DELAYS_MS.length-1),delay=CLOUD_RECOVERY_DELAYS_MS[index];session.cloudRecoveryAttempt=Math.min(index+1,CLOUD_RECOVERY_DELAYS_MS.length-1);
-  session.cloudRecoveryTimer=setTimeout(()=>{session.cloudRecoveryTimer=null;void openCloud({renderAfter:true,quiet:true})},delay);
-}
+const recoveryRuntime=createCloudRecoveryRuntime({
+  isEligible:()=>tab.primaryTab&&globalThis.navigator?.onLine!==false&&localStorage.getItem(CLOUD_AUTO_KEY)==='1'&&!!loadSession(),
+  run:()=>openCloud({renderAfter:true,quiet:true}),onError:error=>console.error('orders cloud recovery',error),
+});
+const clearCloudRecovery=()=>recoveryRuntime.reset();
+const scheduleCloudRecovery=()=>recoveryRuntime.schedule();
+
 function loginModal(mode='open'){if(!supaConfigured())return alert('הגדרת Supabase חסרה. בדוק supabase/config.js');const email=localStorage.getItem(CLOUD_EMAIL_KEY)||'',calendarMode=mode==='calendar',resetMode=mode==='reset',title=resetMode?'אימות ענן לפני איפוס מקומי':calendarMode?'התחברות לענן לצורך Google Calendar':mode==='upload'?'הפעלת ענן נפרד לניהול הזמנות':'פתיחת ניהול הזמנות מהענן',notice=resetMode?'ההתחברות כאן משמשת רק לאימות שמסמך ניהול ההזמנות ומסמך הצ׳קים קיימים ונגישים בענן לפני מחיקת האחסון המקומי. היא אינה פותחת, ממזגת או מעלה נתונים.':calendarMode?'השרת המקומי הוא כתובת נפרדת מהאתר שברשת, ולכן הדפדפן דורש כאן התחברות חד-פעמית ל-Supabase. ההתחברות מזהה את המשתמש לצורך Google Calendar בלבד ואינה מפעילה מעצמה את סנכרון מסמך ניהול ההזמנות.':`ניהול ההזמנות נשמר בטבלאות <b>order_management_*</b>. טאב הצ'קים קורא וכותב ישירות למאגר הצ'קים המשותף <b>shared_checks_documents/main</b>. בנוסף, נתוני העו״ש והאשראי נקראים מאותו מסמך קופה <b>kupa_documents/main</b>, וסנכרון בנק/אשראי מניהול ההזמנות מעדכן בו רק את התחומים הפיננסיים המתאימים דרך מנגנון ה-revision של הקופה. הוצאות ומזומן נשארים בבעלות ניהול הקופה, ואין עותק פיננסי נוסף בניהול ההזמנות.`;const action=resetMode?'finish-local-reset-login':'finish-cloud-login';modal(title,`<div class="form-grid"><div class="field full"><div class="notice">${notice}</div></div><div class="field full"><label>אימייל Supabase Auth</label><input id="cEmail" type="email" value="${esc(email)}"></div><div class="field full"><label>סיסמה</label><input id="cPassword" type="password"></div></div>`,`<button class="btn primary" data-action="${action}" data-click-arg0="${esc(mode)}">${resetMode?'אמת והמשך לאיפוס':'התחבר'}</button><button class="btn" data-action="close-modal">ביטול</button>`)}
 
 async function deferPendingRecovery({manageStatus=true,startPoll=true}={}){
@@ -171,5 +172,5 @@ Supabase, קובצי data וגיבויים מחוץ לדפדפן לא ישתנו
   }
 }
 
-return { recoverOrdersSync, loginModal, finishCloudLogin, finishLocalResetLogin, enableCloud, openCloud, logoutCloud, resetLocalSiteStorage };
+return {recoveryRuntime, recoverOrdersSync, loginModal, finishCloudLogin, finishLocalResetLogin, enableCloud, openCloud, logoutCloud, resetLocalSiteStorage };
 }

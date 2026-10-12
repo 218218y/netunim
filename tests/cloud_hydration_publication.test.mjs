@@ -21,7 +21,7 @@ function kupaFixture({adopt=async()=>{},secondary=async()=>true,reconcile=noop,a
     setStorageV2CloudControl:async value=>{controls.push(clone(value));cloud.control=clone(value)},
     domainRevisions:{reconcile},syncSharedChecksFromCloud:secondary,refreshOrdersFinanceSummary:async()=>false,
     listBackups:async()=>[],backupSnapshotToComputer:async()=>{},setConnectedStatus:noop,setSaveStatus:noop,setCloudHeaderStatus:noop,hideConnectScreen:noop,render:noop,reportError:noop});
-  const stop=()=>{session.cloudPollingEnabled=false;clearTimeout(session.cloudPollTimer)};
+  const stop=()=>api.stopCloudPolling();
   return {api,model,session,tab,cloud,remote,controls,stop};
 }
 

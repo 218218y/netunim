@@ -67,7 +67,7 @@ test('Kupa Main conflict does not block independent Finance hydration or change 
 });
 
 test('a stale dirty-head fence is revalidated and the newer Main cloud head is adopted',async t=>{
-  const f=fixture();t.after(()=>{f.session.cloudPollingEnabled=false;clearTimeout(f.session.cloudPollTimer)});
+  const f=fixture();t.after(()=>f.api.stopCloudPolling());
   f.cloud.pending=false;f.cloud.base.ackSeq=f.cloud.seq;f.cloud.control.conflict={kind:'storage-v2-dirty-head',domain:'kupa'};
   assert.equal(await f.api.cloudPoll(),true);
   assert.equal(f.cloud.control,null);assert.equal(f.session.cloudConflictPending,false);
