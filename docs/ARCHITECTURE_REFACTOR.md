@@ -598,6 +598,15 @@ failure without orphaned IPC. Status rereads the manual owner after scheduled
 lock observation. Shutdown refuses teardown until drainage is established. See
 [maintenance process ownership](DOCUMENT_MAINTENANCE_PROCESS_OWNERSHIP.md).
 
+PDF index mutations now have a checked commit-before-publication owner using the
+canonical decoder to stage exact wire bytes. Native before-change regressions
+proved no-newline append corruption and uncommitted on-demand Map publication.
+Storage failure is distinct from extraction failure. Synced temporary snapshot
+and journal replacement, retained raw faults and two native process/crash drills
+extend the index recovery contract without format changes. A committed head is
+reused only after signature revalidation to avoid repeated full journal parsing.
+See [PDF index write contract](DOCUMENT_PDF_INDEX_WRITE_CONTRACT.md).
+
 ## Major completion stages from the current code
 
 These are bounded completion tracks, not a restart of completed refactors.
@@ -606,7 +615,7 @@ and CSS. Each slice needs concrete evidence/contracts and its appropriate gate.
 
 | Order | Remaining stage | Exit criterion |
 | --- | --- | --- |
-| 1 | Finish Bridge responsibility boundaries: Document index write/search ownership and scheduled maintenance/installer process boundaries; then Bank HTTP/auth/vault and session/provider orchestration | Small public APIs; native process/file and endpoint/failure tests; existing provider retry/fallback semantics preserved |
+| 1 | Finish Bridge responsibility boundaries: Document search/inventory orchestration and scheduled maintenance/installer process boundaries; then Bank HTTP/auth/vault and session/provider orchestration | Small public APIs; native process/file and endpoint/failure tests; existing provider retry/fallback semantics preserved |
 | 2 | Complete application capability APIs and runtime ownership: Orders Finance/Checks, Kupa Dashboard/Bank queries, remaining shell and Shared/finance listeners/jobs | Explicit commands/queries and start/dispose; no broad app context, stale callback publication or duplicate jobs |
 | 3 | Extend strict contracts to real transaction/RPC/business consumers: journal/IDB callers, Finance lease callers, Morning/Calendar commands and capability ports | Implementation bodies and negative consumers fail on mismatch; unknown payload validation and historical fixtures stay covered |
 | 4 | Canonical SQL deployment sources and compatibility inventory | Deterministic generated-current checks; immutable deployed migrations/receipts; removal only with consumer evidence and restore coverage |

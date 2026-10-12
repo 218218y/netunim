@@ -25,6 +25,13 @@ function check(overrides=new Map()){
 }
 function describe(diagnostics){return ts.formatDiagnostics(diagnostics,{getCanonicalFileName:file=>file,getCurrentDirectory:()=>root,getNewLine:()=> '\n'})}
 
+test('the actual PDF index writer cannot publish text as committed numeric metadata',()=>{
+  const source=path.join(root,'netunim-orders/document-bridge/pdf-index-writer.mjs');
+  const original=readFileSync(source,'utf8'),changed=original.replace('...candidate, ...metadata, updatedAt, signature', '...candidate, ...metadata, updatedAt:String(updatedAt), signature');
+  assert.notEqual(changed,original);const diagnostics=check(new Map([[source,changed]]));
+  assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+});
+
 test('the actual maintenance owner cannot publish text as worker running evidence',()=>{
   const source=path.join(root,'netunim-orders/document-bridge/maintenance-process-owner.mjs');
   const original=readFileSync(source,'utf8'),changed=original.replace('scope.run.running = false;', 'scope.run.running = "finished";');
