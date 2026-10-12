@@ -9,7 +9,7 @@ from browser_harness import BrowserSession, ROOT
 
 SETUP = r"""
  const check=(ok,message)=>{if(!ok)throw Error(message)};
- await appReady;syncDocument.stopPolling();domainsFinanceController.stopAutoSync();
+ await appReady;syncDocument.stopPolling();finance.runtime.stop();
  const originalFetch=globalThis.fetch,owner='fixture-calendar-owner',calendarId='calendar@example.test';
  const authenticate=user=>cloudAuth.saveSession(user?{user:{id:user},access_token:'fixture-'+user,expires_at:9999999999}:null);
  const {createCalendarStorage}=await import('./assets/js/calendar/storage.js');const storage=createCalendarStorage();

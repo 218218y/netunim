@@ -1,8 +1,9 @@
 import {clone} from '../../core/values.js';
 
 // Read-model publication has an authorization owner, separately from Main writes.
-export function createDomainsBankCache({checksSession,ui,operationScope,computeKupaNetReadout,renderKupa=()=>{},renderChecks,renderSummary,loadSession,readKupaReadOnlyCloud,readKupaReadOnlyMeta,refreshAlertCenter=()=>{},refreshBankAlertArchive=async()=>false,touchFinanceRevision=()=>{}}){
+export function createDomainsBankCache({checksSession,ui,operationScope,computeKupaNetReadout,renderKupa=()=>{},renderChecks,renderSummary,loadSession,readKupaReadOnlyCloud,readKupaReadOnlyMeta,refreshAlertCenter=()=>{},refreshBankAlertArchive=async()=>false,touchFinanceRevision=()=>{},isOnline}){
   if(typeof operationScope?.captureRead!=='function')throw new Error('bank_readout_scope_required');
+  if(typeof isOnline!=='function')throw new TypeError('bank_readout_connectivity_required');
   let publishedScope=null;
   const scopeChanged=error=>error?.code==='FINANCE_OPERATION_SCOPE_CHANGED';
   function samePublicationOwner(){try{if(!publishedScope)return false;publishedScope();return true}catch(error){if(!scopeChanged(error))throw error;return false}}
@@ -25,7 +26,7 @@ export function createDomainsBankCache({checksSession,ui,operationScope,computeK
   function renderKupaDependentView(){recomputeKupaNetFromCache();refreshAlertCenter();if(ui.currentView==='kupa')renderKupa();else if(ui.currentView==='checks')renderChecks();else if(ui.currentView==='summary')renderSummary()}
 
   async function refreshKupaReadout({force=false,renderIfChanged=false,assertCurrent:operationGuard,minimumRevision=0,minimumFinanceRevision=0}={}){
-    if(!loadSession()||!navigator.onLine)return false;
+    if(!loadSession()||!isOnline())return false;
     try{
       const assertOwner=operationScope.captureRead(),assertCurrent=()=>{assertOwner();operationGuard?.()};assertCurrent();
       if(!force){

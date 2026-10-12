@@ -5,7 +5,7 @@ import subprocess
 from browser_harness import BrowserSession, ROOT
 
 SETUP = r"""(async()=>{
- await appReady;syncDocument.stopPolling();domainsFinanceController.stopAutoSync?.();
+ await appReady;syncDocument.stopPolling();finance.runtime.stop?.();
  const surface=__SURFACE__,owner='aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',other='bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb';
  const debt={id:'privacy-debt',customerName:'private Morning customer A',amount:100,paid:false,invoiceIssued:false,closedAt:null};state.customerDebts.push(debt);
  storagePersistence.scheduleSave('Morning privacy fixture',{domains:['customerDebts'],operations:[{type:'put',collection:'customerDebts',mode:'insert',id:debt.id,record:debt,index:state.customerDebts.length-1}]});await mainStorageV2.commitPromise;

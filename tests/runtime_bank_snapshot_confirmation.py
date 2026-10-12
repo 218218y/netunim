@@ -12,7 +12,7 @@ FLOW = r"""(async()=>{
  const stable=value=>JSON.stringify(value,(_key,item)=>item&&typeof item==='object'&&!Array.isArray(item)?Object.fromEntries(Object.keys(item).sort().map(key=>[key,item[key]])):item);
  const site=__SITE__,body=__BODY__,owner='fixture-bank-confirmation',stamp='2026-10-09T10:00:00.000Z',originalFetch=globalThis.fetch;
  const kupa=site==='kupa';
- if(kupa){financeAutomation.stop();syncDocument.stopCloudPolling()}else{syncDocument.stopPolling();domainsFinanceController.stopAutoSync()}
+ if(kupa){financeAutomation.stop();syncDocument.stopCloudPolling()}else{syncDocument.stopPolling();finance.runtime.stop()}
  const note={id:'bank-confirmation-note',content:'durable before unconfirmed Bank result'};state.notes.push(note);
  const operation={domains:['notes'],operations:[{type:'put',collection:'notes',id:note.id,mode:'insert',index:state.notes.length-1,record:note}]};
  if(kupa)await storagePersistence.saveState('Bank confirmation fixture',operation);else storagePersistence.scheduleSave('Bank confirmation fixture',operation);
@@ -57,17 +57,17 @@ FLOW = r"""(async()=>{
    if(path.includes('/storage/v1/object/list/'))return Promise.resolve(new Response('[]'));
    return originalFetch(url,options);
  };
- const controller=kupa?domainsBankController:domainsFinanceController;
+ const controller=kupa?domainsBankController:finance.commands;
  const before=stable(kupa?state.bank:checksSession.kupaCloudReadState);
  check(await (kupa?controller.refreshBankBalance():controller.refreshBank())===false,'malformed HTTP 200 was accepted as a confirmed commit');
  check(stable(kupa?state.bank:checksSession.kupaCloudReadState)===before,'unconfirmed result replaced Last Known Good: '+JSON.stringify({site,before,after:kupa?state.bank:checksSession.kupaCloudReadState,commits,scrapes}));
  check(JSON.stringify(await db.load(identity))===durableBefore,'unknown confirmation changed durable Main records');
  check(JSON.stringify(await db.load(owner+':shared-checks'))===sharedBefore,'unknown confirmation changed Shared Checks');
- const diagnostic=kupa?controller.bankBridgeUiState():controller.snapshot();
+ const diagnostic=kupa?controller.bankBridgeUiState():finance.queries.snapshot();
  check((kupa?diagnostic.lastError:diagnostic.bankError).includes('אישור'),'unknown confirmation not visible to operator');
  // Recovery is an authorized read of the committed effect, never another scan.
- if(kupa){await syncDocument.cloudPoll();await controller.ensureBankDisplayArchive()}else await controller.refreshFinanceData();
- const bank=kupa?controller.bankBridgeUiState():controller.snapshot().bank;
+ if(kupa){await syncDocument.cloudPoll();await controller.ensureBankDisplayArchive()}else await finance.queries.refreshFinanceData();
+ const bank=kupa?controller.bankBridgeUiState():finance.queries.snapshot().bank;
  check((kupa?state.bank.currentBalance:bank.currentBalance)===500,'confirmed read did not recover the server Bank effect');
  check(JSON.stringify(bank.feed.transactions.map(row=>row.id))==='["stable-bank-transaction"]','Bank transaction identity lost/duplicated');
  check(commits===1&&scrapes===1,'recovery repeated a remote write/provider effect');

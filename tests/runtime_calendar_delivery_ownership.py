@@ -9,7 +9,7 @@ import subprocess
 from browser_harness import BrowserSession, ROOT
 
 SETUP = r"""(async()=>{
- await appReady;syncDocument.stopPolling();domainsFinanceController.stopAutoSync();
+ await appReady;syncDocument.stopPolling();finance.runtime.stop();
  const {createCalendarStorage}=await import('./assets/js/calendar/storage.js'),storage=createCalendarStorage();
  const deferred=()=>{let resolve;const promise=new Promise(done=>{resolve=done});return {promise,resolve}};
  const audit=globalThis.calendarDeliveryAudit={held:deferred(),entered:deferred(),requested:deferred(),finished:deferred(),calls:0};

@@ -25,6 +25,13 @@ function check(overrides=new Map()){
 }
 function describe(diagnostics){return ts.formatDiagnostics(diagnostics,{getCanonicalFileName:file=>file,getCurrentDirectory:()=>root,getNewLine:()=> '\n'})}
 
+test('the actual Finance platform cannot return text as connectivity evidence',()=>{
+  const source=path.join(root,'netunim-orders/site/assets/js/platform/finance-effects.js');
+  const original=readFileSync(source,'utf8'),changed=original.replace('isOnline:() => !disposed && environment.navigator.onLine === true', 'isOnline:() => "online"');
+  assert.notEqual(changed,original);const diagnostics=check(new Map([[source,changed]]));
+  assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+});
+
 test('the actual debounced task cannot publish text as wakeup readiness',()=>{
   const source=path.join(root,'netunim-orders/site/assets/js/platform/debounced-task.js');
   const original=readFileSync(source,'utf8'),changed=original.replace('task.ready = true;', 'task.ready = "ready";');

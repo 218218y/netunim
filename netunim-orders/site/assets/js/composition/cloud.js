@@ -2,7 +2,7 @@ import {createUiCloud} from '../ui/cloud.js';
 
 export function composeCloudUi({
   model,files,tab,session,checksSession,ui,uiModal,cloudAuth,uiStatus,storageBrowser,uiTabGuard,stateSnapshots,uiNavigation,storageFiles,uiBackup,
-  cloudTransport,domainsBankCache,syncChecks,syncDocument,getUiSettings,getCalendarController,domainsFinanceController,storageV2Coordinator,storageV2Cloud,
+  cloudTransport,financeReadout,syncChecks,syncDocument,getUiSettings,getCalendarController,financeRuntime,storageV2Coordinator,storageV2Cloud,
 }){
   if(typeof getUiSettings!=='function'||typeof getCalendarController!=='function')throw new Error('orders_cloud_ui_ports_required');
   return createUiCloud({
@@ -30,7 +30,7 @@ export function composeCloudUi({
     verifyLocalResetCloud:(...args)=>cloudTransport.verifyLocalResetCloud(...args),
     applyOrderCloudState:(...args)=>stateSnapshots.applyOrderCloudState(...args),
     composeOrderCloudState:(...args)=>stateSnapshots.composeOrderCloudState(...args),
-    refreshKupaReadout:(...args)=>domainsBankCache.refreshKupaReadout(...args),
+    refreshKupaReadout:(...args)=>financeReadout.refreshKupaReadout(...args),
     syncSharedChecksFromCloud:(...args)=>syncChecks.syncSharedChecksFromCloud(...args),
     requestCloudSave:(...args)=>syncDocument.requestCloudSave(...args),
     prepareConcurrentAckRecovery:async()=>{const review=await syncDocument.prepareConcurrentAckRecovery();return {...review,diffText:uiBackup.syncRecoveryDiffText(review.backup.remote.state,review.backup.localState)}},
@@ -41,8 +41,8 @@ export function composeCloudUi({
     saveSession:(...args)=>cloudAuth.saveSession(...args),
     renderSettings:(...args)=>getUiSettings().renderSettings(...args),
     resumeCalendarAfterCloudLogin:(...args)=>getCalendarController().resumeAfterCloudLogin(...args),
-    startFinanceAutoSync:(...args)=>domainsFinanceController.startAutoSync(...args),
-    stopFinanceAutoSync:()=>domainsFinanceController.stopAutoSync(),
+    startFinanceAutoSync:(...args)=>financeRuntime.start(...args),
+    stopFinanceAutoSync:()=>financeRuntime.stop(),
     ...storageV2Coordinator.ownerUiPorts(),
     ...storageV2Coordinator.ownerTransferUiPorts(),
     ...storageV2Cloud,

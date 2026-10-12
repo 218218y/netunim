@@ -4,7 +4,7 @@ from browser_harness import BrowserSession, ROOT
 def run_credit_detail(app):
     with BrowserSession(ROOT / f'netunim-{app}/site', f'{app}-credit-detail') as browser:
         browser.call('Emulation.setDeviceMetricsOverride', {'width': 1600, 'height': 900, 'deviceScaleFactor': 1, 'mobile': False})
-        setup = "state=normalizeState(fixture);domainRevisions.touchAll();ui.currentPage='credit';ui.expensesTab='credit';credit.renderCredit();" if app == 'kupa' else "kupaCloudReadState=fixture;state.checks=[];domainRevisions.touchAll();ui.currentView='kupa';ui.kupaSubView='credit';domainsFinanceView.renderKupa();"
+        setup = "state=normalizeState(fixture);domainRevisions.touchAll();ui.currentPage='credit';ui.expensesTab='credit';credit.renderCredit();" if app == 'kupa' else "kupaCloudReadState=fixture;state.checks=[];domainRevisions.touchAll();ui.currentView='kupa';ui.kupaSubView='credit';finance.presentation.renderKupa();"
         prefix = '' if app == 'kupa' else 'orders-'
         browser.evaluate(r"""(()=>{
           const OriginalDate=Date;
@@ -121,7 +121,7 @@ def run_credit_detail(app):
         # A confirmed debit advances only its card. Full monthly detail remains
         # independently accessible when the nearest view spans several months.
         live_state = 'state' if app == 'kupa' else 'kupaCloudReadState'
-        render = 'credit.renderCredit()' if app == 'kupa' else 'domainsFinanceView.renderKupa()'
+        render = 'credit.renderCredit()' if app == 'kupa' else 'finance.presentation.renderKupa()'
         browser.evaluate(f"""(async()=>{{
           const frames=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
           const check=(value,message)=>{{if(!value)throw new Error(message)}},model={live_state},region=()=>document.querySelector('.credit-detail-section'),rows=()=>[...region().querySelectorAll('tbody tr')].filter(row=>row.children.length>1);

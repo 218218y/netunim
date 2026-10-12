@@ -10,7 +10,7 @@ import subprocess
 from browser_harness import BrowserSession, ROOT
 
 FLOW = r"""(async()=>{
- await appReady;syncDocument.stopPolling();domainsFinanceController.stopAutoSync();
+ await appReady;syncDocument.stopPolling();finance.runtime.stop();
  const check=(ok,message)=>{if(!ok)throw Error(message)},owner='aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa';
  const {createDomainsCustomersDocuments}=await import('./assets/js/domains/customers/documents.js');
  const {createMorningRequest}=await import('./assets/js/integrations/morning.js');

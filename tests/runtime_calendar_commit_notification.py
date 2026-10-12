@@ -5,7 +5,7 @@ import subprocess
 from browser_harness import BrowserSession, ROOT
 
 SETUP = r"""(async()=>{
- await appReady;syncDocument.stopPolling();domainsFinanceController.stopAutoSync();
+ await appReady;syncDocument.stopPolling();finance.runtime.stop();
  const note={id:'calendar-observation-retained-note',content:'independent durable note'};state.notes.push(note);
  storagePersistence.scheduleSave('Calendar observation fixture',{domains:['notes'],operations:[{type:'put',collection:'notes',id:note.id,record:note,mode:'insert',index:state.notes.length-1}]});await mainStorageV2.commitPromise;
  const check=(ok,message)=>{if(!ok)throw Error(message)},calendarId='calendar@example.test',owner='calendar-commit-owner';
@@ -28,7 +28,7 @@ SETUP = r"""(async()=>{
 })()"""
 
 PRODUCE = r"""(async()=>{
- await appReady;syncDocument.stopPolling();domainsFinanceController.stopAutoSync();
+ await appReady;syncDocument.stopPolling();finance.runtime.stop();
  cloudAuth.supaFetch=async(_path,options)=>{options.assertRequestScope?.();return new Response(JSON.stringify({access_token:'fixture-Google',expires_in:3600,account_id:'calendar@example.test'}))};
  globalThis.fetch=async(url)=>new Response(JSON.stringify({items:new URL(url).pathname.endsWith('/calendarList')?[{id:'calendar@example.test',primary:true,accessRole:'owner'}]:[]}));
  await domainsCalendarController.resumeAfterCloudLogin();Object.defineProperty(navigator,'onLine',{configurable:true,value:false});

@@ -1,3 +1,4 @@
+import {createFinanceBrowserEffects} from '../netunim-orders/site/assets/js/platform/finance-effects.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createDomainsBankController} from '../netunim-kupa/site/assets/js/domains/bank/controller.js';
@@ -43,7 +44,7 @@ function fixture(t,site,body,{heads={revision:4,financeRevision:9}}={}){
     saveBankSyncSnapshot:(...args)=>transport.saveBankSyncSnapshot(...args),syncBankTransactionsSnapshot:async()=>({sourcePayload:[],result:{total_count:0}}),
     readBankTransactions:async()=>[{id:'candidate-archive',date:stamp,amount:12}],readBankTransactionSnapshot:async()=>null,syncBankChequeImages:async()=>({warnings:[]}),
   };
-  const api=(site==='kupa'?createDomainsBankController:createDomainsFinanceController)(ports);t.after(()=>api.stopAutoSync?.());
+  const api=(site==='kupa'?createDomainsBankController:createDomainsFinanceController)({effects:createFinanceBrowserEffects(),...ports});t.after(()=>api.stopAutoSync?.());
   return {api,model,checksSession,state,messages,run:()=>site==='kupa'?api.refreshBankBalance():api.refreshBank(),counts:()=>({calls,reads,scrapes})};
 }
 const invalid=['','not JSON','null','[]','{}','[{},{}]',JSON.stringify({...receipt,finance_revision:0}),JSON.stringify({...receipt,kupa_revision:-1}),JSON.stringify({...receipt,finance_revision:'9'}),JSON.stringify({...receipt,kupa_revision:4.5})];

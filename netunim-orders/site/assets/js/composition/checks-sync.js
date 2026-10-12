@@ -1,11 +1,11 @@
 import {createSyncChecks} from '../sync/checks.js';
 
-export function composeChecksSync({model,files,checksSession,tab,uiStatus,domainsBankCache,storageFiles,cloudAuth,sharedChecksV2=null}){
+export function composeChecksSync({model,files,checksSession,tab,uiStatus,financeReadout,storageFiles,cloudAuth,sharedChecksV2=null}){
   return createSyncChecks({
     model,files,checksSession,tab,sharedChecksV2,
     toast:(...args)=>uiStatus.toast(...args),
-    recomputeKupaNetFromCache:(...args)=>domainsBankCache.recomputeKupaNetFromCache(...args),
-    renderKupaDependentView:(...args)=>domainsBankCache.renderKupaDependentView(...args),
+    recomputeKupaNetFromCache:(...args)=>financeReadout.recomputeKupaNetFromCache(...args),
+    renderKupaDependentView:(...args)=>financeReadout.renderKupaDependentView(...args),
     writeStateToFolder:(...args)=>storageFiles.writeStateToFolder(...args),
     loadSession:(...args)=>cloudAuth.loadSession(...args),
     setCloud:(...args)=>uiStatus.setChecksCloud(...args),

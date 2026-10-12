@@ -859,18 +859,20 @@ ok("tr.pending td{background:var(--marker-yellow)}" in orders_css
    and ".bank-transaction-pending{display:inline-flex;align-items:center;padding:3px 6px;border-radius:999px;background:#fff3d8;color:#866622" in kupa_css
    and ".credit-transaction-pending{background:#fff3d8;color:#866622}" in kupa_css,
    "credit pending visual parity: each app reuses its bank pending row and badge styling instead of a separate credit-only yellow")
-ok("createDomainsFinanceView" in orders_main and "renderKupa" in orders_main and "kupaSubView:'bank'" in orders_contexts,
-   "orders Kupa UI: composition root and state own the new financial surface")
-bank_image_runtime_pos=orders_main.find('const bankChequeImages=createOrdersBankChequeImageRuntime')
+orders_finance_composition=(O / "site/assets/js/composition/finance.js").read_text(encoding="utf-8")
+orders_finance_composition_compact=re.sub(r"\s+", "", orders_finance_composition)
+ok("createOrdersFinanceCapability" in orders_main and "finance.presentation.renderKupa" in orders_main and "kupaSubView:'bank'" in orders_contexts,
+   "orders Kupa UI: the capability composition and state own the financial surface")
 checks_editor_pos=orders_main.find('const domainsChecksEditor=createDomainsChecksEditor({')
-finance_view_pos=orders_main.find('const domainsFinanceView=createDomainsFinanceView({')
 checks_editor_end=orders_main.find('const syncChecksPersistence=composeChecksPersistence({',checks_editor_pos)
-finance_view_end=orders_main.find('const uiAlertCenter=createUiAlertCenter({',finance_view_pos)
-ok(bank_image_runtime_pos>=0 and bank_image_runtime_pos<checks_editor_pos<checks_editor_end<finance_view_pos
-   and 'downloadBankChequeImage:bankChequeImages.download' not in orders_main[checks_editor_pos:checks_editor_end]
-   and 'downloadBankChequeImage:bankChequeImages.download' in orders_main[finance_view_pos:finance_view_end]
-   and orders_main.count('const bankChequeImages=createOrdersBankChequeImageRuntime')==1,
-   'orders cheque-image composition: runtime is initialized before use, Checks Editor stays uninvolved, and Finance View owns image download wiring')
+finance_constructor_pos=orders_main.find('const finance=createOrdersFinanceCapability(')
+finance_view_pos=orders_main.find('finance.bindUi(')
+ok(0<=finance_constructor_pos<checks_editor_pos<checks_editor_end<finance_view_pos
+   and 'downloadBankChequeImage' not in orders_main[checks_editor_pos:checks_editor_end]
+   and 'downloadBankChequeImage:images.download' in orders_finance_composition_compact
+   and orders_finance_composition_compact.count('constimages=createOrdersBankChequeImageRuntime')==1
+   and orders_finance_composition_compact.find('constimages=createOrdersBankChequeImageRuntime')<orders_finance_composition_compact.find('constview=createDomainsFinanceView'),
+   'orders cheque-image composition: one capability-owned image adapter precedes the view and stays outside Checks editing')
 ok("const BANK_BRIDGE_VERSION=72" in orders_finance_controller,
    "orders Kupa UI: bank controls require the current Bridge v55 contract")
 ok((ROOT / 'netunim-orders/site/assets/js/domains/finance/bank-connection-view.js').exists() and "from './bank-connection-view.js'" in (ROOT / 'netunim-orders/site/assets/js/domains/finance/view.js').read_text(encoding='utf-8'),
@@ -879,16 +881,17 @@ ok((ROOT / 'netunim-orders/site/assets/js/domains/finance/credit-status-view.js'
    'orders finance UI: credit status/diagnostic rendering is split from the main finance view responsibility')
 ok("מספרי שיקים שלא שויכו לשורה" in orders_bank_detail_view and "מספרי שיקים שלא שויכו לשורה" in bank_view,
    "bank cheque UI: bank-supplied identifiers that cannot be safely attached to a specific row remain visible instead of being hidden or guessed")
-ok('data-action="export-orders-bank-cheque-diagnostics"' in orders_bank_connection_view and "'export-orders-bank-cheque-diagnostics'" in orders_actions and 'exportBankChequeDiagnostics' in orders_finance_controller and "request('/bank/diagnostics'" in (ROOT/'shared/bank-bridge-client.js').read_text(encoding='utf-8') and 'exportOrdersBankChequeDiagnostics=(...args)=>domainsFinanceView.exportBankChequeDiagnostics(...args)' in orders_actions and 'createFinanceBankActions({domainsFinanceController,domainsFinanceView' in orders_main,
+ok('data-action="export-orders-bank-cheque-diagnostics"' in orders_bank_connection_view and "'export-orders-bank-cheque-diagnostics'" in orders_actions and 'exportBankChequeDiagnostics' in orders_finance_controller and "request('/bank/diagnostics'" in (ROOT/'shared/bank-bridge-client.js').read_text(encoding='utf-8') and 'exportOrdersBankChequeDiagnostics=(...args)=>domainsFinanceView.exportBankChequeDiagnostics(...args)' in orders_actions and 'createFinanceBankActions({domainsFinanceController:controller,domainsFinanceView:view' in orders_finance_composition_compact and '...finance.actionPacks()' in orders_main,
    "Orders bank diagnostics: synchronization options export the same authenticated local cheque TXT evidence without cloud persistence")
-ok("const CREDIT_BRIDGE_VERSION=73" in orders_finance_controller and "CREDIT_CONNECTOR_CONTRACT_VERSION" in orders_finance_controller and "return version>=CREDIT_BRIDGE_VERSION&&contract>=CREDIT_CONNECTOR_CONTRACT_VERSION" in orders_finance_controller and 'data-action="export-orders-credit-data-diagnostics"' in orders_finance_view and "exportOrdersCreditDataDiagnostics=(...args)=>domainsFinanceView.exportCreditDataDiagnostics(...args)" in orders_actions and 'createFinanceCreditActions({domainsFinanceView,ui})' in orders_main and "creditDataDiagnostics" in (ROOT/'shared/bank-bridge-client.js').read_text(encoding='utf-8'),
+ok("const CREDIT_BRIDGE_VERSION=73" in orders_finance_controller and "CREDIT_CONNECTOR_CONTRACT_VERSION" in orders_finance_controller and "return version>=CREDIT_BRIDGE_VERSION&&contract>=CREDIT_CONNECTOR_CONTRACT_VERSION" in orders_finance_controller and 'data-action="export-orders-credit-data-diagnostics"' in orders_finance_view and "exportOrdersCreditDataDiagnostics=(...args)=>domainsFinanceView.exportCreditDataDiagnostics(...args)" in orders_actions and 'createFinanceCreditActions({domainsFinanceView:view,ui})' in orders_finance_composition_compact and '...finance.actionPacks()' in orders_main and "creditDataDiagnostics" in (ROOT/'shared/bank-bridge-client.js').read_text(encoding='utf-8'),
    "orders Kupa UI: credit controls require Bridge v73 / Credit Connector contract v2 and expose the separate local credit data diagnostic export")
 ok("browserEngine:['chromium','camoufox'].includes" in (O / "site/assets/js/domains/finance/credit-feed.js").read_text(encoding="utf-8") and 'דפדפן:' in (O/'site/assets/js/domains/finance/credit-status-view.js').read_text(encoding='utf-8'),
    "orders credit diagnostics: browser-engine provenance survives normalization and is visible for engine-scoped cooldowns")
 ok("תוספת ידנית · קריאה בלבד" in orders_credit_detail_view and "+ תוספת ידנית" not in orders_finance_view
    and "toggle-credit-selection" not in orders_finance_view,
    "orders Kupa UI: manual credit rows are read-only and manual-add/bulk-delete controls stay Kupa-only")
-ok("kupa_documents" in os and "rpcSaveKupaDocument" in orders_main,
+ok("kupa_documents" in os and "rpcSaveKupaDocument:(...args)=>cloud.rpcSaveKupaDocument(...args)" in orders_finance_composition_compact
+   and 'finance.bindCore({cloud:cloudTransport,' in re.sub(r'\s+','',orders_main),
    "orders Kupa UI: Bank/Credit writes remain on the shared Kupa document")
 
 kupa_main=(K / "site/assets/js/main.js").read_text(encoding="utf-8")
@@ -919,7 +922,8 @@ for controller, kind, bridge_call in ((kupa_bank_controller,"bank","bridge.fetch
 ok("remoteLeaseTokens" in kupa_finance_cloud and "cloudTransport.claimFinanceSyncLease(" in kupa_finance_cloud
    and "return {acquired:true,localOnly:true}" in kupa_finance_cloud
    and "claimFinanceSyncLease:financeCloud.claimFinanceSyncLease" in kupa_finance_composition and "composeKupaFinance({" in kupa_main
-   and "claimFinanceSyncLease:(...args)=>cloudTransport.claimFinanceSyncLease(...args)" in orders_main,
+   and "claimFinanceSyncLease:(...args)=>cloud.claimFinanceSyncLease(...args)" in orders_finance_composition_compact
+   and 'finance.bindCore({cloud:cloudTransport,' in re.sub(r'\s+','',orders_main),
    "distributed finance lease: both composition roots wire the shared Supabase lease and Kupa preserves local-only mode")
 ok("SUPA_NETWORK_ATTEMPTS=3" in kupa_cloud_auth and "fetchSupaNetwork" in kupa_cloud_auth and "method==='GET'||method==='HEAD'" in kupa_cloud_auth
    and kupa_transport.count("networkRetry:true")>=2,
