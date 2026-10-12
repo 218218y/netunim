@@ -25,6 +25,13 @@ function check(overrides=new Map()){
 }
 function describe(diagnostics){return ts.formatDiagnostics(diagnostics,{getCanonicalFileName:file=>file,getCurrentDirectory:()=>root,getNewLine:()=> '\n'})}
 
+test('the actual preview file response cannot substitute a string for binary bytes',()=>{
+  const source=path.join(root,'netunim-orders/document-bridge/preview-content.mjs');
+  const original=readFileSync(source,'utf8'),changed=original.replace('buffer: await files.readBinary(meta.fullPath, BINARY_PREVIEW_MAX_BYTES)', 'buffer: "not bytes"');
+  assert.notEqual(changed,original);const diagnostics=check(new Map([[source,changed]]));
+  assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+});
+
 test('the actual Calendar confirmation reader cannot resolve a string as confirmation',()=>{
   const source=path.join(root,'netunim-orders/site/assets/js/calendar/queue-confirmation.js');
   const original=readFileSync(source,'utf8'),changed=original.replace('resolve(result)','resolve(String(result))');
