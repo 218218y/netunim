@@ -753,3 +753,14 @@ connectivity/scheduling ports. See
 [Calendar runtime resource ownership](CALENDAR_RUNTIME_RESOURCE_OWNERSHIP.md) for
 scope, strict boundary evidence and the remaining presentation/OAuth/controller
 decomposition.
+
+Bank Bridge configuration now has one private FIFO owner shared by all seven
+mutations, coherent status queries and both mutually exclusive provider commands.
+Before-change native HTTP regressions proved lost profile updates, reset undone
+by a held save and unguarded mutation during provider work. Settings validation,
+encrypted vault I/O and Windows protection/process ports are separate from HTTP;
+ownership covers cleanup and result publication. Exact ciphertext rollback,
+real CurrentUser DPAPI, installer dependency closure and frozen provider policy
+fixtures cover the boundary. See
+[Bank Bridge configuration ownership](BANK_BRIDGE_CONFIGURATION_OWNERSHIP.md)
+for scope and remaining HTTP/provider/process decomposition.

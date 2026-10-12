@@ -25,6 +25,14 @@ function check(overrides=new Map()){
 }
 function describe(diagnostics){return ts.formatDiagnostics(diagnostics,{getCanonicalFileName:file=>file,getCurrentDirectory:()=>root,getNewLine:()=> '\n'})}
 
+test('the actual Bank Bridge owner cannot replace provider exclusivity with formatted status',()=>{
+  const source=path.join(root,'netunim-kupa/bank-bridge/operation-owner.mjs');
+  const original=readFileSync(source,'utf8'),changed=original.replace('providerActive = true;', 'providerActive = "busy";');
+  assert.notEqual(changed,original);
+  const diagnostics=check(new Map([[source,changed]]));
+  assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+});
+
 test('the actual Calendar flight cannot replace a promised receipt with status text',()=>{
   const source=path.join(root,'netunim-orders/site/assets/js/calendar/operation-flight.js');
   const original=readFileSync(source,'utf8'),changed=original.replace('return task.promise;', 'return "completed";');

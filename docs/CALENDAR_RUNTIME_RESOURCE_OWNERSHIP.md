@@ -68,3 +68,13 @@ or historical preference reader is changed. Controller presentation, OAuth URL
 handling and business projection still need later responsibility decomposition;
 this stage does not claim full controller strict typing or live Google/provider
 and physical two-computer validation.
+
+The native cross-tab receipt fixture now gates the actual delivery receipt API
+after its durable read. Required CI exposed an ambiguous queue-only transaction
+selector: a background confirmer could win it while delivery completed before
+the other tab's write. Forcing that background ordering reproduced the false
+failure, and selecting the receipt port removes the ambiguity. The four native
+events/cache/receipt/receipt-abort scenarios keep their original assertions,
+including one Google effect, exact event ID/body, completed-queue confirmation,
+fresh recovery and unchanged Main/Shared records. Calendar production logic is
+unchanged by this fixture correction.

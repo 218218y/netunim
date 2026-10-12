@@ -1,0 +1,10 @@
+{
+  "baseline": "9ea7b6b2215815bb1de8c5837c0c27d9bfc5f8de",
+  "policies": {
+    "normalizeCreditSyncSelection": "0b2f5e0e4311bc30fa1af9f4f380d36f1902f77b37c2a3bde5ead6f2fb7cb674",
+    "excludedAccountsForProfile": "5a6a2922e5f1276a1a4494f750654674622e1e04b944430eafdcc79cb05ac58f",
+    "scrapeCreditProfile": "95eac6f77b03691e59cb5fde00f5c1fb3ab9079f84ddd90e215278001dc7af46",
+    "scrapeAllCreditProfiles": "375d7538474278fb61ce8dd55b52124c8a45e894389e6192beb084817cdf16db",
+    "scrapeHapoalimSnapshot": "95774b2b655406f2ce82550c63e923855d9cde72dae5be57353cf221458bd9c3"
+  }
+}
