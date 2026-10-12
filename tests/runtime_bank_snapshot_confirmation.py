@@ -34,7 +34,7 @@ FLOW = r"""(async()=>{
  localStorage.setItem('netunim_kupa_bank_bridge_token_v1','fixture-pairing');
  for(const key of ['netunim_kupa_bank_auto_daily_v1','netunim_orders_bank_auto_daily_v1','netunim_orders_credit_auto_daily_v1'])localStorage.setItem(key,'0');
  cloudTransport.claimFinanceSyncLease=async()=>({acquired:true,leaseName:'bank',leaseToken:'fixture',fenceEpoch:1});cloudTransport.releaseFinanceSyncLease=async()=>true;
- syncChecks.syncSharedChecksFromCloud=async()=>true;
+ if(kupa)syncChecks.syncSharedChecksFromCloud=async()=>true;else checks.commands.sync=async()=>true;
  if(kupa)syncChecksState.sharedChecksHaveLocalWork=()=>false;else stateSnapshots.checksHaveLocalWork=()=>false;
  const readout=()=>({revision:bankRevision,financeRevision:bankRevision,state:{...(kupa?structuredClone(main.state):{creditSync:{profiles:[]}}),bank:structuredClone(remoteBank)}});
  if(kupa)cloudTransport.readSupabaseDocument=async()=>readout();else cloudTransport.readKupaReadOnlyCloud=async()=>readout();

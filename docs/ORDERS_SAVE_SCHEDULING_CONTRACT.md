@@ -100,3 +100,7 @@ This closes Orders save wakeup ownership only. Other context resources, Shared
 sync promises, Finance/Calendar jobs, platform effects, wide factories, Bridge
 decomposition and compatibility retirement remain separate reviewable slices.
 It does not certify physical two-computer or live-provider recovery drills.
+
+Subsequent Finance and Checks capability slices are documented in
+`ORDERS_FINANCE_CAPABILITY.md` and `ORDERS_CHECKS_CAPABILITY.md`; the latter
+removes Orders Shared sync promise slots and owns the combined drain lifecycle.

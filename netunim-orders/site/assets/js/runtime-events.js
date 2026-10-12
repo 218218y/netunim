@@ -3,13 +3,13 @@ import {bindBackdropDismissal} from './shared/events.js';
 import {$} from './state/constants.js';
 
 // Browser lifecycle wiring lives outside the composition root so main.js only composes domain ports.
-export function bindOrdersRuntimeEvents({uiModal,uiNavigation,domainsSuppliersNavigation,cloudAuth,uiStatus,syncChecks,tab,session,storageRecovery,recoverPendingMorningOperation,financeRuntime,stateSnapshots,syncDocument,uiFolders,uiAlertCenter,uiTabGuard,storageV2=null,sharedChecksV2=null}){
+export function bindOrdersRuntimeEvents({uiModal,uiNavigation,domainsSuppliersNavigation,cloudAuth,uiStatus,checksRuntime,tab,session,storageRecovery,recoverPendingMorningOperation,financeRuntime,stateSnapshots,syncDocument,uiFolders,uiAlertCenter,uiTabGuard,storageV2=null,sharedChecksV2=null}){
   bindBackdropDismissal($('#modalBackdrop'),()=>uiModal.dismissModal());
   document.querySelectorAll('[data-view]').forEach(button=>button.addEventListener('click',()=>uiNavigation.switchView(button.dataset.view)));
   const connectivity=createOrdersConnectivityRuntime({
     access:{primary:()=>tab.primaryTab,blocked:()=>session.storageProtocolBlocked||!storageRecovery.isReady()||session.syncCapabilitiesChecking||!!session.syncCapabilitiesError,authenticated:()=>!!cloudAuth.loadSession()},
     cloud:{enabled:()=>cloudAuth.cloudEnabled(),resumeAfterReconnect:()=>syncDocument.resumeAfterReconnect()},
-    checks:syncChecks,finance:{startAutoSync:(...args)=>financeRuntime.start(...args),stopAutoSync:()=>financeRuntime.stop()},morning:{recoverPendingMorningOperation},status:uiStatus,
+    checks:{pollSharedChecks:(...args)=>checksRuntime.poll(...args)},finance:{startAutoSync:(...args)=>financeRuntime.start(...args),stopAutoSync:()=>financeRuntime.stop()},morning:{recoverPendingMorningOperation},status:uiStatus,
   });
   connectivity.start();
   window.addEventListener('beforeunload',event=>{if(!tab.primaryTab||!(storageV2?.durabilityAtRisk||sharedChecksV2?.durabilityAtRisk||session?.localUndurableGenerations?.size))return;event.preventDefault();event.returnValue=''});

@@ -6,6 +6,15 @@ remain separate from structural refactors.
 
 ## Verified now
 
+- Orders Checks owns its view, editor, action/search runtime, persistence and
+  Shared sync through one staged capability. Main imports drop from 59 to 56.
+  Shared pull/save promises are private, persistence observes `isSaving()`, and
+  storage cutover drains the runtime port. Disposal fences late confirmation,
+  search and sync publication while retaining durable work. Node tests and
+  actual application actions with native IndexedDB verify exact retained data
+  and fresh recovery. See `ORDERS_CHECKS_CAPABILITY.md`; other resource owners
+  and complete capability/business typing remain subsequent work.
+
 - Orders Finance now owns Bridge/scope/image adapters, scoped readout, controller,
   presentation/import/card ordering and three action packs behind one staged
   capability. Main imports drop from 68 to 59; consumers receive query, command,

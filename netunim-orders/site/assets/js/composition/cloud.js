@@ -2,7 +2,7 @@ import {createUiCloud} from '../ui/cloud.js';
 
 export function composeCloudUi({
   model,files,tab,session,checksSession,ui,uiModal,cloudAuth,uiStatus,storageBrowser,uiTabGuard,stateSnapshots,uiNavigation,storageFiles,uiBackup,
-  cloudTransport,financeReadout,syncChecks,syncDocument,getUiSettings,getCalendarController,financeRuntime,storageV2Coordinator,storageV2Cloud,
+  cloudTransport,financeReadout,checksCloud,syncDocument,getUiSettings,getCalendarController,financeRuntime,storageV2Coordinator,storageV2Cloud,
 }){
   if(typeof getUiSettings!=='function'||typeof getCalendarController!=='function')throw new Error('orders_cloud_ui_ports_required');
   return createUiCloud({
@@ -31,7 +31,7 @@ export function composeCloudUi({
     applyOrderCloudState:(...args)=>stateSnapshots.applyOrderCloudState(...args),
     composeOrderCloudState:(...args)=>stateSnapshots.composeOrderCloudState(...args),
     refreshKupaReadout:(...args)=>financeReadout.refreshKupaReadout(...args),
-    syncSharedChecksFromCloud:(...args)=>syncChecks.syncSharedChecksFromCloud(...args),
+    syncSharedChecksFromCloud:(...args)=>checksCloud.sync(...args),
     requestCloudSave:(...args)=>syncDocument.requestCloudSave(...args),
     prepareConcurrentAckRecovery:async()=>{const review=await syncDocument.prepareConcurrentAckRecovery();return {...review,diffText:uiBackup.syncRecoveryDiffText(review.backup.remote.state,review.backup.localState)}},
     downloadRecoveryBackup:payload=>uiBackup.downloadBlob(new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),`orders-sync-recovery_${new Date().toISOString().replace(/[:.]/g,'-')}.json`),

@@ -565,8 +565,8 @@ ok('.col-row-actions{width:78px}' in orders_css
 # Orders Kupa UI owns the financial surface; checks and balance are embedded children,
 # while Bank/Credit continue to use the one shared Kupa document rather than copied state.
 orders_main = (O / "site/assets/js/main.js").read_text(encoding="utf-8")
-orders_checks_composition = (O / "site/assets/js/composition/checks-sync.js").read_text(encoding="utf-8")
-ok("composeChecksSync({" in orders_main
+orders_checks_composition = (O / "site/assets/js/composition/checks.js").read_text(encoding="utf-8")
+ok("checks.bindSync({" in orders_main
    and "sharedChecksV2," in orders_checks_composition
    and "getChecksPending:" not in orders_checks_composition,
    "orders cloud sync composition: Shared V2 is the only checks writer")
@@ -863,8 +863,8 @@ orders_finance_composition=(O / "site/assets/js/composition/finance.js").read_te
 orders_finance_composition_compact=re.sub(r"\s+", "", orders_finance_composition)
 ok("createOrdersFinanceCapability" in orders_main and "finance.presentation.renderKupa" in orders_main and "kupaSubView:'bank'" in orders_contexts,
    "orders Kupa UI: the capability composition and state own the financial surface")
-checks_editor_pos=orders_main.find('const domainsChecksEditor=createDomainsChecksEditor({')
-checks_editor_end=orders_main.find('const syncChecksPersistence=composeChecksPersistence({',checks_editor_pos)
+checks_editor_pos=orders_main.find('checks.bindEditor({')
+checks_editor_end=orders_main.find('checks.bindPersistence({',checks_editor_pos)
 finance_constructor_pos=orders_main.find('const finance=createOrdersFinanceCapability(')
 finance_view_pos=orders_main.find('finance.bindUi(')
 ok(0<=finance_constructor_pos<checks_editor_pos<checks_editor_end<finance_view_pos
