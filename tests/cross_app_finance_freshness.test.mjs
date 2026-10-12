@@ -1,3 +1,4 @@
+import {createFinanceBrowserEffects} from '../shared/finance-browser-effects.js';
 import {createCreditPreferences} from '../netunim-kupa/site/assets/js/platform/credit-preferences.js';
 import assert from 'node:assert/strict';
 import {createDomainsBankController} from '../netunim-kupa/site/assets/js/domains/bank/controller.js';
@@ -12,7 +13,7 @@ Date.now=()=>Date.parse('2026-09-01T05:00:00.000Z');
 const old='2026-08-30T00:00:00.000Z',fresh='2026-09-01T04:00:00.000Z';
 let bankFetches=0,bankMarks=0;
 const bankModel={state:{bank:{source:'hapoalim',updatedAt:old,bankSyncAt:old,feed:{version:4,provider:'hapoalim',balance:100,syncedAt:old,transactions:[]}},checks:[]}};
-const bankController=createDomainsBankController({autoScope:()=> 'test-owner',operationScope:{capture:()=>()=>{},captureRead:()=>()=>{}},
+const bankController=createDomainsBankController({effects:createFinanceBrowserEffects(),autoScope:()=> 'test-owner',operationScope:{capture:()=>()=>{},captureRead:()=>()=>{}},
   model:bankModel,session:{backendReady:true,connectionMode:'supabase'},checksSession:{},
   sharedChecksHaveLocalWork:()=>false,saveState:async()=>true,syncSharedChecksFromCloud:async()=>true,sharedChecksObservedSequence:()=>0,
   toast:()=>{},render:()=>{},
@@ -24,7 +25,7 @@ assert.equal(bankFetches,0,'Kupa bank auto refresh must not scrape when Orders a
 assert.equal(bankMarks,1,'Kupa records a local cooldown when a remote fresh snapshot suppresses a stale local auto attempt');
 
 let bankUnavailableFetches=0;
-const bankUnavailable=createDomainsBankController({autoScope:()=> 'test-owner',operationScope:{capture:()=>()=>{},captureRead:()=>()=>{}},
+const bankUnavailable=createDomainsBankController({effects:createFinanceBrowserEffects(),autoScope:()=> 'test-owner',operationScope:{capture:()=>()=>{},captureRead:()=>()=>{}},
   model:bankModel,session:{backendReady:true,connectionMode:'supabase'},checksSession:{},sharedChecksHaveLocalWork:()=>false,saveState:async()=>true,
   syncSharedChecksFromCloud:async()=>true,sharedChecksObservedSequence:()=>0,toast:()=>{},render:()=>{},
   bridge:{getBridgeToken:()=> 'paired',markAutoAttempt:()=>{},fetchBalance:async()=>{bankUnavailableFetches++},autoEnabled:()=>true,autoAttemptDelayMs:()=>0},
@@ -54,7 +55,7 @@ assert.equal(creditUnavailableFetches,0,'Kupa credit auto refresh fails closed w
 
 
 let lockedBankFetches=0,lockedBankReleases=0;
-const lockedBank=createDomainsBankController({autoScope:()=> 'test-owner',operationScope:{capture:()=>()=>{},captureRead:()=>()=>{}},
+const lockedBank=createDomainsBankController({effects:createFinanceBrowserEffects(),autoScope:()=> 'test-owner',operationScope:{capture:()=>()=>{},captureRead:()=>()=>{}},
   model:bankModel,session:{backendReady:true,connectionMode:'supabase'},checksSession:{},sharedChecksHaveLocalWork:()=>false,saveState:async()=>true,
   syncSharedChecksFromCloud:async()=>true,sharedChecksObservedSequence:()=>0,toast:()=>{},render:()=>{},
   bridge:{getBridgeToken:()=> 'paired',fetchBalance:async()=>{lockedBankFetches++},autoEnabled:()=>true,autoAttemptDelayMs:()=>0},
@@ -77,7 +78,7 @@ assert.equal(lockedCreditFetches,0,'a denied shared credit lease must stop befor
 assert.equal(lockedCreditReleases,0,'a client must not release a credit lease it never acquired');
 
 let raceBankReads=0,raceBankFetches=0,raceBankReleases=0;
-const raceBank=createDomainsBankController({autoScope:()=> 'test-owner',operationScope:{capture:()=>()=>{},captureRead:()=>()=>{}},
+const raceBank=createDomainsBankController({effects:createFinanceBrowserEffects(),autoScope:()=> 'test-owner',operationScope:{capture:()=>()=>{},captureRead:()=>()=>{}},
   model:bankModel,session:{backendReady:true,connectionMode:'supabase'},checksSession:{},sharedChecksHaveLocalWork:()=>false,saveState:async()=>true,
   syncSharedChecksFromCloud:async()=>true,sharedChecksObservedSequence:()=>0,toast:()=>{},render:()=>{},
   bridge:{getBridgeToken:()=> 'paired',markAutoAttempt:()=>{},fetchBalance:async()=>{raceBankFetches++},autoEnabled:()=>true,autoAttemptDelayMs:()=>0},

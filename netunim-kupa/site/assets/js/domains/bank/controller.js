@@ -33,18 +33,27 @@ function assertBankArchiveCoverage(mergeResult,archive,{role,requireExactCount=f
 }
 
 
-export function createDomainsBankController({model,session,checksSession,sharedChecksHaveLocalWork,saveSharedChecksToCloud,saveState,recoverLocalState=async()=>false,syncSharedChecksFromCloud,sharedChecksObservedSequence,toast,render,bridge,autoScope,operationScope,timers=globalThis,refreshFinanceCloudSnapshot=async()=>({verified:true,state:model.state}),saveFinancePatch=async()=>({saved:false}),claimFinanceSyncLease=async()=>({acquired:true}),releaseFinanceSyncLease=async()=>true,saveBankSyncSnapshot:publishBankSyncSnapshot=null,mergeBankTransactions=async()=>null,syncBankTransactionsSnapshot=async()=>null,readBankTransactions=async()=>[],readBankTransactionSnapshot=async()=>null,acknowledgeBankTransactionMissing=async()=>null,syncBankChequeImages=async()=>({ok:true,warnings:[]}),touchBankDataRevision=()=>{},touchBankDisplayRevision=()=>{}}){
+export function createDomainsBankController({model,session,sharedChecksHaveLocalWork,saveSharedChecksToCloud,saveState,recoverLocalState=async()=>false,syncSharedChecksFromCloud,sharedChecksObservedSequence,toast,render,bridge,autoScope,operationScope,effects,timers=globalThis,refreshFinanceCloudSnapshot=async()=>({verified:true,state:model.state}),saveFinancePatch=async()=>({saved:false}),claimFinanceSyncLease=async()=>({acquired:true}),releaseFinanceSyncLease=async()=>true,saveBankSyncSnapshot:publishBankSyncSnapshot=null,mergeBankTransactions=async()=>null,syncBankTransactionsSnapshot=async()=>null,readBankTransactions=async()=>[],readBankTransactionSnapshot=async()=>null,acknowledgeBankTransactionMissing=async()=>null,syncBankChequeImages=async()=>({ok:true,warnings:[]}),touchBankDataRevision=()=>{},touchBankDisplayRevision=()=>{}}){
 const bridgeState={checked:false,available:null,configured:false,busy:false,resultReady:false,upgradeRequired:false,bridgeVersion:0,branchNumber:'',accountNumber:'',businessBranchNumber:'',businessAccountNumber:'',homeBranchNumber:'',homeAccountNumber:'',availableAccounts:[],accountSelectionRole:'',lastScrapeAt:null,lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:'',lastWarningCode:'',lastWarningStage:'',lastWarningHttpStatus:0,availabilityError:'',availabilityErrorAt:null,message:''};
 if(typeof autoScope!=='function')throw new Error('bank_auto_scope_required');
 if(typeof operationScope?.capture!=='function'||typeof operationScope?.captureRead!=='function')throw new Error('bank_operation_scope_required');
+if(typeof effects?.saveJson!=='function')throw new TypeError('bank_effects_required');
 const localSnapshot=createBankLocalSnapshot({model,saveState,recoverLocalState,render});
+let disposed=false;
+const operations=new Set();
+function track(work){
+  if(disposed)return Promise.resolve(false);
+  const pending=Promise.resolve().then(()=>disposed?false:work());operations.add(pending);
+  pending.then(()=>operations.delete(pending),()=>operations.delete(pending));
+  return pending;
+}
 let automaticActive=true,automaticOwner=null;
 const automaticAllowed=()=>{
-  const scope=autoScope();if(!automaticActive||localSnapshot.state()||typeof scope!=='string'||!scope.length)return false;
+  const scope=autoScope();if(disposed||!automaticActive||localSnapshot.state()||typeof scope!=='string'||!scope.length)return false;
   if(automaticOwner===null)automaticOwner=scope;
   return scope===automaticOwner&&session.backendReady&&!bridgeState.upgradeRequired&&bridge.autoEnabled()&&!!bridge.getBridgeToken();
 };
-const autoTask=createPollingTask({timers,canRun:automaticAllowed,delay:autoDelay,run:({isCurrent})=>refreshBankBalance({interactive:false,auto:true,isCurrent}),onError:error=>console.error('bank auto refresh',error)});
+const autoTask=createPollingTask({timers,canRun:automaticAllowed,delay:autoDelay,run:({isCurrent})=>track(()=>refreshBankBalance({interactive:false,auto:true,isCurrent})),onError:error=>console.error('bank auto refresh',error)});
 const bankDisplayArchive={business:{accountKey:'',syncKey:'',rows:null,directSnapshot:null},home:{accountKey:'',syncKey:'',rows:null,directSnapshot:null}};
 let bankDisplayArchiveTask=null;
 const scopeChanged=error=>error?.code==='FINANCE_OPERATION_SCOPE_CHANGED';
@@ -172,27 +181,23 @@ async function readBankBridgeStatus(){
   return bankBridgeUiState();
 }
 
-async function saveBankBridgeToken(){
-  const token=document.getElementById('bankBridgeTokenInput')?.value?.trim()||'';
+async function saveBankBridgeToken(value){
+  const token=String(value||'').trim();
   if(!token)return toast('יש להדביק את מפתח ה-Bridge של המחשב הנוכחי');
   bridge.setBridgeToken(token);
-  const input=document.getElementById('bankBridgeTokenInput');if(input)input.value='';
   Object.assign(bridgeState,{checked:false,available:null,availableAccounts:[],accountSelectionRole:'',lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,availabilityError:'',availabilityErrorAt:null,message:'מפתח המחשב נשמר בדפדפן זה. בודק את ה-Bridge…'});
   render();
   await refreshBankBridgeStatus();render();
   if(bridgeState.available)toast('מפתח ה-Bridge נשמר והמחשב מחובר');
 }
 
-async function configureBankBridge(){
-  const typedToken=document.getElementById('bankBridgeTokenInput')?.value?.trim()||'';
+async function configureBankBridge(input={}){
+  const typedToken=String(input.token||'').trim();
   if(typedToken)bridge.setBridgeToken(typedToken);
   const token=bridge.getBridgeToken();
-  const userCode=document.getElementById('bankUserCodeInput')?.value?.trim()||'';
-  const password=document.getElementById('bankPasswordInput')?.value||'';
-  const businessBranchNumber=document.getElementById('bankBusinessBranchNumberInput')?.value?.trim()||'';
-  const businessAccountNumber=document.getElementById('bankBusinessAccountNumberInput')?.value?.trim()||'';
-  const homeBranchNumber=document.getElementById('bankHomeBranchNumberInput')?.value?.trim()||'';
-  const homeAccountNumber=document.getElementById('bankHomeAccountNumberInput')?.value?.trim()||'';
+  const userCode=String(input.userCode||'').trim(),password=String(input.password||'');
+  const businessBranchNumber=String(input.businessBranchNumber||'').trim(),businessAccountNumber=String(input.businessAccountNumber||'').trim();
+  const homeBranchNumber=String(input.homeBranchNumber||'').trim(),homeAccountNumber=String(input.homeAccountNumber||'').trim();
   if(!token)return toast('יש לשמור קודם את מפתח ה-Bridge של המחשב הנוכחי');
   if(!userCode||!password)return toast('יש להזין קוד משתמש וסיסמה של בנק הפועלים');
   if((businessBranchNumber&&!businessAccountNumber)||(!businessBranchNumber&&businessAccountNumber))return toast('לחשבון העסקי יש להזין גם סניף וגם מספר חשבון');
@@ -229,18 +234,13 @@ async function deleteBankBridgeCredentials(){
   finally{bridgeState.busy=false;render()}
 }
 
-function downloadBankDiagnosticJson(filename,data){
-  const safeName=/^[A-Za-z0-9._-]+$/.test(String(filename||''))?String(filename):'netunim-bank-diagnostic.json';
-  const blob=new Blob([JSON.stringify(data??{},null,2)+'\n'],{type:'application/json;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');
-  a.href=url;a.download=safeName;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(url);a.remove()},1000);
-}
 async function exportBankChequeDiagnostics(){
   if(bridgeState.busy)return false;
   if(!bridge.getBridgeToken()){toast('יש לצמד את הקופה ל-Bank Bridge לפני ייצוא אבחון');return false}
   try{
     const result=await bridge.bankDiagnostics();
     if(!result?.available||!result?.data)throw new Error(result?.message||'עדיין אין אבחון בנק מקומי. בצע רענון בנק ולאחריו נסה שוב.');
-    downloadBankDiagnosticJson(result.filename,result.data);
+    effects.saveJson(result.filename,result.data,'netunim-bank-diagnostic.json');
     toast(`קובץ אבחון בנק JSON נוצר מהסנכרון האחרון (${Number(result.transactionCount)||0} תנועות)`);return true;
   }catch(error){toast(error?.message||'ייצוא אבחון הבנק נכשל');return false}
 }
@@ -274,7 +274,7 @@ async function refreshBankBalance({interactive=false,auto=false,isCurrent=()=>tr
     lease={...lease,assertCurrent};
     if(auto&&!allowed())return false;
     if(!leaseHeld){bridgeState.message='סינכרון הבנק כבר מתבצע ממחשב או חלון אחר; לא נפתחה כניסה נוספת לבנק.';if(!auto)toast(bridgeState.message);return false}
-    heartbeat=startFinanceLeaseHeartbeat({...lease,assertCurrent:assertOwner},claimFinanceSyncLease);
+    heartbeat=startFinanceLeaseHeartbeat({...lease,assertCurrent:assertOwner},claimFinanceSyncLease,{setTimer:timers.setTimeout.bind(timers),clearTimer:timers.clearTimeout.bind(timers)});
     const finance=await refreshFinanceCloudSnapshot({assertCurrent});assertCurrent();
     if(auto){if(!allowed())return false;if(!finance?.verified)throw new Error('לא ניתן לאמת מחדש את זמן סנכרון הבנק לאחר תפיסת הנעילה');if(!bankAutoRefreshDue(sharedBankLastSyncAt(finance.state||model.state)))return true}
     const archiveInitialized=finance?.state?.bank?.archiveInitialized===true,archiveVersion=Number(finance?.state?.bank?.archiveVersion||0),archiveReady=archiveInitialized&&archiveVersion>=2;
@@ -356,8 +356,26 @@ function autoDelay(){
   return retryIn>0?Math.max(1000,retryIn+250):300;
 }
 function maybeAutoRefreshBankBalance(){return automaticActive?autoTask.start():false}
-function startAutoSync(){automaticActive=true;automaticOwner=null;return autoTask.start()}
+function startAutoSync(){if(disposed)return false;automaticActive=true;automaticOwner=null;return autoTask.start()}
 function stopAutoSync(){automaticActive=false;return autoTask.stop()}
 
-return {bankBridgeUiState,bankLocalSnapshotState:localSnapshot.state,retryLocalBankSnapshot,ensureBankDisplayArchive,refreshBankBridgeStatus,saveBankBridgeToken,configureBankBridge,selectBankBridgeAccount,deleteBankBridgeCredentials,exportBankChequeDiagnostics,setBankAutoRefresh,refreshBankBalance,acknowledgeMissingBankTransaction,maybeAutoRefreshBankBalance,startAutoSync,stopAutoSync,commitBankSnapshot};
+const runtime={
+  async drain(){while(operations.size)await Promise.all([...operations])},
+  dispose(){if(disposed)return false;disposed=true;stopAutoSync();return true},
+};
+return {
+  bankBridgeUiState,bankLocalSnapshotState:localSnapshot.state,
+  retryLocalBankSnapshot:(...args)=>track(()=>retryLocalBankSnapshot(...args)),
+  ensureBankDisplayArchive:(...args)=>track(()=>ensureBankDisplayArchive(...args)),
+  refreshBankBridgeStatus:(...args)=>track(()=>refreshBankBridgeStatus(...args)),
+  saveBankBridgeToken:(...args)=>track(()=>saveBankBridgeToken(...args)),
+  configureBankBridge:(...args)=>track(()=>configureBankBridge(...args)),
+  selectBankBridgeAccount:(...args)=>track(()=>selectBankBridgeAccount(...args)),
+  deleteBankBridgeCredentials:(...args)=>track(()=>deleteBankBridgeCredentials(...args)),
+  exportBankChequeDiagnostics:(...args)=>track(()=>exportBankChequeDiagnostics(...args)),
+  refreshBankBalance:(...args)=>track(()=>refreshBankBalance(...args)),
+  acknowledgeMissingBankTransaction:(...args)=>track(()=>acknowledgeMissingBankTransaction(...args)),
+  commitBankSnapshot:(...args)=>track(()=>commitBankSnapshot(...args)),
+  setBankAutoRefresh,maybeAutoRefreshBankBalance,startAutoSync,stopAutoSync,runtime,
+};
 }

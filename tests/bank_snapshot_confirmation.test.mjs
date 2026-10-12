@@ -1,4 +1,4 @@
-import {createFinanceBrowserEffects} from '../netunim-orders/site/assets/js/platform/finance-effects.js';
+import {createFinanceBrowserEffects} from '../shared/finance-browser-effects.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createDomainsBankController} from '../netunim-kupa/site/assets/js/domains/bank/controller.js';

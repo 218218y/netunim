@@ -34,7 +34,7 @@ test('the actual Dashboard read owner cannot report a string as read completion'
 });
 
 test('the actual Finance platform cannot return text as connectivity evidence',()=>{
-  const source=path.join(root,'netunim-orders/site/assets/js/platform/finance-effects.js');
+  const source=path.join(root,'shared/finance-browser-effects.js');
   const original=readFileSync(source,'utf8'),changed=original.replace('isOnline:() => !disposed && environment.navigator.onLine === true', 'isOnline:() => "online"');
   assert.notEqual(changed,original);const diagnostics=check(new Map([[source,changed]]));
   assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));

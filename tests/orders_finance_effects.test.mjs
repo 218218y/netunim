@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createDomainsFinanceController} from '../netunim-orders/site/assets/js/domains/finance/controller.js';
-import {createFinanceBrowserEffects} from '../netunim-orders/site/assets/js/platform/finance-effects.js';
+import {createFinanceBrowserEffects} from '../shared/finance-browser-effects.js';
 
 for (const kind of ['bank', 'credit']) {
   test(`${kind} diagnostic export failure releases its temporary URL and anchor`, async t => {

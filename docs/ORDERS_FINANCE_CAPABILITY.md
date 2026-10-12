@@ -47,7 +47,7 @@ The explicit capability boundary now permits those independent follow-up slices.
 
 ## Browser effects and resource lifecycle
 
-`platform/finance-effects.js` owns connectivity, clipboard, diagnostic JSON
+`shared/finance-browser-effects.js` owns connectivity, clipboard, diagnostic JSON
 downloads and operation delays behind four effect commands and disposal. Finance
 controller and Bank readout cache no longer refer to browser globals; module
 graph rules enforce this direction. The adapter implementation and negative

@@ -1,4 +1,4 @@
-import {createFinanceBrowserEffects} from '../../netunim-orders/site/assets/js/platform/finance-effects.js';
+import {createFinanceBrowserEffects} from '../../shared/finance-browser-effects.js';
 
 const effects = createFinanceBrowserEffects();
 /** @type {boolean} */

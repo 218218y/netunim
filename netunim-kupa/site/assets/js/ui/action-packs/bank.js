@@ -1,25 +1,37 @@
 import {createLazyDeferredSearchUpdater} from '../../shared/search-scheduler.js';
 
 // Bank owns these delegated UI actions and its local event ports.
-export function createBankActions({domainsBankController,domainsBankView,importFinanceConnections,ui,uiStatus}){
-const acknowledgeMissingBankTransaction=(...args)=>domainsBankController.acknowledgeMissingBankTransaction(...args);
-const configureBankBridge=(...args)=>domainsBankController.configureBankBridge(...args);
-const deleteBankBridgeCredentials=(...args)=>domainsBankController.deleteBankBridgeCredentials(...args);
-const exportBankChequeDiagnostics=(...args)=>domainsBankController.exportBankChequeDiagnostics(...args);
-const openBankChequeImage=(...args)=>domainsBankView.openBankChequeImage(...args).catch(error=>uiStatus.toast(error?.message||String(error)));
-const openCashflowBreakdown=(...args)=>domainsBankView.openCashflowBreakdown(...args);
-const refreshBankBalance=(...args)=>domainsBankController.refreshBankBalance(...args);
-const retryLocalBankSnapshot=(...args)=>domainsBankController.retryLocalBankSnapshot(...args);
-const saveBankBridgeToken=(...args)=>domainsBankController.saveBankBridgeToken(...args);
-const selectBankBridgeAccount=(...args)=>domainsBankController.selectBankBridgeAccount(...args);
-const setBankAccountView=(...args)=>domainsBankView.setBankAccountView(...args);
-const setBankAutoRefresh=(...args)=>domainsBankController.setBankAutoRefresh(...args);
-const setBankDataView=(...args)=>domainsBankView.setBankDataView(...args);
-const setBankDateBoundary=(...args)=>domainsBankView.setBankDateBoundary(...args);
-const setBankDateMode=(...args)=>domainsBankView.setBankDateMode(...args);
-const setBankSearch=(...args)=>domainsBankView.setBankSearch(...args);
-const toggleBankSyncOptions=(...args)=>domainsBankView.toggleBankSyncOptions(...args);
-const bankSearch=createLazyDeferredSearchUpdater(value=>{ui.bankSearchValue=value},setBankSearch);
+export function createBankActions({bankCommands,bankPresentation,importFinanceConnections,ui,toast,search=null}){
+const acknowledgeMissingBankTransaction=(...args)=>bankCommands.acknowledgeMissingBankTransaction(...args);
+const configureBankBridge=()=>bankCommands.configureBankBridge({
+  token:document.getElementById('bankBridgeTokenInput')?.value||'',
+  userCode:document.getElementById('bankUserCodeInput')?.value||'',
+  password:document.getElementById('bankPasswordInput')?.value||'',
+  businessBranchNumber:document.getElementById('bankBusinessBranchNumberInput')?.value||'',
+  businessAccountNumber:document.getElementById('bankBusinessAccountNumberInput')?.value||'',
+  homeBranchNumber:document.getElementById('bankHomeBranchNumberInput')?.value||'',
+  homeAccountNumber:document.getElementById('bankHomeAccountNumberInput')?.value||'',
+});
+const deleteBankBridgeCredentials=(...args)=>bankCommands.deleteBankBridgeCredentials(...args);
+const exportBankChequeDiagnostics=(...args)=>bankCommands.exportBankChequeDiagnostics(...args);
+const openBankChequeImage=(...args)=>bankPresentation.openBankChequeImage(...args).catch(error=>toast(error?.message||String(error)));
+const openCashflowBreakdown=(...args)=>bankPresentation.openCashflowBreakdown(...args);
+const refreshBankBalance=(...args)=>bankCommands.refreshBankBalance(...args);
+const retryLocalBankSnapshot=(...args)=>bankCommands.retryLocalBankSnapshot(...args);
+const saveBankBridgeToken=()=>{
+  const input=document.getElementById('bankBridgeTokenInput'),token=input?.value?.trim()||'';
+  if(token&&input)input.value='';
+  return bankCommands.saveBankBridgeToken(token);
+};
+const selectBankBridgeAccount=(...args)=>bankCommands.selectBankBridgeAccount(...args);
+const setBankAccountView=(...args)=>bankPresentation.setBankAccountView(...args);
+const setBankAutoRefresh=(...args)=>bankCommands.setBankAutoRefresh(...args);
+const setBankDataView=(...args)=>bankPresentation.setBankDataView(...args);
+const setBankDateBoundary=(...args)=>bankPresentation.setBankDateBoundary(...args);
+const setBankDateMode=(...args)=>bankPresentation.setBankDateMode(...args);
+const setBankSearch=(...args)=>bankPresentation.setBankSearch(...args);
+const toggleBankSyncOptions=(...args)=>bankPresentation.toggleBankSyncOptions(...args);
+const bankSearch=search??createLazyDeferredSearchUpdater(value=>{ui.bankSearchValue=value},setBankSearch);
 return {
   'cashflow-breakdown':element=>openCashflowBreakdown(element.dataset.clickArg0),
   'cashflow-breakdown-date':element=>{openCashflowBreakdown(element.dataset.changeArg0,element.value,element)},
