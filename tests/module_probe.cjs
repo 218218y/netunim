@@ -149,7 +149,13 @@ if (input.mode==='instrument') {
   const manager=scope.analyze(ast,{ecmaVersion:2024,sourceType:'module'}), known=new Set(input.names), edits=[];
   for(const {identifier:id}of manager.globalScope.through)if(known.has(id.name)){
     const parent=parents.get(id), shorthand=parent?.type==='Property'&&parent.shorthand;
-    edits.push([id.start,id.end,(shorthand?id.name+':':'')+'__netunimProbe.'+id.name]);
+    const access='__netunimProbe.'+id.name;
+    // Free calls have no object receiver. Rewriting them to proxy.method()
+    // changes this and makes native Window APIs reject an illegal receiver.
+    // Capability methods already preserve their receiver in publicBindings.
+    const freeCall=parent?.type==='CallExpression'&&parent.callee===id
+      ||parent?.type==='TaggedTemplateExpression'&&parent.tag===id;
+    edits.push([id.start,id.end,(shorthand?id.name+':':'')+(freeCall?'(0,'+access+')':access)]);
   }
   let result=input.expression;
   for(const [a,b,replacement]of edits.sort((a,b)=>b[0]-a[0]))result=result.slice(0,a)+replacement+result.slice(b);

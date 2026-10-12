@@ -71,3 +71,13 @@ Loaded old assets require refresh to participate in the new owner lifecycle.
 - Full branch CI covers the wider browser, PostgreSQL, Windows, offline and
   multitab regressions before merge. No schema, RPC, provider or journal-format
   change is part of this stage.
+
+The full gate also exposed a test-probe receiver defect: discovering a capability
+timer name caused a free native timer call in another test to become a member
+call on the probe Proxy. Chromium rejected that foreign receiver. A before-fix
+probe regression proves the changed `this`; expression instrumentation now keeps
+free calls unbound while capability wrappers retain their own method receivers.
+The correction exists only in temporary test instrumentation, with no production
+probe API or changes to the Morning workflow. The static fallback contract now
+checks the actual owner-to-browser boundary and unchanged lease/heartbeat policy
+instead of requiring direct I/O names inside the owner.
