@@ -109,3 +109,11 @@ test('invalid ports and callbacks fail before scheduling', () => {
   assert.throws(() => f.task.schedule(null), /run_required/);
   assert.equal(f.jobs.size, 0);
 });
+
+test('individual wait overrides the default without invalid input cancelling an existing task',async()=>{
+  const f=fixture(),calls=[];
+  f.task.schedule(()=>calls.push('owned'),1000);
+  assert.equal([...f.jobs.values()][0].delay,1000);
+  for(const wait of [-1,NaN,Infinity])assert.throws(()=>f.task.schedule(()=>{},wait),/delay_required/);
+  assert.equal(f.jobs.size,1);f.fire();await f.task.drain();assert.deepEqual(calls,['owned']);
+});

@@ -323,7 +323,7 @@ const syncDocument=createSyncDocument({
 
 
 storageV2Coordinator.configure({
-  storageBrowser,syncDocument,saveRuntime:storagePersistence.runtime,checksRuntime:checks.runtime,model,session,checksSession,files,
+  storageBrowser,syncDocument,saveRuntime:storagePersistence.runtime,checksRuntime:checks.runtime,backupRuntime:storageBackup.runtime,model,session,checksSession,files,
   captureLegacyWorkbook,
   stateNormalization,domainRevisions,sharedChecksV2Composition,sharedChecksV2,
   cloudTransport,cloudAuth,mainStorageV2,verifyStorageV2AccountMarker:()=>verifyStorageV2AccountMarker(),

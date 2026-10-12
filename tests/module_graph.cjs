@@ -47,8 +47,17 @@ for(const app of ['kupa','orders']){
         assert.ok(parameter?.type==='ObjectPattern'&&parameter.properties.length<=2,relative+': Finance browser effects exceed two platform collaborators');
       }
       const resourceKey=node.type==='MemberExpression'?node.property?.name:relative==='assets/js/state/contexts.js'&&node.type==='Property'?node.key?.name:null;
-      if(['cloudSavePromise','storageV2CloudSavePromise','cloudPollTimer','cloudRecoveryTimer','cloudRecoveryAttempt','saveQueue'].includes(resourceKey))
+      if(['cloudSavePromise','storageV2CloudSavePromise','cloudPollTimer','cloudRecoveryTimer','cloudRecoveryAttempt','saveQueue','autoBackupTimer','pendingAutoBackupPayload','startupLocalServicesPromise'].includes(resourceKey))
         assert.fail(relative+': Main cloud/save resources belong to their explicit owners');
+      if(node.type==='FunctionDeclaration'&&node.id?.name==='createAutomaticBackupRuntime')
+        assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=5,relative+': automatic backup owner requires focused ports');
+      if(relative==='assets/js/storage/backup.js'&&node.type==='FunctionDeclaration'&&node.id?.name==='createStorageBackup'){
+        assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=(app==='kupa'?7:3),relative+': backup adapter collaborators must stay focused');
+        const api=node.body.body.findLast(statement=>statement.type==='ReturnStatement')?.argument;
+        assert.ok(api?.type==='ObjectExpression'&&api.properties.length<=(app==='kupa'?9:5),relative+': backup public API must not expose private retention/naming helpers');
+      }
+      if(relative==='assets/js/storage/backup.js'&&node.type==='Identifier'&&!(parent?.type==='MemberExpression'&&parent.property===node&&!parent.computed))
+        assert.ok(!['setTimeout','clearTimeout','setInterval','clearInterval'].includes(node.name),relative+': backup scheduling belongs to the runtime owner');
       if(app==='orders'&&node.type==='MemberExpression'&&['saveTimer','sharedChecksSaveTimer','checksPullPromise','checksSavePromise'].includes(node.property?.name))
         assert.fail(relative+': save and Checks sync resources belong to their runtimes, not context fields');
       if(app==='kupa'&&node.type==='MemberExpression'&&['ordersFinanceReadPromise','sharedChecksSaveTimer','sharedChecksSavePromise','sharedChecksPullPromise'].includes(node.property?.name))

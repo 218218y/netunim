@@ -36,10 +36,11 @@ export function createDebouncedTask({delay, onError, timers=globalThis}) {
       .finally(() => { current = null; execute(); });
   }
 
-  /** @param {()=>unknown} run */
-  function schedule(run) {
+  /** @param {()=>unknown} run @param {number} [wait] */
+  function schedule(run, wait=delay) {
     if (disposed) return false;
     if (typeof run !== 'function') throw new TypeError('debounced_task_run_required');
+    if (!Number.isFinite(wait) || wait < 0) throw new TypeError('debounced_task_delay_required');
     cancel();
     const task = {run, timer:/** @type {number|null} */(null), ready:false};
     pending = task;
@@ -49,7 +50,7 @@ export function createDebouncedTask({delay, onError, timers=globalThis}) {
         task.timer = null;
         task.ready = true;
         execute();
-      }, delay);
+      }, wait);
     } catch (error) {
       pending = null;
       onError(error);

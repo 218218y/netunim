@@ -715,3 +715,10 @@ disposal fences late publication, and drainage includes renewal requests and
 accepted editor receipts. Strict input contracts preserve credential strings.
 See [Credit capability ownership](KUPA_CREDIT_CAPABILITY.md) for evidence, native
 retained-journal verification and the remaining scope.
+
+Both automatic local backup paths now own captured targets, detached snapshots,
+serialized work and private wakeups. Proven wrong-target writes and Kupa
+wrong-directory verification cleanup are fixed; V2 source quiescence drains
+accepted backup commands. The redundant Kupa startup service promise alias is
+removed. See [automatic backup ownership](AUTOMATIC_BACKUP_OWNERSHIP.md) for
+contracts, native file/journal evidence and the remaining folder/UI scope.

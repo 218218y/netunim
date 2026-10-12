@@ -38,14 +38,17 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
 
   function configure(next){
     if(ports)throw new Error('orders_storage_v2_already_configured');
-    for(const name of ['main','checks'])for(const method of ['cancelPending','drain']){
+    for(const name of ['main','checks','backup'])for(const method of ['cancelPending','drain']){
       if(typeof next.saveRuntime?.[name]?.[method]!=='function')throw new TypeError(`orders_save_runtime_${name}_${method}_required`);
     }
     ports=next;
     const p=requirePorts();
     async function quiesceSaves(){
       p.saveRuntime.main.cancelPending();p.saveRuntime.checks.cancelPending();
+      p.saveRuntime.backup.cancelPending();
       await Promise.all([p.saveRuntime.main.drain(),p.saveRuntime.checks.drain()]);
+      // Accepted Main/Checks completion can submit a later backup wakeup.
+      p.saveRuntime.backup.cancelPending();await p.saveRuntime.backup.drain();
     }
     fencedRecovery=createStorageV2FencedRecovery({app:'orders',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,refreshOwnerBinding:()=>owner.refresh(),
       authenticatedOwner:()=>p.cloudAuth.loadSession()?.user?.id||null,readProtocolState:()=>p.cloudTransport.readStorageProtocolState(),

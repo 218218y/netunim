@@ -20,7 +20,6 @@ return {
     cloudConflictPending:false,
     cloudAuthNoDocument:false,
     startupCloudHydrating:false,
-    startupLocalServicesPromise:null,
     localFileConflictPending:false,
     cloudConnectAction:'open'
   },
@@ -70,9 +69,7 @@ return {
     rootDirHandle:null,
     backupRootDirHandle:null,
     dataFileHandle:null,
-    backupsDirHandle:null,
-    autoBackupTimer:null,
-    pendingAutoBackupPayload:null
+    backupsDirHandle:null
   },
   tab:{
     primaryTab:true,

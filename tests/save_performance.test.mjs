@@ -100,18 +100,22 @@ test('normalized cloud projection stays detached without a V1 browser snapshot c
   assert.equal(browser.browserStateRecord,undefined);
 });
 
-test('backup ACK fast path skips directory scans but retains the latest payload and rechecks a changed directory',async()=>{
+test('backup ACK fast path skips directory scans but retains the latest payload and rechecks a changed directory',async t=>{
   let scans=0,writes=0;
   const directory=()=>({async *entries(){scans++},getFileHandle:async()=>({}),removeEntry:async()=>{}});
   const model={},normalizer=createStateNormalization({model});model.state=normalizer.normalizeState({notes:[{id:'A',content:'first'}]});
   const files={backupsDirHandle:directory()},session={dbRevision:10,serverInfo:{}};let stored;
-  const api=createStorageBackup({files,model,session,...normalizer,writeJsonHandle:async(h,payload)=>{stored=clone(payload);writes++},readJsonHandle:async()=>clone(stored)});
+  let clock=Date.now(),wakeup=null;t.mock.method(Date,'now',()=>clock);
+  const timers={setTimeout:run=>{wakeup=run;return 1},clearTimeout:()=>{wakeup=null}};
+  const api=createStorageBackup({files,model,session,...normalizer,timers,writeJsonHandle:async(h,payload)=>{stored=clone(payload);writes++},readJsonHandle:async()=>clone(stored)});
   try{
     assert.ok(await api.backupSnapshotToComputer());const initialScans=scans;assert.equal(writes,1);
     model.state.notes[0].content='second';await api.backupSnapshotToComputer();
     model.state.notes[0].content='latest';await api.backupSnapshotToComputer();
-    assert.equal(scans,initialScans);assert.equal(writes,1);assert.equal(files.pendingAutoBackupPayload.notes[0].content,'latest');
-    files.backupsDirHandle=directory();assert.ok(await api.backupSnapshotToComputer());assert.ok(scans>initialScans);assert.equal(writes,2);
+    assert.equal(scans,initialScans);assert.equal(writes,1);assert.equal(api.runtime.isPending(),true);
+    model.state.notes[0].content='mutation after capture';clock+=12*60*60*1000+1;
+    wakeup();await api.runtime.drain();assert.equal(stored.notes[0].content,'latest');assert.equal(writes,2);
+    files.backupsDirHandle=directory();assert.ok(await api.backupSnapshotToComputer());assert.ok(scans>initialScans);assert.equal(writes,3);
   }finally{api.clearPendingAutomaticBackup()}
 });
 

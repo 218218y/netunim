@@ -127,9 +127,7 @@ return {
     folderWritePrepared:false,
     folderWritePending:false,
     folderForceBackupPending:false,
-    folderWritePromise:null,
-    autoBackupTimer:null,
-    pendingAutoBackupPayload:null
+    folderWritePromise:null
   },
   tab:{
     primaryTab:true,

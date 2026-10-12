@@ -83,8 +83,7 @@ async function boot(){
   // Optional browser/folder services no longer delay the first recovered view.
   // They still finish before remote hydration/automatic file opening so backup
   // target selection keeps its existing ordering and ownership.
-  session.startupLocalServicesPromise=localServices.start();
-  await session.startupLocalServicesPromise;
+  await localServices.start();
   await cloudStartup.hydrate();
   if(localEngineActive)await connectionStartup.openLocal();
 }
