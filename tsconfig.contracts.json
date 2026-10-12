@@ -13,6 +13,8 @@
     "types": []
   },
   "files": [
+    "netunim-orders/document-bridge/maintenance-process-owner.mjs",
+    "tests/fixtures/checked-maintenance-process.mjs",
     "netunim-orders/document-bridge/file-lock-owner.mjs",
     "tests/fixtures/checked-file-lock-owner.mjs",
     "netunim-orders/document-bridge/pdf-index-reader.mjs",

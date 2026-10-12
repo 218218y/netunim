@@ -590,6 +590,14 @@ Two native contender processes and 100 scoped cycles extend the checked contract
 Legacy PID metadata remains readable; transient tokens do not change index or
 business wire formats. See [file-lock ownership](DOCUMENT_FILE_LOCK_OWNERSHIP.md).
 
+Manual Document maintenance now also owns its start probe, child messages,
+coalesced stop handshake, close proof and bounded disposal. Before-change
+production-function tests proved launch after shutdown and leaked worker IPC on
+init failure; native workers now drain a held synthetic commit and terminate on
+failure without orphaned IPC. Status rereads the manual owner after scheduled
+lock observation. Shutdown refuses teardown until drainage is established. See
+[maintenance process ownership](DOCUMENT_MAINTENANCE_PROCESS_OWNERSHIP.md).
+
 ## Major completion stages from the current code
 
 These are bounded completion tracks, not a restart of completed refactors.
@@ -598,7 +606,7 @@ and CSS. Each slice needs concrete evidence/contracts and its appropriate gate.
 
 | Order | Remaining stage | Exit criterion |
 | --- | --- | --- |
-| 1 | Finish Bridge responsibility boundaries: Document maintenance child lifetime, index write/search ownership; then Bank HTTP/auth/vault and session/provider orchestration | Small public APIs; native process/file and endpoint/failure tests; existing provider retry/fallback semantics preserved |
+| 1 | Finish Bridge responsibility boundaries: Document index write/search ownership and scheduled maintenance/installer process boundaries; then Bank HTTP/auth/vault and session/provider orchestration | Small public APIs; native process/file and endpoint/failure tests; existing provider retry/fallback semantics preserved |
 | 2 | Complete application capability APIs and runtime ownership: Orders Finance/Checks, Kupa Dashboard/Bank queries, remaining shell and Shared/finance listeners/jobs | Explicit commands/queries and start/dispose; no broad app context, stale callback publication or duplicate jobs |
 | 3 | Extend strict contracts to real transaction/RPC/business consumers: journal/IDB callers, Finance lease callers, Morning/Calendar commands and capability ports | Implementation bodies and negative consumers fail on mismatch; unknown payload validation and historical fixtures stay covered |
 | 4 | Canonical SQL deployment sources and compatibility inventory | Deterministic generated-current checks; immutable deployed migrations/receipts; removal only with consumer evidence and restore coverage |

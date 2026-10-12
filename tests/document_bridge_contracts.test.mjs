@@ -53,8 +53,8 @@ test('manual PDF refresh is a separate search action backed by the short-lived m
   assert.match(read('netunim-orders/document-bridge/http-routes.mjs'),/documents\/pdf-index\/status/);
   assert.match(read('netunim-orders/document-bridge/http-routes.mjs'),/documents\/pdf-index\/start/);
   assert.match(read('netunim-orders/document-bridge/http-routes.mjs'),/documents\/pdf-index\/stop/);
-  assert.match(server,/spawn\(process\.execPath,\[fileURLToPath\(import\.meta\.url\),'--refresh-pdf-index','--force'\]/);
-  assert.match(server,/manualPdfMaintenance\?\.running\|\|await activePdfMaintenanceLock\(\)/);
+  assert.match(read('netunim-orders/document-bridge/maintenance-process-platform.mjs'),/spawn\(executable, \[script, '--refresh-pdf-index', '--force'\]/);
+  assert.match(server,/scheduled=await activePdfMaintenanceLock\(\);\(\{manual,cancelable\}=manualMaintenance\.view\(\)\)/);
   assert.match(server,/pdfFormIndexRefreshAbortController\?\.abort\(\)/);
   assert.match(server,/await compactPdfFormIndex\(\{pending,pdfCount:pdfFormIndexInventoryCount\}\)/);
   assert.match(client,/pdfIndexRequest\('\/documents\/pdf-index\/start'/);
