@@ -9,6 +9,8 @@ import {createFinanceBrowserEffects} from '../shared/finance-browser-effects.js'
 import {createLazyDeferredSearchUpdater} from '../shared/search-scheduler.js';
 import {createCreditConnectionDialog} from '../ui/credit-connection-dialog.js';
 import {createRuntimeTaskOwner} from '../shared/runtime-task-owner.js';
+import {createCreditCardOrderView} from '../shared/credit-card-order-view.js';
+import {esc} from '../core/values.js';
 
 // Owns Credit services, presentation and resources. Services bind before the
 // view; editing binds after record commands, without exposing the controller.
@@ -138,7 +140,15 @@ export function createKupaCreditRuntime({model,ui,platform={}}){
       readProfile:(...args)=>requireController().connectionProfile(...args),saveConnection:commands.saveCreditConnection,isActive:()=>!disposed,
     });
     const pack=createCreditActions({creditCommands:commands,domainsCreditEditor:editor,domainsCreditView:view,ui,search,isActive:()=>!disposed});
-    actions=Object.fromEntries(Object.entries(pack).map(([name,run])=>[name,(...args)=>!disposed&&run(...args)]));
+    const order=createCreditCardOrderView({
+      isActive:()=>!disposed,getSync:()=>model.state.creditSync,saveOrder:commands.saveCreditCardOrder,
+      modal:(title,body,footer)=>{
+        uiModal.modal(title,body,'',()=>{});
+        document.querySelector('#modal .modal-foot').innerHTML=footer;
+      },
+      closeModal:()=>{if(!disposed)uiModal.closeModal()},render:()=>{if(!disposed)view.renderCredit()},escapeHtml:esc,
+    });
+    actions=Object.fromEntries(Object.entries({...pack,...order.actions}).map(([name,run])=>[name,(...args)=>!disposed&&run(...args)]));
   }
 
   return {

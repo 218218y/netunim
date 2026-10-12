@@ -53,7 +53,7 @@ FLOW = r"""(async()=>{
  await controller[kupa?(kind==='bank'?'refreshBankBalance':'refreshCreditSync'):(kind==='bank'?'refreshBank':'refreshCredit')]();
  check(providers===(caseName==='valid'?1:0),'provider opened without confirmed ownership: '+providers);
  check(claims===1,'unexpected lease retry '+claims);check(releases===(caseName==='valid'?1:0),'unconfirmed/foreign lease was released '+releases);
- const warning=kupa?(kind==='bank'?bank.queries.snapshot().lastError:controller.creditSyncUiState().error):finance.queries.snapshot()[kind+'Error'];
+ const warning=kupa?(kind==='bank'?bank.queries.snapshot().lastError:credit.queries.uiState().error):finance.queries.snapshot()[kind+'Error'];
  if(caseName!=='busy')check(warning.length>0,'missing visible lease/provider error');
  if(caseName==='invalid')check(warning.includes('אישור'),'invalid grant was not classified visibly');
  check(JSON.stringify(kupa?{bank:state.bank,creditSync:state.creditSync}:checksSession.kupaCloudReadState)===projectionBefore,'lease failure replaced confirmed projection');

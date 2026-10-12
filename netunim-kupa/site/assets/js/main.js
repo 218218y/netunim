@@ -12,8 +12,6 @@ import {installLocalSiteResetPeerListener} from './shared/local-site-reset.js';
 import {assertKupaEntityInvariants} from './state/validation.js';
 import {KUPA_FINANCE_DOMAINS} from './state/revisions.js';
 import {createFinanceDerivationStore} from './shared/finance-derivations.js';
-import {esc} from './core/values.js';
-import {createCreditCardOrderView} from './shared/credit-card-order-view.js';
 import {createUiConnection} from './ui/connection.js';
 import {createStateNormalization} from './composition/state-normalization.js';
 import {createUiStatus} from './ui/status.js';
@@ -565,14 +563,11 @@ const uiEvents={bindActionEvents:(root,actions)=>bindActionEvents(root,actions,{
 
 document.getElementById('checkBankAlerts').addEventListener('click',()=>{if(uiStatus.canRunInteractiveAction('view-check-bank-alerts'))uiModal.modal('התאמות צ׳קים בבנק',checkBankReviewMarkup(model.state.checks),'סגור',()=>uiModal.closeModal(true))});
 
-const creditCardOrderView=createCreditCardOrderView({getSync:()=>model.state.creditSync,saveOrder:(...args)=>credit.commands.saveCreditCardOrder(...args),modal:(title,body,footer)=>{uiModal.modal(title,body,'',()=>{});document.querySelector('#modal .modal-foot').innerHTML=footer},closeModal:()=>uiModal.closeModal(),render:()=>credit.renderCredit(),escapeHtml:esc});
-
 const uiActions=composeActionRegistry([
   {name:'checks',actions:checks.actions},
   bank.actionPack(),
   {name:'shell',actions:createShellActions({uiModal,uiNavigation})},
   {name:'credit',actions:credit.actions},
-  {name:'credit-order',actions:creditCardOrderView.actions},
   {name:'cash',actions:cash.actions},
   {name:'notes',actions:notes.actions},
   {name:'notes-sheet',actions:notes.sheetActions},

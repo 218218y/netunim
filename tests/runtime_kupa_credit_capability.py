@@ -52,6 +52,9 @@ with BrowserSession(ROOT/'netunim-kupa/site', 'kupa-credit-capability') as brows
         check(await second()===false&&connections.length===1,'a closed native modal cannot resubmit its retained save callback');
         uiNavigation.setPage('credit');await credit.runtime.drain();
         check(ui.currentPage==='credit'&&document.getElementById('creditSyncPanel'),'actual Credit navigation uses the capability render and wakeup ports');
+        uiActions['open-credit-card-order']();
+        check(document.getElementById('creditCardOrderList'),'Credit capability owns the actual card-order dialog');
+        uiModal.closeModal(true);
         credit.commands.openCreditConnectionModal();const retainedForm=forms.at(-1);
         fail=true;outcome=gate();
         uiActions['export-credit-data-diagnostics']({dataset:{}});
@@ -76,6 +79,7 @@ with BrowserSession(ROOT/'netunim-kupa/site', 'kupa-credit-capability') as brows
         check(uiActions['refresh-credit-sync']({dataset:{}})===false&&uiActions['open-credit-connection']({dataset:{}})===false,'retained Credit actions are closed');
         check(uiActions['credit-search']({value:'closed'})===false&&ui.creditSearchValue==='retained','retained search cannot mutate disposed UI');
         check(await credit.commands.exportCreditDataDiagnostics()===false&&requests===count,'disposed commands cannot issue another Bridge request');
+        check(uiActions['open-credit-card-order']()===false&&uiActions['credit-card-order-save']()===false,'retained card-order actions close with the Credit capability');
         check(JSON.stringify(await db.load('local:kupa'))===mainBefore&&JSON.stringify(await db.load('local:shared-checks'))===sharedBefore,'resource cleanup preserves Main and Shared raw IDB records byte-for-byte');
         const fresh=createStorageV2Runtime({app:'kupa',owner:()=> 'local',primary:()=>false,mode:()=> 'primary',validate:()=>{}}),recovered=await fresh.recoverReadOnly();
         check(recovered.state.notes.some(row=>row.id===note.id&&row.content===note.content),'fresh journal recovery retains the independent note ID/content');

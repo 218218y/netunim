@@ -142,6 +142,7 @@ export function createOrdersFinanceCapability({
       },
     });
     const creditOrder = createCreditCardOrderView({
+      isActive:() => !disposed,
       getSync:() => controller.snapshot().creditSync,
       saveOrder:(...args) => controller.saveCreditCardOrder(...args),
       modal:ownedModal.modal, closeModal:ownedModal.closeModal, render:view.renderKupa, escapeHtml:esc,

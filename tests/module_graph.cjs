@@ -75,6 +75,7 @@ for(const app of ['kupa','orders']){
         const dependency=path.relative(path.join(site,'assets','js'),target).split(path.sep).join('/');
         if(app==='kupa'&&relative==='assets/js/main.js')assert.ok(!/^(domains\/dashboard\/|domains\/(?:bank|credit)\/(?:selectors|controller|view|editor)\.js$)/.test(dependency),relative+': Dashboard and Bank selectors belong behind capability/query ports');
         if(app==='kupa'&&relative==='assets/js/composition/finance.js')assert.notEqual(dependency,'domains/credit/controller.js',relative+': Credit controller belongs to its capability');
+        if(app==='kupa'&&relative==='assets/js/main.js')assert.notEqual(dependency,'shared/credit-card-order-view.js',relative+': Credit order presentation belongs to its capability');
         if(app==='orders'&&relative==='assets/js/main.js')assert.ok(!/^(domains\/(finance|bank|checks)\/|integrations\/bank-bridge\.js|shared\/(finance-fence|finance-connection-import|credit-card-order-view)\.js)/.test(dependency),relative+': Finance and Checks internals belong to their capability compositions');
         if(relative==='assets/js/main.js')assert.ok(!/^sync\/checks(?:-persistence|-merge|-state)?\.js$/.test(dependency),relative+': Checks sync belongs to its capability');
         if(/^assets\/js\/(storage|cloud|sync)\//.test(relative)){

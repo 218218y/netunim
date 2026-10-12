@@ -11,7 +11,7 @@ diagnostic payload are preserved.
 ## Capability boundary
 
 `composition/credit.js` owns a private controller, selectors, view, existing
-manual-record editor, connection dialog, lazy search and effects instance.
+manual-record editor, connection/card-order dialogs, lazy search and effects instance.
 Its constructor receives model, UI and optional platform ports. Inert, single
 use `bindServices` receives Bridge, cloud, persistence, authority and presentation
 ports. View and editor binding retain the existing startup dependency order.
@@ -66,7 +66,9 @@ capability is strictly typed.
 
 - Node cases cover inert/private binding, provider stop versus disposal,
   renewal ownership/drain, held destructive confirmation, clipboard drain,
-  accepted manual-editor receipts and stale form callbacks.
+  accepted manual-editor receipts and stale form callbacks. Two additional
+  pre-change shared card-order tests proved late success/error modal writes;
+  Kupa Credit and Orders Finance now supply their lifecycle to that shared view.
 - A compiler mutation rejects converting actual card suffix input to a number.
 - `runtime_kupa_credit_capability.py` uses the production UI/capability, native
   forms/Blob/anchors/timers and real IndexedDB. It checks form wire input,
