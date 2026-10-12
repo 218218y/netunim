@@ -357,3 +357,12 @@ explicit text source/truncation/form geometry. An implementation mutation storin
 a string as expiry evidence fails the gate. This covers cache ownership, not full
 PDF normalization, persisted index transactions or server request authorization.
 See DOCUMENT_PREVIEW_CACHE_OWNERSHIP.md.
+
+## Persisted PDF index reader
+
+The actual `pdf-index-reader.mjs` body and negative consumers now check unknown
+JSON narrowing, asynchronous file/signature ports, synchronous normalization,
+string path identity and numeric publication metadata. Candidates expose a
+read-only entry map. An implementation mutation returning a formatted pending
+count fails the gate. Native I/O and full PDF entry normalization/write/locking
+remain separate tested slices. See DOCUMENT_PDF_INDEX_READ_CONTRACT.md.

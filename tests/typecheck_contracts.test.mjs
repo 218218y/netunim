@@ -25,6 +25,13 @@ function check(overrides=new Map()){
 }
 function describe(diagnostics){return ts.formatDiagnostics(diagnostics,{getCanonicalFileName:file=>file,getCurrentDirectory:()=>root,getNewLine:()=> '\n'})}
 
+test('the actual PDF index reader cannot publish a string as pending-count evidence',()=>{
+  const source=path.join(root,'netunim-orders/document-bridge/pdf-index-reader.mjs');
+  const original=readFileSync(source,'utf8'),changed=original.replace('return {entries, pending, pdfCount, updatedAt, signature};', 'return {entries, pending:String(pending), pdfCount, updatedAt, signature};');
+  assert.notEqual(changed,original);const diagnostics=check(new Map([[source,changed]]));
+  assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+});
+
 test('the actual preview cache cannot store a formatted string as numeric expiry evidence',()=>{
   const source=path.join(root,'netunim-orders/document-bridge/preview-text-cache.mjs');
   const original=readFileSync(source,'utf8'),changed=original.replace('entry.at = clock(); touch(key, entry);', 'entry.at = "now"; touch(key, entry);');

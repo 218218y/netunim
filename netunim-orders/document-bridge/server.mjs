@@ -14,6 +14,8 @@ import {
 } from './lib.mjs';
 import {buildPdfFormMatchAnchors,extractInteractivePdfText,PDF_FORM_MAX_BYTES,verifyNodePdfJsRuntime} from './pdf_form_index.mjs';
 import {pdfIndexNeedsInspection,pdfMaintenanceInventoryPlan,pdfMaintenanceRunLimits} from './pdf-index-policy.mjs';
+import {createPdfIndexReader,PDF_INDEX_SCHEMA} from './pdf-index-reader.mjs';
+import {createPdfIndexFilePlatform} from './pdf-index-file-platform.mjs';
 import {createDocumentBridgeRoutes} from './http-routes.mjs';
 import {createDocumentPreview,isTextPreview,trimPreviewText} from './preview-content.mjs';
 import {createPreviewTextCache} from './preview-text-cache.mjs';
@@ -39,8 +41,7 @@ const requestResults=new Map();
 const PREVIEW_TEXT_CACHE_TTL_MS=10*60*1000;
 const PREVIEW_TEXT_CACHE_MAX=24;
 const previewTextCache=createPreviewTextCache({clock:Date.now,ttlMs:PREVIEW_TEXT_CACHE_TTL_MS,maxEntries:PREVIEW_TEXT_CACHE_MAX});
-const PDF_FORM_INDEX_SCHEMA=3;
-const PDF_FORM_INDEX_LEGACY_SCHEMAS=new Set([1,2,PDF_FORM_INDEX_SCHEMA]);
+const PDF_FORM_INDEX_SCHEMA=PDF_INDEX_SCHEMA;
 const PDF_FORM_DETECTION_REVISION=2;
 const PDF_FORM_SEARCH_TEXT_REVISION=2;
 const PDF_FORM_GEOMETRY_REVISION=1;
@@ -334,20 +335,18 @@ async function stopManualPdfMaintenance(){
   }
   return pdfMaintenanceStatus();
 }
-async function pdfIndexSignature(){
-  const stats=await Promise.all([PDF_FORM_INDEX_PATH,PDF_FORM_INDEX_JOURNAL_PATH].map(file=>fs.stat(file).catch(()=>null)));
-  return stats.map(stat=>stat?`${stat.size}:${stat.mtimeMs}`:'missing').join('|');
-}
+const pdfIndexFiles=createPdfIndexFilePlatform({snapshotPath:PDF_FORM_INDEX_PATH,journalPath:PDF_FORM_INDEX_JOURNAL_PATH});
+const pdfIndexReader=createPdfIndexReader({files:pdfIndexFiles,normalizeEntry:normalizePdfIndexEntry});
+const pdfIndexSignature=()=>pdfIndexFiles.signature();
 async function readPdfIndexFiles(){
-  const stored=await readJsonFile(PDF_FORM_INDEX_PATH,null);
-  if(await existsFile(PDF_FORM_INDEX_PATH)&&(!stored||!PDF_FORM_INDEX_LEGACY_SCHEMAS.has(Number(stored.schema))||!Array.isArray(stored.entries)))throw new Error('PDF index snapshot is invalid or newer than this Bridge; leaving it untouched');
+  const candidate=await pdfIndexReader.read();
+  // Publication is synchronous and follows complete, stable candidate decoding.
+  // Retire match text for both removed and retained PDF entries on disk reload.
+  for(const key of pdfFormIndex.keys())previewTextCache.invalidate(key);
   pdfFormIndex.clear();
-  if(PDF_FORM_INDEX_LEGACY_SCHEMAS.has(Number(stored?.schema))&&Array.isArray(stored.entries))for(const raw of stored.entries){const entry=normalizePdfIndexEntry(raw);if(entry)pdfFormIndex.set(pdfIndexKey(entry.fullPath),entry)}
-  let journal='';try{journal=await fs.readFile(PDF_FORM_INDEX_JOURNAL_PATH,'utf8')}catch{}
-  if(journal)for(const line of journal.split(/\r?\n/)){if(!line.trim())continue;try{const record=JSON.parse(line);if(record?.op==='remove'){pdfFormIndex.delete(pdfIndexKey(record.fullPath));continue}if(record?.op==='upsert'){const entry=normalizePdfIndexEntry(record.entry);if(entry)pdfFormIndex.set(pdfIndexKey(entry.fullPath),entry)}}catch{}}
-  pdfFormIndexPending=Math.max(0,Number(stored?.pending)||0);pdfFormIndexInventoryCount=Math.max(0,Number(stored?.pdfCount)||0);
-  const storedUpdated=Date.parse(String(stored?.updatedAt||''));pdfFormIndexLastRefresh=Number.isFinite(storedUpdated)?storedUpdated:0;
-  pdfFormIndexLoaded=true;pdfFormIndexSignature=await pdfIndexSignature();
+  for(const [key,entry] of candidate.entries){pdfFormIndex.set(key,entry);previewTextCache.invalidate(key)}
+  pdfFormIndexPending=candidate.pending;pdfFormIndexInventoryCount=candidate.pdfCount;
+  pdfFormIndexLastRefresh=candidate.updatedAt;pdfFormIndexLoaded=true;pdfFormIndexSignature=candidate.signature;
 }
 async function loadPdfFormIndex(){
   if(pdfFormIndexLoaded&&pdfFormIndexSignature===await pdfIndexSignature())return;

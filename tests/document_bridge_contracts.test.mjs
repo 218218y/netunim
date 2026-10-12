@@ -100,7 +100,7 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.match(server,/extractInteractivePdfText/);
   assert.match(server,/buildPdfFormMatchAnchors/,'interactive PDF preview matches must retain Bridge-known page geometry');
   assert.match(server,/formAnchorsAuthoritative=formMatchInfo\.anchors\.length>0/,'an empty Bridge geometry payload must never suppress the browser PDF annotation fallback');
-  assert.match(server,/PDF_FORM_INDEX_SCHEMA=3/,'AcroForm revisions and geometry remain persisted');
+  assert.match(read('netunim-orders/document-bridge/pdf-index-reader.mjs'),/PDF_INDEX_SCHEMA = 3/,'AcroForm revisions and geometry remain persisted');
   assert.match(server,/PDF_FORM_DETECTION_REVISION=2/);
   assert.match(server,/PDF_FORM_SEARCH_TEXT_REVISION=2/);
   assert.match(server,/PDF_FORM_GEOMETRY_REVISION=1/);
