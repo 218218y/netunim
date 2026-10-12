@@ -9,10 +9,10 @@ FLOW = r"""(async()=>{
  financeAutomation.stop();syncDocument.stopCloudPolling();
  const note={id:'bank-operation-note',content:'durable before bank request'};state.notes.push(note);
  await storagePersistence.saveState('bank operation fixture',{domains:['notes'],operations:[{type:'put',collection:'notes',id:note.id,mode:'insert',index:state.notes.length-1,record:note}]});await mainStorageV2.commitPromise;
- cloudAuth.storeSupaSession({user:{id:owner},access_token:'fixture',expires_at:9999999999});let main=null,checks=null;
- cloudTransport.readSupabaseDocument=async()=>main;cloudTransport.readSharedChecksDocument=async()=>checks;
+ cloudAuth.storeSupaSession({user:{id:owner},access_token:'fixture',expires_at:9999999999});let main=null,sharedHead=null;
+ cloudTransport.readSupabaseDocument=async()=>main;cloudTransport.readSharedChecksDocument=async()=>sharedHead;
  syncDocument.rpcSaveCloudV2=async snapshot=>{main={revision:1,state:structuredClone(snapshot)};return {r:{ok:true},row:main}};
- cloudTransport.rpcSaveSharedChecksV2=async rows=>{checks={revision:1,state:{version:1,checks:structuredClone(rows),bankEvents:[]}};return {r:{ok:true},row:checks}};
+ cloudTransport.rpcSaveSharedChecksV2=async rows=>{sharedHead={revision:1,state:{version:1,checks:structuredClone(rows),bankEvents:[]}};return {r:{ok:true},row:sharedHead}};
  await storageV2Coordinator.ownerUiPorts().startStorageV2OwnerTransfer({targetOwner:owner,intent:'upload-local'});
  session.connectionMode='supabase';session.backendReady=true;session.storageProtocolBlocked=false;
  state.bank={...state.bank,source:'hapoalim',currentBalance:100,bankSyncAt:stamp,archiveInitialized:true,archiveVersion:2,feed:{accountNumber:'same-account',balance:100,syncedAt:stamp,transactions:[]}};
