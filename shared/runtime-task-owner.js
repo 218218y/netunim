@@ -17,10 +17,20 @@ export function createRuntimeTaskOwner(){
     if(typeof work!=='function')throw new TypeError('runtime_task_owner_work_required');
     // Invoke immediately: synchronous durability submission must not move to a
     // later microtask merely because its completion now has an explicit owner.
-    let result;
-    try{result=work()}catch(error){result=Promise.reject(error)}
-    const tracked=Promise.resolve(result).finally(()=>pending.delete(tracked));
+    /** @type {(value:T|PromiseLike<T>)=>void} */
+    let complete=()=>{};
+    /** @type {(error:unknown)=>void} */
+    let fail=()=>{};
+    /** @type {Promise<T>} */
+    const completion=new Promise((resolve,reject)=>{complete=resolve;fail=reject});
+    const tracked=completion.finally(()=>pending.delete(tracked));
     pending.add(tracked);
+    try{complete(work())}catch(error){
+      pending.delete(tracked);fail(error);
+      // No returned promise exists when synchronous command validation throws.
+      // Keep that exception synchronous and settle any already observing drain.
+      void tracked.catch(()=>{});throw error;
+    }
     return tracked;
   }
   async function drain(){while(pending.size)await Promise.allSettled([...pending])}

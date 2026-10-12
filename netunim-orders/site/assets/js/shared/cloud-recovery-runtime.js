@@ -29,7 +29,7 @@ export function createCloudRecoveryRuntime({isEligible,run,onError,timers=global
       task.timer=timers.setTimeout(()=>{
         if(queued!==task)return;
         queued=null;
-        if(eligible())void work.run(run).catch(onError);
+        if(eligible())void work.run(async()=>run()).catch(onError);
       },delay);
     }catch(error){queued=null;onError(error);return false}
     return true;

@@ -5,6 +5,14 @@ import {createStateNormalization} from '../netunim-kupa/site/assets/js/compositi
 
 const noop=()=>{},tick=async()=>{for(let i=0;i<20;i++)await Promise.resolve()};
 const gate=()=>{let resolve;const promise=new Promise(r=>{resolve=r});return {promise,resolve}};
+test('Kupa Main retains synchronous invariant rejection before journal submission',()=>{
+  const model={state:{}},normalization=createStateNormalization({model});model.state=normalization.normalizeState({notes:[{id:'N',content:'retained'}]});
+  model.state.notes.push({...model.state.notes[0]});const session={localGeneration:0};let submitted=false;
+  const api=createStoragePersistence({...normalization,model,session,tab:{primaryTab:true},storageV2Primary:()=>true,
+    persistImmediateBrowserSnapshot:()=>{submitted=true;return true}});
+  assert.throws(()=>api.saveState('invalid'));
+  assert.equal(submitted,false);assert.equal(session.localGeneration,0);assert.equal(api.runtime.isPending(),false);
+});
 test('Kupa Main drain covers accepted fast saves before their deferred cloud work starts',async t=>{
   const model={state:{}},normalization=createStateNormalization({model});model.state=normalization.normalizeState({notes:[{id:'N',content:'retained'}]});
   const session={connectionMode:'supabase',backendReady:true,localGeneration:0,dbRevision:1},jobs=[],entered=gate(),release=gate(),writes=[];

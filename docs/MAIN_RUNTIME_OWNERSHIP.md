@@ -15,8 +15,9 @@ the same early return; its completion is now included in quiescence.
 
 `shared/runtime-task-owner.js` tracks accepted work from command entry, including
 preflight. Invocation remains synchronous so the existing emergency journal
-submission does not move to a later microtask. Result values and rejected
-results remain observable by callers. `drain()` waits for completion and for
+submission does not move to a later microtask. Synchronous command validation
+still throws synchronously; task results and rejected promises remain observable
+by callers. `drain()` waits for completion and for
 work accepted by a continuation of an earlier operation. It is not a durability
 receipt and does not turn failure into success. `close()` rejects new work and
 never aborts an accepted operation.

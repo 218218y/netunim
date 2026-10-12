@@ -8,7 +8,7 @@ const tick=async()=>{for(let i=0;i<20;i++)await Promise.resolve()};
 
 test('task ownership preserves synchronous submission and the original result',async()=>{
   const owner=createRuntimeTaskOwner(),held=gate();let submitted=false;
-  const result=owner.run(()=>{submitted=true;return held.promise});
+  const result=owner.run(()=>{submitted=true;assert.equal(owner.isPending(),true);return held.promise});
   assert.equal(submitted,true);assert.equal(owner.isPending(),true);
   let drained=false;const drain=owner.drain().then(()=>{drained=true});await tick();assert.equal(drained,false);
   held.resolve('original receipt');assert.equal(await result,'original receipt');await drain;assert.equal(owner.isPending(),false);
@@ -29,9 +29,9 @@ test('closing rejects new tasks while accepted failure remains observable and dr
   assert.equal(owner.isPending(),false);
 });
 
-test('synchronous failures stay rejected task results and do not poison later work',async()=>{
+test('synchronous command failures remain synchronous and do not poison later work',async()=>{
   const owner=createRuntimeTaskOwner(),failure=new Error('synchronous failure');
-  await assert.rejects(owner.run(()=>{throw failure}),error=>error===failure);
+  assert.throws(()=>owner.run(()=>{throw failure}),error=>error===failure);
   assert.equal(await owner.run(()=>42),42);await owner.drain();assert.equal(owner.isPending(),false);
 });
 
