@@ -137,6 +137,18 @@ class WindowsDeploymentContracts(unittest.TestCase):
             self.assertIn('dynamic code', result.stdout)
 
 
+@unittest.skipUnless(os.name == "nt", "CurrentUser DPAPI vault coverage runs in the required Windows CI job")
+class WindowsBankVaultContracts(unittest.TestCase):
+    def test_native_configuration_vault_and_current_user_protection(self):
+        result = subprocess.run(["node", "--test", str(ROOT / "tests/bank_connection_vault.test.mjs")],
+                                cwd=ROOT, capture_output=True, timeout=45,
+                                creationflags=subprocess.CREATE_NO_WINDOW)
+        output = (result.stdout + result.stderr).decode("utf8", errors="replace")
+        self.assertEqual(result.returncode, 0, output)
+        self.assertIn("Windows CurrentUser DPAPI round-trips", output)
+        self.assertNotIn("# SKIP", output)
+
+
 @unittest.skipUnless(os.name == "nt", "Production Document Bridge startup runs in the required Windows CI job")
 class WindowsDocumentBridgeRuntimeContracts(unittest.TestCase):
     def test_staged_runtime_uses_its_http_modules_and_preserves_private_file_gates(self):

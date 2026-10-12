@@ -20,6 +20,8 @@
     "types": []
   },
   "files": [
+    "netunim-kupa/bank-bridge/operation-owner.mjs",
+    "tests/fixtures/checked-bank-bridge-owner.mjs",
     "netunim-orders/document-bridge/everything-result-codec.mjs",
     "netunim-orders/document-bridge/pdf-inventory.mjs",
     "tests/fixtures/checked-pdf-inventory.mjs",
