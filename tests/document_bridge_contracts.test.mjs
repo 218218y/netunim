@@ -107,7 +107,7 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.match(server,/fingerprintCurrent&&detectionCurrent&&cached&&!cached\.hasForm&&!cached\.failed/,'only current-fingerprint negative PDF records may suppress on-demand form reinspection');
   assert.match(policy,/if\(Number\(existing\.detectionRevision\)<detectionRevision\)return true/);
   assert.match(policy,/return Number\(existing\.searchTextRevision\)<searchTextRevision/);
-  assert.match(server,/previewTextCache\.delete\(key\)/,'form-index upgrades invalidate stale preview text cache entries');
+  assert.match(server,/previewTextCache\.invalidate\(key\)/,'form-index upgrades invalidate stale preview text cache entries');
   assert.doesNotMatch(server,/geometryCurrent=.*formFields/,'missing geometry must not trigger a library-wide reindex');
   assert.match(server,/includePageText:!geometryOnly/,'legacy preview migration must recover geometry without re-reading every page text layer');
   assert.match(server,/extractPdfOnDemand\(fullPath/,'preview enrichment must run in a short-lived process');
