@@ -24,6 +24,12 @@ function check(overrides=new Map()){
   return ts.getPreEmitDiagnostics(program);
 }
 function describe(diagnostics){return ts.formatDiagnostics(diagnostics,{getCanonicalFileName:file=>file,getCurrentDirectory:()=>root,getNewLine:()=> '\n'})}
+test('the actual Orders local write cannot replace confirmed success with display text',()=>{
+ const source=path.join(root,'netunim-orders/site/assets/js/domains/finance/credit-connection-owner.js'),original=readFileSync(source,'utf8');
+ const changed=original.replace('return { ok: true };',"return { ok: 'saved' };");assert.notEqual(changed,original);
+ const diagnostics=check(new Map([[source,changed]]));
+ assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+});
 test('the actual Credit connection readout cannot replace local profile evidence with display text',()=>{
  const source=path.join(root,'netunim-kupa/site/assets/js/domains/credit/connection-owner.js'),original=readFileSync(source,'utf8');
  const changed=original.replace('local: record(local)',"local: 'yes'");assert.notEqual(changed,original);

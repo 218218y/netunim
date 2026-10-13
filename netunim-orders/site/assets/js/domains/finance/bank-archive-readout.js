@@ -285,6 +285,6 @@ export function createOrdersBankArchiveReadout({
   return Object.freeze({
     queries: Object.freeze({ matching, ready, revision: projectionRevision, readSnapshot }),
     commands: Object.freeze({ publish, update }),
-    runtime: Object.freeze({ ensure, pause, resume, dispose, drain }),
+    runtime: Object.freeze({ ensure, pause, resume, dispose, drain, isPending:() => owned.size > 0 }),
   });
 }

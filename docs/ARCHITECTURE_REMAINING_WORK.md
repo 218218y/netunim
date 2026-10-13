@@ -3,7 +3,7 @@
 This is the current inventory after Bank/Credit Bridge model separation and
 Orders Finance document-command and both applications' Bank archive readout
 extraction, Kupa Bank snapshot commands, shared Finance lease renewal ownership
-and Kupa Credit local connection ownership. The chronological
+and both applications' Credit local connection ownership. The chronological
 [refactor record](ARCHITECTURE_REFACTOR.md) documents completed slices; older
 remaining-scope paragraphs describe their stage's starting point.
 
@@ -19,7 +19,8 @@ remaining-scope paragraphs describe their stage's starting point.
   account/enrichment, cheque files, status/diagnostics and shutdown have owners
   and native tests. Broad Bank/Credit libraries and adapter facades are retired.
 - Orders Finance documents have a command owner, required real leases and
-  current write APIs. The controller has 20 collaborators, down from 30, and no
+  current write APIs. The controller has 21 explicit collaborators, down from 30
+  overall, including the added local Credit connection owner, and no
   embedded-Finance or two-write Bank fallback.
 - Orders Bank archive cache, flights and projection revisions belong to a strict
   read owner. Failed reads retain accepted siblings; account handoff suppresses
@@ -43,6 +44,12 @@ remaining-scope paragraphs describe their stage's starting point.
   successful closure. The controller has 16 collaborators, down from 17, and
   the obsolete modal-close service port is removed. See
   [Credit local connections](KUPA_CREDIT_CONNECTION_OWNER.md).
+- Orders Credit connections have a strict owner for pairing/status, local
+  diagnostics and vault commands. Forms own their pairing/identity/listeners, respect native close visibility and capture
+  authority before confirmation. Finance joins controller, local connection,
+  archive and confirmation work after disposal. Native IDB and immutable
+  issuer/Bank/input policies protect this slice. See
+  [Orders local connections](ORDERS_CREDIT_CONNECTION_OWNER.md).
 - Strict bodies and negative consumers cover critical storage JSON/receipts,
   scopes, resource ports and selected business/Bridge boundaries. Coverage is
   selective, not a complete application type proof.
