@@ -130,3 +130,14 @@ test('replaced or disposed Credit forms cannot read another form or submit retai
   dialog.dispose();document.getElementById=()=>assert.fail('a disposed callback read browser fields');
   assert.equal(await forms[1].save(),false);assert.equal(saved.length,1);
 });
+
+test('accepted Credit profile save cannot close a replacement connection form',async t=>{
+  const f=fixture(),held=gate(),entered=gate();f.ports.presentation.closeModal=()=>f.events.push('closed replacement');
+  f.ports.bridge.saveCreditProfile=()=>{entered.resolve();return held.promise};f.bind();
+  const forms=[],fieldIds=['ccProvider','ccLabel','ccOwner','ccAccount','ccUsername','ccId','ccCard6','ccPassword'];let nodes;
+  const previous=globalThis.document;globalThis.document={getElementById:id=>nodes[id],querySelector:selector=>nodes[selector]};t.after(()=>{globalThis.document=previous});
+  const dialog=createCreditConnectionDialog({isActive:()=>f.credit.runtime.isActive(),armModalDraftGuard:noop,readProfile:()=>null,saveConnection:f.credit.commands.saveCreditConnection,closeModal:()=>f.events.push('closed replacement'),
+    modal:(_title,_body,_label,save)=>{nodes=Object.fromEntries(fieldIds.map(id=>[id,Object.assign(new EventTarget(),{value:id==='ccProvider'?'max':''})]));for(const selector of ['.cc-username','.cc-id','.cc-card6','.cc-isracard-note'])nodes[selector]={hidden:false};nodes.creditConnectionForm=Object.assign(new EventTarget(),{isConnected:true});nodes.modalBackdrop={classList:{contains:()=>true}};forms.push(save)}});
+  dialog.open();const pending=forms[0]();await entered.promise;dialog.open();held.resolve();await pending;
+  assert.ok(!f.events.includes('closed replacement'),'completion of old form closed replacement modal');dialog.dispose();f.credit.runtime.dispose();
+});

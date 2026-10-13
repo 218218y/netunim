@@ -7,7 +7,7 @@ function providerFields(provider){return provider==='isracard'||provider==='amex
 
 // The connection form owns its DOM registrations. Provider commands receive
 // explicit inputs and never read browser fields themselves.
-export function createCreditConnectionDialog({modal,armModalDraftGuard,readProfile,saveConnection,isActive}){
+export function createCreditConnectionDialog({modal,armModalDraftGuard,readProfile,saveConnection,closeModal,isActive}){
   let resources=null,generation=0;
   function openCreditConnectionModal(profileId=''){
     if(!isActive())return false;
@@ -32,7 +32,9 @@ export function createCreditConnectionDialog({modal,armModalDraftGuard,readProfi
     modal(isEdit?'עריכת חיבור אשראי':'חיבור חדש לחברת אשראי',body,isEdit?'שמור חיבור':'הוסף חיבור',async()=>{
       if(!current())return false;
       const payload=readCreditConnectionInput(existing?.profileId||uid('CCP'),field=>document.getElementById(field).value);
-      return saveConnection(payload);
+      const saved=await saveConnection(payload);
+      if(saved===true&&current())closeModal();
+      return saved;
     });
     const select=document.getElementById('ccProvider');form=document.getElementById('creditConnectionForm');
     const update=()=>{if(!current())return;const fields=new Set(providerFields(select.value));document.querySelector('.cc-username').hidden=!fields.has('username');document.querySelector('.cc-id').hidden=!fields.has('id');document.querySelector('.cc-card6').hidden=!fields.has('card6Digits');const note=document.querySelector('.cc-isracard-note');if(note)note.hidden=!(select.value==='isracard'||select.value==='amex')};

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createDomainsCreditController} from '../netunim-kupa/site/assets/js/domains/credit/controller.js';
+import {createKupaCreditControllerFixture as createDomainsCreditController} from './kupa_credit_controller_fixture.mjs';
 import {createFinanceBrowserEffects} from '../shared/finance-browser-effects.js';
 
 const noop=()=>{},gate=()=>{let resolve;const promise=new Promise(r=>{resolve=r});return {promise,resolve}};

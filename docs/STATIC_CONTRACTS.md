@@ -1,5 +1,13 @@
 # Incremental JavaScript contracts
 
+Kupa Credit's local connection owner checks its actual body and negative
+consumers: device identity, asynchronous unknown Bridge values, boolean
+confirmations, synchronous download effects, profile projections and private
+capture/drain APIs. A body mutation rejects textual local-profile evidence.
+This grants neither a Finance lease nor a journal ACK, and does not cover full
+provider payloads or the remaining controller. See
+[Credit connection ownership](KUPA_CREDIT_CONNECTION_OWNER.md).
+
 Finance lease renewal checks the actual canonical owner and both generated
 imports. Negative consumers reject unconfirmed grants, async account authority,
 wrong resource/token/epoch shapes and synthetic cleanup ACKs. A body mutation

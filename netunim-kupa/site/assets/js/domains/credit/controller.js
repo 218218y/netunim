@@ -6,31 +6,29 @@ import {createPollingTask} from '../../shared/runtime-polling.js';
 import {createCreditPublication} from './publication.js';
 import {normalizeCreditAutoMode,normalizeCreditFetchMode,resolveCreditAutoSyncMode} from '../../shared/credit-sync-policy.js';
 import {uid} from '../../core/values.js';
-import {creditCardMappingKey,creditSyncScrapeSelection,mergeCreditSyncResult,normalizeCreditSync,CREDIT_CONNECTOR_CONTRACT_VERSION} from './sync-feed.js';
+import {creditCardMappingKey,creditSyncScrapeSelection,mergeCreditSyncResult,normalizeCreditSync} from './sync-feed.js';
 
-const CREDIT_BRIDGE_VERSION=73;
 const CREDIT_AUTO_RETRY_MS=24*60*60*1000;
 
-function supportedCreditBridge(status){const version=Number(status?.bridgeVersion||0),contract=Number(status?.contractVersion||0);return version>=CREDIT_BRIDGE_VERSION&&contract>=CREDIT_CONNECTOR_CONTRACT_VERSION}
-
-export function createDomainsCreditController({model,saveState,toast,render,renderStatus=render,bridge,preferences,effects,closeModal,confirmDialog,autoScope,captureOperation:readOperation,timers=globalThis,refreshFinanceCloudSnapshot=async()=>({verified:true,state:model.state}),saveFinancePatch=async()=>({saved:false}),claimFinanceSyncLease=async()=>({acquired:true}),releaseFinanceSyncLease=async()=>true}){
+export function createDomainsCreditController({model,saveState,toast,render,renderStatus=render,bridge,preferences,connections,confirmDialog,autoScope,captureOperation:readOperation,timers=globalThis,refreshFinanceCloudSnapshot=async()=>({verified:true,state:model.state}),saveFinancePatch=async()=>({saved:false}),claimFinanceSyncLease=async()=>({acquired:true}),releaseFinanceSyncLease=async()=>true}){
   if(typeof autoScope!=='function')throw new Error('credit_auto_scope_required');
   if(typeof readOperation!=='function')throw new Error('credit_operation_scope_required');
   if(!preferences||!['read','setEnabled','setMode','markAttempt','reset'].every(key=>typeof preferences[key]==='function'))throw new Error('credit_preferences_port_required');
-  if(!effects||!['writeText','saveJson'].every(key=>typeof effects[key]==='function'))throw new TypeError('credit_effects_port_required');
+  for(const method of ['snapshot','supported','connectionProfile','capture','tokenConfigured','refreshStatus'])if(typeof connections?.queries?.[method]!=='function')throw new TypeError(`credit_connection_query_${method}_required`);
+  for(const method of ['copyDiagnostics','exportData','saveConnection','deleteConnection'])if(typeof connections?.commands?.[method]!=='function')throw new TypeError(`credit_connection_command_${method}_required`);
   const work=createRuntimeTaskOwner(),heartbeats=new Set();let disposed=false;
   const claimLease=(...args)=>tracked(claimFinanceSyncLease,...args);
   const captureOperation=()=>{
     const assertOwner=readOperation();
     return ()=>{if(disposed)throw Object.assign(new Error('credit_disposed'),{code:'FINANCE_OPERATION_SCOPE_CHANGED'});assertOwner()};
   };
-  const local={busy:false,status:null,error:'',errorAt:null,bridgeError:'',bridgeErrorAt:null,autoScheduled:false,preferenceWarning:'',preferenceWarningCode:''};
+  const local={busy:false,error:'',errorAt:null,autoScheduled:false,preferenceWarning:'',preferenceWarningCode:''};
   const publication=createCreditPublication({commit:saveFinancePatch,read:refreshFinanceCloudSnapshot,publish:state=>{model.state.creditSync=normalizeCreditSync(state.creditSync)},checkpoint:message=>saveState(message,{operations:[{type:'set',field:'creditSync',value:model.state.creditSync}]})});
   let automaticActive=true,automaticOwner=null,preferencesPaused=false;
   const automaticAllowed=()=>{
     const scope=autoScope();if(disposed||!automaticActive||typeof scope!=='string'||!scope.length)return false;
     if(automaticOwner===null)automaticOwner=scope;
-    return scope===automaticOwner&&autoEnabled()&&!!bridge.getBridgeToken();
+    return scope===automaticOwner&&autoEnabled()&&connections.queries.tokenConfigured();
   };
   const autoTask=createPollingTask({timers,canRun:automaticAllowed,delay:autoDelay,run:receipt=>tracked(runAutomaticCredit,receipt),onError:error=>console.error('credit auto refresh',error),onState:({timer})=>{local.autoScheduled=timer!==null}});
   function preferenceResult(result){
@@ -51,81 +49,31 @@ export function createDomainsCreditController({model,saveState,toast,render,rend
   function markAutoAttempt(){return preferenceResult(preferences.markAttempt())}
   function autoAttemptDelayMs(){const settings=readPreferences();if(!settings)return Infinity;const n=settings.attemptAt;return n?Math.max(0,n+CREDIT_AUTO_RETRY_MS-Date.now()):0}
   function autoAttemptReady(){return autoAttemptDelayMs()===0}
-  function creditSyncUiState(){const settings=readPreferences();return {...local,...publication.status(),autoEnabled:!preferencesPaused&&settings?.enabled===true,autoMode:normalizeCreditAutoMode(settings?.mode),sync:normalizeCreditSync(model.state.creditSync)}}
-  async function copySafeCreditDiagnostics(){
-    try{
-      const result=await bridge.creditDiagnostics();
-      if(disposed)return false;
-      const events=Array.isArray(result?.events)?result.events:[];
-      const content=JSON.stringify({contractVersion:result?.contractVersion||CREDIT_CONNECTOR_CONTRACT_VERSION,events},null,2);
-      await effects.writeText(content);
-      if(disposed)return false;
-      toast(`הועתק אבחון טכני בטוח (${events.length} אירועים מסוננים)`);
-      return true;
-    }catch(error){
-      if(!disposed)toast(error?.message||'העתקת האבחון נכשלה');
-      return false;
-    }
-  }
-
+  function creditSyncUiState(){const settings=readPreferences();return {...connections.queries.snapshot(),...local,...publication.status(),autoEnabled:!preferencesPaused&&settings?.enabled===true,autoMode:normalizeCreditAutoMode(settings?.mode),sync:normalizeCreditSync(model.state.creditSync)}}
+  const refreshCreditBridgeStatus=connections.queries.refreshStatus;
+  const supportedCreditBridge=connections.queries.supported;
+  const connectionProfile=connections.queries.connectionProfile;
+  const copySafeCreditDiagnostics=connections.commands.copyDiagnostics;
+  const saveCreditConnection=connections.commands.saveConnection;
+  const deleteCreditConnection=connections.commands.deleteConnection;
   async function exportCreditDataDiagnostics(){
     if(local.busy)return false;
-    if(!bridge.getBridgeToken()){toast('יש לצמד את הקופה ל-Bank Bridge לפני ייצוא אבחון אשראי');return false}
-    if(local.status&&!supportedCreditBridge(local.status)){toast('יש להריץ מחדש install_bank_bridge.bat לפני ייצוא אבחון נתוני אשראי');return false}
-    try{const result=await bridge.creditDataDiagnostics();if(!result?.available||!result?.data)throw new Error(result?.message||'עדיין אין אבחון נתוני אשראי מקומי. בצע רענון אשראי ולאחריו נסה שוב.');if(disposed)return false;effects.saveJson(result.filename,result.data,'netunim-credit-data-diagnostics.json');toast(`קובץ אבחון אשראי JSON נוצר מהסנכרון האחרון (${Number(result.cardCount)||0} כרטיסים)`);return true}catch(error){if(disposed)return false;toast(error?.message||'ייצוא אבחון האשראי נכשל');return false}
+    if(!connections.queries.tokenConfigured()){toast('?? ???? ?? ????? ?-Bank Bridge ???? ????? ????? ?????');return false}
+    const {status}=connections.queries.snapshot();
+    if(status&&!supportedCreditBridge(status)){toast('?? ????? ???? install_bank_bridge.bat ???? ????? ????? ????? ?????');return false}
+    return connections.commands.exportData();
   }
-
-  async function refreshCreditBridgeStatus({quiet=true}={}){
-    try{
-      const status=await bridge.creditStatus();
-      if(disposed)return null;
-      local.status=status;local.bridgeError='';local.bridgeErrorAt=null;
-      if(!supportedCreditBridge(status)){local.bridgeError='Bank Bridge ישן. יש להריץ שוב install_bank_bridge.bat במחשב זה.';local.bridgeErrorAt=new Date().toISOString()}
-      if(!quiet)render();
-      return status;
-    }catch(e){if(disposed)return null;local.status=null;local.bridgeError=e?.message||String(e);local.bridgeErrorAt=new Date().toISOString();if(!quiet)render();return null}
-  }
-
-  function profileFromState(profileId){return normalizeCreditSync(model.state.creditSync).profiles.find(p=>p.profileId===profileId)||null}
-  function profileFromBridge(profileId){return (local.status?.profiles||[]).find(p=>p.profileId===profileId)||null}
-
-
-  function connectionProfile(profileId){
-    const localProfile=profileFromBridge(profileId),profile=localProfile||profileFromState(profileId);
-    return profile?{...profile,local:!!localProfile}:null;
-  }
-  async function saveCreditConnection(payload){
-    try{
-      await bridge.saveCreditProfile(payload);
-      if(disposed)return false;
-      closeModal(true);
-      await refreshCreditBridgeStatus();
-      if(disposed)return false;
-      toast('חיבור האשראי נשמר במחשב');render();
-      return true;
-    }catch(error){
-      if(!disposed)toast(error?.message||'שמירת חיבור האשראי נכשלה');
-      return false;
-    }
-  }
-
-  async function deleteCreditConnection(profileId){
-    if(!await confirmDialog('למחוק חיבור מהמחשב?','פרטי ההתחברות המוצפנים של החיבור יימחקו מהמחשב הזה. נתוני הסנכרון שכבר נשמרו בקופה/בענן לא יימחקו ולכן החיבור עדיין עשוי להופיע כ״הגדר גם במחשב זה״. למחיקה מלאה והתחלה מחדש השתמש ב״איפוס מלא״.',{confirmText:'מחק חיבור'}))return;
-    if(disposed)return false;
-    try{await bridge.deleteCreditProfile(profileId);if(disposed)return false;await refreshCreditBridgeStatus();if(disposed)return false;toast('החיבור המקומי נמחק');render()}catch(e){if(disposed)return false;toast(e?.message||'מחיקת החיבור נכשלה')}
-  }
-
 
   async function resetCreditSync(){
     if(local.busy)return toast('כבר מתבצע סנכרון אשראי');
     let assertCurrent;
-    try{assertCurrent=captureOperation()}catch(error){toast(error.message);return false}
+    try{const assertOwner=captureOperation(),assertConnection=connections.queries.capture();assertCurrent=()=>{assertOwner();assertConnection()}}catch(error){toast(error.message);return false}
     if(!await confirmDialog('לאפס את כל סנכרון האשראי?','האיפוס ימחק את כל חיבורי חברות האשראי המוצפנים מהמחשב הזה וגם את נתוני הסנכרון, השיוכים והשגיאות השמורים בקופה/בענן. תוספות ידניות חדשות שנוצרו לאחר המעבר לסנכרון יישארו, משום שהן שכבה משלימה ולא מקור חלופי.',{confirmText:'אפס והתחל מחדש'}))return;
     if(disposed)return false;
     local.busy=true;local.error='';local.errorAt=null;render();
     try{
       assertCurrent();
-      const status=local.status||await refreshCreditBridgeStatus();
+      const status=connections.queries.snapshot().status||await refreshCreditBridgeStatus();
       assertCurrent();
       if(!status)throw new Error(local.bridgeError||'Bank Bridge אינו זמין');
       if(!supportedCreditBridge(status))throw new Error('יש לשדרג את Bank Bridge לפני איפוס מלא של סנכרון האשראי');
@@ -148,7 +96,8 @@ export function createDomainsCreditController({model,saveState,toast,render,rend
     local.busy=true;local.error='';local.errorAt=null;if(auto)renderStatus();else render();
     let leaseToken='',leaseHeld=false,lease=null,heartbeat=null,autoCreditSync=model.state.creditSync,assertCurrent,assertOwner;
     try{
-      assertOwner=captureOperation();assertCurrent=()=>{assertOwner();heartbeat?.assertCurrent()};
+      const assertConnection=connections.queries.capture();
+      assertOwner=captureOperation();assertCurrent=()=>{assertOwner();assertConnection();heartbeat?.assertCurrent()};
       if(auto){
         const latest=await refreshFinanceCloudSnapshot({assertCurrent});
         assertCurrent();
@@ -166,7 +115,7 @@ export function createDomainsCreditController({model,saveState,toast,render,rend
       heartbeat=startFinanceLeaseHeartbeat({...lease,assertCurrent:assertOwner},claimLease,{setTimer:timers.setTimeout.bind(timers),clearTimer:timers.clearTimeout.bind(timers)});
       heartbeats.add(heartbeat);
       if(auto){const latest=await refreshFinanceCloudSnapshot({assertCurrent});assertCurrent();if(!allowed())return false;if(!latest?.verified)throw new Error('לא ניתן לאמת מחדש את זמן סנכרון האשראי לאחר תפיסת הנעילה');autoCreditSync=latest.state?.creditSync||autoCreditSync;if(!due(autoCreditSync?.syncedAt))return true}
-      const status=local.status||await refreshCreditBridgeStatus();
+      const status=connections.queries.snapshot().status||await refreshCreditBridgeStatus();
       assertCurrent();
       if(auto&&!allowed())return false;
       if(!status)throw new Error(local.bridgeError||'Bank Bridge אינו זמין');
@@ -262,7 +211,7 @@ export function createDomainsCreditController({model,saveState,toast,render,rend
   async function runAutomaticCredit({isCurrent}){
     if(local.busy||!due(model.state.creditSync?.syncedAt)||!autoAttemptReady())return false;
     const scope=autoScope();
-    const status=local.status||await refreshCreditBridgeStatus();if(!(status?.profiles||[]).length)return;
+    const status=connections.queries.snapshot().status||await refreshCreditBridgeStatus();if(!(status?.profiles||[]).length)return;
     if(!isCurrent()||autoScope()!==scope||!automaticAllowed())return false;
     return refreshCreditSync({interactive:false,auto:true,isCurrent});
   }
@@ -281,8 +230,8 @@ export function createDomainsCreditController({model,saveState,toast,render,rend
       heartbeats.clear();return true;
     },
   };
-  const commands=Object.fromEntries([refreshCreditBridgeStatus,copySafeCreditDiagnostics,exportCreditDataDiagnostics,saveCreditConnection,
-    deleteCreditConnection,resetCreditSync,refreshCreditSync,retryCreditPublication,saveCreditCardOrder,setCreditCardMapping]
-    .map(method=>[method.name,(...args)=>tracked(method,...args)]));
+  const methods={refreshCreditBridgeStatus,copySafeCreditDiagnostics,exportCreditDataDiagnostics,saveCreditConnection,
+    deleteCreditConnection,resetCreditSync,refreshCreditSync,retryCreditPublication,saveCreditCardOrder,setCreditCardMapping};
+  const commands=Object.fromEntries(Object.entries(methods).map(([name,method])=>[name,(...args)=>tracked(method,...args)]));
   return {...commands,creditSyncUiState,connectionProfile,setCreditAutoRefresh,setCreditAutoMode,maybeAutoRefreshCreditSync,startAutoSync,stopAutoSync,runtime};
 }

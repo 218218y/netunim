@@ -1,9 +1,10 @@
+import {createDomainsCreditController as actualCreditController} from '../netunim-kupa/site/assets/js/domains/credit/controller.js';
 import {startFinanceLeaseHeartbeat} from '../shared/finance-lease-heartbeat.js';
 import {createFinanceBrowserEffects} from '../shared/finance-browser-effects.js';
 import {createCreditPreferences} from '../netunim-kupa/site/assets/js/platform/credit-preferences.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createDomainsCreditController} from '../netunim-kupa/site/assets/js/domains/credit/controller.js';
+import {createKupaCreditControllerFixture as createDomainsCreditController} from './kupa_credit_controller_fixture.mjs';
 import {createCloudTransport} from '../netunim-kupa/site/assets/js/cloud/transport.js';
 import {createKupaFinanceCloudPorts} from '../netunim-kupa/site/assets/js/composition/finance-cloud.js';
 import {createFinanceOperationScope,createFinanceManualQueue} from '../shared/finance-fence.js';
@@ -126,7 +127,7 @@ test('credit no-op save cannot publish or clear the previous data',async t=>{
 });
 
 test('credit rejects construction without an operation authorization port',()=>{
-  assert.throws(()=>createDomainsCreditController({effects:createFinanceBrowserEffects(),preferences:createCreditPreferences(),autoScope:()=> 'A'}),/credit_operation_scope_required/);
+  assert.throws(()=>actualCreditController({effects:createFinanceBrowserEffects(),preferences:createCreditPreferences(),autoScope:()=> 'A'}),/credit_operation_scope_required/);
 });
 
 test('credit reset confirmation remains bound to the account that opened it',async t=>{

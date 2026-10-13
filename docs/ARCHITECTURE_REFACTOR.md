@@ -928,3 +928,15 @@ Explicit local grants allocate no heartbeat. The old export is retired without
 a compatibility facade; SQL, TTL, provider and durable publication policy stay
 unchanged. Focused, native IDB, PostgreSQL and strict mutation/consumer fixtures
 protect the boundary. See [Finance lease runtime](FINANCE_LEASE_RUNTIME.md).
+
+Kupa Credit now has a private local-connection owner outside its financial
+controller. Ten baseline failures proved pairing/read/form races; status/profile
+state, diagnostics and connection commands now have captured device identity,
+latest-read generation, accepted-work drain and disposal. The controller drops
+direct connection/effect calls and decreases from 17 to 16 collaborators. Native
+forms own successful closure, preventing old saves from closing new forms;
+the obsolete modal-close service port is retired. Device permits combine with
+existing account authority for refresh/reset without changing issuer retry,
+fallback, Finance merge or journal policy. Strict body/consumer/mutation checks,
+five immutable policy hashes, capability regressions and native production IDB
+scenarios protect the slice. See [Kupa Credit connections](KUPA_CREDIT_CONNECTION_OWNER.md).

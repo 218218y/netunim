@@ -2,7 +2,8 @@
 
 This is the current inventory after Bank/Credit Bridge model separation and
 Orders Finance document-command and both applications' Bank archive readout
-extraction, Kupa Bank snapshot commands and shared Finance lease renewal ownership. The chronological
+extraction, Kupa Bank snapshot commands, shared Finance lease renewal ownership
+and Kupa Credit local connection ownership. The chronological
 [refactor record](ARCHITECTURE_REFACTOR.md) documents completed slices; older
 remaining-scope paragraphs describe their stage's starting point.
 
@@ -36,6 +37,12 @@ remaining-scope paragraphs describe their stage's starting point.
   uses account authority independently of publication fences; automatic
   preflights suppress former-account network error details. The old heartbeat
   facade is retired. See [lease runtime](FINANCE_LEASE_RUNTIME.md).
+- Kupa Credit local status/profile/diagnostic operations have a private strict
+  owner with pairing generations, accepted-work drain and disposal. Financial
+  refresh/reset combine device and account authority; native forms own their
+  successful closure. The controller has 16 collaborators, down from 17, and
+  the obsolete modal-close service port is removed. See
+  [Credit local connections](KUPA_CREDIT_CONNECTION_OWNER.md).
 - Strict bodies and negative consumers cover critical storage JSON/receipts,
   scopes, resource ports and selected business/Bridge boundaries. Coverage is
   selective, not a complete application type proof.
