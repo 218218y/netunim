@@ -5,6 +5,8 @@ import {createDomainsBankSelectors} from '../domains/bank/selectors.js';
 import {createDomainsBankCache} from '../domains/bank/cache.js';
 import {createDomainsFinanceController} from '../domains/finance/controller.js';
 import {createOrdersFinanceDocumentCommands} from '../domains/finance/document-commands.js';
+import {createOrdersBankArchiveReadout} from '../domains/finance/bank-archive-readout.js';
+import {bankArchiveTargets,bankArchiveSourceRows} from '../domains/finance/bank-archive-model.js';
 import {createDomainsFinanceView} from '../domains/finance/view.js';
 import {createOrdersBankChequeImageRuntime} from '../domains/finance/bank-cheque-image-runtime.js';
 import {createFinanceConnectionImporter} from '../shared/finance-connection-import.js';
@@ -33,7 +35,7 @@ export function createOrdersFinanceCapability({
   const effects = platform.effects ?? createFinanceBrowserEffects();
   requireMethods('effects', effects, ['isOnline', 'writeText', 'saveJson', 'delay', 'dispose']);
   const bridge = createFinanceBridgeIntegration(platform.bridge ? {platform:platform.bridge} : undefined);
-  let disposed = false, cache = null, controller = null, presentation = null;
+  let disposed = false, cache = null, controller = null, presentation = null, archive = null;
   const operationScope = createFinanceOperationScope({readAccess:() => {
     const access = readAccess();
     return {...access, readable:access.readable && !disposed, writable:access.writable && !disposed};
@@ -103,21 +105,33 @@ export function createOrdersFinanceCapability({
       readout:{refresh:(...args) => cache.refreshKupaReadout(...args)},
       delay:controllerEffects.delay,
     });
+    archive = createOrdersBankArchiveReadout({
+      authority:operationScope,
+      sources:{
+        targets:() => bankArchiveTargets(checksSession.kupaCloudReadState?.bank || {}),
+        rows:() => bankArchiveSourceRows(checksSession.kupaCloudReadState?.bank || {}),
+      },
+      reads:{
+        transactions:(...args) => cloud.readBankTransactions(...args),
+        snapshot:(...args) => cloud.readBankTransactionSnapshot(...args),
+      },
+      access:{authenticated:() => !!auth.loadSession(),online:controllerEffects.isOnline},
+      revision:{read:revisions.read,touch:revisions.touchBankDisplay},
+      report:(role,error) => console.error(`orders bank display archive ${role}`,error),
+    });
     controller = createDomainsFinanceController({
-      documents,syncLeases,
-      tab, checksSession, bridge, operationScope, effects:controllerEffects, readRevision:revisions.read,
+      documents,syncLeases,archive,
+      tab, checksSession, bridge, operationScope, effects:controllerEffects,
       loadSession:auth.loadSession, toast:(...args) => { if (!disposed) toast(...args); }, getSharedChecks:() => model.state.checks,
       refreshKupaReadout:(...args) => cache.refreshKupaReadout(...args),
       syncSharedChecksFromCloud:(...args) => checks.syncSharedChecksFromCloud(...args),
       saveSharedChecksToCloud:(...args) => checks.saveSharedChecksToCloud(...args),
       checksHaveLocalWork:checks.hasLocalWork,
       syncBankTransactionsSnapshot:(...args) => cloud.syncBankTransactionsSnapshot(...args),
-      readBankTransactions:(...args) => cloud.readBankTransactions(...args),
-      readBankTransactionSnapshot:(...args) => cloud.readBankTransactionSnapshot(...args),
       setBankTransactionHandled:(...args) => cloud.setBankTransactionHandled(...args),
       acknowledgeBankTransactionMissing:(...args) => cloud.acknowledgeBankTransactionMissing(...args),
       acknowledgeBankTransactionAlert:(...args) => cloud.acknowledgeBankTransactionAlert(...args),
-      syncBankChequeImages:images.sync, touchBankDisplayRevision:revisions.touchBankDisplay,
+      syncBankChequeImages:images.sync,
     });
   }
 
@@ -215,6 +229,7 @@ export function createOrdersFinanceCapability({
       if (disposed) return false;
       disposed = true;
       controller?.stopAutoSync();
+      archive?.runtime.dispose();
       controller?.setFinanceStatusListener(() => {});
       effects.dispose();
       return true;

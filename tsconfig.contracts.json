@@ -20,6 +20,8 @@
     "types": []
   },
   "files": [
+    "netunim-orders/site/assets/js/domains/finance/bank-archive-readout.js",
+    "tests/fixtures/checked-bank-archive-readout.mjs",
     "netunim-orders/site/assets/js/domains/finance/document-publication.js",
     "tests/fixtures/checked-finance-document-publication.mjs",
     "netunim-kupa/bank-bridge/hapoalim-account-selector.mjs",

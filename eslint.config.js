@@ -46,6 +46,8 @@ const creditAdapterBoundaryFiles = [
 
 const financeDocumentBoundaryFiles = [
   'tests/orders_finance_document*.mjs',
+  'tests/orders_bank_archive*.mjs',
+  'tests/fixtures/checked-bank-archive-readout.mjs',
   'tests/orders_finance_controller_fixture.mjs',
   'tests/fixtures/checked-finance-document-publication.mjs',
 ];
