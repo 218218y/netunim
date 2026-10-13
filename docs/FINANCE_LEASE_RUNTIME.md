@@ -43,6 +43,8 @@ account details or be misclassified as a current-account network failure.
   own-account cleanup failure were reproduced before their corrections.
 - Focused regressions cover held/failed renewals, duplicate/stale callbacks,
   local grants, scope handoff, invalid identity and idempotent asynchronous stop.
+  Older model fixtures now supply complete grants with the requested resource,
+  token and server epoch; incomplete-grant rejection stays enforced.
 - Native browser lease confirmation includes a held renewal for Bank/Credit in
   both apps, with production composition, actual HTTP decoders and real IDB.
   The failed provider makes no publication; prior projection, Main/Shared

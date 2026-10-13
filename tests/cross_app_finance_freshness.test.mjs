@@ -83,7 +83,7 @@ const raceBank=createDomainsBankController({effects:createFinanceBrowserEffects(
   syncSharedChecksFromCloud:async()=>true,sharedChecksObservedSequence:()=>0,toast:()=>{},render:()=>{},
   bridge:{getBridgeToken:()=> 'paired',markAutoAttempt:()=>{},fetchBalance:async()=>{raceBankFetches++},autoEnabled:()=>true,autoAttemptDelayMs:()=>0},
   refreshFinanceCloudSnapshot:async()=>({verified:true,state:{bank:{source:'hapoalim',bankSyncAt:++raceBankReads===1?old:fresh,feed:{version:4,provider:'hapoalim',balance:200,syncedAt:raceBankReads===1?old:fresh,transactions:[]}}}}),
-  claimFinanceSyncLease:async()=>({acquired:true,leasedUntil:'2026-09-01T05:20:00.000Z'}),
+  claimFinanceSyncLease:async(leaseName,leaseToken)=>({acquired:true,leaseName,leaseToken,fenceEpoch:1,leasedUntil:'2026-09-01T05:20:00.000Z'}),
   releaseFinanceSyncLease:async()=>{raceBankReleases++;return true},
 });
 assert.equal(await raceBank.refreshBankBalance({auto:true}),true);
@@ -96,7 +96,7 @@ const raceCredit=createDomainsCreditController({effects:createFinanceBrowserEffe
   model:creditModel,saveState:async()=>true,toast:()=>{},render:()=>{},modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,
   bridge:{getBridgeToken:()=> 'test-token',creditStatus:async()=>({bridgeVersion:24,profiles:[{profileId:'p1'}]}),syncCreditCards:async()=>{raceCreditFetches++}},
   refreshFinanceCloudSnapshot:async()=>({verified:true,state:{creditSync:{version:3,mode:'synced',syncedAt:++raceCreditReads===1?old:fresh,profiles:[],errors:[],cardMappings:{}}}}),
-  claimFinanceSyncLease:async()=>({acquired:true,leasedUntil:'2026-09-01T05:20:00.000Z'}),
+  claimFinanceSyncLease:async(leaseName,leaseToken)=>({acquired:true,leaseName,leaseToken,fenceEpoch:1,leasedUntil:'2026-09-01T05:20:00.000Z'}),
   releaseFinanceSyncLease:async()=>{raceCreditReleases++;return true},
 });
 assert.equal(await raceCredit.refreshCreditSync({auto:true}),true);
