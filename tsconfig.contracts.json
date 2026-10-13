@@ -20,6 +20,9 @@
     "types": []
   },
   "files": [
+    "shared/bank-archive-read-batch.js",
+    "netunim-kupa/site/assets/js/domains/bank/archive-readout.js",
+    "tests/fixtures/checked-kupa-bank-archive.mjs",
     "netunim-orders/site/assets/js/domains/finance/bank-archive-readout.js",
     "tests/fixtures/checked-bank-archive-readout.mjs",
     "netunim-orders/site/assets/js/domains/finance/document-publication.js",

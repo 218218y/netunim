@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createDomainsBankController} from '../netunim-kupa/site/assets/js/domains/bank/controller.js';
+import {createKupaBankControllerFixture as createDomainsBankController} from './kupa_bank_controller_fixture.mjs';
 import {createFinanceBrowserEffects} from '../shared/finance-browser-effects.js';
 
 test('Kupa Bank diagnostic click failure releases the allocated URL and appended anchor', async t => {

@@ -40,7 +40,7 @@ function boundary(source, imports) {
   return ast;
 }
 test('archive ownership has six explicit ports and the projection model remains pure', () => {
-  const ast = boundary(read('bank-archive-readout'), []);
+  const ast = boundary(read('bank-archive-readout'), ['../../shared/bank-archive-read-batch.js']);
   const factory = ast.body.find(
     (row) => row.declaration?.id?.name === 'createOrdersBankArchiveReadout'
   ).declaration;
@@ -53,7 +53,7 @@ test('archive boundary rejects filesystem imports, timers and direct diagnostics
     '\nsetTimeout(() => {}, 1);',
     '\nconsole.error("private");',
   ])
-    assert.throws(() => boundary(read('bank-archive-readout') + suffix, []));
+    assert.throws(() => boundary(read('bank-archive-readout') + suffix, ['../../shared/bank-archive-read-batch.js']));
 });
 test('Finance delegates archive reads, publications and pauses without private archive resources', () => {
   const source = read('controller'),

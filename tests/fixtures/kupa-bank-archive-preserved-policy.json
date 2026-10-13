@@ -1,0 +1,37 @@
+{
+  "base": "5d3008d7147c20a7eefe142143d0499fccaf4c40",
+  "names": [
+    "canonicalJson",
+    "sameInstant",
+    "sameNumber",
+    "assertBankArchiveCoverage",
+    "accountIdOf",
+    "completeTransactionCoverage",
+    "sharedBankLastSyncAt",
+    "feedFromSnapshot",
+    "financeBankPayload",
+    "applyBridgeAccountFields",
+    "prepareBankSnapshot",
+    "commitBankSnapshot",
+    "retryLocalBankSnapshot",
+    "bankBridgeUiState",
+    "autoDelay"
+  ],
+  "policies": {
+    "canonicalJson": "f67d45a12709f2e1070bf8409e9f95bde0f7194bf4e540d431c8cf6fe5e27fc4",
+    "sameInstant": "e16cfded4c1aef6af2255384f6b93e6612cd429300de0745b07093f9494efc93",
+    "sameNumber": "732d3c696ca0f3bd7d5ed3ee5e39bd79075efdfb83f141443fa17e513b1962da",
+    "assertBankArchiveCoverage": "6af42967cd5d2dbf6cd3c8cc0b99f9d034e098de0865b4605ba4132dadd19d18",
+    "accountIdOf": "ba17cd0e964213899fadd83466c2e5bbc2aa1bdee2ee0530e1b1ea7392eb9b3c",
+    "completeTransactionCoverage": "7ac02c5ee93ec65175d854185f8903e561192c8acb53d8da0878b1a6ce0619e7",
+    "sharedBankLastSyncAt": "0ba3260b9a7b4aa5968b5bf5fa1a3a95a804f427e13ef4104b7a49fb21a00dac",
+    "feedFromSnapshot": "5d211436a8b6561c4ccb131372e7bfd43ae2b587df5a879c8409c69f369fec26",
+    "financeBankPayload": "7011ae9098ae1f41b487fb8c8751377f75e6db51b7f7c55fd7ab9cba60ebf723",
+    "applyBridgeAccountFields": "ae13c5e8d983fbc3849e948db24bff8c5feb4e0ebc67f88663d2280ad6d1c4bc",
+    "prepareBankSnapshot": "3b0053c8b9cd02ea824d16255952c3cecf0df200836c40cff224e575c0889f3a",
+    "commitBankSnapshot": "b72f06ae0d09b47a8c50f7e5c41b3659abce4d04a6eb09213ae0215f49641194",
+    "retryLocalBankSnapshot": "d31f131fa1cf7e6d2430f3fe52f340327c042f7f2fcb0fb9345b059c179bfc0e",
+    "bankBridgeUiState": "195914d20cd901a3a9d260514587f4e3ddca6c72cc760e12409419f8497f79c3",
+    "autoDelay": "e6bb40ef218da0662bfe0cff4215b5842606bf010c464b03099d9d6ae6e563bc"
+  }
+}

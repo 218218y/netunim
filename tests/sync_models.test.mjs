@@ -10,7 +10,7 @@ import {createSyncChecks as kupaChecks} from '../netunim-kupa/site/assets/js/syn
 import {createSyncChecks as orderChecks} from '../netunim-orders/site/assets/js/sync/checks.js';
 import {createCloudTransport as orderTransport} from '../netunim-orders/site/assets/js/cloud/transport.js';
 import {createDomainsBankCache as orderBankCache} from '../netunim-orders/site/assets/js/domains/bank/cache.js';
-import {createDomainsBankController as createKupaBankController} from '../netunim-kupa/site/assets/js/domains/bank/controller.js';
+import {createKupaBankControllerFixture as createKupaBankController} from './kupa_bank_controller_fixture.mjs';
 import {createSyncDocument as orderDocumentSync} from '../netunim-orders/site/assets/js/sync/document.js';
 import {createUiCloud as orderUiCloud} from '../netunim-orders/site/assets/js/ui/cloud.js';
 import {ORDERS_CLOUD_BASE_KEY} from './retired_business_storage_keys.mjs';

@@ -26,8 +26,14 @@ function check(overrides=new Map()){
 function describe(diagnostics){return ts.formatDiagnostics(diagnostics,{getCanonicalFileName:file=>file,getCurrentDirectory:()=>root,getNewLine:()=> '\n'})}
 
 test('the actual Bank archive verification cannot replace transaction rows with a numeric status',()=>{
- const source=path.join(root,'netunim-orders/site/assets/js/domains/finance/bank-archive-readout.js'),original=readFileSync(source,'utf8');
+ const source=path.join(root,'shared/bank-archive-read-batch.js'),original=readFileSync(source,'utf8');
  const changed=original.replace(/rows:\s*await pair\.rows/,'rows:200');assert.notEqual(changed,original);
+ const diagnostics=check(new Map([[source,changed]]));assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+});
+
+test('the actual Kupa archive cache cannot publish a numeric status as transaction rows',()=>{
+ const source=path.join(root,'netunim-kupa/site/assets/js/domains/bank/archive-readout.js'),original=readFileSync(source,'utf8');
+ const changed=original.replace(/rows:\s*record\.rows/,'rows:200');assert.notEqual(changed,original);
  const diagnostics=check(new Map([[source,changed]]));assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
 });
 

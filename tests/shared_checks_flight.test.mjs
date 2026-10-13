@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {createSharedChecksFlight} from '../shared/shared-checks-flight.js';
 import {createSyncChecks as ordersChecks} from '../netunim-orders/site/assets/js/sync/checks.js';
 import {createSyncChecks as kupaChecks} from '../netunim-kupa/site/assets/js/sync/checks.js';
-import {createDomainsBankController} from '../netunim-kupa/site/assets/js/domains/bank/controller.js';
+import {createKupaBankControllerFixture as createDomainsBankController} from './kupa_bank_controller_fixture.mjs';
 
 const noop=()=>{};
 function gate(){let resolve;const promise=new Promise(done=>{resolve=done});return {promise,resolve}}

@@ -1,4 +1,6 @@
 import {createDomainsBankController} from '../domains/bank/controller.js';
+import {createKupaBankArchiveReadout} from '../domains/bank/archive-readout.js';
+import {bankArchiveTargets} from '../domains/bank/archive-model.js';
 import {createDomainsBankView} from '../domains/bank/view.js';
 import {createFinanceBrowserEffects} from '../shared/finance-browser-effects.js';
 import {createBankActions} from '../ui/action-packs/bank.js';
@@ -44,8 +46,19 @@ export function createKupaBankCapability({
     };
   }
   const scope = {capture:() => capture('capture'), captureRead:() => capture('captureRead')};
+  const archive = createKupaBankArchiveReadout({
+    authority:scope,
+    sources:{targets:() => bankArchiveTargets(model.state.bank || {})},
+    reads:{
+      transactions:(...args) => cloud.readTransactions(...args),
+      snapshot:(...args) => cloud.readTransactionSnapshot(...args),
+    },
+    access:{cloud:() => session.connectionMode === 'supabase'},
+    publication:() => { revisions.touchDisplay(); render(); },
+    report:(role,error) => console.error(`bank display archive ${role}`,error),
+  });
   const controller = createDomainsBankController({
-    model, session, bridge, operationScope:scope,
+    model, session, bridge, operationScope:scope, archive,
     effects:{saveJson:(...args) => { ready(); return effects.saveJson(...args); }},
     timers:platform.timers ?? globalThis, autoScope:() => disposed ? null : authority.automaticAccess(),
     sharedChecksHaveLocalWork:(...args) => checks.hasLocalWork(...args),
@@ -55,9 +68,8 @@ export function createKupaBankCapability({
     refreshFinanceCloudSnapshot:(...args) => cloud.refreshFinance(...args), saveFinancePatch:(...args) => cloud.saveFinancePatch(...args),
     claimFinanceSyncLease:(...args) => cloud.claimLease(...args), releaseFinanceSyncLease:(...args) => cloud.releaseLease(...args),
     saveBankSyncSnapshot:(...args) => cloud.saveSnapshot(...args), mergeBankTransactions:(...args) => cloud.mergeTransactions(...args),
-    syncBankTransactionsSnapshot:(...args) => cloud.syncTransactions(...args), readBankTransactions:(...args) => cloud.readTransactions(...args),
-    readBankTransactionSnapshot:(...args) => cloud.readTransactionSnapshot(...args), acknowledgeBankTransactionMissing:(...args) => cloud.acknowledgeMissing(...args),
-    syncBankChequeImages:(...args) => cloud.syncImages(...args), touchBankDataRevision:(...args) => revisions.touchData(...args), touchBankDisplayRevision:(...args) => revisions.touchDisplay(...args),
+    syncBankTransactionsSnapshot:(...args) => cloud.syncTransactions(...args), acknowledgeBankTransactionMissing:(...args) => cloud.acknowledgeMissing(...args),
+    syncBankChequeImages:(...args) => cloud.syncImages(...args), touchBankDataRevision:(...args) => revisions.touchData(...args),
   });
   function enter(method, ...args) {
     if (disposed) return Promise.resolve(false);
@@ -119,11 +131,12 @@ export function createKupaBankCapability({
     start() { if (disposed) return false; ready(); return controller.startAutoSync(); },
     stop:controller.stopAutoSync,
     wake() { if (disposed) return false; ready(); return controller.maybeAutoRefreshBankBalance(); },
-    async drain() { await controller.runtime.drain(); while (pending.size) await Promise.all([...pending]); },
+    async drain() { await controller.runtime.drain(); await archive.runtime.drain(); while (pending.size) await Promise.all([...pending]); },
     dispose() {
       if (disposed) return false;
       disposed = true;
       controller.runtime.dispose();
+      archive.runtime.dispose();
       binding?.search.cancel();
       binding?.view.runtime.dispose();
       effects.dispose();

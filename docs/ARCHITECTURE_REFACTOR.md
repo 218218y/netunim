@@ -895,3 +895,13 @@ browser tests retain exact Main/Shared IndexedDB journals under each failure.
 Provider, archive-window, receipt and persisted-format policy is preserved. See
 [Orders Bank archive readout](ORDERS_BANK_ARCHIVE_READOUT.md) and
 [remaining major work](ARCHITECTURE_REMAINING_WORK.md).
+
+Kupa Bank archive now owns scoped caches, hydration flights and accepted read
+obligations outside its controller. Four pre-change failures proved early read
+completion/lease release, former-account error reporting and uncommitted archive
+display during a refresh. A shared strict paired-read algorithm joins accepted
+siblings for both apps, while separate owners preserve Kupa's local/file save,
+acknowledgement and render policy. Composition owns archive disposal and drain;
+controller collaborators decrease from 28 to 26. Fifteen immutable algorithms,
+body/consumer/boundary guards and five native browser/IDB scenarios protect this
+slice. See [Kupa Bank archive ownership](KUPA_BANK_ARCHIVE_OWNERSHIP.md).

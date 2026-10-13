@@ -1,7 +1,7 @@
 import {createFinanceBrowserEffects} from '../shared/finance-browser-effects.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createDomainsBankController} from '../netunim-kupa/site/assets/js/domains/bank/controller.js';
+import {createKupaBankControllerFixture as createDomainsBankController} from './kupa_bank_controller_fixture.mjs';
 import {createCloudTransport} from '../netunim-kupa/site/assets/js/cloud/transport.js';
 import {createBankChequeImageStorage} from '../shared/bank-cheque-images.js';
 import {createFinanceOperationScope} from '../shared/finance-fence.js';
@@ -29,6 +29,40 @@ function fixture(t,{hold=null,home=false}={}){
   };
   return {ports,model,before,counts,entered,release,create:()=>createDomainsBankController({...ports,effects:createFinanceBrowserEffects()}),handoff:()=>{owner='B';epoch++},logout:()=>{owner=null;epoch++},relogin:()=>{epoch++},secondary:()=>{primary=false}};
 }
+
+test('Kupa archive hydration retains its accepted snapshot sibling after rows fail',async t=>{
+  const f=fixture(t),held=deferred();f.ports.readBankTransactions=async()=>{throw Error('rows failed')};f.ports.readBankTransactionSnapshot=()=>held.promise;
+  const api=f.create(),pending=api.ensureBankDisplayArchive();let settled=false;void pending.then(()=>{settled=true});
+  try{await new Promise(resolve=>setImmediate(resolve));assert.equal(settled,false,'accepted snapshot must settle before hydration')}
+  finally{held.resolve(null);await pending;api.runtime.dispose();await api.runtime.drain()}
+});
+
+test('Kupa archive rejection after handoff suppresses former-account error details',async t=>{
+  const f=fixture(t),held=deferred(),entered=deferred(),reports=[];t.mock.method(console,'error',(...args)=>reports.push(args.map(String).join(' ')));
+  f.ports.readBankTransactions=()=>{entered.resolve();return held.promise};const api=f.create();
+  const pending=api.ensureBankDisplayArchive().catch(error=>{assert.equal(error.code,'FINANCE_OPERATION_SCOPE_CHANGED');return false});
+  await entered.promise;f.handoff();held.resolve(Promise.reject(Error('private former archive failure')));
+  await pending;assert.deepEqual(reports,[]);api.runtime.dispose();
+});
+
+test('Kupa Bank verification retains accepted reads and its lease through drain',async t=>{
+  const f=fixture(t),held=deferred(),entered=deferred();f.ports.readBankTransactions=async()=>{throw Error('verification failed')};f.ports.readBankTransactionSnapshot=()=>{entered.resolve();return held.promise};
+  const api=f.create(),pending=api.refreshBankBalance();await entered.promise;
+  let drained=false;const drain=api.runtime.drain().then(()=>{drained=true});
+  try{await new Promise(resolve=>setImmediate(resolve));assert.equal(f.counts.release||0,0,'lease cannot release before accepted snapshot');assert.equal(drained,false,'drain cannot abandon accepted snapshot')}
+  finally{held.resolve(null);await pending;await drain;api.runtime.dispose()}
+  assert.equal(f.counts.release,1);
+});
+
+test('Kupa Bank refresh invalidates earlier hydration before an uncommitted archive is displayed',async t=>{
+  const f=fixture(t,{hold:'provider'}),held=deferred(),entered=deferred();let reads=0;
+  f.ports.readBankTransactions=()=>{if(++reads===1){entered.resolve();return held.promise}return Promise.resolve([])};
+  f.ports.saveBankSyncSnapshot=async()=>{throw Error('Bank snapshot failed')};
+  const api=f.create(),hydrating=api.ensureBankDisplayArchive();await entered.promise;
+  const refreshing=api.refreshBankBalance();await f.entered.promise;
+  try{held.resolve([transaction('uncommitted')]);await hydrating;assert.deepEqual(api.bankBridgeUiState().feed.transactions,[],'background read cannot expose uncommitted archive')}
+  finally{f.release.resolve();await refreshing;api.runtime.dispose();await api.runtime.drain()}
+});
 
 for(const [name,change] of [['account handoff',f=>f.handoff()],['logout',f=>f.logout()],['same-account relogin',f=>f.relogin()],['leadership loss',f=>f.secondary()]]){
   for(const auto of [false,true])test(`bank ${name} after ${auto?'automatic':'manual'} provider entry prevents publication`,async t=>{
