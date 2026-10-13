@@ -169,10 +169,11 @@ function bankDateFilterMarkup(){const range=bankDateFilterActive(),label=range?'
 
 
   const creditConnectionView=createCreditConnectionView({controller,modal,closeModal,confirmDialog,render:renderKupa});
+  const {openCreditConnection,saveCreditConnection,deleteCreditConnection,resetCreditSync}=creditConnectionView;
   const connectionRuntime={
     isPending:()=>creditConnectionView.runtime.isPending()||bankConnectionView.runtime.isPending(),
     drain:async()=>{await Promise.all([creditConnectionView.runtime.drain(),bankConnectionView.runtime.drain()])},
     dispose:()=>{const closed=creditConnectionView.runtime.dispose();bankConnectionView.runtime.dispose();return closed},
   };
-  return {connectionRuntime,renderKupa,openCashflowBreakdown,openBankChequeImage,setKupaSection,setBankAccountView,setBankDataView,setBankTransactionHandled,createBankDocument,acknowledgeBankMissing,setBankSearch,setBankDateMode,setBankDateBoundary,toggleBankSyncOptions,saveBankToken,configureBank,selectBankAccount,deleteBankCredentials,exportBankChequeDiagnostics,refreshBank,setBankAuto,refreshCredit,copySafeCreditDiagnostics,exportCreditDataDiagnostics,setCreditAuto,setCreditAutoMode,setCreditView,setCreditAccountFilter,setCreditProviderFilter,setCreditCardFilter,setCreditDetailUpcoming,setCreditDetailMonth,setCreditDetailFocus,clearCreditDetailFocus,setCreditDateRange,setCreditDetailPeriod,setCreditSearch,toggleCreditSyncOptions,setCardMapping,acknowledgeCreditSettlementWarning,...creditConnectionView};
+  return {connectionRuntime,renderKupa,openCashflowBreakdown,openBankChequeImage,setKupaSection,setBankAccountView,setBankDataView,setBankTransactionHandled,createBankDocument,acknowledgeBankMissing,setBankSearch,setBankDateMode,setBankDateBoundary,toggleBankSyncOptions,saveBankToken,configureBank,selectBankAccount,deleteBankCredentials,exportBankChequeDiagnostics,refreshBank,setBankAuto,refreshCredit,copySafeCreditDiagnostics,exportCreditDataDiagnostics,setCreditAuto,setCreditAutoMode,setCreditView,setCreditAccountFilter,setCreditProviderFilter,setCreditCardFilter,setCreditDetailUpcoming,setCreditDetailMonth,setCreditDetailFocus,clearCreditDetailFocus,setCreditDateRange,setCreditDetailPeriod,setCreditSearch,toggleCreditSyncOptions,setCardMapping,acknowledgeCreditSettlementWarning,openCreditConnection,saveCreditConnection,deleteCreditConnection,resetCreditSync};
 }

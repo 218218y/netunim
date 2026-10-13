@@ -62,7 +62,9 @@ independent data restores after reload. Focused ownership, strict mutation,
 architecture and immutable financial/issuer policy checks accompany them.
 
 The duplicated local controller state, direct local Bank calls and unused
-`cleanDigits` controller helper are retired. Current diagnostic JSON export is
+`cleanDigits` controller helper are retired. Finance view no longer exposes the
+unused Credit-only `runtime` spread; its combined connection lifecycle is the
+single consumed view runtime. Current diagnostic JSON export is
 an active user feature, not historical compatibility. Persisted readers and
 deployed migrations remain pending evidence-based retirement, separately from
 this local connection boundary. Kupa's corresponding local Bank connection and

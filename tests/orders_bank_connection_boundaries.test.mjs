@@ -71,5 +71,6 @@ test('Finance closes and joins Bank request and confirmation owners, and both re
       commands.indexOf('await confirmDialog(')
   );
   assert.ok(!view.includes('async function deleteBankCredentials'));
+  assert.ok(!view.includes('...creditConnectionView'), 'the unused Credit-only runtime facade is retired');
   assert.ok(!status.includes('addEventListener'));
 });
