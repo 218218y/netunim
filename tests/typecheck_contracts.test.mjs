@@ -24,6 +24,22 @@ function check(overrides=new Map()){
   return ts.getPreEmitDiagnostics(program);
 }
 function describe(diagnostics){return ts.formatDiagnostics(diagnostics,{getCanonicalFileName:file=>file,getCurrentDirectory:()=>root,getNewLine:()=> '\n'})}
+test('the actual Bank scalar and device guard reject display text and asynchronous permission',()=>{
+ for(const [file,from,to] of [
+  ['shared/bank-money-value.js','return Number.isFinite(numeric) ? numeric : null;',"return Number.isFinite(numeric) ? 'confirmed' : null;"],
+  ['shared/bridge-pairing-scope.js','return () => {','return async () => {'],
+ ]){
+  const source=path.join(root,file),original=readFileSync(source,'utf8'),changed=original.replace(from,to);assert.notEqual(changed,original);
+  const diagnostics=check(new Map([[source,changed]]));assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+ }
+});
+test('the actual Bank balance evidence and its publication consumer reject text confirmations',()=>{
+ const source=path.join(root,'shared/bank-balance-result.js'),original=readFileSync(source,'utf8');
+ for(const [from,to] of [['    balance,',"    balance: 'confirmed',"],['availableBalance: snapshot.availableBalance',"availableBalance: 'confirmed'"]]){
+  const changed=original.replace(from,to);assert.notEqual(changed,original);
+  const diagnostics=check(new Map([[source,changed]]));assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+ }
+});
 test('the actual Orders local write cannot replace confirmed success with display text',()=>{
  const source=path.join(root,'netunim-orders/site/assets/js/domains/finance/credit-connection-owner.js'),original=readFileSync(source,'utf8');
  const changed=original.replace('return { ok: true };',"return { ok: 'saved' };");assert.notEqual(changed,original);

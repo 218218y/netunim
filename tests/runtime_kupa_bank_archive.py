@@ -35,7 +35,7 @@ FLOW = r"""(async()=>{
      checks.commands.sync=async()=>true;checks.queries.hasLocalWork=()=>false;
      globalThis.fetch=(url,options)=>{
        const path=String(url);
-       if(path.endsWith('/status'))return Promise.resolve(new Response(JSON.stringify({ok:true,bridgeVersion:73,configured:true})));
+       if(path.endsWith('/status'))return Promise.resolve(new Response(JSON.stringify({ok:true,bridgeVersion:74,configured:true})));
        if(path.includes('/balance')){if(caseName==='race'){providerEntered.resolve();return provider.promise}return Promise.resolve(new Response(JSON.stringify({ok:true,fetchedAt:stamp,accounts:{business:{balance:500,accountId:'same-account',transactions:[]}}})))};
        if(path.includes('/storage/v1/object/list/'))return Promise.resolve(new Response('[]'));
        return originalFetch(url,options);

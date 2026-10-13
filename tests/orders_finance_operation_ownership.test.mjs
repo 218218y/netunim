@@ -62,7 +62,7 @@ function fixture(t,{hold=null}={}){
     syncBankTransactionsSnapshot:()=>phase('archive',{sourcePayload:[],result:{total_count:0}}),readBankTransactions:()=>phase('archive-read',[]),readBankTransactionSnapshot:async()=>null,syncBankChequeImages:()=>phase('images',{warnings:[]}),
     setBankTransactionHandled:()=>phase('handled',{handled_at:stamp}),acknowledgeBankTransactionMissing:()=>phase('missing',{acknowledged_at:stamp}),acknowledgeBankTransactionAlert:()=>phase('alert',{acknowledged_at:stamp}),
     bridge:{getBridgeToken:()=> 'fixture',bankAutoEnabled:()=>true,creditAutoEnabled:()=>true,creditAutoMode:()=> 'smart',markBankAttempt:()=>{},markCreditAttempt:()=>{},bankAttemptReady:()=>true,creditAttemptReady:()=>true,
-      status:()=>phase('bank-status',{bridgeVersion:73,configured:true}),creditStatus:()=>phase('credit-status',{bridgeVersion:73,contractVersion:2,profiles:[{profileId:'P'}]}),
+      status:()=>phase('bank-status',{bridgeVersion:74,configured:true}),creditStatus:()=>phase('credit-status',{bridgeVersion:74,contractVersion:2,profiles:[{profileId:'P'}]}),
       fetchBalance:()=>phase('bank-provider',{fetchedAt:stamp,accounts:{business:{balance:500,accountId:'same-account',transactions:[]}}}),
       syncCreditCards:()=>phase('credit-provider',{syncedAt:stamp,attemptedCount:1,profiles:[{profileId:'P',provider:'max',accounts:[{accountNumber:'card',txns:[{id:'issuer-tx',date:stamp,chargedAmount:-12}]}]}],errors:[]}),resetCreditProfiles:()=>phase('reset',true)},
   };
@@ -295,4 +295,33 @@ test('Orders projection invalidates once per authorization transition and stays 
   const f=fixture(t);f.ports.readRevision=()=>1;const api=f.create(),authorized=api.readSnapshot();assert.equal(api.readSnapshot().kupa,authorized.kupa);
   f.logout();const loggedOut=api.readSnapshot();assert.notEqual(loggedOut.kupa,authorized.kupa);assert.equal(api.readSnapshot().kupa,loggedOut.kupa);
   f.handoff();const replacement=api.readSnapshot();assert.notEqual(replacement.kupa,loggedOut.kupa);assert.equal(api.readSnapshot().kupa,replacement.kupa);api.stopAutoSync();
+});
+
+
+for(const balance of [null,'',false,[]])test('Orders missing/coercible Bank balance cannot authorize archive or snapshot publication: '+JSON.stringify(balance),async t=>{
+ const f=fixture(t);f.ports.bridge.fetchBalance=async()=>({fetchedAt:stamp,accounts:{business:{balance,accountId:'same-account',transactions:[]}}});
+ const api=f.create(),before=structuredClone(f.remote());
+ try{assert.equal(await api.refreshBank(),false,'missing balance was published as zero');
+ assert.equal(f.counts.atomic||0,0);assert.equal(f.counts['archive']||0,0);assert.deepEqual(f.remote(),before)}finally{api.runtime.dispose()}
+});
+test('Orders unavailable optional Bank money stays unknown instead of becoming zero',async t=>{
+ const f=fixture(t);f.ports.bridge.fetchBalance=async()=>({fetchedAt:stamp,accounts:{business:{balance:500,accountId:'same-account',transactions:[],availableBalance:null,creditLimit:null,creditLimitUsed:null,creditLimitUsedPercent:null}}});
+ const api=f.create();try{assert.equal(await api.refreshBank(),true);
+ const bank=f.remote().bank;
+ for(const field of ['availableBalance','creditLimit','creditLimitUsed','creditLimitUsedPercent'])assert.equal(bank[field],null,field+' lost unknown evidence')
+ }finally{api.runtime.dispose()}
+});
+
+
+for(const version of [72,73,74])test('Orders Bank version gate blocks former money parsing before provider entry: '+version,async t=>{
+ const f=fixture(t);let providers=0;f.ports.bridge.status=async()=>({bridgeVersion:version,configured:true});f.ports.bridge.fetchBalance=async()=>{providers++;return {balance:0,accounts:{business:{balance:0,accountId:'same-account',transactions:[]}}}};
+ const api=f.create();try{assert.equal(await api.refreshBank(),version>=74);assert.equal(providers,version>=74?1:0);if(version>=74)assert.equal(f.remote().bank.currentBalance,0)}finally{api.runtime.dispose()}
+});
+
+
+test('Orders Bank captured version cannot authorize a replacement device',async t=>{
+ const f=fixture(t);let token='A',providers=0;f.ports.bridge.getBridgeToken=()=>token;
+ f.ports.bridge.status=async()=>{token='B';return {bridgeVersion:74,configured:true}};
+ f.ports.bridge.fetchBalance=async()=>{providers++;return {balance:0,accounts:{business:{balance:0,accountId:'same-account',transactions:[]}}}};
+ const api=f.create();try{assert.equal(await api.refreshBank(),false);assert.equal(providers,0);assert.equal(f.counts.atomic||0,0);assert.equal(f.counts.release,1)}finally{api.runtime.dispose()}
 });

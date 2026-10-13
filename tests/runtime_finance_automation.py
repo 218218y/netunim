@@ -23,7 +23,7 @@ FLOW = r"""(async()=>{
    if(String(url).startsWith('http://127.0.0.1:8765/')){providerCalls++;throw new Error('unexpected provider entry')}
    return realFetch(url,options);
  };
- const reply=()=>new Response(JSON.stringify({ok:true,bridgeVersion:73,contractVersion:2,profiles:[{profileId:'fixture'}]}));
+ const reply=()=>new Response(JSON.stringify({ok:true,bridgeVersion:74,contractVersion:2,profiles:[{profileId:'fixture'}]}));
  try{
    assert(tab.primaryTab&&storageRecovery.isReady(),'fixture requires primary recovered storage');
    session.connectionMode=CASE==='owner'||CASE==='logout'?'supabase':'local';session.backendReady=true;

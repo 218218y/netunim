@@ -459,3 +459,16 @@ protocol/effect/result evidence. A mutation replacing confirmed success with
 text fails in the actual implementation. Financial controllers and complete
 provider payloads remain selectively checked and separately behavior-tested.
 See ORDERS_CREDIT_CONNECTION_OWNER.md.
+
+
+## Bank financial evidence and local pairing
+
+The scalar decoder, account evidence constructor, actual publication-field
+consumer and pairing guard are checked strictly. Unknown scalar values never
+grant numeric evidence; decoded immutable accounts carry a private compile-time
+brand and a runtime identity check. Negative consumers reject forged evidence,
+text pairing identity and nullable money used as guaranteed numeric data.
+Actual body mutations replacing numeric evidence or nullable financial output
+with text fail. The full controllers/provider transaction payloads remain
+selectively checked; their behavior and owner-before-decoder ordering are tested.
+See BANK_FINANCIAL_EVIDENCE.md.

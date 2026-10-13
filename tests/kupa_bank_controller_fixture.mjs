@@ -85,6 +85,7 @@ export function createKupaBankControllerFixture(ports) {
       },
     },
   });
+  if(typeof ports.bridge.status!=='function')ports.bridge.status=async()=>({bridgeVersion:74,configured:true});
   const controller = createDomainsBankController({
       ...ports,
       archive,

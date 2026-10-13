@@ -11,7 +11,7 @@ test('staged Bank runtime starts its real HTTP capabilities with isolated files 
     await fs.mkdir(cache);await fs.writeFile(path.join(cache,key+'.bin'),image);await fs.writeFile(path.join(cache,key+'.json'),JSON.stringify({key,contentType:'image/png',size:image.length,eventDate}));
   }});
   const {app,request,exited}=f;
-  assert.deepEqual(await (await request('/health?probe=1',{token:'wrong'})).json(),{ok:true,service:'netunim-kupa-bank-bridge',version:73,creditContractVersion:2});
+  assert.deepEqual(await (await request('/health?probe=1',{token:'wrong'})).json(),{ok:true,service:'netunim-kupa-bank-bridge',version:74,creditContractVersion:2});
   assert.equal((await request('/credentials',{method:'POST',body:{password:'never-save-this'},token:'wrong'})).status,401);await assert.rejects(fs.access(path.join(app,'hapoalim-credentials.dpapi')),{code:'ENOENT'});
   const status=await (await request('/status')).json();assert.equal(status.configured,false);assert.equal(status.branchNumber,'');
   assert.equal((await (await request('/balance',{method:'POST',body:{}})).json()).code,'NOT_CONFIGURED');

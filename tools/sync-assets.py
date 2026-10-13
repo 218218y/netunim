@@ -17,6 +17,9 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 APPS = ('kupa', 'orders')
+BRIDGE_SHARED_SOURCES = {
+    'shared/bank-money-value.js': 'netunim-kupa/bank-bridge/bank-money-value.mjs',
+}
 DOCUMENT_SEARCH_SHARED_ROOT = PurePosixPath('shared/document-search')
 DOCUMENT_SEARCH_TARGET_ROOT = PurePosixPath('assets/js')
 TEXT_ASSET_SUFFIXES = {'.html', '.css', '.js', '.mjs', '.txt', '.webmanifest'}
@@ -48,6 +51,7 @@ class WorktreeSnapshot:
     def __init__(self, root: Path):
         self.root = root
         paths = list((root / 'shared').glob('*.js')) + list((root / 'shared').glob('*.css'))
+        paths.extend(root / target for target in BRIDGE_SHARED_SOURCES.values() if (root / target).is_file())
         document_search = root / DOCUMENT_SEARCH_SHARED_ROOT
         if document_search.is_dir():
             paths.extend(path for path in document_search.rglob('*.js') if path.is_file())
@@ -179,6 +183,14 @@ def render_worker(label: str, snapshot: OverlaySnapshot, worker_path: str) -> by
 def plan_sync(snapshot: WorktreeSnapshot | IndexSnapshot) -> list[Change]:
     """Calculate every change before writing, so structural errors are atomic."""
     changes: list[Change] = []
+    for source, target in BRIDGE_SHARED_SOURCES.items():
+        if source not in snapshot.files:
+            if target in snapshot.files:
+                changes.append(Change(target, None, f'bridge: removed obsolete generated copy: {target}'))
+            continue
+        expected = snapshot.read(source)
+        if target not in snapshot.files or snapshot.read(target) != expected:
+            changes.append(Change(target, expected, f'bridge: synchronized canonical source: {source}'))
     sources = direct_javascript_files(snapshot.files, 'shared') | {path for path in snapshot.files if str(PurePosixPath(path).parent) == 'shared' and path.endswith('.css')}
     source_names = {PurePosixPath(path).name for path in sources}
     for label in APPS:
