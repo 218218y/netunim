@@ -1,14 +1,40 @@
+import {startFinanceLeaseHeartbeat} from '../shared/finance-lease-heartbeat.js';
 import {createFinanceBrowserEffects} from '../shared/finance-browser-effects.js';
 import {createCreditPreferences} from '../netunim-kupa/site/assets/js/platform/credit-preferences.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createDomainsCreditController} from '../netunim-kupa/site/assets/js/domains/credit/controller.js';
 import {createCloudTransport} from '../netunim-kupa/site/assets/js/cloud/transport.js';
-import {createFinanceOperationScope,createFinanceManualQueue,startFinanceLeaseHeartbeat} from '../shared/finance-fence.js';
+import {createKupaFinanceCloudPorts} from '../netunim-kupa/site/assets/js/composition/finance-cloud.js';
+import {createFinanceOperationScope,createFinanceManualQueue} from '../shared/finance-fence.js';
 
 const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no});return {promise,resolve,reject}};
 const result={syncedAt:'2026-10-08T10:00:00Z',attemptedCount:1,profiles:[{profileId:'P',provider:'max',accounts:[{accountNumber:'card',txns:[{id:'provider-transaction',date:'2026-10-08',processedDate:'2026-10-08',status:'completed',chargedAmount:-12,chargedCurrency:'ILS'}]}]}],errors:[]};
 const stale=()=>Object.assign(new Error('finance operation ownership changed'),{code:'FINANCE_OPERATION_SCOPE_CHANGED'});
+for(const phase of [1,2])test(`automatic Credit preflight ${phase} carries captured authority into Finance error reporting`,async t=>{
+  const f=fixture(t),reported=[];let reads=0;
+  f.ports.refreshFinanceCloudSnapshot=createKupaFinanceCloudPorts({model:f.model,session:{connectionMode:'supabase',backendReady:true,dbRevision:1,financeRevision:1},isOnline:()=>true,reportError:error=>reported.push(error),
+    cloudTransport:{readSupabaseDocument:async()=>{if(++reads===phase){f.change();throw Error('private former-account details')}return {state:f.model.state,revision:1,financeRevision:1}}},syncDocument:{cloudPoll:async()=>assert.fail('unexpected poll')}}).refreshFinanceCloudSnapshot;
+  const api=f.create();await api.refreshCreditSync({auto:true});
+  assert.deepEqual(reported,[]);assert.deepEqual(f.model.state,f.before);assert.equal(f.counts().patches,0);assert.equal(f.counts().releases,0);api.runtime.dispose();
+});
+test('Kupa Credit releases its own lease after a failed renewal without requiring a valid publication fence',async t=>{
+  const f=fixture(t);let tick,claims=0;
+  t.mock.method(globalThis,'setTimeout',(fn,ms)=>{if(ms===400000)tick=fn;return 1});
+  f.ports.claimFinanceSyncLease=async()=>{if(++claims===2)throw Error('renewal network failure');return {acquired:true,leaseName:'credit',leaseToken:'L',fenceEpoch:1}};
+  const api=f.create(),pending=api.refreshCreditSync();await f.entered.promise;await tick();f.provider.resolve(result);await pending;
+  assert.equal(f.counts().patches,0);assert.equal(f.counts().releases,1,'renewal failure must fence publication without preventing own-account cleanup');api.runtime.dispose();
+});
+test('Kupa Credit waits for an accepted lease renewal before release and controller completion',async t=>{
+  const f=fixture(t),renewal=deferred();let tick,claims=0;
+  t.mock.method(globalThis,'setTimeout',(fn,ms)=>{if(ms===400000)tick=fn;return 1});
+  f.ports.claimFinanceSyncLease=async()=>{if(++claims===2)await renewal.promise;return {acquired:true,leaseName:'credit',leaseToken:'L',fenceEpoch:1}};
+  const api=f.create(),pending=api.refreshCreditSync();await f.entered.promise;
+  const accepted=tick();f.provider.resolve(result);
+  try{await new Promise(resolve=>setImmediate(resolve));assert.equal(f.counts().releases,0,'Credit released before renewal settled')}
+  finally{renewal.resolve();await accepted;await pending;api.runtime.dispose()}
+  assert.equal(f.counts().releases,1);assert.equal(claims,2);
+});
 function fixture(t){
   const values=new Map();t.mock.method(globalThis,'setTimeout',()=>1);t.mock.method(globalThis,'clearTimeout',()=>{});
   const previous=Object.getOwnPropertyDescriptor(globalThis,'localStorage');
@@ -80,7 +106,7 @@ test('queued manual edit cannot acquire a lease after its login changed',async()
 });
 test('lease heartbeat cannot renew with former authorization or run after stop',async()=>{
   let tick,valid=true,claims=0;const assertCurrent=()=>{if(!valid)throw stale()};
-  const heartbeat=startFinanceLeaseHeartbeat({leaseName:'credit',leaseToken:'L',fenceEpoch:1,assertCurrent},async()=>{claims++;return {acquired:true,fenceEpoch:1}},{setTimer:fn=>{tick=fn;return 1},clearTimer:()=>{}});
+  const heartbeat=startFinanceLeaseHeartbeat({acquired:true,leaseName:'credit',leaseToken:'L',fenceEpoch:1,assertCurrent},async()=>{claims++;return {acquired:true,leaseName:'credit',leaseToken:'L',fenceEpoch:1}},{setTimer:fn=>{tick=fn;return 1},clearTimer:()=>{}});
   valid=false;await tick();assert.equal(claims,0);assert.throws(()=>heartbeat.assertCurrent(),{code:'FINANCE_OPERATION_SCOPE_CHANGED'});
   valid=true;heartbeat.stop();await tick();assert.equal(claims,0);
 });

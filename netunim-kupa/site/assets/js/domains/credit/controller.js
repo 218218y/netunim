@@ -1,7 +1,7 @@
 import {createRuntimeTaskOwner} from '../../shared/runtime-task-owner.js';
 import {CREDIT_AUTO_INTERVAL_MS,creditRefreshDue as due} from '../../shared/finance-refresh-policy.js';
 import {applyCreditCardOrderData} from '../../shared/credit-card-order.js';
-import {startFinanceLeaseHeartbeat} from '../../shared/finance-fence.js';
+import {startFinanceLeaseHeartbeat} from '../../shared/finance-lease-heartbeat.js';
 import {createPollingTask} from '../../shared/runtime-polling.js';
 import {createCreditPublication} from './publication.js';
 import {normalizeCreditAutoMode,normalizeCreditFetchMode,resolveCreditAutoSyncMode} from '../../shared/credit-sync-policy.js';
@@ -146,11 +146,11 @@ export function createDomainsCreditController({model,saveState,toast,render,rend
     if(auto&&!allowed())return false;
     if(local.busy)return;
     local.busy=true;local.error='';local.errorAt=null;if(auto)renderStatus();else render();
-    let leaseToken='',leaseHeld=false,lease=null,heartbeat=null,autoCreditSync=model.state.creditSync,assertCurrent;
+    let leaseToken='',leaseHeld=false,lease=null,heartbeat=null,autoCreditSync=model.state.creditSync,assertCurrent,assertOwner;
     try{
-      const assertOwner=captureOperation();assertCurrent=()=>{assertOwner();heartbeat?.assertCurrent()};
+      assertOwner=captureOperation();assertCurrent=()=>{assertOwner();heartbeat?.assertCurrent()};
       if(auto){
-        const latest=await refreshFinanceCloudSnapshot();
+        const latest=await refreshFinanceCloudSnapshot({assertCurrent});
         assertCurrent();
         if(!allowed())return false;
         if(!latest?.verified){if(!markAutoAttempt())return false;throw new Error('לא ניתן לאמת את זמן סנכרון האשראי המשותף בענן');}
@@ -163,9 +163,9 @@ export function createDomainsCreditController({model,saveState,toast,render,rend
       assertCurrent();lease={...lease,assertCurrent};
       if(auto&&!allowed())return false;
       if(!leaseHeld){if(!auto)toast('סינכרון אשראי כבר מתבצע ממחשב או חלון אחר. לא נפתחה כניסה נוספת לחברות האשראי.');return false}
-      heartbeat=startFinanceLeaseHeartbeat(lease,claimLease,{setTimer:timers.setTimeout.bind(timers),clearTimer:timers.clearTimeout.bind(timers)});
+      heartbeat=startFinanceLeaseHeartbeat({...lease,assertCurrent:assertOwner},claimLease,{setTimer:timers.setTimeout.bind(timers),clearTimer:timers.clearTimeout.bind(timers)});
       heartbeats.add(heartbeat);
-      if(auto){const latest=await refreshFinanceCloudSnapshot();assertCurrent();if(!allowed())return false;if(!latest?.verified)throw new Error('לא ניתן לאמת מחדש את זמן סנכרון האשראי לאחר תפיסת הנעילה');autoCreditSync=latest.state?.creditSync||autoCreditSync;if(!due(autoCreditSync?.syncedAt))return true}
+      if(auto){const latest=await refreshFinanceCloudSnapshot({assertCurrent});assertCurrent();if(!allowed())return false;if(!latest?.verified)throw new Error('לא ניתן לאמת מחדש את זמן סנכרון האשראי לאחר תפיסת הנעילה');autoCreditSync=latest.state?.creditSync||autoCreditSync;if(!due(autoCreditSync?.syncedAt))return true}
       const status=local.status||await refreshCreditBridgeStatus();
       assertCurrent();
       if(auto&&!allowed())return false;
@@ -199,7 +199,18 @@ export function createDomainsCreditController({model,saveState,toast,render,rend
       if(!auto)toast(deferredOnly?'החיבור מושהה עד תום ה־cooldown; לא יישלח ניסיון חדש לפני המועד.':local.error)
     }
     // A former account's lease expires by TTL; never release it using a new login.
-    finally{heartbeat?.stop();heartbeats.delete(heartbeat);if(leaseHeld)try{await releaseFinanceSyncLease('credit',leaseToken,{assertCurrent})}catch(error){if(error.code!=='FINANCE_OPERATION_SCOPE_CHANGED')console.error('credit sync lease release',error)}local.busy=false;render();scheduleAuto()}
+    finally{
+      await heartbeat?.stop();
+      heartbeats.delete(heartbeat);
+      if(leaseHeld)try{
+        await releaseFinanceSyncLease('credit',leaseToken,{assertCurrent:assertOwner});
+      }catch(error){
+        if(error.code!=='FINANCE_OPERATION_SCOPE_CHANGED')console.error('credit sync lease release',error);
+      }
+      local.busy=false;
+      render();
+      scheduleAuto();
+    }
   }
 
   async function publishCreditSync(candidate,message,lease,assertCurrent){

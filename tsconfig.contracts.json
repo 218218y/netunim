@@ -20,6 +20,8 @@
     "types": []
   },
   "files": [
+    "shared/finance-lease-heartbeat.js",
+    "tests/fixtures/checked-finance-lease-heartbeat.mjs",
     "netunim-kupa/site/assets/js/domains/bank/snapshot-commands.js",
     "tests/fixtures/checked-kupa-bank-snapshot.mjs",
     "shared/bank-archive-read-batch.js",

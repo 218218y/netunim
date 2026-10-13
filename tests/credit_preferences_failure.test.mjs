@@ -15,7 +15,7 @@ function fixture(t){
   const ports={model,captureOperation:()=>()=>{},autoScope:()=> 'owner',toast:message=>messages.push(message),render(){},renderStatus(){statusRenders++},confirmDialog:async()=>true,saveState:async()=>true,
     bridge:{getBridgeToken:()=> 'fixture',creditStatus:async()=>({bridgeVersion:73,contractVersion:2,profiles:[{profileId:'old'}]}),resetCreditProfiles:async()=>{resets++},syncCreditCards:async()=>{providerRuns++;return {profiles:[{profileId:'retained-provider',provider:'max',accounts:[]}],errors:[]}}},
     saveFinancePatch:async mutator=>{commits++;const state=mutator(model.state);afterCommit();return {saved:true,row:{revision:2,state}}},
-    claimFinanceSyncLease:async()=>{leaseClaims++;return {acquired:true}},
+    claimFinanceSyncLease:async(leaseName,leaseToken)=>{leaseClaims++;return {acquired:true,leaseName,leaseToken,fenceEpoch:1,leasedUntil:'2030-01-01T00:00:00Z'}},
   };
   const api=createDomainsCreditController({effects:createFinanceBrowserEffects(),...ports,preferences:createCreditPreferences({storage})});t.after(()=>api.stopAutoSync());
   return {api,ports,storage,values,model,messages,fail:value=>{failure=value},afterCommit:fn=>{afterCommit=fn},statusRenders:()=>statusRenders,leases:()=>leaseClaims,counts:()=>({resets,commits,providerRuns})};

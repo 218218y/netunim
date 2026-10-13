@@ -2,7 +2,7 @@ import {createOrdersFinanceAutomation} from './automation.js';
 import {createRevisionSelector} from '../../shared/revision-selector.js';
 import {applyCreditCardOrderData} from '../../shared/credit-card-order.js';
 import {bankRecurringDebitHistoryData} from '../../shared/bank-recurring-debits.js';
-import {startFinanceLeaseHeartbeat} from '../../shared/finance-fence.js';
+import {startFinanceLeaseHeartbeat} from '../../shared/finance-lease-heartbeat.js';
 import {normalizeCreditFetchMode,resolveCreditAutoSyncMode} from '../../shared/credit-sync-policy.js';
 import {clone,uid} from '../../core/values.js';
 import {checkTodayISO} from '../../core/dates.js';
@@ -245,7 +245,19 @@ export function createDomainsFinanceController({
       if(error?.availableAccounts?.length)local.bankStatus={...(local.bankStatus||{}),availableAccounts:error.availableAccounts,accountRole:error.accountRole||''};
       if(!auto)toast(local.bankError);local.bankResultReady=true;notifyFinanceStatus('bank');return false;
     }
-    finally{heartbeat?.stop();if(leaseHeld)try{await releaseFinanceSyncLease('bank',leaseToken,{assertCurrent:assertOwner})}catch(error){if(!scopeChanged(error))console.error('orders bank sync lease release',error)}local.bankBusy=false;archive.runtime.resume();local.bankResultReady=false;notifyFinanceStatus('bank');scheduleBankAuto()}
+    finally{
+      await heartbeat?.stop();
+      if(leaseHeld)try{
+        await releaseFinanceSyncLease('bank',leaseToken,{assertCurrent:assertOwner});
+      }catch(error){
+        if(!scopeChanged(error))console.error('orders bank sync lease release',error);
+      }
+      local.bankBusy=false;
+      archive.runtime.resume();
+      local.bankResultReady=false;
+      notifyFinanceStatus('bank');
+      scheduleBankAuto();
+    }
   }
 
   async function toggleBankTransactionHandled(transactionId,handled){
@@ -314,7 +326,17 @@ export function createDomainsFinanceController({
         }
       }
       if(!auto)toast(local.creditError||(deferredOnly?'החיבור מושהה עד תום ה־cooldown; לא יישלח ניסיון חדש לפני המועד.':''));return deferredOnly;
-    }finally{heartbeat?.stop();if(leaseHeld)try{await releaseFinanceSyncLease('credit',leaseToken,{assertCurrent:assertOwner})}catch(error){if(!scopeChanged(error))console.error('orders credit sync lease release',error)}local.creditBusy=false;notifyFinanceStatus('credit');scheduleCreditAuto()}
+    }finally{
+      await heartbeat?.stop();
+      if(leaseHeld)try{
+        await releaseFinanceSyncLease('credit',leaseToken,{assertCurrent:assertOwner});
+      }catch(error){
+        if(!scopeChanged(error))console.error('orders credit sync lease release',error);
+      }
+      local.creditBusy=false;
+      notifyFinanceStatus('credit');
+      scheduleCreditAuto();
+    }
   }
 
   async function saveCreditProfile(profile){if(local.creditBusy)return false;local.creditBusy=true;local.creditError='';local.creditErrorAt=null;try{await bridge.saveCreditProfile(profile);await refreshCreditBridgeStatus({quiet:true});toast('חיבור האשראי נשמר במחשב זה');return true}catch(error){local.creditError=error?.message||String(error);local.creditErrorAt=new Date().toISOString();toast(local.creditError);return false}finally{local.creditBusy=false}}

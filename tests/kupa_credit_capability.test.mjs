@@ -6,7 +6,7 @@ import {createCreditConnectionDialog} from '../netunim-kupa/site/assets/js/ui/cr
 const noop=()=>{},gate=()=>{let resolve;const promise=new Promise(done=>{resolve=done});return {promise,resolve}};
 function fixture(){
   const model={state:{creditSync:{version:4,profiles:[],errors:[]}}},events=[],jobs=new Map();let timerId=0;
-  const timers={setTimeout:run=>{jobs.set(++timerId,run);return timerId},clearTimeout:id=>jobs.delete(id)};
+  const timers={setTimeout:run=>{const id=++timerId;jobs.set(id,()=>{jobs.delete(id);return run()});return id},clearTimeout:id=>jobs.delete(id)};
   const preferences={read:()=>({ok:true,value:{enabled:false,mode:'smart',attemptAt:0}}),setEnabled:noop,setMode:noop,markAttempt:noop,reset:noop};
   const effects={writeText:async()=>events.push('clipboard'),saveJson:()=>events.push('download'),dispose:()=>events.push('effects disposed')};
   const credit=createKupaCreditRuntime({model,ui:{},platform:{effects,preferences,timers}});
@@ -55,7 +55,7 @@ for(const method of ['deleteCreditConnection','resetCreditSync'])test(`Credit cl
   assert.equal(await f.credit.commands[method]('P'),false);
 });
 
-test('Credit drain includes a held lease renewal even after its provider operation finishes',async()=>{
+test('Credit command completion and drain join a held renewal after the provider result arrives',async()=>{
   const f=fixture(),entered=gate(),provider=gate(),renewed=gate(),renewal=gate();let claims=0;
   f.ports.bridge.syncCreditCards=()=>{entered.resolve();return provider.promise};
   const lease={acquired:true,leaseName:'credit',leaseToken:'L',fenceEpoch:1};
@@ -63,9 +63,13 @@ test('Credit drain includes a held lease renewal even after its provider operati
   const request=f.credit.commands.refreshCreditSync();await entered.promise;
   const pulse=[...f.jobs.values()][0]();await renewed.promise;f.credit.runtime.dispose();
   let drained=false;const drain=f.credit.runtime.drain().then(()=>{drained=true});
-  provider.resolve({profiles:[],errors:[],attemptedCount:1});await request;await Promise.resolve();
-  assert.equal(drained,false);assert.equal(f.credit.runtime.isPending(),true);assert.equal(f.jobs.size,0);
-  renewal.resolve(lease);await pulse;await drain;
+  let completed=false;void request.then(()=>{completed=true});
+  provider.resolve({profiles:[],errors:[],attemptedCount:1});
+  try{
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(completed,false,'the command must retain its accepted renewal through cleanup');
+    assert.equal(drained,false);assert.equal(f.credit.runtime.isPending(),true);assert.equal(f.jobs.size,0);
+  }finally{renewal.resolve(lease);await pulse;await request;await drain}
   assert.equal(f.credit.runtime.isPending(),false);assert.equal(f.jobs.size,0);assert.ok(!f.events.includes('commit'));
 });
 

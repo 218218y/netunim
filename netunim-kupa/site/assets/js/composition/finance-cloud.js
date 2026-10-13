@@ -42,6 +42,7 @@ export function createKupaFinanceCloudPorts({
         financeRevision:Number(row.financeRevision||0),
       };
     }catch(error){
+      assertCurrent?.();
       if(error.code==='FINANCE_OPERATION_SCOPE_CHANGED')throw error;
       reportError(error);
       return {verified:false,state:null};

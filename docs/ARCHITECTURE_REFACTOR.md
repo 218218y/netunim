@@ -917,3 +917,14 @@ is retired from both browser transports after consumer inventory, with canonical
 snapshot identities/RPC bodies frozen and active SQL retained. Native local
 durability/retry and pre-extraction manual policy fixtures protect this slice.
 See [Kupa Bank snapshot commands](KUPA_BANK_SNAPSHOT_COMMANDS.md).
+
+Finance lease renewal now has a shared strict runtime owner and direct imports
+from all Bank/Credit controllers. Five before-change tests proved cleanup could
+overtake accepted renewal; two proved stale preflight error reporting, and one
+proved Kupa Credit failed-renewal cleanup incorrectly required a valid write
+fence. The owner captures authority/identity, serializes callbacks and returns
+an idempotent stop promise that all four cleanup paths await before release.
+Explicit local grants allocate no heartbeat. The old export is retired without
+a compatibility facade; SQL, TTL, provider and durable publication policy stay
+unchanged. Focused, native IDB, PostgreSQL and strict mutation/consumer fixtures
+protect the boundary. See [Finance lease runtime](FINANCE_LEASE_RUNTIME.md).
