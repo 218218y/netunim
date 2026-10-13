@@ -6,6 +6,10 @@ from browser_harness import BrowserSession, ROOT
 
 SETUP = r"""(async()=>{
  await appReady;
+ // The application search owns the production DOM and subscribes to its auth
+ // instance. Dispose that owner before installing a synthetic source on the
+ // same DOM; cloning nodes alone leaves its authorization callback active.
+ if(uiGlobalSearch.dispose()!==true)throw Error('production search owner did not dispose');
  const {createCloudAuth}=await import('./assets/js/cloud/auth.js');
  const {composeDocumentSearch}=await import('./assets/js/shared/document-search-composition.js');
  const {createGlobalDocumentSearch}=await import('./assets/js/shared/global-document-search.js');
@@ -18,16 +22,20 @@ SETUP = r"""(async()=>{
  const requests=[],source=composeDocumentSearch({accountScope:()=>auth.getAccountScope(),subscribeAccountScope:auth.subscribeAccountScope,
   supaFetch:async()=>new Response(JSON.stringify({access_token:'token-'+auth.getAccountScope().owner,expires_in:3600})),
   drivePlatform:{userAgent:'Android privacy fixture',clock:{now:()=>0},browser:{navigate:()=>{throw Error('unexpected external navigation')}},fetchRequest:async(url,options)=>{
+   // Force the formerly timing-dependent interleaving: the main auth instance
+   // observes the synthetic login while its search/preview request is active.
+   const input=document.getElementById('globalSearchInput'),before=input.value;
+   cloudAuth.getAccountScope();
+   if(input.value!==before)throw Error('production auth observer changed the fixture display');
    const owner=options.headers.Authorization.slice(13);requests.push(owner);
    const row={id:'private-file',name:'private-'+owner+(image?'.png':'.txt'),mimeType:image?'image/png':'text/plain',size:'20',webViewLink:'https://drive.google.com/file/d/private-'+owner+'/view'};
    const bytes=Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aT1sAAAAASUVORK5CYII='),value=>value.charCodeAt(0));
    return new URL(url).searchParams.get('alt')==='media'?new Response(image?bytes:'private preview '+owner):new Response(JSON.stringify(String(url).includes('/files?')?{files:[row]}:row));
   }}});
- for(const id of ['globalSearchBackdrop','globalSearchButton']){const node=document.getElementById(id);node.replaceWith(node.cloneNode(true))}
  const ui=createGlobalDocumentSearch({documentBridge:source,siteSearch:()=>({total:0,groups:[]})});ui.bind();
  const results=document.getElementById('globalSearchResults'),preview=document.getElementById('globalSearchPreviewBody');
  const frame=()=>new Promise(resolve=>requestAnimationFrame(resolve));
- const wait=async(predicate,message)=>{const end=performance.now()+5000;while(!predicate()){if(performance.now()>end)throw Error(message);await frame()}};
+ const wait=async(predicate,message)=>{const end=performance.now()+5000;while(!predicate()){if(performance.now()>end)throw Error(message+' '+JSON.stringify({app,phase,input:document.getElementById('globalSearchInput').value,results:results.textContent.slice(0,400),preview:preview.textContent.slice(0,400),requests}));await frame()}};
  async function show(owner){document.getElementById('globalSearchInput').value='private';ui.setFilter('files');ui.open();await wait(()=>results.textContent.includes('private-'+owner+(image?'.png':'.txt')),'search did not settle');results.querySelector('[data-document-result-id]').click();await wait(()=>image?preview.querySelector('img[src^="blob:"]'):preview.textContent.includes('private preview '+owner),'preview did not settle')}
  await show('A');
  // Independent native IDB data must survive presentation cleanup byte-for-byte.

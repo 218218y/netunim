@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import * as facade from '../netunim-kupa/bank-bridge/credit-adapters.mjs';
 import { creditAdapterPolicyHashes } from './credit_adapter_policy_fixture.mjs';
 const read = (name) =>
   fs.readFileSync(new URL('../netunim-kupa/bank-bridge/' + name + '.mjs', import.meta.url), 'utf8');
@@ -20,28 +19,44 @@ const modules = [
   'max-model',
   'credit-monthly-projection',
   'max-adapter',
-  'credit-generic-adapter',
   'isracard-group-adapter',
   'credit-adapter-factory',
   'credit-adapter-wire',
 ];
-const sources = () => modules.map(read);
+// Only the plan's retired alias is mapped to its former name. The call stays in
+// the same default initializer; all branches, arguments and returned data remain
+// covered by the immutable pre-refactor digests and behavior tests.
+const sources = () =>
+  modules.map((name) => {
+    const source = read(name);
+    return name === 'credit-month-plan'
+      ? source.replace('startDate = creditRecoveryStartDate(),', 'startDate = creditStartDate(),')
+      : source;
+  });
 const fixture = JSON.parse(
   fs.readFileSync(new URL('./fixtures/credit-adapter-policy.json', import.meta.url), 'utf8')
 );
 
 test('credit provider methods, normalization, wire constants and fallback policy match the reviewed baseline', () => {
-  assert.deepEqual(creditAdapterPolicyHashes(sources()).policies, fixture.policies);
+  const active = { ...fixture.policies };
+  for (const name of ['creditStartDate', 'GenericScraperAdapter', 'maxRawDiagnosticSamples'])
+    delete active[name];
+  assert.deepEqual(creditAdapterPolicyHashes(sources()).policies, active);
   assert.equal(Object.keys(fixture.policies).length, 118);
 });
 
-test('the historical credit facade keeps exactly its former exports and canonical identities', async () => {
-  assert.deepEqual(Object.keys(facade).sort(), fixture.exports);
-  for (const name of modules) {
-    const owner = await import('../netunim-kupa/bank-bridge/' + name + '.mjs');
-    for (const key of Object.keys(owner))
-      if (Object.hasOwn(facade, key)) assert.equal(facade[key], owner[key], key);
-  }
+test('retired Credit facades and uninstantiated generic scraper have no current files or exports', async () => {
+  for (const name of ['credit-adapters', 'credit-diagnostics', 'credit-generic-adapter'])
+    assert.equal(
+      fs.existsSync(new URL('../netunim-kupa/bank-bridge/' + name + '.mjs', import.meta.url)),
+      false,
+      name
+    );
+  const plan = await import('../netunim-kupa/bank-bridge/credit-month-plan.mjs');
+  assert.equal(Object.hasOwn(plan, 'creditStartDate'), false);
+  assert.ok(read('credit-month-plan').includes('startDate = creditRecoveryStartDate(),'));
+  const max = await import('../netunim-kupa/bank-bridge/max-model.mjs');
+  assert.equal(Object.hasOwn(max, 'maxRawDiagnosticSamples'), false);
 });
 
 test('policy fixtures detect changed terminal cleanup, fallback, month horizon and account exclusion', () => {

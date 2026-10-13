@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import {createCreditDiagnosticLog} from '../netunim-kupa/bank-bridge/credit-diagnostics.mjs';
+import { createCreditDiagnosticLog } from '../netunim-kupa/bank-bridge/credit-diagnostic-log.mjs';
 const gate=()=>{let resolve;const promise=new Promise(done=>{resolve=done});return {promise,resolve}};
 
 test('diagnostic drainage retains native append jobs and trailing records until their exact bytes exist',async t=>{

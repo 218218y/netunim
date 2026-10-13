@@ -12,8 +12,16 @@ const pure = {
   'credit-sync-scope': ['./credit-adapter-wire.mjs', './credit-month-plan.mjs'],
   'credit-http-policy': ['./credit-value-codec.mjs'],
   'credit-coverage': ['./credit-value-codec.mjs', './credit-adapter-wire.mjs'],
-  'visa-cal-model': ['./credit-value-codec.mjs', './credit-adapter-wire.mjs', './credit-transaction-model.mjs'],
-  'max-model': ['./credit-value-codec.mjs', './credit-data-diagnostics.mjs', './credit-core-values.mjs'],
+  'visa-cal-model': [
+    './credit-value-codec.mjs',
+    './credit-adapter-wire.mjs',
+    './credit-transaction-model.mjs',
+  ],
+  'max-model': [
+    './credit-value-codec.mjs',
+    './credit-data-diagnostics.mjs',
+    './credit-core-values.mjs',
+  ],
   'credit-monthly-projection': [
     './credit-adapter-wire.mjs',
     './max-model.mjs',
@@ -76,13 +84,7 @@ test('credit adapter dependency graph remains acyclic and policy consumers bypas
     active.delete(name);
     visited.add(name);
   }
-  visit('credit-adapters');
+  visit('credit-adapter-factory');
   for (const name of ['finance-commands', 'credit-provider'])
     assert.ok(!read(name).includes('./credit-adapters.mjs'));
-  assert.ok(
-    parse(read('credit-adapters'), { ecmaVersion: 'latest', sourceType: 'module' }).body.every(
-      (row) => row.type === 'ExportNamedDeclaration' && row.source
-    ),
-    'facade must retain no parallel implementation'
-  );
 });

@@ -16,14 +16,7 @@ const fixture = JSON.parse(
   fs.readFileSync(new URL('./fixtures/credit-core-policy.json', import.meta.url), 'utf8')
 );
 function bankSource() {
-  const source = read('lib'),
-    ast = parse(source, { ecmaVersion: 'latest', sourceType: 'module' }),
-    handoff = ast.body.find(
-      (row) =>
-        row.type === 'ExportNamedDeclaration' && row.source?.value === './credit-profile-model.mjs'
-    );
-  assert.ok(handoff);
-  return source.slice(0, handoff.start);
+  return read('lib');
 }
 
 test('all 73 Bank declarations and 30 Credit core declarations match the reviewed base', () => {
@@ -31,24 +24,20 @@ test('all 73 Bank declarations and 30 Credit core declarations match the reviewe
   assert.deepEqual(creditAdapterPolicyHashes(modules.map(read)).policies, fixture.creditPolicies);
 });
 
-test('historical Bank Bridge library retains exactly its 56 exports and canonical Credit identities', async () => {
-  assert.deepEqual(Object.keys(lib).sort(), fixture.libExports);
-  for (const module of modules) {
-    const owner = await import('../netunim-kupa/bank-bridge/' + module + '.mjs');
-    for (const name of Object.keys(owner))
-      if (Object.hasOwn(lib, name)) assert.equal(lib[name], owner[name], name);
-  }
+test('Bank library exports only its Bank API and no former Credit compatibility surface', () => {
+  const expected = fixture.libExports.filter(
+    (name) =>
+      !Object.hasOwn(fixture.creditPolicies, name) &&
+      !['CREDIT_HISTORY_DAYS', 'CREDIT_FUTURE_MONTHS'].includes(name)
+  );
+  assert.deepEqual(Object.keys(lib).sort(), expected);
   const ast = parse(read('lib'), { ecmaVersion: 'latest', sourceType: 'module' });
   const aliases = ast.body.filter(
     (row) =>
       row.type === 'ExportNamedDeclaration' &&
       modules.some((module) => row.source?.value === './' + module + '.mjs')
   );
-  assert.equal(aliases.length, 4);
-  assert.ok(
-    aliases.every((row) => !row.declaration),
-    'one canonical implementation per Credit function'
-  );
+  assert.equal(aliases.length, 0);
 });
 
 test('policy fixture detects changed charge signs, login identity, transaction status and cooldown', () => {

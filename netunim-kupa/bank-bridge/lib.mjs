@@ -1,4 +1,3 @@
-export {CREDIT_HISTORY_DAYS,CREDIT_FUTURE_MONTHS} from './credit-adapter-wire.mjs';
 export const INTERACTIVE_AUTH_TIMEOUT_MS=10*60*1000;
 export const SILENT_AUTH_TIMEOUT_MS=90*1000;
 export const HAPOALIM_POST_LOGIN_TIMEOUT_MS=60*1000;
@@ -627,30 +626,3 @@ export function scraperFailureMessage(result){
   if(type==='TIMEOUT')return ['הכניסה לבנק הפועלים לא הסתיימה בזמן. ברענון ידני נסה להשלים אימות בחלון הבנק','TIMEOUT'];
   return [raw?`החיבור לבנק הפועלים נכשל: ${raw}`:'החיבור לבנק הפועלים נכשל','SCRAPE_FAILED'];
 }
-
-export {
-  CREDIT_PROVIDER_CONFIG,
-  creditProviderSupported,
-  creditProfilePublic,
-  creditProfilesShareLoginIdentity,
-  normalizeCreditProfileInput,
-} from './credit-profile-model.mjs';
-export {creditDebitAmount} from './credit-core-values.mjs';
-export {
-  normalizeCreditScrapeTransaction,
-  normalizeCreditMonthSlice,
-  normalizeCreditScrapeAccount,
-} from './credit-transaction-model.mjs';
-export {
-  CREDIT_AUTOMATION_BLOCK_COOLDOWN_MS,
-  CREDIT_RATE_LIMIT_FALLBACK_COOLDOWN_MS,
-  creditAutomaticRetryAfterAt,
-  deferredCamoufoxProfileError,
-  deferredCreditProfileError,
-  expiredCamoufoxLoginPageBlock,
-  creditErrorSeverity,
-  creditErrorComponent,
-  creditScrapeFailure,
-  creditLoginThrownScrapeFailure,
-  creditThrownScrapeFailure,
-} from './credit-failure-policy.mjs';

@@ -44,6 +44,8 @@ import {
   scraperFailureMessage,
   waitForTerminalLoginResult,
   ymdDate,
+} from '../netunim-kupa/bank-bridge/lib.mjs';
+import {
   creditScrapeFailure,
   creditThrownScrapeFailure,
   creditAutomaticRetryAfterAt,
@@ -51,7 +53,7 @@ import {
   deferredCamoufoxProfileError,
   expiredCamoufoxLoginPageBlock,
   CREDIT_AUTOMATION_BLOCK_COOLDOWN_MS,
-} from '../netunim-kupa/bank-bridge/lib.mjs';
+} from '../netunim-kupa/bank-bridge/credit-failure-policy.mjs';
 
 const bankDiagnostic=createBankDiagnosticRun({bridgeVersion:52});
 recordBankTransactionDiagnostic(bankDiagnostic,{role:'business',chequeKind:'',transaction:{eventActivityTypeCode:1,activityTypeCode:999,textCode:77,activityDescription:'העברה נכנסת',englishActionDesc:'INCOMING TRANSFER',referenceNumber:123456789,referenceCatenatedNumber:4321,contraBankNumber:10,contraBranchNumber:123,contraAccountNumber:456789,beneficiaryDetailsData:{partyName:'לקוח בדיקה',messageDetail:'זיכוי'},pfmDetails:'/ServerServices/pfm/transactions?referenceNumber=123456789&accountId=12-613-678542',password:'do-not-export'},normalizedTransaction:{description:'העברה נכנסת',amount:2500,bankReference:'123456789',memo:'לקוח בדיקה · זיכוי'},detailSources:[],mergedAdditionalDetails:null});
