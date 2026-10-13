@@ -1,5 +1,12 @@
 # Incremental JavaScript contracts
 
+Orders Bank archive readout checks its actual owner body and negative consumers:
+string account keys, two explicit roles, numeric/null windows, synchronous read
+authority and row mutation, private cache permits and a tracked drain lifecycle.
+A numeric rows body mutation fails compilation. This does not typecheck the
+whole Finance controller or the complete Bank row/RPC envelopes. See
+[archive readout ownership](ORDERS_BANK_ARCHIVE_READOUT.md).
+
 Orders Finance's document readout publication checks the actual body and negative
 consumers: captured synchronous authority, numeric independent document heads,
 asynchronous refresh evidence and boolean publication status. A mutation from

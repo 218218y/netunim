@@ -10,6 +10,29 @@ import {createUiCloud} from '../netunim-orders/site/assets/js/ui/cloud.js';
 const deferred=()=>{let resolve;const promise=new Promise(done=>{resolve=done});return {promise,resolve}};
 const stamp='2026-10-08T10:00:00.000Z';
 const transaction=id=>({id,date:stamp,processedDate:stamp,amount:12,currency:'ILS',status:'completed',description:id});
+
+test('Orders archive hydration retains the accepted sibling read after the first read fails',async t=>{
+  const f=fixture(t),held=deferred();f.ports.readBankTransactions=async()=>{throw Error('archive failed')};f.ports.readBankTransactionSnapshot=()=>held.promise;
+  const api=f.create();let settled=false;const pending=api.ensureBankDisplayArchive();void pending.then(()=>{settled=true});
+  try{await new Promise(resolve=>setImmediate(resolve));assert.equal(settled,false,'the accepted snapshot read must settle before hydration completes')}
+  finally{held.resolve(null);await pending;api.stopAutoSync()}
+});
+
+test('Orders archive rejection after account handoff cannot report former-account details',async t=>{
+  const f=fixture(t),held=deferred(),reported=[];t.mock.method(console,'error',(...args)=>reported.push(args.map(String).join(' ')));
+  f.ports.readBankTransactions=()=>held.promise;const api=f.create(),pending=api.ensureBankDisplayArchive();
+  f.handoff();held.resolve(Promise.reject(Error('private former-account archive failure')));
+  assert.equal(await pending,false);assert.deepEqual(reported,[]);api.stopAutoSync();
+});
+
+test('Orders Bank verification retains accepted read obligations before releasing its Finance lease',async t=>{
+  const f=fixture(t),held=deferred();f.ports.readBankTransactions=async()=>{throw Error('verification read failed')};f.ports.readBankTransactionSnapshot=()=>held.promise;
+  const api=f.create(),pending=api.refreshBank();
+  try{await new Promise(resolve=>setImmediate(resolve));assert.equal(f.counts.release||0,0,'a failed read cannot release the lease while its sibling is still accepted')}
+  finally{held.resolve(null);await pending;api.stopAutoSync()}
+  assert.equal(f.counts.release,1);
+});
+
 function fixture(t,{hold=null}={}){
   const jobs=new Map();let timer=0,owner='A',epoch=1,primary=true,refreshes=0,checks=0;
   t.mock.method(globalThis,'setTimeout',fn=>{jobs.set(++timer,fn);return timer});t.mock.method(globalThis,'clearTimeout',id=>jobs.delete(id));t.mock.method(console,'error',()=>{});
@@ -43,6 +66,14 @@ for(const kind of ['Bank','Credit'])test(`Orders ${kind} failed automatic attemp
   assert.equal(api.snapshot()[kind.toLowerCase()+'Busy'],false);
   assert.equal(f.counts.claim||0,0);assert.equal(f.counts[kind.toLowerCase()+'-provider']||0,0);
   assert.deepEqual(f.checksSession,f.before);
+});
+
+test('Orders failed automatic Bank attempt persistence leaves archive hydration available',async t=>{
+  const f=fixture(t);f.ports.bridge.markBankAttempt=()=>{throw new DOMException('quota','QuotaExceededError')};
+  const api=f.create();t.after(()=>api.stopAutoSync());
+  assert.equal(await api.refreshBank({auto:true}),false);
+  assert.equal(await api.ensureBankDisplayArchive(),true);
+  assert.equal(f.counts['archive-read'],1);assert.equal(f.counts.claim||0,0);
 });
 
 for(const kind of ['Bank','Credit'])test(`Orders ${kind} unavailable preferences preserve the read model and stop automatic retries`,t=>{

@@ -883,3 +883,15 @@ implementation and negative-consumer checks. See
 [Orders Finance document commands](ORDERS_FINANCE_DOCUMENT_COMMANDS.md) and
 [remaining major work](ARCHITECTURE_REMAINING_WORK.md); private Bank/Credit
 workflows and full writer/caller typing remain.
+
+Orders Bank archive readout now owns scoped caches, hydration flights, projection
+revisions and all accepted row/snapshot reads. Three pre-change failures proved
+early hydration completion, early Finance lease release and former-account
+error reporting. Accepted siblings are joined, stale errors are fenced and Bank
+pauses invalidate background publication without abandoning accepted work.
+Controller collaborators decrease from 23 to 20. The actual owner is strict
+`checkJs`, with negative consumers, body mutation and boundary budgets. Native
+browser tests retain exact Main/Shared IndexedDB journals under each failure.
+Provider, archive-window, receipt and persisted-format policy is preserved. See
+[Orders Bank archive readout](ORDERS_BANK_ARCHIVE_READOUT.md) and
+[remaining major work](ARCHITECTURE_REMAINING_WORK.md).

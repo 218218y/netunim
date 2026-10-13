@@ -1,5 +1,10 @@
 import { createDomainsFinanceController } from '../netunim-orders/site/assets/js/domains/finance/controller.js';
 import { createOrdersFinanceDocumentCommands } from '../netunim-orders/site/assets/js/domains/finance/document-commands.js';
+import { createOrdersBankArchiveReadout } from '../netunim-orders/site/assets/js/domains/finance/bank-archive-readout.js';
+import {
+  bankArchiveTargets,
+  bankArchiveSourceRows,
+} from '../netunim-orders/site/assets/js/domains/finance/bank-archive-model.js';
 
 const unexpected = () => {
   throw new Error('unexpected Finance fixture document operation');
@@ -30,5 +35,19 @@ export function createOrdersFinanceControllerFixture(ports) {
     readout: { refresh: ports.refreshKupaReadout ?? unexpected },
     delay: ports.effects.delay,
   });
-  return createDomainsFinanceController({ ...ports, documents, syncLeases });
+  const archive = createOrdersBankArchiveReadout({
+    authority: ports.operationScope,
+    sources: {
+      targets: () => bankArchiveTargets(ports.checksSession?.kupaCloudReadState?.bank || {}),
+      rows: () => bankArchiveSourceRows(ports.checksSession?.kupaCloudReadState?.bank || {}),
+    },
+    reads: {
+      transactions: ports.readBankTransactions ?? (async () => []),
+      snapshot: ports.readBankTransactionSnapshot ?? (async () => null),
+    },
+    access: { authenticated: () => !!ports.loadSession?.(), online: ports.effects.isOnline },
+    revision: { read: ports.readRevision, touch: ports.touchBankDisplayRevision ?? (() => {}) },
+    report: (role, error) => console.error(`orders bank display archive ${role}`, error),
+  });
+  return createDomainsFinanceController({ ...ports, documents, syncLeases, archive });
 }

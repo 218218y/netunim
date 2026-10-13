@@ -62,7 +62,7 @@ test('controller has no direct document-write collaborators or nonatomic Bank fa
   const fields = factory.params[0].properties.map((row) => row.key.name);
   assert.equal(
     fields.length,
-    23,
+    20,
     'review the controller boundary before widening its collaborators'
   );
   for (const name of [

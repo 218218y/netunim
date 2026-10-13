@@ -13,6 +13,7 @@ import {CREDIT_CONNECTOR_CONTRACT_VERSION,creditCardMappingKey,creditSyncScrapeS
 import {bankAutoRefreshDue as bankRefreshDue,creditRefreshDue} from '../../shared/finance-refresh-policy.js';
 import {normalizeCashflowSettings} from '../../shared/cashflow.js';
 import {FINANCE_PUBLICATION_WARNING} from './document-publication.js';
+import {projectBankArchiveFeed} from './bank-archive-model.js';
 
 const BANK_BRIDGE_VERSION=72;
 const CREDIT_BRIDGE_VERSION=73;
@@ -62,21 +63,17 @@ export function createDomainsFinanceController({
   toast,
   syncLeases,
   syncBankTransactionsSnapshot = async () => null,
-  readBankTransactions = async () => [],
-  readBankTransactionSnapshot = async () => null,
   setBankTransactionHandled: saveBankTransactionHandled = async () => null,
   acknowledgeBankTransactionMissing = async () => null,
   acknowledgeBankTransactionAlert = async () => null,
   syncBankChequeImages = async () => ({ok:true,warnings:[]}),
-  touchBankDisplayRevision = () => {},
-  readRevision,
   effects,
   documents,
+  archive,
 }) {
   if(typeof operationScope?.capture!=='function'||typeof operationScope?.captureRead!=='function')throw new Error('orders_finance_operation_scope_required');
   for(const method of ['isOnline','writeText','saveJson','delay'])if(typeof effects?.[method]!=='function')throw new TypeError(`orders_finance_effect_${method}_required`);
   const scopeChanged=error=>error?.code==='FINANCE_OPERATION_SCOPE_CHANGED';
-  function scopeIsCurrent(assertCurrent){try{if(!assertCurrent)return false;assertCurrent();return true}catch(error){if(!scopeChanged(error))throw error;return false}}
   function currentOperationError(error,assertOwner){try{assertOwner?.();return error}catch(ownerError){return ownerError}}
   const local={bankBusy:false,bankResultReady:false,creditBusy:false,bankError:'',creditError:'',bankErrorAt:null,creditErrorAt:null,bankStatus:null,creditStatus:null,bankStatusChecked:false,creditStatusChecked:false,bankBridgeError:'',creditBridgeError:''};
   let financeStatusListener=()=>{};
@@ -94,50 +91,24 @@ export function createDomainsFinanceController({
   const mutateKupaCloud = documents.commands.mutateKupa, mutateFinanceCloud = documents.commands.mutateFinance;
   const readFinanceSyncDocument = documents.queries.readFinance;
   const publicationWarning = FINANCE_PUBLICATION_WARNING;
-  const bankDisplayArchive={business:{accountKey:'',syncKey:'',rows:null,directSnapshot:null},home:{accountKey:'',syncKey:'',rows:null,directSnapshot:null}};
-  let bankDisplayArchiveTask=null;
-  let projectionScope=null,projectionUnavailable=false,projectionEpoch=0;
-  function projectionRevision(){
-    if(!scopeIsCurrent(projectionScope)){
-      try{projectionScope=operationScope.captureRead();projectionUnavailable=false;projectionEpoch++}
-      catch(error){if(!scopeChanged(error))throw error;projectionScope=null;if(!projectionUnavailable)projectionEpoch++;projectionUnavailable=true}
-    }
-    const revision=readRevision?.();return revision===undefined||revision===null?revision:`${revision}:${projectionEpoch}`;
-  }
-  function publishDisplayArchive(candidate){bankDisplayArchiveTask=null;Object.assign(bankDisplayArchive,candidate);touchBankDisplayRevision();projectionEpoch++}
+  for (const method of ['matching','ready','revision','readSnapshot'])
+    if (typeof archive?.queries?.[method] !== 'function')
+      throw new TypeError('orders_bank_archive_query_' + method + '_required');
+  for (const method of ['publish','update'])
+    if (typeof archive?.commands?.[method] !== 'function')
+      throw new TypeError('orders_bank_archive_command_' + method + '_required');
+  for (const method of ['ensure','pause','resume'])
+    if (typeof archive?.runtime?.[method] !== 'function')
+      throw new TypeError('orders_bank_archive_runtime_' + method + '_required');
+  const projectionRevision = archive.queries.revision, bankAlertsReady = archive.queries.ready;
+  const ensureBankDisplayArchive = archive.runtime.ensure;
+  const publishDisplayArchive = archive.commands.publish;
+  const updateLocalBankTransaction = archive.commands.update;
+  const displayArchiveFeed = (role,feed) => projectBankArchiveFeed(archive,role,feed);
 
-  function bankArchiveTargets(){const bank=checksSession.kupaCloudReadState?.bank||{};return [['business',normalizeBankFeed(bank.feed)],['home',normalizeBankFeed(bank.homeFeed)]].filter(([,feed])=>!!feed?.accountNumber)}
-  function bankArchiveCacheMatches(role,feed){if(!feed?.accountNumber)return false;const cache=bankDisplayArchive[role];return scopeIsCurrent(cache.assertCurrent)&&cache.accountKey===String(feed.accountNumber||'')&&cache.syncKey===String(feed.syncedAt||'')&&Array.isArray(cache.rows)}
-  function bankAlertsReady(){return bankArchiveTargets().every(([role,feed])=>bankArchiveCacheMatches(role,feed))}
-  function displayArchiveFeed(role,feed){const normalized=normalizeBankFeed(feed);if(!normalized)return null;return bankArchiveCacheMatches(role,normalized)?normalizeBankFeed({...normalized,transactions:bankDisplayArchive[role].rows,directSnapshot:bankDisplayArchive[role].directSnapshot}):normalized}
   function snapshot(){const kupa=checksSession.kupaCloudReadState&&typeof checksSession.kupaCloudReadState==='object'?clone(checksSession.kupaCloudReadState):null;if(kupa)kupa.checks=clone(getSharedChecks());const rawBank=kupa?.bank||null,bank=rawBank?{...rawBank,feed:displayArchiveFeed('business',rawBank.feed),homeFeed:displayArchiveFeed('home',rawBank.homeFeed)}:null;return {kupa,bank,bankAlertsReady:bankAlertsReady(),creditSync:normalizeCreditSync(kupa?.creditSync),cards:Array.isArray(kupa?.cards)?kupa.cards:[],credits:Array.isArray(kupa?.credits)?kupa.credits:[],bankLastSyncAt:bankLastSyncAt(kupa),creditLastSyncAt:creditLastSyncAt(kupa),...financeAutomation.preferenceState(),bankBusy:local.bankBusy,bankResultReady:local.bankResultReady,creditBusy:local.creditBusy,bankError:local.bankError,creditError:local.creditError,bankErrorAt:local.bankErrorAt,creditErrorAt:local.creditErrorAt,bankStatus:local.bankStatus?clone(local.bankStatus):null,creditStatus:local.creditStatus?clone(local.creditStatus):null,bankStatusChecked:local.bankStatusChecked,creditStatusChecked:local.creditStatusChecked,bankBridgeError:local.bankBridgeError,creditBridgeError:local.creditBridgeError}}
   const readProjection=createRevisionSelector({revision:projectionRevision,select:snapshot,name:'orders-finance'});
   function readSnapshot(){return {...readProjection(),...financeAutomation.preferenceState(),bankBusy:local.bankBusy,bankResultReady:local.bankResultReady,creditBusy:local.creditBusy,bankError:local.bankError,creditError:local.creditError,bankErrorAt:local.bankErrorAt,creditErrorAt:local.creditErrorAt,bankStatus:local.bankStatus?clone(local.bankStatus):null,creditStatus:local.creditStatus?clone(local.creditStatus):null,bankStatusChecked:local.bankStatusChecked,creditStatusChecked:local.creditStatusChecked,bankBridgeError:local.bankBridgeError,creditBridgeError:local.creditBridgeError}}
-
-  async function ensureBankDisplayArchive(){
-    // Bank refresh owns publication until its snapshot/readout confirmation.
-    if(local.bankBusy||!loadSession()||!effects.isOnline()||typeof readBankTransactions!=='function')return false;
-    let assertCurrent;try{assertCurrent=operationScope.captureRead()}catch(error){if(scopeChanged(error))return false;throw error}
-    const targets=bankArchiveTargets(),signature=JSON.stringify(targets.map(([role,feed])=>[role,feed.accountNumber,feed.syncedAt]));
-    if(bankDisplayArchiveTask?.signature===signature&&scopeIsCurrent(bankDisplayArchiveTask.assertCurrent))return bankDisplayArchiveTask.promise;
-    const pending=targets.filter(([role,feed])=>!bankArchiveCacheMatches(role,feed));if(!pending.length)return false;
-    const task={assertCurrent,signature,promise:null};bankDisplayArchiveTask=task;
-    task.promise=(async()=>{
-      let changed=false;
-      for(const [role,feed] of pending){
-        try{
-          assertCurrent();
-          const [rows,directSnapshot]=await Promise.all([readBankTransactions(feed.accountNumber,role,{days:null,assertCurrent}),readBankTransactionSnapshot(feed.accountNumber,role,{assertCurrent})]);assertCurrent();
-          const current=bankArchiveTargets().find(([currentRole])=>currentRole===role)?.[1]||null;
-          if(bankDisplayArchiveTask!==task||!current||String(current.accountNumber||'')!==String(feed.accountNumber)||String(current.syncedAt||'')!==String(feed.syncedAt||''))continue;
-          bankDisplayArchive[role]={accountKey:String(feed.accountNumber),syncKey:String(feed.syncedAt||''),rows,directSnapshot,assertCurrent};changed=true;
-        }catch(error){if(scopeChanged(error))return false;console.error(`orders bank display archive ${role}`,error)}
-      }
-      if(changed&&bankDisplayArchiveTask===task){touchBankDisplayRevision();projectionEpoch++}
-      return changed;
-    })();
-    try{return await task.promise}finally{if(bankDisplayArchiveTask===task)bankDisplayArchiveTask=null}
-  }
 
   async function refreshFinanceData({force=true,renderIfChanged=true}={}){if(!loadSession()||!effects.isOnline())return snapshot();const assertCurrent=operationScope.captureRead();await refreshKupaReadout({force,renderIfChanged,assertCurrent});assertCurrent();return snapshot()}
 
@@ -211,8 +182,8 @@ export function createDomainsFinanceController({
     if(local.bankBusy||local.creditBusy)return false;
     if(!tab.primaryTab||!loadSession()||!effects.isOnline())return false;
     if(!financeAutomation.tokenConfigured()){if(!auto)toast('יש לצמד את ניהול ההזמנות ל-Bank Bridge במחשב זה');return false}
-    bankDisplayArchiveTask=null;
     if(auto&&!financeAutomation.markAttempt('bank'))return false;
+    archive.runtime.pause();
     local.bankBusy=true;local.bankResultReady=false;local.bankError='';local.bankErrorAt=null;notifyFinanceStatus('bank');
     let leaseToken='',leaseHeld=false,lease=null,heartbeat=null,assertOwner;const schedulerEpoch=financeAutomation.currentEpoch();
     const assertCurrent=()=>{assertOwner();heartbeat?.assertCurrent()};
@@ -242,7 +213,12 @@ export function createDomainsFinanceController({
       const businessMerge=await syncBankTransactionsSnapshot(businessAccount,'business',business.transactions||[],{lease,snapshotAt:fetchedAt,coverage:businessCoverage,complete:businessCoverage.complete});assertCurrent();
       const homeMerge=home&&homeAccount?await syncBankTransactionsSnapshot(homeAccount,'home',home.transactions||[],{lease,snapshotAt:fetchedAt,coverage:homeCoverage,complete:homeCoverage?.complete===true}):null;assertCurrent();
       let imageSyncWarning='';try{const imageSync=await syncBankChequeImages([...(business.transactions||[]),...(home?.transactions||[])],{assertCurrent});assertCurrent();if(imageSync?.warnings?.length)imageSyncWarning=`תמונות שיקים: ${imageSync.warnings.join(' | ')}`}catch(error){assertCurrent();if(scopeChanged(error))throw error;imageSyncWarning=`תמונות שיקים לא סונכרנו לענן: ${error?.message||error}`}
-      const [businessArchive,businessDirect,homeArchive,homeDirect]=await Promise.all([readBankTransactions(businessAccount,'business',{days:370,assertCurrent}),readBankTransactionSnapshot(businessAccount,'business',{assertCurrent}),home&&homeAccount?readBankTransactions(homeAccount,'home',{days:370,assertCurrent}):Promise.resolve([]),home&&homeAccount?readBankTransactionSnapshot(homeAccount,'home',{assertCurrent}):Promise.resolve(null)]);
+      const verified = await archive.queries.readSnapshot([
+        {role:'business',accountKey:String(businessAccount||'')},
+        ...(home&&homeAccount ? [{role:'home',accountKey:String(homeAccount)}] : []),
+      ],{days:370,assertCurrent});
+      const businessArchive = verified[0].rows, businessDirect = verified[0].directSnapshot;
+      const homeArchive = verified[1]?.rows||[], homeDirect = verified[1]?.directSnapshot??null;
       assertCurrent();const assertReadable=operationScope.captureRead();
       const archiveCandidate={business:{accountKey:String(businessAccount||''),syncKey:String(fetchedAt),rows:businessArchive,directSnapshot:businessDirect,assertCurrent:assertReadable},...(homeAccount?{home:{accountKey:String(homeAccount),syncKey:String(fetchedAt),rows:homeArchive,directSnapshot:homeDirect,assertCurrent:assertReadable}}:{})};
       const requireExactArchive=historyDays>=365,businessAudit=assertBankArchiveCoverage(businessMerge,businessArchive,{role:'עסקי',requireExactCount:requireExactArchive}),homeAudit=home&&homeAccount?assertBankArchiveCoverage(homeMerge,homeArchive,{role:'ביתי',requireExactCount:requireExactArchive}):null,archiveAudit={version:3,verifiedAt:fetchedAt,historyDays,business:{...businessAudit,accountKey:businessAccount,reconciliation:businessMerge?.result||null,coverage:businessCoverage},home:homeAudit?{...homeAudit,accountKey:homeAccount,reconciliation:homeMerge?.result||null,coverage:homeCoverage}:null};
@@ -269,16 +245,7 @@ export function createDomainsFinanceController({
       if(error?.availableAccounts?.length)local.bankStatus={...(local.bankStatus||{}),availableAccounts:error.availableAccounts,accountRole:error.accountRole||''};
       if(!auto)toast(local.bankError);local.bankResultReady=true;notifyFinanceStatus('bank');return false;
     }
-    finally{heartbeat?.stop();if(leaseHeld)try{await releaseFinanceSyncLease('bank',leaseToken,{assertCurrent:assertOwner})}catch(error){if(!scopeChanged(error))console.error('orders bank sync lease release',error)}local.bankBusy=false;local.bankResultReady=false;notifyFinanceStatus('bank');scheduleBankAuto()}
-  }
-
-  function updateLocalBankTransaction(transactionId,mutator){
-    const id=Number(transactionId);let changed=false;
-    const apply=rows=>{if(!Array.isArray(rows))return;for(const row of rows)if(Number(row?.archiveId)===id){mutator(row);changed=true}};
-    for(const role of ['business','home'])apply(bankDisplayArchive[role].rows);
-    const bank=checksSession.kupaCloudReadState?.bank||{};apply(bank.feed?.transactions);apply(bank.homeFeed?.transactions);
-    if(changed){touchBankDisplayRevision();projectionEpoch++}
-    return changed;
+    finally{heartbeat?.stop();if(leaseHeld)try{await releaseFinanceSyncLease('bank',leaseToken,{assertCurrent:assertOwner})}catch(error){if(!scopeChanged(error))console.error('orders bank sync lease release',error)}local.bankBusy=false;archive.runtime.resume();local.bankResultReady=false;notifyFinanceStatus('bank');scheduleBankAuto()}
   }
 
   async function toggleBankTransactionHandled(transactionId,handled){
