@@ -67,6 +67,15 @@ error, replacement form and stale form. Main and Shared records remain exact;
 independent data restores after reload. Focused ownership, strict mutation,
 architecture and immutable financial/issuer policy checks accompany them.
 
+The full PR gate exposed an intermittent Morning workflow check while its push
+gate passed. Its issuance-readiness predicate used a display label, which does
+not certify completion. A held native response body plus an idle-label change
+reproduced an early, ignored reconciliation click deterministically. Morning
+busy buttons now reflect their actual operation lifetime in `aria-busy`; the
+browser test requires that state to settle, explicitly proves that reconciliation
+cannot overlap the held issue and still checks verified recovery/no duplicate
+POST/exact debt allocation. The timeout is unchanged; no retry is added.
+
 The duplicated local controller state, direct local Bank calls and unused
 `cleanDigits` controller helper are retired. Finance view no longer exposes the
 unused Credit-only `runtime` spread; its combined connection lifecycle is the
