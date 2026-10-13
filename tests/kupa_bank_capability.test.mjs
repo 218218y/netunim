@@ -50,7 +50,7 @@ for (const operation of ['stop','dispose']) test(`Bank ${operation} drains a hel
   const f = fixture(t), provider = gate(), entered = gate();
   f.cap.bindUi(f.view);
   let writes = 0, releases = 0;
-  f.cloud.claimLease = async () => ({acquired:true});
+  f.cloud.claimLease = async () => ({acquired:true,localOnly:true});
   f.cloud.refreshFinance = async () => ({verified:true,state:f.model.state});
   f.cloud.releaseLease = async (_kind,_token,{assertCurrent}) => { assertCurrent(); releases++; return true; };
   f.bridge.markAutoAttempt = noop;
