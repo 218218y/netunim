@@ -152,7 +152,7 @@ test('status completion after presentation closes returns the operation result w
   const status = createFinanceStatusView({
     ui:{currentView:'kupa'}, currentSection:() => 'bank', isActive:() => active,
     snapshot:() => { reads++; return {}; }, headerContextMarkup:noop, bankSyncPanelMarkup:noop, creditSyncPanelMarkup:noop,
-    controller:{}, renderKupa:() => renders++, renderedData:() => null,
+    controller:{}, renderKupa:() => renders++, renderedData:() => null, bindBankForm:noop,
   });
   const running = status.refreshFinanceOperation('bank', () => release.promise);
   const initialReads = reads; active = false;

@@ -472,3 +472,11 @@ Actual body mutations replacing numeric evidence or nullable financial output
 with text fail. The full controllers/provider transaction payloads remain
 selectively checked; their behavior and owner-before-decoder ordering are tested.
 See BANK_FINANCIAL_EVIDENCE.md.
+
+The Orders local Bank connection implementation is strictly checked around its
+five required ports, unknown status/diagnostic records, credential/account
+strings, device guard, boolean write confirmation and asynchronous drain.
+Negative consumers and an actual body mutation protect these boundaries.
+Pairing observation exposes only paired availability and a numeric generation.
+Complete Bank payload and financial-controller typing remain unfinished.
+See ORDERS_BANK_CONNECTION_OWNER.md.

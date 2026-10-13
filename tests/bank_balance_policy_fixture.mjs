@@ -5,6 +5,12 @@ export function restoreBankMoneyBoundary(source) {
   const oldFields =
     'availableBalance:Number.isFinite(Number(business.availableBalance))?Number(business.availableBalance):null,creditLimit:Number.isFinite(Number(business.creditLimit))?Number(business.creditLimit):null,creditLimitUsed:Number.isFinite(Number(business.creditLimitUsed))?Number(business.creditLimitUsed):null,creditLimitUsedPercent:Number.isFinite(Number(business.creditLimitUsedPercent))?Number(business.creditLimitUsedPercent):null';
   return source
+    .replaceAll('assertConnection=bankConnections.queries.capture();','assertConnection=bankPairingScope.capture();')
+    .replace('const status=await bankConnections.queries.readStatus();assertCurrent();',"const status=await bridge.status();assertCurrent();local.bankStatus=status;local.bankStatusChecked=true;local.bankBridgeError='';")
+    .replace('if(!bankConnections.queries.supported(status))','if(Number(status.bridgeVersion||0)<BANK_BRIDGE_VERSION)')
+    .replace('bankConnections.commands.recordScan({lastScrapeAt:','local.bankStatus={...status,lastScrapeAt:')
+    .replace("accountRole:homeFailure?'home':''},assertConnection);","accountRole:homeFailure?'home':''};")
+    .replace('if(assertConnection)bankConnections.commands.reportFailure(error,assertConnection);',"if(error?.code==='BRIDGE_UNAVAILABLE'||error?.code==='BRIDGE_TIMEOUT')local.bankBridgeError=local.bankError;\n      if(error?.availableAccounts?.length)local.bankStatus={...(local.bankStatus||{}),availableAccounts:error.availableAccounts,accountRole:error.accountRole||''};")
     .replace(
       'const {business,home,homeFailure}=readBankBalanceResult(result);',
       `const business=result.accounts?.business||result,home=result.accounts?.home??null,homeFailure=result.accountFailures?.home||null;

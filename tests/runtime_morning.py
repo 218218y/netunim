@@ -17,7 +17,8 @@ const setReceiptAmount=value=>{const payment=document.querySelector('[data-payme
 const setDocumentAmount=value=>{const amount=document.getElementById('morningAmount');assert(amount,'Missing document amount');amount.value=String(value);amount.dispatchEvent(new Event('input',{bubbles:true}));};
 const stageFixtureState=message=>{const debt=state.customerDebts.at(-1);if(scheduleSave(message,{operations:[{type:'put',collection:'customerDebts',id:debt.id,mode:'insert',index:state.customerDebts.length-1,record:debt}]})!==true)throw new Error('fixture V2 debt write was not durable');storagePersistence.runtime.cancelPending()};
 const calls=[],docs=Array.from({length:26},(_,i)=>({id:'00000000-0000-4000-8000-'+String(i+1).padStart(12,'0'),number:100+i,type:305,date:'2026-09-08',amount:100,currency:'ILS',clientName:i===0?'Manual Morning':'App document',status:0,allocationNumber:'123'}));
-let uncertain=false,resolveStatus=false,operation=null;
+let uncertain=false,resolveStatus=false,operation=null,releaseLostResponse;
+const lostResponse=new Promise(resolve=>{releaseLostResponse=resolve});
 cloudAuth.supaFetch=async(path,options)=>{
   const request=JSON.parse(options.body);calls.push(request);assert(!('debt_id' in request),'Debt ID sent to backend');assert(!('applyPayment' in request)&&!('applyInvoice' in request),'Local debt allocation policy sent to backend');
   let data={ok:true};
@@ -25,7 +26,12 @@ cloudAuth.supaFetch=async(path,options)=>{
   if(request.action==='reserve')data={ok:true,reserved:true,operation:{operation_id:request.operation_id,state:'reserved'}};
   if(request.action==='abandon_reservation')data={ok:true,abandoned:operation?.state==='reserved',operation:operation?.state==='reserved'?{...operation,state:'failed'}:operation};
   if(request.action==='create'){
-    if(uncertain){operation={operation_id:request.operation_id,state:'needs_reconciliation',document_type:request.document.type,amount:request.document.amount};return new Response(JSON.stringify({ok:false,uncertain:true,code:'morning_creation_uncertain',message:'Simulated lost response'}),{status:502})}
+    if(uncertain){
+      operation={operation_id:request.operation_id,state:'needs_reconciliation',document_type:request.document.type,amount:request.document.amount};
+      const response=new Response(JSON.stringify({ok:false,uncertain:true,code:'morning_creation_uncertain',message:'Simulated lost response'}),{status:502}),read=response.json.bind(response);
+      response.json=async()=>{await lostResponse;return read()};
+      return response;
+    }
     data={ok:true,verified:true,document:{id:docs[0].id,number:100,allocationNumber:'123',type:request.document.type,amount:request.document.amount}};
   }
   if(request.action==='search_documents')data={ok:true,items:docs.slice(request.page*25,(request.page+1)*25),total:26,pages:2};
@@ -80,7 +86,16 @@ state.customerDebts.push({id:'reconcile-debt',customerName:'Partial reconcile',a
 const reconcileButton=document.querySelector('[data-customer-bulk-id="reconcile-debt"] [data-action="open-morning-document"]');assert(reconcileButton,'Missing Morning button for reconciliation debt');reconcileButton.click();await waitFor(()=>!document.querySelector('[data-action="morning-create"]').disabled);
 setDocumentAmount(40);setReceiptAmount(40);fill('morningDescription','Partial uncertain issue');uncertain=true;resolveStatus=false;operation=null;const partialConfirm=await issueAndWaitForConfirmation(text=>text.includes('המסמך חלקי ביחס לחוב')&&text.includes('Partial reconcile')&&text.includes('40')&&text.includes('60'));assert(partialConfirm.includes('המסמך חלקי ביחס לחוב'),'Partial debt warning is explicit');assert(partialConfirm.includes('40')&&partialConfirm.includes('60'),'Partial confirmation explains applied and remaining amounts');document.getElementById('confirmAccept').click();await waitFor(()=>!!operation);
 const createCount=calls.filter(c=>c.action==='create').length;click('morning-create');assert(calls.filter(c=>c.action==='create').length===createCount,'Timeout triggered another POST');
-await waitFor(()=>!document.querySelector('[data-action="morning-create"]').textContent.includes('מפיק'));resolveStatus=true;click('morning-reconcile');await waitFor(()=>document.getElementById('morningOperationResult').textContent.includes('100')&&document.querySelector('[data-action="morning-create"]').disabled&&!localStorage.getItem('orders.morning.pending-issuance.v1'));
+// A changed presentation label cannot certify completion of an accepted issue.
+// Hold the actual response body and force the formerly misleading label order.
+const issuanceButton=document.querySelector('[data-action="morning-create"]');
+assert(issuanceButton.ariaBusy==='true','Accepted Morning issuance stays busy until its response body settles');
+issuanceButton.textContent=issuanceButton.dataset.idleLabel;
+assert(!issuanceButton.textContent.includes('מפיק')&&issuanceButton.ariaBusy==='true','Display text is independent of issuance ownership');
+const statusBeforeEarlyClick=calls.filter(c=>c.action==='status').length;
+click('morning-reconcile');assert(calls.filter(c=>c.action==='status').length===statusBeforeEarlyClick,'Reconciliation cannot overlap the accepted issue');
+releaseLostResponse();await waitFor(()=>issuanceButton.ariaBusy==='false');
+resolveStatus=true;click('morning-reconcile');await waitFor(()=>document.getElementById('morningOperationResult').textContent.includes('100')&&document.querySelector('[data-action="morning-create"]').disabled&&!localStorage.getItem('orders.morning.pending-issuance.v1'));
 assert(calls.some(c=>c.action==='status'&&c.reconcile&&c.operation_id===operation.operation_id),'Reconciliation must use operation ID');
 const partialDebt=state.customerDebts.find(d=>d.id==='reconcile-debt');assert(partialDebt.debtProgress?.length===2,'Verified reconciliation applies both 320 dimensions');assert(partialDebt.debtProgress.every(e=>e.amount===40&&e.source==='morning'),'Reconciled operation applies the verified partial amount once');assert(!partialDebt.paidAt&&!partialDebt.invoiceIssuedAt&&!partialDebt.closedAt,'Partial reconciliation does not falsely close the debt');
 const partialBytes=JSON.stringify(partialDebt);click('morning-reconcile');await new Promise(r=>setTimeout(r,80));assert(JSON.stringify(partialDebt)===partialBytes,'Repeated reconciliation is idempotent');uncertain=false;

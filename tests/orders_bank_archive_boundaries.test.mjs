@@ -62,7 +62,7 @@ test('Finance delegates archive reads, publications and pauses without private a
     (row) => row.declaration?.id?.name === 'createDomainsFinanceController'
   ).declaration;
   const fields = factory.params[0].properties.map((row) => row.key.name);
-  assert.equal(fields.length, 21);
+  assert.equal(fields.length, 22);
   assert.ok(fields.includes('connections'));
   assert.ok(fields.includes('archive'));
   for (const field of [

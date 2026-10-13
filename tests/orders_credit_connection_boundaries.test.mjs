@@ -43,7 +43,7 @@ test('Orders connection owner has five required ports and only the canonical acc
   const source = read(controller);
   assert.equal(
     factory(ast(controller), 'createDomainsFinanceController').params[0].properties.length,
-    21
+    22
   );
   for (const name of [
     'creditStatus',
@@ -68,14 +68,18 @@ test('Orders Finance lifecycle joins local, financial, archive and confirmation 
   assert.ok(view.includes('saved === true && currentForm(form)'));
   assert.ok(!view.includes('resetCreditSync,updateCreditConnectionFields'));
 });
-test('Orders issuer/wire/publication policy, credential values and Bank workflows retain the baseline algorithms', () => {
+test('Orders issuer/wire/publication policy, credential values and financial Bank workflow retain the baseline algorithms', () => {
   const fixture = JSON.parse(read('tests/fixtures/orders-credit-connection-policy.json'));
   assert.equal(fixture.baseline, '56e9620242de2679a761bdd52733d606177c0b1f');
   assert.equal(Object.keys(fixture.sha256).length, 5);
   for (const [file, expected] of Object.entries(fixture.sha256))
     assert.equal(hash(read(file)), expected, file);
   const functions = factory(parse(restoreBankMoneyBoundary(read(controller)),{ecmaVersion:'latest',sourceType:'module',ranges:true}), 'createDomainsFinanceController').body.body;
-  for (const [name, expected] of Object.entries(fixture.bankBodies))
+  // The five local Bank commands are intentionally replaced by the scoped
+  // owner. Their payloads, ordering, late completion and lifecycle are covered
+  // in orders_bank_connection_ownership/boundaries; financial policy remains
+  // byte-for-byte AST protected by this immutable historical fixture.
+  for (const [name, expected] of Object.entries(fixture.bankBodies).filter(([name])=>name==='refreshBank'))
     assert.equal(
       hash(
         JSON.stringify(

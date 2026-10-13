@@ -1,6 +1,29 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createBridgePairingScope } from '../shared/bridge-pairing-scope.js';
+test('pairing observation publishes only paired state and an invalidation generation', () => {
+  let token = '',
+    reads = 0;
+  const scope = createBridgePairingScope({
+    readToken: () => {
+      reads++;
+      return token;
+    },
+  });
+  assert.equal(reads, 0);
+  const absent = scope.snapshot();
+  assert.equal(absent.paired, false);
+  token = 'private-A';
+  const first = scope.snapshot();
+  assert.equal(first.paired, true);
+  assert.ok(first.generation > absent.generation);
+  assert.deepEqual(scope.snapshot(), first);
+  assert.deepEqual(Object.keys(first).sort(), ['generation', 'paired']);
+  scope.dispose();
+  const before = reads;
+  assert.equal(scope.snapshot().paired, false);
+  assert.equal(reads, before);
+});
 test('pairing authority is inert and rejects observed device generations without exposing tokens', () => {
   let token = 'private-A',
     reads = 0;

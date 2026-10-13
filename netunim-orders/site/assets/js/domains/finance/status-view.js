@@ -1,4 +1,5 @@
-export function createFinanceStatusView({ui,currentSection,snapshot,headerContextMarkup,bankSyncPanelMarkup,creditSyncPanelMarkup,controller,renderKupa,renderedData,isActive=()=>true}){
+export function createFinanceStatusView({ui,currentSection,snapshot,headerContextMarkup,bankSyncPanelMarkup,creditSyncPanelMarkup,controller,renderKupa,renderedData,bindBankForm,isActive=()=>true}){
+  if(typeof bindBankForm!=='function')throw new TypeError('orders_finance_bank_form_binding_required');
   function replacePanel(panel,markup,findNext=()=>document.getElementById(panel.id)){
     const key=element=>element.id||[element.tagName,element.name,element.dataset.input,element.dataset.change,element.dataset.changeArg0,element.dataset.changeArg1].join(':');
     const controls=new Map([...panel.querySelectorAll('input,select,textarea')].map(element=>[key(element),element]));
@@ -16,7 +17,7 @@ export function createFinanceStatusView({ui,currentSection,snapshot,headerContex
     if(command)replacePanel(command,headerContextMarkup(data),()=>document.querySelector('[data-finance-command]'));
     const panel=document.getElementById(section==='bank'?'ordersBankSyncPanel':'ordersCreditSyncPanel');
     if(panel)replacePanel(panel,section==='bank'?bankSyncPanelMarkup(data,{open:ui.bankSyncOpen===true}):creditSyncPanelMarkup(data));
-    document.getElementById('ordersBankCredentialsForm')?.addEventListener('submit',event=>event.preventDefault());
+    if(section==='bank')bindBankForm();
   }
   async function refreshFinanceOperation(section,start){
     const task=start();refreshFinanceStatus(section);

@@ -977,3 +977,12 @@ standalone generated scalar and verifies v74, so existing Bank installations
 must be updated. Fourteen native browser/IDB scenarios, actual provider-reader
 cases, strict negative/body mutations and preserved surrounding policy fixtures
 protect the slice. See [Bank financial evidence](BANK_FINANCIAL_EVIDENCE.md).
+
+Orders local Bank connection now has a strict five-port owner, based on seven
+reproduced controller defects. Status, vault/account writes and diagnostic
+publication follow pairing generations and accepted-work disposal/drain;
+credential writes cannot fabricate version evidence. Native form identity,
+submit listeners and destructive confirmations have an explicit presentation
+owner joined by Finance. Eleven native browser/IDB cases preserve exact Main
+and Shared journals. Controller width is 22; larger financial/provider workflows
+remain unfinished. See [Orders Bank connections](ORDERS_BANK_CONNECTION_OWNER.md).

@@ -19,8 +19,8 @@ remaining-scope paragraphs describe their stage's starting point.
   account/enrichment, cheque files, status/diagnostics and shutdown have owners
   and native tests. Broad Bank/Credit libraries and adapter facades are retired.
 - Orders Finance documents have a command owner, required real leases and
-  current write APIs. The controller has 21 explicit collaborators, down from 30
-  overall, including the added local Credit connection owner, and no
+  current write APIs. The controller has 22 explicit collaborators, down from 30
+  overall, including the local Bank/Credit connection owners, and no
   embedded-Finance or two-write Bank fallback.
 - Orders Bank archive cache, flights and projection revisions belong to a strict
   read owner. Failed reads retain accepted siblings; account handoff suppresses
@@ -59,6 +59,12 @@ remaining-scope paragraphs describe their stage's starting point.
   device authority before provider/publication work, independently of lease
   cleanup. Kupa command acceptance now uses the canonical task owner. See
   [Bank financial evidence](BANK_FINANCIAL_EVIDENCE.md).
+- Orders local Bank status, vault/account commands and diagnostic publication
+  have a strict owner. Its native form/listener and confirmations have a joined
+  presentation lifetime, and stale pairing/results cannot replace current
+  readout or invent a Bridge version. The corresponding Kupa local Bank boundary
+  and Finance provider orchestration remain open. See
+  [Orders Bank connections](ORDERS_BANK_CONNECTION_OWNER.md).
 - Full CI covers PostgreSQL, native browser/IDB, lost ACKs, ownership changes,
   recovery and Windows, and remains mandatory for each slice.
 

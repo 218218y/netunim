@@ -42,6 +42,8 @@ for(const app of ['kupa','orders']){
         assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=10,relative+': Checks composition requires focused ports');
       if(node.type==='FunctionDeclaration'&&node.id?.name==='createOrdersFinanceCapability')
         assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=9,relative+': Finance composition requires focused ports, not another app context');
+      if(node.type==='FunctionDeclaration'&&['createOrdersBankConnectionOwner','createBankConnectionCommands'].includes(node.id?.name))
+        assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=5,relative+': local Bank request/form ownership requires focused ports');
       if(node.type==='FunctionDeclaration'&&node.id?.name==='createFinanceBrowserEffects'){
         const parameter=node.params[0]?.type==='AssignmentPattern'?node.params[0].left:node.params[0];
         assert.ok(parameter?.type==='ObjectPattern'&&parameter.properties.length<=2,relative+': Finance browser effects exceed two platform collaborators');

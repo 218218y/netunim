@@ -1,6 +1,7 @@
 // @ts-check
 /** @typedef {()=>undefined} BridgePairingGuard */
-/** @typedef {{capture:()=>BridgePairingGuard,dispose:()=>boolean}} BridgePairingScope */
+/** @typedef {{paired:boolean,generation:number}} BridgePairingReadout */
+/** @typedef {{capture:()=>BridgePairingGuard,snapshot:()=>BridgePairingReadout,dispose:()=>boolean}} BridgePairingScope */
 function changed() {
   return Object.assign(
     new Error(
@@ -39,6 +40,10 @@ export function createBridgePairingScope({ readToken }) {
     return { token, available, epoch };
   }
   return {
+    snapshot() {
+      const live = active ? observe() : { token: '', available: false, epoch };
+      return { paired: active && live.available && !!live.token, generation: live.epoch };
+    },
     capture() {
       if (!active) throw changed();
       const permit = observe();
