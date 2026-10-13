@@ -14,7 +14,7 @@ function fixture(t) {
   const unexpected = () => assert.fail('composition performed IO or used unhydrated state');
   const bridge = {getBridgeToken:() => 'fixture', autoEnabled:() => true, autoAttemptDelayMs:() => 0,
     bankDiagnostics:async () => { entered.resolve(); await held.promise; return {available:true,filename:'fixture.json',data:{version:1}}; }};
-  const cloud = Object.fromEntries(['refreshFinance','saveFinancePatch','claimLease','releaseLease','saveSnapshot','mergeTransactions',
+  const cloud = Object.fromEntries(['refreshFinance','claimLease','releaseLease','saveSnapshot',
     'syncTransactions','readTransactions','readTransactionSnapshot','acknowledgeMissing','syncImages','downloadImage'].map(name => [name, unexpected]));
   const persistence = {save:unexpected,recover:unexpected};
   const readout = {balance:unexpected,forecast:unexpected,observedCheckSequence:() => 7};
@@ -52,7 +52,6 @@ for (const operation of ['stop','dispose']) test(`Bank ${operation} drains a hel
   let writes = 0, releases = 0;
   f.cloud.claimLease = async () => ({acquired:true});
   f.cloud.refreshFinance = async () => ({verified:true,state:f.model.state});
-  f.cloud.saveFinancePatch = async () => ({saved:true});
   f.cloud.releaseLease = async (_kind,_token,{assertCurrent}) => { assertCurrent(); releases++; return true; };
   f.bridge.markAutoAttempt = noop;
   f.bridge.fetchBalance = async () => { entered.resolve(); return provider.promise; };

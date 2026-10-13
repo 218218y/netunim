@@ -7,30 +7,51 @@ import { creditAdapterPolicyHashes } from './credit_adapter_policy_fixture.mjs';
 const read = (file) => fs.readFileSync(new URL('../' + file, import.meta.url), 'utf8');
 const folder = 'netunim-kupa/site/assets/js/domains/bank/';
 const fixture = JSON.parse(read('tests/fixtures/kupa-bank-archive-preserved-policy.json'));
+const snapshotSource = read(folder + 'snapshot-commands.js');
+function commandDeclaration(name) {
+  const ast = parse(snapshotSource, { sourceType: 'module', ecmaVersion: 'latest' }),
+    factory = ast.body.find(
+      (row) => row.declaration?.id?.name === 'createKupaBankSnapshotCommands'
+    ).declaration;
+  const node = [...ast.body.map((row) => row.declaration || row), ...factory.body.body].find(
+    (row) => row.type === 'FunctionDeclaration' && row.id.name === name
+  );
+  assert.ok(node, name);
+  return snapshotSource
+    .slice(node.start, node.end)
+    .replaceAll('bank.mode()', 'session.connectionMode')
+    .replaceAll('checks.hasLocalWork()', 'sharedChecksHaveLocalWork()')
+    .replaceAll('checks.saveCloud(', 'saveSharedChecksToCloud(')
+    .replaceAll('checks.syncCloud(', 'syncSharedChecksFromCloud(');
+}
 function policies(source) {
   const ast = parse(source, { sourceType: 'module', ecmaVersion: 'latest' }),
     factory = ast.body.find(
       (row) => row.declaration?.id?.name === 'createDomainsBankController'
     ).declaration;
   return creditAdapterPolicyHashes(
-    fixture.names.map((name) => {
-      const node = [...ast.body, ...factory.body.body].find(
-        (row) => row.type === 'FunctionDeclaration' && row.id.name === name
-      );
-      assert.ok(node, name);
-      return source.slice(node.start, node.end);
-    })
+    fixture.names
+      .filter((name) => name !== 'commitBankSnapshot')
+      .map((name) => {
+        if (name === 'financeBankPayload' || name === 'prepareBankSnapshot')
+          return commandDeclaration(name);
+        const node = [...ast.body, ...factory.body.body].find(
+          (row) => row.type === 'FunctionDeclaration' && row.id.name === name
+        );
+        assert.ok(node, name);
+        return source.slice(node.start, node.end);
+      })
   ).policies;
 }
-test('15 Bank/local-save and archive-coverage policies retain pre-extraction algorithms', () => {
-  assert.deepEqual(policies(read(folder + 'controller.js')), fixture.policies);
+test('14 retained Bank/archive/Shared policies match pre-extraction algorithms across their real owners', () => {
+  const { commitBankSnapshot, ...retained } = fixture.policies;
+  assert.equal(typeof commitBankSnapshot, 'string');
+  assert.deepEqual(policies(read(folder + 'controller.js')), retained);
 });
-test('preservation fixture rejects changed coverage, whole-money and local-save publication', () => {
+test('preservation fixture rejects changed archive coverage', () => {
   const source = read(folder + 'controller.js');
   for (const [from, to, name] of [
     ['total!==source.length', 'false', 'assertBankArchiveCoverage'],
-    ['wholeMoney(numeric)', 'numeric', 'commitBankSnapshot'],
-    ['await localSnapshot.save(nextBank,message,assertCurrent)', 'true', 'commitBankSnapshot'],
   ]) {
     const changed = source.replace(from, to);
     assert.notEqual(changed, source);
@@ -91,7 +112,7 @@ test('Kupa controller delegates archive ownership and preserves local publicatio
     (row) => row.declaration?.id?.name === 'createDomainsBankController'
   ).declaration;
   const fields = factory.params[0].properties.map((row) => row.key.name);
-  assert.equal(fields.length, 26);
+  assert.equal(fields.length, 18);
   assert.ok(fields.includes('archive'));
   for (const old of [
     'readBankTransactions',
@@ -106,7 +127,7 @@ test('Kupa controller delegates archive ownership and preserves local publicatio
     'archive.commands.invalidate',
     'archive.runtime.pause()',
     'archive.runtime.resume()',
-    'localSnapshot.save(nextBank',
+    'snapshots.commands.publishLocal(nextBank',
   ])
     assert.ok(source.includes(call), call);
 });

@@ -1,5 +1,5 @@
 import {bankRecurringDebitHistoryData} from '../../shared/bank-recurring-debits.js';
-import {readBankSnapshotReceipt,bankSnapshotReadoutIsCurrent} from '../../shared/bank-snapshot-receipt.js';
+import {BANK_READOUT_WARNING} from './snapshot-commands.js';
 import {startFinanceLeaseHeartbeat} from '../../shared/finance-fence.js';
 import {createPollingTask} from '../../shared/runtime-polling.js';
 import {uid} from '../../core/values.js';
@@ -7,7 +7,6 @@ import {wholeMoney} from '../../core/money.js';
 import {todayISO} from '../../core/dates.js';
 import {BANK_AUTO_INTERVAL_MS,bankAutoRefreshDue} from '../../shared/finance-refresh-policy.js';
 import {normalizeBankFeed} from './feed.js';
-import {createBankLocalSnapshot} from './local-snapshot.js';
 import {projectBankArchiveFeed} from './archive-model.js';
 
 const BANK_BRIDGE_VERSION=72;
@@ -37,10 +36,6 @@ export function createDomainsBankController({
   model,
   session,
   sharedChecksHaveLocalWork,
-  saveSharedChecksToCloud,
-  saveState,
-  recoverLocalState=async()=>false,
-  syncSharedChecksFromCloud,
   sharedChecksObservedSequence,
   toast,
   render,
@@ -49,23 +44,32 @@ export function createDomainsBankController({
   operationScope,
   effects,
   timers=globalThis,
-  refreshFinanceCloudSnapshot=async()=>({verified:true,state:model.state}),
-  saveFinancePatch=async()=>({saved:false}),
-  claimFinanceSyncLease=async()=>({acquired:true}),
-  releaseFinanceSyncLease=async()=>true,
-  saveBankSyncSnapshot:publishBankSyncSnapshot=null,
-  mergeBankTransactions=async()=>null,
   syncBankTransactionsSnapshot=async()=>null,
   acknowledgeBankTransactionMissing=async()=>null,
   syncBankChequeImages=async()=>({ok:true,warnings:[]}),
-  touchBankDataRevision=()=>{},
   archive,
+  readFinance,
+  syncLeases,
+  snapshots,
 }){
 const bridgeState={checked:false,available:null,configured:false,busy:false,resultReady:false,upgradeRequired:false,bridgeVersion:0,branchNumber:'',accountNumber:'',businessBranchNumber:'',businessAccountNumber:'',homeBranchNumber:'',homeAccountNumber:'',availableAccounts:[],accountSelectionRole:'',lastScrapeAt:null,lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:'',lastWarningCode:'',lastWarningStage:'',lastWarningHttpStatus:0,availabilityError:'',availabilityErrorAt:null,message:''};
 if(typeof autoScope!=='function')throw new Error('bank_auto_scope_required');
 if(typeof operationScope?.capture!=='function'||typeof operationScope?.captureRead!=='function')throw new Error('bank_operation_scope_required');
 if(typeof effects?.saveJson!=='function')throw new TypeError('bank_effects_required');
-const localSnapshot=createBankLocalSnapshot({model,saveState,recoverLocalState,render});
+
+for (const method of ['prepare','commitManual','publishCloud','publishLocal','retryLocal'])
+  if (typeof snapshots?.commands?.[method] !== 'function')
+    throw new TypeError('kupa_bank_snapshot_command_' + method + '_required');
+if (typeof snapshots?.queries?.localState !== 'function')
+  throw new TypeError('kupa_bank_snapshot_query_required');
+if (typeof readFinance !== 'function') throw new TypeError('kupa_bank_finance_read_required');
+for (const method of ['claim','release'])
+  if (typeof syncLeases?.[method] !== 'function')
+    throw new TypeError('kupa_bank_lease_' + method + '_required');
+const prepareBankSnapshot = snapshots.commands.prepare, commitBankSnapshot = snapshots.commands.commitManual;
+const localSnapshot = {state:snapshots.queries.localState,retry:snapshots.commands.retryLocal};
+const refreshFinanceCloudSnapshot = readFinance;
+const claimFinanceSyncLease = syncLeases.claim, releaseFinanceSyncLease = syncLeases.release;
 let disposed=false;
 const operations=new Set();
 function track(work){
@@ -90,7 +94,6 @@ for (const [group,methods] of Object.entries({
     if (typeof archive?.[group]?.[method] !== 'function')
       throw new TypeError('kupa_bank_archive_' + group + '_' + method + '_required');
 const ensureBankDisplayArchive = archive.runtime.ensure;
-const publishDisplayArchive = archive.commands.publish;
 const displayArchiveFeed = (role,feed) => projectBankArchiveFeed(archive,role,feed);
 
 function accountIdOf(snapshot){return snapshot?.accountId||[snapshot?.branchNumber,snapshot?.accountNumber].filter(Boolean).join('-')||snapshot?.accountNumber||''}
@@ -106,43 +109,14 @@ function feedFromSnapshot(snapshot,fetchedAt,role){
   feed.recurringDebitHistory=bankRecurringDebitHistoryData(previous,feed,role,completeTransactionCoverage(snapshot));
   return feed;
 }
-function financeBankPayload(bank){const out={...bank};delete out.adjustments;delete out.snapshotToken;delete out.snapshotSeq;return out}
+
 function applyBridgeAccountFields(target,source={}){
   const businessBranchNumber=source.businessBranchNumber||source.branchNumber||target.businessBranchNumber||target.branchNumber||'';
   const businessAccountNumber=source.businessAccountNumber||source.accountNumber||target.businessAccountNumber||target.accountNumber||'';
   Object.assign(target,{branchNumber:businessBranchNumber,accountNumber:businessAccountNumber,businessBranchNumber,businessAccountNumber,homeBranchNumber:source.homeBranchNumber??target.homeBranchNumber??'',homeAccountNumber:source.homeAccountNumber??target.homeAccountNumber??''});
 }
 
-async function prepareBankSnapshot(assertCurrent){
-  assertCurrent();
-  if(session.connectionMode==='supabase'){
-    if(sharedChecksHaveLocalWork()){const saved=await saveSharedChecksToCloud('הצקים סונכרנו לפני צילום יתרת הבנק');assertCurrent();if(!saved||sharedChecksHaveLocalWork())throw new Error('יש להמתין לסנכרון הצקים לפני צילום יתרת עו״ש חדש')}
-    const synced=await syncSharedChecksFromCloud({quiet:true,required:true});
-    assertCurrent();
-    if(!synced)throw new Error('צילום היתרה נעצר: לא ניתן לאמת שהצקים מסונכרנים כרגע. נסה שוב לאחר שהענן מסונכרן.');
-    if(sharedChecksHaveLocalWork()){const saved=await saveSharedChecksToCloud('הצקים סונכרנו לפני צילום יתרת הבנק');assertCurrent();if(!saved||sharedChecksHaveLocalWork())throw new Error('יש להמתין לסנכרון הצקים לפני צילום יתרת עו״ש חדש')}
-  }
-}
 
-async function commitBankSnapshot(balance,{source='manual',accountNumber=null,bankSyncAt=undefined,bankFeed=undefined,homeBankFeed=undefined,message='יתרת העו״ש נשמרה כצילום מצב חדש'}={}){
-  const assertCurrent=operationScope.capture();
-  if(localSnapshot.state())return false;
-  const numeric=Number(balance);
-  if(!Number.isFinite(numeric))throw new Error('התקבלה יתרת בנק לא תקינה');
-  await prepareBankSnapshot(assertCurrent);
-  assertCurrent();
-  if(session.connectionMode==='supabase'&&sharedChecksHaveLocalWork())throw new Error('הצקים השתנו לפני השמירה. יש להמתין לסנכרון ולנסות שוב.');
-  const observedSeq=sharedChecksObservedSequence();
-  const previousSyncAt=model.state.bank?.bankSyncAt||null;
-  const nextSyncAt=bankSyncAt===undefined?previousSyncAt:(bankSyncAt||null);
-  const previousFeed=model.state.bank?.feed||null;
-  const nextFeed=bankFeed===undefined?previousFeed:normalizeBankFeed(bankFeed);
-  const previousHomeFeed=model.state.bank?.homeFeed||null;
-  const nextHomeFeed=homeBankFeed===undefined?previousHomeFeed:normalizeBankFeed(homeBankFeed);
-  const nextBank={...model.state.bank,currentBalance:wholeMoney(numeric),updatedAt:new Date().toISOString(),asOfDate:todayISO(),snapshotToken:uid('BANK'),snapshotSeq:observedSeq,adjustments:[],source,sourceAccount:accountNumber||null,bankSyncAt:nextSyncAt,feed:nextFeed,homeFeed:nextHomeFeed};
-  const saved=await localSnapshot.save(nextBank,message,assertCurrent);
-  assertCurrent();return saved;
-}
 
 async function retryLocalBankSnapshot(){
   try{const saved=await localSnapshot.retry();if(saved&&automaticActive)autoTask.start();return saved}
@@ -259,7 +233,6 @@ async function refreshBankBalance({interactive=false,auto=false,isCurrent=()=>tr
   render();
   let leaseToken='',leaseHeld=false,lease=null,heartbeat=null,assertOwner;
   const assertCurrent=()=>{assertOwner();heartbeat?.assertCurrent()};
-  const saveBankSyncSnapshot=typeof publishBankSyncSnapshot==='function'?(...args)=>{assertCurrent();return publishBankSyncSnapshot(...args,lease)}:null;
   try{
     assertOwner=operationScope.capture();
     if(auto){
@@ -314,19 +287,12 @@ async function refreshBankBalance({interactive=false,auto=false,isCurrent=()=>tr
     assertCurrent();
     if(session.connectionMode==='supabase'&&sharedChecksHaveLocalWork())throw new Error('הצקים השתנו לפני השמירה. יש להמתין לסנכרון ולנסות שוב.');
     const nextBank={...previousBank,currentBalance:wholeMoney(business.balance),availableBalance:Number.isFinite(Number(business.availableBalance))?Number(business.availableBalance):null,creditLimit:Number.isFinite(Number(business.creditLimit))?Number(business.creditLimit):null,creditLimitUsed:Number.isFinite(Number(business.creditLimitUsed))?Number(business.creditLimitUsed):null,creditLimitUsedPercent:Number.isFinite(Number(business.creditLimitUsedPercent))?Number(business.creditLimitUsedPercent):null,updatedAt:new Date().toISOString(),asOfDate:todayISO(),snapshotToken:uid('BANK'),snapshotSeq:sharedChecksObservedSequence(),adjustments:[],source:'hapoalim',sourceAccount:businessAccount||null,bankSyncAt:fetchedAt,feed:businessFeed,homeFeed:home?homeFeed:(homeFailure?previousBank.homeFeed??null:null),archiveInitialized:cloudArchive?(archiveReady||exactBackfillVerified):previousBank.archiveInitialized===true,archiveVersion:exactBackfillVerified?2:archiveVersion,archiveInitializedAt:cloudArchive?(archiveReady?previousBank.archiveInitializedAt||null:(exactBackfillVerified?fetchedAt:null)):(previousBank.archiveInitializedAt||null),archiveAudit:cloudArchive?archiveAudit:(previousBank.archiveAudit||null),archiveBaselineAudit:cloudArchive?archiveBaselineAudit:(previousBank.archiveBaselineAudit||null)};
-    if(session.connectionMode==='supabase'&&typeof saveBankSyncSnapshot==='function'){
-      const committed=readBankSnapshotReceipt(await saveBankSyncSnapshot(financeBankPayload(nextBank),nextBank.snapshotToken,nextBank.snapshotSeq));assertCurrent();
-      model.state.bank=nextBank;
-      publishDisplayArchive(archiveCandidate);
-      touchBankDataRevision();
-      const refreshed=await refreshFinanceCloudSnapshot({assertCurrent,minimumRevision:committed.kupa_revision,minimumFinanceRevision:committed.finance_revision});assertCurrent();
-      if(!bankSnapshotReadoutIsCurrent(committed,refreshed))warnings.push('הנתונים נשמרו בענן בשלמותם, אך הרענון המקומי לאחר השמירה לא אומת. יש לרענן מהענן לפני סריקה נוספת.');
+    if(session.connectionMode==='supabase'){
+      const published=await snapshots.commands.publishCloud(nextBank,archiveCandidate,lease);assertCurrent();
+      if(!published.readoutVerified)warnings.push(BANK_READOUT_WARNING);
       toast(historyDays>=365?'ארכיון הבנק אומת ואותחל בכתיבה אטומית':auto?'נתוני הבנק עודכנו':'נתוני הבנק עודכנו ונשמרו בארכיון נפרד');
     }else{
-      await saveFinancePatch(state=>({...state,bank:financeBankPayload(nextBank)}),lease);assertCurrent();
-      const saved=await localSnapshot.save(nextBank,historyDays>=365?'ארכיון הבנק אותחל והופרד מגיבויי הקופה':auto?'נתוני הבנק עודכנו':'נתוני הבנק עודכנו ונשמרו בארכיון נפרד',assertCurrent);assertCurrent();
-      if(saved!==true)throw new Error('לא התקבל אישור שמירה לנתוני הבנק. אין לסגור את החלון; יש לבדוק את מצב השמירה המקומית.');
-      publishDisplayArchive(archiveCandidate);
+      await snapshots.commands.publishLocal(nextBank,historyDays>=365?'ארכיון הבנק אותחל והופרד מגיבויי הקופה':auto?'נתוני הבנק עודכנו':'נתוני הבנק עודכנו ונשמרו בארכיון נפרד',assertCurrent);assertCurrent();
     }
     Object.assign(bridgeState,{available:true,configured:true,upgradeRequired:false,bridgeVersion:Math.max(BANK_BRIDGE_VERSION,bridgeState.bridgeVersion||0),availableAccounts:Array.isArray(homeFailure?.availableAccounts)?homeFailure.availableAccounts:[],accountSelectionRole:homeFailure?'home':'',lastScrapeAt:fetchedAt,lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:warnings.join(' | '),lastWarningCode:homeFailure?.code||'',lastWarningStage:homeFailure?.stage||'',lastWarningHttpStatus:Number(homeFailure?.httpStatus)||0,message:homeFailure?'החשבון העסקי עודכן בהצלחה; החשבון הביתי לא עודכן ונשמר הנתון הביתי האחרון.':warnings.length?'היתרות עודכנו בהצלחה; קיימת אזהרה לגבי חלק מהתנועות.':home?'שני החשבונות והפעילות האחרונה התקבלו בהצלחה מבנק הפועלים.':'החשבון העסקי והתנועות האחרונות התקבלו בהצלחה מבנק הפועלים.'});
     applyBridgeAccountFields(bridgeState,{businessBranchNumber:business.branchNumber,businessAccountNumber:business.accountNumber,homeBranchNumber:home?.branchNumber??bridgeState.homeBranchNumber,homeAccountNumber:home?.accountNumber??bridgeState.homeAccountNumber});

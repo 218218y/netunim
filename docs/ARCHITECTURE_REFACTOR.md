@@ -905,3 +905,15 @@ acknowledgement and render policy. Composition owns archive disposal and drain;
 controller collaborators decrease from 28 to 26. Fifteen immutable algorithms,
 body/consumer/boundary guards and five native browser/IDB scenarios protect this
 slice. See [Kupa Bank archive ownership](KUPA_BANK_ARCHIVE_OWNERSHIP.md).
+
+Kupa Bank snapshot commands now own Shared preflight, manual construction,
+local durability and confirmed atomic publication. Pre-change tests proved
+optional two-write fallback, synthetic lease defaults and an authenticated
+Finance write in file mode; native composition also reproduced the file leak.
+Controller collaborators decrease from 26 to 18. Strict implementation/consumer
+checks protect metadata, captured leases and synchronous publication; committed
+data and readout confirmation remain separate. The unused raw Bank merge export
+is retired from both browser transports after consumer inventory, with canonical
+snapshot identities/RPC bodies frozen and active SQL retained. Native local
+durability/retry and pre-extraction manual policy fixtures protect this slice.
+See [Kupa Bank snapshot commands](KUPA_BANK_SNAPSHOT_COMMANDS.md).

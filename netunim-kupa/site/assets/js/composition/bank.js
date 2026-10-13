@@ -1,6 +1,11 @@
 import {createDomainsBankController} from '../domains/bank/controller.js';
 import {createKupaBankArchiveReadout} from '../domains/bank/archive-readout.js';
 import {bankArchiveTargets} from '../domains/bank/archive-model.js';
+import {createKupaBankSnapshotCommands} from '../domains/bank/snapshot-commands.js';
+import {createManualBankSnapshot} from '../domains/bank/manual-snapshot.js';
+import {createBankLocalSnapshot} from '../domains/bank/local-snapshot.js';
+import {uid} from '../core/values.js';
+import {todayISO} from '../core/dates.js';
 import {createDomainsBankView} from '../domains/bank/view.js';
 import {createFinanceBrowserEffects} from '../shared/finance-browser-effects.js';
 import {createBankActions} from '../ui/action-packs/bank.js';
@@ -24,8 +29,8 @@ export function createKupaBankCapability({
   if (typeof authority?.automaticAccess !== 'function') throw new TypeError('kupa_bank_automatic_access_required');
   requireMethods('readout', readout, ['balance', 'forecast', 'observedCheckSequence']);
   requireMethods('revisions', revisions, ['touchData', 'touchDisplay']);
-  requireMethods('cloud', cloud, ['refreshFinance', 'saveFinancePatch', 'claimLease', 'releaseLease',
-    'saveSnapshot', 'mergeTransactions', 'syncTransactions', 'readTransactions', 'readTransactionSnapshot',
+  requireMethods('cloud', cloud, ['refreshFinance', 'claimLease', 'releaseLease',
+    'saveSnapshot', 'syncTransactions', 'readTransactions', 'readTransactionSnapshot',
     'acknowledgeMissing', 'syncImages', 'downloadImage']);
   const effects = platform.effects ?? createFinanceBrowserEffects();
   requireMethods('effects', effects, ['saveJson', 'dispose']);
@@ -57,19 +62,37 @@ export function createKupaBankCapability({
     publication:() => { revisions.touchDisplay(); render(); },
     report:(role,error) => console.error(`bank display archive ${role}`,error),
   });
+  const localSnapshot = createBankLocalSnapshot({
+    model, saveState:(...args) => persistence.save(...args),
+    recoverLocalState:(...args) => persistence.recover(...args), render,
+  });
+  const snapshots = createKupaBankSnapshotCommands({
+    authority:scope,
+    bank:{
+      mode:() => session.connectionMode,
+      manualCandidate:(numeric,options) => {
+        const observedSeq = readout.observedCheckSequence();
+        return createManualBankSnapshot(model.state.bank,numeric,observedSeq,options,{
+          now:() => new Date().toISOString(), today:todayISO, createToken:() => uid('BANK'),
+        });
+      },
+    },
+    checks:{hasLocalWork:(...args) => checks.hasLocalWork(...args),saveCloud:(...args) => checks.save(...args),syncCloud:(...args) => checks.sync(...args)},
+    local:localSnapshot,
+    cloud:{publish:(...args) => cloud.saveSnapshot(...args),refresh:(...args) => cloud.refreshFinance(...args)},
+    publication:{bank:value => { model.state.bank = value; },archive:archive.commands.publish,data:(...args) => { revisions.touchData(...args); }},
+  });
+  const syncLeases = {claim:(...args) => cloud.claimLease(...args),release:(...args) => cloud.releaseLease(...args)};
   const controller = createDomainsBankController({
-    model, session, bridge, operationScope:scope, archive,
+    model, session, bridge, operationScope:scope, archive, snapshots, syncLeases,
     effects:{saveJson:(...args) => { ready(); return effects.saveJson(...args); }},
     timers:platform.timers ?? globalThis, autoScope:() => disposed ? null : authority.automaticAccess(),
     sharedChecksHaveLocalWork:(...args) => checks.hasLocalWork(...args),
-    saveSharedChecksToCloud:(...args) => checks.save(...args), syncSharedChecksFromCloud:(...args) => checks.sync(...args),
     sharedChecksObservedSequence:(...args) => readout.observedCheckSequence(...args),
-    saveState:(...args) => persistence.save(...args), recoverLocalState:(...args) => persistence.recover(...args), toast:notify, render,
-    refreshFinanceCloudSnapshot:(...args) => cloud.refreshFinance(...args), saveFinancePatch:(...args) => cloud.saveFinancePatch(...args),
-    claimFinanceSyncLease:(...args) => cloud.claimLease(...args), releaseFinanceSyncLease:(...args) => cloud.releaseLease(...args),
-    saveBankSyncSnapshot:(...args) => cloud.saveSnapshot(...args), mergeBankTransactions:(...args) => cloud.mergeTransactions(...args),
+    toast:notify, render,
+    readFinance:(...args) => cloud.refreshFinance(...args),
     syncBankTransactionsSnapshot:(...args) => cloud.syncTransactions(...args), acknowledgeBankTransactionMissing:(...args) => cloud.acknowledgeMissing(...args),
-    syncBankChequeImages:(...args) => cloud.syncImages(...args), touchBankDataRevision:(...args) => revisions.touchData(...args),
+    syncBankChequeImages:(...args) => cloud.syncImages(...args),
   });
   function enter(method, ...args) {
     if (disposed) return Promise.resolve(false);

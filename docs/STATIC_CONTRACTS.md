@@ -1,5 +1,12 @@
 # Incremental JavaScript contracts
 
+Kupa Bank snapshot commands check their actual body and negative consumers:
+captured synchronous authority, snapshot token/sequence, Bank lease shape,
+synchronous publication and separate committed/readout results. A readout-text
+mutation fails the implementation contract. Full Bank business payloads and
+controller/lease lifecycle callers remain outside this slice. See
+[Bank snapshot commands](KUPA_BANK_SNAPSHOT_COMMANDS.md).
+
 Kupa Bank archive and the canonical shared paired-read batch check their actual
 implementation bodies. Negative consumers protect roles, account/row identities,
 synchronous authority and private permits; mutations reject numeric row status

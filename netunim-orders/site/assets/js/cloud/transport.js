@@ -73,12 +73,7 @@ function bankArchivePayload(transactions){
     return {...tx,mergeKey:String(tx.mergeKey||stableKey)};
   });
 }
-async function mergeBankTransactions(accountKey,accountRole,transactions,lease=null){
-  const assertCurrent=lease?.assertCurrent;assertCurrent?.();
-  const payload=bankArchivePayload(transactions);
-  const r=await supaFetch('/rest/v1/rpc/merge_bank_transactions_v6',{method:'POST',networkRetry:true,...(assertCurrent?{assertRequestScope:assertCurrent}:{}),dataPriority:'high',body:JSON.stringify({p_account_key:String(accountKey||''),p_account_role:accountRole==='home'?'home':'business',p_transactions:payload,...financeFencePayload(lease)})});
-  const body=await r.text();assertCurrent?.();let j;try{j=body?JSON.parse(body):null}catch{j=null}if(!r.ok)throw new Error(j?.message||body||'מיזוג תנועות הבנק נכשל');const result=Array.isArray(j)?j[0]:j;return {result,sourcePayload:payload};
-}
+
 async function syncBankTransactionsSnapshot(accountKey,accountRole,transactions,{snapshotAt,coverage=null,complete=false,lease=null}={}){
   const assertCurrent=lease?.assertCurrent;assertCurrent?.();
   const payload=bankArchivePayload(transactions),when=String(snapshotAt||'').trim(),from=String(coverage?.from||'').slice(0,10),to=String(coverage?.to||'').slice(0,10),isComplete=complete===true&&coverage?.complete===true&&!coverage?.warning&&/^\d{4}-\d{2}-\d{2}$/.test(from)&&/^\d{4}-\d{2}-\d{2}$/.test(to);
@@ -131,5 +126,5 @@ async function acknowledgeBankTransactionAlert(transactionId,alertKind,{assertCu
   const r=await supaFetch('/rest/v1/rpc/acknowledge_bank_transaction_alert',{method:'POST',networkRetry:true,...(assertCurrent?{assertRequestScope:assertCurrent}:{}),dataPriority:'high',body:JSON.stringify({p_transaction_id:id,p_alert_kind:kind})});
   const body=await r.text();assertCurrent?.();let j;try{j=body?JSON.parse(body):null}catch{j=null}if(!r.ok)throw new Error(j?.message||j?.hint||body||'הסרת התראת הבנק נכשלה');return Array.isArray(j)?j[0]:j;
 }
-  return { readCloud, readCloudMeta, verifyLocalResetCloud, readStorageProtocolState, rpcSaveV2, readSharedChecksCloud, readSharedChecksCloudMeta, readKupaReadOnlyCloud, readKupaReadOnlyMeta, rpcSaveKupaDocument, rpcSaveSharedChecksV2, stageRestoreGroup, applyRestoreGroup, listIncompleteRestoreGroups, listOrdersCloudBackups, readOrdersCloudBackupPoint, readFinanceSyncDocument, rpcSaveFinanceSync, claimFinanceSyncLease, releaseFinanceSyncLease, saveBankSyncSnapshot, mergeBankTransactions, syncBankTransactionsSnapshot, readBankTransactions, readBankTransactionSnapshot, setBankTransactionHandled, acknowledgeBankTransactionMissing, acknowledgeBankTransactionAlert };
+  return { readCloud, readCloudMeta, verifyLocalResetCloud, readStorageProtocolState, rpcSaveV2, readSharedChecksCloud, readSharedChecksCloudMeta, readKupaReadOnlyCloud, readKupaReadOnlyMeta, rpcSaveKupaDocument, rpcSaveSharedChecksV2, stageRestoreGroup, applyRestoreGroup, listIncompleteRestoreGroups, listOrdersCloudBackups, readOrdersCloudBackupPoint, readFinanceSyncDocument, rpcSaveFinanceSync, claimFinanceSyncLease, releaseFinanceSyncLease, saveBankSyncSnapshot, syncBankTransactionsSnapshot, readBankTransactions, readBankTransactionSnapshot, setBankTransactionHandled, acknowledgeBankTransactionMissing, acknowledgeBankTransactionAlert };
 }

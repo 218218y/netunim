@@ -31,7 +31,7 @@ function fixture(t) {
   });
   const cloud = Object.fromEntries([
     'readKupaReadOnlyCloud','readKupaReadOnlyMeta','rpcSaveKupaDocument','readFinanceSyncDocument','rpcSaveFinanceSync',
-    'claimFinanceSyncLease','releaseFinanceSyncLease','saveBankSyncSnapshot','mergeBankTransactions',
+    'claimFinanceSyncLease','releaseFinanceSyncLease','saveBankSyncSnapshot',
     'syncBankTransactionsSnapshot','readBankTransactions','readBankTransactionSnapshot',
     'setBankTransactionHandled','acknowledgeBankTransactionMissing','acknowledgeBankTransactionAlert',
   ].map(name => [name, async () => { network++; return null; }]));
