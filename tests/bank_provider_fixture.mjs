@@ -1,8 +1,11 @@
-import * as policy from '../netunim-kupa/bank-bridge/lib.mjs';
+import {
+  HAPOALIM_TRANSACTION_LOOKBACK_DAYS,
+} from '../netunim-kupa/bank-bridge/hapoalim-policy.mjs';
+import { scraperFailureMessage } from '../netunim-kupa/bank-bridge/hapoalim-failure-policy.mjs';
 import * as bankDiagnostics from '../netunim-kupa/bank-bridge/bank-diagnostics.mjs';
-import {createHapoalimProvider} from '../netunim-kupa/bank-bridge/hapoalim-provider.mjs';
+import { createHapoalimProvider } from '../netunim-kupa/bank-bridge/hapoalim-provider.mjs';
 import {createCreditProvider} from '../netunim-kupa/bank-bridge/credit-provider.mjs';
-import {createHapoalimSessionAdapter} from '../netunim-kupa/bank-bridge/hapoalim-session.mjs';
+import { createHapoalimSessionAdapter } from '../netunim-kupa/bank-bridge/hapoalim-session.mjs';
 
 export const gate=()=>{let resolve;const promise=new Promise(done=>{resolve=done});return {promise,resolve}};
 export const credentials={userCode:'0012',password:' exact synthetic secret '};
@@ -14,7 +17,7 @@ export function bankProviderFixture(overrides={}){
     loadScrapers:async()=>{calls.push(['load']);return {CompanyTypes:{hapoalim:'hapoalim'},createScraper:options=>{calls.push(['create',options]);return scraper}}},...overrides.browser};
   const session={decorate:(value,options)=>{calls.push(['decorate',options]);return value},reuse:async()=>{calls.push(['reuse']);return ready},
     ready:async()=>{calls.push(['ready']);return ready},...overrides.session};
-  const accounts={lookbackDays:policy.HAPOALIM_TRANSACTION_LOOKBACK_DAYS,read:async(p,input,state,days,{diagnosticRun})=>{
+  const accounts={lookbackDays:HAPOALIM_TRANSACTION_LOOKBACK_DAYS,read:async(p,input,state,days,{diagnosticRun})=>{
     calls.push(['read',input,state,days]);diagnosticRun.accounts.business.captured=1;
     return {balance:42,accounts:{business:{balance:42},home:null},accountFailures:{home:null},sessionHref:ready.href};
   },...overrides.accounts};
@@ -22,7 +25,7 @@ export function bankProviderFixture(overrides={}){
     report:(...args)=>calls.push(['report',...args]),...overrides.diagnostics};
   const cache={cleanup:async()=>{calls.push(['cache'])},...overrides.cache},metadata={write:async value=>{calls.push(['remember',value])},...overrides.metadata};
   const adapter=createHapoalimSessionAdapter({metadata:{read:async()=>({})},clock:{now:()=>Date.now(),delay:async()=>{}},waitForTerminal:async()=>({resultKey:'SUCCESS'})});
-  const read=createHapoalimProvider({browser,session:{...session,safeUrl:adapter.safeUrl,failureMessage:policy.scraperFailureMessage},accounts,diagnostics,cache,metadata,version:73}).read;
+  const read=createHapoalimProvider({browser,session:{...session,safeUrl:adapter.safeUrl,failureMessage:scraperFailureMessage},accounts,diagnostics,cache,metadata,version:73}).read;
   return {read,calls,ready,page,scraper,browser,session,accounts,diagnostics,cache,metadata};
 }
 

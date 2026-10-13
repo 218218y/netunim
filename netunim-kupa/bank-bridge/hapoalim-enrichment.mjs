@@ -1,15 +1,17 @@
 import {
   buildHapoalimAdditionalDetailsUrl,
-  hapoalimChequeTransactionKind,
+  normalizeHapoalimAdditionalDetails,
+  mergeHapoalimAdditionalDetails,
+} from './hapoalim-additional-details-model.mjs';
+import { hapoalimChequeTransactionKind } from './hapoalim-cheque-model.mjs';
+import {
   hapoalimCreditSettlementProvider,
   isHapoalimCompletedCreditSettlement,
   isHapoalimCreditPermissionDetails,
   normalizeHapoalimCreditPermissionDetails,
   mergeHapoalimCreditPermissionDetails,
-  normalizeHapoalimAdditionalDetails,
-  mergeHapoalimAdditionalDetails,
-  normalizeHapoalimTransaction,
-} from './lib.mjs';
+} from './hapoalim-credit-settlement-model.mjs';
+import { normalizeHapoalimTransaction } from './hapoalim-transaction-model.mjs';
 import { HAPOALIM_BASE_URL } from './hapoalim-wire.mjs';
 export function createHapoalimEnrichment({ json, cheques, diagnostics }) {
   if (

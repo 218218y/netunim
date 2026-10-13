@@ -20,6 +20,11 @@
     "types": []
   },
   "files": [
+    "netunim-kupa/bank-bridge/hapoalim-account-selector.mjs",
+    "netunim-kupa/bank-bridge/hapoalim-date-codec.mjs",
+    "netunim-kupa/bank-bridge/hapoalim-detail-values.mjs",
+    "netunim-kupa/bank-bridge/hapoalim-detail-keys.mjs",
+    "tests/fixtures/checked-bank-model-codecs.mjs",
     "netunim-kupa/bank-bridge/credit-core-values.mjs",
     "tests/fixtures/checked-credit-core-values.mjs",
     "netunim-kupa/bank-bridge/credit-sync-scope.mjs",

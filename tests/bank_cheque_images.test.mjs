@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import {bankChequeImageDownloadName,bankChequeImageObjectPath,bankChequeImageReferences,bankChequeImageWithinRetention,createBankChequeImageStorage,retainBankChequeImagePreviewUrl,BANK_CHEQUE_IMAGE_RETENTION_DAYS} from '../shared/bank-cheque-images.js';
-import {mergeHapoalimAdditionalDetails,normalizeHapoalimTransaction} from '../netunim-kupa/bank-bridge/lib.mjs';
+import {
+  mergeHapoalimAdditionalDetails,
+} from '../netunim-kupa/bank-bridge/hapoalim-additional-details-model.mjs';
+import {
+  normalizeHapoalimTransaction,
+} from '../netunim-kupa/bank-bridge/hapoalim-transaction-model.mjs';
 import {normalizeBankFeedTransaction as normalizeKupaBankFeedTransaction} from '../netunim-kupa/site/assets/js/domains/bank/feed.js';
 import {normalizeBankFeedTransaction as normalizeOrdersBankFeedTransaction} from '../netunim-orders/site/assets/js/domains/finance/bank-feed.js';
 

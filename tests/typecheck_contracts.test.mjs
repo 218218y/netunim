@@ -25,6 +25,19 @@ function check(overrides=new Map()){
 }
 function describe(diagnostics){return ts.formatDiagnostics(diagnostics,{getCanonicalFileName:file=>file,getCurrentDirectory:()=>root,getNewLine:()=> '\n'})}
 
+test('the actual Bank selector cannot replace a normalized identifier with a numeric bank code',()=>{
+ const source=path.join(root,'netunim-kupa/bank-bridge/hapoalim-account-selector.mjs'),original=readFileSync(source,'utf8');
+ const changed=original.replace(/bankNumber:\s*'12',\s*branchNumber:\s*''/,'bankNumber:12,branchNumber:""');
+ assert.notEqual(changed,original);const diagnostics=check(new Map([[source,changed]]));
+ assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+});
+test('the actual Bank date decoder cannot replace an ISO date with a numeric status',()=>{
+ const source=path.join(root,'netunim-kupa/bank-bridge/hapoalim-date-codec.mjs'),original=readFileSync(source,'utf8');
+ const changed=original.replace(/date\.toISOString\(\)/,'200');
+ assert.notEqual(changed,original);const diagnostics=check(new Map([[source,changed]]));
+ assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+});
+
 test('the actual credit amount codec cannot turn a debit into presentation text',()=>{
   const source=path.join(root,'netunim-kupa/bank-bridge/credit-core-values.mjs');
   const original=readFileSync(source,'utf8'),changed=original.replace(/amount\s*===\s*0\s*\?\s*0\s*:\s*-amount/,'amount===0?0:String(-amount)');

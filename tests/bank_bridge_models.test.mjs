@@ -19,32 +19,41 @@ import {
   HAPOALIM_DATA_RETRY_LIMIT,
   HAPOALIM_TRANSACTION_LOOKBACK_DAYS,
   HAPOALIM_TRANSACTION_LIMIT,
+  INTERACTIVE_AUTH_TIMEOUT_MS,
+  SILENT_AUTH_TIMEOUT_MS,
+} from '../netunim-kupa/bank-bridge/hapoalim-policy.mjs';
+import {
   hapoalimTransactionPageState,
+  normalizeHapoalimTransaction,
+  normalizeRecentTransactions,
+} from '../netunim-kupa/bank-bridge/hapoalim-transaction-model.mjs';
+import {
   buildHapoalimAdditionalDetailsUrl,
+  normalizeHapoalimAdditionalDetails,
+  mergeHapoalimAdditionalDetails,
+} from '../netunim-kupa/bank-bridge/hapoalim-additional-details-model.mjs';
+import {
   hapoalimCreditSettlementProvider,
   isHapoalimCompletedCreditSettlement,
   isHapoalimCreditPermissionDetails,
   normalizeHapoalimCreditPermissionDetails,
   mergeHapoalimCreditPermissionDetails,
-  isHapoalimChequeTransaction,
+} from '../netunim-kupa/bank-bridge/hapoalim-credit-settlement-model.mjs';
+import {
   hapoalimChequeTransactionKind,
-  normalizeHapoalimAdditionalDetails,
-  mergeHapoalimAdditionalDetails,
-  INTERACTIVE_AUTH_TIMEOUT_MS,
+} from '../netunim-kupa/bank-bridge/hapoalim-cheque-model.mjs';
+import {
   isTransientNavigationError,
-  SILENT_AUTH_TIMEOUT_MS,
-  normalizeAccountNumber,
-  parseAccountSelector,
   retryTransientNavigation,
+} from '../netunim-kupa/bank-bridge/hapoalim-navigation-policy.mjs';
+import { parseAccountSelector } from '../netunim-kupa/bank-bridge/hapoalim-account-selector.mjs';
+import {
   publicAccountDescriptors,
-  normalizeHapoalimTransaction,
-  normalizeRecentTransactions,
   selectAccountDescriptor,
-  selectBalanceAccount,
-  scraperFailureMessage,
-  waitForTerminalLoginResult,
-  ymdDate,
-} from '../netunim-kupa/bank-bridge/lib.mjs';
+} from '../netunim-kupa/bank-bridge/hapoalim-account-model.mjs';
+import { scraperFailureMessage } from '../netunim-kupa/bank-bridge/hapoalim-failure-policy.mjs';
+import { waitForTerminalLoginResult } from '../netunim-kupa/bank-bridge/hapoalim-login-runtime.mjs';
+import { ymdDate } from '../netunim-kupa/bank-bridge/hapoalim-date-codec.mjs';
 import {
   creditScrapeFailure,
   creditThrownScrapeFailure,
@@ -110,7 +119,6 @@ assert.equal(isCamoufoxRetryableNativeFailure({code:'CREDIT_AUTOMATION_BLOCKED',
 assert.equal(isCamoufoxRetryableNativeFailure({code:'CREDIT_INVALID_PASSWORD'}),false,'invalid credentials never trigger a second browser engine attempt');
 assert.equal(isCamoufoxRetryableNativeFailure({code:'CREDIT_LOGIN_REJECTED'}),false,'an ambiguous Amex issuer rejection never triggers a duplicate credential attempt in another browser engine');
 
-
 const calProfile={profileId:'cal-a',provider:'visaCal',label:'כאל-9715'};
 const calMonthlyFailure=creditThrownScrapeFailure(new Error('failed to fetch transactions for card 9715. Message: service temporarily unavailable'),calProfile);
 assert.equal(calMonthlyFailure.code,'CREDIT_PROVIDER_DATA_ERROR','Cal monthly API failures retain a provider-data classification instead of collapsing to generic scrape failure');
@@ -163,18 +171,9 @@ assert.equal(BANK_AUTO_INTERVAL_MS,4*60*60*1000,'bank auto refresh cadence is fo
 assert.equal(bankAutoRefreshDue(new Date(now-BANK_AUTO_INTERVAL_MS+1).toISOString(),now),false,'sync younger than 4h is not due');
 assert.equal(bankAutoRefreshDue(new Date(now-BANK_AUTO_INTERVAL_MS).toISOString(),now),true,'sync at 4h is due');
 assert.equal(bankAutoRefreshDue('not-a-date',now),true,'invalid historical sync timestamp fails open to a fresh bank check');
-assert.equal(normalizeAccountNumber('12-345-678901'),'12345678901');
+
 assert.deepEqual(parseAccountSelector('345-678901'),{bankNumber:'12',branchNumber:'345',accountNumber:'678901'},'branch-account selector is normalized with Hapoalim bank 12');
 assert.deepEqual(parseAccountSelector('12-345-678901'),{bankNumber:'12',branchNumber:'345',accountNumber:'678901'},'full bank-branch-account selector stays exact');
-
-const accounts=[
-  {accountNumber:'12-345-678901',balance:1200.4},
-  {accountNumber:'12-345-111222',balance:-50},
-];
-assert.equal(selectBalanceAccount([accounts[0]]).accountNumber,accounts[0].accountNumber,'single balance account is selected');
-assert.equal(selectBalanceAccount(accounts,'111222').accountNumber,accounts[1].accountNumber,'unique balance-account suffix is accepted');
-assert.throws(()=>selectBalanceAccount(accounts),e=>e?.code==='MULTIPLE_ACCOUNTS','multiple balance accounts are never guessed or summed');
-assert.throws(()=>selectBalanceAccount(accounts,'999999'),e=>e?.code==='ACCOUNT_NOT_FOUND','unknown configured balance account fails closed');
 
 const accountDescriptors=[
   {bankNumber:12,branchNumber:345,accountNumber:678901,accountClosingReasonCode:0},
@@ -253,14 +252,14 @@ assert.equal(JSON.stringify(chequeDetails).includes('secret'),false,'document/se
 assert.equal(buildHapoalimAdditionalDetailsUrl('https://login.bankhapoalim.co.il','/details?id=7','12-345-678901'),'https://login.bankhapoalim.co.il/details?id=7&accountId=12-345-678901&lang=he','pfm detail requests stay on Hapoalim origin and add exact account/language parameters');
 assert.equal(buildHapoalimAdditionalDetailsUrl('https://login.bankhapoalim.co.il','/ServerServices/current-account/cheques/10126?view=paying&originalEventDate=20190613&chequeAmount=12840.0','12-345-678901'),'https://login.bankhapoalim.co.il/ServerServices/current-account/cheques/10126?view=paying&originalEventDate=20190613&chequeAmount=12840.0&accountId=12-345-678901&lang=he','the bank-provided dedicated cheque details path is fetched on the authenticated Hapoalim origin without rewriting its cheque parameters');
 assert.throws(()=>buildHapoalimAdditionalDetailsUrl('https://login.bankhapoalim.co.il','https://example.com/details','12-345-678901'),e=>e?.code==='UNSAFE_DETAIL_URL','foreign pfm detail URLs fail closed');
-assert.equal(isHapoalimChequeTransaction({activityDescription:'הפק.שיק בסלולר'}),true,'bank-provided mobile cheque deposit description is recognized for targeted detail enrichment');
-assert.equal(isHapoalimChequeTransaction({activityDescription:'הפק שיק-ע.ישיר'}),true,'direct-channel cheque deposit remains eligible for targeted enrichment');
-assert.equal(isHapoalimChequeTransaction({activityDescription:'החזרת שיק'}),false,'returned cheques are not misclassified as cheque deposits');
+
+assert.equal(hapoalimChequeTransactionKind({activityDescription:'הפק.שיק בסלולר'}),'deposit','bank-provided mobile cheque deposit description is recognized for targeted detail enrichment');
+assert.equal(hapoalimChequeTransactionKind({activityDescription:'הפק שיק-ע.ישיר'}),'deposit','direct-channel cheque deposit remains eligible for targeted enrichment');
+assert.equal(hapoalimChequeTransactionKind({activityDescription:'שיק'}),'','ordinary cheque debits are not misclassified as cheque deposits');
+assert.equal(hapoalimChequeTransactionKind({activityDescription:'זיכוי מדיסקונט',beneficiaryDetailsData:{partyName:'זרצקי פרידה'}}),'','beneficiary names containing the Hebrew letters צק cannot trigger cheque-deposit enrichment');
+assert.equal(hapoalimChequeTransactionKind({activityDescription:'העברה נכנסת'}),'','ordinary transfers do not trigger extra cheque-detail requests');
 assert.equal(hapoalimChequeTransactionKind({activityDescription:'החזרת שיק'}),'returned','returned cheque is classified for identity enrichment without becoming a deposit');
 assert.equal(hapoalimChequeTransactionKind({activityDescription:'הצ שיק חוזר-נט'}),'returned_credit','Hapoalim returned-cheque credit is classified separately from deposits');
-assert.equal(isHapoalimChequeTransaction({activityDescription:'שיק'}),false,'ordinary cheque debits are not misclassified as cheque deposits');
-assert.equal(isHapoalimChequeTransaction({activityDescription:'זיכוי מדיסקונט',beneficiaryDetailsData:{partyName:'זרצקי פרידה'}}),false,'beneficiary names containing the Hebrew letters צק cannot trigger cheque-deposit enrichment');
-assert.equal(isHapoalimChequeTransaction({activityDescription:'העברה נכנסת'}),false,'ordinary transfers do not trigger extra cheque-detail requests');
 
 const calPermissionTxn={
   eventActivityTypeCode:2,activityTypeCode:515,textCode:803,activityDescription:'כרטיסי אשראי ל',englishActionDesc:'VISA',
