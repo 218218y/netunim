@@ -14,6 +14,29 @@ const status = (id) => ({
   contractVersion: 2,
   profiles: [{ profileId: id, ownerLabel: id }],
 });
+
+for (const [bridgeVersion, contractVersion] of [
+  [72, 2],
+  [73, 1],
+  [73, 2],
+  [74, 3],
+])
+  test(`Credit connection rejects old protocol ${bridgeVersion}/${contractVersion} before diagnostics`, async () => {
+    const f = fixture();
+    let reads = 0;
+    f.bridge.creditStatus = async () => ({ bridgeVersion, contractVersion, profiles: [] });
+    f.bridge.creditDataDiagnostics = async () => {
+      reads++;
+      return { available: true, data: {}, filename: 'current.json' };
+    };
+    f.bind();
+    await f.cap.queries.refreshStatus();
+    const supported = bridgeVersion >= 73 && contractVersion >= 2;
+    assert.equal(await f.cap.commands.exportCreditDataDiagnostics(), supported);
+    assert.equal(reads, supported ? 1 : 0);
+    assert.equal(!!f.cap.queries.uiState().bridgeError, !supported);
+    f.cap.runtime.dispose();
+  });
 function fixture() {
   let token = 'A';
   const events = [],
