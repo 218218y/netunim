@@ -112,7 +112,9 @@ completes before normal process exit. The required Windows gate runs this case,
 cache fault tests, native provider cleanup and CurrentUser DPAPI together. The
 installer's transitive module closure is checked before staged startup.
 
-Remaining Bridge work includes larger issuer adapters, additional diagnostic/
-metadata artifact writers, and Document search/scheduled maintenance boundaries.
+Status/diagnostic writers and credit-log reader ownership were subsequently
+completed in [artifact ownership](BANK_BRIDGE_ARTIFACT_OWNERSHIP.md). Remaining
+Bridge work includes larger issuer adapters, token/CLI and Document
+search/scheduled maintenance boundaries.
 Synthetic responses and CI do not replace controlled live-provider and two-device
 checks described in the overall architecture plan.

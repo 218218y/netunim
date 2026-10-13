@@ -1,3 +1,4 @@
+import {createBridgeArtifacts} from './bridge-artifacts.mjs';
 import {createHapoalimJsonReader} from './hapoalim-json.mjs';
 import {createHapoalimEnrichment} from './hapoalim-enrichment.mjs';
 import {createHapoalimAccountReader} from './hapoalim-accounts.mjs';
@@ -38,19 +39,19 @@ const BRIDGE_VERSION=73;
 const BROWSER_IDENTITY_PROBE_URL=`http://${HOST}:${PORT}/health`;
 const APP_DIR=path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimKupaBankBridge');
 const TOKEN_FILE=path.join(APP_DIR,'bridge-token.txt');
-const CREDIT_META_FILE=path.join(APP_DIR,'credit-card-status.json');
-const META_FILE=path.join(APP_DIR,'status.json');
 const BROWSER_PROFILE_DIR=path.join(APP_DIR,'browser-profile');
 const CAMOUFOX_INSTALL_DIR=path.join(APP_DIR,'camoufox');
 const CREDIT_IDENTITIES_DIR=path.join(APP_DIR,'credit-identities');
-const BANK_DIAGNOSTICS_DIR=path.join(APP_DIR,'diagnostics');
-const BANK_DIAGNOSTIC_FILE=path.join(BANK_DIAGNOSTICS_DIR,'bank-latest.json');
-const CREDIT_DATA_DIAGNOSTIC_FILE=path.join(BANK_DIAGNOSTICS_DIR,'credit-data-latest.json');
 const CHEQUE_IMAGE_CACHE_DIR=path.join(APP_DIR,'cheque-image-cache');
-const LEGACY_BANK_CHEQUE_DIAGNOSTIC_FILE=path.join(BANK_DIAGNOSTICS_DIR,'bank-cheque-latest.json');
 const creditDiagnostics=createCreditDiagnosticLog({directory:path.join(APP_DIR,'diagnostics'),bridgeVersion:BRIDGE_VERSION,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION});
 process.env.CAMOUFOX_INSTALL_DIR=process.env.CAMOUFOX_INSTALL_DIR||CAMOUFOX_INSTALL_DIR;
 const operations=createBridgeOperationOwner();
+const artifacts=createBridgeArtifacts({directory:APP_DIR});
+const readMeta=artifacts.bankMeta.read,writeMeta=artifacts.bankMeta.write;
+const readCreditMeta=artifacts.creditMeta.read,writeCreditMeta=artifacts.creditMeta.write;
+const readBankDiagnostic=artifacts.bankDiagnostic.read,writeBankDiagnostic=artifacts.bankDiagnostic.write,deleteBankDiagnostic=artifacts.bankDiagnostic.clear;
+const readCreditDataDiagnostic=artifacts.creditData.read,writeCreditDataDiagnostic=artifacts.creditData.write,deleteCreditDataDiagnostic=artifacts.creditData.clear;
+
 const images=createChequeImages({directory:CHEQUE_IMAGE_CACHE_DIR,clock:{date:()=>new Date(),now:()=>Date.now()},reporter:(label,error)=>console.error(label,error)});
 const browserLocator=createInstalledBrowserLocator({platform:{os:process.platform,candidates:browserCandidates,access:filename=>fs.access(filename),where:name=>runProcess('where.exe',[name])},metadata:{read:readMeta,write:writeMeta}});
 const vault=createConnectionVault({directory:APP_DIR,protectText,unprotectText});
@@ -60,7 +61,7 @@ const connections=createConnectionCommands({operations,vault,artifacts:{
   creditIdentity:profile=>creditIdentityDirectory(CREDIT_IDENTITIES_DIR,profile),
   deleteCreditIdentity:profile=>deleteCreditIdentity(CREDIT_IDENTITIES_DIR,profile),
   clearBank:()=>settleConnectionJobs([deleteBankDiagnostic(),images.clear()]),
-  resetCredit:()=>settleConnectionJobs([fs.rm(CREDIT_META_FILE,{force:true}),deleteCreditDataDiagnostic(),resetCreditIdentities(CREDIT_IDENTITIES_DIR)]),
+  resetCredit:()=>settleConnectionJobs([artifacts.creditMeta.clear(),deleteCreditDataDiagnostic(),resetCreditIdentities(CREDIT_IDENTITIES_DIR)]),
   clearImported:clearImportedConnectionArtifacts,
 }});
 let activeServer=null;
@@ -73,39 +74,11 @@ async function ensureToken(){
   await fs.writeFile(TOKEN_FILE,token+'\n',{encoding:'utf8',mode:0o600});
   return token;
 }
-async function readMeta(){
-  try{return JSON.parse(await fs.readFile(META_FILE,'utf8'))}
-  catch{return {lastScrapeAt:null,lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:'',lastWarningCode:'',lastWarningStage:'',lastWarningHttpStatus:0,lastAvailableAccounts:[],lastAccountRole:'',browserPath:'',sessionUrl:''}}
-}
-async function writeMeta(patch){const current=await readMeta();await ensureAppDir();await fs.writeFile(META_FILE,JSON.stringify({...current,...patch},null,2),{encoding:'utf8',mode:0o600})}
-async function writeBankDiagnostic(run){
-  if(!run)return;
-  await fs.mkdir(BANK_DIAGNOSTICS_DIR,{recursive:true,mode:0o700});
-  const temp=`${BANK_DIAGNOSTIC_FILE}.${process.pid}.${Date.now()}.tmp`;
-  await fs.writeFile(temp,JSON.stringify(run,null,2),{encoding:'utf8',mode:0o600});
-  await fs.rename(temp,BANK_DIAGNOSTIC_FILE);
-}
-async function readBankDiagnostic(){
-  for(const file of [BANK_DIAGNOSTIC_FILE,LEGACY_BANK_CHEQUE_DIAGNOSTIC_FILE]){
-    try{return JSON.parse(await fs.readFile(file,'utf8'))}catch(error){if(error?.code!=='ENOENT')throw error}
-  }
-  return null;
-}
-async function deleteBankDiagnostic(){await settleConnectionJobs([fs.rm(BANK_DIAGNOSTIC_FILE,{force:true}),fs.rm(LEGACY_BANK_CHEQUE_DIAGNOSTIC_FILE,{force:true})])}
-async function writeCreditDataDiagnostic(payload){
-  if(!payload)return;
-  await fs.mkdir(BANK_DIAGNOSTICS_DIR,{recursive:true,mode:0o700});
-  const temp=`${CREDIT_DATA_DIAGNOSTIC_FILE}.${process.pid}.${Date.now()}.tmp`;
-  await fs.writeFile(temp,JSON.stringify(payload,null,2),{encoding:'utf8',mode:0o600});
-  await fs.rename(temp,CREDIT_DATA_DIAGNOSTIC_FILE);
-}
-async function readCreditDataDiagnostic(){try{return JSON.parse(await fs.readFile(CREDIT_DATA_DIAGNOSTIC_FILE,'utf8'))}catch(error){if(error?.code==='ENOENT')return null;throw error}}
-async function deleteCreditDataDiagnostic(){await fs.rm(CREDIT_DATA_DIAGNOSTIC_FILE,{force:true})}
 
 async function clearImportedConnectionArtifacts(){
   const cleanupJobs=[
     ['bank-meta',writeMeta({lastScrapeAt:null,lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:'',lastWarningCode:'',lastWarningStage:'',lastWarningHttpStatus:0,lastAvailableAccounts:[],lastAccountRole:''})],
-    ['credit-meta',fs.rm(CREDIT_META_FILE,{force:true})],
+    ['credit-meta',artifacts.creditMeta.clear()],
     ['credit-data-diagnostic',deleteCreditDataDiagnostic()],
     ['bank-diagnostic',deleteBankDiagnostic()],
     ['cheque-image-cache',images.clear()],
@@ -115,8 +88,6 @@ async function clearImportedConnectionArtifacts(){
   const cleanupWarnings=cleanupResults.flatMap((result,index)=>result.status==='rejected'?[cleanupJobs[index][0]]:[]);
   return cleanupWarnings;
 }
-async function readCreditMeta(){try{return JSON.parse(await fs.readFile(CREDIT_META_FILE,'utf8'))}catch{return {lastSyncAt:null,lastErrors:[]}}}
-async function writeCreditMeta(patch){const current=await readCreditMeta();await ensureAppDir();await fs.writeFile(CREDIT_META_FILE,JSON.stringify({...current,...patch},null,2),{encoding:'utf8',mode:0o600})}
 
 async function doctorModernPuppeteer(browserPath){
   const imported=await import('puppeteer-modern'),puppeteer=imported.default||imported;
@@ -218,7 +189,7 @@ const finance=createFinanceCommands({operations,
   credit:{readProfiles:vault.readCreditProfiles,readMeta:readCreditMeta,scrape:creditProvider.scrape,writeDataDiagnostic:writeCreditDataDiagnostic,writeMeta:writeCreditMeta},
 });
 const diagnostics=createDiagnosticQueries({creditLog:creditDiagnostics,read:{bank:readBankDiagnostic,creditData:readCreditDataDiagnostic}});
-const shutdown=createBridgeShutdownOwner({operations,diagnostics:{drain:async()=>{await Promise.all([creditDiagnostics.drain(),images.drain()])}},platform:{
+const shutdown=createBridgeShutdownOwner({operations,diagnostics:{drain:async()=>{await Promise.all([creditDiagnostics.drain(),images.drain(),artifacts.drain()])}},platform:{
   schedule:(run,delayMs)=>{const timer=setTimeout(run,delayMs);return ()=>clearTimeout(timer)},
   subscribeStop:listener=>{process.on('SIGINT',listener);process.on('SIGTERM',listener);return ()=>{process.off('SIGINT',listener);process.off('SIGTERM',listener)}},
   closeListener:()=>new Promise((resolve,reject)=>activeServer.close(error=>error?reject(error):resolve())),

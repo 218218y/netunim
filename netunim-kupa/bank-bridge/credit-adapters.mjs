@@ -14,7 +14,7 @@ import {
   isCamoufoxRetryableNativeFailure,
   scrapeIsracardFamilyWithCamoufox,
 } from './isracard-camoufox.mjs';
-import {safeCreditResponseShape} from './credit-diagnostics.mjs';
+import {safeCreditResponseShape} from './credit-diagnostic-model.mjs';
 import {maxRawTransactionTime} from './credit-data-diagnostics.mjs';
 import {AMEX_DIGITAL_V3_SCHEMA_VERSION,scrapeAmexDigitalV3} from './amex-digitalv3.mjs';
 import {ISRACARD_DIGITAL_V3_SCHEMA_VERSION,scrapeIsracardDigitalV3} from './isracard-digitalv3.mjs';

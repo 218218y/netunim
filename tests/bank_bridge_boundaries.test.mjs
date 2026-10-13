@@ -13,15 +13,18 @@ import {createHapoalimEnrichment} from '../netunim-kupa/bank-bridge/hapoalim-enr
 import {createHapoalimJsonReader} from '../netunim-kupa/bank-bridge/hapoalim-json.mjs';
 import {createInstalledBrowserLocator} from '../netunim-kupa/bank-bridge/browser-locator.mjs';
 import {createChequeImages} from '../netunim-kupa/bank-bridge/cheque-images.mjs';
+import {createBridgeArtifacts} from '../netunim-kupa/bank-bridge/bridge-artifacts.mjs';
+import {createJsonArtifactOwner} from '../netunim-kupa/bank-bridge/json-artifact-owner.mjs';
 
 test('Bank HTTP/capability boundaries have explicit dependency and collaborator budgets',()=>{
   const contracts=[
+    ['json-artifact-owner',['./file-task-owner.mjs'],'createJsonArtifactOwner',1],
     ['hapoalim-accounts',['node:crypto','./lib.mjs','./hapoalim-wire.mjs','./provider-errors.mjs','./wire-errors.mjs'],'createHapoalimAccountReader',5],
     ['hapoalim-enrichment',['./lib.mjs','./hapoalim-wire.mjs'],'createHapoalimEnrichment',3],
     ['browser-locator',[],'createInstalledBrowserLocator',2],
     ['hapoalim-provider',['./provider-errors.mjs'],'createHapoalimProvider',7],
     ['credit-session',[],'createCreditProfileSession',4],
-    ['credit-provider',['node:crypto','./lib.mjs','./credit-adapters.mjs','./credit-diagnostics.mjs'],'createCreditProvider',3],
+    ['credit-provider',['node:crypto','./lib.mjs','./credit-adapters.mjs','./credit-diagnostic-model.mjs'],'createCreditProvider',3],
     ['shutdown-owner',[],'createBridgeShutdownOwner',3],
     ['replacement-command',[],'createBridgeReplacementCommand',4],
     ['http-handler',['node:crypto','./wire-errors.mjs'],'createBankBridgeHttpHandler',4],
@@ -59,6 +62,22 @@ test('reader and image construction reject missing ports and create no platform 
   assert.deepEqual(Object.keys(images),['read','attach','inRetention','cleanup','clear','drain']);
   const source=readFileSync(new URL('../netunim-kupa/bank-bridge/cheque-images.mjs',import.meta.url),'utf8'),ast=parse(source,{ecmaVersion:'latest',sourceType:'module'});
   const factory=ast.body.find(node=>node.type==='ExportNamedDeclaration').declaration;assert.equal(factory.params[0].properties.length,4);
+});
+
+test('artifact constructors reject missing ports and expose only fixed document namespaces',()=>{
+  assert.throws(()=>createBridgeArtifacts({}),/bridge_artifact_ports_required/);
+  assert.throws(()=>createJsonArtifactOwner({}),/json_artifact_ports_required/);
+  const unexpected=()=>{throw new Error('construction must remain inert')};
+  const artifacts=createBridgeArtifacts({directory:'fixture-directory',files:new Proxy({},{get:unexpected}),stamp:unexpected});
+  const owner=createJsonArtifactOwner({files:{read:unexpected,write:unexpected,clear:unexpected}});assert.deepEqual(Object.keys(owner),['read','write','update','clear','drain']);
+  assert.deepEqual(Object.keys(artifacts),['bankMeta','creditMeta','bankDiagnostic','creditData','drain']);
+  assert.deepEqual(Object.keys(artifacts.bankMeta),['read','write']);assert.deepEqual(Object.keys(artifacts.creditMeta),['read','write','clear']);
+  for(const name of ['readMeta','writeMeta','readCreditMeta','writeCreditMeta','readBankDiagnostic','writeBankDiagnostic','deleteBankDiagnostic','readCreditDataDiagnostic','writeCreditDataDiagnostic','deleteCreditDataDiagnostic']){
+    const root=readFileSync(new URL('../netunim-kupa/bank-bridge/server.mjs',import.meta.url),'utf8');assert.ok(!new RegExp(`function ${name}\\(`).test(root));
+  }
+  const model=readFileSync(new URL('../netunim-kupa/bank-bridge/credit-diagnostic-model.mjs',import.meta.url),'utf8');
+  assert.ok(!/\b(?:readFile|writeFile|appendFile|setTimeout|spawn|fetch)\s*\(/.test(model));
+  const ast=parse(model,{ecmaVersion:'latest',sourceType:'module'});assert.deepEqual(ast.body.filter(node=>node.type==='ImportDeclaration').map(node=>node.source.value),['node:crypto']);
 });
 
 test('route and HTTP construction reject incomplete capabilities before a listener is created',()=>{
