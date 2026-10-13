@@ -1,7 +1,8 @@
 import {createFinanceBrowserEffects} from '../shared/finance-browser-effects.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createDomainsCreditController} from '../netunim-kupa/site/assets/js/domains/credit/controller.js';
+import {createKupaCreditControllerFixture as createDomainsCreditController} from './kupa_credit_controller_fixture.mjs';
+import {createDomainsCreditController as actualCreditController} from '../netunim-kupa/site/assets/js/domains/credit/controller.js';
 import {createKupaBankControllerFixture as createDomainsBankController} from './kupa_bank_controller_fixture.mjs';
 import {createCreditPreferences} from '../netunim-kupa/site/assets/js/platform/credit-preferences.js';
 
@@ -128,6 +129,6 @@ for(const kind of ['bank','credit'])test(`${kind} automatic failure cooldown sti
   assert.equal([...f.jobs.values()][0].delay,kind==='bank'?45_250:24*60*60*1000+250);assert.equal(f.attempts(),0);f.api.stopAutoSync();
 });
 
-for(const [name,create] of [['bank',createDomainsBankController],['credit',createDomainsCreditController]])test(`${name} missing automatic access port rejects construction`,()=>{
+for(const [name,create] of [['bank',createDomainsBankController],['credit',actualCreditController]])test(`${name} missing automatic access port rejects construction`,()=>{
   assert.throws(()=>create({}),new RegExp(name+'_auto_scope_required'));
 });

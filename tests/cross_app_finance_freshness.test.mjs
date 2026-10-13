@@ -2,7 +2,7 @@ import {createFinanceBrowserEffects} from '../shared/finance-browser-effects.js'
 import {createCreditPreferences} from '../netunim-kupa/site/assets/js/platform/credit-preferences.js';
 import assert from 'node:assert/strict';
 import {createKupaBankControllerFixture as createDomainsBankController} from './kupa_bank_controller_fixture.mjs';
-import {createDomainsCreditController} from '../netunim-kupa/site/assets/js/domains/credit/controller.js';
+import {createKupaCreditControllerFixture as createDomainsCreditController} from './kupa_credit_controller_fixture.mjs';
 
 const store=new Map();
 Object.defineProperty(globalThis,'localStorage',{value:{getItem:key=>store.has(key)?store.get(key):null,setItem:(key,value)=>store.set(key,String(value)),removeItem:key=>store.delete(key)},configurable:true});

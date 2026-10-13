@@ -29,7 +29,7 @@ export function composeKupaFinance({
       claimLease:financeCloud.claimFinanceSyncLease,releaseLease:financeCloud.releaseFinanceSyncLease},
     presentation:{toast:(...args)=>uiStatus.toast(...args),render:(...args)=>uiNavigation.render(...args),
       renderStatus:()=>{if(ui.currentPage==='credit')uiNavigation.render()},
-      closeModal:(...args)=>getUiModal().closeModal(...args),confirmDialog:(...args)=>getUiModal().confirmDialog(...args)},
+      confirmDialog:(...args)=>getUiModal().confirmDialog(...args)},
   });
 
   const bank=createKupaBankCapability({

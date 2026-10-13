@@ -1,5 +1,10 @@
 # Kupa Credit capability and resource ownership
 
+Local Bridge status/profile/diagnostic operations are now delegated to a
+[private connection owner](KUPA_CREDIT_CONNECTION_OWNER.md). Device pairing
+authority and accepted-work drain are independent of Finance leases. The form
+owns successful modal closure after checking its exact generation/identity.
+
 ## Evidence
 
 Two pre-change controller tests failed: a native diagnostic click failure left

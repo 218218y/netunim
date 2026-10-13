@@ -4,6 +4,8 @@ import {createDomainsCreditEditor} from '../domains/credit/editor.js';
 import {createCreditActions} from '../ui/action-packs/credit.js';
 import {KUPA_FINANCE_DOMAINS} from '../state/revisions.js';
 import {createDomainsCreditController} from '../domains/credit/controller.js';
+import {createCreditConnectionOwner} from '../domains/credit/connection-owner.js';
+import {normalizeCreditSync,CREDIT_CONNECTOR_CONTRACT_VERSION} from '../domains/credit/sync-feed.js';
 import {createCreditPreferences} from '../platform/credit-preferences.js';
 import {createFinanceBrowserEffects} from '../shared/finance-browser-effects.js';
 import {createLazyDeferredSearchUpdater} from '../shared/search-scheduler.js';
@@ -20,7 +22,7 @@ export function createKupaCreditRuntime({model,ui,platform={}}){
   let view=null;
   let creditController=null;
   let actions=null;
-  let disposed=false,connectionDialog=null;
+  let disposed=false,connectionDialog=null,connections=null;
   const effects=platform.effects??createFinanceBrowserEffects();
   const editorWork=createRuntimeTaskOwner();
   const search=createLazyDeferredSearchUpdater(value=>{if(!disposed)ui.creditSearchValue=value},(...args)=>{if(!disposed)requireView().setCreditSearch(...args)});
@@ -32,18 +34,27 @@ export function createKupaCreditRuntime({model,ui,platform={}}){
       ['cloud',cloud,['refresh','commit','claimLease','releaseLease']],
       ['persistence',persistence,['save']],
       ['scope',authority?.scope,['capture']],
-      ['presentation',presentation,['toast','render','renderStatus','closeModal','confirmDialog']],
+      ['presentation',presentation,['toast','render','renderStatus','confirmDialog']],
       ['effects',effects,['writeText','saveJson','dispose']],
     ])for(const method of methods)if(typeof port?.[method]!=='function')throw new TypeError(`credit_${name}_${method}_required`);
     if(typeof authority?.automaticAccess!=='function')throw new TypeError('credit_automatic_access_required');
+    connections=createCreditConnectionOwner({
+      protocol:{minimumBridgeVersion:73,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION},
+      pairing:{token:()=>bridge.getBridgeToken()},
+      transport:{readStatus:()=>bridge.creditStatus(),readDiagnostics:()=>bridge.creditDiagnostics(),
+        readData:()=>bridge.creditDataDiagnostics(),saveProfile:payload=>bridge.saveCreditProfile(payload),
+        deleteProfile:profileId=>bridge.deleteCreditProfile(profileId)},
+      effects,profiles:{read:()=>normalizeCreditSync(model.state.creditSync).profiles},
+      presentation:{toast:presentation.toast,render:presentation.render,
+        confirmDialog:presentation.confirmDialog},
+    });
     creditController=createDomainsCreditController({
-      model,bridge,effects,preferences:platform.preferences??createCreditPreferences(),timers:platform.timers??globalThis,
+      model,bridge,connections,preferences:platform.preferences??createCreditPreferences(),timers:platform.timers??globalThis,
       captureOperation:()=>authority.scope.capture(),autoScope:()=>disposed?null:authority.automaticAccess(),
       saveState:(...args)=>persistence.save(...args),
       toast:(...args)=>{if(!disposed)presentation.toast(...args)},
       render:(...args)=>{if(!disposed)presentation.render(...args)},
       renderStatus:(...args)=>{if(!disposed)presentation.renderStatus(...args)},
-      closeModal:(...args)=>{if(!disposed)presentation.closeModal(...args)},
       confirmDialog:async(...args)=>!disposed&&await presentation.confirmDialog(...args)&&!disposed,
       refreshFinanceCloudSnapshot:(...args)=>cloud.refresh(...args),saveFinancePatch:(...args)=>cloud.commit(...args),
       claimFinanceSyncLease:(...args)=>cloud.claimLease(...args),releaseFinanceSyncLease:(...args)=>cloud.releaseLease(...args),
@@ -68,13 +79,13 @@ export function createKupaCreditRuntime({model,ui,platform={}}){
     start:(...args)=>disposed?Promise.resolve(false):requireController().startAutoSync(...args),
     stop:()=>creditController?.stopAutoSync()??false,
     wake:(...args)=>disposed?Promise.resolve(false):requireController().maybeAutoRefreshCreditSync(...args),
-    isPending:()=>editorWork.isPending()||(creditController?.runtime.isPending()??false),
+    isPending:()=>editorWork.isPending()||(creditController?.runtime.isPending()??false)||(connections?.runtime.isPending()??false),
     async drain(){
-      do{await Promise.all([editorWork.drain(),creditController?.runtime.drain()])}while(runtime.isPending());
+      do{await Promise.all([editorWork.drain(),creditController?.runtime.drain(),connections?.runtime.drain()])}while(runtime.isPending());
     },
     dispose(){
       if(disposed)return false;
-      disposed=true;editorWork.close();search.cancel();connectionDialog?.dispose();creditController?.runtime.dispose();effects.dispose();return true;
+      disposed=true;editorWork.close();search.cancel();connectionDialog?.dispose();connections?.runtime.dispose();creditController?.runtime.dispose();effects.dispose();return true;
     },
   };
 
@@ -137,7 +148,8 @@ export function createKupaCreditRuntime({model,ui,platform={}}){
     });
     connectionDialog=createCreditConnectionDialog({
       modal:(...args)=>{if(!disposed)uiModal.modal(...args)},armModalDraftGuard:(...args)=>{if(!disposed)uiModal.armModalDraftGuard(...args)},
-      readProfile:(...args)=>requireController().connectionProfile(...args),saveConnection:commands.saveCreditConnection,isActive:()=>!disposed,
+      readProfile:(...args)=>requireController().connectionProfile(...args),saveConnection:commands.saveCreditConnection,
+      closeModal:()=>{if(!disposed)uiModal.closeModal(true)},isActive:()=>!disposed,
     });
     const pack=createCreditActions({creditCommands:commands,domainsCreditEditor:editor,domainsCreditView:view,ui,search,isActive:()=>!disposed});
     const order=createCreditCardOrderView({

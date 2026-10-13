@@ -1,0 +1,10 @@
+{
+  "baseline": "665d6245eca1d8500f5ba7ed689480f882a1f57b",
+  "sha256": {
+    "shared/bank-bridge-client.js": "1512e159ba9b3d9c13949d88208763eca27b7c15144cbfbb200df4e01bdaa237",
+    "netunim-kupa/site/assets/js/integrations/bank-bridge.js": "50c4c45f5246df16f575666981a9cce57d60f0e6f9f57f4bd9025dec2507f2b9",
+    "netunim-kupa/site/assets/js/domains/credit/sync-feed.js": "c284626a788193f0a0564594c15f3bfc77d35b00719911137225c5c4dbe1ea59",
+    "netunim-kupa/site/assets/js/domains/credit/publication.js": "b9fa76584fa9c63285ddbe70524f5295c6a94956e3557d00a0de2ab00041b49e",
+    "netunim-kupa/site/assets/js/ui/credit-connection-input.js": "2e1d3bbfced70f950f79b87bdb89c22c05119ad9521a8f87b2395e40a622949d"
+  }
+}

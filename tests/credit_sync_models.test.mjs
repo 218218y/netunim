@@ -40,7 +40,7 @@ import { parseVisaCalMonthData } from '../netunim-kupa/bank-bridge/visa-cal-mode
 import {allInstallmentsData,businessInstallmentsData,homeInstallmentsData,creditForecastInstallmentsData,nextCreditCycleData,nextBusinessCreditCycleData,nextHomeCreditCycleData,creditMonthlyDetailData,CREDIT_DETAIL_HISTORY_MONTHS} from '../netunim-kupa/site/assets/js/domains/credit/model.js';
 import {createBankBridgeIntegration} from '../netunim-kupa/site/assets/js/integrations/bank-bridge.js';
 import {bankLongTermPositionData,bankNextCycleCommitmentsData,bankHomeNextCycleCommitmentsData,bankProjectedThisMonthData,bankHomeProjectedThisMonthData} from '../netunim-kupa/site/assets/js/domains/bank/model.js';
-import {createDomainsCreditController} from '../netunim-kupa/site/assets/js/domains/credit/controller.js';
+import {createKupaCreditControllerFixture as createDomainsCreditController} from './kupa_credit_controller_fixture.mjs';
 import {createStateNormalization} from '../netunim-kupa/site/assets/js/composition/state-normalization.js';
 import {kupaAccountCashflowData} from '../netunim-orders/site/assets/js/domains/bank/readout.js';
 import {creditRows as ordersCreditRows} from '../netunim-orders/site/assets/js/domains/finance/reporting.js';

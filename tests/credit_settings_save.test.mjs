@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createFinanceManualQueue} from '../shared/finance-fence.js';
 import {applyCreditCardOrderData,creditOrderCardsData} from '../shared/credit-card-order.js';
-import {createDomainsCreditController} from '../netunim-kupa/site/assets/js/domains/credit/controller.js';
+import {createKupaCreditControllerFixture as createDomainsCreditController} from './kupa_credit_controller_fixture.mjs';
 import {createOrdersFinanceControllerFixture as createDomainsFinanceController} from './orders_finance_controller_fixture.mjs';
 import {normalizeCreditSync} from '../netunim-orders/site/assets/js/domains/finance/credit-feed.js';
 
