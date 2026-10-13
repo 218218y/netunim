@@ -89,9 +89,12 @@ export function createCreditDiagnosticLog({
       .sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp))
       .slice(0, Math.max(1, Math.min(500, Math.trunc(Number(limit) || 100))));
   }
+  async function readSummary({ limit = 100 } = {}) {
+    return jobs.run(() => summary({ limit }));
+  }
   return {
     record,
-    summary: (options) => jobs.run(() => summary(options)),
+    summary: readSummary,
     drain: jobs.drain,
     logPath,
   };

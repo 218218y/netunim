@@ -56,6 +56,8 @@ reporting failure. Queue failures do not poison later commands.
 
 Credit append, rotation, pruning and summary reads now share one file owner.
 An accepted summary owns its snapshot before a later record may rotate the log.
+Its limit is captured at acceptance, preserving the original async query semantics
+even when a caller changes its options while an earlier read holds the queue.
 The existing record-error swallowing policy and summary error classification are
 preserved. Shutdown closes admission and drains accepted provider/configuration
 commands, then joins metadata/diagnostic owners, images and credit-log work before
