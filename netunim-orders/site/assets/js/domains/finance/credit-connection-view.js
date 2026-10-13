@@ -18,13 +18,21 @@ export function createCreditConnectionView({
   const work = createRuntimeTaskOwner();
   let activeForm = null,
     activeProfileId = '',
+    activeConnection = () => {},
     releaseForm = () => {};
   function currentForm(form) {
-    return (
+    const current =
       work.isActive() &&
       activeForm === form &&
-      document.getElementById('ordersCreditConnectionForm') === form
-    );
+      document.getElementById('modalBackdrop')?.classList.contains('open') &&
+      document.getElementById('ordersCreditConnectionForm') === form;
+    if (!current) return false;
+    try {
+      activeConnection();
+      return true;
+    } catch {
+      return false;
+    }
   }
   function profileForModal(profileId) {
     const s = controller.snapshot(),
@@ -49,6 +57,7 @@ export function createCreditConnectionView({
   function openCreditConnection(profileId = '') {
     if (!work.isActive()) return false;
     releaseForm();
+    const assertConnection = controller.captureCreditConnection();
     const { existing, local } = profileForModal(profileId),
       provider = existing?.provider || 'visaCal',
       isEdit = !!existing,
@@ -59,6 +68,7 @@ export function createCreditConnectionView({
       `<button class="btn primary" type="button" data-action="save-orders-credit-connection" data-click-arg0="${esc(existing?.profileId || '')}">${isEdit ? 'שמור חיבור' : 'הוסף חיבור'}</button><button class="btn" type="button" data-action="close-modal">ביטול</button>`
     );
     activeForm = document.getElementById('ordersCreditConnectionForm');
+    activeConnection = assertConnection;
     activeProfileId = existing?.profileId || '';
     const form = activeForm,
       select = document.getElementById('ordersCcProvider'),
@@ -78,7 +88,7 @@ export function createCreditConnectionView({
   async function saveCreditConnection(existingId = '') {
     const form = activeForm;
     if (!form || !currentForm(form) || existingId !== activeProfileId) return false;
-    const assertConnection = controller.captureCreditConnection();
+    const assertConnection = activeConnection;
     const provider = document.getElementById('ordersCcProvider')?.value || 'visaCal',
       payload = {
         profileId: existingId || uid('CCP'),

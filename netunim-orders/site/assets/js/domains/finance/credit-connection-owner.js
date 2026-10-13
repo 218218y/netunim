@@ -68,28 +68,41 @@ export function createOrdersCreditConnectionOwner({
         throw new TypeError(`orders_credit_connection_${name}_${method}_required`);
   const work = createRuntimeTaskOwner();
   let observed = false,
+    available = false,
     token = '',
     epoch = 0,
     revision = 0;
   /** @type {ConnectionReadout} */
   let readout = { status: null, checked: false, bridgeError: '' };
   function observe() {
-    const live = pairing.token();
+    let live = '',
+      readable = true;
+    try {
+      live = pairing.token();
+    } catch {
+      readable = false;
+    }
     if (typeof live !== 'string') throw new TypeError('orders_credit_connection_token_required');
-    if (!observed || live !== token) {
+    if (!observed || live !== token || readable !== available) {
       observed = true;
       token = live;
+      available = readable;
       epoch++;
       revision++;
       readout = { status: null, checked: false, bridgeError: '' };
     }
-    return { token, epoch };
+    return { token, epoch, available };
   }
-  /** @param {{token:string,epoch:number}} permit */
+  /** @param {{token:string,epoch:number,available:boolean}} permit */
   function current(permit) {
     if (!work.isActive()) return false;
     const live = observe();
-    return live.token === permit.token && live.epoch === permit.epoch;
+    return (
+      live.available &&
+      permit.available &&
+      live.token === permit.token &&
+      live.epoch === permit.epoch
+    );
   }
   /** @returns {ConnectionGuard} */
   function capture() {
@@ -110,11 +123,11 @@ export function createOrdersCreditConnectionOwner({
       Number(value.contractVersion || 0) >= protocol.contractVersion
     );
   }
-  /** @param {{token:string,epoch:number}} permit */
+  /** @param {{token:string,epoch:number,available:boolean}} permit */
   async function readStatus(permit) {
     const serial = ++revision;
     readout = { ...readout, checked: true };
-    if (!permit.token) {
+    if (!permit.available || !permit.token) {
       readout = { status: null, checked: true, bridgeError: '' };
       return null;
     }
@@ -150,6 +163,7 @@ export function createOrdersCreditConnectionOwner({
   }
   async function copyDiagnostics() {
     const permit = observe();
+    if (!permit.available) return false;
     try {
       const value = await transport.readDiagnostics();
       if (!current(permit)) return false;
@@ -204,6 +218,7 @@ export function createOrdersCreditConnectionOwner({
   /** @param {()=>Promise<unknown>} write @param {string} success @returns {Promise<ConnectionResult>} */
   async function writeProfile(write, success) {
     const permit = observe();
+    if (!permit.available) return { ok: false };
     try {
       await write();
       if (!current(permit)) return { ok: false };
@@ -220,6 +235,7 @@ export function createOrdersCreditConnectionOwner({
   async function resetProfiles() {
     const permit = observe(),
       status = readout.status;
+    if (!permit.available) throw scopeError();
     revision++;
     await transport.resetProfiles();
     if (!current(permit)) throw scopeError();

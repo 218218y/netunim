@@ -255,6 +255,7 @@ for (const command of ['saveCreditProfile', 'deleteCreditProfile'])
   });
 function viewFixture(f, t) {
   let form,
+    open = false,
     generation = 0,
     closes = 0,
     renders = 0;
@@ -263,7 +264,12 @@ function viewFixture(f, t) {
   Object.defineProperty(globalThis, 'document', {
     configurable: true,
     value: {
-      getElementById: (id) => (id === 'ordersCreditConnectionForm' ? form : fields.get(id)),
+      getElementById: (id) =>
+        id === 'modalBackdrop'
+          ? { classList: { contains: () => open } }
+          : id === 'ordersCreditConnectionForm'
+            ? form
+            : fields.get(id),
       querySelector: () => null,
     },
   });
@@ -274,6 +280,7 @@ function viewFixture(f, t) {
   const view = createCreditConnectionView({
     controller: f.controller,
     modal: () => {
+      open = true;
       form = {
         generation: ++generation,
         addEventListener: () => {},
@@ -296,6 +303,7 @@ function viewFixture(f, t) {
         });
     },
     closeModal: () => {
+      open = false;
       closes++;
       form = null;
     },
@@ -307,7 +315,15 @@ function viewFixture(f, t) {
       return f.held.promise;
     },
   });
-  return { view, form: () => form, closes: () => closes, renders: () => renders };
+  return {
+    view,
+    form: () => form,
+    closes: () => closes,
+    renders: () => renders,
+    cancel: () => {
+      open = false;
+    },
+  };
 }
 for (const command of ['deleteCreditConnection', 'resetCreditSync'])
   test(`Orders ${command} confirmation cannot authorize the replacement pairing`, async (t) => {
@@ -349,4 +365,67 @@ test('Orders unavailable Finance reset authority reports once without opening a 
   assert.equal(await ui.view.resetCreditSync(), false);
   assert.deepEqual(f.events, ['toast:Finance authority unavailable']);
   assert.equal(ui.view.runtime.isPending(), false);
+});
+
+test('Orders cancelled connection form cannot submit a retained action while its DOM remains', async (t) => {
+  const f = fixture(),
+    ui = viewFixture(f, t);
+  let writes = 0;
+  f.bridge.saveCreditProfile = async () => {
+    writes++;
+  };
+  ui.view.openCreditConnection();
+  ui.cancel();
+  assert.equal(await ui.view.saveCreditConnection(), false);
+  assert.equal(writes, 0);
+});
+test('Orders accepted save cannot repaint a cancelled form whose DOM remains', async (t) => {
+  const f = fixture(),
+    ui = viewFixture(f, t);
+  f.bridge.saveCreditProfile = () => {
+    f.entered.resolve();
+    return f.held.promise;
+  };
+  ui.view.openCreditConnection();
+  const pending = ui.view.saveCreditConnection();
+  await f.entered.promise;
+  ui.cancel();
+  f.held.resolve();
+  assert.equal(await pending, false);
+  assert.equal(ui.closes(), 0);
+  assert.equal(ui.renders(), 0);
+});
+
+test('Orders form opened under a former pairing cannot submit credentials to its replacement', async (t) => {
+  const f = fixture(),
+    ui = viewFixture(f, t);
+  let writes = 0;
+  f.bridge.saveCreditProfile = async () => {
+    writes++;
+  };
+  ui.view.openCreditConnection();
+  f.change();
+  assert.equal(await ui.view.saveCreditConnection(), false);
+  assert.equal(writes, 0);
+});
+
+test('Orders unreadable pairing storage preserves readout availability and fences former-device details', async () => {
+  const f = fixture(),
+    reader = f.bridge.getBridgeToken;
+  f.bridge.creditStatus = () => f.held.promise;
+  const pending = f.controller.refreshCreditBridgeStatus({ quiet: false });
+  f.bridge.getBridgeToken = () => {
+    throw Object.assign(Error('private preference detail'), { name: 'SecurityError' });
+  };
+  const blocked = f.controller.snapshot();
+  assert.equal(blocked.creditStatus, null);
+  assert.equal(blocked.creditBridgeError, '');
+  assert.equal(blocked.bridgeTokenConfigured, false);
+  assert.equal(await f.controller.copySafeCreditDiagnostics(), false);
+  f.bridge.getBridgeToken = reader;
+  f.controller.snapshot();
+  f.held.resolve(status('former'));
+  assert.equal(await pending, null);
+  assert.deepEqual(f.events, []);
+  assert.equal(f.controller.snapshot().creditStatus, null);
 });

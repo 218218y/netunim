@@ -23,13 +23,13 @@ FLOW = r"""(async()=>{
  const mainBefore=JSON.stringify(await db.load(identity+':orders')),sharedBefore=JSON.stringify(await db.load(identity+':shared-checks')),documentBefore=JSON.stringify(checksSession.kupaCloudReadState);
  localStorage.setItem(tokenKey,'pairing-A');
  const originalFetch=globalThis.fetch,originalToast=uiStatus.toast,originalConfirm=uiModal.confirmDialog,originalClick=HTMLAnchorElement.prototype.click;
- const entered=gate(),held=gate(),events=[];let deletes=0,resets=0,phase='held',replacementForm;
+ const entered=gate(),held=gate(),events=[];let deletes=0,resets=0,profileSaves=0,phase='held',replacementForm;
  uiStatus.toast=message=>events.push(String(message));HTMLAnchorElement.prototype.click=()=>events.push('download');
  if(caseName==='delete'||caseName==='reset')uiModal.confirmDialog=()=>{entered.resolve();return held.promise};
  globalThis.fetch=async(url,options)=>{
    const path=new URL(String(url)).pathname;
    check(String(options.headers.Authorization).includes('pairing-A')||phase==='replacement','unexpected replacement Bridge request');
-   if(path==='/v2/credit/profiles'){if(options.method==='DELETE')deletes++;if(caseName==='form'){entered.resolve();await held.promise}return new Response('{}')}
+   if(path==='/v2/credit/profiles'){if(options.method==='DELETE')deletes++;else profileSaves++;if(caseName==='form'||caseName==='cancel'){entered.resolve();await held.promise}return new Response('{}')}
    if(path==='/v2/credit/reset'){resets++;return new Response('{}')}
    if(path==='/v2/credit/status'){
      if(caseName==='status'||caseName==='status-error'){entered.resolve();await held.promise;if(caseName==='status-error')return new Response(JSON.stringify({ok:false,message:'private former-device error',code:'fixture'}),{status:400})}
@@ -41,20 +41,23 @@ FLOW = r"""(async()=>{
  const action=(name,id='')=>uiActions[name]({dataset:{clickArg0:id}},{preventDefault:()=>{},stopPropagation:()=>{}});
  try{
    if(caseName==='status'||caseName==='status-error'){ui.currentView='kupa';ui.kupaSubView='credit';finance.presentation.renderKupa()}
-   else if(caseName==='form'){action('open-orders-credit-connection');document.getElementById('ordersCcUsername').value='fixture';document.getElementById('ordersCcPassword').value=' fixture password ';action('save-orders-credit-connection')}
+   else if(['form','cancel','stale-form'].includes(caseName)){action('open-orders-credit-connection');document.getElementById('ordersCcUsername').value='fixture';document.getElementById('ordersCcPassword').value=' fixture password ';if(caseName==='stale-form'){localStorage.setItem(tokenKey,'pairing-B');phase='replacement'}action('save-orders-credit-connection');if(caseName==='stale-form')entered.resolve()}
    else action(caseName==='delete'?'delete-orders-credit-connection':caseName==='reset'?'reset-orders-credit-sync':'export-orders-credit-data-diagnostics','former');
    await Promise.race([entered.promise,new Promise((_,reject)=>globalThis.addEventListener('unhandledrejection',event=>reject(event.reason),{once:true}))]);phase='replacement';
    if(caseName==='form'){action('open-orders-credit-connection');replacementForm=document.getElementById('ordersCreditConnectionForm')}
+   else if(caseName==='cancel'){uiModal.closeModal()}
    else if(caseName==='dispose'){check(finance.runtime.dispose()===true&&finance.runtime.dispose()===false,'Finance close is not idempotent')}
    else localStorage.setItem(tokenKey,'pairing-B');
-   check(finance.runtime.isPending(),'accepted work is not pending');
-   let drained=false;const drain=finance.runtime.drain().then(()=>{drained=true});await Promise.resolve();check(!drained,'Finance drain abandoned accepted local work');
+   if(caseName!=='stale-form')check(finance.runtime.isPending(),'accepted work is not pending');
+   let drained=false;const drain=finance.runtime.drain().then(()=>{drained=true});await Promise.resolve();if(caseName!=='stale-form')check(!drained,'Finance drain abandoned accepted local work');
    held.resolve(true);await drain;
    check(!finance.runtime.isPending(),'accepted work did not finish');check(deletes===0&&resets===0,'old confirmation targeted replacement pairing');
    if(caseName==='form')check(document.getElementById('ordersCreditConnectionForm')===replacementForm&&document.getElementById('modalBackdrop').classList.contains('open'),'old save closed replacement native form');
+   else if(caseName==='cancel')check(document.getElementById('ordersCreditConnectionForm')&&!document.getElementById('modalBackdrop').classList.contains('open'),'accepted save changed cancelled form');
    else if(caseName!=='dispose'){const readout=finance.queries.snapshot();check(readout.creditStatus===null&&readout.creditBridgeError==='','former-device status or error published')}
+   check(profileSaves===(caseName==='form'||caseName==='cancel'?1:0),'stale form submitted credentials to the replacement pairing');
    check(!events.includes('download')&&!events.some(message=>message.includes('private former-device')),'former-device details escaped');
-   if(caseName!=='form')check(events.length===0,'stale connection changed presentation');
+   if(!['form','cancel'].includes(caseName))check(events.length===0,'stale connection changed presentation');
    check(JSON.stringify(checksSession.kupaCloudReadState)===documentBefore,'connection operation changed Finance document');
    check(JSON.stringify(await db.load(identity+':orders'))===mainBefore,'connection boundary changed Main journal');
    check(JSON.stringify(await db.load(identity+':shared-checks'))===sharedBefore,'connection boundary changed Shared journal');
@@ -62,7 +65,7 @@ FLOW = r"""(async()=>{
  }finally{held.resolve(true);cloudAuth.saveSession(null);globalThis.fetch=originalFetch;uiStatus.toast=originalToast;uiModal.confirmDialog=originalConfirm;HTMLAnchorElement.prototype.click=originalClick;finance.runtime.stop()}
 })()"""
 
-for case in ('status', 'status-error', 'diagnostic', 'delete', 'reset', 'form', 'dispose'):
+for case in ('status', 'status-error', 'diagnostic', 'delete', 'reset', 'form', 'dispose', 'cancel', 'stale-form'):
     if os.environ.get('NETUNIM_ORDERS_CONNECTION_CASE') not in (None, case):
         continue
     with BrowserSession(ROOT / 'netunim-orders/site', 'orders-credit-connection-' + case) as browser:

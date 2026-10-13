@@ -32,7 +32,9 @@ leave that controller. The remaining provider/Bank orchestration is unfinished.
 The connection presentation owns each native form identity, listeners and
 accepted save/confirmation work. A retained save action with an old profile ID
 cannot consume a new form. Only a successful save for the same current form
-closes it. Deletion captures local authority before confirmation; complete
+closes it. Hidden/cancelled native forms cannot accept retained actions or late
+closure; each form also captures pairing authority when it opens. Deletion
+captures local authority before confirmation; complete
 reset also captures Finance authority before confirmation. Unavailable reset
 authority reports through the existing toast and starts no confirmation or I/O.
 The unused public field-update helper is retired; its implementation is private.
@@ -50,12 +52,18 @@ and ID/card leading zeros, protocol 73/2, cloud RPC/wire formats, retry/fallback
 deployed SQL and persisted schema are unchanged. These are algorithm preservation
 checks, not substitutes for behavioral tests.
 
-Seven production browser cases exercise status success/failure, diagnostics,
-deletion/reset confirmation, replacement forms and disposal. They cross the
+Nine production browser cases exercise status success/failure, diagnostics,
+deletion/reset confirmation, replacement/cancelled forms, stale form credentials
+and disposal. They cross the
 real loopback decoder and native DOM/IDB boundaries, compare Main/Shared journal
 records exactly and reload a durable note with the same ID/content. Unit cases
 also exercise observed pairing generations, protocol versions, account changes,
 accepted failures, reset/probe ordering and Finance publication/lease cleanup.
+The first full CI run reproduced an unreadable local token escaping a snapshot
+(`SecurityError`). The owner now invalidates pairing evidence on unavailable
+storage without breaking readout; existing sanitized preference warnings remain
+responsible for reporting. Restoring readable storage creates a new generation.
+The existing production Bank/Credit token-fault cases protect this behavior.
 
 Historical persisted readers are retained. Deploying new JavaScript does not
 convert older IndexedDB records or imported backups. This slice retires a proven

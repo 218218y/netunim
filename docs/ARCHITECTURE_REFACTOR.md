@@ -955,3 +955,11 @@ implementation hashes, six Bank workflow AST hashes and the credential payload
 protect existing wire/provider/publication/input behavior. Strict body/consumer
 mutation checks and native production DOM/IDB scenarios protect the boundary.
 See [Orders Credit connections](ORDERS_CREDIT_CONNECTION_OWNER.md).
+
+Three additional before-fix form cases proved that native modal hiding retains
+its DOM and that a form opened under an earlier pairing could submit credentials
+to a replacement device. Open visibility and form-captured pairing now fence
+submission/closure. The first full gate also reproduced blocked token storage
+breaking snapshots; unavailable pairing now invalidates local authority while
+preserving readout and sanitized preference warnings. The existing native
+Bank/Credit token-fault cases and nine connection browser cases cover these paths.

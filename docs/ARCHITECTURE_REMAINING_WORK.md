@@ -45,7 +45,7 @@ remaining-scope paragraphs describe their stage's starting point.
   the obsolete modal-close service port is removed. See
   [Credit local connections](KUPA_CREDIT_CONNECTION_OWNER.md).
 - Orders Credit connections have a strict owner for pairing/status, local
-  diagnostics and vault commands. Forms own their identity/listeners and capture
+  diagnostics and vault commands. Forms own their pairing/identity/listeners, respect native close visibility and capture
   authority before confirmation. Finance joins controller, local connection,
   archive and confirmation work after disposal. Native IDB and immutable
   issuer/Bank/input policies protect this slice. See
