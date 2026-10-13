@@ -20,6 +20,8 @@
     "types": []
   },
   "files": [
+    "netunim-orders/site/assets/js/domains/finance/credit-connection-owner.js",
+    "tests/fixtures/checked-orders-credit-connection-owner.mjs",
     "netunim-kupa/site/assets/js/domains/credit/connection-owner.js",
     "tests/fixtures/checked-credit-connection-owner.mjs",
     "shared/finance-lease-heartbeat.js",

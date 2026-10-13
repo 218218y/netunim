@@ -940,3 +940,18 @@ existing account authority for refresh/reset without changing issuer retry,
 fallback, Finance merge or journal policy. Strict body/consumer/mutation checks,
 five immutable policy hashes, capability regressions and native production IDB
 scenarios protect the slice. See [Kupa Credit connections](KUPA_CREDIT_CONNECTION_OWNER.md).
+
+
+Orders Credit now has a strict five-port local connection owner. Ten baseline
+failures proved pairing/probe/diagnostic/confirmation/form races. The financial
+controller delegates local transport/readout while retaining explicit busy and
+provider/lease policy; its reviewed width is 21 (including the new owner).
+Connection presentation owns current form identity, listeners and accepted
+confirmation work. Reset captures both account and pairing authority before
+confirmation; absent authority reports through the existing UI without I/O.
+Finance disposal/drain joins accepted controller, connection, archive and
+presentation work. The unused public field-update helper is retired. Five
+implementation hashes, six Bank workflow AST hashes and the credential payload
+protect existing wire/provider/publication/input behavior. Strict body/consumer
+mutation checks and native production DOM/IDB scenarios protect the boundary.
+See [Orders Credit connections](ORDERS_CREDIT_CONNECTION_OWNER.md).

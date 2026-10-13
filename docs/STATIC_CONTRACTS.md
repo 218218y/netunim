@@ -448,3 +448,14 @@ contracts and generic row identity. Negative consumers reject malformed result
 ports/signals; a mutation that sends a formatted offset fails the actual body.
 The native source adapter, path/attribute normalization policy and full server
 are separately behavior-tested/linted. See DOCUMENT_INVENTORY_BOUNDARY.md.
+
+
+## Orders Credit local connections
+
+The actual five-port local connection owner is strictly checked, including
+unknown transport narrowing, boolean vault-write results, synchronous download
+acceptance and asynchronous drain. Negative consumers reject malformed pairing,
+protocol/effect/result evidence. A mutation replacing confirmed success with
+text fails in the actual implementation. Financial controllers and complete
+provider payloads remain selectively checked and separately behavior-tested.
+See ORDERS_CREDIT_CONNECTION_OWNER.md.

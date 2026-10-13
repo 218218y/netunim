@@ -69,6 +69,12 @@ function fixture(t,{hold=null}={}){
   return {ports,before,counts,jobs,entered,release,checksSession,operationScope,create:()=>createDomainsFinanceController({effects:createFinanceBrowserEffects(),...ports}),handoff:()=>{owner='B';epoch++},logout:()=>{owner=null;epoch++},relogin:()=>epoch++,secondary:()=>{primary=false},remote:()=>remote};
 }
 
+test('Orders Credit pairing change after provider entry fences Finance publication and still releases its own lease',async t=>{
+ const f=fixture(t,{hold:'credit-provider'});let token='A';f.ports.bridge.getBridgeToken=()=>token;
+ const api=f.create(),before=structuredClone(f.remote()),pending=api.refreshCredit();await f.entered.promise;token='B';f.release.resolve();
+ assert.equal(await pending,false);assert.equal(f.counts['finance-save']||0,0);assert.equal(f.counts.release,1);assert.deepEqual(f.remote(),before);assert.equal(api.snapshot().creditStatus,null);api.runtime.dispose();
+});
+
 for(const kind of ['Bank','Credit'])test(`Orders ${kind} failed automatic attempt persistence never leaves the controller busy`,async t=>{
   const f=fixture(t);f.ports.bridge['mark'+kind+'Attempt']=()=>{throw new DOMException('private storage detail','QuotaExceededError')};
   const api=f.create();t.after(()=>api.stopAutoSync());

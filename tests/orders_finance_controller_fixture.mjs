@@ -1,6 +1,8 @@
 import { createDomainsFinanceController } from '../netunim-orders/site/assets/js/domains/finance/controller.js';
 import { createOrdersFinanceDocumentCommands } from '../netunim-orders/site/assets/js/domains/finance/document-commands.js';
 import { createOrdersBankArchiveReadout } from '../netunim-orders/site/assets/js/domains/finance/bank-archive-readout.js';
+import { createOrdersCreditConnectionOwner } from '../netunim-orders/site/assets/js/domains/finance/credit-connection-owner.js';
+import { CREDIT_CONNECTOR_CONTRACT_VERSION } from '../netunim-orders/site/assets/js/domains/finance/credit-feed.js';
 import {
   bankArchiveTargets,
   bankArchiveSourceRows,
@@ -49,5 +51,47 @@ export function createOrdersFinanceControllerFixture(ports) {
     revision: { read: ports.readRevision, touch: ports.touchBankDisplayRevision ?? (() => {}) },
     report: (role, error) => console.error(`orders bank display archive ${role}`, error),
   });
-  return createDomainsFinanceController({ ...ports, documents, syncLeases, archive });
+  const connections = createOrdersCreditConnectionOwner({
+    pairing: { token: () => ports.bridge.getBridgeToken() },
+    transport: {
+      readStatus: () => ports.bridge.creditStatus(),
+      readDiagnostics: () => ports.bridge.creditDiagnostics(),
+      readData: () => ports.bridge.creditDataDiagnostics(),
+      saveProfile: (payload) => ports.bridge.saveCreditProfile(payload),
+      deleteProfile: (id) => ports.bridge.deleteCreditProfile(id),
+      resetProfiles: () => ports.bridge.resetCreditProfiles(),
+    },
+    presentation: { toast: (...args) => ports.toast?.(...args) },
+    effects: ports.effects,
+    protocol: { minimumBridgeVersion: 73, contractVersion: CREDIT_CONNECTOR_CONTRACT_VERSION },
+  });
+  const controller = createDomainsFinanceController({
+    ...ports,
+    documents,
+    syncLeases,
+    archive,
+    connections,
+  });
+  return {
+    ...controller,
+    runtime: {
+      dispose: () => {
+        const closed = controller.runtime.dispose();
+        connections.runtime.dispose();
+        archive.runtime.dispose();
+        return closed;
+      },
+      isPending: () =>
+        controller.runtime.isPending() ||
+        connections.runtime.isPending() ||
+        archive.runtime.isPending(),
+      drain: async () => {
+        await Promise.all([
+          controller.runtime.drain(),
+          connections.runtime.drain(),
+          archive.runtime.drain(),
+        ]);
+      },
+    },
+  };
 }
