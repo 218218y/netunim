@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { hasOwn, safeDate, safeSuffix, text } from './credit-value-codec.mjs';
 import { maxRawTransactionTime } from './credit-data-diagnostics.mjs';
-import { creditDebitAmount } from './lib.mjs';
+import { creditDebitAmount } from './credit-core-values.mjs';
 
 function maxNumber(value) {
   if (value === null || value === undefined || String(value).trim() === '') return null;

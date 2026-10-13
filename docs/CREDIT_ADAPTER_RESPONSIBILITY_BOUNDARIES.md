@@ -96,8 +96,9 @@ reformatted or reorganized by this change.
 The historical factory options remain source-compatible, including its 17 option
 fields. Per-provider command ports and complete issuer input/result contracts
 remain future boundary work; splitting the implementation is not evidence that
-all dependency width has been solved. `lib.mjs` still combines Bank/Credit helper
-responsibilities. DigitalV3 and Camoufox internals, CLI/token creation, remaining
+all dependency width has been solved. The subsequent
+[Credit core model split](CREDIT_CORE_MODEL_BOUNDARIES.md) moved the Credit helpers
+out of the Bank library. DigitalV3 and Camoufox internals, CLI/token creation, remaining
 Document Bridge orchestration, compatibility inventory and application controller
 decomposition also remain in the roadmap. Live issuer sessions and physical
 multi-computer checks require their own controlled environment; synthetic native

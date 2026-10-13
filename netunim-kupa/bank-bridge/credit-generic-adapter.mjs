@@ -1,7 +1,8 @@
 // @ts-nocheck
 import { CreditProviderAdapter } from './credit-adapter-base.mjs';
 import { creditSyncScope } from './credit-sync-scope.mjs';
-import { creditProfilePublic, creditScrapeFailure, creditThrownScrapeFailure } from './lib.mjs';
+import { creditProfilePublic } from './credit-profile-model.mjs';
+import { creditScrapeFailure, creditThrownScrapeFailure } from './credit-failure-policy.mjs';
 import { safeSuffix, text } from './credit-value-codec.mjs';
 import { maxRawDiagnosticSamples } from './max-model.mjs';
 import { genericMonthlyAccount } from './credit-monthly-projection.mjs';

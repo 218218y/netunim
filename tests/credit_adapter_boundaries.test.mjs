@@ -12,12 +12,12 @@ const pure = {
   'credit-sync-scope': ['./credit-adapter-wire.mjs', './credit-month-plan.mjs'],
   'credit-http-policy': ['./credit-value-codec.mjs'],
   'credit-coverage': ['./credit-value-codec.mjs', './credit-adapter-wire.mjs'],
-  'visa-cal-model': ['./credit-value-codec.mjs', './credit-adapter-wire.mjs', './lib.mjs'],
-  'max-model': ['./credit-value-codec.mjs', './credit-data-diagnostics.mjs', './lib.mjs'],
+  'visa-cal-model': ['./credit-value-codec.mjs', './credit-adapter-wire.mjs', './credit-transaction-model.mjs'],
+  'max-model': ['./credit-value-codec.mjs', './credit-data-diagnostics.mjs', './credit-core-values.mjs'],
   'credit-monthly-projection': [
     './credit-adapter-wire.mjs',
     './max-model.mjs',
-    './lib.mjs',
+    './credit-transaction-model.mjs',
     './credit-month-plan.mjs',
     './credit-coverage.mjs',
   ],
@@ -41,18 +41,6 @@ function pureBoundary(source, allowed) {
   const ast = parse(source, { ecmaVersion: 'latest', sourceType: 'module', ranges: true });
   const imports = ast.body.filter((row) => row.type === 'ImportDeclaration');
   assert.deepEqual([...new Set(imports.map((row) => row.source.value))], allowed);
-  for (const row of imports)
-    if (row.source.value === './lib.mjs')
-      assert.ok(
-        row.specifiers.every((specifier) =>
-          [
-            'creditDebitAmount',
-            'normalizeCreditScrapeTransaction',
-            'normalizeCreditScrapeAccount',
-          ].includes(specifier.imported.name)
-        ),
-        'models use only the existing pure normalization exports'
-      );
   for (const ref of analyze(ast, { ecmaVersion: 2022, sourceType: 'module' }).globalScope.through)
     assert.ok(
       !ioNames.has(ref.identifier.name),

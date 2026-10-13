@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { CREDIT_PROVIDER_SCHEMA_VERSION } from './credit-adapter-wire.mjs';
 import { enrichMaxTransaction } from './max-model.mjs';
-import { normalizeCreditScrapeAccount } from './lib.mjs';
+import { normalizeCreditScrapeAccount } from './credit-transaction-model.mjs';
 import { buildCreditMonthPlan } from './credit-month-plan.mjs';
 import { monthlyCoverageSuccess } from './credit-coverage.mjs';
 

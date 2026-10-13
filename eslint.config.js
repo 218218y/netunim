@@ -13,6 +13,13 @@ async function loadGlobals() {
 const globals = await loadGlobals();
 
 const creditAdapterBoundaryFiles = [
+  'netunim-kupa/bank-bridge/credit-core-values.mjs',
+  'netunim-kupa/bank-bridge/credit-profile-model.mjs',
+  'netunim-kupa/bank-bridge/credit-transaction-model.mjs',
+  'netunim-kupa/bank-bridge/credit-failure-policy.mjs',
+  'netunim-kupa/bank-bridge/lib.mjs',
+  'tests/credit_core*.mjs',
+  'tests/fixtures/checked-credit-core-values.mjs',
   'netunim-kupa/bank-bridge/credit-value-codec.mjs',
   'netunim-kupa/bank-bridge/credit-month-plan.mjs',
   'netunim-kupa/bank-bridge/credit-sync-scope.mjs',
@@ -54,7 +61,7 @@ export default [
   },
   {
     // These names occur inside serialized page.evaluate callbacks only.
-    files:['netunim-kupa/bank-bridge/server.mjs','netunim-kupa/bank-bridge/hapoalim-session.mjs','netunim-kupa/bank-bridge/cheque-images.mjs'],
+    files:['netunim-kupa/bank-bridge/lib.mjs','netunim-kupa/bank-bridge/server.mjs','netunim-kupa/bank-bridge/hapoalim-session.mjs','netunim-kupa/bank-bridge/cheque-images.mjs'],
     languageOptions:{globals:{window:'readonly',FileReader:'readonly'}}
   },
   {

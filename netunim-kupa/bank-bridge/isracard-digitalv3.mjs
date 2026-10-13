@@ -1,4 +1,4 @@
-import {creditDebitAmount} from './lib.mjs';
+import { creditDebitAmount } from './credit-core-values.mjs';
 import {filterExcludedGroupCards,preserveInstalledChromiumIdentity,unsettledApprovedTransactions} from './isracard-group-utils.mjs';
 // Adapted from israeli-bank-scrapers PR #1159 (commit 1aa792b37feec0001f5d182582cfb53b146ed18b),
 // which was verified end-to-end against real Isracard and American Express accounts.

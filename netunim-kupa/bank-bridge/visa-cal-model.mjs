@@ -7,7 +7,7 @@ import {
   text,
 } from './credit-value-codec.mjs';
 import { CAL_FRAMES_NOT_RELEVANT_STATUS, CAL_TRANSACTION_TYPES } from './credit-adapter-wire.mjs';
-import { normalizeCreditScrapeTransaction } from './lib.mjs';
+import { normalizeCreditScrapeTransaction } from './credit-transaction-model.mjs';
 
 function shiftMonthDate(value, delta) {
   const iso = safeDate(value);

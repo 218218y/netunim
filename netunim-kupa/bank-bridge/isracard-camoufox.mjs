@@ -1,4 +1,4 @@
-import {creditDebitAmount} from './lib.mjs';
+import { creditDebitAmount } from './credit-core-values.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
