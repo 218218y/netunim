@@ -20,6 +20,8 @@
     "types": []
   },
   "files": [
+    "netunim-kupa/site/assets/js/domains/bank/snapshot-commands.js",
+    "tests/fixtures/checked-kupa-bank-snapshot.mjs",
     "shared/bank-archive-read-batch.js",
     "netunim-kupa/site/assets/js/domains/bank/archive-readout.js",
     "tests/fixtures/checked-kupa-bank-archive.mjs",

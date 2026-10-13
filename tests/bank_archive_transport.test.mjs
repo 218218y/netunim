@@ -18,7 +18,7 @@ let mergePayload=null;
 const pageRequests=[];
 const archiveRow=i=>({merge_key:`k${i}`,transaction_date:'2026-08-01T09:00:00.000Z',processed_date:'2026-08-01T09:00:00.000Z',amount:'1',currency:'ILS',description:'x',memo:'',party_name:'',party_headline:'',message_headline:'',message_detail:'',status:'completed',balance_after:null,bank_reference:String(i),bank_serial:String(i),activity_type_code:1,cheque:false,check_details:null,alert_acknowledgements:i===0?{returned_cheque:'2026-09-06T01:00:00.000Z'}:{}});
 const kupaFetch=async(path,options={})=>{
-  if(path.includes('/rpc/merge_bank_transactions')){mergePayload=JSON.parse(options.body);return jsonResponse([{inserted_count:4,updated_count:0,total_count:4}])}
+  if(path.includes('/rpc/sync_bank_transactions_snapshot')){mergePayload=JSON.parse(options.body);return jsonResponse([{inserted_count:4,updated_count:0,total_count:4}])}
   if(path.includes('/bank_transactions?')){
     pageRequests.push(path);
     const offset=Number(new URL('https://local.invalid'+path).searchParams.get('offset')||0);
@@ -27,7 +27,7 @@ const kupaFetch=async(path,options={})=>{
   throw new Error('unexpected request '+path);
 };
 const kupa=createKupaTransport({session:{cloudDocumentName:'main'},supaRest:kupaFetch});
-await kupa.mergeBankTransactions('12-655-1','business',sourceRows);
+await kupa.syncBankTransactionsSnapshot('12-655-1','business',sourceRows,{snapshotAt:'2026-08-30T09:00:00.000Z'});
 assert.equal(mergePayload.p_transactions.length,4);
 const keys=mergePayload.p_transactions.map(x=>x.mergeKey);
 assert.equal(new Set(keys).size,4,'every source row receives a unique merge key');
@@ -49,8 +49,8 @@ assert.equal(allArchive.length,1002,'all-years archive reader keeps deterministi
 assert.equal(pageRequests.some(path=>path.includes('transaction_date=gte.')),false,'all-years archive reader does not impose the legacy 370-day cutoff');
 
 let ordersMerge=null;
-const orders=createOrdersTransport({supaFetch:async(path,options={})=>{if(path.includes('/rpc/merge_bank_transactions')){ordersMerge=JSON.parse(options.body);return jsonResponse([{inserted_count:4,updated_count:0,total_count:4}])}throw new Error('unexpected request '+path)}});
-await orders.mergeBankTransactions('12-655-1','business',sourceRows);
+const orders=createOrdersTransport({supaFetch:async(path,options={})=>{if(path.includes('/rpc/sync_bank_transactions_snapshot')){ordersMerge=JSON.parse(options.body);return jsonResponse([{inserted_count:4,updated_count:0,total_count:4}])}throw new Error('unexpected request '+path)}});
+await orders.syncBankTransactionsSnapshot('12-655-1','business',sourceRows,{snapshotAt:'2026-08-30T09:00:00.000Z'});
 assert.deepEqual(ordersMerge.p_transactions.map(x=>x.mergeKey),keys,'Kupa and Orders derive byte-identical archive identities');
 
 

@@ -30,6 +30,27 @@ function fixture(t,{hold=null,home=false}={}){
   return {ports,model,before,counts,entered,release,create:()=>createDomainsBankController({...ports,effects:createFinanceBrowserEffects()}),handoff:()=>{owner='B';epoch++},logout:()=>{owner=null;epoch++},relogin:()=>{epoch++},secondary:()=>{primary=false}};
 }
 
+test('Kupa cloud Bank construction cannot enable a two-write fallback without the atomic writer',t=>{
+  const f=fixture(t);f.ports.saveBankSyncSnapshot=undefined;
+  assert.throws(f.create,/bank.*snapshot.*required/);
+  assert.equal(f.counts.provider||0,0);assert.equal(f.counts.local||0,0);assert.equal(f.counts.patch||0,0);
+});
+
+test('Kupa Bank construction cannot manufacture a lease when the real claim port is absent',t=>{
+  const f=fixture(t);f.ports.claimFinanceSyncLease=undefined;
+  assert.throws(f.create,/bank.*lease.*required/);
+  assert.equal(f.counts.provider||0,0);
+});
+
+test('Kupa file Bank snapshots do not invoke an authenticated Finance writer',async t=>{
+  const f=fixture(t);f.ports.session.connectionMode='file';
+  f.ports.saveFinancePatch=()=>{f.counts.patch=(f.counts.patch||0)+1;throw Error('local mode attempted authenticated Finance write')};
+  const api=f.create();t.after(()=>api.runtime.dispose());
+  assert.equal(await api.refreshBankBalance(),true,'file snapshot must use local durability without a cloud write');
+  assert.equal(f.counts.patch||0,0);assert.equal(f.counts.local,1);assert.equal(f.counts.atomic||0,0);
+  assert.equal(f.model.state.bank.currentBalance,500);
+});
+
 test('Kupa archive hydration retains its accepted snapshot sibling after rows fail',async t=>{
   const f=fixture(t),held=deferred();f.ports.readBankTransactions=async()=>{throw Error('rows failed')};f.ports.readBankTransactionSnapshot=()=>held.promise;
   const api=f.create(),pending=api.ensureBankDisplayArchive();let settled=false;void pending.then(()=>{settled=true});
@@ -183,9 +204,9 @@ test('a manual bank write failure is exposed independently of Bridge availabilit
   assert.equal(f.model.state.bank.currentBalance,1234);api.stopAutoSync();
 });
 
-for(const name of ['saveBankSyncSnapshot','mergeBankTransactions','syncBankTransactionsSnapshot','readBankTransactionSnapshot','acknowledgeBankTransactionMissing','acknowledgeBankTransactionAlert'])test(`bank ${name} fences its authenticated request and response body`,async()=>{
+for(const name of ['saveBankSyncSnapshot','syncBankTransactionsSnapshot','readBankTransactionSnapshot','acknowledgeBankTransactionMissing','acknowledgeBankTransactionAlert'])test(`bank ${name} fences its authenticated request and response body`,async()=>{
   let valid=true,requests=0;const assertCurrent=()=>{if(!valid)throw changed()},lease={assertCurrent};
   const api=createCloudTransport({supaRest:async(_path,options)=>{options.assertRequestScope();requests++;return {ok:true,text:async()=>{valid=false;return '{}'},json:async()=>{valid=false;return []}}}});
-  const args={saveBankSyncSnapshot:[{},'token',7,lease],mergeBankTransactions:['key','business',[],lease],syncBankTransactionsSnapshot:['key','business',[],{lease,snapshotAt:stamp}],readBankTransactionSnapshot:['key','business',{assertCurrent}],acknowledgeBankTransactionMissing:[1,{assertCurrent}],acknowledgeBankTransactionAlert:[1,'returned_cheque',{assertCurrent}]};
+  const args={saveBankSyncSnapshot:[{},'token',7,lease],syncBankTransactionsSnapshot:['key','business',[],{lease,snapshotAt:stamp}],readBankTransactionSnapshot:['key','business',{assertCurrent}],acknowledgeBankTransactionMissing:[1,{assertCurrent}],acknowledgeBankTransactionAlert:[1,'returned_cheque',{assertCurrent}]};
   await assert.rejects(api[name](...args[name]),{code:'FINANCE_OPERATION_SCOPE_CHANGED'});assert.equal(requests,1);
 });

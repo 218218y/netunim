@@ -31,6 +31,12 @@ test('the actual Bank archive verification cannot replace transaction rows with 
  const diagnostics=check(new Map([[source,changed]]));assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
 });
 
+test('the actual Bank command cannot replace atomic readout confirmation with operator text',()=>{
+ const source=path.join(root,'netunim-kupa/site/assets/js/domains/bank/snapshot-commands.js'),original=readFileSync(source,'utf8');
+ const changed=original.replace(/readoutVerified:\s*bankSnapshotReadoutIsCurrent\(committed, refreshed\)/,"readoutVerified:'confirmed'");assert.notEqual(changed,original);
+ const diagnostics=check(new Map([[source,changed]]));assert.ok(diagnostics.some(item=>item.file&&item.code===2322),describe(diagnostics));
+});
+
 test('the actual Kupa archive cache cannot publish a numeric status as transaction rows',()=>{
  const source=path.join(root,'netunim-kupa/site/assets/js/domains/bank/archive-readout.js'),original=readFileSync(source,'utf8');
  const changed=original.replace(/rows:\s*record\.rows/,'rows:200');assert.notEqual(changed,original);

@@ -356,7 +356,7 @@ const checksSession={kupaCloudReadState:overlayReadout(),checksBankEvents:[{seq:
 let saveCalls=0,financeSaveCalls=0,atomicBankSaveCalls=0,bankFetchCalls=0,creditFetchCalls=0,acceptKupaCalls=0,refreshKupaCalls=0;
 const archiveRows={business:[],home:[]};
 function archiveRow(tx){return {id:tx.mergeKey,date:tx.date,processedDate:tx.processedDate||tx.date,amount:Number(tx.amount),currency:tx.currency||'ILS',description:tx.description||'',memo:tx.memo||'',partyName:tx.partyName||'',partyHeadline:tx.partyHeadline||'',messageHeadline:tx.messageHeadline||'',messageDetail:tx.messageDetail||'',status:tx.status||'completed',balanceAfter:tx.balanceAfter??null,bankReference:tx.bankReference||'',bankSerial:tx.bankSerial||'',activityTypeCode:tx.activityTypeCode??null,cheque:!!tx.cheque,checkDetails:tx.checkDetails??null}}
-const mergeBankTransactions=async(accountKey,role,transactions)=>{const payload=(transactions||[]).map((tx,index)=>({...tx,mergeKey:`${role}:${String(tx.date||'').slice(0,10)}:${tx.id||index}`}));archiveRows[role]=payload.map(archiveRow);return {result:{inserted_count:payload.length,updated_count:0,total_count:payload.length},sourcePayload:payload}};
+const syncBankTransactionsSnapshot=async(accountKey,role,transactions)=>{const payload=(transactions||[]).map((tx,index)=>({...tx,mergeKey:`${role}:${String(tx.date||'').slice(0,10)}:${tx.id||index}`}));archiveRows[role]=payload.map(archiveRow);return {result:{inserted_count:payload.length,updated_count:0,total_count:payload.length},sourcePayload:payload}};
 const readBankTransactions=async(_accountKey,role)=>structuredClone(archiveRows[role]||[]);
 const saveBankSyncSnapshot=async(bankState,snapshotToken,snapshotSeq)=>{atomicBankSaveCalls++;
   // Simulate an unrelated Kupa change racing just before the atomic RPC. The server-side partial
@@ -384,7 +384,7 @@ const controller=createDomainsFinanceController({effects:createFinanceBrowserEff
   acceptKupaCloudRow:row=>{acceptKupaCalls++;cloudRow={...cloudRow,...structuredClone(row)};checksSession.kupaCloudReadState=overlayReadout();return true},
   readFinanceSyncDocument:async()=>structuredClone(financeRow),
   rpcSaveFinanceSync:async(state,expected)=>{financeSaveCalls++;assert.equal(expected,financeRow.revision);financeRow={revision:financeRow.revision+1,updated_at:'2026-09-01T02:30:30Z',state:structuredClone(state)};return {r:{ok:true},row:structuredClone(financeRow)}},
-  saveBankSyncSnapshot,mergeBankTransactions,syncBankTransactionsSnapshot:mergeBankTransactions,readBankTransactions,readBankTransactionSnapshot:async()=>null,
+  saveBankSyncSnapshot,syncBankTransactionsSnapshot,readBankTransactions,readBankTransactionSnapshot:async()=>null,
   syncSharedChecksFromCloud:async()=>true,saveSharedChecksToCloud:async()=>true,checksHaveLocalWork:()=>false,getSharedChecks:()=>[{id:'orders-shared-check',account:'עסקי',status:'בקופה',dueDate:'2026-09-14',amount:125}],toast:()=>{},
 });
 assert.equal(controller.snapshot().kupa.checks[0].id,'orders-shared-check','Orders finance snapshot joins the independently synchronized shared checks only for read-side cash-flow');

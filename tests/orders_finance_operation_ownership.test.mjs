@@ -242,7 +242,6 @@ const transportCalls=[
   ['claimFinanceSyncLease',guard=>['bank','L',{assertCurrent:guard}]],
   ['releaseFinanceSyncLease',guard=>['bank','L',{assertCurrent:guard}]],
   ['saveBankSyncSnapshot',guard=>[{},'snapshot',0,{assertCurrent:guard}]],
-  ['mergeBankTransactions',guard=>['account','business',[],{assertCurrent:guard}]],
   ['syncBankTransactionsSnapshot',guard=>['account','business',[],{snapshotAt:stamp,lease:{assertCurrent:guard}}]],
   ['readBankTransactionSnapshot',guard=>['account','business',{assertCurrent:guard}]],
   ['setBankTransactionHandled',guard=>[1,true,{assertCurrent:guard}]],
