@@ -7,7 +7,7 @@ import {createResultPages} from '../shared/result-pages.js';
 import {createSearchFragmentIndex} from '../shared/search-fragments.js';
 import {createKupaDomainRevisions,KUPA_FINANCE_DOMAINS,kupaPageRevision} from '../netunim-kupa/site/assets/js/state/revisions.js';
 import {createOrderDomainRevisions} from '../netunim-orders/site/assets/js/state/revisions.js';
-import {createDomainsFinanceController} from '../netunim-orders/site/assets/js/domains/finance/controller.js';
+import {createOrdersFinanceControllerFixture as createDomainsFinanceController} from './orders_finance_controller_fixture.mjs';
 import {createUiAlertCenter} from '../netunim-orders/site/assets/js/ui/alert-center.js';
 import {createCustomerRenderSelector,customerStatsData,customerDebtStatus} from '../netunim-orders/site/assets/js/domains/customers/model.js';
 import {customerDebtProgressData} from '../shared/customer-debt-progress.js';

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {withFinanceDerivations,financeDerivation} from '../shared/finance-derivations.js';
 import {kupaAccountCashflowData,kupaReconciledCreditRowsData,kupaReconciledCreditDetailMonthsData,kupaReconciledCreditUpcomingDetailData} from '../shared/kupa-cashflow.js';
 import {configurePerformance,clearPerformance,performanceSummary} from '../shared/runtime-performance.js';
-import {createDomainsFinanceController} from '../netunim-orders/site/assets/js/domains/finance/controller.js';
+import {createOrdersFinanceControllerFixture as createDomainsFinanceController} from './orders_finance_controller_fixture.mjs';
 
 const date='2026-09-18';
 function fixture(){return {

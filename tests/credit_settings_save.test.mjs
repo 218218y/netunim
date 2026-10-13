@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import {createFinanceManualQueue} from '../shared/finance-fence.js';
 import {applyCreditCardOrderData,creditOrderCardsData} from '../shared/credit-card-order.js';
 import {createDomainsCreditController} from '../netunim-kupa/site/assets/js/domains/credit/controller.js';
-import {createDomainsFinanceController} from '../netunim-orders/site/assets/js/domains/finance/controller.js';
+import {createOrdersFinanceControllerFixture as createDomainsFinanceController} from './orders_finance_controller_fixture.mjs';
 import {normalizeCreditSync} from '../netunim-orders/site/assets/js/domains/finance/credit-feed.js';
 
 const fixture=()=>({version:4,profiles:[{profileId:'p',provider:'max',accounts:[{accountNumber:'a',txns:[{id:'old',date:'2026-09-01'}]},{accountNumber:'b',txns:[]}]}],cardMappings:{'p:a':{included:true,cardName:'א',sortOrder:1},'p:b':{included:true,cardName:'ב',sortOrder:2}}});

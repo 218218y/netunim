@@ -4,6 +4,10 @@ This plan records boundaries that have been checked in the active code. Changes 
 persisted formats, Storage V2 ownership, journal replay, and cloud RPC semantics
 remain separate from structural refactors.
 
+For the current completion inventory, see
+[remaining major work](ARCHITECTURE_REMAINING_WORK.md). Older stage-specific
+remaining-scope paragraphs below are a chronological record.
+
 ## Verified now
 
 - Kupa Bank now keeps its controller/view private behind command, query,
@@ -867,3 +871,15 @@ owners publishing to the same DOM: cloned nodes did not remove the application's
 auth subscription. The fixture now disposes that owner before binding its source
 and forces the old auth interleaving inside each request. Local/cross-tab cases
 retain the original privacy, listener-disposal and exact Journal assertions.
+
+Orders Finance document commands now own Kupa/Finance mutation, manual lease
+queuing, receipts and separate readout confirmation. The controller receives
+three commands and one read query rather than raw writers; collaborators
+decrease from 30 to 23. Embedded-Finance and two-write Bank fallbacks are removed,
+and a missing lease port cannot manufacture a grant. Frozen policies and
+conflict/FIFO/scope tests preserve active behavior; native browser/IDB tests
+retain unknown-confirmation recovery. The actual publication boundary has strict
+implementation and negative-consumer checks. See
+[Orders Finance document commands](ORDERS_FINANCE_DOCUMENT_COMMANDS.md) and
+[remaining major work](ARCHITECTURE_REMAINING_WORK.md); private Bank/Credit
+workflows and full writer/caller typing remain.

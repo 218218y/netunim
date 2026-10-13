@@ -4,6 +4,7 @@ import {createFinanceOperationScope} from '../shared/finance-fence.js';
 import {createDomainsBankSelectors} from '../domains/bank/selectors.js';
 import {createDomainsBankCache} from '../domains/bank/cache.js';
 import {createDomainsFinanceController} from '../domains/finance/controller.js';
+import {createOrdersFinanceDocumentCommands} from '../domains/finance/document-commands.js';
 import {createDomainsFinanceView} from '../domains/finance/view.js';
 import {createOrdersBankChequeImageRuntime} from '../domains/finance/bank-cheque-image-runtime.js';
 import {createFinanceConnectionImporter} from '../shared/finance-connection-import.js';
@@ -76,28 +77,40 @@ export function createOrdersFinanceCapability({
     if (controller) throw new Error('orders_finance_core_already_bound');
     requireMethods('cloud', cloud, [
       'readKupaReadOnlyCloud', 'rpcSaveKupaDocument', 'readFinanceSyncDocument', 'rpcSaveFinanceSync',
-      'claimFinanceSyncLease', 'releaseFinanceSyncLease', 'saveBankSyncSnapshot', 'mergeBankTransactions',
+      'claimFinanceSyncLease', 'releaseFinanceSyncLease', 'saveBankSyncSnapshot',
       'syncBankTransactionsSnapshot', 'readBankTransactions', 'readBankTransactionSnapshot',
       'setBankTransactionHandled', 'acknowledgeBankTransactionMissing', 'acknowledgeBankTransactionAlert',
     ]);
     requireMethods('checks', checks, ['syncSharedChecksFromCloud', 'saveSharedChecksToCloud', 'hasLocalWork']);
     if (typeof toast !== 'function') throw new TypeError('orders_finance_toast_required');
+    const syncLeases = {
+      claim:(...args) => cloud.claimFinanceSyncLease(...args),
+      release:(...args) => cloud.releaseFinanceSyncLease(...args),
+    };
+    const documents = createOrdersFinanceDocumentCommands({
+      operationScope,
+      kupa:{
+        read:(...args) => cloud.readKupaReadOnlyCloud(...args),
+        save:(...args) => cloud.rpcSaveKupaDocument(...args),
+        accept:(...args) => cache.acceptKupaCloudRow(...args),
+      },
+      finance:{
+        read:(...args) => cloud.readFinanceSyncDocument(...args),
+        save:(...args) => cloud.rpcSaveFinanceSync(...args),
+        publishBankSnapshot:(...args) => cloud.saveBankSyncSnapshot(...args),
+      },
+      leases:syncLeases,
+      readout:{refresh:(...args) => cache.refreshKupaReadout(...args)},
+      delay:controllerEffects.delay,
+    });
     controller = createDomainsFinanceController({
+      documents,syncLeases,
       tab, checksSession, bridge, operationScope, effects:controllerEffects, readRevision:revisions.read,
       loadSession:auth.loadSession, toast:(...args) => { if (!disposed) toast(...args); }, getSharedChecks:() => model.state.checks,
       refreshKupaReadout:(...args) => cache.refreshKupaReadout(...args),
-      acceptKupaCloudRow:(...args) => cache.acceptKupaCloudRow(...args),
-      readKupaReadOnlyCloud:(...args) => cloud.readKupaReadOnlyCloud(...args),
-      rpcSaveKupaDocument:(...args) => cloud.rpcSaveKupaDocument(...args),
       syncSharedChecksFromCloud:(...args) => checks.syncSharedChecksFromCloud(...args),
       saveSharedChecksToCloud:(...args) => checks.saveSharedChecksToCloud(...args),
       checksHaveLocalWork:checks.hasLocalWork,
-      readFinanceSyncDocument:(...args) => cloud.readFinanceSyncDocument(...args),
-      rpcSaveFinanceSync:(...args) => cloud.rpcSaveFinanceSync(...args),
-      claimFinanceSyncLease:(...args) => cloud.claimFinanceSyncLease(...args),
-      releaseFinanceSyncLease:(...args) => cloud.releaseFinanceSyncLease(...args),
-      saveBankSyncSnapshot:(...args) => cloud.saveBankSyncSnapshot(...args),
-      mergeBankTransactions:(...args) => cloud.mergeBankTransactions(...args),
       syncBankTransactionsSnapshot:(...args) => cloud.syncBankTransactionsSnapshot(...args),
       readBankTransactions:(...args) => cloud.readBankTransactions(...args),
       readBankTransactionSnapshot:(...args) => cloud.readBankTransactionSnapshot(...args),

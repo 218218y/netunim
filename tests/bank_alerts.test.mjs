@@ -1,7 +1,7 @@
 import {createFinanceBrowserEffects} from '../shared/finance-browser-effects.js';
 import assert from 'node:assert/strict';
 import {bankReturnedCheque,bankReturnedChequeReason,bankWarningItems} from '../netunim-orders/site/assets/js/domains/bank/alerts.js';
-import {createDomainsFinanceController} from '../netunim-orders/site/assets/js/domains/finance/controller.js';
+import {createOrdersFinanceControllerFixture as createDomainsFinanceController} from './orders_finance_controller_fixture.mjs';
 import {createUiAlertCenter} from '../netunim-orders/site/assets/js/ui/alert-center.js';
 
 const returned={

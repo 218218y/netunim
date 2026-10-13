@@ -25,6 +25,13 @@ function check(overrides=new Map()){
 }
 function describe(diagnostics){return ts.formatDiagnostics(diagnostics,{getCanonicalFileName:file=>file,getCurrentDirectory:()=>root,getNewLine:()=> '\n'})}
 
+test('the actual Finance publication cannot replace confirmed status with presentation text',()=>{
+ const source=path.join(root,'netunim-orders/site/assets/js/domains/finance/document-publication.js'),original=readFileSync(source,'utf8');
+ const changed=original.replace(/return\s*\{\s*published\s*,/,'return {published:"confirmed",');
+ assert.notEqual(changed,original);const diagnostics=check(new Map([[source,changed]]));
+ assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+});
+
 test('the actual Bank selector cannot replace a normalized identifier with a numeric bank code',()=>{
  const source=path.join(root,'netunim-kupa/bank-bridge/hapoalim-account-selector.mjs'),original=readFileSync(source,'utf8');
  const changed=original.replace(/bankNumber:\s*'12',\s*branchNumber:\s*''/,'bankNumber:12,branchNumber:""');

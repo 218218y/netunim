@@ -1,0 +1,10 @@
+{
+  "base": "79b7ed86438aa2a4f3bfd45b969d653189140b6e",
+  "retiredFinanceFallback": "if(typeof readFinanceSyncDocument!=='function'||typeof rpcSaveFinanceSync!=='function')return mutateKupaCloud(kupa=>{const finance={bank:clone(kupa.bank||{}),creditSync:clone(kupa.creditSync||{})},next=mutator(finance);if(!next)return null;if(next.bank)kupa.bank=next.bank;if(next.creditSync)kupa.creditSync=next.creditSync;return kupa},{assertCurrent});",
+  "policies": {
+    "prepareKupaWriteState": "12bd948963f3aa1e5cad7af26539c24e841093ac46973caca32518a5be423486",
+    "mutateKupaCloud": "7c2c8ec6ae4937d5da4d0e50482e62ee430f6daaa727b110986de2931f70cde1",
+    "mutateFinanceCloud": "d6a9b65e23725d34835aeb24bf9eebfd885dbecb288c3dbec902c564ad2ed16e",
+    "confirmCommittedReadout": "f08434e1742368700fbc4b38c7bc1fd7acf9393acc0b2b238d714a0d71f2e250"
+  }
+}

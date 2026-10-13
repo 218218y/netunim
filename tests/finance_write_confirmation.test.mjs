@@ -2,7 +2,7 @@ import {createFinanceBrowserEffects} from '../shared/finance-browser-effects.js'
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createCloudTransport} from '../netunim-kupa/site/assets/js/cloud/transport.js';
-import {createDomainsFinanceController} from '../netunim-orders/site/assets/js/domains/finance/controller.js';
+import {createOrdersFinanceControllerFixture as createDomainsFinanceController} from './orders_finance_controller_fixture.mjs';
 import {readFinanceWriteReceipt} from '../shared/finance-write-receipt.js';
 
 const initial=()=>({bank:{currentBalance:100},creditSync:{profiles:[],cardMappings:{}},notes:[{id:'retained-note',content:'original'}]});

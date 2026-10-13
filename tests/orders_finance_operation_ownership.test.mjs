@@ -1,7 +1,7 @@
 import {createFinanceBrowserEffects} from '../shared/finance-browser-effects.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createDomainsFinanceController} from '../netunim-orders/site/assets/js/domains/finance/controller.js';
+import {createOrdersFinanceControllerFixture as createDomainsFinanceController} from './orders_finance_controller_fixture.mjs';
 import {createDomainsBankCache} from '../netunim-orders/site/assets/js/domains/bank/cache.js';
 import {createFinanceOperationScope} from '../shared/finance-fence.js';
 import {createCloudTransport} from '../netunim-orders/site/assets/js/cloud/transport.js';
