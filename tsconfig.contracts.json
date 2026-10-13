@@ -20,6 +20,9 @@
     "types": []
   },
   "files": [
+    "netunim-kupa/bank-bridge/browser-locator.mjs",
+    "netunim-kupa/bank-bridge/file-task-owner.mjs",
+    "tests/fixtures/checked-bank-reader-resources.mjs",
     "netunim-kupa/bank-bridge/provider-errors.mjs",
     "netunim-kupa/bank-bridge/hapoalim-provider.mjs",
     "netunim-kupa/bank-bridge/credit-session.mjs",

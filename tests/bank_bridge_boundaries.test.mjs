@@ -8,9 +8,17 @@ import {createHapoalimProvider} from '../netunim-kupa/bank-bridge/hapoalim-provi
 import {createHapoalimSessionAdapter} from '../netunim-kupa/bank-bridge/hapoalim-session.mjs';
 import {createCreditProvider} from '../netunim-kupa/bank-bridge/credit-provider.mjs';
 import {createCreditProfileSession} from '../netunim-kupa/bank-bridge/credit-session.mjs';
+import {createHapoalimAccountReader} from '../netunim-kupa/bank-bridge/hapoalim-accounts.mjs';
+import {createHapoalimEnrichment} from '../netunim-kupa/bank-bridge/hapoalim-enrichment.mjs';
+import {createHapoalimJsonReader} from '../netunim-kupa/bank-bridge/hapoalim-json.mjs';
+import {createInstalledBrowserLocator} from '../netunim-kupa/bank-bridge/browser-locator.mjs';
+import {createChequeImages} from '../netunim-kupa/bank-bridge/cheque-images.mjs';
 
 test('Bank HTTP/capability boundaries have explicit dependency and collaborator budgets',()=>{
   const contracts=[
+    ['hapoalim-accounts',['node:crypto','./lib.mjs','./hapoalim-wire.mjs','./provider-errors.mjs','./wire-errors.mjs'],'createHapoalimAccountReader',5],
+    ['hapoalim-enrichment',['./lib.mjs','./hapoalim-wire.mjs'],'createHapoalimEnrichment',3],
+    ['browser-locator',[],'createInstalledBrowserLocator',2],
     ['hapoalim-provider',['./provider-errors.mjs'],'createHapoalimProvider',7],
     ['credit-session',[],'createCreditProfileSession',4],
     ['credit-provider',['node:crypto','./lib.mjs','./credit-adapters.mjs','./credit-diagnostics.mjs'],'createCreditProvider',3],
@@ -34,14 +42,23 @@ test('Bank HTTP/capability boundaries have explicit dependency and collaborator 
 
 test('Bank composition cannot keep parallel provider/session implementations or widen their public APIs',()=>{
   const root=readFileSync(new URL('../netunim-kupa/bank-bridge/server.mjs',import.meta.url),'utf8');
-  for(const name of ['scrapeHapoalimSnapshot','scrapeAllCreditProfiles','scrapeCreditProfile','enableHapoalimSessionAwareLogin','waitForHapoalimSessionReady'])assert.ok(!new RegExp(`function ${name}\\(`).test(root));
-  for(const [name,fields] of [['hapoalim-provider',['read']],['credit-session',['scrape']],['credit-provider',['scrape']],['hapoalim-session',['decorate','ready','reuse','safeUrl']]]){
+  for(const name of ['scrapeHapoalimSnapshot','scrapeAllCreditProfiles','scrapeCreditProfile','enableHapoalimSessionAwareLogin','waitForHapoalimSessionReady','pageFetchJson','pageFetchJsonOnce','enrichHapoalimTransactions','fetchHapoalimAccountSnapshot','fetchSelectedHapoalimSnapshot','readCachedChequeImage','writeCachedChequeImage','fetchChequeImageIntoCache','browserCandidates','rememberBrowser','findInstalledBrowser'])assert.ok(!new RegExp(`function ${name}\\(`).test(root));
+  for(const [name,fields] of [['hapoalim-accounts',['read','lookbackDays']],['hapoalim-enrichment',['enrich']],['hapoalim-json',['read']],['browser-locator',['find']],['file-task-owner',['run','drain']],['hapoalim-provider',['read']],['credit-session',['scrape']],['credit-provider',['scrape']],['hapoalim-session',['decorate','ready','reuse','safeUrl']]]){
     const source=readFileSync(new URL(`../netunim-kupa/bank-bridge/${name}.mjs`,import.meta.url),'utf8'),ast=parse(source,{ecmaVersion:'latest',sourceType:'module'});
     const factory=ast.body.find(node=>node.type==='ExportNamedDeclaration'&&node.declaration?.type==='FunctionDeclaration')?.declaration;
     const returned=factory.body.body.find(node=>node.type==='ReturnStatement').argument.arguments[0];
     assert.deepEqual(returned.properties.map(property=>property.key.name),fields,name+' public API');
     assert.ok(!source.includes("from 'node:fs"));
   }
+});
+
+test('reader and image construction reject missing ports and create no platform jobs',()=>{
+  for(const [factory,error] of [[createHapoalimAccountReader,'bank_account_ports_required'],[createHapoalimEnrichment,'bank_enrichment_ports_required'],[createHapoalimJsonReader,'bank_json_ports_required'],[createInstalledBrowserLocator,'browser_locator_ports_required'],[createChequeImages,'cheque_image_ports_required']])assert.throws(()=>factory({}),new RegExp(error));
+  const unexpected=()=>{throw new Error('construction must remain inert')};
+  const images=createChequeImages({directory:'fixture-directory',clock:{date:unexpected,now:unexpected},reporter:unexpected,files:new Proxy({},{get:unexpected})});
+  assert.deepEqual(Object.keys(images),['read','attach','inRetention','cleanup','clear','drain']);
+  const source=readFileSync(new URL('../netunim-kupa/bank-bridge/cheque-images.mjs',import.meta.url),'utf8'),ast=parse(source,{ecmaVersion:'latest',sourceType:'module'});
+  const factory=ast.body.find(node=>node.type==='ExportNamedDeclaration').declaration;assert.equal(factory.params[0].properties.length,4);
 });
 
 test('route and HTTP construction reject incomplete capabilities before a listener is created',()=>{

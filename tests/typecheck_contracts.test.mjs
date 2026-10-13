@@ -25,6 +25,27 @@ function check(overrides=new Map()){
 }
 function describe(diagnostics){return ts.formatDiagnostics(diagnostics,{getCanonicalFileName:file=>file,getCurrentDirectory:()=>root,getNewLine:()=> '\n'})}
 
+test('the actual installed-browser locator cannot replace a cached path with a status number',()=>{
+  const source=path.join(root,'netunim-kupa/bank-bridge/browser-locator.mjs');
+  const original=readFileSync(source,'utf8'),changed=original.replace(/cachedBrowserPath\s*=\s*candidate;/,'cachedBrowserPath=200;');
+  assert.notEqual(changed,original);const diagnostics=check(new Map([[source,changed]]));
+  assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+});
+
+test('the actual file owner cannot replace a promised command result with presentation text',()=>{
+  const source=path.join(root,'netunim-kupa/bank-bridge/file-task-owner.mjs');
+  const original=readFileSync(source,'utf8'),changed=original.replace(/return task;/,'return "completed";');
+  assert.notEqual(changed,original);const diagnostics=check(new Map([[source,changed]]));
+  assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+});
+
+test('the actual file join cannot substitute display text for an accepted attempt result',()=>{
+  const source=path.join(root,'netunim-kupa/bank-bridge/file-task-owner.mjs');
+  const original=readFileSync(source,'utf8'),changed=original.replace('return result.value;', 'return "completed";');
+  assert.notEqual(changed,original);const diagnostics=check(new Map([[source,changed]]));
+  assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+});
+
 test('the actual Bank provider cannot substitute presentation text for successful terminal cleanup',()=>{
   const source=path.join(root,'netunim-kupa/bank-bridge/hapoalim-provider.mjs');
   const original=readFileSync(source,'utf8'),changed=original.replace(/success\s*=\s*true;/,'success="completed";');
