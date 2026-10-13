@@ -189,7 +189,7 @@ def plan_sync(snapshot: WorktreeSnapshot | IndexSnapshot) -> list[Change]:
                 changes.append(Change(target, None, f'bridge: removed obsolete generated copy: {target}'))
             continue
         expected = snapshot.read(source)
-        if target not in snapshot.files or snapshot.read(target) != expected:
+        if target not in snapshot.files or asset_hash_bytes(target, snapshot.read(target)) != asset_hash_bytes(source, expected):
             changes.append(Change(target, expected, f'bridge: synchronized canonical source: {source}'))
     sources = direct_javascript_files(snapshot.files, 'shared') | {path for path in snapshot.files if str(PurePosixPath(path).parent) == 'shared' and path.endswith('.css')}
     source_names = {PurePosixPath(path).name for path in sources}

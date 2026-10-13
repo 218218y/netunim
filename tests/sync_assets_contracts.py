@@ -124,6 +124,37 @@ class SyncAssetContracts(unittest.TestCase):
                 self.assertEqual(self.hashes(), expected)
                 self.assertEqual(self.snapshot(), before, 'clean generation rewrote files')
 
+    def test_bridge_generated_source_ignores_checkout_newlines_without_rewriting(self):
+        source = self.root / 'shared/bank-money-value.js'
+        target = self.root / 'netunim-kupa/bank-bridge/bank-money-value.mjs'
+        expected = source.read_bytes().replace(b'\r\n', b'\n').replace(b'\r', b'\n')
+        for newline in (b'\r\n', b'\r', b'\n'):
+            with self.subTest(newline=newline):
+                target.write_bytes(expected.replace(b'\n', newline))
+                before = self.snapshot()
+                self.run_sync(check=True)
+                self.run_sync()
+                self.assertEqual(self.snapshot(), before, 'clean Bridge generation rewrote files')
+
+    def test_bridge_generated_source_detects_drift_and_retires_only_its_copy(self):
+        source = self.root / 'shared/bank-money-value.js'
+        target = self.root / 'netunim-kupa/bank-bridge/bank-money-value.mjs'
+        unrelated = target.parent / 'provider.mjs'
+        unrelated.write_bytes(b'export const provider = true;\n')
+        target.write_bytes(target.read_bytes() + b'\nexport const drift = true;\n')
+        before = self.snapshot()
+        self.run_sync(check=True, expected=1)
+        self.assertEqual(self.snapshot(), before, '--check wrote the drifted Bridge copy')
+        self.run_sync()
+        self.assertEqual(target.read_bytes(), source.read_bytes())
+        source.unlink()
+        before = self.snapshot()
+        self.run_sync(check=True, expected=1)
+        self.assertEqual(self.snapshot(), before, '--check removed a retired Bridge copy')
+        self.run_sync()
+        self.assertFalse(target.exists())
+        self.assertEqual(unrelated.read_bytes(), b'export const provider = true;\n')
+
     def test_content_changes_require_regeneration_and_check_never_writes(self):
         for relative in ('assets/app.js', 'assets/app.css', 'index.html', 'manifest.webmanifest', '_headers'):
             with self.subTest(asset=relative):
