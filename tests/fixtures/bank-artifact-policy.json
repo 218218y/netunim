@@ -1,0 +1,24 @@
+{
+  "baseline": "864cf82f7634596cc7303fe245e77cc1fe827af6",
+  "policies": {
+    "text": "9f951134425cb3637b750e3f9b7bf0146364fdfe2876f5c928fbd6ac85642b9e",
+    "iso": "8b0a886d7e626645c548008dc3c7471f506935e99ac86cad53fb8b253995f156",
+    "suffix": "c3183516aa52fe52daacd25329097fef7d69cbeab0b23631d7a6bdcbafd2643a",
+    "safeMonth": "b3a1749013271960ecee62255b5090bb2944a98f66a36f51e3804ea6a23ee683",
+    "valueType": "4754f30174b23f80e4036bd1cf6db8a9e637db4394a5c96ad6acc1229b8a0ca1",
+    "safeKeys": "fd731fdbfb48b71c95c30ceb76692a837eca4e62a738a30cac099a0a9b4eeb35",
+    "safeCount": "2f8568df46c7f75370f08565faa11153cf9420f1468e3c61cdb3b1082ed42d31",
+    "safeStatusCode": "e4d394ea7acbc49b3c9778a18d8021b3cf268d71d1fcabebd2c109d7769cab3c",
+    "rawNode": "5dddd32b43e76a9b3cd05c7251f5e9bc8a32892e410c6d9a3e5eb1f52369239e",
+    "rawGroup": "d84116ee097f904cf738bd2846782efb303805e48d71b5077d06eca2293c58b8",
+    "sanitizeNode": "6bc6884026ce812661a9a689a629c2ea7762dd6f80d96d23b24c44a67864997a",
+    "sanitizeStoredResponseShape": "33279fe50d689d4a18b1610e0aef92e2aae82cae2447572255eca6b8519ac41a",
+    "safeCreditResponseShape": "c29b78b862dfad2c77cf6f8d7501a2211bb04903f3d662e1a3fbc24ba4612aa8",
+    "responseShapeFingerprint": "9a071e52f22c4b9b9187e6a335e7cb9fe4ba1860796ffe5adfc47a5f2b91730e",
+    "diagnosticFingerprint": "504b60fa449910843407c674d775f28f4cb5164b90be2b1f8aab3608df641d23",
+    "sanitizeCreditDiagnosticEvent": "d2d6197fa9358e302b92a0a8fab5da6f653208550004bb7fee4b238c1a717caf",
+    "rotate": "238dd4fb7fb6bd24d509eb17e3ec73c96ee0eb8fc5745900d35bc22e483b04f7",
+    "prune": "f207d3c6d07b696852643e62aeb4c5c6d5c79a080b0508cb3909ee728e449266",
+    "append": "dc006b0a12b3c0d368e4a1595183d62227fa4e11ea4183d889426f57105adff1"
+  }
+}

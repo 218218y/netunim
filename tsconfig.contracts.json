@@ -20,6 +20,8 @@
     "types": []
   },
   "files": [
+    "netunim-kupa/bank-bridge/json-artifact-owner.mjs",
+    "tests/fixtures/checked-bank-artifacts.mjs",
     "netunim-kupa/bank-bridge/browser-locator.mjs",
     "netunim-kupa/bank-bridge/file-task-owner.mjs",
     "tests/fixtures/checked-bank-reader-resources.mjs",

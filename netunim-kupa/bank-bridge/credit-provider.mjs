@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { creditProviderSupported, creditAutomaticRetryAfterAt, deferredCreditProfileError, deferredCamoufoxProfileError, expiredCamoufoxLoginPageBlock, creditErrorSeverity, creditErrorComponent } from './lib.mjs';
 import { CREDIT_CONNECTOR_CONTRACT_VERSION, normalizeCreditSyncMode } from './credit-adapters.mjs';
-import { diagnosticFingerprint } from './credit-diagnostics.mjs';
+import { diagnosticFingerprint } from './credit-diagnostic-model.mjs';
 // Profiles remain sequential; a session facade owns the connector attempt.
 // Identity recovery and diagnostics are explicit ports, not HTTP internals.
 export function createCreditProvider({ sessions, identity, diagnostics }) {

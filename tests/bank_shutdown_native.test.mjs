@@ -51,7 +51,7 @@ test('native shutdown waits for accepted diagnostic bytes after its HTTP listene
   const f=await bankStage(t,{prepare:async({runtime})=>{
     const entry=path.join(runtime,'server.mjs'),source=await fs.readFile(entry,'utf8');
     assert.ok(source.includes('shutdown.start();'));await fs.writeFile(entry,source.replace('shutdown.start();',"shutdown.start();creditDiagnostics.record({profileId:'native-fixture',stage:'FixtureDrain'});"));
-    const logger=path.join(runtime,'credit-diagnostics.mjs'),original=await fs.readFile(logger,'utf8'),anchor='await fs.appendFile(logPath,';assert.ok(original.includes(anchor));
+    const logger=path.join(runtime,'credit-diagnostic-log.mjs'),original=await fs.readFile(logger,'utf8'),anchor='await fs.appendFile(logPath,';assert.ok(original.includes(anchor));
     const held="await fs.writeFile(path.join(directory,'fixture-log-entered'),'entered');while(true){try{await fs.access(path.join(directory,'fixture-log-release'));break}catch(error){if(error.code!=='ENOENT')throw error;await new Promise(resolve=>setTimeout(resolve,10))}};";
     await fs.writeFile(logger,original.replace(anchor,held+anchor));
   }});
@@ -71,7 +71,7 @@ test('the actual replacement CLI refuses to force-stop a bridge still draining',
     const original='waitUntilStopped:()=>waitForPortToClose(),';assert.ok(source.includes(original));
     await fs.writeFile(file,source.replace(original,'waitUntilStopped:()=>waitForPortToClose(200),'));
     // Hold a native diagnostic obligation past the CLI's shorter test wait.
-    const logger=path.join(runtime,'credit-diagnostics.mjs'),originalLogger=await fs.readFile(logger,'utf8'),anchor='await fs.appendFile(logPath,';
+    const logger=path.join(runtime,'credit-diagnostic-log.mjs'),originalLogger=await fs.readFile(logger,'utf8'),anchor='await fs.appendFile(logPath,';
     const held="await fs.writeFile(path.join(directory,'fixture-log-entered'),'entered');while(true){try{await fs.access(path.join(directory,'fixture-log-release'));break}catch(error){if(error.code!=='ENOENT')throw error;await new Promise(resolve=>setTimeout(resolve,10))}};";
     await fs.writeFile(logger,originalLogger.replace(anchor,held+anchor));
     await fs.writeFile(file,(await fs.readFile(file,'utf8')).replace('shutdown.start();',"shutdown.start();creditDiagnostics.record({stage:'FixtureReplacement'});"));

@@ -25,6 +25,13 @@ function check(overrides=new Map()){
 }
 function describe(diagnostics){return ts.formatDiagnostics(diagnostics,{getCanonicalFileName:file=>file,getCurrentDirectory:()=>root,getNewLine:()=> '\n'})}
 
+test('the actual JSON artifact owner cannot replace file completion with presentation text',()=>{
+  const source=path.join(root,'netunim-kupa/bank-bridge/json-artifact-owner.mjs');
+  const original=readFileSync(source,'utf8'),changed=original.replace('files.write(text)', 'Promise.resolve("saved")');
+  assert.notEqual(changed,original);const diagnostics=check(new Map([[source,changed]]));
+  assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+});
+
 test('the actual installed-browser locator cannot replace a cached path with a status number',()=>{
   const source=path.join(root,'netunim-kupa/bank-bridge/browser-locator.mjs');
   const original=readFileSync(source,'utf8'),changed=original.replace(/cachedBrowserPath\s*=\s*candidate;/,'cachedBrowserPath=200;');
