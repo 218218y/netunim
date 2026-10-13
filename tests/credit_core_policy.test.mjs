@@ -1,8 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { parse } from 'acorn';
-import * as lib from '../netunim-kupa/bank-bridge/lib.mjs';
 import { creditAdapterPolicyHashes } from './credit_adapter_policy_fixture.mjs';
 const read = (name) =>
   fs.readFileSync(new URL('../netunim-kupa/bank-bridge/' + name + '.mjs', import.meta.url), 'utf8');
@@ -15,29 +13,8 @@ const modules = [
 const fixture = JSON.parse(
   fs.readFileSync(new URL('./fixtures/credit-core-policy.json', import.meta.url), 'utf8')
 );
-function bankSource() {
-  return read('lib');
-}
-
-test('all 73 Bank declarations and 30 Credit core declarations match the reviewed base', () => {
-  assert.deepEqual(creditAdapterPolicyHashes([bankSource()]).policies, fixture.bankPolicies);
+test('all 30 Credit core declarations match the reviewed base', () => {
   assert.deepEqual(creditAdapterPolicyHashes(modules.map(read)).policies, fixture.creditPolicies);
-});
-
-test('Bank library exports only its Bank API and no former Credit compatibility surface', () => {
-  const expected = fixture.libExports.filter(
-    (name) =>
-      !Object.hasOwn(fixture.creditPolicies, name) &&
-      !['CREDIT_HISTORY_DAYS', 'CREDIT_FUTURE_MONTHS'].includes(name)
-  );
-  assert.deepEqual(Object.keys(lib).sort(), expected);
-  const ast = parse(read('lib'), { ecmaVersion: 'latest', sourceType: 'module' });
-  const aliases = ast.body.filter(
-    (row) =>
-      row.type === 'ExportNamedDeclaration' &&
-      modules.some((module) => row.source?.value === './' + module + '.mjs')
-  );
-  assert.equal(aliases.length, 0);
 });
 
 test('policy fixture detects changed charge signs, login identity, transaction status and cooldown', () => {

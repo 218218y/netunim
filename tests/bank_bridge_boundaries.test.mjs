@@ -4,13 +4,13 @@ import {readFileSync} from 'node:fs';
 import {parse} from 'acorn';
 import {createBankBridgeRoutes} from '../netunim-kupa/bank-bridge/http-routes.mjs';
 import {createBankBridgeHttpHandler} from '../netunim-kupa/bank-bridge/http-handler.mjs';
-import {createHapoalimProvider} from '../netunim-kupa/bank-bridge/hapoalim-provider.mjs';
-import {createHapoalimSessionAdapter} from '../netunim-kupa/bank-bridge/hapoalim-session.mjs';
+import { createHapoalimProvider } from '../netunim-kupa/bank-bridge/hapoalim-provider.mjs';
+import { createHapoalimSessionAdapter } from '../netunim-kupa/bank-bridge/hapoalim-session.mjs';
 import {createCreditProvider} from '../netunim-kupa/bank-bridge/credit-provider.mjs';
 import {createCreditProfileSession} from '../netunim-kupa/bank-bridge/credit-session.mjs';
-import {createHapoalimAccountReader} from '../netunim-kupa/bank-bridge/hapoalim-accounts.mjs';
-import {createHapoalimEnrichment} from '../netunim-kupa/bank-bridge/hapoalim-enrichment.mjs';
-import {createHapoalimJsonReader} from '../netunim-kupa/bank-bridge/hapoalim-json.mjs';
+import { createHapoalimAccountReader } from '../netunim-kupa/bank-bridge/hapoalim-accounts.mjs';
+import { createHapoalimEnrichment } from '../netunim-kupa/bank-bridge/hapoalim-enrichment.mjs';
+import { createHapoalimJsonReader } from '../netunim-kupa/bank-bridge/hapoalim-json.mjs';
 import {createInstalledBrowserLocator} from '../netunim-kupa/bank-bridge/browser-locator.mjs';
 import {createChequeImages} from '../netunim-kupa/bank-bridge/cheque-images.mjs';
 import {createBridgeArtifacts} from '../netunim-kupa/bank-bridge/bridge-artifacts.mjs';
@@ -19,8 +19,8 @@ import {createJsonArtifactOwner} from '../netunim-kupa/bank-bridge/json-artifact
 test('Bank HTTP/capability boundaries have explicit dependency and collaborator budgets',()=>{
   const contracts=[
     ['json-artifact-owner',['./file-task-owner.mjs'],'createJsonArtifactOwner',1],
-    ['hapoalim-accounts',['node:crypto','./lib.mjs','./hapoalim-wire.mjs','./provider-errors.mjs','./wire-errors.mjs'],'createHapoalimAccountReader',5],
-    ['hapoalim-enrichment',['./lib.mjs','./hapoalim-wire.mjs'],'createHapoalimEnrichment',3],
+    ['hapoalim-accounts',["node:crypto","./hapoalim-policy.mjs","./hapoalim-transaction-model.mjs","./hapoalim-account-model.mjs","./hapoalim-date-codec.mjs","./hapoalim-wire.mjs","./provider-errors.mjs","./wire-errors.mjs"],'createHapoalimAccountReader',5],
+    ['hapoalim-enrichment',["./hapoalim-additional-details-model.mjs","./hapoalim-cheque-model.mjs","./hapoalim-credit-settlement-model.mjs","./hapoalim-transaction-model.mjs","./hapoalim-wire.mjs"],'createHapoalimEnrichment',3],
     ['browser-locator',[],'createInstalledBrowserLocator',2],
     ['hapoalim-provider',['./provider-errors.mjs'],'createHapoalimProvider',7],
     ['credit-session',[],'createCreditProfileSession',4],
@@ -29,7 +29,7 @@ test('Bank HTTP/capability boundaries have explicit dependency and collaborator 
     ['replacement-command',[],'createBridgeReplacementCommand',4],
     ['http-handler',['node:crypto','./wire-errors.mjs'],'createBankBridgeHttpHandler',4],
     ['http-routes',[],'createBankBridgeRoutes',8],
-    ['finance-commands',['./lib.mjs','./credit-sync-scope.mjs','./credit-data-diagnostics.mjs'],'createFinanceCommands',3],
+    ['finance-commands',["./hapoalim-policy.mjs","./credit-sync-scope.mjs","./credit-data-diagnostics.mjs"],'createFinanceCommands',3],
     ['connection-queries',['./connection-commands.mjs'],'createConnectionQueries',3],
     ['diagnostic-queries',['./credit-data-diagnostics.mjs','./bank-diagnostics.mjs'],'createDiagnosticQueries',2],
   ];

@@ -16,8 +16,10 @@ even pure CAL/MAX calculations imported the Bank runtime library.
 | Safe provider error context, rate-limit/automation cooldown, deferral and error severity | `credit-failure-policy.mjs` |
 
 All Credit production consumers now import the relevant canonical module
-directly. After the consumer audit and retirement, `lib.mjs` exports only its
-34 Bank functions/constants. Bank credit settlements and
+directly. At the end of this stage, `lib.mjs` exported only its
+34 Bank functions/constants; the subsequent
+[Bank core stage](BANK_CORE_RESPONSIBILITY_BOUNDARIES.md) retires that library
+after routing Bank consumers to canonical owners. Bank credit settlements and
 permission details remain Bank behavior, because they interpret Bank transaction
 payloads rather than Credit issuer responses.
 
@@ -86,10 +88,10 @@ migration; it is not part of eliminating the unused Credit module exports.
 
 ## Remaining scope
 
-The Bank-specific portion of `lib.mjs` still combines login timing, account
-selection, cheque details and transaction normalization, so Bank consumers
-retain that broad import. A future split should follow those responsibilities
-while preserving the same Bank policy fixture. Credit profile, transaction and
+The subsequent [Bank core stage](BANK_CORE_RESPONSIBILITY_BOUNDARIES.md) separates
+login timing, account selection, cheque details and transaction normalization,
+preserving the active declarations against the same immutable Bank fixture.
+Credit profile, transaction and
 failure object payloads still need incremental runtime-validation/type contracts
 beyond the strictly checked scalar codec. The Credit adapter factory's 17 option
 fields, DigitalV3/Camoufox internals, Document Bridge, application controllers,

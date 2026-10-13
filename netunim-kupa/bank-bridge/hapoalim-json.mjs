@@ -1,8 +1,5 @@
-import {
-  HAPOALIM_NAVIGATION_STABLE_MS,
-  HAPOALIM_DATA_RETRY_LIMIT,
-  retryTransientNavigation,
-} from './lib.mjs';
+import { HAPOALIM_NAVIGATION_STABLE_MS, HAPOALIM_DATA_RETRY_LIMIT } from './hapoalim-policy.mjs';
+import { retryTransientNavigation } from './hapoalim-navigation-policy.mjs';
 export function createHapoalimJsonReader({ session }) {
   if (typeof session?.ready !== 'function') throw new Error('bank_json_ports_required');
   const waitForHapoalimSessionReady = session.ready;

@@ -826,7 +826,8 @@ failure evidence and remaining issuer/token/Document scope.
 
 Credit adapter routing, browser authentication/lifecycle, HTTP transport/policy,
 issuer models, month projections and diagnostic evidence now have explicit
-canonical modules. A stable facade retains its 35 former exports; 118 frozen
+canonical modules. The initial stable facade retained its 35 former exports;
+that facade was retired in the subsequent Credit core stage. The 118 frozen
 declarations protect reviewed provider behavior. Before-change tests proved that
 CAL response-body interruption escaped network classification; the acquisition
 boundary now retains its stage/cause without additional requests. Strict sync
@@ -838,15 +839,28 @@ helper and DigitalV3/Camoufox scope.
 
 Credit core profile, transaction, amount and failure policies now have canonical
 pure modules. All Credit production consumers import those narrow models directly;
-the Bank Bridge library exports only its 34 Bank functions/constants. The temporary
+the Bank Bridge library initially retained only its 34 Bank functions/constants
+before its subsequent Bank core retirement. The temporary
 Credit adapter/diagnostic facades, uninstantiated generic scraper and date alias
 have been retired after migrating all consumers and installer entries.
 Immutable AST fixtures preserve 73 Bank and 30 Credit declarations, including
 credential identity, charge signs, pending authority and cooldown policy. The
 actual monetary codec has strict negative consumer and implementation checks,
 and staged Bank/Credit server tests cover the new import graph. See
-[Credit core model boundaries](CREDIT_CORE_MODEL_BOUNDARIES.md) for the remaining
-Bank library responsibilities and the next contract work.
+[Credit core model boundaries](CREDIT_CORE_MODEL_BOUNDARIES.md) for the next
+Credit payload contract work.
+
+The remaining Bank model library is now retired. Thirteen canonical modules
+separate terminal-login polling, navigation policy, account identity/selection,
+cheque and permission details, transaction/date normalization and failure policy.
+All 70 active Bank declaration ASTs match the immutable fixture; three helpers
+with only obsolete test consumers were removed. Production, tests and installer
+entries import the actual owners directly. Strict implementation and negative
+consumer checks cover the selector, date and detail codecs; mutation/import/effect
+guards protect the boundary. Native staged Windows tests verify real HTTP startup,
+DPAPI and provider cleanup through the new graph. See
+[Bank core responsibility boundaries](BANK_CORE_RESPONSIBILITY_BOUNDARIES.md)
+for retained provider semantics and remaining object/envelope typing.
 
 The recurrent Orders document privacy test timeout was reproduced as two search
 owners publishing to the same DOM: cloned nodes did not remove the application's

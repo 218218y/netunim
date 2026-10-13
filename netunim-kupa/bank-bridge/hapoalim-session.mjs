@@ -1,5 +1,11 @@
-import { HAPOALIM_POST_LOGIN_TIMEOUT_MS, HAPOALIM_NAVIGATION_STABLE_MS, INTERACTIVE_AUTH_TIMEOUT_MS, SILENT_AUTH_TIMEOUT_MS, isTransientNavigationError } from './lib.mjs';
-import {HAPOALIM_BASE_URL} from './hapoalim-wire.mjs';
+import {
+  HAPOALIM_POST_LOGIN_TIMEOUT_MS,
+  HAPOALIM_NAVIGATION_STABLE_MS,
+  INTERACTIVE_AUTH_TIMEOUT_MS,
+  SILENT_AUTH_TIMEOUT_MS,
+} from './hapoalim-policy.mjs';
+import { isTransientNavigationError } from './hapoalim-navigation-policy.mjs';
+import { HAPOALIM_BASE_URL } from './hapoalim-wire.mjs';
 // A scoped browser adapter: constructing it starts no polling or navigation.
 // Login state belongs to each decorated scraper; readiness timers are awaited
 // jobs with an explicit clock, never handles in shared application state.

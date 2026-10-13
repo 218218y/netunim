@@ -4,11 +4,13 @@ import {
   HAPOALIM_TRANSACTION_LOOKBACK_DAYS,
   HAPOALIM_INITIAL_BACKFILL_DAYS,
   HAPOALIM_TRANSACTION_LIMIT,
+} from './hapoalim-policy.mjs';
+import {
   hapoalimTransactionPageState,
   normalizeRecentTransactions,
-  selectAccountDescriptor,
-  ymdDate,
-} from './lib.mjs';
+} from './hapoalim-transaction-model.mjs';
+import { selectAccountDescriptor } from './hapoalim-account-model.mjs';
+import { ymdDate } from './hapoalim-date-codec.mjs';
 import { HAPOALIM_BASE_URL } from './hapoalim-wire.mjs';
 import { stageError, runStage } from './provider-errors.mjs';
 import { bankBridgeErrorResponse as safeError } from './wire-errors.mjs';

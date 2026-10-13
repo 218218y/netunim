@@ -1,4 +1,4 @@
-import { parseAccountSelector } from './lib.mjs';
+import { parseAccountSelector } from './hapoalim-account-selector.mjs';
 import {
   normalizeCreditProfileInput,
   creditProfilesShareLoginIdentity,
