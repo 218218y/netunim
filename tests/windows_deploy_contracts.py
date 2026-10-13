@@ -173,7 +173,7 @@ class WindowsBankInstallerRollbackContracts(unittest.TestCase):
 @unittest.skipUnless(os.name == "nt", "CurrentUser DPAPI vault coverage runs in the required Windows CI job")
 class WindowsBankVaultContracts(unittest.TestCase):
     def test_native_configuration_vault_and_current_user_protection(self):
-        result = subprocess.run(["node", "--test", str(ROOT / "tests/bank_connection_vault.test.mjs"), str(ROOT / "tests/bank_bridge_runtime.test.mjs"), str(ROOT / "tests/bank_shutdown_native.test.mjs"), str(ROOT / "tests/bank_provider_native.test.mjs"), str(ROOT / "tests/bank_image_shutdown_native.test.mjs"), str(ROOT / "tests/bank_local_cache.test.mjs"), str(ROOT / "tests/bank_artifact_shutdown_native.test.mjs"), str(ROOT / "tests/bank_artifact_publication.test.mjs"), str(ROOT / "tests/bank_artifact_owner.test.mjs")],
+        result = subprocess.run(["node", "--test", str(ROOT / "tests/bank_connection_vault.test.mjs"), str(ROOT / "tests/bank_bridge_runtime.test.mjs"), str(ROOT / "tests/bank_shutdown_native.test.mjs"), str(ROOT / "tests/bank_provider_native.test.mjs"), str(ROOT / "tests/credit_adapter_native.test.mjs"), str(ROOT / "tests/bank_image_shutdown_native.test.mjs"), str(ROOT / "tests/bank_local_cache.test.mjs"), str(ROOT / "tests/bank_artifact_shutdown_native.test.mjs"), str(ROOT / "tests/bank_artifact_publication.test.mjs"), str(ROOT / "tests/bank_artifact_owner.test.mjs")],
                                 cwd=ROOT, capture_output=True, timeout=45,
                                 creationflags=subprocess.CREATE_NO_WINDOW)
         output = (result.stdout + result.stderr).decode("utf8", errors="replace")
@@ -183,6 +183,7 @@ class WindowsBankVaultContracts(unittest.TestCase):
         self.assertIn("native shutdown retains an accepted vault deletion", output)
         self.assertIn("actual replacement CLI refuses", output)
         self.assertIn("native Bank provider composition", output)
+        self.assertIn("native staged Credit composition", output)
         self.assertIn("native shutdown retains an accepted image read", output)
         self.assertIn("native shutdown retains an accepted artifact read", output)
         self.assertIn("native shutdown retains an accepted diagnostic summary", output)

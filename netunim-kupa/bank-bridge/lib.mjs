@@ -1,3 +1,4 @@
+export {CREDIT_HISTORY_DAYS,CREDIT_FUTURE_MONTHS} from './credit-adapter-wire.mjs';
 export const INTERACTIVE_AUTH_TIMEOUT_MS=10*60*1000;
 export const SILENT_AUTH_TIMEOUT_MS=90*1000;
 export const HAPOALIM_POST_LOGIN_TIMEOUT_MS=60*1000;
@@ -633,8 +634,6 @@ export const CREDIT_PROVIDER_CONFIG={
   isracard:{label:'ישראכרט',credentialFields:['id','card6Digits','password']},
   amex:{label:'American Express',credentialFields:['id','card6Digits','password']},
 };
-export const CREDIT_HISTORY_DAYS=130;
-export const CREDIT_FUTURE_MONTHS=12;
 
 function creditText(value,max=240){return String(value??'').trim().replace(/\s+/g,' ').slice(0,max)}
 function creditNumber(value){if(value===null||value===undefined||String(value).trim()==='')return null;const n=Number(value);return Number.isFinite(n)?n:null}

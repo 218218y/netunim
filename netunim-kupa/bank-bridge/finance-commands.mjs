@@ -1,5 +1,5 @@
 import { HAPOALIM_INITIAL_BACKFILL_DAYS, HAPOALIM_TRANSACTION_LOOKBACK_DAYS } from './lib.mjs';
-import { normalizeCreditSyncMode } from './credit-adapters.mjs';
+import { normalizeCreditSyncMode } from './credit-sync-scope.mjs';
 import { buildCreditDataDiagnosticPayload } from './credit-data-diagnostics.mjs';
 function normalizeCreditSyncSelection(value) { return (Array.isArray(value) ? value : []).slice(0, 100).map(row => ({ profileId: String(row?.profileId || '').trim().slice(0, 80), excludedAccounts: [...new Set((Array.isArray(row?.excludedAccounts) ? row.excludedAccounts : []).slice(0, 100).map(account => String(account || '').trim().slice(0, 80)).filter(Boolean))] })).filter(row => row.profileId && row.excludedAccounts.length); }
 // Provider ownership includes vault reads and diagnostic/status publication.

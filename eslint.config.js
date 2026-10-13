@@ -12,13 +12,45 @@ async function loadGlobals() {
 
 const globals = await loadGlobals();
 
+const creditAdapterBoundaryFiles = [
+  'netunim-kupa/bank-bridge/credit-value-codec.mjs',
+  'netunim-kupa/bank-bridge/credit-month-plan.mjs',
+  'netunim-kupa/bank-bridge/credit-sync-scope.mjs',
+  'netunim-kupa/bank-bridge/credit-http-policy.mjs',
+  'netunim-kupa/bank-bridge/credit-http.mjs',
+  'netunim-kupa/bank-bridge/credit-scheduler.mjs',
+  'netunim-kupa/bank-bridge/visa-cal-model.mjs',
+  'netunim-kupa/bank-bridge/credit-coverage.mjs',
+  'netunim-kupa/bank-bridge/visa-cal-session.mjs',
+  'netunim-kupa/bank-bridge/credit-adapter-base.mjs',
+  'netunim-kupa/bank-bridge/visa-cal-adapter.mjs',
+  'netunim-kupa/bank-bridge/max-model.mjs',
+  'netunim-kupa/bank-bridge/credit-monthly-projection.mjs',
+  'netunim-kupa/bank-bridge/max-adapter.mjs',
+  'netunim-kupa/bank-bridge/credit-generic-adapter.mjs',
+  'netunim-kupa/bank-bridge/isracard-group-adapter.mjs',
+  'netunim-kupa/bank-bridge/credit-adapter-factory.mjs',
+  'netunim-kupa/bank-bridge/credit-adapter-wire.mjs',
+  'netunim-kupa/bank-bridge/credit-adapters.mjs',
+  'tests/credit_transport_boundary.test.mjs',
+  'tests/credit_adapter*.mjs',
+  'tests/fixtures/credit_adapter_runtime.mjs',
+  'tests/credit_sync_scope.test.mjs',
+  'tests/fixtures/checked-credit-sync-scope.mjs',
+];
+
 export default [
   {ignores:['.work/**','.offline/**','node_modules/**','**/data/**','**/backups/**','**/assets/vendor/**','**/document-bridge/pdfjs/**']},
   {
-    files:['netunim-kupa/bank-bridge/json-artifact-owner.mjs','netunim-kupa/bank-bridge/bridge-artifacts.mjs','netunim-kupa/bank-bridge/credit-diagnostic-model.mjs','netunim-kupa/bank-bridge/credit-diagnostic-log.mjs','tests/bank_artifact*.mjs','tests/fixtures/checked-bank-artifacts.mjs','netunim-kupa/bank-bridge/cheque-images.mjs','netunim-kupa/bank-bridge/file-task-owner.mjs','netunim-kupa/bank-bridge/browser-locator.mjs','netunim-kupa/bank-bridge/windows-browser.mjs','tests/bank_account_reader.test.mjs','tests/bank_browser_locator.test.mjs','tests/bank_local_cache.test.mjs','tests/bank_file_task_owner.test.mjs','tests/bank_image_shutdown_native.test.mjs','tests/bank_file_fixture.mjs','tests/bank_reader_fixture.mjs','tests/fixtures/checked-bank-reader-resources.mjs','netunim-kupa/bank-bridge/server.mjs','netunim-kupa/bank-bridge/provider-errors.mjs','netunim-kupa/bank-bridge/hapoalim-*.mjs','netunim-kupa/bank-bridge/credit-provider.mjs','netunim-kupa/bank-bridge/credit-session.mjs','netunim-kupa/bank-bridge/operation-owner.mjs','netunim-kupa/bank-bridge/shutdown-owner.mjs','netunim-kupa/bank-bridge/replacement-command.mjs','netunim-kupa/bank-bridge/loopback-port.mjs','netunim-kupa/bank-bridge/credit-diagnostics.mjs','netunim-kupa/bank-bridge/connection-*.mjs','netunim-kupa/bank-bridge/windows-platform.mjs','netunim-kupa/bank-bridge/http-*.mjs','netunim-kupa/bank-bridge/wire-errors.mjs','netunim-kupa/bank-bridge/finance-commands.mjs','netunim-kupa/bank-bridge/diagnostic-queries.mjs','tests/bank_configuration*.mjs','tests/bank_provider*.mjs','tests/bank_session*.mjs','tests/credit_provider*.mjs','tests/fixtures/checked-bank-provider.mjs','tests/fixtures/bank_provider_runtime.mjs','tests/bank_operation_owner.test.mjs','tests/bank_shutdown*.mjs','tests/bank_replacement*.mjs','tests/bank_loopback_port.test.mjs','tests/bank_diagnostics_drain.test.mjs','tests/bank_stage_fixture.mjs','tests/fixtures/checked-bank-shutdown.mjs','tests/bank_connection_vault.test.mjs','tests/bank_bridge_packaging.test.mjs','tests/bank_provider_policy.test.mjs','tests/bank_bridge_http.test.mjs','tests/bank_bridge_boundaries.test.mjs','tests/bank_http_fixture.mjs','tests/bank_bridge_runtime.test.mjs','tests/bank_finance_commands.test.mjs','tests/fixtures/checked-bank-bridge-owner.mjs','tests/fixtures/checked-bank-bridge-routes.mjs'],
+    files:[...creditAdapterBoundaryFiles,'netunim-kupa/bank-bridge/json-artifact-owner.mjs','netunim-kupa/bank-bridge/bridge-artifacts.mjs','netunim-kupa/bank-bridge/credit-diagnostic-model.mjs','netunim-kupa/bank-bridge/credit-diagnostic-log.mjs','tests/bank_artifact*.mjs','tests/fixtures/checked-bank-artifacts.mjs','netunim-kupa/bank-bridge/cheque-images.mjs','netunim-kupa/bank-bridge/file-task-owner.mjs','netunim-kupa/bank-bridge/browser-locator.mjs','netunim-kupa/bank-bridge/windows-browser.mjs','tests/bank_account_reader.test.mjs','tests/bank_browser_locator.test.mjs','tests/bank_local_cache.test.mjs','tests/bank_file_task_owner.test.mjs','tests/bank_image_shutdown_native.test.mjs','tests/bank_file_fixture.mjs','tests/bank_reader_fixture.mjs','tests/fixtures/checked-bank-reader-resources.mjs','netunim-kupa/bank-bridge/server.mjs','netunim-kupa/bank-bridge/provider-errors.mjs','netunim-kupa/bank-bridge/hapoalim-*.mjs','netunim-kupa/bank-bridge/credit-provider.mjs','netunim-kupa/bank-bridge/credit-session.mjs','netunim-kupa/bank-bridge/operation-owner.mjs','netunim-kupa/bank-bridge/shutdown-owner.mjs','netunim-kupa/bank-bridge/replacement-command.mjs','netunim-kupa/bank-bridge/loopback-port.mjs','netunim-kupa/bank-bridge/credit-diagnostics.mjs','netunim-kupa/bank-bridge/connection-*.mjs','netunim-kupa/bank-bridge/windows-platform.mjs','netunim-kupa/bank-bridge/http-*.mjs','netunim-kupa/bank-bridge/wire-errors.mjs','netunim-kupa/bank-bridge/finance-commands.mjs','netunim-kupa/bank-bridge/diagnostic-queries.mjs','tests/bank_configuration*.mjs','tests/bank_provider*.mjs','tests/bank_session*.mjs','tests/credit_provider*.mjs','tests/fixtures/checked-bank-provider.mjs','tests/fixtures/bank_provider_runtime.mjs','tests/bank_operation_owner.test.mjs','tests/bank_shutdown*.mjs','tests/bank_replacement*.mjs','tests/bank_loopback_port.test.mjs','tests/bank_diagnostics_drain.test.mjs','tests/bank_stage_fixture.mjs','tests/fixtures/checked-bank-shutdown.mjs','tests/bank_connection_vault.test.mjs','tests/bank_bridge_packaging.test.mjs','tests/bank_provider_policy.test.mjs','tests/bank_bridge_http.test.mjs','tests/bank_bridge_boundaries.test.mjs','tests/bank_http_fixture.mjs','tests/bank_bridge_runtime.test.mjs','tests/bank_finance_commands.test.mjs','tests/fixtures/checked-bank-bridge-owner.mjs','tests/fixtures/checked-bank-bridge-routes.mjs'],
     languageOptions:{ecmaVersion:'latest',sourceType:'module',globals:globals.node},
     linterOptions:{noInlineConfig:true},
     rules:{'no-undef':'error','no-dupe-keys':'error','no-unreachable':'error','no-async-promise-executor':'error','no-unused-vars':['error',{args:'none',caughtErrors:'none',ignoreRestSiblings:true}]}
+  },
+  {
+    // CAL session globals occur only in serialized browser callbacks.
+    files:['netunim-kupa/bank-bridge/visa-cal-session.mjs'],
+    languageOptions:{globals:{window:'readonly',navigator:'readonly',sessionStorage:'readonly'}}
   },
   {
     // These names occur inside serialized page.evaluate callbacks only.
