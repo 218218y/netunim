@@ -5,6 +5,7 @@ import {createDomainsBankSelectors} from '../domains/bank/selectors.js';
 import {createDomainsBankCache} from '../domains/bank/cache.js';
 import {createDomainsFinanceController} from '../domains/finance/controller.js';
 import {createOrdersCreditConnectionOwner} from '../domains/finance/credit-connection-owner.js';
+import {createOrdersBankConnectionOwner,ORDERS_BANK_BRIDGE_MINIMUM_VERSION} from '../domains/finance/bank-connection-owner.js';
 import {CREDIT_CONNECTOR_CONTRACT_VERSION} from '../domains/finance/credit-feed.js';
 import {createOrdersFinanceDocumentCommands} from '../domains/finance/document-commands.js';
 import {createOrdersBankArchiveReadout} from '../domains/finance/bank-archive-readout.js';
@@ -37,7 +38,7 @@ export function createOrdersFinanceCapability({
   const effects = platform.effects ?? createFinanceBrowserEffects();
   requireMethods('effects', effects, ['isOnline', 'writeText', 'saveJson', 'delay', 'dispose']);
   const bridge = createFinanceBridgeIntegration(platform.bridge ? {platform:platform.bridge} : undefined);
-  let disposed = false, cache = null, controller = null, presentation = null, archive = null, connections = null;
+  let disposed = false, cache = null, controller = null, presentation = null, archive = null, connections = null, bankConnections = null;
   const operationScope = createFinanceOperationScope({readAccess:() => {
     const access = readAccess();
     return {...access, readable:access.readable && !disposed, writable:access.writable && !disposed};
@@ -51,9 +52,11 @@ export function createOrdersFinanceCapability({
   function uiReady() { active(); if (!presentation) throw new Error('orders_finance_ui_not_bound'); return presentation; }
   const controllerEffects = {
     isOnline:() => !disposed && effects.isOnline(),
+    delay:(...args) => { active(); return effects.delay(...args); },
+  };
+  const connectionEffects = {
     writeText:(...args) => { active(); return effects.writeText(...args); },
     saveJson:(...args) => { active(); return effects.saveJson(...args); },
-    delay:(...args) => { active(); return effects.delay(...args); },
   };
 
   function bindReadout({cloud, display}) {
@@ -129,11 +132,22 @@ export function createOrdersFinanceCapability({
         deleteProfile:id => bridge.deleteCreditProfile(id), resetProfiles:() => bridge.resetCreditProfiles(),
       },
       presentation:{toast:(...args) => { if (!disposed) toast(...args); }},
-      effects:controllerEffects,
+      effects:connectionEffects,
       protocol:{minimumBridgeVersion:73,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION},
     });
+    bankConnections = createOrdersBankConnectionOwner({
+      pairing:{token:() => bridge.getBridgeToken()},
+      transport:{
+        readStatus:() => bridge.status(), configure:payload => bridge.configureCredentials(payload),
+        selectAccount:payload => bridge.selectAccount(payload), deleteCredentials:() => bridge.deleteCredentials(),
+        readDiagnostics:() => bridge.bankDiagnostics(),
+      },
+      presentation:{toast:(...args) => { if (!disposed) toast(...args); }},
+      effects:{saveJson:connectionEffects.saveJson},
+      protocol:{minimumBridgeVersion:ORDERS_BANK_BRIDGE_MINIMUM_VERSION},
+    });
     controller = createDomainsFinanceController({
-      documents,syncLeases,archive,connections,
+      documents,syncLeases,archive,connections,bankConnections,
       tab, checksSession, bridge, operationScope, effects:controllerEffects,
       loadSession:auth.loadSession, toast:(...args) => { if (!disposed) toast(...args); }, getSharedChecks:() => model.state.checks,
       refreshKupaReadout:(...args) => cache.refreshKupaReadout(...args),
@@ -231,9 +245,9 @@ export function createOrdersFinanceCapability({
     renderKupaDependentView:(...args) => readoutReady().renderKupaDependentView(...args),
   };
   const runtime = {
-    isPending:() => !!(controller?.runtime.isPending() || connections?.runtime.isPending() || archive?.runtime.isPending() || presentation?.view.connectionRuntime.isPending()),
+    isPending:() => !!(controller?.runtime.isPending() || connections?.runtime.isPending() || bankConnections?.runtime.isPending() || archive?.runtime.isPending() || presentation?.view.connectionRuntime.isPending()),
     async drain() {
-      await Promise.all([controller?.runtime.drain(), connections?.runtime.drain(), archive?.runtime.drain(), presentation?.view.connectionRuntime.drain()]);
+      await Promise.all([controller?.runtime.drain(), connections?.runtime.drain(), bankConnections?.runtime.drain(), archive?.runtime.drain(), presentation?.view.connectionRuntime.drain()]);
     },
     start() { uiReady(); return controller.startAutoSync(); },
     stop() { return controller?.stopAutoSync(); },
@@ -248,6 +262,7 @@ export function createOrdersFinanceCapability({
       presentation?.view.connectionRuntime.dispose();
       controller?.runtime.dispose();
       connections?.runtime.dispose();
+      bankConnections?.runtime.dispose();
       archive?.runtime.dispose();
       controller?.setFinanceStatusListener(() => {});
       effects.dispose();

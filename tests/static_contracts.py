@@ -895,7 +895,8 @@ ok(0<=finance_constructor_pos<checks_editor_pos<checks_editor_end<finance_view_p
    and orders_finance_composition_compact.count('constimages=createOrdersBankChequeImageRuntime')==1
    and orders_finance_composition_compact.find('constimages=createOrdersBankChequeImageRuntime')<orders_finance_composition_compact.find('constview=createDomainsFinanceView'),
    'orders cheque-image composition: one capability-owned image adapter precedes the view and stays outside Checks editing')
-ok("const BANK_BRIDGE_VERSION=74" in orders_finance_controller,
+ok("ORDERS_BANK_BRIDGE_MINIMUM_VERSION = 74" in (ROOT / 'netunim-orders/site/assets/js/domains/finance/bank-connection-owner.js').read_text(encoding='utf-8')
+   and 'if(!bankConnections.queries.supported(status))' in orders_finance_controller,
    "orders Kupa UI: bank controls require corrected Bridge v74 financial evidence")
 ok((ROOT / 'netunim-orders/site/assets/js/domains/finance/bank-connection-view.js').exists() and "from './bank-connection-view.js'" in (ROOT / 'netunim-orders/site/assets/js/domains/finance/view.js').read_text(encoding='utf-8'),
    'orders finance UI: bank connection/settings rendering is split from the main finance view responsibility')

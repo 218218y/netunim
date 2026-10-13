@@ -206,7 +206,7 @@ with BrowserSession(ROOT/'netunim-orders/site','orders-domain-performance') as b
       host.innerHTML='<div data-finance-command><input data-input="status-search" value=""></div><section id="ordersBankSyncPanel"><input id="status-draft" value="initial"></section>';
       const input=host.querySelector('#status-draft');input.value='unsaved draft';input.focus();input.setSelectionRange(2,5);
       let data={kupa:{},bank:{}},rendered=data,full=0,settle;
-      const view=createFinanceStatusView({ui:{currentView:'kupa'},currentSection:()=> 'bank',snapshot:()=>data,controller:{readSnapshot:()=>data},renderedData:()=>rendered,renderKupa:()=>{full++;rendered=data},headerContextMarkup:()=>'<div data-finance-command><input data-input="status-search" value=""></div>',bankSyncPanelMarkup:()=>'<section id="ordersBankSyncPanel"><input id="status-draft" value="initial"></section>'});
+      const view=createFinanceStatusView({bindBankForm:()=>{},ui:{currentView:'kupa'},currentSection:()=> 'bank',snapshot:()=>data,controller:{readSnapshot:()=>data},renderedData:()=>rendered,renderKupa:()=>{full++;rendered=data},headerContextMarkup:()=>'<div data-finance-command><input data-input="status-search" value=""></div>',bankSyncPanelMarkup:()=>'<section id="ordersBankSyncPanel"><input id="status-draft" value="initial"></section>'});
       const task=view.refreshFinanceOperation('bank',()=>new Promise(resolve=>{settle=resolve}));settle(true);await task;
       const stable=full===0&&document.getElementById('status-draft')===input&&input.value==='unsaved draft'&&document.activeElement===input&&input.selectionStart===2;
       const search=host.querySelector('[data-input="status-search"]');search.value='typing';search.focus();search.setSelectionRange(1,3);
