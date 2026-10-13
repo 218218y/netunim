@@ -823,3 +823,15 @@ HTTP/DPAPI tests retain disconnected artifact/log readers through normal shutdow
 and installer dependency closure includes re-exports. See
 [Bank artifact ownership](BANK_BRIDGE_ARTIFACT_OWNERSHIP.md) for exact compatibility,
 failure evidence and remaining issuer/token/Document scope.
+
+Credit adapter routing, browser authentication/lifecycle, HTTP transport/policy,
+issuer models, month projections and diagnostic evidence now have explicit
+canonical modules. A stable facade retains its 35 former exports; 118 frozen
+declarations protect reviewed provider behavior. Before-change tests proved that
+CAL response-body interruption escaped network classification; the acquisition
+boundary now retains its stage/cause without additional requests. Strict sync
+scope contracts, pure-module/import budgets, acyclic graph checks and mandatory
+native staged Credit/Windows coverage protect this boundary. See
+[Credit adapter responsibility boundaries](CREDIT_ADAPTER_RESPONSIBILITY_BOUNDARIES.md)
+for the evidence and the remaining wide factory, complete payload typing, shared
+helper and DigitalV3/Camoufox scope.

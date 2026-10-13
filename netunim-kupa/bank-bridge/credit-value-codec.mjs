@@ -1,0 +1,49 @@
+// @ts-nocheck
+
+export function text(value, max = 240) {
+  return String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .slice(0, max);
+}
+
+export function safeDate(value) {
+  if (!value) return null;
+  const raw = String(value).trim(),
+    floatingIso = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?$/.test(raw),
+    d = new Date(floatingIso ? `${raw}Z` : raw);
+  return Number.isFinite(d.getTime()) ? d.toISOString() : null;
+}
+
+export function explicitTransactionTime(value) {
+  const match = /[T\s](\d{2}):(\d{2})(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?$/.exec(
+    String(value ?? '').trim()
+  );
+  if (!match) return '';
+  const time = `${match[1]}:${match[2]}`;
+  return time === '00:00' ? '' : time;
+}
+
+export function safeError(message, code, extra = {}) {
+  const e = new Error(message);
+  e.code = code;
+  Object.assign(e, extra);
+  return e;
+}
+
+export function safeSuffix(value) {
+  const digits = String(value ?? '').replace(/\D/g, '');
+  return digits ? digits.slice(-4) : text(value, 4);
+}
+
+export function errorFetchStatus(error) {
+  const code = String(error?.code || '');
+  if (code === 'CREDIT_PROVIDER_SCHEMA_ERROR' || code === 'CREDIT_PROVIDER_RESPONSE_NOT_JSON')
+    return 'schema_error';
+  if (code === 'CREDIT_PROVIDER_NETWORK_ERROR') return 'network_error';
+  return 'provider_error';
+}
+
+export function hasOwn(value, key) {
+  return !!value && typeof value === 'object' && Object.prototype.hasOwnProperty.call(value, key);
+}
