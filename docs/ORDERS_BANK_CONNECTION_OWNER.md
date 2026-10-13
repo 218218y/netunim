@@ -8,6 +8,12 @@ configure/select/delete after pairing replacement, and a credential write
 fabricating an unobserved Bridge version. These are publication and authority
 defects; no claim of journal corruption follows from them.
 
+A further review test reproduced a completion gap between the local owner and
+its Finance caller: pairing can change after the owner returns but before the
+controller publishes a failure. The caller now captures its own device permit
+before acceptance and rechecks it after awaiting the owner, before status/toast
+publication. Both producer and consumer boundaries are protected.
+
 `createOrdersBankConnectionOwner` owns local status/checked/Bridge-error,
 credential/account commands and diagnostic publication. Its five required
 ports are pairing, transport, presentation, effects and protocol. The actual

@@ -69,19 +69,21 @@ export function createOrdersFinanceControllerFixture(ports) {
     effects: ports.effects,
     protocol: { minimumBridgeVersion: 73, contractVersion: CREDIT_CONNECTOR_CONTRACT_VERSION },
   });
-  const bankConnections = createOrdersBankConnectionOwner({
-    pairing: { token: () => ports.bridge.getBridgeToken() },
-    transport: {
-      readStatus: () => ports.bridge.status(),
-      configure: (payload) => ports.bridge.configureCredentials(payload),
-      selectAccount: (payload) => ports.bridge.selectAccount(payload),
-      deleteCredentials: () => ports.bridge.deleteCredentials(),
-      readDiagnostics: () => ports.bridge.bankDiagnostics(),
-    },
-    effects: { saveJson: ports.effects.saveJson ?? unexpected },
-    presentation: { toast: (message) => ports.toast?.(message) },
-    protocol: { minimumBridgeVersion: ORDERS_BANK_BRIDGE_MINIMUM_VERSION },
-  });
+  const bankConnections =
+    ports.bankConnections ??
+    createOrdersBankConnectionOwner({
+      pairing: { token: () => ports.bridge.getBridgeToken() },
+      transport: {
+        readStatus: () => ports.bridge.status(),
+        configure: (payload) => ports.bridge.configureCredentials(payload),
+        selectAccount: (payload) => ports.bridge.selectAccount(payload),
+        deleteCredentials: () => ports.bridge.deleteCredentials(),
+        readDiagnostics: () => ports.bridge.bankDiagnostics(),
+      },
+      effects: { saveJson: ports.effects.saveJson ?? unexpected },
+      presentation: { toast: (message) => ports.toast?.(message) },
+      protocol: { minimumBridgeVersion: ORDERS_BANK_BRIDGE_MINIMUM_VERSION },
+    });
   const controller = createDomainsFinanceController({
     ...ports,
     documents,

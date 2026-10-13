@@ -165,11 +165,19 @@ export function createDomainsFinanceController({
     if(local.bankBusy)return false;
     local.bankBusy=true;
     if(clearBefore){local.bankError='';local.bankErrorAt=null}
+    let assertConnection;
     try{
+      assertConnection=captureBankConnection();
       const result=await command();
+      assertConnection();
       if(result.ok){local.bankError='';local.bankErrorAt=null}
       else if(result.failure){local.bankError=result.failure;local.bankErrorAt=new Date().toISOString();toast(result.failure)}
       return result.ok;
+    }catch(error){
+      try{assertConnection?.()}catch{return false}
+      if(scopeChanged(error))return false;
+      local.bankError=error?.message||String(error);local.bankErrorAt=new Date().toISOString();toast(local.bankError);
+      return false;
     }finally{local.bankBusy=false}
   }
   function configureBankBridge(input){return bankConnectionWrite(()=>bankConnections.commands.configure(input),{clearBefore:true})}

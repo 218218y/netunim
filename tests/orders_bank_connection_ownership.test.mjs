@@ -132,6 +132,29 @@ function ownerFixture() {
     },
   };
 }
+test('Finance rechecks device authority after the local owner completes before publishing failure', async () => {
+  const f = fixture(),
+    local = ownerFixture();
+  f.controller.runtime.dispose();
+  f.ports.bridge.getBridgeToken = local.ports.pairing.token;
+  local.ports.transport.configure = async () => {
+    throw Error('private former-device completion');
+  };
+  const configure = local.owner.commands.configure;
+  local.owner.commands.configure = async (input) => {
+    const result = await configure(input);
+    local.change('B');
+    return result;
+  };
+  const controller = createOrdersFinanceControllerFixture({
+    ...f.ports,
+    bankConnections: local.owner,
+  });
+  assert.equal(await controller.configureBankBridge({ password: 'p' }), false);
+  assert.equal(controller.snapshot().bankError, '');
+  assert.deepEqual(f.events, []);
+  controller.runtime.dispose();
+});
 test('superseded Bank probe cannot notify an older failure after a newer success', async () => {
   const f = ownerFixture(),
     held = gate();
