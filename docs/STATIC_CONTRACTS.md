@@ -1,5 +1,12 @@
 # Incremental JavaScript contracts
 
+Orders Finance's document readout publication checks the actual body and negative
+consumers: captured synchronous authority, numeric independent document heads,
+asynchronous refresh evidence and boolean publication status. A mutation from
+boolean status to display text fails compilation. This grants neither a storage
+journal ACK nor complete typing of the mutation/controller/lease callers. See
+ORDERS_FINANCE_DOCUMENT_COMMANDS.md.
+
 Calendar's committed-work observer and optional BroadcastChannel transport check
 their actual implementation bodies with strict checkJs and negative consumers:
 live authority, asynchronous boolean read results, subscription cleanup and

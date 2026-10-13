@@ -5,7 +5,7 @@ import {createFinanceBridgeIntegration} from '../netunim-orders/site/assets/js/i
 import {bankAutoRefreshDue as bankRefreshDue,creditRefreshDue,BANK_AUTO_INTERVAL_MS,CREDIT_AUTO_INTERVAL_MS} from '../shared/finance-refresh-policy.js';
 import {normalizeBankFeed} from '../netunim-orders/site/assets/js/domains/finance/bank-feed.js';
 import {creditFrameStatus,creditUpcomingCharge,creditSyncScrapeSelection,mergeCreditSyncResult,normalizeCreditSync} from '../netunim-orders/site/assets/js/domains/finance/credit-feed.js';
-import {createDomainsFinanceController} from '../netunim-orders/site/assets/js/domains/finance/controller.js';
+import {createOrdersFinanceControllerFixture as createDomainsFinanceController} from './orders_finance_controller_fixture.mjs';
 import {createDomainsFinanceView} from '../netunim-orders/site/assets/js/domains/finance/view.js';
 import {bankHeadlineState} from '../netunim-orders/site/assets/js/domains/finance/bank-connection-view.js';
 import {creditAccountAggregate,creditDetailMonths,creditFilterAccountModels,creditMonthBuckets,creditSummary} from '../netunim-orders/site/assets/js/domains/finance/reporting.js';

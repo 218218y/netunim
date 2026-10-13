@@ -602,6 +602,7 @@ kupa_credit_sync_view = (K / "site/assets/js/domains/credit/sync-view.js").read_
 kupa_css = (K / "site/assets/app.css").read_text(encoding="utf-8")
 orders_contexts = (O / "site/assets/js/state/contexts.js").read_text(encoding="utf-8")
 orders_finance_controller = (O / "site/assets/js/domains/finance/controller.js").read_text(encoding="utf-8")
+orders_finance_controller_compact = re.sub(r"\s+", "", orders_finance_controller)
 ok('data-view="kupa"' in orders_html and 'data-view="checks"' not in orders_html and 'data-view="summary"' not in orders_html,
    "orders Kupa UI: one top-level Kupa tab replaces standalone checks and balance tabs")
 ok("const KUPA_SECTIONS=['bank','credit','checks','summary']" in orders_finance_view
@@ -911,9 +912,12 @@ ok("browserEngine:['chromium','camoufox'].includes" in (O / "site/assets/js/doma
 ok("תוספת ידנית · קריאה בלבד" in orders_credit_detail_view and "+ תוספת ידנית" not in orders_finance_view
    and "toggle-credit-selection" not in orders_finance_view,
    "orders Kupa UI: manual credit rows are read-only and manual-add/bulk-delete controls stay Kupa-only")
-ok("kupa_documents" in os and "rpcSaveKupaDocument:(...args)=>cloud.rpcSaveKupaDocument(...args)" in orders_finance_composition_compact
+ok("kupa_documents" in os
+   and "kupa:{read:(...args)=>cloud.readKupaReadOnlyCloud(...args),save:(...args)=>cloud.rpcSaveKupaDocument(...args)" in orders_finance_composition_compact
+   and "finance:{read:(...args)=>cloud.readFinanceSyncDocument(...args),save:(...args)=>cloud.rpcSaveFinanceSync(...args),publishBankSnapshot:(...args)=>cloud.saveBankSyncSnapshot(...args)" in orders_finance_composition_compact
+   and 'rpcSaveKupaDocument' not in orders_finance_controller
    and 'finance.bindCore({cloud:cloudTransport,' in re.sub(r'\s+','',orders_main),
-   "orders Kupa UI: Bank/Credit writes remain on the shared Kupa document")
+   "orders Kupa UI: settings use Kupa while Bank/Credit use isolated Finance and atomic snapshot commands")
 
 kupa_main=(K / "site/assets/js/main.js").read_text(encoding="utf-8")
 kupa_finance_composition=(K / "site/assets/js/composition/finance.js").read_text(encoding="utf-8")
@@ -949,7 +953,12 @@ ok("remoteLeaseTokens" in kupa_finance_cloud and "cloudTransport.claimFinanceSyn
    and "return {acquired:true,localOnly:true}" in kupa_finance_cloud
    and "claimLease:financeCloud.claimFinanceSyncLease" in kupa_finance_composition and "credit.bindServices({" in kupa_finance_composition and "composeKupaFinance({" in kupa_main
    and "const claimLease=(...args)=>tracked(claimFinanceSyncLease,...args)" in kupa_credit_controller
-   and "claimFinanceSyncLease:(...args)=>cloud.claimFinanceSyncLease(...args)" in orders_finance_composition_compact
+   and "claim:(...args)=>cloud.claimFinanceSyncLease(...args)" in orders_finance_composition_compact
+   and "release:(...args)=>cloud.releaseFinanceSyncLease(...args)" in orders_finance_composition_compact
+   and "leases:syncLeases" in orders_finance_composition_compact
+   and "documents,syncLeases" in orders_finance_composition_compact
+   and "claimFinanceSyncLease=syncLeases.claim" in orders_finance_controller_compact
+   and "releaseFinanceSyncLease=syncLeases.release" in orders_finance_controller_compact
    and 'finance.bindCore({cloud:cloudTransport,' in re.sub(r'\s+','',orders_main),
    "distributed finance lease: both composition roots wire the shared Supabase lease and Kupa preserves local-only mode")
 ok("SUPA_NETWORK_ATTEMPTS=3" in kupa_cloud_auth and "fetchSupaNetwork" in kupa_cloud_auth and "method==='GET'||method==='HEAD'" in kupa_cloud_auth
