@@ -10,7 +10,7 @@ import {normalizeBankFeed as ordersFeed} from '../netunim-orders/site/assets/js/
 import {cashflowBreakdownMarkup} from '../shared/cashflow-breakdown.js';
 import {createDomainsExpensesView} from '../netunim-kupa/site/assets/js/domains/expenses/view.js';
 import {bankLongTermPositionData} from '../netunim-kupa/site/assets/js/domains/bank/model.js';
-import {createDomainsBankController} from '../netunim-kupa/site/assets/js/domains/bank/controller.js';
+import {createKupaBankControllerFixture as createDomainsBankController} from './kupa_bank_controller_fixture.mjs';
 
 const tx=(description,amount,date='2026-08-16',id=`${description}:${date}`)=>({id,description,amount:-amount,date,status:'completed',currency:'ILS'});
 const homeRows=()=>[tx('פועלים-משכנתא',1113.29),tx('בנק מרכנתיל די',4908.33)];

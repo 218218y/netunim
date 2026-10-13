@@ -1,4 +1,5 @@
 // @ts-check
+import { readBankArchiveBatch } from '../../shared/bank-archive-read-batch.js';
 
 /** @typedef {'business'|'home'} ArchiveRole */
 /** @typedef {() => undefined} ArchiveGuard */
@@ -81,6 +82,7 @@ export function createOrdersBankArchiveReadout({
     );
     return promise;
   }
+  /** @returns {undefined} */
   function active() {
     if (disposed)
       throw Object.assign(new Error('orders_bank_archive_disposed'), {
@@ -152,55 +154,7 @@ export function createOrdersBankArchiveReadout({
     active();
     assertCurrent();
     return track(
-      (async () => {
-        /** @type {Promise<unknown>[]} */ const accepted = [];
-        /** @type {{target:ArchiveTarget,rows:Promise<readonly Row[]>,snapshot:Promise<unknown>}[]} */ const pairs =
-          [];
-        let failed = false;
-        /** @type {unknown} */ let firstFailure;
-        /** @param {unknown} error @returns {never} */
-        function reject(error) {
-          if (!failed) {
-            failed = true;
-            firstFailure = error;
-          }
-          throw error;
-        }
-        try {
-          for (const target of targets) {
-            assertCurrent();
-            const rows = Promise.resolve(
-              reads.transactions(target.accountKey, target.role, { days, assertCurrent })
-            ).catch(reject);
-            accepted.push(rows);
-            const snapshot = Promise.resolve(
-              reads.snapshot(target.accountKey, target.role, { assertCurrent })
-            ).catch(reject);
-            accepted.push(snapshot);
-            pairs.push({ target, rows, snapshot });
-          }
-        } catch (error) {
-          if (!failed) {
-            failed = true;
-            firstFailure = error;
-          }
-        }
-        await Promise.allSettled(accepted);
-        active();
-        assertCurrent();
-        if (failed) throw firstFailure;
-        /** @type {ArchiveRead<Row>[]} */ const result = [];
-        for (const pair of pairs)
-          result.push({
-            role: pair.target.role,
-            accountKey: pair.target.accountKey,
-            rows: await pair.rows,
-            directSnapshot: await pair.snapshot,
-          });
-        active();
-        assertCurrent();
-        return result;
-      })()
+      readBankArchiveBatch({ targets, days, assertCurrent, assertActive: active, reads })
     );
   }
 

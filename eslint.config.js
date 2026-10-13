@@ -45,6 +45,9 @@ const creditAdapterBoundaryFiles = [
 ];
 
 const financeDocumentBoundaryFiles = [
+  'tests/kupa_bank_archive*.mjs',
+  'tests/kupa_bank_controller_fixture.mjs',
+  'tests/fixtures/checked-kupa-bank-archive.mjs',
   'tests/orders_finance_document*.mjs',
   'tests/orders_bank_archive*.mjs',
   'tests/fixtures/checked-bank-archive-readout.mjs',

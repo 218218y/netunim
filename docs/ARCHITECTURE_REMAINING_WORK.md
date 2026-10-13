@@ -1,7 +1,8 @@
 # Remaining major architecture work
 
 This is the current inventory after Bank/Credit Bridge model separation and
-Orders Finance document-command and Bank archive readout extraction. The chronological
+Orders Finance document-command and both applications' Bank archive readout
+extraction. The chronological
 [refactor record](ARCHITECTURE_REFACTOR.md) documents completed slices; older
 remaining-scope paragraphs describe their stage's starting point.
 
@@ -22,6 +23,10 @@ remaining-scope paragraphs describe their stage's starting point.
 - Orders Bank archive cache, flights and projection revisions belong to a strict
   read owner. Failed reads retain accepted siblings; account handoff suppresses
   former-account error details; Bank pauses prevent background publication.
+- Kupa Bank archive owns scoped caches and accepted reads, with disposal/drain
+  and a pause during Bank refresh. Its controller has 26 collaborators, down
+  from 28. Both apps use one strict paired-read algorithm with separate owners;
+  Kupa's local/file persistence and revision/render policy remain independent.
 - Strict bodies and negative consumers cover critical storage JSON/receipts,
   scopes, resource ports and selected business/Bridge boundaries. Coverage is
   selective, not a complete application type proof.
@@ -32,7 +37,7 @@ remaining-scope paragraphs describe their stage's starting point.
 
 | Package | Concrete remaining work | Exit evidence |
 | --- | --- | --- |
-| Private controllers and composition | Orders Finance Bank/Credit workflows beyond document/archive owners; Kupa Bank/Credit and Calendar orchestration; large customer-document/view responsibilities; remaining wide cloud/backup/shell factories and callbacks | Narrow owners and lifecycle where jobs exist; dependency/API/I/O budgets; representative production behavior preserved |
+| Private controllers and composition | Orders Finance Bank/Credit workflows beyond document/archive owners; Kupa Bank workflows beyond archive/local-snapshot owners, Credit and Calendar orchestration; large customer-document/view responsibilities; remaining wide cloud/backup/shell factories and callbacks | Narrow owners and lifecycle where jobs exist; dependency/API/I/O budgets; representative production behavior preserved |
 | Business and transaction contracts | Remaining journal/IDB callers, Finance leases/RPC envelopes, complete Bank/Credit profile/result payloads, Morning/Calendar commands and capability consumers | Unknown-payload validation and actual implementation mutations; an unchecked decoder never grants authoritative confirmation |
 | Bridge orchestration | Document search merge/pagination and scheduled maintenance/installer processes; Credit adapter construction, DigitalV3/Camoufox internals and remaining Bank CLI/token processes | Before-change retry/fallback characterization, native provider/process/file fixtures and preserved wire contracts |
 | Canonical sources and retirement inventory | Classify remaining legacy readers, preference keys, SQL setup/operator copies and generated assets; deterministic current/operator SQL generation where missing; retire only proven unused paths | Consumer inventory, immutable deployed migrations/receipts, deterministic generation and old-record/backup restore evidence |

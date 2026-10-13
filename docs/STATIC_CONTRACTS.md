@@ -1,5 +1,12 @@
 # Incremental JavaScript contracts
 
+Kupa Bank archive and the canonical shared paired-read batch check their actual
+implementation bodies. Negative consumers protect roles, account/row identities,
+synchronous authority and private permits; mutations reject numeric row status
+in the shared result and Kupa cache. Separate app owners retain their lifecycle
+and publication policy. Full controller/lease/RPC typing remains outside this
+slice. See [Kupa archive ownership](KUPA_BANK_ARCHIVE_OWNERSHIP.md).
+
 Orders Bank archive readout checks its actual owner body and negative consumers:
 string account keys, two explicit roles, numeric/null windows, synchronous read
 authority and row mutation, private cache permits and a tracked drain lifecycle.
