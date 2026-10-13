@@ -25,6 +25,20 @@ function check(overrides=new Map()){
 }
 function describe(diagnostics){return ts.formatDiagnostics(diagnostics,{getCanonicalFileName:file=>file,getCurrentDirectory:()=>root,getNewLine:()=> '\n'})}
 
+test('the actual Bank provider cannot substitute presentation text for successful terminal cleanup',()=>{
+  const source=path.join(root,'netunim-kupa/bank-bridge/hapoalim-provider.mjs');
+  const original=readFileSync(source,'utf8'),changed=original.replace(/success\s*=\s*true;/,'success="completed";');
+  assert.notEqual(changed,original);const diagnostics=check(new Map([[source,changed]]));
+  assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+});
+
+test('the actual Credit session cannot publish a display string as a profile result',()=>{
+  const source=path.join(root,'netunim-kupa/bank-bridge/credit-session.mjs');
+  const original=readFileSync(source,'utf8'),changed=original.replace(/return adapter\.scrape\(\);/,'return "completed";');
+  assert.notEqual(changed,original);const diagnostics=check(new Map([[source,changed]]));
+  assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+});
+
 test('the actual Bank shutdown cannot publish presentation text as completed teardown',()=>{
   const source=path.join(root,'netunim-kupa/bank-bridge/shutdown-owner.mjs');
   const original=readFileSync(source,'utf8'),changed=original.replace(/completed\s*=\s*true;/, 'completed="stopped";');

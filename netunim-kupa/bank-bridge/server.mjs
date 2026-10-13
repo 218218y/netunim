@@ -1,3 +1,8 @@
+import {createHapoalimSessionAdapter} from './hapoalim-session.mjs';
+import {createHapoalimProvider} from './hapoalim-provider.mjs';
+import {createCreditProfileSession} from './credit-session.mjs';
+import {createCreditProvider} from './credit-provider.mjs';
+import {runStage,stageError} from './provider-errors.mjs';
 import {createBridgeShutdownOwner} from './shutdown-owner.mjs';
 import {createBridgeReplacementCommand} from './replacement-command.mjs';
 import {isLoopbackPortClosed} from './loopback-port.mjs';
@@ -17,7 +22,6 @@ import fs from 'node:fs/promises';
 import {runProcess,protectText,unprotectText} from './windows-platform.mjs';
 import {createHash,randomBytes,randomUUID} from 'node:crypto';
 import {
-  HAPOALIM_POST_LOGIN_TIMEOUT_MS,
   HAPOALIM_NAVIGATION_STABLE_MS,
   HAPOALIM_DATA_RETRY_LIMIT,
   HAPOALIM_TRANSACTION_LOOKBACK_DAYS,
@@ -33,9 +37,6 @@ import {
   mergeHapoalimCreditPermissionDetails,
   normalizeHapoalimAdditionalDetails,
   mergeHapoalimAdditionalDetails,
-  INTERACTIVE_AUTH_TIMEOUT_MS,
-  SILENT_AUTH_TIMEOUT_MS,
-  isTransientNavigationError,
   normalizeRecentTransactions,
   normalizeHapoalimTransaction,
   retryTransientNavigation,
@@ -43,17 +44,10 @@ import {
   selectAccountDescriptor,
   waitForTerminalLoginResult,
   ymdDate,
-  creditProviderSupported,
-  creditAutomaticRetryAfterAt,
-  deferredCreditProfileError,
-  deferredCamoufoxProfileError,
-  expiredCamoufoxLoginPageBlock,
-  creditErrorSeverity,
-  creditErrorComponent,
 } from './lib.mjs';
 import {doctorCamoufox} from './isracard-camoufox.mjs';
-import {CREDIT_CONNECTOR_CONTRACT_VERSION,createCreditProviderAdapter,normalizeCreditSyncMode} from './credit-adapters.mjs';
-import {createCreditDiagnosticLog,diagnosticFingerprint} from './credit-diagnostics.mjs';
+import {CREDIT_CONNECTOR_CONTRACT_VERSION,createCreditProviderAdapter} from './credit-adapters.mjs';
+import {createCreditDiagnosticLog} from './credit-diagnostics.mjs';
 import {creditIdentityDirectory,deleteCreditIdentity,resetCreditIdentities} from './credit-identity.mjs';
 import {createBankDiagnosticRun,finishBankDiagnosticRun,recordBankAccountDiagnostic,recordBankTransactionDiagnostic} from './bank-diagnostics.mjs';
 
@@ -233,119 +227,6 @@ async function doctorModernPuppeteer(browserPath){
     if(!version)throw new Error('puppeteer-modern launched the browser but did not return a browser version');
     return version;
   }finally{if(browser)try{await browser.close()}catch{}}
-}
-
-function stageError(stage,error,code='BANK_DATA_ERROR'){
-  const e=error instanceof Error?error:new Error(String(error||'שגיאה לא ידועה'));
-  if(!e.stage)e.stage=stage;if(!e.code)e.code=code;return e;
-}
-async function runStage(stage,fn,code){try{return await fn()}catch(e){throw stageError(stage,e,code)}}
-
-async function readHapoalimSessionState(page){
-  return page.evaluate(async()=>{
-    const href=String(window.location.href||'');
-    const restContext=String(window.bnhpApp?.restContext||'').replace(/^\/+/, '');
-    if(!restContext)return {ready:false,href,restContext,status:0,message:'bank app context is not ready'};
-    try{
-      const response=await fetch(`${window.location.origin}/ServerServices/general/accounts`,{credentials:'include',cache:'no-store'});
-      const text=await response.text();let accounts=[];
-      try{accounts=text?JSON.parse(text):[]}catch{}
-      return {ready:response.ok&&Array.isArray(accounts),href,restContext,status:response.status,accounts,message:response.ok?'':text.slice(0,240)};
-    }catch(error){return {ready:false,href,restContext,status:0,message:String(error?.message||error)}}
-  });
-}
-
-async function hapoalimSessionIsAuthenticated(page){
-  try{return !!(await readHapoalimSessionState(page))?.ready}catch{return false}
-}
-
-function scraperLoginResultFromTerminal(resultKey,successKey){
-  const key=String(resultKey||'').toUpperCase(),success=String(successKey||'SUCCESS').toUpperCase();
-  if(key===success)return {success:true};
-  const failureKey=key||'GENERAL';
-  return {success:false,errorType:failureKey,errorMessage:`Login failed with ${failureKey} error`};
-}
-
-function enableHapoalimSessionAwareLogin(scraper,{interactive=false}={}){
-  const originalGetLoginOptions=scraper?.getLoginOptions?.bind(scraper),originalLogin=scraper?.login?.bind(scraper);
-  if(typeof originalGetLoginOptions!=='function'||typeof originalLogin!=='function')throw Object.assign(new Error('גרסת scraper של הפועלים אינה תואמת למתאם ההתחברות'),{code:'SCRAPER_ADAPTER_INCOMPATIBLE'});
-  let activeLogin=null;
-  scraper.getLoginOptions=(credentials)=>{
-    const options=originalGetLoginOptions(credentials),originalResults=options.possibleResults||{};
-    const successKey=Object.keys(originalResults).find(key=>String(key).toUpperCase()==='SUCCESS')||'SUCCESS';
-    const originalSuccess=Array.isArray(originalResults[successKey])?originalResults[successKey]:[originalResults[successKey]].filter(Boolean);
-    const detectionResults={...originalResults,[successKey]:[...originalSuccess,async()=>hapoalimSessionIsAuthenticated(scraper.page)]};
-    const state={successKey,detectionResults,terminalResultKey:''};activeLogin=state;
-    const possibleResults=Object.fromEntries(Object.entries(originalResults).map(([key,conditions])=>[key,[...(Array.isArray(conditions)?conditions:[conditions]),async()=>state.terminalResultKey===key]]));
-    if(!possibleResults[successKey])possibleResults[successKey]=[async()=>state.terminalResultKey===successKey];
-    const timeoutMs=interactive?INTERACTIVE_AUTH_TIMEOUT_MS:SILENT_AUTH_TIMEOUT_MS;
-    return {...options,possibleResults,postAction:async()=>{
-      const terminal=await waitForTerminalLoginResult(scraper.page,detectionResults,{
-        timeoutMs,pollMs:500,
-        timeoutCode:interactive?'INTERACTIVE_AUTH_TIMEOUT':'SILENT_AUTH_TIMEOUT',
-        timeoutMarker:interactive?'NETUNIM_INTERACTIVE_AUTH_TIMEOUT':'NETUNIM_SILENT_AUTH_TIMEOUT',
-        closedCode:interactive?'INTERACTIVE_BROWSER_CLOSED':'BANK_PAGE_CLOSED',
-        closedMarker:interactive?'NETUNIM_INTERACTIVE_BROWSER_CLOSED':'NETUNIM_BANK_PAGE_CLOSED',
-      });
-      state.terminalResultKey=terminal.resultKey;
-    }};
-  };
-  scraper.login=async(credentials)=>{
-    try{return await originalLogin(credentials)}
-    catch(error){
-      if(!isTransientNavigationError(error)||!activeLogin)throw error;
-      let resultKey=activeLogin.terminalResultKey;
-      if(!resultKey){
-        const timeoutMs=interactive?INTERACTIVE_AUTH_TIMEOUT_MS:SILENT_AUTH_TIMEOUT_MS;
-        const terminal=await waitForTerminalLoginResult(scraper.page,activeLogin.detectionResults,{
-          timeoutMs,pollMs:350,
-          timeoutCode:interactive?'INTERACTIVE_AUTH_TIMEOUT':'SILENT_AUTH_TIMEOUT',
-          timeoutMarker:interactive?'NETUNIM_INTERACTIVE_AUTH_TIMEOUT':'NETUNIM_SILENT_AUTH_TIMEOUT',
-          closedCode:interactive?'INTERACTIVE_BROWSER_CLOSED':'BANK_PAGE_CLOSED',
-          closedMarker:interactive?'NETUNIM_INTERACTIVE_BROWSER_CLOSED':'NETUNIM_BANK_PAGE_CLOSED',
-        });
-        resultKey=terminal.resultKey;activeLogin.terminalResultKey=resultKey;
-      }
-      return scraperLoginResultFromTerminal(resultKey,activeLogin.successKey);
-    }
-  };
-  return scraper;
-}
-
-async function waitForHapoalimSessionReady(page,{timeoutMs=HAPOALIM_POST_LOGIN_TIMEOUT_MS,pollMs=350,stableMs=HAPOALIM_NAVIGATION_STABLE_MS}={}){
-  const deadline=Date.now()+Math.max(1000,Number(timeoutMs)||HAPOALIM_POST_LOGIN_TIMEOUT_MS);
-  let last={href:'',restContext:'',status:0,message:''},stableKey='',stableSince=0;
-  while(Date.now()<deadline){
-    if(page?.isClosed?.())throw Object.assign(new Error('חלון הבנק נסגר לפני שניתן היה לקרוא את נתוני החשבון'),{code:'BANK_PAGE_CLOSED'});
-    try{
-      last=await readHapoalimSessionState(page);
-      if(last?.ready){
-        const key=`${String(last.href||'')}|${String(last.restContext||'')}`;
-        if(key!==stableKey){stableKey=key;stableSince=Date.now()}
-        if(Date.now()-stableSince>=Math.max(0,Number(stableMs)||0))return last;
-      }else{stableKey='';stableSince=0}
-    }catch(e){
-      if(!isTransientNavigationError(e))last={...last,message:String(e?.message||e)};
-      stableKey='';stableSince=0;
-    }
-    await new Promise(resolve=>setTimeout(resolve,Math.min(pollMs,Math.max(50,deadline-Date.now()))));
-  }
-  const status=last?.status?` HTTP ${last.status}`:'';
-  const e=new Error(`הכניסה לבנק הצליחה, אבל שירות הנתונים של הפועלים לא נשאר יציב מספיק לקריאת נתונים בתוך ${Math.round(timeoutMs/1000)} שניות.${status}`);
-  e.code='BANK_SESSION_NOT_READY';e.detail=last;throw e;
-}
-
-function safeHapoalimSessionUrl(value){
-  try{const url=new URL(String(value||''));return url.origin===HAPOALIM_BASE_URL?`${url.origin}${url.pathname}`:''}catch{return ''}
-}
-
-async function tryReuseSavedHapoalimSession(page){
-  const sessionUrl=safeHapoalimSessionUrl((await readMeta()).sessionUrl);
-  if(!sessionUrl)return null;
-  try{
-    await page.goto(sessionUrl,{waitUntil:'domcontentloaded',timeout:30000});
-    return await waitForHapoalimSessionReady(page,{timeoutMs:8000,pollMs:400});
-  }catch{return null}
 }
 
 async function pageFetchJsonOnce(page,{url,method='GET',headers={},body}={}){
@@ -543,87 +424,6 @@ async function fetchSelectedHapoalimSnapshot(page,credentials,ready,historyDays=
   return {...business,accounts:{business,home},accountFailures:{home:homeFailure},sessionHref};
 }
 
-async function scrapeHapoalimSnapshot(credentials,{interactive=false,historyDays=HAPOALIM_TRANSACTION_LOOKBACK_DAYS}={}){
-  let scraper=null,success=false,failure=null;
-  const diagnosticRun=createBankDiagnosticRun({bridgeVersion:BRIDGE_VERSION});
-  try{
-    try{await cleanupChequeImageCache()}catch(error){console.error('Bank Bridge cheque image cache cleanup failed:',error?.message||error)}
-    const browserPath=await runStage('browser',()=>findInstalledBrowser(),'BROWSER_NOT_FOUND');
-    await fs.mkdir(BROWSER_PROFILE_DIR,{recursive:true});
-    const {CompanyTypes,createScraper}=await import('israeli-bank-scrapers');
-    scraper=createScraper({
-      companyId:CompanyTypes.hapoalim,
-      startDate:new Date(),
-      combineInstallments:false,
-      showBrowser:!!interactive,
-      executablePath:browserPath,
-      args:[`--user-data-dir=${BROWSER_PROFILE_DIR}`,'--profile-directory=Default','--no-first-run','--no-default-browser-check'],
-      navigationRetryCount:1,
-      defaultTimeout:30000,
-    });
-    enableHapoalimSessionAwareLogin(scraper,{interactive});
-    await runStage('browser',()=>scraper.initialize(),'BROWSER_START_FAILED');
-    let ready=await tryReuseSavedHapoalimSession(scraper.page);
-    if(!ready){
-      let loginResult;
-      try{loginResult=await scraper.login({userCode:credentials.userCode,password:credentials.password})}
-      catch(e){const [message,code]=scraperFailureMessage({errorType:'GENERIC',errorMessage:e?.message||String(e)});throw stageError('login',Object.assign(new Error(message),{code}))}
-      if(!loginResult?.success){const [message,code]=scraperFailureMessage(loginResult);throw stageError('login',Object.assign(new Error(message),{code}))}
-      ready=await runStage('session',()=>waitForHapoalimSessionReady(scraper.page),'BANK_SESSION_NOT_READY');
-    }
-    const snapshot=await runStage('data',()=>fetchSelectedHapoalimSnapshot(scraper.page,credentials,ready,historyDays,{diagnosticRun}),'BANK_DATA_ERROR');
-    const sessionUrl=safeHapoalimSessionUrl(snapshot?.sessionHref||ready?.href);
-    if(sessionUrl)await writeMeta({sessionUrl});
-    success=true;
-    const {sessionHref:_,...publicSnapshot}=snapshot;return {...publicSnapshot,fetchedAt:new Date().toISOString()};
-  }catch(error){failure=error;throw error}
-  finally{
-    try{finishBankDiagnosticRun(diagnosticRun,{failure});const captured=['business','home'].some(role=>Number(diagnosticRun.accounts?.[role]?.captured)>0);if(success||captured)await writeBankDiagnostic(diagnosticRun)}catch(error){console.error('Bank Bridge diagnostic write failed:',error?.message||error)}
-    if(scraper){try{await scraper.terminate(success)}catch(e){console.error('Bank Bridge browser cleanup failed:',e?.message||e)}}
-  }
-}
-
-function excludedAccountsForProfile(selection,profileId){return selection.find(row=>row.profileId===profileId)?.excludedAccounts||[]}
-
-async function scrapeCreditProfile(profile,{interactive=false,correlationId='',syncMode='quick',excludedAccountNumbers=[],allowCamoufoxFallback=true}={}){
-  const browserPath=await findInstalledBrowser(),{CompanyTypes,createScraper}=await import('israeli-bank-scrapers'),identityDir=creditIdentityDirectory(CREDIT_IDENTITIES_DIR,profile);
-  const adapter=createCreditProviderAdapter({profile,CompanyTypes,createScraper,browserPath,identityProbeUrl:BROWSER_IDENTITY_PROBE_URL,interactive,identityDir,correlationId,syncMode,excludedAccountNumbers,allowCamoufoxFallback,onDiagnostic:event=>creditDiagnostics.record({browserEngine:'chromium',...event})});
-  return adapter.scrape();
-}
-async function scrapeAllCreditProfiles(profiles,{interactive=false,previousErrors=[],syncMode='quick',selection=[]}={}){
-  const enabled=(Array.isArray(profiles)?profiles:[]).filter(p=>p?.active!==false&&creditProviderSupported(p?.provider));
-  if(!enabled.length)throw Object.assign(new Error('לא הוגדרו חיבורי חברות אשראי פעילים'),{code:'CREDIT_NOT_CONFIGURED'});
-  const correlationId=randomUUID(),success=[],errors=[],dataDiagnostics=[];let attemptedCount=0,deferredCount=0,coreSuccessCount=0;
-  // Deliberately sequential: two identities can use the same issuer, and isolated sequential sessions avoid cross-login cookie races.
-  for(const profile of enabled){
-    const deferred=deferredCreditProfileError(previousErrors,profile);
-    if(deferred){errors.push(deferred);deferredCount++;continue}
-    const camoufoxDeferred=deferredCamoufoxProfileError(previousErrors,profile);
-    const expiredBlockedIdentity=expiredCamoufoxLoginPageBlock(previousErrors,profile);
-    attemptedCount++;
-    try{
-      if(expiredBlockedIdentity){
-        await deleteCreditIdentity(CREDIT_IDENTITIES_DIR,profile);
-        await creditDiagnostics.record({correlationId,provider:profile.provider,profileId:profile.profileId,browserEngine:'camoufox',stage:'IdentityRecovery'});
-      }
-      const result=await scrapeCreditProfile(profile,{interactive,correlationId,syncMode,excludedAccountNumbers:excludedAccountsForProfile(selection,profile.profileId),allowCamoufoxFallback:!camoufoxDeferred});
-      if(Array.isArray(result?._dataDiagnostics))dataDiagnostics.push(...result._dataDiagnostics);
-      const {_dataDiagnostics:ignoredDataDiagnostics,...publicResult}=result||{};success.push(publicResult);if(publicResult.coreComplete!==false)coreSuccessCount++;if(Array.isArray(publicResult.errors))for(const raw of publicResult.errors){const base={...raw,profileId:raw.profileId||profile.profileId,provider:raw.provider||profile.provider,label:raw.label||profile.label,correlationId},retryAfterAt=creditAutomaticRetryAfterAt(base,Date.parse(base.originalFailureAt||base.at||new Date().toISOString())),severity=creditErrorSeverity(base),component=creditErrorComponent(base),fingerprint=diagnosticFingerprint({...base,errorClass:base.code});errors.push({...base,severity,component,originalFailureAt:base.originalFailureAt||base.at||null,...(retryAfterAt?{retryAfterAt}:{}),diagnosticFingerprint:fingerprint})}
-    }
-    catch(error){
-      const at=new Date().toISOString(),browserEngine=['chromium','camoufox'].includes(String(error?.browserEngine||''))?String(error.browserEngine):'chromium',fallbackFromBrowserEngine=['chromium','camoufox'].includes(String(error?.fallbackFromBrowserEngine||''))?String(error.fallbackFromBrowserEngine):'',base={profileId:profile.profileId,provider:profile.provider,label:profile.label,code:error?.code||'CREDIT_SCRAPE_FAILED',stage:String(error?.stage||'').slice(0,80),httpStatus:Number(error?.httpStatus)||0,message:error?.message||String(error),at,originalFailureAt:at,retryAfterAt:error?.retryAfterAt||null,correlationId,browserEngine,providerStatus:String(error?.providerStatus||'').slice(0,24),providerReturnCode:String(error?.providerReturnCode||'').slice(0,24),loginStep:['navigation','landing-readiness','open-login-popup','credentials-submit','post-submit-navigation','result-detection'].includes(String(error?.loginStep||''))?String(error.loginStep):'',loginState:['authenticated-session','session-init-only','session-auth-only','invalid-password-route','change-password-route','connect-frame','dashboard-url','no-connect-frame','unavailable'].includes(String(error?.loginState||''))?String(error.loginState):'',fallbackFromBrowserEngine,fallbackFromCode:String(error?.fallbackFromCode||'').slice(0,80),fallbackFromStage:String(error?.fallbackFromStage||'').slice(0,80),fallbackFromHttpStatus:Number(error?.fallbackFromHttpStatus)||0},retryAfterAt=creditAutomaticRetryAfterAt(base,Date.parse(at)),severity=creditErrorSeverity(base),component=creditErrorComponent(base),fingerprint=diagnosticFingerprint({...base,errorClass:base.code});
-      errors.push({...base,severity,component,...(retryAfterAt?{retryAfterAt}:{}),diagnosticFingerprint:fingerprint});
-      // If Chromium was attempted while a prior Camoufox 403 was still cooling down,
-      // retain that engine-scoped not-before record when Chromium also fails. This
-      // prevents a second manual refresh from immediately re-entering Camoufox.
-      if(camoufoxDeferred&&browserEngine!=='camoufox')errors.push(camoufoxDeferred);
-      creditDiagnostics.record({correlationId,provider:profile.provider,profileId:profile.profileId,browserEngine,syncMode:normalizeCreditSyncMode(syncMode),stage:base.stage||'Profile',errorClass:base.code,httpStatus:base.httpStatus,retryAfterAt,startupFailureReason:error?.startupFailureReason,providerStatus:base.providerStatus,providerReturnCode:base.providerReturnCode,loginStep:base.loginStep,loginState:base.loginState,fallbackFromBrowserEngine:base.fallbackFromBrowserEngine,fallbackFromCode:base.fallbackFromCode,fallbackFromStage:base.fallbackFromStage,fallbackFromHttpStatus:base.fallbackFromHttpStatus});
-    }
-  }
-  const syncedAt=coreSuccessCount?new Date().toISOString():null;
-  return {contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION,correlationId,profiles:success,errors,syncedAt,attemptedCount,deferredCount,coreSuccessCount,_dataDiagnostics:dataDiagnostics};
-}
-
 async function fetchLocal(pathname,{method='GET',token='',timeoutMs=1200}={}){
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
   try{
@@ -639,6 +439,46 @@ const replacement=createBridgeReplacementCommand({
   probe:async()=>{try{return await fetchLocal('/health')}catch(error){if(await isLoopbackPortClosed({host:HOST,port:PORT}))return null;throw error}},readToken:()=>fs.readFile(TOKEN_FILE,'utf8'),
   shutdown:token=>fetchLocal('/shutdown',{method:'POST',token,timeoutMs:1500}),
   waitUntilStopped:()=>waitForPortToClose(),
+});
+
+const providerBrowser={
+  findInstalled:findInstalledBrowser,
+  loadScrapers:()=>import('israeli-bank-scrapers'),
+  profileDirectory:BROWSER_PROFILE_DIR,
+  ensureProfile:async()=>{await fs.mkdir(BROWSER_PROFILE_DIR,{recursive:true})},
+  identityProbeUrl:BROWSER_IDENTITY_PROBE_URL,
+};
+const bankSession=createHapoalimSessionAdapter({
+  metadata:{read:readMeta},
+  clock:{now:()=>Date.now(),delay:ms=>new Promise(resolve=>setTimeout(resolve,ms))},
+  waitForTerminal:waitForTerminalLoginResult,
+});
+const enableHapoalimSessionAwareLogin=bankSession.decorate;
+const waitForHapoalimSessionReady=bankSession.ready;
+const bankProvider=createHapoalimProvider({
+  browser:providerBrowser,
+  session:{...bankSession,failureMessage:scraperFailureMessage},
+  accounts:{read:fetchSelectedHapoalimSnapshot,lookbackDays:HAPOALIM_TRANSACTION_LOOKBACK_DAYS},
+  diagnostics:{
+    create:createBankDiagnosticRun,
+    finish:finishBankDiagnosticRun,
+    write:writeBankDiagnostic,
+    report:(label,error)=>console.error(label,error?.message||error),
+  },
+  cache:{cleanup:cleanupChequeImageCache},
+  metadata:{write:writeMeta},
+  version:BRIDGE_VERSION,
+});
+const creditSession=createCreditProfileSession({
+  browser:providerBrowser,
+  identity:{directory:profile=>creditIdentityDirectory(CREDIT_IDENTITIES_DIR,profile)},
+  createAdapter:createCreditProviderAdapter,
+  diagnostics:creditDiagnostics,
+});
+const creditProvider=createCreditProvider({
+  sessions:creditSession,
+  identity:{remove:profile=>deleteCreditIdentity(CREDIT_IDENTITIES_DIR,profile)},
+  diagnostics:creditDiagnostics,
 });
 
 const args=new Set(process.argv.slice(2));
@@ -666,8 +506,8 @@ if(args.has('--init')||args.has('--print-token')){console.log('Bank Bridge key:'
 
 const service=createConnectionQueries({operations,vault,metadata:{bank:readMeta,credit:readCreditMeta}});
 const finance=createFinanceCommands({operations,
-  bank:{readCredentials:vault.readCredentials,scrape:scrapeHapoalimSnapshot,writeMeta},
-  credit:{readProfiles:vault.readCreditProfiles,readMeta:readCreditMeta,scrape:scrapeAllCreditProfiles,writeDataDiagnostic:writeCreditDataDiagnostic,writeMeta:writeCreditMeta},
+  bank:{readCredentials:vault.readCredentials,scrape:bankProvider.read,writeMeta},
+  credit:{readProfiles:vault.readCreditProfiles,readMeta:readCreditMeta,scrape:creditProvider.scrape,writeDataDiagnostic:writeCreditDataDiagnostic,writeMeta:writeCreditMeta},
 });
 const diagnostics=createDiagnosticQueries({creditLog:creditDiagnostics,read:{bank:readBankDiagnostic,creditData:readCreditDataDiagnostic}});
 const shutdown=createBridgeShutdownOwner({operations,diagnostics:creditDiagnostics,platform:{

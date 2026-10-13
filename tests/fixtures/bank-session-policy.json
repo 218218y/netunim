@@ -1,0 +1,14 @@
+{
+  "baseline": "f2231edc92d78bce5a88087023a94bd7a04db239",
+  "policies": {
+    "stageError": "18ffe48b88b059a1ccdc712820157ba548a2983d898ddaf3a7f0250d2ceee566",
+    "runStage": "f74f41a894de4dbb99f32ea0619d0dba6a39702c775ef92956cc740fe35bc238",
+    "readHapoalimSessionState": "bc34d586a1de6871f5b3ae2a7d891b490d8741d10a0426b4c66774fcbd995c91",
+    "hapoalimSessionIsAuthenticated": "3a0656dd44bdb498df8b06d07e781b06b4b5f339176b25f7c74626326f7a5612",
+    "scraperLoginResultFromTerminal": "e1fb9bc96dc35a1005ad3c20ba870b8e5e3fdd1db91fc84542f74f82353249e3",
+    "enableHapoalimSessionAwareLogin": "9fd276ffdcf369bac77cfd443bbd8c6fa353ae34340416d9d72f8f6e8e2d7a39",
+    "waitForHapoalimSessionReady": "3f09230ff4dfb1377670762679f4851f1471685881a070142069d30ae9e6c72b",
+    "safeHapoalimSessionUrl": "2f9ad430d9493004548da50e334706d5309adc945fefe840e2f77e69e9263264",
+    "tryReuseSavedHapoalimSession": "77bb1d0a366730f6bdf384d926850dfc540e360f8f4c8eb0018c174dd7fdd28d"
+  }
+}
