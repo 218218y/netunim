@@ -8,7 +8,7 @@ test('native Bank provider composition keeps browser cleanup owned before public
   const f=await bankStage(t,{prepare:async({runtime})=>{
     await fs.copyFile(new URL('./fixtures/bank_provider_runtime.mjs',import.meta.url),path.join(runtime,'fixture-scrapers.mjs'));
     const file=path.join(runtime,'server.mjs'),source=await fs.readFile(file,'utf8');
-    const locate=/findInstalled:\s*findInstalledBrowser/,load=/loadScrapers:\s*\(\)\s*=>\s*import\('israeli-bank-scrapers'\)/,vault='const vault=createConnectionVault({directory:APP_DIR,protectText,unprotectText});';
+    const locate=/findInstalled:\s*browserLocator\.find/,load=/loadScrapers:\s*\(\)\s*=>\s*import\('israeli-bank-scrapers'\)/,vault='const vault=createConnectionVault({directory:APP_DIR,protectText,unprotectText});';
     assert.ok(locate.test(source));assert.ok(load.test(source));assert.ok(source.includes(vault));
     await fs.writeFile(file,source.replace(locate,"findInstalled:async()=> 'fixture-browser'").replace(load,"loadScrapers:()=>import('./fixture-scrapers.mjs')")
       .replace(vault,"const vault={...createConnectionVault({directory:APP_DIR,protectText,unprotectText}),readCredentials:async()=>({userCode:'0012',password:' exact synthetic secret ',branchNumber:'345',accountNumber:'678901'})};"));

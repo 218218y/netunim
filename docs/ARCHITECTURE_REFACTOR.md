@@ -528,7 +528,7 @@ they are not a claim that every older audit finding is still present.
 | Runtime/resource ownership | Orders Checks owns private Shared flights and search/save wakeups; Orders Finance owns effects/preference timers and preserves started commits; Kupa Dashboard owns attributed cache/flights/cooldown/auth subscription; Bank owns controller operations/search/diagnostic and image lifetime. Remaining Kupa Shared and finance/integration/import jobs, other shell listeners, reconnect/owner transitions and preflight; Global Search owns nested control/auth listeners and preview cleanup | Start/stop/dispose idempotence, no duplicate/orphan jobs, live access fences and controlled failure tests |
 | Remaining I/O ports | Remaining timers and other concrete browser effects after inventory; Kupa credit preferences, Google Drive and local Bridge clients now have explicit ports. Credit preference failure/restart policy still needs broader review | Injected fake ports, adapter contracts and import enforcement; installed settings/auth compatibility |
 | Static contracts | Extend the existing strict JS gate beyond current writers/checkpoint/operation/cloud-record decoding/Main receipt/ACK policy, Credit preferences and Calendar authority/queue observation/confirmation to full journal/IDB transactions/business RPC/read candidates, Finance lease callers, capability ports and application consumers | A real mismatch fails CI; actual implementation bodies and negative consumers are checked, runtime validation and historical record readers remain intact |
-| Bridge decomposition | Document HTTP/access gate, typed routing, native preview process/session, text/binary preview/file reads, match-text cache, complete PDF index reads/writes, file locks, manual maintenance process ownership and scoped Everything inventory now have explicit owners and native coverage. Bank HTTP/configuration/vault, owned shutdown, bank session/scraper lifecycle and sequential credit orchestration also have explicit boundaries. Remaining Document search merge/pagination and scheduled maintenance/installer process boundaries, plus Bank reader/cache/browser selection and larger issuer adapters | Existing external contracts preserved, classified failures and provider tests before live scraper changes; see DOCUMENT_INVENTORY_BOUNDARY.md, DOCUMENT_PDF_INDEX_WRITE_CONTRACT.md, DOCUMENT_MAINTENANCE_PROCESS_OWNERSHIP.md and related Bridge contracts |
+| Bridge decomposition | Document HTTP/access gate, typed routing, native preview process/session, text/binary preview/file reads, match-text cache, complete PDF index reads/writes, file locks, manual maintenance process ownership and scoped Everything inventory now have explicit owners and native coverage. Bank HTTP/configuration/vault, owned shutdown, bank session/scraper lifecycle, account/enrichment reads, cheque-image file ownership, browser discovery and sequential credit orchestration also have explicit boundaries. Remaining Document search merge/pagination and scheduled maintenance/installer process boundaries, plus Bank diagnostic/metadata artifact writers and larger issuer adapters | Existing external contracts preserved, classified failures and provider tests before live scraper changes; see DOCUMENT_INVENTORY_BOUNDARY.md, DOCUMENT_PDF_INDEX_WRITE_CONTRACT.md, DOCUMENT_MAINTENANCE_PROCESS_OWNERSHIP.md and related Bridge contracts |
 | Canonical sources and compatibility | SQL deployment inventory/generation; historical keys/RPC/readers and supported-client inventory | Immutable deployed migrations, deterministic generation, proven retirement criteria and restore tests |
 | Readability/UI/release | Large modules by responsibility, dependency budgets, CSS/RTL/performance, final docs/rollback | Behavioral and visual regression checks, measured performance and full release gates |
 
@@ -795,3 +795,18 @@ the baseline policy. Native staged-server coverage joins the actual HTTP command
 session, bank reader and local diagnostics while holding terminal browser cleanup.
 See [Bank provider boundaries](BANK_BRIDGE_PROVIDER_BOUNDARIES.md) for the required
 ports, before-change characterization and remaining reader/cache/adapter scope.
+
+Bank account/window reading, transaction enrichment, cheque images and installed-
+browser selection now have inert capabilities with explicit collaborator/API
+budgets. Native file fault injection proved an orphaned temporary binary after
+metadata write failure; publication/refresh now clean their owned attempts. A
+second pair of native faults proved early abandonment of sibling read/delete
+attempts; all accepted siblings now settle before returning the original failure. A
+private serial file owner prevents partial-pair observation and joins accepted
+image reads during shutdown, including disconnected clients. Twenty-three frozen
+read-policy functions preserve the baseline provider behavior, and actual browser/
+file-owner implementations have strict negative consumer/mutation coverage.
+Required Windows tests run held native image reads, cache faults, provider cleanup
+and DPAPI alongside transitive installer staging checks. See
+[Bank reader and artifact ownership](BANK_BRIDGE_READER_ARTIFACT_BOUNDARIES.md)
+for evidence, preserved formats and remaining issuer/diagnostic/Document scope.

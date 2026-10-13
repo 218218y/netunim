@@ -90,8 +90,9 @@ requires PostgreSQL, native browser, Windows, recovery, ACK and fault gates.
 
 ## Remaining work
 
-Account/transaction reading and enrichment, cheque-image cache ownership and
-installed-browser selection/cache remain in the server composition file. The
+Account/transaction reading, enrichment, cheque-image cache ownership and
+installed-browser selection were subsequently completed in
+[reader and artifact ownership](BANK_BRIDGE_READER_ARTIFACT_BOUNDARIES.md). The
 larger issuer adapters still require separate responsibility reviews. These are
 explicit next boundaries, alongside the remaining Document Bridge orchestration
 and the broader compatibility/shared cleanup roadmap. Live issuer behavior and

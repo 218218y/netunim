@@ -1,0 +1,28 @@
+{
+  "baseline": "29c639240fe4c41554ada3c57d4efc5c5b2a6378",
+  "policies": {
+    "pageFetchJsonOnce": "e1d7f3ba08ac461b659c08596b84a20bbe8d5c9c59a3f22c1a8867bd20699dcd",
+    "pageFetchJson": "96b1f0bdf9445485b84b67b65d368751a9f1b393684a853156052246b9f1f5ea",
+    "enrichHapoalimTransactions": "e5dfaa6937e9901071d73ceeb85051673cfc60b4f4adb018f5adc75946ccb321",
+    "fetchHapoalimAccountSnapshot": "7adfc1e5b8f5082e640270ed1c7756b5ec3de163eec3acba76cf8a154058d263",
+    "configuredAccountSelector": "19d76efc105864f6b201eb81c3ffd08a441749198507dd2bba98d48c27d0b687",
+    "selectConfiguredAccount": "f01df448e70e049a7123d1bfec8c45c54e9f6195e30b58bf36cf8442e7747fb6",
+    "fetchSelectedHapoalimSnapshot": "360e6c8c5ca1ab5b2275a0f8e6e71e29b3c5efea73044097ed2ba3286547cb34",
+    "bankCalendarDay": "d6d2576102da6b9081b791c48478497345e951586dfe25b87b0fded3912d76bd",
+    "currentCalendarDay": "6307e7fce63254d25f44c92f00245dfba6865015f1ef40f26c52ad35bf4cc732",
+    "chequeImageInRetention": "acd7a34cbf4becd6a3643cd2a5c043b3aaf27ed6db4b88a88a70498f5f185b43",
+    "chequeImageRequest": "8b852f448169506e16799ac87a69f456790d32f91d2bd6136ef398660a5ae801",
+    "chequeImageKey": "beb6afa5f614217c9bed9b0a90910906d137f147632b8646b503db55ff8b01dd",
+    "supportedImageType": "bdba6b946abb8b90e4134f0f292dbdcf37286824fe014b85c04181dd52406ce6",
+    "chequeRowIdentity": "21e22e43399e65dbdf5fcb67a8c94e9ed20f2e13b3d43cb8cd533050b4beb721",
+    "attachChequeImageKeys": "8403bd139d3243750d8a8a7ab778733f355be6589005ff5bc0bd138d7dce3f19",
+    "browserCandidates": "fe796912732eaa2a3d5a322b7d6d5a3de64c4dfec75dc976edab91bb8de87c74",
+    "rememberBrowser": "2d1a7e4e38c1ea4348e13ce7be52919c19b2022f2af7d520655abf338c9ffa78",
+    "findInstalledBrowser": "a4d8ef66974fc301de1cc8f7cb021d9f2cd26ad4159cef611ea98c113fd46076",
+    "chequeImageCachePaths": "8c58776d8a9433417f1e45941b2a5f4cdd2614155bc7454ec6e6adb5ccec5b98",
+    "readCachedChequeImage": "189f1446f94b0704ebb7357981ed0deb996552b41ef520c4e981eda10e8d4f25",
+    "fetchChequeImageIntoCache": "0a92e7dcecc6fe08fa6825568dc6d015c0e632d566ff703fe4159a3b30debfcd",
+    "cleanupChequeImageCache": "b49d6d852587f2f87a3a5aaa8b84dbd303bb7a036af92785dac921b77c0e0902",
+    "deleteChequeImageCache": "974fdebd9dbf4479ee2c77b817c8f1f53a4c2b2ef095d171b398acdf6e2cebf7"
+  }
+}
