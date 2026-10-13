@@ -32,8 +32,8 @@ FLOW = r"""(async()=>{
  const fetch=globalThis.fetch,get=Storage.prototype.getItem,set=Storage.prototype.setItem,entered=deferred(),provider=deferred();let injecting=true;
  globalThis.fetch=(url,options)=>{
    const path=String(url);
-   if(path.includes('/v2/credit/status'))return Promise.resolve(new Response(JSON.stringify({ok:true,bridgeVersion:73,contractVersion:2,profiles:[{profileId:'P'}]})));
-   if(path.endsWith('/status'))return Promise.resolve(new Response(JSON.stringify({ok:true,bridgeVersion:73,configured:true})));
+   if(path.includes('/v2/credit/status'))return Promise.resolve(new Response(JSON.stringify({ok:true,bridgeVersion:74,contractVersion:2,profiles:[{profileId:'P'}]})));
+   if(path.endsWith('/status'))return Promise.resolve(new Response(JSON.stringify({ok:true,bridgeVersion:74,configured:true})));
    if(path.includes('/v2/credit/reset')){resets++;return Promise.resolve(new Response('{"ok":true}'))}
    if(path.includes('/balance')||path.includes('/v2/credit/sync')){providers++;entered.resolve();return provider.promise}
    if(path.includes('/storage/v1/object/list/'))return Promise.resolve(new Response('[]'));

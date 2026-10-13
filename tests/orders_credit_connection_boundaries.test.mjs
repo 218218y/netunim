@@ -1,3 +1,4 @@
+import {restoreBankMoneyBoundary} from './bank_balance_policy_fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -73,7 +74,7 @@ test('Orders issuer/wire/publication policy, credential values and Bank workflow
   assert.equal(Object.keys(fixture.sha256).length, 5);
   for (const [file, expected] of Object.entries(fixture.sha256))
     assert.equal(hash(read(file)), expected, file);
-  const functions = factory(ast(controller), 'createDomainsFinanceController').body.body;
+  const functions = factory(parse(restoreBankMoneyBoundary(read(controller)),{ecmaVersion:'latest',sourceType:'module',ranges:true}), 'createDomainsFinanceController').body.body;
   for (const [name, expected] of Object.entries(fixture.bankBodies))
     assert.equal(
       hash(

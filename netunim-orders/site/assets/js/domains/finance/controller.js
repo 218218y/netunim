@@ -1,3 +1,5 @@
+import {createBridgePairingScope} from '../../shared/bridge-pairing-scope.js';
+import {readBankBalanceResult,bankSnapshotFinancials} from '../../shared/bank-balance-result.js';
 import {createRuntimeTaskOwner} from '../../shared/runtime-task-owner.js';
 import {createOrdersFinanceAutomation} from './automation.js';
 import {createRevisionSelector} from '../../shared/revision-selector.js';
@@ -16,7 +18,7 @@ import {normalizeCashflowSettings} from '../../shared/cashflow.js';
 import {FINANCE_PUBLICATION_WARNING} from './document-publication.js';
 import {projectBankArchiveFeed} from './bank-archive-model.js';
 
-const BANK_BRIDGE_VERSION=72;
+const BANK_BRIDGE_VERSION=74;
 
 function accountIdOf(snapshot){return snapshot?.accountId||[snapshot?.branchNumber,snapshot?.accountNumber].filter(Boolean).join('-')||snapshot?.accountNumber||''}
 function completeTransactionCoverage(snapshot){const coverage=snapshot?.transactionCoverage&&typeof snapshot.transactionCoverage==='object'?snapshot.transactionCoverage:{},from=String(coverage.from||''),to=String(coverage.to||''),valid=/^\d{4}-\d{2}-\d{2}$/.test(from)&&/^\d{4}-\d{2}-\d{2}$/.test(to)&&from<=to,warning=String(snapshot?.transactionWarning||'');return {complete:coverage.complete===true&&!warning&&valid,from:valid?from:null,to:valid?to:null,days:Number(coverage.days)||null,warning}}
@@ -73,8 +75,8 @@ export function createDomainsFinanceController({
 }) {
   if(typeof operationScope?.capture!=='function'||typeof operationScope?.captureRead!=='function')throw new Error('orders_finance_operation_scope_required');
   for(const method of ['isOnline','writeText','saveJson','delay'])if(typeof effects?.[method]!=='function')throw new TypeError(`orders_finance_effect_${method}_required`);
-  const work=createRuntimeTaskOwner();
-  const scopeChanged=error=>error?.code==='FINANCE_OPERATION_SCOPE_CHANGED'||error?.code==='CREDIT_CONNECTION_SCOPE_CHANGED';
+  const work=createRuntimeTaskOwner(),bankPairingScope=createBridgePairingScope({readToken:()=>bridge.getBridgeToken()});
+  const scopeChanged=error=>error?.code==='FINANCE_OPERATION_SCOPE_CHANGED'||error?.code==='CREDIT_CONNECTION_SCOPE_CHANGED'||error?.code==='BRIDGE_PAIRING_SCOPE_CHANGED';
   function currentOperationError(error,assertOwner){try{assertOwner?.();return error}catch(ownerError){return ownerError}}
   const local={bankBusy:false,bankResultReady:false,creditBusy:false,bankError:'',creditError:'',bankErrorAt:null,creditErrorAt:null,bankStatus:null,bankStatusChecked:false,bankBridgeError:''};
   let financeStatusListener=()=>{};
@@ -183,11 +185,11 @@ export function createDomainsFinanceController({
     if(!financeAutomation.tokenConfigured()){if(!auto)toast('יש לצמד את ניהול ההזמנות ל-Bank Bridge במחשב זה');return false}
     if(auto&&!financeAutomation.markAttempt('bank'))return false;
     archive.runtime.pause();
-    local.bankBusy=true;local.bankResultReady=false;local.bankError='';local.bankErrorAt=null;notifyFinanceStatus('bank');
-    let leaseToken='',leaseHeld=false,lease=null,heartbeat=null,assertOwner;const schedulerEpoch=financeAutomation.currentEpoch();
-    const assertCurrent=()=>{assertOwner();heartbeat?.assertCurrent()};
+    local.bankBusy=true;local.bankResultReady=false;local.bankError='';local.bankErrorAt=null;
+    let leaseToken='',leaseHeld=false,lease=null,heartbeat=null,assertOwner,assertConnection;const schedulerEpoch=financeAutomation.currentEpoch();
+    const assertCurrent=()=>{assertOwner();assertConnection();heartbeat?.assertCurrent()};
     try{
-      assertOwner=operationScope.capture();
+      assertOwner=operationScope.capture();assertConnection=bankPairingScope.capture();notifyFinanceStatus('bank');
       const cloudFresh=await refreshKupaReadout({force:true,renderIfChanged:true,assertCurrent});assertCurrent();
       if(auto&&!cloudFresh)throw new Error('לא ניתן לאמת את זמן סנכרון הבנק המשותף בענן');
       if(auto&&!bankRefreshDue(bankLastSyncAt(checksSession.kupaCloudReadState)))return true;
@@ -204,9 +206,7 @@ export function createDomainsFinanceController({
       const archiveInitialized=financeRow?.state?.bank?.archiveInitialized===true,archiveVersion=Number(financeRow?.state?.bank?.archiveVersion||0),archiveReady=archiveInitialized&&archiveVersion>=2,historyDays=!auto&&!archiveReady?365:30;
       if(auto&&(!isCurrent()||!financeAutomation.allowed('bank')))return false;
       const result=await bridge.fetchBalance({interactive,historyDays});assertCurrent();
-      const business=result.accounts?.business||result,home=result.accounts?.home??null,homeFailure=result.accountFailures?.home||null;
-      if(!Number.isFinite(Number(business?.balance)))throw new Error('Bank Bridge לא החזיר יתרה עסקית תקינה');
-      if(home&&!Number.isFinite(Number(home.balance)))throw new Error('Bank Bridge לא החזיר יתרה ביתית תקינה');
+      const {business,home,homeFailure}=readBankBalanceResult(result);
       const fetchedAt=result.fetchedAt||new Date().toISOString(),businessAccount=accountIdOf(business),homeAccount=home?accountIdOf(home):'';
       const businessCoverage=completeTransactionCoverage(business),homeCoverage=home?completeTransactionCoverage(home):null;
       const businessMerge=await syncBankTransactionsSnapshot(businessAccount,'business',business.transactions||[],{lease,snapshotAt:fetchedAt,coverage:businessCoverage,complete:businessCoverage.complete});assertCurrent();
@@ -228,7 +228,7 @@ export function createDomainsFinanceController({
       businessFeed.recurringDebitHistory=bankRecurringDebitHistoryData(previousBank.feed,businessFeed,'business',businessCoverage);
       if(homeFeed)homeFeed.recurringDebitHistory=bankRecurringDebitHistoryData(previousBank.homeFeed,homeFeed,'home',homeCoverage);
       const exactBackfillVerified=historyDays>=365&&completeTransactionCoverage(business).complete&&!homeFailure&&(!home||completeTransactionCoverage(home).complete),archiveBaselineAudit=exactBackfillVerified?archiveAudit:(previousBank.archiveBaselineAudit||null);
-      const nextBank={...previousBank,currentBalance:kupaWholeMoney(business.balance),availableBalance:Number.isFinite(Number(business.availableBalance))?Number(business.availableBalance):null,creditLimit:Number.isFinite(Number(business.creditLimit))?Number(business.creditLimit):null,creditLimitUsed:Number.isFinite(Number(business.creditLimitUsed))?Number(business.creditLimitUsed):null,creditLimitUsedPercent:Number.isFinite(Number(business.creditLimitUsedPercent))?Number(business.creditLimitUsedPercent):null,updatedAt:new Date().toISOString(),asOfDate:checkTodayISO(),source:'hapoalim',sourceAccount:businessAccount||null,bankSyncAt:fetchedAt,feed:businessFeed,homeFeed:nextHomeFeed,archiveInitialized:archiveReady||exactBackfillVerified,archiveVersion:exactBackfillVerified?2:archiveVersion,archiveInitializedAt:archiveReady?previousBank.archiveInitializedAt||null:(exactBackfillVerified?fetchedAt:null),archiveAudit,archiveBaselineAudit};
+      const nextBank={...previousBank,currentBalance:kupaWholeMoney(business.balance),...bankSnapshotFinancials(business),updatedAt:new Date().toISOString(),asOfDate:checkTodayISO(),source:'hapoalim',sourceAccount:businessAccount||null,bankSyncAt:fetchedAt,feed:businessFeed,homeFeed:nextHomeFeed,archiveInitialized:archiveReady||exactBackfillVerified,archiveVersion:exactBackfillVerified?2:archiveVersion,archiveInitializedAt:archiveReady?previousBank.archiveInitializedAt||null:(exactBackfillVerified?fetchedAt:null),archiveAudit,archiveBaselineAudit};
       const saved=await documents.commands.publishBankSnapshot(financeBankPayload(nextBank),snapshotToken,snapshotSeq,lease);assertCurrent();
       const readoutVerified=saved.published===true;
       if(readoutVerified)publishDisplayArchive(archiveCandidate);
@@ -237,7 +237,7 @@ export function createDomainsFinanceController({
       local.bankResultReady=true;notifyFinanceStatus('bank');
       return true;
     }catch(error){
-      error=currentOperationError(error,assertOwner);
+      error=currentOperationError(error,()=>{assertOwner?.();assertConnection?.()});
       if(scopeChanged(error)&&schedulerEpoch===financeAutomation.currentEpoch())stopAutoSync();
       local.bankError=error?.message||String(error);local.bankErrorAt=new Date().toISOString();
       if(error?.code==='BRIDGE_UNAVAILABLE'||error?.code==='BRIDGE_TIMEOUT')local.bankBridgeError=local.bankError;
@@ -386,5 +386,5 @@ export function createDomainsFinanceController({
   function owned(command){return (...args)=>work.isActive()?work.run(()=>command(...args)):Promise.resolve(false)}
   const api={snapshot,readSnapshot,setFinanceStatusListener,ensureBankDisplayArchive,refreshFinanceData,refreshBankBridgeStatus,refreshCreditBridgeStatus,copySafeCreditDiagnostics,exportCreditDataDiagnostics,saveBridgeToken,configureBankBridge,selectBankBridgeAccount,deleteBankBridgeCredentials,exportBankChequeDiagnostics,refreshBank,toggleBankTransactionHandled,markBankMorningVerified,acknowledgeMissingBankTransaction,acknowledgePersistentBankAlert,refreshCredit,saveCreditProfile,deleteCreditProfile,resetCreditSync,saveCreditCardOrder,setCreditCardMapping,acknowledgeCreditSettlementWarning,maybeAutoRefreshBank,maybeAutoRefreshCredit,startAutoSync,stopAutoSync,setBankAutoEnabled,setCreditAutoEnabled,setCreditAutoMode,saveCashflowMinimum,saveCashflowCheckCutoff,mutateKupaCloud,captureCreditConnection,captureCreditReset};
   for(const name of ['ensureBankDisplayArchive', 'refreshFinanceData', 'refreshBankBridgeStatus', 'refreshCreditBridgeStatus', 'copySafeCreditDiagnostics', 'exportCreditDataDiagnostics', 'saveBridgeToken', 'configureBankBridge', 'selectBankBridgeAccount', 'deleteBankBridgeCredentials', 'exportBankChequeDiagnostics', 'refreshBank', 'toggleBankTransactionHandled', 'markBankMorningVerified', 'acknowledgeMissingBankTransaction', 'acknowledgePersistentBankAlert', 'refreshCredit', 'saveCreditProfile', 'deleteCreditProfile', 'resetCreditSync', 'saveCreditCardOrder', 'setCreditCardMapping', 'acknowledgeCreditSettlementWarning', 'maybeAutoRefreshBank', 'maybeAutoRefreshCredit', 'saveCashflowMinimum', 'saveCashflowCheckCutoff', 'mutateKupaCloud'])api[name]=owned(api[name]);
-  return {...api,runtime:{isPending:work.isPending,drain:work.drain,dispose:()=>{if(!work.close())return false;stopAutoSync();financeStatusListener=()=>{};return true}}};
+  return {...api,runtime:{isPending:work.isPending,drain:work.drain,dispose:()=>{if(!work.close())return false;bankPairingScope.dispose();stopAutoSync();financeStatusListener=()=>{};return true}}};
 }

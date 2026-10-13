@@ -20,6 +20,10 @@
     "types": []
   },
   "files": [
+    "shared/bank-balance-result.js",
+    "shared/bank-money-value.js",
+    "shared/bridge-pairing-scope.js",
+    "tests/fixtures/checked-bank-balance-result.mjs",
     "netunim-orders/site/assets/js/domains/finance/credit-connection-owner.js",
     "tests/fixtures/checked-orders-credit-connection-owner.mjs",
     "netunim-kupa/site/assets/js/domains/credit/connection-owner.js",

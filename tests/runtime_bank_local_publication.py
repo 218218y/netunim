@@ -26,7 +26,7 @@ FLOW=r"""(async()=>{
  cloudTransport.saveFinancePatch=async()=>({saved:true});
  globalThis.fetch=(url,options)=>{
    if(String(url).includes('/balance')){scans++;return Promise.resolve(new Response(JSON.stringify({ok:true,fetchedAt:stamp,accounts:{business:{balance:500,accountId:'synthetic-account',transactions:[{id:'bank-local-tx',date:stamp,amount:12,description:'durable identity'}]}}})))}
-   if(String(url).includes('/status')){statusReads++;return Promise.resolve(new Response(JSON.stringify({ok:true,bridgeVersion:72,configured:true,lastScrapeAt:stamp})))}
+   if(String(url).includes('/status')){statusReads++;return Promise.resolve(new Response(JSON.stringify({ok:true,bridgeVersion:74,configured:true,lastScrapeAt:stamp})))}
    return fetch(url,options);
  };
  IDBObjectStore.prototype.put=function(...args){const request=put.apply(this,args);if(abort&&this.name==='journal'){abort=false;const tx=this.transaction;queueMicrotask(()=>tx.abort())}return request};

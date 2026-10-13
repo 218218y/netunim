@@ -30,7 +30,7 @@ function fixture(kind,t){
   if(kind==='credit')ports.preferences=createCreditPreferences();
   const api=(kind==='credit'?createDomainsCreditController:createDomainsBankController)(ports);
   return {api,ports,model,session,tab,values,jobs,reports,writes,scope:value=>{scope=value},lease:fn=>{leaseRead=fn},attempts:()=>attempts,claims:()=>claims,releases:()=>releases,statusReads:()=>statusReads,
-    releaseStatus:()=>status.resolve({bridgeVersion:73,contractVersion:2,profiles:[{profileId:'P'}]}),releaseCloud:()=>cloud.resolve({verified:true,state:model.state})};
+    releaseStatus:()=>status.resolve({bridgeVersion:74,contractVersion:2,profiles:[{profileId:'P'}]}),releaseCloud:()=>cloud.resolve({verified:true,state:model.state})};
 }
 
 test('credit opt-out during Bridge status prevents a new issuer session',async t=>{
@@ -111,7 +111,7 @@ test('bank upgrade block owns no recurring timer and resumes after an eligible B
   const f=fixture('bank',t);let bridgeVersion=1;f.ports.bridge.status=async()=>({bridgeVersion,configured:true});
   await f.api.refreshBankBridgeStatus();f.api.startAutoSync();
   assert.equal(f.jobs.size,0);assert.equal(f.claims(),0);assert.equal(f.attempts(),0);
-  bridgeVersion=73;await f.api.refreshBankBridgeStatus();f.api.maybeAutoRefreshBankBalance();
+  bridgeVersion=74;await f.api.refreshBankBridgeStatus();f.api.maybeAutoRefreshBankBalance();
   assert.equal(f.jobs.size,1);f.api.stopAutoSync();
 });
 

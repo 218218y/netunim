@@ -19,7 +19,7 @@ import {createJsonArtifactOwner} from '../netunim-kupa/bank-bridge/json-artifact
 test('Bank HTTP/capability boundaries have explicit dependency and collaborator budgets',()=>{
   const contracts=[
     ['json-artifact-owner',['./file-task-owner.mjs'],'createJsonArtifactOwner',1],
-    ['hapoalim-accounts',["node:crypto","./hapoalim-policy.mjs","./hapoalim-transaction-model.mjs","./hapoalim-account-model.mjs","./hapoalim-date-codec.mjs","./hapoalim-wire.mjs","./provider-errors.mjs","./wire-errors.mjs"],'createHapoalimAccountReader',5],
+    ['hapoalim-accounts',["./bank-money-value.mjs","node:crypto","./hapoalim-policy.mjs","./hapoalim-transaction-model.mjs","./hapoalim-account-model.mjs","./hapoalim-date-codec.mjs","./hapoalim-wire.mjs","./provider-errors.mjs","./wire-errors.mjs"],'createHapoalimAccountReader',5],
     ['hapoalim-enrichment',["./hapoalim-additional-details-model.mjs","./hapoalim-cheque-model.mjs","./hapoalim-credit-settlement-model.mjs","./hapoalim-transaction-model.mjs","./hapoalim-wire.mjs"],'createHapoalimEnrichment',3],
     ['browser-locator',[],'createInstalledBrowserLocator',2],
     ['hapoalim-provider',['./provider-errors.mjs'],'createHapoalimProvider',7],

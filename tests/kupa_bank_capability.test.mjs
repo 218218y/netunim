@@ -12,7 +12,7 @@ function fixture(t) {
   const timers = {setTimeout(run, delay) { jobs.set(++next, {run, delay}); return next; }, clearTimeout:id => jobs.delete(id)};
   t.mock.method(globalThis, 'setTimeout', timers.setTimeout); t.mock.method(globalThis, 'clearTimeout', timers.clearTimeout);
   const unexpected = () => assert.fail('composition performed IO or used unhydrated state');
-  const bridge = {getBridgeToken:() => 'fixture', autoEnabled:() => true, autoAttemptDelayMs:() => 0,
+  const bridge = {status:async()=>({bridgeVersion:74,configured:true}),getBridgeToken:() => 'fixture', autoEnabled:() => true, autoAttemptDelayMs:() => 0,
     bankDiagnostics:async () => { entered.resolve(); await held.promise; return {available:true,filename:'fixture.json',data:{version:1}}; }};
   const cloud = Object.fromEntries(['refreshFinance','claimLease','releaseLease','saveSnapshot',
     'syncTransactions','readTransactions','readTransactionSnapshot','acknowledgeMissing','syncImages','downloadImage'].map(name => [name, unexpected]));

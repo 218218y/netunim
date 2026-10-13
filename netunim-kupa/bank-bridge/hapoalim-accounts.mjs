@@ -1,3 +1,4 @@
+import { readBankMoney } from './bank-money-value.mjs';
 import { randomUUID } from 'node:crypto';
 import {
   HAPOALIM_NAVIGATION_STABLE_MS,
@@ -53,22 +54,12 @@ export function createHapoalimAccountReader({ session, json, enrichment, diagnos
     );
     const balanceData = balanceResult.data,
       balanceReady = balanceResult.ready;
-    const balance = Number(balanceData?.currentBalance);
-    const availableBalance = Number.isFinite(Number(balanceData?.withdrawalBalance))
-      ? Number(balanceData.withdrawalBalance)
-      : null;
-    const creditLimit = Number.isFinite(Number(balanceData?.creditLimitAmount))
-      ? Number(balanceData.creditLimitAmount)
-      : null;
-    const creditLimitUsed = Number.isFinite(Number(balanceData?.creditLimitUtilizationAmount))
-      ? Number(balanceData.creditLimitUtilizationAmount)
-      : null;
-    const creditLimitUsedPercent = Number.isFinite(
-      Number(balanceData?.creditLimitUtilizationPercent)
-    )
-      ? Number(balanceData.creditLimitUtilizationPercent)
-      : null;
-    if (!Number.isFinite(balance))
+    const balance = readBankMoney(balanceData?.currentBalance),
+      availableBalance = readBankMoney(balanceData?.withdrawalBalance),
+      creditLimit = readBankMoney(balanceData?.creditLimitAmount),
+      creditLimitUsed = readBankMoney(balanceData?.creditLimitUtilizationAmount),
+      creditLimitUsedPercent = readBankMoney(balanceData?.creditLimitUtilizationPercent);
+    if (balance === null)
       throw stageError(
         'balance',
         Object.assign(new Error('בנק הפועלים לא החזיר יתרת עו״ש מספרית לחשבון שנבחר'), {

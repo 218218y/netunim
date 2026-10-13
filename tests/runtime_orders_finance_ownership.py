@@ -31,8 +31,8 @@ FLOW = r"""(async()=>{
  cloudTransport.saveBankSyncSnapshot=async bank=>publish({...remoteFinance,bank});cloudTransport.rpcSaveFinanceSync=async next=>({r:{ok:true},row:await publish(next)});
  globalThis.fetch=(url,options)=>{
    const path=String(url);
-   if(path.includes('/v2/credit/status'))return Promise.resolve(new Response(JSON.stringify({ok:true,bridgeVersion:73,contractVersion:2,profiles:[{profileId:'P'}]})));
-   if(path.endsWith('/status'))return Promise.resolve(new Response(JSON.stringify({ok:true,bridgeVersion:73,configured:true})));
+   if(path.includes('/v2/credit/status'))return Promise.resolve(new Response(JSON.stringify({ok:true,bridgeVersion:74,contractVersion:2,profiles:[{profileId:'P'}]})));
+   if(path.endsWith('/status'))return Promise.resolve(new Response(JSON.stringify({ok:true,bridgeVersion:74,configured:true})));
    if(path.includes('/balance')||path.includes('/v2/credit/sync')){entered.resolve();return provider.promise}
    if(path.includes('/storage/v1/object/list/'))return Promise.resolve(new Response('[]'));
    return originalFetch(url,options);

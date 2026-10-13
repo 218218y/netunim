@@ -21,6 +21,7 @@ with BrowserSession(ROOT/'netunim-kupa/site','bank-file-snapshot-commands') as b
       cloudTransport.saveBankSyncSnapshot=()=>{atomics++;throw Error('file mode invoked atomic cloud writer')};
       localStorage.setItem('netunim_kupa_bank_bridge_token_v1','synthetic-pairing');
       globalThis.fetch=(url,options)=>{
+        if(String(url).endsWith('/status'))return Promise.resolve(new Response(JSON.stringify({ok:true,bridgeVersion:74,configured:true})));
         if(String(url).includes('/balance')){scans++;return Promise.resolve(new Response(JSON.stringify({ok:true,fetchedAt:stamp,accounts:{business:{balance:500,accountId:'synthetic-account',transactions:[{id:'retained-bank-row',date:stamp,amount:12,description:'native fixture'}]}}})))}
         return originalFetch(url,options);
       };

@@ -198,7 +198,7 @@ test('local bank refresh cannot report success when persistence explicitly decli
 
 test('a healthy Bridge status cannot erase an unconfirmed local bank write',async t=>{
   const f=fixture(t);f.ports.session.connectionMode='local';f.ports.saveState=async()=>false;
-  f.ports.bridge.status=async()=>({bridgeVersion:72,configured:true,lastScrapeAt:stamp});
+  f.ports.bridge.status=async()=>({bridgeVersion:74,configured:true,lastScrapeAt:stamp});
   const api=f.create();assert.equal(await api.refreshBankBalance(),false);
   const failure=api.bankBridgeUiState().lastError;assert.match(failure,/שמירה/);
   await api.refreshBankBridgeStatus();
@@ -208,7 +208,7 @@ test('a healthy Bridge status cannot erase an unconfirmed local bank write',asyn
 
 test('a manual bank write failure is exposed independently of Bridge availability',async t=>{
   const f=fixture(t);f.ports.session.connectionMode='local';f.ports.saveState=async()=>false;
-  f.ports.bridge.status=async()=>({bridgeVersion:72,configured:true,lastScrapeAt:stamp});
+  f.ports.bridge.status=async()=>({bridgeVersion:74,configured:true,lastScrapeAt:stamp});
   const api=f.create();assert.equal(await api.commitBankSnapshot(1234),false);
   await api.refreshBankBridgeStatus();assert.match(api.bankBridgeUiState().lastError,/שמירה/);
   assert.equal(f.model.state.bank.currentBalance,1234);api.stopAutoSync();
@@ -219,4 +219,33 @@ for(const name of ['saveBankSyncSnapshot','syncBankTransactionsSnapshot','readBa
   const api=createCloudTransport({supaRest:async(_path,options)=>{options.assertRequestScope();requests++;return {ok:true,text:async()=>{valid=false;return '{}'},json:async()=>{valid=false;return []}}}});
   const args={saveBankSyncSnapshot:[{},'token',7,lease],syncBankTransactionsSnapshot:['key','business',[],{lease,snapshotAt:stamp}],readBankTransactionSnapshot:['key','business',{assertCurrent}],acknowledgeBankTransactionMissing:[1,{assertCurrent}],acknowledgeBankTransactionAlert:[1,'returned_cheque',{assertCurrent}]};
   await assert.rejects(api[name](...args[name]),{code:'FINANCE_OPERATION_SCOPE_CHANGED'});assert.equal(requests,1);
+});
+
+
+for(const balance of [null,'',false,[]])test('Kupa missing/coercible Bank balance cannot authorize archive or snapshot publication: '+JSON.stringify(balance),async t=>{
+ const f=fixture(t);f.ports.bridge.fetchBalance=async()=>({fetchedAt:stamp,accounts:{business:{balance,accountId:'same-account',transactions:[]}}});
+ const api=f.create(),before=structuredClone(f.model.state);
+ try{assert.equal(await api.refreshBankBalance(),false,'missing balance was published as zero');
+ assert.equal(f.counts.atomic||0,0);assert.equal(f.counts['archive-business']||0,0);assert.deepEqual(f.model.state,before)}finally{api.runtime.dispose()}
+});
+test('Kupa unavailable optional Bank money stays unknown instead of becoming zero',async t=>{
+ const f=fixture(t);f.ports.bridge.fetchBalance=async()=>({fetchedAt:stamp,accounts:{business:{balance:500,accountId:'same-account',transactions:[],availableBalance:null,creditLimit:null,creditLimitUsed:null,creditLimitUsedPercent:null}}});
+ const api=f.create();try{assert.equal(await api.refreshBankBalance(),true);
+ const bank=f.model.state.bank;
+ for(const field of ['availableBalance','creditLimit','creditLimitUsed','creditLimitUsedPercent'])assert.equal(bank[field],null,field+' lost unknown evidence')
+ }finally{api.runtime.dispose()}
+});
+
+
+for(const version of [72,73,74])test('Kupa Bank version gate blocks former money parsing before provider entry: '+version,async t=>{
+ const f=fixture(t);let providers=0;f.ports.bridge.status=async()=>({bridgeVersion:version,configured:true});f.ports.bridge.fetchBalance=async()=>{providers++;return {balance:0,accounts:{business:{balance:0,accountId:'same-account',transactions:[]}}}};
+ const api=f.create();try{assert.equal(await api.refreshBankBalance(),version>=74);assert.equal(providers,version>=74?1:0);if(version>=74)assert.equal(f.model.state.bank.currentBalance,0)}finally{api.runtime.dispose()}
+});
+
+
+test('Kupa Bank captured version cannot authorize a replacement device',async t=>{
+ const f=fixture(t);let token='A',providers=0;f.ports.bridge.getBridgeToken=()=>token;
+ f.ports.bridge.status=async()=>{token='B';return {bridgeVersion:74,configured:true}};
+ f.ports.bridge.fetchBalance=async()=>{providers++;return {balance:0,accounts:{business:{balance:0,accountId:'same-account',transactions:[]}}}};
+ const api=f.create();try{assert.equal(await api.refreshBankBalance(),false);assert.equal(providers,0);assert.equal(f.counts.atomic||0,0);assert.equal(f.counts.release,1)}finally{api.runtime.dispose()}
 });

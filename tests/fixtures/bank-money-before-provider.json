@@ -1,0 +1,4 @@
+{
+  "baseline": "e5de1cc50ec61fad76bed23614bb848ab0629fc6",
+  "moneyPrefix": "    const balance = Number(balanceData?.currentBalance);\n    const availableBalance = Number.isFinite(Number(balanceData?.withdrawalBalance))\n      ? Number(balanceData.withdrawalBalance)\n      : null;\n    const creditLimit = Number.isFinite(Number(balanceData?.creditLimitAmount))\n      ? Number(balanceData.creditLimitAmount)\n      : null;\n    const creditLimitUsed = Number.isFinite(Number(balanceData?.creditLimitUtilizationAmount))\n      ? Number(balanceData.creditLimitUtilizationAmount)\n      : null;\n    const creditLimitUsedPercent = Number.isFinite(\n      Number(balanceData?.creditLimitUtilizationPercent)\n    )\n      ? Number(balanceData.creditLimitUtilizationPercent)\n      : null;\n    if (!Number.isFinite(balance))\n"
+}

@@ -53,6 +53,12 @@ remaining-scope paragraphs describe their stage's starting point.
 - Strict bodies and negative consumers cover critical storage JSON/receipts,
   scopes, resource ports and selected business/Bridge boundaries. Coverage is
   selective, not a complete application type proof.
+- Bank scalar evidence is canonical across both sites and the standalone Bridge.
+  Missing balances cannot become authoritative zero; nullable financial fields
+  remain unknown. Both Bank workflows require corrected Bridge v74 and captured
+  device authority before provider/publication work, independently of lease
+  cleanup. Kupa command acceptance now uses the canonical task owner. See
+  [Bank financial evidence](BANK_FINANCIAL_EVIDENCE.md).
 - Full CI covers PostgreSQL, native browser/IDB, lost ACKs, ownership changes,
   recovery and Windows, and remains mandatory for each slice.
 

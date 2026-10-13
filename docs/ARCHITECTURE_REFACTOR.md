@@ -963,3 +963,17 @@ submission/closure. The first full gate also reproduced blocked token storage
 breaking snapshots; unavailable pairing now invalidates local authority while
 preserving readout and sanitized preference warnings. The existing native
 Bank/Credit token-fault cases and nine connection browser cases cover these paths.
+
+
+Bank financial input now has a canonical strict scalar decoder shared by the
+Hapoalim reader and both browser apps. Seventeen before-fix cases proved missing
+money publication and device/version handoff defects. Required absent/coercible
+balances stop before archives; optional unknown money remains null, and genuine
+zero/numeric strings remain accepted. Immutable decoded accounts and their
+actual field consumer reject forged evidence. Both Bank workflows require v74
+and captured device authority; account guards still own lease cleanup. Kupa
+uses the canonical immediate accepted-task owner. The installer stages the
+standalone generated scalar and verifies v74, so existing Bank installations
+must be updated. Fourteen native browser/IDB scenarios, actual provider-reader
+cases, strict negative/body mutations and preserved surrounding policy fixtures
+protect the slice. See [Bank financial evidence](BANK_FINANCIAL_EVIDENCE.md).

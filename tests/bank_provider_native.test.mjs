@@ -18,7 +18,7 @@ test('native Bank provider composition keeps browser cleanup owned before public
   try{
     while(true){try{await fs.access(entered);break}catch(error){if(error.code!=='ENOENT')throw error;if(Date.now()>deadline)throw new Error('provider did not reach cleanup: '+f.output());await new Promise(resolve=>setTimeout(resolve,10))}}
     assert.equal(completed,false);assert.equal((await (await f.request('/credit/reset',{method:'POST'})).json()).code,'SCRAPE_BUSY');
-    const diagnostic=JSON.parse(await fs.readFile(path.join(f.app,'diagnostics','bank-latest.json'),'utf8'));assert.equal(diagnostic.bridgeVersion,73);
+    const diagnostic=JSON.parse(await fs.readFile(path.join(f.app,'diagnostics','bank-latest.json'),'utf8'));assert.equal(diagnostic.bridgeVersion,74);
     const interim=JSON.parse(await fs.readFile(path.join(f.app,'status.json'),'utf8'));assert.equal(interim.sessionUrl,'https://login.bankhapoalim.co.il/dashboard');assert.equal(interim.lastScrapeAt,null);
   }finally{await fs.writeFile(path.join(f.app,'fixture-terminate-release'),'release')}
   const response=await reading;assert.equal(response.status,200);const result=await response.json();assert.equal(result.balance,42);assert.equal(result.accounts.business.accountNumber,'678901');assert.equal(result.accounts.business.transactionCoverage.complete,true);
