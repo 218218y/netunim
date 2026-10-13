@@ -10,6 +10,16 @@ const deferred=()=>{let resolve;const promise=new Promise(done=>{resolve=done});
 const changed=()=>Object.assign(new Error('fixture bank ownership changed'),{code:'FINANCE_OPERATION_SCOPE_CHANGED'});
 const stamp='2026-10-08T10:00:00.000Z';
 const transaction=id=>({id,date:stamp,processedDate:stamp,amount:12,currency:'ILS',status:'completed',description:id});
+test('Kupa Bank waits for an accepted lease renewal before release and controller completion',async t=>{
+  const f=fixture(t,{hold:'provider'}),renewal=deferred();let tick,claims=0;
+  t.mock.method(globalThis,'setTimeout',(fn,ms)=>{if(ms===400000)tick=fn;return 1});
+  f.ports.claimFinanceSyncLease=async()=>{if(++claims===2)await renewal.promise;return {acquired:true,leaseName:'bank',leaseToken:'L',fenceEpoch:1}};
+  const api=f.create(),pending=api.refreshBankBalance();await f.entered.promise;
+  const accepted=tick();f.release.resolve();
+  try{await new Promise(resolve=>setImmediate(resolve));assert.equal(f.counts.release||0,0,'Bank released before renewal settled')}
+  finally{renewal.resolve();await accepted;await pending;api.runtime.dispose()}
+  assert.equal(f.counts.release,1);assert.equal(claims,2);
+});
 function fixture(t,{hold=null,home=false}={}){
   t.mock.method(globalThis,'setTimeout',()=>1);t.mock.method(globalThis,'clearTimeout',()=>{});t.mock.method(console,'error',()=>{});
   let owner='A',epoch=1,primary=true,financeReads=0,checks=0;const counts={},entered=deferred(),release=deferred();

@@ -1,5 +1,12 @@
 # Incremental JavaScript contracts
 
+Finance lease renewal checks the actual canonical owner and both generated
+imports. Negative consumers reject unconfirmed grants, async account authority,
+wrong resource/token/epoch shapes and synthetic cleanup ACKs. A body mutation
+replacing asynchronous stop with `true` fails compilation. Complete controller
+and lease-adapter typing remains partial. See
+[Finance lease runtime](FINANCE_LEASE_RUNTIME.md).
+
 Kupa Bank snapshot commands check their actual body and negative consumers:
 captured synchronous authority, snapshot token/sequence, Bank lease shape,
 synchronous publication and separate committed/readout results. A readout-text

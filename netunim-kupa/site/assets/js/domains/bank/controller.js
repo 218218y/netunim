@@ -1,6 +1,6 @@
 import {bankRecurringDebitHistoryData} from '../../shared/bank-recurring-debits.js';
 import {BANK_READOUT_WARNING} from './snapshot-commands.js';
-import {startFinanceLeaseHeartbeat} from '../../shared/finance-fence.js';
+import {startFinanceLeaseHeartbeat} from '../../shared/finance-lease-heartbeat.js';
 import {createPollingTask} from '../../shared/runtime-polling.js';
 import {uid} from '../../core/values.js';
 import {wholeMoney} from '../../core/money.js';
@@ -306,7 +306,7 @@ async function refreshBankBalance({interactive=false,auto=false,isCurrent=()=>tr
     bridgeState.resultReady=true;render();
     return false;
   }finally{
-    heartbeat?.stop();
+    await heartbeat?.stop();
     if(leaseHeld)try{
       await releaseFinanceSyncLease('bank',leaseToken,{assertCurrent:assertOwner});
     }catch(error){

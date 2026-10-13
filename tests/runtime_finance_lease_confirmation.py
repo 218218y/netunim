@@ -30,11 +30,18 @@ FLOW = r"""(async()=>{
  localStorage.setItem('netunim_'+site+'_bank_auto_daily_v1','0');localStorage.setItem('netunim_'+site+'_credit_auto_daily_v1','0');
  const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js'),db=createStorageJournalDb(),identity=owner+':'+site;
  const mainBefore=JSON.stringify(await db.load(identity)),sharedBefore=JSON.stringify(await db.load(owner+':shared-checks')),projectionBefore=JSON.stringify(kupa?{bank:state.bank,creditSync:state.creditSync}:checksSession.kupaCloudReadState);
- let providers=0,claims=0,releases=0;
+ let providers=0,claims=0,releases=0,tick,finishRenewal,failProvider,renewalEntered,providerEntered;
+ const renewalReady=new Promise(resolve=>{renewalEntered=resolve}),providerReady=new Promise(resolve=>{providerEntered=resolve}),heldRenewal=new Promise(resolve=>{finishRenewal=resolve});
+ const originalSetTimeout=globalThis.setTimeout,originalClearTimeout=globalThis.clearTimeout;
+ if(caseName==='renewal'){
+   globalThis.setTimeout=(fn,ms,...args)=>{if(ms===400000){tick=fn;return -777}return originalSetTimeout(fn,ms,...args)};
+   globalThis.clearTimeout=id=>{if(id!==-777)originalClearTimeout(id)};
+ }
  const request=async(path,options)=>{
    options.assertRequestScope?.();
    if(String(path).endsWith('/claim_finance_sync_lease')){
-     claims++;const requested=JSON.parse(options.body),row={acquired:caseName!=='busy',lease_token:caseName==='busy'?'other-computer':requested.p_lease_token,fence_epoch:7,leased_until:'2030-01-01T00:00:00+00:00'};
+     claims++;if(caseName==='renewal'&&claims===2){renewalEntered();await heldRenewal}
+     const requested=JSON.parse(options.body),row={acquired:caseName!=='busy',lease_token:caseName==='busy'?'other-computer':requested.p_lease_token,fence_epoch:7,leased_until:'2030-01-01T00:00:00+00:00'};
      return new Response(JSON.stringify([caseName==='invalid'?{acquired:true}:row]));
    }
    if(String(path).endsWith('/release_finance_sync_lease')){releases++;return new Response('true')}
@@ -45,14 +52,21 @@ FLOW = r"""(async()=>{
    const path=String(url);
    if(path.includes('/v2/credit/status'))return Promise.resolve(new Response(JSON.stringify({ok:true,bridgeVersion:73,contractVersion:2,profiles:[{profileId:'P'}]})));
    if(path.endsWith('/status'))return Promise.resolve(new Response(JSON.stringify({ok:true,bridgeVersion:73,configured:true})));
-   if(path.includes('/balance')||path.includes('/v2/credit/sync')){providers++;return Promise.reject(Error('fixture provider stopped before any side effect'))}
+   if(path.includes('/balance')||path.includes('/v2/credit/sync')){providers++;if(caseName==='renewal')return new Promise((_resolve,reject)=>{failProvider=()=>reject(Error('fixture provider stopped before any side effect'));providerEntered()});return Promise.reject(Error('fixture provider stopped before any side effect'))}
    if(path.includes('/storage/v1/object/list/'))return Promise.resolve(new Response('[]'));
    return originalFetch(url,options);
  };
  const controller=kupa?(kind==='bank'?bank.commands:credit.commands):finance.commands;
- await controller[kupa?(kind==='bank'?'refreshBankBalance':'refreshCreditSync'):(kind==='bank'?'refreshBank':'refreshCredit')]();
- check(providers===(caseName==='valid'?1:0),'provider opened without confirmed ownership: '+providers);
- check(claims===1,'unexpected lease retry '+claims);check(releases===(caseName==='valid'?1:0),'unconfirmed/foreign lease was released '+releases);
+ const pending=controller[kupa?(kind==='bank'?'refreshBankBalance':'refreshCreditSync'):(kind==='bank'?'refreshBank':'refreshCredit')]();
+ if(caseName==='renewal'){
+   await providerReady;check(typeof tick==='function','missing production heartbeat');
+   const accepted=tick();await renewalReady;let completed=false;void pending.then(()=>{completed=true});failProvider();
+   try{await new Promise(resolve=>originalSetTimeout(resolve,0));check(releases===0&&!completed,'cleanup overtook accepted renewal')}
+   finally{finishRenewal();await accepted;await pending;globalThis.setTimeout=originalSetTimeout;globalThis.clearTimeout=originalClearTimeout}
+ }else await pending;
+ const authorized=caseName==='valid'||caseName==='renewal';
+ check(providers===(authorized?1:0),'provider opened without confirmed ownership: '+providers);
+ check(claims===(caseName==='renewal'?2:1),'unexpected lease retry '+claims);check(releases===(authorized?1:0),'unconfirmed/foreign lease was released '+releases);
  const warning=kupa?(kind==='bank'?bank.queries.snapshot().lastError:credit.queries.uiState().error):finance.queries.snapshot()[kind+'Error'];
  if(caseName!=='busy')check(warning.length>0,'missing visible lease/provider error');
  if(caseName==='invalid')check(warning.includes('אישור'),'invalid grant was not classified visibly');
@@ -67,7 +81,7 @@ for site in ('kupa', 'orders'):
     for kind in ('bank', 'credit'):
         if os.environ.get('NETUNIM_LEASE_OWNER') not in (None, site + '-' + kind):
             continue
-        for case in ('invalid', 'busy', 'valid'):
+        for case in ('invalid', 'busy', 'valid', 'renewal'):
             if os.environ.get('NETUNIM_LEASE_CASE') not in (None, case):
                 continue
             try:

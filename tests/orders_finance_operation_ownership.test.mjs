@@ -10,6 +10,16 @@ import {createUiCloud} from '../netunim-orders/site/assets/js/ui/cloud.js';
 const deferred=()=>{let resolve;const promise=new Promise(done=>{resolve=done});return {promise,resolve}};
 const stamp='2026-10-08T10:00:00.000Z';
 const transaction=id=>({id,date:stamp,processedDate:stamp,amount:12,currency:'ILS',status:'completed',description:id});
+for(const kind of ['Bank','Credit'])test(`Orders ${kind} joins accepted renewal before releasing its lease`,async t=>{
+  const f=fixture(t,{hold:kind.toLowerCase()+'-provider'}),renewal=deferred();let tick,claims=0;
+  t.mock.method(globalThis,'setTimeout',(fn,ms)=>{if(ms===400000)tick=fn;return 1});
+  f.ports.claimFinanceSyncLease=async()=>{if(++claims===2)await renewal.promise;return {acquired:true,leaseName:kind.toLowerCase(),leaseToken:'L',fenceEpoch:1}};
+  const api=f.create(),pending=api['refresh'+kind]();await f.entered.promise;
+  const accepted=tick();f.release.resolve();
+  try{await new Promise(resolve=>setImmediate(resolve));assert.equal(f.counts.release||0,0,'Finance released before renewal settled')}
+  finally{renewal.resolve();await accepted;await pending;api.stopAutoSync()}
+  assert.equal(f.counts.release,1);assert.equal(claims,2);
+});
 
 test('Orders archive hydration retains the accepted sibling read after the first read fails',async t=>{
   const f=fixture(t),held=deferred();f.ports.readBankTransactions=async()=>{throw Error('archive failed')};f.ports.readBankTransactionSnapshot=()=>held.promise;

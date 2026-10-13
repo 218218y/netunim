@@ -56,6 +56,14 @@ begin
     if before_tx is distinct from (select jsonb_agg(to_jsonb(d)) from public.bank_transaction_snapshots d where owner_id=auth.uid()) then raise exception 'archive_changed';end if;
     if before_rows is distinct from (select jsonb_agg(to_jsonb(d)) from public.bank_transactions d where owner_id=auth.uid()) then raise exception 'transactions_changed';end if;
     execute 'reset role';
+    -- A request accepted before cleanup but processed after release can acquire
+    -- a fresh epoch for the same token. The client must join renewal first.
+    perform public.release_finance_sync_lease(kind,'B');
+    select * into r from public.claim_finance_sync_lease(kind,'B',60);
+    if not r.acquired or r.fence_epoch<>102 or r.leased_until<=clock_timestamp() then
+      raise exception 'released_token_late_renewal_semantics_changed';
+    end if;
+    perform public.release_finance_sync_lease(kind,'B');
   end loop;
 end $test$;
 rollback;

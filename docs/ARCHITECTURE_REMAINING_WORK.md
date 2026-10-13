@@ -2,7 +2,7 @@
 
 This is the current inventory after Bank/Credit Bridge model separation and
 Orders Finance document-command and both applications' Bank archive readout
-extraction and Kupa Bank snapshot commands. The chronological
+extraction, Kupa Bank snapshot commands and shared Finance lease renewal ownership. The chronological
 [refactor record](ARCHITECTURE_REFACTOR.md) documents completed slices; older
 remaining-scope paragraphs describe their stage's starting point.
 
@@ -30,6 +30,12 @@ remaining-scope paragraphs describe their stage's starting point.
 - Kupa Bank snapshot commands require atomic cloud writes and real lease ports;
   local/file saves no longer call Finance cloud writers. Both browser apps retire
   the unused raw Bank merge export, retaining the active SQL reconciliation path.
+- Bank/Credit in both apps join accepted lease renewals before release and
+  completion. The strict heartbeat owner captures account/token/epoch, fences
+  failed renewals and owns idempotent asynchronous stop. Kupa Credit cleanup
+  uses account authority independently of publication fences; automatic
+  preflights suppress former-account network error details. The old heartbeat
+  facade is retired. See [lease runtime](FINANCE_LEASE_RUNTIME.md).
 - Strict bodies and negative consumers cover critical storage JSON/receipts,
   scopes, resource ports and selected business/Bridge boundaries. Coverage is
   selective, not a complete application type proof.

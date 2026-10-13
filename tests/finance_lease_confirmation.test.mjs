@@ -1,8 +1,9 @@
+import {startFinanceLeaseHeartbeat} from '../shared/finance-lease-heartbeat.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createCloudTransport as kupaTransport} from '../netunim-kupa/site/assets/js/cloud/transport.js';
 import {createCloudTransport as ordersTransport} from '../netunim-orders/site/assets/js/cloud/transport.js';
-import {startFinanceLeaseHeartbeat,createFinanceManualQueue} from '../shared/finance-fence.js';
+import {createFinanceManualQueue} from '../shared/finance-fence.js';
 
 const granted={acquired:true,lease_token:'requested-token',fence_epoch:7,leased_until:'2030-01-01T00:00:00+00:00'};
 const invalid=[
@@ -50,7 +51,7 @@ for(const [site,create] of [['kupa',kupaTransport],['orders',ordersTransport]]){
   });
   test(`${site} malformed renewal fences the running operation and stops scheduling`,async()=>{
     const api=fixture(create,{...granted,lease_token:'different-renewal-token'});let tick,scheduled=0;
-    const lease={leaseName:'credit',leaseToken:'requested-token',fenceEpoch:7};
+    const lease={acquired:true,leaseName:'credit',leaseToken:'requested-token',fenceEpoch:7,assertCurrent:()=>{}};
     const heartbeat=startFinanceLeaseHeartbeat(lease,api.claimFinanceSyncLease,{setTimer:fn=>{tick=fn;scheduled++;return scheduled},clearTimer:()=>{}});
     await tick();assert.throws(()=>heartbeat.assertCurrent(),invalidReceipt);
     assert.equal(scheduled,1);assert.equal(lease.leaseToken,'requested-token');assert.equal(lease.fenceEpoch,7);heartbeat.stop();

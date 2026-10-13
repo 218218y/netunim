@@ -1,5 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+for(const phase of ['read','poll'])test(`failed Finance ${phase} after account handoff suppresses former-account diagnostics`,async()=>{
+  let valid=true;const reported=[],assertCurrent=()=>{if(!valid)throw Object.assign(Error('changed login'),{code:'FINANCE_OPERATION_SCOPE_CHANGED'})};
+  const fail=async()=>{valid=false;throw Error('private former-account network details')};
+  const ports=createKupaFinanceCloudPorts({session:{connectionMode:'supabase',backendReady:true,dbRevision:1,financeRevision:1},isOnline:()=>true,reportError:error=>reported.push(error),
+    cloudTransport:{readSupabaseDocument:phase==='read'?fail:async()=>({state:{},revision:2,financeRevision:2})},syncDocument:{cloudPoll:fail}});
+  await assert.rejects(ports.refreshFinanceCloudSnapshot({assertCurrent}),{code:'FINANCE_OPERATION_SCOPE_CHANGED'});
+  assert.deepEqual(reported,[]);
+});
 import {createKupaFinanceCloudPorts} from '../netunim-kupa/site/assets/js/composition/finance-cloud.js';
 import {composeKupaFinance} from '../netunim-kupa/site/assets/js/composition/finance.js';
 import {createKupaCreditRuntime} from '../netunim-kupa/site/assets/js/composition/credit.js';
