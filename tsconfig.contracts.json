@@ -20,6 +20,10 @@
     "types": []
   },
   "files": [
+    "netunim-kupa/bank-bridge/provider-errors.mjs",
+    "netunim-kupa/bank-bridge/hapoalim-provider.mjs",
+    "netunim-kupa/bank-bridge/credit-session.mjs",
+    "tests/fixtures/checked-bank-provider.mjs",
     "netunim-kupa/bank-bridge/shutdown-owner.mjs",
     "netunim-kupa/bank-bridge/replacement-command.mjs",
     "tests/fixtures/checked-bank-shutdown.mjs",

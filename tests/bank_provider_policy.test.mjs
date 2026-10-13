@@ -1,31 +1,21 @@
-// Frozen AST fixtures captured before configuration ownership changed. Position,
-// formatting and the former shared busy flag are excluded; provider algorithms
-// (retry/fallback, identity recovery, error envelopes and browser cleanup) are exact.
+// Historical policy digests stay immutable. Canonicalization maps only explicit
+// platform transports to their former calls; algorithm/branch changes still fail.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {parse} from 'acorn';
-import {createHash} from 'node:crypto';
-const names=["normalizeCreditSyncSelection","excludedAccountsForProfile","scrapeCreditProfile","scrapeAllCreditProfiles","scrapeHapoalimSnapshot"];
-function policies(sources){
-  const declarations=sources.flatMap(source=>parse(source,{ecmaVersion:'latest',sourceType:'module'}).body),out={};
-  for(const name of names){
-    const node=structuredClone(declarations.find(node=>node.type==='FunctionDeclaration'&&node.id.name===name));
-    if(!node)throw new Error(`missing provider function: ${name}`);
-    node.body.body=node.body.body.filter(statement=>!(statement.type==='IfStatement'&&statement.test.type==='Identifier'&&statement.test.name==='scrapeBusy')&&!(statement.type==='ExpressionStatement'&&statement.expression.type==='AssignmentExpression'&&statement.expression.left.name==='scrapeBusy'));
-    if(name==='scrapeAllCreditProfiles'&&node.body.body[0].type==='TryStatement')node.body.body=node.body.body[0].block.body;
-    if(name==='scrapeHapoalimSnapshot'){
-      const statement=node.body.body.find(row=>row.type==='TryStatement');
-      statement.finalizer.body=statement.finalizer.body.filter(row=>!(row.type==='ExpressionStatement'&&row.expression.type==='AssignmentExpression'&&row.expression.left.name==='scrapeBusy'));
-    }
-    const stable=JSON.stringify(node,(key,value)=>['start','end','raw'].includes(key)?undefined:value);
-    out[name]=createHash('sha256').update(stable).digest('hex');
-  }
-  return out;
-}
-test('Bank and credit provider policies match their reviewed pre-refactor AST fixtures',()=>{
+import {providerPolicyHashes} from './bank_provider_policy_fixture.mjs';
+const read=name=>fs.readFileSync(new URL('../netunim-kupa/bank-bridge/'+name+'.mjs',import.meta.url),'utf8');
+const sources=()=>['server','finance-commands','provider-errors','hapoalim-session','hapoalim-provider','credit-session','credit-provider'].map(read);
+
+for(const [name,file] of [['Bank and credit provider policies','bank-provider-policy.json'],['Bank session and error policies','bank-session-policy.json']])test(name+' match their reviewed pre-refactor AST fixtures',()=>{
+  const fixture=JSON.parse(fs.readFileSync(new URL('./fixtures/'+file,import.meta.url),'utf8'));
+  assert.deepEqual(providerPolicyHashes(sources(),Object.keys(fixture.policies)),fixture.policies);
+});
+
+test('transport normalization cannot mask a changed provider cleanup or fallback policy',()=>{
   const fixture=JSON.parse(fs.readFileSync(new URL('./fixtures/bank-provider-policy.json',import.meta.url),'utf8'));
-  const source=fs.readFileSync(new URL('../netunim-kupa/bank-bridge/server.mjs',import.meta.url),'utf8');
-  const commands=fs.readFileSync(new URL('../netunim-kupa/bank-bridge/finance-commands.mjs',import.meta.url),'utf8');
-  assert.deepEqual(policies([source,commands]),fixture.policies);
+  for(const [module,before,after,name] of [['hapoalim-provider','scraper.terminate(success)','scraper.terminate(false)','scrapeHapoalimSnapshot'],['credit-provider',/allowCamoufoxFallback:\s*!camoufoxDeferred/,'allowCamoufoxFallback:true','scrapeAllCreditProfiles']]){
+    const all=sources(),original=read(module),changed=original.replace(before,after);assert.notEqual(changed,original);
+    all[all.indexOf(original)]=changed;assert.notEqual(providerPolicyHashes(all,[name])[name],fixture.policies[name]);
+  }
 });
