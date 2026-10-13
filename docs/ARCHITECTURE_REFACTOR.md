@@ -835,3 +835,21 @@ native staged Credit/Windows coverage protect this boundary. See
 [Credit adapter responsibility boundaries](CREDIT_ADAPTER_RESPONSIBILITY_BOUNDARIES.md)
 for the evidence and the remaining wide factory, complete payload typing, shared
 helper and DigitalV3/Camoufox scope.
+
+Credit core profile, transaction, amount and failure policies now have canonical
+pure modules. All Credit production consumers import those narrow models directly;
+the Bank Bridge library exports only its 34 Bank functions/constants. The temporary
+Credit adapter/diagnostic facades, uninstantiated generic scraper and date alias
+have been retired after migrating all consumers and installer entries.
+Immutable AST fixtures preserve 73 Bank and 30 Credit declarations, including
+credential identity, charge signs, pending authority and cooldown policy. The
+actual monetary codec has strict negative consumer and implementation checks,
+and staged Bank/Credit server tests cover the new import graph. See
+[Credit core model boundaries](CREDIT_CORE_MODEL_BOUNDARIES.md) for the remaining
+Bank library responsibilities and the next contract work.
+
+The recurrent Orders document privacy test timeout was reproduced as two search
+owners publishing to the same DOM: cloned nodes did not remove the application's
+auth subscription. The fixture now disposes that owner before binding its source
+and forces the old auth interleaving inside each request. Local/cross-tab cases
+retain the original privacy, listener-disposal and exact Journal assertions.

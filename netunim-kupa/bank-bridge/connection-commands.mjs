@@ -1,5 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { creditProfilePublic, creditProviderSupported, normalizeCreditProfileInput, creditProfilesShareLoginIdentity } from './lib.mjs';
+import {
+  creditProfilePublic,
+  creditProviderSupported,
+  normalizeCreditProfileInput,
+  creditProfilesShareLoginIdentity,
+} from './credit-profile-model.mjs';
 import { normalizeStoredCredentials, normalizeConnectionImportDocument } from './connection-settings.mjs';
 export function publicCreditProfiles(profiles) {
     return (Array.isArray(profiles) ? profiles : []).map(creditProfilePublic).filter(x => x.profileId && creditProviderSupported(x.provider));

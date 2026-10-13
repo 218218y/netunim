@@ -6,7 +6,9 @@ import {mergeCreditSyncResult,normalizeCreditSync} from '../netunim-kupa/site/as
 import {normalizeCreditSync as ordersNormalize} from '../netunim-orders/site/assets/js/domains/finance/credit-feed.js';
 import {creditMonthlyDetailData,creditUpcomingDetailData} from '../netunim-kupa/site/assets/js/domains/credit/model.js';
 import {creditDetailRowMarkup} from '../netunim-orders/site/assets/js/domains/finance/credit-detail-view.js';
-import {MaxAdapter,normalizeMaxRawTransaction,normalizeVisaCalTransaction} from '../netunim-kupa/bank-bridge/credit-adapters.mjs';
+import { MaxAdapter } from '../netunim-kupa/bank-bridge/max-adapter.mjs';
+import { normalizeMaxRawTransaction } from '../netunim-kupa/bank-bridge/max-model.mjs';
+import { normalizeVisaCalTransaction } from '../netunim-kupa/bank-bridge/visa-cal-model.mjs';
 import {normalizeAmexDigitalV3ApprovedTransaction,normalizeAmexDigitalV3Voucher} from '../netunim-kupa/bank-bridge/amex-digitalv3.mjs';
 import {normalizeIsracardDigitalV3ApprovedTransaction,normalizeIsracardDigitalV3Voucher} from '../netunim-kupa/bank-bridge/isracard-digitalv3.mjs';
 import {normalizeIsracardFamilyTransaction} from '../netunim-kupa/bank-bridge/isracard-camoufox.mjs';

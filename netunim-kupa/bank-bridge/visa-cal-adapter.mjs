@@ -13,12 +13,9 @@ import {
   applyVisaCalLoginNavigationPolicy,
   prepareVisaCalBrowserIdentity,
 } from './visa-cal-session.mjs';
-import {
-  creditLoginThrownScrapeFailure,
-  creditProfilePublic,
-  creditScrapeFailure,
-  normalizeCreditScrapeAccount,
-} from './lib.mjs';
+import { creditLoginThrownScrapeFailure, creditScrapeFailure } from './credit-failure-policy.mjs';
+import { creditProfilePublic } from './credit-profile-model.mjs';
+import { normalizeCreditScrapeAccount } from './credit-transaction-model.mjs';
 import { errorFetchStatus, safeError, safeSuffix, text } from './credit-value-codec.mjs';
 import {
   firstVisaCalRawTransaction,

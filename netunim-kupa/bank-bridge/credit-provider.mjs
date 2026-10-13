@@ -1,5 +1,13 @@
 import { randomUUID } from 'node:crypto';
-import { creditProviderSupported, creditAutomaticRetryAfterAt, deferredCreditProfileError, deferredCamoufoxProfileError, expiredCamoufoxLoginPageBlock, creditErrorSeverity, creditErrorComponent } from './lib.mjs';
+import { creditProviderSupported } from './credit-profile-model.mjs';
+import {
+  creditAutomaticRetryAfterAt,
+  deferredCreditProfileError,
+  deferredCamoufoxProfileError,
+  expiredCamoufoxLoginPageBlock,
+  creditErrorSeverity,
+  creditErrorComponent,
+} from './credit-failure-policy.mjs';
 import { CREDIT_CONNECTOR_CONTRACT_VERSION } from './credit-adapter-wire.mjs';
 import { normalizeCreditSyncMode } from './credit-sync-scope.mjs';
 import { diagnosticFingerprint } from './credit-diagnostic-model.mjs';

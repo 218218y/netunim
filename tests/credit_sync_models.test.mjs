@@ -4,14 +4,16 @@ import assert from 'node:assert/strict';
 import {
   CREDIT_HISTORY_DAYS,
   CREDIT_FUTURE_MONTHS,
+} from '../netunim-kupa/bank-bridge/credit-adapter-wire.mjs';
+import {
   CREDIT_PROVIDER_CONFIG,
   creditProviderSupported,
   creditProfilePublic,
   creditProfilesShareLoginIdentity,
   normalizeCreditProfileInput,
-  normalizeCreditScrapeAccount,
-  creditScrapeFailure,
-} from '../netunim-kupa/bank-bridge/lib.mjs';
+} from '../netunim-kupa/bank-bridge/credit-profile-model.mjs';
+import { normalizeCreditScrapeAccount } from '../netunim-kupa/bank-bridge/credit-transaction-model.mjs';
+import { creditScrapeFailure } from '../netunim-kupa/bank-bridge/credit-failure-policy.mjs';
 import {
   CREDIT_SYNC_VERSION,
   CREDIT_PROVIDER_LABELS,
@@ -34,7 +36,7 @@ import {
   syncedCreditSeries,
 } from '../netunim-kupa/site/assets/js/domains/credit/sync-feed.js';
 import {creditSyncHeadlineState} from '../netunim-kupa/site/assets/js/domains/credit/view.js';
-import {parseVisaCalMonthData} from '../netunim-kupa/bank-bridge/credit-adapters.mjs';
+import { parseVisaCalMonthData } from '../netunim-kupa/bank-bridge/visa-cal-model.mjs';
 import {allInstallmentsData,businessInstallmentsData,homeInstallmentsData,creditForecastInstallmentsData,nextCreditCycleData,nextBusinessCreditCycleData,nextHomeCreditCycleData,creditMonthlyDetailData,CREDIT_DETAIL_HISTORY_MONTHS} from '../netunim-kupa/site/assets/js/domains/credit/model.js';
 import {createBankBridgeIntegration} from '../netunim-kupa/site/assets/js/integrations/bank-bridge.js';
 import {bankLongTermPositionData,bankNextCycleCommitmentsData,bankHomeNextCycleCommitmentsData,bankProjectedThisMonthData,bankHomeProjectedThisMonthData} from '../netunim-kupa/site/assets/js/domains/bank/model.js';

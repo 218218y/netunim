@@ -20,6 +20,8 @@
     "types": []
   },
   "files": [
+    "netunim-kupa/bank-bridge/credit-core-values.mjs",
+    "tests/fixtures/checked-credit-core-values.mjs",
     "netunim-kupa/bank-bridge/credit-sync-scope.mjs",
     "tests/fixtures/checked-credit-sync-scope.mjs",
     "netunim-kupa/bank-bridge/json-artifact-owner.mjs",

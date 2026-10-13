@@ -28,8 +28,9 @@ import {runProcess,protectText,unprotectText} from './windows-platform.mjs';
 import {randomBytes} from 'node:crypto';
 import {scraperFailureMessage,waitForTerminalLoginResult} from './lib.mjs';
 import {doctorCamoufox} from './isracard-camoufox.mjs';
-import {CREDIT_CONNECTOR_CONTRACT_VERSION,createCreditProviderAdapter} from './credit-adapters.mjs';
-import {createCreditDiagnosticLog} from './credit-diagnostics.mjs';
+import { CREDIT_CONNECTOR_CONTRACT_VERSION } from './credit-adapter-wire.mjs';
+import { createCreditProviderAdapter } from './credit-adapter-factory.mjs';
+import { createCreditDiagnosticLog } from './credit-diagnostic-log.mjs';
 import {creditIdentityDirectory,deleteCreditIdentity,resetCreditIdentities} from './credit-identity.mjs';
 import {createBankDiagnosticRun,finishBankDiagnosticRun,recordBankAccountDiagnostic,recordBankTransactionDiagnostic} from './bank-diagnostics.mjs';
 

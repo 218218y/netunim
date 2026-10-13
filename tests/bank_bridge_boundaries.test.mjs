@@ -24,7 +24,7 @@ test('Bank HTTP/capability boundaries have explicit dependency and collaborator 
     ['browser-locator',[],'createInstalledBrowserLocator',2],
     ['hapoalim-provider',['./provider-errors.mjs'],'createHapoalimProvider',7],
     ['credit-session',[],'createCreditProfileSession',4],
-    ['credit-provider',['node:crypto','./lib.mjs','./credit-adapter-wire.mjs','./credit-sync-scope.mjs','./credit-diagnostic-model.mjs'],'createCreditProvider',3],
+    ['credit-provider',['node:crypto','./credit-profile-model.mjs','./credit-failure-policy.mjs','./credit-adapter-wire.mjs','./credit-sync-scope.mjs','./credit-diagnostic-model.mjs'],'createCreditProvider',3],
     ['shutdown-owner',[],'createBridgeShutdownOwner',3],
     ['replacement-command',[],'createBridgeReplacementCommand',4],
     ['http-handler',['node:crypto','./wire-errors.mjs'],'createBankBridgeHttpHandler',4],

@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {parseVisaCalMonthData,normalizeVisaCalTransaction,parseVisaCalFrame} from '../netunim-kupa/bank-bridge/credit-adapters.mjs';
-import {normalizeCreditScrapeAccount} from '../netunim-kupa/bank-bridge/lib.mjs';
+import {
+  parseVisaCalMonthData,
+  normalizeVisaCalTransaction,
+  parseVisaCalFrame,
+} from '../netunim-kupa/bank-bridge/visa-cal-model.mjs';
+import { normalizeCreditScrapeAccount } from '../netunim-kupa/bank-bridge/credit-transaction-model.mjs';
 import {normalizeCreditSync,mergeCreditSyncResult} from '../netunim-kupa/site/assets/js/domains/credit/sync-feed.js';
 import {normalizeCreditSync as ordersNormalize} from '../netunim-orders/site/assets/js/domains/finance/credit-feed.js';
 import {kupaAccountCashflowData} from '../shared/kupa-cashflow.js';

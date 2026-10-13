@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { postVisaCalJson } from '../netunim-kupa/bank-bridge/credit-adapters.mjs';
+import { postVisaCalJson } from '../netunim-kupa/bank-bridge/credit-http.mjs';
 
 for (const name of ['AbortError', 'TypeError'])
   test(

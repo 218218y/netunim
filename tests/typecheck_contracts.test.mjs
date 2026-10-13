@@ -25,6 +25,13 @@ function check(overrides=new Map()){
 }
 function describe(diagnostics){return ts.formatDiagnostics(diagnostics,{getCanonicalFileName:file=>file,getCurrentDirectory:()=>root,getNewLine:()=> '\n'})}
 
+test('the actual credit amount codec cannot turn a debit into presentation text',()=>{
+  const source=path.join(root,'netunim-kupa/bank-bridge/credit-core-values.mjs');
+  const original=readFileSync(source,'utf8'),changed=original.replace(/amount\s*===\s*0\s*\?\s*0\s*:\s*-amount/,'amount===0?0:String(-amount)');
+  assert.notEqual(changed,original);const diagnostics=check(new Map([[source,changed]]));
+  assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+});
+
 test('the actual credit sync scope cannot substitute a label for its numeric horizon',()=>{
   const source=path.join(root,'netunim-kupa/bank-bridge/credit-sync-scope.mjs');
   const original=readFileSync(source,'utf8'),changed=original.replace(/futureMonths:\s*CREDIT_CORE_FUTURE_MONTHS/,'futureMonths:"quick"');

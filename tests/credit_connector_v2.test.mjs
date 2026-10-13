@@ -6,27 +6,37 @@ import {
   CREDIT_CONNECTOR_CONTRACT_VERSION,
   MAX_PROVIDER_SCHEMA_VERSION,
   VISA_CAL_PROVIDER_SCHEMA_VERSION,
-  attachCamoufoxFallbackContext,
-  VisaCalAdapter,
+} from '../netunim-kupa/bank-bridge/credit-adapter-wire.mjs';
+import { attachCamoufoxFallbackContext } from '../netunim-kupa/bank-bridge/isracard-group-adapter.mjs';
+import { VisaCalAdapter } from '../netunim-kupa/bank-bridge/visa-cal-adapter.mjs';
+import {
   applyVisaCalLoginNavigationPolicy,
-  MaxAdapter,
-  buildCreditMonthPlan,
-  classifyCreditHttpResponse,
-  createCreditProviderAdapter,
-  creditSyncScope,
-  extractMaxTransactionCandidates,
-  normalizeMaxRawTransaction,
-  parseRetryAfter,
-  parseVisaCalFrame,
   prepareVisaCalBrowserIdentity,
-  parseVisaCalMonthData,
-  postVisaCalJson,
   isVisaCalInvalidPasswordErrorUrl,
   visaCalHasAuthenticatedSessionState,
-} from '../netunim-kupa/bank-bridge/credit-adapters.mjs';
+} from '../netunim-kupa/bank-bridge/visa-cal-session.mjs';
+import { MaxAdapter } from '../netunim-kupa/bank-bridge/max-adapter.mjs';
+import { buildCreditMonthPlan } from '../netunim-kupa/bank-bridge/credit-month-plan.mjs';
+import {
+  classifyCreditHttpResponse,
+  parseRetryAfter,
+} from '../netunim-kupa/bank-bridge/credit-http-policy.mjs';
+import { createCreditProviderAdapter } from '../netunim-kupa/bank-bridge/credit-adapter-factory.mjs';
+import { creditSyncScope } from '../netunim-kupa/bank-bridge/credit-sync-scope.mjs';
+import {
+  extractMaxTransactionCandidates,
+  normalizeMaxRawTransaction,
+} from '../netunim-kupa/bank-bridge/max-model.mjs';
+import { parseVisaCalFrame, parseVisaCalMonthData } from '../netunim-kupa/bank-bridge/visa-cal-model.mjs';
+import { postVisaCalJson } from '../netunim-kupa/bank-bridge/credit-http.mjs';
 import {launchCamoufox,parseIsracardFamilyAccountsResponse,parseIsracardFamilyCardListBalances,parseIsracardFamilyTransactionsResponse} from '../netunim-kupa/bank-bridge/isracard-camoufox.mjs';
 import {creditIdentityDirectory,deleteCreditIdentity} from '../netunim-kupa/bank-bridge/credit-identity.mjs';
-import {createCreditDiagnosticLog,responseShapeFingerprint,safeCreditResponseShape,sanitizeCreditDiagnosticEvent} from '../netunim-kupa/bank-bridge/credit-diagnostics.mjs';
+import { createCreditDiagnosticLog } from '../netunim-kupa/bank-bridge/credit-diagnostic-log.mjs';
+import {
+  responseShapeFingerprint,
+  safeCreditResponseShape,
+  sanitizeCreditDiagnosticEvent,
+} from '../netunim-kupa/bank-bridge/credit-diagnostic-model.mjs';
 import {buildCreditDataDiagnosticPayload,maxRawTransactionTime} from '../netunim-kupa/bank-bridge/credit-data-diagnostics.mjs';
 import {AMEX_DIGITAL_V3_SCHEMA_VERSION,buildAmexDigitalV3LogonRequest,classifyAmexDigitalV3LogonResult,normalizeAmexDigitalV3ApprovedTransaction,normalizeAmexDigitalV3Voucher,parseAmexDigitalV3Cards,prepareAmexDigitalV3Page} from '../netunim-kupa/bank-bridge/amex-digitalv3.mjs';
 import {ISRACARD_DIGITAL_V3_SCHEMA_VERSION,normalizeIsracardDigitalV3ApprovedTransaction,normalizeIsracardDigitalV3Voucher,parseIsracardDigitalV3Cards} from '../netunim-kupa/bank-bridge/isracard-digitalv3.mjs';

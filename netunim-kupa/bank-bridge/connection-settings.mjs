@@ -1,4 +1,9 @@
-import { parseAccountSelector, normalizeCreditProfileInput, creditProfilesShareLoginIdentity, creditProfilePublic } from './lib.mjs';
+import { parseAccountSelector } from './lib.mjs';
+import {
+  normalizeCreditProfileInput,
+  creditProfilesShareLoginIdentity,
+  creditProfilePublic,
+} from './credit-profile-model.mjs';
 export function normalizeStoredCredentials(value) {
     if (!value || typeof value !== 'object')
         return null;

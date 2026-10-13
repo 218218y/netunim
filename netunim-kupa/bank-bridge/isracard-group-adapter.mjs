@@ -2,11 +2,9 @@
 import { safeError, safeSuffix, text } from './credit-value-codec.mjs';
 import { CreditProviderAdapter } from './credit-adapter-base.mjs';
 import { creditSyncScope } from './credit-sync-scope.mjs';
-import {
-  creditProfilePublic,
-  creditThrownScrapeFailure,
-  normalizeCreditScrapeAccount,
-} from './lib.mjs';
+import { creditProfilePublic } from './credit-profile-model.mjs';
+import { creditThrownScrapeFailure } from './credit-failure-policy.mjs';
+import { normalizeCreditScrapeAccount } from './credit-transaction-model.mjs';
 import { genericMonthlyAccount } from './credit-monthly-projection.mjs';
 import {
   camoufoxCreditSupported,

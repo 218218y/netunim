@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { hasOwn, safeDate, safeSuffix, text } from './credit-value-codec.mjs';
 import { maxRawTransactionTime } from './credit-data-diagnostics.mjs';
-import { creditDebitAmount } from './lib.mjs';
+import { creditDebitAmount } from './credit-core-values.mjs';
 
 function maxNumber(value) {
   if (value === null || value === undefined || String(value).trim() === '') return null;
@@ -403,22 +403,4 @@ export function enrichMaxTransaction(tx = {}) {
       : {}),
     transactionTime: tx?.transactionTime || timeEvidence?.time || '',
   };
-}
-
-export function maxRawDiagnosticSamples(accounts, profileId) {
-  const samples = [];
-  for (const account of Array.isArray(accounts) ? accounts : []) {
-    const rows = (Array.isArray(account?.txns) ? account.txns : []).filter(
-      (tx) => tx?.rawTransaction && typeof tx.rawTransaction === 'object'
-    );
-    if (!rows.length) continue;
-    const chosen =
-      rows.find((tx) => maxRawTransactionTime(tx.rawTransaction).candidates.length) || rows[0];
-    samples.push({
-      profileId,
-      accountNumber: account?.accountNumber || '',
-      rawTransaction: chosen.rawTransaction,
-    });
-  }
-  return samples;
 }

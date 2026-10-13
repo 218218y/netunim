@@ -1,6 +1,9 @@
 # Credit adapter responsibility boundaries
 
 This stage starts at `6e6376a4b64c2e277274c6e6a64dddb52d80d426`.
+The subsequent [Credit core stage](CREDIT_CORE_MODEL_BOUNDARIES.md) retired the
+temporary export facades, generic scraper and date alias described below after
+all consumers had migrated. The original policy fixtures stay as baseline evidence.
 The remaining large `credit-adapters.mjs` combined provider routing, browser
 authentication, transport, issuer normalization, month projection and diagnostics.
 The change separates those existing responsibilities without replacing the
@@ -96,8 +99,9 @@ reformatted or reorganized by this change.
 The historical factory options remain source-compatible, including its 17 option
 fields. Per-provider command ports and complete issuer input/result contracts
 remain future boundary work; splitting the implementation is not evidence that
-all dependency width has been solved. `lib.mjs` still combines Bank/Credit helper
-responsibilities. DigitalV3 and Camoufox internals, CLI/token creation, remaining
+all dependency width has been solved. The subsequent
+[Credit core model split](CREDIT_CORE_MODEL_BOUNDARIES.md) moved the Credit helpers
+out of the Bank library. DigitalV3 and Camoufox internals, CLI/token creation, remaining
 Document Bridge orchestration, compatibility inventory and application controller
 decomposition also remain in the roadmap. Live issuer sessions and physical
 multi-computer checks require their own controlled environment; synthetic native

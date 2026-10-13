@@ -37,10 +37,8 @@ export function creditRecentStartDate(now = new Date()) {
   return d;
 }
 
-export const creditStartDate = creditRecoveryStartDate;
-
 export function buildCreditMonthPlan({
-  startDate = creditStartDate(),
+  startDate = creditRecoveryStartDate(),
   futureMonths = CREDIT_FUTURE_MONTHS,
   now = new Date(),
 } = {}) {

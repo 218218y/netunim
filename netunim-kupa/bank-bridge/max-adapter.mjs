@@ -11,10 +11,10 @@ import { creditSyncScope } from './credit-sync-scope.mjs';
 import { buildCreditMonthPlan } from './credit-month-plan.mjs';
 import {
   creditLoginThrownScrapeFailure,
-  creditProfilePublic,
   creditScrapeFailure,
   creditThrownScrapeFailure,
-} from './lib.mjs';
+} from './credit-failure-policy.mjs';
+import { creditProfilePublic } from './credit-profile-model.mjs';
 import {
   extractMaxTransactionCandidates,
   maxCategories,
