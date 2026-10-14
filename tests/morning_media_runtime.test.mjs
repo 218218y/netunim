@@ -33,3 +33,10 @@ test('unknown operation JSON cannot invent a verified document identity',()=>{
   assert.equal(decodeMorningVerifiedDocumentId({operation}),operation.document_id);
   for(const value of [null,[],{operation:null},{operation:{...operation,state:'created_unverified'}},{operation:{...operation,verified_at:true}},{operation:{...operation,verified_at:'unknown'}},{operation:{...operation,document_id:7}}])assert.throws(()=>decodeMorningVerifiedDocumentId(value));
 });
+test('disposal during operation lookup joins that read without starting a later PDF request',async()=>{
+  const held=gate(),entered=gate();let pdfReads=0;
+  const media=createMorningDocumentMedia({request:{json:async()=>{entered.resolve();await held.promise;return {operation:{state:'created',verified_at:'2026-10-14T00:00:00Z',document_id:'retained-ID'}}},pdf:async()=>{pdfReads++;return new Blob()}},authority:{capture:()=>()=>{}},
+    presentation:{capture:()=>({isCurrent:()=>true,show:()=>null})},platform:{createUrl:()=>'',revokeUrl(){},watch:()=>()=>{}},feedback:{toast:()=>assert.fail('obsolete read cannot warn')}});
+  const viewing=media.viewVerifiedOperation('same-operation');await entered.promise;media.dispose();held.resolve();
+  assert.equal(await viewing,false);await media.drain();assert.equal(pdfReads,0,'a closed command must not enter a new provider stage');
+});

@@ -1,7 +1,4 @@
 import {createRuntimeTaskOwner} from '../../shared/runtime-task-owner.js';
-import {createMorningDocumentMedia} from './morning-document-media.js';
-import {createMorningMediaEffects} from '../../platform/morning-media-effects.js';
-import {createMorningMediaPresentation} from '../../platform/morning-media-presentation.js';
 import {esc} from '../../core/values.js';
 import {$} from '../../state/constants.js';
 import {MORNING_DOCUMENT_TYPES,morningDocumentLabel} from '../../core/morning-document-types.js';
@@ -20,15 +17,16 @@ export function defaultDocumentSearch(now=new Date()){
 function options(values){return '<option value="">הכל</option>'+Object.entries(values).map(([value,label])=>`<option value="${value}">${esc(label)}</option>`).join('')}
 function amount(value,currency){return new Intl.NumberFormat('he-IL',{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(value)||0)+' '+String(currency||'')}
 
-export function createDomainsCustomersDocumentsBrowser({operationScope,subscribeAccountScope=()=>()=>{},modal,toast,request,dateEditorMarkup,onDebtDocumentMetadataResolved=()=>false}){
+export function createDomainsCustomersDocumentsBrowser({operationScope,subscribeAccountScope=()=>()=>{},modal,toast,request,documentMedia,dateEditorMarkup,onDebtDocumentMetadataResolved=()=>false}){
   if(typeof operationScope?.captureRead!=='function')throw new TypeError('morning_operation_scope_required');
   if(typeof request?.json!=='function'||typeof request?.pdf!=='function')throw new TypeError('morning_request_required');
+  if(typeof documentMedia?.create!=='function')throw new TypeError('morning_media_composition_required');
   let disposed=false,browserAssert=null;const scopeChanged=error=>error?.code==='MORNING_OPERATION_SCOPE_CHANGED';
   function captureScope(){const assertAuth=operationScope.captureRead();return ()=>{if(disposed)throw Object.assign(new Error('Morning נעצר'),{code:'MORNING_OPERATION_SCOPE_CHANGED'});assertAuth()}}
   const cache=new Map(),operationMetadataCache=new Map();let query=defaultDocumentSearch(),sequence=0,picker=false,busy=false,lastItems=[];
   const downloads=new Map();let ownedSurface=null;
   const work=createRuntimeTaskOwner();
-  const media=createMorningDocumentMedia({request,authority:{capture:captureScope},presentation:createMorningMediaPresentation({modal,onStandalone:surface=>{ownedSurface=surface}}),platform:createMorningMediaEffects(),feedback:{toast}});
+  const media=documentMedia.create({capture:captureScope,onStandalone:surface=>{ownedSurface=surface}});
   const display=createMorningDisplayLifetime({subscribeAccountScope,onInvalidate:()=>{
     const owned=ownedSurface;ownedSurface=null;
     sequence++;browserAssert=null;busy=false;lastItems=[];query=defaultDocumentSearch();invalidateCache();media.cancelPending();
@@ -161,8 +159,8 @@ export function createDomainsCustomersDocumentsBrowser({operationScope,subscribe
   }
   function dispose(){if(disposed)return false;disposed=true;work.close();media.dispose();display.dispose();return true}
   async function drain(){do{await Promise.all([work.drain(),media.drain()])}while(work.isPending()||media.isPending())}
-  function command(run){return (...args)=>disposed?Promise.resolve(false):work.run(()=>run(...args))}
+  function command(run,args){return disposed?Promise.resolve(false):work.run(()=>run(...args))}
   const runtime={dispose,drain,isPending:()=>work.isPending()||media.isPending(),cancelPending:media.cancelPending};
-  return {dispose,runtime,openDocuments:command(openDocuments),openInvoicePicker:command(openInvoicePicker),search:command(search),page:command(page),selectInvoice,details:command(details),invalidateCache,
-    viewDocument:command(viewDocument),viewVerifiedOperation:command(viewVerifiedOperation),downloadDocument:command(downloadDocument),hydrateDebtDocumentLinks:command(hydrateDebtDocumentLinks),previewDraft:command((payload,options)=>media.previewDraft(payload,options))};
+  return {dispose,runtime,openDocuments:(...args)=>command(openDocuments,args),openInvoicePicker:(...args)=>command(openInvoicePicker,args),search:(...args)=>command(search,args),page:(...args)=>command(page,args),selectInvoice,details:(...args)=>command(details,args),invalidateCache,
+    viewDocument:(...args)=>command(viewDocument,args),viewVerifiedOperation:(...args)=>command(viewVerifiedOperation,args),downloadDocument:(...args)=>command(downloadDocument,args),hydrateDebtDocumentLinks:(...args)=>command(hydrateDebtDocumentLinks,args),previewDraft:(...args)=>command((payload,options)=>media.previewDraft(payload,options),args)};
 }

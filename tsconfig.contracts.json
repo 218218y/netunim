@@ -20,6 +20,7 @@
     "types": []
   },
   "files": [
+    "netunim-orders/site/assets/js/composition/morning-media.js",
     "tests/fixtures/checked-morning-media.mjs",
     "netunim-orders/site/assets/js/domains/customers/morning-document-media.js",
     "netunim-orders/site/assets/js/platform/morning-media-effects.js",

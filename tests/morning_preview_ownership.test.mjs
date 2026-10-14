@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createDomainsCustomersDocuments} from '../netunim-orders/site/assets/js/domains/customers/documents.js';
-import {createDomainsCustomersDocumentsBrowser} from '../netunim-orders/site/assets/js/domains/customers/documents-browser.js';
+import {createMorningBrowserFixture as createDomainsCustomersDocumentsBrowser} from './morning_browser_ports.mjs';
 import {createMorningRequest} from '../netunim-orders/site/assets/js/integrations/morning.js';
 
 function gate(){let resolve;const promise=new Promise(done=>{resolve=done});return {promise,resolve}}

@@ -25,7 +25,7 @@ URL.createObjectURL=()=>{const url=`blob:morning-test-${created.length+1}`;creat
 URL.revokeObjectURL=url=>{revoked.push(String(url))};
 
 try{
-  const {createDomainsCustomersDocumentsBrowser:buildMorning}=await import('../netunim-orders/site/assets/js/domains/customers/documents-browser.js');
+  const {createMorningBrowserFixture:buildMorning}=await import('./morning_browser_ports.mjs');
 function createDomainsCustomersDocumentsBrowser(ports){return buildMorning({...ports,request:createMorningRequest({supaFetch:ports.supaFetch,operationScope:ports.operationScope})})}
 
   const browser=createDomainsCustomersDocumentsBrowser({

@@ -69,12 +69,14 @@ VERIFY = r"""(async()=>{
  const displayedRoot=document.getElementById('morningDocumentsBrowser');
  // Real domain owners, real auth subscription, and real browser event targets.
  const {createDomainsCustomersDocuments}=await import('./assets/js/domains/customers/documents.js'),{createDomainsCustomersDocumentsBrowser}=await import('./assets/js/domains/customers/documents-browser.js'),{createMorningRequest}=await import('./assets/js/integrations/morning.js');
+ const {createMorningMediaComposition}=await import('./assets/js/composition/morning-media.js');
  const add=EventTarget.prototype.addEventListener,remove=EventTarget.prototype.removeEventListener,live=new Set(),subscriptions=new Set();
  EventTarget.prototype.addEventListener=function(type,fn,options){if(this===window||this===document)live.add(fn);return add.call(this,type,fn,options)};
  EventTarget.prototype.removeEventListener=function(type,fn,options){if(this===window||this===document)live.delete(fn);return remove.call(this,type,fn,options)};
  const subscribeAccountScope=fn=>{const stop=cloudAuth.subscribeAccountScope(fn);subscriptions.add(fn);return ()=>{subscriptions.delete(fn);stop()}};
  try{for(let i=0;i<100;i++){
   const ports={operationScope:morningOperationScope,subscribeAccountScope,modal:(...args)=>uiModal.modal(...args),toast(){},dateEditorMarkup:()=>'',request:createMorningRequest({operationScope:morningOperationScope,supaFetch:(...args)=>cloudAuth.supaFetch(...args)})};
+  ports.documentMedia=createMorningMediaComposition(ports);
   const browser=createDomainsCustomersDocumentsBrowser(ports),documents=createDomainsCustomersDocuments({...ports,model:{get state(){return state}},documentsBrowser:browser,confirmDialog:(...args)=>uiModal.confirmDialog(...args)});
   documents.dispose();browser.dispose();if(documents.dispose()!==false||browser.dispose()!==false)throw Error('Morning disposal not idempotent');
   if(document.getElementById('morningDocumentsBrowser')!==displayedRoot)throw Error('unmounted Morning owner cleared the active owner display');

@@ -3,6 +3,7 @@ import {createDomainsCustomersSelectors} from '../domains/customers/selectors.js
 import {createDomainsCustomers} from '../domains/customers/composition.js';
 import {createCustomersActions} from '../ui/action-packs/customers.js';
 import {createMorningActions} from '../ui/action-packs/morning.js';
+import {createMorningMediaComposition} from './morning-media.js';
 
 // Read-only customer totals are needed by Dashboard before the UI is assembled.
 // Morning issuance, recovery, and customer-debt persistence remain owned by the
@@ -32,8 +33,10 @@ export function createOrdersCustomersRuntime({model,customerUi,customerRevision}
     ])for(const method of methods)if(typeof port?.[method]!=='function')throw new TypeError(`customers_${name}_${method}_required`);
     if(typeof refreshForMorningRecovery!=='function')throw new TypeError('customers_recovery_refresh_required');
 
+    const morningRequest=createMorningRequest({supaFetch:(...args)=>cloudAuth.supaFetch(...args),operationScope:morningOperationScope});
+    const documentMedia=createMorningMediaComposition({request:morningRequest,modal:(...args)=>uiModal.modal(...args),toast:(...args)=>uiStatus.toast(...args)});
     const domain=createDomainsCustomers({
-      morningOperationScope,morningRequest:createMorningRequest({supaFetch:(...args)=>cloudAuth.supaFetch(...args),operationScope:morningOperationScope}),customerRevision,model,customerUi,selectors,
+      morningOperationScope,morningRequest,documentMedia,customerRevision,model,customerUi,selectors,
       uiLayout,uiModal,uiStatus,storagePersistence,uiNavigation,uiDateEditor,
       refreshForMorningRecovery,subscribeAccountScope:cloudAuth.subscribeAccountScope,
       getBusinessBankTransactions:bankTransactions.getTransactions,

@@ -28,6 +28,7 @@ browser=(SITE/'assets/js/domains/customers/documents-browser.js').read_text(enco
 media=(SITE/'assets/js/domains/customers/morning-document-media.js').read_text(encoding='utf-8')
 media_presentation=(SITE/'assets/js/platform/morning-media-presentation.js').read_text(encoding='utf-8')
 media_effects=(SITE/'assets/js/platform/morning-media-effects.js').read_text(encoding='utf-8')
+media_composition=(SITE/'assets/js/composition/morning-media.js').read_text(encoding='utf-8')
 persistence=(SITE/'assets/js/storage/persistence.js').read_text(encoding='utf-8')
 bulk=(SITE/'assets/js/domains/customers/bulk.js').read_text(encoding='utf-8')
 composition=(SITE/'assets/js/domains/customers/composition.js').read_text(encoding='utf-8')
@@ -247,7 +248,7 @@ ok('function allocationMarkup(value)' in browser and 'morning-browser-allocation
    'Morning document browser allocation: allocation IDs are compact, expose the full value on hover and collapse to an existence marker at tighter widths')
 ok('localStorage' not in browser+media and 'sessionStorage' not in browser+media and 'document_links' in browser and 'document_pdf' in request and 'request.pdf' in media and 'URL.createObjectURL' in media_effects and 'noopener noreferrer' in browser,
    'Browser keeps PDF viewing transient in a local Blob, requests fresh download links and persists neither documents nor signed URLs')
-ok('createMorningDocumentMedia(' in browser and 'previewDraft:command(' in browser and 'createRuntimeTaskOwner' in media
+ok('createMorningDocumentMedia(' in media_composition and 'documentMedia.create(' in browser and 'previewDraft:(...args)=>command(' in browser and 'createRuntimeTaskOwner' in media
    and all(name not in documents+browser for name in ('previewObjectUrl','previewSequence','previewRequest','URL.createObjectURL','URL.revokeObjectURL')),
    'Morning PDF authority: draft and official requests use one owned publication generation and no controller-local Blob source')
 ok('firstElementChild===marker' in media_presentation and 'modalOpen()===open' in media_presentation and 'MutationObserver' in media_effects and 'observer.disconnect()' in media_effects,

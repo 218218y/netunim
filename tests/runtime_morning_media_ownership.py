@@ -10,12 +10,13 @@ FLOW = r"""(async()=>{
   const {createDomainsCustomersDocuments}=await import('./assets/js/domains/customers/documents.js');
   const {createDomainsCustomersDocumentsBrowser}=await import('./assets/js/domains/customers/documents-browser.js');
   const {createMorningRequest}=await import('./assets/js/integrations/morning.js');
+  const {createMorningMediaComposition}=await import('./assets/js/composition/morning-media.js');
   const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
   const {loadMorningDebtRecoveryContext}=await import('./assets/js/domains/customers/morning-debt-recovery.js');
   const db=createStorageJournalDb(),raw=async()=>JSON.stringify({main:await db.load('local:orders'),checks:await db.load('local:shared-checks'),recovery:loadMorningDebtRecoveryContext()}),before=await raw();
-  const created=[],revoked=[],calls=[],watched=new Set(),createUrl=URL.createObjectURL,revokeUrl=URL.revokeObjectURL,Observer=MutationObserver;
+  const created=[],revoked=[],blobs=new Map(),calls=[],watched=new Set(),createUrl=URL.createObjectURL,revokeUrl=URL.revokeObjectURL,Observer=MutationObserver;
   let phase='',held=gate(),entered=gate();
-  URL.createObjectURL=blob=>{const url=createUrl(blob);created.push(url);return url};URL.revokeObjectURL=url=>{revoked.push(url);revokeUrl(url)};
+  URL.createObjectURL=blob=>{const url=createUrl(blob);created.push(url);blobs.set(url,blob);return url};URL.revokeObjectURL=url=>{revoked.push(url);revokeUrl(url)};
   globalThis.MutationObserver=class extends Observer{observe(target,options){super.observe(target,options);if(['modal','modalBackdrop'].includes(target.id))watched.add(this)}disconnect(){watched.delete(this);super.disconnect()}};
   cloudAuth.supaFetch=async(_path,options)=>{
     options.assertRequestScope();const request=JSON.parse(options.body);calls.push(request.action);
@@ -26,6 +27,7 @@ FLOW = r"""(async()=>{
   };
   const request=createMorningRequest({operationScope:fixtureMorningScope,supaFetch:(...args)=>cloudAuth.supaFetch(...args)});
   const ports={operationScope:fixtureMorningScope,request,subscribeAccountScope:cloudAuth.subscribeAccountScope,modal:(...args)=>uiModal.modal(...args),toast:message=>{throw Error(message)},dateEditorMarkup:(...args)=>uiDateEditor.dateEditorMarkup(...args)};
+  ports.documentMedia=createMorningMediaComposition(ports);
   const browser=createDomainsCustomersDocumentsBrowser(ports),documents=createDomainsCustomersDocuments({...ports,model,documentsBrowser:browser,confirmDialog:(...args)=>uiModal.confirmDialog(...args)});
   const settle=async()=>{for(let n=0;n<8;n++)await Promise.resolve()};
   try{
@@ -34,7 +36,7 @@ FLOW = r"""(async()=>{
     phase='draft';const draft=documents.previewMorningDocument();await entered.promise;
     check(await browser.viewDocument('official-document')===true,'later official request publishes in the actual issuance iframe');
     const frame=document.getElementById('morningPreviewFrame'),official=frame.src;
-    check((await (await fetch(official)).text()).includes('exact official content'),'official Blob retains exact provider bytes');
+    check((await blobs.get(official).text()).includes('exact official content'),'native viewer Blob retains exact provider bytes');
     held.resolve();await draft;await browser.runtime.drain();
     check(frame.src===official&&!revoked.includes(official),'held draft cannot replace or revoke the later official source');
     check(document.getElementById('morningPreviewNote').textContent.includes('מסמך רשמי'),'official PDF presentation remains authoritative');

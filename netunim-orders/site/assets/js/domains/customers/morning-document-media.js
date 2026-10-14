@@ -49,7 +49,7 @@ export function createMorningDocumentMedia({request,authority,presentation,platf
   }
   function cancelPending(){generation++;surface=null;release();unsubscribe?.();unsubscribe=null}
   function watch(){if(!unsubscribe)unsubscribe=platform.watch(()=>{if(surface&&!surface.isCurrent())cancelPending()})}
-  /** @param {MediaKind} kind @param {(assertCurrent:MorningAssertion)=>Promise<Blob>} load @param {MediaOptions} [options] @returns {Promise<boolean>} */
+  /** @param {MediaKind} kind @param {(assertCurrent:MorningAssertion,current:()=>boolean)=>Promise<Blob|null>} load @param {MediaOptions} [options] @returns {Promise<boolean>} */
   function show(kind,load,{assertCurrent,isCurrent=()=>true,quiet=false}={}){
     if(!work.isActive())return Promise.resolve(false);
     /** @type {MediaSurface|null} */ let captured;
@@ -59,7 +59,7 @@ export function createMorningDocumentMedia({request,authority,presentation,platf
     const current=()=>work.isActive()&&ticket===generation&&captured.isCurrent()&&isCurrent();
     return work.run(async()=>{
       try{
-        const blob=await load(assertRequest);assertRequest();if(!current())return false;
+        const blob=await load(assertRequest,current);assertRequest();if(!blob||!current())return false;
         release();const candidate=platform.createUrl(blob);url=candidate;
         try{frame=captured.show(candidate)}catch(error){release();throw error}
         if(!frame){release();return false}return true;
@@ -72,8 +72,10 @@ export function createMorningDocumentMedia({request,authority,presentation,platf
   function viewDocument(id,options){return show('official',assertCurrent=>request.pdf(id,assertCurrent),options)}
   /** @param {string} operationId @param {MediaOptions} [options] */
   function viewVerifiedOperation(operationId,options){
-    return show('official',async assertCurrent=>{
-      const id=decodeMorningVerifiedDocumentId(await request.json('status',{operation_id:operationId},assertCurrent));assertCurrent();
+    return show('official',async(assertCurrent,current)=>{
+      const data=await request.json('status',{operation_id:operationId},assertCurrent);assertCurrent();
+      if(!current())return null;
+      const id=decodeMorningVerifiedDocumentId(data);
       return request.pdf(id,assertCurrent);
     },options);
   }

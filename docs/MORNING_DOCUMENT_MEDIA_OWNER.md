@@ -27,6 +27,8 @@ and standalone viewer construction. `platform/morning-media-effects.js` owns Blo
 URLs and a lazy native MutationObserver. Modal close/replacement releases the
 owned URL and observer. Cleanup removes an iframe source only when it still equals
 that owner's URL. Iframe load keeps the URL alive for Chrome's PDF Download action.
+`composition/morning-media.js` assembles those platform effects; the domain
+receives their private construction port and cannot import platform implementations.
 
 The media capability exposes `cancelPending`, `drain`, `dispose` and `isPending`.
 Cancellation fences publication; drain still joins every accepted provider read.
