@@ -604,6 +604,8 @@ kupa_css = (K / "site/assets/app.css").read_text(encoding="utf-8")
 orders_contexts = (O / "site/assets/js/state/contexts.js").read_text(encoding="utf-8")
 orders_finance_controller = (O / "site/assets/js/domains/finance/controller.js").read_text(encoding="utf-8")
 orders_finance_controller_compact = re.sub(r"\s+", "", orders_finance_controller)
+orders_bank_refresh=(O / "site/assets/js/domains/finance/bank-refresh.js").read_text(encoding="utf-8")
+orders_bank_refresh_compact=re.sub(r"\s+", "", orders_bank_refresh)
 ok('data-view="kupa"' in orders_html and 'data-view="checks"' not in orders_html and 'data-view="summary"' not in orders_html,
    "orders Kupa UI: one top-level Kupa tab replaces standalone checks and balance tabs")
 ok("const KUPA_SECTIONS=['bank','credit','checks','summary']" in orders_finance_view
@@ -897,7 +899,7 @@ ok(0<=finance_constructor_pos<checks_editor_pos<checks_editor_end<finance_view_p
    and orders_finance_composition_compact.find('constimages=createOrdersBankChequeImageRuntime')<orders_finance_composition_compact.find('constview=createDomainsFinanceView'),
    'orders cheque-image composition: one capability-owned image adapter precedes the view and stays outside Checks editing')
 ok("ORDERS_BANK_BRIDGE_MINIMUM_VERSION = 74" in (ROOT / 'netunim-orders/site/assets/js/domains/finance/bank-connection-owner.js').read_text(encoding='utf-8')
-   and 'if(!bankConnections.queries.supported(status))' in orders_finance_controller,
+   and 'if(!device.supported(status))' in orders_bank_refresh_compact,
    "orders Kupa UI: bank controls require corrected Bridge v74 financial evidence")
 ok((ROOT / 'netunim-orders/site/assets/js/domains/finance/bank-connection-view.js').exists() and "from './bank-connection-view.js'" in (ROOT / 'netunim-orders/site/assets/js/domains/finance/view.js').read_text(encoding='utf-8'),
    'orders finance UI: bank connection/settings rendering is split from the main finance view responsibility')
@@ -944,15 +946,14 @@ ok("row.financeRevision=Number(financeResult.value.revision||0)" in kupa_transpo
 ok("financeReadRevision" in orders_bank_cache and "financeRev<=Number(checksSession.financeReadRevision||0)" in orders_bank_cache
    and "row.financeRevision=Number(finance?.revision||0)" in orders_transport,
    "Orders finance freshness: read-only Kupa cache tracks finance_sync_documents revision independently of kupa_documents")
-for controller, kind, bridge_call in (
-    (kupa_bank_controller,"bank","bridge.fetchBalance"),
-    (kupa_credit_controller,"credit","bridge.syncCreditCards"),
-    (orders_finance_controller,"bank","bridge.fetchBalance"),
-    (orders_finance_controller,"credit","bridge.syncCreditCards"),
+for controller, kind, bridge_call, claim in (
+    (kupa_bank_controller,"bank","bridge.fetchBalance","syncLeases.commands.acquire('bank'"),
+    (kupa_credit_controller,"credit","bridge.syncCreditCards","syncLeases.commands.acquire('credit'"),
+    (orders_bank_refresh_compact,"bank","device.fetchBalance","leases.commands.acquire('bank'"),
+    (orders_finance_controller,"credit","bridge.syncCreditCards","syncLeases.commands.acquire('credit'"),
 ):
-    claim=f"syncLeases.commands.acquire('{kind}'"
     before_provider=controller[controller.find(claim):controller.find(bridge_call)]
-    ok(claim in controller and "await leaseSession.ready" in before_provider and "if(!lease.acquired)" in before_provider,
+    ok(claim in controller and "awaitleaseSession.ready" in re.sub(r"\s+", "", before_provider) and "if(!lease.acquired)" in re.sub(r"\s+", "", before_provider),
        f"distributed finance lease: {kind} confirmed acquisition happens before opening the local Bridge session")
 ok("remoteLeaseTokens" in kupa_finance_cloud and "cloudTransport.claimFinanceSyncLease(" in kupa_finance_cloud
    and "return {acquired:true,localOnly:true}" in kupa_finance_cloud

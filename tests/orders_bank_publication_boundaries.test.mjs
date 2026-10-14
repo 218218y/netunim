@@ -116,7 +116,8 @@ test('the publication owner has five required ports, two commands, and no direct
     'financeBankPayload',
   ])
     assert.ok(!controller.includes(old), old);
-  assert.ok(controller.includes('bankSnapshots.commands.publish(result,'));
+  assert.ok(controller.includes('bankRefresh.commands.refresh('));
+  assert.ok(tokens(read(folder+'bank-refresh.js')).includes('publication.publish(candidate,'));
   const composition = read('netunim-orders/site/assets/js/composition/finance.js');
   for (const method of ['isPending', 'drain', 'dispose'])
     assert.ok(composition.includes('bankSnapshots?.runtime.' + method + '()'));

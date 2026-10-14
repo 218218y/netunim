@@ -4,7 +4,11 @@ import { readFileSync } from 'node:fs';
 import { parse } from 'acorn';
 import { declaration, tokens } from './bank_policy_ast_fixture.mjs';
 import { restoreFinanceLeaseOwnership } from './finance_lease_policy_fixture.mjs';
-const read = (path) => readFileSync(new URL('../' + path, import.meta.url), 'utf8');
+import {restoreOrdersBankRefresh} from './orders_bank_refresh_policy_fixture.mjs';
+const read = (path) => {
+  const source=readFileSync(new URL('../' + path, import.meta.url), 'utf8');
+  return path==='netunim-orders/site/assets/js/domains/finance/controller.js'?restoreOrdersBankRefresh(source):source;
+};
 const clean = (key, value) =>
   ['start', 'end', 'loc', 'range', 'raw'].includes(key) ? undefined : value;
 const ast = (value) => JSON.parse(JSON.stringify(value, clean));

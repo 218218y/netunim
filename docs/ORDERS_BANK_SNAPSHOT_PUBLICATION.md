@@ -6,6 +6,10 @@ five required ports; its verified algorithm and Orders readout policy are
 unchanged. See [path alignment audit](BANK_PATH_ALIGNMENT.md). The following
 record describes the original seven-port extraction.
 
+Provider entry, automatic freshness and lease acquisition/cleanup subsequently
+moved to the strict [Bank refresh operation](ORDERS_BANK_REFRESH_OWNER.md).
+The historical controller scope below describes the original extraction stage.
+
 The former Finance controller mixed provider/lease entry, archive reconciliation,
 checks synchronization, financial model construction and durable publication.
 The accepted provider-result sequence now belongs to
