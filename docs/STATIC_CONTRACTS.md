@@ -504,3 +504,11 @@ status-as-archive and text sequence; actual body mutations reject fabricated
 confirmation/drain. Complete transaction/RPC payloads and the private retained
 financial policy remain selectively checked and behavior/AST protected. See
 ORDERS_BANK_SNAPSHOT_PUBLICATION.md.
+
+Canonical Bank archive policy and the four-port reconciliation owner are now
+strictly checked in their actual bodies and both generated copies. Adapter
+result/row narrowing precedes archive evidence; typed Bank leases, synchronous
+guards, numeric counts/audits and asynchronous accepted-work drain are enforced.
+Negative consumers and actual count/drain mutations prove rejection. Application
+publication adapters and complete RPC/controller payload typing remain separate
+work. See BANK_PATH_ALIGNMENT.md.

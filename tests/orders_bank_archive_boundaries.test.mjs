@@ -86,8 +86,22 @@ test('Finance delegates archive reads, publications and pauses without private a
   ])
     assert.ok(source.includes(method), method);
   const publication=read('bank-snapshot-publication');
-  for(const method of ['archive.read(', 'archive.publish('])assert.ok(publication.includes(method));
+  for(const method of ['reconciliation.commands.sync(', 'archive.publish('])assert.ok(publication.includes(method));
+  const core=fs.readFileSync(new URL('../shared/bank-archive-reconciliation.js',import.meta.url),'utf8');
+  assert.ok(awaitsArchiveRead(core),'canonical reconciliation must await accepted archive verification');
+  const unjoined=core.replace('await archive.read(', 'archive.read(');
+  assert.notEqual(unjoined,core);assert.equal(awaitsArchiveRead(unjoined),false);
 });
+
+function awaitsArchiveRead(source){
+  const queue=[parse(source,{ecmaVersion:'latest',sourceType:'module'})];
+  while(queue.length){
+    const node=queue.shift();
+    if(node.type==='AwaitExpression'&&node.argument.type==='CallExpression'&&node.argument.callee.type==='MemberExpression'&&node.argument.callee.object.name==='archive'&&node.argument.callee.property.name==='read')return true;
+    for(const value of Object.values(node))if(value&&typeof value==='object')queue.push(...(Array.isArray(value)?value.filter(item=>item&&typeof item==='object'):[value]));
+  }
+  return false;
+}
 test('production composition wires current authority and transport and disposes the archive owner', () => {
   const source = fs
     .readFileSync(

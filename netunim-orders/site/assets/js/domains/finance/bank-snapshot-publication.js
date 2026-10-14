@@ -6,10 +6,9 @@ import { FINANCE_PUBLICATION_WARNING } from './document-publication.js';
 /** @typedef {() => undefined} SnapshotGuard */
 /** @typedef {import('../../shared/bank-balance-result.js').BankAccountSnapshot} BankAccount */
 /** @typedef {import('./bank-archive-readout.js').ArchiveCandidate<unknown>} ArchiveCandidate */
-/** @typedef {import('./bank-archive-readout.js').ArchiveRead<unknown>} ArchiveRead */
 /** @typedef {{leaseName:'bank',leaseToken:string,fenceEpoch:number,assertCurrent:SnapshotGuard}&Record<string,unknown>} SnapshotLease */
 /** @typedef {{financeRow:unknown,historyDays:number,lease:SnapshotLease,archiveReady:boolean,archiveVersion:number}} SnapshotRequest */
-/** @typedef {{complete:boolean,from:string|null,to:string|null,days:number|null,warning:string}} TransactionCoverage */
+/** @typedef {import('../../shared/bank-archive-policy.js').TransactionCoverage} TransactionCoverage */
 /** @typedef {{kupa:unknown,bankEvents:unknown}} ChecksState */
 /** @typedef {{bank:Record<string,unknown>,snapshotToken:string,snapshotSeq:number}} SnapshotPlan */
 /** @typedef {{business:BankAccount,businessAccount:unknown,home:BankAccount|null,homeFailure:unknown,fetchedAt:unknown,businessArchive:readonly unknown[],homeArchive:readonly unknown[],financeRow:unknown,historyDays:number,archiveReady:boolean,archiveVersion:number,archiveAudit:unknown,businessCoverage:TransactionCoverage,homeCoverage:TransactionCoverage|null,checksState:ChecksState}} PlanInput */
@@ -18,30 +17,16 @@ import { FINANCE_PUBLICATION_WARNING } from './document-publication.js';
 /** @typedef {{commands:{prepare:(guard:SnapshotGuard)=>Promise<void>,publish:(result:unknown,options:SnapshotRequest)=>Promise<SnapshotPublication>},runtime:{isPending:()=>boolean,drain:()=>Promise<void>,dispose:()=>boolean}}} SnapshotCapability */
 /** @typedef {{
  * checks:{hasLocalWork:()=>boolean,save:(message:string)=>Promise<unknown>,refresh:(options:{quiet:true,required:true})=>Promise<unknown>,read:()=>ChecksState},
- * transactions:{reconcile:(account:unknown,role:'business'|'home',rows:readonly unknown[],options:{lease:SnapshotLease,snapshotAt:unknown,coverage:TransactionCoverage|null,complete:boolean})=>Promise<unknown>},
- * images:{sync:(rows:readonly unknown[],options:{assertCurrent:SnapshotGuard})=>Promise<{warnings?:readonly unknown[]}|null>},
- * archive:{read:(targets:readonly {role:'business'|'home',accountKey:string}[],options:{days:number,assertCurrent:SnapshotGuard})=>Promise<ArchiveRead[]>,publish:(candidate:ArchiveCandidate)=>boolean},
+ * archive:{publish:(candidate:ArchiveCandidate)=>boolean},
+ * reconciliation:import('../../shared/bank-archive-reconciliation.js').ReconciliationCapability,
  * publication:{save:(bank:Record<string,unknown>,token:string,seq:number,lease:SnapshotLease)=>Promise<{published:boolean}>},
- * policy:{accountId:(snapshot:BankAccount)=>unknown,coverage:(snapshot:BankAccount)=>TransactionCoverage,transactions:(snapshot:BankAccount)=>readonly unknown[],audit:(merge:unknown,rows:readonly unknown[],options:{role:string,requireExactCount:boolean})=>Record<string,unknown>,build:(input:PlanInput)=>SnapshotPlan},
- * authority:{captureRead:()=>SnapshotGuard}
+ * policy:{build:(input:PlanInput)=>SnapshotPlan}
  * }} SnapshotPorts */
 
 /** @param {unknown} value @returns {value is Record<string,unknown>} */
 function record(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
-/** @param {unknown} error */
-function scopeChanged(error) {
-  return (
-    record(error) &&
-    [
-      'FINANCE_OPERATION_SCOPE_CHANGED',
-      'CREDIT_CONNECTION_SCOPE_CHANGED',
-      'BRIDGE_PAIRING_SCOPE_CHANGED',
-    ].includes(String(error.code))
-  );
-}
-
 /**
  * Own the accepted provider-result -> archive verification -> atomic snapshot
  * sequence. Provider access and lease acquisition remain with the controller;
@@ -51,21 +36,17 @@ function scopeChanged(error) {
  */
 export function createOrdersBankSnapshotPublication({
   checks,
-  transactions,
-  images,
   archive,
+  reconciliation,
   publication,
   policy,
-  authority,
 }) {
   /** @type {[string,unknown,string[]][]} */ const required = [
     ['checks', checks, ['hasLocalWork', 'save', 'refresh', 'read']],
-    ['transactions', transactions, ['reconcile']],
-    ['images', images, ['sync']],
-    ['archive', archive, ['read', 'publish']],
+    ['archive', archive, ['publish']],
+    ['reconciliation', reconciliation?.commands, ['sync']],
     ['publication', publication, ['save']],
-    ['policy', policy, ['accountId', 'coverage', 'transactions', 'audit', 'build']],
-    ['authority', authority, ['captureRead']],
+    ['policy', policy, ['build']],
   ];
   for (const [name, port, methods] of required)
     for (const method of methods)
@@ -112,115 +93,8 @@ export function createOrdersBankSnapshotPublication({
     assertCurrent();
     lease = { ...lease, assertCurrent };
     const { business, home, homeFailure, source } = readBankBalanceResult(result);
-    const fetchedAt = source.fetchedAt || new Date().toISOString(),
-      businessAccount = policy.accountId(business),
-      homeAccount = home ? policy.accountId(home) : '';
-    const businessCoverage = policy.coverage(business),
-      homeCoverage = home ? policy.coverage(home) : null;
-    const businessMerge = await transactions.reconcile(
-      businessAccount,
-      'business',
-      policy.transactions(business),
-      {
-        lease,
-        snapshotAt: fetchedAt,
-        coverage: businessCoverage,
-        complete: businessCoverage.complete,
-      }
-    );
-    assertCurrent();
-    const homeMerge =
-      home && homeAccount
-        ? await transactions.reconcile(homeAccount, 'home', policy.transactions(home), {
-            lease,
-            snapshotAt: fetchedAt,
-            coverage: homeCoverage,
-            complete: homeCoverage?.complete === true,
-          })
-        : null;
-    assertCurrent();
-    let imageSyncWarning = '';
-    try {
-      const imageSync = await images.sync(
-        [...policy.transactions(business), ...(home ? policy.transactions(home) : [])],
-        { assertCurrent }
-      );
-      assertCurrent();
-      if (imageSync?.warnings?.length)
-        imageSyncWarning = `תמונות שיקים: ${imageSync.warnings.join(' | ')}`;
-    } catch (error) {
-      assertCurrent();
-      if (scopeChanged(error)) throw error;
-      imageSyncWarning = `תמונות שיקים לא סונכרנו לענן: ${(record(error) ? error.message : null) || error}`;
-    }
-    const verified = await archive.read(
-      [
-        { role: 'business', accountKey: String(businessAccount || '') },
-        ...(home && homeAccount
-          ? [{ role: /** @type {const} */ ('home'), accountKey: String(homeAccount) }]
-          : []),
-      ],
-      { days: 370, assertCurrent }
-    );
-    const first = verified[0];
-    if (!first) throw new Error('orders_bank_snapshot_archive_read_required');
-    const businessArchive = first.rows,
-      businessDirect = first.directSnapshot;
-    const homeArchive = verified[1]?.rows || [],
-      homeDirect = verified[1]?.directSnapshot ?? null;
-    assertCurrent();
-    const assertReadable = authority.captureRead();
-    const archiveCandidate = {
-      business: {
-        accountKey: String(businessAccount || ''),
-        syncKey: String(fetchedAt),
-        rows: businessArchive,
-        directSnapshot: businessDirect,
-        assertCurrent: assertReadable,
-      },
-      ...(homeAccount
-        ? {
-            home: {
-              accountKey: String(homeAccount),
-              syncKey: String(fetchedAt),
-              rows: homeArchive,
-              directSnapshot: homeDirect,
-              assertCurrent: assertReadable,
-            },
-          }
-        : {}),
-    };
-    const requireExactArchive = historyDays >= 365,
-      businessAudit = policy.audit(businessMerge, businessArchive, {
-        role: 'עסקי',
-        requireExactCount: requireExactArchive,
-      }),
-      homeAudit =
-        home && homeAccount
-          ? policy.audit(homeMerge, homeArchive, {
-              role: 'ביתי',
-              requireExactCount: requireExactArchive,
-            })
-          : null,
-      archiveAudit = {
-        version: 3,
-        verifiedAt: fetchedAt,
-        historyDays,
-        business: {
-          ...businessAudit,
-          accountKey: businessAccount,
-          reconciliation: (record(businessMerge) ? businessMerge.result : null) || null,
-          coverage: businessCoverage,
-        },
-        home: homeAudit
-          ? {
-              ...homeAudit,
-              accountKey: homeAccount,
-              reconciliation: (record(homeMerge) ? homeMerge.result : null) || null,
-              coverage: homeCoverage,
-            }
-          : null,
-      };
+    const fetchedAt=source.fetchedAt||new Date().toISOString();
+    const {businessAccount,businessCoverage,homeCoverage,businessArchive,homeArchive,archiveCandidate,archiveAudit,imageSyncWarning}=await reconciliation.commands.sync({business,home,fetchedAt,historyDays,lease});assertCurrent();
     await prepareBankSnapshot(assertCurrent);
     assertCurrent();
     if (checks.hasLocalWork())

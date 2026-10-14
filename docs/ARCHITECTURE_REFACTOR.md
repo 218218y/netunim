@@ -1019,3 +1019,14 @@ down from 22, and its former flat publication defaults/helpers are retired.
 Twelve native browser/IDB lifecycle cases and strict negative/body mutations
 protect the slice. Schema, wire, provider and deployed migrations are unchanged.
 See [Bank snapshot publication](ORDERS_BANK_SNAPSHOT_PUBLICATION.md).
+
+Bank path comparison now identifies concrete supported differences: Kupa local
+durability/Main publication and Orders external Finance readout/Morning links.
+Six financial archive algorithms are identical, so Orders supplies one canonical
+policy and four-port cloud reconciliation owner for both apps. Each composition
+joins its own accepted work through disposal/drain. Kupa's duplicate helpers and
+flat transaction/image defaults are retired (18 -> 17 collaborators); Orders
+publication delegates archive execution (7 -> 5 ports). Full workflow ASTs,
+strict implementations/negative consumers, actual body mutations and native
+Kupa/Orders journal recovery protect the alignment. See
+[Bank path alignment](BANK_PATH_ALIGNMENT.md).

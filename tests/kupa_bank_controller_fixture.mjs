@@ -1,6 +1,7 @@
 import { createDomainsBankController } from '../netunim-kupa/site/assets/js/domains/bank/controller.js';
 import { createKupaBankConnectionOwner, KUPA_BANK_BRIDGE_MINIMUM_VERSION } from '../netunim-kupa/site/assets/js/domains/bank/connection-owner.js';
 import { createKupaBankArchiveReadout } from '../netunim-kupa/site/assets/js/domains/bank/archive-readout.js';
+import {createBankArchiveReconciliation} from '../shared/bank-archive-reconciliation.js';
 import { bankArchiveTargets } from '../netunim-kupa/site/assets/js/domains/bank/archive-model.js';
 import { createBankLocalSnapshot } from '../netunim-kupa/site/assets/js/domains/bank/local-snapshot.js';
 import { createKupaBankSnapshotCommands } from '../netunim-kupa/site/assets/js/domains/bank/snapshot-commands.js';
@@ -93,9 +94,16 @@ export function createKupaBankControllerFixture(ports) {
     presentation:{toast:ports.toast,changed:ports.render},effects:ports.effects,
     clock:{now:() => Date.now()},protocol:{minimumBridgeVersion:KUPA_BANK_BRIDGE_MINIMUM_VERSION,statusCacheMs:15000},
   });
+  const archiveReconciliation = createBankArchiveReconciliation({
+    authority:ports.operationScope,
+    transactions:{reconcile:ports.syncBankTransactionsSnapshot ?? (async()=>({sourcePayload:[],result:{total_count:0}}))},
+    images:{sync:ports.syncBankChequeImages ?? (async()=>({warnings:[]}))},
+    archive:{read:archive.queries.readSnapshot},
+  });
   const controller = createDomainsBankController({
       ...ports,
       archive,
+      archiveReconciliation,
       snapshots,
       syncLeases,
       readFinance,
@@ -107,10 +115,12 @@ export function createKupaBankControllerFixture(ports) {
     runtime: {
       async drain() {
         await runtime.drain();
+        await archiveReconciliation.runtime.drain();
         await connections.runtime.drain();
         await archive.runtime.drain();
       },
       dispose() {
+        archiveReconciliation.runtime.dispose();
         const result = runtime.dispose();
         connections.runtime.dispose();
         archive.runtime.dispose();

@@ -2,8 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createOrdersBankSnapshotPublication } from '../netunim-orders/site/assets/js/domains/finance/bank-snapshot-publication.js';
 import { createOrdersBankSnapshotPolicy } from '../netunim-orders/site/assets/js/domains/finance/bank-snapshot-policy.js';
+import {createBankArchiveReconciliation} from '../netunim-orders/site/assets/js/shared/bank-archive-reconciliation.js';
 
 const stamp = '2026-10-14T10:00:00.000Z';
+function publicationPorts(ports){return {
+  checks:ports.checks,publication:ports.publication,policy:ports.policy,
+  archive:{publish:ports.archive.publish},
+  reconciliation:createBankArchiveReconciliation({transactions:ports.transactions,images:ports.images,archive:{read:ports.archive.read},authority:ports.authority}),
+}}
 function fixture({ hold, confirmation = true } = {}) {
   const events = [],
     gate = Promise.withResolvers(),
@@ -87,7 +93,7 @@ function fixture({ hold, confirmation = true } = {}) {
     archiveVersion: 2,
     lease: { leaseName: 'bank', leaseToken: 'L', fenceEpoch: 1, assertCurrent: guard },
   };
-  const create = () => createOrdersBankSnapshotPublication(ports);
+  const create = () => createOrdersBankSnapshotPublication(publicationPorts(ports));
   return {
     ports,
     options,
@@ -252,13 +258,13 @@ test('missing archive readback cannot issue an atomic Bank write', async () => {
   assert.equal(f.events.includes('publication'), false);
 });
 
-test('all seven ports are mandatory and construction starts no work', () => {
+test('publication and reconciliation ports are mandatory and construction starts no work', () => {
   const f = fixture();
   for (const [name, port] of Object.entries(f.ports))
     for (const method of Object.keys(port))
       assert.throws(
         () =>
-          createOrdersBankSnapshotPublication({ ...f.ports, [name]: { ...port, [method]: null } }),
+          createOrdersBankSnapshotPublication(publicationPorts({ ...f.ports, [name]: { ...port, [method]: null } })),
         /required/
       );
   assert.deepEqual(f.events, []);

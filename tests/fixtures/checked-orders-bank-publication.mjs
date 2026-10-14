@@ -1,27 +1,28 @@
 // @ts-check
 import { createOrdersBankSnapshotPublication } from '../../netunim-orders/site/assets/js/domains/finance/bank-snapshot-publication.js';
+import {createBankArchiveReconciliation} from '../../netunim-orders/site/assets/js/shared/bank-archive-reconciliation.js';
 /** @type {import('../../netunim-orders/site/assets/js/domains/finance/bank-snapshot-publication.js').SnapshotGuard} */
 const guard = () => undefined;
+/** @type {import('../../netunim-orders/site/assets/js/shared/bank-archive-reconciliation.js').ReconciliationPorts} */
+const corePorts = {
+  transactions: { reconcile: async () => ({sourcePayload:[],result:{total_count:0}}) },
+  images: { sync: async () => ({ warnings: [] }) },
+  archive: { read: async () => [] },authority: { captureRead: () => guard },
+};
 /** @type {import('../../netunim-orders/site/assets/js/domains/finance/bank-snapshot-publication.js').SnapshotPorts} */
 const ports = {
+  reconciliation:createBankArchiveReconciliation(corePorts),
   checks: {
     hasLocalWork: () => false,
     save: async () => true,
     refresh: async () => true,
     read: () => ({ kupa: {}, bankEvents: [] }),
   },
-  transactions: { reconcile: async () => ({}) },
-  images: { sync: async () => ({ warnings: [] }) },
-  archive: { read: async () => [], publish: () => true },
+  archive: { publish: () => true },
   publication: { save: async () => ({ published: true }) },
   policy: {
-    accountId: () => '',
-    coverage: () => ({ complete: false, from: null, to: null, days: null, warning: '' }),
-    transactions: () => [],
-    audit: () => ({}),
     build: () => ({ bank: {}, snapshotToken: 'BANK-one', snapshotSeq: 7 }),
   },
-  authority: { captureRead: () => guard },
 };
 const api = createOrdersBankSnapshotPublication(ports);
 /** @type {import('../../netunim-orders/site/assets/js/domains/finance/bank-snapshot-publication.js').SnapshotLease} */
@@ -65,7 +66,7 @@ api.commands.publish(null, {
 // @ts-expect-error confirmation cannot be an operator label
 ports.publication.save = async () => ({ published: 'saved' });
 // @ts-expect-error archive transactions cannot be an HTTP status
-ports.archive.read = async () => 200;
+corePorts.archive.read = async () => 200;
 // @ts-expect-error display publication must complete synchronously before command completion
 ports.archive.publish = async () => true;
 // @ts-expect-error numeric check sequence cannot be a display label
