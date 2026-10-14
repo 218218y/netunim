@@ -174,6 +174,12 @@ test('unknown Bridge version cannot grant import authority', async (t) => {
   assert.equal(f.counts.import, 0);
   assert.equal(f.counts.inputs, 0);
 });
+test('a coercible array cannot stand in for a Bridge version', async (t) => {
+  const f = fixture(t, { version: [74] });
+  await f.run();
+  assert.equal(f.counts.import, 0);
+  assert.equal(f.counts.inputs, 0);
+});
 test('native chooser click failure releases the appended input', async (t) => {
   const f = fixture(t, { clickFailure: true }),
     selection = createFinanceConnectionFileSelection({

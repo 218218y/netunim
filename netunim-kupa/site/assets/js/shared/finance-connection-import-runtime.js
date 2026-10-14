@@ -73,7 +73,11 @@ export function createFinanceConnectionImportRuntime({
         guard();
         const status = await transport.status();
         if (!current(guard)) return false;
-        const version = record(status) ? Number(status.bridgeVersion) : NaN;
+        const rawVersion = record(status) ? status.bridgeVersion : undefined;
+        const version =
+          typeof rawVersion === 'number' || typeof rawVersion === 'string'
+            ? Number(rawVersion)
+            : NaN;
         if (!Number.isSafeInteger(version) || version < protocol.minimumBridgeVersion)
           throw new Error('יש להריץ מחדש install_bank_bridge.bat במחשב זה לפני ייבוא הגדרות');
         const selected = await selection.choose();

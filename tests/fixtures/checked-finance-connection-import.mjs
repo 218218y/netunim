@@ -52,6 +52,10 @@ const selection = createFinanceConnectionFileSelection({
   decode: (raw) => JSON.parse(raw),
   maxBytes: 32768,
 });
+// The real native owner must also satisfy the real orchestration consumer.
+const withNativeSelection = createFinanceConnectionImportRuntime({ ...ports, selection });
+/** @type {Promise<void>} */ const joined = withNativeSelection.runtime.drain();
+void joined;
 /** @type {Promise<unknown|null>} */ const chosen = selection.choose();
 void chosen;
 createFinanceConnectionFileSelection({
