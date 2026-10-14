@@ -1065,3 +1065,15 @@ negative consumers, four implementation mutations and 42 native retained-recover
 journal and valid-resumption assertions protect the slice. Controller form/status
 presentation and broader customer orchestration remain open. See
 [Morning operation commands](MORNING_OPERATION_COMMANDS.md).
+
+Morning status execution now has a strict six-port owner independent of its DOM
+renderer and a pure status-message model. Two baseline regressions proved stale
+draft certification/modal publication and out-of-order connection readout. A
+third proved application completions could coalesce across operation identities.
+Accepted allocation still completes; publication follows the current form/read
+and joins use the exact operation plus captured account/login authority. Current
+joined displays can still show required decisions. Official issuance invalidates
+earlier status publication. Immutable financial policies and 864 message cases,
+strict actual bodies/negative consumers/mutations and native modal/Main/Shared
+fixtures protect the slice. Form and broader customer composition remain open.
+See [Morning status ownership](MORNING_STATUS_OWNER.md).

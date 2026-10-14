@@ -71,6 +71,7 @@ original operation after valid evidence. The existing wake fixture now uses the
 producer's actual `pending` state in place of its test-only `creating` label.
 Full Git CI with PostgreSQL, native browser/IDB and Windows remains the merge gate.
 
-Issuance form/presentation, status display coordination, customer composition
+Status display coordination is isolated in a subsequent
+[status-owner slice](MORNING_STATUS_OWNER.md). Issuance form/presentation, customer composition
 width and complete search/metadata/provider payload decoding remain open. This
 slice does not claim live-provider verification or complete application typing.

@@ -20,6 +20,9 @@
     "types": []
   },
   "files": [
+    "tests/fixtures/checked-morning-status-consumers.mjs",
+    "netunim-orders/site/assets/js/domains/customers/morning-status.js",
+    "netunim-orders/site/assets/js/domains/customers/morning-status-message.js",
     "tests/fixtures/checked-morning-command-consumers.mjs",
     "netunim-orders/site/assets/js/domains/customers/morning-recovery.js",
     "netunim-orders/site/assets/js/domains/customers/morning-operation-evidence.js",

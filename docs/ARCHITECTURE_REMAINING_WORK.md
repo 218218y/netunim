@@ -24,6 +24,11 @@ remaining-scope paragraphs describe their stage's starting point.
   allocation or cleanup decisions. Six reproduced evidence gaps retain exact
   recovery, with native malformed-response/resumption coverage. See
   [Morning operation commands](MORNING_OPERATION_COMMANDS.md).
+  Status decisions now have a strict six-port owner and a pure presentation
+  model. Current read/form publication fences preserve unrelated draft guards;
+  application joins are bound to operation identity and current joined displays.
+  Immutable messages, strict implementation mutations and native journal/modal
+  races protect the boundary. See [Morning status ownership](MORNING_STATUS_OWNER.md).
   Broader customer orchestration and form
   presentation remain open. See [Morning operation drain](MORNING_OPERATION_DRAIN.md) and
   [Morning media ownership](MORNING_DOCUMENT_MEDIA_OWNER.md).

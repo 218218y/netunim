@@ -2,6 +2,7 @@ import {declaration,tokens} from './bank_policy_ast_fixture.mjs';
 export function originalMorningApplicationPolicy(source){
   const node=declaration(source,'applyVerifiedContextOnce');
   return tokens(source.slice(node.start,node.end))
+    .replaceAll(',isCurrent=()=>true','').replaceAll('if(isCurrent()===true)','')
     .replaceAll('lifetime.capture()', 'captureScope()')
     .replaceAll('policy.matches(', 'morningDebtRecoveryMatchesVerified(')
     .replaceAll('feedback.toast(', 'toast(').replaceAll('feedback.status(', 'connectionStatus(').replaceAll('feedback.decide(', 'showRecoveryDecision(')

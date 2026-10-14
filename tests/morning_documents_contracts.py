@@ -20,6 +20,7 @@ documents=(SITE/'assets/js/domains/customers/documents.js').read_text(encoding='
 request=(SITE/'assets/js/integrations/morning.js').read_text(encoding='utf-8')
 issuance=(SITE/'assets/js/domains/customers/morning-issuance.js').read_text(encoding='utf-8')
 recovery_flow=(SITE/'assets/js/domains/customers/morning-recovery.js').read_text(encoding='utf-8')
+status_flow=(SITE/'assets/js/domains/customers/morning-status.js').read_text(encoding='utf-8')
 view=(SITE/'assets/js/domains/customers/view.js').read_text(encoding='utf-8')
 editor=(SITE/'assets/js/domains/customers/editor.js').read_text(encoding='utf-8')
 morning_debt=(SITE/'assets/js/domains/customers/morning-debt.js').read_text(encoding='utf-8')
@@ -152,7 +153,7 @@ migration=next((ROOT/'supabase/migrations').glob('*_morning_operation_ledger.sql
 ok(all(name not in documents for name in ('scheduleSave','renderCustomers','__standalone__','activeScopeId')) and 'customerDebts' not in edge and 'customerDebts' not in migration
    and 'applyVerifiedDebtDocument' in documents and 'applyVerifiedMorningDocument' in editor and 'applyVerifiedMorningDocumentToDebt' in morning_debt,
    'Morning debt boundary: server/ledger stay debt-agnostic while the customer domain applies only a verified client-side progress event')
-ok("data.verified!==true" in issuance and "data.operation?.state==='created'&&!!data.operation?.verified_at" in documents and 'await issuance.issue(payload,context,assertCurrent);assertCurrent()' in documents and documents.count('applyVerifiedOperation(')>=2,
+ok("data.verified!==true" in issuance and "data.operation?.state==='created'&&!!data.operation?.verified_at" in status_flow and 'await issuance.issue(payload,context,assertCurrent);assertCurrent()' in documents and 'application:{apply:applyVerifiedOperation' in documents and 'await application.apply(' in status_flow,
    'Morning debt application gate: immediate create and reconciliation reach debt progress only after canonical verification')
 ok("MORNING:${operation}:" in morning_debt and "source:'morning'" in morning_debt and 'existingIds.has(id)' in morning_debt,
    'Morning debt idempotency: one deterministic progress entry per operation and side prevents double credit on replay/reconciliation')
@@ -188,7 +189,7 @@ ok('return localOk' in persistence and 'if(disposed||rejectSecondaryMutation())r
    'Morning local durability handshake: progress and document links are durably saved, and replay re-persists an in-memory event before recovery clears')
 ok('onDebtDocumentMetadataResolved:persistResolvedDebtDocumentMetadata' in composition and 'upsertVerifiedMorningDebtDocument(debt,metadata)' in metadata_persistence and "surface:'orders.morning.customerDebtMetadata'" in metadata_persistence and 'await commitSave(' in metadata_persistence and 'function canMutate()' in persistence,
    'Morning historical metadata backfill: authoritative metadata confirms a local single-writer commit and retains unconfirmed staging for retry')
-ok('morningVerifiedApplicationDurable' in morning_debt_recovery and 'DURABLE_NO_MUTATION_REASONS' in morning_debt_recovery and 'function settleVerifiedRecovery' in documents and 'blocked:!durable||serverLinkPending||!recoveryCleared' in documents and documents.count('settleVerifiedRecovery(')>=3 and 'application.settle(context.operationId,result' in recovery_flow,
+ok('morningVerifiedApplicationDurable' in morning_debt_recovery and 'DURABLE_NO_MUTATION_REASONS' in morning_debt_recovery and 'function settleVerifiedRecovery' in documents and 'blocked:!durable||serverLinkPending||!recoveryCleared' in documents and documents.count('settleVerifiedRecovery(')>=2 and 'application.settle(context.operationId,result' in recovery_flow and 'application.settle(operationId,result' in status_flow,
    'Morning recovery cleanup: verified outcomes use an explicit durability allowlist and every verified path stays fail-closed until local recovery storage is actually cleared')
 ok("activeDebtId?rejectSecondaryMutation?.()===true:rejectSecondaryIssuance?.()===true" in documents and documents.count('if(rejectCurrentIssuance())return;')>=2 and "reason:'write-blocked'" in composition,
    'Morning debt primary-tab safety: debt-linked issuance is blocked before POST and rechecked after confirmation when local mutation authority is unavailable')
@@ -196,7 +197,7 @@ ok("rejectSecondaryIssuance:(...args)=>storagePersistence.rejectSecondaryAction(
    and "activeDebtId?rejectSecondaryMutation?.()===true:rejectSecondaryIssuance?.()===true" in documents
    and documents.count('if(rejectCurrentIssuance())return;')>=2,
    'Morning official issuance single-writer: standalone documents also require the primary tab, while debt-linked documents retain the stronger local-mutation guard')
-ok("blocked=!!data.unresolved||!!data.retryable_reserved||recoveryStillPending" in documents
+ok("blocked:!!data.unresolved||!!data.retryable_reserved||recoveryStillPending" in status_flow
    and "if(blocked&&requestedKey!==sourceKey(activeSource))" in documents
    and "if(createBusy){toast(" in documents
    and 'לא שולחים מחדש מתוך הטופס המשוחזר' in documents,

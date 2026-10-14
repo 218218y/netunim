@@ -4,6 +4,7 @@ import {createMorningDisplayLifetime,clearMorningDisplay} from './morning-displa
 import {createMorningIssuance} from './morning-issuance.js';
 import {createMorningOperationCommands} from './morning-operation-commands.js';
 import {createMorningRecovery} from './morning-recovery.js';
+import {createMorningStatus} from './morning-status.js';
 import {esc} from '../../core/values.js';
 import {money} from '../../core/money.js';
 import {$} from '../../state/constants.js';
@@ -84,6 +85,20 @@ const recoveryFlow=createMorningRecovery({
     isBusy:()=>createBusy,
     state:(nextBlocked,nextCompleted)=>{blocked=nextBlocked;if(nextCompleted!==undefined)completed=nextCompleted},
     notify:notifyBankVerified,toast,
+  },
+});
+const statusFlow=createMorningStatus({
+  lifetime,commands:operationCommands,
+  session:{
+    assertModal:()=>{modalAssert?.()},isActive,
+    read:()=>({generation:modalGeneration,operationId:activeOperationId,busy:createBusy,blocked,completed,pendingOperationId:pendingRecovery?.operationId||null,context:issuanceContext||pendingRecovery}),
+    update:state=>{blocked=state.blocked;if(state.completed!==undefined)completed=state.completed},
+  },
+  recovery:{abandon:abandonRecoveredReservation,reset:resetOperationAfterTerminal},
+  application:{apply:applyVerifiedOperation,settle:settleVerifiedRecovery,notify:notifyBankVerified},
+  presentation:{
+    status:connectionStatus,operation:renderOperation,markSaved:()=>markModalDraftSaved?.(),
+    button:({disabled,completed:done=false})=>{const button=document.querySelector('[data-action="morning-create"]');if(button){button.disabled=disabled;if(done){button.dataset.idleLabel='הופק ואומת';button.textContent='הופק ואומת'}}},
   },
 });
 
@@ -275,7 +290,7 @@ function saveRecoveryChoice(){
   pendingRecovery=next;issuanceContext=next;markModalDraftSaved?.();return true;
 }
 async function confirmRecoveryChoice(button){
-  if(lifetime.pending('application')||lifetime.pending('recovery')||!saveRecoveryChoice())return;
+  if(debtApplication.isPending()||lifetime.pending('recovery')||!saveRecoveryChoice())return;
   const assertCurrent=captureScope(),chosen=loadMorningDebtRecoveryContext();if(!chosen?.resolution)return;
   setBusy(button,true,'מסנכרן ובודק…');
   try{
@@ -319,32 +334,7 @@ async function abandonRecoveredReservation(operationId,{quiet=false,assertCurren
   if(data.abandoned===true){const cleared=resetOperationAfterTerminal(operationId);if(cleared&&!quiet)toast('ניסיון ההפקה הקודם נעצר לפני שנשלח ל-Morning. לא הופק מסמך ולא בוצע שינוי בחוב.');return {abandoned:cleared,operation:data.operation}}
   return {abandoned:false,operation:data.operation||null};
 }
-async function refreshStatus({reconcile=false}={}){
-  let assertCurrent;try{modalAssert?.();assertCurrent=captureScope(!reconcile)}catch(error){return null}
-  const generation=modalGeneration,operationId=activeOperationId;
-  connectionStatus('loading','בודק חיבור ל-Morning…');
-  try{
-    let data=await operationCommands.status(operationId,reconcile,assertCurrent);assertCurrent();
-    if(!isActive(generation)||operationId!==activeOperationId||createBusy)return data;
-    if(reconcile&&data.retryable_reserved&&operationId){const abandoned=await abandonRecoveredReservation(operationId,{assertCurrent});assertCurrent();if(abandoned.abandoned){if(isActive(generation)){connectionStatus('ready','הניסיון הקודם נעצר לפני שליחה. אפשר לערוך ולהפיק מחדש בבטחה.');const button=document.querySelector('[data-action="morning-create"]');if(button)button.disabled=false}return data}data={...data,operation:abandoned.operation}}
-    // A persisted recovery context stays fail-closed even if a status read races before the Edge reservation becomes visible.
-    const recoveryStillPending=pendingRecovery?.operationId===operationId;
-    blocked=!!data.unresolved||!!data.retryable_reserved||recoveryStillPending;renderOperation(data.operation);
-    const verifiedCreated=data.operation?.state==='created'&&!!data.operation?.verified_at,needsLocalRecovery=!completed||pendingRecovery?.operationId===operationId;let recoveryCleanupPending=false;
-    if(verifiedCreated&&needsLocalRecovery){const context=issuanceContext||pendingRecovery,assertWrite=captureScope(),result=await applyVerifiedOperation({operationId:data.operation.operation_id,documentId:data.operation.document_id,documentNumber:data.operation.document_number,type:data.operation.document_type,amount:Number(data.operation.amount),verifiedAt:data.operation.verified_at},{assertCurrent:assertWrite});assertCurrent();assertWrite();const settlement=settleVerifiedRecovery(operationId,result,{serverLinkPending:!!data.bank_link_pending});blocked=settlement.blocked;completed=settlement.durable;recoveryCleanupPending=settlement.durable&&!settlement.recoveryCleared;if(settlement.recoveryCleared)notifyBankVerified(context,data.bank_link);markModalDraftSaved?.()}
-    if(data.operation?.state==='failed'){resetOperationAfterTerminal(operationId)}
-    const envLabel=data.environment==='sandbox'?'Sandbox':'Production';
-    if(!data.configured)connectionStatus('error','Morning אינו מוגדר בשרת');
-    else if(data.available===false)connectionStatus('error',blocked?'Morning אינו זמין כרגע והפקה קודמת עדיין חסומה עד לאימות.':'Morning אינו זמין כרגע. הפקת מסמכים חסומה ליתר ביטחון.');
-    else if(data.retryable_reserved)connectionStatus('warning','הפעולה נרשמה אך טרם נשלחה ל-Morning. לחץ „בדוק מצב הפקה” כדי לבטל את ההזמנה המוקדמת בבטחה ואז להפיק מחדש.');
-    else if(recoveryStillPending&&!data.operation)connectionStatus('warning','נשמר ניסיון הפקה מקומי אך הוא עדיין לא הופיע ביומן השרת. לא נשלח ניסיון נוסף עד שהמצב יתברר.');
-    else if(recoveryCleanupPending)connectionStatus('warning','המסמך אומת והעדכון המקומי נשמר, אך נקודת ההתאוששות עדיין לא נמחקה בבטחה. ההפקה נשארת נעולה והמערכת תנסה שוב.');
-    else connectionStatus(blocked||data.environment==='sandbox'?'warning':'ready',blocked?'ניסיון ההפקה עדיין בבדיקה. לחץ „בדוק מצב הפקה”.':`מחובר ל-Morning ${envLabel}`);
-    const button=document.querySelector('[data-action="morning-create"]');if(button){button.disabled=!data.configured||data.available===false||blocked||completed||createBusy;if(completed){button.dataset.idleLabel='הופק ואומת';button.textContent='הופק ואומת'}}
-    if(blocked&&recoveryStillPending)scheduleRecoveryCheck(60_000,assertCurrent);
-    return data;
-  }catch(error){if(scopeChanged(error))return null;if(isActive(generation)){connectionStatus('error',error.message||'לא ניתן לאמת את החיבור');const button=document.querySelector('[data-action="morning-create"]');if(button)button.disabled=true}if(pendingRecovery?.operationId===operationId)scheduleRecoveryCheck(90_000,assertCurrent);return null}
-}
+function refreshStatus(...args){return statusFlow.refresh(...args)}
 
 function recoverPendingMorningOperation(...args){return recoveryFlow.recover(...args)}
 
@@ -362,13 +352,13 @@ async function createMorningDocument(button){
   let payload,assertCurrent;try{modalAssert?.();assertCurrent=captureScope();payload=readForm()}catch(error){return toast(error.message)}
   const generation=modalGeneration,issuanceEpoch=issuanceInterruptionEpoch,type=payload.document.type,amount=payload.document.amount,clientName=payload.document.client.name,policy=debtUpdatePolicy(type);
   let context;try{context=recoveryContext(type,amount,policy,payload.operation_id)}catch(error){return toast(error.message)}
-  createBusy=true;setBusy(button,true,'מפיק…');
+  statusFlow.cancelPending();createBusy=true;setBusy(button,true,'מפיק…');
   try{
     const confirmed=await confirmDialog('הפקת מסמך רשמי',`להפיק ${documentLabel(type)} על סך ${money(amount)} עבור ${clientName}?\nלאחר ההפקה המסמך יקבל מספר רשמי ב-Morning.${debtImpactConfirmation(type,amount,policy)}`,{confirmText:'הפק מסמך',cancelText:'חזור לעריכה',tone:'primary',signal:display.signal});
     if(!confirmed)return;assertCurrent();if(!isActive(generation))return;
     if(rejectCurrentIssuance())return;
     const data=await issuance.issue(payload,context,assertCurrent);assertCurrent();
-    const result=await applyVerifiedContext(context,{operationId:context.operationId,documentId:data.document.id,documentNumber:data.document.number,type:data.document.type??type,amount:data.document.amount??amount,verifiedAt:new Date().toISOString()},{immediate:issuanceEpoch===issuanceInterruptionEpoch&&navigator.onLine!==false,assertCurrent});assertCurrent();const settlement=settleVerifiedRecovery(context.operationId,result,{serverLinkPending:!!data.local_link_pending||!!data.bank_link_pending}),durable=settlement.durable,recoveryCleared=settlement.recoveryCleared;if(recoveryCleared)notifyBankVerified(context,data.bank_link);
+    const result=await applyVerifiedContext(context,{operationId:context.operationId,documentId:data.document.id,documentNumber:data.document.number,type:data.document.type??type,amount:data.document.amount??amount,verifiedAt:new Date().toISOString()},{immediate:issuanceEpoch===issuanceInterruptionEpoch&&navigator.onLine!==false,assertCurrent,isCurrent:()=>isActive(generation)});assertCurrent();const settlement=settleVerifiedRecovery(context.operationId,result,{serverLinkPending:!!data.local_link_pending||!!data.bank_link_pending}),durable=settlement.durable,recoveryCleared=settlement.recoveryCleared;if(recoveryCleared)notifyBankVerified(context,data.bank_link);
     documentsBrowser.invalidateCache();
     let pdfLoaded=false;if(isActive(generation))pdfLoaded=await documentsBrowser.viewDocument(data.document.id,null,{quiet:true});assertCurrent();
     if(isActive(generation)){
@@ -401,7 +391,7 @@ async function reconcile(button){if(createBusy)return;setBusy(button,true,'בו�
 
 function dispose(){if(disposed)return false;disposed=true;lifetime.dispose();display.dispose();return true}
 function command(run,args){return disposed?Promise.resolve(false):lifetime.run(()=>run(...args))}
-const runtime={dispose,cancelPending:lifetime.cancelPending,drain:lifetime.drain,isPending:lifetime.isPending};
+const runtime={dispose,cancelPending:()=>{lifetime.cancelPending();statusFlow.cancelPending()},drain:lifetime.drain,isPending:lifetime.isPending};
 return {
   dispose,runtime,isDebtRecoveryPending,rejectDebtRecoveryMutation,documentButton,recoverPendingMorningOperation,
   saveRecoveryChoice:(...args)=>disposed?false:saveRecoveryChoice(...args),
