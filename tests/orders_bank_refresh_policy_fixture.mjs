@@ -7,7 +7,7 @@ const readOwner=()=>readFileSync(new URL('../netunim-orders/site/assets/js/domai
 // owner-lifetime fence are reversed; the immutable baseline is never rewritten.
 export function restoreOrdersBankRefresh(controller,{owner=readOwner()}={}){
   const fn=declaration(controller,'refreshBank'),step=fn.body.body.find(n=>n.type==='TryStatement');
-  const invocation=step.block.body[0].argument.argument;
+  const invocation=step?.block.body[0]?.argument?.argument;
   if(invocation?.callee?.object?.object?.name!=='bankRefresh')return controller;
   const options=invocation.arguments[0];
   const callback=name=>{
