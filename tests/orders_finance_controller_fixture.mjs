@@ -3,6 +3,9 @@ import {createFinanceLeaseOwner} from '../shared/finance-lease-owner.js';
 import { createOrdersFinanceDocumentCommands } from '../netunim-orders/site/assets/js/domains/finance/document-commands.js';
 import { createOrdersBankSnapshotPublication } from '../netunim-orders/site/assets/js/domains/finance/bank-snapshot-publication.js';
 import { createOrdersBankSnapshotPolicy } from '../netunim-orders/site/assets/js/domains/finance/bank-snapshot-policy.js';
+import {createOrdersBankRefresh} from '../netunim-orders/site/assets/js/domains/finance/bank-refresh.js';
+import {bankAutoRefreshDue} from '../shared/finance-refresh-policy.js';
+import {uid} from '../netunim-orders/site/assets/js/core/values.js';
 import {createBankArchiveReconciliation} from '../shared/bank-archive-reconciliation.js';
 import { createOrdersBankArchiveReadout } from '../netunim-orders/site/assets/js/domains/finance/bank-archive-readout.js';
 import { createOrdersCreditConnectionOwner } from '../netunim-orders/site/assets/js/domains/finance/credit-connection-owner.js';
@@ -106,14 +109,23 @@ export function createOrdersFinanceControllerFixture(ports) {
     publication:{save:documents.commands.publishBankSnapshot},
     policy:createOrdersBankSnapshotPolicy(),
   });
-  const controller = createDomainsFinanceController({
+  let controller;
+  const bankRefresh=createOrdersBankRefresh({
+    authority:ports.operationScope,
+    cloud:{refresh:ports.refreshKupaReadout??unexpected,readFinance:documents.queries.readFinance,lastSyncAt:()=>controller.bankRefreshAutomation.lastSyncAt()},
+    device:{capture:bankConnections.queries.capture,readStatus:bankConnections.queries.readStatus,supported:bankConnections.queries.supported,fetchBalance:(...args)=>ports.bridge.fetchBalance(...args),recordScan:bankConnections.commands.recordScan},
+    leases:{...createFinanceLeaseOwner({leases:syncLeases,authority:ports.operationScope,timers:ports.timers??globalThis}),createToken:()=>uid('FINLEASE'),reportFailure:error=>console.error('orders bank sync lease release',error)},
+    publication:{prepare:bankSnapshots.commands.prepare,publish:bankSnapshots.commands.publish},
+    automation:{allowed:()=>controller.bankRefreshAutomation.allowed(),currentEpoch:()=>controller.bankRefreshAutomation.currentEpoch(),due:bankAutoRefreshDue},
+  });
+  controller = createDomainsFinanceController({
     ...ports,
     documents,
     syncLeases:createFinanceLeaseOwner({leases:syncLeases,authority:ports.operationScope,timers:ports.timers??globalThis}),
     archive,
     connections,
     bankConnections,
-    bankSnapshots,
+    bankRefresh,
   });
   return {
     ...controller,

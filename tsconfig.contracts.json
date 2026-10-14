@@ -20,6 +20,8 @@
     "types": []
   },
   "files": [
+    "tests/fixtures/checked-orders-bank-refresh.mjs",
+    "netunim-orders/site/assets/js/domains/finance/bank-refresh.js",
     "tests/fixtures/checked-main-sync.mjs",
     "shared/cloud-write-authority.js",
     "netunim-kupa/site/assets/js/cloud/main-document-write.js",

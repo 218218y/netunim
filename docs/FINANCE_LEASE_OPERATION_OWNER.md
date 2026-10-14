@@ -10,7 +10,12 @@ Four before-change controller regressions reproduce these distinct failures.
 each accepted Bank/Credit operation. Its three ports are leases, account/storage
 authority and timers. Each composition supplies an exclusive instance to its
 controller; Orders Bank and Credit may share that controller's owner, while
-their sessions own independent timer handles. The owner has one command:
+their sessions own independent timer handles.
+
+The later [Orders Bank refresh slice](ORDERS_BANK_REFRESH_OWNER.md) gives Bank a
+dedicated instance owned by its operation runtime; Credit retains the controller
+instance. Both still capture the same independent account/storage cleanup scope.
+The owner has one command:
 
 ```text
 commands.acquire(kind, token, {assertCurrent})

@@ -78,7 +78,8 @@ test('controller has no direct document-write collaborators or nonatomic Bank fa
   ])
     assert.ok(!fields.includes(name), name);
   const bank = declaration(source, 'refreshBank');
-  assert.ok(bank.includes('bankSnapshots.commands.publish'));
+  assert.ok(bank.includes('bankRefresh.commands.refresh'));
+  assert.ok(read('bank-refresh').includes('publication.publish'));
   assert.ok(read('bank-snapshot-publication').includes('publication.save('));
   assert.ok(!bank.includes('mutateFinanceCloud('));
   assert.ok(!bank.includes('mutateKupaCloud('));

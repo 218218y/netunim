@@ -11,6 +11,8 @@ import {CREDIT_CONNECTOR_CONTRACT_VERSION} from '../domains/finance/credit-feed.
 import {createOrdersFinanceDocumentCommands} from '../domains/finance/document-commands.js';
 import {createOrdersBankSnapshotPublication} from '../domains/finance/bank-snapshot-publication.js';
 import {createOrdersBankSnapshotPolicy} from '../domains/finance/bank-snapshot-policy.js';
+import {createOrdersBankRefresh} from '../domains/finance/bank-refresh.js';
+import {bankAutoRefreshDue} from '../shared/finance-refresh-policy.js';
 import {createOrdersBankArchiveReadout} from '../domains/finance/bank-archive-readout.js';
 import {createBankArchiveReconciliation} from '../shared/bank-archive-reconciliation.js';
 import {bankArchiveTargets,bankArchiveSourceRows} from '../domains/finance/bank-archive-model.js';
@@ -21,7 +23,7 @@ import {createCreditCardOrderView} from '../shared/credit-card-order-view.js';
 import {createFinanceBankActions} from '../ui/action-packs/finance-bank.js';
 import {createFinanceCreditActions} from '../ui/action-packs/finance-credit.js';
 import {markMutationActions} from '../shared/action-registry.js';
-import {esc} from '../core/values.js';
+import {esc,uid} from '../core/values.js';
 
 function requireMethods(name, port, methods) {
   for (const method of methods) {
@@ -42,7 +44,7 @@ export function createOrdersFinanceCapability({
   const effects = platform.effects ?? createFinanceBrowserEffects();
   requireMethods('effects', effects, ['isOnline', 'writeText', 'saveJson', 'delay', 'dispose']);
   const bridge = createFinanceBridgeIntegration(platform.bridge ? {platform:platform.bridge} : undefined);
-  let disposed = false, cache = null, controller = null, presentation = null, archive = null, connections = null, bankConnections = null, bankSnapshots = null, archiveReconciliation = null;
+  let disposed = false, cache = null, controller = null, presentation = null, archive = null, connections = null, bankConnections = null, bankSnapshots = null, bankRefresh = null, archiveReconciliation = null;
   const operationScope = createFinanceOperationScope({readAccess:() => {
     const access = readAccess();
     return {...access, readable:access.readable && !disposed, writable:access.writable && !disposed};
@@ -170,8 +172,34 @@ export function createOrdersFinanceCapability({
       publication:{save:documents.commands.publishBankSnapshot},
       policy:createOrdersBankSnapshotPolicy(),
     });
+    bankRefresh = createOrdersBankRefresh({
+      authority:operationScope,
+      cloud:{
+        refresh:(...args) => cache.refreshKupaReadout(...args),
+        readFinance:(...args) => documents.queries.readFinance(...args),
+        lastSyncAt:() => coreReady().bankRefreshAutomation.lastSyncAt(),
+      },
+      device:{
+        capture:() => bankConnections.queries.capture(),
+        readStatus:() => bankConnections.queries.readStatus(),
+        supported:status => bankConnections.queries.supported(status),
+        fetchBalance:options => bridge.fetchBalance(options),
+        recordScan:(...args) => bankConnections.commands.recordScan(...args),
+      },
+      leases:{
+        ...createFinanceLeaseOwner({leases:syncLeases,authority:leaseAuthority,timers:platform.timers??globalThis}),
+        createToken:() => uid('FINLEASE'),
+        reportFailure:error => console.error('orders bank sync lease release',error),
+      },
+      publication:{prepare:bankSnapshots.commands.prepare,publish:bankSnapshots.commands.publish},
+      automation:{
+        allowed:() => coreReady().bankRefreshAutomation.allowed(),
+        currentEpoch:() => coreReady().bankRefreshAutomation.currentEpoch(),
+        due:bankAutoRefreshDue,
+      },
+    });
     controller = createDomainsFinanceController({
-      documents,syncLeases:createFinanceLeaseOwner({leases:syncLeases,authority:leaseAuthority,timers:platform.timers??globalThis}),archive,connections,bankConnections,bankSnapshots,
+      documents,syncLeases:createFinanceLeaseOwner({leases:syncLeases,authority:leaseAuthority,timers:platform.timers??globalThis}),archive,connections,bankConnections,bankRefresh,
       tab, checksSession, bridge, operationScope, effects:controllerEffects,
       loadSession:auth.loadSession, toast:(...args) => { if (!disposed) toast(...args); }, getSharedChecks:() => model.state.checks,
       refreshKupaReadout:(...args) => cache.refreshKupaReadout(...args),

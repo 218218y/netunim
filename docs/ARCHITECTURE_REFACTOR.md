@@ -10,6 +10,15 @@ remaining-scope paragraphs below are a chronological record.
 
 ## Verified now
 
+- Orders Bank provider coordination now belongs to a strict six-port refresh
+  operation, with a dedicated instance of the existing lease owner. The
+  controller retains admission, archive display lifetime and presentation;
+  cloud preflight, lease/provider acquisition and publication/cleanup move out.
+  The full before-change AST and older immutable lease/publication policies
+  still match. Native lifecycle tests now include preflight, acquisition,
+  status and provider alongside durable publication. See
+  `ORDERS_BANK_REFRESH_OWNER.md`; Orders Credit/Kupa workflows remain open.
+
 - Main sync now has a ten-owner composition in each startup root and twelve
   runtime role APIs, replacing 33 Orders/42 Kupa flat collaborators. Common
   strict write authority owns live account/epoch/login/control fencing; Kupa's

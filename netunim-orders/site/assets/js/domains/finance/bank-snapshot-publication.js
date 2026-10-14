@@ -29,7 +29,7 @@ function record(value) {
 }
 /**
  * Own the accepted provider-result -> archive verification -> atomic snapshot
- * sequence. Provider access and lease acquisition remain with the controller;
+ * sequence. Provider access and lease acquisition belong to the refresh owner;
  * account/device/heartbeat authority accompanies every durable boundary here.
  * @param {SnapshotPorts} ports
  * @returns {SnapshotCapability}

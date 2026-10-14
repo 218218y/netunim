@@ -1,10 +1,11 @@
 import { readFileSync } from 'node:fs';
 import {restoreOrdersBankPublication} from './orders_bank_publication_policy_fixture.mjs';
 import {restoreFinanceLeaseOwnership} from './finance_lease_policy_fixture.mjs';
+import {restoreOrdersBankRefresh} from './orders_bank_refresh_policy_fixture.mjs';
 // The historical fixture remains immutable. Undo only the reviewed financial
 // evidence boundary delta when comparing the surrounding provider/lease flow.
 export function restoreBankMoneyBoundary(source) {
-  source=restoreFinanceLeaseOwnership(source);
+  source=restoreFinanceLeaseOwnership(restoreOrdersBankRefreshIfPresent(source));
   if(source.includes('bankSnapshots.commands.publish('))source=restoreOrdersBankPublication(source);
   const oldFields =
     'availableBalance:Number.isFinite(Number(business.availableBalance))?Number(business.availableBalance):null,creditLimit:Number.isFinite(Number(business.creditLimit))?Number(business.creditLimit):null,creditLimitUsed:Number.isFinite(Number(business.creditLimitUsed))?Number(business.creditLimitUsed):null,creditLimitUsedPercent:Number.isFinite(Number(business.creditLimitUsedPercent))?Number(business.creditLimitUsedPercent):null';
@@ -33,6 +34,10 @@ export function restoreBankMoneyBoundary(source) {
       'error=currentOperationError(error,()=>{assertOwner?.();assertConnection?.()});',
       'error=currentOperationError(error,assertOwner);'
     );
+}
+
+function restoreOrdersBankRefreshIfPresent(source){
+  return source.includes('bankRefresh.commands.refresh(')?restoreOrdersBankRefresh(source):source;
 }
 
 export function restoreBankProviderMoneyBoundary(source) {
