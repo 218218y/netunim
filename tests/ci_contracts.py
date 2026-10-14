@@ -13,7 +13,7 @@ import time
 import unittest
 from unittest.mock import patch
 
-from verification_plan import CORE_SUITES, RUNTIME_SUITES, GROUPS, ci_matrix, validate_plan
+from verification_plan import CORE_SUITES, RUNTIME_SUITES, GROUPS, CI_SHARDS, ci_groups, ci_matrix, validate_plan
 import run_all
 import browser_harness
 from node_models import test_files
@@ -209,13 +209,44 @@ with patch.object(h, 'HOST_STATE_ROOT', root / 'host'), \\
     def test_matrix_is_a_complete_disjoint_partition_of_the_full_local_gate(self):
         validate_plan()
         matrix = ci_matrix()["include"]
-        selected = [suite for row in matrix for suite in GROUPS[row["group"]]]
+        groups = ci_groups()
+        self.assertCountEqual([row["group"] for row in matrix], groups)
+        selected = [suite for row in matrix for suite in groups[row["group"]]]
         self.assertCountEqual(selected, CORE_SUITES + RUNTIME_SUITES)
         self.assertEqual(len(selected), len(set(selected)))
-        self.assertTrue(next(row for row in matrix if row["group"] == "browser-database")["postgres"])
+        for row in matrix:
+            self.assertEqual(row["browser"], any(suite in RUNTIME_SUITES for suite in groups[row["group"]]))
+            self.assertEqual(row["postgres"], any(suite in GROUPS["database"] + GROUPS["browser-database"] for suite in groups[row["group"]]))
         # Nested audits remain exercised by their original parent suites.
         self.assertIn("runtime_morning.py", selected)
         self.assertIn("supabase_candidate.py", selected)
+
+    def test_new_suite_is_included_without_a_second_shard_inventory(self):
+        added = "new-runtime-suite.py"
+        with patch.dict(GROUPS, {"browser-lifecycle": [*GROUPS["browser-lifecycle"], added]}), \
+             patch("verification_plan.Path.is_file", return_value=True):
+            groups = ci_groups()
+        self.assertEqual(sum(suites.count(added) for suites in groups.values()), 1)
+
+    def test_invalid_shard_configuration_cannot_produce_a_partial_matrix(self):
+        for changes in ({"unknown": 2}, {"browser-ui": 0}, {"browser-ui": 100}, {"browser-ui": True}):
+            with self.subTest(changes=changes), patch.dict(CI_SHARDS, changes), self.assertRaises(ValueError):
+                ci_matrix()
+        with patch.dict(GROUPS, {"browser-ui-1": ["runtime_smoke.py"]}), \
+             patch("verification_plan.validate_plan"), self.assertRaisesRegex(ValueError, "Duplicate CI group"):
+            ci_matrix()
+
+    def test_cli_selects_a_shard_and_preserves_the_original_local_group(self):
+        for group in ("browser-lifecycle", "browser-lifecycle-2", "browser-sync-2", "browser-ui-2"):
+            expected = {**GROUPS, **ci_groups()}[group]
+            with self.subTest(group=group), tempfile.TemporaryDirectory() as tmp, \
+                 patch.object(run_all, "preflight", return_value=0), \
+                 patch.object(run_all, "run_suites", return_value=0) as runner, \
+                 redirect_stdout(io.StringIO()):
+                self.assertEqual(run_all.main(["--group", group, "--keep-going", "--report-dir", tmp]), 0)
+                self.assertEqual(runner.call_args.args[0], expected)
+                self.assertEqual(runner.call_args.kwargs["jobs"], 1)
+                self.assertTrue(runner.call_args.kwargs["keep_going"])
 
     def test_every_javascript_test_is_discovered_including_previous_orphans(self):
         discovered = test_files()
@@ -284,13 +315,20 @@ class GithubGateContracts(unittest.TestCase):
             gate.successful_run([green, {**green, "id": 11, "run_number": 5, "conclusion": "failure"}], "abc123", "owner/repo")
 
     def test_partial_skipped_or_duplicate_jobs_never_authorize_upload(self):
-        names = ["Plan verification", "Windows deployment contracts", gate.GATE_JOB, *[f"Verify / {name}" for name in GROUPS]]
+        names = ["Plan verification", "Windows deployment contracts", gate.GATE_JOB, *[f"Verify / {name}" for name in ci_groups()]]
         jobs = [{"name": name, "status": "completed", "conclusion": "success"} for name in names]
         gate.validate_jobs(jobs)
-        for broken in (jobs[:-1], jobs + jobs[:1], [{**jobs[0], "conclusion": "skipped"}, *jobs[1:]],
-                       [{**jobs[0], "status": "in_progress"}, *jobs[1:]]):
-            with self.assertRaises(RuntimeError):
-                gate.validate_jobs(broken)
+        for index, job in enumerate(jobs):
+            for broken in (jobs[:index] + jobs[index + 1:], jobs + [job],
+                           *[jobs[:index] + [{**job, "conclusion": conclusion}] + jobs[index + 1:]
+                             for conclusion in ("failure", "skipped", "cancelled")],
+                           jobs[:index] + [{**job, "status": "in_progress"}] + jobs[index + 1:]):
+                with self.subTest(job=job["name"]), self.assertRaises(RuntimeError):
+                    gate.validate_jobs(broken)
+        # A green run with only the old eight groups is no longer a full gate.
+        old_names = ["Plan verification", "Windows deployment contracts", gate.GATE_JOB, *[f"Verify / {name}" for name in GROUPS]]
+        with self.assertRaises(RuntimeError):
+            gate.validate_jobs([{"name": name, "status": "completed", "conclusion": "success"} for name in old_names])
 
     def test_api_failure_cannot_authorize_upload(self):
         with patch.object(gate, "clean_head", return_value="abc123"), patch.object(gate, "command", return_value="https://github.com/owner/repo"), \
@@ -300,7 +338,7 @@ class GithubGateContracts(unittest.TestCase):
 
     def test_successful_end_to_end_api_contract_and_rerun_race(self):
         run = successful_fixture()
-        names = ["Plan verification", "Windows deployment contracts", gate.GATE_JOB, *[f"Verify / {name}" for name in GROUPS]]
+        names = ["Plan verification", "Windows deployment contracts", gate.GATE_JOB, *[f"Verify / {name}" for name in ci_groups()]]
         jobs = [{"name": name, "status": "completed", "conclusion": "success"} for name in names]
         responses = [{"workflow_runs": [run]}, {"total_count": len(jobs), "jobs": jobs}, run]
         for last, allowed in ((run, True), ({**run, "run_attempt": 2, "status": "queued"}, False)):

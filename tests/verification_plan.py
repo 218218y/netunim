@@ -1,6 +1,7 @@
 """One suite inventory for local verification and the GitHub Actions matrix.
 
-Groups run on separate machines in CI; suites within a group stay sequential.
+CI shards run on separate machines; suites within a shard stay sequential.
+The original groups remain available for focused local verification.
 Helpers and operator-only tools (including live bank integration) are not suites.
 """
 from pathlib import Path
@@ -38,6 +39,13 @@ GROUPS = {
 CORE_SUITES = [suite for group, suites in GROUPS.items() if not group.startswith("browser-") for suite in suites]
 RUNTIME_SUITES = [suite for group, suites in GROUPS.items() if group.startswith("browser-") for suite in suites]
 
+# Fixed striping keeps one inventory and automatically includes newly added suites.
+# Two successful October 14 CI runs put these groups at 560-591s, 329-332s
+# and 218-241s respectively. Their longest striped shards were 213s, 179s
+# and 148s; browser-morning (211-214s) then sets the approximate lower bound.
+# Historical timings inform this choice only; CI never reads a timing/result cache.
+CI_SHARDS = {"browser-lifecycle": 3, "browser-sync": 2, "browser-ui": 2}
+
 
 def validate_plan():
     suites = CORE_SUITES + RUNTIME_SUITES
@@ -48,8 +56,24 @@ def validate_plan():
     missing = [name for name in suites if not (TESTS / name).is_file()]
     if missing:
         raise ValueError(f"Verification suites missing: {missing}")
+    for group, count in CI_SHARDS.items():
+        if group not in GROUPS or type(count) is not int or not 1 <= count <= len(GROUPS[group]):
+            raise ValueError(f"Invalid CI shard count for {group}: {count}")
+
+
+def ci_groups():
+    """Disjoint CI selections derived entirely from the full local inventory."""
+    validate_plan()
+    selections = {}
+    for name, suites in GROUPS.items():
+        count = CI_SHARDS.get(name, 1)
+        for index in range(count):
+            shard = name if count == 1 else f"{name}-{index + 1}"
+            if shard in selections or (count > 1 and shard in GROUPS):
+                raise ValueError(f"Duplicate CI group name: {shard}")
+            selections[shard] = suites[index::count]
+    return selections
 
 
 def ci_matrix():
-    validate_plan()
-    return {"include": [{"group": name, "browser": name.startswith("browser-"), "postgres": name in ("database", "browser-database")} for name in GROUPS]}
+    return {"include": [{"group": name, "browser": name.startswith("browser-"), "postgres": name in ("database", "browser-database")} for name in ci_groups()]}

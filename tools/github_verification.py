@@ -13,7 +13,7 @@ from urllib.parse import urlencode
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tests"))
-from verification_plan import GROUPS
+from verification_plan import ci_groups
 
 WORKFLOW = "verify.yml"
 GATE_JOB = "Verification complete"
@@ -68,7 +68,7 @@ def successful_run(runs, sha, repo):
 
 
 def validate_jobs(jobs):
-    expected = {"Plan verification", "Windows deployment contracts", GATE_JOB, *[f"Verify / {group}" for group in GROUPS]}
+    expected = {"Plan verification", "Windows deployment contracts", GATE_JOB, *[f"Verify / {group}" for group in ci_groups()]}
     counts = Counter(job.get("name") for job in jobs)
     if any(counts[name] != 1 for name in expected):
         raise RuntimeError("Full verification jobs are missing or duplicated; refusing a partial green run.")
