@@ -21,6 +21,10 @@ warning. A changed pairing or accepted local connection intent retires former
 feedback; invalid input does not. Account authority still controls lease cleanup
 independently of device publication guards. The controller has 18 collaborators;
 its download effect port and embedded local connection implementation are retired.
+If a financial operation stops on pairing change, it publishes the canonical
+local explanation after retiring former-device fields. The existing native money
+gate reproduced a missing explanation during CI; a model regression and focused
+native reproduction verify both visibility and suppression of private errors.
 
 Native forms own their rendered identity, observed pairing and submit listeners.
 Replacing a form releases its former listeners. Explicit pairing can retain the

@@ -230,7 +230,10 @@ async function refreshBankBalance({interactive=false,auto=false,isCurrent=()=>tr
     financialFeedback.resultReady=true;render();
     return true;
   }catch(e){
-    if(assertConnection&&!connections.queries.isCurrent(assertConnection))return false;
+    // A rejected financial operation still needs a local explanation. Retire
+    // former-device fields before publishing the canonical scope error; never
+    // copy the old Bridge response/error into the replacement device readout.
+    if(assertConnection&&!connections.queries.isCurrent(assertConnection))connectionState();
     try{assertOwner?.();assertConnection?.()}catch(scopeError){e=scopeError}
     if(!localSnapshot.state()){financialFeedback.lastError=e.message||String(e);financialFeedback.lastErrorAt=new Date().toISOString();financialFeedback.lastErrorCode=e.code||'';financialFeedback.lastErrorStage=e.stage||'';financialFeedback.lastErrorHttpStatus=Number(e.httpStatus)||0;financialFeedback.availableAccounts=Array.isArray(e.availableAccounts)?e.availableAccounts:[];financialFeedback.accountSelectionRole=e.accountRole||'';financialFeedback.message=financialFeedback.lastError}
     if(!auto)toast(bankBridgeUiState().lastError);
