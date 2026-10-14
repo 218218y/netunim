@@ -13,6 +13,11 @@ FLOW = r"""(async()=>{
  await appReady;syncDocument.stopPolling();finance.runtime.stop();
  const check=(ok,message)=>{if(!ok)throw Error(message)},phase=__PHASE__;
  const originalFetch=globalThis.fetch,descriptor=Object.getOwnPropertyDescriptor(IDBTransaction.prototype,'oncomplete');
+ const {publicBindings}=await import('./test-probe-runtime.js');
+ // Capture the production adapter before constructing the independent fixture
+ // adapter, which publishes its own descriptor into the temporary probe map.
+ const receiptPort=Object.getOwnPropertyDescriptor(publicBindings,'readPendingSnapshot');
+ const readPendingSnapshot=receiptPort.get();
  const {createCalendarStorage}=await import('./assets/js/calendar/storage.js');const storage=createCalendarStorage();
  const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');const db=createStorageJournalDb();
  const raw=async()=>JSON.stringify({main:await db.load('local:orders'),checks:await db.load('local:shared-checks')});
@@ -21,12 +26,24 @@ FLOW = r"""(async()=>{
  const before=await raw(),calendarId='calendar@example.test',remote=new Map();let effects=0,cacheCommitted=false,armed=false,appendArmed=false;
  const deferred=()=>{let resolve;const promise=new Promise(done=>{resolve=done});return {promise,resolve}};
  const held=deferred(),entered=deferred(),delivery=deferred(),deliveryEntered=deferred(),appendHeld=deferred(),appendEntered=deferred();
- // Hold the queue-only read after the remote cache commit. Counting all reads
- // would intercept the independent display observer's multi-store transaction.
+ // Receipt belongs to this sync's observation port. Queue-only transaction
+ // shape cannot identify it: the independent committed-display observer also
+ // opens a queue-only confirmation and may publish before its oncomplete.
+ // Preserve the actual native read and receipt; hold only its returned result.
+ if(phase==='receipt')receiptPort.set(async()=>{
+   // Schedule a real competing confirmation before the sync's own queue read.
+   // The former global transaction-shape gate could capture this producer.
+   check(cacheCommitted,'receipt port preceded remote cache commit');
+   check(await storage.confirmPendingSnapshot(receipt=>receipt.isCurrent()&&receipt.operations.length===0)===true,'pre-receipt competing confirmation failed');
+   const receipt=await readPendingSnapshot();
+   if(armed){armed=false;entered.resolve();await held.promise}
+   return receipt;
+ });
+ // Other phases still hold the native cache/queue-write completion itself.
  Object.defineProperty(IDBTransaction.prototype,'oncomplete',{...descriptor,set(handler){
    const tx=this,cache=tx.objectStoreNames.contains('range-cache'),queue=tx.objectStoreNames.contains('pending-operations');
    let wait=null;
-   if(armed&&((phase==='cache'&&cache&&tx.mode==='readwrite')||(phase==='receipt'&&cacheCommitted&&queue&&tx.objectStoreNames.length===1&&tx.mode==='readonly'))){armed=false;wait={held,entered}}
+   if(armed&&phase==='cache'&&cache&&tx.mode==='readwrite'){armed=false;wait={held,entered}}
    if(appendArmed&&queue&&tx.mode==='readwrite'){appendArmed=false;wait={held:appendHeld,entered:appendEntered}}
    descriptor.set.call(tx,function(event){if(cache&&tx.mode==='readwrite')cacheCommitted=true;if(wait){wait.entered.resolve();void wait.held.promise.then(()=>handler.call(tx,event))}else handler.call(tx,event)});
  }});
@@ -51,6 +68,14 @@ FLOW = r"""(async()=>{
    authenticate('fixture-calendar-owner');armed=true;
    const first=domainsCalendarController.resumeAfterCloudLogin().catch(error=>{if(error.code==='CALENDAR_OPERATION_SCOPE_CHANGED')return false;throw error});await entered.promise;
    let saving=null,reacquire=null;
+   if(phase==='receipt'){
+     // Both operations create native queue-only reads, including synchronous
+     // confirmation before oncomplete. Neither may consume the sync receipt gate.
+     check(cacheCommitted,'receipt gate preceded remote cache commit');
+     check(await storage.pendingCount()===0,'unexpected queue before append');
+     check(await storage.confirmPendingSnapshot(receipt=>receipt.isCurrent()&&receipt.operations.length===0)===true,'competing native confirmation failed');
+     check(!calendarSession.lastSyncAt,'unrelated queue read completed the held sync');
+   }
    if(phase==='staged'){
      document.body.insertAdjacentHTML('beforeend','<div id="calendarPendingFixture"><input id="calendarSummary" value="retained queued event"><input id="calendarStartDate" value="2026-10-09"><input id="calendarEndDate" value="2026-10-09"><input id="calendarAllDay" type="checkbox" checked><input id="calendarCalendarId" value="calendar@example.test"></div>');
      appendArmed=true;saving=domainsCalendarController.saveCalendarEvent();await appendEntered.promise;
@@ -77,7 +102,7 @@ FLOW = r"""(async()=>{
    check(calendarSession.lastSyncAt,'confirmed sync not published');
    check(await raw()===before,'Calendar pipeline changed Main/Shared raw stores');
    return {staleSuccessBlocked:true,exactIdentity:true,ownedContinuation:true,noDuplicateEffect:true,mainSharedRetained:true,eventId:original.eventId};
- }finally{Object.defineProperty(IDBTransaction.prototype,'oncomplete',descriptor);globalThis.fetch=originalFetch;authenticate(null)}
+ }finally{receiptPort.set(readPendingSnapshot);Object.defineProperty(IDBTransaction.prototype,'oncomplete',descriptor);globalThis.fetch=originalFetch;authenticate(null)}
 })()"""
 
 parser = argparse.ArgumentParser()

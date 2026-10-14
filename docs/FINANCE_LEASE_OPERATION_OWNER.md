@@ -78,3 +78,22 @@ Focused local runs cover representative cases; the complete set runs in CI.
 This slice does not finish provider orchestration, complete financial result
 typing or manual-edit queue ownership. Remaining work is tracked in
 [the architecture inventory](ARCHITECTURE_REMAINING_WORK.md).
+
+## Calendar CI fixture ownership
+
+The final integration run also exposed `runtime_calendar_pending.py`'s receipt
+phase gate: it selected the first native queue-only readonly transaction after
+cache commit. The committed-display observer's confirmation opens the same
+transaction shape, and its synchronous publication precedes `oncomplete`.
+Consequently that gate could pause a different consumer or a post-publication
+confirmation rather than the sync's pending receipt. The failed push attempt
+passed on rerun; that green rerun does not establish correct fixture ownership.
+
+The fixture now uses the existing temporary lexical-probe descriptor to hold
+the production storage instance's `readPendingSnapshot` result after its actual
+native read. It retains the real receipt and generation checks. Deliberate
+queue-only confirmations before and during the hold prove that independent
+readers cannot consume the gate; subsequent append must still revoke the old
+sync result, preserve identity, deliver once and recover from native IDB. Other
+cache/write fault phases retain their native transaction injection. No
+production Calendar code, timeout or retry policy changes for this correction.
