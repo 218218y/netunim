@@ -115,23 +115,6 @@ function bankSettlementAccountCandidates(kupa,row,account,preparedBillingRows=nu
   })).filter(group=>group.suffix&&group.expected<0);
 }
 
-function bankRowsThrough(feed,reference){
-  const synced=isoDay(feed?.syncedAt),ref=isoDay(reference);if(!synced||!ref)return [];
-  const limit=synced<ref?synced:ref;
-  return (Array.isArray(feed?.transactions)?feed.transactions:[]).filter(row=>{const day=bankTransactionDay(row);return day&&day<=limit});
-}
-function crossAccountBankRowProvesTargetCycle(kupa,row,account,billingRows){
-  const value=moneyCents(row?.amount);if(value>=0||(row?.currency&&row.currency!=='ILS')||row?.presenceState==='missing')return false;
-  const explicit=explicitBankCardSuffixes(row),hint=bankCardSuffixHint(row),suffixes=[...new Set(explicit.length?explicit:hint.suffix?[hint.suffix]:[])];if(!suffixes.length)return false;
-  const candidates=bankSettlementAccountCandidates(kupa,row,account,billingRows),matches=[];
-  for(const suffix of suffixes){const found=candidates.filter(group=>group.suffix===suffix);if(found.length!==1)return false;matches.push(found[0])}
-  return matches.length>0&&matches.every(group=>group.known)&&new Set(matches.map(group=>group.due)).size===1&&matches.reduce((sum,group)=>sum+group.expected,0)===value;
-}
-function creditSettlementBankEvidenceRows(kupa,account,billingRows,reference){
-  const role=accountRole(account),primary=bankRowsThrough(bankFeedForAccount(kupa,role),reference),otherRole=role==='ביתי'?'עסקי':'ביתי',other=bankRowsThrough(bankFeedForAccount(kupa,otherRole),reference).filter(row=>crossAccountBankRowProvesTargetCycle(kupa,row,role,billingRows));
-  return [...primary,...other];
-}
-
 // Display bank-native identities first. Only the display fallback may derive
 // attribution from exact issuer-cycle amounts; those inferred suffixes must never
 // be fed back into settlement as independent bank identity evidence.
@@ -396,7 +379,7 @@ function calculateReconciledCreditRows(kupa,account,reference,{retainSettledComp
     const currentCards=new Set(candidates.filter(row=>row.date===forecastStart).map(creditCardKey));
     for(let i=candidates.length-1;i>=0;i--)if(candidates[i].date<start&&candidates[i].date<forecastStart&&currentCards.has(creditCardKey(candidates[i]))&&candidates[i].includedInIlsTotal&&!candidates[i].coverageIncomplete)candidates.splice(i,1);
   }
-  const bankRows=creditSettlementBankEvidenceRows(kupa,role,billingRows,forecastStart),settlementReference=forecastStart,unresolved=unresolvedSettlementIndexes(bankRows,candidates,settlementReference,{monthlySettlement}),pendingBankGroups=pendingBankSettlementGroupKeys(kupa,bankRows,billingRows,role,settlementReference);
+  const feed=bankFeedForAccount(kupa,role),synced=isoDay(feed?.syncedAt),bankRows=synced&&Array.isArray(feed.transactions)?feed.transactions:[],settlementReference=synced&&synced<forecastStart?synced:forecastStart,unresolved=unresolvedSettlementIndexes(bankRows,candidates,settlementReference,{monthlySettlement}),pendingBankGroups=pendingBankSettlementGroupKeys(kupa,bankRows,billingRows,role,settlementReference);
   const settlementRows=candidates.map((row,index)=>({...row,bankSettlementState:unresolved.has(index)?'awaiting':'settled'}));
   const settlingCredit=pendingCreditSettlementData(kupa,role,settlementRows.filter(row=>!row.settlementShell),start,forecastStart),expiredKeys=new Set(settlingCredit.expiredRows.map(creditRowKey));
   const states=new Map(settlementRows.map(row=>[creditRowKey(row),expiredKeys.has(creditRowKey(row))?'expired':row.bankSettlementState]));

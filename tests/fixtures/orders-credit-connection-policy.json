@@ -3,7 +3,7 @@
   "sha256": {
     "shared/bank-bridge-client.js": "1512e159ba9b3d9c13949d88208763eca27b7c15144cbfbb200df4e01bdaa237",
     "netunim-orders/site/assets/js/integrations/bank-bridge.js": "bdb9dbd5efa145e384bbe9aefb2796d702ae1d89e17758d3fdf06e62da8be850",
-    "netunim-orders/site/assets/js/domains/finance/credit-feed.js": "2345c6bc81649612d013dfed4283573adb4e227d3f7dd5ec54e3aae606f4e2d0",
+    "netunim-orders/site/assets/js/domains/finance/credit-feed.js": "dc1fe508a20a383a3e792561d47945fa143370fcf685007b429c5db9579ea60b",
     "netunim-orders/site/assets/js/domains/finance/document-commands.js": "f68305e6f8961e97c832dacd6055acbe0b001180c7fd916ff277ebed84dc1d4d",
     "netunim-orders/site/assets/js/domains/finance/document-publication.js": "6bfc9b89fda24b4ed244bb5fc6816f481707257648bfcbd2b73de9b00233dc32"
   },
