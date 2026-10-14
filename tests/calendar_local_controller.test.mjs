@@ -1,6 +1,6 @@
 import {createCalendarBrowserEffects} from '../netunim-orders/site/assets/js/platform/calendar-browser-effects.js';
 import assert from 'node:assert/strict';
-import {createDomainsCalendarController} from '../netunim-orders/site/assets/js/domains/calendar/controller.js';
+import {createCalendarControllerFixture as createDomainsCalendarController} from './calendar_controller_ports.mjs';
 
 globalThis.location={href:'http://localhost:8080/index.html'};
 globalThis.history={state:null,replaceState(){}};

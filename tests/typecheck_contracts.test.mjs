@@ -25,6 +25,13 @@ function check(overrides=new Map()){
 }
 function describe(diagnostics){return ts.formatDiagnostics(diagnostics,{getCanonicalFileName:file=>file,getCurrentDirectory:()=>root,getNewLine:()=> '\n'})}
 
+test('Calendar sync implementation rejects status text as native queue confirmation',()=>{
+ const source=path.join(root,'netunim-orders/site/assets/js/calendar/session-runtime.js'),original=readFileSync(source,'utf8');
+ const changed=original.replace('return confirmedResult;',"return 'confirmed';");assert.notEqual(changed,original);
+ const diagnostics=check(new Map([[source,changed]]));
+ assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&[2322,2345].includes(item.code)),describe(diagnostics));
+});
+
 test('restore review implementation cannot return display text as authorization',()=>{
   const source=path.join(root,'shared/restore-review-scope.js'),original=readFileSync(source,'utf8');
   const changed=original.replace('return true;',"return 'confirmed';");assert.notEqual(changed,original);

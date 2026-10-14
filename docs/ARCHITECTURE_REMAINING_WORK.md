@@ -4,11 +4,21 @@ This is the current inventory after Bank/Credit Bridge model separation and
 Orders Finance document-command and both applications' Bank archive readout
 extraction, Kupa Bank snapshot commands, shared Finance lease renewal ownership
 and both applications' Bank/Credit local connection ownership, Kupa Notes
-durability and Cloud/Sync/Backup capability decomposition. The chronological
+durability, Cloud/Sync/Backup capability decomposition and Calendar session
+ownership. The chronological
 [refactor record](ARCHITECTURE_REFACTOR.md) documents completed slices; older
 remaining-scope paragraphs describe their stage's starting point.
 
 ## Verified foundations
+
+- Orders Calendar separates connection intent, Google verification, sync/reconnect
+  flights and polling from its display/editor controller. A private capability
+  removes raw Google API/journal/login ports; the controller has 16 inputs, down
+  from 19. Two reproduced late authorization/disconnect disposal races are fenced
+  without losing accepted-request drain. Strict session bodies, negative consumers,
+  immutable event/sync policies and native disposal fixtures accompany the slice.
+  Rendering/editor decomposition and complete Google payload validation remain
+  open. See [Calendar session capability](CALENDAR_SESSION_CAPABILITY.md).
 
 - Kupa sticky-note input is journaled before owner transfer can fence writes.
   A native before-change regression reproduced loss of an unblurred edit;

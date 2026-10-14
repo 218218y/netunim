@@ -1,0 +1,20 @@
+{
+  "commit": "f28246683b0adae9422cb58b004c7d15c70400e0",
+  "path": "netunim-orders/site/assets/js/domains/calendar/controller.js",
+  "functions": {
+    "eventKey": "d50750037c5d6d7b56393d364766658f4defa9575fd0e3846e86419a9f708001",
+    "writableCalendar": "ead11960b08144589fec6a8d6bb0a898bd28ecd03fa533403e6bf1b7c2026585",
+    "editableEvent": "b7d0ce67a904702953de4773ad69555f784b0e974183703bfca493eeefc83907",
+    "eventReadOnlyReason": "1fa89c7dcda26ff585a3f8ff8b8e729117d7a31492179dddb03c0d507073df11",
+    "decorateEvent": "6240056ffd508f487a3cba9e3540c297fafcf0d014381ff7719ca7a078952d91",
+    "applyPending": "87600667d9c1a44e59ab98ee0c84ef6d260ca1945c53b2f02f261967fc6b3421",
+    "newGoogleEventId": "e957ac77f598cb007bf27f7500a74a34a05b64c7c579767bbdd67e823522f545",
+    "readEditorPayload": "62ea858ce53a9ccd9949044b8702a929404ce791de8ad00d942145fd5205eb88",
+    "readQuickEditorPayload": "8705d31529ab719db4626d2c42fd53c83b268c126affddb9bad5ad214a6af839",
+    "queueCalendarMutation": "492ba0cc04d0b265443a3410d03f464b954440cdf1ea848339b5dc0e8eb37b51",
+    "saveQuickCalendarEvent": "8f4aba54de9924f8894db69d010d0fcc9e5fe8b6be650a7ae5226c0c8e5f2a38",
+    "saveCalendarEvent": "6b90bf8a62a2027fb5634da2f8d7427fdb177b28ce1ca7f1fc312a7f939f4e61",
+    "deleteCalendarEvent": "e95003a21a193ac72f912a7d8de8bb3ef6caf730991937f366a9b57f9b605862",
+    "syncNow": "b6de19a472bc0c053e08fe339af397d4c369068a00c5fa5fe1873055c469f20e"
+  }
+}

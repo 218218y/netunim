@@ -28,6 +28,9 @@ api=(SITE/'assets/js/calendar/api.js').read_text(encoding='utf-8')
 storage=(SITE/'assets/js/calendar/storage.js').read_text(encoding='utf-8')
 journal=(SITE/'assets/js/calendar/journal.js').read_text(encoding='utf-8')
 controller=(SITE/'assets/js/domains/calendar/controller.js').read_text(encoding='utf-8')
+session_runtime=(SITE/'assets/js/calendar/session-runtime.js').read_text(encoding='utf-8')
+connection=(SITE/'assets/js/calendar/connection.js').read_text(encoding='utf-8')
+oauth_return=(SITE/'assets/js/platform/calendar-oauth-return.js').read_text(encoding='utf-8')
 contexts=(SITE/'assets/js/state/contexts.js').read_text(encoding='utf-8')
 navigation=(SITE/'assets/js/ui/navigation.js').read_text(encoding='utf-8')
 main=(SITE/'assets/js/main.js').read_text(encoding='utf-8')
@@ -41,7 +44,7 @@ ok('auth/calendar.events' not in config and 'auth/calendar.calendarlist.readonly
 ok('localStorage' not in auth and 'indexedDB' not in auth and 'accessToken' in auth and 'refresh_token' not in auth,'calendar auth: browser keeps only the short-lived Google access token in memory')
 ok('beginConnect' in auth and 'restore' in auth and "action:'token'" not in auth,'calendar auth: browser uses the server OAuth bridge instead of Google popup APIs')
 ok('function ready()' in auth and "backend(assertCurrent,'token'" in auth and "backend(assertCurrent,'start'" in auth,'calendar auth: startup refresh and interactive linking are separate scoped server actions')
-ok('async function prepare()' in auth and 'calendarAuth.prepare()' in controller and 'accounts.google.com/gsi/client' not in auth,'calendar auth: no Google Identity script or popup preload remains in the browser')
+ok('async function prepare()' in auth and 'auth.prepare()' in session_runtime and 'accounts.google.com/gsi/client' not in auth,'calendar auth: no Google Identity script or popup preload remains in the browser')
 ok('initTokenClient' not in auth and 'requestAccessToken' not in auth and 'beginConnect' in auth,'calendar auth: popup-only Google token model is fully removed')
 ok('calendarUi:{' in contexts and "viewMode:'week'" in contexts and "focusDate:''" in contexts and 'calendarSession:{' in contexts and 'eventMap:new Map()' in contexts and 'syncing:false' in contexts
    and all(name not in contexts for name in ('syncPromise','pollTimer','authResumePromise')),
@@ -67,12 +70,18 @@ app_ready_return=main.find('return true',calendar_start) if calendar_start>=0 el
 ok(boot_lock>=0 and boot_ready>boot_lock and app_ready_start>=0 and app_ready_end>app_ready_start
    and calendar_start>app_ready_start and app_ready_return>calendar_start and app_ready_return<app_ready_end
    and main.count('domainsCalendarController.start()')==1
-   and "!tab.primaryTab&&ui.currentView!=='calendar'" in controller,
+   and '!display.isPrimary()&&!display.isOpen()' in session_runtime,
    'calendar startup contract: remembered reconnect starts only after primary-tab election, while an explicitly opened Calendar may still connect')
-ok('accountVerified=false' in auth and 'accountVerified=true' in controller and 'אימות חשבון Google' in controller,'calendar account guard: mutations cannot race a newly connected, not-yet-verified Google account')
+ok('accountVerified=false' in auth and 'accountVerified=true' in session_runtime and 'אימות חשבון Google' in controller,'calendar account guard: mutations cannot race a newly connected, not-yet-verified Google account')
 ok('connectionPreference' in storage and 'saveConnectionPreference' in storage and 'orders.google-calendar.connection.v1' in storage,'calendar reconnect preference: only non-secret account/intent metadata is persisted across browser restarts')
-ok('resumeKnownConnectionSilently' in controller and 'calendarAuth.restore()' in controller and 'resumeKnownConnectionFromGesture' not in controller and "prompt:'none'" not in controller and 'expected!==accountId' in controller,'calendar reconnect: startup refreshes through the server with no popup or gesture fallback and still rejects account mismatch')
-ok('hydrateLegacyConnectionPreference' in controller and "getMeta('accountId')" in controller,'calendar reconnect migration: existing installations inherit their previously verified Calendar account once')
+ok('resumeKnownConnectionSilently' in session_runtime and 'auth.restore()' in session_runtime and 'resumeKnownConnectionFromGesture' not in session_runtime and "prompt:'none'" not in session_runtime and 'expected!==accountId' in session_runtime,'calendar reconnect: startup refreshes through the server with no popup or gesture fallback and still rejects account mismatch')
+ok('hydrateLegacyConnectionPreference' in session_runtime and "getMeta('accountId')" in session_runtime,'calendar reconnect migration: existing installations inherit their previously verified Calendar account once')
+ok('connection.createRuntime(' in controller and 'createCalendarConnection(' in composition and 'createCalendarSessionRuntime(' in connection
+   and all(name not in controller for name in ('calendarApi','calendarJournal','requestCloudLogin','beginConnect','saveConnectionPreference','syncFlight','reconnectFlight')),
+   'calendar boundary: display/editor use a private connection capability without Google transport, connection preference or flight handles')
+ok('assertCurrent:assertDisplay' in auth and 'assertDisplay();clearToken()' in auth and 'await auth.disconnect();assertDisplay()' in session_runtime
+   and 'assertCurrent:lifetime.checkpoint()' in session_runtime and 'globalThis.history.replaceState' in oauth_return,
+   'calendar presentation authority: disposal fences delayed redirect/disconnect publication independently of intentional credential revocation')
 
 ok('data-click-arg0="month"' in controller and 'data-click-arg0="week"' in controller and 'data-click-arg0="day"' in controller and 'calendar-prev-period' in controller and 'calendar-next-period' in controller,'calendar view controls: month/week/day and period navigation are rendered from one focused-date model')
 effects=(SITE/'assets/js/platform/calendar-browser-effects.js').read_text(encoding='utf-8')
@@ -90,7 +99,7 @@ ok('alignFocusInScroller' in controller and 'scroller.scrollTop' in controller a
 ok((SITE/'assets/js/calendar/view.js').is_file(),'calendar view: pure period/focus helper module is part of the application')
 ok('calendarPrefetchRangeFor' in controller and 'calendarRangeContains' in controller and 'readDisplaySnapshot' in controller and 'selectCoveringRangeSnapshot(rows' in storage,'calendar cache: authorized display reads reuse a covering range inside the storage boundary instead of requiring an exact range key')
 ok('memoryCovered?bodyMarkup()' in controller and "syncNow({quiet:true,force:false})" in controller,'calendar cache: covered month/week/day transitions render immediately and revalidate without blocking the view')
-ok("const range=prefetchRange()" in controller and 'calendarPrefetchRangeFor' in (SITE/'assets/js/calendar/view.js').read_text(encoding='utf-8'),'calendar prefetch: Google sync warms a rolling nearby window rather than refetching only the active view')
+ok("const range=display.prefetchRange()" in session_runtime and 'calendarPrefetchRangeFor' in (SITE/'assets/js/calendar/view.js').read_text(encoding='utf-8'),'calendar prefetch: Google sync warms a rolling nearby window rather than refetching only the active view')
 ok('cacheRangeStart' in contexts and 'cacheRangeEnd' in contexts,'calendar cache: in-memory state records its coverage so mode/period transitions can be synchronous')
 ok('workerCount=Math.min(4,readable.length)' in api and 'Promise.all' in api,'calendar API: readable calendars are fetched with bounded parallelism instead of serial network waits')
 ok("eventTypes" not in api and "singleEvents:true" in api and "showHidden:true" in api,'calendar API: event listing includes all event types and hidden subscribed calendars')

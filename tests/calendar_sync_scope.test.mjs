@@ -2,7 +2,7 @@ import {createCalendarBrowserEffects} from '../netunim-orders/site/assets/js/pla
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createCalendarJournal} from '../netunim-orders/site/assets/js/calendar/journal.js';
-import {createDomainsCalendarController} from '../netunim-orders/site/assets/js/domains/calendar/controller.js';
+import {createCalendarControllerFixture as createDomainsCalendarController} from './calendar_controller_ports.mjs';
 import {createCalendarAuth} from '../netunim-orders/site/assets/js/calendar/auth.js';
 
 const deferred=()=>{let resolve;const promise=new Promise(done=>{resolve=done});return {promise,resolve}};

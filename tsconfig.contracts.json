@@ -20,6 +20,10 @@
     "types": []
   },
   "files": [
+    "tests/fixtures/checked-calendar-session.mjs",
+    "netunim-orders/site/assets/js/calendar/connection.js",
+    "netunim-orders/site/assets/js/calendar/session-runtime.js",
+    "netunim-orders/site/assets/js/platform/calendar-oauth-return.js",
     "shared/restore-review-scope.js",
     "tests/fixtures/checked-restore-review.mjs",
     "netunim-kupa/site/assets/js/domains/notes/commands.js",

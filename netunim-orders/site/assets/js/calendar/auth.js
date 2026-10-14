@@ -89,8 +89,9 @@ export function createCalendarAuth({calendarSession,supaFetch,accountScope}){
     pendingRestore=task;
     return task.promise;
   }
-  async function beginConnect({returnUrl=''}={}){
-    clearToken();const assertCurrent=enter(),data=await backend(assertCurrent,'start',{return_url:String(returnUrl||globalThis.location?.href||'')});assertCurrent();
+  /** @param {{returnUrl?:string,assertCurrent?:()=>void}} [options] */
+  async function beginConnect({returnUrl='',assertCurrent:assertDisplay=()=>{}}={}){
+    assertDisplay();clearToken();const assertAccount=enter(),assertCurrent=()=>{assertDisplay();assertAccount()},data=await backend(assertCurrent,'start',{return_url:String(returnUrl||globalThis.location?.href||'')});assertCurrent();
     const url=String(data.authorize_url||'');if(!/^https:\/\/accounts\.google\.com\//.test(url))throw failure('שירות החיבור ל-Google לא החזיר כתובת הרשאה תקינה','calendar_oauth_start_invalid');
     globalThis.location.assign(url);return false;
   }

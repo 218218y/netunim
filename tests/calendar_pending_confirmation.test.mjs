@@ -1,7 +1,7 @@
 import {createCalendarBrowserEffects} from '../netunim-orders/site/assets/js/platform/calendar-browser-effects.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createDomainsCalendarController} from '../netunim-orders/site/assets/js/domains/calendar/controller.js';
+import {createCalendarControllerFixture as createDomainsCalendarController} from './calendar_controller_ports.mjs';
 
 const deferred=()=>{let resolve;const promise=new Promise(done=>{resolve=done});return {promise,resolve}};
 function fixture(t,phase){

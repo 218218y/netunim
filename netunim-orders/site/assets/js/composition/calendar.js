@@ -7,6 +7,7 @@ import {createCalendarCommitNotifications} from '../platform/calendar-commit-not
 import {createDomainsCalendarController} from '../domains/calendar/controller.js';
 import {createCalendarActionPorts} from '../domains/calendar/action-ports.js';
 import {createCalendarBrowserEffects} from '../platform/calendar-browser-effects.js';
+import {createCalendarConnection} from '../calendar/connection.js';
 
 // Infrastructure is created early; the controller is composed after the UI
 // ports exist. The caller starts it only after the app's boot promise resolves.
@@ -25,14 +26,16 @@ export function createOrdersCalendarRuntime({calendarSession,supaFetch,accountSc
   function createController({ui,tab,calendarUi,uiLayout,uiModal,uiStatus,uiCloud,uiDateEditor}){
     if(disposed)throw new Error('calendar_runtime_disposed');
     if(controller)throw new Error('calendar_controller_already_composed');
+    const connection=createCalendarConnection({session:calendarSession,storage:calendarStorage,auth:calendarAuth,api:calendarApi,journal:calendarJournal,effects,
+      feedback:{toast:(...args)=>uiStatus.toast(...args),requestCloudLogin:()=>uiCloud.loginModal('calendar')},
+    });
     controller=createDomainsCalendarController({
       ui,tab,calendarUi,calendarSession,effects,
-      calendarStorage,calendarAuth,calendarApi,calendarJournal,subscribeAccountScope,subscribeCalendarCommits:commitNotifications.subscribe,
+      calendarStorage,connection,subscribeAccountScope,subscribeCalendarCommits:commitNotifications.subscribe,
       mountViewLayout:(...args)=>uiLayout.mountViewLayout(...args),
       modal:(...args)=>uiModal.modal(...args),
       closeModal:(...args)=>uiModal.closeModal(...args),
       toast:(...args)=>uiStatus.toast(...args),
-      requestCloudLogin:()=>uiCloud.loginModal('calendar'),
       confirmDialog:(...args)=>uiModal.confirmDialog(...args),
       dateEditorMarkup:(...args)=>uiDateEditor.dateEditorMarkup(...args),
       setDateValue:(...args)=>uiDateEditor.setDateValue(...args),
