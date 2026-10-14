@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import {declaration,tokens} from './bank_policy_ast_fixture.mjs';
 import {expandOrdersReconciliation} from './bank_archive_reconciliation_policy_fixture.mjs';
+import {restoreFinanceLeaseOwnership} from './finance_lease_policy_fixture.mjs';
 const folder = '../netunim-orders/site/assets/js/domains/finance/';
 const read = (name) => readFileSync(new URL(folder + name + '.js', import.meta.url), 'utf8');
 
@@ -9,6 +10,7 @@ export function restoreOrdersBankPublication(
   controller,
   { owner = read('bank-snapshot-publication'), model = read('bank-snapshot-policy') } = {}
 ) {
+  controller=restoreFinanceLeaseOwnership(controller);
   owner=expandOrdersReconciliation(owner);
   const publish = declaration(owner, 'publish');
   // The owner is formatted, so locate declarations by their actual AST spans.

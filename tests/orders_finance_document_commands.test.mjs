@@ -147,7 +147,7 @@ test('the controller cannot manufacture a lease grant when the current lease por
         },
         documents: f.create(),
       }),
-    /sync_lease_claim_required/
+    /lease_acquire_required/
   );
 });
 

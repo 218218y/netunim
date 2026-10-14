@@ -20,13 +20,13 @@ export function createBankLocalSnapshot({model,saveState,recoverLocalState,rende
     const value=current();if(!value)return null;
     try{value.assertCurrent()}catch(error){
       if(!scopeChanged(error))throw error;
-      return {phase:'blocked',canRetry:false,message:'בעלות האחסון השתנתה; צילום הבנק לא אושר לשמירה. יש לבדוק את האחסון תחת ההתחברות הנוכחית.'};
+      return {phase:'blocked',canRetry:false,message:'בעלות האחסון או החיבור המקומי השתנו; צילום הבנק לא אושר לשמירה. יש לבדוק את החיבור והאחסון תחת ההתחברות הנוכחית.'};
     }
     const unchanged=JSON.stringify(value.bank)===value.signature;
     return {phase:value.promise?'saving':'unconfirmed',canRetry:!value.promise&&unchanged,message};
   }
   /** @param {unknown} error */
-  function scopeChanged(error){return !!error&&typeof error==='object'&&'code' in error&&error.code==='FINANCE_OPERATION_SCOPE_CHANGED'}
+  function scopeChanged(error){return !!error&&typeof error==='object'&&'code' in error&&(error.code==='FINANCE_OPERATION_SCOPE_CHANGED'||error.code==='BRIDGE_PAIRING_SCOPE_CHANGED')}
   /** @param {BankLocalSnapshotEntry} value @param {boolean} [recover] */
   function run(value,recover=false){
     value.assertCurrent();

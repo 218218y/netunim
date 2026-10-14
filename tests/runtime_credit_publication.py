@@ -3,6 +3,7 @@
 The Finance server and follow-up failures are controlled ports, not live issuers,
 PostgreSQL commits or an actual quota exhaustion. Recovery uses the real journal.
 """
+import argparse
 import json
 from browser_harness import BrowserSession, ROOT
 
@@ -67,8 +68,12 @@ FLOW = r"""(async()=>{
  return {truthfulWarning:true,journalRetained:true,readBasedRecovery:true,noRepeatedEffect:true,exactIds:true};
 })()"""
 
-for action in ('refresh', 'settings', 'reset'):
-    for failure in ('false', 'throw'):
+parser=argparse.ArgumentParser()
+parser.add_argument('--action',choices=('refresh','settings','reset'))
+parser.add_argument('--failure',choices=('false','throw'))
+args=parser.parse_args()
+for action in ([args.action] if args.action else ('refresh', 'settings', 'reset')):
+    for failure in ([args.failure] if args.failure else ('false', 'throw')):
         with BrowserSession(ROOT / 'netunim-kupa/site', 'credit-publication-' + action + '-' + failure) as browser:
             result = browser.evaluate(FLOW.replace('__ACTION__', json.dumps(action)).replace('__FAILURE__', json.dumps(failure)), timeout=45)
             assert result and all(result.values()), result

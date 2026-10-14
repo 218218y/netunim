@@ -10,23 +10,24 @@
 const WARNING='נתוני האשראי נשמרו בענן. השלמת השמירה הנלווית לא אושרה. יש לבדוק ולטעון מהענן, ללא סריקה נוספת של חברות האשראי.';
 /** @param {FinanceState|undefined|null} state */
 function hasCreditState(state){return !!state&&typeof state==='object'&&!Array.isArray(state)&&!!state.creditSync&&typeof state.creditSync==='object'&&!Array.isArray(state.creditSync)}
-/** @param {{commit:(mutator:(state:FinanceState)=>FinanceState,lease:unknown,options:{assertCurrent:PublicationAssertion})=>Promise<FinanceCommit>,publish:(state:FinanceState)=>undefined,checkpoint:(message:string)=>Promise<unknown>,read:(options:{assertCurrent:PublicationAssertion})=>Promise<FinanceRead>}} ports */
-export function createCreditPublication({commit:remoteCommit,publish,checkpoint,read}){
+/** @param {{commit:(mutator:(state:FinanceState)=>FinanceState,lease:unknown,options:{assertCurrent:PublicationAssertion})=>Promise<FinanceCommit>,publish:(state:FinanceState)=>undefined,checkpoint:(message:string)=>Promise<unknown>,read:(options:{assertCurrent:PublicationAssertion})=>Promise<FinanceRead>,authority:{capture:()=>PublicationAssertion}}} ports */
+export function createCreditPublication({commit:remoteCommit,publish,checkpoint,read,authority}){
   for(const port of [remoteCommit,publish,checkpoint,read])if(typeof port!=='function')throw new TypeError('credit_publication_ports_required');
+  if(typeof authority?.capture!=='function')throw new TypeError('credit_publication_authority_required');
   /** @type {PublicationReceipt|null} */ let latest=null;
-  function current(){if(!latest)return null;try{latest.assertCurrent();return latest}catch(error){if(error instanceof Error&&'code' in error&&error.code==='FINANCE_OPERATION_SCOPE_CHANGED')return null;throw error}}
+  function current(){if(!latest)return null;try{latest.assertCurrent();return latest}catch(error){if(error instanceof Error&&'code' in error&&['FINANCE_OPERATION_SCOPE_CHANGED','CREDIT_CONNECTION_SCOPE_CHANGED','BRIDGE_PAIRING_SCOPE_CHANGED'].includes(String(error.code)))return null;throw error}}
   function status(){const receipt=current();return {publicationWarning:receipt?.warning||'',publicationWarningAt:receipt?.at||null,publicationWarningCode:receipt?.code||''}}
-  /** @param {PublicationReceipt} receipt @param {string} message @returns {Promise<PublicationResult>} */
-  async function follow(receipt,message){
-    receipt.assertCurrent();let confirmed=false,code='credit_followup_not_confirmed';
-    try{confirmed=await checkpoint(message)===true}catch(error){receipt.assertCurrent();if(error instanceof Error&&'code' in error&&error.code==='FINANCE_OPERATION_SCOPE_CHANGED')throw error;code=error instanceof Error?error.name:'credit_followup_error'}
-    receipt.assertCurrent();const warning=confirmed?'':WARNING;
+  /** @param {PublicationReceipt} receipt @param {string} message @param {PublicationAssertion} assertCurrent @returns {Promise<PublicationResult>} */
+  async function follow(receipt,message,assertCurrent){
+    receipt.assertCurrent();assertCurrent();let confirmed=false,code='credit_followup_not_confirmed';
+    try{confirmed=await checkpoint(message)===true}catch(error){receipt.assertCurrent();assertCurrent();if(error instanceof Error&&'code' in error&&error.code==='FINANCE_OPERATION_SCOPE_CHANGED')throw error;code=error instanceof Error?error.name:'credit_followup_error'}
+    receipt.assertCurrent();assertCurrent();const warning=confirmed?'':WARNING;
     if(latest===receipt){receipt.warning=warning;receipt.at=warning?new Date().toISOString():'';receipt.code=warning?code:''}
     return {remoteCommitted:true,displayPublished:true,followupConfirmed:confirmed,warning};
   }
   /** @param {(state:FinanceState)=>FinanceState} mutator @param {string} message @param {unknown} lease @param {PublicationAssertion} assertCurrent @returns {Promise<PublicationResult>} */
   async function commit(mutator,message,lease,assertCurrent){
-    assertCurrent();/** @type {FinanceState|undefined} */ let candidate;
+    assertCurrent();const assertRetained=authority.capture();assertRetained();/** @type {FinanceState|undefined} */ let candidate;
     const result=await remoteCommit(state=>{assertCurrent();candidate=mutator(state);return candidate},lease,{assertCurrent});assertCurrent();
     if(result?.saved!==true)throw new Error('נתוני האשראי לא נשמרו בענן. הנתונים הקודמים נשמרו; יש להתחבר ולבדוק לפני ניסיון נוסף.');
     const state=result.row?.state||candidate;if(!state||!hasCreditState(state))throw new Error('credit_publication_state_required');
@@ -35,8 +36,8 @@ export function createCreditPublication({commit:remoteCommit,publish,checkpoint,
     const prior=current();
     if(prior?.revision!==null&&prior?.revision!==undefined&&revision!==null&&revision<prior.revision)return {remoteCommitted:true,displayPublished:false,followupConfirmed:false,warning:''};
     publish(state);assertCurrent();
-    const receipt={revision,assertCurrent,warning:WARNING,at:new Date().toISOString(),code:'credit_followup_not_confirmed'};latest=receipt;
-    return follow(receipt,message);
+    const receipt={revision,assertCurrent:assertRetained,warning:WARNING,at:new Date().toISOString(),code:'credit_followup_not_confirmed'};latest=receipt;
+    return follow(receipt,message,assertCurrent);
   }
   /** @param {PublicationAssertion} assertCurrent @returns {Promise<boolean>} */
   async function retry(assertCurrent){
@@ -46,7 +47,7 @@ export function createCreditPublication({commit:remoteCommit,publish,checkpoint,
     const revision=result.financeRevision;
     if(!result.verified||!result.state||!hasCreditState(result.state)||!Number.isSafeInteger(revision)||revision===undefined||revision<1||(receipt.revision!==null&&revision<receipt.revision))throw new Error('לא ניתן לאמת את נתוני האשראי שנשמרו בענן. האזהרה נשמרה; אין צורך בסריקה נוספת.');
     publish(result.state);assertCurrent();receipt.revision=revision;
-    return (await follow(receipt,'נתוני האשראי נטענו מחדש מהענן')).followupConfirmed;
+    return (await follow(receipt,'נתוני האשראי נטענו מחדש מהענן',assertCurrent)).followupConfirmed;
   }
   return {commit,retry,status};
 }

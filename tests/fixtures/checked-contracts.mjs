@@ -143,7 +143,7 @@ createPollingTask({run:()=>true,delay:()=>1000});
 createPollingTask({run:()=>true,delay:()=>1000,onError:()=>{},onState:state=>state.owner});
 
 const {createCreditPublication}=await import('../../netunim-kupa/site/assets/js/domains/credit/publication.js');
-const creditPorts={commit:async()=>({saved:true,row:{revision:2,state:{creditSync:{}}}}),publish:()=>undefined,checkpoint:async()=>true,read:async()=>({verified:true,state:{creditSync:{}},financeRevision:2})};
+const creditPorts={commit:async()=>({saved:true,row:{revision:2,state:{creditSync:{}}}}),publish:()=>undefined,checkpoint:async()=>true,read:async()=>({verified:true,state:{creditSync:{}},financeRevision:2}),authority:{capture:()=>()=>undefined}};
 const creditPublication=createCreditPublication(creditPorts);
 const creditResult=await creditPublication.commit(state=>state,'fixture',null,()=>undefined);
 /** @type {true} */ const remoteCreditCommitted=creditResult.remoteCommitted;
@@ -158,3 +158,5 @@ creditPublication.retry(true);
 createCreditPublication({...creditPorts,read:async()=>({verified:true,state:{},financeRevision:'2'})});
 // @ts-expect-error a confirmed server receipt cannot use a truthy string
 createCreditPublication({...creditPorts,commit:async()=>({saved:'true'})});
+// @ts-expect-error Retained receipts require captured synchronous account/device authority.
+createCreditPublication({...creditPorts,authority:{capture:()=>async()=>undefined}});

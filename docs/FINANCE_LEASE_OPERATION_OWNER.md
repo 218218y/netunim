@@ -50,6 +50,17 @@ This retires an unused internal API, without removing active historical data or
 backup readers. The existing heartbeat module remains the active implementation
 used by the owner, rather than a compatibility facade.
 
+Integration verification exposed two retained records that borrowed the old
+temporary operation guard: a confirmed Credit write's follow-up warning and an
+unconfirmed local Bank snapshot. Both now retain account/device/component
+authority independently of the completed lease. Credit checkpoint execution
+still checks the live operation fence; warning recovery reads the confirmed
+Finance revision without another issuer request. Local Bank recovery preserves
+the exact staged snapshot and avoids another provider scan. Pairing transitions
+retire Credit warnings and block local Bank retry without throwing during status
+rendering. Before-change regressions and native existing recovery fixtures cover
+these effects; immutable provider/merge policies remain unchanged.
+
 Evidence includes isolated lifecycle tests, four production controller disposal
 regressions, immutable AST characterization of all four financial refresh bodies,
 strict checkJs/negative consumers in both generated copies and an actual cleanup

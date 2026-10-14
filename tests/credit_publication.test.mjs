@@ -4,15 +4,39 @@ import {createCreditPublication} from '../netunim-kupa/site/assets/js/domains/cr
 
 const deferred=()=>{let resolve;const promise=new Promise(done=>{resolve=done});return {promise,resolve}};
 const state=id=>({creditSync:{profiles:[{profileId:'P',accounts:[{accountNumber:'C',txns:[{id,amount:12}]}]}]}});
-function fixture(){
+function fixture(scopeCode='FINANCE_OPERATION_SCOPE_CHANGED'){
   let live=true,remote=state('old'),display=remote,revision=1,writes=0,reads=0,checkpoints=0;
-  const guard=()=>{if(!live)throw Object.assign(Error('revoked'),{code:'FINANCE_OPERATION_SCOPE_CHANGED'})};
+  const guard=()=>{if(!live)throw Object.assign(Error('revoked'),{code:scopeCode})};
   const ports={commit:async mutator=>{writes++;remote=mutator(remote);return {saved:true,row:{state:remote,revision:++revision}}},
     publish:value=>{display=structuredClone(value)},checkpoint:async()=>{checkpoints++;return false},
     read:async()=>{reads++;return {verified:true,state:remote,financeRevision:revision}}};
-  const api=createCreditPublication({commit:(...args)=>ports.commit(...args),publish:value=>ports.publish(value),checkpoint:message=>ports.checkpoint(message),read:options=>ports.read(options)});
+  const api=createCreditPublication({commit:(...args)=>ports.commit(...args),publish:value=>ports.publish(value),checkpoint:message=>ports.checkpoint(message),read:options=>ports.read(options),authority:{capture:()=>guard}});
   return {api,ports,guard,revoke:()=>{live=false},display:()=>display,remote:()=>remote,counts:()=>({writes,reads,checkpoints})};
 }
+
+test('a confirmed warning survives its temporary lease closing and recovers without another issuer write',async()=>{
+  const f=fixture();let leaseActive=true;
+  const assertLease=()=>{f.guard();if(!leaseActive)throw Object.assign(Error('lease closed'),{code:'FINANCE_OPERATION_SCOPE_CHANGED'})};
+  await f.api.commit(()=>state('stable-id'),'fixture',{},assertLease);leaseActive=false;
+  assert.throws(assertLease,{code:'FINANCE_OPERATION_SCOPE_CHANGED'});
+  assert.ok(f.api.status().publicationWarning,'committed receipt borrowed a closed lease');
+  f.ports.checkpoint=async()=>true;
+  assert.equal(await f.api.retry(f.guard),true);assert.deepEqual(f.display(),state('stable-id'));
+  assert.deepEqual(f.counts(),{writes:1,reads:1,checkpoints:1});assert.equal(f.api.status().publicationWarning,'');
+});
+
+for(const code of ['FINANCE_OPERATION_SCOPE_CHANGED','CREDIT_CONNECTION_SCOPE_CHANGED','BRIDGE_PAIRING_SCOPE_CHANGED'])test(`retained receipt retires on ${code} without exposing former diagnostics or starting a read`,async()=>{
+  const f=fixture(code);await f.api.commit(()=>state('stable-id'),'fixture',null,f.guard);f.revoke();
+  assert.equal(f.api.status().publicationWarning,'');assert.equal(await f.api.retry(f.guard),false);assert.equal(f.counts().reads,0);
+});
+
+test('an accepted follow-up remains fenced by its temporary operation authority',async()=>{
+  const f=fixture(),entered=deferred(),held=deferred();let leaseActive=true;
+  f.ports.checkpoint=()=>{entered.resolve();return held.promise};
+  const assertLease=()=>{f.guard();if(!leaseActive)throw Object.assign(Error('renewal failed'),{code:'stale_finance_sync_fence'})};
+  const pending=f.api.commit(()=>state('stable-id'),'fixture',{},assertLease);await entered.promise;leaseActive=false;held.resolve(true);
+  await assert.rejects(pending,{code:'stale_finance_sync_fence'});assert.ok(f.api.status().publicationWarning);
+});
 
 for(const failure of [false,undefined,'throw'])test(`confirmed Finance commit keeps an independent warning when follow-up returns ${failure}`,async()=>{
   const f=fixture();f.ports.checkpoint=async()=>{if(failure==='throw')throw new DOMException('fixture quota','QuotaExceededError');return failure};

@@ -23,7 +23,7 @@ export function createDomainsCreditController({model,saveState,toast,render,rend
     return ()=>{if(disposed)throw Object.assign(new Error('credit_disposed'),{code:'FINANCE_OPERATION_SCOPE_CHANGED'});assertOwner()};
   };
   const local={busy:false,error:'',errorAt:null,autoScheduled:false,preferenceWarning:'',preferenceWarningCode:''};
-  const publication=createCreditPublication({commit:saveFinancePatch,read:refreshFinanceCloudSnapshot,publish:state=>{model.state.creditSync=normalizeCreditSync(state.creditSync)},checkpoint:message=>saveState(message,{operations:[{type:'set',field:'creditSync',value:model.state.creditSync}]})});
+  const publication=createCreditPublication({commit:saveFinancePatch,read:refreshFinanceCloudSnapshot,publish:state=>{model.state.creditSync=normalizeCreditSync(state.creditSync)},checkpoint:message=>saveState(message,{operations:[{type:'set',field:'creditSync',value:model.state.creditSync}]}),authority:{capture:()=>{const assertOwner=captureOperation(),assertConnection=connections.queries.capture();return ()=>{assertOwner();assertConnection()}}}});
   let automaticActive=true,automaticOwner=null,preferencesPaused=false;
   const automaticAllowed=()=>{
     const scope=autoScope();if(disposed||!automaticActive||typeof scope!=='string'||!scope.length)return false;

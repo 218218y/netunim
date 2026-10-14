@@ -75,6 +75,35 @@ for (const operation of ['stop','dispose']) test(`Bank ${operation} drains a hel
   if (operation === 'dispose') assert.deepEqual(f.events,before);
 });
 
+test('an unconfirmed local Bank snapshot remains retryable after its provider lease closes',async t=>{
+  const f=fixture(t);f.cap.bindUi(f.view);
+  f.cloud.claimLease=async()=>({acquired:true,localOnly:true});
+  f.cloud.refreshFinance=async()=>({verified:true,state:f.model.state});
+  f.cloud.releaseLease=async()=>true;f.bridge.markAutoAttempt=noop;
+  f.bridge.fetchBalance=async()=>({fetchedAt:'2026-10-14T10:00:00Z',balance:500,transactions:[]});
+  f.persistence.save=async()=>false;
+  assert.equal(await f.cap.commands.refreshBankBalance(),false);
+  assert.equal(f.cap.queries.localSnapshot().canRetry,true);
+  const candidate=f.model.state.bank;
+  f.persistence.recover=async()=>true;f.persistence.save=async()=>true;
+  assert.equal(await f.cap.commands.retryLocalBankSnapshot(),true);
+  assert.equal(f.model.state.bank,candidate);assert.equal(f.cap.queries.localSnapshot(),null);
+  f.cap.runtime.dispose();
+});
+
+test('a retained local Bank snapshot becomes blocked after device pairing changes',async t=>{
+  const f=fixture(t);f.cap.bindUi(f.view);
+  f.cloud.claimLease=async()=>({acquired:true,localOnly:true});
+  f.cloud.refreshFinance=async()=>({verified:true,state:f.model.state});
+  f.cloud.releaseLease=async()=>true;f.bridge.markAutoAttempt=noop;
+  f.bridge.fetchBalance=async()=>({fetchedAt:'2026-10-14T10:00:00Z',balance:500,transactions:[]});
+  f.persistence.save=async()=>false;
+  await f.cap.commands.refreshBankBalance();f.bridge.getBridgeToken=()=> 'replacement';
+  assert.equal(f.cap.queries.localSnapshot().phase,'blocked');
+  assert.equal(f.cap.queries.localSnapshot().canRetry,false);
+  f.cap.runtime.dispose();
+});
+
 test('Bank disposal drains held diagnostic work without late downloads or presentation', async t => {
   const f = fixture(t); f.cap.bindUi(f.view); f.model.state = {bank:{},checks:[]};
   const reading = f.cap.commands.exportBankChequeDiagnostics(); await f.entered.promise;
