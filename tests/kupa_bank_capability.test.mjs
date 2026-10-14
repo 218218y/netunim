@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {createKupaBankCapability} from '../netunim-kupa/site/assets/js/composition/bank.js';
 import {createBankActions} from '../netunim-kupa/site/assets/js/ui/action-packs/bank.js';
 import {createDomainsBankView} from '../netunim-kupa/site/assets/js/domains/bank/view.js';
+import {createBankConnectionForms} from '../netunim-kupa/site/assets/js/domains/bank/connection-forms.js';
 
 const noop = () => {};
 function gate() { let resolve; const promise = new Promise(done => { resolve = done; }); return {promise, resolve}; }
@@ -59,6 +60,7 @@ for (const operation of ['stop','dispose']) test(`Bank ${operation} drains a hel
   // Rebind neither ports nor owners: the capability keeps focused injected ports.
   const pending = f.cap.commands.refreshBankBalance({auto:true});
   await entered.promise;
+  assert.equal(f.cap.runtime.isPending(),true,'Bank pending state must include an accepted financial provider');
   f.cap.runtime[operation]();
   let drained = false;
   const drain = f.cap.runtime.drain().then(() => { drained = true; });
@@ -67,6 +69,7 @@ for (const operation of ['stop','dispose']) test(`Bank ${operation} drains a hel
   provider.resolve({fetchedAt:'2026-10-12T00:00:00Z',balance:500,transactions:[]});
   assert.equal(await pending,operation === 'stop');
   await drain;
+  assert.equal(f.cap.runtime.isPending(),false);
   assert.equal(writes,operation === 'stop' ? 1 : 0);
   assert.equal(releases,operation === 'stop' ? 1 : 0);
   if (operation === 'dispose') assert.deepEqual(f.events,before);
@@ -107,10 +110,13 @@ test('Bank delegated forms pass explicit input and keep credentials outside cont
     'bankBusinessBranchNumberInput','bankBusinessAccountNumberInput','bankHomeBranchNumberInput','bankHomeAccountNumberInput']
     .map((id, index) => [id,{value:index === 0 ? '  paired  ' : `value-${index}`} ]));
   const previous = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  inputs.bankBridgeCredentialsForm={querySelector:selector=>inputs[selector.slice(1)],addEventListener:noop,removeEventListener:noop};
   Object.defineProperty(globalThis, 'document', {configurable:true,value:{getElementById:id => inputs[id]}});
   t.after(() => { if (previous) Object.defineProperty(globalThis,'document',previous); else delete globalThis.document; });
   let token, credentials;
-  const actions = createBankActions({bankCommands:{saveBankBridgeToken:value => { token=value; }, configureBankBridge:value => { credentials=value; }},
+  const commands={saveBankBridgeToken:value => { token=value; }, configureBankBridge:value => { credentials=value; }};
+  const forms=createBankConnectionForms({commands,readPairing:()=>({generation:1}),isActive:()=>true});forms.bind();t.after(()=>forms.runtime.dispose());
+  const actions = createBankActions({bankCommands:commands,connectionForms:forms,
     bankPresentation:{},importFinanceConnections:noop,ui:{},toast:noop});
   actions['save-bank-bridge-token']({});
   assert.equal(token,'paired'); assert.equal(inputs.bankBridgeTokenInput.value,'');

@@ -33,13 +33,27 @@ function policies(source) {
     fixture.names
       .filter((name) => name !== 'commitBankSnapshot')
       .map((name) => {
+        if (name === 'applyBridgeAccountFields') {
+          const owner = read(folder + 'connection-owner.js');
+          const node = parse(owner, { sourceType:'module', ecmaVersion:'latest' }).body.find(row => row.id?.name === name);
+          assert.ok(node, name);
+          return owner.slice(node.start, node.end);
+        }
         if (name === 'financeBankPayload' || name === 'prepareBankSnapshot')
           return commandDeclaration(name);
         const node = [...ast.body, ...factory.body.body].find(
           (row) => row.type === 'FunctionDeclaration' && row.id.name === name
         );
         assert.ok(node, name);
-        return source.slice(node.start, node.end);
+        const body=source.slice(node.start, node.end);
+        // Only the delegated device readout/financial-feedback union changed.
+        // The retained archive projection, sync clocks and local notice stay
+        // compared with the immutable pre-extraction AST fixture.
+        return name==='bankBridgeUiState' ? body
+          .replaceAll('financialFeedback','bridgeState')
+          .replace('const connection=connectionState();','')
+          .replace('...connection,...bridgeState,busy:bridgeState.busy||connection.busy,','...bridgeState,')
+          .replace('localSnapshot:local,autoEnabled:', 'localSnapshot:local,tokenConfigured:!!bridge.getBridgeToken(),autoEnabled:') : body;
       })
   ).policies;
 }

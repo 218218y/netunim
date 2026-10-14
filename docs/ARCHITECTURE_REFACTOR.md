@@ -986,3 +986,14 @@ submit listeners and destructive confirmations have an explicit presentation
 owner joined by Finance. Eleven native browser/IDB cases preserve exact Main
 and Shared journals. Controller width is 22; larger financial/provider workflows
 remain unfinished. See [Orders Bank connections](ORDERS_BANK_CONNECTION_OWNER.md).
+
+Kupa local Bank connection now has a strict six-port owner after eight actual
+controller defects were reproduced. Pairing generations, status cache/revisions,
+serialized vault mutations and accepted-work disposal/drain have explicit
+ownership. Native forms retain identity/drafts and own submit listeners; stale
+forms cannot configure a replacement device. Financial warnings survive passive
+status probes, and vault acknowledgements cannot fabricate Bridge versions.
+The controller's local connection bodies and download port are retired while
+financial lease/provider publication remains separate. Ten registered native
+browser/IDB cases, strict negative/body mutations and preserved policy fixtures
+protect this slice. See [Kupa Bank connections](KUPA_BANK_CONNECTION_OWNER.md).

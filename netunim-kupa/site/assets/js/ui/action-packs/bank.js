@@ -1,28 +1,16 @@
 import {createLazyDeferredSearchUpdater} from '../../shared/search-scheduler.js';
 
 // Bank owns these delegated UI actions and its local event ports.
-export function createBankActions({bankCommands,bankPresentation,importFinanceConnections,ui,toast,search=null}){
+export function createBankActions({bankCommands,bankPresentation,connectionForms,importFinanceConnections,ui,toast,search=null}){
 const acknowledgeMissingBankTransaction=(...args)=>bankCommands.acknowledgeMissingBankTransaction(...args);
-const configureBankBridge=()=>bankCommands.configureBankBridge({
-  token:document.getElementById('bankBridgeTokenInput')?.value||'',
-  userCode:document.getElementById('bankUserCodeInput')?.value||'',
-  password:document.getElementById('bankPasswordInput')?.value||'',
-  businessBranchNumber:document.getElementById('bankBusinessBranchNumberInput')?.value||'',
-  businessAccountNumber:document.getElementById('bankBusinessAccountNumberInput')?.value||'',
-  homeBranchNumber:document.getElementById('bankHomeBranchNumberInput')?.value||'',
-  homeAccountNumber:document.getElementById('bankHomeAccountNumberInput')?.value||'',
-});
+const configureBankBridge=connectionForms.configure;
 const deleteBankBridgeCredentials=(...args)=>bankCommands.deleteBankBridgeCredentials(...args);
 const exportBankChequeDiagnostics=(...args)=>bankCommands.exportBankChequeDiagnostics(...args);
 const openBankChequeImage=(...args)=>bankPresentation.openBankChequeImage(...args).catch(error=>toast(error?.message||String(error)));
 const openCashflowBreakdown=(...args)=>bankPresentation.openCashflowBreakdown(...args);
 const refreshBankBalance=(...args)=>bankCommands.refreshBankBalance(...args);
 const retryLocalBankSnapshot=(...args)=>bankCommands.retryLocalBankSnapshot(...args);
-const saveBankBridgeToken=()=>{
-  const input=document.getElementById('bankBridgeTokenInput'),token=input?.value?.trim()||'';
-  if(token&&input)input.value='';
-  return bankCommands.saveBankBridgeToken(token);
-};
+const saveBankBridgeToken=connectionForms.saveToken;
 const selectBankBridgeAccount=(...args)=>bankCommands.selectBankBridgeAccount(...args);
 const setBankAccountView=(...args)=>bankPresentation.setBankAccountView(...args);
 const setBankAutoRefresh=(...args)=>bankCommands.setBankAutoRefresh(...args);

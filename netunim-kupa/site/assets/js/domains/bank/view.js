@@ -12,7 +12,7 @@ import {bankSmartHistoryRows} from '../../shared/bank-transaction-order.js';
 import {bankChequeImageDownloadName,bankChequeImageWithinRetention,retainBankChequeImagePreviewUrl} from '../../shared/bank-cheque-images.js';
 import {bankLocalSnapshotNotice} from './local-snapshot-view.js';
 
-export function createDomainsBankView({isActive=()=>true,runFinance=withFinanceDerivations, modal,closeModal,model,ui,bankHomeBalance,bankNextCycleCommitments,bankHomeNextCycleCommitments,bankBridgeUiState,refreshBankBridgeStatus,ensureBankDisplayArchive=async()=>false,downloadBankChequeImage=async()=>null,dateEditorMarkup}){
+export function createDomainsBankView({bindConnectionForms,isActive=()=>true,runFinance=withFinanceDerivations, modal,closeModal,model,ui,bankHomeBalance,bankNextCycleCommitments,bankHomeNextCycleCommitments,bankBridgeUiState,refreshBankBridgeStatus,ensureBankDisplayArchive=async()=>false,downloadBankChequeImage=async()=>null,dateEditorMarkup}){
 let releasePreview=null;
 function accountLabel(branch,account){return branch&&account?`סניף ${branch} · חשבון ${account}`:account?`חשבון ${account}`:''}
 function bridgeStatusText(s){
@@ -279,10 +279,10 @@ function renderBankContent(){
   ${homeStaleTotal>0&&homeBank!==null?`<div class="notice warn" style="margin-bottom:16px"><b>צילום העו״ש הביתי ישן ביחס להיום.</b> לצורך חישוב נכון נגרעו גם חיובים ביתיים שכבר עברו מאז הצילום בסך ${money(homeStaleTotal)}. מומלץ לרענן את היתרה מהבנק.</div>`:''}
 `;
   updateBridgePanel();
-  for(const formId of ['bankBridgePairForm','bankBridgeCredentialsForm'])document.getElementById(formId)?.addEventListener('submit',event=>event.preventDefault());
+  bindConnectionForms();
   refreshBankBridgeStatus({force:false}).then(updateBridgePanel).catch(()=>updateBridgePanel());
   ensureBankDisplayArchive().catch(error=>console.error('bank display archive',error));
 }
 
-return {runtime:{dispose(){releasePreview?.();releasePreview=null}},renderBank,openCashflowBreakdown,openBankChequeImage,setBankAccountView,setBankDataView,setBankSearch,setBankDateMode,setBankDateBoundary,toggleBankSyncOptions};
+return {runtime:{dispose(){releasePreview?.();releasePreview=null}},updateBridgePanel,renderBank,openCashflowBreakdown,openBankChequeImage,setBankAccountView,setBankDataView,setBankSearch,setBankDateMode,setBankDateBoundary,toggleBankSyncOptions};
 }

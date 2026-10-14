@@ -115,7 +115,9 @@ test('bank failed atomic publication cannot replace the displayed archive cache'
 });
 test('bank committed snapshot with unverified refresh retains its operator warning',async t=>{
   const f=fixture(t);let reads=0;f.ports.refreshFinanceCloudSnapshot=async()=>++reads===1?{verified:true,state:f.model.state}:{verified:false,state:null};const api=f.create();
-  assert.equal(await api.refreshBankBalance(),true);assert.equal(f.model.state.bank.currentBalance,500);assert.match(api.bankBridgeUiState().lastWarning,/לא אומת/);api.stopAutoSync();
+  assert.equal(await api.refreshBankBalance(),true);assert.equal(f.model.state.bank.currentBalance,500);assert.match(api.bankBridgeUiState().lastWarning,/לא אומת/);
+  await api.refreshBankBridgeStatus();assert.match(api.bankBridgeUiState().lastWarning,/לא אומת/,'passive device availability cannot erase an unverified financial readout');
+  await api.configureBankBridge({userCode:'',password:''});assert.match(api.bankBridgeUiState().lastWarning,/לא אומת/,'rejected local input cannot retire financial feedback');api.stopAutoSync();
 });
 test('manual bank balance cannot cross ownership while Shared checks are being verified',async t=>{
   const f=fixture(t,{hold:'checks-1'}),api=f.create(),pending=api.commitBankSnapshot(1234);await f.entered.promise;f.handoff();f.release.resolve();
@@ -247,5 +249,15 @@ test('Kupa Bank captured version cannot authorize a replacement device',async t=
  const f=fixture(t);let token='A',providers=0;f.ports.bridge.getBridgeToken=()=>token;
  f.ports.bridge.status=async()=>{token='B';return {bridgeVersion:74,configured:true}};
  f.ports.bridge.fetchBalance=async()=>{providers++;return {balance:0,accounts:{business:{balance:0,accountId:'same-account',transactions:[]}}}};
- const api=f.create();try{assert.equal(await api.refreshBankBalance(),false);assert.equal(providers,0);assert.equal(f.counts.atomic||0,0);assert.equal(f.counts.release,1)}finally{api.runtime.dispose()}
+ const api=f.create();try{assert.equal(await api.refreshBankBalance(),false);assert.equal(providers,0);assert.equal(f.counts.atomic||0,0);assert.equal(f.counts.release,1);
+ const readout=api.bankBridgeUiState();assert.equal(readout.lastErrorCode,'BRIDGE_PAIRING_SCOPE_CHANGED');assert.ok(readout.lastError.length>0,'a safely stopped financial operation needs an operator explanation');assert.equal(readout.accountNumber,'');
+ }finally{api.runtime.dispose()}
+});
+test('Kupa financial pairing rejection explains the stop without exposing former-device errors',async t=>{
+ const f=fixture(t);let token='A';f.ports.bridge.getBridgeToken=()=>token;
+ f.ports.bridge.status=async()=>{token='B';throw Error('private former-device status failure')};
+ const api=f.create();try{
+ assert.equal(await api.refreshBankBalance(),false);const value=api.bankBridgeUiState();
+ assert.equal(value.lastErrorCode,'BRIDGE_PAIRING_SCOPE_CHANGED');assert.ok(value.lastError.length>0);assert.ok(!value.lastError.includes('private former-device'));assert.equal(value.availabilityError,'');assert.equal(f.counts.release,1);assert.equal(f.counts.provider||0,0);assert.deepEqual(f.model.state,f.before);
+ }finally{api.runtime.dispose()}
 });

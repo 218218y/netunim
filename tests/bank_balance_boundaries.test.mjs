@@ -99,12 +99,14 @@ test('Hapoalim account reader consumes canonical financial evidence and installe
     )
   );
   assert.ok(read('netunim-kupa/bank-bridge/server.mjs').includes('const BRIDGE_VERSION=74'));
-  assert.ok(read(files[0]).includes('const BANK_BRIDGE_VERSION=74'));
+  assert.ok(read('netunim-kupa/site/assets/js/domains/bank/connection-owner.js').includes('KUPA_BANK_BRIDGE_MINIMUM_VERSION = 74'));
+  assert.ok(read(files[0]).includes('if(!connections.queries.supported(bridgeStatus))'));
   assert.ok(read('netunim-orders/site/assets/js/domains/finance/bank-connection-owner.js').includes('ORDERS_BANK_BRIDGE_MINIMUM_VERSION = 74'));
   assert.ok(read(files[1]).includes('if(!bankConnections.queries.supported(status))'));
   const kupa = read(files[0]);
   assert.ok(
-    kupa.indexOf('const bridgeStatus=await bridge.status()') <
+    kupa.indexOf('const bridgeStatus=await connections.queries.readStatus()') >= 0 &&
+    kupa.indexOf('const bridgeStatus=await connections.queries.readStatus()') <
       kupa.indexOf('const result=await bridge.fetchBalance(')
   );
 });

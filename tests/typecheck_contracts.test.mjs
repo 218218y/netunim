@@ -52,6 +52,12 @@ test('the actual Orders Bank vault owner cannot replace confirmed success with d
  const diagnostics=check(new Map([[source,changed]]));
  assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
 });
+test('the actual Kupa Bank vault owner cannot replace confirmed success with display text',()=>{
+ const source=path.join(root,'netunim-kupa/site/assets/js/domains/bank/connection-owner.js'),original=readFileSync(source,'utf8');
+ const changed=original.replace('return true;',"return 'saved';");assert.notEqual(changed,original);
+ const diagnostics=check(new Map([[source,changed]]));
+ assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+});
 test('the actual Credit connection readout cannot replace local profile evidence with display text',()=>{
  const source=path.join(root,'netunim-kupa/site/assets/js/domains/credit/connection-owner.js'),original=readFileSync(source,'utf8');
  const changed=original.replace('local: record(local)',"local: 'yes'");assert.notEqual(changed,original);
