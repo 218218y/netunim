@@ -146,14 +146,35 @@ test('Kupa controller delegates archive ownership and preserves local publicatio
     assert.ok(source.includes(call), call);
 });
 test('composition supplies live Kupa authority and owns archive disposal and drain', () => {
-  const source = read('netunim-kupa/site/assets/js/composition/bank.js').replace(/\s+/g, '');
+  const original = read('netunim-kupa/site/assets/js/composition/bank.js');
+  const source = original.replace(/\s+/g, '');
   for (const wire of [
     'authority:scope',
     "cloud:()=>session.connectionMode==='supabase'",
     'transactions:(...args)=>cloud.readTransactions(...args)',
     'snapshot:(...args)=>cloud.readTransactionSnapshot(...args)',
     'archive.runtime.dispose()',
-    'awaitarchive.runtime.drain()',
   ])
     assert.ok(source.includes(wire), wire);
+  assert.ok(awaitsArchiveDrain(original),'the archive owner must be joined by capability drain');
+  assert.equal(awaitsArchiveDrain(original.replace('archive.runtime.drain()','Promise.resolve()')),false);
+  assert.equal(awaitsArchiveDrain(original.replace(/await\s+Promise\.all\(/,'Promise.all(')),false);
 });
+function awaitsArchiveDrain(source) {
+  const tree=parse(source,{ecmaVersion:'latest',sourceType:'module'});
+  const factory=tree.body.find(row=>row.declaration?.id?.name==='createKupaBankCapability').declaration;
+  const runtime=factory.body.body.flatMap(row=>row.declarations||[]).find(row=>row.id.name==='runtime').init;
+  const drain=runtime.properties.find(row=>row.key.name==='drain').value;
+  const isDrain=node=>node?.type==='CallExpression'&&node.callee?.object?.object?.name==='archive'&&node.callee.object.property?.name==='runtime'&&node.callee.property?.name==='drain';
+  let joined=false;
+  function walk(node){
+    if(!node||typeof node!=='object')return;
+    if(node.type==='AwaitExpression'){
+      const value=node.argument;
+      if(isDrain(value))joined=true;
+      if(value?.type==='CallExpression'&&value.callee?.object?.name==='Promise'&&value.callee.property?.name==='all'&&value.arguments[0]?.type==='ArrayExpression'&&value.arguments[0].elements.some(isDrain))joined=true;
+    }
+    for(const value of Object.values(node)){if(Array.isArray(value))value.forEach(walk);else if(value&&typeof value==='object')walk(value);}
+  }
+  walk(drain.body);return joined;
+}

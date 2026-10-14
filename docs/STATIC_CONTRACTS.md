@@ -1,5 +1,13 @@
 # Incremental JavaScript contracts
 
+The canonical Finance import runtime and native file-selection owner check their
+actual bodies. Negative consumers reject implicit confirmations, text summary
+counts, nontext pairing and synthetic drain/results; actual mutations replace
+command success and native drain with invalid evidence. Browser composition
+still delegates canonical import model preparation and Bridge wire validation;
+this does not type-check complete import/provider envelopes or grant a financial
+ACK. See [Finance import ownership](FINANCE_CONNECTION_IMPORT_OWNERSHIP.md).
+
 Kupa Bank's local connection owner checks its actual body and negative consumers:
 opaque pairing, credential/account identifiers, synchronous publication guards
 and downloads, boolean command acceptance and asynchronous drain. A textual

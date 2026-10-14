@@ -12,7 +12,7 @@ import {createOrdersBankArchiveReadout} from '../domains/finance/bank-archive-re
 import {bankArchiveTargets,bankArchiveSourceRows} from '../domains/finance/bank-archive-model.js';
 import {createDomainsFinanceView} from '../domains/finance/view.js';
 import {createOrdersBankChequeImageRuntime} from '../domains/finance/bank-cheque-image-runtime.js';
-import {createFinanceConnectionImporter} from '../shared/finance-connection-import.js';
+import {createFinanceConnectionImportCapability} from '../shared/finance-connection-import-capability.js';
 import {createCreditCardOrderView} from '../shared/credit-card-order-view.js';
 import {createFinanceBankActions} from '../ui/action-packs/finance-bank.js';
 import {createFinanceCreditActions} from '../ui/action-packs/finance-credit.js';
@@ -187,11 +187,13 @@ export function createOrdersFinanceCapability({
       confirmDialog:ownedModal.confirmDialog, dateEditorMarkup:date.dateEditorMarkup,
       downloadBankChequeImage:images.download, openBankMorningDocument,
     });
-    const importConnections = createFinanceConnectionImporter({
+    const importConnections = createFinanceConnectionImportCapability({
       bridge, getCreditProfiles:() => controller.snapshot().creditSync?.profiles || [],
       confirmDialog:ownedModal.confirmDialog, toast:notify,
-      afterImport:async () => {
+      afterImport:async (_result,assertCurrent) => {
+        assertCurrent();
         await Promise.all([controller.refreshBankBridgeStatus({quiet:true}), controller.refreshCreditBridgeStatus({quiet:true})]);
+        assertCurrent();
         if (!disposed) view.renderKupa();
       },
     });
@@ -203,7 +205,7 @@ export function createOrdersFinanceCapability({
     });
     const packs = [
       {name:'credit-order', actions:markMutationActions(creditOrder.actions, {finance:['credit-card-order-save']})},
-      {name:'finance-bank', actions:createFinanceBankActions({domainsFinanceController:controller, domainsFinanceView:view, importFinanceConnections:importConnections, ui, uiStatus:{toast:notify}})},
+      {name:'finance-bank', actions:createFinanceBankActions({domainsFinanceController:controller, domainsFinanceView:view, importFinanceConnections:importConnections.commands.importConnections, ui, uiStatus:{toast:notify}})},
       {name:'finance-credit', actions:createFinanceCreditActions({domainsFinanceView:view, ui})},
     ];
     const guardedPacks = packs.map(pack => ({...pack, actions:Object.fromEntries(
@@ -215,7 +217,7 @@ export function createOrdersFinanceCapability({
         return [name, guarded];
       }),
     )}));
-    presentation = {view, packs:guardedPacks};
+    presentation = {view, importConnections, packs:guardedPacks};
   }
 
   const queries = {
@@ -245,9 +247,9 @@ export function createOrdersFinanceCapability({
     renderKupaDependentView:(...args) => readoutReady().renderKupaDependentView(...args),
   };
   const runtime = {
-    isPending:() => !!(controller?.runtime.isPending() || connections?.runtime.isPending() || bankConnections?.runtime.isPending() || archive?.runtime.isPending() || presentation?.view.connectionRuntime.isPending()),
+    isPending:() => !!(controller?.runtime.isPending() || connections?.runtime.isPending() || bankConnections?.runtime.isPending() || archive?.runtime.isPending() || presentation?.view.connectionRuntime.isPending() || presentation?.importConnections.runtime.isPending()),
     async drain() {
-      await Promise.all([controller?.runtime.drain(), connections?.runtime.drain(), bankConnections?.runtime.drain(), archive?.runtime.drain(), presentation?.view.connectionRuntime.drain()]);
+      do { await Promise.all([controller?.runtime.drain(), connections?.runtime.drain(), bankConnections?.runtime.drain(), archive?.runtime.drain(), presentation?.view.connectionRuntime.drain(), presentation?.importConnections.runtime.drain()]); } while(runtime.isPending());
     },
     start() { uiReady(); return controller.startAutoSync(); },
     stop() { return controller?.stopAutoSync(); },
@@ -259,6 +261,7 @@ export function createOrdersFinanceCapability({
     dispose() {
       if (disposed) return false;
       disposed = true;
+      presentation?.importConnections.runtime.dispose();
       presentation?.view.connectionRuntime.dispose();
       controller?.runtime.dispose();
       connections?.runtime.dispose();

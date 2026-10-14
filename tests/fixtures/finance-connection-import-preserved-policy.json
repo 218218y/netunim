@@ -1,0 +1,16 @@
+{
+  "base": "5439236e7c9f138500406f1290cd192a664eab6d",
+  "policies": {
+    "IMPORT_SCHEMA": "7a6673e0e2f75d80c0eb89cc19986a84e3aa07603b5cebb2648448d39cc0f992",
+    "IMPORT_VERSION": "2d41002e3bdac091ca40d6e7bf7c18b8b66e814c60e02687ec9e04ff6fafe200",
+    "MAX_IMPORT_BYTES": "fd48de8f8f1c8999e3f8b055531c7bef6956e7aa8137ccb4c682c35cf65f6dc6",
+    "object": "41cbed8d56353303bc950dca1f576d1da8fa3492807cce7bb505a605aba2d0c5",
+    "text": "011bf4c5b3bcda896df9e315f8902a22a80a0f164b96c1a78f847b78026be4d9",
+    "normalizedLabel": "30709d8efe447f02f8b642d1feb11fe63681fe48be75537abf287427b78626d3",
+    "parseDocument": "ef4cf151e4dae2f93dc1d7705f00b52e2136d0e405379acb493a36c523103e5e",
+    "profileMatches": "4bb51363d1cd378c40830a247b3fe1743f4cdf53791972159cd391f26432c93b",
+    "prepareFinanceConnectionImport": "8dbc9123cec05f2819b76482609d29b42ae55e1d9f875cf5290aafa0117b91da",
+    "parseFinanceConnectionImportText": "f0c42469fcbc3a78b1c8796eec61118bef35115cff7dbf4b0ebe97d3ab5b67f2",
+    "financeConnectionImportSummary": "8ed8da42bac19eb25a85a2cd3a57722f52610b230ef4a41fb71ac31f3865cb17"
+  }
+}
