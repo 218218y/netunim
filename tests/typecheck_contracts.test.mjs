@@ -25,6 +25,15 @@ function check(overrides=new Map()){
 }
 function describe(diagnostics){return ts.formatDiagnostics(diagnostics,{getCanonicalFileName:file=>file,getCurrentDirectory:()=>root,getNewLine:()=> '\n'})}
 
+test('Morning media implementation rejects fabricated PDF, identity and drain evidence',()=>{
+ const source=path.join(root,'netunim-orders/site/assets/js/domains/customers/morning-document-media.js'),original=readFileSync(source,'utf8');
+ for(const [from,to] of [['return row.document_id;',"return true;"],['return new Blob([bytes],{type:\'application/pdf\'});',"return 'PDF';"],['drain:work.drain','drain:()=>true']]){
+  const changed=original.replace(from,to);assert.notEqual(changed,original);
+  const diagnostics=check(new Map([[source,changed]]));
+  assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+ }
+});
+
 test('Calendar sync implementation rejects status text as native queue confirmation',()=>{
  const source=path.join(root,'netunim-orders/site/assets/js/calendar/session-runtime.js'),original=readFileSync(source,'utf8');
  const changed=original.replace('return confirmedResult;',"return 'confirmed';");assert.notEqual(changed,original);

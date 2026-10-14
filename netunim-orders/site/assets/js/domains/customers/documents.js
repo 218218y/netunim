@@ -27,7 +27,7 @@ export function debtMorningPrefill(debt={}){const clearingApproval=String(debt?.
 export function createDomainsCustomersDocuments({operationScope,subscribeAccountScope=()=>()=>{},model,modal,toast,confirmDialog,markModalDraftSaved,request,dateEditorMarkup,setDateValue=()=>{},documentsBrowser,applyVerifiedDebtDocument,rejectSecondaryIssuance,rejectSecondaryMutation,refreshForMorningRecovery,getBusinessBankTransactions=()=>[],ensureBusinessBankTransactions=async()=>false,onBankDocumentVerified=()=>{}}){
 if(typeof operationScope?.capture!=='function'||typeof operationScope?.captureRead!=='function')throw new TypeError('morning_operation_scope_required');
 if(typeof request?.json!=='function')throw new TypeError('morning_request_required');
-let disposed=false,modalAssert=null,modalElement=null,previewObjectUrl='',previewRequest=0;
+let disposed=false,modalAssert=null,modalElement=null;
 const scopeChanged=error=>error?.code==='MORNING_OPERATION_SCOPE_CHANGED';
 let activeOperationId='',activeDebtId='',activeSource={kind:'standalone'},issuanceContext=null,modalGeneration=0,createBusy=false,blocked=false,completed=false;
 let decisionView=null;
@@ -37,8 +37,7 @@ const captureScope=lifetime.capture,scheduleRecoveryCheck=lifetime.scheduleRecov
 let pendingRecovery=loadMorningDebtRecoveryContext();
 const display=createMorningDisplayLifetime({subscribeAccountScope,onInvalidate:()=>{
   const owned=modalElement;
-  modalGeneration++;previewRequest++;modalAssert=null;modalElement=null;
-  if(previewObjectUrl){URL.revokeObjectURL(previewObjectUrl);previewObjectUrl=''}
+  modalGeneration++;modalAssert=null;modalElement=null;
   clearMorningDisplay(owned,modal);
 }});
 if(pendingRecovery){activeOperationId=pendingRecovery.operationId;activeDebtId=pendingRecovery.debtId;activeSource=sourceFromRecovery(pendingRecovery);issuanceContext=pendingRecovery;blocked=true}
@@ -143,7 +142,6 @@ async function openMorningDocumentModal({prefill=null,debtId='',source=null,init
   if(blocked&&requestedKey!==sourceKey(activeSource)){toast('יש ניסיון הפקה קודם שעדיין ממתין לאימות. יש להשלים את בדיקת ההפקה שלו לפני פתיחת מקור מסמך אחר.');return}
   if(!blocked){activeOperationId=newOperationId();activeDebtId=requestedDebtId;activeSource=requestedSource;bankTransactionLinker.reset(requestedSource);issuanceContext=null;completed=false}else if(issuanceContext?.operationId===activeOperationId){activeDebtId=issuanceContext.debtId;activeSource=hydrateRecoveredSource(sourceFromRecovery(issuanceContext),requestedSource);bankTransactionLinker.reset(activeSource)}
   display.renew();modalGeneration++;
-  if(previewObjectUrl){URL.revokeObjectURL(previewObjectUrl);previewObjectUrl=''}
   const safeType=activeSource.kind==='bank'&&![320,400].includes(Number(initialType))?320:Number(initialType)||DEFAULT_DOCUMENT_TYPE;
   modal('בודק חיבור ל-Morning…',formBody(prefill||{},safeType,dateEditorMarkup,{source:activeSource}),foot());
   modalElement=document.querySelector(`[data-morning-generation="${modalGeneration}"]`);
@@ -375,10 +373,10 @@ async function recoverPendingMorningOperation({quiet=false,assertCurrent}={}){
 }
 
 async function previewMorningDocument(button){
-  let payload,assertCurrent;try{modalAssert?.();assertCurrent=captureScope(true);payload=readForm()}catch(error){return toast(error.message)}setBusy(button,true,'מכין…');
-  const generation=modalGeneration,ticket=++previewRequest;
-  try{const data=await backend('preview',payload,assertCurrent);assertCurrent();if(!isActive(generation)||ticket!==previewRequest)return false;const base64=String(data.pdfBase64||'');if(!base64)throw new Error('Morning לא החזירה קובץ תצוגה מקדימה');const binary=atob(base64),bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);if(previewObjectUrl)URL.revokeObjectURL(previewObjectUrl);previewObjectUrl=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));const box=currentField('morningPreviewBox'),frame=currentField('morningPreviewFrame'),note=currentField('morningPreviewNote');if(note)note.textContent='הקובץ עדיין לא הופק רשמית';if(frame)frame.src=previewObjectUrl;if(box){box.hidden=false;box.scrollIntoView({block:'nearest',behavior:'smooth'})}}
-  catch(error){if(!scopeChanged(error)&&isActive(generation)&&ticket===previewRequest)toast(error.message||'יצירת התצוגה המקדימה נכשלה')}finally{setBusy(button,false)}
+  let payload,assertCurrent;try{modalAssert?.();assertCurrent=captureScope(true);payload=readForm()}catch(error){return toast(error.message)}
+  const generation=modalGeneration;setBusy(button,true,'מכין…');
+  try{return await documentsBrowser.previewDraft(payload,{assertCurrent,isCurrent:()=>isActive(generation)})}
+  finally{setBusy(button,false)}
 }
 
 async function createMorningDocument(button){

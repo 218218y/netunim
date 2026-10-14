@@ -25,6 +25,9 @@ morning_debt=(SITE/'assets/js/domains/customers/morning-debt.js').read_text(enco
 morning_debt_recovery=(SITE/'assets/js/domains/customers/morning-debt-recovery.js').read_text(encoding='utf-8')
 morning_payments=(SITE/'assets/js/domains/customers/morning-payments.js').read_text(encoding='utf-8')
 browser=(SITE/'assets/js/domains/customers/documents-browser.js').read_text(encoding='utf-8')
+media=(SITE/'assets/js/domains/customers/morning-document-media.js').read_text(encoding='utf-8')
+media_presentation=(SITE/'assets/js/platform/morning-media-presentation.js').read_text(encoding='utf-8')
+media_effects=(SITE/'assets/js/platform/morning-media-effects.js').read_text(encoding='utf-8')
 persistence=(SITE/'assets/js/storage/persistence.js').read_text(encoding='utf-8')
 bulk=(SITE/'assets/js/domains/customers/bulk.js').read_text(encoding='utf-8')
 composition=(SITE/'assets/js/domains/customers/composition.js').read_text(encoding='utf-8')
@@ -55,7 +58,7 @@ ok("requireUser(req)" in edge and "morning_cloud_auth_required" in edge and "sup
    'Morning security: browser uses authenticated Supabase Edge Function, never Morning directly')
 ok("client:any={name:clientName,add:false}" in edge and "vatType:0" in edge and "vatType:1" in edge,
    'Morning payload: one-off client and the existing gross-amount VAT-included row behavior are explicit and unchanged by reliability hardening')
-ok("/documents/preview" in edge and "pdfBase64" in edge and "morningPreviewFrame" in documents,
+ok("/documents/preview" in edge and "pdfBase64" in media and "morningPreviewFrame" in documents and 'documentsBrowser.previewDraft(payload' in documents,
    'Morning preview: PDF preview is available without creating a formal document')
 reserve_pos=edge.find('reserved=await reserveOperation')
 create_pos=edge.find("morningRequest('/documents'")
@@ -212,7 +215,7 @@ ok('timestampMs(' in edge and "Date.parse(text)" in edge,
    'Morning reconciliation accepts both epoch and ISO creation timestamps without weakening the matching window')
 ok('ambiguousWriteStatus(' in edge and 'value===408||(value>=500&&value<=599)' in edge,
    'Morning issuance ambiguity: HTTP 408 and every 5xx remain non-retryable until reconciliation')
-ok("documentsBrowser.viewDocument(data.document.id,null,{quiet:true})" in documents and "data.verified!==true" in issuance and "מסמך רשמי שנשלף מ-Morning" in browser,
+ok("documentsBrowser.viewDocument(data.document.id,null,{quiet:true})" in documents and "data.verified!==true" in issuance and "מסמך רשמי שנשלף מ-Morning" in media_presentation,
    'Issued-document UI: browser fails closed without server verification and automatically loads the official Morning PDF after verified issuance')
 ok("if(createBusy||blocked||completed)return" in documents and "button.disabled=blocked||completed" in documents and "הופק ואומת" in documents,
    'Issued-document UI: a verified success locks the same issuance dialog so a second click cannot create an accidental duplicate')
@@ -234,7 +237,7 @@ ok('Number.isSafeInteger(page)' in edge and 'pageSize>50' in edge and 'SEARCH_TY
    'Search uses a server whitelist for dates, pagination, types, statuses, client and sort')
 ok('MAX_DOCUMENT_PDF_BYTES=20*1024*1024' in edge and "Content-Type':'application/pdf'" in edge and "bytes[0]!==0x25" in edge and "Cache-Control':'no-store'" in edge,
    'Existing-document preview validates PDF magic bytes, caps payload size and disables storage/cache')
-ok('morningBrowserPreviewFrame' in browser and "response('document_pdf'" in request and 'request.pdf' in browser and "opened.length===0" not in browser,
+ok('morningBrowserPreviewFrame' in media_presentation and "response('document_pdf'" in request and 'request.pdf' in media and "opened.length===0" not in browser,
    'Existing-document view is rendered inside the app rather than navigating to Morning')
 ok('.morning-browser-table{width:100%;min-width:0!important;table-layout:fixed' in app_css and '#morningBrowserResults{width:100%;max-width:100%;overflow:hidden}' in app_css,
    'Morning document browser layout: the results table overrides the global wide-table minimum and fits the modal without horizontal scrolling')
@@ -242,8 +245,13 @@ ok('grid-template-rows:auto 40px' in app_css and '.morning-browser-filters input
    'Morning document browser filters: text, select and date controls share the same control height and aligned labels')
 ok('function allocationMarkup(value)' in browser and 'morning-browser-allocation-text' in browser and 'title=\"${esc(allocation)}\"' in browser and '.morning-browser-allocation-text{display:none}' in app_css,
    'Morning document browser allocation: allocation IDs are compact, expose the full value on hover and collapse to an existence marker at tighter widths')
-ok('localStorage' not in browser and 'sessionStorage' not in browser and 'document_links' in browser and 'document_pdf' in request and 'request.pdf' in browser and 'URL.createObjectURL' in browser and 'noopener noreferrer' in browser,
+ok('localStorage' not in browser+media and 'sessionStorage' not in browser+media and 'document_links' in browser and 'document_pdf' in request and 'request.pdf' in media and 'URL.createObjectURL' in media_effects and 'noopener noreferrer' in browser,
    'Browser keeps PDF viewing transient in a local Blob, requests fresh download links and persists neither documents nor signed URLs')
+ok('createMorningDocumentMedia(' in browser and 'previewDraft:command(' in browser and 'createRuntimeTaskOwner' in media
+   and all(name not in documents+browser for name in ('previewObjectUrl','previewSequence','previewRequest','URL.createObjectURL','URL.revokeObjectURL')),
+   'Morning PDF authority: draft and official requests use one owned publication generation and no controller-local Blob source')
+ok('firstElementChild===marker' in media_presentation and 'modalOpen()===open' in media_presentation and 'MutationObserver' in media_effects and 'observer.disconnect()' in media_effects,
+   'Morning PDF presentation: close/replacement revokes pending requests and releases only the captured viewer source')
 ok('morning-document-hero' not in documents and "modal('בודק חיבור ל-Morning…'" in documents and 'mountMorningConnectionStatus()' in documents and 'morning-document-fields' in documents and 'morning-payment-fields' in morning_payments and 'מספר הזמנה <small>(רשות)</small>' in documents,
    'Morning compact issuance UI: connection status owns the modal header while document/payment fields use scoped compact grids')
 ok('חיפוש ישיר ב-Morning · כולל מסמכים שהופקו באתר Morning' not in browser and "modal('הצגה וחיפוש במסמכי Morning',markup()" in browser,

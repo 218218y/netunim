@@ -20,6 +20,10 @@
     "types": []
   },
   "files": [
+    "tests/fixtures/checked-morning-media.mjs",
+    "netunim-orders/site/assets/js/domains/customers/morning-document-media.js",
+    "netunim-orders/site/assets/js/platform/morning-media-effects.js",
+    "netunim-orders/site/assets/js/platform/morning-media-presentation.js",
     "tests/fixtures/checked-calendar-session.mjs",
     "netunim-orders/site/assets/js/calendar/connection.js",
     "netunim-orders/site/assets/js/calendar/session-runtime.js",
