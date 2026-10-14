@@ -1,34 +1,19 @@
+import {createCloudWriteFlight} from './write-flight.js';
+import {createCloudAckPublication} from './ack-publication.js';
+import {canonicalCloudSyncBase} from './state-projection.js';
+import {createCloudConfirmation} from './confirmation.js';
+import {createCloudPolling} from './polling.js';
 import {createRuntimeTaskOwner} from '../shared/runtime-task-owner.js';
-import {recoverPostAckPublication} from '../shared/cloud-post-ack-recovery.js';
-import {cloudAckPublicationDiagnostic} from '../shared/cloud-ack-diagnostic.js';
+
 import {captureCloudWriteScope,cloudWriteScopeIsCurrent,cloudWriteScopeHasIdentity} from '../shared/cloud-write-scope.js';
 import {beginMeasure} from '../shared/runtime-performance.js';
 import {commitCloudCheckpoint} from '../shared/cloud-checkpoint-publication.js';
-import {cloudHeadIsSynced} from '../shared/storage-cloud-status.js';
-import {createPollingTask} from '../shared/runtime-polling.js';
-import {structuredSyncConflict} from '../shared/cloud-sync.js';
+
 import {normalizeSharedChecks} from '../shared/shared-checks-contract.js';
 import {assertValidCloudState} from '../state/validation.js';
 import {jsonEq} from './merge-records.js';
 import {SUPA_AUTO_KEY, STORAGE_PREF_KEY} from '../state/constants.js';
-import {CLOUD_WRITE_POLICY,cloudWriteError,contentionDelay,createOutboxRetryScheduler,normalizeCloudError,operationAuditMetadata,runBusyCloudWriteWithPolicy} from '../shared/cloud-sync.js';
-import {readDocumentWriteAck} from '../shared/document-write-ack.js';
-
-function revisionConflict(res){return !res?.r?.ok&&normalizeCloudError(res).kind==='revision_conflict'}
-function saveBusy(res){return !res?.r?.ok&&normalizeCloudError(res).kind==='busy'}
-function contentionBackoff(attempt=0){return new Promise(resolve=>setTimeout(resolve,contentionDelay(attempt)))}
-function normalizeDeleteIntents(value){const out={};if(!value||typeof value!=='object'||Array.isArray(value))return out;for(const [key,ids] of Object.entries(value)){const clean=[...new Set((Array.isArray(ids)?ids:[]).map(x=>String(x||'').trim()).filter(Boolean))].sort();if(clean.length)out[key]=clean}return out}
-function collectionRows(state,key){if(key==='notesSheet.sheets')return state?.notesSheet?.sheets||[];if(key==='notesSheet.rows')return state?.notesSheet?.rows||[];if(key==='notesSheet.columns')return state?.notesSheet?.columns||[];return state?.[key]||[]}
-function canonicalCloudSyncBase(raw,project){
-  const base=project(raw);
-  // The visible model drops expired credits, but the cloud base must retain
-  // their server IDs until a flight with explicit delete intents is ACKed.
-  base.credits=structuredClone(raw.credits);
-  return base;
-}
-function effectiveDeleteIntents(base,candidate,intents){const out={},declared=normalizeDeleteIntents(intents);for(const [key,ids] of Object.entries(declared)){const before=Array.isArray(collectionRows(base,key))?collectionRows(base,key):[],after=Array.isArray(collectionRows(candidate,key))?collectionRows(candidate,key):[],kept=new Set(after.map(x=>String(x?.id||''))),removed=before.map(x=>String(x?.id||'')).filter(id=>id&&ids.includes(id)&&!kept.has(id)).sort();if(removed.length)out[key]=removed}return out}
-
-function cloudAudit(pending,before,after,baseRevision,intents){const deletes=Object.values(intents).reduce((sum,ids)=>sum+ids.length,0);return operationAuditMetadata({site:'kupa',mutationType:intents['notesSheet.sheets']?.length||pending?.mutationType==='cloud-normalization'&&deletes?'bulk-delete':pending?.mutationType||'autosave',surface:pending?.surface||'kupa',baseRevision,beforeState:before,afterState:after,collections:['credits','cash','rights','notes','expenses','cards','notesSheet.rows','notesSheet.columns','notesSheet.sheets'],deleteCount:deletes,restoreGroupId:pending?.restoreGroupId})}
+import {createOutboxRetryScheduler,normalizeCloudError} from '../shared/cloud-sync.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createSyncDocument({readStorageV2CloudRecovery=null,commitStorageV2CloudRecovery=null,getCloudWriteScope=()=>null,cancelCloudRecovery=()=>{},hideConnectScreen, reportError, model, session, checksSession, tab, prepareKupaCloudState, applyKupaCloudState, setSaveStatus, setConnectedStatus, setCloudHeaderStatus, listBackups, backupSnapshotToComputer, syncSharedChecksFromCloud, render, readSupabaseDocument, readFinanceSyncDocument=async()=>null, supaRest, mergeKupaCloudState3Way, showSecondaryTabGuard, toast, pollSharedChecks, refreshOrdersFinanceSummary=async()=>false, storageV2CloudOutboxActive=()=>false, refreshStorageV2CloudState=async()=>null, materializeStorageV2CloudFlight=async()=>null, acknowledgeStorageV2CloudFlight=async()=>null, rejectStorageV2CloudFlight=async()=>null, setStorageV2CloudControl=async()=>null, clearStorageV2CloudControl=async()=>false, replaceStorageV2CurrentState=async()=>null, queueStorageV2CloudNormalization=async()=>null, adoptStorageV2CloudHead=async()=>null, resetStorageV2CloudHead=async()=>null, storageV2CommitPromise=()=>Promise.resolve(), storageV2PreparationActive=()=>false, assertAccountOwner=()=>{throw new Error('storage_owner_account_required')}, domainRevisions}){
@@ -40,11 +25,7 @@ async function setWriteControl(scope,control){
   try{return await setStorageV2CloudControl(control,{expectedScope:scope,isCurrent:()=>writeScopeCurrent(scope)})}
   catch(error){if(!writeScopeCurrent(scope))return false;throw error}
 }
-let cloudPollPromise=null;
-const cloudPoller=createPollingTask({run:()=>trackedCloudPoll(),delay:()=>12_000+Math.floor(Math.random()*2_000),
-  canRun:()=>session.cloudPollingEnabled&&!storageV2PreparationActive(),
-  onError:error=>console.error('kupa background cloud poll',error),
-  onState:({enabled})=>{session.cloudPollingEnabled=enabled}});
+
 function replaceVisibleState(next,{forceAll=false}={}){const previous=model.state;model.state=next;domainRevisions?.reconcile(previous,model.state,{forceAll});return model.state}
 function applyKupaCoreState(coreState,checks=model.state.checks,financeSource=model.state){
   const next=structuredClone(coreState&&typeof coreState==='object'?coreState:{}),finance=financeSource&&typeof financeSource==='object'?financeSource:{},coreBank=next.bank&&typeof next.bank==='object'?next.bank:{},financeBank=finance.bank&&typeof finance.bank==='object'?structuredClone(finance.bank):null;
@@ -175,87 +156,6 @@ async function rpcSaveCloudV2(snapshot,expectedRevision,operationId,deleteIntent
 
 function v2RetryRecord(state,flight=null){return {domain:'kupa',documentName:`${session.cloudDocumentName||'main'}-v2`,generation:Number(flight?.generation??state?.pendingGeneration??0),operationId:String(flight?.operationId||'kupa-v2'),retry:state?.control?.retry||null}}
 
-async function saveStorageV2CloudFlight(initialFlight,scope){
-  let state=await refreshStorageV2CloudState(),flight=initialFlight||state?.flight;if(!state?.base||!flight)throw new Error('kupa_v2_flight_missing');
-  if(!writeScopeCurrent(scope,state)||!cloudWriteScopeIsCurrent(scope,getCloudWriteScope(),{base:flight}))return false;
-  // Keep the exact adopted cloud base here. Re-normalizing it would drop
-  // expired legacy credit IDs before effectiveDeleteIntents can send them to
-  // the server's delete-intent guard.
-  let base=structuredClone(state.base.state),serverSnapshot=prepareKupaCloudState(flight.snapshot),expected=Number(flight.baseRevision),res=null;
-  for(let attempt=0;attempt<CLOUD_WRITE_POLICY.conflictAttempts;attempt++){
-    const deleteIntents=normalizeDeleteIntents(flight.deleteIntents),exactIntents=effectiveDeleteIntents(base,serverSnapshot,deleteIntents);session.cloudWriteBusy=true;res=await runBusyCloudWriteWithPolicy(()=>{if(!writeScopeCurrent(scope))throw Object.assign(new Error('cloud_sync_scope_changed'),{code:'cloud_sync_scope_changed'});return rpcSaveCloudV2(serverSnapshot,expected,flight.operationId,exactIntents,cloudAudit(flight,base,serverSnapshot,expected,exactIntents))});if(!writeScopeCurrent(scope))return false;session.cloudWriteBusy=false;
-    if(saveBusy(res))throw new Error('save_busy');if(!revisionConflict(res))break;
-    await contentionBackoff(attempt);if(!writeScopeCurrent(scope))return false;const remote=await readSupabaseDocument();if(!writeScopeCurrent(scope))return false;if(!remote?.state)throw new Error('מסמך הענן לא נמצא בזמן פתרון התנגשות');const remoteRevision=Number(remote.revision||0);if(!Number.isSafeInteger(remoteRevision)||remoteRevision<=expected)throw new Error('kupa_v2_rebase_revision_invalid');const remoteState=canonicalCloudSyncBase(remote.state,prepareKupaCloudState),merged=mergeKupaCloudState3Way(base,serverSnapshot,remoteState,{deleteIntents});
-    state=await refreshStorageV2CloudState();if(!writeScopeCurrent(scope,state))return false;if(!state?.flight||state.flight.operationId!==flight.operationId)throw new Error('kupa_v2_flight_changed_before_rebase');const expectedSeq=state.seq;
-    if(merged.conflicts.length){const conflict=structuredSyncConflict({domain:'kupa',conflicts:merged.conflicts,base,local:serverSnapshot,remote:remoteState,generation:flight.generation,baseRevision:expected,currentRemoteRevision:remoteRevision});const conflictCommit=await rejectStorageV2CloudFlight(flight.operationId,remoteRevision,remoteState,{currentState:model.state,expectedSeq,control:{conflict}});if(!writeScopeCurrent(scope,conflictCommit?.cloudState||conflictCommit))return false;session.dbRevision=remoteRevision;session.lastSavedSnapshot=JSON.stringify(remoteState);session.serverInfo.lastSavedAt=remote.coreUpdatedAt||session.serverInfo.lastSavedAt||null;session.cloudConflictPending=true;setSaveStatus('התנגשות שמורה מקומית','error');setCloudHeaderStatus('conflict','ענן: התנגשות');reportError('הסנכרון נעצר: אותה רשומה שונתה במקביל בשני מקומות. השינוי המקומי נשמר ולא נדרס.');return false}
-    const throughSeq=Number(flight.endSeq),previousOperationId=flight.operationId;let currentCore=merged.state;
-    if(state.afterFlightPending){const localCore=prepareKupaCloudState(model.state),rebased=mergeKupaCloudState3Way(serverSnapshot,localCore,merged.state,{deleteIntents:state.afterFlightDeleteIntents||{}});if(rebased.conflicts.length){const conflict=structuredSyncConflict({domain:'kupa',conflicts:rebased.conflicts,base:serverSnapshot,local:localCore,remote:merged.state,generation:state.afterFlightGeneration,baseRevision:expected,currentRemoteRevision:remoteRevision});const conflictCommit=await rejectStorageV2CloudFlight(previousOperationId,remoteRevision,remoteState,{currentState:model.state,expectedSeq,control:{conflict}});if(!writeScopeCurrent(scope,conflictCommit?.cloudState||conflictCommit))return false;session.cloudConflictPending=true;setSaveStatus('התנגשות שמורה מקומית','error');setCloudHeaderStatus('conflict','ענן: התנגשות');return false}currentCore=rebased.state}
-    const expectedGeneration=Number(session.localGeneration||0),rebasedCurrent=applyKupaCoreState(currentCore,model.state.checks,model.state);
-    await rejectStorageV2CloudFlight(previousOperationId,remoteRevision,remoteState,{currentState:rebasedCurrent,expectedSeq});
-    // A user edit may commit while the rebase transaction is in flight.
-    // Keep the visible edit and block another send until the recovered head is
-    // inspected, rather than replacing it with an older merged snapshot.
-    const postRebase=await refreshStorageV2CloudState();
-    if(!writeScopeCurrent(scope,postRebase))return false;
-    if(postRebase?.seq!==expectedSeq||Number(session.localGeneration||0)!==expectedGeneration){
-      await setWriteControl(scope,{conflict:{kind:'concurrent-rebase',domain:'kupa',baseRevision:expected,currentRemoteRevision:remoteRevision}});
-      if(!writeScopeCurrent(scope))return false;
-      session.cloudConflictPending=true;setSaveStatus('שינוי מקביל נשמר מקומית; הסנכרון נעצר לבדיקה','error');setCloudHeaderStatus('conflict','ענן: נדרשת בדיקה');
-      reportError('שינוי בוצע בזמן מיזוג הענן. הנתונים נשמרו מקומית; ייצא גיבוי JSON ובדוק את המצב לפני חידוש הסנכרון.');
-      return false;
-    }
-    if(!jsonEq(model.state,rebasedCurrent)){replaceVisibleState(rebasedCurrent);render()}
-    if(!writeScopeCurrent(scope))return false;
-    base=remoteState;serverSnapshot=prepareKupaCloudState(merged.state);expected=remoteRevision;flight=await materializeStorageV2CloudFlight({throughSeq,snapshot:serverSnapshot});if(!writeScopeCurrent(scope)||!cloudWriteScopeIsCurrent(scope,getCloudWriteScope(),{base:flight}))return false;if(!flight||flight.operationId===previousOperationId)throw new Error('kupa_v2_rebase_flight_not_rotated')
-  }
-  if(!res?.r?.ok)throw cloudWriteError(res,'שמירה לענן נכשלה');
-  const {state:authoritative,revision:newRevision}=readDocumentWriteAck(res.row,{baseRevision:flight.baseRevision,sentState:serverSnapshot,prepareState:prepareKupaCloudState,equalState:jsonEq,errorCode:'kupa_v2_ack_revision_invalid',stateErrorCode:'kupa_v2_ack_state_invalid'});
-  state=await refreshStorageV2CloudState();if(!writeScopeCurrent(scope,state))return false;if(!state?.flight||state.flight.operationId!==flight.operationId)throw new Error('kupa_v2_flight_changed_before_ack');
-  const expectedSeq=state.seq;
-  let currentCore=authoritative;
-  if(state.afterFlightPending){
-    const local=prepareKupaCloudState(model.state),rebased=mergeKupaCloudState3Way(serverSnapshot,local,authoritative,{deleteIntents:state.afterFlightDeleteIntents||{}});
-    if(rebased.conflicts.length){const conflict=structuredSyncConflict({domain:'kupa',conflicts:rebased.conflicts,base:serverSnapshot,local,remote:authoritative,generation:state.afterFlightGeneration,baseRevision:flight.baseRevision,currentRemoteRevision:newRevision});const conflictCommit=await acknowledgeStorageV2CloudFlight(flight.operationId,newRevision,authoritative,{currentState:model.state,expectedSeq,control:{conflict}});if(!writeScopeCurrent(scope,conflictCommit?.cloudState||conflictCommit))return false;session.dbRevision=newRevision;session.lastSavedSnapshot=JSON.stringify(authoritative);session.cloudConflictPending=true;setSaveStatus('התנגשות שמורה מקומית','error');setCloudHeaderStatus('conflict','ענן: התנגשות');return false}
-    currentCore=rebased.state;
-  }
-  const reconcile=state.afterFlightPending||!jsonEq(prepareKupaCloudState(model.state),authoritative);
-  const previousState=structuredClone(model.state),expectedGeneration=Number(session.localGeneration||0),currentState=reconcile?applyKupaCoreState(currentCore,model.state.checks,model.state):structuredClone(model.state);
-  let businessChanged=false;
-  let publication=await commitCloudCheckpoint({
-    commit:()=>acknowledgeStorageV2CloudFlight(flight.operationId,newRevision,authoritative,{currentState,expectedSeq}),
-    isCurrent:committed=>writeScopeCurrent(scope,committed)&&Number(session.localGeneration||0)===expectedGeneration&&committed?.seq===expectedSeq,
-    publish:()=>{if(reconcile)businessChanged=applyAcknowledgedCoreState(currentCore)},
-  });
-  if(!publication.published&&publication.reason==='stale'&&writeScopeCurrent(scope,publication.committed)&&readStorageV2CloudRecovery&&commitStorageV2CloudRecovery){
-    try{
-      const recovered=await recoverPostAckPublication({isCurrent:head=>writeScopeCurrent(scope,head),generation:()=>Number(session.localGeneration||0),visible:()=>model.state,
-        equal:(a,b)=>jsonEq(prepareKupaCloudState(a),prepareKupaCloudState(b)),merge:(before,local,candidate,deleteIntents)=>mergeKupaCloudState3Way(prepareKupaCloudState(before),prepareKupaCloudState(local),prepareKupaCloudState(candidate),{deleteIntents}),
-        read:readStorageV2CloudRecovery,commit:(state,options)=>commitStorageV2CloudRecovery(applyKupaCoreState(state,model.state.checks,model.state),options),publish:state=>{businessChanged=applyAcknowledgedCoreState(state)}},
-        {previousState,candidateState:currentState,candidateSeq:expectedSeq,baseState:authoritative,ackRevision:newRevision,ackSeq:flight.endSeq});
-      if(recovered)publication={committed:recovered.state,published:true};
-    }catch(error){console.error('post-ACK recovery retained for review',error)}
-  }
-  const committedState=publication.committed;
-  if(!writeScopeCurrent(scope,committedState)){console.warn('Main cloud ACK',cloudAckPublicationDiagnostic('SCOPE_CHANGED_AFTER_COMMIT',{baseRevision:flight.baseRevision,ackRevision:newRevision,endSeq:flight.endSeq,candidateSeq:expectedSeq,observedSeq:committedState?.seq}));return false}
-  session.dbRevision=newRevision;session.lastSavedSnapshot=JSON.stringify(authoritative);session.serverInfo.lastSavedAt=res.row?.updated_at||res.row?.coreUpdatedAt||session.serverInfo.lastSavedAt||null;session.cloudConflictPending=false;
-  if(!publication.published){
-    console.warn('Main cloud ACK',cloudAckPublicationDiagnostic(publication.reason==='publication-error'?'ACK_PUBLICATION_EXCEPTION':'ACK_COMMITTED_PUBLICATION_STALE',{baseRevision:flight.baseRevision,ackRevision:newRevision,endSeq:flight.endSeq,candidateSeq:expectedSeq,observedSeq:committedState?.seq}));
-    session.cloudConflictPending=true;
-    if(!tab.primaryTab)return false;
-    if(publication.reason==='publication-error')console.error('post-ACK model publication',publication.error);
-    await setWriteControl(scope,{conflict:{kind:publication.reason==='publication-error'?'ack-publication-failed':'concurrent-ack',domain:'kupa',baseRevision:flight.baseRevision,currentRemoteRevision:newRevision}});
-    if(!writeScopeCurrent(scope))return false;
-    setSaveStatus('שינוי מקביל נשמר מקומית; הסנכרון נעצר לבדיקה','error');setCloudHeaderStatus('conflict','ענן: נדרשת בדיקה');
-    reportError(publication.reason==='publication-error'?'אישור הענן נשמר, אבל עדכון הנתונים לתצוגה נכשל. הסנכרון נעצר לבדיקה; הנתונים נשמרו באחסון המקומי.':'שינוי בוצע בזמן שמירת אישור הענן. הנתונים נשמרו מקומית; ייצא גיבוי JSON ובדוק את המצב לפני חידוש הסנכרון.');
-    return false;
-  }
-  if(businessChanged)try{render()}catch(error){console.error('post-ACK render',error)}
-  if(!writeScopeCurrent(scope))return false;
-  try{await backupSnapshotToComputer(structuredClone(model.state),newRevision)}catch(error){console.error('post-ACK local backup',error)}
-  if(!writeScopeCurrent(scope,committedState))return false;
-  return {committed:true,state:committedState};
-}
-
 function requestStorageV2CloudSave(...args){
   return saveWork.run(()=>runStorageV2CloudSave(...args));
 }
@@ -310,7 +210,7 @@ async function runStorageV2CloudSave(message='הקופה סונכרנה לענן
     if(cloudSavePromise===saving){cloudSavePromise=null;savingScope=null}
     // Consume a newer generation through the existing owner, after clearing the
     // joined promise. Explicitly stopped/denied owners cannot be restarted here.
-    if(wakeGeneration===wakeEpoch&&writeScopeCurrent(scope)&&followup&&session.cloudPollingEnabled&&cloudConfirmationAccess(force))void cloudPoller.wake();
+    if(wakeGeneration===wakeEpoch&&writeScopeCurrent(scope)&&followup&&session.cloudPollingEnabled&&cloudConfirmationAccess(force))void polling.wake();
   });cloudSavePromise=saving;return saving
 }
 
@@ -322,94 +222,58 @@ async function persistSupabaseState(_snapshot,msg){
   return requestStorageV2CloudSave(msg);
 }
 
-function pollAccessCurrent(){return !storageV2PreparationActive()&&tab.primaryTab&&navigator.onLine&&session.connectionMode==='supabase'&&session.backendReady&&storageV2CloudOutboxActive()&&!session.syncCapabilitiesError&&!session.syncCapabilitiesChecking}
-function cloudScopeAccess(force=false){
-  if(storageV2PreparationActive()||session.storageProtocolBlocked||!tab.primaryTab||!storageV2CloudOutboxActive()||session.syncCapabilitiesError||session.syncCapabilitiesChecking||(!force&&(session.connectionMode!=='supabase'||!session.backendReady)))return false;
-  try{assertAccountOwner();return true}catch(error){console.warn('Kupa cloud confirmation denied by account fence',error);return false}
-}
-function cloudConfirmationAccess(force=false){return navigator.onLine&&cloudScopeAccess(force)}
-function sameCloudScope(head,observedHead){return !!head?.base&&!!observedHead?.base&&head.base.owner===observedHead.base.owner&&head.base.epoch===observedHead.base.epoch}
-async function confirmCloudSynced(generation,observedHead,{force=false,scope=null}={}){
-  let head;
-  try{head=await refreshStorageV2CloudState()}catch(error){
-    if((!scope||writeScopeCurrent(scope))&&cloudScopeAccess(force))markCloudPollFailure(error);else console.warn('Kupa cloud confirmation read deferred after access loss',error);
-    return {synced:false,head:null,advanced:false};
-  }
-  if(scope&&!writeScopeCurrent(scope,head))return {synced:false,head,advanced:false};
-  if(!cloudConfirmationAccess(force)||!sameCloudScope(head,observedHead)){
-    if(!navigator.onLine&&cloudScopeAccess(force)&&sameCloudScope(head,observedHead)){setSaveStatus('אופליין — שינוי שמור מקומית וממתין','saving');setCloudHeaderStatus('offline','ענן: אופליין')}
-    return {synced:false,head,advanced:false};
-  }
-  const advanced=Number(session.localGeneration||0)!==generation||head.seq!==observedHead.seq;
-  if(advanced||session.cloudConflictPending||!cloudHeadIsSynced(head,{revision:Number(session.dbRevision||0),observedHead})||!jsonEq(prepareKupaCloudState(model.state),head.base.state)){
-    if(head?.control?.conflict||session.cloudConflictPending)setCloudHeaderStatus('conflict','ענן: התנגשות');
-    else{setSaveStatus('שינוי שמור מקומית וממתין לסנכרון','saving');setCloudHeaderStatus('syncing','ענן: ממתין לסנכרון')}
-    return {synced:false,head,advanced};
-  }
-  setSaveStatus?.('מסונכרן לענן','ok');setCloudHeaderStatus?.('synced','ענן: מסונכרן');return {synced:true,head,advanced:false};
-}
-async function markCloudPollSynced(generation,observedHead){return (await confirmCloudSynced(generation,observedHead)).synced}
-function markCloudPollFailure(error){
-  const normalized=normalizeCloudError(error),transient=['network','timeout','service_unavailable','rate_limited'].includes(normalized.kind);
-  if(!navigator.onLine){setSaveStatus?.('אופליין — שינויים יישמרו מקומית','saving');setCloudHeaderStatus?.('offline','ענן: אופליין')}
-  else if(transient){setSaveStatus?.('ממתין לחידוש חיבור הענן','saving');setCloudHeaderStatus?.('syncing','ענן: ממתין להתאוששות')}
-  else{setSaveStatus?.('בדיקת הענן נכשלה','error');setCloudHeaderStatus?.('conflict','ענן: שגיאת סנכרון')}
-  if(transient)console.warn('cloud poll deferred',error?.message||error);else console.error('cloud poll',error);
-  return false
-}
-
-async function cloudPoll(){
-  if(storageV2PreparationActive()||!tab.primaryTab||session.connectionMode!=='supabase'||!session.backendReady||!navigator.onLine)return false;
-  if(session.cloudSyncBusy||session.cloudWriteBusy){await pollSharedChecks();return false}
-  let v2=await refreshStorageV2CloudState();
-  if(!storageV2CloudOutboxActive()){setSaveStatus('ראש ענן V2 חסר — הסנכרון נעצר','error');setCloudHeaderStatus('conflict','ענן: נדרש שחזור אחסון מקומי');return false}
-  if(v2?.control?.conflict)v2=await reviewCleanConflict(v2);
-  if(!tab.primaryTab||!v2?.base||!storageV2CloudOutboxActive())return false;
-  if(v2?.control?.conflict){session.cloudConflictPending=true;setCloudHeaderStatus('conflict','ענן: התנגשות');await pollIndependentFinance();await pollSharedChecks();return false}
-  if(v2?.pending||v2?.flight){const generation=Number(session.localGeneration||0),saved=await requestStorageV2CloudSave();await pollIndependentFinance();await pollSharedChecks();return saved&&await markCloudPollSynced(generation,v2)}
-  if(session.cloudConflictPending){await pollIndependentFinance();await pollSharedChecks();return false}
-  const pollGeneration=Number(session.localGeneration||0),pollHead=v2,localBefore=prepareKupaCloudState(model.state);
-  try{
-    session.cloudSyncBusy=true;const row=await readSupabaseDocument();
-    if(!pollAccessCurrent())return false;
-    assertAccountOwner();
-    if(!row){setSaveStatus('מסמך הענן אינו זמין','error');setCloudHeaderStatus('auth','ענן: מסמך לא נמצא');return false}
-    v2=await refreshStorageV2CloudState();const localAdvanced=Number(session.localGeneration||0)!==pollGeneration||!!(v2?.pending||v2?.flight)||!jsonEq(localBefore,prepareKupaCloudState(model.state));
-    if(!pollAccessCurrent())return false;
-    if(v2?.control){if(v2.control.conflict)setCloudHeaderStatus('conflict','ענן: התנגשות');return false}
-    if(localAdvanced){session.cloudSyncBusy=false;await requestStorageV2CloudSave();return false}
-    const kupaChanged=Number(row.revision||0)>Number(session.dbRevision||0),financeChanged=!!row&&Number(row.financeRevision||0)>Number(session.financeRevision||0);
-    if(!kupaChanged&&financeChanged){if(!await applyFinanceOnlyRow(row))return false}
-    if(kupaChanged){
-      const base=v2?.base?.state,clean=!!base&&jsonEq(prepareKupaCloudState(model.state),base);
-      if(clean){await applyCloudRow(row);toast('התקבל עדכון ממחשב אחר')}
-      else{
-      const conflict={kind:'storage-v2-dirty-head',domain:'kupa',message:'Local state differs from its cloud base without a pending journal operation',baseRevision:Number(v2?.base?.revision||session.dbRevision||0),currentRemoteRevision:Number(row.revision||0),at:new Date().toISOString()};
-      await setStorageV2CloudControl({conflict});session.cloudConflictPending=true;
-      setSaveStatus('התנגשות באחסון המקומי','error');setCloudHeaderStatus('conflict','ענן: התנגשות');return false;
-      }
-    }
-  }catch(error){return markCloudPollFailure(error)}finally{session.cloudSyncBusy=false;await Promise.all([pollSharedChecks(),refreshOrdersFinanceSummary({renderIfChanged:true})])}
-  try{return await markCloudPollSynced(pollGeneration,pollHead)}catch(error){return markCloudPollFailure(error)}
-}
-
-async function resumeAfterReconnect(){
-  if(storageV2PreparationActive()||!tab.primaryTab||session.connectionMode!=='supabase'||!session.backendReady||!navigator.onLine)return false;
-  if(session.cloudSyncBusy||session.cloudWriteBusy)return trackedCloudPoll();
-  setSaveStatus('חזרה רשת — מסנכרן…','saving');setCloudHeaderStatus('syncing','ענן: חזרה רשת…');
-  try{return await trackedCloudPoll()}catch(error){return markCloudPollFailure(error)}
-}
-
-function trackedCloudPoll(){if(cloudPollPromise)return cloudPollPromise;cloudPollPromise=cloudPoll().finally(()=>{cloudPollPromise=null});return cloudPollPromise}
-function startCloudPolling(){return cloudPoller.start()}
-function stopCloudPolling(){wakeEpoch++;return cloudPoller.stop()}
+function startCloudPolling(){return polling.start()}
+function stopCloudPolling(){wakeEpoch++;return polling.stop()}
+const {publishAcknowledgedFlight}=createCloudAckPublication({
+  model,
+  session,
+  tab,
+  access:{writeScopeCurrent},
+  journal:{refreshStorageV2CloudState,acknowledgeStorageV2CloudFlight,setWriteControl},
+  projection:{prepareKupaCloudState,mergeKupaCloudState3Way,applyKupaCoreState,applyAcknowledgedCoreState},
+  view:{setSaveStatus,setCloudHeaderStatus,reportError,render},
+  mirror:{backupSnapshotToComputer},
+  recovery:{readStorageV2CloudRecovery,commitStorageV2CloudRecovery},
+});
+const {saveStorageV2CloudFlight}=createCloudWriteFlight({
+  model,
+  session,
+  access:{writeScopeCurrent,getCloudWriteScope},
+  journal:{refreshStorageV2CloudState,materializeStorageV2CloudFlight,rejectStorageV2CloudFlight,setWriteControl},
+  projection:{prepareKupaCloudState,mergeKupaCloudState3Way,applyKupaCoreState,replaceVisibleState},
+  transport:{rpcSaveCloudV2,readSupabaseDocument},
+  view:{setSaveStatus,setCloudHeaderStatus,reportError,render},
+  publication:{publishAcknowledgedFlight},
+});
+const confirmation=createCloudConfirmation({
+  model,
+  session,
+  tab,
+  access:{storageV2PreparationActive,storageV2CloudOutboxActive,assertAccountOwner,writeScopeCurrent},
+  state:{prepareKupaCloudState,refreshStorageV2CloudState},
+  view:{setSaveStatus,setCloudHeaderStatus},
+});
+const {cloudScopeAccess,cloudConfirmationAccess,confirmCloudSynced}=confirmation;
+const polling=createCloudPolling({
+  model,
+  session,
+  tab,
+  access:{storageV2PreparationActive,storageV2CloudOutboxActive,assertAccountOwner},
+  state:{prepareKupaCloudState,refreshStorageV2CloudState},
+  view:{setSaveStatus,setCloudHeaderStatus,toast},
+  remote:{readSupabaseDocument},
+  adoption:{reviewCleanConflict,applyFinanceOnlyRow,applyCloudRow,setStorageV2CloudControl},
+  secondary:{pollSharedChecks,pollIndependentFinance,refreshOrdersFinanceSummary},
+  write:{requestStorageV2CloudSave},
+  confirmation,
+});
+const trackedCloudPoll=polling.poll,resumeAfterReconnect=polling.resumeAfterReconnect;
 const runtime={
-  isPending:()=>saveWork.isPending()||!!cloudPollPromise,
+  isPending:()=>saveWork.isPending()||polling.runtime.isPending(),
   async drain(){
     do{
-      await saveWork.drain();await cloudPoller.drain();
-      if(cloudPollPromise)await Promise.allSettled([cloudPollPromise]);
-    }while(saveWork.isPending()||cloudPollPromise);
+      await saveWork.drain();await polling.runtime.drain();
+    }while(saveWork.isPending()||polling.runtime.isPending());
   },
 };
 async function quiesceForStorageCutover(){

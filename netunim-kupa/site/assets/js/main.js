@@ -109,7 +109,10 @@ const uiStatus=createUiStatus({
 const storageIndexedDb=createStorageIndexedDb({
 
 });
-const notes=createKupaNotesRuntime({model,ui,session,tab});
+const notes=createKupaNotesRuntime({model,ui,session,tab,ownership:{
+  current:()=>storageOwner.current(),
+  writable:()=>storageOwner.writable&&!storagePreparationActive()&&!session.storageProtocolBlocked,
+}});
 const captureLegacyWorkbook=(...args)=>notes.captureLegacyWorkbook(...args);
 
 const mainStorageV2=storageV2Coordinator.createRuntime({validate:state=>assertKupaEntityInvariants(state,{includeChecks:Object.hasOwn(state||{},'checks'),required:true}),prepareCheckpoint:state=>stateNormalization.prepareKupaStorageState(state),prepareOperation:operation=>stateNormalization.prepareKupaStorageOperation(operation)});
@@ -323,7 +326,7 @@ const syncDocument=createSyncDocument({
 
 
 storageV2Coordinator.configure({
-  storageBrowser,syncDocument,saveRuntime:storagePersistence.runtime,checksRuntime:checks.runtime,backupRuntime:storageBackup.runtime,model,session,checksSession,files,
+  storageBrowser,syncDocument,saveRuntime:storagePersistence.runtime,checksRuntime:checks.runtime,notesRuntime:notes.runtime,backupRuntime:storageBackup.runtime,model,session,checksSession,files,
   captureLegacyWorkbook,
   stateNormalization,domainRevisions,sharedChecksV2Composition,sharedChecksV2,
   cloudTransport,cloudAuth,mainStorageV2,verifyStorageV2AccountMarker:()=>verifyStorageV2AccountMarker(),
@@ -486,36 +489,47 @@ expenses.bindEditor({
 expenses.assertReady();
 
 const uiBackup=createUiBackup({
-  ...storageV2Cloud,
-  storageV2Boundary:sharedChecksV2Composition.boundary,sharedChecksV2,
-  storageV2LocalPrimary:()=>mainStorageV2.primaryReady,
-  recoverStorageV2State:()=>mainStorageV2.recoverForOwner({intent:'load-account'}),
-  storageOwnerCurrent:()=>storageOwner.current(),
   model,
   session,
   ui,
   files,
   checksSession,
-  readJsonHandle:(...args)=>storageFiles.readJsonHandle(...args),
-  listBackups:(...args)=>storageBackup.listBackups(...args),
-  createManualBackup:(...args)=>storageBackup.createManualBackup(...args),
-  toast:(...args)=>uiStatus.toast(...args),
-  renderSettings:(...args)=>uiSettings.renderSettings(...args),
-  stateFromPayload:(...args)=>stateNormalization.stateFromPayload(...args),
-  persistSupabaseState:(...args)=>syncDocument.persistSupabaseState(...args),
-  restoreGroupStore,
-  stageRestoreGroup:(...args)=>cloudTransport.stageRestoreGroup(...args),
-  applyRestoreGroup:(...args)=>cloudTransport.applyRestoreGroup(...args),
-  listIncompleteRestoreGroups:(...args)=>cloudTransport.listIncompleteRestoreGroups(...args),
-  listKupaCloudBackups:(...args)=>cloudTransport.listKupaCloudBackups(...args),
-  readKupaCloudBackupPoint:(...args)=>cloudTransport.readKupaCloudBackupPoint(...args),
-  loadSupaSession:(...args)=>cloudAuth.loadSupaSession(...args),
-  render:(...args)=>uiNavigation.render(...args),
-  modal:(...args)=>uiModal.modal(...args),
-  closeModal:(...args)=>uiModal.closeModal(...args),
-  chooseFolder:(...args)=>uiFolders.chooseFolder(...args),
-  confirmDialog:(...args)=>uiModal.confirmDialog(...args),
-  invalidateAllViewDomains:()=>domainRevisions.touchAll(),
+  projection:{
+    stateFromPayload:(...args)=>stateNormalization.stateFromPayload(...args),
+  },
+  view:{
+    toast:(...args)=>uiStatus.toast(...args),
+    renderSettings:(...args)=>uiSettings.renderSettings(...args),
+    render:(...args)=>uiNavigation.render(...args),
+    modal:(...args)=>uiModal.modal(...args),
+    closeModal:(...args)=>uiModal.closeModal(...args),
+    confirmDialog:(...args)=>uiModal.confirmDialog(...args),
+    invalidateAllViewDomains:()=>domainRevisions.touchAll(),
+  },
+  local:{
+    readJsonHandle:(...args)=>storageFiles.readJsonHandle(...args),
+    listBackups:(...args)=>storageBackup.listBackups(...args),
+    createManualBackup:(...args)=>storageBackup.createManualBackup(...args),
+    chooseFolder:(...args)=>uiFolders.chooseFolder(...args),
+  },
+  cloud:{
+    persistSupabaseState:(...args)=>syncDocument.persistSupabaseState(...args),
+    restoreGroupStore,
+    stageRestoreGroup:(...args)=>cloudTransport.stageRestoreGroup(...args),
+    applyRestoreGroup:(...args)=>cloudTransport.applyRestoreGroup(...args),
+    listIncompleteRestoreGroups:(...args)=>cloudTransport.listIncompleteRestoreGroups(...args),
+    listKupaCloudBackups:(...args)=>cloudTransport.listKupaCloudBackups(...args),
+    readKupaCloudBackupPoint:(...args)=>cloudTransport.readKupaCloudBackupPoint(...args),
+    loadSupaSession:(...args)=>cloudAuth.loadSupaSession(...args),
+  },
+  storage:{
+    ...storageV2Cloud,
+    storageV2Boundary:sharedChecksV2Composition.boundary,
+    sharedChecksV2,
+    storageV2LocalPrimary:()=>mainStorageV2.primaryReady,
+    recoverStorageV2State:()=>mainStorageV2.recoverForOwner({intent:'load-account'}),
+    storageOwnerCurrent:()=>storageOwner.current(),
+  },
 });
 
 storageRecovery.bind({

@@ -2,26 +2,37 @@ import {createUiBackup} from '../ui/backup.js';
 
 export function composeBackup({tab,ui,model,session,checksSession,storageV2Cloud,storageV2Runtime,storageOwner,sharedChecksV2Composition,sharedChecksV2,stateNormalization,stateSelectors,uiTabGuard,uiModal,storageBrowser,uiStatus,uiFolderStatus,uiNavigation,uiSettings,storageFiles,cloudAuth,cloudTransport,syncDocument,restoreGroupStore,supplierBackup,domainRevisions}){
   return createUiBackup({
-    ...storageV2Cloud,
-    storageV2Boundary:sharedChecksV2Composition.boundary,sharedChecksV2,
-    storageV2LocalPrimary:()=>storageV2Runtime.primaryReady,
-    recoverStorageV2State:()=>storageV2Runtime.recoverForOwner({intent:'load-account'}),
-    storageOwnerCurrent:()=>storageOwner.current(),
+  tab,
+  ui,
+  model,
+  session,
+  checksSession,
+  projection:{
     validateRestoreJson:(...args)=>stateNormalization.validateRestoreJson(...args),
-    tab,ui,model,session,checksSession,
     prepareState:(...args)=>stateSelectors().prepareState(...args),
     normalizeState:(...args)=>stateNormalization.normalizeState(...args),
+    balanceRows:(...args)=>supplierBackup.balanceRows(...args),
+    supplierYearContext:(...args)=>supplierBackup.supplierYearContext(...args),
+    boolText:(...args)=>supplierBackup.boolText(...args),
+  },
+  view:{
     toast:(...args)=>uiStatus.toast(...args),
     showSecondaryTabGuard:(...args)=>uiTabGuard.showSecondaryTabGuard(...args),
     modal:(...args)=>uiModal.modal(...args),
     setSave:(...args)=>uiStatus.setSave(...args),
-    folderBackupAvailable:(...args)=>uiFolderStatus.folderBackupAvailable(...args),
-    folderSaveTitle:(...args)=>uiFolderStatus.folderSaveTitle(...args),
     render:(...args)=>uiNavigation.render(...args),
     renderSettings:(...args)=>uiSettings().renderSettings(...args),
     closeModal:(...args)=>uiModal.closeModal(...args),
+    confirmDialog:(...args)=>uiModal.confirmDialog(...args),
+    invalidateAllViewDomains:()=>domainRevisions.touchAll(),
+  },
+  local:{
+    folderBackupAvailable:(...args)=>uiFolderStatus.folderBackupAvailable(...args),
+    folderSaveTitle:(...args)=>uiFolderStatus.folderSaveTitle(...args),
     writeStateSnapshotToFolder:(...args)=>storageFiles().writeStateSnapshotToFolder(...args),
     writeStateToFolder:(...args)=>storageFiles().writeStateToFolder(...args),
+  },
+  cloud:{
     loadSession:(...args)=>cloudAuth.loadSession(...args),
     cloudEnabled:(...args)=>cloudAuth.cloudEnabled(...args),
     requestCloudSave:(...args)=>syncDocument().requestCloudSave(...args),
@@ -31,10 +42,14 @@ export function composeBackup({tab,ui,model,session,checksSession,storageV2Cloud
     listIncompleteRestoreGroups:(...args)=>cloudTransport().listIncompleteRestoreGroups(...args),
     listOrdersCloudBackups:(...args)=>cloudTransport().listOrdersCloudBackups(...args),
     readOrdersCloudBackupPoint:(...args)=>cloudTransport().readOrdersCloudBackupPoint(...args),
-    balanceRows:(...args)=>supplierBackup.balanceRows(...args),
-    supplierYearContext:(...args)=>supplierBackup.supplierYearContext(...args),
-    boolText:(...args)=>supplierBackup.boolText(...args),
-    confirmDialog:(...args)=>uiModal.confirmDialog(...args),
-    invalidateAllViewDomains:()=>domainRevisions.touchAll(),
-  });
+  },
+  storage:{
+    ...storageV2Cloud,
+    storageV2Boundary:sharedChecksV2Composition.boundary,
+    sharedChecksV2,
+    storageV2LocalPrimary:()=>storageV2Runtime.primaryReady,
+    recoverStorageV2State:()=>storageV2Runtime.recoverForOwner({intent:'load-account'}),
+    storageOwnerCurrent:()=>storageOwner.current(),
+  },
+});
 }

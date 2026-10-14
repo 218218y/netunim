@@ -82,7 +82,11 @@ with BrowserSession(ROOT/'netunim-kupa/site','kupa-v2-owner-transfer',auto_navig
         checks={revision:1,state:{version:1,checks:structuredClone(rows),bankEvents:[]},operationId};return {r:{ok:true},row:structuredClone(checks)};
       };
       window.__seedObsoleteV1('kupa.shared.checks.pending.v1','{"generation":1}');
+      // Edit through the production Notes capability, without blur or waiting
+      // for the old 220ms debounce. Transfer must see this exact journal edit.
+      notes.actions['update-kupa-sticky-note']({dataset:{inputArg0:note.id},value:'exact unblurred transfer edit',style:{},scrollHeight:150,closest:()=>null});
       const transfer=await storageV2Coordinator.ownerUiPorts().startStorageV2OwnerTransfer({targetOwner:'fixture-account',intent:'upload-local'});
+      await new Promise(resolve=>setTimeout(resolve,250));
       const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
       const marker=await createStorageJournalDb().readV2Marker('kupa:fixture-account');
       return {owner:storageOwner.current(),revision:transfer.mainRevision,sharedRevision:transfer.sharedRevision,
@@ -92,8 +96,8 @@ with BrowserSession(ROOT/'netunim-kupa/site','kupa-v2-owner-transfer',auto_navig
         legacyWrites:window.__legacyWrites};
     })()""",timeout=60)
     assert result=={'owner':'fixture-account','revision':1,'sharedRevision':1,'marker':2,
-                    'mainNote':'durable local note','sharedCheck':123,
-                    'visibleNote':'durable local note','visibleCheck':123,'legacyWrites':[]},result
+                    'mainNote':'exact unblurred transfer edit','sharedCheck':123,
+                    'visibleNote':'exact unblurred transfer edit','visibleCheck':123,'legacyWrites':[]},result
     browser._navigate()
     recovered=browser.evaluate("""(async()=>{await appReady;const main=await mainStorageV2.recover();return {
       owner:storageOwner.current(),note:state.notes.find(row=>row.id==='transfer-note')?.content,
@@ -102,6 +106,6 @@ with BrowserSession(ROOT/'netunim-kupa/site','kupa-v2-owner-transfer',auto_navig
       mainReady:mainStorageV2.primaryReady,sharedReady:sharedChecksV2.primaryReady,
       legacyWrites:window.__legacyWrites
     }})()""")
-    assert recovered=={'owner':'fixture-account','note':'durable local note','check':123,'mainProjection':2,'mainHasChecks':False,'mainReady':True,'sharedReady':True,'legacyWrites':[]},recovered
+    assert recovered=={'owner':'fixture-account','note':'exact unblurred transfer edit','check':123,'mainProjection':2,'mainHasChecks':False,'mainReady':True,'sharedReady':True,'legacyWrites':[]},recovered
     assert not browser.drain_serious_errors()
     print('PASS Kupa production local V2 -> account V2 transfer with Main and Shared data after restart')

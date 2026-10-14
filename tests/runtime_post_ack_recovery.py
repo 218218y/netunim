@@ -84,14 +84,15 @@ if(phase.startsWith('review')){
  }else{
    if(phase==='review-ui'){
      const {createUiCloud}=await import('./assets/js/ui/cloud.js'),{createCloudActions}=await import('./assets/js/ui/action-packs/cloud.js');let accepts=false,downloads=0;
-     const cloudUi=createUiCloud({model,tab,session,loadSession:()=>({user:{id:owner}}),toast:noop,render:noop,renderSettings:noop,showSecondaryTabGuard:()=>{throw Error('secondary UI')},
+     const cloudUi=createUiCloud({model,tab,session,auth:{loadSession:()=>({user:{id:owner}})},review:{
        prepareConcurrentAckRecovery:async()=>{const plan=await api.prepareConcurrentAckRecovery();return {...plan,diffText:uiBackup.syncRecoveryDiffText(plan.backup.remote.state,plan.backup.localState)}},
        downloadRecoveryBackup:payload=>{downloads++;uiBackup.downloadBlob(new Blob([JSON.stringify(payload)],{type:'application/json'}),`orders-sync-recovery-${downloads}.json`)},
+     },view:{toast:noop,render:noop,renderSettings:noop,showSecondaryTabGuard:()=>{throw Error('secondary UI')},
        confirmDialog:(...args)=>{const confirmation=uiModal.confirmDialog(...args),message=document.querySelector('#confirmMessage');
          check(downloads>0,'confirmation preceded backup');check(message.textContent.includes('34')&&message.textContent.includes('<img src=x'),'review missing counts/content');
          check(!message.querySelector('img')&&!window.badRecoveryHtml,'business text interpreted as HTML');
          queueMicrotask(()=>document.querySelector(accepts?'#confirmAccept':'#confirmCancel').click());return confirmation}
-     });
+     }});
      const recoveryAction=createCloudActions({uiCloud:cloudUi})['recover-orders-sync'];
      check(recoveryAction.startupMutationDomain==='orders','Main recovery claimed other document domains');
      check(await recoveryAction()===false,'cancel did not stop recovery');

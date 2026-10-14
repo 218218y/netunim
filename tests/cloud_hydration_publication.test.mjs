@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createSyncDocument as createKupaSync} from '../netunim-kupa/site/assets/js/sync/document.js';
 import {createSyncDocument as createOrdersSync} from '../netunim-orders/site/assets/js/sync/document.js';
-import {createUiCloud as createOrdersCloudUi} from '../netunim-orders/site/assets/js/ui/cloud.js';
+import {createOrdersCloudUi as createOrdersCloudUi} from './cloud_ui_ports.mjs';
 import {createStateNormalization} from '../netunim-kupa/site/assets/js/composition/state-normalization.js';
 
 const clone=structuredClone,noop=()=>{};

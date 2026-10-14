@@ -25,6 +25,22 @@ function check(overrides=new Map()){
 }
 function describe(diagnostics){return ts.formatDiagnostics(diagnostics,{getCanonicalFileName:file=>file,getCurrentDirectory:()=>root,getNewLine:()=> '\n'})}
 
+test('restore review implementation cannot return display text as authorization',()=>{
+  const source=path.join(root,'shared/restore-review-scope.js'),original=readFileSync(source,'utf8');
+  const changed=original.replace('return true;',"return 'confirmed';");assert.notEqual(changed,original);
+  const diagnostics=check(new Map([[source,changed]]));
+  assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+});
+
+test('Notes ownership rejects a fabricated drain and an unchecked note payload in its implementation',()=>{
+  const source=path.join(root,'netunim-kupa/site/assets/js/domains/notes/commands.js'),original=readFileSync(source,'utf8');
+  for(const [from,to] of [['drain:saves.drain','drain:()=>true'],['record:{...note}','record:{...note,content:7}']]){
+    const changed=original.replace(from,to);assert.notEqual(changed,original);
+    const diagnostics=check(new Map([[source,changed]]));
+    assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+  }
+});
+
 test('actual shared Bank archive execution and audit reject fabricated drain and textual counts',()=>{
  for(const [file,from,to] of [
   ['shared/bank-archive-reconciliation.js',/drain:\s*work\.drain/,'drain: () => true'],

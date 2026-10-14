@@ -7,6 +7,7 @@ import re
 import subprocess
 import sys
 import tempfile
+from capability_sources import cloud_ui_source, sync_document_source, backup_ui_source
 
 ROOT = Path(__file__).resolve().parents[1]
 K = ROOT / "netunim-kupa"
@@ -241,7 +242,7 @@ for label, app_root in (("kupa", K), ("orders", O)):
     coordinator_source=(app_root / "site/assets/js/composition/storage-v2.js").read_text(encoding="utf-8")
     main_source=(app_root / "site/assets/js/main.js").read_text(encoding="utf-8")
     lifecycle_source=(app_root / "site/assets/js/lifecycle.js").read_text(encoding="utf-8")
-    document_source=(app_root / "site/assets/js/sync/document.js").read_text(encoding="utf-8")
+    document_source=sync_document_source(app_root)
     ok("legacyDrain" not in coordinator_source and "drainLegacy" not in coordinator_source
        and "legacyDrain" not in document_source
        and "legacyWriteAllowed" not in coordinator_source
@@ -252,12 +253,12 @@ for label, app_root in (("kupa", K), ("orders", O)):
        f"{label}: production cannot resume V1 drain or begin legacy cutover")
 
 orders_main=(O / "site/assets/js/main.js").read_text(encoding="utf-8")
-orders_document=(O / "site/assets/js/sync/document.js").read_text(encoding="utf-8")
+orders_document=sync_document_source(O)
 orders_persistence=(O / "site/assets/js/storage/persistence.js").read_text(encoding="utf-8")
 orders_transport=(O / "site/assets/js/cloud/transport.js").read_text(encoding="utf-8")
 orders_lifecycle=(O / "site/assets/js/lifecycle.js").read_text(encoding="utf-8")
 orders_browser=(O / "site/assets/js/storage/browser.js").read_text(encoding="utf-8")
-orders_backup=(O / "site/assets/js/ui/backup.js").read_text(encoding="utf-8")
+orders_backup=backup_ui_source(O)
 ok("markCloudPending" not in orders_main and "markCloudPending" not in orders_persistence
    and all(symbol not in orders_document for symbol in ("markCloudPending", "getCloudPending", "saveCloudSnapshot", "restorePendingAgainstCloud"))
    and "save_order_management_document_v5" not in orders_transport
@@ -309,9 +310,9 @@ for label, app_root in (("kupa", K), ("orders", O)):
 
 owner_core=(ROOT/'shared/storage-owner.js').read_text(encoding='utf-8')
 owner_db=(ROOT/'shared/storage-journal-idb.js').read_text(encoding='utf-8')
-orders_cloud_ui=(O/'site/assets/js/ui/cloud.js').read_text(encoding='utf-8')
-kupa_cloud_ui=(K/'site/assets/js/ui/cloud.js').read_text(encoding='utf-8')
-kupa_sync_document=(K/'site/assets/js/sync/document.js').read_text(encoding='utf-8')
+orders_cloud_ui=cloud_ui_source(O)
+kupa_cloud_ui=cloud_ui_source(K)
+kupa_sync_document=sync_document_source(K)
 ok('pendingAdoption' in owner_core and 'reserveLocalAdoption' in owner_core and 'reserveLocalOwnerTarget' in owner_db,
    'storage owner: local-to-account target is durably reserved before owner activation')
 ok('storage_owner_local_adoption_auth_mismatch' in owner_core and 'requiredOwner' in owner_core,
@@ -824,7 +825,7 @@ orders_dashboard_view=(O / "site/assets/js/domains/dashboard/view.js").read_text
 orders_finance_shared=(ROOT / "shared/orders-finance.js").read_text(encoding="utf-8")
 kupa_dashboard_controller=(K / "site/assets/js/domains/dashboard/controller.js").read_text(encoding="utf-8")
 kupa_cloud_transport=(K / "site/assets/js/cloud/transport.js").read_text(encoding="utf-8")
-kupa_sync_document=(K / "site/assets/js/sync/document.js").read_text(encoding="utf-8")
+kupa_sync_document=sync_document_source(K)
 kupa_css=(K / "site/assets/app.css").read_text(encoding="utf-8")
 ok("sharedKupaAccountCashflowData({...kupa,checks},'עסקי',checkTodayISO())" in orders_bank_readout
    and 'net:cashflow.projected' in orders_bank_readout and 'kupa:cashflow.checks' in orders_bank_readout
@@ -926,7 +927,7 @@ kupa_main=(K / "site/assets/js/main.js").read_text(encoding="utf-8")
 kupa_finance_composition=(K / "site/assets/js/composition/finance.js").read_text(encoding="utf-8")
 kupa_finance_cloud=(K / "site/assets/js/composition/finance-cloud.js").read_text(encoding="utf-8")
 kupa_transport=(K / "site/assets/js/cloud/transport.js").read_text(encoding="utf-8")
-kupa_sync_document=(K / "site/assets/js/sync/document.js").read_text(encoding="utf-8")
+kupa_sync_document=sync_document_source(K)
 kupa_bank_controller=(K / "site/assets/js/domains/bank/controller.js").read_text(encoding="utf-8")
 kupa_credit_controller=(K / "site/assets/js/domains/credit/controller.js").read_text(encoding="utf-8")
 kupa_cloud_auth=(K / "site/assets/js/cloud/auth.js").read_text(encoding="utf-8")
@@ -987,8 +988,8 @@ for label,auth in (("Kupa",kupa_cloud_auth),("Orders",orders_cloud_auth)):
        and "tripSupaDataApiRateLimit" in auth
        and "retry-after" in auth.lower(),
        f"{label} Data API resilience: one priority lane, service breaker and Retry-After rate-limit gate protect PostgREST from retry storms")
-orders_ui_cloud=(O / "site/assets/js/ui/cloud.js").read_text(encoding="utf-8")
-kupa_ui_cloud=(K / "site/assets/js/ui/cloud.js").read_text(encoding="utf-8")
+orders_ui_cloud=cloud_ui_source(O)
+kupa_ui_cloud=cloud_ui_source(K)
 for label,ui_cloud in (("Kupa",kupa_ui_cloud),("Orders",orders_ui_cloud)):
     ok("createCloudRecoveryRuntime" in ui_cloud
        and "scheduleCloudRecovery" in ui_cloud and "recoveryRuntime.reset()" in ui_cloud
@@ -1010,9 +1011,9 @@ ok("runBusyCloudWriteWithPolicy(()=>{if(!writeScopeCurrent(scope))throw" in kupa
 # Header cloud status is scoped by data ownership. Finance refreshes must never advance or degrade
 # the Orders/Kupa top header; finance keeps its own status inside Bank/Credit.
 orders_status = (O / "site/assets/js/ui/status.js").read_text(encoding="utf-8")
-orders_cloud_ui = (O / "site/assets/js/ui/cloud.js").read_text(encoding="utf-8")
+orders_cloud_ui = cloud_ui_source(O)
 kupa_transport = (K / "site/assets/js/cloud/transport.js").read_text(encoding="utf-8")
-kupa_sync_document = (K / "site/assets/js/sync/document.js").read_text(encoding="utf-8")
+kupa_sync_document = sync_document_source(K)
 ok("const HEADER_DOMAIN_ORDER=['orders','checks'];" in orders_status
    and 'latestCloudUpdatedAt(session.cloudUpdatedAt,checksSession.checksCloudUpdatedAt)' in orders_status
    and 'latestCloudUpdatedAt(session.cloudUpdatedAt,checksSession.checksCloudUpdatedAt,checksSession.financeReadUpdatedAt)' not in orders_status

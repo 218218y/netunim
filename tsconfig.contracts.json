@@ -20,6 +20,10 @@
     "types": []
   },
   "files": [
+    "shared/restore-review-scope.js",
+    "tests/fixtures/checked-restore-review.mjs",
+    "netunim-kupa/site/assets/js/domains/notes/commands.js",
+    "tests/fixtures/checked-notes-commands.mjs",
     "shared/bank-archive-policy.js",
     "shared/bank-archive-reconciliation.js",
     "tests/fixtures/checked-bank-archive-reconciliation.mjs",

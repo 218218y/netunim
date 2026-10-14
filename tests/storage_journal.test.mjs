@@ -58,11 +58,12 @@ test('inserts preserve user ordering, scalar updates replay and checkpoint dupli
   const result=replayStorageJournal(checkpoint(),[sealStorageRecord(first)],schema);assert.deepEqual(result.state.notes.map(row=>row.id),['first','n']);assert.equal(result.state.setting,2);
   const compact=sealStorageRecord({version:2,owner:'a',epoch:'e',seq:1,state:result.state});assert.deepEqual(replayStorageJournal(compact,[sealStorageRecord(first)],schema).state,result.state);
 });
-test('Kupa note save describes every edited note in one debounce batch',()=>{
+test('Kupa note edits submit independent exact operations before any debounce or blur',()=>{
   const model={state:{notes:[{id:'a',content:'old'},{id:'b',content:'old'}]}},saved=[];
   const controller=createDomainsNotesController({model,ui:{notesTab:'notes'},saveState:(message,options)=>saved.push(structuredClone(options)),confirmDialog:async()=>true});
   const field=value=>({value,style:{},scrollHeight:132,closest:()=>null});
   controller.updateStickyNote('a',field('first'));controller.updateStickyNote('b',field('second'));controller.flushNoteSave();
-  assert.equal(saved.length,1);assert.deepEqual(saved[0].operations.map(operation=>[operation.id,operation.record.content]),[['a','first'],['b','second']]);
-  controller.updateStickyNote('b',field('third'));controller.flushNoteSave();assert.deepEqual(saved[1].operations.map(operation=>operation.id),['b']);
+  assert.equal(saved.length,2);assert.deepEqual(saved.flatMap(save=>save.operations.map(operation=>[operation.id,operation.record.content])),[['a','first'],['b','second']]);
+  controller.updateStickyNote('b',field('third'));controller.flushNoteSave();assert.deepEqual(saved[2].operations.map(operation=>operation.id),['b']);
+  assert.equal(saved[1].operations[0].record.content,'second','later edits do not mutate an already submitted operation');
 });

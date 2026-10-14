@@ -5,7 +5,7 @@ import {createOrdersFinanceControllerFixture as createDomainsFinanceController} 
 import {createDomainsBankCache} from '../netunim-orders/site/assets/js/domains/bank/cache.js';
 import {createFinanceOperationScope} from '../shared/finance-fence.js';
 import {createCloudTransport} from '../netunim-orders/site/assets/js/cloud/transport.js';
-import {createUiCloud} from '../netunim-orders/site/assets/js/ui/cloud.js';
+import {createOrdersCloudUi as createUiCloud} from './cloud_ui_ports.mjs';
 
 const deferred=()=>{let resolve;const promise=new Promise(done=>{resolve=done});return {promise,resolve}};
 const stamp='2026-10-08T10:00:00.000Z';

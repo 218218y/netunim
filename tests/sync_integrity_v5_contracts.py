@@ -1,4 +1,5 @@
 from pathlib import Path
+from capability_sources import backup_ui_source
 
 ROOT = Path(__file__).resolve().parents[1]
 ORDERS = ROOT / "netunim-orders"
@@ -61,7 +62,7 @@ ok("restorePayloadHash" in restore_client and "await put(currentKey" in restore_
    and "await onApplied" in restore_client and "await store.complete" in restore_client,
    "client restore persists locally before writes and clears current group only after ACK and local apply")
 for site in (ORDERS, KUPA):
-    ui = (site / "site/assets/js/ui/backup.js").read_text(encoding="utf-8")
+    ui = backup_ui_source(site)
     lifecycle = (site / "site/assets/js/lifecycle.js").read_text(encoding="utf-8")
     if site == KUPA:
         main = (site / "site/assets/js/main.js").read_text(encoding="utf-8")

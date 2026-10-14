@@ -1,22 +1,15 @@
+import {createCloudWriteFlight} from './write-flight.js';
+import {createCloudAckPublication} from './ack-publication.js';
+import {createCloudConfirmation} from './confirmation.js';
+import {createCloudPolling} from './polling.js';
 import {createDebouncedTask} from '../shared/debounced-task.js';
 import {createRuntimeTaskOwner} from '../shared/runtime-task-owner.js';
-import {recoverPostAckPublication} from '../shared/cloud-post-ack-recovery.js';
-import {cloudAckPublicationDiagnostic} from '../shared/cloud-ack-diagnostic.js';
+
 import {captureCloudWriteScope,cloudWriteScopeIsCurrent,cloudWriteScopeHasIdentity} from '../shared/cloud-write-scope.js';
-import {structuredSyncConflict} from '../shared/cloud-sync.js';
+
 import {clone} from '../core/values.js';
 import {commitCloudCheckpoint} from '../shared/cloud-checkpoint-publication.js';
-import {cloudHeadIsSynced} from '../shared/storage-cloud-status.js';
-import {createPollingTask} from '../shared/runtime-polling.js';
-import {CLOUD_WRITE_POLICY,cloudWriteError,contentionDelay,createOutboxRetryScheduler,normalizeCloudError,operationAuditMetadata,runBusyCloudWriteWithPolicy} from '../shared/cloud-sync.js';
-import {readDocumentWriteAck} from '../shared/document-write-ack.js';
-
-function revisionConflict(res){return !res?.r?.ok&&normalizeCloudError(res).kind==='revision_conflict'}
-function saveBusy(res){return !res?.r?.ok&&normalizeCloudError(res).kind==='busy'}
-function contentionBackoff(attempt=0){return new Promise(resolve=>setTimeout(resolve,contentionDelay(attempt)))}
-function normalizeDeleteIntents(value){const out={};if(!value||typeof value!=='object'||Array.isArray(value))return out;for(const [key,ids] of Object.entries(value)){const clean=[...new Set((Array.isArray(ids)?ids:[]).map(x=>String(x||'').trim()).filter(Boolean))].sort();if(clean.length)out[key]=clean}return out}
-function collectionRows(state,key){const value=key.split('.').reduce((obj,part)=>obj?.[part],state);return Array.isArray(value)?value:[]}
-function effectiveDeleteIntents(base,candidate,intents){const out={},declared=normalizeDeleteIntents(intents);for(const [key,ids] of Object.entries(declared)){const before=collectionRows(base,key),after=collectionRows(candidate,key),keyField=key==='cards'?'name':'id',kept=new Set(after.map(x=>String(x?.[keyField]??'')));const removed=before.map(x=>String(x?.[keyField]??'')).filter(id=>id&&ids.includes(id)&&!kept.has(id)).sort();if(removed.length)out[key]=removed}return out}
+import {createOutboxRetryScheduler,normalizeCloudError} from '../shared/cloud-sync.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createSyncDocument({readStorageV2CloudRecovery=null,commitStorageV2CloudRecovery=null,getCloudWriteScope=()=>null,cancelCloudRecovery=()=>{},model,files,session,tab,toast,setCloud,prepareCloudState,writeStateToFolder,readCloud,rpcSaveV2,merge3,applyOrderCloudState,composeOrderCloudState=(cloud,current)=>({...clone(cloud),checks:clone(current.checks||[])}),cloudEnabled,sameOrderCloudData,cloudHasLocalWork,render,readCloudMeta,refreshKupaReadout,pollSharedChecks,refreshCloudTimestamp,refreshStorageV2CloudState=async()=>null,materializeStorageV2CloudFlight=async()=>null,acknowledgeStorageV2CloudFlight=async()=>null,rejectStorageV2CloudFlight=async()=>null,setStorageV2CloudControl=async()=>null,adoptStorageV2CloudHead=async()=>null,storageV2CommitPromise=()=>Promise.resolve(),storageV2PreparationActive=()=>false}){
@@ -29,11 +22,7 @@ async function setWriteControl(scope,control){
   try{return await setStorageV2CloudControl(control,{expectedScope:scope,isCurrent:()=>writeScopeCurrent(scope)})}
   catch(error){if(!writeScopeCurrent(scope))return false;throw error}
 }
-let cloudPollPromise=null,morningRefreshPromise=null;
-const cloudPoller=createPollingTask({run:()=>trackedCloudPoll(),delay:()=>12_000+Math.floor(Math.random()*2_000),
-  canRun:()=>session.cloudPollingEnabled&&!storageV2PreparationActive(),
-  onError:error=>console.error('orders background cloud poll',error),
-  onState:({enabled})=>{session.cloudPollingEnabled=enabled}});
+let morningRefreshPromise=null;
 
 const followup=createDebouncedTask({delay:0,onError:error=>console.error('orders cloud follow-up',error)});
 
@@ -60,7 +49,7 @@ function refreshForMorningRecovery(){
     const available=()=>tab.primaryTab&&cloudEnabled()&&navigator.onLine&&!session.cloudConflictBlocked&&!session.syncCapabilitiesError;
     if(!available())return false;
     // Await actual completion, including a poll already reading the remote head.
-    if(cloudPollPromise)await cloudPollPromise;
+    await polling.runtime.drain();
     if(cloudSavePromise)await cloudSavePromise;
     if(!available())return false;
     if(cloudHasLocalWork()){
@@ -80,121 +69,6 @@ function refreshForMorningRecovery(){
   return morningRefreshPromise;
 }
 function v2RetryRecord(state,flight=null){return {domain:'orders',documentName:'suppliers-v2',generation:Number(flight?.generation??state?.pendingGeneration??0),operationId:String(flight?.operationId||'orders-v2'),retry:state?.control?.retry||null}}
-
-async function saveStorageV2CloudFlight(initialFlight,scope){
-  let state=await refreshStorageV2CloudState(),flight=initialFlight||state?.flight;
-  if(!state?.base||!flight)throw new Error('orders_v2_flight_missing');
-  if(!writeScopeCurrent(scope,state)||!cloudWriteScopeIsCurrent(scope,getCloudWriteScope(),{base:flight}))return false;
-  let base=prepareCloudState(state.base.state),serverSnapshot=prepareCloudState(flight.snapshot),expected=Number(flight.baseRevision),res=null;
-  for(let conflictAttempt=0;conflictAttempt<CLOUD_WRITE_POLICY.conflictAttempts;conflictAttempt++){
-    const deleteIntents=normalizeDeleteIntents(flight.deleteIntents),exactIntents=effectiveDeleteIntents(base,serverSnapshot,deleteIntents),deleteCount=Object.values(exactIntents).reduce((sum,ids)=>sum+ids.length,0),audit=operationAuditMetadata({site:'orders',mutationType:exactIntents['notesSheet.sheets']?.length?'bulk-delete':flight.mutationType||'autosave',surface:flight.surface||'orders',baseRevision:expected,beforeState:base,afterState:serverSnapshot,collections:['suppliers','transactions','customerDebts','customerOrders','serviceCalls','notes','inventoryItems','inventoryEvents','warehouseOrders','notesSheet.sheets','notesSheet.columns','notesSheet.rows'],deleteCount});
-    res=await runBusyCloudWriteWithPolicy(()=>{if(!writeScopeCurrent(scope))throw Object.assign(new Error('cloud_sync_scope_changed'),{code:'cloud_sync_scope_changed'});return rpcSaveV2(serverSnapshot,expected,flight.operationId,exactIntents,audit)});
-    if(!writeScopeCurrent(scope))return false;
-    if(saveBusy(res))throw new Error('save_busy');
-    if(!revisionConflict(res))break;
-    await contentionBackoff(conflictAttempt);
-    if(!writeScopeCurrent(scope))return false;
-    const remote=await readCloud();if(!writeScopeCurrent(scope))return false;if(!remote?.state)throw new Error('מסמך הענן לא נמצא בזמן פתרון התנגשות');
-    const remoteRevision=Number(remote.revision||0);if(!Number.isSafeInteger(remoteRevision)||remoteRevision<=expected)throw new Error('orders_v2_rebase_revision_invalid');
-    const remoteState=prepareCloudState(remote.state),merged=merge3(base,serverSnapshot,remoteState,{deleteIntents});
-    state=await refreshStorageV2CloudState();
-    if(!writeScopeCurrent(scope,state))return false;
-    if(!state?.flight||state.flight.operationId!==flight.operationId)throw new Error('orders_v2_flight_changed_before_rebase');
-    const expectedSeq=state.seq;
-    if(merged.conflicts.length){
-      const conflict=structuredSyncConflict({domain:'orders',conflicts:merged.conflicts,base,local:serverSnapshot,remote:remoteState,generation:flight.generation,baseRevision:expected,currentRemoteRevision:remoteRevision});
-      const conflictCommit=await rejectStorageV2CloudFlight(flight.operationId,remoteRevision,remoteState,{currentState:model.state,expectedSeq,control:{conflict}});if(!writeScopeCurrent(scope,conflictCommit?.cloudState||conflictCommit))return false;
-      session.lastCloudState=clone(remoteState);session.cloudRevision=remoteRevision;session.cloudUpdatedAt=remote.updated_at||session.cloudUpdatedAt;session.cloudConflictBlocked=true;session.cloudSaveRequested=false;
-      setCloud('ענן: התנגשות','error');toast('יש התנגשות בענן באותה רשומה. הנתונים המקומיים נשמרו ולא נדרסו.');return false
-    }
-    const throughSeq=Number(flight.endSeq),previousOperationId=flight.operationId;
-    let currentCloud=merged.state;
-    if(state.afterFlightPending){
-      const rebased=merge3(serverSnapshot,prepareCloudState(model.state),merged.state,{deleteIntents:state.afterFlightDeleteIntents||{}});
-      if(rebased.conflicts.length){
-        const conflict=structuredSyncConflict({domain:'orders',conflicts:rebased.conflicts,base:serverSnapshot,local:prepareCloudState(model.state),remote:merged.state,generation:state.afterFlightGeneration,baseRevision:expected,currentRemoteRevision:remoteRevision});
-        const conflictCommit=await rejectStorageV2CloudFlight(previousOperationId,remoteRevision,remoteState,{currentState:model.state,expectedSeq,control:{conflict}});if(!writeScopeCurrent(scope,conflictCommit?.cloudState||conflictCommit))return false;
-        session.cloudConflictBlocked=true;session.cloudSaveRequested=false;setCloud('ענן: התנגשות','error');return false;
-      }
-      currentCloud=rebased.state;
-    }
-    const expectedGeneration=Number(session.localGeneration||0),rebasedCurrent=composeOrderCloudState(currentCloud,model.state);
-    await rejectStorageV2CloudFlight(previousOperationId,remoteRevision,remoteState,{currentState:rebasedCurrent,expectedSeq});
-    // The IDB rebase is atomic, but a new edit may be journaled while its
-    // transaction is committing. Never overwrite that edit with the earlier
-    // merged view or construct a flight from a stale visible model.
-    const postRebase=await refreshStorageV2CloudState();
-    if(!writeScopeCurrent(scope,postRebase))return false;
-    if(postRebase?.seq!==expectedSeq||Number(session.localGeneration||0)!==expectedGeneration){
-      await setWriteControl(scope,{conflict:{kind:'concurrent-rebase',domain:'orders',baseRevision:expected,currentRemoteRevision:remoteRevision}});
-      if(!writeScopeCurrent(scope))return false;
-      session.cloudConflictBlocked=true;session.cloudSaveRequested=false;setCloud('ענן: הסנכרון נעצר לשמירת שינוי מקביל','error');
-      toast('שינוי בוצע בזמן מיזוג הענן. הנתונים נשמרו מקומית; ייצא גיבוי ובדוק את המצב לפני חידוש הסנכרון.');
-      return false;
-    }
-    applyOrderCloudState(currentCloud);
-    if(!writeScopeCurrent(scope))return false;
-    base=remoteState;serverSnapshot=prepareCloudState(merged.state);expected=remoteRevision;
-    flight=await materializeStorageV2CloudFlight({throughSeq,snapshot:serverSnapshot});if(!writeScopeCurrent(scope)||!cloudWriteScopeIsCurrent(scope,getCloudWriteScope(),{base:flight}))return false;
-    if(!flight||flight.operationId===previousOperationId)throw new Error('orders_v2_rebase_flight_not_rotated');
-  }
-  if(!res?.r?.ok)throw cloudWriteError(res,'שמירה לענן נכשלה');
-  const {state:authoritative,revision:newRevision}=readDocumentWriteAck(res.row,{baseRevision:flight.baseRevision,sentState:serverSnapshot,prepareState:prepareCloudState,equalState:sameOrderCloudData,errorCode:'orders_v2_ack_revision_invalid',stateErrorCode:'orders_v2_ack_state_invalid'});
-  // Reconcile edits that arrived while this immutable flight was in progress
-  // before ACK.  ACK + current checkpoint are then committed in one IDB
-  // transaction, so a crash cannot advance the cloud cursor without persisting
-  // the corresponding rebased local head.
-  state=await refreshStorageV2CloudState();
-  if(!writeScopeCurrent(scope,state))return false;
-  if(!state?.flight||state.flight.operationId!==flight.operationId)throw new Error('orders_v2_flight_changed_before_ack');
-  const expectedSeq=state.seq;
-  let currentCloud=authoritative;
-  if(state.afterFlightPending){
-    const local=prepareCloudState(model.state),rebased=merge3(serverSnapshot,local,authoritative,{deleteIntents:state.afterFlightDeleteIntents||{}});
-    if(rebased.conflicts.length){
-      const conflict=structuredSyncConflict({domain:'orders',conflicts:rebased.conflicts,base:serverSnapshot,local,remote:authoritative,generation:state.afterFlightGeneration,baseRevision:flight.baseRevision,currentRemoteRevision:newRevision});
-      const conflictCommit=await acknowledgeStorageV2CloudFlight(flight.operationId,newRevision,authoritative,{currentState:model.state,expectedSeq,control:{conflict}});if(!writeScopeCurrent(scope,conflictCommit?.cloudState||conflictCommit))return false;
-      session.cloudRevision=newRevision;session.cloudUpdatedAt=res.row?.updated_at||session.cloudUpdatedAt;session.lastCloudState=clone(authoritative);session.cloudConflictBlocked=true;session.cloudSaveRequested=false;
-      setCloud('ענן: התנגשות','error');return false
-    }
-    currentCloud=rebased.state;
-  }
-  let expectedGeneration=Number(session.localGeneration||0);
-  const previousState=clone(model.state),currentState=composeOrderCloudState(currentCloud,model.state);
-  let publication=await commitCloudCheckpoint({
-    commit:()=>acknowledgeStorageV2CloudFlight(flight.operationId,newRevision,authoritative,{currentState,expectedSeq}),
-    isCurrent:committed=>writeScopeCurrent(scope,committed)&&Number(session.localGeneration||0)===expectedGeneration&&committed?.seq===expectedSeq,
-    publish:()=>{if(!sameOrderCloudData(model.state,currentCloud))applyOrderCloudState(currentCloud)},
-  });
-  if(!publication.published&&publication.reason==='stale'&&writeScopeCurrent(scope,publication.committed)&&readStorageV2CloudRecovery&&commitStorageV2CloudRecovery){
-    try{
-      const recovered=await recoverPostAckPublication({isCurrent:head=>writeScopeCurrent(scope,head),generation:()=>Number(session.localGeneration||0),visible:()=>model.state,
-        equal:sameOrderCloudData,merge:(before,local,candidate,deleteIntents)=>merge3(prepareCloudState(before),prepareCloudState(local),prepareCloudState(candidate),{deleteIntents}),
-        read:readStorageV2CloudRecovery,commit:commitStorageV2CloudRecovery,publish:state=>{applyOrderCloudState(state)}},
-        {previousState,candidateState:currentState,candidateSeq:expectedSeq,baseState:authoritative,ackRevision:newRevision,ackSeq:flight.endSeq});
-      if(recovered){publication={committed:recovered.state,published:true};expectedGeneration=recovered.generation}
-    }catch(error){console.error('post-ACK recovery retained for review',error)}
-  }
-  const committedState=publication.committed;
-  if(!writeScopeCurrent(scope,committedState)){console.warn('Main cloud ACK',cloudAckPublicationDiagnostic('SCOPE_CHANGED_AFTER_COMMIT',{baseRevision:flight.baseRevision,ackRevision:newRevision,endSeq:flight.endSeq,candidateSeq:expectedSeq,observedSeq:committedState?.seq}));return false}
-  session.cloudRevision=newRevision;session.cloudUpdatedAt=res.row?.updated_at||session.cloudUpdatedAt;session.lastCloudState=clone(authoritative);session.cloudConflictBlocked=false;
-  if(!publication.published){
-    console.warn('Main cloud ACK',cloudAckPublicationDiagnostic(publication.reason==='publication-error'?'ACK_PUBLICATION_EXCEPTION':'ACK_COMMITTED_PUBLICATION_STALE',{baseRevision:flight.baseRevision,ackRevision:newRevision,endSeq:flight.endSeq,candidateSeq:expectedSeq,observedSeq:committedState?.seq}));
-    // The sent flight is durably acknowledged, but a newer visible/journal head
-    // must not be overwritten or sent with an earlier reconciliation snapshot.
-    session.cloudConflictBlocked=true;session.cloudSaveRequested=false;
-    if(!tab.primaryTab)return false;
-    if(publication.reason==='publication-error')console.error('post-ACK model publication',publication.error);
-    await setWriteControl(scope,{conflict:{kind:publication.reason==='publication-error'?'ack-publication-failed':'concurrent-ack',domain:'orders',baseRevision:flight.baseRevision,currentRemoteRevision:newRevision}});
-    if(!writeScopeCurrent(scope))return false;
-    setCloud('ענן: הסנכרון נעצר לשמירת שינוי מקביל','error');
-    toast(publication.reason==='publication-error'?'אישור הענן נשמר, אבל עדכון הנתונים לתצוגה נכשל. הסנכרון נעצר לבדיקה; הנתונים נשמרו באחסון המקומי.':'שינוי בוצע בזמן שמירת אישור הענן. הנתונים נשמרו מקומית; ייצא גיבוי ובדוק את המצב לפני חידוש הסנכרון.');
-    return false;
-  }
-  try{if(files.dirHandle)await writeStateToFolder()}catch(localError){console.error('local backup/mirror',localError)}
-  if(!writeScopeCurrent(scope,committedState))return false;
-  return {committed:true,state:committedState,generation:expectedGeneration}
-}
 
 function requestStorageV2CloudSave(...args){
   return saveWork.run(()=>runStorageV2CloudSave(...args));
@@ -286,100 +160,63 @@ async function resumeConcurrentAckRecovery(review){
   startPolling();return saved;
 }
 
-function pollAccessCurrent(){return !storageV2PreparationActive()&&tab.primaryTab&&cloudEnabled()&&navigator.onLine&&!session.syncCapabilitiesError&&!session.syncCapabilitiesChecking}
-function pollViewCurrent({generation,local}={}){return pollAccessCurrent()&&!session.cloudConflictBlocked&&Number(session.localGeneration||0)===generation&&!session.cloudSaveRequested&&!cloudHasLocalWork()&&(!local||sameOrderCloudData(model.state,local))}
-function markCloudPollDeferred(head){
-  if(storageV2PreparationActive()||!tab.primaryTab||!cloudEnabled())return false;
-  if(!navigator.onLine)setCloud('ענן: אופליין','offline');
-  else if(head?.control?.conflict||session.cloudConflictBlocked)setCloud('ענן: התנגשות','error');
-  else setCloud('ענן: ממתין לסנכרון');
-  return false;
-}
-function markCloudSynced(head,observation){
-  if(!pollViewCurrent(observation)||!cloudHeadIsSynced(head,{revision:Number(session.cloudRevision||0),observedHead:observation.head}))return markCloudPollDeferred(head);
-  setCloud('ענן: מסונכרן','synced');return true;
-}
-async function confirmCloudPollSynced(observation,{refreshTimestamp=false,scope=null}={}){
-  const head=await refreshStorageV2CloudState();
-  if(scope&&!writeScopeCurrent(scope,head))return false;
-  const synced=markCloudSynced(head,observation);
-  if(synced&&refreshTimestamp)refreshCloudTimestamp();return synced;
-}
-function markCloudPollFailure(error){
-  const normalized=normalizeCloudError(error),transient=['network','timeout','service_unavailable','rate_limited'].includes(normalized.kind);
-  if(!navigator.onLine)setCloud('ענן: אופליין','offline');
-  else if(transient)setCloud('ענן: ממתין להתאוששות');
-  else setCloud('ענן: שגיאת סנכרון','error');
-  if(transient)console.warn('orders cloud poll deferred',error?.message||error);else console.error(error);
-  return false
-}
-
-async function cloudPoll(){
-  if(storageV2PreparationActive()||!tab.primaryTab||!cloudEnabled()||session.cloudBusy||!navigator.onLine)return false;
-  if(cloudHasLocalWork()){const saved=await requestCloudSave('סונכרנו שינויים מקומיים ועדכון מרחוק');await pollSharedChecks();return saved}
-  let dataApiReadOk=false;
-  const observation={generation:Number(session.localGeneration||0),local:prepareCloudState(model.state),head:null};
-  let ready=false;
-  async function readMain(){
-    const head=await refreshStorageV2CloudState();observation.head=head;
-    if(!pollViewCurrent(observation)||!cloudHeadIsSynced(head,{revision:Number(session.cloudRevision||0)}))return markCloudPollDeferred(head);
-    const meta=await readCloudMeta();dataApiReadOk=true;
-    if(!pollViewCurrent(observation))return markCloudPollDeferred();
-    if(!meta){setCloud('ענן: מסמך לא נמצא','error');return false}
-    const metaRevision=Number(meta.revision||0);
-    if(!Number.isSafeInteger(metaRevision)||metaRevision<1)throw new Error('orders_v2_remote_revision_invalid');
-    if(metaRevision<=session.cloudRevision){session.cloudUpdatedAt=meta.updated_at||session.cloudUpdatedAt;return true}
-    const row=await readCloud();
-    if(!pollViewCurrent(observation))return markCloudPollDeferred();
-    if(!row){setCloud('ענן: מסמך לא נמצא','error');return false}
-    const rowRevision=Number(row.revision||0);
-    if(!Number.isSafeInteger(rowRevision)||rowRevision<1)throw new Error('orders_v2_remote_revision_invalid');
-    if(rowRevision<=session.cloudRevision){session.cloudUpdatedAt=row.updated_at||meta.updated_at||session.cloudUpdatedAt;return true}
-    const meaningful=!sameOrderCloudData(model.state,row.state);
-    if(!await adoptRemoteRow(row,observation.generation,head,{applyState:meaningful}))return false;
-    // The adopted projection replaces the earlier comparison candidate. Shared
-    // checks remain independent; only Main's projection is compared here.
-    observation.local=prepareCloudState(model.state);
-    if(!meaningful){session.lastCloudState=prepareCloudState(row.state||model.state);return true}
-    try{if(files.dirHandle)await writeStateToFolder()}catch(localError){console.error('local backup/mirror',localError)}
-    render();toast('התקבל עדכון מהענן');return true;
-  }
-  try{
-    session.cloudBusy=true;
-    ready=await readMain();
-  }catch(error){return markCloudPollFailure(error)}
-  finally{session.cloudBusy=false;if(dataApiReadOk){await pollSharedChecks();await refreshKupaReadout({renderIfChanged:true})}}
-  // The final authoritative read occurs after independent hydration too. An edit
-  // during any of those awaits cannot publish a stale "synced" assertion.
-  if(!ready)return false;
-  try{return await confirmCloudPollSynced(observation,{refreshTimestamp:true})}catch(error){return markCloudPollFailure(error)}
-}
-
-async function resumeAfterReconnect(){
-  if(storageV2PreparationActive()||!tab.primaryTab||!cloudEnabled()||!navigator.onLine)return false;
-  if(session.cloudBusy)return trackedCloudPoll();
-  setCloud('ענן: חזרה רשת…');
-  try{
-    if(cloudHasLocalWork()){
-      const saved=await requestCloudSave('שינויים ממתינים סונכרנו');
-      if(!saved&&cloudHasLocalWork())return false;
-    }
-    return await trackedCloudPoll()
-  }catch(error){return markCloudPollFailure(error)}
-}
-
-function trackedCloudPoll(){if(cloudPollPromise)return cloudPollPromise;cloudPollPromise=cloudPoll().finally(()=>{cloudPollPromise=null});return cloudPollPromise}
-function startPolling(){return cloudPoller.start()}
-function stopPolling(){wakeEpoch++;followup.cancel();return cloudPoller.stop()}
+function startPolling(){return polling.start()}
+function stopPolling(){wakeEpoch++;followup.cancel();return polling.stop()}
+const {publishAcknowledgedFlight}=createCloudAckPublication({
+  model,
+  session,
+  tab,
+  files,
+  access:{writeScopeCurrent},
+  journal:{refreshStorageV2CloudState,acknowledgeStorageV2CloudFlight,setWriteControl},
+  projection:{prepareCloudState,sameOrderCloudData,merge3,composeOrderCloudState,applyOrderCloudState},
+  view:{setCloud,toast},
+  mirror:{writeStateToFolder},
+  recovery:{readStorageV2CloudRecovery,commitStorageV2CloudRecovery},
+});
+const {saveStorageV2CloudFlight}=createCloudWriteFlight({
+  model,
+  session,
+  access:{writeScopeCurrent,getCloudWriteScope},
+  journal:{refreshStorageV2CloudState,materializeStorageV2CloudFlight,rejectStorageV2CloudFlight,setWriteControl},
+  projection:{prepareCloudState,merge3,composeOrderCloudState,applyOrderCloudState},
+  transport:{rpcSaveV2,readCloud},
+  view:{setCloud,toast},
+  publication:{publishAcknowledgedFlight},
+});
+const confirmation=createCloudConfirmation({
+  model,
+  session,
+  tab,
+  access:{storageV2PreparationActive,cloudEnabled,cloudHasLocalWork,writeScopeCurrent},
+  state:{sameOrderCloudData,refreshStorageV2CloudState},
+  view:{setCloud,refreshCloudTimestamp},
+});
+const {markCloudSynced,confirmCloudPollSynced}=confirmation;
+const polling=createCloudPolling({
+  model,
+  session,
+  tab,
+  files,
+  access:{storageV2PreparationActive,cloudEnabled,cloudHasLocalWork},
+  state:{prepareCloudState,sameOrderCloudData,refreshStorageV2CloudState},
+  view:{setCloud,render,toast},
+  remote:{readCloudMeta,readCloud},
+  adoption:{adoptRemoteRow,writeStateToFolder},
+  secondary:{pollSharedChecks,refreshKupaReadout},
+  write:{requestCloudSave},
+  confirmation,
+});
+const trackedCloudPoll=polling.poll,resumeAfterReconnect=polling.resumeAfterReconnect;
 const runtime={
-  isPending:()=>saveWork.isPending()||!!cloudPollPromise||!!morningRefreshPromise,
+  isPending:()=>saveWork.isPending()||polling.runtime.isPending()||!!morningRefreshPromise,
   async drain(){
     do{
-      await saveWork.drain();await cloudPoller.drain();
-      const pending=[cloudPollPromise,morningRefreshPromise].filter(Boolean);
+      await saveWork.drain();await polling.runtime.drain();
+      const pending=[morningRefreshPromise].filter(Boolean);
       if(pending.length)await Promise.allSettled(pending);
       await followup.drain();
-    }while(saveWork.isPending()||cloudPollPromise||morningRefreshPromise);
+    }while(saveWork.isPending()||polling.runtime.isPending()||morningRefreshPromise);
   },
 };
 async function quiesceForStorageCutover(){

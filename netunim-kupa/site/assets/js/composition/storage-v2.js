@@ -46,9 +46,9 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
   function detachedNormalization(){return createStateNormalization({model:{state:{},lastNormalizeRemovedCredits:0},externalWorkbooks:true})}
   async function quiesceSaves(){
     const p=requirePorts();
-    p.checksRuntime.cancelPending();p.backupRuntime.cancelPending();
+    p.notesRuntime.cancelPending();p.checksRuntime.cancelPending();p.backupRuntime.cancelPending();
     await p.syncDocument.quiesceForStorageCutover();
-    await p.saveRuntime.drain();await p.checksRuntime.drain();
+    await p.notesRuntime.drain();await p.saveRuntime.drain();await p.checksRuntime.drain();
     // Accepted Main/Checks completion can submit a later backup wakeup.
     p.backupRuntime.cancelPending();await p.backupRuntime.drain();
   }
@@ -126,6 +126,9 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
   }
   function configure(next){
     if(ports)throw new Error('kupa_storage_v2_already_configured');
+    for(const method of ['cancelPending','drain']){
+      if(typeof next?.notesRuntime?.[method]!=='function')throw new TypeError(`kupa_notes_runtime_${method}_required`);
+    }
     for(const method of ['cancelPending','drain']){
       if(typeof next?.checksRuntime?.[method]!=='function')throw new TypeError(`kupa_checks_runtime_${method}_required`);
     }

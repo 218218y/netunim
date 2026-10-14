@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import subprocess
 import sys
+from capability_sources import backup_ui_source
 
 ROOT = Path(__file__).resolve().parents[1]
 errors: list[str] = []
@@ -74,8 +75,8 @@ check("'restore-orders-cloud-backup':(element,event)=>{previewCloudBackup" in or
 check("load-more-orders-cloud-backups" in orders_actions, "orders: older backup pages are explicit user actions")
 check("apply-orders-cloud-backup-restore" in orders_actions and "markMutationActions(actions,{all:['apply-json-restore', 'apply-orders-cloud-backup-restore', 'begin-json-restore']})" in orders_actions, "orders: destructive cloud restore is protected by the startup mutation guard")
 
-kupa_backup = read("netunim-kupa/site/assets/js/ui/backup.js")
-orders_backup = read("netunim-orders/site/assets/js/ui/backup.js")
+kupa_backup = backup_ui_source(ROOT / 'netunim-kupa')
+orders_backup = backup_ui_source(ROOT / 'netunim-orders')
 check("financeSyncIncluded:false" in kupa_backup and "target.creditSync=clone(live.creditSync)" in kupa_backup, "kupa: historical restore preserves live finance sync and downloaded backup marks finance as excluded")
 check("bankEvents:normalizeSharedBankEvents(checksSession.checksBankEvents||[])" in orders_backup, "orders: V2 import preserves the live shared-check bank event ledger")
 check("!point?.checksState?.checks" in orders_backup and "!point?.checksState?.checks" in kupa_backup, "both apps reject an incomplete point-in-time restore without shared checks")

@@ -15,8 +15,8 @@ import {isStorageV2ActivationCached,storageAccountMarkerCacheKey,storageLocalEng
 import {storageV2Mode} from '../shared/storage-v2-runtime.js';
 import {createLifecycle as createOrdersLifecycle} from '../netunim-orders/site/assets/js/lifecycle.js';
 import {createSyncRecovery} from '../netunim-kupa/site/assets/js/sync/recovery.js';
-import {createUiCloud as createOrdersUiCloud} from '../netunim-orders/site/assets/js/ui/cloud.js';
-import {createUiCloud as createKupaUiCloud} from '../netunim-kupa/site/assets/js/ui/cloud.js';
+import {createOrdersCloudUi as createOrdersUiCloud} from './cloud_ui_ports.mjs';
+import {createKupaCloudUi as createKupaUiCloud} from './cloud_ui_ports.mjs';
 import {createOrdersStorageV2Coordinator} from '../netunim-orders/site/assets/js/composition/storage-v2.js';
 import {createKupaStorageV2Coordinator} from '../netunim-kupa/site/assets/js/composition/storage-v2.js';
 

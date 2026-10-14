@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createUiCloud as createOrdersUiCloud} from '../netunim-orders/site/assets/js/ui/cloud.js';
-import {createUiCloud as createKupaUiCloud} from '../netunim-kupa/site/assets/js/ui/cloud.js';
+import {createOrdersCloudUi as createOrdersUiCloud} from './cloud_ui_ports.mjs';
+import {createKupaCloudUi as createKupaUiCloud} from './cloud_ui_ports.mjs';
 
 function installGlobals(){
   const values=new Map(),saved=new Map();

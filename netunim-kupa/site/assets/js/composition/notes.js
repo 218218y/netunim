@@ -6,7 +6,7 @@ import {createNotesActions} from '../ui/action-packs/notes.js';
 // Recovery and navigation receive guarded Notes ports before the modal and
 // cloud session exist. Bind the workbook and controller once those ports exist,
 // and before lifecycle startup can invoke recovery or render.
-export function createKupaNotesRuntime({model,ui,session,tab}){
+export function createKupaNotesRuntime({model,ui,session,tab,ownership={current:()=>null,writable:()=>true}}){
   if(!model||!ui||!session||!tab)throw new TypeError('notes_context_required');
   let bound=null;
 
@@ -41,6 +41,8 @@ export function createKupaNotesRuntime({model,ui,session,tab}){
     });
     const controller=createDomainsNotesController({
       workspace,model,ui,
+      editScope:ownership.current,
+      canWrite:()=>tab.primaryTab&&ownership.writable(),
       saveState:(message,options={})=>storagePersistence.saveState(message,{...options,domains:['notes']}),
       confirmDialog:(...args)=>uiModal.confirmDialog(...args),
     });
@@ -50,6 +52,12 @@ export function createKupaNotesRuntime({model,ui,session,tab}){
 
   return {
     bind,renderNotes,
+    runtime:{
+      cancelPending:()=>bound?.controller.runtime.cancelPending()??false,
+      drain:()=>bound?.controller.runtime.drain()??Promise.resolve(),
+      isPending:()=>bound?.controller.runtime.isPending()??false,
+      dispose:()=>bound?.controller.runtime.dispose()??false,
+    },
     captureLegacyWorkbook:(...args)=>ready().workspace.sync.captureLegacy(...args),
     activateSheetIfVisible:page=>{if(page==='notes'&&ui.notesTab==='sheet')return ready().workspace.activate()},
     revisionSuffix:page=>page==='notes'&&ui.notesTab==='sheet'?':'+ready().workspace.sync.cacheStamp:'',

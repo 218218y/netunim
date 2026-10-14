@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import re
 import sys
+from capability_sources import cloud_ui_source
 
 ROOT = Path(__file__).resolve().parents[1]
 APPS = {
@@ -135,7 +136,7 @@ for label, project in APPS.items():
     actions = (site / "assets/js/ui/action-packs/cloud.js").read_text(encoding="utf-8")
     main = (site / "assets/js/main.js").read_text(encoding="utf-8")
     status = (site / "assets/js/ui/status.js").read_text(encoding="utf-8")
-    cloud = (site / "assets/js/ui/cloud.js").read_text(encoding="utf-8")
+    cloud = cloud_ui_source(site.parent)
     composition = (site / "assets/js/composition/cloud.js").read_text(encoding="utf-8")
     cloud_auth = (site / "assets/js/cloud/auth.js").read_text(encoding="utf-8")
     cloud_transport = (site / "assets/js/cloud/transport.js").read_text(encoding="utf-8")

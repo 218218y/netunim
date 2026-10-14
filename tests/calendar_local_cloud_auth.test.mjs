@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {createCloudAuth} from '../netunim-orders/site/assets/js/cloud/auth.js';
-import {createUiCloud} from '../netunim-orders/site/assets/js/ui/cloud.js';
+import {createOrdersCloudUi as createUiCloud} from './cloud_ui_ports.mjs';
 
 const storage=new Map([['orders.supabase.email.v1','local@example.com']]);
 globalThis.localStorage={

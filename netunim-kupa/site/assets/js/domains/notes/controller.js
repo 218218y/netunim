@@ -2,17 +2,15 @@ import {uid, esc} from '../../core/values.js';
 import {createNotesWorkbook} from '../../shared/notes-workbook.js';
 import {searchMatch} from '../../core/search.js';
 import {localSearchMarkup} from '../../ui-primitives/local-search.js';
+import {createStickyNoteCommands} from './commands.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createDomainsNotesController({workspace=null,model, ui={}, saveState, confirmDialog}){
-let saveTimer=null;
-const pendingNoteIds=new Set();
-function noteOperations(extra=[]){
-  const excluded=new Set(extra.map(operation=>operation.id)),operations=[];
-  for(const id of pendingNoteIds){const note=model.state.notes.find(row=>row.id===id);if(note&&!excluded.has(id))operations.push({type:'put',collection:'notes',mode:'replace',id,record:note})}
-  pendingNoteIds.clear();return [...operations,...extra];
-}
-let pendingMessage='הפתק עודכן';
+export function createDomainsNotesController({workspace=null,model, ui={}, saveState, confirmDialog,editScope=()=>null,canWrite=()=>true}){
+const commands=createStickyNoteCommands({state:()=>model.state,scope:editScope,canWrite,save:saveState,
+  confirmDelete:()=>confirmDialog('מחיקת פתק','למחוק את הפתק הזה?',{confirmText:'מחק פתק'}),
+  onRemoved:()=>renderNotes(),
+});
+const {runtime}=commands;
 const workbook=createNotesWorkbook({model:workspace?.model||model,ui,saveState:workspace?.saveWorkbook||saveState,cellChanged:workspace?.cellChanged,editScope:()=>workspace?.sync.ownerKey,canEdit:()=>!workspace||workspace.ready&&!workspace.readOnly,confirmDialog,renderNotes,uid,esc,searchMatch,site:'kupa'});
 const {activeSheetData,sheetTabs,sheetMarkup,captureSheetInteraction,restoreSheetInteraction,bindSheetColumnResizeHandles}=workbook;
 
@@ -29,37 +27,24 @@ function visibleNoteRows(){const q=String(ui.notesSearchValue||'').trim(),rows=n
 function resizeStickyNoteTextarea(el){if(!el)return;el.style.height='auto';el.style.height=Math.max(132,el.scrollHeight)+'px'}
 function resizeAllStickyNotes(){document.querySelectorAll('.sticky-note textarea').forEach(resizeStickyNoteTextarea)}
 
-function scheduleNoteSave(message='הפתק עודכן'){
-  pendingMessage=message;
-  clearTimeout(saveTimer);
-  saveTimer=setTimeout(()=>{saveTimer=null;saveState(pendingMessage,{operations:noteOperations()})},220);
-}
-
-function cancelScheduledNoteSave(){if(!saveTimer)return;clearTimeout(saveTimer);saveTimer=null}
-function flushNoteSave(){if(!saveTimer)return;clearTimeout(saveTimer);saveTimer=null;saveState(pendingMessage,{operations:noteOperations()})}
+function flushNoteSave(){return runtime.drain()}
 
 function addStickyNote(){
-  cancelScheduledNoteSave();
   const now=new Date().toISOString(),note={id:uid('NOTE'),content:'',createdAt:now,updatedAt:now};
-  model.state.notes.unshift(note);
-  saveState('פתק חדש נוסף',{operations:noteOperations([{type:'put',collection:'notes',mode:'insert',id:note.id,index:0,record:note}])});renderNotes();
+  if(commands.add(note)===false)return false;
+  renderNotes();
   requestAnimationFrame(()=>{const el=document.querySelector('.sticky-note textarea');if(el){resizeStickyNoteTextarea(el);el.focus()}});
 }
 
 function updateStickyNote(id,el){
-  const note=model.state.notes.find(x=>x.id===id);if(!note)return;
-  note.content=el.value;note.updatedAt=new Date().toISOString();resizeStickyNoteTextarea(el);
-  pendingNoteIds.add(id);
+  const saved=commands.update(id,el.value);if(saved===false)return false;
+  const note=model.state.notes.find(x=>x.id===id);resizeStickyNoteTextarea(el);
   const date=el.closest('.sticky-note')?.querySelector('[data-note-date]');if(date)date.textContent=noteDisplayDate(note);
-  scheduleNoteSave('הפתק עודכן');
+  return saved;
 }
 function blurStickyNote(){flushNoteSave()}
 
-async function deleteStickyNote(id){
-  const note=model.state.notes.find(x=>x.id===id);if(!note)return;
-  if(!await confirmDialog('מחיקת פתק','למחוק את הפתק הזה?',{confirmText:'מחק פתק'}))return;
-  cancelScheduledNoteSave();model.state.notes=model.state.notes.filter(x=>x.id!==id);saveState('הפתק נמחק',{deleteIntents:{notes:[id]},mutationType:'delete',surface:'kupa.delete.notes',operations:noteOperations([{type:'delete',collection:'notes',id}])});renderNotes();
-}
+function deleteStickyNote(id){return commands.remove(id)}
 
 function stickyNoteCard(note){return `<article class="sticky-note" data-note-id="${esc(note.id)}"><div class="sticky-note-paper"><textarea aria-label="תוכן הפתק" placeholder="כתוב כאן הערה או תזכורת…" data-input="update-kupa-sticky-note" data-input-arg0="${esc(note.id)}" data-blur="blur-kupa-sticky-note">${esc(note.content)}</textarea></div><footer class="sticky-note-footer"><span class="sticky-note-date" data-note-date>${esc(noteDisplayDate(note))}</span><button class="btn danger small" data-action="delete-kupa-sticky-note" data-click-arg0="${esc(note.id)}">מחק</button></footer></article>`}
 
@@ -77,5 +62,5 @@ function renderNotes(){
   if(sheetActive){bindSheetColumnResizeHandles();restoreSheetInteraction(interaction)}else requestAnimationFrame(resizeAllStickyNotes);
 }
 
-return {noteDisplayDate,noteSortRows,visibleNoteRows,resizeStickyNoteTextarea,resizeAllStickyNotes,addStickyNote,updateStickyNote,blurStickyNote,deleteStickyNote,stickyNoteCard,...workbook,sheetActions:{...workbook.sheetActions,'notes-workspace-sheet':(...args)=>{workbook.sheetActions['notes-workspace-sheet'](...args);void workspace?.activate()}},setNotesWorkspaceTab:(...args)=>{workbook.setNotesWorkspaceTab(...args);if(ui.notesTab==='sheet')void workspace?.activate()},setNotesSearch,renderNotes,flushNoteSave};
+return {runtime,noteDisplayDate,noteSortRows,visibleNoteRows,resizeStickyNoteTextarea,resizeAllStickyNotes,addStickyNote,updateStickyNote,blurStickyNote,deleteStickyNote,stickyNoteCard,...workbook,sheetActions:{...workbook.sheetActions,'notes-workspace-sheet':(...args)=>{workbook.sheetActions['notes-workspace-sheet'](...args);void workspace?.activate()}},setNotesWorkspaceTab:(...args)=>{workbook.setNotesWorkspaceTab(...args);if(ui.notesTab==='sheet')void workspace?.activate()},setNotesSearch,renderNotes,flushNoteSave};
 }

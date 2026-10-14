@@ -3,11 +3,21 @@
 This is the current inventory after Bank/Credit Bridge model separation and
 Orders Finance document-command and both applications' Bank archive readout
 extraction, Kupa Bank snapshot commands, shared Finance lease renewal ownership
-and both applications' Bank/Credit local connection ownership. The chronological
+and both applications' Bank/Credit local connection ownership, Kupa Notes
+durability and Cloud/Sync/Backup capability decomposition. The chronological
 [refactor record](ARCHITECTURE_REFACTOR.md) documents completed slices; older
 remaining-scope paragraphs describe their stage's starting point.
 
 ## Verified foundations
+
+- Kupa sticky-note input is journaled before owner transfer can fence writes.
+  A native before-change regression reproduced loss of an unblurred edit;
+  transfer and restart now retain its exact content. Strict Notes commands own
+  accepted saves and confirmation cancellation, and source quiescence drains
+  them. Both Cloud/Backup roots now compose distinct auth/open/transfer/reset,
+  restore/local/catalog/presentation owners. Main sync separates flight, ACK,
+  confirmation and polling lifetimes; its broad composition inputs remain open.
+  See [Cloud/Sync/Backup boundaries](CLOUD_SYNC_BACKUP_CAPABILITIES.md).
 
 - The Orders Main/Checks save collision is fixed and regression-protected.
 - Orders Finance/Checks and Kupa Bank/Dashboard/Credit have private capability
@@ -106,7 +116,7 @@ remaining-scope paragraphs describe their stage's starting point.
 
 | Package | Concrete remaining work | Exit evidence |
 | --- | --- | --- |
-| Private controllers and composition | Orders Finance Bank/Credit workflows beyond document/archive/lease owners; Kupa Bank provider/Bridge orchestration beyond archive/snapshot/lease owners, Credit and Calendar orchestration, manual-edit lease queue lifecycle; large customer-document/view responsibilities; remaining wide cloud/backup/shell factories and callbacks | Narrow owners and lifecycle where jobs exist; dependency/API/I/O budgets; representative production behavior preserved |
+| Private controllers and composition | Orders Finance Bank/Credit workflows beyond document/archive/lease owners; Kupa Bank provider/Bridge orchestration beyond archive/snapshot/lease owners, Credit and Calendar orchestration, manual-edit lease queue lifecycle; large customer-document/view responsibilities; remaining Main sync/shell composition width and backup UI/resource account ownership | Narrow owners and lifecycle where jobs exist; dependency/API/I/O budgets; representative production behavior preserved |
 | Business and transaction contracts | Remaining journal/IDB callers, Finance leases/RPC envelopes, complete Bank/Credit profile/result payloads, Morning/Calendar commands and capability consumers | Unknown-payload validation and actual implementation mutations; an unchecked decoder never grants authoritative confirmation |
 | Bridge orchestration | Document search merge/pagination and scheduled maintenance/installer processes; Credit adapter construction, DigitalV3/Camoufox internals and remaining Bank CLI/token processes | Before-change retry/fallback characterization, native provider/process/file fixtures and preserved wire contracts |
 | Canonical sources and retirement inventory | Classify remaining legacy readers, preference keys, SQL setup/operator copies and generated assets; deterministic current/operator SQL generation where missing; retire only proven unused paths | Consumer inventory, immutable deployed migrations/receipts, deterministic generation and old-record/backup restore evidence |
