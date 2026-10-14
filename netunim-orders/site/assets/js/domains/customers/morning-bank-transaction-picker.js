@@ -1,6 +1,7 @@
 import {esc} from '../../core/values.js';
 import {money} from '../../core/money.js';
 import {bankMorningEligibility} from '../finance/bank-morning.js';
+function field(root,id){return root.querySelector?.('#'+id)||root.getElementById?.(id)||null}
 
 const MAX_RESULTS=80;
 const RECENT_DAYS=45;
@@ -45,12 +46,12 @@ export function morningBankTransactionPickerMarkup({activeTransaction=null,loadi
 }
 
 export function renderMorningBankTransactionPicker({rows=[],query='',activeTransactionId=null,root=globalThis.document}={}){
-  if(!root)return 0;const all=morningLinkableBankTransactions(rows),needle=clean(query,180).toLocaleLowerCase('he'),filtered=needle?all.filter(row=>searchText(row).includes(needle)):all,shown=filtered.slice(0,MAX_RESULTS),host=root.getElementById?.('morningBankTransactionRows'),empty=root.getElementById?.('morningBankTransactionEmpty'),count=root.getElementById?.('morningBankTransactionCount');
+  if(!root)return 0;const all=morningLinkableBankTransactions(rows),needle=clean(query,180).toLocaleLowerCase('he'),filtered=needle?all.filter(row=>searchText(row).includes(needle)):all,shown=filtered.slice(0,MAX_RESULTS),host=field(root,'morningBankTransactionRows'),empty=field(root,'morningBankTransactionEmpty'),count=field(root,'morningBankTransactionCount');
   if(host)host.innerHTML=shown.map(row=>rowMarkup(row,activeTransactionId)).join('');if(empty){empty.hidden=shown.length>0;empty.textContent=all.length?'אין תנועות שמתאימות לחיפוש.':'אין תנועות זכות מתאימות מ־45 הימים האחרונים.'}if(count)count.textContent=filtered.length>shown.length?`מציג ${shown.length} מתוך ${filtered.length} תנועות · צמצם את החיפוש כדי להגיע לתנועה הרצויה`:filtered.length?`מציג ${filtered.length} תנועות מתאימות`:'';return filtered.length;
 }
 
 export function syncMorningBankTransactionSelection({transaction=null,root=globalThis.document}={}){
-  if(!root)return;const id=Number(transaction?.archiveId)||0,input=root.getElementById?.('morningBankTransactionSearch'),selected=root.getElementById?.('morningBankTransactionSelected'),clear=root.querySelector?.('.morning-bank-transaction-clear');
+  if(!root)return;const id=Number(transaction?.archiveId)||0,input=field(root,'morningBankTransactionSearch'),selected=field(root,'morningBankTransactionSelected'),clear=root.querySelector?.('.morning-bank-transaction-clear');
   if(input){input.value=transaction?label(transaction):'';input.dataset.selectedBankTransactionId=id?String(id):''}
   if(selected){selected.hidden=!transaction;selected.innerHTML=transaction?`<b>תנועה שנבחרה:</b> ${esc(label(transaction))}`:''}
   if(clear)clear.hidden=!transaction;

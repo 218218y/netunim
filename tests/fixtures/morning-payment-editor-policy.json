@@ -1,0 +1,18 @@
+{
+  "commit": "79e104c8720c1c54d3aac51be3d472bd1f62fa73",
+  "sourceDigest": "619f68b5d5313e6f481c02cddfb276e4aa619444626420c539da834f4a6dfa5f",
+  "functions": {
+    "paymentRowMarkup": "76117dea0fb50b2f5502092cb3cca629e32872342683cafdb5d84bf7e0596242",
+    "initialPayments": "2dd1e27e696769f670eb2f94c134e2dcb175beb5a9b5b29d0a0bed1dab0b47ed",
+    "paymentFields": "d7d24c10d6ed6f35aaccefc8290c6ab3422160ec0b70f1bf2f8019d2d4f8657c",
+    "syncPaymentType": "5c72c4c48cacbce3f30a24e6552c90bb35339c94a4b1088c0be440035e87511b",
+    "syncPaymentBank": "3bc3c04863549807c2f8f54abbcf92c5189d887d9520bcde5dd843e8a2d866e4",
+    "rowBankData": "d7885a72d4d1c27b3fa2b83423acd3805e79dde96158b8ab37221e4f77e856a1",
+    "readPaymentRows": "65dd669d0e6df18951fc9102020be006f05227acf3cdb59f6fe6f78a7a09d72f",
+    "renderPaymentRows": "9d8ed88a5a8f61cfc8ddf02297843baa7c930d352beadbfec3776bea3262eb28",
+    "replaceMorningPayments": "9677612b85499c2756c0dee0fe0e1fe9609f203b3bde67dd880174c93d2bded5",
+    "addMorningPayment": "ba0c6e6d2fcbe76c334d7a29356891095c1de298a63a9e038920890a5bc278db",
+    "removeMorningPayment": "9ae9993a250828eaea78abcfb60151ae95ef8e72b1305f298512a8208341d97e",
+    "syncPaymentTotal": "d91e3be5f6bacbe9874438bd770bab2c1564a8df281a814c6842b8622d5df896"
+  }
+}

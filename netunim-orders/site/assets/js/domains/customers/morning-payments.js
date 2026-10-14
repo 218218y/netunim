@@ -38,18 +38,19 @@ function paymentFields(data,source){return `<div id="morningPaymentFields" class
   <button type="button" class="btn small morning-payment-add" data-action="morning-payment-add">+ הוסף תקבול</button>
   <div id="morningPaymentSummary" class="morning-payment-summary" role="status" aria-live="polite"><span>סה״כ סכום התקבולים</span><strong id="morningPaymentTotal">${money(morningPaymentTotalCents(initialPayments(data,source))/100)}</strong><small id="morningPaymentMatch">הסכום ייבדק מול סכום המסמך</small></div>
 </div>`}
+function paymentRows(){return [...(currentField('morningPaymentRows')?.querySelectorAll('[data-payment-row]')||[])]}
 function syncPaymentType(index=null){
-  const rows=[...document.querySelectorAll('[data-payment-row]')];for(const row of rows){if(index!==null&&Number(row.dataset.paymentRow)!==Number(index))continue;const type=Number(row.querySelector('[data-payment-field="type"]')?.value||4),cardNum=row.querySelector('[data-payment-field="cardNum"]');if(type===3&&cardNum&&!String(cardNum.value||'').trim())cardNum.value='****';row.querySelectorAll('[data-payment-kind],[data-payment-kinds]').forEach(el=>{el.hidden=!paymentKindVisible(el,type)})}
+  const rows=paymentRows();for(const row of rows){if(index!==null&&Number(row.dataset.paymentRow)!==Number(index))continue;const type=Number(row.querySelector('[data-payment-field="type"]')?.value||4),cardNum=row.querySelector('[data-payment-field="cardNum"]');if(type===3&&cardNum&&!String(cardNum.value||'').trim())cardNum.value='****';row.querySelectorAll('[data-payment-kind],[data-payment-kinds]').forEach(el=>{el.hidden=!paymentKindVisible(el,type)})}
 }
 function syncPaymentBank(index){
-  const row=document.querySelector(`[data-payment-row="${Number(index)}"]`),input=row?.querySelector('[data-payment-field="bankName"]');if(!input)return;const bank=resolveMorningBank(input.value);if(bank)input.value=formatMorningBank(bank);
+  const row=currentField('morningPaymentRows')?.querySelector(`[data-payment-row="${Number(index)}"]`),input=row?.querySelector('[data-payment-field="bankName"]');if(!input)return;const bank=resolveMorningBank(input.value);if(bank)input.value=formatMorningBank(bank);
 }
 function rowBankData(row){
   const raw=cleanText(row.querySelector('[data-payment-field="bankName"]')?.value,120),resolved=resolveMorningBank(raw),bankName=resolved?.name||morningBankName(raw),bankCode=resolved?.code||morningBankCode(raw),bankBranch=cleanText(row.querySelector('[data-payment-field="bankBranch"]')?.value,30),bankAccount=cleanText(row.querySelector('[data-payment-field="bankAccount"]')?.value,40);
   return {bankName,bankCode,bankBranch,bankAccount};
 }
 function readPaymentRows({strict=true}={}){
-  const rows=[...document.querySelectorAll('[data-payment-row]')];if(strict&&!rows.length)throw new Error('יש להוסיף לפחות תקבול אחד');
+  const rows=paymentRows();if(strict&&!rows.length)throw new Error('יש להוסיף לפחות תקבול אחד');
   return rows.map((row,index)=>{const type=Number(row.querySelector('[data-payment-field="type"]')?.value||0),date=String(currentField(`morningPaymentDate${index}`)?.value||''),price=Number(row.querySelector('[data-payment-field="price"]')?.value||0),bankSourceKey=cleanText(row.dataset.bankSourceKey,180),payment={type,date,price,currency:'ILS'};
     if(bankSourceKey)payment.bankSourceKey=bankSourceKey;
     if(!strict){Object.assign(payment,rowBankData(row),{transactionId:cleanText(row.querySelector('[data-payment-field="transactionId"]')?.value,80),cardType:Number(row.querySelector('[data-payment-field="cardType"]')?.value||1),cardNum:String(row.querySelector('[data-payment-field="cardNum"]')?.value||'').trim()||'****',chequeNum:cleanText(row.querySelector('[data-payment-field="chequeNum"]')?.value,40),locked:row.dataset.bankSource==='true',removable:row.dataset.bankRemovable==='true',source:row.dataset.bankSource==='true'?'bank':''});return payment}

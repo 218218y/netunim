@@ -45,10 +45,11 @@ const modalSession=createMorningModalSession({
   presentation:{render:modal,clear:owned=>{clearMorningDisplay(owned,modal)}},
 });
 function modalAssert(){modalSession.assert()}
+function currentRoot(){return modalSession.element}
 function currentField(id){return modalSession.element?.closest('#modal')?.querySelector('#'+id)||null}
 if(pendingRecovery){activeOperationId=pendingRecovery.operationId;activeDebtId=pendingRecovery.debtId;activeSource=sourceFromRecovery(pendingRecovery);issuanceContext=pendingRecovery;blocked=true}
 const {paymentFields,readPaymentRows,replaceMorningPayments,addMorningPayment,removeMorningPayment,syncPaymentType,syncPaymentBank,syncPaymentTotal}=createMorningPayments({dateEditorMarkup,toast,currentField,getSource:()=>activeSource,getSelectedType:()=>selectedType()});
-const bankTransactionLinker=createMorningBankTransactionLinker({toast,currentField,getActiveSource:()=>activeSource,setActiveSource:value=>{activeSource=value},getGeneration:()=>modalSession.generation,isActive,getBusinessBankTransactions,ensureBusinessBankTransactions,readPaymentRows,replaceMorningPayments,selectedType,syncDocumentType,syncPaymentType,syncPaymentTotal,setDateValue});
+const bankTransactionLinker=createMorningBankTransactionLinker({toast,currentField,currentRoot,getActiveSource:()=>activeSource,setActiveSource:value=>{activeSource=value},getGeneration:()=>modalSession.generation,isActive,getBusinessBankTransactions,ensureBusinessBankTransactions,readPaymentRows,replaceMorningPayments,selectedType,syncDocumentType,syncPaymentType,syncPaymentTotal,setDateValue});
 function isDebtRecoveryPending(debtId){
   const stored=loadMorningDebtRecoveryContext();
   return !!debtId&&[stored,pendingRecovery].some(context=>context?.debtId===debtId);
@@ -108,8 +109,8 @@ const statusFlow=createMorningStatus({
 function debtUpdatePanel(){return activeDebtId?morningDebtUpdateMarkup(customerDebtProgressData(currentDebt()||{})):''}
 function activeBankDebts(){return activeMorningBankDebts(model.state.customerDebts||[])}
 function bankDebtLinkPanel(){return activeSource?.kind==='bank'?morningBankDebtPickerMarkup({debts:model.state.customerDebts||[],transaction:activeSource.bankTransaction||null,activeDebtId,aggregate:activeSource.aggregate===true}):''}
-function filterBankDebtPicker(query=''){return filterMorningBankDebtPicker(query)}
-function syncBankDebtPickerSelection(){return syncMorningBankDebtPickerSelection({activeDebtId,debt:currentDebt()})}
+function filterBankDebtPicker(query=''){return filterMorningBankDebtPicker(query,currentRoot())}
+function syncBankDebtPickerSelection(){return syncMorningBankDebtPickerSelection({activeDebtId,debt:currentDebt(),root:currentRoot()})}
 function bankTransactionLinkPanel(source=activeSource){return bankTransactionLinker.panelMarkup(source)}
 function filterBankTransactionPicker(query=''){return bankTransactionLinker.filter(query)}
 function linkBankTransaction(transactionId){return bankTransactionLinker.link(transactionId,{blocked,busy:createBusy})}
@@ -163,7 +164,7 @@ function syncDocumentType(){
   modalSession.element?.querySelectorAll('[data-document-kind]').forEach(el=>{el.hidden=Number(el.dataset.documentKind)!==type});if(needsPayment)syncPaymentTotal();
 }
 function applyLinkedDebtIdentity(debt){const prefill=debt?debtMorningPrefill(debt):{taxId:'',remarks:''};for(const [fieldId,key] of [['morningClientTaxId','taxId'],['morningRemarks','remarks']]){const field=currentField(fieldId);if(!field)continue;const previous=String(field.dataset.debtPrefill||'');if(!field.value||field.value===previous)field.value=String(prefill[key]||'');field.dataset.debtPrefill=String(prefill[key]||'')}}
-function linkBankDebt(debtId){if(activeSource.kind!=='bank'||blocked||createBusy)return;const id=String(debtId||''),debt=id?activeBankDebts().find(row=>String(row.id)===id):null,exists=!id||!!debt;if(!exists)return toast('החוב שנבחר אינו קיים או שכבר הושלם');activeDebtId=id;applyLinkedDebtIdentity(debt);const host=currentField('morningDebtUpdateHost');if(host)host.innerHTML=debtUpdatePanel();syncDocumentType();syncBankDebtPickerSelection();collapseMorningBankDebtPicker()}
+function linkBankDebt(debtId){if(activeSource.kind!=='bank'||blocked||createBusy)return;const id=String(debtId||''),debt=id?activeBankDebts().find(row=>String(row.id)===id):null,exists=!id||!!debt;if(!exists)return toast('החוב שנבחר אינו קיים או שכבר הושלם');activeDebtId=id;applyLinkedDebtIdentity(debt);const host=currentField('morningDebtUpdateHost');if(host)host.innerHTML=debtUpdatePanel();syncDocumentType();syncBankDebtPickerSelection();collapseMorningBankDebtPicker(currentRoot())}
 
 function validateTaxId(value){const digits=String(value||'').replace(/\D/g,'');if(!digits)return'';if(digits.length>9)throw new Error('מספר עוסק / ח.פ. יכול להכיל עד 9 ספרות');const padded=digits.padStart(9,'0');let sum=0;for(let i=0;i<9;i++){let product=Number(padded[i])*((i%2)+1);if(product>9)product-=9;sum+=product}if(sum%10!==0)throw new Error('מספר העוסק / ח.פ. אינו תקין');return padded}
 function readForm(){
@@ -340,6 +341,7 @@ function openExistingDocument(documentId,button,operationId){try{captureScope(tr
 async function reconcile(button){if(createBusy)return;setBusy(button,true,'בודק…');try{await refreshStatus({reconcile:true})}finally{setBusy(button,false)}}
 
 function dispose(){if(disposed)return false;disposed=true;lifetime.dispose();modalSession.dispose();return true}
+function editCommand(run,args){return disposed||!isActive(modalSession.generation)?false:run(...args)}
 function command(run,args){return disposed?Promise.resolve(false):lifetime.run(()=>run(...args))}
 const runtime={dispose,cancelPending:()=>{lifetime.cancelPending();statusFlow.cancelPending()},drain:lifetime.drain,isPending:lifetime.isPending};
 return {
@@ -350,17 +352,17 @@ return {
   openMorningDocument:(...args)=>command(openMorningDocument,args),
   openStandaloneMorningDocument:(...args)=>command(openStandaloneMorningDocument,args),
   openBankMorningDocument:(...args)=>command(openBankMorningDocument,args),
-  linkBankDebt:(...args)=>disposed?false:linkBankDebt(...args),
-  filterBankDebtPicker:(...args)=>disposed?false:filterBankDebtPicker(...args),
-  linkBankTransaction:(...args)=>disposed?false:linkBankTransaction(...args),
-  clearBankTransactionLink:(...args)=>disposed?false:clearBankTransactionLink(...args),
-  filterBankTransactionPicker:(...args)=>disposed?false:filterBankTransactionPicker(...args),
-  addMorningPayment:(...args)=>disposed?false:addMorningPayment(...args),
-  removeMorningPayment:(...args)=>disposed?false:removeMorningPayment(...args),
-  syncPaymentTotal:(...args)=>disposed?false:syncPaymentTotal(...args),
-  syncDocumentType:(...args)=>disposed?false:syncDocumentType(...args),
-  syncPaymentType:(...args)=>disposed?false:syncPaymentType(...args),
-  syncPaymentBank:(...args)=>disposed?false:syncPaymentBank(...args),
+  linkBankDebt:(...args)=>editCommand(linkBankDebt,args),
+  filterBankDebtPicker:(...args)=>editCommand(filterBankDebtPicker,args),
+  linkBankTransaction:(...args)=>editCommand(linkBankTransaction,args),
+  clearBankTransactionLink:(...args)=>editCommand(clearBankTransactionLink,args),
+  filterBankTransactionPicker:(...args)=>editCommand(filterBankTransactionPicker,args),
+  addMorningPayment:(...args)=>editCommand(addMorningPayment,args),
+  removeMorningPayment:(...args)=>editCommand(removeMorningPayment,args),
+  syncPaymentTotal:(...args)=>editCommand(syncPaymentTotal,args),
+  syncDocumentType:(...args)=>editCommand(syncDocumentType,args),
+  syncPaymentType:(...args)=>editCommand(syncPaymentType,args),
+  syncPaymentBank:(...args)=>editCommand(syncPaymentBank,args),
   previewMorningDocument:(...args)=>command(previewMorningDocument,args),
   createMorningDocument:(...args)=>command(createMorningDocument,args),
   openExistingDocument:(...args)=>command(openExistingDocument,args),

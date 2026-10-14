@@ -3,6 +3,7 @@ import {money} from '../../core/money.js';
 import {customerDebtProgressData} from '../../shared/customer-debt-progress.js';
 import {customerDebtStatus} from './model.js';
 import {bankMorningDebtCandidates} from '../finance/bank-morning.js';
+function field(root,id){return root.querySelector?.('#'+id)||root.getElementById?.(id)||null}
 
 function cleanText(value,max=250){return String(value??'').trim().slice(0,max)}
 function debtSearchText(debt){return [debt?.customerName,debt?.phone,debt?.note,debt?.clearingApproval,debt?.customerId].map(value=>cleanText(value,180).toLocaleLowerCase('he').replace(/\s+/g,' ')).filter(Boolean).join(' ')}
@@ -56,16 +57,16 @@ export function morningBankDebtPickerMarkup({debts=[],transaction=null,activeDeb
 export function filterMorningBankDebtPicker(query='',root=globalThis.document){
   if(!root)return 0;const needle=cleanText(query,180).toLocaleLowerCase('he').replace(/\s+/g,' '),rows=[...root.querySelectorAll('[data-bank-debt-row]')];let visible=0;
   for(const row of rows){const match=!needle||String(row.dataset.bankDebtSearch||'').includes(needle);row.hidden=!match;if(match)visible++}
-  const empty=root.getElementById?.('morningBankDebtEmpty'),count=root.getElementById?.('morningBankDebtCount');if(empty)empty.hidden=visible>0;if(count)count.textContent=visible?`מציג ${visible} חובות פעילים המתאימים לחיפוש${root.querySelector('[data-bank-debt-card-id]')?' · ההתאמה המועדפת מוצגת בנפרד למעלה':''}`:'אין חובות פעילים המתאימים לחיפוש';return visible;
+  const empty=field(root,'morningBankDebtEmpty'),count=field(root,'morningBankDebtCount');if(empty)empty.hidden=visible>0;if(count)count.textContent=visible?`מציג ${visible} חובות פעילים המתאימים לחיפוש${root.querySelector('[data-bank-debt-card-id]')?' · ההתאמה המועדפת מוצגת בנפרד למעלה':''}`:'אין חובות פעילים המתאימים לחיפוש';return visible;
 }
 
 export function collapseMorningBankDebtPicker(root=globalThis.document){
-  const shell=root?.querySelector?.('.morning-bank-debt-search-shell'),focused=root?.activeElement;if(shell&&focused instanceof HTMLElement&&shell.contains(focused))focused.blur();
+  const shell=root?.querySelector?.('.morning-bank-debt-search-shell'),focused=root?.ownerDocument?.activeElement||root?.activeElement;if(shell&&focused instanceof HTMLElement&&shell.contains(focused))focused.blur();
 }
 
 export function syncMorningBankDebtPickerSelection({activeDebtId='',debt=null,root=globalThis.document}={}){
   if(!root)return;const id=String(activeDebtId||'');
   root.querySelectorAll('[data-bank-debt-choice]').forEach(button=>{const selected=!!id&&String(button.dataset.bankDebtId)===id;button.disabled=selected;button.classList.toggle('selected',selected);button.setAttribute('aria-pressed',selected?'true':'false')});
   root.querySelectorAll('[data-bank-debt-row-id]').forEach(row=>row.classList.toggle('selected',!!id&&String(row.dataset.bankDebtRowId)===id));root.querySelectorAll('[data-bank-debt-card-id]').forEach(card=>card.classList.toggle('selected',!!id&&String(card.dataset.bankDebtCardId)===id));
-  const clear=root.querySelector('.morning-bank-debt-clear'),status=root.getElementById?.('morningBankDebtSelectionStatus'),search=root.getElementById?.('morningBankDebtSearch'),selected=root.getElementById?.('morningBankDebtSelected');if(clear)clear.hidden=!id;if(search){search.value=id?String(debt?.customerName||'הלקוח שנבחר'):'';search.dataset.selectedDebtId=id}if(selected){selected.hidden=!id;selected.innerHTML=id?selectedDebtMarkup(debt):''}if(status)status.textContent=id?`מקושר כעת לחוב של ${debt?.customerName||'הלקוח שנבחר'}`:'לא נבחר חוב. הפקת המסמך לא תשנה חוב מקומי עד שתבחר חוב.';
+  const clear=root.querySelector('.morning-bank-debt-clear'),status=field(root,'morningBankDebtSelectionStatus'),search=field(root,'morningBankDebtSearch'),selected=field(root,'morningBankDebtSelected');if(clear)clear.hidden=!id;if(search){search.value=id?String(debt?.customerName||'הלקוח שנבחר'):'';search.dataset.selectedDebtId=id}if(selected){selected.hidden=!id;selected.innerHTML=id?selectedDebtMarkup(debt):''}if(status)status.textContent=id?`מקושר כעת לחוב של ${debt?.customerName||'הלקוח שנבחר'}`:'לא נבחר חוב. הפקת המסמך לא תשנה חוב מקומי עד שתבחר חוב.';
 }
