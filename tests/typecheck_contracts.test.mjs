@@ -58,6 +58,18 @@ test('the actual Kupa Bank vault owner cannot replace confirmed success with dis
  const diagnostics=check(new Map([[source,changed]]));
  assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
 });
+test('the actual Finance import owner rejects a textual command confirmation',()=>{
+ const source=path.join(root,'shared/finance-connection-import-runtime.js'),original=readFileSync(source,'utf8');
+ const changed=original.replace(/(const cleanupWarnings[\s\S]*?)return true;/,"$1return 'imported';");assert.notEqual(changed,original);
+ const diagnostics=check(new Map([[source,changed]]));
+ assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+});
+test('the actual native Finance file owner cannot fabricate a drain receipt',()=>{
+ const source=path.join(root,'shared/finance-connection-file-selection.js'),original=readFileSync(source,'utf8');
+ const changed=original.replace('drain: work.drain', 'drain: () => true');assert.notEqual(changed,original);
+ const diagnostics=check(new Map([[source,changed]]));
+ assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+});
 test('the actual Credit connection readout cannot replace local profile evidence with display text',()=>{
  const source=path.join(root,'netunim-kupa/site/assets/js/domains/credit/connection-owner.js'),original=readFileSync(source,'utf8');
  const changed=original.replace('local: record(local)',"local: 'yes'");assert.notEqual(changed,original);

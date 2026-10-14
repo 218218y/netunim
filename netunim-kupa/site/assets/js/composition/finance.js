@@ -1,4 +1,4 @@
-import {createFinanceConnectionImporter} from '../shared/finance-connection-import.js';
+import {createFinanceConnectionImportCapability} from '../shared/finance-connection-import-capability.js';
 import {createBankChequeImageStorage} from '../shared/bank-cheque-images.js';
 import {createBankBridgeIntegration} from '../integrations/bank-bridge.js';
 import {createKupaBankCapability} from './bank.js';
@@ -48,14 +48,15 @@ export function composeKupaFinance({
     revisions:{touchData:()=>domainRevisions.touch(['bank','bankFeed']),touchDisplay:()=>domainRevisions.touch('bankDisplay')},
   });
   function createConnectionImporter(){
-    return createFinanceConnectionImporter({
+    return createFinanceConnectionImportCapability({
       bridge,
       getCreditProfiles:()=>model.state.creditSync?.profiles||[],
       confirmDialog:async(...args)=>bank.runtime.isActive()&&await getUiModal().confirmDialog(...args)&&bank.runtime.isActive(),
       toast:(...args)=>{if(bank.runtime.isActive())uiStatus.toast(...args)},
-      afterImport:async()=>{
-        if(!bank.runtime.isActive())return;
+      afterImport:async(_result,assertCurrent)=>{
+        assertCurrent();if(!bank.runtime.isActive())return;
         await Promise.all([bank.queries.refreshStatus(),credit.queries.refreshStatus({quiet:true})]);
+        assertCurrent();
         if(bank.runtime.isActive())uiNavigation.render();
       },
     });

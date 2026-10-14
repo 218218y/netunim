@@ -138,9 +138,11 @@ export function createKupaBankCapability({
     if (binding) throw new Error('kupa_bank_ui_already_bound');
     requireMethods('modal', modal, ['modal', 'closeModal']);
     requireMethods('date', date, ['dateEditorMarkup']);
-    if (!ui || [toast, renderView, runFinance, importConnections].some(method => typeof method !== 'function')) {
+    if (!ui || [toast, renderView, runFinance].some(method => typeof method !== 'function')) {
       throw new TypeError('kupa_bank_ui_commands_required');
     }
+    requireMethods('import_commands',importConnections?.commands,['importConnections']);
+    requireMethods('import_runtime',importConnections?.runtime,['isPending','drain','dispose']);
     const forms = createBankConnectionForms({commands,readPairing:connections.queries.snapshot,isActive:() => !disposed});
     const view = createDomainsBankView({
       bindConnectionForms:forms.bind,
@@ -155,8 +157,8 @@ export function createKupaBankCapability({
       dateEditorMarkup:date.dateEditorMarkup,
     });
     const search = createLazyDeferredSearchUpdater(value => { if (!disposed) ui.bankSearchValue = value; }, presentation.setBankSearch);
-    const actions = createBankActions({bankCommands:commands, bankPresentation:presentation, connectionForms:forms, importFinanceConnections:importConnections, ui, toast:notify, search});
-    binding = {view, forms, toast, render:renderView, search, actions:Object.fromEntries(Object.entries(actions).map(([name, handler]) =>
+    const actions = createBankActions({bankCommands:commands, bankPresentation:presentation, connectionForms:forms, importFinanceConnections:importConnections.commands.importConnections, ui, toast:notify, search});
+    binding = {view, forms, importConnections, toast, render:renderView, search, actions:Object.fromEntries(Object.entries(actions).map(([name, handler]) =>
       [name, (...args) => disposed ? false : handler(...args)]))};
   }
   const runtime = {
@@ -164,11 +166,12 @@ export function createKupaBankCapability({
     start() { if (disposed) return false; ready(); return controller.startAutoSync(); },
     stop:controller.stopAutoSync,
     wake() { if (disposed) return false; ready(); return controller.maybeAutoRefreshBankBalance(); },
-    isPending:() => controller.runtime.isPending() || connections.runtime.isPending() || pending.size > 0,
-    async drain() { await controller.runtime.drain(); await connections.runtime.drain(); await archive.runtime.drain(); while (pending.size) await Promise.allSettled([...pending]); },
+    isPending:() => controller.runtime.isPending() || connections.runtime.isPending() || !!binding?.importConnections.runtime.isPending() || pending.size > 0,
+    async drain() { do { await Promise.all([controller.runtime.drain(),connections.runtime.drain(),archive.runtime.drain(),binding?.importConnections.runtime.drain(),Promise.allSettled([...pending])]); } while(runtime.isPending()); },
     dispose() {
       if (disposed) return false;
       disposed = true;
+      binding?.importConnections.runtime.dispose();
       controller.runtime.dispose();
       connections.runtime.dispose();
       archive.runtime.dispose();

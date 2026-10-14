@@ -997,3 +997,13 @@ The controller's local connection bodies and download port are retired while
 financial lease/provider publication remains separate. Ten registered native
 browser/IDB cases, strict negative/body mutations and preserved policy fixtures
 protect this slice. See [Kupa Bank connections](KUPA_BANK_CONNECTION_OWNER.md).
+
+Full local Bank/Credit connection import now has one canonical six-port runtime
+and a native file-selection resource owner. Nine pre-change cases reproduced
+device drift, late publication, overlapping selection, a version-evidence bypass
+and leaked input cleanup. Both app capabilities join import work in their
+lifecycle, and publication receives its captured device guard. The callable
+importer and unowned picker are retired; immutable parser/identity/summary
+policies and active historical readers remain. Twenty native browser/IDB cases
+and strict actual-body/negative consumer tests protect the slice. See
+[Finance import ownership](FINANCE_CONNECTION_IMPORT_OWNERSHIP.md).

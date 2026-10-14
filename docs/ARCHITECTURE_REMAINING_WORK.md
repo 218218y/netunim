@@ -73,6 +73,13 @@ remaining-scope paragraphs describe their stage's starting point.
   [Kupa Bank connections](KUPA_BANK_CONNECTION_OWNER.md).
 - Full CI covers PostgreSQL, native browser/IDB, lost ACKs, ownership changes,
   recovery and Windows, and remains mandatory for each slice.
+- Both applications' full local Finance connection import now has a strict
+  device owner and native file-selection owner, joined by Kupa Bank and Orders
+  Finance. Confirmation/publication cannot drift to a replacement device;
+  disposal removes inputs/listeners and drains accepted file/Bridge work. The
+  callable importer and unowned picker exports are retired; canonical document
+  and historical identity algorithms are preserved. See
+  [Finance import ownership](FINANCE_CONNECTION_IMPORT_OWNERSHIP.md).
 
 ## Four major work packages
 

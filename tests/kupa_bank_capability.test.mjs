@@ -28,7 +28,7 @@ function fixture(t) {
   });
   const ui = {currentPage:'bank',bankSearchValue:''};
   const view = {ui, modal:{modal:unexpected,closeModal:unexpected}, date:{dateEditorMarkup:unexpected},
-    toast:message => events.push(message), render:() => events.push('render'), runFinance:unexpected, importConnections:unexpected};
+    toast:message => events.push(message), render:() => events.push('render'), runFinance:unexpected, importConnections:{commands:{importConnections:unexpected},runtime:{isPending:()=>false,drain:async()=>{},dispose:()=>true}}};
   t.after(() => { held.resolve(); cap.runtime.dispose(); });
   return {cap, model, ui, cloud, bridge, persistence, readout, events, view, jobs, held, entered, cleanup:() => cleanup};
 }

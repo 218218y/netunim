@@ -20,6 +20,9 @@
     "types": []
   },
   "files": [
+    "shared/finance-connection-import-runtime.js",
+    "shared/finance-connection-file-selection.js",
+    "tests/fixtures/checked-finance-connection-import.mjs",
     "netunim-kupa/site/assets/js/domains/bank/connection-owner.js",
     "tests/fixtures/checked-kupa-bank-connection-owner.mjs",
     "netunim-orders/site/assets/js/domains/finance/bank-connection-owner.js",
