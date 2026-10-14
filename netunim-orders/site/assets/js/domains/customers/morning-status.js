@@ -20,10 +20,10 @@ function failureMessage(error){return error!==null&&typeof error==='object'&&'me
  * @param {{
  * lifetime:Pick<import('./morning-lifetime.js').MorningLifetime,'capture'|'run'|'scheduleRecovery'>,
  * commands:Pick<import('./morning-operation-commands.js').MorningOperationCommands,'status'>,
- * session:{assertModal:()=>void,read:()=>StatusSession,isActive:(generation:number)=>boolean,update:(state:{blocked:boolean,completed?:boolean})=>void},
+ * session:{assertModal:()=>undefined,read:()=>StatusSession,isActive:(generation:number)=>boolean,update:(state:{blocked:boolean,completed?:boolean})=>undefined},
  * recovery:{abandon:(id:string,options:{assertCurrent:MorningAssertion})=>Promise<{abandoned:boolean,operation:LedgerOperation|null}>,reset:(id:string)=>boolean},
- * application:{apply:(args:import('./morning-debt-application.js').VerifiedDocument,options:{assertCurrent:MorningAssertion,isCurrent:()=>boolean})=>Promise<ApplicationResult>,settle:(id:string,result:ApplicationResult,options:{serverLinkPending:boolean})=>import('./morning-recovery.js').Settlement,notify:(context:ApplicationContext|null,link:BankLink|null|undefined)=>void},
- * presentation:{status:(kind:import('./morning-status-message.js').StatusKind,text:string)=>void,operation:(row:LedgerOperation|null)=>void,markSaved:()=>void,button:(state:{disabled:boolean,completed?:boolean})=>void}
+ * application:{apply:(args:import('./morning-debt-application.js').VerifiedDocument,options:{assertCurrent:MorningAssertion,isCurrent:()=>boolean})=>Promise<ApplicationResult>,settle:(id:string,result:ApplicationResult,options:{serverLinkPending:boolean})=>import('./morning-recovery.js').Settlement,notify:(context:ApplicationContext|null,link:BankLink|null|undefined)=>undefined},
+ * presentation:{status:(kind:import('./morning-status-message.js').StatusKind,text:string)=>undefined,operation:(row:LedgerOperation|null)=>undefined,markSaved:()=>undefined,button:(state:{disabled:boolean,completed?:boolean})=>undefined}
  * }} ports
  * @returns {StatusCapability}
  */

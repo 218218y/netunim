@@ -3,6 +3,14 @@ import {createMorningDebtApplication} from '../../netunim-orders/site/assets/js/
 /** @type {Parameters<typeof createMorningStatus>[0]} */
 const ports={lifetime:{capture:()=>()=>undefined,run:async work=>work(),scheduleRecovery:()=>false},commands:{status:async()=>({ok:true,operation:null})},session:{assertModal(){},read:()=>({operationId:'bound-ID',generation:1,busy:false,blocked:false,completed:false,pendingOperationId:null,context:null}),isActive:()=>true,update(){}},recovery:{abandon:async()=>({abandoned:false,operation:null}),reset:()=>false},application:{apply:async()=>({changed:false}),settle:()=>({durable:false,blocked:true,recoveryCleared:false}),notify(){}},presentation:{status(){},operation(){},markSaved(){},button(){}}};
 const status=createMorningStatus(ports);void status.refresh({reconcile:true});status.cancelPending();
+// @ts-expect-error A deferred modal assertion cannot authorize immediate work.
+createMorningStatus({...ports,session:{...ports.session,assertModal:async()=>undefined}});
+// @ts-expect-error Session flags must be committed before presentation reads them.
+createMorningStatus({...ports,session:{...ports.session,update:async()=>undefined}});
+// @ts-expect-error Deferred draft certification cannot escape the current-form fence.
+createMorningStatus({...ports,presentation:{...ports.presentation,markSaved:async()=>true}});
+// @ts-expect-error A delayed renderer cannot publish after the captured form changes.
+createMorningStatus({...ports,presentation:{...ports.presentation,status:async()=>undefined}});
 // @ts-expect-error An async truthy callback cannot grant presentation authority.
 createMorningStatus({...ports,session:{...ports.session,isActive:async()=>true}});
 // @ts-expect-error A generation is numeric identity, not a display label.

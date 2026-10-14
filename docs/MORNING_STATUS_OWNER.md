@@ -51,6 +51,8 @@ Strict checkJs checks the status, message and application bodies. Negative
 consumers reject asynchronous presentation permission, textual generation or
 completion and arbitrary backend access. Actual body mutations reject fabricated
 session completion, a string presentation result and a string pending result.
+Modal assertions, session updates and presentation effects explicitly require
+synchronous completion: deferred callbacks cannot escape the publication fence.
 
 Existing immutable allocation, issuance, recovery and confirmation policy checks
 retain their financial behavior, with explicit normalization only for the new

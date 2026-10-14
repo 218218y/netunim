@@ -97,7 +97,7 @@ const statusFlow=createMorningStatus({
   recovery:{abandon:abandonRecoveredReservation,reset:resetOperationAfterTerminal},
   application:{apply:applyVerifiedOperation,settle:settleVerifiedRecovery,notify:notifyBankVerified},
   presentation:{
-    status:connectionStatus,operation:renderOperation,markSaved:()=>markModalDraftSaved?.(),
+    status:connectionStatus,operation:renderOperation,markSaved:()=>{markModalDraftSaved?.()},
     button:({disabled,completed:done=false})=>{const button=document.querySelector('[data-action="morning-create"]');if(button){button.disabled=disabled;if(done){button.dataset.idleLabel='הופק ואומת';button.textContent='הופק ואומת'}}},
   },
 });
