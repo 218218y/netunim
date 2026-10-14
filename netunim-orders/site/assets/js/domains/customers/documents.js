@@ -336,7 +336,7 @@ async function createMorningDocument(button){
   }finally{createBusy=false;setBusy(button,false);if(button)button.disabled=blocked||completed}
 }
 
-function openExistingDocument(documentId,button,operationId){try{modalAssert?.();captureScope(true)()}catch(error){toast(error.message);return false}return documentId?documentsBrowser.viewDocument(documentId,button):documentsBrowser.viewVerifiedOperation(operationId,button)}
+function openExistingDocument(documentId,button,operationId){try{captureScope(true)()}catch(error){toast(error.message);return false}return documentId?documentsBrowser.viewDocument(documentId,button):documentsBrowser.viewVerifiedOperation(operationId,button)}
 async function reconcile(button){if(createBusy)return;setBusy(button,true,'בודק…');try{await refreshStatus({reconcile:true})}finally{setBusy(button,false)}}
 
 function dispose(){if(disposed)return false;disposed=true;lifetime.dispose();modalSession.dispose();return true}

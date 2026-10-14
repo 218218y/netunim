@@ -61,6 +61,14 @@ confirmation, exact original event IDs, preserved notes/Shared journal and an
 unrelated dirty draft. Provider transport is synthetic; modal and journal effects
 are native. Full Git CI remains the final merge gate.
 
+The first full branch run exposed a consumer boundary missed by focused checks:
+history/search PDF reads share the controller action, but belong to the separate
+browser/media display. Requiring an issuance form incorrectly blocked those
+reads after close or before a form had been opened. A focused public-action
+regression reproduces that failure. The action now requires current read/lifetime
+authority and delegates display ownership to the browser/media owner. Form edits,
+preview/issuance and recovery choices still require their mounted form session.
+
 The combined slice reduces `documents.js` from about 51.6 KB to 41.5 KB. Wider
 customer composition, form editing/Bank linking and search/metadata response
 contracts remain separate work. This is not a claim of full plan completion or

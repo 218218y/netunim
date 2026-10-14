@@ -48,3 +48,10 @@ test('a delayed standalone PDF cannot replace a newer modal owned by another cap
   assert.equal(await viewing,false,'the former modal request must lose publication authority');
   assert.deepEqual(f.modals,['Other capability']);assert.equal(f.urls.size,0);
 });
+
+test('reading an existing PDF uses browser authority without requiring an issuance form',async t=>{
+  const f=fixture(t);
+  assert.equal(await f.documents.openExistingDocument('official-document'),true,'a read from history/search owns a separate display');
+  assert.match(f.frame.src,/^blob:/);assert.equal(f.modals.length,1);
+  assert.match(await f.urls.get(f.frame.src).text(),/exact official PDF/);
+});
