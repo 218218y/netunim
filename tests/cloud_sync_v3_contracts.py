@@ -168,10 +168,12 @@ for label, path in (("Orders", ORDERS / "site/assets/js/storage/tab-lock.js"),
     ok("createPrimaryTabLock({lockName:TAB_LOCK" in source and "../shared/tab-lock.js" in source,
        f"{label}: app-specific lock name is bound to the canonical shared implementation")
 
-calendar = (ORDERS / "site/assets/js/domains/calendar/controller.js").read_text(encoding="utf-8")
+calendar = (ORDERS / "site/assets/js/calendar/session-runtime.js").read_text(encoding="utf-8")
+calendar_display = (ORDERS / "site/assets/js/domains/calendar/controller.js").read_text(encoding="utf-8")
 main = (ORDERS / "site/assets/js/main.js").read_text(encoding="utf-8")
 edge = (ORDERS / "supabase/functions/google-calendar-oauth/index.ts").read_text(encoding="utf-8")
-ok("!tab.primaryTab&&ui.currentView!=='calendar'" in calendar
+ok("!display.isPrimary()&&!display.isOpen()" in calendar
+   and "isPrimary:()=>tab.primaryTab" in calendar_display and "isOpen:()=>ui.currentView==='calendar'" in calendar_display
    and main.index("lifecycle.boot().then") < main.index("domainsCalendarController.start()", main.index("lifecycle.boot().then")),
    "Calendar background startup is gated by completed primary-tab election")
 ok("calendar_data_api_unavailable" in edge and "PGRST002" in edge and "PGRST003" in edge,
