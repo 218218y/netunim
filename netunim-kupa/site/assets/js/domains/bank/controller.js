@@ -273,6 +273,7 @@ function startAutoSync(){if(disposed)return false;automaticActive=true;automatic
 function stopAutoSync(){automaticActive=false;return autoTask.stop()}
 
 const runtime={
+  isPending:workOwner.isPending,
   drain:workOwner.drain,
   dispose(){if(disposed)return false;disposed=true;workOwner.close();stopAutoSync();return true},
 };

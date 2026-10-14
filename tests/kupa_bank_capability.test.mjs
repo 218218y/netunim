@@ -60,6 +60,7 @@ for (const operation of ['stop','dispose']) test(`Bank ${operation} drains a hel
   // Rebind neither ports nor owners: the capability keeps focused injected ports.
   const pending = f.cap.commands.refreshBankBalance({auto:true});
   await entered.promise;
+  assert.equal(f.cap.runtime.isPending(),true,'Bank pending state must include an accepted financial provider');
   f.cap.runtime[operation]();
   let drained = false;
   const drain = f.cap.runtime.drain().then(() => { drained = true; });
@@ -68,6 +69,7 @@ for (const operation of ['stop','dispose']) test(`Bank ${operation} drains a hel
   provider.resolve({fetchedAt:'2026-10-12T00:00:00Z',balance:500,transactions:[]});
   assert.equal(await pending,operation === 'stop');
   await drain;
+  assert.equal(f.cap.runtime.isPending(),false);
   assert.equal(writes,operation === 'stop' ? 1 : 0);
   assert.equal(releases,operation === 'stop' ? 1 : 0);
   if (operation === 'dispose') assert.deepEqual(f.events,before);

@@ -164,7 +164,7 @@ export function createKupaBankCapability({
     start() { if (disposed) return false; ready(); return controller.startAutoSync(); },
     stop:controller.stopAutoSync,
     wake() { if (disposed) return false; ready(); return controller.maybeAutoRefreshBankBalance(); },
-    isPending:() => connections.runtime.isPending() || pending.size > 0,
+    isPending:() => controller.runtime.isPending() || connections.runtime.isPending() || pending.size > 0,
     async drain() { await controller.runtime.drain(); await connections.runtime.drain(); await archive.runtime.drain(); while (pending.size) await Promise.allSettled([...pending]); },
     dispose() {
       if (disposed) return false;

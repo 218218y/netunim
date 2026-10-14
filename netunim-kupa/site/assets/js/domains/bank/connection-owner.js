@@ -25,8 +25,9 @@ function message(error) {
 function text(value) {
   return String(value || '');
 }
+/** @returns {ConnectionState} */
 function initialState() {
-  return /** @type {ConnectionState} */ ({
+  return {
     checked: false,
     available: null,
     configured: false,
@@ -54,7 +55,7 @@ function initialState() {
     availabilityError: '',
     availabilityErrorAt: null,
     message: '',
-  });
+  };
 }
 /** @param {ConnectionState} target @param {ConnectionRecord} source */
 function applyBridgeAccountFields(target, source = {}) {
