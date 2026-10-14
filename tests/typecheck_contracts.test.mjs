@@ -26,6 +26,18 @@ function check(overrides=new Map()){
 }
 function describe(diagnostics){return ts.formatDiagnostics(diagnostics,{getCanonicalFileName:file=>file,getCurrentDirectory:()=>root,getNewLine:()=> '\n'})}
 
+test('Main write authority and transport reject fabricated authority in their actual bodies',()=>{
+ for(const [file,from,to] of [
+  ['shared/cloud-write-authority.js','cloudWriteScopeIsCurrent(captured, scope.read(), head)',"'current'"],
+  ['shared/cloud-write-authority.js','isCurrent: () => isCurrent(captured)','isCurrent: async () => isCurrent(captured)'],
+  ['netunim-kupa/site/assets/js/cloud/main-document-write.js','return { r, j, body, row: Array.isArray(j) ? j[0] : j };',"return {r:'saved',j,body,row:Array.isArray(j)?j[0]:j};"],
+ ]){
+  const source=path.join(root,file),original=readFileSync(source,'utf8'),changed=original.replace(from,to);assert.notEqual(changed,original);
+  const diagnostics=check(new Map([[source,changed]]));
+  assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&[2322,2345].includes(item.code)),describe(diagnostics));
+ }
+});
+
 test('Morning Bank link bodies reject textual refresh results and fabricated source identity',()=>{
  for(const [name,from,to] of [
   ['morning-bank-transaction-link.js','presentation.select(selectedTransaction());return true;',"presentation.select(selectedTransaction());return 'refreshed';"],

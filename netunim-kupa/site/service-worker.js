@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='kupa-app-shell-';
-const CACHE='kupa-app-shell-esm-f57004d0603e';
+const CACHE='kupa-app-shell-esm-4eb47f69b6a8';
 const SHELL=[
   './',
   './index.html',
@@ -8,6 +8,7 @@ const SHELL=[
   './assets/app.css',
   './assets/app.js',
   './assets/js/cloud/auth.js',
+  './assets/js/cloud/main-document-write.js',
   './assets/js/cloud/transport.js',
   './assets/js/composition/bank-queries.js',
   './assets/js/composition/bank.js',
@@ -19,6 +20,7 @@ const SHELL=[
   './assets/js/composition/expenses.js',
   './assets/js/composition/finance-cloud.js',
   './assets/js/composition/finance.js',
+  './assets/js/composition/main-sync.js',
   './assets/js/composition/notes.js',
   './assets/js/composition/state-normalization.js',
   './assets/js/composition/storage-v2.js',
@@ -118,6 +120,7 @@ const SHELL=[
   './assets/js/shared/cloud-post-ack-recovery.js',
   './assets/js/shared/cloud-recovery-runtime.js',
   './assets/js/shared/cloud-sync.js',
+  './assets/js/shared/cloud-write-authority.js',
   './assets/js/shared/cloud-write-scope.js',
   './assets/js/shared/credit-billing-cycles.js',
   './assets/js/shared/credit-card-account.js',

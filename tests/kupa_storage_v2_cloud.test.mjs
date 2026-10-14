@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createSyncDocument} from '../netunim-kupa/site/assets/js/sync/document.js';
+import {createKupaSync as createSyncDocument} from './sync_document_ports.mjs';
 import {createStateNormalization} from '../netunim-kupa/site/assets/js/composition/state-normalization.js';
 import {INITIAL_STATE} from '../netunim-kupa/site/assets/js/state/constants.js';
 import {createStorageV2Runtime} from '../shared/storage-v2-runtime.js';

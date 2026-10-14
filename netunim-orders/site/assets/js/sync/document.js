@@ -1,3 +1,4 @@
+import {createCloudWriteAuthority} from '../shared/cloud-write-authority.js';
 import {createCloudWriteFlight} from './write-flight.js';
 import {createCloudAckPublication} from './ack-publication.js';
 import {createCloudConfirmation} from './confirmation.js';
@@ -12,16 +13,27 @@ import {commitCloudCheckpoint} from '../shared/cloud-checkpoint-publication.js';
 import {createOutboxRetryScheduler,normalizeCloudError} from '../shared/cloud-sync.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createSyncDocument({readStorageV2CloudRecovery=null,commitStorageV2CloudRecovery=null,getCloudWriteScope=()=>null,cancelCloudRecovery=()=>{},model,files,session,tab,toast,setCloud,prepareCloudState,writeStateToFolder,readCloud,rpcSaveV2,merge3,applyOrderCloudState,composeOrderCloudState=(cloud,current)=>({...clone(cloud),checks:clone(current.checks||[])}),cloudEnabled,sameOrderCloudData,cloudHasLocalWork,render,readCloudMeta,refreshKupaReadout,pollSharedChecks,refreshCloudTimestamp,refreshStorageV2CloudState=async()=>null,materializeStorageV2CloudFlight=async()=>null,acknowledgeStorageV2CloudFlight=async()=>null,rejectStorageV2CloudFlight=async()=>null,setStorageV2CloudControl=async()=>null,adoptStorageV2CloudHead=async()=>null,storageV2CommitPromise=()=>Promise.resolve(),storageV2PreparationActive=()=>false}){
+export function createSyncDocument({model,session,tab,access,journal,checkpoint,recovery,projection,transport,view,mirror,secondary}){
+const {getCloudWriteScope,storageV2PreparationActive,cloudEnabled,cloudHasLocalWork}=access;
+const {refreshStorageV2CloudState,materializeStorageV2CloudFlight,acknowledgeStorageV2CloudFlight,rejectStorageV2CloudFlight,setStorageV2CloudControl,storageV2CommitPromise}=journal;
+const {adoptStorageV2CloudHead}=checkpoint;
+const {readStorageV2CloudRecovery,commitStorageV2CloudRecovery,cancelCloudRecovery}=recovery;
+const {prepareCloudState,sameOrderCloudData,merge3,composeOrderCloudState,applyOrderCloudState}=projection;
+const {readCloud,readCloudMeta,rpcSaveV2}=transport;
+const {setCloud,toast,render,refreshCloudTimestamp}=view;
+const {files,writeStateToFolder}=mirror;
+const {pollSharedChecks,refreshKupaReadout}=secondary;
+
 const outboxRetryScheduler=createOutboxRetryScheduler();
 let savingScope=null,cloudSavePromise=null,wakeEpoch=0;
 const saveWork=createRuntimeTaskOwner();
 let concurrentAckReview=null;
-const writeScopeCurrent=(scope,head=null)=>tab.primaryTab&&!storageV2PreparationActive()&&cloudWriteScopeIsCurrent(scope,getCloudWriteScope(),head);
-async function setWriteControl(scope,control){
-  try{return await setStorageV2CloudControl(control,{expectedScope:scope,isCurrent:()=>writeScopeCurrent(scope)})}
-  catch(error){if(!writeScopeCurrent(scope))return false;throw error}
-}
+const {isCurrent:writeScopeCurrent,setControl:setWriteControl}=createCloudWriteAuthority({
+  scope:{read:getCloudWriteScope},
+  leadership:{primary:()=>tab.primaryTab,preparing:storageV2PreparationActive},
+  control:{write:setStorageV2CloudControl},
+});
+
 let morningRefreshPromise=null;
 
 const followup=createDebouncedTask({delay:0,onError:error=>console.error('orders cloud follow-up',error)});

@@ -65,9 +65,10 @@ promise. Main quiescence joins save, polling, recovery and follow-up obligations
 An old save cannot restart explicitly stopped polling.
 
 Document source decreases from 34,732 to 17,225 bytes in Orders and from 43,481
-to 23,255 in Kupa. The composition factory still forwards 33/42 individual
-collaborators; this is an open composition/API cleanup, not a claim that all
-sync dependency width is resolved.
+to 23,255 in Kupa. At that stage the composition factory still forwarded 33/42
+individual collaborators. The later [Main sync composition](MAIN_SYNC_COMPOSITION.md)
+slice replaces those flat inputs with twelve runtime roles and ten root owners;
+internal save/hydration coordination remains separate work.
 
 ## Backup
 

@@ -1,5 +1,6 @@
 """Kupa save confirmation races with real IndexedDB snapshots and restart."""
 import json
+from sync_document_fixture import evaluate_sync
 from browser_harness import BrowserSession, ROOT
 
 FLOW = r"""(async()=>{
@@ -88,7 +89,7 @@ FLOW = r"""(async()=>{
 
 for scenario in ('no-flight', 'backup'):
     with BrowserSession(ROOT / 'netunim-kupa/site', 'kupa-save-confirmation-' + scenario) as browser:
-        result = browser.evaluate(FLOW.replace('SCENARIO', json.dumps(scenario)), timeout=30)
+        result = evaluate_sync(browser, FLOW.replace('SCENARIO', json.dumps(scenario)), timeout=30)
         print('Kupa real IDB ' + scenario + ' race: ' + str(result), flush=True)
         assert result['result'] is False and result['synced'] is False, result
         expected_ack = 1 if scenario == 'backup' else 0

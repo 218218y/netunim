@@ -1,9 +1,10 @@
 """Real IndexedDB transactions, journal recovery, fault injection and byte scaling."""
 import json
+from sync_document_fixture import evaluate_sync
 from browser_harness import BrowserSession, ROOT
 
 with BrowserSession(ROOT/'netunim-kupa/site','storage-v2-crash-matrix') as browser:
-    result=browser.evaluate(r"""(async()=>{
+    result=evaluate_sync(browser, r"""(async()=>{
       const {createStorageJournal}=await import('./assets/js/shared/storage-journal.js');
       const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
       const {readStorageRecord}=await import('./assets/js/shared/storage-journal-model.js');
@@ -152,7 +153,7 @@ with BrowserSession(ROOT/'netunim-kupa/site','storage-v2-crash-matrix') as brows
       return {cases:done,sizes};
     })()""",timeout=90)
     browser._navigate()
-    assert browser.evaluate("""(async()=>{
+    assert evaluate_sync(browser, """(async()=>{
       const {createStorageJournal}=await import('./assets/js/shared/storage-journal.js');
       const journal=createStorageJournal({owner:'hard-restart',schema:{collections:['notes'],fields:['setting']},validate:()=>{}});
       const recovered=await journal.open();return recovered.state.notes[0].text==='survives navigation';
@@ -164,7 +165,7 @@ with BrowserSession(ROOT/'netunim-kupa/site','storage-v2-crash-matrix') as brows
 
 for app in ('kupa','orders'):
     with BrowserSession(ROOT/f'netunim-{app}/site','storage-ack-contracts-'+app) as browser:
-        result=browser.evaluate(r"""(async()=>{
+        result=evaluate_sync(browser, r"""(async()=>{
           const {createStorageJournal}=await import('./assets/js/shared/storage-journal.js');
           const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
           const {createStorageCloudBase,createStorageCheckpoint}=await import('./assets/js/shared/storage-records.js');
@@ -246,7 +247,7 @@ for app in ('kupa','orders'):
           return done;
         })()""",timeout=60)
         browser._navigate()
-        assert browser.evaluate(r"""(async()=>{
+        assert evaluate_sync(browser, r"""(async()=>{
           const {createStorageJournal}=await import('./assets/js/shared/storage-journal.js');
           const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
           const journal=createStorageJournal({owner:'ack-contract-owner',schema:{collections:['notes'],fields:['setting']},
@@ -259,7 +260,7 @@ for app in ('kupa','orders'):
         print('PASS real IndexedDB ACK contracts, aborted commit and fresh-runtime recovery '+app+': '+json.dumps(result))
 
 with BrowserSession(ROOT/'netunim-kupa/site','shared-checks-v2-primary-crash-matrix') as browser:
-    result=browser.evaluate(r"""(async()=>{
+    result=evaluate_sync(browser, r"""(async()=>{
       const {createSharedChecksStorageV2}=await import('./assets/js/shared/shared-checks-storage-v2.js');
       const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
       const db=createStorageJournalDb({name:'shared-checks-v2-primary-crash-matrix'}),owner=()=> 'browser-primary-account';
@@ -296,7 +297,7 @@ with BrowserSession(ROOT/'netunim-kupa/site','shared-checks-v2-primary-crash-mat
     print('PASS Shared Checks V2 real IDB crash matrix: '+json.dumps(result))
 
 with BrowserSession(ROOT/'netunim-kupa/site','storage-v2-boundary-crash-matrix') as browser:
-    result=browser.evaluate(r"""(async()=>{
+    result=evaluate_sync(browser, r"""(async()=>{
       const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
       const name='storage-v2-boundary-crash-matrix';
       await new Promise((resolve,reject)=>{const request=indexedDB.open(name,2);request.onupgradeneeded=()=>{for(const store of ['checkpoints','journal','metadata','bases','flights','controls'])if(!request.result.objectStoreNames.contains(store))request.result.createObjectStore(store)};request.onsuccess=()=>{request.result.close();resolve()};request.onerror=()=>reject(request.error)});
@@ -319,7 +320,7 @@ with BrowserSession(ROOT/'netunim-kupa/site','storage-v2-boundary-crash-matrix')
     print('PASS V2 boundary real IDB crash matrix: '+json.dumps(result))
 
 with BrowserSession(ROOT/'netunim-kupa/site','storage-v2-local-import-idb') as browser:
-    result=browser.evaluate(r"""(async()=>{
+    result=evaluate_sync(browser, r"""(async()=>{
       const {createStorageJournal}=await import('./assets/js/shared/storage-journal.js');
       const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
       const db=createStorageJournalDb(),schema={collections:['notes'],fields:[]},validate=state=>{if(!Array.isArray(state.notes))throw Error('invalid notes')};
@@ -348,7 +349,7 @@ with BrowserSession(ROOT/'netunim-kupa/site','storage-v2-local-import-idb') as b
     print('PASS V2 local import real IDB crash matrix: '+json.dumps(result))
 
 with BrowserSession(ROOT/'netunim-kupa/site','storage-v2-local-engine-idb') as browser:
-    result=browser.evaluate(r"""(async()=>{
+    result=evaluate_sync(browser, r"""(async()=>{
       const {createStorageJournal}=await import('./assets/js/shared/storage-journal.js');
       const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
       const {verifyStorageV2LocalEngine,storageLocalEngineKey}=await import('./assets/js/shared/storage-v2-local-birth.js');
@@ -385,7 +386,7 @@ with BrowserSession(ROOT/'netunim-kupa/site','storage-v2-local-engine-idb') as b
     print('PASS V2 local engine real IDB marker: '+json.dumps(result))
 
 with BrowserSession(ROOT/'netunim-kupa/site','sheet-warm-navigation-freshness') as browser:
-    assert browser.evaluate("""(async()=>{
+    assert evaluate_sync(browser, """(async()=>{
       const {createDefaultNotesSheet}=await import('./assets/js/shared/notes-sheet-model.js');
       const book=createDefaultNotesSheet();book.rows=[{id:'fresh-row',sheetId:book.sheets[0].id,cells:{[book.columns[0].id]:'before'},createdAt:'',updatedAt:''}];
       let remote={revision:1,state:book},reads=0;
@@ -407,7 +408,7 @@ with BrowserSession(ROOT/'netunim-kupa/site','sheet-warm-navigation-freshness') 
     print('PASS cached Kupa spreadsheet refreshes immediately on return without the 20-second timer')
 
 with BrowserSession(ROOT/'netunim-kupa/site','storage-v2-fenced-cloud-recovery') as browser:
-    result=browser.evaluate(r"""(async()=>{
+    result=evaluate_sync(browser, r"""(async()=>{
       const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
       const {createStorageJournal}=await import('./assets/js/shared/storage-journal.js');
       const {createSharedChecksStorageV2}=await import('./assets/js/shared/shared-checks-storage-v2.js');
@@ -512,7 +513,7 @@ with BrowserSession(ROOT/'netunim-kupa/site','storage-v2-fenced-cloud-recovery')
     print('PASS fenced stale-device cloud recovery: '+json.dumps(result))
 
 with BrowserSession(ROOT/'netunim-orders/site','storage-v2-dead-recovery-store') as browser:
-    result=browser.evaluate(r"""(async()=>{
+    result=evaluate_sync(browser, r"""(async()=>{
       const name='storage-v2-dead-recovery-store';
       const old=await new Promise((resolve,reject)=>{const request=indexedDB.open(name,9);
         request.onupgradeneeded=()=>{request.result.createObjectStore('legacy-recoveries');request.result.createObjectStore('cutover-preparations')};
@@ -534,7 +535,7 @@ with BrowserSession(ROOT/'netunim-orders/site','storage-v2-dead-recovery-store')
     print('PASS V2 schema upgrade removes unused legacy recovery and cutover preparation stores')
 
 with BrowserSession(ROOT/'netunim-orders/site','v2-restore-group-only') as browser:
-    result=browser.evaluate(r"""(async()=>{
+    result=evaluate_sync(browser, r"""(async()=>{
       const {createStorageBrowser}=await import('./assets/js/storage/browser.js');
       const storage=createStorageBrowser({model:{state:{}},files:{},session:{localSnapshotSeq:0,cloudRevision:0}});
       const key='orders.restore.group.v1:current',payload={phase:'prepared',operationId:'restore-test'};
@@ -687,14 +688,14 @@ for app in ('kupa', 'orders'):
             if(previousOnline)Object.defineProperty(navigator,'onLine',previousOnline);else delete navigator.onLine;
           }
         })()""".replace('APP_NAME', json.dumps(app))
-        result=browser.evaluate(script, timeout=60)
+        result=evaluate_sync(browser, script, timeout=60)
         assert not browser.drain_serious_errors()
         print(f'PASS {app} real IndexedDB ACK recovery: {len(result)} assertions for lost response, malformed success, offline edits, transaction abort, restart, remote writes and concurrent ACK fencing')
 
 # A dirty-head fence can outlive the condition that created it. Reviewing it
 # must compare the durable projection and retire only the exact reviewed head.
 with BrowserSession(ROOT/'netunim-kupa/site', 'clean-conflict-review') as browser:
-    result=browser.evaluate(r"""(async()=>{
+    result=evaluate_sync(browser, r"""(async()=>{
       const {createStorageJournal}=await import('./assets/js/shared/storage-journal.js');
       const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
       const {readStorageRecord}=await import('./assets/js/shared/storage-journal-model.js');
@@ -745,7 +746,7 @@ with BrowserSession(ROOT/'netunim-kupa/site', 'clean-conflict-review') as browse
 # A remote GET is not an ACK. It may replace only the clean head it observed,
 # and cannot delete a control or checkpoint installed while adoption was queued.
 with BrowserSession(ROOT/'netunim-kupa/site', 'cloud-adoption-recovery') as browser:
-    result=browser.evaluate(r"""(async()=>{
+    result=evaluate_sync(browser, r"""(async()=>{
       const {createStorageJournal}=await import('./assets/js/shared/storage-journal.js');
       const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
       const {readStorageRecord}=await import('./assets/js/shared/storage-journal-model.js');
@@ -798,7 +799,7 @@ with BrowserSession(ROOT/'netunim-kupa/site', 'cloud-adoption-recovery') as brow
     print(f'PASS real IndexedDB cloud adoption: {len(result)} assertions for identity, concurrent edits, controls, checkpoint/base races, leader fencing, abort, retry and restart')
 
 with BrowserSession(ROOT/'netunim-orders/site', 'poll-status-durable-ack') as browser:
-    result=browser.evaluate(r"""(async()=>{
+    result=evaluate_sync(browser, r"""(async()=>{
       const clone=structuredClone,noop=()=>{},done=[],statuses=[];
       const check=(condition,label)=>{if(!condition)throw Error(label);done.push(label)};
       const deferred=()=>{let resolve;const promise=new Promise(done=>{resolve=done});return {promise,resolve}};
@@ -952,7 +953,7 @@ for app in ('orders', 'kupa'):
           check(clean.seq===3&&clean.base.ackSeq===3&&model.state.checks.map(row=>row.id).join(',')==='C,D','status failures preserve the durable ACK and original check identities');
           return done;
         })()""".replace('APP', json.dumps(app))
-        result = browser.evaluate(script, timeout=40)
+        result = evaluate_sync(browser, script, timeout=40)
         assert not browser.drain_serious_errors()
         print(f'PASS {app} real IndexedDB Shared status recovery: {len(result)} assertions for lost response, restart, immutable replay, held ACK, backup edits, Main conflict and logout')
 
@@ -961,7 +962,7 @@ for app in ('orders', 'kupa'):
 # recover from the exact previously captured checkpoint, never synthesized data.
 for app in ('kupa', 'orders'):
     with BrowserSession(ROOT/f'netunim-{app}/site', f'{app}-checkpoint-decoding') as browser:
-        result=browser.evaluate(r"""(async()=>{
+        result=evaluate_sync(browser, r"""(async()=>{
           const app=APP,clone=structuredClone,done=[],check=(condition,label)=>{if(!condition)throw Error(label);done.push(label)};
           const dump=value=>JSON.stringify(value,(_key,item)=>typeof item==='bigint'?{testBigInt:String(item)}:item);
           const {INITIAL_STATE}=await import('./assets/js/state/constants.js');
@@ -1026,7 +1027,7 @@ for app in ('kupa', 'orders'):
 # checkpoint does not authorize the older, still-unacknowledged outbox rows.
 for app in ('kupa', 'orders'):
     with BrowserSession(ROOT/f'netunim-{app}/site', f'{app}-operation-decoding') as browser:
-        result=browser.evaluate(r"""(async()=>{
+        result=evaluate_sync(browser, r"""(async()=>{
           const app=APP,clone=structuredClone,done=[],check=(condition,label)=>{if(!condition)throw Error(label);done.push(label)};
           const dump=JSON.stringify;
           const {INITIAL_STATE}=await import('./assets/js/state/constants.js');

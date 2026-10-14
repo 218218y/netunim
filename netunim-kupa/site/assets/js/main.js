@@ -26,7 +26,7 @@ import {createUiFolders} from './ui/folders.js';
 import {createCloudAuth} from './cloud/auth.js';
 import {createCloudTransport} from './cloud/transport.js';
 import {createSyncMerge} from './sync/merge.js';
-import {createSyncDocument} from './sync/document.js';
+import {createSyncDocument} from './composition/main-sync.js';
 import {composeCloudUi} from './composition/cloud.js';
 import {createUiDateEditor} from './ui/date-editor.js';
 import {createKupaChecksRuntime} from './composition/checks.js';
@@ -293,35 +293,19 @@ const syncMerge=createSyncMerge({
 });
 
 const syncDocument=createSyncDocument({
-  cancelCloudRecovery:()=>uiCloud.recoveryRuntime.cancel(),
-  getCloudWriteScope:()=>readCloudWriteScope(mainStorageV2.cloudScope,cloudAuth.getAccountScope()),
-  hideConnectScreen:(...args)=>uiStatus.hideConnectScreen(...args),
-  reportError:(...args)=>uiStatus.reportError(...args),
-  model,
-  session,
-  checksSession,
-  tab,
-  prepareKupaCloudState:(...args)=>stateNormalization.prepareKupaCloudState(...args),
-  applyKupaCloudState:(...args)=>stateNormalization.applyKupaCloudState(...args),
-  setSaveStatus:(...args)=>uiStatus.setSaveStatus(...args),
-  setConnectedStatus:(...args)=>uiStatus.setConnectedStatus(...args),
-  setCloudHeaderStatus:(...args)=>uiStatus.setCloudHeaderStatus(...args),
-  listBackups:(...args)=>storageBackup.listBackups(...args),
-  backupSnapshotToComputer:(...args)=>storageBackup.backupSnapshotToComputer(...args),
-  syncSharedChecksFromCloud:(...args)=>checks.commands.sync(...args),
-  render:(...args)=>uiNavigation.render(...args),
-  readSupabaseDocument:(...args)=>cloudTransport.readSupabaseDocument(...args),
-  readFinanceSyncDocument:(...args)=>cloudTransport.readFinanceSyncDocument(...args),
-  supaRest:(...args)=>cloudAuth.supaRest(...args),
-  mergeKupaCloudState3Way:(...args)=>syncMerge.mergeKupaCloudState3Way(...args),
-  showSecondaryTabGuard:(...args)=>uiConnection.showSecondaryTabGuard(...args),
-  toast:(...args)=>uiStatus.toast(...args),
-  pollSharedChecks:(...args)=>checks.runtime.poll(...args),
-  refreshOrdersFinanceSummary:(...args)=>dashboard.commands.refreshOrdersSummary(...args),
-  ...storageV2Cloud,
-  storageV2PreparationActive:storagePreparationActive,
-  ...storageV2Coordinator.accountContextPort(),
-  domainRevisions,
+  model,session,tab,
+  ownership:{
+    getScope:()=>readCloudWriteScope(mainStorageV2.cloudScope,cloudAuth.getAccountScope()),
+    preparing:storagePreparationActive,
+    assertAccountOwner:()=>storageV2Coordinator.accountContextPort().assertAccountOwner(),
+    cancelRecovery:()=>uiCloud.recoveryRuntime.cancel(),
+  },
+  storage:storageV2Cloud,
+  state:{normalization:stateNormalization,merge:syncMerge,domainRevisions},
+  transport:cloudTransport,
+  view:{status:uiStatus,render:()=>uiNavigation.render(),showSecondaryTabGuard:()=>uiConnection.showSecondaryTabGuard()},
+  mirror:storageBackup,
+  secondary:{checks,dashboard:dashboard.commands},
 });
 
 
