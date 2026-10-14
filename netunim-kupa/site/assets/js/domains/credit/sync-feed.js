@@ -1,4 +1,5 @@
 import {todayISO} from '../../core/dates.js';
+import {normalizeCreditCardAccountTransitions} from '../../shared/credit-card-account.js';
 import {creditAccountKnownFutureCommitmentData,creditAccountUpcomingChargeData,creditBillingRowsData,creditPendingAuthorizationTotalData} from '../../shared/credit-billing-cycles.js';
 
 import {creditHistoryCutoffMonth,creditCardSortOrder} from '../../shared/credit-history.js';
@@ -82,12 +83,14 @@ export function normalizeCreditProfile(profile={}){
 }
 
 function normalizedMapping(raw={},legacyInclude=false){
+  const accountTransitions=normalizeCreditCardAccountTransitions(raw.accountTransitions);
   return {
     included:typeof raw.included==='boolean'?raw.included:legacyInclude,
     hidden:raw.hidden===true,
     account:raw.account==='ביתי'?'ביתי':'עסקי',
     cardName:text(raw.cardName||'',100),
     manualFrame:nonNegativeMoney(raw.manualFrame),sortOrder:creditCardSortOrder(raw.sortOrder),
+    ...(accountTransitions.length?{accountTransitions}:{}),
   };
 }
 function normalizeSettlementWarningAcks(value={}){

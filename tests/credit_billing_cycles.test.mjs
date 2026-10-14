@@ -13,6 +13,7 @@ import {computeKupaNetReadoutData} from '../netunim-orders/site/assets/js/domain
 import {bankLongTermPositionData} from '../netunim-kupa/site/assets/js/domains/bank/model.js';
 import {checkTodayISO} from '../netunim-orders/site/assets/js/core/dates.js';
 import {cashflowBreakdownMarkup} from '../shared/cashflow-breakdown.js';
+import {applyCreditCardAccountTransitionData,creditCardAccountForDateData,normalizeCreditCardAccountTransitions} from '../shared/credit-card-account.js';
 
 function stateFor(accounts,{provider='max',profileId='cards',accountRole='עסקי'}={}){
   const mappings={};for(const account of accounts)mappings[`${profileId}:${account.accountNumber}`]={included:true,hidden:false,account:accountRole};
@@ -824,4 +825,67 @@ test('issuer next-cycle overlaps are alternative views, not separate debits; act
   assert.equal(new Set(nearest.map(row=>row.creditId)).size,nearest.length,'an individual charge is selected only once within the nearest view');
   const cards=kupaReconciledCreditRowsData(state,'all',at);
   assert.equal(cards.filter(row=>row.date==='2026-10-10').length,1,'original obligation rows are not duplicated by display projections');
+});
+
+
+test('credit card account transitions preserve historical bank ownership while current mapping changes',()=>{
+  const mapping=applyCreditCardAccountTransitionData({included:true,hidden:false,account:'עסקי'},'ביתי','2026-10-14');
+  assert.deepEqual(mapping.accountTransitions,[{effectiveDate:'2026-10-14',fromAccount:'עסקי',toAccount:'ביתי'}]);
+  assert.equal(creditCardAccountForDateData(mapping,'עסקי','2026-09-15'),'עסקי');
+  assert.equal(creditCardAccountForDateData(mapping,'עסקי','2026-10-14'),'ביתי');
+  assert.equal(creditCardAccountForDateData(mapping,'עסקי','2026-10-15'),'ביתי');
+  const returned=applyCreditCardAccountTransitionData(mapping,'עסקי','2026-11-01');
+  assert.equal(creditCardAccountForDateData(returned,'עסקי','2026-09-15'),'עסקי');
+  assert.equal(creditCardAccountForDateData(returned,'עסקי','2026-10-20'),'ביתי');
+  assert.equal(creditCardAccountForDateData(returned,'עסקי','2026-11-01'),'עסקי');
+  assert.deepEqual(normalizeCreditCardAccountTransitions([{effectiveDate:'bad',fromAccount:'עסקי',toAccount:'ביתי'},...returned.accountTransitions]),returned.accountTransitions);
+});
+
+test('moving a card to home does not rewrite older billing cycles to the new bank account',()=>{
+  const state=stateFor([{accountNumber:'5521',txns:[
+    {id:'sep',status:'completed',processedDate:'2026-09-15',chargedAmount:-1434.57,chargedCurrency:'ILS'},
+    {id:'oct',status:'completed',processedDate:'2026-10-15',chargedAmount:-500,chargedCurrency:'ILS'},
+  ]}]);
+  state.creditSync.cardMappings['cards:5521']=applyCreditCardAccountTransitionData(state.creditSync.cardMappings['cards:5521'],'ביתי','2026-10-14');
+  const rows=kupaEngine.creditBillingRowsData(state,{asOf:'2026-10-14',includeHidden:true}).filter(row=>row.accountNumber==='5521');
+  assert.deepEqual(rows.map(row=>[row.date,row.account,row.amount]),[['2026-09-15','עסקי',1434.57],['2026-10-15','ביתי',500]]);
+  assert.deepEqual(ordersEngine.creditBillingRowsData(state,{asOf:'2026-10-14',includeHidden:true}).map(row=>[row.date,row.account,row.amount]),rows.map(row=>[row.date,row.account,row.amount]));
+});
+
+test('a pre-upgrade account move can use exact card identity from the old bank account to close the historical cycle',()=>{
+  const state=stateFor([{accountNumber:'5521',txns:[
+    {id:'sep',status:'completed',processedDate:'2026-09-15',chargedAmount:-1434.57,chargedCurrency:'ILS'},
+    {id:'oct',status:'completed',processedDate:'2026-10-15',chargedAmount:-500,chargedCurrency:'ILS'},
+  ]}]);
+  state.creditSync.cardMappings['cards:5521'].account='ביתי'; // Existing saved data has no transition history yet.
+  state.bank.asOfDate='2026-10-14';state.bank.feed={syncedAt:'2026-10-14T08:00:00Z',balance:10000,transactions:[{
+    date:'2026-09-15',amount:-1434.57,currency:'ILS',status:'completed',description:'מקס איט פיננסי',
+    creditSettlementDetails:{provider:'max',permissionReference:'65521',bankActivityTypeCode:515},
+  }]};
+  state.bank.homeFeed={syncedAt:'2026-10-14T08:00:00Z',balance:5000,transactions:[]};
+  const home=kupaCashflow(state,'ביתי','2026-10-14'),orders=ordersCashflow(state,'ביתי','2026-10-14');
+  assert.equal(home.credit,500,'the already-paid September amount is removed from the home forecast');
+  assert.equal(home.projected,4500);
+  assert.deepEqual(home.creditRows.map(row=>[row.date,row.amount]),[['2026-10-15',500]]);
+  assert.equal(home.expiredSettlementWarnings.length,0,'the old business-bank settlement closes the stale home-classified cycle');
+  assert.deepEqual(orders,home,'Orders and Kupa share the same reconciliation result');
+});
+
+test('cross-account historical settlement fallback requires exact native card proof and exact cents',()=>{
+  const make=tx=>{
+    const state=stateFor([{accountNumber:'5521',txns:[{id:'sep',status:'completed',processedDate:'2026-09-15',chargedAmount:-1434.57,chargedCurrency:'ILS'}]}]);
+    state.creditSync.cardMappings['cards:5521'].account='ביתי';
+    state.bank.asOfDate='2026-10-14';state.bank.feed={syncedAt:'2026-10-14T08:00:00Z',balance:10000,transactions:[tx]};
+    state.bank.homeFeed={syncedAt:'2026-10-14T08:00:00Z',balance:5000,transactions:[]};
+    return state;
+  };
+  for(const tx of [
+    {date:'2026-09-15',amount:-1434.57,currency:'ILS',status:'completed',description:'MAX'},
+    {date:'2026-09-15',amount:-1434.56,currency:'ILS',status:'completed',description:'MAX',creditSettlementDetails:{provider:'max',permissionReference:'65521',bankActivityTypeCode:515}},
+    {date:'2026-09-15',amount:-1434.57,currency:'ILS',status:'completed',description:'MAX',creditSettlementDetails:{provider:'max',permissionReference:'69999',bankActivityTypeCode:515}},
+  ]){
+    const result=kupaCashflow(make(tx),'ביתי','2026-10-14');
+    assert.equal(result.credit,1434.57,JSON.stringify(tx));
+    assert.equal(result.expiredSettlementWarnings.length,1,JSON.stringify(tx));
+  }
 });

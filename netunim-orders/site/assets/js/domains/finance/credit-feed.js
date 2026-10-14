@@ -1,5 +1,6 @@
 import {checkTodayISO} from '../../core/dates.js';
 import {creditAccountKnownFutureCommitmentData,creditAccountUpcomingChargeData,creditPendingAuthorizationTotalData} from '../../shared/credit-billing-cycles.js';
+import {normalizeCreditCardAccountTransitions} from '../../shared/credit-card-account.js';
 
 import {creditHistoryCutoffMonth,creditCardSortOrder} from '../../shared/credit-history.js';
 
@@ -40,7 +41,7 @@ export function normalizeCreditProfile(profile={}){
   return {profileId:text(profile.profileId||'',80),provider,label:text(profile.label||CREDIT_PROVIDER_LABELS[provider]||'חיבור אשראי',100),ownerLabel:text(profile.ownerLabel||'',100),defaultAccount:profile.defaultAccount==='ביתי'?'ביתי':'עסקי',syncedAt:iso(profile.syncedAt),attemptedAt:iso(profile.attemptedAt),coreComplete:profile.coreComplete===false?false:profile.coreComplete===true?true:null,accounts:(Array.isArray(profile.accounts)?profile.accounts:[]).map(account=>normalizeCreditAccount(account,profile.syncedAt)).filter(x=>x.accountNumber||x.txns.length)};
 }
 
-function normalizedMapping(raw={},legacyInclude=false){return {included:typeof raw.included==='boolean'?raw.included:legacyInclude,hidden:raw.hidden===true,account:raw.account==='ביתי'?'ביתי':'עסקי',cardName:text(raw.cardName||'',100),manualFrame:nonNegativeMoney(raw.manualFrame),sortOrder:creditCardSortOrder(raw.sortOrder)}}
+function normalizedMapping(raw={},legacyInclude=false){const accountTransitions=normalizeCreditCardAccountTransitions(raw.accountTransitions);return {included:typeof raw.included==='boolean'?raw.included:legacyInclude,hidden:raw.hidden===true,account:raw.account==='ביתי'?'ביתי':'עסקי',cardName:text(raw.cardName||'',100),manualFrame:nonNegativeMoney(raw.manualFrame),sortOrder:creditCardSortOrder(raw.sortOrder),...(accountTransitions.length?{accountTransitions}:{})}}
 function normalizeSettlementWarningAcks(value={}){const source=value&&typeof value==='object'&&!Array.isArray(value)?value:{},rows=[];for(const [rawKey,rawAt] of Object.entries(source)){const key=text(rawKey,240),at=iso(rawAt);if(key&&at)rows.push([key,at])}rows.sort((a,b)=>b[1].localeCompare(a[1]));return Object.fromEntries(rows.slice(0,120))}
 
 function creditProfileIdentityText(value){return text(value,100).toLocaleLowerCase('he-IL')}

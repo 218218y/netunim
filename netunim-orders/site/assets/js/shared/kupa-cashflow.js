@@ -1,4 +1,5 @@
 import {financeDerivation} from './finance-derivations.js';
+import {creditCardAccountForDateData} from './credit-card-account.js';
 import {CREDIT_DETAIL_HISTORY_MONTHS,creditCardCompare,creditCardConfiguredOrderCompare} from './credit-history.js';
 import {cashflowAlertForAccount,cashflowCheckCutoffDayForAccount} from './cashflow.js';
 import {cashflowNotificationData} from './cashflow-notification.js';
@@ -74,13 +75,13 @@ function moneyCents(value){return Math.round(num(value)*100)}
 function cardSuffixForRows(rows){const suffixes=new Set(rows.map(row=>String(row?.accountNumber||'').replace(/\D/g,'').slice(-4)).filter(value=>value.length===4));return suffixes.size===1?[...suffixes][0]:''}
 function bankTextHasCardSuffix(row,suffix){if(!suffix)return false;return new RegExp(`(?:^|\\D)${suffix}(?:\\D|$)`).test(bankTransactionSearchText(row))}
 function explicitBankCardSuffixes(row){return [...new Set((Array.isArray(row?.creditSettlementDetails?.cardLast4s)?row.creditSettlementDetails.cardLast4s:[]).map(value=>String(value??'').trim()).filter(value=>/^\d{4}$/.test(value)))]}
-function synchronizedProviderCardSuffixes(kupa,provider,account){
+function synchronizedProviderCardSuffixes(kupa,provider,account,reference=''){
   const role=accountRole(account),sync=kupa?.creditSync&&typeof kupa.creditSync==='object'&&!Array.isArray(kupa.creditSync)?kupa.creditSync:{},mappings=sync.cardMappings&&typeof sync.cardMappings==='object'&&!Array.isArray(sync.cardMappings)?sync.cardMappings:{},suffixes=new Set();
   for(const profile of Array.isArray(sync.profiles)?sync.profiles:[]){
     if(String(profile?.provider||'')!==String(provider||''))continue;
     for(const card of Array.isArray(profile?.accounts)?profile.accounts:[]){
       const mapping=mappings[`${String(profile?.profileId||'').trim()}:${String(card?.accountNumber||'').trim()}`]||{};
-      if(accountRole(mapping.account||profile?.defaultAccount)!==role)continue;
+      if(creditCardAccountForDateData(mapping,profile?.defaultAccount,reference)!==role)continue;
       const digits=String(card?.accountNumber||'').replace(/\D/g,''),suffix=digits.slice(-4);if(/^\d{4}$/.test(suffix))suffixes.add(suffix);
     }
   }
@@ -97,7 +98,7 @@ function bankCardSuffixHint(row){
 function validatedBankCardSuffixIdentity(kupa,row,account){
   const details=row?.creditSettlementDetails&&typeof row.creditSettlementDetails==='object'?row.creditSettlementDetails:null;if(!details)return null;
   const hint=bankCardSuffixHint(row);if(!hint.suffix)return null;
-  const known=synchronizedProviderCardSuffixes(kupa,String(details.provider||''),account);if(!known.has(hint.suffix))return null;
+  const known=synchronizedProviderCardSuffixes(kupa,String(details.provider||''),account,bankTransactionDay(row));if(!known.has(hint.suffix))return null;
   return {last4s:[hint.suffix],source:hint.source,cards:[{last4:hint.suffix,card:''}]};
 }
 function bankSettlementAccountCandidates(kupa,row,account,preparedBillingRows=null){
@@ -112,6 +113,23 @@ function bankSettlementAccountCandidates(kupa,row,account,preparedBillingRows=nu
     known:rows.every(item=>item.includedInIlsTotal&&!item.coverageIncomplete&&item.amountStatus==='known_ils'),
     expected:-rows.reduce((sum,item)=>sum+moneyCents(item.amount),0),
   })).filter(group=>group.suffix&&group.expected<0);
+}
+
+function bankRowsThrough(feed,reference){
+  const synced=isoDay(feed?.syncedAt),ref=isoDay(reference);if(!synced||!ref)return [];
+  const limit=synced<ref?synced:ref;
+  return (Array.isArray(feed?.transactions)?feed.transactions:[]).filter(row=>{const day=bankTransactionDay(row);return day&&day<=limit});
+}
+function crossAccountBankRowProvesTargetCycle(kupa,row,account,billingRows){
+  const value=moneyCents(row?.amount);if(value>=0||(row?.currency&&row.currency!=='ILS')||row?.presenceState==='missing')return false;
+  const explicit=explicitBankCardSuffixes(row),hint=bankCardSuffixHint(row),suffixes=[...new Set(explicit.length?explicit:hint.suffix?[hint.suffix]:[])];if(!suffixes.length)return false;
+  const candidates=bankSettlementAccountCandidates(kupa,row,account,billingRows),matches=[];
+  for(const suffix of suffixes){const found=candidates.filter(group=>group.suffix===suffix);if(found.length!==1)return false;matches.push(found[0])}
+  return matches.length>0&&matches.every(group=>group.known)&&new Set(matches.map(group=>group.due)).size===1&&matches.reduce((sum,group)=>sum+group.expected,0)===value;
+}
+function creditSettlementBankEvidenceRows(kupa,account,billingRows,reference){
+  const role=accountRole(account),primary=bankRowsThrough(bankFeedForAccount(kupa,role),reference),otherRole=role==='ביתי'?'עסקי':'ביתי',other=bankRowsThrough(bankFeedForAccount(kupa,otherRole),reference).filter(row=>crossAccountBankRowProvesTargetCycle(kupa,row,role,billingRows));
+  return [...primary,...other];
 }
 
 // Display bank-native identities first. Only the display fallback may derive
@@ -378,7 +396,7 @@ function calculateReconciledCreditRows(kupa,account,reference,{retainSettledComp
     const currentCards=new Set(candidates.filter(row=>row.date===forecastStart).map(creditCardKey));
     for(let i=candidates.length-1;i>=0;i--)if(candidates[i].date<start&&candidates[i].date<forecastStart&&currentCards.has(creditCardKey(candidates[i]))&&candidates[i].includedInIlsTotal&&!candidates[i].coverageIncomplete)candidates.splice(i,1);
   }
-  const feed=bankFeedForAccount(kupa,role),synced=isoDay(feed?.syncedAt),bankRows=synced&&Array.isArray(feed.transactions)?feed.transactions:[],settlementReference=synced&&synced<forecastStart?synced:forecastStart,unresolved=unresolvedSettlementIndexes(bankRows,candidates,settlementReference,{monthlySettlement}),pendingBankGroups=pendingBankSettlementGroupKeys(kupa,bankRows,billingRows,role,settlementReference);
+  const bankRows=creditSettlementBankEvidenceRows(kupa,role,billingRows,forecastStart),settlementReference=forecastStart,unresolved=unresolvedSettlementIndexes(bankRows,candidates,settlementReference,{monthlySettlement}),pendingBankGroups=pendingBankSettlementGroupKeys(kupa,bankRows,billingRows,role,settlementReference);
   const settlementRows=candidates.map((row,index)=>({...row,bankSettlementState:unresolved.has(index)?'awaiting':'settled'}));
   const settlingCredit=pendingCreditSettlementData(kupa,role,settlementRows.filter(row=>!row.settlementShell),start,forecastStart),expiredKeys=new Set(settlingCredit.expiredRows.map(creditRowKey));
   const states=new Map(settlementRows.map(row=>[creditRowKey(row),expiredKeys.has(creditRowKey(row))?'expired':row.bankSettlementState]));

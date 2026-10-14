@@ -1,10 +1,12 @@
 import {createRuntimeTaskOwner} from '../../shared/runtime-task-owner.js';
 import {CREDIT_AUTO_INTERVAL_MS,creditRefreshDue as due} from '../../shared/finance-refresh-policy.js';
 import {applyCreditCardOrderData} from '../../shared/credit-card-order.js';
+import {applyCreditCardAccountTransitionData} from '../../shared/credit-card-account.js';
 import {createPollingTask} from '../../shared/runtime-polling.js';
 import {createCreditPublication} from './publication.js';
 import {normalizeCreditAutoMode,normalizeCreditFetchMode,resolveCreditAutoSyncMode} from '../../shared/credit-sync-policy.js';
 import {uid} from '../../core/values.js';
+import {todayISO} from '../../core/dates.js';
 import {creditCardMappingKey,creditSyncScrapeSelection,mergeCreditSyncResult,normalizeCreditSync} from './sync-feed.js';
 
 const CREDIT_AUTO_RETRY_MS=24*60*60*1000;
@@ -177,10 +179,10 @@ export function createDomainsCreditController({model,saveState,toast,render,rend
   async function setCreditCardMapping(profileId,accountNumber,field,value){
     try{
       await persistCreditSettings(normalizedSync=>{
-    const sync=normalizedSync,profile=sync.profiles.find(p=>p.profileId===profileId),key=creditCardMappingKey(profileId,accountNumber),current=sync.cardMappings[key]||{included:false,hidden:false,account:profile?.defaultAccount==='ביתי'?'ביתי':'עסקי',cardName:'',manualFrame:null};
+    const sync=normalizedSync,profile=sync.profiles.find(p=>p.profileId===profileId),key=creditCardMappingKey(profileId,accountNumber);let current=sync.cardMappings[key]||{included:false,hidden:false,account:profile?.defaultAccount==='ביתי'?'ביתי':'עסקי',cardName:'',manualFrame:null};
     if(field==='included')current.included=!!value;
     if(field==='hidden')current.hidden=!!value;
-    if(field==='account')current.account=value==='ביתי'?'ביתי':'עסקי';
+    if(field==='account')current=applyCreditCardAccountTransitionData(current,value,todayISO());
     if(field==='cardName')current.cardName=String(value||'').trim().slice(0,100);
     if(field==='sortOrder'){const raw=String(value??'').trim(),order=raw===''?null:Number(raw);if(order!==null&&(!Number.isSafeInteger(order)||order<1))throw new Error('סדר הכרטיס חייב להיות מספר שלם חיובי');current.sortOrder=order}
     if(field==='manualFrame'){const raw=String(value??'').trim(),amount=raw===''?null:Number(raw);if(amount!==null&&(!Number.isFinite(amount)||amount<0))throw new Error('מסגרת ידנית חייבת להיות מספר חיובי או אפס');current.manualFrame=amount===null?null:Math.round(amount*100)/100}
