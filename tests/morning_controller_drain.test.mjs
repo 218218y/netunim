@@ -1,0 +1,22 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createDomainsCustomersDocuments} from '../netunim-orders/site/assets/js/domains/customers/documents.js';
+import {createMorningRequest} from '../netunim-orders/site/assets/js/integrations/morning.js';
+import {createMorningDebtRecoveryContext,saveMorningDebtRecoveryContext,loadMorningDebtRecoveryContext} from '../netunim-orders/site/assets/js/domains/customers/morning-debt-recovery.js';
+const gate=()=>{let resolve;const promise=new Promise(done=>{resolve=done});return {promise,resolve}};
+test('the Morning controller drains a held status body after disposal and retains exact recovery',async t=>{
+  const previous=new Map(['document','localStorage'].map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)])),entries=new Map(),held=gate(),entered=gate();
+  Object.defineProperty(globalThis,'document',{value:{querySelector:()=>null},configurable:true});
+  Object.defineProperty(globalThis,'localStorage',{value:{getItem:key=>entries.get(key)||null,setItem:(key,value)=>entries.set(key,String(value)),removeItem:key=>entries.delete(key)},configurable:true});
+  t.after(()=>{held.resolve();for(const [key,value] of previous)if(value)Object.defineProperty(globalThis,key,value);else delete globalThis[key]});
+  const context=createMorningDebtRecoveryContext({operationId:'11111111-1111-4111-8111-111111111111',type:305,amount:42,sourceKind:'standalone'});saveMorningDebtRecoveryContext(context);
+  const operationScope={capture:()=>()=>{},captureRead:()=>()=>{}};let calls=0;
+  const request=createMorningRequest({operationScope,supaFetch:async()=>{calls++;return {ok:true,json:async()=>{entered.resolve();await held.promise;return {ok:true,operation:{state:'created',operation_id:context.operationId,document_type:305,amount:42,verified_at:'2026-10-14T00:00:00Z'}}}}}});
+  const documents=createDomainsCustomersDocuments({operationScope,request,model:{state:{customerDebts:[]}},modal(){},toast:()=>assert.fail('stale completion cannot report success'),documentsBrowser:{},dateEditorMarkup:()=>''});
+  const work=documents.recoverPendingMorningOperation();await entered.promise;documents.dispose();
+  assert.equal(typeof documents.runtime?.drain,'function','whole accepted recovery needs an exposed joinable runtime');
+  let drained=false;const draining=documents.runtime.drain().then(()=>{drained=true});for(let n=0;n<8;n++)await Promise.resolve();assert.equal(drained,false);
+  held.resolve();assert.equal((await work).ok,false);await draining;
+  assert.deepEqual(loadMorningDebtRecoveryContext(),context);assert.equal(documents.runtime.isPending(),false);
+  assert.equal(await documents.refreshStatus(),false);assert.equal(calls,1);
+});

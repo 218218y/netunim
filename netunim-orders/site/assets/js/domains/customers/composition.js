@@ -6,7 +6,7 @@ import {createDomainsCustomersDocumentsBrowser} from './documents-browser.js';
 import {createMorningMetadataPersistence} from './morning-metadata-persistence.js';
 
 export function createDomainsCustomers({morningOperationScope,morningRequest,documentMedia,customerRevision,model,customerUi,selectors,uiLayout,uiModal,uiStatus,storagePersistence,uiNavigation,uiDateEditor,refreshForMorningRecovery,subscribeAccountScope,getBusinessBankTransactions,ensureBusinessBankTransactions,onBankDocumentVerified}){
-  let view,editor;
+  let view,editor,disposed=false;
   const metadataPersistence=createMorningMetadataPersistence({model,operationScope:morningOperationScope,commitSave:(...args)=>storagePersistence.commitSave(...args),canMutate:()=>storagePersistence.canMutate?.()!==false});
   const persistResolvedDebtDocumentMetadata=metadataPersistence.persist;
   if(typeof selectors?.customerStats!=='function')throw new TypeError('customers_selectors_required');
@@ -79,9 +79,12 @@ export function createDomainsCustomers({morningOperationScope,morningRequest,doc
     confirmDialog:(...args)=>uiModal.confirmDialog(...args),
     hydrateMorningDebtDocuments:(...args)=>documentsBrowser.hydrateDebtDocumentLinks(...args),
   });
+  function dispose(){if(disposed)return false;disposed=true;documents.dispose();documentsBrowser.dispose();return true}
+  async function drain(){do{await Promise.all([documents.runtime.drain(),documentsBrowser.runtime.drain()])}while(documents.runtime.isPending()||documentsBrowser.runtime.isPending())}
+  const runtime={dispose,drain,cancelPending:()=>{documents.runtime.cancelPending();documentsBrowser.runtime.cancelPending()},isPending:()=>documents.runtime.isPending()||documentsBrowser.runtime.isPending()};
   return {
     selectors,bulk,view,editor,documents,documentsBrowser,
-    dispose:()=>{documents.dispose();documentsBrowser.dispose()},
+    dispose,runtime,
     renderCustomers:(...args)=>view.renderCustomers(...args),
     openMorningDocuments:(...args)=>documentsBrowser.openDocuments(...args),
     searchMorningDocuments:(...args)=>documentsBrowser.search(...args),

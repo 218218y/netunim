@@ -1042,3 +1042,14 @@ construction and flat lease callbacks are retired; Kupa Credit decreases from
 merge, publication and cooldown policy. Strict implementation mutations and
 native HTTP/Main/Shared IDB/recovery cover the new boundary. See
 [lease operation owner](FINANCE_LEASE_OPERATION_OWNER.md).
+
+Morning issuance/recovery now separates current-flight coalescing from accepted
+work ownership. Three pre-change lifetime regressions and a controller status-body
+regression exposed missing drain and acceptance after disposal. Complete public
+commands, delivered recovery wakes and superseded login flights stay joined;
+Customers has final disposal and a combined issuance/browser drain. Verified
+debt allocation has a strict five-port capability without raw model, transport or
+persistence access. Immutable actual-function reconstruction preserves financial
+and recovery policy; negative consumers, body mutations and a native held-create
+fixture protect the boundary. Broader customer orchestration remains open. See
+[Morning accepted commands](MORNING_OPERATION_DRAIN.md).

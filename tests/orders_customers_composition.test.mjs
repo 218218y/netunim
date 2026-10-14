@@ -26,6 +26,12 @@ function fixture(){
   return {model,customerUi,customers:createOrdersCustomersRuntime({model,customerUi,customerRevision:()=>revision++})};
 }
 
+test('Customers lifecycle is final even when disposed before binding',async()=>{
+  const unopened=fixture().customers;
+  assert.equal(unopened.dispose(),true);assert.equal(unopened.dispose(),false);await unopened.runtime.drain();
+  assert.equal(unopened.runtime.isPending(),false);assert.throws(()=>unopened.bindUi(ports()),/customers_runtime_disposed/);
+});
+
 test('Customers exposes totals before UI and rejects partial or double binding',()=>{
   const {model,customers}=fixture();
   model.state.customerDebts=[{id:'d1',amount:100,paid:false,invoiceIssued:false,supplied:true}];

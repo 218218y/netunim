@@ -25,6 +25,17 @@ function check(overrides=new Map()){
 }
 function describe(diagnostics){return ts.formatDiagnostics(diagnostics,{getCanonicalFileName:file=>file,getCurrentDirectory:()=>root,getNewLine:()=> '\n'})}
 
+test('Morning operation bodies reject fabricated drain and textual debt completion',()=>{
+ for(const [file,from,to] of [
+  ['netunim-orders/site/assets/js/domains/customers/morning-lifetime.js','drain:accepted.drain','drain:()=>true'],
+  ['netunim-orders/site/assets/js/domains/customers/morning-debt-application.js',"return {changed:false,reason:'standalone'};","return {changed:false,reason:'standalone',persisted:'saved'};"],
+ ]){
+  const source=path.join(root,file),original=readFileSync(source,'utf8'),changed=original.replace(from,to);assert.notEqual(changed,original);
+  const diagnostics=check(new Map([[source,changed]]));
+  assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&[2322,2345].includes(item.code)),describe(diagnostics));
+ }
+});
+
 test('Morning media implementation rejects fabricated PDF, identity and drain evidence',()=>{
  const source=path.join(root,'netunim-orders/site/assets/js/domains/customers/morning-document-media.js'),original=readFileSync(source,'utf8');
  for(const [from,to] of [['return row.document_id;',"return true;"],['return new Blob([bytes],{type:\'application/pdf\'});',"return 'PDF';"],['drain:work.drain','drain:()=>true']]){

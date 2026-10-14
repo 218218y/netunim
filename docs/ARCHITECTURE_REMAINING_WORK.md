@@ -5,7 +5,7 @@ Orders Finance document-command and both applications' Bank archive readout
 extraction, Kupa Bank snapshot commands, shared Finance lease renewal ownership
 and both applications' Bank/Credit local connection ownership, Kupa Notes
 durability, Cloud/Sync/Backup capability decomposition, Calendar session ownership
-and shared Morning PDF presentation ownership. The chronological
+and shared Morning PDF presentation/accepted-command ownership. The chronological
 [refactor record](ARCHITECTURE_REFACTOR.md) documents completed slices; older
 remaining-scope paragraphs describe their stage's starting point.
 
@@ -16,8 +16,11 @@ remaining-scope paragraphs describe their stage's starting point.
   releases native URLs/observers while accepted provider reads remain drainable.
   The browser tracks complete accepted read/metadata commands. Unknown media
   responses are decoded before display; immutable issuance/debt/recovery policies
-  remain unchanged. Full issuance/recovery drain, broader customer orchestration
-  and form presentation remain open. See
+  remain unchanged. Issuance/recovery now tracks complete accepted commands and
+  superseded flights, with final disposal and joined customer runtime drain.
+  Verified debt allocation has a separate strict five-port capability with an
+  immutable financial policy. Broader customer orchestration and form
+  presentation remain open. See [Morning operation drain](MORNING_OPERATION_DRAIN.md) and
   [Morning media ownership](MORNING_DOCUMENT_MEDIA_OWNER.md).
 
 - Orders Calendar separates connection intent, Google verification, sync/reconnect

@@ -12,13 +12,14 @@ import {createMorningMediaComposition} from './morning-media.js';
 export function createOrdersCustomersRuntime({model,customerUi,customerRevision}={}){
   if(!model||!customerUi||typeof customerRevision!=='function')throw new TypeError('customers_context_required');
   const selectors=createDomainsCustomersSelectors({model});
-  let bound=null;
+  let bound=null,disposed=false;
   function ready(){
     if(!bound)throw new Error('customers_ui_not_bound');
     return bound;
   }
 
   function bindUi({morningOperationScope,uiLayout,uiModal,uiStatus,storagePersistence,cloudAuth,uiNavigation,uiDateEditor,refreshForMorningRecovery,bankTransactions}={}){
+    if(disposed)throw new Error('customers_runtime_disposed');
     if(bound)throw new Error('customers_ui_already_bound');
     for(const [name,port,methods] of [
       ['layout',uiLayout,['bindScrollViewport','mountViewLayout']],
@@ -48,9 +49,11 @@ export function createOrdersCustomersRuntime({model,customerUi,customerRevision}
     bound={domain,actions,morningActions};
   }
 
+  function dispose(){if(disposed)return false;disposed=true;bound?.domain.dispose();return true}
+  const runtime={dispose,drain:async()=>{await bound?.domain.runtime.drain()},cancelPending:()=>bound?.domain.runtime.cancelPending(),isPending:()=>bound?.domain.runtime.isPending()===true};
   return {
     customerStats:selectors.customerStats,
-    dispose:()=>bound?.domain.dispose(),
+    dispose,runtime,
     bindUi,
     assertReady:()=>{ready();return true},
     renderCustomers:(...args)=>ready().domain.renderCustomers(...args),

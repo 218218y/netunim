@@ -63,7 +63,11 @@ schema or backup serialization is introduced.
 
 The Morning lifetime owns interruption listeners, one recovery wakeup per current
 operation identity (see [the wake contract](MORNING_RECOVERY_WAKE_IDENTITY.md)) and
-scope-specific in-flight joins. Disposal removes listeners, cancels future work
+scope-specific in-flight joins. Current-flight coalescing is separate from the
+accepted-task owner: a superseded flight remains joined through completion.
+Customers now exposes complete issuance/browser command drain; see
+[the accepted-command contract](MORNING_OPERATION_DRAIN.md).
+Disposal removes listeners, cancels future work
 and revokes publication without discarding started durability work. A stale timer
 or task's `finally` cannot remove a newer login's task. PDF/metadata publication
 is fenced; the latest preview wins within an account and old account responses
