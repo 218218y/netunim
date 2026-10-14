@@ -20,6 +20,8 @@
     "types": []
   },
   "files": [
+    "netunim-orders/site/assets/js/domains/finance/bank-snapshot-publication.js",
+    "tests/fixtures/checked-orders-bank-publication.mjs",
     "shared/finance-connection-import-runtime.js",
     "shared/finance-connection-file-selection.js",
     "tests/fixtures/checked-finance-connection-import.mjs",

@@ -19,7 +19,7 @@ remaining-scope paragraphs describe their stage's starting point.
   account/enrichment, cheque files, status/diagnostics and shutdown have owners
   and native tests. Broad Bank/Credit libraries and adapter facades are retired.
 - Orders Finance documents have a command owner, required real leases and
-  current write APIs. The controller has 22 explicit collaborators, down from 30
+  current write APIs. The controller has 18 explicit collaborators, down from 30
   overall, including the local Bank/Credit connection owners, and no
   embedded-Finance or two-write Bank fallback.
 - Orders Bank archive cache, flights and projection revisions belong to a strict
@@ -80,6 +80,13 @@ remaining-scope paragraphs describe their stage's starting point.
   callable importer and unowned picker exports are retired; canonical document
   and historical identity algorithms are preserved. See
   [Finance import ownership](FINANCE_CONNECTION_IMPORT_OWNERSHIP.md).
+- Orders Bank accepted-result publication has a strict seven-port owner for
+  reconciliation, paired archive verification, Checks barriers and one atomic
+  snapshot. Finance joins its preparation/publication work after disposal. The
+  private financial model and full provider/lease algorithm match the immutable
+  pre-extraction AST; old flat publication dependencies and silent defaults are
+  retired. Provider acquisition and broader Credit orchestration remain open.
+  See [Bank snapshot publication](ORDERS_BANK_SNAPSHOT_PUBLICATION.md).
 
 ## Four major work packages
 

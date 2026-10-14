@@ -8,6 +8,8 @@ import {createOrdersCreditConnectionOwner} from '../domains/finance/credit-conne
 import {createOrdersBankConnectionOwner,ORDERS_BANK_BRIDGE_MINIMUM_VERSION} from '../domains/finance/bank-connection-owner.js';
 import {CREDIT_CONNECTOR_CONTRACT_VERSION} from '../domains/finance/credit-feed.js';
 import {createOrdersFinanceDocumentCommands} from '../domains/finance/document-commands.js';
+import {createOrdersBankSnapshotPublication} from '../domains/finance/bank-snapshot-publication.js';
+import {createOrdersBankSnapshotPolicy} from '../domains/finance/bank-snapshot-policy.js';
 import {createOrdersBankArchiveReadout} from '../domains/finance/bank-archive-readout.js';
 import {bankArchiveTargets,bankArchiveSourceRows} from '../domains/finance/bank-archive-model.js';
 import {createDomainsFinanceView} from '../domains/finance/view.js';
@@ -38,7 +40,7 @@ export function createOrdersFinanceCapability({
   const effects = platform.effects ?? createFinanceBrowserEffects();
   requireMethods('effects', effects, ['isOnline', 'writeText', 'saveJson', 'delay', 'dispose']);
   const bridge = createFinanceBridgeIntegration(platform.bridge ? {platform:platform.bridge} : undefined);
-  let disposed = false, cache = null, controller = null, presentation = null, archive = null, connections = null, bankConnections = null;
+  let disposed = false, cache = null, controller = null, presentation = null, archive = null, connections = null, bankConnections = null, bankSnapshots = null;
   const operationScope = createFinanceOperationScope({readAccess:() => {
     const access = readAccess();
     return {...access, readable:access.readable && !disposed, writable:access.writable && !disposed};
@@ -146,19 +148,28 @@ export function createOrdersFinanceCapability({
       effects:{saveJson:connectionEffects.saveJson},
       protocol:{minimumBridgeVersion:ORDERS_BANK_BRIDGE_MINIMUM_VERSION},
     });
+    bankSnapshots = createOrdersBankSnapshotPublication({
+      authority:operationScope,
+      checks:{
+        hasLocalWork:checks.hasLocalWork,
+        save:(...args) => checks.saveSharedChecksToCloud(...args),
+        refresh:(...args) => checks.syncSharedChecksFromCloud(...args),
+        read:() => ({kupa:checksSession.kupaCloudReadState,bankEvents:checksSession.checksBankEvents}),
+      },
+      transactions:{reconcile:(...args) => cloud.syncBankTransactionsSnapshot(...args)},
+      images:{sync:images.sync},
+      archive:{read:archive.queries.readSnapshot,publish:archive.commands.publish},
+      publication:{save:documents.commands.publishBankSnapshot},
+      policy:createOrdersBankSnapshotPolicy(),
+    });
     controller = createDomainsFinanceController({
-      documents,syncLeases,archive,connections,bankConnections,
+      documents,syncLeases,archive,connections,bankConnections,bankSnapshots,
       tab, checksSession, bridge, operationScope, effects:controllerEffects,
       loadSession:auth.loadSession, toast:(...args) => { if (!disposed) toast(...args); }, getSharedChecks:() => model.state.checks,
       refreshKupaReadout:(...args) => cache.refreshKupaReadout(...args),
-      syncSharedChecksFromCloud:(...args) => checks.syncSharedChecksFromCloud(...args),
-      saveSharedChecksToCloud:(...args) => checks.saveSharedChecksToCloud(...args),
-      checksHaveLocalWork:checks.hasLocalWork,
-      syncBankTransactionsSnapshot:(...args) => cloud.syncBankTransactionsSnapshot(...args),
       setBankTransactionHandled:(...args) => cloud.setBankTransactionHandled(...args),
       acknowledgeBankTransactionMissing:(...args) => cloud.acknowledgeBankTransactionMissing(...args),
       acknowledgeBankTransactionAlert:(...args) => cloud.acknowledgeBankTransactionAlert(...args),
-      syncBankChequeImages:images.sync,
     });
   }
 
@@ -247,9 +258,9 @@ export function createOrdersFinanceCapability({
     renderKupaDependentView:(...args) => readoutReady().renderKupaDependentView(...args),
   };
   const runtime = {
-    isPending:() => !!(controller?.runtime.isPending() || connections?.runtime.isPending() || bankConnections?.runtime.isPending() || archive?.runtime.isPending() || presentation?.view.connectionRuntime.isPending() || presentation?.importConnections.runtime.isPending()),
+    isPending:() => !!(controller?.runtime.isPending() || bankSnapshots?.runtime.isPending() || connections?.runtime.isPending() || bankConnections?.runtime.isPending() || archive?.runtime.isPending() || presentation?.view.connectionRuntime.isPending() || presentation?.importConnections.runtime.isPending()),
     async drain() {
-      do { await Promise.all([controller?.runtime.drain(), connections?.runtime.drain(), bankConnections?.runtime.drain(), archive?.runtime.drain(), presentation?.view.connectionRuntime.drain(), presentation?.importConnections.runtime.drain()]); } while(runtime.isPending());
+      do { await Promise.all([controller?.runtime.drain(), bankSnapshots?.runtime.drain(), connections?.runtime.drain(), bankConnections?.runtime.drain(), archive?.runtime.drain(), presentation?.view.connectionRuntime.drain(), presentation?.importConnections.runtime.drain()]); } while(runtime.isPending());
     },
     start() { uiReady(); return controller.startAutoSync(); },
     stop() { return controller?.stopAutoSync(); },
@@ -261,6 +272,7 @@ export function createOrdersFinanceCapability({
     dispose() {
       if (disposed) return false;
       disposed = true;
+      bankSnapshots?.runtime.dispose();
       presentation?.importConnections.runtime.dispose();
       presentation?.view.connectionRuntime.dispose();
       controller?.runtime.dispose();

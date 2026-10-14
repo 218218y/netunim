@@ -495,3 +495,12 @@ Negative consumers and an actual body mutation protect these boundaries.
 Pairing observation exposes only paired availability and a numeric generation.
 Complete Bank payload and financial-controller typing remain unfinished.
 See ORDERS_BANK_CONNECTION_OWNER.md.
+
+The actual Orders Bank snapshot publication owner is strictly checked around
+seven required ports, Bank lease input, synchronous account/device/heartbeat
+authority, boolean readout confirmation and asynchronous accepted-work drain.
+Negative consumers reject wrong lease kind, missing guards, text confirmation,
+status-as-archive and text sequence; actual body mutations reject fabricated
+confirmation/drain. Complete transaction/RPC payloads and the private retained
+financial policy remain selectively checked and behavior/AST protected. See
+ORDERS_BANK_SNAPSHOT_PUBLICATION.md.
