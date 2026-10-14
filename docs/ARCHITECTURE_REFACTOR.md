@@ -1129,3 +1129,5 @@ policies and 576 link/restore cases preserve transfer, multi-cheque, type, sourc
 busy/blocked and original field semantics. Strict bodies, negative consumers,
 actual implementation mutations and 34 native scope/payload/drain/journal checks
 protect the boundary. See [Morning form/Bank capabilities](MORNING_FORM_BANK_CAPABILITIES.md).
+
+Orders and Kupa Credit refresh now has strict seven-port operation owners. Controllers retain admission/presentation; cloud/lease/provider/diagnostic/cleanup commands remain drainable after disposal. Kupa Credit decreases from 15 to 13 inputs and composes one existing publication owner for refresh/settings/reset/retry. Immutable full-function ASTs preserve distinct freshness, cooldown, rebase and ACK/checkpoint policy. A shared unknown Bridge envelope rejects coercible counts, invalid profile identities and malformed diagnostics. Native pairing/account/disposal and malformed replies preserve exact journals and recovery. Kupa Bank coordination and remaining financial edit contracts stay open. See [Credit refresh operations](CREDIT_REFRESH_OPERATION_OWNERS.md).

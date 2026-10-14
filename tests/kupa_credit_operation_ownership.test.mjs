@@ -12,6 +12,24 @@ import {createFinanceOperationScope,createFinanceManualQueue} from '../shared/fi
 const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no});return {promise,resolve,reject}};
 const result={syncedAt:'2026-10-08T10:00:00Z',attemptedCount:1,profiles:[{profileId:'P',provider:'max',accounts:[{accountNumber:'card',txns:[{id:'provider-transaction',date:'2026-10-08',processedDate:'2026-10-08',status:'completed',chargedAmount:-12,chargedCurrency:'ILS'}]}]}],errors:[]};
 const stale=()=>Object.assign(new Error('finance operation ownership changed'),{code:'FINANCE_OPERATION_SCOPE_CHANGED'});
+for(const invalid of [{},{profiles:[{}]},{...result,attemptedCount:null,deferredCount:1},{...result,errors:[null]},{...result,profiles:'ready'}])test('Kupa malformed provider envelope cannot publish or checkpoint: '+JSON.stringify(invalid),async t=>{
+ const f=fixture(t),api=f.create(),pending=api.refreshCreditSync();await f.entered.promise;f.provider.resolve(invalid);await pending;await api.runtime.drain();
+ assert.deepEqual(f.model.state,f.before);assert.equal(f.counts().patches,0);assert.equal(f.counts().saves,0);assert.equal(f.counts().releases,1);assert.match(api.creditSyncUiState().error,/לא תקינות/);api.runtime.dispose();
+});
+test('Kupa malformed structured failure grants neither diagnostic publication nor cooldown',async t=>{
+ const f=fixture(t),api=f.create(),pending=api.refreshCreditSync();await f.entered.promise;f.provider.reject(Object.assign(Error('issuer failed'),{creditErrors:[{profileId:'P',deferred:true},null]}));await pending;
+ assert.equal(f.counts().patches,0);assert.equal(f.counts().saves,0);assert.equal(f.counts().releases,1);assert.equal(api.creditSyncUiState().error,'issuer failed');api.runtime.dispose();
+});
+test('Kupa malformed status profile cannot enter the provider',async t=>{
+ const f=fixture(t);f.ports.bridge.creditStatus=async()=>({bridgeVersion:73,contractVersion:2,profiles:[{profileId:null}]});
+ f.ports.bridge.syncCreditCards=async()=>assert.fail('provider must remain closed');const api=f.create();await api.refreshCreditSync();
+ assert.equal(f.counts().patches,0);assert.deepEqual(f.model.state,f.before);assert.equal(f.counts().releases,1);api.runtime.dispose();
+});
+test('Kupa unavailable Bridge reports the connection owner detail instead of an absent local field',async t=>{
+ const f=fixture(t);f.ports.bridge.creditStatus=async()=>{throw Error('fixture unreachable bridge')};
+ const api=f.create();await api.refreshCreditSync();assert.equal(api.creditSyncUiState().error,'fixture unreachable bridge');
+ assert.equal(f.counts().patches,0);assert.equal(f.counts().releases,1);api.runtime.dispose();
+});
 for(const phase of [1,2])test(`automatic Credit preflight ${phase} carries captured authority into Finance error reporting`,async t=>{
   const f=fixture(t),reported=[];let reads=0;
   f.ports.refreshFinanceCloudSnapshot=createKupaFinanceCloudPorts({model:f.model,session:{connectionMode:'supabase',backendReady:true,dbRevision:1,financeRevision:1},isOnline:()=>true,reportError:error=>reported.push(error),

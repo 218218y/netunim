@@ -12,7 +12,10 @@ import {createOrdersFinanceDocumentCommands} from '../domains/finance/document-c
 import {createOrdersBankSnapshotPublication} from '../domains/finance/bank-snapshot-publication.js';
 import {createOrdersBankSnapshotPolicy} from '../domains/finance/bank-snapshot-policy.js';
 import {createOrdersBankRefresh} from '../domains/finance/bank-refresh.js';
-import {bankAutoRefreshDue} from '../shared/finance-refresh-policy.js';
+import {createOrdersCreditRefresh} from '../domains/finance/credit-refresh.js';
+import {bankAutoRefreshDue,creditRefreshDue} from '../shared/finance-refresh-policy.js';
+import {normalizeCreditFetchMode,resolveCreditAutoSyncMode} from '../shared/credit-sync-policy.js';
+import {normalizeCreditSync,mergeCreditSyncResult,creditSyncScrapeSelection} from '../domains/finance/credit-feed.js';
 import {createOrdersBankArchiveReadout} from '../domains/finance/bank-archive-readout.js';
 import {createBankArchiveReconciliation} from '../shared/bank-archive-reconciliation.js';
 import {bankArchiveTargets,bankArchiveSourceRows} from '../domains/finance/bank-archive-model.js';
@@ -198,8 +201,21 @@ export function createOrdersFinanceCapability({
         due:bankAutoRefreshDue,
       },
     });
+    const creditRefresh = createOrdersCreditRefresh({
+      authority:operationScope,
+      cloud:{refresh:(...args)=>cache.refreshKupaReadout(...args),readSync:()=>checksSession.kupaCloudReadState?.creditSync},
+      device:{capture:connections.queries.capture,readStatus:connections.queries.readStatus,supported:connections.queries.supported,
+        sync:options=>bridge.syncCreditCards(options),refreshStatus:connections.queries.refreshStatus,reportFailure:connections.commands.reportFailure},
+      leases:{...createFinanceLeaseOwner({leases:syncLeases,authority:leaseAuthority,timers:platform.timers??globalThis}),
+        createToken:()=>uid('FINLEASE'),reportFailure:error=>console.error('orders credit sync lease release',error)},
+      policy:{normalizeMode:normalizeCreditFetchMode,resolveMode:resolveCreditAutoSyncMode,selection:creditSyncScrapeSelection,
+        merge:mergeCreditSyncResult,lastSyncAt:sync=>normalizeCreditSync(sync).syncedAt},
+      publication:{commit:documents.commands.mutateFinance},
+      automation:{allowed:()=>coreReady().creditRefreshAutomation.allowed(),currentEpoch:()=>coreReady().creditRefreshAutomation.currentEpoch(),
+        mode:()=>coreReady().creditRefreshAutomation.mode(),due:creditRefreshDue},
+    });
     controller = createDomainsFinanceController({
-      documents,syncLeases:createFinanceLeaseOwner({leases:syncLeases,authority:leaseAuthority,timers:platform.timers??globalThis}),archive,connections,bankConnections,bankRefresh,
+      documents,creditRefresh,archive,connections,bankConnections,bankRefresh,
       tab, checksSession, bridge, operationScope, effects:controllerEffects,
       loadSession:auth.loadSession, toast:(...args) => { if (!disposed) toast(...args); }, getSharedChecks:() => model.state.checks,
       refreshKupaReadout:(...args) => cache.refreshKupaReadout(...args),
