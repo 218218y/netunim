@@ -20,7 +20,7 @@ import { FINANCE_PUBLICATION_WARNING } from './document-publication.js';
  * checks:{hasLocalWork:()=>boolean,save:(message:string)=>Promise<unknown>,refresh:(options:{quiet:true,required:true})=>Promise<unknown>,read:()=>ChecksState},
  * transactions:{reconcile:(account:unknown,role:'business'|'home',rows:readonly unknown[],options:{lease:SnapshotLease,snapshotAt:unknown,coverage:TransactionCoverage|null,complete:boolean})=>Promise<unknown>},
  * images:{sync:(rows:readonly unknown[],options:{assertCurrent:SnapshotGuard})=>Promise<{warnings?:readonly unknown[]}|null>},
- * archive:{read:(targets:readonly {role:'business'|'home',accountKey:string}[],options:{days:number,assertCurrent:SnapshotGuard})=>Promise<ArchiveRead[]>,publish:(candidate:ArchiveCandidate)=>unknown},
+ * archive:{read:(targets:readonly {role:'business'|'home',accountKey:string}[],options:{days:number,assertCurrent:SnapshotGuard})=>Promise<ArchiveRead[]>,publish:(candidate:ArchiveCandidate)=>boolean},
  * publication:{save:(bank:Record<string,unknown>,token:string,seq:number,lease:SnapshotLease)=>Promise<{published:boolean}>},
  * policy:{accountId:(snapshot:BankAccount)=>unknown,coverage:(snapshot:BankAccount)=>TransactionCoverage,transactions:(snapshot:BankAccount)=>readonly unknown[],audit:(merge:unknown,rows:readonly unknown[],options:{role:string,requireExactCount:boolean})=>Record<string,unknown>,build:(input:PlanInput)=>SnapshotPlan},
  * authority:{captureRead:()=>SnapshotGuard}

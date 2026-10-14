@@ -12,7 +12,7 @@ const ports = {
   },
   transactions: { reconcile: async () => ({}) },
   images: { sync: async () => ({ warnings: [] }) },
-  archive: { read: async () => [], publish: () => undefined },
+  archive: { read: async () => [], publish: () => true },
   publication: { save: async () => ({ published: true }) },
   policy: {
     accountId: () => '',
@@ -66,6 +66,8 @@ api.commands.publish(null, {
 ports.publication.save = async () => ({ published: 'saved' });
 // @ts-expect-error archive transactions cannot be an HTTP status
 ports.archive.read = async () => 200;
+// @ts-expect-error display publication must complete synchronously before command completion
+ports.archive.publish = async () => true;
 // @ts-expect-error numeric check sequence cannot be a display label
 ports.policy.build = () => ({ bank: {}, snapshotToken: 'BANK-one', snapshotSeq: 'seven' });
 // @ts-expect-error a completed drain is asynchronous, not a fabricated confirmation
