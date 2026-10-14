@@ -33,7 +33,12 @@ remaining-scope paragraphs describe their stage's starting point.
   session. Reproduced detached/closed choice writes and retained recovery-only
   account displays are fenced, preserving accepted confirmation allocation and
   unrelated draft guards. See [Morning modal presentation](MORNING_MODAL_PRESENTATION.md).
-  Broader customer orchestration and form presentation remain open. See [Morning operation drain](MORNING_OPERATION_DRAIN.md) and
+  Form/footer, allocation warnings, recovery comparison and operation views now
+  use a strict readonly presenter with two ports. An immutable 207-case fixture
+  preserves output policy, while native held confirmation/choice tests retain
+  exact journal events and unrelated dirty drafts. The controller decreases from
+  about 51.6 KB to 41.5 KB. Broader customer orchestration, form editing/Bank linking
+  and search/metadata payload contracts remain open. See [Morning operation drain](MORNING_OPERATION_DRAIN.md) and
   [Morning media ownership](MORNING_DOCUMENT_MEDIA_OWNER.md).
 
 - Orders Calendar separates connection intent, Google verification, sync/reconnect

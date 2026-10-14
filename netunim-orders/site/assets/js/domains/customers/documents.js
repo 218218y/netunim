@@ -1,3 +1,4 @@
+import {DOCUMENT_TYPES,DEFAULT_DOCUMENT_TYPE,documentLabel,createMorningDocumentView} from './morning-document-view.js';
 import {createMorningDebtApplication} from './morning-debt-application.js';
 import {createMorningLifetime} from './morning-lifetime.js';
 import {clearMorningDisplay} from './morning-display-lifetime.js';
@@ -17,12 +18,11 @@ import {createMorningPayments,morningPaymentTotalCents} from './morning-payments
 import {activeMorningBankDebts,collapseMorningBankDebtPicker,filterMorningBankDebtPicker,morningBankDebtPickerMarkup,syncMorningBankDebtPickerSelection} from './morning-bank-debt-picker.js';
 import {createMorningBankTransactionLinker} from './morning-bank-transaction-link.js';
 
-const DOCUMENT_TYPES=Object.freeze({305:'חשבונית מס',320:'חשבונית מס / קבלה',400:'קבלה'});
-const DOCUMENT_TYPE_ORDER=Object.freeze([320,305,400]);
-const DEFAULT_DOCUMENT_TYPE=320;
+
+const {documentButton,foot,form:morningFormMarkup,debt:morningDebtUpdateMarkup,decision:morningRecoveryDecisionMarkup,operation:morningOperationMarkup}=createMorningDocumentView({format:{esc,money},financial:{changes:morningFinancialChanges}});
 
 function todayLocal(){const d=new Date(),shift=d.getTimezoneOffset()*60_000;return new Date(d.getTime()-shift).toISOString().slice(0,10)}
-function documentLabel(type){return DOCUMENT_TYPES[Number(type)]||`מסמך ${Number(type)||''}`}
+
 function cleanText(value,max=250){return String(value??'').trim().slice(0,max)}
 function setBusy(button,busy,label=''){if(!button)return;button.ariaBusy=String(!!busy);button.disabled=!!busy;if(busy&&label){if(!button.dataset.idleLabel)button.dataset.idleLabel=button.textContent||'';button.textContent=label}else if(!busy&&button.dataset.idleLabel)button.textContent=button.dataset.idleLabel}
 
@@ -60,7 +60,7 @@ function rejectDebtRecoveryMutation(debtId){
 function sourceFromRecovery(context){const kind=context?.sourceKind||((context?.debtId)?'debt':'standalone');return kind==='bank'?{kind:'bank',bankTransactionId:Number(context?.bankTransactionId)||0}:{kind}}
 function sourceKey(source=activeSource){return source?.kind==='bank'?`bank:${Number(source.bankTransactionId)||0}`:source?.kind==='debt'?`debt:${String(activeDebtId||'')}`:'standalone'}
 function hydrateRecoveredSource(recovered,requested){if(recovered?.kind!=='bank'||requested?.kind!=='bank'||Number(recovered.bankTransactionId)!==Number(requested.bankTransactionId))return recovered;return {...recovered,...requested,kind:'bank',bankTransactionId:Number(recovered.bankTransactionId)}}
-function defaultDescription(d,kind='standalone'){if(kind==='standalone')return'';if(kind==='bank')return cleanText(d?.description,250)||`תקבול בנקאי מ${cleanText(d?.customerName,120)||'לקוח'}`;return `עבור ${cleanText(d?.customerName,120)||'לקוח'}`}
+
 function newOperationId(){return globalThis.crypto.randomUUID()}
 
 const operationCommands=createMorningOperationCommands({request});
@@ -104,24 +104,8 @@ const statusFlow=createMorningStatus({
   },
 });
 
-function documentButton(d){
-  return `<button class="icon-btn morning-document-button" title="הפק מסמך ב-Morning" aria-label="הפק מסמך ב-Morning" data-action="open-morning-document" data-click-arg0="${esc(d.id)}"><span aria-hidden="true">▤</span></button>`;
-}
 
-function debtUpdatePanel(){
-  if(!activeDebtId)return'';
-  const debt=currentDebt(),progress=customerDebtProgressData(debt||{}),existing=[];
-  if(progress.paymentApplied>0)existing.push(`בחוב כבר רשום תשלום בסך ${money(progress.paymentApplied)}`);
-  if(progress.invoiceApplied>0)existing.push(`בחוב כבר רשום סכום חשבוניות בסך ${money(progress.invoiceApplied)}`);
-  return `<div id="morningDebtUpdatePanel" class="morning-form-card morning-debt-update-panel">
-    <div class="morning-section-title"><span>עדכון החוב המקומי לאחר אימות</span><small>הבחירה כאן אינה נשלחת ל-Morning</small></div>
-    <div class="morning-debt-update-options">
-      <label id="morningApplyPaymentOption" class="morning-debt-update-option"><input id="morningApplyPayment" type="checkbox" checked><span><b>זקוף כתשלום לחוב</b><small>הסכום המאומת יקוזז מיתרת התשלום בלבד</small></span></label>
-      <label id="morningApplyInvoiceOption" class="morning-debt-update-option"><input id="morningApplyInvoice" type="checkbox" checked><span><b>זקוף כחשבונית לחוב</b><small>הסכום המאומת יקוזז מיתרת החשבונית בלבד</small></span></label>
-    </div>
-    <div class="morning-debt-update-warning"><b>מניעת רישום כפול:</b> אם התשלום או החשבונית כבר נרשמו ידנית בחוב, או שסכום החוב כבר הוקטן ידנית בעקבותיהם, בטל את הסימון המתאים.${existing.length?`<br><strong>${esc(existing.join(' · '))}</strong>`:''}</div>
-  </div>`;
-}
+function debtUpdatePanel(){return activeDebtId?morningDebtUpdateMarkup(customerDebtProgressData(currentDebt()||{})):''}
 function activeBankDebts(){return activeMorningBankDebts(model.state.customerDebts||[])}
 function bankDebtLinkPanel(){return activeSource?.kind==='bank'?morningBankDebtPickerMarkup({debts:model.state.customerDebts||[],transaction:activeSource.bankTransaction||null,activeDebtId,aggregate:activeSource.aggregate===true}):''}
 function filterBankDebtPicker(query=''){return filterMorningBankDebtPicker(query)}
@@ -132,39 +116,13 @@ function linkBankTransaction(transactionId){return bankTransactionLinker.link(tr
 function clearBankTransactionLink(){return bankTransactionLinker.clear({blocked,busy:createBusy})}
 
 function formBody(d,type,dateEditorMarkup,{source=activeSource}={}){
-  const kind=source?.kind||'standalone',standalone=kind==='standalone',bank=kind==='bank',amountValue=Number(d?.amount),amountInput=Number.isFinite(amountValue)&&amountValue>0?amountValue.toFixed(2):'',documentDate=cleanText(d?.date,10)||todayLocal();
-  const formHint=standalone?'הזן את פרטי הלקוח והמסמך. המסמך אינו יוצר חוב ואינו תלוי ברשומת חוב.':bank?'הפרטים מולאו מתנועת הבנק. תקבולים שמקורם בבנק נשמרים כנתוני מקור; בהפקדת כמה צ׳קים אפשר להסיר צ׳ק שאינו שייך למסמך ולהוסיף תקבולים נוספים.':'הפרטים נלקחים מהחוב וניתנים לעריכה לפני ההפקה';
-  const allowedTypes=bank?[320,400]:DOCUMENT_TYPE_ORDER;
-  return `<div class="morning-document-dialog" data-morning-generation="${modalSession.generation}">
-    <div id="morningRecoveryDecision" hidden></div>
-    <div class="morning-type-picker" role="group" aria-label="סוג מסמך">
-      ${allowedTypes.map(value=>{const label=DOCUMENT_TYPES[value];return `<label class="morning-type-option"><input type="radio" name="morningDocumentType" value="${value}" data-change="morning-document-type" ${Number(value)===Number(type)?'checked':''}><span><b>${esc(label)}</b><small>${Number(value)===305?'חיוב ללא תקבול':Number(value)===320?'חשבונית ותקבול במסמך אחד':'תקבול כנגד חשבונית/חיוב'}</small></span></label>`}).join('')}
-    </div>
-    ${bankTransactionLinkPanel(source)}${bankDebtLinkPanel()}<div id="morningDebtUpdateHost">${debtUpdatePanel()}</div>
-    <div class="morning-form-card">
-      <div class="morning-section-title"><span>פרטי המסמך</span><small>${formHint}</small></div>
-      <div class="form-grid morning-document-fields">
-        <div class="field morning-client-name-field"><label>שם לקוח</label><input id="morningClientName" maxlength="160" value="${esc(d.customerName||'')}"></div>
-        <div class="field morning-document-amount-field"><label>סכום כולל מע״מ</label><input id="morningAmount" class="number-input" data-input="morning-document-amount" type="number" min="0" step="1" value="${esc(amountInput)}" placeholder="0.00"></div>
-        <div class="field morning-order-field"><label>מספר הזמנה <small>(רשות)</small></label><input id="morningOrderNumber" maxlength="80" value="${esc(d.orderNumber||'')}"></div>
-        <div class="field morning-client-tax-field"><label>ת.ז / מספר עוסק <small>(רשות)</small></label><input id="morningClientTaxId" inputmode="numeric" maxlength="9" value="${esc(d.taxId||'')}"></div>
-        <div class="field morning-document-date-field"><label>תאריך מסמך</label>${dateEditorMarkup('morningDocumentDate',documentDate,{label:'תאריך מסמך'})}</div>
-        <div class="field morning-due-date-field" data-document-kind="305"><label>לתשלום עד <small>(רשות)</small></label>${dateEditorMarkup('morningDueDate','',{label:'תאריך לתשלום'})}</div>
-        <div class="field morning-client-email-field"><label>אימייל <small>(רשות · שליחה אוטומטית ללקוח)</small></label><input id="morningClientEmail" type="email" maxlength="180" value="${esc(d.email||'')}"></div>
-        <div class="field morning-client-phone-field"><label>טלפון <small>(רשות)</small></label><input id="morningClientPhone" inputmode="tel" maxlength="50" value="${esc(d.phone||'')}"></div>
-        <div class="field full morning-description-field"><label>תיאור במסמך</label><input id="morningDescription" maxlength="250" value="${esc(d.description||defaultDescription(d,kind))}"></div>
-        <div class="field full morning-remarks-field"><label>הערות במסמך <small>(רשות)</small></label><textarea id="morningRemarks" maxlength="500" rows="2" placeholder="הערה שתופיע במסמך ב-Morning">${esc(d.remarks||'')}</textarea></div>
-      </div>
-      <div class="morning-allocation-note"><b>חשבוניות ישראל</b><span>Morning מטפלת במספר הקצאה אוטומטית כאשר החיבור לרשות המסים פעיל והמסמך עומד בתנאים. לא בכל חשבונית נדרש מספר; ללקוח עסקי חשוב להזין מספר עוסק / ח.פ.</span></div>
-    </div>
-    ${paymentFields(d,source)}
-    <div id="morningLinkedDocumentPanel" class="morning-form-card" hidden><div class="morning-section-title"><span>קישור לחשבונית מס קיימת</span><small>בקבלה ניתן לקשר לחשבונית שהופקה קודם</small></div><div class="field"><label>חשבונית לקישור <small>(רשות)</small></label><select id="morningLinkedDocument"><option value="">ללא קישור</option></select><button class="btn small" data-action="morning-invoice-picker">חפש חשבונית ב-Morning</button><div id="morningInvoicePicker" hidden></div></div></div>
-    <div id="morningPreviewBox" class="morning-preview-box" hidden><div class="morning-preview-head"><b>תצוגה מקדימה</b><span id="morningPreviewNote">הקובץ עדיין לא הופק רשמית</span></div><iframe id="morningPreviewFrame" title="תצוגה מקדימה של מסמך Morning"></iframe></div>
-    <div id="morningOperationResult" aria-live="polite"></div><button class="btn small" data-action="morning-reconcile">בדוק מצב הפקה</button>
-  </div>`;
+  const documentDate=cleanText(d?.date,10)||todayLocal();
+  return morningFormMarkup(d,type,{generation:modalSession.generation,kind:source?.kind||'standalone',
+    dates:{document:dateEditorMarkup('morningDocumentDate',documentDate,{label:'תאריך מסמך'}),due:dateEditorMarkup('morningDueDate','',{label:'תאריך לתשלום'})},
+    panels:{bankTransactions:bankTransactionLinkPanel(source),bankDebts:bankDebtLinkPanel(),debtUpdate:debtUpdatePanel(),payments:paymentFields(d,source)},
+  });
 }
 
-function foot(){return `<button class="btn primary" data-action="morning-create" disabled>הפק מסמך רשמי</button><button class="btn" data-action="morning-preview">תצוגה מקדימה</button><button class="btn" data-action="close-modal">סגור</button>`}
 
 function openMorningDocument(debtId){
   const d=(model.state.customerDebts||[]).find(item=>item.id===debtId);if(!d)return toast('חוב הלקוח לא נמצא');
@@ -268,8 +226,6 @@ function adoptRecoveryOperationId(operationId){
   return issuanceContext;
 }
 function showRecoveryDecision(context,current){
-  const changes=morningFinancialChanges(context.financialSnapshot,current),saved=context.resolution;
-  const reviewed=saved&&!morningFinancialChanges(saved.financialSnapshot,current).changed;
   const displayedCurrent=morningFinancialSnapshot((model.state.customerDebts||[]).find(d=>d.id===context.debtId))||current;
   decisionView={operationId:context.operationId,financialSnapshot:current};
   if(!$('#modalBackdrop')?.classList.contains('open')){
@@ -277,9 +233,7 @@ function showRecoveryDecision(context,current){
   }
   const panel=currentField('morningRecoveryDecision');
   if(!panel){toast('החוב השתנה בזמן שהפקת Morning המתינה לאימות. פתח את הפקת Morning של החוב להכרעה לפני זקיפה.');return}
-  const summary=value=>value?`סכום החוב: ${money(value.amount)} · שולם: ${money(value.paymentApplied)} (${value.paymentComplete?'מלא':'לא מלא'}) · חשבוניות: ${money(value.invoiceApplied)} (${value.invoiceComplete?'מלא':'לא מלא'})`:'לא נשמר צילום מצב בניסיון ההפקה הישן. נדרש אישור מפורש.';
-  const option=(kind,label,supported,checked)=>supported?`<label class="morning-debt-update-option"><input id="morningRecovery${kind}" type="checkbox" data-change="morning-recovery-choice" ${checked?'checked':''}><span>${label}</span></label>`:'';
-  panel.hidden=false;panel.innerHTML=`<section class="morning-form-card"><h4>נדרשת הכרעה לפני עדכון החוב</h4><p>${esc(documentLabel(context.type))} בסך <b>${money(context.amount)}</b>. ייתכן שהתשלום או החשבונית כבר נרשמו ממחשב אחר. אין זקיפה אוטומטית לפי סכומים.</p><p><b>בזמן ההפקה:</b> ${summary(context.financialSnapshot)}</p><p><b>המצב הנוכחי לאחר סנכרון:</b> ${summary(displayedCurrent)}</p><div class="morning-debt-update-options">${option('Payment','זקוף כתשלום',context.type!==305,reviewed?saved.applyPayment:context.applyPayment&&!changes.payment)}${option('Invoice','זקוף כחשבונית',context.type!==400,reviewed?saved.applyInvoice:context.applyInvoice&&!changes.invoice)}</div><p>בצד שהשתנה הסימון כבוי כברירת מחדל. סמן אותו רק אם מסמך Morning מייצג סכום נוסף שעדיין לא נרשם. הבחירות נשמרות; זקיפה תבוצע רק לאחר אישור מפורש ורענון ענן מוצלח.</p><button class="btn primary" data-action="morning-recovery-confirm">אשר את הבחירות ועדכן את החוב</button><p id="morningRecoveryChoiceStatus" role="status"></p></section>`;
+  panel.hidden=false;panel.innerHTML=morningRecoveryDecisionMarkup(context,current,displayedCurrent);
   connectionStatus('warning','המסמך מאומת. החוב ממתין להכרעה מפורשת.');markModalDraftSaved?.();
 }
 function saveRecoveryChoice(){
@@ -320,13 +274,7 @@ function notifyBankVerified(context,bankLink){if(context?.sourceKind!=='bank'||!
 
 function mountMorningConnectionStatus(){const panel=modalSession.element?.closest('#modal'),heading=panel?.querySelector('.modal-head h3');if(!heading||!panel.querySelector('.morning-document-dialog'))return;heading.id='morningConnectionStatus';heading.className='morning-connection morning-modal-connection loading';heading.innerHTML='<span class="morning-dot"></span><span>בודק חיבור ל-Morning…</span>'}
 function connectionStatus(kind,text){const el=currentField('morningConnectionStatus');if(!el)return;const inHeader=el.matches('#modal .modal-head h3');el.className=`morning-connection ${inHeader?'morning-modal-connection ':''}${kind}`;el.innerHTML=`<span class="morning-dot"></span><span>${esc(text)}</span>`}
-function renderOperation(op){
-  const result=currentField('morningOperationResult');if(!result)return;
-  if(op?.state==='reserved'){result.innerHTML='<div class="morning-form-card"><b>פעולת ההפקה נרשמה בשרת אך טרם נשלחה ל-Morning</b><span>לא שולחים מחדש מתוך הטופס המשוחזר. לחץ „בדוק מצב הפקה” כדי לבטל את ההזמנה המוקדמת בבטחה ואז להפיק מחדש.</span></div>';return}
-  if(op?.state==='created_unverified'){result.innerHTML=`<div class="morning-form-card"><b>Morning החזירה מזהה למסמך ${esc(op.document_number||'')}, אך האימות החוזר עדיין לא הושלם</b><span>לא מפיקים שוב. יש ללחוץ „בדוק מצב הפקה”.</span></div>`;return}
-  if(op?.state!=='created'||!op?.verified_at)return;
-  result.innerHTML=`<div class="morning-form-card"><b>המסמך הופק ואומת ב-Morning ${esc(op.document_number||'')}</b><span class="morning-allocation">מספר הקצאה: ${esc(op.allocation_number||'—')}</span><button class="btn small" data-action="morning-open-document" data-click-arg0="${esc(op.document_id)}">צפה</button></div>`;
-}
+function renderOperation(op){const result=currentField('morningOperationResult'),markup=morningOperationMarkup(op);if(result&&markup!==null)result.innerHTML=markup}
 function resetOperationAfterTerminal(operationId){
   if(!clearRecoveryContext(operationId)){blocked=true;scheduleRecoveryCheck();return false}
   const debtId=issuanceContext?.debtId??activeDebtId,recovered=issuanceContext?sourceFromRecovery(issuanceContext):activeSource,source=hydrateRecoveredSource(recovered,activeSource);blocked=false;completed=false;activeOperationId=newOperationId();activeDebtId=String(debtId||'');activeSource=source;issuanceContext=null;return true;

@@ -5,6 +5,7 @@ import path from 'node:path';
 import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
+import {declaration} from './bank_policy_ast_fixture.mjs';
 
 const root=fileURLToPath(new URL('../',import.meta.url));
 const modules=process.env.NETUNIM_OFFLINE_NODE_MODULES||path.join(root,'node_modules');
@@ -24,6 +25,13 @@ function check(overrides=new Map()){
   return ts.getPreEmitDiagnostics(program);
 }
 function describe(diagnostics){return ts.formatDiagnostics(diagnostics,{getCanonicalFileName:file=>file,getCurrentDirectory:()=>root,getNewLine:()=> '\n'})}
+
+test('Morning document presentation rejects deferred markup in its actual body',()=>{
+ const source=path.join(root,'netunim-orders/site/assets/js/domains/customers/morning-document-view.js'),original=readFileSync(source,'utf8');
+ const body=declaration(original,'morningFormMarkup'),mutated=original.slice(body.start,body.end).replace('return `','return Promise.resolve(`').replace(/`;\s*}$/, '`);\n}');
+ const changed=original.slice(0,body.start)+mutated+original.slice(body.end);assert.notEqual(changed,original);declaration(changed,'morningFormMarkup');
+ const diagnostics=check(new Map([[source,changed]]));assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+});
 
 test('Morning modal session rejects textual mounted authority and fabricated generation in its implementation',()=>{
  const source=path.join(root,'netunim-orders/site/assets/js/domains/customers/morning-modal-session.js'),original=readFileSync(source,'utf8');

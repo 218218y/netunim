@@ -1,0 +1,18 @@
+{
+  "commit": "57bc27e70ef71c4a20f6d035abf47e6e8ac95f45",
+  "sourceDigest": "b1fb3348b5f2f0b313838d2213fd9ea913f482f61ebe25df6619a680a54a095a",
+  "cases": 207,
+  "digest": "46d38f8f643929167c1333db10dfe6d2baacc698c4e0d76cc296642dd12bfd1c",
+  "projection": "readonly customerDebtProgressData projection supplied by host; 45 forms, four debt panels, 144 decisions, footer/button and 12 operation views",
+  "functions": {
+    "documentLabel": "147378dece9df1b8cd03b24383deb7068be4b6c1934c05324b2cb8b5866b7cef",
+    "cleanText": "c89e8e422e28b5c61d102cd5197698a4f49e5df537a5f7e58503836ed8212e06",
+    "documentButton": "47718e1504162b92667118f17b604106613966ea1bdd36e510609d5b204eed70",
+    "defaultDescription": "97bc0e723d4b116a831d936349a7d65543344ff3f007e8b205eb3559187eed4b",
+    "debtUpdatePanel": "5f0e8c70a4c71df7a2e0300df842323513383641d050e8e609d110a137997808",
+    "formBody": "3ea1b267074316f678c32e492afeb15a5706f7f98a2a29df97a103951b0ee43e",
+    "foot": "2700023e72b4b4225c6077e1e574246c4bedd713b16ac14d535286dc0173f8b4",
+    "showRecoveryDecision": "16eca9f70a3c0cb8d38040e7a01d2cf965c61daed64504ea96a2e88867cbfbbf",
+    "renderOperation": "d84de4640c5a6eaefb5d2ffe8d9cf6ae7823a3f548abdc0bddf25ec067c36b89"
+  }
+}

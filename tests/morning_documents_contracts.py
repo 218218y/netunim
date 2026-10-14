@@ -17,6 +17,7 @@ def ok(condition,message):
 edge=FUNCTION.read_text(encoding='utf-8')
 sql=SQL.read_text(encoding='utf-8')
 documents=(SITE/'assets/js/domains/customers/documents.js').read_text(encoding='utf-8')
+document_view=(SITE/'assets/js/domains/customers/morning-document-view.js').read_text(encoding='utf-8')
 request=(SITE/'assets/js/integrations/morning.js').read_text(encoding='utf-8')
 issuance=(SITE/'assets/js/domains/customers/morning-issuance.js').read_text(encoding='utf-8')
 recovery_flow=(SITE/'assets/js/domains/customers/morning-recovery.js').read_text(encoding='utf-8')
@@ -45,9 +46,10 @@ setup=DOCS.read_text(encoding='utf-8')
 owner_retention=OWNER_RETENTION.read_text(encoding='utf-8')
 preissue=PREISSUE.read_text(encoding='utf-8')
 
-ok("const DOCUMENT_TYPES=new Set([305,320,400])" in edge and "305:'חשבונית מס'" in documents and "320:'חשבונית מס / קבלה'" in documents and "400:'קבלה'" in documents,
+ok("const DOCUMENT_TYPES=new Set([305,320,400])" in edge and re.search(r"305:\s*'חשבונית מס'",document_view) and re.search(r"320:\s*'חשבונית מס / קבלה'",document_view) and re.search(r"400:\s*'קבלה'",document_view),
    'Morning document types: tax invoice, invoice/receipt and receipt are explicit and consistent')
-ok("const DOCUMENT_TYPE_ORDER=Object.freeze([320,305,400])" in documents and "const DEFAULT_DOCUMENT_TYPE=320" in documents and "const allowedTypes=bank?[320,400]:DOCUMENT_TYPE_ORDER" in documents and "initialType=DEFAULT_DOCUMENT_TYPE" in documents,
+view_code=re.sub(r'\s+','',document_view)
+ok("constDOCUMENT_TYPE_ORDER=Object.freeze([320,305,400])" in view_code and "constDEFAULT_DOCUMENT_TYPE=320" in view_code and "constallowedTypes=bank?[320,400]:DOCUMENT_TYPE_ORDER" in view_code and "initialType=DEFAULT_DOCUMENT_TYPE" in documents,
    'Morning document default: invoice/receipt remains the default while bank issuance explicitly limits the allowed types')
 ok("const PAYMENT_TYPES=new Set([1,2,3,4])" in edge and "1:'מזומן'" in morning_payments and "2:'צ׳ק'" in morning_payments and "3:'כרטיס אשראי'" in morning_payments and "4:'העברה בנקאית'" in morning_payments,
    'Morning payment enum: cash/check/card/electronic transfer codes are fixed on both client and server')
@@ -61,7 +63,7 @@ ok("requireUser(req)" in edge and "morning_cloud_auth_required" in edge and "sup
    'Morning security: browser uses authenticated Supabase Edge Function, never Morning directly')
 ok("client:any={name:clientName,add:false}" in edge and "vatType:0" in edge and "vatType:1" in edge,
    'Morning payload: one-off client and the existing gross-amount VAT-included row behavior are explicit and unchanged by reliability hardening')
-ok("/documents/preview" in edge and "pdfBase64" in media and "morningPreviewFrame" in documents and 'documentsBrowser.previewDraft(payload' in documents,
+ok("/documents/preview" in edge and "pdfBase64" in media and "morningPreviewFrame" in document_view and 'documentsBrowser.previewDraft(payload' in documents,
    'Morning preview: PDF preview is available without creating a formal document')
 reserve_pos=edge.find('reserved=await reserveOperation')
 create_pos=edge.find("morningRequest('/documents'")
@@ -104,7 +106,7 @@ ok("MORNING_ENV_RAW" in edge and "MORNING_ENV_VALID" in edge and "invalid_enviro
    'Morning environment: only production/sandbox are accepted; typos fail closed instead of silently using production')
 ok("dueDate" in documents and "morningDueDate" in documents and "payload.dueDate=dueDate" in edge and "payload.remarks=remarks" in edge,
    'Morning document details: due date and remarks are supported and validated through the existing date editor')
-ok("allocation_number text" in sql and "allocation_checked_at timestamptz" in sql and "verified_at timestamptz" in sql and "allocationNumber" in edge and "refreshCreatedAllocation" in edge and "morning-allocation" in documents,
+ok("allocation_number text" in sql and "allocation_checked_at timestamptz" in sql and "verified_at timestamptz" in sql and "allocationNumber" in edge and "refreshCreatedAllocation" in edge and "morning-allocation" in document_view,
    'Israel Invoices: compact allocation-number metadata is read back from Morning, persisted and displayed')
 ok("verifyKnownDocument(doc.id" in edge and "state:'created_unverified'" in edge and "verified_at:verifiedAt" in edge and "row.state==='created'&&row.document_id&&row.verified_at" in edge,
    'Morning post-create verification: success/replay requires a canonical matching GET and persisted verified_at; failed read-back remains blocked')
@@ -157,9 +159,9 @@ ok("data.verified!==true" in issuance and "data.operation?.state==='created'&&!!
    'Morning debt application gate: immediate create and reconciliation reach debt progress only after canonical verification')
 ok("MORNING:${operation}:" in morning_debt and "source:'morning'" in morning_debt and 'existingIds.has(id)' in morning_debt,
    'Morning debt idempotency: one deterministic progress entry per operation and side prevents double credit on replay/reconciliation')
-ok('id="morningApplyPayment" type="checkbox" checked' in documents and 'id="morningApplyInvoice" type="checkbox" checked' in documents and 'paymentSupported&&' in documents and 'invoiceSupported&&' in documents,
+ok('id="morningApplyPayment" type="checkbox" checked' in document_view and 'id="morningApplyInvoice" type="checkbox" checked' in document_view and 'paymentSupported&&' in documents and 'invoiceSupported&&' in documents,
    'Morning debt allocation UI: payment and invoice allocation are independent explicit opt-outs with safe update-by-default behavior')
-ok('אם התשלום או החשבונית כבר נרשמו ידנית בחוב' in documents and 'סכום החוב כבר הוקטן ידנית' in documents and 'בטל „זקוף כתשלום לחוב”' in documents and 'בטל „זקוף כחשבונית לחוב”' in documents and 'כדי למנוע קיזוז כפול' in documents,
+ok('אם התשלום או החשבונית כבר נרשמו ידנית בחוב' in document_view and 'סכום החוב כבר הוקטן ידנית' in document_view and 'בטל „זקוף כתשלום לחוב”' in documents and 'בטל „זקוף כחשבונית לחוב”' in documents and 'כדי למנוע קיזוז כפול' in documents,
    'Morning debt allocation warning: manual progress or a manually reduced debt is surfaced before issuance so a historical receipt/invoice is not silently deducted twice')
 read_form=documents.split('function readForm()',1)[1].split('function currentDebt()',1)[0]
 ok('applyPayment' not in read_form and 'applyInvoice' not in read_form and 'morningApplyPayment' not in read_form and 'morningApplyInvoice' not in read_form,
@@ -200,7 +202,7 @@ ok("rejectSecondaryIssuance:(...args)=>storagePersistence.rejectSecondaryAction(
 ok("blocked:!!data.unresolved||!!data.retryable_reserved||recoveryStillPending" in status_flow
    and "if(blocked&&requestedKey!==sourceKey(activeSource))" in documents
    and "if(createBusy){toast(" in documents
-   and 'לא שולחים מחדש מתוך הטופס המשוחזר' in documents,
+   and 'לא שולחים מחדש מתוך הטופס המשוחזר' in document_view,
    'Morning recovery fail-closed scope: reserved/in-flight issuance stays locked and cannot be rebound to another debt before explicit recovery')
 ok('סכום המסמך' in documents and 'רק לאחר אימות ודאי של המסמך ב-Morning' in documents and "impactLine('תשלום'" in documents and "impactLine('חשבונית'" in documents,
    'Morning debt confirmation: partial, excess and per-side consequences are shown before formal issuance')
@@ -222,9 +224,9 @@ ok("documentsBrowser.viewDocument(data.document.id,null,{quiet:true})" in docume
    'Issued-document UI: browser fails closed without server verification and automatically loads the official Morning PDF after verified issuance')
 ok("if(createBusy||blocked||completed)return" in documents and "button.disabled=blocked||completed" in documents and "הופק ואומת" in documents,
    'Issued-document UI: a verified success locks the same issuance dialog so a second click cannot create an accidental duplicate')
-ok('id="morningAmount"' in documents and 'step="1"' in documents.split('id="morningAmount"',1)[1].split('>',1)[0] and 'data-payment-field="price"' in morning_payments and 'step="1"' in morning_payments and 'Math.round' in documents and 'Math.round' in morning_payments,
+ok('id="morningAmount"' in document_view and 'step="1"' in document_view.split('id="morningAmount"',1)[1].split('>',1)[0] and 'data-payment-field="price"' in morning_payments and 'step="1"' in morning_payments and 'Math.round' in documents and 'Math.round' in morning_payments,
    'Morning amount UI: document and multi-payment amounts support exact agorot')
-ok('data-input="morning-document-amount"' in documents and 'amount.readOnly=false' in documents and 'morningPaymentTotalCents(payments)' in documents and 'אינו תואם לסך התקבולים' in documents and 'id="morningPaymentSummary"' in morning_payments and 'id="morningPaymentTotal"' in morning_payments and 'is-mismatch' in morning_payments and 'is-match' in morning_payments and "'morning-document-amount':" in actions,
+ok('data-input="morning-document-amount"' in document_view and 'amount.readOnly=false' in documents and 'morningPaymentTotalCents(payments)' in documents and 'אינו תואם לסך התקבולים' in documents and 'id="morningPaymentSummary"' in morning_payments and 'id="morningPaymentTotal"' in morning_payments and 'is-mismatch' in morning_payments and 'is-match' in morning_payments and "'morning-document-amount':" in actions,
    'Morning payment documents keep an independent editable document amount, show a live receipts total and block preview/issuance on any cent mismatch')
 ok('markModalDraftSaved' in documents and 'if(isActive(generation))markModalDraftSaved?.()' in documents and 'markModalDraftSaved:(...args)=>uiModal.markModalDraftSaved(...args)' in (ROOT/'netunim-orders/site/assets/js/domains/customers/composition.js').read_text(encoding='utf-8'),
    'Issued-document UI: verified completion commits only the still-active Morning modal draft baseline so closing does not warn about already-consumed edits')
@@ -255,7 +257,7 @@ ok('createMorningDocumentMedia(' in media_composition and 'documentMedia.create(
    'Morning PDF authority: draft and official requests use one owned publication generation and no controller-local Blob source')
 ok('firstElementChild===marker' in media_presentation and 'modalOpen()===open' in media_presentation and 'MutationObserver' in media_effects and 'observer.disconnect()' in media_effects,
    'Morning PDF presentation: close/replacement revokes pending requests and releases only the captured viewer source')
-ok('morning-document-hero' not in documents and "modal('בודק חיבור ל-Morning…'" in documents and 'mountMorningConnectionStatus()' in documents and 'morning-document-fields' in documents and 'morning-payment-fields' in morning_payments and 'מספר הזמנה <small>(רשות)</small>' in documents,
+ok('morning-document-hero' not in documents and "modalSession.open('בודק חיבור ל-Morning…'" in documents and 'mountMorningConnectionStatus()' in documents and 'morning-document-fields' in document_view and 'morning-payment-fields' in morning_payments and 'מספר הזמנה <small>(רשות)</small>' in document_view,
    'Morning compact issuance UI: connection status owns the modal header while document/payment fields use scoped compact grids')
 ok('חיפוש ישיר ב-Morning · כולל מסמכים שהופקו באתר Morning' not in browser and "modal('הצגה וחיפוש במסמכי Morning',markup()" in browser,
    'Morning document browser copy: redundant intro is removed and the modal title states its browse/search purpose')

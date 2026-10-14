@@ -1077,3 +1077,21 @@ earlier status publication. Immutable financial policies and 864 message cases,
 strict actual bodies/negative consumers/mutations and native modal/Main/Shared
 fixtures protect the slice. Form and broader customer composition remain open.
 See [Morning status ownership](MORNING_STATUS_OWNER.md).
+
+Morning form and recovery-only decision displays now share a strict four-port
+mounted session. Five reproduced controller gaps cover retained private decision
+DOM on account/disposal, detached/closed choice persistence and late confirmation
+certification of another draft. Exact native element, open visibility and captured
+read authority fence new actions. Accepted approved financial work still finishes
+through the operation lifetime and native journal; replacement UI is preserved.
+
+A second consecutive slice extracts readonly form/footer, local allocation
+warnings, financial decision comparison and verified-operation presentation into
+a strict two-port presenter. The controller decreases from about 51.6 KB to
+41.5 KB. An immutable 207-case baseline fixture preserves type/source restrictions,
+escaping and independent safe defaults alongside existing financial AST checks.
+Strict negative consumers and actual-body mutations cover synchronous presentation
+and native mounted authority. Native privacy and held confirmation tests check
+exact pending recovery, Main event IDs, notes/Shared isolation and another modal's
+dirty draft. Broader customer composition/editing remains open. See
+[Morning modal and presentation](MORNING_MODAL_PRESENTATION.md).

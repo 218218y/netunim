@@ -34,3 +34,34 @@ Strict implementation/negative consumers cover synchronous authority, visibility
 rendering and cleanup, mounted identity, numeric generation and cancellation.
 Controller regressions and the existing native privacy suite cover recovery-only
 decisions, account/logout/cross-tab changes and retained durable evidence.
+
+## Readonly presentation
+
+`morning-document-view.js` owns document type labels, form/footer markup, local
+allocation warnings, recovery comparison and verified-operation presentation.
+Two readonly ports supply text/money formatting and financial comparison. Ready
+date, payment and Bank view sections come from their existing owners. No raw
+model, DOM, provider, journal, clock or persistence capability enters this view.
+The controller retains source selection, payload validation and financial commands.
+
+Before extraction, 207 presentation cases were captured from baseline main:
+45 form/type/source/prefill combinations, four existing-progress panels, 144
+financial decision combinations, footer/button markup and 12 operation views.
+The immutable fixture records source/function hashes and the aggregate output
+digest. It covers independent opt-outs, historical missing snapshots, reviewed
+and stale saved choices, Bank type restrictions and escaping. Runtime tests read
+the fixture directly and require no older Git history. Existing immutable
+issuance/allocation/recovery function policies are retained separately.
+
+Strict actual view bodies and negative consumers reject deferred formatting or
+comparison, nonboolean allocation flags, textual amounts/generations and provider
+commands. An actual-body mutation verifies that deferred form markup is rejected.
+Native modal/IndexedDB tests cover closed and detached controls, a held accepted
+confirmation, exact original event IDs, preserved notes/Shared journal and an
+unrelated dirty draft. Provider transport is synthetic; modal and journal effects
+are native. Full Git CI remains the final merge gate.
+
+The combined slice reduces `documents.js` from about 51.6 KB to 41.5 KB. Wider
+customer composition, form editing/Bank linking and search/metadata response
+contracts remain separate work. This is not a claim of full plan completion or
+certification of physical two-computer/live provider sessions.
