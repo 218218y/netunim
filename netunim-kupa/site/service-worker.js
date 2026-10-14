@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='kupa-app-shell-';
-const CACHE='kupa-app-shell-esm-924097e6182c';
+const CACHE='kupa-app-shell-esm-d24c7b074854';
 const SHELL=[
   './',
   './index.html',
@@ -87,7 +87,9 @@ const SHELL=[
   './assets/js/shared/action-registry.js',
   './assets/js/shared/authenticated-account-scope.js',
   './assets/js/shared/automatic-backup-runtime.js',
+  './assets/js/shared/bank-archive-policy.js',
   './assets/js/shared/bank-archive-read-batch.js',
+  './assets/js/shared/bank-archive-reconciliation.js',
   './assets/js/shared/bank-balance-result.js',
   './assets/js/shared/bank-bridge-client.js',
   './assets/js/shared/bank-cheque-images.js',

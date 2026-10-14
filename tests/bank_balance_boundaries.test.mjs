@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { parse } from 'acorn';
 import { analyze } from 'eslint-scope';
 import {restoreOrdersBankPublication} from './orders_bank_publication_policy_fixture.mjs';
+import {restoreKupaReconciliation} from './bank_archive_reconciliation_policy_fixture.mjs';
 const read = (file) => readFileSync(new URL('../' + file, import.meta.url), 'utf8');
 const files = [
   'netunim-kupa/site/assets/js/domains/bank/controller.js',
@@ -11,6 +12,7 @@ const files = [
 ];
 function boundary(source, name, overrides) {
   if(name==='createDomainsFinanceController')source=restoreOrdersBankPublication(source,overrides);
+  else source=restoreKupaReconciliation(source);
   const tree = parse(source, { ecmaVersion: 'latest', sourceType: 'module' }),
     factory = tree.body.find((row) => row.declaration?.id?.name === name).declaration;
   const command = factory.body.body.find(

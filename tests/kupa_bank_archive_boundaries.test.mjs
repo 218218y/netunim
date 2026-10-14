@@ -4,6 +4,8 @@ import fs from 'node:fs';
 import { parse } from 'acorn';
 import { analyze } from 'eslint-scope';
 import { creditAdapterPolicyHashes } from './credit_adapter_policy_fixture.mjs';
+import {archivePolicySource} from './bank_archive_reconciliation_policy_fixture.mjs';
+import {tokens} from './bank_policy_ast_fixture.mjs';
 const read = (file) => fs.readFileSync(new URL('../' + file, import.meta.url), 'utf8');
 const folder = 'netunim-kupa/site/assets/js/domains/bank/';
 const fixture = JSON.parse(read('tests/fixtures/kupa-bank-archive-preserved-policy.json'));
@@ -24,7 +26,7 @@ function commandDeclaration(name) {
     .replaceAll('checks.saveCloud(', 'saveSharedChecksToCloud(')
     .replaceAll('checks.syncCloud(', 'syncSharedChecksFromCloud(');
 }
-function policies(source) {
+function policies(source,policySource=archivePolicySource()) {
   const ast = parse(source, { sourceType: 'module', ecmaVersion: 'latest' }),
     factory = ast.body.find(
       (row) => row.declaration?.id?.name === 'createDomainsBankController'
@@ -33,6 +35,9 @@ function policies(source) {
     fixture.names
       .filter((name) => name !== 'commitBankSnapshot')
       .map((name) => {
+        if(['accountIdOf','completeTransactionCoverage','canonicalJson','sameInstant','sameNumber','assertBankArchiveCoverage'].includes(name)){
+          const policy=parse(policySource,{ecmaVersion:'latest',sourceType:'module'}),node=policy.body.find(row=>row.id?.name===name);assert.ok(node,name);return policySource.slice(node.start,node.end);
+        }
         if (name === 'applyBridgeAccountFields') {
           const owner = read(folder + 'connection-owner.js');
           const node = parse(owner, { sourceType:'module', ecmaVersion:'latest' }).body.find(row => row.id?.name === name);
@@ -63,13 +68,13 @@ test('14 retained Bank/archive/Shared policies match pre-extraction algorithms a
   assert.deepEqual(policies(read(folder + 'controller.js')), retained);
 });
 test('preservation fixture rejects changed archive coverage', () => {
-  const source = read(folder + 'controller.js');
+  const source = tokens(archivePolicySource());
   for (const [from, to, name] of [
     ['total!==source.length', 'false', 'assertBankArchiveCoverage'],
   ]) {
     const changed = source.replace(from, to);
     assert.notEqual(changed, source);
-    assert.notEqual(policies(changed)[name], fixture.policies[name]);
+    assert.notEqual(policies(read(folder+'controller.js'),changed)[name], fixture.policies[name]);
   }
 });
 function boundary(source, imports) {
@@ -126,7 +131,7 @@ test('Kupa controller delegates archive ownership and preserves local publicatio
     (row) => row.declaration?.id?.name === 'createDomainsBankController'
   ).declaration;
   const fields = factory.params[0].properties.map((row) => row.key.name);
-  assert.equal(fields.length, 18);
+  assert.equal(fields.length, 17);
   assert.ok(fields.includes('archive'));
   for (const old of [
     'readBankTransactions',
@@ -137,13 +142,13 @@ test('Kupa controller delegates archive ownership and preserves local publicatio
   assert.ok(!source.includes('bankDisplayArchive'));
   assert.ok(!source.includes('cacheIsCurrent'));
   for (const call of [
-    'archive.queries.readSnapshot',
     'archive.commands.invalidate',
     'archive.runtime.pause()',
     'archive.runtime.resume()',
     'snapshots.commands.publishLocal(nextBank',
   ])
     assert.ok(source.includes(call), call);
+  assert.ok(source.includes('archiveReconciliation.commands.sync('));
 });
 test('composition supplies live Kupa authority and owns archive disposal and drain', () => {
   const original = read('netunim-kupa/site/assets/js/composition/bank.js');

@@ -1,13 +1,11 @@
+import {archivePolicySource} from './bank_archive_reconciliation_policy_fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { parse } from 'acorn';
 import { analyze } from 'eslint-scope';
-import {
-  declaration,
-  restoreOrdersBankPublication,
-  tokens,
-} from './orders_bank_publication_policy_fixture.mjs';
+import {restoreOrdersBankPublication} from './orders_bank_publication_policy_fixture.mjs';
+import {declaration,tokens} from './bank_policy_ast_fixture.mjs';
 const read = (file) => fs.readFileSync(new URL('../' + file, import.meta.url), 'utf8');
 const folder = 'netunim-orders/site/assets/js/domains/finance/';
 const fixture = JSON.parse(read('tests/fixtures/orders-bank-publication-policy.json'));
@@ -28,7 +26,7 @@ test('provider/lease/publication workflow matches the immutable before-extractio
 test('archive audit, feed, home failure, sequence and checks-preparation algorithms retain their before-extraction AST', () => {
   const model = read(folder + 'bank-snapshot-policy.js');
   for (const [name, expected] of Object.entries(fixture.helpers)) {
-    let source = model;
+    let source = ['accountIdOf','completeTransactionCoverage','canonicalJson','sameInstant','sameNumber','assertBankArchiveCoverage'].includes(name)?archivePolicySource():model;
     if (name === 'observedChecksSequence')
       source = source
         .replace(/observedChecksSequence\(kupa,\s*bankEvents\)/, 'observedChecksSequence(kupa)')
@@ -53,8 +51,6 @@ test('preservation rejects changed reconciliation, backfill and atomic publicati
     owner = tokens(read(folder + 'bank-snapshot-publication.js')),
     model = tokens(read(folder + 'bank-snapshot-policy.js'));
   for (const [target, from, to] of [
-    ['owner', "'business',", "'home',"],
-    ['owner', 'days:370', 'days:30'],
     ['owner', 'if(readoutVerified)', 'if(true)'],
     ['model', 'historyDays>=365', 'historyDays>=30'],
     ['model', 'snapshotSeq=observedChecksSequence', 'snapshotSeq=0&&observedChecksSequence'],
@@ -74,12 +70,12 @@ test('preservation rejects changed reconciliation, backfill and atomic publicati
   }
 });
 
-test('the publication owner has seven required ports, two commands, and no direct platform/provider access', () => {
+test('the publication owner has five required ports, two commands, and no direct platform/provider access', () => {
   const source = read(folder + 'bank-snapshot-publication.js'),
     tree = parse(source, { ecmaVersion: 'latest', sourceType: 'module', ranges: true });
   assert.equal(
     declaration(source, 'createOrdersBankSnapshotPublication').params[0].properties.length,
-    7
+    5
   );
   assert.deepEqual(
     tree.body.filter((n) => n.type === 'ImportDeclaration').map((n) => n.source.value),

@@ -25,6 +25,16 @@ function check(overrides=new Map()){
 }
 function describe(diagnostics){return ts.formatDiagnostics(diagnostics,{getCanonicalFileName:file=>file,getCurrentDirectory:()=>root,getNewLine:()=> '\n'})}
 
+test('actual shared Bank archive execution and audit reject fabricated drain and textual counts',()=>{
+ for(const [file,from,to] of [
+  ['shared/bank-archive-reconciliation.js',/drain:\s*work\.drain/,'drain: () => true'],
+  ['shared/bank-archive-policy.js',/sourceCount:\s*source\.length/,"sourceCount: 'confirmed'"],
+ ]){
+  const source=path.join(root,file),original=readFileSync(source,'utf8'),changed=original.replace(from,to);assert.notEqual(changed,original);
+  const diagnostics=check(new Map([[source,changed]]));assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+ }
+});
+
 test('the actual Orders Bank publisher rejects textual confirmation and a fabricated drain',()=>{
  const source=path.join(root,'netunim-orders/site/assets/js/domains/finance/bank-snapshot-publication.js'),original=readFileSync(source,'utf8');
  for(const [from,to] of [[/published:\s*readoutVerified/,"published: 'saved'"],[/drain:\s*work\.drain/,'drain: () => true']]){

@@ -65,7 +65,7 @@ test('Bank controller has one snapshot command API and a required real lease por
     (row) => row.declaration?.id?.name === 'createDomainsBankController'
   ).declaration;
   const fields = factory.params[0].properties.map((row) => row.key.name);
-  assert.equal(fields.length, 18);
+  assert.equal(fields.length, 17);
   for (const required of ['snapshots', 'syncLeases', 'readFinance'])
     assert.ok(fields.includes(required), required);
   for (const old of [

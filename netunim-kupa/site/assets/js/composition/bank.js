@@ -2,6 +2,7 @@ import {createDomainsBankController} from '../domains/bank/controller.js';
 import {createKupaBankConnectionOwner,KUPA_BANK_BRIDGE_MINIMUM_VERSION} from '../domains/bank/connection-owner.js';
 import {createBankConnectionForms} from '../domains/bank/connection-forms.js';
 import {createKupaBankArchiveReadout} from '../domains/bank/archive-readout.js';
+import {createBankArchiveReconciliation} from '../shared/bank-archive-reconciliation.js';
 import {bankArchiveTargets} from '../domains/bank/archive-model.js';
 import {createKupaBankSnapshotCommands} from '../domains/bank/snapshot-commands.js';
 import {createManualBankSnapshot} from '../domains/bank/manual-snapshot.js';
@@ -85,6 +86,11 @@ export function createKupaBankCapability({
     publication:{bank:value => { model.state.bank = value; },archive:archive.commands.publish,data:(...args) => { revisions.touchData(...args); }},
   });
   const syncLeases = {claim:(...args) => cloud.claimLease(...args),release:(...args) => cloud.releaseLease(...args)};
+  const archiveReconciliation = createBankArchiveReconciliation({
+    transactions:{reconcile:(...args) => cloud.syncTransactions(...args)},
+    images:{sync:(...args) => cloud.syncImages(...args)},
+    archive:{read:archive.queries.readSnapshot},authority:scope,
+  });
   const connections = createKupaBankConnectionOwner({
     pairing:{read:() => bridge.getBridgeToken(),write:value => bridge.setBridgeToken(value)},
     transport:{readStatus:() => bridge.status(),configure:input => bridge.configureCredentials(input),selectAccount:input => bridge.selectAccount(input),deleteCredentials:() => bridge.deleteCredentials(),readDiagnostics:() => bridge.bankDiagnostics()},
@@ -93,14 +99,13 @@ export function createKupaBankCapability({
     clock:{now:() => Date.now()},protocol:{minimumBridgeVersion:KUPA_BANK_BRIDGE_MINIMUM_VERSION,statusCacheMs:15000},
   });
   const controller = createDomainsBankController({
-    model, session, bridge, operationScope:scope, archive, snapshots, syncLeases, connections,
+    model, session, bridge, operationScope:scope, archive, archiveReconciliation, snapshots, syncLeases, connections,
     timers:platform.timers ?? globalThis, autoScope:() => disposed ? null : authority.automaticAccess(),
     sharedChecksHaveLocalWork:(...args) => checks.hasLocalWork(...args),
     sharedChecksObservedSequence:(...args) => readout.observedCheckSequence(...args),
     toast:notify, render,
     readFinance:(...args) => cloud.refreshFinance(...args),
-    syncBankTransactionsSnapshot:(...args) => cloud.syncTransactions(...args), acknowledgeBankTransactionMissing:(...args) => cloud.acknowledgeMissing(...args),
-    syncBankChequeImages:(...args) => cloud.syncImages(...args),
+    acknowledgeBankTransactionMissing:(...args) => cloud.acknowledgeMissing(...args),
   });
   function enter(method, ...args) {
     if (disposed) return Promise.resolve(false);
@@ -166,11 +171,12 @@ export function createKupaBankCapability({
     start() { if (disposed) return false; ready(); return controller.startAutoSync(); },
     stop:controller.stopAutoSync,
     wake() { if (disposed) return false; ready(); return controller.maybeAutoRefreshBankBalance(); },
-    isPending:() => controller.runtime.isPending() || connections.runtime.isPending() || !!binding?.importConnections.runtime.isPending() || pending.size > 0,
-    async drain() { do { await Promise.all([controller.runtime.drain(),connections.runtime.drain(),archive.runtime.drain(),binding?.importConnections.runtime.drain(),Promise.allSettled([...pending])]); } while(runtime.isPending()); },
+    isPending:() => controller.runtime.isPending() || archiveReconciliation.runtime.isPending() || connections.runtime.isPending() || !!binding?.importConnections.runtime.isPending() || pending.size > 0,
+    async drain() { do { await Promise.all([controller.runtime.drain(),archiveReconciliation.runtime.drain(),connections.runtime.drain(),archive.runtime.drain(),binding?.importConnections.runtime.drain(),Promise.allSettled([...pending])]); } while(runtime.isPending()); },
     dispose() {
       if (disposed) return false;
       disposed = true;
+      archiveReconciliation.runtime.dispose();
       binding?.importConnections.runtime.dispose();
       controller.runtime.dispose();
       connections.runtime.dispose();

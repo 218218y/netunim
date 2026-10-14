@@ -26,7 +26,7 @@ remaining-scope paragraphs describe their stage's starting point.
   read owner. Failed reads retain accepted siblings; account handoff suppresses
   former-account error details; Bank pauses prevent background publication.
 - Kupa Bank archive owns scoped caches and accepted reads, with disposal/drain
-  and a pause during Bank refresh. Its controller has 18 collaborators, down
+  and a pause during Bank refresh. Its controller has 17 collaborators, down
   from 28 across archive and snapshot slices. Both apps use one strict paired-read algorithm with separate owners;
   Kupa's local/file persistence and revision/render policy remain independent.
 - Kupa Bank snapshot commands require atomic cloud writes and real lease ports;
@@ -87,6 +87,12 @@ remaining-scope paragraphs describe their stage's starting point.
   pre-extraction AST; old flat publication dependencies and silent defaults are
   retired. Provider acquisition and broader Credit orchestration remain open.
   See [Bank snapshot publication](ORDERS_BANK_SNAPSHOT_PUBLICATION.md).
+- Bank cloud archive reconciliation uses one canonical four-port owner in both
+  apps, based on the Orders sequence and six identical financial policies.
+  Morning enrichment stays in the Orders read adapter; Kupa local persistence
+  and receipt-confirmed Main publication retain tested data ownership. Kupa's
+  flat transaction/image defaults and duplicate policies are retired; Orders
+  publication now has five ports. See [path alignment audit](BANK_PATH_ALIGNMENT.md).
 
 ## Four major work packages
 

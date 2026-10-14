@@ -20,6 +20,9 @@
     "types": []
   },
   "files": [
+    "shared/bank-archive-policy.js",
+    "shared/bank-archive-reconciliation.js",
+    "tests/fixtures/checked-bank-archive-reconciliation.mjs",
     "netunim-orders/site/assets/js/domains/finance/bank-snapshot-publication.js",
     "tests/fixtures/checked-orders-bank-publication.mjs",
     "shared/finance-connection-import-runtime.js",

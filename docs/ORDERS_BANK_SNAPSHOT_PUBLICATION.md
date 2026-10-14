@@ -1,5 +1,11 @@
 # Orders Bank snapshot publication ownership
 
+Current update: archive execution and four model callbacks now belong to the
+canonical shared Bank reconciliation capability. This publication owner has
+five required ports; its verified algorithm and Orders readout policy are
+unchanged. See [path alignment audit](BANK_PATH_ALIGNMENT.md). The following
+record describes the original seven-port extraction.
+
 The former Finance controller mixed provider/lease entry, archive reconciliation,
 checks synchronization, financial model construction and durable publication.
 The accepted provider-result sequence now belongs to
