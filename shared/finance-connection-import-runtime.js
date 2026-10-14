@@ -18,7 +18,7 @@ function message(error) {
  * A single accepted import owns pairing from status through selection,
  * confirmation, local vault replacement and publication. It grants no cloud
  * write or financial lease authority.
- * @param {{pairing:{token:()=>string},transport:{status:()=>Promise<unknown>,replace:(payload:unknown)=>Promise<unknown>},selection:ConnectionFileSelection,document:{prepare:(selected:unknown)=>PreparedConnectionImport},presentation:{confirm:(title:string,message:string,options:{confirmText:string})=>Promise<boolean>,toast:(message:string)=>void,publish:(result:unknown,guard:ImportGuard)=>Promise<void>},protocol:{minimumBridgeVersion:number}}} ports
+ * @param {{pairing:{token:()=>string},transport:{status:()=>Promise<unknown>,replace:(payload:unknown)=>Promise<unknown>},selection:ConnectionFileSelection,document:{prepare:(selected:unknown)=>PreparedConnectionImport},presentation:{confirmDialog:(title:string,message:string,options:{confirmText:string})=>Promise<boolean>,toast:(message:string)=>void,publish:(result:unknown,guard:ImportGuard)=>Promise<void>},protocol:{minimumBridgeVersion:number}}} ports
  * @returns {FinanceConnectionImportRuntime}
  */
 export function createFinanceConnectionImportRuntime({
@@ -37,7 +37,7 @@ export function createFinanceConnectionImportRuntime({
     ['selection', selection, ['choose']],
     ['selection_runtime', selection?.runtime, ['isPending', 'drain', 'dispose']],
     ['document', document, ['prepare']],
-    ['presentation', presentation, ['confirm', 'toast', 'publish']],
+    ['presentation', presentation, ['confirmDialog', 'toast', 'publish']],
   ]))
     for (const method of methods)
       if (typeof (/** @type {Record<string,unknown>} */ (port)?.[method]) !== 'function')
@@ -91,7 +91,7 @@ export function createFinanceConnectionImportRuntime({
           summary.creditProfileCount < 1
         )
           throw new TypeError('finance_connection_import_summary_invalid');
-        const approved = await presentation.confirm(
+        const approved = await presentation.confirmDialog(
           'ייבוא מלא של חיבורי בנק ואשראי',
           `הייבוא יחליף במחשב הזה את פרטי ההתחברות המקומיים לבנק ואת כל חיבורי האשראי. נמצאו ${summary.bankAccountCount} חשבונות בנק ו-${summary.creditProfileCount} חיבורי אשראי. מפתח ה-Bridge הקיים לא ישתנה.`,
           { confirmText: 'ייבא הגדרות' }

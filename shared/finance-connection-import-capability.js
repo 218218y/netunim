@@ -47,7 +47,7 @@ export function createFinanceConnectionImportCapability({
         return { payload, summary: financeConnectionImportSummary(payload) };
       },
     },
-    presentation: { confirm: confirmDialog, toast, publish: afterImport },
+    presentation: { confirmDialog: confirmDialog, toast, publish: afterImport },
     protocol: { minimumBridgeVersion: FINANCE_CONNECTION_IMPORT_MINIMUM_VERSION },
   });
 }

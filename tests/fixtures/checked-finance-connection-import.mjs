@@ -12,7 +12,7 @@ const ports = {
     prepare: (payload) => ({ payload, summary: { bankAccountCount: 2, creditProfileCount: 1 } }),
   },
   presentation: {
-    confirm: async () => true,
+    confirmDialog: async () => true,
     toast: () => {},
     publish: async (_result, guard) => {
       guard();
@@ -33,7 +33,7 @@ createFinanceConnectionImportRuntime({
 createFinanceConnectionImportRuntime({
   ...ports,
   // @ts-expect-error confirmation is explicit boolean evidence
-  presentation: { ...ports.presentation, confirm: async () => undefined },
+  presentation: { ...ports.presentation, confirmDialog: async () => undefined },
 });
 createFinanceConnectionImportRuntime({
   ...ports,
