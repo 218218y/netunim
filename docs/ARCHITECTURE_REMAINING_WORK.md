@@ -37,8 +37,14 @@ remaining-scope paragraphs describe their stage's starting point.
   use a strict readonly presenter with two ports. An immutable 207-case fixture
   preserves output policy, while native held confirmation/choice tests retain
   exact journal events and unrelated dirty drafts. The controller decreases from
-  about 51.6 KB to 41.5 KB. Broader customer orchestration, form editing/Bank linking
-  and search/metadata payload contracts remain open. See [Morning operation drain](MORNING_OPERATION_DRAIN.md) and
+  about 51.6 KB to 41.5 KB at that stage. Form actions now require their mounted
+  session and receipt/Bank controls use scoped roots. Bank link intent/catalog
+  has a strict five-port owner, a strict four-port field adapter and private
+  composition, replacing fifteen flat collaborators. Immutable twelve-function
+  payment policies and 576 Bank link/restore cases plus native control/payload/drain
+  checks preserve behavior. See [Morning form/Bank capabilities](MORNING_FORM_BANK_CAPABILITIES.md).
+  Broader customer orchestration, general form/payload validation and
+  search/metadata contracts remain open. See [Morning operation drain](MORNING_OPERATION_DRAIN.md) and
   [Morning media ownership](MORNING_DOCUMENT_MEDIA_OWNER.md).
 
 - Orders Calendar separates connection intent, Google verification, sync/reconnect

@@ -16,7 +16,7 @@ import {bankMorningEligibility,bankMorningPrefill} from '../finance/bank-morning
 import {createMorningDebtRecoveryContext,loadMorningDebtRecoveryContext,saveMorningDebtRecoveryContext,clearMorningDebtRecoveryContext,morningDebtRecoveryMatchesVerified,morningVerifiedApplicationDurable,morningFinancialSnapshot,morningFinancialChanges} from './morning-debt-recovery.js';
 import {createMorningPayments,morningPaymentTotalCents} from './morning-payments.js';
 import {activeMorningBankDebts,collapseMorningBankDebtPicker,filterMorningBankDebtPicker,morningBankDebtPickerMarkup,syncMorningBankDebtPickerSelection} from './morning-bank-debt-picker.js';
-import {createMorningBankTransactionLinker} from './morning-bank-transaction-link.js';
+import {createMorningBankLinks} from './morning-bank-links.js';
 
 
 const {documentButton,foot,form:morningFormMarkup,debt:morningDebtUpdateMarkup,decision:morningRecoveryDecisionMarkup,operation:morningOperationMarkup}=createMorningDocumentView({format:{esc,money},financial:{changes:morningFinancialChanges}});
@@ -49,7 +49,16 @@ function currentRoot(){return modalSession.element}
 function currentField(id){return modalSession.element?.closest('#modal')?.querySelector('#'+id)||null}
 if(pendingRecovery){activeOperationId=pendingRecovery.operationId;activeDebtId=pendingRecovery.debtId;activeSource=sourceFromRecovery(pendingRecovery);issuanceContext=pendingRecovery;blocked=true}
 const {paymentFields,readPaymentRows,replaceMorningPayments,addMorningPayment,removeMorningPayment,syncPaymentType,syncPaymentBank,syncPaymentTotal}=createMorningPayments({dateEditorMarkup,toast,currentField,getSource:()=>activeSource,getSelectedType:()=>selectedType()});
-const bankTransactionLinker=createMorningBankTransactionLinker({toast,currentField,currentRoot,getActiveSource:()=>activeSource,setActiveSource:value=>{activeSource=value},getGeneration:()=>modalSession.generation,isActive,getBusinessBankTransactions,ensureBusinessBankTransactions,readPaymentRows,replaceMorningPayments,selectedType,syncDocumentType,syncPaymentType,syncPaymentTotal,setDateValue});
+const bankTransactionLinker=createMorningBankLinks({
+  session:{generation:()=>modalSession.generation,isActive,root:currentRoot,field:currentField},
+  catalog:{read:getBusinessBankTransactions,ensure:ensureBusinessBankTransactions},
+  source:{read:()=>activeSource,set:value=>{activeSource=value}},
+  editor:{
+    payments:{read:()=>readPaymentRows({strict:false}),replace:replaceMorningPayments,sync:()=>{syncPaymentType();syncPaymentTotal()}},
+    document:{type:selectedType,sync:syncDocumentType},
+    date:value=>{const field=currentField('morningDocumentDate');if(field)setDateValue(field.closest?.('[data-date-editor]')||field,String(value||''),false)},
+  },toast,
+});
 function isDebtRecoveryPending(debtId){
   const stored=loadMorningDebtRecoveryContext();
   return !!debtId&&[stored,pendingRecovery].some(context=>context?.debtId===debtId);

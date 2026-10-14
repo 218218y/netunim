@@ -26,6 +26,16 @@ function check(overrides=new Map()){
 }
 function describe(diagnostics){return ts.formatDiagnostics(diagnostics,{getCanonicalFileName:file=>file,getCurrentDirectory:()=>root,getNewLine:()=> '\n'})}
 
+test('Morning Bank link bodies reject textual refresh results and fabricated source identity',()=>{
+ for(const [name,from,to] of [
+  ['morning-bank-transaction-link.js','presentation.select(selectedTransaction());return true;',"presentation.select(selectedTransaction());return 'refreshed';"],
+  ['morning-bank-link-form.js',"kind:'bank',bankTransaction:row",'kind:42,bankTransaction:row'],
+ ]){
+  const source=path.join(root,'netunim-orders/site/assets/js/domains/customers',name),original=readFileSync(source,'utf8'),changed=original.replace(from,to);assert.notEqual(changed,original);
+  const diagnostics=check(new Map([[source,changed]]));assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&[2322,2345].includes(item.code)),describe(diagnostics));
+ }
+});
+
 test('Morning document presentation rejects deferred markup in its actual body',()=>{
  const source=path.join(root,'netunim-orders/site/assets/js/domains/customers/morning-document-view.js'),original=readFileSync(source,'utf8');
  const body=declaration(original,'morningFormMarkup'),mutated=original.slice(body.start,body.end).replace('return `','return Promise.resolve(`').replace(/`;\s*}$/, '`);\n}');

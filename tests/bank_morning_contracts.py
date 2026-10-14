@@ -36,6 +36,8 @@ payments=(SITE/'domains/customers/morning-payments.js').read_text(encoding='utf-
 debt_picker=(SITE/'domains/customers/morning-bank-debt-picker.js').read_text(encoding='utf-8')
 transaction_picker=(SITE/'domains/customers/morning-bank-transaction-picker.js').read_text(encoding='utf-8')
 transaction_link=(SITE/'domains/customers/morning-bank-transaction-link.js').read_text(encoding='utf-8')
+transaction_form=(SITE/'domains/customers/morning-bank-link-form.js').read_text(encoding='utf-8')
+transaction_composition=(SITE/'domains/customers/morning-bank-links.js').read_text(encoding='utf-8')
 composition=(SITE/'domains/customers/composition.js').read_text(encoding='utf-8')
 customer_runtime=(SITE/'composition/customers.js').read_text(encoding='utf-8')
 main=(SITE/'main.js').read_text(encoding='utf-8')
@@ -103,7 +105,7 @@ ok('search.value=id?String(debt?.customerName' in debt_picker and 'search.datase
    'Selecting a bank-linked debt replaces the stale search query with the chosen customer name')
 ok('morningBankDebtSelected' in debt_picker and '<b>חוב שנבחר:</b>' in debt_picker and 'selectedDebtMarkup(debt)' in debt_picker and '.morning-bank-debt-selected[hidden]{display:none}' in app_css,
    'Selected debt remains explicitly visible above the search field even if the search text is edited or cleared')
-ok('createMorningBankTransactionLinker' in documents and 'linkBankTransaction' in documents and 'clearBankTransactionLink' in documents and 'bankMorningPrefill(row)' in transaction_link and "setActiveSource({...prefill.source,kind:'bank'" in transaction_link and 'activeDebtId' in documents,
+ok('createMorningBankLinks' in documents and 'createMorningBankTransactionLinker' in transaction_composition and 'linkBankTransaction' in documents and 'clearBankTransactionLink' in documents and 'prefill:bankMorningPrefill' in transaction_composition and 'policy.prefill(row)' in transaction_link and "source.set({...prefill.source,kind:'bank'" in transaction_form and 'activeDebtId' in documents,
    'Debt/standalone Morning issuance can adopt the existing bank source contract without losing the selected debt')
 ok('morning-bank-transaction-select' in transaction_picker and 'morning-bank-transaction-search' in transaction_picker and 'bankMorningEligibility' in transaction_picker and 'documentLinks' in transaction_picker and 'already-linked' in transaction_picker and 'RECENT_DAYS=45' in transaction_picker and 'transactionDateKey(row)>=cutoff' in transaction_picker and '45 הימים האחרונים' in transaction_picker,
    'Reverse bank picker is searchable, restricted to eligible credits from the latest 45 calendar days and visibly blocks already-linked transactions')

@@ -1095,3 +1095,19 @@ and native mounted authority. Native privacy and held confirmation tests check
 exact pending recovery, Main event IDs, notes/Shared isolation and another modal's
 dirty draft. Broader customer composition/editing remains open. See
 [Morning modal and presentation](MORNING_MODAL_PRESENTATION.md).
+
+Morning form editing now requires the existing mounted session and scopes every
+receipt/Bank picker query to its own controls. Three baseline regressions exposed
+foreign receipt capture, another surface's card default and Bank type restriction
+without an owned form. The native fixture rejects all eleven closed/replaced edit
+commands while preserving exact preview receipts, unrelated drafts and journals.
+
+The next consecutive slice reduces Bank link execution from fifteen flat ports
+to five coherent capabilities and separates form capture/restore into a strict
+four-port adapter with private composition. A reproduced revoked-refresh error
+publication is fenced by current request/session checks; current errors remain
+visible and accepted catalog work stays joined. Immutable twelve-function payment
+policies and 576 link/restore cases preserve transfer, multi-cheque, type, source,
+busy/blocked and original field semantics. Strict bodies, negative consumers,
+actual implementation mutations and 34 native scope/payload/drain/journal checks
+protect the boundary. See [Morning form/Bank capabilities](MORNING_FORM_BANK_CAPABILITIES.md).

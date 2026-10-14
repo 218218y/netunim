@@ -8,7 +8,8 @@ FLOW=r"""(async()=>{
  const {createDomainsCustomersDocuments}=await import('./assets/js/domains/customers/documents.js'),{createMorningRequest}=await import('./assets/js/integrations/morning.js');
  const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js'),db=createStorageJournalDb(),raw=async()=>JSON.stringify([await db.load('local:orders'),await db.load('local:shared-checks'),localStorage.getItem('orders.morning.pending-issuance.v1')]),before=await raw(),checks=[];
  const check=(ok,label)=>{if(!ok)throw Error(label);checks.push(label)},transaction={archiveId:71,amount:42,date:'2026-10-14',currency:'ILS',status:'processed'},payloads=[];
- const documents=createDomainsCustomersDocuments({operationScope:fixtureMorningScope,subscribeAccountScope:cloudAuth.subscribeAccountScope,model,modal:(...args)=>uiModal.modal(...args),toast(){},dateEditorMarkup:(...args)=>uiDateEditor.dateEditorMarkup(...args),setDateValue:(...args)=>uiDateEditor.setDateValue(...args),getBusinessBankTransactions:()=>[transaction],ensureBusinessBankTransactions:async()=>true,documentsBrowser:{previewDraft:async payload=>{payloads.push(payload);return true}},request:createMorningRequest({operationScope:fixtureMorningScope,supaFetch:async()=>new Response(JSON.stringify({ok:true,configured:true,available:true,operation:null}))})});
+ let ensure=async()=>true;
+ const documents=createDomainsCustomersDocuments({operationScope:fixtureMorningScope,subscribeAccountScope:cloudAuth.subscribeAccountScope,model,modal:(...args)=>uiModal.modal(...args),toast(){},dateEditorMarkup:(...args)=>uiDateEditor.dateEditorMarkup(...args),setDateValue:(...args)=>uiDateEditor.setDateValue(...args),getBusinessBankTransactions:()=>[transaction],ensureBusinessBankTransactions:()=>ensure(),documentsBrowser:{previewDraft:async payload=>{payloads.push(payload);return true}},request:createMorningRequest({operationScope:fixtureMorningScope,supaFetch:async()=>new Response(JSON.stringify({ok:true,configured:true,available:true,operation:null}))})});
  const trap=document.createElement('div');trap.innerHTML='<div data-payment-row="0"><select data-payment-field="type"><option value="3" selected>card</option></select><input data-payment-field="price" value="99"><input data-payment-field="cardNum" value=""></div><input type="radio" name="morningDocumentType" value="305">';document.getElementById('main').append(trap);
  const commands=[['syncPaymentType'],['syncPaymentBank',0],['syncPaymentTotal'],['syncDocumentType'],['addMorningPayment'],['removeMorningPayment',0],['linkBankDebt','missing'],['filterBankDebtPicker','missing'],['linkBankTransaction',71],['clearBankTransactionLink'],['filterBankTransactionPicker','missing']];
  try{
@@ -22,6 +23,14 @@ FLOW=r"""(async()=>{
   uiModal.modal('Other feature',trap.innerHTML+'<input id="replacementFormDraft" value="initial">');await Promise.resolve();document.getElementById('replacementFormDraft').value='exact dirty draft';
   const replacement=document.getElementById('modal').innerHTML;for(const [name,...args] of commands)check(documents[name](...args)===false,'replaced form rejects '+name);
   check(document.getElementById('modal').innerHTML===replacement&&uiModal.modalHasUnsavedDraft(),'replaced editor preserves another feature controls and draft guard');check(await raw()===before,'form/link edits preserve exact Main, Shared and recovery evidence');
+  const gate=()=>{let resolve,reject;const promise=new Promise((ok,no)=>{resolve=ok;reject=no});return {promise,resolve,reject}},held=gate(),entered=gate(),originalError=console.error,diagnostics=[];
+  ensure=()=>{entered.resolve();return held.promise};console.error=(...args)=>diagnostics.push(args);
+  try{
+   const opening=documents.openMorningDocumentModal({prefill:{customerName:'Held catalog',amount:42,description:'Held'},initialType:320});await entered.promise;await opening;
+   documents.runtime.cancelPending();let drained=false;const draining=documents.runtime.drain().then(()=>{drained=true});for(let i=0;i<8;i++)await Promise.resolve();check(!drained,'accepted catalog refresh remains joined after cancellation');
+   uiModal.modal('Catalog replacement','<p id="catalogReplacement">unchanged catalog replacement</p>');held.reject(Error('private former form bank detail'));await draining;
+   check(diagnostics.length===0,'revoked catalog failure cannot publish private diagnostics');check(document.getElementById('catalogReplacement')?.textContent==='unchanged catalog replacement','late catalog cannot replace another capability display');check(await raw()===before,'catalog drain preserves exact Main, Shared and recovery evidence');
+  }finally{held.resolve();console.error=originalError}
  }finally{documents.dispose();await documents.runtime.drain();trap.remove();uiModal.closeModal()}
  return checks;
 })()"""
