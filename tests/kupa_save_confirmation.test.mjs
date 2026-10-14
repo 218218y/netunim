@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createSyncDocument} from '../netunim-kupa/site/assets/js/sync/document.js';
+import {createKupaSync as createSyncDocument} from './sync_document_ports.mjs';
 import {createStateNormalization} from '../netunim-kupa/site/assets/js/composition/state-normalization.js';
 
 const noop=()=>{},clone=structuredClone;

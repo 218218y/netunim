@@ -1,3 +1,4 @@
+import {createCloudWriteAuthority} from '../shared/cloud-write-authority.js';
 import {createCloudWriteFlight} from './write-flight.js';
 import {createCloudAckPublication} from './ack-publication.js';
 import {canonicalCloudSyncBase} from './state-projection.js';
@@ -6,25 +7,34 @@ import {createCloudPolling} from './polling.js';
 import {createRuntimeTaskOwner} from '../shared/runtime-task-owner.js';
 
 import {captureCloudWriteScope,cloudWriteScopeIsCurrent,cloudWriteScopeHasIdentity} from '../shared/cloud-write-scope.js';
-import {beginMeasure} from '../shared/runtime-performance.js';
 import {commitCloudCheckpoint} from '../shared/cloud-checkpoint-publication.js';
 
 import {normalizeSharedChecks} from '../shared/shared-checks-contract.js';
-import {assertValidCloudState} from '../state/validation.js';
 import {jsonEq} from './merge-records.js';
 import {SUPA_AUTO_KEY, STORAGE_PREF_KEY} from '../state/constants.js';
 import {createOutboxRetryScheduler,normalizeCloudError} from '../shared/cloud-sync.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createSyncDocument({readStorageV2CloudRecovery=null,commitStorageV2CloudRecovery=null,getCloudWriteScope=()=>null,cancelCloudRecovery=()=>{},hideConnectScreen, reportError, model, session, checksSession, tab, prepareKupaCloudState, applyKupaCloudState, setSaveStatus, setConnectedStatus, setCloudHeaderStatus, listBackups, backupSnapshotToComputer, syncSharedChecksFromCloud, render, readSupabaseDocument, readFinanceSyncDocument=async()=>null, supaRest, mergeKupaCloudState3Way, showSecondaryTabGuard, toast, pollSharedChecks, refreshOrdersFinanceSummary=async()=>false, storageV2CloudOutboxActive=()=>false, refreshStorageV2CloudState=async()=>null, materializeStorageV2CloudFlight=async()=>null, acknowledgeStorageV2CloudFlight=async()=>null, rejectStorageV2CloudFlight=async()=>null, setStorageV2CloudControl=async()=>null, clearStorageV2CloudControl=async()=>false, replaceStorageV2CurrentState=async()=>null, queueStorageV2CloudNormalization=async()=>null, adoptStorageV2CloudHead=async()=>null, resetStorageV2CloudHead=async()=>null, storageV2CommitPromise=()=>Promise.resolve(), storageV2PreparationActive=()=>false, assertAccountOwner=()=>{throw new Error('storage_owner_account_required')}, domainRevisions}){
+export function createSyncDocument({model,session,tab,access,journal,checkpoint,recovery,projection,transport,view,mirror,secondary}){
+const {getCloudWriteScope,storageV2PreparationActive,storageV2CloudOutboxActive,assertAccountOwner}=access;
+const {refreshStorageV2CloudState,materializeStorageV2CloudFlight,acknowledgeStorageV2CloudFlight,rejectStorageV2CloudFlight,setStorageV2CloudControl,storageV2CommitPromise}=journal;
+const {clearStorageV2CloudControl,replaceStorageV2CurrentState,queueStorageV2CloudNormalization,adoptStorageV2CloudHead,resetStorageV2CloudHead}=checkpoint;
+const {readStorageV2CloudRecovery,commitStorageV2CloudRecovery,cancelCloudRecovery}=recovery;
+const {prepareKupaCloudState,applyKupaCloudState,mergeKupaCloudState3Way,domainRevisions}=projection;
+const {readSupabaseDocument,readFinanceSyncDocument,rpcSaveCloudV2}=transport;
+const {hideConnectScreen,reportError,setSaveStatus,setConnectedStatus,setCloudHeaderStatus,showSecondaryTabGuard,toast,render}=view;
+const {listBackups,backupSnapshotToComputer}=mirror;
+const {syncSharedChecksFromCloud,pollSharedChecks,refreshOrdersFinanceSummary}=secondary;
+
 const outboxRetryScheduler=createOutboxRetryScheduler();
 let savingScope=null,cloudSavePromise=null,wakeEpoch=0;
 const saveWork=createRuntimeTaskOwner();
-const writeScopeCurrent=(scope,head=null)=>tab.primaryTab&&!storageV2PreparationActive()&&cloudWriteScopeIsCurrent(scope,getCloudWriteScope(),head);
-async function setWriteControl(scope,control){
-  try{return await setStorageV2CloudControl(control,{expectedScope:scope,isCurrent:()=>writeScopeCurrent(scope)})}
-  catch(error){if(!writeScopeCurrent(scope))return false;throw error}
-}
+const {isCurrent:writeScopeCurrent,setControl:setWriteControl}=createCloudWriteAuthority({
+  scope:{read:getCloudWriteScope},
+  leadership:{primary:()=>tab.primaryTab,preparing:storageV2PreparationActive},
+  control:{write:setStorageV2CloudControl},
+});
+
 
 function replaceVisibleState(next,{forceAll=false}={}){const previous=model.state;model.state=next;domainRevisions?.reconcile(previous,model.state,{forceAll});return model.state}
 function applyKupaCoreState(coreState,checks=model.state.checks,financeSource=model.state){
@@ -141,18 +151,7 @@ async function loadSupabaseState({discardLocalV2=false}={}){
   return applyCloudRow(row)
 }
 
-async function rpcSaveCloudV2(snapshot,expectedRevision,operationId,deleteIntents={},audit={}){
-  const ackDone=beginMeasure('kupa:cloud-ack');
-  assertValidCloudState(snapshot,'Kupa V2 cloud state');
-  const expected=Number(expectedRevision||0),op=String(operationId||'').trim();
-  if(!Number.isSafeInteger(expected)||expected<0)throw new Error('kupa_v2_revision_invalid');
-  if(!op)throw new Error('kupa_v2_operation_id_missing');
-  const rpc=audit?.mutationType==='bulk-delete'?'bulk_delete_save_kupa_document_v6':'save_kupa_document_v6';
-  const r=await supaRest('/rest/v1/rpc/'+rpc,{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify({p_document_name:session.cloudDocumentName,p_expected_revision:expected,p_state:snapshot,p_operation_id:op,p_delete_intents:deleteIntents,p_audit:audit})});
-  const body=await r.text();let j;try{j=body?JSON.parse(body):null}catch{j=null}
-  if(r.ok)ackDone();
-  return {r,j,body,row:Array.isArray(j)?j[0]:j};
-}
+
 
 function v2RetryRecord(state,flight=null){return {domain:'kupa',documentName:`${session.cloudDocumentName||'main'}-v2`,generation:Number(flight?.generation??state?.pendingGeneration??0),operationId:String(flight?.operationId||'kupa-v2'),retry:state?.control?.retry||null}}
 

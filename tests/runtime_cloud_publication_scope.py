@@ -7,6 +7,7 @@ This tests the boundary, not the reachability of a particular login UI sequence.
 import argparse
 import json
 import subprocess
+from sync_document_fixture import evaluate_sync
 from browser_harness import BrowserSession, ROOT
 
 SETUP = r"""
@@ -141,9 +142,9 @@ for app in (args.app,) if args.app else ('kupa','orders'):
                 target.write_bytes(old)
                 browser._navigate()
             flow=CONTROL if phase=='control-epoch' else FLOW.replace('__PHASE__',json.dumps(phase))
-            outcome=browser.evaluate('(async()=>{'+setup+flow+'})()',timeout=50)
+            outcome=evaluate_sync(browser, '(async()=>{'+setup+flow+'})()',baseline=args.baseline,timeout=50)
             browser._navigate()
-            restored=browser.evaluate('(async()=>{'+setup+RESTORE.replace('__EXPECTED__',json.dumps(outcome))+'})()',timeout=45)
+            restored=evaluate_sync(browser, '(async()=>{'+setup+RESTORE.replace('__EXPECTED__',json.dumps(outcome))+'})()',baseline=args.baseline,timeout=45)
             errors=browser.drain_serious_errors()
             assert all(error.startswith("Blocked attempt to show a 'beforeunload' confirmation panel for a frame that never had a user gesture") or (phase.endswith('fallback') and 'controlled post-commit cache refresh' in error) for error in errors),errors
             print('PASS native Main publication scope '+app+' '+phase+': '+json.dumps(restored),flush=True)

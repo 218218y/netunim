@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createSyncDocument} from '../netunim-orders/site/assets/js/sync/document.js';
+import {createOrdersSync as createSyncDocument} from './sync_document_ports.mjs';
 import {ORDERS_CLOUD_BASE_KEY as CLOUD_BASE_KEY} from './retired_business_storage_keys.mjs';
 
 const clone=structuredClone,noop=()=>{};

@@ -62,7 +62,12 @@ remaining-scope paragraphs describe their stage's starting point.
   accepted saves and confirmation cancellation, and source quiescence drains
   them. Both Cloud/Backup roots now compose distinct auth/open/transfer/reset,
   restore/local/catalog/presentation owners. Main sync separates flight, ACK,
-  confirmation and polling lifetimes; its broad composition inputs remain open.
+  confirmation and polling lifetimes. Its runtime now takes twelve role APIs,
+  bound by ten-owner compositions in both startup roots, replacing 33/42 flat
+  inputs. Common strict write authority and Kupa Main wire transport have owners;
+  immutable save/hydration/recovery policies and production composition fixtures
+  protect the slice. Internal save/hydration coordination remains separate work.
+  See [Main sync composition](MAIN_SYNC_COMPOSITION.md).
   See [Cloud/Sync/Backup boundaries](CLOUD_SYNC_BACKUP_CAPABILITIES.md).
 
 - The Orders Main/Checks save collision is fixed and regression-protected.
@@ -162,7 +167,7 @@ remaining-scope paragraphs describe their stage's starting point.
 
 | Package | Concrete remaining work | Exit evidence |
 | --- | --- | --- |
-| Private controllers and composition | Orders Finance Bank/Credit workflows beyond document/archive/lease owners; Kupa Bank provider/Bridge orchestration beyond archive/snapshot/lease owners, Credit and Calendar orchestration, manual-edit lease queue lifecycle; large customer-document/view responsibilities; remaining Main sync/shell composition width and backup UI/resource account ownership | Narrow owners and lifecycle where jobs exist; dependency/API/I/O budgets; representative production behavior preserved |
+| Private controllers and composition | Orders Finance Bank/Credit workflows beyond document/archive/lease owners; Kupa Bank provider/Bridge orchestration beyond archive/snapshot/lease owners, Credit and Calendar orchestration, manual-edit lease queue lifecycle; large customer-document/view responsibilities; internal Main save/hydration coordination, remaining shell composition width and backup UI/resource account ownership | Narrow owners and lifecycle where jobs exist; dependency/API/I/O budgets; representative production behavior preserved |
 | Business and transaction contracts | Remaining journal/IDB callers, Finance leases/RPC envelopes, complete Bank/Credit profile/result payloads, Morning/Calendar commands and capability consumers | Unknown-payload validation and actual implementation mutations; an unchecked decoder never grants authoritative confirmation |
 | Bridge orchestration | Document search merge/pagination and scheduled maintenance/installer processes; Credit adapter construction, DigitalV3/Camoufox internals and remaining Bank CLI/token processes | Before-change retry/fallback characterization, native provider/process/file fixtures and preserved wire contracts |
 | Canonical sources and retirement inventory | Classify remaining legacy readers, preference keys, SQL setup/operator copies and generated assets; deterministic current/operator SQL generation where missing; retire only proven unused paths | Consumer inventory, immutable deployed migrations/receipts, deterministic generation and old-record/backup restore evidence |

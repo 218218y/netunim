@@ -1,8 +1,10 @@
+import {createMainDocumentWrite} from './main-document-write.js';
+import {beginMeasure} from '../shared/runtime-performance.js';
 import {financeFencePayload,createFinanceManualQueue} from '../shared/finance-fence.js';
 import {readBankSnapshotReceipt} from '../shared/bank-snapshot-receipt.js';
 import {readFinanceWriteReceipt} from '../shared/finance-write-receipt.js';
 import {readFinanceLeaseReceipt} from '../shared/finance-lease-receipt.js';
-import {assertReadableCloudState} from '../state/validation.js';
+import {assertReadableCloudState,assertValidCloudState} from '../state/validation.js';
 import {normalizeSharedChecks} from '../shared/shared-checks-contract.js';
 import {SHARED_CHECKS_DOC, SHARED_CHECKS_TABLE, SHARED_CHECKS_RPC} from '../state/constants.js';
 import {CLOUD_WRITE_POLICY,contentionDelay,createOperationId,normalizeCloudError,operationAuditMetadata,runBusyCloudWriteWithPolicy} from '../shared/cloud-sync.js';
@@ -27,6 +29,7 @@ function contentionBackoff(attempt=0){return new Promise(resolve=>setTimeout(res
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createCloudTransport({session, supaRest, localResetReadOnlyFetch}){
+const {rpcSaveCloudV2}=createMainDocumentWrite({documentName:()=>session.cloudDocumentName,request:(...args)=>supaRest(...args),validate:assertValidCloudState,beginMeasure});
 const manualFinanceQueue=createFinanceManualQueue({claim:claimFinanceSyncLease,release:releaseFinanceSyncLease,createToken:()=>createOperationId('finance-manual')});
 
 async function verifyLocalResetCloud(resetSession){
@@ -238,5 +241,5 @@ async function stageRestoreGroup(group){return restoreRpc('stage_restore_group_v
 async function applyRestoreGroup(restoreGroupId){return restoreRpc('apply_restore_group_v6',{p_restore_group_id:String(restoreGroupId)})}
 async function listIncompleteRestoreGroups(){const r=await supaRest('/rest/v1/rpc/list_incomplete_restore_groups_v5',{method:'POST',networkRetry:true,dataPriority:'high',body:'{}'}),raw=await r.text();let j;try{j=raw?JSON.parse(raw):null}catch{j=null}if(!r.ok)throw new Error(j?.message||raw||'restore group status failed');return Array.isArray(j)?j:[]}
   async function readStorageProtocolState(){const r=await supaRest('/rest/v1/rpc/get_storage_protocol_state',{method:'POST',networkRetry:true,dataPriority:'high',body:'{}'}),state=await r.json().catch(()=>null);if(!r.ok)throw new Error(state?.message||'בדיקת פרוטוקול האחסון בענן נכשלה');return state}
-  return {readSupabaseDocument,verifyLocalResetCloud,readOrdersReadOnlyMeta,readOrdersReadOnlyCloud,readSharedChecksDocument,readSharedChecksMeta,readStorageProtocolState,rpcSaveSharedChecksV2,stageRestoreGroup,applyRestoreGroup,listIncompleteRestoreGroups,listKupaCloudBackups,readKupaCloudBackupPoint,readFinanceSyncDocument,rpcSaveFinanceSync,saveFinancePatch,claimFinanceSyncLease,releaseFinanceSyncLease,saveBankSyncSnapshot,syncBankTransactionsSnapshot,readBankTransactions,readBankTransactionSnapshot,acknowledgeBankTransactionMissing,acknowledgeBankTransactionAlert};
+  return { rpcSaveCloudV2,readSupabaseDocument,verifyLocalResetCloud,readOrdersReadOnlyMeta,readOrdersReadOnlyCloud,readSharedChecksDocument,readSharedChecksMeta,readStorageProtocolState,rpcSaveSharedChecksV2,stageRestoreGroup,applyRestoreGroup,listIncompleteRestoreGroups,listKupaCloudBackups,readKupaCloudBackupPoint,readFinanceSyncDocument,rpcSaveFinanceSync,saveFinancePatch,claimFinanceSyncLease,releaseFinanceSyncLease,saveBankSyncSnapshot,syncBankTransactionsSnapshot,readBankTransactions,readBankTransactionSnapshot,acknowledgeBankTransactionMissing,acknowledgeBankTransactionAlert};
 }

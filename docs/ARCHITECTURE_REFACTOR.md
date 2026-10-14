@@ -10,6 +10,15 @@ remaining-scope paragraphs below are a chronological record.
 
 ## Verified now
 
+- Main sync now has a ten-owner composition in each startup root and twelve
+  runtime role APIs, replacing 33 Orders/42 Kupa flat collaborators. Common
+  strict write authority owns live account/epoch/login/control fencing; Kupa's
+  strict Main writer moves HTTP serialization out of sync. A pre-change
+  immutable 22-function policy fixture, receiver-dependent production
+  compositions, unknown-response contracts and native IDB adapters retain the
+  existing ACK/rebase/recovery decisions. See `MAIN_SYNC_COMPOSITION.md` for
+  remaining internal coordination and payload-contract scope.
+
 - Kupa Bank now keeps its controller/view private behind command, query,
   presentation and lifecycle ports. A pre-change diagnostic click-failure test
   reproduced leaked native download resources. Both apps now consume the same

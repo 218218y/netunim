@@ -6,6 +6,7 @@ capture; it never sends its data to Supabase or writes to the user's browser.
 """
 import argparse,json,subprocess,time
 from pathlib import Path
+from sync_document_fixture import evaluate_sync
 from browser_harness import BrowserSession,ROOT
 
 SETUP=r"""
@@ -163,7 +164,7 @@ for app in (args.app,) if args.app else ('orders','kupa'):
                 trailer=target.read_text(encoding='utf-8').split('\nexport const __testBindings=',1)
                 if len(trailer)>1:old+=('\nexport const __testBindings='+trailer[1]).encode('utf-8')
                 target.write_bytes(old);browser._navigate()
-            try:outcome=browser.evaluate('(async()=>{'+setup+FLOW.replace('__PRIVATE__',json.dumps(private))+'})()',timeout=70)
+            try:outcome=evaluate_sync(browser, '(async()=>{'+setup+FLOW.replace('__PRIVATE__',json.dumps(private))+'})()',baseline=args.baseline,timeout=70)
             except RuntimeError:
                 if not private:print('Native error diagnostics: '+json.dumps(browser.drain_serious_errors()),flush=True)
                 raise
@@ -177,7 +178,7 @@ for app in (args.app,) if args.app else ('orders','kupa'):
                     assert backup['kind']=='orders-concurrent-ack-review' and backup['storage']['metadata']['seq']==35
                     assert len(backup['localState']['notes'])==35 and backup['storage']['controls']['data']['conflict']['kind']=='concurrent-ack'
             browser._navigate()
-            restored=browser.evaluate('(async()=>{'+setup+RESTORE.replace('__EXPECTED__',json.dumps(outcome))+'})()',timeout=45)
+            restored=evaluate_sync(browser, '(async()=>{'+setup+RESTORE.replace('__EXPECTED__',json.dumps(outcome))+'})()',baseline=args.baseline,timeout=45)
             errors=browser.drain_serious_errors()
             assert all("beforeunload" in error or 'controlled' in error or 'storage_cloud_scope_changed' in error for error in errors),errors
             print('PASS native post-ACK '+app+' '+phase+': '+json.dumps(restored),flush=True)

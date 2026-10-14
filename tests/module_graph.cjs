@@ -22,6 +22,16 @@ for(const app of ['kupa','orders']){
       }
       if(node.type==='FunctionDeclaration'&&node.id?.name==='createLifecycle'&&relative==='assets/js/lifecycle.js')
         assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=(app==='kupa'?23:24),relative+': startup collaborators must not grow; introduce a capability port');
+      if(node.type==='FunctionDeclaration'&&node.id?.name==='createSyncDocument'&&['assets/js/sync/document.js','assets/js/composition/main-sync.js'].includes(relative))
+        assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=(relative.includes('/composition/')?10:12),relative+': Main sync requires narrow owner APIs, not flat storage or application contexts');
+      if(node.type==='FunctionDeclaration'&&node.id?.name==='createCloudWriteAuthority')
+        assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=3,relative+': cloud write authority requires scope, leadership and control ports');
+      if(node.type==='FunctionDeclaration'&&node.id?.name==='createMainDocumentWrite')
+        assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=4,relative+': Main wire transport requires target, request, validation and measurement ports');
+      if(relative==='assets/js/sync/document.js'&&node.type==='Identifier')
+        assert.ok(!['supaRest','checksSession'].includes(node.name),relative+': Main sync cannot own raw HTTP or independent Checks state');
+      if(relative==='assets/js/composition/main-sync.js'&&node.type==='SpreadElement'&&parent?.type==='ObjectExpression')
+        assert.fail(relative+': select the required owner API explicitly rather than spreading a broad capability');
       if(node.type==='FunctionDeclaration'&&node.id?.name==='createPollingTask'&&relative==='assets/js/shared/runtime-polling.js')
         assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=6,relative+': recurring task owner exceeds six collaborators');
       if(node.type==='FunctionDeclaration'&&node.id?.name==='createDebouncedTask'&&relative==='assets/js/shared/debounced-task.js')

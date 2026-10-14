@@ -38,7 +38,7 @@ import {createOrdersFolderCapability} from './composition/folders.js';
 import {createCloudAuth} from './cloud/auth.js';
 import {createCloudTransport} from './cloud/transport.js';
 import {createSyncMerge} from './sync/merge.js';
-import {createSyncDocument} from './sync/document.js';
+import {createSyncDocument} from './composition/main-sync.js';
 import {composeCloudUi} from './composition/cloud.js';
 import {createNotesDomain} from './domains/notes/index.js';
 import {createOrdersCalendarRuntime} from './composition/calendar.js';
@@ -335,31 +335,19 @@ const uiAlertCenter=createUiAlertCenter({
 });
 
 const syncDocument=createSyncDocument({
-  cancelCloudRecovery:()=>uiCloud.recoveryRuntime.cancel(),
-  getCloudWriteScope:()=>readCloudWriteScope(mainStorageV2.cloudScope,cloudAuth.getAccountScope()),
-  model,
-  files,
-  session,
-  tab,
-  toast:(...args)=>uiStatus.toast(...args),
-  setCloud:(...args)=>uiStatus.setCloud(...args),
-  prepareCloudState:(...args)=>stateSnapshots.prepareCloudState(...args),
-  writeStateToFolder:(...args)=>storageFiles.writeStateToFolder(...args),
-  readCloud:(...args)=>cloudTransport.readCloud(...args),
-  rpcSaveV2:(...args)=>cloudTransport.rpcSaveV2(...args),
-  merge3:(...args)=>syncMerge.merge3(...args),
-  applyOrderCloudState:(...args)=>stateSnapshots.applyOrderCloudState(...args),
-  composeOrderCloudState:(...args)=>stateSnapshots.composeOrderCloudState(...args),
-  cloudEnabled:(...args)=>cloudAuth.cloudEnabled(...args),
-  sameOrderCloudData:(...args)=>stateSnapshots.sameOrderCloudData(...args),
-  cloudHasLocalWork:(...args)=>stateSnapshots.cloudHasLocalWork(...args),
-  render:(...args)=>uiNavigation.render(...args),
-  readCloudMeta:(...args)=>cloudTransport.readCloudMeta(...args),
-  refreshKupaReadout:(...args)=>finance.readout.refreshKupaReadout(...args),
-  pollSharedChecks:(...args)=>checks.runtime.poll(...args),
-  refreshCloudTimestamp:(...args)=>uiStatus.refreshCloudTimestamp(...args),
-  ...storageV2Cloud,
-  storageV2PreparationActive:storagePreparationActive,
+  model,session,tab,
+  ownership:{
+    getScope:()=>readCloudWriteScope(mainStorageV2.cloudScope,cloudAuth.getAccountScope()),
+    preparing:storagePreparationActive,
+    enabled:()=>cloudAuth.cloudEnabled(),
+    cancelRecovery:()=>uiCloud.recoveryRuntime.cancel(),
+  },
+  storage:storageV2Cloud,
+  state:{snapshots:stateSnapshots,merge:syncMerge},
+  transport:cloudTransport,
+  view:{status:uiStatus,render:()=>uiNavigation.render()},
+  mirror:{files,writeStateToFolder:(...args)=>storageFiles.writeStateToFolder(...args)},
+  secondary:{finance:finance.readout,checks:checks.runtime},
 });
 
 
