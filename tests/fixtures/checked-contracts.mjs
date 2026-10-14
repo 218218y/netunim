@@ -143,9 +143,9 @@ createPollingTask({run:()=>true,delay:()=>1000});
 createPollingTask({run:()=>true,delay:()=>1000,onError:()=>{},onState:state=>state.owner});
 
 const {createCreditPublication}=await import('../../netunim-kupa/site/assets/js/domains/credit/publication.js');
-const creditPorts={commit:async()=>({saved:true,row:{revision:2,state:{creditSync:{}}}}),publish:()=>undefined,checkpoint:async()=>true,read:async()=>({verified:true,state:{creditSync:{}},financeRevision:2}),authority:{capture:()=>()=>undefined}};
+const creditPorts={commit:async()=>({saved:true,row:{revision:2,state:{creditSync:{}}}}),publish:()=>undefined,checkpoint:async()=>true,read:async()=>({verified:true,state:{creditSync:{}},financeRevision:2})};
 const creditPublication=createCreditPublication(creditPorts);
-const creditResult=await creditPublication.commit(state=>state,'fixture',null,()=>undefined);
+const creditResult=await creditPublication.commit(state=>state,'fixture',null,()=>undefined,()=>undefined);
 /** @type {true} */ const remoteCreditCommitted=creditResult.remoteCommitted;
 /** @type {boolean} */ const localFollowupConfirmed=creditResult.followupConfirmed;
 // @ts-expect-error remote commitment is distinct from local follow-up confirmation
@@ -158,5 +158,7 @@ creditPublication.retry(true);
 createCreditPublication({...creditPorts,read:async()=>({verified:true,state:{},financeRevision:'2'})});
 // @ts-expect-error a confirmed server receipt cannot use a truthy string
 createCreditPublication({...creditPorts,commit:async()=>({saved:'true'})});
-// @ts-expect-error Retained receipts require captured synchronous account/device authority.
-createCreditPublication({...creditPorts,authority:{capture:()=>async()=>undefined}});
+// @ts-expect-error Retained receipts require captured synchronous command-specific authority.
+creditPublication.commit(state=>state,'fixture',null,()=>undefined,async()=>undefined);
+// @ts-expect-error A temporary operation guard cannot replace explicit retained authority.
+creditPublication.commit(state=>state,'fixture',null,()=>undefined);

@@ -61,6 +61,12 @@ retire Credit warnings and block local Bank retry without throwing during status
 rendering. Before-change regressions and native existing recovery fixtures cover
 these effects; immutable provider/merge policies remain unchanged.
 
+Credit commit callers explicitly supply both the active-operation assertion and
+the retained-receipt assertion. Provider refresh/reset retain their captured
+device identity; manual cloud settings retain account/component authority and
+never require a local Bridge. The old four-argument commit contract is retired,
+with missing/async retained-authority consumers rejected by strict checking.
+
 Evidence includes isolated lifecycle tests, four production controller disposal
 regressions, immutable AST characterization of all four financial refresh bodies,
 strict checkJs/negative consumers in both generated copies and an actual cleanup

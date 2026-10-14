@@ -10,10 +10,9 @@
 const WARNING='נתוני האשראי נשמרו בענן. השלמת השמירה הנלווית לא אושרה. יש לבדוק ולטעון מהענן, ללא סריקה נוספת של חברות האשראי.';
 /** @param {FinanceState|undefined|null} state */
 function hasCreditState(state){return !!state&&typeof state==='object'&&!Array.isArray(state)&&!!state.creditSync&&typeof state.creditSync==='object'&&!Array.isArray(state.creditSync)}
-/** @param {{commit:(mutator:(state:FinanceState)=>FinanceState,lease:unknown,options:{assertCurrent:PublicationAssertion})=>Promise<FinanceCommit>,publish:(state:FinanceState)=>undefined,checkpoint:(message:string)=>Promise<unknown>,read:(options:{assertCurrent:PublicationAssertion})=>Promise<FinanceRead>,authority:{capture:()=>PublicationAssertion}}} ports */
-export function createCreditPublication({commit:remoteCommit,publish,checkpoint,read,authority}){
+/** @param {{commit:(mutator:(state:FinanceState)=>FinanceState,lease:unknown,options:{assertCurrent:PublicationAssertion})=>Promise<FinanceCommit>,publish:(state:FinanceState)=>undefined,checkpoint:(message:string)=>Promise<unknown>,read:(options:{assertCurrent:PublicationAssertion})=>Promise<FinanceRead>}} ports */
+export function createCreditPublication({commit:remoteCommit,publish,checkpoint,read}){
   for(const port of [remoteCommit,publish,checkpoint,read])if(typeof port!=='function')throw new TypeError('credit_publication_ports_required');
-  if(typeof authority?.capture!=='function')throw new TypeError('credit_publication_authority_required');
   /** @type {PublicationReceipt|null} */ let latest=null;
   function current(){if(!latest)return null;try{latest.assertCurrent();return latest}catch(error){if(error instanceof Error&&'code' in error&&['FINANCE_OPERATION_SCOPE_CHANGED','CREDIT_CONNECTION_SCOPE_CHANGED','BRIDGE_PAIRING_SCOPE_CHANGED'].includes(String(error.code)))return null;throw error}}
   function status(){const receipt=current();return {publicationWarning:receipt?.warning||'',publicationWarningAt:receipt?.at||null,publicationWarningCode:receipt?.code||''}}
@@ -25,9 +24,10 @@ export function createCreditPublication({commit:remoteCommit,publish,checkpoint,
     if(latest===receipt){receipt.warning=warning;receipt.at=warning?new Date().toISOString():'';receipt.code=warning?code:''}
     return {remoteCommitted:true,displayPublished:true,followupConfirmed:confirmed,warning};
   }
-  /** @param {(state:FinanceState)=>FinanceState} mutator @param {string} message @param {unknown} lease @param {PublicationAssertion} assertCurrent @returns {Promise<PublicationResult>} */
-  async function commit(mutator,message,lease,assertCurrent){
-    assertCurrent();const assertRetained=authority.capture();assertRetained();/** @type {FinanceState|undefined} */ let candidate;
+  /** @param {(state:FinanceState)=>FinanceState} mutator @param {string} message @param {unknown} lease @param {PublicationAssertion} assertCurrent @param {PublicationAssertion} assertRetained @returns {Promise<PublicationResult>} */
+  async function commit(mutator,message,lease,assertCurrent,assertRetained){
+    if(typeof assertRetained!=='function')throw new TypeError('credit_publication_retained_authority_required');
+    assertCurrent();assertRetained();/** @type {FinanceState|undefined} */ let candidate;
     const result=await remoteCommit(state=>{assertCurrent();candidate=mutator(state);return candidate},lease,{assertCurrent});assertCurrent();
     if(result?.saved!==true)throw new Error('נתוני האשראי לא נשמרו בענן. הנתונים הקודמים נשמרו; יש להתחבר ולבדוק לפני ניסיון נוסף.');
     const state=result.row?.state||candidate;if(!state||!hasCreditState(state))throw new Error('credit_publication_state_required');

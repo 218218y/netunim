@@ -1,9 +1,18 @@
 // Reconstruct only the reviewed lease ownership delta. Provider, merge,
 // publication, freshness and scheduler policies stay in their actual callers.
 export function restoreFinanceLeaseOwnership(source) {
-  source=source.replace(/(snapshots\.commands\.publishLocal\([^\n]*),\(\)=>\{assertOwner\(\);assertConnection\(\)\}\)/,'$1,assertCurrent)');
+  source = source.replace(
+    /(snapshots\.commands\.publishLocal\([^\n]*),\(\)=>\{assertOwner\(\);assertConnection\(\)\}\)/,
+    '$1,assertCurrent)'
+  );
   source = source
     .replace(/\r\n/g, '\n')
+    .replace('assertCurrent,assertOwner,assertRetained;', 'assertCurrent,assertOwner;')
+    .replace(
+      'assertOwner=captureOperation();assertRetained=()=>{assertOwner();assertConnection()};assertCurrent=()=>{assertRetained();leaseSession?.assertCurrent()}',
+      'assertOwner=captureOperation();assertCurrent=()=>{assertOwner();assertConnection();leaseSession?.assertCurrent()}'
+    )
+    .replaceAll(',lease,assertCurrent,assertRetained)', ',lease,assertCurrent)')
     .replaceAll(
       'let lease=null,leaseSession=null,assertOwner,assertConnection;',
       "let leaseToken='',leaseHeld=false,lease=null,heartbeat=null,assertOwner,assertConnection;"

@@ -23,7 +23,7 @@ export function createDomainsCreditController({model,saveState,toast,render,rend
     return ()=>{if(disposed)throw Object.assign(new Error('credit_disposed'),{code:'FINANCE_OPERATION_SCOPE_CHANGED'});assertOwner()};
   };
   const local={busy:false,error:'',errorAt:null,autoScheduled:false,preferenceWarning:'',preferenceWarningCode:''};
-  const publication=createCreditPublication({commit:saveFinancePatch,read:refreshFinanceCloudSnapshot,publish:state=>{model.state.creditSync=normalizeCreditSync(state.creditSync)},checkpoint:message=>saveState(message,{operations:[{type:'set',field:'creditSync',value:model.state.creditSync}]}),authority:{capture:()=>{const assertOwner=captureOperation(),assertConnection=connections.queries.capture();return ()=>{assertOwner();assertConnection()}}}});
+  const publication=createCreditPublication({commit:saveFinancePatch,read:refreshFinanceCloudSnapshot,publish:state=>{model.state.creditSync=normalizeCreditSync(state.creditSync)},checkpoint:message=>saveState(message,{operations:[{type:'set',field:'creditSync',value:model.state.creditSync}]})});
   let automaticActive=true,automaticOwner=null,preferencesPaused=false;
   const automaticAllowed=()=>{
     const scope=autoScope();if(disposed||!automaticActive||typeof scope!=='string'||!scope.length)return false;
@@ -80,7 +80,7 @@ export function createDomainsCreditController({model,saveState,toast,render,rend
       await bridge.resetCreditProfiles();
       assertCurrent();
       automaticActive=false;autoTask.stop();if(preferenceResult(preferences.reset()))clearPreferenceFailure();
-      await publishCreditSync(normalizeCreditSync({}),'סנכרון האשראי אופס והופרד מגיבויי הקופה',null,assertCurrent);
+      await publishCreditSync(normalizeCreditSync({}),'סנכרון האשראי אופס והופרד מגיבויי הקופה',null,assertCurrent,assertCurrent);
       await refreshCreditBridgeStatus();
       assertCurrent();
       toast(publication.status().publicationWarning||'סנכרון האשראי אופס. אפשר להגדיר מחדש חיבור אחד לכל בעל חשבון וחברה.');
@@ -94,10 +94,10 @@ export function createDomainsCreditController({model,saveState,toast,render,rend
     if(auto&&!allowed())return false;
     if(local.busy)return;
     local.busy=true;local.error='';local.errorAt=null;if(auto)renderStatus();else render();
-    let lease=null,leaseSession=null,autoCreditSync=model.state.creditSync,assertCurrent,assertOwner;
+    let lease=null,leaseSession=null,autoCreditSync=model.state.creditSync,assertCurrent,assertOwner,assertRetained;
     try{
       const assertConnection=connections.queries.capture();
-      assertOwner=captureOperation();assertCurrent=()=>{assertOwner();assertConnection();leaseSession?.assertCurrent()};
+      assertOwner=captureOperation();assertRetained=()=>{assertOwner();assertConnection()};assertCurrent=()=>{assertRetained();leaseSession?.assertCurrent()};
       if(auto){
         const latest=await refreshFinanceCloudSnapshot({assertCurrent});
         assertCurrent();
@@ -127,7 +127,7 @@ export function createDomainsCreditController({model,saveState,toast,render,rend
       if(Number(result.attemptedCount)===0&&Number(result.deferredCount)>0){await refreshCreditBridgeStatus();assertCurrent();local.error='';local.errorAt=null;if(!auto)toast('לא נשלחה בקשה חדשה: החיבור מושהה עד מועד ה־403/429 הקודם. גם רענון עם חלון אבחון מכבד את ההשהיה.');return true}
       const candidate=mergeCreditSyncResult(model.state.creditSync,result);
       const deferredOnly=Array.isArray(result.errors)&&result.errors.length>0&&result.errors.every(error=>error?.severity==='deferred'||error?.deferred===true);
-      await publishCreditSync(candidate,deferredOnly?'סנכרון האשראי הושהה ו־Last Known Good נשמר':result.errors?.length?'האשראי עודכן עם אזהרות ונשמר מחוץ לגיבויי הקופה':'האשראי עודכן ונשמר מחוץ לגיבויי הקופה',lease,assertCurrent);
+      await publishCreditSync(candidate,deferredOnly?'סנכרון האשראי הושהה ו־Last Known Good נשמר':result.errors?.length?'האשראי עודכן עם אזהרות ונשמר מחוץ לגיבויי הקופה':'האשראי עודכן ונשמר מחוץ לגיבויי הקופה',lease,assertCurrent,assertRetained);
       await refreshCreditBridgeStatus();
       assertCurrent();
       if(!auto)toast(publication.status().publicationWarning||(deferredOnly?'החיבור מושהה עקב 403/429; לא יישלח ניסיון נוסף לפני המועד.':result.errors?.length?`הסנכרון הושלם עם ${result.errors.length} אזהרות`:'נתוני האשראי עודכנו'));
@@ -140,7 +140,7 @@ export function createDomainsCreditController({model,saveState,toast,render,rend
       if(Array.isArray(e?.creditErrors)&&e.creditErrors.length){
         try{
           const candidate=mergeCreditSyncResult(model.state.creditSync,{profiles:[],errors:e.creditErrors});
-          await publishCreditSync(candidate,'אבחון סנכרון האשראי נשמר; הנתונים התקינים הקודמים נשמרו',lease,assertCurrent);
+          await publishCreditSync(candidate,'אבחון סנכרון האשראי נשמר; הנתונים התקינים הקודמים נשמרו',lease,assertCurrent,assertRetained);
         }catch(error){local.error=error.message||String(error);local.errorAt=new Date().toISOString()}
       }
       if(!auto)toast(deferredOnly?'החיבור מושהה עד תום ה־cooldown; לא יישלח ניסיון חדש לפני המועד.':local.error)
@@ -158,13 +158,13 @@ export function createDomainsCreditController({model,saveState,toast,render,rend
     }
   }
 
-  async function publishCreditSync(candidate,message,lease,assertCurrent){
-    return publication.commit(state=>({...state,creditSync:candidate}),message,lease,assertCurrent);
+  async function publishCreditSync(candidate,message,lease,assertCurrent,assertRetained){
+    return publication.commit(state=>({...state,creditSync:candidate}),message,lease,assertCurrent,assertRetained);
   }
 
   async function persistCreditSettings(mutator,message){
     const assertCurrent=captureOperation();
-    await publication.commit(state=>({...state,creditSync:mutator(normalizeCreditSync(state.creditSync))}),message,null,assertCurrent);return true;
+    await publication.commit(state=>({...state,creditSync:mutator(normalizeCreditSync(state.creditSync))}),message,null,assertCurrent,assertCurrent);return true;
   }
   async function retryCreditPublication(){
     if(local.busy)return false;let assertCurrent;try{assertCurrent=captureOperation();assertCurrent()}catch(error){toast(error.message);return false}

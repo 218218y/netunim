@@ -3,10 +3,13 @@
 export function restoreCreditPublicationAuthority(source) {
   return source
     .replace(/\r\n/g, '\n')
-    .replace(',authority:{capture:()=>PublicationAssertion}', '')
-    .replace('checkpoint,read,authority})', 'checkpoint,read})')
+    .replace(' @param {PublicationAssertion} assertRetained', '')
     .replace(
-      "  if(typeof authority?.capture!=='function')throw new TypeError('credit_publication_authority_required');\n",
+      'async function commit(mutator,message,lease,assertCurrent,assertRetained)',
+      'async function commit(mutator,message,lease,assertCurrent)'
+    )
+    .replace(
+      "    if(typeof assertRetained!=='function')throw new TypeError('credit_publication_retained_authority_required');\n",
       ''
     )
     .replace(
@@ -18,10 +21,7 @@ export function restoreCreditPublicationAuthority(source) {
       ' @returns {Promise<PublicationResult>} */\n  async function follow(receipt,message)'
     )
     .replaceAll('receipt.assertCurrent();assertCurrent();', 'receipt.assertCurrent();')
-    .replace(
-      'assertCurrent();const assertRetained=authority.capture();assertRetained();',
-      'assertCurrent();'
-    )
+    .replace('assertCurrent();assertRetained();', 'assertCurrent();')
     .replace(
       'const receipt={revision,assertCurrent:assertRetained,',
       'const receipt={revision,assertCurrent,'
