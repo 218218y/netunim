@@ -1,5 +1,7 @@
 import { createDomainsFinanceController } from '../netunim-orders/site/assets/js/domains/finance/controller.js';
 import { createOrdersFinanceDocumentCommands } from '../netunim-orders/site/assets/js/domains/finance/document-commands.js';
+import { createOrdersBankSnapshotPublication } from '../netunim-orders/site/assets/js/domains/finance/bank-snapshot-publication.js';
+import { createOrdersBankSnapshotPolicy } from '../netunim-orders/site/assets/js/domains/finance/bank-snapshot-policy.js';
 import { createOrdersBankArchiveReadout } from '../netunim-orders/site/assets/js/domains/finance/bank-archive-readout.js';
 import { createOrdersCreditConnectionOwner } from '../netunim-orders/site/assets/js/domains/finance/credit-connection-owner.js';
 import {
@@ -84,6 +86,20 @@ export function createOrdersFinanceControllerFixture(ports) {
       presentation: { toast: (message) => ports.toast?.(message) },
       protocol: { minimumBridgeVersion: ORDERS_BANK_BRIDGE_MINIMUM_VERSION },
     });
+  const bankSnapshots = createOrdersBankSnapshotPublication({
+    authority:ports.operationScope,
+    checks:{
+      hasLocalWork:ports.checksHaveLocalWork ?? (() => false),
+      save:ports.saveSharedChecksToCloud ?? unexpected,
+      refresh:ports.syncSharedChecksFromCloud ?? unexpected,
+      read:() => ({kupa:ports.checksSession?.kupaCloudReadState,bankEvents:ports.checksSession?.checksBankEvents}),
+    },
+    transactions:{reconcile:ports.syncBankTransactionsSnapshot ?? unexpected},
+    images:{sync:ports.syncBankChequeImages ?? (async () => ({warnings:[]}))},
+    archive:{read:archive.queries.readSnapshot,publish:archive.commands.publish},
+    publication:{save:documents.commands.publishBankSnapshot},
+    policy:createOrdersBankSnapshotPolicy(),
+  });
   const controller = createDomainsFinanceController({
     ...ports,
     documents,
@@ -91,11 +107,13 @@ export function createOrdersFinanceControllerFixture(ports) {
     archive,
     connections,
     bankConnections,
+    bankSnapshots,
   });
   return {
     ...controller,
     runtime: {
       dispose: () => {
+        bankSnapshots.runtime.dispose();
         const closed = controller.runtime.dispose();
         connections.runtime.dispose();
         bankConnections.runtime.dispose();
@@ -104,12 +122,14 @@ export function createOrdersFinanceControllerFixture(ports) {
       },
       isPending: () =>
         controller.runtime.isPending() ||
+        bankSnapshots.runtime.isPending() ||
         connections.runtime.isPending() ||
         bankConnections.runtime.isPending() ||
         archive.runtime.isPending(),
       drain: async () => {
         await Promise.all([
           controller.runtime.drain(),
+          bankSnapshots.runtime.drain(),
           connections.runtime.drain(),
           bankConnections.runtime.drain(),
           archive.runtime.drain(),

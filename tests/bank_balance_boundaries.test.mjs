@@ -3,12 +3,14 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { parse } from 'acorn';
 import { analyze } from 'eslint-scope';
+import {restoreOrdersBankPublication} from './orders_bank_publication_policy_fixture.mjs';
 const read = (file) => readFileSync(new URL('../' + file, import.meta.url), 'utf8');
 const files = [
   'netunim-kupa/site/assets/js/domains/bank/controller.js',
   'netunim-orders/site/assets/js/domains/finance/controller.js',
 ];
-function boundary(source, name) {
+function boundary(source, name, overrides) {
+  if(name==='createDomainsFinanceController')source=restoreOrdersBankPublication(source,overrides);
   const tree = parse(source, { ecmaVersion: 'latest', sourceType: 'module' }),
     factory = tree.body.find((row) => row.declaration?.id?.name === name).declaration;
   const command = factory.body.body.find(
@@ -44,7 +46,14 @@ test('both actual Bank publication callers use the validated scalar boundary bef
       ['readBankBalanceResult(result)', '{business:result,home:null,homeFailure:null}'],
       ['...bankSnapshotFinancials(business)', 'availableBalance:Number(business.availableBalance)'],
     ])
-      assert.throws(() => boundary(source.replace(from, to), name));
+      if(index===0)assert.throws(() => boundary(source.replace(from, to), name));
+      else {
+        const file=from==='readBankBalanceResult(result)'?'bank-snapshot-publication':'bank-snapshot-policy';
+        const actual=read('netunim-orders/site/assets/js/domains/finance/'+file+'.js');
+        const pattern=from==='...bankSnapshotFinancials(business)'?/\.\.\.bankSnapshotFinancials\(business\)/g:from;
+        const changed=actual.replace(pattern,to);assert.notEqual(changed,actual);
+        assert.throws(()=>boundary(source,name,{[file==='bank-snapshot-policy'?'model':'owner']:changed}));
+      }
   }
 });
 test('financial result/evidence is a pure strict boundary and canonical generated copies match', () => {

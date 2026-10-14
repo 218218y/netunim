@@ -62,7 +62,7 @@ test('Finance delegates archive reads, publications and pauses without private a
     (row) => row.declaration?.id?.name === 'createDomainsFinanceController'
   ).declaration;
   const fields = factory.params[0].properties.map((row) => row.key.name);
-  assert.equal(fields.length, 22);
+  assert.equal(fields.length, 18);
   assert.ok(fields.includes('connections'));
   assert.ok(fields.includes('archive'));
   for (const field of [
@@ -80,13 +80,13 @@ test('Finance delegates archive reads, publications and pauses without private a
   ])
     assert.ok(!source.includes(resource), resource);
   for (const method of [
-    'archive.queries.readSnapshot',
-    'archive.commands.publish',
     'archive.commands.update',
     'archive.runtime.pause()',
     'archive.runtime.resume()',
   ])
     assert.ok(source.includes(method), method);
+  const publication=read('bank-snapshot-publication');
+  for(const method of ['archive.read(', 'archive.publish('])assert.ok(publication.includes(method));
 });
 test('production composition wires current authority and transport and disposes the archive owner', () => {
   const source = fs

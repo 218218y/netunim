@@ -43,7 +43,7 @@ test('Orders connection owner has five required ports and only the canonical acc
   const source = read(controller);
   assert.equal(
     factory(ast(controller), 'createDomainsFinanceController').params[0].properties.length,
-    22
+    18
   );
   for (const name of [
     'creditStatus',

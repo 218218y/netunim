@@ -62,7 +62,7 @@ test('controller has no direct document-write collaborators or nonatomic Bank fa
   const fields = factory.params[0].properties.map((row) => row.key.name);
   assert.equal(
     fields.length,
-    22,
+    18,
     'local Bank and Credit ownership are explicit reviewed collaborators'
   );
   for (const name of [
@@ -78,7 +78,8 @@ test('controller has no direct document-write collaborators or nonatomic Bank fa
   ])
     assert.ok(!fields.includes(name), name);
   const bank = declaration(source, 'refreshBank');
-  assert.ok(bank.includes('documents.commands.publishBankSnapshot'));
+  assert.ok(bank.includes('bankSnapshots.commands.publish'));
+  assert.ok(read('bank-snapshot-publication').includes('publication.save('));
   assert.ok(!bank.includes('mutateFinanceCloud('));
   assert.ok(!bank.includes('mutateKupaCloud('));
   assert.ok(!read('document-commands').includes('typeof rpcSaveFinanceSync'));

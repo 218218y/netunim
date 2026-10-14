@@ -1007,3 +1007,15 @@ importer and unowned picker are retired; immutable parser/identity/summary
 policies and active historical readers remain. Twenty native browser/IDB cases
 and strict actual-body/negative consumer tests protect the slice. See
 [Finance import ownership](FINANCE_CONNECTION_IMPORT_OWNERSHIP.md).
+
+Orders Bank reconciliation and atomic publication now have a strict seven-port
+execution owner separate from provider/lease entry and operator presentation.
+Preparation and accepted publication join Finance disposal/drain, and the guard
+passed to durable ports retains account/device/heartbeat and owner lifetime.
+The private model preserves financial/backfill/home-failure/sequence policy;
+actual owner AST reconstruction matches the full pre-extraction workflow and
+the older immutable financial fixture. The controller has 18 collaborators,
+down from 22, and its former flat publication defaults/helpers are retired.
+Twelve native browser/IDB lifecycle cases and strict negative/body mutations
+protect the slice. Schema, wire, provider and deployed migrations are unchanged.
+See [Bank snapshot publication](ORDERS_BANK_SNAPSHOT_PUBLICATION.md).
