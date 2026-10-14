@@ -25,6 +25,14 @@ function check(overrides=new Map()){
 }
 function describe(diagnostics){return ts.formatDiagnostics(diagnostics,{getCanonicalFileName:file=>file,getCurrentDirectory:()=>root,getNewLine:()=> '\n'})}
 
+test('Morning modal session rejects textual mounted authority and fabricated generation in its implementation',()=>{
+ const source=path.join(root,'netunim-orders/site/assets/js/domains/customers/morning-modal-session.js'),original=readFileSync(source,'utf8');
+ for(const [from,to] of [['return observed;',"return 'mounted';"],['catch{return false}',"catch{return 'active'}"]]){
+  const changed=original.replace(from,to);assert.notEqual(changed,original);
+  const diagnostics=check(new Map([[source,changed]]));assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+ }
+});
+
 test('Morning status and application bodies reject fabricated session, presentation and pending evidence',()=>{
  for(const [file,from,to] of [
   ['morning-status.js','completed:settlement.durable',"completed:'saved'"],

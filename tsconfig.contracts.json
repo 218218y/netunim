@@ -20,6 +20,8 @@
     "types": []
   },
   "files": [
+    "tests/fixtures/checked-morning-modal-session.mjs",
+    "netunim-orders/site/assets/js/domains/customers/morning-modal-session.js",
     "tests/fixtures/checked-morning-status-consumers.mjs",
     "netunim-orders/site/assets/js/domains/customers/morning-status.js",
     "netunim-orders/site/assets/js/domains/customers/morning-status-message.js",

@@ -1,6 +1,7 @@
 import {createMorningDebtApplication} from './morning-debt-application.js';
 import {createMorningLifetime} from './morning-lifetime.js';
-import {createMorningDisplayLifetime,clearMorningDisplay} from './morning-display-lifetime.js';
+import {clearMorningDisplay} from './morning-display-lifetime.js';
+import {createMorningModalSession} from './morning-modal-session.js';
 import {createMorningIssuance} from './morning-issuance.js';
 import {createMorningOperationCommands} from './morning-operation-commands.js';
 import {createMorningRecovery} from './morning-recovery.js';
@@ -23,7 +24,6 @@ const DEFAULT_DOCUMENT_TYPE=320;
 function todayLocal(){const d=new Date(),shift=d.getTimezoneOffset()*60_000;return new Date(d.getTime()-shift).toISOString().slice(0,10)}
 function documentLabel(type){return DOCUMENT_TYPES[Number(type)]||`מסמך ${Number(type)||''}`}
 function cleanText(value,max=250){return String(value??'').trim().slice(0,max)}
-function currentField(id){return $('#'+id)}
 function setBusy(button,busy,label=''){if(!button)return;button.ariaBusy=String(!!busy);button.disabled=!!busy;if(busy&&label){if(!button.dataset.idleLabel)button.dataset.idleLabel=button.textContent||'';button.textContent=label}else if(!busy&&button.dataset.idleLabel)button.textContent=button.dataset.idleLabel}
 
 export function debtMorningPrefill(debt={}){const clearingApproval=String(debt?.clearingApproval||'').replace(/\D/g,'').slice(0,20),customerId=String(debt?.customerId||'').replace(/\D/g,'').slice(0,9),amount=Number(debt?.amount),payment=clearingApproval?{type:3,date:todayLocal(),price:Number.isFinite(amount)&&amount>0?amount:'',currency:'ILS',cardType:1,cardNum:'****'}:undefined;return {customerName:debt?.customerName||'',amount:debt?.amount,orderNumber:'',phone:debt?.phone||'',email:debt?.email||'',taxId:customerId,remarks:clearingApproval?`אשראי נסלק באתר ת.ב.י רהיטים. אישור סליקה באתר - ${clearingApproval}`:'',...(payment?{payment}:{})}}
@@ -31,22 +31,24 @@ export function debtMorningPrefill(debt={}){const clearingApproval=String(debt?.
 export function createDomainsCustomersDocuments({operationScope,subscribeAccountScope=()=>()=>{},model,modal,toast,confirmDialog,markModalDraftSaved,request,dateEditorMarkup,setDateValue=()=>{},documentsBrowser,applyVerifiedDebtDocument,rejectSecondaryIssuance,rejectSecondaryMutation,refreshForMorningRecovery,getBusinessBankTransactions=()=>[],ensureBusinessBankTransactions=async()=>false,onBankDocumentVerified=()=>{}}){
 if(typeof operationScope?.capture!=='function'||typeof operationScope?.captureRead!=='function')throw new TypeError('morning_operation_scope_required');
 if(typeof request?.json!=='function')throw new TypeError('morning_request_required');
-let disposed=false,modalAssert=null,modalElement=null;
+let disposed=false;
 const scopeChanged=error=>error?.code==='MORNING_OPERATION_SCOPE_CHANGED';
-let activeOperationId='',activeDebtId='',activeSource={kind:'standalone'},issuanceContext=null,modalGeneration=0,createBusy=false,blocked=false,completed=false;
+let activeOperationId='',activeDebtId='',activeSource={kind:'standalone'},issuanceContext=null,createBusy=false,blocked=false,completed=false;
 let decisionView=null;
 let issuanceInterruptionEpoch=0;
 const lifetime=createMorningLifetime({operationScope,getPendingOperationId:()=>pendingRecovery?.operationId,recover:recoverPendingMorningOperation,onInterrupt:()=>{issuanceInterruptionEpoch++}});
 const captureScope=lifetime.capture,scheduleRecoveryCheck=lifetime.scheduleRecovery;
 let pendingRecovery=loadMorningDebtRecoveryContext();
-const display=createMorningDisplayLifetime({subscribeAccountScope,onInvalidate:()=>{
-  const owned=modalElement;
-  modalGeneration++;modalAssert=null;modalElement=null;
-  clearMorningDisplay(owned,modal);
-}});
+const modalSession=createMorningModalSession({
+  authority:{captureRead:()=>captureScope(true)},account:{subscribe:subscribeAccountScope},
+  surface:{find:generation=>document.querySelector(`#modal [data-morning-generation="${generation}"]`),isOpen:()=>$('#modalBackdrop')?.classList.contains('open')===true},
+  presentation:{render:modal,clear:owned=>{clearMorningDisplay(owned,modal)}},
+});
+function modalAssert(){modalSession.assert()}
+function currentField(id){return modalSession.element?.closest('#modal')?.querySelector('#'+id)||null}
 if(pendingRecovery){activeOperationId=pendingRecovery.operationId;activeDebtId=pendingRecovery.debtId;activeSource=sourceFromRecovery(pendingRecovery);issuanceContext=pendingRecovery;blocked=true}
 const {paymentFields,readPaymentRows,replaceMorningPayments,addMorningPayment,removeMorningPayment,syncPaymentType,syncPaymentBank,syncPaymentTotal}=createMorningPayments({dateEditorMarkup,toast,currentField,getSource:()=>activeSource,getSelectedType:()=>selectedType()});
-const bankTransactionLinker=createMorningBankTransactionLinker({toast,currentField,getActiveSource:()=>activeSource,setActiveSource:value=>{activeSource=value},getGeneration:()=>modalGeneration,isActive,getBusinessBankTransactions,ensureBusinessBankTransactions,readPaymentRows,replaceMorningPayments,selectedType,syncDocumentType,syncPaymentType,syncPaymentTotal,setDateValue});
+const bankTransactionLinker=createMorningBankTransactionLinker({toast,currentField,getActiveSource:()=>activeSource,setActiveSource:value=>{activeSource=value},getGeneration:()=>modalSession.generation,isActive,getBusinessBankTransactions,ensureBusinessBankTransactions,readPaymentRows,replaceMorningPayments,selectedType,syncDocumentType,syncPaymentType,syncPaymentTotal,setDateValue});
 function isDebtRecoveryPending(debtId){
   const stored=loadMorningDebtRecoveryContext();
   return !!debtId&&[stored,pendingRecovery].some(context=>context?.debtId===debtId);
@@ -91,14 +93,14 @@ const statusFlow=createMorningStatus({
   lifetime,commands:operationCommands,
   session:{
     assertModal:()=>{modalAssert?.()},isActive,
-    read:()=>({generation:modalGeneration,operationId:activeOperationId,busy:createBusy,blocked,completed,pendingOperationId:pendingRecovery?.operationId||null,context:issuanceContext||pendingRecovery}),
+    read:()=>({generation:modalSession.generation,operationId:activeOperationId,busy:createBusy,blocked,completed,pendingOperationId:pendingRecovery?.operationId||null,context:issuanceContext||pendingRecovery}),
     update:state=>{blocked=state.blocked;if(state.completed!==undefined)completed=state.completed},
   },
   recovery:{abandon:abandonRecoveredReservation,reset:resetOperationAfterTerminal},
   application:{apply:applyVerifiedOperation,settle:settleVerifiedRecovery,notify:notifyBankVerified},
   presentation:{
     status:connectionStatus,operation:renderOperation,markSaved:()=>{markModalDraftSaved?.()},
-    button:({disabled,completed:done=false})=>{const button=document.querySelector('[data-action="morning-create"]');if(button){button.disabled=disabled;if(done){button.dataset.idleLabel='הופק ואומת';button.textContent='הופק ואומת'}}},
+    button:({disabled,completed:done=false})=>{const button=modalSession.element?.closest('#modal')?.querySelector('[data-action="morning-create"]');if(button){button.disabled=disabled;if(done){button.dataset.idleLabel='הופק ואומת';button.textContent='הופק ואומת'}}},
   },
 });
 
@@ -133,7 +135,7 @@ function formBody(d,type,dateEditorMarkup,{source=activeSource}={}){
   const kind=source?.kind||'standalone',standalone=kind==='standalone',bank=kind==='bank',amountValue=Number(d?.amount),amountInput=Number.isFinite(amountValue)&&amountValue>0?amountValue.toFixed(2):'',documentDate=cleanText(d?.date,10)||todayLocal();
   const formHint=standalone?'הזן את פרטי הלקוח והמסמך. המסמך אינו יוצר חוב ואינו תלוי ברשומת חוב.':bank?'הפרטים מולאו מתנועת הבנק. תקבולים שמקורם בבנק נשמרים כנתוני מקור; בהפקדת כמה צ׳קים אפשר להסיר צ׳ק שאינו שייך למסמך ולהוסיף תקבולים נוספים.':'הפרטים נלקחים מהחוב וניתנים לעריכה לפני ההפקה';
   const allowedTypes=bank?[320,400]:DOCUMENT_TYPE_ORDER;
-  return `<div class="morning-document-dialog" data-morning-generation="${modalGeneration}">
+  return `<div class="morning-document-dialog" data-morning-generation="${modalSession.generation}">
     <div id="morningRecoveryDecision" hidden></div>
     <div class="morning-type-picker" role="group" aria-label="סוג מסמך">
       ${allowedTypes.map(value=>{const label=DOCUMENT_TYPES[value];return `<label class="morning-type-option"><input type="radio" name="morningDocumentType" value="${value}" data-change="morning-document-type" ${Number(value)===Number(type)?'checked':''}><span><b>${esc(label)}</b><small>${Number(value)===305?'חיוב ללא תקבול':Number(value)===320?'חשבונית ותקבול במסמך אחד':'תקבול כנגד חשבונית/חיוב'}</small></span></label>`}).join('')}
@@ -176,23 +178,21 @@ function openBankMorningDocument(transaction,type=DEFAULT_DOCUMENT_TYPE){
   return openMorningDocumentModal({prefill,debtId:'',source:{...prefill.source,bankTransaction:transaction},initialType:requestedType});
 }
 async function openMorningDocumentModal({prefill=null,debtId='',source=null,initialType=DEFAULT_DOCUMENT_TYPE}={}){
-  try{modalAssert=captureScope(true)}catch(error){toast(error.message);return}
+  try{captureScope(true)()}catch(error){toast(error.message);return}
   const requestedDebtId=String(debtId||''),requestedSource=source&&typeof source==='object'?source:{kind:requestedDebtId?'debt':'standalone'},requestedKey=requestedSource.kind==='bank'?`bank:${Number(requestedSource.bankTransactionId)||0}`:requestedSource.kind==='debt'?`debt:${requestedDebtId}`:'standalone';
   if(createBusy){toast('הפקת Morning קודמת עדיין מתבצעת. יש להמתין לתוצאתה לפני פתיחת מסמך נוסף.');return}
   pendingRecovery=loadMorningDebtRecoveryContext()||pendingRecovery;
   if(pendingRecovery&&!completed){activeOperationId=pendingRecovery.operationId;activeDebtId=pendingRecovery.debtId;activeSource=sourceFromRecovery(pendingRecovery);issuanceContext=pendingRecovery;blocked=true}
   if(blocked&&requestedKey!==sourceKey(activeSource)){toast('יש ניסיון הפקה קודם שעדיין ממתין לאימות. יש להשלים את בדיקת ההפקה שלו לפני פתיחת מקור מסמך אחר.');return}
   if(!blocked){activeOperationId=newOperationId();activeDebtId=requestedDebtId;activeSource=requestedSource;bankTransactionLinker.reset(requestedSource);issuanceContext=null;completed=false}else if(issuanceContext?.operationId===activeOperationId){activeDebtId=issuanceContext.debtId;activeSource=hydrateRecoveredSource(sourceFromRecovery(issuanceContext),requestedSource);bankTransactionLinker.reset(activeSource)}
-  display.renew();modalGeneration++;
   const safeType=activeSource.kind==='bank'&&![320,400].includes(Number(initialType))?320:Number(initialType)||DEFAULT_DOCUMENT_TYPE;
-  modal('בודק חיבור ל-Morning…',formBody(prefill||{},safeType,dateEditorMarkup,{source:activeSource}),foot());
-  modalElement=document.querySelector(`[data-morning-generation="${modalGeneration}"]`);
+  modalSession.open('בודק חיבור ל-Morning…',()=>formBody(prefill||{},safeType,dateEditorMarkup,{source:activeSource}),foot());
   mountMorningConnectionStatus();
   syncDocumentType();syncPaymentType();syncPaymentTotal();syncBankDebtPickerSelection();if(currentField('morningBankTransactionRows'))void lifetime.run(()=>bankTransactionLinker.refresh());await refreshStatus();
 }
-function isActive(generation){try{modalAssert?.()}catch{return false}return !disposed&&generation===modalGeneration&&!!document.querySelector(`[data-morning-generation="${generation}"]`)}
+function isActive(generation){return !disposed&&modalSession.isActive(generation)}
 
-function selectedType(){return Number(document.querySelector('input[name="morningDocumentType"]:checked')?.value||0)}
+function selectedType(){return Number(modalSession.element?.querySelector('input[name="morningDocumentType"]:checked')?.value||0)}
 function debtUpdatePolicy(type=selectedType()){
   if(!activeDebtId)return {applyPayment:false,applyInvoice:false};
   const paymentSupported=type===320||type===400,invoiceSupported=type===305||type===320;
@@ -202,7 +202,7 @@ function syncDocumentType(){
   const type=selectedType(),needsPayment=type===320||type===400,payment=currentField('morningPaymentFields'),linked=currentField('morningLinkedDocumentPanel'),paymentUpdate=currentField('morningApplyPaymentOption'),invoiceUpdate=currentField('morningApplyInvoiceOption'),amount=currentField('morningAmount');
   if(activeSource.kind==='bank'&&![320,400].includes(type))return;
   if(payment)payment.hidden=!needsPayment;if(linked)linked.hidden=type!==400;if(paymentUpdate)paymentUpdate.hidden=!(type===320||type===400);if(invoiceUpdate)invoiceUpdate.hidden=!(type===305||type===320);if(amount)amount.readOnly=false;
-  document.querySelectorAll('[data-document-kind]').forEach(el=>{el.hidden=Number(el.dataset.documentKind)!==type});if(needsPayment)syncPaymentTotal();
+  modalSession.element?.querySelectorAll('[data-document-kind]').forEach(el=>{el.hidden=Number(el.dataset.documentKind)!==type});if(needsPayment)syncPaymentTotal();
 }
 function applyLinkedDebtIdentity(debt){const prefill=debt?debtMorningPrefill(debt):{taxId:'',remarks:''};for(const [fieldId,key] of [['morningClientTaxId','taxId'],['morningRemarks','remarks']]){const field=currentField(fieldId);if(!field)continue;const previous=String(field.dataset.debtPrefill||'');if(!field.value||field.value===previous)field.value=String(prefill[key]||'');field.dataset.debtPrefill=String(prefill[key]||'')}}
 function linkBankDebt(debtId){if(activeSource.kind!=='bank'||blocked||createBusy)return;const id=String(debtId||''),debt=id?activeBankDebts().find(row=>String(row.id)===id):null,exists=!id||!!debt;if(!exists)return toast('החוב שנבחר אינו קיים או שכבר הושלם');activeDebtId=id;applyLinkedDebtIdentity(debt);const host=currentField('morningDebtUpdateHost');if(host)host.innerHTML=debtUpdatePanel();syncDocumentType();syncBankDebtPickerSelection();collapseMorningBankDebtPicker()}
@@ -273,7 +273,7 @@ function showRecoveryDecision(context,current){
   const displayedCurrent=morningFinancialSnapshot((model.state.customerDebts||[]).find(d=>d.id===context.debtId))||current;
   decisionView={operationId:context.operationId,financialSnapshot:current};
   if(!$('#modalBackdrop')?.classList.contains('open')){
-    modalGeneration++;modal('הכרעה בעדכון חוב מ-Morning',`<div data-morning-generation="${modalGeneration}"><div id="morningConnectionStatus"></div><div id="morningRecoveryDecision"></div></div>`,'<button class="btn" data-action="close-modal">סגור — ההפקה תישאר ממתינה</button>');
+    modalSession.open('הכרעה בעדכון חוב מ-Morning',generation=>`<div data-morning-generation="${generation}"><div id="morningConnectionStatus"></div><div id="morningRecoveryDecision"></div></div>`,'<button class="btn" data-action="close-modal">סגור — ההפקה תישאר ממתינה</button>');
   }
   const panel=currentField('morningRecoveryDecision');
   if(!panel){toast('החוב השתנה בזמן שהפקת Morning המתינה לאימות. פתח את הפקת Morning של החוב להכרעה לפני זקיפה.');return}
@@ -283,6 +283,7 @@ function showRecoveryDecision(context,current){
   connectionStatus('warning','המסמך מאומת. החוב ממתין להכרעה מפורשת.');markModalDraftSaved?.();
 }
 function saveRecoveryChoice(){
+  if(!isActive(modalSession.generation))return false;
   try{modalAssert?.();captureScope()()}catch(error){toast(error.message);return false}
   const context=loadMorningDebtRecoveryContext();if(!context||context.operationId!==decisionView?.operationId||rejectSecondaryMutation?.()===true)return false;
   const next=createMorningDebtRecoveryContext({...context,resolution:{financialSnapshot:decisionView.financialSnapshot,applyPayment:currentField('morningRecoveryPayment')?.checked===true,applyInvoice:currentField('morningRecoveryInvoice')?.checked===true,confirmedAt:''}});
@@ -291,6 +292,7 @@ function saveRecoveryChoice(){
 }
 async function confirmRecoveryChoice(button){
   if(debtApplication.isPending()||lifetime.pending('recovery')||!saveRecoveryChoice())return;
+  const generation=modalSession.generation;
   const assertCurrent=captureScope(),chosen=loadMorningDebtRecoveryContext();if(!chosen?.resolution)return;
   setBusy(button,true,'מסנכרן ובודק…');
   try{
@@ -303,7 +305,7 @@ async function confirmRecoveryChoice(button){
     const latest=loadMorningDebtRecoveryContext();if(latest?.operationId!==chosen.operationId||JSON.stringify(latest.resolution)!==JSON.stringify(chosen.resolution))return;
     const approved=createMorningDebtRecoveryContext({...chosen,resolution:{...chosen.resolution,confirmedAt:new Date().toISOString()}});
     if(!saveMorningDebtRecoveryContext(approved)){toast('שמירת האישור נכשלה. לא בוצעה זקיפה.');return}
-    pendingRecovery=approved;issuanceContext=approved;markModalDraftSaved?.();await recoverPendingMorningOperation();
+    pendingRecovery=approved;issuanceContext=approved;if(isActive(generation))markModalDraftSaved?.();await recoverPendingMorningOperation();
   }catch(error){if(!scopeChanged(error))toast('ההכרעה נשמרה להתאוששות; לא ניתן להשלים כרגע: '+error.message)}finally{setBusy(button,false)}
 }
 
@@ -316,7 +318,7 @@ function settleVerifiedRecovery(operationId,result,{serverLinkPending=false}={})
 }
 function notifyBankVerified(context,bankLink){if(context?.sourceKind!=='bank'||!context.bankTransactionId||!bankLink||bankLink.pending===true)return;try{onBankDocumentVerified(Number(context.bankTransactionId),bankLink)}catch(error){console.error('Bank Morning local projection update failed',error)}}
 
-function mountMorningConnectionStatus(){const heading=document.querySelector('#modal .modal-head h3');if(!heading||!document.querySelector('#modal .morning-document-dialog'))return;heading.id='morningConnectionStatus';heading.className='morning-connection morning-modal-connection loading';heading.innerHTML='<span class="morning-dot"></span><span>בודק חיבור ל-Morning…</span>'}
+function mountMorningConnectionStatus(){const panel=modalSession.element?.closest('#modal'),heading=panel?.querySelector('.modal-head h3');if(!heading||!panel.querySelector('.morning-document-dialog'))return;heading.id='morningConnectionStatus';heading.className='morning-connection morning-modal-connection loading';heading.innerHTML='<span class="morning-dot"></span><span>בודק חיבור ל-Morning…</span>'}
 function connectionStatus(kind,text){const el=currentField('morningConnectionStatus');if(!el)return;const inHeader=el.matches('#modal .modal-head h3');el.className=`morning-connection ${inHeader?'morning-modal-connection ':''}${kind}`;el.innerHTML=`<span class="morning-dot"></span><span>${esc(text)}</span>`}
 function renderOperation(op){
   const result=currentField('morningOperationResult');if(!result)return;
@@ -340,7 +342,7 @@ function recoverPendingMorningOperation(...args){return recoveryFlow.recover(...
 
 async function previewMorningDocument(button){
   let payload,assertCurrent;try{modalAssert?.();assertCurrent=captureScope(true);payload=readForm()}catch(error){return toast(error.message)}
-  const generation=modalGeneration;setBusy(button,true,'מכין…');
+  const generation=modalSession.generation;setBusy(button,true,'מכין…');
   try{return await documentsBrowser.previewDraft(payload,{assertCurrent,isCurrent:()=>isActive(generation)})}
   finally{setBusy(button,false)}
 }
@@ -350,11 +352,11 @@ async function createMorningDocument(button){
   const rejectCurrentIssuance=()=>activeDebtId?rejectSecondaryMutation?.()===true:rejectSecondaryIssuance?.()===true;
   if(rejectCurrentIssuance())return;
   let payload,assertCurrent;try{modalAssert?.();assertCurrent=captureScope();payload=readForm()}catch(error){return toast(error.message)}
-  const generation=modalGeneration,issuanceEpoch=issuanceInterruptionEpoch,type=payload.document.type,amount=payload.document.amount,clientName=payload.document.client.name,policy=debtUpdatePolicy(type);
+  const generation=modalSession.generation,issuanceEpoch=issuanceInterruptionEpoch,type=payload.document.type,amount=payload.document.amount,clientName=payload.document.client.name,policy=debtUpdatePolicy(type);
   let context;try{context=recoveryContext(type,amount,policy,payload.operation_id)}catch(error){return toast(error.message)}
   statusFlow.cancelPending();createBusy=true;setBusy(button,true,'מפיק…');
   try{
-    const confirmed=await confirmDialog('הפקת מסמך רשמי',`להפיק ${documentLabel(type)} על סך ${money(amount)} עבור ${clientName}?\nלאחר ההפקה המסמך יקבל מספר רשמי ב-Morning.${debtImpactConfirmation(type,amount,policy)}`,{confirmText:'הפק מסמך',cancelText:'חזור לעריכה',tone:'primary',signal:display.signal});
+    const confirmed=await confirmDialog('הפקת מסמך רשמי',`להפיק ${documentLabel(type)} על סך ${money(amount)} עבור ${clientName}?\nלאחר ההפקה המסמך יקבל מספר רשמי ב-Morning.${debtImpactConfirmation(type,amount,policy)}`,{confirmText:'הפק מסמך',cancelText:'חזור לעריכה',tone:'primary',signal:modalSession.signal});
     if(!confirmed)return;assertCurrent();if(!isActive(generation))return;
     if(rejectCurrentIssuance())return;
     const data=await issuance.issue(payload,context,assertCurrent);assertCurrent();
@@ -389,7 +391,7 @@ async function createMorningDocument(button){
 function openExistingDocument(documentId,button,operationId){try{modalAssert?.();captureScope(true)()}catch(error){toast(error.message);return false}return documentId?documentsBrowser.viewDocument(documentId,button):documentsBrowser.viewVerifiedOperation(operationId,button)}
 async function reconcile(button){if(createBusy)return;setBusy(button,true,'בודק…');try{await refreshStatus({reconcile:true})}finally{setBusy(button,false)}}
 
-function dispose(){if(disposed)return false;disposed=true;lifetime.dispose();display.dispose();return true}
+function dispose(){if(disposed)return false;disposed=true;lifetime.dispose();modalSession.dispose();return true}
 function command(run,args){return disposed?Promise.resolve(false):lifetime.run(()=>run(...args))}
 const runtime={dispose,cancelPending:()=>{lifetime.cancelPending();statusFlow.cancelPending()},drain:lifetime.drain,isPending:lifetime.isPending};
 return {

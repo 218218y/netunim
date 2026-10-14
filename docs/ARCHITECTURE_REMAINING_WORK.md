@@ -29,8 +29,11 @@ remaining-scope paragraphs describe their stage's starting point.
   application joins are bound to operation identity and current joined displays.
   Immutable messages, strict implementation mutations and native journal/modal
   races protect the boundary. See [Morning status ownership](MORNING_STATUS_OWNER.md).
-  Broader customer orchestration and form
-  presentation remain open. See [Morning operation drain](MORNING_OPERATION_DRAIN.md) and
+  Issuance/recovery decision surfaces now share a strict four-port mounted
+  session. Reproduced detached/closed choice writes and retained recovery-only
+  account displays are fenced, preserving accepted confirmation allocation and
+  unrelated draft guards. See [Morning modal presentation](MORNING_MODAL_PRESENTATION.md).
+  Broader customer orchestration and form presentation remain open. See [Morning operation drain](MORNING_OPERATION_DRAIN.md) and
   [Morning media ownership](MORNING_DOCUMENT_MEDIA_OWNER.md).
 
 - Orders Calendar separates connection intent, Google verification, sync/reconnect

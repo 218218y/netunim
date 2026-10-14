@@ -11,8 +11,9 @@ for(const [file,functions] of Object.entries(baseline.files)){
   for(const [name,expected] of Object.entries(functions))test(`Morning ${name} preserves pre-media issuance/debt/search policy`,()=>{
     const expanded=name==='applyVerifiedContextOnce'?originalMorningApplicationPolicy(readFileSync(new URL('../netunim-orders/site/assets/js/domains/customers/morning-debt-application.js',import.meta.url),'utf8')):name==='recoverPendingMorningOperation'?originalMorningRecoveryPolicy(readFileSync(new URL('../netunim-orders/site/assets/js/domains/customers/morning-recovery.js',import.meta.url),'utf8')):null;
     const node=expanded?null:declaration(source,name),policy=expanded||tokens(source.slice(node.start,node.end)).replaceAll('operationCommands.status(context.operationId,true,assertCurrent)',"backend('status',{operation_id:context.operationId,reconcile:true},assertCurrent)");
-    const preserved=policy.replaceAll('debtApplication.isPending()',"lifetime.pending('application')").replaceAll('statusFlow.cancelPending();','').replaceAll(',isCurrent:()=>isActive(generation)','');
-    const actual=createHash('sha256').update(preserved).digest('hex');
+    const preserved=policy.replaceAll('debtApplication.isPending()',"lifetime.pending('application')").replaceAll('statusFlow.cancelPending();','').replaceAll(',isCurrent:()=>isActive(generation)','').replaceAll('modalSession.generation','modalGeneration').replaceAll('modalSession.signal','display.signal').replaceAll('if(!isActive(modalGeneration))return false;','');
+    const normalized=name==='confirmRecoveryChoice'?preserved.replace('const generation=modalGeneration;','').replace('if(isActive(generation))markModalDraftSaved?.();','markModalDraftSaved?.();'):preserved;
+    const actual=createHash('sha256').update(normalized).digest('hex');
     assert.equal(actual,expected,`business policy drift from ${baseline.commit}`);
   });
 }

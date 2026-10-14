@@ -13,8 +13,9 @@ function fixture(t,{hold='preview'}={}){
   elements.set('#modalBackdrop',back);elements.set('#modal',panel);
   const fields={morningClientName:'Exact customer',morningAmount:'42',morningDocumentDate:'2026-10-14',morningDescription:'Exact invoice'};
   for(const [id,value] of Object.entries(fields))elements.set('#'+id,{value,dataset:{}});
-  const document={querySelector:key=>key.startsWith('[data-morning-generation=')?surface:key==='input[name="morningDocumentType"]:checked'?{value:'305'}:elements.get(key)||null,querySelectorAll:()=>[],addEventListener(){},removeEventListener(){}};
+  const document={querySelector:key=>key.startsWith('#modal [data-morning-generation=')?surface:key==='input[name="morningDocumentType"]:checked'?{value:'305'}:elements.get(key)||null,querySelectorAll:()=>[],addEventListener(){},removeEventListener(){}};
   Object.defineProperty(globalThis,'document',{value:document,configurable:true});
+  surface.closest=()=>({...panel,querySelector:key=>elements.get(key)||null});surface.querySelector=key=>key==='input[name="morningDocumentType"]:checked'?{value:'305'}:elements.get(key)||null;surface.querySelectorAll=()=>[];
   const entries=new Map();Object.defineProperty(globalThis,'localStorage',{value:{getItem:key=>entries.get(key)||null,setItem:(key,value)=>entries.set(key,String(value)),removeItem:key=>entries.delete(key)},configurable:true});
   const operationScope={capture:()=>()=>{},captureRead:()=>()=>{}};
   const request=createMorningRequest({operationScope,supaFetch:async(_path,options)=>{

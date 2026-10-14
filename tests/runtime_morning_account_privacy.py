@@ -14,12 +14,12 @@ SETUP = r"""(async()=>{
  cloudTransport.rpcSaveV2=async snapshot=>{main={revision:1,state:structuredClone(snapshot)};return {r:{ok:true},row:main}};
  cloudTransport.rpcSaveSharedChecksV2=async checks=>{shared={revision:1,state:{version:1,checks:structuredClone(checks),bankEvents:[]}};return {r:{ok:true},row:shared}};
  await storageV2Coordinator.startStorageV2OwnerTransfer({targetOwner:owner,intent:'upload-local'});session.storageProtocolBlocked=false;morningOperationScope.capture()();
- const calls=[],urls=[],revoked=[],createUrl=URL.createObjectURL,revokeUrl=URL.revokeObjectURL;
+ const calls=[],urls=[],revoked=[],createUrl=URL.createObjectURL,revokeUrl=URL.revokeObjectURL;let operation=null;
  URL.createObjectURL=blob=>{const url=createUrl(blob);urls.push(url);return url};URL.revokeObjectURL=url=>{revoked.push(url);revokeUrl(url)};
  const doc={id:'cccccccc-cccc-4ccc-8ccc-cccccccccccc',number:123,type:305,date:'2026-10-10',amount:100,currency:'ILS',clientName:'private Morning customer A',status:0,description:'private invoice description A'};
  cloudAuth.supaFetch=async(_path,options)=>{
   options.assertRequestScope();const request=JSON.parse(options.body);calls.push(request);let data={ok:true};
-  if(request.action==='status')data={ok:true,configured:true,available:true,environment:'sandbox'};
+  if(request.action==='status')data={ok:true,configured:true,available:true,environment:'sandbox',operation};
   if(request.action==='search_documents')data={ok:true,items:[doc],total:1,pages:1};
   if(request.action==='get_document')data={ok:true,document:doc};
   if(request.action==='preview')data={ok:true,pdfBase64:btoa('%PDF-1.4\nsynthetic preview A')};
@@ -41,19 +41,27 @@ SETUP = r"""(async()=>{
   action('morning-browser-view',doc.id);await wait(()=>document.getElementById('morningBrowserPreviewFrame')?.src.startsWith('blob:'),'browser preview did not settle');
   const clickAnchor=HTMLAnchorElement.prototype.click;HTMLAnchorElement.prototype.click=function(){if(this.download!=='morning-document.pdf')clickAnchor.call(this)};
   action('morning-download',doc.id);await wait(()=>document.querySelector('a[href*="private-A.pdf"]'),'download link did not settle');HTMLAnchorElement.prototype.click=clickAnchor;
- }else{
+ }else if(surface!=='decision'){
   action('morning-open-document',doc.id);await wait(()=>document.getElementById('morningStandalonePreviewFrame')?.src.startsWith('blob:'),'standalone PDF did not settle');
  }
  const {createMorningDebtRecoveryContext,saveMorningDebtRecoveryContext,loadMorningDebtRecoveryContext,morningFinancialSnapshot}=await import('./assets/js/domains/customers/morning-debt-recovery.js');
- const context=createMorningDebtRecoveryContext({operationId:'33333333-3333-4333-8333-333333333333',debtId:debt.id,type:320,amount:30,applyPayment:true,applyInvoice:true,createdAt:'2026-10-11T00:00:00Z',financialSnapshot:morningFinancialSnapshot(debt)});saveMorningDebtRecoveryContext(context);
+ const context=createMorningDebtRecoveryContext({operationId:'33333333-3333-4333-8333-333333333333',debtId:debt.id,type:320,amount:30,applyPayment:true,applyInvoice:true,createdAt:'2026-10-11T00:00:00Z',financialSnapshot:surface==='decision'?undefined:morningFinancialSnapshot(debt)});saveMorningDebtRecoveryContext(context);
+ let decisionDocuments=null;
+ if(surface==='decision'){
+  operation={operation_id:context.operationId,state:'created',document_id:doc.id,document_type:320,amount:30,verified_at:'2026-10-14T00:00:00Z'};
+  const {createDomainsCustomersDocuments}=await import('./assets/js/domains/customers/documents.js'),{createMorningRequest}=await import('./assets/js/integrations/morning.js');
+  decisionDocuments=createDomainsCustomersDocuments({operationScope:morningOperationScope,subscribeAccountScope:cloudAuth.subscribeAccountScope,model,modal:(...args)=>uiModal.modal(...args),toast:(...args)=>uiStatus.toast(...args),markModalDraftSaved:()=>{uiModal.markModalDraftSaved()},dateEditorMarkup:()=>'',documentsBrowser:{},refreshForMorningRecovery:async()=>true,applyVerifiedDebtDocument:()=>{throw Error('historical recovery cannot allocate before a decision')},request:createMorningRequest({operationScope:morningOperationScope,supaFetch:(...args)=>cloudAuth.supaFetch(...args)})});
+  const result=await decisionDocuments.recoverPendingMorningOperation();if(result.result?.reason!=='decision-required')throw Error('historical recovery must require a decision '+JSON.stringify(result));
+  await wait(()=>document.getElementById('morningRecoveryDecision')?.textContent.includes('נדרשת הכרעה'),'recovery-only decision did not open');
+ }
  const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js'),db=createStorageJournalDb();
  const raw=async()=>JSON.stringify([await db.load(owner+':orders'),await db.load(owner+':shared-checks'),loadMorningDebtRecoveryContext()]),before=await raw();
- globalThis.morningPrivacy={surface,owner,other,login,action,wait,calls,urls,revoked,raw,before};return {surface,visible:true};
+ globalThis.morningPrivacy={surface,owner,other,login,action,wait,calls,urls,revoked,raw,before,decisionDocuments};return {surface,visible:true};
 })()"""
 
 VERIFY = r"""(async()=>{
  const f=morningPrivacy;
- await f.wait(()=>!document.getElementById('morningClientName')&&!document.getElementById('morningDocumentsBrowser')&&!document.getElementById('morningStandalonePreview'),'former-account Morning view retained');
+ await f.wait(()=>!document.getElementById('morningClientName')&&!document.getElementById('morningDocumentsBrowser')&&!document.getElementById('morningStandalonePreview')&&!document.getElementById('morningRecoveryDecision'),'former-account Morning view retained');
  if(document.getElementById('modal').textContent.includes('private Morning')||document.querySelector('iframe[src^="blob:"],a[href*="private-A.pdf"]'))throw Error('former-account document content/link retained');
  if(document.getElementById('confirmBackdrop').classList.contains('open')||document.getElementById('confirmMessage').textContent.includes('private Morning'))throw Error('former-account issuance confirmation retained');
  if(f.urls.some(url=>!f.revoked.includes(url)))throw Error('former-account Blob URL not released');
@@ -83,15 +91,16 @@ VERIFY = r"""(async()=>{
   if(live.size||subscriptions.size)throw Error('Morning auth/visibility/offline listener retained');
  }}finally{EventTarget.prototype.addEventListener=add;EventTarget.prototype.removeEventListener=remove}
  if(await f.raw()!==f.before)throw Error('resource cycling changed retained stores');
+ f.decisionDocuments?.dispose();await f.decisionDocuments?.runtime.drain();
  return {cleared:true,pendingRetained:true,revoked:f.revoked.length,surface:f.surface,resourceCycles:100};
 })()"""
 
 parser=argparse.ArgumentParser()
-parser.add_argument('--surface',choices=('form','browser','standalone','confirmation'),action='append')
+parser.add_argument('--surface',choices=('form','browser','standalone','confirmation','decision'),action='append')
 parser.add_argument('--phase',choices=('local','cross-tab','account'),action='append')
 parser.add_argument('--baseline',action='store_true')
 args=parser.parse_args()
-for surface in args.surface or ('form','browser','standalone','confirmation'):
+for surface in args.surface or ('form','browser','standalone','confirmation','decision'):
     for phase in args.phase or ('local','cross-tab','account'):
         with BrowserSession(ROOT/'netunim-orders/site',f'morning-privacy-{surface}-{phase}',auto_navigate=False) as browser:
             if args.baseline:
