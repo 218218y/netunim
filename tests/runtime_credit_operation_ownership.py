@@ -1,5 +1,6 @@
 """Actual Kupa composition/auth and durable owner with controlled finance I/O."""
 import json
+import argparse
 from browser_harness import BrowserSession, ROOT
 
 FLOW = r"""(async()=>{
@@ -39,7 +40,10 @@ FLOW = r"""(async()=>{
  if(caseName==='account')cloudAuth.storeSupaSession({user:{id:'fixture-other-owner'},access_token:'fixture-other',expires_at:9999999999});
  if(caseName==='relogin'){cloudAuth.storeSupaSession(null);cloudAuth.storeSupaSession({user:{id:owner},access_token:'fixture-2',expires_at:9999999999})}
  if(caseName==='secondary')tab.primaryTab=false;
- provider.resolve(new Response(JSON.stringify({ok:true,syncedAt:'2026-10-08T10:00:00Z',attemptedCount:1,profiles:[{profileId:'P',provider:'max',accounts:[{accountNumber:'card',txns:[{id:'issuer-tx',date:'2026-10-08',amount:12}]}]}],errors:[]})));
+ const payload={ok:true,syncedAt:'2026-10-08T10:00:00Z',attemptedCount:1,profiles:[{profileId:'P',provider:'max',accounts:[{accountNumber:'card',txns:[{id:'issuer-tx',date:'2026-10-08',amount:12}]}]}],errors:[]};
+ if(caseName==='invalid-result'){payload.attemptedCount=null;payload.deferredCount=1}
+ if(caseName==='invalid-errors'){payload.ok=false;payload.message='fixture provider failure';payload.creditErrors=[{profileId:'P',deferred:true},null]}
+ provider.resolve(new Response(JSON.stringify(payload),{status:caseName==='invalid-errors'?400:200}));
  if(caseName==='publication'){await saving.promise;cloudAuth.storeSupaSession(null);saved.resolve()}
  await pending;
  check(JSON.stringify(state.creditSync)===before,'former/failed issuer result changed the displayed credit data');
@@ -47,11 +51,15 @@ FLOW = r"""(async()=>{
  check(JSON.stringify(await db.load(identity))===durableBefore,'credit failure changed durable Main/pending journal');
  check(state.notes.find(row=>row.id===note.id)?.content===note.content,'durable note identity/content lost');
  check(credit.queries.uiState().error.length>0,'failure did not offer an operator error');
- check(caseName==='network'||releases===0,'former authorization released a lease under the new scope');
+ check(['network','invalid-result','invalid-errors'].includes(caseName)?releases===1:releases===0,'former authorization released a lease under the new scope');
  globalThis.fetch=originalFetch;financeAutomation.stop();cloudAuth.storeSupaSession(null);return {projectionRetained:true,journalRetained:true,noteRetained:true,visibleError:true,scopedPublication:true};
 })()"""
 
-for case in ('logout', 'account', 'relogin', 'secondary', 'publication', 'network'):
+cases=('logout', 'account', 'relogin', 'secondary', 'publication', 'network', 'invalid-result', 'invalid-errors')
+parser=argparse.ArgumentParser()
+parser.add_argument('--case',choices=cases)
+args=parser.parse_args()
+for case in ([args.case] if args.case else cases):
     with BrowserSession(ROOT / 'netunim-kupa/site', 'credit-operation-' + case) as browser:
         result = browser.evaluate(FLOW.replace('__CASE__', json.dumps(case)), timeout=45)
         assert result and all(result.values()), result

@@ -1,11 +1,13 @@
 import {readFileSync} from 'node:fs';
 import {declaration,tokens} from './bank_policy_ast_fixture.mjs';
+import {restoreCreditRefresh} from './credit_refresh_policy_fixture.mjs';
 const readOwner=()=>readFileSync(new URL('../netunim-orders/site/assets/js/domains/finance/bank-refresh.js',import.meta.url),'utf8');
 
 // Recompose the actual controller's presentation/admission with the actual
 // owner's provider/lease body. Only reviewed port substitutions and the added
 // owner-lifetime fence are reversed; the immutable baseline is never rewritten.
 export function restoreOrdersBankRefresh(controller,{owner=readOwner()}={}){
+  controller=restoreCreditRefresh(controller,'orders');
   const fn=declaration(controller,'refreshBank'),step=fn.body.body.find(n=>n.type==='TryStatement');
   const invocation=step?.block.body[0]?.argument?.argument;
   if(invocation?.callee?.object?.object?.name!=='bankRefresh')return controller;

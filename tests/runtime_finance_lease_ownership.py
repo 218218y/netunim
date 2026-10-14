@@ -61,6 +61,7 @@ FLOW = r"""(async()=>{
    if(phase==='renewal'){await providerEntered.promise;check(typeof tick==='function','missing lease heartbeat');renewal=tick()}
    await entered.promise;
    if(action==='dispose'){check(capability.runtime.dispose()===true,'dispose rejected');check(capability.runtime.dispose()===false,'dispose repeated')}
+   else if(action==='pairing')localStorage.setItem('netunim_kupa_bank_bridge_token_v1','replacement-pairing');
    else authenticate({user:{id:'another-owner'},access_token:'other',expires_at:9999999999});
    if(action==='dispose')check(scheduled.size===0,'disposed capability retained a lease wakeup');
    const draining=capability.runtime.drain().then(()=>{drained=true});await new Promise(resolve=>originalSetTimeout(resolve,0));
@@ -70,7 +71,7 @@ FLOW = r"""(async()=>{
    await pending;await draining;
    check(!capability.runtime.isPending(),'lease work retained after cleanup');check(scheduled.size===0,'cleanup rearmed heartbeat');
    check(claims===(phase==='renewal'?2:1),'unexpected lease retry');check(providers===(phase==='acquisition'?0:1),'provider opened after acquisition authority ended');
-   check(releases===(action==='dispose'?1:0),'cleanup used a new account or lost same-account authorization');
+   check(releases===(action==='account'?0:1),'cleanup used a new account or lost same-account authorization');
    check(JSON.stringify(kupa?{bank:state.bank,creditSync:state.creditSync}:checksSession.kupaCloudReadState)===projectionBefore,'retired result replaced financial projection');
    check(JSON.stringify(await db.load(identity))===mainBefore,'retired result changed Main journal');check(JSON.stringify(await db.load(owner+':shared-checks'))===sharedBefore,'retired result changed Shared journal');
    return {wakeupsStopped:true,acceptedWorkJoined:true,cleanupScoped:true,noRetries:true,projectionRetained:true,journalsRetained:true};
@@ -84,12 +85,12 @@ parser=argparse.ArgumentParser()
 parser.add_argument('--site',choices=('kupa','orders'))
 parser.add_argument('--kind',choices=('bank','credit'))
 parser.add_argument('--phase',choices=('acquisition','provider','renewal'))
-parser.add_argument('--action',choices=('dispose','account'))
+parser.add_argument('--action',choices=('dispose','account','pairing'))
 args=parser.parse_args()
 for site in ([args.site] if args.site else ('kupa','orders')):
     for kind in ([args.kind] if args.kind else ('bank','credit')):
         for phase in ([args.phase] if args.phase else ('acquisition','provider','renewal')):
-            for action in ([args.action] if args.action else ('dispose','account')):
+            for action in ([args.action] if args.action else ('dispose','account','pairing')):
                 with BrowserSession(ROOT / ('netunim-'+site+'/site'),'lease-ownership-'+site+'-'+kind+'-'+phase+'-'+action) as browser:
                     source=FLOW.replace('__SITE__',json.dumps(site)).replace('__KIND__',json.dumps(kind)).replace('__PHASE__',json.dumps(phase)).replace('__ACTION__',json.dumps(action))
                     result=browser.evaluate(source,timeout=45)

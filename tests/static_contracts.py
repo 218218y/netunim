@@ -946,11 +946,15 @@ ok("row.financeRevision=Number(financeResult.value.revision||0)" in kupa_transpo
 ok("financeReadRevision" in orders_bank_cache and "financeRev<=Number(checksSession.financeReadRevision||0)" in orders_bank_cache
    and "row.financeRevision=Number(finance?.revision||0)" in orders_transport,
    "Orders finance freshness: read-only Kupa cache tracks finance_sync_documents revision independently of kupa_documents")
+orders_credit_refresh=(O / "site/assets/js/domains/finance/credit-refresh.js").read_text(encoding="utf-8")
+kupa_credit_refresh=(K / "site/assets/js/domains/credit/refresh.js").read_text(encoding="utf-8")
+orders_credit_refresh_compact=re.sub(r"\s+", "", orders_credit_refresh)
+kupa_credit_refresh_compact=re.sub(r"\s+", "", kupa_credit_refresh)
 for controller, kind, bridge_call, claim in (
     (kupa_bank_controller,"bank","bridge.fetchBalance","syncLeases.commands.acquire('bank'"),
-    (kupa_credit_controller,"credit","bridge.syncCreditCards","syncLeases.commands.acquire('credit'"),
+    (kupa_credit_refresh_compact,"credit","device.sync","leases.commands.acquire('credit'"),
     (orders_bank_refresh_compact,"bank","device.fetchBalance","leases.commands.acquire('bank'"),
-    (orders_finance_controller,"credit","bridge.syncCreditCards","syncLeases.commands.acquire('credit'"),
+    (orders_credit_refresh_compact,"credit","device.sync","leases.commands.acquire('credit'"),
 ):
     before_provider=controller[controller.find(claim):controller.find(bridge_call)]
     ok(claim in controller and "awaitleaseSession.ready" in re.sub(r"\s+", "", before_provider) and "if(!lease.acquired)" in re.sub(r"\s+", "", before_provider),
@@ -958,14 +962,14 @@ for controller, kind, bridge_call, claim in (
 ok("remoteLeaseTokens" in kupa_finance_cloud and "cloudTransport.claimFinanceSyncLease(" in kupa_finance_cloud
    and "return {acquired:true,localOnly:true}" in kupa_finance_cloud
    and "claimLease:financeCloud.claimFinanceSyncLease" in kupa_finance_composition and "credit.bindServices({" in kupa_finance_composition and "composeKupaFinance({" in kupa_main
-   and "syncLeases.commands.acquire('credit'" in kupa_credit_controller
+   and "leases.commands.acquire('credit'" in kupa_credit_refresh_compact
    and "claim:(...args)=>cloud.claimFinanceSyncLease(...args)" in orders_finance_composition_compact
    and "release:(...args)=>cloud.releaseFinanceSyncLease(...args)" in orders_finance_composition_compact
    and "leases:syncLeases" in orders_finance_composition_compact
-   and "documents,syncLeases:createFinanceLeaseOwner({leases:syncLeases,authority:leaseAuthority" in orders_finance_composition_compact
+   and "documents,creditRefresh,archive,connections,bankConnections,bankRefresh" in orders_finance_composition_compact and "createOrdersCreditRefresh({" in orders_finance_composition_compact
    and "constleaseAuthority=createFinanceOperationScope({readAccess})" in orders_finance_composition_compact
-   and "syncLeases.runtime.dispose()" in orders_finance_controller_compact
-   and "awaitleaseSession?.close()" in orders_finance_controller_compact
+   and "creditRefresh.runtime.dispose()" in orders_finance_controller_compact
+   and "awaitleaseSession?.close()" in orders_credit_refresh_compact
    and "authority:authority.scope" in (K / "site/assets/js/composition/bank.js").read_text(encoding="utf-8")
    and "authority:authority.scope" in (K / "site/assets/js/composition/credit.js").read_text(encoding="utf-8")
    and 'finance.bindCore({cloud:cloudTransport,' in re.sub(r'\s+','',orders_main),
@@ -1228,7 +1232,7 @@ ok('<h1>מחסן ומלאי</h1>' not in orders_warehouse_view and 'module-toolb
 ok(all('credit-account-filter-chips' in source and 'data-click-arg0="all">הכל</button>' in source and 'data-click-arg0="עסקי">עסקי</button>' in source and 'data-click-arg0="ביתי">ביתי</button>' in source and 'עסקי + ביתי' not in source for source in (orders_finance_view,kupa_credit_view)) and "element.dataset.clickArg0||element.value||'all'" in kupa_actions and "element.dataset.clickArg0||element.value||'all'" in orders_actions, 'credit account scope: embedded Orders Kupa and standalone Kupa both use three direct chip buttons backed by the existing all/business/home filter state')
 
 ok('data-action="copy-orders-safe-credit-diagnostics"' in orders_finance_view and 'copySafeCreditDiagnostics' in orders_finance_controller and "JSON.stringify({contractVersion:result.contractVersion||protocol.contractVersion,events},null,2)" in orders_credit_connections_compact and "'copy-orders-safe-credit-diagnostics'" in orders_actions, 'Orders credit diagnostics: the UI copies only sanitized loopback events and their contract version')
-ok('data-action="refresh-orders-credit-quick"' in orders_finance_view and 'data-action="refresh-orders-credit-recovery"' in orders_finance_view and "refreshOrdersCredit(false,'forecast')" in orders_actions and "refreshOrdersCredit(false,'quick')" in orders_actions and "refreshOrdersCredit(false,'recovery')" in orders_actions and 'resolveCreditAutoSyncMode' in orders_finance_controller and "normalizeCreditFetchMode(syncMode,'forecast')" in orders_finance_controller and "selection:creditSyncScrapeSelection(checksSession.kupaCloudReadState?.creditSync)" in orders_finance_controller and "body:{interactive:!!interactive,syncMode:mode,selection:Array.isArray(selection)?selection:[]}" in (ROOT/'shared/bank-bridge-client.js').read_text(encoding='utf-8') and 'value="smart"' in orders_finance_view and 'value="forecast"' in orders_finance_view and 'value="recovery"' in orders_finance_view, 'Orders credit workload controls: main forecast, advanced quick/recovery and smart automatic policy are explicit from UI action through the local bridge request')
+ok('data-action="refresh-orders-credit-quick"' in orders_finance_view and 'data-action="refresh-orders-credit-recovery"' in orders_finance_view and "refreshOrdersCredit(false,'forecast')" in orders_actions and "refreshOrdersCredit(false,'quick')" in orders_actions and "refreshOrdersCredit(false,'recovery')" in orders_actions and 'policy.resolveMode' in orders_credit_refresh_compact and "policy.normalizeMode(syncMode,'forecast')" in orders_credit_refresh_compact and "selection:policy.selection(cloud.readSync())" in orders_credit_refresh_compact and "body:{interactive:!!interactive,syncMode:mode,selection:Array.isArray(selection)?selection:[]}" in (ROOT/'shared/bank-bridge-client.js').read_text(encoding='utf-8') and 'value="smart"' in orders_finance_view and 'value="forecast"' in orders_finance_view and 'value="recovery"' in orders_finance_view, 'Orders credit workload controls: main forecast, advanced quick/recovery and smart automatic policy are explicit from UI action through the local bridge request')
 ok('data-action="open-credit-modal"' not in kupa_credit_view and "'open-credit-modal':" not in kupa_actions and "if(!id)return toast('הוספה ידנית לאשראי הוסרה" in kupa_credit_editor and 'data-action="open-credit-modal-2"' in kupa_credit_view,
    'kupa credit: new manual credit creation is removed end-to-end while legacy manual records remain editable/deletable')
 ok('id="quickAddCheck"' not in kupa_index and 'data-action="open-check-modal"' in kupa_checks_view and 'data-action="open-check-modal"' not in (ROOT/'netunim-kupa/site/assets/js/domains/dashboard/view.js').read_text(encoding='utf-8'),

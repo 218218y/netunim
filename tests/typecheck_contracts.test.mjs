@@ -26,6 +26,24 @@ function check(overrides=new Map()){
 }
 function describe(diagnostics){return ts.formatDiagnostics(diagnostics,{getCanonicalFileName:file=>file,getCurrentDirectory:()=>root,getNewLine:()=> '\n'})}
 
+test('Credit operation bodies reject fabricated publication, deferred guards and unjoined completion',()=>{
+ for(const file of ['netunim-orders/site/assets/js/domains/finance/credit-refresh.js','netunim-kupa/site/assets/js/domains/credit/refresh.js']){
+  const source=path.join(root,file),original=readFileSync(source,'utf8');
+  const cases=[['assertCurrent: () => {','assertCurrent: async () => {'],['await Promise.all([work.drain(), leases.runtime.drain()]);','return true;']];
+  if(file.includes('orders'))cases.push(['onPublished(saved, result, deferredOnly);','onPublished({publicationWarning:true}, result, deferredOnly);']);
+  else cases.push(['onPublished(result, deferredOnly);',"onPublished({profiles:[],attemptedCount:'0'}, deferredOnly);"]);
+  for(const [from,to] of cases){
+   const changed=original.replace(from,to);assert.notEqual(changed,original,from);
+   const diagnostics=check(new Map([[source,changed]]));
+   assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&[2322,2345].includes(item.code)),describe(diagnostics));
+  }
+ }
+ const source=path.join(root,'shared/credit-refresh-result.js'),original=readFileSync(source,'utf8'),changed=original.replace('decoded[field] = count;','decoded[field] = String(count);');
+ assert.notEqual(changed,original);
+ const diagnostics=check(new Map([[source,changed]]));
+ assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+});
+
 test('Orders Bank operation bodies reject fabricated publication, deferred authority and unjoined completion',()=>{
  const source=path.join(root,'netunim-orders/site/assets/js/domains/finance/bank-refresh.js'),original=readFileSync(source,'utf8');
  for(const [from,to] of [

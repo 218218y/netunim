@@ -132,7 +132,7 @@ test('document capability exposes only three commands and its scoped Finance rea
   assert.deepEqual(f.events, []);
 });
 
-test('the controller cannot manufacture a lease grant when the current lease port is absent', () => {
+test('the controller cannot manufacture a refresh capability when its operation owner is absent', () => {
   const unexpected = () => assert.fail('construction cannot start an operation'),
     f = fixture();
   assert.throws(
@@ -147,7 +147,7 @@ test('the controller cannot manufacture a lease grant when the current lease por
         },
         documents: f.create(),
       }),
-    /lease_acquire_required/
+    /orders_credit_refresh_required/
   );
 });
 

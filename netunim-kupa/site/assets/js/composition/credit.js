@@ -5,7 +5,11 @@ import {createCreditActions} from '../ui/action-packs/credit.js';
 import {KUPA_FINANCE_DOMAINS} from '../state/revisions.js';
 import {createDomainsCreditController} from '../domains/credit/controller.js';
 import {createCreditConnectionOwner} from '../domains/credit/connection-owner.js';
-import {normalizeCreditSync,CREDIT_CONNECTOR_CONTRACT_VERSION} from '../domains/credit/sync-feed.js';
+import {createKupaCreditRefresh} from '../domains/credit/refresh.js';
+import {createCreditPublication} from '../domains/credit/publication.js';
+import {normalizeCreditSync,mergeCreditSyncResult,creditSyncScrapeSelection,CREDIT_CONNECTOR_CONTRACT_VERSION} from '../domains/credit/sync-feed.js';
+import {normalizeCreditFetchMode,resolveCreditAutoSyncMode} from '../shared/credit-sync-policy.js';
+import {creditRefreshDue} from '../shared/finance-refresh-policy.js';
 import {createCreditPreferences} from '../platform/credit-preferences.js';
 import {createFinanceBrowserEffects} from '../shared/finance-browser-effects.js';
 import {createLazyDeferredSearchUpdater} from '../shared/search-scheduler.js';
@@ -13,7 +17,7 @@ import {createCreditConnectionDialog} from '../ui/credit-connection-dialog.js';
 import {createRuntimeTaskOwner} from '../shared/runtime-task-owner.js';
 import {createFinanceLeaseOwner} from '../shared/finance-lease-owner.js';
 import {createCreditCardOrderView} from '../shared/credit-card-order-view.js';
-import {esc} from '../core/values.js';
+import {esc,uid} from '../core/values.js';
 
 // Owns Credit services, presentation and resources. Services bind before the
 // view; editing binds after record commands, without exposing the controller.
@@ -49,19 +53,33 @@ export function createKupaCreditRuntime({model,ui,platform={}}){
       presentation:{toast:presentation.toast,render:presentation.render,
         confirmDialog:presentation.confirmDialog},
     });
+    const publication=createCreditPublication({
+      commit:(...args)=>cloud.commit(...args),read:(...args)=>cloud.refresh(...args),
+      publish:state=>{model.state.creditSync=normalizeCreditSync(state.creditSync)},
+      checkpoint:message=>persistence.save(message,{operations:[{type:'set',field:'creditSync',value:model.state.creditSync}]}),
+    });
+    const creditRefresh=createKupaCreditRefresh({
+      authority:authority.scope,
+      cloud:{refresh:(...args)=>cloud.refresh(...args),readSync:()=>model.state.creditSync},
+      device:{capture:connections.queries.capture,status:()=>connections.queries.snapshot().status,error:()=>connections.queries.snapshot().bridgeError,
+        supported:connections.queries.supported,sync:options=>bridge.syncCreditCards(options),refreshStatus:connections.queries.refreshStatus},
+      leases:{...createFinanceLeaseOwner({
+        leases:{claim:(...args)=>cloud.claimLease(...args),release:(...args)=>cloud.releaseLease(...args)},
+        authority:authority.scope,timers:platform.timers??globalThis,
+      }),createToken:()=>uid('FINLEASE'),reportFailure:error=>console.error('credit sync lease release',error)},
+      policy:{normalizeMode:normalizeCreditFetchMode,resolveMode:resolveCreditAutoSyncMode,selection:creditSyncScrapeSelection,
+        merge:mergeCreditSyncResult,lastSyncAt:sync=>sync?.syncedAt},
+      publication:{publish:(candidate,message,lease,assertCurrent,assertRetained)=>publication.commit(state=>({...state,creditSync:candidate}),message,lease,assertCurrent,assertRetained)},
+      automation:{due:creditRefreshDue,mode:()=>requireController().refreshAutomation.mode(),markAttempt:()=>requireController().refreshAutomation.markAttempt()},
+    });
     creditController=createDomainsCreditController({
       model,bridge,connections,preferences:platform.preferences??createCreditPreferences(),timers:platform.timers??globalThis,
       captureOperation:()=>authority.scope.capture(),autoScope:()=>disposed?null:authority.automaticAccess(),
-      saveState:(...args)=>persistence.save(...args),
       toast:(...args)=>{if(!disposed)presentation.toast(...args)},
       render:(...args)=>{if(!disposed)presentation.render(...args)},
       renderStatus:(...args)=>{if(!disposed)presentation.renderStatus(...args)},
       confirmDialog:async(...args)=>!disposed&&await presentation.confirmDialog(...args)&&!disposed,
-      refreshFinanceCloudSnapshot:(...args)=>cloud.refresh(...args),saveFinancePatch:(...args)=>cloud.commit(...args),
-      syncLeases:createFinanceLeaseOwner({
-        leases:{claim:(...args)=>cloud.claimLease(...args),release:(...args)=>cloud.releaseLease(...args)},
-        authority:authority.scope,timers:platform.timers??globalThis,
-      }),
+      publication,creditRefresh,
     });
   }
   const commands=Object.fromEntries([

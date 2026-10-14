@@ -83,6 +83,18 @@ function fixture(t,{hold=null}={}){
   return {ports,before,counts,jobs,entered,release,checksSession,operationScope,create:()=>createDomainsFinanceController({effects:createFinanceBrowserEffects(),...ports}),handoff:()=>{owner='B';epoch++},logout:()=>{owner=null;epoch++},relogin:()=>epoch++,secondary:()=>{primary=false},remote:()=>remote};
 }
 
+for(const invalid of [{},{profiles:[{}]},{attemptedCount:null,deferredCount:1,profiles:[],errors:[]},{attemptedCount:1,errors:[null]},{profiles:'ready'}])test('Orders malformed Credit envelope cannot publish: '+JSON.stringify(invalid),async t=>{
+ const f=fixture(t);f.ports.bridge.syncCreditCards=async()=>invalid;const api=f.create();assert.equal(await api.refreshCredit(),false);await api.runtime.drain();
+ assert.equal(f.counts['finance-save']||0,0);assert.equal(f.counts.release,1);assert.deepEqual(f.checksSession,f.before);assert.match(api.snapshot().creditError,/לא תקינות/);api.runtime.dispose();
+});
+test('Orders malformed Credit failure grants neither diagnostic publication nor cooldown',async t=>{
+ const f=fixture(t);f.ports.bridge.syncCreditCards=async()=>{throw Object.assign(Error('issuer failed'),{creditErrors:[{profileId:'P',deferred:true},null]})};
+ const api=f.create();assert.equal(await api.refreshCredit(),false);assert.equal(f.counts['finance-save']||0,0);assert.equal(f.counts.release,1);assert.equal(api.snapshot().creditError,'issuer failed');api.runtime.dispose();
+});
+test('Orders malformed status profile cannot enter the Credit provider',async t=>{
+ const f=fixture(t);f.ports.bridge.creditStatus=async()=>({bridgeVersion:74,contractVersion:2,profiles:[{profileId:null}]});f.ports.bridge.syncCreditCards=async()=>assert.fail('provider must remain closed');
+ const api=f.create();assert.equal(await api.refreshCredit(),false);assert.equal(f.counts['finance-save']||0,0);assert.deepEqual(f.checksSession,f.before);assert.equal(f.counts.release,1);api.runtime.dispose();
+});
 test('Orders Credit pairing change after provider entry fences Finance publication and still releases its own lease',async t=>{
  const f=fixture(t,{hold:'credit-provider'});let token='A';f.ports.bridge.getBridgeToken=()=>token;
  const api=f.create(),before=structuredClone(f.remote()),pending=api.refreshCredit();await f.entered.promise;token='B';f.release.resolve();

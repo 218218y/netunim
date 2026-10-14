@@ -20,6 +20,10 @@
     "types": []
   },
   "files": [
+    "tests/fixtures/checked-credit-refresh.mjs",
+    "shared/credit-refresh-result.js",
+    "netunim-orders/site/assets/js/domains/finance/credit-refresh.js",
+    "netunim-kupa/site/assets/js/domains/credit/refresh.js",
     "tests/fixtures/checked-orders-bank-refresh.mjs",
     "netunim-orders/site/assets/js/domains/finance/bank-refresh.js",
     "tests/fixtures/checked-main-sync.mjs",

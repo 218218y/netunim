@@ -47,8 +47,10 @@ test('Credit financial controller delegates local connection state/effects with 
     fields = factory(source, 'createDomainsCreditController').params[0].properties.map(
       (row) => row.key.name
     );
-  assert.equal(fields.length, 15);
-  assert.ok(fields.includes('syncLeases'));
+  assert.equal(fields.length, 13);
+  assert.ok(fields.includes('creditRefresh'));
+  assert.ok(fields.includes('publication'));
+  assert.ok(!fields.includes('syncLeases'));
   assert.ok(fields.includes('connections'));
   assert.ok(!fields.includes('effects'));
   assert.ok(!fields.includes('closeModal'));

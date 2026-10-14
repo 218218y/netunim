@@ -55,7 +55,9 @@ test('Orders connection owner has five required ports and only the canonical acc
   ])
     assert.ok(!source.includes('bridge.' + name), name);
   assert.ok(!source.includes('local.creditStatus'));
-  assert.ok(source.includes('assertOwner();assertConnection();leaseSession?.assertCurrent()'));
+  assert.ok(source.includes('creditRefresh.commands.refresh('));
+  const operation=read('netunim-orders/site/assets/js/domains/finance/credit-refresh.js').replace(/\s+/g,'');
+  assert.ok(operation.includes('active();assertOwner?.();assertConnection?.();leaseSession?.assertCurrent()'));
 });
 test('Orders Finance lifecycle joins local, financial, archive and confirmation owners', () => {
   const source = read('netunim-orders/site/assets/js/composition/finance.js');

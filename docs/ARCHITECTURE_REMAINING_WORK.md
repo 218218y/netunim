@@ -102,7 +102,7 @@ remaining-scope paragraphs describe their stage's starting point.
 - Kupa Credit local status/profile/diagnostic operations have a private strict
   owner with pairing generations, accepted-work drain and disposal. Financial
   refresh/reset combine device and account authority; native forms own their
-  successful closure. The controller now has 15 collaborators, down from 17, and
+  successful closure. The controller now has 13 collaborators, down from 17, and
   the obsolete modal-close service port is removed. See
   [Credit local connections](KUPA_CREDIT_CONNECTION_OWNER.md).
 - Orders Credit connections have a strict owner for pairing/status, local
@@ -172,11 +172,19 @@ remaining-scope paragraphs describe their stage's starting point.
   match. Native lifecycle coverage now includes four preflight/provider phases
   and both exact Main/Shared journals. See [Bank refresh owner](ORDERS_BANK_REFRESH_OWNER.md).
 
+- Orders and Kupa Credit refresh now have strict seven-port operation owners.
+  Controllers delegate provider planning/acquisition, lease lifetime, diagnostics
+  and cleanup. App-specific freshness, cooldown, publication and return policies
+  retain immutable full-function AST characterization. A shared unknown-result
+  envelope rejects invalid counters, profile identities and diagnostic rows;
+  native pairing/disposal and malformed-reply fixtures preserve journals/recovery.
+  See [Credit refresh operations](CREDIT_REFRESH_OPERATION_OWNERS.md).
+
 ## Four major work packages
 
 | Package | Concrete remaining work | Exit evidence |
 | --- | --- | --- |
-| Private controllers and composition | Orders Finance Credit workflows beyond document/connection/lease owners and remaining financial edit commands; Kupa Bank provider/Bridge orchestration beyond archive/snapshot/lease owners, Credit and Calendar orchestration, manual-edit lease queue lifecycle; large customer-document/view responsibilities; internal Main save/hydration coordination, remaining shell composition width and backup UI/resource account ownership | Narrow owners and lifecycle where jobs exist; dependency/API/I/O budgets; representative production behavior preserved |
+| Private controllers and composition | Remaining financial edit commands and manual-edit lease queue lifecycle; Kupa Bank provider/Bridge orchestration beyond archive/snapshot/lease owners; Calendar and large customer-document/view responsibilities; internal Main save/hydration coordination, remaining shell composition width and backup UI/resource account ownership | Narrow owners and lifecycle where jobs exist; dependency/API/I/O budgets; representative production behavior preserved |
 | Business and transaction contracts | Remaining journal/IDB callers, Finance leases/RPC envelopes, complete Bank/Credit profile/result payloads, Morning/Calendar commands and capability consumers | Unknown-payload validation and actual implementation mutations; an unchecked decoder never grants authoritative confirmation |
 | Bridge orchestration | Document search merge/pagination and scheduled maintenance/installer processes; Credit adapter construction, DigitalV3/Camoufox internals and remaining Bank CLI/token processes | Before-change retry/fallback characterization, native provider/process/file fixtures and preserved wire contracts |
 | Canonical sources and retirement inventory | Classify remaining legacy readers, preference keys, SQL setup/operator copies and generated assets; deterministic current/operator SQL generation where missing; retire only proven unused paths | Consumer inventory, immutable deployed migrations/receipts, deterministic generation and old-record/backup restore evidence |
