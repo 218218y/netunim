@@ -3,7 +3,7 @@
 This is the current inventory after Bank/Credit Bridge model separation and
 Orders Finance document-command and both applications' Bank archive readout
 extraction, Kupa Bank snapshot commands, shared Finance lease renewal ownership
-and both applications' Credit local connection ownership. The chronological
+and both applications' Bank/Credit local connection ownership. The chronological
 [refactor record](ARCHITECTURE_REFACTOR.md) documents completed slices; older
 remaining-scope paragraphs describe their stage's starting point.
 
@@ -62,9 +62,15 @@ remaining-scope paragraphs describe their stage's starting point.
 - Orders local Bank status, vault/account commands and diagnostic publication
   have a strict owner. Its native form/listener and confirmations have a joined
   presentation lifetime, and stale pairing/results cannot replace current
-  readout or invent a Bridge version. The corresponding Kupa local Bank boundary
-  and Finance provider orchestration remain open. See
+  readout or invent a Bridge version. Finance provider orchestration remains open. See
   [Orders Bank connections](ORDERS_BANK_CONNECTION_OWNER.md).
+- Kupa local Bank status/cache, vault/account commands and diagnostics have a
+  strict six-port owner. Native forms own identity, pairing and listeners;
+  accepted requests drain after disposal. Financial warnings survive passive
+  status probes, and local vault acknowledgements preserve real version evidence.
+  The controller's effect port and embedded local connection code are retired;
+  provider/lease orchestration remains open. See
+  [Kupa Bank connections](KUPA_BANK_CONNECTION_OWNER.md).
 - Full CI covers PostgreSQL, native browser/IDB, lost ACKs, ownership changes,
   recovery and Windows, and remains mandatory for each slice.
 

@@ -1,4 +1,3 @@
-import {createBridgePairingScope} from '../../shared/bridge-pairing-scope.js';
 import {createRuntimeTaskOwner} from '../../shared/runtime-task-owner.js';
 import {readBankBalanceResult,bankSnapshotFinancials} from '../../shared/bank-balance-result.js';
 import {bankRecurringDebitHistoryData} from '../../shared/bank-recurring-debits.js';
@@ -12,7 +11,6 @@ import {BANK_AUTO_INTERVAL_MS,bankAutoRefreshDue} from '../../shared/finance-ref
 import {normalizeBankFeed} from './feed.js';
 import {projectBankArchiveFeed} from './archive-model.js';
 
-const BANK_BRIDGE_VERSION=74;
 
 function canonicalJson(value){
   if(Array.isArray(value))return `[${value.map(canonicalJson).join(',')}]`;
@@ -45,7 +43,7 @@ export function createDomainsBankController({
   bridge,
   autoScope,
   operationScope,
-  effects,
+  connections,
   timers=globalThis,
   syncBankTransactionsSnapshot=async()=>null,
   acknowledgeBankTransactionMissing=async()=>null,
@@ -55,10 +53,31 @@ export function createDomainsBankController({
   syncLeases,
   snapshots,
 }){
-const bridgeState={checked:false,available:null,configured:false,busy:false,resultReady:false,upgradeRequired:false,bridgeVersion:0,branchNumber:'',accountNumber:'',businessBranchNumber:'',businessAccountNumber:'',homeBranchNumber:'',homeAccountNumber:'',availableAccounts:[],accountSelectionRole:'',lastScrapeAt:null,lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:'',lastWarningCode:'',lastWarningStage:'',lastWarningHttpStatus:0,availabilityError:'',availabilityErrorAt:null,message:''};
+// Financial feedback is independent of passive device status. A new pairing
+// or local connection command retires feedback from the former operation.
+const financialFeedback = {busy:false, resultReady:false};
+let feedbackGeneration = -1, feedbackCommandRevision = -1;
+function resetFeedback() {
+  for (const key of Object.keys(financialFeedback))
+    if (key !== 'busy' && key !== 'resultReady') delete financialFeedback[key];
+}
+function connectionState() {
+  const value = connections.queries.snapshot();
+  if (value.generation !== feedbackGeneration || value.commandRevision !== feedbackCommandRevision) {
+    feedbackGeneration = value.generation;
+    feedbackCommandRevision = value.commandRevision;
+    resetFeedback();
+  }
+  return value;
+}
+function connectionCommand(method, ...args) {
+  if (financialFeedback.busy) return false;
+  return connections.commands[method](...args);
+}
 if(typeof autoScope!=='function')throw new Error('bank_auto_scope_required');
 if(typeof operationScope?.capture!=='function'||typeof operationScope?.captureRead!=='function')throw new Error('bank_operation_scope_required');
-if(typeof effects?.saveJson!=='function')throw new TypeError('bank_effects_required');
+for(const [group,methods] of Object.entries({commands:['saveToken','configure','selectAccount','deleteCredentials','exportDiagnostics','recordScan'],queries:['snapshot','capture','isCurrent','readStatus','refreshStatus','supported']}))
+  for(const method of methods)if(typeof connections?.[group]?.[method]!=='function')throw new TypeError('kupa_bank_connection_'+group+'_'+method+'_required');
 
 for (const method of ['prepare','commitManual','publishCloud','publishLocal','retryLocal'])
   if (typeof snapshots?.commands?.[method] !== 'function')
@@ -74,13 +93,13 @@ const localSnapshot = {state:snapshots.queries.localState,retry:snapshots.comman
 const refreshFinanceCloudSnapshot = readFinance;
 const claimFinanceSyncLease = syncLeases.claim, releaseFinanceSyncLease = syncLeases.release;
 let disposed=false;
-const workOwner=createRuntimeTaskOwner(),pairingScope=createBridgePairingScope({readToken:()=>bridge.getBridgeToken()});
+const workOwner=createRuntimeTaskOwner();
 function track(work){return disposed?Promise.resolve(false):workOwner.run(work)}
 let automaticActive=true,automaticOwner=null;
 const automaticAllowed=()=>{
   const scope=autoScope();if(disposed||!automaticActive||localSnapshot.state()||typeof scope!=='string'||!scope.length)return false;
   if(automaticOwner===null)automaticOwner=scope;
-  return scope===automaticOwner&&session.backendReady&&!bridgeState.upgradeRequired&&bridge.autoEnabled()&&!!bridge.getBridgeToken();
+  return scope===automaticOwner&&session.backendReady&&!connectionState().upgradeRequired&&connectionState().tokenConfigured&&bridge.autoEnabled();
 };
 const autoTask=createPollingTask({timers,canRun:automaticAllowed,delay:autoDelay,run:({isCurrent})=>track(()=>refreshBankBalance({interactive:false,auto:true,isCurrent})),onError:error=>console.error('bank auto refresh',error)});
 
@@ -108,112 +127,18 @@ function feedFromSnapshot(snapshot,fetchedAt,role){
   return feed;
 }
 
-function applyBridgeAccountFields(target,source={}){
-  const businessBranchNumber=source.businessBranchNumber||source.branchNumber||target.businessBranchNumber||target.branchNumber||'';
-  const businessAccountNumber=source.businessAccountNumber||source.accountNumber||target.businessAccountNumber||target.accountNumber||'';
-  Object.assign(target,{branchNumber:businessBranchNumber,accountNumber:businessAccountNumber,businessBranchNumber,businessAccountNumber,homeBranchNumber:source.homeBranchNumber??target.homeBranchNumber??'',homeAccountNumber:source.homeAccountNumber??target.homeAccountNumber??''});
-}
-
-
-
 async function retryLocalBankSnapshot(){
   try{const saved=await localSnapshot.retry();if(saved&&automaticActive)autoTask.start();return saved}
   catch(error){toast(error?.code==='FINANCE_OPERATION_SCOPE_CHANGED'?error.message:'לא ניתן לאשר את הצילום הקיים. יש לבדוק את מצב האחסון; לא בוצעה סריקה נוספת מהבנק.');return false}
 }
 
 function bankBridgeUiState(){
+  const connection=connectionState();
   const feed=displayArchiveFeed('business',model.state.bank?.feed),homeFeed=displayArchiveFeed('home',model.state.bank?.homeFeed);
   const sharedLastSyncAt=sharedBankLastSyncAt();
   const homeLastSyncAt=homeFeed?.syncedAt||null;
   const local=localSnapshot.state();
-  return {...bridgeState,...(local&&local.phase!=='saving'?{lastError:local.message}:{}),localSnapshot:local,tokenConfigured:!!bridge.getBridgeToken(),autoEnabled:bridge.autoEnabled(),sharedLastSyncAt,homeLastSyncAt,feed,homeFeed};
-}
-
-let bridgeStatusPromise=null,bridgeStatusToken=null,bridgeStatusCheckedAt=0;
-async function refreshBankBridgeStatus({force=true}={}){
-  const token=bridge.getBridgeToken(),now=Date.now();
-  if(bridgeStatusPromise){await bridgeStatusPromise;if(token!==bridgeStatusToken)return refreshBankBridgeStatus({force});return bankBridgeUiState()}
-  if(!force&&token===bridgeStatusToken&&now>=bridgeStatusCheckedAt&&now-bridgeStatusCheckedAt<15000)return bankBridgeUiState();
-  bridgeStatusToken=token;
-  bridgeStatusPromise=readBankBridgeStatus();
-  try{return await bridgeStatusPromise}finally{bridgeStatusCheckedAt=Date.now();bridgeStatusPromise=null}
-}
-async function readBankBridgeStatus(){
-  if(!bridge.getBridgeToken()){
-    Object.assign(bridgeState,{checked:true,available:null,configured:false,branchNumber:'',accountNumber:'',businessBranchNumber:'',businessAccountNumber:'',homeBranchNumber:'',homeAccountNumber:'',availableAccounts:[],accountSelectionRole:'',lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:'',lastWarningCode:'',lastWarningStage:'',lastWarningHttpStatus:0,availabilityError:'',availabilityErrorAt:null,message:'יש להזין מפתח Bridge כדי לחבר את הקופה לתוכנה המקומית.'});
-    return bankBridgeUiState();
-  }
-  try{
-    const s=await bridge.status(),bridgeVersion=Number(s.bridgeVersion||0),upgradeRequired=bridgeVersion<BANK_BRIDGE_VERSION;
-    const common={checked:true,available:true,configured:!!s.configured,upgradeRequired,bridgeVersion,availableAccounts:Array.isArray(s.availableAccounts)?s.availableAccounts:[],accountSelectionRole:s.accountRole||'',lastScrapeAt:s.lastScrapeAt||null,lastError:s.lastError||'',lastErrorAt:s.lastErrorAt||null,lastErrorCode:s.lastErrorCode||'',lastErrorStage:s.lastErrorStage||'',lastErrorHttpStatus:Number(s.lastErrorHttpStatus)||0,lastWarning:s.lastWarning||'',lastWarningCode:s.lastWarningCode||'',lastWarningStage:s.lastWarningStage||'',lastWarningHttpStatus:Number(s.lastWarningHttpStatus)||0,availabilityError:'',availabilityErrorAt:null};
-    Object.assign(bridgeState,common);applyBridgeAccountFields(bridgeState,s);
-    bridgeState.message=upgradeRequired?'מותקנת במחשב גרסת Bank Bridge ישנה. יש להריץ מחדש install_bank_bridge.bat כדי להפעיל סנכרון בטוח של החשבון העסקי והביתי יחד.':s.configured?'החיבור המקומי מוכן.':'Bank Bridge פעיל, אך עדיין לא נשמרו בו פרטי בנק הפועלים.';
-  }catch(e){const availabilityError=e.message||String(e);Object.assign(bridgeState,{checked:true,available:false,upgradeRequired:false,availableAccounts:Array.isArray(e.availableAccounts)?e.availableAccounts:[],accountSelectionRole:e.accountRole||'',availabilityError,availabilityErrorAt:new Date().toISOString(),message:availabilityError})}
-  return bankBridgeUiState();
-}
-
-async function saveBankBridgeToken(value){
-  const token=String(value||'').trim();
-  if(!token)return toast('יש להדביק את מפתח ה-Bridge של המחשב הנוכחי');
-  bridge.setBridgeToken(token);
-  Object.assign(bridgeState,{checked:false,available:null,availableAccounts:[],accountSelectionRole:'',lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,availabilityError:'',availabilityErrorAt:null,message:'מפתח המחשב נשמר בדפדפן זה. בודק את ה-Bridge…'});
-  render();
-  await refreshBankBridgeStatus();render();
-  if(bridgeState.available)toast('מפתח ה-Bridge נשמר והמחשב מחובר');
-}
-
-async function configureBankBridge(input={}){
-  const typedToken=String(input.token||'').trim();
-  if(typedToken)bridge.setBridgeToken(typedToken);
-  const token=bridge.getBridgeToken();
-  const userCode=String(input.userCode||'').trim(),password=String(input.password||'');
-  const businessBranchNumber=String(input.businessBranchNumber||'').trim(),businessAccountNumber=String(input.businessAccountNumber||'').trim();
-  const homeBranchNumber=String(input.homeBranchNumber||'').trim(),homeAccountNumber=String(input.homeAccountNumber||'').trim();
-  if(!token)return toast('יש לשמור קודם את מפתח ה-Bridge של המחשב הנוכחי');
-  if(!userCode||!password)return toast('יש להזין קוד משתמש וסיסמה של בנק הפועלים');
-  if((businessBranchNumber&&!businessAccountNumber)||(!businessBranchNumber&&businessAccountNumber))return toast('לחשבון העסקי יש להזין גם סניף וגם מספר חשבון');
-  if((homeBranchNumber&&!homeAccountNumber)||(!homeBranchNumber&&homeAccountNumber))return toast('לחשבון הביתי יש להזין גם סניף וגם מספר חשבון');
-  if(businessBranchNumber&&homeBranchNumber&&businessBranchNumber.replace(/\D/g,'')===homeBranchNumber.replace(/\D/g,'')&&businessAccountNumber.replace(/\D/g,'')===homeAccountNumber.replace(/\D/g,''))return toast('החשבון העסקי והחשבון הביתי חייבים להיות שני חשבונות שונים');
-  bridgeState.busy=true;render();
-  try{
-    const r=await bridge.configureCredentials({token,userCode,password,businessBranchNumber,businessAccountNumber,homeBranchNumber,homeAccountNumber});
-    Object.assign(bridgeState,{available:true,configured:true,upgradeRequired:false,bridgeVersion:Math.max(BANK_BRIDGE_VERSION,bridgeState.bridgeVersion||0),availableAccounts:[],accountSelectionRole:'',lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:'',lastWarningCode:'',lastWarningStage:'',lastWarningHttpStatus:0,message:'פרטי ההתחברות ושני החשבונות נשמרו מוצפנים במחשב המקומי.'});applyBridgeAccountFields(bridgeState,r);
-    toast(homeAccountNumber?'החיבור לבנק הפועלים נשמר. רענון יעדכן יחד את החשבון העסקי והביתי.':'החיבור לבנק הפועלים נשמר. אפשר להוסיף גם את החשבון הביתי בהגדרות.');
-  }catch(e){bridgeState.lastError=e.message||String(e);bridgeState.lastErrorAt=new Date().toISOString();bridgeState.lastErrorCode=e.code||'';bridgeState.lastErrorStage=e.stage||'';bridgeState.lastErrorHttpStatus=Number(e.httpStatus)||0;bridgeState.availableAccounts=Array.isArray(e.availableAccounts)?e.availableAccounts:[];bridgeState.accountSelectionRole=e.accountRole||'';toast(bridgeState.lastError)}
-  finally{bridgeState.busy=false;render()}
-}
-
-async function selectBankBridgeAccount(role,branchNumber,accountNumber){
-  const targetRole=role==='home'?'home':'business',branch=String(branchNumber||'').replace(/\D/g,''),account=String(accountNumber||'').replace(/\D/g,'');
-  if(!branch||!account)return toast('לא התקבל סניף/חשבון תקין לבחירה');
-  if(bridgeState.busy)return false;
-  bridgeState.busy=true;render();
-  try{
-    const r=await bridge.selectAccount({role:targetRole,branchNumber:branch,accountNumber:account});
-    Object.assign(bridgeState,{configured:true,availableAccounts:[],accountSelectionRole:'',lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:'',lastWarningCode:'',lastWarningStage:'',lastWarningHttpStatus:0,message:`נבחר חשבון ${targetRole==='home'?'ביתי':'עסקי'}: סניף ${branch}, חשבון ${account}. אפשר לרענן כעת.`});applyBridgeAccountFields(bridgeState,r);
-    toast(`נבחר חשבון ${targetRole==='home'?'ביתי':'עסקי'} ${branch}-${account}`);
-    return true;
-  }catch(e){
-    bridgeState.lastError=e.message||String(e);bridgeState.lastErrorAt=new Date().toISOString();bridgeState.lastErrorCode=e.code||'';bridgeState.lastErrorStage=e.stage||'';bridgeState.lastErrorHttpStatus=Number(e.httpStatus)||0;bridgeState.availableAccounts=Array.isArray(e.availableAccounts)?e.availableAccounts:bridgeState.availableAccounts;bridgeState.accountSelectionRole=e.accountRole||targetRole;toast(bridgeState.lastError);return false;
-  }finally{bridgeState.busy=false;render()}
-}
-
-async function deleteBankBridgeCredentials(){
-  bridgeState.busy=true;render();
-  try{await bridge.deleteCredentials();Object.assign(bridgeState,{configured:false,branchNumber:'',accountNumber:'',businessBranchNumber:'',businessAccountNumber:'',homeBranchNumber:'',homeAccountNumber:'',availableAccounts:[],accountSelectionRole:'',lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:'',lastWarningCode:'',lastWarningStage:'',lastWarningHttpStatus:0,message:'פרטי ההתחברות נמחקו מהמחשב המקומי.'});toast('פרטי בנק הפועלים נמחקו מה-Bank Bridge')}
-  catch(e){bridgeState.lastError=e.message||String(e);bridgeState.lastErrorAt=new Date().toISOString();bridgeState.lastErrorCode=e.code||'';bridgeState.lastErrorStage=e.stage||'';toast(bridgeState.lastError)}
-  finally{bridgeState.busy=false;render()}
-}
-
-async function exportBankChequeDiagnostics(){
-  if(bridgeState.busy)return false;
-  if(!bridge.getBridgeToken()){toast('יש לצמד את הקופה ל-Bank Bridge לפני ייצוא אבחון');return false}
-  try{
-    const result=await bridge.bankDiagnostics();
-    if(!result?.available||!result?.data)throw new Error(result?.message||'עדיין אין אבחון בנק מקומי. בצע רענון בנק ולאחריו נסה שוב.');
-    effects.saveJson(result.filename,result.data,'netunim-bank-diagnostic.json');
-    toast(`קובץ אבחון בנק JSON נוצר מהסנכרון האחרון (${Number(result.transactionCount)||0} תנועות)`);return true;
-  }catch(error){toast(error?.message||'ייצוא אבחון הבנק נכשל');return false}
+  return {...connection,...financialFeedback,busy:financialFeedback.busy||connection.busy,...(local&&local.phase!=='saving'?{lastError:local.message}:{}),localSnapshot:local,autoEnabled:bridge.autoEnabled(),sharedLastSyncAt,homeLastSyncAt,feed,homeFeed};
 }
 
 function setBankAutoRefresh(enabled){bridge.setAutoEnabled(!!enabled);toast(enabled?'עדכון אוטומטי כל 4 שעות הופעל':'עדכון אוטומטי כובה');if(enabled)startAutoSync();else stopAutoSync()}
@@ -222,16 +147,16 @@ async function refreshBankBalance({interactive=false,auto=false,isCurrent=()=>tr
   const pending=localSnapshot.state();if(pending){if(!auto)toast(pending.message);return false}
   const scope=auto?autoScope():null,allowed=()=>isCurrent()&&automaticAllowed()&&autoScope()===scope;
   if(auto&&!allowed())return false;
-  if(bridgeState.busy)return false;
-  if(!bridge.getBridgeToken()){if(!auto)toast('החיבור לבנק עדיין לא הוגדר');return false}
-  if(bridgeState.upgradeRequired){if(!auto)toast('יש להריץ מחדש install_bank_bridge.bat במחשב זה לפני עדכון מול הבנק');return false}
+  if(bankBridgeUiState().busy)return false;
+  if(!connectionState().tokenConfigured){if(!auto)toast('החיבור לבנק עדיין לא הוגדר');return false}
+  if(connectionState().upgradeRequired){if(!auto)toast('יש להריץ מחדש install_bank_bridge.bat במחשב זה לפני עדכון מול הבנק');return false}
   archive.runtime.pause();
-  bridgeState.busy=true;bridgeState.resultReady=false;bridgeState.lastError='';bridgeState.lastErrorAt=null;bridgeState.lastErrorCode='';bridgeState.lastErrorStage='';bridgeState.lastErrorHttpStatus=0;bridgeState.lastWarning='';bridgeState.lastWarningCode='';bridgeState.lastWarningStage='';bridgeState.lastWarningHttpStatus=0;bridgeState.accountSelectionRole='';
-  bridgeState.message=interactive?'חלון האימות בבנק פתוח. לאחר האימות ה-Bridge יעדכן באותו סשן את החשבון העסקי ואת החשבון הביתי.':auto?'מעדכן אוטומטית את שני חשבונות בנק הפועלים…':'מעדכן יתרות ותנועות בשני חשבונות בנק הפועלים…';
+  financialFeedback.busy=true;financialFeedback.resultReady=false;financialFeedback.lastError='';financialFeedback.lastErrorAt=null;financialFeedback.lastErrorCode='';financialFeedback.lastErrorStage='';financialFeedback.lastErrorHttpStatus=0;financialFeedback.lastWarning='';financialFeedback.lastWarningCode='';financialFeedback.lastWarningStage='';financialFeedback.lastWarningHttpStatus=0;financialFeedback.accountSelectionRole='';
+  financialFeedback.message=interactive?'חלון האימות בבנק פתוח. לאחר האימות ה-Bridge יעדכן באותו סשן את החשבון העסקי ואת החשבון הביתי.':auto?'מעדכן אוטומטית את שני חשבונות בנק הפועלים…':'מעדכן יתרות ותנועות בשני חשבונות בנק הפועלים…';
   let leaseToken='',leaseHeld=false,lease=null,heartbeat=null,assertOwner,assertConnection;
   const assertCurrent=()=>{assertOwner();assertConnection();heartbeat?.assertCurrent()};
   try{
-    assertOwner=operationScope.capture();assertConnection=pairingScope.capture();render();
+    assertOwner=operationScope.capture();assertConnection=connections.queries.capture();render();
     if(auto){
       const latest=await refreshFinanceCloudSnapshot({assertCurrent});assertCurrent();
       if(!allowed())return false;
@@ -243,7 +168,7 @@ async function refreshBankBalance({interactive=false,auto=false,isCurrent=()=>tr
     lease=await claimFinanceSyncLease('bank',leaseToken,{assertCurrent:assertOwner});leaseHeld=lease?.acquired===true;assertCurrent();
     lease={...lease,assertCurrent};
     if(auto&&!allowed())return false;
-    if(!leaseHeld){bridgeState.message='סינכרון הבנק כבר מתבצע ממחשב או חלון אחר; לא נפתחה כניסה נוספת לבנק.';if(!auto)toast(bridgeState.message);return false}
+    if(!leaseHeld){financialFeedback.message='סינכרון הבנק כבר מתבצע ממחשב או חלון אחר; לא נפתחה כניסה נוספת לבנק.';if(!auto)toast(financialFeedback.message);return false}
     heartbeat=startFinanceLeaseHeartbeat({...lease,assertCurrent:assertOwner},claimFinanceSyncLease,{setTimer:timers.setTimeout.bind(timers),clearTimer:timers.clearTimeout.bind(timers)});
     const finance=await refreshFinanceCloudSnapshot({assertCurrent});assertCurrent();
     if(auto){if(!allowed())return false;if(!finance?.verified)throw new Error('לא ניתן לאמת מחדש את זמן סנכרון הבנק לאחר תפיסת הנעילה');if(!bankAutoRefreshDue(sharedBankLastSyncAt(finance.state||model.state)))return true}
@@ -252,9 +177,8 @@ async function refreshBankBalance({interactive=false,auto=false,isCurrent=()=>tr
     await prepareBankSnapshot(assertCurrent);
     assertCurrent();
     if(auto&&!allowed())return false;
-    const bridgeStatus=await bridge.status();assertCurrent();
-    bridgeState.bridgeVersion=Number(bridgeStatus?.bridgeVersion||0);bridgeState.upgradeRequired=bridgeState.bridgeVersion<BANK_BRIDGE_VERSION;
-    if(bridgeState.upgradeRequired)throw new Error('יש להריץ מחדש install_bank_bridge.bat במחשב זה לפני עדכון מול הבנק');
+    const bridgeStatus=await connections.queries.readStatus();assertCurrent();
+    if(!connections.queries.supported(bridgeStatus))throw new Error('יש להריץ מחדש install_bank_bridge.bat במחשב זה לפני עדכון מול הבנק');
     const result=await bridge.fetchBalance({interactive,historyDays});assertCurrent();
     const {business,home,homeFailure}=readBankBalanceResult(result);
     const fetchedAt=result.fetchedAt||new Date().toISOString(),businessAccount=accountIdOf(business),homeAccount=home?accountIdOf(home):'';
@@ -292,17 +216,25 @@ async function refreshBankBalance({interactive=false,auto=false,isCurrent=()=>tr
     }else{
       await snapshots.commands.publishLocal(nextBank,historyDays>=365?'ארכיון הבנק אותחל והופרד מגיבויי הקופה':auto?'נתוני הבנק עודכנו':'נתוני הבנק עודכנו ונשמרו בארכיון נפרד',assertCurrent);assertCurrent();
     }
-    Object.assign(bridgeState,{available:true,configured:true,upgradeRequired:false,bridgeVersion:Math.max(BANK_BRIDGE_VERSION,bridgeState.bridgeVersion||0),availableAccounts:Array.isArray(homeFailure?.availableAccounts)?homeFailure.availableAccounts:[],accountSelectionRole:homeFailure?'home':'',lastScrapeAt:fetchedAt,lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:warnings.join(' | '),lastWarningCode:homeFailure?.code||'',lastWarningStage:homeFailure?.stage||'',lastWarningHttpStatus:Number(homeFailure?.httpStatus)||0,message:homeFailure?'החשבון העסקי עודכן בהצלחה; החשבון הביתי לא עודכן ונשמר הנתון הביתי האחרון.':warnings.length?'היתרות עודכנו בהצלחה; קיימת אזהרה לגבי חלק מהתנועות.':home?'שני החשבונות והפעילות האחרונה התקבלו בהצלחה מבנק הפועלים.':'החשבון העסקי והתנועות האחרונות התקבלו בהצלחה מבנק הפועלים.'});
-    applyBridgeAccountFields(bridgeState,{businessBranchNumber:business.branchNumber,businessAccountNumber:business.accountNumber,homeBranchNumber:home?.branchNumber??bridgeState.homeBranchNumber,homeAccountNumber:home?.accountNumber??bridgeState.homeAccountNumber});
+    Object.assign(financialFeedback,{availableAccounts:Array.isArray(homeFailure?.availableAccounts)?homeFailure.availableAccounts:[],accountSelectionRole:homeFailure?'home':'',lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:warnings.join(' | '),lastWarningCode:homeFailure?.code||'',lastWarningStage:homeFailure?.stage||'',lastWarningHttpStatus:Number(homeFailure?.httpStatus)||0,message:homeFailure?'החשבון העסקי עודכן בהצלחה; החשבון הביתי לא עודכן ונשמר הנתון הביתי האחרון.':warnings.length?'היתרות עודכנו בהצלחה; קיימת אזהרה לגבי חלק מהתנועות.':home?'שני החשבונות והפעילות האחרונה התקבלו בהצלחה מבנק הפועלים.':'החשבון העסקי והתנועות האחרונות התקבלו בהצלחה מבנק הפועלים.'});
+    connections.commands.recordScan({
+      bridgeVersion:bridgeStatus.bridgeVersion, lastScrapeAt:fetchedAt,
+      availableAccounts:Array.isArray(homeFailure?.availableAccounts)?homeFailure.availableAccounts:[],
+      accountSelectionRole:homeFailure?'home':'',
+      businessBranchNumber:business.branchNumber, businessAccountNumber:business.accountNumber,
+      homeBranchNumber:home?.branchNumber??connectionState().homeBranchNumber,
+      homeAccountNumber:home?.accountNumber??connectionState().homeAccountNumber,
+    },assertConnection);
     if(homeFailure&&!auto)toast('החשבון העסקי עודכן. החשבון הביתי לא עודכן; הנתון הביתי הקודם נשמר ופרטי התקלה מוצגים במסך הבנק.');
     else if(warnings.length&&!auto)toast('היתרות עודכנו. חלק מהתנועות לא נטענו במלואן; פרטי האזהרה מוצגים במסך הבנק.');
-    bridgeState.resultReady=true;render();
+    financialFeedback.resultReady=true;render();
     return true;
   }catch(e){
+    if(assertConnection&&!connections.queries.isCurrent(assertConnection))return false;
     try{assertOwner?.();assertConnection?.()}catch(scopeError){e=scopeError}
-    if(!localSnapshot.state()){bridgeState.lastError=e.message||String(e);bridgeState.lastErrorAt=new Date().toISOString();bridgeState.lastErrorCode=e.code||'';bridgeState.lastErrorStage=e.stage||'';bridgeState.lastErrorHttpStatus=Number(e.httpStatus)||0;bridgeState.availableAccounts=Array.isArray(e.availableAccounts)?e.availableAccounts:[];bridgeState.accountSelectionRole=e.accountRole||'';bridgeState.message=bridgeState.lastError}
+    if(!localSnapshot.state()){financialFeedback.lastError=e.message||String(e);financialFeedback.lastErrorAt=new Date().toISOString();financialFeedback.lastErrorCode=e.code||'';financialFeedback.lastErrorStage=e.stage||'';financialFeedback.lastErrorHttpStatus=Number(e.httpStatus)||0;financialFeedback.availableAccounts=Array.isArray(e.availableAccounts)?e.availableAccounts:[];financialFeedback.accountSelectionRole=e.accountRole||'';financialFeedback.message=financialFeedback.lastError}
     if(!auto)toast(bankBridgeUiState().lastError);
-    bridgeState.resultReady=true;render();
+    financialFeedback.resultReady=true;render();
     return false;
   }finally{
     await heartbeat?.stop();
@@ -311,9 +243,9 @@ async function refreshBankBalance({interactive=false,auto=false,isCurrent=()=>tr
     }catch(error){
       if(!scopeChanged(error))console.error('bank sync lease release',error);
     }
-    bridgeState.busy=false;
+    financialFeedback.busy=false;
     archive.runtime.resume();
-    bridgeState.resultReady=false;
+    financialFeedback.resultReady=false;
     render();
   }
 }
@@ -342,18 +274,18 @@ function stopAutoSync(){automaticActive=false;return autoTask.stop()}
 
 const runtime={
   drain:workOwner.drain,
-  dispose(){if(disposed)return false;disposed=true;workOwner.close();pairingScope.dispose();stopAutoSync();return true},
+  dispose(){if(disposed)return false;disposed=true;workOwner.close();stopAutoSync();return true},
 };
 return {
   bankBridgeUiState,bankLocalSnapshotState:localSnapshot.state,
   retryLocalBankSnapshot:(...args)=>track(()=>retryLocalBankSnapshot(...args)),
   ensureBankDisplayArchive:(...args)=>track(()=>ensureBankDisplayArchive(...args)),
-  refreshBankBridgeStatus:(...args)=>track(()=>refreshBankBridgeStatus(...args)),
-  saveBankBridgeToken:(...args)=>track(()=>saveBankBridgeToken(...args)),
-  configureBankBridge:(...args)=>track(()=>configureBankBridge(...args)),
-  selectBankBridgeAccount:(...args)=>track(()=>selectBankBridgeAccount(...args)),
-  deleteBankBridgeCredentials:(...args)=>track(()=>deleteBankBridgeCredentials(...args)),
-  exportBankChequeDiagnostics:(...args)=>track(()=>exportBankChequeDiagnostics(...args)),
+  refreshBankBridgeStatus:(...args)=>track(()=>connections.queries.refreshStatus(...args)),
+  saveBankBridgeToken:(...args)=>track(()=>connectionCommand('saveToken',...args)),
+  configureBankBridge:(...args)=>track(()=>connectionCommand('configure',...args)),
+  selectBankBridgeAccount:(...args)=>track(()=>connectionCommand('selectAccount',...args)),
+  deleteBankBridgeCredentials:(...args)=>track(()=>connectionCommand('deleteCredentials',...args)),
+  exportBankChequeDiagnostics:(...args)=>track(()=>connectionCommand('exportDiagnostics',...args)),
   refreshBankBalance:(...args)=>track(()=>refreshBankBalance(...args)),
   acknowledgeMissingBankTransaction:(...args)=>track(()=>acknowledgeMissingBankTransaction(...args)),
   commitBankSnapshot:(...args)=>track(()=>commitBankSnapshot(...args)),

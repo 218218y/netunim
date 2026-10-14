@@ -20,6 +20,8 @@
     "types": []
   },
   "files": [
+    "netunim-kupa/site/assets/js/domains/bank/connection-owner.js",
+    "tests/fixtures/checked-kupa-bank-connection-owner.mjs",
     "netunim-orders/site/assets/js/domains/finance/bank-connection-owner.js",
     "tests/fixtures/checked-orders-bank-connection-owner.mjs",
     "shared/bank-balance-result.js",

@@ -115,7 +115,9 @@ test('bank failed atomic publication cannot replace the displayed archive cache'
 });
 test('bank committed snapshot with unverified refresh retains its operator warning',async t=>{
   const f=fixture(t);let reads=0;f.ports.refreshFinanceCloudSnapshot=async()=>++reads===1?{verified:true,state:f.model.state}:{verified:false,state:null};const api=f.create();
-  assert.equal(await api.refreshBankBalance(),true);assert.equal(f.model.state.bank.currentBalance,500);assert.match(api.bankBridgeUiState().lastWarning,/לא אומת/);api.stopAutoSync();
+  assert.equal(await api.refreshBankBalance(),true);assert.equal(f.model.state.bank.currentBalance,500);assert.match(api.bankBridgeUiState().lastWarning,/לא אומת/);
+  await api.refreshBankBridgeStatus();assert.match(api.bankBridgeUiState().lastWarning,/לא אומת/,'passive device availability cannot erase an unverified financial readout');
+  await api.configureBankBridge({userCode:'',password:''});assert.match(api.bankBridgeUiState().lastWarning,/לא אומת/,'rejected local input cannot retire financial feedback');api.stopAutoSync();
 });
 test('manual bank balance cannot cross ownership while Shared checks are being verified',async t=>{
   const f=fixture(t,{hold:'checks-1'}),api=f.create(),pending=api.commitBankSnapshot(1234);await f.entered.promise;f.handoff();f.release.resolve();

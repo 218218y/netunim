@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {createKupaBankCapability} from '../netunim-kupa/site/assets/js/composition/bank.js';
 import {createBankActions} from '../netunim-kupa/site/assets/js/ui/action-packs/bank.js';
 import {createDomainsBankView} from '../netunim-kupa/site/assets/js/domains/bank/view.js';
+import {createBankConnectionForms} from '../netunim-kupa/site/assets/js/domains/bank/connection-forms.js';
 
 const noop = () => {};
 function gate() { let resolve; const promise = new Promise(done => { resolve = done; }); return {promise, resolve}; }
@@ -107,10 +108,13 @@ test('Bank delegated forms pass explicit input and keep credentials outside cont
     'bankBusinessBranchNumberInput','bankBusinessAccountNumberInput','bankHomeBranchNumberInput','bankHomeAccountNumberInput']
     .map((id, index) => [id,{value:index === 0 ? '  paired  ' : `value-${index}`} ]));
   const previous = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  inputs.bankBridgeCredentialsForm={querySelector:selector=>inputs[selector.slice(1)],addEventListener:noop,removeEventListener:noop};
   Object.defineProperty(globalThis, 'document', {configurable:true,value:{getElementById:id => inputs[id]}});
   t.after(() => { if (previous) Object.defineProperty(globalThis,'document',previous); else delete globalThis.document; });
   let token, credentials;
-  const actions = createBankActions({bankCommands:{saveBankBridgeToken:value => { token=value; }, configureBankBridge:value => { credentials=value; }},
+  const commands={saveBankBridgeToken:value => { token=value; }, configureBankBridge:value => { credentials=value; }};
+  const forms=createBankConnectionForms({commands,readPairing:()=>({generation:1}),isActive:()=>true});forms.bind();t.after(()=>forms.runtime.dispose());
+  const actions = createBankActions({bankCommands:commands,connectionForms:forms,
     bankPresentation:{},importFinanceConnections:noop,ui:{},toast:noop});
   actions['save-bank-bridge-token']({});
   assert.equal(token,'paired'); assert.equal(inputs.bankBridgeTokenInput.value,'');

@@ -1,4 +1,6 @@
 import {createDomainsBankController} from '../domains/bank/controller.js';
+import {createKupaBankConnectionOwner,KUPA_BANK_BRIDGE_MINIMUM_VERSION} from '../domains/bank/connection-owner.js';
+import {createBankConnectionForms} from '../domains/bank/connection-forms.js';
 import {createKupaBankArchiveReadout} from '../domains/bank/archive-readout.js';
 import {bankArchiveTargets} from '../domains/bank/archive-model.js';
 import {createKupaBankSnapshotCommands} from '../domains/bank/snapshot-commands.js';
@@ -83,9 +85,15 @@ export function createKupaBankCapability({
     publication:{bank:value => { model.state.bank = value; },archive:archive.commands.publish,data:(...args) => { revisions.touchData(...args); }},
   });
   const syncLeases = {claim:(...args) => cloud.claimLease(...args),release:(...args) => cloud.releaseLease(...args)};
-  const controller = createDomainsBankController({
-    model, session, bridge, operationScope:scope, archive, snapshots, syncLeases,
+  const connections = createKupaBankConnectionOwner({
+    pairing:{read:() => bridge.getBridgeToken(),write:value => bridge.setBridgeToken(value)},
+    transport:{readStatus:() => bridge.status(),configure:input => bridge.configureCredentials(input),selectAccount:input => bridge.selectAccount(input),deleteCredentials:() => bridge.deleteCredentials(),readDiagnostics:() => bridge.bankDiagnostics()},
+    presentation:{toast:notify,changed:() => { if (!disposed && binding) binding.view.updateBridgePanel(); }},
     effects:{saveJson:(...args) => { ready(); return effects.saveJson(...args); }},
+    clock:{now:() => Date.now()},protocol:{minimumBridgeVersion:KUPA_BANK_BRIDGE_MINIMUM_VERSION,statusCacheMs:15000},
+  });
+  const controller = createDomainsBankController({
+    model, session, bridge, operationScope:scope, archive, snapshots, syncLeases, connections,
     timers:platform.timers ?? globalThis, autoScope:() => disposed ? null : authority.automaticAccess(),
     sharedChecksHaveLocalWork:(...args) => checks.hasLocalWork(...args),
     sharedChecksObservedSequence:(...args) => readout.observedCheckSequence(...args),
@@ -133,7 +141,9 @@ export function createKupaBankCapability({
     if (!ui || [toast, renderView, runFinance, importConnections].some(method => typeof method !== 'function')) {
       throw new TypeError('kupa_bank_ui_commands_required');
     }
+    const forms = createBankConnectionForms({commands,readPairing:connections.queries.snapshot,isActive:() => !disposed});
     const view = createDomainsBankView({
+      bindConnectionForms:forms.bind,
       model, ui, runFinance, isActive:() => !disposed,
       modal:(...args) => { if (!disposed) return modal.modal(...args); }, closeModal:(...args) => { if (!disposed) return modal.closeModal(...args); },
       bankHomeBalance:(...args) => readout.balance('home', ...args),
@@ -145,8 +155,8 @@ export function createKupaBankCapability({
       dateEditorMarkup:date.dateEditorMarkup,
     });
     const search = createLazyDeferredSearchUpdater(value => { if (!disposed) ui.bankSearchValue = value; }, presentation.setBankSearch);
-    const actions = createBankActions({bankCommands:commands, bankPresentation:presentation, importFinanceConnections:importConnections, ui, toast:notify, search});
-    binding = {view, toast, render:renderView, search, actions:Object.fromEntries(Object.entries(actions).map(([name, handler]) =>
+    const actions = createBankActions({bankCommands:commands, bankPresentation:presentation, connectionForms:forms, importFinanceConnections:importConnections, ui, toast:notify, search});
+    binding = {view, forms, toast, render:renderView, search, actions:Object.fromEntries(Object.entries(actions).map(([name, handler]) =>
       [name, (...args) => disposed ? false : handler(...args)]))};
   }
   const runtime = {
@@ -154,14 +164,17 @@ export function createKupaBankCapability({
     start() { if (disposed) return false; ready(); return controller.startAutoSync(); },
     stop:controller.stopAutoSync,
     wake() { if (disposed) return false; ready(); return controller.maybeAutoRefreshBankBalance(); },
-    async drain() { await controller.runtime.drain(); await archive.runtime.drain(); while (pending.size) await Promise.all([...pending]); },
+    isPending:() => connections.runtime.isPending() || pending.size > 0,
+    async drain() { await controller.runtime.drain(); await connections.runtime.drain(); await archive.runtime.drain(); while (pending.size) await Promise.allSettled([...pending]); },
     dispose() {
       if (disposed) return false;
       disposed = true;
       controller.runtime.dispose();
+      connections.runtime.dispose();
       archive.runtime.dispose();
       binding?.search.cancel();
       binding?.view.runtime.dispose();
+      binding?.forms.runtime.dispose();
       effects.dispose();
       return true;
     },

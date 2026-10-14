@@ -1,5 +1,12 @@
 # Incremental JavaScript contracts
 
+Kupa Bank's local connection owner checks its actual body and negative consumers:
+opaque pairing, credential/account identifiers, synchronous publication guards
+and downloads, boolean command acceptance and asynchronous drain. A textual
+confirmation mutation fails compilation. Raw local responses remain unknown
+records; this does not prove complete Bank result/RPC envelopes or the financial
+controller. See [Kupa Bank connection ownership](KUPA_BANK_CONNECTION_OWNER.md).
+
 Kupa Credit's local connection owner checks its actual body and negative
 consumers: device identity, asynchronous unknown Bridge values, boolean
 confirmations, synchronous download effects, profile projections and private

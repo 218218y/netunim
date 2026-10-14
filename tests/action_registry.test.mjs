@@ -39,7 +39,7 @@ test('Kupa capability action packs compose with the workbook, spreadsheet, and c
   const spreadsheet=createSpreadsheetWorkspace({domain:'kupa',request:()=>{},account:()=>'',enabled:()=>false,primary:()=>true,active:()=>false,render:()=>{},legacy:()=>null,esc:String,confirmDialog:()=>true,modal:()=>{},closeModal:()=>{}});
   const actions=composeActionRegistry([
     {name:'checks',actions:createChecksActions({domainsChecksEditor:port,domainsChecksView:port,ui,uiBulk:port,uiDateEditor:port,uiModal:port})},
-    {name:'bank',actions:createBankActions({bankCommands:port,bankPresentation:port,importFinanceConnections:()=>{},ui,toast:port.toast})},
+    {name:'bank',actions:createBankActions({bankCommands:port,bankPresentation:port,connectionForms:port,importFinanceConnections:()=>{},ui,toast:port.toast})},
     {name:'shell',actions:createShellActions({uiModal:port,uiNavigation:port})},
     {name:'credit',actions:createCreditActions({creditCommands:port,domainsCreditEditor:port,domainsCreditView:port,ui})},
     {name:'credit-order',actions:creditOrder.actions},
