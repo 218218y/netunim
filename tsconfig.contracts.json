@@ -20,6 +20,11 @@
     "types": []
   },
   "files": [
+    "tests/fixtures/checked-morning-command-consumers.mjs",
+    "netunim-orders/site/assets/js/domains/customers/morning-recovery.js",
+    "netunim-orders/site/assets/js/domains/customers/morning-operation-evidence.js",
+    "netunim-orders/site/assets/js/domains/customers/morning-operation-commands.js",
+    "netunim-orders/site/assets/js/domains/customers/morning-issuance.js",
     "tests/fixtures/checked-morning-operations.mjs",
     "netunim-orders/site/assets/js/domains/customers/morning-debt-application.js",
     "netunim-orders/site/assets/js/domains/customers/morning-lifetime.js",

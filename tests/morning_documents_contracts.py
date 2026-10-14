@@ -19,6 +19,7 @@ sql=SQL.read_text(encoding='utf-8')
 documents=(SITE/'assets/js/domains/customers/documents.js').read_text(encoding='utf-8')
 request=(SITE/'assets/js/integrations/morning.js').read_text(encoding='utf-8')
 issuance=(SITE/'assets/js/domains/customers/morning-issuance.js').read_text(encoding='utf-8')
+recovery_flow=(SITE/'assets/js/domains/customers/morning-recovery.js').read_text(encoding='utf-8')
 view=(SITE/'assets/js/domains/customers/view.js').read_text(encoding='utf-8')
 editor=(SITE/'assets/js/domains/customers/editor.js').read_text(encoding='utf-8')
 morning_debt=(SITE/'assets/js/domains/customers/morning-debt.js').read_text(encoding='utf-8')
@@ -167,9 +168,9 @@ ok('applyPayment=true,applyInvoice=true' in morning_debt and "reason:'skipped-by
 ok('Math.min(documentCents,paymentRemainingCents)' in morning_debt and 'Math.min(documentCents,invoiceRemainingCents)' in morning_debt and 'paymentUnapplied' in morning_debt and 'invoiceUnapplied' in morning_debt,
    'Morning debt caps: document value can close remaining balances but can never overpay or over-invoice the local debt')
 issuance=(SITE/"assets/js/domains/customers/morning-issuance.js").read_text(encoding="utf-8")
-reserve_call_pos=issuance.find("backend('reserve',payload,assertCurrent)")
+reserve_call_pos=issuance.find("commands.reserve(payload,assertCurrent)")
 recovery_save_pos=issuance.find('recovery.persist(context)')
-create_call_pos=issuance.find("backend('create',payload,assertCurrent)")
+create_call_pos=issuance.find("commands.create(payload,assertCurrent)")
 ok(0 <= reserve_call_pos < recovery_save_pos < create_call_pos and 'orders.morning.pending-issuance.v1' in morning_debt_recovery and 'localStorage' in morning_debt_recovery,
    'Morning reload recovery: a server pre-issue reservation and the exact local debt/type/amount/allocation policy are both durable before any official POST')
 ok("const record={version:2,operationId:operation,debtId:debt,type:documentType,amount:amountCents/100,applyPayment:applyPayment===true,applyInvoice:applyInvoice===true,createdAt:time,sourceKind:kind}" in morning_debt_recovery and "if(kind==='bank')record.bankTransactionId=bankId" in morning_debt_recovery and all(token not in morning_debt_recovery for token in ('pdfBase64','document_url','allocationNumber','clientName')),
@@ -187,7 +188,7 @@ ok('return localOk' in persistence and 'if(disposed||rejectSecondaryMutation())r
    'Morning local durability handshake: progress and document links are durably saved, and replay re-persists an in-memory event before recovery clears')
 ok('onDebtDocumentMetadataResolved:persistResolvedDebtDocumentMetadata' in composition and 'upsertVerifiedMorningDebtDocument(debt,metadata)' in metadata_persistence and "surface:'orders.morning.customerDebtMetadata'" in metadata_persistence and 'await commitSave(' in metadata_persistence and 'function canMutate()' in persistence,
    'Morning historical metadata backfill: authoritative metadata confirms a local single-writer commit and retains unconfirmed staging for retry')
-ok('morningVerifiedApplicationDurable' in morning_debt_recovery and 'DURABLE_NO_MUTATION_REASONS' in morning_debt_recovery and 'function settleVerifiedRecovery' in documents and 'blocked:!durable||serverLinkPending||!recoveryCleared' in documents and documents.count('settleVerifiedRecovery(')>=4,
+ok('morningVerifiedApplicationDurable' in morning_debt_recovery and 'DURABLE_NO_MUTATION_REASONS' in morning_debt_recovery and 'function settleVerifiedRecovery' in documents and 'blocked:!durable||serverLinkPending||!recoveryCleared' in documents and documents.count('settleVerifiedRecovery(')>=3 and 'application.settle(context.operationId,result' in recovery_flow,
    'Morning recovery cleanup: verified outcomes use an explicit durability allowlist and every verified path stays fail-closed until local recovery storage is actually cleared')
 ok("activeDebtId?rejectSecondaryMutation?.()===true:rejectSecondaryIssuance?.()===true" in documents and documents.count('if(rejectCurrentIssuance())return;')>=2 and "reason:'write-blocked'" in composition,
    'Morning debt primary-tab safety: debt-linked issuance is blocked before POST and rechecked after confirmation when local mutation authority is unavailable')

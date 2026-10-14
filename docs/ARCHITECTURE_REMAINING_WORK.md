@@ -19,7 +19,12 @@ remaining-scope paragraphs describe their stage's starting point.
   remain unchanged. Issuance/recovery now tracks complete accepted commands and
   superseded flights, with final disposal and joined customer runtime drain.
   Verified debt allocation has a separate strict five-port capability with an
-  immutable financial policy. Broader customer orchestration and form
+  immutable financial policy. Reconciliation now has a strict five-port owner;
+  operation/issuance replies and failure envelopes are decoded before retry,
+  allocation or cleanup decisions. Six reproduced evidence gaps retain exact
+  recovery, with native malformed-response/resumption coverage. See
+  [Morning operation commands](MORNING_OPERATION_COMMANDS.md).
+  Broader customer orchestration and form
   presentation remain open. See [Morning operation drain](MORNING_OPERATION_DRAIN.md) and
   [Morning media ownership](MORNING_DOCUMENT_MEDIA_OWNER.md).
 

@@ -1053,3 +1053,15 @@ persistence access. Immutable actual-function reconstruction preserves financial
 and recovery policy; negative consumers, body mutations and a native held-create
 fixture protect the boundary. Broader customer orchestration remains open. See
 [Morning accepted commands](MORNING_OPERATION_DRAIN.md).
+
+Morning operation/issuance commands now use decoded success and failure envelopes
+before recovery, retry or allocation decisions. Six baseline regressions proved
+foreign/missing reservation identity and invalid terminal evidence could grant
+authority. Current ledger states, decimal SQL amounts and historical document IDs
+are validated, while valid duplicate/request-loss behavior remains intact. A
+strict five-port reconciliation owner replaces controller-local orchestration;
+its actual function reconstructs the immutable pre-media policy AST. Strict bodies,
+negative consumers, four implementation mutations and 42 native retained-recovery,
+journal and valid-resumption assertions protect the slice. Controller form/status
+presentation and broader customer orchestration remain open. See
+[Morning operation commands](MORNING_OPERATION_COMMANDS.md).

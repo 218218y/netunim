@@ -25,6 +25,19 @@ function check(overrides=new Map()){
 }
 function describe(diagnostics){return ts.formatDiagnostics(diagnostics,{getCanonicalFileName:file=>file,getCurrentDirectory:()=>root,getNewLine:()=> '\n'})}
 
+test('Morning operation evidence, commands, issuance and recovery reject implementation authority mutations',()=>{
+ for(const [file,from,to] of [
+  ['morning-operation-evidence.js','result.document_id=identity(row.document_id)','result.document_id=true'],
+  ['morning-operation-commands.js',"decodeMorningOperationStatus(await read('status',{operation_id:operationId,reconcile},assertCurrent),operationId)","await read('status',{operation_id:operationId,reconcile},assertCurrent)"],
+  ['morning-issuance.js','return data;',"return 'created';"],
+  ['morning-recovery.js',"return {ok:false,state:'scope-changed',error}","return {ok:'cancelled',state:'scope-changed',error}"],
+ ]){
+  const source=path.join(root,'netunim-orders/site/assets/js/domains/customers',file),original=readFileSync(source,'utf8'),changed=original.replace(from,to);assert.notEqual(changed,original);
+  const diagnostics=check(new Map([[source,changed]]));
+  assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&[2322,2345].includes(item.code)),describe(diagnostics));
+ }
+});
+
 test('Morning operation bodies reject fabricated drain and textual debt completion',()=>{
  for(const [file,from,to] of [
   ['netunim-orders/site/assets/js/domains/customers/morning-lifetime.js','drain:accepted.drain','drain:()=>true'],

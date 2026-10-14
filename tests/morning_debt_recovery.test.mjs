@@ -185,7 +185,7 @@ test('concurrent recovery callers join the same in-flight verification instead o
         assert.equal(request.action,'status');
         statusStartedResolve();
         await statusGate;
-        return new Response(JSON.stringify({ok:true,operation:{operation_id:OP,state:'created',document_type:320,amount:30,verified_at:CREATED}}),{headers:{'Content-Type':'application/json'}});
+        return new Response(JSON.stringify({ok:true,operation:{operation_id:OP,state:'created',document_id:'official',document_type:320,amount:30,verified_at:CREATED}}),{headers:{'Content-Type':'application/json'}});
       },
     });
     const first=documents.recoverPendingMorningOperation();

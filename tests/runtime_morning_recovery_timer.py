@@ -45,12 +45,12 @@ FLOW = r"""(async()=>{
    const id=request.operation_id,entry=ledger.get(id);
    if(request.action==='reserve'){check(!entry,'duplicate reservation');ledger.set(id,{operation_id:id,state:'reserved'});return new Response(JSON.stringify({ok:true,reserved:true,operation:ledger.get(id)}))}
    if(request.action==='create'){
-     check(entry?.state==='reserved','create without unique reservation');entry.state='creating';entry.document_type=request.document.type;entry.amount=request.document.amount;
+     check(entry?.state==='reserved','create without unique reservation');entry.state='pending';entry.document_type=request.document.type;entry.amount=request.document.amount;
      if(request.source.debtId==='wake-debt-B'){effects++;entry.document_id='official-B';entry.document_number='fixture-B'}
      return new Response(JSON.stringify({ok:false,uncertain:true,code:'morning_creation_uncertain',message:'fixture response lost'}),{status:503});
    }
    check(request.action==='status','unexpected Morning action '+request.action);
-   return new Response(JSON.stringify({ok:true,configured:true,available:true,environment:'sandbox',unresolved:entry?.state==='creating',operation:entry||null}));
+   return new Response(JSON.stringify({ok:true,configured:true,available:true,environment:'sandbox',unresolved:entry?.state==='pending',operation:entry||null}));
  };
  // Same production documents/editor/persistence ports as the composition; the
  // confirmation dialog is accepted in the fixture. All local writes are real.

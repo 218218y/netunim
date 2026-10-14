@@ -2,11 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createMorningOperationScope} from '../netunim-orders/site/assets/js/core/morning-operation-scope.js';
 import {createMorningRequest} from '../netunim-orders/site/assets/js/integrations/morning.js';
-import {createMorningIssuance} from '../netunim-orders/site/assets/js/domains/customers/morning-issuance.js';
+import {createMorningIssuance as buildMorningIssuance} from '../netunim-orders/site/assets/js/domains/customers/morning-issuance.js';
+import {createMorningOperationCommands} from '../netunim-orders/site/assets/js/domains/customers/morning-operation-commands.js';
 import {createMorningLifetime} from '../netunim-orders/site/assets/js/domains/customers/morning-lifetime.js';
 
 const changed={code:'MORNING_OPERATION_SCOPE_CHANGED'};
 const deferred=()=>{let resolve;const promise=new Promise(done=>{resolve=done});return {promise,resolve}};
+function createMorningIssuance({backend,...ports}){return buildMorningIssuance({...ports,commands:createMorningOperationCommands({request:{json:backend}})})}
+const issuePayload=()=>({operation_id:'same-id',document:{type:305,amount:42}});
 function authority(){const live={account:{owner:'A',epoch:1},storageOwner:'A',readable:true,writable:true};return {live,scope:createMorningOperationScope({readAccess:()=>live})}}
 for(const change of ['logout','account','relogin','primary','storage','readiness'])test(`Morning immutable write authority rejects ${change}`,()=>{
   const {live,scope}=authority(),receipt=scope.capture();receipt();
@@ -41,20 +44,20 @@ test('JSON reader preserves explicit server rejection and fails closed on malfor
 });
 test('reservation cannot persist or issue after the account changes',async()=>{
   const {live,scope}=authority(),entered=deferred(),release=deferred(),calls=[];
-  const issuer=createMorningIssuance({backend:async action=>{calls.push(action);entered.resolve();await release.promise;return {reserved:true,operation:{state:'reserved'}}},recovery:{persist(){assert.fail('stale persist')},reset(){assert.fail('stale reset')},block(){}}});
-  const pending=issuer.issue({operation_id:'same-id'},{operationId:'same-id'},scope.capture());await entered.promise;live.account.epoch++;release.resolve();
+  const issuer=createMorningIssuance({backend:async(action,payload)=>{calls.push(action);entered.resolve();await release.promise;return {ok:true,reserved:true,operation:{operation_id:payload.operation_id,state:'reserved'}}},recovery:{persist(){assert.fail('stale persist')},reset(){assert.fail('stale reset')},block(){}}});
+  const pending=issuer.issue(issuePayload(),{operationId:'same-id'},scope.capture());await entered.promise;live.account.epoch++;release.resolve();
   await assert.rejects(pending,changed);assert.deepEqual(calls,['reserve']);
 });
 test('lost official response retains exact recovery before create and never retries automatically',async()=>{
   const {scope}=authority(),calls=[],context={operationId:'same-id'};let retained;
-  const issuer=createMorningIssuance({backend:async(action,payload)=>{calls.push([action,payload.operation_id]);if(action==='reserve')return {reserved:true,operation:{state:'reserved'}};assert.equal(retained,context);throw Error('server committed, response lost')},recovery:{persist:value=>{retained=value},reset(){assert.fail('cannot erase uncertain issue')},block(){}}});
-  await assert.rejects(issuer.issue({operation_id:'same-id'},context,scope.capture()),/response lost/);
+  const issuer=createMorningIssuance({backend:async(action,payload)=>{calls.push([action,payload.operation_id]);if(action==='reserve')return {ok:true,reserved:true,operation:{operation_id:payload.operation_id,state:'reserved'}};assert.equal(retained,context);throw Error('server committed, response lost')},recovery:{persist:value=>{retained=value},reset(){assert.fail('cannot erase uncertain issue')},block(){}}});
+  await assert.rejects(issuer.issue(issuePayload(),context,scope.capture()),/response lost/);
   assert.equal(retained,context);assert.deepEqual(calls,[['reserve','same-id'],['create','same-id']]);
 });
 test('failure to persist recovery abandons only the current reservation and never creates',async()=>{
   const {scope}=authority(),calls=[];let reset;
-  const issuer=createMorningIssuance({backend:async action=>{calls.push(action);return action==='reserve'?{reserved:true,operation:{state:'reserved'}}:{abandoned:true}},recovery:{persist(){throw Error('quota')},reset:id=>{reset=id},block(){}}});
-  await assert.rejects(issuer.issue({operation_id:'same-id'},{operationId:'same-id'},scope.capture()),/quota/);
+  const issuer=createMorningIssuance({backend:async(action,payload)=>{calls.push(action);return action==='reserve'?{ok:true,reserved:true,operation:{operation_id:payload.operation_id,state:'reserved'}}:{ok:true,abandoned:true,operation:{operation_id:payload.operation_id,state:'failed'}}},recovery:{persist(){throw Error('quota')},reset:id=>{reset=id},block(){}}});
+  await assert.rejects(issuer.issue(issuePayload(),{operationId:'same-id'},scope.capture()),/quota/);
   assert.deepEqual(calls,['reserve','abandon_reservation']);assert.equal(reset,'same-id');
 });
 test('old task finally cannot clear a new login task, same-authority callers coalesce',async()=>{

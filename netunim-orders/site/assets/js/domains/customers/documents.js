@@ -2,6 +2,8 @@ import {createMorningDebtApplication} from './morning-debt-application.js';
 import {createMorningLifetime} from './morning-lifetime.js';
 import {createMorningDisplayLifetime,clearMorningDisplay} from './morning-display-lifetime.js';
 import {createMorningIssuance} from './morning-issuance.js';
+import {createMorningOperationCommands} from './morning-operation-commands.js';
+import {createMorningRecovery} from './morning-recovery.js';
 import {esc} from '../../core/values.js';
 import {money} from '../../core/money.js';
 import {$} from '../../state/constants.js';
@@ -58,7 +60,7 @@ function hydrateRecoveredSource(recovered,requested){if(recovered?.kind!=='bank'
 function defaultDescription(d,kind='standalone'){if(kind==='standalone')return'';if(kind==='bank')return cleanText(d?.description,250)||`תקבול בנקאי מ${cleanText(d?.customerName,120)||'לקוח'}`;return `עבור ${cleanText(d?.customerName,120)||'לקוח'}`}
 function newOperationId(){return globalThis.crypto.randomUUID()}
 
-const backend=(action,payload={},assertCurrent=captureScope(true))=>request.json(action,payload,assertCurrent);
+const operationCommands=createMorningOperationCommands({request});
 const debtApplication=createMorningDebtApplication({
   lifetime,recovery:{read:loadMorningDebtRecoveryContext},
   debts:{
@@ -70,7 +72,20 @@ const debtApplication=createMorningDebtApplication({
   policy:{matches:morningDebtRecoveryMatchesVerified,snapshot:morningFinancialSnapshot,changes:morningFinancialChanges},
   feedback:{toast,status:connectionStatus,decide:showRecoveryDecision},
 });
-const issuance=createMorningIssuance({backend,recovery:{persist:persistRecoveryContext,reset:resetOperationAfterTerminal,block:()=>{blocked=true}}});
+const issuance=createMorningIssuance({commands:operationCommands,recovery:{persist:persistRecoveryContext,reset:resetOperationAfterTerminal,block:()=>{blocked=true}}});
+const recoveryFlow=createMorningRecovery({
+  lifetime,commands:operationCommands,
+  recovery:{
+    read:()=>{const stored=loadMorningDebtRecoveryContext();if(stored)pendingRecovery=stored;return pendingRecovery},
+    abandon:abandonRecoveredReservation,reset:resetOperationAfterTerminal,
+  },
+  application:{apply:applyVerifiedContext,settle:settleVerifiedRecovery},
+  publish:{
+    isBusy:()=>createBusy,
+    state:(nextBlocked,nextCompleted)=>{blocked=nextBlocked;if(nextCompleted!==undefined)completed=nextCompleted},
+    notify:notifyBankVerified,toast,
+  },
+});
 
 function documentButton(d){
   return `<button class="icon-btn morning-document-button" title="הפק מסמך ב-Morning" aria-label="הפק מסמך ב-Morning" data-action="open-morning-document" data-click-arg0="${esc(d.id)}"><span aria-hidden="true">▤</span></button>`;
@@ -300,7 +315,7 @@ function resetOperationAfterTerminal(operationId){
   const debtId=issuanceContext?.debtId??activeDebtId,recovered=issuanceContext?sourceFromRecovery(issuanceContext):activeSource,source=hydrateRecoveredSource(recovered,activeSource);blocked=false;completed=false;activeOperationId=newOperationId();activeDebtId=String(debtId||'');activeSource=source;issuanceContext=null;return true;
 }
 async function abandonRecoveredReservation(operationId,{quiet=false,assertCurrent=captureScope()}={}){
-  const data=await backend('abandon_reservation',{operation_id:operationId},assertCurrent);assertCurrent();
+  const data=await operationCommands.abandonReservation(operationId,assertCurrent);assertCurrent();
   if(data.abandoned===true){const cleared=resetOperationAfterTerminal(operationId);if(cleared&&!quiet)toast('ניסיון ההפקה הקודם נעצר לפני שנשלח ל-Morning. לא הופק מסמך ולא בוצע שינוי בחוב.');return {abandoned:cleared,operation:data.operation}}
   return {abandoned:false,operation:data.operation||null};
 }
@@ -309,7 +324,7 @@ async function refreshStatus({reconcile=false}={}){
   const generation=modalGeneration,operationId=activeOperationId;
   connectionStatus('loading','בודק חיבור ל-Morning…');
   try{
-    let data=await backend('status',{operation_id:operationId,reconcile},assertCurrent);assertCurrent();
+    let data=await operationCommands.status(operationId,reconcile,assertCurrent);assertCurrent();
     if(!isActive(generation)||operationId!==activeOperationId||createBusy)return data;
     if(reconcile&&data.retryable_reserved&&operationId){const abandoned=await abandonRecoveredReservation(operationId,{assertCurrent});assertCurrent();if(abandoned.abandoned){if(isActive(generation)){connectionStatus('ready','הניסיון הקודם נעצר לפני שליחה. אפשר לערוך ולהפיק מחדש בבטחה.');const button=document.querySelector('[data-action="morning-create"]');if(button)button.disabled=false}return data}data={...data,operation:abandoned.operation}}
     // A persisted recovery context stays fail-closed even if a status read races before the Edge reservation becomes visible.
@@ -331,28 +346,7 @@ async function refreshStatus({reconcile=false}={}){
   }catch(error){if(scopeChanged(error))return null;if(isActive(generation)){connectionStatus('error',error.message||'לא ניתן לאמת את החיבור');const button=document.querySelector('[data-action="morning-create"]');if(button)button.disabled=true}if(pendingRecovery?.operationId===operationId)scheduleRecoveryCheck(90_000,assertCurrent);return null}
 }
 
-async function recoverPendingMorningOperation({quiet=false,assertCurrent}={}){
-  try{const assertSource=assertCurrent||(()=>{}),assertWrite=captureScope();assertCurrent=()=>{assertSource();assertWrite()};assertCurrent()}catch(error){return {ok:false,state:'scope-changed',error}}
-  return lifetime.join('recovery',assertCurrent,async()=>{
-  const stored=loadMorningDebtRecoveryContext();if(stored)pendingRecovery=stored;
-  const context=pendingRecovery;if(!context||createBusy)return {ok:true,state:context?'busy':'none'};
-    try{
-      let data=await backend('status',{operation_id:context.operationId,reconcile:true},assertCurrent);assertCurrent();let operation=data.operation;
-      if(operation?.state==='reserved'){
-        const abandoned=await abandonRecoveredReservation(context.operationId,{quiet,assertCurrent});assertCurrent();
-        if(abandoned.abandoned)return {ok:true,state:'abandoned'};
-        operation=abandoned.operation;
-      }
-      if(operation?.state==='created'&&operation.verified_at){
-        const result=await applyVerifiedContext(context,{operationId:operation.operation_id,documentId:operation.document_id,documentNumber:operation.document_number,type:operation.document_type,amount:Number(operation.amount),verifiedAt:operation.verified_at},{assertCurrent});assertCurrent();const settlement=settleVerifiedRecovery(context.operationId,result,{serverLinkPending:!!data.bank_link_pending});if(settlement.recoveryCleared)notifyBankVerified(context,data.bank_link);
-        if(settlement.durable&&settlement.recoveryCleared){blocked=false;completed=true;toast(context.debtId?'הפקת Morning הקודמת אומתה לאחר ההתאוששות והחוב עודכן לפי הבחירות שנשמרו.':'הפקת Morning הקודמת אומתה לאחר ההתאוששות.');return {ok:true,state:'created',result}}
-        blocked=true;completed=settlement.durable;scheduleRecoveryCheck(60_000,assertCurrent);if(settlement.durable&&!quiet)toast('המסמך אומת והעדכון המקומי נשמר, אך נקודת ההתאוששות עדיין לא נמחקה בבטחה. ההפקה נשארת נעולה עד לניקוי מוצלח.');return {ok:false,state:settlement.durable?'cleanup-pending':'local-pending',result};
-      }
-      if(operation?.state==='failed'){if(!resetOperationAfterTerminal(context.operationId))return {ok:false,state:'cleanup-pending'};toast('ניסיון Morning הקודם הסתיים ללא מסמך מאומת; החוב לא שונה.');return {ok:true,state:'failed'}}
-      blocked=true;scheduleRecoveryCheck(operation?60_000:30_000,assertCurrent);if(!quiet)toast('נמצא ניסיון Morning שעדיין ממתין לאימות. המערכת תשמור את הקשר לחוב ולא תזקוף אותו עד לאימות ודאי.');return {ok:true,state:operation?.state||'waiting'};
-    }catch(error){if(scopeChanged(error))return {ok:false,state:'scope-changed',error};scheduleRecoveryCheck(90_000,assertCurrent);if(!quiet)toast('ניסיון Morning קודם עדיין ממתין להתאוששות: '+(error?.message||'לא ניתן לבדוק כרגע'));return {ok:false,state:'unavailable',error}}
-  });
-}
+function recoverPendingMorningOperation(...args){return recoveryFlow.recover(...args)}
 
 async function previewMorningDocument(button){
   let payload,assertCurrent;try{modalAssert?.();assertCurrent=captureScope(true);payload=readForm()}catch(error){return toast(error.message)}

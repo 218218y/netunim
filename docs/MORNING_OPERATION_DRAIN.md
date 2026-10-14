@@ -67,6 +67,8 @@ checks that drain waits, recovery stays exact, Main/Shared journals are unchange
 and no new create/reservation is sent. Its transport is synthetic; no live
 provider is contacted. Full Git CI remains required before merge.
 
-Broader issuance/recovery coordination, form presentation, complete provider
+Reconciliation and operation evidence are now isolated in a subsequent strict
+[operation-command slice](MORNING_OPERATION_COMMANDS.md). Broader issuance
+coordination, form presentation, complete provider
 decoding and customer editing orchestration remain open. Live-provider and
 physical two-computer drills still require their own evidence.
