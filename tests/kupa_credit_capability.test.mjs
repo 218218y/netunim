@@ -13,7 +13,7 @@ function fixture(){
   const bridge={getBridgeToken:()=> 'paired',creditStatus:async()=>({bridgeVersion:73,contractVersion:2,profiles:[{profileId:'P'}]})};
   const ports={bridge,authority:{scope:{capture:()=>noop},automaticAccess:()=> 'local'},
     cloud:{refresh:async()=>({verified:true,state:model.state}),commit:async mutate=>{events.push('commit');return {saved:true,row:{state:mutate(model.state)}}},
-      claimLease:async()=>({acquired:true,leaseName:'credit',leaseToken:'L',fenceEpoch:1}),releaseLease:async(_kind,_token,{assertCurrent})=>{assertCurrent();events.push('release')}},
+      claimLease:async(leaseName,leaseToken)=>({acquired:true,leaseName,leaseToken,fenceEpoch:1}),releaseLease:async(_kind,_token,{assertCurrent})=>{assertCurrent();events.push('release')}},
     persistence:{save:async()=>{events.push('checkpoint');return true}},
     presentation:{toast:()=>events.push('toast'),render:()=>events.push('render'),renderStatus:()=>events.push('status'),closeModal:noop,confirmDialog:async()=>true}};
   return {credit,ports,model,events,jobs,effects,bind:()=>credit.bindServices(ports)};
@@ -41,7 +41,7 @@ for(const dispose of [false,true])test(`Credit ${dispose?'disposal fences public
   const events=f.events.length;
   held.resolve({profiles:[{profileId:'P',provider:'max',accounts:[]}],errors:[],attemptedCount:1});await request;await drain;
   assert.equal(f.credit.runtime.isPending(),false);assert.equal(f.jobs.size,0);
-  if(dispose){assert.deepEqual(f.model.state,before);assert.deepEqual(f.events.slice(events),[])}
+  if(dispose){assert.deepEqual(f.model.state,before);assert.deepEqual(f.events.slice(events),['release'])}
   else{assert.equal(f.model.state.creditSync.profiles[0].profileId,'P');assert.ok(f.events.includes('commit')&&f.events.includes('checkpoint'));f.credit.runtime.dispose()}
   assert.equal(Object.hasOwn(f.credit.queries.uiState(),'autoTimer'),false);
 });
@@ -59,7 +59,7 @@ test('Credit command completion and drain join a held renewal after the provider
   const f=fixture(),entered=gate(),provider=gate(),renewed=gate(),renewal=gate();let claims=0;
   f.ports.bridge.syncCreditCards=()=>{entered.resolve();return provider.promise};
   const lease={acquired:true,leaseName:'credit',leaseToken:'L',fenceEpoch:1};
-  f.ports.cloud.claimLease=()=>{if(++claims===1)return lease;renewed.resolve();return renewal.promise};f.bind();
+  f.ports.cloud.claimLease=(_kind,token)=>{lease.leaseToken=token;if(++claims===1)return lease;renewed.resolve();return renewal.promise};f.bind();
   const request=f.credit.commands.refreshCreditSync();await entered.promise;
   const pulse=[...f.jobs.values()][0]();await renewed.promise;f.credit.runtime.dispose();
   let drained=false;const drain=f.credit.runtime.drain().then(()=>{drained=true});

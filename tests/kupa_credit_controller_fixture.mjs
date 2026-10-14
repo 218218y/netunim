@@ -1,4 +1,5 @@
 import { createDomainsCreditController } from '../netunim-kupa/site/assets/js/domains/credit/controller.js';
+import {createFinanceLeaseOwner} from '../shared/finance-lease-owner.js';
 import { createCreditConnectionOwner } from '../netunim-kupa/site/assets/js/domains/credit/connection-owner.js';
 import {
   normalizeCreditSync,
@@ -26,7 +27,11 @@ export function createKupaCreditControllerFixture(ports) {
       confirmDialog: (...args) => ports.confirmDialog(...args),
     },
   });
-  const controller = createDomainsCreditController({ ...ports, connections });
+  const syncLeases=createFinanceLeaseOwner({
+    leases:{claim:ports.claimFinanceSyncLease??(async(leaseName,leaseToken)=>({acquired:true,leaseName,leaseToken,fenceEpoch:1})),release:ports.releaseFinanceSyncLease??(async()=>true)},
+    authority:{capture:ports.captureOperation},timers:ports.timers??globalThis,
+  });
+  const controller = createDomainsCreditController({ ...ports, connections, syncLeases });
   const runtime = controller.runtime;
   controller.runtime = {
     isPending: () => runtime.isPending() || connections.runtime.isPending(),

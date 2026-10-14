@@ -13,7 +13,7 @@ const transaction=id=>({id,date:stamp,processedDate:stamp,amount:12,currency:'IL
 test('Kupa Bank waits for an accepted lease renewal before release and controller completion',async t=>{
   const f=fixture(t,{hold:'provider'}),renewal=deferred();let tick,claims=0;
   t.mock.method(globalThis,'setTimeout',(fn,ms)=>{if(ms===400000)tick=fn;return 1});
-  f.ports.claimFinanceSyncLease=async()=>{if(++claims===2)await renewal.promise;return {acquired:true,leaseName:'bank',leaseToken:'L',fenceEpoch:1}};
+  f.ports.claimFinanceSyncLease=async(leaseName,leaseToken)=>{if(++claims===2)await renewal.promise;return {acquired:true,leaseName,leaseToken,fenceEpoch:1}};
   const api=f.create(),pending=api.refreshBankBalance();await f.entered.promise;
   const accepted=tick();f.release.resolve();
   try{await new Promise(resolve=>setImmediate(resolve));assert.equal(f.counts.release||0,0,'Bank released before renewal settled')}
@@ -32,7 +32,7 @@ function fixture(t,{hold=null,home=false}={}){
     saveState:()=>phase('local',true),bridge:{getBridgeToken:()=> 'fixture',autoEnabled:()=>true,autoAttemptDelayMs:()=>0,markAutoAttempt:()=>{},
       fetchBalance:()=>phase('provider',{fetchedAt:stamp,accounts:{business:{balance:500,accountId:'same-account',transactions:[]},...(home?{home:{balance:250,accountId:'home-account',transactions:[]}}:{})}})},
     refreshFinanceCloudSnapshot:()=>phase('finance-'+(++financeReads),{verified:true,state:model.state}),
-    claimFinanceSyncLease:async()=>({acquired:true,leaseName:'bank',leaseToken:'L',fenceEpoch:1}),releaseFinanceSyncLease:(_kind,_token,options)=>{options?.assertCurrent?.();return phase('release',true)},
+    claimFinanceSyncLease:async(leaseName,leaseToken)=>({acquired:true,leaseName,leaseToken,fenceEpoch:1}),releaseFinanceSyncLease:(_kind,_token,options)=>{options?.assertCurrent?.();return phase('release',true)},
     saveFinancePatch:()=>phase('patch',{saved:true}),saveBankSyncSnapshot:()=>phase('atomic',{finance_revision:2,kupa_revision:2}),
     syncBankTransactionsSnapshot:(_key,role)=>phase('archive-'+role,{sourcePayload:[],result:{total_count:0}}),syncBankChequeImages:()=>phase('images',{warnings:[]}),
     readBankTransactions:(_key,role)=>phase('read-'+role,[]),readBankTransactionSnapshot:()=>phase('read-snapshot',null),touchBankDataRevision:()=>{},touchBankDisplayRevision:()=>{},

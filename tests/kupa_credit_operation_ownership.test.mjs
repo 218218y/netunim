@@ -22,14 +22,14 @@ for(const phase of [1,2])test(`automatic Credit preflight ${phase} carries captu
 test('Kupa Credit releases its own lease after a failed renewal without requiring a valid publication fence',async t=>{
   const f=fixture(t);let tick,claims=0;
   t.mock.method(globalThis,'setTimeout',(fn,ms)=>{if(ms===400000)tick=fn;return 1});
-  f.ports.claimFinanceSyncLease=async()=>{if(++claims===2)throw Error('renewal network failure');return {acquired:true,leaseName:'credit',leaseToken:'L',fenceEpoch:1}};
+  f.ports.claimFinanceSyncLease=async(leaseName,leaseToken)=>{if(++claims===2)throw Error('renewal network failure');return {acquired:true,leaseName,leaseToken,fenceEpoch:1}};
   const api=f.create(),pending=api.refreshCreditSync();await f.entered.promise;await tick();f.provider.resolve(result);await pending;
   assert.equal(f.counts().patches,0);assert.equal(f.counts().releases,1,'renewal failure must fence publication without preventing own-account cleanup');api.runtime.dispose();
 });
 test('Kupa Credit waits for an accepted lease renewal before release and controller completion',async t=>{
   const f=fixture(t),renewal=deferred();let tick,claims=0;
   t.mock.method(globalThis,'setTimeout',(fn,ms)=>{if(ms===400000)tick=fn;return 1});
-  f.ports.claimFinanceSyncLease=async()=>{if(++claims===2)await renewal.promise;return {acquired:true,leaseName:'credit',leaseToken:'L',fenceEpoch:1}};
+  f.ports.claimFinanceSyncLease=async(leaseName,leaseToken)=>{if(++claims===2)await renewal.promise;return {acquired:true,leaseName,leaseToken,fenceEpoch:1}};
   const api=f.create(),pending=api.refreshCreditSync();await f.entered.promise;
   const accepted=tick();f.provider.resolve(result);
   try{await new Promise(resolve=>setImmediate(resolve));assert.equal(f.counts().releases,0,'Credit released before renewal settled')}
@@ -46,7 +46,7 @@ function fixture(t){
   const captureOperation=createFinanceOperationScope({readAccess:()=>({account:{owner,epoch},connectionMode:'supabase',storageOwner:owner,writable:primary})}).capture;
   const ports={model,autoScope:()=>owner?`owner:${owner}`:null,captureOperation,toast:()=>{},render:()=>{},saveState:async()=>{saves++},
     bridge:{getBridgeToken:()=> 'fixture',creditStatus:async()=>({bridgeVersion:73,contractVersion:2,profiles:[{profileId:'P'}]}),syncCreditCards:()=>{entered.resolve();return provider.promise}},
-    refreshFinanceCloudSnapshot:async()=>({verified:true,state:model.state}),claimFinanceSyncLease:async()=>({acquired:true,leaseName:'credit',leaseToken:'L',fenceEpoch:1}),
+    refreshFinanceCloudSnapshot:async()=>({verified:true,state:model.state}),claimFinanceSyncLease:async(leaseName,leaseToken)=>({acquired:true,leaseName,leaseToken,fenceEpoch:1}),
     releaseFinanceSyncLease:async(_kind,_token,options)=>{options?.assertCurrent?.();releases++},
     saveFinancePatch:async mutator=>{patches++;return {saved:true,row:{state:mutator({creditSync:model.state.creditSync})}}},
   };

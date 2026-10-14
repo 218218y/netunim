@@ -71,7 +71,7 @@ for (const operation of ['stop','dispose']) test(`Bank ${operation} drains a hel
   await drain;
   assert.equal(f.cap.runtime.isPending(),false);
   assert.equal(writes,operation === 'stop' ? 1 : 0);
-  assert.equal(releases,operation === 'stop' ? 1 : 0);
+  assert.equal(releases,1,'same-account cleanup survives component disposal');
   if (operation === 'dispose') assert.deepEqual(f.events,before);
 });
 

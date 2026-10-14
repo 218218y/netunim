@@ -2,7 +2,6 @@ import {createRuntimeTaskOwner} from '../../shared/runtime-task-owner.js';
 import {createOrdersFinanceAutomation} from './automation.js';
 import {createRevisionSelector} from '../../shared/revision-selector.js';
 import {applyCreditCardOrderData} from '../../shared/credit-card-order.js';
-import {startFinanceLeaseHeartbeat} from '../../shared/finance-lease-heartbeat.js';
 import {normalizeCreditFetchMode,resolveCreditAutoSyncMode} from '../../shared/credit-sync-policy.js';
 import {clone,uid} from '../../core/values.js';
 import {normalizeBankFeed} from './bank-feed.js';
@@ -48,11 +47,8 @@ export function createDomainsFinanceController({
   }
   if (typeof documents?.queries?.readFinance !== 'function')
     throw new TypeError('orders_finance_document_query_required');
-  for (const method of ['claim','release']) {
-    if (typeof syncLeases?.[method] !== 'function')
-      throw new TypeError('orders_finance_sync_lease_'+method+'_required');
-  }
-  const claimFinanceSyncLease = syncLeases.claim, releaseFinanceSyncLease = syncLeases.release;
+  if(typeof syncLeases?.commands?.acquire!=='function')throw new TypeError('orders_finance_lease_acquire_required');
+  for(const method of ['isPending','drain','dispose'])if(typeof syncLeases?.runtime?.[method]!=='function')throw new TypeError('orders_finance_lease_runtime_'+method+'_required');
   const mutateKupaCloud = documents.commands.mutateKupa, mutateFinanceCloud = documents.commands.mutateFinance;
   for(const method of ['prepare','publish'])if(typeof bankSnapshots?.commands?.[method]!=='function')throw new TypeError('orders_bank_snapshot_command_'+method+'_required');
   const readFinanceSyncDocument = documents.queries.readFinance;
@@ -157,17 +153,16 @@ export function createDomainsFinanceController({
     if(auto&&!financeAutomation.markAttempt('bank'))return false;
     archive.runtime.pause();
     local.bankBusy=true;local.bankResultReady=false;local.bankError='';local.bankErrorAt=null;
-    let leaseToken='',leaseHeld=false,lease=null,heartbeat=null,assertOwner,assertConnection;const schedulerEpoch=financeAutomation.currentEpoch();
-    const assertCurrent=()=>{assertOwner();assertConnection();heartbeat?.assertCurrent()};
+    let lease=null,leaseSession=null,assertOwner,assertConnection;const schedulerEpoch=financeAutomation.currentEpoch();
+    const assertCurrent=()=>{assertOwner();assertConnection();leaseSession?.assertCurrent()};
     try{
       assertOwner=operationScope.capture();assertConnection=bankConnections.queries.capture();notifyFinanceStatus('bank');
       const cloudFresh=await refreshKupaReadout({force:true,renderIfChanged:true,assertCurrent});assertCurrent();
       if(auto&&!cloudFresh)throw new Error('לא ניתן לאמת את זמן סנכרון הבנק המשותף בענן');
       if(auto&&!bankRefreshDue(bankLastSyncAt(checksSession.kupaCloudReadState)))return true;
       if(auto&&(!isCurrent()||!financeAutomation.allowed('bank')))return false;
-      leaseToken=uid('FINLEASE');lease=await claimFinanceSyncLease('bank',leaseToken,{assertCurrent:assertOwner});leaseHeld=lease?.acquired===true;assertCurrent();lease={...lease,assertCurrent};
-      if(!leaseHeld){if(!auto)toast('סינכרון הבנק כבר מתבצע ממחשב או חלון אחר. לא נפתחה כניסה נוספת לבנק.');return false}
-      heartbeat=startFinanceLeaseHeartbeat({...lease,assertCurrent:assertOwner},claimFinanceSyncLease);
+      leaseSession=syncLeases.commands.acquire('bank',uid('FINLEASE'),{assertCurrent:()=>{assertOwner();assertConnection()}});lease=await leaseSession.ready;assertCurrent();lease={...lease,assertCurrent};
+      if(!lease.acquired){if(!auto)toast('סינכרון הבנק כבר מתבצע ממחשב או חלון אחר. לא נפתחה כניסה נוספת לבנק.');return false}
       if(auto){const confirmed=await refreshKupaReadout({force:true,renderIfChanged:true,assertCurrent});assertCurrent();if(!confirmed)throw new Error('לא ניתן לאמת מחדש את זמן סינכרון הבנק לאחר תפיסת הנעילה');if(!bankRefreshDue(bankLastSyncAt(checksSession.kupaCloudReadState)))return true}
       const status=await bankConnections.queries.readStatus();assertCurrent();
       if(!bankConnections.queries.supported(status))throw new Error('יש לשדרג את Bank Bridge לפני סנכרון הבנק');
@@ -191,9 +186,8 @@ export function createDomainsFinanceController({
       if(!auto)toast(local.bankError);local.bankResultReady=true;notifyFinanceStatus('bank');return false;
     }
     finally{
-      await heartbeat?.stop();
-      if(leaseHeld)try{
-        await releaseFinanceSyncLease('bank',leaseToken,{assertCurrent:assertOwner});
+      try{
+        await leaseSession?.close();
       }catch(error){
         if(!scopeChanged(error))console.error('orders bank sync lease release',error);
       }
@@ -230,17 +224,16 @@ export function createDomainsFinanceController({
     if(!financeAutomation.tokenConfigured()){if(!auto)toast('יש לצמד את ניהול ההזמנות ל-Bank Bridge במחשב זה');return false}
     if(auto&&!financeAutomation.markAttempt('credit'))return false;
     local.creditBusy=true;local.creditError='';local.creditErrorAt=null;notifyFinanceStatus('credit');
-    let leaseToken='',leaseHeld=false,lease=null,heartbeat=null,assertOwner,assertConnection;const schedulerEpoch=financeAutomation.currentEpoch();
-    const assertCurrent=()=>{assertOwner();assertConnection();heartbeat?.assertCurrent()};
+    let lease=null,leaseSession=null,assertOwner,assertConnection;const schedulerEpoch=financeAutomation.currentEpoch();
+    const assertCurrent=()=>{assertOwner();assertConnection();leaseSession?.assertCurrent()};
     try{
       assertOwner=operationScope.capture();assertConnection=connections.queries.capture();
       const cloudFresh=await refreshKupaReadout({force:true,renderIfChanged:true,assertCurrent});assertCurrent();
       if(auto&&!cloudFresh)throw new Error('לא ניתן לאמת את זמן סנכרון האשראי המשותף בענן');
       if(auto&&!creditRefreshDue(creditLastSyncAt(checksSession.kupaCloudReadState)))return true;
       if(auto&&(!isCurrent()||!financeAutomation.allowed('credit')))return false;
-      leaseToken=uid('FINLEASE');lease=await claimFinanceSyncLease('credit',leaseToken,{assertCurrent:assertOwner});leaseHeld=lease?.acquired===true;assertCurrent();lease={...lease,assertCurrent};
-      if(!leaseHeld){if(!auto)toast('סינכרון אשראי כבר מתבצע ממחשב או חלון אחר. לא נפתחה כניסה נוספת לחברות האשראי.');return false}
-      heartbeat=startFinanceLeaseHeartbeat({...lease,assertCurrent:assertOwner},claimFinanceSyncLease);
+      leaseSession=syncLeases.commands.acquire('credit',uid('FINLEASE'),{assertCurrent:()=>{assertOwner();assertConnection()}});lease=await leaseSession.ready;assertCurrent();lease={...lease,assertCurrent};
+      if(!lease.acquired){if(!auto)toast('סינכרון אשראי כבר מתבצע ממחשב או חלון אחר. לא נפתחה כניסה נוספת לחברות האשראי.');return false}
       if(auto){const confirmed=await refreshKupaReadout({force:true,renderIfChanged:true,assertCurrent});assertCurrent();if(!confirmed)throw new Error('לא ניתן לאמת מחדש את זמן סנכרון האשראי לאחר תפיסת הנעילה');if(!creditRefreshDue(creditLastSyncAt(checksSession.kupaCloudReadState)))return true}
       const status=await connections.queries.readStatus();assertCurrent();
       if(!supportedCreditBridge(status))throw new Error('יש לשדרג את Bank Bridge לפני סנכרון האשראי');
@@ -273,9 +266,8 @@ export function createDomainsFinanceController({
       }
       if(!auto)toast(local.creditError||(deferredOnly?'החיבור מושהה עד תום ה־cooldown; לא יישלח ניסיון חדש לפני המועד.':''));return deferredOnly;
     }finally{
-      await heartbeat?.stop();
-      if(leaseHeld)try{
-        await releaseFinanceSyncLease('credit',leaseToken,{assertCurrent:assertOwner});
+      try{
+        await leaseSession?.close();
       }catch(error){
         if(!scopeChanged(error))console.error('orders credit sync lease release',error);
       }
@@ -332,5 +324,13 @@ export function createDomainsFinanceController({
   function owned(command){return (...args)=>work.isActive()?work.run(()=>command(...args)):Promise.resolve(false)}
   const api={snapshot,readSnapshot,setFinanceStatusListener,ensureBankDisplayArchive,refreshFinanceData,refreshBankBridgeStatus,refreshCreditBridgeStatus,copySafeCreditDiagnostics,exportCreditDataDiagnostics,saveBridgeToken,configureBankBridge,selectBankBridgeAccount,deleteBankBridgeCredentials,exportBankChequeDiagnostics,refreshBank,toggleBankTransactionHandled,markBankMorningVerified,acknowledgeMissingBankTransaction,acknowledgePersistentBankAlert,refreshCredit,saveCreditProfile,deleteCreditProfile,resetCreditSync,saveCreditCardOrder,setCreditCardMapping,acknowledgeCreditSettlementWarning,maybeAutoRefreshBank,maybeAutoRefreshCredit,startAutoSync,stopAutoSync,setBankAutoEnabled,setCreditAutoEnabled,setCreditAutoMode,saveCashflowMinimum,saveCashflowCheckCutoff,mutateKupaCloud,captureCreditConnection,captureCreditReset,captureBankConnection};
   for(const name of ['ensureBankDisplayArchive', 'refreshFinanceData', 'refreshBankBridgeStatus', 'refreshCreditBridgeStatus', 'copySafeCreditDiagnostics', 'exportCreditDataDiagnostics', 'saveBridgeToken', 'configureBankBridge', 'selectBankBridgeAccount', 'deleteBankBridgeCredentials', 'exportBankChequeDiagnostics', 'refreshBank', 'toggleBankTransactionHandled', 'markBankMorningVerified', 'acknowledgeMissingBankTransaction', 'acknowledgePersistentBankAlert', 'refreshCredit', 'saveCreditProfile', 'deleteCreditProfile', 'resetCreditSync', 'saveCreditCardOrder', 'setCreditCardMapping', 'acknowledgeCreditSettlementWarning', 'maybeAutoRefreshBank', 'maybeAutoRefreshCredit', 'saveCashflowMinimum', 'saveCashflowCheckCutoff', 'mutateKupaCloud'])api[name]=owned(api[name]);
-  return {...api,runtime:{isPending:work.isPending,drain:work.drain,dispose:()=>{if(!work.close())return false;stopAutoSync();financeStatusListener=()=>{};return true}}};
+  return {...api,runtime:{
+    isPending:()=>work.isPending()||syncLeases.runtime.isPending(),
+    async drain(){await Promise.all([work.drain(),syncLeases.runtime.drain()])},
+    dispose(){
+      if(!work.close())return false;
+      stopAutoSync();syncLeases.runtime.dispose();financeStatusListener=()=>{};
+      return true;
+    },
+  }};
 }

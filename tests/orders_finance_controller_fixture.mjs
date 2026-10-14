@@ -1,4 +1,5 @@
 import { createDomainsFinanceController } from '../netunim-orders/site/assets/js/domains/finance/controller.js';
+import {createFinanceLeaseOwner} from '../shared/finance-lease-owner.js';
 import { createOrdersFinanceDocumentCommands } from '../netunim-orders/site/assets/js/domains/finance/document-commands.js';
 import { createOrdersBankSnapshotPublication } from '../netunim-orders/site/assets/js/domains/finance/bank-snapshot-publication.js';
 import { createOrdersBankSnapshotPolicy } from '../netunim-orders/site/assets/js/domains/finance/bank-snapshot-policy.js';
@@ -108,7 +109,7 @@ export function createOrdersFinanceControllerFixture(ports) {
   const controller = createDomainsFinanceController({
     ...ports,
     documents,
-    syncLeases,
+    syncLeases:createFinanceLeaseOwner({leases:syncLeases,authority:ports.operationScope,timers:ports.timers??globalThis}),
     archive,
     connections,
     bankConnections,

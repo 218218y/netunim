@@ -3,6 +3,7 @@ import {createKupaBankConnectionOwner,KUPA_BANK_BRIDGE_MINIMUM_VERSION} from '..
 import {createBankConnectionForms} from '../domains/bank/connection-forms.js';
 import {createKupaBankArchiveReadout} from '../domains/bank/archive-readout.js';
 import {createBankArchiveReconciliation} from '../shared/bank-archive-reconciliation.js';
+import {createFinanceLeaseOwner} from '../shared/finance-lease-owner.js';
 import {bankArchiveTargets} from '../domains/bank/archive-model.js';
 import {createKupaBankSnapshotCommands} from '../domains/bank/snapshot-commands.js';
 import {createManualBankSnapshot} from '../domains/bank/manual-snapshot.js';
@@ -85,7 +86,10 @@ export function createKupaBankCapability({
     cloud:{publish:(...args) => cloud.saveSnapshot(...args),refresh:(...args) => cloud.refreshFinance(...args)},
     publication:{bank:value => { model.state.bank = value; },archive:archive.commands.publish,data:(...args) => { revisions.touchData(...args); }},
   });
-  const syncLeases = {claim:(...args) => cloud.claimLease(...args),release:(...args) => cloud.releaseLease(...args)};
+  const syncLeases = createFinanceLeaseOwner({
+    leases:{claim:(...args) => cloud.claimLease(...args),release:(...args) => cloud.releaseLease(...args)},
+    authority:authority.scope,timers:platform.timers??globalThis,
+  });
   const archiveReconciliation = createBankArchiveReconciliation({
     transactions:{reconcile:(...args) => cloud.syncTransactions(...args)},
     images:{sync:(...args) => cloud.syncImages(...args)},

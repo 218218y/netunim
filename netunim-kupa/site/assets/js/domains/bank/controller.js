@@ -3,7 +3,6 @@ import {createRuntimeTaskOwner} from '../../shared/runtime-task-owner.js';
 import {readBankBalanceResult,bankSnapshotFinancials} from '../../shared/bank-balance-result.js';
 import {bankRecurringDebitHistoryData} from '../../shared/bank-recurring-debits.js';
 import {BANK_READOUT_WARNING} from './snapshot-commands.js';
-import {startFinanceLeaseHeartbeat} from '../../shared/finance-lease-heartbeat.js';
 import {createPollingTask} from '../../shared/runtime-polling.js';
 import {uid} from '../../core/values.js';
 import {wholeMoney} from '../../core/money.js';
@@ -63,13 +62,11 @@ for (const method of ['prepare','commitManual','publishCloud','publishLocal','re
 if (typeof snapshots?.queries?.localState !== 'function')
   throw new TypeError('kupa_bank_snapshot_query_required');
 if (typeof readFinance !== 'function') throw new TypeError('kupa_bank_finance_read_required');
-for (const method of ['claim','release'])
-  if (typeof syncLeases?.[method] !== 'function')
-    throw new TypeError('kupa_bank_lease_' + method + '_required');
+if(typeof syncLeases?.commands?.acquire!=='function')throw new TypeError('kupa_bank_lease_acquire_required');
+for(const method of ['isPending','drain','dispose'])if(typeof syncLeases?.runtime?.[method]!=='function')throw new TypeError('kupa_bank_lease_runtime_'+method+'_required');
 const prepareBankSnapshot = snapshots.commands.prepare, commitBankSnapshot = snapshots.commands.commitManual;
 const localSnapshot = {state:snapshots.queries.localState,retry:snapshots.commands.retryLocal};
 const refreshFinanceCloudSnapshot = readFinance;
-const claimFinanceSyncLease = syncLeases.claim, releaseFinanceSyncLease = syncLeases.release;
 let disposed=false;
 const workOwner=createRuntimeTaskOwner();
 function track(work){return disposed?Promise.resolve(false):workOwner.run(work)}
@@ -127,8 +124,8 @@ async function refreshBankBalance({interactive=false,auto=false,isCurrent=()=>tr
   archive.runtime.pause();
   financialFeedback.busy=true;financialFeedback.resultReady=false;financialFeedback.lastError='';financialFeedback.lastErrorAt=null;financialFeedback.lastErrorCode='';financialFeedback.lastErrorStage='';financialFeedback.lastErrorHttpStatus=0;financialFeedback.lastWarning='';financialFeedback.lastWarningCode='';financialFeedback.lastWarningStage='';financialFeedback.lastWarningHttpStatus=0;financialFeedback.accountSelectionRole='';
   financialFeedback.message=interactive?'חלון האימות בבנק פתוח. לאחר האימות ה-Bridge יעדכן באותו סשן את החשבון העסקי ואת החשבון הביתי.':auto?'מעדכן אוטומטית את שני חשבונות בנק הפועלים…':'מעדכן יתרות ותנועות בשני חשבונות בנק הפועלים…';
-  let leaseToken='',leaseHeld=false,lease=null,heartbeat=null,assertOwner,assertConnection;
-  const assertCurrent=()=>{assertOwner();assertConnection();heartbeat?.assertCurrent()};
+  let lease=null,leaseSession=null,assertOwner,assertConnection;
+  const assertCurrent=()=>{assertOwner();assertConnection();leaseSession?.assertCurrent()};
   try{
     assertOwner=operationScope.capture();assertConnection=connections.queries.capture();render();
     if(auto){
@@ -138,12 +135,11 @@ async function refreshBankBalance({interactive=false,auto=false,isCurrent=()=>tr
       if(!bankAutoRefreshDue(sharedBankLastSyncAt(latest.state||model.state))){bridge.markAutoAttempt();return true}
       bridge.markAutoAttempt();
     }
-    leaseToken=uid('FINLEASE');
-    lease=await claimFinanceSyncLease('bank',leaseToken,{assertCurrent:assertOwner});leaseHeld=lease?.acquired===true;assertCurrent();
+    leaseSession=syncLeases.commands.acquire('bank',uid('FINLEASE'),{assertCurrent:()=>{assertOwner();assertConnection()}});
+    lease=await leaseSession.ready;assertCurrent();
     lease={...lease,assertCurrent};
     if(auto&&!allowed())return false;
-    if(!leaseHeld){financialFeedback.message='סינכרון הבנק כבר מתבצע ממחשב או חלון אחר; לא נפתחה כניסה נוספת לבנק.';if(!auto)toast(financialFeedback.message);return false}
-    heartbeat=startFinanceLeaseHeartbeat({...lease,assertCurrent:assertOwner},claimFinanceSyncLease,{setTimer:timers.setTimeout.bind(timers),clearTimer:timers.clearTimeout.bind(timers)});
+    if(!lease.acquired){financialFeedback.message='סינכרון הבנק כבר מתבצע ממחשב או חלון אחר; לא נפתחה כניסה נוספת לבנק.';if(!auto)toast(financialFeedback.message);return false}
     const finance=await refreshFinanceCloudSnapshot({assertCurrent});assertCurrent();
     if(auto){if(!allowed())return false;if(!finance?.verified)throw new Error('לא ניתן לאמת מחדש את זמן סנכרון הבנק לאחר תפיסת הנעילה');if(!bankAutoRefreshDue(sharedBankLastSyncAt(finance.state||model.state)))return true}
     const archiveInitialized=finance?.state?.bank?.archiveInitialized===true,archiveVersion=Number(finance?.state?.bank?.archiveVersion||0),archiveReady=archiveInitialized&&archiveVersion>=2;
@@ -200,9 +196,8 @@ async function refreshBankBalance({interactive=false,auto=false,isCurrent=()=>tr
     financialFeedback.resultReady=true;render();
     return false;
   }finally{
-    await heartbeat?.stop();
-    if(leaseHeld)try{
-      await releaseFinanceSyncLease('bank',leaseToken,{assertCurrent:assertOwner});
+    try{
+      await leaseSession?.close();
     }catch(error){
       if(!scopeChanged(error))console.error('bank sync lease release',error);
     }
@@ -236,9 +231,15 @@ function startAutoSync(){if(disposed)return false;automaticActive=true;automatic
 function stopAutoSync(){automaticActive=false;return autoTask.stop()}
 
 const runtime={
-  isPending:workOwner.isPending,
-  drain:workOwner.drain,
-  dispose(){if(disposed)return false;disposed=true;workOwner.close();stopAutoSync();return true},
+  isPending:()=>workOwner.isPending()||syncLeases.runtime.isPending(),
+  async drain(){
+    await Promise.all([workOwner.drain(),syncLeases.runtime.drain()]);
+  },
+  dispose(){
+    if(disposed)return false;
+    disposed=true;workOwner.close();stopAutoSync();syncLeases.runtime.dispose();
+    return true;
+  },
 };
 return {
   bankBridgeUiState,bankLocalSnapshotState:localSnapshot.state,

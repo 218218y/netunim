@@ -1030,3 +1030,15 @@ publication delegates archive execution (7 -> 5 ports). Full workflow ASTs,
 strict implementations/negative consumers, actual body mutations and native
 Kupa/Orders journal recovery protect the alignment. See
 [Bank path alignment](BANK_PATH_ALIGNMENT.md).
+
+All four Bank/Credit provider flows now use a strict three-port Finance lease
+operation owner. Four baseline regressions proved disposed Bank/Finance timers
+were retained and Kupa Credit lost same-account cleanup authority. Acquisition,
+renewal and release now have one session lifetime: disposal cancels wakeups,
+accepted acquisition/renewal/provider work stays joined, and release uses only
+captured account/storage authority after that work settles. Controller heartbeat
+construction and flat lease callbacks are retired; Kupa Credit decreases from
+16 to 15 collaborators. Immutable full refresh ASTs retain provider, freshness,
+merge, publication and cooldown policy. Strict implementation mutations and
+native HTTP/Main/Shared IDB/recovery cover the new boundary. See
+[lease operation owner](FINANCE_LEASE_OPERATION_OWNER.md).

@@ -33,7 +33,7 @@ FLOW = r"""(async()=>{
  const durableBefore=JSON.stringify(await db.load(identity)),sharedBefore=JSON.stringify(await db.load(owner+':shared-checks')),sharedStateBefore=JSON.stringify((await sharedChecksV2.recoverReadOnly()).state);
  localStorage.setItem('netunim_kupa_bank_bridge_token_v1','fixture-pairing');
  for(const key of ['netunim_kupa_bank_auto_daily_v1','netunim_orders_bank_auto_daily_v1','netunim_orders_credit_auto_daily_v1'])localStorage.setItem(key,'0');
- cloudTransport.claimFinanceSyncLease=async()=>({acquired:true,leaseName:'bank',leaseToken:'fixture',fenceEpoch:1});cloudTransport.releaseFinanceSyncLease=async()=>true;
+ cloudTransport.claimFinanceSyncLease=async(leaseName,leaseToken)=>({acquired:true,leaseName,leaseToken,fenceEpoch:1});cloudTransport.releaseFinanceSyncLease=async()=>true;
  if(kupa)checks.commands.sync=async()=>true;else checks.commands.sync=async()=>true;
  if(kupa)checks.queries.hasLocalWork=()=>false;else stateSnapshots.checksHaveLocalWork=()=>false;
  const readout=()=>({revision:bankRevision,financeRevision:bankRevision,state:{...(kupa?structuredClone(main.state):{creditSync:{profiles:[]}}),bank:structuredClone(remoteBank)}});

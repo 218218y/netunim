@@ -23,7 +23,7 @@ FLOW = r"""(async()=>{
  for(const key of ['netunim_kupa_bank_auto_daily_v1','netunim_kupa_credit_auto_daily_v1'])localStorage.setItem(key,'0');
  const gate=deferred(),entered=deferred(),originalFetch=globalThis.fetch;let released=0,writes=0,checksReads=0,drained=false,settled=false;
  const events=[],wait=async name=>{events.push(name);if(name===phase){entered.resolve();await gate.promise}};
- cloudTransport.claimFinanceSyncLease=async()=>({acquired:true,leaseName:'bank',leaseToken:'L',fenceEpoch:1});
+ cloudTransport.claimFinanceSyncLease=async(leaseName,leaseToken)=>({acquired:true,leaseName,leaseToken,fenceEpoch:1});
  cloudTransport.releaseFinanceSyncLease=async(_kind,_token,options)=>{options.assertCurrent();released++;return true};
  cloudTransport.readSupabaseDocument=async()=>({revision:Number(session.dbRevision),financeRevision:Number(session.financeRevision),state:{...structuredClone(state),bank:structuredClone(remote.bank)}});
  cloudTransport.readFinanceSyncDocument=async()=>({revision:1,state:structuredClone(remote)});
@@ -49,7 +49,7 @@ FLOW = r"""(async()=>{
    check(bank.runtime.isPending(),'accepted Bank work disappeared');check(!drained&&!settled,'accepted Bank work was abandoned');check(released===0,'lease released before accepted stage settled');
    const accepted=[...events];gate.resolve();check(await pending===false,'stale Bank result reported success');await draining;
    check(!bank.runtime.isPending(),'Bank work retained after drain');check(JSON.stringify(events)===JSON.stringify(accepted),'a later stage entered after authority ended');
-   check(writes===(phase==='publication'?1:0),'an unaccepted write entered');check(released===(action==='pairing'?1:0),'lease cleanup used replacement account/disposed authority');
+   check(writes===(phase==='publication'?1:0),'an unaccepted write entered');check(released===(action!=='account'?1:0),'lease cleanup used replacement account or lost same-account authority');
    check(JSON.stringify(state.bank)===beforeReadout,'stale Bank result replaced readout');
    check(JSON.stringify(await db.load(identity))===beforeMain,'publication changed Main journal');check(JSON.stringify(await db.load(sharedIdentity))===beforeShared,'publication changed Shared journal');
    check(state.notes.find(row=>row.id===note.id)?.content===note.content,'note identity/content lost');

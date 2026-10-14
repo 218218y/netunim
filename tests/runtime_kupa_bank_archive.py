@@ -27,7 +27,7 @@ FLOW = r"""(async()=>{
  try{
    if(['verification','race'].includes(caseName)){
      localStorage.setItem('netunim_kupa_bank_bridge_token_v1','fixture-pairing');
-     cloudTransport.claimFinanceSyncLease=async()=>({acquired:true,leaseName:'bank',leaseToken:'fixture',fenceEpoch:1});
+     cloudTransport.claimFinanceSyncLease=async(leaseName,leaseToken)=>({acquired:true,leaseName,leaseToken,fenceEpoch:1});
      cloudTransport.releaseFinanceSyncLease=async()=>{releases++;return true};
      cloudTransport.readSupabaseDocument=async()=>({revision:session.dbRevision,financeRevision:session.financeRevision,state:structuredClone(state)});
      cloudTransport.syncBankTransactionsSnapshot=async()=>({sourcePayload:[],result:{total_count:0}});

@@ -10,10 +10,24 @@ import {createUiCloud} from '../netunim-orders/site/assets/js/ui/cloud.js';
 const deferred=()=>{let resolve;const promise=new Promise(done=>{resolve=done});return {promise,resolve}};
 const stamp='2026-10-08T10:00:00.000Z';
 const transaction=id=>({id,date:stamp,processedDate:stamp,amount:12,currency:'ILS',status:'completed',description:id});
+for(const kind of ['Bank','Credit'])test(`Orders ${kind} disposal stops lease wakeups while retaining the accepted provider`,async t=>{
+  const f=fixture(t,{hold:kind.toLowerCase()+'-provider'}),api=f.create(),pending=api['refresh'+kind]();
+  await f.entered.promise;
+  try{
+    assert.ok(f.jobs.size>0,'lease renewal was not scheduled');
+    assert.equal(api.runtime.dispose(),true);
+    assert.equal(api.runtime.dispose(),false);
+    assert.equal(f.jobs.size,0,'disposed Finance retained a lease renewal timer');
+    assert.equal(api.runtime.isPending(),true,'accepted provider was dropped');
+    assert.equal(f.counts.release||0,0,'provider still owns the acquired lease');
+  }finally{f.release.resolve();await pending;await api.runtime.drain()}
+  assert.equal(f.counts.release,1,'same-account cleanup must release after disposal');
+  assert.deepEqual(f.checksSession,f.before);
+});
 for(const kind of ['Bank','Credit'])test(`Orders ${kind} joins accepted renewal before releasing its lease`,async t=>{
   const f=fixture(t,{hold:kind.toLowerCase()+'-provider'}),renewal=deferred();let tick,claims=0;
   t.mock.method(globalThis,'setTimeout',(fn,ms)=>{if(ms===400000)tick=fn;return 1});
-  f.ports.claimFinanceSyncLease=async()=>{if(++claims===2)await renewal.promise;return {acquired:true,leaseName:kind.toLowerCase(),leaseToken:'L',fenceEpoch:1}};
+  f.ports.claimFinanceSyncLease=async(leaseName,leaseToken)=>{if(++claims===2)await renewal.promise;return {acquired:true,leaseName,leaseToken,fenceEpoch:1}};
   const api=f.create(),pending=api['refresh'+kind]();await f.entered.promise;
   const accepted=tick();f.release.resolve();
   try{await new Promise(resolve=>setImmediate(resolve));assert.equal(f.counts.release||0,0,'Finance released before renewal settled')}
@@ -57,7 +71,7 @@ function fixture(t,{hold=null}={}){
     syncSharedChecksFromCloud:()=>phase('checks-'+(++checks),true),saveSharedChecksToCloud:async()=>true,checksHaveLocalWork:()=>false,
     readFinanceSyncDocument:options=>{options?.assertCurrent?.();return phase('finance-read',{revision:1,state:remote})},
     rpcSaveFinanceSync:async(candidate)=>{await phase('finance-save',null);remote=structuredClone(candidate);return {r:{ok:true},row:{revision:2,state:remote}}},
-    claimFinanceSyncLease:()=>phase('claim',{acquired:true,leaseName:'bank',leaseToken:'L',fenceEpoch:1}),releaseFinanceSyncLease:(_kind,_token,options)=>{options?.assertCurrent?.();return phase('release',true)},
+    claimFinanceSyncLease:(leaseName,leaseToken)=>phase('claim',{acquired:true,leaseName,leaseToken,fenceEpoch:1}),releaseFinanceSyncLease:(_kind,_token,options)=>{options?.assertCurrent?.();return phase('release',true)},
     saveBankSyncSnapshot:async bank=>{await phase('atomic',null);remote={...remote,bank};return {finance_revision:2,kupa_revision:2}},
     syncBankTransactionsSnapshot:()=>phase('archive',{sourcePayload:[],result:{total_count:0}}),readBankTransactions:()=>phase('archive-read',[]),readBankTransactionSnapshot:async()=>null,syncBankChequeImages:()=>phase('images',{warnings:[]}),
     setBankTransactionHandled:()=>phase('handled',{handled_at:stamp}),acknowledgeBankTransactionMissing:()=>phase('missing',{acknowledged_at:stamp}),acknowledgeBankTransactionAlert:()=>phase('alert',{acknowledged_at:stamp}),

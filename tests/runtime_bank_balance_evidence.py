@@ -26,7 +26,7 @@ FLOW=r"""(async()=>{
  const readout=()=>({revision,financeRevision:revision,state:{...(kupa?structuredClone(main.state):{creditSync:{profiles:[]}}),bank:structuredClone(remoteBank)}});
  if(kupa)cloudTransport.readSupabaseDocument=async()=>readout();else cloudTransport.readKupaReadOnlyCloud=async()=>readout();
  cloudTransport.readFinanceSyncDocument=async()=>({revision,state:{bank:structuredClone(remoteBank),creditSync:{profiles:[]}}});
- cloudTransport.claimFinanceSyncLease=async()=>({acquired:true,leaseName:'bank',leaseToken:'fixture',fenceEpoch:1});cloudTransport.releaseFinanceSyncLease=async()=>{releases++;return true};
+ cloudTransport.claimFinanceSyncLease=async(leaseName,leaseToken)=>({acquired:true,leaseName,leaseToken,fenceEpoch:1});cloudTransport.releaseFinanceSyncLease=async()=>{releases++;return true};
  checks.commands.sync=async()=>true;if(kupa)checks.queries.hasLocalWork=()=>false;else stateSnapshots.checksHaveLocalWork=()=>false;
  cloudTransport.syncBankTransactionsSnapshot=async()=>{archives++;return {sourcePayload:[],result:{total_count:0}}};cloudTransport.readBankTransactions=async()=>[];cloudTransport.readBankTransactionSnapshot=async()=>null;
  cloudTransport.saveBankSyncSnapshot=async candidate=>{commits++;remoteBank=structuredClone(candidate);revision=2;return {finance_revision:2,kupa_revision:2}};

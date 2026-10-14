@@ -27,7 +27,7 @@ FLOW = r"""(async()=>{
  };
  const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js'),db=createStorageJournalDb();
  const identity=owner+':kupa',shared=owner+':shared-checks',mainBefore=JSON.stringify(await db.load(identity)),sharedBefore=JSON.stringify(await db.load(shared));
- cloudTransport.claimFinanceSyncLease=async()=>{leases++;return {acquired:true,leaseName:'credit',leaseToken:'fixture',fenceEpoch:1}};cloudTransport.releaseFinanceSyncLease=async()=>true;
+ cloudTransport.claimFinanceSyncLease=async(leaseName,leaseToken)=>{leases++;return {acquired:true,leaseName,leaseToken,fenceEpoch:1}};cloudTransport.releaseFinanceSyncLease=async()=>true;
  cloudTransport.saveFinancePatch=async(mutator,_lease,options)=>{options?.assertCurrent?.();commits++;finance=JSON.parse(JSON.stringify(mutator({creditSync:state.creditSync})));return {saved:true,row:{revision:2,state:finance}}};
  cloudTransport.readSupabaseDocument=async()=>({revision:main.revision,financeRevision:finance?2:session.financeRevision,state:{...structuredClone(main.state),...structuredClone(finance||{creditSync:state.creditSync})}});
  const originalFetch=globalThis.fetch;

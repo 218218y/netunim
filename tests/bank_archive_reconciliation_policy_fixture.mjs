@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { declaration, tokens } from './bank_policy_ast_fixture.mjs';
+import {restoreFinanceLeaseOwnership} from './finance_lease_policy_fixture.mjs';
 const read = (name) => readFileSync(new URL('../shared/' + name + '.js', import.meta.url), 'utf8');
 export const archivePolicySource = () => read('bank-archive-policy');
 export const archiveCoreSource = () => read('bank-archive-reconciliation');
@@ -51,6 +52,7 @@ export function expandOrdersReconciliation(owner, shared = archiveCoreSource()) 
   return owner.slice(0, fetched.start) + header + sequence + owner.slice(guard.end);
 }
 export function restoreKupaReconciliation(controller, shared = archiveCoreSource()) {
+  controller=restoreFinanceLeaseOwnership(controller);
   const original=declaration(controller,'refreshBankBalance'),fetched=variable(original,'fetchedAt');
   if(!fetched.declarations.some(d=>d.id.name==='homeAccount')){
     const restored=tokens(controller.slice(fetched.start,fetched.end)).replace('businessAccount=accountIdOf(business);',"businessAccount=accountIdOf(business),homeAccount=home?accountIdOf(home):'';");

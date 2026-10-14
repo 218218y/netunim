@@ -22,7 +22,7 @@ FLOW = r"""(async()=>{
  checksSession.kupaCloudReadState=structuredClone(remote);checksSession.kupaReadRevision=1;checksSession.financeReadRevision=1;
  cloudTransport.readKupaReadOnlyCloud=async()=>({revision,financeRevision:revision,state:structuredClone(remote)});
  cloudTransport.readFinanceSyncDocument=async()=>({revision,state:structuredClone(remote)});
- cloudTransport.claimFinanceSyncLease=async()=>{leases++;return {acquired:true,leaseName:kind,leaseToken:'fixture',fenceEpoch:1}};cloudTransport.releaseFinanceSyncLease=async()=>true;
+ cloudTransport.claimFinanceSyncLease=async(leaseName,leaseToken)=>{leases++;return {acquired:true,leaseName,leaseToken,fenceEpoch:1}};cloudTransport.releaseFinanceSyncLease=async()=>true;
  cloudTransport.saveBankSyncSnapshot=async bank=>{commits++;remote={...remote,bank};revision++;return {finance_revision:revision,kupa_revision:revision}};
  cloudTransport.rpcSaveFinanceSync=async next=>{commits++;remote=structuredClone(next);revision++;return {r:{ok:true},row:{revision,state:remote}}};
  cloudTransport.syncBankTransactionsSnapshot=async()=>({sourcePayload:[],result:{total_count:0}});cloudTransport.readBankTransactions=async()=>[];cloudTransport.readBankTransactionSnapshot=async()=>null;

@@ -41,6 +41,8 @@
     "netunim-kupa/site/assets/js/domains/credit/connection-owner.js",
     "tests/fixtures/checked-credit-connection-owner.mjs",
     "shared/finance-lease-heartbeat.js",
+    "shared/finance-lease-owner.js",
+    "tests/fixtures/checked-finance-lease-owner.mjs",
     "tests/fixtures/checked-finance-lease-heartbeat.mjs",
     "netunim-kupa/site/assets/js/domains/bank/snapshot-commands.js",
     "tests/fixtures/checked-kupa-bank-snapshot.mjs",

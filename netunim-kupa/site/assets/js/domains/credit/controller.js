@@ -1,7 +1,6 @@
 import {createRuntimeTaskOwner} from '../../shared/runtime-task-owner.js';
 import {CREDIT_AUTO_INTERVAL_MS,creditRefreshDue as due} from '../../shared/finance-refresh-policy.js';
 import {applyCreditCardOrderData} from '../../shared/credit-card-order.js';
-import {startFinanceLeaseHeartbeat} from '../../shared/finance-lease-heartbeat.js';
 import {createPollingTask} from '../../shared/runtime-polling.js';
 import {createCreditPublication} from './publication.js';
 import {normalizeCreditAutoMode,normalizeCreditFetchMode,resolveCreditAutoSyncMode} from '../../shared/credit-sync-policy.js';
@@ -10,14 +9,15 @@ import {creditCardMappingKey,creditSyncScrapeSelection,mergeCreditSyncResult,nor
 
 const CREDIT_AUTO_RETRY_MS=24*60*60*1000;
 
-export function createDomainsCreditController({model,saveState,toast,render,renderStatus=render,bridge,preferences,connections,confirmDialog,autoScope,captureOperation:readOperation,timers=globalThis,refreshFinanceCloudSnapshot=async()=>({verified:true,state:model.state}),saveFinancePatch=async()=>({saved:false}),claimFinanceSyncLease=async()=>({acquired:true}),releaseFinanceSyncLease=async()=>true}){
+export function createDomainsCreditController({model,saveState,toast,render,renderStatus=render,bridge,preferences,connections,confirmDialog,autoScope,captureOperation:readOperation,timers=globalThis,refreshFinanceCloudSnapshot=async()=>({verified:true,state:model.state}),saveFinancePatch=async()=>({saved:false}),syncLeases}){
   if(typeof autoScope!=='function')throw new Error('credit_auto_scope_required');
   if(typeof readOperation!=='function')throw new Error('credit_operation_scope_required');
   if(!preferences||!['read','setEnabled','setMode','markAttempt','reset'].every(key=>typeof preferences[key]==='function'))throw new Error('credit_preferences_port_required');
   for(const method of ['snapshot','supported','connectionProfile','capture','tokenConfigured','refreshStatus'])if(typeof connections?.queries?.[method]!=='function')throw new TypeError(`credit_connection_query_${method}_required`);
   for(const method of ['copyDiagnostics','exportData','saveConnection','deleteConnection'])if(typeof connections?.commands?.[method]!=='function')throw new TypeError(`credit_connection_command_${method}_required`);
-  const work=createRuntimeTaskOwner(),heartbeats=new Set();let disposed=false;
-  const claimLease=(...args)=>tracked(claimFinanceSyncLease,...args);
+  if(typeof syncLeases?.commands?.acquire!=='function')throw new TypeError('credit_lease_acquire_required');
+  for(const method of ['isPending','drain','dispose'])if(typeof syncLeases?.runtime?.[method]!=='function')throw new TypeError('credit_lease_runtime_'+method+'_required');
+  const work=createRuntimeTaskOwner();let disposed=false;
   const captureOperation=()=>{
     const assertOwner=readOperation();
     return ()=>{if(disposed)throw Object.assign(new Error('credit_disposed'),{code:'FINANCE_OPERATION_SCOPE_CHANGED'});assertOwner()};
@@ -94,10 +94,10 @@ export function createDomainsCreditController({model,saveState,toast,render,rend
     if(auto&&!allowed())return false;
     if(local.busy)return;
     local.busy=true;local.error='';local.errorAt=null;if(auto)renderStatus();else render();
-    let leaseToken='',leaseHeld=false,lease=null,heartbeat=null,autoCreditSync=model.state.creditSync,assertCurrent,assertOwner;
+    let lease=null,leaseSession=null,autoCreditSync=model.state.creditSync,assertCurrent,assertOwner;
     try{
       const assertConnection=connections.queries.capture();
-      assertOwner=captureOperation();assertCurrent=()=>{assertOwner();assertConnection();heartbeat?.assertCurrent()};
+      assertOwner=captureOperation();assertCurrent=()=>{assertOwner();assertConnection();leaseSession?.assertCurrent()};
       if(auto){
         const latest=await refreshFinanceCloudSnapshot({assertCurrent});
         assertCurrent();
@@ -107,13 +107,11 @@ export function createDomainsCreditController({model,saveState,toast,render,rend
         if(!due(autoCreditSync?.syncedAt))return markAutoAttempt();
         if(!markAutoAttempt())return false;
       }
-      leaseToken=uid('FINLEASE');
-      lease=await claimLease('credit',leaseToken,{assertCurrent});leaseHeld=lease?.acquired===true;
+      leaseSession=syncLeases.commands.acquire('credit',uid('FINLEASE'),{assertCurrent:()=>{assertOwner();assertConnection()}});
+      lease=await leaseSession.ready;
       assertCurrent();lease={...lease,assertCurrent};
       if(auto&&!allowed())return false;
-      if(!leaseHeld){if(!auto)toast('סינכרון אשראי כבר מתבצע ממחשב או חלון אחר. לא נפתחה כניסה נוספת לחברות האשראי.');return false}
-      heartbeat=startFinanceLeaseHeartbeat({...lease,assertCurrent:assertOwner},claimLease,{setTimer:timers.setTimeout.bind(timers),clearTimer:timers.clearTimeout.bind(timers)});
-      heartbeats.add(heartbeat);
+      if(!lease.acquired){if(!auto)toast('סינכרון אשראי כבר מתבצע ממחשב או חלון אחר. לא נפתחה כניסה נוספת לחברות האשראי.');return false}
       if(auto){const latest=await refreshFinanceCloudSnapshot({assertCurrent});assertCurrent();if(!allowed())return false;if(!latest?.verified)throw new Error('לא ניתן לאמת מחדש את זמן סנכרון האשראי לאחר תפיסת הנעילה');autoCreditSync=latest.state?.creditSync||autoCreditSync;if(!due(autoCreditSync?.syncedAt))return true}
       const status=connections.queries.snapshot().status||await refreshCreditBridgeStatus();
       assertCurrent();
@@ -149,10 +147,8 @@ export function createDomainsCreditController({model,saveState,toast,render,rend
     }
     // A former account's lease expires by TTL; never release it using a new login.
     finally{
-      await heartbeat?.stop();
-      heartbeats.delete(heartbeat);
-      if(leaseHeld)try{
-        await releaseFinanceSyncLease('credit',leaseToken,{assertCurrent:assertOwner});
+      try{
+        await leaseSession?.close();
       }catch(error){
         if(error.code!=='FINANCE_OPERATION_SCOPE_CHANGED')console.error('credit sync lease release',error);
       }
@@ -221,13 +217,12 @@ export function createDomainsCreditController({model,saveState,toast,render,rend
 
   function tracked(method,...args){return disposed?Promise.resolve(false):work.run(()=>method(...args))}
   const runtime={
-    isPending:work.isPending,
-    async drain(){do{await work.drain();await autoTask.drain()}while(work.isPending())},
+    isPending:()=>work.isPending()||syncLeases.runtime.isPending(),
+    async drain(){do{await Promise.all([work.drain(),autoTask.drain(),syncLeases.runtime.drain()])}while(runtime.isPending())},
     dispose(){
       if(disposed)return false;
       disposed=true;work.close();stopAutoSync();
-      for(const heartbeat of heartbeats)heartbeat.stop();
-      heartbeats.clear();return true;
+      syncLeases.runtime.dispose();return true;
     },
   };
   const methods={refreshCreditBridgeStatus,copySafeCreditDiagnostics,exportCreditDataDiagnostics,saveCreditConnection,

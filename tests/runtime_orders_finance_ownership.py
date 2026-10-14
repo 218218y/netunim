@@ -20,7 +20,7 @@ FLOW = r"""(async()=>{
  localStorage.setItem('netunim_kupa_bank_bridge_token_v1','fixture-pairing');
  localStorage.setItem('netunim_orders_bank_auto_daily_v1','0');localStorage.setItem('netunim_orders_credit_auto_daily_v1','0');
  const entered=deferred(),provider=deferred(),saving=deferred(),saved=deferred();let publications=0,archives=0,releases=0;
- cloudTransport.claimFinanceSyncLease=async()=>({acquired:true,leaseName:kind.toLowerCase(),leaseToken:'fixture',fenceEpoch:1});
+ cloudTransport.claimFinanceSyncLease=async(leaseName,leaseToken)=>({acquired:true,leaseName,leaseToken,fenceEpoch:1});
  cloudTransport.releaseFinanceSyncLease=async(_kind,_token,options)=>{options?.assertCurrent?.();releases++;return true};
  cloudTransport.readKupaReadOnlyCloud=async()=>({revision:kupaReadRevision,financeRevision,state:structuredClone(remoteFinance)});
  cloudTransport.readFinanceSyncDocument=async()=>({revision:financeRevision,state:structuredClone(remoteFinance)});

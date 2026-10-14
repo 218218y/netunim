@@ -40,7 +40,7 @@ function fixture(t,site,body,{heads={revision:4,financeRevision:9}}={}){
     sharedChecksHaveLocalWork:()=>false,checksHaveLocalWork:()=>false,getSharedChecks:()=>[],saveSharedChecksToCloud:async()=>true,syncSharedChecksFromCloud:async()=>true,sharedChecksObservedSequence:()=>0,bridge,
     refreshFinanceCloudSnapshot:async()=>{reads++;return {verified:true,state:model.state,...heads}},
     refreshKupaReadout:async()=>{reads++;if(serverBank)checksSession.kupaCloudReadState={...structuredClone(state),bank:structuredClone(serverBank)};return true},
-    claimFinanceSyncLease:async()=>({acquired:true,leaseName:'bank',leaseToken:'L',fenceEpoch:1}),releaseFinanceSyncLease:async()=>true,
+    claimFinanceSyncLease:async(leaseName,leaseToken)=>({acquired:true,leaseName,leaseToken,fenceEpoch:1}),releaseFinanceSyncLease:async()=>true,
     saveBankSyncSnapshot:(...args)=>transport.saveBankSyncSnapshot(...args),syncBankTransactionsSnapshot:async()=>({sourcePayload:[],result:{total_count:0}}),
     readBankTransactions:async()=>[{id:'candidate-archive',date:stamp,amount:12}],readBankTransactionSnapshot:async()=>null,syncBankChequeImages:async()=>({warnings:[]}),
   };

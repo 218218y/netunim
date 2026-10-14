@@ -1,6 +1,7 @@
 import {createFinanceBridgeIntegration} from '../integrations/bank-bridge.js';
 import {createFinanceBrowserEffects} from '../shared/finance-browser-effects.js';
 import {createFinanceOperationScope} from '../shared/finance-fence.js';
+import {createFinanceLeaseOwner} from '../shared/finance-lease-owner.js';
 import {createDomainsBankSelectors} from '../domains/bank/selectors.js';
 import {createDomainsBankCache} from '../domains/bank/cache.js';
 import {createDomainsFinanceController} from '../domains/finance/controller.js';
@@ -46,6 +47,9 @@ export function createOrdersFinanceCapability({
     const access = readAccess();
     return {...access, readable:access.readable && !disposed, writable:access.writable && !disposed};
   }});
+  // Cleanup retains account/storage authority independently of this capability's
+  // lifetime. A changed login or leadership still leaves the former lease to TTL.
+  const leaseAuthority = createFinanceOperationScope({readAccess});
   const selectors = createDomainsBankSelectors({model});
   const images = createOrdersBankChequeImageRuntime({cloudAuth:auth, bridge, operationScope});
 
@@ -167,7 +171,7 @@ export function createOrdersFinanceCapability({
       policy:createOrdersBankSnapshotPolicy(),
     });
     controller = createDomainsFinanceController({
-      documents,syncLeases,archive,connections,bankConnections,bankSnapshots,
+      documents,syncLeases:createFinanceLeaseOwner({leases:syncLeases,authority:leaseAuthority,timers:platform.timers??globalThis}),archive,connections,bankConnections,bankSnapshots,
       tab, checksSession, bridge, operationScope, effects:controllerEffects,
       loadSession:auth.loadSession, toast:(...args) => { if (!disposed) toast(...args); }, getSharedChecks:() => model.state.checks,
       refreshKupaReadout:(...args) => cache.refreshKupaReadout(...args),

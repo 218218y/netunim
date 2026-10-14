@@ -11,6 +11,7 @@ import {createFinanceBrowserEffects} from '../shared/finance-browser-effects.js'
 import {createLazyDeferredSearchUpdater} from '../shared/search-scheduler.js';
 import {createCreditConnectionDialog} from '../ui/credit-connection-dialog.js';
 import {createRuntimeTaskOwner} from '../shared/runtime-task-owner.js';
+import {createFinanceLeaseOwner} from '../shared/finance-lease-owner.js';
 import {createCreditCardOrderView} from '../shared/credit-card-order-view.js';
 import {esc} from '../core/values.js';
 
@@ -57,7 +58,10 @@ export function createKupaCreditRuntime({model,ui,platform={}}){
       renderStatus:(...args)=>{if(!disposed)presentation.renderStatus(...args)},
       confirmDialog:async(...args)=>!disposed&&await presentation.confirmDialog(...args)&&!disposed,
       refreshFinanceCloudSnapshot:(...args)=>cloud.refresh(...args),saveFinancePatch:(...args)=>cloud.commit(...args),
-      claimFinanceSyncLease:(...args)=>cloud.claimLease(...args),releaseFinanceSyncLease:(...args)=>cloud.releaseLease(...args),
+      syncLeases:createFinanceLeaseOwner({
+        leases:{claim:(...args)=>cloud.claimLease(...args),release:(...args)=>cloud.releaseLease(...args)},
+        authority:authority.scope,timers:platform.timers??globalThis,
+      }),
     });
   }
   const commands=Object.fromEntries([

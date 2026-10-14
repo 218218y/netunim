@@ -1,4 +1,5 @@
 import { createDomainsBankController } from '../netunim-kupa/site/assets/js/domains/bank/controller.js';
+import {createFinanceLeaseOwner} from '../shared/finance-lease-owner.js';
 import { createKupaBankConnectionOwner, KUPA_BANK_BRIDGE_MINIMUM_VERSION } from '../netunim-kupa/site/assets/js/domains/bank/connection-owner.js';
 import { createKupaBankArchiveReadout } from '../netunim-kupa/site/assets/js/domains/bank/archive-readout.js';
 import {createBankArchiveReconciliation} from '../shared/bank-archive-reconciliation.js';
@@ -36,10 +37,10 @@ export function createKupaBankControllerFixture(ports) {
     throw new Error('unexpected Bank fixture cloud publication');
   };
   const syncLeases = {
-    claim: pick('claimFinanceSyncLease', async () => ({
+    claim: pick('claimFinanceSyncLease', async (leaseName,leaseToken) => ({
       acquired: true,
-      leaseName: 'bank',
-      leaseToken: 'fixture',
+      leaseName,
+      leaseToken,
       fenceEpoch: 1,
     })),
     release: pick('releaseFinanceSyncLease', async () => true),
@@ -105,7 +106,7 @@ export function createKupaBankControllerFixture(ports) {
       archive,
       archiveReconciliation,
       snapshots,
-      syncLeases,
+      syncLeases:createFinanceLeaseOwner({leases:syncLeases,authority:ports.operationScope,timers:ports.timers??globalThis}),
       readFinance,
       connections,
     }),

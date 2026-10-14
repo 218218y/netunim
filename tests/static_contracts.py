@@ -943,25 +943,29 @@ ok("row.financeRevision=Number(financeResult.value.revision||0)" in kupa_transpo
 ok("financeReadRevision" in orders_bank_cache and "financeRev<=Number(checksSession.financeReadRevision||0)" in orders_bank_cache
    and "row.financeRevision=Number(finance?.revision||0)" in orders_transport,
    "Orders finance freshness: read-only Kupa cache tracks finance_sync_documents revision independently of kupa_documents")
-for controller, kind, bridge_call, claim_name in (
-    (kupa_bank_controller,"bank","bridge.fetchBalance","claimFinanceSyncLease"),
-    (kupa_credit_controller,"credit","bridge.syncCreditCards","claimLease"),
-    (orders_finance_controller,"bank","bridge.fetchBalance","claimFinanceSyncLease"),
-    (orders_finance_controller,"credit","bridge.syncCreditCards","claimFinanceSyncLease"),
+for controller, kind, bridge_call in (
+    (kupa_bank_controller,"bank","bridge.fetchBalance"),
+    (kupa_credit_controller,"credit","bridge.syncCreditCards"),
+    (orders_finance_controller,"bank","bridge.fetchBalance"),
+    (orders_finance_controller,"credit","bridge.syncCreditCards"),
 ):
-    claim=f"{claim_name}('{kind}'"
-    ok(claim in controller and controller.index(claim)<controller.index(bridge_call),
-       f"distributed finance lease: {kind} claim happens before opening the local Bridge session")
+    claim=f"syncLeases.commands.acquire('{kind}'"
+    before_provider=controller[controller.find(claim):controller.find(bridge_call)]
+    ok(claim in controller and "await leaseSession.ready" in before_provider and "if(!lease.acquired)" in before_provider,
+       f"distributed finance lease: {kind} confirmed acquisition happens before opening the local Bridge session")
 ok("remoteLeaseTokens" in kupa_finance_cloud and "cloudTransport.claimFinanceSyncLease(" in kupa_finance_cloud
    and "return {acquired:true,localOnly:true}" in kupa_finance_cloud
    and "claimLease:financeCloud.claimFinanceSyncLease" in kupa_finance_composition and "credit.bindServices({" in kupa_finance_composition and "composeKupaFinance({" in kupa_main
-   and "const claimLease=(...args)=>tracked(claimFinanceSyncLease,...args)" in kupa_credit_controller
+   and "syncLeases.commands.acquire('credit'" in kupa_credit_controller
    and "claim:(...args)=>cloud.claimFinanceSyncLease(...args)" in orders_finance_composition_compact
    and "release:(...args)=>cloud.releaseFinanceSyncLease(...args)" in orders_finance_composition_compact
    and "leases:syncLeases" in orders_finance_composition_compact
-   and "documents,syncLeases" in orders_finance_composition_compact
-   and "claimFinanceSyncLease=syncLeases.claim" in orders_finance_controller_compact
-   and "releaseFinanceSyncLease=syncLeases.release" in orders_finance_controller_compact
+   and "documents,syncLeases:createFinanceLeaseOwner({leases:syncLeases,authority:leaseAuthority" in orders_finance_composition_compact
+   and "constleaseAuthority=createFinanceOperationScope({readAccess})" in orders_finance_composition_compact
+   and "syncLeases.runtime.dispose()" in orders_finance_controller_compact
+   and "awaitleaseSession?.close()" in orders_finance_controller_compact
+   and "authority:authority.scope" in (K / "site/assets/js/composition/bank.js").read_text(encoding="utf-8")
+   and "authority:authority.scope" in (K / "site/assets/js/composition/credit.js").read_text(encoding="utf-8")
    and 'finance.bindCore({cloud:cloudTransport,' in re.sub(r'\s+','',orders_main),
    "distributed finance lease: both composition roots wire the shared Supabase lease and Kupa preserves local-only mode")
 ok("SUPA_NETWORK_ATTEMPTS=3" in kupa_cloud_auth and "fetchSupaNetwork" in kupa_cloud_auth and "method==='GET'||method==='HEAD'" in kupa_cloud_auth

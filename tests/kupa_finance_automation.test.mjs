@@ -22,7 +22,7 @@ function fixture(kind,t){
   const ports={effects:createFinanceBrowserEffects(),model,session,checksSession:{},captureOperation:()=>{const observed=scope;return ()=>{if(!scope||observed!==scope||!tab.primaryTab||!session.backendReady)throw Object.assign(new Error('fixture finance access changed'),{code:'FINANCE_OPERATION_SCOPE_CHANGED'})}},autoScope:()=>session.backendReady&&tab.primaryTab&&navigator.onLine!==false?scope:null,saveState:async(...args)=>{writes.push(args);return true},saveFinancePatch:async mutator=>({saved:true,row:{revision:2,state:mutator(model.state)}}),toast:()=>{},render:()=>{},modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,
     sharedChecksHaveLocalWork:()=>false,syncSharedChecksFromCloud:async()=>true,sharedChecksObservedSequence:()=>0,
     refreshFinanceCloudSnapshot:()=>cloud.promise,
-    claimFinanceSyncLease:async()=>{claims++;return leaseRead?leaseRead():{acquired:true,leaseName:kind,leaseToken:'L',fenceEpoch:1}},releaseFinanceSyncLease:async(_kind,_token,options)=>{options?.assertCurrent?.();releases++;return true},
+    claimFinanceSyncLease:async(leaseName,leaseToken)=>{claims++;const grant=leaseRead?await leaseRead():{acquired:true,fenceEpoch:1};return {...grant,leaseName,leaseToken}},releaseFinanceSyncLease:async(_kind,_token,options)=>{options?.assertCurrent?.();releases++;return true},
     bridge:{getBridgeToken:()=> 'paired',autoEnabled:()=>values.get('bank-auto')!=='0',setAutoEnabled:on=>values.set('bank-auto',on?'1':'0'),autoAttemptDelayMs:()=>0,markAutoAttempt:()=>{},creditStatus:()=>{statusReads++;return status.promise},
       syncCreditCards:async()=>{attempts++;throw new Error('fixture provider attempt')},fetchBalance:async()=>{attempts++;throw new Error('fixture provider attempt')}},
   };
@@ -32,6 +32,23 @@ function fixture(kind,t){
   return {api,ports,model,session,tab,values,jobs,reports,writes,scope:value=>{scope=value},lease:fn=>{leaseRead=fn},attempts:()=>attempts,claims:()=>claims,releases:()=>releases,statusReads:()=>statusReads,
     releaseStatus:()=>status.resolve({bridgeVersion:74,contractVersion:2,profiles:[{profileId:'P'}]}),releaseCloud:()=>cloud.resolve({verified:true,state:model.state})};
 }
+
+for(const kind of ['bank','credit'])test(`Kupa ${kind} disposal stops lease wakeups while retaining the accepted provider`,async t=>{
+  const f=fixture(kind,t),provider=deferred(),entered=deferred();
+  f.ports.bridge[kind==='bank'?'fetchBalance':'syncCreditCards']=()=>{entered.resolve();return provider.promise};
+  f.releaseCloud();f.releaseStatus();
+  const pending=kind==='bank'?f.api.refreshBankBalance():f.api.refreshCreditSync();
+  await entered.promise;
+  try{
+    assert.ok([...f.jobs.values()].some(job=>job.delay===400000),'lease renewal was not scheduled');
+    assert.equal(f.api.runtime.dispose(),true);
+    assert.equal(f.api.runtime.dispose(),false);
+    assert.equal(f.jobs.size,0,'disposed capability retained a lease renewal timer');
+    assert.equal(f.releases(),0,'provider still owns the acquired lease');
+  }finally{provider.resolve({});await pending;await f.api.runtime.drain()}
+  assert.equal(f.releases(),1,'same-account cleanup must release after disposal');
+  assert.equal(f.writes.length,0);
+});
 
 test('credit opt-out during Bridge status prevents a new issuer session',async t=>{
   const f=fixture('credit',t),pending=f.api.maybeAutoRefreshCreditSync();await settle();

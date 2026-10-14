@@ -429,6 +429,13 @@ test('a cloud flight decoder cannot publish an unchecked string sequence',()=>{
   assert.ok(diagnostics.some(item=>path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
 });
 
+test('the actual Finance lease owner cannot return an ACK from cleanup',()=>{
+  const source=path.join(root,'shared/finance-lease-owner.js'),original=readFileSync(source,'utf8');
+  const changed=original.replace('return closing;', 'return true;');
+  assert.notEqual(changed,original);const diagnostics=check(new Map([[source,changed]]));
+  assert.ok(diagnostics.some(item=>path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+});
+
 test('the command fails closed when the configured offline compiler is absent',()=>{
   const result=spawnSync(process.execPath,[path.join(root,'tools/typecheck.mjs')],{
     cwd:root,encoding:'utf8',env:{...process.env,NETUNIM_OFFLINE_NODE_MODULES:path.join(root,'tests/fixtures/no-installed-node-modules')},

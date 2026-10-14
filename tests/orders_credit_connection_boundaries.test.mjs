@@ -55,7 +55,7 @@ test('Orders connection owner has five required ports and only the canonical acc
   ])
     assert.ok(!source.includes('bridge.' + name), name);
   assert.ok(!source.includes('local.creditStatus'));
-  assert.ok(source.includes('assertOwner();assertConnection();heartbeat?.assertCurrent()'));
+  assert.ok(source.includes('assertOwner();assertConnection();leaseSession?.assertCurrent()'));
 });
 test('Orders Finance lifecycle joins local, financial, archive and confirmation owners', () => {
   const source = read('netunim-orders/site/assets/js/composition/finance.js');

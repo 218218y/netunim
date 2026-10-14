@@ -20,7 +20,7 @@ FLOW = r"""(async()=>{
  const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');const db=createStorageJournalDb(),identity=owner+':kupa',durableBefore=JSON.stringify(await db.load(identity));
  localStorage.setItem('netunim_kupa_bank_bridge_token_v1','fixture-pairing');localStorage.setItem('netunim_kupa_credit_auto_daily_v1','0');
  const entered=deferred(),provider=deferred(),saving=deferred(),saved=deferred();let publications=0,releases=0;
- cloudTransport.claimFinanceSyncLease=async()=>({acquired:true,leaseName:'credit',leaseToken:'fixture',fenceEpoch:1});
+ cloudTransport.claimFinanceSyncLease=async(leaseName,leaseToken)=>({acquired:true,leaseName,leaseToken,fenceEpoch:1});
  cloudTransport.releaseFinanceSyncLease=async()=>{releases++;return true};
  cloudTransport.saveFinancePatch=async(mutator,_lease,options)=>{
    options?.assertCurrent?.();publications++;const next=mutator({creditSync:state.creditSync});
