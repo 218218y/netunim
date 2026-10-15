@@ -531,3 +531,13 @@ guards, numeric counts/audits and asynchronous accepted-work drain are enforced.
 Negative consumers and actual count/drain mutations prove rejection. Application
 publication adapters and complete RPC/controller payload typing remain separate
 work. See BANK_PATH_ALIGNMENT.md.
+
+## Finance transaction authority continuation
+
+The actual shared lease RPC transport and manual edit queue/scope/fence bodies
+are now checked, with generated-app negative consumers and implementation
+mutations. Request/body rejection and response completion must retain captured
+account authority. Manual work requires exact token/fence evidence. See
+[Finance transaction authority](FINANCE_TRANSACTION_AUTHORITY.md). Wider journal
+and business RPC caller coverage remains incremental; the complete cloud
+transports and business controllers are not claimed statically covered.

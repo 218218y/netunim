@@ -57,3 +57,8 @@ and an offline/PWA ordering gate first.
 
 These are the next three independently verified and merged slices. Measured
 startup, compatibility inventory and final release validation remain separate.
+
+Stage 4 merged as PR #187 after the exact branch head passed the full gate.
+Stage 5 unifies and checks the real Finance lease RPC boundary and manual edit
+consumer, including the proved Kupa release-body scope gap; see
+FINANCE_TRANSACTION_AUTHORITY.md. Unrelated journal/provider policies remain.

@@ -3,7 +3,7 @@ import {beginMeasure} from '../shared/runtime-performance.js';
 import {financeFencePayload,createFinanceManualQueue} from '../shared/finance-fence.js';
 import {readBankSnapshotReceipt} from '../shared/bank-snapshot-receipt.js';
 import {readFinanceWriteReceipt} from '../shared/finance-write-receipt.js';
-import {readFinanceLeaseReceipt} from '../shared/finance-lease-receipt.js';
+import {createFinanceLeaseTransport} from '../shared/finance-lease-transport.js';
 import {assertReadableCloudState,assertValidCloudState} from '../state/validation.js';
 import {normalizeSharedChecks} from '../shared/shared-checks-contract.js';
 import {SHARED_CHECKS_DOC, SHARED_CHECKS_TABLE, SHARED_CHECKS_RPC} from '../state/constants.js';
@@ -29,6 +29,7 @@ function contentionBackoff(attempt=0){return new Promise(resolve=>setTimeout(res
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createCloudTransport({session, supaRest, localResetReadOnlyFetch}){
+const {claimFinanceSyncLease,releaseFinanceSyncLease}=createFinanceLeaseTransport({request:supaRest,ttlSeconds:FINANCE_LEASE_TTL_SECONDS});
 const {rpcSaveCloudV2}=createMainDocumentWrite({documentName:()=>session.cloudDocumentName,request:(...args)=>supaRest(...args),validate:assertValidCloudState,beginMeasure});
 const manualFinanceQueue=createFinanceManualQueue({claim:claimFinanceSyncLease,release:releaseFinanceSyncLease,createToken:()=>createOperationId('finance-manual')});
 
@@ -107,24 +108,9 @@ async function rpcSaveFinanceSync(state,expectedRevision,operationId,audit={},le
   const r=await supaRest(`/rest/v1/rpc/${FINANCE_RPC}_v6`,{method:'POST',networkRetry:true,dataPriority:'high',...(assertCurrent?{assertRequestScope:assertCurrent}:{}),body:JSON.stringify({p_document_name:FINANCE_DOC,p_expected_revision:expected,p_state:state,p_operation_id:op,p_audit:audit,...financeFencePayload(lease)})});
   const body=await r.text();assertCurrent?.();let j;try{j=body?JSON.parse(body):null}catch{j=null}return {r,j,body,row:Array.isArray(j)?j[0]:j};
 }
-function financeLeaseName(value){const name=String(value||'').trim();if(name!=='bank'&&name!=='credit')throw new Error('סוג נעילת הסינכרון הפיננסי אינו תקין');return name}
-async function claimFinanceSyncLease(leaseName,leaseToken,{ttlSeconds=FINANCE_LEASE_TTL_SECONDS,assertCurrent}={}){
-  assertCurrent?.();
-  const name=financeLeaseName(leaseName),token=String(leaseToken||'').trim(),ttl=Math.max(60,Math.min(1800,Math.trunc(Number(ttlSeconds)||FINANCE_LEASE_TTL_SECONDS)));
-  if(!token)throw new Error('מזהה נעילת הסינכרון הפיננסי חסר');
-  let r;try{r=await supaRest('/rest/v1/rpc/claim_finance_sync_lease',{method:'POST',body:JSON.stringify({p_lease_name:name,p_lease_token:token,p_ttl_seconds:ttl}),networkRetry:true,...(assertCurrent?{assertRequestScope:assertCurrent}:{})})}catch(error){if(String(error?.code||'').startsWith('SUPABASE_NETWORK_')){const e=new Error('לא ניתן לקבל כרגע נעילת סינכרון מהענן. לא נפתחה כניסה לבנק או לחברת האשראי כדי למנוע סינכרון כפול ממחשב אחר.');e.code='FINANCE_LEASE_CLOUD_UNAVAILABLE';e.cause=error;throw e}throw error}
-  const body=await r.text();assertCurrent?.();let j;try{j=body?JSON.parse(body):null}catch{j=null}
-  if(!r.ok)throw new Error(j?.message||j?.hint||body||'תפיסת נעילת הסינכרון המשותפת נכשלה');
-  return readFinanceLeaseReceipt(j,{leaseName:name,leaseToken:token});
-}
-async function releaseFinanceSyncLease(leaseName,leaseToken,{assertCurrent}={}){
-  assertCurrent?.();
-  const name=financeLeaseName(leaseName),token=String(leaseToken||'').trim();if(!token)return false;
-  const r=await supaRest('/rest/v1/rpc/release_finance_sync_lease',{method:'POST',body:JSON.stringify({p_lease_name:name,p_lease_token:token}),networkRetry:true,...(assertCurrent?{assertRequestScope:assertCurrent}:{})});
-  const body=await r.text();let j;try{j=body?JSON.parse(body):null}catch{j=null}
-  if(!r.ok)throw new Error(j?.message||j?.hint||body||'שחרור נעילת הסינכרון המשותפת נכשל');
-  const value=Array.isArray(j)?j[0]:j;return value===true||value?.released===true;
-}
+
+
+
 async function saveFinancePatch(mutator,lease=null,{assertCurrent=lease?.assertCurrent}={}){
   assertCurrent?.();
   if(!lease)return manualFinanceQueue(held=>saveFinancePatch(mutator,held),{assertCurrent});

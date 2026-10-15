@@ -1,7 +1,7 @@
 import {beginMeasure} from '../shared/runtime-performance.js';
 import {readBankSnapshotReceipt} from '../shared/bank-snapshot-receipt.js';
 import {financeFencePayload} from '../shared/finance-fence.js';
-import {readFinanceLeaseReceipt} from '../shared/finance-lease-receipt.js';
+import {createFinanceLeaseTransport} from '../shared/finance-lease-transport.js';
 import {assertValidOrderCloudState,validOrderCloudState} from '../state/validation.js';
 import {normalizeSharedChecks} from '../shared/shared-checks-contract.js';
 import {CLOUD_DOC, CLOUD_TABLE, CLOUD_RPC, SHARED_CHECKS_DOC, SHARED_CHECKS_TABLE, KUPA_READ_DOC, KUPA_READ_TABLE, SHARED_CHECKS_RPC} from '../state/constants.js';
@@ -12,6 +12,7 @@ const FINANCE_DOC='main',FINANCE_TABLE='finance_sync_documents',FINANCE_RPC='sav
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createCloudTransport({supaFetch,localResetReadOnlyFetch}){
+const {claimFinanceSyncLease,releaseFinanceSyncLease}=createFinanceLeaseTransport({request:supaFetch,ttlSeconds:FINANCE_LEASE_TTL_SECONDS});
 async function readCloud(){const r=await supaFetch(`/rest/v1/${CLOUD_TABLE}?document_name=eq.${encodeURIComponent(CLOUD_DOC)}&select=document_name,revision,state,updated_at`,{method:'GET'});const j=await r.json().catch(()=>null);if(!r.ok)throw new Error(j?.message||'קריאת הענן נכשלה');const row=Array.isArray(j)&&j.length?j[0]:null;if(row&&!validOrderCloudState(row.state))throw new Error('מסמך ניהול ההזמנות בענן עדיין אינו במבנה ה-cutover החדש. הסנכרון נעצר כדי למנוע מצב מפוצל.');return row}
 
 async function verifyLocalResetCloud(resetSession){
@@ -46,17 +47,9 @@ async function readFinanceSyncMeta({assertCurrent}={}){assertCurrent?.();const r
 async function readKupaReadOnlyCloud({assertCurrent}={}){assertCurrent?.();const [kr,finance]=await Promise.all([supaFetch(`/rest/v1/${KUPA_READ_TABLE}?document_name=eq.${encodeURIComponent(KUPA_READ_DOC)}&select=document_name,revision,state,updated_at`,{method:'GET',...(assertCurrent?{assertRequestScope:assertCurrent}:{})}),readFinanceSyncDocument({assertCurrent})]);assertCurrent?.();const j=await kr.json().catch(()=>null);assertCurrent?.();if(!kr.ok)throw new Error(j?.message||'קריאת נתוני הקופה לחישוב נכשלה');const row=Array.isArray(j)&&j.length?j[0]:null;if(row){row.financeRevision=Number(finance?.revision||0);row.financeUpdatedAt=finance?.updated_at||null;if(finance?.state){if(finance.state.bank){const kupaBank=row.state.bank&&typeof row.state.bank==='object'?row.state.bank:{},financeBank=structuredClone(finance.state.bank);row.state.bank={...kupaBank,...financeBank,adjustments:Array.isArray(kupaBank.adjustments)?structuredClone(kupaBank.adjustments):[],snapshotToken:kupaBank.snapshotToken??null,snapshotSeq:kupaBank.snapshotSeq??null}}if(finance.state.creditSync)row.state.creditSync=structuredClone(finance.state.creditSync)}}return row}
 async function rpcSaveFinanceSync(state,expectedRevision,operationId,audit={},lease=null){
   const assertCurrent=lease?.assertCurrent;assertCurrent?.();const op=String(operationId||'').trim();if(!op)throw new Error('מזהה פעולת הסינכרון הפיננסי חסר');const r=await supaFetch(`/rest/v1/rpc/${FINANCE_RPC}_v6`,{method:'POST',networkRetry:true,...(assertCurrent?{assertRequestScope:assertCurrent}:{}),dataPriority:'high',body:JSON.stringify({p_document_name:FINANCE_DOC,p_expected_revision:Number(expectedRevision||0),p_state:state,p_operation_id:op,p_audit:audit,...financeFencePayload(lease)})});const txt=await r.text();assertCurrent?.();let j;try{j=txt?JSON.parse(txt):null}catch{j=null}return {r,j,txt,row:Array.isArray(j)?j[0]:j}}
-function financeLeaseName(value){const name=String(value||'').trim();if(name!=='bank'&&name!=='credit')throw new Error('סוג נעילת הסינכרון הפיננסי אינו תקין');return name}
-async function claimFinanceSyncLease(leaseName,leaseToken,{ttlSeconds=FINANCE_LEASE_TTL_SECONDS,assertCurrent}={}){
-  assertCurrent?.();
-  const name=financeLeaseName(leaseName),token=String(leaseToken||'').trim(),ttl=Math.max(60,Math.min(1800,Math.trunc(Number(ttlSeconds)||FINANCE_LEASE_TTL_SECONDS)));
-  if(!token)throw new Error('מזהה נעילת הסינכרון הפיננסי חסר');
-  let r;try{r=await supaFetch('/rest/v1/rpc/claim_finance_sync_lease',{method:'POST',body:JSON.stringify({p_lease_name:name,p_lease_token:token,p_ttl_seconds:ttl}),networkRetry:true,...(assertCurrent?{assertRequestScope:assertCurrent}:{})})}catch(error){if(String(error?.code||'').startsWith('SUPABASE_NETWORK_')){const e=new Error('לא ניתן לקבל כרגע נעילת סינכרון מהענן. לא נפתחה כניסה לבנק או לחברת האשראי כדי למנוע סינכרון כפול ממחשב אחר.');e.code='FINANCE_LEASE_CLOUD_UNAVAILABLE';e.cause=error;throw e}throw error}
-  const body=await r.text();assertCurrent?.();let j;try{j=body?JSON.parse(body):null}catch{j=null}
-  if(!r.ok)throw new Error(j?.message||j?.hint||body||'תפיסת נעילת הסינכרון המשותפת נכשלה');
-  return readFinanceLeaseReceipt(j,{leaseName:name,leaseToken:token});
-}
-async function releaseFinanceSyncLease(leaseName,leaseToken,{assertCurrent}={}){assertCurrent?.();const name=financeLeaseName(leaseName),token=String(leaseToken||'').trim();if(!token)return false;const r=await supaFetch('/rest/v1/rpc/release_finance_sync_lease',{method:'POST',body:JSON.stringify({p_lease_name:name,p_lease_token:token}),networkRetry:true,...(assertCurrent?{assertRequestScope:assertCurrent}:{})});const txt=await r.text();assertCurrent?.();let j;try{j=txt?JSON.parse(txt):null}catch{j=null}if(!r.ok)throw new Error(j?.message||j?.hint||txt||'שחרור נעילת הסינכרון המשותפת נכשל');const value=Array.isArray(j)?j[0]:j;return value===true||value?.released===true}
+
+
+
 async function saveBankSyncSnapshot(bankState,snapshotToken,snapshotSeq,lease=null){
   const assertCurrent=lease?.assertCurrent;assertCurrent?.();
   const seq=Number(snapshotSeq);if(!Number.isSafeInteger(seq)||seq<0)throw new Error('snapshotSeq של הבנק אינו תקין');

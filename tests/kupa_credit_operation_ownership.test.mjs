@@ -119,7 +119,7 @@ test('finance operation requires a writable matching owner and preserves ordinar
 });
 test('queued manual edit cannot acquire a lease after its login changed',async()=>{
   const gate=deferred();let valid=true,claims=0;const assertCurrent=()=>{if(!valid)throw stale()};
-  const queue=createFinanceManualQueue({claim:async()=>{claims++;return {acquired:true}},release:async()=>{},createToken:()=> 'fixture'});
+  const queue=createFinanceManualQueue({claim:async()=>{claims++;return {acquired:true,leaseName:'credit',leaseToken:'fixture',fenceEpoch:1}},release:async()=>{},createToken:()=> 'fixture'});
   const first=queue(()=>gate.promise),second=queue(()=>assert.fail('former-owner edit ran'),{assertCurrent});await Promise.resolve();valid=false;gate.resolve();await first;
   await assert.rejects(second,{code:'FINANCE_OPERATION_SCOPE_CHANGED'});assert.equal(claims,1);
 });
