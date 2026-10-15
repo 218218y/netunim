@@ -18,7 +18,7 @@ async function fixture(t,{write}={}){
   writeJsonFile:async(file,value)=>{writes++;if(write)await write(value);await fs.writeFile(file,JSON.stringify(value))},appendLog:async()=>{},pdfIndexNeedsInspection,pdfMaintenanceInventoryPlan,
   listEverythingPdfs:async()=>[workRow(3)],pdfInventory:{assertActive:signal=>{if(signal?.aborted)throw Object.assign(new Error('stopped'),{code:'ABORT_ERR'})}},
   extractInteractivePdfText:async()=>({hasForm:true,text:'native indexed result',formFields:[],formFieldCount:0}),
-  documentSearch:{dispose:async()=>{}},documentResults:{dispose:()=>{}},everythingSession:{dispose:async()=>{}},everythingDiscovery:{dispose:async()=>{}},everythingProcesses:{dispose:async()=>{}},manualMaintenance:{dispose:async()=>{}},nativePreviewSession:{dispose:async()=>{}}});
+  documentSearch:{dispose:async()=>{}},documentResults:{dispose:()=>{}},everythingSession:{dispose:async()=>{}},everythingDiscovery:{dispose:async()=>{}},everythingProcesses:{dispose:async()=>{}},manualMaintenance:{dispose:async()=>{}},pdfPreviewOperation:{dispose:async()=>{},invalidate:async()=>{}},pdfExtractionProcesses:{dispose:async()=>{}},nativePreviewSession:{dispose:async()=>{}}});
  const invalidate=disk.context.previewTextCache.invalidate;disk.context.previewTextCache={invalidate,dispose:()=>{}};
  const root=vm.runInNewContext(selected.map(node=>source.slice(node.start,node.end)).join('\n')+'\n({refresh:refreshPdfFormIndex,stop:prepareShutdown})',disk.context);
  return {...disk,...root,metadataPath,writes:()=>writes};

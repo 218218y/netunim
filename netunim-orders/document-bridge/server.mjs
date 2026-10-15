@@ -4,7 +4,7 @@ import fsSync from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import {execFile as execFileCb,spawn} from 'node:child_process';
+import {execFile as execFileCb} from 'node:child_process';
 import {promisify} from 'node:util';
 import {fileURLToPath} from 'node:url';
 import {
@@ -39,6 +39,9 @@ import {createEverythingProcess} from './everything-process.mjs';
 import {createEverythingDiscovery} from './everything-discovery.mjs';
 import {createEverythingProcessPlatform,createEverythingDiscoveryPlatform} from './everything-process-platform.mjs';
 import {createDocumentResultRegistry} from './result-registry.mjs';
+import {createPdfPreviewOperation} from './pdf-preview-operation.mjs';
+import {createPdfExtractionProcess} from './pdf-extraction-process.mjs';
+import {createPdfExtractionPlatform} from './pdf-extraction-platform.mjs';
 
 const execFile=promisify(execFileCb);
 const APP_ROOT=process.env.NETUNIM_DOCUMENT_BRIDGE_HOME||path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimDocumentBridge');
@@ -286,20 +289,10 @@ async function preparePdfFormIndexForSearch(){
   try{await loadPdfFormIndex()}catch(error){await appendLog(`PDF_FORM_INDEX_LOAD_FAILED ${error?.message||error}`);return {partial:true}}
   return {partial:!pdfFormIndexLastRefresh||pdfFormIndexPending>0};
 }
-async function extractPdfOnDemand(fullPath,{includePageText=true}={}){
-  return await new Promise((resolve,reject)=>{
-    const child=spawn(process.execPath,[path.join(RUNTIME_ROOT,'pdf-extract-worker.mjs')],{cwd:APP_ROOT,windowsHide:true,stdio:['pipe','pipe','pipe']});
-    let output='',errors='',finished=false;
-    const finish=(error,result)=>{if(finished)return;finished=true;clearTimeout(timer);if(error)reject(error);else resolve(result)};
-    const timer=setTimeout(()=>{child.kill();finish(new Error('PDF on-demand extraction timed out'))},25000);
-    child.stdout.setEncoding('utf8');child.stderr.setEncoding('utf8');
-    child.stdout.on('data',chunk=>{output+=chunk;if(output.length>32*1024*1024){child.kill();finish(new Error('PDF worker output too large'))}});
-    child.stderr.on('data',chunk=>{if(errors.length<4096)errors+=chunk});
-    child.on('error',finish);
-    child.on('close',code=>{try{const response=JSON.parse(output.trim());if(!response.ok)throw new Error(response.error||errors||'PDF extraction failed');finish(null,response.result)}catch(error){finish(new Error(`PDF worker exited ${code}: ${error.message}`))}});
-    child.stdin.end(JSON.stringify({fullPath,includePageText}));
-  });
-}
+const pdfExtractionProcesses=createPdfExtractionProcess({
+  ...createPdfExtractionPlatform({executable:process.execPath,script:path.join(RUNTIME_ROOT,'pdf-extract-worker.mjs'),cwd:APP_ROOT}),
+  runtime:{setTimeout,clearTimeout},
+});
 function searchPdfFormIndex(query,contentSearch,scopePath,limit,sort={}){
   const results=[];
   for(const entry of pdfFormIndex.values()){
@@ -310,37 +303,15 @@ function searchPdfFormIndex(query,contentSearch,scopePath,limit,sort={}){
   results.sort((a,b)=>compareDocumentRows(a,b,sort));
   return results.slice(0,Math.max(1,Number(limit)||DEFAULT_RESULT_LIMIT));
 }
-async function supplementalPdfData(row,stat){
-  const fullPath=row.fullPath;
-  try{await loadPdfFormIndex()}catch(error){await appendLog(`PDF_FORM_INDEX_LOAD_FAILED ${error?.message||error}`);return null}
-  const key=pdfIndexKey(fullPath),cached=pdfFormIndex.get(key),detectionCurrent=Number(cached?.detectionRevision)===PDF_FORM_DETECTION_REVISION;
-  const cachedDate=Number(cached?.fileMtimeMs)||Date.parse(String(cached?.modified||'')),fingerprintCurrent=!!cached&&Number(cached.size)===stat.size&&Number.isFinite(cachedDate)&&Math.abs(cachedDate-stat.mtimeMs)<1000;
-  if(fingerprintCurrent&&cached?.hasForm&&cached.text&&cached.formFields?.length&&Number(cached.searchTextRevision)>=PDF_FORM_SEARCH_TEXT_REVISION&&Number(cached.geometryRevision)>=PDF_FORM_GEOMETRY_REVISION)return {...trimPreviewText(cached.text),formFields:normalizePdfFormFields(cached.formFields)};
-  // A negative result from an older extractor is not authoritative. Earlier
-  // releases persisted `hasForm:false` without an extractor revision, which can
-  // leave an interactive PDF permanently searchable only through Everything and
-  // therefore without page rectangles for preview highlighting. Re-open such a
-  // file once on demand and persist the new verdict immediately.
-  if(fingerprintCurrent&&detectionCurrent&&cached&&!cached.hasForm&&!cached.failed)return null;
-  try{
-    // v28 indexes can already contain the searchable AcroForm text but not the
-    // page/rectangle metadata needed by the preview. Re-reading all page text on
-    // click is unnecessary and can time out on large PDFs; recover only the form
-    // annotations and keep the proven cached search text. Scheduled maintenance
-    // later compacts the journal into the current schema.
-    const geometryOnly=!!(fingerprintCurrent&&cached?.hasForm&&cached.text&&Number(cached.searchTextRevision)>=PDF_FORM_SEARCH_TEXT_REVISION&&(!cached.formFields?.length||Number(cached.geometryRevision)<PDF_FORM_GEOMETRY_REVISION));
-    const extracted=await extractPdfOnDemand(fullPath,{includePageText:!geometryOnly});
-    if(extracted.hasForm&&extracted.formFields?.length){
-      const formFields=normalizePdfFormFields(extracted.formFields),text=geometryOnly?cached.text:extracted.text,data={...trimPreviewText(text),formFields};
-      const base=fingerprintCurrent?cached:{...row,fullPath,name:row.name||path.win32.basename(fullPath),relativePath:row.relativePath||path.win32.dirname(fullPath),modified:row.modified||stat.mtime.toISOString(),size:stat.size,attributes:row.attributes||'',fingerprint:pdfIndexFingerprint({size:stat.size,modified:row.modified||stat.mtime.toISOString()})};
-      const updated={...base,fileMtimeMs:stat.mtimeMs,detectionRevision:PDF_FORM_DETECTION_REVISION,searchTextRevision:geometryOnly?cached.searchTextRevision:PDF_FORM_SEARCH_TEXT_REVISION,geometryRevision:PDF_FORM_GEOMETRY_REVISION,hasForm:true,text,formFields,formFieldCount:extracted.formFieldCount||formFields.length,failed:false,error:'',retryAfter:'',retryCount:0};await appendPdfIndexJournal([{op:'upsert',entry:serializePdfIndexEntry(updated)}]);
-      return data;
-    }
-    const base=fingerprintCurrent?cached:{...row,fullPath,name:row.name||path.win32.basename(fullPath),relativePath:row.relativePath||path.win32.dirname(fullPath),modified:row.modified||stat.mtime.toISOString(),size:stat.size,attributes:row.attributes||'',fingerprint:pdfIndexFingerprint({size:stat.size,modified:row.modified||stat.mtime.toISOString()})};
-    const updated={...base,fileMtimeMs:stat.mtimeMs,detectionRevision:PDF_FORM_DETECTION_REVISION,searchTextRevision:PDF_FORM_SEARCH_TEXT_REVISION,geometryRevision:0,hasForm:false,text:'',formFields:[],formFieldCount:0,failed:false,error:'',retryAfter:'',retryCount:0};await appendPdfIndexJournal([{op:'upsert',entry:serializePdfIndexEntry(updated)}]);
-  }catch(error){await appendLog(`PDF_FORM_PREVIEW_FAILED path=${JSON.stringify(fullPath)} error=${JSON.stringify(String(error?.message||error))}`)}
-  return null;
-}
+const pdfPreviewOperation=createPdfPreviewOperation({
+  index:{load:loadPdfFormIndex,get:key=>pdfFormIndex.get(key),append:entry=>appendPdfIndexJournal([{op:'upsert',entry:serializePdfIndexEntry(entry)}])},
+  extraction:{read:(fullPath,options)=>pdfExtractionProcesses.read(fullPath,options)},
+  paths:{basename:fullPath=>path.win32.basename(fullPath),dirname:fullPath=>path.win32.dirname(fullPath)},
+  presentation:{trim:trimPreviewText,fields:normalizePdfFormFields},
+  policy:{detectionRevision:PDF_FORM_DETECTION_REVISION,searchTextRevision:PDF_FORM_SEARCH_TEXT_REVISION,geometryRevision:PDF_FORM_GEOMETRY_REVISION},
+  audit:{write:appendLog},
+});
+async function supplementalPdfData(row,stat){return pdfPreviewOperation.read(row,stat)}
 const documentSearch=createDocumentSearch({
   everything:{
     search:request=>runEverythingJson((config,probe)=>buildEsSearchArgs({...request,timeoutMs:config.searchTimeoutMs,instance:probe.instance})),
@@ -461,7 +432,7 @@ async function revealDocument(id){
 
 async function invalidateResultPath(fullPath){
   const target=String(fullPath||'').toLocaleLowerCase('en-US'),invalidatedIds=documentResults.invalidate(fullPath);
-  previewTextCache.invalidate(target);await loadPdfFormIndex();if(pdfFormIndex.has(target))await appendPdfIndexJournal([{op:'remove',fullPath}]);
+  previewTextCache.invalidate(target);await pdfPreviewOperation.invalidate(fullPath);await loadPdfFormIndex();if(pdfFormIndex.has(target))await appendPdfIndexJournal([{op:'remove',fullPath}]);
   return invalidatedIds;
 }
 
@@ -489,9 +460,9 @@ async function warmDocumentSearch(){const probe=await probeEverything({autoStart
 async function prepareShutdown(){
   shuttingDown=true;
   previewTextCache.dispose();
-  const searchDrain=documentSearch.dispose(),sessionDrain=everythingSession.dispose(),discoveryDrain=everythingDiscovery.dispose(),processDrain=everythingProcesses.dispose(),pdfDrain=pdfMaintenanceOperation.dispose();
+  const searchDrain=documentSearch.dispose(),sessionDrain=everythingSession.dispose(),discoveryDrain=everythingDiscovery.dispose(),processDrain=everythingProcesses.dispose(),pdfDrain=pdfMaintenanceOperation.dispose(),pdfPreviewDrain=pdfPreviewOperation.dispose(),pdfProcessDrain=pdfExtractionProcesses.dispose();
   documentResults.dispose();
-  await Promise.all([searchDrain,sessionDrain,discoveryDrain,processDrain,pdfDrain,manualMaintenance.dispose(),nativePreviewSession.dispose()]);
+  await Promise.all([searchDrain,sessionDrain,discoveryDrain,processDrain,pdfDrain,pdfPreviewDrain,pdfProcessDrain,manualMaintenance.dispose(),nativePreviewSession.dispose()]);
   return {ok:true,pid:process.pid};
 }
 function finishShutdown(){

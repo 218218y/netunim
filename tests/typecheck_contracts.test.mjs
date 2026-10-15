@@ -26,6 +26,17 @@ function check(overrides=new Map()){
 }
 function describe(diagnostics){return ts.formatDiagnostics(diagnostics,{getCanonicalFileName:file=>file,getCurrentDirectory:()=>root,getNewLine:()=> '\n'})}
 
+test('PDF preview and process bodies reject text form authority, invalid preview text and unjoined disposal',()=>{
+ for(const [file,from,to]of [
+  ['pdf-extraction-result.mjs','hasForm: value.hasForm',"hasForm: 'yes'"],
+  ['pdf-preview-operation.mjs','return data;','return {text: 7, truncated: false, formFields: []};'],
+  ['pdf-extraction-process.mjs','await Promise.all([...pending].map(flight => flight.done));','return true;'],
+ ]){
+  const source=path.join(root,'netunim-orders/document-bridge',file),original=readFileSync(source,'utf8'),changed=original.replace(from,to);assert.notEqual(changed,original,from);
+  const diagnostics=check(new Map([[source,changed]]));assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&[2322,2345].includes(item.code)),describe(diagnostics));
+ }
+});
+
 test('PDF maintenance implementation rejects text progress and disposal without stop/drain',()=>{
  const source=path.join(root,'netunim-orders/document-bridge/pdf-maintenance-operation.mjs'),original=readFileSync(source,'utf8');
  for(const [from,to]of [['processed: 0',"processed: '0'"],['stop();','return true;']]){

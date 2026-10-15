@@ -39,7 +39,7 @@ export async function serverFixture(t, {createPreviewTextCache} = {}) {
       if (call === 1) { firstStarted.resolve(); await firstRelease.promise; }
       return {text, truncated: false};
     }},
-    documentResults: {invalidate: () => []}, pdfFormIndex: new Map(), loadPdfFormIndex: async () => {}, appendPdfIndexJournal: async () => {},
+    pdfPreviewOperation: {invalidate: async () => {}}, documentResults: {invalidate: () => []}, pdfFormIndex: new Map(), loadPdfFormIndex: async () => {}, appendPdfIndexJournal: async () => {},
   };
   const functions = vm.runInNewContext([source.slice(cacheDeclaration.start, cacheDeclaration.end),
     ...declarations.map(node => source.slice(node.start, node.end)),
