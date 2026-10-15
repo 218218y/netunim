@@ -1,3 +1,4 @@
+import {createBridgeReplacementCommand} from '../netunim-orders/document-bridge/bridge-replacement-command.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -44,14 +45,12 @@ test('actual installer stop client grants the joined shutdown its own deadline b
  const entered=deferred(),release=deferred(),f=serverFixture('current',{everything:async()=>{entered.resolve();return release.promise}});
  let h;h=await httpFixture(t,f,{afterResponse:()=>h.server.close()});
  const reading=h.request('/documents/search',{query:'document',limit:1});await entered.promise;
- const source=fs.readFileSync(new URL('../netunim-orders/document-bridge/server.mjs',import.meta.url),'utf8'),ast=parse(source,{ecmaVersion:'latest',sourceType:'module'});
- const functions=ast.body.filter(node=>node.type==='FunctionDeclaration'&&['stopExisting','loopbackRequest'].includes(node.id.name));
- const deadline=ast.body.find(node=>node.type==='VariableDeclaration'&&node.declarations.some(item=>item.id.name==='SHUTDOWN_REQUEST_TIMEOUT_MS'));
- assert.ok(deadline);const deadlines=[];
- const context={http:{request:(options,listener)=>{const req=http.request(options,listener),set=req.setTimeout.bind(req);req.setTimeout=(ms,...args)=>{deadlines.push([options.path,ms]);return set(ms,...args)};return req}},
-  BRIDGE_PORT:h.port,BRIDGE_SERVICE,BRIDGE_VERSION,Date,Buffer,setTimeout,fs:{readFile:async()=> 'test-key'},TOKEN_PATH:'unused-synthetic-path',
-  bridgeListenerPid:async()=>0,appendLog:async()=>{},forceStopProcessTree:async()=>{throw new Error('unexpected forced termination')},waitForProcessExit:async()=>{throw new Error('unexpected unrelated process')},};
- const stop=vm.runInNewContext([source.slice(deadline.start,deadline.end),...functions.map(node=>source.slice(node.start,node.end)),'stopExisting'].join('\n'),context);
+ const deadlines=[];
+ const replacement=createBridgeReplacementCommand({
+  listener:{port:h.port,request:(options,listener)=>{const req=http.request(options,listener),set=req.setTimeout.bind(req);req.setTimeout=(ms,...args)=>{deadlines.push([options.path,ms]);return set(ms,...args)};return req}},
+  token:{path:'unused-synthetic-path',read:async()=> 'test-key'},processes:{bridgeListenerPid:async()=>0,forceStopProcessTree:async()=>{throw Error('unexpected forced termination')},waitForProcessExit:async()=>{throw Error('unexpected unrelated process')}},runtime:{now:Date.now,setTimeout,log:async()=>{}},
+ });
+ const stop=replacement.stopExisting;
  const stopping=stop();
  await h.closing;
  assert.equal(f.context.shuttingDown,true);assert.deepEqual(deadlines.find(([target])=>target==='/shutdown'),['/shutdown',120000]);

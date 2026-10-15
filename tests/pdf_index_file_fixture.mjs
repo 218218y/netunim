@@ -22,7 +22,7 @@ export async function indexFixture(t, {ioHook = value => value, journal} = {}) {
   await fs.writeFile(snapshotPath, snapshotBytes); await fs.writeFile(journalPath, journalBytes);
   const source = await fs.readFile(new URL('../netunim-orders/document-bridge/server.mjs', import.meta.url), 'utf8');
   const program = parse(source, {ecmaVersion: 'latest', sourceType: 'module'});
-  const names = new Set(['pdfIndexKey', 'normalizePdfFormField', 'normalizePdfFormFields', 'normalizePdfIndexEntry', 'serializePdfIndexEntry', 'publishPdfIndexCandidate', 'readPdfIndexFiles', 'loadPdfFormIndex', 'appendPdfIndexJournal', 'compactPdfFormIndex']);
+  const names = new Set(['pdfIndexKey', 'pdfIndexFingerprint', 'normalizePdfFormField', 'normalizePdfFormFields', 'normalizePdfIndexEntry', 'serializePdfIndexEntry', 'publishPdfIndexCandidate', 'readPdfIndexFiles', 'loadPdfFormIndex', 'appendPdfIndexJournal', 'compactPdfFormIndex']);
   const definitions = program.body.filter(node => node.type === 'FunctionDeclaration' && names.has(node.id.name));
   const variableNames = new Set(['pdfIndexFiles', 'pdfIndexReader', 'pdfIndexSignature', 'pdfIndexWriter']);
   const variables = program.body.filter(node => node.type === 'VariableDeclaration' && node.declarations.some(item => variableNames.has(item.id.name)));
