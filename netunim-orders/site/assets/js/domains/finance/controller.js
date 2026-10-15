@@ -1,13 +1,13 @@
+import {createCashflowSettingsCommands} from './cashflow-commands.js';
+import {createBankArchiveCommands} from './bank-archive-commands.js';
+import {createCreditSettingsCommands} from './credit-settings-commands.js';
+import {createFinanceConnectionCommands} from './connection-commands.js';
 import {createRuntimeTaskOwner} from '../../shared/runtime-task-owner.js';
 import {createOrdersFinanceAutomation} from './automation.js';
 import {createRevisionSelector} from '../../shared/revision-selector.js';
-import {applyCreditCardOrderData} from '../../shared/credit-card-order.js';
-import {applyCreditCardAccountTransitionData} from '../../shared/credit-card-account.js';
 import {clone} from '../../core/values.js';
-import {checkTodayISO} from '../../core/dates.js';
 import {normalizeBankFeed} from './bank-feed.js';
-import {creditCardMappingKey,normalizeCreditSync} from './credit-feed.js';
-import {normalizeCashflowSettings} from '../../shared/cashflow.js';
+import {normalizeCreditSync} from './credit-feed.js';
 import {FINANCE_PUBLICATION_WARNING} from './document-publication.js';
 import {projectBankArchiveFeed} from './bank-archive-model.js';
 
@@ -65,7 +65,6 @@ export function createDomainsFinanceController({
   for(const method of ['copyDiagnostics','exportData','saveProfile','deleteProfile','resetProfiles','reportFailure'])if(typeof connections?.commands?.[method]!=='function')throw new TypeError('orders_credit_connection_command_'+method+'_required');
   const projectionRevision = archive.queries.revision, bankAlertsReady = archive.queries.ready;
   const ensureBankDisplayArchive = archive.runtime.ensure;
-  const updateLocalBankTransaction = archive.commands.update;
   const displayArchiveFeed = (role,feed) => projectBankArchiveFeed(archive,role,feed);
 
   for(const method of ['snapshot','capture','supported','readStatus','refreshStatus'])if(typeof bankConnections?.queries?.[method]!=='function')throw new TypeError('orders_bank_connection_query_'+method+'_required');
@@ -73,7 +72,7 @@ export function createDomainsFinanceController({
   function bankConnectionState(){const state=bankConnections.queries.snapshot();return {bankStatus:state.status?clone(state.status):null,bankStatusChecked:state.checked,bankBridgeError:state.bridgeError}}
   const refreshBankBridgeStatus=bankConnections.queries.refreshStatus,captureBankConnection=bankConnections.queries.capture;
   function creditConnectionState(){const state=connections.queries.snapshot();return {creditStatus:state.status?clone(state.status):null,creditStatusChecked:state.checked,creditBridgeError:state.bridgeError}}
-  const supportedCreditBridge=connections.queries.supported,refreshCreditBridgeStatus=connections.queries.refreshStatus,copySafeCreditDiagnostics=connections.commands.copyDiagnostics;
+  const refreshCreditBridgeStatus=connections.queries.refreshStatus,copySafeCreditDiagnostics=connections.commands.copyDiagnostics;
   const captureCreditConnection=connections.queries.capture;
   function captureCreditReset(){try{const assertOwner=operationScope.capture(),assertConnection=captureCreditConnection();return ()=>{assertOwner();assertConnection()}}catch(error){toast(error?.message||String(error));return null}}
   function exportCreditDataDiagnostics(){return local.bankBusy||local.creditBusy?Promise.resolve(false):connections.commands.exportData()}
@@ -81,66 +80,23 @@ export function createDomainsFinanceController({
   const readProjection=createRevisionSelector({revision:projectionRevision,select:snapshot,name:'orders-finance'});
   function readSnapshot(){return {...readProjection(),...financeAutomation.preferenceState(),bankBusy:local.bankBusy,bankResultReady:local.bankResultReady,creditBusy:local.creditBusy,bankError:local.bankError,creditError:local.creditError,bankErrorAt:local.bankErrorAt,creditErrorAt:local.creditErrorAt,...bankConnectionState(),...creditConnectionState()}}
 
+  const {saveCashflowMinimum,saveCashflowCheckCutoff}=createCashflowSettingsCommands({mutateKupaCloud,loadSession,toast});
+  const {toggleBankTransactionHandled,markBankMorningVerified,acknowledgeMissingBankTransaction,acknowledgePersistentBankAlert}=createBankArchiveCommands({
+    operationScope,transport:{saveBankTransactionHandled,acknowledgeBankTransactionMissing,acknowledgeBankTransactionAlert},archive:{update:archive.commands.update},toast,
+  });
+  const {saveCreditProfile,deleteCreditProfile,resetCreditSync,saveCreditCardOrder,setCreditCardMapping,acknowledgeCreditSettlementWarning}=createCreditSettingsCommands({
+    local,operationScope,connections,mutateFinanceCloud,automation:{
+      setCreditAutoEnabled:(...args)=>setCreditAutoEnabled(...args),setCreditAutoMode:(...args)=>setCreditAutoMode(...args),
+      scheduleCreditAuto:()=>scheduleCreditAuto(),preferenceState:()=>financeAutomation.preferenceState(),
+    },toast,
+  });
+  const {saveBridgeToken,configureBankBridge,selectBankBridgeAccount,deleteBankBridgeCredentials,exportBankChequeDiagnostics}=createFinanceConnectionCommands({
+    local,bridge,bankConnections,connections,policy:{scopeChanged,startAutoSync:()=>startAutoSync()},toast,
+  });
+
   async function refreshFinanceData({force=true,renderIfChanged=true}={}){if(!loadSession()||!effects.isOnline())return snapshot();const assertCurrent=operationScope.captureRead();await refreshKupaReadout({force,renderIfChanged,assertCurrent});assertCurrent();return snapshot()}
 
-  async function saveCashflowMinimum(account,value){
-    const raw=String(value??'').trim(),parsed=raw===''?null:Number(raw);
-    if(parsed!==null&&!Number.isFinite(parsed)){toast('סכום המינימום אינו תקין');return false}
-    if(!loadSession()){toast('יש להתחבר לענן כדי לשמור את ההגדרה המשותפת');return false}
-    try{
-      const saved=await mutateKupaCloud(kupa=>{const settings=normalizeCashflowSettings(kupa.cashflowSettings);if(account==='home')settings.homeMinimum=parsed;else settings.businessMinimum=parsed;kupa.cashflowSettings=normalizeCashflowSettings(settings);return kupa});
-      toast(saved.publicationWarning||'סף ההתראה התזרימי נשמר ומשותף לשתי המערכות');
-      return true;
-    }catch(error){toast(error?.message||String(error));return false}
-  }
 
-  async function saveCashflowCheckCutoff(account,value){
-    const parsed=Number(value);
-    if(!Number.isInteger(parsed)||parsed<1||parsed>31){toast('יום חישוב הצ׳קים חייב להיות מספר שלם בין 1 ל־31');return false}
-    if(!loadSession()){toast('יש להתחבר לענן כדי לשמור את ההגדרה המשותפת');return false}
-    try{
-      const saved=await mutateKupaCloud(kupa=>{const settings=normalizeCashflowSettings(kupa.cashflowSettings);if(account==='home')settings.homeCheckCutoffDay=parsed;else settings.businessCheckCutoffDay=parsed;kupa.cashflowSettings=normalizeCashflowSettings(settings);return kupa});
-      toast(saved.publicationWarning||'יום חישוב הצ׳קים בתזרים נשמר ומשותף לשתי המערכות');
-      return true;
-    }catch(error){toast(error?.message||String(error));return false}
-  }
-
-  async function saveBridgeToken(value){
-    const token=bridge.setBridgeToken(value);
-    local.bankError='';local.creditError='';local.bankErrorAt=null;local.creditErrorAt=null;
-    bankConnections.queries.snapshot();connections.queries.snapshot();
-    if(token){
-      const assertConnection=bankConnections.queries.capture();
-      await Promise.all([refreshBankBridgeStatus({quiet:true}),refreshCreditBridgeStatus({quiet:true})]);
-      try{assertConnection()}catch{return token}
-      toast('מפתח Bank Bridge נשמר במחשב זה');
-    }else{toast('מפתח Bank Bridge הוסר מהמחשב הזה')}
-    startAutoSync();return token;
-  }
-
-  async function bankConnectionWrite(command,{clearBefore=false}={}){
-    if(local.bankBusy)return false;
-    local.bankBusy=true;
-    if(clearBefore){local.bankError='';local.bankErrorAt=null}
-    let assertConnection;
-    try{
-      assertConnection=captureBankConnection();
-      const result=await command();
-      assertConnection();
-      if(result.ok){local.bankError='';local.bankErrorAt=null}
-      else if(result.failure){local.bankError=result.failure;local.bankErrorAt=new Date().toISOString();toast(result.failure)}
-      return result.ok;
-    }catch(error){
-      try{assertConnection?.()}catch{return false}
-      if(scopeChanged(error))return false;
-      local.bankError=error?.message||String(error);local.bankErrorAt=new Date().toISOString();toast(local.bankError);
-      return false;
-    }finally{local.bankBusy=false}
-  }
-  function configureBankBridge(input){return bankConnectionWrite(()=>bankConnections.commands.configure(input),{clearBefore:true})}
-  function selectBankBridgeAccount(role,branchNumber,accountNumber){return bankConnectionWrite(()=>bankConnections.commands.selectAccount(role,branchNumber,accountNumber))}
-  function deleteBankBridgeCredentials(){return bankConnectionWrite(bankConnections.commands.deleteCredentials)}
-  function exportBankChequeDiagnostics(){return local.bankBusy||local.creditBusy?Promise.resolve(false):bankConnections.commands.exportDiagnostics()}
 
   function setFinanceStatusListener(listener){financeStatusListener=typeof listener==='function'?listener:()=>{}}
   function notifyFinanceStatus(section){try{financeStatusListener(section)}catch(error){console.error('orders finance status listener',error)}}
@@ -177,24 +133,6 @@ export function createDomainsFinanceController({
     }
   }
 
-  async function toggleBankTransactionHandled(transactionId,handled){
-    const id=Number(transactionId);if(!Number.isSafeInteger(id)||id<=0){toast('לא ניתן לזהות את תנועת הבנק');return false}
-    try{const assertCurrent=operationScope.capture(),result=await saveBankTransactionHandled(id,handled===true,{assertCurrent});assertCurrent();const at=result?.handled_at||result?.handledAt||null;updateLocalBankTransaction(id,row=>{row.handledAt=at});return true}catch(error){toast(error?.message||'עדכון מצב תנועת הבנק נכשל');return false}
-  }
-  function markBankMorningVerified(transactionId,bankLink={}){
-    const id=Number(transactionId);if(!Number.isSafeInteger(id)||id<=0)return false;const link=bankLink&&typeof bankLink==='object'?bankLink:{handledAt:bankLink},changed=updateLocalBankTransaction(id,row=>{row.handledAt=row.handledAt||link.handledAt||null;const documentId=String(link.documentId||'').trim(),operationId=String(link.operationId||'').trim();if(documentId||operationId){const current=Array.isArray(row.documentLinks)?row.documentLinks:[],key=item=>String(item?.documentId||item?.operationId||'').trim(),needle=documentId||operationId,entry={linkId:Number(link.linkId)||null,operationId,documentId,documentNumber:String(link.documentNumber||''),documentType:Number(link.documentType)||0,documentAmount:Number(link.documentAmount)||0,verifiedAt:link.verifiedAt||new Date().toISOString()};row.documentLinks=[entry,...current.filter(item=>key(item)!==needle)].slice(0,50)}});return changed;
-  }
-
-  async function acknowledgeMissingBankTransaction(transactionId){
-    const id=Number(transactionId);if(!Number.isSafeInteger(id)||id<=0){toast('לא ניתן לזהות את תנועת הבנק לסימון');return false}
-    try{const assertCurrent=operationScope.capture(),result=await acknowledgeBankTransactionMissing(id,{assertCurrent});assertCurrent();const at=String(result?.acknowledged_at||result?.acknowledgedAt||new Date().toISOString());updateLocalBankTransaction(id,row=>{row.missingAcknowledgedAt=at});toast('התנועה סומנה כנבדקה. התיעוד נשמר בארכיון, והיא הוסרה מההיסטוריה החכמה ומהאזהרות.');return true}catch(error){toast(error?.message||'סימון התנועה כנבדקה נכשל');return false}
-  }
-
-  async function acknowledgePersistentBankAlert(transactionId,alertKind){
-    const id=Number(transactionId),kind=String(alertKind||'').trim();
-    if(!Number.isSafeInteger(id)||id<=0||kind!=='returned_cheque'){toast('לא ניתן לזהות את התראת הבנק להסרה');return false}
-    try{const assertCurrent=operationScope.capture(),result=await acknowledgeBankTransactionAlert(id,kind,{assertCurrent});assertCurrent();const at=String(result?.acknowledged_at||result?.acknowledgedAt||new Date().toISOString());updateLocalBankTransaction(id,row=>{row.alertAcknowledgements={...(row.alertAcknowledgements&&typeof row.alertAcknowledgements==='object'?row.alertAcknowledgements:{}),[kind]:at}});toast('ההתראה הוסרה ולא תוצג שוב עבור אירוע הבנק הזה.');return true}catch(error){toast(error?.message||'הסרת התראת הבנק נכשלה');return false}
-  }
 
   async function refreshCredit({interactive=false,auto=false,syncMode='forecast',isCurrent=()=>true}={}){
     if(local.creditBusy||local.bankBusy)return false;
@@ -226,42 +164,6 @@ export function createDomainsFinanceController({
     }
   }
 
-  async function connectionWrite(run,{clearError=false}={}){
-    if(local.creditBusy)return false;local.creditBusy=true;
-    if(clearError){local.creditError='';local.creditErrorAt=null}
-    try{const assertConnection=connections.queries.capture(),result=await run();try{assertConnection()}catch{return false}if(result.failure){local.creditError=result.failure;local.creditErrorAt=new Date().toISOString();toast(local.creditError)}return result.ok}
-    finally{local.creditBusy=false}
-  }
-  function saveCreditProfile(profile){return connectionWrite(()=>connections.commands.saveProfile(profile),{clearError:true})}
-  function deleteCreditProfile(profileId){return connectionWrite(()=>connections.commands.deleteProfile(profileId))}
-  async function resetCreditSync(){
-    if(local.creditBusy)return false;local.creditBusy=true;
-    try{
-      const assertOwner=operationScope.capture(),assertConnection=connections.queries.capture(),assertCurrent=()=>{assertOwner();assertConnection()},status=connections.queries.snapshot().status||await refreshCreditBridgeStatus({quiet:true});
-      assertCurrent();if(!status)throw new Error(connections.queries.snapshot().bridgeError||'Bank Bridge אינו זמין');
-      if(!supportedCreditBridge(status))throw new Error('יש לשדרג את Bank Bridge לפני איפוס מלא של סנכרון האשראי');
-      await connections.commands.resetProfiles();assertCurrent();
-      const saved=await mutateFinanceCloud(finance=>{finance.creditSync=normalizeCreditSync({});return finance},null,{assertCurrent});assertCurrent();
-      setCreditAutoEnabled(false);setCreditAutoMode('smart');
-      local.creditError=saved.publicationWarning||'';local.creditErrorAt=local.creditError?new Date().toISOString():null;
-      toast(local.creditError||financeAutomation.preferenceState().creditAutomationWarning||'סנכרון האשראי אופס והחיבורים המקומיים נמחקו');return true;
-    }catch(error){local.creditError=error?.message||String(error);local.creditErrorAt=new Date().toISOString();toast(local.creditError);return false}
-    finally{local.creditBusy=false;scheduleCreditAuto()}
-  }
-
-  async function saveCreditCardOrder(keys){const saved=await mutateFinanceCloud(finance=>({...finance,creditSync:applyCreditCardOrderData(normalizeCreditSync(finance.creditSync),keys)}));if(local.creditError==='finance_sync_lease_busy'){local.creditError='';local.creditErrorAt=null}toast(saved.publicationWarning||'סדר הכרטיסים נשמר');return true}
-
-  async function setCreditCardMapping(profileId,accountNumber,field,value){try{const saved=await mutateFinanceCloud(kupa=>{const sync=normalizeCreditSync(kupa.creditSync),profile=sync.profiles.find(p=>p.profileId===profileId),key=creditCardMappingKey(profileId,accountNumber);let current=sync.cardMappings[key]||{included:false,hidden:false,account:profile?.defaultAccount==='ביתי'?'ביתי':'עסקי',cardName:'',manualFrame:null};if(field==='included')current.included=!!value;else if(field==='hidden')current.hidden=!!value;else if(field==='account')current=applyCreditCardAccountTransitionData(current,value,checkTodayISO());else if(field==='cardName')current.cardName=String(value||'').trim().slice(0,100);else if(field==='sortOrder'){const raw=String(value??'').trim(),order=raw===''?null:Number(raw);if(order!==null&&(!Number.isSafeInteger(order)||order<1))throw new Error('סדר הכרטיס חייב להיות מספר שלם חיובי');current.sortOrder=order}else if(field==='manualFrame'){const raw=String(value??'').trim(),amount=raw===''?null:Number(raw);if(amount!==null&&(!Number.isFinite(amount)||amount<0))throw new Error('מסגרת ידנית חייבת להיות מספר חיובי או אפס');current.manualFrame=amount===null?null:Math.round(amount*100)/100}else return null;sync.cardMappings[key]=current;kupa.creditSync=sync;return kupa});if(local.creditError==='finance_sync_lease_busy'){local.creditError='';local.creditErrorAt=null}toast(saved.publicationWarning||'שיוך כרטיס האשראי עודכן');return true}catch(error){toast(error?.message||'שמירת הגדרת הכרטיס נכשלה');return false}}
-
-  async function acknowledgeCreditSettlementWarning(warningId){
-    const id=String(warningId||'').trim();
-    if(!id.startsWith('credit_settlement_unmatched:'))return false;
-    try{
-      const saved=await mutateFinanceCloud(finance=>{const sync=normalizeCreditSync(finance.creditSync);sync.settlementWarningAcks={...(sync.settlementWarningAcks||{}),[id]:new Date().toISOString()};finance.creditSync=normalizeCreditSync(sync);return finance});
-      toast(saved.publicationWarning||'אזהרת התאמת האשראי סומנה כנבדקה');
-      return true;
-    }catch(error){toast(error?.message||'שמירת אישור האזהרה נכשלה');return false}
-  }
 
   const financeAutomation=createOrdersFinanceAutomation({
     access:{primary:()=>tab.primaryTab,authenticated:()=>!!loadSession(),online:()=>effects.isOnline(),busy:()=>local.bankBusy||local.creditBusy,capture:()=>operationScope.capture()},

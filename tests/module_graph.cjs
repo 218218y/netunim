@@ -91,6 +91,10 @@ for(const app of ['kupa','orders']){
         assert.fail(relative+': Calendar flights and polling resources belong to their private owners');
       if(app==='orders'&&relative==='assets/js/domains/calendar/controller.js'&&node.type==='Identifier'&&!(parent?.type==='MemberExpression'&&parent.property===node&&!parent.computed))
         assert.ok(!['navigator','setTimeout','clearTimeout','setInterval','clearInterval','requestAnimationFrame','cancelAnimationFrame'].includes(node.name),relative+': Calendar connectivity and scheduled resources require effects ports');
+      if(app==='orders'&&relative==='assets/js/domains/calendar/controller.js'&&node.type==='MemberExpression')
+        assert.notEqual(node.property?.name,'addOperation',relative+': outbound editor commands own durable mutation submission');
+      if(app==='orders'&&relative.startsWith('assets/js/domains/finance/')&&relative.endsWith('-commands.js')&&node.type==='MemberExpression')
+        assert.ok(!['fetchBalance','syncCreditCards','acquire'].includes(node.property?.name),relative+': manual financial commands cannot acquire providers or leases');
       if(app==='orders'&&relative==='assets/js/storage/files.js'&&node.type==='Identifier')
         assert.ok(!['setTimeout','clearTimeout','setInterval','clearInterval'].includes(node.name),relative+': working-file retries must be owned by the serialized runtime');
       if(app==='orders'&&relative==='assets/js/storage/folder-write-runtime.js'&&node.type==='Identifier')

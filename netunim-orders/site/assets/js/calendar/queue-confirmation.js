@@ -1,6 +1,7 @@
 // @ts-check
+import {decodePersistedCalendarOperations} from './persisted-records.js';
 
-/** @typedef {{operations:readonly unknown[],isCurrent:()=>boolean,isSettled:()=>boolean}} PendingSnapshot */
+/** @typedef {{operations:readonly import('./persisted-records.js').PersistedCalendarOperation[],isCurrent:()=>boolean,isSettled:()=>boolean}} PendingSnapshot */
 /** @typedef {{capture:()=>()=>boolean,isSettled:()=>boolean}} QueueObservation */
 
 /**
@@ -28,7 +29,7 @@ export function confirmCalendarPendingSnapshot(db,observation,publish){
       try{
         /** @type {unknown} */ const rows=request.result;
         if(!Array.isArray(rows))throw new Error('calendar_pending_snapshot_invalid');
-        const value=publish(Object.freeze({operations:rows,isCurrent,isSettled:observation.isSettled}));
+        const value=publish(Object.freeze({operations:decodePersistedCalendarOperations(rows),isCurrent,isSettled:observation.isSettled}));
         if(typeof value!=='boolean'){
           // Observe an invalid asynchronous consumer; it must never turn into
           // an unhandled rejection or an accepted confirmation.

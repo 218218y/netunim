@@ -21,3 +21,8 @@ def sync_document_source(app_root):
 def backup_ui_source(app_root):
     return owner_sources(app_root, 'ui', ('backup', 'backup-restore', 'backup-local',
         'backup-catalog', 'backup-presentation', 'backup-download'))
+
+
+def finance_controller_source(app_root):
+    return owner_sources(app_root, 'domains/finance', ('controller', 'cashflow-commands',
+        'bank-archive-commands', 'credit-settings-commands', 'connection-commands'))
