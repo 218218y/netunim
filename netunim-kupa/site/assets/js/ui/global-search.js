@@ -1,5 +1,5 @@
 import {createSearchFragmentIndex} from '../shared/search-fragments.js';
-import {createGlobalDocumentSearch} from '../shared/global-document-search.js';
+import {createLazyGlobalDocumentSearch} from '../shared/lazy-global-document-search.js';
 import {money} from '../core/money.js';
 import {buildKupaSearchFragment,KUPA_SEARCH_FRAGMENTS,searchKupaGlobalEntries} from '../domains/search/model.js';
 import {checkIsClosedStatus} from '../shared/shared-checks-contract.js';
@@ -41,12 +41,20 @@ export function createUiGlobalSearch({documentBridge=null,searchRevision,runFina
     return false;
   }
 
-  return createGlobalDocumentSearch({
+  const options={
     documentBridge,
     siteSearch:(raw,options)=>searchKupaGlobalEntries(indexedEntries(),raw,options),
     siteResultMeta,
     navigateSiteItem,
     confirmDialog,
     previewWidthKey:'netunim_kupa_document_preview_width_v1',
+  };
+  return createLazyGlobalDocumentSearch({
+    load:async()=>{
+      const {createGlobalDocumentSearch}=await import('../shared/global-document-search.js');
+      return ()=>createGlobalDocumentSearch(options);
+    },
+    navigateItem:navigateSiteItem,
+    subscribeAuthorization:documentBridge?.subscribeAuthorization,
   });
 }

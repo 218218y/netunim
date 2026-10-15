@@ -120,9 +120,9 @@ with BrowserSession(ROOT/'netunim-kupa/site','kupa-finance-performance') as brow
         setCreditSearch('Purchase');const first=document.querySelector('[data-credit-search-id]')?.dataset.creditSearchId;
         document.querySelector('[data-action="credit-details-page"][data-click-arg1="1"]').click();
         results.pagination={changed:first!==document.querySelector('[data-credit-search-id]')?.dataset.creditSearchId,rows:document.querySelectorAll('[data-credit-search-id]').length,focused:document.activeElement?.dataset.action==='credit-details-page'};
-        metrics.clearPerformance();let start=performance.now();uiGlobalSearch.open();uiGlobalSearch.renderResults('Purchase');
+        metrics.clearPerformance();let start=performance.now();await uiGlobalSearch.open();await uiGlobalSearch.renderResults('Purchase');
         results.globalCold={ms:Math.round(performance.now()-start),metrics:metrics.performanceSummary()};uiGlobalSearch.close();
-        metrics.clearPerformance();start=performance.now();uiGlobalSearch.open();uiGlobalSearch.renderResults('Purchase 2');
+        metrics.clearPerformance();start=performance.now();await uiGlobalSearch.open();await uiGlobalSearch.renderResults('Purchase 2');
         results.globalWarm={ms:Math.round(performance.now()-start),metrics:metrics.performanceSummary()};uiGlobalSearch.close();
         // Same data and UI keys: navigation preserves the exact DOM and does no derivation.
         setPage('cash');const cash=document.getElementById('content').firstChild;
@@ -174,8 +174,8 @@ with BrowserSession(ROOT/'netunim-orders/site','orders-domain-performance') as b
         results.warm={same:supplier===document.getElementById('main').firstChild,metrics:metrics.performanceSummary()};
         // Alert indicator refreshes should not clone finance or derive cashflow.
         uiAlertCenter.refreshIndicator();metrics.clearPerformance();for(let i=0;i<10;i++)uiAlertCenter.refreshIndicator();results.alerts=metrics.performanceSummary();
-        metrics.clearPerformance();let started=performance.now();uiGlobalSearch.open();uiGlobalSearch.renderResults('Customer');results.globalCold={ms:Math.round(performance.now()-started),metrics:metrics.performanceSummary()};uiGlobalSearch.close();
-        metrics.clearPerformance();started=performance.now();uiGlobalSearch.open();uiGlobalSearch.renderResults('Service');results.globalWarm={ms:Math.round(performance.now()-started),metrics:metrics.performanceSummary()};uiGlobalSearch.close();
+        metrics.clearPerformance();let started=performance.now();await uiGlobalSearch.open();await uiGlobalSearch.renderResults('Customer');results.globalCold={ms:Math.round(performance.now()-started),metrics:metrics.performanceSummary()};uiGlobalSearch.close();
+        metrics.clearPerformance();started=performance.now();await uiGlobalSearch.open();await uiGlobalSearch.renderResults('Service');results.globalWarm={ms:Math.round(performance.now()-started),metrics:metrics.performanceSummary()};uiGlobalSearch.close();
         // A status toggle keeps unrelated cards and the surrounding DOM alive.
         switchView('service');const untouched=document.querySelector('[data-service-bulk-id="SV1"]'),host=document.getElementById('serviceSearchResults');
         toggleServiceFlag('SV0','sent');storagePersistence.runtime.cancelPending();

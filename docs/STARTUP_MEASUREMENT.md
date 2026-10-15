@@ -60,3 +60,12 @@ and deliberately generous timing regression ceilings. They are not performance
 targets or a cross-machine ratio baseline. CI uploads the complete cold/cached/
 offline observations as `.work/startup-performance/latest.json`, including on a
 failed job. Tighten timing thresholds only using repeated comparable CI samples.
+
+
+## Repeated search presentation experiment
+
+The second phase records three isolated profiles per app and min/median/max for
+every cold/cached/offline duration plus module responses and ScriptDuration. See
+LAZY_SEARCH_LOADING.md and evidence/startup-search-20261015.json for the measured
+optional search split, tightened source ceilings and the explicit lack of a
+proven overall cold-latency improvement. Full CI uploads every raw repetition.

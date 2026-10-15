@@ -5,10 +5,14 @@ The ESM graph test separately enforces deterministic bytes/module budgets.
 """
 from browser_harness import BrowserSession, ROOT
 import json
+import os
+from statistics import median
 
 
 BUDGETS = json.loads((ROOT/'tests/fixtures/startup-budgets.json').read_text(encoding='utf-8'))
 REPORT = {}
+REPETITIONS = int(os.environ.get("NETUNIM_STARTUP_REPETITIONS", "3"))
+assert 1 <= REPETITIONS <= 5
 
 
 def measure(browser, app):
@@ -45,35 +49,48 @@ def measure(browser, app):
 
 
 for app in ['kupa', 'orders']:
-    with BrowserSession(ROOT/f'netunim-{app}/site', app+'-startup', instrument=False,
-                        service_worker=True, auto_navigate=False) as browser:
-        browser.call('Performance.enable')
-        # Browser diagnostic setup only: avoid silently truncating the default
-        # Resource Timing buffer on a 300+ module cold load. No app code patches.
-        browser.call('Page.addScriptToEvaluateOnNewDocument', {'source': 'performance.setResourceTimingBufferSize(3000)'})
-        browser._navigate()
-        samples = {'cold': measure(browser, app)}
-        installed = browser.evaluate("""(async()=>{
-          await navigator.serviceWorker.ready;
-          if(!navigator.serviceWorker.controller)await new Promise(resolve=>navigator.serviceWorker.addEventListener('controllerchange',resolve,{once:true}));
-          return !!navigator.serviceWorker.controller;
-        })()""", timeout=30)
-        assert installed
-        browser._navigate()
-        samples['cached'] = measure(browser, app)
-        browser.call('Network.enable')
-        offline = {'offline': True, 'latency': 0, 'downloadThroughput': -1, 'uploadThroughput': -1, 'connectionType': 'none'}
-        browser.call('Network.emulateNetworkConditions', offline)
-        browser.call('Network.overrideNetworkState', offline)
-        browser._navigate()
-        samples['offline'] = measure(browser, app)
-        assert samples['offline']['offline']
-        assert samples['offline']['marks']['local-recovered'] <= samples['offline']['marks']['boot-complete']
-        with browser.second_tab():
-            timeline = browser.evaluate("import('./assets/js/shared/startup-timing.js').then(m=>m.startupSnapshot())")
-            assert timeline['durations']['commandReady'] is None, timeline
-        REPORT[app] = samples
-        print('PASS', app, 'native cold/cached/offline startup and secondary authority;', json.dumps(samples), flush=True)
+    observations = []
+    for repetition in range(REPETITIONS):
+        with BrowserSession(ROOT/f'netunim-{app}/site', app+'-startup', instrument=False,
+                            service_worker=True, auto_navigate=False) as browser:
+            browser.call('Performance.enable')
+            # Browser diagnostic setup only: avoid silently truncating the default
+            # Resource Timing buffer on a 300+ module cold load. No app code patches.
+            browser.call('Page.addScriptToEvaluateOnNewDocument', {'source': 'performance.setResourceTimingBufferSize(3000)'})
+            browser._navigate()
+            samples = {'cold': measure(browser, app)}
+            installed = browser.evaluate("""(async()=>{
+              await navigator.serviceWorker.ready;
+              if(!navigator.serviceWorker.controller)await new Promise(resolve=>navigator.serviceWorker.addEventListener('controllerchange',resolve,{once:true}));
+              return !!navigator.serviceWorker.controller;
+            })()""", timeout=30)
+            assert installed
+            browser._navigate()
+            samples['cached'] = measure(browser, app)
+            browser.call('Network.enable')
+            offline = {'offline': True, 'latency': 0, 'downloadThroughput': -1, 'uploadThroughput': -1, 'connectionType': 'none'}
+            browser.call('Network.emulateNetworkConditions', offline)
+            browser.call('Network.overrideNetworkState', offline)
+            browser._navigate()
+            samples['offline'] = measure(browser, app)
+            assert samples['offline']['offline']
+            assert samples['offline']['marks']['local-recovered'] <= samples['offline']['marks']['boot-complete']
+            with browser.second_tab():
+                timeline = browser.evaluate("import('./assets/js/shared/startup-timing.js').then(m=>m.startupSnapshot())")
+                assert timeline['durations']['commandReady'] is None, timeline
+            observations.append(samples)
+
+
+    summary = {}
+    for mode in ['cold', 'cached', 'offline']:
+        fields = {name: [sample[mode]['durations'][name] for sample in observations]
+                  for name in BUDGETS['milliseconds']}
+        fields['moduleResponses'] = [sample[mode]['resources']['lastResponseMs'] for sample in observations]
+        fields['scriptMs'] = [sample[mode]['cpu']['ScriptDuration'] * 1000 for sample in observations]
+        summary[mode] = {name: {'min': min(values), 'median': median(values), 'max': max(values)}
+                         for name, raw in fields.items() if (values := [v for v in raw if v is not None])}
+    REPORT[app] = {'samples': observations, 'summary': summary}
+    print('PASS', app, REPETITIONS, 'isolated cold/cached/offline startup samples;', json.dumps(summary), flush=True)
 
 output = ROOT/'.work/startup-performance/latest.json'
 output.parent.mkdir(parents=True, exist_ok=True)

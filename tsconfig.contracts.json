@@ -20,6 +20,8 @@
     "types": []
   },
   "files": [
+    "shared/lazy-global-document-search.js",
+    "tests/fixtures/checked-lazy-search.mjs",
     "tests/fixtures/checked-startup-admission.mjs",
     "shared/storage-v2-owner-transfer.js",
     "tests/fixtures/checked-owner-transfer.mjs",
