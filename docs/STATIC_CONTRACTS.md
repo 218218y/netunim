@@ -1,5 +1,24 @@
 # Incremental JavaScript contracts
 
+Calendar's persisted decoders and actual IndexedDB callers now check their
+bodies under strict checkJs. Native request results remain unknown until decoded;
+durable sequences, retry metadata, cache attribution and transaction completion
+cannot be inferred from raw values or promises. Historical unattributed caches
+retain an optional owner. Negative consumers and implementation mutations cover
+text sequences, forged edit roles and invented transaction results. The
+transaction behavior characterization also detects returning before completion.
+See [Calendar persisted contracts](CALENDAR_PERSISTED_CONTRACTS.md).
+
+The canonical backup native owner, both generated imports and primitive account
+authority now check their actual bodies. Negative consumers reject async
+authority, text login epochs/primary flags, nontext file bytes, missing signals
+and synthetic drains. Implementation mutations reject unproven generic results
+and deferred identity proofs. Kupa's actual save-publication scheduler also
+checks synchronous admission, snapshot/generation shape and boolean cloud/file
+completion without allowing a resolved queue seed to grant save evidence.
+See [Backup browser ownership](BACKUP_BROWSER_OWNERSHIP.md). This does not claim
+complete controller, business-RPC, provider-shape or journal-caller coverage.
+
 The canonical Finance import runtime and native file-selection owner check their
 actual bodies. Negative consumers reject implicit confirmations, text summary
 counts, nontext pairing and synthetic drain/results; actual mutations replace

@@ -28,6 +28,18 @@ Windows contracts. Its implementation is documented in KUPA_PERSISTENCE_OWNERS.m
 and MAIN_SYNC_COMPOSITION.md. Stage 2 evidence and authority boundaries are in
 CALENDAR_PERSISTED_CONTRACTS.md and FINANCE_EDIT_COMMANDS.md.
 
+Stage 2 merged as PR #185 after its exact branch push passed the full gate.
+Stage 3 implements the native resource and critical caller contracts described
+in BACKUP_BROWSER_OWNERSHIP.md. It also fences cloud backup publication across
+account replacement, a concrete neighboring gap found in the current code.
+
+The three implementation slices close the targeted persistence, Main sync,
+Calendar, Finance-edit and backup-resource boundaries. The next separate slices
+remain Morning/customer orchestration, other business/RPC and journal/lease
+caller contracts, Document Bridge runtime/CLI inventory, measured startup,
+compatibility inventory and final readability/release validation. Existing
+Bank/Credit provider policies have not been rewritten.
+
 Document Bridge remainder, measured cold startup/lazy loading, compatibility
 retirement and broad formatting remain later work; they should not be inferred
 complete from these three stages. Lazy loading needs measured startup evidence

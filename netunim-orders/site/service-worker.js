@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-3955b9dda63a';
+const CACHE='orders-app-shell-esm-8b36f745d4d5';
 const SHELL=[
   './',
   './index.html',
@@ -190,6 +190,8 @@ const SHELL=[
   './assets/js/shared/action-registry.js',
   './assets/js/shared/authenticated-account-scope.js',
   './assets/js/shared/automatic-backup-runtime.js',
+  './assets/js/shared/backup-browser-resources.js',
+  './assets/js/shared/backup-file-authority.js',
   './assets/js/shared/bank-archive-policy.js',
   './assets/js/shared/bank-archive-read-batch.js',
   './assets/js/shared/bank-archive-reconciliation.js',
@@ -372,7 +374,6 @@ const SHELL=[
   './assets/js/ui/actions.js',
   './assets/js/ui/alert-center.js',
   './assets/js/ui/backup-catalog.js',
-  './assets/js/ui/backup-download.js',
   './assets/js/ui/backup-local.js',
   './assets/js/ui/backup-presentation.js',
   './assets/js/ui/backup-restore.js',
