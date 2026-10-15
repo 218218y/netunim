@@ -58,15 +58,15 @@ test('snapshot commands own six required ports and have no platform/resource eff
       ])
     );
 });
-test('Bank controller has one snapshot command API and a required real lease port', () => {
+test('Bank controller has snapshot/refresh APIs while the operation requires a real lease', () => {
   const source = read(folder + 'controller.js'),
     ast = parse(source, { sourceType: 'module', ecmaVersion: 'latest' });
   const factory = ast.body.find(
     (row) => row.declaration?.id?.name === 'createDomainsBankController'
   ).declaration;
   const fields = factory.params[0].properties.map((row) => row.key.name);
-  assert.equal(fields.length, 17);
-  for (const required of ['snapshots', 'syncLeases', 'readFinance'])
+  assert.equal(fields.length, 13);
+  for (const required of ['snapshots', 'bankRefresh'])
     assert.ok(fields.includes(required), required);
   for (const old of [
     'saveState',
@@ -82,8 +82,11 @@ test('Bank controller has one snapshot command API and a required real lease por
   assert.ok(!source.includes('acquired:true'));
   assert.ok(!source.includes('localSnapshot.save('));
   assert.ok(!source.includes('readBankSnapshotReceipt('));
-  assert.ok(source.includes("if(session.connectionMode==='supabase')"));
-  assert.ok(source.includes('snapshots.commands.publishCloud(nextBank,archiveCandidate,lease)'));
+  assert.ok(source.includes('bankRefresh.commands.refresh('));
+  const operation=read(folder+'refresh.js').replace(/\s+/g,'');
+  assert.ok(operation.includes("if(cloud.mode()==='supabase')"));
+  assert.ok(operation.includes('publication.publishCloud(nextBank,archiveCandidate,requireCloudLease(lease))'));
+  assert.ok(operation.includes("leases.commands.acquire('bank'"));
   const composition = read('netunim-kupa/site/assets/js/composition/bank.js').replace(/\s+/g, '');
   for (const wire of [
     'local:localSnapshot',

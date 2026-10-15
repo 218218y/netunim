@@ -58,6 +58,12 @@ for(const app of ['kupa','orders']){
           assert.ok(!['fetchBalance','syncCreditCards','acquire'].includes(node.property?.name),relative+': provider and lease acquisition belong to operation owners');
         if(node.type==='FunctionDeclaration'&&['createOrdersCreditRefresh','createKupaCreditRefresh'].includes(node.id?.name))
           assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=7,relative+': Credit operation requires focused authority, cloud, device, lease, policy, publication and automation APIs');
+        if(node.type==='FunctionDeclaration'&&node.id?.name==='createKupaBankRefresh')
+          assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=7,relative+': Bank refresh requires focused operation ports');
+        if(node.type==='FunctionDeclaration'&&node.id?.name==='createKupaBankSnapshotPolicy')
+          assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=3,relative+': Bank candidate policy requires calculation, source and identity ports');
+        if(app==='kupa'&&relative==='assets/js/domains/bank/controller.js'&&node.type==='MemberExpression')
+          assert.ok(!['fetchBalance','acquire','publishCloud','publishLocal'].includes(node.property?.name),relative+': Bank provider/lease/publication belongs to its operation owner');
         if(app==='kupa'&&relative==='assets/js/domains/credit/controller.js'&&node.type==='MemberExpression')
           assert.ok(!['syncCreditCards','acquire'].includes(node.property?.name),relative+': provider and lease acquisition belong to the Credit operation owner');
       if(node.type==='FunctionDeclaration'&&['createOrdersBankConnectionOwner','createBankConnectionCommands'].includes(node.id?.name))

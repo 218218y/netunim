@@ -950,8 +950,9 @@ orders_credit_refresh=(O / "site/assets/js/domains/finance/credit-refresh.js").r
 kupa_credit_refresh=(K / "site/assets/js/domains/credit/refresh.js").read_text(encoding="utf-8")
 orders_credit_refresh_compact=re.sub(r"\s+", "", orders_credit_refresh)
 kupa_credit_refresh_compact=re.sub(r"\s+", "", kupa_credit_refresh)
+kupa_bank_refresh=re.sub(r"\s+", "", (K / "site/assets/js/domains/bank/refresh.js").read_text(encoding="utf-8"))
 for controller, kind, bridge_call, claim in (
-    (kupa_bank_controller,"bank","bridge.fetchBalance","syncLeases.commands.acquire('bank'"),
+    (kupa_bank_refresh,"bank","device.fetchBalance","leases.commands.acquire('bank'"),
     (kupa_credit_refresh_compact,"credit","device.sync","leases.commands.acquire('credit'"),
     (orders_bank_refresh_compact,"bank","device.fetchBalance","leases.commands.acquire('bank'"),
     (orders_credit_refresh_compact,"credit","device.sync","leases.commands.acquire('credit'"),

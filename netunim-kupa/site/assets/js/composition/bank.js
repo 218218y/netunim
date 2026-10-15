@@ -6,6 +6,13 @@ import {createBankArchiveReconciliation} from '../shared/bank-archive-reconcilia
 import {createFinanceLeaseOwner} from '../shared/finance-lease-owner.js';
 import {bankArchiveTargets} from '../domains/bank/archive-model.js';
 import {createKupaBankSnapshotCommands} from '../domains/bank/snapshot-commands.js';
+import {createKupaBankRefresh} from '../domains/bank/refresh.js';
+import {createKupaBankSnapshotPolicy} from '../domains/bank/snapshot-policy.js';
+import {BANK_READOUT_WARNING} from '../domains/bank/snapshot-commands.js';
+import {normalizeBankFeed} from '../domains/bank/feed.js';
+import {bankRecurringDebitHistoryData} from '../shared/bank-recurring-debits.js';
+import {bankAutoRefreshDue} from '../shared/finance-refresh-policy.js';
+import {wholeMoney} from '../core/money.js';
 import {createManualBankSnapshot} from '../domains/bank/manual-snapshot.js';
 import {createBankLocalSnapshot} from '../domains/bank/local-snapshot.js';
 import {uid} from '../core/values.js';
@@ -102,13 +109,26 @@ export function createKupaBankCapability({
     effects:{saveJson:(...args) => { ready(); return effects.saveJson(...args); }},
     clock:{now:() => Date.now()},protocol:{minimumBridgeVersion:KUPA_BANK_BRIDGE_MINIMUM_VERSION,statusCacheMs:15000},
   });
-  const controller = createDomainsBankController({
-    model, session, bridge, operationScope:scope, archive, archiveReconciliation, snapshots, syncLeases, connections,
+  let controller;
+  const bankRefresh=createKupaBankRefresh({
+    authority:scope,
+    cloud:{mode:()=>session.connectionMode,refresh:(...args)=>cloud.refreshFinance(...args),currentState:()=>model.state,
+      lastSyncAt:state=>controller.refreshReadout.lastSyncAt(state),checksHaveLocalWork:(...args)=>checks.hasLocalWork(...args)},
+    device:{capture:connections.queries.capture,readStatus:connections.queries.readStatus,supported:connections.queries.supported,fetchBalance:options=>bridge.fetchBalance(options)},
+    leases:{...syncLeases,createToken:()=>uid('FINLEASE'),reportFailure:error=>console.error('bank sync lease release',error)},
+    publication:{prepare:snapshots.commands.prepare,reconcile:archiveReconciliation.commands.sync,
+      publishCloud:snapshots.commands.publishCloud,publishLocal:snapshots.commands.publishLocal,readoutWarning:BANK_READOUT_WARNING},
+    policy:createKupaBankSnapshotPolicy({
+      feeds:{normalize:normalizeBankFeed,recurringHistory:bankRecurringDebitHistoryData,roundMoney:wholeMoney},
+      source:{readBank:()=>model.state.bank&&typeof model.state.bank==='object'?model.state.bank:{},observedSequence:()=>readout.observedCheckSequence()},
+      identity:{now:()=>new Date().toISOString(),today:todayISO,createToken:()=>uid('BANK')},
+    }),
+    automation:{due:bankAutoRefreshDue,markAttempt:()=>bridge.markAutoAttempt()},
+  });
+  controller = createDomainsBankController({
+    model, session, bridge, operationScope:scope, archive, snapshots, connections,bankRefresh,
     timers:platform.timers ?? globalThis, autoScope:() => disposed ? null : authority.automaticAccess(),
-    sharedChecksHaveLocalWork:(...args) => checks.hasLocalWork(...args),
-    sharedChecksObservedSequence:(...args) => readout.observedCheckSequence(...args),
     toast:notify, render,
-    readFinance:(...args) => cloud.refreshFinance(...args),
     acknowledgeBankTransactionMissing:(...args) => cloud.acknowledgeMissing(...args),
   });
   function enter(method, ...args) {

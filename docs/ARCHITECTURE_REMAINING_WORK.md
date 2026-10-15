@@ -87,7 +87,7 @@ remaining-scope paragraphs describe their stage's starting point.
   read owner. Failed reads retain accepted siblings; account handoff suppresses
   former-account error details; Bank pauses prevent background publication.
 - Kupa Bank archive owns scoped caches and accepted reads, with disposal/drain
-  and a pause during Bank refresh. Its controller has 17 collaborators, down
+  and a pause during Bank refresh. Its controller has 13 collaborators, down
   from 28 across archive and snapshot slices. Both apps use one strict paired-read algorithm with separate owners;
   Kupa's local/file persistence and revision/render policy remain independent.
 - Kupa Bank snapshot commands require atomic cloud writes and real lease ports;
@@ -123,14 +123,14 @@ remaining-scope paragraphs describe their stage's starting point.
 - Orders local Bank status, vault/account commands and diagnostic publication
   have a strict owner. Its native form/listener and confirmations have a joined
   presentation lifetime, and stale pairing/results cannot replace current
-  readout or invent a Bridge version. Finance provider orchestration remains open. See
+  readout or invent a Bridge version. Broader financial edit contracts remain open. See
   [Orders Bank connections](ORDERS_BANK_CONNECTION_OWNER.md).
 - Kupa local Bank status/cache, vault/account commands and diagnostics have a
   strict six-port owner. Native forms own identity, pairing and listeners;
   accepted requests drain after disposal. Financial warnings survive passive
   status probes, and local vault acknowledgements preserve real version evidence.
   The controller's effect port and embedded local connection code are retired;
-  provider/lease orchestration remains open. See
+  provider refresh now belongs to its operation owner; broader manual-edit contracts remain open. See
   [Kupa Bank connections](KUPA_BANK_CONNECTION_OWNER.md).
 - Full CI covers PostgreSQL, native browser/IDB, lost ACKs, ownership changes,
   recovery and Windows, and remains mandatory for each slice.
@@ -146,7 +146,7 @@ remaining-scope paragraphs describe their stage's starting point.
   snapshot. Finance joins its preparation/publication work after disposal. The
   private financial model and full provider/lease algorithm match the immutable
   pre-extraction AST; old flat publication dependencies and silent defaults are
-  retired. Provider acquisition and broader Credit orchestration remain open.
+  retired. Provider acquisition now belongs to the Bank/Credit operation owners.
   See [Bank snapshot publication](ORDERS_BANK_SNAPSHOT_PUBLICATION.md).
 - Bank cloud archive reconciliation uses one canonical four-port owner in both
   apps, based on the Orders sequence and six identical financial policies.
@@ -180,11 +180,22 @@ remaining-scope paragraphs describe their stage's starting point.
   native pairing/disposal and malformed-reply fixtures preserve journals/recovery.
   See [Credit refresh operations](CREDIT_REFRESH_OPERATION_OWNERS.md).
 
+- Kupa Bank provider refresh now has a strict seven-port operation owner and a
+  strict three-port candidate policy. The controller retains admission and UI;
+  provider/lease/reconciliation/candidate/publication coordination is retired.
+  Snapshot identity and Shared watermark are still captured after Checks, with
+  preserved cloud/local durability, 365/30-day and partial-home LKG policies.
+  Local-only cloud grants and malformed home-failure evidence stop before archive
+  publication. Immutable full-function fixtures, strict body mutations and nine
+  native held stages protect lifecycle and exact journal recovery. Provider
+  refresh coordination is now separated in all four Bank/Credit controllers.
+  See [Kupa Bank refresh](KUPA_BANK_REFRESH_OPERATION.md).
+
 ## Four major work packages
 
 | Package | Concrete remaining work | Exit evidence |
 | --- | --- | --- |
-| Private controllers and composition | Remaining financial edit commands and manual-edit lease queue lifecycle; Kupa Bank provider/Bridge orchestration beyond archive/snapshot/lease owners; Calendar and large customer-document/view responsibilities; internal Main save/hydration coordination, remaining shell composition width and backup UI/resource account ownership | Narrow owners and lifecycle where jobs exist; dependency/API/I/O budgets; representative production behavior preserved |
+| Private controllers and composition | Remaining financial edit commands and manual-edit lease queue lifecycle; Calendar and large customer-document/view responsibilities; internal Main save/hydration coordination, remaining shell composition width and backup UI/resource account ownership | Narrow owners and lifecycle where jobs exist; dependency/API/I/O budgets; representative production behavior preserved |
 | Business and transaction contracts | Remaining journal/IDB callers, Finance leases/RPC envelopes, complete Bank/Credit profile/result payloads, Morning/Calendar commands and capability consumers | Unknown-payload validation and actual implementation mutations; an unchecked decoder never grants authoritative confirmation |
 | Bridge orchestration | Document search merge/pagination and scheduled maintenance/installer processes; Credit adapter construction, DigitalV3/Camoufox internals and remaining Bank CLI/token processes | Before-change retry/fallback characterization, native provider/process/file fixtures and preserved wire contracts |
 | Canonical sources and retirement inventory | Classify remaining legacy readers, preference keys, SQL setup/operator copies and generated assets; deterministic current/operator SQL generation where missing; retire only proven unused paths | Consumer inventory, immutable deployed migrations/receipts, deterministic generation and old-record/backup restore evidence |

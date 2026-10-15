@@ -26,6 +26,19 @@ function check(overrides=new Map()){
 }
 function describe(diagnostics){return ts.formatDiagnostics(diagnostics,{getCanonicalFileName:file=>file,getCurrentDirectory:()=>root,getNewLine:()=> '\n'})}
 
+test('Kupa Bank operation and candidate bodies reject deferred authority, invented money/watermarks and unjoined completion',()=>{
+ for(const [file,from,to]of [
+  ['refresh.js','assertCurrent: () => {','assertCurrent: async () => {'],
+  ['refresh.js','await Promise.all([work.drain(), leases.runtime.drain()]);','return true;'],
+  ['snapshot-policy.js','snapshotSeq: source.observedSequence()',"snapshotSeq: '7'"],
+  ['snapshot-policy.js','currentBalance: feeds.roundMoney(business.balance)',"currentBalance: '500'"],
+ ]){
+  const source=path.join(root,'netunim-kupa/site/assets/js/domains/bank',file),original=readFileSync(source,'utf8'),changed=original.replace(from,to);
+  assert.notEqual(changed,original,from);const diagnostics=check(new Map([[source,changed]]));
+  assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&[2322,2345].includes(item.code)),describe(diagnostics));
+ }
+});
+
 test('Credit operation bodies reject fabricated publication, deferred guards and unjoined completion',()=>{
  for(const file of ['netunim-orders/site/assets/js/domains/finance/credit-refresh.js','netunim-kupa/site/assets/js/domains/credit/refresh.js']){
   const source=path.join(root,file),original=readFileSync(source,'utf8');

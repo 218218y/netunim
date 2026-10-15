@@ -114,7 +114,7 @@ test('compositions join separate archive owners and keep intentional application
   const controller = read(kp + 'controller.js');
   assert.equal(
     declaration(controller, 'createDomainsBankController').params[0].properties.length,
-    17
+    13
   );
   for (const retired of [
     'syncBankTransactionsSnapshot',
