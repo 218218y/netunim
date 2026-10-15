@@ -10,6 +10,7 @@ const copy=value=>structuredClone(value);
 function fakeDb(){
   const bindings=new Map(),handoffs=new Map();
   return {
+    async readOwnerState(app){const [binding,handoff]=await Promise.all([this.readOwnerBinding(app),this.readOwnerHandoff(app)]);return {binding,handoff}},
     async readOwnerBinding(app){return copy(bindings.get(app)||null)},
     async readOwnerHandoff(app){return copy(handoffs.get(app)||null)},
     async initializeOwnerBinding(app,owner,{source,at}){const row={version:1,app,owner,generation:1,source,createdAt:at,updatedAt:at};bindings.set(app,row);return copy(row)},

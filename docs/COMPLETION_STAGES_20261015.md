@@ -157,3 +157,13 @@ and live-provider/physical-two-machine release validation.
     and pending/completed handoff evidence before publication. Cache or uncertain
     write failures revoke readiness; only a valid refresh restores authority.
     Preserve historical completed metadata. See STORAGE_OWNER_BINDING_AUTHORITY.md.
+
+18. Own the actual binding/handoff IDB transaction body with coherent snapshots,
+    captured generation comparison, detached inputs and receipts published only
+    after transaction completion. Prove ABA fencing and all-or-nothing native
+    activation abort. See STORAGE_OWNER_TRANSACTIONS.md.
+
+19. Reject malformed checkpoint replacements before IDB awaits and prove physical
+    journal-key deletion authority inside full-head transactions. Native evidence
+    covers all checkpoint consumers, retained malformed rows and valid imports/
+    resets. See CHECKPOINT_RETIREMENT_AUTHORITY.md. Eager budgets remain unchanged.

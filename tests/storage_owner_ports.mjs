@@ -5,6 +5,7 @@ export function fakeStorage(initial={}){
 export function fakeDb(){
   const bindings=new Map(),handoffs=new Map();
   return {
+    async readOwnerState(app){const [binding,handoff]=await Promise.all([this.readOwnerBinding(app),this.readOwnerHandoff(app)]);return {binding,handoff}},
     async readOwnerBinding(app){return bindings.has(app)?structuredClone(bindings.get(app)):null},
     async readOwnerHandoff(app){return handoffs.has(app)?structuredClone(handoffs.get(app)):null},
     async initializeOwnerBinding(app,owner,{source,at}){

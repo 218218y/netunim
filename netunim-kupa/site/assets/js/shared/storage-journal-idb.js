@@ -1,3 +1,4 @@
+import {createStorageOwnerTransactions} from './storage-owner-idb.js';
 import {createStorageCheckpoint,createStorageCloudBase} from './storage-records.js';
 import {assertStorageCloudAck} from './storage-cloud-ack.js';
 import {readStorageCloudBase,readStorageCloudFlight,readStorageCloudControl,readStorageCloudHead} from './storage-cloud-records.js';
@@ -5,7 +6,7 @@ import {createIndexedDbConnection} from './indexed-db-connection.js';
 import {readStorageRecord,sealStorageRecord} from './storage-journal-model.js';
 import {historicalShadowRoleForSide} from './storage-v2-persisted-compat.js';
 import {assertCloudRecoveryHead} from './storage-cloud-recovery.js';
-import {readStorageCheckpoint} from './storage-checkpoint.js';
+import {readStorageCheckpoint,captureStorageCheckpoint,readStorageJournalDeletionKeys} from './storage-checkpoint.js';
 
 export function createStorageJournalDb({name='netunim-storage-v2'}={}){
   const stores=['checkpoints','journal','metadata','bases','flights','controls'];
@@ -34,33 +35,33 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
   // String epochs sort below the array sentinel; adjacent owner prefixes do
   // not enter this range. Keep the historical index/schema without migrating.
   function readJournal(tx,owner){return tx.objectStore('journal').getAll(IDBKeyRange.bound([owner],[owner,[]],false,true))}
-  function read(tx,owner,done,fail){
-    const result={},names=['checkpoints','metadata','bases','flights','controls','journal'];let pending=names.length;
-    for(const name of names){const request=name==='journal'?readJournal(tx,owner):tx.objectStore(name).get(owner);request.onsuccess=()=>{result[name]=request.result??(name==='journal'?[]:null);if(!--pending){try{done(result)}catch(error){fail(error)}}}}
+  function read(tx,owner,done,fail,{retirement=false}={}){
+    const result={},names=['checkpoints','metadata','bases','flights','controls','journal',...(retirement?['journalKeys']:[])];let pending=names.length;
+    for(const name of names){const request=name==='journal'?readJournal(tx,owner):name==='journalKeys'?tx.objectStore('journal').getAllKeys(IDBKeyRange.bound([owner],[owner,[]],false,true)):tx.objectStore(name).get(owner);request.onsuccess=()=>{result[name]=request.result??(name==='journal'?[]:null);if(!--pending){try{done(result)}catch(error){fail(error)}}}}
   }
   function load(owner){return transact('readonly',(tx,done,fail)=>read(tx,owner,done,fail))}
-  function change(owner,edit){return transact('readwrite',(tx,done,fail)=>read(tx,owner,current=>{edit(tx,current,done)},fail))}
+  function change(owner,edit){return transact('readwrite',(tx,done,fail)=>read(tx,owner,current=>{current.journalKeys=readStorageJournalDeletionKeys(current.journal,current.journalKeys,owner);edit(tx,current,done)},fail,{retirement:true}))}
   function assertFence(current,owner,epoch,writer){
     if(current.metadata?.epoch!==epoch||current.metadata?.writer!==writer)throw new Error('storage_writer_fenced');
     // Full-head transactions validate inside the same read/write transaction.
     // Append keeps its two-record hot path; it neither ACKs nor clears a head.
     if(Object.hasOwn(current,'bases'))readStorageCloudHead({base:current.bases,flight:current.flights,control:current.controls},{owner,epoch,seq:current.metadata.seq});
   }
-  function install(owner,checkpoint,writer,{expectedEpoch=null}={}){return change(owner,(tx,current,done)=>{
+  async function install(owner,checkpoint,writer,{expectedEpoch=null}={}){checkpoint=captureStorageCheckpoint(checkpoint);return change(owner,(tx,current,done)=>{
     if((current.metadata?.epoch??null)!==expectedEpoch)throw new Error('storage_checkpoint_race');
     if(current.flights)throw new Error('storage_restore_flight_pending');
-    const data=readStorageRecord(checkpoint);if(data.owner!==owner)throw new Error('storage_owner_mismatch');
+    const data=readStorageCheckpoint(checkpoint);if(data.owner!==owner)throw new Error('storage_owner_mismatch');
     tx.objectStore('checkpoints').put(checkpoint,owner);tx.objectStore('metadata').put({epoch:data.epoch,seq:data.seq,writer},owner);
-    for(const record of current.journal)tx.objectStore('journal').delete([owner,record.data.epoch,record.data.seq]);
+    for(const key of current.journalKeys)tx.objectStore('journal').delete(key);
     // New epochs never inherit an old cloud cursor, flight or control state implicitly.
     tx.objectStore('bases').delete(owner);tx.objectStore('flights').delete(owner);tx.objectStore('controls').delete(owner);done(true);
   })}
   function claim(owner,epoch,writer){return change(owner,(tx,current,done)=>{if(current.metadata?.epoch!==epoch)throw new Error('storage_epoch_changed');readStorageCloudHead({base:current.bases,flight:current.flights,control:current.controls},{owner,epoch,seq:current.metadata.seq});tx.objectStore('metadata').put({...current.metadata,writer},owner);done(true)})}
-  function initializeCloudHead(owner,checkpoint,base,writer,operation=null){return change(owner,(tx,current,done)=>{
+  async function initializeCloudHead(owner,checkpoint,base,writer,operation=null){checkpoint=captureStorageCheckpoint(checkpoint);return change(owner,(tx,current,done)=>{
     // Initialization is create-only. It cannot erase a previous owner's work,
     // a shadow namespace or an interrupted upload on retry.
     if(current.checkpoints||current.metadata||current.bases||current.flights||current.controls||current.journal.length)throw new Error('storage_initialization_exists');
-    const head=readStorageRecord(checkpoint),cursor=readStorageRecord(base),entry=operation&&readStorageRecord(operation);
+    const head=readStorageCheckpoint(checkpoint),cursor=readStorageRecord(base),entry=operation&&readStorageRecord(operation);
     if(head.owner!==owner||cursor.owner!==owner||head.epoch!==cursor.epoch||head.seq!==0||cursor.ackSeq!==0||!Number.isSafeInteger(cursor.revision)||cursor.revision<0)throw new Error('storage_initialization_invalid');
     if(entry&&(entry.owner!==owner||entry.epoch!==head.epoch||entry.seq!==1))throw new Error('storage_initialization_invalid');readStorageCloudBase(base);
     tx.objectStore('checkpoints').put(checkpoint,owner);tx.objectStore('bases').put(base,owner);
@@ -79,30 +80,30 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
     }catch(error){fail(error)}};
     metadata.onsuccess=finish;existing.onsuccess=finish;
   })}
-  function compact(owner,epoch,writer,checkpoint){return change(owner,(tx,current,done)=>{
-    assertFence(current,owner,epoch,writer);const data=readStorageRecord(checkpoint),prior=readStorageRecord(current.checkpoints);
+  async function compact(owner,epoch,writer,checkpoint){checkpoint=captureStorageCheckpoint(checkpoint);return change(owner,(tx,current,done)=>{
+    assertFence(current,owner,epoch,writer);const data=readStorageCheckpoint(checkpoint),prior=readStorageCheckpoint(current.checkpoints);
     if(data.owner!==owner||data.epoch!==epoch||data.seq<prior.seq||data.seq>current.metadata.seq)throw new Error('storage_compaction_range');
     tx.objectStore('checkpoints').put(checkpoint,owner);
     // Operations newer than the durable cloud cursor remain available even when
     // their state is already represented by a local checkpoint. This preserves
     // explicit deletes and audit metadata until the cloud has acknowledged them.
     const base=current.bases?readStorageCloudBase(current.bases):null,deleteThrough=base?Math.min(data.seq,Number(base.ackSeq||0)):data.seq;
-    for(const row of current.journal)if(row.data.epoch===epoch&&row.data.seq<=deleteThrough)tx.objectStore('journal').delete([owner,epoch,row.data.seq]);done(true);
+    for(const key of current.journalKeys)if(key[1]===epoch&&key[2]<=deleteThrough)tx.objectStore('journal').delete(key);done(true);
   })}
-  function replaceCheckpoint(owner,epoch,writer,checkpoint){return change(owner,(tx,current,done)=>{
-    assertFence(current,owner,epoch,writer);const data=readStorageRecord(checkpoint);
+  async function replaceCheckpoint(owner,epoch,writer,checkpoint){checkpoint=captureStorageCheckpoint(checkpoint);return change(owner,(tx,current,done)=>{
+    assertFence(current,owner,epoch,writer);const data=readStorageCheckpoint(checkpoint);
     if(data.owner!==owner||data.epoch!==epoch||data.seq!==current.metadata.seq)throw new Error('storage_checkpoint_stale');
     // This is a same-epoch authoritative rebase. Cloud cursor/flight and the
     // unacknowledged journal stay intact; replay starts from the new current head.
     tx.objectStore('checkpoints').put(checkpoint,owner);done(true);
   })}
-  function replaceLocalCheckpoint(owner,epoch,writer,checkpoint,expectedSeq){return change(owner,(tx,current,done)=>{
-    assertFence(current,owner,epoch,writer);const data=readStorageRecord(checkpoint);
+  async function replaceLocalCheckpoint(owner,epoch,writer,checkpoint,expectedSeq){checkpoint=captureStorageCheckpoint(checkpoint);return change(owner,(tx,current,done)=>{
+    assertFence(current,owner,epoch,writer);const data=readStorageCheckpoint(checkpoint);
     if(!Number.isSafeInteger(expectedSeq)||expectedSeq<0||current.metadata.seq!==expectedSeq||data.owner!==owner||data.epoch!==epoch||data.seq!==expectedSeq)throw new Error('storage_boundary_source_changed');
     if(current.bases||current.flights||current.controls)throw new Error('storage_boundary_local_cloud_head_exists');
     // A local authoritative import supersedes every prior operation. With no
     // cloud cursor there are no remote delete intents to retain.
-    for(const record of current.journal)tx.objectStore('journal').delete([owner,record.data.epoch,record.data.seq]);
+    for(const key of current.journalKeys)tx.objectStore('journal').delete(key);
     tx.objectStore('checkpoints').put(checkpoint,owner);done(true);
   })}
   function setBase(owner,epoch,writer,base){return change(owner,(tx,current,done)=>{assertFence(current,owner,epoch,writer);if(current.flights)throw new Error('storage_flight_pending');const data=readStorageRecord(base);if(data.owner!==owner||data.epoch!==epoch||!Number.isSafeInteger(data.revision)||data.revision<0||!Number.isSafeInteger(data.ackSeq)||data.ackSeq<0||data.ackSeq>current.metadata.seq)throw new Error('storage_cloud_base_mismatch');readStorageCloudBase(base);tx.objectStore('bases').put(base,owner);done(true)})}
@@ -113,21 +114,21 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
     if(current.flights){if(JSON.stringify(current.flights)!==JSON.stringify(flight))throw new Error('storage_flight_pending');done(current.flights);return}
     tx.objectStore('flights').put(flight,owner);done(flight);
   })}
-  function acknowledge(owner,epoch,writer,operationId,base,{checkpoint=null,control=null}={}){return change(owner,(tx,current,done)=>{
+  async function acknowledge(owner,epoch,writer,operationId,base,{checkpoint=null,control=null}={}){if(checkpoint!==null)checkpoint=captureStorageCheckpoint(checkpoint);return change(owner,(tx,current,done)=>{
     assertFence(current,owner,epoch,writer);if(!current.flights||readStorageCloudFlight(current.flights).operationId!==operationId)throw new Error('storage_ack_mismatch');
     const acknowledged=readStorageRecord(base),flight=readStorageCloudFlight(current.flights);
     assertStorageCloudAck(acknowledged,flight,{owner,epoch});readStorageCloudBase(base);
-    if(checkpoint){const nextCheckpoint=readStorageRecord(checkpoint);if(nextCheckpoint.owner!==owner||nextCheckpoint.epoch!==epoch||nextCheckpoint.seq!==current.metadata.seq)throw Object.assign(new Error('storage_checkpoint_stale'),{code:'storage_ack_checkpoint_stale',candidateSeq:nextCheckpoint.seq,observedSeq:current.metadata.seq});tx.objectStore('checkpoints').put(checkpoint,owner)}
+    if(checkpoint){const nextCheckpoint=readStorageCheckpoint(checkpoint);if(nextCheckpoint.owner!==owner||nextCheckpoint.epoch!==epoch||nextCheckpoint.seq!==current.metadata.seq)throw Object.assign(new Error('storage_checkpoint_stale'),{code:'storage_ack_checkpoint_stale',candidateSeq:nextCheckpoint.seq,observedSeq:current.metadata.seq});tx.objectStore('checkpoints').put(checkpoint,owner)}
     if(control){const nextControl=readStorageRecord(control);if(nextControl.owner!==owner||nextControl.epoch!==epoch)throw new Error('storage_control_scope');readStorageCloudControl(control);tx.objectStore('controls').put(control,owner)}else tx.objectStore('controls').delete(owner);
     tx.objectStore('bases').put(base,owner);tx.objectStore('flights').delete(owner);done(true);
     // ACK never deletes journal entries. Only an atomic checkpoint can compact.
   })}
-  function rejectFlight(owner,epoch,writer,operationId,base,{checkpoint,expectedSeq,control=null}={}){return change(owner,(tx,current,done)=>{
+  async function rejectFlight(owner,epoch,writer,operationId,base,{checkpoint,expectedSeq,control=null}={}){checkpoint=captureStorageCheckpoint(checkpoint);return change(owner,(tx,current,done)=>{
     assertFence(current,owner,epoch,writer);const flight=current.flights&&readStorageCloudFlight(current.flights),prior=current.bases&&readStorageCloudBase(current.bases),next=readStorageRecord(base);
     if(!flight||flight.operationId!==operationId)throw new Error('storage_reject_mismatch');
     if(!prior||next.owner!==owner||next.epoch!==epoch||next.ackSeq!==prior.ackSeq||!Number.isSafeInteger(next.revision)||next.revision<=flight.baseRevision)throw new Error('storage_rebase_cursor');
     if(!checkpoint||!Number.isSafeInteger(expectedSeq)||expectedSeq!==current.metadata.seq)throw new Error('storage_rebase_checkpoint_stale');
-    const nextCheckpoint=readStorageRecord(checkpoint);
+    const nextCheckpoint=readStorageCheckpoint(checkpoint);
     if(nextCheckpoint.owner!==owner||nextCheckpoint.epoch!==epoch||nextCheckpoint.seq!==expectedSeq)throw new Error('storage_rebase_checkpoint_stale');
     readStorageCloudBase(base);
     // The new cloud revision and the local state rebased onto it become
@@ -141,7 +142,7 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
     if(expectedHead&&(current.metadata.seq!==expectedHead.seq||current.flights||current.checkpoints?.checksum!==expectedHead.checkpointChecksum||current.bases?.checksum!==expectedHead.baseChecksum||current.controls?.checksum!==expectedHead.controlChecksum))throw new Error('storage_control_head_changed');
     tx.objectStore('controls').delete(owner);done(true);
   })}
-  function commitCloudRecovery(owner,epoch,writer,checkpoint,{expectedHead,conflictKind=null,isCurrent=()=>true}={}){return change(owner,(tx,current,done)=>{
+  async function commitCloudRecovery(owner,epoch,writer,checkpoint,{expectedHead,conflictKind=null,isCurrent=()=>true}={}){checkpoint=captureStorageCheckpoint(checkpoint);return change(owner,(tx,current,done)=>{
     assertFence(current,owner,epoch,writer);
     if(!isCurrent())throw new Error('storage_cloud_scope_changed');
     const decoded=readStorageCloudHead({base:current.bases,flight:current.flights,control:current.controls},{owner,epoch,seq:current.metadata.seq});
@@ -154,29 +155,29 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
     // The base/ACK, journal, physical keys and operation IDs are untouched.
     done(true);
   })}
-  function adoptCloudHead(owner,epoch,writer,checkpoint,base,{expectedHead=null}={}){return change(owner,(tx,current,done)=>{
+  async function adoptCloudHead(owner,epoch,writer,checkpoint,base,{expectedHead=null}={}){checkpoint=captureStorageCheckpoint(checkpoint);return change(owner,(tx,current,done)=>{
     assertFence(current,owner,epoch,writer);if(current.flights)throw new Error('storage_flight_pending');
     if(expectedHead&&(current.metadata.seq!==expectedHead.seq||current.checkpoints?.checksum!==expectedHead.checkpointChecksum||current.bases?.checksum!==expectedHead.baseChecksum||(current.controls?.checksum??null)!==expectedHead.controlChecksum))throw new Error('storage_cloud_adoption_stale');
-    const nextCheckpoint=readStorageRecord(checkpoint),nextBase=readStorageRecord(base),prior=current.bases&&readStorageCloudBase(current.bases);
+    const nextCheckpoint=readStorageCheckpoint(checkpoint),nextBase=readStorageRecord(base),prior=current.bases&&readStorageCloudBase(current.bases);
     if(!prior||prior.ackSeq!==current.metadata.seq||current.controls&&readStorageCloudControl(current.controls).conflict)throw new Error('storage_cloud_pending');
     if(nextCheckpoint.owner!==owner||nextCheckpoint.epoch!==epoch||nextCheckpoint.seq!==current.metadata.seq)throw new Error('storage_checkpoint_stale');
     if(nextBase.owner!==owner||nextBase.epoch!==epoch||nextBase.ackSeq!==current.metadata.seq||!Number.isSafeInteger(nextBase.revision)||nextBase.revision<prior.revision)throw new Error('storage_cloud_base_mismatch');readStorageCloudBase(base);
     tx.objectStore('checkpoints').put(checkpoint,owner);tx.objectStore('bases').put(base,owner);tx.objectStore('controls').delete(owner);done(true);
   })}
-  function resetState(owner,epoch,writer,checkpoint,{expectedLocalHead=null}={}){return change(owner,(tx,current,done)=>{
-    assertFence(current,owner,epoch,writer);const nextCheckpoint=readStorageRecord(checkpoint);
+  async function resetState(owner,epoch,writer,checkpoint,{expectedLocalHead=null}={}){checkpoint=captureStorageCheckpoint(checkpoint);return change(owner,(tx,current,done)=>{
+    assertFence(current,owner,epoch,writer);const nextCheckpoint=readStorageCheckpoint(checkpoint);
     if(expectedLocalHead&&(current.metadata.seq!==expectedLocalHead.seq||current.metadata.epoch!==expectedLocalHead.epoch||current.checkpoints?.checksum!==expectedLocalHead.checkpointChecksum||current.bases||current.flights||current.controls))throw new Error('storage_main_projection_head_changed');
     if(nextCheckpoint.owner!==owner||nextCheckpoint.seq!==0||!String(nextCheckpoint.epoch||'').trim())throw new Error('storage_state_reset_invalid');
     tx.objectStore('checkpoints').put(checkpoint,owner);tx.objectStore('metadata').put({epoch:nextCheckpoint.epoch,seq:0,writer},owner);
-    for(const record of current.journal)tx.objectStore('journal').delete([owner,record.data.epoch,record.data.seq]);
+    for(const key of current.journalKeys)tx.objectStore('journal').delete(key);
     tx.objectStore('bases').delete(owner);tx.objectStore('flights').delete(owner);tx.objectStore('controls').delete(owner);done(true);
   })}
-  function resetCloudHead(owner,epoch,writer,checkpoint,base,{expectedCleanHead=null}={}){return change(owner,(tx,current,done)=>{
-    assertFence(current,owner,epoch,writer);const nextCheckpoint=readStorageRecord(checkpoint),nextBase=readStorageRecord(base);
+  async function resetCloudHead(owner,epoch,writer,checkpoint,base,{expectedCleanHead=null}={}){checkpoint=captureStorageCheckpoint(checkpoint);return change(owner,(tx,current,done)=>{
+    assertFence(current,owner,epoch,writer);const nextCheckpoint=readStorageCheckpoint(checkpoint),nextBase=readStorageRecord(base);
     if(expectedCleanHead){const prior=current.bases&&readStorageCloudBase(current.bases);if(current.metadata.seq!==expectedCleanHead.seq||current.metadata.epoch!==expectedCleanHead.epoch||current.checkpoints?.checksum!==expectedCleanHead.checkpointChecksum||!prior||prior.revision!==expectedCleanHead.revision||prior.ackSeq!==expectedCleanHead.seq||current.flights||current.controls)throw new Error('storage_main_projection_head_changed')}
     if(nextCheckpoint.owner!==owner||nextBase.owner!==owner||nextCheckpoint.epoch!==nextBase.epoch||nextCheckpoint.seq!==0||nextBase.ackSeq!==0||!Number.isSafeInteger(nextBase.revision)||nextBase.revision<0)throw new Error('storage_cloud_reset_invalid');readStorageCloudBase(base);
     tx.objectStore('checkpoints').put(checkpoint,owner);tx.objectStore('metadata').put({epoch:nextCheckpoint.epoch,seq:0,writer},owner);
-    for(const record of current.journal)tx.objectStore('journal').delete([owner,record.data.epoch,record.data.seq]);
+    for(const key of current.journalKeys)tx.objectStore('journal').delete(key);
     tx.objectStore('bases').put(base,owner);tx.objectStore('flights').delete(owner);tx.objectStore('controls').delete(owner);done(true);
   })}
   function appendBoundary(owner,epoch,writer,record,{expectedSeq,expectedBaseRevision}={}){return change(owner,(tx,current,done)=>{
@@ -221,82 +222,7 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
       store.put(sealStorageRecord({version:2,id,owner,kind:record.kind,phase:'complete',completedAt:new Date().toISOString()}),owner);done(true);
     }catch(error){fail(error)}};
   })}
-  function ownerRecord(storeName,app){return open().then(db=>new Promise((resolve,reject)=>{
-    const tx=db.transaction([storeName],'readonly'),request=tx.objectStore(storeName).get(app);
-    request.onsuccess=()=>{try{resolve(request.result?readStorageRecord(request.result):null)}catch(error){reject(error)}};
-    request.onerror=()=>reject(request.error);
-  }))}
-  function readOwnerBinding(app){return ownerRecord('owner-bindings',app)}
-  function readOwnerHandoff(app){return ownerRecord('owner-handoffs',app)}
-  function initializeOwnerBinding(app,owner,{source='bootstrap',at=new Date().toISOString()}={}){return open().then(db=>new Promise((resolve,reject)=>{
-    const tx=db.transaction(['owner-bindings'],'readwrite'),store=tx.objectStore('owner-bindings'),request=store.get(app);let result=null,error=null;
-    request.onsuccess=()=>{try{
-      if(request.result){result=readStorageRecord(request.result);if(result.version!==1||result.app!==app||result.owner!==owner)throw new Error('storage_owner_binding_conflict');return}
-      result={version:1,app,owner,generation:1,source,createdAt:at,updatedAt:at};store.put(sealStorageRecord(result),app);
-    }catch(cause){error=cause;try{tx.abort()}catch{}}};
-    tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_owner_binding_aborted'));tx.onerror=()=>{error??=tx.error};
-  }))}
-  function reserveLocalOwnerTarget(app,targetOwner,{id,intent,at=new Date().toISOString()}={}){return open().then(db=>new Promise((resolve,reject)=>{
-    const tx=db.transaction(['owner-bindings'],'readwrite'),store=tx.objectStore('owner-bindings'),request=store.get(app);let result=null,error=null;
-    request.onsuccess=()=>{try{
-      if(!request.result)throw new Error('storage_owner_binding_missing');const binding=readStorageRecord(request.result),target=String(targetOwner||'').trim(),kind=String(intent||'').trim(),operation=String(id||'').trim(),pending=binding.pendingAdoption||null;
-      if(!target||target==='local'||!operation||!['load-account','upload-local'].includes(kind))throw new Error('storage_owner_local_adoption_invalid');
-      if(binding.owner===target&&!pending){result=binding;return}
-      if(binding.owner!=='local')throw new Error('storage_owner_handoff_required');
-      if(pending){if(pending.targetOwner===target&&pending.intent===kind){result=binding;return}throw new Error('storage_owner_local_adoption_reserved')}
-      result={...binding,pendingAdoption:{id:operation,targetOwner:target,intent:kind,createdAt:at,updatedAt:at},updatedAt:at};store.put(sealStorageRecord(result),app);
-    }catch(cause){error=cause;try{tx.abort()}catch{}}};
-    tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_owner_local_reservation_aborted'));tx.onerror=()=>{error??=tx.error};
-  }))}
-  function adoptPreparedLocalOwner(app,targetOwner,{id,intent,proof={},at=new Date().toISOString()}={}){return open().then(db=>new Promise((resolve,reject)=>{
-    const tx=db.transaction(['owner-bindings','owner-handoffs'],'readwrite'),bindings=tx.objectStore('owner-bindings'),handoffs=tx.objectStore('owner-handoffs'),bindingReq=bindings.get(app),handoffReq=handoffs.get(app);let remaining=2,result=null,error=null;
-    const finish=()=>{if(--remaining)return;try{
-      if(!bindingReq.result)throw new Error('storage_owner_binding_missing');const binding=readStorageRecord(bindingReq.result),existing=handoffReq.result&&readStorageRecord(handoffReq.result),target=String(targetOwner||'').trim(),kind=String(intent||'').trim(),operation=String(id||'').trim();
-      if(!target||target==='local'||!operation||!['load-account','upload-local'].includes(kind))throw new Error('storage_owner_local_adoption_invalid');
-      if(binding.owner===target&&(!existing||existing.phase==='complete')){result={binding, handoff:existing||null};return}
-      if(binding.owner!=='local')throw new Error('storage_owner_handoff_required');
-      if(existing&&existing.phase!=='complete')throw new Error('storage_owner_handoff_pending');
-      const reservation=binding.pendingAdoption||null;if(!reservation||reservation.targetOwner!==target||reservation.intent!==kind)throw new Error('storage_owner_local_adoption_not_reserved');
-      const nextBinding={...binding,owner:target,generation:Number(binding.generation||0)+1,source:`prepared-local:${kind}`,pendingAdoption:null,updatedAt:at},complete={version:1,id:operation,app,sourceOwner:'local',targetOwner:target,intent:kind,phase:'complete',preparationProof:structuredClone(proof),reservationId:reservation.id,createdAt:reservation.createdAt||at,activatedAt:at,completedAt:at,updatedAt:at};
-      bindings.put(sealStorageRecord(nextBinding),app);handoffs.put(sealStorageRecord(complete),app);result={binding:nextBinding,handoff:complete};
-    }catch(cause){error=cause;try{tx.abort()}catch{}}};bindingReq.onsuccess=finish;handoffReq.onsuccess=finish;
-    tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_owner_local_adoption_aborted'));tx.onerror=()=>{error??=tx.error};
-  }))}
-  function beginOwnerHandoff(app,record){return open().then(db=>new Promise((resolve,reject)=>{
-    const tx=db.transaction(['owner-bindings','owner-handoffs'],'readwrite'),bindings=tx.objectStore('owner-bindings'),handoffs=tx.objectStore('owner-handoffs'),bindingReq=bindings.get(app),handoffReq=handoffs.get(app);let remaining=2,result=null,error=null;
-    const finish=()=>{if(--remaining)return;try{
-      if(!bindingReq.result)throw new Error('storage_owner_binding_missing');const binding=readStorageRecord(bindingReq.result),existing=handoffReq.result&&readStorageRecord(handoffReq.result);
-      if(existing&&existing.phase!=='complete'){if(existing.id===record.id){result=existing;return}throw new Error('storage_owner_handoff_pending')}
-      if(record.version!==1||record.app!==app||record.sourceOwner!==binding.owner||record.targetOwner===binding.owner||record.phase!=='freezing-source')throw new Error('storage_owner_handoff_invalid');
-      result=structuredClone(record);handoffs.put(sealStorageRecord(result),app);
-    }catch(cause){error=cause;try{tx.abort()}catch{}}};bindingReq.onsuccess=finish;handoffReq.onsuccess=finish;
-    tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_owner_handoff_aborted'));tx.onerror=()=>{error??=tx.error};
-  }))}
-  function advanceOwnerHandoff(app,id,fromPhase,toPhase,patch={}){return open().then(db=>new Promise((resolve,reject)=>{
-    const tx=db.transaction(['owner-handoffs'],'readwrite'),store=tx.objectStore('owner-handoffs'),request=store.get(app);let result=null,error=null;
-    request.onsuccess=()=>{try{if(!request.result)throw new Error('storage_owner_handoff_missing');const current=readStorageRecord(request.result);if(current.id!==id||current.app!==app||current.phase!==fromPhase)throw new Error('storage_owner_handoff_changed');result={...current,...structuredClone(patch),phase:toPhase};store.put(sealStorageRecord(result),app)}catch(cause){error=cause;try{tx.abort()}catch{}}};
-    tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_owner_handoff_aborted'));tx.onerror=()=>{error??=tx.error};
-  }))}
-  function activateOwnerHandoff(app,id,targetOwner,{at=new Date().toISOString()}={}){return open().then(db=>new Promise((resolve,reject)=>{
-    const tx=db.transaction(['owner-bindings','owner-handoffs'],'readwrite'),bindings=tx.objectStore('owner-bindings'),handoffs=tx.objectStore('owner-handoffs'),bindingReq=bindings.get(app),handoffReq=handoffs.get(app);let remaining=2,result=null,error=null;
-    const finish=()=>{if(--remaining)return;try{
-      if(!bindingReq.result||!handoffReq.result)throw new Error('storage_owner_handoff_missing');const binding=readStorageRecord(bindingReq.result),handoff=readStorageRecord(handoffReq.result);
-      if(handoff.id!==id||handoff.app!==app||handoff.phase!=='target-recovered'||handoff.sourceOwner!==binding.owner||handoff.targetOwner!==targetOwner)throw new Error('storage_owner_handoff_changed');
-      const nextBinding={...binding,owner:targetOwner,generation:Number(binding.generation||0)+1,source:`handoff:${handoff.intent}`,pendingAdoption:null,updatedAt:at},active={...handoff,phase:'target-active',activatedAt:at,updatedAt:at};
-      bindings.put(sealStorageRecord(nextBinding),app);handoffs.put(sealStorageRecord(active),app);result={binding:nextBinding,handoff:active};
-    }catch(cause){error=cause;try{tx.abort()}catch{}}};bindingReq.onsuccess=finish;handoffReq.onsuccess=finish;
-    tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_owner_handoff_aborted'));tx.onerror=()=>{error??=tx.error};
-  }))}
-  function completeOwnerHandoff(app,id,targetOwner,{at=new Date().toISOString()}={}){return open().then(db=>new Promise((resolve,reject)=>{
-    const tx=db.transaction(['owner-bindings','owner-handoffs'],'readwrite'),bindings=tx.objectStore('owner-bindings'),handoffs=tx.objectStore('owner-handoffs'),bindingReq=bindings.get(app),handoffReq=handoffs.get(app);let remaining=2,result=null,error=null;
-    const finish=()=>{if(--remaining)return;try{
-      if(!bindingReq.result||!handoffReq.result)throw new Error('storage_owner_handoff_missing');const binding=readStorageRecord(bindingReq.result),handoff=readStorageRecord(handoffReq.result);
-      if(handoff.id!==id||handoff.app!==app||handoff.phase!=='target-active'||binding.owner!==targetOwner||handoff.targetOwner!==targetOwner)throw new Error('storage_owner_handoff_changed');
-      const complete={...handoff,phase:'complete',completedAt:at,updatedAt:at};
-      handoffs.put(sealStorageRecord(complete),app);result={binding, handoff:complete};
-    }catch(cause){error=cause;try{tx.abort()}catch{}}};bindingReq.onsuccess=finish;handoffReq.onsuccess=finish;
-    tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_owner_handoff_aborted'));tx.onerror=()=>{error??=tx.error};
-  }))}
+  const {readOwnerState,readOwnerBinding,readOwnerHandoff,initializeOwnerBinding,reserveLocalOwnerTarget,adoptPreparedLocalOwner,beginOwnerHandoff,advanceOwnerHandoff,activateOwnerHandoff,completeOwnerHandoff}=createStorageOwnerTransactions({open});
   function bootstrapRecord(scope){return open().then(db=>new Promise((resolve,reject)=>{
     const tx=db.transaction(['bootstrap-groups'],'readonly'),request=tx.objectStore('bootstrap-groups').get(scope);
     request.onsuccess=()=>{try{resolve(request.result?readStorageRecord(request.result):null)}catch(error){reject(error)}};
@@ -461,7 +387,7 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
         }
         for(const side of heads){
           const key=side.role==='primary'?'main':'shared',checkpoint=requests[`${key}:checkpoints`].result;
-          const prior=checkpoint&&readStorageRecord(checkpoint),expected=historicalShadowRoleForSide(key);
+          const prior=checkpoint&&readStorageCheckpoint(checkpoint),expected=historicalShadowRoleForSide(key);
           // Never replace an unfinished V2 primary, pending flight or control.
           // Only an old shadow copy (or no V2 data) may be superseded by cloud.
           const metadata=requests[`${key}:metadata`].result,entries=requests[`${key}:journal`].result||[];
@@ -480,5 +406,5 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
       tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_fenced_recovery_aborted'));tx.onerror=()=>{error??=tx.error};
     }))
   }
-  return {load,install,initializeCloudHead,claim,append,compact,appendBoundary,replaceCheckpoint,replaceLocalCheckpoint,setBase,beginFlight,acknowledge,rejectFlight,setControl,clearControl,commitCloudRecovery,adoptCloudHead,resetState,resetCloudHead,readBoundary,beginBoundary,advanceBoundary,completeBoundary,readOwnerBinding,readOwnerHandoff,initializeOwnerBinding,reserveLocalOwnerTarget,adoptPreparedLocalOwner,beginOwnerHandoff,advanceOwnerHandoff,activateOwnerHandoff,completeOwnerHandoff,readBootstrapGroup,beginBootstrapGroup,advanceBootstrapGroup,readV2Marker,markAccountMarker,readLocalBirth,beginLocalBirth,advanceLocalBirth,markLocalEngine,readLocalEngine,adoptFencedAccount};
+  return {load,install,initializeCloudHead,claim,append,compact,appendBoundary,replaceCheckpoint,replaceLocalCheckpoint,setBase,beginFlight,acknowledge,rejectFlight,setControl,clearControl,commitCloudRecovery,adoptCloudHead,resetState,resetCloudHead,readBoundary,beginBoundary,advanceBoundary,completeBoundary,readOwnerState,readOwnerBinding,readOwnerHandoff,initializeOwnerBinding,reserveLocalOwnerTarget,adoptPreparedLocalOwner,beginOwnerHandoff,advanceOwnerHandoff,activateOwnerHandoff,completeOwnerHandoff,readBootstrapGroup,beginBootstrapGroup,advanceBootstrapGroup,readV2Marker,markAccountMarker,readLocalBirth,beginLocalBirth,advanceLocalBirth,markLocalEngine,readLocalEngine,adoptFencedAccount};
 }

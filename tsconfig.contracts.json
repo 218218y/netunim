@@ -20,6 +20,8 @@
     "types": []
   },
   "files": [
+    "tests/fixtures/checked-owner-transactions.mjs",
+    "shared/storage-owner-idb.js",
     "tests/fixtures/checked-owner-binding.mjs",
     "shared/storage-owner-binding.js",
     "shared/lazy-global-document-search.js",

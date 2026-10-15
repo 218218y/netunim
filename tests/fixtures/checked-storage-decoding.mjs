@@ -1,6 +1,6 @@
 // Compile-only trust-boundary consumers; never execute negative calls.
 import {assertStorageJson,sealStorageJsonRecord,readStorageJsonRecord,storageChecksum} from '../../shared/storage-json-codec.js';
-import {readStorageCheckpoint} from '../../shared/storage-checkpoint.js';
+import {readStorageCheckpoint,captureStorageCheckpoint,readStorageJournalDeletionKeys} from '../../shared/storage-checkpoint.js';
 import {createStorageCheckpoint} from '../../shared/storage-records.js';
 import {readStorageCheckpoint as readKupaCheckpoint} from '../../netunim-kupa/site/assets/js/shared/storage-checkpoint.js';
 import {readStorageCheckpoint as readOrdersCheckpoint} from '../../netunim-orders/site/assets/js/shared/storage-checkpoint.js';
@@ -12,6 +12,15 @@ const sealed=sealStorageJsonRecord(current);
 const first=sealed.data.state.notes[0];if(first){/** @type {string} */ const id=first.id;void id}
 /** @type {unknown} */ const untrusted=sealed;
 const decoded=readStorageCheckpoint(untrusted);
+const captured=captureStorageCheckpoint(untrusted);
+/** @type {number} */ const capturedSeq=captured.data.seq;
+const retirement=readStorageJournalDeletionKeys(untrusted,untrusted,'account');
+for(const key of retirement){/** @type {[string,string,number]} */ const tuple=key;void tuple}
+// @ts-expect-error a decoded physical sequence is numeric, never text
+/** @type {string} */ const wrongRetirementSeq=retirement[0]?.[2];
+// @ts-expect-error captured checkpoint commands retain their checked version
+/** @type {1} */ const wrongCapturedVersion=captured.data.version;
+void capturedSeq;
 readKupaCheckpoint(untrusted);readOrdersCheckpoint(untrusted);
 /** @type {number} */ const seq=decoded.seq;
 /** @type {string} */ const owner=decoded.owner;
