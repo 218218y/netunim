@@ -124,7 +124,7 @@ for label, site in (("Orders transport", ORDERS), ("Kupa transport", KUPA)):
        f"{label}: operation-aware v5 RPC transport preserves idempotency and audit metadata")
 for label, path in (("Orders document", ORDERS / "site/assets/js/sync/document.js"),
                     ("Kupa document", KUPA / "site/assets/js/sync/document.js")):
-    source = path.read_text(encoding="utf-8")
+    source = path.read_text(encoding="utf-8") + (path.parent / 'save-operation.js').read_text(encoding="utf-8")
     ok("operationId" in source and "rpcSave" in source and "createOutboxRetryScheduler" in source,
        f"{label}: durable operation id and persisted retry gate are preserved through document retries")
 

@@ -11,7 +11,7 @@ def cloud_ui_source(app_root):
 
 
 def sync_document_source(app_root):
-    source = owner_sources(app_root, 'sync', ('document', 'write-flight', 'ack-publication',
+    source = owner_sources(app_root, 'sync', ('document', 'save-operation', 'remote-adoption', 'write-flight', 'ack-publication',
         'confirmation', 'polling'))
     if app_root.name == 'netunim-kupa':
         source += owner_sources(app_root, 'cloud', ('main-document-write',))

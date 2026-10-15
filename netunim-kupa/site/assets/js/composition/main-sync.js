@@ -1,11 +1,16 @@
+import {SUPA_AUTO_KEY,STORAGE_PREF_KEY} from '../state/constants.js';
+import {createMainSyncBrowserPorts} from '../shared/main-sync-browser.js';
 import {createSyncDocument as createDocumentRuntime} from '../sync/document.js';
 
 // Main owns its journal/ACK. Finance, Shared Checks and local backup participate
 // through separate APIs; none can silently grant Main save confirmation.
 export function createSyncDocument({model,session,tab,ownership,storage,state,transport,view,mirror,secondary}){
+  const environment=view.environment??createMainSyncBrowserPorts({storagePreferenceKey:STORAGE_PREF_KEY,autoConnectKey:SUPA_AUTO_KEY});
   return createDocumentRuntime({
     model,session,tab,
     access:{
+      isOnline:()=>environment.isOnline(),
+      markCloudMode:()=>environment.markCloudMode(),
       getCloudWriteScope:()=>ownership.getScope(),
       storageV2PreparationActive:()=>ownership.preparing(),
       storageV2CloudOutboxActive:()=>storage.storageV2CloudOutboxActive(),

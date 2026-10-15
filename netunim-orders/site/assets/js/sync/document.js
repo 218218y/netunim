@@ -1,20 +1,18 @@
+import {createMainSaveOperation} from './save-operation.js';
+import {createRemoteAdoption} from './remote-adoption.js';
 import {createCloudWriteAuthority} from '../shared/cloud-write-authority.js';
 import {createCloudWriteFlight} from './write-flight.js';
 import {createCloudAckPublication} from './ack-publication.js';
 import {createCloudConfirmation} from './confirmation.js';
 import {createCloudPolling} from './polling.js';
-import {createDebouncedTask} from '../shared/debounced-task.js';
-import {createRuntimeTaskOwner} from '../shared/runtime-task-owner.js';
 
-import {captureCloudWriteScope,cloudWriteScopeIsCurrent,cloudWriteScopeHasIdentity} from '../shared/cloud-write-scope.js';
+import {captureCloudWriteScope} from '../shared/cloud-write-scope.js';
 
 import {clone} from '../core/values.js';
-import {commitCloudCheckpoint} from '../shared/cloud-checkpoint-publication.js';
-import {createOutboxRetryScheduler,normalizeCloudError} from '../shared/cloud-sync.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createSyncDocument({model,session,tab,access,journal,checkpoint,recovery,projection,transport,view,mirror,secondary}){
-const {getCloudWriteScope,storageV2PreparationActive,cloudEnabled,cloudHasLocalWork}=access;
+const {getCloudWriteScope,storageV2PreparationActive,cloudEnabled,cloudHasLocalWork,isOnline}=access;
 const {refreshStorageV2CloudState,materializeStorageV2CloudFlight,acknowledgeStorageV2CloudFlight,rejectStorageV2CloudFlight,setStorageV2CloudControl,storageV2CommitPromise}=journal;
 const {adoptStorageV2CloudHead}=checkpoint;
 const {readStorageV2CloudRecovery,commitStorageV2CloudRecovery,cancelCloudRecovery}=recovery;
@@ -24,9 +22,6 @@ const {setCloud,toast,render,refreshCloudTimestamp}=view;
 const {files,writeStateToFolder}=mirror;
 const {pollSharedChecks,refreshKupaReadout}=secondary;
 
-const outboxRetryScheduler=createOutboxRetryScheduler();
-let savingScope=null,cloudSavePromise=null,wakeEpoch=0;
-const saveWork=createRuntimeTaskOwner();
 let concurrentAckReview=null;
 const {isCurrent:writeScopeCurrent,setControl:setWriteControl}=createCloudWriteAuthority({
   scope:{read:getCloudWriteScope},
@@ -36,33 +31,22 @@ const {isCurrent:writeScopeCurrent,setControl:setWriteControl}=createCloudWriteA
 
 let morningRefreshPromise=null;
 
-const followup=createDebouncedTask({delay:0,onError:error=>console.error('orders cloud follow-up',error)});
 
-async function adoptRemoteRow(row,generation,head,{applyState=true}={}){
-  if(!head?.base)throw new Error('orders_v2_account_head_required');
-  const revision=Number(row.revision),next=composeOrderCloudState(row.state,model.state);
-  const publication=await commitCloudCheckpoint({
-    commit:()=>adoptStorageV2CloudHead(revision,next,{expectedHead:{seq:head.seq,baseRevision:head.base.revision}}),
-    isCurrent:committed=>committed?.seq===head.seq&&committed?.revision===revision&&!committed.pending&&!committed.control&&tab.primaryTab&&cloudEnabled()&&Number(session.localGeneration||0)===generation,
-    publish:()=>{if(applyState)applyOrderCloudState(row.state);session.cloudRevision=revision;session.cloudUpdatedAt=row.updated_at||session.cloudUpdatedAt;session.lastCloudState=prepareCloudState(model.state)},
-  });
-  if(!publication.published&&tab.primaryTab&&cloudEnabled()){
-    session.cloudConflictBlocked=true;session.cloudSaveRequested=false;
-    if(!publication.committed?.control?.conflict)await setStorageV2CloudControl({conflict:{kind:publication.reason==='publication-error'?'cloud-publication-failed':'concurrent-hydration',domain:'orders',baseRevision:head.base.revision,currentRemoteRevision:revision}});
-    setCloud('ענן: נדרשת בדיקת סנכרון','error');
-  }
-  if(publication.reason==='publication-error')throw publication.error;
-  return publication.published;
-}
+
+const {adoptRemoteRow}=createRemoteAdoption({model,session,tab,
+  access:{cloudEnabled},journal:{adoptStorageV2CloudHead,setStorageV2CloudControl},
+  projection:{composeOrderCloudState,applyOrderCloudState,prepareCloudState},view:{setCloud},
+});
+function requestStorageV2CloudSave(...args){return saveOperation.request(...args)}
 
 function refreshForMorningRecovery(){
   if(morningRefreshPromise)return morningRefreshPromise;
   morningRefreshPromise=(async()=>{
-    const available=()=>tab.primaryTab&&cloudEnabled()&&navigator.onLine&&!session.cloudConflictBlocked&&!session.syncCapabilitiesError;
+    const available=()=>tab.primaryTab&&cloudEnabled()&&isOnline()&&!session.cloudConflictBlocked&&!session.syncCapabilitiesError;
     if(!available())return false;
     // Await actual completion, including a poll already reading the remote head.
     await polling.runtime.drain();
-    if(cloudSavePromise)await cloudSavePromise;
+    if(saveOperation.isSaving())await saveOperation.joinFlight();
     if(!available())return false;
     if(cloudHasLocalWork()){
       if(!await requestCloudSave('סנכרון החוב לפני התאוששות Morning'))return false;
@@ -73,57 +57,12 @@ function refreshForMorningRecovery(){
       const head=await refreshStorageV2CloudState(),generation=Number(session.localGeneration||0),local=prepareCloudState(model.state),row=await readCloud();
       if(!available()||!row?.state||!Number.isSafeInteger(Number(row.revision))||Number(row.revision)<Number(session.cloudRevision||0))return false;
       // A local edit/save during the GET invalidates this refresh; never apply a stale head.
-      if(Number(session.localGeneration||0)!==generation||cloudSavePromise||cloudHasLocalWork()||!sameOrderCloudData(model.state,local))return false;
+      if(Number(session.localGeneration||0)!==generation||saveOperation.isSaving()||cloudHasLocalWork()||!sameOrderCloudData(model.state,local))return false;
       if(!await adoptRemoteRow(row,generation,head))return false;
       render();refreshCloudTimestamp();return true;
     }finally{session.cloudBusy=false}
   })().catch(error=>{console.error('Morning recovery cloud refresh',error);return false}).finally(()=>{morningRefreshPromise=null});
   return morningRefreshPromise;
-}
-function v2RetryRecord(state,flight=null){return {domain:'orders',documentName:'suppliers-v2',generation:Number(flight?.generation??state?.pendingGeneration??0),operationId:String(flight?.operationId||'orders-v2'),retry:state?.control?.retry||null}}
-
-function requestStorageV2CloudSave(...args){
-  return saveWork.run(()=>runStorageV2CloudSave(...args));
-}
-async function runStorageV2CloudSave(message='השינויים סונכרנו',{force=false}={}){
-  const wakeGeneration=wakeEpoch;
-  if(!tab.primaryTab)return false;if(message)session.cloudSaveMessage=message;session.cloudSaveRequested=true;if(!force&&!cloudEnabled())return false;
-  const liveScope=getCloudWriteScope();
-  let state=await refreshStorageV2CloudState();
-  const scope=captureCloudWriteScope(liveScope,state);if(!writeScopeCurrent(scope,state))return false;
-  if(!state?.base)return false;
-  if(state.control?.conflict){session.cloudConflictBlocked=true;session.cloudSaveRequested=false;setCloud('ענן: התנגשות','error');return false}
-  if(session.cloudConflictBlocked){setCloud('ענן: התנגשות','error');return false}
-  if(!navigator.onLine){try{await storageV2CommitPromise()}catch(error){console.error('orders V2 journal offline commit',error)}if(!writeScopeCurrent(scope))return false;setCloud('ענן: אופליין','offline');return false}
-  if(cloudSavePromise&&cloudWriteScopeHasIdentity(scope,savingScope))return cloudSavePromise;
-  savingScope=scope;
-  const saving=(async()=>{let allOk=true;while(writeScopeCurrent(scope)&&session.cloudSaveRequested&&(force||cloudEnabled())&&navigator.onLine&&!session.cloudConflictBlocked){
-    session.cloudSaveRequested=false;const msg=session.cloudSaveMessage||'השינויים סונכרנו';session.cloudSaveMessage='';state=await refreshStorageV2CloudState();
-    if(!writeScopeCurrent(scope,state))return false;
-    if(!state?.base){allOk=false;break}
-    if(state.control?.conflict){session.cloudConflictBlocked=true;session.cloudSaveRequested=false;setCloud('ענן: התנגשות','error');return false}
-    const currentFlight=state.flight||null,retryRecord=v2RetryRecord(state,currentFlight),retryDelay=outboxRetryScheduler.schedule(retryRecord,()=>writeScopeCurrent(scope)?requestStorageV2CloudSave(msg,{force}):false);
-    if(retryDelay>0){setCloud('ענן: ממתין למועד הסנכרון');allOk=false;break}
-    const generation=Number(session.localGeneration||0),flight=currentFlight||await materializeStorageV2CloudFlight();
-    if(!writeScopeCurrent(scope)||flight&&!cloudWriteScopeIsCurrent(scope,getCloudWriteScope(),{base:flight}))return false;
-    if(!flight){if(await confirmCloudPollSynced({generation},{scope})){if(msg)toast(msg)}else allOk=false;continue}
-    session.cloudBusy=true;setCloud('ענן: מסנכרן…');
-    try{
-      const saved=await saveStorageV2CloudFlight(flight,scope);if(!saved||!writeScopeCurrent(scope,saved.state)){allOk=false;break}
-      outboxRetryScheduler.cancel();state=saved.state||state;if(state?.pending||state?.flight)session.cloudSaveRequested=true;
-      if(markCloudSynced(state,{generation:saved.generation})){if(msg)toast(msg)}else if(state?.pending||state?.flight||session.cloudSaveRequested)setCloud('ענן: מסנכרן…');else allOk=false
-    }catch(error){
-      console.error('cloud save V2',error);
-      if(!writeScopeCurrent(scope)||(!force&&!cloudEnabled()))return false;
-      state=await refreshStorageV2CloudState();
-      if(!tab.primaryTab||(!force&&!cloudEnabled())||!writeScopeCurrent(scope,state))return false;
-      const normalized=normalizeCloudError(error),attempts=Number(state?.control?.retry?.attempts||0)+1,nextAttemptAt=normalized.retryAfterMs?new Date(Date.now()+normalized.retryAfterMs).toISOString():null,retry={attempts,lastErrorCode:normalized.code||normalized.kind,lastAttemptAt:new Date().toISOString(),nextAttemptAt};
-      await setWriteControl(scope,{retry});state=await refreshStorageV2CloudState();if(!writeScopeCurrent(scope,state))return false;
-      if(!tab.primaryTab||(!force&&!cloudEnabled())||!writeScopeCurrent(scope,state))return false;
-      outboxRetryScheduler.schedule(v2RetryRecord(state,state?.flight),()=>writeScopeCurrent(scope)?requestStorageV2CloudSave(msg,{force}):false);setCloud(navigator.onLine?'ענן: ממתין לסנכרון':'ענן: אופליין',navigator.onLine?'':'offline');allOk=false;break
-    }finally{if(cloudWriteScopeHasIdentity(scope,getCloudWriteScope()))session.cloudBusy=false}
-  }return writeScopeCurrent(scope,state)&&allOk&&!state?.pending&&!state?.flight})().finally(()=>{if(cloudSavePromise===saving){cloudSavePromise=null;savingScope=null}if(wakeGeneration===wakeEpoch&&writeScopeCurrent(scope)&&session.cloudSaveRequested&&navigator.onLine&&!session.cloudConflictBlocked)followup.schedule(()=>wakeGeneration===wakeEpoch&&writeScopeCurrent(scope)&&requestStorageV2CloudSave(session.cloudSaveMessage||'השינויים סונכרנו',{force}))});
-  cloudSavePromise=saving;return saving
 }
 
 const requestCloudSave=requestStorageV2CloudSave;
@@ -133,7 +72,7 @@ const requestCloudSave=requestStorageV2CloudSave;
 // remote head requires ordinary three-way conflict review, not an overwrite.
 async function prepareConcurrentAckRecovery(){
   concurrentAckReview=null;
-  if(session.cloudBusy||cloudSavePromise||!readStorageV2CloudRecovery||!commitStorageV2CloudRecovery)throw new Error('orders_recovery_unavailable');
+  if(session.cloudBusy||saveOperation.isSaving()||!readStorageV2CloudRecovery||!commitStorageV2CloudRecovery)throw new Error('orders_recovery_unavailable');
   const generation=Number(session.localGeneration||0),visible=clone(model.state),live=getCloudWriteScope();
   let evidence=await readStorageV2CloudRecovery();
   const scope=captureCloudWriteScope(live,evidence.head),head=evidence.head;
@@ -156,7 +95,7 @@ async function resumeConcurrentAckRecovery(review){
   if(!review||review!==concurrentAckReview)throw new Error('orders_recovery_review_required');
   concurrentAckReview=null;
   const {scope,generation,visible,evidence,remote}=review;
-  const current=()=>writeScopeCurrent(scope)&&!session.cloudBusy&&!cloudSavePromise&&Number(session.localGeneration||0)===generation&&sameOrderCloudData(model.state,visible);
+  const current=()=>writeScopeCurrent(scope)&&!session.cloudBusy&&!saveOperation.isSaving()&&Number(session.localGeneration||0)===generation&&sameOrderCloudData(model.state,visible);
   if(!current())throw new Error('orders_recovery_view_changed');
   const freshRemote=await readCloud();
   if(!current())throw new Error('orders_recovery_scope_changed');
@@ -173,7 +112,7 @@ async function resumeConcurrentAckRecovery(review){
 }
 
 function startPolling(){return polling.start()}
-function stopPolling(){wakeEpoch++;followup.cancel();return polling.stop()}
+function stopPolling(){saveOperation.stop();return polling.stop()}
 const {publishAcknowledgedFlight}=createCloudAckPublication({
   model,
   session,
@@ -200,17 +139,21 @@ const confirmation=createCloudConfirmation({
   model,
   session,
   tab,
-  access:{storageV2PreparationActive,cloudEnabled,cloudHasLocalWork,writeScopeCurrent},
+  access:{isOnline,storageV2PreparationActive,cloudEnabled,cloudHasLocalWork,writeScopeCurrent},
   state:{sameOrderCloudData,refreshStorageV2CloudState},
   view:{setCloud,refreshCloudTimestamp},
 });
-const {markCloudSynced,confirmCloudPollSynced}=confirmation;
+const saveOperation=createMainSaveOperation({session,tab,
+  access:{cloudEnabled,getCloudWriteScope,writeScopeCurrent,setWriteControl,isOnline},
+  journal:{refreshStorageV2CloudState,materializeStorageV2CloudFlight,storageV2CommitPromise},
+  write:{saveStorageV2CloudFlight},confirmation,view:{setCloud,toast},
+});
 const polling=createCloudPolling({
   model,
   session,
   tab,
   files,
-  access:{storageV2PreparationActive,cloudEnabled,cloudHasLocalWork},
+  access:{isOnline,storageV2PreparationActive,cloudEnabled,cloudHasLocalWork},
   state:{prepareCloudState,sameOrderCloudData,refreshStorageV2CloudState},
   view:{setCloud,render,toast},
   remote:{readCloudMeta,readCloud},
@@ -221,22 +164,22 @@ const polling=createCloudPolling({
 });
 const trackedCloudPoll=polling.poll,resumeAfterReconnect=polling.resumeAfterReconnect;
 const runtime={
-  isPending:()=>saveWork.isPending()||polling.runtime.isPending()||!!morningRefreshPromise,
+  isPending:()=>saveOperation.runtime.isPending()||polling.runtime.isPending()||!!morningRefreshPromise,
   async drain(){
     do{
-      await saveWork.drain();await polling.runtime.drain();
+      await saveOperation.runtime.drain();await polling.runtime.drain();
       const pending=[morningRefreshPromise].filter(Boolean);
       if(pending.length)await Promise.allSettled(pending);
-      await followup.drain();
-    }while(saveWork.isPending()||polling.runtime.isPending()||morningRefreshPromise);
+      await saveOperation.drainFollowup();
+    }while(saveOperation.runtime.isPending()||polling.runtime.isPending()||morningRefreshPromise);
   },
 };
 async function quiesceForStorageCutover(){
   stopPolling();
   cancelCloudRecovery();
-  outboxRetryScheduler.cancel();
+  saveOperation.cancelRetry();
   await runtime.drain();
-  outboxRetryScheduler.cancel();return true;
+  saveOperation.cancelRetry();return true;
 }
 
 return { requestCloudSave, requestStorageV2CloudSave, prepareConcurrentAckRecovery, cloudPoll:trackedCloudPoll, resumeAfterReconnect, startPolling,stopPolling,quiesceForStorageCutover,refreshForMorningRecovery,runtime };

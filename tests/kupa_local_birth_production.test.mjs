@@ -2,7 +2,7 @@ import {withKupaStartup} from './startup_ports.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createLifecycle} from '../netunim-kupa/site/assets/js/lifecycle.js';
-import {createStoragePersistence} from '../netunim-kupa/site/assets/js/storage/persistence.js';
+import {createStoragePersistence} from './kupa_persistence_ports.mjs';
 import {createStorageV2LocalBirth} from '../shared/storage-v2-local-birth.js';
 
 const noop=()=>{};

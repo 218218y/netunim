@@ -2,7 +2,7 @@ import {createChecksPersistence} from '../netunim-kupa/site/assets/js/sync/check
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createStoragePersistence as createOrdersPersistence} from '../netunim-orders/site/assets/js/storage/persistence.js';
-import {createStoragePersistence as createKupaPersistence} from '../netunim-kupa/site/assets/js/storage/persistence.js';
+import {createStoragePersistence as createKupaPersistence} from './kupa_persistence_ports.mjs';
 import {createSyncChecksPersistence} from '../netunim-orders/site/assets/js/sync/checks-persistence.js';
 import {createStorageV2Runtime} from '../shared/storage-v2-runtime.js';
 import {INITIAL_STATE as ordersInitial} from '../netunim-orders/site/assets/js/state/constants.js';

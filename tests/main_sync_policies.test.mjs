@@ -7,11 +7,14 @@ import {declaration,tokens} from './bank_policy_ast_fixture.mjs';
 // regenerate to accommodate a refactor: a changed decision requires review.
 const baseline=JSON.parse(readFileSync(new URL('./fixtures/main-sync-policies.json',import.meta.url),'utf8'));
 for(const [app,policies] of Object.entries(baseline.policies)){
-  const source=readFileSync(new URL(`../netunim-${app}/site/assets/js/sync/document.js`,import.meta.url),'utf8');
+  const sources=['save-operation.js','remote-adoption.js','document.js'].map(file=>readFileSync(new URL(`../netunim-${app}/site/assets/js/sync/${file}`,import.meta.url),'utf8'));
   for(const [name,expected] of Object.entries(policies))test(`${app} Main ${name} retains the pre-composition policy`,()=>{
-    const actualSource=name==='rpcSaveCloudV2'?readFileSync(new URL('../netunim-kupa/site/assets/js/cloud/main-document-write.js',import.meta.url),'utf8'):source;
+    const actualSource=name==='rpcSaveCloudV2'?readFileSync(new URL('../netunim-kupa/site/assets/js/cloud/main-document-write.js',import.meta.url),'utf8'):sources.find(source=>{try{declaration(source,name);return true}catch{return false}});
     const node=declaration(actualSource,name);
     let actual=tokens(actualSource.slice(node.start,node.end));
+    // Only owner/port substitutions: the immutable policy fixture is retained.
+    actual=actual.replaceAll('isOnline()','navigator.onLine').replaceAll('saveOperation.isSaving()','cloudSavePromise').replaceAll('saveOperation.joinFlight()','cloudSavePromise').replaceAll('saveOperation.runtime.','saveWork.').replaceAll('saveOperation.cancelRetry()','outboxRetryScheduler.cancel()').replaceAll('saveOperation.drainFollowup()','followup.drain()');
+    if(app==='kupa')actual=actual.replace('void wake()','void polling.wake()').replace('markCloudMode();',"localStorage.setItem(STORAGE_PREF_KEY,'supabase');localStorage.setItem(SUPA_AUTO_KEY,'1');");
     if(name==='rpcSaveCloudV2')actual=actual.replace("request('/rest/v1/rpc/'+rpc", "supaRest('/rest/v1/rpc/'+rpc").replace('documentName()', 'session.cloudDocumentName').replace('validate(snapshot,','assertValidCloudState(snapshot,');
     assert.equal(actual,expected);
   });

@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='kupa-app-shell-';
-const CACHE='kupa-app-shell-esm-72b866d3a658';
+const CACHE='kupa-app-shell-esm-383c84be9b84';
 const SHELL=[
   './',
   './index.html',
@@ -163,6 +163,7 @@ const SHELL=[
   './assets/js/shared/kupa-cashflow.js',
   './assets/js/shared/local-site-reset-page.js',
   './assets/js/shared/local-site-reset.js',
+  './assets/js/shared/main-sync-browser.js',
   './assets/js/shared/notes-sheet-model.js',
   './assets/js/shared/notes-workbook-merge.js',
   './assets/js/shared/notes-workbook.css',
@@ -236,7 +237,12 @@ const SHELL=[
   './assets/js/storage/browser.js',
   './assets/js/storage/files.js',
   './assets/js/storage/indexed-db.js',
+  './assets/js/storage/local-commit.js',
+  './assets/js/storage/local-file-adoption.js',
+  './assets/js/storage/local-file-mirror.js',
+  './assets/js/storage/main-state.js',
   './assets/js/storage/persistence.js',
+  './assets/js/storage/save-publication.js',
   './assets/js/storage/tab-lock.js',
   './assets/js/storage/v2-cloud-ports.js',
   './assets/js/sync/ack-publication.js',
@@ -251,6 +257,8 @@ const SHELL=[
   './assets/js/sync/merge.js',
   './assets/js/sync/polling.js',
   './assets/js/sync/recovery.js',
+  './assets/js/sync/remote-adoption.js',
+  './assets/js/sync/save-operation.js',
   './assets/js/sync/state-projection.js',
   './assets/js/sync/write-flight.js',
   './assets/js/ui-primitives/local-search.js',

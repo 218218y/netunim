@@ -1,11 +1,14 @@
+import {createMainSyncBrowserPorts} from '../shared/main-sync-browser.js';
 import {createSyncDocument as createDocumentRuntime} from '../sync/document.js';
 
 // Bind stable owners here; the startup root does not forward every sync method.
 // Explicit selections prevent reset/restore APIs from entering ordinary writes.
 export function createSyncDocument({model,session,tab,ownership,storage,state,transport,view,mirror,secondary}){
+  const environment=view.environment??createMainSyncBrowserPorts();
   return createDocumentRuntime({
     model,session,tab,
     access:{
+      isOnline:()=>environment.isOnline(),
       getCloudWriteScope:()=>ownership.getScope(),
       storageV2PreparationActive:()=>ownership.preparing(),
       cloudEnabled:()=>ownership.enabled(),
