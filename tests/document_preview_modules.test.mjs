@@ -66,10 +66,11 @@ test('every shell viewer construction carries the captured selection proof',()=>
   walk(ast);assert.equal(count,5);
 });
 
-test('implementation mutations cannot skip post-import scope or reuse the live preview host',async()=>{
-  const source=fs.readFileSync('shared/document-search/domains/documents/preview-modules.js','utf8');
+for(const newline of ['\n','\r\n'])test(`implementation mutations preserve scope and private mounts (${JSON.stringify(newline)})`,async()=>{
+  const source=fs.readFileSync('shared/document-search/domains/documents/preview-modules.js','utf8').replace(/\r\n?/g,'\n').replace(/\n/g,newline);
   const mutate=async(from,to)=>{
-    assert.ok(source.includes(from));
+    from=from.replace(/\n/g,newline);
+    assert.equal(source.split(from).length,2,'mutation must replace exactly one production expression');
     const module=await import('data:text/javascript;base64,'+Buffer.from(source.replace(from,to)).toString('base64'));
     return module.createDocumentPreviewModules;
   };

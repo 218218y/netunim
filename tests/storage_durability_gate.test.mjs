@@ -1,7 +1,7 @@
 import {createChecksPersistence} from '../netunim-kupa/site/assets/js/sync/checks-persistence.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createStoragePersistence as createOrdersPersistence} from '../netunim-orders/site/assets/js/storage/persistence.js';
+import {createStoragePersistence as createOrdersPersistence} from './orders_persistence_ports.mjs';
 import {createStoragePersistence as createKupaPersistence} from './kupa_persistence_ports.mjs';
 import {createSyncChecksPersistence} from '../netunim-orders/site/assets/js/sync/checks-persistence.js';
 import {createStorageV2Runtime} from '../shared/storage-v2-runtime.js';
@@ -76,7 +76,7 @@ test('Orders waits for an IDB-only journal commit even if the cloud cursor becom
   cloudCursor=false;
   await new Promise(resolve=>setTimeout(resolve,220));
   assert.deepEqual(sent,[]);
-  commit.resolve();await tick();
+  commit.resolve(true);await tick();
   assert.deepEqual(sent,['sent']);
   assert.ok(status.some(value=>value.includes('IndexedDB')));
 });

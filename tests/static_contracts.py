@@ -434,12 +434,13 @@ ok(-1 not in (folder_slot_pos, save_pill_pos, cloud_pill_pos, settings_pos)
    "orders: autosave status leads directly to settings; redundant manual save action is removed")
 runtime_events = (O / "site/assets/js/runtime-events.js").read_text(encoding="utf-8")
 orders_persistence = (O / "site/assets/js/storage/persistence.js").read_text(encoding="utf-8")
-orders_persistence_compact = re.sub(r"\s+", "", orders_persistence)
+orders_local_commit = (O / "site/assets/js/storage/local-commit.js").read_text(encoding="utf-8")
+orders_persistence_compact = re.sub(r"\s+", "", orders_local_commit)
 kupa_runtime = (K / "site/assets/js/main.js").read_text(encoding="utf-8")
 ok("saveNowButton" not in runtime_events and "manualSaveNow" not in orders_persistence
    and "constgeneration=++session.localGeneration;" in orders_persistence_compact
-   and "constlocalOk=localSnapshot(undefined,{operations,generation,mutationType,surface,deleteIntents});" in orders_persistence_compact
-   and orders_persistence_compact.find("localSnapshot(undefined,") < orders_persistence_compact.find("saveTask.schedule(")
+   and "localOk=journal.localSnapshot(undefined,{operations,generation,mutationType,surface,deleteIntents});" in orders_persistence_compact
+   and "local.accept(options)" in orders_persistence and orders_persistence.find("local.accept(options)") < orders_persistence.find("publication.schedule(receipt,message)")
    and "window.addEventListener('pagehide'" not in runtime_events
    and "storageV2?.durabilityAtRisk||sharedChecksV2?.durabilityAtRisk" in runtime_events,
    "orders: autosave uses the journal and page exit warns only when a V2 commit is not durable")

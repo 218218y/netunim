@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createStoragePersistence} from '../netunim-orders/site/assets/js/storage/persistence.js';
+import {createStoragePersistence} from './orders_persistence_ports.mjs';
 import {createSyncChecksPersistence} from '../netunim-orders/site/assets/js/sync/checks-persistence.js';
 
 const noop = () => {};

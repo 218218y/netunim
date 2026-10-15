@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createStoragePersistence} from '../netunim-orders/site/assets/js/storage/persistence.js';
+import {createStoragePersistence} from './orders_persistence_ports.mjs';
 
 const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no});return {promise,resolve,reject}};
 const typed=()=>({operations:[{type:'put',collection:'customerDebts',id:'debt-1',mode:'replace',record:{id:'debt-1'}}]});

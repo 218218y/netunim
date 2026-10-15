@@ -8,7 +8,7 @@ import {createSyncChecks as kupaChecks} from '../netunim-kupa/site/assets/js/syn
 import {normalizeSharedChecks} from '../shared/shared-checks-contract.js';
 import {createSyncChecksPersistence} from '../netunim-orders/site/assets/js/sync/checks-persistence.js';
 import {createStoragePersistence as createKupaPersistence} from './kupa_persistence_ports.mjs';
-import {createStoragePersistence as createOrdersPersistence} from '../netunim-orders/site/assets/js/storage/persistence.js';
+import {createStoragePersistence as createOrdersPersistence} from './orders_persistence_ports.mjs';
 import {createStateNormalization} from '../netunim-kupa/site/assets/js/composition/state-normalization.js';
 import {INITIAL_STATE} from '../netunim-kupa/site/assets/js/state/constants.js';
 

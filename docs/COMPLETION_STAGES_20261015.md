@@ -93,3 +93,20 @@ SPREADSHEET_TRANSACTION_AUTHORITY.md for SQL policy, retained-flight and native
 IndexedDB/reload evidence. Compatibility inventory, remaining journal callers,
 shell composition and final readability/live-provider/two-machine release work
 remain separate; these stages do not claim the entire release is finished.
+
+
+## V7 completion continuation
+
+The current backlog is maintained only in ARCHITECTURE_REMAINING_WORK.md.
+Four successive independently verified branches cover:
+
+10. Orders local commit/publication ownership, portable preview mutation tests
+    and correction of the stale current backlog.
+11. Critical restore/import and persisted boundary transaction evidence.
+12. Document Bridge PDF/index/search coordinator extraction.
+13. Document operations/preview and service lifecycle composition, with a current
+    compatibility inventory and remaining release evidence recorded explicitly.
+
+Stage 10 implements strict local/publication bodies and captured receipt evidence;
+see ORDERS_PERSISTENCE_OWNERS.md. Each stage requires full successful branch CI
+before merging; duplicate main CI is not awaited before the following stage.

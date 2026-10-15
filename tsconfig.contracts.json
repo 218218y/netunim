@@ -20,6 +20,8 @@
     "types": []
   },
   "files": [
+    "netunim-orders/site/assets/js/storage/local-commit.js",
+    "netunim-orders/site/assets/js/storage/save-publication.js",
     "shared/spreadsheet-remote.js",
     "tests/fixtures/checked-spreadsheet-remote.mjs",
     "shared/startup-timing.js",
@@ -267,6 +269,7 @@
     "tests/fixtures/checked-primary-tab-lock.mjs",
     "netunim-orders/site/assets/js/calendar/operation-flight.js",
     "netunim-orders/site/assets/js/platform/calendar-browser-effects.js",
-    "tests/fixtures/checked-calendar-runtime.mjs"
+    "tests/fixtures/checked-calendar-runtime.mjs",
+    "tests/fixtures/checked-orders-persistence.mjs"
   ]
 }
