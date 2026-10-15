@@ -33,6 +33,8 @@ export function composeBackup({tab,ui,model,session,checksSession,storageV2Cloud
     writeStateToFolder:(...args)=>storageFiles().writeStateToFolder(...args),
   },
   cloud:{
+    accountScope:()=>cloudAuth.getAccountScope(),
+    subscribeAccountScope:(listener)=>cloudAuth.subscribeAccountScope(listener),
     loadSession:(...args)=>cloudAuth.loadSession(...args),
     cloudEnabled:(...args)=>cloudAuth.cloudEnabled(...args),
     requestCloudSave:(...args)=>syncDocument().requestCloudSave(...args),

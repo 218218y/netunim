@@ -353,7 +353,7 @@ const syncDocument=createSyncDocument({
 
 storageV2Coordinator.configure({
   storageBrowser,syncDocument,model,session,checksSession,files,
-  saveRuntime:{main:storagePersistence.runtime,checks:checks.runtime,folder:storageFiles.runtime,backup:storageBackup.runtime},
+  saveRuntime:{main:storagePersistence.runtime,checks:checks.runtime,folder:storageFiles.runtime,backup:{cancelPending(){uiBackup.runtime.cancelPending();storageBackup.runtime.cancelPending()},async drain(){await uiBackup.runtime.drain();await storageBackup.runtime.drain()}}},
   stateSnapshots,stateNormalization,prepareV2Checkpoint,validateMainState:state=>assertOrderEntityInvariants(state,{includeChecks:Object.hasOwn(state||{},'checks'),required:true}),domainRevisions,sharedChecksV2Composition,sharedChecksV2,
   cloudTransport,cloudAuth,mainStorageV2,verifyStorageV2AccountMarker:()=>verifyStorageV2AccountMarker(),
 });

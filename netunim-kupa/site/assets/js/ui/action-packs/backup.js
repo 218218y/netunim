@@ -9,13 +9,12 @@ const loadMoreCloudBackups=(...args)=>uiBackup.loadMoreCloudBackups(...args);
 const manualBackup=(...args)=>uiBackup.manualBackup(...args);
 const previewCloudBackup=(...args)=>uiBackup.previewCloudBackup(...args);
 const refreshCloudBackups=(...args)=>uiBackup.refreshCloudBackups(...args);
-const restoreBackup=(...args)=>uiBackup.restoreBackup(...args);
+const beginRestoreBackup=(...args)=>uiBackup.beginRestoreBackup(...args);
 const switchFolder=(...args)=>uiBackup.switchFolder(...args);
 return {
   'manual-backup':(element,event)=>{manualBackup()},
   'download-json-backup':(element,event)=>{downloadJsonBackup()},
-  'document':(element,event)=>{document.getElementById('restoreInput').click()},
-  'restore-backup':(element,event)=>{restoreBackup(element.files[0])},
+  'document':()=>beginRestoreBackup(),
   'refresh-cloud-backups':(element,event)=>{refreshCloudBackups()},
   'load-more-cloud-backups':(element,event)=>{loadMoreCloudBackups()},
   'preview-cloud-backup':(element,event)=>{previewCloudBackup(element.dataset.clickArg0,element.dataset.clickArg1)},

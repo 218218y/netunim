@@ -114,6 +114,14 @@ for(const app of ['kupa','orders']){
       }
       if(relative==='assets/js/storage/backup.js'&&node.type==='Identifier'&&!(parent?.type==='MemberExpression'&&parent.property===node&&!parent.computed))
         assert.ok(!['setTimeout','clearTimeout','setInterval','clearInterval'].includes(node.name),relative+': backup scheduling belongs to the runtime owner');
+      if(['assets/js/ui/backup-local.js','assets/js/ui/backup-catalog.js'].includes(relative)&&node.type==='Identifier'&&!(parent?.type==='MemberExpression'&&parent.property===node&&!parent.computed))
+        assert.ok(!['FileReader','URL','setTimeout','clearTimeout'].includes(node.name),relative+': native backup reads/download resources require their owned browser capability');
+      if(relative==='assets/js/ui/action-packs/backup.js'&&node.type==='Identifier'&&!(parent?.type==='MemberExpression'&&parent.property===node&&!parent.computed))
+        assert.notEqual(node.name,'document',relative+': backup native selection must capture authority before opening the picker');
+      if(node.type==='FunctionDeclaration'&&node.id?.name==='createBackupBrowserResources'){
+        const parameter=node.params[0]?.type==='AssignmentPattern'?node.params[0].left:node.params[0];
+        assert.ok(parameter?.type==='ObjectPattern'&&parameter.properties.length<=2,relative+': backup browser ownership requires authority and platform ports');
+      }
       if(app==='orders'&&node.type==='MemberExpression'&&['saveTimer','sharedChecksSaveTimer','checksPullPromise','checksSavePromise'].includes(node.property?.name))
         assert.fail(relative+': save and Checks sync resources belong to their runtimes, not context fields');
       if(app==='kupa'&&node.type==='MemberExpression'&&['ordersFinanceReadPromise','sharedChecksSaveTimer','sharedChecksSavePromise','sharedChecksPullPromise'].includes(node.property?.name))

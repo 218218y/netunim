@@ -314,7 +314,7 @@ const syncDocument=createSyncDocument({
 
 
 storageV2Coordinator.configure({
-  storageBrowser,syncDocument,saveRuntime:storagePersistence.runtime,checksRuntime:checks.runtime,notesRuntime:notes.runtime,backupRuntime:storageBackup.runtime,model,session,checksSession,files,
+  storageBrowser,syncDocument,saveRuntime:storagePersistence.runtime,checksRuntime:checks.runtime,notesRuntime:notes.runtime,backupRuntime:{cancelPending(){uiBackup.runtime.cancelPending();storageBackup.runtime.cancelPending()},async drain(){await uiBackup.runtime.drain();await storageBackup.runtime.drain()}},model,session,checksSession,files,
   captureLegacyWorkbook,
   stateNormalization,domainRevisions,sharedChecksV2Composition,sharedChecksV2,
   cloudTransport,cloudAuth,mainStorageV2,verifyStorageV2AccountMarker:()=>verifyStorageV2AccountMarker(),
@@ -501,6 +501,8 @@ const uiBackup=createUiBackup({
     chooseFolder:(...args)=>uiFolders.chooseFolder(...args),
   },
   cloud:{
+    accountScope:()=>cloudAuth.getAccountScope(),
+    subscribeAccountScope:listener=>cloudAuth.subscribeAccountScope(listener),
     persistSupabaseState:(...args)=>syncDocument.persistSupabaseState(...args),
     restoreGroupStore,
     stageRestoreGroup:(...args)=>cloudTransport.stageRestoreGroup(...args),

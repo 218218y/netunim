@@ -6,7 +6,7 @@ const observation={capture:()=>()=>true,isSettled:()=>true};
 confirmCalendarPendingSnapshot(db,observation,async()=>true);
 // @ts-expect-error a cached boolean is not a live observation
 confirmCalendarPendingSnapshot(db,{capture:()=>true,isSettled:()=>true},()=>true);
-// @ts-expect-error raw queued JSON needs business validation before field access
+// @ts-expect-error A validated queue still needs a proven first record before access.
 confirmCalendarPendingSnapshot(db,observation,receipt=>receipt.operations[0].eventId==='unsafe');
 // @ts-expect-error a promise of confirmation is not itself evidence of sync
 /** @type {boolean} */ const success=confirmed;

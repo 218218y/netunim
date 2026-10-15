@@ -20,6 +20,14 @@
     "types": []
   },
   "files": [
+    "shared/backup-file-authority.js",
+    "shared/backup-browser-resources.js",
+    "netunim-orders/site/assets/js/calendar/storage.js",
+    "netunim-orders/site/assets/js/calendar/transaction.js",
+    "netunim-kupa/site/assets/js/storage/save-publication.js",
+    "tests/fixtures/checked-backup-browser.mjs",
+    "tests/fixtures/checked-calendar-storage.mjs",
+    "tests/fixtures/checked-save-publication.mjs",
     "netunim-orders/site/assets/js/calendar/persisted-records.js",
     "tests/fixtures/checked-calendar-persisted.mjs",
     "tests/fixtures/checked-pdf-preview.mjs",
