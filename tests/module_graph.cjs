@@ -30,6 +30,12 @@ for(const app of ['kupa','orders']){
         assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=4,relative+': Main wire transport requires target, request, validation and measurement ports');
       if(relative==='assets/js/sync/document.js'&&node.type==='Identifier')
         assert.ok(!['supaRest','checksSession'].includes(node.name),relative+': Main sync cannot own raw HTTP or independent Checks state');
+      if(['document.js','save-operation.js','remote-adoption.js','confirmation.js','polling.js'].some(name=>relative==='assets/js/sync/'+name)&&node.type==='Identifier'&&!(parent?.type==='MemberExpression'&&parent.property===node&&!parent.computed))
+        assert.ok(!['navigator','localStorage'].includes(node.name),relative+': Main policies require explicit connectivity and preference ports');
+      if(app==='kupa'&&relative==='assets/js/storage/persistence.js'&&node.type==='FunctionDeclaration'&&node.id?.name==='createStoragePersistence')
+        assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=8,relative+': persistence composes durability, publication and file owners through focused roles');
+      if(app==='kupa'&&relative.startsWith('assets/js/storage/local-')&&node.type==='Identifier'&&!(parent?.type==='MemberExpression'&&parent.property===node&&!parent.computed))
+        assert.ok(!['navigator','localStorage','indexedDB'].includes(node.name),relative+': local owners require journal, file and connectivity ports');
       if(relative==='assets/js/composition/main-sync.js'&&node.type==='SpreadElement'&&parent?.type==='ObjectExpression')
         assert.fail(relative+': select the required owner API explicitly rather than spreading a broad capability');
       if(node.type==='FunctionDeclaration'&&node.id?.name==='createPollingTask'&&relative==='assets/js/shared/runtime-polling.js')

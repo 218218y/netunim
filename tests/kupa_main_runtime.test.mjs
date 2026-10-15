@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createStoragePersistence} from '../netunim-kupa/site/assets/js/storage/persistence.js';
+import {createStoragePersistence} from './kupa_persistence_ports.mjs';
 import {createStateNormalization} from '../netunim-kupa/site/assets/js/composition/state-normalization.js';
 
 const noop=()=>{},tick=async()=>{for(let i=0;i<20;i++)await Promise.resolve()};

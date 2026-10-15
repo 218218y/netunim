@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createSyncChecksState} from '../netunim-kupa/site/assets/js/sync/checks-state.js';
 import {createSyncChecksPersistence} from '../netunim-orders/site/assets/js/sync/checks-persistence.js';
-import {createStoragePersistence as createKupaPersistence} from '../netunim-kupa/site/assets/js/storage/persistence.js';
+import {createStoragePersistence as createKupaPersistence} from './kupa_persistence_ports.mjs';
 import {createStorageBrowser as createOrdersBrowser} from '../netunim-orders/site/assets/js/storage/browser.js';
 import {createStoragePersistence as createOrdersPersistence} from '../netunim-orders/site/assets/js/storage/persistence.js';
 import {createStorageBrowser as createKupaBrowser} from '../netunim-kupa/site/assets/js/storage/browser.js';

@@ -4,6 +4,8 @@ export function ordersDocumentPorts(p){
   return {
     model:p.model,session:p.session,tab:p.tab,
     access:{
+      isOnline:p.isOnline??(()=>globalThis.navigator?.onLine!==false),
+      markCloudMode:p.markCloudMode??(()=>{globalThis.localStorage.setItem('kupa.storage.preferred.v1','supabase');globalThis.localStorage.setItem('kupa.supabase.auto.v1','1')}),
       getCloudWriteScope:p.getCloudWriteScope??(()=>null),
       storageV2PreparationActive:p.storageV2PreparationActive??(()=>false),
       cloudEnabled:p.cloudEnabled,cloudHasLocalWork:p.cloudHasLocalWork,
@@ -38,6 +40,8 @@ export function kupaDocumentPorts(p,rpcSaveCloudV2){
   return {
     model:p.model,session:p.session,tab:p.tab,
     access:{
+      isOnline:p.isOnline??(()=>globalThis.navigator?.onLine!==false),
+      markCloudMode:p.markCloudMode??(()=>{globalThis.localStorage.setItem('kupa.storage.preferred.v1','supabase');globalThis.localStorage.setItem('kupa.supabase.auto.v1','1')}),
       getCloudWriteScope:p.getCloudWriteScope??(()=>null),
       storageV2PreparationActive:p.storageV2PreparationActive??(()=>false),
       storageV2CloudOutboxActive:p.storageV2CloudOutboxActive??(()=>false),

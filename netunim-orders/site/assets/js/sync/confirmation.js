@@ -3,18 +3,18 @@ import {normalizeCloudError} from '../shared/cloud-sync.js';
 
 // Owns confirmation for Main; journal and secondary domains remain ports.
 export function createCloudConfirmation({model,session,tab,access,state,view}){
-  const {storageV2PreparationActive,cloudEnabled,cloudHasLocalWork,writeScopeCurrent}=access;
+  const {isOnline,storageV2PreparationActive,cloudEnabled,cloudHasLocalWork,writeScopeCurrent}=access;
   const {sameOrderCloudData,refreshStorageV2CloudState}=state;
   const {setCloud,refreshCloudTimestamp}=view;
 
 
-function pollAccessCurrent(){return !storageV2PreparationActive()&&tab.primaryTab&&cloudEnabled()&&navigator.onLine&&!session.syncCapabilitiesError&&!session.syncCapabilitiesChecking}
+function pollAccessCurrent(){return !storageV2PreparationActive()&&tab.primaryTab&&cloudEnabled()&&isOnline()&&!session.syncCapabilitiesError&&!session.syncCapabilitiesChecking}
 
 function pollViewCurrent({generation,local}={}){return pollAccessCurrent()&&!session.cloudConflictBlocked&&Number(session.localGeneration||0)===generation&&!session.cloudSaveRequested&&!cloudHasLocalWork()&&(!local||sameOrderCloudData(model.state,local))}
 
 function markCloudPollDeferred(head){
   if(storageV2PreparationActive()||!tab.primaryTab||!cloudEnabled())return false;
-  if(!navigator.onLine)setCloud('ענן: אופליין','offline');
+  if(!isOnline())setCloud('ענן: אופליין','offline');
   else if(head?.control?.conflict||session.cloudConflictBlocked)setCloud('ענן: התנגשות','error');
   else setCloud('ענן: ממתין לסנכרון');
   return false;
@@ -34,7 +34,7 @@ async function confirmCloudPollSynced(observation,{refreshTimestamp=false,scope=
 
 function markCloudPollFailure(error){
   const normalized=normalizeCloudError(error),transient=['network','timeout','service_unavailable','rate_limited'].includes(normalized.kind);
-  if(!navigator.onLine)setCloud('ענן: אופליין','offline');
+  if(!isOnline())setCloud('ענן: אופליין','offline');
   else if(transient)setCloud('ענן: ממתין להתאוששות');
   else setCloud('ענן: שגיאת סנכרון','error');
   if(transient)console.warn('orders cloud poll deferred',error?.message||error);else console.error(error);

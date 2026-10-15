@@ -26,7 +26,7 @@ export function createComposedSync(app,p){
   const shared={model:d.model,session:d.session,tab:d.tab,
     storage:owner({...d.journal,...d.checkpoint,...d.recovery,storageV2CloudOutboxActive:d.access.storageV2CloudOutboxActive}),
     transport:owner(d.transport),
-    view:{status:owner(d.view),render:d.view.render,showSecondaryTabGuard:d.view.showSecondaryTabGuard},
+    view:{environment:owner(d.access),status:owner(d.view),render:d.view.render,showSecondaryTabGuard:d.view.showSecondaryTabGuard},
     mirror:owner(d.mirror),
   };
   if(app==='orders')return composeOrders({...shared,

@@ -54,7 +54,17 @@ Its existing RPC forwarding method remains for storage transfer consumers.
   response evidence. Graph guards enforce twelve runtime roles, ten composition
   collaborators, explicit API selections and the raw-HTTP/Checks boundary.
 
-This completes the composition boundary slice. Save-loop/retry coordination,
-Kupa hydration/Finance publication, complete business payload contracts and
-other broad controllers remain separate work. No storage format, migration,
-ACK/rebase/recovery policy or live provider policy changes are introduced.
+The follow-up ownership slice places save admission, joined flights and retry
+wakeups in `sync/save-operation.js`, and checkpoint-before-publication adoption
+in `sync/remote-adoption.js`. `sync/document.js` composes those owners with the
+existing ACK, flight, confirmation and polling owners. Its accepted-work drain
+still joins saves, polling and Orders Morning recovery before storage cutover.
+
+Connectivity is a synchronous `access.isOnline()` port throughout Main save,
+polling and confirmation. Kupa preference publication uses `markCloudMode()`.
+The composition binds these through `shared/main-sync-browser.js`; tests inject
+the same ports. Neither coordinator nor policy owners read browser globals.
+The immutable policy fixture permits only these port and owner substitutions.
+Complete business payload contracts and other broad controllers remain separate
+work. No storage format, migration, ACK/rebase/recovery policy or live provider
+policy changes are introduced.

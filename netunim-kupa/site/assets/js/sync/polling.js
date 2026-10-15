@@ -3,7 +3,7 @@ import {createPollingTask} from '../shared/runtime-polling.js';
 
 // Owns polling for Main; journal and secondary domains remain ports.
 export function createCloudPolling({model,session,tab,access,state,view,remote,adoption,secondary,write,confirmation}){
-  const {storageV2PreparationActive,storageV2CloudOutboxActive,assertAccountOwner}=access;
+  const {isOnline,storageV2PreparationActive,storageV2CloudOutboxActive,assertAccountOwner}=access;
   const {prepareKupaCloudState,refreshStorageV2CloudState}=state;
   const {setSaveStatus,setCloudHeaderStatus,toast}=view;
   const {readSupabaseDocument}=remote;
@@ -24,7 +24,7 @@ const runtime={
 };
 
 async function cloudPoll(){
-  if(storageV2PreparationActive()||!tab.primaryTab||session.connectionMode!=='supabase'||!session.backendReady||!navigator.onLine)return false;
+  if(storageV2PreparationActive()||!tab.primaryTab||session.connectionMode!=='supabase'||!session.backendReady||!isOnline())return false;
   if(session.cloudSyncBusy||session.cloudWriteBusy){await pollSharedChecks();return false}
   let v2=await refreshStorageV2CloudState();
   if(!storageV2CloudOutboxActive()){setSaveStatus('ראש ענן V2 חסר — הסנכרון נעצר','error');setCloudHeaderStatus('conflict','ענן: נדרש שחזור אחסון מקומי');return false}
@@ -59,7 +59,7 @@ async function cloudPoll(){
 }
 
 async function resumeAfterReconnect(){
-  if(storageV2PreparationActive()||!tab.primaryTab||session.connectionMode!=='supabase'||!session.backendReady||!navigator.onLine)return false;
+  if(storageV2PreparationActive()||!tab.primaryTab||session.connectionMode!=='supabase'||!session.backendReady||!isOnline())return false;
   if(session.cloudSyncBusy||session.cloudWriteBusy)return trackedCloudPoll();
   setSaveStatus('חזרה רשת — מסנכרן…','saving');setCloudHeaderStatus('syncing','ענן: חזרה רשת…');
   try{return await trackedCloudPoll()}catch(error){return markCloudPollFailure(error)}

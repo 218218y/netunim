@@ -3,7 +3,7 @@ import {createPollingTask} from '../shared/runtime-polling.js';
 
 // Owns polling for Main; journal and secondary domains remain ports.
 export function createCloudPolling({model,session,tab,files,access,state,view,remote,adoption,secondary,write,confirmation}){
-  const {storageV2PreparationActive,cloudEnabled,cloudHasLocalWork}=access;
+  const {isOnline,storageV2PreparationActive,cloudEnabled,cloudHasLocalWork}=access;
   const {prepareCloudState,sameOrderCloudData,refreshStorageV2CloudState}=state;
   const {setCloud,render,toast}=view;
   const {readCloudMeta,readCloud}=remote;
@@ -24,7 +24,7 @@ const runtime={
 };
 
 async function cloudPoll(){
-  if(storageV2PreparationActive()||!tab.primaryTab||!cloudEnabled()||session.cloudBusy||!navigator.onLine)return false;
+  if(storageV2PreparationActive()||!tab.primaryTab||!cloudEnabled()||session.cloudBusy||!isOnline())return false;
   if(cloudHasLocalWork()){const saved=await requestCloudSave('סונכרנו שינויים מקומיים ועדכון מרחוק');await pollSharedChecks();return saved}
   let dataApiReadOk=false;
   const observation={generation:Number(session.localGeneration||0),local:prepareCloudState(model.state),head:null};
@@ -65,7 +65,7 @@ async function cloudPoll(){
 }
 
 async function resumeAfterReconnect(){
-  if(storageV2PreparationActive()||!tab.primaryTab||!cloudEnabled()||!navigator.onLine)return false;
+  if(storageV2PreparationActive()||!tab.primaryTab||!cloudEnabled()||!isOnline())return false;
   if(session.cloudBusy)return trackedCloudPoll();
   setCloud('ענן: חזרה רשת…');
   try{

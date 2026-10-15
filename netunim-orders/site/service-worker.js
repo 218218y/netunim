@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-674430a85608';
+const CACHE='orders-app-shell-esm-1b9c905efb96';
 const SHELL=[
   './',
   './index.html',
@@ -253,6 +253,7 @@ const SHELL=[
   './assets/js/shared/kupa-cashflow.js',
   './assets/js/shared/local-site-reset-page.js',
   './assets/js/shared/local-site-reset.js',
+  './assets/js/shared/main-sync-browser.js',
   './assets/js/shared/notes-sheet-model.js',
   './assets/js/shared/notes-workbook-merge.js',
   './assets/js/shared/notes-workbook.css',
@@ -342,6 +343,8 @@ const SHELL=[
   './assets/js/sync/merge-records.js',
   './assets/js/sync/merge.js',
   './assets/js/sync/polling.js',
+  './assets/js/sync/remote-adoption.js',
+  './assets/js/sync/save-operation.js',
   './assets/js/sync/write-flight.js',
   './assets/js/ui/action-packs/alerts.js',
   './assets/js/ui/action-packs/backup.js',
