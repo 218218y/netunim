@@ -63,6 +63,24 @@ export function decodePdfMaintenanceRecord(value) {
     throw Object.assign(new Error('PDF maintenance metadata is invalid.'), {
       code: 'PDF_MAINTENANCE_METADATA_INVALID'
     });
+  const pending = object(value.lastResult)
+    ? value.lastResult.pending
+    : undefined;
+  if (
+    pending !== undefined &&
+    pending !== null &&
+    !(typeof pending === 'string' && pending.trim() === '')
+  ) {
+    if (
+      (typeof pending !== 'number' && typeof pending !== 'string') ||
+      !Number.isSafeInteger(Number(pending)) ||
+      Number(pending) < 0
+    ) {
+      throw Object.assign(new Error('PDF maintenance metadata is invalid.'), {
+        code: 'PDF_MAINTENANCE_METADATA_INVALID'
+      });
+    }
+  }
   return { ...value };
 }
 /** @param {MaintenancePorts} ports @returns {PdfMaintenanceOperation} */
@@ -139,10 +157,16 @@ export function createPdfMaintenanceOperation({
         aborted = false,
         bytesRead = 0;
       const maintenance = await readMetadata();
+      const checkpointPending = maintenance.lastResult?.pending;
+      const hasPending =
+        typeof checkpointPending === 'number' ||
+        (typeof checkpointPending === 'string' &&
+          checkpointPending.trim() !== '');
       if (
         !force &&
         !maintenance.lastFailureAt &&
-        Number(maintenance.lastResult?.pending) === 0 &&
+        hasPending &&
+        Number(checkpointPending) === 0 &&
         Date.parse(String(maintenance.lastSuccessfulAt || '')) >
           started - PDF_FORM_MAINTENANCE_INTERVAL_MS
       )

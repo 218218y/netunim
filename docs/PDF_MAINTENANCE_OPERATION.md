@@ -23,6 +23,12 @@ historical checkpoint fields, unknown extra metadata and historical textual
 pending counts stay readable. A cleanup read failure retains the first operation
 error and cannot invent a successful checkpoint.
 
+Only a verified nonnegative integer scalar can authorize the not-due shortcut.
+The original `Number(pending)===0` also accepted null/blank/array/boolean values.
+Null or blank historical counts now trigger inventory verification; malformed
+object/array/boolean, fractional, negative and unsafe counts retain their bytes
+and fail admission. Valid numeric/text zero retains the original shortcut.
+
 ## Preserved policies and evidence
 
 - The original refresh, reconciliation and reader declarations were captured

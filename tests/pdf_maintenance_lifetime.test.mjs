@@ -61,3 +61,16 @@ test('a cleanup read failure retains the operation failure and does not invent a
  const f=maintenanceFixture('current',{metadataRead:async()=>{if(++reads>1)throw new Error('cleanup read failure');return{}},metadataWrite:async()=>{writes++},rebuild:async()=>{throw first}});
  await assert.rejects(f.owner.refresh({force:true}),error=>error===first);assert.equal(writes,1);assert.equal(f.events.some(([kind])=>['append','compact'].includes(kind)),false);await f.owner.dispose();
 });
+test('nullable/blank historical pending remains readable but cannot authorize not-due; array/boolean/object counts are rejected',async()=>{
+ for(const pending of [null,'',' ']){
+  const metadata={lastResult:{pending},lastSuccessfulAt:'2026-10-15T11:59:00Z'},old=maintenanceFixture('baseline',{metadata}),current=maintenanceFixture('current',{metadata});
+  assert.equal((await old.owner.refresh()).skipped,true);const actual=await current.owner.refresh();assert.equal(actual.processed,2);assert.notEqual(actual.skipped,true);await current.owner.dispose();
+ }
+ for(const pending of [[],false,{},'NaN',-1,0.5,'9007199254740992']){
+  const metadata={lastResult:{pending},lastSuccessfulAt:'2026-10-15T11:59:00Z'},f=maintenanceFixture('current',{metadata});
+  await assert.rejects(f.owner.refresh(),{code:'PDF_MAINTENANCE_METADATA_INVALID'});assert.equal(f.extractions(),0);assert.equal(f.events.some(([kind])=>kind==='metadata-write'),false);await f.owner.dispose();
+ }
+ for(const pending of [0,'0',' 0 ','0.0']){
+  const f=maintenanceFixture('current',{metadata:{lastResult:{pending},lastSuccessfulAt:'2026-10-15T11:59:00Z'}});assert.equal((await f.owner.refresh()).skipped,true);await f.owner.dispose();
+ }
+});

@@ -170,7 +170,9 @@ remaining-scope paragraphs describe their stage's starting point.
   batch, abort and cleanup. Native fixtures prove coalesced completion now joins
   metadata writes and malformed checkpoints retain raw evidence. 720 executed
   old/current policies, native index/journal faults and actual server composition
-  retain existing budgets/retries/schema. See [PDF refresh](PDF_MAINTENANCE_OPERATION.md).
+  retain existing budgets/retries/schema. Nullable/blank historical counts remain
+  readable but cannot authorize a false not-due result; malformed non-scalar
+  counts fail before writes. See [PDF refresh](PDF_MAINTENANCE_OPERATION.md).
 - Both applications' full local Finance connection import now has a strict
   device owner and native file-selection owner, joined by Kupa Bank and Orders
   Finance. Confirmation/publication cannot drift to a replacement device;

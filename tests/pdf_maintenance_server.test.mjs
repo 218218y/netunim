@@ -37,3 +37,14 @@ test('actual server shutdown joins accepted checkpoint publication before report
  const reading=f.refresh({force:true});await entered.promise;let done=false;const stopping=f.stop().then(()=>{done=true});await new Promise(resolve=>setImmediate(resolve));assert.equal(done,false);
  await assert.rejects(f.refresh(),{code:'PDF_MAINTENANCE_DISPOSED'});release.resolve();await Promise.all([reading,stopping]);assert.equal(done,true);assert.ok(JSON.parse(await fs.readFile(f.metadataPath,'utf8')).lastSuccessfulAt);
 });
+test('actual server refuses false zero evidence and verifies nullable/blank historical pending before checkpoint success',async t=>{
+ for(const pending of [[],false,null,'']){
+  const f=await fixture(t),before=await f.capture(),raw=JSON.stringify({lastResult:{pending},lastSuccessfulAt:new Date().toISOString()});await fs.writeFile(f.metadataPath,raw);
+  if(pending===null||pending===''){
+   const result=await f.refresh();assert.equal(result.processed,1);assert.notEqual(result.skipped,true);assert.equal(JSON.parse(await fs.readFile(f.metadataPath,'utf8')).lastResult.pending,0);
+  }else{
+   await assert.rejects(f.refresh(),{code:'PDF_MAINTENANCE_METADATA_INVALID'});assert.equal(await fs.readFile(f.metadataPath,'utf8'),raw);assert.deepEqual(await f.capture(),before);assert.equal(f.writes(),0);
+  }
+  await f.stop();
+ }
+});
