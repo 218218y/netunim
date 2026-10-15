@@ -31,7 +31,7 @@ FLOW = r"""(async()=>{
  const mainBefore=JSON.stringify(await db.load(identity)),sharedBefore=JSON.stringify(await db.load(owner+':shared-checks'));
  cloudTransport.claimFinanceSyncLease=async(leaseName,leaseToken)=>({acquired:true,leaseName,leaseToken,fenceEpoch:1});cloudTransport.releaseFinanceSyncLease=async()=>true;
  const request=async(path,options)=>{
-   if(String(path).includes('/finance_sync_documents?'))return new Response(JSON.stringify([{revision:financeRevision,state:remoteFinance}]));
+   if(String(path).includes('/finance_sync_documents?'))return new Response(JSON.stringify([{document_name:'main',revision:financeRevision,state:remoteFinance,updated_at:'2026-10-15T00:00:00Z'}]));
    if(String(path).endsWith('/claim_finance_sync_lease'))return new Response(JSON.stringify([{acquired:true,lease_token:JSON.parse(options.body).p_lease_token,fence_epoch:1,leased_until:'2030-01-01T00:00:00Z'}]));
    if(String(path).endsWith('/release_finance_sync_lease'))return new Response('true');
    options.assertRequestScope?.();check(String(path).endsWith(kind==='main'?'/save_kupa_document_v6':'/save_finance_sync_document_v6'),'unexpected fixture RPC '+path);

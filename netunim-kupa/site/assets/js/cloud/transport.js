@@ -1,3 +1,4 @@
+import {readCloudMetaRows,readCloudDocumentRows,readFinanceDocumentRows,readCloudBackupRows,readCloudBackupPointRows} from '../shared/cloud-read-records.js';
 import {createMainDocumentWrite} from './main-document-write.js';
 import {beginMeasure} from '../shared/runtime-performance.js';
 import {financeFencePayload,createFinanceManualQueue} from '../shared/finance-fence.js';
@@ -39,7 +40,7 @@ async function verifyLocalResetCloud(resetSession){
   const [mainResponse,sharedResponse]=await Promise.all([localResetReadOnlyFetch(resetSession,mainPath),localResetReadOnlyFetch(resetSession,sharedPath)]),[mainJson,sharedJson]=await Promise.all([mainResponse.json().catch(()=>null),sharedResponse.json().catch(()=>null)]);
   if(!mainResponse.ok)throw new Error(mainJson?.message||mainJson?.hint||'קריאת הקופה מהענן נכשלה');
   if(!sharedResponse.ok)throw new Error(sharedJson?.message||sharedJson?.hint||'קריאת מאגר הצקים המשותף נכשלה');
-  const main=Array.isArray(mainJson)&&mainJson.length?mainJson[0]:null,shared=Array.isArray(sharedJson)&&sharedJson.length?sharedJson[0]:null;
+  const main=readCloudDocumentRows(mainJson,session.cloudDocumentName),shared=readCloudDocumentRows(sharedJson,SHARED_CHECKS_DOC);
   if(main){assertReadableCloudState(main.state,'מסמך הקופה בענן');const rev=Number(main.revision);if(!Number.isSafeInteger(rev)||rev<1)throw new Error('Revision הקופה בענן אינו תקין')}
   if(shared){if(!shared.state||!Array.isArray(shared.state.checks)||!Array.isArray(shared.state.bankEvents))throw new Error('מסמך הצקים המשותף בענן במבנה לא תקין');const rev=Number(shared.revision);if(!Number.isSafeInteger(rev)||rev<1)throw new Error('Revision הצקים המשותף אינו תקין')}
   return {main,shared};
@@ -50,7 +51,7 @@ async function readOrdersReadOnlyMeta({assertCurrent}={}){
   const r=await supaRest(q,{method:'GET',...(assertCurrent?{assertRequestScope:assertCurrent}:{})}),j=await r.json().catch(()=>null);
   assertCurrent?.();
   if(!r.ok)throw new Error(j?.message||j?.hint||'קריאת סטטוס ניהול ההזמנות נכשלה');
-  return Array.isArray(j)&&j.length?j[0]:null;
+  return readCloudMetaRows(j,ORDERS_DOC);
 }
 async function readOrdersReadOnlyCloud({assertCurrent}={}){
   assertCurrent?.();
@@ -58,7 +59,7 @@ async function readOrdersReadOnlyCloud({assertCurrent}={}){
   const r=await supaRest(q,{method:'GET',...(assertCurrent?{assertRequestScope:assertCurrent}:{})}),j=await r.json().catch(()=>null);
   assertCurrent?.();
   if(!r.ok)throw new Error(j?.message||j?.hint||'קריאת נתוני ניהול ההזמנות נכשלה');
-  const row=Array.isArray(j)&&j.length?j[0]:null;
+  const row=readCloudDocumentRows(j,ORDERS_DOC);
   if(row){const rev=Number(row.revision);if(!Number.isSafeInteger(rev)||rev<1||!row.state||typeof row.state!=='object')throw new Error('מסמך ניהול ההזמנות בענן אינו תקין')}
   return row;
 }
@@ -68,7 +69,7 @@ async function readFinanceSyncDocument({assertCurrent}={}){
   const r=await supaRest(q,{method:'GET',...(assertCurrent?{assertRequestScope:assertCurrent}:{})}),j=await r.json().catch(()=>null);
   assertCurrent?.();
   if(!r.ok)throw new Error(j?.message||j?.hint||'קריאת נתוני הסינכרון הפיננסי נכשלה');
-  return Array.isArray(j)&&j.length?j[0]:null;
+  return readFinanceDocumentRows(j,FINANCE_DOC);
 }
 function overlayFinanceState(base,finance){
   const out=structuredClone(base||{}),fs=finance?.state&&typeof finance.state==='object'?finance.state:{};
@@ -87,7 +88,7 @@ async function readSupabaseDocument({assertCurrent}={}){
   const r=docResult.value,j=await r.json().catch(()=>null);
   assertCurrent?.();
   if(!r.ok)throw new Error(j?.message||j?.hint||'קריאת הקופה מהענן נכשלה');
-  const row=Array.isArray(j)&&j.length?j[0]:null;
+  const row=readCloudDocumentRows(j,session.cloudDocumentName);
   if(row){
     assertReadableCloudState(row.state,'מסמך הקופה בענן');
     const rev=Number(row.revision);if(!Number.isSafeInteger(rev)||rev<1)throw new Error('Revision הקופה בענן אינו תקין. הסנכרון נעצר כדי למנוע דריסה.');
@@ -188,20 +189,20 @@ async function acknowledgeBankTransactionAlert(transactionId,alertKind,{assertCu
 
 async function readBackupList(table,documentName,limit,offset=0){
   const safeLimit=Math.max(1,Math.min(20,Math.trunc(Number(limit)||8))),safeOffset=Math.max(0,Math.min(5000,Math.trunc(Number(offset)||0))),q=`/rest/v1/${table}?document_name=eq.${encodeURIComponent(documentName)}&select=id,revision,saved_at&order=saved_at.desc,id.desc&limit=${safeLimit}&offset=${safeOffset}`;
-  const r=await supaRest(q,{method:'GET'}),j=await r.json().catch(()=>null);if(!r.ok)throw new Error(j?.message||'קריאת רשימת גיבויי הענן נכשלה');return Array.isArray(j)?j:[];
+  const r=await supaRest(q,{method:'GET'}),j=await r.json().catch(()=>null);if(!r.ok)throw new Error(j?.message||'קריאת רשימת גיבויי הענן נכשלה');return readCloudBackupRows(j);
 }
 async function listKupaCloudBackups({limit=8,rollingOffset=0,periodicOffset=0}={}){
   const [rolling,periodic]=await Promise.all([readBackupList('kupa_document_backups',session.cloudDocumentName,limit,rollingOffset),readBackupList('kupa_periodic_backups',session.cloudDocumentName,limit,periodicOffset)]);return {rolling,periodic};
 }
 async function readBackupState(table,documentName,id){
   const safeId=Number(id);if(!Number.isSafeInteger(safeId)||safeId<=0)throw new Error('מזהה הגיבוי אינו תקין');
-  const q=`/rest/v1/${table}?id=eq.${safeId}&document_name=eq.${encodeURIComponent(documentName)}&select=id,revision,state,saved_at&limit=1`,r=await supaRest(q,{method:'GET',dataPriority:'high'}),j=await r.json().catch(()=>null);if(!r.ok)throw new Error(j?.message||'קריאת גיבוי הענן נכשלה');return Array.isArray(j)&&j.length?j[0]:null;
+  const q=`/rest/v1/${table}?id=eq.${safeId}&document_name=eq.${encodeURIComponent(documentName)}&select=id,revision,state,saved_at&limit=1`,r=await supaRest(q,{method:'GET',dataPriority:'high'}),j=await r.json().catch(()=>null);if(!r.ok)throw new Error(j?.message||'קריאת גיבוי הענן נכשלה');return readCloudBackupPointRows(j,safeId);
 }
 async function readChecksBackupAtOrBefore(savedAt){
   const at=String(savedAt||'').trim();if(!Number.isFinite(Date.parse(at)))throw new Error('זמן הגיבוי אינו תקין');
   const encoded=encodeURIComponent(at),query=table=>`/rest/v1/${table}?document_name=eq.${encodeURIComponent(SHARED_CHECKS_DOC)}&saved_at=lte.${encoded}&select=id,revision,state,saved_at&order=saved_at.desc,id.desc&limit=1`;
   const [live,rollingResult,periodicResult]=await Promise.all([readSharedChecksDocument(),supaRest(query('shared_checks_document_backups'),{method:'GET',dataPriority:'high'}),supaRest(query('shared_checks_periodic_backups'),{method:'GET',dataPriority:'high'})]);
-  const parse=async(result,label)=>{const j=await result.json().catch(()=>null);if(!result.ok)throw new Error(j?.message||`קריאת ${label} נכשלה`);return Array.isArray(j)&&j.length?j[0]:null};
+  const parse=async(result,label)=>{const j=await result.json().catch(()=>null);if(!result.ok)throw new Error(j?.message||`קריאת ${label} נכשלה`);return readCloudBackupPointRows(j,null,at)};
   const [rolling,periodic]=await Promise.all([parse(rollingResult,'גיבויי הצ׳קים'),parse(periodicResult,'גיבויי הצ׳קים התקופתיים')]),candidates=[];
   if(live&&Date.parse(live.updated_at||'')<=Date.parse(at))candidates.push({revision:live.revision,state:live.state,saved_at:live.updated_at,source:'live'});
   if(rolling)candidates.push({...rolling,source:'rolling'});if(periodic)candidates.push({...periodic,source:'periodic'});
@@ -216,11 +217,11 @@ async function readSharedChecksDocument(){
   const q=`/rest/v1/${SHARED_CHECKS_TABLE}?document_name=eq.${encodeURIComponent(SHARED_CHECKS_DOC)}&select=document_name,revision,state,updated_at`;
   const r=await supaRest(q,{method:'GET',networkRetry:true}),j=await r.json().catch(()=>null);
   if(!r.ok)throw new Error(j?.message||j?.hint||'קריאת מאגר הצקים המשותף נכשלה');
-  const row=Array.isArray(j)&&j.length?j[0]:null;
+  const row=readCloudDocumentRows(j,SHARED_CHECKS_DOC);
   if(row){if(!row.state||!Array.isArray(row.state.checks)||!Array.isArray(row.state.bankEvents))throw new Error('מסמך הצקים המשותף בענן במבנה לא תקין');const rev=Number(row.revision);if(!Number.isSafeInteger(rev)||rev<1)throw new Error('Revision הצקים המשותף אינו תקין')}
   return row
 }
-async function readSharedChecksMeta(){const q=`/rest/v1/${SHARED_CHECKS_TABLE}?document_name=eq.${encodeURIComponent(SHARED_CHECKS_DOC)}&select=document_name,revision,updated_at`;const r=await supaRest(q,{method:'GET',networkRetry:true}),j=await r.json().catch(()=>null);if(!r.ok)throw new Error(j?.message||'קריאת סטטוס הצקים המשותפים נכשלה');return Array.isArray(j)&&j.length?j[0]:null}
+async function readSharedChecksMeta(){const q=`/rest/v1/${SHARED_CHECKS_TABLE}?document_name=eq.${encodeURIComponent(SHARED_CHECKS_DOC)}&select=document_name,revision,updated_at`;const r=await supaRest(q,{method:'GET',networkRetry:true}),j=await r.json().catch(()=>null);if(!r.ok)throw new Error(j?.message||'קריאת סטטוס הצקים המשותפים נכשלה');return readCloudMetaRows(j,SHARED_CHECKS_DOC)}
 async function rpcSaveSharedChecksV2(checks,expectedRevision,operationId,deletedCheckIds=[],audit={}){const payload={version:1,checks:normalizeSharedChecks(checks)},expected=Number(expectedRevision||0),op=String(operationId||'').trim();const deletedIds=[...new Set((Array.isArray(deletedCheckIds)?deletedCheckIds:[]).map(x=>String(x||'').trim()).filter(Boolean))].sort();if(!Number.isSafeInteger(expected)||expected<0)throw new Error('Revision הצקים המקומי אינו תקין');if(!op)throw new Error('מזהה פעולת הצקים חסר');const rpc=audit?.mutationType==='bulk-delete'?`bulk_delete_${SHARED_CHECKS_RPC}_v6`:`${SHARED_CHECKS_RPC}_v6`,r=await supaRest(`/rest/v1/rpc/${rpc}`,{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify({p_document_name:SHARED_CHECKS_DOC,p_expected_revision:expected,p_state:payload,p_operation_id:op,p_deleted_check_ids:deletedIds,p_audit:audit})});const body=await r.text();let j;try{j=body?JSON.parse(body):null}catch(e){j=null}return {r,j,body,row:Array.isArray(j)?j[0]:j}}
 async function restoreRpc(name,body){const r=await supaRest(`/rest/v1/rpc/${name}`,{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify(body)}),raw=await r.text();let j;try{j=raw?JSON.parse(raw):null}catch{j=null}if(!r.ok)throw new Error(j?.message||j?.hint||raw||`restore rpc failed: ${name}`);return Array.isArray(j)?j[0]:j}
 async function stageRestoreGroup(group){return restoreRpc('stage_restore_group_v6',restoreGroupRpcPayload(group))}
