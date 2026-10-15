@@ -1,9 +1,9 @@
+import {documentBridgeSource} from './document_bridge_source.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import vm from 'node:vm';
-import {parse} from 'acorn';
 import {createPdfPreviewOperation} from '../netunim-orders/document-bridge/pdf-preview-operation.mjs';
 import {createPdfMaintenanceOperation} from '../netunim-orders/document-bridge/pdf-maintenance-operation.mjs';
 import {indexFixture,journalRow} from './pdf_index_file_fixture.mjs';
@@ -11,7 +11,7 @@ import {indexFixture,journalRow} from './pdf_index_file_fixture.mjs';
 const row={...journalRow,fullPath:'C:\\synthetic\\new.pdf',text:'new committed text'};
 const fault=()=>Object.assign(new Error('synthetic disk fault'),{code:'EIO'});
 function handleHook(handle,overrides){return new Proxy(handle,{get(target,key){if(key in overrides)return overrides[key];const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value}})}
-async function sourceFunction(name,context){const source=await fs.readFile(new URL('../netunim-orders/document-bridge/server.mjs',import.meta.url),'utf8'),ast=parse(source,{ecmaVersion:'latest',sourceType:'module'}),node=ast.body.find(node=>node.type==='FunctionDeclaration'&&node.id.name===name);let prefix='';
+async function sourceFunction(name,context){const {source,ast}=documentBridgeSource(),node=ast.body.find(node=>node.type==='FunctionDeclaration'&&node.id.name===name);let prefix='';
  if(name==='refreshPdfFormIndex'){const composition=ast.body.find(node=>node.type==='VariableDeclaration'&&node.declarations.some(item=>item.id.name==='pdfMaintenanceOperation'));Object.assign(context,{createPdfMaintenanceOperation,readPdfMaintenanceMetadata:()=>context.readJsonFile()});prefix=source.slice(composition.start,composition.end)+'\n'}
  if(name==='supplementalPdfData'){const composition=ast.body.find(node=>node.type==='VariableDeclaration'&&node.declarations.some(item=>item.id.name==='pdfPreviewOperation'));Object.assign(context,{createPdfPreviewOperation,pdfExtractionProcesses:{read:context.extractPdfOnDemand}});prefix=source.slice(composition.start,composition.end)+'\n'}
  return vm.runInNewContext(prefix+source.slice(node.start,node.end)+`\n${name}`,context)}

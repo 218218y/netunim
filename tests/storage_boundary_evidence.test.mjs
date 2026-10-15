@@ -15,12 +15,12 @@ function fixture(value,{advance}={}) {
   const owner=createStorageV2Boundary({owner:()=> 'A',primary:()=>true,main:runtime,shared:runtime,db});
   return {owner,applied:()=>applied,stored:()=>clone(stored)};
 }
-for(const phase of ['future','',null,4,{},[]])test(`unknown durable phase ${JSON.stringify(phase)} cannot unlock or apply`,async()=>{
+for(const phase of ['future','',null,4,{},[],['prepared'],['shared-applied'],['main-applied']])test(`unknown durable phase ${JSON.stringify(phase)} cannot unlock or apply`,async()=>{
   const input={...record(),phase},f=fixture(input);
   await assert.rejects(f.owner.resume(),/phase_invalid/);assert.equal(f.owner.locked,true);assert.equal(f.applied(),0);assert.deepEqual(f.stored(),input);
   await assert.rejects(f.owner.pending(),/phase_invalid/);assert.equal(f.owner.locked,true);
 });
-for(const change of [r=>{r.owner='B'},r=>{r.id=5},r=>{r.main.state='not-state'},r=>{r.shared.options=[]},r=>{r.main.options={appMetadata:{boundaryId:'foreign'}}}])test('malformed persisted authority is retained before journal replacement',async()=>{
+for(const change of [r=>{r.kind=['restore']},r=>{r.main.kind=['replace-authoritative']},r=>{r.owner='B'},r=>{r.id=5},r=>{r.main.state='not-state'},r=>{r.shared.options=[]},r=>{r.main.options={appMetadata:{boundaryId:'foreign'}}}])test('malformed persisted authority is retained before journal replacement',async()=>{
   const input=record();change(input);const f=fixture(input);
   await assert.rejects(f.owner.resume());assert.equal(f.owner.locked,true);assert.equal(f.applied(),0);assert.deepEqual(f.stored(),input);
 });

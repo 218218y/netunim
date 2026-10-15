@@ -1,9 +1,10 @@
+import {tokens} from './bank_policy_ast_fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const read=path=>fs.readFileSync(new URL(`../${path}`,import.meta.url),'utf8');
-const serverOwners=()=>['server.mjs','pdf-index-coordinator.mjs','everything-search-coordinator.mjs','bridge-replacement-command.mjs','windows-process-control.mjs','bridge-runtime-files.mjs','pdf-maintenance-task-diagnostics.mjs','bridge-installation-diagnostics.mjs','pdf-inventory-reconciliation.mjs'].map(name=>read('netunim-orders/document-bridge/'+name)).join('\n');
+const serverOwners=()=>['server.mjs','document-operations.mjs','bridge-service.mjs','pdf-index-coordinator.mjs','everything-search-coordinator.mjs','bridge-replacement-command.mjs','windows-process-control.mjs','bridge-runtime-files.mjs','pdf-maintenance-task-diagnostics.mjs','bridge-installation-diagnostics.mjs','pdf-inventory-reconciliation.mjs'].map(name=>read('netunim-orders/document-bridge/'+name)).join('\n');
 
 test('orders site exposes one unified search with site, file and content filters over loopback bridge',()=>{
   const html=read('netunim-orders/site/index.html');
@@ -203,8 +204,8 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.match(server,/PDF_FORM_RECONCILE_INTERVAL_MS=PDF_FORM_MAINTENANCE_INTERVAL_MS/);
   assert.match(server,/plan:pdfMaintenanceInventoryPlan/,'manual force and scheduled cadence must share the tested inventory planner');
   assert.match(read('netunim-orders/document-bridge/pdf-maintenance-operation.mjs').replace(/\s+/g,''),/policy\.plan\(\{force,now:started/);
-  assert.match(server,/pdfMaintenanceRunLimits\(\{manual,requestedMaxFiles:/,'manual and scheduled PDF maintenance must use the tested execution-limit policy');
-  assert.match(server,/refreshPdfFormIndex\(\{maxChanged,maxMs,force:manual,reason:manual\?'manual':'scheduled'/,'the CLI must pass the run-specific file and time budgets into the refresher');
+  assert.match(tokens(server),/pdfMaintenanceRunLimits\(\{manual,requestedMaxFiles:/,'manual and scheduled PDF maintenance must use the tested execution-limit policy');
+  assert.match(tokens(server),/refreshPdfFormIndex\(\{maxChanged,maxMs,force:manual,reason:manual\?'manual':'scheduled'/,'the CLI must pass the run-specific file and time budgets into the refresher');
   assert.match(server,/INSTALL_STOP_FORCE/,'upgrades must be able to terminate an old Bridge that closed the port but kept indexing');
   assert.match(server,/taskkill\.exe/);
   assert.match(installer,/Preserving local interactive PDF text index/);

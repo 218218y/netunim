@@ -1,3 +1,4 @@
+import {joinDocumentReads} from '../netunim-orders/document-bridge/document-command-owner.mjs';
 import {documentBridgeSource} from './document_bridge_source.mjs';
 import {createPdfInventoryReconciliation} from '../netunim-orders/document-bridge/pdf-inventory-reconciliation.mjs';
 import test from 'node:test';
@@ -16,7 +17,7 @@ async function fixture(t,{write}={}){
  const disk=await indexFixture(t);await disk.read();const metadataPath=path.join(path.dirname(disk.snapshotPath),'maintenance.json');
  const {source,ast}=documentBridgeSource();
  const selected=ast.body.filter(node=>node.type==='FunctionDeclaration'&&['pdfIndexFingerprint','rebuildPdfFormIndexBacklog','refreshPdfFormIndex','prepareShutdown'].includes(node.id.name)||node.type==='VariableDeclaration'&&node.declarations.some(item=>['pdfReconciliation','pdfMaintenanceOperation'].includes(item.id.name)));
- let writes=0;Object.assign(disk.context,{...limits,createPdfInventoryReconciliation,createPdfMaintenanceOperation,readPdfMaintenanceMetadata,PDF_FORM_MAINTENANCE_PATH:metadataPath,AbortController,setTimeout,clearTimeout,process:{cpuUsage:()=>({user:0,system:0}),pid:10},shuttingDown:false,pdfMaintenanceStopRequested:false,
+ let writes=0;Object.assign(disk.context,{...limits,createPdfInventoryReconciliation,createPdfMaintenanceOperation,readPdfMaintenanceMetadata,PDF_FORM_MAINTENANCE_PATH:metadataPath,AbortController,setTimeout,clearTimeout,process:{cpuUsage:()=>({user:0,system:0}),pid:10},documentCommands:{dispose:async()=>{}},joinDocumentReads,shuttingDown:false,pdfMaintenanceStopRequested:false,
   writeJsonFile:async(file,value)=>{writes++;if(write)await write(value);await fs.writeFile(file,JSON.stringify(value))},appendLog:async()=>{},pdfIndexNeedsInspection,pdfMaintenanceInventoryPlan,
   pdfInventory:{read:async()=>[workRow(3)],assertActive:signal=>{if(signal?.aborted)throw Object.assign(new Error('stopped'),{code:'ABORT_ERR'})}},
   extractInteractivePdfText:async()=>({hasForm:true,text:'native indexed result',formFields:[],formFieldCount:0}),

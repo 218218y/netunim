@@ -39,6 +39,7 @@ export async function indexFixture(t, {ioHook = value => value, journal} = {}) {
   };
   const production = vm.runInNewContext([...definitions.map(node => source.slice(node.start, node.end)), ...variables.map(node => source.slice(node.start, node.end)),
     '({read:readPdfIndexFiles,append:appendPdfIndexJournal,compact:compactPdfFormIndex,normalize:normalizePdfIndexEntry,load:loadPdfFormIndex,remove,view})'].join('\n'), context);
+  context.service={isStopping:()=>context.shuttingDown||context.pdfMaintenanceStopRequested};
   context.runtime={isStopping:()=>context.shuttingDown||context.pdfMaintenanceStopRequested};
   context.pdfIndexRuntime={index:{load:production.load,entries:context.pdfFormIndex,view:()=>({pending:context.pdfFormIndexPending,pdfCount:context.pdfFormIndexInventoryCount}),publishPending:pending=>{context.pdfFormIndexPending=pending},append:(...args)=>context.appendPdfIndexJournal(...args),serialize:production.normalize,compact:production.compact},inventory:{rebuild:(...args)=>context.rebuildPdfFormIndexBacklog(...args)},remove:production.remove,view:production.view};
   // Serialization must retain the exact production wire shape, not normalization.
