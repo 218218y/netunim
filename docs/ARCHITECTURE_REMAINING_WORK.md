@@ -15,6 +15,11 @@ A passed synthetic gate is not evidence of live providers or physical machines.
 - Morning completion, recovery, catalog, command form and media/modal lifetime have dedicated boundaries.
 - Backup browser resources and account-scoped publication have owners.
 - Spreadsheet RPC replies are decoded and fenced by login epoch before durable ACK.
+- Document Bridge document/preview commands and status/HTTP/CLI/shutdown have owners.
+  Accepted file operations and preview siblings drain before shutdown settles.
+  See [document lifecycle](DOCUMENT_OPERATIONS_LIFECYCLE.md).
+- A [compatibility inventory](COMPATIBILITY_INVENTORY.md) distinguishes current APIs,
+  historical readers, immutable migrations, generated sources and proven dead code.
 - Document Bridge PDF index and Everything search now have composition owners.
   See [index coordinators](DOCUMENT_INDEX_COORDINATORS.md).
 - Document Bridge search/registry, Everything sessions/processes, PDF maintenance,
@@ -32,11 +37,10 @@ A passed synthetic gate is not evidence of live providers or physical machines.
 | Priority | Scope | Required evidence |
 | --- | --- | --- |
 | 1 | Critical persisted/journal transaction consumers: owner transfer and remaining IDB/runtime callers; full strict bodies beyond the checked restore/import consumers | Decode unknown values before action/ACK; preserve invalid durable records; checked implementation, negative consumer and implementation mutation |
-| 2 | Document Bridge document/preview operations; status, boot and shutdown | Preserve retry/search/wire policy; native files/process/HTTP fixtures; accepted work drains on shutdown |
-| 3 | Shell composition audit | Extract only policy/lifetime/authority still in lifecycle, backup, cloud UI or navigation; retain explicit role wiring and avoid a broad context |
-| 4 | Measured startup improvements | Repeated cold/cached/offline measurements; presentation-only lazy candidates; account/cancellation/PWA gates; preserve eager runtime ownership |
-| 5 | Compatibility inventory and readability | Classify Current/Historical Reader/Immutable Migration/Generated/Dead; delete only proven Dead; format settled presentation boundaries in reviewable slices |
-| 6 | Release validation | Full PostgreSQL/native browser/Windows gates plus controlled backup/restore, physical two-computer and live Bank/Credit drills |
+| 2 | Shell composition audit | Extract only policy/lifetime/authority still in lifecycle, backup, cloud UI or navigation; retain explicit role wiring and avoid a broad context |
+| 3 | Measured startup improvements | Repeated cold/cached/offline measurements; presentation-only lazy candidates; account/cancellation/PWA gates; preserve eager runtime ownership |
+| 4 | Compatibility inventory and readability | Maintain the completed compatibility inventory; retire only newly proven Dead paths; format remaining application presentation boundaries in reviewable slices |
+| 5 | Release validation | Full PostgreSQL/native browser/Windows gates plus controlled backup/restore, physical two-computer and live Bank/Credit drills |
 
 The six unchecked storage modules called out by the V7 review are a work queue,
 not a demand to annotate all application code. Prioritize where runtime evidence

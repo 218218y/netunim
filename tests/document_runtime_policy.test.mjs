@@ -15,8 +15,8 @@ for(const [name,expected] of Object.entries(baseline.functions))test('Document r
  assert.equal(createHash('sha256').update(tokens(expected.source)).digest('hex'),expected.digest);assert.equal(actual,tokens(expected.source));
 });
 test('the listener composes runtime diagnostics and inventory instead of owning their policies',()=>{
- const source=readFileSync(new URL('server.mjs',root),'utf8');for(const name of [...runtime,...tasks,...replacements,'printDoctor','writeInstallSummary'])assert.equal(source.includes('function '+name+'('),false);
- assert.ok(Buffer.byteLength(source.replaceAll('\r\n','\n'))<45000,'listener responsibility must remain below its new boundary budget');
+ const source=readFileSync(new URL('server.mjs',root),'utf8');for(const name of [...runtime,...tasks,...replacements,'printDoctor','writeInstallSummary','main','prepareShutdown','finishShutdown','documentBridgeStatus','loadPdfFormIndex','searchDocuments','deleteDocument','openDocument','previewMatches'])assert.equal(source.includes('function '+name+'('),false);
+ assert.ok(Buffer.byteLength(source.replaceAll('\r\n','\n'))<18000,'listener responsibility must remain below its new boundary budget');
  for(const file of ['pdf-inventory-reconciliation.mjs']){
   const owner=readFileSync(new URL(file,root),'utf8');for(const forbidden of ['node:fs','node:child_process','process.','setTimeout','createServer','createPdfInventory('])assert.equal(owner.includes(forbidden),false);
  }

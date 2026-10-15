@@ -1,3 +1,5 @@
+import {joinDocumentReads} from '../netunim-orders/document-bridge/document-command-owner.mjs';
+import {documentBridgeSource} from './document_bridge_source.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -7,7 +9,6 @@ import vm from 'node:vm';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {fileURLToPath} from 'node:url';
-import {parse} from 'acorn';
 import {createEverythingProcess} from '../netunim-orders/document-bridge/everything-process.mjs';
 import {createEverythingSession} from '../netunim-orders/document-bridge/everything-session.mjs';
 import {createEverythingDiscovery} from '../netunim-orders/document-bridge/everything-discovery.mjs';
@@ -51,12 +52,12 @@ test('the original unhandled launch error kills an isolated baseline worker; the
 });
 test('actual server composition joins direct ES work as well as session and discovery during shutdown',async()=>{
  const entered=deferred(),held=deferred();
- const source=await fs.readFile(new URL('../netunim-orders/document-bridge/server.mjs',import.meta.url),'utf8'),ast=parse(source,{ecmaVersion:'latest',sourceType:'module'});
+ const {source,ast}=documentBridgeSource();
  const selected=ast.body.filter(node=>node.type==='FunctionDeclaration'&&['whereEs','findEverythingExecutable','runEs','probeEverything','prepareShutdown'].includes(node.id.name)||node.type==='VariableDeclaration'&&node.declarations.some(item=>['everythingSession','everythingDiscovery','everythingProcesses'].includes(item.id.name)));
  const context={createEverythingProcess,createEverythingSession,createEverythingDiscovery,
   createEverythingProcessPlatform:()=>({commands:{execute:async(_file,args)=>{if(args[0]==='held'){entered.resolve();await held.promise}return{stdout:'Everything'}},launch:async()=>{}}}),
   createEverythingDiscoveryPlatform:()=>({locations:{esCandidates:['synthetic'],direct:()=>[],registryKeys:[],known:[],windows:false},files:{exists:async()=>true},commands:{where:async()=>'',registry:async()=>''},paths:{executables:()=>[]}}),
-  loadConfig:async()=>({everythingInstance:'',everythingExecutable:'',searchTimeoutMs:15000,allowedOrigins:[]}),saveConfig:async()=>{},Date,setTimeout,appendLog:async()=>{},APP_ROOT:'synthetic',shuttingDown:false,
+  loadConfig:async()=>({everythingInstance:'',everythingExecutable:'',searchTimeoutMs:15000,allowedOrigins:[]}),saveConfig:async()=>{},Date,setTimeout,appendLog:async()=>{},APP_ROOT:'synthetic',documentCommands:{dispose:async()=>{}},joinDocumentReads,shuttingDown:false,
   documentSearch:{dispose:async()=>{}},documentResults:{dispose:()=>{}},pdfMaintenanceOperation:{dispose:async()=>{}},pdfPreviewOperation:{dispose:async()=>{},invalidate:async()=>{}},pdfExtractionProcesses:{dispose:async()=>{}},previewTextCache:{dispose:()=>{}},manualMaintenance:{dispose:async()=>{}},nativePreviewSession:{dispose:async()=>{}},process:{pid:10}};
  const root=vm.runInNewContext(selected.map(node=>source.slice(node.start,node.end)).join('\n')+'\n({probe:probeEverything,run:runEs,stop:prepareShutdown})',context);
  await root.probe();const reading=root.run('synthetic',['held']);await entered.promise;

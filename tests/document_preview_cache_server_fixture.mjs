@@ -1,8 +1,8 @@
+import {documentBridgeSource} from './document_bridge_source.mjs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import vm from 'node:vm';
-import {parse} from 'acorn';
 import {buildContentMatchInfo, normalizeSearchText, normalizeContentSearchOptions} from '../netunim-orders/document-bridge/lib.mjs';
 
 export function deferred() {
@@ -14,8 +14,7 @@ export function deferred() {
 // Exercise the production server's private read/invalidation wiring without
 // starting its installed listener, Everything, maintenance or provider processes.
 export async function serverFixture(t, {createPreviewTextCache} = {}) {
-  const source = await fs.readFile(new URL('../netunim-orders/document-bridge/server.mjs', import.meta.url), 'utf8');
-  const program = parse(source, {ecmaVersion: 'latest', sourceType: 'module'});
+  const {source,ast:program}=documentBridgeSource();
   const names = new Set(['prunePreviewTextCache', 'loadSearchablePreviewText', 'searchablePreviewText', 'previewMatches', 'invalidateResultPath']);
   const declarations = program.body.filter(node => node.type === 'FunctionDeclaration' && names.has(node.id.name));
   const cacheDeclaration = program.body.find(node => node.type === 'VariableDeclaration' && node.declarations.some(entry => entry.id.name === 'previewTextCache'));

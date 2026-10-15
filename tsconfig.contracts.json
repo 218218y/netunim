@@ -20,6 +20,7 @@
     "types": []
   },
   "files": [
+    "netunim-orders/document-bridge/document-command-owner.mjs",
     "shared/storage-v2-restore.js",
     "shared/storage-v2-local-import.js",
     "netunim-orders/site/assets/js/storage/local-commit.js",
@@ -273,6 +274,7 @@
     "netunim-orders/site/assets/js/platform/calendar-browser-effects.js",
     "tests/fixtures/checked-calendar-runtime.mjs",
     "tests/fixtures/checked-orders-persistence.mjs",
-    "tests/fixtures/checked-storage-boundaries.mjs"
+    "tests/fixtures/checked-storage-boundaries.mjs",
+    "tests/fixtures/checked-document-commands.mjs"
   ]
 }

@@ -1,3 +1,4 @@
+import {joinDocumentReads} from '../netunim-orders/document-bridge/document-command-owner.mjs';
 import {documentBridgeSource} from './document_bridge_source.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -74,7 +75,7 @@ async function fixture(t, { read, append } = {}) {
     },
     previewTextCache: { invalidate: () => {}, dispose: () => {} },
     documentResults: { invalidate: () => ['opaque'], dispose: () => {} },
-    shuttingDown: false,
+    documentCommands:{dispose:async()=>{}},joinDocumentReads,shuttingDown: false,
     documentSearch: { dispose: async () => {} },
     everythingSession: { dispose: async () => {} },
     everythingDiscovery: { dispose: async () => {} },

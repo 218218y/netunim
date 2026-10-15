@@ -1,10 +1,10 @@
+import {joinDocumentReads} from '../netunim-orders/document-bridge/document-command-owner.mjs';
+import {documentBridgeSource} from './document_bridge_source.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {fork} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import fs from 'node:fs';
 import vm from 'node:vm';
-import {parse} from 'acorn';
 import {createEverythingSession} from '../netunim-orders/document-bridge/everything-session.mjs';
 import {fixture,deferred,plain} from './everything_session_fixture.mjs';
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
@@ -47,10 +47,10 @@ test('configuration save already accepted drains; disposal cannot report success
 });
 test('actual server session composition and shutdown join a losing IPC probe after its fast winner returned',async()=>{
  const held=deferred(),f=fixture('current',{run:async(_file,args)=>{if(args[0]==='-version')return{stdout:'ES'};return args.includes('-instance')?held.promise:{stdout:'Everything'}}});
- const source=fs.readFileSync(new URL('../netunim-orders/document-bridge/server.mjs',import.meta.url),'utf8'),ast=parse(source,{ecmaVersion:'latest',sourceType:'module'});
+ const {source,ast}=documentBridgeSource();
  const selected=ast.body.filter(node=>node.type==='FunctionDeclaration'&&['probeEverything','prepareShutdown'].includes(node.id.name)||node.type==='VariableDeclaration'&&node.declarations.some(item=>item.id.name==='everythingSession'));
  const context={createEverythingSession,loadConfig:f.ports.configuration.load,saveConfig:f.ports.configuration.save,whereEs:f.ports.discovery.es,findEverythingExecutable:f.ports.discovery.executable,runEs:f.ports.process.run,
-  spawn:()=>{throw new Error('unexpected launch')},Date:{now:()=>1000},setTimeout,appendLog:f.ports.audit.write,APP_ROOT:'synthetic',shuttingDown:false,
+  spawn:()=>{throw new Error('unexpected launch')},Date:{now:()=>1000},setTimeout,appendLog:f.ports.audit.write,APP_ROOT:'synthetic',documentCommands:{dispose:async()=>{}},joinDocumentReads,shuttingDown:false,
   documentSearch:{dispose:async()=>{}},documentResults:{dispose:()=>{}},everythingDiscovery:{dispose:async()=>{}},everythingProcesses:{start:f.ports.process.start,dispose:async()=>{}},pdfMaintenanceOperation:{dispose:async()=>{}},pdfPreviewOperation:{dispose:async()=>{},invalidate:async()=>{}},pdfExtractionProcesses:{dispose:async()=>{}},previewTextCache:{dispose:()=>{}},manualMaintenance:{dispose:async()=>{}},nativePreviewSession:{dispose:async()=>{}},process:{pid:10}};
  const root=vm.runInNewContext(selected.map(node=>source.slice(node.start,node.end)).join('\n')+'\n({probe:probeEverything,stop:prepareShutdown})',context);
  await root.probe();let done=false;const stopping=root.stop().then(()=>{done=true});await tick();assert.equal(done,false);await assert.rejects(root.probe(),{code:'EVERYTHING_SESSION_DISPOSED'});

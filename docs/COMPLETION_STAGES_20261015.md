@@ -117,3 +117,10 @@ coverage is explicitly retained in the current backlog.
 
 Stage 10 merged as PR #193 after full exact-branch verification. Stage 12 separates
 PDF index and Everything search composition; see DOCUMENT_INDEX_COORDINATORS.md.
+
+Stage 11 merged as PR #194 after full branch verification. Stage 13 completes
+document/preview and service/CLI/shutdown ownership with strict command lifetime,
+accepted side-effect/sibling drain, token-preserving readability and the audited
+compatibility inventory. See DOCUMENT_OPERATIONS_LIFECYCLE.md. The current backlog
+retains measured startup, whole journal/owner-transfer typing, broader application
+formatting and live-provider/physical-machine release validation.

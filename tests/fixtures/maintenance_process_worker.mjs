@@ -1,7 +1,7 @@
+import {documentBridgeSource} from '../document_bridge_source.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import vm from 'node:vm';
-import {parse} from 'acorn';
 import {runMaintenanceWorker} from '../../netunim-orders/document-bridge/maintenance-process-owner.mjs';
 import {createMaintenanceWorkerPlatform} from '../../netunim-orders/document-bridge/maintenance-process-platform.mjs';
 
@@ -9,8 +9,8 @@ const [requestedMode,root]=process.argv.slice(2),mode=requestedMode==='--refresh
 const send=value=>new Promise(resolve=>process.send(value,resolve));
 try {
   if(mode==='production-init-failure'){
-    const source=await fs.readFile(new URL('../../netunim-orders/document-bridge/server.mjs',import.meta.url),'utf8');
-    const declaration=parse(source,{ecmaVersion:'latest',sourceType:'module'}).body.find(node=>node.type==='FunctionDeclaration'&&node.id.name==='main');
+    const {source,ast}=documentBridgeSource();
+    const declaration=ast.body.find(node=>node.type==='FunctionDeclaration'&&node.id.name==='main');
     const main=vm.runInNewContext(source.slice(declaration.start,declaration.end)+'\nmain',{
       process,runMaintenanceWorker,createMaintenanceWorkerPlatform,privateNodeRuntimeInfoSync:()=>{},
       init:async()=>{throw new Error('synthetic maintenance init failure')},

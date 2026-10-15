@@ -1,3 +1,5 @@
+import {joinDocumentReads} from '../netunim-orders/document-bridge/document-command-owner.mjs';
+import {documentBridgeSource} from './document_bridge_source.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -6,7 +8,6 @@ import path from 'node:path';
 import vm from 'node:vm';
 import {fileURLToPath} from 'node:url';
 import {spawn} from 'node:child_process';
-import {parse} from 'acorn';
 import {createMaintenanceProcessOwner} from '../netunim-orders/document-bridge/maintenance-process-owner.mjs';
 import {createMaintenanceProcessPlatform} from '../netunim-orders/document-bridge/maintenance-process-platform.mjs';
 import {deferred,fixture} from './maintenance_process_fixture.mjs';
@@ -62,18 +63,17 @@ test('the production process adapter launches the worker protocol and drains its
   await f.owner.start();await f.receive('ready');await f.owner.dispose();assert.equal(f.children[0].exitCode,0);assert.equal(f.children[0].connected,false);
 });
 test('actual server shutdown fences a pending lock probe and rejects completion without worker drain',async()=>{
-  const source=await fs.readFile(new URL('../netunim-orders/document-bridge/server.mjs',import.meta.url),'utf8');
-  const ast=parse(source,{ecmaVersion:'latest',sourceType:'module'}),held=deferred(),f=fixture({host:{isHeld:()=>held.promise}});
+  const {source,ast:ast}=documentBridgeSource(),held=deferred(),f=fixture({host:{isHeld:()=>held.promise}});
   const names=['startManualPdfMaintenance','prepareShutdown'];const functions=ast.body.filter(node=>node.type==='FunctionDeclaration'&&names.includes(node.id.name));
-  const context={manualMaintenance:f.owner,pdfMaintenanceStatus:async()=>({ok:true}),shuttingDown:false,previewTextCache:{dispose:()=>{}},nativePreviewSession:{dispose:async()=>{}},documentSearch:{dispose:async()=>{}},documentResults:{dispose:()=>{}},everythingSession:{dispose:async()=>{}},everythingDiscovery:{dispose:async()=>{}},everythingProcesses:{dispose:async()=>{}},pdfMaintenanceOperation:{dispose:async()=>{}},pdfPreviewOperation:{dispose:async()=>{},invalidate:async()=>{}},pdfExtractionProcesses:{dispose:async()=>{}},process:{pid:10}};
+  const context={manualMaintenance:f.owner,pdfMaintenanceStatus:async()=>({ok:true}),documentCommands:{dispose:async()=>{}},joinDocumentReads,shuttingDown:false,previewTextCache:{dispose:()=>{}},nativePreviewSession:{dispose:async()=>{}},documentSearch:{dispose:async()=>{}},documentResults:{dispose:()=>{}},everythingSession:{dispose:async()=>{}},everythingDiscovery:{dispose:async()=>{}},everythingProcesses:{dispose:async()=>{}},pdfMaintenanceOperation:{dispose:async()=>{}},pdfPreviewOperation:{dispose:async()=>{},invalidate:async()=>{}},pdfExtractionProcesses:{dispose:async()=>{}},process:{pid:10}};
   const root=vm.runInNewContext(functions.map(node=>source.slice(node.start,node.end)).join('\n')+'\n({start:startManualPdfMaintenance,dispose:prepareShutdown})',context);
   const start=root.start(),rejected=assert.rejects(start,{code:'PDF_MAINTENANCE_DISPOSED'}),shutdown=root.dispose();held.resolve(false);await Promise.all([shutdown,rejected]);assert.equal(f.children.length,0);assert.equal(context.shuttingDown,true);
   const live=fixture();context.manualMaintenance=live.owner;await live.owner.start();const blocked=root.dispose();const rejectedShutdown=assert.rejects(blocked,{code:'PDF_MAINTENANCE_DRAIN_TIMEOUT'});[...live.timers.values()][0]();await rejectedShutdown;
   assert.equal(live.owner.view().manual.running,true);live.children[0].emit('close',1,null);await root.dispose();
 });
 test('actual maintenance status rechecks the manual owner after its scheduled-lock await',async()=>{
-  const source=await fs.readFile(new URL('../netunim-orders/document-bridge/server.mjs',import.meta.url),'utf8');
-  const declaration=parse(source,{ecmaVersion:'latest',sourceType:'module'}).body.find(node=>node.type==='FunctionDeclaration'&&node.id.name==='pdfMaintenanceStatus');
+  const {source,ast}=documentBridgeSource();
+  const declaration=ast.body.find(node=>node.type==='FunctionDeclaration'&&node.id.name==='pdfMaintenanceStatus');
   const held=deferred(),observing=deferred(),f=fixture();
   const status=vm.runInNewContext(source.slice(declaration.start,declaration.end)+'\npdfMaintenanceStatus',{
     readJsonFile:async()=>({}),PDF_FORM_MAINTENANCE_PATH:'synthetic',manualMaintenance:f.owner,BRIDGE_VERSION:38,
