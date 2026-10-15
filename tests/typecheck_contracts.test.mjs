@@ -26,6 +26,17 @@ function check(overrides=new Map()){
 }
 function describe(diagnostics){return ts.formatDiagnostics(diagnostics,{getCanonicalFileName:file=>file,getCurrentDirectory:()=>root,getNewLine:()=> '\n'})}
 
+test('Morning form and confirmation bodies reject text money and deferred confirmation',()=>{
+ for(const [file,from,to]of [
+  ['morning-command-form.js','amount,\n        date,',"amount: '30',\n        date,"],
+  ['morning-debt-confirmation.js','message: debtImpactConfirmation','message: async () => debtImpactConfirmation'],
+ ]){
+  const source=path.join(root,'netunim-orders/site/assets/js/domains/customers',file),original=readFileSync(source,'utf8'),changed=original.replace(from,to);
+  assert.notEqual(changed,original,from);const diagnostics=check(new Map([[source,changed]]));
+  assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&[2322,2345].includes(item.code)),describe(diagnostics));
+ }
+});
+
 test('Morning catalog bodies reject coercible counts and deferred metadata authority',()=>{
  for(const [file,from,to]of [
   ['morning-catalog-evidence.js','total: count(data.total)',"total: '1'"],

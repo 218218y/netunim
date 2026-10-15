@@ -20,6 +20,9 @@
     "types": []
   },
   "files": [
+    "tests/fixtures/checked-morning-command-form.mjs",
+    "netunim-orders/site/assets/js/domains/customers/morning-command-form.js",
+    "netunim-orders/site/assets/js/domains/customers/morning-debt-confirmation.js",
     "tests/fixtures/checked-morning-catalog.mjs",
     "netunim-orders/site/assets/js/domains/customers/morning-catalog.js",
     "netunim-orders/site/assets/js/domains/customers/morning-catalog-evidence.js",
