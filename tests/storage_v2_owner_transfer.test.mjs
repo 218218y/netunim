@@ -1,5 +1,6 @@
 import test from 'node:test';
 import fs from 'node:fs';
+import {storageJsonHash} from '../shared/storage-json-codec.js';
 import assert from 'node:assert/strict';
 import {createStorageOwnerBinding} from '../shared/storage-owner.js';
 import {createStorageV2OwnerTransfer,readStorageOwnerHandoff} from '../shared/storage-v2-owner-transfer.js';
@@ -165,4 +166,13 @@ test('implementation mutation proves frozen target evidence prevents installing 
     createDetachedTarget:()=>({load:async()=>null,prepare:async()=>null,resume:async()=>null,verify:async()=>({clean:true,mainRevision:5,sharedRevision:7,...copy(h.targetState)}),mark:async()=>true,verifyMarker:async()=>true}),
     installTargetView:async proof=>assert.equal(proof.mainState.rows.at(-1).id,'unrelated')});
   await transfer.resume();assert.equal(h.owner.locked,false,'omitting the production comparison must reproduce unsafe completion');
+});
+
+test('canonical evidence hashing rejects non-JSON before digest instead of projecting undefined to null',async()=>{
+  let digests=0;const cryptoImpl={subtle:{digest:async()=>{digests++;return new ArrayBuffer(32)}}};
+  const cycle={};cycle.self=cycle;
+  for(const state of [{value:undefined},{value:1n},{value:new Date()},cycle])await assert.rejects(storageJsonHash(state,cryptoImpl),/storage_non_json_value/);
+  assert.equal(digests,0);
+  assert.equal(await storageJsonHash({b:[1,null],a:{x:true}}),await storageJsonHash({a:{x:true},b:[1,null]}));
+  assert.notEqual(await storageJsonHash({value:null}),await storageJsonHash({}));
 });
