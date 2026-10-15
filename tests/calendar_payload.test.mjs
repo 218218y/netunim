@@ -47,3 +47,14 @@ test('one failed calendar joins held sibling reads and cannot start later calend
  const action=createCalendarApi({calendarAuth:auth}).fetchEvents(Array.from({length:7},(_,index)=>({id:'calendar-'+index,accessRole:'reader'})),{timeMin:'a',timeMax:'b'}).catch(error=>{settled=true;throw error});
  await started;for(let n=0;n<15;n++)await Promise.resolve();assert.equal(settled,false);release();await assert.rejects(action,invalid);assert.equal(calls,4);
 });
+test('joined parallel failures preserve the first observed error rather than calendar index order',async t=>{
+ const original=globalThis.fetch;t.after(()=>{globalThis.fetch=original});let release,entered;const held=new Promise(done=>{release=done}),started=new Promise(done=>{entered=done});
+ globalThis.fetch=async url=>{
+  if(String(url).includes('/first-calendar/')){await held;return new Response(JSON.stringify({items:{}}))}
+  entered();return new Response(JSON.stringify({error:{message:'first observed provider failure'}}),{status:503});
+ };
+ let settled=false;
+ const action=createCalendarApi({calendarAuth:auth}).fetchEvents([{id:'first-calendar',accessRole:'reader'},{id:'second-calendar',accessRole:'reader'}],{timeMin:'a',timeMax:'b'}).catch(error=>{settled=true;throw error});
+ await started;for(let n=0;n<15;n++)await Promise.resolve();assert.equal(settled,false);release();
+ await assert.rejects(action,error=>error.status===503&&error.message==='first observed provider failure');
+});

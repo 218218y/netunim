@@ -53,6 +53,8 @@ existing timezone/display policy rather than introducing a conversion library.
 
 Pagination rejects repeated continuation tokens. The four-worker event reader
 joins all already accepted reads on failure and stops starting subsequent reads;
+the first observed error retains its original HTTP/message semantics even when
+an earlier calendar index fails later. A regression reproduces that distinction;
 the session cannot finish/drain while a sibling response is still pending. No
 provider retry, refresh cadence, cache range or delivery order is changed.
 
@@ -66,7 +68,8 @@ provider retry, refresh cadence, cache range or delivery order is changed.
   per event, 24 board/toolbar combinations and full/quick editor outcomes. Input
   snapshots and queues remain unchanged by projection.
 - API/journal regressions cover malformed lists/events/replies, spoofed internal
-  flags, identity mismatches, safe HTTP errors, repeated pages and held siblings.
+  flags, identity mismatches, safe HTTP errors, repeated pages, held siblings and
+  first-observed error ordering across concurrently rejected reads.
   Strict negative consumers and actual-body mutations protect identity, synchronous
   presentation and editor payload types.
 - `runtime_calendar_payload.py` runs seven real browser/IndexedDB cases, then

@@ -191,12 +191,17 @@ export function createCalendarApi({ calendarAuth }) {
     }
     // Join already accepted sibling reads even when one response is invalid.
     // The enclosing runtime's drain must cover the entire accepted fetch.
-    const results = await Promise.allSettled(
-      Array.from({ length: workerCount }, () => worker())
-    );
+    const workers = Array.from({ length: workerCount }, () => worker());
+    try {
+      await Promise.all(workers);
+    } catch (error) {
+      // Preserve the original first-observed error, including HTTP semantics,
+      // while still joining every accepted sibling before completing.
+      await Promise.allSettled(workers);
+      scope.assertCurrent();
+      throw error;
+    }
     scope.assertCurrent();
-    const rejected = results.find(result => result.status === 'rejected');
-    if (rejected?.status === 'rejected') throw rejected.reason;
     return groups.flat();
   }
   /** @param {string} calendarId @param {string} eventId @param {RequestOptions} [options] */
