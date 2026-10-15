@@ -24,7 +24,7 @@ async function nativeRead(t) {
  return {read,ready:ready.promise,closed:closed.promise,finish:stdout=>child.send({kind:'finish',stdout})};
 }
 
-test('original Promise.all releases a failed search while its accepted native reader is still running',async t=>{
+test('original Promise.all releases a failing PDF port while its accepted native reader is still running',async t=>{
  const child=await nativeRead(t),pdf=deferred(),f=serverFixture('baseline',{everything:child.read,prepare:()=>pdf.promise});
  const failure=Object.assign(new Error('first pdf read failure'),{code:'PDF_READ_FAILED'});
  let settled=false;const operation=f.search('document',2,'content');operation.then(()=>{settled=true},()=>{settled=true});
@@ -40,6 +40,19 @@ test('failed current search joins its native sibling and preserves the first obs
  await child.ready;pdf.reject(failure);await tick();assert.equal(settled,false,'accepted native reader must finish before failure is reported');
  const rejected=assert.rejects(operation,error=>error===failure);child.finish('{"metadata":[]}');await rejected;
  assert.equal(settled,true);assert.equal(f.ids(),0);assert.deepEqual(f.logs,[]);
+});
+
+test('production PDF preparation stays joined after malformed native Everything output; the original search returns early',async t=>{
+ for(const version of ['baseline','current']){
+  const child=await nativeRead(t),entered=deferred(),release=deferred();
+  const f=serverFixture(version,{everything:child.read,pdfLoad:async()=>{entered.resolve();await release.promise}});
+  let settled=false;const operation=f.search('document',2,'content');operation.then(()=>{settled=true},()=>{settled=true});
+  await Promise.all([child.ready,entered.promise]);
+  const failedNative=assert.rejects(child.closed,{code:'ES_INVALID_JSON'});child.finish('{"metadata":[]}');await failedNative;await tick();
+  assert.equal(settled,version==='baseline','the production PDF preparation must stay joined');
+  const rejected=assert.rejects(operation,{code:'ES_INVALID_JSON'});release.resolve();await rejected;
+  assert.equal(f.ids(),0);assert.deepEqual(f.logs,[]);
+ }
 });
 
 test('actual shutdown joins accepted native search, seals new search/recent commands and fences late opaque IDs',async t=>{

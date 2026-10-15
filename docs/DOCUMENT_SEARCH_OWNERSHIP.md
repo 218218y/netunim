@@ -18,11 +18,13 @@ document command and cache/index owners.
 
 ## Reproduced lifetime gaps
 
-The old content search used `Promise.all`: a failing PDF read returned its error
-while an accepted native Everything child was still running. The new owner joins
-both reads and throws the first observed failure. A controlled native process
-reproduces the original early return and proves that later malformed stdout does
-not replace the first error or mint IDs. The reverse failure order is covered too.
+The old content search used `Promise.all`: malformed Everything output returned
+its error while an accepted PDF-index load was still running. A controlled native
+process and the actual production PDF preparation reproduce the original early
+return. The new owner joins both reads and throws the first observed failure.
+Production PDF preparation handles its load failure as a partial index; separate
+defensive port-failure tests cover the reverse order and prove that later malformed
+stdout cannot replace an earlier error or mint IDs.
 
 Shutdown seals new commands, retires the registry and awaits accepted search and
 audit work alongside maintenance and native preview disposal. Held native reads

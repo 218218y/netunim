@@ -13,6 +13,8 @@ for(const entry of Object.values(baseline.functions)) {
 }
 const source=fs.readFileSync(new URL('../netunim-orders/document-bridge/server.mjs',import.meta.url),'utf8');
 const ast=parse(source,{ecmaVersion:'latest',sourceType:'module'});
+const pdfPreparation=ast.body.find(node=>node.type==='FunctionDeclaration'&&node.id.name==='preparePdfFormIndexForSearch');
+const prepareScript=new vm.Script(source.slice(pdfPreparation.start,pdfPreparation.end)+'\npreparePdfFormIndexForSearch');
 const names=['searchDocuments','recentDocuments','pruneResults','publicResult','resolveResult','invalidateResultPath','prepareShutdown'];
 const compositions=ast.body.filter(node=>node.type==='VariableDeclaration'&&node.declarations.some(item=>['documentSearch','documentResults'].includes(item.id.name)));
 const declarations=ast.body.filter(node=>node.type==='FunctionDeclaration'&&names.includes(node.id.name));
@@ -32,7 +34,8 @@ export function serverFixture(version='current',options={}) {
  const context={...lib,createDocumentSearch,createDocumentResultRegistry,
   Date:{now:()=>time},crypto:{randomUUID:()=>`opaque-${++id}`},fs:{stat:async fullPath=>{stats.push(fullPath);return options.stat?options.stat(fullPath):stat}},
   requestResults:new Map(),pdfFormIndex:new Map(),previewTextCache:{invalidate:key=>invalidations.push(key),dispose:()=>{}},
-  loadPdfFormIndex:async()=>{},appendPdfIndexJournal:async()=>{},
+  loadPdfFormIndex:async()=>{if(options.pdfLoad){calls.push(['pdf-prepare']);await options.pdfLoad()}},appendPdfIndexJournal:async()=>{},
+  pdfFormIndexLastRefresh:1,pdfFormIndexPending:0,
   loadConfig:async()=>({searchTimeoutMs:123}),probeEverything:async()=>({instance:'synthetic',esPath:'never-launched'}),
   runEverythingJson:async build=>{
    const args=build({searchTimeoutMs:123},{instance:'synthetic'});calls.push(['everything',args]);
@@ -45,6 +48,7 @@ export function serverFixture(version='current',options={}) {
   appendLog:async text=>{logs.push(text);if(options.audit)await options.audit(text)},
   manualMaintenance:{dispose:async()=>{}},nativePreviewSession:{dispose:async()=>{}},process:{pid:101},shuttingDown:false,
  };
+ if(options.pdfLoad)context.preparePdfFormIndexForSearch=prepareScript.runInNewContext(context);
  const api=scripts[version].runInNewContext(context);
  return {...api,context,calls,logs,stats,invalidations,ids:()=>id,setTime:value=>{time=value},stat,
   observation:()=>plain({calls,logs,stats,invalidations,ids:id})};
