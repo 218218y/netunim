@@ -1,3 +1,4 @@
+import {documentBridgeSource} from './document_bridge_source.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -6,8 +7,8 @@ import {declaration,tokens} from './bank_policy_ast_fixture.mjs';
 import {baseline,plain,row,serverFixture} from './document_search_server_fixture.mjs';
 
 test('search extraction leaves the actual Everything exit-8 reprobe and decoded transport policy immutable',()=>{
- const source=fs.readFileSync(new URL('../netunim-orders/document-bridge/server.mjs',import.meta.url),'utf8');
- const node=declaration(source,'runEverythingJson');
+ const {source,ast}=documentBridgeSource();
+ const node=ast.body.find(node=>node.type==='FunctionDeclaration'&&node.id.name==='runEverythingJson');
  const policy=source.slice(node.start,node.end).replace('everythingSession.invalidate();','cachedProbe=null;');
  assert.equal(createHash('sha256').update(tokens(policy)).digest('hex'),baseline.functions.runEverythingJson.digest);
 });

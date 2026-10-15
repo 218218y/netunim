@@ -15,6 +15,8 @@ A passed synthetic gate is not evidence of live providers or physical machines.
 - Morning completion, recovery, catalog, command form and media/modal lifetime have dedicated boundaries.
 - Backup browser resources and account-scoped publication have owners.
 - Spreadsheet RPC replies are decoded and fenced by login epoch before durable ACK.
+- Document Bridge PDF index and Everything search now have composition owners.
+  See [index coordinators](DOCUMENT_INDEX_COORDINATORS.md).
 - Document Bridge search/registry, Everything sessions/processes, PDF maintenance,
   extraction, runtime files, inventory reconciliation and diagnostics have owners.
 - Startup has native timing/graph budgets; document viewers load lazily into private mounts.
@@ -30,7 +32,7 @@ A passed synthetic gate is not evidence of live providers or physical machines.
 | Priority | Scope | Required evidence |
 | --- | --- | --- |
 | 1 | Critical persisted/journal transaction consumers: owner transfer and remaining IDB/runtime callers; full strict bodies beyond the checked restore/import consumers | Decode unknown values before action/ACK; preserve invalid durable records; checked implementation, negative consumer and implementation mutation |
-| 2 | Document Bridge remaining PDF/index/search composition and document/preview operations; status, boot and shutdown | Preserve retry/search/wire policy; native files/process/HTTP fixtures; accepted work drains on shutdown |
+| 2 | Document Bridge document/preview operations; status, boot and shutdown | Preserve retry/search/wire policy; native files/process/HTTP fixtures; accepted work drains on shutdown |
 | 3 | Shell composition audit | Extract only policy/lifetime/authority still in lifecycle, backup, cloud UI or navigation; retain explicit role wiring and avoid a broad context |
 | 4 | Measured startup improvements | Repeated cold/cached/offline measurements; presentation-only lazy candidates; account/cancellation/PWA gates; preserve eager runtime ownership |
 | 5 | Compatibility inventory and readability | Classify Current/Historical Reader/Immutable Migration/Generated/Dead; delete only proven Dead; format settled presentation boundaries in reviewable slices |

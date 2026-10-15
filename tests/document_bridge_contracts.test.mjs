@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const read=path=>fs.readFileSync(new URL(`../${path}`,import.meta.url),'utf8');
-const serverOwners=()=>['server.mjs','bridge-replacement-command.mjs','windows-process-control.mjs','bridge-runtime-files.mjs','pdf-maintenance-task-diagnostics.mjs','bridge-installation-diagnostics.mjs','pdf-inventory-reconciliation.mjs'].map(name=>read('netunim-orders/document-bridge/'+name)).join('\n');
+const serverOwners=()=>['server.mjs','pdf-index-coordinator.mjs','everything-search-coordinator.mjs','bridge-replacement-command.mjs','windows-process-control.mjs','bridge-runtime-files.mjs','pdf-maintenance-task-diagnostics.mjs','bridge-installation-diagnostics.mjs','pdf-inventory-reconciliation.mjs'].map(name=>read('netunim-orders/document-bridge/'+name)).join('\n');
 
 test('orders site exposes one unified search with site, file and content filters over loopback bridge',()=>{
   const html=read('netunim-orders/site/index.html');

@@ -1,3 +1,4 @@
+import {documentBridgeSource} from './document_bridge_source.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -12,11 +13,7 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
 async function fixture(t, { read, append } = {}) {
   const disk = await indexFixture(t);
   await disk.read();
-  const source = await fs.readFile(
-      new URL('../netunim-orders/document-bridge/server.mjs', import.meta.url),
-      'utf8'
-    ),
-    ast = parse(source, { ecmaVersion: 'latest', sourceType: 'module' });
+  const {source,ast}=documentBridgeSource();
   const definitions = ast.body.filter(
     node =>
       (node.type === 'FunctionDeclaration' &&

@@ -1,8 +1,8 @@
+import {documentBridgeSource} from './document_bridge_source.mjs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import vm from 'node:vm';
-import {parse} from 'acorn';
 import {createPdfIndexReader} from '../netunim-orders/document-bridge/pdf-index-reader.mjs';
 import {createPdfIndexFilePlatform} from '../netunim-orders/document-bridge/pdf-index-file-platform.mjs';
 import {createPdfIndexWriter} from '../netunim-orders/document-bridge/pdf-index-writer.mjs';
@@ -20,9 +20,8 @@ export async function indexFixture(t, {ioHook = value => value, journal} = {}) {
   const snapshotBytes = JSON.stringify({schema: 1, entries: [snapshotRow], pending: null, pdfCount: 2, updatedAt: '2026-10-12T00:00:00Z'});
   const journalBytes = journal ?? JSON.stringify({op: 'upsert', entry: journalRow}) + '\n';
   await fs.writeFile(snapshotPath, snapshotBytes); await fs.writeFile(journalPath, journalBytes);
-  const source = await fs.readFile(new URL('../netunim-orders/document-bridge/server.mjs', import.meta.url), 'utf8');
-  const program = parse(source, {ecmaVersion: 'latest', sourceType: 'module'});
-  const names = new Set(['pdfIndexKey', 'pdfIndexFingerprint', 'normalizePdfFormField', 'normalizePdfFormFields', 'normalizePdfIndexEntry', 'serializePdfIndexEntry', 'publishPdfIndexCandidate', 'readPdfIndexFiles', 'loadPdfFormIndex', 'appendPdfIndexJournal', 'compactPdfFormIndex']);
+  const {source,ast:program}=documentBridgeSource();
+  const names = new Set(['pdfIndexKey', 'pdfIndexFingerprint', 'normalizePdfFormField', 'normalizePdfFormFields', 'normalizePdfIndexEntry', 'serializePdfIndexEntry', 'publishPdfIndexCandidate', 'readPdfIndexFiles', 'loadPdfFormIndex', 'appendPdfIndexJournal', 'compactPdfFormIndex','remove','view']);
   const definitions = program.body.filter(node => node.type === 'FunctionDeclaration' && names.has(node.id.name));
   const variableNames = new Set(['pdfIndexFiles', 'pdfIndexReader', 'pdfIndexSignature', 'pdfIndexWriter']);
   const variables = program.body.filter(node => node.type === 'VariableDeclaration' && node.declarations.some(item => variableNames.has(item.id.name)));
@@ -39,7 +38,11 @@ export async function indexFixture(t, {ioHook = value => value, journal} = {}) {
     withFileLock: (lock, work) => locks.run(lock,work),
   };
   const production = vm.runInNewContext([...definitions.map(node => source.slice(node.start, node.end)), ...variables.map(node => source.slice(node.start, node.end)),
-    '({read:readPdfIndexFiles,append:appendPdfIndexJournal,compact:compactPdfFormIndex,normalize:normalizePdfIndexEntry})'].join('\n'), context);
+    '({read:readPdfIndexFiles,append:appendPdfIndexJournal,compact:compactPdfFormIndex,normalize:normalizePdfIndexEntry,load:loadPdfFormIndex,remove,view})'].join('\n'), context);
+  context.runtime={isStopping:()=>context.shuttingDown||context.pdfMaintenanceStopRequested};
+  context.pdfIndexRuntime={index:{load:production.load,entries:context.pdfFormIndex,view:()=>({pending:context.pdfFormIndexPending,pdfCount:context.pdfFormIndexInventoryCount}),publishPending:pending=>{context.pdfFormIndexPending=pending},append:(...args)=>context.appendPdfIndexJournal(...args),serialize:production.normalize,compact:production.compact},inventory:{rebuild:(...args)=>context.rebuildPdfFormIndexBacklog(...args)},remove:production.remove,view:production.view};
+  // Serialization must retain the exact production wire shape, not normalization.
+  context.pdfIndexRuntime.index.serialize=vm.runInNewContext('serializePdfIndexEntry',context);
   return {...production, context, snapshotPath, journalPath, snapshotBytes, journalBytes, invalidated, writes,
     capture: async () => [await fs.readFile(snapshotPath, 'utf8'), await fs.readFile(journalPath, 'utf8')],
     fresh: () => createPdfIndexReader({files: createPdfIndexFilePlatform({snapshotPath, journalPath}), normalizeEntry: production.normalize}).read()};
