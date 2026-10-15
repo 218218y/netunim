@@ -1,3 +1,4 @@
+import {originalMorningCompletionPolicy} from './morning_completion_policy_fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -11,7 +12,8 @@ const catalogBaseline=JSON.parse(readFileSync(new URL('./fixtures/morning-catalo
 for(const [file,functions] of Object.entries(baseline.files)){
   const source=readFileSync(new URL('../netunim-orders/site/assets/js/domains/customers/'+file+'.js',import.meta.url),'utf8');
   for(const [name,expected] of Object.entries(functions))test(`Morning ${name} preserves pre-media issuance/debt/search policy`,()=>{
-    const expanded=name==='applyVerifiedContextOnce'?originalMorningApplicationPolicy(readFileSync(new URL('../netunim-orders/site/assets/js/domains/customers/morning-debt-application.js',import.meta.url),'utf8')):name==='recoverPendingMorningOperation'?originalMorningRecoveryPolicy(readFileSync(new URL('../netunim-orders/site/assets/js/domains/customers/morning-recovery.js',import.meta.url),'utf8')):null;
+    const completionFile=name==='createMorningDocument'?'morning-issue-command.js':['confirmRecoveryChoice','saveRecoveryChoice'].includes(name)?'morning-recovery-decision.js':null;
+    const expanded=completionFile?originalMorningCompletionPolicy(readFileSync(new URL('../netunim-orders/site/assets/js/domains/customers/'+completionFile,import.meta.url),'utf8'),name):name==='applyVerifiedContextOnce'?originalMorningApplicationPolicy(readFileSync(new URL('../netunim-orders/site/assets/js/domains/customers/morning-debt-application.js',import.meta.url),'utf8')):name==='recoverPendingMorningOperation'?originalMorningRecoveryPolicy(readFileSync(new URL('../netunim-orders/site/assets/js/domains/customers/morning-recovery.js',import.meta.url),'utf8')):null;
     // Catalog metadata evidence is intentionally strengthened in its owner;
     // executed original/current fixtures cover its successful policy separately.
     const formMoved=name==='readForm';if(formMoved)assert.deepEqual(formPolicy(readFileSync(new URL('../netunim-orders/site/assets/js/domains/customers/morning-command-form.js',import.meta.url),'utf8'),name),formPolicy(commandFormBaseline.functions[name].source,name));

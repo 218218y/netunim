@@ -166,6 +166,8 @@ for(const app of ['kupa','orders']){
           assert.ok(!/^(integrations|platform)\//.test(dependency)&&!['shared/bank-bridge-client.js','shared/document-bridge-client.js','shared/browser-bridge-platform.js','shared/google-drive-client.js','shared/browser-google-drive-platform.js'].includes(dependency),relative+': domains must receive Bridge/platform implementations through ports: '+dependency);
       }
       if(/assets\/js\/(storage|cloud|sync)\//.test(relative)&&node.type==='Identifier')assert.notEqual(node.name,'document',relative+': DOM belongs behind a UI port');
+      if(app==='orders'&&['assets/js/domains/customers/morning-issue-command.js','assets/js/domains/customers/morning-recovery-decision.js'].includes(relative)&&node.type==='Identifier'&&!(parent?.type==='MemberExpression'&&parent.property===node&&!parent.computed))
+        assert.ok(!['globalThis','window','document','navigator','localStorage','fetch','indexedDB','setTimeout','setInterval'].includes(node.name),relative+': Morning commands require captured session, durable recovery and presentation ports');
       if(relative==='assets/js/lifecycle.js'&&node.type==='Identifier')assert.notEqual(node.name,'document',relative+': lifecycle must receive DOM bindings through a port');
       if(relative.startsWith('assets/js/startup/')&&node.type==='Identifier')assert.ok(!['window','document','navigator','localStorage','fetch','indexedDB','setTimeout','setInterval','clearTimeout','clearInterval'].includes(node.name),relative+': startup I/O belongs behind a port');
       if(/\/(model|readout)\.js$/.test(relative)&&node.type==='Identifier')assert.ok(!['document','window','localStorage','fetch','indexedDB'].includes(node.name),relative+': calculation module has side effects');
