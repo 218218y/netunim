@@ -1,7 +1,7 @@
 {
   "graph": {
-    "kupa": {"modules": 310, "sourceBytes": 1880000},
-    "orders": {"modules": 408, "sourceBytes": 2480000}
+    "kupa": {"modules": 301, "sourceBytes": 1760000},
+    "orders": {"modules": 399, "sourceBytes": 2360000}
   },
   "milliseconds": {
     "moduleEvaluation": 1500,
