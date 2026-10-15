@@ -43,8 +43,12 @@ remaining-scope paragraphs describe their stage's starting point.
   composition, replacing fifteen flat collaborators. Immutable twelve-function
   payment policies and 576 Bank link/restore cases plus native control/payload/drain
   checks preserve behavior. See [Morning form/Bank capabilities](MORNING_FORM_BANK_CAPABILITIES.md).
-  Broader customer orchestration, general form/payload validation and
-  search/metadata contracts remain open. See [Morning operation drain](MORNING_OPERATION_DRAIN.md) and
+  A strict three-port read catalog now owns search caching, metadata flights,
+  details and fresh links. Unknown replies must match operation/document identity
+  before local metadata persistence or display; a reproduced foreign-ledger link
+  is blocked. Null metadata remains retryable and native failures retain journals.
+  Broader customer orchestration and general form/payload validation remain open.
+  See [Morning catalog](MORNING_CATALOG_OWNER.md), [Morning operation drain](MORNING_OPERATION_DRAIN.md) and
   [Morning media ownership](MORNING_DOCUMENT_MEDIA_OWNER.md).
 
 - Orders Calendar separates connection intent, Google verification, sync/reconnect

@@ -6,11 +6,16 @@ import {declaration,tokens} from './bank_policy_ast_fixture.mjs';
 import {originalMorningApplicationPolicy} from './morning_application_policy_fixture.mjs';
 import {originalMorningRecoveryPolicy} from './morning_recovery_policy_fixture.mjs';
 const baseline=JSON.parse(readFileSync(new URL('./fixtures/morning-media-preserved-policy.json',import.meta.url),'utf8'));
+const catalogBaseline=JSON.parse(readFileSync(new URL('./fixtures/morning-catalog-policy.json',import.meta.url),'utf8'));
 for(const [file,functions] of Object.entries(baseline.files)){
   const source=readFileSync(new URL('../netunim-orders/site/assets/js/domains/customers/'+file+'.js',import.meta.url),'utf8');
   for(const [name,expected] of Object.entries(functions))test(`Morning ${name} preserves pre-media issuance/debt/search policy`,()=>{
     const expanded=name==='applyVerifiedContextOnce'?originalMorningApplicationPolicy(readFileSync(new URL('../netunim-orders/site/assets/js/domains/customers/morning-debt-application.js',import.meta.url),'utf8')):name==='recoverPendingMorningOperation'?originalMorningRecoveryPolicy(readFileSync(new URL('../netunim-orders/site/assets/js/domains/customers/morning-recovery.js',import.meta.url),'utf8')):null;
-    const node=expanded?null:declaration(source,name),policy=expanded||tokens(source.slice(node.start,node.end)).replaceAll('operationCommands.status(context.operationId,true,assertCurrent)',"backend('status',{operation_id:context.operationId,reconcile:true},assertCurrent)");
+    // Catalog metadata evidence is intentionally strengthened in its owner;
+    // executed original/current fixtures cover its successful policy separately.
+    const catalogMoved=['defaultDocumentSearch','verifiedOperationMetadata'].includes(name);
+    const current=name==='downloadDocument'?source.replace("const url=new URL(await catalog.link(String(id)));assertCurrent();","const data=await backend('document_links',{document_id:String(id)},assertCurrent);assertCurrent();const url=new URL(data.url);if(url.protocol!=='https:')throw new Error('קישור מסמך אינו תקין');"):source;
+    const node=expanded||catalogMoved?null:declaration(current,name),policy=expanded||(catalogMoved?tokens(catalogBaseline.functions[name].source):tokens(current.slice(node.start,node.end))).replaceAll('operationCommands.status(context.operationId,true,assertCurrent)',"backend('status',{operation_id:context.operationId,reconcile:true},assertCurrent)");
     const preserved=policy.replaceAll('debtApplication.isPending()',"lifetime.pending('application')").replaceAll('statusFlow.cancelPending();','').replaceAll(',isCurrent:()=>isActive(generation)','').replaceAll('modalSession.generation','modalGeneration').replaceAll('modalSession.signal','display.signal').replaceAll('if(!isActive(modalGeneration))return false;','');
     const normalized=name==='confirmRecoveryChoice'?preserved.replace('const generation=modalGeneration;','').replace('if(isActive(generation))markModalDraftSaved?.();','markModalDraftSaved?.();'):preserved;
     const actual=createHash('sha256').update(normalized).digest('hex');

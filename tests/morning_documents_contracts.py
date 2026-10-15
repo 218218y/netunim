@@ -232,7 +232,9 @@ ok('markModalDraftSaved' in documents and 'if(isActive(generation))markModalDraf
    'Issued-document UI: verified completion commits only the still-active Morning modal draft baseline so closing does not warn about already-consumed edits')
 ok('lock table' in migration and migration.index('raise exception') < migration.index('create table public.morning_document_operations_backup_20260908') < migration.index('drop table public.morning_document_operations;'),
    'Migration locks and guards important rows before backup and DROP; backup is retained')
-ok('from.setDate(from.getDate()-90)' in browser and 'page:0,pageSize:25' in browser and "order:'DESC'" in browser and 'CACHE_TTL_MS=90_000' in browser,
+catalog=(ROOT/'netunim-orders/site/assets/js/domains/customers/morning-catalog.js').read_text(encoding='utf-8')
+catalog_compact=re.sub(r'\s+','',catalog)
+ok('from.setDate(from.getDate()-90)' in catalog_compact and 'page:0,pageSize:25' in catalog_compact and "order:'DESC'" in catalog_compact and 'CACHE_TTL_MS=90_000' in catalog_compact,
    'Document browser defaults to 90 days, 25 per page and bounded memory cache')
 ok("dateEditorMarkup('morningSearchFrom'" in browser and "dateEditorMarkup('morningSearchTo'" in browser and 'type="date"' not in browser,
    'Morning document browser: visible date filters use the centralized two-digit-year editor, not native four-digit date inputs')
@@ -250,7 +252,7 @@ ok('grid-template-rows:auto 40px' in app_css and '.morning-browser-filters input
    'Morning document browser filters: text, select and date controls share the same control height and aligned labels')
 ok('function allocationMarkup(value)' in browser and 'morning-browser-allocation-text' in browser and 'title=\"${esc(allocation)}\"' in browser and '.morning-browser-allocation-text{display:none}' in app_css,
    'Morning document browser allocation: allocation IDs are compact, expose the full value on hover and collapse to an existence marker at tighter widths')
-ok('localStorage' not in browser+media and 'sessionStorage' not in browser+media and 'document_links' in browser and 'document_pdf' in request and 'request.pdf' in media and 'URL.createObjectURL' in media_effects and 'noopener noreferrer' in browser,
+ok('localStorage' not in browser+media and 'sessionStorage' not in browser+media and 'document_links' in catalog and 'document_pdf' in request and 'request.pdf' in media and 'URL.createObjectURL' in media_effects and 'noopener noreferrer' in browser,
    'Browser keeps PDF viewing transient in a local Blob, requests fresh download links and persists neither documents nor signed URLs')
 ok('createMorningDocumentMedia(' in media_composition and 'documentMedia.create(' in browser and 'previewDraft:(...args)=>command(' in browser and 'createRuntimeTaskOwner' in media
    and all(name not in documents+browser for name in ('previewObjectUrl','previewSequence','previewRequest','URL.createObjectURL','URL.revokeObjectURL')),

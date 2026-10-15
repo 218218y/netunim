@@ -17,7 +17,7 @@ function fixture(t){
   t.after(()=>{if(prior===undefined)delete globalThis.document;else globalThis.document=prior});
   const record=()=>structuredClone(debt);
   const save=(message,options)=>{writes.push(structuredClone(options));started.resolve();return outcome};
-  const morningRequest={json:async action=>{calls.push(action);assert.equal(action,'status');return {operation:{state:'created',verified_at:'2026-10-11T01:00:00Z',document_id:'doc-1',document_number:'4001',document_type:400}}},pdf:async()=>assert.fail('no PDF or issuance')};
+  const morningRequest={json:async(action,payload)=>{calls.push(action);assert.equal(action,'status');return {operation:{operation_id:payload.operation_id,state:'created',verified_at:'2026-10-11T01:00:00Z',document_id:'doc-1',document_number:'4001',document_type:400}}},pdf:async()=>assert.fail('no PDF or issuance')};
   const documentMedia=createMorningMediaComposition({request:morningRequest,modal(){},toast(){}});
   const domains=createDomainsCustomers({model,customerUi:{},customerRevision:()=>0,selectors:{customerStats:()=>({})},
     morningOperationScope:createMorningOperationScope({readAccess:()=>access}),morningRequest,documentMedia,
