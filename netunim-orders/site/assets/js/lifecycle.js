@@ -60,7 +60,7 @@ async function boot(){
   if(!tab.primaryTab){
     const v2Required=!!(transfer||storageV2OwnerTransferPreparing()||accountV2Active||localEngineActive||localBirthPreparing());
     let shown=false;
-    if(v2Required)shown=!!(await storageRecovery.readOnly());
+    if(v2Required){startupMark('recovery-start');shown=!!(await storageRecovery.readOnly());if(shown)startupMark('local-recovered')}
     if(shown){storageRecovery.activate();render({supplierScrollMode:'end'});startupMark('first-render');setCloud('ענן: קריאה בלבד','offline');setSave('מקומי: קריאה בלבד','',folderSaveTitle())}
     else{setCloud('ענן: קריאה בלבד — הנתונים טרם זמינים','offline');setSave('קריאה בלבד — רענן לאחר סיום האתחול בטאב הראשי','error')}
     showSecondaryTabGuard();syncFolderAccessButton();return;
@@ -89,7 +89,8 @@ async function boot(){
   }else if(!accountV2Active)throw new Error('orders_v2_account_marker_required');
 
   // Shared Checks must recover before business state is rendered.
-  try{await storageRecovery.primary({localEngineActive})}
+  startupMark('recovery-start');
+  try{await storageRecovery.primary({localEngineActive});startupMark('local-recovered')}
   catch(error){setSave('שחזור הנתונים המקומיים נעצר; העריכה נשארת חסומה','error');setCloud('ענן: ממתין לשחזור מקומי תקין','error');syncFolderAccessButton();throw error}
   if(!localEngineActive&&navigator.onLine&&loadSession()){try{await ensureSyncCapabilities();session.syncCapabilitiesError=null}catch(error){session.syncCapabilitiesError=error;setCloud(error.message,'error');}}
   if(session.syncCapabilitiesError){storageRecovery.activate();render();setCloud(session.syncCapabilitiesError.message,'error');setSave(session.syncCapabilitiesError.message,'error');return}

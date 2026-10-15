@@ -1,3 +1,4 @@
+import {startupMark} from './shared/startup-timing.js';
 import {createKupaDashboardCapability} from './composition/dashboard.js';
 import {createKupaBankQueries} from './composition/bank-queries.js';
 import {readCloudWriteScope} from './shared/cloud-write-scope.js';
@@ -67,6 +68,7 @@ import {createRestoreGroupStore} from './shared/restore-groups.js';
 
 
 
+startupMark('composition-start');
 const {model, session, ui, files, tab, checksSession}=createContexts();
 installLocalSiteResetPeerListener();
 // Event handlers are installed before the async owner/protocol preflight finishes.
@@ -604,5 +606,7 @@ bindNumberInputWheelGuard(document);
 uiEvents.bindActionEvents(document.getElementById('modal'),uiActions);
 uiGlobalSearch.bind();
 dashboard.runtime.start();
+startupMark('composition-end');
 export const appReady=lifecycle.boot();
+void appReady.then(()=>{startupMark('boot-complete');if(tab.primaryTab&&!session.storageProtocolBlocked&&storageRecovery.isReady()&&!session.syncCapabilitiesError&&session.backendReady&&!session.startupCloudHydrating)startupMark('command-ready')},()=>{});
 export async function sharedChecksStorageV2Diagnostics(){await sharedChecksV2.flush();return {...sharedChecksV2.diagnostics}}

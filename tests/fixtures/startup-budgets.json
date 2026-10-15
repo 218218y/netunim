@@ -1,0 +1,14 @@
+{
+  "graph": {
+    "kupa": {"modules": 310, "sourceBytes": 1880000},
+    "orders": {"modules": 408, "sourceBytes": 2480000}
+  },
+  "milliseconds": {
+    "moduleEvaluation": 1500,
+    "composition": 500,
+    "localRecovery": 1500,
+    "boot": 10000,
+    "firstView": 10000,
+    "commandReady": 12000
+  }
+}

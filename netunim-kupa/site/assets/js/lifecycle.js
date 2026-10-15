@@ -1,3 +1,4 @@
+import {startupMark} from './shared/startup-timing.js';
 import {createStartupTask} from './shared/startup-task.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
@@ -36,10 +37,11 @@ for(const [name,port,methods] of [
 
 async function boot(){
   session.storageProtocolBlocked=true;
-  await acquirePrimaryTabLock();
+  startupMark('boot-start');
+  await acquirePrimaryTabLock();startupMark('primary-tab-ready');
   // Storage ownership is durable and independent from the auth token. Establish
   // it before any account-scoped marker, snapshot or writer can be consulted.
-  await hydrateStorageOwner();
+  await hydrateStorageOwner();startupMark('storage-owner-ready');
   const restoredAuth=await restoreSupaSession();await hydrateLocalBirth();await hydrateStorageV2OwnerTransfer();
   let {accountV2Active,localEngineActive,protocol,recoveryError}=await storageProtocol.check({primary:tab.primaryTab,online:globalThis.navigator?.onLine!==false});
   if(recoveryError)console.error('Kupa fenced account recovery',recoveryError);
@@ -53,7 +55,7 @@ async function boot(){
   if(!tab.primaryTab){
     const v2Required=storageV2OwnerTransferPreparing()||accountV2Active||localEngineActive||localBirthPreparing();
     let shown=false;
-    if(v2Required)shown=!!(await storageRecovery.readOnly());
+    if(v2Required){startupMark('recovery-start');shown=!!(await storageRecovery.readOnly());if(shown)startupMark('local-recovered')}
     if(shown){storageRecovery.activate();render()}
     showSecondaryTabGuard();
     setConnectedStatus('לקריאה בלבד');setSaveStatus(shown?'לקריאה בלבד':'קריאה בלבד — רענן לאחר סיום האתחול בטאב הראשי',shown?'':'error');
@@ -74,7 +76,8 @@ async function boot(){
   await connectionStartup.bind();
 
   await cloudStartup.prepare({localEngineActive});
-  try{await storageRecovery.primary({localEngineActive})}
+  startupMark('recovery-start');
+  try{await storageRecovery.primary({localEngineActive});startupMark('local-recovered')}
   catch(error){session.backendReady=false;setConnectUI({title:'שחזור הנתונים המקומיים נעצר',text:'הנתונים נשארו שמורים והעריכה חסומה. יש לבדוק את התקלה ולרענן לאחר השלמת השחזור.',showCloud:!localEngineActive});throw error}
   // Shared Checks owns checks independently of Main. Hydrate it before an
   // offline or cloud-capability exit can show composed business data.
