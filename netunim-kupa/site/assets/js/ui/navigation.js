@@ -1,3 +1,4 @@
+import {startupMark} from '../shared/startup-timing.js';
 import {withFinanceDerivations} from '../shared/finance-derivations.js';
 import {beginMeasure} from '../shared/runtime-performance.js';
 import {createCleanViewCache} from '../shared/clean-view-cache.js';
@@ -20,7 +21,7 @@ function afterNavigation(){refreshCheckBankIndicator();maybeAutoRefreshBankBalan
 function setPage(p){ui.bulkCollection=null;ui.bulkSelected.clear();ui.currentPage=p;document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===p));const [t,s]=TITLES[p];document.getElementById('pageTitle').textContent=t;document.getElementById('pageSub').textContent=s;document.getElementById('sidebar').classList.remove('open');if(viewCache.activate(p)){afterNavigation();onPageActivated(p);return}render();onPageActivated(p)}
 
 function render(){return runFinance(renderContent)}
-function renderContent(){const done=beginMeasure(`kupa:render:${ui.currentPage}`);try{if(ui.currentPage==='dashboard')renderDashboard();if(ui.currentPage==='checks')renderChecks();if(ui.currentPage==='credit')renderCredit();if(ui.currentPage==='cash')renderCash();if(ui.currentPage==='bank')renderBank();if(ui.currentPage==='expenses')renderBank();if(ui.currentPage==='notes')renderNotes();if(ui.currentPage==='settings')renderSettings();viewCache.markRendered(ui.currentPage);afterNavigation()}finally{done()}}
+function renderContent(){const done=beginMeasure(`kupa:render:${ui.currentPage}`);try{if(ui.currentPage==='dashboard')renderDashboard();if(ui.currentPage==='checks')renderChecks();if(ui.currentPage==='credit')renderCredit();if(ui.currentPage==='cash')renderCash();if(ui.currentPage==='bank')renderBank();if(ui.currentPage==='expenses')renderBank();if(ui.currentPage==='notes')renderNotes();if(ui.currentPage==='settings')renderSettings();viewCache.markRendered(ui.currentPage);afterNavigation();startupMark('first-view-render')}finally{done()}}
 
 // Checks affect financial projections, but never require rebuilding Notes or Cash.
 function checksChanged(){if(['checks','dashboard','bank','expenses','credit'].includes(ui.currentPage))render();else refreshCheckBankIndicator()}

@@ -74,3 +74,9 @@ The continuation's three stages are now implemented. Measured startup and
 selective lazy loading, the remaining journal/business contracts, compatibility
 classification, final readability and live/two-machine release validation remain
 future work, not completed claims of this continuation.
+
+7. Measure native startup before selecting lazy boundaries. The first bounded
+   timeline, static-vs-dynamic ESM audit, source/timing budgets and uninstrumented
+   cold/cached/offline browser gate are documented in STARTUP_MEASUREMENT.md.
+   Initial measurements identify module discovery/fetch scheduling as the larger
+   interval on this machine; they do not justify lazy Storage/Auth/V2 recovery.
