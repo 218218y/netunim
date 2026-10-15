@@ -162,3 +162,8 @@ and live-provider/physical-two-machine release validation.
     captured generation comparison, detached inputs and receipts published only
     after transaction completion. Prove ABA fencing and all-or-nothing native
     activation abort. See STORAGE_OWNER_TRANSACTIONS.md.
+
+19. Reject malformed checkpoint replacements before IDB awaits and prove physical
+    journal-key deletion authority inside full-head transactions. Native evidence
+    covers all checkpoint consumers, retained malformed rows and valid imports/
+    resets. See CHECKPOINT_RETIREMENT_AUTHORITY.md. Eager budgets remain unchanged.
