@@ -22,3 +22,7 @@ IDB owner transfer and two-computer gates remain part of full branch verificatio
 
 This does not claim whole IndexedDB/runtime or owner-binding implementation
 typing, or live provider / physical-machine validation.
+
+The final continuation audit also makes the shared canonical hash validate JSON
+at its public entrypoint. Unchecked bootstrap callers cannot hash undefined,
+BigInt, Date or cyclic input as if it were valid persisted evidence.

@@ -138,3 +138,14 @@ formatting and live-provider/physical-machine release validation.
     decode marker reads as one owner observation and reread both after fenced
     adoption. Connectivity is an explicit port. Broad backup/cloud UI/navigation
     wiring remains intentional. See SHELL_STARTUP_ADMISSION.md.
+
+16. Measure repeated native cold/cached/offline startup and defer the optional
+    shared global-search presentation with strict import/cancellation/account
+    lifetime, retry and native offline first-use evidence. Tighten eager budgets;
+    report reduced graph/CPU work without claiming a consistent cold-latency win.
+    See LAZY_SEARCH_LOADING.md.
+
+Stage 14 merged as PR #197 after full branch verification. Remaining work is
+tracked only in ARCHITECTURE_REMAINING_WORK.md, including whole journal/binding
+strict coverage, further measured presentation candidates, gradual readability
+and live-provider/physical-two-machine release validation.

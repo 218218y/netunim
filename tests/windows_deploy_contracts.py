@@ -173,8 +173,11 @@ class WindowsBankInstallerRollbackContracts(unittest.TestCase):
 @unittest.skipUnless(os.name == "nt", "CurrentUser DPAPI vault coverage runs in the required Windows CI job")
 class WindowsBankVaultContracts(unittest.TestCase):
     def test_native_configuration_vault_and_current_user_protection(self):
-        result = subprocess.run(["node", "--test", str(ROOT / "tests/bank_connection_vault.test.mjs"), str(ROOT / "tests/bank_bridge_runtime.test.mjs"), str(ROOT / "tests/bank_shutdown_native.test.mjs"), str(ROOT / "tests/bank_provider_native.test.mjs"), str(ROOT / "tests/credit_adapter_native.test.mjs"), str(ROOT / "tests/bank_image_shutdown_native.test.mjs"), str(ROOT / "tests/bank_local_cache.test.mjs"), str(ROOT / "tests/bank_artifact_shutdown_native.test.mjs"), str(ROOT / "tests/bank_artifact_publication.test.mjs"), str(ROOT / "tests/bank_artifact_owner.test.mjs")],
-                                cwd=ROOT, capture_output=True, timeout=45,
+        # DPAPI launches real PowerShell processes. Match the model gate's
+        # bounded pool instead of starting every native fixture together on a
+        # shared runner. Endpoint/shutdown deadlines remain independently tested.
+        result = subprocess.run(["node", "--test", "--test-concurrency=2", str(ROOT / "tests/bank_connection_vault.test.mjs"), str(ROOT / "tests/bank_bridge_runtime.test.mjs"), str(ROOT / "tests/bank_shutdown_native.test.mjs"), str(ROOT / "tests/bank_provider_native.test.mjs"), str(ROOT / "tests/credit_adapter_native.test.mjs"), str(ROOT / "tests/bank_image_shutdown_native.test.mjs"), str(ROOT / "tests/bank_local_cache.test.mjs"), str(ROOT / "tests/bank_artifact_shutdown_native.test.mjs"), str(ROOT / "tests/bank_artifact_publication.test.mjs"), str(ROOT / "tests/bank_artifact_owner.test.mjs")],
+                                cwd=ROOT, capture_output=True, timeout=90,
                                 creationflags=subprocess.CREATE_NO_WINDOW)
         output = (result.stdout + result.stderr).decode("utf8", errors="replace")
         self.assertEqual(result.returncode, 0, output)

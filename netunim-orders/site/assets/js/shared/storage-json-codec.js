@@ -41,10 +41,10 @@ function canonicalJson(value){
   if(value&&typeof value==='object')return `{${Object.keys(value).sort().map(key=>`${JSON.stringify(key)}:${canonicalJson(value[key]??null)}`).join(',')}}`;
   return JSON.stringify(value);
 }
-/** @param {StorageJson} value @param {Pick<Crypto,'subtle'>} [cryptoImpl] @returns {Promise<string>} */
+/** @param {unknown} value @param {Pick<Crypto,'subtle'>} [cryptoImpl] @returns {Promise<string>} */
 export async function storageJsonHash(value,cryptoImpl=globalThis.crypto){
   if(!cryptoImpl?.subtle?.digest)throw new Error('storage_bootstrap_sha256_unavailable');
-  const bytes=new TextEncoder().encode(canonicalJson(value));
+  const bytes=new TextEncoder().encode(canonicalJson(assertStorageJson(value)));
   const digest=await cryptoImpl.subtle.digest('SHA-256',bytes);
   return [...new Uint8Array(digest)].map(byte=>byte.toString(16).padStart(2,'0')).join('');
 }

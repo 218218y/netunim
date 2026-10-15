@@ -1,5 +1,5 @@
 import {createSearchFragmentIndex} from '../shared/search-fragments.js';
-import {createGlobalDocumentSearch} from '../shared/global-document-search.js';
+import {createLazyGlobalDocumentSearch} from '../shared/lazy-global-document-search.js';
 import {money} from '../core/money.js';
 import {buildOrderSearchFragment,ORDER_SEARCH_FRAGMENTS,searchGlobalEntries} from '../domains/search/model.js';
 import {checkIsClosedStatus} from '../shared/shared-checks-contract.js';
@@ -39,12 +39,20 @@ export function createUiGlobalSearch({documentBridge=null,searchRevision,model,u
   function navigateNote(item){notesUi.notesTab=item.kind==='sheet-row'?'sheet':'notes';if(item.kind==='sheet-row'){notesUi.notesSheetId=item.sheetId;notesUi.notesSheetSearchValue=''}prepareView('notes');render();reveal(item.kind==='sheet-row'?'data-sheet-row-id':'data-note-id',item.id)}
   function navigateSiteItem(item){if(!item)return false;if(item.group==='suppliers')navigateSupplier(item);else if(item.group==='customers')navigateCustomer(item);else if(item.group==='service')navigateService(item);else if(item.group==='checks')navigateCheck(item);else if(item.group==='warehouse')navigateWarehouse(item);else if(item.group==='notes')navigateNote(item);else return false;return true}
 
-  return createGlobalDocumentSearch({
+  const options={
     documentBridge,
     siteSearch:(raw,options)=>searchGlobalEntries(indexedEntries(),raw,options),
     siteResultMeta,
     navigateSiteItem,
     confirmDialog,
     previewWidthKey:'netunim_orders_document_preview_width_v1',
+  };
+  return createLazyGlobalDocumentSearch({
+    load:async()=>{
+      const {createGlobalDocumentSearch}=await import('../shared/global-document-search.js');
+      return ()=>createGlobalDocumentSearch(options);
+    },
+    navigateItem:navigateSiteItem,
+    subscribeAuthorization:documentBridge?.subscribeAuthorization,
   });
 }
