@@ -30,3 +30,9 @@ readers, immutable migrations and generated copies remain intentional.
 Readability adds about 17 KB of uncompressed source in Orders with no additional
 startup requests; its deterministic source ceiling records that explicit cost.
 Cold/cached/offline and 1000-row render gates still decide runtime regressions.
+
+The graph's legacy 60 KB raw module guard remains unchanged elsewhere. Orders
+Finance alone has a 72 KB normalized source ceiling and a stricter 58.5 KB token
+ceiling (measured 71,421 / 58,179 bytes). Token measurement excludes formatting
+between tokens while preserving whitespace inside literals/templates. Both caps
+must pass, so expanding indentation cannot hide new code or unbounded comments.
