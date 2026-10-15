@@ -149,3 +149,11 @@ Stage 14 merged as PR #197 after full branch verification. Remaining work is
 tracked only in ARCHITECTURE_REMAINING_WORK.md, including whole journal/binding
 strict coverage, further measured presentation candidates, gradual readability
 and live-provider/physical-two-machine release validation.
+
+
+## Durable storage completion continuation
+
+17. Check the actual durable owner-binding implementation and decode both binding
+    and pending/completed handoff evidence before publication. Cache or uncertain
+    write failures revoke readiness; only a valid refresh restores authority.
+    Preserve historical completed metadata. See STORAGE_OWNER_BINDING_AUTHORITY.md.
