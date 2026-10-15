@@ -1,5 +1,5 @@
 import {mergeSharedChecks} from '../sync/checks-merge.js';
-import {createStorageStartupProtocol} from '../shared/storage-startup-protocol.js';
+import {createStorageStartupProtocol,createStorageStartupAdmission} from '../shared/storage-startup-protocol.js';
 import {createStorageOwnerBinding} from '../shared/storage-owner.js';
 import {createStorageV2BootstrapCoordinator} from '../shared/storage-v2-bootstrap.js';
 import {createStorageV2LocalBirth,verifyStorageV2LocalEngine} from '../shared/storage-v2-local-birth.js';
@@ -25,6 +25,9 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
     markers:{account:()=>requirePorts().verifyStorageV2AccountMarker(),local:()=>{requirePorts();return verifyStorageV2LocalEngine({app:'orders',owner:()=>owner.current()})}},
     account:{read:()=>requirePorts().cloudTransport.readStorageProtocolState(),recoverAccount:()=>{requirePorts();return fencedRecovery.recover()}},
   });
+  const startupAdmission=createStorageStartupAdmission({protocol:startupProtocol,primary:()=>tab.primaryTab,
+    transfer:{preparing:()=>!!ownerTransfer?.preparing||transferRebinding,resume:resumeStorageV2OwnerTransfer},
+    birth:{preparing:()=>!!localBirth?.preparing,ensure:()=>{requirePorts();return localBirth.begin()}}});
   const preparing=()=>owner.locked||transferRebinding||!!ownerTransfer?.preparing||!!localBirth?.preparing||!!(bootstrap.hasGroup&&bootstrap.group?.phase!=='complete');
   const mode=()=>storageV2Mode('orders',storage,owner.current(),{preparing:preparing()});
   const createRuntime=options=>createStorageV2Runtime({app:'orders',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,mode,...options});
@@ -168,10 +171,10 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
     const p=requirePorts(),recovered=await p.sharedChecksV2Composition.recoverPrimary();
     return recovered;
   }
-  return {owner,bootstrap,preparing,mode,createRuntime,createCloudPorts,createSharedComposition,recoverShared,configure,ownerAdoption,startupProtocol,startStorageV2OwnerTransfer,resumeStorageV2OwnerTransfer,
+  return {owner,bootstrap,preparing,mode,createRuntime,createCloudPorts,createSharedComposition,recoverShared,configure,ownerAdoption,startupProtocol,startupAdmission,startStorageV2OwnerTransfer,resumeStorageV2OwnerTransfer,
     ownerUiPorts:()=>({storageOwnerCurrent:()=>owner.current(),storageOwnerAdoption:()=>ownerAdoption()}),
-    localBirthLifecyclePorts:()=>({hydrateLocalBirth:()=>localBirth.hydrate(),ensureLocalBirth:()=>localBirth.begin(),localBirthPreparing:()=>!!localBirth?.preparing}),
-    ownerTransferLifecyclePorts:()=>({hydrateStorageV2OwnerTransfer:()=>ownerTransfer.hydrate(),resumeStorageV2OwnerTransfer,storageV2OwnerTransferPreparing:()=>!!ownerTransfer?.preparing||transferRebinding}),
+    localBirthLifecyclePorts:()=>({hydrateLocalBirth:()=>localBirth.hydrate()}),
+    ownerTransferLifecyclePorts:()=>({hydrateStorageV2OwnerTransfer:()=>ownerTransfer.hydrate()}),
     ownerTransferUiPorts:()=>({startStorageV2OwnerTransfer,resumeStorageV2OwnerTransfer,storageV2OwnerTransferPreparing:()=>!!ownerTransfer?.preparing||transferRebinding}),
   };
 }

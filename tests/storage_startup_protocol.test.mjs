@@ -61,7 +61,7 @@ test('fenced recovery must install a durable marker before allowing startup with
   assert.equal(decision.owner,'account');
   assert.equal(decision.accountV2Active,true);
   assert.equal(decision.recoveryError,null);
-  assert.deepEqual(f.calls,['account-marker','local-marker','server','adopt','account-marker']);
+  assert.deepEqual(f.calls,['account-marker','local-marker','server','adopt','account-marker','local-marker']);
   assert.deepEqual(await f.runtime.readMarkers(),{owner:'account',accountV2Active:true,localEngineActive:false});
 });
 
@@ -99,3 +99,11 @@ for(const [app,createCoordinator] of [['kupa',createKupaStorageV2Coordinator],['
     assert.throws(()=>coordinator.startupProtocol.verifyLocal(),new RegExp(`${app}_storage_v2_not_configured`));
   });
 }
+
+for(const boundary of ['markers','server'])test(`owner change during ${boundary} cannot publish mixed marker authority`,async()=>{
+  let owner='A',adopted=0;
+  const protocol=createStorageStartupProtocol({ownership:{current:()=>owner,authenticated:()=> 'A'},
+    markers:{account:async()=>{if(boundary==='markers')owner='B';return false},local:async()=>false},
+    account:{read:async()=>{owner='B';return {orders:2,kupa:2,sharedChecks:2}},recoverAccount:async()=>{adopted++}}});
+  await assert.rejects(protocol.check({primary:true,online:true}),/owner_changed/);assert.equal(adopted,0);
+});

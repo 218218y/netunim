@@ -6,17 +6,15 @@ function nextTurn(){return new Promise(resolve=>setTimeout(resolve,0))}
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createLifecycle({
   storageProtocol,
+  storageAdmission:admission,
+  online,
   storageRecovery,
   cloudStartup,
   localServices,
   backgroundStartup,
   hydrateStorageOwner=async()=>{},
   hydrateStorageV2OwnerTransfer=async()=>null,
-  resumeStorageV2OwnerTransfer=async()=>null,
-  storageV2OwnerTransferPreparing=()=>false,
   hydrateLocalBirth=async()=>null,
-  ensureLocalBirth=async()=>null,
-  localBirthPreparing=()=>false,
   ensureSyncCapabilities=async()=>true,
   tab,
   session,
@@ -38,6 +36,9 @@ for(const [name,port,methods] of [
   ['local',localServices,['start']],['background',backgroundStartup,['start']],
 ])for(const method of methods)if(typeof port?.[method]!=='function')throw new TypeError(`lifecycle_${name}_${method}_required`);
 
+if(typeof online!=='function')throw new TypeError('lifecycle_online_required');
+for(const method of ['admit','assertCurrent','assertOwner','readOnlyRequired','transferPending'])if(typeof admission?.[method]!=='function')throw new TypeError(`lifecycle_storage_admission_${method}_required`);
+
 async function boot(){
   session.storageProtocolBlocked=true;
   startupMark('boot-start');
@@ -46,7 +47,9 @@ async function boot(){
   loadSession();
   const transfer=await hydrateStorageV2OwnerTransfer();
   await hydrateLocalBirth();
-  let {owner,accountV2Active,localEngineActive,protocol,recoveryError}=await storageProtocol.check({primary:tab.primaryTab,online:globalThis.navigator?.onLine!==false});
+  let state=await storageProtocol.check({primary:tab.primaryTab,online:online()});
+  admission.assertOwner(state);
+  const {protocol,recoveryError}=state;
   if(recoveryError)console.error('Orders fenced account recovery',recoveryError);
   if(!protocol.allowed){
     session.storageProtocolBlocked=true;
@@ -58,47 +61,37 @@ async function boot(){
   session.storageProtocolBlocked=false;
 
   if(!tab.primaryTab){
-    const v2Required=!!(transfer||storageV2OwnerTransferPreparing()||accountV2Active||localEngineActive||localBirthPreparing());
+    const v2Required=admission.readOnlyRequired(state,!!transfer);
     let shown=false;
     if(v2Required){startupMark('recovery-start');shown=!!(await storageRecovery.readOnly());if(shown)startupMark('local-recovered')}
+    admission.assertOwner(state);
     if(shown){storageRecovery.activate();render({supplierScrollMode:'end'});startupMark('first-render');setCloud('ענן: קריאה בלבד','offline');setSave('מקומי: קריאה בלבד','',folderSaveTitle())}
     else{setCloud('ענן: קריאה בלבד — הנתונים טרם זמינים','offline');setSave('קריאה בלבד — רענן לאחר סיום האתחול בטאב הראשי','error')}
     showSecondaryTabGuard();syncFolderAccessButton();return;
   }
 
-  if(transfer||storageV2OwnerTransferPreparing()){
-    try{await resumeStorageV2OwnerTransfer()}
-    catch(error){
-      console.error('Orders Storage V2 owner transfer resume',error);
-      setCloud('ענן: מעבר חשבון דורש השלמה','error');
-      setSave('העריכה נעולה עד השלמת מעבר החשבון','error');
-      syncFolderAccessButton();return;
-    }
-    ({owner,accountV2Active,localEngineActive}=await storageProtocol.readMarkers());
+  const admitted=await admission.admit(state,!!transfer);
+  if(!admitted.ok){
+    console.error('Orders Storage V2 startup admission',admitted.error);
+    setCloud(admitted.stage==='transfer'?'???: ???? ????? ???? ?????':'???: ????? ????? ???? ?????','error');
+    setSave(admitted.stage==='transfer'?'?????? ????? ?? ????? ???? ??????':'?????? ????? ?? ????? ???? ?????? ??????','error');
+    syncFolderAccessButton();return;
   }
-  if(owner==='local'){
-    try{
-      if(!localEngineActive){await ensureLocalBirth();localEngineActive=await storageProtocol.verifyLocal()}
-      if(!localEngineActive)throw new Error('orders_local_engine_marker_required');
-    }catch(error){
-      console.error('Orders local Storage V2 birth',error);
-      setCloud('ענן: אחסון מקומי דורש השלמה','error');
-      setSave('העריכה נעולה עד השלמת מעבר האחסון המקומי','error');
-      syncFolderAccessButton();return;
-    }
-  }else if(!accountV2Active)throw new Error('orders_v2_account_marker_required');
+  state=admitted.state;const {localEngineActive}=state;
+  admission.assertCurrent(state);
 
   // Shared Checks must recover before business state is rendered.
   startupMark('recovery-start');
-  try{await storageRecovery.primary({localEngineActive});startupMark('local-recovered')}
+  try{await storageRecovery.primary({localEngineActive});admission.assertCurrent(state);startupMark('local-recovered')}
   catch(error){setSave('שחזור הנתונים המקומיים נעצר; העריכה נשארת חסומה','error');setCloud('ענן: ממתין לשחזור מקומי תקין','error');syncFolderAccessButton();throw error}
-  if(!localEngineActive&&navigator.onLine&&loadSession()){try{await ensureSyncCapabilities();session.syncCapabilitiesError=null}catch(error){session.syncCapabilitiesError=error;setCloud(error.message,'error');}}
+  if(!localEngineActive&&online()&&loadSession()){try{await ensureSyncCapabilities();session.syncCapabilitiesError=null}catch(error){session.syncCapabilitiesError=error;setCloud(error.message,'error');}}
+  admission.assertCurrent(state);
   if(session.syncCapabilitiesError){storageRecovery.activate();render();setCloud(session.syncCapabilitiesError.message,'error');setSave(session.syncCapabilitiesError.message,'error');return}
 
   try{await resumeIncompleteRestore()}catch(error){console.error('restore group startup recovery',error);setCloud('ענן: שחזור ממתין','error')}
 
   const plan=await cloudStartup.prepare({localEngineActive});
-  storageRecovery.activate();
+  admission.assertCurrent(state);storageRecovery.activate();
   render({supplierScrollMode:'end'});startupMark('first-render');
   syncFolderAccessButton();
   setSave(session.cloudDurabilityDegraded?'מקומי: מצב התאוששות':'מקומי: שמור',session.cloudDurabilityDegraded?'error':'',folderSaveTitle());
@@ -112,5 +105,5 @@ async function boot(){
   void session.startupHydrationPromise.catch(error=>console.error('startup hydration/background',error));
 }
 
-return { boot:createStartupTask(boot) };
+return { boot:createStartupTask(async()=>{try{return await boot()}catch(error){session.storageProtocolBlocked=true;throw error}}) };
 }

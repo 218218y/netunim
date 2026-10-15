@@ -1,4 +1,4 @@
-import {createStorageStartupProtocol} from '../shared/storage-startup-protocol.js';
+import {createStorageStartupProtocol,createStorageStartupAdmission} from '../shared/storage-startup-protocol.js';
 import {createStorageStartupRecovery} from '../shared/storage-startup-recovery.js';
 import {createOrdersCloudStartup} from '../netunim-orders/site/assets/js/startup/cloud-hydration.js';
 import {createOrdersLocalServices} from '../netunim-orders/site/assets/js/startup/local-services.js';
@@ -18,11 +18,15 @@ export function withStorageProtocol(controls){
       readOnly:controls.recoverReadOnlyV2State||(async()=>false)},
     shared:{primary:controls.recoverSharedChecksV2Primary||(async()=>false),readOnly:controls.recoverSharedChecksV2ReadOnly||(async()=>false)},
   });
-  return {...controls,storageRecovery,storageProtocol:createStorageStartupProtocol({
+  const storageProtocol=createStorageStartupProtocol({
     ownership:{current:controls.storageOwnerCurrent||(()=>null),authenticated:controls.authenticatedOwner||(()=>null)},
     markers:{account:controls.verifyStorageV2AccountMarker||(async()=>false),local:controls.verifyLocalStorageEngine||(async()=>false)},
     account:{read:controls.readStorageProtocolState||(async()=>null),recoverAccount:controls.recoverFencedAccount||(async()=>false)},
-  })};
+  });
+  const storageAdmission=createStorageStartupAdmission({protocol:storageProtocol,primary:()=>controls.tab?.primaryTab!==false,
+    transfer:{preparing:controls.storageV2OwnerTransferPreparing||(()=>false),resume:controls.resumeStorageV2OwnerTransfer||(async()=>null)},
+    birth:{preparing:controls.localBirthPreparing||(()=>false),ensure:controls.ensureLocalBirth||(async()=>null)}});
+  return {online:()=>globalThis.navigator?.onLine!==false,...controls,storageRecovery,storageProtocol,storageAdmission};
 }
 
 export function withOrdersStartup(controls){

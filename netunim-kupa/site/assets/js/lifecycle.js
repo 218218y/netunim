@@ -4,17 +4,15 @@ import {createStartupTask} from './shared/startup-task.js';
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createLifecycle({
   storageProtocol,
+  storageAdmission:admission,
+  online,
   storageRecovery,
   cloudStartup,
   localServices,
   connectionStartup,
   hydrateStorageOwner=async()=>{},
   hydrateLocalBirth=async()=>null,
-  ensureLocalBirth=async()=>false,
-  localBirthPreparing=()=>false,
   hydrateStorageV2OwnerTransfer=async()=>null,
-  resumeStorageV2OwnerTransfer=async()=>null,
-  storageV2OwnerTransferPreparing=()=>false,
   render=()=>{},
   hideConnectScreen=()=>{},
   session,
@@ -35,6 +33,9 @@ for(const [name,port,methods] of [
   ['connection',connectionStartup,['bind','openLocal']],
 ])for(const method of methods)if(typeof port?.[method]!=='function')throw new TypeError(`lifecycle_${name}_${method}_required`);
 
+if(typeof online!=='function')throw new TypeError('lifecycle_online_required');
+for(const method of ['admit','assertCurrent','assertOwner','readOnlyRequired','transferPending'])if(typeof admission?.[method]!=='function')throw new TypeError(`lifecycle_storage_admission_${method}_required`);
+
 async function boot(){
   session.storageProtocolBlocked=true;
   startupMark('boot-start');
@@ -43,7 +44,9 @@ async function boot(){
   // it before any account-scoped marker, snapshot or writer can be consulted.
   await hydrateStorageOwner();startupMark('storage-owner-ready');
   const restoredAuth=await restoreSupaSession();await hydrateLocalBirth();await hydrateStorageV2OwnerTransfer();
-  let {accountV2Active,localEngineActive,protocol,recoveryError}=await storageProtocol.check({primary:tab.primaryTab,online:globalThis.navigator?.onLine!==false});
+  let state=await storageProtocol.check({primary:tab.primaryTab,online:online()});
+  admission.assertOwner(state);
+  const {protocol,recoveryError}=state;
   if(recoveryError)console.error('Kupa fenced account recovery',recoveryError);
   if(!protocol.allowed){
     session.storageProtocolBlocked=true;
@@ -53,31 +56,33 @@ async function boot(){
   }
   session.storageProtocolBlocked=false;
   if(!tab.primaryTab){
-    const v2Required=storageV2OwnerTransferPreparing()||accountV2Active||localEngineActive||localBirthPreparing();
+    const v2Required=admission.readOnlyRequired(state);
     let shown=false;
     if(v2Required){startupMark('recovery-start');shown=!!(await storageRecovery.readOnly());if(shown)startupMark('local-recovered')}
+    admission.assertOwner(state);
     if(shown){storageRecovery.activate();render()}
     showSecondaryTabGuard();
     setConnectedStatus('לקריאה בלבד');setSaveStatus(shown?'לקריאה בלבד':'קריאה בלבד — רענן לאחר סיום האתחול בטאב הראשי',shown?'':'error');
     setCloudHeaderStatus('offline',shown?'ענן: קריאה בלבד':'ענן: קריאה בלבד — הנתונים טרם זמינים');
     return;
   }
-  if(storageV2OwnerTransferPreparing()){
-    if(!navigator.onLine||!restoredAuth){session.backendReady=false;setConnectUI({title:'מעבר החשבון ממתין',text:'העריכה נעולה עד לחיבור מחדש לחשבון היעד ולהשלמת המעבר.',showCloud:true});return}
-    try{await resumeStorageV2OwnerTransfer();({accountV2Active,localEngineActive}=await storageProtocol.readMarkers())}
-    catch(error){console.error('Kupa V2 owner transfer resume',error);session.backendReady=false;setConnectUI({title:'מעבר החשבון נעצר בבטחה',text:'הנתונים נשמרו. יש להתחבר לחשבון היעד ולהשלים את המעבר לפני עריכה.',showCloud:true});return}
+  if(admission.transferPending()&&(!online()||!restoredAuth)){
+    session.backendReady=false;setConnectUI({title:'???? ?????? ?????',text:'?????? ????? ?? ?????? ???? ?????? ???? ??????? ?????.',showCloud:true});return;
   }
-  // Birth is a durable transition, and its Main checkpoint is not complete
-  // until Shared and the local marker are verified. Keep the screen closed.
-  if(!accountV2Active){
-    try{await ensureLocalBirth();localEngineActive=await storageProtocol.verifyLocal();if(!localEngineActive)throw new Error('kupa_local_engine_marker_required')}
-    catch(error){console.error('Kupa local V2 birth',error);setConnectUI({title:'מעבר האחסון המקומי נעצר',text:'הנתונים הישנים נשארו שמורים. העריכה חסומה עד להשלמת מעבר האחסון או בדיקת התקלה.',showCloud:false});return}
+  const admitted=await admission.admit(state);
+  if(!admitted.ok){
+    console.error('Kupa Storage V2 startup admission',admitted.error);session.backendReady=false;
+    setConnectUI(admitted.stage==='transfer'
+      ?{title:'???? ?????? ???? ?????',text:'??????? ?????. ?? ?????? ?????? ???? ??????? ?? ????? ???? ?????.',showCloud:true}
+      :{title:'???? ?????? ?????? ????',text:'??????? ?????? ????? ??????. ?????? ????? ?? ?????? ???? ?????? ?? ????? ?????.',showCloud:false});return;
   }
-  await connectionStartup.bind();
+  state=admitted.state;const {localEngineActive}=state;
+  admission.assertCurrent(state);
+  await connectionStartup.bind();admission.assertCurrent(state);
 
-  await cloudStartup.prepare({localEngineActive});
+  await cloudStartup.prepare({localEngineActive});admission.assertCurrent(state);
   startupMark('recovery-start');
-  try{await storageRecovery.primary({localEngineActive});startupMark('local-recovered')}
+  try{await storageRecovery.primary({localEngineActive});admission.assertCurrent(state);startupMark('local-recovered')}
   catch(error){session.backendReady=false;setConnectUI({title:'שחזור הנתונים המקומיים נעצר',text:'הנתונים נשארו שמורים והעריכה חסומה. יש לבדוק את התקלה ולרענן לאחר השלמת השחזור.',showCloud:!localEngineActive});throw error}
   // Shared Checks owns checks independently of Main. Hydrate it before an
   // offline or cloud-capability exit can show composed business data.
@@ -91,5 +96,5 @@ async function boot(){
   if(localEngineActive)await connectionStartup.openLocal();
 }
 
-return { boot:createStartupTask(boot) };
+return { boot:createStartupTask(async()=>{try{return await boot()}catch(error){session.storageProtocolBlocked=true;throw error}}) };
 }

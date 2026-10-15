@@ -419,7 +419,9 @@ const backgroundStartup=createOrdersBackgroundStartup({
 });
 
 const lifecycle=createLifecycle({
+  online:()=>globalThis.navigator?.onLine!==false,
   storageProtocol:storageV2Coordinator.startupProtocol,
+  storageAdmission:storageV2Coordinator.startupAdmission,
   storageRecovery,
   cloudStartup,
   localServices,
