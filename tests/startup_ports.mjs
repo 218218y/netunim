@@ -18,7 +18,7 @@ export function withStorageProtocol(controls){
       readOnly:controls.recoverReadOnlyV2State||(async()=>false)},
     shared:{primary:controls.recoverSharedChecksV2Primary||(async()=>false),readOnly:controls.recoverSharedChecksV2ReadOnly||(async()=>false)},
   });
-  return {...controls,storageRecovery,storageProtocol:createStorageStartupProtocol({
+  return {online:()=>globalThis.navigator?.onLine!==false,...controls,storageRecovery,storageProtocol:createStorageStartupProtocol({
     ownership:{current:controls.storageOwnerCurrent||(()=>null),authenticated:controls.authenticatedOwner||(()=>null)},
     markers:{account:controls.verifyStorageV2AccountMarker||(async()=>false),local:controls.verifyLocalStorageEngine||(async()=>false)},
     account:{read:controls.readStorageProtocolState||(async()=>null),recoverAccount:controls.recoverFencedAccount||(async()=>false)},

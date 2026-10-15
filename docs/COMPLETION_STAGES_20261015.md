@@ -132,3 +132,9 @@ formatting and live-provider/physical-machine release validation.
     unknown persisted/target reply decoding, immutable transition evidence and
     crash-resume comparison against the frozen target proof. See
     OWNER_TRANSFER_EVIDENCE.md. Whole IDB/runtime/binding typing remains separate.
+
+15. Audit shell composition and extract startup transfer/birth admission from both
+    lifecycle shells. Fence owner/leadership changes across journal/display awaits;
+    decode marker reads as one owner observation and reread both after fenced
+    adoption. Connectivity is an explicit port. Broad backup/cloud UI/navigation
+    wiring remains intentional. See SHELL_STARTUP_ADMISSION.md.
