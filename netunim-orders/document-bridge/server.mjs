@@ -1,9 +1,11 @@
+import {createPdfIndexCoordinator} from './pdf-index-coordinator.mjs';
+import {createEverythingSearchCoordinator} from './everything-search-coordinator.mjs';
 import {createWindowsProcessControl} from './windows-process-control.mjs';
 import {createBridgeReplacementCommand} from './bridge-replacement-command.mjs';
 import {createBridgeRuntimeFiles} from './bridge-runtime-files.mjs';
 import {createPdfMaintenanceTaskDiagnostics} from './pdf-maintenance-task-diagnostics.mjs';
 import {createBridgeInstallationDiagnostics} from './bridge-installation-diagnostics.mjs';
-import {createPdfInventoryReconciliation} from './pdf-inventory-reconciliation.mjs';
+
 import http from 'node:http';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -11,21 +13,13 @@ import crypto from 'node:crypto';
 import {execFile as execFileCb} from 'node:child_process';
 import {promisify} from 'node:util';
 import {fileURLToPath} from 'node:url';
-import {
-  BRIDGE_PORT,BRIDGE_SERVICE,BRIDGE_VERSION,DEFAULT_RESULT_LIMIT,MAX_RESULTS,RECENT_RESULT_LIMIT,RESULT_TTL_MS,
-  buildContentMatchInfo,buildDocumentQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsRawSearchArgs,buildEsRecentFilesArgs,buildEsSearchArgs,compareDocumentRows,contentSearchMatches,documentExtension,documentFileTypeIncludesPdf,mergeDocumentResults,normalizeContentSearchOptions,normalizeDocumentFileType,normalizeDocumentSearchMode,normalizeDocumentSort,normalizeSearchScopePath,normalizeSearchText,
-  officePreviewKind,structuredPreviewKind,parseEsContentPreview,parseEsCount,parseEsJson,
-} from './lib.mjs';
+import {BRIDGE_PORT,BRIDGE_SERVICE,BRIDGE_VERSION,RESULT_TTL_MS,buildContentMatchInfo,buildEsContentPreviewArgs,documentExtension,normalizeContentSearchOptions,normalizeDocumentSearchMode,normalizeSearchScopePath,normalizeSearchText,officePreviewKind,structuredPreviewKind,parseEsContentPreview} from './lib.mjs';
 import {buildPdfFormMatchAnchors,extractInteractivePdfText,PDF_FORM_MAX_BYTES,verifyNodePdfJsRuntime} from './pdf_form_index.mjs';
 import {pdfMaintenanceInventoryPlan,pdfMaintenanceRunLimits} from './pdf-index-policy.mjs';
-import {createPdfIndexReader} from './pdf-index-reader.mjs';
-import {createPdfIndexFilePlatform} from './pdf-index-file-platform.mjs';
-import {createPdfIndexWriter} from './pdf-index-writer.mjs';
-import {createPdfIndexWritePlatform} from './pdf-index-write-platform.mjs';
-import {createPdfInventory} from './pdf-inventory.mjs';
+
 import {createPdfMaintenanceOperation} from './pdf-maintenance-operation.mjs';
 import {readPdfMaintenanceMetadata} from './pdf-maintenance-platform.mjs';
-import {createEverythingInventorySource} from './everything-inventory-source.mjs';
+
 import {createFileLockOwner} from './file-lock-owner.mjs';
 import {createFileLockPlatform} from './file-lock-platform.mjs';
 import {createMaintenanceProcessOwner,runMaintenanceWorker} from './maintenance-process-owner.mjs';
@@ -37,7 +31,7 @@ import {createPreviewFilePlatform} from './preview-file-platform.mjs';
 import {createNativePreviewSession} from './native-preview-session.mjs';
 import {createNativePreviewHostPlatform} from './native-preview-platform.mjs';
 import {createDocumentBridgeHttpHandler,documentBridgeErrorResponse as safeError} from './http-handler.mjs';
-import {createDocumentSearch} from './search-owner.mjs';
+
 import {createEverythingSession} from './everything-session.mjs';
 import {createEverythingProcess} from './everything-process.mjs';
 import {createEverythingDiscovery} from './everything-discovery.mjs';
@@ -81,10 +75,8 @@ const PDF_FORM_MAINTENANCE_PATH=path.join(APP_ROOT,'pdf-form-maintenance.json');
 const PDF_FORM_INDEX_LOCK_PATH=path.join(APP_ROOT,'pdf-form-index.lock');
 const PDF_FORM_MAINTENANCE_LOCK_PATH=path.join(APP_ROOT,'pdf-form-maintenance.lock');
 let server=null;
-let pdfFormIndexLoaded=false,pdfFormIndexLastRefresh=0,pdfFormIndexPending=0,pdfFormIndexInventoryCount=0,shuttingDown=false,pdfFormIndexSignature='';
+let shuttingDown=false;
 let pdfMaintenanceStopRequested=false;
-
-const pdfFormIndex=new Map();
 
 const everythingProcesses=createEverythingProcess(createEverythingProcessPlatform({root:APP_ROOT}));
 const everythingDiscovery=createEverythingDiscovery(createEverythingDiscoveryPlatform({root:APP_ROOT,processes:everythingProcesses}));
@@ -103,62 +95,8 @@ const everythingSession=createEverythingSession({
 });
 async function probeEverything(options={}){return everythingSession.probe(options)}
 
-async function countIndex({esPath,instance},config,search='*'){
-  const args=buildEsCountArgs({search,timeoutMs:config.searchTimeoutMs,instance,filesOnly:true});
-  const {stdout}=await runEs(esPath,args,{timeout:config.searchTimeoutMs+3000});
-  return parseEsCount(stdout);
-}
-async function sampleIndex({esPath,instance},config){
-  const args=buildEsRawSearchArgs({search:'*',limit:1,timeoutMs:config.searchTimeoutMs,instance,filesOnly:false});
-  const {stdout}=await runEs(esPath,args,{timeout:config.searchTimeoutMs+3000});
-  return parseEsJson(stdout);
-}
-async function diagnoseIndex({freshProbe=false}={}){
-  const config=await loadConfig();let probe=await probeEverything({fresh:freshProbe,autoStart:true});
-  if(!probe.everythingExecutable){try{probe={...probe,everythingExecutable:await findEverythingExecutable(config)}}catch{}}
-  let fileCount=null,indexedContentCount=null,sampleOk=false,error='';
-  try{
-    fileCount=await countIndex(probe,config,'*');
-    indexedContentCount=await countIndex(probe,config,'is-indexed-property:content');
-    if(fileCount>0)sampleOk=(await sampleIndex(probe,config)).length>0;
-  }catch(err){error=String(err?.message||err)}
-  return {config,probe,diagnostics:{fileCount,indexedContentCount,sampleOk,error}};
-}
-
 function pruneResults(){documentResults.prune()}
 function publicResult(row,{query='',mode='everything',contentSearch={}}={}){return documentResults.publish(row,{query:String(query||''),mode:normalizeDocumentSearchMode(mode),contentSearch:normalizeContentSearchOptions(contentSearch)})}
-async function runEverythingJson(buildArgs,{signal=null}={}){
-  const config=await loadConfig();let probe=await probeEverything({autoStart:true});const started=Date.now();
-  const runSearch=currentProbe=>runEs(currentProbe.esPath,buildArgs(config,currentProbe),{timeout:config.searchTimeoutMs+5000,signal});
-  let output;
-  try{output=await runSearch(probe)}catch(error){
-    if(error?.exitCode!==8)throw error;
-    everythingSession.invalidate();probe=await probeEverything({fresh:true,autoStart:true});output=await runSearch(probe);
-  }
-  return {rows:parseEsJson(output.stdout),elapsedMs:Date.now()-started};
-}
-
-function pdfIndexKey(fullPath){return String(fullPath||'').toLocaleLowerCase('en-US')}
-function pdfIndexFingerprint(row){return `${Number(row.size)||0}:${String(row.modified||'')}`}
-function pdfIndexInScope(fullPath,scopePath){
-  if(!scopePath)return true;
-  const relative=path.win32.relative(scopePath,fullPath);
-  return relative===''||(!relative.startsWith('..\\')&&relative!=='..'&&!path.win32.isAbsolute(relative));
-}
-function normalizePdfFormField(field){
-  const rect=Array.isArray(field?.rect)&&field.rect.length===4?field.rect.map(Number):null,values=Array.isArray(field?.values)?field.values.map(value=>String(value||'')).filter(Boolean):[];
-  if(!rect||!rect.every(Number.isFinite)||!values.length)return null;
-  const pageNumber=Math.max(1,Number(field?.pageNumber)||1),annotationIndex=Math.max(0,Number(field?.annotationIndex)||0),fieldName=String(field?.fieldName||''),fieldKey=String(field?.fieldKey||'')||`field:${pageNumber}:${annotationIndex}:${fieldName}:${rect.join(',')}`;
-  return {pageNumber,annotationIndex,fieldKey,fieldName,fieldType:String(field?.fieldType||''),rect,values,multiLine:!!field?.multiLine};
-}
-function normalizePdfFormFields(fields){return (Array.isArray(fields)?fields:[]).map(normalizePdfFormField).filter(Boolean)}
-function normalizePdfIndexEntry(entry){
-  const fullPath=String(entry?.fullPath||'');if(!fullPath)return null;
-  const hasForm=typeof entry.hasForm==='boolean'?entry.hasForm:(Math.max(0,Number(entry.formFieldCount)||0)>0||!!String(entry.text||'')),formFields=normalizePdfFormFields(entry.formFields);
-  const legacyRevision=Math.max(0,Number(entry.extractorRevision)||0);
-  return {fullPath,name:String(entry.name||path.win32.basename(fullPath)),relativePath:String(entry.relativePath||path.win32.dirname(fullPath)),modified:String(entry.modified||''),size:Number.isFinite(Number(entry.size))?Number(entry.size):null,fileMtimeMs:Number(entry.fileMtimeMs)||0,extension:'pdf',attributes:String(entry.attributes||''),isDirectory:false,rootId:'everything',rootLabel:'Everything',fingerprint:String(entry.fingerprint||''),detectionRevision:Math.max(0,Number(entry.detectionRevision)||legacyRevision),searchTextRevision:Math.max(0,Number(entry.searchTextRevision)||legacyRevision),geometryRevision:Math.max(0,Number(entry.geometryRevision)||((hasForm&&formFields.length)?legacyRevision:0)),hasForm,text:String(entry.text||''),formFields,formFieldCount:Math.max(formFields.length,Math.max(0,Number(entry.formFieldCount)||0)),failed:!!entry.failed,error:String(entry.error||''),retryAfter:String(entry.retryAfter||''),retryCount:Math.max(0,Number(entry.retryCount)||0)};
-}
-function serializePdfIndexEntry(entry){return {fullPath:entry.fullPath,name:entry.name,relativePath:entry.relativePath,modified:entry.modified,size:entry.size,fileMtimeMs:entry.fileMtimeMs||0,attributes:entry.attributes||'',fingerprint:entry.fingerprint,detectionRevision:Math.max(0,Number(entry.detectionRevision)||0),searchTextRevision:Math.max(0,Number(entry.searchTextRevision)||0),geometryRevision:Math.max(0,Number(entry.geometryRevision)||0),hasForm:!!entry.hasForm,text:entry.text||'',formFields:normalizePdfFormFields(entry.formFields),formFieldCount:entry.formFieldCount||0,failed:!!entry.failed,error:entry.error||'',retryAfter:entry.retryAfter||'',retryCount:entry.retryCount||0}}
 const fileLocks=createFileLockOwner({...createFileLockPlatform({root:APP_ROOT}),
   clock:()=>performance.now(),wait:ms=>new Promise(resolve=>setTimeout(resolve,ms)),
 });
@@ -185,47 +123,25 @@ async function startManualPdfMaintenance(){
 async function stopManualPdfMaintenance(){
   await manualMaintenance.stop();return pdfMaintenanceStatus();
 }
-const pdfIndexFiles=createPdfIndexFilePlatform({snapshotPath:PDF_FORM_INDEX_PATH,journalPath:PDF_FORM_INDEX_JOURNAL_PATH});
-const pdfIndexReader=createPdfIndexReader({files:pdfIndexFiles,normalizeEntry:normalizePdfIndexEntry});
-const pdfIndexSignature=()=>pdfIndexFiles.signature();
-const pdfIndexWriter=createPdfIndexWriter({reader:pdfIndexReader,
-  files:createPdfIndexWritePlatform({snapshotPath:PDF_FORM_INDEX_PATH,journalPath:PDF_FORM_INDEX_JOURNAL_PATH}),
-  lock:{run:work=>withFileLock(PDF_FORM_INDEX_LOCK_PATH,work)},serializeEntry:serializePdfIndexEntry,
-  publish:(candidate,phase)=>publishPdfIndexCandidate(candidate,{metadata:phase==='compact'}),now:Date.now,
+const pdfIndexRuntime=createPdfIndexCoordinator({
+  files:{PDF_FORM_INDEX_PATH,PDF_FORM_INDEX_JOURNAL_PATH,PDF_FORM_INDEX_LOCK_PATH},locking:{withFileLock},
+  everything:{loadConfig,probeEverything,runEs},cache:previewTextCache,
+  runtime:{isStopping:()=>shuttingDown||pdfMaintenanceStopRequested,log:appendLog},
+  policy:{PDF_FORM_INDEX_PAGE_SIZE,PDF_FORM_DETECTION_REVISION,PDF_FORM_SEARCH_TEXT_REVISION},
 });
-function publishPdfIndexCandidate(candidate,{metadata=true}={}){
-  // Publication is synchronous and follows complete, stable candidate decoding.
-  // Retire match text for both removed and retained PDF entries on disk reload.
-  for(const key of pdfFormIndex.keys())previewTextCache.invalidate(key);
-  pdfFormIndex.clear();
-  for(const [key,entry] of candidate.entries){pdfFormIndex.set(key,entry);previewTextCache.invalidate(key)}
-  if(metadata){pdfFormIndexPending=candidate.pending;pdfFormIndexInventoryCount=candidate.pdfCount;pdfFormIndexLastRefresh=candidate.updatedAt}
-  pdfFormIndexLoaded=true;pdfFormIndexSignature=candidate.signature;
-}
-async function readPdfIndexFiles(){publishPdfIndexCandidate(await pdfIndexReader.read())}
-async function loadPdfFormIndex(){
-  if(pdfFormIndexLoaded&&pdfFormIndexSignature===await pdfIndexSignature())return;
-  await withFileLock(PDF_FORM_INDEX_LOCK_PATH,async()=>{if(!pdfFormIndexLoaded||pdfFormIndexSignature!==await pdfIndexSignature())await readPdfIndexFiles()});
-}
-async function appendPdfIndexJournal(records){
-  await pdfIndexWriter.append(records);
-}
-async function compactPdfFormIndex({pending=pdfFormIndexPending,pdfCount=pdfFormIndexInventoryCount}={}){
-  await pdfIndexWriter.compact({pending,pdfCount});
-}
-const pdfInventory=createPdfInventory({...createEverythingInventorySource({loadConfig,probeEverything,runEs}),
-  isStopping:()=>shuttingDown||pdfMaintenanceStopRequested,
-},{pageSize:PDF_FORM_INDEX_PAGE_SIZE});
-const pdfReconciliation=createPdfInventoryReconciliation({inventory:pdfInventory,
-  index:{entries:pdfFormIndex,key:pdfIndexKey,fingerprint:pdfIndexFingerprint,append:appendPdfIndexJournal,view:()=>({pdfCount:pdfFormIndexInventoryCount}),publish:({pending,pdfCount})=>{pdfFormIndexPending=pending;pdfFormIndexInventoryCount=pdfCount}},
-  policy:{PDF_FORM_DETECTION_REVISION,PDF_FORM_SEARCH_TEXT_REVISION},
+const {load:loadPdfFormIndex,entries:pdfFormIndex,append:appendPdfIndexJournal,serialize:serializePdfIndexEntry}=pdfIndexRuntime.index;
+const {fields:normalizePdfFormFields}=pdfIndexRuntime.forms;
+const {prepare:preparePdfFormIndexForSearch,search:searchPdfFormIndex}=pdfIndexRuntime.search;
+const searchRuntime=createEverythingSearchCoordinator({
+  configuration:{load:loadConfig},session:{probe:probeEverything,executable:findEverythingExecutable,invalidate:()=>everythingSession.invalidate()},
+  process:{run:runEs},pdf:{prepare:preparePdfFormIndexForSearch,search:searchPdfFormIndex},
+  publication:{prune:pruneResults,publish:publicResult},audit:{write:appendLog},
 });
-async function rebuildPdfFormIndexBacklog(options={}){return pdfReconciliation.rebuild(options)}
+const {diagnoseIndex,searchDocuments,recentDocuments,runtime:documentSearch}=searchRuntime;
 
 const pdfMaintenanceOperation=createPdfMaintenanceOperation({
-  index:{load:loadPdfFormIndex,entries:pdfFormIndex,view:()=>({pending:pdfFormIndexPending,pdfCount:pdfFormIndexInventoryCount}),
-    publishPending:pending=>{pdfFormIndexPending=pending},append:appendPdfIndexJournal,serialize:serializePdfIndexEntry,compact:compactPdfFormIndex},
-  inventory:{rebuild:rebuildPdfFormIndexBacklog},
+  index:pdfIndexRuntime.index,
+  inventory:pdfIndexRuntime.inventory,
   extraction:{read:extractInteractivePdfText,stat:fullPath=>fs.stat(fullPath),fields:normalizePdfFormFields},
   metadata:{read:()=>readPdfMaintenanceMetadata(PDF_FORM_MAINTENANCE_PATH),write:record=>writeJsonFile(PDF_FORM_MAINTENANCE_PATH,record)},
   policy:{plan:pdfMaintenanceInventoryPlan,limits:{PDF_FORM_MAINTENANCE_MAX_FILES,PDF_FORM_MAINTENANCE_MAX_MS,PDF_FORM_MAINTENANCE_INTERVAL_MS,PDF_FORM_RECONCILE_INTERVAL_MS,PDF_FORM_RETRY_MS,PDF_FORM_MAX_BYTES,PDF_FORM_DETECTION_REVISION,PDF_FORM_SEARCH_TEXT_REVISION,PDF_FORM_GEOMETRY_REVISION}},
@@ -234,24 +150,10 @@ const pdfMaintenanceOperation=createPdfMaintenanceOperation({
 });
 async function refreshPdfFormIndex(options={}){return pdfMaintenanceOperation.refresh(options)}
 
-async function preparePdfFormIndexForSearch(){
-  try{await loadPdfFormIndex()}catch(error){await appendLog(`PDF_FORM_INDEX_LOAD_FAILED ${error?.message||error}`);return {partial:true}}
-  return {partial:!pdfFormIndexLastRefresh||pdfFormIndexPending>0};
-}
 const pdfExtractionProcesses=createPdfExtractionProcess({
   ...createPdfExtractionPlatform({executable:process.execPath,script:path.join(RUNTIME_ROOT,'pdf-extract-worker.mjs'),cwd:APP_ROOT}),
   runtime:{setTimeout,clearTimeout},
 });
-function searchPdfFormIndex(query,contentSearch,scopePath,limit,sort={}){
-  const results=[];
-  for(const entry of pdfFormIndex.values()){
-    if(!entry.hasForm||!entry.text||entry.failed||!pdfIndexInScope(entry.fullPath,scopePath))continue;
-    if(!contentSearchMatches(entry.text,query,contentSearch))continue;
-    results.push(entry);
-  }
-  results.sort((a,b)=>compareDocumentRows(a,b,sort));
-  return results.slice(0,Math.max(1,Number(limit)||DEFAULT_RESULT_LIMIT));
-}
 const pdfPreviewOperation=createPdfPreviewOperation({
   index:{load:loadPdfFormIndex,get:key=>pdfFormIndex.get(key),append:entry=>appendPdfIndexJournal([{op:'upsert',entry:serializePdfIndexEntry(entry)}])},
   extraction:{read:(fullPath,options)=>pdfExtractionProcesses.read(fullPath,options)},
@@ -261,25 +163,6 @@ const pdfPreviewOperation=createPdfPreviewOperation({
   audit:{write:appendLog},
 });
 async function supplementalPdfData(row,stat){return pdfPreviewOperation.read(row,stat)}
-const documentSearch=createDocumentSearch({
-  everything:{
-    search:request=>runEverythingJson((config,probe)=>buildEsSearchArgs({...request,timeoutMs:config.searchTimeoutMs,instance:probe.instance})),
-    recent:request=>runEverythingJson((config,probe)=>buildEsRecentFilesArgs({...request,timeoutMs:config.searchTimeoutMs,instance:probe.instance})),
-  },
-  pdf:{prepare:preparePdfFormIndexForSearch,search:(plan,limit)=>searchPdfFormIndex(plan.query,plan.contentSearch,plan.scopePath,limit,plan.sort)},
-  ordering:{merge:mergeDocumentResults,compare:compareDocumentRows},
-  publication:{prune:pruneResults,publish:publicResult},
-  audit:{write:appendLog},
-},{bridgeVersion:BRIDGE_VERSION,maxResults:MAX_RESULTS,defaultLimit:DEFAULT_RESULT_LIMIT,recentLimit:RECENT_RESULT_LIMIT});
-async function searchDocuments(query,limit,mode='everything',contentSearch={},scopePath='',offset=0,sort={},fileType='all'){
-  const normalizedMode=normalizeDocumentSearchMode(mode),normalizedContentSearch=normalizeContentSearchOptions(contentSearch),normalizedScope=normalizeSearchScopePath(scopePath),normalizedSort=normalizeDocumentSort(sort),normalizedFileType=normalizeDocumentFileType(fileType),everythingQuery=buildDocumentQuery(query,normalizedMode,normalizedContentSearch,normalizedFileType);
-  if(!everythingQuery){const e=new Error(normalizedMode==='content'?'יש להקליד לפחות שני תווים לחיפוש בתוכן הקבצים.':'יש להקליד לפחות תו אחד לחיפוש ב-Everything.');e.code='QUERY_TOO_SHORT';throw e}
-  return documentSearch.search({query,mode:normalizedMode,contentSearch:normalizedContentSearch,scopePath:normalizedScope,sort:normalizedSort,fileType:normalizedFileType,everythingQuery,includePdf:documentFileTypeIncludesPdf(normalizedFileType)},limit,offset);
-}
-async function recentDocuments(limit,scopePath='',fileType='all'){
-  return documentSearch.recent({scopePath:normalizeSearchScopePath(scopePath),fileType:normalizeDocumentFileType(fileType)},limit);
-}
-
 async function resolveResult(id){return documentResults.resolve(id)}
 
 const previewFiles=createPreviewFilePlatform();
@@ -381,7 +264,7 @@ async function revealDocument(id){
 
 async function invalidateResultPath(fullPath){
   const target=String(fullPath||'').toLocaleLowerCase('en-US'),invalidatedIds=documentResults.invalidate(fullPath);
-  previewTextCache.invalidate(target);await pdfPreviewOperation.invalidate(fullPath);await loadPdfFormIndex();if(pdfFormIndex.has(target))await appendPdfIndexJournal([{op:'remove',fullPath}]);
+  previewTextCache.invalidate(target);await pdfPreviewOperation.invalidate(fullPath);await pdfIndexRuntime.remove(fullPath);
   return invalidatedIds;
 }
 
@@ -401,8 +284,8 @@ async function deleteDocument(id){
 async function documentBridgeStatus(){
   const {probe,diagnostics}=await diagnoseIndex({freshProbe:true});
   let pdfIndexError='';try{await loadPdfFormIndex()}catch(error){pdfIndexError=String(error?.message||error)}
-  const interactivePdfCount=[...pdfFormIndex.values()].filter(entry=>entry.hasForm&&!entry.failed).length,maintenance=await readJsonFile(PDF_FORM_MAINTENANCE_PATH,{});
-  return {ok:true,service:BRIDGE_SERVICE,version:BRIDGE_VERSION,esVersion:probe.esVersion,everythingVersion:probe.everythingVersion,everythingExecutable:probe.everythingExecutable||'',instance:probe.instance,index:{fileCount:diagnostics.fileCount,indexedContentCount:diagnostics.indexedContentCount,sampleOk:diagnostics.sampleOk,error:[diagnostics.error,pdfIndexError].filter(Boolean).join('; '),interactivePdfCount,inspectedPdfCount:pdfFormIndex.size,interactivePdfPending:pdfFormIndexPending,interactivePdfUpdatedAt:pdfFormIndexLastRefresh?new Date(pdfFormIndexLastRefresh).toISOString():'',maintenanceLastAttemptAt:maintenance.lastAttemptAt||'',maintenanceLastSuccessfulAt:maintenance.lastSuccessfulAt||'',maintenanceLastFailureAt:maintenance.lastFailureAt||'',maintenanceLastFailure:maintenance.lastFailure||'',maintenanceLastResult:maintenance.lastResult||null}};
+  const pdfView=pdfIndexRuntime.view(),interactivePdfCount=pdfView.interactive,maintenance=await readJsonFile(PDF_FORM_MAINTENANCE_PATH,{});
+  return {ok:true,service:BRIDGE_SERVICE,version:BRIDGE_VERSION,esVersion:probe.esVersion,everythingVersion:probe.everythingVersion,everythingExecutable:probe.everythingExecutable||'',instance:probe.instance,index:{fileCount:diagnostics.fileCount,indexedContentCount:diagnostics.indexedContentCount,sampleOk:diagnostics.sampleOk,error:[diagnostics.error,pdfIndexError].filter(Boolean).join('; '),interactivePdfCount,inspectedPdfCount:pdfView.inspected,interactivePdfPending:pdfView.pending,interactivePdfUpdatedAt:pdfView.updatedAt?new Date(pdfView.updatedAt).toISOString():'',maintenanceLastAttemptAt:maintenance.lastAttemptAt||'',maintenanceLastSuccessfulAt:maintenance.lastSuccessfulAt||'',maintenanceLastFailureAt:maintenance.lastFailureAt||'',maintenanceLastFailure:maintenance.lastFailure||'',maintenanceLastResult:maintenance.lastResult||null}};
 }
 function bridgeHealth(){return {ok:true,service:BRIDGE_SERVICE,version:BRIDGE_VERSION,pid:process.pid}}
 async function warmDocumentSearch(){const probe=await probeEverything({autoStart:true});return {ok:true,service:BRIDGE_SERVICE,version:BRIDGE_VERSION,everythingVersion:probe.everythingVersion,instance:probe.instance}}
@@ -430,14 +313,6 @@ function createRequestHandler(){
   });
   return createDocumentBridgeHttpHandler({loadConfig,readToken:ensureToken,routes,health:bridgeHealth,appendLog});
 }
-
-
-
-
-
-
-
-
 
 const {stopExisting,checkRunning}=createBridgeReplacementCommand({
   token:{path:TOKEN_PATH,read:(file,encoding)=>fs.readFile(file,encoding)},listener:{port:BRIDGE_PORT,request:http.request},

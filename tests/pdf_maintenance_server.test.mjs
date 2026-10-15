@@ -1,3 +1,4 @@
+import {documentBridgeSource} from './document_bridge_source.mjs';
 import {createPdfInventoryReconciliation} from '../netunim-orders/document-bridge/pdf-inventory-reconciliation.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -13,7 +14,7 @@ import {limits,deferred,workRow} from './pdf_maintenance_fixture.mjs';
 
 async function fixture(t,{write}={}){
  const disk=await indexFixture(t);await disk.read();const metadataPath=path.join(path.dirname(disk.snapshotPath),'maintenance.json');
- const source=await fs.readFile(new URL('../netunim-orders/document-bridge/server.mjs',import.meta.url),'utf8'),ast=parse(source,{ecmaVersion:'latest',sourceType:'module'});
+ const {source,ast}=documentBridgeSource();
  const selected=ast.body.filter(node=>node.type==='FunctionDeclaration'&&['pdfIndexFingerprint','rebuildPdfFormIndexBacklog','refreshPdfFormIndex','prepareShutdown'].includes(node.id.name)||node.type==='VariableDeclaration'&&node.declarations.some(item=>['pdfReconciliation','pdfMaintenanceOperation'].includes(item.id.name)));
  let writes=0;Object.assign(disk.context,{...limits,createPdfInventoryReconciliation,createPdfMaintenanceOperation,readPdfMaintenanceMetadata,PDF_FORM_MAINTENANCE_PATH:metadataPath,AbortController,setTimeout,clearTimeout,process:{cpuUsage:()=>({user:0,system:0}),pid:10},shuttingDown:false,pdfMaintenanceStopRequested:false,
   writeJsonFile:async(file,value)=>{writes++;if(write)await write(value);await fs.writeFile(file,JSON.stringify(value))},appendLog:async()=>{},pdfIndexNeedsInspection,pdfMaintenanceInventoryPlan,

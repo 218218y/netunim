@@ -1,13 +1,12 @@
+import {documentBridgeSource} from './document_bridge_source.mjs';
 import {createPdfInventoryReconciliation} from '../netunim-orders/document-bridge/pdf-inventory-reconciliation.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs/promises';
 import vm from 'node:vm';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
-import {parse} from 'acorn';
 import {createPdfInventory} from '../netunim-orders/document-bridge/pdf-inventory.mjs';
 import {createEverythingInventorySource} from '../netunim-orders/document-bridge/everything-inventory-source.mjs';
 import {createDocumentSearch} from '../netunim-orders/document-bridge/search-owner.mjs';
@@ -18,7 +17,7 @@ import {indexFixture} from './pdf_index_file_fixture.mjs';
 const execute=promisify(execFile),worker=fileURLToPath(new URL('./fixtures/everything_json_process_worker.mjs',import.meta.url));
 async function fixture(t,{count='0',page='',abortPhase='',handoffAbort=false,abortAfterAppend=false}={}){
   const f=await indexFixture(t);await f.read();const controller=new AbortController(),commands=[];
-  const source=await fs.readFile(new URL('../netunim-orders/document-bridge/server.mjs',import.meta.url),'utf8'),ast=parse(source,{ecmaVersion:'latest',sourceType:'module'});
+  const {source,ast}=documentBridgeSource();
   let pruned=0,registered=0;
   Object.assign(f.context,{...lib,AbortController,createPdfInventoryReconciliation,everythingSession:{invalidate:()=>{}},createEverythingInventorySource,createDocumentSearch,pruneResults:()=>{pruned++},publicResult:()=>{registered++;return {id:'synthetic'}},
     preparePdfFormIndexForSearch:async()=>({partial:false}),searchPdfFormIndex:()=>[],appendLog:async()=>{},createPdfInventory:ports=>{

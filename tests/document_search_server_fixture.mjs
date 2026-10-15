@@ -1,3 +1,4 @@
+import {documentBridgeSource} from './document_bridge_source.mjs';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import {createHash} from 'node:crypto';
@@ -11,8 +12,7 @@ export const baseline=JSON.parse(fs.readFileSync(new URL('./fixtures/document-se
 for(const entry of Object.values(baseline.functions)) {
  if(createHash('sha256').update(tokens(entry.source)).digest('hex')!==entry.digest) throw new Error('modified_document_search_baseline');
 }
-const source=fs.readFileSync(new URL('../netunim-orders/document-bridge/server.mjs',import.meta.url),'utf8');
-const ast=parse(source,{ecmaVersion:'latest',sourceType:'module'});
+const {source,ast:ast}=documentBridgeSource();
 const pdfPreparation=ast.body.find(node=>node.type==='FunctionDeclaration'&&node.id.name==='preparePdfFormIndexForSearch');
 const prepareScript=new vm.Script(source.slice(pdfPreparation.start,pdfPreparation.end)+'\npreparePdfFormIndexForSearch');
 const names=['searchDocuments','recentDocuments','pruneResults','publicResult','resolveResult','invalidateResultPath','prepareShutdown'];
@@ -48,6 +48,7 @@ export function serverFixture(version='current',options={}) {
   appendLog:async text=>{logs.push(text);if(options.audit)await options.audit(text)},
   manualMaintenance:{dispose:async()=>{}},pdfPreviewOperation:{dispose:async()=>{},invalidate:async()=>{}},pdfExtractionProcesses:{dispose:async()=>{}},nativePreviewSession:{dispose:async()=>{}},pdfMaintenanceOperation:{dispose:async()=>{}},process:{pid:101},shuttingDown:false,
  };
+ context.pdfIndexRuntime={remove:async()=>{}};
  if(options.pdfLoad)context.preparePdfFormIndexForSearch=prepareScript.runInNewContext(context);
  const api=scripts[version].runInNewContext(context);
  return {...api,context,calls,logs,stats,invalidations,ids:()=>id,setTime:value=>{time=value},stat,

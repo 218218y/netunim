@@ -114,3 +114,6 @@ before merging; duplicate main CI is not awaited before the following stage.
 Stage 11 closes the reproduced phase-unlock and ambiguous restore revision gaps;
 see STORAGE_BOUNDARY_EVIDENCE.md. Remaining whole IDB/runtime/owner-transfer strict
 coverage is explicitly retained in the current backlog.
+
+Stage 10 merged as PR #193 after full exact-branch verification. Stage 12 separates
+PDF index and Everything search composition; see DOCUMENT_INDEX_COORDINATORS.md.
