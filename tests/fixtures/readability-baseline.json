@@ -1,0 +1,710 @@
+{
+  "version": 1,
+  "files": {
+    "netunim-kupa/site/assets/js/cloud/auth.js": {
+      "over500": 2,
+      "over1000": 1,
+      "longest": 1217
+    },
+    "netunim-kupa/site/assets/js/cloud/transport.js": {
+      "over500": 4,
+      "over1000": 1,
+      "longest": 1012
+    },
+    "netunim-kupa/site/assets/js/domains/bank/connection-owner.js": {
+      "over500": 2,
+      "over1000": 0,
+      "longest": 701
+    },
+    "netunim-kupa/site/assets/js/domains/bank/model.js": {
+      "over500": 1,
+      "over1000": 0,
+      "longest": 646
+    },
+    "netunim-kupa/site/assets/js/domains/bank/view.js": {
+      "over500": 17,
+      "over1000": 2,
+      "longest": 1153
+    },
+    "netunim-kupa/site/assets/js/domains/cash/editor.js": {
+      "over500": 1,
+      "over1000": 1,
+      "longest": 1060
+    },
+    "netunim-kupa/site/assets/js/domains/cash/view.js": {
+      "over500": 2,
+      "over1000": 1,
+      "longest": 1637
+    },
+    "netunim-kupa/site/assets/js/domains/checks/editor.js": {
+      "over500": 8,
+      "over1000": 2,
+      "longest": 1292
+    },
+    "netunim-kupa/site/assets/js/domains/checks/view.js": {
+      "over500": 5,
+      "over1000": 1,
+      "longest": 2308
+    },
+    "netunim-kupa/site/assets/js/domains/credit/connection-owner.js": {
+      "over500": 1,
+      "over1000": 0,
+      "longest": 594
+    },
+    "netunim-kupa/site/assets/js/domains/credit/editor.js": {
+      "over500": 1,
+      "over1000": 1,
+      "longest": 1162
+    },
+    "netunim-kupa/site/assets/js/domains/credit/model.js": {
+      "over500": 1,
+      "over1000": 0,
+      "longest": 554
+    },
+    "netunim-kupa/site/assets/js/domains/credit/sync-feed.js": {
+      "over500": 9,
+      "over1000": 2,
+      "longest": 1046
+    },
+    "netunim-kupa/site/assets/js/domains/credit/sync-view.js": {
+      "over500": 1,
+      "over1000": 1,
+      "longest": 1077
+    },
+    "netunim-kupa/site/assets/js/domains/credit/view.js": {
+      "over500": 27,
+      "over1000": 5,
+      "longest": 1909
+    },
+    "netunim-kupa/site/assets/js/domains/dashboard/view.js": {
+      "over500": 4,
+      "over1000": 0,
+      "longest": 903
+    },
+    "netunim-kupa/site/assets/js/domains/expenses/editor.js": {
+      "over500": 2,
+      "over1000": 1,
+      "longest": 1778
+    },
+    "netunim-kupa/site/assets/js/domains/expenses/view.js": {
+      "over500": 3,
+      "over1000": 0,
+      "longest": 692
+    },
+    "netunim-kupa/site/assets/js/domains/notes/controller.js": {
+      "over500": 3,
+      "over1000": 0,
+      "longest": 797
+    },
+    "netunim-kupa/site/assets/js/domains/records/commands.js": {
+      "over500": 1,
+      "over1000": 0,
+      "longest": 697
+    },
+    "netunim-kupa/site/assets/js/domains/search/model.js": {
+      "over500": 6,
+      "over1000": 1,
+      "longest": 1111
+    },
+    "netunim-kupa/site/assets/js/state/constants.js": {
+      "over500": 1,
+      "over1000": 0,
+      "longest": 964
+    },
+    "netunim-kupa/site/assets/js/state/contexts.js": {
+      "over500": 1,
+      "over1000": 0,
+      "longest": 946
+    },
+    "netunim-kupa/site/assets/js/state/normalization.js": {
+      "over500": 1,
+      "over1000": 0,
+      "longest": 613
+    },
+    "netunim-kupa/site/assets/js/state/validation.js": {
+      "over500": 3,
+      "over1000": 1,
+      "longest": 1164
+    },
+    "netunim-kupa/site/assets/js/storage/browser.js": {
+      "over500": 8,
+      "over1000": 2,
+      "longest": 1095
+    },
+    "netunim-kupa/site/assets/js/sync/ack-publication.js": {
+      "over500": 1,
+      "over1000": 0,
+      "longest": 745
+    },
+    "netunim-kupa/site/assets/js/sync/merge.js": {
+      "over500": 4,
+      "over1000": 1,
+      "longest": 1021
+    },
+    "netunim-kupa/site/assets/js/sync/remote-adoption.js": {
+      "over500": 1,
+      "over1000": 0,
+      "longest": 550
+    },
+    "netunim-kupa/site/assets/js/sync/save-operation.js": {
+      "over500": 1,
+      "over1000": 0,
+      "longest": 524
+    },
+    "netunim-kupa/site/assets/js/sync/write-flight.js": {
+      "over500": 6,
+      "over1000": 0,
+      "longest": 905
+    },
+    "netunim-kupa/site/assets/js/ui/backup-catalog.js": {
+      "over500": 5,
+      "over1000": 1,
+      "longest": 1058
+    },
+    "netunim-kupa/site/assets/js/ui/backup-local.js": {
+      "over500": 1,
+      "over1000": 0,
+      "longest": 768
+    },
+    "netunim-kupa/site/assets/js/ui/backup-presentation.js": {
+      "over500": 3,
+      "over1000": 2,
+      "longest": 1366
+    },
+    "netunim-kupa/site/assets/js/ui/bulk.js": {
+      "over500": 1,
+      "over1000": 0,
+      "longest": 520
+    },
+    "netunim-kupa/site/assets/js/ui/cloud-authentication.js": {
+      "over500": 1,
+      "over1000": 1,
+      "longest": 1293
+    },
+    "netunim-kupa/site/assets/js/ui/cloud-session.js": {
+      "over500": 1,
+      "over1000": 0,
+      "longest": 667
+    },
+    "netunim-kupa/site/assets/js/ui/credit-connection-dialog.js": {
+      "over500": 1,
+      "over1000": 0,
+      "longest": 729
+    },
+    "netunim-kupa/site/assets/js/ui/date-editor.js": {
+      "over500": 6,
+      "over1000": 1,
+      "longest": 1974
+    },
+    "netunim-kupa/site/assets/js/ui/folders.js": {
+      "over500": 3,
+      "over1000": 0,
+      "longest": 678
+    },
+    "netunim-kupa/site/assets/js/ui/modal.js": {
+      "over500": 1,
+      "over1000": 0,
+      "longest": 908
+    },
+    "netunim-kupa/site/assets/js/ui/navigation.js": {
+      "over500": 1,
+      "over1000": 0,
+      "longest": 544
+    },
+    "netunim-kupa/site/assets/js/ui/settings.js": {
+      "over500": 9,
+      "over1000": 2,
+      "longest": 1347
+    },
+    "netunim-orders/site/assets/js/cloud/auth.js": {
+      "over500": 5,
+      "over1000": 1,
+      "longest": 1123
+    },
+    "netunim-orders/site/assets/js/cloud/transport.js": {
+      "over500": 14,
+      "over1000": 3,
+      "longest": 1356
+    },
+    "netunim-orders/site/assets/js/domains/calendar/controller.js": {
+      "over500": 7,
+      "over1000": 3,
+      "longest": 2793
+    },
+    "netunim-orders/site/assets/js/domains/calendar/editor-commands.js": {
+      "over500": 1,
+      "over1000": 1,
+      "longest": 1033
+    },
+    "netunim-orders/site/assets/js/domains/calendar/presentation.js": {
+      "over500": 4,
+      "over1000": 0,
+      "longest": 958
+    },
+    "netunim-orders/site/assets/js/domains/checks/editor.js": {
+      "over500": 8,
+      "over1000": 3,
+      "longest": 3004
+    },
+    "netunim-orders/site/assets/js/domains/checks/view.js": {
+      "over500": 8,
+      "over1000": 2,
+      "longest": 1580
+    },
+    "netunim-orders/site/assets/js/domains/customers/bulk.js": {
+      "over500": 2,
+      "over1000": 0,
+      "longest": 903
+    },
+    "netunim-orders/site/assets/js/domains/customers/documents-browser.js": {
+      "over500": 2,
+      "over1000": 0,
+      "longest": 809
+    },
+    "netunim-orders/site/assets/js/domains/customers/documents.js": {
+      "over500": 1,
+      "over1000": 0,
+      "longest": 648
+    },
+    "netunim-orders/site/assets/js/domains/customers/editor.js": {
+      "over500": 5,
+      "over1000": 1,
+      "longest": 2651
+    },
+    "netunim-orders/site/assets/js/domains/customers/model.js": {
+      "over500": 1,
+      "over1000": 0,
+      "longest": 515
+    },
+    "netunim-orders/site/assets/js/domains/customers/morning-bank-debt-picker.js": {
+      "over500": 1,
+      "over1000": 0,
+      "longest": 564
+    },
+    "netunim-orders/site/assets/js/domains/customers/morning-bank-transaction-picker.js": {
+      "over500": 1,
+      "over1000": 0,
+      "longest": 699
+    },
+    "netunim-orders/site/assets/js/domains/customers/morning-debt-confirmation.js": {
+      "over500": 1,
+      "over1000": 0,
+      "longest": 514
+    },
+    "netunim-orders/site/assets/js/domains/customers/morning-document-view.js": {
+      "over500": 1,
+      "over1000": 1,
+      "longest": 1023
+    },
+    "netunim-orders/site/assets/js/domains/customers/morning-issue-command.js": {
+      "over500": 1,
+      "over1000": 0,
+      "longest": 666
+    },
+    "netunim-orders/site/assets/js/domains/customers/morning-payments.js": {
+      "over500": 1,
+      "over1000": 0,
+      "longest": 558
+    },
+    "netunim-orders/site/assets/js/domains/customers/view.js": {
+      "over500": 8,
+      "over1000": 3,
+      "longest": 2107
+    },
+    "netunim-orders/site/assets/js/domains/dashboard/view.js": {
+      "over500": 4,
+      "over1000": 1,
+      "longest": 1191
+    },
+    "netunim-orders/site/assets/js/domains/finance/bank-archive-commands.js": {
+      "over500": 2,
+      "over1000": 0,
+      "longest": 900
+    },
+    "netunim-orders/site/assets/js/domains/finance/bank-cashflow-view.js": {
+      "over500": 2,
+      "over1000": 1,
+      "longest": 1081
+    },
+    "netunim-orders/site/assets/js/domains/finance/bank-connection-owner.js": {
+      "over500": 1,
+      "over1000": 0,
+      "longest": 751
+    },
+    "netunim-orders/site/assets/js/domains/finance/bank-connection-view.js": {
+      "over500": 5,
+      "over1000": 2,
+      "longest": 3114
+    },
+    "netunim-orders/site/assets/js/domains/finance/bank-morning-view.js": {
+      "over500": 2,
+      "over1000": 0,
+      "longest": 757
+    },
+    "netunim-orders/site/assets/js/domains/finance/bank-reconciliation-view.js": {
+      "over500": 4,
+      "over1000": 0,
+      "longest": 697
+    },
+    "netunim-orders/site/assets/js/domains/finance/bank-transaction-detail-view.js": {
+      "over500": 1,
+      "over1000": 0,
+      "longest": 758
+    },
+    "netunim-orders/site/assets/js/domains/finance/controller.js": {
+      "over500": 3,
+      "over1000": 0,
+      "longest": 951
+    },
+    "netunim-orders/site/assets/js/domains/finance/credit-connection-owner.js": {
+      "over500": 1,
+      "over1000": 0,
+      "longest": 604
+    },
+    "netunim-orders/site/assets/js/domains/finance/credit-connection-view.js": {
+      "over500": 2,
+      "over1000": 2,
+      "longest": 2085
+    },
+    "netunim-orders/site/assets/js/domains/finance/credit-detail-view.js": {
+      "over500": 2,
+      "over1000": 1,
+      "longest": 3252
+    },
+    "netunim-orders/site/assets/js/domains/finance/credit-feed.js": {
+      "over500": 12,
+      "over1000": 3,
+      "longest": 2193
+    },
+    "netunim-orders/site/assets/js/domains/finance/credit-settings-commands.js": {
+      "over500": 1,
+      "over1000": 1,
+      "longest": 1546
+    },
+    "netunim-orders/site/assets/js/domains/finance/credit-status-view.js": {
+      "over500": 2,
+      "over1000": 2,
+      "longest": 2073
+    },
+    "netunim-orders/site/assets/js/domains/finance/reporting.js": {
+      "over500": 6,
+      "over1000": 4,
+      "longest": 1967
+    },
+    "netunim-orders/site/assets/js/domains/inventory/editor.js": {
+      "over500": 11,
+      "over1000": 8,
+      "longest": 2366
+    },
+    "netunim-orders/site/assets/js/domains/inventory/model.js": {
+      "over500": 2,
+      "over1000": 1,
+      "longest": 1584
+    },
+    "netunim-orders/site/assets/js/domains/inventory/order.js": {
+      "over500": 4,
+      "over1000": 1,
+      "longest": 1103
+    },
+    "netunim-orders/site/assets/js/domains/inventory/view.js": {
+      "over500": 2,
+      "over1000": 0,
+      "longest": 591
+    },
+    "netunim-orders/site/assets/js/domains/notes/controller.js": {
+      "over500": 9,
+      "over1000": 1,
+      "longest": 1337
+    },
+    "netunim-orders/site/assets/js/domains/notes/reminder-calendar.js": {
+      "over500": 1,
+      "over1000": 1,
+      "longest": 1318
+    },
+    "netunim-orders/site/assets/js/domains/search/model.js": {
+      "over500": 6,
+      "over1000": 0,
+      "longest": 884
+    },
+    "netunim-orders/site/assets/js/domains/service/bulk.js": {
+      "over500": 3,
+      "over1000": 0,
+      "longest": 913
+    },
+    "netunim-orders/site/assets/js/domains/service/editor.js": {
+      "over500": 3,
+      "over1000": 2,
+      "longest": 1619
+    },
+    "netunim-orders/site/assets/js/domains/service/view.js": {
+      "over500": 2,
+      "over1000": 2,
+      "longest": 2444
+    },
+    "netunim-orders/site/assets/js/domains/suppliers/bulk.js": {
+      "over500": 9,
+      "over1000": 4,
+      "longest": 1961
+    },
+    "netunim-orders/site/assets/js/domains/suppliers/editor.js": {
+      "over500": 4,
+      "over1000": 1,
+      "longest": 1802
+    },
+    "netunim-orders/site/assets/js/domains/suppliers/model.js": {
+      "over500": 1,
+      "over1000": 0,
+      "longest": 692
+    },
+    "netunim-orders/site/assets/js/domains/suppliers/navigation.js": {
+      "over500": 1,
+      "over1000": 0,
+      "longest": 516
+    },
+    "netunim-orders/site/assets/js/domains/suppliers/order.js": {
+      "over500": 2,
+      "over1000": 0,
+      "longest": 999
+    },
+    "netunim-orders/site/assets/js/domains/warehouse/bulk.js": {
+      "over500": 5,
+      "over1000": 3,
+      "longest": 2009
+    },
+    "netunim-orders/site/assets/js/domains/warehouse/editor.js": {
+      "over500": 3,
+      "over1000": 1,
+      "longest": 1514
+    },
+    "netunim-orders/site/assets/js/domains/warehouse/view.js": {
+      "over500": 9,
+      "over1000": 6,
+      "longest": 1967
+    },
+    "netunim-orders/site/assets/js/main.js": {
+      "over500": 1,
+      "over1000": 0,
+      "longest": 509
+    },
+    "netunim-orders/site/assets/js/state/normalization.js": {
+      "over500": 1,
+      "over1000": 0,
+      "longest": 798
+    },
+    "netunim-orders/site/assets/js/state/validation.js": {
+      "over500": 1,
+      "over1000": 0,
+      "longest": 505
+    },
+    "netunim-orders/site/assets/js/storage/browser.js": {
+      "over500": 7,
+      "over1000": 0,
+      "longest": 997
+    },
+    "netunim-orders/site/assets/js/sync/merge-records.js": {
+      "over500": 1,
+      "over1000": 0,
+      "longest": 589
+    },
+    "netunim-orders/site/assets/js/sync/write-flight.js": {
+      "over500": 1,
+      "over1000": 0,
+      "longest": 682
+    },
+    "netunim-orders/site/assets/js/ui/action-packs/finance-credit.js": {
+      "over500": 1,
+      "over1000": 0,
+      "longest": 527
+    },
+    "netunim-orders/site/assets/js/ui/action-packs/suppliers.js": {
+      "over500": 1,
+      "over1000": 0,
+      "longest": 672
+    },
+    "netunim-orders/site/assets/js/ui/action-packs/warehouse.js": {
+      "over500": 2,
+      "over1000": 1,
+      "longest": 1020
+    },
+    "netunim-orders/site/assets/js/ui/alert-center.js": {
+      "over500": 4,
+      "over1000": 0,
+      "longest": 964
+    },
+    "netunim-orders/site/assets/js/ui/backup-catalog.js": {
+      "over500": 5,
+      "over1000": 0,
+      "longest": 920
+    },
+    "netunim-orders/site/assets/js/ui/backup-local.js": {
+      "over500": 1,
+      "over1000": 1,
+      "longest": 1136
+    },
+    "netunim-orders/site/assets/js/ui/backup-presentation.js": {
+      "over500": 4,
+      "over1000": 3,
+      "longest": 1468
+    },
+    "netunim-orders/site/assets/js/ui/cloud-authentication.js": {
+      "over500": 2,
+      "over1000": 1,
+      "longest": 1753
+    },
+    "netunim-orders/site/assets/js/ui/date-editor.js": {
+      "over500": 7,
+      "over1000": 1,
+      "longest": 1760
+    },
+    "netunim-orders/site/assets/js/ui/folder-status.js": {
+      "over500": 1,
+      "over1000": 0,
+      "longest": 607
+    },
+    "netunim-orders/site/assets/js/ui/global-search.js": {
+      "over500": 2,
+      "over1000": 0,
+      "longest": 820
+    },
+    "netunim-orders/site/assets/js/ui/navigation.js": {
+      "over500": 2,
+      "over1000": 0,
+      "longest": 945
+    },
+    "netunim-orders/site/assets/js/ui/settings.js": {
+      "over500": 5,
+      "over1000": 3,
+      "longest": 1197
+    },
+    "shared/browser-google-drive-platform.js": {
+      "over500": 1,
+      "over1000": 0,
+      "longest": 529
+    },
+    "shared/cashflow-breakdown.js": {
+      "over500": 5,
+      "over1000": 2,
+      "longest": 1684
+    },
+    "shared/check-bank-review.js": {
+      "over500": 5,
+      "over1000": 1,
+      "longest": 1155
+    },
+    "shared/credit-billing-cycles.js": {
+      "over500": 9,
+      "over1000": 4,
+      "longest": 1642
+    },
+    "shared/credit-card-order-view.js": {
+      "over500": 2,
+      "over1000": 1,
+      "longest": 1010
+    },
+    "shared/credit-detail-controls.js": {
+      "over500": 4,
+      "over1000": 0,
+      "longest": 963
+    },
+    "shared/document-bridge-client.js": {
+      "over500": 2,
+      "over1000": 0,
+      "longest": 572
+    },
+    "shared/document-search/domains/documents/pdf-search-viewer.js": {
+      "over500": 5,
+      "over1000": 0,
+      "longest": 953
+    },
+    "shared/document-search/domains/documents/search-source.js": {
+      "over500": 2,
+      "over1000": 0,
+      "longest": 666
+    },
+    "shared/document-search/domains/documents/spreadsheet-preview-worker.js": {
+      "over500": 2,
+      "over1000": 0,
+      "longest": 989
+    },
+    "shared/document-search/domains/documents/spreadsheet-search-viewer.js": {
+      "over500": 2,
+      "over1000": 0,
+      "longest": 666
+    },
+    "shared/document-search/ui/document-search-connection-view.js": {
+      "over500": 2,
+      "over1000": 0,
+      "longest": 576
+    },
+    "shared/document-search/ui/document-search-view.js": {
+      "over500": 4,
+      "over1000": 0,
+      "longest": 903
+    },
+    "shared/global-document-search.js": {
+      "over500": 18,
+      "over1000": 5,
+      "longest": 1790
+    },
+    "shared/google-drive-client.js": {
+      "over500": 1,
+      "over1000": 0,
+      "longest": 891
+    },
+    "shared/google-drive-document-policy.js": {
+      "over500": 2,
+      "over1000": 0,
+      "longest": 858
+    },
+    "shared/kupa-cashflow.js": {
+      "over500": 4,
+      "over1000": 0,
+      "longest": 824
+    },
+    "shared/notes-workbook.js": {
+      "over500": 5,
+      "over1000": 2,
+      "longest": 1258
+    },
+    "shared/shared-checks-v2-runtime.js": {
+      "over500": 1,
+      "over1000": 0,
+      "longest": 502
+    },
+    "shared/spreadsheet-sync.js": {
+      "over500": 4,
+      "over1000": 0,
+      "longest": 664
+    },
+    "shared/spreadsheet-workspace.js": {
+      "over500": 5,
+      "over1000": 0,
+      "longest": 662
+    },
+    "shared/storage-journal-idb.js": {
+      "over500": 4,
+      "over1000": 0,
+      "longest": 703
+    },
+    "shared/storage-journal.js": {
+      "over500": 4,
+      "over1000": 0,
+      "longest": 951
+    },
+    "shared/storage-owner-binding.js": {
+      "over500": 1,
+      "over1000": 0,
+      "longest": 743
+    },
+    "shared/storage-v2-bootstrap.js": {
+      "over500": 1,
+      "over1000": 0,
+      "longest": 501
+    },
+    "shared/storage-v2-runtime.js": {
+      "over500": 3,
+      "over1000": 1,
+      "longest": 1099
+    }
+  }
+}

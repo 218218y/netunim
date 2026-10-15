@@ -6,6 +6,8 @@ The response must be an array containing zero or one row; only `[]` means
 absence. A row proves its requested document name, positive safe integer
 revision, ISO timestamp and JSON object state. HTTP-success malformed JSON,
 `[null]`, duplicate rows and numeric-string revisions fail closed.
+Calendar dates and clock ranges are checked before parsing: February 30 and
+24:00 cannot be normalized into another eligible backup time.
 
 Finance additionally validates optional Bank/Credit sections, numeric balance,
 snapshot sequence/token and section container shapes before overlay. Historical

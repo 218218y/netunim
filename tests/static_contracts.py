@@ -4,6 +4,7 @@ from collections import Counter
 from pathlib import Path
 import json
 import re
+from presentation_sources import presentation_contains
 import subprocess
 import sys
 import tempfile
@@ -553,7 +554,7 @@ orders_supplier_model = (O / "site/assets/js/domains/suppliers/model.js").read_t
 orders_supplier_editor = (O / "site/assets/js/domains/suppliers/editor.js").read_text(encoding="utf-8")
 orders_normalization = (O / "site/assets/js/state/normalization.js").read_text(encoding="utf-8")
 orders_actions = '\n'.join(path.read_text(encoding='utf-8') for path in sorted((O / "site/assets/js/ui/action-packs").glob('*.js')))
-ok('supplier-data-table' in orders_supplier_view
+ok(presentation_contains(orders_supplier_view, 'supplier-data-table')
    and '@media(min-width:1000px){.supplier-data-table:not(.supplier-all-table){min-width:0!important;table-layout:auto}' in orders_css
    and '.supplier-data-table:not(.supplier-all-table) .col-row-actions{width:54px}' in orders_css
    and '.supplier-data-table:not(.supplier-all-table) .row-actions{gap:0}' in orders_css
@@ -564,11 +565,11 @@ ok('supplier-data-table' in orders_supplier_view
    and '.supplier-data-table .status-toggle button{min-width:31px;padding-inline:4px}' not in orders_css
    and '.supplier-data-table{width:100%;min-width:0!important;table-layout:fixed}' not in orders_css,
    "orders suppliers: desktop supplier detail tables drop only the global 1300px minimum, preserve the original automatic column proportions, and compact only the row-action cell")
-ok('data-action="filter-mode-4"' not in orders_supplier_view
-   and "filterMode==='hm'" not in orders_supplier_view
+ok(not presentation_contains(orders_supplier_view, 'data-action="filter-mode-4"')
+   and not presentation_contains(orders_supplier_view, "filterMode==='hm'")
    and "'filter-mode-4':" not in orders_actions
    and "filterMode==='hm'" not in orders_supplier_model
-   and 'hmIssued' not in orders_supplier_view
+   and not presentation_contains(orders_supplier_view, 'hmIssued')
    and 'hmIssued' not in orders_supplier_model
    and 'hmIssued' not in orders_actions
    and orders_supplier_editor.count('hmIssued') == 1 and 'delete row.hmIssued' in orders_supplier_editor
@@ -612,15 +613,15 @@ orders_bank_refresh=(O / "site/assets/js/domains/finance/bank-refresh.js").read_
 orders_bank_refresh_compact=re.sub(r"\s+", "", orders_bank_refresh)
 ok('data-view="kupa"' in orders_html and 'data-view="checks"' not in orders_html and 'data-view="summary"' not in orders_html,
    "orders Kupa UI: one top-level Kupa tab replaces standalone checks and balance tabs")
-ok("const KUPA_SECTIONS=['bank','credit','checks','summary']" in orders_finance_view
-   and all(label in orders_finance_view for label in ("bank:'בנק'","credit:'אשראי'","checks:'צ׳קים'","summary:'מאזן'")),
+ok(presentation_contains(orders_finance_view, "const KUPA_SECTIONS=['bank','credit','checks','summary']")
+   and all(presentation_contains(orders_finance_view, label) for label in ("bank:'בנק'","credit:'אשראי'","checks:'צ׳קים'","summary:'מאזן'")),
    "orders Kupa UI: Bank, Credit, Checks and Balance are explicit internal sections")
-ok('<section class="kupa-hero">${kupaTabsMarkup()}${headerContextMarkup(s)}</section>' in orders_finance_view
-   and "if(section==='bank')return bankCommandMarkup(s)" in orders_finance_view
-   and "if(section==='credit')return creditCommandMarkup(s)" in orders_finance_view
-   and "if(section==='checks')return checksView.checksHeaderContextMarkup()" in orders_finance_view
-   and '<h1>קופה</h1>' not in orders_finance_view
-   and 'בנק, אשראי, צ׳קים ומאזן במקום אחד.' not in orders_finance_view
+ok(presentation_contains(orders_finance_view, '<section class="kupa-hero">${kupaTabsMarkup()}${headerContextMarkup(s)}</section>')
+   and presentation_contains(orders_finance_view, "if(section==='bank')return bankCommandMarkup(s)")
+   and presentation_contains(orders_finance_view, "if(section==='credit')return creditCommandMarkup(s)")
+   and presentation_contains(orders_finance_view, "if(section==='checks')return checksView.checksHeaderContextMarkup()")
+   and not presentation_contains(orders_finance_view, '<h1>קופה</h1>')
+   and not presentation_contains(orders_finance_view, 'בנק, אשראי, צ׳קים ומאזן במקום אחד.')
    and '.kupa-hero{display:flex;align-items:center;justify-content:flex-start;gap:8px;margin-bottom:8px;padding:0 2px}' in orders_css
    and '.kupa-hero>.finance-sync-section{flex:1 1 auto;min-width:0;border:0;border-radius:0;background:transparent;box-shadow:none;overflow:visible}' in orders_css
    and '.kupa-hero>.finance-sync-section .finance-command-row{min-height:36px;padding:0;background:transparent;align-items:center}' in orders_css
@@ -628,37 +629,38 @@ ok('<section class="kupa-hero">${kupaTabsMarkup()}${headerContextMarkup(s)}</sec
    and '.kupa-hero .finance-view-tools{height:36px;min-height:36px;padding:0;border:0;border-radius:0;background:transparent}' in orders_css
    and '.kupa-hero .finance-search,.kupa-hero .finance-sync-toggle,.kupa-hero .finance-sync-refresh,.kupa-hero .bank-account-tab{height:36px}' in orders_css,
    "orders Kupa UI: internal tabs stay at the RTL start and all finance header controls share the compact 36px rhythm without redundant nested frames")
-ok('class="credit-filter-separator"' in orders_finance_view
-   and 'class="credit-provider-filter-chips"' in orders_finance_view
+ok(presentation_contains(orders_finance_view, 'class="credit-filter-separator"')
+   and presentation_contains(orders_finance_view, 'class="credit-provider-filter-chips"')
    and orders_finance_view.index('class="credit-account-filter-chips"') < orders_finance_view.index('class="credit-filter-separator"') < orders_finance_view.index('class="credit-provider-filter-chips"')
-   and 'class="credit-filter-card-row"' in orders_finance_view
-   and 'credit-filter-chip-stack' not in orders_finance_view
+   and presentation_contains(orders_finance_view, 'class="credit-filter-card-row"')
+   and not presentation_contains(orders_finance_view, 'credit-filter-chip-stack')
    and '.credit-filter-separator{flex:0 0 1px;width:1px;height:24px' in orders_css
    and '.credit-filter-card-row{display:grid;grid-template-columns:70px minmax(0,1fr)' in orders_css,
    "orders credit filters: account and provider chips share one row with a visual divider, while card chips open on a dedicated second row only for a selected provider")
-ok('creditFilteredSummary' in orders_finance_view
-   and 'creditFiltersMarkup(s,filtered)' in orders_finance_view
-   and 'creditUnassignedNotice(filtered)' in orders_finance_view,
+ok(presentation_contains(orders_finance_view, 'creditFilteredSummary')
+   and presentation_contains(orders_finance_view, 'creditFiltersMarkup(s,filtered)')
+   and presentation_contains(orders_finance_view, 'creditUnassignedNotice(filtered)'),
    "orders credit filters: displayed totals, partial counts and unassigned warnings obey the same active account/provider/card scope as the main forecast")
-ok("if(section==='bank')return `${bankSyncPanelMarkup(s,{open:ui.bankSyncOpen===true})}${bankMarkup(s)}`" in orders_finance_view
+ok(presentation_contains(orders_finance_view, "if(section==='bank')return `${bankSyncPanelMarkup(s,{open:ui.bankSyncOpen===true})}${bankMarkup(s)}`")
    and 'id="ordersBankSyncPanel"' in orders_bank_connection_view
-   and "if(section==='credit')return `${creditSyncPanelMarkup(s)}${creditMarkup(s)}`" in orders_finance_view
+   and presentation_contains(orders_finance_view, "if(section==='credit')return `${creditSyncPanelMarkup(s)}${creditMarkup(s)}`")
    and '.finance-sync-settings-body[hidden]{display:none}' in orders_css
    and '.finance-sync-settings-page{min-width:0;border:1px solid #dbe3e8' in orders_css
    and 'max-height:52vh' not in orders_css and 'max-height:52dvh' not in orders_css,
    "orders Kupa sync disclosure: settings live in the main scroll surface, close reliably, and never create a nested vertical scroller")
-ok("checksView.checksMarkup({embedded:true,showEmbeddedStatus:false,showBankActivity:false})" in orders_finance_view and "dashboardView.summaryMarkup({embedded:true})" in orders_finance_view
-   and "if(section==='checks')return checksView.checksHeaderContextMarkup()" in orders_finance_view
+ok(presentation_contains(orders_finance_view, "checksView.checksMarkup({embedded:true,showEmbeddedStatus:false,showBankActivity:false})") and presentation_contains(orders_finance_view, "dashboardView.summaryMarkup({embedded:true})")
+   and presentation_contains(orders_finance_view, "if(section==='checks')return checksView.checksHeaderContextMarkup()")
    and 'function checksHeaderContextMarkup()' in orders_checks_view
    and 'class="checks-header-activity"' in orders_checks_view
    and orders_checks_view.index('class="checks-header-activity"') < orders_checks_view.index('${checksCloudLabel()}</div>`;', orders_checks_view.index('function checksHeaderContextMarkup'))
    and "checksMarkup({embedded=false,showEmbeddedStatus=true,showBankActivity=true}" in orders_checks_view and "summaryMarkup({embedded=false}" in orders_dashboard_view,
    "orders Kupa Checks header: the live bank-activity disclosure moves beside the shared-checks source label while embedded content omits the duplicate body disclosure")
 credit_markup_block = orders_finance_view.split('function creditMarkup(s)', 1)[1].split('function headerContextMarkup', 1)[0]
-ok('class="kupa-subcontent kupa-subcontent-${currentSection()}"' in orders_finance_view
+credit_markup_policy = re.sub(r'\s+', '', credit_markup_block)
+ok(presentation_contains(orders_finance_view, 'class="kupa-subcontent kupa-subcontent-${currentSection()}"')
    and '.kupa-subcontent-credit{gap:6px}' in orders_css
    and 'class="credit-primary-report"' in credit_markup_block
-   and credit_markup_block.index('creditFiltersMarkup(s,filtered)') < credit_markup_block.index('creditDetailSectionMarkup(s,summary)') < credit_markup_block.index('creditForecastSectionMarkup(s)') < credit_markup_block.index('creditLiveMarkup(summary)')
+   and credit_markup_policy.index('creditFiltersMarkup(s,filtered)') < credit_markup_policy.index('creditDetailSectionMarkup(s,summary)') < credit_markup_policy.index('creditForecastSectionMarkup(s)') < credit_markup_policy.index('creditLiveMarkup(summary)')
    and '.credit-primary-report{display:grid;gap:0;overflow:hidden;border:1px solid #dbe3e8;border-radius:15px' in orders_css
    and '.credit-primary-report>.credit-filter-toolbar,.credit-primary-report>.credit-detail-section{border:0;border-radius:0;box-shadow:none}' in orders_css
    and '.credit-primary-report>.credit-filter-toolbar{border-bottom:1px solid #dbe3e8}' in orders_css
@@ -728,8 +730,8 @@ ok('aria-label="טווח תצוגת אשראי" data-change="credit-view"' in (K
    and 'creditViewAllowsMonth' in credit_detail_controls
    and 'class="bank-date-menu credit-date-menu"' in credit_detail_controls
    and credit_detail_controls.index('creditDetailQuickPeriodMarkup({mode,action:periodAction') < credit_detail_controls.index('class="bank-date-range-card')
-   and 'creditDetailQuickPeriodMarkup({' not in kupa_credit_view and 'creditDetailQuickPeriodMarkup({' not in orders_finance_view
-   and "periodAction:'credit-detail-period'" in kupa_credit_view and "periodAction:'orders-credit-detail-period'" in orders_finance_view
+   and 'creditDetailQuickPeriodMarkup({' not in kupa_credit_view and not presentation_contains(orders_finance_view, 'creditDetailQuickPeriodMarkup({')
+   and "periodAction:'credit-detail-period'" in kupa_credit_view and presentation_contains(orders_finance_view, "periodAction:'orders-credit-detail-period'")
    and credit_detail_controls == (K/'site/assets/js/shared/credit-detail-controls.js').read_text(encoding='utf-8') == (O/'site/assets/js/shared/credit-detail-controls.js').read_text(encoding='utf-8'),
    "credit horizon and detail controls: future months share the toolbar range, quick all/three-month periods live inside the date popover before the exact range, and prior/next months use compact menus")
 ok('.credit-cycle-menu{position:relative' in orders_css
@@ -868,8 +870,8 @@ ok('button data-action="set-page"' in kupa_dashboard_view
    and 'dashboard-go' not in kupa_actions and 'dashboard-keyboard' not in kupa_actions
    and 'dashboardGo' not in kupa_navigation,
    "kupa dashboard events: current quick navigation uses a native button and obsolete clickable-KPI keyboard plumbing is removed")
-ok("refreshFinanceOperation('bank',()=>controller.refreshBank({interactive}))" in orders_finance_view
-   and "refreshFinanceOperation('credit',()=>controller.refreshCredit({interactive,syncMode}))" in orders_finance_view
+ok(presentation_contains(orders_finance_view, "refreshFinanceOperation('bank',()=>controller.refreshBank({interactive}))")
+   and presentation_contains(orders_finance_view, "refreshFinanceOperation('credit',()=>controller.refreshCredit({interactive,syncMode}))")
    and 'const task=start();refreshFinanceStatus(section);' in (ROOT/'netunim-orders/site/assets/js/domains/finance/status-view.js').read_text(encoding='utf-8')
    and 'if(command)replacePanel(command,headerContextMarkup(data)' in (ROOT/'netunim-orders/site/assets/js/domains/finance/status-view.js').read_text(encoding='utf-8'),
    "orders Kupa sync feedback: controller work starts before the immediate status-region update; busy feedback does not rebuild the business view")
@@ -915,12 +917,12 @@ ok('data-action="export-orders-bank-cheque-diagnostics"' in orders_bank_connecti
    "Orders bank diagnostics: synchronization options export the same authenticated local cheque TXT evidence without cloud persistence")
 orders_credit_connections=(O/'site/assets/js/domains/finance/credit-connection-owner.js').read_text(encoding='utf-8')
 orders_credit_connections_compact=re.sub(r'\s+','',orders_credit_connections)
-ok("minimumBridgeVersion:73,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION" in orders_finance_composition_compact and "Number(value.bridgeVersion||0)>=protocol.minimumBridgeVersion" in orders_credit_connections_compact and "Number(value.contractVersion||0)>=protocol.contractVersion" in orders_credit_connections_compact and "const supportedCreditBridge=connections.queries.supported" in orders_finance_controller and 'data-action="export-orders-credit-data-diagnostics"' in orders_finance_view and "exportOrdersCreditDataDiagnostics=(...args)=>domainsFinanceView.exportCreditDataDiagnostics(...args)" in orders_actions and 'createFinanceCreditActions({domainsFinanceView:view,ui})' in orders_finance_composition_compact and '...finance.actionPacks()' in orders_main and "creditDataDiagnostics" in (ROOT/'shared/bank-bridge-client.js').read_text(encoding='utf-8'),
+ok("minimumBridgeVersion:73,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION" in orders_finance_composition_compact and "Number(value.bridgeVersion||0)>=protocol.minimumBridgeVersion" in orders_credit_connections_compact and "Number(value.contractVersion||0)>=protocol.contractVersion" in orders_credit_connections_compact and "const supportedCreditBridge=connections.queries.supported" in orders_finance_controller and presentation_contains(orders_finance_view, 'data-action="export-orders-credit-data-diagnostics"') and "exportOrdersCreditDataDiagnostics=(...args)=>domainsFinanceView.exportCreditDataDiagnostics(...args)" in orders_actions and 'createFinanceCreditActions({domainsFinanceView:view,ui})' in orders_finance_composition_compact and '...finance.actionPacks()' in orders_main and "creditDataDiagnostics" in (ROOT/'shared/bank-bridge-client.js').read_text(encoding='utf-8'),
    "orders Kupa UI: credit controls require Bridge v73 / Credit Connector contract v2 and expose the separate local credit data diagnostic export")
 ok("browserEngine:['chromium','camoufox'].includes" in (O / "site/assets/js/domains/finance/credit-feed.js").read_text(encoding="utf-8") and 'דפדפן:' in (O/'site/assets/js/domains/finance/credit-status-view.js').read_text(encoding='utf-8'),
    "orders credit diagnostics: browser-engine provenance survives normalization and is visible for engine-scoped cooldowns")
-ok("תוספת ידנית · קריאה בלבד" in orders_credit_detail_view and "+ תוספת ידנית" not in orders_finance_view
-   and "toggle-credit-selection" not in orders_finance_view,
+ok("תוספת ידנית · קריאה בלבד" in orders_credit_detail_view and not presentation_contains(orders_finance_view, "+ תוספת ידנית")
+   and not presentation_contains(orders_finance_view, "toggle-credit-selection"),
    "orders Kupa UI: manual credit rows are read-only and manual-add/bulk-delete controls stay Kupa-only")
 ok("kupa_documents" in os
    and "kupa:{read:(...args)=>cloud.readKupaReadOnlyCloud(...args),save:(...args)=>cloud.rpcSaveKupaDocument(...args)" in orders_finance_composition_compact
@@ -1236,8 +1238,8 @@ ok('<h1>קריאות שירות</h1>' not in orders_service_view and 'module-too
 ok('<h1>מחסן ומלאי</h1>' not in orders_warehouse_view and 'module-toolbar warehouse-toolbar' in orders_warehouse_view and 'open-inventory-item-modal-2' in orders_warehouse_view and 'open-warehouse-order-modal' in orders_warehouse_view and "headCount:1,className:'warehouse-view-shell'" in orders_warehouse_view, 'orders warehouse: search, tabs and item/customer actions share one fixed toolbar without the redundant title row')
 ok(all('credit-account-filter-chips' in source and 'data-click-arg0="all">הכל</button>' in source and 'data-click-arg0="עסקי">עסקי</button>' in source and 'data-click-arg0="ביתי">ביתי</button>' in source and 'עסקי + ביתי' not in source for source in (orders_finance_view,kupa_credit_view)) and "element.dataset.clickArg0||element.value||'all'" in kupa_actions and "element.dataset.clickArg0||element.value||'all'" in orders_actions, 'credit account scope: embedded Orders Kupa and standalone Kupa both use three direct chip buttons backed by the existing all/business/home filter state')
 
-ok('data-action="copy-orders-safe-credit-diagnostics"' in orders_finance_view and 'copySafeCreditDiagnostics' in orders_finance_controller and "JSON.stringify({contractVersion:result.contractVersion||protocol.contractVersion,events},null,2)" in orders_credit_connections_compact and "'copy-orders-safe-credit-diagnostics'" in orders_actions, 'Orders credit diagnostics: the UI copies only sanitized loopback events and their contract version')
-ok('data-action="refresh-orders-credit-quick"' in orders_finance_view and 'data-action="refresh-orders-credit-recovery"' in orders_finance_view and "refreshOrdersCredit(false,'forecast')" in orders_actions and "refreshOrdersCredit(false,'quick')" in orders_actions and "refreshOrdersCredit(false,'recovery')" in orders_actions and 'policy.resolveMode' in orders_credit_refresh_compact and "policy.normalizeMode(syncMode,'forecast')" in orders_credit_refresh_compact and "selection:policy.selection(cloud.readSync())" in orders_credit_refresh_compact and "body:{interactive:!!interactive,syncMode:mode,selection:Array.isArray(selection)?selection:[]}" in (ROOT/'shared/bank-bridge-client.js').read_text(encoding='utf-8') and 'value="smart"' in orders_finance_view and 'value="forecast"' in orders_finance_view and 'value="recovery"' in orders_finance_view, 'Orders credit workload controls: main forecast, advanced quick/recovery and smart automatic policy are explicit from UI action through the local bridge request')
+ok(presentation_contains(orders_finance_view, 'data-action="copy-orders-safe-credit-diagnostics"') and 'copySafeCreditDiagnostics' in orders_finance_controller and "JSON.stringify({contractVersion:result.contractVersion||protocol.contractVersion,events},null,2)" in orders_credit_connections_compact and "'copy-orders-safe-credit-diagnostics'" in orders_actions, 'Orders credit diagnostics: the UI copies only sanitized loopback events and their contract version')
+ok(presentation_contains(orders_finance_view, 'data-action="refresh-orders-credit-quick"') and presentation_contains(orders_finance_view, 'data-action="refresh-orders-credit-recovery"') and "refreshOrdersCredit(false,'forecast')" in orders_actions and "refreshOrdersCredit(false,'quick')" in orders_actions and "refreshOrdersCredit(false,'recovery')" in orders_actions and 'policy.resolveMode' in orders_credit_refresh_compact and "policy.normalizeMode(syncMode,'forecast')" in orders_credit_refresh_compact and "selection:policy.selection(cloud.readSync())" in orders_credit_refresh_compact and "body:{interactive:!!interactive,syncMode:mode,selection:Array.isArray(selection)?selection:[]}" in (ROOT/'shared/bank-bridge-client.js').read_text(encoding='utf-8') and presentation_contains(orders_finance_view, 'value="smart"') and presentation_contains(orders_finance_view, 'value="forecast"') and presentation_contains(orders_finance_view, 'value="recovery"'), 'Orders credit workload controls: main forecast, advanced quick/recovery and smart automatic policy are explicit from UI action through the local bridge request')
 ok('data-action="open-credit-modal"' not in kupa_credit_view and "'open-credit-modal':" not in kupa_actions and "if(!id)return toast('הוספה ידנית לאשראי הוסרה" in kupa_credit_editor and 'data-action="open-credit-modal-2"' in kupa_credit_view,
    'kupa credit: new manual credit creation is removed end-to-end while legacy manual records remain editable/deletable')
 ok('id="quickAddCheck"' not in kupa_index and 'data-action="open-check-modal"' in kupa_checks_view and 'data-action="open-check-modal"' not in (ROOT/'netunim-kupa/site/assets/js/domains/dashboard/view.js').read_text(encoding='utf-8'),

@@ -59,7 +59,7 @@ test('Finance closes and joins Bank request and confirmation owners, and both re
   const view = read(base + 'domains/finance/view.js'),
     status = read(base + 'domains/finance/status-view.js');
   assert.ok(view.includes('bankConnectionView.bind()'));
-  assert.ok(view.includes('bindBankForm:bankConnectionView.bind'));
+  assert.match(view,/bindBankForm\s*:\s*bankConnectionView\.bind/);
   assert.ok(status.includes("if(section==='bank')bindBankForm()"));
   for (const name of ['creditConnectionView', 'bankConnectionView'])
     for (const method of ['drain', 'dispose', 'isPending'])

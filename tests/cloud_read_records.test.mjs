@@ -22,6 +22,14 @@ test('Finance rejects plausible coercible money, snapshot authority and malforme
   assert.equal(accepted.state.bank.currentBalance,125);
 });
 
+test('cloud timestamps reject calendar/clock normalization and preserve valid leap dates and offsets',()=>{
+  for(const value of ['2026-02-30T00:00:00Z','2026-02-29T00:00:00Z','2026-04-31T10:00:00+03:00','2026-10-15T24:00:00Z']){
+    assert.throws(()=>readCloudMetaRows([{...document(),updated_at:value}],'main'));
+    assert.throws(()=>readCloudBackupRows([{...backup(),saved_at:value}]));
+  }
+  for(const value of ['2024-02-29T23:59:59.123456+03:00','2026-10-15T00:00:00Z'])assert.equal(readCloudMetaRows([{...document(),updated_at:value}],'main').updated_at,value);
+});
+
 test('backup catalog and selected point validate every identity, revision, timestamp and state',()=>{
   for(const value of [null,{},[null],[{...backup(),id:'1'}],[{...backup(),revision:false}],[{...backup(),saved_at:at.slice(0,10)}],[backup(),backup()]])assert.throws(()=>readCloudBackupRows(value));
   assert.equal(readCloudBackupPointRows([],1),null);
