@@ -1,5 +1,15 @@
 # Architecture refactor: verified baseline and next slices
 
+Document Bridge search merge/pagination now has a strict five-port command owner;
+opaque ID expiry, private paths and accepted file-stat resolution have a strict
+three-port registry. Native processes reproduce and fix early failure before a
+sibling read drains; shutdown joins accepted reads/audit and fences late IDs.
+An immutable original transport policy, 4,608 search/108 recent comparisons,
+native HTTP stop-client/file fixtures and strict body mutations retain the wire,
+ordering, path authority and reprobe policies. The private installer shutdown
+deadline accommodates existing read/maintenance lifetimes. See
+[Document search ownership](DOCUMENT_SEARCH_OWNERSHIP.md).
+
 Morning command-form validation and debt confirmation now have strict four- and
 two-port owners. The mounted controller retains issuance/confirmation/lifetime;
 pure payload capture and financial warning projection cannot write or issue.
