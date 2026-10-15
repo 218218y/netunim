@@ -1,6 +1,8 @@
 import {createStorageJournalDb} from './storage-journal-idb.js';
 import {assertStorageJson} from './storage-journal-model.js';
 import {isHistoricalBootstrapIntent,isHistoricalBootstrapSideIntent,completedHistoricalBootstrapGroup} from './storage-v2-persisted-compat.js';
+import {storageJsonHash as sha256} from './storage-json-codec.js';
+export {storageV2BootstrapStateHash} from './storage-operation.js';
 
 export const STORAGE_BOOTSTRAP_PHASES=Object.freeze(['prepared','main-initialized','shared-initialized','main-synced','shared-synced','verified','complete']);
 const VALID_APPS=new Set(['orders','kupa']);
@@ -10,16 +12,6 @@ const NEXT_PHASE=new Map(STORAGE_BOOTSTRAP_PHASES.slice(0,-1).map((phase,index)=
 function copy(value){return value==null?value:structuredClone(value)}
 function identity(value){const text=String(value||'').trim();if(!text||text.length>512)throw new Error('storage_bootstrap_identity_invalid');return text}
 function integer(value){return Number.isSafeInteger(Number(value))&&Number(value)>=0?Number(value):null}
-function canonicalJson(value){
-  if(Array.isArray(value))return `[${value.map(canonicalJson).join(',')}]`;
-  if(value&&typeof value==='object')return `{${Object.keys(value).sort().map(key=>`${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`;
-  return JSON.stringify(value);
-}
-async function sha256(value,cryptoImpl=globalThis.crypto){
-  if(!cryptoImpl?.subtle?.digest)throw new Error('storage_bootstrap_sha256_unavailable');
-  const bytes=new TextEncoder().encode(canonicalJson(value)),digest=await cryptoImpl.subtle.digest('SHA-256',bytes);
-  return [...new Uint8Array(digest)].map(byte=>byte.toString(16).padStart(2,'0')).join('');
-}
 function validHash(value){return /^[0-9a-f]{64}$/.test(String(value||''))}
 function validateSide(side){
   if(!side||!['main','shared'].includes(side.role)||!(['cloud-authoritative','upload-local'].includes(side.intent)||isHistoricalBootstrapSideIntent(side.intent))||integer(side.sourceSeq)===null||!validHash(side.sourceHash)||!String(side.operationId||'').trim())throw new Error('storage_bootstrap_side_invalid');
@@ -43,10 +35,6 @@ function authoritativeSideState(role,state){
   return {checks:state.checks,bankEvents:state.bankEvents};
 }
 
-export function storageV2BootstrapStateHash(role,state,{cryptoImpl=globalThis.crypto}={}){
-  if(!['main','shared'].includes(role))throw new Error('storage_bootstrap_role_invalid');
-  return sha256(authoritativeSideState(role,state),cryptoImpl);
-}
 async function sidePlan(role,source,remote,id,cryptoImpl,uploadIntent){
   if(!source?.state||typeof source.state!=='object'||Array.isArray(source.state)||integer(source.seq)===null)throw new Error('storage_bootstrap_source_invalid');
   const exists=remote!==null&&remote!==undefined;

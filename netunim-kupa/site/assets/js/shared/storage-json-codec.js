@@ -35,6 +35,20 @@ export function assertStorageJson(value){
   throw new Error('storage_non_json_value');
 }
 
+/** @param {StorageJson} value @returns {string} */
+function canonicalJson(value){
+  if(Array.isArray(value))return `[${value.map(canonicalJson).join(',')}]`;
+  if(value&&typeof value==='object')return `{${Object.keys(value).sort().map(key=>`${JSON.stringify(key)}:${canonicalJson(value[key]??null)}`).join(',')}}`;
+  return JSON.stringify(value);
+}
+/** @param {StorageJson} value @param {Pick<Crypto,'subtle'>} [cryptoImpl] @returns {Promise<string>} */
+export async function storageJsonHash(value,cryptoImpl=globalThis.crypto){
+  if(!cryptoImpl?.subtle?.digest)throw new Error('storage_bootstrap_sha256_unavailable');
+  const bytes=new TextEncoder().encode(canonicalJson(value));
+  const digest=await cryptoImpl.subtle.digest('SHA-256',bytes);
+  return [...new Uint8Array(digest)].map(byte=>byte.toString(16).padStart(2,'0')).join('');
+}
+
 // Corruption detection, not a cryptographic signature or authentication proof.
 /** @param {string} text @returns {string} */
 export function storageChecksum(text){

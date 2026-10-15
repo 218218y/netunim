@@ -20,6 +20,8 @@
     "types": []
   },
   "files": [
+    "shared/storage-v2-owner-transfer.js",
+    "tests/fixtures/checked-owner-transfer.mjs",
     "netunim-orders/document-bridge/document-command-owner.mjs",
     "shared/storage-v2-restore.js",
     "shared/storage-v2-local-import.js",
