@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-1b9c905efb96';
+const CACHE='orders-app-shell-esm-3955b9dda63a';
 const SHELL=[
   './',
   './index.html',
@@ -17,10 +17,12 @@ const SHELL=[
   './assets/js/calendar/journal.js',
   './assets/js/calendar/operation-flight.js',
   './assets/js/calendar/payload.js',
+  './assets/js/calendar/persisted-records.js',
   './assets/js/calendar/queue-confirmation.js',
   './assets/js/calendar/queue-observation.js',
   './assets/js/calendar/session-runtime.js',
   './assets/js/calendar/storage.js',
+  './assets/js/calendar/transaction.js',
   './assets/js/calendar/view.js',
   './assets/js/cloud/auth.js',
   './assets/js/cloud/transport.js',
@@ -52,6 +54,7 @@ const SHELL=[
   './assets/js/domains/bank/selectors.js',
   './assets/js/domains/calendar/action-ports.js',
   './assets/js/domains/calendar/controller.js',
+  './assets/js/domains/calendar/editor-commands.js',
   './assets/js/domains/calendar/editor-payload.js',
   './assets/js/domains/calendar/presentation.js',
   './assets/js/domains/calendar/read-model.js',
@@ -108,6 +111,7 @@ const SHELL=[
   './assets/js/domains/finance/automation-preferences.js',
   './assets/js/domains/finance/automation-status-view.js',
   './assets/js/domains/finance/automation.js',
+  './assets/js/domains/finance/bank-archive-commands.js',
   './assets/js/domains/finance/bank-archive-model.js',
   './assets/js/domains/finance/bank-archive-readout.js',
   './assets/js/domains/finance/bank-cashflow-view.js',
@@ -124,12 +128,15 @@ const SHELL=[
   './assets/js/domains/finance/bank-snapshot-publication.js',
   './assets/js/domains/finance/bank-transaction-detail-view.js',
   './assets/js/domains/finance/bank-view-helpers.js',
+  './assets/js/domains/finance/cashflow-commands.js',
+  './assets/js/domains/finance/connection-commands.js',
   './assets/js/domains/finance/controller.js',
   './assets/js/domains/finance/credit-connection-owner.js',
   './assets/js/domains/finance/credit-connection-view.js',
   './assets/js/domains/finance/credit-detail-view.js',
   './assets/js/domains/finance/credit-feed.js',
   './assets/js/domains/finance/credit-refresh.js',
+  './assets/js/domains/finance/credit-settings-commands.js',
   './assets/js/domains/finance/credit-status-view.js',
   './assets/js/domains/finance/document-commands.js',
   './assets/js/domains/finance/document-publication.js',

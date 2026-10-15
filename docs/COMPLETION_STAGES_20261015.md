@@ -23,6 +23,11 @@ verification succeeds. After merging, work immediately proceeds to the next
 stage without waiting for a duplicate run on main. Live Bank/Credit providers,
 physical two-computer tests and production deployment are separate from CI.
 
+Stage 1 merged as PR #184 after the exact branch push passed all CI groups and
+Windows contracts. Its implementation is documented in KUPA_PERSISTENCE_OWNERS.md
+and MAIN_SYNC_COMPOSITION.md. Stage 2 evidence and authority boundaries are in
+CALENDAR_PERSISTED_CONTRACTS.md and FINANCE_EDIT_COMMANDS.md.
+
 Document Bridge remainder, measured cold startup/lazy loading, compatibility
 retirement and broad formatting remain later work; they should not be inferred
 complete from these three stages. Lazy loading needs measured startup evidence

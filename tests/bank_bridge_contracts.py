@@ -1,3 +1,4 @@
+from capability_sources import finance_controller_source
 # JavaScript model tests run once via node_models.py in the canonical full gate.
 from pathlib import Path
 import json
@@ -120,7 +121,7 @@ credit_sync_policy=(ROOT/'shared/credit-sync-policy.js').read_text(encoding='utf
 finance_connection_import=(ROOT/'shared/finance-connection-import.js').read_text(encoding='utf-8')
 finance_import_runtime=(ROOT/'shared/finance-connection-import-runtime.js').read_text(encoding='utf-8')
 finance_import_capability=(ROOT/'shared/finance-connection-import-capability.js').read_text(encoding='utf-8')
-orders_finance_controller=(ROOT/'netunim-orders/site/assets/js/domains/finance/controller.js').read_text(encoding='utf-8')
+orders_finance_controller=finance_controller_source(ROOT/'netunim-orders')
 orders_bank_refresh_compact=re.sub(r'\s+','',(ROOT/'netunim-orders/site/assets/js/domains/finance/bank-refresh.js').read_text(encoding='utf-8'))
 orders_finance_documents=(ROOT/'netunim-orders/site/assets/js/domains/finance/document-commands.js').read_text(encoding='utf-8')
 orders_document_compact=re.sub(r'\s+','',orders_finance_documents)

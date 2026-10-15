@@ -99,7 +99,7 @@ FAULT = r"""(async()=>{
 WRITES = r"""(async()=>{
  const audit=calendarCommitAudit,{createCalendarStorage}=await import('./assets/js/calendar/storage.js');let hints=0;
  const storage=createCalendarStorage({onLocalCommit:()=>{hints++;throw Error('injected notification failure')}}),prior=await storage.listOperations(),add=IDBObjectStore.prototype.add;
- const record={type:'insert',calendarId:'calendar@example.test',eventId:'abcd2222abcd2222abcd2222abcd2222',body:{id:'abcd2222abcd2222abcd2222abcd2222',summary:'drained write survives notification failure'}};
+ const record={type:'insert',calendarId:'calendar@example.test',eventId:'abcd2222abcd2222abcd2222abcd2222',body:{id:'abcd2222abcd2222abcd2222abcd2222',summary:'drained write survives notification failure',start:{date:'2026-10-15'},end:{date:'2026-10-16'}}};
  IDBObjectStore.prototype.add=function(...args){const request=add.apply(this,args);if(this.name==='pending-operations'){const tx=this.transaction;queueMicrotask(()=>tx.abort())}return request};
  let aborted=false;try{await storage.addOperation(record)}catch{aborted=true}finally{IDBObjectStore.prototype.add=add}
  audit.check(aborted&&hints===0,'an aborted queue write emitted a commit hint');

@@ -22,7 +22,7 @@ function database(rows,{abort=false,readError=false}={}){
   }};
 }
 test('Calendar confirmation publishes the fresh queue synchronously inside a readonly transaction',async()=>{
-  const rows=[{seq:7,eventId:'retained',body:{summary:'exact content'}}],db=database(rows),observation=createCalendarQueueObservation();let published=0;
+  const rows=[{seq:7,type:'patch',calendarId:'A',eventId:'retained',body:{summary:'exact content'},attempts:0,lastError:''}],db=database(rows),observation=createCalendarQueueObservation();let published=0;
   assert.equal(await confirmCalendarPendingSnapshot(db,observation,receipt=>{
     assert.equal(db.currentTransaction.active,true);assert.equal(receipt.isCurrent(),true);assert.deepEqual(receipt.operations,rows);published++;return receipt.operations.length===0;
   }),false);
@@ -45,9 +45,9 @@ for(const fault of ['abort','readError'])test(`Calendar ${fault} rejects without
   assert.deepEqual(db.persisted,rows);
 });
 test('Revocation during the confirmation callback preserves the exact error and rows',async()=>{
-  const db=database([{seq:9,eventId:'retained'}]),error=Object.assign(Error('revoked'),{code:'CALENDAR_OPERATION_SCOPE_CHANGED'});
+  const rows=[{seq:9,type:'delete',calendarId:'A',eventId:'retained'}],db=database(rows),error=Object.assign(Error('revoked'),{code:'CALENDAR_OPERATION_SCOPE_CHANGED'});
   await assert.rejects(confirmCalendarPendingSnapshot(db,createCalendarQueueObservation(),()=>{throw error}),actual=>actual===error);
-  assert.deepEqual(db.persisted,[{seq:9,eventId:'retained'}]);
+  assert.deepEqual(db.persisted,rows);
 });
 test('An asynchronous publication is a contract failure, never an accepted confirmation',async()=>{
   const db=database([]);

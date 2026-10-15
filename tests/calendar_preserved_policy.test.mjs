@@ -7,9 +7,14 @@ import {originalCalendarSyncPolicy} from './calendar_session_policy_fixture.mjs'
 import {baseline as projectionBaseline,semanticPolicy} from './calendar_projection_policy_fixture.mjs';
 
 const controller=readFileSync(new URL('../netunim-orders/site/assets/js/domains/calendar/controller.js',import.meta.url),'utf8');
+const editor=readFileSync(new URL('../netunim-orders/site/assets/js/domains/calendar/editor-commands.js',import.meta.url),'utf8');
 const baseline=JSON.parse(readFileSync(new URL('./fixtures/calendar-preserved-policy.json',import.meta.url),'utf8'));
 const session=readFileSync(new URL('../netunim-orders/site/assets/js/calendar/session-runtime.js',import.meta.url),'utf8');
 function policy(source,name){
+  if(['queueCalendarMutation','saveQuickCalendarEvent','saveCalendarEvent','deleteCalendarEvent'].includes(name)){
+    if(source===controller)source=editor;
+    source=source.replaceAll('editor.surface()','ownedModal').replaceAll('editor.selectedCalendar()',"$('#calendarCalendarId')?.value").replaceAll('editor.closeSurface(surface);',"if(surface?.isConnected&&ownedModal===surface){closeModal();ownedModal=null;editorAuthority=null}");
+  }
   const moved=['eventKey','writableCalendar','editableEvent','eventReadOnlyReason','decorateEvent','applyPending'];
   const file=moved.includes(name)?'read-model.js':['readEditorPayload','readQuickEditorPayload'].includes(name)?'editor-payload.js':null;
   if(file){
@@ -29,7 +34,7 @@ for(const [name,expected] of Object.entries(baseline.functions))test(`Calendar $
   assert.equal(fingerprint(name==='syncNow'?originalCalendarSyncPolicy(session):policy(controller,name)),expected,`business policy drift from ${baseline.commit}`);
 });
 test('the immutable Calendar policy detects removal of optimistic patch attribution',()=>{
-  const changed=controller.replace("baseEtag:existing.etag||''","baseEtag:''");assert.notEqual(changed,controller);
+  const changed=editor.replace("baseEtag:existing.etag||''","baseEtag:''");assert.notEqual(changed,editor);
   assert.notEqual(fingerprint(policy(changed,'queueCalendarMutation')),baseline.functions.queueCalendarMutation);
 });
 test('the display controller cannot reacquire Google transport or private sync handles',()=>{

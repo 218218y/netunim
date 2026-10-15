@@ -1,3 +1,4 @@
+from capability_sources import finance_controller_source
 from pathlib import Path
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -45,11 +46,11 @@ banks=(SITE/'domains/customers/morning-banks.js').read_text(encoding='utf-8')
 app_css=(ROOT/'netunim-orders/site/assets/app.css').read_text(encoding='utf-8')
 bank_detail=(SITE/'domains/finance/bank-transaction-detail-view.js').read_text(encoding='utf-8')
 bank_table=(SITE/'domains/finance/view.js').read_text(encoding='utf-8')
-finance_controller=(SITE/'domains/finance/controller.js').read_text(encoding='utf-8')
+finance_controller=finance_controller_source(ROOT/'netunim-orders')
 recovery=(SITE/'domains/customers/morning-debt-recovery.js').read_text(encoding='utf-8')
 transport=(SITE/'cloud/transport.js').read_text(encoding='utf-8')
 bank_feed=(SITE/'domains/finance/bank-feed.js').read_text(encoding='utf-8')
-controller=(SITE/'domains/finance/controller.js').read_text(encoding='utf-8')
+controller=finance_controller_source(ROOT/'netunim-orders')
 editor=(SITE/'domains/customers/editor.js').read_text(encoding='utf-8')
 docs=DOCS.read_text(encoding='utf-8')
 

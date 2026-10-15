@@ -7,7 +7,7 @@ import re
 import subprocess
 import sys
 import tempfile
-from capability_sources import cloud_ui_source, sync_document_source, backup_ui_source
+from capability_sources import cloud_ui_source, sync_document_source, backup_ui_source, finance_controller_source
 
 ROOT = Path(__file__).resolve().parents[1]
 K = ROOT / "netunim-kupa"
@@ -602,7 +602,7 @@ kupa_credit_view = (K / "site/assets/js/domains/credit/view.js").read_text(encod
 kupa_credit_sync_view = (K / "site/assets/js/domains/credit/sync-view.js").read_text(encoding="utf-8")
 kupa_css = (K / "site/assets/app.css").read_text(encoding="utf-8")
 orders_contexts = (O / "site/assets/js/state/contexts.js").read_text(encoding="utf-8")
-orders_finance_controller = (O / "site/assets/js/domains/finance/controller.js").read_text(encoding="utf-8")
+orders_finance_controller = finance_controller_source(ROOT/'netunim-orders')
 orders_finance_controller_compact = re.sub(r"\s+", "", orders_finance_controller)
 orders_bank_refresh=(O / "site/assets/js/domains/finance/bank-refresh.js").read_text(encoding="utf-8")
 orders_bank_refresh_compact=re.sub(r"\s+", "", orders_bank_refresh)
@@ -1217,7 +1217,7 @@ orders_customer_bulk=(ROOT/'netunim-orders/site/assets/js/domains/customers/bulk
 orders_service_view=(ROOT/'netunim-orders/site/assets/js/domains/service/view.js').read_text(encoding='utf-8')
 orders_warehouse_view=(ROOT/'netunim-orders/site/assets/js/domains/warehouse/view.js').read_text(encoding='utf-8')
 orders_finance_view=(ROOT/'netunim-orders/site/assets/js/domains/finance/view.js').read_text(encoding='utf-8')
-orders_finance_controller=(ROOT/'netunim-orders/site/assets/js/domains/finance/controller.js').read_text(encoding='utf-8')
+orders_finance_controller=finance_controller_source(ROOT/'netunim-orders')
 orders_actions='\n'.join(path.read_text(encoding='utf-8') for path in sorted((ROOT/'netunim-orders/site/assets/js/ui/action-packs').glob('*.js')))
 kupa_credit_view=(ROOT/'netunim-kupa/site/assets/js/domains/credit/view.js').read_text(encoding='utf-8')
 kupa_credit_editor=(ROOT/'netunim-kupa/site/assets/js/domains/credit/editor.js').read_text(encoding='utf-8')

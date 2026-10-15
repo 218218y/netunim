@@ -20,6 +20,8 @@
     "types": []
   },
   "files": [
+    "netunim-orders/site/assets/js/calendar/persisted-records.js",
+    "tests/fixtures/checked-calendar-persisted.mjs",
     "tests/fixtures/checked-pdf-preview.mjs",
     "netunim-orders/document-bridge/pdf-extraction-result.mjs",
     "netunim-orders/document-bridge/pdf-extraction-process.mjs",

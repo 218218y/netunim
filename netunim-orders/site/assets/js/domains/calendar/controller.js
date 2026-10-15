@@ -1,3 +1,4 @@
+import {createCalendarEditorCommands} from './editor-commands.js';
 import {applyPending,eventKey,writableCalendar,editableEvent,eventReadOnlyReason} from './read-model.js';
 import {projectCalendarPresentation} from './presentation.js';
 import {createCalendarEditorPayload} from './editor-payload.js';
@@ -129,24 +130,19 @@ function openCalendarEvent(key){try{captureEdit({fresh:true})}catch(error){retur
 function openCalendarEditor({event=null,key='',dayKey='',prefill=null}={}){try{captureEdit({fresh:true})}catch(error){return toast(error.message)}const writable=primaryWritableCalendar();if(!event&&!writable)return toast('יש להתחבר ל-Google לפחות פעם אחת כדי לבחור יומן לכתיבה.');let fields={...editorDateDefaults(dayKey),...(prefill||{})},calendarId=event?._calendarId||writable?.id||'';if(event){const allDay=!!event.start?.date;if(allDay)fields={allDay:true,startDate:event.start.date,endDate:allDayDisplayEnd(event),startTime:'',endTime:''};else{const start=localInputParts(event.start?.dateTime),end=localInputParts(event.end?.dateTime);fields={allDay:false,startDate:start.date,endDate:end.date,startTime:start.time,endTime:end.time}}}const calendarField=event?`<input value="${esc(event._calendarSummary||calendarId)}" disabled>`:`<select id="calendarCalendarId">${writableCalendarOptions(calendarId)}</select>`,summary=event?.summary??prefill?.summary??'',endManual=endDateManual(fields);showCalendarModal(event?'עריכת תור':'תור חדש',`<div class="form-grid calendar-event-form"><div class="field full"><label>כותרת</label><input id="calendarSummary" value="${esc(summary)}" autocomplete="off"></div><div class="field full"><label>יומן</label>${calendarField}</div><div class="field full calendar-all-day-field"><label><input id="calendarAllDay" type="checkbox" ${fields.allDay?'checked':''} data-change="calendar-toggle-all-day"> אירוע לכל היום</label></div><div class="field"><label>מתאריך</label>${dateEditorMarkup('calendarStartDate',fields.startDate,{label:'מתאריך',change:'calendar-start-date-change'})}</div><div class="field"><label>עד תאריך</label>${dateEditorMarkup('calendarEndDate',fields.endDate,{label:'עד תאריך',minDate:fields.startDate,change:'calendar-end-date-change',data:{'calendar-end-manual':endManual?'1':'0'}})}</div><div id="calendarTimeFields" class="calendar-time-fields ${fields.allDay?'hidden':''}"><div class="field"><label>שעת התחלה</label><input id="calendarStartTime" type="time" value="${esc(fields.startTime)}"></div><div class="field"><label>שעת סיום</label><input id="calendarEndTime" type="time" value="${esc(fields.endTime)}"></div></div><div class="field full"><label>מיקום</label><input id="calendarLocation" value="${esc(event?.location||'')}"></div><div class="field full"><label>פרטים</label><textarea id="calendarDescription" class="large-textarea">${esc(event?.description||'')}</textarea></div></div>`,`<button class="btn primary" data-action="calendar-save-event" data-click-arg0="${esc(key)}">שמור</button>${event?`<button class="btn danger" data-action="calendar-delete-event" data-click-arg0="${esc(key)}">מחק</button>`:''}<button class="btn" data-action="close-modal">ביטול</button>`);if(!event)focusCalendarField('#calendarSummary')}
 function toggleCalendarAllDay(element){const fields=$('#calendarTimeFields');if(fields)fields.classList.toggle('hidden',!!element.checked)}
 
-async function queueCalendarMutation({existing=null,body,calendarId=''}){const authority=captureEdit(),surface=ownedModal;let operation;if(existing){if(!editableEvent(existing))throw new Error(eventReadOnlyReason(existing));operation={type:'patch',calendarId:existing._calendarId,eventId:existing.id,body,baseEtag:existing.etag||''}}else{const targetCalendarId=calendarId||primaryWritableCalendar()?.id||'';if(!targetCalendarId)throw new Error('לא נמצא יומן עם הרשאת כתיבה');const eventId=newGoogleEventId();operation={type:'insert',calendarId:targetCalendarId,eventId,body:{id:eventId,...body}}}authority.assertCurrent();await calendarStorage.addOperation(operation);authority.assertCurrent();if(surface?.isConnected&&ownedModal===surface){closeModal();ownedModal=null;editorAuthority=null}await refreshPendingOverlay(authority);authority.assertCurrent();toast(effects.isOnline()&&connection.hasUsableToken()?'השינוי נשמר מקומית ונשלח ל-Google':'השינוי נשמר בבטחה וממתין לסנכרון');if(effects.isOnline()&&connection.hasUsableToken())sessionRuntime.wake(()=>sessionRuntime.syncNow({quiet:true}))}
-async function saveQuickCalendarEvent(){try{if(connection.hasUsableToken()&&!calendarSession.accountVerified)throw new Error('יש להמתין לסיום אימות חשבון Google לפני שמירת שינוי ביומן');await queueCalendarMutation({body:readQuickEditorPayload(),calendarId:primaryWritableCalendar()?.id||''})}catch(error){if(!stale(error))toast(error?.message||'שמירת התור נכשלה');return false}}
-async function saveCalendarEvent(key=''){try{if(connection.hasUsableToken()&&!calendarSession.accountVerified)throw new Error('יש להמתין לסיום אימות חשבון Google לפני שמירת שינוי ביומן');const existing=key?calendarUi.eventMap?.get(key):null,body=readEditorPayload(existing),calendarId=existing?'':$('#calendarCalendarId')?.value||primaryWritableCalendar()?.id||'';await queueCalendarMutation({existing,body,calendarId})}catch(error){if(!stale(error))toast(error?.message||'שמירת התור נכשלה');return false}}
 async function refreshPendingOverlay(authority=lifetime.capture()){
   const range=calendarRange(),display=await calendarStorage.readDisplaySnapshot(authority.owner,range.startKey,range.endKey);authority.assertCurrent();
   if(display)loadSnapshotIntoUi(display.snapshot,display.pending);else clearDisplayModel();renderCalendarBody();
 }
-async function deleteCalendarEvent(key){
-  try{
-    const authority=captureEdit(),surface=ownedModal,event=calendarUi.eventMap?.get(key);
-    if(!event||!editableEvent(event))return toast(eventReadOnlyReason(event));
-    if(!await confirmDialog('מחיקת תור',`למחוק את התור „${event.summary||'ללא כותרת'}”?`,{confirmText:'מחק תור',signal:authority.signal}))return false;
-    authority.assertCurrent();await calendarStorage.addOperation({type:'delete',calendarId:event._calendarId,eventId:event.id});authority.assertCurrent();
-    if(surface?.isConnected&&ownedModal===surface){closeModal();ownedModal=null;editorAuthority=null}
-    await refreshPendingOverlay(authority);authority.assertCurrent();toast(effects.isOnline()&&connection.hasUsableToken()?'המחיקה נשמרה ונשלחת ל-Google':'המחיקה נשמרה וממתינה לסנכרון');
-    if(effects.isOnline()&&connection.hasUsableToken())sessionRuntime.wake(()=>sessionRuntime.syncNow({quiet:true}));return true;
-  }catch(error){if(!stale(error))toast(error?.message||'שמירת המחיקה נכשלה');return false}
-}
+
+const {saveQuickCalendarEvent,saveCalendarEvent,deleteCalendarEvent}=createCalendarEditorCommands({
+  calendarSession,calendarUi,connection,calendarStorage,effects,sessionRuntime,
+  editor:{captureEdit,primaryWritableCalendar,readEditorPayload,readQuickEditorPayload,newGoogleEventId,
+    selectedCalendar:()=>$('#calendarCalendarId')?.value,surface:()=>ownedModal,
+    closeSurface:surface=>{if(surface?.isConnected&&ownedModal===surface){closeModal();ownedModal=null;editorAuthority=null}},
+  },
+  view:{refreshPendingOverlay,toast,confirmDialog,stale},
+});
 
 function newEvent(dayKey=''){openCalendarEditor({dayKey:dayKey||localDateKey(new Date())})}
 
