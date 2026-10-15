@@ -28,7 +28,7 @@ export function financeBankPayload(bank) {
 
 /**
  * Owns Bank durability and confirmed publication, without provider or browser IO.
- * The controller owns accepted command promises and the provider lease lifecycle.
+ * The refresh operation owns provider commands/leases; the controller owns manual commands.
  * @template Archive
  * @param {{
  * authority:{capture:()=>SnapshotGuard},

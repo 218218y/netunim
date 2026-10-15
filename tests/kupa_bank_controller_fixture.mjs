@@ -6,6 +6,13 @@ import {createBankArchiveReconciliation} from '../shared/bank-archive-reconcilia
 import { bankArchiveTargets } from '../netunim-kupa/site/assets/js/domains/bank/archive-model.js';
 import { createBankLocalSnapshot } from '../netunim-kupa/site/assets/js/domains/bank/local-snapshot.js';
 import { createKupaBankSnapshotCommands } from '../netunim-kupa/site/assets/js/domains/bank/snapshot-commands.js';
+import {createKupaBankRefresh} from '../netunim-kupa/site/assets/js/domains/bank/refresh.js';
+import {createKupaBankSnapshotPolicy} from '../netunim-kupa/site/assets/js/domains/bank/snapshot-policy.js';
+import {BANK_READOUT_WARNING} from '../netunim-kupa/site/assets/js/domains/bank/snapshot-commands.js';
+import {normalizeBankFeed} from '../netunim-kupa/site/assets/js/domains/bank/feed.js';
+import {bankRecurringDebitHistoryData} from '../shared/bank-recurring-debits.js';
+import {bankAutoRefreshDue} from '../shared/finance-refresh-policy.js';
+import {wholeMoney} from '../netunim-kupa/site/assets/js/core/money.js';
 import { createManualBankSnapshot } from '../netunim-kupa/site/assets/js/domains/bank/manual-snapshot.js';
 import { uid } from '../netunim-kupa/site/assets/js/core/values.js';
 import { todayISO } from '../netunim-kupa/site/assets/js/core/dates.js';
@@ -101,16 +108,29 @@ export function createKupaBankControllerFixture(ports) {
     images:{sync:ports.syncBankChequeImages ?? (async()=>({warnings:[]}))},
     archive:{read:archive.queries.readSnapshot},
   });
-  const controller = createDomainsBankController({
+  let controller;
+  const bankRefresh=createKupaBankRefresh({
+    authority:ports.operationScope,
+    cloud:{mode:()=>ports.session.connectionMode,refresh:readFinance,currentState:()=>ports.model.state,
+      lastSyncAt:state=>controller.refreshReadout.lastSyncAt(state),checksHaveLocalWork:ports.sharedChecksHaveLocalWork??(()=>false)},
+    device:{capture:connections.queries.capture,readStatus:connections.queries.readStatus,supported:connections.queries.supported,fetchBalance:options=>ports.bridge.fetchBalance(options)},
+    leases:{...createFinanceLeaseOwner({leases:syncLeases,authority:ports.operationScope,timers:ports.timers??globalThis}),createToken:()=>uid('FINLEASE'),reportFailure:error=>console.error('bank sync lease release',error)},
+    publication:{prepare:snapshots.commands.prepare,reconcile:archiveReconciliation.commands.sync,publishCloud:snapshots.commands.publishCloud,publishLocal:snapshots.commands.publishLocal,readoutWarning:BANK_READOUT_WARNING},
+    policy:createKupaBankSnapshotPolicy({
+      feeds:{normalize:normalizeBankFeed,recurringHistory:bankRecurringDebitHistoryData,roundMoney:wholeMoney},
+      source:{readBank:()=>ports.model.state.bank&&typeof ports.model.state.bank==='object'?ports.model.state.bank:{},observedSequence:()=>ports.sharedChecksObservedSequence()},
+      identity:{now:()=>new Date().toISOString(),today:todayISO,createToken:()=>uid('BANK')},
+    }),
+    automation:{due:bankAutoRefreshDue,markAttempt:()=>ports.bridge.markAutoAttempt()},
+  });
+  controller = createDomainsBankController({
       ...ports,
       archive,
-      archiveReconciliation,
       snapshots,
-      syncLeases:createFinanceLeaseOwner({leases:syncLeases,authority:ports.operationScope,timers:ports.timers??globalThis}),
-      readFinance,
+      bankRefresh,
       connections,
-    }),
-    runtime = controller.runtime;
+    });
+  const runtime = controller.runtime;
   return {
     ...controller,
     runtime: {

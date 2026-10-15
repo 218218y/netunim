@@ -12,7 +12,7 @@ const files = [
 ];
 function boundary(source, name, overrides) {
   if(name==='createDomainsFinanceController')source=restoreOrdersBankPublication(source,overrides);
-  else source=restoreKupaReconciliation(source);
+  else source=restoreKupaReconciliation(source,undefined,overrides);
   const tree = parse(source, { ecmaVersion: 'latest', sourceType: 'module' }),
     factory = tree.body.find((row) => row.declaration?.id?.name === name).declaration;
   const command = factory.body.body.find(
@@ -48,7 +48,12 @@ test('both actual Bank publication callers use the validated scalar boundary bef
       ['readBankBalanceResult(result)', '{business:result,home:null,homeFailure:null}'],
       ['...bankSnapshotFinancials(business)', 'availableBalance:Number(business.availableBalance)'],
     ])
-      if(index===0)assert.throws(() => boundary(source.replace(from, to), name));
+      if(index===0){
+        const file=from==='readBankBalanceResult(result)'?'refresh':'snapshot-policy';
+        const actual=read('netunim-kupa/site/assets/js/domains/bank/'+file+'.js');
+        const changed=actual.replace(from==='readBankBalanceResult(result)'?'readBankBalanceResult(evidence)':from,to);
+        assert.notEqual(changed,actual);assert.throws(()=>boundary(source,name,{[file==='refresh'?'owner':'model']:changed}));
+      }
       else {
         const file=from==='readBankBalanceResult(result)'?'bank-snapshot-publication':'bank-snapshot-policy';
         const actual=read('netunim-orders/site/assets/js/domains/finance/'+file+'.js');
@@ -111,13 +116,13 @@ test('Hapoalim account reader consumes canonical financial evidence and installe
   );
   assert.ok(read('netunim-kupa/bank-bridge/server.mjs').includes('const BRIDGE_VERSION=74'));
   assert.ok(read('netunim-kupa/site/assets/js/domains/bank/connection-owner.js').includes('KUPA_BANK_BRIDGE_MINIMUM_VERSION = 74'));
-  assert.ok(read(files[0]).includes('if(!connections.queries.supported(bridgeStatus))'));
+  const kupa = read('netunim-kupa/site/assets/js/domains/bank/refresh.js').replace(/\s+/g,'');
+  assert.ok(kupa.includes('if(!device.supported(bridgeStatus))'));
   assert.ok(read('netunim-orders/site/assets/js/domains/finance/bank-connection-owner.js').includes('ORDERS_BANK_BRIDGE_MINIMUM_VERSION = 74'));
   assert.ok(read('netunim-orders/site/assets/js/domains/finance/bank-refresh.js').replace(/\s+/g,'').includes('if(!device.supported(status))'));
-  const kupa = read(files[0]);
   assert.ok(
-    kupa.indexOf('const bridgeStatus=await connections.queries.readStatus()') >= 0 &&
-    kupa.indexOf('const bridgeStatus=await connections.queries.readStatus()') <
-      kupa.indexOf('const result=await bridge.fetchBalance(')
+    kupa.indexOf('constbridgeStatus=awaitdevice.readStatus()') >= 0 &&
+    kupa.indexOf('constbridgeStatus=awaitdevice.readStatus()') <
+      kupa.indexOf('constevidence=awaitdevice.fetchBalance(')
   );
 });

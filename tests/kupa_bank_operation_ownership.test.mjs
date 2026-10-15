@@ -51,6 +51,20 @@ test('Kupa Bank construction cannot manufacture a lease when the real claim port
   assert.throws(f.create,/bank.*lease.*required/);
   assert.equal(f.counts.provider||0,0);
 });
+test('Kupa cloud Bank refuses a local-only lease before opening a provider or touching archive/publication',async t=>{
+ const f=fixture(t);f.ports.claimFinanceSyncLease=async()=>({acquired:true,localOnly:true});
+ const api=f.create();assert.equal(await api.refreshBankBalance(),false);await api.runtime.drain();
+ assert.equal(f.counts.provider||0,0);assert.equal(f.counts['archive-business']||0,0);assert.equal(f.counts.atomic||0,0);assert.equal(f.counts.local||0,0);
+ assert.deepEqual(f.model.state,f.before);assert.match(api.bankBridgeUiState().lastError,/נעילת ענן/);api.runtime.dispose();
+});
+test('Kupa file Bank retains explicit local-only mode without requiring cloud authority',async t=>{
+ const f=fixture(t);f.ports.session.connectionMode='file';f.ports.claimFinanceSyncLease=async()=>({acquired:true,localOnly:true});
+ const api=f.create();assert.equal(await api.refreshBankBalance(),true);assert.equal(f.counts.provider,1);assert.equal(f.counts.local,1);assert.equal(f.counts.atomic||0,0);assert.equal(f.model.state.bank.currentBalance,500);api.runtime.dispose();
+});
+for(const failure of ['failed',true,[],42])test('Kupa malformed home failure cannot authorize archive/publication: '+JSON.stringify(failure),async t=>{
+ const f=fixture(t);f.ports.bridge.fetchBalance=async()=>({fetchedAt:stamp,accounts:{business:{balance:500,accountId:'same-account',transactions:[]}},accountFailures:{home:failure}});
+ const api=f.create();assert.equal(await api.refreshBankBalance(),false);assert.deepEqual(f.model.state,f.before);assert.equal(f.counts['archive-business']||0,0);assert.equal(f.counts.atomic||0,0);assert.equal(f.counts.release,1);assert.equal(api.bankBridgeUiState().lastErrorCode,'BANK_HOME_FAILURE_INVALID');api.runtime.dispose();
+});
 
 test('Kupa file Bank snapshots do not invoke an authenticated Finance writer',async t=>{
   const f=fixture(t);f.ports.session.connectionMode='file';

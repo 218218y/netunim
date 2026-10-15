@@ -17,31 +17,32 @@ FLOW = r"""(async()=>{
  const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js'),db=createStorageJournalDb(),identity=owner+':kupa',sharedIdentity=owner+':shared-checks';
  const beforeMain=JSON.stringify(await db.load(identity)),beforeShared=JSON.stringify(await db.load(sharedIdentity));
  check(beforeMain&&beforeShared,'real journals missing');
- const remote={bank:{source:'hapoalim',currentBalance:100,bankSyncAt:'2020-01-01T00:00:00Z',archiveInitialized:true,archiveVersion:2,feed:{accountNumber:'same-account',balance:100,syncedAt:stamp,transactions:[]}},creditSync:{profiles:[],errors:[]}};
+ const remote={bank:{source:'hapoalim',currentBalance:100,bankSyncAt:'2020-01-01T00:00:00Z',archiveInitialized:true,archiveVersion:2,feed:{accountNumber:'same-account',balance:100,syncedAt:'2020-01-01T00:00:00Z',transactions:[]}},creditSync:{profiles:[],errors:[]}};
  state.bank=structuredClone(remote.bank);
  localStorage.setItem('netunim_kupa_bank_bridge_token_v1','pairing-A');
  for(const key of ['netunim_kupa_bank_auto_daily_v1','netunim_kupa_credit_auto_daily_v1'])localStorage.setItem(key,'0');
  const gate=deferred(),entered=deferred(),originalFetch=globalThis.fetch;let released=0,writes=0,checksReads=0,drained=false,settled=false;
  const events=[],wait=async name=>{events.push(name);if(name===phase){entered.resolve();await gate.promise}};
- cloudTransport.claimFinanceSyncLease=async(leaseName,leaseToken)=>({acquired:true,leaseName,leaseToken,fenceEpoch:1});
+ cloudTransport.claimFinanceSyncLease=async(leaseName,leaseToken)=>{await wait('acquisition');return {acquired:true,leaseName,leaseToken,fenceEpoch:1}};
  cloudTransport.releaseFinanceSyncLease=async(_kind,_token,options)=>{options.assertCurrent();released++;return true};
- cloudTransport.readSupabaseDocument=async()=>({revision:Number(session.dbRevision),financeRevision:Number(session.financeRevision),state:{...structuredClone(state),bank:structuredClone(remote.bank)}});
+ cloudTransport.readSupabaseDocument=async()=>{await wait('preflight');return {revision:Number(session.dbRevision),financeRevision:Number(session.financeRevision),state:{...structuredClone(state),bank:structuredClone(remote.bank)}}};
  cloudTransport.readFinanceSyncDocument=async()=>({revision:1,state:structuredClone(remote)});
- checks.commands.sync=async()=>{if(++checksReads===2)await wait('checks');return true};checks.queries.hasLocalWork=()=>false;
+ checks.commands.sync=async()=>{await wait(++checksReads===1?'checks-before':'checks-after');return true};checks.queries.hasLocalWork=()=>false;
  cloudTransport.syncBankTransactionsSnapshot=async()=>{await wait('transactions');return {sourcePayload:[],result:{total_count:0}}};
  cloudTransport.readBankTransactions=async()=>{await wait('archive');return []};cloudTransport.readBankTransactionSnapshot=async()=>null;
  cloudTransport.saveBankSyncSnapshot=async()=>{writes++;await wait('publication');return {finance_revision:2,kupa_revision:2}};
- globalThis.fetch=(url,options)=>{
+ globalThis.fetch=async(url,options)=>{
    const path=String(url);
-   if(path.endsWith('/status'))return Promise.resolve(new Response(JSON.stringify({ok:true,bridgeVersion:74,configured:true})));
-   if(path.includes('/balance'))return Promise.resolve(new Response(JSON.stringify({ok:true,fetchedAt:stamp,accounts:{business:{balance:500,accountId:'same-account',transactions:[]}}})));
+   if(path.endsWith('/status')){await wait('status');return new Response(JSON.stringify({ok:true,bridgeVersion:74,configured:true}))}
+   if(path.includes('/balance')){await wait('provider');return new Response(JSON.stringify({ok:true,fetchedAt:stamp,accounts:{business:{balance:500,accountId:'same-account',transactions:[]}}}))}
    if(path.includes('/storage/v1/object/list/'))return Promise.resolve(new Response('[]'));
    return originalFetch(url,options);
  };
  let pending;
  try{
    const beforeReadout=JSON.stringify(state.bank);
-   pending=bank.commands.refreshBankBalance();void pending.finally(()=>{settled=true});await entered.promise;
+   if(phase==='preflight'){localStorage.setItem('netunim_kupa_bank_auto_daily_v1','1');bank.runtime.start()}
+   pending=bank.commands.refreshBankBalance({auto:phase==='preflight'});void pending.finally(()=>{settled=true});await entered.promise;
    if(action==='pairing')localStorage.setItem('netunim_kupa_bank_bridge_token_v1','pairing-B');
    else if(action==='account')cloudAuth.storeSupaSession({user:{id:'bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb'},access_token:'other',expires_at:9999999999});
    else {check(bank.runtime.dispose()===true,'dispose rejected');check(bank.runtime.dispose()===false,'dispose was not idempotent')}
@@ -49,7 +50,7 @@ FLOW = r"""(async()=>{
    check(bank.runtime.isPending(),'accepted Bank work disappeared');check(!drained&&!settled,'accepted Bank work was abandoned');check(released===0,'lease released before accepted stage settled');
    const accepted=[...events];gate.resolve();check(await pending===false,'stale Bank result reported success');await draining;
    check(!bank.runtime.isPending(),'Bank work retained after drain');check(JSON.stringify(events)===JSON.stringify(accepted),'a later stage entered after authority ended');
-   check(writes===(phase==='publication'?1:0),'an unaccepted write entered');check(released===(action!=='account'?1:0),'lease cleanup used replacement account or lost same-account authority');
+   check(writes===(phase==='publication'?1:0),'an unaccepted write entered');check(released===(action!=='account'&&phase!=='preflight'?1:0),'lease cleanup used replacement account or lost same-account authority');
    check(JSON.stringify(state.bank)===beforeReadout,'stale Bank result replaced readout');
    check(JSON.stringify(await db.load(identity))===beforeMain,'publication changed Main journal');check(JSON.stringify(await db.load(sharedIdentity))===beforeShared,'publication changed Shared journal');
    check(state.notes.find(row=>row.id===note.id)?.content===note.content,'note identity/content lost');
@@ -58,10 +59,11 @@ FLOW = r"""(async()=>{
 })()"""
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--phase', choices=('transactions', 'archive'))
+phases=('preflight','acquisition','checks-before','status','provider','transactions','archive','checks-after','publication')
+parser.add_argument('--phase', choices=phases)
 parser.add_argument('--action', choices=('pairing', 'account', 'dispose'))
 args = parser.parse_args()
-for phase in ([args.phase] if args.phase else ('transactions', 'archive')):
+for phase in ([args.phase] if args.phase else phases):
     for action in ([args.action] if args.action else ('pairing', 'account', 'dispose')):
         with BrowserSession(ROOT / 'netunim-kupa/site', 'bank-publication-' + phase + '-' + action) as browser:
             result = browser.evaluate(FLOW.replace('__PHASE__', json.dumps(phase)).replace('__ACTION__', json.dumps(action)), timeout=45)

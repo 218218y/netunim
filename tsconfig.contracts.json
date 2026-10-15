@@ -20,6 +20,9 @@
     "types": []
   },
   "files": [
+    "tests/fixtures/checked-kupa-bank-refresh.mjs",
+    "netunim-kupa/site/assets/js/domains/bank/refresh.js",
+    "netunim-kupa/site/assets/js/domains/bank/snapshot-policy.js",
     "tests/fixtures/checked-credit-refresh.mjs",
     "shared/credit-refresh-result.js",
     "netunim-orders/site/assets/js/domains/finance/credit-refresh.js",

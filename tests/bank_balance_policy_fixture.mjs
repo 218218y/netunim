@@ -2,9 +2,11 @@ import { readFileSync } from 'node:fs';
 import {restoreOrdersBankPublication} from './orders_bank_publication_policy_fixture.mjs';
 import {restoreFinanceLeaseOwnership} from './finance_lease_policy_fixture.mjs';
 import {restoreOrdersBankRefresh} from './orders_bank_refresh_policy_fixture.mjs';
+import {restoreKupaBankRefresh} from './kupa_bank_refresh_policy_fixture.mjs';
 // The historical fixture remains immutable. Undo only the reviewed financial
 // evidence boundary delta when comparing the surrounding provider/lease flow.
 export function restoreBankMoneyBoundary(source) {
+  if(source.includes('async function refreshBankBalance('))source=restoreKupaBankRefresh(source);
   source=restoreFinanceLeaseOwnership(restoreOrdersBankRefreshIfPresent(source));
   if(source.includes('bankSnapshots.commands.publish('))source=restoreOrdersBankPublication(source);
   const oldFields =

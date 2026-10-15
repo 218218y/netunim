@@ -26,7 +26,7 @@ FLOW=r"""(async()=>{
  const readout=()=>({revision,financeRevision:revision,state:{...(kupa?structuredClone(main.state):{creditSync:{profiles:[]}}),bank:structuredClone(remoteBank)}});
  if(kupa)cloudTransport.readSupabaseDocument=async()=>readout();else cloudTransport.readKupaReadOnlyCloud=async()=>readout();
  cloudTransport.readFinanceSyncDocument=async()=>({revision,state:{bank:structuredClone(remoteBank),creditSync:{profiles:[]}}});
- cloudTransport.claimFinanceSyncLease=async(leaseName,leaseToken)=>({acquired:true,leaseName,leaseToken,fenceEpoch:1});cloudTransport.releaseFinanceSyncLease=async()=>{releases++;return true};
+ cloudTransport.claimFinanceSyncLease=async(leaseName,leaseToken)=>caseName==='local-cloud-lease'?{acquired:true,localOnly:true}:{acquired:true,leaseName,leaseToken,fenceEpoch:1};cloudTransport.releaseFinanceSyncLease=async()=>{releases++;return true};
  checks.commands.sync=async()=>true;if(kupa)checks.queries.hasLocalWork=()=>false;else stateSnapshots.checksHaveLocalWork=()=>false;
  cloudTransport.syncBankTransactionsSnapshot=async()=>{archives++;return {sourcePayload:[],result:{total_count:0}}};cloudTransport.readBankTransactions=async()=>[];cloudTransport.readBankTransactionSnapshot=async()=>null;
  cloudTransport.saveBankSyncSnapshot=async candidate=>{commits++;remoteBank=structuredClone(candidate);revision=2;return {finance_revision:2,kupa_revision:2}};
@@ -35,7 +35,7 @@ FLOW=r"""(async()=>{
  globalThis.fetch=(url,options)=>{
   const path=String(url);
   if(path.endsWith('/status')){if(caseName==='pairing')localStorage.setItem('netunim_kupa_bank_bridge_token_v1','replacement-pairing');return Promise.resolve(new Response(JSON.stringify({ok:true,bridgeVersion:caseName==='old-runtime'?73:74,configured:true})))}
-  if(path.includes('/balance')){scans++;return Promise.resolve(new Response(JSON.stringify({ok:true,fetchedAt:stamp,accounts:{business:{balance:caseName==='invalid-business'?null:caseName==='blank'?' ':caseName==='zero'?0:500,accountId:'same-account',transactions:[],availableBalance:null,creditLimit:null,creditLimitUsed:null,creditLimitUsedPercent:null},home:caseName==='invalid-home'?{balance:null,accountId:'home-account',transactions:[]}:null}})))}
+  if(path.includes('/balance')){scans++;return Promise.resolve(new Response(JSON.stringify({ok:true,fetchedAt:stamp,accounts:{business:{balance:caseName==='invalid-business'?null:caseName==='blank'?' ':caseName==='zero'?0:500,accountId:'same-account',transactions:[],availableBalance:null,creditLimit:null,creditLimitUsed:null,creditLimitUsedPercent:null},home:caseName==='invalid-home'?{balance:null,accountId:'home-account',transactions:[]}:null},...(caseName==='invalid-home-failure'?{accountFailures:{home:'invalid diagnostic'}}:{})})))}
   if(path.includes('/rest/v1/order_management_documents?'))return Promise.resolve(new Response('[]'));
   if(path.includes('/storage/v1/object/list/'))return Promise.resolve(new Response('[]'));
   return originalFetch(url,options);
@@ -45,7 +45,7 @@ FLOW=r"""(async()=>{
   const saved=await (kupa?bank.commands.refreshBankBalance():finance.commands.refreshBank());
   check(saved===accepted,'incorrect money evidence result '+caseName);
   check(commits===(accepted?1:0)&&archives===(accepted?1:0),'invalid money crossed the archive/publication boundary');
-  check(scans===(caseName==='old-runtime'||caseName==='pairing'?0:1),'unexpected provider scan');check(releases===1,'own lease was not released');
+  check(scans===(['old-runtime','pairing','local-cloud-lease'].includes(caseName)?0:1),'unexpected provider scan');check(releases===1,'own lease was not released');
   const result=kupa?state.bank:finance.queries.snapshot().bank;
   check(result.currentBalance===(accepted?(caseName==='zero'?0:500):100),'last good balance/known zero lost');
   if(accepted)for(const field of ['availableBalance','creditLimit','creditLimitUsed','creditLimitUsedPercent'])check(result[field]===null,'unknown '+field+' became zero');
@@ -69,10 +69,13 @@ FLOW=r"""(async()=>{
 
 parser=argparse.ArgumentParser()
 parser.add_argument('--site',choices=('kupa','orders'),action='append')
-parser.add_argument('--case',choices=('invalid-business','invalid-home','blank','zero','optional','old-runtime','pairing'),action='append')
+cases=('invalid-business','invalid-home','blank','zero','optional','old-runtime','pairing','local-cloud-lease','invalid-home-failure')
+parser.add_argument('--case',choices=cases,action='append')
 args=parser.parse_args()
 for site in args.site or ('kupa','orders'):
-    for case in args.case or ('invalid-business','invalid-home','blank','zero','optional','old-runtime','pairing'):
+    for case in args.case or cases:
+        if site=='orders' and case in ('local-cloud-lease','invalid-home-failure'):
+            continue
         with BrowserSession(ROOT/f'netunim-{site}/site',f'bank-money-{site}-{case}') as browser:
             result=browser.evaluate(FLOW.replace('__SITE__',json.dumps(site)).replace('__CASE__',json.dumps(case)),timeout=45)
             assert result and all(result.values()), result
