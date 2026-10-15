@@ -1,25 +1,27 @@
-import {createOperationId} from './cloud-sync.js';
-
+// @ts-check
+import {createOperationId,readCleanStorageHead,readStorageState} from './storage-operation.js';
+/** @typedef {import('./storage-operation.js').BoundaryIntent} BoundaryIntent */
+/** @param {unknown} cloud */
 function cleanHead(cloud){
-  if(!cloud?.base||!Number.isSafeInteger(cloud.seq)||!Number.isSafeInteger(cloud.base.revision)||cloud.base.ackSeq!==cloud.seq||cloud.pending||cloud.flight||cloud.control)throw new Error('storage_local_import_head_not_clean');
-  return {expectedSeq:cloud.seq,expectedBaseRevision:cloud.base.revision,requireCleanCloud:true};
+  const head=readCleanStorageHead(cloud,'storage_local_import_head_not_clean');
+  return {expectedSeq:head.seq,expectedBaseRevision:head.revision,requireCleanCloud:/** @type {const} */(true)};
 }
-
-// A file import is never a cloud ACK. Connected owners retain both cloud
-// revisions and create pending heads; a local-only owner replaces both
-// checkpoints without inventing cloud state.
+// A local file never supplies a cloud ACK. Both cloud cursors remain pending;
+// local-only replacement requires both journals and no cloud flight/control.
+/** @param {{boundary?:{run:(intent:BoundaryIntent)=>Promise<unknown>},mainCloud?:unknown,sharedCloud?:unknown,mainLocal?:unknown,sharedLocal?:unknown,mode?:'cloud'|'local-only',mainState?:unknown,sharedState?:unknown,id?:string}} [ports] */
 export async function applyStorageV2LocalImport({boundary,mainCloud,sharedCloud,mainLocal,sharedLocal,mode='cloud',mainState,sharedState,id=createOperationId('storage-import')}={}){
   if(!boundary||!mainState||!sharedState)throw new Error('storage_local_import_configuration');
+  const main=readStorageState(mainState),shared=readStorageState(sharedState);
   if(mode==='local-only'){
-    if(mainCloud?.base||sharedCloud?.base||!Number.isSafeInteger(mainLocal?.seq)||mainLocal.seq<0||!Number.isSafeInteger(sharedLocal?.seq)||sharedLocal.seq<0)throw new Error('storage_local_import_local_head_invalid');
+    for(const value of [mainCloud,sharedCloud])if(value!=null){const head=readStorageState(value);if(head.base||head.flight||head.control||head.pending)throw new Error('storage_local_import_local_head_invalid')}
+    const mainHead=readStorageState(mainLocal),sharedHead=readStorageState(sharedLocal),a=mainHead.seq,b=sharedHead.seq;
+    if(typeof a!=='number'||!Number.isSafeInteger(a)||a<0||typeof b!=='number'||!Number.isSafeInteger(b)||b<0)throw new Error('storage_local_import_local_head_invalid');
     return boundary.run({id,kind:'import',
-      main:{kind:'replace-local-authoritative',state:structuredClone(mainState),expectedSeq:mainLocal.seq},
-      shared:{kind:'replace-local-authoritative',state:structuredClone(sharedState),expectedSeq:sharedLocal.seq},
-    });
+      main:{kind:'replace-local-authoritative',state:structuredClone(main),expectedSeq:a},
+      shared:{kind:'replace-local-authoritative',state:structuredClone(shared),expectedSeq:b}});
   }
   if(mode!=='cloud')throw new Error('storage_local_import_mode_invalid');
   return boundary.run({id,kind:'import',
-    main:{kind:'replace-local-with-pending',state:structuredClone(mainState),...cleanHead(mainCloud)},
-    shared:{kind:'replace-local-with-pending',state:structuredClone(sharedState),...cleanHead(sharedCloud)},
-  });
+    main:{kind:'replace-local-with-pending',state:structuredClone(main),...cleanHead(mainCloud)},
+    shared:{kind:'replace-local-with-pending',state:structuredClone(shared),...cleanHead(sharedCloud)}});
 }

@@ -18,6 +18,9 @@ A passed synthetic gate is not evidence of live providers or physical machines.
 - Document Bridge search/registry, Everything sessions/processes, PDF maintenance,
   extraction, runtime files, inventory reconciliation and diagnostics have owners.
 - Startup has native timing/graph budgets; document viewers load lazily into private mounts.
+- Restore/import now validate source ACKs, revisions and paired persisted
+  boundary phases/transitions before authority; malformed durable work remains locked.
+  See [transaction evidence](STORAGE_BOUNDARY_EVIDENCE.md).
 - Orders persistence now composes local admission/commit and debounced publication.
   Each save captures its own IDB receipt; local drain survives publication cancellation.
   Offline/reload access is supplied by a platform port. See [Orders persistence](ORDERS_PERSISTENCE_OWNERS.md).
@@ -26,7 +29,7 @@ A passed synthetic gate is not evidence of live providers or physical machines.
 
 | Priority | Scope | Required evidence |
 | --- | --- | --- |
-| 1 | Critical persisted/journal transaction consumers: restore/import, boundary resume, owner transfer and remaining IDB/runtime callers | Decode unknown values before action/ACK; preserve invalid durable records; checked implementation, negative consumer and implementation mutation |
+| 1 | Critical persisted/journal transaction consumers: owner transfer and remaining IDB/runtime callers; full strict bodies beyond the checked restore/import consumers | Decode unknown values before action/ACK; preserve invalid durable records; checked implementation, negative consumer and implementation mutation |
 | 2 | Document Bridge remaining PDF/index/search composition and document/preview operations; status, boot and shutdown | Preserve retry/search/wire policy; native files/process/HTTP fixtures; accepted work drains on shutdown |
 | 3 | Shell composition audit | Extract only policy/lifetime/authority still in lifecycle, backup, cloud UI or navigation; retain explicit role wiring and avoid a broad context |
 | 4 | Measured startup improvements | Repeated cold/cached/offline measurements; presentation-only lazy candidates; account/cancellation/PWA gates; preserve eager runtime ownership |

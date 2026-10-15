@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {applyStorageV2RestoreGroup,captureStorageV2RestoreSource} from '../shared/storage-v2-restore.js';
 
-const clean=(seq,revision)=>({seq,base:{revision},pending:false,flight:null,control:null});
+const clean=(seq,revision)=>({seq,base:{revision,ackSeq:seq},pending:false,flight:null,control:null});
 
 test('cloud restore carries both original sequences into one durable V2 boundary',async()=>{
   const v2Source=captureStorageV2RestoreSource(clean(4,8),clean(7,11));let intent=null;
