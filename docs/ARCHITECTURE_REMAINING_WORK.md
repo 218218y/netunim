@@ -47,7 +47,12 @@ remaining-scope paragraphs describe their stage's starting point.
   details and fresh links. Unknown replies must match operation/document identity
   before local metadata persistence or display; a reproduced foreign-ledger link
   is blocked. Null metadata remains retryable and native failures retain journals.
-  Broader customer orchestration and general form/payload validation remain open.
+  General form parsing now has a strict four-port command boundary, and approval
+  warnings have a strict two-port financial read model. Immutable ASTs plus 768
+  executed form cases, 1,008 confirmations and native scoped validation preserve
+  cents, Bank source constraints and independent allocation choices. Broader
+  customer/modal orchestration and remaining provider contracts stay open.
+  See [Morning command form](MORNING_COMMAND_FORM.md).
   See [Morning catalog](MORNING_CATALOG_OWNER.md), [Morning operation drain](MORNING_OPERATION_DRAIN.md) and
   [Morning media ownership](MORNING_DOCUMENT_MEDIA_OWNER.md).
 

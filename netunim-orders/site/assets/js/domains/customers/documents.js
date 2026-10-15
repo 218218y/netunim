@@ -1,4 +1,6 @@
-import {DOCUMENT_TYPES,DEFAULT_DOCUMENT_TYPE,documentLabel,createMorningDocumentView} from './morning-document-view.js';
+import {createMorningCommandForm} from './morning-command-form.js';
+import {createMorningDebtConfirmation} from './morning-debt-confirmation.js';
+import {DEFAULT_DOCUMENT_TYPE,documentLabel,createMorningDocumentView} from './morning-document-view.js';
 import {createMorningDebtApplication} from './morning-debt-application.js';
 import {createMorningLifetime} from './morning-lifetime.js';
 import {clearMorningDisplay} from './morning-display-lifetime.js';
@@ -175,51 +177,16 @@ function syncDocumentType(){
 function applyLinkedDebtIdentity(debt){const prefill=debt?debtMorningPrefill(debt):{taxId:'',remarks:''};for(const [fieldId,key] of [['morningClientTaxId','taxId'],['morningRemarks','remarks']]){const field=currentField(fieldId);if(!field)continue;const previous=String(field.dataset.debtPrefill||'');if(!field.value||field.value===previous)field.value=String(prefill[key]||'');field.dataset.debtPrefill=String(prefill[key]||'')}}
 function linkBankDebt(debtId){if(activeSource.kind!=='bank'||blocked||createBusy)return;const id=String(debtId||''),debt=id?activeBankDebts().find(row=>String(row.id)===id):null,exists=!id||!!debt;if(!exists)return toast('החוב שנבחר אינו קיים או שכבר הושלם');activeDebtId=id;applyLinkedDebtIdentity(debt);const host=currentField('morningDebtUpdateHost');if(host)host.innerHTML=debtUpdatePanel();syncDocumentType();syncBankDebtPickerSelection();collapseMorningBankDebtPicker(currentRoot())}
 
-function validateTaxId(value){const digits=String(value||'').replace(/\D/g,'');if(!digits)return'';if(digits.length>9)throw new Error('מספר עוסק / ח.פ. יכול להכיל עד 9 ספרות');const padded=digits.padStart(9,'0');let sum=0;for(let i=0;i<9;i++){let product=Number(padded[i])*((i%2)+1);if(product>9)product-=9;sum+=product}if(sum%10!==0)throw new Error('מספר העוסק / ח.פ. אינו תקין');return padded}
-function readForm(){
-  if(!activeOperationId)throw new Error('יש לפתוח את חלון ההפקה');
-  const type=selectedType();if(!DOCUMENT_TYPES[type])throw new Error('יש לבחור סוג מסמך');if(activeSource.kind==='bank'&&![320,400].includes(type))throw new Error('מתנועת בנק ניתן להפיק חשבונית מס / קבלה או קבלה בלבד');
-  const clientName=cleanText(currentField('morningClientName')?.value,160),email=cleanText(currentField('morningClientEmail')?.value,180),phone=cleanText(currentField('morningClientPhone')?.value,50),taxId=validateTaxId(currentField('morningClientTaxId')?.value),date=String(currentField('morningDocumentDate')?.value||''),dueDate=type===305?String(currentField('morningDueDate')?.value||''):'',description=cleanText(currentField('morningDescription')?.value,250),remarks=cleanText(currentField('morningRemarks')?.value,500),orderNumber=cleanText(currentField('morningOrderNumber')?.value,80),payments=(type===320||type===400)?readPaymentRows():[],amount=Number(currentField('morningAmount')?.value||0);
-  if(!clientName)throw new Error('יש להזין שם לקוח');if(!Number.isFinite(amount)||amount<=0)throw new Error('יש להזין סכום חיובי תקין');if(payments.length){const amountCents=Math.round(amount*100),paymentCents=morningPaymentTotalCents(payments);if(paymentCents!==amountCents)throw new Error(`סכום המסמך (${money(amount)}) אינו תואם לסך התקבולים (${money(paymentCents/100)}). יש לתקן את הסכומים לפני המשך.`)}if(!/^\d{4}-\d{2}-\d{2}$/.test(date))throw new Error('יש לבחור תאריך מסמך');if(dueDate&&!/^\d{4}-\d{2}-\d{2}$/.test(dueDate))throw new Error('תאריך לתשלום אינו תקין');if(dueDate&&dueDate<date)throw new Error('תאריך לתשלום לא יכול להיות לפני תאריך המסמך');if(!description)throw new Error('יש להזין תיאור למסמך');if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))throw new Error('כתובת האימייל אינה תקינה');
-  if(activeSource.kind==='bank'){
-    const sourcePayments=payments.filter(row=>String(row.bankSourceKey||'')),bankAmount=Number(activeSource.bankAmount),mode=String(activeSource.paymentMode||'transfer');
-    if(!sourcePayments.length)throw new Error('יש להשאיר לפחות תקבול אחד שמקורו בתנועת הבנק');
-    if(mode==='checks'){
-      if(sourcePayments.some(row=>row.type!==2||!String(row.bankSourceKey||'').startsWith('check:')))throw new Error('תקבולי הצ׳קים שמקורם בבנק חייבים להישאר מסוג צ׳ק');
-      const sourceTotal=sourcePayments.reduce((sum,row)=>sum+Math.round(Number(row.price)*100),0);if(!Number.isFinite(bankAmount)||sourceTotal<=0||sourceTotal>Math.round(bankAmount*100))throw new Error('סכומי הצ׳קים שנבחרו אינם תואמים להפקדת הבנק המקורית');
-    }else{
-      const source=sourcePayments.find(row=>row.bankSourceKey==='transfer');if(sourcePayments.length!==1||!source||source.type!==4||!Number.isFinite(bankAmount)||Math.round(source.price*100)!==Math.round(bankAmount*100))throw new Error('תקבול ההעברה שמקורו בבנק חייב להישאר זהה לתנועת הבנק המקורית');
-    }
-  }
-  const payload={operation_id:activeOperationId,source:{kind:activeSource.kind||'standalone',debtId:activeDebtId||'',...(activeSource.kind==='bank'?{bankTransactionId:Number(activeSource.bankTransactionId)}:{})},document:{type,amount,date,dueDate,description,remarks,orderNumber,client:{name:clientName,email,taxId,phone}}};
-  if(payments.length)payload.document.payment=payments;if(type===400){const linked=String(currentField('morningLinkedDocument')?.value||'').trim();if(linked)payload.document.linkedDocumentId=linked}return payload;
-}
 
+
+
+const commandForm=createMorningCommandForm({session:{context:()=>({operationId:activeOperationId,debtId:activeDebtId,source:activeSource})},fields:{read:currentField,type:selectedType},receipts:{read:readPaymentRows,totalCents:morningPaymentTotalCents},format:{money}});
+const confirmation=createMorningDebtConfirmation({format:{money},financial:{impact:morningDebtImpact}});
+function readForm(){return commandForm.read()}
+function debtImpactConfirmation(type,amount,policy=debtUpdatePolicy(type)){return confirmation.message(activeDebtId,currentDebt(),type,amount,policy)}
 function currentDebt(){return activeDebtId?(model.state.customerDebts||[]).find(row=>row.id===activeDebtId)||null:null}
-function impactLine(label,supported,affected,apply,remainingBefore,remainingAfter,completeBefore,unapplied){
-  if(!supported)return `${label}: סוג המסמך הזה אינו משנה את הצד הזה של החוב.`;
-  if(!affected)return `${label}: לא יעודכן — ביטלת את הזקיפה לחוב עבור המסמך הזה.`;
-  if(completeBefore)return `${label}: כבר הושלם בחוב; המסמך לא יוסיף סכום נוסף.`;
-  const appliedText=apply>0?`יירשמו ${money(apply)}`:'לא יירשם סכום';
-  const remainingText=remainingAfter<=0?'והמצב ייסגר במלואו':`ויישארו ${money(remainingAfter)}`;
-  return `${label}: ${appliedText} ${remainingText}.${unapplied>0?` ${money(unapplied)} מסכום המסמך לא ייזקפו לצד הזה של החוב, כי היתרה לפני ההפקה היא ${money(remainingBefore)}.`:''}`;
-}
-function debtImpactConfirmation(type,amount,policy=debtUpdatePolicy(type)){
-  if(!activeDebtId)return'';
-  const debt=currentDebt();if(!debt)return'\n\n⚠ שורת החוב שממנה נפתח המסמך כבר אינה קיימת. המסמך יופק ב-Morning אך לא יעדכן חוב מקומי.';
-  const impact=morningDebtImpact(debt,type,amount,policy),lines=[];
-  if(!impact.eligible)return'\n\n⚠ החוב אינו חוב חיובי פעיל, ולכן המסמך לא יעדכן אוטומטית את מצב התשלום או החשבונית.';
-  if(impact.paymentAffected||impact.invoiceAffected)lines.push('⚠ הזקיפה למסמך היא שינוי נוסף בחוב המקומי. אם כבר רשמת ידנית את אותו תשלום/חשבונית או הקטנת את סכום החוב בגללם, חזור ובטל את הסימון המתאים כדי למנוע קיזוז כפול.');
-  if(impact.paymentAffected&&impact.paymentBefore>0)lines.push(`⚠ בחוב כבר רשום תשלום בסך ${money(impact.paymentBefore)}. אם המסמך הנוכחי מתעד את אותו תשלום שכבר נרשם, חזור ובטל „זקוף כתשלום לחוב”.`);
-  if(impact.invoiceAffected&&impact.invoiceBefore>0)lines.push(`⚠ בחוב כבר רשום סכום חשבוניות בסך ${money(impact.invoiceBefore)}. אם המסמך הנוכחי מתעד חשבונית שכבר נרשמה, חזור ובטל „זקוף כחשבונית לחוב”.`);
-  if(impact.relation==='over')lines.push(`⚠ סכום המסמך ${money(impact.documentAmount)} גבוה מסכום החוב ${money(impact.targetMagnitude)}. ההפרש לא ייזקף לחוב זה.`);
-  else if(impact.relation==='partial')lines.push(`המסמך חלקי ביחס לחוב: ${money(impact.documentAmount)} מתוך ${money(impact.targetMagnitude)}.`);
-  lines.push(impactLine('תשלום',impact.paymentSupported,impact.paymentAffected,impact.paymentApply,impact.paymentRemainingBefore,impact.paymentRemainingAfter,impact.paymentCompleteBefore,impact.paymentUnapplied));
-  lines.push(impactLine('חשבונית',impact.invoiceSupported,impact.invoiceAffected,impact.invoiceApply,impact.invoiceRemainingBefore,impact.invoiceRemainingAfter,impact.invoiceCompleteBefore,impact.invoiceUnapplied));
-  if(!impact.paymentAffected&&!impact.invoiceAffected)lines.push('לפי הבחירה שלך, המסמך לא ישנה כלל את החוב המקומי.');
-  else lines.push('רק הסעיפים שסומנו יעודכנו, ורק לאחר אימות ודאי של המסמך ב-Morning.');
-  return `\n\nעדכון החוב לאחר אימות:\n${lines.join('\n')}`;
-}
+
+
 function recoveryContext(type,amount,policy=debtUpdatePolicy(type),operationId=activeOperationId){return createMorningDebtRecoveryContext({operationId,debtId:activeDebtId,type,amount,applyPayment:policy.applyPayment,applyInvoice:policy.applyInvoice,financialSnapshot:morningFinancialSnapshot(currentDebt()),sourceKind:activeSource.kind||'standalone',bankTransactionId:activeSource.kind==='bank'?Number(activeSource.bankTransactionId):null})}
 function persistRecoveryContext(context){
   if(!saveMorningDebtRecoveryContext(context))throw new Error('לא ניתן לשמור נקודת התאוששות מקומית לפני ההפקה. המסמך לא נשלח ל-Morning כדי שלא יאבד הקשר לחוב במקרה של ניתוק או רענון.');

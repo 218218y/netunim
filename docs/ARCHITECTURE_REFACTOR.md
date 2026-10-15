@@ -1,5 +1,13 @@
 # Architecture refactor: verified baseline and next slices
 
+Morning command-form validation and debt confirmation now have strict four- and
+two-port owners. The mounted controller retains issuance/confirmation/lifetime;
+pure payload capture and financial warning projection cannot write or issue.
+Four pre-change ASTs, 768 executed form cases, 1,008 confirmation combinations,
+native invalid-preview/scoped-edit cases and actual implementation mutations
+retain source Bank, cents, checksum and local allocation policies. See
+[Morning command form](MORNING_COMMAND_FORM.md).
+
 Morning catalog reads now have a strict three-port owner and unknown payload
 decoders. Search caching, metadata coalescing, detail fallback and fresh links
 leave the browser; operation/document identities are checked before publication
