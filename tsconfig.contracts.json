@@ -286,6 +286,8 @@
     "tests/fixtures/checked-storage-boundaries.mjs",
     "tests/fixtures/checked-document-commands.mjs",
     "shared/storage-journal-authority.js",
-    "tests/fixtures/checked-journal-authority.mjs"
+    "tests/fixtures/checked-journal-authority.mjs",
+    "shared/cloud-read-records.js",
+    "tests/fixtures/checked-cloud-read-records.mjs"
   ]
 }
