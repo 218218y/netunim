@@ -16,7 +16,7 @@ function issueFixture(factory=createMorningIssueCommand){
   issuance:{issue:async()=>{calls.push('issue');state.blocked=true;return {document:{id:'official',number:'4001',amount:42,type:320}}}},
   application:{apply:async(c,evidence,options)=>{calls.push({apply:true,context:c,evidence,options});return {changed:true,persisted:true}}},
   recovery:{settle:()=>({durable:true,recoveryCleared:true,blocked:false}),notify:()=>calls.push('notify'),adopt:id=>calls.push({adopt:id}),reset:id=>{calls.push({reset:id});state.blocked=false},schedule:ms=>calls.push({schedule:ms})},
-  display:{confirm:async()=>true,busy:()=>{},operation:()=>calls.push('render'),status:()=>calls.push('status'),markSaved:()=>calls.push('saved')},
+  display:{confirmDialog:async()=>true,busy:()=>{},operation:()=>calls.push('render'),status:()=>calls.push('status'),markSaved:()=>calls.push('saved')},
   media:{invalidateCache:()=>calls.push('invalidate'),viewDocument:async()=>{calls.push('view');return true}},feedback:{toast:()=>calls.push('toast')},connectivity:{isOnline:()=>control.online},
  };
  return {ports,state,calls,control,command:()=>factory(ports)};
@@ -25,11 +25,11 @@ for(const key of ['createBusy','blocked','completed'])test('issuance admission r
  const f=issueFixture();f.state[key]=true;await f.command().create();assert.deepEqual(f.calls,[]);
 });
 test('a held confirmation excludes a second create and cancellation never reserves',async()=>{
- const f=issueFixture(),held=gate();f.ports.display.confirm=()=>held.promise;const command=f.command(),work=command.create();
+ const f=issueFixture(),held=gate();f.ports.display.confirmDialog=()=>held.promise;const command=f.command(),work=command.create();
  await command.create();assert.equal(f.state.createBusy,true);held.resolve(false);await work;assert.equal(f.calls.includes('issue'),false);assert.equal(f.state.createBusy,false);
 });
 for(const change of ['current','active','rejected'])test('confirmation rechecks '+change+' before official issuance',async()=>{
- const f=issueFixture(),held=gate();f.ports.display.confirm=()=>held.promise;const work=f.command().create();f.control[change]=change==='rejected';held.resolve(true);await work;assert.equal(f.calls.includes('issue'),false);
+ const f=issueFixture(),held=gate();f.ports.display.confirmDialog=()=>held.promise;const work=f.command().create();f.control[change]=change==='rejected';held.resolve(true);await work;assert.equal(f.calls.includes('issue'),false);
 });
 test('closed presentation does not cancel accepted verified work or publish into a replacement modal',async()=>{
  const f=issueFixture(),held=gate(),issue=f.ports.issuance.issue;f.ports.issuance.issue=async(...args)=>{await held.promise;return issue(...args)};const work=f.command().create();await Promise.resolve();f.control.active=false;f.control.epoch++;held.resolve();await work;
@@ -84,7 +84,7 @@ async function mutant(file,from,to,exported){
  const url=new URL('../netunim-orders/site/assets/js/domains/customers/'+file,import.meta.url);let source=readFileSync(url,'utf8');assert.ok(source.includes(from));source=source.replace(from,to).replace(/from '([^']+)'/g,(_,relative)=>'from '+JSON.stringify(new URL(relative,url).href));return (await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64')))[exported];
 }
 test('negative implementation: removing confirmation allows a forbidden official issue',async()=>{
- const factory=await mutant('morning-issue-command.js','if(!confirmed)return;','void confirmed;','createMorningIssueCommand');const f=issueFixture(factory);f.ports.display.confirm=async()=>false;await f.command().create();assert.equal(f.calls.includes('issue'),true,'the cancellation scenario must detect this policy mutation');
+ const factory=await mutant('morning-issue-command.js','if(!confirmed)return;','void confirmed;','createMorningIssueCommand');const f=issueFixture(factory);f.ports.display.confirmDialog=async()=>false;await f.command().create();assert.equal(f.calls.includes('issue'),true,'the cancellation scenario must detect this policy mutation');
 });
 test('negative implementation: skipping financial comparison applies a stale recovery choice',async()=>{
  const factory=await mutant('morning-recovery-decision.js','morningFinancialChanges(chosen.resolution.financialSnapshot,current).changed','false','createMorningRecoveryDecision');const f=decisionFixture(factory),held=gate();f.ports.debts.refresh=()=>held.promise;const work=f.command.confirm();f.debt.amount=43;held.resolve(true);await work;assert.equal(f.calls.includes('recover'),true,'the changed-debt scenario must detect this policy mutation');

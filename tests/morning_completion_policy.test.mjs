@@ -80,7 +80,7 @@ const ports={
     ],
     [
       "confirmDialog(",
-      "display.confirm("
+      "display.confirmDialog("
     ],
     [
       "setBusy(",

@@ -13,7 +13,7 @@ async function createMorningDocument(button){
   let context;try{context=form.context(type,amount,policy,payload.operation_id)}catch(error){return feedback.toast(error.message)}
   session.cancelStatus();session.update({createBusy:true});display.busy(button,true,'מפיק…');
   try{
-    const confirmed=await display.confirm('הפקת מסמך רשמי',`להפיק ${documentLabel(type)} על סך ${money(amount)} עבור ${clientName}?\nלאחר ההפקה המסמך יקבל מספר רשמי ב-Morning.${form.confirmation(type,amount,policy)}`,{confirmText:'הפק מסמך',cancelText:'חזור לעריכה',tone:'primary',signal:session.signal()});
+    const confirmed=await display.confirmDialog('הפקת מסמך רשמי',`להפיק ${documentLabel(type)} על סך ${money(amount)} עבור ${clientName}?\nלאחר ההפקה המסמך יקבל מספר רשמי ב-Morning.${form.confirmation(type,amount,policy)}`,{confirmText:'הפק מסמך',cancelText:'חזור לעריכה',tone:'primary',signal:session.signal()});
     if(!confirmed)return;assertCurrent();if(!session.isActive(generation))return;
     if(rejectCurrentIssuance())return;
     const data=await issuance.issue(payload,context,assertCurrent);assertCurrent();

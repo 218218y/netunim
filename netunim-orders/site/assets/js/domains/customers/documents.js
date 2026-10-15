@@ -130,7 +130,7 @@ const issueCommand=createMorningIssueCommand({
     interruptionEpoch:()=>issuanceInterruptionEpoch,operationId:()=>issuanceContext?.operationId||activeOperationId,isActive,scopeChanged,cancelStatus:()=>statusFlow.cancelPending()},
   form:{read:readForm,policy:debtUpdatePolicy,context:recoveryContext,confirmation:debtImpactConfirmation},issuance,application:debtApplication,
   recovery:{settle:settleVerifiedRecovery,notify:notifyBankVerified,adopt:adoptRecoveryOperationId,reset:resetOperationAfterTerminal,schedule:scheduleRecoveryCheck},
-  display:{confirm:confirmDialog,busy:setBusy,operation:renderOperation,status:connectionStatus,markSaved:()=>markModalDraftSaved?.()},media:documentsBrowser,feedback:{toast},
+  display:{confirmDialog:confirmDialog,busy:setBusy,operation:renderOperation,status:connectionStatus,markSaved:()=>markModalDraftSaved?.()},media:documentsBrowser,feedback:{toast},
   connectivity:{isOnline:()=>globalThis.navigator?.onLine!==false},
 });
 
