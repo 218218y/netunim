@@ -62,3 +62,15 @@ Stage 4 merged as PR #187 after the exact branch head passed the full gate.
 Stage 5 unifies and checks the real Finance lease RPC boundary and manual edit
 consumer, including the proved Kupa release-body scope gap; see
 FINANCE_TRANSACTION_AUTHORITY.md. Unrelated journal/provider policies remain.
+
+Stage 5 merged as PR #188 after its exact branch push passed the full gate.
+Stage 6 extracts Document Bridge runtime files, scheduled-task diagnostics,
+installation diagnostics, inventory reconciliation and the installer stop/check
+command, plus the Windows process platform shared with native preview, with preserved policy and native HTTP/index/Windows packaging evidence.
+See DOCUMENT_BRIDGE_RUNTIME_BOUNDARIES.md. The listener drops from 60,879 to
+40,380 normalized source bytes. Existing provider and search policies remain.
+
+The continuation's three stages are now implemented. Measured startup and
+selective lazy loading, the remaining journal/business contracts, compatibility
+classification, final readability and live/two-machine release validation remain
+future work, not completed claims of this continuation.

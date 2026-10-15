@@ -1,3 +1,4 @@
+import {createPdfInventoryReconciliation} from '../netunim-orders/document-bridge/pdf-inventory-reconciliation.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -15,11 +16,11 @@ import * as lib from '../netunim-orders/document-bridge/lib.mjs';
 import {indexFixture} from './pdf_index_file_fixture.mjs';
 
 const execute=promisify(execFile),worker=fileURLToPath(new URL('./fixtures/everything_json_process_worker.mjs',import.meta.url));
-async function fixture(t,{count='0',page='',abortPhase='',handoffAbort=false}={}){
+async function fixture(t,{count='0',page='',abortPhase='',handoffAbort=false,abortAfterAppend=false}={}){
   const f=await indexFixture(t);await f.read();const controller=new AbortController(),commands=[];
   const source=await fs.readFile(new URL('../netunim-orders/document-bridge/server.mjs',import.meta.url),'utf8'),ast=parse(source,{ecmaVersion:'latest',sourceType:'module'});
   let pruned=0,registered=0;
-  Object.assign(f.context,{...lib,AbortController,everythingSession:{invalidate:()=>{}},createEverythingInventorySource,createDocumentSearch,pruneResults:()=>{pruned++},publicResult:()=>{registered++;return {id:'synthetic'}},
+  Object.assign(f.context,{...lib,AbortController,createPdfInventoryReconciliation,everythingSession:{invalidate:()=>{}},createEverythingInventorySource,createDocumentSearch,pruneResults:()=>{pruned++},publicResult:()=>{registered++;return {id:'synthetic'}},
     preparePdfFormIndexForSearch:async()=>({partial:false}),searchPdfFormIndex:()=>[],appendLog:async()=>{},createPdfInventory:ports=>{
     const inventory=createPdfInventory(ports,{pageSize:2});if(!handoffAbort)return inventory;
     return {...inventory,read:async options=>{const rows=await inventory.read(options);queueMicrotask(()=>controller.abort());return rows}};
@@ -31,10 +32,12 @@ async function fixture(t,{count='0',page='',abortPhase='',handoffAbort=false}={}
     },PDF_FORM_INDEX_PAGE_SIZE:2,PDF_FORM_DETECTION_REVISION:2,PDF_FORM_SEARCH_TEXT_REVISION:2,
     pdfIndexNeedsInspection,shuttingDown:false,pdfMaintenanceStopRequested:false,
   });
-  const functions=ast.body.filter(node=>node.type==='FunctionDeclaration'&&['listEverythingPdfs','rebuildPdfFormIndexBacklog','runEverythingJson','searchDocuments'].includes(node.id.name));
+  if(abortAfterAppend){const append=f.context.appendPdfIndexJournal;f.context.appendPdfIndexJournal=async records=>{await append(records);controller.abort()}}
+  const reconciliation=ast.body.find(node=>node.type==='VariableDeclaration'&&node.declarations.some(value=>value.id.name==='pdfReconciliation'));
+  const functions=ast.body.filter(node=>node.type==='FunctionDeclaration'&&['rebuildPdfFormIndexBacklog','runEverythingJson','searchDocuments'].includes(node.id.name));
   const variable=ast.body.find(node=>node.type==='VariableDeclaration'&&node.declarations.some(value=>value.id.name==='pdfInventory'));
   const search=ast.body.find(node=>node.type==='VariableDeclaration'&&node.declarations.some(value=>value.id.name==='documentSearch'));
-  const root=vm.runInNewContext([source.slice(variable.start,variable.end),source.slice(search.start,search.end),...functions.map(node=>source.slice(node.start,node.end)),'({rebuild:rebuildPdfFormIndexBacklog,search:searchDocuments})'].join('\n'),f.context);
+  const root=vm.runInNewContext([source.slice(variable.start,variable.end),source.slice(reconciliation.start,reconciliation.end),source.slice(search.start,search.end),...functions.map(node=>source.slice(node.start,node.end)),'({rebuild:rebuildPdfFormIndexBacklog,search:searchDocuments})'].join('\n'),f.context);
   return {...f,root,controller,commands,publication:()=>({pruned,registered})};
 }
 async function retained(f,errorCode){
@@ -60,8 +63,7 @@ test('verified empty ES stdout remains an authoritative empty derived inventory'
   assert.equal((await f.fresh()).entries.size,0);assert.equal(f.context.pdfFormIndexInventoryCount,0);assert.deepEqual(f.commands,['count','page','count']);
 });
 test('storage work already begun drains while a late stop prevents successful backlog publication',async t=>{
-  const f=await fixture(t),append=f.context.appendPdfIndexJournal,pending=f.context.pdfFormIndexPending;
-  f.context.appendPdfIndexJournal=async records=>{await append(records);f.controller.abort()};
+  const f=await fixture(t,{abortAfterAppend:true}),pending=f.context.pdfFormIndexPending;
   await assert.rejects(f.root.rebuild({full:true,signal:f.controller.signal}),{code:'ABORT_ERR'});assert.equal((await f.fresh()).entries.size,0);assert.equal(f.context.pdfFormIndexPending,pending);assert.equal(f.context.pdfFormIndexInventoryCount,2);
 });
 test('actual search refuses malformed process results before opaque-ID or success publication',async t=>{

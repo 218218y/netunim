@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const read=path=>fs.readFileSync(new URL(`../${path}`,import.meta.url),'utf8');
+const serverOwners=()=>['server.mjs','bridge-replacement-command.mjs','windows-process-control.mjs','bridge-runtime-files.mjs','pdf-maintenance-task-diagnostics.mjs','bridge-installation-diagnostics.mjs','pdf-inventory-reconciliation.mjs'].map(name=>read('netunim-orders/document-bridge/'+name)).join('\n');
 
 test('orders site exposes one unified search with site, file and content filters over loopback bridge',()=>{
   const html=read('netunim-orders/site/index.html');
@@ -38,7 +39,7 @@ test('orders site exposes one unified search with site, file and content filters
 
 test('manual PDF refresh is a separate search action backed by the short-lived maintenance worker',()=>{
   const orders=read('netunim-orders/site/index.html'),kupa=read('netunim-kupa/site/index.html');
-  const server=read('netunim-orders/document-bridge/server.mjs');
+  const server=serverOwners();
   const client=read('shared/document-bridge-client.js');
   const source=read('shared/document-search/domains/documents/search-source.js');
   for(const html of [orders,kupa]){
@@ -65,7 +66,7 @@ test('manual PDF refresh is a separate search action backed by the short-lived m
 
 test('bridge searches the complete Everything index and forces Unicode ES transport',()=>{
   const installer=read('netunim-orders/document-bridge/install_document_bridge.bat');
-  const server=read('netunim-orders/document-bridge/server.mjs');
+  const server=serverOwners();
   const lib=read('netunim-orders/document-bridge/lib.mjs');
   const pdfIndex=read('netunim-orders/document-bridge/pdf_form_index.mjs');
   const policy=read('netunim-orders/document-bridge/pdf-index-policy.mjs');
@@ -250,7 +251,7 @@ test('Windows dependency installers avoid the PowerShell 8.3 TEMP cleanup failur
 });
 
 test('file and folder opening use the Windows graphical shell through UseShellExecute',()=>{
-  const server=read('netunim-orders/document-bridge/server.mjs');
+  const server=serverOwners();
   assert.match(server,/System\.Diagnostics\.ProcessStartInfo/);
   assert.match(server,/UseShellExecute=\$true/);
   assert.match(server,/System\.Diagnostics\.Process\]::Start/);
@@ -263,7 +264,7 @@ test('file and folder opening use the Windows graphical shell through UseShellEx
 });
 
 test('local document results expose Explorer reveal and recycle-bin delete through opaque result ids',()=>{
-  const server=read('netunim-orders/document-bridge/server.mjs');
+  const server=serverOwners();
   const client=read('shared/document-bridge-client.js');
   const ui=read('shared/global-document-search.js');
   const menu=read('netunim-orders/site/assets/js/ui/document-result-menu.js');
@@ -291,7 +292,7 @@ test('local document results expose Explorer reveal and recycle-bin delete throu
 });
 
 test('preview stays local: filename Office preview stays native while content search uses controlled local document renderers',()=>{
-  const server=read('netunim-orders/document-bridge/server.mjs');
+  const server=serverOwners();
   const lib=read('netunim-orders/document-bridge/lib.mjs');
   const ui=read('shared/global-document-search.js');
   const documentView=read('netunim-orders/site/assets/js/ui/document-search-view.js');
@@ -427,7 +428,7 @@ test('preview stays local: filename Office preview stays native while content se
 
 test('installer keeps Everything hidden background startup and no longer asks for Bridge roots',()=>{
   const installer=read('netunim-orders/document-bridge/install_document_bridge.bat');
-  const server=read('netunim-orders/document-bridge/server.mjs');
+  const server=serverOwners();
   assert.match(installer,/background mode/);
   assert.match(installer,/complete Everything index/i);
   assert.match(installer,/--doctor/);
@@ -538,7 +539,7 @@ test('Drive fallback keeps local Document Bridge pairing visible when the browse
 
 test('document search rejects stale bridge runtimes instead of silently using a broken newer process',()=>{
   const lib=read('netunim-orders/document-bridge/lib.mjs');
-  const server=read('netunim-orders/document-bridge/server.mjs');
+  const server=serverOwners();
   const client=read('shared/document-bridge-client.js');
   assert.match(lib,/BRIDGE_VERSION=38/);
   assert.match(server,/bridgeVersion:BRIDGE_VERSION/);
