@@ -7,7 +7,7 @@ const stale=error=>/^storage_(ack_checkpoint_stale|rebase_checkpoint_stale|check
 // One owner, one journal and one immutable RPC payload. Application adapters
 // supply their existing check merge/normalization; this module owns durability.
 // In particular, an authentication change is never a migration instruction.
-export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readState,applyState,merge,readRemote,rpc,site,
+export function createSharedChecksV2Runtime({owner,primary,captureCommitAuthority=()=>primary,mode=()=> 'off',readState,applyState,merge,readRemote,rpc,site,
   createStorage=createSharedChecksStorageV2,operationId=()=>createOperationId('shared-checks-v2'),now=()=>Date.now()}={}){
   if([owner,primary,readState,applyState,merge,readRemote,rpc].some(value=>typeof value!=='function'))throw new Error('shared_checks_runtime_configuration');
   let storage=null,identity='',opening=null,syncing=null,commits=Promise.resolve(),active=false,cursorReady=false,lastRemoteUpdatedAt=null,boundaryGate=()=>false;
@@ -23,7 +23,7 @@ export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readS
   function assertSyncAllowed(store=storage){assertContext(store);if(boundaryGate())throw new Error('storage_boundary_in_progress')}
   function context(){
     if(!primaryMode()||!primary()||!currentOwner())throw new Error('shared_checks_primary_required');
-    if(identity!==currentOwner()||!storage){identity=currentOwner();storage=createStorage({owner,primary:()=>primary()&&primaryMode()});active=false;cursorReady=false;lastRemoteUpdatedAt=null;commits=Promise.resolve();workPending=true;commitsInFlight=0}
+    if(identity!==currentOwner()||!storage){identity=currentOwner();storage=createStorage({owner,primary:()=>primary()&&primaryMode(),commitPrimary:captureCommitAuthority()});active=false;cursorReady=false;lastRemoteUpdatedAt=null;commits=Promise.resolve();workPending=true;commitsInFlight=0}
     return storage;
   }
   async function publish(store){

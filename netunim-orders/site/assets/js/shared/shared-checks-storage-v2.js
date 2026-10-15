@@ -13,14 +13,14 @@ function canonicalState(state){validateSharedChecksState(state);return {checks:s
 // Shared Checks has its own cloud revision, so it must never share the main
 // document's cursor or flight. The caller owns the business merge and RPC;
 // this store owns local durability and the exact pending cloud payload.
-export function createSharedChecksStorageV2({owner,primary,role='primary',validate=validateSharedChecksState,createJournal=createStorageJournal,db,emergency,operationId,now}={}){
+export function createSharedChecksStorageV2({owner,primary,commitPrimary=primary,role='primary',validate=validateSharedChecksState,createJournal=createStorageJournal,db,emergency,operationId,now}={}){
   if(typeof owner!=='function'||typeof primary!=='function')throw new Error('shared_checks_storage_configuration');
   if(role!=='primary')throw new Error('shared_checks_storage_role_invalid');
   const identity=String(owner()||'').trim();
   if(!identity)throw new Error('shared_checks_owner_required');
   const scopedOwner=`${identity}:shared-checks`,database=db||createStorageJournalDb();
   const journal=createJournal({owner:scopedOwner,schema:SCHEMA,validate,
-    primary:()=>primary()&&String(owner()||'').trim()===identity,db:database,emergency,operationId,now});
+    primary:()=>primary()&&String(owner()||'').trim()===identity,commitPrimary:()=>commitPrimary()&&String(owner()||'').trim()===identity,db:database,emergency,operationId,now});
   let trusted=false;
   const assertOwner=()=>{if(!primary())throw new Error('storage_secondary_tab');if(String(owner()||'').trim()!==identity)throw new Error('shared_checks_owner_changed')};
   const assertTrusted=()=>{assertOwner();if(!trusted)throw new Error('shared_checks_storage_not_open')};

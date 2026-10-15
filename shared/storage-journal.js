@@ -27,7 +27,7 @@ function mergeDeleteIntents(...sources){
 
 // Local checkpoint/journal engine. Rollout policy lives in the application
 // adapter; this layer provides primary recovery and cloud synchronization.
-export function createStorageJournal({owner,schema,validate,primary=()=>true,db=createStorageJournalDb(),emergency=globalThis.localStorage,operationId=()=>createOperationId('storage-v2'),now=()=>new Date().toISOString(),maxEmergencyBytes=131072,maxEmergencyEntries=64}={}){
+export function createStorageJournal({owner,schema,validate,primary=()=>true,commitPrimary=primary,db=createStorageJournalDb(),emergency=globalThis.localStorage,operationId=()=>createOperationId('storage-v2'),now=()=>new Date().toISOString(),maxEmergencyBytes=131072,maxEmergencyEntries=64}={}){
   if(!owner||!schema||!validate)throw new Error('storage_configuration_required');
   const prefix='netunim-storage-v2-emergency:'+encodeURIComponent(owner)+':',writer=operationId();
   let epoch=null,seq=0,queue=Promise.resolve(),ready=false,failed=null,transition=null;
@@ -113,7 +113,7 @@ export function createStorageJournal({owner,schema,validate,primary=()=>true,db=
     const fallbackRecord=activeTransition?sealStorageRecord({...operation,epoch:activeTransition.fallbackEpoch,seq:activeTransition.fallbackSeq+1},{kind:'journal'}):null;
     const fallbackDurable=!fallbackRecord||writeEmergency(fallbackRecord),newEpochDurable=writeEmergency(record),emergencyDurable=fallbackDurable&&newEpochDurable;
     if(activeTransition){activeTransition.seq=operation.seq;activeTransition.fallbackSeq++}else seq=operation.seq;
-    const committed=enqueue(async()=>{if(!primary())throw new Error('storage_secondary_tab');const done=beginMeasure('storage:idb-journal');try{await db.append(owner,operation.epoch,writer,record);cleanEmergency(record);if(fallbackRecord)cleanEmergency(fallbackRecord);return true}finally{done()}});
+    const committed=enqueue(async()=>{if(!commitPrimary())throw new Error('storage_secondary_tab');const done=beginMeasure('storage:idb-journal');try{await db.append(owner,operation.epoch,writer,record);cleanEmergency(record);if(fallbackRecord)cleanEmergency(fallbackRecord);return true}finally{done()}});
     return {seq:operation.seq,operationId:operation.operationId,emergencyDurable,transitionFallbackDurable:fallbackDurable,committed,transitioning:!!activeTransition};
   }
   async function replaceLocalWithPending(state,{boundaryId,expectedSeq,expectedBaseRevision,deleteCollections=schema.collections,validateBase=validate,mutationType='import',surface='backup.local-import',requireCurrentState=false}={}){

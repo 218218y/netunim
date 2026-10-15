@@ -11,6 +11,20 @@ function fixture(){
   const owner=createStorageOwnerBinding({app:'orders',db,storage,operationId:()=> 'H',now:()=> 'T'});
   return {db,storage,owner};
 }
+test('accepted commit authority survives admission closure but never a generation, verification or leadership change',async()=>{
+  const f=fixture();let primary=true;
+  const owner=createStorageOwnerBinding({app:'orders',db:f.db,storage:f.storage,primary:()=>primary,operationId:()=> 'H'});
+  await owner.hydrate();const commit=owner.captureCommitAuthority();
+  const pending=owner.beginHandoff('B',{intent:'account-switch'});
+  assert.equal(owner.writable,false);assert.equal(commit(),true);await pending;
+  assert.equal(owner.writable,false);assert.equal(commit(),true);
+  primary=false;assert.equal(commit(),false);primary=true;
+  f.db.seedHandoff('orders',null);f.db.readOwnerHandoff=async()=>null;
+  f.db.seedBinding('orders',{...row(),generation:5});await owner.refresh();
+  assert.equal(owner.current(),'A');assert.equal(commit(),false,'A to B to A cannot revive an old receipt');
+  const current=owner.captureCommitAuthority();assert.equal(current(),true);
+  f.db.readOwnerBinding=async()=>{throw Error('read abort')};await assert.rejects(owner.refresh());assert.equal(current(),false);
+});
 for(const patch of [{version:'1'},{app:'kupa'},{owner:['A']},{owner:' A '},{owner:''},{generation:'3'},{generation:0},{generation:-1},{generation:1.5},{generation:Number.MAX_SAFE_INTEGER+1},{source:['handoff']},{pendingAdoption:{id:'R',targetOwner:'B',intent:'upload-local'}}])test(`invalid durable binding ${JSON.stringify(patch)} cannot publish cache or writer authority`,async()=>{
   const f=fixture(),data={...row(),...patch};f.db.seedBinding('orders',data);
   await assert.rejects(f.owner.hydrate());assert.equal(f.owner.current(),STORAGE_OWNER_UNBOUND);assert.equal(f.owner.ready,false);assert.equal(f.owner.writable,false);assert.equal(f.owner.locked,true);assert.equal(f.storage.getItem(storageOwnerCacheKey('orders')),null);assert.deepEqual(await f.db.readOwnerBinding('orders'),data);

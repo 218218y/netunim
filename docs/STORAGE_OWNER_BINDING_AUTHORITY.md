@@ -22,6 +22,13 @@ read/cache/write revokes authority; refresh may restore it from valid durable da
 Unexpected identity patches are rejected before IDB. Leadership is checked again
 after writes. Browser/IDB composition remains explicit.
 
+Closing admission does not cancel an accepted journal receipt. Main and Shared
+Checks capture commit authority for the verified owner/generation when creating
+their journal. That authority permits queued local commits during source freeze;
+new edits still require writable admission. Lost leadership, failed verification
+or another generation revoke it. The existing native unblurred-note transfer
+fixture exercises this distinction through restart in both applications.
+
 Evidence: strict implementation plus negative consumers, malformed/unknown/completed
 record matrices, cache/activation failures, held/substituted replies, leadership
 loss, preserved historical records and a mutation recreating the former completed

@@ -112,6 +112,12 @@ export function createStorageOwnerBinding({app,primary=()=>true,db,storage,now,o
     return hydrating;
   }
   function current(){return owner}
+  // Admission closes before the handoff write. Already accepted journal work
+  // may finish for this verified generation while the source is being frozen.
+  function captureCommitAuthority(){
+    const accepted=binding&&{owner:binding.owner,generation:binding.generation};
+    return ()=>!!accepted&&!blocked&&primary()&&binding?.owner===accepted.owner&&binding.generation===accepted.generation;
+  }
   function assertReady(){if(!binding||blocked)throw new Error('storage_owner_not_ready');if(changing||hydrating)throw new Error('storage_owner_busy');return owner}
   /** @param {unknown} authenticatedOwner @param {{allowMissing?:boolean}} [options] */
   function assertAuthenticatedOwner(authenticatedOwner,{allowMissing=false}={}){
@@ -203,7 +209,7 @@ export function createStorageOwnerBinding({app,primary=()=>true,db,storage,now,o
     });return status();
   }
   function status(){return {ready:!!binding&&!blocked,owner,locked:blocked||changing||!!handoff,binding:binding&&structuredClone(binding),handoff:handoff&&structuredClone(handoff)}}
-  return {hydrate,refresh,current,assertReady,assertAuthenticatedOwner,assertSessionOwner,sessionMatches,reserveLocalAdoption,adoptPreparedLocalOwner,beginHandoff,advanceHandoff,
+  return {hydrate,refresh,current,captureCommitAuthority,assertReady,assertAuthenticatedOwner,assertSessionOwner,sessionMatches,reserveLocalAdoption,adoptPreparedLocalOwner,beginHandoff,advanceHandoff,
     activateHandoff:()=>finishHandoff('target-active'),completeHandoff:()=>finishHandoff('complete'),status,
     get ready(){return !!binding&&!blocked},get writable(){return !!binding&&!blocked&&!changing&&!handoff},get locked(){return blocked||changing||!!handoff}};
 }
