@@ -85,3 +85,11 @@ Stage 7 merged as PR #190 after full branch verification. Stage 8 defers the fou
 document viewer implementations behind a captured selection proof and isolates
 late viewer cleanup in private mounts; see DOCUMENT_PREVIEW_LOADING.md. Native
 offline first-use and account privacy gates accompany the smaller eager graph.
+
+Stage 8 merged as PR #191 after its exact branch head passed all CI groups.
+Stage 9 checks the actual independent-workbook RPC/backup boundary and fences
+held replies by login epoch before they can acknowledge durable work. See
+SPREADSHEET_TRANSACTION_AUTHORITY.md for SQL policy, retained-flight and native
+IndexedDB/reload evidence. Compatibility inventory, remaining journal callers,
+shell composition and final readability/live-provider/two-machine release work
+remain separate; these stages do not claim the entire release is finished.

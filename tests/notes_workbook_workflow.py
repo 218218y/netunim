@@ -10,7 +10,7 @@ def run():
           const legacyState={notesSheet:{version:2,sheets:[{id:'S1',name:'Keep'},{id:'S2',name:'Delete'}],
             columns:[{id:'C1',sheetId:'S1',title:'Value'},{id:'C2',sheetId:'S2',title:'Value'}],
             rows:[{id:'R1',sheetId:'S1',cells:{C1:'kept'}},{id:'R2',sheetId:'S2',cells:{C2:'removed'}}]}};
-          cloudAuth.loadSupaSession=()=>({user:{id:'workbook-test'}});await notes.captureLegacyWorkbook(legacyState.notesSheet);state=normalizeState(legacyState);
+          cloudAuth.getAccountScope=()=>({owner:'workbook-test',epoch:1});cloudAuth.loadSupaSession=()=>({user:{id:'workbook-test'}});await notes.captureLegacyWorkbook(legacyState.notesSheet);state=normalizeState(legacyState);
           backendReady=true;connectionMode='supabase';dbRevision=1;lastSavedSnapshot=JSON.stringify(prepareKupaCloudState(state));
           cloudAuth.loadSupaSession=()=>({user:{id:'workbook-test'}});setPage('notes');document.querySelector('[data-action="notes-workspace-sheet"]').click();await notes.workbook.sync.open();return true;
         })()""")
@@ -43,7 +43,7 @@ def run():
           const requests=[];cloudAuth.supaRest=async(path,options)=>{
             if(!options.method)return new Response(JSON.stringify([{revision:1,state:saved.record.base}]));
             const body=JSON.parse(options.body);requests.push({path,body});
-            return new Response(JSON.stringify([{revision:2,state:body.p_state}]));
+            return new Response(JSON.stringify([{revision:2,state:body.p_state,operation_replayed:false}]));
           };
           Object.defineProperty(navigator,'onLine',{value:true,configurable:true});
           await notes.workbook.sync.flush();await notes.workbook.sync.flush();

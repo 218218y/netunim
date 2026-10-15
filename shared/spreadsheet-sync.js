@@ -1,3 +1,4 @@
+import {createSpreadsheetRemote} from './spreadsheet-remote.js';
 import {assertSpreadsheet,migrateLegacySpreadsheet,mergeSpreadsheets,spreadsheetDeleteIntents} from './spreadsheet-model.js';
 import {createDefaultNotesSheet,notesSheetHasMeaningfulData} from './notes-sheet-model.js';
 import {createOperationId,equalSyncJson} from './cloud-sync.js';
@@ -6,7 +7,7 @@ import {createSpreadsheetStore} from './spreadsheet-store.js';
 export const SPREADSHEET_IDLE_MS=1800;
 export const SPREADSHEET_DRAFT_MS=120;
 
-export function createSpreadsheetSync({domain,request,account,enabled,primary=()=>true,online=()=>globalThis.navigator?.onLine!==false,store=createSpreadsheetStore(),onChange=()=>{},onStatus=()=>{},legacy=()=>undefined,setTimer=setTimeout,clearTimer=clearTimeout}){
+export function createSpreadsheetSync({domain,request,account,accountScope,enabled,primary=()=>true,online=()=>globalThis.navigator?.onLine!==false,store=createSpreadsheetStore(),onChange=()=>{},onStatus=()=>{},legacy=()=>undefined,setTimer=setTimeout,clearTimer=clearTimeout}){
   const model={state:{notesSheet:null}};
   let key='',owner='',record=null,loading=null,sending=null,polling=null,writeQueue=Promise.resolve(),draftTimer=null,idleTimer=null,retryTimer=null,dirty=false,generation=0;
   const patches=new Map();
@@ -24,13 +25,19 @@ export function createSpreadsheetSync({domain,request,account,enabled,primary=()
     return actual;
   }
   async function commit(){const value=snapshotRecord(),at=generation;await queue(()=>store.commit(key,value));metrics.localCommits++;committedGeneration=Math.max(committedGeneration,at);durableGeneration=Math.max(durableGeneration,at);if(generation===at){patches.clear();store.saveEmergency(key,[])}return value}
-  async function api(path,options={}){
-    if(!available())throw new Error('חשבון הגליון השתנה. פתח מחדש את הגליון.');
-    const response=await request(path,{...options,networkRetry:true,dataPriority:'normal'}),body=await response.text();if(!available())throw new Error('החשבון השתנה בזמן טעינת הגליון');let data;try{data=body?JSON.parse(body):null}catch{data=null}
-    if(!response.ok){const e=new Error(data?.message||'סנכרון הגליון נכשל');e.code=data?.code;e.status=response.status;throw e}
-    return Array.isArray(data)?data[0]:data;
+  function captureRemoteScope(){
+    const capturedOwner=owner,capturedRecord=record,observed=accountScope?.();
+    const scopeOwner=observed?.owner,scopeEpoch=observed?.epoch;
+    const fail=()=>{throw Object.assign(new Error('ההתחברות או הרשאת העריכה השתנו בזמן סנכרון הגיליון. הפעולה הממתינה נשמרה; פתח מחדש את הגיליון.'),{code:'SPREADSHEET_SCOPE_CHANGED'})};
+    if(accountScope&&(!scopeOwner||scopeOwner!==capturedOwner||!Number.isSafeInteger(scopeEpoch)||scopeEpoch<0))fail();
+    const assertCurrent=()=>{
+      if(owner!==capturedOwner||record!==capturedRecord||!available()||!enabled())fail();
+      if(accountScope){const live=accountScope();if(live?.owner!==scopeOwner||live?.epoch!==scopeEpoch)fail()}
+    };
+    assertCurrent();return assertCurrent;
   }
-  async function readRemote(metadata=false){metrics.reads++;return api(`/rest/v1/spreadsheet_documents?domain=eq.${domain}&document_name=eq.main&select=${metadata?'revision':'revision,state,updated_at'}`)}
+  const remote=createSpreadsheetRemote({domain,request:(...args)=>request(...args),access:{capture:captureRemoteScope},decodeState:assertSpreadsheet,equalState:equalSyncJson});
+  async function readRemote(metadata=false){metrics.reads++;return metadata?remote.readRevision():remote.readDocument()}
   function applyPatches(items){
     const rows=new Map(model.state.notesSheet.rows.map(row=>[row.id,row])),columns=new Map(model.state.notesSheet.columns.map(column=>[column.id,column]));
     for(const patch of items){const row=rows.get(patch.rowId),column=columns.get(patch.columnId);if(!row||column?.sheetId!==row.sheetId||typeof patch.value!=='string')throw new Error('טיוטת הגליון אינה מתאימה לנתונים. נדרשת התאוששות.');row.cells[column.id]=patch.value;row.updatedAt=patch.updatedAt;generation=Math.max(generation,Number(patch.generation||0));dirty=true}
@@ -99,7 +106,7 @@ export function createSpreadsheetSync({domain,request,account,enabled,primary=()
     const flight=record.flight;if(!flight||!cloud())return;
     setStatus('saving');metrics.rpc++;metrics.sentBytes+=new TextEncoder().encode(JSON.stringify(flight.payload)).length;
     let result;
-    try{result=await api('/rest/v1/rpc/'+(flight.restore?'restore_spreadsheet_document_v1':'save_spreadsheet_document_v1'),{method:'POST',body:JSON.stringify(flight.payload)})}
+    try{result=await remote.write(flight,record.base)}
     catch(e){
       if(e.code==='40001'||e.status===409){
         const remote=await readRemote();assertSpreadsheet(remote.state);
@@ -144,7 +151,7 @@ export function createSpreadsheetSync({domain,request,account,enabled,primary=()
   function poll(){if(polling)return polling;polling=(async()=>{if(!record||!cloud()||sending||loading||record.conflict)return false;if(dirty)return flush();const metadata=await readRemote(true);if(metadata&&Number(metadata.revision)>record.revision){await reconcileRemote();await commit();setStatus(record.conflict?'conflict':'saved');onChange();return true}return false})().finally(()=>{polling=null});return polling}
   function pagehide(){if(!record||!available())return;store.saveEmergency(key,[...patches.values()]);void persistDrafts().catch(()=>{})}
   function beforeUnload(event){if(!record||generation<=durableGeneration)return;const journalSafe=structureGeneration<=committedGeneration&&store.saveEmergency(key,[...patches.values()]);if(!journalSafe){event.preventDefault();event.returnValue=''}}
-  async function backups(){if(!record||!cloud())return [];const response=await request(`/rest/v1/spreadsheet_backups?domain=eq.${domain}&document_name=eq.main&select=id,revision,created_at,kind&order=created_at.desc&limit=40`,{method:'GET'});if(!response.ok)throw new Error('לא ניתן לקרוא את גיבויי הגליון');return response.json()}
+  async function backups(){if(!record||!cloud())return [];return remote.backups()}
   async function restore(id){
     if(!cloud()||record.conflict)throw new Error('נדרש חיבור תקין לענן לפני שחזור');
     await flush();if(dirty)throw new Error('יש לשמור את השינויים המקומיים לפני שחזור');

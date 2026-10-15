@@ -390,7 +390,7 @@ with BrowserSession(ROOT/'netunim-kupa/site','sheet-warm-navigation-freshness') 
       const {createDefaultNotesSheet}=await import('./assets/js/shared/notes-sheet-model.js');
       const book=createDefaultNotesSheet();book.rows=[{id:'fresh-row',sheetId:book.sheets[0].id,cells:{[book.columns[0].id]:'before'},createdAt:'',updatedAt:''}];
       let remote={revision:1,state:book},reads=0;
-      cloudAuth.loadSupaSession=()=>({user:{id:'freshness-owner'}});cloudAuth.supaRest=async()=>{reads++;return new Response(JSON.stringify([remote]))};
+      cloudAuth.getAccountScope=()=>({owner:'freshness-owner',epoch:1});cloudAuth.loadSupaSession=()=>({user:{id:'freshness-owner'}});cloudAuth.supaRest=async()=>{reads++;return new Response(JSON.stringify([remote]))};
       session.connectionMode='supabase';session.backendReady=false;ui.notesTab='sheet';
       await notes.workbook.sync.open();setPage('notes');await notes.workbook.activate();
       // Establish the navigation stamp after the asynchronous initial load.

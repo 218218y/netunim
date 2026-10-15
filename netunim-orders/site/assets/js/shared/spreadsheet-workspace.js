@@ -1,9 +1,9 @@
 import {createSpreadsheetSync} from './spreadsheet-sync.js';
 import {assertSpreadsheet} from './spreadsheet-model.js';
 
-export function createSpreadsheetWorkspace({domain,request,account,enabled,primary,active,render,legacy,esc,confirmDialog,modal,closeModal}){
+export function createSpreadsheetWorkspace({domain,request,account,accountScope,enabled,primary,active,render,legacy,esc,confirmDialog,modal,closeModal}){
   const labels={unloaded:'הגליון נטען בעת פתיחתו',loading:'טוען גליון…',saved:'הגליון נשמר',saving:'שומר גליון…',pending:'השינויים נשמרים במרוכז…',offline:'עותק מקומי · ממתין לרשת',error:'שמירת הגליון נעצרה',conflict:'נדרשת הכרעה בין שינויים'};
-  const sync=createSpreadsheetSync({domain,request,account,enabled,primary,legacy,
+  const sync=createSpreadsheetSync({domain,request,account,accountScope,enabled,primary,legacy,
     onChange:()=>{if(active())render()},
     onStatus:state=>{for(const element of document.querySelectorAll('[data-spreadsheet-status]')){element.textContent=state.error||labels[state.status];element.dataset.state=state.status}},
   });

@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='kupa-app-shell-';
-const CACHE='kupa-app-shell-esm-3ccc0cd1dcb4';
+const CACHE='kupa-app-shell-esm-aa1c5dad2011';
 const SHELL=[
   './',
   './index.html',
@@ -191,6 +191,7 @@ const SHELL=[
   './assets/js/shared/shared-checks-v2-composition.js',
   './assets/js/shared/shared-checks-v2-runtime.js',
   './assets/js/shared/spreadsheet-model.js',
+  './assets/js/shared/spreadsheet-remote.js',
   './assets/js/shared/spreadsheet-store.js',
   './assets/js/shared/spreadsheet-sync.js',
   './assets/js/shared/spreadsheet-workspace.js',

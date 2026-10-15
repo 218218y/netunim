@@ -14,6 +14,12 @@ for(const app of ['kupa','orders']){
     assert.ok(!code.includes('__testBindings'),relative+': test API leaked into deployable source');
     assert.ok(!relative.startsWith('assets/')||Buffer.byteLength(code.replace(/\r\n/g,'\n'))<60000,relative+': oversized responsibility module');
     walk(ast,(node,parent)=>{
+      if(relative==='assets/js/shared/spreadsheet-remote.js'&&node.type==='FunctionDeclaration'&&node.id?.name==='createSpreadsheetRemote')
+        assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=5,relative+': spreadsheet transport requires domain, request, access and codec roles');
+      if(relative==='assets/js/shared/spreadsheet-sync.js'&&node.type==='MemberExpression')
+        assert.ok(!(node.object?.name==='JSON'&&node.property?.name==='parse')&&node.property?.name!=='text'&&node.property?.name!=='json',relative+': raw network and ACK decoding belong to the scoped spreadsheet boundary');
+      if(relative==='assets/js/shared/spreadsheet-remote.js'&&node.type==='Identifier'&&!(parent?.type==='MemberExpression'&&parent.property===node&&!parent.computed))
+        assert.ok(!['window','document','navigator','localStorage','indexedDB','fetch'].includes(node.name),relative+': spreadsheet RPC policy requires explicit I/O and authority ports');
       if(app==='kupa'&&relative==='assets/js/main.js'&&node.type==='Identifier')
         assert.notEqual(node.name,'domainsCreditController',relative+': Credit consumers require capability role ports');
       if(node.type==='FunctionDeclaration'&&['createBankBridgeClient','createDocumentBridgeClient','createBrowserBridgePlatform','createBankBridgeIntegration','createFinanceBridgeIntegration','createDocumentBridgeIntegration','createGoogleDriveClient','createBrowserGoogleDrivePlatform','createDocumentGoogleDriveIntegration','composeDocumentSearch'].includes(node.id?.name)){

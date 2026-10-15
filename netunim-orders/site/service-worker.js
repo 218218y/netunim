@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-2dde1e23d6e5';
+const CACHE='orders-app-shell-esm-f039f31f3e3b';
 const SHELL=[
   './',
   './index.html',
@@ -290,6 +290,7 @@ const SHELL=[
   './assets/js/shared/shared-checks-v2-composition.js',
   './assets/js/shared/shared-checks-v2-runtime.js',
   './assets/js/shared/spreadsheet-model.js',
+  './assets/js/shared/spreadsheet-remote.js',
   './assets/js/shared/spreadsheet-store.js',
   './assets/js/shared/spreadsheet-sync.js',
   './assets/js/shared/spreadsheet-workspace.js',

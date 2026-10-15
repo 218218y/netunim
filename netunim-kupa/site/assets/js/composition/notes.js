@@ -27,6 +27,7 @@ export function createKupaNotesRuntime({model,ui,session,tab,ownership={current:
 
     const workspace=createSpreadsheetWorkspace({
       domain:'kupa',
+      accountScope:()=>cloudAuth.getAccountScope(),
       request:(...args)=>cloudAuth.supaRest(...args),
       account:()=>cloudAuth.loadSupaSession()?.user?.id,
       enabled:()=>session.connectionMode==='supabase'&&!!cloudAuth.loadSupaSession(),
