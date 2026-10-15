@@ -55,8 +55,8 @@ test('manual PDF refresh is a separate search action backed by the short-lived m
   assert.match(read('netunim-orders/document-bridge/http-routes.mjs'),/documents\/pdf-index\/stop/);
   assert.match(read('netunim-orders/document-bridge/maintenance-process-platform.mjs'),/spawn\(executable, \[script, '--refresh-pdf-index', '--force'\]/);
   assert.match(server,/scheduled=await activePdfMaintenanceLock\(\);\(\{manual,cancelable\}=manualMaintenance\.view\(\)\)/);
-  assert.match(server,/pdfFormIndexRefreshAbortController\?\.abort\(\)/);
-  assert.match(server,/await compactPdfFormIndex\(\{pending,pdfCount:pdfFormIndexInventoryCount\}\)/);
+  assert.match(server,/pdfMaintenanceOperation\.stop\(\)/);
+  assert.match(read('netunim-orders/document-bridge/pdf-maintenance-operation.mjs').replace(/\s+/g,''),/awaitindex\.compact\(\{pending,pdfCount:index\.view\(\)\.pdfCount\}\)/);
   assert.match(client,/pdfIndexRequest\('\/documents\/pdf-index\/start'/);
   assert.match(client,/DOCUMENT_BRIDGE_UPGRADE_REQUIRED/);
   assert.match(source,/get supportsPdfIndexRefresh/);
@@ -194,11 +194,12 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.doesNotMatch(server,/argumentsText\.includes\(expectedRunner/,'Node must not compare Unicode task paths after decoding Windows PowerShell stdout');
   assert.match(server,/MISMATCH \(execute=\$\{task\.actionExecuteValid/,'doctor must identify which action component mismatched');
   assert.equal((server.match(/pdfMaintenanceTaskDiagnostics\(\)/g)||[]).length,3,'Task Scheduler probing must stay confined to the diagnostic helper, doctor and install summary');
-  assert.match(server,/hasForm:!!extracted\.hasForm/,'ordinary PDFs must be negatively cached after inspection');
+  assert.match(read('netunim-orders/document-bridge/pdf-maintenance-operation.mjs').replace(/\s+/g,''),/hasForm:!!extracted\.hasForm/,'ordinary PDFs must be negatively cached after inspection');
   assert.match(server,/pending:pdfFormIndexPending/,'incremental progress must be persisted across restarts');
   assert.match(server,/pdf-form-index\.journal\.jsonl/,'incremental PDF inspection progress must be journaled without rewriting the whole snapshot every batch');
   assert.match(server,/PDF_FORM_RECONCILE_INTERVAL_MS=PDF_FORM_MAINTENANCE_INTERVAL_MS/);
-  assert.match(server,/pdfMaintenanceInventoryPlan\(\{force,now:started/,'manual force and scheduled cadence must share the tested inventory planner');
+  assert.match(server,/plan:pdfMaintenanceInventoryPlan/,'manual force and scheduled cadence must share the tested inventory planner');
+  assert.match(read('netunim-orders/document-bridge/pdf-maintenance-operation.mjs').replace(/\s+/g,''),/policy\.plan\(\{force,now:started/);
   assert.match(server,/pdfMaintenanceRunLimits\(\{manual,requestedMaxFiles:/,'manual and scheduled PDF maintenance must use the tested execution-limit policy');
   assert.match(server,/refreshPdfFormIndex\(\{maxChanged,maxMs,force:manual,reason:manual\?'manual':'scheduled'/,'the CLI must pass the run-specific file and time budgets into the refresher');
   assert.match(server,/INSTALL_STOP_FORCE/,'upgrades must be able to terminate an old Bridge that closed the port but kept indexing');

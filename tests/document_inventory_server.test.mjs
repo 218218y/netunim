@@ -29,7 +29,7 @@ async function fixture(t,{count='0',page='',abortPhase='',handoffAbort=false}={}
       const output=await execute(process.execPath,[worker,kind==='count'?count:page],{encoding:'utf8',windowsHide:true,cwd:path.dirname(f.snapshotPath),...(options.signal?{signal:options.signal}:{})});
       if(abortPhase===kind)controller.abort();return output;
     },PDF_FORM_INDEX_PAGE_SIZE:2,PDF_FORM_DETECTION_REVISION:2,PDF_FORM_SEARCH_TEXT_REVISION:2,
-    pdfIndexNeedsInspection,shuttingDown:false,pdfMaintenanceStopRequested:false,pdfFormIndexBacklog:[{fullPath:'retained backlog'}],
+    pdfIndexNeedsInspection,shuttingDown:false,pdfMaintenanceStopRequested:false,
   });
   const functions=ast.body.filter(node=>node.type==='FunctionDeclaration'&&['listEverythingPdfs','rebuildPdfFormIndexBacklog','runEverythingJson','searchDocuments'].includes(node.id.name));
   const variable=ast.body.find(node=>node.type==='VariableDeclaration'&&node.declarations.some(value=>value.id.name==='pdfInventory'));
@@ -38,9 +38,9 @@ async function fixture(t,{count='0',page='',abortPhase='',handoffAbort=false}={}
   return {...f,root,controller,commands,publication:()=>({pruned,registered})};
 }
 async function retained(f,errorCode){
-  const bytes=await f.capture(),model=[...f.context.pdfFormIndex.values()].map(JSON.stringify),backlog=f.context.pdfFormIndexBacklog;
+  const bytes=await f.capture(),model=[...f.context.pdfFormIndex.values()].map(JSON.stringify),pending=f.context.pdfFormIndexPending;
   await assert.rejects(f.root.rebuild({full:true,signal:f.controller.signal}),{code:errorCode});assert.deepEqual(await f.capture(),bytes);
-  assert.deepEqual([...f.context.pdfFormIndex.values()].map(JSON.stringify),model);assert.equal(f.context.pdfFormIndexBacklog,backlog);assert.deepEqual(f.writes,[]);
+  assert.deepEqual([...f.context.pdfFormIndex.values()].map(JSON.stringify),model);assert.equal(f.context.pdfFormIndexPending,pending);assert.deepEqual(f.writes,[]);
 }
 test('actual rebuild refuses malformed ES envelope without removing any native indexed record',async t=>{
   const f=await fixture(t,{page:'{"error":"synthetic process failure"}'});await retained(f,'ES_INVALID_JSON');assert.deepEqual(f.commands,['count','page']);
@@ -60,9 +60,9 @@ test('verified empty ES stdout remains an authoritative empty derived inventory'
   assert.equal((await f.fresh()).entries.size,0);assert.equal(f.context.pdfFormIndexInventoryCount,0);assert.deepEqual(f.commands,['count','page','count']);
 });
 test('storage work already begun drains while a late stop prevents successful backlog publication',async t=>{
-  const f=await fixture(t),append=f.context.appendPdfIndexJournal,backlog=f.context.pdfFormIndexBacklog;
+  const f=await fixture(t),append=f.context.appendPdfIndexJournal,pending=f.context.pdfFormIndexPending;
   f.context.appendPdfIndexJournal=async records=>{await append(records);f.controller.abort()};
-  await assert.rejects(f.root.rebuild({full:true,signal:f.controller.signal}),{code:'ABORT_ERR'});assert.equal((await f.fresh()).entries.size,0);assert.equal(f.context.pdfFormIndexBacklog,backlog);assert.equal(f.context.pdfFormIndexInventoryCount,2);
+  await assert.rejects(f.root.rebuild({full:true,signal:f.controller.signal}),{code:'ABORT_ERR'});assert.equal((await f.fresh()).entries.size,0);assert.equal(f.context.pdfFormIndexPending,pending);assert.equal(f.context.pdfFormIndexInventoryCount,2);
 });
 test('actual search refuses malformed process results before opaque-ID or success publication',async t=>{
   const f=await fixture(t,{page:'{"metadata":[]}'});

@@ -144,6 +144,8 @@
     "netunim-orders/document-bridge/result-registry.mjs",
     "tests/fixtures/checked-document-search.mjs",
     "netunim-orders/document-bridge/pdf-inventory.mjs",
+    "netunim-orders/document-bridge/pdf-maintenance-operation.mjs",
+    "tests/fixtures/checked-pdf-maintenance.mjs",
     "tests/fixtures/checked-pdf-inventory.mjs",
     "netunim-orders/document-bridge/pdf-index-writer.mjs",
     "tests/fixtures/checked-pdf-index-writer.mjs",

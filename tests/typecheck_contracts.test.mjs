@@ -26,6 +26,14 @@ function check(overrides=new Map()){
 }
 function describe(diagnostics){return ts.formatDiagnostics(diagnostics,{getCanonicalFileName:file=>file,getCurrentDirectory:()=>root,getNewLine:()=> '\n'})}
 
+test('PDF maintenance implementation rejects text progress and disposal without stop/drain',()=>{
+ const source=path.join(root,'netunim-orders/document-bridge/pdf-maintenance-operation.mjs'),original=readFileSync(source,'utf8');
+ for(const [from,to]of [['processed: 0',"processed: '0'"],['stop();','return true;']]){
+  const changed=original.replace(from,to);assert.notEqual(changed,original,from);const diagnostics=check(new Map([[source,changed]]));
+  assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&[2322,2345].includes(item.code)),describe(diagnostics));
+ }
+});
+
 test('Everything process and discovery bodies reject text process output and unjoined disposal',()=>{
  for(const [file,from,to]of [['everything-process.mjs','return await accept(() =>',"return { stdout: 7 }; return await accept(() =>"],['everything-discovery.mjs','await Promise.all([...pending]);','return true;']]){
   const source=path.join(root,'netunim-orders/document-bridge',file),original=readFileSync(source,'utf8'),changed=original.replace(from,to);assert.notEqual(changed,original,from);

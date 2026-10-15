@@ -166,6 +166,11 @@ remaining-scope paragraphs describe their stage's starting point.
   reproduced missing-executable crash becomes a joined launch failure. Native
   cwd/Unicode/output/timeout/abort and direct-ES shutdown tests retain the existing
   discovery and retry policies. See [discovery/processes](EVERYTHING_DISCOVERY_PROCESS.md).
+  PDF refresh has a strict seven-port operation that owns its complete flight,
+  batch, abort and cleanup. Native fixtures prove coalesced completion now joins
+  metadata writes and malformed checkpoints retain raw evidence. 720 executed
+  old/current policies, native index/journal faults and actual server composition
+  retain existing budgets/retries/schema. See [PDF refresh](PDF_MAINTENANCE_OPERATION.md).
 - Both applications' full local Finance connection import now has a strict
   device owner and native file-selection owner, joined by Kupa Bank and Orders
   Finance. Confirmation/publication cannot drift to a replacement device;
@@ -229,7 +234,7 @@ remaining-scope paragraphs describe their stage's starting point.
 | --- | --- | --- |
 | Private controllers and composition | Remaining financial edit commands and manual-edit lease queue lifecycle; Calendar and large customer-document/view responsibilities; internal Main save/hydration coordination, remaining shell composition width and backup UI/resource account ownership | Narrow owners and lifecycle where jobs exist; dependency/API/I/O budgets; representative production behavior preserved |
 | Business and transaction contracts | Remaining journal/IDB callers, Finance leases/RPC envelopes, complete Bank/Credit profile/result payloads, Morning/Calendar commands and capability consumers | Unknown-payload validation and actual implementation mutations; an unchecked decoder never grants authoritative confirmation |
-| Bridge orchestration | Document PDF reconciliation and scheduled maintenance/installer processes; Credit adapter construction, DigitalV3/Camoufox internals and remaining Bank CLI/token processes | Before-change retry/fallback characterization, native provider/process/file fixtures and preserved wire contracts |
+| Bridge orchestration | Document inventory reconciliation planning/normalization, on-demand PDF enrichment, scheduled-task diagnostics and installer/doctor coordination; Credit adapter construction, DigitalV3/Camoufox internals and remaining Bank CLI/token processes | Before-change retry/fallback characterization, native provider/process/file fixtures and preserved wire contracts |
 | Canonical sources and retirement inventory | Classify remaining legacy readers, preference keys, SQL setup/operator copies and generated assets; deterministic current/operator SQL generation where missing; retire only proven unused paths | Consumer inventory, immutable deployed migrations/receipts, deterministic generation and old-record/backup restore evidence |
 
 Typing and resource ownership accompany each boundary change. A clean import
