@@ -227,7 +227,7 @@ test('supplier header balance follows the active workflow filter while all keeps
   {id:'D',supplierId:'S',sequence:4,debit:5,credit:0,invoiceReceived:true,signed:true,supplied:false}
  ]};
  const supplierUi={currentSupplierId:'S',filterMode:'all',searchText:'',supplierYearView:'current',supplierBulkMode:false,supplierBulkSelected:new Set(),supplierMoveTargetId:null};
- const main={dataset:{},innerHTML:'',querySelector:()=>null};
+ const main={dataset:{},innerHTML:'',querySelector:()=>null,querySelectorAll:()=>[]};
  const previousDocument=globalThis.document;
  globalThis.document={querySelector:selector=>selector==='#main'?main:null,querySelectorAll:()=>[]};
  try{
@@ -249,7 +249,7 @@ test('all-suppliers view renders supplier groups in reverse configured order and
   {id:'L2',supplierId:'LAST',sequence:2,debit:0,credit:3,invoiceReceived:false,signed:true,supplied:false}
  ]};
  const supplierUi={currentSupplierId:ALL_SUPPLIERS_ID,filterMode:'all',searchText:'',supplierYearView:'all',supplierBulkMode:true,supplierBulkSelected:new Set(['F1']),supplierMoveTargetId:null};
- const main={dataset:{},innerHTML:'',querySelector:()=>null};
+ const main={dataset:{},innerHTML:'',querySelector:()=>null,querySelectorAll:()=>[]};
  const previousDocument=globalThis.document;
  globalThis.document={querySelector:selector=>selector==='#main'?main:null,querySelectorAll:()=>[]};
  try{
