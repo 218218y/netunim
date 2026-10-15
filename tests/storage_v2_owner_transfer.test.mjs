@@ -131,8 +131,8 @@ for(const mutate of [r=>{r.phase=['target-active']},r=>{r.app='kupa'},r=>{r.vers
   await assert.rejects(transfer.start({targetOwner:'B',intent:'upload-local'}));h.setFailure('');
   const stored=await h.db.readOwnerHandoff('orders');mutate(stored);
   h.db.readOwnerHandoff=async()=>copy(stored);
-  transfer=await h.create();const calls=h.calls.length;
-  await assert.rejects(transfer.resume());assert.equal(h.owner.locked,true);
+  const calls=h.calls.length;
+  await assert.rejects(async()=>{transfer=await h.create();await transfer.resume()});assert.equal(h.owner.locked,true);
   assert.equal(h.calls.length,calls);assert.deepEqual(await h.db.readOwnerHandoff('orders'),stored);
 });
 

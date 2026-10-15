@@ -173,14 +173,24 @@ class WindowsBankInstallerRollbackContracts(unittest.TestCase):
 @unittest.skipUnless(os.name == "nt", "CurrentUser DPAPI vault coverage runs in the required Windows CI job")
 class WindowsBankVaultContracts(unittest.TestCase):
     def test_native_configuration_vault_and_current_user_protection(self):
-        # DPAPI launches real PowerShell processes. Match the model gate's
-        # bounded pool instead of starting every native fixture together on a
-        # shared runner. Endpoint/shutdown deadlines remain independently tested.
-        result = subprocess.run(["node", "--test", "--test-concurrency=2", str(ROOT / "tests/bank_connection_vault.test.mjs"), str(ROOT / "tests/bank_bridge_runtime.test.mjs"), str(ROOT / "tests/bank_shutdown_native.test.mjs"), str(ROOT / "tests/bank_provider_native.test.mjs"), str(ROOT / "tests/credit_adapter_native.test.mjs"), str(ROOT / "tests/bank_image_shutdown_native.test.mjs"), str(ROOT / "tests/bank_local_cache.test.mjs"), str(ROOT / "tests/bank_artifact_shutdown_native.test.mjs"), str(ROOT / "tests/bank_artifact_publication.test.mjs"), str(ROOT / "tests/bank_artifact_owner.test.mjs")],
-                                cwd=ROOT, capture_output=True, timeout=90,
-                                creationflags=subprocess.CREATE_NO_WINDOW)
-        output = (result.stdout + result.stderr).decode("utf8", errors="replace")
-        self.assertEqual(result.returncode, 0, output)
+        # Both vault and staged-runtime fixtures invoke real CurrentUser DPAPI.
+        # Serialise those files to avoid competing PowerShell cold starts on a
+        # shared runner; retain endpoint deadlines and a bounded worker pool.
+        groups = [
+            ["bank_connection_vault", "bank_bridge_runtime"],
+            ["bank_shutdown_native", "bank_provider_native", "credit_adapter_native",
+             "bank_image_shutdown_native", "bank_local_cache", "bank_artifact_shutdown_native",
+             "bank_artifact_publication", "bank_artifact_owner"],
+        ]
+        output = ""
+        for concurrency, names in zip((1, 2), groups):
+            result = subprocess.run(["node", "--test", f"--test-concurrency={concurrency}",
+                                     *[str(ROOT / f"tests/{name}.test.mjs") for name in names]],
+                                    cwd=ROOT, capture_output=True, timeout=90,
+                                    creationflags=subprocess.CREATE_NO_WINDOW)
+            batch = (result.stdout + result.stderr).decode("utf8", errors="replace")
+            self.assertEqual(result.returncode, 0, batch)
+            output += batch
         self.assertIn("Windows CurrentUser DPAPI round-trips", output)
         self.assertIn("staged Bank runtime starts", output)
         self.assertIn("native shutdown retains an accepted vault deletion", output)

@@ -27,7 +27,7 @@ export function storageV2Mode(app,storage=globalThis.localStorage,owner='local',
 // Bridges the journal engine into application persistence. A normal typed
 // mutation is synchronously durable in the bounded emergency journal and then
 // committed to IndexedDB. Durable boundaries install coordinated checkpoints.
-export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckpoint=state=>structuredClone(state),prepareOperation=operation=>structuredClone(operation),mode=()=>storageV2Mode(app,globalThis.localStorage,owner()),createJournal=createStorageJournal,scheduleIdle=callback=>globalThis.requestIdleCallback?requestIdleCallback(callback,{timeout:5000}):setTimeout(callback,1000),compactEvery=128,compactAfterMs=5*60*1000}={}){
+export function createStorageV2Runtime({app,owner,primary,captureCommitAuthority=()=>primary,validate,prepareCheckpoint=state=>structuredClone(state),prepareOperation=operation=>structuredClone(operation),mode=()=>storageV2Mode(app,globalThis.localStorage,owner()),createJournal=createStorageJournal,scheduleIdle=callback=>globalThis.requestIdleCallback?requestIdleCallback(callback,{timeout:5000}):setTimeout(callback,1000),compactEvery=128,compactAfterMs=5*60*1000}={}){
   if(!STORAGE_SCHEMAS[app]||typeof owner!=='function'||typeof primary!=='function'||typeof validate!=='function')throw new Error('storage_v2_runtime_configuration');
   const diagnostics={mode:'off',recoveries:0,operations:0,emergencyFailures:0,commitFailures:0,errors:0,lastError:''};
   let journal=null,identity='',authoritative=false,starting=null,startingIdentity='',commits=Promise.resolve(),corruptIdentity='',operationsSinceCheckpoint=0,lastCheckpointAt=Date.now(),compactionScheduled=false,undurableCount=0,boundaryGate=()=>false;
@@ -41,8 +41,8 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
   function create(){
     const next=currentOwner();
     if(journal&&identity===next)return journal;
-    identity=next;authoritative=false;commits=Promise.resolve();const scopedOwner=next;
-    journal=createJournal({owner:`${scopedOwner}:${app}`,schema:STORAGE_SCHEMAS[app],validate,primary:()=>primaryMode()&&primary()&&scopedOwner===currentOwner()});corruptIdentity='';return journal;
+    identity=next;authoritative=false;commits=Promise.resolve();const scopedOwner=next,commitPrimary=captureCommitAuthority();
+    journal=createJournal({owner:`${scopedOwner}:${app}`,schema:STORAGE_SCHEMAS[app],validate,primary:()=>primaryMode()&&primary()&&scopedOwner===currentOwner(),commitPrimary:()=>primaryMode()&&commitPrimary()&&scopedOwner===currentOwner()});corruptIdentity='';return journal;
   }
   function verifiedRecovery(active,recovered){
     // An open alone cannot prove that an IDB-only edit survived. Keep its risk

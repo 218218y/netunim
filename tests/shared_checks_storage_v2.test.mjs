@@ -34,6 +34,18 @@ const check=(id,status='open')=>({id,status,amount:100});
 const put=(id,mode='replace',index=0)=>({type:'put',collection:'checks',id,mode,index});
 const del=id=>({type:'delete',collection:'checks',id});
 
+test('an accepted journal receipt drains after admission closes, while new edits and a lost commit authority remain fenced',async()=>{
+  const f=fixture();let admission=true,commitAllowed=true;
+  const store=f.create({primary:()=>admission,commitPrimary:()=>commitAllowed});
+  await store.open({migrationState:state(),migrationIntent:'cloud-authoritative',sourceOwner:'account-A'});
+  const receipt=store.append([put('A','insert')],state([check('A')]));
+  admission=false;assert.throws(()=>store.append([put('B','insert')],state([check('B')])),/secondary_tab/);
+  await receipt.committed;assert.equal((await f.db.load()).metadata.seq,1);
+  admission=true;const second=store.append([put('B','insert',1)],state([check('A'),check('B')]));
+  commitAllowed=false;await assert.rejects(second.committed,/secondary_tab/);
+  assert.equal((await f.db.load()).metadata.seq,1);
+});
+
 test('Shared Checks rejects retired creation intents but still reads their durable checkpoints',async()=>{
   const f=fixture(),snapshot=state([check('C')]);
   await assert.rejects(f.create().open({migrationState:snapshot,migrationIntent:'legacy-upgrade',sourceOwner:'account-A'}),/transfer_intent_required/);

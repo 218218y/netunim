@@ -37,10 +37,10 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
     birth:{preparing:()=>!!localBirth?.preparing,ensure:ensureLocalBirth}});
   const preparing=()=>owner.locked||transferRebinding||!!ownerTransfer?.preparing||!!localBirth?.preparing||!!(bootstrap.hasGroup&&bootstrap.group?.phase!=='complete');
   const mode=()=>storageV2Mode('kupa',storage,owner.current(),{preparing:preparing()});
-  const createRuntime=options=>createStorageV2Runtime({app:'kupa',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,mode,...options});
+  const createRuntime=options=>createStorageV2Runtime({app:'kupa',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,captureCommitAuthority:()=>owner.captureCommitAuthority(),mode,...options});
   const createCloudPorts=storageBrowser=>({...createStorageV2CloudPorts(storageBrowser),storageV2PrimaryRequested:()=>['primary','preparing'].includes(mode())});
   const createSharedComposition=({model,checksSession,domainRevisions,main,stateNormalization,mergeSharedChecks,getCloudTransport})=>createSharedChecksV2Composition({
-    site:'kupa',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,preparing,
+    site:'kupa',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,captureCommitAuthority:()=>owner.captureCommitAuthority(),preparing,
     model,checksSession,eventsKey:'sharedChecksBankEvents',domainRevisions,main,
     merge:(...args)=>mergeSharedChecks(...args),readRemote:(...args)=>getCloudTransport().readSharedChecksDocument(...args),rpc:(...args)=>getCloudTransport().rpcSaveSharedChecksV2(...args),
     validateMainCloud:state=>assertValidCloudState(state,'Kupa V2 restore cloud state'),applyMainState:state=>{model.state=stateNormalization.normalizeState({...state,checks:model.state.checks});domainRevisions.touchAll()},

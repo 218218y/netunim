@@ -30,10 +30,10 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
     birth:{preparing:()=>!!localBirth?.preparing,ensure:()=>{requirePorts();return localBirth.begin()}}});
   const preparing=()=>owner.locked||transferRebinding||!!ownerTransfer?.preparing||!!localBirth?.preparing||!!(bootstrap.hasGroup&&bootstrap.group?.phase!=='complete');
   const mode=()=>storageV2Mode('orders',storage,owner.current(),{preparing:preparing()});
-  const createRuntime=options=>createStorageV2Runtime({app:'orders',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,mode,...options});
+  const createRuntime=options=>createStorageV2Runtime({app:'orders',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,captureCommitAuthority:()=>owner.captureCommitAuthority(),mode,...options});
   const createCloudPorts=storageBrowser=>({...createStorageV2CloudPorts(storageBrowser),storageV2PrimaryRequested:()=>['primary','preparing'].includes(mode())});
   const createSharedComposition=({model,checksSession,domainRevisions,main,stateNormalization,getCloudTransport})=>createSharedChecksV2Composition({
-    site:'orders',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,preparing,
+    site:'orders',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,captureCommitAuthority:()=>owner.captureCommitAuthority(),preparing,
     model,checksSession,eventsKey:'checksBankEvents',domainRevisions,main,
     merge:mergeSharedChecks,readRemote:(...args)=>getCloudTransport().readSharedChecksCloud(...args),rpc:(...args)=>getCloudTransport().rpcSaveSharedChecksV2(...args),
     validateMainCloud:state=>assertValidOrderCloudState(state,'Orders V2 restore cloud state'),applyMainState:state=>{const previous=model.state;model.state=stateNormalization.normalizeState({...state,checks:previous.checks});domainRevisions.reconcile(previous,model.state,{forceAll:true})},

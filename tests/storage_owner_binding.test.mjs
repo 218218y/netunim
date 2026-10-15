@@ -2,28 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createStorageOwnerBinding,STORAGE_OWNER_UNBOUND,storageOwnerCacheKey} from '../shared/storage-owner.js';
 
-function fakeStorage(initial={}){
-  const values=new Map(Object.entries(initial));
-  return {getItem:key=>values.has(key)?values.get(key):null,setItem:(key,value)=>values.set(key,String(value)),removeItem:key=>values.delete(key),dump:()=>Object.fromEntries(values)};
-}
-function fakeDb(){
-  const bindings=new Map(),handoffs=new Map();
-  return {
-    async readOwnerBinding(app){return bindings.has(app)?structuredClone(bindings.get(app)):null},
-    async readOwnerHandoff(app){return handoffs.has(app)?structuredClone(handoffs.get(app)):null},
-    async initializeOwnerBinding(app,owner,{source,at}){
-      const existing=bindings.get(app);if(existing){if(existing.owner!==owner)throw Error('storage_owner_binding_conflict');return structuredClone(existing)}
-      const row={version:1,app,owner,generation:1,source,createdAt:at,updatedAt:at};bindings.set(app,row);return structuredClone(row);
-    },
-    async reserveLocalOwnerTarget(app,targetOwner,{id,intent,at}){const binding=bindings.get(app);if(!binding)throw Error('storage_owner_binding_missing');if(binding.owner===targetOwner&&!binding.pendingAdoption)return structuredClone(binding);if(binding.owner!=='local')throw Error('storage_owner_handoff_required');const pending=binding.pendingAdoption;if(pending){if(pending.targetOwner===targetOwner&&pending.intent===intent)return structuredClone(binding);throw Error('storage_owner_local_adoption_reserved')}const next={...binding,pendingAdoption:{id,targetOwner,intent,createdAt:at,updatedAt:at},updatedAt:at};bindings.set(app,next);return structuredClone(next)},
-    async adoptPreparedLocalOwner(app,targetOwner,{id,intent,proof,at}){const binding=bindings.get(app),existing=handoffs.get(app);if(!binding)throw Error('storage_owner_binding_missing');if(binding.owner===targetOwner&&(!existing||existing.phase==='complete'))return {binding:structuredClone(binding),handoff:existing?structuredClone(existing):null};if(binding.owner!=='local')throw Error('storage_owner_handoff_required');if(existing&&existing.phase!=='complete')throw Error('storage_owner_handoff_pending');const reservation=binding.pendingAdoption;if(!reservation||reservation.targetOwner!==targetOwner||reservation.intent!==intent)throw Error('storage_owner_local_adoption_not_reserved');const nextBinding={...binding,owner:targetOwner,generation:binding.generation+1,source:`prepared-local:${intent}`,pendingAdoption:null,updatedAt:at},complete={version:1,id,app,sourceOwner:'local',targetOwner,intent,phase:'complete',preparationProof:structuredClone(proof),reservationId:reservation.id,createdAt:reservation.createdAt||at,activatedAt:at,completedAt:at,updatedAt:at};bindings.set(app,nextBinding);handoffs.set(app,complete);return {binding:structuredClone(nextBinding),handoff:structuredClone(complete)}},
-    async beginOwnerHandoff(app,row){const binding=bindings.get(app),existing=handoffs.get(app);if(!binding)throw Error('storage_owner_binding_missing');if(existing&&existing.phase!=='complete')throw Error('storage_owner_handoff_pending');if(binding.owner!==row.sourceOwner)throw Error('storage_owner_handoff_invalid');handoffs.set(app,structuredClone(row));return structuredClone(row)},
-    async advanceOwnerHandoff(app,id,fromPhase,toPhase,patch){const row=handoffs.get(app);if(!row||row.id!==id||row.phase!==fromPhase)throw Error('storage_owner_handoff_changed');const next={...row,...structuredClone(patch),phase:toPhase};handoffs.set(app,next);return structuredClone(next)},
-    async activateOwnerHandoff(app,id,targetOwner,{at}){const row=handoffs.get(app),binding=bindings.get(app);if(!row||!binding||row.id!==id||row.phase!=='target-recovered'||row.sourceOwner!==binding.owner||row.targetOwner!==targetOwner)throw Error('storage_owner_handoff_changed');const nextBinding={...binding,owner:targetOwner,generation:binding.generation+1,source:`handoff:${row.intent}`,pendingAdoption:null,updatedAt:at},active={...row,phase:'target-active',activatedAt:at,updatedAt:at};bindings.set(app,nextBinding);handoffs.set(app,active);return {binding:structuredClone(nextBinding),handoff:structuredClone(active)}},
-    async completeOwnerHandoff(app,id,targetOwner,{at}){const row=handoffs.get(app),binding=bindings.get(app);if(!row||!binding||row.id!==id||row.phase!=='target-active'||binding.owner!==targetOwner||row.targetOwner!==targetOwner)throw Error('storage_owner_handoff_changed');const complete={...row,phase:'complete',completedAt:at,updatedAt:at};handoffs.set(app,complete);return {binding:structuredClone(binding),handoff:structuredClone(complete)}},
-    seedBinding(app,row){bindings.set(app,structuredClone(row))},seedHandoff(app,row){handoffs.set(app,structuredClone(row))},snapshot(){return {bindings:structuredClone([...bindings]),handoffs:structuredClone([...handoffs])}}
-  };
-}
+import {fakeStorage,fakeDb} from './storage_owner_ports.mjs';
+
 const session=owner=>owner?{user:{id:owner}}:null;
 
 test('durable storage owner survives auth loss and LocalStorage loss',async()=>{

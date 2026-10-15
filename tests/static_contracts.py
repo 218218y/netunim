@@ -308,7 +308,10 @@ for label, app_root in (("kupa", K), ("orders", O)):
     ok("migrateMainProjection" not in coordinator,
        f"{label}: Shared recovery no longer runs a legacy Main projection migration")
 
-owner_core=(ROOT/'shared/storage-owner.js').read_text(encoding='utf-8')
+owner_composition=(ROOT/'shared/storage-owner.js').read_text(encoding='utf-8')
+owner_core=(ROOT/'shared/storage-owner-binding.js').read_text(encoding='utf-8')
+ok("from './storage-owner-binding.js'" in owner_composition and 'return createBinding(' in owner_composition,
+   'storage owner: public browser/database composition uses the checked authority implementation')
 owner_db=(ROOT/'shared/storage-journal-idb.js').read_text(encoding='utf-8')
 orders_cloud_ui=cloud_ui_source(O)
 kupa_cloud_ui=cloud_ui_source(K)

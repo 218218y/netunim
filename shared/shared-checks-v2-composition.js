@@ -10,14 +10,14 @@ import {createSharedChecksStorageV2} from './shared-checks-storage-v2.js';
 // starts only after the durable V2 namespace has been verified. A local V2
 // birth does not inspect abandoned V1 data; account adoption verifies its
 // cloud heads before the displayed owner changes.
-export function createSharedChecksV2Composition({site,owner,primary,preparing=()=>false,model,checksSession,eventsKey,domainRevisions,merge,readRemote,rpc,validateMainCloud,applyMainState,main,db=createStorageJournalDb()}={}){
+export function createSharedChecksV2Composition({site,owner,primary,captureCommitAuthority=()=>primary,preparing=()=>false,model,checksSession,eventsKey,domainRevisions,merge,readRemote,rpc,validateMainCloud,applyMainState,main,db=createStorageJournalDb()}={}){
   const accountMarker=createStorageV2AccountMarker({app:site,owner,primary,db});
   const accountV2Requested=()=>isStorageV2ActivationCached(site,owner());
   const preparationRequested=()=>!!preparing()&&!accountV2Requested();
   // Routing must switch to V2 as soon as its durable marker/preparation exists.
   // Recovery may still be in progress (or a DB capability check may fail), but
   // background polls must not use an unverified or incomplete V2 head.
-  const runtime=createSharedChecksV2Runtime({site,owner,primary,mode:()=>accountV2Requested()?'primary':preparationRequested()?'preparing':'off',
+  const runtime=createSharedChecksV2Runtime({site,owner,primary,captureCommitAuthority,mode:()=>accountV2Requested()?'primary':preparationRequested()?'preparing':'off',
     readState:()=>({checks:model.state.checks,bankEvents:checksSession[eventsKey]||[]}),
     applyState:value=>{model.state.checks=value.checks;checksSession[eventsKey]=value.bankEvents;domainRevisions.touch('checks')},
     merge,readRemote,rpc,createStorage:options=>createSharedChecksStorageV2({...options,db})});
