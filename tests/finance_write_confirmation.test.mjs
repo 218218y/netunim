@@ -31,7 +31,7 @@ function fixture(owner,reply){
     readKupaReadOnlyCloud:async()=>structuredClone(remote),readFinanceSyncDocument:async()=>structuredClone(remote),
     rpcSaveKupaDocument:async(next,revision,id)=>{assert.equal(revision,5);events.push(id);return {r:{ok:true},row:commit(next)}},
     rpcSaveFinanceSync:async(next,revision,id)=>{assert.equal(revision,5);events.push(id);return {r:{ok:true},row:commit(next)}},
-    claimFinanceSyncLease:async()=>({acquired:true,...lease}),releaseFinanceSyncLease:async()=>true,
+    claimFinanceSyncLease:async(leaseName,leaseToken)=>({acquired:true,...lease,leaseName,leaseToken}),releaseFinanceSyncLease:async()=>true,
     refreshKupaReadout:async options=>{events.push(options);return true},
   });
   return {run:()=>owner==='orders-finance'?controller.saveCreditCardOrder([]):controller.saveCashflowMinimum('business','321'),

@@ -12,20 +12,20 @@ const fixture=()=>({version:4,profiles:[{profileId:'p',provider:'max',accounts:[
 
 test('manual settings queue waits for another sync, serializes edits and releases only its own lease',async()=>{
   const events=[];let attempts=0,token=0,active=false;
-  const queue=createFinanceManualQueue({createToken:()=>`manual-${++token}`,claim:async(_,key)=>{events.push(`claim:${key}`);if(++attempts===1)return {acquired:false};assert.equal(active,false);active=true;return {acquired:true,leaseToken:key}},release:async(_,key)=>{events.push(`release:${key}`);active=false},wait:async()=>events.push('wait')});
+  const queue=createFinanceManualQueue({createToken:()=>`manual-${++token}`,claim:async(_,key)=>{events.push(`claim:${key}`);if(++attempts===1)return {acquired:false};assert.equal(active,false);active=true;return {acquired:true,leaseName:'credit',leaseToken:key,fenceEpoch:1}},release:async(_,key)=>{events.push(`release:${key}`);active=false},wait:async()=>events.push('wait')});
   const values=await Promise.all([queue(async lease=>{events.push(`save:${lease.leaseToken}`);return 1}),queue(async lease=>{events.push(`save:${lease.leaseToken}`);return 2})]);
   assert.deepEqual(values,[1,2]);assert.deepEqual(events,['claim:manual-1','wait','claim:manual-1','save:manual-1','release:manual-1','claim:manual-2','save:manual-2','release:manual-2']);
 });
 
 test('persistent lease contention never mutates or releases another owner and a retry recovers',async()=>{
   let busy=true,saves=0,releases=0;
-  const queue=createFinanceManualQueue({createToken:()=> 'manual',claim:async()=>({acquired:!busy}),release:async()=>releases++,wait:async()=>{},maxWaitMs:2,retryMs:1});
+  const queue=createFinanceManualQueue({createToken:()=> 'manual',claim:async()=>({acquired:!busy,leaseName:'credit',leaseToken:'manual',fenceEpoch:1}),release:async()=>releases++,wait:async()=>{},maxWaitMs:2,retryMs:1});
   await assert.rejects(queue(async()=>saves++),{code:'finance_sync_lease_busy'});
   assert.equal(saves,0);assert.equal(releases,0);busy=false;await queue(async()=>saves++);assert.equal(saves,1);assert.equal(releases,1);
 });
 
 test('lease cleanup failure does not turn a confirmed save into a failed save',async()=>{
-  const errors=[];const queue=createFinanceManualQueue({createToken:()=> 'manual',claim:async()=>({acquired:true}),release:async()=>{throw new Error('network')},onReleaseError:error=>errors.push(error.message)});
+  const errors=[];const queue=createFinanceManualQueue({createToken:()=> 'manual',claim:async()=>({acquired:true,leaseName:'credit',leaseToken:'manual',fenceEpoch:1}),release:async()=>{throw new Error('network')},onReleaseError:error=>errors.push(error.message)});
   assert.equal(await queue(async()=>true),true);assert.deepEqual(errors,['network']);
 });
 
@@ -52,7 +52,7 @@ test('Kupa settings commit only after cloud confirmation and rebase on fresh iss
 
 test('Orders saves card order once, preserves fresh financial data and leaves sync status alone on failure',async()=>{
   let row={revision:5,state:{bank:{balance:123},creditSync:fixture()}},writes=0,fail=false;const checksSession={kupaCloudReadState:structuredClone(row.state),checksBankEvents:[]};
-  const controller=createDomainsFinanceController({effects:createFinanceBrowserEffects(),operationScope:{capture:()=>()=>{},captureRead:()=>()=>{}},tab:{primaryTab:true},checksSession,bridge:{getBridgeToken:()=>'',bankAutoEnabled:()=>false,creditAutoEnabled:()=>false,creditAutoMode:()=> 'daily'},loadSession:()=>({}),toast:()=>{},readFinanceSyncDocument:async()=>structuredClone(row),claimFinanceSyncLease:async()=>({acquired:true,leaseToken:'manual',leaseName:'credit',fenceEpoch:1}),releaseFinanceSyncLease:async()=>true,refreshKupaReadout:async()=>{checksSession.kupaCloudReadState=structuredClone(row.state)},rpcSaveFinanceSync:async(state,revision)=>{if(fail)throw new Error('network failed');assert.equal(revision,row.revision);writes++;row={revision:revision+1,state};return {r:{ok:true},row}}});
+  const controller=createDomainsFinanceController({effects:createFinanceBrowserEffects(),operationScope:{capture:()=>()=>{},captureRead:()=>()=>{}},tab:{primaryTab:true},checksSession,bridge:{getBridgeToken:()=>'',bankAutoEnabled:()=>false,creditAutoEnabled:()=>false,creditAutoMode:()=> 'daily'},loadSession:()=>({}),toast:()=>{},readFinanceSyncDocument:async()=>structuredClone(row),claimFinanceSyncLease:async(leaseName,leaseToken)=>({acquired:true,leaseToken,leaseName,fenceEpoch:1}),releaseFinanceSyncLease:async()=>true,refreshKupaReadout:async()=>{checksSession.kupaCloudReadState=structuredClone(row.state)},rpcSaveFinanceSync:async(state,revision)=>{if(fail)throw new Error('network failed');assert.equal(revision,row.revision);writes++;row={revision:revision+1,state};return {r:{ok:true},row}}});
   row.state.creditSync.profiles[0].accounts[0].txns=[{id:'fresh',date:'2026-09-16'}];
   assert.equal(await controller.saveCreditCardOrder(['p:b','p:a']),true);assert.equal(writes,1);assert.equal(row.state.bank.balance,123);assert.equal(normalizeCreditSync(row.state.creditSync).profiles[0].accounts[0].txns[0].id,'fresh');
   fail=true;const saved=structuredClone(row);assert.equal(await controller.setCreditCardMapping('p','a','sortOrder',''),false);assert.deepEqual(row,saved);assert.equal(controller.snapshot().creditError,'');

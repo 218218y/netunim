@@ -20,6 +20,9 @@
     "types": []
   },
   "files": [
+    "shared/finance-fence.js",
+    "shared/finance-lease-transport.js",
+    "tests/fixtures/checked-finance-transactions.mjs",
     "shared/backup-file-authority.js",
     "shared/backup-browser-resources.js",
     "netunim-orders/site/assets/js/calendar/storage.js",
