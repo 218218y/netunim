@@ -1,5 +1,12 @@
 # Architecture refactor: verified baseline and next slices
 
+Everything executable selection and command execution now have strict discovery
+and process owners plus a native adapter. Ordered location/registry/PATH and ES
+transport policies match their captured originals. A native baseline reproduces
+an unhandled missing-executable crash; launch now acknowledges spawn or returns
+its failure, with no added retry. Shutdown also joins direct ES/discovery work.
+See [Everything discovery/processes](EVERYTHING_DISCOVERY_PROCESS.md).
+
 Everything readiness now has a strict five-port session owner for cache, preferred
 and fallback probes and coalesced startup. Native children prove that a fast
 `Promise.any` winner can leave a losing process active; shutdown now joins it

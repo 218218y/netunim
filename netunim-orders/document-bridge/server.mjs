@@ -10,7 +10,7 @@ import {fileURLToPath} from 'node:url';
 import {
   BRIDGE_PORT,BRIDGE_SERVICE,BRIDGE_VERSION,BRIDGE_NODE_VERSION,BRIDGE_NODE_WIN_X64_SHA256,assertBridgeNodeVersion,DEFAULT_ALLOWED_ORIGINS,DEFAULT_RESULT_LIMIT,MAX_RESULTS,RECENT_RESULT_LIMIT,RESULT_TTL_MS,
   buildContentMatchInfo,buildDocumentQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsRawSearchArgs,buildEsRecentFilesArgs,buildEsSearchArgs,compareDocumentRows,contentSearchMatches,documentExtension,documentFileTypeIncludesPdf,mergeDocumentResults,normalizeContentSearchOptions,normalizeDocumentFileType,normalizeDocumentSearchMode,normalizeDocumentSort,normalizeSearchScopePath,normalizeSearchText,
-  officePreviewKind,structuredPreviewKind,parseEsContentPreview,parseEsCount,parseEsJson,parseRegistryInstallLocation,
+  officePreviewKind,structuredPreviewKind,parseEsContentPreview,parseEsCount,parseEsJson,
 } from './lib.mjs';
 import {buildPdfFormMatchAnchors,extractInteractivePdfText,PDF_FORM_MAX_BYTES,verifyNodePdfJsRuntime} from './pdf_form_index.mjs';
 import {pdfIndexNeedsInspection,pdfMaintenanceInventoryPlan,pdfMaintenanceRunLimits} from './pdf-index-policy.mjs';
@@ -33,6 +33,9 @@ import {createNativePreviewHostPlatform} from './native-preview-platform.mjs';
 import {createDocumentBridgeHttpHandler,documentBridgeErrorResponse as safeError} from './http-handler.mjs';
 import {createDocumentSearch} from './search-owner.mjs';
 import {createEverythingSession} from './everything-session.mjs';
+import {createEverythingProcess} from './everything-process.mjs';
+import {createEverythingDiscovery} from './everything-discovery.mjs';
+import {createEverythingProcessPlatform,createEverythingDiscoveryPlatform} from './everything-process-platform.mjs';
 import {createDocumentResultRegistry} from './result-registry.mjs';
 
 const execFile=promisify(execFileCb);
@@ -46,7 +49,7 @@ const NODE_RUNTIME_POINTER_PATH=path.join(APP_ROOT,'node-runtime.txt');
 const PDF_MAINTENANCE_TASK_NAME='NetunimDocumentBridgePdfMaintenance';
 const PDF_FORM_INDEX_PATH=path.join(APP_ROOT,'pdf-form-index.json');
 const PDF_FORM_INDEX_JOURNAL_PATH=path.join(APP_ROOT,'pdf-form-index.journal.jsonl');
-const TOOL_ES=path.join(APP_ROOT,'tools','es.exe');
+
 const NATIVE_PREVIEW_HOST=path.join(RUNTIME_ROOT,'NetunimPreviewHost.exe');
 const documentResults=createDocumentResultRegistry({
   clock:{now:Date.now,ttlMs:RESULT_TTL_MS},
@@ -71,7 +74,7 @@ const PDF_FORM_MAINTENANCE_MAX_MS=15*60*1000;
 const PDF_FORM_MAINTENANCE_PATH=path.join(APP_ROOT,'pdf-form-maintenance.json');
 const PDF_FORM_INDEX_LOCK_PATH=path.join(APP_ROOT,'pdf-form-index.lock');
 const PDF_FORM_MAINTENANCE_LOCK_PATH=path.join(APP_ROOT,'pdf-form-maintenance.lock');
-let server=null,cachedEsPath='';
+let server=null;
 let pdfFormIndexLoaded=false,pdfFormIndexRefreshPromise=null,pdfFormIndexRefreshAbortController=null,pdfFormIndexLastRefresh=0,pdfFormIndexPending=0,pdfFormIndexInventoryCount=0,shuttingDown=false,pdfFormIndexSignature='';
 let pdfMaintenanceStopRequested=false;
 let pdfFormIndexBacklog=[];
@@ -109,68 +112,22 @@ function privateNodeRuntimeInfoSync({verifyHash=false}={}){
   return {runtimeName,expectedPath,actualPath,sha256,verified:!verifyHash||sha256===BRIDGE_NODE_WIN_X64_SHA256};
 }
 
-async function whereEs(){
-  if(cachedEsPath)return cachedEsPath;
-  const candidates=[process.env.NETUNIM_EVERYTHING_ES_PATH,TOOL_ES,path.join(process.env.LOCALAPPDATA||'','Microsoft','WindowsApps','es.exe'),path.join(process.env.PROGRAMFILES||'C:\\Program Files','Everything','es.exe'),path.join(process.env['PROGRAMFILES(X86)']||'C:\\Program Files (x86)','Everything','es.exe')].filter(Boolean);
-  for(const candidate of candidates)if(await existsFile(candidate)){cachedEsPath=candidate;return cachedEsPath}
-  if(process.platform==='win32')try{const {stdout}=await execFile('where.exe',['es.exe'],{encoding:'utf8',windowsHide:true,timeout:3000});const candidate=stdout.split(/\r?\n/).map(x=>x.trim()).find(Boolean);if(candidate){cachedEsPath=candidate;return cachedEsPath}}catch{}
-  const e=new Error('es.exe לא נמצא. יש להריץ מחדש את מתקין Document Bridge.');e.code='ES_NOT_FOUND';throw e;
-}
+const everythingProcesses=createEverythingProcess(createEverythingProcessPlatform({root:APP_ROOT}));
+const everythingDiscovery=createEverythingDiscovery(createEverythingDiscoveryPlatform({root:APP_ROOT,processes:everythingProcesses}));
+async function whereEs(){return everythingDiscovery.es()}
 
-async function runEs(esPath,args,{timeout=18000,signal=null}={}){
-  try{return await execFile(esPath,args,{encoding:'utf8',windowsHide:true,timeout,maxBuffer:16*1024*1024,cwd:APP_ROOT,...(signal?{signal}:{})})}
-  catch(error){if(error?.name==='AbortError'||String(error?.code||'')==='ABORT_ERR')throw error;const e=new Error(String(error?.stderr||error?.message||'ES failed').trim()||'ES failed');e.code=`ES_EXIT_${Number.isFinite(Number(error?.code))?Number(error.code):'ERROR'}`;e.exitCode=Number(error?.code);e.stderr=String(error?.stderr||'');throw e}
-}
+async function runEs(file,args,options={}){return everythingProcesses.es(file,args,options)}
 
 
-async function registryValue(key,value='InstallLocation'){
-  if(process.platform!=='win32')return '';
-  try{const {stdout}=await execFile('reg.exe',['query',key,'/v',value],{encoding:'utf8',windowsHide:true,timeout:3000});return parseRegistryInstallLocation(stdout,value)}catch{return ''}
-}
-function executableNamesForLocation(location){return location?[path.win32.join(location,'Everything.exe'),path.win32.join(location,'Everything64.exe')]:[]}
-async function findEverythingExecutable(config){
-  const direct=[process.env.NETUNIM_EVERYTHING_EXE_PATH,config.everythingExecutable].filter(Boolean);
-  for(const candidate of direct)if(await existsFile(candidate))return candidate;
 
-  const registryKeys=[
-    'HKLM\\SOFTWARE\\voidtools\\Everything',
-    'HKCU\\SOFTWARE\\voidtools\\Everything',
-    'HKLM\\SOFTWARE\\voidtools\\Everything 1.5a',
-    'HKCU\\SOFTWARE\\voidtools\\Everything 1.5a',
-    'HKLM\\SOFTWARE\\WOW6432Node\\voidtools\\Everything',
-    'HKLM\\SOFTWARE\\WOW6432Node\\voidtools\\Everything 1.5a',
-  ];
-  for(const key of registryKeys){
-    const location=await registryValue(key);
-    for(const candidate of executableNamesForLocation(location))if(await existsFile(candidate))return candidate;
-  }
 
-  const programFiles=process.env.PROGRAMFILES||'C:\\Program Files';
-  const programFilesX86=process.env['PROGRAMFILES(X86)']||'C:\\Program Files (x86)';
-  const localAppData=process.env.LOCALAPPDATA||'';
-  const known=[
-    ...executableNamesForLocation(path.join(programFiles,'Everything')),
-    ...executableNamesForLocation(path.join(programFiles,'Everything 1.5a')),
-    ...executableNamesForLocation(path.join(programFilesX86,'Everything')),
-    ...executableNamesForLocation(path.join(programFilesX86,'Everything 1.5a')),
-    ...executableNamesForLocation(path.join(localAppData,'Everything')),
-    ...executableNamesForLocation(path.join(localAppData,'Programs','Everything')),
-  ];
-  for(const candidate of known)if(await existsFile(candidate))return candidate;
-
-  if(process.platform==='win32'){
-    for(const exeName of ['Everything.exe','Everything64.exe']){
-      try{const {stdout}=await execFile('where.exe',[exeName],{encoding:'utf8',windowsHide:true,timeout:3000});for(const candidate of stdout.split(/\r?\n/).map(x=>x.trim()).filter(Boolean))if(await existsFile(candidate))return candidate}catch{}
-    }
-  }
-  const e=new Error('Everything מותקן אך לא ניתן לאתר את Everything.exe. התקן את Everything 1.5 באמצעות המתקין הרשמי או הגדר NETUNIM_EVERYTHING_EXE_PATH.');e.code='EVERYTHING_EXE_NOT_FOUND';throw e;
-}
+async function findEverythingExecutable(config){return everythingDiscovery.executable(config)}
 
 
 const everythingSession=createEverythingSession({
   configuration:{load:loadConfig,save:saveConfig},
   discovery:{es:whereEs,executable:findEverythingExecutable},
-  process:{run:runEs,start:(file,args)=>{const child=spawn(file,args,{detached:true,windowsHide:true,stdio:'ignore',cwd:APP_ROOT});child.unref()}},
+  process:{run:runEs,start:(file,args)=>everythingProcesses.start(file,args)},
   runtime:{now:Date.now,wait:ms=>new Promise(resolve=>setTimeout(resolve,ms))},
   audit:{write:appendLog},
 });
@@ -582,9 +539,9 @@ async function warmDocumentSearch(){const probe=await probeEverything({autoStart
 async function prepareShutdown(){
   shuttingDown=true;
   previewTextCache.dispose();
-  const searchDrain=documentSearch.dispose(),sessionDrain=everythingSession.dispose();
+  const searchDrain=documentSearch.dispose(),sessionDrain=everythingSession.dispose(),discoveryDrain=everythingDiscovery.dispose(),processDrain=everythingProcesses.dispose();
   documentResults.dispose();
-  await Promise.all([searchDrain,sessionDrain,manualMaintenance.dispose(),nativePreviewSession.dispose()]);
+  await Promise.all([searchDrain,sessionDrain,discoveryDrain,processDrain,manualMaintenance.dispose(),nativePreviewSession.dispose()]);
   return {ok:true,pid:process.pid};
 }
 function finishShutdown(){
