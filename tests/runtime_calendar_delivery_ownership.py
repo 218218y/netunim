@@ -31,8 +31,8 @@ SETUP = r"""(async()=>{
    if(path==='/calendar/v3/users/me/calendarList')return new Response(JSON.stringify({items:[{id:calendarId,primary:true,summary:'fixture',accessRole:'owner'}]}));
    if(options.method==='PATCH'){
      const body=JSON.parse(options.body);audit.calls++;
-     if(__PRIMARY__&&audit.calls===1){audit.entered.resolve();await audit.held.promise;localStorage.setItem('fixture.calendar.remote',JSON.stringify({id:eventId,...body}));if(__ACK_ABORT__)audit.abortAck=true;else throw Error('fixture response lost after effect')}
-     localStorage.setItem('fixture.calendar.remote',JSON.stringify({id:eventId,...body}));return new Response(JSON.stringify({id:eventId,...body}));
+     if(__PRIMARY__&&audit.calls===1){audit.entered.resolve();await audit.held.promise;localStorage.setItem('fixture.calendar.remote',JSON.stringify({...JSON.parse(localStorage.getItem('fixture.calendar.remote')),id:eventId,...body}));if(__ACK_ABORT__)audit.abortAck=true;else throw Error('fixture response lost after effect')}
+     localStorage.setItem('fixture.calendar.remote',JSON.stringify({...JSON.parse(localStorage.getItem('fixture.calendar.remote')),id:eventId,...body}));return new Response(JSON.stringify({...JSON.parse(localStorage.getItem('fixture.calendar.remote')),id:eventId,...body}));
    }
    if(path.endsWith('/events'))return new Response(JSON.stringify({items:[JSON.parse(localStorage.getItem('fixture.calendar.remote'))]}));
    throw Error('unexpected Calendar request '+path);
@@ -45,7 +45,7 @@ SETUP = r"""(async()=>{
 PRODUCE = r"""
  cloudAuth.saveSession({user:{id:'calendar-owner-fixture'},access_token:'fixture',expires_at:9999999999});
  await storage.putMeta('accountId',calendarId);storage.saveConnectionPreference({autoConnect:false,accountId:calendarId});
- localStorage.setItem('fixture.calendar.remote',JSON.stringify({id:eventId,summary:'initial'}));
+ localStorage.setItem('fixture.calendar.remote',JSON.stringify({id:eventId,summary:'initial',start:{date:'2026-10-15'},end:{date:'2026-10-16'}}));
  for(const summary of ['old','new'])await storage.addOperation({type:'patch',calendarId,eventId,body:{summary}});
 """
 

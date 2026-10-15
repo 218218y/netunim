@@ -20,6 +20,13 @@
     "types": []
   },
   "files": [
+    "tests/fixtures/checked-calendar-projection.mjs",
+    "netunim-orders/site/assets/js/calendar/payload.js",
+    "netunim-orders/site/assets/js/calendar/api.js",
+    "netunim-orders/site/assets/js/calendar/view.js",
+    "netunim-orders/site/assets/js/domains/calendar/read-model.js",
+    "netunim-orders/site/assets/js/domains/calendar/presentation.js",
+    "netunim-orders/site/assets/js/domains/calendar/editor-payload.js",
     "tests/fixtures/checked-kupa-bank-refresh.mjs",
     "netunim-kupa/site/assets/js/domains/bank/refresh.js",
     "netunim-kupa/site/assets/js/domains/bank/snapshot-policy.js",

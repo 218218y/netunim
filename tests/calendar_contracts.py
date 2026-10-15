@@ -28,6 +28,9 @@ api=(SITE/'assets/js/calendar/api.js').read_text(encoding='utf-8')
 storage=(SITE/'assets/js/calendar/storage.js').read_text(encoding='utf-8')
 journal=(SITE/'assets/js/calendar/journal.js').read_text(encoding='utf-8')
 controller=(SITE/'assets/js/domains/calendar/controller.js').read_text(encoding='utf-8')
+presentation=(SITE/'assets/js/domains/calendar/presentation.js').read_text(encoding='utf-8')
+read_model=(SITE/'assets/js/domains/calendar/read-model.js').read_text(encoding='utf-8')
+api_compact=re.sub(r'\s+','',api)
 session_runtime=(SITE/'assets/js/calendar/session-runtime.js').read_text(encoding='utf-8')
 connection=(SITE/'assets/js/calendar/connection.js').read_text(encoding='utf-8')
 oauth_return=(SITE/'assets/js/platform/calendar-oauth-return.js').read_text(encoding='utf-8')
@@ -50,7 +53,7 @@ ok('calendarUi:{' in contexts and "viewMode:'week'" in contexts and "focusDate:'
    and all(name not in contexts for name in ('syncPromise','pollTimer','authResumePromise')),
    'calendar composition: initialized view/status state contains no operation promises or poll handle')
 ok('renderCalendar, renderSettings' in navigation and "ui.currentView==='calendar')renderCalendar()" in navigation,'calendar navigation: the Calendar tab renders Calendar instead of falling through to Settings')
-controller_actions=set(re.findall(r'data-(?:action|change)="(calendar-[^"]+)"',controller))
+controller_actions=set(re.findall(r'data-(?:action|change)="(calendar-[^"]+)"',controller+presentation))
 registered_actions=set(re.findall(r"'(calendar-[^']+)'\s*:\s*\(",(SITE/'assets/js/ui/action-packs/calendar.js').read_text(encoding='utf-8')))
 ok(bool(controller_actions) and controller_actions <= registered_actions,'calendar actions: every calendar button/change action rendered by the controller is registered in delegated UI actions')
 calendar_action_ports=(SITE/'assets/js/domains/calendar/action-ports.js').read_text(encoding='utf-8')
@@ -83,13 +86,13 @@ ok('assertCurrent:assertDisplay' in auth and 'assertDisplay();clearToken()' in a
    and 'assertCurrent:lifetime.checkpoint()' in session_runtime and 'globalThis.history.replaceState' in oauth_return,
    'calendar presentation authority: disposal fences delayed redirect/disconnect publication independently of intentional credential revocation')
 
-ok('data-click-arg0="month"' in controller and 'data-click-arg0="week"' in controller and 'data-click-arg0="day"' in controller and 'calendar-prev-period' in controller and 'calendar-next-period' in controller,'calendar view controls: month/week/day and period navigation are rendered from one focused-date model')
+ok('data-click-arg0="month"' in presentation and 'data-click-arg0="week"' in presentation and 'data-click-arg0="day"' in presentation and 'calendar-prev-period' in presentation and 'calendar-next-period' in presentation,'calendar view controls: month/week/day and period navigation are rendered from one focused-date model')
 effects=(SITE/'assets/js/platform/calendar-browser-effects.js').read_text(encoding='utf-8')
-ok('calendar-day-create-zone' in controller and 'calendar-day-create' in controller and 'effects.dayClick.cancel()' in controller and 'effects.dayClick.schedule' in controller
+ok('calendar-day-create-zone' in presentation and 'calendar-day-create' in presentation and 'effects.dayClick.cancel()' in controller and 'effects.dayClick.schedule' in controller
    and 'createDebouncedTask({delay:320' in effects,
    'calendar creation UX: a privately owned 320ms day-click task disambiguates single/double clicks and fences cancellation')
 ok("change:'calendar-start-date-change'" in controller and "change:'calendar-end-date-change'" in controller and 'reconcileCalendarEndDate' in controller and 'setDateValue' in controller,'calendar date range: editor start/end dates are linked through the shared date editor instead of waiting for save-time validation')
-toolbar_markup=re.search(r'function toolbarMarkup\(\)\{.*?return `(.*?)`\}',controller,re.S)
+toolbar_markup=re.search(r'function toolbarMarkup\(\)\s*\{.*?return `(.*?)`',presentation,re.S)
 toolbar_source=toolbar_markup.group(1) if toolbar_markup else ''
 nav_pos=toolbar_source.find('<div class="calendar-nav-actions">')
 views_pos=toolbar_source.find('${viewModeMarkup()}')
@@ -101,10 +104,10 @@ ok('calendarPrefetchRangeFor' in controller and 'calendarRangeContains' in contr
 ok('memoryCovered?bodyMarkup()' in controller and "syncNow({quiet:true,force:false})" in controller,'calendar cache: covered month/week/day transitions render immediately and revalidate without blocking the view')
 ok("const range=display.prefetchRange()" in session_runtime and 'calendarPrefetchRangeFor' in (SITE/'assets/js/calendar/view.js').read_text(encoding='utf-8'),'calendar prefetch: Google sync warms a rolling nearby window rather than refetching only the active view')
 ok('cacheRangeStart' in contexts and 'cacheRangeEnd' in contexts,'calendar cache: in-memory state records its coverage so mode/period transitions can be synchronous')
-ok('workerCount=Math.min(4,readable.length)' in api and 'Promise.all' in api,'calendar API: readable calendars are fetched with bounded parallelism instead of serial network waits')
-ok("eventTypes" not in api and "singleEvents:true" in api and "showHidden:true" in api,'calendar API: event listing includes all event types and hidden subscribed calendars')
-ok("event?.eventType==='birthday'" in controller and 'אירוע יום הולדת' in controller,'calendar UI: birthdays are visible but protected from unsupported editing')
-ok("_pendingDelete:true" in controller and 'ממתין למחיקה' in controller,'calendar UI: unacknowledged deletes remain visibly pending until Google confirms them')
+ok('workerCount=Math.min(4,readable.length)' in api_compact and 'Promise.allSettled' in api,'calendar API: readable calendars are fetched with bounded parallelism instead of serial network waits')
+ok("eventTypes" not in api and "singleEvents:true" in api_compact and "showHidden:true" in api_compact,'calendar API: event listing includes all event types and hidden subscribed calendars')
+ok("event?.eventType==='birthday'" in re.sub(r'\s+','',read_model) and 'אירוע יום הולדת' in read_model,'calendar UI: birthdays are visible but protected from unsupported editing')
+ok("_pendingDelete:true" in re.sub(r'\s+','',read_model) and 'ממתין למחיקה' in presentation,'calendar UI: unacknowledged deletes remain visibly pending until Google confirms them')
 ok("autoIncrement:true" in storage and "pending-operations" in storage,'calendar storage: outbound operations use an ordered durable IndexedDB journal')
 ok("error?.status!==409" in journal and 'getEvent' in journal and 'insertMatches' in journal,'calendar journal: duplicate create retry confirms both the preassigned ID and intended event content')
 ok("error?.status===404||error?.status===410" in journal,'calendar journal: repeated deletes acknowledge already-deleted events')

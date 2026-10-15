@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-fe6410792a6b';
+const CACHE='orders-app-shell-esm-03cf5fe611e5';
 const SHELL=[
   './',
   './index.html',
@@ -16,6 +16,7 @@ const SHELL=[
   './assets/js/calendar/display-lifetime.js',
   './assets/js/calendar/journal.js',
   './assets/js/calendar/operation-flight.js',
+  './assets/js/calendar/payload.js',
   './assets/js/calendar/queue-confirmation.js',
   './assets/js/calendar/queue-observation.js',
   './assets/js/calendar/session-runtime.js',
@@ -51,6 +52,9 @@ const SHELL=[
   './assets/js/domains/bank/selectors.js',
   './assets/js/domains/calendar/action-ports.js',
   './assets/js/domains/calendar/controller.js',
+  './assets/js/domains/calendar/editor-payload.js',
+  './assets/js/domains/calendar/presentation.js',
+  './assets/js/domains/calendar/read-model.js',
   './assets/js/domains/checks/alerts.js',
   './assets/js/domains/checks/editor.js',
   './assets/js/domains/checks/model.js',
