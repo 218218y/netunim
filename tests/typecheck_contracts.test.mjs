@@ -26,6 +26,18 @@ function check(overrides=new Map()){
 }
 function describe(diagnostics){return ts.formatDiagnostics(diagnostics,{getCanonicalFileName:file=>file,getCurrentDirectory:()=>root,getNewLine:()=> '\n'})}
 
+test('Document search bodies reject text page limits, unjoined disposal and text expiry',()=>{
+ for(const [file,from,to]of [
+  ['search-owner.mjs','limit: boundedLimit',"limit: '2'"],
+  ['search-owner.mjs','await Promise.all([...pending]);','return true;'],
+  ['result-registry.mjs','expiresAt: clock.now() + clock.ttlMs',"expiresAt: 'tomorrow'"],
+ ]){
+  const source=path.join(root,'netunim-orders/document-bridge',file),original=readFileSync(source,'utf8'),changed=original.replace(from,to);
+  assert.notEqual(changed,original,from);const diagnostics=check(new Map([[source,changed]]));
+  assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&[2322,2345].includes(item.code)),describe(diagnostics));
+ }
+});
+
 test('Morning form and confirmation bodies reject text money and deferred confirmation',()=>{
  for(const [file,from,to]of [
   ['morning-command-form.js','amount,\n        date,',"amount: '30',\n        date,"],

@@ -65,7 +65,7 @@ test('actual server shutdown fences a pending lock probe and rejects completion 
   const source=await fs.readFile(new URL('../netunim-orders/document-bridge/server.mjs',import.meta.url),'utf8');
   const ast=parse(source,{ecmaVersion:'latest',sourceType:'module'}),held=deferred(),f=fixture({host:{isHeld:()=>held.promise}});
   const names=['startManualPdfMaintenance','prepareShutdown'];const functions=ast.body.filter(node=>node.type==='FunctionDeclaration'&&names.includes(node.id.name));
-  const context={manualMaintenance:f.owner,pdfMaintenanceStatus:async()=>({ok:true}),shuttingDown:false,previewTextCache:{dispose:()=>{}},nativePreviewSession:{dispose:async()=>{}},process:{pid:10}};
+  const context={manualMaintenance:f.owner,pdfMaintenanceStatus:async()=>({ok:true}),shuttingDown:false,previewTextCache:{dispose:()=>{}},nativePreviewSession:{dispose:async()=>{}},documentSearch:{dispose:async()=>{}},documentResults:{dispose:()=>{}},process:{pid:10}};
   const root=vm.runInNewContext(functions.map(node=>source.slice(node.start,node.end)).join('\n')+'\n({start:startManualPdfMaintenance,dispose:prepareShutdown})',context);
   const start=root.start(),rejected=assert.rejects(start,{code:'PDF_MAINTENANCE_DISPOSED'}),shutdown=root.dispose();held.resolve(false);await Promise.all([shutdown,rejected]);assert.equal(f.children.length,0);assert.equal(context.shuttingDown,true);
   const live=fixture();context.manualMaintenance=live.owner;await live.owner.start();const blocked=root.dispose();const rejectedShutdown=assert.rejects(blocked,{code:'PDF_MAINTENANCE_DRAIN_TIMEOUT'});[...live.timers.values()][0]();await rejectedShutdown;

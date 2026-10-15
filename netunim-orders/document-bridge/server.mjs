@@ -31,6 +31,8 @@ import {createPreviewFilePlatform} from './preview-file-platform.mjs';
 import {createNativePreviewSession} from './native-preview-session.mjs';
 import {createNativePreviewHostPlatform} from './native-preview-platform.mjs';
 import {createDocumentBridgeHttpHandler,documentBridgeErrorResponse as safeError} from './http-handler.mjs';
+import {createDocumentSearch} from './search-owner.mjs';
+import {createDocumentResultRegistry} from './result-registry.mjs';
 
 const execFile=promisify(execFileCb);
 const APP_ROOT=process.env.NETUNIM_DOCUMENT_BRIDGE_HOME||path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimDocumentBridge');
@@ -45,7 +47,14 @@ const PDF_FORM_INDEX_PATH=path.join(APP_ROOT,'pdf-form-index.json');
 const PDF_FORM_INDEX_JOURNAL_PATH=path.join(APP_ROOT,'pdf-form-index.journal.jsonl');
 const TOOL_ES=path.join(APP_ROOT,'tools','es.exe');
 const NATIVE_PREVIEW_HOST=path.join(RUNTIME_ROOT,'NetunimPreviewHost.exe');
-const requestResults=new Map();
+const documentResults=createDocumentResultRegistry({
+  clock:{now:Date.now,ttlMs:RESULT_TTL_MS},
+  identity:{next:()=>crypto.randomUUID()},
+  files:{stat:fullPath=>fs.stat(fullPath)},
+});
+// Shutdown joins accepted search/probe/reprobe and maintenance work before the
+// installer may replace runtime files. This is a caller deadline, not a retry.
+const SHUTDOWN_REQUEST_TIMEOUT_MS=120000;
 const PREVIEW_TEXT_CACHE_TTL_MS=10*60*1000;
 const PREVIEW_TEXT_CACHE_MAX=24;
 const previewTextCache=createPreviewTextCache({clock:Date.now,ttlMs:PREVIEW_TEXT_CACHE_TTL_MS,maxEntries:PREVIEW_TEXT_CACHE_MAX});
@@ -234,8 +243,8 @@ async function diagnoseIndex({freshProbe=false}={}){
   return {config,probe,diagnostics:{fileCount,indexedContentCount,sampleOk,error}};
 }
 
-function pruneResults(){const now=Date.now();for(const [id,row] of requestResults)if(row.expiresAt<=now)requestResults.delete(id)}
-function publicResult(row,{query='',mode='everything',contentSearch={}}={}){const id=crypto.randomUUID();requestResults.set(id,{fullPath:row.fullPath,name:row.name,relativePath:row.relativePath,modified:row.modified,size:row.size,attributes:row.attributes||'',query:String(query||''),mode:normalizeDocumentSearchMode(mode),contentSearch:normalizeContentSearchOptions(contentSearch),expiresAt:Date.now()+RESULT_TTL_MS});return {id,name:row.name,relativePath:row.relativePath,modified:row.modified,size:row.size,extension:row.extension,attributes:row.attributes||'',isDirectory:!!row.isDirectory,rootId:'everything',rootLabel:'Everything'}}
+function pruneResults(){documentResults.prune()}
+function publicResult(row,{query='',mode='everything',contentSearch={}}={}){return documentResults.publish(row,{query:String(query||''),mode:normalizeDocumentSearchMode(mode),contentSearch:normalizeContentSearchOptions(contentSearch)})}
 async function runEverythingJson(buildArgs,{signal=null}={}){
   const config=await loadConfig();let probe=await probeEverything({autoStart:true});const started=Date.now();
   const runSearch=currentProbe=>runEs(currentProbe.esPath,buildArgs(config,currentProbe),{timeout:config.searchTimeoutMs+5000,signal});
@@ -470,36 +479,26 @@ async function supplementalPdfData(row,stat){
   }catch(error){await appendLog(`PDF_FORM_PREVIEW_FAILED path=${JSON.stringify(fullPath)} error=${JSON.stringify(String(error?.message||error))}`)}
   return null;
 }
+const documentSearch=createDocumentSearch({
+  everything:{
+    search:request=>runEverythingJson((config,probe)=>buildEsSearchArgs({...request,timeoutMs:config.searchTimeoutMs,instance:probe.instance})),
+    recent:request=>runEverythingJson((config,probe)=>buildEsRecentFilesArgs({...request,timeoutMs:config.searchTimeoutMs,instance:probe.instance})),
+  },
+  pdf:{prepare:preparePdfFormIndexForSearch,search:(plan,limit)=>searchPdfFormIndex(plan.query,plan.contentSearch,plan.scopePath,limit,plan.sort)},
+  ordering:{merge:mergeDocumentResults,compare:compareDocumentRows},
+  publication:{prune:pruneResults,publish:publicResult},
+  audit:{write:appendLog},
+},{bridgeVersion:BRIDGE_VERSION,maxResults:MAX_RESULTS,defaultLimit:DEFAULT_RESULT_LIMIT,recentLimit:RECENT_RESULT_LIMIT});
 async function searchDocuments(query,limit,mode='everything',contentSearch={},scopePath='',offset=0,sort={},fileType='all'){
   const normalizedMode=normalizeDocumentSearchMode(mode),normalizedContentSearch=normalizeContentSearchOptions(contentSearch),normalizedScope=normalizeSearchScopePath(scopePath),normalizedSort=normalizeDocumentSort(sort),normalizedFileType=normalizeDocumentFileType(fileType),everythingQuery=buildDocumentQuery(query,normalizedMode,normalizedContentSearch,normalizedFileType);
   if(!everythingQuery){const e=new Error(normalizedMode==='content'?'יש להקליד לפחות שני תווים לחיפוש בתוכן הקבצים.':'יש להקליד לפחות תו אחד לחיפוש ב-Everything.');e.code='QUERY_TOO_SHORT';throw e}
-  const pageOffset=Math.max(0,Math.min(MAX_RESULTS,Math.trunc(Number(offset)||0))),available=Math.max(0,MAX_RESULTS-pageOffset),boundedLimit=Math.min(available,Math.max(1,Math.trunc(Number(limit)||DEFAULT_RESULT_LIMIT)));
-  if(!boundedLimit)return {ok:true,bridgeVersion:BRIDGE_VERSION,query:String(query||'').trim(),mode:normalizedMode,contentSearch:normalizedContentSearch,fileType:normalizedFileType,scopePath:normalizedScope,sort:normalizedSort,offset:pageOffset,limit:0,results:[],hasMore:false,maxResults:MAX_RESULTS,elapsedMs:0,partial:false,rootErrors:[]};
-  const wanted=Math.min(MAX_RESULTS,pageOffset+boundedLimit+1);let rows=[],supplemental=[],elapsedMs=0,pageRows=[],hasMore=false,partial=false;
-  if(normalizedMode==='everything'){
-    const result=await runEverythingJson((config,probe)=>buildEsSearchArgs({query,mode:normalizedMode,contentSearch:normalizedContentSearch,fileType:normalizedFileType,limit:Math.min(boundedLimit+1,available),offset:pageOffset,timeoutMs:config.searchTimeoutMs,instance:probe.instance,scopePath:normalizedScope,sort:normalizedSort}));rows=result.rows;elapsedMs=result.elapsedMs;pageRows=rows.slice(0,boundedLimit);hasMore=rows.length>boundedLimit&&pageOffset+boundedLimit<MAX_RESULTS;
-  }else{
-    const [result,indexState]=await Promise.all([runEverythingJson((config,probe)=>buildEsSearchArgs({query,mode:normalizedMode,contentSearch:normalizedContentSearch,fileType:normalizedFileType,limit:wanted,offset:0,timeoutMs:config.searchTimeoutMs,instance:probe.instance,scopePath:normalizedScope,sort:normalizedSort})),preparePdfFormIndexForSearch()]);rows=result.rows;elapsedMs=result.elapsedMs;supplemental=documentFileTypeIncludesPdf(normalizedFileType)?searchPdfFormIndex(query,normalizedContentSearch,normalizedScope,wanted,normalizedSort):[];const merged=mergeDocumentResults([rows,supplemental],wanted,MAX_RESULTS).sort((a,b)=>compareDocumentRows(a,b,normalizedSort));pageRows=merged.slice(pageOffset,pageOffset+boundedLimit);hasMore=merged.length>pageOffset+pageRows.length&&pageOffset+boundedLimit<MAX_RESULTS;partial=indexState.partial;
-  }
-  pruneResults();const results=pageRows.map(row=>publicResult(row,{query,mode:normalizedMode,contentSearch:normalizedContentSearch}));
-  await appendLog(`SEARCH mode=${normalizedMode} offset=${pageOffset} limit=${boundedLimit} hasMore=${hasMore} partial=${partial} contentSearch=${JSON.stringify(normalizedContentSearch)} fileType=${normalizedFileType} sort=${normalizedSort.field}:${normalizedSort.direction} scope=everything-index+interactive-pdf scopePath=${JSON.stringify(normalizedScope)} results=${results.length} everythingResults=${rows.length} pdfSupplemental=${supplemental.length} elapsedMs=${elapsedMs} input=${JSON.stringify(String(query||''))} everythingQuery=${JSON.stringify(everythingQuery)}`);
-  return {ok:true,bridgeVersion:BRIDGE_VERSION,query:String(query||'').trim(),mode:normalizedMode,contentSearch:normalizedContentSearch,fileType:normalizedFileType,scopePath:normalizedScope,sort:normalizedSort,offset:pageOffset,limit:boundedLimit,results,hasMore,maxResults:MAX_RESULTS,elapsedMs,partial,rootErrors:[]};
+  return documentSearch.search({query,mode:normalizedMode,contentSearch:normalizedContentSearch,scopePath:normalizedScope,sort:normalizedSort,fileType:normalizedFileType,everythingQuery,includePdf:documentFileTypeIncludesPdf(normalizedFileType)},limit,offset);
 }
 async function recentDocuments(limit,scopePath='',fileType='all'){
-  const normalizedScope=normalizeSearchScopePath(scopePath),normalizedFileType=normalizeDocumentFileType(fileType),boundedLimit=Math.min(RECENT_RESULT_LIMIT,Math.max(1,Number(limit)||RECENT_RESULT_LIMIT));
-  const {rows,elapsedMs}=await runEverythingJson((config,probe)=>buildEsRecentFilesArgs({limit:boundedLimit,timeoutMs:config.searchTimeoutMs,instance:probe.instance,scopePath:normalizedScope,fileType:normalizedFileType}));
-  pruneResults();const results=mergeDocumentResults([rows],boundedLimit,RECENT_RESULT_LIMIT).map(row=>publicResult(row,{query:'',mode:'everything'}));
-  await appendLog(`RECENT scope=everything-index scopePath=${JSON.stringify(normalizedScope)} fileType=${normalizedFileType} sort=date-modified-descending results=${results.length} elapsedMs=${elapsedMs}`);
-  return {ok:true,bridgeVersion:BRIDGE_VERSION,mode:'recent',fileType:normalizedFileType,scopePath:normalizedScope,results,elapsedMs,partial:false,rootErrors:[]};
+  return documentSearch.recent({scopePath:normalizeSearchScopePath(scopePath),fileType:normalizeDocumentFileType(fileType)},limit);
 }
 
-async function resolveResult(id){
-  pruneResults();
-  const row=requestResults.get(String(id||''));
-  if(!row){const e=new Error('תוצאת החיפוש פגה. חפש שוב את הקובץ.');e.code='RESULT_EXPIRED';throw e}
-  let stat;try{stat=await fs.stat(row.fullPath)}catch{const e=new Error('הקובץ כבר אינו קיים או שאינו נגיש.');e.code='OPEN_TARGET_MISSING';throw e}
-  return {row,stat};
-}
+async function resolveResult(id){return documentResults.resolve(id)}
 
 const previewFiles=createPreviewFilePlatform();
 const nativePreviewSession=createNativePreviewSession({
@@ -599,8 +598,7 @@ async function revealDocument(id){
 }
 
 async function invalidateResultPath(fullPath){
-  const target=String(fullPath||'').toLocaleLowerCase('en-US'),invalidatedIds=[];
-  for(const [resultId,result] of requestResults){if(String(result.fullPath||'').toLocaleLowerCase('en-US')!==target)continue;requestResults.delete(resultId);invalidatedIds.push(resultId)}
+  const target=String(fullPath||'').toLocaleLowerCase('en-US'),invalidatedIds=documentResults.invalidate(fullPath);
   previewTextCache.invalidate(target);await loadPdfFormIndex();if(pdfFormIndex.has(target))await appendPdfIndexJournal([{op:'remove',fullPath}]);
   return invalidatedIds;
 }
@@ -626,7 +624,14 @@ async function documentBridgeStatus(){
 }
 function bridgeHealth(){return {ok:true,service:BRIDGE_SERVICE,version:BRIDGE_VERSION,pid:process.pid}}
 async function warmDocumentSearch(){const probe=await probeEverything({autoStart:true});return {ok:true,service:BRIDGE_SERVICE,version:BRIDGE_VERSION,everythingVersion:probe.everythingVersion,instance:probe.instance}}
-async function prepareShutdown(){shuttingDown=true;previewTextCache.dispose();await Promise.all([manualMaintenance.dispose(),nativePreviewSession.dispose()]);return {ok:true,pid:process.pid}}
+async function prepareShutdown(){
+  shuttingDown=true;
+  previewTextCache.dispose();
+  const searchDrain=documentSearch.dispose();
+  documentResults.dispose();
+  await Promise.all([searchDrain,manualMaintenance.dispose(),nativePreviewSession.dispose()]);
+  return {ok:true,pid:process.pid};
+}
 function finishShutdown(){
   setTimeout(()=>{server?.close(async()=>{await appendLog('STOP graceful shutdown complete');process.exitCode=0})},20);
   setTimeout(()=>{process.exit(0)},2500).unref?.();
@@ -673,7 +678,7 @@ async function stopExisting(){
   if(health.statusCode!==200||health.data?.service!==BRIDGE_SERVICE){const e=new Error(`Port ${BRIDGE_PORT} is already in use by another service.`);e.code='PORT_IN_USE';throw e}
   const listenerPid=Number(health.data?.pid)||await bridgeListenerPid();
   let token='';try{token=(await fs.readFile(TOKEN_PATH,'utf8')).trim()}catch{}if(!token){const e=new Error('Existing Document Bridge is running but its local token is unavailable.');e.code='TOKEN_MISSING';throw e}
-  const response=await loopbackRequest('/shutdown',{method:'POST',token,timeoutMs:2500});if(response.statusCode!==200){const e=new Error(`Existing Document Bridge refused shutdown (HTTP ${response.statusCode}).`);e.code='SHUTDOWN_FAILED';throw e}
+  const response=await loopbackRequest('/shutdown',{method:'POST',token,timeoutMs:SHUTDOWN_REQUEST_TIMEOUT_MS});if(response.statusCode!==200){const e=new Error(`Existing Document Bridge refused shutdown (HTTP ${response.statusCode}).`);e.code='SHUTDOWN_FAILED';throw e}
   const portDeadline=Date.now()+3500;let portClosed=false;while(Date.now()<portDeadline){await new Promise(r=>setTimeout(r,120));try{await loopbackRequest('/health',{timeoutMs:300})}catch(error){if(['ECONNREFUSED','ECONNRESET','ETIMEDOUT'].includes(String(error?.code))){portClosed=true;break}}}
   if(listenerPid&&!(await waitForProcessExit(listenerPid,1500))){await appendLog(`INSTALL_STOP_FORCE pid=${listenerPid} reason=${JSON.stringify(portClosed?'listener-closed-process-still-running':'shutdown-timeout')}`);await forceStopProcessTree(listenerPid);if(!(await waitForProcessExit(listenerPid,2500))){const e=new Error(`Existing Document Bridge process ${listenerPid} could not be terminated.`);e.code='SHUTDOWN_PROCESS_STUCK';throw e}}
   try{await loopbackRequest('/health',{timeoutMs:500});const e=new Error('Existing Document Bridge listener is still active after shutdown.');e.code='SHUTDOWN_TIMEOUT';throw e}catch(error){if(['ECONNREFUSED','ECONNRESET','ETIMEDOUT'].includes(String(error?.code)))return;throw error}

@@ -9,6 +9,7 @@ import {promisify} from 'node:util';
 import {parse} from 'acorn';
 import {createPdfInventory} from '../netunim-orders/document-bridge/pdf-inventory.mjs';
 import {createEverythingInventorySource} from '../netunim-orders/document-bridge/everything-inventory-source.mjs';
+import {createDocumentSearch} from '../netunim-orders/document-bridge/search-owner.mjs';
 import {pdfIndexNeedsInspection} from '../netunim-orders/document-bridge/pdf-index-policy.mjs';
 import * as lib from '../netunim-orders/document-bridge/lib.mjs';
 import {indexFixture} from './pdf_index_file_fixture.mjs';
@@ -17,7 +18,9 @@ const execute=promisify(execFile),worker=fileURLToPath(new URL('./fixtures/every
 async function fixture(t,{count='0',page='',abortPhase='',handoffAbort=false}={}){
   const f=await indexFixture(t);await f.read();const controller=new AbortController(),commands=[];
   const source=await fs.readFile(new URL('../netunim-orders/document-bridge/server.mjs',import.meta.url),'utf8'),ast=parse(source,{ecmaVersion:'latest',sourceType:'module'});
-  Object.assign(f.context,{...lib,AbortController,createEverythingInventorySource,createPdfInventory:ports=>{
+  let pruned=0,registered=0;
+  Object.assign(f.context,{...lib,AbortController,createEverythingInventorySource,createDocumentSearch,pruneResults:()=>{pruned++},publicResult:()=>{registered++;return {id:'synthetic'}},
+    preparePdfFormIndexForSearch:async()=>({partial:false}),searchPdfFormIndex:()=>[],appendLog:async()=>{},createPdfInventory:ports=>{
     const inventory=createPdfInventory(ports,{pageSize:2});if(!handoffAbort)return inventory;
     return {...inventory,read:async options=>{const rows=await inventory.read(options);queueMicrotask(()=>controller.abort());return rows}};
   },loadConfig:async()=>({searchTimeoutMs:3000}),probeEverything:async()=>({esPath:'synthetic-es',instance:'A'}),
@@ -30,8 +33,9 @@ async function fixture(t,{count='0',page='',abortPhase='',handoffAbort=false}={}
   });
   const functions=ast.body.filter(node=>node.type==='FunctionDeclaration'&&['listEverythingPdfs','rebuildPdfFormIndexBacklog','runEverythingJson','searchDocuments'].includes(node.id.name));
   const variable=ast.body.find(node=>node.type==='VariableDeclaration'&&node.declarations.some(value=>value.id.name==='pdfInventory'));
-  const root=vm.runInNewContext([source.slice(variable.start,variable.end),...functions.map(node=>source.slice(node.start,node.end)),'({rebuild:rebuildPdfFormIndexBacklog,search:searchDocuments})'].join('\n'),f.context);
-  return {...f,root,controller,commands};
+  const search=ast.body.find(node=>node.type==='VariableDeclaration'&&node.declarations.some(value=>value.id.name==='documentSearch'));
+  const root=vm.runInNewContext([source.slice(variable.start,variable.end),source.slice(search.start,search.end),...functions.map(node=>source.slice(node.start,node.end)),'({rebuild:rebuildPdfFormIndexBacklog,search:searchDocuments})'].join('\n'),f.context);
+  return {...f,root,controller,commands,publication:()=>({pruned,registered})};
 }
 async function retained(f,errorCode){
   const bytes=await f.capture(),model=[...f.context.pdfFormIndex.values()].map(JSON.stringify),backlog=f.context.pdfFormIndexBacklog;
@@ -61,6 +65,6 @@ test('storage work already begun drains while a late stop prevents successful ba
   await assert.rejects(f.root.rebuild({full:true,signal:f.controller.signal}),{code:'ABORT_ERR'});assert.equal((await f.fresh()).entries.size,0);assert.equal(f.context.pdfFormIndexBacklog,backlog);assert.equal(f.context.pdfFormIndexInventoryCount,2);
 });
 test('actual search refuses malformed process results before opaque-ID or success publication',async t=>{
-  const f=await fixture(t,{page:'{"metadata":[]}'});let registered=0,pruned=0;Object.assign(f.context,{appendLog:async()=>{},pruneResults:()=>{pruned++},publicResult:()=>{registered++;return {id:'synthetic'}}});
-  await assert.rejects(f.root.search('synthetic',2),{code:'ES_INVALID_JSON'});assert.equal(registered,0);assert.equal(pruned,0);
+  const f=await fixture(t,{page:'{"metadata":[]}'});
+  await assert.rejects(f.root.search('synthetic',2),{code:'ES_INVALID_JSON'});assert.deepEqual(f.publication(),{pruned:0,registered:0});
 });
