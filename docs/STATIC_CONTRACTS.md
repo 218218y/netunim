@@ -541,7 +541,8 @@ account authority. Manual work requires exact token/fence evidence. See
 [Finance transaction authority](FINANCE_TRANSACTION_AUTHORITY.md). Wider journal
 and business RPC caller coverage remains incremental; the complete cloud
 transports and business controllers are not claimed statically covered.
-# Independent workbook transaction boundary
+
+## Independent workbook transaction boundary
 
 `shared/spreadsheet-remote.js` checks the actual request/body/unknown-JSON path,
 persisted flight decoding, revision/state/replay evidence and backup catalog.
@@ -551,4 +552,3 @@ application copies and rejects asynchronous scope guards/codecs. Compiler and
 semantic mutations accompany malformed-response and actual-consumer races.
 See SPREADSHEET_TRANSACTION_AUTHORITY.md. The full workbook model, IDB store and
 controllers are not newly claimed as statically covered by this slice.
-

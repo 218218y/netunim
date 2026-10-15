@@ -32,6 +32,11 @@ later current head, including another computer's edits, but cannot regress below
 the earliest revision that this flight could have committed. Restore no-ops and
 later-head restore replay retain their existing semantics.
 
+The schema permits existing revision-zero rows even though ordinary creation and
+migration start at one. Reads and backup metadata retain that compatibility, and
+a proven identical-state zero-revision no-op remains valid. Absence is still an
+empty REST array; a malformed reply is never converted into an empty document.
+
 Malformed or ambiguous evidence throws before the coordinator clears its flight
 or changes its cloud base/revision. The ordinary pending/retry path retains the
 same operation ID and payload, including across reload. A read timestamp, HTTP

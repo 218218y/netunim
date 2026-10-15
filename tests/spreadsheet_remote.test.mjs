@@ -21,7 +21,7 @@ const response=value=>new Response(JSON.stringify(value));
 const flight=(state=book('sent'),expected=4)=>({state,payload:{p_domain:'orders',p_document_name:'main',p_expected_revision:expected,p_operation_id:'stable-operation',p_state:state,p_delete_intents:{},p_kind:'edit'}});
 
 test('read boundary accepts only one validated document, or the REST empty array',async()=>{
-  for(const value of [null,true,{},[{},{}],{revision:0,state:book()},{revision:4.2,state:book()},
+  for(const value of [null,true,{},[{},{}],{revision:-1,state:book()},{revision:4.2,state:book()},
     {revision:Number.MAX_SAFE_INTEGER+1,state:book()},{revision:true,state:book()},
     {revision:'4e0',state:book()},{revision:' 4 ',state:book()},{revision:4,state:{}},
     {revision:4,state:book(),updated_at:'not-a-date'}]){
@@ -32,6 +32,8 @@ test('read boundary accepts only one validated document, or the REST empty array
   assert.equal(await fixture(response([])).api.readRevision(),null);
   assert.equal((await fixture(response([{revision:'4',state:book(),updated_at:'2026-10-15T12:00:00Z'}])).api.readDocument()).revision,4);
   assert.deepEqual(await fixture(response([{revision:5}])).api.readRevision(),{revision:5});
+  assert.equal((await fixture(response([{revision:0,state:book()}])).api.readDocument()).revision,0,'the SQL schema permits historical zero revisions');
+  assert.deepEqual(await fixture(response([{revision:0}])).api.readRevision(),{revision:0});
 });
 
 test('ACK boundary rejects malformed/ambiguous envelopes, false revisions and unproved states',async()=>{
@@ -50,6 +52,7 @@ test('fresh saves/no-ops, restore no-ops and lost-ACK later-head replay follow t
   assert.equal(result.revision,5);assert.equal(result.operation_replayed,false);
   assert.equal((await fixture(response([{revision:4,state:base,operation_replayed:false}])).api.write(flight(base),base)).revision,4);
   assert.equal((await fixture(response([{revision:1,state:base,operation_replayed:false}])).api.write(flight(base,0),base)).revision,1);
+  assert.equal((await fixture(response([{revision:0,state:base,operation_replayed:false}])).api.write(flight(base,0),base)).revision,0,'existing zero-revision SQL no-op');
   const later=book('another computer');
   assert.deepEqual((await fixture(response([{revision:9,state:later,operation_replayed:true}])).api.write(flight(sent),base)).state,later);
   const restore={restore:true,state:base,payload:{p_domain:'orders',p_document_name:'main',p_expected_revision:4,p_operation_id:'restore-op',p_backup_id:1}};
@@ -104,9 +107,10 @@ test('backup catalog is scoped and validated independently of document ACKs',asy
   const valid={id:7,revision:4,created_at:'2026-10-15T12:00:00Z',kind:'edit'};
   assert.deepEqual(await fixture(response([valid])).api.backups(),[valid]);
   for(const rows of [null,{},[valid,valid],[{...valid,id:true}],[{...valid,id:1.5}],
-    [{...valid,revision:0}],[{...valid,created_at:'invalid'}],[{...valid,kind:'unexpected'}],Array(41).fill(valid)]){
+    [{...valid,revision:-1}],[{...valid,created_at:'invalid'}],[{...valid,kind:'unexpected'}],Array(41).fill(valid)]){
     await assert.rejects(fixture(response(rows)).api.backups(),{code:'SPREADSHEET_RESPONSE_INVALID'});
   }
+  assert.equal((await fixture(response([{...valid,revision:0}])).api.backups())[0].revision,0);
   const f=fixture(response([valid]));f.invalidate();await assert.rejects(f.api.backups(),{code:'fixture_scope_changed'});
   assert.equal(f.requests.length,0);
 });

@@ -19,7 +19,7 @@ test('actual spreadsheet RPC implementation and both generated consumers check w
 });
 for(const [from,to] of [
   ['return {revision:version,state,',"return {revision:'7',state,"],
-  ['const version=revision(value.revision),state=decodeState(value.state);','const version=revision(value.revision),state=value.state;'],
+  ['const version=revision(value.revision,0),state=decodeState(value.state);','const version=revision(value.revision,0),state=value.state;'],
   ['return {...result,operation_replayed:replayed};',"return {...result,operation_replayed:'true'};"],
   ['const assertCurrent=access.capture();assertCurrent();','const assertCurrent=async()=>{};assertCurrent();'],
 ])test('strict spreadsheet implementation rejects '+to,()=>{

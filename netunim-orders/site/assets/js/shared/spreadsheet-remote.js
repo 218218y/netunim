@@ -56,13 +56,13 @@ export function createSpreadsheetRemote({domain,request,access,decodeState,equal
     return data;
   }
   /** @param {Record<string,unknown>} value @returns {SpreadsheetDocument<State>} */
-  function document(value){
-    const version=revision(value.revision),state=decodeState(value.state);
+  function decodeDocument(value){
+    const version=revision(value.revision,0),state=decodeState(value.state);
     return {revision:version,state,...(value.updated_at===undefined?{}:{updated_at:timestamp(value.updated_at)})};
   }
   const query=`/rest/v1/spreadsheet_documents?domain=eq.${domain}&document_name=eq.main&select=`;
-  async function readDocument(){const value=row(await api(query+'revision,state,updated_at'),true);return value?document(value):null}
-  async function readRevision(){const value=row(await api(query+'revision'),true);return value?{revision:revision(value.revision)}:null}
+  async function readDocument(){const value=row(await api(query+'revision,state,updated_at'),true);return value?decodeDocument(value):null}
+  async function readRevision(){const value=row(await api(query+'revision'),true);return value?{revision:revision(value.revision,0)}:null}
   /** @param {unknown} flight @param {State} base @returns {Promise<SpreadsheetAck<State>>} */
   async function write(flight,base){
     if(!object(flight)||!object(flight.payload))invalid('flight');
@@ -74,8 +74,8 @@ export function createSpreadsheetRemote({domain,request,access,decodeState,equal
     else if(!equalState(decodeState(payload.p_state),sentState))invalid('flight state');
     const value=row(await api('/rest/v1/rpc/'+(restore?'restore_spreadsheet_document_v1':'save_spreadsheet_document_v1'),{method:'POST',body:JSON.stringify(payload)}),false);
     if(!value||typeof value.operation_replayed!=='boolean')invalid('replay');
-    const result=document(value),replayed=value.operation_replayed;
-    const minimum=restore?Math.max(1,expected):expected+(expected===0||!equalState(base,sentState)?1:0);
+    const result=decodeDocument(value),replayed=value.operation_replayed;
+    const minimum=restore?expected:expected+(!equalState(base,sentState)?1:0);
     if(!Number.isSafeInteger(minimum)||result.revision<minimum)invalid('revision regression');
     if(replayed&&!restore&&result.revision===minimum&&!equalState(result.state,sentState))invalid('replayed state');
     if(replayed&&restore&&result.revision===expected&&!equalState(result.state,base))invalid('replayed restore state');
@@ -83,8 +83,11 @@ export function createSpreadsheetRemote({domain,request,access,decodeState,equal
       // SQL returns the exact submitted state for a fresh save. An identical
       // state is a valid no-op; replay can instead return a later current head.
       if(!restore&&!equalState(result.state,sentState))invalid('accepted state');
-      const accepted=expected+(expected===0||!equalState(base,result.state)?1:0);
-      if(!Number.isSafeInteger(accepted)||result.revision!==accepted)invalid('accepted revision');
+      const accepted=expected+(!equalState(base,result.state)?1:0);
+      // The schema permits an existing revision-zero document. A no-op on it
+      // returns zero; creating the same state in an absent document returns one.
+      const zeroCreation=expected===0&&accepted===0&&result.revision===1;
+      if(!Number.isSafeInteger(accepted)||result.revision!==accepted&&!zeroCreation)invalid('accepted revision');
     }
     return {...result,operation_replayed:replayed};
   }
@@ -95,7 +98,7 @@ export function createSpreadsheetRemote({domain,request,access,decodeState,equal
     const seen=new Set();
     return data.map(value=>{
       if(!object(value))invalid('backup');
-      const id=revision(value.id),version=revision(value.revision),created_at=timestamp(value.created_at),kind=value.kind;
+      const id=revision(value.id),version=revision(value.revision,0),created_at=timestamp(value.created_at),kind=value.kind;
       if(seen.has(id)||typeof kind!=='string'||!['edit','delete','bulk-delete','restore','migration'].includes(kind))invalid('backup');
       seen.add(id);return {id,revision:version,created_at,kind};
     });
