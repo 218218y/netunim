@@ -7,8 +7,9 @@ FLOW=LOCAL_CLOUD+r"""
 const assert=(value,message)=>{if(!value)throw new Error(message)};
 const errors=[];window.addEventListener('unhandledrejection',event=>errors.push(String(event.reason?.stack||event.reason)));
 const confirmationSnapshot=()=>({open:!!document.getElementById('confirmBackdrop')?.classList.contains('open'),title:document.getElementById('confirmTitle')?.textContent||'',message:document.getElementById('confirmMessage')?.textContent||''});
-const waitFor=async fn=>{for(let i=0;i<150;i++){if(fn())return;await new Promise(r=>setTimeout(r,20))}throw new Error('Morning UI timed out '+document.getElementById('morningConnectionStatus')?.textContent+' '+JSON.stringify(calls.slice(-3))+' '+JSON.stringify(errors)+' '+document.querySelector('[data-action="morning-create"]')?.outerHTML+' confirmation='+JSON.stringify(confirmationSnapshot()))};
-const click=name=>{const button=document.querySelector('[data-action="'+name+'"]');assert(button,'Missing action '+name);button.click()};
+const trace=[];
+const waitFor=async fn=>{for(let i=0;i<150;i++){if(fn())return;await new Promise(r=>setTimeout(r,20))}throw new Error('Morning UI timed out '+document.getElementById('morningConnectionStatus')?.textContent+' '+JSON.stringify(calls.slice(-3))+' '+JSON.stringify(errors)+' '+document.querySelector('[data-action="morning-create"]')?.outerHTML+' confirmation='+JSON.stringify(confirmationSnapshot())+' trace='+JSON.stringify(trace.slice(-8)))};
+const click=name=>{const button=document.querySelector('[data-action="'+name+'"]');assert(button,'Missing action '+name);if(name==='morning-reconcile')trace.push({click:name,disabled:button.disabled,issuanceBusy:document.querySelector('[data-action="morning-create"]')?.ariaBusy,resolveStatus});button.click()};
 const waitForIssueConfirmation=async predicate=>{const before=confirmationSnapshot();assert(!before.open,'Stale confirmation before Morning issue: '+before.title+' | '+before.message);await waitFor(()=>{const current=confirmationSnapshot();return current.open&&current.title==='הפקת מסמך רשמי'&&predicate(current.message)});return confirmationSnapshot().message};
 const issueAndWaitForConfirmation=async predicate=>{const pending=waitForIssueConfirmation(predicate);click('morning-create');return await pending};
 const closeSavedMorningModal=async context=>{click('close-modal');const confirmation=confirmationSnapshot();assert(!confirmation.open,context+' unexpectedly triggered an unsaved-changes confirmation: '+confirmation.title+' | '+confirmation.message);await waitFor(()=>!document.getElementById('modalBackdrop')?.classList.contains('open'))};
@@ -22,7 +23,7 @@ const lostResponse=new Promise(resolve=>{releaseLostResponse=resolve});
 cloudAuth.supaFetch=async(path,options)=>{
   const request=JSON.parse(options.body);calls.push(request);assert(!('debt_id' in request),'Debt ID sent to backend');assert(!('applyPayment' in request)&&!('applyInvoice' in request),'Local debt allocation policy sent to backend');
   let data={ok:true};
-  if(request.action==='status')data={ok:true,configured:true,available:true,environment:'sandbox',operation:resolveStatus?{...operation,state:'created',verified_at:new Date().toISOString(),document_id:docs[0].id,document_number:100}:operation,unresolved:!!operation&&!resolveStatus};
+  if(request.action==='status'){data={ok:true,configured:true,available:true,environment:'sandbox',operation:resolveStatus?{...operation,state:'created',verified_at:new Date().toISOString(),document_id:docs[0].id,document_number:100}:operation,unresolved:!!operation&&!resolveStatus};trace.push({status:request.operation_id,reconcile:request.reconcile,resolveStatus,returnedState:data.operation?.state,stack:new Error().stack})}
   if(request.action==='reserve')data={ok:true,reserved:true,operation:{operation_id:request.operation_id,state:'reserved'}};
   if(request.action==='abandon_reservation')data={ok:true,abandoned:operation?.state==='reserved',operation:operation?.state==='reserved'?{...operation,state:'failed'}:operation};
   if(request.action==='create'){
