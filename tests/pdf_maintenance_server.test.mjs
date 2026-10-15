@@ -1,3 +1,4 @@
+import {createPdfInventoryReconciliation} from '../netunim-orders/document-bridge/pdf-inventory-reconciliation.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -13,10 +14,10 @@ import {limits,deferred,workRow} from './pdf_maintenance_fixture.mjs';
 async function fixture(t,{write}={}){
  const disk=await indexFixture(t);await disk.read();const metadataPath=path.join(path.dirname(disk.snapshotPath),'maintenance.json');
  const source=await fs.readFile(new URL('../netunim-orders/document-bridge/server.mjs',import.meta.url),'utf8'),ast=parse(source,{ecmaVersion:'latest',sourceType:'module'});
- const selected=ast.body.filter(node=>node.type==='FunctionDeclaration'&&['pdfIndexFingerprint','rebuildPdfFormIndexBacklog','refreshPdfFormIndex','prepareShutdown'].includes(node.id.name)||node.type==='VariableDeclaration'&&node.declarations.some(item=>item.id.name==='pdfMaintenanceOperation'));
- let writes=0;Object.assign(disk.context,{...limits,createPdfMaintenanceOperation,readPdfMaintenanceMetadata,PDF_FORM_MAINTENANCE_PATH:metadataPath,AbortController,setTimeout,clearTimeout,process:{cpuUsage:()=>({user:0,system:0}),pid:10},shuttingDown:false,pdfMaintenanceStopRequested:false,
+ const selected=ast.body.filter(node=>node.type==='FunctionDeclaration'&&['pdfIndexFingerprint','rebuildPdfFormIndexBacklog','refreshPdfFormIndex','prepareShutdown'].includes(node.id.name)||node.type==='VariableDeclaration'&&node.declarations.some(item=>['pdfReconciliation','pdfMaintenanceOperation'].includes(item.id.name)));
+ let writes=0;Object.assign(disk.context,{...limits,createPdfInventoryReconciliation,createPdfMaintenanceOperation,readPdfMaintenanceMetadata,PDF_FORM_MAINTENANCE_PATH:metadataPath,AbortController,setTimeout,clearTimeout,process:{cpuUsage:()=>({user:0,system:0}),pid:10},shuttingDown:false,pdfMaintenanceStopRequested:false,
   writeJsonFile:async(file,value)=>{writes++;if(write)await write(value);await fs.writeFile(file,JSON.stringify(value))},appendLog:async()=>{},pdfIndexNeedsInspection,pdfMaintenanceInventoryPlan,
-  listEverythingPdfs:async()=>[workRow(3)],pdfInventory:{assertActive:signal=>{if(signal?.aborted)throw Object.assign(new Error('stopped'),{code:'ABORT_ERR'})}},
+  pdfInventory:{read:async()=>[workRow(3)],assertActive:signal=>{if(signal?.aborted)throw Object.assign(new Error('stopped'),{code:'ABORT_ERR'})}},
   extractInteractivePdfText:async()=>({hasForm:true,text:'native indexed result',formFields:[],formFieldCount:0}),
   documentSearch:{dispose:async()=>{}},documentResults:{dispose:()=>{}},everythingSession:{dispose:async()=>{}},everythingDiscovery:{dispose:async()=>{}},everythingProcesses:{dispose:async()=>{}},manualMaintenance:{dispose:async()=>{}},pdfPreviewOperation:{dispose:async()=>{},invalidate:async()=>{}},pdfExtractionProcesses:{dispose:async()=>{}},nativePreviewSession:{dispose:async()=>{}}});
  const invalidate=disk.context.previewTextCache.invalidate;disk.context.previewTextCache={invalidate,dispose:()=>{}};
