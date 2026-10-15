@@ -33,3 +33,7 @@ checksum-valid intent, then verifies fail-closed resume without rewriting it.
 
 Remaining: strict whole IDB/runtime and owner-transfer bodies are not claimed
 complete. Continue only at a boundary where untrusted evidence grants authority.
+
+The final continuation audit also rejects array-shaped kind/phase values before
+any string conversion. A type predicate must validate the actual scalar type,
+not merely a coercible representation. Negative consumer cases cover these forms.

@@ -83,11 +83,11 @@ export function readStorageOperation(record,schema={}){
 
 /** @param {StorageJson|undefined} value @param {StorageJsonObject} record @returns {value is BoundaryAction} */
 function boundaryAction(value,record) {
-  if(!object(value)||!['replace-authoritative','reset-cloud-head','replace-local-with-pending','replace-local-authoritative'].includes(String(value.kind))||!object(value.state))throw new Error('storage_boundary_action_invalid');
+  if(!object(value)||typeof value.kind!=='string'||!['replace-authoritative','reset-cloud-head','replace-local-with-pending','replace-local-authoritative'].includes(value.kind)||!object(value.state))throw new Error('storage_boundary_action_invalid');
   if(value.cloudState!==undefined&&!object(value.cloudState))throw new Error('storage_boundary_action_invalid');
   if(value.options!==undefined&&(!object(value.options)||(value.options.appMetadata!==undefined&&!object(value.options.appMetadata))))throw new Error('storage_boundary_options_invalid');
   if(object(value.options)&&object(value.options.appMetadata)&&value.options.appMetadata.boundaryId!==undefined&&value.options.appMetadata.boundaryId!==record.id)throw new Error('storage_boundary_identity_override');
-  if(record.kind==='import'&&!['replace-local-with-pending','replace-local-authoritative'].includes(String(value.kind)))throw new Error('storage_boundary_import_requires_pending');
+  if(record.kind==='import'&&!['replace-local-with-pending','replace-local-authoritative'].includes(value.kind))throw new Error('storage_boundary_import_requires_pending');
   if(value.kind==='replace-local-authoritative'&&(record.owner!=='local'||record.kind!=='import'||!integer(value.expectedSeq)||value.expectedBaseRevision!==undefined||value.requireCleanCloud!==undefined))throw new Error('storage_boundary_local_precondition_required');
   if(value.kind==='replace-local-with-pending'&&(record.kind!=='import'||value.requireCleanCloud!==true||!integer(value.expectedSeq)||!integer(value.expectedBaseRevision)))throw new Error('storage_boundary_import_precondition_required');
   if(value.kind==='reset-cloud-head'&&!integer(value.revision))throw new Error('storage_boundary_revision_invalid');
@@ -98,9 +98,9 @@ function boundaryAction(value,record) {
 }
 /** @param {StorageJson} data @param {string} owner @returns {data is StorageJsonObject & StorageBoundary} */
 function boundaryRecord(data,owner) {
-  if(!object(data)||data.version!==2||data.owner!==owner||!identity(data.id)||!data.id.trim()||!['restore','import','authoritative-load','local-file-rebase'].includes(String(data.kind)))throw new Error('storage_boundary_invalid');
+  if(!object(data)||data.version!==2||data.owner!==owner||!identity(data.id)||!data.id.trim()||typeof data.kind!=='string'||!['restore','import','authoritative-load','local-file-rebase'].includes(data.kind))throw new Error('storage_boundary_invalid');
   if(data.phase==='complete')return true;
-  if(!['prepared','shared-applied','main-applied'].includes(String(data.phase)))throw new Error('storage_boundary_phase_invalid');
+  if(typeof data.phase!=='string'||!['prepared','shared-applied','main-applied'].includes(data.phase))throw new Error('storage_boundary_phase_invalid');
   if(!boundaryAction(data.main,data)||!boundaryAction(data.shared,data))throw new Error('storage_boundary_action_invalid');
   if(data.kind==='import'&&data.main.kind!==data.shared.kind)throw new Error('storage_boundary_import_owner_mismatch');
   return true;
