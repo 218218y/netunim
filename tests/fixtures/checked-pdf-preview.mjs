@@ -19,19 +19,19 @@ void stopped;
 /** @type {Promise<void>} */ const invalidated =
   owner.invalidate('C:\\one.pdf');
 void invalidated;
-// @ts-expect-error durable index publication must be awaited
 createPdfPreviewOperation({
   ...ports,
+  // @ts-expect-error durable index publication must be awaited
   index: { ...ports.index, append: () => true }
 });
 // @ts-expect-error an unknown worker result cannot be treated as decoded text
 const text = decodePdfExtractionResult(/** @type {unknown} */ ({})).text * 3;
 void text;
-// @ts-expect-error trimming returns a synchronous projection
 createPdfPreviewOperation({
   ...ports,
   presentation: {
     ...ports.presentation,
+    // @ts-expect-error trimming returns a synchronous projection
     trim: async text => ({ text, truncated: false })
   }
 });
@@ -41,12 +41,12 @@ const worker = createPdfExtractionProcess({
 });
 /** @type {Promise<void>} */ const drained = worker.dispose();
 void drained;
-// @ts-expect-error timeout budgets are numeric
 createPdfExtractionProcess(
   {
     worker: { start: () => ({ kill: () => {} }) },
     runtime: { setTimeout: () => ({}), clearTimeout: () => {} }
   },
+  // @ts-expect-error timeout budgets are numeric
   { timeoutMs: '25 seconds' }
 );
 // @ts-expect-error worker output must be decoded before a consumer can see it
