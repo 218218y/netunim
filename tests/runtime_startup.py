@@ -7,12 +7,15 @@ from browser_harness import BrowserSession, ROOT
 import json
 import os
 from statistics import median
+from math import ceil
 
 
 BUDGETS = json.loads((ROOT/'tests/fixtures/startup-budgets.json').read_text(encoding='utf-8'))
 REPORT = {}
-REPETITIONS = int(os.environ.get("NETUNIM_STARTUP_REPETITIONS", "3"))
-assert 1 <= REPETITIONS <= 5
+REPETITIONS = int(os.environ.get("NETUNIM_STARTUP_REPETITIONS", "5"))
+CPU_RATE = int(os.environ.get("NETUNIM_STARTUP_CPU_RATE", "4"))
+assert 1 <= REPETITIONS <= 10
+assert 2 <= CPU_RATE <= 8
 
 
 def measure(browser, app):
@@ -25,9 +28,12 @@ def measure(browser, app):
         return url.origin===location.origin&&url.pathname.endsWith('.js')&&!url.pathname.includes('/vendor/')&&entry.startTime<=end;
       });
       const navigation=performance.getEntriesByType('navigation')[0];
+      const firstResponse=Math.min(...resources.map(row=>row.responseEnd));
+      const requests=resources.map(row=>({path:new URL(row.name).pathname,startMs:row.startTime,responseMs:row.responseEnd,transferBytes:row.transferSize}));
       return {...timeline,resources:{modules:resources.length,decodedBytes:resources.reduce((sum,row)=>sum+row.decodedBodySize,0),
         lastResponseMs:Math.max(0,...resources.map(row=>row.responseEnd)),
-        transferBytes:resources.reduce((sum,row)=>sum+row.transferSize,0)},
+        transferBytes:resources.reduce((sum,row)=>sum+row.transferSize,0),
+        firstResponseMs:firstResponse,requestsStartedAfterFirstResponse:resources.filter(row=>row.startTime>firstResponse).length,requests},
         domContentLoadedMs:navigation.domContentLoadedEventEnd,offline:!navigator.onLine};
     })()""")
     metrics = browser.call('Performance.getMetrics')['result']['metrics']
@@ -48,12 +54,13 @@ def measure(browser, app):
     return result
 
 
-for app in ['kupa', 'orders']:
+def sample_profile(app, cpu_rate):
     observations = []
     for repetition in range(REPETITIONS):
-        with BrowserSession(ROOT/f'netunim-{app}/site', app+'-startup', instrument=False,
+        with BrowserSession(ROOT/f'netunim-{app}/site', app+'-startup-cpu'+str(cpu_rate), instrument=False,
                             service_worker=True, auto_navigate=False) as browser:
             browser.call('Performance.enable')
+            browser.call('Emulation.setCPUThrottlingRate', {'rate': cpu_rate})
             # Browser diagnostic setup only: avoid silently truncating the default
             # Resource Timing buffer on a 300+ module cold load. No app code patches.
             browser.call('Page.addScriptToEvaluateOnNewDocument', {'source': 'performance.setResourceTimingBufferSize(3000)'})
@@ -87,10 +94,15 @@ for app in ['kupa', 'orders']:
                   for name in BUDGETS['milliseconds']}
         fields['moduleResponses'] = [sample[mode]['resources']['lastResponseMs'] for sample in observations]
         fields['scriptMs'] = [sample[mode]['cpu']['ScriptDuration'] * 1000 for sample in observations]
-        summary[mode] = {name: {'min': min(values), 'median': median(values), 'max': max(values)}
+        summary[mode] = {name: {'n': len(values), 'min': min(values), 'median': median(values), 'p95': sorted(values)[ceil(len(values)*.95)-1], 'max': max(values)}
                          for name, raw in fields.items() if (values := [v for v in raw if v is not None])}
-    REPORT[app] = {'samples': observations, 'summary': summary}
-    print('PASS', app, REPETITIONS, 'isolated cold/cached/offline startup samples;', json.dumps(summary), flush=True)
+    print('PASS', app, 'CPU rate', cpu_rate, REPETITIONS, 'isolated cold/cached/offline startup samples;', json.dumps(summary), flush=True)
+    return {'cpuThrottleRate': cpu_rate, 'repetitions': REPETITIONS, 'samples': observations, 'summary': summary}
+
+
+for app in ['kupa', 'orders']:
+    REPORT[app] = sample_profile(app, 1)
+    REPORT[app]['cpuThrottled'] = sample_profile(app, CPU_RATE)
 
 output = ROOT/'.work/startup-performance/latest.json'
 output.parent.mkdir(parents=True, exist_ok=True)
