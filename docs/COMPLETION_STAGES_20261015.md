@@ -110,3 +110,7 @@ Four successive independently verified branches cover:
 Stage 10 implements strict local/publication bodies and captured receipt evidence;
 see ORDERS_PERSISTENCE_OWNERS.md. Each stage requires full successful branch CI
 before merging; duplicate main CI is not awaited before the following stage.
+
+Stage 11 closes the reproduced phase-unlock and ambiguous restore revision gaps;
+see STORAGE_BOUNDARY_EVIDENCE.md. Remaining whole IDB/runtime/owner-transfer strict
+coverage is explicitly retained in the current backlog.

@@ -1,26 +1,13 @@
+import {readSharedChecksState} from './storage-operation.js';
 import {createStorageJournal} from './storage-journal.js';
 import {createStorageJournalDb} from './storage-journal-idb.js';
-import {assertStorageJson} from './storage-journal-model.js';
 import {readStorageCheckpoint} from './storage-checkpoint.js';
 import {equalSyncJson} from './cloud-sync.js';
 
 const SCHEMA=Object.freeze({collections:['checks'],fields:['bankEvents']});
 
-export function validateSharedChecksState(state){
-  assertStorageJson(state);
-  if(!state||!Array.isArray(state.checks)||!Array.isArray(state.bankEvents))throw new Error('shared_checks_state_invalid');
-  const ids=new Set();
-  for(const check of state.checks){
-    if(!check||typeof check!=='object'||typeof check.id!=='string'||!check.id.trim()||ids.has(check.id))throw new Error('shared_checks_identity_invalid');
-    ids.add(check.id);
-  }
-  const eventSeqs=new Set();
-  for(const event of state.bankEvents){
-    if(!event||!Number.isSafeInteger(event.seq)||event.seq<1||typeof event.checkId!=='string'||!event.checkId.trim()||eventSeqs.has(event.seq))throw new Error('shared_checks_bank_event_invalid');
-    eventSeqs.add(event.seq);
-  }
-  return state;
-}
+export const validateSharedChecksState=readSharedChecksState;
+
 function canonicalState(state){validateSharedChecksState(state);return {checks:structuredClone(state.checks),bankEvents:structuredClone(state.bankEvents)}}
 
 // Shared Checks has its own cloud revision, so it must never share the main

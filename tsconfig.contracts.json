@@ -20,6 +20,8 @@
     "types": []
   },
   "files": [
+    "shared/storage-v2-restore.js",
+    "shared/storage-v2-local-import.js",
     "netunim-orders/site/assets/js/storage/local-commit.js",
     "netunim-orders/site/assets/js/storage/save-publication.js",
     "shared/spreadsheet-remote.js",
@@ -270,6 +272,7 @@
     "netunim-orders/site/assets/js/calendar/operation-flight.js",
     "netunim-orders/site/assets/js/platform/calendar-browser-effects.js",
     "tests/fixtures/checked-calendar-runtime.mjs",
-    "tests/fixtures/checked-orders-persistence.mjs"
+    "tests/fixtures/checked-orders-persistence.mjs",
+    "tests/fixtures/checked-storage-boundaries.mjs"
   ]
 }

@@ -70,3 +70,89 @@ export function readStorageOperation(record,schema={}){
   if(!operation(data,schema))throw new Error('storage_invalid_operation');
   return data;
 }
+
+/**
+ * @typedef {'restore'|'import'|'authoritative-load'|'local-file-rebase'} BoundaryKind
+ * @typedef {'prepared'|'shared-applied'|'main-applied'} BoundaryPhase
+ * @typedef {StorageJsonObject & {kind:'replace-authoritative'|'reset-cloud-head'|'replace-local-with-pending'|'replace-local-authoritative',state:StorageJsonObject,cloudState?:StorageJsonObject,expectedSeq?:number,expectedBaseRevision?:number,requireCleanCloud?:true,revision?:number,options?:StorageJsonObject & {appMetadata?:StorageJsonObject}}} BoundaryAction
+ * @typedef {{version:2,owner:string,id:string,kind:BoundaryKind,phase:BoundaryPhase,main:BoundaryAction,shared:BoundaryAction}} PendingBoundary
+ * @typedef {{version:2,owner:string,id:string,kind:BoundaryKind,phase:'complete'}} CompletedBoundary
+ * @typedef {PendingBoundary|CompletedBoundary} StorageBoundary
+ * @typedef {{id:string,kind:BoundaryKind,main:BoundaryAction,shared:BoundaryAction}} BoundaryIntent
+ */
+
+/** @param {StorageJson|undefined} value @param {StorageJsonObject} record @returns {value is BoundaryAction} */
+function boundaryAction(value,record) {
+  if(!object(value)||!['replace-authoritative','reset-cloud-head','replace-local-with-pending','replace-local-authoritative'].includes(String(value.kind))||!object(value.state))throw new Error('storage_boundary_action_invalid');
+  if(value.cloudState!==undefined&&!object(value.cloudState))throw new Error('storage_boundary_action_invalid');
+  if(value.options!==undefined&&(!object(value.options)||(value.options.appMetadata!==undefined&&!object(value.options.appMetadata))))throw new Error('storage_boundary_options_invalid');
+  if(object(value.options)&&object(value.options.appMetadata)&&value.options.appMetadata.boundaryId!==undefined&&value.options.appMetadata.boundaryId!==record.id)throw new Error('storage_boundary_identity_override');
+  if(record.kind==='import'&&!['replace-local-with-pending','replace-local-authoritative'].includes(String(value.kind)))throw new Error('storage_boundary_import_requires_pending');
+  if(value.kind==='replace-local-authoritative'&&(record.owner!=='local'||record.kind!=='import'||!integer(value.expectedSeq)||value.expectedBaseRevision!==undefined||value.requireCleanCloud!==undefined))throw new Error('storage_boundary_local_precondition_required');
+  if(value.kind==='replace-local-with-pending'&&(record.kind!=='import'||value.requireCleanCloud!==true||!integer(value.expectedSeq)||!integer(value.expectedBaseRevision)))throw new Error('storage_boundary_import_precondition_required');
+  if(value.kind==='reset-cloud-head'&&!integer(value.revision))throw new Error('storage_boundary_revision_invalid');
+  if(value.expectedSeq!==undefined&&!integer(value.expectedSeq))throw new Error('storage_boundary_sequence_invalid');
+  if(value.expectedBaseRevision!==undefined&&!integer(value.expectedBaseRevision))throw new Error('storage_boundary_base_revision_invalid');
+  if(value.requireCleanCloud!==undefined&&value.requireCleanCloud!==true)throw new Error('storage_boundary_cloud_precondition_invalid');
+  return true;
+}
+/** @param {StorageJson} data @param {string} owner @returns {data is StorageJsonObject & StorageBoundary} */
+function boundaryRecord(data,owner) {
+  if(!object(data)||data.version!==2||data.owner!==owner||!identity(data.id)||!data.id.trim()||!['restore','import','authoritative-load','local-file-rebase'].includes(String(data.kind)))throw new Error('storage_boundary_invalid');
+  if(data.phase==='complete')return true;
+  if(!['prepared','shared-applied','main-applied'].includes(String(data.phase)))throw new Error('storage_boundary_phase_invalid');
+  if(!boundaryAction(data.main,data)||!boundaryAction(data.shared,data))throw new Error('storage_boundary_action_invalid');
+  if(data.kind==='import'&&data.main.kind!==data.shared.kind)throw new Error('storage_boundary_import_owner_mismatch');
+  return true;
+}
+// Decodes every durable read, including phase transitions and compact completion
+// markers. Invalid evidence remains on disk and cannot unlock ordinary edits.
+/** @param {unknown} value @param {string} owner @returns {StorageBoundary|null} */
+export function readStorageBoundary(value,owner) {
+  if(value==null)return null;
+  const data=assertStorageJson(value);
+  if(!boundaryRecord(data,owner))throw new Error('storage_boundary_invalid');
+  return data;
+}
+
+/** @param {unknown} value @returns {StorageJsonObject} */
+export function readStorageState(value) {
+  const data=assertStorageJson(value);
+  if(!object(data))throw new Error('storage_boundary_state_invalid');
+  return data;
+}
+/** @param {unknown} value @returns {StorageJsonObject} */
+export function readSharedChecksState(value) {
+  const state=readStorageState(value);
+  if(!Array.isArray(state.checks)||!Array.isArray(state.bankEvents))throw new Error('shared_checks_state_invalid');
+  const ids=new Set(),sequences=new Set();
+  for(const check of state.checks) {
+    if(!object(check)||typeof check.id!=='string'||!check.id.trim()||ids.has(check.id))throw new Error('shared_checks_identity_invalid');
+    ids.add(check.id);
+  }
+  for(const event of state.bankEvents) {
+    if(!object(event)||!integer(event.seq,1)||typeof event.checkId!=='string'||!event.checkId.trim()||sequences.has(event.seq))throw new Error('shared_checks_bank_event_invalid');
+    sequences.add(event.seq);
+  }
+  return state;
+}
+/** @param {unknown} value @param {string} error @returns {{seq:number,revision:number}} */
+export function readCleanStorageHead(value,error) {
+  const cloud=readStorageState(value),base=cloud.base;
+  if(!object(base)||!integer(cloud.seq)||!integer(base.revision)||base.ackSeq!==cloud.seq||cloud.pending!==false||cloud.flight||cloud.control)throw new Error(error);
+  return {seq:cloud.seq,revision:base.revision};
+}
+/** @param {unknown} value @returns {number} */
+export function readStorageRestoreRevision(value) {
+  const revision=typeof value==='string'&&/^(0|[1-9]\d*)$/.test(value)?Number(value):value;
+  if(typeof revision!=='number'||!Number.isSafeInteger(revision)||revision<0)throw new Error('storage_restore_v2_revision_invalid');
+  return revision;
+}
+
+/** @param {string} [domain] @param {{now?:()=>number,random?:()=>number,randomUUID?:(()=>string)|null}|(()=>number)|null} [options] @param {()=>number} [legacyRandom] */
+export function createOperationId(domain='sync',options={},legacyRandom) {
+  const settings=typeof options==='function'?{now:options,random:legacyRandom}:options||{},now=settings.now||Date.now,random=settings.random||Math.random;
+  const randomUUID=Object.hasOwn(settings,'randomUUID')?('randomUUID' in settings?settings.randomUUID:undefined):globalThis.crypto?.randomUUID?.bind(globalThis.crypto);
+  if(typeof randomUUID==='function')return `${String(domain||'sync')}:${randomUUID()}`;
+  return `${String(domain||'sync')}:${now().toString(36)}:${random().toString(36).slice(2,10)}`;
+}

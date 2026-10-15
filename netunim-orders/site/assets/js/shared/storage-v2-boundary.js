@@ -1,5 +1,5 @@
 import {createStorageJournalDb} from './storage-journal-idb.js';
-import {assertStorageJson} from './storage-journal-model.js';
+import {readStorageBoundary} from './storage-operation.js';
 import {equalSyncJson} from './cloud-sync.js';
 
 const phases=['prepared','shared-applied','main-applied'];
@@ -17,20 +17,15 @@ export function createStorageV2Boundary({owner,primary,main,shared,validateMainC
   const guard=scoped=>{if(!primary()||identity()!==scoped)throw new Error('storage_boundary_owner_changed')};
   const unlock=scoped=>{if(lockedOwner===scoped)lockedOwner=''};
   function validate(record,scoped){
-    assertStorageJson(record);
-    if(record.version!==2||record.owner!==scoped||!String(record.id||'').trim()||!['restore','import','authoritative-load','local-file-rebase'].includes(record.kind)||record.phase!=='prepared')throw new Error('storage_boundary_invalid');
-    for(const action of [record.shared,record.main]){
-      if(!action||!['replace-authoritative','reset-cloud-head','replace-local-with-pending','replace-local-authoritative'].includes(action.kind)||!action.state)throw new Error('storage_boundary_action_invalid');
-      if(record.kind==='import'&&!['replace-local-with-pending','replace-local-authoritative'].includes(action.kind))throw new Error('storage_boundary_import_requires_pending');
-      if(action.kind==='replace-local-authoritative'&&(scoped!=='local'||record.kind!=='import'||!Number.isSafeInteger(action.expectedSeq)||action.expectedSeq<0||action.expectedBaseRevision!==undefined||action.requireCleanCloud!==undefined))throw new Error('storage_boundary_local_precondition_required');
-      if(action.kind==='replace-local-with-pending'&&(record.kind!=='import'||action.requireCleanCloud!==true||!Number.isSafeInteger(action.expectedSeq)||!Number.isSafeInteger(action.expectedBaseRevision)))throw new Error('storage_boundary_import_precondition_required');
-      if(action.kind==='reset-cloud-head'&&(!Number.isSafeInteger(action.revision)||action.revision<0))throw new Error('storage_boundary_revision_invalid');
-      if(action.expectedSeq!==undefined&&(!Number.isSafeInteger(action.expectedSeq)||action.expectedSeq<0))throw new Error('storage_boundary_sequence_invalid');
-      if(action.expectedBaseRevision!==undefined&&(!Number.isSafeInteger(action.expectedBaseRevision)||action.expectedBaseRevision<0))throw new Error('storage_boundary_base_revision_invalid');
-      if(action.requireCleanCloud!==undefined&&action.requireCleanCloud!==true)throw new Error('storage_boundary_cloud_precondition_invalid');
-    }
-    if(record.kind==='import'&&record.main.kind!==record.shared.kind)throw new Error('storage_boundary_import_owner_mismatch');
-    return record;
+    const decoded=readStorageBoundary(record,scoped);
+    if(!decoded||decoded.phase!=='prepared')throw new Error('storage_boundary_invalid');
+    return decoded;
+  }
+  function read(record,scoped,expected={}){
+    const decoded=readStorageBoundary(record,scoped);
+    if(expected.id!==undefined&&(!decoded||decoded.id!==expected.id||decoded.phase!==expected.phase))throw new Error('storage_boundary_transition_changed');
+    if(expected.intent&&decoded&&(decoded.kind!==expected.intent.kind||decoded.phase!=='complete'&&(!equalSyncJson(decoded.main,expected.intent.main)||!equalSyncJson(decoded.shared,expected.intent.shared))))throw new Error('storage_boundary_transition_changed');
+    return decoded;
   }
   async function apply(action,runtime,id,side){
     const recovered=await runtime.recover();
@@ -55,20 +50,28 @@ export function createStorageV2Boundary({owner,primary,main,shared,validateMainC
     if(running)throw new Error('storage_boundary_busy');
     const work=(async()=>{
       let record=await db.readBoundary(scoped);guard(scoped);
+      if(record)lockedOwner=scoped;
+      record=read(record,scoped);
       if(!record||record.phase==='complete'){unlock(scoped);return record}
       lockedOwner=scoped;
-      validate({...record,phase:'prepared'},scoped);
+      read(record,scoped);
       if(record.phase==='prepared'){
         await apply(record.shared,shared,record.id,'shared');guard(scoped);
-        record=await db.advanceBoundary(scoped,record.id,'prepared','shared-applied');guard(scoped);
+        const id=record.id,intent=record;
+        record=await db.advanceBoundary(scoped,id,'prepared','shared-applied');guard(scoped);
+        record=read(record,scoped,{id,phase:'shared-applied',intent});
       }
       if(record.phase==='shared-applied'){
         await apply(record.main,main,record.id,'main');guard(scoped);
-        record=await db.advanceBoundary(scoped,record.id,'shared-applied','main-applied');guard(scoped);
+        const id=record.id,intent=record;
+        record=await db.advanceBoundary(scoped,id,'shared-applied','main-applied');guard(scoped);
+        record=read(record,scoped,{id,phase:'main-applied',intent});
       }
       if(record.phase==='main-applied'){
-        await db.completeBoundary(scoped,record.id);guard(scoped);
+        const id=record.id,intent=record;
+        await db.completeBoundary(scoped,id);guard(scoped);
         record=await db.readBoundary(scoped);guard(scoped);
+        record=read(record,scoped,{id,phase:'complete',intent});
       }
       unlock(scoped);
       return record;
@@ -80,7 +83,10 @@ export function createStorageV2Boundary({owner,primary,main,shared,validateMainC
     lockedOwner=scoped;
     let durableIntent=false;
     try{
-    const existing=await db.readBoundary(scoped);guard(scoped);
+    const raw=await db.readBoundary(scoped);guard(scoped);
+    if(raw)durableIntent=true;
+    const existing=read(raw,scoped);
+    durableIntent=!!existing&&existing.phase!=='complete';
     if(existing?.phase==='complete'&&existing.id===id){
       const [mainRecovered,sharedRecovered]=await Promise.all([main.recover(),shared.recover()]);guard(scoped);
       const completedSeq=action=>action.kind==='replace-local-with-pending'?action.expectedSeq+1:action.kind==='replace-local-authoritative'?action.expectedSeq:0;
@@ -105,6 +111,6 @@ export function createStorageV2Boundary({owner,primary,main,shared,validateMainC
     guard(scoped);return resume();
     }catch(error){if(!durableIntent)unlock(scoped);throw error}
   }
-  async function pending(){const scoped=identity();guard(scoped);const record=await db.readBoundary(scoped);guard(scoped);return !!record&&phases.includes(record.phase)}
+  async function pending(){const scoped=identity();guard(scoped);const raw=await db.readBoundary(scoped);guard(scoped);if(raw)lockedOwner=scoped;const record=read(raw,scoped);if(!record||record.phase==='complete')unlock(scoped);return !!record&&phases.includes(record.phase)}
   return {run,resume,pending,get locked(){return lockedOwner===identity()}};
 }

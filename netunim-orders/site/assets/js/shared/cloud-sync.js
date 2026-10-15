@@ -1,3 +1,5 @@
+import {createOperationId} from './storage-operation.js';
+export {createOperationId};
 export {equalSyncJson} from './sync-json.js';
 export {documentWriteAckRevision} from './document-write-ack.js';
 
@@ -11,12 +13,6 @@ function iso(value,now){const parsed=Date.parse(String(value||''));return Number
 function nowMilliseconds(now=Date.now){const value=Number(typeof now==='function'?now():now);return Number.isFinite(value)?value:Date.now()}
 function futureIso(value,now=Date.now){const parsed=Date.parse(String(value||'')),current=nowMilliseconds(now);return Number.isFinite(parsed)&&parsed>current?new Date(parsed).toISOString():null}
 
-export function createOperationId(domain='sync',options={}){
-  const settings=typeof options==='function'?{now:options,random:arguments[2]}:(options||{}),now=settings.now||Date.now,random=settings.random||Math.random;
-  const randomUUID=Object.hasOwn(settings,'randomUUID')?settings.randomUUID:globalThis.crypto?.randomUUID?.bind(globalThis.crypto);
-  if(typeof randomUUID==='function')return `${String(domain||'sync')}:${randomUUID()}`;
-  return `${String(domain||'sync')}:${now().toString(36)}:${random().toString(36).slice(2,10)}`;
-}
 
 export function createOutboxRecord({domain,documentName,operationId,generation,mutationSeq,baseRevision,baseState,snapshot,createdAt,updatedAt,conflict=null,retry=null,mutationType='autosave',surface='unknown',restoreGroupId=null},options={}){
   const now=options.now||Date.now,created=iso(createdAt,now),updated=iso(updatedAt||created,now);

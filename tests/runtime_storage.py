@@ -314,7 +314,15 @@ with BrowserSession(ROOT/'netunim-kupa/site','storage-v2-boundary-crash-matrix')
       if((await db.readBoundary('A')).phase!=='complete')throw Error('completion marker missing');
       const duplicate=await db.beginBoundary('A',record);
       if(duplicate.phase!=='complete')throw Error('restore operation ID not idempotent');
-      return ['v2 schema upgrade','account isolation','aborted phase remains prepared','complete operation ID is idempotent'];
+      const {sealStorageRecord}=await import('./assets/js/shared/storage-journal-model.js');
+      const {createStorageV2Boundary}=await import('./assets/js/shared/storage-v2-boundary.js');
+      const invalid={...record,phase:'future'};
+      await new Promise((resolve,reject)=>{const request=indexedDB.open(name);request.onsuccess=()=>{const native=request.result,tx=native.transaction('boundaries','readwrite');tx.objectStore('boundaries').put(sealStorageRecord(invalid),'A');tx.oncomplete=()=>{native.close();resolve()};tx.onabort=()=>reject(tx.error)};request.onerror=()=>reject(request.error)});
+      const before=JSON.stringify(await db.readBoundary('A'));
+      const boundary=createStorageV2Boundary({owner:()=> 'A',primary:()=>true,main:{},shared:{},db});
+      let blocked=false;try{await boundary.resume()}catch(error){blocked=error.message==='storage_boundary_phase_invalid'}
+      if(!blocked||!boundary.locked||JSON.stringify(await db.readBoundary('A'))!==before)throw Error('invalid durable boundary was unlocked or rewritten');
+      return ['v2 schema upgrade','account isolation','aborted phase remains prepared','complete operation ID is idempotent','unknown durable phase remains locked and unchanged'];
     })()""",timeout=60)
     assert not browser.drain_serious_errors()
     print('PASS V2 boundary real IDB crash matrix: '+json.dumps(result))
