@@ -46,12 +46,18 @@ A passed synthetic gate is not evidence of live providers or physical machines.
 
 ## Prioritized remaining work
 
+Current journal append/bootstrap/import writers now enforce captured operation
+schemas at IDB authority; see JOURNAL_BUSINESS_AUTHORITY.md. Main/Shared/Finance
+REST revisions and backup candidates now have explicit read decoders; see
+CLOUD_READ_AUTHORITY.md. CPU startup profiles and the presentation ratchet are
+documented in STARTUP_CPU_MEASUREMENT.md and READABILITY_RATCHET.md.
+
 | Priority | Scope | Required evidence |
 | --- | --- | --- |
-| 1 | Remaining business-journal IDB/runtime contracts: append/initialization operation consumers and runtime receipts beyond the completed checkpoint/deletion, restore/import, owner-transfer/binding and owner-store transaction boundaries | Decode unknown values before action/ACK; preserve invalid durable records; checked implementation, negative consumer and implementation mutation |
+| 1 | Remaining strict Journal/IDB/V2 orchestration bodies and nested provider/business response shapes beyond the checked operation/read authority boundaries | Extend checked implementation only at proved authority decisions; preserve invalid evidence; negative consumers and implementation mutations |
 | 2 | Continue shell composition audit only where new policy is proved | Startup transfer/birth admission and owner/leadership fences are now owned; broad role wiring is intentional. Preserve these boundaries when adding features |
-| 3 | Measured startup improvements | Repeated cold/cached/offline samples and search split are complete; further Finance/Customers/Credit/Notes presentation candidates require weak-machine/comparable timing evidence; preserve eager runtime ownership |
-| 4 | Compatibility inventory and readability | Maintain the completed compatibility inventory; retire only newly proven Dead paths; format remaining application presentation boundaries in reviewable slices |
+| 3 | Measured startup improvements | Native/4x CPU cold/cached/offline sampling and request timelines precede further splits; physical weak-machine and comparable before/after evidence still required; preserve eager runtime ownership |
+| 4 | Compatibility inventory and readability | CI count/max ratchet now prevents regression; Supplier/Orders Finance views have no lines above 500; reduce remaining local presentation debt and retire only newly proven Dead paths |
 | 5 | Release validation | Full PostgreSQL/native browser/Windows gates plus controlled backup/restore, physical two-computer and live Bank/Credit drills |
 
 The six unchecked storage modules called out by the V7 review are a work queue,

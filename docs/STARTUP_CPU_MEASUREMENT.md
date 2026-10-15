@@ -26,3 +26,22 @@ focused diagnostics. Full CI uses five repetitions at 1x/4x and uploads
 `.work/startup-performance/latest.json`. Production splitting or bundling needs
 comparable before/after evidence; no new lazy boundary is justified solely by
 this measurement expansion.
+
+## CI observation
+
+Five samples per profile from the successful browser measurement job in
+[run 38789272135](https://github.com/218218y/netunim/actions/runs/38789272135)
+are preserved in `evidence/startup-cpu-20261015.json`. This identifies the
+measurement job and exact source revision independently of other run jobs.
+
+| Cold startup, ms | Kupa native | Kupa CPU 4x | Orders native | Orders CPU 4x |
+| --- | ---: | ---: | ---: | ---: |
+| Last module response median | 499 | 813 | 662 | 821 |
+| Last module response p95 | 633 | 1058 | 1118 | 1047 |
+| ScriptDuration median | 24 | 92 | 40 | 153 |
+
+All cold/cached/offline profiles passed the existing readiness and offline
+gates. Module response timing remains a larger elapsed interval than measured
+script execution; the data does not establish a causal bottleneck or a speedup
+from any new split. Variability is visible even between isolated profiles. No
+new lazy presentation or build system is introduced on this evidence alone.

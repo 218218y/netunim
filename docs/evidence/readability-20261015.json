@@ -1,0 +1,28 @@
+{
+  "netunim-orders/site/assets/js/domains/suppliers/view.js": {
+    "before": {
+      "over500": 4,
+      "over1000": 3,
+      "longest": 3022
+    },
+    "after": {
+      "over500": 0,
+      "over1000": 0,
+      "longest": 343
+    },
+    "programAndTemplateValuesEquivalent": true
+  },
+  "netunim-orders/site/assets/js/domains/finance/view.js": {
+    "before": {
+      "over500": 26,
+      "over1000": 14,
+      "longest": 3835
+    },
+    "after": {
+      "over500": 0,
+      "over1000": 0,
+      "longest": 463
+    },
+    "programAndTemplateValuesEquivalent": true
+  }
+}
