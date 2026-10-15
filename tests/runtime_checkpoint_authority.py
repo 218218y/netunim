@@ -7,10 +7,10 @@ for app in ['orders', 'kupa']:
         result = browser.evaluate("""(async()=>{
           const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
           const {sealStorageJsonRecord:seal}=await import('./assets/js/shared/storage-json-codec.js');
-          const owner='fixture',writer='W',app=APP;let serial=0;
+          const app=APP,owner='fixture:'+app,writer='W';let serial=0;
           const cp=(epoch='E',seq=0)=>seal({version:2,owner,epoch,seq,state:{notes:[]},appMetadata:null});
           const base=(epoch='E',ackSeq=0,revision=1)=>seal({version:2,owner,epoch,ackSeq,revision,state:{notes:[]}});
-          const operation=()=>seal({version:2,owner,epoch:'E',seq:1,generation:1,operationId:'OP',at:'T',changes:[{type:'set',field:'notes',value:[]}]});
+          const operation=()=>seal({version:2,owner,epoch:'E',seq:1,generation:1,operationId:'OP',at:'T',changes:[{type:'put',collection:'notes',id:'N',mode:'insert',index:0,record:{id:'N'}}]});
           async function fixture({empty=false,cloud=false,flight=false,clean=false}={}){
             const name='checkpoint-authority-'+app+'-'+(++serial),db=createStorageJournalDb({name});
             if(empty)await db.load(owner);

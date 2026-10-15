@@ -284,6 +284,8 @@
     "tests/fixtures/checked-calendar-runtime.mjs",
     "tests/fixtures/checked-orders-persistence.mjs",
     "tests/fixtures/checked-storage-boundaries.mjs",
-    "tests/fixtures/checked-document-commands.mjs"
+    "tests/fixtures/checked-document-commands.mjs",
+    "shared/storage-journal-authority.js",
+    "tests/fixtures/checked-journal-authority.mjs"
   ]
 }

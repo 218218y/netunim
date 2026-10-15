@@ -107,7 +107,7 @@ def run(db, app, shared, index):
         assert db.rpc(rpc, seed)['revision'] == 1
         db.sql('update public.' + table + ' set revision=10 where owner_id=' +
                quote(OWNER) + ' and document_name=' + quote(document))
-        owner = 'pg-v2-' + str(index)
+        owner = 'pg-v2-' + str(index) + ':' + ('shared-checks' if shared else app)
         setup = js("""(async()=>{
           const {createStorageJournal}=await import('./assets/js/shared/storage-journal.js');
           window.pgJournal=createStorageJournal({owner:@@owner@@,

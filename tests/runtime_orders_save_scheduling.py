@@ -22,7 +22,7 @@ with BrowserSession(ROOT/'netunim-orders/site', 'orders-save-scheduling') as bro
       const errors=[];console.error=(...args)=>errors.push(args);
       try{
         for(const scenario of ['main-first','checks-first','main-abort','checks-abort']){
-          const mainOwner='save-main:'+scenario,checksOwner='save-checks:'+scenario;
+          const mainOwner='save-main:'+scenario+':orders',checksOwner='save-checks:'+scenario+':shared-checks';
           const mainGate=gate(),checksGate=gate(),mainEntered=gate(),checksEntered=gate();
           const native=createStorageJournalDb(),blocked=(release,entered)=>({...native,append:async(...args)=>{
             entered.resolve();await release.promise;return native.append(...args);
