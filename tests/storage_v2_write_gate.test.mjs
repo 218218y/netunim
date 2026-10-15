@@ -6,7 +6,7 @@ import {createSyncChecksState} from '../netunim-kupa/site/assets/js/sync/checks-
 import {createSyncChecksPersistence} from '../netunim-orders/site/assets/js/sync/checks-persistence.js';
 import {createStoragePersistence as createKupaPersistence} from './kupa_persistence_ports.mjs';
 import {createStorageBrowser as createOrdersBrowser} from '../netunim-orders/site/assets/js/storage/browser.js';
-import {createStoragePersistence as createOrdersPersistence} from '../netunim-orders/site/assets/js/storage/persistence.js';
+import {createStoragePersistence as createOrdersPersistence} from './orders_persistence_ports.mjs';
 import {createStorageBrowser as createKupaBrowser} from '../netunim-kupa/site/assets/js/storage/browser.js';
 import {INITIAL_STATE as ORDERS_INITIAL_STATE} from '../netunim-orders/site/assets/js/state/constants.js';
 import {ORDERS_LEGACY_SNAPSHOT_KEY,KUPA_LEGACY_SNAPSHOT_KEY} from './retired_business_storage_keys.mjs';

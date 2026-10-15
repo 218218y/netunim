@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createStorageFiles as kupaFiles} from '../netunim-kupa/site/assets/js/storage/files.js';
 import {createStorageFiles as orderFiles} from '../netunim-orders/site/assets/js/storage/files.js';
 import {createContexts} from '../netunim-orders/site/assets/js/state/contexts.js';
-import {createStoragePersistence} from '../netunim-orders/site/assets/js/storage/persistence.js';
+import {createStoragePersistence} from './orders_persistence_ports.mjs';
 
 function memoryFile(initial='{}'){
  let text=initial,active=0,maxActive=0;

@@ -162,21 +162,13 @@ const storageTabLock=createStorageTabLock({
 });
 
 const storagePersistence=createStoragePersistence({
-  tab,
+  access:{primary:()=>tab.primaryTab===true,error:()=>session.syncCapabilitiesError,showSecondaryTabGuard:()=>uiTabGuard.showSecondaryTabGuard()},
   session,
-  domainRevisions,
-  showSecondaryTabGuard:(...args)=>uiTabGuard.showSecondaryTabGuard(...args),
-  localSnapshot:(...args)=>storageBrowser.localSnapshot(...args),
-  ...storageV2Cloud,
-  storageV2DurabilityAtRisk:()=>mainStorageV2.durabilityAtRisk,
-  setSave:(...args)=>uiStatus.setSave(...args),
-  syncFolderAccessButton:(...args)=>uiFolderStatus.syncFolderAccessButton(...args),
-  folderBackupAvailable:(...args)=>uiFolderStatus.folderBackupAvailable(...args),
-  folderSaveTitle:(...args)=>uiFolderStatus.folderSaveTitle(...args),
-  writeStateToFolder:(...args)=>storageFiles.writeStateToFolder(...args),
-  cloudEnabled:(...args)=>cloudAuth.cloudEnabled(...args),
-  requestCloudSave:(...args)=>syncDocument.requestCloudSave(...args),
-  setCloud:(...args)=>uiStatus.setCloud(...args),
+  journal:{localSnapshot:(...args)=>storageBrowser.localSnapshot(...args),storageV2CommitPromise:()=>storageV2Cloud.storageV2CommitPromise(),storageV2DurabilityAtRisk:()=>mainStorageV2.durabilityAtRisk},
+  projection:{touch:domains=>domainRevisions.touch(domains),touchAll:()=>domainRevisions.touchAll()},
+  mirror:{available:()=>uiFolderStatus.folderBackupAvailable(),write:()=>storageFiles.writeStateToFolder(),refreshAccess:()=>uiFolderStatus.syncFolderAccessButton()},
+  cloud:{enabled:()=>cloudAuth.cloudEnabled(),save:message=>syncDocument.requestCloudSave(message)},
+  view:{setSave:(...args)=>uiStatus.setSave(...args),setCloud:(...args)=>uiStatus.setCloud(...args),folderSaveTitle:()=>uiFolderStatus.folderSaveTitle()},
 });
 
 const stateSnapshots=createStateSnapshots({

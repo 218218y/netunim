@@ -41,10 +41,15 @@ with BrowserSession(ROOT/'netunim-orders/site', 'orders-save-scheduling') as bro
           const common={session,checksSession,tab:{primaryTab:true},timers,setSave:noop,setCloud:noop,
             toast:noop,showSecondaryTabGuard:noop,folderSaveTitle:()=>'',folderBackupAvailable:()=>false,
             syncFolderAccessButton:noop,writeStateToFolder:async()=>true};
-          const main=createStoragePersistence({...common,cloudEnabled:()=>true,
-            localSnapshot:(_state,{operations})=>{mainWrite=mainJournal.append(operations);return mainWrite.emergencyDurable},
-            storageV2DurabilityAtRisk:()=>true,storageV2CommitPromise:()=>mainWrite.committed,
-            requestCloudSave:async()=>{check((await native.load(mainOwner)).metadata.seq===1,scenario+': Main cloud follows native commit');sent.push('main')}});
+          const main=createStoragePersistence({session,
+            access:{primary:()=>true,error:()=>null,showSecondaryTabGuard:noop},
+            projection:{touch:noop,touchAll:noop},
+            platform:{timers,isOnline:()=>true,reload:noop},
+            view:{setSave:noop,setCloud:noop,folderSaveTitle:()=>''},
+            mirror:{available:()=>false,write:async()=>true,refreshAccess:noop},
+            journal:{localSnapshot:(_state,{operations})=>{mainWrite=mainJournal.append(operations);return mainWrite.emergencyDurable},
+              storageV2DurabilityAtRisk:()=>true,storageV2CommitPromise:()=>mainWrite.committed},
+            cloud:{enabled:()=>true,save:async()=>{check((await native.load(mainOwner)).metadata.seq===1,scenario+': Main cloud follows native commit');sent.push('main')}}});
           const checks=createSyncChecksPersistence({...common,rejectSecondaryMutation:()=>false,
             loadSession:()=>({user:{id:'A'}}),sharedChecksV2:{requested:true,cloudReady:true,persist:operations=>{
               checksWrite=checksJournal.append(operations);return checksWrite;
