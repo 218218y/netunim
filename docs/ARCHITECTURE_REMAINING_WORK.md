@@ -40,11 +40,13 @@ A passed synthetic gate is not evidence of live providers or physical machines.
 
 - Durable owner-binding authority now has a checked implementation with decoded binding/handoff pairs, cache-before-publication and failure revocation. Invalid completed records stay locked; verified refresh permits recovery. See [binding authority](STORAGE_OWNER_BINDING_AUTHORITY.md).
 
+- Owner-store reads and writes now have a checked transaction body: atomic binding/handoff snapshots, captured generation comparisons against ABA and receipts only after transaction completion. See [owner transactions](STORAGE_OWNER_TRANSACTIONS.md).
+
 ## Prioritized remaining work
 
 | Priority | Scope | Required evidence |
 | --- | --- | --- |
-| 1 | Critical persisted/journal transaction consumers: remaining IDB/runtime transaction bodies and coherent owner-store reads/writes; full strict bodies beyond the checked restore/import/owner-transfer/binding consumers | Decode unknown values before action/ACK; preserve invalid durable records; checked implementation, negative consumer and implementation mutation |
+| 1 | Critical persisted/journal transaction consumers: checkpoint replacement and journal-retirement authority, then remaining business IDB/runtime bodies beyond the checked restore/import/owner-transfer/binding and owner-store transactions | Decode unknown values before action/ACK; preserve invalid durable records; checked implementation, negative consumer and implementation mutation |
 | 2 | Continue shell composition audit only where new policy is proved | Startup transfer/birth admission and owner/leadership fences are now owned; broad role wiring is intentional. Preserve these boundaries when adding features |
 | 3 | Measured startup improvements | Repeated cold/cached/offline samples and search split are complete; further Finance/Customers/Credit/Notes presentation candidates require weak-machine/comparable timing evidence; preserve eager runtime ownership |
 | 4 | Compatibility inventory and readability | Maintain the completed compatibility inventory; retire only newly proven Dead paths; format remaining application presentation boundaries in reviewable slices |

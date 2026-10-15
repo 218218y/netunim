@@ -10,7 +10,8 @@ import {equalSyncJson} from './sync-json.js';
  * @typedef {State & {id:string,targetOwner:string,intent:'upload-local'|'load-account'}} Reservation
  * @typedef {State & {version:1,app:App,owner:string,generation:number,source:string,pendingAdoption?:Reservation|null}} Binding
  * @typedef {State & {version:1,app:App,id:string,sourceOwner:string,targetOwner:string,intent:Intent,phase:Phase}} Handoff
- * @typedef {{readOwnerBinding:(app:App)=>Promise<unknown>,readOwnerHandoff:(app:App)=>Promise<unknown>,initializeOwnerBinding:(app:App,owner:string,details:State)=>Promise<unknown>,reserveLocalOwnerTarget:(app:App,owner:string,details:State)=>Promise<unknown>,adoptPreparedLocalOwner:(app:App,owner:string,details:State)=>Promise<unknown>,beginOwnerHandoff:(app:App,record:Handoff)=>Promise<unknown>,advanceOwnerHandoff:(app:App,id:string,from:Phase,to:Phase,patch:State)=>Promise<unknown>,activateOwnerHandoff:(app:App,id:string,owner:string,details:State)=>Promise<unknown>,completeOwnerHandoff:(app:App,id:string,owner:string,details:State)=>Promise<unknown>}} OwnerDb
+ * @typedef {{binding:Binding|null,handoff:Handoff|null}} OwnerSnapshot
+ * @typedef {{readOwnerState:(app:App)=>Promise<unknown>,readOwnerBinding:(app:App)=>Promise<unknown>,readOwnerHandoff:(app:App)=>Promise<unknown>,initializeOwnerBinding:(app:App,owner:string,details:State)=>Promise<unknown>,reserveLocalOwnerTarget:(app:App,owner:string,details:State)=>Promise<unknown>,adoptPreparedLocalOwner:(app:App,owner:string,details:State)=>Promise<unknown>,beginOwnerHandoff:(app:App,record:Handoff,version:State)=>Promise<unknown>,advanceOwnerHandoff:(app:App,id:string,from:Phase,to:Phase,patch:State,version:State)=>Promise<unknown>,activateOwnerHandoff:(app:App,id:string,owner:string,details:State)=>Promise<unknown>,completeOwnerHandoff:(app:App,id:string,owner:string,details:State)=>Promise<unknown>}} OwnerDb
  * @typedef {Error & {code?:string,storageOwner?:string,authOwner?:string,requiredOwner?:string}} OwnerError
  * @typedef {{app:unknown,db:OwnerDb,primary?:()=>boolean,storage:Pick<Storage,'getItem'|'setItem'|'removeItem'>|null|undefined,now:()=>string,operationId:()=>string}} BindingOptions
  */
@@ -63,6 +64,20 @@ export function readStorageOwnerPair(value,pending,app){
   return {binding,handoff:record?.phase==='complete'?null:record};
 }
 
+/** @param {unknown} raw @param {App} app @returns {OwnerSnapshot} */
+export function readStorageOwnerSnapshot(raw,app){
+  const data=readStorageState(raw);
+  if(!Object.hasOwn(data,'binding')||!Object.hasOwn(data,'handoff'))throw new Error('storage_owner_snapshot_invalid');
+  const binding=data.binding===null?null:readStorageOwnerBinding(data.binding,app),handoff=readStorageOwnerRecord(data.handoff,app);
+  if(!binding&&handoff)throw new Error('storage_owner_binding_missing');
+  if(binding)readStorageOwnerPair(binding,handoff,app);
+  return {binding,handoff};
+}
+/** @param {Phase} phase */
+export function nextStorageOwnerPhase(phase){return NEXT_PHASE.get(phase)}
+/** @param {unknown} value */
+export function readStorageOwnerPatch(value){const patch=readStorageState(value);if(Object.keys(patch).some(key=>immutable.has(key)))throw new Error('storage_owner_identity_override');return structuredClone(patch)}
+
 // A rejected read, cache publication or uncertain write revokes authority until
 // a complete durable pair is read again. Stored evidence is never repaired here.
 /** @param {BindingOptions} options */
@@ -94,21 +109,23 @@ export function createStorageOwnerBinding({app,primary=()=>true,db,storage,now,o
     if(hydrating)return hydrating;if(binding&&!blocked)return status();
     hydrating=(async()=>{
       try{
-        const durable=await db.readOwnerBinding(scope),pending=await db.readOwnerHandoff(scope);
+        const {binding:durable,handoff:pending}=readStorageOwnerSnapshot(await db.readOwnerState(scope),scope);
         if(durable!=null){applyDurable(durable,pending);return status()}
         if(pending!=null)throw new Error('storage_owner_binding_missing');
         clearCache();const initial=typeof options.initialOwner==='function'?await options.initialOwner():null;
         const candidate=initial==null||initial===''?'local':normalizeOwner(initial);
         const created=await db.initializeOwnerBinding(scope,candidate,{source:candidate==='local'?'local-bootstrap':'session-bootstrap',at:now()});
         if(readStorageOwnerBinding(created,scope).owner!==candidate)throw new Error('storage_owner_transition_changed');
-        applyDurable(created,await db.readOwnerHandoff(scope));return status();
+        const latest=readStorageOwnerSnapshot(await db.readOwnerState(scope),scope);
+        if(!latest.binding||!equalSyncJson(latest.binding,created))throw new Error('storage_owner_transition_changed');
+        applyDurable(latest.binding,latest.handoff);return status();
       }catch(error){block();throw error}
     })().finally(()=>{hydrating=null});return hydrating;
   }
   async function refresh(){
     if(changing)throw new Error('storage_owner_busy');if(hydrating)return hydrating;
     blocked=true;
-    hydrating=(async()=>{try{const durable=await db.readOwnerBinding(scope),pending=await db.readOwnerHandoff(scope);applyDurable(durable,pending);return status()}catch(error){block();throw error}})().finally(()=>{hydrating=null});
+    hydrating=(async()=>{try{const {binding:durable,handoff:pending}=readStorageOwnerSnapshot(await db.readOwnerState(scope),scope);applyDurable(durable,pending);return status()}catch(error){block();throw error}})().finally(()=>{hydrating=null});
     return hydrating;
   }
   function current(){return owner}
@@ -118,6 +135,7 @@ export function createStorageOwnerBinding({app,primary=()=>true,db,storage,now,o
     const accepted=binding&&{owner:binding.owner,generation:binding.generation};
     return ()=>!!accepted&&!blocked&&primary()&&binding?.owner===accepted.owner&&binding.generation===accepted.generation;
   }
+  function generation(){if(!binding)throw new Error('storage_owner_not_ready');return binding.generation}
   function assertReady(){if(!binding||blocked)throw new Error('storage_owner_not_ready');if(changing||hydrating)throw new Error('storage_owner_busy');return owner}
   /** @param {unknown} authenticatedOwner @param {{allowMissing?:boolean}} [options] */
   function assertAuthenticatedOwner(authenticatedOwner,{allowMissing=false}={}){
@@ -148,7 +166,7 @@ export function createStorageOwnerBinding({app,primary=()=>true,db,storage,now,o
     const existing=binding?.pendingAdoption;
     if(existing){if(existing.targetOwner!==target||existing.intent!==intent)throw new Error('storage_owner_local_adoption_reserved');return status()}
     const id=normalizeOwner(operationId()),previous=binding;
-    await write(()=>db.reserveLocalOwnerTarget(scope,target,{id,intent,at:now()}),raw=>{
+    await write(()=>db.reserveLocalOwnerTarget(scope,target,{id,intent,at:now(),expectedGeneration:generation()}),raw=>{
       const next=readStorageOwnerBinding(raw,scope);
       if(!previous||next.owner!==source||next.generation!==previous.generation||next.pendingAdoption?.id!==id||next.pendingAdoption.targetOwner!==target||next.pendingAdoption.intent!==intent)throw new Error('storage_owner_transition_changed');
       applyDurable(next,null);
@@ -166,8 +184,8 @@ export function createStorageOwnerBinding({app,primary=()=>true,db,storage,now,o
     if(handoff)throw new Error('storage_owner_handoff_pending');
     const reservation=binding?.pendingAdoption,previous=binding;
     if(!reservation||reservation.targetOwner!==target||reservation.intent!==intent)throw new Error('storage_owner_local_adoption_not_reserved');
-    const id=normalizeOwner(operationId()),evidence=readStorageState(proof);
-    await write(()=>db.adoptPreparedLocalOwner(scope,target,{id,intent,proof:evidence,at:now()}),raw=>{
+    const id=normalizeOwner(operationId()),evidence=structuredClone(readStorageState(proof));
+    await write(()=>db.adoptPreparedLocalOwner(scope,target,{id,intent,proof:evidence,at:now(),expectedGeneration:generation()}),raw=>{
       const reply=readStorageState(raw),next=readStorageOwnerBinding(reply.binding,scope),completed=readStorageOwnerRecord(reply.handoff,scope);
       if(!previous||next.owner!==target||next.generation!==previous.generation+1||next.pendingAdoption!=null||!completed||completed.phase!=='complete'||completed.id!==id||completed.sourceOwner!==source||completed.targetOwner!==target||completed.intent!==intent||completed.reservationId!==reservation.id||!equalSyncJson(completed.preparationProof,evidence))throw new Error('storage_owner_transition_changed');
       applyDurable(next,completed);
@@ -181,7 +199,7 @@ export function createStorageOwnerBinding({app,primary=()=>true,db,storage,now,o
     if(reservation&&(reservation.targetOwner!==target||reservation.intent!==intent))throw new Error('storage_owner_local_adoption_reserved');
     const at=now(),expected=readStorageOwnerRecord({version:1,id:normalizeOwner(operationId()),app:scope,sourceOwner:source,targetOwner:target,intent,phase:'freezing-source',createdAt:at,updatedAt:at},scope);
     if(!expected)throw new Error('storage_owner_handoff_invalid');
-    return write(()=>db.beginOwnerHandoff(scope,expected),raw=>{
+    return write(()=>db.beginOwnerHandoff(scope,expected,{expectedGeneration:generation()}),raw=>{
       const next=readStorageOwnerRecord(raw,scope);if(!next||!equalSyncJson(next,expected))throw new Error('storage_owner_transition_changed');handoff=next;return structuredClone(next);
     });
   }
@@ -190,9 +208,9 @@ export function createStorageOwnerBinding({app,primary=()=>true,db,storage,now,o
     if(!primary())throw new Error('storage_owner_handoff_primary_required');assertReady();
     const prior=handoff,to=NEXT_PHASE.get(expectedPhase);if(!prior)throw new Error('storage_owner_handoff_missing');
     if(!to||prior.phase!==expectedPhase)throw new Error('storage_owner_handoff_phase_invalid');
-    const patch=readStorageState(details);if(Object.keys(patch).some(key=>immutable.has(key)))throw new Error('storage_owner_identity_override');
+    const patch=readStorageOwnerPatch(details);
     const expected={...prior,...patch,phase:to,updatedAt:now()};
-    return write(()=>db.advanceOwnerHandoff(scope,prior.id,expectedPhase,to,{...patch,updatedAt:expected.updatedAt}),raw=>{
+    return write(()=>db.advanceOwnerHandoff(scope,prior.id,expectedPhase,to,{...patch,updatedAt:expected.updatedAt},{expectedGeneration:generation()}),raw=>{
       const next=readStorageOwnerRecord(raw,scope);if(!next||!equalSyncJson(next,expected))throw new Error('storage_owner_transition_changed');handoff=next;return structuredClone(next);
     });
   }
@@ -200,7 +218,7 @@ export function createStorageOwnerBinding({app,primary=()=>true,db,storage,now,o
   async function finishHandoff(phase){
     if(!primary())throw new Error('storage_owner_handoff_primary_required');assertReady();const prior=handoff,previous=binding;
     if(!prior||!previous||prior.phase!==(phase==='target-active'?'target-recovered':'target-active')||phase==='complete'&&owner!==prior.targetOwner)throw new Error('storage_owner_handoff_phase_invalid');
-    const work=()=>phase==='target-active'?db.activateOwnerHandoff(scope,prior.id,prior.targetOwner,{at:now()}):db.completeOwnerHandoff(scope,prior.id,prior.targetOwner,{at:now()});
+    const work=()=>phase==='target-active'?db.activateOwnerHandoff(scope,prior.id,prior.targetOwner,{at:now(),expectedGeneration:generation()}):db.completeOwnerHandoff(scope,prior.id,prior.targetOwner,{at:now(),expectedGeneration:generation()});
     await write(work,raw=>{
       const reply=readStorageState(raw),next=readStorageOwnerBinding(reply.binding,scope),record=readStorageOwnerRecord(reply.handoff,scope);
       if(!record||next.owner!==prior.targetOwner||next.generation!==previous.generation+(phase==='target-active'?1:0)||next.pendingAdoption!=null||record.phase!==phase||record.id!==prior.id||record.sourceOwner!==prior.sourceOwner||record.targetOwner!==prior.targetOwner||record.intent!==prior.intent)throw new Error('storage_owner_transition_changed');

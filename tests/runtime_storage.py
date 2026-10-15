@@ -385,7 +385,7 @@ with BrowserSession(ROOT/'netunim-kupa/site','storage-v2-local-engine-idb') as b
       await db.advanceLocalBirth(scope,plan.id,'verified','complete');
       const settled=await db.readLocalBirth(scope);
       if(settled.mainState||settled.sharedState)throw Error('completed birth retained duplicate full snapshots');
-      await db.reserveLocalOwnerTarget('kupa','another-account',{id:'adoption',intent:'upload-local'});
+      await db.reserveLocalOwnerTarget('kupa','another-account',{id:'adoption',intent:'upload-local',expectedGeneration:1});
       let ownerFenced=false;try{await db.markLocalEngine('kupa')}catch(error){ownerFenced=error.message==='storage_local_engine_owner_changed'}
       if(!ownerFenced)throw Error('owner reservation did not fence marker retry');
       return ['two local heads required','marker transaction abort is atomic','IDB repairs cache','completed plan retires duplicate snapshots','owner reservation fences marker retry'];

@@ -1,3 +1,4 @@
+import {createStorageOwnerTransactions} from './storage-owner-idb.js';
 import {createStorageCheckpoint,createStorageCloudBase} from './storage-records.js';
 import {assertStorageCloudAck} from './storage-cloud-ack.js';
 import {readStorageCloudBase,readStorageCloudFlight,readStorageCloudControl,readStorageCloudHead} from './storage-cloud-records.js';
@@ -221,82 +222,7 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
       store.put(sealStorageRecord({version:2,id,owner,kind:record.kind,phase:'complete',completedAt:new Date().toISOString()}),owner);done(true);
     }catch(error){fail(error)}};
   })}
-  function ownerRecord(storeName,app){return open().then(db=>new Promise((resolve,reject)=>{
-    const tx=db.transaction([storeName],'readonly'),request=tx.objectStore(storeName).get(app);
-    request.onsuccess=()=>{try{resolve(request.result?readStorageRecord(request.result):null)}catch(error){reject(error)}};
-    request.onerror=()=>reject(request.error);
-  }))}
-  function readOwnerBinding(app){return ownerRecord('owner-bindings',app)}
-  function readOwnerHandoff(app){return ownerRecord('owner-handoffs',app)}
-  function initializeOwnerBinding(app,owner,{source='bootstrap',at=new Date().toISOString()}={}){return open().then(db=>new Promise((resolve,reject)=>{
-    const tx=db.transaction(['owner-bindings'],'readwrite'),store=tx.objectStore('owner-bindings'),request=store.get(app);let result=null,error=null;
-    request.onsuccess=()=>{try{
-      if(request.result){result=readStorageRecord(request.result);if(result.version!==1||result.app!==app||result.owner!==owner)throw new Error('storage_owner_binding_conflict');return}
-      result={version:1,app,owner,generation:1,source,createdAt:at,updatedAt:at};store.put(sealStorageRecord(result),app);
-    }catch(cause){error=cause;try{tx.abort()}catch{}}};
-    tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_owner_binding_aborted'));tx.onerror=()=>{error??=tx.error};
-  }))}
-  function reserveLocalOwnerTarget(app,targetOwner,{id,intent,at=new Date().toISOString()}={}){return open().then(db=>new Promise((resolve,reject)=>{
-    const tx=db.transaction(['owner-bindings'],'readwrite'),store=tx.objectStore('owner-bindings'),request=store.get(app);let result=null,error=null;
-    request.onsuccess=()=>{try{
-      if(!request.result)throw new Error('storage_owner_binding_missing');const binding=readStorageRecord(request.result),target=String(targetOwner||'').trim(),kind=String(intent||'').trim(),operation=String(id||'').trim(),pending=binding.pendingAdoption||null;
-      if(!target||target==='local'||!operation||!['load-account','upload-local'].includes(kind))throw new Error('storage_owner_local_adoption_invalid');
-      if(binding.owner===target&&!pending){result=binding;return}
-      if(binding.owner!=='local')throw new Error('storage_owner_handoff_required');
-      if(pending){if(pending.targetOwner===target&&pending.intent===kind){result=binding;return}throw new Error('storage_owner_local_adoption_reserved')}
-      result={...binding,pendingAdoption:{id:operation,targetOwner:target,intent:kind,createdAt:at,updatedAt:at},updatedAt:at};store.put(sealStorageRecord(result),app);
-    }catch(cause){error=cause;try{tx.abort()}catch{}}};
-    tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_owner_local_reservation_aborted'));tx.onerror=()=>{error??=tx.error};
-  }))}
-  function adoptPreparedLocalOwner(app,targetOwner,{id,intent,proof={},at=new Date().toISOString()}={}){return open().then(db=>new Promise((resolve,reject)=>{
-    const tx=db.transaction(['owner-bindings','owner-handoffs'],'readwrite'),bindings=tx.objectStore('owner-bindings'),handoffs=tx.objectStore('owner-handoffs'),bindingReq=bindings.get(app),handoffReq=handoffs.get(app);let remaining=2,result=null,error=null;
-    const finish=()=>{if(--remaining)return;try{
-      if(!bindingReq.result)throw new Error('storage_owner_binding_missing');const binding=readStorageRecord(bindingReq.result),existing=handoffReq.result&&readStorageRecord(handoffReq.result),target=String(targetOwner||'').trim(),kind=String(intent||'').trim(),operation=String(id||'').trim();
-      if(!target||target==='local'||!operation||!['load-account','upload-local'].includes(kind))throw new Error('storage_owner_local_adoption_invalid');
-      if(binding.owner===target&&(!existing||existing.phase==='complete')){result={binding, handoff:existing||null};return}
-      if(binding.owner!=='local')throw new Error('storage_owner_handoff_required');
-      if(existing&&existing.phase!=='complete')throw new Error('storage_owner_handoff_pending');
-      const reservation=binding.pendingAdoption||null;if(!reservation||reservation.targetOwner!==target||reservation.intent!==kind)throw new Error('storage_owner_local_adoption_not_reserved');
-      const nextBinding={...binding,owner:target,generation:Number(binding.generation||0)+1,source:`prepared-local:${kind}`,pendingAdoption:null,updatedAt:at},complete={version:1,id:operation,app,sourceOwner:'local',targetOwner:target,intent:kind,phase:'complete',preparationProof:structuredClone(proof),reservationId:reservation.id,createdAt:reservation.createdAt||at,activatedAt:at,completedAt:at,updatedAt:at};
-      bindings.put(sealStorageRecord(nextBinding),app);handoffs.put(sealStorageRecord(complete),app);result={binding:nextBinding,handoff:complete};
-    }catch(cause){error=cause;try{tx.abort()}catch{}}};bindingReq.onsuccess=finish;handoffReq.onsuccess=finish;
-    tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_owner_local_adoption_aborted'));tx.onerror=()=>{error??=tx.error};
-  }))}
-  function beginOwnerHandoff(app,record){return open().then(db=>new Promise((resolve,reject)=>{
-    const tx=db.transaction(['owner-bindings','owner-handoffs'],'readwrite'),bindings=tx.objectStore('owner-bindings'),handoffs=tx.objectStore('owner-handoffs'),bindingReq=bindings.get(app),handoffReq=handoffs.get(app);let remaining=2,result=null,error=null;
-    const finish=()=>{if(--remaining)return;try{
-      if(!bindingReq.result)throw new Error('storage_owner_binding_missing');const binding=readStorageRecord(bindingReq.result),existing=handoffReq.result&&readStorageRecord(handoffReq.result);
-      if(existing&&existing.phase!=='complete'){if(existing.id===record.id){result=existing;return}throw new Error('storage_owner_handoff_pending')}
-      if(record.version!==1||record.app!==app||record.sourceOwner!==binding.owner||record.targetOwner===binding.owner||record.phase!=='freezing-source')throw new Error('storage_owner_handoff_invalid');
-      result=structuredClone(record);handoffs.put(sealStorageRecord(result),app);
-    }catch(cause){error=cause;try{tx.abort()}catch{}}};bindingReq.onsuccess=finish;handoffReq.onsuccess=finish;
-    tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_owner_handoff_aborted'));tx.onerror=()=>{error??=tx.error};
-  }))}
-  function advanceOwnerHandoff(app,id,fromPhase,toPhase,patch={}){return open().then(db=>new Promise((resolve,reject)=>{
-    const tx=db.transaction(['owner-handoffs'],'readwrite'),store=tx.objectStore('owner-handoffs'),request=store.get(app);let result=null,error=null;
-    request.onsuccess=()=>{try{if(!request.result)throw new Error('storage_owner_handoff_missing');const current=readStorageRecord(request.result);if(current.id!==id||current.app!==app||current.phase!==fromPhase)throw new Error('storage_owner_handoff_changed');result={...current,...structuredClone(patch),phase:toPhase};store.put(sealStorageRecord(result),app)}catch(cause){error=cause;try{tx.abort()}catch{}}};
-    tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_owner_handoff_aborted'));tx.onerror=()=>{error??=tx.error};
-  }))}
-  function activateOwnerHandoff(app,id,targetOwner,{at=new Date().toISOString()}={}){return open().then(db=>new Promise((resolve,reject)=>{
-    const tx=db.transaction(['owner-bindings','owner-handoffs'],'readwrite'),bindings=tx.objectStore('owner-bindings'),handoffs=tx.objectStore('owner-handoffs'),bindingReq=bindings.get(app),handoffReq=handoffs.get(app);let remaining=2,result=null,error=null;
-    const finish=()=>{if(--remaining)return;try{
-      if(!bindingReq.result||!handoffReq.result)throw new Error('storage_owner_handoff_missing');const binding=readStorageRecord(bindingReq.result),handoff=readStorageRecord(handoffReq.result);
-      if(handoff.id!==id||handoff.app!==app||handoff.phase!=='target-recovered'||handoff.sourceOwner!==binding.owner||handoff.targetOwner!==targetOwner)throw new Error('storage_owner_handoff_changed');
-      const nextBinding={...binding,owner:targetOwner,generation:Number(binding.generation||0)+1,source:`handoff:${handoff.intent}`,pendingAdoption:null,updatedAt:at},active={...handoff,phase:'target-active',activatedAt:at,updatedAt:at};
-      bindings.put(sealStorageRecord(nextBinding),app);handoffs.put(sealStorageRecord(active),app);result={binding:nextBinding,handoff:active};
-    }catch(cause){error=cause;try{tx.abort()}catch{}}};bindingReq.onsuccess=finish;handoffReq.onsuccess=finish;
-    tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_owner_handoff_aborted'));tx.onerror=()=>{error??=tx.error};
-  }))}
-  function completeOwnerHandoff(app,id,targetOwner,{at=new Date().toISOString()}={}){return open().then(db=>new Promise((resolve,reject)=>{
-    const tx=db.transaction(['owner-bindings','owner-handoffs'],'readwrite'),bindings=tx.objectStore('owner-bindings'),handoffs=tx.objectStore('owner-handoffs'),bindingReq=bindings.get(app),handoffReq=handoffs.get(app);let remaining=2,result=null,error=null;
-    const finish=()=>{if(--remaining)return;try{
-      if(!bindingReq.result||!handoffReq.result)throw new Error('storage_owner_handoff_missing');const binding=readStorageRecord(bindingReq.result),handoff=readStorageRecord(handoffReq.result);
-      if(handoff.id!==id||handoff.app!==app||handoff.phase!=='target-active'||binding.owner!==targetOwner||handoff.targetOwner!==targetOwner)throw new Error('storage_owner_handoff_changed');
-      const complete={...handoff,phase:'complete',completedAt:at,updatedAt:at};
-      handoffs.put(sealStorageRecord(complete),app);result={binding, handoff:complete};
-    }catch(cause){error=cause;try{tx.abort()}catch{}}};bindingReq.onsuccess=finish;handoffReq.onsuccess=finish;
-    tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_owner_handoff_aborted'));tx.onerror=()=>{error??=tx.error};
-  }))}
+  const {readOwnerState,readOwnerBinding,readOwnerHandoff,initializeOwnerBinding,reserveLocalOwnerTarget,adoptPreparedLocalOwner,beginOwnerHandoff,advanceOwnerHandoff,activateOwnerHandoff,completeOwnerHandoff}=createStorageOwnerTransactions({open});
   function bootstrapRecord(scope){return open().then(db=>new Promise((resolve,reject)=>{
     const tx=db.transaction(['bootstrap-groups'],'readonly'),request=tx.objectStore('bootstrap-groups').get(scope);
     request.onsuccess=()=>{try{resolve(request.result?readStorageRecord(request.result):null)}catch(error){reject(error)}};
@@ -480,5 +406,5 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
       tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_fenced_recovery_aborted'));tx.onerror=()=>{error??=tx.error};
     }))
   }
-  return {load,install,initializeCloudHead,claim,append,compact,appendBoundary,replaceCheckpoint,replaceLocalCheckpoint,setBase,beginFlight,acknowledge,rejectFlight,setControl,clearControl,commitCloudRecovery,adoptCloudHead,resetState,resetCloudHead,readBoundary,beginBoundary,advanceBoundary,completeBoundary,readOwnerBinding,readOwnerHandoff,initializeOwnerBinding,reserveLocalOwnerTarget,adoptPreparedLocalOwner,beginOwnerHandoff,advanceOwnerHandoff,activateOwnerHandoff,completeOwnerHandoff,readBootstrapGroup,beginBootstrapGroup,advanceBootstrapGroup,readV2Marker,markAccountMarker,readLocalBirth,beginLocalBirth,advanceLocalBirth,markLocalEngine,readLocalEngine,adoptFencedAccount};
+  return {load,install,initializeCloudHead,claim,append,compact,appendBoundary,replaceCheckpoint,replaceLocalCheckpoint,setBase,beginFlight,acknowledge,rejectFlight,setControl,clearControl,commitCloudRecovery,adoptCloudHead,resetState,resetCloudHead,readBoundary,beginBoundary,advanceBoundary,completeBoundary,readOwnerState,readOwnerBinding,readOwnerHandoff,initializeOwnerBinding,reserveLocalOwnerTarget,adoptPreparedLocalOwner,beginOwnerHandoff,advanceOwnerHandoff,activateOwnerHandoff,completeOwnerHandoff,readBootstrapGroup,beginBootstrapGroup,advanceBootstrapGroup,readV2Marker,markAccountMarker,readLocalBirth,beginLocalBirth,advanceLocalBirth,markLocalEngine,readLocalEngine,adoptFencedAccount};
 }
