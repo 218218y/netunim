@@ -14,7 +14,14 @@ function object(value){return value!==null&&typeof value==='object'&&!Array.isAr
 /** @param {Json|undefined} value @returns {value is number} */
 function positiveInteger(value){return typeof value==='number'&&Number.isSafeInteger(value)&&value>0}
 /** @param {Json|undefined} value @returns {value is string} */
-function timestamp(value){return typeof value==='string'&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value)&&Number.isFinite(Date.parse(value))}
+function timestamp(value){
+  if(typeof value!=='string')return false;
+  const match=/^(\d{4})-(\d{2})-(\d{2})T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.exec(value);
+  if(!match||!Number.isFinite(Date.parse(value)))return false;
+  const year=Number(match[1]),month=Number(match[2]),day=Number(match[3]),date=new Date(0);
+  date.setUTCFullYear(year,month-1,day);
+  return date.getUTCFullYear()===year&&date.getUTCMonth()===month-1&&date.getUTCDate()===day;
+}
 /** @param {unknown} response @returns {Json[]} */
 function rows(response){
   const json=assertStorageJson(response);
