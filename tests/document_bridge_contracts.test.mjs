@@ -106,13 +106,15 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.match(server,/PDF_FORM_DETECTION_REVISION=2/);
   assert.match(server,/PDF_FORM_SEARCH_TEXT_REVISION=2/);
   assert.match(server,/PDF_FORM_GEOMETRY_REVISION=1/);
-  assert.match(server,/fingerprintCurrent&&detectionCurrent&&cached&&!cached\.hasForm&&!cached\.failed/,'only current-fingerprint negative PDF records may suppress on-demand form reinspection');
+  const previewOperation=read('netunim-orders/document-bridge/pdf-preview-operation.mjs').replace(/\s+/g,'');
+  assert.match(previewOperation,/fingerprintCurrent&&detectionCurrent&&cached&&!cached\.hasForm&&!cached\.failed/,'only current-fingerprint negative PDF records may suppress on-demand form reinspection');
   assert.match(policy,/if\(Number\(existing\.detectionRevision\)<detectionRevision\)return true/);
   assert.match(policy,/return Number\(existing\.searchTextRevision\)<searchTextRevision/);
   assert.match(server,/previewTextCache\.invalidate\(key\)/,'form-index upgrades invalidate stale preview text cache entries');
   assert.doesNotMatch(server,/geometryCurrent=.*formFields/,'missing geometry must not trigger a library-wide reindex');
-  assert.match(server,/includePageText:!geometryOnly/,'legacy preview migration must recover geometry without re-reading every page text layer');
-  assert.match(server,/extractPdfOnDemand\(fullPath/,'preview enrichment must run in a short-lived process');
+  assert.match(previewOperation,/includePageText:!geometryOnly/,'legacy preview migration must recover geometry without re-reading every page text layer');
+  assert.match(server,/pdfExtractionProcesses\.read\(fullPath,options\)/,'preview enrichment must run in its owned short-lived process');
+  assert.match(read('netunim-orders/document-bridge/pdf-extraction-platform.mjs'),/spawnWorker\(executable/,'the platform must retain PDF worker process isolation');
   assert.match(pdfIndex,/collectPdfFormFields/,'interactive PDF index must persist field page and rectangle metadata');
   assert.match(pdfIndex,/buildPdfFormMatchAnchors/,'interactive PDF index must map value hits back to field geometry');
   assert.match(pdfIndex,/pdfjs\/legacy\/build\/pdf\.mjs/,'Node bridge must prefer the PDF.js legacy build recommended for Node.js');

@@ -20,6 +20,10 @@
     "types": []
   },
   "files": [
+    "tests/fixtures/checked-pdf-preview.mjs",
+    "netunim-orders/document-bridge/pdf-extraction-result.mjs",
+    "netunim-orders/document-bridge/pdf-extraction-process.mjs",
+    "netunim-orders/document-bridge/pdf-preview-operation.mjs",
     "tests/fixtures/checked-morning-command-form.mjs",
     "netunim-orders/site/assets/js/domains/customers/morning-command-form.js",
     "netunim-orders/site/assets/js/domains/customers/morning-debt-confirmation.js",

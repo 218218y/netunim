@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import vm from 'node:vm';
 import {parse} from 'acorn';
+import {createPdfPreviewOperation} from '../netunim-orders/document-bridge/pdf-preview-operation.mjs';
 import {createPdfMaintenanceOperation} from '../netunim-orders/document-bridge/pdf-maintenance-operation.mjs';
 import {indexFixture,journalRow} from './pdf_index_file_fixture.mjs';
 
@@ -12,6 +13,7 @@ const fault=()=>Object.assign(new Error('synthetic disk fault'),{code:'EIO'});
 function handleHook(handle,overrides){return new Proxy(handle,{get(target,key){if(key in overrides)return overrides[key];const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value}})}
 async function sourceFunction(name,context){const source=await fs.readFile(new URL('../netunim-orders/document-bridge/server.mjs',import.meta.url),'utf8'),ast=parse(source,{ecmaVersion:'latest',sourceType:'module'}),node=ast.body.find(node=>node.type==='FunctionDeclaration'&&node.id.name===name);let prefix='';
  if(name==='refreshPdfFormIndex'){const composition=ast.body.find(node=>node.type==='VariableDeclaration'&&node.declarations.some(item=>item.id.name==='pdfMaintenanceOperation'));Object.assign(context,{createPdfMaintenanceOperation,readPdfMaintenanceMetadata:()=>context.readJsonFile()});prefix=source.slice(composition.start,composition.end)+'\n'}
+ if(name==='supplementalPdfData'){const composition=ast.body.find(node=>node.type==='VariableDeclaration'&&node.declarations.some(item=>item.id.name==='pdfPreviewOperation'));Object.assign(context,{createPdfPreviewOperation,pdfExtractionProcesses:{read:context.extractPdfOnDemand}});prefix=source.slice(composition.start,composition.end)+'\n'}
  return vm.runInNewContext(prefix+source.slice(node.start,node.end)+`\n${name}`,context)}
 
 test('production append preserves replay of a historical journal with no final newline',async t=>{
@@ -27,7 +29,7 @@ test('production on-demand publication stays unchanged when its native journal w
     const handle=await io.open(file,...args);return file.endsWith('.jsonl')&&args[0]==='a+'?handleHook(handle,{writeFile:async()=>{writes++;throw fault()}}):handle;
   }})});await f.read();const before=await f.capture(),model=[...f.context.pdfFormIndex.values()].map(JSON.stringify);
   Object.assign(f.context,{loadPdfFormIndex:async()=>{},appendLog:async()=>{},PDF_FORM_DETECTION_REVISION:3,PDF_FORM_SEARCH_TEXT_REVISION:3,PDF_FORM_GEOMETRY_REVISION:3,
-    extractPdfOnDemand:async()=>({hasForm:true,text:row.text,formFields:journalRow.formFields,formFieldCount:1}),trimPreviewText:text=>({text}),pdfIndexFingerprint:()=>''});
+    extractPdfOnDemand:async()=>({hasForm:true,text:row.text,formFields:journalRow.formFields.map(field=>({...field,fieldName:'',fieldType:'Tx',multiLine:false})),formFieldCount:1}),trimPreviewText:text=>({text}),pdfIndexFingerprint:()=>''});
   const supplement=await sourceFunction('supplementalPdfData',f.context),stat={size:3,mtimeMs:1,mtime:new Date(1)};
   assert.equal(await supplement(row,stat),null);assert.equal(writes,1);assert.deepEqual(await f.capture(),before);assert.deepEqual([...f.context.pdfFormIndex.values()].map(JSON.stringify),model);
 });

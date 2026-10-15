@@ -46,7 +46,9 @@ policy. No timer, global service locator or provider retry is introduced.
 geometry revision fingerprint. Direct text, Everything content and AcroForm
 priority, match counts/snippets/anchors and opaque-result authorization are
 unchanged. Existing PDF update and result-path invalidation sites call the new
-owner. Shutdown disposes it before awaiting process teardown.
+owner. Shutdown disposes it before awaiting process teardown. The subsequent
+[PDF preview operation](DOCUMENT_PDF_PREVIEW_OPERATION.md) now owns the separate
+PDF journal publication and child lifetime, joining shutdown and per-file removal.
 
 Invalidation is a cache boundary, not cancellation of an accepted request's
 already-read result. Browser request/display ownership remains separate. This

@@ -46,7 +46,7 @@ export function serverFixture(version='current',options={}) {
   preparePdfFormIndexForSearch:async()=>{calls.push(['pdf-prepare']);return options.prepare?options.prepare():{partial:!!options.partial}},
   searchPdfFormIndex:(query,contentSearch,scopePath,limit,sort)=>{calls.push(['pdf-search',query,contentSearch,scopePath,limit,sort]);return (options.pdfRows||[row(2),row(4),row(5)]).slice(0,limit)},
   appendLog:async text=>{logs.push(text);if(options.audit)await options.audit(text)},
-  manualMaintenance:{dispose:async()=>{}},nativePreviewSession:{dispose:async()=>{}},pdfMaintenanceOperation:{dispose:async()=>{}},process:{pid:101},shuttingDown:false,
+  manualMaintenance:{dispose:async()=>{}},pdfPreviewOperation:{dispose:async()=>{},invalidate:async()=>{}},pdfExtractionProcesses:{dispose:async()=>{}},nativePreviewSession:{dispose:async()=>{}},pdfMaintenanceOperation:{dispose:async()=>{}},process:{pid:101},shuttingDown:false,
  };
  if(options.pdfLoad)context.preparePdfFormIndexForSearch=prepareScript.runInNewContext(context);
  const api=scripts[version].runInNewContext(context);
