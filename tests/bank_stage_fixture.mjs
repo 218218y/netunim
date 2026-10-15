@@ -39,7 +39,7 @@ export async function bankStage(t,{prepare=async()=>{}}={}){
         const bytes=Buffer.concat(chunks);resolve({status:res.statusCode,headers:{get:key=>res.headers[key.toLowerCase()]},json:async()=>JSON.parse(bytes),arrayBuffer:async()=>bytes});
       });
     });
-    req.on('error',reject);req.setTimeout(10000,()=>req.destroy(new Error('staged HTTP deadline')));req.end(body===undefined?'':JSON.stringify(body));
+    req.on('error',reject);req.setTimeout(10000,()=>req.destroy(new Error(`staged HTTP deadline: ${method} ${new URL(base+target).pathname}`)));req.end(body===undefined?'':JSON.stringify(body));
   });
   return {directory,runtime,app,port,base,child,exited,request,output:()=>output};
 }
