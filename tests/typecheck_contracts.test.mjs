@@ -26,6 +26,14 @@ function check(overrides=new Map()){
 }
 function describe(diagnostics){return ts.formatDiagnostics(diagnostics,{getCanonicalFileName:file=>file,getCurrentDirectory:()=>root,getNewLine:()=> '\n'})}
 
+test('Journal authority implementation rejects a text sequence receipt',()=>{
+  const source=path.join(root,'shared/storage-journal-authority.js'),original=readFileSync(source,'utf8');
+  const changed=original.replace('return sealStorageJsonRecord(operation);',"return sealStorageJsonRecord({...operation,seq:'1'});");
+  assert.notEqual(changed,original);
+  const diagnostics=check(new Map([[source,changed]]));
+  assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&item.code===2322),describe(diagnostics));
+});
+
 test('PDF preview and process bodies reject text form authority, invalid preview text and unjoined disposal',()=>{
  for(const [file,from,to]of [
   ['pdf-extraction-result.mjs','hasForm: value.hasForm',"hasForm: 'yes'"],

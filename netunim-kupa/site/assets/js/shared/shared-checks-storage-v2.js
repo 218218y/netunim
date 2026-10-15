@@ -3,8 +3,8 @@ import {createStorageJournal} from './storage-journal.js';
 import {createStorageJournalDb} from './storage-journal-idb.js';
 import {readStorageCheckpoint} from './storage-checkpoint.js';
 import {equalSyncJson} from './cloud-sync.js';
+import {SHARED_CHECKS_STORAGE_SCHEMA as SCHEMA} from './storage-v2-schema.js';
 
-const SCHEMA=Object.freeze({collections:['checks'],fields:['bankEvents']});
 
 export const validateSharedChecksState=readSharedChecksState;
 

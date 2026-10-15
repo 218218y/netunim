@@ -7,6 +7,7 @@ import {readStorageRecord,sealStorageRecord} from './storage-journal-model.js';
 import {historicalShadowRoleForSide} from './storage-v2-persisted-compat.js';
 import {assertCloudRecoveryHead} from './storage-cloud-recovery.js';
 import {readStorageCheckpoint,captureStorageCheckpoint,readStorageJournalDeletionKeys} from './storage-checkpoint.js';
+import {captureStorageJournalOperation} from './storage-journal-authority.js';
 
 export function createStorageJournalDb({name='netunim-storage-v2'}={}){
   const stores=['checkpoints','journal','metadata','bases','flights','controls'];
@@ -57,7 +58,11 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
     tx.objectStore('bases').delete(owner);tx.objectStore('flights').delete(owner);tx.objectStore('controls').delete(owner);done(true);
   })}
   function claim(owner,epoch,writer){return change(owner,(tx,current,done)=>{if(current.metadata?.epoch!==epoch)throw new Error('storage_epoch_changed');readStorageCloudHead({base:current.bases,flight:current.flights,control:current.controls},{owner,epoch,seq:current.metadata.seq});tx.objectStore('metadata').put({...current.metadata,writer},owner);done(true)})}
-  async function initializeCloudHead(owner,checkpoint,base,writer,operation=null){checkpoint=captureStorageCheckpoint(checkpoint);return change(owner,(tx,current,done)=>{
+  async function initializeCloudHead(owner,checkpoint,base,writer,operation=null){
+    checkpoint=captureStorageCheckpoint(checkpoint);
+    base=structuredClone(base);readStorageCloudBase(base);
+    if(operation!==null)operation=captureStorageJournalOperation(operation,owner,checkpoint.data.epoch);
+    return change(owner,(tx,current,done)=>{
     // Initialization is create-only. It cannot erase a previous owner's work,
     // a shadow namespace or an interrupted upload on retry.
     if(current.checkpoints||current.metadata||current.bases||current.flights||current.controls||current.journal.length)throw new Error('storage_initialization_exists');
@@ -68,7 +73,9 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
     if(entry)tx.objectStore('journal').put(operation,[owner,head.epoch,1]);
     tx.objectStore('metadata').put({epoch:head.epoch,seq:entry?1:0,writer},owner);done(true);
   })}
-  function append(owner,epoch,writer,record){return transact('readwrite',(tx,done,fail)=>{
+  async function append(owner,epoch,writer,record){
+    record=captureStorageJournalOperation(record,owner,epoch);
+    return transact('readwrite',(tx,done,fail)=>{
     // The hot path reads two small records, never the checkpoint or full journal.
     const operation=readStorageRecord(record),key=[owner,epoch,operation.seq],metadata=tx.objectStore('metadata').get(owner),existing=tx.objectStore('journal').get(key);let remaining=2;
     const finish=()=>{if(--remaining)return;try{
@@ -180,7 +187,9 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
     for(const key of current.journalKeys)tx.objectStore('journal').delete(key);
     tx.objectStore('bases').put(base,owner);tx.objectStore('flights').delete(owner);tx.objectStore('controls').delete(owner);done(true);
   })}
-  function appendBoundary(owner,epoch,writer,record,{expectedSeq,expectedBaseRevision}={}){return change(owner,(tx,current,done)=>{
+  async function appendBoundary(owner,epoch,writer,record,{expectedSeq,expectedBaseRevision}={}){
+    record=captureStorageJournalOperation(record,owner,epoch);
+    return change(owner,(tx,current,done)=>{
     assertFence(current,owner,epoch,writer);
     const base=current.bases&&readStorageCloudBase(current.bases),operation=readStorageRecord(record);
     if(!base||base.owner!==owner||base.epoch!==epoch||base.revision!==expectedBaseRevision||base.ackSeq!==expectedSeq||current.metadata.seq!==expectedSeq||current.flights||current.controls)throw new Error('storage_boundary_cloud_changed');

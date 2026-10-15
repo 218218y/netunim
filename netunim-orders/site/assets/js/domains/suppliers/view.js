@@ -6,6 +6,8 @@ import {$} from '../../state/constants.js';
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createDomainsSuppliersView({model, supplierUi, mountViewLayout, orderedSuppliers, captureSupplierViewport, restoreSupplierViewport, syncSupplierBulkUi, supplierMoveTargetRow, storeSupplierViewport, scrollSupplierTransactionsEnd, scheduleSave}){
 function supplierSearchText(t,assignedYear=null,supplierName=''){return `${supplierName||''} ${t.action||''} ${t.note||''} ${t.supplyInfo||''} ${t.source?.row||''} ${assignedYear||''}`}
+function normalizeSupplierSearch(value){return String(value??'').normalize('NFC').trim().toLowerCase()}
+function matchesSupplierSearch(text,query){return normalizeSupplierSearch(text).includes(normalizeSupplierSearch(query))}
 
 function supplierViewState(){
   const suppliers=orderedSuppliers(),allMode=supplierUi.currentSupplierId===ALL_SUPPLIERS_ID;
@@ -36,8 +38,8 @@ function supplierFinancialPeriod(contexts,selectedArchiveYear,allMode){
 function filteredSupplierRows(state,{includeSearch=false}={}){
   const moving=!state.allMode&&!!supplierUi.supplierMoveTargetId;
   const rows=supplierViewRowsData(model.state,state.supplierIds,moving?'all':supplierUi.supplierYearView,moving?'all':supplierUi.filterMode,state.renderModel);
-  const q=includeSearch&&!moving?supplierUi.searchText.trim():'';
-  return q?rows.filter(({supplier,t,assignedYear})=>supplierSearchText(t,assignedYear,supplier.name).includes(q)):rows;
+  const q=includeSearch&&!moving?normalizeSupplierSearch(supplierUi.searchText):'';
+  return q?rows.filter(({supplier,t,assignedYear})=>matchesSupplierSearch(supplierSearchText(t,assignedYear,state.allMode?supplier.name:''),q)):rows;
 }
 
 function supplierFullBalance(state){
@@ -100,7 +102,28 @@ function renderSupplier({scrollMode='auto'}={}){
   restoreSupplierViewport(viewport,viewKey,scrollMode);
 }
 
-function filterSupplierSearch(value,state){if(supplierUi.supplierMoveTargetId){document.querySelectorAll('tbody tr[data-search]').forEach(row=>row.hidden=false);updateSupplierFinancialSummary(state);syncSupplierBulkUi();return}const hadQuery=!!supplierUi.searchText.trim();supplierUi.searchText=value;const q=value.trim();document.querySelectorAll('tbody tr[data-search]').forEach(row=>row.hidden=!!q&&!row.dataset.search.includes(q));updateSupplierFinancialSummary(state);syncSupplierBulkUi();if(hadQuery&&!q){const wrap=$('#main')?.querySelector('.supplier-table-panel .table-wrap');if(wrap)requestAnimationFrame(()=>{scrollSupplierTransactionsEnd(wrap);storeSupplierViewport(supplierUi.currentSupplierId,wrap)})}}
+function filterSupplierSearch(value,state){
+  const rows=$('#main')?.querySelectorAll('tbody tr[data-search]')??[];
+  if(supplierUi.supplierMoveTargetId){
+    rows.forEach(row=>row.hidden=false);
+    updateSupplierFinancialSummary(state);
+    syncSupplierBulkUi();
+    return;
+  }
+  const hadQuery=!!normalizeSupplierSearch(supplierUi.searchText);
+  supplierUi.searchText=value;
+  const q=normalizeSupplierSearch(value);
+  rows.forEach(row=>row.hidden=!matchesSupplierSearch(row.dataset.search,q));
+  updateSupplierFinancialSummary(state);
+  syncSupplierBulkUi();
+  if(hadQuery&&!q){
+    const wrap=$('#main')?.querySelector('.supplier-table-panel .table-wrap');
+    if(wrap)requestAnimationFrame(()=>{
+      scrollSupplierTransactionsEnd(wrap);
+      storeSupplierViewport(supplierUi.currentSupplierId,wrap);
+    });
+  }
+}
 
 function boolText(v){return v===true?'כן':v===false?'לא':'—'}
 
@@ -124,7 +147,23 @@ function refreshInlineStatus(t,field){
 
 function setInlineTri(id,field,value){const t=model.state.transactions.find(x=>x.id===id);if(!t||!['invoiceReceived','signed','supplied'].includes(field))return;t[field]=t[field]===value?null:value;t.updatedAt=new Date().toISOString();scheduleSave('הסטטוס עודכן',{operations:[{type:'put',collection:'transactions',id:t.id,mode:'replace',record:t}]});refreshInlineStatus(t,field)}
 
-function saveInlineText(id,field,el){const t=model.state.transactions.find(x=>x.id===id);if(!t||!['supplyInfo','note'].includes(field))return;const value=el.value.trim();if((t[field]||'')===value)return;t[field]=value;t.updatedAt=new Date().toISOString();scheduleSave(field==='supplyInfo'?'פרטי האספקה עודכנו':'ההערה עודכנה',{operations:[{type:'put',collection:'transactions',id:t.id,mode:'replace',record:t}]})}
+function saveInlineText(id,field,el){
+  const t=model.state.transactions.find(x=>x.id===id);
+  if(!t||!['supplyInfo','note'].includes(field))return;
+  const value=el.value.trim();
+  if((t[field]||'')===value)return;
+  t[field]=value;
+  t.updatedAt=new Date().toISOString();
+  scheduleSave(field==='supplyInfo'?'פרטי האספקה עודכנו':'ההערה עודכנה',{
+    operations:[{type:'put',collection:'transactions',id:t.id,mode:'replace',record:t}],
+  });
+  // Keep the live DOM search index and the model-backed summary in agreement.
+  const state=supplierViewState();
+  const entry=filteredSupplierRows(state).find(row=>row.t.id===id);
+  const row=$('#main')?.querySelector(`tr[data-tx-id="${CSS.escape(id)}"]`);
+  if(entry&&row)row.dataset.search=supplierSearchText(t,entry.assignedYear,state.allMode?entry.supplier.name:'');
+  filterSupplierSearch(supplierUi.searchText,state);
+}
 
 function txRow(t,balance,assignedYear=null,supplierName='',groupStart=false){const invoiceStatus=triStatusClass(t.invoiceReceived),signedStatus=triStatusClass(t.signed),suppliedStatus=triStatusClass(t.supplied),boundaryYear=validSupplierYear(t.yearEnd),carry=supplierUi.supplierYearView==='current'&&assignedYear!==null,yearTag=carry?`<span class="year-tag carry">פתוח מ־${esc(assignedYear)}</span>`:boundaryYear!==null?`<span class="year-tag">סוף ${esc(boundaryYear)}</span>`:'';return `<tr class="${esc(t.supplied===false?'pending':'')} ${esc(supplierUi.supplierBulkSelected.has(t.id)?'bulk-selected-row':'')} ${esc(supplierUi.supplierMoveTargetId===t.id?'supplier-move-source-row':'')} ${esc(carry?'year-carry-row':'')} ${esc(boundaryYear!==null?'year-boundary-row':'')} ${esc(groupStart?'supplier-group-start':'')}" data-tx-id="${esc(t.id)}" data-supplier-id="${esc(t.supplierId)}" data-search="${esc(supplierSearchText(t,assignedYear,supplierName))}">${supplierUi.supplierBulkMode?`<td class="bulk-check-col"><input class="bulk-check" type="checkbox" ${supplierUi.supplierBulkSelected.has(t.id)?'checked':''} aria-label="בחר תנועה ${esc(t.sequence)}" data-action="toggle-supplier-bulk-row" data-change="toggle-supplier-bulk-row" data-click-arg0="${esc(t.id)}"></td>`:''}<td class="col-seq" title="${esc(t.source?.sheet?`${esc(t.source.sheet)}${t.source?.row?` · שורת מקור ${esc(t.source.row)}`:''}`:'')}">${esc(t.sequence)}</td>${supplierName?`<td class="col-supplier"><span class="supplier-row-name">${esc(supplierName)}</span></td>`:''}<td class="col-invoice ${esc(invoiceStatus)}">${inlineTri(t,'invoiceReceived','חשבונית התקבלה')}</td><td class="col-action"><div class="action-text">${esc(t.action||'')}${yearTag}</div>${t.correction?'<div class="badge red correction-badge">תיקון ייבוא</div>':''}</td><td class="money col-money badtext">${t.debit?`<b>${money(t.debit)}</b>`:''}</td><td class="money col-money goodtext">${t.credit?`<b>${money(t.credit)}</b>`:''}</td><td class="money col-balance ${esc(balance<0?'badtext':'goodtext')}"><b>${money(balance)}</b></td><td class="col-status ${esc(signedStatus)}">${inlineTri(t,'signed','חתום')}</td><td class="col-status ${esc(suppliedStatus)}">${inlineTri(t,'supplied','סופק')}</td><td class="col-supply"><input class="inline-input" value="${esc(t.supplyInfo||'')}" placeholder="תאריך / פרטי אספקה" data-keydown="blur-input" data-blur="save-inline-text" data-blur-arg0="${esc(t.id)}"></td><td class="col-note"><input class="inline-input" value="${esc(t.note||'')}" placeholder="הערה" data-keydown="blur-input" data-blur="save-inline-text-2" data-blur-arg0="${esc(t.id)}"></td><td class="col-row-actions"><div class="row-actions"><button class="icon-btn add-row" title="הוסף תנועה מתחת לשורה זו" data-action="open-transaction-modal-2" data-click-arg0="${esc(t.supplierId)}" data-click-arg1="${esc(t.id)}">＋</button><button class="icon-btn" title="עריכת כל פרטי התנועה" data-action="open-transaction-modal-3" data-click-arg0="${esc(t.id)}">✎</button></div></td></tr>`}
 
