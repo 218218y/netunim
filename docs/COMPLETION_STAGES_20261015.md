@@ -80,3 +80,8 @@ future work, not completed claims of this continuation.
    cold/cached/offline browser gate are documented in STARTUP_MEASUREMENT.md.
    Initial measurements identify module discovery/fetch scheduling as the larger
    interval on this machine; they do not justify lazy Storage/Auth/V2 recovery.
+
+Stage 7 merged as PR #190 after full branch verification. Stage 8 defers the four
+document viewer implementations behind a captured selection proof and isolates
+late viewer cleanup in private mounts; see DOCUMENT_PREVIEW_LOADING.md. Native
+offline first-use and account privacy gates accompany the smaller eager graph.
