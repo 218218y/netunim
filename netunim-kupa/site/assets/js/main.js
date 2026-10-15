@@ -549,6 +549,7 @@ const cloudStartup=createKupaCloudStartup({
 const lifecycle=createLifecycle({
   online:()=>globalThis.navigator?.onLine!==false,
   storageProtocol:storageV2Coordinator.startupProtocol,
+  storageAdmission:storageV2Coordinator.startupAdmission,
   storageRecovery,
   cloudStartup,localServices,connectionStartup,
   hydrateStorageOwner:()=>storageOwner.hydrate({initialOwner:async()=> (await cloudAuth.restoreSupaSession())?.user?.id}),

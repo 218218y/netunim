@@ -106,5 +106,5 @@ export function createStorageStartupAdmission({protocol,primary,transfer,birth})
   function readOnlyRequired(state,pendingTransfer=false){
     return pendingTransfer||transfer.preparing()||state.accountV2Active||state.localEngineActive||birth.preparing();
   }
-  return {admit,assertCurrent,assertOwner,readOnlyRequired};
+  return {admit,assertCurrent,assertOwner,readOnlyRequired,transferPending:()=>transfer.preparing()};
 }

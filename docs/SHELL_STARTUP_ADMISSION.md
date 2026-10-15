@@ -13,7 +13,9 @@ primary-tab authority after journal recovery and before display activation;
 late ownership/leadership loss rejects boot and retains the mutation gate.
 Marker reads and server protocol waits cannot mix owners. Fenced adoption
 rereads both markers instead of carrying local readiness into the account.
-Browser connectivity is supplied by the composition roots.
+Browser connectivity is supplied by the composition roots. Storage coordinators
+construct admission from their private transfer/birth owners; lifecycle consumes
+that capability instead of receiving and rebuilding the individual policy ports.
 
 No AppContext or dependency-count target was introduced. Backup/cloud UI already
 wire role ports and navigation owns view interaction; their width alone is not

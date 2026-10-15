@@ -1,4 +1,4 @@
-import {createStorageStartupProtocol} from '../shared/storage-startup-protocol.js';
+import {createStorageStartupProtocol,createStorageStartupAdmission} from '../shared/storage-startup-protocol.js';
 import {createStorageOwnerBinding} from '../shared/storage-owner.js';
 import {createStorageV2BootstrapCoordinator} from '../shared/storage-v2-bootstrap.js';
 import {createStorageV2Runtime,storageV2Mode} from '../shared/storage-v2-runtime.js';
@@ -32,6 +32,9 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
     markers:{account:()=>requirePorts().verifyStorageV2AccountMarker(),local:()=>{requirePorts();return verifyStorageV2LocalEngine({app:'kupa',owner:()=>owner.current()})}},
     account:{read:()=>requirePorts().cloudTransport.readStorageProtocolState(),recoverAccount:()=>{requirePorts();return fencedRecovery.recover()}},
   });
+  const startupAdmission=createStorageStartupAdmission({protocol:startupProtocol,primary:()=>tab.primaryTab,
+    transfer:{preparing:()=>!!ownerTransfer?.preparing||transferRebinding,resume:resumeStorageV2OwnerTransfer},
+    birth:{preparing:()=>!!localBirth?.preparing,ensure:ensureLocalBirth}});
   const preparing=()=>owner.locked||transferRebinding||!!ownerTransfer?.preparing||!!localBirth?.preparing||!!(bootstrap.hasGroup&&bootstrap.group?.phase!=='complete');
   const mode=()=>storageV2Mode('kupa',storage,owner.current(),{preparing:preparing()});
   const createRuntime=options=>createStorageV2Runtime({app:'kupa',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,mode,...options});
@@ -207,11 +210,10 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
     const p=requirePorts(),recovered=await p.sharedChecksV2Composition.recoverPrimary();
     return recovered;
   }
-  return {owner,bootstrap,preparing,mode,createRuntime,createCloudPorts,createSharedComposition,recoverShared,configure,ownerAdoption,startupProtocol,recoverLocalV2State,recoverReadOnlyV2State,
+  return {owner,bootstrap,preparing,mode,createRuntime,createCloudPorts,createSharedComposition,recoverShared,configure,ownerAdoption,startupProtocol,startupAdmission,recoverLocalV2State,recoverReadOnlyV2State,
     ownerUiPorts:()=>({storageOwnerCurrent:()=>owner.current(),storageOwnerAdoption:()=>ownerAdoption(),
       startStorageV2OwnerTransfer,storageV2OwnerTransferPreparing:()=>!!ownerTransfer?.preparing||transferRebinding}),
     accountContextPort:()=>({assertAccountOwner:assertAuthenticatedAccountOwner}),
-    lifecyclePorts:()=>({hydrateLocalBirth,ensureLocalBirth,localBirthPreparing:()=>!!localBirth?.preparing,
-      hydrateStorageV2OwnerTransfer,resumeStorageV2OwnerTransfer,storageV2OwnerTransferPreparing:()=>!!ownerTransfer?.preparing||transferRebinding}),
+    lifecyclePorts:()=>({hydrateLocalBirth,hydrateStorageV2OwnerTransfer}),
   };
 }

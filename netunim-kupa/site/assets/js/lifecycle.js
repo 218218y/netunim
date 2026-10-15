@@ -1,10 +1,10 @@
-import {createStorageStartupAdmission} from './shared/storage-startup-protocol.js';
 import {startupMark} from './shared/startup-timing.js';
 import {createStartupTask} from './shared/startup-task.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createLifecycle({
   storageProtocol,
+  storageAdmission:admission,
   online,
   storageRecovery,
   cloudStartup,
@@ -12,11 +12,7 @@ export function createLifecycle({
   connectionStartup,
   hydrateStorageOwner=async()=>{},
   hydrateLocalBirth=async()=>null,
-  ensureLocalBirth=async()=>false,
-  localBirthPreparing=()=>false,
   hydrateStorageV2OwnerTransfer=async()=>null,
-  resumeStorageV2OwnerTransfer=async()=>null,
-  storageV2OwnerTransferPreparing=()=>false,
   render=()=>{},
   hideConnectScreen=()=>{},
   session,
@@ -38,9 +34,7 @@ for(const [name,port,methods] of [
 ])for(const method of methods)if(typeof port?.[method]!=='function')throw new TypeError(`lifecycle_${name}_${method}_required`);
 
 if(typeof online!=='function')throw new TypeError('lifecycle_online_required');
-const admission=createStorageStartupAdmission({protocol:storageProtocol,primary:()=>tab.primaryTab,
-  transfer:{preparing:storageV2OwnerTransferPreparing,resume:resumeStorageV2OwnerTransfer},
-  birth:{preparing:localBirthPreparing,ensure:ensureLocalBirth}});
+for(const method of ['admit','assertCurrent','assertOwner','readOnlyRequired','transferPending'])if(typeof admission?.[method]!=='function')throw new TypeError(`lifecycle_storage_admission_${method}_required`);
 
 async function boot(){
   session.storageProtocolBlocked=true;
@@ -72,7 +66,7 @@ async function boot(){
     setCloudHeaderStatus('offline',shown?'ענן: קריאה בלבד':'ענן: קריאה בלבד — הנתונים טרם זמינים');
     return;
   }
-  if(storageV2OwnerTransferPreparing()&&(!online()||!restoredAuth)){
+  if(admission.transferPending()&&(!online()||!restoredAuth)){
     session.backendReady=false;setConnectUI({title:'???? ?????? ?????',text:'?????? ????? ?? ?????? ???? ?????? ???? ??????? ?????.',showCloud:true});return;
   }
   const admitted=await admission.admit(state);

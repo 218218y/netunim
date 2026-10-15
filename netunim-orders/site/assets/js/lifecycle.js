@@ -1,4 +1,3 @@
-import {createStorageStartupAdmission} from './shared/storage-startup-protocol.js';
 import {createStartupTask} from './shared/startup-task.js';
 import {startupMark} from './startup/marks.js';
 
@@ -7,6 +6,7 @@ function nextTurn(){return new Promise(resolve=>setTimeout(resolve,0))}
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createLifecycle({
   storageProtocol,
+  storageAdmission:admission,
   online,
   storageRecovery,
   cloudStartup,
@@ -14,11 +14,7 @@ export function createLifecycle({
   backgroundStartup,
   hydrateStorageOwner=async()=>{},
   hydrateStorageV2OwnerTransfer=async()=>null,
-  resumeStorageV2OwnerTransfer=async()=>null,
-  storageV2OwnerTransferPreparing=()=>false,
   hydrateLocalBirth=async()=>null,
-  ensureLocalBirth=async()=>null,
-  localBirthPreparing=()=>false,
   ensureSyncCapabilities=async()=>true,
   tab,
   session,
@@ -41,9 +37,7 @@ for(const [name,port,methods] of [
 ])for(const method of methods)if(typeof port?.[method]!=='function')throw new TypeError(`lifecycle_${name}_${method}_required`);
 
 if(typeof online!=='function')throw new TypeError('lifecycle_online_required');
-const admission=createStorageStartupAdmission({protocol:storageProtocol,primary:()=>tab.primaryTab,
-  transfer:{preparing:storageV2OwnerTransferPreparing,resume:resumeStorageV2OwnerTransfer},
-  birth:{preparing:localBirthPreparing,ensure:ensureLocalBirth}});
+for(const method of ['admit','assertCurrent','assertOwner','readOnlyRequired','transferPending'])if(typeof admission?.[method]!=='function')throw new TypeError(`lifecycle_storage_admission_${method}_required`);
 
 async function boot(){
   session.storageProtocolBlocked=true;
