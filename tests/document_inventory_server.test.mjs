@@ -19,7 +19,7 @@ async function fixture(t,{count='0',page='',abortPhase='',handoffAbort=false}={}
   const f=await indexFixture(t);await f.read();const controller=new AbortController(),commands=[];
   const source=await fs.readFile(new URL('../netunim-orders/document-bridge/server.mjs',import.meta.url),'utf8'),ast=parse(source,{ecmaVersion:'latest',sourceType:'module'});
   let pruned=0,registered=0;
-  Object.assign(f.context,{...lib,AbortController,createEverythingInventorySource,createDocumentSearch,pruneResults:()=>{pruned++},publicResult:()=>{registered++;return {id:'synthetic'}},
+  Object.assign(f.context,{...lib,AbortController,everythingSession:{invalidate:()=>{}},createEverythingInventorySource,createDocumentSearch,pruneResults:()=>{pruned++},publicResult:()=>{registered++;return {id:'synthetic'}},
     preparePdfFormIndexForSearch:async()=>({partial:false}),searchPdfFormIndex:()=>[],appendLog:async()=>{},createPdfInventory:ports=>{
     const inventory=createPdfInventory(ports,{pageSize:2});if(!handoffAbort)return inventory;
     return {...inventory,read:async options=>{const rows=await inventory.read(options);queueMicrotask(()=>controller.abort());return rows}};

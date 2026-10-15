@@ -158,6 +158,10 @@ remaining-scope paragraphs describe their stage's starting point.
   and suppresses late publication. Original transport policy and 4,716 executed
   search/recent comparisons, native HTTP/files/processes and strict mutations
   protect the slice. See [Document search ownership](DOCUMENT_SEARCH_OWNERSHIP.md).
+  Everything readiness/cache/coalesced startup now has a strict five-port owner;
+  fast IPC selection remains fast while shutdown joins accepted losing probes.
+  Native children and 96 original/current policy scenarios plus exact cache and
+  startup deadlines protect it. See [Everything session](EVERYTHING_SESSION_OWNER.md).
 - Both applications' full local Finance connection import now has a strict
   device owner and native file-selection owner, joined by Kupa Bank and Orders
   Finance. Confirmation/publication cannot drift to a replacement device;
@@ -221,7 +225,7 @@ remaining-scope paragraphs describe their stage's starting point.
 | --- | --- | --- |
 | Private controllers and composition | Remaining financial edit commands and manual-edit lease queue lifecycle; Calendar and large customer-document/view responsibilities; internal Main save/hydration coordination, remaining shell composition width and backup UI/resource account ownership | Narrow owners and lifecycle where jobs exist; dependency/API/I/O budgets; representative production behavior preserved |
 | Business and transaction contracts | Remaining journal/IDB callers, Finance leases/RPC envelopes, complete Bank/Credit profile/result payloads, Morning/Calendar commands and capability consumers | Unknown-payload validation and actual implementation mutations; an unchecked decoder never grants authoritative confirmation |
-| Bridge orchestration | Document Everything discovery/startup, PDF reconciliation and scheduled maintenance/installer processes; Credit adapter construction, DigitalV3/Camoufox internals and remaining Bank CLI/token processes | Before-change retry/fallback characterization, native provider/process/file fixtures and preserved wire contracts |
+| Bridge orchestration | Document Everything executable discovery and general process transport, PDF reconciliation and scheduled maintenance/installer processes; Credit adapter construction, DigitalV3/Camoufox internals and remaining Bank CLI/token processes | Before-change retry/fallback characterization, native provider/process/file fixtures and preserved wire contracts |
 | Canonical sources and retirement inventory | Classify remaining legacy readers, preference keys, SQL setup/operator copies and generated assets; deterministic current/operator SQL generation where missing; retire only proven unused paths | Consumer inventory, immutable deployed migrations/receipts, deterministic generation and old-record/backup restore evidence |
 
 Typing and resource ownership accompany each boundary change. A clean import

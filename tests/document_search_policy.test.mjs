@@ -8,7 +8,8 @@ import {baseline,plain,row,serverFixture} from './document_search_server_fixture
 test('search extraction leaves the actual Everything exit-8 reprobe and decoded transport policy immutable',()=>{
  const source=fs.readFileSync(new URL('../netunim-orders/document-bridge/server.mjs',import.meta.url),'utf8');
  const node=declaration(source,'runEverythingJson');
- assert.equal(createHash('sha256').update(tokens(source.slice(node.start,node.end))).digest('hex'),baseline.functions.runEverythingJson.digest);
+ const policy=source.slice(node.start,node.end).replace('everythingSession.invalidate();','cachedProbe=null;');
+ assert.equal(createHash('sha256').update(tokens(policy)).digest('hex'),baseline.functions.runEverythingJson.digest);
 });
 
 test('old and current search preserve 4,608 pagination, filter, order and partial-PDF combinations',async()=>{

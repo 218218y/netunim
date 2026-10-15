@@ -135,6 +135,8 @@
     "netunim-kupa/bank-bridge/operation-owner.mjs",
     "tests/fixtures/checked-bank-bridge-owner.mjs",
     "netunim-orders/document-bridge/everything-result-codec.mjs",
+    "netunim-orders/document-bridge/everything-session.mjs",
+    "tests/fixtures/checked-everything-session.mjs",
     "netunim-orders/document-bridge/search-owner.mjs",
     "netunim-orders/document-bridge/result-registry.mjs",
     "tests/fixtures/checked-document-search.mjs",

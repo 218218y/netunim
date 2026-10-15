@@ -26,6 +26,14 @@ function check(overrides=new Map()){
 }
 function describe(diagnostics){return ts.formatDiagnostics(diagnostics,{getCanonicalFileName:file=>file,getCurrentDirectory:()=>root,getNewLine:()=> '\n'})}
 
+test('Everything session implementation rejects text timestamps and unjoined shutdown',()=>{
+ const source=path.join(root,'netunim-orders/document-bridge/everything-session.mjs'),original=readFileSync(source,'utf8');
+ for(const [from,to]of [['at: runtime.now()',"at: 'now'"],['await Promise.all([...pending]);','return true;']]){
+  const changed=original.replace(from,to);assert.notEqual(changed,original,from);const diagnostics=check(new Map([[source,changed]]));
+  assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&[2322,2345].includes(item.code)),describe(diagnostics));
+ }
+});
+
 test('Document search bodies reject text page limits, unjoined disposal and text expiry',()=>{
  for(const [file,from,to]of [
   ['search-owner.mjs','limit: boundedLimit',"limit: '2'"],
