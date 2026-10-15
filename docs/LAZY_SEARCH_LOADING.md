@@ -7,8 +7,11 @@ financial commands, background refresh and recovery retain their startup owners.
 
 The loader body is strict checkJs. It joins imports, binds one presentation,
 removes temporary listeners and preserves synchronous calls once loaded. During
-loading the input can receive focus/text, Escape/backdrop/close cancel intent,
-and failures show an explicit retry. Closing/disposal or any account observation
+loading the input can receive focus/text and Escape/backdrop/close cancel intent.
+An actual blocked-import experiment proved that Chromium retains a failed module
+URL in the current document. The recovery button explicitly reloads the page;
+retrying import of that same URL in the same document cannot recover it.
+Closing/disposal or any account observation
 (including A to B to A) invalidates queued work before view creation. The loaded
 presentation retains its existing provider deadlines, query cancellation, private
 viewer mounts and account privacy guards. No provider warmup occurs before use.
@@ -16,7 +19,9 @@ viewer mounts and account privacy guards. No provider warmup occurs before use.
 All first-party deferred modules remain in the deterministic Service Worker shell.
 Native tests prove no heavy search request at startup, first use after offline
 reload, keyboard/trigger/close interaction, no viewer-vendor fetch for site search
-and a held import invalidated by account changes. Existing privacy/deadline/viewer
+and a held import invalidated by account changes. A native blocked-module test
+proves successful first use after the recovery button reloads, with readable
+Hebrew guidance. Existing privacy/deadline/viewer
 suites and the full PWA/account/two-computer gates remain enabled. Model tests
 include import/bind failure retry, disposal and a real implementation mutation
 that recreates late opening after cancellation when the guards are removed.

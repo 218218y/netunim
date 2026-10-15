@@ -1,6 +1,7 @@
 """Real shared search first use is deferred, keyboard-bound and cached offline."""
 from browser_harness import BrowserSession, ROOT
 import json
+import time
 
 for app in ['kupa', 'orders']:
     with BrowserSession(ROOT/f'netunim-{app}/site', app+'-lazy-search', instrument=False,
@@ -51,3 +52,42 @@ for app in ['kupa', 'orders']:
         assert held == {'cancelled': True, 'created': 0, 'hidden': True}, held
         assert not browser.drain_serious_errors()
         print('PASS', app, 'deferred shared search; offline keyboard/trigger first-use;', json.dumps({**setup, **first_use}), flush=True)
+
+    # Native ESM retains a failed module URL for the life of the document.
+    # Exercise the actual reload recovery button, not a fake retrying loader.
+    with BrowserSession(ROOT/f'netunim-{app}/site', app+'-search-load-recovery', instrument=False,
+                        auto_navigate=False) as browser:
+        browser.call('Page.addScriptToEvaluateOnNewDocument', {'source': 'performance.setResourceTimingBufferSize(3000)'})
+        browser._navigate()
+        browser.evaluate("import('./assets/js/main.js').then(m=>m.appReady).then(()=>true)")
+        browser.call('Network.enable')
+        browser.call('Network.setBlockedURLs', {'urls': ['*global-document-search.js']})
+        failed = browser.evaluate(r"""(async()=>{
+          document.getElementById('globalSearchButton').click();
+          for(let i=0;i<120&&!document.querySelector('[data-search-load-reload]');i++)await new Promise(resolve=>setTimeout(resolve,25));
+          const button=document.querySelector('[data-search-load-reload]'),text=document.getElementById('globalSearchResults').textContent;
+          return {recovery:!!button,readable:/[\u0590-\u05ff]/.test(text)&&!/\?{3,}/.test(text),origin:performance.timeOrigin};
+        })()""")
+        assert failed['recovery'] and failed['readable'], failed
+        browser.call('Network.setBlockedURLs', {'urls': []})
+        browser.evaluate("setTimeout(()=>document.querySelector('[data-search-load-reload]').click(),0);true")
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            try:
+                state = browser.evaluate("({origin:performance.timeOrigin,ready:document.readyState})")
+                if state['origin'] != failed['origin'] and state['ready'] == 'complete':
+                    break
+            except RuntimeError:
+                pass  # The old execution context is expected to be destroyed.
+            time.sleep(0.05)
+        else:
+            raise AssertionError('search recovery button did not reload the document')
+        browser.evaluate("import('./assets/js/main.js').then(m=>m.appReady).then(()=>true)")
+        recovered = browser.evaluate("""(async()=>{
+          document.getElementById('globalSearchButton').click();
+          for(let i=0;i<120&&document.getElementById('globalSearchBackdrop').getAttribute('aria-busy')==='true';i++)await new Promise(resolve=>setTimeout(resolve,25));
+          return {visible:!document.getElementById('globalSearchBackdrop').hidden,retry:!!document.querySelector('[data-search-load-reload]'),requested:performance.getEntriesByType('resource').some(row=>row.name.endsWith('/global-document-search.js'))};
+        })()""")
+        assert recovered == {'visible': True, 'retry': False, 'requested': True}, recovered
+        assert not browser.drain_serious_errors()
+        print('PASS', app, 'native failed-module recovery through explicit document reload; readable Hebrew guidance', flush=True)

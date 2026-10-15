@@ -33,7 +33,9 @@ function browserPlatform(){
       listen(backdrop,'pointerdown',event=>{pointerId=event instanceof PointerEvent&&event.target===backdrop?event.pointerId:-1});
       listen(backdrop,'pointerup',event=>{if(event instanceof PointerEvent&&event.pointerId===pointerId&&event.target===backdrop)controls.close();pointerId=-1});
       listen(backdrop,'pointercancel',()=>{pointerId=-1});
-      listen(element('globalSearchResults'),'click',event=>{if(event.target instanceof Element&&event.target.closest('[data-search-load-retry]'))controls.open()});
+      // A failed native ESM URL remains failed in this document's module map.
+      // Reload deliberately resets that cache; repeating import() cannot do so.
+      listen(element('globalSearchResults'),'click',event=>{if(event.target instanceof Element&&event.target.closest('[data-search-load-reload]'))globalThis.location.reload()});
       return ()=>{for(const remove of cleanup.splice(0))remove()};
     },
     busy(value){
@@ -43,7 +45,7 @@ function browserPlatform(){
     showLoading(){
       const backdrop=element('globalSearchBackdrop');if(backdrop){backdrop.hidden=false;backdrop.setAttribute('aria-hidden','false')}
       element('globalSearchButton')?.setAttribute('aria-expanded','true');
-      const results=element('globalSearchResults');if(results)results.textContent='???? ??????';
+      const results=element('globalSearchResults');if(results)results.textContent='טוען חיפוש…';
       element('globalSearchInput')?.focus();
     },
     hide,
@@ -54,8 +56,8 @@ function browserPlatform(){
     },
     showError(){
       const results=element('globalSearchResults');if(!results)return;
-      const message=document.createElement('p');message.textContent='????? ?????? ?????.';
-      const retry=document.createElement('button');retry.type='button';retry.className='btn';retry.dataset.searchLoadRetry='';retry.textContent='??? ???';
+      const message=document.createElement('p');message.textContent='טעינת החיפוש נכשלה. טען מחדש כדי לנסות שוב.';
+      const retry=document.createElement('button');retry.type='button';retry.className='btn';retry.dataset.searchLoadReload='';retry.textContent='טען מחדש';
       results.replaceChildren(message,retry);
     },
   };

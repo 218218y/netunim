@@ -59,3 +59,15 @@ test('implementation mutation reproduces premature admission after lost leadersh
   const f=fixture();f.ports.birth.ensure=async()=>{f.state.localEngineActive=true;f.lead(false)};
   assert.equal((await unsafe(f.ports).admit({...f.state})).ok,true);
 });
+
+for(const [app,create,compose] of [['Orders',orders,withOrdersStartup],['Kupa',kupa,withKupaStartup]])test(`${app} blocked admission retains readable Hebrew recovery guidance`,async t=>{
+  t.mock.method(console,'error',noop);const messages=[];
+  const ports=compose({tab:{primaryTab:true},session:{},online:()=>false,storageOwnerCurrent:()=> 'local',
+    acquirePrimaryTabLock:async()=>{},hydrateStorageOwner:async()=>{},restoreSupaSession:async()=>null,loadSession:()=>null,
+    verifyStorageV2AccountMarker:async()=>false,verifyLocalStorageEngine:async()=>false,
+    ensureLocalBirth:async()=>{throw Error('birth-interrupted')},
+    setSave:message=>messages.push(message),setCloud:message=>messages.push(message),syncFolderAccessButton:noop,
+    setCloudHeaderStatus:noop,setConnectUI:value=>messages.push(value.title,value.text)});
+  await create(ports).boot();assert.ok(messages.length);
+  for(const message of messages){assert.match(message,/[\u0590-\u05ff]/);assert.doesNotMatch(message,/\?{3,}/)}
+});
