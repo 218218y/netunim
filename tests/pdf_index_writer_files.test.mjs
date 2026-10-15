@@ -4,12 +4,15 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import vm from 'node:vm';
 import {parse} from 'acorn';
+import {createPdfMaintenanceOperation} from '../netunim-orders/document-bridge/pdf-maintenance-operation.mjs';
 import {indexFixture,journalRow} from './pdf_index_file_fixture.mjs';
 
 const row={...journalRow,fullPath:'C:\\synthetic\\new.pdf',text:'new committed text'};
 const fault=()=>Object.assign(new Error('synthetic disk fault'),{code:'EIO'});
 function handleHook(handle,overrides){return new Proxy(handle,{get(target,key){if(key in overrides)return overrides[key];const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value}})}
-async function sourceFunction(name,context){const source=await fs.readFile(new URL('../netunim-orders/document-bridge/server.mjs',import.meta.url),'utf8'),node=parse(source,{ecmaVersion:'latest',sourceType:'module'}).body.find(node=>node.type==='FunctionDeclaration'&&node.id.name===name);return vm.runInNewContext(source.slice(node.start,node.end)+`\n${name}`,context)}
+async function sourceFunction(name,context){const source=await fs.readFile(new URL('../netunim-orders/document-bridge/server.mjs',import.meta.url),'utf8'),ast=parse(source,{ecmaVersion:'latest',sourceType:'module'}),node=ast.body.find(node=>node.type==='FunctionDeclaration'&&node.id.name===name);let prefix='';
+ if(name==='refreshPdfFormIndex'){const composition=ast.body.find(node=>node.type==='VariableDeclaration'&&node.declarations.some(item=>item.id.name==='pdfMaintenanceOperation'));Object.assign(context,{createPdfMaintenanceOperation,readPdfMaintenanceMetadata:()=>context.readJsonFile()});prefix=source.slice(composition.start,composition.end)+'\n'}
+ return vm.runInNewContext(prefix+source.slice(node.start,node.end)+`\n${name}`,context)}
 
 test('production append preserves replay of a historical journal with no final newline',async t=>{
   for(const suffix of ['', '\r', '\n', '\r\n']){
@@ -32,10 +35,10 @@ test('production maintenance does not reinterpret a journal failure as an extrac
   let writes=0;const f=await indexFixture(t,{ioHook:io=>({...io,open:async(file,...args)=>{
     const handle=await io.open(file,...args);return file.endsWith('.jsonl')&&args[0]==='a+'?handleHook(handle,{writeFile:async()=>{writes++;throw fault()}}):handle;
   }})});const logs=[],maintenance={};
-  Object.assign(f.context,{AbortController,setTimeout,clearTimeout,process:{cpuUsage:()=>({user:0,system:0})},shuttingDown:false,pdfMaintenanceStopRequested:false,pdfFormIndexRefreshPromise:null,pdfFormIndexRefreshAbortController:null,
+  Object.assign(f.context,{AbortController,setTimeout,clearTimeout,process:{cpuUsage:()=>({user:0,system:0})},shuttingDown:false,pdfMaintenanceStopRequested:false,
     PDF_FORM_MAINTENANCE_MAX_FILES:1,PDF_FORM_MAINTENANCE_MAX_MS:0,PDF_FORM_MAINTENANCE_PATH:'synthetic',PDF_FORM_MAINTENANCE_INTERVAL_MS:1,PDF_FORM_RECONCILE_INTERVAL_MS:1,PDF_FORM_MAX_BYTES:100,PDF_FORM_DETECTION_REVISION:3,PDF_FORM_SEARCH_TEXT_REVISION:3,PDF_FORM_GEOMETRY_REVISION:3,PDF_FORM_RETRY_MS:100,
-    pdfFormIndexBacklog:[row],readJsonFile:async()=>maintenance,writeJsonFile:async(_file,value)=>Object.assign(maintenance,value),appendLog:async text=>logs.push(text),
-    pdfMaintenanceInventoryPlan:()=>({full:false,modifiedSince:''}),rebuildPdfFormIndexBacklog:async()=>({pdfCount:3,changed:1,removed:0}),isAbortError:()=>false,
+    readJsonFile:async()=>maintenance,writeJsonFile:async(_file,value)=>Object.assign(maintenance,value),appendLog:async text=>logs.push(text),
+    pdfMaintenanceInventoryPlan:()=>({full:false,modifiedSince:''}),rebuildPdfFormIndexBacklog:async()=>({pdfCount:3,changed:1,removed:0,rows:[row]}),
     extractInteractivePdfText:async()=>({hasForm:true,text:row.text,formFields:journalRow.formFields,formFieldCount:1})});
   const refresh=await sourceFunction('refreshPdfFormIndex',f.context);await assert.rejects(refresh({force:true}),{code:'EIO'});
   assert.equal(writes,1);assert.equal(f.context.pdfFormIndex.has(row.fullPath.toLowerCase()),false);assert.equal(maintenance.lastSuccessfulAt,undefined);

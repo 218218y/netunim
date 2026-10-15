@@ -57,7 +57,7 @@ test('actual server composition joins direct ES work as well as session and disc
   createEverythingProcessPlatform:()=>({commands:{execute:async(_file,args)=>{if(args[0]==='held'){entered.resolve();await held.promise}return{stdout:'Everything'}},launch:async()=>{}}}),
   createEverythingDiscoveryPlatform:()=>({locations:{esCandidates:['synthetic'],direct:()=>[],registryKeys:[],known:[],windows:false},files:{exists:async()=>true},commands:{where:async()=>'',registry:async()=>''},paths:{executables:()=>[]}}),
   loadConfig:async()=>({everythingInstance:'',everythingExecutable:'',searchTimeoutMs:15000,allowedOrigins:[]}),saveConfig:async()=>{},Date,setTimeout,appendLog:async()=>{},APP_ROOT:'synthetic',shuttingDown:false,
-  documentSearch:{dispose:async()=>{}},documentResults:{dispose:()=>{}},previewTextCache:{dispose:()=>{}},manualMaintenance:{dispose:async()=>{}},nativePreviewSession:{dispose:async()=>{}},process:{pid:10}};
+  documentSearch:{dispose:async()=>{}},documentResults:{dispose:()=>{}},pdfMaintenanceOperation:{dispose:async()=>{}},previewTextCache:{dispose:()=>{}},manualMaintenance:{dispose:async()=>{}},nativePreviewSession:{dispose:async()=>{}},process:{pid:10}};
  const root=vm.runInNewContext(selected.map(node=>source.slice(node.start,node.end)).join('\n')+'\n({probe:probeEverything,run:runEs,stop:prepareShutdown})',context);
  await root.probe();const reading=root.run('synthetic',['held']);await entered.promise;
  let done=false;const stopped=root.stop().then(()=>{done=true});await new Promise(resolve=>setImmediate(resolve));assert.equal(done,false);

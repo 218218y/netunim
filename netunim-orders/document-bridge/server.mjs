@@ -19,6 +19,8 @@ import {createPdfIndexFilePlatform} from './pdf-index-file-platform.mjs';
 import {createPdfIndexWriter} from './pdf-index-writer.mjs';
 import {createPdfIndexWritePlatform} from './pdf-index-write-platform.mjs';
 import {createPdfInventory} from './pdf-inventory.mjs';
+import {createPdfMaintenanceOperation} from './pdf-maintenance-operation.mjs';
+import {readPdfMaintenanceMetadata} from './pdf-maintenance-platform.mjs';
 import {createEverythingInventorySource} from './everything-inventory-source.mjs';
 import {createFileLockOwner} from './file-lock-owner.mjs';
 import {createFileLockPlatform} from './file-lock-platform.mjs';
@@ -75,9 +77,9 @@ const PDF_FORM_MAINTENANCE_PATH=path.join(APP_ROOT,'pdf-form-maintenance.json');
 const PDF_FORM_INDEX_LOCK_PATH=path.join(APP_ROOT,'pdf-form-index.lock');
 const PDF_FORM_MAINTENANCE_LOCK_PATH=path.join(APP_ROOT,'pdf-form-maintenance.lock');
 let server=null;
-let pdfFormIndexLoaded=false,pdfFormIndexRefreshPromise=null,pdfFormIndexRefreshAbortController=null,pdfFormIndexLastRefresh=0,pdfFormIndexPending=0,pdfFormIndexInventoryCount=0,shuttingDown=false,pdfFormIndexSignature='';
+let pdfFormIndexLoaded=false,pdfFormIndexLastRefresh=0,pdfFormIndexPending=0,pdfFormIndexInventoryCount=0,shuttingDown=false,pdfFormIndexSignature='';
 let pdfMaintenanceStopRequested=false;
-let pdfFormIndexBacklog=[];
+
 const pdfFormIndex=new Map();
 
 async function ensureRoot(){await fs.mkdir(APP_ROOT,{recursive:true})}
@@ -247,7 +249,6 @@ const pdfInventory=createPdfInventory({...createEverythingInventorySource({loadC
   isStopping:()=>shuttingDown||pdfMaintenanceStopRequested,
 },{pageSize:PDF_FORM_INDEX_PAGE_SIZE});
 async function listEverythingPdfs(options={}){return pdfInventory.read(options)}
-function isAbortError(error){return error?.name==='AbortError'||String(error?.code||'')==='ABORT_ERR'}
 async function rebuildPdfFormIndexBacklog({signal=null,full=false,modifiedSince=''}={}){
   const rows=await listEverythingPdfs({signal,modifiedSince:full?'':modifiedSince,verifyComplete:full});
   pdfInventory.assertActive(signal);
@@ -266,72 +267,21 @@ async function rebuildPdfFormIndexBacklog({signal=null,full=false,modifiedSince=
   }
   if(removalRecords.length)await appendPdfIndexJournal(removalRecords);
   pdfInventory.assertActive(signal);
-  pdfFormIndexBacklog=changed;pdfFormIndexPending=changed.length;pdfFormIndexInventoryCount=full?rows.length:pdfFormIndexInventoryCount;
-  return {pdfCount:rows.length,changed:changed.length,removed};
+  pdfFormIndexPending=changed.length;pdfFormIndexInventoryCount=full?rows.length:pdfFormIndexInventoryCount;
+  return {pdfCount:rows.length,changed:changed.length,removed,rows:changed};
 }
-async function refreshPdfFormIndex({maxChanged=PDF_FORM_MAINTENANCE_MAX_FILES,maxMs=PDF_FORM_MAINTENANCE_MAX_MS,onProgress=null,force=false,reason='scheduled'}={}){
-  if(shuttingDown||pdfMaintenanceStopRequested)return {pdfCount:pdfFormIndexInventoryCount,changed:pdfFormIndexPending,processed:0,pending:pdfFormIndexPending,indexed:0,failed:0,removed:0,cached:pdfFormIndex.size,interactive:[...pdfFormIndex.values()].filter(entry=>entry.hasForm&&!entry.failed).length,aborted:true,elapsedMs:0};
-  if(pdfFormIndexRefreshPromise)return pdfFormIndexRefreshPromise;
-  const controller=new AbortController();pdfFormIndexRefreshAbortController=controller;
-  const boundedMaxMs=Number.isFinite(Number(maxMs))?Math.max(0,Math.trunc(Number(maxMs))):0;
-  const limitTimer=boundedMaxMs>0?setTimeout(()=>controller.abort(),boundedMaxMs):null;limitTimer?.unref?.();
-  const task=(async()=>{
-    await loadPdfFormIndex();const started=Date.now(),cpuStarted=process.cpuUsage();let removed=0,indexed=0,failed=0,processed=0,aborted=false,bytesRead=0;
-    const maintenance=await readJsonFile(PDF_FORM_MAINTENANCE_PATH,{});
-    if(!force&&!maintenance.lastFailureAt&&Number(maintenance.lastResult?.pending)===0&&Date.parse(String(maintenance.lastSuccessfulAt||''))>started-PDF_FORM_MAINTENANCE_INTERVAL_MS)return {skipped:true,reason:'not-due',pending:pdfFormIndexPending,processed:0};
-    maintenance.lastAttemptAt=new Date(started).toISOString();await writeJsonFile(PDF_FORM_MAINTENANCE_PATH,maintenance);
-    const {full,modifiedSince}=pdfMaintenanceInventoryPlan({force,now:started,lastReconcileAt:maintenance.lastReconcileAt,lastIncrementalScanAt:maintenance.lastIncrementalScanAt,reconcileIntervalMs:PDF_FORM_RECONCILE_INTERVAL_MS});
-    const inventory=await rebuildPdfFormIndexBacklog({signal:controller.signal,full,modifiedSince});removed=inventory.removed;
-    if(shuttingDown||controller.signal.aborted){const error=new Error('PDF maintenance stopped');error.code='ABORT_ERR';throw error}
-    const changedBefore=pdfFormIndexBacklog.length,boundedMax=Number.isFinite(Number(maxChanged))?Math.max(0,Math.trunc(Number(maxChanged))):changedBefore;
-    const selected=pdfFormIndexBacklog.splice(0,boundedMax);
-    if(typeof onProgress==='function')onProgress({phase:'start',pdfCount:pdfFormIndexInventoryCount,changed:changedBefore,selected:selected.length,processed:0,indexed,failed});
-    for(const row of selected){
-      if(shuttingDown||controller.signal.aborted||(boundedMaxMs>0&&Date.now()-started>=boundedMaxMs)){aborted=true;break}
-      const key=pdfIndexKey(row.fullPath);
-      let entry;
-      try{
-        const extracted=await extractInteractivePdfText(row.fullPath,{maxBytes:PDF_FORM_MAX_BYTES,signal:controller.signal,onBytesRead:count=>{bytesRead+=count}});
-        const fileStat=await fs.stat(row.fullPath).catch(()=>null);
-        entry={...row,rootId:'everything',rootLabel:'Everything',fingerprint:row.fingerprint,fileMtimeMs:fileStat?.mtimeMs||0,detectionRevision:PDF_FORM_DETECTION_REVISION,searchTextRevision:PDF_FORM_SEARCH_TEXT_REVISION,geometryRevision:PDF_FORM_GEOMETRY_REVISION,hasForm:!!extracted.hasForm,text:extracted.hasForm?extracted.text:'',formFields:extracted.hasForm?normalizePdfFormFields(extracted.formFields):[],formFieldCount:extracted.hasForm?extracted.formFieldCount:0,failed:false,error:'',retryAfter:'',retryCount:0};
-      }catch(error){
-        if(isAbortError(error)||shuttingDown||controller.signal.aborted){aborted=true;break}
-        const previous=pdfFormIndex.get(key),retryCount=previous?.fingerprint===row.fingerprint?Math.min(8,(previous.retryCount||0)+1):1;
-        const retryMs=/No password given/i.test(String(error?.message||''))?30*PDF_FORM_RETRY_MS:Math.min(7*PDF_FORM_RETRY_MS,PDF_FORM_RETRY_MS*2**(retryCount-1));
-        entry={...row,rootId:'everything',rootLabel:'Everything',fingerprint:row.fingerprint,detectionRevision:PDF_FORM_DETECTION_REVISION,searchTextRevision:PDF_FORM_SEARCH_TEXT_REVISION,geometryRevision:0,hasForm:false,text:'',formFields:[],formFieldCount:0,failed:true,error:String(error?.message||error),retryAfter:new Date(Date.now()+retryMs).toISOString(),retryCount};failed+=1;
-        await appendLog(`PDF_FORM_INDEX_FILE_FAILED path=${JSON.stringify(row.fullPath)} error=${JSON.stringify(String(error?.message||error))}`);
-      }
-      await appendPdfIndexJournal([{op:'upsert',entry:serializePdfIndexEntry(entry)}]);
-      if(entry.hasForm&&!entry.failed)indexed+=1;
-      processed+=1;if(typeof onProgress==='function')onProgress({phase:'file',pdfCount:pdfFormIndexInventoryCount,changed:changedBefore,selected:selected.length,processed,indexed,failed,name:row.name});
-    }
-    if(processed<selected.length)pdfFormIndexBacklog.unshift(...selected.slice(processed));
-    const pending=pdfFormIndexBacklog.length;pdfFormIndexPending=pending;
-    await compactPdfFormIndex({pending,pdfCount:pdfFormIndexInventoryCount});
-    if(!aborted&&pending===0){maintenance.lastIncrementalScanAt=new Date(started).toISOString();if(full)maintenance.lastReconcileAt=new Date(started).toISOString();maintenance.lastSuccessfulAt=new Date().toISOString()}
-    delete maintenance.lastFailureAt;delete maintenance.lastFailure;
-    maintenance.lastResult={reason,full,modifiedSince,pdfCount:inventory.pdfCount,changed:changedBefore,processed,pending,indexed,failed,removed,bytesRead,aborted,elapsedMs:Date.now()-started};await writeJsonFile(PDF_FORM_MAINTENANCE_PATH,maintenance);
-    const interactive=[...pdfFormIndex.values()].filter(entry=>entry.hasForm&&!entry.failed).length;
-    const cpu=process.cpuUsage(cpuStarted),elapsedMs=Date.now()-started;
-    await appendLog(`PDF_FORM_INDEX_MAINTENANCE trigger=${reason} mode=${full?'reconcile':'incremental'} pdfs=${inventory.pdfCount} changed=${changedBefore} processed=${processed} pending=${pending} inspected=${pdfFormIndex.size} interactive=${interactive} indexed=${indexed} failed=${failed} removed=${removed} bytesRead=${bytesRead} cpuMs=${Math.round((cpu.user+cpu.system)/1000)} aborted=${aborted} elapsedMs=${elapsedMs}`);
-    return {pdfCount:inventory.pdfCount,changed:changedBefore,processed,pending,indexed,failed,removed,cached:pdfFormIndex.size,interactive,aborted,bytesRead,cpuMs:Math.round((cpu.user+cpu.system)/1000),elapsedMs};
-  })();
-  pdfFormIndexRefreshPromise=task;
-  try{return await task}catch(error){
-    const maintenance=await readJsonFile(PDF_FORM_MAINTENANCE_PATH,{});
-    if(controller.signal.aborted||isAbortError(error)){
-      const result={aborted:true,processed:0,pending:pdfFormIndexPending,elapsedMs:Date.now()-Date.parse(maintenance.lastAttemptAt||new Date().toISOString())};
-      maintenance.lastResult={reason, ...result};delete maintenance.lastFailureAt;delete maintenance.lastFailure;
-      await writeJsonFile(PDF_FORM_MAINTENANCE_PATH,maintenance).catch(()=>{});
-      await appendLog(`PDF_FORM_INDEX_MAINTENANCE_STOPPED trigger=${reason} pending=${result.pending}`);
-      return result;
-    }
-    maintenance.lastFailureAt=new Date().toISOString();maintenance.lastFailure=String(error?.message||error);
-    await writeJsonFile(PDF_FORM_MAINTENANCE_PATH,maintenance).catch(()=>{});
-    await appendLog(`PDF_FORM_INDEX_MAINTENANCE_FAILED trigger=${reason} error=${JSON.stringify(maintenance.lastFailure)}`);
-    throw error;
-  }finally{if(limitTimer)clearTimeout(limitTimer);if(pdfFormIndexRefreshPromise===task)pdfFormIndexRefreshPromise=null;if(pdfFormIndexRefreshAbortController===controller)pdfFormIndexRefreshAbortController=null}
-}
+const pdfMaintenanceOperation=createPdfMaintenanceOperation({
+  index:{load:loadPdfFormIndex,entries:pdfFormIndex,view:()=>({pending:pdfFormIndexPending,pdfCount:pdfFormIndexInventoryCount}),
+    publishPending:pending=>{pdfFormIndexPending=pending},append:appendPdfIndexJournal,serialize:serializePdfIndexEntry,compact:compactPdfFormIndex},
+  inventory:{rebuild:rebuildPdfFormIndexBacklog},
+  extraction:{read:extractInteractivePdfText,stat:fullPath=>fs.stat(fullPath),fields:normalizePdfFormFields},
+  metadata:{read:()=>readPdfMaintenanceMetadata(PDF_FORM_MAINTENANCE_PATH),write:record=>writeJsonFile(PDF_FORM_MAINTENANCE_PATH,record)},
+  policy:{plan:pdfMaintenanceInventoryPlan,limits:{PDF_FORM_MAINTENANCE_MAX_FILES,PDF_FORM_MAINTENANCE_MAX_MS,PDF_FORM_MAINTENANCE_INTERVAL_MS,PDF_FORM_RECONCILE_INTERVAL_MS,PDF_FORM_RETRY_MS,PDF_FORM_MAX_BYTES,PDF_FORM_DETECTION_REVISION,PDF_FORM_SEARCH_TEXT_REVISION,PDF_FORM_GEOMETRY_REVISION}},
+  runtime:{now:Date.now,cpuUsage:previous=>process.cpuUsage(previous),isStopping:()=>shuttingDown||pdfMaintenanceStopRequested,setTimeout,clearTimeout},
+  audit:{write:appendLog},
+});
+async function refreshPdfFormIndex(options={}){return pdfMaintenanceOperation.refresh(options)}
+
 async function preparePdfFormIndexForSearch(){
   try{await loadPdfFormIndex()}catch(error){await appendLog(`PDF_FORM_INDEX_LOAD_FAILED ${error?.message||error}`);return {partial:true}}
   return {partial:!pdfFormIndexLastRefresh||pdfFormIndexPending>0};
@@ -539,9 +489,9 @@ async function warmDocumentSearch(){const probe=await probeEverything({autoStart
 async function prepareShutdown(){
   shuttingDown=true;
   previewTextCache.dispose();
-  const searchDrain=documentSearch.dispose(),sessionDrain=everythingSession.dispose(),discoveryDrain=everythingDiscovery.dispose(),processDrain=everythingProcesses.dispose();
+  const searchDrain=documentSearch.dispose(),sessionDrain=everythingSession.dispose(),discoveryDrain=everythingDiscovery.dispose(),processDrain=everythingProcesses.dispose(),pdfDrain=pdfMaintenanceOperation.dispose();
   documentResults.dispose();
-  await Promise.all([searchDrain,sessionDrain,discoveryDrain,processDrain,manualMaintenance.dispose(),nativePreviewSession.dispose()]);
+  await Promise.all([searchDrain,sessionDrain,discoveryDrain,processDrain,pdfDrain,manualMaintenance.dispose(),nativePreviewSession.dispose()]);
   return {ok:true,pid:process.pid};
 }
 function finishShutdown(){
@@ -668,7 +618,7 @@ async function main(){
   if(process.platform==='win32')privateNodeRuntimeInfoSync();
   const arg=process.argv[2]||'';
   if(arg==='--init'){await init();return}if(arg==='--doctor'){await printDoctor({allowUnreadyScheduledTask:process.argv.slice(3).includes('--allow-unready-task')});return}if(arg==='--ensure-everything'){await init();const probe=await probeEverything({fresh:true,autoStart:true});console.log(`${probe.everythingVersion||'unknown'} ${probe.everythingExecutable||''}`.trim());return}if(arg==='--refresh-pdf-index'){
-    return runMaintenanceWorker(createMaintenanceWorkerPlatform({requestStop:()=>{pdfMaintenanceStopRequested=true;pdfFormIndexRefreshAbortController?.abort()}}),async()=>{
+    return runMaintenanceWorker(createMaintenanceWorkerPlatform({requestStop:()=>{pdfMaintenanceStopRequested=true;pdfMaintenanceOperation.stop()}}),async()=>{
     await init();await probeEverything({fresh:true,autoStart:true});
     const extraArgs=process.argv.slice(3),maxArg=extraArgs.find(value=>/^--max-files=\d+$/.test(String(value))),manual=extraArgs.includes('--force');
     const {maxChanged,maxMs}=pdfMaintenanceRunLimits({manual,requestedMaxFiles:maxArg?Number(maxArg.split('=')[1]):null,scheduledMaxFiles:PDF_FORM_MAINTENANCE_MAX_FILES,scheduledMaxMs:PDF_FORM_MAINTENANCE_MAX_MS});

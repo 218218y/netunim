@@ -1,5 +1,13 @@
 # Architecture refactor: verified baseline and next slices
 
+PDF refresh now has a strict seven-port operation and explicit checkpoint
+admission. Complete flights join abort/failure metadata and timer cleanup;
+native fixtures reproduce early coalesced completion and malformed checkpoint
+overwrite in the original code. Selected rows are an operation-owned batch, and
+server-global queue/promise/controller fields are retired. 720 original/current
+policy combinations and native index/journal/server shutdown fixtures protect
+the slice. See [PDF refresh operation](PDF_MAINTENANCE_OPERATION.md).
+
 Everything executable selection and command execution now have strict discovery
 and process owners plus a native adapter. Ordered location/registry/PATH and ES
 transport policies match their captured originals. A native baseline reproduces
