@@ -14,14 +14,15 @@ function fixture(){
     if(!options.method)return new Response(JSON.stringify([f.remote]));
     const body=JSON.parse(options.body);f.calls.push({path,body});
     if(f.delay){const delay=f.delay;f.delay=null;await delay}
-    if(!operations.has(body.p_operation_id)){
+    const replayed=operations.has(body.p_operation_id);
+    if(!replayed){
       if(body.p_expected_revision!==f.remote.revision)return new Response(JSON.stringify({code:'40001',message:'revision_conflict'}),{status:409});
       const state=path.includes('restore_')?book():body.p_state;
       if(JSON.stringify(f.remote.state)!==JSON.stringify(state))f.remote={revision:f.remote.revision+1,state:clone(state)};
       operations.set(body.p_operation_id,true);
     }
     if(f.dropAck){f.dropAck=false;throw new Error('lost ACK')}
-    return new Response(JSON.stringify([f.remote]));
+    return new Response(JSON.stringify([{...f.remote,operation_replayed:replayed}]));
   }});
   f.run=async ms=>{for(const [id,timer] of [...timers])if(timer.ms===ms){timers.delete(id);timer.fn()}await new Promise(resolve=>setImmediate(resolve));};
   f.edit=(sync,value,column=0)=>{const b=sync.model.state.notesSheet,row=b.rows[0],id=b.columns[column].id;row.cells[id]=value;row.updatedAt='2026-09-17';sync.changed({rowId:row.id,columnId:id,value,updatedAt:row.updatedAt})};

@@ -20,6 +20,8 @@
     "types": []
   },
   "files": [
+    "shared/spreadsheet-remote.js",
+    "tests/fixtures/checked-spreadsheet-remote.mjs",
     "shared/startup-timing.js",
     "shared/finance-fence.js",
     "shared/finance-lease-transport.js",
