@@ -1132,4 +1132,16 @@ protect the boundary. See [Morning form/Bank capabilities](MORNING_FORM_BANK_CAP
 
 Orders and Kupa Credit refresh now has strict seven-port operation owners. Controllers retain admission/presentation; cloud/lease/provider/diagnostic/cleanup commands remain drainable after disposal. Kupa Credit decreases from 15 to 13 inputs and composes one existing publication owner for refresh/settings/reset/retry. Immutable full-function ASTs preserve distinct freshness, cooldown, rebase and ACK/checkpoint policy. A shared unknown Bridge envelope rejects coercible counts, invalid profile identities and malformed diagnostics. Native pairing/account/disposal and malformed replies preserve exact journals and recovery. Kupa Bank coordination and remaining financial edit contracts stay open. See [Credit refresh operations](CREDIT_REFRESH_OPERATION_OWNERS.md).
 
-Kupa Bank provider refresh now has a strict seven-port operation owner and a strict three-port candidate policy. The controller decreases from 17 to 13 inputs, retaining admission/presentation and retiring provider/lease/archive/candidate/publication coordination. Preparation retains previous feeds/audit before Checks; snapshot identity and Shared watermark remain captured after the barrier. Immutable refresh/feed/clock ASTs and older archive/lease/snapshot fixtures preserve financial, 365/30-day, home-LKG and cloud/local durability policies. Local-only cloud grants and malformed home failure envelopes fail before archive publication. Native lifecycle coverage expands to nine held stages with account/pairing/disposal and exact journal/recovery checks. Provider-refresh coordination is now separated in all four Bank/Credit controllers. See [Kupa Bank refresh operation](KUPA_BANK_REFRESH_OPERATION.md).
+Kupa Bank provider refresh now has a strict seven-port operation owner and a strict three-port candidate policy. The controller decreases from 17 to 13 inputs, retaining admission/presentation and retiring provider/lease/archive/candidate/publication coordination. Preparation retains previous feeds/audit before Checks; snapshot identity and Shared watermark remain captured after the barrier. Immutable refresh/feed/clock ASTs and older archive/lease/snapshot fixtures preserve financial, 365/30-day, home-LKG and cloud/local durability policies. Local-only cloud grants and malformed home failure envelopes fail before archive publication. Native lifecycle coverage expands to nine held stages with account/pairing/disposal and exact journal/recovery checks. Provider-refresh coordination is now separated across all four Bank/Credit refresh paths. See [Kupa Bank refresh operation](KUPA_BANK_REFRESH_OPERATION.md).
+
+Calendar now has strict readonly board/toolbar and event/pending read models,
+plus synchronous full/quick editor payload parsing. The controller decreases
+from 41,494 to 28,981 bytes while retaining mounted command authority. A native
+baseline reproduces malformed Google success acknowledging a durable insert.
+Unknown envelopes, permissions, boundaries and identity-bound replies now pass
+decoders before cache/ACK; repeated pagination fails closed and accepted sibling
+reads remain joined. Original 24-function ASTs, older immutable policy digests,
+executed presentation/editor comparisons, strict body mutations and seven native
+failure/restart/recovery cases protect the slice. Editor modal/queue command and
+persisted-row boundaries remain open. See
+[Calendar projection and payloads](CALENDAR_PROJECTION_PAYLOADS.md).

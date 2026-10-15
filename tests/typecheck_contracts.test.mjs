@@ -26,6 +26,18 @@ function check(overrides=new Map()){
 }
 function describe(diagnostics){return ts.formatDiagnostics(diagnostics,{getCanonicalFileName:file=>file,getCurrentDirectory:()=>root,getNewLine:()=> '\n'})}
 
+test('Calendar decoder, renderer and editor bodies reject invented identity, deferred markup and nontext payloads',()=>{
+ for(const [file,from,to]of [
+  ['calendar/payload.js','const event = { ...providerFields(data), id };','const event = { ...providerFields(data), id: 7 };'],
+  ['domains/calendar/presentation.js','body: bodyMarkup','body: async () => bodyMarkup()'],
+  ['domains/calendar/editor-payload.js',"description: $('#calendarDescription')?.value.trim() || ''",'description: 7'],
+ ]){
+  const source=path.join(root,'netunim-orders/site/assets/js',file),original=readFileSync(source,'utf8'),changed=original.replace(from,to);
+  assert.notEqual(changed,original,from);const diagnostics=check(new Map([[source,changed]]));
+  assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&[2322,2345].includes(item.code)),describe(diagnostics));
+ }
+});
+
 test('Kupa Bank operation and candidate bodies reject deferred authority, invented money/watermarks and unjoined completion',()=>{
  for(const [file,from,to]of [
   ['refresh.js','assertCurrent: () => {','assertCurrent: async () => {'],

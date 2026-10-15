@@ -53,8 +53,16 @@ remaining-scope paragraphs describe their stage's starting point.
   from 19. Two reproduced late authorization/disconnect disposal races are fenced
   without losing accepted-request drain. Strict session bodies, negative consumers,
   immutable event/sync policies and native disposal fixtures accompany the slice.
-  Rendering/editor decomposition and complete Google payload validation remain
-  open. See [Calendar session capability](CALENDAR_SESSION_CAPABILITY.md).
+  Readonly board/toolbar projection, event permissions/pending overlays and full/
+  quick editor parsing now have strict boundaries. The controller decreases from
+  41.5 KB to 29.0 KB. Unknown Google envelopes/events/replies are decoded before
+  cache publication or durable ACK; malformed replies retain exact pending
+  operations. Four-worker reads join accepted siblings on failure. Immutable
+  original functions and executed presentation policies, strict body mutations
+  and native failure/restart/recovery cases protect the slice. Editor modal/
+  command decomposition and persisted-row validation remain open. See
+  [Calendar projection and payloads](CALENDAR_PROJECTION_PAYLOADS.md) and
+  [Calendar session capability](CALENDAR_SESSION_CAPABILITY.md).
 
 - Kupa sticky-note input is journaled before owner transfer can fence writes.
   A native before-change regression reproduced loss of an unblurred edit;
@@ -188,7 +196,7 @@ remaining-scope paragraphs describe their stage's starting point.
   Local-only cloud grants and malformed home-failure evidence stop before archive
   publication. Immutable full-function fixtures, strict body mutations and nine
   native held stages protect lifecycle and exact journal recovery. Provider
-  refresh coordination is now separated in all four Bank/Credit controllers.
+  refresh coordination is now separated across all four Bank/Credit refresh paths.
   See [Kupa Bank refresh](KUPA_BANK_REFRESH_OPERATION.md).
 
 ## Four major work packages

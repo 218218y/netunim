@@ -1,0 +1,102 @@
+{
+  "commit": "cb53a17504020a26dc7ea8af27b03a5849d78ce4",
+  "path": "netunim-orders/site/assets/js/domains/calendar/controller.js",
+  "functions": {
+    "eventKey": {
+      "digest": "d50750037c5d6d7b56393d364766658f4defa9575fd0e3846e86419a9f708001",
+      "source": "function eventKey(calendarId,eventId){return `${encodeURIComponent(String(calendarId||''))}::${encodeURIComponent(String(eventId||''))}`}"
+    },
+    "safeColor": {
+      "digest": "96a525c0bc2285299c5c61750f7f22dae1c5f6fee20f6dfc287ba0a14097f8b9",
+      "source": "function safeColor(value){const color=String(value||'');return /^#[0-9a-f]{6}$/i.test(color)?color:DEFAULT_EVENT_COLOR}"
+    },
+    "eventDateKey": {
+      "digest": "fbc385b8bc1af1c5101a93ff676ef552eb15b2d721d34904908b3197098904a3",
+      "source": "function eventDateKey(event){if(event?.start?.date)return String(event.start.date);const date=new Date(event?.start?.dateTime||'');return Number.isNaN(date.getTime())?'':localDateKey(date)}"
+    },
+    "eventOccursOnDay": {
+      "digest": "cc0ad1f1fccaaf7821f0db0622565377eab724c4cd7dd105dec0ff86e97a4486",
+      "source": "function eventOccursOnDay(event,dayKey){const dayStart=parseDateKey(dayKey),dayEnd=new Date(dayStart);dayEnd.setDate(dayEnd.getDate()+1);if(event?.start?.date){const start=parseDateKey(event.start.date),exclusiveEnd=parseDateKey(event?.end?.date||addDaysKey(event.start.date,1));return start<dayEnd&&exclusiveEnd>dayStart}const start=new Date(event?.start?.dateTime||''),end=new Date(event?.end?.dateTime||event?.start?.dateTime||'');if(Number.isNaN(start.getTime())||Number.isNaN(end.getTime()))return false;return start<dayEnd&&end>dayStart}"
+    },
+    "eventTimeLabel": {
+      "digest": "c0bd69d36fff3e86fcecfad7a197fdcf389cda1b06f76121609df3171810e26a",
+      "source": "function eventTimeLabel(event,dayKey=''){if(event?.start?.date)return '';const date=new Date(event?.start?.dateTime||'');if(Number.isNaN(date.getTime()))return '';if(dayKey&&eventDateKey(event)!==dayKey)return '↳';return `${pad(date.getHours())}:${pad(date.getMinutes())}`}"
+    },
+    "eventSortValue": {
+      "digest": "b8ac94b632fcf35ebdf47a3338756ac6fa0e0c44c34f46e8d45963119f6901c0",
+      "source": "function eventSortValue(event){return `${event?.start?.date?'0':'1'}|${event?.start?.date||event?.start?.dateTime||''}|${event?.summary||''}`}"
+    },
+    "writableCalendar": {
+      "digest": "ead11960b08144589fec6a8d6bb0a898bd28ecd03fa533403e6bf1b7c2026585",
+      "source": "function writableCalendar(calendar){return ['owner','writer','writerWithoutPrivateAccess'].includes(String(calendar?.accessRole||''))}"
+    },
+    "editableEvent": {
+      "digest": "b7d0ce67a904702953de4773ad69555f784b0e974183703bfca493eeefc83907",
+      "source": "function editableEvent(event){const role=String(event?._calendarAccessRole||'');return !!event&&writableCalendar({accessRole:role})&&!(role==='writerWithoutPrivateAccess'&&event.visibility==='private')&&!event.locked&&(event.eventType==null||event.eventType==='default')&&!(Array.isArray(event.attendees)&&event.attendees.length)&&event.status!=='cancelled'&&!event._pendingDelete}"
+    },
+    "eventReadOnlyReason": {
+      "digest": "1fa89c7dcda26ff585a3f8ff8b8e729117d7a31492179dddb03c0d507073df11",
+      "source": "function eventReadOnlyReason(event){if(event?.eventType==='birthday')return 'אירוע יום הולדת מוצג מקריאה ישירה מ-Google ואינו נערך במסך הזה.';if(Array.isArray(event?.attendees)&&event.attendees.length)return 'לאירוע יש מוזמנים. כדי לא לשנות התראות או הזמנות בלי כוונה, עריכה שלו נשארת ב-Google Calendar.';if(event?.locked)return 'Google סימן את האירוע כנעול לעריכה.';if(event?._calendarAccessRole==='writerWithoutPrivateAccess'&&event?.visibility==='private')return 'זהו אירוע פרטי ביומן שבו Google אינה מעניקה הרשאה לעריכת אירועים פרטיים.';if(!writableCalendar({accessRole:event?._calendarAccessRole}))return 'ליומן הזה יש הרשאת קריאה בלבד.';if(event?.eventType&&event.eventType!=='default')return 'סוג האירוע הזה מנוהל על-ידי Google ומוצג כאן לקריאה בלבד.';return 'האירוע מוצג לקריאה בלבד.'}"
+    },
+    "decorateEvent": {
+      "digest": "6240056ffd508f487a3cba9e3540c297fafcf0d014381ff7719ca7a078952d91",
+      "source": "function decorateEvent(event,calendar){return{...event,_calendarId:event._calendarId||calendar?.id||'',_calendarSummary:event._calendarSummary||calendar?.summary||calendar?.id||'',_calendarColor:event._calendarColor||calendar?.backgroundColor||'',_calendarAccessRole:event._calendarAccessRole||calendar?.accessRole||''}}"
+    },
+    "applyPending": {
+      "digest": "87600667d9c1a44e59ab98ee0c84ef6d260ca1945c53b2f02f261967fc6b3421",
+      "source": "function applyPending(snapshot,pending){const calendars=snapshot?.calendars||calendarUi.calendars||[],calendarMap=new Map(calendars.map(calendar=>[calendar.id,calendar])),events=new Map();for(const source of snapshot?.events||[]){const event=decorateEvent(source,calendarMap.get(source._calendarId));events.set(eventKey(event._calendarId,event.id),event)}for(const operation of pending||[]){const key=eventKey(operation.calendarId,operation.eventId),calendar=calendarMap.get(operation.calendarId)||{id:operation.calendarId,summary:operation.calendarId,accessRole:'writer'};if(operation.type==='insert'){events.set(key,decorateEvent({...operation.body,id:operation.eventId,_pending:true,_pendingSeq:operation.seq},calendar));continue}if(operation.type==='patch'){const prior=events.get(key)||decorateEvent({id:operation.eventId,summary:'שינוי ממתין',start:operation.body?.start,end:operation.body?.end},calendar);events.set(key,{...prior,...operation.body,_pending:true,_pendingSeq:operation.seq});continue}if(operation.type==='delete'){const prior=events.get(key);if(prior)events.set(key,{...prior,_pending:true,_pendingDelete:true,_pendingSeq:operation.seq})}}return[...events.values()].sort((a,b)=>eventSortValue(a).localeCompare(eventSortValue(b),'en'))}"
+    },
+    "periodTitle": {
+      "digest": "ea9b415ecc1ad9b9b7527c01d089d60f595445d36e085204aacd8f2dbf9d5881",
+      "source": "function periodTitle(range){\r\n  if(range.mode==='month')return monthFormatter.format(range.month);\r\n  if(range.mode==='day')return longDateFormatter.format(parseDateKey(range.focusDate));\r\n  const last=parseDateKey(addDaysKey(range.endKey,-1));\r\n  return `${shortPeriodFormatter.format(range.gridStart)} – ${fullPeriodFormatter.format(last)}`;\r\n}"
+    },
+    "viewModeMarkup": {
+      "digest": "09b0e2ea6aa99cf4b64510fe10cfe55e3154e7f25dc0777d0cf641c4b3a037db",
+      "source": "function viewModeMarkup(){const mode=currentViewMode();return `<div class=\"calendar-view-modes\" role=\"group\" aria-label=\"תצוגת יומן\"><button class=\"btn small calendar-view-mode${mode==='month'?' active':''}\" data-action=\"calendar-set-view\" data-click-arg0=\"month\" aria-pressed=\"${mode==='month'}\">חודש</button><button class=\"btn small calendar-view-mode${mode==='week'?' active':''}\" data-action=\"calendar-set-view\" data-click-arg0=\"week\" aria-pressed=\"${mode==='week'}\">שבוע</button><button class=\"btn small calendar-view-mode${mode==='day'?' active':''}\" data-action=\"calendar-set-view\" data-click-arg0=\"day\" aria-pressed=\"${mode==='day'}\">יום</button></div>`}"
+    },
+    "toolbarMarkup": {
+      "digest": "ab866aaec8133d57da3895b4fd35a779ea2ffd2bbdb300309030d3dc1443a954",
+      "source": "function toolbarMarkup(){const range=calendarRange();return `<section class=\"calendar-toolbar\"><div class=\"calendar-nav-actions\"><button class=\"btn small\" data-action=\"calendar-prev-period\" aria-label=\"התקופה הקודמת\">‹</button><button class=\"btn small\" data-action=\"calendar-today\">היום</button><button class=\"btn small\" data-action=\"calendar-next-period\" aria-label=\"התקופה הבאה\">›</button></div>${viewModeMarkup()}<div class=\"calendar-title-block\"><h1>יומן</h1><div class=\"calendar-period-title\">${esc(periodTitle(range))}</div></div><div class=\"calendar-toolbar-spacer\"></div><div id=\"calendarStatus\" class=\"calendar-status offline\">טוען…</div><button class=\"btn small\" data-action=\"calendar-refresh\">רענן</button><button id=\"calendarAuthButton\" class=\"btn small\" data-action=\"calendar-auth\">${connection.hasUsableToken()?'נתק Google':'התחבר ל-Google'}</button><button id=\"calendarNewButton\" class=\"btn primary\" data-action=\"calendar-new-event\" ${primaryWritableCalendar()?'':'disabled'}>+ תור חדש</button></section>`}"
+    },
+    "eventMarkup": {
+      "digest": "eac2bf0117b9bfee1815cebd8eae916db84738a8abb2820d23591e7603a8c07b",
+      "source": "function eventMarkup(event,dayKey=''){const key=eventKey(event._calendarId,event.id),pending=event._pending?' pending':'',deleting=event._pendingDelete?' deleting':'',readonly=editableEvent(event)?'':' readonly',color=safeColor(event._calendarColor),time=eventTimeLabel(event,dayKey),summary=event.summary||'(ללא כותרת)',title=event._pendingDelete?`${summary} — ממתין למחיקה`:summary;return `<button class=\"calendar-event${pending}${deleting}${readonly}\" style=\"--event-color:${esc(color)}\" data-action=\"calendar-open-event\" data-click-arg0=\"${esc(key)}\" title=\"${esc(title)}\"><span class=\"calendar-event-dot\"></span>${time?`<span class=\"calendar-event-time\">${esc(time)}</span>`:''}<span class=\"calendar-event-title\">${esc(summary)}</span>${event._pending?`<span class=\"calendar-event-pending\" aria-label=\"${event._pendingDelete?'ממתין למחיקה':'ממתין לסנכרון'}\">${event._pendingDelete?'×':'●'}</span>`:''}</button>`}"
+    },
+    "eventsForDay": {
+      "digest": "42aefa28408d2df9cd3a8d1c3f0f9c65e0e6eeec6d13985e844c9f34132f6e4f",
+      "source": "function eventsForDay(dayKey){return (calendarUi.displayEvents||[]).filter(event=>eventOccursOnDay(event,dayKey))}"
+    },
+    "dayMarkup": {
+      "digest": "8a0cdd929659ebeee627b02ab20f35b35651a66a89c6de3114c0451df7759751",
+      "source": "function dayMarkup(date,range,{maxEvents=6,showWeekday=false}={}){const key=localDateKey(date),today=key===localDateKey(new Date()),outside=range.mode==='month'&&date.getMonth()!==range.month.getMonth(),events=eventsForDay(key),shown=Number.isFinite(maxEvents)?events.slice(0,maxEvents):events,extra=Math.max(0,events.length-shown.length),weekday=HEBREW_WEEKDAYS[date.getDay()];return `<section class=\"calendar-day${today?' today':''}${outside?' outside':''}${range.mode!=='month'?` ${range.mode}-day`:''}\" data-calendar-day=\"${esc(key)}\">${showWeekday?`<div class=\"calendar-day-heading\">${esc(weekday)}</div>`:''}<button class=\"calendar-day-number\" data-action=\"calendar-new-day\" data-click-arg0=\"${esc(key)}\" title=\"תור חדש בתאריך זה\">${date.getDate()}</button><div class=\"calendar-day-events\">${shown.map(event=>eventMarkup(event,key)).join('')}${extra?`<div class=\"calendar-more\">+${extra} נוספים</div>`:''}</div><button type=\"button\" class=\"calendar-day-create-zone\" data-action=\"calendar-day-create\" data-click-arg0=\"${esc(key)}\" aria-label=\"הוספת תור ב-${esc(key)}\" title=\"לחיצה: הוספה מהירה · לחיצה כפולה: כל הפרטים\"><span>+ הוספה מהירה</span></button></section>`}"
+    },
+    "cachedNoteMarkup": {
+      "digest": "0bdd9ffdac5a01dd9e7a29f96e7860fbd2813d5dd93e429665b2963e4776de72",
+      "source": "function cachedNoteMarkup(){return calendarUi.cacheFetchedAt&&(!effects.isOnline()||!connection.hasUsableToken())?`<div class=\"calendar-cache-note\">מוצגת תצוגה שמורה מ-${esc(shortDateTimeFormatter.format(new Date(calendarUi.cacheFetchedAt)))}</div>`:''}"
+    },
+    "monthBodyMarkup": {
+      "digest": "1e7509f36f9b668eb4a6a1b18573b53dd1709915238ccf78cd8c0bf589f2cb23",
+      "source": "function monthBodyMarkup(range){const days=[];for(let index=0;index<range.days;index++){const date=new Date(range.gridStart);date.setDate(date.getDate()+index);days.push(dayMarkup(date,range))}return `<div class=\"calendar-weekdays\">${HEBREW_WEEKDAYS.map(day=>`<div>${esc(day)}</div>`).join('')}</div><div class=\"calendar-grid calendar-grid-month\">${days.join('')}</div>`}"
+    },
+    "weekBodyMarkup": {
+      "digest": "78285cdac5b062eb9ec05620e8d0bb8d3f46a37fe56bef34bd9becbe2a7afe32",
+      "source": "function weekBodyMarkup(range){const headers=[],days=[];for(let index=0;index<range.days;index++){const date=new Date(range.gridStart);date.setDate(date.getDate()+index);const key=localDateKey(date),today=key===localDateKey(new Date());headers.push(`<div class=\"calendar-weekday-date${today?' today':''}\"><span>${esc(HEBREW_WEEKDAYS[date.getDay()])}</span><b>${date.getDate()}</b></div>`);days.push(dayMarkup(date,range,{maxEvents:12}))}return `<div class=\"calendar-weekdays calendar-weekdays-dated\">${headers.join('')}</div><div class=\"calendar-grid calendar-grid-week\">${days.join('')}</div>`}"
+    },
+    "dayBodyMarkup": {
+      "digest": "d519babc40ec206fa4e4fcd4731aaf767a48642c2b71ce0a0133cb4e9aa2e908",
+      "source": "function dayBodyMarkup(range){const date=parseDateKey(range.focusDate),key=range.focusDate;return `<div class=\"calendar-day-view-heading\"><span>${esc(longDateFormatter.format(date))}</span><button class=\"btn small\" data-action=\"calendar-new-day\" data-click-arg0=\"${esc(key)}\">+ תור ביום זה</button></div><div class=\"calendar-grid calendar-grid-day\">${dayMarkup(date,range,{maxEvents:Infinity})}</div>`}"
+    },
+    "bodyMarkup": {
+      "digest": "b718e00f4b85d8352dce9fe267a4b8bdf342a0324024d281dce55d6a3719966d",
+      "source": "function bodyMarkup(){const range=calendarRange(),content=range.mode==='month'?monthBodyMarkup(range):range.mode==='week'?weekBodyMarkup(range):dayBodyMarkup(range);return `<div class=\"calendar-board mode-${esc(range.mode)}\">${cachedNoteMarkup()}${content}</div>`}"
+    },
+    "readEditorPayload": {
+      "digest": "62ea858ce53a9ccd9949044b8702a929404ce791de8ad00d942145fd5205eb88",
+      "source": "function readEditorPayload(existing=null){const summary=$('#calendarSummary')?.value.trim()||'';if(!summary)throw new Error('יש להזין כותרת לתור');const startDate=$('#calendarStartDate')?.value||'',endDate=$('#calendarEndDate')?.value||startDate;if(!startDate||!endDate)throw new Error('יש להזין תאריך התחלה וסיום');if(endDate<startDate)throw new Error('תאריך הסיום לא יכול להיות לפני תאריך ההתחלה');const allDay=!!$('#calendarAllDay')?.checked;let start,end;if(allDay){start={date:startDate};end={date:addDaysKey(endDate,1)}}else{const startTime=$('#calendarStartTime')?.value||'',endTime=$('#calendarEndTime')?.value||'';if(!startTime||!endTime)throw new Error('יש להזין שעת התחלה וסיום');const startDateTime=new Date(`${startDate}T${startTime}:00`),endDateTime=new Date(`${endDate}T${endTime}:00`);if(Number.isNaN(startDateTime.getTime())||Number.isNaN(endDateTime.getTime())||endDateTime<=startDateTime)throw new Error('שעת הסיום חייבת להיות אחרי שעת ההתחלה');start={dateTime:startDateTime.toISOString()};end={dateTime:endDateTime.toISOString()}}return{summary,description:$('#calendarDescription')?.value.trim()||'',location:$('#calendarLocation')?.value.trim()||'',start,end}}"
+    },
+    "readQuickEditorPayload": {
+      "digest": "8705d31529ab719db4626d2c42fd53c83b268c126affddb9bad5ad214a6af839",
+      "source": "function readQuickEditorPayload(){const summary=$('#calendarQuickSummary')?.value.trim()||'',date=$('#calendarQuickDate')?.value||'',startTime=$('#calendarQuickStartTime')?.value||'',endTime=$('#calendarQuickEndTime')?.value||'';if(!summary)throw new Error('יש להזין שם לתור');if(!parseDateKey(date)||!startTime||!endTime)throw new Error('יש להזין תאריך ושעה תקינים');const startDateTime=new Date(`${date}T${startTime}:00`),endDateTime=new Date(`${date}T${endTime}:00`);if(Number.isNaN(startDateTime.getTime())||Number.isNaN(endDateTime.getTime())||endDateTime<=startDateTime)throw new Error('שעת הסיום חייבת להיות אחרי שעת ההתחלה');return{summary,description:'',location:'',start:{dateTime:startDateTime.toISOString()},end:{dateTime:endDateTime.toISOString()}}}"
+    }
+  }
+}

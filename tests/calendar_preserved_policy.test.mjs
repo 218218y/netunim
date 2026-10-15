@@ -4,11 +4,20 @@ import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {declaration,tokens} from './bank_policy_ast_fixture.mjs';
 import {originalCalendarSyncPolicy} from './calendar_session_policy_fixture.mjs';
+import {baseline as projectionBaseline,semanticPolicy} from './calendar_projection_policy_fixture.mjs';
 
 const controller=readFileSync(new URL('../netunim-orders/site/assets/js/domains/calendar/controller.js',import.meta.url),'utf8');
 const baseline=JSON.parse(readFileSync(new URL('./fixtures/calendar-preserved-policy.json',import.meta.url),'utf8'));
 const session=readFileSync(new URL('../netunim-orders/site/assets/js/calendar/session-runtime.js',import.meta.url),'utf8');
 function policy(source,name){
+  const moved=['eventKey','writableCalendar','editableEvent','eventReadOnlyReason','decorateEvent','applyPending'];
+  const file=moved.includes(name)?'read-model.js':['readEditorPayload','readQuickEditorPayload'].includes(name)?'editor-payload.js':null;
+  if(file){
+    const current=readFileSync(new URL('../netunim-orders/site/assets/js/domains/calendar/'+file,import.meta.url),'utf8');
+    const original=projectionBaseline.functions[name].source;
+    assert.deepEqual(semanticPolicy(current,name),semanticPolicy(original,name));
+    return tokens(original);
+  }
   const node=declaration(source,name);
   return tokens(source.slice(node.start,node.end))
     .replaceAll('connection.hasUsableToken','calendarAuth.hasUsableToken')
