@@ -1,7 +1,6 @@
 import {readSharedChecksState} from './storage-operation.js';
 import {createStorageJournal} from './storage-journal.js';
 import {createStorageJournalDb} from './storage-journal-idb.js';
-import {assertStorageJson} from './storage-journal-model.js';
 import {readStorageCheckpoint} from './storage-checkpoint.js';
 import {equalSyncJson} from './cloud-sync.js';
 
