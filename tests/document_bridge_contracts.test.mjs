@@ -94,7 +94,7 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.match(read('netunim-orders/document-bridge/http-routes.mjs'),/documents\/select-folder/);
   assert.match(server,/PICK_FOLDER/);
   assert.match(searchOwner,/RECENT scope=everything-index scopePath=.* fileType=\$\{fileType\} sort=date-modified-descending/);
-  assert.match(server,/cachedEsPath/);
+  assert.match(read('netunim-orders/document-bridge/everything-discovery.mjs'),/cachedEsPath/);
   assert.match(server,/listen\(BRIDGE_PORT,'127\.0\.0\.1'/);
   assert.match(server,/refreshPdfFormIndex/);
   assert.match(server,/searchPdfFormIndex/);
@@ -211,7 +211,7 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.match(installer,/stop_runtime_helpers\.ps1/,'installer should clean verified stale bridge helpers without depending on old runtime deletion');
   assert.match(server,/RUNTIME_ROOT=fileURLToPath/,'runtime-owned executables must resolve relative to the active versioned runtime');
   assert.match(server,/cwd:APP_ROOT/,'child processes must not inherit the runtime directory as their current directory');
-  assert.match(server,/runEs\(esPath,args,\{timeout=18000,signal=null\}/,'ES inventory work must be abortable during shutdown');
+  assert.match(read('netunim-orders/document-bridge/everything-process.mjs').replace(/\s+/g,''),/runEs\(file,args,\{timeout=18000,signal=null\}/,'ES inventory work must be abortable during shutdown');
   assert.match(server,/preparePdfFormIndexForSearch/);
   assert.doesNotMatch(server,/PDF_FORM_INDEX_INITIAL_WAIT_MS/,'content requests must never wait on a full PDF-form index refresh');
   assert.doesNotMatch(lib,/contentMatchRanges\(String\(value\?\?''\),query,\{\.\.\.options,maxMatches:5000\}\)\.ranges\.length>0/,'supplemental-index filtering must stop at boolean match semantics instead of materializing highlight ranges');

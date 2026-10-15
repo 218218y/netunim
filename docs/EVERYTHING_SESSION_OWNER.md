@@ -22,9 +22,11 @@ and the 15-second startup polling limit. IPC arguments, timeouts, launch flags,
 configuration updates and diagnostic messages match. All-exit-8 failures alone
 may auto-start; other failures and `autoStart:false` do not launch.
 
-Strict implementation/negative consumers reject deferred launch, malformed
-process text, invented timestamps and shutdown without drain. Native process
+Strict implementation/negative consumers reject malformed process text, invented
+timestamps and shutdown without drain. Launch now awaits the process owner's
+spawn acknowledgement or failure. Native process
 fixtures and the existing authenticated HTTP/search/inventory/maintenance suites
 protect the server wiring. The Windows installer stages the new static dependency.
-Executable location and general ES transport/platform ownership remain the next
-slice; this does not certify a live installed Everything session.
+Executable discovery and general ES transport/platform ownership are now separate
+strict owners; see [discovery and processes](EVERYTHING_DISCOVERY_PROCESS.md).
+This does not certify a live installed Everything session.

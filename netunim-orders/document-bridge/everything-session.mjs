@@ -4,7 +4,7 @@
  * @typedef {{fresh?:boolean,autoStart?:boolean}} ProbeOptions
  * @typedef {{configuration:{load:()=>Promise<EverythingConfig>,save:(config:EverythingConfig)=>Promise<void>},
  * discovery:{es:()=>Promise<string>,executable:(config:EverythingConfig)=>Promise<string>},
- * process:{run:(file:string,args:string[],options:{timeout:number})=>Promise<{stdout:string}>,start:(file:string,args:string[])=>undefined},
+ * process:{run:(file:string,args:string[],options:{timeout:number})=>Promise<{stdout:string}>,start:(file:string,args:string[])=>Promise<void>},
  * runtime:{now:()=>number,wait:(ms:number)=>Promise<void>},audit:{write:(message:string)=>Promise<void>}}} SessionPorts
  * @typedef {{probe:(options?:ProbeOptions)=>Promise<EverythingProbe>,invalidate:()=>void,dispose:()=>Promise<void>}} EverythingSession
  */
@@ -165,7 +165,8 @@ export function createEverythingSession({
         `EVERYTHING_START exe=${executable} instance=${instance || '(default)'}`
       );
       assertActive();
-      host.start(executable, args);
+      await host.start(executable, args);
+      assertActive();
       const probe = await waitForEverything(
         { ...config, everythingInstance: instance },
         esPath,
