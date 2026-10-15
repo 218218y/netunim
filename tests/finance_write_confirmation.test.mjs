@@ -21,7 +21,7 @@ function fixture(owner,reply){
   if(owner==='kupa-finance'){
     const transport=createCloudTransport({session:{},supaRest:async(path,options)=>{
       if(path.includes('/rpc/')){const body=JSON.parse(options.body);assert.equal(body.p_expected_revision,5);events.push(body.p_operation_id);return new Response(JSON.stringify(commit(body.p_state)))}
-      return new Response(JSON.stringify([remote]));
+      return new Response(JSON.stringify([{document_name:'main',updated_at:'2026-10-15T00:00:00Z',...remote}]));
     }});
     return {run:()=>transport.saveFinancePatch(base=>({...base,marker:'new'}),lease),recover:()=>transport.readFinanceSyncDocument({assertCurrent}),events,messages,before,state,writes:()=>writes};
   }
