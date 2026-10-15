@@ -47,6 +47,12 @@ for app in ['orders', 'kupa']:
             if(!rejected||await f.snapshot()!==before)throw Error(name+' accepted malformed checkpoint or changed durable evidence');
             f.native.close();malformed++;
           }
+          for(const checkpoint of [false,0,'']){
+            const f=await fixture({cloud:true,flight:true}),before=await f.snapshot();let rejected=false;
+            try{await f.db.acknowledge(owner,'E',writer,'F',base('E',1,2),{checkpoint})}catch{rejected=true}
+            if(!rejected||await f.snapshot()!==before)throw Error('ACK silently treated malformed checkpoint as omitted');
+            f.native.close();malformed++;
+          }
           let retained=0;
           for(const kind of ['install','compact','replaceLocalCheckpoint','resetState','resetCloudHead']){
             const f=await fixture();
@@ -71,6 +77,6 @@ for app in ['orders', 'kupa']:
           const reset=await valid.db.load(owner);valid.native.close();
           return {malformed,retained,valid:imported.journal.length===0&&imported.metadata.seq===1&&reset.journal.length===0&&reset.metadata.epoch==='next'};
         })()""".replace('APP', json.dumps(app)))
-        assert result == {'malformed': 11, 'retained': 5, 'valid': True}, result
+        assert result == {'malformed': 14, 'retained': 5, 'valid': True}, result
         assert not browser.drain_serious_errors()
         print('PASS', app, 'native checkpoint writers reject malformed replacements; physical journal keys retained; valid imports/reset complete', flush=True)

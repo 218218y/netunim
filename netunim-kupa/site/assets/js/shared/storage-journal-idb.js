@@ -114,7 +114,7 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
     if(current.flights){if(JSON.stringify(current.flights)!==JSON.stringify(flight))throw new Error('storage_flight_pending');done(current.flights);return}
     tx.objectStore('flights').put(flight,owner);done(flight);
   })}
-  async function acknowledge(owner,epoch,writer,operationId,base,{checkpoint=null,control=null}={}){if(checkpoint)checkpoint=captureStorageCheckpoint(checkpoint);return change(owner,(tx,current,done)=>{
+  async function acknowledge(owner,epoch,writer,operationId,base,{checkpoint=null,control=null}={}){if(checkpoint!==null)checkpoint=captureStorageCheckpoint(checkpoint);return change(owner,(tx,current,done)=>{
     assertFence(current,owner,epoch,writer);if(!current.flights||readStorageCloudFlight(current.flights).operationId!==operationId)throw new Error('storage_ack_mismatch');
     const acknowledged=readStorageRecord(base),flight=readStorageCloudFlight(current.flights);
     assertStorageCloudAck(acknowledged,flight,{owner,epoch});readStorageCloudBase(base);
