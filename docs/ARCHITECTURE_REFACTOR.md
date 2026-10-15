@@ -1,5 +1,12 @@
 # Architecture refactor: verified baseline and next slices
 
+Everything readiness now has a strict five-port session owner for cache, preferred
+and fallback probes and coalesced startup. Native children prove that a fast
+`Promise.any` winner can leave a losing process active; shutdown now joins it
+without delaying normal winner selection. Original/current policy comparisons,
+cache/startup boundaries and config/discovery/logging disposal fixtures retain
+retry/launch policy. See [Everything session](EVERYTHING_SESSION_OWNER.md).
+
 Document Bridge search merge/pagination now has a strict five-port command owner;
 opaque ID expiry, private paths and accepted file-stat resolution have a strict
 three-port registry. Native processes reproduce and fix early failure before a

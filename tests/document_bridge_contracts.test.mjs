@@ -85,9 +85,10 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.match(lib,/'-path',scope/);
   assert.match(lib,/normalizeSearchScopePath/);
   assert.match(server,/probeEverything\(\{fresh:true,autoStart:true\}\)/);
-  assert.match(server,/everythingProbePromise/);
-  assert.match(server,/Promise\.any\(candidates\.map\(instance=>probeOne\(instance\)\)\)/);
-  assert.match(server,/filter\(instance=>!preferred\|\|instance!==preferred\)/);
+  const sessionOwner=read('netunim-orders/document-bridge/everything-session.mjs').replace(/\s+/g,'');
+  assert.match(sessionOwner,/everythingProbePromise/);
+  assert.match(sessionOwner,/Promise\.any\(candidates\.map\(instance=>probeOne\(instance\)\)\)/);
+  assert.match(sessionOwner,/filter\(instance=>!preferred\|\|instance!==preferred\)/);
   assert.match(read('netunim-orders/document-bridge/http-routes.mjs'),/documents\/warm/);
   assert.match(read('netunim-orders/document-bridge/http-routes.mjs'),/documents\/recent/);
   assert.match(read('netunim-orders/document-bridge/http-routes.mjs'),/documents\/select-folder/);
@@ -428,7 +429,7 @@ test('installer keeps Everything hidden background startup and no longer asks fo
   assert.match(installer,/complete Everything index/i);
   assert.match(installer,/--doctor/);
   assert.match(installer,/--check-running/);
-  assert.match(server,/'-startup','-first-instance'/);
+  assert.match(read('netunim-orders/document-bridge/everything-session.mjs').replace(/\s+/g,''),/'-startup','-first-instance'/);
   assert.match(server,/Search scope: complete Everything index/);
   assert.match(server,/COMPLETE EVERYTHING INDEX/);
 });

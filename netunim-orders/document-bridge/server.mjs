@@ -32,6 +32,7 @@ import {createNativePreviewSession} from './native-preview-session.mjs';
 import {createNativePreviewHostPlatform} from './native-preview-platform.mjs';
 import {createDocumentBridgeHttpHandler,documentBridgeErrorResponse as safeError} from './http-handler.mjs';
 import {createDocumentSearch} from './search-owner.mjs';
+import {createEverythingSession} from './everything-session.mjs';
 import {createDocumentResultRegistry} from './result-registry.mjs';
 
 const execFile=promisify(execFileCb);
@@ -70,7 +71,7 @@ const PDF_FORM_MAINTENANCE_MAX_MS=15*60*1000;
 const PDF_FORM_MAINTENANCE_PATH=path.join(APP_ROOT,'pdf-form-maintenance.json');
 const PDF_FORM_INDEX_LOCK_PATH=path.join(APP_ROOT,'pdf-form-index.lock');
 const PDF_FORM_MAINTENANCE_LOCK_PATH=path.join(APP_ROOT,'pdf-form-maintenance.lock');
-let server=null,cachedProbe=null,cachedEsPath='',everythingProbePromise=null,everythingStartPromise=null;
+let server=null,cachedEsPath='';
 let pdfFormIndexLoaded=false,pdfFormIndexRefreshPromise=null,pdfFormIndexRefreshAbortController=null,pdfFormIndexLastRefresh=0,pdfFormIndexPending=0,pdfFormIndexInventoryCount=0,shuttingDown=false,pdfFormIndexSignature='';
 let pdfMaintenanceStopRequested=false;
 let pdfFormIndexBacklog=[];
@@ -115,30 +116,13 @@ async function whereEs(){
   if(process.platform==='win32')try{const {stdout}=await execFile('where.exe',['es.exe'],{encoding:'utf8',windowsHide:true,timeout:3000});const candidate=stdout.split(/\r?\n/).map(x=>x.trim()).find(Boolean);if(candidate){cachedEsPath=candidate;return cachedEsPath}}catch{}
   const e=new Error('es.exe לא נמצא. יש להריץ מחדש את מתקין Document Bridge.');e.code='ES_NOT_FOUND';throw e;
 }
-function instanceArgs(instance){return instance?['-instance',instance]:[]}
+
 async function runEs(esPath,args,{timeout=18000,signal=null}={}){
   try{return await execFile(esPath,args,{encoding:'utf8',windowsHide:true,timeout,maxBuffer:16*1024*1024,cwd:APP_ROOT,...(signal?{signal}:{})})}
   catch(error){if(error?.name==='AbortError'||String(error?.code||'')==='ABORT_ERR')throw error;const e=new Error(String(error?.stderr||error?.message||'ES failed').trim()||'ES failed');e.code=`ES_EXIT_${Number.isFinite(Number(error?.code))?Number(error.code):'ERROR'}`;e.exitCode=Number(error?.code);e.stderr=String(error?.stderr||'');throw e}
 }
-function instanceCandidates(config){return [...new Set([config.everythingInstance,'','1.5a'].filter(value=>value!==undefined&&value!==null))]}
-async function probeRunningInstances(config,esPath){
-  let esVersion='';try{esVersion=(await runEs(esPath,['-version'],{timeout:3000})).stdout.trim()}catch{}
-  const probeOne=async instance=>{
-    const {stdout}=await runEs(esPath,['-ipc3',...instanceArgs(instance),'-timeout','3000','-get-everything-version'],{timeout:4500});
-    return {at:Date.now(),esPath,esVersion,everythingVersion:stdout.trim(),instance,startedByBridge:false};
-  };
-  const preferred=String(config.everythingInstance||'').trim();
-  if(preferred){
-    try{return await probeOne(preferred)}catch{}
-  }
-  const candidates=instanceCandidates(config).filter(instance=>!preferred||instance!==preferred);
-  try{return await Promise.any(candidates.map(instance=>probeOne(instance)))}catch(aggregate){
-    const errors=Array.isArray(aggregate?.errors)?aggregate.errors:[];
-    const onlyNotRunning=errors.length>0&&errors.every(error=>error?.exitCode===8);
-    const e=new Error(onlyNotRunning?'Everything אינו פועל כרגע.':'לא ניתן להתחבר ל-Everything המקומי.');
-    e.code=onlyNotRunning?'EVERYTHING_NOT_RUNNING':'EVERYTHING_UNAVAILABLE';e.cause=errors.at(-1)||aggregate;throw e;
-  }
-}
+
+
 async function registryValue(key,value='InstallLocation'){
   if(process.platform!=='win32')return '';
   try{const {stdout}=await execFile('reg.exe',['query',key,'/v',value],{encoding:'utf8',windowsHide:true,timeout:3000});return parseRegistryInstallLocation(stdout,value)}catch{return ''}
@@ -181,45 +165,16 @@ async function findEverythingExecutable(config){
   }
   const e=new Error('Everything מותקן אך לא ניתן לאתר את Everything.exe. התקן את Everything 1.5 באמצעות המתקין הרשמי או הגדר NETUNIM_EVERYTHING_EXE_PATH.');e.code='EVERYTHING_EXE_NOT_FOUND';throw e;
 }
-async function waitForEverything(config,esPath,timeoutMs=15000){
-  const deadline=Date.now()+timeoutMs,lastErrors=[];
-  while(Date.now()<deadline){
-    try{return await probeRunningInstances(config,esPath)}catch(error){lastErrors.push(error);await new Promise(resolve=>setTimeout(resolve,250))}
-  }
-  const e=new Error('Everything הופעל ברקע אך לא היה מוכן לחיפוש בזמן.');e.code='EVERYTHING_START_TIMEOUT';e.cause=lastErrors.at(-1);throw e;
-}
-async function startEverythingBackground(config,esPath){
-  if(everythingStartPromise)return everythingStartPromise;
-  everythingStartPromise=(async()=>{
-    const executable=await findEverythingExecutable(config);
-    const instance=config.everythingInstance||(/1\.5a/i.test(executable)?'1.5a':'');
-    const args=[...instanceArgs(instance),'-startup','-first-instance'];
-    await appendLog(`EVERYTHING_START exe=${executable} instance=${instance||'(default)'}`);
-    const child=spawn(executable,args,{detached:true,windowsHide:true,stdio:'ignore',cwd:APP_ROOT});child.unref();
-    const probe=await waitForEverything({...config,everythingInstance:instance},esPath,15000);
-    const latest=await loadConfig();
-    if(latest.everythingExecutable!==executable||latest.everythingInstance!==probe.instance){latest.everythingExecutable=executable;latest.everythingInstance=probe.instance;await saveConfig(latest)}
-    return {...probe,startedByBridge:true,everythingExecutable:executable};
-  })();
-  try{return await everythingStartPromise}finally{everythingStartPromise=null}
-}
-async function probeEverything({fresh=false,autoStart=true}={}){
-  if(!fresh&&cachedProbe&&Date.now()-cachedProbe.at<30000)return cachedProbe;
-  if(everythingProbePromise)return everythingProbePromise;
-  const task=(async()=>{
-    const config=await loadConfig(),esPath=await whereEs();
-    let probe;
-    try{probe=await probeRunningInstances(config,esPath)}catch(error){
-      if(error.code!=='EVERYTHING_NOT_RUNNING'||!autoStart)throw error;
-      probe=await startEverythingBackground(config,esPath);
-    }
-    cachedProbe=probe;
-    if(config.everythingInstance!==probe.instance){config.everythingInstance=probe.instance;await saveConfig(config)}
-    return cachedProbe;
-  })();
-  everythingProbePromise=task;
-  try{return await task}finally{if(everythingProbePromise===task)everythingProbePromise=null}
-}
+
+
+const everythingSession=createEverythingSession({
+  configuration:{load:loadConfig,save:saveConfig},
+  discovery:{es:whereEs,executable:findEverythingExecutable},
+  process:{run:runEs,start:(file,args)=>{const child=spawn(file,args,{detached:true,windowsHide:true,stdio:'ignore',cwd:APP_ROOT});child.unref()}},
+  runtime:{now:Date.now,wait:ms=>new Promise(resolve=>setTimeout(resolve,ms))},
+  audit:{write:appendLog},
+});
+async function probeEverything(options={}){return everythingSession.probe(options)}
 
 async function countIndex({esPath,instance},config,search='*'){
   const args=buildEsCountArgs({search,timeoutMs:config.searchTimeoutMs,instance,filesOnly:true});
@@ -251,7 +206,7 @@ async function runEverythingJson(buildArgs,{signal=null}={}){
   let output;
   try{output=await runSearch(probe)}catch(error){
     if(error?.exitCode!==8)throw error;
-    cachedProbe=null;probe=await probeEverything({fresh:true,autoStart:true});output=await runSearch(probe);
+    everythingSession.invalidate();probe=await probeEverything({fresh:true,autoStart:true});output=await runSearch(probe);
   }
   return {rows:parseEsJson(output.stdout),elapsedMs:Date.now()-started};
 }
@@ -627,9 +582,9 @@ async function warmDocumentSearch(){const probe=await probeEverything({autoStart
 async function prepareShutdown(){
   shuttingDown=true;
   previewTextCache.dispose();
-  const searchDrain=documentSearch.dispose();
+  const searchDrain=documentSearch.dispose(),sessionDrain=everythingSession.dispose();
   documentResults.dispose();
-  await Promise.all([searchDrain,manualMaintenance.dispose(),nativePreviewSession.dispose()]);
+  await Promise.all([searchDrain,sessionDrain,manualMaintenance.dispose(),nativePreviewSession.dispose()]);
   return {ok:true,pid:process.pid};
 }
 function finishShutdown(){
