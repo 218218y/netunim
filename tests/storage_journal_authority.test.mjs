@@ -26,6 +26,9 @@ test('journal scope cannot be inferred from the untrusted payload',()=>{
   assert.throws(()=>capture(seal(operation('B:orders')),'A:orders','E'),/owner_mismatch/);
   assert.throws(()=>capture(seal(operation()),'A:orders','other'),/owner_mismatch/);
   assert.throws(()=>capture(seal(operation('unscoped')),'unscoped','E'),/owner_schema_required/);
+  assert.equal(capture(seal(operation('unscoped')),'unscoped','E',{collections:['notes']}).data.seq,1);
+  const bad=operation();bad.changes[0].collection='checks';
+  assert.throws(()=>capture(seal(bad),'A:orders','E',{collections:['checks']}),/invalid_collection/,'generic configuration cannot override application authority');
 });
 
 for(const method of ['replaceCurrentState','replaceLocalAuthoritativeState','setCloudBase'])test(method+' captures business input before yielding to its queue',async()=>{
@@ -41,7 +44,7 @@ for(const method of ['replaceCurrentState','replaceLocalAuthoritativeState','set
 test('implementation mutation removing the decoder admits a business-schema violation',async()=>{
   let source=fs.readFileSync('shared/storage-journal-authority.js','utf8');
   source=source.replaceAll(/(['"])\.\/(.*?)\1/g,(_,quote,file)=>JSON.stringify(new URL('../shared/'+file,import.meta.url).href));
-  const checked='readStorageOperation(structuredClone(record),schemaForOwner(owner))';
+  const checked='readStorageOperation(structuredClone(record),schemaForOwner(owner,configuredSchema))';
   assert.ok(source.includes(checked));source=source.replace(checked,'structuredClone(record).data');
   const {captureStorageJournalOperation:unsafe}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
   const input=seal({...operation(),changes:[{type:'set',field:'checks',value:[]}]});

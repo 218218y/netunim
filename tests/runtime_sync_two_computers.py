@@ -19,7 +19,7 @@ def create_journal(browser, app, *, initialize=False):
         import('./assets/js/shared/storage-v2-schema.js')
       ]);
       window.fixtureJournal=journalModule.createStorageJournal({{
-        owner:{js('two-profile-' + app)},schema:schemaModule.STORAGE_SCHEMAS[{js(app)}],
+        owner:{js('two-profile-' + app + ':' + app)},schema:schemaModule.STORAGE_SCHEMAS[{js(app)}],
         validate:value=>{{if(!Array.isArray(value?.notes))throw new Error('fixture_notes_invalid')}}
       }});
       if({str(initialize).lower()})await fixtureJournal.initializeCloudHead(10,

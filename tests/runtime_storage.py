@@ -14,7 +14,7 @@ with BrowserSession(ROOT/'netunim-kupa/site','storage-v2-crash-matrix') as brows
       const change=text=>[{type:'put',collection:'notes',mode:'replace',id:'n',record:{id:'n',text}}];
       const check=(condition,label)=>{if(!condition)throw Error(label);done.push(label)};
       const fails=async work=>{try{await work()}catch{return true}return false};
-      const db=createStorageJournalDb(),make=(owner,options={})=>createStorageJournal({owner,schema,validate,db,...options});
+      const db=createStorageJournalDb({operationSchema:schema}),make=(owner,options={})=>createStorageJournal({owner,schema,validate,db,...options});
       const text=async journal=>(await journal.recover()).state.notes[0]?.text;
 
       let journal=make('matrix');await journal.install(initial);
@@ -170,7 +170,7 @@ for app in ('kupa','orders'):
           const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
           const {createStorageCloudBase,createStorageCheckpoint}=await import('./assets/js/shared/storage-records.js');
           const {readStorageRecord,sealStorageRecord}=await import('./assets/js/shared/storage-journal-model.js');
-          const db=createStorageJournalDb({name:'storage-ack-contracts'}),owner='ack-contract-owner',done=[];
+          const db=createStorageJournalDb({name:'storage-ack-contracts',operationSchema:{collections:['notes'],fields:['setting']}}),owner='ack-contract-owner',done=[];
           const schema={collections:['notes'],fields:['setting']},validate=state=>{
             if(!Array.isArray(state.notes)||new Set(state.notes.map(note=>note.id)).size!==state.notes.length)throw Error('invalid ACK fixture state');
           };
@@ -251,7 +251,7 @@ for app in ('kupa','orders'):
           const {createStorageJournal}=await import('./assets/js/shared/storage-journal.js');
           const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
           const journal=createStorageJournal({owner:'ack-contract-owner',schema:{collections:['notes'],fields:['setting']},
-            validate:()=>{},db:createStorageJournalDb({name:'storage-ack-contracts'})});
+            validate:()=>{},db:createStorageJournalDb({name:'storage-ack-contracts',operationSchema:{collections:['notes'],fields:['setting']}})});
           const recovered=await journal.open(),head=await journal.cloudState();
           return JSON.stringify(recovered.state.notes)===JSON.stringify([{id:'N',text:'newer pending'},{id:'M',text:'inserted'}])&&
             head.base.revision===6&&head.base.ackSeq===3&&!head.pending&&!head.flight;
@@ -331,7 +331,7 @@ with BrowserSession(ROOT/'netunim-kupa/site','storage-v2-local-import-idb') as b
     result=evaluate_sync(browser, r"""(async()=>{
       const {createStorageJournal}=await import('./assets/js/shared/storage-journal.js');
       const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
-      const db=createStorageJournalDb(),schema={collections:['notes'],fields:[]},validate=state=>{if(!Array.isArray(state.notes))throw Error('invalid notes')};
+      const db=createStorageJournalDb({operationSchema:{collections:['notes'],fields:['setting','financeCache','financeRevision']}}),schema={collections:['notes'],fields:[]},validate=state=>{if(!Array.isArray(state.notes))throw Error('invalid notes')};
       const owner='import-account:kupa',make=()=>createStorageJournal({owner,schema,validate,db});
       let journal=make();await journal.install({notes:[{id:'old'}]},{expectedEpoch:null,appMetadata:{storageRole:'primary'}});
       await journal.captureCloudCursor(8);
@@ -711,7 +711,7 @@ with BrowserSession(ROOT/'netunim-kupa/site', 'clean-conflict-review') as browse
       const initial={notes:[{id:'N',content:'acknowledged work'}],setting:1,financeCache:{revision:10}};
       const project=state=>({notes:structuredClone(state.notes),setting:state.setting});
       const conflict={kind:'storage-v2-dirty-head',domain:'kupa',baseRevision:479,currentRemoteRevision:480};
-      const db=createStorageJournalDb(),schema={collections:['notes'],fields:['setting','financeCache']};
+      const db=createStorageJournalDb({operationSchema:{collections:['notes'],fields:['setting','financeCache','financeRevision']}}),schema={collections:['notes'],fields:['setting','financeCache']};
       let serial=0;
       async function make(){
         const owner='review-'+(++serial),journal=createStorageJournal({owner,schema,db,validate:state=>{if(!Array.isArray(state.notes))throw Error('notes required')}});
@@ -760,7 +760,7 @@ with BrowserSession(ROOT/'netunim-kupa/site', 'cloud-adoption-recovery') as brow
       const {readStorageRecord}=await import('./assets/js/shared/storage-journal-model.js');
       const done=[],check=(condition,label)=>{if(!condition)throw Error(label);done.push(label)};
       const initial={notes:[{id:'N',content:'local'}],financeRevision:2},remote={notes:[{id:'N',content:'remote'},{id:'R',content:'other computer'}],financeRevision:2};
-      const db=createStorageJournalDb(),schema={collections:['notes'],fields:['financeRevision']},validate=state=>{if(!Array.isArray(state.notes))throw Error('notes required')};
+      const db=createStorageJournalDb({operationSchema:{collections:['notes'],fields:['setting','financeCache','financeRevision']}}),schema={collections:['notes'],fields:['financeRevision']},validate=state=>{if(!Array.isArray(state.notes))throw Error('notes required')};
       let serial=0;
       async function make(){
         const owner='adoption-'+(++serial),journal=createStorageJournal({owner,schema,db,validate});

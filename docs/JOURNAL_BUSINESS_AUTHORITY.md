@@ -3,7 +3,8 @@
 Current IDB append, bootstrap and import-boundary writers decode operations
 against a schema selected by the physical owner namespace: Orders, Kupa or
 Shared Checks. They capture checked input synchronously before opening IDB.
-Unknown namespaces fail closed. Schema arrays are immutable and Shared Checks
+Unknown namespaces require an explicit generic-journal schema at construction;
+that captured configuration cannot override an application namespace. Schema arrays are immutable and Shared Checks
 uses the same schema for caller validation and IDB authority.
 
 The append hot path still reads only metadata and the exact journal key.

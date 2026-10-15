@@ -27,7 +27,7 @@ function mergeDeleteIntents(...sources){
 
 // Local checkpoint/journal engine. Rollout policy lives in the application
 // adapter; this layer provides primary recovery and cloud synchronization.
-export function createStorageJournal({owner,schema,validate,primary=()=>true,commitPrimary=primary,db=createStorageJournalDb(),emergency=globalThis.localStorage,operationId=()=>createOperationId('storage-v2'),now=()=>new Date().toISOString(),maxEmergencyBytes=131072,maxEmergencyEntries=64}={}){
+export function createStorageJournal({owner,schema,validate,primary=()=>true,commitPrimary=primary,db=createStorageJournalDb({operationSchema:schema}),emergency=globalThis.localStorage,operationId=()=>createOperationId('storage-v2'),now=()=>new Date().toISOString(),maxEmergencyBytes=131072,maxEmergencyEntries=64}={}){
   if(!owner||!schema||!validate)throw new Error('storage_configuration_required');
   const prefix='netunim-storage-v2-emergency:'+encodeURIComponent(owner)+':',writer=operationId();
   let epoch=null,seq=0,queue=Promise.resolve(),ready=false,failed=null,transition=null;
