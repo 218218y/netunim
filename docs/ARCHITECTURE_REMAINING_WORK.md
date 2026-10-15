@@ -32,11 +32,13 @@ A passed synthetic gate is not evidence of live providers or physical machines.
   Each save captures its own IDB receipt; local drain survives publication cancellation.
   Offline/reload access is supplied by a platform port. See [Orders persistence](ORDERS_PERSISTENCE_OWNERS.md).
 
+- Owner transfer now decodes persisted handoffs and transition replies, retains frozen source/target proofs across restart and projects detached replies before view installation. Its actual body is strict checked; see [owner transfer evidence](OWNER_TRANSFER_EVIDENCE.md).
+
 ## Prioritized remaining work
 
 | Priority | Scope | Required evidence |
 | --- | --- | --- |
-| 1 | Critical persisted/journal transaction consumers: owner transfer and remaining IDB/runtime callers; full strict bodies beyond the checked restore/import consumers | Decode unknown values before action/ACK; preserve invalid durable records; checked implementation, negative consumer and implementation mutation |
+| 1 | Critical persisted/journal transaction consumers: remaining IDB/runtime callers and durable owner binding; full strict bodies beyond the checked restore/import/owner-transfer consumers | Decode unknown values before action/ACK; preserve invalid durable records; checked implementation, negative consumer and implementation mutation |
 | 2 | Shell composition audit | Extract only policy/lifetime/authority still in lifecycle, backup, cloud UI or navigation; retain explicit role wiring and avoid a broad context |
 | 3 | Measured startup improvements | Repeated cold/cached/offline measurements; presentation-only lazy candidates; account/cancellation/PWA gates; preserve eager runtime ownership |
 | 4 | Compatibility inventory and readability | Maintain the completed compatibility inventory; retire only newly proven Dead paths; format remaining application presentation boundaries in reviewable slices |

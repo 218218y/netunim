@@ -124,3 +124,11 @@ accepted side-effect/sibling drain, token-preserving readability and the audited
 compatibility inventory. See DOCUMENT_OPERATIONS_LIFECYCLE.md. The current backlog
 retains measured startup, whole journal/owner-transfer typing, broader application
 formatting and live-provider/physical-machine release validation.
+
+
+## Three-stage completion continuation
+
+14. Close owner-transfer transaction authority with strict implementation checking,
+    unknown persisted/target reply decoding, immutable transition evidence and
+    crash-resume comparison against the frozen target proof. See
+    OWNER_TRANSFER_EVIDENCE.md. Whole IDB/runtime/binding typing remains separate.

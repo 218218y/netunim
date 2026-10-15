@@ -1,5 +1,5 @@
 // @ts-check
-import {assertStorageJson,readStorageJsonRecord} from './storage-json-codec.js';
+import {assertStorageJson,readStorageJsonRecord,storageJsonHash} from './storage-json-codec.js';
 import {isHistoricalUploadOwnerBootstrap} from './storage-v2-persisted-compat.js';
 
 /**
@@ -120,6 +120,14 @@ export function readStorageState(value) {
   const data=assertStorageJson(value);
   if(!object(data))throw new Error('storage_boundary_state_invalid');
   return data;
+}
+/** @param {string} role @param {unknown} value @param {{cryptoImpl?:Pick<Crypto,'subtle'>}} [options] */
+export function storageV2BootstrapStateHash(role,value,{cryptoImpl=globalThis.crypto}={}) {
+  if(role!=='main'&&role!=='shared')throw new Error('storage_bootstrap_role_invalid');
+  const state=readStorageState(value);
+  if(role==='main')return storageJsonHash(state,cryptoImpl);
+  if(!Array.isArray(state.checks)||!Array.isArray(state.bankEvents))throw new Error('storage_bootstrap_shared_state_invalid');
+  return storageJsonHash({checks:state.checks,bankEvents:state.bankEvents},cryptoImpl);
 }
 /** @param {unknown} value @returns {StorageJsonObject} */
 export function readSharedChecksState(value) {
