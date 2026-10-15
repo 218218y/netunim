@@ -44,3 +44,16 @@ Document Bridge remainder, measured cold startup/lazy loading, compatibility
 retirement and broad formatting remain later work; they should not be inferred
 complete from these three stages. Lazy loading needs measured startup evidence
 and an offline/PWA ordering gate first.
+
+## Continuation stages
+
+4. Morning issued-document completion and recovery-decision commands: preserve
+   reservation/issuance/application policy and separate explicit decision
+   ownership. Keep modal admission and accepted-work drain at composition.
+5. Extend transaction and financial caller contracts from `unknown` through
+   validated authority, with malformed input and negative implementation tests.
+6. Complete concrete Document Bridge runtime/inventory/diagnostics boundaries,
+   preserving provider/search/maintenance policy and Windows installation gates.
+
+These are the next three independently verified and merged slices. Measured
+startup, compatibility inventory and final release validation remain separate.

@@ -20,6 +20,8 @@ documents=(SITE/'assets/js/domains/customers/documents.js').read_text(encoding='
 document_view=(SITE/'assets/js/domains/customers/morning-document-view.js').read_text(encoding='utf-8')
 request=(SITE/'assets/js/integrations/morning.js').read_text(encoding='utf-8')
 issuance=(SITE/'assets/js/domains/customers/morning-issuance.js').read_text(encoding='utf-8')
+issue_command=(SITE/'assets/js/domains/customers/morning-issue-command.js').read_text(encoding='utf-8')
+recovery_decision=(SITE/'assets/js/domains/customers/morning-recovery-decision.js').read_text(encoding='utf-8')
 recovery_flow=(SITE/'assets/js/domains/customers/morning-recovery.js').read_text(encoding='utf-8')
 status_flow=(SITE/'assets/js/domains/customers/morning-status.js').read_text(encoding='utf-8')
 view=(SITE/'assets/js/domains/customers/view.js').read_text(encoding='utf-8')
@@ -125,7 +127,7 @@ ok("readResponseBytesBounded" in edge and "MAX_DOCUMENT_PDF_BYTES" in edge and "
    'Morning PDF safety: official PDFs and previews are size-bounded and validated without storing document bytes')
 ok('function documentSource' in edge and 'const raw=await morningRequest' in edge and 'documentSource(raw)' in edge and 'source?.url?.[key]??source?.[key]' in edge,
    'Morning API v2 compatibility: direct and data-wrapped document/link responses share the same strict normalization path')
-ok("morning_similar_operation_verified" in edge and "prevent_retry:true" in edge and "Morning duplicate guard reconciliation failed" in edge and "ננעל למניעת כפילות" in documents,
+ok("morning_similar_operation_verified" in edge and "prevent_retry:true" in edge and "Morning duplicate guard reconciliation failed" in edge and "ננעל למניעת כפילות" in issue_command,
    'Morning cross-user duplicate guard: a stale identical unresolved operation can be reconciled server-side and locks the current dialog instead of issuing another POST')
 ok("async function getDocument(body:any" in edge and "document_links" in edge and "getDocument(body,true)" in edge,
    'Morning document open: document IDs are checked with the authenticated current Morning business')
@@ -159,7 +161,7 @@ migration=next((ROOT/'supabase/migrations').glob('*_morning_operation_ledger.sql
 ok(all(name not in documents for name in ('scheduleSave','renderCustomers','__standalone__','activeScopeId')) and 'customerDebts' not in edge and 'customerDebts' not in migration
    and 'applyVerifiedDebtDocument' in documents and 'applyVerifiedMorningDocument' in editor and 'applyVerifiedMorningDocumentToDebt' in morning_debt,
    'Morning debt boundary: server/ledger stay debt-agnostic while the customer domain applies only a verified client-side progress event')
-ok("data.verified!==true" in issuance and "data.operation?.state==='created'&&!!data.operation?.verified_at" in status_flow and 'await issuance.issue(payload,context,assertCurrent);assertCurrent()' in documents and 'application:{apply:applyVerifiedOperation' in documents and 'await application.apply(' in status_flow,
+ok("data.verified!==true" in issuance and "data.operation?.state==='created'&&!!data.operation?.verified_at" in status_flow and 'await issuance.issue(payload,context,assertCurrent);assertCurrent()' in issue_command and 'application:{apply:applyVerifiedOperation' in documents and 'await application.apply(' in status_flow,
    'Morning debt application gate: immediate create and reconciliation reach debt progress only after canonical verification')
 ok("MORNING:${operation}:" in morning_debt and "source:'morning'" in morning_debt and 'existingIds.has(id)' in morning_debt,
    'Morning debt idempotency: one deterministic progress entry per operation and side prevents double credit on replay/reconciliation')
@@ -195,13 +197,13 @@ ok('return localOk' in persistence and 'if(disposed||rejectSecondaryMutation())r
    'Morning local durability handshake: progress and document links are durably saved, and replay re-persists an in-memory event before recovery clears')
 ok('onDebtDocumentMetadataResolved:persistResolvedDebtDocumentMetadata' in composition and 'upsertVerifiedMorningDebtDocument(debt,metadata)' in metadata_persistence and "surface:'orders.morning.customerDebtMetadata'" in metadata_persistence and 'await commitSave(' in metadata_persistence and 'function canMutate()' in persistence,
    'Morning historical metadata backfill: authoritative metadata confirms a local single-writer commit and retains unconfirmed staging for retry')
-ok('morningVerifiedApplicationDurable' in morning_debt_recovery and 'DURABLE_NO_MUTATION_REASONS' in morning_debt_recovery and 'function settleVerifiedRecovery' in documents and 'blocked:!durable||serverLinkPending||!recoveryCleared' in documents and documents.count('settleVerifiedRecovery(')>=2 and 'application.settle(context.operationId,result' in recovery_flow and 'application.settle(operationId,result' in status_flow,
+ok('morningVerifiedApplicationDurable' in morning_debt_recovery and 'DURABLE_NO_MUTATION_REASONS' in morning_debt_recovery and 'function settleVerifiedRecovery' in documents and 'blocked:!durable||serverLinkPending||!recoveryCleared' in documents and 'recovery.settle(context.operationId,result' in issue_command and 'settle:settleVerifiedRecovery' in documents and 'application.settle(context.operationId,result' in recovery_flow and 'application.settle(operationId,result' in status_flow,
    'Morning recovery cleanup: verified outcomes use an explicit durability allowlist and every verified path stays fail-closed until local recovery storage is actually cleared')
-ok("activeDebtId?rejectSecondaryMutation?.()===true:rejectSecondaryIssuance?.()===true" in documents and documents.count('if(rejectCurrentIssuance())return;')>=2 and "reason:'write-blocked'" in composition,
+ok("activeDebtId?rejectSecondaryMutation?.()===true:rejectSecondaryIssuance?.()===true" in documents and issue_command.count('if(rejectCurrentIssuance())return;')>=2 and 'const rejectCurrentIssuance=session.reject' in issue_command and "reason:'write-blocked'" in composition,
    'Morning debt primary-tab safety: debt-linked issuance is blocked before POST and rechecked after confirmation when local mutation authority is unavailable')
 ok("rejectSecondaryIssuance:(...args)=>storagePersistence.rejectSecondaryAction(...args)" in composition
    and "activeDebtId?rejectSecondaryMutation?.()===true:rejectSecondaryIssuance?.()===true" in documents
-   and documents.count('if(rejectCurrentIssuance())return;')>=2,
+   and issue_command.count('if(rejectCurrentIssuance())return;')>=2 and 'const rejectCurrentIssuance=session.reject' in issue_command,
    'Morning official issuance single-writer: standalone documents also require the primary tab, while debt-linked documents retain the stronger local-mutation guard')
 ok("blocked:!!data.unresolved||!!data.retryable_reserved||recoveryStillPending" in status_flow
    and "if(blocked&&requestedKey!==sourceKey(activeSource))" in documents
@@ -224,15 +226,15 @@ ok('timestampMs(' in edge and "Date.parse(text)" in edge,
    'Morning reconciliation accepts both epoch and ISO creation timestamps without weakening the matching window')
 ok('ambiguousWriteStatus(' in edge and 'value===408||(value>=500&&value<=599)' in edge,
    'Morning issuance ambiguity: HTTP 408 and every 5xx remain non-retryable until reconciliation')
-ok("documentsBrowser.viewDocument(data.document.id,null,{quiet:true})" in documents and "data.verified!==true" in issuance and "מסמך רשמי שנשלף מ-Morning" in media_presentation,
+ok("media.viewDocument(data.document.id,null,{quiet:true})" in issue_command and "data.verified!==true" in issuance and "מסמך רשמי שנשלף מ-Morning" in media_presentation,
    'Issued-document UI: browser fails closed without server verification and automatically loads the official Morning PDF after verified issuance')
-ok("if(createBusy||blocked||completed)return" in documents and "button.disabled=blocked||completed" in documents and "הופק ואומת" in documents,
+ok("if(session.read().createBusy||session.read().blocked||session.read().completed)return" in issue_command and "button.disabled=session.read().blocked||session.read().completed" in issue_command and "הופק ואומת" in issue_command,
    'Issued-document UI: a verified success locks the same issuance dialog so a second click cannot create an accidental duplicate')
 ok('id="morningAmount"' in document_view and 'step="1"' in document_view.split('id="morningAmount"',1)[1].split('>',1)[0] and 'data-payment-field="price"' in morning_payments and 'step="1"' in morning_payments and 'Math.round' in command_form and 'Math.round' in morning_payments,
    'Morning amount UI: document and multi-payment amounts support exact agorot')
 ok('data-input="morning-document-amount"' in document_view and 'amount.readOnly=false' in documents and 'morningPaymentTotalCents(payments)' in command_form_compact and 'אינו תואם לסך התקבולים' in command_form and 'id="morningPaymentSummary"' in morning_payments and 'id="morningPaymentTotal"' in morning_payments and 'is-mismatch' in morning_payments and 'is-match' in morning_payments and "'morning-document-amount':" in actions,
    'Morning payment documents keep an independent editable document amount, show a live receipts total and block preview/issuance on any cent mismatch')
-ok('markModalDraftSaved' in documents and 'if(isActive(generation))markModalDraftSaved?.()' in documents and 'markModalDraftSaved:(...args)=>uiModal.markModalDraftSaved(...args)' in (ROOT/'netunim-orders/site/assets/js/domains/customers/composition.js').read_text(encoding='utf-8'),
+ok('markModalDraftSaved' in documents and 'if(session.isActive(generation))display.markSaved()' in issue_command and 'markSaved:()=>markModalDraftSaved?.()' in documents and 'markModalDraftSaved:(...args)=>uiModal.markModalDraftSaved(...args)' in (ROOT/'netunim-orders/site/assets/js/domains/customers/composition.js').read_text(encoding='utf-8'),
    'Issued-document UI: verified completion commits only the still-active Morning modal draft baseline so closing does not warn about already-consumed edits')
 ok('lock table' in migration and migration.index('raise exception') < migration.index('create table public.morning_document_operations_backup_20260908') < migration.index('drop table public.morning_document_operations;'),
    'Migration locks and guards important rows before backup and DROP; backup is retained')
