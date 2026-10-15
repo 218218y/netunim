@@ -1,0 +1,38 @@
+{
+  "commit": "9560ebd1d459d82368ea1cc572814fac91c49434",
+  "path": "netunim-orders/site/assets/js/domains/customers/documents-browser.js",
+  "functions": {
+    "localDate": {
+      "source": "function localDate(date){return new Date(date.getTime()-date.getTimezoneOffset()*60_000).toISOString().slice(0,10)}",
+      "digest": "5e5eb42cac939645571e4130eb8bfaeecd255193ebca5f2388cf717bd70fec06"
+    },
+    "defaultDocumentSearch": {
+      "source": "function defaultDocumentSearch(now=new Date()){\r\n  const from=new Date(now);from.setDate(from.getDate()-90);\r\n  return {fromDate:localDate(from),toDate:localDate(now),page:0,pageSize:25,sort:'documentDate',order:'DESC',type:[],status:[],clientName:''};\r\n}",
+      "digest": "55920be1b5cad0ee13990c29f16b2b7b8fbde868136184be5d9a1222285455c5"
+    },
+    "verifiedOperationMetadata": {
+      "source": "async function verifiedOperationMetadata(operationId){\r\n    const operation=String(operationId||'').trim();if(!operation)return null;\r\n    const assertCurrent=captureScope(),cached=operationMetadataCache.get(operation);\r\n    if(cached){try{cached.assertCurrent();return cached.promise}catch{operationMetadataCache.delete(operation)}}\r\n    let entry;const forget=()=>{if(operationMetadataCache.get(operation)===entry)operationMetadataCache.delete(operation)};\r\n    const pending=backend('status',{operation_id:operation},assertCurrent).then(async data=>{\r\n      assertCurrent();const row=data?.operation;if(row?.state!=='created'||!row.verified_at||!row.document_id)return null;\r\n      const metadata={documentId:String(row.document_id),documentNumber:String(row.document_number||''),documentType:Number(row.document_type)||0,verifiedAt:String(row.verified_at||'')};\r\n      if(!metadata.documentNumber||!metadata.documentType){\r\n        try{const detail=await backend('get_document',{document_id:metadata.documentId},assertCurrent);assertCurrent();const document=detail?.document||{};metadata.documentNumber=String(document.number||metadata.documentNumber);metadata.documentType=Number(document.type)||metadata.documentType}\r\n        catch{forget();return null}\r\n      }\r\n      if(!metadata.documentNumber||!metadata.documentType){forget();return null}\r\n      return metadata;\r\n    }).catch(()=>{forget();return null});\r\n    entry={promise:pending,assertCurrent};operationMetadataCache.set(operation,entry);return pending;\r\n  }",
+      "digest": "e9e4b03ceed5948e3de6cde43d42a6b2101533059948e2029f22b047c30de8f5"
+    },
+    "runSearch": {
+      "source": "async function runSearch({refresh=false}={}){\r\n    let assertCurrent;try{browserAssert?.();assertCurrent=captureScope()}catch(error){if(!scopeChanged(error))toast(error.message);return}\r\n    const ticket=++sequence,element=root();if(!element)return;setBusy(true);clearBrowserPreview();\r\n    $('#morningBrowserStatus').textContent='מחפש ב-Morning…';$('#morningBrowserResults').replaceChildren();$('#morningBrowserDetails').hidden=true;\r\n    try{\r\n      const key=JSON.stringify(query);let cached=cache.get(key);if(cached){try{cached.assertCurrent()}catch{cached=null;invalidateCache()}}\r\n      const data=!refresh&&cached&&cached.expires>Date.now()?cached.data:await backend('search_documents',query,assertCurrent);assertCurrent();\r\n      if(ticket!==sequence||root()!==element)return;\r\n      if(cache.size>=20)cache.delete(cache.keys().next().value);cache.set(key,{data,assertCurrent,expires:Date.now()+CACHE_TTL_MS});\r\n      lastItems=data.items||[];renderResults(lastItems);\r\n      $('#morningBrowserStatus').textContent=lastItems.length?`${data.total} מסמכים נמצאו`:'לא נמצאו מסמכים בטווח ובמסננים שנבחרו';\r\n      $('#morningPageLabel').textContent=`עמוד ${query.page+1}${data.pages?' מתוך '+data.pages:''}`;\r\n      $('#morningPrevious').disabled=query.page===0;$('#morningNext').disabled=query.page+1>=data.pages;\r\n    }catch(error){if(ticket===sequence&&root()===element){$('#morningBrowserStatus').textContent=error.message;$('#morningPrevious').disabled=query.page===0}}\r\n    finally{if(ticket===sequence&&root()===element)setBusy(false)}\r\n  }",
+      "digest": "f7af9030209f88735114e4adcf945bf7c032da6ceb76425667c5fea43dfa6593"
+    },
+    "readFilters": {
+      "source": "function readFilters(){\r\n    const fromDate=$('#morningSearchFrom')?.value||'',toDate=$('#morningSearchTo')?.value||'';\r\n    if(!fromDate||!toDate||fromDate>toDate)throw new Error('יש לבחור טווח תאריכים תקין');\r\n    const type=$('#morningSearchType')?.value,status=$('#morningSearchStatus')?.value;\r\n    return {...query,fromDate,toDate,clientName:($('#morningSearchClient')?.value||'').trim(),type:type===''?[]:[Number(type)],status:status===''?[]:[Number(status)]};\r\n  }",
+      "digest": "94273caf172b4d98d8465674bb5789ea100d83348571d73d87e79061f355ec95"
+    },
+    "allocationMarkup": {
+      "source": "function allocationMarkup(value){\r\n    const allocation=String(value||'').trim();if(!allocation)return '<span class=\"morning-browser-allocation empty\">—</span>';\r\n    const preview=allocation.length>7?allocation.slice(0,7)+'…':allocation;\r\n    return `<span class=\"morning-browser-allocation assigned\" title=\"${esc(allocation)}\" aria-label=\"מספר הקצאה ${esc(allocation)}\"><span class=\"morning-browser-allocation-mark\" aria-hidden=\"true\">✓</span><span class=\"morning-browser-allocation-text\">${esc(preview)}</span></span>`;\r\n  }",
+      "digest": "c930c525bfaa1062cef7cf59e061ed132fcf71153cae5ade06127e0169d7fc38"
+    },
+    "renderResults": {
+      "source": "function renderResults(items){\r\n    const headers=['תאריך','סוג','מספר מסמך','לקוח','סכום','מטבע','סטטוס','מספר הקצאה','פעולות'];\r\n    $('#morningBrowserResults').innerHTML=`<table class=\"morning-browser-table\"><thead><tr>${headers.map(h=>`<th scope=\"col\">${h}</th>`).join('')}</tr></thead><tbody>${items.map(doc=>{\r\n      const fields=[doc.date,TYPES[doc.type]||doc.type,doc.number,doc.clientName,amount(doc.amount,''),doc.currency,STATUSES[doc.status]??doc.status];\r\n      return `<tr>${fields.map((value,index)=>`<td data-label=\"${headers[index]}\" title=\"${esc(value)}\"><span class=\"morning-browser-cell-text\">${esc(value)}</span></td>`).join('')}<td class=\"morning-browser-allocation-cell\" data-label=\"מספר הקצאה\">${allocationMarkup(doc.allocationNumber)}</td><td data-label=\"פעולות\"><div class=\"morning-browser-actions\">${picker?`<button class=\"btn small\" data-action=\"morning-select-invoice\" data-click-arg0=\"${esc(doc.id)}\">בחר</button>`:''}<button class=\"btn small\" data-action=\"morning-browser-view\" data-click-arg0=\"${esc(doc.id)}\">צפה</button><button class=\"btn small\" data-action=\"morning-download\" data-click-arg0=\"${esc(doc.id)}\">הורד</button><button class=\"btn small\" data-action=\"morning-details\" data-click-arg0=\"${esc(doc.id)}\">פרטים</button></div></td></tr>`;\r\n    }).join('')}</tbody></table>`;\r\n  }",
+      "digest": "87545130669c180c5ec0e1b989d63658c88d1b7cf410855ce8f3d1d98d5d5439"
+    },
+    "selectInvoice": {
+      "source": "function selectInvoice(id){\r\n    try{browserAssert?.();captureScope()()}catch(error){toast(error.message);return false}\r\n    const doc=lastItems.find(item=>item.id===id),select=$('#morningLinkedDocument');if(!doc||!select)return;\r\n    select.innerHTML=`<option value=\"\">ללא קישור</option><option value=\"${esc(id)}\">${esc(doc.number)} · ${esc(doc.clientName)} · ${esc(amount(doc.amount,doc.currency))}</option>`;select.value=id;\r\n    sequence++;media.cancelPending();$('#morningInvoicePicker').hidden=true;$('#morningInvoicePicker').replaceChildren();\r\n  }",
+      "digest": "3ed86c6b6e9b64e23151dd63264a587753125d5dc3ab7ac71af89bb14d4dc448"
+    }
+  }
+}

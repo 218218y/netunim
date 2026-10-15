@@ -71,8 +71,8 @@ function createDomainsCustomersDocumentsBrowser(ports){return buildMorning({...p
     dateEditorMarkup(){return''},
     supaFetch:async(_path,options)=>{
       const body=JSON.parse(options.body);
-      if(body.action==='status'){statusReads++;return new Response(JSON.stringify({ok:true,operation:{state:'created',verified_at:'2026-09-09T10:00:00Z',document_id:'legacy-doc'}}),{status:200,headers:{'Content-Type':'application/json'}})}
-      if(body.action==='get_document')return new Response(JSON.stringify({ok:true,document:{id:'legacy-doc',number:'2001',type:400}}),{status:200,headers:{'Content-Type':'application/json'}});
+      if(body.action==='status'){statusReads++;return new Response(JSON.stringify({ok:true,operation:{operation_id:body.operation_id,state:'created',verified_at:'2026-09-09T10:00:00Z',document_id:'legacy-doc'}}),{status:200,headers:{'Content-Type':'application/json'}})}
+      if(body.action==='get_document')return new Response(JSON.stringify({ok:true,document:{id:'legacy-doc',number:'2001',type:400,amount:0,date:'2026-09-09'}}),{status:200,headers:{'Content-Type':'application/json'}});
       assert.equal(body.document_id,'legacy-doc');return new Response(new Blob(['%PDF-1.4\nlegacy'],{type:'application/pdf'}),{status:200,headers:{'Content-Type':'application/pdf'}});
     },
   });
@@ -90,7 +90,7 @@ function createDomainsCustomersDocumentsBrowser(ports){return buildMorning({...p
   const metadataBrowser=createDomainsCustomersDocumentsBrowser({
     operationScope:{capture:()=>()=>{},captureRead:()=>()=>{}},
     modal(){},toast(message){throw new Error(`Unexpected toast: ${message}`)},dateEditorMarkup(){return''},
-    supaFetch:async(_path,options)=>{const body=JSON.parse(options.body);assert.equal(body.action,'status');metadataReads++;return new Response(JSON.stringify({ok:true,operation:{state:'created',verified_at:'2026-09-09T10:00:00Z',document_id:'doc-3889',document_number:'3889',document_type:320}}),{status:200,headers:{'Content-Type':'application/json'}})},
+    supaFetch:async(_path,options)=>{const body=JSON.parse(options.body);assert.equal(body.action,'status');metadataReads++;return new Response(JSON.stringify({ok:true,operation:{operation_id:body.operation_id,state:'created',verified_at:'2026-09-09T10:00:00Z',document_id:'doc-3889',document_number:'3889',document_type:320}}),{status:200,headers:{'Content-Type':'application/json'}})},
     onDebtDocumentMetadataResolved:metadata=>{resolvedMetadata.push(metadata);return true},
   });
   const richLabel={textContent:'מסמך Morning'},richButton={dataset:{morningDebtOperation:'operation-3889'},title:'',isConnected:true,querySelector(){return richLabel}},richRoot={querySelectorAll(){return[richButton]}};

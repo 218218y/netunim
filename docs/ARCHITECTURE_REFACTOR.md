@@ -1,5 +1,13 @@
 # Architecture refactor: verified baseline and next slices
 
+Morning catalog reads now have a strict three-port owner and unknown payload
+decoders. Search caching, metadata coalescing, detail fallback and fresh links
+leave the browser; operation/document identities are checked before publication
+or debt metadata persistence. An original-module native regression reproduces
+foreign-operation linkage. Immutable original policies, executed positive paths,
+strict contracts/mutations and native journal/reload cases protect the change.
+See [Morning catalog ownership](MORNING_CATALOG_OWNER.md).
+
 This plan records boundaries that have been checked in the active code. Changes to
 persisted formats, Storage V2 ownership, journal replay, and cloud RPC semantics
 remain separate from structural refactors.

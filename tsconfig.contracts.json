@@ -20,6 +20,9 @@
     "types": []
   },
   "files": [
+    "tests/fixtures/checked-morning-catalog.mjs",
+    "netunim-orders/site/assets/js/domains/customers/morning-catalog.js",
+    "netunim-orders/site/assets/js/domains/customers/morning-catalog-evidence.js",
     "tests/fixtures/checked-calendar-projection.mjs",
     "netunim-orders/site/assets/js/calendar/payload.js",
     "netunim-orders/site/assets/js/calendar/api.js",
