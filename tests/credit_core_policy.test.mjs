@@ -13,7 +13,7 @@ const modules = [
 const fixture = JSON.parse(
   fs.readFileSync(new URL('./fixtures/credit-core-policy.json', import.meta.url), 'utf8')
 );
-test('all 30 Credit core declarations match the reviewed base', () => {
+test('all 32 Credit core declarations match the reviewed contract', () => {
   assert.deepEqual(creditAdapterPolicyHashes(modules.map(read)).policies, fixture.creditPolicies);
 });
 
@@ -33,8 +33,8 @@ test('policy fixture detects changed charge signs, login identity, transaction s
     ],
     [
       'credit-transaction-model',
-      /tx\?\.status\s*!==\s*'pending'/,
-      "tx?.status==='pending'",
+      'assertCreditTransactionEvidence(tx)',
+      "assertCreditTransactionEvidence({...tx,status:'completed'})",
       'normalizeCreditScrapeTransaction',
     ],
     [

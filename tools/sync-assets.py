@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 APPS = ('kupa', 'orders')
 BRIDGE_SHARED_SOURCES = {
     'shared/bank-money-value.js': 'netunim-kupa/bank-bridge/bank-money-value.mjs',
+    'shared/credit-transaction-evidence.js': 'netunim-kupa/bank-bridge/credit-transaction-evidence.mjs',
 }
 DOCUMENT_SEARCH_SHARED_ROOT = PurePosixPath('shared/document-search')
 DOCUMENT_SEARCH_TARGET_ROOT = PurePosixPath('assets/js')

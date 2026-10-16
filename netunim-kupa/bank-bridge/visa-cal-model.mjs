@@ -8,6 +8,7 @@ import {
 } from './credit-value-codec.mjs';
 import { CAL_FRAMES_NOT_RELEVANT_STATUS, CAL_TRANSACTION_TYPES } from './credit-adapter-wire.mjs';
 import { normalizeCreditScrapeTransaction } from './credit-transaction-model.mjs';
+import {assertCreditNumericInput} from './credit-core-values.mjs';
 
 function shiftMonthDate(value, delta) {
   const iso = safeDate(value);
@@ -26,6 +27,7 @@ function calCurrency(value) {
 }
 
 function calNumber(value) {
+  assertCreditNumericInput(value);
   if (value === null || value === undefined || String(value).trim() === '') return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;

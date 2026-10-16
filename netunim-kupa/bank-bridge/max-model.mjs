@@ -1,9 +1,10 @@
 // @ts-nocheck
 import { hasOwn, safeDate, safeSuffix, text } from './credit-value-codec.mjs';
 import { maxRawTransactionTime } from './credit-data-diagnostics.mjs';
-import { creditDebitAmount } from './credit-core-values.mjs';
+import { creditDebitAmount,assertCreditNumericInput } from './credit-core-values.mjs';
 
 function maxNumber(value) {
+  assertCreditNumericInput(value);
   if (value === null || value === undefined || String(value).trim() === '') return null;
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
   const raw = String(value)
