@@ -10,6 +10,18 @@ const result=account=>({contractVersion:2,profiles:[{profileId:'P',provider:'max
 const rejected=value=>assert.throws(()=>readCreditRefreshResult(value),{code:'CREDIT_REFRESH_RESULT_INVALID'});
 
 for(const [name,merge] of [['Kupa',kupaMerge],['Orders',ordersMerge]]){
+  test(name+' a coercible monthly success cannot erase retained transactions',()=>{
+    const initial=merge({cardMappings:{'P:C':{included:true}}},readCreditRefreshResult(result({months:[month]})));
+    const before=JSON.stringify(initial);
+    for(const row of [{month:'2026-10',fetchStatus:['success']},
+      {month:'2026-10',fetchStatus:['success'],transactions:[]},
+      {...month,status:['fresh']},{...month,tier:['core']}]){
+      assert.throws(()=>merge(initial,readCreditRefreshResult(result({months:[row]}))),
+        {code:'CREDIT_REFRESH_RESULT_INVALID'});
+      assert.equal(JSON.stringify(initial),before);
+    }
+  });
+
   test(name+' rejects malformed account statuses before replacement and preserves the entire retained state',()=>{
     const initial=merge({cardMappings:{'P:C':{included:true,account:'ביתי'}}},readCreditRefreshResult(result({
       balance:100,cardFrame:1000,availableCredit:900,frameStatus:'fresh',frameFetchStatus:'success',
@@ -68,7 +80,7 @@ test('current monetary evidence rejects coerced/invalid values in every represen
 test('current installment and charge flags cannot invent financial meaning by normalization',()=>{
   for(const installments of [false,[],{}, {number:true,total:3},{number:1.5,total:3},{number:1,total:2.5},
     {number:0,total:3},{number:4,total:3},{number:1,total:Number.MAX_SAFE_INTEGER+1}])rejected(result({txns:[{...tx,installments}]}));
-  for(const chargeAmountStatus of [true,'unknown',null])rejected(result({txns:[{...tx,chargeAmountStatus}]}));
+  for(const chargeAmountStatus of [true,'unknown',null,['reported'],['missing']])rejected(result({txns:[{...tx,chargeAmountStatus}]}));
   rejected(result({txns:[{...tx,chargeAmountStatus:'reported',chargedAmount:null}]}));
   rejected(result({txns:[{...tx,foreignTransaction:'false'}]}));
   for(const coreComplete of ['true',0,null])rejected({...result({}),profiles:[{profileId:'P',coreComplete}]});
