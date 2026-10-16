@@ -43,7 +43,7 @@ export function readBankArchiveRows(response,accountKey,role,seen=new Set()){
   for(const row of rows){
     scope(row,accountKey,role);
     if(!id(row.id)||seen.has(row.id)||!text(row.merge_key)||!money(row.amount)||!text(row.currency)||
-      !text(row.status)||!['unknown','present','missing'].includes(String(row.presence_state))||
+      !text(row.status)||typeof row.presence_state!=='string'||!['unknown','present','missing'].includes(row.presence_state)||
       !timestamp(row.first_seen_at)||!nullableTimestamp(row.transaction_date)||!nullableTimestamp(row.processed_date)||
       !nullableTimestamp(row.last_seen_at)||!nullableTimestamp(row.missing_since)||!nullableTimestamp(row.missing_acknowledged_at)||
       !object(row.alert_acknowledgements)||Object.values(row.alert_acknowledgements).some(at=>!timestamp(at))||

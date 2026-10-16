@@ -57,10 +57,11 @@ test('Kupa failed plan installation and unexpected hydration failure remain fail
   assert.equal(next.runtime.hydrate(),hydration);assert.equal(reads,1);assert.equal(next.session.startupCloudHydrating,false);
 });
 
-test('Kupa restore network failure retains its existing report-and-continue policy',async t=>{
+test('Kupa unknown restore outcome blocks editing and dependent hydration',async t=>{
   t.mock.method(console,'error',noop);const f=cloudFixture();f.ports.restore.resume=async()=>{throw new TypeError('Failed to fetch')};
-  await f.runtime.prepare({localEngineActive:false});assert.equal(await f.runtime.hydrate(),'opened');
-  assert.deepEqual(f.calls,['capabilities','open']);assert.ok(f.statuses.some(([mode])=>mode==='conflict'));
+  await f.runtime.prepare({localEngineActive:false});await assert.rejects(f.runtime.hydrate(),/Failed to fetch/);
+  assert.deepEqual(f.calls,['capabilities']);assert.equal(f.session.storageProtocolBlocked,true);
+  assert.ok(f.statuses.some(item=>Array.isArray(item)&&item[0]==='conflict'));
 });
 
 test('Kupa missing-document UI is shown only while account access remains valid',async()=>{

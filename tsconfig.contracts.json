@@ -289,6 +289,9 @@
     "tests/fixtures/checked-journal-authority.mjs",
     "shared/cloud-read-records.js",
     "shared/response-evidence.js",
+    "shared/restore-response-records.js",
+    "tests/fixtures/checked-restore-response-records.mjs",
+    "shared/restore-server-recovery.js",
     "shared/bank-response-records.js",
     "tests/fixtures/checked-bank-response-records.mjs",
     "tests/fixtures/checked-cloud-read-records.mjs"

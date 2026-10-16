@@ -506,6 +506,10 @@ const uiBackup=createUiBackup({
     accountScope:()=>cloudAuth.getAccountScope(),
     subscribeAccountScope:listener=>cloudAuth.subscribeAccountScope(listener),
     persistSupabaseState:(...args)=>syncDocument.persistSupabaseState(...args),
+    readRestoreHeads:async(options)=>{
+      const [main,shared]=await Promise.all([cloudTransport.readSupabaseDocument({...options,includeFinance:false}),cloudTransport.readSharedChecksDocument()]);
+      return {main,shared};
+    },
     restoreGroupStore,
     stageRestoreGroup:(...args)=>cloudTransport.stageRestoreGroup(...args),
     applyRestoreGroup:(...args)=>cloudTransport.applyRestoreGroup(...args),

@@ -43,7 +43,7 @@ for(const [app,create] of [['orders',orders],['kupa',kupa]]){
     assert.deepEqual(await transport([]).readBankTransactions(key,'business'),[]);
     assert.equal(await transport([]).readBankTransactionSnapshot(key,'business'),null);
     for(const patch of [{account_key:'other'},{account_role:'home'},{amount:''},{amount:true},{id:'77'},
-      {first_seen_at:'bad'},{alert_acknowledgements:[]},{alert_acknowledgements:{returned_cheque:'bad'}}]){
+      {first_seen_at:'bad'},{presence_state:['present']},{alert_acknowledgements:[]},{alert_acknowledgements:{returned_cheque:'bad'}}]){
       await assert.rejects(transport([{...archive,...patch}]).readBankTransactions(key,'business'),invalid);
     }
     for(const patch of [{account_key:'other'},{snapshot_at:'bad'},{coverage_from:'2026-02-30'},

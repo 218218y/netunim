@@ -1,3 +1,4 @@
+import {readRestoreGroupRows,readRestoreStageReceipt,readRestoreApplyReceipt} from '../shared/restore-response-records.js';
 import {readBankAcknowledgementReceipt,readBankHandledReceipt,readBankArchiveRows,readBankSnapshotRows,readBankMorningLinkRows} from '../shared/bank-response-records.js';
 import {readCloudMetaRows,readCloudDocumentRows,readFinanceDocumentRows,readCloudBackupRows,readCloudBackupPointRows} from '../shared/cloud-read-records.js';
 import {beginMeasure} from '../shared/runtime-performance.js';
@@ -97,10 +98,18 @@ async function rpcSaveKupaDocument(state,expectedRevision,operationId,audit={},{
 
 async function rpcSaveSharedChecksV2(checks,expectedRevision,operationId,deletedCheckIds=[],audit={}){const payload={version:1,checks:normalizeSharedChecks(checks)},expected=Number(expectedRevision||0),op=String(operationId||'').trim();const deletedIds=[...new Set((Array.isArray(deletedCheckIds)?deletedCheckIds:[]).map(x=>String(x||'').trim()).filter(Boolean))].sort();if(!Number.isSafeInteger(expected)||expected<0)throw new Error('Revision הצ\'קים המקומי אינו תקין');if(!op)throw new Error('מזהה פעולת הצ\'קים חסר');const rpc=audit?.mutationType==='bulk-delete'?`bulk_delete_${SHARED_CHECKS_RPC}_v6`:`${SHARED_CHECKS_RPC}_v6`,r=await supaFetch(`/rest/v1/rpc/${rpc}`,{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify({p_document_name:SHARED_CHECKS_DOC,p_expected_revision:expected,p_state:payload,p_operation_id:op,p_deleted_check_ids:deletedIds,p_audit:audit})});const txt=await r.text();let j;try{j=txt?JSON.parse(txt):null}catch(e){j=null}return {r,j,txt,row:Array.isArray(j)?j[0]:j}}
 
-async function restoreRpc(name,body){const r=await supaFetch(`/rest/v1/rpc/${name}`,{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify(body)}),txt=await r.text();let j;try{j=txt?JSON.parse(txt):null}catch{j=null}if(!r.ok)throw new Error(j?.message||j?.hint||txt||`restore rpc failed: ${name}`);return Array.isArray(j)?j[0]:j}
-async function stageRestoreGroup(group){return restoreRpc('stage_restore_group_v6',restoreGroupRpcPayload(group))}
-async function applyRestoreGroup(restoreGroupId){return restoreRpc('apply_restore_group_v6',{p_restore_group_id:String(restoreGroupId)})}
-async function listIncompleteRestoreGroups(){const r=await supaFetch('/rest/v1/rpc/list_incomplete_restore_groups_v5',{method:'POST',networkRetry:true,dataPriority:'high',body:'{}'}),txt=await r.text();let j;try{j=txt?JSON.parse(txt):null}catch{j=null}if(!r.ok)throw new Error(j?.message||txt||'restore group status failed');return Array.isArray(j)?j:[]}
+async function restoreRpc(name,body,{assertCurrent}={}){assertCurrent?.();const r=await supaFetch(`/rest/v1/rpc/${name}`,{method:'POST',networkRetry:true,dataPriority:'high',...(assertCurrent?{assertRequestScope:assertCurrent}:{}),body:JSON.stringify(body)});
+  const txt=await r.text();assertCurrent?.();let j;try{j=txt?JSON.parse(txt):null}catch{j=null}if(!r.ok)throw new Error(j?.message||j?.hint||txt||`restore rpc failed: ${name}`);return j}
+async function stageRestoreGroup(group,options={}){
+  const payload=restoreGroupRpcPayload(group);
+  return readRestoreStageReceipt(await restoreRpc('stage_restore_group_v6',payload,options),payload.p_restore_group_id);
+}
+async function applyRestoreGroup(restoreGroupId,options={}){
+  const id=String(restoreGroupId);
+  return readRestoreApplyReceipt(await restoreRpc('apply_restore_group_v6',{p_restore_group_id:id},options),id);
+}
+async function listIncompleteRestoreGroups({assertCurrent}={}){assertCurrent?.();const r=await supaFetch('/rest/v1/rpc/list_incomplete_restore_groups_v5',{method:'POST',networkRetry:true,dataPriority:'high',...(assertCurrent?{assertRequestScope:assertCurrent}:{}),body:'{}'});
+  const txt=await r.text();assertCurrent?.();let j;try{j=txt?JSON.parse(txt):null}catch{j=null}if(!r.ok)throw new Error(j?.message||txt||'restore group status failed');return readRestoreGroupRows(j)}
 
 async function readBankTransactionSnapshot(accountKey,accountRole,{assertCurrent}={}){assertCurrent?.();
   const q=`/rest/v1/bank_transaction_snapshots?account_key=eq.${encodeURIComponent(accountKey)}&account_role=eq.${accountRole==='home'?'home':'business'}&select=account_key,account_role,snapshot_at,coverage_from,coverage_to,transaction_count,transactions&limit=1`;

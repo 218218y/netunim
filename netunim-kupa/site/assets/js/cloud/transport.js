@@ -1,3 +1,4 @@
+import {readRestoreGroupRows,readRestoreStageReceipt,readRestoreApplyReceipt} from '../shared/restore-response-records.js';
 import {readBankAcknowledgementReceipt,readBankArchiveRows,readBankSnapshotRows} from '../shared/bank-response-records.js';
 import {readCloudMetaRows,readCloudDocumentRows,readFinanceDocumentRows,readCloudBackupRows,readCloudBackupPointRows} from '../shared/cloud-read-records.js';
 import {createMainDocumentWrite} from './main-document-write.js';
@@ -78,10 +79,10 @@ function overlayFinanceState(base,finance){
   if(fs.creditSync&&typeof fs.creditSync==='object')out.creditSync=structuredClone(fs.creditSync);
   return out;
 }
-async function readSupabaseDocument({assertCurrent}={}){
+async function readSupabaseDocument({assertCurrent,includeFinance=true}={}){
   assertCurrent?.();
   const q=`/rest/v1/kupa_documents?document_name=eq.${encodeURIComponent(session.cloudDocumentName)}&select=*`;
-  const [docResult,financeResult]=await Promise.allSettled([supaRest(q,{method:'GET',...(assertCurrent?{assertRequestScope:assertCurrent}:{})}),readFinanceSyncDocument({assertCurrent})]);
+  const [docResult,financeResult]=await Promise.allSettled([supaRest(q,{method:'GET',...(assertCurrent?{assertRequestScope:assertCurrent}:{})}),includeFinance?readFinanceSyncDocument({assertCurrent}):Promise.resolve(null)]);
   assertCurrent?.();
   if(docResult.status!=='fulfilled')throw docResult.reason;
   const financeAvailable=financeResult.status==='fulfilled';
@@ -93,6 +94,7 @@ async function readSupabaseDocument({assertCurrent}={}){
   if(row){
     assertReadableCloudState(row.state,'מסמך הקופה בענן');
     const rev=Number(row.revision);if(!Number.isSafeInteger(rev)||rev<1)throw new Error('Revision הקופה בענן אינו תקין. הסנכרון נעצר כדי למנוע דריסה.');
+    if(!includeFinance)return row;
     row.financeAvailable=financeAvailable;
     if(financeAvailable&&financeResult.value){
       row.state=overlayFinanceState(row.state,financeResult.value);
@@ -227,10 +229,18 @@ async function readSharedChecksDocument(){
 }
 async function readSharedChecksMeta(){const q=`/rest/v1/${SHARED_CHECKS_TABLE}?document_name=eq.${encodeURIComponent(SHARED_CHECKS_DOC)}&select=document_name,revision,updated_at`;const r=await supaRest(q,{method:'GET',networkRetry:true}),j=await r.json().catch(()=>null);if(!r.ok)throw new Error(j?.message||'קריאת סטטוס הצקים המשותפים נכשלה');return readCloudMetaRows(j,SHARED_CHECKS_DOC)}
 async function rpcSaveSharedChecksV2(checks,expectedRevision,operationId,deletedCheckIds=[],audit={}){const payload={version:1,checks:normalizeSharedChecks(checks)},expected=Number(expectedRevision||0),op=String(operationId||'').trim();const deletedIds=[...new Set((Array.isArray(deletedCheckIds)?deletedCheckIds:[]).map(x=>String(x||'').trim()).filter(Boolean))].sort();if(!Number.isSafeInteger(expected)||expected<0)throw new Error('Revision הצקים המקומי אינו תקין');if(!op)throw new Error('מזהה פעולת הצקים חסר');const rpc=audit?.mutationType==='bulk-delete'?`bulk_delete_${SHARED_CHECKS_RPC}_v6`:`${SHARED_CHECKS_RPC}_v6`,r=await supaRest(`/rest/v1/rpc/${rpc}`,{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify({p_document_name:SHARED_CHECKS_DOC,p_expected_revision:expected,p_state:payload,p_operation_id:op,p_deleted_check_ids:deletedIds,p_audit:audit})});const body=await r.text();let j;try{j=body?JSON.parse(body):null}catch(e){j=null}return {r,j,body,row:Array.isArray(j)?j[0]:j}}
-async function restoreRpc(name,body){const r=await supaRest(`/rest/v1/rpc/${name}`,{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify(body)}),raw=await r.text();let j;try{j=raw?JSON.parse(raw):null}catch{j=null}if(!r.ok)throw new Error(j?.message||j?.hint||raw||`restore rpc failed: ${name}`);return Array.isArray(j)?j[0]:j}
-async function stageRestoreGroup(group){return restoreRpc('stage_restore_group_v6',restoreGroupRpcPayload(group))}
-async function applyRestoreGroup(restoreGroupId){return restoreRpc('apply_restore_group_v6',{p_restore_group_id:String(restoreGroupId)})}
-async function listIncompleteRestoreGroups(){const r=await supaRest('/rest/v1/rpc/list_incomplete_restore_groups_v5',{method:'POST',networkRetry:true,dataPriority:'high',body:'{}'}),raw=await r.text();let j;try{j=raw?JSON.parse(raw):null}catch{j=null}if(!r.ok)throw new Error(j?.message||raw||'restore group status failed');return Array.isArray(j)?j:[]}
+async function restoreRpc(name,body,{assertCurrent}={}){assertCurrent?.();const r=await supaRest(`/rest/v1/rpc/${name}`,{method:'POST',networkRetry:true,dataPriority:'high',...(assertCurrent?{assertRequestScope:assertCurrent}:{}),body:JSON.stringify(body)});
+  const raw=await r.text();assertCurrent?.();let j;try{j=raw?JSON.parse(raw):null}catch{j=null}if(!r.ok)throw new Error(j?.message||j?.hint||raw||`restore rpc failed: ${name}`);return j}
+async function stageRestoreGroup(group,options={}){
+  const payload=restoreGroupRpcPayload(group);
+  return readRestoreStageReceipt(await restoreRpc('stage_restore_group_v6',payload,options),payload.p_restore_group_id);
+}
+async function applyRestoreGroup(restoreGroupId,options={}){
+  const id=String(restoreGroupId);
+  return readRestoreApplyReceipt(await restoreRpc('apply_restore_group_v6',{p_restore_group_id:id},options),id);
+}
+async function listIncompleteRestoreGroups({assertCurrent}={}){assertCurrent?.();const r=await supaRest('/rest/v1/rpc/list_incomplete_restore_groups_v5',{method:'POST',networkRetry:true,dataPriority:'high',...(assertCurrent?{assertRequestScope:assertCurrent}:{}),body:'{}'});
+  const raw=await r.text();assertCurrent?.();let j;try{j=raw?JSON.parse(raw):null}catch{j=null}if(!r.ok)throw new Error(j?.message||raw||'restore group status failed');return readRestoreGroupRows(j)}
   async function readStorageProtocolState(){const r=await supaRest('/rest/v1/rpc/get_storage_protocol_state',{method:'POST',networkRetry:true,dataPriority:'high',body:'{}'}),state=await r.json().catch(()=>null);if(!r.ok)throw new Error(state?.message||'בדיקת פרוטוקול האחסון בענן נכשלה');return state}
   return { rpcSaveCloudV2,readSupabaseDocument,verifyLocalResetCloud,readOrdersReadOnlyMeta,readOrdersReadOnlyCloud,readSharedChecksDocument,readSharedChecksMeta,readStorageProtocolState,rpcSaveSharedChecksV2,stageRestoreGroup,applyRestoreGroup,listIncompleteRestoreGroups,listKupaCloudBackups,readKupaCloudBackupPoint,readFinanceSyncDocument,rpcSaveFinanceSync,saveFinancePatch,claimFinanceSyncLease,releaseFinanceSyncLease,saveBankSyncSnapshot,syncBankTransactionsSnapshot,readBankTransactions,readBankTransactionSnapshot,acknowledgeBankTransactionMissing,acknowledgeBankTransactionAlert};
 }

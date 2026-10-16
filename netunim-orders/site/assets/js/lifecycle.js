@@ -88,7 +88,7 @@ async function boot(){
   admission.assertCurrent(state);
   if(session.syncCapabilitiesError){storageRecovery.activate();render();setCloud(session.syncCapabilitiesError.message,'error');setSave(session.syncCapabilitiesError.message,'error');return}
 
-  try{await resumeIncompleteRestore()}catch(error){console.error('restore group startup recovery',error);setCloud('ענן: שחזור ממתין','error')}
+  try{await resumeIncompleteRestore()}catch(error){console.error('restore group startup recovery',error);setCloud('ענן: שחזור ממתין','error');throw error}
 
   const plan=await cloudStartup.prepare({localEngineActive});
   admission.assertCurrent(state);storageRecovery.activate();
