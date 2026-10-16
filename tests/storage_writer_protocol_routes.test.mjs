@@ -7,6 +7,12 @@ import {createRestoreGroup} from '../shared/restore-groups.js';
 import {checkStorageProtocolStartup} from '../shared/storage-v2-server-protocol.js';
 
 const response={ok:true,text:async()=>JSON.stringify([{revision:1,state:{}}])};
+function routeResponse(path){
+  const restore_group_id='55555555-5555-4555-8555-555555555555';
+  if(path.endsWith('/stage_restore_group_v6'))return {ok:true,text:async()=>JSON.stringify([{restore_group_id,phase:'staged'}])};
+  if(path.endsWith('/apply_restore_group_v6'))return {ok:true,text:async()=>JSON.stringify([{restore_group_id,phase:'completed',main_revision:2,checks_revision:null}])};
+  return response;
+}
 const ordersState=()=>{const state=structuredClone(INITIAL_STATE);delete state.checks;return state};
 
 test('both shared-check writers serialize the canonical finite amount',async()=>{
@@ -21,8 +27,8 @@ test('both shared-check writers serialize the canonical finite amount',async()=>
 
 test('Orders and Kupa transports expose only v6 document writers',async()=>{
   const ordersPaths=[],kupaPaths=[];
-  const orders=ordersTransport({supaFetch:async path=>{ordersPaths.push(path);return response}});
-  const kupa=kupaTransport({supaRest:async path=>{kupaPaths.push(path);return response}});
+  const orders=ordersTransport({supaFetch:async path=>{ordersPaths.push(path);return routeResponse(path)}});
+  const kupa=kupaTransport({supaRest:async path=>{kupaPaths.push(path);return routeResponse(path)}});
   const state=ordersState();
   assert.equal(orders.rpcSave,undefined);
   assert.equal(orders.rpcSaveSharedChecks,undefined);
