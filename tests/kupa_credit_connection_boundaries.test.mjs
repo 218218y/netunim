@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 import { parse } from 'acorn';
 import { analyze } from 'eslint-scope';
 import {restoreCreditPublicationAuthority} from './credit_publication_authority_fixture.mjs';
+import {restoreCreditAccountFeed} from './credit_account_authority_fixture.mjs';
 
 const root = new URL('../', import.meta.url),
   read = (path) => fs.readFileSync(new URL(path, root), 'utf8');
@@ -78,6 +79,7 @@ test('Bridge wire/fallback, issuer merge, Finance publication and credential inp
   for (const [file, expected] of Object.entries(fixture.sha256)) {
     let source = read(file).replace(/\r\n/g, '\n');
     if(file.endsWith('/credit/publication.js'))source=restoreCreditPublicationAuthority(source);
+    if(file.endsWith('/credit/sync-feed.js'))source=restoreCreditAccountFeed(source);
     assert.equal(createHash('sha256').update(source).digest('hex'), expected, file);
   }
 });
