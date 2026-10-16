@@ -84,7 +84,7 @@ test('malformed list and stale account cannot apply a server group',async()=>{
 });
 
 test('Kupa restore reads exact Main state without overlaying independent Finance data',async()=>{
-  const state={cash:[],rights:[],notes:[],credits:[],expenses:[],cards:[],bank:{currentBalance:100},creditSync:{profiles:[]}};
+  const state={cash:[],rights:[],notes:[],credits:[],expenses:[],cards:[],bank:{currentBalance:100,adjustments:[]},creditSync:{profiles:[]}};
   const paths=[],api=kupa({session:{cloudDocumentName:'main'},supaRest:async path=>{
     paths.push(path);assert.ok(path.includes('/kupa_documents?'));
     return response([{document_name:'main',revision:9,updated_at:at,state}]);
