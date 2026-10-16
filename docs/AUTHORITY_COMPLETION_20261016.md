@@ -75,6 +75,26 @@ Kupa restore reads request the exact Main head without the display-only overlay
 from the independent Finance document. The ordinary cloud read keeps its existing
 overlay behavior. Restoring Main must not manufacture a composite cloud base.
 
+## Remaining IDB input authority
+
+Base/flight/control records and all cloud/local/clean/recovery head preconditions
+are captured and decoded synchronously before opening or queuing IDB work.
+Checkpoint/operation capture stays on its existing owners. The transaction still
+checks the active writer, owner, epoch, sequence, cloud range and persisted head;
+capture does not replace these checks or grant a receipt before commit.
+
+Boundary, bootstrap, bootstrap patches and local-birth payloads also had caller
+references crossing `open()`. They now receive a detached JSON input before that
+wait while retaining their transactional transition checks. The fenced-account
+path already sealed its two heads synchronously and needed no rewrite.
+
+Only the small capture/decision helpers enter strict checking. Native IDB tests
+exercise 30 record/precondition mutations across all three journal namespaces,
+plus four transition payload captures. Changed inputs are re-signed with valid
+checksums, proving the accepted command is retained instead of merely catching
+checksum damage. Existing ACK/rebase/adoption/conflict tests continue to pass.
+No eager modules or byte ceilings are added in this stage.
+
 ## Release scope
 
 Full CI includes real PostgreSQL, native browser/IndexedDB, recovery/fault injection,
