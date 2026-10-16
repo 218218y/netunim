@@ -15,9 +15,9 @@ test('credit profiles remain sequential, retain identity exclusions and isolate 
 });
 
 test('issuer-wide deferral skips an attempt while Camoufox-only deferral still permits Chromium',async()=>{
-  const future=new Date(Date.now()+3600000).toISOString(),previousErrors=[
-    {profileId:'blocked',provider:'max',code:'CREDIT_PROVIDER_RATE_LIMITED',retryAfterAt:future,at:'2026-10-13T00:00:00Z'},
-    {profileId:'amex',provider:'amex',code:'CREDIT_AUTOMATION_BLOCKED',stage:'LoginPage',httpStatus:403,browserEngine:'camoufox',retryAfterAt:future,at:'2026-10-13T00:00:00Z'},
+  const at=new Date().toISOString(),future=new Date(Date.now()+3600000).toISOString(),previousErrors=[
+    {profileId:'blocked',provider:'max',code:'CREDIT_PROVIDER_RATE_LIMITED',retryAfterAt:future,at},
+    {profileId:'amex',provider:'amex',code:'CREDIT_AUTOMATION_BLOCKED',stage:'LoginPage',httpStatus:403,browserEngine:'camoufox',retryAfterAt:future,at},
   ];
   const f=creditProviderFixture();const result=await f.scrape([creditProfile('blocked'),creditProfile('amex','amex')],{previousErrors});
   assert.equal(result.attemptedCount,1);assert.equal(result.deferredCount,1);assert.equal(result.errors[0].deferred,true);
@@ -27,12 +27,12 @@ test('issuer-wide deferral skips an attempt while Camoufox-only deferral still p
 test('expired blocked identity is removed and its diagnostic settles before a new provider session',async()=>{
   const removed=gate(),held=gate(),order=[];
   const f=creditProviderFixture({identity:{remove:async()=>{order.push('identity');removed.resolve();await held.promise}},diagnostics:{record:async event=>order.push(event.stage)},sessions:{scrape:async()=>{order.push('scrape');return {coreComplete:true}}}});
-  const flight=f.scrape([creditProfile('amex','amex')],{previousErrors:[{profileId:'amex',provider:'amex',code:'CREDIT_AUTOMATION_BLOCKED',stage:'LoginPage',httpStatus:403,browserEngine:'camoufox',retryAfterAt:'2020-01-01T00:00:00Z'}]});
+  const flight=f.scrape([creditProfile('amex','amex')],{previousErrors:[{profileId:'amex',provider:'amex',code:'CREDIT_AUTOMATION_BLOCKED',stage:'LoginPage',httpStatus:403,browserEngine:'camoufox',at:'2020-01-01T00:00:00Z',retryAfterAt:'2020-01-01T01:00:00Z'}]});
   await removed.promise;assert.deepEqual(order,['identity']);held.resolve();await flight;assert.deepEqual(order,['identity','IdentityRecovery','scrape']);
 });
 
 test('failed Chromium retains the prior Camoufox cooldown and the original diagnostic fields',async()=>{
-  const prior={profileId:'amex',provider:'amex',code:'CREDIT_AUTOMATION_BLOCKED',stage:'LoginPage',httpStatus:403,browserEngine:'camoufox',retryAfterAt:new Date(Date.now()+3600000).toISOString()};
+  const prior={profileId:'amex',provider:'amex',code:'CREDIT_AUTOMATION_BLOCKED',stage:'LoginPage',httpStatus:403,browserEngine:'camoufox',at:new Date().toISOString(),retryAfterAt:new Date(Date.now()+3600000).toISOString()};
   const f=creditProviderFixture({sessions:{scrape:async()=>{throw Object.assign(new Error('fixture issuer failure'),{code:'CREDIT_LOGIN_FAILED',stage:'LoginFlow',httpStatus:503,browserEngine:'chromium',loginStep:'credentials-submit',loginState:'session-auth-only'})}}});
   const result=await f.scrape([creditProfile('amex','amex')],{previousErrors:[prior]});assert.equal(result.errors.length,2);assert.equal(result.syncedAt,null);
   assert.equal(result.errors[0].code,'CREDIT_LOGIN_FAILED');assert.equal(result.errors[0].loginState,'session-auth-only');assert.equal(result.errors[1].browserEngine,'camoufox');assert.equal(result.errors[1].deferred,true);

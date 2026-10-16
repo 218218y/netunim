@@ -1,11 +1,12 @@
 import {restoreBankProviderMoneyBoundary} from './bank_balance_policy_fixture.mjs';
+import {restoreCreditCooldown} from './credit_cooldown_policy_fixture.mjs';
 // Historical policy digests stay immutable. Canonicalization maps only explicit
 // platform transports to their former calls; algorithm/branch changes still fail.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {providerPolicyHashes} from './bank_provider_policy_fixture.mjs';
-const read=name=>{const source=fs.readFileSync(new URL('../netunim-kupa/bank-bridge/'+name+'.mjs',import.meta.url),'utf8');return name==='hapoalim-accounts'?restoreBankProviderMoneyBoundary(source):source};
+const read=name=>{const source=restoreCreditCooldown(fs.readFileSync(new URL('../netunim-kupa/bank-bridge/'+name+'.mjs',import.meta.url),'utf8'));return name==='hapoalim-accounts'?restoreBankProviderMoneyBoundary(source):source};
 const sources=()=>['server','finance-commands','provider-errors','hapoalim-session','hapoalim-provider','credit-session','credit-provider','hapoalim-json','hapoalim-enrichment','hapoalim-accounts','cheque-images','browser-locator','windows-browser'].map(read);
 
 for(const [name,file] of [['Bank and credit provider policies','bank-provider-policy.json'],['Bank session and error policies','bank-session-policy.json'],['Bank read, image and installed-browser policies','bank-read-policy.json']])test(name+' match their reviewed pre-refactor AST fixtures',()=>{

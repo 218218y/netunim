@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { creditAdapterPolicyHashes } from './credit_adapter_policy_fixture.mjs';
+import {restoreRetryAfterRangeGuard} from './credit_cooldown_policy_fixture.mjs';
 const read = (name) =>
-  fs.readFileSync(new URL('../netunim-kupa/bank-bridge/' + name + '.mjs', import.meta.url), 'utf8');
+  fs.readFileSync(new URL('../netunim-kupa/bank-bridge/' + name + '.mjs', import.meta.url), 'utf8').replaceAll('\r\n','\n');
 const modules = [
   'credit-value-codec',
   'credit-month-plan',
@@ -28,7 +29,7 @@ const modules = [
 // covered by the immutable pre-refactor digests and behavior tests.
 const sources = () =>
   modules.map((name) => {
-    const source = read(name);
+    const source = restoreRetryAfterRangeGuard(read(name));
     return name === 'credit-month-plan'
       ? source.replace('startDate = creditRecoveryStartDate(),', 'startDate = creditStartDate(),')
       : source;

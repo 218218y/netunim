@@ -46,3 +46,28 @@ Tests cover every admitted observation position, exact skew boundaries, both
 actual merge models, and future/malformed replies in both native refresh owners
 with unchanged readout/journals and zero Finance publication. No eager modules
 or byte ceilings are added in this stage.
+
+## Bounded automatic cooldown
+
+The reviewed maximum is 24 hours from the original failure, matching one daily
+Credit refresh cycle and the existing 403/429 fallback. A shorter provider delay
+is respected. Re-reading a stored failure never moves its deadline. Missing,
+malformed or unreasonably future failure clocks grant no cooldown authority.
+Camoufox-only 403 suppression stays engine-scoped; 429 remains issuer-wide.
+
+`providerRetryAfterAt` retains the issuer's original parsed deadline for diagnostics;
+`retryAfterAt` is the effective automatic deadline. Provider aggregation, sanitized
+diagnostics, both retained-feed readers and Bridge deferral use this distinction.
+Rejected effective deadlines are explicitly cleared rather than retaining the raw
+date through an object spread. A component cannot choose its own reference clock.
+
+All four issuer HTTP paths now use the same Retry-After parser. Numeric values
+outside the JavaScript Date range return unavailable evidence instead of throwing.
+The shared ISO primitives are generated into the installed Bridge; the installer
+stages both transitive helpers. Original historical algorithm digests stay intact;
+test adapters reverse only the explicitly tested policy/diagnostic deltas.
+
+The new checked cooldown policy adds one eager module per app (300 / 400). Measured
+source is 1,743,450 / 2,362,898 bytes, within unchanged ceilings. Expanding the
+touched diagnostic objects lowers the readability count from 491 to 487 lines
+above 500 characters and from 116 to 114 above 1000; only those entries tighten.

@@ -1,3 +1,4 @@
+import {parseRetryAfter as retryAfterAt} from './credit-http-policy.mjs';
 import { creditDebitAmount } from './credit-core-values.mjs';
 import {filterExcludedGroupCards,preserveInstalledChromiumIdentity,unsettledApprovedTransactions} from './isracard-group-utils.mjs';
 // Adapted from israeli-bank-scrapers PR #1159 (commit 1aa792b37feec0001f5d182582cfb53b146ed18b),
@@ -33,11 +34,6 @@ function safeError(message,code,extra={}){const error=new Error(message);error.c
 function diagnostic(onDiagnostic,event){try{onDiagnostic?.(event)}catch{}}
 function sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms))}
 async function randomDelay(){await sleep(RATE_LIMIT_MS+Math.floor(Math.random()*501))}
-function retryAfterAt(value,now=Date.now()){
-  const raw=String(value||'').trim();if(!raw)return null;
-  const seconds=Number(raw),time=Number.isFinite(seconds)&&seconds>=0?now+seconds*1000:Date.parse(raw);
-  return Number.isFinite(time)?new Date(Math.max(now,time)).toISOString():null;
-}
 function htmlLike(value){return /^\s*(?:<!doctype\s+html|<html\b|<head\b|<body\b)/i.test(String(value||''))}
 function providerFailureMessage(data,fallback){return text(data?.errorDescription||data?.message||fallback,180)||fallback}
 function utcDateIso(year,month,day,hour=0,minute=0,second=0){

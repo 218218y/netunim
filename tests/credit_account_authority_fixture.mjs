@@ -1,3 +1,4 @@
+import {restoreCreditCooldown} from './credit_cooldown_policy_fixture.mjs';
 // Project only the separately tested account-authority change out of historical
 // policy comparisons. Keep the immutable baseline hashes and every other byte.
 export function restoreCreditPendingStatus(source){
@@ -6,7 +7,7 @@ export function restoreCreditPendingStatus(source){
 }
 
 export function restoreCreditAccountFeed(source,{orders=false}={}){
-  source=restoreCreditPendingStatus(source);
+  source=restoreCreditCooldown(restoreCreditPendingStatus(source));
   source=source.replace(`const base=normalizeCreditSync(current),mappings={...base.cardMappings},
     byId=new Map(base.profiles.map(profile=>[profile.profileId,profile]));
   // Supported older responses can omit metadata without erasing a known issuer

@@ -65,14 +65,15 @@ export function createCreditProvider({ sessions, identity, diagnostics }) {
                             profileId: raw.profileId || profile.profileId, 
                             provider: raw.provider || profile.provider, 
                             label: raw.label || profile.label, 
-                            correlationId
-                        }, retryAfterAt = creditAutomaticRetryAfterAt(base, Date.parse(base.originalFailureAt || base.at || new Date().toISOString())), severity = creditErrorSeverity(base), component = creditErrorComponent(base), fingerprint = diagnosticFingerprint({ ...base, errorClass: base.code });
+                            correlationId,
+                            providerRetryAfterAt: raw.providerRetryAfterAt || raw.retryAfterAt || null
+                        }, retryAfterAt = creditAutomaticRetryAfterAt(base, Date.now()), severity = creditErrorSeverity(base), component = creditErrorComponent(base), fingerprint = diagnosticFingerprint({ ...base, errorClass: base.code });
                         errors.push({
                             ...base, 
                             severity, 
                             component, 
                             originalFailureAt: base.originalFailureAt || base.at || null, 
-                            ...(retryAfterAt ? { retryAfterAt } : {}), 
+                            retryAfterAt: retryAfterAt, 
                             diagnosticFingerprint: fingerprint
                         });
                     }
@@ -89,6 +90,7 @@ export function createCreditProvider({ sessions, identity, diagnostics }) {
                     at, 
                     originalFailureAt: at, 
                     retryAfterAt: error?.retryAfterAt || null, 
+                    providerRetryAfterAt: error?.providerRetryAfterAt || error?.retryAfterAt || null,
                     correlationId, 
                     browserEngine, 
                     providerStatus: String(error?.providerStatus || '').slice(0, 24), 
@@ -100,7 +102,7 @@ export function createCreditProvider({ sessions, identity, diagnostics }) {
                     fallbackFromStage: String(error?.fallbackFromStage || '').slice(0, 80), 
                     fallbackFromHttpStatus: Number(error?.fallbackFromHttpStatus) || 0
                 }, retryAfterAt = creditAutomaticRetryAfterAt(base, Date.parse(at)), severity = creditErrorSeverity(base), component = creditErrorComponent(base), fingerprint = diagnosticFingerprint({ ...base, errorClass: base.code });
-                errors.push({ ...base, severity, component, ...(retryAfterAt ? { retryAfterAt } : {}), diagnosticFingerprint: fingerprint });
+                errors.push({ ...base, severity, component, retryAfterAt: retryAfterAt, diagnosticFingerprint: fingerprint });
                 // If Chromium was attempted while a prior Camoufox 403 was still cooling down,
                 // retain that engine-scoped not-before record when Chromium also fails. This
                 // prevents a second manual refresh from immediately re-entering Camoufox.
@@ -116,6 +118,7 @@ export function createCreditProvider({ sessions, identity, diagnostics }) {
                     errorClass: base.code, 
                     httpStatus: base.httpStatus, 
                     retryAfterAt, 
+                    providerRetryAfterAt: base.providerRetryAfterAt,
                     startupFailureReason: error?.startupFailureReason, 
                     providerStatus: base.providerStatus, 
                     providerReturnCode: base.providerReturnCode, 
