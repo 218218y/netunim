@@ -151,6 +151,10 @@
     {
       "version": "20261001012000",
       "name": "check_cleared_deposit_evidence_retention"
+    },
+    {
+      "version": "20261016120000",
+      "name": "bank_transaction_status_authority"
     }
   ]
 }

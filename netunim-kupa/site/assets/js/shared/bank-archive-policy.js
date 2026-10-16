@@ -1,4 +1,5 @@
 // @ts-check
+import {bankTransactionStatus} from './bank-transaction-evidence.js';
 
 /** @typedef {Record<string,unknown>} ArchiveRow */
 /** @typedef {{sourcePayload:ArchiveRow[],result:Record<string,unknown>|null}} ArchiveMerge */
@@ -81,9 +82,9 @@ function assertBankArchiveCoverage(mergeResult, archive, { role, requireExactCou
   for (const tx of source) {
     const row = byKey.get(String(tx.mergeKey || '')),
       statusOk =
-        String(tx.status || 'completed') === 'pending'
+        bankTransactionStatus(tx.status) && bankTransactionStatus(row?.status) && (tx.status === 'pending'
           ? row?.status === 'pending' || row?.status === 'completed'
-          : row?.status === 'completed';
+          : row?.status === 'completed');
     const coreOk =
       !!row &&
       sameInstant(tx.date, row.date) &&

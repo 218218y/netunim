@@ -21,7 +21,7 @@
     "canonicalJson": "f67d45a12709f2e1070bf8409e9f95bde0f7194bf4e540d431c8cf6fe5e27fc4",
     "sameInstant": "e16cfded4c1aef6af2255384f6b93e6612cd429300de0745b07093f9494efc93",
     "sameNumber": "732d3c696ca0f3bd7d5ed3ee5e39bd79075efdfb83f141443fa17e513b1962da",
-    "assertBankArchiveCoverage": "6af42967cd5d2dbf6cd3c8cc0b99f9d034e098de0865b4605ba4132dadd19d18",
+    "assertBankArchiveCoverage": "aaf3e654690fe60bb70632f2bd94cf3dd49ef44f023ec2536dab85be165c5216",
     "accountIdOf": "ba17cd0e964213899fadd83466c2e5bbc2aa1bdee2ee0530e1b1ea7392eb9b3c",
     "completeTransactionCoverage": "7ac02c5ee93ec65175d854185f8903e561192c8acb53d8da0878b1a6ce0619e7",
     "sharedBankLastSyncAt": "0ba3260b9a7b4aa5968b5bf5fa1a3a95a804f427e13ef4104b7a49fb21a00dac",

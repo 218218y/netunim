@@ -2,12 +2,12 @@
   "base": "a6cc5fac24cbfae98c6d930543fa9d40fe6ebd82",
   "policies": {
     "kupa": {
-      "bankArchivePayload": "f9e4e0f87c3bbf798ec7a17deae000e58a079f3d39c9bbec3dbe5bd6f0247611",
+      "bankArchivePayload": "563cf79df02b83aeb94c9884770dd3e6775f70a78731e39730a009b96cfd491c",
       "syncBankTransactionsSnapshot": "90ebaf1b05641efb7df9505eee4579070df967f5aa5e36734f97d7d44eba25a1",
       "saveBankSyncSnapshot": "b1c82c2e44117dbef431881db811c59dfcd16c93e3cf27ce8130ed70a4161169"
     },
     "orders": {
-      "bankArchivePayload": "f9e4e0f87c3bbf798ec7a17deae000e58a079f3d39c9bbec3dbe5bd6f0247611",
+      "bankArchivePayload": "563cf79df02b83aeb94c9884770dd3e6775f70a78731e39730a009b96cfd491c",
       "syncBankTransactionsSnapshot": "7cc5c23e541357c88e050b0e2a21dd0b9ad44e4bd8fa821ddb365c6ab122f29d",
       "saveBankSyncSnapshot": "961db33f713cacfa1b41d8224e40a66e55ba682fc2463f16ea4e41b80e7b008d"
     }

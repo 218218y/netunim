@@ -25,7 +25,7 @@ FLOW=r"""(async()=>{
  localStorage.setItem('netunim_kupa_bank_bridge_token_v1','synthetic-pairing');localStorage.setItem('netunim_kupa_bank_auto_daily_v1','0');
  cloudTransport.saveFinancePatch=async()=>({saved:true});
  globalThis.fetch=(url,options)=>{
-   if(String(url).includes('/balance')){scans++;return Promise.resolve(new Response(JSON.stringify({ok:true,fetchedAt:stamp,accounts:{business:{balance:500,accountId:'synthetic-account',transactions:[{id:'bank-local-tx',date:stamp,amount:12,description:'durable identity'}]}}})))}
+   if(String(url).includes('/balance')){scans++;return Promise.resolve(new Response(JSON.stringify({ok:true,fetchedAt:stamp,accounts:{business:{balance:500,accountId:'synthetic-account',transactions:[{id:'bank-local-tx',date:stamp,amount:12,currency:'ILS',status:'completed',description:'durable identity'}]}}})))}
    if(String(url).includes('/status')){statusReads++;return Promise.resolve(new Response(JSON.stringify({ok:true,bridgeVersion:74,configured:true,lastScrapeAt:stamp})))}
    return fetch(url,options);
  };

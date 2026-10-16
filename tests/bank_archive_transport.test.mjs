@@ -8,10 +8,10 @@ function jsonResponse(body,{ok=true}={}){
 }
 
 const sourceRows=[
-  {date:'2026-08-30T09:00:00.000Z',processedDate:'2026-08-30T09:00:00.000Z',amount:100,description:'זיכוי',memo:'א',bankReference:'777',bankSerial:'1',status:'completed'},
-  {date:'2026-08-29T09:00:00.000Z',processedDate:'2026-08-29T09:00:00.000Z',amount:100,description:'זיכוי',memo:'א',bankReference:'777',bankSerial:'1',status:'completed'},
-  {date:'2026-08-28T09:00:00.000Z',processedDate:'2026-08-28T09:00:00.000Z',amount:55,description:'פעולה',memo:'זהה',bankReference:'',bankSerial:'0',status:'pending',checkDetails:null},
-  {date:'2026-08-28T09:00:00.000Z',processedDate:'2026-08-28T09:00:00.000Z',amount:55,description:'פעולה',memo:'זהה',bankReference:'',bankSerial:'0',status:'pending',checkDetails:null},
+  {date:'2026-08-30T09:00:00.000Z',processedDate:'2026-08-30T09:00:00.000Z',amount:100,currency:'ILS',description:'זיכוי',memo:'א',bankReference:'777',bankSerial:'1',status:'completed'},
+  {date:'2026-08-29T09:00:00.000Z',processedDate:'2026-08-29T09:00:00.000Z',amount:100,currency:'ILS',description:'זיכוי',memo:'א',bankReference:'777',bankSerial:'1',status:'completed'},
+  {date:'2026-08-28T09:00:00.000Z',processedDate:'2026-08-28T09:00:00.000Z',amount:55,currency:'ILS',description:'פעולה',memo:'זהה',bankReference:'',bankSerial:'0',status:'pending',checkDetails:null},
+  {date:'2026-08-28T09:00:00.000Z',processedDate:'2026-08-28T09:00:00.000Z',amount:55,currency:'ILS',description:'פעולה',memo:'זהה',bankReference:'',bankSerial:'0',status:'pending',checkDetails:null},
 ];
 
 let mergePayload=null;
@@ -56,7 +56,7 @@ assert.deepEqual(ordersMerge.p_transactions.map(x=>x.mergeKey),keys,'Kupa and Or
 
 
 const reconciliationCalls=[];
-const snapshotRow={account_key:'12-655-1',account_role:'business',snapshot_at:'2026-09-06T02:00:00.000Z',coverage_from:'2026-08-08',coverage_to:'2026-09-06',transaction_count:1,transactions:[{mergeKey:'snapshot-1',date:'2026-09-06T01:00:00.000Z',amount:500,description:'הפקדת שיק',cheque:true}]};
+const snapshotRow={account_key:'12-655-1',account_role:'business',snapshot_at:'2026-09-06T02:00:00.000Z',coverage_from:'2026-08-08',coverage_to:'2026-09-06',transaction_count:1,transactions:[{mergeKey:'snapshot-1',date:'2026-09-06T01:00:00.000Z',amount:500,currency:'ILS',status:'completed',description:'הפקדת שיק',cheque:true}]};
 const reconciliationFetch=async(path,options={})=>{
   if(path.includes('/rpc/sync_bank_transactions_snapshot')){reconciliationCalls.push({path,body:JSON.parse(options.body)});return jsonResponse([{inserted_count:1,updated_count:0,total_count:1,missing_count:0,active_missing_count:0,snapshot_stored:JSON.parse(options.body).p_complete,baseline_created:JSON.parse(options.body).p_complete}])}
   if(path.includes('/bank_transaction_snapshots?'))return jsonResponse([snapshotRow]);

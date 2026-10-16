@@ -188,5 +188,10 @@
     "version": "20261001012000",
     "name": "check_cleared_deposit_evidence_retention",
     "sha256": "d7e3f18d5ec57c0ea07f8000c89806118dbcb4428374616e0154b3072c0e7b09"
+  },
+  {
+    "version": "20261016120000",
+    "name": "bank_transaction_status_authority",
+    "sha256": "a5926e04d37e6f65c0f0fbbe30dc6126517223d9bd5546e8f7d2b02faa114cbb"
   }
 ]

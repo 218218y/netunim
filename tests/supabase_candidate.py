@@ -270,6 +270,7 @@ with IsolatedPostgres(schema_files=all_files) as db:
     assert clean_bank_merge == bank_merge, \
         'Production-upgrade replay and clean install disagree on the bank merge function contract'
     db.sql((ROOT / 'tests/finance_fencing_server.sql').read_text(encoding='utf8'))
+    db.sql((ROOT / 'tests/bank_transaction_evidence_server.sql').read_text(encoding='utf8'))
     authorization(db)
     notes_workbook_delete(db)
     notes_workbook_delete(db, "orders")

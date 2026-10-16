@@ -68,7 +68,7 @@ test('financial result/evidence is a pure strict boundary and canonical generate
     tree = parse(source, { ecmaVersion: 'latest', sourceType: 'module', ranges: true });
   assert.deepEqual(
     tree.body.filter((row) => row.type === 'ImportDeclaration').map((row) => row.source.value),
-    ['./bank-money-value.js']
+    ['./bank-money-value.js','./bank-transaction-evidence.js']
   );
   assert.ok(source.includes('// @ts-check'));
   for (const ref of analyze(tree, { ecmaVersion: 2022, sourceType: 'module' }).globalScope.through)

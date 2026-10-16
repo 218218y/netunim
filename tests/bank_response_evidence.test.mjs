@@ -11,7 +11,7 @@ const archive={id:77,account_key:key,account_role:'business',merge_key:'K',amoun
   first_seen_at:at,transaction_date:null,processed_date:null,last_seen_at:null,missing_since:null,missing_acknowledged_at:null,
   presence_state:'unknown',alert_acknowledgements:{},cheque:false,balance_after:null};
 const snapshot={account_key:key,account_role:'business',snapshot_at:at,coverage_from:'2026-10-01',coverage_to:'2026-10-16',
-  transaction_count:1,transactions:[{mergeKey:'K',amount:100,date:at}]};
+  transaction_count:1,transactions:[{mergeKey:'K',amount:100,date:at,currency:'ILS',status:'completed'}]};
 const link={transaction_id:77,link_id:3,operation_id:'operation',document_id:'document',document_type:320,document_amount:'100.50',verified_at:at};
 const invalid={code:'BANK_RESPONSE_EVIDENCE_INVALID'};
 
@@ -43,11 +43,11 @@ for(const [app,create] of [['orders',orders],['kupa',kupa]]){
     assert.deepEqual(await transport([]).readBankTransactions(key,'business'),[]);
     assert.equal(await transport([]).readBankTransactionSnapshot(key,'business'),null);
     for(const patch of [{account_key:'other'},{account_role:'home'},{amount:''},{amount:true},{id:'77'},
-      {first_seen_at:'bad'},{presence_state:['present']},{alert_acknowledgements:[]},{alert_acknowledgements:{returned_cheque:'bad'}}]){
+      {status:'garbage'},{status:null},{status:true},{status:undefined},{first_seen_at:'bad'},{presence_state:['present']},{alert_acknowledgements:[]},{alert_acknowledgements:{returned_cheque:'bad'}}]){
       await assert.rejects(transport([{...archive,...patch}]).readBankTransactions(key,'business'),invalid);
     }
     for(const patch of [{account_key:'other'},{snapshot_at:'bad'},{coverage_from:'2026-02-30'},
-      {transaction_count:0},{transactions:{}},{transactions:[{mergeKey:'K',amount:null}]}]){
+      {transactions:[{...snapshot.transactions[0],status:'garbage'}]},{transactions:[{...snapshot.transactions[0],status:true}]},{transactions:[{...snapshot.transactions[0],status:undefined}]},{transaction_count:0},{transactions:{}},{transactions:[{mergeKey:'K',amount:null}]}]){
       await assert.rejects(transport([{...snapshot,...patch}]).readBankTransactionSnapshot(key,'business'),invalid);
     }
   });

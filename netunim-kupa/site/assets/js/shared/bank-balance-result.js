@@ -1,5 +1,6 @@
 // @ts-check
 import { readBankMoney as number } from './bank-money-value.js';
+import {readBankTransactions} from './bank-transaction-evidence.js';
 
 const bankAccountEvidence = Symbol('bank_account_evidence');
 /** @typedef {Readonly<Record<string,unknown>&{balance:number,availableBalance:number|null,creditLimit:number|null,creditLimitUsed:number|null,creditLimitUsedPercent:number|null,[bankAccountEvidence]:true}>} BankAccountSnapshot */
@@ -36,6 +37,8 @@ function account(value, role) {
   /** @type {BankAccountSnapshot} */
   const decoded = Object.freeze({
     ...value,
+    ...(value.transactions!==undefined||coverage?.complete===true?{transactions:readBankTransactions(value.transactions)}:{}),
+    ...(coverage?{transactionCoverage:Object.freeze({...coverage})}:{}),
     balance,
     availableBalance: number(value.availableBalance),
     creditLimit: number(value.creditLimit),
