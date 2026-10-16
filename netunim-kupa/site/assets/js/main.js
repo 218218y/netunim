@@ -55,6 +55,7 @@ import {createShellActions,createSettingsActions,createBackupActions,createCloud
 import {createContexts} from './state/contexts.js';
 import {createKupaDomainRevisions,kupaPageRevision} from './state/revisions.js';
 import {createRestoreGroupStore} from './shared/restore-groups.js';
+import {RESTORE_GROUP_NAMESPACES} from './shared/restore-group-keys.js';
 
 
 
@@ -129,7 +130,7 @@ const storageBrowser=createStorageBrowser({
 const storageV2Cloud=storageV2Coordinator.createCloudPorts(storageBrowser);
 
 const restoreGroupStore=createRestoreGroupStore({
-  localKey:'kupa.restore.group.v1',
+  localKey:RESTORE_GROUP_NAMESPACES.kupa,
   put:(key,value)=>storageIndexedDb.idbPut('sync',key,value),
   get:key=>storageIndexedDb.idbGet('sync',key),
   remove:key=>storageIndexedDb.idbDelete('sync',key),

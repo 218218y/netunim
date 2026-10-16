@@ -1,4 +1,5 @@
 import {readServerRestorePending} from './restore-response-records.js';
+import {createRestoreGroupKeys} from './restore-group-keys.js';
 const RESTORE_SCHEMA_VERSION=1;
 
 function clone(value){return value==null?value:structuredClone(value)}
@@ -64,7 +65,7 @@ function chooseNewer(a,b){if(!a)return b||null;if(!b)return a;const delta=Number
 
 export function createRestoreGroupStore({localKey,put,get,remove,storage=globalThis.localStorage,now=Date.now}={}){
   if(!localKey||typeof put!=='function'||typeof get!=='function'||typeof remove!=='function')throw new Error('restore_store_dependencies_missing');
-  const currentKey=`${localKey}:current`,archiveKey=id=>`${localKey}:archive:${id}`;
+  const keys=createRestoreGroupKeys(localKey),currentKey=keys.current,archiveKey=keys.archive;
   function readLocal(){try{return JSON.parse(storage.getItem(localKey)||'null')}catch(error){throw new Error('restore_local_read_failed',{cause:error})}}
   function writeLocal(group){try{const text=JSON.stringify(group);storage.setItem(localKey,text);if(storage.getItem(localKey)!==text)throw new Error('restore local verification failed')}catch(error){throw new Error('restore_local_write_failed',{cause:error})}}
   async function writeEverywhere(group){
@@ -97,7 +98,7 @@ export function createRestoreGroupStore({localKey,put,get,remove,storage=globalT
     try{storage.removeItem(localKey)}catch(error){throw new Error('restore_local_clear_failed',{cause:error})}
     await remove(currentKey);return completed;
   }
-  const serverKey=owner=>`${currentKey}:server:${owner}`;
+  const serverKey=keys.server;
   async function loadServerPending(owner){
     const record=await get(serverKey(owner));
     return record==null?null:readServerRestorePending(record,owner);

@@ -10,6 +10,9 @@ import {createOrdersConnectivityRuntime} from '../netunim-orders/site/assets/js/
 import {createKupaConnectivityRuntime} from '../netunim-kupa/site/assets/js/connectivity.js';
 import {resumeServerRestoreGroups} from '../shared/restore-server-recovery.js';
 import {createRestoreGroupStore} from '../shared/restore-groups.js';
+import {RESTORE_GROUP_NAMESPACES} from '../shared/restore-group-keys.js';
+import {createStorageBrowser as createOrdersStorageBrowser} from '../netunim-orders/site/assets/js/storage/browser.js';
+import {createBackupRestore as createOrdersBackupRestore} from '../netunim-orders/site/assets/js/ui/backup-restore.js';
 
 const noop=()=>{};
 function deferred(){let resolve;const promise=new Promise(done=>{resolve=done});return {promise,resolve}}
@@ -117,6 +120,27 @@ for(const app of ['Orders','Kupa']){
     assert.ok(calls.includes('cloud'));assert.ok(calls.includes(app==='Orders'?'morning':'bank'));
   });
 }
+
+test('Orders signed-in startup renders through the actual restore owner/store/browser connection when no restore exists',async t=>{
+  browser(t);navigator.onLine=true;
+  const prior=globalThis.indexedDB;globalThis.indexedDB={databases:async()=>[],open:()=>assert.fail('empty recovery created a restore database')};
+  t.after(()=>{if(prior===undefined)delete globalThis.indexedDB;else globalThis.indexedDB=prior});
+  const account='11111111-1111-4111-8111-111111111111',auth={user:{id:account}};
+  const adapter=createOrdersStorageBrowser({model:{state:{}},files:{},session:{},prepareCloudState:()=>({}),normalizeState:value=>value});
+  const store=createRestoreGroupStore({localKey:RESTORE_GROUP_NAMESPACES.orders,
+    put:(...args)=>adapter.idbSyncPut(...args),get:(...args)=>adapter.idbSyncGet(...args),remove:(...args)=>adapter.idbSyncDelete(...args)});
+  let backup,listed=0;
+  const f=fixture('Orders',{storageOwnerCurrent:()=>account,verifyStorageV2AccountMarker:async()=>true,verifyLocalStorageEngine:async()=>false,
+    restoreSupaSession:async()=>auth,loadSession:()=>auth,loadSupaSession:()=>auth,
+    refreshStorageV2CloudState:async()=>({base:{state:{checks:[]},revision:3}}),
+    resumeIncompleteRestore:()=>backup.resumeIncompleteRestore()});
+  backup=createOrdersBackupRestore({model:{state:{}},session:f.session,tab:{primaryTab:true},checksSession:{},
+    cloud:{loadSession:()=>auth,restoreGroupStore:store,listIncompleteRestoreGroups:async()=>{listed++;return []}},
+    storage:{storageV2LocalPrimary:()=>true,storageOwnerCurrent:()=>account}});
+  await f.lifecycle.boot();await f.session.startupHydrationPromise;
+  assert.equal(listed,1);assert.equal(f.allowed(),true);assert.equal(f.session.storageProtocolBlocked,false);
+  assert.ok(f.events.includes('render'));
+});
 
 for(const app of ['Orders','Kupa'])test(`${app} startup adopts a server-only restore before normal editing`,async t=>{
   browser(t);navigator.onLine=true;
