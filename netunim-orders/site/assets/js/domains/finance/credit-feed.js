@@ -32,7 +32,37 @@ function legacyMonthSlices(txns,fetchedAt){const groups=new Map(),unassigned=[];
 function withAccountTransactions(account,txns){account.txns=txns;Object.defineProperty(account,'toJSON',{value(){const serialized={};for(const [key,value] of Object.entries(this))if(key!=='txns')serialized[key]=value;return serialized},configurable:true,enumerable:false});return account}
 
 export function normalizeCreditAccount(account={},fallbackFetchedAt=null){
-  const legacyTxns=dedupeCreditTransactions(account.txns).filter(tx=>tx.date||tx.processedDate||tx.id),legacyPending=legacyTxns.filter(tx=>tx.status==='pending'),hasMonthly=Array.isArray(account.months)&&account.months.length>0,legacy=hasMonthly?{months:[],unassigned:[]}:legacyMonthSlices(legacyTxns.filter(tx=>!legacyPending.includes(tx)),iso(fallbackFetchedAt)),months=(hasMonthly?account.months:legacy.months).map(normalizeCreditMonthSlice).filter(slice=>slice.month),pendingTransactions=dedupeCreditTransactions(Array.isArray(account.pendingTransactions)?account.pendingTransactions:legacyPending),unassignedTransactions=dedupeCreditTransactions(Array.isArray(account.unassignedTransactions)?account.unassignedTransactions:legacy.unassigned),txns=[...months.flatMap(slice=>slice.transactions),...pendingTransactions,...unassignedTransactions].filter(tx=>tx.date||tx.processedDate||tx.id),seen=new Set(),balance=finite(account.balance),cardFrame=finite(account.cardFrame),availableCredit=finite(account.availableCredit),framePresent=cardFrame!==null||balance!==null||availableCredit!==null,frameStatus=['fresh','stale','missing'].includes(String(account.frameStatus))?String(account.frameStatus):framePresent?'fresh':'missing',result={accountNumber:text(account.accountNumber||'',80),balance,balanceDate:iso(account.balanceDate),cardType:text(account.cardType||'',80),cardFrame,availableCredit,frameStatus,frameFetchStatus:['success','unavailable','provider_error','schema_error','network_error'].includes(String(account.frameFetchStatus))?String(account.frameFetchStatus):(frameStatus==='fresh'?'success':'unavailable'),frameFetchedAt:iso(account.frameFetchedAt||(frameStatus==='fresh'?fallbackFetchedAt:null)),frameErrorCode:text(account.frameErrorCode||'',80),frameErrorAt:iso(account.frameErrorAt),months,pendingTransactions,pendingStatus:['success','provider_error','schema_error','network_error','missing'].includes(String(account.pendingStatus))?String(account.pendingStatus):pendingTransactions.length?'success':'missing',pendingFetchedAt:iso(account.pendingFetchedAt),pendingErrorCode:text(account.pendingErrorCode||'',80),pendingErrorAt:iso(account.pendingErrorAt),unassignedTransactions};
+  const legacyTxns=dedupeCreditTransactions(account.txns).filter(tx=>tx.date||tx.processedDate||tx.id),
+    legacyPending=legacyTxns.filter(tx=>tx.status==='pending'),
+    hasMonthly=Array.isArray(account.months)&&account.months.length>0,
+    legacy=hasMonthly?{months:[],unassigned:[]}:legacyMonthSlices(legacyTxns.filter(tx=>!legacyPending.includes(tx)),iso(fallbackFetchedAt)),
+    months=(hasMonthly?account.months:legacy.months).map(normalizeCreditMonthSlice).filter(slice=>slice.month),
+    pendingTransactions=dedupeCreditTransactions(Array.isArray(account.pendingTransactions)?account.pendingTransactions:legacyPending),
+    unassignedTransactions=dedupeCreditTransactions(Array.isArray(account.unassignedTransactions)?account.unassignedTransactions:legacy.unassigned),
+    txns=[...months.flatMap(slice=>slice.transactions),...pendingTransactions,...unassignedTransactions].filter(tx=>tx.date||tx.processedDate||tx.id),
+    seen=new Set(),
+    balance=finite(account.balance),
+    cardFrame=finite(account.cardFrame),
+    availableCredit=finite(account.availableCredit),
+    framePresent=cardFrame!==null||balance!==null||availableCredit!==null,
+    frameStatus=['fresh','stale','missing'].includes(String(account.frameStatus))?String(account.frameStatus):framePresent?'fresh':'missing',
+    result={accountNumber:text(account.accountNumber||'',80),
+      balance,
+      balanceDate:iso(account.balanceDate),
+      cardType:text(account.cardType||'',80),
+      cardFrame,
+      availableCredit,
+      frameStatus,
+      frameFetchStatus:['success','unavailable','provider_error','schema_error','network_error'].includes(String(account.frameFetchStatus))?String(account.frameFetchStatus):(frameStatus==='fresh'?'success':'unavailable'),
+      frameFetchedAt:iso(account.frameFetchedAt||(frameStatus==='fresh'?fallbackFetchedAt:null)),
+      frameErrorCode:text(account.frameErrorCode||'',80),
+      frameErrorAt:iso(account.frameErrorAt),
+      months,
+      pendingTransactions,
+      pendingStatus:['success','provider_error','schema_error','network_error','missing'].includes(String(account.pendingStatus))?String(account.pendingStatus):pendingTransactions.length?'success':'missing',
+      pendingFetchedAt:iso(account.pendingFetchedAt),
+      pendingErrorCode:text(account.pendingErrorCode||'',80),
+      pendingErrorAt:iso(account.pendingErrorAt),unassignedTransactions};
   return withAccountTransactions(result,txns.filter(tx=>{if(!tx.id)return true;const key=`${tx.id}|${tx.date}|${tx.processedDate}|${tx.chargedAmount}|${tx.description}|${tx.installments?.number||0}`;if(seen.has(key))return false;seen.add(key);return true}).sort((a,b)=>String(b.processedDate||b.date||'').localeCompare(String(a.processedDate||a.date||''))));
 }
 
