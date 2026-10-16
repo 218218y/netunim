@@ -7,7 +7,7 @@ const read = (name) =>
   fs.readFileSync(new URL('../netunim-kupa/bank-bridge/' + name + '.mjs', import.meta.url), 'utf8');
 const models = {
   'credit-core-values': [],
-  'credit-profile-model': ['./credit-core-values.mjs'],
+  'credit-profile-model': ['./credit-core-values.mjs','./credit-transaction-evidence.mjs'],
   'credit-transaction-model': ['./credit-core-values.mjs','./credit-transaction-evidence.mjs'],
   'credit-transaction-evidence': [],
   'credit-failure-policy': ['./credit-core-values.mjs', './credit-profile-model.mjs'],
