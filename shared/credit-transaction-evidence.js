@@ -1,5 +1,14 @@
 // @ts-check
-import {evidenceObject as object,evidenceMoney as money,evidenceInteger as integer} from './response-evidence.js';
+// Standalone so the browser and packaged Bridge execute the same contract.
+/** @param {unknown} value @returns {value is Record<string,unknown>} */
+function object(value){return value!==null&&typeof value==='object'&&!Array.isArray(value)}
+/** @param {unknown} value @returns {value is number|string} */
+function money(value){
+  return typeof value==='number'&&Number.isFinite(value)||
+    typeof value==='string'&&/^-?\d+(?:\.\d+)?$/.test(value)&&Number.isFinite(Number(value));
+}
+/** @param {unknown} value @returns {value is number} */
+function integer(value){return typeof value==='number'&&Number.isSafeInteger(value)&&value>=0}
 
 /** @returns {never} */
 function invalid(){throw Object.assign(new Error('Credit transaction evidence is invalid'),{code:'CREDIT_REFRESH_RESULT_INVALID',retryable:false})}
@@ -44,16 +53,18 @@ export function assertCreditProfileTransactions(profile){
 function transactions(value){
   if(value===undefined)return;
   if(!Array.isArray(value))return invalid();
-  for(const tx of Array.from(value)){
-    if(!object(tx)||!(tx.status==='pending'||tx.status==='completed'))invalid();
-    amounts(tx,['originalAmount','chargedAmount']);
-    if(tx.foreignTransaction!==undefined&&typeof tx.foreignTransaction!=='boolean')invalid();
-    if(tx.chargeAmountStatus!==undefined&&!['reported','missing','not_billed'].includes(String(tx.chargeAmountStatus)))invalid();
-    if(tx.chargeAmountStatus==='reported'&&tx.chargedAmount==null)invalid();
-    if(tx.installments!=null){
-      const parts=tx.installments;
-      if(!object(parts)||!integer(parts.number)||!integer(parts.total)||parts.number===0||parts.number>parts.total)invalid();
-    }
+  for(const tx of Array.from(value))assertCreditTransactionEvidence(tx);
+}
+/** @param {unknown} tx */
+export function assertCreditTransactionEvidence(tx){
+  if(!object(tx)||!(tx.status==='pending'||tx.status==='completed'))return invalid();
+  amounts(tx,['originalAmount','chargedAmount']);
+  if(tx.foreignTransaction!==undefined&&typeof tx.foreignTransaction!=='boolean')invalid();
+  if(tx.chargeAmountStatus!==undefined&&!['reported','missing','not_billed'].includes(String(tx.chargeAmountStatus)))invalid();
+  if(tx.chargeAmountStatus==='reported'&&tx.chargedAmount==null)invalid();
+  if(tx.installments!=null){
+    const parts=tx.installments;
+    if(!object(parts)||!integer(parts.number)||!integer(parts.total)||parts.number===0||parts.number>parts.total)invalid();
   }
 }
 /** Null/missing issuer amounts convey no evidence. Supplied amounts retain their

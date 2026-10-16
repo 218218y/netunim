@@ -23,3 +23,37 @@ valid producer output, empty success and failed-component retention. The actual
 Orders/Kupa refresh-owner regressions prove zero merge/publication on missing
 monthly/pending rows and boolean amounts, with normal lease cleanup. The full
 existing lifecycle/provider suite remains required in CI.
+
+## Producer closure
+
+The actual Bridge normalizer could independently launder the same malformed raw
+input: `normalizeCreditMonthSlice({month: '2026-10', fetchStatus: 'success'})`
+produced `transactions: []`, and a transaction with `chargedAmount: true` became
+`chargedAmount: 1`. Browser-only validation cannot identify this after conversion.
+
+The canonical Credit contract is now standalone and synchronized by the existing
+asset generator into `bank-bridge/credit-transaction-evidence.mjs`. Transaction,
+month and account producers invoke it before coercion/deduplication. A producer
+failure uses `CREDIT_PROVIDER_SCHEMA_ERROR`, stage `Transactions`, without retry
+authority; the current browser response keeps its separate failure code.
+
+The installer explicitly stages the new file. Transitive packaging and real
+isolated runtime-start tests exercise that deployed file list. Producer tests
+disable three actual guards and reproduce missing-list and boolean-money defects;
+the browser/Bridge source parity and pure-module guards prevent a second schema
+implementation or platform dependency from appearing.
+
+Earlier raw amount conversion is guarded too: `creditNumber`/`creditDebitAmount`
+(used by Isracard/Amex), Cal's amount parser and MAX's formatted-number parser
+reject booleans/containers/nonfinite numbers before sign or formatting conversion.
+Issuer-specific numeric strings and nullable missing amounts remain supported.
+A fourth implementation mutation reproduces `true -> -1` and `[120] -> -120`
+when the raw admission guard is removed.
+
+Local verification passed 575 Credit/Finance/provider/Bridge contracts, existing
+Bank Bridge static contracts, strict typecheck and ESLint. Startup remains 297 /
+397 eager modules, with 1,735,203 / 2,354,584 source bytes. The former Kupa limit
+was exceeded by 203 bytes after the authority fixes. Source ceilings are restored
+to about one percent reserve (1,753,000 / 2,379,000); time ceilings and module
+limits are unchanged. This is an explicit maintenance reserve, not a measured
+speed improvement or justification for additional lazy loading.

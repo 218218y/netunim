@@ -78,7 +78,7 @@
   "creditPolicies": {
     "CREDIT_PROVIDER_CONFIG": "514d9341ce1caa5426aa7bbd80079ffeacf18be79c74d7f136ca848bdcae77ef",
     "creditText": "5dfbe3c4f8d4e85d77c53ff4ae2b5c85fa25c62bd08bd27c44a69b28e1e3f950",
-    "creditNumber": "329c082b7f8a81af39da90463eaa1ce2ba0230357e794d042674c0be037047bf",
+    "creditNumber": "2890dbcc541b91ae2efc68ebff29cabca7cfd2057160def365ae6d310c388a0f",
     "creditDebitAmount": "cf82c31985afc1f828371dcb51a5312fcebe6f5848a25b773fb36dc37378ef89",
     "creditTransactionTime": "a9dd4121410aa7be99cd76d93cf52b8debc18e10cbebcb856faf358a698fe8fe",
     "safeCreditProviderDiagnostic": "8dd9f64e87fe192d656fdb8140a358be4424969e7345b747073ed6d504658c98",
@@ -86,10 +86,10 @@
     "creditProfilePublic": "9f21aa787661790e3754184f8ef3624e9c45250c39acd557bb5f72867b39a5ce",
     "creditProfilesShareLoginIdentity": "a1c1b2fdb1174481de9edea2c6c7b7160028547c520cd89192b2da049f1f82dd",
     "normalizeCreditProfileInput": "68d5db50514bf82132bfc5e822fed8d459e6ea135b06d90c6fc29191d9c10839",
-    "normalizeCreditScrapeTransaction": "f2f9a1fe025315c3c1fc4c0e2d77bd7d84770380d7850115b33891663aec8a3c",
+    "normalizeCreditScrapeTransaction": "449d6fa5459a777f0dd712436453d0421f0328da0e2b46b15b5bd4a24737ef43",
     "dedupeCreditScrapeTransactions": "2999bbbf93ec2a477379181a446bf5984a8d0c25ad8472cf63cb6ab22f39fc11",
-    "normalizeCreditMonthSlice": "5b0773254a36875dcacc2fd019e94c530736cdb7c8aee51687931e0c312d74c9",
-    "normalizeCreditScrapeAccount": "7d0f4e1b0ca4205b9ec5205927e05ef16938de35c74358df16c157db0d7ef09b",
+    "normalizeCreditMonthSlice": "154521893f16f7c92898831aa57dd4287e9d0f5aefeb27698216f65be1b63a19",
+    "normalizeCreditScrapeAccount": "55f2846637ee682a1ba4e0fb2be79a94134a42e6a86127f710d8c6d1885874d7",
     "creditFailureContext": "6f6e5ebba4c645a90c89b6bad41f6bc8edcf091d7f171370465394e625d206ef",
     "safeCreditScrapeFailure": "7fc30998fa3b99b2cff85ffb4490ed7aa423221d6e6f1e19bad8759ae65ce8f5",
     "CREDIT_AUTOMATION_BLOCK_COOLDOWN_MS": "137f8054b6e67fb03e309d53ea3d5063bf291e573efaa0729099e9d844140261",
@@ -105,7 +105,9 @@
     "creditErrorComponent": "ebef12afdd6c4c8dae531061cd7932ba38d39e81946d0508baf8b3e3c59f39eb",
     "creditScrapeFailure": "bb911b3815c6f4b28b9a0bca1015378c58878189b7cb082abf065aba101fff4a",
     "creditLoginThrownScrapeFailure": "66130816422f5a287bf72ac53fad996097f1c15de721e20af2e7530f0576d2e7",
-    "creditThrownScrapeFailure": "082a6b5987602a38f4293e1835f4e772a88cfe36f05b73e5f1e14c8f3a379a10"
+    "creditThrownScrapeFailure": "082a6b5987602a38f4293e1835f4e772a88cfe36f05b73e5f1e14c8f3a379a10",
+    "assertProviderEvidence": "30908dd6a7608fca6da0c526eddba38173ca284f4d491022f403747aec787c2f",
+    "assertCreditNumericInput": "4581c587c5c0ace1eb2d5c0ace1eba4c2aebeb8a9e0b7f64c6941d15a557727a"
   },
   "libExports": [
     "CREDIT_AUTOMATION_BLOCK_COOLDOWN_MS",

@@ -1,12 +1,17 @@
 // @ts-nocheck
 import { creditNumber, creditText, creditTransactionTime } from './credit-core-values.mjs';
+import {assertCreditTransactionEvidence,assertCreditProfileTransactions} from './credit-transaction-evidence.mjs';
 
-export function normalizeCreditScrapeTransaction(tx = {}) {
-  if(tx?.status!=='pending'&&tx?.status!=='completed'){
-    throw Object.assign(new Error('Credit provider transaction status is invalid'),{
+function assertProviderEvidence(check){
+  try{check()}catch(cause){
+    throw Object.assign(new Error('Credit provider business evidence is invalid',{cause}),{
       code:'CREDIT_PROVIDER_SCHEMA_ERROR',stage:'Transactions',retryable:false,
     });
   }
+}
+
+export function normalizeCreditScrapeTransaction(tx = {}) {
+  assertProviderEvidence(()=>assertCreditTransactionEvidence(tx));
   const installments =
     Number(tx?.installments?.number) > 0 && Number(tx?.installments?.total) > 0
       ? {
@@ -72,6 +77,7 @@ function dedupeCreditScrapeTransactions(values = []) {
 }
 
 export function normalizeCreditMonthSlice(slice = {}) {
+  assertProviderEvidence(()=>assertCreditProfileTransactions({accounts:[{months:[slice]}]}));
   const month = /^\d{4}-(?:0[1-9]|1[0-2])$/.test(String(slice?.month || ''))
     ? String(slice.month)
     : '';
@@ -97,6 +103,7 @@ export function normalizeCreditMonthSlice(slice = {}) {
 }
 
 export function normalizeCreditScrapeAccount(account = {}, provider = '') {
+  assertProviderEvidence(()=>assertCreditProfileTransactions({accounts:[account]}));
   const balance = creditNumber(account.balance),
     cardFrame = creditNumber(account.cardFrame),
     directAvailable = creditNumber(account.availableCredit);

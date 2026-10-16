@@ -10,9 +10,20 @@ export function creditText(value, max = 240) {
 
 /** @param {unknown} value @returns {number|null} */
 export function creditNumber(value) {
+  assertCreditNumericInput(value);
   if (value === null || value === undefined || String(value).trim() === '') return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+/** Provider-specific string formatting stays with its adapter. JSON containers
+ * and booleans must never become issuer amounts through Number/String coercion.
+ * @param {unknown} value */
+export function assertCreditNumericInput(value){
+  if(value==null||typeof value==='string'||typeof value==='number'&&Number.isFinite(value))return;
+  throw Object.assign(new Error('Credit provider numeric input is invalid'),{
+    code:'CREDIT_PROVIDER_SCHEMA_ERROR',stage:'Transactions',retryable:false,
+  });
 }
 
 /** @param {unknown} value @returns {number|null} */
