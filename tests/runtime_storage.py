@@ -196,7 +196,8 @@ for app in ('kupa','orders'):
             ['unsafe revision',{revision:Number.MAX_SAFE_INTEGER+1}],['negative revision',{revision:-1}],
             ['short range',{ackSeq:1}],['newer pending range',{ackSeq:3}],['string range',{ackSeq:'2'}],
           ]){
-            await rejects(()=>db.acknowledge(owner,epoch,writer,flight.operationId,seal({...cursor,...patch})),'storage_ack_revision');
+            const schemaInvalid=['string revision','fractional revision','unsafe revision','negative revision','string range'].includes(label);
+            await rejects(()=>db.acknowledge(owner,epoch,writer,flight.operationId,seal({...cursor,...patch})),schemaInvalid?'storage_invalid_cloud_base':'storage_ack_revision');
             await unchanged('invalid '+label+' preserves all sealed stores');
           }
           await rejects(()=>db.acknowledge(owner,epoch,writer,'other-flight',seal(cursor)),'storage_ack_mismatch');
@@ -229,8 +230,9 @@ for app in ('kupa','orders'):
             check(injected,'fault reached '+store+' '+method);await unchanged('aborted '+store+' ACK is atomic');
           }
           const successor=make();await successor.open();const handedOff=await db.load(owner);
-          await rejects(()=>db.acknowledge(owner,epoch,writer,flight.operationId,corrupted),'storage_writer_fenced');
-          check(JSON.stringify(await db.load(owner))===JSON.stringify(handedOff),'old writer rejected before ACK decoding');
+          await rejects(()=>db.acknowledge(owner,epoch,writer,flight.operationId,seal(cursor)),'storage_writer_fenced');
+          await rejects(()=>db.acknowledge(owner,epoch,writer,flight.operationId,corrupted),'storage_checksum_mismatch');
+          check(JSON.stringify(await db.load(owner))===JSON.stringify(handedOff),'valid stale writer and malformed preflight both retain the exact handed-off head');
           const replay=await successor.materializeFlight({operationId:'must-not-replace',baseRevision:5});
           check(JSON.stringify(replay)===JSON.stringify(flight),'handoff retains exact immutable flight');
           await successor.acknowledge(flight.operationId,5,flight.snapshot,{checkpointState:current,expectedSeq:3});

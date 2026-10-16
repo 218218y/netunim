@@ -159,7 +159,7 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
     tx.objectStore('controls').delete(owner);done(true);
   })}
   async function commitCloudRecovery(owner,epoch,writer,checkpoint,{expectedHead,conflictKind=null,isCurrent=()=>true}={}){
-    expectedHead=captureStorageRecoveryHead(expectedHead);checkpoint=captureStorageCheckpoint(checkpoint);return change(owner,(tx,current,done)=>{
+    checkpoint=captureStorageCheckpoint(checkpoint);expectedHead=captureStorageRecoveryHead(expectedHead);return change(owner,(tx,current,done)=>{
     assertFence(current,owner,epoch,writer);
     if(!isCurrent())throw new Error('storage_cloud_scope_changed');
     const decoded=readStorageCloudHead({base:current.bases,flight:current.flights,control:current.controls},{owner,epoch,seq:current.metadata.seq});
