@@ -1,5 +1,5 @@
 // @ts-check
-import {evidenceObject as object} from './response-evidence.js';
+import {evidenceObject as object,evidenceMoney as money,evidenceInteger as integer} from './response-evidence.js';
 
 /** @returns {never} */
 function invalid(){throw Object.assign(new Error('Credit transaction evidence is invalid'),{code:'CREDIT_REFRESH_RESULT_INVALID',retryable:false})}
@@ -13,17 +13,29 @@ export function creditResponseProtocol(version){
 /** Validate every representation before a feed normalizer can deduplicate it.
  * @param {Record<string,unknown>} profile */
 export function assertCreditProfileTransactions(profile){
+  if(profile.coreComplete!==undefined&&typeof profile.coreComplete!=='boolean')invalid();
   if(profile.accounts===undefined)return;
   if(!Array.isArray(profile.accounts))return invalid();
   for(const account of Array.from(profile.accounts)){
     if(!object(account))return invalid();
+    amounts(account,['balance','cardFrame','availableCredit']);
+    if(account.pendingStatus==='success'&&!Array.isArray(account.pendingTransactions))invalid();
     for(const field of ['txns','pendingTransactions','unassignedTransactions']){
       transactions(account[field]);
     }
     if(account.months===undefined)continue;
     if(!Array.isArray(account.months))return invalid();
+    const months=new Set();
     for(const month of Array.from(account.months)){
       if(!object(month))return invalid();
+      if(typeof month.month!=='string'||!/^\d{4}-(?:0[1-9]|1[0-2])$/.test(month.month)||months.has(month.month))invalid();
+      months.add(month.month);
+      if(month.tier!==undefined&&!['core','forecast'].includes(String(month.tier)))invalid();
+      if(month.fetchStatus!==undefined&&!['success','provider_error','schema_error','network_error'].includes(String(month.fetchStatus)))invalid();
+      // Both paths authorize replacement in the retained-feed reader. An absent
+      // list must never acquire the meaning of an explicitly empty successful list.
+      if((month.fetchStatus==='success'||month.fetchStatus===undefined&&month.status==='fresh')&&
+        !Array.isArray(month.transactions))invalid();
       transactions(month.transactions);
     }
   }
@@ -34,5 +46,19 @@ function transactions(value){
   if(!Array.isArray(value))return invalid();
   for(const tx of Array.from(value)){
     if(!object(tx)||!(tx.status==='pending'||tx.status==='completed'))invalid();
+    amounts(tx,['originalAmount','chargedAmount']);
+    if(tx.foreignTransaction!==undefined&&typeof tx.foreignTransaction!=='boolean')invalid();
+    if(tx.chargeAmountStatus!==undefined&&!['reported','missing','not_billed'].includes(String(tx.chargeAmountStatus)))invalid();
+    if(tx.chargeAmountStatus==='reported'&&tx.chargedAmount==null)invalid();
+    if(tx.installments!=null){
+      const parts=tx.installments;
+      if(!object(parts)||!integer(parts.number)||!integer(parts.total)||parts.number===0||parts.number>parts.total)invalid();
+    }
   }
+}
+/** Null/missing issuer amounts convey no evidence. Supplied amounts retain their
+ * actual type before legacy normalization, which intentionally accepts old data.
+ * @param {Record<string,unknown>} row @param {string[]} fields */
+function amounts(row,fields){
+  for(const field of fields)if(row[field]!=null&&!money(row[field]))invalid();
 }

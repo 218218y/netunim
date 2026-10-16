@@ -26,8 +26,8 @@ function rows(value) {
 
 /**
  * Validate the network envelope before counters can skip a provider result or
- * diagnostics can enter Finance. Issuer amounts/months remain with the existing
- * credit model decoder; this envelope is not a financial write receipt.
+ * diagnostics can enter Finance. Current issuer amounts and replacement coverage
+ * are validated before the retained-feed normalizer can coerce or erase evidence.
  * Optional counters remain optional for supported older Bridge responses.
  * The publication callers have already required the current v2 handshake.
  * Historical persisted feeds retain their separate compatibility reader.
