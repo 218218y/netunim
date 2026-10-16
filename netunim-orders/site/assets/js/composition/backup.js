@@ -38,6 +38,10 @@ export function composeBackup({tab,ui,model,session,checksSession,storageV2Cloud
     loadSession:(...args)=>cloudAuth.loadSession(...args),
     cloudEnabled:(...args)=>cloudAuth.cloudEnabled(...args),
     requestCloudSave:(...args)=>syncDocument().requestCloudSave(...args),
+    readRestoreHeads:async()=>{
+      const [main,shared]=await Promise.all([cloudTransport().readCloud(),cloudTransport().readSharedChecksCloud()]);
+      return {main,shared};
+    },
     restoreGroupStore,
     stageRestoreGroup:(...args)=>cloudTransport().stageRestoreGroup(...args),
     applyRestoreGroup:(...args)=>cloudTransport().applyRestoreGroup(...args),

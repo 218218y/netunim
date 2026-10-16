@@ -41,10 +41,9 @@ export function createKupaCloudStartup({session,access,capabilities,restore,clou
         return 'capability-failure';
       }
       if(!canHydrate())return 'deferred';
-      // Keep the existing restore reconciliation failure policy. Changing its
-      // classification requires a separate protocol/restore review.
+      // An unknown restore outcome cannot release normal editing on an old head.
       try{await restore.resume()}
-      catch(error){console.error('restore group startup recovery',error);status.setCloudHeaderStatus('conflict','ענן: שחזור ממתין')}
+      catch(error){console.error('restore group startup recovery',error);status.setCloudHeaderStatus('conflict','ענן: שחזור ממתין');session.storageProtocolBlocked=true;throw error}
       if(!canHydrate())return 'deferred';
       if(await cloud.openAutomatic())return 'opened';
       if(!canHydrate())return 'deferred';

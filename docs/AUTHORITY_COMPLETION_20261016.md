@@ -44,6 +44,37 @@ The two new eager modules implement Bank business decoding and shared primitive
 evidence validation, also needed by restore/other authority boundaries. Both are
 strictly checked. No presentation subsystem was moved into startup.
 
+## Restore boundary
+
+Restore list decoding follows the actual SQL result: UUID, app enum, incomplete
+phase, creation/update timestamps and unique IDs. The list RPC does **not** return
+revisions, so it cannot prove them; the apply receipt separately requires the
+matching UUID, `completed`, positive Main revision and a positive/null Checks
+revision. Stage receipts accept an already-completed phase for idempotent replay.
+
+Server-only recovery now writes an owner-scoped durable pending identity before
+applying the group. It reads both authoritative documents after completion, checks
+their revisions against the receipt, and uses the existing paired V2 boundary to
+adopt them. The pending identity is cleared only after adoption. A fresh client
+can retry even when the server no longer lists the completed group. Pending local
+edits are never overwritten to finish this recovery: the clean-head precondition
+stops it. Account/login changes fence recovery publication.
+
+Both startup paths keep mutations blocked on a failed restore instead of
+reporting the error and continuing with old heads. A new startup retries durable
+recovery. Tests cover malformed lists/receipts, post-commit read/adoption failure,
+stale heads, owner isolation, startup mutation gates, and a fresh writer using
+native IndexedDB and the actual paired boundary in both apps.
+
+The two additional eager modules own restore response decoding and server-only
+recovery. Restore-stage source was measured within the existing byte reserve;
+module ceilings move explicitly from 292/392 to 294/394. No byte ceiling increase
+is needed. Enum values must be strings, never coercible arrays.
+
+Kupa restore reads request the exact Main head without the display-only overlay
+from the independent Finance document. The ordinary cloud read keeps its existing
+overlay behavior. Restoring Main must not manufacture a composite cloud base.
+
 ## Release scope
 
 Full CI includes real PostgreSQL, native browser/IndexedDB, recovery/fault injection,

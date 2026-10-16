@@ -1,3 +1,4 @@
+import {readServerRestorePending} from './restore-response-records.js';
 const RESTORE_SCHEMA_VERSION=1;
 
 function clone(value){return value==null?value:structuredClone(value)}
@@ -95,7 +96,25 @@ export function createRestoreGroupStore({localKey,put,get,remove,storage=globalT
     try{storage.removeItem(localKey)}catch(error){throw new Error('restore_local_clear_failed',{cause:error})}
     await remove(currentKey);return completed;
   }
-  return {stage,loadPending,advance,complete,archiveKey};
+  const serverKey=owner=>`${currentKey}:server:${owner}`;
+  async function loadServerPending(owner){
+    const record=await get(serverKey(owner));
+    return record==null?null:readServerRestorePending(record,owner);
+  }
+  async function stageServerPending(record){
+    const next=readServerRestorePending(record,record.owner),prior=await loadServerPending(next.owner);
+    if(prior&&prior.restore_group_id!==next.restore_group_id)throw new Error('restore_server_pending_changed');
+    await put(serverKey(next.owner),clone(next));
+    const saved=await loadServerPending(next.owner);
+    if(!saved||canonicalJson(saved)!==canonicalJson(next))throw new Error('restore_server_pending_write_failed');
+    return saved;
+  }
+  async function completeServerPending(owner,id){
+    const prior=await loadServerPending(owner);
+    if(!prior||prior.restore_group_id!==id)throw new Error('restore_server_pending_changed');
+    await remove(serverKey(owner));
+  }
+  return {stage,loadPending,advance,complete,archiveKey,loadServerPending,stageServerPending,completeServerPending};
 }
 
 export function restoreGroupRpcPayload(group){

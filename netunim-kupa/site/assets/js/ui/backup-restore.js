@@ -1,3 +1,4 @@
+import {resumeServerRestoreGroups} from '../shared/restore-server-recovery.js';
 import {clone} from '../core/values.js';
 import {applyStorageV2RestoreGroup,captureStorageV2RestoreSource} from '../shared/storage-v2-restore.js';
 import {resumeRestoreGroup} from '../shared/restore-groups.js';
@@ -13,24 +14,42 @@ export function createBackupRestore({model,session,files,checksSession,view={},l
   const {loadSupaSession,persistSupabaseState=async()=>false,restoreGroupStore,stageRestoreGroup,applyRestoreGroup,listIncompleteRestoreGroups}=cloud;
   const {refreshStorageV2CloudState=async()=>null,storageV2LocalPrimary=()=>false,recoverStorageV2State=async()=>null,storageOwnerCurrent=()=>'',storageV2Boundary=null,sharedChecksV2=null}=storage;
 
+function captureRecoveryGuard(){
+  const owner=storageOwnerCurrent(),account=cloud.accountScope?.(),accountOwner=account?.owner,accountEpoch=account?.epoch;
+  return ()=>{
+    const current=cloud.accountScope?.();
+    if(!storageV2LocalPrimary()||owner!==storageOwnerCurrent()||
+      account&&(current?.owner!==accountOwner||current?.epoch!==accountEpoch))throw new Error('restore_recovery_scope_changed');
+  };
+}
+
 async function applyCompletedGroupLocally(group,result={}){
+    const assertCurrent=captureRecoveryGuard();
     if(sharedChecksV2?.primaryReady){
       const target=clone(group.localTargetState||{...group.main.state,checks:group.checks?.state?.checks||group.beforeState?.local?.checks||[]});
       const sharedState={checks:clone(target.checks||[]),bankEvents:clone(group.checks?.state?.bankEvents||checksSession.sharedChecksBankEvents||[])};
       const applied=await applyStorageV2RestoreGroup({boundary:storageV2Boundary,group,result,target,sharedState});
+      assertCurrent();
       model.state=target;session.connectionMode='supabase';session.backendReady=true;session.dbRevision=applied.mainRevision;session.lastSavedSnapshot=JSON.stringify(group.main.state);
       if(group.checks){checksSession.sharedChecksRevision=applied.sharedRevision;checksSession.sharedChecksBase=clone(sharedState.checks);checksSession.sharedChecksBankEvents=clone(sharedState.bankEvents)}
-      await refreshStorageV2CloudState();invalidateAllViewDomains();render();return true;
+      await refreshStorageV2CloudState();assertCurrent();invalidateAllViewDomains();render();return true;
     }
     throw new Error('shared_checks_v2_required');
   }
 
 async function resumeIncompleteRestore(){
     if(!navigator.onLine||!loadSupaSession())return false;
-    const resumed=await resumeRestoreGroup({store:restoreGroupStore,stageRemote:stageRestoreGroup,applyRemote:applyRestoreGroup,onApplied:applyCompletedGroupLocally});
-    if(resumed){toast('שחזור שנקטע הושלם בבטחה');return true}
-    const serverGroups=await listIncompleteRestoreGroups();for(const row of serverGroups.filter(item=>item.app_site==='kupa'))await applyRestoreGroup(row.restore_group_id);
-    return serverGroups.some(item=>item.app_site==='kupa');
+    const assertCurrent=captureRecoveryGuard();assertCurrent();
+    const resumed=await resumeRestoreGroup({store:restoreGroupStore,stageRemote:group=>stageRestoreGroup(group,{assertCurrent}),applyRemote:id=>applyRestoreGroup(id,{assertCurrent}),onApplied:applyCompletedGroupLocally});
+    assertCurrent();
+    const serverResumed=await resumeServerRestoreGroups({
+      appSite:'kupa',owner:storageOwnerCurrent(),store:restoreGroupStore,listRemote:()=>listIncompleteRestoreGroups({assertCurrent}),
+      applyRemote:id=>applyRestoreGroup(id,{assertCurrent}),readHeads:()=>cloud.readRestoreHeads({assertCurrent}),
+      readSource:async()=>captureStorageV2RestoreSource(await refreshStorageV2CloudState(),await sharedChecksV2.cloudState()),
+      applyLocally:applyCompletedGroupLocally,assertCurrent,
+    });
+    if(resumed||serverResumed)toast('שחזור שנקטע הושלם בבטחה');
+    return !!resumed||serverResumed;
   }
 
   const reviewScope=createRestoreReviewScope({owner:storageOwnerCurrent,generation:()=>Number(session.localGeneration||0),writable:storageV2LocalPrimary});

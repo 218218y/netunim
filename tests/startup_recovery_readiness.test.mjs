@@ -8,6 +8,8 @@ import {createUiStatus as createKupaStatus} from '../netunim-kupa/site/assets/js
 import {wrapMutationActions} from '../netunim-orders/site/assets/js/ui/actions.js';
 import {createOrdersConnectivityRuntime} from '../netunim-orders/site/assets/js/connectivity.js';
 import {createKupaConnectivityRuntime} from '../netunim-kupa/site/assets/js/connectivity.js';
+import {resumeServerRestoreGroups} from '../shared/restore-server-recovery.js';
+import {createRestoreGroupStore} from '../shared/restore-groups.js';
 
 const noop=()=>{};
 function deferred(){let resolve;const promise=new Promise(done=>{resolve=done});return {promise,resolve}}
@@ -115,6 +117,41 @@ for(const app of ['Orders','Kupa']){
     assert.ok(calls.includes('cloud'));assert.ok(calls.includes(app==='Orders'?'morning':'bank'));
   });
 }
+
+for(const app of ['Orders','Kupa'])test(`${app} startup adopts a server-only restore before normal editing`,async t=>{
+  browser(t);navigator.onLine=true;
+  const gate=deferred(),entered=deferred(),rows=new Map();t.after(()=>gate.resolve());
+  const id='aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',at='2026-10-16T10:00:00Z';let adopted=false;
+  const store=createRestoreGroupStore({localKey:'startup.restore',storage:{getItem:()=>null,setItem:noop,removeItem:noop},
+    put:async(key,value)=>rows.set(key,structuredClone(value)),get:async key=>rows.get(key),remove:async key=>rows.delete(key)});
+  const f=fixture(app,{storageOwnerCurrent:()=> 'account',verifyStorageV2AccountMarker:async()=>true,verifyLocalStorageEngine:async()=>false,
+    restoreSupaSession:async()=>({user:{id:'account'}}),loadSession:()=>({user:{id:'account'}}),loadSupaSession:()=>({user:{id:'account'}}),
+    refreshStorageV2CloudState:async()=>({base:{state:{checks:[]},revision:9}}),
+    resumeIncompleteRestore:()=>resumeServerRestoreGroups({appSite:app.toLowerCase(),owner:'account',store,assertCurrent:noop,
+      listRemote:async()=>[{restore_group_id:id,app_site:app.toLowerCase(),phase:'staged',created_at:at,updated_at:at}],
+      applyRemote:async()=>({restore_group_id:id,phase:'completed',main_revision:9,checks_revision:12}),
+      readSource:async()=>({mainSeq:0,mainRevision:8,sharedSeq:0,sharedRevision:11}),
+      readHeads:async()=>({main:{document_name:'main',revision:9,state:{notes:[{id:'restored'}]},updated_at:at},
+        shared:{document_name:'main',revision:12,state:{checks:[{id:'restored-check'}],bankEvents:[]},updated_at:at}}),
+      applyLocally:async(plan,receipt)=>{entered.resolve();await gate.promise;assert.equal(f.allowed(),false);
+        assert.equal(plan.main.state.notes[0].id,'restored');assert.equal(plan.checks.state.checks[0].id,'restored-check');
+        assert.equal(receipt.main_revision,9);adopted=true},
+    })});
+  const boot=f.lifecycle.boot();await entered.promise;
+  assert.equal(f.allowed(),false);assert.equal(adopted,false);gate.resolve();await boot;await f.session.startupHydrationPromise;
+  assert.equal(adopted,true);assert.equal(f.allowed(),true);assert.equal(await store.loadServerPending('account'),null);
+});
+
+for(const app of ['Orders','Kupa'])test(`${app} failed restore recovery keeps mutations blocked`,async t=>{
+  browser(t);navigator.onLine=true;t.mock.method(console,'error',noop);
+  const error=Object.assign(new Error('restore evidence invalid'),{code:'RESTORE_RESPONSE_EVIDENCE_INVALID'});
+  const f=fixture(app,{storageOwnerCurrent:()=> 'account',verifyStorageV2AccountMarker:async()=>true,
+    verifyLocalStorageEngine:async()=>false,restoreSupaSession:async()=>({user:{id:'account'}}),
+    loadSession:()=>({user:{id:'account'}}),loadSupaSession:()=>({user:{id:'account'}}),
+    resumeIncompleteRestore:async()=>{throw error},refreshStorageV2CloudState:async()=>({base:{state:{checks:[]},revision:3}})});
+  await assert.rejects(f.lifecycle.boot(),cause=>cause===error);
+  assert.equal(f.allowed(),false);assert.equal(f.session.storageProtocolBlocked,true);
+});
 
 test('Orders recovered journals stay locked while restore recovery and the cloud cursor are pending',async t=>{
   browser(t);
