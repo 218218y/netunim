@@ -1,5 +1,5 @@
 // @ts-check
-import {creditResponseProtocol,assertCreditProfileTransactions} from './credit-transaction-evidence.js';
+import {creditResponseProtocol,assertCreditProfileTransactions,assertCreditIdentity} from './credit-transaction-evidence.js';
 /** @typedef {Readonly<Record<string,unknown>>} CreditIssue */
 /** @typedef {Readonly<Record<string,unknown>&{profiles:CreditStatusProfile[],errors?:CreditIssue[],attemptedCount?:number,deferredCount?:number}>} CreditRefreshResult */
 /** @typedef {Readonly<Record<string,unknown>&{profileId:string}>} CreditStatusProfile */
@@ -37,7 +37,13 @@ export function readCreditRefreshResult(value) {
   if (!creditRefreshRecord(value)) throw invalid();
   creditResponseProtocol(value.contractVersion);
   const accepted=profiles(value.profiles);
-  for(const profile of accepted)assertCreditProfileTransactions(profile);
+  for(const profile of accepted){
+    assertCreditProfileTransactions(profile);
+    // Actual network accounts require a routing key. Partial producer models
+    // (e.g. a standalone month) share the guard but have no account identity yet.
+    if(Array.isArray(profile.accounts))for(const account of profile.accounts)
+      assertCreditIdentity(account.accountNumber,true);
+  }
   /** @type {Record<string,unknown>&{profiles:CreditStatusProfile[],errors?:CreditIssue[],attemptedCount?:number,deferredCount?:number}} */
   const decoded = { ...value, profiles: accepted };
   for (const field of /** @type {const} */ (['attemptedCount', 'deferredCount'])) {
@@ -61,9 +67,11 @@ export function readCreditStatusProfiles(status) {
 }
 /** @param {unknown} value @returns {CreditStatusProfile[]} */
 function profiles(value) {
+  const seen=new Set();
   return rows(value).map(profile => {
-    if (typeof profile.profileId !== 'string' || !profile.profileId.trim())
-      throw invalid();
+    assertCreditIdentity(profile.profileId);
+    if(seen.has(profile.profileId))throw invalid();
+    seen.add(profile.profileId);
     return Object.freeze({ ...profile, profileId: profile.profileId });
   });
 }

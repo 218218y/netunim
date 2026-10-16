@@ -5,7 +5,7 @@ import {normalizeCreditScrapeTransaction} from '../netunim-kupa/bank-bridge/cred
 import {normalizeCreditSync as ordersHistory} from '../netunim-orders/site/assets/js/domains/finance/credit-feed.js';
 import {normalizeCreditSync as kupaHistory} from '../netunim-kupa/site/assets/js/domains/credit/sync-feed.js';
 const tx={id:'T',status:'completed',chargedAmount:20};
-const response=(account,contractVersion=2)=>({contractVersion,profiles:[{profileId:'P',accounts:[account]}]});
+const response=(account,contractVersion=2)=>({contractVersion,profiles:[{profileId:'P',accounts:[{accountNumber:'C',...account}]}]});
 for(const status of [undefined,null,'garbage',true,false,0,'PENDING',' completed ']){
   test(`Credit current protocol never finalizes unknown status ${String(status)}`,()=>{
     const bad={...tx,status};
