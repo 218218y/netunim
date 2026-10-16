@@ -49,7 +49,8 @@ function bankSmartRows(rows,directRows=[]){return bankSmartHistoryRows(rows,{dir
 function bankPresenceTime(value){if(!value)return '—';const d=new Date(value);return Number.isFinite(d.getTime())?`${d.toLocaleDateString('he-IL')} · ${d.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'})}`:'—'}
 function bankDataViewToggleMarkup(){const mode=bankDataMode(),direct=mode==='direct',current=direct?'עדכני מהבנק':'היסטוריה חכמה',next=direct?'history':'direct',nextLabel=direct?'היסטוריה חכמה':'עדכני מהבנק',shortLabel=direct?'מהבנק':'חכם',icon=direct?'↻':'✦';return `<button type="button" class="bank-data-view-toggle ${direct?'direct':'history'}" data-action="set-bank-data-view" data-click-arg0="${next}" aria-label="תצוגה נוכחית: ${current}. לחץ למעבר אל ${nextLabel}" title="${current} · לחץ למעבר אל ${nextLabel}"><span class="bank-data-view-toggle-icon" aria-hidden="true">${icon}</span><span>${shortLabel}</span><span class="bank-data-view-toggle-swap" aria-hidden="true">⇄</span></button>`}
 function bankDirectSnapshotNote(snapshot){if(!snapshot)return `<div class="bank-direct-snapshot-note empty-state"><b>עדיין אין צילום תנועות מלא ומאומת מהבנק.</b><span>צילום ישיר יישמר רק לאחר קריאת תנועות מלאה ללא אזהרה; קריאה חלקית לעולם לא תחליף אותו.</span></div>`;return `<div class="bank-direct-snapshot-note"><span><b>נתוני הבנק הישירים האחרונים</b> · ${esc(bankPresenceTime(snapshot.snapshotAt))}</span><small>כיסוי ${esc(snapshot.coverageFrom)} עד ${esc(snapshot.coverageTo)} · ${esc(snapshot.transactionCount)} תנועות. סנכרון חלקי אינו מחליף צילום זה.</small></div>`}
-function bankMissingSummary(rows){const active=(Array.isArray(rows)?rows:[]).filter(bankMissingActive),cheques=active.filter(row=>row.cheque);if(!active.length)return '';return `<div class="bank-missing-summary"><span class="bank-missing-summary-icon" aria-hidden="true">!</span><div><b>${esc(active.length)} תנועות אינן מופיעות בסריקת הבנק המלאה האחרונה${cheques.length?` · מתוכן ${esc(cheques.length)} הפקדות צ׳קים`:''}</b><small>הן הועלו לראש הרשימה. כל עוד לא אושרו הן נשארות לבדיקה גם אחרי סנכרונים נוספים; סימון „נבדק” מסתיר אותן מההיסטוריה החכמה אך משאיר תיעוד בארכיון.</small></div></div>`}
+function bankMissingSummary(rows) { const active = (Array.isArray(rows) ? rows : []).filter(bankMissingActive), cheques = active.filter(row => row.cheque); if (!active.length)
+    return ''; return `<div class="bank-missing-summary"><span class="bank-missing-summary-icon" aria-hidden="true">!</span><div><b>${esc(active.length)} תנועות אינן מופיעות בסריקת הבנק המלאה האחרונה${cheques.length ? ` · מתוכן ${esc(cheques.length)} הפקדות צ׳קים` : ''}</b><small>הן הועלו לראש הרשימה. כל עוד לא אושרו הן נשארות לבדיקה גם אחרי סנכרונים נוספים; סימון „נבדק” מסתיר אותן מההיסטוריה החכמה אך משאיר תיעוד בארכיון.</small></div></div>`; }
 function bankMissingDetailMarkup(row){if(!bankMissingActive(row))return '';const title=row.cheque?'הפקדת צ׳ק לא מופיעה בסריקת הבנק האחרונה':'התנועה לא מופיעה בסריקת הבנק האחרונה';return `<div class="bank-missing-detail"><div><b>${esc(title)}</b><small>נראתה לאחרונה: ${esc(bankPresenceTime(row.lastSeenAt))} · חסרה מאז: ${esc(bankPresenceTime(row.missingSince))}</small></div>${row.archiveId?`<button type="button" class="btn bank-missing-ack" data-action="ack-bank-missing" data-click-arg0="${esc(row.archiveId)}">נבדק — הסר התראה</button>`:''}</div>`}
 function bankDateFilterActive(){return ui.bankDateMode==='range'}
 function bankRowMatchesDateRange(row){return !bankDateFilterActive()||dateInRange(row?.date||row?.processedDate,ui.bankDateFrom||'',ui.bankDateTo||'')}
@@ -101,7 +102,10 @@ function bankBridgeDiagnosticsMarkup(s){
 }
 
 
-function bankChequeImageButtons(row,item){if(!bankChequeImageWithinRetention(row?.date||row?.processedDate))return item.hasDocumentReference?'קיים בבנק':'—';const buttons=[];if(item.imageFrontKey)buttons.push(`<button type="button" class="btn bank-cheque-image-btn" data-action="view-bank-cheque-image" data-click-arg0="${esc(row?.date||row?.processedDate||'')}" data-click-arg1="${esc(item.imageFrontKey)}" data-click-arg2="חזית">חזית</button>`);if(item.imageBackKey)buttons.push(`<button type="button" class="btn bank-cheque-image-btn" data-action="view-bank-cheque-image" data-click-arg0="${esc(row?.date||row?.processedDate||'')}" data-click-arg1="${esc(item.imageBackKey)}" data-click-arg2="גב">גב</button>`);return buttons.length?`<span class="bank-cheque-image-actions">${buttons.join('')}</span>`:item.hasDocumentReference?'קיים בבנק':'—'}
+function bankChequeImageButtons(row, item) { if (!bankChequeImageWithinRetention(row?.date || row?.processedDate))
+    return item.hasDocumentReference ? 'קיים בבנק' : '—'; const buttons = []; if (item.imageFrontKey)
+    buttons.push(`<button type="button" class="btn bank-cheque-image-btn" data-action="view-bank-cheque-image" data-click-arg0="${esc(row?.date || row?.processedDate || '')}" data-click-arg1="${esc(item.imageFrontKey)}" data-click-arg2="חזית">חזית</button>`); if (item.imageBackKey)
+    buttons.push(`<button type="button" class="btn bank-cheque-image-btn" data-action="view-bank-cheque-image" data-click-arg0="${esc(row?.date || row?.processedDate || '')}" data-click-arg1="${esc(item.imageBackKey)}" data-click-arg2="גב">גב</button>`); return buttons.length ? `<span class="bank-cheque-image-actions">${buttons.join('')}</span>` : item.hasDocumentReference ? 'קיים בבנק' : '—'; }
 async function openBankChequeImage(eventDate,imageKey,label='תמונת שיק'){
   if(!isActive())return false;
   const blob=await downloadBankChequeImage(eventDate,imageKey);
@@ -212,7 +216,24 @@ function setBankAccountView(role){
 function setBankDataView(value){ui.bankDataView=value==='direct'?'direct':'history';rerenderBankTransactions()}
 function rerenderBankTransactions(){const region=document.querySelector('.bank-transactions-region');if(region)region.innerHTML=bankTransactionsMarkup()}
 function setBankSearch(value){ui.bankSearchValue=String(value||'');rerenderBankTransactions()}
-function setBankDateMode(value,from=ui.bankDateFrom||'',to=ui.bankDateTo||''){if(value!=='range'){ui.bankDateMode='all';ui.bankDateFrom='';ui.bankDateTo='';return rerenderBankTransactions()}const valid=x=>/^\d{4}-\d{2}-\d{2}$/.test(String(x||''))?String(x):'',nextFrom=valid(from),nextTo=valid(to);if(!nextFrom&&!nextTo){ui.bankDateMode='all';ui.bankDateFrom='';ui.bankDateTo='';return rerenderBankTransactions()}ui.bankDateMode='range';if(nextFrom&&nextTo&&nextFrom>nextTo){ui.bankDateFrom=nextTo;ui.bankDateTo=nextFrom}else{ui.bankDateFrom=nextFrom;ui.bankDateTo=nextTo}rerenderBankTransactions()}
+function setBankDateMode(value, from = ui.bankDateFrom || '', to = ui.bankDateTo || '') { if (value !== 'range') {
+    ui.bankDateMode = 'all';
+    ui.bankDateFrom = '';
+    ui.bankDateTo = '';
+    return rerenderBankTransactions();
+} const valid = x => /^\d{4}-\d{2}-\d{2}$/.test(String(x || '')) ? String(x) : '', nextFrom = valid(from), nextTo = valid(to); if (!nextFrom && !nextTo) {
+    ui.bankDateMode = 'all';
+    ui.bankDateFrom = '';
+    ui.bankDateTo = '';
+    return rerenderBankTransactions();
+} ui.bankDateMode = 'range'; if (nextFrom && nextTo && nextFrom > nextTo) {
+    ui.bankDateFrom = nextTo;
+    ui.bankDateTo = nextFrom;
+}
+else {
+    ui.bankDateFrom = nextFrom;
+    ui.bankDateTo = nextTo;
+} rerenderBankTransactions(); }
 function setBankDateBoundary(side,value){const key=side==='to'?'bankDateTo':'bankDateFrom',other=side==='to'?'bankDateFrom':'bankDateTo',next=/^\d{4}-\d{2}-\d{2}$/.test(String(value||''))?String(value):'';ui.bankDateMode='range';ui[key]=next;if(next&&ui[other]){if(side==='from'&&next>ui[other])ui.bankDateTo=next;if(side==='to'&&next<ui[other])ui.bankDateFrom=next}rerenderBankTransactions()}
 function toggleBankSyncOptions(){ui.bankSyncOpen=!ui.bankSyncOpen;const panel=document.getElementById('bankSyncPanel'),button=document.getElementById('bankSyncHeadline');if(panel)panel.hidden=!ui.bankSyncOpen;if(button){button.classList.toggle('open',ui.bankSyncOpen);button.setAttribute('aria-expanded',String(ui.bankSyncOpen))}}
 

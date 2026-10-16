@@ -6,12 +6,14 @@ The ESM graph test separately enforces deterministic bytes/module budgets.
 from browser_harness import BrowserSession, ROOT
 import json
 import os
-from statistics import median
-from math import ceil
+import sys
+
+sys.path.insert(0, str(ROOT/'tools'))
+from startup_evidence import summarize_startup, capture_environment
 
 
 BUDGETS = json.loads((ROOT/'tests/fixtures/startup-budgets.json').read_text(encoding='utf-8'))
-REPORT = {}
+REPORT = {'environment': capture_environment()}
 REPETITIONS = int(os.environ.get("NETUNIM_STARTUP_REPETITIONS", "5"))
 CPU_RATE = int(os.environ.get("NETUNIM_STARTUP_CPU_RATE", "4"))
 assert 1 <= REPETITIONS <= 10
@@ -88,14 +90,7 @@ def sample_profile(app, cpu_rate):
             observations.append(samples)
 
 
-    summary = {}
-    for mode in ['cold', 'cached', 'offline']:
-        fields = {name: [sample[mode]['durations'][name] for sample in observations]
-                  for name in BUDGETS['milliseconds']}
-        fields['moduleResponses'] = [sample[mode]['resources']['lastResponseMs'] for sample in observations]
-        fields['scriptMs'] = [sample[mode]['cpu']['ScriptDuration'] * 1000 for sample in observations]
-        summary[mode] = {name: {'n': len(values), 'min': min(values), 'median': median(values), 'p95': sorted(values)[ceil(len(values)*.95)-1], 'max': max(values)}
-                         for name, raw in fields.items() if (values := [v for v in raw if v is not None])}
+    summary = summarize_startup(observations, BUDGETS['milliseconds'])
     print('PASS', app, 'CPU rate', cpu_rate, REPETITIONS, 'isolated cold/cached/offline startup samples;', json.dumps(summary), flush=True)
     return {'cpuThrottleRate': cpu_rate, 'repetitions': REPETITIONS, 'samples': observations, 'summary': summary}
 
