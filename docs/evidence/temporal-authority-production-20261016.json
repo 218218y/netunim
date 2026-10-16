@@ -1,0 +1,16 @@
+{
+  "project_id": "bupoidcurcxuypfrjqio",
+  "observed_at": "2026-10-16T13:57:20.542713Z",
+  "mode": "authenticated connector read-only aggregate query",
+  "temporal_migration_applied": false,
+  "snapshot_guard_installed": false,
+  "future_snapshots": 0,
+  "future_presence_rows": 0,
+  "future_tolerance_minutes": 5,
+  "required_migration": "20261016140000_bank_snapshot_temporal_authority",
+  "limitations": [
+    "Scoped aggregate observation; not a replacement for complete live SQL hash and schema postflight.",
+    "No Production DDL was applied. The new server guard remains pending deployment.",
+    "No live providers, physical device measurements, customer data restore or site rollout was performed."
+  ]
+}

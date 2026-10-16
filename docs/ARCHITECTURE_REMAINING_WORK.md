@@ -60,12 +60,14 @@ documented in STARTUP_CPU_MEASUREMENT.md and READABILITY_RATCHET.md.
 
 | Priority | Scope | Required evidence |
 | --- | --- | --- |
+| P1 rollout | Bank temporal authority | Apply the additive `20261016140000_bank_snapshot_temporal_authority` migration through the reviewed database release path, then complete live SQL hash/schema postflight before static upload. The scoped read-only temporal observation found no existing future snapshots/presence rows; it also confirmed this new guard was still pending |
 | 1 | Physical release validation and loaded startup measurements | Use the operator matrix for weak Windows hardware, installed Bridge update/shutdown, controlled interruption, old backups, A-B-A, two physical clients and live Bank/Credit providers after Credit schema hardening. CI covers isolated PostgreSQL/native browser/Windows contracts |
 | 2 | Fresh verification before each static rollout | Postflight explicitly requires both Bank migration identities plus the existing complete SQL hash and live schema checks. The scoped 2026-10-16 observation and Git CI do not replace that gate |
 | 3 | Further authority work only on demonstrated gaps | Current Credit replacement coverage and normalized/raw monetary admissions are checked; Journal has eleven checked durable decisions and native rejection/mutation evidence. Extend remaining orchestration only when code or runtime evidence justifies it |
 | 4 | Compatibility inventory and readability | Keep the count/max ratchet and improve touched code; retire only newly proven Dead paths |
 
 Current continuation evidence: [Credit coverage and producer](CREDIT_COVERAGE_AUTHORITY.md),
+[Temporal observation, cooldown and scheduler closure](TEMPORAL_AUTHORITY_20261016.md),
 [Credit account identity and mutation closure](CREDIT_ACCOUNT_AUTHORITY_20261016.md),
 [Journal replacement decisions](JOURNAL_REPLACEMENT_DECISIONS.md),
 [nested Bank SQL authority](BANK_BUSINESS_SQL_AUTHORITY.md). Architectural

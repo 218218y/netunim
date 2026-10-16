@@ -1,5 +1,5 @@
 import {createRuntimeTaskOwner} from '../../shared/runtime-task-owner.js';
-import {CREDIT_AUTO_INTERVAL_MS,creditRefreshDue as due} from '../../shared/finance-refresh-policy.js';
+import {CREDIT_AUTO_INTERVAL_MS,creditRefreshDue as due,financeRefreshDelayMs,financeAttemptDelayMs} from '../../shared/finance-refresh-policy.js';
 import {applyCreditCardOrderData} from '../../shared/credit-card-order.js';
 import {applyCreditCardAccountTransitionData} from '../../shared/credit-card-account.js';
 import {createPollingTask} from '../../shared/runtime-polling.js';
@@ -47,7 +47,7 @@ export function createDomainsCreditController({model,toast,render,renderStatus=r
   function autoEnabled(){const settings=readPreferences();return !preferencesPaused&&settings?.enabled===true}
   function autoMode(){return normalizeCreditAutoMode(readPreferences()?.mode)}
   function markAutoAttempt(){return preferenceResult(preferences.markAttempt())}
-  function autoAttemptDelayMs(){const settings=readPreferences();if(!settings)return Infinity;const n=settings.attemptAt;return n?Math.max(0,n+CREDIT_AUTO_RETRY_MS-Date.now()):0}
+  function autoAttemptDelayMs(){const settings=readPreferences();if(!settings)return Infinity;return financeAttemptDelayMs(settings.attemptAt,CREDIT_AUTO_RETRY_MS)}
   function autoAttemptReady(){return autoAttemptDelayMs()===0}
   function creditSyncUiState(){const settings=readPreferences();return {...connections.queries.snapshot(),...local,...publication.status(),autoEnabled:!preferencesPaused&&settings?.enabled===true,autoMode:normalizeCreditAutoMode(settings?.mode),sync:normalizeCreditSync(model.state.creditSync)}}
   const refreshCreditBridgeStatus=connections.queries.refreshStatus;
@@ -149,8 +149,7 @@ export function createDomainsCreditController({model,toast,render,renderStatus=r
   }
   function setCreditAutoMode(mode){if(disposed)return false;const saved=preferenceResult(preferences.setMode(normalizeCreditAutoMode(mode)));if(saved)scheduleAuto();else toast(local.preferenceWarning);render();return saved}
   function autoDelay(){
-    const syncedAt=model.state.creditSync?.syncedAt,t=syncedAt?Date.parse(syncedAt):NaN;
-    const wait=Number.isFinite(t)?Math.max(0,t+CREDIT_AUTO_INTERVAL_MS-Date.now()):0,retryWait=autoAttemptDelayMs();
+    const wait=financeRefreshDelayMs(model.state.creditSync?.syncedAt,CREDIT_AUTO_INTERVAL_MS),retryWait=autoAttemptDelayMs();
     return Math.max(1000,wait+250,retryWait+250);
   }
   function scheduleAuto(){if(!disposed&&automaticActive)autoTask.start()}

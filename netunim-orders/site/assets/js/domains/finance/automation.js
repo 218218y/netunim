@@ -1,4 +1,4 @@
-import {BANK_AUTO_INTERVAL_MS,CREDIT_AUTO_INTERVAL_MS} from '../../shared/finance-refresh-policy.js';
+import {BANK_AUTO_INTERVAL_MS,CREDIT_AUTO_INTERVAL_MS,financeRefreshDelayMs} from '../../shared/finance-refresh-policy.js';
 import {createAutomationPreferences} from './automation-preferences.js';
 
 // The scheduler owns future provider starts, while a started operation owns its
@@ -15,7 +15,7 @@ export function createOrdersFinanceAutomation({access,preferences,readLastSyncAt
     if(!active||!access.primary()||!access.authenticated()||!access.online()||!preferenceOwner.tokenConfigured()||!preferenceOwner.eligible(kind)?.enabled)return false;
     try{if(!guard)guard=access.capture();guard();return true}catch(error){if(error?.code!=='FINANCE_OPERATION_SCOPE_CHANGED')throw error;stopAutoSync();return false}
   }
-  function autoWait(lastSyncAt,intervalMs){const time=lastSyncAt?Date.parse(lastSyncAt):NaN;return Number.isFinite(time)?Math.max(1000,time+intervalMs-Date.now()+250):1000}
+  function autoWait(lastSyncAt,intervalMs){return Math.max(1000,financeRefreshDelayMs(lastSyncAt,intervalMs)+250)}
   function schedule(kind){
     clear(kind);if(!allowed(kind))return;
     const retryWait=preferenceOwner.eligible(kind)?.delay;if(retryWait===undefined)return;

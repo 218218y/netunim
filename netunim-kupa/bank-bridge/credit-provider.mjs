@@ -73,7 +73,7 @@ export function createCreditProvider({ sessions, identity, diagnostics }) {
                             severity, 
                             component, 
                             originalFailureAt: base.originalFailureAt || base.at || null, 
-                            retryAfterAt: retryAfterAt, 
+                            retryAfterAt: retryAfterAt,
                             diagnosticFingerprint: fingerprint
                         });
                     }

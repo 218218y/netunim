@@ -149,3 +149,11 @@ for(const kind of ['bank','credit'])test(`${kind} automatic failure cooldown sti
 for(const [name,create] of [['bank',createDomainsBankController],['credit',actualCreditController]])test(`${name} missing automatic access port rejects construction`,()=>{
   assert.throws(()=>create({}),new RegExp(name+'_auto_scope_required'));
 });
+
+for(const kind of ['bank','credit'])test(`${kind} future observations schedule a prompt bounded wakeup`,t=>{
+  const f=fixture(kind,t),future='2099-01-01T00:00:00Z';
+  if(kind==='bank'){f.model.state.bank.bankSyncAt=future;f.api.startAutoSync()}
+  else{f.model.state.creditSync.syncedAt=future;f.values.set('netunim_kupa_credit_auto_attempt_v1',String(Date.parse(future)));f.api.setCreditAutoRefresh(true)}
+  assert.equal(f.jobs.size,1);assert.equal([...f.jobs.values()][0].delay,kind==='bank'?300:1000);
+  assert.equal(f.attempts(),0,'scheduling alone must not contact a provider');f.api.stopAutoSync();
+});
