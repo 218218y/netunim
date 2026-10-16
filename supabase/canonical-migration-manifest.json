@@ -193,5 +193,10 @@
     "version": "20261016120000",
     "name": "bank_transaction_status_authority",
     "sha256": "a5926e04d37e6f65c0f0fbbe30dc6126517223d9bd5546e8f7d2b02faa114cbb"
+  },
+  {
+    "version": "20261016130000",
+    "name": "bank_business_evidence_authority",
+    "sha256": "2e1507e89821c239478908f23e8ba8036ec37ecab955bc05a238794a3300c3cc"
   }
 ]

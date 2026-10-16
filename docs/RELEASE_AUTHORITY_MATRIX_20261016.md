@@ -22,6 +22,9 @@ after an unchanged, verified branch is merged.
 | Bridge runtime packaging/shutdown, Windows entrypoints and native vault | models plus Windows deployment contracts; staged runtimes, isolated files, no provider login |
 | Main/Shared ACK ambiguity, revision coercion, lease/Morning invalid clocks | `business_response_evidence.test.mjs`, existing write-ACK, lease and Morning evidence suites |
 | Billing confidence and readability preservation | Credit billing regressions, token/AST evidence, lowered readability fixture, exact module/byte budgets |
+| Credit successful month/pending replacement lacks rows; malformed issuer amounts/parts | `credit_business_evidence.test.mjs`, `credit_producer_evidence.test.mjs`, both production refresh-owner regressions; zero merge/publication and normal lease cleanup |
+| Checkpoint/local replacement, flight admission/rejection and local reset | Eleven checked decisions, implementation mutations and 36 native rejected transitions with unchanged durable state |
+| Malformed nested Bank evidence sent by an older client | Shared 112-case corpus at JavaScript entrances and both v6 SQL writers; valid nested values preserved, malformed batch leaves archive/snapshot/Finance unchanged |
 
 ## Operator checks still required for a production release decision
 

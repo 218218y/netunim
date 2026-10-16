@@ -1,6 +1,6 @@
 # Current architecture backlog
 
-This is the single current backlog, verified against main on 2026-10-15.
+This is the single current backlog, updated against the 2026-10-16 continuation.
 [Completion stages](COMPLETION_STAGES_20261015.md) and the focused design notes
 are historical implementation/evidence records, not competing remaining-work lists.
 A passed synthetic gate is not evidence of live providers or physical machines.
@@ -54,11 +54,16 @@ documented in STARTUP_CPU_MEASUREMENT.md and READABILITY_RATCHET.md.
 
 | Priority | Scope | Required evidence |
 | --- | --- | --- |
-| 1 | Remaining strict Journal/IDB/V2 orchestration bodies and nested provider/business response shapes beyond the checked operation/read authority boundaries | Extend checked implementation only at proved authority decisions; preserve invalid evidence; negative consumers and implementation mutations |
-| 2 | Continue shell composition audit only where new policy is proved | Startup transfer/birth admission and owner/leadership fences are now owned; broad role wiring is intentional. Preserve these boundaries when adding features |
-| 3 | Measured startup improvements | Native/4x CPU cold/cached/offline sampling and request timelines precede further splits; physical weak-machine and comparable before/after evidence still required; preserve eager runtime ownership |
-| 4 | Compatibility inventory and readability | CI count/max ratchet now prevents regression; Supplier/Orders Finance views have no lines above 500; reduce remaining local presentation debt and retire only newly proven Dead paths |
-| 5 | Release validation | Full PostgreSQL/native browser/Windows gates plus controlled backup/restore, physical two-computer and live Bank/Credit drills |
+| 1 | Deploy the two reviewed Bank authority migrations | Apply status and nested-business guards through the existing SQL deployment process, then verify deployed migration identities. Git merge alone is not deployment |
+| 2 | Physical release validation and loaded startup measurements | Use the operator matrix for weak Windows hardware, installed Bridge update/shutdown, controlled interruption, old backups, A-B-A, two physical clients and live Bank/Credit providers. CI covers isolated PostgreSQL/native browser/Windows contracts |
+| 3 | Further authority work only on demonstrated gaps | Current Credit replacement coverage and normalized/raw monetary admissions are checked; Journal has eleven checked durable decisions and native rejection/mutation evidence. Extend remaining orchestration only when code or runtime evidence justifies it |
+| 4 | Compatibility inventory and readability | Keep the count/max ratchet and improve touched code; retire only newly proven Dead paths |
+
+Current continuation evidence: [Credit coverage and producer](CREDIT_COVERAGE_AUTHORITY.md),
+[Journal replacement decisions](JOURNAL_REPLACEMENT_DECISIONS.md),
+[nested Bank SQL authority](BANK_BUSINESS_SQL_AUTHORITY.md). Architectural
+decomposition and additional lazy loading remain paused pending a concrete defect
+or comparable physical measurement. Broad role wiring is intentional.
 
 The six unchecked storage modules called out by the V7 review are a work queue,
 not a demand to annotate all application code. Prioritize where runtime evidence

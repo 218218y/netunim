@@ -155,6 +155,10 @@
     {
       "version": "20261016120000",
       "name": "bank_transaction_status_authority"
+    },
+    {
+      "version": "20261016130000",
+      "name": "bank_business_evidence_authority"
     }
   ]
 }
