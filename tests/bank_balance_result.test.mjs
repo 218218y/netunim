@@ -100,7 +100,7 @@ test('Bank evidence cannot be forged, copied, mutated or restored from persisted
   );
 });
 test('Bank flat/dual-account formats preserve transaction identities and partial-home failure metadata', () => {
-  const transaction = { id: 'unchanged', amount: -12 },
+  const transaction = { id: 'unchanged', amount: -12, currency:'ILS',status:'completed' },
     homeFailure = { code: 'ACCOUNT_NOT_FOUND', availableAccounts: [{ accountNumber: '0056' }] },
     raw = {
       fetchedAt: '2026-10-13T00:00:00Z',
@@ -109,7 +109,8 @@ test('Bank flat/dual-account formats preserve transaction identities and partial
     };
   const result = readBankBalanceResult(raw);
   assert.equal(result.source.fetchedAt, raw.fetchedAt);
-  assert.equal(result.business.transactions[0], transaction);
+  assert.deepEqual(result.business.transactions[0], transaction);
+  assert.notEqual(result.business.transactions[0], transaction);
   assert.equal(result.homeFailure, homeFailure);
   assert.equal(result.home, null);
   assert.equal(

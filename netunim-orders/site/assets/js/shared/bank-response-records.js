@@ -1,6 +1,7 @@
 // @ts-check
 import {evidenceObject as object,evidenceInteger as integer,evidenceText as text,
   evidenceTimestamp as timestamp,evidenceDate as date,evidenceMoney as money,evidenceRows} from './response-evidence.js';
+import {readBankTransaction} from './bank-transaction-evidence.js';
 
 function invalid(){
   return Object.assign(new Error('לא התקבל אישור תקין מנתוני הבנק. יש לרענן מהענן לפני פעולה נוספת.'),{
@@ -60,12 +61,13 @@ export function readBankArchiveRows(response,accountKey,role,seen=new Set()){
   for(const row of rows){
     scope(row,accountKey,role);
     if(!id(row.id)||seen.has(row.id)||!text(row.merge_key)||!money(row.amount)||!text(row.currency)||
-      !text(row.status)||typeof row.presence_state!=='string'||!['unknown','present','missing'].includes(row.presence_state)||
+      typeof row.presence_state!=='string'||!['unknown','present','missing'].includes(row.presence_state)||
       !timestamp(row.first_seen_at)||!nullableTimestamp(row.transaction_date)||!nullableTimestamp(row.processed_date)||
       !nullableTimestamp(row.last_seen_at)||!nullableTimestamp(row.missing_since)||!nullableTimestamp(row.missing_acknowledged_at)||
       !object(row.alert_acknowledgements)||Object.values(row.alert_acknowledgements).some(at=>!timestamp(at))||
       typeof row.cheque!=='boolean'||!(row.balance_after===null||money(row.balance_after)))throw invalid();
     if(Object.hasOwn(row,'handled_at')&&!nullableTimestamp(row.handled_at))throw invalid();
+    try{readBankTransaction({...row,id:row.merge_key,date:row.transaction_date,processedDate:row.processed_date,balanceAfter:row.balance_after})}catch{throw invalid()}
     seen.add(row.id);
   }
   return structuredClone(rows);
@@ -81,6 +83,7 @@ export function readBankSnapshotRows(response,accountKey,role){
     !integer(row.transaction_count)||!Array.isArray(row.transactions)||row.transaction_count!==row.transactions.length)throw invalid();
   const keys=new Set();
   for(const tx of row.transactions){
+    try{readBankTransaction(tx)}catch{throw invalid()}
     if(!object(tx)||!text(tx.mergeKey)||keys.has(tx.mergeKey)||!money(tx.amount)||
       (tx.date!=null&&!timestamp(tx.date))||(tx.processedDate!=null&&!timestamp(tx.processedDate)))throw invalid();
     keys.add(tx.mergeKey);

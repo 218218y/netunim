@@ -1,3 +1,4 @@
+import {readBankTransactions as decodeBankTransactions} from '../shared/bank-transaction-evidence.js';
 import {readDocumentWriteResponseRow} from '../shared/document-write-ack.js';
 import {readRestoreGroupRows,readRestoreStageReceipt,readRestoreApplyReceipt} from '../shared/restore-response-records.js';
 import {readBankArchiveSyncReceipt,readBankAcknowledgementReceipt,readBankArchiveRows,readBankSnapshotRows} from '../shared/bank-response-records.js';
@@ -144,7 +145,7 @@ async function saveBankSyncSnapshot(bankState,snapshotToken,snapshotSeq,lease=nu
 }
 function bankArchivePayload(transactions){
   const occurrences=new Map();
-  return (Array.isArray(transactions)?transactions:[]).map(tx=>{
+  return decodeBankTransactions(transactions).map(tx=>{
     const day=String(tx.date||'').slice(0,10),serial=String(tx.bankSerial||''),reference=String(tx.bankReference||''),signature=`${day}|${String(tx.processedDate||'').slice(0,10)}|${tx.amount}|${tx.description||''}|${tx.memo||''}|${JSON.stringify(tx.checkDetails||null)}`,occ=(occurrences.get(signature)||0)+1;
     occurrences.set(signature,occ);
     const stableKey=serial&&serial!=='0'&&day?`serial:${day}:${serial}:${tx.amount}`:reference&&day?`ref:${day}:${reference}:${tx.amount}:${tx.description||''}:${tx.memo||''}`:`fallback:${signature}:${occ}`;
