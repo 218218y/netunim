@@ -11,7 +11,8 @@ import {captureStorageJournalOperation,captureStorageCloudBase,captureStorageClo
   captureStorageExpectedHead,captureStorageRecoveryHead,captureStorageLocalHead,captureStorageCleanHead,
   captureStorageJournalPayload,assertStorageJournalInstall,assertStorageJournalInitialization,
   storageJournalCompactionThrough,assertStorageJournalAckCheckpoint,assertStorageJournalAdoption,
-  assertStorageJournalCloudReset} from './storage-journal-authority.js';
+  assertStorageJournalCloudReset,assertStorageJournalReplacement,assertStorageJournalLocalReplacement,
+  assertStorageJournalFlight,assertStorageJournalRejection,assertStorageJournalLocalReset} from './storage-journal-authority.js';
 
 export function createStorageJournalDb({name='netunim-storage-v2',operationSchema}={}){
   // Generic journal consumers may configure a schema; application namespaces
@@ -104,15 +105,15 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
   })}
   async function replaceCheckpoint(owner,epoch,writer,checkpoint){checkpoint=captureStorageCheckpoint(checkpoint);return change(owner,(tx,current,done)=>{
     assertFence(current,owner,epoch,writer);const data=readStorageCheckpoint(checkpoint);
-    if(data.owner!==owner||data.epoch!==epoch||data.seq!==current.metadata.seq)throw new Error('storage_checkpoint_stale');
+    assertStorageJournalReplacement({owner,epoch,seq:current.metadata.seq},data);
     // This is a same-epoch authoritative rebase. Cloud cursor/flight and the
     // unacknowledged journal stay intact; replay starts from the new current head.
     tx.objectStore('checkpoints').put(checkpoint,owner);done(true);
   })}
   async function replaceLocalCheckpoint(owner,epoch,writer,checkpoint,expectedSeq){checkpoint=captureStorageCheckpoint(checkpoint);return change(owner,(tx,current,done)=>{
     assertFence(current,owner,epoch,writer);const data=readStorageCheckpoint(checkpoint);
-    if(!Number.isSafeInteger(expectedSeq)||expectedSeq<0||current.metadata.seq!==expectedSeq||data.owner!==owner||data.epoch!==epoch||data.seq!==expectedSeq)throw new Error('storage_boundary_source_changed');
-    if(current.bases||current.flights||current.controls)throw new Error('storage_boundary_local_cloud_head_exists');
+    assertStorageJournalLocalReplacement({owner,epoch,seq:current.metadata.seq},data,expectedSeq,
+      Boolean(current.bases||current.flights||current.controls));
     // A local authoritative import supersedes every prior operation. With no
     // cloud cursor there are no remote delete intents to retain.
     for(const key of current.journalKeys)tx.objectStore('journal').delete(key);
@@ -123,7 +124,7 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
   async function beginFlight(owner,epoch,writer,flight){flight=captureStorageCloudFlight(flight);return change(owner,(tx,current,done)=>{
     assertFence(current,owner,epoch,writer);const data=readStorageRecord(flight);
     const base=current.bases&&readStorageCloudBase(current.bases);
-    if(data.owner!==owner||data.epoch!==epoch||data.endSeq>current.metadata.seq||!base||data.baseRevision!==base.revision||data.startSeq!==base.ackSeq+1||data.endSeq<data.startSeq)throw new Error('storage_flight_range');readStorageCloudFlight(flight);
+    assertStorageJournalFlight({owner,epoch,seq:current.metadata.seq},data,base);readStorageCloudFlight(flight);
     if(current.flights){if(JSON.stringify(current.flights)!==JSON.stringify(flight))throw new Error('storage_flight_pending');done(current.flights);return}
     tx.objectStore('flights').put(flight,owner);done(flight);
   })}
@@ -140,11 +141,8 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
   async function rejectFlight(owner,epoch,writer,operationId,base,{checkpoint,expectedSeq,control=null}={}){
     base=captureStorageCloudBase(base);if(control!==null)control=captureStorageCloudControl(control);checkpoint=captureStorageCheckpoint(checkpoint);return change(owner,(tx,current,done)=>{
     assertFence(current,owner,epoch,writer);const flight=current.flights&&readStorageCloudFlight(current.flights),prior=current.bases&&readStorageCloudBase(current.bases),next=readStorageRecord(base);
-    if(!flight||flight.operationId!==operationId)throw new Error('storage_reject_mismatch');
-    if(!prior||next.owner!==owner||next.epoch!==epoch||next.ackSeq!==prior.ackSeq||!Number.isSafeInteger(next.revision)||next.revision<=flight.baseRevision)throw new Error('storage_rebase_cursor');
-    if(!checkpoint||!Number.isSafeInteger(expectedSeq)||expectedSeq!==current.metadata.seq)throw new Error('storage_rebase_checkpoint_stale');
     const nextCheckpoint=readStorageCheckpoint(checkpoint);
-    if(nextCheckpoint.owner!==owner||nextCheckpoint.epoch!==epoch||nextCheckpoint.seq!==expectedSeq)throw new Error('storage_rebase_checkpoint_stale');
+    assertStorageJournalRejection({owner,epoch,seq:current.metadata.seq},flight,prior,next,nextCheckpoint,expectedSeq,operationId);
     readStorageCloudBase(base);
     // The new cloud revision and the local state rebased onto it become
     // authoritative together. A crash cannot expose only one side.
@@ -185,7 +183,7 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
     expectedLocalHead=captureStorageLocalHead(expectedLocalHead);checkpoint=captureStorageCheckpoint(checkpoint);return change(owner,(tx,current,done)=>{
     assertFence(current,owner,epoch,writer);const nextCheckpoint=readStorageCheckpoint(checkpoint);
     if(expectedLocalHead&&(current.metadata.seq!==expectedLocalHead.seq||current.metadata.epoch!==expectedLocalHead.epoch||current.checkpoints?.checksum!==expectedLocalHead.checkpointChecksum||current.bases||current.flights||current.controls))throw new Error('storage_main_projection_head_changed');
-    if(nextCheckpoint.owner!==owner||nextCheckpoint.seq!==0||!String(nextCheckpoint.epoch||'').trim())throw new Error('storage_state_reset_invalid');
+    assertStorageJournalLocalReset(owner,nextCheckpoint);
     tx.objectStore('checkpoints').put(checkpoint,owner);tx.objectStore('metadata').put({epoch:nextCheckpoint.epoch,seq:0,writer},owner);
     for(const key of current.journalKeys)tx.objectStore('journal').delete(key);
     tx.objectStore('bases').delete(owner);tx.objectStore('flights').delete(owner);tx.objectStore('controls').delete(owner);done(true);
