@@ -1,3 +1,4 @@
+import {parseRetryAfter} from './credit-http-policy.mjs';
 import { creditDebitAmount } from './credit-core-values.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -36,7 +37,6 @@ function monthDateString(date){return `${date.getUTCFullYear()}-${two(date.getUT
 function addUtcMonths(date,count){const d=new Date(Date.UTC(date.getUTCFullYear(),date.getUTCMonth()+count,1));return d}
 function sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms))}
 async function randomDelay(){const ms=Math.floor(Math.random()*(RATE_DELAY_MAX_MS-RATE_DELAY_MIN_MS+1))+RATE_DELAY_MIN_MS;await sleep(ms)}
-function parseRetryAfter(value,now=Date.now()){const raw=String(value??'').trim();if(!raw)return null;const seconds=Number(raw),time=Number.isFinite(seconds)&&seconds>=0?Number(now)+seconds*1000:Date.parse(raw);return Number.isFinite(time)?new Date(Math.max(Number(now),time)).toISOString():null}
 function cardSuffix(value){const digits=String(value??'').replace(/\D/g,'');return digits.slice(-4)}
 function balanceNumber(value){const n=Number(String(value??'').replace(/,/g,''));return Number.isFinite(n)?n:null}
 function balanceDate(year,month,day){

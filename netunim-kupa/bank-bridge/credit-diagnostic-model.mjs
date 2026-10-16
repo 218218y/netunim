@@ -205,6 +205,7 @@ export function sanitizeCreditDiagnosticEvent(value = {}) {
     errorClass: text(value.errorClass || value.code, 80),
     httpStatus: Math.max(0, Math.trunc(Number(value.httpStatus) || 0)),
     retryAfterAt: value.retryAfterAt ? iso(value.retryAfterAt) : null,
+    providerRetryAfterAt: value.providerRetryAfterAt ? iso(value.providerRetryAfterAt) : null,
     providerStatus: text(value.providerStatus, 24),
     providerReturnCode: text(value.providerReturnCode, 24),
     loginStep: [

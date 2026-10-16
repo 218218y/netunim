@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { creditText } from './credit-core-values.mjs';
 import { CREDIT_PROVIDER_CONFIG } from './credit-profile-model.mjs';
+import { creditRetryAfterAt } from './credit-cooldown-policy.mjs';
 
 function safeCreditProviderDiagnostic(rawValue, profile) {
   if (profile?.provider !== 'visaCal') return '';
@@ -195,16 +196,17 @@ function matchingCreditProfileErrors(errors, profile) {
 export function creditAutomaticRetryAfterAt(error, now = Date.now()) {
   const code = String(error?.code || ''),
     explicit = Date.parse(error?.retryAfterAt || '');
-  if (Number.isFinite(explicit) && explicit > Number(now)) return new Date(explicit).toISOString();
+  if (Number.isFinite(explicit) && explicit > Number(now))
+    return creditRetryAfterAt({ ...error, at: error?.at || new Date(now).toISOString() }, now);
   if (code !== 'CREDIT_AUTOMATION_BLOCKED' && code !== 'CREDIT_PROVIDER_RATE_LIMITED') return null;
   const base = Number(now);
   if (!Number.isFinite(base)) return null;
-  return new Date(
+  return creditRetryAfterAt({ ...error, at: error?.at || new Date(base).toISOString(), retryAfterAt: new Date(
     base +
       (code === 'CREDIT_AUTOMATION_BLOCKED'
         ? CREDIT_AUTOMATION_BLOCK_COOLDOWN_MS
         : CREDIT_RATE_LIMIT_FALLBACK_COOLDOWN_MS)
-  ).toISOString();
+  ).toISOString() }, base);
 }
 
 function creditErrorBrowserEngine(error, profile) {
@@ -230,6 +232,7 @@ function deferredCreditError(error, retryAt, { engineOnly = false } = {}) {
     engine = creditErrorBrowserEngine(error, { provider: error?.provider });
   return {
     ...error,
+    retryAfterAt: new Date(retryAt).toISOString(),
     severity: 'deferred',
     deferred: true,
     originalFailureAt,
@@ -245,7 +248,7 @@ export function deferredCamoufoxProfileError(errors, profile, now = Date.now()) 
   const time = Number(now);
   if (!Number.isFinite(time)) return null;
   for (const error of matchingCreditProfileErrors(errors, profile)) {
-    const retryAt = Date.parse(error?.retryAfterAt || '');
+    const retryAt = Date.parse(creditRetryAfterAt(error, time) || '');
     if (
       Number.isFinite(retryAt) &&
       retryAt > time &&
@@ -264,7 +267,7 @@ export function deferredCreditProfileError(errors, profile, now = Date.now()) {
   if (!Number.isFinite(time)) return null;
   const matching = matchingCreditProfileErrors(errors, profile);
   for (const error of matching) {
-    const retryAt = Date.parse(error?.retryAfterAt || '');
+    const retryAt = Date.parse(creditRetryAfterAt(error, time) || '');
     if (!Number.isFinite(retryAt) || retryAt <= time) continue;
     // 429 is issuer-wide. A Camoufox-only 403 is not: Chromium may still be usable.
     if (
@@ -291,7 +294,7 @@ export function expiredCamoufoxLoginPageBlock(errors, profile, now = Date.now())
     Number(latest.httpStatus) !== 403
   )
     return null;
-  const retryAt = Date.parse(latest.retryAfterAt || '');
+  const retryAt = Date.parse(creditRetryAfterAt(latest, time) || '');
   return Number.isFinite(retryAt) && retryAt <= time ? latest : null;
 }
 

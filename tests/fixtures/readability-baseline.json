@@ -62,8 +62,8 @@
       "longest": 554
     },
     "netunim-kupa/site/assets/js/domains/credit/sync-feed.js": {
-      "over500": 9,
-      "over1000": 2,
+      "over500": 7,
+      "over1000": 1,
       "longest": 1046
     },
     "netunim-kupa/site/assets/js/domains/credit/sync-view.js": {
@@ -367,9 +367,9 @@
       "longest": 3252
     },
     "netunim-orders/site/assets/js/domains/finance/credit-feed.js": {
-      "over500": 12,
-      "over1000": 3,
-      "longest": 2193
+      "over500": 9,
+      "over1000": 1,
+      "longest": 1046
     },
     "netunim-orders/site/assets/js/domains/finance/credit-settings-commands.js": {
       "over500": 1,

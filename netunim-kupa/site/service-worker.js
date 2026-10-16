@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='kupa-app-shell-';
-const CACHE='kupa-app-shell-esm-f2b7ee96be1d';
+const CACHE='kupa-app-shell-esm-45e9ebf1c03b';
 const SHELL=[
   './',
   './index.html',
@@ -136,6 +136,7 @@ const SHELL=[
   './assets/js/shared/credit-card-account.js',
   './assets/js/shared/credit-card-order-view.js',
   './assets/js/shared/credit-card-order.js',
+  './assets/js/shared/credit-cooldown-policy.js',
   './assets/js/shared/credit-detail-controls.js',
   './assets/js/shared/credit-detail-sections.js',
   './assets/js/shared/credit-history.js',

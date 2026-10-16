@@ -20,6 +20,8 @@ APPS = ('kupa', 'orders')
 BRIDGE_SHARED_SOURCES = {
     'shared/bank-money-value.js': 'netunim-kupa/bank-bridge/bank-money-value.mjs',
     'shared/credit-transaction-evidence.js': 'netunim-kupa/bank-bridge/credit-transaction-evidence.mjs',
+    'shared/observation-time.js': 'netunim-kupa/bank-bridge/observation-time.mjs',
+    'shared/credit-cooldown-policy.js': 'netunim-kupa/bank-bridge/credit-cooldown-policy.mjs',
 }
 DOCUMENT_SEARCH_SHARED_ROOT = PurePosixPath('shared/document-search')
 DOCUMENT_SEARCH_TARGET_ROOT = PurePosixPath('assets/js')
@@ -190,6 +192,11 @@ def plan_sync(snapshot: WorktreeSnapshot | IndexSnapshot) -> list[Change]:
                 changes.append(Change(target, None, f'bridge: removed obsolete generated copy: {target}'))
             continue
         expected = snapshot.read(source)
+        # Canonical shared modules use .js; the installed Bridge uses .mjs.
+        for dependency, generated in BRIDGE_SHARED_SOURCES.items():
+            expected = expected.replace(
+                ("'./" + PurePosixPath(dependency).name + "'").encode(),
+                ("'./" + PurePosixPath(generated).name + "'").encode())
         if target not in snapshot.files or asset_hash_bytes(target, snapshot.read(target)) != asset_hash_bytes(source, expected):
             changes.append(Change(target, expected, f'bridge: synchronized canonical source: {source}'))
     sources = direct_javascript_files(snapshot.files, 'shared') | {path for path in snapshot.files if str(PurePosixPath(path).parent) == 'shared' and path.endswith('.css')}

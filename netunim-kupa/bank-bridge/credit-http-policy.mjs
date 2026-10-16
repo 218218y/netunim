@@ -9,7 +9,8 @@ export function parseRetryAfter(value, now = Date.now()) {
     Number.isFinite(seconds) && seconds >= 0 ? Number(now) + seconds * 1000 : Date.parse(raw);
   if (!Number.isFinite(time)) return null;
   time = Math.max(Number(now) || Date.now(), time);
-  return new Date(time).toISOString();
+  const date = new Date(time);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : null;
 }
 
 function creditAutomationBlockBody(body = '') {

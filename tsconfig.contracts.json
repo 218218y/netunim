@@ -123,6 +123,7 @@
     "netunim-orders/site/assets/js/domains/finance/bank-connection-owner.js",
     "tests/fixtures/checked-orders-bank-connection-owner.mjs",
     "shared/bank-balance-result.js",
+    "shared/credit-cooldown-policy.js",
     "shared/bank-money-value.js",
     "shared/bridge-pairing-scope.js",
     "tests/fixtures/checked-bank-balance-result.mjs",

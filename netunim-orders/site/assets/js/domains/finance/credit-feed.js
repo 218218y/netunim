@@ -1,3 +1,4 @@
+import {creditRetryAfterAt} from '../../shared/credit-cooldown-policy.js';
 import {checkTodayISO} from '../../core/dates.js';
 import {creditAccountKnownFutureCommitmentData,creditAccountUpcomingChargeData,creditPendingAuthorizationTotalData} from '../../shared/credit-billing-cycles.js';
 import {normalizeCreditCardAccountTransitions} from '../../shared/credit-card-account.js';
@@ -167,7 +168,28 @@ export function normalizeCreditSync(value={}){
     mode:'synced',
     syncedAt:iso(source.syncedAt),
     profiles,
-    errors:(Array.isArray(source.errors)?source.errors:[]).slice(0,40).map(e=>({profileId:reconciled.aliases.get(text(e?.profileId||'',80))||text(e?.profileId||'',80),provider:text(e?.provider||'',30),browserEngine:['chromium','camoufox'].includes(String(e?.browserEngine||''))?String(e.browserEngine):'',label:text(e?.label||'',100),code:text(e?.code||'CREDIT_SCRAPE_FAILED',80),stage:text(e?.stage||'',80),component:creditErrorComponent(e),severity:creditErrorSeverity(e),httpStatus:Math.max(0,Math.trunc(Number(e?.httpStatus)||0)),message:safeCreditErrorMessage(e?.message),at:iso(e?.at)||new Date().toISOString(),originalFailureAt:iso(e?.originalFailureAt||e?.at),retryAfterAt:iso(e?.retryAfterAt),deferred:e?.deferred===true,month:/^\d{4}-\d{2}$/.test(String(e?.month||''))?String(e.month):'',tier:e?.tier==='forecast'?'forecast':e?.tier==='core'?'core':'',accountSuffix:text(e?.accountSuffix||'',4),correlationId:text(e?.correlationId||source.correlationId||'',80),diagnosticFingerprint:text(e?.diagnosticFingerprint||'',32)})),
+    errors:(Array.isArray(source.errors)?source.errors:[]).slice(0,40).map(e=>({
+      profileId:reconciled.aliases.get(text(e?.profileId||'',80))||text(e?.profileId||'',80),
+      provider:text(e?.provider||'',30),
+      browserEngine:['chromium','camoufox'].includes(String(e?.browserEngine||''))?String(e.browserEngine):'',
+      label:text(e?.label||'',100),
+      code:text(e?.code||'CREDIT_SCRAPE_FAILED',80),
+      stage:text(e?.stage||'',80),
+      component:creditErrorComponent(e),
+      severity:creditErrorSeverity(e),
+      httpStatus:Math.max(0,Math.trunc(Number(e?.httpStatus)||0)),
+      message:safeCreditErrorMessage(e?.message),
+      at:iso(e?.at)||new Date().toISOString(),
+      originalFailureAt:iso(e?.originalFailureAt||e?.at),
+      providerRetryAfterAt:iso(e?.providerRetryAfterAt),
+      retryAfterAt:creditRetryAfterAt(e),
+      deferred:e?.deferred===true,
+      month:/^\d{4}-\d{2}$/.test(String(e?.month||''))?String(e.month):'',
+      tier:e?.tier==='forecast'?'forecast':e?.tier==='core'?'core':'',
+      accountSuffix:text(e?.accountSuffix||'',4),
+      correlationId:text(e?.correlationId||source.correlationId||'',80),
+      diagnosticFingerprint:text(e?.diagnosticFingerprint||'',32)
+    })),
     cardMappings:reconciled.mappings,
     settlementWarningAcks:normalizeSettlementWarningAcks(source.settlementWarningAcks),
   };
@@ -212,7 +234,28 @@ export function mergeCreditSyncResult(current,payload={}){
     const accounts=new Map((previous?.accounts||[]).map(account=>[account.accountNumber,account]));for(const account of incoming.accounts)accounts.set(account.accountNumber,mergeCreditAccountSnapshot(accounts.get(account.accountNumber),account));byId.set(targetId,normalizeCreditProfile({...previous,...incoming,syncedAt:incoming.syncedAt||previous?.syncedAt||null,accounts:[...accounts.values()]}));
   }
   for(const profile of successes)for(const account of profile.accounts){const key=creditCardMappingKey(profile.profileId,account.accountNumber);if(!mappings[key])mappings[key]={included:false,hidden:false,account:profile.defaultAccount,cardName:'',manualFrame:null}}
-  const errors=(Array.isArray(payload.errors)?payload.errors:[]).map(e=>({profileId:text(e?.profileId||'',80),provider:text(e?.provider||'',30),browserEngine:['chromium','camoufox'].includes(String(e?.browserEngine||''))?String(e.browserEngine):'',label:text(e?.label||'',100),code:text(e?.code||'CREDIT_SCRAPE_FAILED',80),stage:text(e?.stage||'',80),component:creditErrorComponent(e),severity:creditErrorSeverity(e),httpStatus:Math.max(0,Math.trunc(Number(e?.httpStatus)||0)),message:safeCreditErrorMessage(e?.message),at:iso(e?.at)||new Date().toISOString(),originalFailureAt:iso(e?.originalFailureAt||e?.at),retryAfterAt:iso(e?.retryAfterAt),deferred:e?.deferred===true,month:/^\d{4}-\d{2}$/.test(String(e?.month||''))?String(e.month):'',tier:e?.tier==='forecast'?'forecast':e?.tier==='core'?'core':'',accountSuffix:text(e?.accountSuffix||'',4),correlationId:text(e?.correlationId||payload.correlationId||'',80),diagnosticFingerprint:text(e?.diagnosticFingerprint||'',32)}));
+  const errors=(Array.isArray(payload.errors)?payload.errors:[]).map(e=>({
+      profileId:text(e?.profileId||'',80),
+      provider:text(e?.provider||'',30),
+      browserEngine:['chromium','camoufox'].includes(String(e?.browserEngine||''))?String(e.browserEngine):'',
+      label:text(e?.label||'',100),
+      code:text(e?.code||'CREDIT_SCRAPE_FAILED',80),
+      stage:text(e?.stage||'',80),
+      component:creditErrorComponent(e),
+      severity:creditErrorSeverity(e),
+      httpStatus:Math.max(0,Math.trunc(Number(e?.httpStatus)||0)),
+      message:safeCreditErrorMessage(e?.message),
+      at:iso(e?.at)||new Date().toISOString(),
+      originalFailureAt:iso(e?.originalFailureAt||e?.at),
+      providerRetryAfterAt:iso(e?.providerRetryAfterAt),
+      retryAfterAt:creditRetryAfterAt(e),
+      deferred:e?.deferred===true,
+      month:/^\d{4}-\d{2}$/.test(String(e?.month||''))?String(e.month):'',
+      tier:e?.tier==='forecast'?'forecast':e?.tier==='core'?'core':'',
+      accountSuffix:text(e?.accountSuffix||'',4),
+      correlationId:text(e?.correlationId||payload.correlationId||'',80),
+      diagnosticFingerprint:text(e?.diagnosticFingerprint||'',32)
+    }));
   const cutoff=creditHistoryCutoffMonth(iso(payload.syncedAt));
   if(cutoff)for(const [id,profile] of byId)byId.set(id,normalizeCreditProfile({...profile,accounts:profile.accounts.map(account=>normalizeCreditAccount({...account,months:account.months.filter(slice=>slice.month>=cutoff),txns:[]}))}));
   return normalizeCreditSync({...base,contractVersion:payload.contractVersion||base.contractVersion,correlationId:payload.correlationId||base.correlationId,syncedAt:payload.syncedAt?iso(payload.syncedAt):base.syncedAt,profiles:[...byId.values()],errors,cardMappings:mappings});

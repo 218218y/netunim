@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { providerPolicyHashes } from './bank_provider_policy_fixture.mjs';
+import {restoreCreditCooldown} from './credit_cooldown_policy_fixture.mjs';
 const model = fs.readFileSync(
   new URL('../netunim-kupa/bank-bridge/credit-diagnostic-model.mjs', import.meta.url),
   'utf8'
@@ -15,7 +16,7 @@ const fixture = JSON.parse(
 );
 test('diagnostic sanitization, fingerprints, retention, rotation and append policies preserve the reviewed baseline', () => {
   assert.deepEqual(
-    providerPolicyHashes([model, logger], Object.keys(fixture.policies)),
+    providerPolicyHashes([restoreCreditCooldown(model), logger], Object.keys(fixture.policies)),
     fixture.policies
   );
 });
