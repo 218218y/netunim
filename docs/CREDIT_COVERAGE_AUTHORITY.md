@@ -57,3 +57,9 @@ was exceeded by 203 bytes after the authority fixes. Source ceilings are restore
 to about one percent reserve (1,753,000 / 2,379,000); time ceilings and module
 limits are unchanged. This is an explicit maintenance reserve, not a measured
 speed improvement or justification for additional lazy loading.
+
+The native smoke fixture imports the actual currency formatter explicitly. The
+test instrumentation exposes private function names globally; the new private
+money predicate otherwise replaced its formatter probe and made every expected
+currency comparison boolean. Production ESM scopes were unaffected. The same
+layout/total assertions remain, with individual comparison diagnostics added.

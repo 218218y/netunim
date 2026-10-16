@@ -21,6 +21,7 @@ for label, site in apps:
             if label == "orders":
                 layout = browser.evaluate(
                     r"""(async()=>{
+                      const {money}=await import('./assets/js/core/money.js');
                       const frame=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
                       const near=(a,b,tolerance=2)=>Math.abs(a-b)<=tolerance;
 
@@ -156,6 +157,12 @@ for label, site in apps:
                            warehouseBefore>0&&near(warehouseAfter,warehouseBefore)&&
                            summaryWasActive&&supplierNavActive&&summaryNavInactive,
                         supplierInitial,supplierCleared,supplierInitialSummary,supplierInitialHeader,supplierSearchSummary,supplierClearedSummary,supplierPendingSummary,supplierPendingHeader,supplierInvoiceHeader,supplierManual,supplierReturned,customerAllTotal,customerOpenTotal,customerInvoiceTotal,customerClosedTotal,customerSearchTotal,customerClearedSearchTotal,customerAllHasPaidMissingInvoice,customerLayout,
+                        checks:{supplierInitialStats:matchesStats(supplierInitialSummary,initialStats),supplierHeader:supplierInitialHeader===money(initialStats.net),
+                          supplierSearch:matchesStats(supplierSearchSummary,statsFor(searchRows)),supplierCleared:matchesStats(supplierClearedSummary,initialStats),
+                          supplierPending:matchesStats(supplierPendingSummary,pendingStats),supplierPendingHeader:supplierPendingHeader===money(pendingStats.net),supplierInvoice:supplierInvoiceHeader===money(invoiceStats.net),
+                          customerAll:customerAllTotal===customerAllExpected,customerOpen:customerOpenTotal===customerOpenExpected,
+                          customerInvoice:customerInvoiceTotal===customerInvoiceExpected,customerClosed:customerClosedTotal===customerClosedExpected,
+                          customerSearch:customerSearchTotal===customerSearchExpected,customerCleared:customerClearedSearchTotal===customerAllExpected},
                         bottomScroll,summaryShift:raisedTop-bottomTop,customerBefore,customerAfter,customerPadding,
                         serviceBefore,serviceAfter,warehouseBefore,warehouseAfter,
                         summaryWasActive,supplierNavActive,summaryNavInactive
