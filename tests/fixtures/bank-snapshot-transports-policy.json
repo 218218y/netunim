@@ -3,13 +3,14 @@
   "policies": {
     "kupa": {
       "bankArchivePayload": "f9e4e0f87c3bbf798ec7a17deae000e58a079f3d39c9bbec3dbe5bd6f0247611",
-      "syncBankTransactionsSnapshot": "2b7a25cff571170e2486172ee73d52c3e5aa98d4e8fd95c28e3fd91b98f2b3d4",
+      "syncBankTransactionsSnapshot": "90ebaf1b05641efb7df9505eee4579070df967f5aa5e36734f97d7d44eba25a1",
       "saveBankSyncSnapshot": "b1c82c2e44117dbef431881db811c59dfcd16c93e3cf27ce8130ed70a4161169"
     },
     "orders": {
       "bankArchivePayload": "f9e4e0f87c3bbf798ec7a17deae000e58a079f3d39c9bbec3dbe5bd6f0247611",
-      "syncBankTransactionsSnapshot": "37f309f37fe0575cee0c88a20ff67938e2dfc669523e076a8d1605d79ceafa10",
+      "syncBankTransactionsSnapshot": "7cc5c23e541357c88e050b0e2a21dd0b9ad44e4bd8fa821ddb365c6ab122f29d",
       "saveBankSyncSnapshot": "961db33f713cacfa1b41d8224e40a66e55ba682fc2463f16ea4e41b80e7b008d"
     }
-  }
+  },
+  "reviewedAuthorityChange": "Only archive reconciliation success now requires the seven-field server receipt; snapshot and identity policies are unchanged."
 }

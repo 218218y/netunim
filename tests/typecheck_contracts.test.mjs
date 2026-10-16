@@ -170,7 +170,7 @@ test('Main write authority and transport reject fabricated authority in their ac
  for(const [file,from,to] of [
   ['shared/cloud-write-authority.js','cloudWriteScopeIsCurrent(captured, scope.read(), head)',"'current'"],
   ['shared/cloud-write-authority.js','isCurrent: () => isCurrent(captured)','isCurrent: async () => isCurrent(captured)'],
-  ['netunim-kupa/site/assets/js/cloud/main-document-write.js','return { r, j, body, row: Array.isArray(j) ? j[0] : j };',"return {r:'saved',j,body,row:Array.isArray(j)?j[0]:j};"],
+  ['netunim-kupa/site/assets/js/cloud/main-document-write.js','return { r, j, body, row:',"return {r:'saved',j,body,row:"],
  ]){
   const source=path.join(root,file),original=readFileSync(source,'utf8'),changed=original.replace(from,to);assert.notEqual(changed,original);
   const diagnostics=check(new Map([[source,changed]]));
