@@ -43,6 +43,14 @@ test('current planning/refresh reject duplicate profile IDs and lossy keys befor
   }
 });
 
+test('owner labels used for cross-profile identity cannot be invented or truncated by normalization',()=>{
+  for(const ownerLabel of [null,123,{},[],['Owner'],' Owner','Owner ','a  b','x'.repeat(101)]){
+    assert.throws(()=>readCreditRefreshResult(result({...profile,ownerLabel})),{code:'CREDIT_REFRESH_RESULT_INVALID'});
+    assert.throws(()=>creditProfilePublic({...profile,ownerLabel}),{code:'CREDIT_PROVIDER_SCHEMA_ERROR'});
+  }
+  for(const ownerLabel of ['', 'משפחה א'])assert.doesNotThrow(()=>readCreditRefreshResult(result({...profile,ownerLabel})));
+});
+
 test('Bridge profile/account producers validate supplied identity before conversion',()=>{
   for(const accountNumber of [...malformed,'P:C'])
     assert.throws(()=>normalizeCreditScrapeAccount({accountNumber}),{code:'CREDIT_PROVIDER_SCHEMA_ERROR'});

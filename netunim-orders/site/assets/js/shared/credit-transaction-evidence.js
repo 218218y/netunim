@@ -41,6 +41,11 @@ export function assertCreditProfileTransactions(profile){
   optionalEnum(profile.provider,['visaCal','max','isracard','amex']);
   optionalEnum(profile.defaultAccount,['עסקי','ביתי']);
   if(profile.profileId!==undefined)assertCreditIdentity(profile.profileId);
+  // ownerLabel participates in automatic cross-profile identity reconciliation.
+  // Cosmetic labels are intentionally outside this authority contract.
+  if(profile.ownerLabel!==undefined&&(typeof profile.ownerLabel!=='string'||
+    profile.ownerLabel.length>100||profile.ownerLabel!==profile.ownerLabel.trim().replace(/\s+/g,' ')||
+    /[\u0000-\u001f\u007f]/.test(profile.ownerLabel)))invalid();
   if(profile.coreComplete!==undefined&&typeof profile.coreComplete!=='boolean')invalid();
   if(profile.accounts===undefined)return;
   if(!Array.isArray(profile.accounts))return invalid();
@@ -67,8 +72,9 @@ export function assertCreditProfileTransactions(profile){
       if(!object(month))return invalid();
       if(typeof month.month!=='string'||!/^\d{4}-(?:0[1-9]|1[0-2])$/.test(month.month)||months.has(month.month))invalid();
       months.add(month.month);
-      if(month.tier!==undefined&&!['core','forecast'].includes(String(month.tier)))invalid();
-      if(month.fetchStatus!==undefined&&!['success','provider_error','schema_error','network_error'].includes(String(month.fetchStatus)))invalid();
+      optionalEnum(month.tier,['core','forecast']);
+      optionalEnum(month.fetchStatus,['success','provider_error','schema_error','network_error']);
+      optionalEnum(month.status,['fresh','stale','missing']);
       // Both paths authorize replacement in the retained-feed reader. An absent
       // list must never acquire the meaning of an explicitly empty successful list.
       if((month.fetchStatus==='success'||month.fetchStatus===undefined&&month.status==='fresh')&&
@@ -88,7 +94,7 @@ export function assertCreditTransactionEvidence(tx){
   if(!object(tx)||!(tx.status==='pending'||tx.status==='completed'))return invalid();
   amounts(tx,['originalAmount','chargedAmount']);
   if(tx.foreignTransaction!==undefined&&typeof tx.foreignTransaction!=='boolean')invalid();
-  if(tx.chargeAmountStatus!==undefined&&!['reported','missing','not_billed'].includes(String(tx.chargeAmountStatus)))invalid();
+  optionalEnum(tx.chargeAmountStatus,['reported','missing','not_billed']);
   if(tx.chargeAmountStatus==='reported'&&tx.chargedAmount==null)invalid();
   if(tx.installments!=null){
     const parts=tx.installments;

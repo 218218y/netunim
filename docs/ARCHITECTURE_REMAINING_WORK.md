@@ -66,6 +66,7 @@ documented in STARTUP_CPU_MEASUREMENT.md and READABILITY_RATCHET.md.
 | 4 | Compatibility inventory and readability | Keep the count/max ratchet and improve touched code; retire only newly proven Dead paths |
 
 Current continuation evidence: [Credit coverage and producer](CREDIT_COVERAGE_AUTHORITY.md),
+[Credit account identity and mutation closure](CREDIT_ACCOUNT_AUTHORITY_20261016.md),
 [Journal replacement decisions](JOURNAL_REPLACEMENT_DECISIONS.md),
 [nested Bank SQL authority](BANK_BUSINESS_SQL_AUTHORITY.md). Architectural
 decomposition and additional lazy loading remain paused pending a concrete defect
