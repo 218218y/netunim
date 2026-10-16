@@ -15,6 +15,16 @@ test('public status and diagnostic exports match frozen pre-refactor response fi
   }
 });
 
+test('supported Credit profile metadata must be valid before current status publication',async t=>{
+  for(const row of [{profileId:'P',provider:'max',defaultAccount:null},
+    {profileId:{},provider:'max',defaultAccount:'עסקי'}]){
+    const f=await httpFixture(t,{readProfiles:async()=>[row]});
+    const response=await f.request('/credit/status');
+    assert.equal(response.status,400);
+    assert.equal(response.data.code,'CREDIT_PROVIDER_SCHEMA_ERROR');
+  }
+});
+
 test('shutdown replies before teardown and retains the existing no-body route',async t=>{
   let stopped=0;const f=await httpFixture(t,{afterResponse:()=>{stopped++}});
   const response=await f.request('/shutdown',{method:'POST',body:'invalid JSON that shutdown does not consume'});

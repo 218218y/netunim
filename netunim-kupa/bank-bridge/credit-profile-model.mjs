@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { creditText } from './credit-core-values.mjs';
+import {assertCreditProfileTransactions} from './credit-transaction-evidence.mjs';
 
 export const CREDIT_PROVIDER_CONFIG = {
   visaCal: { label: 'כאל', credentialFields: ['username', 'password'] },
@@ -13,6 +14,11 @@ export function creditProviderSupported(value) {
 }
 
 export function creditProfilePublic(profile) {
+  try{assertCreditProfileTransactions(profile)}catch(cause){
+    throw Object.assign(new Error('Credit profile identity is invalid',{cause}),{
+      code:'CREDIT_PROVIDER_SCHEMA_ERROR',stage:'Profile',retryable:false,
+    });
+  }
   return {
     profileId: creditText(profile?.profileId, 80),
     provider: creditText(profile?.provider, 30),

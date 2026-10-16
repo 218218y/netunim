@@ -176,7 +176,18 @@ export function normalizeCreditSync(value={}){
 export function creditSyncScrapeSelection(value={}){const sync=normalizeCreditSync(value),rows=[];for(const profile of sync.profiles){const excludedAccounts=profile.accounts.map(account=>account.accountNumber).filter(accountNumber=>sync.cardMappings[creditCardMappingKey(profile.profileId,accountNumber)]?.included===false);if(excludedAccounts.length)rows.push({profileId:profile.profileId,excludedAccounts})}return rows}
 
 export function mergeCreditSyncResult(current,payload={}){
-  const base=normalizeCreditSync(current),mappings={...base.cardMappings},byId=new Map(base.profiles.map(profile=>[profile.profileId,profile])),rawSuccesses=(Array.isArray(payload.profiles)?payload.profiles:[]).map(normalizeCreditProfile).filter(profile=>profile.profileId),successes=[];
+  const base=normalizeCreditSync(current),mappings={...base.cardMappings},
+    byId=new Map(base.profiles.map(profile=>[profile.profileId,profile]));
+  // Supported older responses can omit metadata without erasing a known issuer
+  // or moving its default business routing. Supplied invalid metadata is rejected
+  // by the current-response boundary before this historical-feed normalizer.
+  const rawSuccesses=(Array.isArray(payload.profiles)?payload.profiles:[]).map(profile=>{
+    const previous=byId.get(profile.profileId);
+    return normalizeCreditProfile({...profile,
+      provider:profile.provider===undefined?previous?.provider:profile.provider,
+      defaultAccount:profile.defaultAccount===undefined?previous?.defaultAccount:profile.defaultAccount,
+    });
+  }).filter(profile=>profile.profileId),successes=[];
   function preserveCoreLastKnownGood(previous,incoming){
     const attempts=new Map(incoming.accounts.map(account=>[account.accountNumber,account]));
     const accounts=previous.accounts.map(account=>{const attempt=attempts.get(account.accountNumber);if(!attempt)return account;const old=normalizeCreditAccount(account),monthMap=new Map(old.months.map(slice=>[slice.month,slice]));for(const slice of attempt.months){if(slice.fetchStatus==='success')continue;const prior=monthMap.get(slice.month);monthMap.set(slice.month,prior?.fetchedAt?{...prior,status:'stale',fetchStatus:slice.fetchStatus,lastErrorCode:slice.lastErrorCode,lastErrorAt:slice.lastErrorAt}:{...slice,status:'missing'})}const frameFailed=attempt.frameFetchStatus&&attempt.frameFetchStatus!=='success';return normalizeCreditAccount({...old,frameStatus:frameFailed?(old.frameFetchedAt||old.balance!==null||old.cardFrame!==null||old.availableCredit!==null?'stale':'missing'):old.frameStatus,frameFetchStatus:frameFailed?attempt.frameFetchStatus:old.frameFetchStatus,frameErrorCode:frameFailed?attempt.frameErrorCode:old.frameErrorCode,frameErrorAt:frameFailed?attempt.frameErrorAt:old.frameErrorAt,months:[...monthMap.values()]})});

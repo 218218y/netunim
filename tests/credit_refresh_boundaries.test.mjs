@@ -17,14 +17,14 @@ const clean = (key, value) =>
 const ast = (source, name) =>
   JSON.parse(JSON.stringify(declaration(source, name), clean));
 for (const site of ['orders', 'kupa']) {
-  for(const [evidence,account] of [['missing status',{txns:[{id:'T'}]}],['unknown pending status',{pendingStatus:'garbage',pendingTransactions:[{id:'T',status:'pending'}]}],['unknown frame fetch status',{frameFetchStatus:'garbage',balance:999,cardFrame:9999}],['unknown frame status',{frameStatus:'garbage',balance:999}],['missing monthly rows',{months:[{month:'2026-10',fetchStatus:'success'}]}],['missing pending rows',{pendingStatus:'success'}],['boolean amount',{txns:[{id:'T',status:'completed',chargedAmount:true}]}]])test(site+' current publication rejects '+evidence+' before merge/write',async()=>{
+  for(const [evidence,account,profile={}] of [['missing status',{txns:[{id:'T'}]}],['invalid provider',{accountNumber:'C'},{provider:'garbage'}],['invalid default account',{accountNumber:'C'},{defaultAccount:null}],['ghost account',{accountNumber:{}}],['unknown pending status',{pendingStatus:'garbage',pendingTransactions:[{id:'T',status:'pending'}]}],['unknown frame fetch status',{frameFetchStatus:'garbage',balance:999,cardFrame:9999}],['unknown frame status',{frameStatus:'garbage',balance:999}],['missing monthly rows',{months:[{month:'2026-10',fetchStatus:'success'}]}],['missing pending rows',{pendingStatus:'success'}],['boolean amount',{txns:[{id:'T',status:'completed',chargedAmount:true}]}]])test(site+' current publication rejects '+evidence+' before merge/write',async()=>{
     const create=site==='orders'?createOrdersCreditRefresh:createKupaCreditRefresh;
     const guard=()=>{},failures=[];let writes=0,merges=0,scans=0,releases=0;
     const status={bridgeVersion:73,contractVersion:2,profiles:[{profileId:'P'}]};
     const owner=create({authority:{capture:()=>guard},
       cloud:{refresh:async()=>({verified:true,state:{}}),readSync:()=>({profiles:[]})},
       device:{capture:()=>guard,readStatus:async()=>status,status:()=>status,error:()=>'',supported:()=>true,
-        sync:async()=>{scans++;return {profiles:[{profileId:'P',accounts:[account]}]};},refreshStatus:async()=>status,reportFailure:guard},
+        sync:async()=>{scans++;return {profiles:[{profileId:'P',accounts:[{accountNumber:'C',...account}],...profile}]};},refreshStatus:async()=>status,reportFailure:guard},
       leases:{createToken:()=> 'T',reportFailure:guard,commands:{acquire:(leaseName,leaseToken)=>({
         ready:Promise.resolve({acquired:true,leaseName,leaseToken,fenceEpoch:1,assertCurrent:guard}),
         assertCurrent:guard,close:async()=>{releases++;}})},runtime:{isPending:()=>false,drain:async()=>{},dispose:()=>true}},

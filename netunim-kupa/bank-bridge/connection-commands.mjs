@@ -7,7 +7,10 @@ import {
 } from './credit-profile-model.mjs';
 import { normalizeStoredCredentials, normalizeConnectionImportDocument } from './connection-settings.mjs';
 export function publicCreditProfiles(profiles) {
-    return (Array.isArray(profiles) ? profiles : []).map(creditProfilePublic).filter(x => x.profileId && creditProviderSupported(x.provider));
+    // Historical vault entries for retired issuers are excluded before current
+    // response projection. Supported current profiles still cross the strict guard.
+    return (Array.isArray(profiles) ? profiles : []).filter(profile => creditProviderSupported(profile?.provider))
+        .map(creditProfilePublic).filter(x => x.profileId && creditProviderSupported(x.provider));
 }
 // Promise.all rejects before the remaining filesystem jobs settle. The owner
 // must retain all obligations even when the first cleanup fails.

@@ -18,6 +18,16 @@ function invalid(){throw Object.assign(new Error('Credit transaction evidence is
 function optionalEnum(value,allowed){
   if(value!==undefined&&(typeof value!=='string'||!allowed.includes(value)))invalid();
 }
+/** Merge keys must survive the existing feed normalizer byte-for-byte. Account
+ * keys cannot contain the profile/account mapping delimiter; import profile IDs
+ * intentionally can. Omitted partial-model fields remain supported.
+ * @param {unknown} value @param {boolean} [account]
+ * @returns {asserts value is string} */
+export function assertCreditIdentity(value,account=false){
+  if(typeof value!=='string'||!value||value.length>80||
+    value!==value.trim().replace(/\s+/g,' ')||/[\u0000-\u001f\u007f]/.test(value)||
+    account&&value.includes(':'))invalid();
+}
 /** The production handshake requires v2. Older responses can omit the envelope
  * version, but cannot downgrade transaction evidence to persisted-feed rules.
  * @param {unknown} version @returns {2} */
@@ -28,11 +38,20 @@ export function creditResponseProtocol(version){
 /** Validate every representation before a feed normalizer can deduplicate it.
  * @param {Record<string,unknown>} profile */
 export function assertCreditProfileTransactions(profile){
+  optionalEnum(profile.provider,['visaCal','max','isracard','amex']);
+  optionalEnum(profile.defaultAccount,['עסקי','ביתי']);
+  if(profile.profileId!==undefined)assertCreditIdentity(profile.profileId);
   if(profile.coreComplete!==undefined&&typeof profile.coreComplete!=='boolean')invalid();
   if(profile.accounts===undefined)return;
   if(!Array.isArray(profile.accounts))return invalid();
+  const accounts=new Set();
   for(const account of Array.from(profile.accounts)){
     if(!object(account))return invalid();
+    if(account.accountNumber!==undefined){
+      assertCreditIdentity(account.accountNumber,true);
+      if(accounts.has(account.accountNumber))invalid();
+      accounts.add(account.accountNumber);
+    }
     optionalEnum(account.pendingStatus,['success','provider_error','schema_error','network_error','missing']);
     optionalEnum(account.frameFetchStatus,['success','unavailable','provider_error','schema_error','network_error']);
     optionalEnum(account.frameStatus,['fresh','stale','missing']);
