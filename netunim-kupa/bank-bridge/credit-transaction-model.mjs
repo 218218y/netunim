@@ -160,7 +160,7 @@ export function normalizeCreditScrapeAccount(account = {}, provider = '') {
     frameErrorAt: account.frameErrorAt || null,
     months,
     pendingTransactions,
-    pendingStatus: ['success', 'provider_error', 'schema_error', 'network_error'].includes(
+    pendingStatus: ['success', 'provider_error', 'schema_error', 'network_error', 'missing'].includes(
       String(account.pendingStatus)
     )
       ? String(account.pendingStatus)

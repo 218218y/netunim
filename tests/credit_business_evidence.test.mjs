@@ -10,6 +10,35 @@ const result=account=>({contractVersion:2,profiles:[{profileId:'P',provider:'max
 const rejected=value=>assert.throws(()=>readCreditRefreshResult(value),{code:'CREDIT_REFRESH_RESULT_INVALID'});
 
 for(const [name,merge] of [['Kupa',kupaMerge],['Orders',ordersMerge]]){
+  test(name+' rejects malformed account statuses before replacement and preserves the entire retained state',()=>{
+    const initial=merge({cardMappings:{'P:C':{included:true,account:'ביתי'}}},readCreditRefreshResult(result({
+      balance:100,cardFrame:1000,availableCredit:900,frameStatus:'fresh',frameFetchStatus:'success',
+      pendingStatus:'success',pendingTransactions:[{...tx,id:'retained',status:'pending'}],months:[month],
+    })));
+    const before=JSON.stringify(initial),snapshot=structuredClone(initial);
+    for(const field of ['pendingStatus','frameFetchStatus','frameStatus']){
+      for(const bad of ['garbage',null,true,false,123,{},[],['success'],' success ']){
+        const incoming=result({balance:999,cardFrame:9999,availableCredit:9000,
+          pendingTransactions:[{...tx,id:'replacement',status:'pending'}],[field]:bad});
+        assert.throws(()=>merge(initial,readCreditRefreshResult(incoming)),{code:'CREDIT_REFRESH_RESULT_INVALID'});
+        assert.equal(JSON.stringify(initial),before);
+        assert.deepEqual(initial,snapshot);
+        assert.throws(()=>normalizeCreditScrapeAccount(incoming.profiles[0].accounts[0],'max'),
+          {code:'CREDIT_PROVIDER_SCHEMA_ERROR'});
+      }
+    }
+  });
+
+  test(name+' explicit missing pending status cannot acquire replacement authority from rows',()=>{
+    const initial=merge({cardMappings:{'P:C':{included:true}}},readCreditRefreshResult(result({pendingStatus:'success',
+      pendingTransactions:[{...tx,id:'retained',status:'pending'}]})));
+    const merged=merge(initial,readCreditRefreshResult(result({pendingStatus:'missing',
+      pendingTransactions:[{...tx,id:'untrusted',status:'pending'}]})));
+    assert.equal(merged.profiles[0].accounts[0].pendingStatus,'missing');
+    assert.equal(merged.profiles[0].accounts[0].pendingTransactions[0].id,'retained');
+    assert.equal(normalizeCreditScrapeAccount({pendingStatus:'missing',pendingTransactions:[{...tx,status:'pending'}]}).pendingStatus,'missing');
+  });
+
   test(name+' preserves known monthly/pending evidence unless successful replacement has an explicit array',()=>{
     const initial=merge({cardMappings:{'P:C':{included:true}}},result({months:[month],pendingTransactions:[{...tx,id:'pending',status:'pending'}],pendingStatus:'success'}));
     const before=structuredClone(initial);
