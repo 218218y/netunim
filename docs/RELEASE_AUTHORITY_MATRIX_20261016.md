@@ -7,6 +7,8 @@ after an unchanged, verified branch is merged.
 
 | Boundary / scenario | Automated release evidence |
 | --- | --- |
+| Bank status and nested-business deployment | `postflight-target.json` requires `20261016120000_bank_transaction_status_authority` and `20261016130000_bank_business_evidence_authority` exactly once, before schema replay/upload. Complete migration SQL hashes and schema verification remain mandatory. Both deployed migrations and eight active function bodies matched on 2026-10-16; [scoped authenticated observation](evidence/bank-authority-production-20261016.json) |
+| Credit account status and merge/routing identity | `credit_business_evidence.test.mjs`, `credit_identity_evidence.test.mjs` and both actual refresh owners: malformed enums/keys cause zero merge/write with unchanged retained state; omitted supported issuer/role metadata preserves known identity |
 | Malformed Bank acknowledgement/archive/snapshot/link success | `bank_response_evidence.test.mjs`, archive and Morning transport suites |
 | Bank reconciliation with an empty source | `business_response_evidence.test.mjs`; malformed counters/flags cannot authorize publication |
 | Provider claims complete coverage without transaction rows | `bank_balance_result.test.mjs`; malformed/missing arrays cannot authorize absence reconciliation |
@@ -46,5 +48,6 @@ installed runtime. Automated fixtures cannot substitute for them:
    against the approved account. Keep provider credentials and customer data out
    of test logs and repository artifacts.
 
-No live provider scan, production migration, deployment, customer-data restore or
-physical-device performance result is claimed by these four code stages.
+The Bank SQL observation above was read-only; no Production migration was applied
+during this continuation. No live provider scan, site deployment, customer-data
+restore or physical-device performance result is claimed by the code stages.

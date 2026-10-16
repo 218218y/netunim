@@ -15,8 +15,12 @@ Startup source/timing ceilings are unchanged. The eager count ceiling grew only 
 
 ## Remaining release work
 
-- Deploy the reviewed new migration `20261016120000_bank_transaction_status_authority.sql` through the existing Supabase deployment process. No prior migration was edited, and Git merges alone do not apply Production SQL.
+- Both `20261016120000_bank_transaction_status_authority.sql` and `20261016130000_bank_business_evidence_authority.sql` are required. Their deployed identities, exact statement hashes and eight active function bodies were verified read-only in Production on 2026-10-16; see the [current release matrix](RELEASE_AUTHORITY_MATRIX_20261016.md) for the observation and remaining gates. Deployment postflight must assert both identities before rollout. A stale saved receipt is not a reason to reapply them.
 - Collect native interactive measurements on a weak physical Windows machine with the loaded business workload, cold/warm/offline samples, device/disk/network context and first-view/command-ready times. The fresh Kupa connection-screen report currently has five missing samples for both readiness metrics in each mode. CI and CPU emulation cannot close this item.
 - Complete the existing operator matrix in [RELEASE_AUTHORITY_MATRIX_20261016.md](RELEASE_AUTHORITY_MATRIX_20261016.md): installed Bridge update/shutdown and controlled interruption, older backup/import/restore, A-B-A and two physical clients, and live Bank/Credit providers. Isolated PostgreSQL, native IndexedDB and Windows deployment contracts already run automatically; they do not certify those physical/live scenarios.
 
 Architecture decomposition remains paused unless a concrete defect or comparable physical measurement justifies a new change. Readability and compatibility continue as targeted maintenance; current RPC names and immutable migration history remain intentional.
+
+This document records the earlier implementation phases. The current backlog and
+release status are owned by [ARCHITECTURE_REMAINING_WORK.md](ARCHITECTURE_REMAINING_WORK.md)
+and its linked release matrix; do not maintain an independent deployment checklist here.

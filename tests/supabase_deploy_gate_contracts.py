@@ -1,7 +1,9 @@
 """Exercise automatic live release verification without touching Production."""
 import copy
+import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import tempfile
@@ -37,6 +39,46 @@ class SupabaseDeployGateContracts(unittest.TestCase):
         before = [p.read_bytes() for p in tracked]
         self.verify_with()
         self.assertEqual([p.read_bytes() for p in tracked], before, 'Fast verification must keep the CI-verified checkout clean')
+
+    def test_both_bank_authority_migrations_are_explicit_release_prerequisites(self):
+        required = self.target['required_migrations']
+        self.assertEqual(required, [
+            {'version': '20261016120000', 'name': 'bank_transaction_status_authority'},
+            {'version': '20261016130000', 'name': 'bank_business_evidence_authority'},
+        ])
+        for row in required:
+            for ledger in (self.history, self.manifest):
+                gate.require_release_migrations(self.target, ledger)
+                missing = [item for item in ledger if item['version'] != row['version']]
+                renamed = [dict(item, name='wrong_guard') if item['version'] == row['version'] else item for item in ledger]
+                for bad in (missing, renamed, ledger+[row]):
+                    with self.subTest(row=row, ledger=bad[-1]), self.assertRaisesRegex(SystemExit, row['version']+'_'+row['name']):
+                        gate.require_release_migrations(self.target, bad)
+
+    def test_missing_authority_guard_is_named_before_schema_replay(self):
+        for row in self.target['required_migrations']:
+            history = [item for item in self.history if item['version'] != row['version']]
+            with patch.object(gate, 'live_source', return_value='cli'), \
+                 patch.object(gate, 'capture_live', return_value=Path('synthetic-capture')), \
+                 patch.object(gate, 'connector_capture', return_value=(self.expected, history, self.manifest)), \
+                 patch.object(gate, 'expected_upgrade') as candidate:
+                with self.assertRaisesRegex(SystemExit, row['version']+'_'+row['name']):
+                    gate.verify()
+                candidate.assert_not_called()
+
+    def test_recorded_bank_observation_matches_reviewed_sql_without_claiming_full_postflight(self):
+        observation = json.loads((gate.ROOT/'docs/evidence/bank-authority-production-20261016.json').read_text(encoding='utf8'))
+        self.assertEqual(observation['project_id'], self.target['project_id'])
+        self.assertIn('not a replacement', observation['limitations'][0])
+        wanted = [row for row in self.manifest if row['version'] in {item['version'] for item in self.target['required_migrations']}]
+        self.assertEqual(len(gate.verify_server_manifest(observation['migrations'], wanted)), 2)
+        bodies = {}
+        for row in wanted:
+            path = gate.ROOT/'supabase/migrations'/(row['version']+'_'+row['name']+'.sql')
+            for match in re.finditer(r'create (?:or replace )?function ([a-z_]+)\.([a-z_0-9]+)\([\s\S]*?as \$function\$([\s\S]*?)\$function\$', path.read_text(encoding='utf8')):
+                bodies[match[1]+'.'+match[2]] = hashlib.sha256(match[3].encode()).hexdigest()
+        self.assertEqual({row['schema']+'.'+row['name']: row['body_sha256'] for row in observation['functions']}, bodies)
+        self.assertEqual(len(bodies), 8)
 
     def test_real_live_differences_never_fall_back_to_an_old_receipt(self):
         actual = copy.deepcopy(self.expected)

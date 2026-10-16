@@ -12,7 +12,7 @@ import subprocess
 import tempfile
 
 from supabase_postflight import (ROOT, build_fingerprint, canonical, connector_capture,
-                                release_gate, verify_evidence)
+                                release_gate, verify_evidence, require_release_migrations)
 from supabase_capture_query import query
 from supabase_migration_manifest import manifest as local_manifest, verify_server_manifest
 
@@ -88,6 +88,7 @@ def verify():
     reviewed = json.loads((ROOT/'supabase'/target['manifest_snapshot']).read_text(encoding='utf8'))
     if local_manifest() != reviewed:
         raise SystemExit('FAIL: local migration files differ from reviewed SQL hashes; no deploy allowed.')
+    require_release_migrations(target, reviewed)
     source = live_source()
     if source is None:
         try:
@@ -105,6 +106,7 @@ def verify():
         # Check the live ledger FIRST. A missing/edited migration is diagnosed
         # before spending time replaying an expected schema locally.
         wanted_history = json.loads((ROOT/'supabase'/target['migration_snapshot']).read_text(encoding='utf8'))['migrations']
+        require_release_migrations(target, history)
         if canonical(history) != canonical(wanted_history):
             raise SystemExit('FAIL: live migration history differs from the reviewed code. Apply the missing reviewed migrations; no site uploaded.')
         try:

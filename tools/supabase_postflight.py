@@ -311,7 +311,25 @@ def record_release(target, capture_path, actual, history, manifest):
     print('PASS: authenticated source audit, schema snapshot and Production receipt recorded.')
 
 
+def require_release_migrations(target, history):
+    """Name each missing authority guard before schema replay or site upload.
+
+    The complete ledger/hash comparison remains authoritative. This explicit
+    release prerequisite is also checked against the canonical local ledger so
+    removing a required row from both ledgers cannot silently retire the gate.
+    """
+    required = target.get('required_migrations', [])
+    for row in required:
+        matches = [item for item in history
+                   if item.get('version') == row['version'] and item.get('name') == row['name']]
+        if len(matches) != 1:
+            raise SystemExit('FAIL: required authority migration must be applied exactly once: '
+                             + row['version'] + '_' + row['name'] + '; no deploy allowed.')
+
+
 def verify_evidence(target, expected, actual, history, manifest):
+    if history is not None:
+        require_release_migrations(target, history)
     differences = drift(expected, actual)
     if differences:
         print('\n'.join(differences))
@@ -360,6 +378,7 @@ def main():
     reviewed_manifest = json.loads((ROOT / 'supabase' / target['manifest_snapshot']).read_text(encoding='utf8'))
     if local_manifest() != reviewed_manifest:
         raise SystemExit('FAIL: local migration files differ from reviewed SQL hashes; no deploy allowed.')
+    require_release_migrations(target, reviewed_manifest)
     if args.release_gate:
         if args.actual or args.history or args.manifest:
             parser.error('--release-gate cannot be combined with --actual/--history/--manifest')
