@@ -1,3 +1,4 @@
+import {readBankAcknowledgementReceipt,readBankArchiveRows,readBankSnapshotRows} from '../shared/bank-response-records.js';
 import {readCloudMetaRows,readCloudDocumentRows,readFinanceDocumentRows,readCloudBackupRows,readCloudBackupPointRows} from '../shared/cloud-read-records.js';
 import {createMainDocumentWrite} from './main-document-write.js';
 import {beginMeasure} from '../shared/runtime-performance.js';
@@ -157,33 +158,36 @@ async function syncBankTransactionsSnapshot(accountKey,accountRole,transactions,
 }
 async function readBankTransactions(accountKey,accountRole,{days=370,maxRows=20000,assertCurrent}={}){
   assertCurrent?.();
-  const dayCount=days===null||days==='all'?null:Number(days),since=Number.isFinite(dayCount)&&dayCount>0?new Date(Date.now()-dayCount*86400000).toISOString():'',dateClause=since?`&transaction_date=gte.${encodeURIComponent(since)}`:'',pageSize=1000,cap=Math.max(pageSize,Number(maxRows)||20000),rows=[];
+  const dayCount=days===null||days==='all'?null:Number(days),since=Number.isFinite(dayCount)&&dayCount>0?new Date(Date.now()-dayCount*86400000).toISOString():'',dateClause=since?`&transaction_date=gte.${encodeURIComponent(since)}`:'',pageSize=1000,cap=Math.max(pageSize,Number(maxRows)||20000),rows=[],seen=new Set();
   for(let offset=0;offset<cap;offset+=pageSize){
     assertCurrent?.();
-    const q=`/rest/v1/bank_transactions?account_key=eq.${encodeURIComponent(accountKey)}&account_role=eq.${accountRole==='home'?'home':'business'}${dateClause}&select=id,merge_key,transaction_date,processed_date,amount,currency,description,memo,party_name,party_headline,message_headline,message_detail,status,balance_after,bank_reference,bank_serial,activity_type_code,cheque,check_details,credit_settlement_details,first_seen_at,presence_state,last_seen_at,missing_since,missing_acknowledged_at,alert_acknowledgements&order=transaction_date.desc,id.desc&limit=${pageSize}&offset=${offset}`;
+    const q=`/rest/v1/bank_transactions?account_key=eq.${encodeURIComponent(accountKey)}&account_role=eq.${accountRole==='home'?'home':'business'}${dateClause}&select=id,account_key,account_role,merge_key,transaction_date,processed_date,amount,currency,description,memo,party_name,party_headline,message_headline,message_detail,status,balance_after,bank_reference,bank_serial,activity_type_code,cheque,check_details,credit_settlement_details,first_seen_at,presence_state,last_seen_at,missing_since,missing_acknowledged_at,alert_acknowledgements&order=transaction_date.desc,id.desc&limit=${pageSize}&offset=${offset}`;
     const r=await supaRest(q,{method:'GET',...(assertCurrent?{assertRequestScope:assertCurrent}:{})}),j=await r.json().catch(()=>null);assertCurrent?.();if(!r.ok)throw new Error(j?.message||'קריאת ארכיון הבנק נכשלה');
-    const page=Array.isArray(j)?j:[];rows.push(...page);if(page.length<pageSize)return rows.map(x=>({archiveId:Number(x.id),id:x.merge_key,date:x.transaction_date,processedDate:x.processed_date,amount:Number(x.amount),currency:x.currency,description:x.description,memo:x.memo,partyName:x.party_name,partyHeadline:x.party_headline,messageHeadline:x.message_headline,messageDetail:x.message_detail,status:x.status,balanceAfter:x.balance_after===null?null:Number(x.balance_after),bankReference:x.bank_reference,bankSerial:x.bank_serial,activityTypeCode:x.activity_type_code,cheque:!!x.cheque,checkDetails:x.check_details,creditSettlementDetails:x.credit_settlement_details,firstSeenAt:x.first_seen_at,presenceState:x.presence_state||'unknown',lastSeenAt:x.last_seen_at,missingSince:x.missing_since,missingAcknowledgedAt:x.missing_acknowledged_at,alertAcknowledgements:x.alert_acknowledgements&&typeof x.alert_acknowledgements==='object'?x.alert_acknowledgements:{}}));
+
+    const page=readBankArchiveRows(j,String(accountKey),accountRole==='home'?'home':'business',seen);rows.push(...page);
+    if(page.length<pageSize)return rows.map(x=>({archiveId:Number(x.id),id:x.merge_key,date:x.transaction_date,processedDate:x.processed_date,amount:Number(x.amount),currency:x.currency,description:x.description,memo:x.memo,partyName:x.party_name,partyHeadline:x.party_headline,messageHeadline:x.message_headline,messageDetail:x.message_detail,status:x.status,balanceAfter:x.balance_after===null?null:Number(x.balance_after),bankReference:x.bank_reference,bankSerial:x.bank_serial,activityTypeCode:x.activity_type_code,cheque:!!x.cheque,checkDetails:x.check_details,creditSettlementDetails:x.credit_settlement_details,firstSeenAt:x.first_seen_at,presenceState:x.presence_state||'unknown',lastSeenAt:x.last_seen_at,missingSince:x.missing_since,missingAcknowledgedAt:x.missing_acknowledged_at,alertAcknowledgements:x.alert_acknowledgements&&typeof x.alert_acknowledgements==='object'?x.alert_acknowledgements:{}}));
   }
   throw new Error('ארכיון הבנק גדול ממגבלת הקריאה הבטוחה; התצוגה נעצרה במקום להציג היסטוריה חלקית');
 }
 async function readBankTransactionSnapshot(accountKey,accountRole,{assertCurrent}={}){
   assertCurrent?.();
-  const q=`/rest/v1/bank_transaction_snapshots?account_key=eq.${encodeURIComponent(accountKey)}&account_role=eq.${accountRole==='home'?'home':'business'}&select=snapshot_at,coverage_from,coverage_to,transaction_count,transactions&limit=1`;
-  const r=await supaRest(q,{method:'GET',...(assertCurrent?{assertRequestScope:assertCurrent}:{})}),j=await r.json().catch(()=>null);assertCurrent?.();if(!r.ok)throw new Error(j?.message||'קריאת צילום הבנק הישיר נכשלה');const row=Array.isArray(j)&&j.length?j[0]:null;if(!row)return null;
-  const transactions=(Array.isArray(row.transactions)?row.transactions:[]).map(tx=>({...tx,id:String(tx?.mergeKey||tx?.id||'')}));
-  return {snapshotAt:row.snapshot_at,coverageFrom:row.coverage_from,coverageTo:row.coverage_to,transactionCount:Number(row.transaction_count)||transactions.length,transactions};
+  const q=`/rest/v1/bank_transaction_snapshots?account_key=eq.${encodeURIComponent(accountKey)}&account_role=eq.${accountRole==='home'?'home':'business'}&select=account_key,account_role,snapshot_at,coverage_from,coverage_to,transaction_count,transactions&limit=1`;
+  const r=await supaRest(q,{method:'GET',...(assertCurrent?{assertRequestScope:assertCurrent}:{})}),j=await r.json().catch(()=>null);assertCurrent?.();if(!r.ok)throw new Error(j?.message||'קריאת צילום הבנק הישיר נכשלה');
+  const row=readBankSnapshotRows(j,String(accountKey),accountRole==='home'?'home':'business');if(!row)return null;
+  const transactions=row.transactions.map(tx=>({...tx,id:String(tx?.mergeKey||tx?.id||'')}));
+  return {snapshotAt:row.snapshot_at,coverageFrom:row.coverage_from,coverageTo:row.coverage_to,transactionCount:row.transaction_count,transactions};
 }
 async function acknowledgeBankTransactionMissing(transactionId,{assertCurrent}={}){
   assertCurrent?.();
   const id=Number(transactionId);if(!Number.isSafeInteger(id)||id<=0)throw new Error('מזהה תנועת הבנק אינו תקין');
   const r=await supaRest('/rest/v1/rpc/acknowledge_bank_transaction_missing',{method:'POST',networkRetry:true,dataPriority:'high',...(assertCurrent?{assertRequestScope:assertCurrent}:{}),body:JSON.stringify({p_transaction_id:id})});
-  const body=await r.text();assertCurrent?.();let j;try{j=body?JSON.parse(body):null}catch{j=null}if(!r.ok)throw new Error(j?.message||j?.hint||body||'סימון תנועת הבנק כנבדקה נכשל');return Array.isArray(j)?j[0]:j;
+  const body=await r.text();assertCurrent?.();let j;try{j=body?JSON.parse(body):null}catch{j=null}if(!r.ok)throw new Error(j?.message||j?.hint||body||'סימון תנועת הבנק כנבדקה נכשל');return readBankAcknowledgementReceipt(j,id,'missing');
 }
 async function acknowledgeBankTransactionAlert(transactionId,alertKind,{assertCurrent}={}){
   assertCurrent?.();
   const id=Number(transactionId),kind=String(alertKind||'').trim();if(!Number.isSafeInteger(id)||id<=0)throw new Error('מזהה תנועת הבנק אינו תקין');if(kind!=='returned_cheque')throw new Error('סוג התראת הבנק אינו נתמך');
   const r=await supaRest('/rest/v1/rpc/acknowledge_bank_transaction_alert',{method:'POST',networkRetry:true,dataPriority:'high',...(assertCurrent?{assertRequestScope:assertCurrent}:{}),body:JSON.stringify({p_transaction_id:id,p_alert_kind:kind})});
-  const body=await r.text();assertCurrent?.();let j;try{j=body?JSON.parse(body):null}catch{j=null}if(!r.ok)throw new Error(j?.message||j?.hint||body||'הסרת התראת הבנק נכשלה');return Array.isArray(j)?j[0]:j;
+  const body=await r.text();assertCurrent?.();let j;try{j=body?JSON.parse(body):null}catch{j=null}if(!r.ok)throw new Error(j?.message||j?.hint||body||'הסרת התראת הבנק נכשלה');return readBankAcknowledgementReceipt(j,id,kind);
 }
 
 
