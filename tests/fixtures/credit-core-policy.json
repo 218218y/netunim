@@ -71,7 +71,7 @@
     "dateDigits": "0c2e3e2fb675a1f14ae3686f5c89fce2ea959c47f274b97f9aa09e308844034f",
     "ymdDate": "62737f7363809b154fcee6cacff291b089a636ca5d862d2fe1e282c8feeda4b7",
     "isoFromBankDate": "4ca997674a7156e06ad806d2c3d91ddf4c5de0487d1a9279d851aa7dc282b749",
-    "normalizeHapoalimTransaction": "971e69fc6a37a868345858a406013859cbdae6d3b00ca111fdfb8eab795c81c7",
+    "normalizeHapoalimTransaction": "b5f6bcf5173c38c74d7220c95d2b545f3136ccf96277eaa1c6e0b12a09799458",
     "normalizeRecentTransactions": "faf2a2ba058aa6b4ac8d73859b0b788872a87aba6e3da8b463401345ee7ef799",
     "scraperFailureMessage": "cc83b43b2bc4c698af889ed30f5171ed42bf775c1574bc7c48e2e60cd14a8f9c"
   },
@@ -86,7 +86,7 @@
     "creditProfilePublic": "9f21aa787661790e3754184f8ef3624e9c45250c39acd557bb5f72867b39a5ce",
     "creditProfilesShareLoginIdentity": "a1c1b2fdb1174481de9edea2c6c7b7160028547c520cd89192b2da049f1f82dd",
     "normalizeCreditProfileInput": "68d5db50514bf82132bfc5e822fed8d459e6ea135b06d90c6fc29191d9c10839",
-    "normalizeCreditScrapeTransaction": "c40303a69332d49b1b9daf43ffcd6ac1efc57f776128dc1ce81740e37e5be1b8",
+    "normalizeCreditScrapeTransaction": "f2f9a1fe025315c3c1fc4c0e2d77bd7d84770380d7850115b33891663aec8a3c",
     "dedupeCreditScrapeTransactions": "2999bbbf93ec2a477379181a446bf5984a8d0c25ad8472cf63cb6ab22f39fc11",
     "normalizeCreditMonthSlice": "5b0773254a36875dcacc2fd019e94c530736cdb7c8aee51687931e0c312d74c9",
     "normalizeCreditScrapeAccount": "7d0f4e1b0ca4205b9ec5205927e05ef16938de35c74358df16c157db0d7ef09b",

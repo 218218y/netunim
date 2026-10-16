@@ -67,7 +67,13 @@ export function readBankArchiveRows(response,accountKey,role,seen=new Set()){
       !object(row.alert_acknowledgements)||Object.values(row.alert_acknowledgements).some(at=>!timestamp(at))||
       typeof row.cheque!=='boolean'||!(row.balance_after===null||money(row.balance_after)))throw invalid();
     if(Object.hasOwn(row,'handled_at')&&!nullableTimestamp(row.handled_at))throw invalid();
-    try{readBankTransaction({...row,id:row.merge_key,date:row.transaction_date,processedDate:row.processed_date,balanceAfter:row.balance_after})}catch{throw invalid()}
+    try{
+      readBankTransaction({...row,id:row.merge_key,date:row.transaction_date,processedDate:row.processed_date,
+        balanceAfter:row.balance_after,partyName:row.party_name,partyHeadline:row.party_headline,
+        messageHeadline:row.message_headline,messageDetail:row.message_detail,activityTypeCode:row.activity_type_code,
+        bankReference:row.bank_reference,bankSerial:row.bank_serial,
+        checkDetails:row.check_details,creditSettlementDetails:row.credit_settlement_details});
+    }catch{throw invalid()}
     seen.add(row.id);
   }
   return structuredClone(rows);

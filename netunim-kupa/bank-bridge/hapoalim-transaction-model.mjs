@@ -83,7 +83,7 @@ export function normalizeHapoalimTransaction(txn) {
                   Number.isFinite(Number(item?.amount)) && Number(item.amount) > 0
                     ? Number(item.amount)
                     : null,
-                hasDocumentReference: !!item?.hasDocumentReference,
+                hasDocumentReference: item?.hasDocumentReference === true,
                 imageFrontKey: /^[a-f0-9]{64}$/.test(String(item?.imageFrontKey || ''))
                   ? String(item.imageFrontKey)
                   : '',
@@ -98,7 +98,7 @@ export function normalizeHapoalimTransaction(txn) {
               )
               .slice(0, 50)
           : [],
-        hasDocumentReference: !!combinedExtra?.hasDocumentReference,
+        hasDocumentReference: combinedExtra?.hasDocumentReference === true,
         warning: compactText(txn?.netunimAdditionalDetailsWarning, 220),
       }
     : null;

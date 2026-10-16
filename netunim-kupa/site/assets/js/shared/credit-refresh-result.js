@@ -1,4 +1,5 @@
 // @ts-check
+import {creditResponseProtocol,assertCreditProfileTransactions} from './credit-transaction-evidence.js';
 /** @typedef {Readonly<Record<string,unknown>>} CreditIssue */
 /** @typedef {Readonly<Record<string,unknown>&{profiles:CreditStatusProfile[],errors?:CreditIssue[],attemptedCount?:number,deferredCount?:number}>} CreditRefreshResult */
 /** @typedef {Readonly<Record<string,unknown>&{profileId:string}>} CreditStatusProfile */
@@ -20,7 +21,7 @@ function invalid() {
 function rows(value) {
   if (!Array.isArray(value) || !Array.from(value).every(creditRefreshRecord))
     throw invalid();
-  return value.map(row => Object.freeze({ ...row }));
+  return value.map(row => Object.freeze(structuredClone(row)));
 }
 
 /**
@@ -32,8 +33,11 @@ function rows(value) {
  */
 export function readCreditRefreshResult(value) {
   if (!creditRefreshRecord(value)) throw invalid();
+  const protocol=creditResponseProtocol(value.contractVersion);
+  const accepted=profiles(value.profiles);
+  for(const profile of accepted)assertCreditProfileTransactions(profile,protocol);
   /** @type {Record<string,unknown>&{profiles:CreditStatusProfile[],errors?:CreditIssue[],attemptedCount?:number,deferredCount?:number}} */
-  const decoded = { ...value, profiles: profiles(value.profiles) };
+  const decoded = { ...value, profiles: accepted };
   for (const field of /** @type {const} */ (['attemptedCount', 'deferredCount'])) {
     const count = value[field];
     if (

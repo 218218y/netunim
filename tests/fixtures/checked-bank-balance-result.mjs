@@ -1,6 +1,16 @@
 import { readBankBalanceResult, bankSnapshotFinancials } from '../../shared/bank-balance-result.js';
 import {readBankMoney} from '../../shared/bank-money-value.js';
 import {createBridgePairingScope} from '../../shared/bridge-pairing-scope.js';
+import {readBankTransaction,readBankTransactions} from '../../shared/bank-transaction-evidence.js';
+const transaction=readBankTransaction(null);
+/** @type {'pending'|'completed'} */ const transactionStatus=transaction.status;
+// @ts-expect-error decoded transaction status is immutable authority
+transaction.status='pending';
+// @ts-expect-error unknown statuses cannot be widened to completed
+/** @type {'pending'|'completed'} */ const badStatus='garbage';
+// @ts-expect-error validated transaction arrays are immutable
+readBankTransactions(null).push(transaction);
+void [transactionStatus,badStatus];
 /** @type {number|null} */ const money=readBankMoney(null);
 /** @type {()=>undefined} */ const guard=createBridgePairingScope({readToken:()=> 'opaque-device'}).capture();
 void money;void guard;
