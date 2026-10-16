@@ -271,7 +271,27 @@ with IsolatedPostgres(schema_files=all_files) as db:
         'Production-upgrade replay and clean install disagree on the bank merge function contract'
     db.sql((ROOT / 'tests/finance_fencing_server.sql').read_text(encoding='utf8'))
     db.sql((ROOT / 'tests/bank_transaction_evidence_server.sql').read_text(encoding='utf8'))
-    db.sql((ROOT / 'tests/bank_temporal_authority_server.sql').read_text(encoding='utf8'))
+    temporal_sql = (ROOT / 'tests/bank_temporal_authority_server.sql').read_text(encoding='utf8')
+    db.sql(temporal_sql)
+    # Remove the actual installed guard: the durable T1/future/T2 regression must
+    # expose acceptance, not merely match a source string or a stubbed SQL model.
+    temporal_definition = db.sql("select pg_get_functiondef('public.sync_bank_transactions_snapshot_v6(text,text,jsonb,timestamptz,date,date,boolean,text,text,bigint)'::regprocedure)")
+    temporal_guard = """  if p_snapshot_at is null or not isfinite(p_snapshot_at)
+    or p_snapshot_at > clock_timestamp() + interval '5 minutes' then
+    raise exception 'invalid_bank_snapshot_time' using errcode='22023';
+  end if;
+"""
+    assert temporal_definition.count(temporal_guard) == 1
+    db.sql(temporal_definition.replace(temporal_guard, '', 1))
+    try:
+        db.sql(temporal_sql)
+    except RuntimeError as error:
+        assert 'invalid_temporal_snapshot_accepted' in str(error), str(error)
+    else:
+        raise AssertionError('removing the actual SQL temporal guard did not expose poisoning')
+    finally:
+        db.sql(temporal_definition)
+    db.sql(temporal_sql)
     business_cases = json.loads((ROOT / 'tests/fixtures/bank-business-wire-evidence.json').read_text(encoding='utf8'))
     business_sql = (ROOT / 'tests/bank_business_evidence_server.sql').read_text(encoding='utf8')
     db.sql(business_sql.replace('__BANK_BUSINESS_CASES__', json.dumps(business_cases).replace("'", "''")))

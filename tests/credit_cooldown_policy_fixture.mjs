@@ -22,3 +22,12 @@ export function restoreRetryAfterRangeGuard(source) {
   return source.replaceAll('\r\n','\n').replace('const date = new Date(time);\n  return Number.isFinite(date.getTime()) ? date.toISOString() : null;',
     'return new Date(time).toISOString();');
 }
+
+export function restoreFinanceAttemptClock(source) {
+  return source.replaceAll('\r\n','\n')
+    .replace("import {financeAttemptDelayMs} from '../shared/finance-refresh-policy.js';\n",'')
+    .replace('return financeAttemptDelayMs(last,AUTO_RETRY_COOLDOWN_MS,now)',
+      'return last?Math.max(0,last+AUTO_RETRY_COOLDOWN_MS-now):0')
+    .replace('return financeAttemptDelayMs(last,retryMs,clock.now())',
+      'return last?Math.max(0,last+retryMs-clock.now()):0');
+}

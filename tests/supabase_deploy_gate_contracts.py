@@ -40,11 +40,12 @@ class SupabaseDeployGateContracts(unittest.TestCase):
         self.verify_with()
         self.assertEqual([p.read_bytes() for p in tracked], before, 'Fast verification must keep the CI-verified checkout clean')
 
-    def test_both_bank_authority_migrations_are_explicit_release_prerequisites(self):
+    def test_all_bank_authority_migrations_are_explicit_release_prerequisites(self):
         required = self.target['required_migrations']
         self.assertEqual(required, [
             {'version': '20261016120000', 'name': 'bank_transaction_status_authority'},
             {'version': '20261016130000', 'name': 'bank_business_evidence_authority'},
+            {'version': '20261016140000', 'name': 'bank_snapshot_temporal_authority'},
         ])
         for row in required:
             for ledger in (self.history, self.manifest):
@@ -70,7 +71,8 @@ class SupabaseDeployGateContracts(unittest.TestCase):
         observation = json.loads((gate.ROOT/'docs/evidence/bank-authority-production-20261016.json').read_text(encoding='utf8'))
         self.assertEqual(observation['project_id'], self.target['project_id'])
         self.assertIn('not a replacement', observation['limitations'][0])
-        wanted = [row for row in self.manifest if row['version'] in {item['version'] for item in self.target['required_migrations']}]
+        # This historical read-only observation covers the two earlier migrations.
+        wanted = [row for row in self.manifest if row['version'] in {item['version'] for item in observation['migrations']}]
         self.assertEqual(len(gate.verify_server_manifest(observation['migrations'], wanted)), 2)
         bodies = {}
         for row in wanted:

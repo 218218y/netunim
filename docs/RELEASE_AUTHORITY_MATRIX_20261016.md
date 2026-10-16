@@ -7,6 +7,9 @@ after an unchanged, verified branch is merged.
 
 | Boundary / scenario | Automated release evidence |
 | --- | --- |
+| Temporal Bank writes | Additive `20261016140000_bank_snapshot_temporal_authority` is an explicit release prerequisite. Server clock rejects future/null/infinite observations before implementation; disposable T1/rejection/unchanged-state/T2 test and removal of the actual installed SQL guard prove the durable regression |
+| Credit observation, freshness and scheduling | Current response clocks validate before either refresh owner's merge/write; retained future clocks are due. Both actual timer paths and computer-local attempt cooldowns recover after clock correction. Six actual JavaScript guard removals reproduce poisoned observations, false freshness, unbounded scheduling and cooldown |
+| Automatic Retry-After | Shared 24-hour ceiling anchors to original failure, preserves `providerRetryAfterAt`, respects shorter waits and engine scope, and expires across repeated reads. All issuer adapters share one range-safe header parser |
 | Bank status and nested-business deployment | `postflight-target.json` requires `20261016120000_bank_transaction_status_authority` and `20261016130000_bank_business_evidence_authority` exactly once, before schema replay/upload. Complete migration SQL hashes and schema verification remain mandatory. Both deployed migrations and eight active function bodies matched on 2026-10-16; [scoped authenticated observation](evidence/bank-authority-production-20261016.json) |
 | Credit account status and merge/routing identity | `credit_business_evidence.test.mjs`, `credit_identity_evidence.test.mjs` and both actual refresh owners: malformed enums/keys cause zero merge/write with unchanged retained state; omitted supported issuer/role metadata preserves known identity |
 | Actual Credit guard mutations and focused follow-up audit | `credit_account_authority_mutations.test.mjs`: eleven removed production checks reproduce financial replacement, issuer/routing loss, ghost/empty/duplicate keys, monthly empty replacement and cross-profile collapse. Monthly enums and owner identity are validated before normalization |
@@ -52,3 +55,18 @@ installed runtime. Automated fixtures cannot substitute for them:
 The Bank SQL observation above was read-only; no Production migration was applied
 during this continuation. No live provider scan, site deployment, customer-data
 restore or physical-device performance result is claimed by the code stages.
+
+The [temporal Production observation](evidence/temporal-authority-production-20261016.json)
+is deliberately scoped: at 13:57 UTC there were zero future Bank snapshots and
+zero future presence rows, while the new temporal migration/guard was absent.
+The previous two-migration observation does not certify this new guard. The
+postflight gate now names all three migrations and blocks static rollout until
+the complete live migration SQL and schema match. Follow the existing database
+release path; do not substitute these aggregate observations for that gate.
+
+Current Credit `/sync` omission compatibility remains intentional until a real
+MAX/Cal/Isracard/Amex response has proved explicit v2 on every supported installed
+Bridge. Record provider, Bridge version, explicit contract version, observation
+clock, complete/partial month/pending/frame coverage and interruption recovery
+without credentials or customer payloads. Then separately review retiring omission
+on the current wire; retained historical readers remain independent.

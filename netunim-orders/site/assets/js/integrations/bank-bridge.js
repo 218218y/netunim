@@ -1,5 +1,6 @@
 import {createBankBridgeClient} from '../shared/bank-bridge-client.js';
 import {createBrowserBridgePlatform} from '../shared/browser-bridge-platform.js';
+import {financeAttemptDelayMs} from '../shared/finance-refresh-policy.js';
 import {normalizeCreditAutoMode} from '../shared/credit-sync-policy.js';
 
 const TOKEN_KEY='netunim_kupa_bank_bridge_token_v1';
@@ -18,7 +19,7 @@ export function createFinanceBridgeIntegration({platform=createBrowserBridgePlat
   const enabled=key=>preferences.getItem(key)!=='0';
   const setEnabled=(key,value)=>preferences.setItem(key,value?'1':'0');
   const markAttempt=key=>{const at=clock.now();if(!Number.isSafeInteger(at)||at<0)throw Object.assign(new Error('Invalid automatic attempt time'),{name:'FinancePreferencesInvalid'});preferences.setItem(key,String(at))};
-  function attemptDelayMs(key,retryMs=AUTO_RETRY_MS){const last=Number(preferences.getItem(key)||0);if(!Number.isSafeInteger(last)||last<0)throw Object.assign(new Error('Invalid automatic attempt time'),{name:'FinancePreferencesInvalid'});return last?Math.max(0,last+retryMs-clock.now()):0}
+  function attemptDelayMs(key,retryMs=AUTO_RETRY_MS){const last=Number(preferences.getItem(key)||0);if(!Number.isSafeInteger(last)||last<0)throw Object.assign(new Error('Invalid automatic attempt time'),{name:'FinancePreferencesInvalid'});return financeAttemptDelayMs(last,retryMs,clock.now())}
   return {...client,
     bankAutoEnabled:()=>enabled(BANK_AUTO_KEY),creditAutoEnabled:()=>enabled(CREDIT_AUTO_KEY),
     setBankAutoEnabled:value=>setEnabled(BANK_AUTO_KEY,value),setCreditAutoEnabled:value=>setEnabled(CREDIT_AUTO_KEY,value),
