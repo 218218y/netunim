@@ -89,6 +89,7 @@ export function captureStorageCleanHead(value){
  * @typedef {{owner:string,epoch:string,seq:number}} JournalDecisionScope
  * @typedef {Pick<import('./storage-checkpoint.js').StoredStorageCheckpoint,'owner'|'epoch'|'seq'>} DecisionCheckpoint
  * @typedef {Pick<import('./storage-cloud-records.js').StoredCloudBase,'owner'|'epoch'|'revision'|'ackSeq'>} DecisionBase
+ * @typedef {Pick<import('./storage-cloud-records.js').StoredCloudFlight,'owner'|'epoch'|'operationId'|'baseRevision'|'startSeq'|'endSeq'>} DecisionFlight
  */
 
 /** @param {string} owner @param {DecisionCheckpoint} checkpoint
@@ -137,4 +138,35 @@ export function assertStorageJournalAdoption(scope,checkpoint,base,prior,conflic
 export function assertStorageJournalCloudReset(owner,checkpoint,base){
   if(checkpoint.owner!==owner||base.owner!==owner||checkpoint.epoch!==base.epoch||checkpoint.seq!==0||
     base.ackSeq!==0||!Number.isSafeInteger(base.revision)||base.revision<0)throw new Error('storage_cloud_reset_invalid');
+}
+
+/** @param {JournalDecisionScope} scope @param {DecisionCheckpoint} checkpoint */
+export function assertStorageJournalReplacement(scope,checkpoint){
+  if(checkpoint.owner!==scope.owner||checkpoint.epoch!==scope.epoch||checkpoint.seq!==scope.seq)throw new Error('storage_checkpoint_stale');
+}
+/** @param {JournalDecisionScope} scope @param {DecisionCheckpoint} checkpoint
+ * @param {number} expectedSeq @param {boolean} hasCloudHead */
+export function assertStorageJournalLocalReplacement(scope,checkpoint,expectedSeq,hasCloudHead){
+  if(!Number.isSafeInteger(expectedSeq)||expectedSeq<0||scope.seq!==expectedSeq||checkpoint.owner!==scope.owner||
+    checkpoint.epoch!==scope.epoch||checkpoint.seq!==expectedSeq)throw new Error('storage_boundary_source_changed');
+  if(hasCloudHead)throw new Error('storage_boundary_local_cloud_head_exists');
+}
+/** @param {JournalDecisionScope} scope @param {DecisionFlight} flight @param {DecisionBase|null} base */
+export function assertStorageJournalFlight(scope,flight,base){
+  if(flight.owner!==scope.owner||flight.epoch!==scope.epoch||flight.endSeq>scope.seq||!base||
+    flight.baseRevision!==base.revision||flight.startSeq!==base.ackSeq+1||flight.endSeq<flight.startSeq)throw new Error('storage_flight_range');
+}
+/** @param {JournalDecisionScope} scope @param {DecisionFlight|null} flight
+ * @param {DecisionBase|null} prior @param {DecisionBase} next @param {DecisionCheckpoint} checkpoint
+ * @param {number} expectedSeq @param {string} operationId */
+export function assertStorageJournalRejection(scope,flight,prior,next,checkpoint,expectedSeq,operationId){
+  if(!flight||flight.operationId!==operationId)throw new Error('storage_reject_mismatch');
+  if(!prior||next.owner!==scope.owner||next.epoch!==scope.epoch||next.ackSeq!==prior.ackSeq||
+    !Number.isSafeInteger(next.revision)||next.revision<=flight.baseRevision)throw new Error('storage_rebase_cursor');
+  if(!Number.isSafeInteger(expectedSeq)||expectedSeq!==scope.seq||checkpoint.owner!==scope.owner||
+    checkpoint.epoch!==scope.epoch||checkpoint.seq!==expectedSeq)throw new Error('storage_rebase_checkpoint_stale');
+}
+/** @param {string} owner @param {DecisionCheckpoint} checkpoint */
+export function assertStorageJournalLocalReset(owner,checkpoint){
+  if(checkpoint.owner!==owner||checkpoint.seq!==0||!checkpoint.epoch.trim())throw new Error('storage_state_reset_invalid');
 }

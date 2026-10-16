@@ -42,3 +42,22 @@ assertStorageJournalAdoption(scope,scope,{...cursor,revision:'2'},cursor,false);
 // @ts-expect-error resetting requires both decoded checkpoint and base
 assertStorageJournalCloudReset(scope.owner,checkpoint,null);
 void retiredThrough;
+
+import {assertStorageJournalReplacement,assertStorageJournalLocalReplacement,assertStorageJournalFlight,
+ assertStorageJournalRejection,assertStorageJournalLocalReset} from '../../shared/storage-journal-authority.js';
+const flight={owner:scope.owner,epoch:scope.epoch,operationId:'F',baseRevision:1,startSeq:1,endSeq:1};
+assertStorageJournalReplacement(scope,scope);
+assertStorageJournalLocalReplacement(scope,scope,1,false);
+assertStorageJournalFlight(scope,flight,cursor);
+assertStorageJournalRejection(scope,flight,cursor,{...cursor,revision:2},scope,1,'F');
+assertStorageJournalLocalReset(scope.owner,checkpoint);
+// @ts-expect-error local retirement requires a boolean cloud-head fact
+assertStorageJournalLocalReplacement(scope,scope,1,'false');
+// @ts-expect-error a flight revision cannot be text authority
+assertStorageJournalFlight(scope,{...flight,baseRevision:'1'},cursor);
+// @ts-expect-error rejection requires the actual numeric committed sequence
+assertStorageJournalRejection(scope,flight,cursor,cursor,scope,'1','F');
+// @ts-expect-error replacement cannot accept a textual sequence
+assertStorageJournalReplacement(scope,{...scope,seq:'1'});
+// @ts-expect-error a local reset requires a decoded epoch
+assertStorageJournalLocalReset(scope.owner,{...checkpoint,epoch:null});

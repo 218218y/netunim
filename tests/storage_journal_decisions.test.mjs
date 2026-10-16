@@ -8,6 +8,43 @@ const checkpoint={owner:scope.owner,epoch:scope.epoch,seq:0};
 const base={owner:scope.owner,epoch:scope.epoch,revision:2,ackSeq:0};
 const head={...checkpoint,seq:3};
 const cursor={...base,ackSeq:3};
+const flight={owner:scope.owner,epoch:scope.epoch,operationId:'F',baseRevision:2,startSeq:1,endSeq:3};
+
+test('same-epoch replacement cannot silently replace a different committed head',()=>{
+  decisions.assertStorageJournalReplacement(scope,head);
+  for(const cp of [{...head,seq:2},{...head,epoch:'B'},{...head,owner:'B:orders'}])
+    assert.throws(()=>decisions.assertStorageJournalReplacement(scope,cp),/storage_checkpoint_stale/);
+});
+test('local replacement can retire journal only with an exact source and no cloud authority',()=>{
+  decisions.assertStorageJournalLocalReplacement(scope,head,3,false);
+  for(const expected of [2,-1,NaN,3.5])assert.throws(()=>decisions.assertStorageJournalLocalReplacement(scope,head,expected,true),/storage_boundary_source_changed/);
+  for(const cp of [{...head,seq:2},{...head,epoch:'B'},{...head,owner:'B:orders'}])
+    assert.throws(()=>decisions.assertStorageJournalLocalReplacement(scope,cp,3,false),/storage_boundary_source_changed/);
+  assert.throws(()=>decisions.assertStorageJournalLocalReplacement(scope,head,3,true),/storage_boundary_local_cloud_head_exists/);
+});
+test('flight admission proves the exact revision and contiguous unacknowledged interval',()=>{
+  decisions.assertStorageJournalFlight(scope,flight,base);
+  for(const row of [{...flight,endSeq:4},{...flight,startSeq:2},{...flight,baseRevision:1},
+    {...flight,owner:'B:orders'},{...flight,epoch:'B'},{...flight,startSeq:4}])
+    assert.throws(()=>decisions.assertStorageJournalFlight(scope,row,base),/storage_flight_range/);
+  assert.throws(()=>decisions.assertStorageJournalFlight(scope,flight,null),/storage_flight_range/);
+});
+test('rejection replaces a flight only with the same ACK, a newer cloud revision and exact local checkpoint',()=>{
+  const next={...base,revision:3};
+  const reject=(f=flight,b=next,cp=head,expected=3)=>decisions.assertStorageJournalRejection(scope,f,base,b,cp,expected,'F');
+  reject();
+  for(const f of [null,{...flight,operationId:'OTHER'}])assert.throws(()=>reject(f),/storage_reject_mismatch/);
+  for(const b of [{...next,revision:2},{...next,ackSeq:1},{...next,epoch:'B'},{...next,owner:'B:orders'}])
+    assert.throws(()=>reject(flight,b),/storage_rebase_cursor/);
+  for(const cp of [{...head,seq:2},{...head,epoch:'B'},{...head,owner:'B:orders'}])
+    assert.throws(()=>reject(flight,next,cp),/storage_rebase_checkpoint_stale/);
+  assert.throws(()=>reject(flight,next,head,2),/storage_rebase_checkpoint_stale/);
+});
+test('local reset must install a zero checkpoint for the same owner and a real epoch',()=>{
+  decisions.assertStorageJournalLocalReset(scope.owner,{...checkpoint,epoch:'NEW'});
+  for(const cp of [{...checkpoint,seq:1},{...checkpoint,owner:'B:orders'},{...checkpoint,epoch:' '}])
+    assert.throws(()=>decisions.assertStorageJournalLocalReset(scope.owner,cp),/storage_state_reset_invalid/);
+});
 
 test('install retains epoch, pending-flight and owner rejection priority',()=>{
   const install=decisions.assertStorageJournalInstall;
@@ -59,7 +96,7 @@ test('cloud reset can install a new epoch only as a paired zero checkpoint and z
   }
 });
 
-test('actual decision mutations expose six distinct authority violations that the original guards reject',async()=>{
+test('actual decision mutations expose distinct authority violations that the original guards reject',async()=>{
   const original=fs.readFileSync('shared/storage-journal-authority.js','utf8');
   const cases=[
     ['assertStorageJournalInstall','observedEpoch!==expectedEpoch',fn=>fn(scope.owner,checkpoint,'B','E',false)],
@@ -68,12 +105,17 @@ test('actual decision mutations expose six distinct authority violations that th
     ['assertStorageJournalAckCheckpoint','checkpoint.seq!==scope.seq',fn=>fn(scope,{...head,seq:2})],
     ['assertStorageJournalAdoption','base.revision<prior.revision',fn=>fn(scope,head,{...cursor,revision:1},cursor,false)],
     ['assertStorageJournalCloudReset','base.ackSeq!==0',fn=>fn(scope.owner,checkpoint,{...base,ackSeq:1})],
+    ['assertStorageJournalReplacement','checkpoint.seq!==scope.seq',fn=>fn(scope,{...head,seq:2})],
+    ['assertStorageJournalLocalReplacement','if(hasCloudHead)',fn=>fn(scope,head,3,true)],
+    ['assertStorageJournalFlight','flight.startSeq!==base.ackSeq+1',fn=>fn(scope,{...flight,startSeq:2},base)],
+    ['assertStorageJournalRejection','next.revision<=flight.baseRevision',fn=>fn(scope,flight,base,base,head,3,'F')],
+    ['assertStorageJournalLocalReset','checkpoint.seq!==0',fn=>fn(scope.owner,head)],
   ];
   for(const [name,condition,invoke] of cases){
     assert.throws(()=>invoke(decisions[name]),name);
     const node=declaration(original,name),body=original.slice(node.start,node.end);
     assert.ok(body.includes(condition));
-    let changed=original.slice(0,node.start)+body.replace(condition,'false')+original.slice(node.end);
+    let changed=original.slice(0,node.start)+body.replace(condition,condition.startsWith('if(')?'if(false)':'false')+original.slice(node.end);
     changed=changed.replaceAll(/(['"])\.\/(.*?)\1/g,(_,quote,file)=>JSON.stringify(new URL('../shared/'+file,import.meta.url).href));
     const mutant=await import('data:text/javascript;base64,'+Buffer.from(changed).toString('base64'));
     assert.doesNotThrow(()=>invoke(mutant[name]),name);
@@ -84,7 +126,9 @@ test('each actual IDB transaction invokes its checked decision before its first 
   const source=fs.readFileSync('shared/storage-journal-idb.js','utf8');
   for(const [method,helper] of [['install','assertStorageJournalInstall'],['initializeCloudHead','assertStorageJournalInitialization'],
     ['compact','storageJournalCompactionThrough'],['acknowledge','assertStorageJournalAckCheckpoint'],
-    ['adoptCloudHead','assertStorageJournalAdoption'],['resetCloudHead','assertStorageJournalCloudReset']]){
+    ['adoptCloudHead','assertStorageJournalAdoption'],['resetCloudHead','assertStorageJournalCloudReset'],
+    ['replaceCheckpoint','assertStorageJournalReplacement'],['replaceLocalCheckpoint','assertStorageJournalLocalReplacement'],
+    ['beginFlight','assertStorageJournalFlight'],['rejectFlight','assertStorageJournalRejection'],['resetState','assertStorageJournalLocalReset']]){
     const node=declaration(source,method),body=source.slice(node.start,node.end);
     assert.ok(body.indexOf(helper+'(')>=0,method);
     assert.ok(body.indexOf(helper+'(')<body.indexOf('.put('),method);
