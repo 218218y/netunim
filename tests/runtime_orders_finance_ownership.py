@@ -44,6 +44,8 @@ FLOW = r"""(async()=>{
  if(caseName==='relogin'){cloudAuth.saveSession(null);cloudAuth.saveSession({user:{id:owner},access_token:'fixture-2',expires_at:9999999999})}
  if(caseName==='secondary')tab.primaryTab=false;
  const result=kind==='Bank'?{ok:true,fetchedAt:stamp,accounts:{business:{balance:500,accountId:'same-account',transactions:[]}}}:{ok:true,syncedAt:stamp,attemptedCount:1,profiles:[{profileId:'P',provider:'max',accounts:[{accountNumber:'card',txns:[{id:'issuer-tx',date:stamp,chargedAmount:-12,status:'completed'}]}]}],errors:[]};
+ if(caseName==='future-time')result.syncedAt='2099-01-01T00:00:00Z';
+ if(caseName==='malformed-time')result.profiles[0].accounts[0].frameFetchedAt='2026-02-30T10:00:00Z';
  if(caseName==='invalid-result'){result.attemptedCount=null;result.deferredCount=1}
  if(caseName==='invalid-errors'){result.ok=false;result.message='fixture provider failure';result.creditErrors=[{profileId:'P',deferred:true},null]}
  provider.resolve(new Response(JSON.stringify(result),{status:caseName==='invalid-errors'?400:200}));
@@ -56,7 +58,7 @@ FLOW = r"""(async()=>{
  check(JSON.stringify(await db.load(identity))===beforeMain,'Finance failure changed Main durable journal');
  check(state.notes.find(row=>row.id===note.id)?.content===note.content,'note identity/content lost');
  check(finance.queries.snapshot()[kind.toLowerCase()+'Error'].length>0,'missing operator failure');
- check(['network','lost-response','invalid-result','invalid-errors'].includes(caseName)?releases===1:releases===0,'former scope released lease under replacement authorization');
+ check(['network','lost-response','invalid-result','invalid-errors','future-time','malformed-time'].includes(caseName)?releases===1:releases===0,'former scope released lease under replacement authorization');
  if(caseName==='lost-response'){
    await finance.queries.refreshFinanceData();const recovered=finance.queries.snapshot();
    if(kind==='Bank'){check(recovered.bank.currentBalance===500,'committed Bank balance not recoverable');check(JSON.stringify(recovered.bank.feed.transactions.map(row=>row.id))==='["uncommitted"]','Bank record identity duplicated or lost')}
@@ -67,14 +69,14 @@ FLOW = r"""(async()=>{
  return {projectionRetained:true,archiveRetained:true,journalRetained:true,noteRetained:true,scopedPublication:true,visibleError:true};
 })()"""
 
-cases=('logout', 'account', 'relogin', 'secondary', 'publication', 'network', 'lost-response', 'invalid-result', 'invalid-errors')
+cases=('future-time','malformed-time','logout', 'account', 'relogin', 'secondary', 'publication', 'network', 'lost-response', 'invalid-result', 'invalid-errors')
 parser=argparse.ArgumentParser()
 parser.add_argument('--kind',choices=('Bank','Credit'))
 parser.add_argument('--case',choices=cases)
 args=parser.parse_args()
 for kind in ([args.kind] if args.kind else ('Bank', 'Credit')):
     for case in ([args.case] if args.case else cases):
-        if kind=='Bank' and case.startswith('invalid-'):
+        if kind=='Bank' and (case.startswith('invalid-') or case in ('future-time','malformed-time')):
             continue
         with BrowserSession(ROOT / 'netunim-orders/site', 'orders-finance-' + kind.lower() + '-' + case) as browser:
             result = browser.evaluate(FLOW.replace('__KIND__', json.dumps(kind)).replace('__CASE__', json.dumps(case)), timeout=45)

@@ -1,3 +1,5 @@
+import { observationTimeMs } from './observation-time.js';
+
 export const CREDIT_SYNC_MODE_QUICK='quick';
 export const CREDIT_SYNC_MODE_FORECAST='forecast';
 export const CREDIT_SYNC_MODE_RECOVERY='recovery';
@@ -46,8 +48,8 @@ export function creditSmartSyncMode(syncValue,{now=new Date(),profileIds=[],fore
       if(!monthRows.some(item=>item.index<=baselineIndex))return CREDIT_SYNC_MODE_RECOVERY;
       const byIndex=new Map(monthRows.map(item=>[item.index,item.row]));
       for(const monthIndex of requiredForecast){
-        const slice=byIndex.get(monthIndex),fetchedAt=Date.parse(slice?.fetchedAt||'');
-        if(!slice||slice.status!=='fresh'||slice.fetchStatus!=='success'||!Number.isFinite(fetchedAt)||nowDate.getTime()-fetchedAt>=forecastRefreshMs){needsForecast=true;break}
+        const slice=byIndex.get(monthIndex),fetchedAt=observationTimeMs(slice?.fetchedAt,nowDate.getTime());
+        if(!slice||slice.status!=='fresh'||slice.fetchStatus!=='success'||fetchedAt===null||nowDate.getTime()-fetchedAt>=forecastRefreshMs){needsForecast=true;break}
       }
     }
   }

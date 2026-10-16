@@ -26,3 +26,23 @@ skew remains supported. The candidate chain runs this regression on clean instal
 One shared checked observation-time module adds one eager module per app. Measured
 startup source is 1,740,976 bytes / 299 modules in Kupa and 2,360,426 / 399 in Orders.
 Existing byte ceilings remain unchanged; module ceilings explicitly increase by one.
+
+## Credit observation and freshness
+
+The current response reader validates envelope/profile `syncedAt`, profile
+`attemptedAt`, month `fetchedAt`, and frame/pending fetch clocks using the same
+five-minute tolerance. Null/omitted observations remain absent evidence for
+supported older responses and unavailable components. Future billing dates and
+intentional retry deadlines keep their separate meaning.
+
+Both Bank/Credit automatic freshness and Credit smart forecast selection reject
+invalid/future persisted observations as due. A valid clock on a second client
+can therefore recover a poisoned older feed without deleting financial history.
+The current network reader and historical persisted readers remain separate.
+No server publication clock is invented: Finance commit time is not yet a
+dedicated per-provider successful-observation clock and cannot safely replace it.
+
+Tests cover every admitted observation position, exact skew boundaries, both
+actual merge models, and future/malformed replies in both native refresh owners
+with unchanged readout/journals and zero Finance publication. No eager modules
+or byte ceilings are added in this stage.
