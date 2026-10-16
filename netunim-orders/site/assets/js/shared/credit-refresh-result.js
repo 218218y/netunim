@@ -69,6 +69,7 @@ export function readCreditStatusProfiles(status) {
 function profiles(value) {
   const seen=new Set();
   return rows(value).map(profile => {
+    if(typeof profile.profileId!=='string'||!profile.profileId.trim())throw invalid();
     assertCreditIdentity(profile.profileId);
     if(seen.has(profile.profileId))throw invalid();
     seen.add(profile.profileId);
