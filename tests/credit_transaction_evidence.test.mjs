@@ -11,7 +11,7 @@ for(const status of [undefined,null,'garbage',true,false,0,'PENDING',' completed
     const bad={...tx,status};
     assert.throws(()=>normalizeCreditScrapeTransaction(bad),{code:'CREDIT_PROVIDER_SCHEMA_ERROR'});
     for(const account of [{txns:[bad]},{pendingTransactions:[bad]},{unassignedTransactions:[bad]},
-      {months:[{transactions:[tx,bad]}]}]){
+      {months:[{month:'2026-10',transactions:[tx,bad]}]}]){
       assert.throws(()=>readCreditRefreshResult(response(account)),{code:'CREDIT_REFRESH_RESULT_INVALID'});
     }
   });
@@ -33,7 +33,7 @@ test('historical persisted Credit data remains readable, while current network r
   }
 });
 test('a current v2 handshake cannot be downgraded by omitting the response protocol version',()=>{
-  for(const account of [{txns:[{id:'T'}]},{months:[{transactions:[{id:'T'}]}]},
+  for(const account of [{txns:[{id:'T'}]},{months:[{month:'2026-10',transactions:[{id:'T'}]}]},
     {pendingTransactions:[{id:'T'}]},{unassignedTransactions:[{id:'T'}]}]){
     const result=response(account);delete result.contractVersion;
     assert.throws(()=>readCreditRefreshResult(result),{code:'CREDIT_REFRESH_RESULT_INVALID'});

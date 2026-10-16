@@ -17,14 +17,14 @@ const clean = (key, value) =>
 const ast = (source, name) =>
   JSON.parse(JSON.stringify(declaration(source, name), clean));
 for (const site of ['orders', 'kupa']) {
-  test(site+' current publication rejects an unversioned reply with missing transaction status before merge/write',async()=>{
+  for(const [evidence,account] of [['missing status',{txns:[{id:'T'}]}],['missing monthly rows',{months:[{month:'2026-10',fetchStatus:'success'}]}],['missing pending rows',{pendingStatus:'success'}],['boolean amount',{txns:[{id:'T',status:'completed',chargedAmount:true}]}]])test(site+' current publication rejects '+evidence+' before merge/write',async()=>{
     const create=site==='orders'?createOrdersCreditRefresh:createKupaCreditRefresh;
     const guard=()=>{},failures=[];let writes=0,merges=0,scans=0,releases=0;
     const status={bridgeVersion:73,contractVersion:2,profiles:[{profileId:'P'}]};
     const owner=create({authority:{capture:()=>guard},
       cloud:{refresh:async()=>({verified:true,state:{}}),readSync:()=>({profiles:[]})},
       device:{capture:()=>guard,readStatus:async()=>status,status:()=>status,error:()=>'',supported:()=>true,
-        sync:async()=>{scans++;return {profiles:[{profileId:'P',accounts:[{txns:[{id:'T'}]}]}]};},refreshStatus:async()=>status,reportFailure:guard},
+        sync:async()=>{scans++;return {profiles:[{profileId:'P',accounts:[account]}]};},refreshStatus:async()=>status,reportFailure:guard},
       leases:{createToken:()=> 'T',reportFailure:guard,commands:{acquire:(leaseName,leaseToken)=>({
         ready:Promise.resolve({acquired:true,leaseName,leaseToken,fenceEpoch:1,assertCurrent:guard}),
         assertCurrent:guard,close:async()=>{releases++;}})},runtime:{isPending:()=>false,drain:async()=>{},dispose:()=>true}},
