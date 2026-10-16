@@ -7,7 +7,9 @@ import {readStorageRecord,sealStorageRecord} from './storage-journal-model.js';
 import {historicalShadowRoleForSide} from './storage-v2-persisted-compat.js';
 import {assertCloudRecoveryHead} from './storage-cloud-recovery.js';
 import {readStorageCheckpoint,captureStorageCheckpoint,readStorageJournalDeletionKeys} from './storage-checkpoint.js';
-import {captureStorageJournalOperation} from './storage-journal-authority.js';
+import {captureStorageJournalOperation,captureStorageCloudBase,captureStorageCloudFlight,captureStorageCloudControl,
+  captureStorageExpectedHead,captureStorageRecoveryHead,captureStorageLocalHead,captureStorageCleanHead,
+  captureStorageJournalPayload} from './storage-journal-authority.js';
 
 export function createStorageJournalDb({name='netunim-storage-v2',operationSchema}={}){
   // Generic journal consumers may configure a schema; application namespaces
@@ -63,7 +65,7 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
   function claim(owner,epoch,writer){return change(owner,(tx,current,done)=>{if(current.metadata?.epoch!==epoch)throw new Error('storage_epoch_changed');readStorageCloudHead({base:current.bases,flight:current.flights,control:current.controls},{owner,epoch,seq:current.metadata.seq});tx.objectStore('metadata').put({...current.metadata,writer},owner);done(true)})}
   async function initializeCloudHead(owner,checkpoint,base,writer,operation=null){
     checkpoint=captureStorageCheckpoint(checkpoint);
-    base=structuredClone(base);readStorageCloudBase(base);
+    base=captureStorageCloudBase(base);
     if(operation!==null)operation=captureStorageJournalOperation(operation,owner,checkpoint.data.epoch,configuredSchema);
     return change(owner,(tx,current,done)=>{
     // Initialization is create-only. It cannot erase a previous owner's work,
@@ -116,15 +118,17 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
     for(const key of current.journalKeys)tx.objectStore('journal').delete(key);
     tx.objectStore('checkpoints').put(checkpoint,owner);done(true);
   })}
-  function setBase(owner,epoch,writer,base){return change(owner,(tx,current,done)=>{assertFence(current,owner,epoch,writer);if(current.flights)throw new Error('storage_flight_pending');const data=readStorageRecord(base);if(data.owner!==owner||data.epoch!==epoch||!Number.isSafeInteger(data.revision)||data.revision<0||!Number.isSafeInteger(data.ackSeq)||data.ackSeq<0||data.ackSeq>current.metadata.seq)throw new Error('storage_cloud_base_mismatch');readStorageCloudBase(base);tx.objectStore('bases').put(base,owner);done(true)})}
-  function beginFlight(owner,epoch,writer,flight){return change(owner,(tx,current,done)=>{
+  async function setBase(owner,epoch,writer,base){base=captureStorageCloudBase(base);
+    return change(owner,(tx,current,done)=>{assertFence(current,owner,epoch,writer);if(current.flights)throw new Error('storage_flight_pending');const data=readStorageRecord(base);if(data.owner!==owner||data.epoch!==epoch||!Number.isSafeInteger(data.revision)||data.revision<0||!Number.isSafeInteger(data.ackSeq)||data.ackSeq<0||data.ackSeq>current.metadata.seq)throw new Error('storage_cloud_base_mismatch');readStorageCloudBase(base);tx.objectStore('bases').put(base,owner);done(true)})}
+  async function beginFlight(owner,epoch,writer,flight){flight=captureStorageCloudFlight(flight);return change(owner,(tx,current,done)=>{
     assertFence(current,owner,epoch,writer);const data=readStorageRecord(flight);
     const base=current.bases&&readStorageCloudBase(current.bases);
     if(data.owner!==owner||data.epoch!==epoch||data.endSeq>current.metadata.seq||!base||data.baseRevision!==base.revision||data.startSeq!==base.ackSeq+1||data.endSeq<data.startSeq)throw new Error('storage_flight_range');readStorageCloudFlight(flight);
     if(current.flights){if(JSON.stringify(current.flights)!==JSON.stringify(flight))throw new Error('storage_flight_pending');done(current.flights);return}
     tx.objectStore('flights').put(flight,owner);done(flight);
   })}
-  async function acknowledge(owner,epoch,writer,operationId,base,{checkpoint=null,control=null}={}){if(checkpoint!==null)checkpoint=captureStorageCheckpoint(checkpoint);return change(owner,(tx,current,done)=>{
+  async function acknowledge(owner,epoch,writer,operationId,base,{checkpoint=null,control=null}={}){
+    base=captureStorageCloudBase(base);if(control!==null)control=captureStorageCloudControl(control);if(checkpoint!==null)checkpoint=captureStorageCheckpoint(checkpoint);return change(owner,(tx,current,done)=>{
     assertFence(current,owner,epoch,writer);if(!current.flights||readStorageCloudFlight(current.flights).operationId!==operationId)throw new Error('storage_ack_mismatch');
     const acknowledged=readStorageRecord(base),flight=readStorageCloudFlight(current.flights);
     assertStorageCloudAck(acknowledged,flight,{owner,epoch});readStorageCloudBase(base);
@@ -133,7 +137,8 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
     tx.objectStore('bases').put(base,owner);tx.objectStore('flights').delete(owner);done(true);
     // ACK never deletes journal entries. Only an atomic checkpoint can compact.
   })}
-  async function rejectFlight(owner,epoch,writer,operationId,base,{checkpoint,expectedSeq,control=null}={}){checkpoint=captureStorageCheckpoint(checkpoint);return change(owner,(tx,current,done)=>{
+  async function rejectFlight(owner,epoch,writer,operationId,base,{checkpoint,expectedSeq,control=null}={}){
+    base=captureStorageCloudBase(base);if(control!==null)control=captureStorageCloudControl(control);checkpoint=captureStorageCheckpoint(checkpoint);return change(owner,(tx,current,done)=>{
     assertFence(current,owner,epoch,writer);const flight=current.flights&&readStorageCloudFlight(current.flights),prior=current.bases&&readStorageCloudBase(current.bases),next=readStorageRecord(base);
     if(!flight||flight.operationId!==operationId)throw new Error('storage_reject_mismatch');
     if(!prior||next.owner!==owner||next.epoch!==epoch||next.ackSeq!==prior.ackSeq||!Number.isSafeInteger(next.revision)||next.revision<=flight.baseRevision)throw new Error('storage_rebase_cursor');
@@ -146,13 +151,15 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
     tx.objectStore('checkpoints').put(checkpoint,owner);tx.objectStore('bases').put(base,owner);tx.objectStore('flights').delete(owner);
     if(control){const nextControl=readStorageRecord(control);if(nextControl.owner!==owner||nextControl.epoch!==epoch)throw new Error('storage_control_scope');readStorageCloudControl(control);tx.objectStore('controls').put(control,owner)}else tx.objectStore('controls').delete(owner);done(true);
   })}
-  function setControl(owner,epoch,writer,control){return change(owner,(tx,current,done)=>{assertFence(current,owner,epoch,writer);const data=readStorageRecord(control);if(data.owner!==owner||data.epoch!==epoch)throw new Error('storage_control_scope');readStorageCloudControl(control);tx.objectStore('controls').put(control,owner);done(true)})}
-  function clearControl(owner,epoch,writer,{expectedHead=null}={}){return change(owner,(tx,current,done)=>{
+  async function setControl(owner,epoch,writer,control){control=captureStorageCloudControl(control);
+    return change(owner,(tx,current,done)=>{assertFence(current,owner,epoch,writer);const data=readStorageRecord(control);if(data.owner!==owner||data.epoch!==epoch)throw new Error('storage_control_scope');readStorageCloudControl(control);tx.objectStore('controls').put(control,owner);done(true)})}
+  async function clearControl(owner,epoch,writer,{expectedHead=null}={}){expectedHead=captureStorageExpectedHead(expectedHead);return change(owner,(tx,current,done)=>{
     assertFence(current,owner,epoch,writer);
     if(expectedHead&&(current.metadata.seq!==expectedHead.seq||current.flights||current.checkpoints?.checksum!==expectedHead.checkpointChecksum||current.bases?.checksum!==expectedHead.baseChecksum||current.controls?.checksum!==expectedHead.controlChecksum))throw new Error('storage_control_head_changed');
     tx.objectStore('controls').delete(owner);done(true);
   })}
-  async function commitCloudRecovery(owner,epoch,writer,checkpoint,{expectedHead,conflictKind=null,isCurrent=()=>true}={}){checkpoint=captureStorageCheckpoint(checkpoint);return change(owner,(tx,current,done)=>{
+  async function commitCloudRecovery(owner,epoch,writer,checkpoint,{expectedHead,conflictKind=null,isCurrent=()=>true}={}){
+    checkpoint=captureStorageCheckpoint(checkpoint);expectedHead=captureStorageRecoveryHead(expectedHead);return change(owner,(tx,current,done)=>{
     assertFence(current,owner,epoch,writer);
     if(!isCurrent())throw new Error('storage_cloud_scope_changed');
     const decoded=readStorageCloudHead({base:current.bases,flight:current.flights,control:current.controls},{owner,epoch,seq:current.metadata.seq});
@@ -165,7 +172,8 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
     // The base/ACK, journal, physical keys and operation IDs are untouched.
     done(true);
   })}
-  async function adoptCloudHead(owner,epoch,writer,checkpoint,base,{expectedHead=null}={}){checkpoint=captureStorageCheckpoint(checkpoint);return change(owner,(tx,current,done)=>{
+  async function adoptCloudHead(owner,epoch,writer,checkpoint,base,{expectedHead=null}={}){
+    base=captureStorageCloudBase(base);expectedHead=captureStorageExpectedHead(expectedHead);checkpoint=captureStorageCheckpoint(checkpoint);return change(owner,(tx,current,done)=>{
     assertFence(current,owner,epoch,writer);if(current.flights)throw new Error('storage_flight_pending');
     if(expectedHead&&(current.metadata.seq!==expectedHead.seq||current.checkpoints?.checksum!==expectedHead.checkpointChecksum||current.bases?.checksum!==expectedHead.baseChecksum||(current.controls?.checksum??null)!==expectedHead.controlChecksum))throw new Error('storage_cloud_adoption_stale');
     const nextCheckpoint=readStorageCheckpoint(checkpoint),nextBase=readStorageRecord(base),prior=current.bases&&readStorageCloudBase(current.bases);
@@ -174,7 +182,8 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
     if(nextBase.owner!==owner||nextBase.epoch!==epoch||nextBase.ackSeq!==current.metadata.seq||!Number.isSafeInteger(nextBase.revision)||nextBase.revision<prior.revision)throw new Error('storage_cloud_base_mismatch');readStorageCloudBase(base);
     tx.objectStore('checkpoints').put(checkpoint,owner);tx.objectStore('bases').put(base,owner);tx.objectStore('controls').delete(owner);done(true);
   })}
-  async function resetState(owner,epoch,writer,checkpoint,{expectedLocalHead=null}={}){checkpoint=captureStorageCheckpoint(checkpoint);return change(owner,(tx,current,done)=>{
+  async function resetState(owner,epoch,writer,checkpoint,{expectedLocalHead=null}={}){
+    expectedLocalHead=captureStorageLocalHead(expectedLocalHead);checkpoint=captureStorageCheckpoint(checkpoint);return change(owner,(tx,current,done)=>{
     assertFence(current,owner,epoch,writer);const nextCheckpoint=readStorageCheckpoint(checkpoint);
     if(expectedLocalHead&&(current.metadata.seq!==expectedLocalHead.seq||current.metadata.epoch!==expectedLocalHead.epoch||current.checkpoints?.checksum!==expectedLocalHead.checkpointChecksum||current.bases||current.flights||current.controls))throw new Error('storage_main_projection_head_changed');
     if(nextCheckpoint.owner!==owner||nextCheckpoint.seq!==0||!String(nextCheckpoint.epoch||'').trim())throw new Error('storage_state_reset_invalid');
@@ -182,7 +191,8 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
     for(const key of current.journalKeys)tx.objectStore('journal').delete(key);
     tx.objectStore('bases').delete(owner);tx.objectStore('flights').delete(owner);tx.objectStore('controls').delete(owner);done(true);
   })}
-  async function resetCloudHead(owner,epoch,writer,checkpoint,base,{expectedCleanHead=null}={}){checkpoint=captureStorageCheckpoint(checkpoint);return change(owner,(tx,current,done)=>{
+  async function resetCloudHead(owner,epoch,writer,checkpoint,base,{expectedCleanHead=null}={}){
+    base=captureStorageCloudBase(base);expectedCleanHead=captureStorageCleanHead(expectedCleanHead);checkpoint=captureStorageCheckpoint(checkpoint);return change(owner,(tx,current,done)=>{
     assertFence(current,owner,epoch,writer);const nextCheckpoint=readStorageCheckpoint(checkpoint),nextBase=readStorageRecord(base);
     if(expectedCleanHead){const prior=current.bases&&readStorageCloudBase(current.bases);if(current.metadata.seq!==expectedCleanHead.seq||current.metadata.epoch!==expectedCleanHead.epoch||current.checkpoints?.checksum!==expectedCleanHead.checkpointChecksum||!prior||prior.revision!==expectedCleanHead.revision||prior.ackSeq!==expectedCleanHead.seq||current.flights||current.controls)throw new Error('storage_main_projection_head_changed')}
     if(nextCheckpoint.owner!==owner||nextBase.owner!==owner||nextCheckpoint.epoch!==nextBase.epoch||nextCheckpoint.seq!==0||nextBase.ackSeq!==0||!Number.isSafeInteger(nextBase.revision)||nextBase.revision<0)throw new Error('storage_cloud_reset_invalid');readStorageCloudBase(base);
@@ -211,7 +221,7 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
     request.onsuccess=()=>{try{resolve(request.result?readStorageRecord(request.result):null)}catch(error){reject(error)}};
     request.onerror=()=>reject(request.error);
   }))}
-  function beginBoundary(owner,record){return boundaryTransaction((store,done,fail)=>{
+  async function beginBoundary(owner,record){record=captureStorageJournalPayload(record);return boundaryTransaction((store,done,fail)=>{
     const request=store.get(owner);request.onsuccess=()=>{try{
       if(request.result){const prior=readStorageRecord(request.result);if(prior.id===record.id&&prior.phase==='complete'){done(prior);return}if(prior.phase!=='complete')throw new Error('storage_boundary_pending')}
       if(record.owner!==owner||record.phase!=='prepared')throw new Error('storage_boundary_invalid');
@@ -241,7 +251,7 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
     request.onerror=()=>reject(request.error);
   }))}
   function readBootstrapGroup(scope){return bootstrapRecord(scope)}
-  function beginBootstrapGroup(scope,record){return open().then(db=>new Promise((resolve,reject)=>{
+  async function beginBootstrapGroup(scope,record){record=captureStorageJournalPayload(record);return open().then(db=>new Promise((resolve,reject)=>{
     const tx=db.transaction(['bootstrap-groups'],'readwrite'),store=tx.objectStore('bootstrap-groups'),request=store.get(scope);let result=null,error=null;
     request.onsuccess=()=>{try{
       const existing=request.result&&readStorageRecord(request.result);
@@ -254,7 +264,7 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
     }catch(cause){error=cause;try{tx.abort()}catch{}}};
     tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_bootstrap_group_aborted'));tx.onerror=()=>{error??=tx.error};
   }))}
-  function advanceBootstrapGroup(scope,id,fromPhase,toPhase,patch={}){return open().then(db=>new Promise((resolve,reject)=>{
+  async function advanceBootstrapGroup(scope,id,fromPhase,toPhase,patch={}){patch=captureStorageJournalPayload(patch);return open().then(db=>new Promise((resolve,reject)=>{
     const tx=db.transaction(['bootstrap-groups'],'readwrite'),store=tx.objectStore('bootstrap-groups'),request=store.get(scope);let result=null,error=null;
     request.onsuccess=()=>{try{
       if(!request.result)throw new Error('storage_bootstrap_group_missing');
@@ -299,7 +309,7 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
     request.onsuccess=()=>{try{resolve(request.result?readStorageRecord(request.result):null)}catch(error){reject(error)}};
     request.onerror=()=>reject(request.error);
   }))}
-  function beginLocalBirth(scope,record){return open().then(db=>new Promise((resolve,reject)=>{
+  async function beginLocalBirth(scope,record){record=captureStorageJournalPayload(record);return open().then(db=>new Promise((resolve,reject)=>{
     const tx=db.transaction(['local-births'],'readwrite'),store=tx.objectStore('local-births'),request=store.get(scope);let result=null,error=null;
     request.onsuccess=()=>{try{
       if(request.result){result=readStorageRecord(request.result);if(result.id!==record.id)throw new Error('storage_local_birth_pending');return}
