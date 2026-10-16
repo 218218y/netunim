@@ -159,6 +159,10 @@
     {
       "version": "20261016130000",
       "name": "bank_business_evidence_authority"
+    },
+    {
+      "version": "20261016140000",
+      "name": "bank_snapshot_temporal_authority"
     }
   ]
 }

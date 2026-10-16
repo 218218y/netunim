@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-eaca5aa57961';
+const CACHE='orders-app-shell-esm-0bef06d64769';
 const SHELL=[
   './',
   './index.html',
@@ -277,6 +277,7 @@ const SHELL=[
   './assets/js/shared/notes-workbook-merge.js',
   './assets/js/shared/notes-workbook.css',
   './assets/js/shared/notes-workbook.js',
+  './assets/js/shared/observation-time.js',
   './assets/js/shared/orders-finance.js',
   './assets/js/shared/response-evidence.js',
   './assets/js/shared/restore-group-keys.js',

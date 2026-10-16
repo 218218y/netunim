@@ -271,6 +271,7 @@ with IsolatedPostgres(schema_files=all_files) as db:
         'Production-upgrade replay and clean install disagree on the bank merge function contract'
     db.sql((ROOT / 'tests/finance_fencing_server.sql').read_text(encoding='utf8'))
     db.sql((ROOT / 'tests/bank_transaction_evidence_server.sql').read_text(encoding='utf8'))
+    db.sql((ROOT / 'tests/bank_temporal_authority_server.sql').read_text(encoding='utf8'))
     business_cases = json.loads((ROOT / 'tests/fixtures/bank-business-wire-evidence.json').read_text(encoding='utf8'))
     business_sql = (ROOT / 'tests/bank_business_evidence_server.sql').read_text(encoding='utf8')
     db.sql(business_sql.replace('__BANK_BUSINESS_CASES__', json.dumps(business_cases).replace("'", "''")))

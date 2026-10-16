@@ -236,7 +236,7 @@ test('Kupa refresh persists recognized bank sources across a rolling snapshot an
   const model={state:state()},saved=[];
   const controller=createDomainsBankController({effects:createFinanceBrowserEffects(),autoScope:()=> 'test-owner',operationScope:{capture:()=>()=>{},captureRead:()=>()=>{}},model,session:{connectionMode:'local'},checksSession:{},sharedChecksHaveLocalWork:()=>false,
     saveState:async()=>{saved.push(structuredClone(model.state));return true},syncSharedChecksFromCloud:async()=>true,sharedChecksObservedSequence:()=>0,toast:()=>{},render:()=>{},
-    bridge:{getBridgeToken:()=> 'paired',autoEnabled:()=>false,fetchBalance:async()=>({fetchedAt:'2026-09-20',accounts:{
+    bridge:{getBridgeToken:()=> 'paired',autoEnabled:()=>false,fetchBalance:async()=>({fetchedAt:'2026-09-20T12:00:00Z',accounts:{
       business:{accountId:'business',balance:20000,transactions:[],transactionCoverage:{complete:true,from:'2026-08-21',to:'2026-09-20'}},
       home:{accountId:'home',balance:20000,transactions:[],transactionCoverage:{complete:true,from:'2026-08-21',to:'2026-09-20'}},
     }})},

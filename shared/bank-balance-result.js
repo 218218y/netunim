@@ -1,6 +1,7 @@
 // @ts-check
 import { readBankMoney as number } from './bank-money-value.js';
 import {readBankTransactions} from './bank-transaction-evidence.js';
+import { observationTimeMs } from './observation-time.js';
 
 const bankAccountEvidence = Symbol('bank_account_evidence');
 /** @typedef {Readonly<Record<string,unknown>&{balance:number,availableBalance:number|null,creditLimit:number|null,creditLimitUsed:number|null,creditLimitUsedPercent:number|null,[bankAccountEvidence]:true}>} BankAccountSnapshot */
@@ -55,16 +56,23 @@ function account(value, role) {
  * boundary. Validate both accounts before any archive or durable publication.
  * Issuer transactions, account metadata and partial-home failure policy remain
  * with their current owners; this decoder does not grant a cloud ACK.
- * @param {unknown} value @returns {BankBalanceResult}
+ * @param {unknown} value @param {number} [now] @returns {BankBalanceResult}
  */
-export function readBankBalanceResult(value) {
+export function readBankBalanceResult(value, now = Date.now()) {
   if (!record(value)) throw invalidBalance('business');
+  // Omission remains supported for old balance-only responses. A supplied bad
+  // clock must never be converted into a successful observation at local now.
+  const fetchedAt = value.fetchedAt === undefined ? new Date(now).toISOString() : value.fetchedAt;
+  if (observationTimeMs(fetchedAt, now) === null)
+    throw Object.assign(new Error('Bank Bridge returned an invalid observation time'), {
+      code: 'BANK_OBSERVATION_TIME_INVALID', retryable: false
+    });
   const accounts = record(value.accounts) ? value.accounts : null;
   const business = account(accounts?.business || value, 'business');
   const home = accounts?.home ? account(accounts.home, 'home') : null;
   const failures = record(value.accountFailures) ? value.accountFailures : null;
   const homeFailure = failures?.home || null;
-  return Object.freeze({ source: Object.freeze({ ...value }), business, home, homeFailure });
+  return Object.freeze({ source: Object.freeze({ ...value, fetchedAt }), business, home, homeFailure });
 }
 
 /**

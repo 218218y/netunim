@@ -35,7 +35,7 @@ FLOW=r"""(async()=>{
  globalThis.fetch=(url,options)=>{
   const path=String(url);
   if(path.endsWith('/status')){if(caseName==='pairing')localStorage.setItem('netunim_kupa_bank_bridge_token_v1','replacement-pairing');return Promise.resolve(new Response(JSON.stringify({ok:true,bridgeVersion:caseName==='old-runtime'?73:74,configured:true})))}
-  if(path.includes('/balance')){scans++;return Promise.resolve(new Response(JSON.stringify({ok:true,fetchedAt:stamp,accounts:{business:{balance:caseName==='invalid-business'?null:caseName==='blank'?' ':caseName==='zero'?0:500,accountId:'same-account',transactions:caseName==='bad-status'?[{id:'T',amount:1,currency:'ILS',status:'garbage'}]:caseName==='bad-check-evidence'?[{id:'T',amount:1,currency:'ILS',status:'completed',checkDetails:{kind:'deposit',hasDocumentReference:'false'}}]:caseName==='bad-settlement-evidence'?[{id:'T',amount:1,currency:'ILS',status:'completed',creditSettlementDetails:{provider:'max',detailFetched:'false'}}]:[],transactionCoverage:{complete:true,from:'2026-10-01',to:'2026-10-16'},availableBalance:null,creditLimit:null,creditLimitUsed:null,creditLimitUsedPercent:null},home:caseName==='invalid-home'?{balance:null,accountId:'home-account',transactions:[]}:null},...(caseName==='invalid-home-failure'?{accountFailures:{home:'invalid diagnostic'}}:{})})))}
+  if(path.includes('/balance')){scans++;return Promise.resolve(new Response(JSON.stringify({ok:true,fetchedAt:caseName==='future-time'?'2099-01-01T00:00:00Z':caseName==='malformed-time'?'2026-02-30T10:00:00Z':stamp,accounts:{business:{balance:caseName==='invalid-business'?null:caseName==='blank'?' ':caseName==='zero'?0:500,accountId:'same-account',transactions:caseName==='bad-status'?[{id:'T',amount:1,currency:'ILS',status:'garbage'}]:caseName==='bad-check-evidence'?[{id:'T',amount:1,currency:'ILS',status:'completed',checkDetails:{kind:'deposit',hasDocumentReference:'false'}}]:caseName==='bad-settlement-evidence'?[{id:'T',amount:1,currency:'ILS',status:'completed',creditSettlementDetails:{provider:'max',detailFetched:'false'}}]:[],transactionCoverage:{complete:true,from:'2026-10-01',to:'2026-10-16'},availableBalance:null,creditLimit:null,creditLimitUsed:null,creditLimitUsedPercent:null},home:caseName==='invalid-home'?{balance:null,accountId:'home-account',transactions:[]}:null},...(caseName==='invalid-home-failure'?{accountFailures:{home:'invalid diagnostic'}}:{})})))}
   if(path.includes('/rest/v1/order_management_documents?'))return Promise.resolve(new Response('[]'));
   if(path.includes('/storage/v1/object/list/'))return Promise.resolve(new Response('[]'));
   return originalFetch(url,options);
@@ -69,7 +69,7 @@ FLOW=r"""(async()=>{
 
 parser=argparse.ArgumentParser()
 parser.add_argument('--site',choices=('kupa','orders'),action='append')
-cases=('bad-status','bad-check-evidence','bad-settlement-evidence','invalid-business','invalid-home','blank','zero','optional','old-runtime','pairing','local-cloud-lease','invalid-home-failure')
+cases=('future-time','malformed-time','bad-status','bad-check-evidence','bad-settlement-evidence','invalid-business','invalid-home','blank','zero','optional','old-runtime','pairing','local-cloud-lease','invalid-home-failure')
 parser.add_argument('--case',choices=cases,action='append')
 args=parser.parse_args()
 for site in args.site or ('kupa','orders'):
