@@ -1,0 +1,72 @@
+{
+  "project_id": "bupoidcurcxuypfrjqio",
+  "observed_on": "2026-10-16",
+  "source": "Authenticated Supabase connector, read-only schema_migrations and pg_proc queries",
+  "scope": "The two Bank authority migrations and eight active function bodies only",
+  "migrations": [
+    {
+      "version": "20261016120000",
+      "name": "bank_transaction_status_authority",
+      "sha256": "a69d2089a82e2e3e7d3eef016a90a680dbb7689f4e83c0581ff173e26a5662cc"
+    },
+    {
+      "version": "20261016130000",
+      "name": "bank_business_evidence_authority",
+      "sha256": "35988bb5ea783ac4afdbb5a7b83b9d02b854381874a3a54dd151c8b3aa19cde1"
+    }
+  ],
+  "functions": [
+    {
+      "schema": "netunim_internal",
+      "name": "assert_bank_transaction_evidence",
+      "body_sha256": "728c34e0bf85a8694c10331017262f3520898fed31f5b9d4efdc58fac4d4b05d",
+      "security_definer": false
+    },
+    {
+      "schema": "netunim_internal",
+      "name": "assert_bank_transaction_statuses",
+      "body_sha256": "6238a35026ef31240f3ac7a2e2e6c560cfb86dd62fe18420262df1a93b0312fe",
+      "security_definer": false
+    },
+    {
+      "schema": "netunim_internal",
+      "name": "bank_business_fields_valid",
+      "body_sha256": "8c6c852da87f9a303c427bbfbb96309be2035686fc7251c3b22022d1a20778bf",
+      "security_definer": false
+    },
+    {
+      "schema": "netunim_internal",
+      "name": "bank_business_integer_valid",
+      "body_sha256": "f7f2453ee36a7230b05ac831ed7ae15df3d8853244b935b2fca802c2b09d467c",
+      "security_definer": false
+    },
+    {
+      "schema": "netunim_internal",
+      "name": "bank_business_positive_money_valid",
+      "body_sha256": "01bbb5b252ebb6f6944d5dbcfa08ac841dc824f1c85c4a64dbfe4eb7097a5920",
+      "security_definer": false
+    },
+    {
+      "schema": "netunim_internal",
+      "name": "bank_business_text_valid",
+      "body_sha256": "d6cbf402927fddb3d470bac507bc164b9df64e0bb6fbc99472c1cdc9c3ab2052",
+      "security_definer": false
+    },
+    {
+      "schema": "public",
+      "name": "merge_bank_transactions_v6",
+      "body_sha256": "b1756a03adba117147645efb20a051ccf3004786a01c6411c76f0e0bbc41b5ad",
+      "security_definer": true
+    },
+    {
+      "schema": "public",
+      "name": "sync_bank_transactions_snapshot_v6",
+      "body_sha256": "f1688d375acdeacb2e213d6e9ec263af2ad2f49f3d00ddf46dad1e608eb32da8",
+      "security_definer": true
+    }
+  ],
+  "limitations": [
+    "Historical observation, not a replacement for the live deployment gate",
+    "Does not certify full schema drift, physical machines or live provider behavior"
+  ]
+}

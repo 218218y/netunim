@@ -46,6 +46,12 @@ A passed synthetic gate is not evidence of live providers or physical machines.
 
 ## Prioritized remaining work
 
+Both Bank authority migrations (`20261016120000` and `20261016130000`) were
+observed applied in Production on 2026-10-16. Their statement hashes and all eight
+active function bodies match the reviewed files. The [release matrix](RELEASE_AUTHORITY_MATRIX_20261016.md)
+owns that scoped observation and deployment prerequisites. No migration was reapplied,
+and this observation does not certify unrelated live schema drift.
+
 Current journal append/bootstrap/import writers now enforce captured operation
 schemas at IDB authority; see JOURNAL_BUSINESS_AUTHORITY.md. Main/Shared/Finance
 REST revisions and backup candidates now have explicit read decoders; see
@@ -54,8 +60,8 @@ documented in STARTUP_CPU_MEASUREMENT.md and READABILITY_RATCHET.md.
 
 | Priority | Scope | Required evidence |
 | --- | --- | --- |
-| 1 | Deploy the two reviewed Bank authority migrations | Apply status and nested-business guards through the existing SQL deployment process, then verify deployed migration identities. Git merge alone is not deployment |
-| 2 | Physical release validation and loaded startup measurements | Use the operator matrix for weak Windows hardware, installed Bridge update/shutdown, controlled interruption, old backups, A-B-A, two physical clients and live Bank/Credit providers. CI covers isolated PostgreSQL/native browser/Windows contracts |
+| 1 | Physical release validation and loaded startup measurements | Use the operator matrix for weak Windows hardware, installed Bridge update/shutdown, controlled interruption, old backups, A-B-A, two physical clients and live Bank/Credit providers after Credit schema hardening. CI covers isolated PostgreSQL/native browser/Windows contracts |
+| 2 | Fresh verification before each static rollout | Postflight explicitly requires both Bank migration identities plus the existing complete SQL hash and live schema checks. The scoped 2026-10-16 observation and Git CI do not replace that gate |
 | 3 | Further authority work only on demonstrated gaps | Current Credit replacement coverage and normalized/raw monetary admissions are checked; Journal has eleven checked durable decisions and native rejection/mutation evidence. Extend remaining orchestration only when code or runtime evidence justifies it |
 | 4 | Compatibility inventory and readability | Keep the count/max ratchet and improve touched code; retire only newly proven Dead paths |
 
