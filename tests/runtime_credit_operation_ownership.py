@@ -40,7 +40,7 @@ FLOW = r"""(async()=>{
  if(caseName==='account')cloudAuth.storeSupaSession({user:{id:'fixture-other-owner'},access_token:'fixture-other',expires_at:9999999999});
  if(caseName==='relogin'){cloudAuth.storeSupaSession(null);cloudAuth.storeSupaSession({user:{id:owner},access_token:'fixture-2',expires_at:9999999999})}
  if(caseName==='secondary')tab.primaryTab=false;
- const payload={ok:true,syncedAt:'2026-10-08T10:00:00Z',attemptedCount:1,profiles:[{profileId:'P',provider:'max',accounts:[{accountNumber:'card',txns:[{id:'issuer-tx',date:'2026-10-08',amount:12}]}]}],errors:[]};
+ const payload={ok:true,syncedAt:'2026-10-08T10:00:00Z',attemptedCount:1,profiles:[{profileId:'P',provider:'max',accounts:[{accountNumber:'card',txns:[{id:'issuer-tx',date:'2026-10-08',amount:12,status:'completed'}]}]}],errors:[]};
  if(caseName==='invalid-result'){payload.attemptedCount=null;payload.deferredCount=1}
  if(caseName==='invalid-errors'){payload.ok=false;payload.message='fixture provider failure';payload.creditErrors=[{profileId:'P',deferred:true},null]}
  provider.resolve(new Response(JSON.stringify(payload),{status:caseName==='invalid-errors'?400:200}));

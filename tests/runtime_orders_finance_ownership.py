@@ -43,7 +43,7 @@ FLOW = r"""(async()=>{
  if(caseName==='account')cloudAuth.saveSession({user:{id:'bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb'},access_token:'other',expires_at:9999999999});
  if(caseName==='relogin'){cloudAuth.saveSession(null);cloudAuth.saveSession({user:{id:owner},access_token:'fixture-2',expires_at:9999999999})}
  if(caseName==='secondary')tab.primaryTab=false;
- const result=kind==='Bank'?{ok:true,fetchedAt:stamp,accounts:{business:{balance:500,accountId:'same-account',transactions:[]}}}:{ok:true,syncedAt:stamp,attemptedCount:1,profiles:[{profileId:'P',provider:'max',accounts:[{accountNumber:'card',txns:[{id:'issuer-tx',date:stamp,chargedAmount:-12}]}]}],errors:[]};
+ const result=kind==='Bank'?{ok:true,fetchedAt:stamp,accounts:{business:{balance:500,accountId:'same-account',transactions:[]}}}:{ok:true,syncedAt:stamp,attemptedCount:1,profiles:[{profileId:'P',provider:'max',accounts:[{accountNumber:'card',txns:[{id:'issuer-tx',date:stamp,chargedAmount:-12,status:'completed'}]}]}],errors:[]};
  if(caseName==='invalid-result'){result.attemptedCount=null;result.deferredCount=1}
  if(caseName==='invalid-errors'){result.ok=false;result.message='fixture provider failure';result.creditErrors=[{profileId:'P',deferred:true},null]}
  provider.resolve(new Response(JSON.stringify(result),{status:caseName==='invalid-errors'?400:200}));

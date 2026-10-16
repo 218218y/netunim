@@ -52,7 +52,7 @@ FLOW = r"""(async()=>{
    if(phase==='drain'){
      injecting=false;const pending=finance.commands['refresh'+command]();await entered.promise;
      injecting=true;check(finance.commands.setAutomaticEnabled(kind,false)===false,'failed disable reported success');
-     provider.resolve(new Response(JSON.stringify(kind==='bank'?{ok:true,fetchedAt:stamp,accounts:{business:{balance:500,accountId:'synthetic-account',transactions:[]}}}:{ok:true,syncedAt:stamp,attemptedCount:1,profiles:[{profileId:'P',provider:'max',accounts:[{accountNumber:'card',txns:[{id:'exact-card-id',date:stamp,chargedAmount:-12}]}]}],errors:[]})));
+     provider.resolve(new Response(JSON.stringify(kind==='bank'?{ok:true,fetchedAt:stamp,accounts:{business:{balance:500,accountId:'synthetic-account',transactions:[]}}}:{ok:true,syncedAt:stamp,attemptedCount:1,profiles:[{profileId:'P',provider:'max',accounts:[{accountNumber:'card',txns:[{id:'exact-card-id',date:stamp,chargedAmount:-12,status:'completed'}]}]}],errors:[]})));
      check(await pending===true,'preference failure aborted an already-started remote commit');
    }
    const snapshot=finance.queries.snapshot();check(snapshot[kind+'Busy']===false,'preference failure stranded a busy flag');
