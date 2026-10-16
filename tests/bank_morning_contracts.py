@@ -131,7 +131,7 @@ ok('hydrateRecoveredSource' in documents and 'activeSource=hydrateRecoveredSourc
    'Recovered bank issuance rehydrates fresh bank amount/row details without persisting them in recovery storage')
 ok('bank_link_pending' in edge and 'record_verified_bank_morning_document' in edge,
    'A verified Morning document remains fail-closed until the durable bank link is saved')
-ok("result=await saveBankTransactionHandled(id,handled===true,{assertCurrent});assertCurrent();const at=result?.handled_at||result?.handledAt||null;updateLocalBankTransaction" in finance_controller and 'bank_handled_rpc_security_fix' in transport and 'הפעולה לא נשמרה ולא נוצר שינוי ממתין' in transport,
+ok("result=await saveBankTransactionHandled(id,handled===true,{assertCurrent});assertCurrent();const at=result.handled_at;updateLocalBankTransaction" in finance_controller and 'return readBankHandledReceipt(j,id,handled===true)' in transport and 'bank_handled_rpc_security_fix' in transport and 'הפעולה לא נשמרה ולא נוצר שינוי ממתין' in transport,
    'Manual handled-state UI mutates local state only after server acknowledgement and reports permission failures as non-pending')
 ok('v_multi_check_deposit' in migration_v2 and "jsonb_array_length(v_tx.check_details->'checkItems')>1" in migration_v2 and 'and not v_multi_check_deposit' in migration_v2 and 'if v_multi_check_deposit then' in migration_v2 and 'handled_at:=v_tx.handled_at' in migration_v2,
    'Multi-cheque subset documents may link durably without falsely marking the entire aggregate deposit handled')

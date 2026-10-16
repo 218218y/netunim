@@ -16,7 +16,7 @@ const sourceRows=[
 
 let mergePayload=null;
 const pageRequests=[];
-const archiveRow=i=>({merge_key:`k${i}`,transaction_date:'2026-08-01T09:00:00.000Z',processed_date:'2026-08-01T09:00:00.000Z',amount:'1',currency:'ILS',description:'x',memo:'',party_name:'',party_headline:'',message_headline:'',message_detail:'',status:'completed',balance_after:null,bank_reference:String(i),bank_serial:String(i),activity_type_code:1,cheque:false,check_details:null,alert_acknowledgements:i===0?{returned_cheque:'2026-09-06T01:00:00.000Z'}:{}});
+const archiveRow=i=>({id:i+1,account_key:'12-655-1',account_role:'business',first_seen_at:'2026-08-01T09:00:00Z',presence_state:'present',last_seen_at:null,missing_since:null,missing_acknowledged_at:null,merge_key:`k${i}`,transaction_date:'2026-08-01T09:00:00.000Z',processed_date:'2026-08-01T09:00:00.000Z',amount:'1',currency:'ILS',description:'x',memo:'',party_name:'',party_headline:'',message_headline:'',message_detail:'',status:'completed',balance_after:null,bank_reference:String(i),bank_serial:String(i),activity_type_code:1,cheque:false,check_details:null,alert_acknowledgements:i===0?{returned_cheque:'2026-09-06T01:00:00.000Z'}:{}});
 const kupaFetch=async(path,options={})=>{
   if(path.includes('/rpc/sync_bank_transactions_snapshot')){mergePayload=JSON.parse(options.body);return jsonResponse([{inserted_count:4,updated_count:0,total_count:4}])}
   if(path.includes('/bank_transactions?')){
@@ -56,7 +56,7 @@ assert.deepEqual(ordersMerge.p_transactions.map(x=>x.mergeKey),keys,'Kupa and Or
 
 
 const reconciliationCalls=[];
-const snapshotRow={snapshot_at:'2026-09-06T02:00:00.000Z',coverage_from:'2026-08-08',coverage_to:'2026-09-06',transaction_count:1,transactions:[{mergeKey:'snapshot-1',date:'2026-09-06T01:00:00.000Z',amount:500,description:'הפקדת שיק',cheque:true}]};
+const snapshotRow={account_key:'12-655-1',account_role:'business',snapshot_at:'2026-09-06T02:00:00.000Z',coverage_from:'2026-08-08',coverage_to:'2026-09-06',transaction_count:1,transactions:[{mergeKey:'snapshot-1',date:'2026-09-06T01:00:00.000Z',amount:500,description:'הפקדת שיק',cheque:true}]};
 const reconciliationFetch=async(path,options={})=>{
   if(path.includes('/rpc/sync_bank_transactions_snapshot')){reconciliationCalls.push({path,body:JSON.parse(options.body)});return jsonResponse([{inserted_count:1,updated_count:0,total_count:1,missing_count:0,active_missing_count:0,snapshot_stored:true,baseline_created:true}])}
   if(path.includes('/bank_transaction_snapshots?'))return jsonResponse([snapshotRow]);
