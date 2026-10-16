@@ -6,9 +6,10 @@ import {clone} from '../core/values.js';
 import {LOCAL_DB} from '../state/constants.js';
 import {createOperationId} from '../shared/cloud-sync.js';
 import {assertOrderEntityInvariants,assertValidOrderCloudState} from '../state/validation.js';
+import {createRestoreGroupKeys,RESTORE_GROUP_NAMESPACES} from '../shared/restore-group-keys.js';
 
 const LOCAL_SYNC_STORE='sync';
-const RESTORE_GROUP_KEY='orders.restore.group.v1';
+const restoreGroupKeys=createRestoreGroupKeys(RESTORE_GROUP_NAMESPACES.orders);
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createStorageBrowser({storageV2=null,captureEmbeddedWorkbook=async()=>{},model, files, session, prepareCloudState, normalizeState, domainRevisions}){
@@ -35,9 +36,7 @@ async function restoreDbExists(){
 }
 
 function restoreGroupStorageKey(key){
-  const value=String(key||''),current=`${RESTORE_GROUP_KEY}:current`,archivePrefix=`${RESTORE_GROUP_KEY}:archive:`;
-  if(value===current||(value.startsWith(archivePrefix)&&value.length>archivePrefix.length))return value;
-  throw new Error('storage_restore_group_key_required');
+  return restoreGroupKeys.read(key);
 }
 async function idbSyncPut(key,value){const restoreKey=restoreGroupStorageKey(key);const db=await openRestoreDb();return await new Promise((resolve,reject)=>{const tx=db.transaction(LOCAL_SYNC_STORE,'readwrite');tx.objectStore(LOCAL_SYNC_STORE).put(value,restoreKey);tx.oncomplete=()=>resolve(value);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||new Error('IndexedDB sync write aborted'))})}
 async function idbSyncGet(key){const restoreKey=restoreGroupStorageKey(key);if(!await restoreDbExists())return null;const db=await openRestoreDb();return await new Promise((resolve,reject)=>{const r=db.transaction(LOCAL_SYNC_STORE,'readonly').objectStore(LOCAL_SYNC_STORE).get(restoreKey);r.onsuccess=()=>resolve(r.result??null);r.onerror=()=>reject(r.error)})}

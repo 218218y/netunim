@@ -290,6 +290,8 @@
     "shared/cloud-read-records.js",
     "shared/response-evidence.js",
     "shared/restore-response-records.js",
+    "shared/restore-group-keys.js",
+    "tests/fixtures/checked-restore-group-keys.mjs",
     "tests/fixtures/checked-restore-response-records.mjs",
     "shared/restore-server-recovery.js",
     "shared/bank-response-records.js",

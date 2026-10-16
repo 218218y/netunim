@@ -53,6 +53,7 @@ import {createUiKeyboardNavigation} from './ui/keyboard-navigation.js';
 import {createContexts} from './state/contexts.js';
 import {createOrderDomainRevisions,orderViewRevision} from './state/revisions.js';
 import {createRestoreGroupStore} from './shared/restore-groups.js';
+import {RESTORE_GROUP_NAMESPACES} from './shared/restore-group-keys.js';
 import {INITIAL_STATE} from "./state/constants.js";
 import {bindOrdersRuntimeEvents} from './runtime-events.js';
 
@@ -90,7 +91,7 @@ const storageBrowser=createStorageBrowser({
 const storageV2Cloud=storageV2Coordinator.createCloudPorts(storageBrowser);
 
 const restoreGroupStore=createRestoreGroupStore({
-  localKey:'orders.restore.group.v1',
+  localKey:RESTORE_GROUP_NAMESPACES.orders,
   put:(...args)=>storageBrowser.idbSyncPut(...args),
   get:(...args)=>storageBrowser.idbSyncGet(...args),
   remove:(...args)=>storageBrowser.idbSyncDelete(...args),
