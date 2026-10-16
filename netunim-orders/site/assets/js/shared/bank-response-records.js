@@ -18,6 +18,23 @@ function receipt(response){
   if(rows.length!==1||!row)throw invalid();
   return row;
 }
+/** Reconciliation success can permit publication even for an empty source.
+ * Its counts and complete-snapshot flags therefore require their own evidence.
+ * @param {unknown} response @param {boolean} complete */
+export function readBankArchiveSyncReceipt(response,complete){
+  const row=receipt(response);
+  for(const field of ['inserted_count','updated_count','total_count','missing_count','active_missing_count']){
+    if(!integer(row[field]))throw invalid();
+  }
+  if(typeof row.snapshot_stored!=='boolean'||row.snapshot_stored!==complete||typeof row.baseline_created!=='boolean'||
+    row.baseline_created&&!row.snapshot_stored||Number(row.missing_count)>Number(row.total_count)||
+    Number(row.active_missing_count)>Number(row.missing_count))throw invalid();
+  return Object.freeze({...row,
+    inserted_count:Number(row.inserted_count),updated_count:Number(row.updated_count),total_count:Number(row.total_count),
+    missing_count:Number(row.missing_count),active_missing_count:Number(row.active_missing_count),
+    snapshot_stored:row.snapshot_stored,baseline_created:row.baseline_created,
+  });
+}
 /** @param {unknown} response @param {number} transactionId @param {'missing'|'returned_cheque'} kind */
 export function readBankAcknowledgementReceipt(response,transactionId,kind){
   const row=receipt(response);

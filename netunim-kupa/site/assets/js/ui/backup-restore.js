@@ -40,6 +40,9 @@ async function applyCompletedGroupLocally(group,result={}){
 async function resumeIncompleteRestore(){
     if(!navigator.onLine||!loadSupaSession())return false;
     const assertCurrent=captureRecoveryGuard();assertCurrent();
+    const localGroup=await restoreGroupStore.loadPending();assertCurrent();
+    if(localGroup&&localGroup.owner!==storageOwnerCurrent())throw Object.assign(new Error('השחזור הממתין אינו משויך באופן מוכח לחשבון הנוכחי. הנתונים נשמרו ונדרש אימות של חשבון המקור.'),{code:'restore_recovery_owner_unproven'});
+    if(localGroup&&localGroup.appSite!=='kupa')throw Object.assign(new Error('קבוצת השחזור שייכת ליישום אחר. הנתונים נשמרו והשחזור נעצר.'),{code:'restore_recovery_app_mismatch'});
     const resumed=await resumeRestoreGroup({store:restoreGroupStore,stageRemote:group=>stageRestoreGroup(group,{assertCurrent}),applyRemote:id=>applyRestoreGroup(id,{assertCurrent}),onApplied:applyCompletedGroupLocally});
     assertCurrent();
     const serverResumed=await resumeServerRestoreGroups({

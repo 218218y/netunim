@@ -1,0 +1,47 @@
+# Authority release verification matrix, 2026-10-16
+
+Each authority stage runs the full repository workflow on its branch before merge.
+Local checks are focused; PostgreSQL, complete browser coverage and Windows run in
+GitHub Actions. The same checks are not required to finish a second time on Main
+after an unchanged, verified branch is merged.
+
+| Boundary / scenario | Automated release evidence |
+| --- | --- |
+| Malformed Bank acknowledgement/archive/snapshot/link success | `bank_response_evidence.test.mjs`, archive and Morning transport suites |
+| Bank reconciliation with an empty source | `business_response_evidence.test.mjs`; malformed counters/flags cannot authorize publication |
+| Provider claims complete coverage without transaction rows | `bank_balance_result.test.mjs`; malformed/missing arrays cannot authorize absence reconciliation |
+| Restore list and stage/apply response evidence | `restore_response_evidence.test.mjs`; malformed success is an error, never empty recovery |
+| Server-only incomplete restore, post-commit failure, fresh client | `runtime_restore_server_recovery.py`; real IndexedDB pending identity and paired Main/Shared adoption |
+| Startup edits during or after failed restore | `startup_recovery_readiness.test.mjs`; both app lifecycle gates remain closed until adoption |
+| Legacy unscoped/foreign-account/wrong-app restore | `backup_restore_scope.test.mjs`; zero remote writes, record retained |
+| Caller mutation before IDB work | `runtime_journal_input_capture.py`; 30 cloud-record/precondition cases and four transition cases |
+| Request succeeds then transaction aborts | `runtime_journal_authority.py`; no commit receipt, prior durable state retained |
+| Lost ACK, write/rebase interruption and real database protocol | existing storage/browser fault suites, `runtime_sync_postgres.py`, database group with PostgreSQL 18 |
+| Offline/reconnect, two tabs/computers, account handoff | existing sync, connectivity, owner-transfer and scope suites; isolated simulated accounts |
+| Cold/cached/offline startup and CPU slowdown | existing `runtime_startup.py`; repeated browser measurements, no new lazy split |
+| Bridge runtime packaging/shutdown, Windows entrypoints and native vault | models plus Windows deployment contracts; staged runtimes, isolated files, no provider login |
+| Main/Shared ACK ambiguity, revision coercion, lease/Morning invalid clocks | `business_response_evidence.test.mjs`, existing write-ACK, lease and Morning evidence suites |
+| Billing confidence and readability preservation | Credit billing regressions, token/AST evidence, lowered readability fixture, exact module/byte budgets |
+
+## Operator checks still required for a production release decision
+
+These require physical hardware, live accounts or deliberate interruption of an
+installed runtime. Automated fixtures cannot substitute for them:
+
+1. Run cold/cached/offline on a genuinely weak physical machine and record median
+   and p95 with device, disk and network details. Keep the current architecture
+   unless a measured presentation bottleneck justifies a split.
+2. Exercise installed Windows Bridge update and shutdown under active work, then
+   a controlled process termination during write/ACK and restart. Preserve a
+   recoverable test backup; do not interrupt the user's working Bridge as a test.
+3. Use non-production test data for an older backup/import, restore, offline to
+   online transition, A to B to A switching, and two physical clients on one test
+   account. Confirm both authoritative heads before editing after restore.
+   For a legacy pending restore without owner evidence, review the preserved
+   record against the original account and server ledger before resuming it.
+4. Validate real Bank/Credit provider responses and complete/partial coverage
+   against the approved account. Keep provider credentials and customer data out
+   of test logs and repository artifacts.
+
+No live provider scan, production migration, deployment, customer-data restore or
+physical-device performance result is claimed by these four code stages.

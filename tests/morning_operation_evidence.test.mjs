@@ -22,6 +22,8 @@ for(const [label,operation,amount] of [
   ['foreign failed operation',{operation_id:OTHER,state:'failed'},42],
   ['foreign reserved operation',{operation_id:OTHER,state:'reserved'},42],
   ['invalid verification date',{operation_id:OP,state:'created',document_id:'official',document_type:305,amount:42,verified_at:'not-a-date'},42],
+  ['normalized invalid verification day',{operation_id:OP,state:'created',document_id:'official',document_type:305,amount:42,verified_at:'2026-02-30T10:00:00Z'},42],
+  ['normalized invalid verification clock',{operation_id:OP,state:'created',document_id:'official',document_type:305,amount:42,verified_at:'2026-10-16T24:00:00Z'},42],
   ['boolean financial evidence',{operation_id:OP,state:'created',document_id:'official',document_type:305,amount:true,verified_at:'2026-10-14T00:00:00Z'},1],
 ])test(`recovery retains exact context and performs no mutation for ${label}`,async t=>{
   const previous=new Map(['localStorage','document'].map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)])),entries=new Map(),calls=[];

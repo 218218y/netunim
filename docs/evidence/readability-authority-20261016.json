@@ -1,0 +1,38 @@
+{
+  "date": "2026-10-16",
+  "intentionalBusinessChange": "credit billing inference uses dates.length; formatting is checked separately",
+  "files": {
+    "shared/credit-billing-cycles.js": {
+      "before": {
+        "over500": 9,
+        "over1000": 4,
+        "longest": 1642
+      },
+      "after": {
+        "over500": 0,
+        "over1000": 0,
+        "longest": 498
+      },
+      "tokensPreserved": true,
+      "astPreserved": true,
+      "beforeSha256": "9b9a8ae29eb48d7d768bee180015cf10bf0bc16b1c78eeaad54cd5bb5245d6bb",
+      "afterSha256": "b1724a225761533fab8b829a8181effe9a2926c8c03e1a8fd4a2f596b113cc43"
+    },
+    "netunim-orders/site/assets/js/domains/finance/bank-archive-commands.js": {
+      "before": {
+        "over500": 1,
+        "over1000": 0,
+        "longest": 900
+      },
+      "after": {
+        "over500": 0,
+        "over1000": 0,
+        "longest": 212
+      },
+      "tokensPreserved": true,
+      "astPreserved": true,
+      "beforeSha256": "b25936fbf4117ed7dc7714845a1c3302cbe9c23022906ae2d2db01f870d9d2d6",
+      "afterSha256": "08206eca5c6ed713af8f5cbc0a223a2fec5f718faa8e77f066fe5b10022dfb5a"
+    }
+  }
+}

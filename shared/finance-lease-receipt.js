@@ -1,4 +1,5 @@
 // @ts-check
+import {evidenceTimestamp} from './response-evidence.js';
 /** @typedef {'bank' | 'credit'} FinanceLeaseName */
 /** @typedef {Readonly<{acquired: true, leaseName: FinanceLeaseName, leaseToken: string, fenceEpoch: number, leasedUntil: string}> | Readonly<{acquired: false, leaseName: FinanceLeaseName, leaseToken: string, fenceEpoch: number, leasedUntil: string}>} FinanceLeaseReceipt */
 
@@ -23,7 +24,7 @@ export function readFinanceLeaseReceipt(response,{leaseName,leaseToken}){
       typeof row.acquired!=='boolean'||!leaseReceiptToken(row.lease_token)||
       row.acquired&&row.lease_token!==leaseToken||
       !(typeof row.fence_epoch==='number'||typeof row.fence_epoch==='string'&&/^\d+$/.test(row.fence_epoch))||
-      typeof row.leased_until!=='string'||!/(?:Z|[+-]\d{2}:\d{2})$/.test(row.leased_until)||!Number.isFinite(Date.parse(row.leased_until))){
+      !evidenceTimestamp(row.leased_until)){
       throw new Error('finance_lease_receipt_metadata_invalid');
     }
     const fenceEpoch=Number(row.fence_epoch);

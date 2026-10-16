@@ -95,6 +95,52 @@ checksums, proving the accepted command is retained instead of merely catching
 checksum damage. Existing ACK/rebase/adoption/conflict tests continue to pass.
 No eager modules or byte ceilings are added in this stage.
 
+## Selective business evidence and readability
+
+The final audit follows authority, not file length:
+
+| Response | Decision | Evidence boundary |
+| --- | --- | --- |
+| Main / Shared writes and Orders' Kupa settings | Added success-envelope cardinality before selecting a row; reject coercible revision/replay metadata | `document-write-ack.js`, both transports, Kupa Main writer |
+| Finance writes | Existing receipt checks the full original envelope and authoritative state; retains SQL numeric strings | `finance-write-receipt.js` |
+| Atomic Bank snapshot | Existing independent Finance/Kupa revision receipt remains the publication boundary | `bank-snapshot-receipt.js` |
+| Bank archive reconciliation | Added all five integer counts and complete-snapshot flags, including empty-source success | `bank-response-records.js` |
+| Finance lease grant/renewal | Existing requested-token/fence evidence retained; calendar/clock normalization now rejected | `finance-lease-receipt.js` |
+| Morning operation/recovery | Existing exact-operation/document/amount checks retained; verification timestamps now use strict calendar/clock decoding | `morning-operation-evidence.js` |
+| Bank/Credit provider results | Existing account/balance and profile/month decoders retained; complete Bank coverage also requires a transaction array before implying absence | `bank-balance-result.js`, `credit-refresh-result.js` and provider model owners |
+| Legacy pending local restore | Require explicit matching account and app before any remote stage/apply | both `ui/backup-restore.js` adapters |
+
+An older local restore group without owner evidence stays preserved and blocked;
+the current login cannot supply its missing provenance. This legacy pending case
+requires operator review of the original account and server ledger; never retag
+the record from the current login. Ordinary V2 backup imports remain available
+when account startup is ready. Generic group creation can now retain an explicit
+owner for callers that have proven it. Server-only recovery already records its
+owner before writing.
+
+A separate concrete Credit defect was demonstrated: `canonicalBillingDates`
+returns an array, but inference divided by `dates.size`, producing NaN and disabling
+the 60% confidence threshold. A 3-of-6 history incorrectly inferred a billing day.
+The regression fails before the fix and passes with `dates.length`; 3-of-5 remains
+eligible and issuer fallback remains available.
+
+Only the long-function hotspots in Credit billing cycles and Bank archive commands
+were expanded. Their formatting preserves every token, literal and Acorn parse
+tree, separately from the one intentional billing calculation change. Evidence is
+in `docs/evidence/readability-authority-20261016.json`. The canonical ratchet drops
+from 507 to 495 lines over 500 characters, and from 123 to 117 over 1,000. The global
+maximum remains 3,252; unrelated views were not reformatted. Static Bank assertions
+now ignore source whitespace while retaining their behavior fragments.
+
+Final normalized startup measurements: Kupa **294 / 1,718,827 bytes**, Orders
+**394 / 2,338,429 bytes**. The reviewed final ceilings are **1,735,000** and
+**2,361,000** bytes, approximately 1% reserve. Module counts remain exact. These
+explicit updates cover measured validation/recovery and the two readable hotspots;
+CI never increases budgets automatically and no additional lazy split is introduced.
+
+Release coverage and remaining physical/operator checks are recorded separately
+in `RELEASE_AUTHORITY_MATRIX_20261016.md`.
+
 ## Release scope
 
 Full CI includes real PostgreSQL, native browser/IndexedDB, recovery/fault injection,

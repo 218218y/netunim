@@ -4,6 +4,14 @@ import assert from 'node:assert/strict';
 import { readBankBalanceResult, bankSnapshotFinancials } from '../shared/bank-balance-result.js';
 
 const optional = ['availableBalance', 'creditLimit', 'creditLimitUsed', 'creditLimitUsedPercent'];
+test('complete Bank coverage requires a transaction array before it can imply absence',()=>{
+  for(const role of ['business','home'])for(const transactions of [undefined,null,{},false,'',1]){
+    assert.throws(()=>readBankBalanceResult({accounts:{business:{balance:200},
+      [role]:{balance:100,transactionCoverage:{complete:true},transactions}}}),{code:'BANK_TRANSACTIONS_INVALID'});
+  }
+  assert.equal(readBankBalanceResult({accounts:{business:{balance:0,transactionCoverage:{complete:true},transactions:[]}}}).business.balance,0);
+  assert.equal(readBankBalanceResult({balance:100}).business.balance,100,'legacy balance-only results do not claim complete transaction coverage');
+});
 for (const value of [
   null,
   undefined,
