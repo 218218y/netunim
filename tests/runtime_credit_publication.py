@@ -36,7 +36,7 @@ FLOW = r"""(async()=>{
  globalThis.fetch=(url,options)=>{
    if(String(url).includes('/v2/credit/status'))return Promise.resolve(new Response(JSON.stringify({ok:true,bridgeVersion:73,contractVersion:2,profiles:[{profileId:'P'}]})));
    if(String(url).includes('/v2/credit/reset')){resets++;return Promise.resolve(new Response(JSON.stringify({ok:true})))}
-   if(String(url).includes('/v2/credit/sync')){providerRuns++;return Promise.resolve(new Response(JSON.stringify({ok:true,syncedAt:'2026-10-09T10:00:00Z',attemptedCount:1,profiles:[{profileId:'P',provider:'max',accounts:[{accountNumber:'card',txns:[{id:'stable-issuer-tx',date:'2026-10-09',processedDate:'2026-10-09',chargedAmount:12}]}]}],errors:[]})))}
+   if(String(url).includes('/v2/credit/sync')){providerRuns++;return Promise.resolve(new Response(JSON.stringify({ok:true,syncedAt:'2026-10-09T10:00:00Z',attemptedCount:1,profiles:[{profileId:'P',provider:'max',accounts:[{accountNumber:'card',txns:[{id:'stable-issuer-tx',date:'2026-10-09',processedDate:'2026-10-09',chargedAmount:12,status:'completed'}]}]}],errors:[]})))}
    return originalFetch(url,options);
  };
  const save=storagePersistence.saveState;let followupFailure=failure,followups=0,localResult=null;

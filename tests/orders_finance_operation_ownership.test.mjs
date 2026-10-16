@@ -78,7 +78,7 @@ function fixture(t,{hold=null}={}){
     bridge:{getBridgeToken:()=> 'fixture',bankAutoEnabled:()=>true,creditAutoEnabled:()=>true,creditAutoMode:()=> 'smart',markBankAttempt:()=>{},markCreditAttempt:()=>{},bankAttemptReady:()=>true,creditAttemptReady:()=>true,
       status:()=>phase('bank-status',{bridgeVersion:74,configured:true}),creditStatus:()=>phase('credit-status',{bridgeVersion:74,contractVersion:2,profiles:[{profileId:'P'}]}),
       fetchBalance:()=>phase('bank-provider',{fetchedAt:stamp,accounts:{business:{balance:500,accountId:'same-account',transactions:[]}}}),
-      syncCreditCards:()=>phase('credit-provider',{syncedAt:stamp,attemptedCount:1,profiles:[{profileId:'P',provider:'max',accounts:[{accountNumber:'card',txns:[{id:'issuer-tx',date:stamp,chargedAmount:-12}]}]}],errors:[]}),resetCreditProfiles:()=>phase('reset',true)},
+      syncCreditCards:()=>phase('credit-provider',{syncedAt:stamp,attemptedCount:1,profiles:[{profileId:'P',provider:'max',accounts:[{accountNumber:'card',txns:[{id:'issuer-tx',date:stamp,chargedAmount:-12,status:'completed'}]}]}],errors:[]}),resetCreditProfiles:()=>phase('reset',true)},
   };
   return {ports,before,counts,jobs,entered,release,checksSession,operationScope,create:()=>createDomainsFinanceController({effects:createFinanceBrowserEffects(),...ports}),handoff:()=>{owner='B';epoch++},logout:()=>{owner=null;epoch++},relogin:()=>epoch++,secondary:()=>{primary=false},remote:()=>remote};
 }

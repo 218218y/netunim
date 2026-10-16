@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readCreditRefreshResult,readCreditStatusProfiles,readCreditFailureIssues,creditIssuesDeferred} from '../shared/credit-refresh-result.js';
 
 test('Credit envelope retains valid provider fields and accepts supported responses without counters',()=>{
- const old={syncedAt:'2026-10-14T10:00:00Z',profiles:[{profileId:'P',accounts:[{accountNumber:'C',txns:[{id:'T',amount:null}]}]}],errors:[]};
+ const old={syncedAt:'2026-10-14T10:00:00Z',profiles:[{profileId:'P',accounts:[{accountNumber:'C',txns:[{id:'T',amount:null,status:'completed'}]}]}],errors:[]};
  assert.deepEqual(readCreditRefreshResult(old),old);
  const current={...old,attemptedCount:1,deferredCount:0,runId:'run'};
  assert.deepEqual(readCreditRefreshResult(current),current);

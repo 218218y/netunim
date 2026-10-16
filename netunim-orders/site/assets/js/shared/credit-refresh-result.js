@@ -29,13 +29,15 @@ function rows(value) {
  * diagnostics can enter Finance. Issuer amounts/months remain with the existing
  * credit model decoder; this envelope is not a financial write receipt.
  * Optional counters remain optional for supported older Bridge responses.
+ * The publication callers have already required the current v2 handshake.
+ * Historical persisted feeds retain their separate compatibility reader.
  * @param {unknown} value @returns {CreditRefreshResult}
  */
 export function readCreditRefreshResult(value) {
   if (!creditRefreshRecord(value)) throw invalid();
-  const protocol=creditResponseProtocol(value.contractVersion);
+  creditResponseProtocol(value.contractVersion);
   const accepted=profiles(value.profiles);
-  for(const profile of accepted)assertCreditProfileTransactions(profile,protocol);
+  for(const profile of accepted)assertCreditProfileTransactions(profile);
   /** @type {Record<string,unknown>&{profiles:CreditStatusProfile[],errors?:CreditIssue[],attemptedCount?:number,deferredCount?:number}} */
   const decoded = { ...value, profiles: accepted };
   for (const field of /** @type {const} */ (['attemptedCount', 'deferredCount'])) {
