@@ -18,6 +18,8 @@ const invalid=[
   ['ambiguous granted flag',{...granted,acquired:'true'}],
   ['missing deadline',{...granted,leased_until:undefined}],
   ['invalid deadline',{...granted,leased_until:'not-a-time'}],
+  ['normalized invalid calendar day',{...granted,leased_until:'2026-02-30T10:00:00Z'}],
+  ['normalized invalid clock',{...granted,leased_until:'2026-10-16T24:00:00Z'}],
   ['multiple rows',[granted,granted]],
   ['null body',null],
 ];

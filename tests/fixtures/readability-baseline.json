@@ -8,8 +8,8 @@
     },
     "netunim-kupa/site/assets/js/cloud/transport.js": {
       "over500": 4,
-      "over1000": 1,
-      "longest": 1012
+      "over1000": 0,
+      "longest": 966
     },
     "netunim-kupa/site/assets/js/domains/bank/connection-owner.js": {
       "over500": 2,
@@ -223,7 +223,7 @@
     },
     "netunim-orders/site/assets/js/cloud/transport.js": {
       "over500": 14,
-      "over1000": 3,
+      "over1000": 2,
       "longest": 1356
     },
     "netunim-orders/site/assets/js/domains/calendar/controller.js": {
@@ -315,11 +315,6 @@
       "over500": 4,
       "over1000": 1,
       "longest": 1191
-    },
-    "netunim-orders/site/assets/js/domains/finance/bank-archive-commands.js": {
-      "over500": 2,
-      "over1000": 0,
-      "longest": 900
     },
     "netunim-orders/site/assets/js/domains/finance/bank-cashflow-view.js": {
       "over500": 2,
@@ -591,11 +586,6 @@
       "over1000": 1,
       "longest": 1155
     },
-    "shared/credit-billing-cycles.js": {
-      "over500": 9,
-      "over1000": 4,
-      "longest": 1642
-    },
     "shared/credit-card-order-view.js": {
       "over500": 2,
       "over1000": 1,
@@ -682,7 +672,7 @@
       "longest": 662
     },
     "shared/storage-journal-idb.js": {
-      "over500": 4,
+      "over500": 3,
       "over1000": 0,
       "longest": 703
     },

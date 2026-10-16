@@ -56,16 +56,35 @@ export function creditPendingAuthorizationTotalData(account={},asOf=localTodayIS
   return roundMoney(total);
 }
 
-function accountTransactionEntries(account={}){
-  const months=Array.isArray(account.months)?account.months:[];
-  if(months.length){
-    const rows=[];
-    for(const slice of months){const hint=String(slice?.providerSchemaVersion||'')==='legacy-credit-feed'?'':creditBillingMonthKey(`${String(slice?.month||'')}-01`),transactions=Array.isArray(slice?.transactions)?slice.transactions:[],coverageIncomplete=slice?.status==='missing'||(!!slice?.fetchStatus&&slice.fetchStatus!=='success');for(const tx of transactions)rows.push({tx,billingMonthHint:hint,coverageIncomplete,coverageStatus:String(slice?.status||slice?.fetchStatus||'')});if(coverageIncomplete&&!transactions.length)rows.push({tx:null,billingMonthHint:hint,coverageIncomplete:true,coverageStatus:String(slice?.status||slice?.fetchStatus||''),coveragePlaceholder:true})}
-    for(const tx of Array.isArray(account.pendingTransactions)?account.pendingTransactions:[])rows.push({tx,billingMonthHint:'',coverageIncomplete:false});
-    for(const tx of Array.isArray(account.unassignedTransactions)?account.unassignedTransactions:[])rows.push({tx,billingMonthHint:'',coverageIncomplete:false});
-    return rows;
-  }
-  return (Array.isArray(account.txns)?account.txns:[]).map(tx=>({tx,billingMonthHint:'',coverageIncomplete:false}));
+function accountTransactionEntries(account = {}) {
+    const months = Array.isArray(account.months) ? account.months : [];
+    if (months.length) {
+        const rows = [];
+        for (const slice of months) {
+            const hint = String(slice?.providerSchemaVersion || '') === 'legacy-credit-feed' ? '' : creditBillingMonthKey(`${String(slice?.month || '')}-01`), transactions = Array.isArray(slice?.transactions) ? slice.transactions : [], coverageIncomplete = slice?.status === 'missing' || (!!slice?.fetchStatus && slice.fetchStatus !== 'success');
+            for (const tx of transactions)
+                rows.push({
+                    tx,
+                    billingMonthHint: hint,
+                    coverageIncomplete,
+                    coverageStatus: String(slice?.status || slice?.fetchStatus || '')
+                });
+            if (coverageIncomplete && !transactions.length)
+                rows.push({
+                    tx: null,
+                    billingMonthHint: hint,
+                    coverageIncomplete: true,
+                    coverageStatus: String(slice?.status || slice?.fetchStatus || ''),
+                    coveragePlaceholder: true
+                })
+        }
+        for (const tx of Array.isArray(account.pendingTransactions) ? account.pendingTransactions : [])
+            rows.push({ tx, billingMonthHint: '', coverageIncomplete: false });
+        for (const tx of Array.isArray(account.unassignedTransactions) ? account.unassignedTransactions : [])
+            rows.push({ tx, billingMonthHint: '', coverageIncomplete: false });
+        return rows;
+    }
+    return (Array.isArray(account.txns) ? account.txns : []).map(tx => ({ tx, billingMonthHint: '', coverageIncomplete: false }));
 }
 function accountTransactions(account={}){return accountTransactionEntries(account).map(entry=>entry.tx)}
 
@@ -95,7 +114,7 @@ function inferredBillingDay(account){
   const dates=canonicalBillingDates(account),counts=new Map();
   for(const date of dates){const day=nominalBillingDay(date);if(day!==null)counts.set(day,(counts.get(day)||0)+1)}
   const ranked=[...counts.entries()].sort((a,b)=>b[1]-a[1]||a[0]-b[0]);
-  if(!ranked.length||ranked[0][1]<2||ranked[1]?.[1]===ranked[0][1]||ranked[0][1]/dates.size<0.6)return null;
+  if(!ranked.length||ranked[0][1]<2||ranked[1]?.[1]===ranked[0][1]||ranked[0][1]/dates.length<0.6)return null;
   return ranked[0][0];
 }
 
@@ -189,36 +208,198 @@ function matchedPendingIndexes(entries){
   return matched;
 }
 
-function synchronizedRows(state,asOf,includeHidden){
-  const sync=state?.creditSync&&typeof state.creditSync==='object'&&!Array.isArray(state.creditSync)?state.creditSync:{},mappings=sync.cardMappings&&typeof sync.cardMappings==='object'&&!Array.isArray(sync.cardMappings)?sync.cardMappings:{},rows=[];
-  for(const profile of Array.isArray(sync.profiles)?sync.profiles:[])for(const account of Array.isArray(profile?.accounts)?profile.accounts:[]){
-    const mapping=mappings[cardMappingKey(profile,account)]||{};if(mapping.included!==true)continue;
-    const hidden=mapping.hidden===true;if(hidden&&!includeHidden)continue;
-    const transactions=accountTransactionEntries(account),matchedPending=matchedPendingIndexes(transactions),seen=new Set(),cardName=mapping.cardName||[PROVIDER_LABELS[profile.provider]||profile.label||profile.provider||'כרטיס אשראי',account.accountNumber?`••${String(account.accountNumber).slice(-4)}`:''].filter(Boolean).join(' '),pendingFresh=creditPendingFreshData(account,asOf);
-    for(const [index,entry] of transactions.entries()){
-      const tx=entry.tx;
-      if(entry.coveragePlaceholder){const projection=creditFinalizedBillingDateData(account,{},entry.billingMonthHint),date=projection.date,role=creditCardAccountForDateData(mapping,profile.defaultAccount,date),identity=`coverage|${String(profile.profileId||'')}|${String(account.accountNumber||'')}|${entry.billingMonthHint||index}`;rows.push({source:'credit_unknown',creditId:`SYNC:${identity}`,profileId:String(profile.profileId||''),provider:String(profile.provider||''),accountNumber:String(account.accountNumber||''),creditAccountKey:synchronizedCardKey(profile,account),date,billingDate:date,billingMonth:creditBillingMonthKey(date),transactionDate:'',transactionTime:'',amount:0,displayAmount:0,transactionAmount:0,displayCurrency:'ILS',isShekel:true,foreignCurrency:false,originalAmount:null,originalCurrency:'',part:1,totalParts:1,card:hidden?'כרטיסים מוסתרים':cardName,account:role,ownerLabel:String(profile.ownerLabel||''),hidden,description:'כיסוי נתוני האשראי לחודש אינו מלא',memo:'',status:'coverage_missing',pendingFresh:false,chargeDateSource:projection.source,billingDateConfidence:projection.confidence,includedInIlsTotal:false,amountEstimated:true,amountSource:'coverage_missing',amountStatus:'unknown_amount',unconverted:false,unknownAmount:true,uncertainBillingDate:!date,coverageIncomplete:true,coverageStatus:entry.coverageStatus,totalAmount:0});continue}
-      const pending=tx?.status==='pending';if(matchedPending.has(index))continue;
-      const projection=pending?creditPendingBillingDateData(account,tx,asOf):creditFinalizedBillingDateData(account,tx,entry.billingMonthHint),date=projection.date,role=creditCardAccountForDateData(mapping,profile.defaultAccount,date),amountData=creditTransactionAmountData(tx),freshEnough=!pending||pendingFresh,includedInIlsTotal=!!date&&amountData.included&&freshEnough,amount=includedInIlsTotal?amountData.amount:0,identity=transactionIdentity(profile,account,tx,index,date,amountData),coverageIncomplete=entry.coverageIncomplete===true||(pending&&!pendingFresh),coverageStatus=entry.coverageStatus||(pending&&!pendingFresh?String(account.pendingStatus||'missing'):'');
-      if(seen.has(identity))continue;seen.add(identity);
-      const original=finite(tx?.originalAmount),foreignCurrency=tx?.foreignTransaction===true|| (!!normalizedCurrency(tx?.originalCurrency)&&!creditBillingIsShekelCurrency(tx.originalCurrency))|| (!!normalizedCurrency(tx?.chargedCurrency)&&!creditBillingIsShekelCurrency(tx.chargedCurrency)),part=pending?1:transactionPart(tx),totalParts=pending?1:transactionTotalParts(tx),source=pending?'credit_pending':amountData.included?'credit_sync':amountData.source==='foreign_only'?'credit_foreign':'credit_unknown',amountStatus=amountData.included?'known_ils':amountData.source==='foreign_only'?'foreign_unconverted':'unknown_amount';
-      rows.push({source,creditId:`${pending?'PENDING':'SYNC'}:${identity}`,profileId:String(profile.profileId||''),provider:String(profile.provider||''),accountNumber:String(account.accountNumber||''),creditAccountKey:synchronizedCardKey(profile,account),date,billingDate:date,billingMonth:creditBillingMonthKey(date),transactionDate:transactionOriginDate(tx),transactionTime:transactionTime(tx?.transactionTime),amount,displayAmount:transactionDisplayAmount(tx,amountData),transactionAmount:transactionDisplayAmount(tx,amountData),displayCurrency:amountData.included?'ILS':amountData.currency,isShekel:amountData.included,foreignCurrency,originalAmount:original===null?null:-original,originalCurrency:String(tx?.originalCurrency||'').trim(),part,totalParts,card:hidden?'כרטיסים מוסתרים':cardName,account:role,ownerLabel:String(profile.ownerLabel||''),hidden,description:String(tx?.description||''),memo:String(tx?.memo||''),status:pending?'pending':String(tx?.status||'completed'),pendingFresh,chargeDateSource:projection.source,billingDateConfidence:projection.confidence,includedInIlsTotal,amountEstimated:amountData.estimated||pending,amountSource:amountData.source,amountStatus,unconverted:amountStatus==='foreign_unconverted',unknownAmount:amountStatus==='unknown_amount',uncertainBillingDate:!date,coverageIncomplete,coverageStatus,totalAmount:transactionTotalAmount(tx,amountData)});
-    }
-  }
-  return rows;
+function synchronizedRows(state, asOf, includeHidden) {
+    const sync = state?.creditSync && typeof state.creditSync === 'object' && !Array.isArray(state.creditSync) ? state.creditSync : {}, mappings = sync.cardMappings && typeof sync.cardMappings === 'object' && !Array.isArray(sync.cardMappings) ? sync.cardMappings : {}, rows = [];
+    for (const profile of Array.isArray(sync.profiles) ? sync.profiles : [])
+        for (const account of Array.isArray(profile?.accounts) ? profile.accounts : []) {
+            const mapping = mappings[cardMappingKey(profile, account)] || {};
+            if (mapping.included !== true)
+                continue;
+            const hidden = mapping.hidden === true;
+            if (hidden && !includeHidden)
+                continue;
+            const transactions = accountTransactionEntries(account), matchedPending = matchedPendingIndexes(transactions), seen = new Set(), cardName = mapping.cardName || [PROVIDER_LABELS[profile.provider] || profile.label || profile.provider || 'כרטיס אשראי', account.accountNumber ? `••${String(account.accountNumber).slice(-4)}` : ''].filter(Boolean).join(' '), pendingFresh = creditPendingFreshData(account, asOf);
+            for (const [index, entry] of transactions.entries()) {
+                const tx = entry.tx;
+                if (entry.coveragePlaceholder) {
+                    const projection = creditFinalizedBillingDateData(account, {}, entry.billingMonthHint), date = projection.date, role = creditCardAccountForDateData(mapping, profile.defaultAccount, date), identity = `coverage|${String(profile.profileId || '')}|${String(account.accountNumber || '')}|${entry.billingMonthHint || index}`;
+                    rows.push({
+                        source: 'credit_unknown',
+                        creditId: `SYNC:${identity}`,
+                        profileId: String(profile.profileId || ''),
+                        provider: String(profile.provider || ''),
+                        accountNumber: String(account.accountNumber || ''),
+                        creditAccountKey: synchronizedCardKey(profile, account),
+                        date,
+                        billingDate: date,
+                        billingMonth: creditBillingMonthKey(date),
+                        transactionDate: '',
+                        transactionTime: '',
+                        amount: 0,
+                        displayAmount: 0,
+                        transactionAmount: 0,
+                        displayCurrency: 'ILS',
+                        isShekel: true,
+                        foreignCurrency: false,
+                        originalAmount: null,
+                        originalCurrency: '',
+                        part: 1,
+                        totalParts: 1,
+                        card: hidden ? 'כרטיסים מוסתרים' : cardName,
+                        account: role,
+                        ownerLabel: String(profile.ownerLabel || ''),
+                        hidden,
+                        description: 'כיסוי נתוני האשראי לחודש אינו מלא',
+                        memo: '',
+                        status: 'coverage_missing',
+                        pendingFresh: false,
+                        chargeDateSource: projection.source,
+                        billingDateConfidence: projection.confidence,
+                        includedInIlsTotal: false,
+                        amountEstimated: true,
+                        amountSource: 'coverage_missing',
+                        amountStatus: 'unknown_amount',
+                        unconverted: false,
+                        unknownAmount: true,
+                        uncertainBillingDate: !date,
+                        coverageIncomplete: true,
+                        coverageStatus: entry.coverageStatus,
+                        totalAmount: 0
+                    });
+                    continue
+                }
+                const pending = tx?.status === 'pending';
+                if (matchedPending.has(index))
+                    continue;
+                const projection = pending ? creditPendingBillingDateData(account, tx, asOf) : creditFinalizedBillingDateData(account, tx, entry.billingMonthHint),
+                      date = projection.date,
+                      role = creditCardAccountForDateData(mapping, profile.defaultAccount, date),
+                      amountData = creditTransactionAmountData(tx),
+                      freshEnough = !pending || pendingFresh,
+                      includedInIlsTotal = !!date && amountData.included && freshEnough,
+                      amount = includedInIlsTotal ? amountData.amount : 0,
+                      identity = transactionIdentity(profile, account, tx, index, date, amountData),
+                      coverageIncomplete = entry.coverageIncomplete === true || (pending && !pendingFresh),
+                      coverageStatus = entry.coverageStatus || (pending && !pendingFresh ? String(account.pendingStatus || 'missing') : '');
+                if (seen.has(identity))
+                    continue;
+                seen.add(identity);
+                const original = finite(tx?.originalAmount),
+                      foreignCurrency = tx?.foreignTransaction === true || (!!normalizedCurrency(tx?.originalCurrency) && !creditBillingIsShekelCurrency(tx.originalCurrency)) || (!!normalizedCurrency(tx?.chargedCurrency) && !creditBillingIsShekelCurrency(tx.chargedCurrency)),
+                      part = pending ? 1 : transactionPart(tx),
+                      totalParts = pending ? 1 : transactionTotalParts(tx),
+                      source = pending ? 'credit_pending' : amountData.included ? 'credit_sync' : amountData.source === 'foreign_only' ? 'credit_foreign' : 'credit_unknown',
+                      amountStatus = amountData.included ? 'known_ils' : amountData.source === 'foreign_only' ? 'foreign_unconverted' : 'unknown_amount';
+                rows.push({
+                    source,
+                    creditId: `${pending ? 'PENDING' : 'SYNC'}:${identity}`,
+                    profileId: String(profile.profileId || ''),
+                    provider: String(profile.provider || ''),
+                    accountNumber: String(account.accountNumber || ''),
+                    creditAccountKey: synchronizedCardKey(profile, account),
+                    date,
+                    billingDate: date,
+                    billingMonth: creditBillingMonthKey(date),
+                    transactionDate: transactionOriginDate(tx),
+                    transactionTime: transactionTime(tx?.transactionTime),
+                    amount,
+                    displayAmount: transactionDisplayAmount(tx, amountData),
+                    transactionAmount: transactionDisplayAmount(tx, amountData),
+                    displayCurrency: amountData.included ? 'ILS' : amountData.currency,
+                    isShekel: amountData.included,
+                    foreignCurrency,
+                    originalAmount: original === null ? null : -original,
+                    originalCurrency: String(tx?.originalCurrency || '').trim(),
+                    part,
+                    totalParts,
+                    card: hidden ? 'כרטיסים מוסתרים' : cardName,
+                    account: role,
+                    ownerLabel: String(profile.ownerLabel || ''),
+                    hidden,
+                    description: String(tx?.description || ''),
+                    memo: String(tx?.memo || ''),
+                    status: pending ? 'pending' : String(tx?.status || 'completed'),
+                    pendingFresh,
+                    chargeDateSource: projection.source,
+                    billingDateConfidence: projection.confidence,
+                    includedInIlsTotal,
+                    amountEstimated: amountData.estimated || pending,
+                    amountSource: amountData.source,
+                    amountStatus,
+                    unconverted: amountStatus === 'foreign_unconverted',
+                    unknownAmount: amountStatus === 'unknown_amount',
+                    uncertainBillingDate: !date,
+                    coverageIncomplete,
+                    coverageStatus,
+                    totalAmount: transactionTotalAmount(tx, amountData)
+                });
+            }
+        }
+    return rows;
 }
 
-function manualRows(state,asOf){
-  const rows=[];
-  for(const record of Array.isArray(state?.credits)?state.credits:[]){
-    const first=creditBillingISODate(record?.firstChargeDate),count=Math.max(0,Math.trunc(Number(record?.installments)||0));if(!first||!count)continue;
-    const total=finite(record.totalAmount)||0,base=roundMoney(total/count);let used=0;
-    for(let index=0;index<count;index++){
-      const amount=index===count-1?roundMoney(total-used):base;used=roundMoney(used+amount);const date=addMonthsISO(first,index);if(record.active===false&&date>=asOf)continue;
-      const creditId=String(record.id||`manual-${index}`);rows.push({source:'manual',creditId,profileId:'',provider:'manual',accountNumber:'',creditAccountKey:`manual:${String(record.card||record.id||index)}`,date,billingDate:date,billingMonth:creditBillingMonthKey(date),transactionDate:creditBillingISODate(record.transactionDate),transactionTime:'',amount,displayAmount:total,transactionAmount:total,displayCurrency:'ILS',isShekel:true,foreignCurrency:false,originalAmount:total,originalCurrency:'ILS',part:index+1,totalParts:count,card:String(record.card||'תוספת ידנית'),account:accountRole(record.account),ownerLabel:String(record.ownerLabel||''),hidden:false,description:String(record.description||record.note||''),memo:'',status:'completed',pendingFresh:true,chargeDateSource:'manual_schedule',billingDateConfidence:'manual',includedInIlsTotal:true,amountEstimated:false,amountSource:'manual',amountStatus:'known_ils',unconverted:false,unknownAmount:false,uncertainBillingDate:false,coverageIncomplete:false,coverageStatus:'',totalAmount:total,record});
+function manualRows(state, asOf) {
+    const rows = [];
+    for (const record of Array.isArray(state?.credits) ? state.credits : []) {
+        const first = creditBillingISODate(record?.firstChargeDate), count = Math.max(0, Math.trunc(Number(record?.installments) || 0));
+        if (!first || !count)
+            continue;
+        const total = finite(record.totalAmount) || 0, base = roundMoney(total / count);
+        let used = 0;
+        for (let index = 0; index < count; index++) {
+            const amount = index === count - 1 ? roundMoney(total - used) : base;
+            used = roundMoney(used + amount);
+            const date = addMonthsISO(first, index);
+            if (record.active === false && date >= asOf)
+                continue;
+            const creditId = String(record.id || `manual-${index}`);
+            rows.push({
+                source: 'manual',
+                creditId,
+                profileId: '',
+                provider: 'manual',
+                accountNumber: '',
+                creditAccountKey: `manual:${String(record.card || record.id || index)}`,
+                date,
+                billingDate: date,
+                billingMonth: creditBillingMonthKey(date),
+                transactionDate: creditBillingISODate(record.transactionDate),
+                transactionTime: '',
+                amount,
+                displayAmount: total,
+                transactionAmount: total,
+                displayCurrency: 'ILS',
+                isShekel: true,
+                foreignCurrency: false,
+                originalAmount: total,
+                originalCurrency: 'ILS',
+                part: index + 1,
+                totalParts: count,
+                card: String(record.card || 'תוספת ידנית'),
+                account: accountRole(record.account),
+                ownerLabel: String(record.ownerLabel || ''),
+                hidden: false,
+                description: String(record.description || record.note || ''),
+                memo: '',
+                status: 'completed',
+                pendingFresh: true,
+                chargeDateSource: 'manual_schedule',
+                billingDateConfidence: 'manual',
+                includedInIlsTotal: true,
+                amountEstimated: false,
+                amountSource: 'manual',
+                amountStatus: 'known_ils',
+                unconverted: false,
+                unknownAmount: false,
+                uncertainBillingDate: false,
+                coverageIncomplete: false,
+                coverageStatus: '',
+                totalAmount: total,
+                record
+            });
+        }
     }
-  }
-  return rows;
+    return rows;
 }
 
 function seriesKey(row){
@@ -227,18 +408,86 @@ function seriesKey(row){
   return `${raw}|${row.totalParts}|${row.transactionDate}|${row.description}`;
 }
 
-function enrichSeries(rows){
-  const groups=new Map();
-  for(const row of rows.filter(item=>item.source==='credit_sync')){const key=seriesKey(row);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(row)}
-  for(const [key,items] of groups){const parts=new Set(items.map(row=>row.part)),totalParts=Math.max(...items.map(row=>row.totalParts)),explicitTotal=items.map(row=>row.totalAmount).find(value=>Number.isFinite(Number(value))&&Number(value)!==0),series={id:key,totalAmount:explicitTotal??roundMoney(items.reduce((sum,row)=>sum+row.amount,0)),partial:parts.size<totalParts,transactionDate:items[0]?.transactionDate||'',transactionTime:items[0]?.transactionTime||''};for(const row of items){row.series=series;row.charge={date:row.date,amount:row.amount,part:row.part,totalParts:row.totalParts}}}
-  for(const row of rows){if(row.source==='credit_pending')row.pending={id:row.creditId,isShekel:row.isShekel};if(row.source==='credit_foreign')row.foreign={id:row.creditId}}
-  return rows;
+function enrichSeries(rows) {
+    const groups = new Map();
+    for (const row of rows.filter(item => item.source === 'credit_sync')) {
+        const key = seriesKey(row);
+        if (!groups.has(key))
+            groups.set(key, []);
+        groups.get(key).push(row)
+    }
+    for (const [key, items] of groups) {
+        const parts = new Set(items.map(row => row.part)), totalParts = Math.max(...items.map(row => row.totalParts)), explicitTotal = items.map(row => row.totalAmount).find(value => Number.isFinite(Number(value)) && Number(value) !== 0), series = {
+            id: key,
+            totalAmount: explicitTotal ?? roundMoney(items.reduce((sum, row) => sum + row.amount, 0)),
+            partial: parts.size < totalParts,
+            transactionDate: items[0]?.transactionDate || '',
+            transactionTime: items[0]?.transactionTime || ''
+        };
+        for (const row of items) {
+            row.series = series;
+            row.charge = {
+                date: row.date,
+                amount: row.amount,
+                part: row.part,
+                totalParts: row.totalParts
+            }
+        }
+    }
+    for (const row of rows) {
+        if (row.source === 'credit_pending')
+            row.pending = { id: row.creditId, isShekel: row.isShekel };
+        if (row.source === 'credit_foreign')
+            row.foreign = { id: row.creditId }
+    }
+    return rows;
 }
 
-function cycleRows(rows){
-  const groups=new Map();
-  for(const row of rows){if(!row.date||row.amountSource==='issuer_not_billed')continue;const key=`${row.creditAccountKey}|${row.date}`;if(!groups.has(key))groups.set(key,[]);groups.get(key).push(row)}
-  return [...groups.entries()].map(([id,items])=>{const finalized=items.filter(row=>row.status!=='pending'&&row.includedInIlsTotal),pending=items.filter(row=>row.status==='pending'&&row.includedInIlsTotal),unconverted=items.filter(row=>row.amountStatus==='foreign_unconverted'),unknownAmount=items.filter(row=>row.amountStatus==='unknown_amount'),stalePending=items.filter(row=>row.status==='pending'&&!row.pendingFresh),missingAmount=items.filter(row=>row.amountStatus!=='known_ils'),coverageGap=items.filter(row=>row.coverageIncomplete),incomplete=items.filter(row=>!row.includedInIlsTotal||row.coverageIncomplete);return {id,creditAccountKey:items[0].creditAccountKey,billingDate:items[0].date,date:items[0].date,billingMonth:items[0].billingMonth,card:items[0].card,account:items[0].account,provider:items[0].provider,profileId:items[0].profileId,accountNumber:items[0].accountNumber,hidden:items[0].hidden,rows:items,finalizedTotal:roundMoney(finalized.reduce((sum,row)=>sum+row.amount,0)),pendingTotal:roundMoney(pending.reduce((sum,row)=>sum+row.amount,0)),total:roundMoney(items.reduce((sum,row)=>sum+row.amount,0)),pendingCount:pending.length,unconvertedCount:unconverted.length,unknownAmountCount:unknownAmount.length,stalePendingCount:stalePending.length,missingAmountCount:missingAmount.length,coverageGapCount:coverageGap.length,incompleteCount:incomplete.length,status:incomplete.length?'incomplete':pending.length||items.some(row=>row.amountEstimated||row.billingDateConfidence==='inferred')?'estimated':'finalized'} }).sort((a,b)=>a.billingDate.localeCompare(b.billingDate)||String(a.card).localeCompare(String(b.card),'he'));
+function cycleRows(rows) {
+    const groups = new Map();
+    for (const row of rows) {
+        if (!row.date || row.amountSource === 'issuer_not_billed')
+            continue;
+        const key = `${row.creditAccountKey}|${row.date}`;
+        if (!groups.has(key))
+            groups.set(key, []);
+        groups.get(key).push(row)
+    }
+    return [...groups.entries()].map(([id, items]) => {
+        const finalized = items.filter(row => row.status !== 'pending' && row.includedInIlsTotal),
+              pending = items.filter(row => row.status === 'pending' && row.includedInIlsTotal),
+              unconverted = items.filter(row => row.amountStatus === 'foreign_unconverted'),
+              unknownAmount = items.filter(row => row.amountStatus === 'unknown_amount'),
+              stalePending = items.filter(row => row.status === 'pending' && !row.pendingFresh),
+              missingAmount = items.filter(row => row.amountStatus !== 'known_ils'),
+              coverageGap = items.filter(row => row.coverageIncomplete),
+              incomplete = items.filter(row => !row.includedInIlsTotal || row.coverageIncomplete);
+        return {
+            id,
+            creditAccountKey: items[0].creditAccountKey,
+            billingDate: items[0].date,
+            date: items[0].date,
+            billingMonth: items[0].billingMonth,
+            card: items[0].card,
+            account: items[0].account,
+            provider: items[0].provider,
+            profileId: items[0].profileId,
+            accountNumber: items[0].accountNumber,
+            hidden: items[0].hidden,
+            rows: items,
+            finalizedTotal: roundMoney(finalized.reduce((sum, row) => sum + row.amount, 0)),
+            pendingTotal: roundMoney(pending.reduce((sum, row) => sum + row.amount, 0)),
+            total: roundMoney(items.reduce((sum, row) => sum + row.amount, 0)),
+            pendingCount: pending.length,
+            unconvertedCount: unconverted.length,
+            unknownAmountCount: unknownAmount.length,
+            stalePendingCount: stalePending.length,
+            missingAmountCount: missingAmount.length,
+            coverageGapCount: coverageGap.length,
+            incompleteCount: incomplete.length,
+            status: incomplete.length ? 'incomplete' : pending.length || items.some(row => row.amountEstimated || row.billingDateConfidence === 'inferred') ? 'estimated' : 'finalized'
+        }
+    }).sort((a, b) => a.billingDate.localeCompare(b.billingDate) || String(a.card).localeCompare(String(b.card), 'he'));
 }
 
 export function creditBillingModelData(state={},options={}){
@@ -250,11 +499,21 @@ export function creditBillingRowsData(state={},options={}){return creditBillingM
 export function creditBillingCyclesData(state={},options={}){return creditBillingModelData(state,options).cycles}
 export function creditForecastRowsData(state={},options={}){const model=creditBillingModelData(state,options);return model.rows.filter(row=>row.date&&row.date>=model.asOf)}
 
-export function creditCyclesThroughHorizonRowsData(inputRows=[],account='עסקי',reference=localTodayISO(),unassignedRows=[],horizonDate=''){
-  const asOf=creditBillingISODate(reference)||localTodayISO(),allAccounts=account==='all',role=accountRole(account),rows=Array.isArray(inputRows)?inputRows:[],future=cycleRows(rows).filter(cycle=>(allAccounts||cycle.account===role)&&cycle.billingDate>=asOf&&(Math.abs(cycle.total)>0.004||cycle.status==='incomplete')),nextByCard=new Map();
-  for(const cycle of future){const current=nextByCard.get(cycle.creditAccountKey);if(!current||cycle.billingDate<current)nextByCard.set(cycle.creditAccountKey,cycle.billingDate)}
-  const nextCycles=future.filter(cycle=>nextByCard.get(cycle.creditAccountKey)===cycle.billingDate),targetDate=creditBillingISODate(horizonDate)||(nextCycles.length?nextCycles.reduce((latest,cycle)=>cycle.billingDate>latest?cycle.billingDate:latest,nextCycles[0].billingDate):asOf),cycles=future.filter(cycle=>cycle.billingDate<=targetDate),horizonRows=cycles.flatMap(cycle=>cycle.rows.filter(row=>row.includedInIlsTotal&&Math.abs(row.amount)>0.004)),uncertain=(Array.isArray(unassignedRows)?unassignedRows:[]).filter(row=>allAccounts||row.account===role),incompleteRows=[...uncertain,...cycles.flatMap(cycle=>cycle.rows.filter(row=>!row.includedInIlsTotal||row.coverageIncomplete))];
-  return {rows:horizonRows,cycles,nextCycles,total:roundMoney(horizonRows.reduce((sum,row)=>sum+row.amount,0)),targetDate,targetMonth:creditBillingMonthKey(targetDate),targetEnd:targetDate,unassignedRows:uncertain,incompleteRows};
+export function creditCyclesThroughHorizonRowsData(inputRows = [], account = 'עסקי', reference = localTodayISO(), unassignedRows = [], horizonDate = '') {
+    const asOf = creditBillingISODate(reference) || localTodayISO(), allAccounts = account === 'all', role = accountRole(account), rows = Array.isArray(inputRows) ? inputRows : [], future = cycleRows(rows).filter(cycle => (allAccounts || cycle.account === role) && cycle.billingDate >= asOf && (Math.abs(cycle.total) > 0.004 || cycle.status === 'incomplete')), nextByCard = new Map();
+    for (const cycle of future) {
+        const current = nextByCard.get(cycle.creditAccountKey);
+        if (!current || cycle.billingDate < current)
+            nextByCard.set(cycle.creditAccountKey, cycle.billingDate)
+    }
+    const nextCycles = future.filter(cycle => nextByCard.get(cycle.creditAccountKey) === cycle.billingDate),
+          targetDate = creditBillingISODate(horizonDate) || (nextCycles.length ? nextCycles.reduce((latest, cycle) => cycle.billingDate > latest ? cycle.billingDate : latest, nextCycles[0].billingDate) : asOf),
+          cycles = future.filter(cycle => cycle.billingDate <= targetDate),
+          horizonRows = cycles.flatMap(cycle => cycle.rows.filter(row => row.includedInIlsTotal && Math.abs(row.amount) > 0.004)),
+          uncertain = (Array.isArray(unassignedRows) ? unassignedRows : []).filter(row => allAccounts || row.account === role),
+          incompleteRows = [...uncertain,
+        ...cycles.flatMap(cycle => cycle.rows.filter(row => !row.includedInIlsTotal || row.coverageIncomplete))];
+    return { rows: horizonRows, cycles, nextCycles, total: roundMoney(horizonRows.reduce((sum, row) => sum + row.amount, 0)), targetDate, targetMonth: creditBillingMonthKey(targetDate), targetEnd: targetDate, unassignedRows: uncertain, incompleteRows };
 }
 
 export function creditCyclesThroughHorizonData(state={},account='עסקי',reference=localTodayISO()){

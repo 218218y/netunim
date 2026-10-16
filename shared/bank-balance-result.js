@@ -27,6 +27,12 @@ function invalidBalance(role) {
 function account(value, role) {
   const balance = record(value) ? number(value.balance) : null;
   if (!record(value) || balance === null) throw invalidBalance(role);
+  const coverage=record(value.transactionCoverage)?value.transactionCoverage:null;
+  if(coverage?.complete===true&&!Array.isArray(value.transactions)){
+    throw Object.assign(new Error('Bank Bridge הצהיר על היסטוריה מלאה ללא רשימת תנועות תקינה'),{
+      code:'BANK_TRANSACTIONS_INVALID',retryable:false,
+    });
+  }
   /** @type {BankAccountSnapshot} */
   const decoded = Object.freeze({
     ...value,

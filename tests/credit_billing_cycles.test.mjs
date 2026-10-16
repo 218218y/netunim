@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as kupaEngine from '../netunim-kupa/site/assets/js/shared/credit-billing-cycles.js';
 import * as ordersEngine from '../netunim-orders/site/assets/js/shared/credit-billing-cycles.js';
+
+
 import {kupaAccountCashflowData as kupaCashflow,kupaBankCreditSettlementIdentitiesData,kupaBankCreditSettlementIdentityData,kupaReconciledCreditRowsData,kupaReconciledCreditUpcomingDetailData} from '../netunim-kupa/site/assets/js/shared/kupa-cashflow.js';
 import {kupaAccountCashflowData as ordersCashflow} from '../netunim-orders/site/assets/js/shared/kupa-cashflow.js';
 import {allInstallmentsData,creditForecastInstallmentsData,creditMonthlyDetailData} from '../netunim-kupa/site/assets/js/domains/credit/model.js';
@@ -852,3 +854,12 @@ test('moving a card to home does not rewrite older billing cycles to the new ban
   assert.deepEqual(ordersEngine.creditBillingRowsData(state,{asOf:'2026-10-14',includeHidden:true}).map(row=>[row.date,row.account,row.amount]),rows.map(row=>[row.date,row.account,row.amount]));
 });
 
+test('billing-day inference requires its stated 60 percent share of observed dates',()=>{
+  const months=[10,10,10,15,16,17].map((day,index)=>({month:`2026-0${index+1}`,
+    transactions:[{processedDate:`2026-0${index+1}-${day}`,status:'completed'}]}));
+  for(const engine of [kupaEngine,ordersEngine]){
+    assert.equal(engine.creditAccountStatementCycleDateData({months},'2026-10-01').source,'unassigned');
+    assert.equal(engine.creditAccountStatementCycleDateData({months:months.slice(0,5)},'2026-10-01').nominalDay,10);
+    assert.equal(engine.creditAccountStatementCycleDateData({months,balanceDate:'2026-10-15'},'2026-10-01').source,'issuer_billing_day_projection');
+  }
+});

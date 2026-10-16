@@ -29,6 +29,7 @@ export function assertRestoreGroup(group){
   if(!group||typeof group!=='object'||Array.isArray(group)
     ||group.schemaVersion!==RESTORE_SCHEMA_VERSION
     ||!['kupa','orders'].includes(group.appSite)
+    ||group.owner!==undefined&&(typeof group.owner!=='string'||!group.owner.trim())
     ||!/^[0-9a-f-]{20,}$/i.test(String(group.restoreGroupId||''))
     ||!validTarget(group.main)
     ||!validTarget(group.checks,{optional:true})
@@ -39,7 +40,7 @@ export function assertRestoreGroup(group){
   return group;
 }
 
-export async function createRestoreGroup({appSite,main,checks=null,beforeState=null,localTargetState=null,restoreGroupId=null,now=Date.now,cryptoImpl=globalThis.crypto}={}){
+export async function createRestoreGroup({appSite,owner=null,main,checks=null,beforeState=null,localTargetState=null,restoreGroupId=null,now=Date.now,cryptoImpl=globalThis.crypto}={}){
   const id=String(restoreGroupId||cryptoImpl?.randomUUID?.()||'').trim();
   if(!id)throw new Error('restore_group_id_unavailable');
   const makeTarget=async(target,kind)=>{
@@ -55,7 +56,7 @@ export async function createRestoreGroup({appSite,main,checks=null,beforeState=n
     };
   };
   const createdAt=new Date(Number(typeof now==='function'?now():now)).toISOString();
-  return assertRestoreGroup({schemaVersion:RESTORE_SCHEMA_VERSION,restoreGroupId:id,appSite,phase:'staged',mutationSeq:1,createdAt,updatedAt:createdAt,main:await makeTarget(main,'main'),checks:await makeTarget(checks,'checks'),beforeState:clone(beforeState),localTargetState:clone(localTargetState)});
+  return assertRestoreGroup({schemaVersion:RESTORE_SCHEMA_VERSION,restoreGroupId:id,appSite,...(owner===null?{}:{owner}),phase:'staged',mutationSeq:1,createdAt,updatedAt:createdAt,main:await makeTarget(main,'main'),checks:await makeTarget(checks,'checks'),beforeState:clone(beforeState),localTargetState:clone(localTargetState)});
 }
 
 function samePayload(a,b){return a?.restoreGroupId===b?.restoreGroupId&&a?.main?.payloadHash===b?.main?.payloadHash&&a?.checks?.payloadHash===b?.checks?.payloadHash}

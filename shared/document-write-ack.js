@@ -1,5 +1,6 @@
 // @ts-check
 import {equalSyncJson} from './sync-json.js';
+import {assertStorageJson} from './storage-json-codec.js';
 
 /** @typedef {import('./storage-json.js').StorageJsonObject} StorageJsonObject */
 /** @typedef {{revision: number, operationRevision: number | null, replayed: boolean}} DocumentAckRevision */
@@ -18,6 +19,18 @@ import {equalSyncJson} from './sync-json.js';
 /** @param {unknown} value @returns {value is Record<string, unknown>} */
 function object(value){return value!==null&&typeof value==='object'&&!Array.isArray(value)}
 
+/** Decode envelope cardinality before a transport can discard a second receipt.
+ * This is not an ACK: revision and business-state validation still follows.
+ * @param {unknown} response @returns {Record<string,unknown>} */
+export function readDocumentWriteResponseRow(response){
+  const row=Array.isArray(response)?(response.length===1?response[0]:null):response;
+  if(!object(row))throw Object.assign(new Error('document_write_ack_response_invalid'),{kind:'confirmation_unknown',retryable:false});
+  assertStorageJson(row);
+  return row;
+}
+/** @param {unknown} value */
+function wireRevision(value){return typeof value==='number'||typeof value==='string'&&/^\d+$/.test(value)}
+
 // Revision policy is also exported through cloud-sync for existing consumers.
 // It is metadata evidence only: it does not validate a document or grant ACK.
 /** @param {unknown} row @param {RevisionOptions} [options] @returns {DocumentAckRevision} */
@@ -27,6 +40,9 @@ export function documentWriteAckRevision(row,{baseRevision,authoritativeState,se
     operationRevision=hasOperationRevision?Number(record?.operation_revision):null,replayed=record?.operation_replayed===true;
   /** @returns {never} */
   const invalid=()=>{throw new Error(errorCode)};
+  if(!record||!Object.hasOwn(record,'revision')||!wireRevision(record.revision)||
+    hasOperationRevision&&!wireRevision(record.operation_revision)||
+    record.operation_replayed!=null&&typeof record.operation_replayed!=='boolean')invalid();
   if(!Number.isSafeInteger(base)||base<0||!Number.isSafeInteger(revision)||revision<base)invalid();
   if(operationRevision!==null){
     if(!Number.isSafeInteger(operationRevision)||operationRevision<base||operationRevision>revision||operationRevision>base+1)invalid();

@@ -16,6 +16,10 @@ EDGE=ROOT/'netunim-orders/supabase/functions/morning-documents/index.ts'
 DOCS=ROOT/'netunim-orders/MORNING_SETUP.md'
 errors=[]
 
+def contains_js(source,fragment):
+    return "".join(fragment.split()) in "".join(source.split())
+
+
 def ok(condition,message):
     print(('PASS ' if condition else 'FAIL ')+message)
     if not condition: errors.append(message)
@@ -121,7 +125,7 @@ ok('data-action="orders-bank-create-document"' in bank_view and 'data-click-arg1
    'Bank document action opens the real Morning issuance form directly with type 320 as the default; type 400 remains selectable inside that form')
 ok('customerDebtProgressData' in bank and 'progress.paymentComplete&&progress.invoiceComplete' in bank and 'remainingPaymentMagnitude' in bank and 'progress.paymentComplete&&progress.invoiceComplete' in debt_picker,
    'Debt suggestions exclude completed debts and compare bank credits to the current payment remainder')
-ok('documentId:String(row.document_id' in edge and 'onBankDocumentVerified(Number(context.bankTransactionId),bankLink)' in documents and 'row.documentLinks=[entry' in controller,
+ok('documentId:String(row.document_id' in edge and 'onBankDocumentVerified(Number(context.bankTransactionId),bankLink)' in documents and contains_js(controller,'row.documentLinks=[entry'),
    'Verified bank documents are projected immediately into the local row without waiting for a later bank sync')
 ok('pending?' in bank_view and 'canHandle=stable&&!pending' in bank_view,
    'Provisional bank rows cannot be manually marked handled')
@@ -131,13 +135,13 @@ ok('hydrateRecoveredSource' in documents and 'activeSource=hydrateRecoveredSourc
    'Recovered bank issuance rehydrates fresh bank amount/row details without persisting them in recovery storage')
 ok('bank_link_pending' in edge and 'record_verified_bank_morning_document' in edge,
    'A verified Morning document remains fail-closed until the durable bank link is saved')
-ok("result=await saveBankTransactionHandled(id,handled===true,{assertCurrent});assertCurrent();const at=result.handled_at;updateLocalBankTransaction" in finance_controller and 'return readBankHandledReceipt(j,id,handled===true)' in transport and 'bank_handled_rpc_security_fix' in transport and 'הפעולה לא נשמרה ולא נוצר שינוי ממתין' in transport,
+ok(contains_js(finance_controller,"result=await saveBankTransactionHandled(id,handled===true,{assertCurrent});assertCurrent();const at=result.handled_at;updateLocalBankTransaction") and 'return readBankHandledReceipt(j,id,handled===true)' in transport and 'bank_handled_rpc_security_fix' in transport and 'הפעולה לא נשמרה ולא נוצר שינוי ממתין' in transport,
    'Manual handled-state UI mutates local state only after server acknowledgement and reports permission failures as non-pending')
 ok('v_multi_check_deposit' in migration_v2 and "jsonb_array_length(v_tx.check_details->'checkItems')>1" in migration_v2 and 'and not v_multi_check_deposit' in migration_v2 and 'if v_multi_check_deposit then' in migration_v2 and 'handled_at:=v_tx.handled_at' in migration_v2,
    'Multi-cheque subset documents may link durably without falsely marking the entire aggregate deposit handled')
 ok('v_multi_check_deposit' in sql and 'and not v_multi_check_deposit' in sql,
    'Fresh Morning schema includes the same multi-cheque subset semantics as the v2 upgrade')
-ok('row.handledAt=row.handledAt||link.handledAt||null' in finance_controller and 'new Date().toISOString()' not in finance_controller.split('function markBankMorningVerified',1)[1].split(');if(changed)',1)[0].split('row.handledAt=',1)[1].split(';',1)[0],
+ok(contains_js(finance_controller,'row.handledAt=row.handledAt||link.handledAt||null') and 'new Date().toISOString()' not in ''.join(finance_controller.split()).split('functionmarkBankMorningVerified',1)[1].split('row.handledAt=',1)[1].split(';',1)[0],
    'Local verified-link projection does not invent a handled timestamp when the server intentionally leaves an aggregate cheque deposit open')
 ok('PCN / ריכוז הכנסות - L' in docs and 'אינו שולח כרגע `accountingClassification`' in docs,
    'PCN behavior is documented without inventing an unverified income-document API field')

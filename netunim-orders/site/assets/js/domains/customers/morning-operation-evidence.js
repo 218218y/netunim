@@ -1,4 +1,5 @@
 // @ts-check
+import {evidenceTimestamp} from '../../shared/response-evidence.js';
 /** @typedef {'reserved'|'pending'|'created_unverified'|'needs_reconciliation'|'created'|'failed'} OperationState */
 /** @typedef {{operation_id:string,state:OperationState,document_type?:number,amount?:number,document_id?:string,document_number?:string|number,verified_at?:string,allocation_number?:string|number}} LedgerOperation */
 /** @typedef {{pending?:boolean,operationId?:string,documentId?:string,documentNumber?:string|number,documentType?:number,documentAmount?:number,transactionId?:number,linkId?:number,verifiedAt?:string,handledAt?:string}} BankLink */
@@ -31,7 +32,7 @@ function amount(value){
 /** @param {unknown} value */
 function documentType(value){if(value!==305&&value!==320&&value!==400)throw invalid();return value}
 /** @param {unknown} value */
-function date(value){if(typeof value!=='string'||!value.trim()||value.length>80||!Number.isFinite(Date.parse(value)))throw invalid();return value}
+function date(value){if(!evidenceTimestamp(value)||value.length>80)throw invalid();return value}
 /** @param {unknown} value */
 function numberLabel(value){if(typeof value==='string'&&value.length<=160)return value;if(typeof value==='number'&&Number.isSafeInteger(value))return value;throw invalid()}
 /** @param {unknown} value */

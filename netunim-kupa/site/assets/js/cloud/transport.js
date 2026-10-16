@@ -1,5 +1,6 @@
+import {readDocumentWriteResponseRow} from '../shared/document-write-ack.js';
 import {readRestoreGroupRows,readRestoreStageReceipt,readRestoreApplyReceipt} from '../shared/restore-response-records.js';
-import {readBankAcknowledgementReceipt,readBankArchiveRows,readBankSnapshotRows} from '../shared/bank-response-records.js';
+import {readBankArchiveSyncReceipt,readBankAcknowledgementReceipt,readBankArchiveRows,readBankSnapshotRows} from '../shared/bank-response-records.js';
 import {readCloudMetaRows,readCloudDocumentRows,readFinanceDocumentRows,readCloudBackupRows,readCloudBackupPointRows} from '../shared/cloud-read-records.js';
 import {createMainDocumentWrite} from './main-document-write.js';
 import {beginMeasure} from '../shared/runtime-performance.js';
@@ -156,7 +157,8 @@ async function syncBankTransactionsSnapshot(accountKey,accountRole,transactions,
   const payload=bankArchivePayload(transactions),when=String(snapshotAt||'').trim(),from=String(coverage?.from||'').slice(0,10),to=String(coverage?.to||'').slice(0,10),isComplete=complete===true&&coverage?.complete===true&&!coverage?.warning&&/^\d{4}-\d{2}-\d{2}$/.test(from)&&/^\d{4}-\d{2}-\d{2}$/.test(to);
   if(!when||!Number.isFinite(Date.parse(when)))throw new Error('זמן צילום תנועות הבנק אינו תקין');
   const r=await supaRest('/rest/v1/rpc/sync_bank_transactions_snapshot_v6',{method:'POST',networkRetry:true,dataPriority:'high',...(assertCurrent?{assertRequestScope:assertCurrent}:{}),body:JSON.stringify({p_account_key:String(accountKey||''),p_account_role:accountRole==='home'?'home':'business',p_transactions:payload,p_snapshot_at:new Date(when).toISOString(),p_coverage_from:isComplete?from:null,p_coverage_to:isComplete?to:null,p_complete:isComplete,...financeFencePayload(lease)})});
-  const body=await r.text();assertCurrent?.();let j;try{j=body?JSON.parse(body):null}catch{j=null}if(!r.ok)throw new Error(j?.message||j?.hint||body||'שמירת צילום תנועות הבנק נכשלה');const result=Array.isArray(j)?j[0]:j;return {result,sourcePayload:payload,complete:isComplete};
+  const body=await r.text();assertCurrent?.();let j;try{j=body?JSON.parse(body):null}catch{j=null}if(!r.ok)throw new Error(j?.message||j?.hint||body||'שמירת צילום תנועות הבנק נכשלה');
+  const result=readBankArchiveSyncReceipt(j,isComplete);return {result,sourcePayload:payload,complete:isComplete};
 }
 async function readBankTransactions(accountKey,accountRole,{days=370,maxRows=20000,assertCurrent}={}){
   assertCurrent?.();
@@ -228,7 +230,8 @@ async function readSharedChecksDocument(){
   return row
 }
 async function readSharedChecksMeta(){const q=`/rest/v1/${SHARED_CHECKS_TABLE}?document_name=eq.${encodeURIComponent(SHARED_CHECKS_DOC)}&select=document_name,revision,updated_at`;const r=await supaRest(q,{method:'GET',networkRetry:true}),j=await r.json().catch(()=>null);if(!r.ok)throw new Error(j?.message||'קריאת סטטוס הצקים המשותפים נכשלה');return readCloudMetaRows(j,SHARED_CHECKS_DOC)}
-async function rpcSaveSharedChecksV2(checks,expectedRevision,operationId,deletedCheckIds=[],audit={}){const payload={version:1,checks:normalizeSharedChecks(checks)},expected=Number(expectedRevision||0),op=String(operationId||'').trim();const deletedIds=[...new Set((Array.isArray(deletedCheckIds)?deletedCheckIds:[]).map(x=>String(x||'').trim()).filter(Boolean))].sort();if(!Number.isSafeInteger(expected)||expected<0)throw new Error('Revision הצקים המקומי אינו תקין');if(!op)throw new Error('מזהה פעולת הצקים חסר');const rpc=audit?.mutationType==='bulk-delete'?`bulk_delete_${SHARED_CHECKS_RPC}_v6`:`${SHARED_CHECKS_RPC}_v6`,r=await supaRest(`/rest/v1/rpc/${rpc}`,{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify({p_document_name:SHARED_CHECKS_DOC,p_expected_revision:expected,p_state:payload,p_operation_id:op,p_deleted_check_ids:deletedIds,p_audit:audit})});const body=await r.text();let j;try{j=body?JSON.parse(body):null}catch(e){j=null}return {r,j,body,row:Array.isArray(j)?j[0]:j}}
+async function rpcSaveSharedChecksV2(checks,expectedRevision,operationId,deletedCheckIds=[],audit={}){const payload={version:1,checks:normalizeSharedChecks(checks)},expected=Number(expectedRevision||0),op=String(operationId||'').trim();const deletedIds=[...new Set((Array.isArray(deletedCheckIds)?deletedCheckIds:[]).map(x=>String(x||'').trim()).filter(Boolean))].sort();if(!Number.isSafeInteger(expected)||expected<0)throw new Error('Revision הצקים המקומי אינו תקין');if(!op)throw new Error('מזהה פעולת הצקים חסר');const rpc=audit?.mutationType==='bulk-delete'?`bulk_delete_${SHARED_CHECKS_RPC}_v6`:`${SHARED_CHECKS_RPC}_v6`,r=await supaRest(`/rest/v1/rpc/${rpc}`,{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify({p_document_name:SHARED_CHECKS_DOC,p_expected_revision:expected,p_state:payload,p_operation_id:op,p_deleted_check_ids:deletedIds,p_audit:audit})});const body=await r.text();let j;try{j=body?JSON.parse(body):null}catch(e){j=null}
+  return {r,j,body,row:r.ok?readDocumentWriteResponseRow(j):Array.isArray(j)?j[0]:j}}
 async function restoreRpc(name,body,{assertCurrent}={}){assertCurrent?.();const r=await supaRest(`/rest/v1/rpc/${name}`,{method:'POST',networkRetry:true,dataPriority:'high',...(assertCurrent?{assertRequestScope:assertCurrent}:{}),body:JSON.stringify(body)});
   const raw=await r.text();assertCurrent?.();let j;try{j=raw?JSON.parse(raw):null}catch{j=null}if(!r.ok)throw new Error(j?.message||j?.hint||raw||`restore rpc failed: ${name}`);return j}
 async function stageRestoreGroup(group,options={}){

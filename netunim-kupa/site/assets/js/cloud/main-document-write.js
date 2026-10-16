@@ -1,4 +1,5 @@
 // @ts-check
+import {readDocumentWriteResponseRow} from '../shared/document-write-ack.js';
 
 /** @typedef {import('../shared/storage-json.js').StorageJsonObject} JsonObject */
 /** @typedef {import('../shared/storage-records.js').StorageDeleteIntents} DeleteIntents */
@@ -49,7 +50,7 @@ export function createMainDocumentWrite({ documentName, request, validate, begin
       j = null
     }
     if (r.ok) ackDone();
-    return { r, j, body, row: Array.isArray(j) ? j[0] : j };
+    return { r, j, body, row: r.ok ? readDocumentWriteResponseRow(j) : Array.isArray(j) ? j[0] : j };
   }
 
   return { rpcSaveCloudV2 };

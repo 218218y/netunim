@@ -1,4 +1,5 @@
 import {readBankAcknowledgementReceipt,readBankHandledReceipt} from '../../shared/bank-response-records.js';
+import {readBankArchiveSyncReceipt} from '../../shared/bank-response-records.js';
 /** @type {unknown} */ const input=[];
 const ack=readBankAcknowledgementReceipt(input,77,'missing');
 /** @type {string} */ const at=ack.acknowledged_at;
@@ -11,3 +12,8 @@ ack.acknowledged_at=at;
 const handled=readBankHandledReceipt(input,77,false);
 /** @type {string|null} */ const handledAt=handled.handled_at;
 void handledAt;
+const reconciliation=readBankArchiveSyncReceipt(input,false);
+/** @type {number} */ const total=reconciliation.total_count;
+// @ts-expect-error reconciliation counts cannot become string authority
+/** @type {string} */ const invalidTotal=reconciliation.total_count;
+void [total,invalidTotal];
