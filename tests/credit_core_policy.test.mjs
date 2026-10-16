@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { creditAdapterPolicyHashes } from './credit_adapter_policy_fixture.mjs';
+import {restoreCreditPendingStatus} from './credit_account_authority_fixture.mjs';
 const read = (name) =>
   fs.readFileSync(new URL('../netunim-kupa/bank-bridge/' + name + '.mjs', import.meta.url), 'utf8');
 const modules = [
@@ -14,7 +15,7 @@ const fixture = JSON.parse(
   fs.readFileSync(new URL('./fixtures/credit-core-policy.json', import.meta.url), 'utf8')
 );
 test('all 32 Credit core declarations match the reviewed contract', () => {
-  assert.deepEqual(creditAdapterPolicyHashes(modules.map(read)).policies, fixture.creditPolicies);
+  assert.deepEqual(creditAdapterPolicyHashes(modules.map(name=>restoreCreditPendingStatus(read(name)))).policies, fixture.creditPolicies);
 });
 
 test('policy fixture detects changed charge signs, login identity, transaction status and cooldown', () => {

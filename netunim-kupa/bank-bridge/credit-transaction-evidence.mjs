@@ -12,6 +12,12 @@ function integer(value){return typeof value==='number'&&Number.isSafeInteger(val
 
 /** @returns {never} */
 function invalid(){throw Object.assign(new Error('Credit transaction evidence is invalid'),{code:'CREDIT_REFRESH_RESULT_INVALID',retryable:false})}
+/** Omission is the supported older-response path. A supplied value is evidence,
+ * never a request for the persisted-feed normalizer to infer success.
+ * @param {unknown} value @param {string[]} allowed */
+function optionalEnum(value,allowed){
+  if(value!==undefined&&(typeof value!=='string'||!allowed.includes(value)))invalid();
+}
 /** The production handshake requires v2. Older responses can omit the envelope
  * version, but cannot downgrade transaction evidence to persisted-feed rules.
  * @param {unknown} version @returns {2} */
@@ -27,6 +33,9 @@ export function assertCreditProfileTransactions(profile){
   if(!Array.isArray(profile.accounts))return invalid();
   for(const account of Array.from(profile.accounts)){
     if(!object(account))return invalid();
+    optionalEnum(account.pendingStatus,['success','provider_error','schema_error','network_error','missing']);
+    optionalEnum(account.frameFetchStatus,['success','unavailable','provider_error','schema_error','network_error']);
+    optionalEnum(account.frameStatus,['fresh','stale','missing']);
     amounts(account,['balance','cardFrame','availableCredit']);
     if(account.pendingStatus==='success'&&!Array.isArray(account.pendingTransactions))invalid();
     for(const field of ['txns','pendingTransactions','unassignedTransactions']){

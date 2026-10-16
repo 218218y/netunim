@@ -17,7 +17,7 @@ const clean = (key, value) =>
 const ast = (source, name) =>
   JSON.parse(JSON.stringify(declaration(source, name), clean));
 for (const site of ['orders', 'kupa']) {
-  for(const [evidence,account] of [['missing status',{txns:[{id:'T'}]}],['missing monthly rows',{months:[{month:'2026-10',fetchStatus:'success'}]}],['missing pending rows',{pendingStatus:'success'}],['boolean amount',{txns:[{id:'T',status:'completed',chargedAmount:true}]}]])test(site+' current publication rejects '+evidence+' before merge/write',async()=>{
+  for(const [evidence,account] of [['missing status',{txns:[{id:'T'}]}],['unknown pending status',{pendingStatus:'garbage',pendingTransactions:[{id:'T',status:'pending'}]}],['unknown frame fetch status',{frameFetchStatus:'garbage',balance:999,cardFrame:9999}],['unknown frame status',{frameStatus:'garbage',balance:999}],['missing monthly rows',{months:[{month:'2026-10',fetchStatus:'success'}]}],['missing pending rows',{pendingStatus:'success'}],['boolean amount',{txns:[{id:'T',status:'completed',chargedAmount:true}]}]])test(site+' current publication rejects '+evidence+' before merge/write',async()=>{
     const create=site==='orders'?createOrdersCreditRefresh:createKupaCreditRefresh;
     const guard=()=>{},failures=[];let writes=0,merges=0,scans=0,releases=0;
     const status={bridgeVersion:73,contractVersion:2,profiles:[{profileId:'P'}]};

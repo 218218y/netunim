@@ -65,7 +65,7 @@ export function normalizeCreditAccount(account={},fallbackFetchedAt=null){
     frameStatus,
     frameFetchStatus:['success','unavailable','provider_error','schema_error','network_error'].includes(String(account.frameFetchStatus))?String(account.frameFetchStatus):(frameStatus==='fresh'?'success':'unavailable'),
     frameFetchedAt:iso(account.frameFetchedAt||(frameStatus==='fresh'?fallbackFetchedAt:null)),frameErrorCode:text(account.frameErrorCode||'',80),frameErrorAt:iso(account.frameErrorAt),
-    months,pendingTransactions,pendingStatus:['success','provider_error','schema_error','network_error'].includes(String(account.pendingStatus))?String(account.pendingStatus):pendingTransactions.length?'success':'missing',pendingFetchedAt:iso(account.pendingFetchedAt),pendingErrorCode:text(account.pendingErrorCode||'',80),pendingErrorAt:iso(account.pendingErrorAt),unassignedTransactions,
+    months,pendingTransactions,pendingStatus:['success','provider_error','schema_error','network_error','missing'].includes(String(account.pendingStatus))?String(account.pendingStatus):pendingTransactions.length?'success':'missing',pendingFetchedAt:iso(account.pendingFetchedAt),pendingErrorCode:text(account.pendingErrorCode||'',80),pendingErrorAt:iso(account.pendingErrorAt),unassignedTransactions,
   };
   return withAccountTransactions(result,txns.filter(tx=>{if(!tx.id)return true;const key=`${tx.id}|${tx.date}|${tx.processedDate}|${tx.chargedAmount}|${tx.description}|${tx.installments?.number||0}`;if(seen.has(key))return false;seen.add(key);return true}).sort((a,b)=>String(b.processedDate||b.date||'').localeCompare(String(a.processedDate||a.date||''))));
 }
