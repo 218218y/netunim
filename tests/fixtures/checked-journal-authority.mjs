@@ -19,3 +19,26 @@ const base=captureStorageCloudBase(input),head=captureStorageRecoveryHead(input)
 // @ts-expect-error sequence evidence cannot become a boolean
 /** @type {boolean} */ const invalidHead=head.seq;
 void [revision,ack,invalidBase,invalidHead];
+
+import {assertStorageJournalInstall,assertStorageJournalInitialization,storageJournalCompactionThrough,
+ assertStorageJournalAckCheckpoint,assertStorageJournalAdoption,assertStorageJournalCloudReset} from '../../shared/storage-journal-authority.js';
+const scope={owner:'A:orders',epoch:'E',seq:1},checkpoint={...scope,seq:0},cursor={owner:scope.owner,epoch:scope.epoch,revision:1,ackSeq:0};
+assertStorageJournalInstall(scope.owner,checkpoint,null,null,false);
+assertStorageJournalInitialization(scope.owner,checkpoint,cursor,null);
+/** @type {number} */ const retiredThrough=storageJournalCompactionThrough(scope,checkpoint,0,0);
+assertStorageJournalAckCheckpoint(scope,scope);
+assertStorageJournalAdoption(scope,scope,{...cursor,ackSeq:1},{...cursor,ackSeq:1},false);
+assertStorageJournalCloudReset(scope.owner,checkpoint,cursor);
+// @ts-expect-error a pending-flight fact cannot be text
+assertStorageJournalInstall(scope.owner,checkpoint,null,null,'false');
+// @ts-expect-error ACK evidence cannot be a coercible string
+assertStorageJournalInitialization(scope.owner,checkpoint,{...cursor,ackSeq:'0'},null);
+// @ts-expect-error compaction cannot infer an ACK from a boolean
+storageJournalCompactionThrough(scope,checkpoint,0,false);
+// @ts-expect-error a diagnostic checkpoint sequence is numeric authority
+assertStorageJournalAckCheckpoint(scope,{...checkpoint,seq:'1'});
+// @ts-expect-error a revision cursor cannot be text authority
+assertStorageJournalAdoption(scope,scope,{...cursor,revision:'2'},cursor,false);
+// @ts-expect-error resetting requires both decoded checkpoint and base
+assertStorageJournalCloudReset(scope.owner,checkpoint,null);
+void retiredThrough;
