@@ -9,7 +9,9 @@ import {assertCloudRecoveryHead} from './storage-cloud-recovery.js';
 import {readStorageCheckpoint,captureStorageCheckpoint,readStorageJournalDeletionKeys} from './storage-checkpoint.js';
 import {captureStorageJournalOperation,captureStorageCloudBase,captureStorageCloudFlight,captureStorageCloudControl,
   captureStorageExpectedHead,captureStorageRecoveryHead,captureStorageLocalHead,captureStorageCleanHead,
-  captureStorageJournalPayload} from './storage-journal-authority.js';
+  captureStorageJournalPayload,assertStorageJournalInstall,assertStorageJournalInitialization,
+  storageJournalCompactionThrough,assertStorageJournalAckCheckpoint,assertStorageJournalAdoption,
+  assertStorageJournalCloudReset} from './storage-journal-authority.js';
 
 export function createStorageJournalDb({name='netunim-storage-v2',operationSchema}={}){
   // Generic journal consumers may configure a schema; application namespaces
@@ -54,9 +56,8 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
     if(Object.hasOwn(current,'bases'))readStorageCloudHead({base:current.bases,flight:current.flights,control:current.controls},{owner,epoch,seq:current.metadata.seq});
   }
   async function install(owner,checkpoint,writer,{expectedEpoch=null}={}){checkpoint=captureStorageCheckpoint(checkpoint);return change(owner,(tx,current,done)=>{
-    if((current.metadata?.epoch??null)!==expectedEpoch)throw new Error('storage_checkpoint_race');
-    if(current.flights)throw new Error('storage_restore_flight_pending');
-    const data=readStorageCheckpoint(checkpoint);if(data.owner!==owner)throw new Error('storage_owner_mismatch');
+    const data=readStorageCheckpoint(checkpoint);
+    assertStorageJournalInstall(owner,data,current.metadata?.epoch??null,expectedEpoch,Boolean(current.flights));
     tx.objectStore('checkpoints').put(checkpoint,owner);tx.objectStore('metadata').put({epoch:data.epoch,seq:data.seq,writer},owner);
     for(const key of current.journalKeys)tx.objectStore('journal').delete(key);
     // New epochs never inherit an old cloud cursor, flight or control state implicitly.
@@ -72,8 +73,7 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
     // a shadow namespace or an interrupted upload on retry.
     if(current.checkpoints||current.metadata||current.bases||current.flights||current.controls||current.journal.length)throw new Error('storage_initialization_exists');
     const head=readStorageCheckpoint(checkpoint),cursor=readStorageRecord(base),entry=operation&&readStorageRecord(operation);
-    if(head.owner!==owner||cursor.owner!==owner||head.epoch!==cursor.epoch||head.seq!==0||cursor.ackSeq!==0||!Number.isSafeInteger(cursor.revision)||cursor.revision<0)throw new Error('storage_initialization_invalid');
-    if(entry&&(entry.owner!==owner||entry.epoch!==head.epoch||entry.seq!==1))throw new Error('storage_initialization_invalid');readStorageCloudBase(base);
+    assertStorageJournalInitialization(owner,head,cursor,entry);readStorageCloudBase(base);
     tx.objectStore('checkpoints').put(checkpoint,owner);tx.objectStore('bases').put(base,owner);
     if(entry)tx.objectStore('journal').put(operation,[owner,head.epoch,1]);
     tx.objectStore('metadata').put({epoch:head.epoch,seq:entry?1:0,writer},owner);done(true);
@@ -94,12 +94,12 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
   })}
   async function compact(owner,epoch,writer,checkpoint){checkpoint=captureStorageCheckpoint(checkpoint);return change(owner,(tx,current,done)=>{
     assertFence(current,owner,epoch,writer);const data=readStorageCheckpoint(checkpoint),prior=readStorageCheckpoint(current.checkpoints);
-    if(data.owner!==owner||data.epoch!==epoch||data.seq<prior.seq||data.seq>current.metadata.seq)throw new Error('storage_compaction_range');
+    const base=current.bases?readStorageCloudBase(current.bases):null;
+    const deleteThrough=storageJournalCompactionThrough({owner,epoch,seq:current.metadata.seq},data,prior.seq,base?base.ackSeq:null);
     tx.objectStore('checkpoints').put(checkpoint,owner);
     // Operations newer than the durable cloud cursor remain available even when
     // their state is already represented by a local checkpoint. This preserves
     // explicit deletes and audit metadata until the cloud has acknowledged them.
-    const base=current.bases?readStorageCloudBase(current.bases):null,deleteThrough=base?Math.min(data.seq,Number(base.ackSeq||0)):data.seq;
     for(const key of current.journalKeys)if(key[1]===epoch&&key[2]<=deleteThrough)tx.objectStore('journal').delete(key);done(true);
   })}
   async function replaceCheckpoint(owner,epoch,writer,checkpoint){checkpoint=captureStorageCheckpoint(checkpoint);return change(owner,(tx,current,done)=>{
@@ -132,7 +132,7 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
     assertFence(current,owner,epoch,writer);if(!current.flights||readStorageCloudFlight(current.flights).operationId!==operationId)throw new Error('storage_ack_mismatch');
     const acknowledged=readStorageRecord(base),flight=readStorageCloudFlight(current.flights);
     assertStorageCloudAck(acknowledged,flight,{owner,epoch});readStorageCloudBase(base);
-    if(checkpoint){const nextCheckpoint=readStorageCheckpoint(checkpoint);if(nextCheckpoint.owner!==owner||nextCheckpoint.epoch!==epoch||nextCheckpoint.seq!==current.metadata.seq)throw Object.assign(new Error('storage_checkpoint_stale'),{code:'storage_ack_checkpoint_stale',candidateSeq:nextCheckpoint.seq,observedSeq:current.metadata.seq});tx.objectStore('checkpoints').put(checkpoint,owner)}
+    if(checkpoint){const nextCheckpoint=readStorageCheckpoint(checkpoint);assertStorageJournalAckCheckpoint({owner,epoch,seq:current.metadata.seq},nextCheckpoint);tx.objectStore('checkpoints').put(checkpoint,owner)}
     if(control){const nextControl=readStorageRecord(control);if(nextControl.owner!==owner||nextControl.epoch!==epoch)throw new Error('storage_control_scope');readStorageCloudControl(control);tx.objectStore('controls').put(control,owner)}else tx.objectStore('controls').delete(owner);
     tx.objectStore('bases').put(base,owner);tx.objectStore('flights').delete(owner);done(true);
     // ACK never deletes journal entries. Only an atomic checkpoint can compact.
@@ -177,9 +177,8 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
     assertFence(current,owner,epoch,writer);if(current.flights)throw new Error('storage_flight_pending');
     if(expectedHead&&(current.metadata.seq!==expectedHead.seq||current.checkpoints?.checksum!==expectedHead.checkpointChecksum||current.bases?.checksum!==expectedHead.baseChecksum||(current.controls?.checksum??null)!==expectedHead.controlChecksum))throw new Error('storage_cloud_adoption_stale');
     const nextCheckpoint=readStorageCheckpoint(checkpoint),nextBase=readStorageRecord(base),prior=current.bases&&readStorageCloudBase(current.bases);
-    if(!prior||prior.ackSeq!==current.metadata.seq||current.controls&&readStorageCloudControl(current.controls).conflict)throw new Error('storage_cloud_pending');
-    if(nextCheckpoint.owner!==owner||nextCheckpoint.epoch!==epoch||nextCheckpoint.seq!==current.metadata.seq)throw new Error('storage_checkpoint_stale');
-    if(nextBase.owner!==owner||nextBase.epoch!==epoch||nextBase.ackSeq!==current.metadata.seq||!Number.isSafeInteger(nextBase.revision)||nextBase.revision<prior.revision)throw new Error('storage_cloud_base_mismatch');readStorageCloudBase(base);
+    assertStorageJournalAdoption({owner,epoch,seq:current.metadata.seq},nextCheckpoint,nextBase,prior,
+      Boolean(current.controls&&readStorageCloudControl(current.controls).conflict));readStorageCloudBase(base);
     tx.objectStore('checkpoints').put(checkpoint,owner);tx.objectStore('bases').put(base,owner);tx.objectStore('controls').delete(owner);done(true);
   })}
   async function resetState(owner,epoch,writer,checkpoint,{expectedLocalHead=null}={}){
@@ -195,7 +194,7 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
     base=captureStorageCloudBase(base);expectedCleanHead=captureStorageCleanHead(expectedCleanHead);checkpoint=captureStorageCheckpoint(checkpoint);return change(owner,(tx,current,done)=>{
     assertFence(current,owner,epoch,writer);const nextCheckpoint=readStorageCheckpoint(checkpoint),nextBase=readStorageRecord(base);
     if(expectedCleanHead){const prior=current.bases&&readStorageCloudBase(current.bases);if(current.metadata.seq!==expectedCleanHead.seq||current.metadata.epoch!==expectedCleanHead.epoch||current.checkpoints?.checksum!==expectedCleanHead.checkpointChecksum||!prior||prior.revision!==expectedCleanHead.revision||prior.ackSeq!==expectedCleanHead.seq||current.flights||current.controls)throw new Error('storage_main_projection_head_changed')}
-    if(nextCheckpoint.owner!==owner||nextBase.owner!==owner||nextCheckpoint.epoch!==nextBase.epoch||nextCheckpoint.seq!==0||nextBase.ackSeq!==0||!Number.isSafeInteger(nextBase.revision)||nextBase.revision<0)throw new Error('storage_cloud_reset_invalid');readStorageCloudBase(base);
+    assertStorageJournalCloudReset(owner,nextCheckpoint,nextBase);readStorageCloudBase(base);
     tx.objectStore('checkpoints').put(checkpoint,owner);tx.objectStore('metadata').put({epoch:nextCheckpoint.epoch,seq:0,writer},owner);
     for(const key of current.journalKeys)tx.objectStore('journal').delete(key);
     tx.objectStore('bases').put(base,owner);tx.objectStore('flights').delete(owner);tx.objectStore('controls').delete(owner);done(true);

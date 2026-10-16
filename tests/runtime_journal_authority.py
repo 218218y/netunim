@@ -5,7 +5,7 @@ with BrowserSession(ROOT/'netunim-orders/site', 'journal-authority', instrument=
     result = browser.evaluate("""(async()=>{
       const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
       const {sealStorageJsonRecord:seal}=await import('./assets/js/shared/storage-json-codec.js');
-      let serial=0,rejected=0;
+      let serial=0,rejected=0,decisionsRejected=0;
       for(const domain of ['orders','kupa','shared-checks']){
         const owner='A:'+domain,collection=domain==='shared-checks'?'checks':'notes';
         const checkpoint=()=>seal({version:2,owner,epoch:'E',seq:0,state:{[collection]:[]}});
@@ -27,6 +27,28 @@ with BrowserSession(ROOT/'netunim-orders/site', 'journal-authority', instrument=
           }catch(error){if(error.message!=='storage_invalid_collection')throw error;rejected++}
           if(await snapshot(db)!==before)throw Error('invalid command changed durable state');
         }
+        for(const kind of ['install','initialize','compact','ack','adopt','reset']){
+          const db=make();
+          if(kind!=='initialize')await db.install(owner,checkpoint(),'W');
+          if(['compact','ack','adopt'].includes(kind)){
+            if(kind!=='compact')await db.setBase(owner,'E','W',base());
+            await db.append(owner,'E','W',operation());
+          }
+          if(kind==='ack')await db.beginFlight(owner,'E','W',seal({version:2,owner,epoch:'E',operationId:'F',
+            baseRevision:1,startSeq:1,endSeq:1,snapshot:{[collection]:[]}}));
+          const before=await snapshot(db),expected={install:'storage_checkpoint_race',initialize:'storage_initialization_invalid',
+            compact:'storage_compaction_range',ack:'storage_checkpoint_stale',adopt:'storage_cloud_pending',reset:'storage_cloud_reset_invalid'}[kind];
+          try{
+            if(kind==='install')await db.install(owner,checkpoint(),'W',{expectedEpoch:'former-epoch'});
+            if(kind==='initialize')await db.initializeCloudHead(owner,checkpoint(),seal({...base().data,ackSeq:1}),'W');
+            if(kind==='compact')await db.compact(owner,'E','W',seal({...checkpoint().data,seq:2}));
+            if(kind==='ack')await db.acknowledge(owner,'E','W','F',seal({...base().data,revision:2,ackSeq:1}),{checkpoint:checkpoint()});
+            if(kind==='adopt')await db.adoptCloudHead(owner,'E','W',seal({...checkpoint().data,seq:1}),seal({...base().data,revision:2,ackSeq:1}));
+            if(kind==='reset')await db.resetCloudHead(owner,'E','W',checkpoint(),seal({...base().data,ackSeq:1}));
+            throw Error('accepted-invalid-decision-'+kind);
+          }catch(error){if(error.message!==expected)throw error;decisionsRejected++}
+          if(await snapshot(db)!==before)throw Error('authority decision changed durable state: '+kind);
+        }
         const db=make();await db.install(owner,checkpoint(),'W');
         const command=operation(),writing=db.append(owner,'E','W',command);
         command.data.seq=99;command.data.changes[0].record.text='mutated';await writing;
@@ -44,8 +66,8 @@ with BrowserSession(ROOT/'netunim-orders/site', 'journal-authority', instrument=
         try{await abortDb.append(owner,'E','W',operation());receipt=true}catch{}finally{IDBObjectStore.prototype.put=put}
         if(receipt||!requestSucceeded||await snapshot(abortDb)!==before)throw Error('request success granted aborted authority');
       }
-      return {rejected};
+      return {rejected,decisionsRejected};
     })()""")
-    assert result == {'rejected': 9}, result
+    assert result == {'rejected': 9, 'decisionsRejected': 18}, result
     assert not browser.drain_serious_errors()
     print('PASS native journal business schemas, detached commands and request-success/transaction-abort receipts')

@@ -82,3 +82,59 @@ export function captureStorageCleanHead(value){
   if(!sequence(data.revision))throw new Error('storage_journal_precondition_invalid');
   return {...data,revision:data.revision};
 }
+
+/** Selective durable-authority decisions. All callers pass already-decoded
+ * records inside the same IDB transaction as the write. Capture, cloud-head
+ * decoding, writer fences and physical journal-key checks retain their owners.
+ * @typedef {{owner:string,epoch:string,seq:number}} JournalDecisionScope
+ * @typedef {Pick<import('./storage-checkpoint.js').StoredStorageCheckpoint,'owner'|'epoch'|'seq'>} DecisionCheckpoint
+ * @typedef {Pick<import('./storage-cloud-records.js').StoredCloudBase,'owner'|'epoch'|'revision'|'ackSeq'>} DecisionBase
+ */
+
+/** @param {string} owner @param {DecisionCheckpoint} checkpoint
+ * @param {string|null} observedEpoch @param {string|null} expectedEpoch @param {boolean} hasFlight */
+export function assertStorageJournalInstall(owner,checkpoint,observedEpoch,expectedEpoch,hasFlight){
+  if(observedEpoch!==expectedEpoch)throw new Error('storage_checkpoint_race');
+  if(hasFlight)throw new Error('storage_restore_flight_pending');
+  if(checkpoint.owner!==owner)throw new Error('storage_owner_mismatch');
+}
+
+/** @param {string} owner @param {DecisionCheckpoint} checkpoint @param {DecisionBase} base
+ * @param {DecisionCheckpoint|null} entry */
+export function assertStorageJournalInitialization(owner,checkpoint,base,entry){
+  if(checkpoint.owner!==owner||base.owner!==owner||checkpoint.epoch!==base.epoch||checkpoint.seq!==0||
+    base.ackSeq!==0||!Number.isSafeInteger(base.revision)||base.revision<0)throw new Error('storage_initialization_invalid');
+  if(entry&&(entry.owner!==owner||entry.epoch!==checkpoint.epoch||entry.seq!==1))throw new Error('storage_initialization_invalid');
+}
+
+/** @param {JournalDecisionScope} scope @param {DecisionCheckpoint} checkpoint
+ * @param {number} priorSeq @param {number|null} ackSeq */
+export function storageJournalCompactionThrough(scope,checkpoint,priorSeq,ackSeq){
+  if(checkpoint.owner!==scope.owner||checkpoint.epoch!==scope.epoch||checkpoint.seq<priorSeq||checkpoint.seq>scope.seq){
+    throw new Error('storage_compaction_range');
+  }
+  return ackSeq===null?checkpoint.seq:Math.min(checkpoint.seq,ackSeq);
+}
+
+/** @param {JournalDecisionScope} scope @param {DecisionCheckpoint} checkpoint */
+export function assertStorageJournalAckCheckpoint(scope,checkpoint){
+  if(checkpoint.owner!==scope.owner||checkpoint.epoch!==scope.epoch||checkpoint.seq!==scope.seq){
+    throw Object.assign(new Error('storage_checkpoint_stale'),{
+      code:'storage_ack_checkpoint_stale',candidateSeq:checkpoint.seq,observedSeq:scope.seq,
+    });
+  }
+}
+
+/** @param {JournalDecisionScope} scope @param {DecisionCheckpoint} checkpoint
+ * @param {DecisionBase} base @param {DecisionBase|null} prior @param {boolean} conflict */
+export function assertStorageJournalAdoption(scope,checkpoint,base,prior,conflict){
+  if(!prior||prior.ackSeq!==scope.seq||conflict)throw new Error('storage_cloud_pending');
+  if(checkpoint.owner!==scope.owner||checkpoint.epoch!==scope.epoch||checkpoint.seq!==scope.seq)throw new Error('storage_checkpoint_stale');
+  if(base.owner!==scope.owner||base.epoch!==scope.epoch||base.ackSeq!==scope.seq||!Number.isSafeInteger(base.revision)||base.revision<prior.revision)throw new Error('storage_cloud_base_mismatch');
+}
+
+/** @param {string} owner @param {DecisionCheckpoint} checkpoint @param {DecisionBase} base */
+export function assertStorageJournalCloudReset(owner,checkpoint,base){
+  if(checkpoint.owner!==owner||base.owner!==owner||checkpoint.epoch!==base.epoch||checkpoint.seq!==0||
+    base.ackSeq!==0||!Number.isSafeInteger(base.revision)||base.revision<0)throw new Error('storage_cloud_reset_invalid');
+}

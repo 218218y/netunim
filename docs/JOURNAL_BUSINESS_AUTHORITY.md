@@ -27,3 +27,11 @@ Supplier search now uses one NFC/case normalization rule for DOM visibility and
 model summaries, scopes supplier names consistently in all-supplier mode, and
 refreshes the search index and totals after inline text edits. Stored text keeps
 its original spelling and case.
+
+## Checked durable transition decisions
+
+Install, initialize, ACK checkpoint selection, cloud adoption, cloud reset and compaction now call strict helpers in the existing authority module before their first durable write. Writer fencing, cloud-head recovery classification, current-head checks, capture-before-await and the actual IDB transaction remain with the existing IDB owner. No new runtime module or lazy boundary was added.
+
+The extraction preserves error priority and codes, including ACK candidate/observed sequence diagnostics. Compaction still retires only the minimum of the local checkpoint and durable cloud ACK. Adoption still refuses unacknowledged work, conflicts and revision regression. Reset installs a paired zero checkpoint/ACK in one epoch.
+
+Six implementation mutations demonstrate distinct unauthorized transitions; the original guards reject each. The native journal authority suite additionally checks six rejected decisions in all three owner namespaces (18 cases), verifies exact durable snapshots remain unchanged and retains its request-success/transaction-abort checks. Negative typed consumers cover all six helper contracts. The remainder of storage-journal-idb is intentionally left outside a broad typing/refactoring pass.
