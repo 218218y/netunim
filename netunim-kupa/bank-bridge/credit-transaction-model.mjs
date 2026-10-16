@@ -2,6 +2,11 @@
 import { creditNumber, creditText, creditTransactionTime } from './credit-core-values.mjs';
 
 export function normalizeCreditScrapeTransaction(tx = {}) {
+  if(tx?.status!=='pending'&&tx?.status!=='completed'){
+    throw Object.assign(new Error('Credit provider transaction status is invalid'),{
+      code:'CREDIT_PROVIDER_SCHEMA_ERROR',stage:'Transactions',retryable:false,
+    });
+  }
   const installments =
     Number(tx?.installments?.number) > 0 && Number(tx?.installments?.total) > 0
       ? {
@@ -28,7 +33,7 @@ export function normalizeCreditScrapeTransaction(tx = {}) {
     memo: creditText(tx.memo || '', 260),
     category: creditText(tx.category || '', 160) || undefined,
     installments,
-    status: ['pending', 'completed'].includes(String(tx.status)) ? String(tx.status) : 'completed',
+    status: tx.status,
   };
 }
 

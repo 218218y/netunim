@@ -33,8 +33,8 @@ test('policy fixture detects changed charge signs, login identity, transaction s
     ],
     [
       'credit-transaction-model',
-      /status:\s*\['pending',\s*'completed'\]/,
-      "status:['completed']",
+      /tx\?\.status\s*!==\s*'pending'/,
+      "tx?.status==='pending'",
       'normalizeCreditScrapeTransaction',
     ],
     [

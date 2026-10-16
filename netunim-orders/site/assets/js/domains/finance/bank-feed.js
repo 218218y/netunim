@@ -37,12 +37,12 @@ function normalizeCheckDetails(value,fallbackKind=''){
     accountNumber:cleanText(item?.accountNumber,40),
     checkNumber:cleanText(item?.checkNumber,80),
     amount:item?.amount===null||item?.amount===undefined||item?.amount===''?null:(Number.isFinite(Number(item.amount))&&Number(item.amount)>0?Number(item.amount):null),
-    hasDocumentReference:!!item?.hasDocumentReference,
+    hasDocumentReference:item?.hasDocumentReference===true,
     imageFrontKey:/^[a-f0-9]{64}$/.test(String(item?.imageFrontKey||''))?String(item.imageFrontKey):'',
     imageBackKey:/^[a-f0-9]{64}$/.test(String(item?.imageBackKey||''))?String(item.imageBackKey):'',
   })).filter(item=>item.amount&&(item.checkNumber||(item.bankNumber&&item.branchNumber&&item.accountNumber))).slice(0,50);
   for(const item of items){if(item.checkNumber&&!numbers.includes(item.checkNumber))numbers.push(item.checkNumber)}
-  const warning=cleanText(value.warning,220),checkCount=count||items.length||null,hasDocumentReference=!!value.hasDocumentReference;
+  const warning=cleanText(value.warning,220),checkCount=count||items.length||null,hasDocumentReference=value.hasDocumentReference===true;
   if(!kind&&!numbers.length&&!checkCount&&!items.length&&!hasDocumentReference&&!warning)return null;
   return {kind,checkNumbers:numbers,checkCount,checkItems:items,hasDocumentReference,warning};
 }
