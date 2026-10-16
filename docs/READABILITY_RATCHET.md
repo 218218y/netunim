@@ -36,3 +36,7 @@ Finance alone has a 72 KB normalized source ceiling and a stricter 58.5 KB token
 ceiling (measured 71,421 / 58,179 bytes). Token measurement excludes formatting
 between tokens while preserving whitespace inside literals/templates. Both caps
 must pass, so expanding indentation cannot hide new code or unbounded comments.
+
+## Focused Bank cleanup, 2026-10-16
+
+Three existing Kupa Bank helpers (`bankMissingSummary`, `bankChequeImageButtons`, `setBankDateMode`) were expanded without changing their complete parsed program structure. This removes three lines above 500 characters from that view (17 to 14), costs 221 normalized bytes and tightens only that file's count allowance. The view's remaining longest-line ceiling is unchanged. Source and AST hashes are recorded in `evidence/readability-bank-20261016.json`. This is targeted maintenance, with no new presentation module or runtime boundary.

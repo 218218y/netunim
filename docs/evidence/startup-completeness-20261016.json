@@ -1,0 +1,468 @@
+{
+  "source": {
+    "workflowRun": "https://github.com/218218y/netunim/actions/runs/38870926031",
+    "headCommit": "5cb8da126c6756cd5677b4c6c93380d7c24433ff",
+    "artifact": "verification-browser-lifecycle-1",
+    "provenance": "Actions run metadata; this historical report predates embedded environment metadata"
+  },
+  "method": "Recomputed from raw native CPU samples; nearest-rank p95; missing samples retained",
+  "physicalEvidence": false,
+  "summary": {
+    "kupa": {
+      "cold": {
+        "moduleEvaluation": {
+          "n": 5,
+          "missing": 0,
+          "complete": true,
+          "min": 0.5999999999767169,
+          "median": 0.7000000000116415,
+          "p95": 1,
+          "max": 1
+        },
+        "composition": {
+          "n": 5,
+          "missing": 0,
+          "complete": true,
+          "min": 19.599999999976717,
+          "median": 22.5,
+          "p95": 24.899999999965075,
+          "max": 24.899999999965075
+        },
+        "localRecovery": {
+          "n": 5,
+          "missing": 0,
+          "complete": true,
+          "min": 10,
+          "median": 18.29999999998836,
+          "p95": 25.20000000001164,
+          "max": 25.20000000001164
+        },
+        "boot": {
+          "n": 5,
+          "missing": 0,
+          "complete": true,
+          "min": 136.29999999998836,
+          "median": 156.39999999996508,
+          "p95": 164.40000000002328,
+          "max": 164.40000000002328
+        },
+        "firstView": {
+          "n": 0,
+          "missing": 5,
+          "complete": false,
+          "min": null,
+          "median": null,
+          "p95": null,
+          "max": null
+        },
+        "commandReady": {
+          "n": 0,
+          "missing": 5,
+          "complete": false,
+          "min": null,
+          "median": null,
+          "p95": null,
+          "max": null
+        },
+        "moduleResponses": {
+          "n": 5,
+          "missing": 0,
+          "complete": true,
+          "min": 475.5999999999767,
+          "median": 550.2999999999884,
+          "p95": 562.1999999999534,
+          "max": 562.1999999999534
+        },
+        "scriptMs": {
+          "n": 5,
+          "missing": 0,
+          "complete": true,
+          "min": 31.829000000000004,
+          "median": 35.753,
+          "p95": 38.697,
+          "max": 38.697
+        }
+      },
+      "cached": {
+        "moduleEvaluation": {
+          "n": 5,
+          "missing": 0,
+          "complete": true,
+          "min": 0.30000000004656613,
+          "median": 0.40000000002328306,
+          "p95": 0.5,
+          "max": 0.5
+        },
+        "composition": {
+          "n": 5,
+          "missing": 0,
+          "complete": true,
+          "min": 4.2999999999883585,
+          "median": 5,
+          "p95": 5.7999999999883585,
+          "max": 5.7999999999883585
+        },
+        "localRecovery": {
+          "n": 5,
+          "missing": 0,
+          "complete": true,
+          "min": 6.400000000023283,
+          "median": 7.400000000023283,
+          "p95": 7.600000000034925,
+          "max": 7.600000000034925
+        },
+        "boot": {
+          "n": 5,
+          "missing": 0,
+          "complete": true,
+          "min": 18,
+          "median": 18.599999999976717,
+          "p95": 19.599999999976717,
+          "max": 19.599999999976717
+        },
+        "firstView": {
+          "n": 0,
+          "missing": 5,
+          "complete": false,
+          "min": null,
+          "median": null,
+          "p95": null,
+          "max": null
+        },
+        "commandReady": {
+          "n": 0,
+          "missing": 5,
+          "complete": false,
+          "min": null,
+          "median": null,
+          "p95": null,
+          "max": null
+        },
+        "moduleResponses": {
+          "n": 5,
+          "missing": 0,
+          "complete": true,
+          "min": 460.6000000000349,
+          "median": 466.69999999995343,
+          "p95": 508.4000000000233,
+          "max": 508.4000000000233
+        },
+        "scriptMs": {
+          "n": 5,
+          "missing": 0,
+          "complete": true,
+          "min": 7.2059999999999995,
+          "median": 7.965,
+          "p95": 9.227,
+          "max": 9.227
+        }
+      },
+      "offline": {
+        "moduleEvaluation": {
+          "n": 5,
+          "missing": 0,
+          "complete": true,
+          "min": 0.29999999998835847,
+          "median": 0.3999999999650754,
+          "p95": 0.5,
+          "max": 0.5
+        },
+        "composition": {
+          "n": 5,
+          "missing": 0,
+          "complete": true,
+          "min": 4.2999999999883585,
+          "median": 4.2999999999883585,
+          "p95": 4.5,
+          "max": 4.5
+        },
+        "localRecovery": {
+          "n": 5,
+          "missing": 0,
+          "complete": true,
+          "min": 8.099999999976717,
+          "median": 8.5,
+          "p95": 10.799999999988358,
+          "max": 10.799999999988358
+        },
+        "boot": {
+          "n": 5,
+          "missing": 0,
+          "complete": true,
+          "min": 18.600000000034925,
+          "median": 23,
+          "p95": 24.20000000001164,
+          "max": 24.20000000001164
+        },
+        "firstView": {
+          "n": 0,
+          "missing": 5,
+          "complete": false,
+          "min": null,
+          "median": null,
+          "p95": null,
+          "max": null
+        },
+        "commandReady": {
+          "n": 0,
+          "missing": 5,
+          "complete": false,
+          "min": null,
+          "median": null,
+          "p95": null,
+          "max": null
+        },
+        "moduleResponses": {
+          "n": 5,
+          "missing": 0,
+          "complete": true,
+          "min": 535.0999999999767,
+          "median": 544.2000000000116,
+          "p95": 569.7000000000116,
+          "max": 569.7000000000116
+        },
+        "scriptMs": {
+          "n": 5,
+          "missing": 0,
+          "complete": true,
+          "min": 7.373,
+          "median": 7.556,
+          "p95": 7.6080000000000005,
+          "max": 7.6080000000000005
+        }
+      }
+    },
+    "orders": {
+      "cold": {
+        "moduleEvaluation": {
+          "n": 5,
+          "missing": 0,
+          "complete": true,
+          "min": 9.299999999988358,
+          "median": 10.099999999976717,
+          "p95": 14.699999999953434,
+          "max": 14.699999999953434
+        },
+        "composition": {
+          "n": 5,
+          "missing": 0,
+          "complete": true,
+          "min": 30.20000000001164,
+          "median": 35.29999999998836,
+          "p95": 39.100000000034925,
+          "max": 39.100000000034925
+        },
+        "localRecovery": {
+          "n": 5,
+          "missing": 0,
+          "complete": true,
+          "min": 16.5,
+          "median": 16.900000000023283,
+          "p95": 19.20000000001164,
+          "max": 19.20000000001164
+        },
+        "boot": {
+          "n": 5,
+          "missing": 0,
+          "complete": true,
+          "min": 163.39999999996508,
+          "median": 167.19999999995343,
+          "p95": 189.5,
+          "max": 189.5
+        },
+        "firstView": {
+          "n": 5,
+          "missing": 0,
+          "complete": true,
+          "min": 869.4000000000233,
+          "median": 893.2999999999884,
+          "p95": 904.4000000000233,
+          "max": 904.4000000000233
+        },
+        "commandReady": {
+          "n": 5,
+          "missing": 0,
+          "complete": true,
+          "min": 881.5,
+          "median": 909.7000000000116,
+          "p95": 922.7000000000116,
+          "max": 922.7000000000116
+        },
+        "moduleResponses": {
+          "n": 5,
+          "missing": 0,
+          "complete": true,
+          "min": 659.7999999999884,
+          "median": 681.1000000000349,
+          "p95": 697.2999999999884,
+          "max": 697.2999999999884
+        },
+        "scriptMs": {
+          "n": 5,
+          "missing": 0,
+          "complete": true,
+          "min": 49.287,
+          "median": 55.400999999999996,
+          "p95": 62.726000000000006,
+          "max": 62.726000000000006
+        }
+      },
+      "cached": {
+        "moduleEvaluation": {
+          "n": 5,
+          "missing": 0,
+          "complete": true,
+          "min": 1,
+          "median": 1.2000000000116415,
+          "p95": 1.3000000000465661,
+          "max": 1.3000000000465661
+        },
+        "composition": {
+          "n": 5,
+          "missing": 0,
+          "complete": true,
+          "min": 7.2999999999883585,
+          "median": 8.599999999976717,
+          "p95": 9,
+          "max": 9
+        },
+        "localRecovery": {
+          "n": 5,
+          "missing": 0,
+          "complete": true,
+          "min": 6.300000000046566,
+          "median": 9,
+          "p95": 11.299999999988358,
+          "max": 11.299999999988358
+        },
+        "boot": {
+          "n": 5,
+          "missing": 0,
+          "complete": true,
+          "min": 18.79999999998836,
+          "median": 21.5,
+          "p95": 22.099999999976717,
+          "max": 22.099999999976717
+        },
+        "firstView": {
+          "n": 5,
+          "missing": 0,
+          "complete": true,
+          "min": 643.5,
+          "median": 646.7000000000116,
+          "p95": 666.5,
+          "max": 666.5
+        },
+        "commandReady": {
+          "n": 5,
+          "missing": 0,
+          "complete": true,
+          "min": 643.8999999999651,
+          "median": 647.1000000000349,
+          "p95": 667,
+          "max": 667
+        },
+        "moduleResponses": {
+          "n": 5,
+          "missing": 0,
+          "complete": true,
+          "min": 609.6999999999534,
+          "median": 612.6000000000349,
+          "p95": 633.2000000000116,
+          "max": 633.2000000000116
+        },
+        "scriptMs": {
+          "n": 5,
+          "missing": 0,
+          "complete": true,
+          "min": 12.163,
+          "median": 12.974,
+          "p95": 13.272,
+          "max": 13.272
+        }
+      },
+      "offline": {
+        "moduleEvaluation": {
+          "n": 5,
+          "missing": 0,
+          "complete": true,
+          "min": 1,
+          "median": 1.099999999976717,
+          "p95": 1.1000000000349246,
+          "max": 1.1000000000349246
+        },
+        "composition": {
+          "n": 5,
+          "missing": 0,
+          "complete": true,
+          "min": 7.5,
+          "median": 8,
+          "p95": 8.199999999953434,
+          "max": 8.199999999953434
+        },
+        "localRecovery": {
+          "n": 5,
+          "missing": 0,
+          "complete": true,
+          "min": 8.399999999965075,
+          "median": 9.799999999988358,
+          "p95": 12.399999999965075,
+          "max": 12.399999999965075
+        },
+        "boot": {
+          "n": 5,
+          "missing": 0,
+          "complete": true,
+          "min": 20.20000000001164,
+          "median": 25,
+          "p95": 26.900000000023283,
+          "max": 26.900000000023283
+        },
+        "firstView": {
+          "n": 5,
+          "missing": 0,
+          "complete": true,
+          "min": 668.7999999999884,
+          "median": 763.7999999999884,
+          "p95": 789.5,
+          "max": 789.5
+        },
+        "commandReady": {
+          "n": 5,
+          "missing": 0,
+          "complete": true,
+          "min": 669.0999999999767,
+          "median": 764.2000000000116,
+          "p95": 790,
+          "max": 790
+        },
+        "moduleResponses": {
+          "n": 5,
+          "missing": 0,
+          "complete": true,
+          "min": 630.7999999999884,
+          "median": 725.2999999999884,
+          "p95": 755.3999999999651,
+          "max": 755.3999999999651
+        },
+        "scriptMs": {
+          "n": 5,
+          "missing": 0,
+          "complete": true,
+          "min": 11.790000000000001,
+          "median": 12.427999999999999,
+          "p95": 12.915,
+          "max": 12.915
+        }
+      }
+    }
+  },
+  "issues": [
+    "kupa/cold/firstView: 0 measured, 5 missing",
+    "kupa/cold/commandReady: 0 measured, 5 missing",
+    "kupa/cached/firstView: 0 measured, 5 missing",
+    "kupa/cached/commandReady: 0 measured, 5 missing",
+    "kupa/offline/firstView: 0 measured, 5 missing",
+    "kupa/offline/commandReady: 0 measured, 5 missing"
+  ]
+}

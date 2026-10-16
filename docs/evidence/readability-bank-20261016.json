@@ -1,0 +1,24 @@
+{
+  "file": "netunim-kupa/site/assets/js/domains/bank/view.js",
+  "functions": [
+    "bankMissingSummary",
+    "bankChequeImageButtons",
+    "setBankDateMode"
+  ],
+  "verification": "identical complete Acorn program AST after removing source locations and raw literal spelling",
+  "before": {
+    "over500": 17,
+    "over1000": 2,
+    "longest": 1153
+  },
+  "after": {
+    "over500": 14,
+    "over1000": 2,
+    "longest": 1153
+  },
+  "normalizedSourceSha256": {
+    "before": "909336066e5325b1f13f06ebe5b0745f58a1589dcaed78458919ba9478b00a74",
+    "after": "fa030b8957445fa8542ff1b2b1e5ccb729cecb33615ea79d32eebe68082f6306"
+  },
+  "programAstSha256": "0f6cffe657ecb96139e89de2504c050339969b4524907850ebec2ac65040e7c1"
+}
