@@ -41,6 +41,8 @@ FLOW = r"""(async()=>{
  if(caseName==='relogin'){cloudAuth.storeSupaSession(null);cloudAuth.storeSupaSession({user:{id:owner},access_token:'fixture-2',expires_at:9999999999})}
  if(caseName==='secondary')tab.primaryTab=false;
  const payload={ok:true,syncedAt:'2026-10-08T10:00:00Z',attemptedCount:1,profiles:[{profileId:'P',provider:'max',accounts:[{accountNumber:'card',txns:[{id:'issuer-tx',date:'2026-10-08',amount:12,status:'completed'}]}]}],errors:[]};
+ if(caseName==='future-time')payload.syncedAt='2099-01-01T00:00:00Z';
+ if(caseName==='malformed-time')payload.profiles[0].accounts[0].pendingFetchedAt='2026-02-30T10:00:00Z';
  if(caseName==='invalid-result'){payload.attemptedCount=null;payload.deferredCount=1}
  if(caseName==='invalid-errors'){payload.ok=false;payload.message='fixture provider failure';payload.creditErrors=[{profileId:'P',deferred:true},null]}
  provider.resolve(new Response(JSON.stringify(payload),{status:caseName==='invalid-errors'?400:200}));
@@ -51,11 +53,11 @@ FLOW = r"""(async()=>{
  check(JSON.stringify(await db.load(identity))===durableBefore,'credit failure changed durable Main/pending journal');
  check(state.notes.find(row=>row.id===note.id)?.content===note.content,'durable note identity/content lost');
  check(credit.queries.uiState().error.length>0,'failure did not offer an operator error');
- check(['network','invalid-result','invalid-errors'].includes(caseName)?releases===1:releases===0,'former authorization released a lease under the new scope');
+ check(['network','invalid-result','invalid-errors','future-time','malformed-time'].includes(caseName)?releases===1:releases===0,'former authorization released a lease under the new scope');
  globalThis.fetch=originalFetch;financeAutomation.stop();cloudAuth.storeSupaSession(null);return {projectionRetained:true,journalRetained:true,noteRetained:true,visibleError:true,scopedPublication:true};
 })()"""
 
-cases=('logout', 'account', 'relogin', 'secondary', 'publication', 'network', 'invalid-result', 'invalid-errors')
+cases=('future-time','malformed-time','logout', 'account', 'relogin', 'secondary', 'publication', 'network', 'invalid-result', 'invalid-errors')
 parser=argparse.ArgumentParser()
 parser.add_argument('--case',choices=cases)
 args=parser.parse_args()

@@ -1,5 +1,6 @@
 // @ts-check
 import {creditResponseProtocol,assertCreditProfileTransactions,assertCreditIdentity} from './credit-transaction-evidence.js';
+import { observationTimeMs } from './observation-time.js';
 /** @typedef {Readonly<Record<string,unknown>>} CreditIssue */
 /** @typedef {Readonly<Record<string,unknown>&{profiles:CreditStatusProfile[],errors?:CreditIssue[],attemptedCount?:number,deferredCount?:number}>} CreditRefreshResult */
 /** @typedef {Readonly<Record<string,unknown>&{profileId:string}>} CreditStatusProfile */
@@ -31,18 +32,24 @@ function rows(value) {
  * Optional counters remain optional for supported older Bridge responses.
  * The publication callers have already required the current v2 handshake.
  * Historical persisted feeds retain their separate compatibility reader.
- * @param {unknown} value @returns {CreditRefreshResult}
+ * @param {unknown} value @param {number} [now] @returns {CreditRefreshResult}
  */
-export function readCreditRefreshResult(value) {
+export function readCreditRefreshResult(value, now = Date.now()) {
   if (!creditRefreshRecord(value)) throw invalid();
   creditResponseProtocol(value.contractVersion);
+  observationFields(value, ['syncedAt'], now);
   const accepted=profiles(value.profiles);
   for(const profile of accepted){
     assertCreditProfileTransactions(profile);
+    observationFields(profile, ['syncedAt', 'attemptedAt'], now);
     // Actual network accounts require a routing key. Partial producer models
     // (e.g. a standalone month) share the guard but have no account identity yet.
-    if(Array.isArray(profile.accounts))for(const account of profile.accounts)
+    if(Array.isArray(profile.accounts))for(const account of profile.accounts) {
       assertCreditIdentity(account.accountNumber,true);
+      observationFields(account, ['frameFetchedAt', 'pendingFetchedAt'], now);
+      if (Array.isArray(account.months)) for (const month of account.months)
+        observationFields(month, ['fetchedAt'], now);
+    }
   }
   /** @type {Record<string,unknown>&{profiles:CreditStatusProfile[],errors?:CreditIssue[],attemptedCount?:number,deferredCount?:number}} */
   const decoded = { ...value, profiles: accepted };
@@ -57,6 +64,17 @@ export function readCreditRefreshResult(value) {
   }
   if (value.errors !== undefined) decoded.errors = rows(value.errors);
   return Object.freeze(decoded);
+}
+
+/** Null/omitted observations represent unavailable evidence, never a fresh clock.
+ * Billing dates and retry deadlines intentionally do not enter this reader.
+ * @param {Record<string,unknown>} row @param {string[]} fields @param {number} now */
+function observationFields(row, fields, now) {
+  for (const field of fields) {
+    const value = row[field];
+    if (value !== undefined && value !== null && observationTimeMs(value, now) === null)
+      throw invalid();
+  }
 }
 
 /** @param {unknown} status @returns {CreditStatusProfile[]} */
