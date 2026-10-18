@@ -80,8 +80,49 @@ class WorktreeSnapshot:
 class IndexSnapshot:
     def __init__(self, root: Path):
         self.root = root
-        result = self.git('ls-files', '-z', '--cached', stdout=subprocess.PIPE)
-        self.files = {item.decode('utf-8') for item in result.stdout.split(b'\0') if item}
+        result = self.git('ls-files', '--stage', '-z', stdout=subprocess.PIPE)
+        self.objects: dict[str, bytes] = {}
+        for entry in result.stdout.split(b'\0'):
+            if not entry:
+                continue
+            metadata, path = entry.split(b'\t', 1)
+            _, oid, stage = metadata.split()
+            if stage != b'0':
+                raise ValueError('asset synchronization requires a resolved Git index')
+            self.objects[path.decode('utf-8')] = oid
+        self.files = set(self.objects)
+        self.contents: dict[bytes, bytes] = {}
+        self.reader = None
+
+    def __enter__(self):
+        # Object IDs capture the proposed commit independently of later index or
+        # worktree edits. One reader serves every asset; shared blobs are reused.
+        self.reader = subprocess.Popen(
+            ['git', 'cat-file', '--batch'], cwd=self.root,
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        )
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        reader = self.reader
+        if reader is None:
+            return
+        try:
+            try:
+                reader.stdin.close()
+            except BrokenPipeError:
+                pass
+            try:
+                result = reader.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                reader.kill()
+                reader.wait()
+                raise OSError('Git asset reader did not close')
+            if result and exc_type is None:
+                raise subprocess.CalledProcessError(result, reader.args)
+        finally:
+            reader.stdout.close()
+            self.reader = None
 
     def git(self, *args: str, **kwargs) -> subprocess.CompletedProcess:
         return subprocess.run(
@@ -91,7 +132,23 @@ class IndexSnapshot:
     def read(self, path: str) -> bytes:
         if path not in self.files:
             raise FileNotFoundError(f'{path} is not present in the proposed commit')
-        return self.git('show', f':{path}', stdout=subprocess.PIPE).stdout
+        oid = self.objects[path]
+        if oid not in self.contents:
+            if self.reader is None:
+                raise ValueError('Git asset snapshot must be read inside its context')
+            self.reader.stdin.write(oid + b'\n')
+            self.reader.stdin.flush()
+            header = self.reader.stdout.readline().split()
+            if len(header) != 3 or header[:2] != [oid, b'blob']:
+                raise ValueError('Git asset reader returned an invalid blob header')
+            size = int(header[2])
+            if size < 0:
+                raise ValueError('Git asset reader returned an invalid blob size')
+            content = self.reader.stdout.read(size)
+            if len(content) != size or self.reader.stdout.read(1) != b'\n':
+                raise ValueError('Git asset reader returned a truncated blob')
+            self.contents[oid] = content
+        return self.contents[oid]
 
     def apply(self, changes: list[Change]) -> None:
         """Write all object blobs first, then update the index under one lock."""
@@ -289,8 +346,8 @@ def sync(check: bool = False) -> bool:
 
 def sync_staged() -> bool:
     """Fix the proposed commit and separately keep the full working tree derived."""
-    index = IndexSnapshot(ROOT)
-    index_changes = plan_sync(index)
+    with IndexSnapshot(ROOT) as index:
+        index_changes = plan_sync(index)
     worktree_changes = plan_sync(WorktreeSnapshot(ROOT))
     # Both plans are fully validated before either mutable surface is touched.
     apply_worktree(worktree_changes)

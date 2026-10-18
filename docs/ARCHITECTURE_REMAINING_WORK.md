@@ -4,6 +4,9 @@ This is the single current backlog, updated against the 2026-10-18 continuation.
 [Completion stages](COMPLETION_STAGES_20261015.md) and the focused design notes
 are historical implementation/evidence records, not competing remaining-work lists.
 A passed synthetic gate is not evidence of live providers or physical machines.
+On 2026-10-18 the operator confirmed there is no separate Bridge/test-account
+environment, only the working-data connection. Installed interruption, destructive
+restore and live-provider release exercises therefore remain explicitly unverified.
 
 ## Completed foundations
 
@@ -70,6 +73,7 @@ Current continuation evidence: [Credit coverage and producer](CREDIT_COVERAGE_AU
 [Bank observation admission](BANK_OBSERVATION_AUTHORITY_20261018.md),
 [Retained Bank cashflow clocks](BANK_HISTORICAL_CASHFLOW_20261018.md),
 [Full Production postflight](PRODUCTION_POSTFLIGHT_20261018.md),
+[Staged asset verification and measured Git reads](STAGED_ASSET_VERIFICATION_20261018.md),
 [Temporal observation, cooldown and scheduler closure](TEMPORAL_AUTHORITY_20261016.md),
 [Credit account identity and mutation closure](CREDIT_ACCOUNT_AUTHORITY_20261016.md),
 [Journal replacement decisions](JOURNAL_REPLACEMENT_DECISIONS.md),

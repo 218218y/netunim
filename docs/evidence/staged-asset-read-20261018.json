@@ -1,0 +1,10 @@
+{
+  "scope": "Focused staged Git blob reads; not application startup or physical-device release validation",
+  "environment": {"os": "Windows", "python": "3.14.6", "git": "2.55.0.windows.3"},
+  "workload": {"selection": "first 60 sorted shared/*.js paths in the proposed index", "paths": 60, "readsPerPath": 2, "samplesPerImplementation": 1},
+  "before": {"method": "git show per read", "seconds": 7.0061964999995325},
+  "after": {"method": "one git cat-file --batch process with captured object IDs and blob reuse", "seconds": 0.04789729999993142},
+  "contentSha256": "294f65861e67e4e9105f6a89b5f226c228c2d86744d63a8fa146347dae393405",
+  "byteAgreement": true,
+  "limitations": "Single focused sample per implementation; no claim about median, p95, total commit latency or app/provider performance. Git inventory and process creation outside the read loop were excluded for both implementations."
+}

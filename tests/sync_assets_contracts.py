@@ -287,6 +287,42 @@ class StagedAssetContracts(unittest.TestCase):
     def index_bytes(self, relative):
         return self.git('show', f':{relative}')
 
+    def test_captured_objects_survive_later_index_edits_and_preserve_binary_bytes(self):
+        relative = 'shared/staged binary \u05d0.bin'
+        path = self.root / relative
+        original = b'\x00\xfffirst\r\nsecond\n'
+        path.write_bytes(original)
+        self.git('add', '--', relative)
+        with SYNC_MODULE.IndexSnapshot(self.root) as snapshot:
+            reader = snapshot.reader
+            # Change the index before the first read: the snapshot must still
+            # address the captured object, not re-read the current staged path.
+            path.write_bytes(b'replacement')
+            self.git('add', '--', relative)
+            self.assertEqual(snapshot.read(relative), original)
+            self.assertEqual(snapshot.read(relative), original)
+            with self.assertRaises(FileNotFoundError):
+                snapshot.read('missing')
+        self.assertEqual(reader.poll(), 0, 'batch reader must finish with the snapshot')
+        self.assertEqual(self.index_bytes(relative), b'replacement')
+        self.assertEqual(path.read_bytes(), b'replacement')
+
+    def test_unavailable_staged_blob_fails_before_index_or_worktree_writes(self):
+        relative = 'shared/html.js'
+        missing = '1' * 40
+        self.git('update-index', '--cacheinfo', f'100644,{missing},{relative}')
+        index_before = (self.root / '.git/index').read_bytes()
+        workers = [self.root / f'netunim-{app}/site/service-worker.js' for app in ('kupa', 'orders')]
+        before = [path.read_bytes() for path in workers]
+        result = subprocess.run(
+            [sys.executable, 'tools/sync-assets.py', '--staged'], cwd=self.root,
+            capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('invalid blob header', result.stderr)
+        self.assertEqual((self.root / '.git/index').read_bytes(), index_before)
+        self.assertEqual([path.read_bytes() for path in workers], before)
+
     def test_staged_sync_uses_index_snapshot_and_preserves_unstaged_content(self):
         asset = 'netunim-kupa/site/assets/app.js'
         worker = 'netunim-kupa/site/service-worker.js'
