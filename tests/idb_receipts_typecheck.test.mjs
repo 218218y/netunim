@@ -10,10 +10,10 @@ const ts=createRequire(import.meta.url)(path.join(modules,'typescript/lib/typesc
 const config=ts.readConfigFile(path.join(root,'tsconfig.contracts.json'),ts.sys.readFile);
 const parsed=ts.parseJsonConfigFileContent(config.config,ts.sys,root);
 const file=path.join(root,'shared/indexed-db-connection.js');
-function check(source){
+function check(source,target=file){
   const host=ts.createCompilerHost(parsed.options),read=host.readFile;
-  if(source)host.readFile=name=>path.resolve(name)===file?source:read(name);
-  return ts.getPreEmitDiagnostics(ts.createProgram([path.join(root,'tests/fixtures/checked-idb-receipts.mjs')],parsed.options,host));
+  if(source)host.readFile=name=>path.resolve(name)===target?source:read(name);
+  return ts.getPreEmitDiagnostics(ts.createProgram(['checked-idb-receipts.mjs','checked-spreadsheet-store.mjs'].map(name=>path.join(root,'tests/fixtures',name)),parsed.options,host));
 }
 test('actual receipt implementation and generated consumers pass strict negative contracts',()=>{
   assert.deepEqual(check(),[]);
@@ -22,4 +22,10 @@ test('strict implementation rejects a hard-coded receipt replacing the prepared 
   const original=readFileSync(file,'utf8'),mutated=original.replace('resolve(outcome.value)',"resolve('saved')");
   assert.notEqual(original,mutated);
   assert.ok(check(mutated).some(item=>item.file&&path.resolve(item.file.fileName)===file&&item.code===2345));
+});
+test('checked workbook transaction body rejects a status string in place of a boolean commit',()=>{
+  const target=path.join(root,'shared/spreadsheet-store.js'),original=readFileSync(target,'utf8');
+  const mutated=original.replace("delete(key);done(true)","delete(key);done('saved')");
+  assert.notEqual(original,mutated);
+  assert.ok(check(mutated,target).some(item=>item.file&&path.resolve(item.file.fileName)===target&&item.code===2345));
 });
