@@ -471,21 +471,6 @@
       "over1000": 0,
       "longest": 682
     },
-    "netunim-orders/site/assets/js/ui/action-packs/finance-credit.js": {
-      "over500": 1,
-      "over1000": 0,
-      "longest": 527
-    },
-    "netunim-orders/site/assets/js/ui/action-packs/suppliers.js": {
-      "over500": 1,
-      "over1000": 0,
-      "longest": 672
-    },
-    "netunim-orders/site/assets/js/ui/action-packs/warehouse.js": {
-      "over500": 2,
-      "over1000": 1,
-      "longest": 1020
-    },
     "netunim-orders/site/assets/js/ui/alert-center.js": {
       "over500": 4,
       "over1000": 0,
@@ -596,11 +581,6 @@
       "over1000": 0,
       "longest": 903
     },
-    "shared/global-document-search.js": {
-      "over500": 18,
-      "over1000": 5,
-      "longest": 1790
-    },
     "shared/google-drive-client.js": {
       "over500": 1,
       "over1000": 0,
@@ -610,11 +590,6 @@
       "over500": 2,
       "over1000": 0,
       "longest": 858
-    },
-    "shared/kupa-cashflow.js": {
-      "over500": 4,
-      "over1000": 0,
-      "longest": 824
     },
     "shared/notes-workbook.js": {
       "over500": 5,

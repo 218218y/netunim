@@ -1,0 +1,110 @@
+{
+  "environment": {
+    "schemaVersion": 2,
+    "capturedAt": "2026-10-18T11:06:31.423940+00:00",
+    "sourceRevision": "96defb907288cfae278bb259e1cf8c6fd517952c",
+    "workingTreeDirty": true,
+    "execution": "local",
+    "os": "Windows",
+    "architecture": "AMD64",
+    "workload": "fresh-isolated-profile",
+    "browserMode": "headless-chromium"
+  },
+  "cpuThrottleRate": 4,
+  "instrumented": true,
+  "physicalWeakMachine": false,
+  "samples": {
+    "kupa": [
+      {
+        "fixture": {
+          "rows": 1000,
+          "jsonBytes": 78880,
+          "checkpointMs": 92.89999999850988
+        },
+        "results": {
+          "recovery": {
+            "moduleEvaluation": 7.399999998509884,
+            "composition": 37.70000000298023,
+            "localRecovery": 80.5,
+            "boot": 283.29999999701977,
+            "firstView": null,
+            "commandReady": null
+          },
+          "open": {
+            "ms": 981.7000000029802,
+            "value": 1000
+          },
+          "bankRows": 2000,
+          "bankHistoryYears": 0.68,
+          "bankOpen": {
+            "ms": 3750.2999999970198,
+            "value": 1000
+          },
+          "forecast": {
+            "ms": 175,
+            "value": 0
+          },
+          "search": {
+            "ms": 1124.2999999970198,
+            "value": 5
+          },
+          "globalSearch": {
+            "ms": 3150.2999999970198
+          },
+          "edit": {
+            "ms": 3292,
+            "durable": true
+          },
+          "memory": {
+            "JSHeapUsedSize": 7595372,
+            "JSHeapTotalSize": 8392704
+          },
+          "secondaryReadOnly": true
+        }
+      }
+    ],
+    "orders": [
+      {
+        "fixture": {
+          "rows": 1000,
+          "jsonBytes": 203769,
+          "checkpointMs": 311.09999999403954
+        },
+        "results": {
+          "recovery": {
+            "moduleEvaluation": 11.300000004470348,
+            "composition": 57.5,
+            "localRecovery": 185,
+            "boot": 6727.70000000298,
+            "firstView": 2281.2000000029802,
+            "commandReady": 7482
+          },
+          "open": {
+            "ms": 1337.6000000014901,
+            "value": 1000
+          },
+          "search": {
+            "ms": 5411.9000000059605,
+            "value": 1
+          },
+          "customersOpen": {
+            "ms": 796.1000000014901,
+            "value": 150
+          },
+          "globalSearch": {
+            "ms": 1903.3999999985099
+          },
+          "edit": {
+            "ms": 2261.2999999970198,
+            "durable": true
+          },
+          "memory": {
+            "JSHeapUsedSize": 7434948,
+            "JSHeapTotalSize": 8523776
+          },
+          "secondaryReadOnly": true
+        }
+      }
+    ]
+  }
+}

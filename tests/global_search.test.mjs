@@ -121,6 +121,6 @@ test('document result headers expose accessible two-way sorting controls',()=>{
 test('global document search passes sorting through paged file and content requests',()=>{
  const source=fs.readFileSync(new URL('../shared/global-document-search.js',import.meta.url),'utf8');
  assert.match(source,/sort:documentSorts\[mode\]/);
- assert.match(source,/applyDocumentSort\(sortButton\.dataset\.documentSortScope,sortButton\.dataset\.documentSortField\)/);
+ assert.match(source,/applyDocumentSort\(\s*sortButton\.dataset\.documentSortScope,\s*sortButton\.dataset\.documentSortField\s*\)/);
  assert.match(source,/recentDocumentSort=nextDocumentSort/);
 });

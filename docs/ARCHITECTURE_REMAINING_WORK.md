@@ -58,10 +58,16 @@ changing persistence receipts. See [UI completion evidence](UI_ACTION_COMPLETION
 The focused orchestration audit also reproduced mutable runtime command inputs
 while earlier commits drain. These entrances now capture before waiting and
 recheck cloud boundary admission; see [runtime command evidence](STORAGE_RUNTIME_COMMAND_ADMISSION.md).
-Further work follows the review's order: demonstrated authority gaps, loaded-data
-measurement, deterministic feature-entry enforcement and a dated release evidence
-report. Physical machines, installed Bridge and live providers remain unverified;
-the sections below are completed evidence, not another active plan.
+The continuation adds loaded-data recovery/search/forecast/edit/heap measurements,
+deterministic feature-entry enforcement, a tighter readability ratchet and fresh
+read-only Production postflight. See the [dated closure matrix](QUALITY_CLOSURE_20261018.md)
+for exact evidence and limitations. The automated work covers the review's main
+programmatic stages; full branch CI is required for each merge. Physical machines,
+memory-constrained/private-data timing, installed Bridge, live providers and an
+actual staggered static rollout remain open. They require the operator matrix and
+safe disposable data for interruption/restore exercises. Further code changes are
+limited to reproduced defects or comparable measurement. The implementation
+sections below are completed evidence, not another active plan.
 
 Workbook connection lifecycle now uses the existing factory with bounded
 reopening, explicit upgrade blocking and atomic abort handling. Its reentrant
@@ -155,7 +161,7 @@ documented in STARTUP_CPU_MEASUREMENT.md and READABILITY_RATCHET.md.
 
 | Priority | Scope | Required evidence |
 | --- | --- | --- |
-| 1 | Physical release validation and loaded startup measurements | Use the operator matrix for weak Windows hardware, installed Bridge update/shutdown, controlled interruption, old backups, A-B-A, two physical clients and live Bank/Credit providers after Credit schema hardening. CI covers isolated PostgreSQL/native browser/Windows contracts |
+| 1 | Physical release validation and representative private-data measurements | Use the operator matrix for weak Windows hardware/memory limits, installed Bridge update/shutdown, controlled interruption, old backups, A-B-A, two physical clients and live Bank/Credit providers. Synthetic loaded IDB/search/forecast/edit/heap measurements now run in CI; they do not close physical/provider checks |
 | 2 | Fresh verification before each static rollout | All three Bank migration identities, complete SQL hashes and live schema checks remain required. The full 2026-10-18 postflight and Git CI do not replace the next rollout gate |
 | 3 | Further authority work only on demonstrated gaps | Current Credit replacement coverage and normalized/raw monetary admissions are checked; Journal has eleven checked durable decisions and native rejection/mutation evidence. Extend remaining orchestration only when code or runtime evidence justifies it |
 | 4 | Compatibility inventory and readability | Keep the count/max ratchet and improve touched code; retire only newly proven Dead paths |

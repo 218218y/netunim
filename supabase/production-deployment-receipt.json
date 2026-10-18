@@ -1,10 +1,10 @@
 {
   "project_id": "bupoidcurcxuypfrjqio",
-  "verified_at": "2026-10-18 02:46:37.054991+00",
+  "verified_at": "2026-10-18 11:09:17.898677+00",
   "production_postflight": "PASS",
   "text_hash_normalization": "lf-v1",
-  "source_audit": "audit/production-postflight-20261018T024637054991Z.json",
-  "source_audit_sha256": "14ce4324839e8a1000df56666b9719a415ad801a7b4757007456ba80f09ff2cc",
+  "source_audit": "audit/production-postflight-20261018T110917898677Z.json",
+  "source_audit_sha256": "52cd4e71ed3d4177f7a46cd3b59c81acf7f7bc8960fe943db8573b8ba84a6ccf",
   "schema_snapshot": "audit/morning-schema-live.json",
   "schema_snapshot_sha256": "2e9291f8c89c106b8d2ff31933f7980e2988048f8fc460f234fb8eae393e0ba2",
   "migration_manifest": [
