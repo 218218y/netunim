@@ -155,9 +155,23 @@ def test_worker_upgrade(label, fixture):
           throw Error('Worker update did not wait for the open legacy page');
         })()""")
         assert waiting, 'Update replaced the active page mid-session'
+        assert 'error' not in browser.call('ServiceWorker.enable')
+        browser.call('Runtime.evaluate', {'expression': 'true'})
+        installed = {version['versionId'] for event in browser.events
+                     if event.get('method') == 'ServiceWorker.workerVersionUpdated'
+                     for version in event['params']['versions'] if version['status'] == 'installed'}
+        assert installed, 'DevTools did not observe the waiting worker'
         # Closing the last scoped page permits the waiting release to activate.
         browser.call('Page.navigate', {'url': 'about:blank'})
-        time.sleep(.1)
+        for attempt in range(300):
+            browser.call('Runtime.evaluate', {'expression': 'true'})
+            if any(version['versionId'] in installed and version['status'] == 'activated'
+                   for event in browser.events if event.get('method') == 'ServiceWorker.workerVersionUpdated'
+                   for version in event['params']['versions']):
+                break
+            time.sleep(.05)
+        else:
+            raise AssertionError('Waiting worker did not activate after its last page closed')
         browser._navigate()
         upgraded = browser.evaluate("""(async()=>{
           await navigator.serviceWorker.ready;

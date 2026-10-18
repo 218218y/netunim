@@ -341,7 +341,12 @@ def plan_sync(snapshot: WorktreeSnapshot | IndexSnapshot) -> list[Change]:
         headers = f'netunim-{label}/site/_headers'
         current_headers = asset_hash_bytes(headers, overlay.read(headers))
         clean_headers = re.sub(rb'^  X-Netunim-Release: [^\n]+\n?', b'', current_headers, flags=re.MULTILINE)
-        expected_headers = clean_headers.rstrip(b'\n') + b'\n  X-Netunim-Release: ' + release + b'\n'
+        # Insert into the global rule without changing any other bytes. Trimming
+        # trailing lines here would make the hashed source differ from output.
+        expected_headers, count = re.subn(rb'^/\*\n', lambda match: match[0]+b'  X-Netunim-Release: '+release+b'\n',
+                                         clean_headers, count=1, flags=re.MULTILINE)
+        if count != 1:
+            raise ValueError(f'{label}: expected a global response header rule')
         if current_headers != expected_headers:
             changes.append(Change(headers, expected_headers, f'{label}: refreshed release response header'))
     return changes
