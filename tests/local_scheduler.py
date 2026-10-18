@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import os
 
 from verification_plan import GROUPS, RUNTIME_SUITES
+from node_models import SHARD_SUITES
 
 # Start the long independent workloads early; no result/timing cache is consulted.
 START_FIRST = ("runtime_morning.py", "runtime_sync_postgres.py", "module_contracts.py")
@@ -15,11 +16,13 @@ class Resources:
     browser: bool = False
     database: bool = False
     exclusive: bool = False
+    models: bool = False
 
 
 def resources(name: str) -> Resources:
     return Resources(browser=name in RUNTIME_SUITES,
                      database=name in GROUPS["database"] + GROUPS["browser-database"],
+                     models=name in SHARD_SUITES,
                      exclusive=name == "runtime_performance.py")
 
 
@@ -46,5 +49,9 @@ def can_start(name: str, active: list[str], *, jobs: int, browser_jobs: int) -> 
     if requested.browser and sum(item.browser for item in running) >= browser_jobs:
         return False
     if requested.database and any(item.database for item in running):
+        return False
+    # Each half already owns two Node workers. Local parallel verification must
+    # retain that total limit; separate CI machines can run both halves at once.
+    if requested.models and any(item.models for item in running):
         return False
     return True

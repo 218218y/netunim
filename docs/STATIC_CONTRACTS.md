@@ -269,7 +269,7 @@ for failure ownership, real-IDB restoration drills and exact remaining scope.
 
 ```text
 npm run typecheck
-node --test tests/typecheck_contracts.test.mjs
+node --test tests/typecheck*contracts.test.mjs
 ```
 
 The checker uses TypeScript 6.0.3, pinned in `package-lock.json` and the offline

@@ -61,7 +61,7 @@ print('met peer')
 
     def test_actual_schedule_obeys_browser_database_and_exclusive_limits(self):
         names = ["module_contracts.py", "runtime_morning.py", "runtime_sync_postgres.py", "supabase_candidate.py",
-                 "runtime_smoke.py", "runtime_events.py", "runtime_performance.py"]
+                 "runtime_smoke.py", "runtime_events.py", "runtime_performance.py", "node_models_1.py", "node_models_2.py"]
         for name in names:
             self.script(name, "import time; time.sleep(.2)\n")
         rc, report = self.run_suites(names, jobs=4, browser_jobs=2)
@@ -73,8 +73,15 @@ print('met peer')
             self.assertLessEqual(len(overlapping), 4)
             self.assertLessEqual(sum(scheduler.resources(name).browser for name in overlapping), 2)
             self.assertLessEqual(sum(scheduler.resources(name).database for name in overlapping), 1)
+            self.assertLessEqual(sum(scheduler.resources(name).models for name in overlapping), 1)
             if any(scheduler.resources(name).exclusive for name in overlapping):
                 self.assertEqual(len(overlapping), 1)
+
+    def test_owned_child_report_directory_survives_scratch_cleanup(self):
+        self.script("timed.py", "import os; from pathlib import Path; p=Path(os.environ['NETUNIM_SUITE_REPORT_DIR']); p.mkdir(parents=True); (p/'files.json').write_text('retained')\n")
+        rc, _ = self.run_suites(["timed.py"])
+        self.assertEqual(rc, 0)
+        self.assertEqual((self.root / "report/timed/files.json").read_text(), "retained")
 
     def test_parallel_failure_drains_started_work_and_stops_new_work(self):
         self.script("bad.py", "raise SystemExit(7)\n")

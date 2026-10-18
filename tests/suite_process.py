@@ -242,6 +242,7 @@ class SuiteProcess:
                 start_new_session=os.name != "nt",
                 creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
                 env={**os.environ, "PYTHONUTF8": "1", "PYTHONUNBUFFERED": "1",
+                     "NETUNIM_SUITE_REPORT_DIR": str(log_path.resolve().parent / path.stem),
                      "TMP": str(self.scratch), "TEMP": str(self.scratch), "TMPDIR": str(self.scratch)},
             )
             if self.job:

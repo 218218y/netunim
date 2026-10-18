@@ -6,6 +6,9 @@ Helpers and operator-only tools (including live bank integration) are not suites
 """
 from pathlib import Path
 
+from ci_timing import balanced_partition, estimates, timing_weights
+from node_models import SHARD_SUITES, test_files
+
 TESTS = Path(__file__).resolve().parent
 GROUPS = {
     "contracts": [
@@ -29,7 +32,7 @@ GROUPS = {
         "bank_bridge_contracts.py",
         "bank_morning_contracts.py",
     ],
-    "models": ["module_contracts.py", "node_models.py"],
+    "models": ["module_contracts.py", *SHARD_SUITES],
     "database": ["spreadsheet_documents.py", "supabase_candidate.py", "storage_writer_protocol_server.py", "supabase_retention.py", "morning_ledger.py"],
     "browser-ui": ["runtime_browser_isolation.py", "runtime_smoke.py", "runtime_responsive.py", "runtime_calendar.py", "runtime_calendar_payload.py", "runtime_calendar_storage_contracts.py", "runtime_calendar_auth_disposal.py", "runtime_calendar_resource_ownership.py", "runtime_calendar_ownership.py", "runtime_calendar_account_privacy.py", "runtime_calendar_pending.py", "runtime_calendar_multitab_confirmation.py", "runtime_calendar_delivery_ownership.py", "runtime_calendar_commit_notification.py", "runtime_events.py", "runtime_supplier_search.py", "runtime_document_deadlines.py", "runtime_google_drive_scope.py", "runtime_document_account_privacy.py", "runtime_kupa_dashboard_ownership.py"],
     "browser-morning": ["runtime_morning.py", "runtime_morning_catalog.py", "runtime_morning_command_form.py", "runtime_morning_form_edit_ownership.py", "runtime_morning_recovery_display_ownership.py", "runtime_morning_status_ownership.py", "runtime_morning_operation_evidence.py", "runtime_morning_operation_drain.py", "runtime_morning_media_ownership.py", "runtime_morning_ownership.py", "runtime_morning_recovery_timer.py", "runtime_morning_metadata.py", "runtime_morning_account_privacy.py"],
@@ -40,12 +43,20 @@ GROUPS = {
 CORE_SUITES = [suite for group, suites in GROUPS.items() if not group.startswith("browser-") for suite in suites]
 RUNTIME_SUITES = [suite for group, suites in GROUPS.items() if group.startswith("browser-") for suite in suites]
 
-# Fixed striping keeps one inventory and automatically includes newly added suites.
-# Two successful October 14 CI runs put these groups at 560-591s, 329-332s
-# and 218-241s respectively. Their longest striped shards were 213s, 179s
-# and 148s; browser-morning (211-214s) then sets the approximate lower bound.
-# Historical timings inform this choice only; CI never reads a timing/result cache.
-CI_SHARDS = {"browser-lifecycle": 3, "browser-sync": 2, "browser-ui": 2}
+# October 18 reports put lifecycle at 18 minutes of sequential work and UI at
+# 5 minutes. Four balanced lifecycle machines and one UI machine have comparable
+# loads. Models split their discovered files across two machines, each retaining
+# two isolated Node workers. Only checked-in cost estimates influence scheduling.
+CI_SHARDS = {"models": 2, "browser-lifecycle": 4, "browser-sync": 2}
+
+
+def suite_estimates():
+    weights = timing_weights("suite_seconds")
+    node_costs = estimates(test_files(), timing_weights("node_seconds"))
+    for index, name in enumerate(SHARD_SUITES, 1):
+        costs = [node_costs[file] for file in test_files(shard=index)]
+        weights[name] = max(sum(costs) / 2, max(costs))
+    return estimates([suite for suites in GROUPS.values() for suite in suites], weights)
 
 
 def validate_plan():
@@ -66,15 +77,23 @@ def ci_groups():
     """Disjoint CI selections derived entirely from the full local inventory."""
     validate_plan()
     selections = {}
+    weights = suite_estimates()
     for name, suites in GROUPS.items():
         count = CI_SHARDS.get(name, 1)
-        for index in range(count):
+        parts = balanced_partition(suites, count, weights)
+        for index, part in enumerate(parts):
             shard = name if count == 1 else f"{name}-{index + 1}"
             if shard in selections or (count > 1 and shard in GROUPS):
                 raise ValueError(f"Duplicate CI group name: {shard}")
-            selections[shard] = suites[index::count]
-    return selections
+            selections[shard] = part
+    # Offer the longest jobs first when runner capacity is limited. GitHub still
+    # owns actual dispatch order; its account queues are outside this scheduler.
+    return dict(sorted(selections.items(), key=lambda row: (-sum(weights[name] for name in row[1]), row[0])))
 
 
 def ci_matrix():
-    return {"include": [{"group": name, "browser": name.startswith("browser-"), "postgres": name in ("database", "browser-database")} for name in ci_groups()]}
+    weights = suite_estimates()
+    return {"include": [{"group": name, "browser": name.startswith("browser-"),
+                         "postgres": name in ("database", "browser-database"),
+                         "estimated_seconds": round(sum(weights[suite] for suite in suites), 1)}
+                        for name, suites in ci_groups().items()]}

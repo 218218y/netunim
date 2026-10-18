@@ -16,11 +16,14 @@ from unittest.mock import patch
 from verification_plan import CORE_SUITES, RUNTIME_SUITES, GROUPS, CI_SHARDS, ci_groups, ci_matrix, validate_plan
 import run_all
 import browser_harness
+import node_models
 from node_models import test_files
+from ci_timing import balanced_partition, estimates, timing_weights
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 import github_verification as gate
+from update_ci_timings import collect_timings
 
 
 def successful_fixture():
@@ -232,12 +235,12 @@ with patch.object(h, 'HOST_STATE_ROOT', root / 'host'), \\
         for changes in ({"unknown": 2}, {"browser-ui": 0}, {"browser-ui": 100}, {"browser-ui": True}):
             with self.subTest(changes=changes), patch.dict(CI_SHARDS, changes), self.assertRaises(ValueError):
                 ci_matrix()
-        with patch.dict(GROUPS, {"browser-ui-1": ["runtime_smoke.py"]}), \
+        with patch.dict(GROUPS, {"browser-lifecycle-1": ["runtime_smoke.py"]}), \
              patch("verification_plan.validate_plan"), self.assertRaisesRegex(ValueError, "Duplicate CI group"):
             ci_matrix()
 
     def test_cli_selects_a_shard_and_preserves_the_original_local_group(self):
-        for group in ("browser-lifecycle", "browser-lifecycle-2", "browser-sync-2", "browser-ui-2"):
+        for group in ("browser-lifecycle", "browser-lifecycle-4", "browser-sync-2", "browser-ui", "models", "models-2"):
             expected = {**GROUPS, **ci_groups()}[group]
             with self.subTest(group=group), tempfile.TemporaryDirectory() as tmp, \
                  patch.object(run_all, "preflight", return_value=0), \
@@ -253,6 +256,72 @@ with patch.object(h, 'HOST_STATE_ROOT', root / 'host'), \\
         self.assertEqual(len(discovered), len(list((ROOT / "tests").glob("*.test.mjs"))))
         for name in ("orders_scroll_race", "orders_note_reminders", "calendar_local_cloud_auth", "calendar_local_controller", "morning_edge"):
             self.assertIn(f"tests/{name}.test.mjs", discovered)
+
+    def test_timing_partition_is_balanced_deterministic_and_not_a_test_filter(self):
+        weights = dict(zip("abcdef", (9, 8, 7, 6, 5, 4)))
+        parts = balanced_partition(list(weights), 3, weights)
+        self.assertEqual([sum(weights[name] for name in part) for part in parts], [13, 13, 13])
+        self.assertEqual(parts, balanced_partition(list(reversed(weights)), 3, weights))
+        self.assertCountEqual([name for part in parts for name in part], weights)
+        self.assertEqual(estimates(["a", "b", "new"], weights)["new"], 8.5)
+        self.assertIn("new", sum(balanced_partition(["a", "b", "new"], 2, weights), []))
+        self.assertEqual(estimates(["new"], {})["new"], 1)
+        for count in (0, 7, True):
+            with self.subTest(count=count), self.assertRaises(ValueError):
+                balanced_partition(list(weights), count, weights)
+
+    def test_invalid_costs_fail_planning_instead_of_silently_changing_coverage(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "timings.json"
+            for value in (0, -1, True, "4", float("nan"), float("inf")):
+                path.write_text(json.dumps({"version": 1, "suite_seconds": {"a": value}}))
+                with self.subTest(value=value), self.assertRaises(ValueError):
+                    timing_weights("suite_seconds", path)
+
+    def test_node_partitions_cover_every_file_once_and_include_new_files(self):
+        selected = [*test_files(shard=1), *test_files(shard=2)]
+        self.assertCountEqual(selected, test_files())
+        self.assertEqual(len(selected), len(set(selected)))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "tests").mkdir()
+            for name in ("a", "b", "new"):
+                (root / f"tests/{name}.test.mjs").touch()
+            with patch.object(node_models, "ROOT", root), patch.object(node_models, "timing_weights", return_value={"tests/a.test.mjs": 20}):
+                self.assertCountEqual([*test_files(shard=1), *test_files(shard=2)], test_files())
+                self.assertIn("tests/new.test.mjs", [*test_files(shard=1), *test_files(shard=2)])
+        for shard in (0, 3, True):
+            with self.subTest(shard=shard), self.assertRaises(ValueError):
+                test_files(shard=shard)
+
+    def test_real_node_reporter_preserves_failures_and_times_plain_assertion_files(self):
+        with tempfile.TemporaryDirectory(prefix="node timing contracts ") as directory:
+            root = Path(directory)
+            good, bad = root / "good.test.mjs", root / "bad.test.mjs"
+            good.write_text("import assert from 'node:assert/strict'; assert.equal(1,1);\n")
+            bad.write_text("import test from 'node:test'; test('fails',()=>{throw new Error('expected fixture failure')});\n")
+            # This native invocation covers spaces and Windows file: reporter URLs.
+            real_call = subprocess.call
+            with (root / "console.log").open("w", encoding="utf-8") as log, patch.object(node_models.subprocess, "call") as call:
+                call.side_effect = lambda command, **kwargs: real_call(command, stdout=log, stderr=subprocess.STDOUT, **kwargs)
+                self.assertNotEqual(node_models.run_files([str(good), str(bad)], root / "reports"), 0)
+            rows = [json.loads(line) for line in (root / "reports/node-files.jsonl").read_text().splitlines()]
+            self.assertEqual(len(rows), 2)
+            self.assertEqual({Path(row["file"]).name: row["status"] for row in rows}, {good.name: "passed", bad.name: "failed"})
+            self.assertTrue(all(row["seconds"] > 0 for row in rows))
+            self.assertIn("expected fixture failure", (root / "console.log").read_text(encoding="utf-8"))
+
+    def test_timing_refresh_uses_successful_samples_and_medians_only(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for index, seconds in enumerate((10, 14, 90)):
+                report = root / str(index)
+                report.mkdir()
+                (report / "results.json").write_text(json.dumps({"suites": [{"suite": "a.py", "seconds": seconds, "status": "passed"}, {"suite": "bad.py", "seconds": 0, "status": "not-run"}]}))
+            (root / "node-files.jsonl").write_text(json.dumps({"file": "tests/a.test.mjs", "seconds": 4, "status": "passed"}) + "\n")
+            data = collect_timings([root, root / "0"], ["fixture"])
+            self.assertEqual(data["suite_seconds"], {"a.py": 14})
+            self.assertEqual(data["node_seconds"], {"tests/a.test.mjs": 4})
 
     def test_ci_dependency_installs_do_not_restore_cross_run_package_caches(self):
         workflow = (ROOT / '.github/workflows/verify.yml').read_text(encoding='utf8')

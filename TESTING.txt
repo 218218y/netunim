@@ -71,7 +71,7 @@ Normal local setup:
 
 Focused static-contract gate:
   npm run typecheck
-  node --test tests/typecheck_contracts.test.mjs
+  node --test tests/typecheck*contracts.test.mjs
 This checks the explicit canonical and application JavaScript implementations and negative consumer cases
 without emitting assets. The full models group also runs it. It reads
 NETUNIM_OFFLINE_NODE_MODULES for the pinned offline compiler. Exact scope and remaining
@@ -280,7 +280,7 @@ service_worker_contracts.py: complete shell, install/activate, app-scoped cleanu
 module_contracts.py: deterministic shared copies/cache manifest, normalized cross-platform text hashing,
   byte-exact binary hashing, read-only/idempotent generation, acyclic local module graph, layer boundaries,
   no runtime globals/test APIs, strict incremental JavaScript contracts and pinned ESLint rules.
-node_models.py: all tests/*.test.mjs files discovered automatically, with two isolated Node workers.
+node_models.py: all tests/*.test.mjs files discovered automatically. The canonical gate uses two disjoint node_models_1.py / node_models_2.py partitions, with two isolated Node workers per CI machine and two in total locally. Checked-in timing estimates balance the partitions; every test still runs. TypeScript implementation mutation tests are split into core, application, document and finance files without sharing compiler results.
 verification_plan.py: one complete suite inventory for local full verification and the GitHub Actions matrix.
 runtime_sync_postgres.py: real browser/HTTP/PostgreSQL synchronization, lost acknowledgements and merge conflicts.
 runtime_browser_isolation.py: real same-origin LocalStorage/IndexedDB separation and disposable profile cleanup.
