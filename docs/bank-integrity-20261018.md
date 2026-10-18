@@ -92,9 +92,20 @@ recurring-history overlay, search and cashflow ambiguity checks.
 
 The existing native IndexedDB Bank command test now uses the same generated
 two-serial source, checks durable amounts and isolation from Shared Checks,
-reloads the browser and verifies search/forecast multiplicity. A focused Windows
-local attempt timed out at DevTools, without a financial assertion result. The
-full hosted browser/SQL suites remain the release gate for this stage.
+reloads the browser and verifies search/forecast multiplicity. The initial local
+and hosted browser attempts exposed a real file-publication guard: equivalent
+`...00Z` / `...00.000Z` observation representations differed after normalization.
+Synthetic state comparison located the sole mismatch at `bank.bankSyncAt`.
+The validated balance-result boundary now captures canonical UTC before the
+journal operation. The unchanged file authority guard remains enforced. The
+actual Windows browser refresh/save/reload/search/forecast scenario now passes
+locally, alongside 89 related publication/archive tests.
+
+Long archive keys also receive an explicit regression: two keys with the same
+first 100 characters retain separate direct-snapshot Morning metadata. Opaque
+archive keys are preserved in full rather than normalized as display labels.
+The native provider fixture now supplies the actual `{transactions:[]}` response
+shape; bare arrays remain invalid external pages with incomplete coverage.
 
 Formatting in the touched canonical policy files was checked with Acorn AST
 comparisons separately from the behavioral changes. The readability ratchet and

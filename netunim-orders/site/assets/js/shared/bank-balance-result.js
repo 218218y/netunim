@@ -68,7 +68,8 @@ export function readBankBalanceResult(value, now = Date.now()) {
   // Only legacy balance-only reads may use a local display time. Transaction
   // evidence must carry the Bridge observation that produced it.
   const fetchedAt = value.fetchedAt === undefined ? new Date(now).toISOString() : value.fetchedAt;
-  if (observationTimeMs(fetchedAt, now) === null)
+  const observedAt = observationTimeMs(fetchedAt, now);
+  if (observedAt === null)
     throw invalidObservationTime();
   const accounts = record(value.accounts) ? value.accounts : null;
   const business = account(accounts?.business || value, 'business');
@@ -78,7 +79,10 @@ export function readBankBalanceResult(value, now = Date.now()) {
   )) throw invalidObservationTime();
   const failures = record(value.accountFailures) ? value.accountFailures : null;
   const homeFailure = failures?.home || null;
-  return Object.freeze({ source: Object.freeze({ ...value, fetchedAt }), business, home, homeFailure });
+  // Feed normalization already uses canonical UTC timestamps. Capture the same
+  // representation before journaling so later normalization cannot change the
+  // committed bankSyncAt or archive readout signature for an equivalent instant.
+  return Object.freeze({ source: Object.freeze({ ...value, fetchedAt: new Date(observedAt).toISOString() }), business, home, homeFailure });
 }
 
 /** A durable snapshot requires a Bridge clock even for a balance-only result.

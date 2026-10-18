@@ -54,7 +54,7 @@ export function bankTransactionDisplayIdentity(row = {}, role = 'business', inde
  * @param {BankIdentityRow} row */
 function historyKeys(row) {
     const archive = archiveIdentity(row), source = bankTransactionSourceIdentity(row);
-    const keys = [archive, source].filter(/** @returns {value is string} */ /** @returns {value is string} */ /** @returns {value is string} */ /** @returns {value is string} */ value => value !== null);
+    const keys = [archive, source].filter(value => value !== null);
     if (!source) {
         const rawReference = !row.mergeKey && row.bankReference;
         keys.push(JSON.stringify([

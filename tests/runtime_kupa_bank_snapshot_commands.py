@@ -11,15 +11,15 @@ def evaluate_with_diagnostics(browser, expression, **options):
         return browser.evaluate(expression, **options)
     except Exception:
         print('Bank identity browser diagnostics:', browser.drain_serious_errors(), flush=True)
-        stage = browser.call('Runtime.evaluate', {'expression': 'globalThis.__bankIdentityTestStage', 'returnByValue': True}, timeout=5)
-        print('Bank identity browser stage:', stage, flush=True)
+        for event in browser.events:
+            if event.get('method')=='Page.javascriptDialogOpening' or (
+                event.get('method')=='Runtime.consoleAPICalled' and event.get('params',{}).get('type')=='error'):
+                print('Bank identity browser failure:',event.get('params'),flush=True)
         raise
 
 with BrowserSession(ROOT/'netunim-kupa/site','bank-file-snapshot-commands') as browser:
     result=evaluate_with_diagnostics(browser,r"""(async()=>{
-      globalThis.__bankIdentityTestStage='startup';
       await appReady;financeAutomation.stop();syncDocument.stopCloudPolling();
-      globalThis.__bankIdentityTestStage='baseline';
       session.connectionMode='file';session.backendReady=true;
       const check=(ok,label)=>{if(!ok)throw Error(label)},stamp='2026-10-13T10:00:00.000Z';
       const generated=__BANK_SOURCE__;
@@ -29,7 +29,6 @@ with BrowserSession(ROOT/'netunim-kupa/site','bank-file-snapshot-commands') as b
         {type:'put',collection:'notes',id:note.id,mode:'insert',index:state.notes.length-1,record:note},
         {type:'set',field:'bank',value:state.bank},
       ]});await mainStorageV2.commitPromise;
-      globalThis.__bankIdentityTestStage='baseline-durable';
       const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js'),db=createStorageJournalDb();
       const before=await db.load('local:kupa'),sharedBefore=JSON.stringify(await db.load('local:shared-checks'));
       const {payloadFromState}=await import('./assets/js/state/serialization.js');let file=JSON.stringify(payloadFromState(state,session.dbRevision));
@@ -44,9 +43,7 @@ with BrowserSession(ROOT/'netunim-kupa/site','bank-file-snapshot-commands') as b
         return originalFetch(url,options);
       };
       try{
-        globalThis.__bankIdentityTestStage='refresh';
         const saved=await bank.commands.refreshBankBalance();
-        globalThis.__bankIdentityTestStage='refresh-complete';
         check(patches===0&&atomics===0,'file Bank attempted an authenticated cloud write');
         check(saved===true,'file Bank snapshot was not confirmed locally');
         const after=await db.load('local:kupa'),recovered=await mainStorageV2.recoverReadOnly();
@@ -76,4 +73,4 @@ with BrowserSession(ROOT/'netunim-kupa/site','bank-file-snapshot-commands') as b
     })()""")
     assert restored=={'rows':2,'serials':['11','12'],'searchCount':2,'searchIds':2,'ambiguous':True},restored
     assert not browser.drain_serious_errors()
-    print('PASS production Bank file snapshot commands: '+str(result))
+    print('PASS production Bank file snapshot commands: '+str(result)+'; reload/search/forecast: '+str(restored))

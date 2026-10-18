@@ -59,10 +59,15 @@ function normalizeCheckDetails(value, fallbackKind = '') {
  * @param {unknown} value */
 export function normalizeBankFeedTransaction(value) {
     const row = record(value) ? value : {};
-    const archiveId = readBankMoney(row.archiveId);
+    const rawArchiveId = readBankMoney(row.archiveId);
+    const archiveId = rawArchiveId !== null && Number.isSafeInteger(rawArchiveId) && rawArchiveId > 0 ? rawArchiveId : null;
+    // Archive keys are opaque identities, not display text. Truncating them
+    // disconnects direct-snapshot rows from their persisted Morning metadata.
+    const mergeKey = typeof row.mergeKey === 'string' ? row.mergeKey : '';
+    const id = mergeKey || (archiveId !== null && typeof row.id === 'string' ? row.id : cleanText(row.id, 100));
     return {
-        id: cleanText(row.id, 100),
-        mergeKey: typeof row.mergeKey === 'string' ? row.mergeKey : '',
+        id,
+        mergeKey,
         date: cleanIso(row.date),
         processedDate: cleanIso(row.processedDate),
         amount: readBankMoney(row.amount),
@@ -78,7 +83,7 @@ export function normalizeBankFeedTransaction(value) {
         cheque: !!row.cheque,
         checkDetails: normalizeCheckDetails(row.checkDetails, row.cheque ? 'deposit' : ''),
         creditSettlementDetails: normalizeCreditSettlementDetails(row.creditSettlementDetails),
-        archiveId: archiveId !== null && Number.isSafeInteger(archiveId) && archiveId > 0 ? archiveId : null,
+        archiveId,
         presenceState: typeof row.presenceState === 'string' && ['unknown', 'present', 'missing'].includes(row.presenceState) ? row.presenceState : 'unknown',
         firstSeenAt: cleanIso(row.firstSeenAt),
         lastSeenAt: cleanIso(row.lastSeenAt),
