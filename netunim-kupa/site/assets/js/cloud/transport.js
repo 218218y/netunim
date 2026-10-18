@@ -14,227 +14,500 @@ import {normalizeSharedChecks} from '../shared/shared-checks-contract.js';
 import {SHARED_CHECKS_DOC, SHARED_CHECKS_TABLE, SHARED_CHECKS_RPC} from '../state/constants.js';
 import {CLOUD_WRITE_POLICY,contentionDelay,createOperationId,normalizeCloudError,operationAuditMetadata,runBusyCloudWriteWithPolicy} from '../shared/cloud-sync.js';
 import {restoreGroupRpcPayload} from '../shared/restore-groups.js';
-
 const FINANCE_DOC='main';
 const FINANCE_TABLE='finance_sync_documents';
 const ORDERS_DOC='suppliers';
 const ORDERS_TABLE='order_management_documents';
 const FINANCE_RPC='save_finance_sync_document';
 const FINANCE_LEASE_TTL_SECONDS=20*60;
-
-function sameCloudTimestamp(a,b){const x=String(a||''),y=String(b||'');return !!x&&!!y&&x===y}
+function sameCloudTimestamp(a,b){
+  const x=String(a||''),y=String(b||'');
+  return !!x&&!!y&&x===y
+}
 function resolveKupaCoreUpdatedAt(row,financeUpdatedAt,financeAvailable=true){
   if(row?.core_updated_at)return row.core_updated_at;
   if(!financeAvailable)return null;
   if(sameCloudTimestamp(row?.updated_at,financeUpdatedAt))return null;
   return row?.updated_at||null;
 }
-
-function contentionBackoff(attempt=0){return new Promise(resolve=>setTimeout(resolve,contentionDelay(attempt)))}
+function contentionBackoff(attempt=0){
+  return new Promise(resolve=>setTimeout(resolve,contentionDelay(attempt)))
+}
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createCloudTransport({session, supaRest, localResetReadOnlyFetch}){
-const {claimFinanceSyncLease,releaseFinanceSyncLease}=createFinanceLeaseTransport({request:supaRest,ttlSeconds:FINANCE_LEASE_TTL_SECONDS});
-const {rpcSaveCloudV2}=createMainDocumentWrite({documentName:()=>session.cloudDocumentName,request:(...args)=>supaRest(...args),validate:assertValidCloudState,beginMeasure});
-const manualFinanceQueue=createFinanceManualQueue({claim:claimFinanceSyncLease,release:releaseFinanceSyncLease,createToken:()=>createOperationId('finance-manual')});
-
-async function verifyLocalResetCloud(resetSession){
-  if(typeof localResetReadOnlyFetch!=='function')throw new Error('local_reset_read_only_transport_unavailable');
-  const mainPath=`/rest/v1/kupa_documents?document_name=eq.${encodeURIComponent(session.cloudDocumentName)}&select=document_name,revision,state,updated_at`,sharedPath=`/rest/v1/${SHARED_CHECKS_TABLE}?document_name=eq.${encodeURIComponent(SHARED_CHECKS_DOC)}&select=document_name,revision,state,updated_at`;
-  const [mainResponse,sharedResponse]=await Promise.all([localResetReadOnlyFetch(resetSession,mainPath),localResetReadOnlyFetch(resetSession,sharedPath)]),[mainJson,sharedJson]=await Promise.all([mainResponse.json().catch(()=>null),sharedResponse.json().catch(()=>null)]);
-  if(!mainResponse.ok)throw new Error(mainJson?.message||mainJson?.hint||'קריאת הקופה מהענן נכשלה');
-  if(!sharedResponse.ok)throw new Error(sharedJson?.message||sharedJson?.hint||'קריאת מאגר הצקים המשותף נכשלה');
-  const main=readCloudDocumentRows(mainJson,session.cloudDocumentName),shared=readCloudDocumentRows(sharedJson,SHARED_CHECKS_DOC);
-  if(main){assertReadableCloudState(main.state,'מסמך הקופה בענן');const rev=Number(main.revision);if(!Number.isSafeInteger(rev)||rev<1)throw new Error('Revision הקופה בענן אינו תקין')}
-  if(shared){if(!shared.state||!Array.isArray(shared.state.checks)||!Array.isArray(shared.state.bankEvents))throw new Error('מסמך הצקים המשותף בענן במבנה לא תקין');const rev=Number(shared.revision);if(!Number.isSafeInteger(rev)||rev<1)throw new Error('Revision הצקים המשותף אינו תקין')}
-  return {main,shared};
-}
-async function readOrdersReadOnlyMeta({assertCurrent}={}){
-  assertCurrent?.();
-  const q=`/rest/v1/${ORDERS_TABLE}?document_name=eq.${encodeURIComponent(ORDERS_DOC)}&select=document_name,revision,updated_at`;
-  const r=await supaRest(q,{method:'GET',...(assertCurrent?{assertRequestScope:assertCurrent}:{})}),j=await r.json().catch(()=>null);
-  assertCurrent?.();
-  if(!r.ok)throw new Error(j?.message||j?.hint||'קריאת סטטוס ניהול ההזמנות נכשלה');
-  return readCloudMetaRows(j,ORDERS_DOC);
-}
-async function readOrdersReadOnlyCloud({assertCurrent}={}){
-  assertCurrent?.();
-  const q=`/rest/v1/${ORDERS_TABLE}?document_name=eq.${encodeURIComponent(ORDERS_DOC)}&select=document_name,revision,state,updated_at`;
-  const r=await supaRest(q,{method:'GET',...(assertCurrent?{assertRequestScope:assertCurrent}:{})}),j=await r.json().catch(()=>null);
-  assertCurrent?.();
-  if(!r.ok)throw new Error(j?.message||j?.hint||'קריאת נתוני ניהול ההזמנות נכשלה');
-  const row=readCloudDocumentRows(j,ORDERS_DOC);
-  if(row){const rev=Number(row.revision);if(!Number.isSafeInteger(rev)||rev<1||!row.state||typeof row.state!=='object')throw new Error('מסמך ניהול ההזמנות בענן אינו תקין')}
-  return row;
-}
-async function readFinanceSyncDocument({assertCurrent}={}){
-  assertCurrent?.();
-  const q=`/rest/v1/${FINANCE_TABLE}?document_name=eq.${encodeURIComponent(FINANCE_DOC)}&select=document_name,revision,state,updated_at`;
-  const r=await supaRest(q,{method:'GET',...(assertCurrent?{assertRequestScope:assertCurrent}:{})}),j=await r.json().catch(()=>null);
-  assertCurrent?.();
-  if(!r.ok)throw new Error(j?.message||j?.hint||'קריאת נתוני הסינכרון הפיננסי נכשלה');
-  return readFinanceDocumentRows(j,FINANCE_DOC);
-}
-function overlayFinanceState(base,finance){
-  const out=structuredClone(base||{}),fs=finance?.state&&typeof finance.state==='object'?finance.state:{};
-  if(fs.bank&&typeof fs.bank==='object'){const kupaBank=out.bank&&typeof out.bank==='object'?out.bank:{},financeBank=structuredClone(fs.bank);out.bank={...kupaBank,...financeBank,adjustments:Array.isArray(kupaBank.adjustments)?structuredClone(kupaBank.adjustments):[],snapshotToken:kupaBank.snapshotToken??null,snapshotSeq:kupaBank.snapshotSeq??null}};
-  if(fs.creditSync&&typeof fs.creditSync==='object')out.creditSync=structuredClone(fs.creditSync);
-  return out;
-}
-async function readSupabaseDocument({assertCurrent,includeFinance=true}={}){
-  assertCurrent?.();
-  const q=`/rest/v1/kupa_documents?document_name=eq.${encodeURIComponent(session.cloudDocumentName)}&select=*`;
-  const [docResult,financeResult]=await Promise.allSettled([supaRest(q,{method:'GET',...(assertCurrent?{assertRequestScope:assertCurrent}:{})}),includeFinance?readFinanceSyncDocument({assertCurrent}):Promise.resolve(null)]);
-  assertCurrent?.();
-  if(docResult.status!=='fulfilled')throw docResult.reason;
-  const financeAvailable=financeResult.status==='fulfilled';
-  if(!financeAvailable)console.warn('finance document read unavailable; Kupa core cloud read continues independently',financeResult.reason);
-  const r=docResult.value,j=await r.json().catch(()=>null);
-  assertCurrent?.();
-  if(!r.ok)throw new Error(j?.message||j?.hint||'קריאת הקופה מהענן נכשלה');
-  const row=readCloudDocumentRows(j,session.cloudDocumentName);
-  if(row){
-    assertReadableCloudState(row.state,'מסמך הקופה בענן');
-    const rev=Number(row.revision);if(!Number.isSafeInteger(rev)||rev<1)throw new Error('Revision הקופה בענן אינו תקין. הסנכרון נעצר כדי למנוע דריסה.');
-    if(!includeFinance)return row;
-    row.financeAvailable=financeAvailable;
-    if(financeAvailable&&financeResult.value){
-      row.state=overlayFinanceState(row.state,financeResult.value);
-      row.financeRevision=Number(financeResult.value.revision||0);
-      row.financeUpdatedAt=financeResult.value.updated_at||null;
-    }else if(financeAvailable){row.financeRevision=0;row.financeUpdatedAt=null}
-    else{row.financeRevision=Number(session.financeRevision||0);row.financeUpdatedAt=session.financeUpdatedAt||null}
-    row.coreUpdatedAt=resolveKupaCoreUpdatedAt(row,row.financeUpdatedAt,financeAvailable);
+  const {claimFinanceSyncLease,releaseFinanceSyncLease}=createFinanceLeaseTransport({request:supaRest,ttlSeconds:FINANCE_LEASE_TTL_SECONDS});
+  const {rpcSaveCloudV2}=createMainDocumentWrite({documentName:()=>session.cloudDocumentName,request:(...args)=>supaRest(...args),validate:assertValidCloudState,beginMeasure});
+  const manualFinanceQueue=createFinanceManualQueue({claim:claimFinanceSyncLease,release:releaseFinanceSyncLease,createToken:()=>createOperationId('finance-manual')});
+  async function verifyLocalResetCloud(resetSession){
+    if(typeof localResetReadOnlyFetch!=='function')throw new Error('local_reset_read_only_transport_unavailable');
+    const mainPath=`/rest/v1/kupa_documents?document_name=eq.${encodeURIComponent(session.cloudDocumentName)}&select=document_name,revision,state,updated_at`,
+      sharedPath=`/rest/v1/${SHARED_CHECKS_TABLE}?document_name=eq.${encodeURIComponent(SHARED_CHECKS_DOC)}&select=document_name,revision,state,updated_at`;
+    const [mainResponse,sharedResponse]=await Promise.all([localResetReadOnlyFetch(resetSession,mainPath),localResetReadOnlyFetch(resetSession,sharedPath)]),
+      [mainJson,sharedJson]=await Promise.all([mainResponse.json().catch(()=>null),sharedResponse.json().catch(()=>null)]);
+    if(!mainResponse.ok)throw new Error(mainJson?.message||mainJson?.hint||'קריאת הקופה מהענן נכשלה');
+    if(!sharedResponse.ok)throw new Error(sharedJson?.message||sharedJson?.hint||'קריאת מאגר הצקים המשותף נכשלה');
+    const main=readCloudDocumentRows(mainJson,session.cloudDocumentName),shared=readCloudDocumentRows(sharedJson,SHARED_CHECKS_DOC);
+    if(main){
+      assertReadableCloudState(main.state,'מסמך הקופה בענן');
+      const rev=Number(main.revision);
+      if(!Number.isSafeInteger(rev)||rev<1)throw new Error('Revision הקופה בענן אינו תקין')
+    }
+    if(shared){
+      if(!shared.state||!Array.isArray(shared.state.checks)||!Array.isArray(shared.state.bankEvents))throw new Error('מסמך הצקים המשותף בענן במבנה לא תקין');
+      const rev=Number(shared.revision);
+      if(!Number.isSafeInteger(rev)||rev<1)throw new Error('Revision הצקים המשותף אינו תקין')
+    }
+    return {main,shared};
   }
-  return row;
-}
-async function rpcSaveFinanceSync(state,expectedRevision,operationId,audit={},lease=null){
-  const assertCurrent=lease?.assertCurrent;assertCurrent?.();
-  const expected=Number(expectedRevision||0),op=String(operationId||'').trim();if(!Number.isSafeInteger(expected)||expected<0)throw new Error('Revision הסינכרון הפיננסי אינו תקין');if(!op)throw new Error('מזהה פעולת הסינכרון הפיננסי חסר');
-  const r=await supaRest(`/rest/v1/rpc/${FINANCE_RPC}_v6`,{method:'POST',networkRetry:true,dataPriority:'high',...(assertCurrent?{assertRequestScope:assertCurrent}:{}),body:JSON.stringify({p_document_name:FINANCE_DOC,p_expected_revision:expected,p_state:state,p_operation_id:op,p_audit:audit,...financeFencePayload(lease)})});
-  const body=await r.text();assertCurrent?.();let j;try{j=body?JSON.parse(body):null}catch{j=null}return {r,j,body,row:Array.isArray(j)?j[0]:j};
-}
-
-
-
-async function saveFinancePatch(mutator,lease=null,{assertCurrent=lease?.assertCurrent}={}){
-  assertCurrent?.();
-  if(!lease)return manualFinanceQueue(held=>saveFinancePatch(mutator,held),{assertCurrent});
-  if(assertCurrent)lease={...lease,assertCurrent};
-  const operationId=createOperationId('finance');
-  let row=await readFinanceSyncDocument({assertCurrent});
-  for(let conflictAttempt=0;conflictAttempt<CLOUD_WRITE_POLICY.conflictAttempts;conflictAttempt++){
+  async function readOrdersReadOnlyMeta({assertCurrent}={}){
     assertCurrent?.();
-    const base=row?.state&&typeof row.state==='object'?structuredClone(row.state):{},candidate=mutator(base);if(!candidate)return {saved:false,row};
+    const q=`/rest/v1/${ORDERS_TABLE}?document_name=eq.${encodeURIComponent(ORDERS_DOC)}&select=document_name,revision,updated_at`;
+    const r=await supaRest(q,{method:'GET',...(assertCurrent?{assertRequestScope:assertCurrent}:{})}),j=await r.json().catch(()=>null);
+    assertCurrent?.();
+    if(!r.ok)throw new Error(j?.message||j?.hint||'קריאת סטטוס ניהול ההזמנות נכשלה');
+    return readCloudMetaRows(j,ORDERS_DOC);
+  }
+  async function readOrdersReadOnlyCloud({assertCurrent}={}){
+    assertCurrent?.();
+    const q=`/rest/v1/${ORDERS_TABLE}?document_name=eq.${encodeURIComponent(ORDERS_DOC)}&select=document_name,revision,state,updated_at`;
+    const r=await supaRest(q,{method:'GET',...(assertCurrent?{assertRequestScope:assertCurrent}:{})}),j=await r.json().catch(()=>null);
+    assertCurrent?.();
+    if(!r.ok)throw new Error(j?.message||j?.hint||'קריאת נתוני ניהול ההזמנות נכשלה');
+    const row=readCloudDocumentRows(j,ORDERS_DOC);
+    if(row){
+      const rev=Number(row.revision);
+      if(!Number.isSafeInteger(rev)||rev<1||!row.state||typeof row.state!=='object')throw new Error('מסמך ניהול ההזמנות בענן אינו תקין')
+    }
+    return row;
+  }
+  async function readFinanceSyncDocument({assertCurrent}={}){
+    assertCurrent?.();
+    const q=`/rest/v1/${FINANCE_TABLE}?document_name=eq.${encodeURIComponent(FINANCE_DOC)}&select=document_name,revision,state,updated_at`;
+    const r=await supaRest(q,{method:'GET',...(assertCurrent?{assertRequestScope:assertCurrent}:{})}),j=await r.json().catch(()=>null);
+    assertCurrent?.();
+    if(!r.ok)throw new Error(j?.message||j?.hint||'קריאת נתוני הסינכרון הפיננסי נכשלה');
+    return readFinanceDocumentRows(j,FINANCE_DOC);
+  }
+  function overlayFinanceState(base,finance){
+    const out=structuredClone(base||{}),fs=finance?.state&&typeof finance.state==='object'?finance.state:{};
+    if(fs.bank&&typeof fs.bank==='object'){
+      const kupaBank=out.bank&&typeof out.bank==='object'?out.bank:{},financeBank=structuredClone(fs.bank);
+      out.bank={
+        ...kupaBank,
+        ...financeBank,
+        adjustments:Array.isArray(kupaBank.adjustments)?structuredClone(kupaBank.adjustments):[],
+        snapshotToken:kupaBank.snapshotToken??null,
+        snapshotSeq:kupaBank.snapshotSeq??null
+      }
+    }
+    ;
+    if(fs.creditSync&&typeof fs.creditSync==='object')out.creditSync=structuredClone(fs.creditSync);
+    return out;
+  }
+  async function readSupabaseDocument({assertCurrent,includeFinance=true}={}){
+    assertCurrent?.();
+    const q=`/rest/v1/kupa_documents?document_name=eq.${encodeURIComponent(session.cloudDocumentName)}&select=*`;
+    const [docResult,financeResult]=await Promise.allSettled([
+      supaRest(q,{method:'GET',...(assertCurrent?{assertRequestScope:assertCurrent}:{})}),
+      includeFinance?readFinanceSyncDocument({assertCurrent}):Promise.resolve(null)
+    ]);
+    assertCurrent?.();
+    if(docResult.status!=='fulfilled')throw docResult.reason;
+    const financeAvailable=financeResult.status==='fulfilled';
+    if(!financeAvailable)console.warn('finance document read unavailable; Kupa core cloud read continues independently',financeResult.reason);
+    const r=docResult.value,j=await r.json().catch(()=>null);
+    assertCurrent?.();
+    if(!r.ok)throw new Error(j?.message||j?.hint||'קריאת הקופה מהענן נכשלה');
+    const row=readCloudDocumentRows(j,session.cloudDocumentName);
+    if(row){
+      assertReadableCloudState(row.state,'מסמך הקופה בענן');
+      const rev=Number(row.revision);
+      if(!Number.isSafeInteger(rev)||rev<1)throw new Error('Revision הקופה בענן אינו תקין. הסנכרון נעצר כדי למנוע דריסה.');
+      if(!includeFinance)return row;
+      row.financeAvailable=financeAvailable;
+      if(financeAvailable&&financeResult.value){
+        row.state=overlayFinanceState(row.state,financeResult.value);
+        row.financeRevision=Number(financeResult.value.revision||0);
+        row.financeUpdatedAt=financeResult.value.updated_at||null;
+      }else if(financeAvailable){
+        row.financeRevision=0;
+        row.financeUpdatedAt=null
+      }
+    else{
+        row.financeRevision=Number(session.financeRevision||0);
+        row.financeUpdatedAt=session.financeUpdatedAt||null
+      }
+      row.coreUpdatedAt=resolveKupaCoreUpdatedAt(row,row.financeUpdatedAt,financeAvailable);
+    }
+    return row;
+  }
+  async function rpcSaveFinanceSync(state,expectedRevision,operationId,audit={},lease=null){
+    const assertCurrent=lease?.assertCurrent;
+    assertCurrent?.();
+    const expected=Number(expectedRevision||0),op=String(operationId||'').trim();
+    if(!Number.isSafeInteger(expected)||expected<0)throw new Error('Revision הסינכרון הפיננסי אינו תקין');
+    if(!op)throw new Error('מזהה פעולת הסינכרון הפיננסי חסר');
+    const r=await supaRest(`/rest/v1/rpc/${FINANCE_RPC}_v6`,
+      {
+      method:'POST',
+      networkRetry:true,
+      dataPriority:'high',
+      ...(assertCurrent?{assertRequestScope:assertCurrent}:{}),
+      body:JSON.stringify({p_document_name:FINANCE_DOC,p_expected_revision:expected,p_state:state,p_operation_id:op,p_audit:audit,...financeFencePayload(lease)})
+    });
+    const body=await r.text();
+    assertCurrent?.();
+    let j;
+    try{
+      j=body?JSON.parse(body):null
+    }catch{
+      j=null
+    }
+    return {r,j,body,row:Array.isArray(j)?j[0]:j};
+  }
+  async function saveFinancePatch(mutator,lease=null,{assertCurrent=lease?.assertCurrent}={}){
+    assertCurrent?.();
+    if(!lease)return manualFinanceQueue(held=>saveFinancePatch(mutator,held),{assertCurrent});
+    if(assertCurrent)lease={...lease,assertCurrent};
+    const operationId=createOperationId('finance');
+    let row=await readFinanceSyncDocument({assertCurrent});
+    for(let conflictAttempt=0;conflictAttempt<CLOUD_WRITE_POLICY.conflictAttempts;conflictAttempt++){
+      assertCurrent?.();
+      const base=row?.state&&typeof row.state==='object'?structuredClone(row.state):{},candidate=mutator(base);
+      if(!candidate)return {saved:false,row};
     // Capture exactly the JSON sent by the RPC, including domain toJSON views.
-    const next=JSON.parse(JSON.stringify(candidate));
-    const baseRevision=Number(row?.revision||0),audit=operationAuditMetadata({site:'kupa',mutationType:'finance-update',surface:'kupa.finance.sync-document',baseRevision,beforeState:base,afterState:next});
-    const res=await runBusyCloudWriteWithPolicy(()=>rpcSaveFinanceSync(next,baseRevision,operationId,audit,lease));assertCurrent?.();
-    if(res?.r?.ok)return {saved:true,row:readFinanceWriteReceipt(Object.hasOwn(res,'j')?res.j:res.row,{baseRevision,sentState:next})};
-    const error=normalizeCloudError(res);if(error.kind==='revision_conflict'){await contentionBackoff(conflictAttempt);row=await readFinanceSyncDocument({assertCurrent});continue}
-    throw new Error(res?.j?.message||res?.body||'שמירת הסינכרון הפיננסי נכשלה');
+      const next=JSON.parse(JSON.stringify(candidate));
+      const baseRevision=Number(row?.revision||0),audit=operationAuditMetadata({site:'kupa',mutationType:'finance-update',surface:'kupa.finance.sync-document',baseRevision,beforeState:base,afterState:next});
+      const res=await runBusyCloudWriteWithPolicy(()=>rpcSaveFinanceSync(next,baseRevision,operationId,audit,lease));
+      assertCurrent?.();
+      if(res?.r?.ok)return {saved:true,row:readFinanceWriteReceipt(Object.hasOwn(res,'j')?res.j:res.row,{baseRevision,sentState:next})};
+      const error=normalizeCloudError(res);
+      if(error.kind==='revision_conflict'){
+        await contentionBackoff(conflictAttempt);
+        row=await readFinanceSyncDocument({assertCurrent});
+        continue
+      }
+      throw new Error(res?.j?.message||res?.body||'שמירת הסינכרון הפיננסי נכשלה');
+    }
+    throw new Error('נתוני הסינכרון הפיננסי השתנו במקביל; לא נדרס שום נתון');
   }
-  throw new Error('נתוני הסינכרון הפיננסי השתנו במקביל; לא נדרס שום נתון');
-}
-async function saveBankSyncSnapshot(bankState,snapshotToken,snapshotSeq,lease=null){
-  const assertCurrent=lease?.assertCurrent;assertCurrent?.();
-  const seq=Number(snapshotSeq);if(!Number.isSafeInteger(seq)||seq<0)throw new Error('snapshotSeq של הבנק אינו תקין');
-  const token=String(snapshotToken||'').trim();if(!token)throw new Error('snapshotToken של הבנק חסר');
-  const r=await supaRest('/rest/v1/rpc/save_bank_sync_snapshot_v6',{method:'POST',networkRetry:true,dataPriority:'high',...(assertCurrent?{assertRequestScope:assertCurrent}:{}),body:JSON.stringify({p_document_name:FINANCE_DOC,p_bank_state:bankState,p_snapshot_token:token,p_snapshot_seq:seq,...financeFencePayload(lease)})});
-  const body=await r.text();assertCurrent?.();let j;try{j=body?JSON.parse(body):null}catch{j=null}if(!r.ok)throw new Error(j?.message||j?.hint||body||'שמירת צילום הבנק האטומי נכשלה');return readBankSnapshotReceipt(j);
-}
-async function syncBankTransactionsSnapshot(accountKey,accountRole,transactions,{snapshotAt,coverage=null,complete=false,lease=null}={}){
-  const assertCurrent=lease?.assertCurrent;assertCurrent?.();
-  const command=readBankArchiveCommand({accountKey,accountRole,transactions,snapshotAt,coverage,complete});
-  const payload=command.p_transactions,isComplete=command.p_complete;
-  const r=await supaRest('/rest/v1/rpc/sync_bank_transactions_snapshot_v6',{method:'POST',networkRetry:true,dataPriority:'high',...(assertCurrent?{assertRequestScope:assertCurrent}:{}),body:JSON.stringify({...command,...financeFencePayload(lease)})});
-  const body=await r.text();assertCurrent?.();let j;try{j=body?JSON.parse(body):null}catch{j=null}if(!r.ok)throw new Error(j?.message||j?.hint||body||'שמירת צילום תנועות הבנק נכשלה');
-  const result=readBankArchiveSyncReceipt(j,isComplete);return {result,sourcePayload:payload,complete:isComplete};
-}
-async function readBankTransactions(accountKey,accountRole,{days=370,maxRows=20000,assertCurrent}={}){
-  assertCurrent?.();
-  const dayCount=days===null||days==='all'?null:Number(days),since=Number.isFinite(dayCount)&&dayCount>0?new Date(Date.now()-dayCount*86400000).toISOString():'',dateClause=since?`&transaction_date=gte.${encodeURIComponent(since)}`:'',pageSize=1000,cap=Math.max(pageSize,Number(maxRows)||20000),rows=[],seen=new Set();
-  for(let offset=0;offset<cap;offset+=pageSize){
+  async function saveBankSyncSnapshot(bankState,snapshotToken,snapshotSeq,lease=null){
+    const assertCurrent=lease?.assertCurrent;
     assertCurrent?.();
-    const q=`/rest/v1/bank_transactions?account_key=eq.${encodeURIComponent(accountKey)}&account_role=eq.${accountRole==='home'?'home':'business'}${dateClause}&select=id,account_key,account_role,merge_key,transaction_date,processed_date,amount,currency,description,memo,party_name,party_headline,message_headline,message_detail,status,balance_after,bank_reference,bank_serial,activity_type_code,cheque,check_details,credit_settlement_details,first_seen_at,presence_state,last_seen_at,missing_since,missing_acknowledged_at,alert_acknowledgements&order=transaction_date.desc,id.desc&limit=${pageSize}&offset=${offset}`;
-    const r=await supaRest(q,{method:'GET',...(assertCurrent?{assertRequestScope:assertCurrent}:{})}),j=await r.json().catch(()=>null);assertCurrent?.();if(!r.ok)throw new Error(j?.message||'קריאת ארכיון הבנק נכשלה');
-
-    const page=readBankArchiveRows(j,String(accountKey),accountRole==='home'?'home':'business',seen);rows.push(...page);
-    if(page.length<pageSize)return rows.map(x=>({archiveId:Number(x.id),id:x.merge_key,date:x.transaction_date,processedDate:x.processed_date,amount:Number(x.amount),currency:x.currency,description:x.description,memo:x.memo,partyName:x.party_name,partyHeadline:x.party_headline,messageHeadline:x.message_headline,messageDetail:x.message_detail,status:x.status,balanceAfter:x.balance_after===null?null:Number(x.balance_after),bankReference:x.bank_reference,bankSerial:x.bank_serial,activityTypeCode:x.activity_type_code,cheque:!!x.cheque,checkDetails:x.check_details,creditSettlementDetails:x.credit_settlement_details,firstSeenAt:x.first_seen_at,presenceState:x.presence_state||'unknown',lastSeenAt:x.last_seen_at,missingSince:x.missing_since,missingAcknowledgedAt:x.missing_acknowledged_at,alertAcknowledgements:x.alert_acknowledgements&&typeof x.alert_acknowledgements==='object'?x.alert_acknowledgements:{}}));
+    const seq=Number(snapshotSeq);
+    if(!Number.isSafeInteger(seq)||seq<0)throw new Error('snapshotSeq של הבנק אינו תקין');
+    const token=String(snapshotToken||'').trim();
+    if(!token)throw new Error('snapshotToken של הבנק חסר');
+    const r=await supaRest('/rest/v1/rpc/save_bank_sync_snapshot_v6',
+      {
+      method:'POST',
+      networkRetry:true,
+      dataPriority:'high',
+      ...(assertCurrent?{assertRequestScope:assertCurrent}:{}),
+      body:JSON.stringify({p_document_name:FINANCE_DOC,p_bank_state:bankState,p_snapshot_token:token,p_snapshot_seq:seq,...financeFencePayload(lease)})
+    });
+    const body=await r.text();
+    assertCurrent?.();
+    let j;
+    try{
+      j=body?JSON.parse(body):null
+    }catch{
+      j=null
+    }
+    if(!r.ok)throw new Error(j?.message||j?.hint||body||'שמירת צילום הבנק האטומי נכשלה');
+    return readBankSnapshotReceipt(j);
   }
-  throw new Error('ארכיון הבנק גדול ממגבלת הקריאה הבטוחה; התצוגה נעצרה במקום להציג היסטוריה חלקית');
-}
-async function readBankTransactionSnapshot(accountKey,accountRole,{assertCurrent}={}){
-  assertCurrent?.();
-  const q=`/rest/v1/bank_transaction_snapshots?account_key=eq.${encodeURIComponent(accountKey)}&account_role=eq.${accountRole==='home'?'home':'business'}&select=account_key,account_role,snapshot_at,coverage_from,coverage_to,transaction_count,transactions&limit=1`;
-  const r=await supaRest(q,{method:'GET',...(assertCurrent?{assertRequestScope:assertCurrent}:{})}),j=await r.json().catch(()=>null);assertCurrent?.();if(!r.ok)throw new Error(j?.message||'קריאת צילום הבנק הישיר נכשלה');
-  const row=readBankSnapshotRows(j,String(accountKey),accountRole==='home'?'home':'business');if(!row)return null;
-  const transactions=row.transactions.map(tx=>({...tx,id:String(tx?.mergeKey||tx?.id||'')}));
-  return {snapshotAt:row.snapshot_at,coverageFrom:row.coverage_from,coverageTo:row.coverage_to,transactionCount:row.transaction_count,transactions};
-}
-async function acknowledgeBankTransactionMissing(transactionId,{assertCurrent}={}){
-  assertCurrent?.();
-  const id=Number(transactionId);if(!Number.isSafeInteger(id)||id<=0)throw new Error('מזהה תנועת הבנק אינו תקין');
-  const r=await supaRest('/rest/v1/rpc/acknowledge_bank_transaction_missing',{method:'POST',networkRetry:true,dataPriority:'high',...(assertCurrent?{assertRequestScope:assertCurrent}:{}),body:JSON.stringify({p_transaction_id:id})});
-  const body=await r.text();assertCurrent?.();let j;try{j=body?JSON.parse(body):null}catch{j=null}if(!r.ok)throw new Error(j?.message||j?.hint||body||'סימון תנועת הבנק כנבדקה נכשל');return readBankAcknowledgementReceipt(j,id,'missing');
-}
-async function acknowledgeBankTransactionAlert(transactionId,alertKind,{assertCurrent}={}){
-  assertCurrent?.();
-  const id=Number(transactionId),kind=String(alertKind||'').trim();if(!Number.isSafeInteger(id)||id<=0)throw new Error('מזהה תנועת הבנק אינו תקין');if(kind!=='returned_cheque')throw new Error('סוג התראת הבנק אינו נתמך');
-  const r=await supaRest('/rest/v1/rpc/acknowledge_bank_transaction_alert',{method:'POST',networkRetry:true,dataPriority:'high',...(assertCurrent?{assertRequestScope:assertCurrent}:{}),body:JSON.stringify({p_transaction_id:id,p_alert_kind:kind})});
-  const body=await r.text();assertCurrent?.();let j;try{j=body?JSON.parse(body):null}catch{j=null}if(!r.ok)throw new Error(j?.message||j?.hint||body||'הסרת התראת הבנק נכשלה');return readBankAcknowledgementReceipt(j,id,kind);
-}
-
-
-async function readBackupList(table,documentName,limit,offset=0){
-  const safeLimit=Math.max(1,Math.min(20,Math.trunc(Number(limit)||8))),safeOffset=Math.max(0,Math.min(5000,Math.trunc(Number(offset)||0))),q=`/rest/v1/${table}?document_name=eq.${encodeURIComponent(documentName)}&select=id,revision,saved_at&order=saved_at.desc,id.desc&limit=${safeLimit}&offset=${safeOffset}`;
-  const r=await supaRest(q,{method:'GET'}),j=await r.json().catch(()=>null);if(!r.ok)throw new Error(j?.message||'קריאת רשימת גיבויי הענן נכשלה');return readCloudBackupRows(j);
-}
-async function listKupaCloudBackups({limit=8,rollingOffset=0,periodicOffset=0}={}){
-  const [rolling,periodic]=await Promise.all([readBackupList('kupa_document_backups',session.cloudDocumentName,limit,rollingOffset),readBackupList('kupa_periodic_backups',session.cloudDocumentName,limit,periodicOffset)]);return {rolling,periodic};
-}
-async function readBackupState(table,documentName,id){
-  const safeId=Number(id);if(!Number.isSafeInteger(safeId)||safeId<=0)throw new Error('מזהה הגיבוי אינו תקין');
-  const q=`/rest/v1/${table}?id=eq.${safeId}&document_name=eq.${encodeURIComponent(documentName)}&select=id,revision,state,saved_at&limit=1`,r=await supaRest(q,{method:'GET',dataPriority:'high'}),j=await r.json().catch(()=>null);if(!r.ok)throw new Error(j?.message||'קריאת גיבוי הענן נכשלה');return readCloudBackupPointRows(j,safeId);
-}
-async function readChecksBackupAtOrBefore(savedAt){
-  const at=String(savedAt||'').trim();if(!Number.isFinite(Date.parse(at)))throw new Error('זמן הגיבוי אינו תקין');
-  const encoded=encodeURIComponent(at),query=table=>`/rest/v1/${table}?document_name=eq.${encodeURIComponent(SHARED_CHECKS_DOC)}&saved_at=lte.${encoded}&select=id,revision,state,saved_at&order=saved_at.desc,id.desc&limit=1`;
-  const [live,rollingResult,periodicResult]=await Promise.all([readSharedChecksDocument(),supaRest(query('shared_checks_document_backups'),{method:'GET',dataPriority:'high'}),supaRest(query('shared_checks_periodic_backups'),{method:'GET',dataPriority:'high'})]);
-  const parse=async(result,label)=>{const j=await result.json().catch(()=>null);if(!result.ok)throw new Error(j?.message||`קריאת ${label} נכשלה`);return readCloudBackupPointRows(j,null,at)};
-  const [rolling,periodic]=await Promise.all([parse(rollingResult,'גיבויי הצ׳קים'),parse(periodicResult,'גיבויי הצ׳קים התקופתיים')]),candidates=[];
-  if(live&&Date.parse(live.updated_at||'')<=Date.parse(at))candidates.push({revision:live.revision,state:live.state,saved_at:live.updated_at,source:'live'});
-  if(rolling)candidates.push({...rolling,source:'rolling'});if(periodic)candidates.push({...periodic,source:'periodic'});
-  candidates.sort((a,b)=>Date.parse(b.saved_at||'')-Date.parse(a.saved_at||''));return candidates[0]||null;
-}
-async function readKupaCloudBackupPoint(source,id){
-  const kind=source==='periodic'?'periodic':'rolling',table=kind==='periodic'?'kupa_periodic_backups':'kupa_document_backups',row=await readBackupState(table,session.cloudDocumentName,id);if(!row)throw new Error('הגיבוי המבוקש כבר אינו קיים בענן');
-  assertReadableCloudState(row.state,'גיבוי הקופה בענן');const checks=await readChecksBackupAtOrBefore(row.saved_at);if(checks&&(!checks.state||!Array.isArray(checks.state.checks)||!Array.isArray(checks.state.bankEvents)))throw new Error('צילום הצ׳קים של נקודת הגיבוי אינו תקין');
-  return {source:kind,id:Number(row.id),revision:Number(row.revision),savedAt:row.saved_at,state:row.state,checksState:checks?.state||null,checksRevision:Number(checks?.revision||0),checksSavedAt:checks?.saved_at||null,checksSource:checks?.source||null};
-}
-async function readSharedChecksDocument(){
-  const q=`/rest/v1/${SHARED_CHECKS_TABLE}?document_name=eq.${encodeURIComponent(SHARED_CHECKS_DOC)}&select=document_name,revision,state,updated_at`;
-  const r=await supaRest(q,{method:'GET',networkRetry:true}),j=await r.json().catch(()=>null);
-  if(!r.ok)throw new Error(j?.message||j?.hint||'קריאת מאגר הצקים המשותף נכשלה');
-  const row=readCloudDocumentRows(j,SHARED_CHECKS_DOC);
-  if(row){if(!row.state||!Array.isArray(row.state.checks)||!Array.isArray(row.state.bankEvents))throw new Error('מסמך הצקים המשותף בענן במבנה לא תקין');const rev=Number(row.revision);if(!Number.isSafeInteger(rev)||rev<1)throw new Error('Revision הצקים המשותף אינו תקין')}
-  return row
-}
-async function readSharedChecksMeta(){const q=`/rest/v1/${SHARED_CHECKS_TABLE}?document_name=eq.${encodeURIComponent(SHARED_CHECKS_DOC)}&select=document_name,revision,updated_at`;const r=await supaRest(q,{method:'GET',networkRetry:true}),j=await r.json().catch(()=>null);if(!r.ok)throw new Error(j?.message||'קריאת סטטוס הצקים המשותפים נכשלה');return readCloudMetaRows(j,SHARED_CHECKS_DOC)}
-async function rpcSaveSharedChecksV2(checks,expectedRevision,operationId,deletedCheckIds=[],audit={}){const payload={version:1,checks:normalizeSharedChecks(checks)},expected=Number(expectedRevision||0),op=String(operationId||'').trim();const deletedIds=[...new Set((Array.isArray(deletedCheckIds)?deletedCheckIds:[]).map(x=>String(x||'').trim()).filter(Boolean))].sort();if(!Number.isSafeInteger(expected)||expected<0)throw new Error('Revision הצקים המקומי אינו תקין');if(!op)throw new Error('מזהה פעולת הצקים חסר');const rpc=audit?.mutationType==='bulk-delete'?`bulk_delete_${SHARED_CHECKS_RPC}_v6`:`${SHARED_CHECKS_RPC}_v6`,r=await supaRest(`/rest/v1/rpc/${rpc}`,{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify({p_document_name:SHARED_CHECKS_DOC,p_expected_revision:expected,p_state:payload,p_operation_id:op,p_deleted_check_ids:deletedIds,p_audit:audit})});const body=await r.text();let j;try{j=body?JSON.parse(body):null}catch(e){j=null}
-  return {r,j,body,row:r.ok?readDocumentWriteResponseRow(j):Array.isArray(j)?j[0]:j}}
-async function restoreRpc(name,body,{assertCurrent}={}){assertCurrent?.();const r=await supaRest(`/rest/v1/rpc/${name}`,{method:'POST',networkRetry:true,dataPriority:'high',...(assertCurrent?{assertRequestScope:assertCurrent}:{}),body:JSON.stringify(body)});
-  const raw=await r.text();assertCurrent?.();let j;try{j=raw?JSON.parse(raw):null}catch{j=null}if(!r.ok)throw new Error(j?.message||j?.hint||raw||`restore rpc failed: ${name}`);return j}
-async function stageRestoreGroup(group,options={}){
-  const payload=restoreGroupRpcPayload(group);
-  return readRestoreStageReceipt(await restoreRpc('stage_restore_group_v6',payload,options),payload.p_restore_group_id);
-}
-async function applyRestoreGroup(restoreGroupId,options={}){
-  const id=String(restoreGroupId);
-  return readRestoreApplyReceipt(await restoreRpc('apply_restore_group_v6',{p_restore_group_id:id},options),id);
-}
-async function listIncompleteRestoreGroups({assertCurrent}={}){assertCurrent?.();const r=await supaRest('/rest/v1/rpc/list_incomplete_restore_groups_v5',{method:'POST',networkRetry:true,dataPriority:'high',...(assertCurrent?{assertRequestScope:assertCurrent}:{}),body:'{}'});
-  const raw=await r.text();assertCurrent?.();let j;try{j=raw?JSON.parse(raw):null}catch{j=null}if(!r.ok)throw new Error(j?.message||raw||'restore group status failed');return readRestoreGroupRows(j)}
-  async function readStorageProtocolState(){const r=await supaRest('/rest/v1/rpc/get_storage_protocol_state',{method:'POST',networkRetry:true,dataPriority:'high',body:'{}'}),state=await r.json().catch(()=>null);if(!r.ok)throw new Error(state?.message||'בדיקת פרוטוקול האחסון בענן נכשלה');return state}
-  return { rpcSaveCloudV2,readSupabaseDocument,verifyLocalResetCloud,readOrdersReadOnlyMeta,readOrdersReadOnlyCloud,readSharedChecksDocument,readSharedChecksMeta,readStorageProtocolState,rpcSaveSharedChecksV2,stageRestoreGroup,applyRestoreGroup,listIncompleteRestoreGroups,listKupaCloudBackups,readKupaCloudBackupPoint,readFinanceSyncDocument,rpcSaveFinanceSync,saveFinancePatch,claimFinanceSyncLease,releaseFinanceSyncLease,saveBankSyncSnapshot,syncBankTransactionsSnapshot,readBankTransactions,readBankTransactionSnapshot,acknowledgeBankTransactionMissing,acknowledgeBankTransactionAlert};
+  async function syncBankTransactionsSnapshot(accountKey,accountRole,transactions,{snapshotAt,coverage=null,complete=false,lease=null}={}){
+    const assertCurrent=lease?.assertCurrent;
+    assertCurrent?.();
+    const command=readBankArchiveCommand({accountKey,accountRole,transactions,snapshotAt,coverage,complete});
+    const payload=command.p_transactions,isComplete=command.p_complete;
+    const r=await supaRest('/rest/v1/rpc/sync_bank_transactions_snapshot_v6',{
+      method:'POST',
+      networkRetry:true,
+      dataPriority:'high',
+      ...(assertCurrent?{assertRequestScope:assertCurrent}:{}),
+      body:JSON.stringify({...command,...financeFencePayload(lease)})
+    });
+    const body=await r.text();
+    assertCurrent?.();
+    let j;
+    try{
+      j=body?JSON.parse(body):null
+    }catch{
+      j=null
+    }
+    if(!r.ok)throw new Error(j?.message||j?.hint||body||'שמירת צילום תנועות הבנק נכשלה');
+    const result=readBankArchiveSyncReceipt(j,isComplete);
+    return {result,sourcePayload:payload,complete:isComplete};
+  }
+  async function readBankTransactions(accountKey,accountRole,{days=370,maxRows=20000,assertCurrent}={}){
+    assertCurrent?.();
+    const dayCount=days===null||days==='all'?null:Number(days),
+      since=Number.isFinite(dayCount)&&dayCount>0?new Date(Date.now()-dayCount*86400000).toISOString():'',
+      dateClause=since?`&transaction_date=gte.${encodeURIComponent(since)}`:'',
+      pageSize=1000,
+      cap=Math.max(pageSize,Number(maxRows)||20000),
+      rows=[],
+      seen=new Set();
+    for(let offset=0;offset<cap;offset+=pageSize){
+      assertCurrent?.();
+      const q=(`/rest/v1/bank_transactions?account_key=eq.${encodeURIComponent(accountKey)}&account_role=eq.${accountRole==='home'?'home':'business'}${dateClause}&select=id,account_key,account_role,merge_key,transaction_date,processed_date,amount,currency,description,memo,party_name,party_headline,message_headline,message_detail,status,` +
+        `balance_after,bank_reference,bank_serial,activity_type_code,cheque,check_details,credit_settlement_details,first_seen_at,presence_state,last_seen_at,missing_since,` +
+        `missing_acknowledged_at,alert_acknowledgements&order=transaction_date.desc,id.desc&limit=${pageSize}&offset=${offset}`);
+      const r=await supaRest(q,{method:'GET',...(assertCurrent?{assertRequestScope:assertCurrent}:{})}),j=await r.json().catch(()=>null);
+      assertCurrent?.();
+      if(!r.ok)throw new Error(j?.message||'קריאת ארכיון הבנק נכשלה');
+      const page=readBankArchiveRows(j,String(accountKey),accountRole==='home'?'home':'business',seen);
+      rows.push(...page);
+      if(page.length<pageSize)return rows.map(x=>({
+        archiveId:Number(x.id),
+        id:x.merge_key,
+        date:x.transaction_date,
+        processedDate:x.processed_date,
+        amount:Number(x.amount),
+        currency:x.currency,
+        description:x.description,
+        memo:x.memo,
+        partyName:x.party_name,
+        partyHeadline:x.party_headline,
+        messageHeadline:x.message_headline,
+        messageDetail:x.message_detail,
+        status:x.status,
+        balanceAfter:x.balance_after===null?null:Number(x.balance_after),
+        bankReference:x.bank_reference,
+        bankSerial:x.bank_serial,
+        activityTypeCode:x.activity_type_code,
+        cheque:!!x.cheque,
+        checkDetails:x.check_details,
+        creditSettlementDetails:x.credit_settlement_details,
+        firstSeenAt:x.first_seen_at,
+        presenceState:x.presence_state||'unknown',
+        lastSeenAt:x.last_seen_at,
+        missingSince:x.missing_since,
+        missingAcknowledgedAt:x.missing_acknowledged_at,
+        alertAcknowledgements:x.alert_acknowledgements&&typeof x.alert_acknowledgements==='object'?x.alert_acknowledgements:{}
+      }));
+    }
+    throw new Error('ארכיון הבנק גדול ממגבלת הקריאה הבטוחה; התצוגה נעצרה במקום להציג היסטוריה חלקית');
+  }
+  async function readBankTransactionSnapshot(accountKey,accountRole,{assertCurrent}={}){
+    assertCurrent?.();
+    const q=`/rest/v1/bank_transaction_snapshots?account_key=eq.${encodeURIComponent(accountKey)}&account_role=eq.${accountRole==='home'?'home':'business'}&select=account_key,account_role,snapshot_at,coverage_from,coverage_to,transaction_count,transactions&limit=1`;
+    const r=await supaRest(q,{method:'GET',...(assertCurrent?{assertRequestScope:assertCurrent}:{})}),j=await r.json().catch(()=>null);
+    assertCurrent?.();
+    if(!r.ok)throw new Error(j?.message||'קריאת צילום הבנק הישיר נכשלה');
+    const row=readBankSnapshotRows(j,String(accountKey),accountRole==='home'?'home':'business');
+    if(!row)return null;
+    const transactions=row.transactions.map(tx=>({...tx,id:String(tx?.mergeKey||tx?.id||'')}));
+    return {snapshotAt:row.snapshot_at,coverageFrom:row.coverage_from,coverageTo:row.coverage_to,transactionCount:row.transaction_count,transactions};
+  }
+  async function acknowledgeBankTransactionMissing(transactionId,{assertCurrent}={}){
+    assertCurrent?.();
+    const id=Number(transactionId);
+    if(!Number.isSafeInteger(id)||id<=0)throw new Error('מזהה תנועת הבנק אינו תקין');
+    const r=await supaRest('/rest/v1/rpc/acknowledge_bank_transaction_missing',{method:'POST',networkRetry:true,dataPriority:'high',...(assertCurrent?{assertRequestScope:assertCurrent}:{}),body:JSON.stringify({p_transaction_id:id})});
+    const body=await r.text();
+    assertCurrent?.();
+    let j;
+    try{
+      j=body?JSON.parse(body):null
+    }catch{
+      j=null
+    }
+    if(!r.ok)throw new Error(j?.message||j?.hint||body||'סימון תנועת הבנק כנבדקה נכשל');
+    return readBankAcknowledgementReceipt(j,id,'missing');
+  }
+  async function acknowledgeBankTransactionAlert(transactionId,alertKind,{assertCurrent}={}){
+    assertCurrent?.();
+    const id=Number(transactionId),kind=String(alertKind||'').trim();
+    if(!Number.isSafeInteger(id)||id<=0)throw new Error('מזהה תנועת הבנק אינו תקין');
+    if(kind!=='returned_cheque')throw new Error('סוג התראת הבנק אינו נתמך');
+    const r=await supaRest('/rest/v1/rpc/acknowledge_bank_transaction_alert',{
+      method:'POST',
+      networkRetry:true,
+      dataPriority:'high',
+      ...(assertCurrent?{assertRequestScope:assertCurrent}:{}),
+      body:JSON.stringify({p_transaction_id:id,p_alert_kind:kind})
+    });
+    const body=await r.text();
+    assertCurrent?.();
+    let j;
+    try{
+      j=body?JSON.parse(body):null
+    }catch{
+      j=null
+    }
+    if(!r.ok)throw new Error(j?.message||j?.hint||body||'הסרת התראת הבנק נכשלה');
+    return readBankAcknowledgementReceipt(j,id,kind);
+  }
+  async function readBackupList(table,documentName,limit,offset=0){
+    const safeLimit=Math.max(1,Math.min(20,Math.trunc(Number(limit)||8))),
+      safeOffset=Math.max(0,Math.min(5000,Math.trunc(Number(offset)||0))),
+      q=`/rest/v1/${table}?document_name=eq.${encodeURIComponent(documentName)}&select=id,revision,saved_at&order=saved_at.desc,id.desc&limit=${safeLimit}&offset=${safeOffset}`;
+    const r=await supaRest(q,{method:'GET'}),j=await r.json().catch(()=>null);
+    if(!r.ok)throw new Error(j?.message||'קריאת רשימת גיבויי הענן נכשלה');
+    return readCloudBackupRows(j);
+  }
+  async function listKupaCloudBackups({limit=8,rollingOffset=0,periodicOffset=0}={}){
+    const [rolling,periodic]=await Promise.all([
+      readBackupList('kupa_document_backups',session.cloudDocumentName,limit,rollingOffset),
+      readBackupList('kupa_periodic_backups',session.cloudDocumentName,limit,periodicOffset)
+    ]);
+    return {rolling,periodic};
+  }
+  async function readBackupState(table,documentName,id){
+    const safeId=Number(id);
+    if(!Number.isSafeInteger(safeId)||safeId<=0)throw new Error('מזהה הגיבוי אינו תקין');
+    const q=`/rest/v1/${table}?id=eq.${safeId}&document_name=eq.${encodeURIComponent(documentName)}&select=id,revision,state,saved_at&limit=1`,r=await supaRest(q,{method:'GET',dataPriority:'high'}),j=await r.json().catch(()=>null);
+    if(!r.ok)throw new Error(j?.message||'קריאת גיבוי הענן נכשלה');
+    return readCloudBackupPointRows(j,safeId);
+  }
+  async function readChecksBackupAtOrBefore(savedAt){
+    const at=String(savedAt||'').trim();
+    if(!Number.isFinite(Date.parse(at)))throw new Error('זמן הגיבוי אינו תקין');
+    const encoded=encodeURIComponent(at),query=table=>`/rest/v1/${table}?document_name=eq.${encodeURIComponent(SHARED_CHECKS_DOC)}&saved_at=lte.${encoded}&select=id,revision,state,saved_at&order=saved_at.desc,id.desc&limit=1`;
+    const [live,rollingResult,periodicResult]=await Promise.all([
+      readSharedChecksDocument(),
+      supaRest(query('shared_checks_document_backups'),{method:'GET',dataPriority:'high'}),
+      supaRest(query('shared_checks_periodic_backups'),{method:'GET',dataPriority:'high'})
+    ]);
+    const parse=async(result,label)=>{
+      const j=await result.json().catch(()=>null);
+      if(!result.ok)throw new Error(j?.message||`קריאת ${label} נכשלה`);
+      return readCloudBackupPointRows(j,null,at)
+    };
+    const [rolling,periodic]=await Promise.all([parse(rollingResult,'גיבויי הצ׳קים'),parse(periodicResult,'גיבויי הצ׳קים התקופתיים')]),candidates=[];
+    if(live&&Date.parse(live.updated_at||'')<=Date.parse(at))candidates.push({revision:live.revision,state:live.state,saved_at:live.updated_at,source:'live'});
+    if(rolling)candidates.push({...rolling,source:'rolling'});
+    if(periodic)candidates.push({...periodic,source:'periodic'});
+    candidates.sort((a,b)=>Date.parse(b.saved_at||'')-Date.parse(a.saved_at||''));
+    return candidates[0]||null;
+  }
+  async function readKupaCloudBackupPoint(source,id){
+    const kind=source==='periodic'?'periodic':'rolling',table=kind==='periodic'?'kupa_periodic_backups':'kupa_document_backups',row=await readBackupState(table,session.cloudDocumentName,id);
+    if(!row)throw new Error('הגיבוי המבוקש כבר אינו קיים בענן');
+    assertReadableCloudState(row.state,'גיבוי הקופה בענן');
+    const checks=await readChecksBackupAtOrBefore(row.saved_at);
+    if(checks&&(!checks.state||!Array.isArray(checks.state.checks)||!Array.isArray(checks.state.bankEvents)))throw new Error('צילום הצ׳קים של נקודת הגיבוי אינו תקין');
+    return {
+      source:kind,
+      id:Number(row.id),
+      revision:Number(row.revision),
+      savedAt:row.saved_at,
+      state:row.state,
+      checksState:checks?.state||null,
+      checksRevision:Number(checks?.revision||0),
+      checksSavedAt:checks?.saved_at||null,
+      checksSource:checks?.source||null
+    };
+  }
+  async function readSharedChecksDocument(){
+    const q=`/rest/v1/${SHARED_CHECKS_TABLE}?document_name=eq.${encodeURIComponent(SHARED_CHECKS_DOC)}&select=document_name,revision,state,updated_at`;
+    const r=await supaRest(q,{method:'GET',networkRetry:true}),j=await r.json().catch(()=>null);
+    if(!r.ok)throw new Error(j?.message||j?.hint||'קריאת מאגר הצקים המשותף נכשלה');
+    const row=readCloudDocumentRows(j,SHARED_CHECKS_DOC);
+    if(row){
+      if(!row.state||!Array.isArray(row.state.checks)||!Array.isArray(row.state.bankEvents))throw new Error('מסמך הצקים המשותף בענן במבנה לא תקין');
+      const rev=Number(row.revision);
+      if(!Number.isSafeInteger(rev)||rev<1)throw new Error('Revision הצקים המשותף אינו תקין')
+    }
+    return row
+  }
+  async function readSharedChecksMeta(){
+    const q=`/rest/v1/${SHARED_CHECKS_TABLE}?document_name=eq.${encodeURIComponent(SHARED_CHECKS_DOC)}&select=document_name,revision,updated_at`;
+    const r=await supaRest(q,{method:'GET',networkRetry:true}),j=await r.json().catch(()=>null);
+    if(!r.ok)throw new Error(j?.message||'קריאת סטטוס הצקים המשותפים נכשלה');
+    return readCloudMetaRows(j,SHARED_CHECKS_DOC)
+  }
+  async function rpcSaveSharedChecksV2(checks,expectedRevision,operationId,deletedCheckIds=[],audit={}){
+    const payload={version:1,checks:normalizeSharedChecks(checks)},expected=Number(expectedRevision||0),op=String(operationId||'').trim();
+    const deletedIds=[...new Set((Array.isArray(deletedCheckIds)?deletedCheckIds:[]).map(x=>String(x||'').trim()).filter(Boolean))].sort();
+    if(!Number.isSafeInteger(expected)||expected<0)throw new Error('Revision הצקים המקומי אינו תקין');
+    if(!op)throw new Error('מזהה פעולת הצקים חסר');
+    const rpc=audit?.mutationType==='bulk-delete'?`bulk_delete_${SHARED_CHECKS_RPC}_v6`:`${SHARED_CHECKS_RPC}_v6`,
+      r=await supaRest(`/rest/v1/rpc/${rpc}`,{
+      method:'POST',
+      networkRetry:true,
+      dataPriority:'high',
+      body:JSON.stringify({p_document_name:SHARED_CHECKS_DOC,p_expected_revision:expected,p_state:payload,p_operation_id:op,p_deleted_check_ids:deletedIds,p_audit:audit})
+    });
+    const body=await r.text();
+    let j;
+    try{
+      j=body?JSON.parse(body):null
+    }catch(e){
+      j=null
+    }
+    return {r,j,body,row:r.ok?readDocumentWriteResponseRow(j):Array.isArray(j)?j[0]:j}
+  }
+  async function restoreRpc(name,body,{assertCurrent}={}){
+    assertCurrent?.();
+    const r=await supaRest(`/rest/v1/rpc/${name}`,{method:'POST',networkRetry:true,dataPriority:'high',...(assertCurrent?{assertRequestScope:assertCurrent}:{}),body:JSON.stringify(body)});
+    const raw=await r.text();
+    assertCurrent?.();
+    let j;
+    try{
+      j=raw?JSON.parse(raw):null
+    }catch{
+      j=null
+    }
+    if(!r.ok)throw new Error(j?.message||j?.hint||raw||`restore rpc failed: ${name}`);
+    return j
+  }
+  async function stageRestoreGroup(group,options={}){
+    const payload=restoreGroupRpcPayload(group);
+    return readRestoreStageReceipt(await restoreRpc('stage_restore_group_v6',payload,options),payload.p_restore_group_id);
+  }
+  async function applyRestoreGroup(restoreGroupId,options={}){
+    const id=String(restoreGroupId);
+    return readRestoreApplyReceipt(await restoreRpc('apply_restore_group_v6',{p_restore_group_id:id},options),id);
+  }
+  async function listIncompleteRestoreGroups({assertCurrent}={}){
+    assertCurrent?.();
+    const r=await supaRest('/rest/v1/rpc/list_incomplete_restore_groups_v5',{method:'POST',networkRetry:true,dataPriority:'high',...(assertCurrent?{assertRequestScope:assertCurrent}:{}),body:'{}'});
+    const raw=await r.text();
+    assertCurrent?.();
+    let j;
+    try{
+      j=raw?JSON.parse(raw):null
+    }catch{
+      j=null
+    }
+    if(!r.ok)throw new Error(j?.message||raw||'restore group status failed');
+    return readRestoreGroupRows(j)
+  }
+  async function readStorageProtocolState(){
+    const r=await supaRest('/rest/v1/rpc/get_storage_protocol_state',{method:'POST',networkRetry:true,dataPriority:'high',body:'{}'}),state=await r.json().catch(()=>null);
+    if(!r.ok)throw new Error(state?.message||'בדיקת פרוטוקול האחסון בענן נכשלה');
+    return state
+  }
+  return {
+    rpcSaveCloudV2,
+    readSupabaseDocument,
+    verifyLocalResetCloud,
+    readOrdersReadOnlyMeta,
+    readOrdersReadOnlyCloud,
+    readSharedChecksDocument,
+    readSharedChecksMeta,
+    readStorageProtocolState,
+    rpcSaveSharedChecksV2,
+    stageRestoreGroup,
+    applyRestoreGroup,
+    listIncompleteRestoreGroups,
+    listKupaCloudBackups,
+    readKupaCloudBackupPoint,
+    readFinanceSyncDocument,
+    rpcSaveFinanceSync,
+    saveFinancePatch,
+    claimFinanceSyncLease,
+    releaseFinanceSyncLease,
+    saveBankSyncSnapshot,
+    syncBankTransactionsSnapshot,
+    readBankTransactions,
+    readBankTransactionSnapshot,
+    acknowledgeBankTransactionMissing,
+    acknowledgeBankTransactionAlert
+  };
 }

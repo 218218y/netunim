@@ -1,0 +1,121 @@
+{
+  "date": "2026-10-18",
+  "method": "Parsed program equivalence; exact cooked template text and expression order retained across adjacent template concatenations.",
+  "files": [
+    {
+      "file": "netunim-kupa/site/assets/js/domains/credit/view.js",
+      "before": {
+        "over500": 27,
+        "over1000": 5,
+        "longest": 1909
+      },
+      "after": {
+        "over500": 0,
+        "over1000": 0,
+        "longest": 481
+      },
+      "beforeBytes": 57064,
+      "afterBytes": 58683,
+      "sourceBeforeSha256": "6cff2fc4d7cb22bdc28548f105a1acc04435981d071423d605943ff05e14a70f",
+      "sourceAfterSha256": "6938986f15c0112d14d740214cf6c10a5ebf25d1fb165666e796fdefc13ca5d3",
+      "astBeforeSha256": "77202451b430357bcaac0c3c1938dad20523737c2c87cb7ac09831c06865f005",
+      "astAfterSha256": "77202451b430357bcaac0c3c1938dad20523737c2c87cb7ac09831c06865f005"
+    },
+    {
+      "file": "netunim-orders/site/assets/js/domains/inventory/editor.js",
+      "before": {
+        "over500": 11,
+        "over1000": 8,
+        "longest": 2366
+      },
+      "after": {
+        "over500": 0,
+        "over1000": 0,
+        "longest": 386
+      },
+      "beforeBytes": 26894,
+      "afterBytes": 28805,
+      "sourceBeforeSha256": "9872806301733f58d441153736afadc28bc264c83ffe4512a15583e19e00037a",
+      "sourceAfterSha256": "dc6bc2ec2397d5c2755281669e69c0fcc3cb7db7ab8ea50af386f81c9d0c2808",
+      "astBeforeSha256": "7a063d2c1d671c08b154f3a008082cdf3f987da565da2982ecd1c582ca3c9967",
+      "astAfterSha256": "7a063d2c1d671c08b154f3a008082cdf3f987da565da2982ecd1c582ca3c9967"
+    },
+    {
+      "file": "netunim-orders/site/assets/js/domains/checks/editor.js",
+      "before": {
+        "over500": 8,
+        "over1000": 3,
+        "longest": 3004
+      },
+      "after": {
+        "over500": 0,
+        "over1000": 0,
+        "longest": 328
+      },
+      "beforeBytes": 13082,
+      "afterBytes": 14283,
+      "sourceBeforeSha256": "87a355fcc0bd7fc548ab1931f42e76fe60f66d73d150caf218de14acfba4ee72",
+      "sourceAfterSha256": "f0665f01976cf8ab99e6e2de5760dc4b804aa0bff5150b88519b0132689228eb",
+      "astBeforeSha256": "4a6fe5ccd2c5a93f792129d5e03a252a12f550310b67db6c22f60dde15cb4254",
+      "astAfterSha256": "4a6fe5ccd2c5a93f792129d5e03a252a12f550310b67db6c22f60dde15cb4254"
+    },
+    {
+      "file": "netunim-orders/site/assets/js/cloud/transport.js",
+      "before": {
+        "over500": 14,
+        "over1000": 2,
+        "longest": 1356
+      },
+      "after": {
+        "over500": 0,
+        "over1000": 0,
+        "longest": 307
+      },
+      "beforeBytes": 27702,
+      "afterBytes": 30567,
+      "sourceBeforeSha256": "e6bc8db44bf5cd7cda62f81aa085758d827e1ae00e20038d843dbd249a40acbe",
+      "sourceAfterSha256": "a767dfb332b5d511d15d799099d1c6854b3dc69126a23018145233633bc11f06",
+      "astBeforeSha256": "bc64484ab4911bead7a9d23f6a90a83904cbb36fd8a37e5bb9afbe831e1c2ec2",
+      "astAfterSha256": "bc64484ab4911bead7a9d23f6a90a83904cbb36fd8a37e5bb9afbe831e1c2ec2"
+    },
+    {
+      "file": "netunim-kupa/site/assets/js/cloud/transport.js",
+      "before": {
+        "over500": 4,
+        "over1000": 0,
+        "longest": 966
+      },
+      "after": {
+        "over500": 0,
+        "over1000": 0,
+        "longest": 341
+      },
+      "beforeBytes": 26980,
+      "afterBytes": 29106,
+      "sourceBeforeSha256": "1c2b3f92f7e7f3b5ea60bd6606c650377377af273b5ebeafcc6745827e802ede",
+      "sourceAfterSha256": "d29355641e477c6186218dec3ed5fe74d78f5b9adf8971acab952ccbc80d19a9",
+      "astBeforeSha256": "7856f4d7b0aadc6ac0b1626b217a8f894dd1b4a97fd77fa4f578584b8801afbd",
+      "astAfterSha256": "7856f4d7b0aadc6ac0b1626b217a8f894dd1b4a97fd77fa4f578584b8801afbd"
+    },
+    {
+      "file": "netunim-kupa/site/assets/js/domains/search/model.js",
+      "before": {
+        "over500": 6,
+        "over1000": 1,
+        "longest": 1005
+      },
+      "after": {
+        "over500": 0,
+        "over1000": 0,
+        "longest": 225
+      },
+      "beforeBytes": 9640,
+      "afterBytes": 10747,
+      "sourceBeforeSha256": "9613f44d259f0fdbb5a3bb6a0d4cbe1b21d37870f2d3603239d8f7b2d873e91c",
+      "sourceAfterSha256": "ba2f3dc150d26132d3351852157977d423b834901e2ca275f38b3b4f8313f9ff",
+      "astBeforeSha256": "64e2ee79d27c2d087fa773a496507180d1ec8a5af06d48dffd47c0a57f081732",
+      "astAfterSha256": "64e2ee79d27c2d087fa773a496507180d1ec8a5af06d48dffd47c0a57f081732"
+    }
+  ],
+  "baseCommit": "bbb1fd76ddf54ec49cde7c5075651ced20867503"
+}

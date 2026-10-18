@@ -66,7 +66,7 @@ restore and live-provider release exercises therefore remain explicitly unverifi
    Bank and Cash read capabilities from composition; it imports no sibling domain.
    Module graph rules enforce both boundaries. Existing search, incremental-index
    and Morning regressions plus a read-capability isolation case pass locally.
-   The single new composition costs one eager module (303 total) and 1,083 bytes;
+   The single new composition costs one eager module (303 total) and 1,090 bytes;
    the existing 1,759,000-byte and browser timing limits remain in force.
 3. **Authority contracts:** reproduced impossible snapshot timestamps rolling
    forward and impossible/reversed full coverage reaching both archive RPCs.
@@ -74,13 +74,21 @@ restore and live-provider release exercises therefore remain explicitly unverifi
    transaction-evidence owner before I/O. Existing merge keys and partial-warning
    semantics are unchanged. Invalid money/status/scope/calendar data sends no
    request; stale accounts and malformed receipts cannot publish success. Strict
-   negative consumers and a real-guard mutation prove the boundary. Kupa eager
-   Morning's direct prefill/eligibility entrance also uses the existing monetary
-   reader: boolean/array/object coercion cannot invent a positive receipt amount.
-   source measures 1,760,215 bytes: a 2 KB source-only allowance covers the added
+   negative consumers and a real-guard mutation prove the boundary. Morning's
+   direct prefill/eligibility entrance also uses the existing monetary reader:
+   boolean/array/object coercion cannot invent a positive receipt amount. Kupa
+   eager source measures 1,760,222 bytes: a 2 KB source-only allowance covers the added
    command guard, with 303 modules and browser timing limits unchanged.
-4. **Readability:** next, simplify touched dense paths with behavior evidence and
-   lower the existing readability ratchet; avoid unnecessary new modules.
+4. **Readability:** expanded both transports, Kupa search/Credit presentation and
+   Orders Inventory/Checks editors. Their 70 lines above 500 characters and 19
+   above 1,000 are now zero; canonical totals decrease from 483/113 to 413/94.
+   Parsed program equivalence preserves every cooked string, interpolation and
+   evaluation order; source/AST hashes and per-file metrics are recorded in
+   [readability evidence](evidence/readability-20261018.json). The six per-file
+   ratchets now reject new long lines. No runtime module was added. Formatting
+   costs 4,852 eager Kupa bytes (1,765,074 total); the source-only allowance rises
+   by 5 KB while all module-count and browser timing limits remain intact.
+   Orders remains inside its existing 2,379,000-byte eager source allowance.
 
 The 2026-10-18 continuation also closes Kupa credential resurrection after a failed
 IndexedDB logout delete, orders credential mirror writes and scopes refresh flights

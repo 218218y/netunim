@@ -6,11 +6,6 @@
       "over1000": 1,
       "longest": 1217
     },
-    "netunim-kupa/site/assets/js/cloud/transport.js": {
-      "over500": 4,
-      "over1000": 0,
-      "longest": 966
-    },
     "netunim-kupa/site/assets/js/domains/bank/connection-owner.js": {
       "over500": 2,
       "over1000": 0,
@@ -71,11 +66,6 @@
       "over1000": 1,
       "longest": 1077
     },
-    "netunim-kupa/site/assets/js/domains/credit/view.js": {
-      "over500": 27,
-      "over1000": 5,
-      "longest": 1909
-    },
     "netunim-kupa/site/assets/js/domains/dashboard/view.js": {
       "over500": 4,
       "over1000": 0,
@@ -100,11 +90,6 @@
       "over500": 1,
       "over1000": 0,
       "longest": 697
-    },
-    "netunim-kupa/site/assets/js/domains/search/model.js": {
-      "over500": 6,
-      "over1000": 1,
-      "longest": 1111
     },
     "netunim-kupa/site/assets/js/state/constants.js": {
       "over500": 1,
@@ -221,11 +206,6 @@
       "over1000": 1,
       "longest": 1123
     },
-    "netunim-orders/site/assets/js/cloud/transport.js": {
-      "over500": 14,
-      "over1000": 2,
-      "longest": 1356
-    },
     "netunim-orders/site/assets/js/domains/calendar/controller.js": {
       "over500": 7,
       "over1000": 3,
@@ -240,11 +220,6 @@
       "over500": 4,
       "over1000": 0,
       "longest": 958
-    },
-    "netunim-orders/site/assets/js/domains/checks/editor.js": {
-      "over500": 8,
-      "over1000": 3,
-      "longest": 3004
     },
     "netunim-orders/site/assets/js/domains/checks/view.js": {
       "over500": 8,
@@ -385,11 +360,6 @@
       "over500": 6,
       "over1000": 4,
       "longest": 1967
-    },
-    "netunim-orders/site/assets/js/domains/inventory/editor.js": {
-      "over500": 11,
-      "over1000": 8,
-      "longest": 2366
     },
     "netunim-orders/site/assets/js/domains/inventory/model.js": {
       "over500": 2,
