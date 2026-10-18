@@ -201,11 +201,11 @@ export function createSharedChecksV2Runtime({owner,primary,captureCommitAuthorit
   }
   async function incidentSample(){
     const store=storage,scopedIdentity=identity;
-    const current=()=>!!store&&store===storage&&active&&primaryMode()&&primary()&&scopedIdentity===currentOwner()&&!boundaryGate();
+    const current=()=>!!store&&store===storage&&active&&store.ready&&primaryMode()&&primary()&&scopedIdentity===currentOwner()&&!boundaryGate();
     return (await import('./sync-incident-adapters.js')).sampleJournalIncident({read:()=>store.cloudState(),ready:current,
       current:cloud=>store.seq===cloud.seq&&commitsInFlight===0&&![...risks.values()].some(risk=>risk.owner===scopedIdentity),
       epoch:()=>null,durabilityError:()=>current()&&[...risks.values()].some(risk=>risk.owner===scopedIdentity&&risk.failed),
-      blocked:()=>incidentRecoveryBlocked&&primary()&&scopedIdentity===currentOwner(),fatal:storageRecoveryFailure});
+      blocked:()=>(incidentRecoveryBlocked||!!store?.journalBlocked)&&primary()&&scopedIdentity===currentOwner(),fatal:storageRecoveryFailure});
   }
   return {incidentSample,recover,recoverReadOnly,initialize,initializeLocal,persist,sync,refreshBankMatches,diagnostics,setBoundaryGate:gate=>{if(typeof gate!=='function')throw new Error('storage_boundary_gate_invalid');boundaryGate=gate},
     replaceAuthoritativeState,replaceLocalWithPending,replaceLocalAuthoritativeState,resetCloudHead,

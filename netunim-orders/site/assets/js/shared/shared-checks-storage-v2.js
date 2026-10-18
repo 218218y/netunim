@@ -133,5 +133,5 @@ export function createSharedChecksStorageV2({owner,primary,commitPrimary=primary
   async function resetCloudHead(revision,state,{boundaryId=null}={}){assertCloudWriter();const canonical=canonicalState(state);validate(canonical);return journal.resetCloudHead(revision,canonical,canonical,{appMetadata:{storageRole:'shared-checks-primary',...boundaryId?{boundaryId}:{}}})}
   return {recoverReadOnly,open,initializeCloudHead,append,captureCloudCursor,cloudState,materializeFlight,acknowledge,rejectAndRebase,adoptCloudHead,
     replaceAuthoritativeState,replaceLocalWithPending,replaceLocalAuthoritativeState,resetCloudHead,recover:()=>{assertTrusted();return journal.recover()},compact:()=>{assertTrusted();return journal.compact()},setCloudControl:value=>{assertCloudWriter();return journal.setCloudControl(value)},clearCloudControl:()=>{assertCloudWriter();return journal.clearCloudControl()},
-    get ready(){return trusted&&journal.ready},get owner(){return identity},get seq(){return journal.seq}};
+    get ready(){return trusted&&journal.ready},get journalBlocked(){return !!journal.error},get owner(){return identity},get seq(){return journal.seq}};
 }

@@ -260,7 +260,7 @@ export function createStorageV2Runtime({app,owner,primary,captureCommitAuthority
     return (await import('./sync-incident-adapters.js')).sampleJournalIncident({read:cloudState,ready:current,
       current:cloud=>active.seq===cloud.seq&&active.epoch===cloud.base?.epoch&&!undurableFailures.has(active),
       epoch:()=>active?.epoch,durabilityError:()=>identity===currentOwner()&&undurableFailures.has(active),
-      blocked:()=>identity===currentOwner()&&primary()&&corruptIdentity===identity,fatal:storageRecoveryFailure});
+      blocked:()=>identity===currentOwner()&&primary()&&(corruptIdentity===identity||!!active?.error),fatal:storageRecoveryFailure});
   }
   return {incidentSample,recover,recoverReadOnly,recoverForOwner,initializeLocal,initializeCloudHead,initializeUploadLocalCloudHead,persist,flush,
     setBoundaryGate:gate=>{if(typeof gate!=='function')throw new Error('storage_boundary_gate_invalid');boundaryGate=gate},

@@ -48,6 +48,11 @@ test('incident observation distinguishes unreadiness, journal work, retry and a 
   assert.equal(classifySyncIncident(await runtime.incidentSample()).state,'stalled');
   f.rpcHook=null;await runtime.sync();const final=await runtime.incidentSample();assert.equal(classifySyncIncident(final).state,'clean_verified');assert.equal(final.isCurrent(),true);
 });
+test('an accepted checks write with an intact emergency copy still reports a blocked IDB journal',async()=>{
+  const f=fixture(),runtime=await f.start();f.databases.get('A').append=async()=>{throw new Error('IDB write failed')};
+  const write=f.edit(runtime,'C',{amount:112});assert.equal(write.emergencyDurable,true);await assert.rejects(write.committed,/IDB write failed/);
+  const sample=await runtime.incidentSample();assert.equal(classifySyncIncident(sample).reason,'recovery_blocked');assert.equal(sample.verified,undefined);
+});
 
 for(const site of ['orders','kupa']){
   test(`${site}: stored-bank refresh requires a clean recovered V2 head and fences owner replacement`,async()=>{
