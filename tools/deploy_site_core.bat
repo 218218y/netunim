@@ -297,6 +297,14 @@ if not "%DEPLOY_EXIT%"=="0" (
   exit /b %DEPLOY_EXIT%
 )
 
+rem Each site must prove its own critical release before the pair continues.
+python "%~dp0deployment_smoke.py" --site-dir "%SITE_DIR%" --url "https://%PROJECT_NAME%.pages.dev/" --report "%~dp0..\.work\deploy\%PROJECT_NAME%-smoke.json"
+if errorlevel 1 (
+  echo ERROR: upload completed but release smoke failed for %PROJECT_NAME%.
+  echo The pair may be partially deployed. Follow docs\DEPLOYMENT_COMPATIBILITY.md before continuing.
+  exit /b 4
+)
+
 echo.
 echo Deployment completed successfully.
 echo Production URL:

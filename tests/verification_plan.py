@@ -25,6 +25,7 @@ GROUPS = {
         "cloud_backup_contracts.py",
         "asset_contracts.py",
         "deploy_preflight.py",
+        "deployment_smoke_contracts.py",
         "public_asset_names_contracts.py",
         "service_worker_contracts.py",
         "calendar_contracts.py",
@@ -45,6 +46,7 @@ GROUPS["browser-sync"].append("runtime_auth_session_persistence.py")
 GROUPS["browser-sync"].append("runtime_kupa_source_transition.py")
 GROUPS["browser-sync"].append("runtime_spreadsheet_lifecycle.py")
 GROUPS["browser-sync"].append("runtime_idb_receipts.py")
+GROUPS["browser-lifecycle"].append("runtime_release_compatibility.py")
 CORE_SUITES = [suite for group, suites in GROUPS.items() if not group.startswith("browser-") for suite in suites]
 RUNTIME_SUITES = [suite for group, suites in GROUPS.items() if group.startswith("browser-") for suite in suites]
 
