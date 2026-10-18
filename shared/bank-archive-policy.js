@@ -1,5 +1,6 @@
 // @ts-check
 import {bankTransactionStatus} from './bank-transaction-evidence.js';
+import {evidenceDate} from './observation-time.js';
 
 /** @typedef {Record<string,unknown>} ArchiveRow */
 /** @typedef {{sourcePayload:ArchiveRow[],result:Record<string,unknown>|null}} ArchiveMerge */
@@ -29,8 +30,8 @@ function completeTransactionCoverage(snapshot) {
         : {},
     from = String(coverage.from || ''),
     to = String(coverage.to || ''),
-    valid = /^\d{4}-\d{2}-\d{2}$/.test(from) && /^\d{4}-\d{2}-\d{2}$/.test(to) && from <= to,
-    warning = String(snapshot?.transactionWarning || '');
+    valid = evidenceDate(from) && evidenceDate(to) && from <= to,
+    warning = String(snapshot?.transactionWarning || coverage.warning || '');
   return {
     complete: coverage.complete === true && !warning && valid,
     from: valid ? from : null,

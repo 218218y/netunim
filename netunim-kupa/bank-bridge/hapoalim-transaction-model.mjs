@@ -4,6 +4,7 @@ import { compactText } from './hapoalim-detail-values.mjs';
 import { normalizedCreditSettlementDetails } from './hapoalim-credit-settlement-model.mjs';
 import { hapoalimChequeTransactionKind } from './hapoalim-cheque-model.mjs';
 import { isoFromBankDate } from './hapoalim-date-codec.mjs';
+import { readBankMoney } from './bank-money-value.mjs';
 
 export function hapoalimTransactionPageState(data, requestedLimit = HAPOALIM_TRANSACTION_LIMIT) {
   const transactions = Array.isArray(data?.transactions) ? data.transactions : [];
@@ -22,12 +23,16 @@ export function hapoalimTransactionPageState(data, requestedLimit = HAPOALIM_TRA
 
 export function normalizeHapoalimTransaction(txn) {
   const outbound = Number(txn?.eventActivityTypeCode) === 2;
-  const amountNumber = Number(txn?.eventAmount);
-  const amount = Number.isFinite(amountNumber)
-    ? outbound
-      ? -Math.abs(amountNumber)
-      : Math.abs(amountNumber)
-    : 0;
+  const amountNumber = readBankMoney(txn?.eventAmount);
+  const date = isoFromBankDate(txn?.eventDate),
+    processedDate = isoFromBankDate(txn?.valueDate);
+  // Reject the source batch before it can acquire complete-coverage authority.
+  // The account reader owns the partial-balance warning and diagnostics.
+  if (amountNumber === null || !date || (txn?.valueDate != null && !processedDate))
+    throw Object.assign(new Error('Invalid bank transaction amount or date'), {
+      code: 'BANK_TRANSACTIONS_INVALID', retryable: false,
+    });
+  const amount = amountNumber === 0 ? 0 : outbound ? -Math.abs(amountNumber) : Math.abs(amountNumber);
   const details =
     txn?.beneficiaryDetailsData && typeof txn.beneficiaryDetailsData === 'object'
       ? txn.beneficiaryDetailsData
@@ -121,8 +126,8 @@ export function normalizeHapoalimTransaction(txn) {
   }
   return {
     id: identifier,
-    date: isoFromBankDate(txn?.eventDate),
-    processedDate: isoFromBankDate(txn?.valueDate),
+    date,
+    processedDate,
     amount,
     currency: 'ILS',
     description: compactText(txn?.activityDescription, 180) || 'תנועת בנק',
@@ -135,14 +140,7 @@ export function normalizeHapoalimTransaction(txn) {
       ? Number(txn.eventActivityTypeCode)
       : null,
     status: Number(txn?.serialNumber) === 0 ? 'pending' : 'completed',
-    balanceAfter:
-      txn?.currentBalance === null ||
-      txn?.currentBalance === undefined ||
-      txn?.currentBalance === ''
-        ? null
-        : Number.isFinite(Number(txn.currentBalance))
-          ? Number(txn.currentBalance)
-          : null,
+    balanceAfter: readBankMoney(txn?.currentBalance),
     bankReference,
     bankSerial,
     cheque,
