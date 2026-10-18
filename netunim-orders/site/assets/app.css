@@ -669,6 +669,14 @@ button.bank-cashflow-projected:focus-visible,button.bank-current-balance:focus-v
 .bank-cashflow-warning-row>.cashflow-breach{margin:0}
 .bank-balance-card>.cashflow-breach{grid-column:1/-1;min-width:0;overflow-wrap:anywhere}
 
+.check-bank-controls{display:flex;align-items:flex-start;gap:6px;min-width:0}
+.check-bank-controls>.check-bank-refresh{flex:0 0 auto;height:32px;min-height:0;padding:0 10px;font-size:12px;line-height:1.2;white-space:nowrap}
+.check-bank-controls>.check-bank-activity{flex:1 1 auto;min-width:0;margin:0}
+.check-bank-controls>.check-bank-activity>summary{min-height:30px;padding:7px 10px;font-size:12px;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.checks-header-activity>.check-bank-refresh{height:26px;font-size:10px;font-weight:800}
+.checks-header-activity>.check-bank-activity{flex:0 1 auto;min-width:44px}
+.checks-header-activity>.check-bank-activity>summary{min-height:24px;padding:6px 10px;font-size:10px;line-height:12px}
+.kupa-checks-status>.checks-cloud-note{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis}
 .check-bank-activity{margin:14px 0;border:1px solid #d9e2e8;border-radius:12px;background:#fff;color:#243440}.check-bank-activity summary{cursor:pointer;padding:12px;font-weight:600;overflow-wrap:anywhere}.check-bank-activity summary:focus-visible{outline:2px solid #356a94;outline-offset:-2px}.check-bank-activity-item{border-top:1px solid #e5eaee}.check-bank-activity .check-bank-review{background:#f7fafc;border-color:#d9e2e8;color:#243440}
 .check-bank-activity-group{padding:0 12px 12px}.check-bank-activity-identity{margin:0 0 8px;color:var(--muted);font-size:11px;font-weight:700}.check-bank-activity-timeline{display:grid;gap:7px;margin:0 0 10px;padding:0;list-style:none}.check-bank-activity-timeline li{display:grid;grid-template-columns:minmax(82px,auto) 1fr;gap:9px;align-items:start;padding:7px 9px;border-inline-start:3px solid #d7e0e6;border-radius:7px;background:#f8fafb}.check-bank-activity-timeline li.current{border-inline-start-color:#6d8d84;background:#f3f8f6}.check-bank-activity-timeline time{color:var(--muted);font-size:10px;font-variant-numeric:tabular-nums}.check-bank-activity-timeline span{display:grid;gap:2px;min-width:0}.check-bank-activity-timeline b{font-size:11px;overflow-wrap:anywhere}.check-bank-activity-timeline small{color:var(--muted);font-size:10px;line-height:1.4;overflow-wrap:anywhere}.check-bank-activity-group>.check-bank-review{margin-bottom:0}
 
