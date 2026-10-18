@@ -1,5 +1,8 @@
 # Completion work, 2026-10-15
 
+Historical stage and verification record. Open work is managed only in
+[ARCHITECTURE_REMAINING_WORK.md](ARCHITECTURE_REMAINING_WORK.md).
+
 The supplied V6 review is a useful inventory, not evidence that every listed
 change is required. Work is based on the current main source and its tests.
 Existing Main/Shared V2, Bank/Credit refresh, Document search and provider policy

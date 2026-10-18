@@ -1,5 +1,8 @@
 # Architecture refactor: verified baseline and next slices
 
+Historical implementation and decision record. Open work is managed only in
+[ARCHITECTURE_REMAINING_WORK.md](ARCHITECTURE_REMAINING_WORK.md).
+
 PDF refresh now has a strict seven-port operation and explicit checkpoint
 admission. Complete flights join abort/failure metadata and timer cleanup;
 native fixtures reproduce early coalesced completion and malformed checkpoint

@@ -5,6 +5,17 @@ capability boundaries. It does not require replacing working domain facades.
 Kupa's `composition/bank.js` demonstrates explicit commands, queries, presentation,
 runtime and action registration. Existing smaller facades can keep their shape.
 
+The deterministic action-entry subset is enforced by
+`node tools/feature-entry-audit.mjs` and `tests/feature_entry_contract.test.mjs`.
+It checks every application action pack for discarded terminal completion,
+including conditional branches, direct browser I/O/storage/timers, and imports
+that bypass injected owners. The executable feature example composes an existing
+command, retains its exact completion and startup mutation admission, and adds no
+writer. Existing module graph and action registry/reference gates cover layer
+dependencies, collisions and markup ownership. This does not infer business
+authority from a name or prove every intermediate asynchronous continuation;
+owner-level failure, receipt and lifetime tests remain necessary.
+
 | Boundary | Required feature contract |
 | --- | --- |
 | Business authority | Identify the existing owning Main, Shared Checks, Finance, Calendar or independent workbook path before adding a command. A localStorage preference or file/Bridge mirror cannot become another business writer. |

@@ -1,5 +1,11 @@
 # Production postflight, 2026-10-18
 
+The quality continuation refreshed this complete authenticated read-only check
+at **11:09:17 UTC** with the same 41 migrations and 128 functions. The supported
+recorder refreshed the source audit and Production receipt; no schema or business
+data changed. See [quality closure evidence](QUALITY_CLOSURE_20261018.md).
+The earlier capture below is a historical observation.
+
 An authenticated read-only catalog capture of project `bupoidcurcxuypfrjqio`
 was taken at **02:46:37 UTC / 05:46:37 Asia/Jerusalem**. The complete postflight
 passed against an expected schema derived by replaying the reviewed migration

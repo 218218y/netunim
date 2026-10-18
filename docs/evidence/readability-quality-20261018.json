@@ -1,0 +1,36 @@
+[
+  {
+    "file": "shared/global-document-search.js",
+    "before": {
+      "over500": 18,
+      "over1000": 5,
+      "longest": 1790
+    },
+    "after": {
+      "over500": 0,
+      "over1000": 0,
+      "longest": 467
+    },
+    "beforeSha256": "c5fc1b8c5c581e42394151b8552916c55a736d906ff6bf7a04971f1289e987db",
+    "afterSha256": "1f2c561a2da8611a01565b22538ed301d61d5ae6038752149eba41ef6f80ba46",
+    "equivalentProgramSha256": "23f8870adb88fde5114782d990acfafe8dae45b5dd48f378eab7629816d69610",
+    "addedBytes": 96
+  },
+  {
+    "file": "shared/kupa-cashflow.js",
+    "before": {
+      "over500": 4,
+      "over1000": 0,
+      "longest": 824
+    },
+    "after": {
+      "over500": 0,
+      "over1000": 0,
+      "longest": 452
+    },
+    "beforeSha256": "d79c9a0bdda3229b6d4652c273a1827204f8bc6753eee21e10b5335d721292b3",
+    "afterSha256": "0e49c94162a7a8e2dce220e60e395820ae36fbc579567020a025075f0fe5fa71",
+    "equivalentProgramSha256": "d7b23acfb87bac7df0d0f1c41ccd2dbeeca085964a91680224919b31dbcbce1d",
+    "addedBytes": 12
+  }
+]
