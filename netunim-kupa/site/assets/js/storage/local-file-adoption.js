@@ -24,7 +24,7 @@ async function loadState({automatic=false,source={...files,connectionMode:sessio
   }
   // All candidate I/O and projection must succeed before the durable import and
   // synchronous installation. A catalog failure cannot publish half a source.
-  const backups=await listBackups(source.backupsDirHandle);assertCurrent();
+  const backups=await listBackups(source.backupsDirHandle,{strict:true});assertCurrent();
   const lastSavedSnapshot=JSON.stringify(parsed.state);
   const serverInfo={schemaVersion:Number(parsed.meta.schemaVersion||6),lastSavedAt:parsed.meta.savedAt||null,databaseFile:source.dataFileHandle.name,backups};
   await captureLegacyWorkbook(payload.notesSheet);

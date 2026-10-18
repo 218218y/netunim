@@ -25,6 +25,7 @@ GROUPS = {
         "cloud_backup_contracts.py",
         "asset_contracts.py",
         "deploy_preflight.py",
+        "public_asset_names_contracts.py",
         "service_worker_contracts.py",
         "calendar_contracts.py",
         "google_drive_contracts.py",

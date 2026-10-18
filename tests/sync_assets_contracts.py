@@ -64,6 +64,7 @@ class SyncAssetContracts(unittest.TestCase):
             copy_fixture_tree(relative, self.root)
         (self.root / 'tools').mkdir()
         shutil.copyfile(ROOT / 'tools/sync-assets.py', self.root / 'tools/sync-assets.py')
+        shutil.copyfile(ROOT / 'tools/public_asset_names.py', self.root / 'tools/public_asset_names.py')
         self.run_sync()
 
     def run_sync(self, check=False, expected=0):
@@ -259,7 +260,7 @@ class StagedAssetContracts(unittest.TestCase):
         for relative in ('shared', 'netunim-kupa/site', 'netunim-orders/site'):
             copy_fixture_tree(relative, self.root)
         (self.root / 'tools/git-hooks').mkdir(parents=True)
-        for relative in ('sync-assets.py', 'install-git-hooks.py', 'git-hooks/pre-commit'):
+        for relative in ('sync-assets.py', 'public_asset_names.py', 'install-git-hooks.py', 'git-hooks/pre-commit'):
             shutil.copyfile(ROOT / 'tools' / relative, self.root / 'tools' / relative)
         self.git('init', '-b', 'main')
         self.git('config', 'user.name', 'Asset Test')
@@ -286,6 +287,31 @@ class StagedAssetContracts(unittest.TestCase):
 
     def index_bytes(self, relative):
         return self.git('show', f':{relative}')
+
+    def test_duplicate_worker_in_captured_index_fails_before_any_generated_write(self):
+        relative = 'netunim-orders/site/service-worker (2).js'
+        path = self.root / relative
+        path.write_text('// obsolete copy', encoding='utf-8')
+        self.git('add', '--', relative)
+        path.unlink()  # The proposed Git tree, rather than current disk, is authoritative.
+        before_tree = self.git('write-tree')
+        worker = self.root / 'netunim-orders/site/service-worker.js'
+        before_worker = worker.read_bytes()
+        with self.assertRaises(subprocess.CalledProcessError) as failure:
+            self.run_tool('--staged')
+        self.assertIn('unapproved public asset', failure.exception.stderr)
+        self.assertEqual(self.git('write-tree'), before_tree)
+        self.assertEqual(worker.read_bytes(), before_worker)
+        self.assertFalse(path.exists())
+
+    def test_untracked_backup_in_public_root_fails_read_only_check(self):
+        path = self.root / 'netunim-kupa/site/extra.js.bak'
+        path.write_text('// accidental untracked backup', encoding='utf-8')
+        before = path.read_bytes()
+        with self.assertRaises(subprocess.CalledProcessError) as failure:
+            self.run_tool('--check')
+        self.assertIn('unapproved public asset', failure.exception.stderr)
+        self.assertEqual(path.read_bytes(), before)
 
     def test_captured_objects_survive_later_index_edits_and_preserve_binary_bytes(self):
         relative = 'shared/staged binary \u05d0.bin'

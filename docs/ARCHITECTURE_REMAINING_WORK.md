@@ -57,6 +57,12 @@ Directory/file/remembered-source opening and backup-target replacement now prepa
 detached candidates before committing active references. See
 [local source transitions](KUPA_LOCAL_SOURCE_TRANSITIONS.md).
 
+All public filenames, including root files outside the generated shell and the
+captured Git index, now share [distribution hygiene gates](PUBLIC_ASSET_HYGIENE.md).
+The previously reported duplicate worker is already absent from this checkout.
+The [feature entry contract](FEATURE_ENTRY_CONTRACT.md) records how new commands
+enter existing owners/capabilities without introducing parallel business writers.
+
 All three Bank authority migrations (`20261016120000`, `20261016130000` and
 `20261016140000`) are installed. The complete authenticated read-only
 [2026-10-18 Production postflight](PRODUCTION_POSTFLIGHT_20261018.md) verified all

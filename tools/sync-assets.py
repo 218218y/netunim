@@ -15,6 +15,11 @@ import re
 import subprocess
 import sys
 
+# Also loaded through importlib by the staged-snapshot contract suite.
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from public_asset_names import asset_name_violations
+
 ROOT = Path(__file__).resolve().parents[1]
 APPS = ('kupa', 'orders')
 BRIDGE_SHARED_SOURCES = {
@@ -53,6 +58,10 @@ class Change(NamedTuple):
 class WorktreeSnapshot:
     def __init__(self, root: Path):
         self.root = root
+        self.public_files = {
+            path.relative_to(root).as_posix()
+            for label in APPS for path in (root / f'netunim-{label}/site').rglob('*') if path.is_file()
+        }
         paths = list((root / 'shared').glob('*.js')) + list((root / 'shared').glob('*.css'))
         paths.extend(root / target for target in BRIDGE_SHARED_SOURCES.values() if (root / target).is_file())
         document_search = root / DOCUMENT_SEARCH_SHARED_ROOT
@@ -241,6 +250,14 @@ def render_worker(label: str, snapshot: OverlaySnapshot, worker_path: str) -> by
 
 
 def plan_sync(snapshot: WorktreeSnapshot | IndexSnapshot) -> list[Change]:
+    # Inspect all public names, including untracked root files outside the shell
+    # inventory. The staged snapshot instead checks the exact proposed Git tree.
+    public_files = getattr(snapshot, 'public_files', snapshot.files)
+    for label in APPS:
+        prefix = f'netunim-{label}/site/'
+        found = asset_name_violations(path[len(prefix):] for path in public_files if path.startswith(prefix))
+        if found:
+            raise ValueError(f'{label}: unapproved public asset names: {found}')
     """Calculate every change before writing, so structural errors are atomic."""
     changes: list[Change] = []
     for source, target in BRIDGE_SHARED_SOURCES.items():
