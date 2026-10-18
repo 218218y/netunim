@@ -54,6 +54,12 @@ reopening, explicit upgrade blocking and atomic abort handling. Its reentrant
 browser bindings release every listener on disposal while retaining accepted
 sync work and drafts. See [workbook lifecycle](SPREADSHEET_LIFECYCLE.md).
 
+Main/Shared journal, workbook and boundary/bootstrap/birth transactions now share
+a strict completion body. Transition evidence reads also wait for transaction
+complete; native abort after request success grants no receipt and preserves
+prior state. See [durable receipts](IDB_DURABLE_RECEIPTS.md). Full journal/runtime
+strict conversion remains selective rather than implied by this boundary.
+
 ### Four-stage review continuation, 2026-10-18
 
 1. **Bank calendar and monetary integrity:** reproduced impossible Morning dates

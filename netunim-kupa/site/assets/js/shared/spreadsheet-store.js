@@ -1,6 +1,6 @@
 // Workbook payloads and the outbox live only in IndexedDB. localStorage holds
 // at most a bounded emergency journal, never full workbooks or base snapshots.
-import {createIndexedDbConnection} from './indexed-db-connection.js';
+import {createIndexedDbConnection,completeIndexedDbTransaction} from './indexed-db-connection.js';
 
 export function createSpreadsheetStore({indexedDB=globalThis.indexedDB,emergency=globalThis.localStorage}={}){
   const open=createIndexedDbConnection('netunim-spreadsheets',1,db=>{
@@ -15,16 +15,8 @@ export function createSpreadsheetStore({indexedDB=globalThis.indexedDB,emergency
       return (await open()).transaction(['documents','drafts'],mode);
     }
   }
-  async function transaction(mode,operation){
-    const tx=await begin(mode);
-    return new Promise((resolve,reject)=>{
-      let result,error;
-      const fail=cause=>{error=cause;try{tx.abort()}catch{reject(cause)}};
-      tx.oncomplete=()=>error?reject(error):resolve(result);
-      tx.onerror=()=>{error??=tx.error};
-      tx.onabort=()=>reject(error||tx.error||new Error('spreadsheet_storage_aborted'));
-      try{operation(tx,value=>{result=value},fail)}catch(cause){fail(cause)}
-    });
+  function transaction(mode,operation){
+    return completeIndexedDbTransaction(()=>begin(mode),operation,'spreadsheet_storage_aborted');
   }
   async function load(key){return transaction('readonly',(tx,done)=>{const record=tx.objectStore('documents').get(key),draft=tx.objectStore('drafts').get(key);let count=0;const read=()=>{if(++count===2)done({record:record.result||null,drafts:draft.result||[]})};record.onsuccess=read;draft.onsuccess=read})}
   async function commit(key,record){return transaction('readwrite',(tx,done)=>{tx.objectStore('documents').put(record,key);tx.objectStore('drafts').delete(key);done(true)})}

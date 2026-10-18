@@ -2,7 +2,7 @@ import {createStorageOwnerTransactions} from './storage-owner-idb.js';
 import {createStorageCheckpoint,createStorageCloudBase} from './storage-records.js';
 import {assertStorageCloudAck} from './storage-cloud-ack.js';
 import {readStorageCloudBase,readStorageCloudFlight,readStorageCloudControl,readStorageCloudHead} from './storage-cloud-records.js';
-import {createIndexedDbConnection} from './indexed-db-connection.js';
+import {createIndexedDbConnection,completeIndexedDbTransaction} from './indexed-db-connection.js';
 import {readStorageRecord,sealStorageRecord} from './storage-journal-model.js';
 import {historicalShadowRoleForSide} from './storage-v2-persisted-compat.js';
 import {assertCloudRecoveryHead} from './storage-cloud-recovery.js';
@@ -32,12 +32,10 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
     // records. Retire the unused store during the normal schema upgrade.
     if(db.objectStoreNames.contains('legacy-recoveries'))db.deleteObjectStore('legacy-recoveries');
   });
-  async function transact(mode,work){const db=await open();return new Promise((resolve,reject)=>{
-    const tx=db.transaction(stores,mode);let result,error;
-    const fail=cause=>{error=cause;try{tx.abort()}catch{reject(cause)}};
-    try{work(tx,value=>{result=value},fail)}catch(cause){fail(cause)}
-    tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_transaction_aborted'));tx.onerror=()=>{error??=tx.error};
-  })}
+  function transactStores(names,mode,work,abortCode){
+    return completeIndexedDbTransaction(async()=>(await open()).transaction(names,mode),work,abortCode);
+  }
+  function transact(mode,work){return transactStores(stores,mode,work)}
   // Every journal writer, including schema v1, keys records by
   // [owner, epoch, seq]. Select that physical namespace before decoding the
   // payload: the mutable data.owner index cannot prove presence or ownership.
@@ -208,16 +206,14 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
     tx.objectStore('metadata').put({...current.metadata,seq:operation.seq},owner);
     done(true);
   })}
-  function boundaryTransaction(work){return open().then(db=>new Promise((resolve,reject)=>{
-    const tx=db.transaction(['boundaries'],'readwrite'),store=tx.objectStore('boundaries');let result;
-    try{work(store,value=>{result=value},error=>{try{tx.abort()}catch{}reject(error)})}catch(error){try{tx.abort()}catch{}reject(error)}
-    tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(tx.error||new Error('storage_boundary_aborted'));tx.onerror=()=>{};
-  }))}
-  function readBoundary(owner){return open().then(db=>new Promise((resolve,reject)=>{
-    const tx=db.transaction(['boundaries'],'readonly'),request=tx.objectStore('boundaries').get(owner);
-    request.onsuccess=()=>{try{resolve(request.result?readStorageRecord(request.result):null)}catch(error){reject(error)}};
-    request.onerror=()=>reject(request.error);
-  }))}
+  function boundaryTransaction(work){return transactStores(['boundaries'],'readwrite',(tx,done,fail)=>{
+    work(tx.objectStore('boundaries'),done,fail);
+  },'storage_boundary_aborted')}
+  function readTransition(name,key){return transactStores([name],'readonly',(tx,done,fail)=>{
+    const request=tx.objectStore(name).get(key);
+    request.onsuccess=()=>{try{done(request.result?readStorageRecord(request.result):null)}catch(error){fail(error)}};
+  })}
+  function readBoundary(owner){return readTransition('boundaries',owner)}
   async function beginBoundary(owner,record){record=captureStorageJournalPayload(record);return boundaryTransaction((store,done,fail)=>{
     const request=store.get(owner);request.onsuccess=()=>{try{
       if(request.result){const prior=readStorageRecord(request.result);if(prior.id===record.id&&prior.phase==='complete'){done(prior);return}if(prior.phase!=='complete')throw new Error('storage_boundary_pending')}
@@ -242,35 +238,28 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
     }catch(error){fail(error)}};
   })}
   const {readOwnerState,readOwnerBinding,readOwnerHandoff,initializeOwnerBinding,reserveLocalOwnerTarget,adoptPreparedLocalOwner,beginOwnerHandoff,advanceOwnerHandoff,activateOwnerHandoff,completeOwnerHandoff}=createStorageOwnerTransactions({open});
-  function bootstrapRecord(scope){return open().then(db=>new Promise((resolve,reject)=>{
-    const tx=db.transaction(['bootstrap-groups'],'readonly'),request=tx.objectStore('bootstrap-groups').get(scope);
-    request.onsuccess=()=>{try{resolve(request.result?readStorageRecord(request.result):null)}catch(error){reject(error)}};
-    request.onerror=()=>reject(request.error);
-  }))}
-  function readBootstrapGroup(scope){return bootstrapRecord(scope)}
-  async function beginBootstrapGroup(scope,record){record=captureStorageJournalPayload(record);return open().then(db=>new Promise((resolve,reject)=>{
-    const tx=db.transaction(['bootstrap-groups'],'readwrite'),store=tx.objectStore('bootstrap-groups'),request=store.get(scope);let result=null,error=null;
+  function readBootstrapGroup(scope){return readTransition('bootstrap-groups',scope)}
+  async function beginBootstrapGroup(scope,record){record=captureStorageJournalPayload(record);return transactStores(['bootstrap-groups'],'readwrite',(tx,done,fail)=>{
+    const store=tx.objectStore('bootstrap-groups'),request=store.get(scope);
     request.onsuccess=()=>{try{
       const existing=request.result&&readStorageRecord(request.result);
       if(existing&&existing.phase!=='complete'){
-        if(existing.id===record.id&&existing.planHash===record.planHash){result=existing;return}
+        if(existing.id===record.id&&existing.planHash===record.planHash){done(existing);return}
         throw new Error('storage_bootstrap_group_pending');
       }
       if(record.version!==2||record.scope!==scope||record.phase!=='prepared'||!String(record.id||'').trim()||!String(record.planHash||'').trim())throw new Error('storage_bootstrap_group_invalid');
-      result=structuredClone(record);store.put(sealStorageRecord(result),scope);
-    }catch(cause){error=cause;try{tx.abort()}catch{}}};
-    tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_bootstrap_group_aborted'));tx.onerror=()=>{error??=tx.error};
-  }))}
-  async function advanceBootstrapGroup(scope,id,fromPhase,toPhase,patch={}){patch=captureStorageJournalPayload(patch);return open().then(db=>new Promise((resolve,reject)=>{
-    const tx=db.transaction(['bootstrap-groups'],'readwrite'),store=tx.objectStore('bootstrap-groups'),request=store.get(scope);let result=null,error=null;
+      const result=structuredClone(record);store.put(sealStorageRecord(result),scope);done(result);
+    }catch(cause){fail(cause)}};
+  },'storage_bootstrap_group_aborted')}
+  async function advanceBootstrapGroup(scope,id,fromPhase,toPhase,patch={}){patch=captureStorageJournalPayload(patch);return transactStores(['bootstrap-groups'],'readwrite',(tx,done,fail)=>{
+    const store=tx.objectStore('bootstrap-groups'),request=store.get(scope);
     request.onsuccess=()=>{try{
       if(!request.result)throw new Error('storage_bootstrap_group_missing');
       const current=readStorageRecord(request.result);
       if(current.id!==id||current.scope!==scope||current.phase!==fromPhase)throw new Error('storage_bootstrap_group_changed');
-      result={...current,...structuredClone(patch),phase:toPhase};store.put(sealStorageRecord(result),scope);
-    }catch(cause){error=cause;try{tx.abort()}catch{}}};
-    tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_bootstrap_group_aborted'));tx.onerror=()=>{error??=tx.error};
-  }))}
+      const result={...current,...structuredClone(patch),phase:toPhase};store.put(sealStorageRecord(result),scope);done(result);
+    }catch(cause){fail(cause)}};
+  },'storage_bootstrap_group_aborted')}
   function readV2Marker(scope){return open().then(db=>new Promise((resolve,reject)=>{
     const tx=db.transaction(['cutovers'],'readonly'),request=tx.objectStore('cutovers').get(scope);
     request.onsuccess=()=>{try{resolve(request.result?readStorageRecord(request.result):null)}catch(error){reject(error)}};
@@ -301,33 +290,27 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
       tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(tx.error||new Error('storage_cutover_aborted'));
     }))
   }
-  function readLocalBirth(scope){return open().then(db=>new Promise((resolve,reject)=>{
-    const tx=db.transaction(['local-births'],'readonly'),request=tx.objectStore('local-births').get(scope);
-    request.onsuccess=()=>{try{resolve(request.result?readStorageRecord(request.result):null)}catch(error){reject(error)}};
-    request.onerror=()=>reject(request.error);
-  }))}
-  async function beginLocalBirth(scope,record){record=captureStorageJournalPayload(record);return open().then(db=>new Promise((resolve,reject)=>{
-    const tx=db.transaction(['local-births'],'readwrite'),store=tx.objectStore('local-births'),request=store.get(scope);let result=null,error=null;
+  function readLocalBirth(scope){return readTransition('local-births',scope)}
+  async function beginLocalBirth(scope,record){record=captureStorageJournalPayload(record);return transactStores(['local-births'],'readwrite',(tx,done,fail)=>{
+    const store=tx.objectStore('local-births'),request=store.get(scope);
     request.onsuccess=()=>{try{
-      if(request.result){result=readStorageRecord(request.result);if(result.id!==record.id)throw new Error('storage_local_birth_pending');return}
+      if(request.result){const result=readStorageRecord(request.result);if(result.id!==record.id)throw new Error('storage_local_birth_pending');done(result);return}
       if(record.scope!==scope||record.phase!=='prepared')throw new Error('storage_local_birth_invalid');
-      result=structuredClone(record);store.put(sealStorageRecord(result),scope);
-    }catch(cause){error=cause;try{tx.abort()}catch{}}};
-    tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_local_birth_aborted'));tx.onerror=()=>{error??=tx.error};
-  }))}
-  function advanceLocalBirth(scope,id,fromPhase,toPhase){return open().then(db=>new Promise((resolve,reject)=>{
-    const tx=db.transaction(['local-births'],'readwrite'),store=tx.objectStore('local-births'),request=store.get(scope);let result=null,error=null;
+      const result=structuredClone(record);store.put(sealStorageRecord(result),scope);done(result);
+    }catch(cause){fail(cause)}};
+  },'storage_local_birth_aborted')}
+  function advanceLocalBirth(scope,id,fromPhase,toPhase){return transactStores(['local-births'],'readwrite',(tx,done,fail)=>{
+    const store=tx.objectStore('local-births'),request=store.get(scope);
     request.onsuccess=()=>{try{
       if(!request.result)throw new Error('storage_local_birth_missing');const current=readStorageRecord(request.result);
       if(current.id!==id||current.phase!==fromPhase||current.scope!==scope)throw new Error('storage_local_birth_changed');
-      result={...current,phase:toPhase,updatedAt:new Date().toISOString()};
+      const result={...current,phase:toPhase,updatedAt:new Date().toISOString()};
       // The full source is needed only until both journals and the marker are
       // durable. Retire the duplicate snapshot after completion.
       if(toPhase==='complete'){delete result.mainState;delete result.sharedState}
-      store.put(sealStorageRecord(result),scope);
-    }catch(cause){error=cause;try{tx.abort()}catch{}}};
-    tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_local_birth_aborted'));tx.onerror=()=>{error??=tx.error};
-  }))}
+      store.put(sealStorageRecord(result),scope);done(result);
+    }catch(cause){fail(cause)}};
+  },'storage_local_birth_aborted')}
   function markLocalEngine(app){
     if(!['orders','kupa'].includes(app))throw new Error('storage_local_engine_app_invalid');
     return open().then(db=>new Promise((resolve,reject)=>{

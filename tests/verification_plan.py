@@ -44,6 +44,7 @@ GROUPS = {
 GROUPS["browser-sync"].append("runtime_auth_session_persistence.py")
 GROUPS["browser-sync"].append("runtime_kupa_source_transition.py")
 GROUPS["browser-sync"].append("runtime_spreadsheet_lifecycle.py")
+GROUPS["browser-sync"].append("runtime_idb_receipts.py")
 CORE_SUITES = [suite for group, suites in GROUPS.items() if not group.startswith("browser-") for suite in suites]
 RUNTIME_SUITES = [suite for group, suites in GROUPS.items() if group.startswith("browser-") for suite in suites]
 
