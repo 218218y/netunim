@@ -46,7 +46,7 @@ transaction_composition=(SITE/'domains/customers/morning-bank-links.js').read_te
 composition=(SITE/'domains/customers/composition.js').read_text(encoding='utf-8')
 customer_runtime=(SITE/'composition/customers.js').read_text(encoding='utf-8')
 main=(SITE/'main.js').read_text(encoding='utf-8')
-banks=(SITE/'domains/customers/morning-banks.js').read_text(encoding='utf-8')
+banks=(SITE/'core/morning-banks.js').read_text(encoding='utf-8')
 app_css=(ROOT/'netunim-orders/site/assets/app.css').read_text(encoding='utf-8')
 bank_detail=(SITE/'domains/finance/bank-transaction-detail-view.js').read_text(encoding='utf-8')
 bank_table=(SITE/'domains/finance/view.js').read_text(encoding='utf-8')

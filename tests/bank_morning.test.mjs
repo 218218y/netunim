@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {attachBankArchiveMetadata,bankMorningDebtCandidates,bankMorningEligibility,bankMorningPrefill} from '../netunim-orders/site/assets/js/domains/finance/bank-morning.js';
-import {MORNING_BANKS,findMorningBanks,morningBankDatalistMarkup,resolveMorningBank} from '../netunim-orders/site/assets/js/domains/customers/morning-banks.js';
+import {MORNING_BANKS,findMorningBanks,morningBankDatalistMarkup,resolveMorningBank} from '../netunim-orders/site/assets/js/core/morning-banks.js';
 import {normalizeBankFeedTransaction} from '../netunim-orders/site/assets/js/domains/finance/bank-feed.js';
 import {bankMorningActionCell,bankMorningLinkedDocumentsMarkup,createBankMorningDocumentActions} from '../netunim-orders/site/assets/js/domains/finance/bank-morning-view.js';
 import {bankTransferReferenceDetails} from '../netunim-orders/site/assets/js/domains/finance/bank-transaction-detail-view.js';

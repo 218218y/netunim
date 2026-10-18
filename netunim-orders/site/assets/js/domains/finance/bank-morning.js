@@ -1,6 +1,6 @@
 import {customerDebtProgressData} from '../../shared/customer-debt-progress.js';
 import {bankDocumentDate as dateOnly} from '../../shared/bank-feed-values.js';
-import {inferMorningBankFromText,morningBankCode,morningBankName,resolveMorningBank} from '../customers/morning-banks.js';
+import {inferMorningBankFromText,morningBankCode,morningBankName,resolveMorningBank} from '../../core/morning-banks.js';
 
 function clean(value,max=250){return String(value??'').trim().replace(/\s+/g,' ').slice(0,max)}
 function amountCents(value){const number=Number(value);return Number.isFinite(number)?Math.round(number*100):NaN}

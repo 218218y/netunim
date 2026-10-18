@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='kupa-app-shell-';
-const CACHE='kupa-app-shell-esm-4b7f6090c165';
+const CACHE='kupa-app-shell-esm-14e43df95834';
 const SHELL=[
   './',
   './index.html',
@@ -23,6 +23,7 @@ const SHELL=[
   './assets/js/composition/finance.js',
   './assets/js/composition/main-sync.js',
   './assets/js/composition/notes.js',
+  './assets/js/composition/search.js',
   './assets/js/composition/state-normalization.js',
   './assets/js/composition/storage-v2.js',
   './assets/js/connectivity.js',

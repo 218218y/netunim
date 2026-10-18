@@ -58,8 +58,11 @@ restore and live-provider release exercises therefore remain explicitly unverifi
    from numeric zero; missing balances cannot create a feed. No stored history is
    rewritten. Focused regression cases cover leap years, three time zones,
    malformed inputs and snapshot coverage. Full branch CI is required to merge.
-2. **Domain ownership:** next, remove the Customers/Finance catalogue inversion
-   and give Kupa search explicit read capabilities, guarded by module contracts.
+2. **Domain ownership:** the unchanged Morning bank catalogue now belongs to
+   Orders core. Finance no longer imports Customers. Kupa search receives Credit,
+   Bank and Cash read capabilities from composition; it imports no sibling domain.
+   Module graph rules enforce both boundaries. Existing search, incremental-index
+   and Morning regressions plus a read-capability isolation case pass locally.
 3. **Authority contracts:** next, extend checked implementation and malformed
    response evidence at demonstrated transport/decoder gaps.
 4. **Readability:** next, simplify touched dense paths with behavior evidence and
