@@ -178,6 +178,10 @@ for(const app of ['kupa','orders']){
           assert.ok(!/^(domains|sync)\//.test(dependency),relative+': state must use contracts or composition ports: '+dependency);
         if(relative.startsWith('assets/js/domains/'))
           assert.ok(!dependency.startsWith('ui/'),relative+': domains must use shared presentation primitives or UI ports: '+dependency);
+        if(app==='orders'&&relative.startsWith('assets/js/domains/finance/'))
+          assert.ok(!dependency.startsWith('domains/customers/'),relative+': Finance must use the core bank catalogue, without a Customers dependency');
+        if(app==='kupa'&&relative.startsWith('assets/js/domains/search/'))
+          assert.ok(!dependency.startsWith('domains/')||dependency.startsWith('domains/search/'),relative+': Search must receive other domains through composed read capabilities');
         if(relative.startsWith('assets/js/domains/'))
           assert.ok(!/^(integrations|platform)\//.test(dependency)&&!['shared/bank-bridge-client.js','shared/document-bridge-client.js','shared/browser-bridge-platform.js','shared/google-drive-client.js','shared/browser-google-drive-platform.js'].includes(dependency),relative+': domains must receive Bridge/platform implementations through ports: '+dependency);
       }

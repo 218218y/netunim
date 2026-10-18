@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-42268a37f9cd';
+const CACHE='orders-app-shell-esm-a654cf72e332';
 const SHELL=[
   './',
   './index.html',
@@ -44,6 +44,7 @@ const SHELL=[
   './assets/js/core/bulk-selection.js',
   './assets/js/core/dates.js',
   './assets/js/core/money.js',
+  './assets/js/core/morning-banks.js',
   './assets/js/core/morning-document-types.js',
   './assets/js/core/morning-operation-scope.js',
   './assets/js/core/search.js',
@@ -73,7 +74,6 @@ const SHELL=[
   './assets/js/domains/customers/morning-bank-links.js',
   './assets/js/domains/customers/morning-bank-transaction-link.js',
   './assets/js/domains/customers/morning-bank-transaction-picker.js',
-  './assets/js/domains/customers/morning-banks.js',
   './assets/js/domains/customers/morning-catalog-evidence.js',
   './assets/js/domains/customers/morning-catalog.js',
   './assets/js/domains/customers/morning-command-form.js',

@@ -61,8 +61,13 @@ restore and live-provider release exercises therefore remain explicitly unverifi
    increases by 2 KB (0.12%) for the validation code, with the 302-module and
    browser timing limits retained. Focused regression cases cover leap years, three time zones,
    malformed inputs and snapshot coverage. Full branch CI is required to merge.
-2. **Domain ownership:** next, remove the Customers/Finance catalogue inversion
-   and give Kupa search explicit read capabilities, guarded by module contracts.
+2. **Domain ownership:** the unchanged Morning bank catalogue now belongs to
+   Orders core. Finance no longer imports Customers. Kupa search receives Credit,
+   Bank and Cash read capabilities from composition; it imports no sibling domain.
+   Module graph rules enforce both boundaries. Existing search, incremental-index
+   and Morning regressions plus a read-capability isolation case pass locally.
+   The single new composition costs one eager module (303 total) and 1,083 bytes;
+   the existing 1,759,000-byte and browser timing limits remain in force.
 3. **Authority contracts:** next, extend checked implementation and malformed
    response evidence at demonstrated transport/decoder gaps.
 4. **Readability:** next, simplify touched dense paths with behavior evidence and

@@ -13,7 +13,7 @@ import {createCustomerRenderSelector,customerStatsData,customerDebtStatus} from 
 import {customerDebtProgressData} from '../shared/customer-debt-progress.js';
 import {createInventoryRenderStore,inventoryStatsData,inventoryLocationStatsData,inventorySearchMatch,inventoryEventViewData} from '../netunim-orders/site/assets/js/domains/inventory/model.js';
 import {buildOrderSearchFragment,ORDER_SEARCH_FRAGMENTS,buildGlobalSearchEntries} from '../netunim-orders/site/assets/js/domains/search/model.js';
-import {buildKupaSearchFragment,KUPA_SEARCH_FRAGMENTS,buildKupaGlobalSearchEntries} from '../netunim-kupa/site/assets/js/domains/search/model.js';
+import {buildKupaSearchFragment,KUPA_SEARCH_FRAGMENTS,buildKupaGlobalSearchEntries} from '../netunim-kupa/site/assets/js/composition/search.js';
 import {searchMatch,prepareSearchValues,createPreparedSearchMatcher} from '../netunim-kupa/site/assets/js/core/search.js';
 
 test('finance cache survives unrelated mutations, invalidates every finance dependency, isolates results and bounds options',()=>{

@@ -1,6 +1,6 @@
 import {esc} from '../../core/values.js';
 import {money} from '../../core/money.js';
-import {formatMorningBank,morningBankCode,morningBankDatalistMarkup,morningBankName,resolveMorningBank} from './morning-banks.js';
+import {formatMorningBank,morningBankCode,morningBankDatalistMarkup,morningBankName,resolveMorningBank} from '../../core/morning-banks.js';
 
 const PAYMENT_TYPES=Object.freeze({1:'מזומן',2:'צ׳ק',3:'כרטיס אשראי',4:'העברה בנקאית'});
 const CARD_TYPES=Object.freeze({1:'ישראכרט',2:'Visa',3:'Mastercard',4:'American Express',5:'Diners'});

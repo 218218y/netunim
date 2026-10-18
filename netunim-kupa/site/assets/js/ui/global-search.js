@@ -1,7 +1,7 @@
 import {createSearchFragmentIndex} from '../shared/search-fragments.js';
 import {createLazyGlobalDocumentSearch} from '../shared/lazy-global-document-search.js';
 import {money} from '../core/money.js';
-import {buildKupaSearchFragment,KUPA_SEARCH_FRAGMENTS,searchKupaGlobalEntries} from '../domains/search/model.js';
+import {buildKupaSearchFragment,KUPA_SEARCH_FRAGMENTS,searchKupaGlobalEntries} from '../composition/search.js';
 import {checkIsClosedStatus} from '../shared/shared-checks-contract.js';
 
 // Kupa owns only its business-data index and navigation. The full-page shell,
