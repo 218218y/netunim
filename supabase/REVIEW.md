@@ -1,5 +1,21 @@
 # Production schema normalization and security review
 
+## Candidate: sync incident registry (2026-10-18)
+
+`20261018180000_sync_incidents.sql` adds a separate monitoring table, with RLS
+and no direct browser table privileges. Its four public SECURITY DEFINER RPCs
+have a fixed `pg_catalog` search path, fully qualified relations/functions and
+authenticated-only execution. Every entrypoint derives its owner from `auth.uid()`;
+the internal INVOKER mutator has no browser EXECUTE grant. Device IDs are descriptive,
+not credentials. Account members can explicitly review an incident; automatic
+resolution also checks its installation/domain/epoch identity and monotonic version.
+
+Closed rows are permanent terminal tombstones. RPCs never touch business documents,
+operation ledgers, writer leases or capability minima. The candidate is tested on
+real PostgreSQL in `tests/sync_incidents_postgres.py`, including two users, null UID,
+anonymous execution, direct SQL denial, malformed input and concurrent OPEN/RESOLVE.
+This section describes a candidate; it is not evidence of Production deployment.
+
 Current reconstruction/operations runbook: [REPRODUCIBILITY.md](REPRODUCIBILITY.md).
 The normalization sequence below is historical and already completed; do not repeat
 it during new installations. Retention scheduling is now a separate canonical migration.

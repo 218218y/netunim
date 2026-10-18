@@ -1,4 +1,5 @@
 import {startupMark} from './shared/startup-timing.js';
+import {createSyncIncidentFeature} from './shared/sync-incident-feature.js';
 import {createOrdersChecksCapability} from './composition/checks.js';
 import {createOrdersFinanceCapability} from './composition/finance.js';
 import {readCloudWriteScope} from './shared/cloud-write-scope.js';
@@ -65,6 +66,7 @@ session.storageProtocolBlocked=true;
 const storageRecovery=createStorageStartupRecovery();
 const domainRevisions=createOrderDomainRevisions(session);
 const financeDerivations=createFinanceDerivationStore({revision:()=>domainRevisions.stamp(['finance','checks'])});
+let syncIncidents=null;
 
 const storageV2Coordinator=createOrdersStorageV2Coordinator({tab,session});
 const {owner:storageOwner,preparing:storagePreparationActive}=storageV2Coordinator;
@@ -312,6 +314,7 @@ finance.bindUi({
 finance.assertReady();
 
 const uiAlertCenter=createUiAlertCenter({
+  syncIncidents:()=>syncIncidents?.alerts||[],openSyncIncidents:()=>syncIncidents?.open(),
   alertsRevision:()=>domainRevisions.stamp(['checks','notes','finance','bankDisplay']),
   runFinance:financeDerivations.run,
   model,
@@ -506,6 +509,15 @@ uiEvents.bindActionEvents(document.getElementById('modal'),startupUiActions);
 uiGlobalSearch.bind();
 uiKeyboardNavigation.bind();
 startupMark('composition-end');
+syncIncidents=createSyncIncidentFeature({site:'orders',accountScope:cloudAuth.getAccountScope,subscribeAccountScope:cloudAuth.subscribeAccountScope,
+  primary:()=>tab.primaryTab,request:cloudAuth.supaFetch,
+  domains:[
+    {domain:'orders_main',read:()=>storageOwner.current()===cloudAuth.getAccountScope().owner?mainStorageV2.incidentSample():{known:false}},
+    {domain:'shared_checks',read:()=>storageOwner.current()===cloudAuth.getAccountScope().owner?sharedChecksV2.incidentSample():{known:false}},
+    {domain:'orders_sheet',read:()=>spreadsheetWorkspace.sync.incidentSample()},
+    {domain:'orders_calendar',read:()=>calendarRuntime.incidentSample()},
+  ],onChange:()=>uiAlertCenter.refreshIndicator(),
+});
 export const appReady=lifecycle.boot().then(()=>{if(session.storageProtocolBlocked||!storageRecovery.isReady()||session.syncCapabilitiesError)return false;domainsCalendarController.start();connectivity.resumeStartup();return true});
 void appReady.then(()=>{startupMark('boot-complete');if(tab.primaryTab&&!session.storageProtocolBlocked&&storageRecovery.isReady()&&!session.syncCapabilitiesError)startupMark('command-ready')},()=>{});
 export async function sharedChecksStorageV2Diagnostics(){await sharedChecksV2.flush();return {...sharedChecksV2.diagnostics}}

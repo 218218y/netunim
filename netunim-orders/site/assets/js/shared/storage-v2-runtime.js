@@ -5,6 +5,7 @@ import {equalSyncJson} from './cloud-sync.js';
 import {storageOwnerReady} from './storage-owner.js';
 import {isStorageV2ActivationCached} from './storage-v2-activation-cache.js';
 import {captureStorageCommandOptions} from './storage-journal-authority.js';
+import {journalIncidentSample} from './sync-incident-model.js';
 
 // Only invalid persisted data poisons an identity. IDB open/abort, blocked
 // connections and owner fencing may recover without a page reload.
@@ -254,5 +255,15 @@ export function createStorageV2Runtime({app,owner,primary,captureCommitAuthority
     operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result;
   }
   async function compact(){if(!readyForCurrentOwner())return false;const active=await settledJournal(),result=await active.compact();operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
-  return {recover,recoverReadOnly,recoverForOwner,initializeLocal,initializeCloudHead,initializeUploadLocalCloudHead,persist,flush,setBoundaryGate:gate=>{if(typeof gate!=='function')throw new Error('storage_boundary_gate_invalid');boundaryGate=gate},setCloudBase,captureCloudCursor,cloudState,materializeFlight,acknowledgeFlight,rejectFlight,setCloudControl,clearCloudControl,readCloudRecovery,commitCloudRecovery,replaceCurrentState,replaceLocalAuthoritativeState,replaceLocalWithPending,adoptCloudHead,replaceAuthoritativeState,resetCloudHead,compact,primaryDiagnostics:diagnostics,get diagnostics(){return diagnostics},get primaryReady(){return readyForCurrentOwner()},get cloudScope(){return authoritative&&identity===currentOwner()&&journal?.ready?{owner:`${identity}:${app}`,epoch:journal.epoch,accountOwner:identity,writable:readyForCurrentOwner()}:null},get accountV2Active(){const active=currentOwner();return !storageOwnerReady(active)||isStorageV2ActivationCached(app,active)},get durabilityAtRisk(){return undurableCount>0||undurableFailures.size>0},get commitPromise(){return commits}};
+  async function incidentSample(){
+    const active=journal,scopedIdentity=identity;
+    const current=()=>active===journal&&scopedIdentity===currentOwner()&&readyForCurrentOwner()&&!boundaryGate();
+    if(!current())return {known:false,blocked:identity===currentOwner()&&primary()&&diagnostics.recoveryFailure==='fatal',epoch:journal?.epoch||'unavailable',evidence:'unknown'};
+    try{
+      const cloud=await cloudState();
+      const isCurrent=()=>current()&&active.seq===cloud.seq&&active.epoch===cloud.base?.epoch&&undurableCount===0&&undurableFailures.size===0;
+      return journalIncidentSample(cloud,{durabilityError:undurableCount>0||undurableFailures.size>0,current:isCurrent});
+    }catch(error){return {known:false,blocked:current()&&storageRecoveryFailure(error)==='fatal',durabilityError:current()&&(undurableCount>0||undurableFailures.size>0),epoch:active?.epoch||'unavailable',evidence:'unknown'}}
+  }
+  return {incidentSample,recover,recoverReadOnly,recoverForOwner,initializeLocal,initializeCloudHead,initializeUploadLocalCloudHead,persist,flush,setBoundaryGate:gate=>{if(typeof gate!=='function')throw new Error('storage_boundary_gate_invalid');boundaryGate=gate},setCloudBase,captureCloudCursor,cloudState,materializeFlight,acknowledgeFlight,rejectFlight,setCloudControl,clearCloudControl,readCloudRecovery,commitCloudRecovery,replaceCurrentState,replaceLocalAuthoritativeState,replaceLocalWithPending,adoptCloudHead,replaceAuthoritativeState,resetCloudHead,compact,primaryDiagnostics:diagnostics,get diagnostics(){return diagnostics},get primaryReady(){return readyForCurrentOwner()},get cloudScope(){return authoritative&&identity===currentOwner()&&journal?.ready?{owner:`${identity}:${app}`,epoch:journal.epoch,accountOwner:identity,writable:readyForCurrentOwner()}:null},get accountV2Active(){const active=currentOwner();return !storageOwnerReady(active)||isStorageV2ActivationCached(app,active)},get durabilityAtRisk(){return undurableCount>0||undurableFailures.size>0},get commitPromise(){return commits}};
 }

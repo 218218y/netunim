@@ -12,7 +12,7 @@ export function createSpreadsheetSync({domain,request,account,accountScope,enabl
   let key='',owner='',record=null,loading=null,sending=null,polling=null,writeQueue=Promise.resolve(),draftTimer=null,idleTimer=null,retryTimer=null,dirty=false,generation=0;
   const patches=new Map();
   const metrics={rpc:0,sentBytes:0,reads:0,localCommits:0,journals:0};
-  let status='unloaded',error='',durableGeneration=0,structureGeneration=0,committedGeneration=0;
+  let status='unloaded',error='',durableGeneration=0,structureGeneration=0,committedGeneration=0,localCommitError=false;
   const currentAccount=()=>String(account?.()||'local');
   function setStatus(next,message=''){status=next;error=message;onStatus({status,error,revision:record?.revision||0})}
   function available(){return owner===currentAccount()&&primary()}
@@ -24,7 +24,7 @@ export function createSpreadsheetSync({domain,request,account,accountScope,enabl
     for(const [path,ids] of Object.entries(actual))if(ids.some(id=>!declared[path]?.includes(id)))throw new Error('מחיקה בגליון ללא אישור מפורש. השמירה נעצרה והעותק הקודם נשמר להתאוששות.');
     return actual;
   }
-  async function commit(){const value=snapshotRecord(),at=generation;await queue(()=>store.commit(key,value));metrics.localCommits++;committedGeneration=Math.max(committedGeneration,at);durableGeneration=Math.max(durableGeneration,at);if(generation===at){patches.clear();store.saveEmergency(key,[])}return value}
+  async function commit(){const value=snapshotRecord(),at=generation;try{await queue(()=>store.commit(key,value));localCommitError=false}catch(e){localCommitError=true;throw e}metrics.localCommits++;committedGeneration=Math.max(committedGeneration,at);durableGeneration=Math.max(durableGeneration,at);if(generation===at){patches.clear();store.saveEmergency(key,[])}return value}
   function captureRemoteScope(){
     const capturedOwner=owner,capturedRecord=record,observed=accountScope?.();
     const scopeOwner=observed?.owner,scopeEpoch=observed?.epoch;
@@ -63,7 +63,7 @@ export function createSpreadsheetSync({domain,request,account,accountScope,enabl
         // A legacy local copy is kept separately until compared to its cloud migration.
         const legacyCopy=original?migrateLegacySpreadsheet(original):null;
         const initial=legacyCopy||base;
-        record={version:1,revision:0,base:structuredClone(initial),working:structuredClone(initial),generation:0,flight:null,conflict:null,legacy:legacyCopy,legacyInitialized:true};model.state.notesSheet=initial;
+        record={version:1,revision:0,monitorEpoch:createOperationId('sheet-local'),base:structuredClone(initial),working:structuredClone(initial),generation:0,flight:null,conflict:null,legacy:legacyCopy,legacyInitialized:true};model.state.notesSheet=initial;
       }
       if(cloud())try{await reconcileRemote()}catch(e){if(e.status||!saved.record)throw e;setStatus('offline',e.message)}
       else if(record.legacy)record.needsLegacyCheck=true;
@@ -86,7 +86,7 @@ export function createSpreadsheetSync({domain,request,account,accountScope,enabl
     }
     if(dirty){const merged=mergeSpreadsheets(record.base,model.state.notesSheet,remote.state,approvedDeletes(record.base,model.state.notesSheet));if(merged.conflicts.length){record.conflict={items:merged.conflicts,remote};return}model.state.notesSheet=merged.state}
     else model.state.notesSheet=structuredClone(remote.state);
-    record.base=structuredClone(remote.state);record.revision=remote.revision;dirty=!equalSyncJson(record.base,model.state.notesSheet);
+    record.base=structuredClone(remote.state);record.revision=remote.revision;record.syncIncidentVerified=true;dirty=!equalSyncJson(record.base,model.state.notesSheet);
   }
   function scheduleCloud(){clearTimer(idleTimer);idleTimer=setTimer(()=>{idleTimer=null;void flush().catch(()=>{})},SPREADSHEET_IDLE_MS)}
   function changed(patch=null,{immediate=false,deleteIntents={}}={}){
@@ -123,7 +123,7 @@ export function createSpreadsheetSync({domain,request,account,accountScope,enabl
     record.flight=null;
     if(merged.conflicts.length)record.conflict={items:merged.conflicts,remote:result};
     else model.state.notesSheet=merged.state;
-    record.base=structuredClone(result.state);record.revision=result.revision;dirty=!!record.conflict||!equalSyncJson(record.base,model.state.notesSheet);if(!dirty)record.deleteIntents={};await commit();
+    record.base=structuredClone(result.state);record.revision=result.revision;record.syncIncidentVerified=true;dirty=!!record.conflict||!equalSyncJson(record.base,model.state.notesSheet);if(!dirty)record.deleteIntents={};await commit();
   }
   async function flush({send=true}={}){
     if(!record||!available())return false;
@@ -158,14 +158,14 @@ export function createSpreadsheetSync({domain,request,account,accountScope,enabl
     record.flight={restore:true,state:structuredClone(model.state.notesSheet),payload:{p_domain:domain,p_document_name:'main',p_expected_revision:record.revision,p_backup_id:id,p_operation_id:createOperationId('sheet-restore')}};dirty=true;
     await commit();const saved=await flush();if(!saved)throw new Error(record.conflict?'גרסת הענן השתנתה. השחזור נעצר לבדיקת השינויים.':'השחזור ממתין לאישור הענן וינוסה שוב בבטחה.');return true;
   }
-  async function useRemoteAfterExport(){if(!record?.conflict&&status!=='error')throw new Error('אין התנגשות פעילה');const remote=cloud()?await readRemote():record?.conflict?.remote;if(!remote)throw new Error('אין גרסת ענן זמינה. התחבר לרשת ונסה שוב.');assertSpreadsheet(remote.state);model.state.notesSheet=structuredClone(remote.state);record={version:1,revision:remote.revision,base:structuredClone(remote.state),flight:null,conflict:null,generation:++generation};dirty=false;await commit();setStatus('saved');onChange()}
+  async function useRemoteAfterExport(){if(!record?.conflict&&status!=='error')throw new Error('אין התנגשות פעילה');const remote=cloud()?await readRemote():record?.conflict?.remote;if(!remote)throw new Error('אין גרסת ענן זמינה. התחבר לרשת ונסה שוב.');assertSpreadsheet(remote.state);model.state.notesSheet=structuredClone(remote.state);record={version:1,revision:remote.revision,monitorEpoch:record?.monitorEpoch||'spreadsheet-v1',syncIncidentVerified:true,base:structuredClone(remote.state),flight:null,conflict:null,generation:++generation};dirty=false;await commit();setStatus('saved');onChange()}
   async function importWorkbook(source){if(!available()||!record||record.conflict||status==='error')throw new Error('נדרש גליון פעיל ללא התנגשות לפני ייבוא');const next=assertSpreadsheet(structuredClone(source));await flush();if(record.flight||record.conflict)throw new Error('יש להשלים את השמירה הממתינה לפני ייבוא');record.deleteIntents=spreadsheetDeleteIntents(record.base,next);model.state.notesSheet=next;generation++;structureGeneration=generation;dirty=!equalSyncJson(record.base,next);await flush();onChange()}
   async function captureLegacy(source,baseSource=null,deleteIntents={}){
     if(!source)return;
     if(record&&owner===currentAccount()&&baseSource&&!loading)await commit();
     const copy=structuredClone(source),legacyKey=currentAccount()+':'+domain+':main',saved=await store.load(legacyKey);
     if(saved.record&&!baseSource)return;
-    const base=createDefaultNotesSheet(),value=saved.record||{version:1,revision:0,base,working:base,generation:0,flight:null,conflict:null};
+    const base=createDefaultNotesSheet(),value=saved.record||{version:1,revision:0,monitorEpoch:createOperationId('sheet-local'),base,working:base,generation:0,flight:null,conflict:null};
     // Never replace an already edited independent workbook with an old main outbox.
     if(saved.record&&!saved.record.legacy&&(saved.record.revision>0||!equalSyncJson(saved.record.base,saved.record.working))){
       const candidate=migrateLegacySpreadsheet(copy);
@@ -178,5 +178,21 @@ export function createSpreadsheetSync({domain,request,account,accountScope,enabl
       await commit();setStatus('conflict');onChange();
     }
   }
-  return {model,open,changed,flush,poll,pagehide,beforeUnload,backups,restore,importWorkbook,useRemoteAfterExport,captureLegacy,metrics,get cacheStamp(){return `${key}:${record?.revision||0}:${generation}`},get ownerKey(){return key},get recovery(){return record?.legacyRecovery||record?.legacy||model.state.notesSheet},get status(){return status},get error(){return error},get revision(){return record?.revision||0},get ready(){return !!record&&owner===currentAccount()&&status!=='loading'&&status!=='error'},get conflict(){return record?.conflict||null}};
+  async function incidentSample(){
+    const scopedOwner=currentAccount(),scopedKey=scopedOwner+':'+domain+':main';
+    if(scopedOwner==='local')return {known:false};
+    try{
+      const live=!!record&&key===scopedKey,at=generation,captured=record;
+      const saved=await store.load(scopedKey),emergency=store.inspectEmergency(scopedKey),value=live?captured:saved.record;
+      if(!value)return {known:false};
+      const working=live?model.state.notesSheet:value.working;
+      assertSpreadsheet(value.base);assertSpreadsheet(working);
+      const pending=!!(value.flight||value.legacy||value.legacyRecovery||value.needsLegacyCheck||saved.drafts.length||emergency.length||!equalSyncJson(value.base,working)||live&&(dirty||generation>committedGeneration));
+      return {known:true,pending,blocked:!!value.conflict,conflict:!!value.conflict,
+        durabilityError:live&&localCommitError,epoch:value.monitorEpoch||'spreadsheet-v1',evidence:'spreadsheet',errorCode:'',
+        verified:!pending&&!value.conflict&&Number.isSafeInteger(value.revision)&&(value.revision>0||value.revision===0&&value.syncIncidentVerified===true)&&(!live||!localCommitError&&!loading&&!sending&&generation<=committedGeneration),
+        isCurrent:()=>currentAccount()===scopedOwner&&primary()&&record===captured&&generation===at&&!loading&&!sending&&(!live||!dirty&&!localCommitError)};
+    }catch{return {known:false,durabilityError:!!record&&key===scopedKey&&localCommitError,epoch:record?.monitorEpoch||'spreadsheet-v1',evidence:'unknown'}}
+  }
+  return {incidentSample,model,open,changed,flush,poll,pagehide,beforeUnload,backups,restore,importWorkbook,useRemoteAfterExport,captureLegacy,metrics,get cacheStamp(){return `${key}:${record?.revision||0}:${generation}`},get ownerKey(){return key},get recovery(){return record?.legacyRecovery||record?.legacy||model.state.notesSheet},get status(){return status},get error(){return error},get revision(){return record?.revision||0},get ready(){return !!record&&owner===currentAccount()&&status!=='loading'&&status!=='error'},get conflict(){return record?.conflict||null}};
 }

@@ -45,6 +45,8 @@ GROUPS = {
 GROUPS["browser-sync"].append("runtime_auth_session_persistence.py")
 GROUPS["browser-sync"].append("runtime_kupa_source_transition.py")
 GROUPS["browser-sync"].append("runtime_spreadsheet_lifecycle.py")
+GROUPS["database"].append("sync_incidents_postgres.py")
+GROUPS["browser-sync"].append("runtime_sync_incidents.py")
 GROUPS["browser-sync"].append("runtime_idb_receipts.py")
 GROUPS["browser-lifecycle"].append("runtime_release_compatibility.py")
 GROUPS["browser-lifecycle"].append("runtime_loaded_data.py")

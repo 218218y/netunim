@@ -1,4 +1,6 @@
 import {createSharedChecksStorageV2,validateSharedChecksState} from './shared-checks-storage-v2.js';
+import {journalIncidentSample} from './sync-incident-model.js';
+import {storageRecoveryFailure} from './storage-v2-runtime.js';
 import {CLOUD_WRITE_POLICY,cloudWriteError,createOperationId,equalSyncJson,normalizeCloudError,operationAuditMetadata,runBusyCloudWriteWithPolicy,structuredSyncConflict} from './cloud-sync.js';
 
 const canonical=state=>{validateSharedChecksState(state);return structuredClone({checks:state.checks,bankEvents:state.bankEvents})};
@@ -11,7 +13,7 @@ export function createSharedChecksV2Runtime({owner,primary,captureCommitAuthorit
   createStorage=createSharedChecksStorageV2,operationId=()=>createOperationId('shared-checks-v2'),now=()=>Date.now()}={}){
   if([owner,primary,readState,applyState,merge,readRemote,rpc].some(value=>typeof value!=='function'))throw new Error('shared_checks_runtime_configuration');
   let storage=null,identity='',opening=null,syncing=null,commits=Promise.resolve(),active=false,cursorReady=false,lastRemoteUpdatedAt=null,boundaryGate=()=>false;
-  let workPending=true,commitsInFlight=0;
+  let workPending=true,commitsInFlight=0,incidentRecoveryBlocked=false;
   const risks=new Map();
   const diagnostics={recoveries:0,initializations:0,operations:0,acks:0,rebases:0,errors:0,lastError:''};
   const currentOwner=()=>String(owner()||'').trim();
@@ -23,7 +25,7 @@ export function createSharedChecksV2Runtime({owner,primary,captureCommitAuthorit
   function assertSyncAllowed(store=storage){assertContext(store);if(boundaryGate())throw new Error('storage_boundary_in_progress')}
   function context(){
     if(!primaryMode()||!primary()||!currentOwner())throw new Error('shared_checks_primary_required');
-    if(identity!==currentOwner()||!storage){identity=currentOwner();storage=createStorage({owner,primary:()=>primary()&&primaryMode(),commitPrimary:captureCommitAuthority()});active=false;cursorReady=false;lastRemoteUpdatedAt=null;commits=Promise.resolve();workPending=true;commitsInFlight=0}
+    if(identity!==currentOwner()||!storage){identity=currentOwner();storage=createStorage({owner,primary:()=>primary()&&primaryMode(),commitPrimary:captureCommitAuthority()});active=false;cursorReady=false;lastRemoteUpdatedAt=null;commits=Promise.resolve();workPending=true;commitsInFlight=0;incidentRecoveryBlocked=false}
     return storage;
   }
   async function publish(store){
@@ -45,8 +47,8 @@ export function createSharedChecksV2Runtime({owner,primary,captureCommitAuthorit
       if(!cloud.base&&currentOwner()!=='local')throw new Error('shared_checks_cursor_missing');
       if(!cloud.base&&(cloud.flight||cloud.control))throw new Error('shared_checks_local_head_invalid');
       active=true;cursorReady=!!cloud.base;workPending=!!(cloud.pending||cloud.flight||cloud.control);diagnostics.recoveries++;
-      return publish(store);
-    })();
+      const result=await publish(store);incidentRecoveryBlocked=false;return result;
+    })().catch(error=>{if(store===storage)incidentRecoveryBlocked=storageRecoveryFailure(error)==='fatal'||/^shared_checks_(cursor_missing|local_head_invalid)$/.test(error.message);throw error});
     opening={store,promise};promise.finally(()=>{if(opening?.promise===promise)opening=null}).catch(()=>{});return promise;
   }
   async function recoverReadOnly(){
@@ -198,7 +200,17 @@ export function createSharedChecksV2Runtime({owner,primary,captureCommitAuthorit
     const result=await refreshBankRpc(cloud.base.revision);assertSyncAllowed(store);
     return result;
   }
-  return {recover,recoverReadOnly,initialize,initializeLocal,persist,sync,refreshBankMatches,diagnostics,setBoundaryGate:gate=>{if(typeof gate!=='function')throw new Error('storage_boundary_gate_invalid');boundaryGate=gate},
+  async function incidentSample(){
+    const store=storage,scopedIdentity=identity;
+    const current=()=>!!store&&store===storage&&active&&primaryMode()&&primary()&&scopedIdentity===currentOwner()&&!boundaryGate();
+    if(!current())return {known:false,blocked:incidentRecoveryBlocked&&primary()&&scopedIdentity===currentOwner(),epoch:'unavailable',evidence:'unknown'};
+    try{
+      const cloud=await store.cloudState();
+      return journalIncidentSample(cloud,{durabilityError:[...risks.values()].some(risk=>risk.owner===scopedIdentity&&risk.failed),
+        current:()=>current()&&store.seq===cloud.seq&&commitsInFlight===0&&![...risks.values()].some(risk=>risk.owner===scopedIdentity)});
+    }catch(error){return {known:false,blocked:current()&&storageRecoveryFailure(error)==='fatal',durabilityError:current()&&[...risks.values()].some(risk=>risk.owner===scopedIdentity&&risk.failed),epoch:'unavailable',evidence:'unknown'}}
+  }
+  return {incidentSample,recover,recoverReadOnly,initialize,initializeLocal,persist,sync,refreshBankMatches,diagnostics,setBoundaryGate:gate=>{if(typeof gate!=='function')throw new Error('storage_boundary_gate_invalid');boundaryGate=gate},
     replaceAuthoritativeState,replaceLocalWithPending,replaceLocalAuthoritativeState,resetCloudHead,
     async cloudState(){assertContext();const cloud=await storage.cloudState();cursorReady=!!cloud.base;if(cloud.pending||cloud.flight||cloud.control)workPending=true;return cloud},
     async flush(){await commits;return true},

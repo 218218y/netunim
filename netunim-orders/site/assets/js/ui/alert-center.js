@@ -7,6 +7,7 @@ import {checkDateFmt,checkTodayISO} from '../core/dates.js';
 import {bankWarningItems,cashflowWarningItems} from '../domains/bank/alerts.js';
 import {dueCheckWarningItems} from '../domains/checks/alerts.js';
 import {noteReminderWarningItems} from '../domains/notes/alerts.js';
+import {syncIncidentDescription} from '../shared/sync-incident-ui.js';
 
 function cashflowReason(item){
   return item.reason==='negative'
@@ -35,6 +36,7 @@ function noteAlertCard(item){
 }
 
 function alertCard(item){
+  if(item.kind==='sync_incident')return `<button type="button" class="alert-center-card" data-action="open-alert-target" data-click-arg0="${esc(item.id)}"><div class="alert-center-card-main"><strong>אזהרת סנכרון בין מחשבים</strong><p>${esc(syncIncidentDescription(item,item.clientId))}</p></div></button>`;
   if(item.kind==='check_bank')return checkBankReviewCard(item);
   if(item.kind==='bank_returned_cheque'||item.kind==='bank_missing')return bankAlertCard(item);
   if(item.kind==='note_reminder')return noteAlertCard(item);
@@ -45,16 +47,16 @@ function alertCard(item){
   return `<div class="alert-center-card check-warning alert-center-check-card"><button type="button" class="alert-center-check-open alert-center-card-action" data-action="open-alert-target" data-click-arg0="${esc(item.id)}"><div class="alert-center-card-icon" aria-hidden="true">!</div><div class="alert-center-card-main"><div class="alert-center-card-kicker">צ׳ק ${esc(item.account||'עסקי')} להפקדה</div><div class="alert-center-card-title"><span>${esc(item.name||'ללא שם')}</span><strong>${money(item.amount)}</strong></div><p>${esc(dueText)}</p>${facts.length?`<small>${facts.map(esc).join(' · ')}</small>`:''}</div><span class="alert-center-card-open" aria-hidden="true">פתח</span></button><div class="alert-center-check-actions"><button type="button" class="alert-center-card-deposit" data-action="mark-alert-check-deposited" data-click-arg0="${esc(item.checkId)}">סמן כהופקד</button></div></div>`;
 }
 
-export function createUiAlertCenter({alertsRevision,runFinance=withFinanceDerivations,model,financeSnapshot,modal,closeModal=()=>{},navigateToChecks=()=>{},navigateToCashflow=()=>{},navigateToBank=navigateToCashflow,navigateToNote=()=>{},markCheckDeposited=()=>false,dismissBankWarning=async()=>false,dismissNoteReminder=async()=>false}){
+export function createUiAlertCenter({alertsRevision,runFinance=withFinanceDerivations,model,financeSnapshot,modal,closeModal=()=>{},navigateToChecks=()=>{},navigateToCashflow=()=>{},navigateToBank=navigateToCashflow,navigateToNote=()=>{},markCheckDeposited=()=>false,dismissBankWarning=async()=>false,dismissNoteReminder=async()=>false,syncIncidents=()=>[],openSyncIncidents=()=>{}}){
   let startupHandled=false,openMode=null,dateRefreshTimer=null,lastKnownDate=checkTodayISO();
 
   let cachedAlerts=null,cachedRevision=null,cachedDate='';
   function currentAlerts(today=checkTodayISO()){
     const revision=alertsRevision?.();
-    if(revision!==undefined&&revision!==null&&cachedAlerts&&revision===cachedRevision&&today===cachedDate)return cachedAlerts;
+    if(revision!==undefined&&revision!==null&&cachedAlerts&&revision===cachedRevision&&today===cachedDate)return [...cachedAlerts,...syncIncidents()];
     const result=runFinance(()=>calculateAlerts(today));
     cachedAlerts=immutableProjection(result);cachedRevision=revision;cachedDate=today;
-    return cachedAlerts;
+    return [...cachedAlerts,...syncIncidents()];
   }
   function calculateAlerts(today){
     const snapshot=financeSnapshot?.()||{};
@@ -135,6 +137,7 @@ export function createUiAlertCenter({alertsRevision,runFinance=withFinanceDeriva
     const item=currentAlerts().find(row=>row.id===String(alertId||''));
     if(!item)return false;
     closeModal();
+    if(item.kind==='sync_incident'){openSyncIncidents();return true}
     if(item.kind==='check_due'){navigateToChecks(item.checkId,item.account);return true}
     if(item.kind==='cashflow'){navigateToCashflow(item.account);return true}
     if(item.kind==='bank_returned_cheque'||item.kind==='bank_missing'){navigateToBank(item.account);return true}

@@ -99,5 +99,11 @@ export function createSpreadsheetStore({indexedDB=globalThis.indexedDB,emergency
       return Array.isArray(value)?value:[];
     }catch{return []}
   }
-  return {load,commit,journal,saveEmergency,readEmergency};
+  /** Strict monitoring read: unreadable recovery data is never an empty journal.
+   * @param {string} key @returns {SpreadsheetDraft[]} */
+  function inspectEmergency(key){
+    if(!emergency)throw new Error('spreadsheet_emergency_unavailable');
+    return captureDrafts(JSON.parse(emergency.getItem(emergencyKey(key))||'[]'));
+  }
+  return {load,commit,journal,saveEmergency,readEmergency,inspectEmergency};
 }
