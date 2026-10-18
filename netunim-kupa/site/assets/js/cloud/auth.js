@@ -1,5 +1,6 @@
 import {createAuthenticatedAccountScope} from '../shared/authenticated-account-scope.js';
 import {createBrowserAccountObservation} from '../shared/browser-account-observation.js';
+import {createAuthSessionPersistence} from './session-store.js';
 import {createSyncCapabilityGate,syncRequestNeedsCapabilities} from '../shared/sync-capabilities.js';
 import {supabaseConfig as SUPA_CONFIG} from '../../../supabase/config.js';
 import {SUPA_SESSION_KEY, SUPA_SESSION_IDB_KEY, SUPA_EMAIL_KEY, SUPA_AUTO_KEY} from '../state/constants.js';
@@ -17,7 +18,6 @@ let supaDataApiFailureCount=0;
 let supaDataApiBackgroundFailures=0;
 let supaDataApiBlockedUntil=0;
 let supaDataApiBlockCode='';
-let refreshPromise=null;
 let cloudAuthInstanceSequence=0;
 
 function isSupaDataApiPath(path){return /^\/rest\/v1(?:\/|\?|$)/.test(String(path||''))}
@@ -67,6 +67,12 @@ async function fetchSupaNetwork(url,options,{retry=false,timeoutMs=SUPA_NETWORK_
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createCloudAuth({session, idbGet, idbPut, idbDelete, supaProjectRef, setCloudHeaderStatus, assertSessionOwner=()=>true}){
+let refreshFlight=null;
+const credentials=createAuthSessionPersistence({
+  key:SUPA_SESSION_KEY,initial:session.supaSession||null,storage:()=>localStorage,
+  decode:value=>value&&typeof value==='object'&&!Array.isArray(value)?value:null,
+  mirror:{read:()=>idbGet('sync',SUPA_SESSION_IDB_KEY),write:value=>idbPut('sync',SUPA_SESSION_IDB_KEY,value),remove:()=>idbDelete('sync',SUPA_SESSION_IDB_KEY)},
+});
 const capabilityGate=createSyncCapabilityGate(async()=>{const response=await supaRest('/rest/v1/rpc/get_netunim_sync_capabilities',{method:'POST',body:'{}',dataPriority:'high'});if(!response.ok)throw Object.assign(new Error('ה־DB אינו תואם לגרסת האתר; יש להשלים את עדכון מסד הנתונים.'),{code:'netunim_sync_capabilities_missing'});return response.json()});
 async function ensureSyncCapabilities(){session.syncCapabilitiesChecking=true;try{const ready=await capabilityGate.ensure();session.syncCapabilitiesError=null;return ready}catch(error){session.syncCapabilitiesError=error;throw error}finally{session.syncCapabilitiesChecking=false}}
 function supaConfigured(){return !!(SUPA_CONFIG.url&&SUPA_CONFIG.publishableKey)}
@@ -80,13 +86,23 @@ function guardCoalesceIdentity(guard){
   if(!id){id=++requestGuardSequence;requestGuards.set(guard,id)}
   return String(id);
 }
-const accountObservation=createBrowserAccountObservation({scope:accountScope,sessionKey:SUPA_SESSION_KEY,rereadSession:()=>{session.supaSession=null;return loadSupaSession()}});
+const accountObservation=createBrowserAccountObservation({scope:accountScope,sessionKey:SUPA_SESSION_KEY,rereadSession:()=>{session.supaSession=credentials.reread();return session.supaSession}});
 
-function loadSupaSession(){if(session.supaSession)return session.supaSession;try{session.supaSession=JSON.parse(localStorage.getItem(SUPA_SESSION_KEY)||'null')}catch(e){session.supaSession=null}return session.supaSession}
+function loadSupaSession(){session.supaSession=credentials.load();return session.supaSession}
 
-async function restoreSupaSession(){let s=loadSupaSession();if(s)return s;try{s=await idbGet('sync',SUPA_SESSION_IDB_KEY);if(s){session.supaSession=s;try{localStorage.setItem(SUPA_SESSION_KEY,JSON.stringify(s))}catch(e){}}}catch(e){}return s||null}
+async function restoreSupaSession(){session.supaSession=await credentials.restore();return session.supaSession}
 
-function storeSupaSession(s,{refresh=false}={}){capabilityGate.reset();session.supaSession=s||null;try{if(s)localStorage.setItem(SUPA_SESSION_KEY,JSON.stringify(s));else localStorage.removeItem(SUPA_SESSION_KEY)}catch(e){};if(s)idbPut('sync',SUPA_SESSION_IDB_KEY,s).catch(()=>{});else idbDelete('sync',SUPA_SESSION_IDB_KEY).catch(()=>{});accountScope.replace(s,{refresh})}
+function storeSupaSession(s,{refresh=false}={}){
+  capabilityGate.reset();
+  try{credentials.store(s||null)}
+  finally{session.supaSession=credentials.load();accountScope.replace(session.supaSession,{refresh})}
+}
+
+function assertLoginCurrent(observed){
+  const current=accountScope.current();
+  if(current.epoch!==observed.epoch||current.owner!==observed.owner)
+    throw Object.assign(new Error('ההתחברות השתנתה במהלך הבקשה. יש להתחבר מחדש.'),{code:'cloud_auth_scope_changed'});
+}
 
 function isSupabaseAuthError(e){if(['storage_owner_auth_mismatch','storage_owner_local_adoption_auth_mismatch','storage_owner_reauth_required'].includes(String(e?.code||'')))return true;const m=String(e?.message||e||'').toLowerCase();return m.includes('invalid login credentials')||m.includes('invalid_credentials')||m.includes('jwt')||m.includes('refresh token')||m.includes('פג תוקף')||m.includes('נדרשת התחברות')}
 
@@ -96,8 +112,10 @@ function supaBaseHeaders(token){const h={'apikey':SUPA_CONFIG.publishableKey,'Co
 
 async function supaAuthPassword(email,password){
   if(!supaConfigured())throw new Error('הגדרת Supabase חסרה');
+  const observed=accountScope.current();
   const r=await fetch(`${SUPA_CONFIG.url}/auth/v1/token?grant_type=password`,{method:'POST',headers:supaBaseHeaders(),body:JSON.stringify({email,password})});
   const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j?.error_description||j?.msg||j?.message||'התחברות Supabase נכשלה');
+  assertLoginCurrent(observed);
   j.expires_at=Math.floor(Date.now()/1000)+Number(j.expires_in||3600);assertSessionOwner(j);storeSupaSession(j);localStorage.setItem(SUPA_EMAIL_KEY,email);localStorage.setItem(SUPA_AUTO_KEY,'1');session.cloudAuthNoDocument=false;setCloudHeaderStatus('auth','ענן: מחובר לחשבון');return j
 }
 
@@ -118,7 +136,40 @@ async function localResetReadOnlyFetch(resetSession,path){
   return r
 }
 
-async function supaRefresh({force=true,observedAccessToken=''}={}){if(refreshPromise)return refreshPromise;refreshPromise=(async()=>{const refresh=async()=>{const scope=accountScope.current();const s=loadSupaSession();if(!s?.refresh_token)throw new Error('נדרשת התחברות מחדש לענן');assertSessionOwner(s);if(observedAccessToken&&s.access_token&&s.access_token!==observedAccessToken)return s;if(!force&&Number(s.expires_at||0)>Math.floor(Date.now()/1000)+60)return s;const r=await fetch(`${SUPA_CONFIG.url}/auth/v1/token?grant_type=refresh_token`,{method:'POST',headers:supaBaseHeaders(),body:JSON.stringify({refresh_token:s.refresh_token})});const j=await r.json().catch(()=>({}));accountScope.assertCurrent(scope);if(!r.ok){storeSupaSession(null);setCloudHeaderStatus('off','ענן: נדרשת התחברות');throw new Error('פג תוקף ההתחברות לענן')};j.expires_at=Math.floor(Date.now()/1000)+Number(j.expires_in||3600);assertSessionOwner(j);storeSupaSession(j,{refresh:true});setCloudHeaderStatus('auth','ענן: מחובר לחשבון');return j};return globalThis.navigator?.locks?.request?navigator.locks.request('netunim-kupa-auth-refresh',{mode:'exclusive'},refresh):refresh()})().finally(()=>{refreshPromise=null});return refreshPromise}
+async function supaRefresh({force=true,observedAccessToken=''}={}){
+  const scope=accountScope.current();
+  if(refreshFlight?.scope.owner===scope.owner&&refreshFlight.scope.epoch===scope.epoch)return refreshFlight.promise;
+  const refresh=async()=>{
+    // Capture before waiting for the browser lock, which may outlive this login.
+    accountScope.assertCurrent(scope);
+    const s=loadSupaSession();
+    if(!s?.refresh_token)throw new Error('נדרשת התחברות מחדש לענן');
+    assertSessionOwner(s);
+    if(observedAccessToken&&s.access_token&&s.access_token!==observedAccessToken)return s;
+    if(!force&&Number(s.expires_at||0)>Math.floor(Date.now()/1000)+60)return s;
+    const r=await fetch(`${SUPA_CONFIG.url}/auth/v1/token?grant_type=refresh_token`,{
+      method:'POST',headers:supaBaseHeaders(),body:JSON.stringify({refresh_token:s.refresh_token}),
+    });
+    const j=await r.json().catch(()=>({}));
+    accountScope.assertCurrent(scope);
+    if(!r.ok){
+      storeSupaSession(null);
+      setCloudHeaderStatus('off','ענן: נדרשת התחברות');
+      throw new Error('פג תוקף ההתחברות לענן');
+    }
+    j.expires_at=Math.floor(Date.now()/1000)+Number(j.expires_in||3600);
+    assertSessionOwner(j);
+    storeSupaSession(j,{refresh:true});
+    setCloudHeaderStatus('auth','ענן: מחובר לחשבון');
+    return j;
+  };
+  const flight={scope,promise:null};
+  flight.promise=(globalThis.navigator?.locks?.request
+    ?navigator.locks.request('netunim-kupa-auth-refresh',{mode:'exclusive'},refresh):refresh())
+    .finally(()=>{if(refreshFlight===flight)refreshFlight=null});
+  refreshFlight=flight;
+  return flight.promise;
+}
 
 async function supaEnsureSession(){let s=loadSupaSession();if(!s)throw new Error('נדרשת התחברות לענן');assertSessionOwner(s);if(Number(s.expires_at||0)<=Math.floor(Date.now()/1000)+60)s=await supaRefresh({force:false,observedAccessToken:s.access_token});return s}
 

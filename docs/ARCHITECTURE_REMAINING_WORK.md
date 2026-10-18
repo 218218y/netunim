@@ -49,6 +49,10 @@ restore and live-provider release exercises therefore remain explicitly unverifi
 
 ## Prioritized remaining work
 
+The 2026-10-18 continuation also closes Kupa credential resurrection after a failed
+IndexedDB logout delete, orders credential mirror writes and scopes refresh flights
+to their login. See [credential authority](KUPA_AUTH_SESSION_AUTHORITY.md).
+
 All three Bank authority migrations (`20261016120000`, `20261016130000` and
 `20261016140000`) are installed. The complete authenticated read-only
 [2026-10-18 Production postflight](PRODUCTION_POSTFLIGHT_20261018.md) verified all
