@@ -5,7 +5,7 @@ const reasons={stalled:'שינויים ממתינים ללא אישור סנכר
 export function syncIncidentDescription(row,clientId){
   return `${row.device_label||'עמדה ללא שם'} · ${row.client_instance_id===clientId?'התקנה זו':'התקנה אחרת'} · ${row.site==='orders'?'הזמנות':'קופה'} · ${domains[row.domain]} · ${reasons[row.reason_code]}`;
 }
-export function createSyncIncidentUi({document=globalThis.document,clientId,label,saveLabel,refresh,review,confirm=message=>globalThis.confirm(message)}){
+export function createSyncIncidentUi({document=globalThis.document,clientId,label,saveLabel,refresh,review,confirmReview=async()=>false}){
   const root=document.createElement('section');root.className='sync-incidents';root.dir='rtl';root.hidden=true;root.setAttribute('aria-label','התראות סנכרון בין מחשבים');
   document.body.append(root);
   let state={status:'signed_out',incidents:[],localError:false},opened=false,last='',error='';
@@ -37,7 +37,7 @@ export function createSyncIncidentUi({document=globalThis.document,clientId,labe
       if(action==='refresh')await refresh();
       if(action==='review'){
         const row=state.incidents.find(item=>item.incident_id===button.dataset.incidentId);
-        if(row&&confirm('הפעולה מיועדת לעמדה שנהרסה או שיצאה משימוש, לאחר בדיקת השינויים שלה. היא מסירה את ההתראה בלי לאמת סנכרון. להמשיך?'))await review(row);
+        if(row&&await confirmReview('הפעולה מיועדת לעמדה שנהרסה או שיצאה משימוש, לאחר בדיקת השינויים שלה. היא מסירה את ההתראה בלי לאמת סנכרון. להמשיך?'))await review(row);
       }
     }catch{error='הפעולה לא הושלמה. יש לרענן ולנסות שוב.'}
     render();

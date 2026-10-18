@@ -510,6 +510,7 @@ uiGlobalSearch.bind();
 uiKeyboardNavigation.bind();
 startupMark('composition-end');
 syncIncidents=createSyncIncidentFeature({site:'orders',accountScope:cloudAuth.getAccountScope,subscribeAccountScope:cloudAuth.subscribeAccountScope,
+  confirmReview:message=>uiModal.confirmDialog('טיפול ידני בהתראת סנכרון',message,{confirmText:'סימון כטופל ללא אימות',tone:'danger'}),
   primary:()=>tab.primaryTab,request:cloudAuth.supaFetch,
   domains:[
     {domain:'orders_main',read:()=>storageOwner.current()===cloudAuth.getAccountScope().owner?mainStorageV2.incidentSample():{known:false}},

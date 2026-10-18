@@ -51,12 +51,20 @@ export function createUiAlertCenter({alertsRevision,runFinance=withFinanceDeriva
   let startupHandled=false,openMode=null,dateRefreshTimer=null,lastKnownDate=checkTodayISO();
 
   let cachedAlerts=null,cachedRevision=null,cachedDate='';
+  let combinedBase=null,combinedSignature='',combinedAlerts=null;
+  function withSyncIncidents(alerts){
+    const incidents=syncIncidents();
+    if(!incidents.length)return alerts;
+    const signature=JSON.stringify(incidents);
+    if(combinedBase!==alerts||combinedSignature!==signature){combinedBase=alerts;combinedSignature=signature;combinedAlerts=immutableProjection([...alerts,...incidents])}
+    return combinedAlerts;
+  }
   function currentAlerts(today=checkTodayISO()){
     const revision=alertsRevision?.();
-    if(revision!==undefined&&revision!==null&&cachedAlerts&&revision===cachedRevision&&today===cachedDate)return [...cachedAlerts,...syncIncidents()];
+    if(revision!==undefined&&revision!==null&&cachedAlerts&&revision===cachedRevision&&today===cachedDate)return withSyncIncidents(cachedAlerts);
     const result=runFinance(()=>calculateAlerts(today));
     cachedAlerts=immutableProjection(result);cachedRevision=revision;cachedDate=today;
-    return [...cachedAlerts,...syncIncidents()];
+    return withSyncIncidents(cachedAlerts);
   }
   function calculateAlerts(today){
     const snapshot=financeSnapshot?.()||{};

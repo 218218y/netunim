@@ -36,7 +36,7 @@ class Registry:
 
 class IncidentBrowser(BrowserSession):
     def __init__(self, app, registry):
-        super().__init__(ROOT/f'netunim-{app}/site',app+'-sync-incidents',instrument=False)
+        super().__init__(ROOT/f'netunim-{app}/site',app+'-sync-incidents',instrument=False,native_incidents=True)
         self.registry=registry
 
     def _start_server(self):
@@ -80,7 +80,7 @@ SETUP=r"""(async()=>{
   globalThis.incidentSample={known:true,pending:true,blocked:true,conflict:true,epoch:'test-E',evidence:'journal',isCurrent:()=>true};
   const store=createSyncIncidentStore(),scope=()=>({owner:'11111111-1111-4111-8111-111111111111',epoch:1});
   const registry=createSyncIncidentRegistry({request:(path,options)=>fetch(path,options),accountScope:scope});
-  const ui=createSyncIncidentUi({clientId:site+'-client',label:()=>site==='orders'?'Office':'Cash desk',saveLabel:()=>{},refresh:()=>monitor.wake(),review:row=>monitor.review(row),confirm:()=>true});
+  const ui=createSyncIncidentUi({clientId:site+'-client',label:()=>site==='orders'?'Office':'Cash desk',saveLabel:()=>{},refresh:()=>monitor.wake(),review:row=>monitor.review(row),confirmReview:()=>true});
   const monitor=createSyncIncidentMonitor({site,clientId:site+'-client',deviceLabel:()=>site==='orders'?'Office':'Cash desk',accountScope:scope,primary:()=>true,
     domains:[{domain:site+'_main',read:async()=>globalThis.incidentSample}],store,registry,publish:state=>ui.update(state),now:()=>time,
     timers:{setTimeout:()=>0,clearTimeout:()=>{}}});

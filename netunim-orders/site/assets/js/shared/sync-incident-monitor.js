@@ -116,7 +116,7 @@ export function createSyncIncidentMonitor({site,clientId,deviceLabel=()=>'',acco
   }
   function wake(){resetAccount(accountScope());nextRead=0;return tick()}
   async function review(row){
-    const scope=accountScope();if(!current(scope))throw new Error('sync_incident_account_changed');
+    const scope=accountScope();if(!current(scope)||row.owner_id!==scope.owner)throw new Error('sync_incident_account_changed');
     await registry.review(row,scope);if(current(scope))await wake();
   }
   return {start(){if(!stopped)return tick();stopped=false;return wake()},wake,tick,review,

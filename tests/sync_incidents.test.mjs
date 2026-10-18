@@ -24,9 +24,9 @@ for(const app of ['orders','kupa'])test(`${app} Main observer follows journal se
   await runtime.initializeCloudHead(1,{notes:[]},{sourceOwner:owner,intent:'cloud-authoritative'});
   const before=await runtime.incidentSample();assert.equal(classifySyncIncident(before).state,'clean_verified');
   const state={notes:[{id:'N',content:'unsynchronized'}]};
-  await runtime.persist(state,{operations:[{type:'put',collection:'notes',id:'N',mode:'insert'}]}).committed;
+  const write=runtime.persist(state,{operations:[{type:'put',collection:'notes',id:'N',mode:'insert',index:0}]});assert.equal(write.handled,true);await write.committed;
   assert.equal(before.isCurrent(),false);assert.equal((await runtime.incidentSample()).pending,true);
-  const flight=await runtime.materializeFlight();assert.notEqual(classifySyncIncident(await runtime.incidentSample()).state,'clean_verified');
+  const flight=await runtime.materializeFlight({operationId:uuid(99),baseRevision:1});assert.notEqual(classifySyncIncident(await runtime.incidentSample()).state,'clean_verified');
   await runtime.acknowledgeFlight(flight.operationId,2,state,{currentState:state,expectedSeq:1});
   const after=await runtime.incidentSample();assert.equal(classifySyncIncident(after).state,'clean_verified');assert.equal(after.isCurrent(),true);
   activeOwner=other;assert.equal(classifySyncIncident(await runtime.incidentSample()).state,'unknown');assert.equal(after.isCurrent(),false);

@@ -643,6 +643,7 @@ uiGlobalSearch.bind();
 dashboard.runtime.start();
 startupMark('composition-end');
 createSyncIncidentFeature({site:'kupa',accountScope:cloudAuth.getAccountScope,subscribeAccountScope:cloudAuth.subscribeAccountScope,
+  confirmReview:message=>uiModal.confirmDialog('טיפול ידני בהתראת סנכרון',message,{confirmText:'סימון כטופל ללא אימות',tone:'danger'}),
   primary:()=>tab.primaryTab,request:cloudAuth.supaRest,
   domains:[
     {domain:'kupa_main',read:()=>storageOwner.current()===cloudAuth.getAccountScope().owner?mainStorageV2.incidentSample():{known:false}},

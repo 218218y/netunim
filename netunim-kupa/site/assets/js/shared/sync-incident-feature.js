@@ -6,14 +6,14 @@ import {createSyncIncidentUi} from './sync-incident-ui.js';
 
 // Browser resources are composed once per application. No business write waits
 // for this feature, and its RPCs retain the normal authenticated API scheduler.
-export function createSyncIncidentFeature({site,accountScope,subscribeAccountScope,primary,request,domains,onChange=()=>{}}){
+export function createSyncIncidentFeature({site,accountScope,subscribeAccountScope,primary,request,domains,confirmReview=async()=>false,onChange=()=>{}}){
   let ui=null;
   try{
   const raw=String(clientInstanceId()),clientId=raw.length>0&&raw.length<=160&&!/[\u0000-\u001f]/.test(raw)?raw:crypto.randomUUID();
   const labelKey='netunim.sync.device-label.v1';
   const label=()=>{try{return (localStorage.getItem(labelKey)||'').slice(0,80)}catch{return ''}};
   const registry=createSyncIncidentRegistry({request,accountScope});
-  ui=createSyncIncidentUi({clientId,label,saveLabel:value=>localStorage.setItem(labelKey,value.slice(0,80)),refresh:()=>monitor.wake(),review:row=>monitor.review(row)});
+  ui=createSyncIncidentUi({clientId,label,saveLabel:value=>localStorage.setItem(labelKey,value.slice(0,80)),refresh:()=>monitor.wake(),review:row=>monitor.review(row),confirmReview});
   const monitor=createSyncIncidentMonitor({site,clientId,deviceLabel:label,accountScope,primary,domains,store:createSyncIncidentStore(),registry,
     visible:()=>document.visibilityState!=='hidden',publish:state=>{ui.update(state);onChange(state)}});
   const wake=()=>{void monitor.wake()},visibility=()=>{if(document.visibilityState!=='hidden')wake()};

@@ -265,5 +265,12 @@ export function createStorageV2Runtime({app,owner,primary,captureCommitAuthority
       return journalIncidentSample(cloud,{durabilityError:undurableFailures.has(active),current:isCurrent});
     }catch(error){return {known:false,blocked:current()&&storageRecoveryFailure(error)==='fatal',durabilityError:current()&&undurableFailures.has(active),epoch:active?.epoch||'unavailable',evidence:'unknown'}}
   }
-  return {incidentSample,recover,recoverReadOnly,recoverForOwner,initializeLocal,initializeCloudHead,initializeUploadLocalCloudHead,persist,flush,setBoundaryGate:gate=>{if(typeof gate!=='function')throw new Error('storage_boundary_gate_invalid');boundaryGate=gate},setCloudBase,captureCloudCursor,cloudState,materializeFlight,acknowledgeFlight,rejectFlight,setCloudControl,clearCloudControl,readCloudRecovery,commitCloudRecovery,replaceCurrentState,replaceLocalAuthoritativeState,replaceLocalWithPending,adoptCloudHead,replaceAuthoritativeState,resetCloudHead,compact,primaryDiagnostics:diagnostics,get diagnostics(){return diagnostics},get primaryReady(){return readyForCurrentOwner()},get cloudScope(){return authoritative&&identity===currentOwner()&&journal?.ready?{owner:`${identity}:${app}`,epoch:journal.epoch,accountOwner:identity,writable:readyForCurrentOwner()}:null},get accountV2Active(){const active=currentOwner();return !storageOwnerReady(active)||isStorageV2ActivationCached(app,active)},get durabilityAtRisk(){return undurableCount>0||undurableFailures.size>0},get commitPromise(){return commits}};
+  return {incidentSample,recover,recoverReadOnly,recoverForOwner,initializeLocal,initializeCloudHead,initializeUploadLocalCloudHead,persist,flush,
+    setBoundaryGate:gate=>{if(typeof gate!=='function')throw new Error('storage_boundary_gate_invalid');boundaryGate=gate},
+    setCloudBase,captureCloudCursor,cloudState,materializeFlight,acknowledgeFlight,rejectFlight,setCloudControl,clearCloudControl,readCloudRecovery,commitCloudRecovery,
+    replaceCurrentState,replaceLocalAuthoritativeState,replaceLocalWithPending,adoptCloudHead,replaceAuthoritativeState,resetCloudHead,compact,primaryDiagnostics:diagnostics,
+    get diagnostics(){return diagnostics},get primaryReady(){return readyForCurrentOwner()},
+    get cloudScope(){return authoritative&&identity===currentOwner()&&journal?.ready?{owner:`${identity}:${app}`,epoch:journal.epoch,accountOwner:identity,writable:readyForCurrentOwner()}:null},
+    get accountV2Active(){const active=currentOwner();return !storageOwnerReady(active)||isStorageV2ActivationCached(app,active)},
+    get durabilityAtRisk(){return undurableCount>0||undurableFailures.size>0},get commitPromise(){return commits}};
 }
