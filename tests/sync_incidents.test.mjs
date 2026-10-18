@@ -41,7 +41,8 @@ test('failed durability in account A cannot prevent verified recovery in account
   const write=runtime.persist({notes:[{id:'N',content:'failed'}]},{operations:[{type:'put',collection:'notes',id:'N',mode:'insert',index:0}]});
   const settled=runtime.commitPromise.catch(()=>{});await assert.rejects(write.committed,/quota/);await settled;
   assert.equal(classifySyncIncident(await runtime.incidentSample()).state,failEmergency?'local_durability_error':'blocked');
-  activeOwner=other;await runtime.initializeCloudHead(1,{notes:[]},{sourceOwner:other,intent:'cloud-authoritative'});
+  activeOwner=other;const duringHandoff=runtime.incidentSample();await runtime.initializeCloudHead(1,{notes:[]},{sourceOwner:other,intent:'cloud-authoritative'});
+  assert.equal(classifySyncIncident(await duringHandoff).state,'unknown');
   const verified=await runtime.incidentSample();assert.equal(classifySyncIncident(verified).state,'clean_verified');assert.equal(verified.isCurrent(),true);
   }
 });
