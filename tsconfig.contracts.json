@@ -21,6 +21,7 @@
   },
   "files": [
     "shared/indexed-db-connection.js",
+    "tests/fixtures/checked-idb-receipts.mjs",
     "tests/fixtures/checked-bank-archive-command.mjs",
     "netunim-kupa/site/assets/js/storage/local-source-transition.js",
     "tests/fixtures/checked-local-source-transition.mjs",
