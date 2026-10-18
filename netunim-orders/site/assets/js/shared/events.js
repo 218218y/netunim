@@ -1,6 +1,9 @@
 import {beginMeasure} from './runtime-performance.js';
 // Stable-container delegation; handlers receive the actual actionable element.
-export function bindActionEvents(root,actions,{canRun=()=>true}={}){
+export function bindActionEvents(root,actions,{
+  canRun=()=>true,
+  onError=(error,context)=>console.error('UI action failed',context,error),
+}={}){
   const types=['click','change','input','keydown','focus','blur','dragstart','dragover','drop','dragend'];
   for(const type of types){
     root.addEventListener(type,event=>{
@@ -14,7 +17,23 @@ export function bindActionEvents(root,actions,{canRun=()=>true}={}){
           if(!canRun(name,element,event)){event.preventDefault();event.stopPropagation();return}
           const action=actions[name];
           if(typeof action!=='function')throw new Error('Unknown UI action: '+name);
-          if(!element.matches(':disabled')){const done=beginMeasure(`action:${name}`,{paint:true});try{action(element,event)}finally{done()}}
+          if(!element.matches(':disabled')){
+            const done=beginMeasure(`action:${name}`,{paint:true});
+            try{
+              // Keep native dispatch/propagation synchronous. Commands own their
+              // notices and receipts; only an escaped rejection reaches this sink.
+              const result=action(element,event);
+              Promise.resolve(result).catch(error=>{
+                try{
+                  Promise.resolve(onError(error,{name,type})).catch(reportError=>{
+                    console.error('UI action error reporter failed',reportError);
+                  });
+                }catch(reportError){
+                  console.error('UI action error reporter failed',reportError);
+                }
+              });
+            }finally{done()}
+          }
         }
         if(event.cancelBubble)break;
       }

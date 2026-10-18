@@ -1,3 +1,4 @@
+import {evidenceDate} from '../../shared/observation-time.js';
 import { createBankConnectionCommands } from './bank-connection-commands.js';
 import { createFinanceStatusView } from './status-view.js';
 import { withFinanceDerivations } from '../../shared/finance-derivations.js';
@@ -690,7 +691,7 @@ export function createDomainsFinanceView({ runFinance = withFinanceDerivations, 
             ui.bankDateTo = '';
             return rerenderBankTransactions();
         }
-        const valid = x => /^\d{4}-\d{2}-\d{2}$/.test(String(x || '')) ? String(x) : '', nextFrom = valid(from), nextTo = valid(to);
+        const valid = x => evidenceDate(x) ? x : '', nextFrom = valid(from), nextTo = valid(to);
         if (!nextFrom && !nextTo) {
             ui.bankDateMode = 'all';
             ui.bankDateFrom = '';
@@ -709,7 +710,7 @@ export function createDomainsFinanceView({ runFinance = withFinanceDerivations, 
         rerenderBankTransactions();
     }
     function setBankDateBoundary(side, value) {
-        const key = side === 'to' ? 'bankDateTo' : 'bankDateFrom', other = side === 'to' ? 'bankDateFrom' : 'bankDateTo', next = /^\d{4}-\d{2}-\d{2}$/.test(String(value || '')) ? String(value) : '';
+        const key = side === 'to' ? 'bankDateTo' : 'bankDateFrom', other = side === 'to' ? 'bankDateFrom' : 'bankDateTo', next = evidenceDate(value) ? value : '';
         ui.bankDateMode = 'range';
         ui[key] = next;
         if (next && ui[other]) {

@@ -1,3 +1,4 @@
+import {evidenceDate} from '../../shared/observation-time.js';
 import {withFinanceDerivations} from '../../shared/finance-derivations.js';
 import {updateCashflowExplorer,cashflowExplorerMarkup,cashflowBreachMarkup} from '../../shared/cashflow-breakdown.js';
 import {kupaAccountCashflowData,kupaBankCreditSettlementIdentitiesData} from '../../shared/kupa-cashflow.js';
@@ -224,7 +225,7 @@ function setBankDateMode(value, from = ui.bankDateFrom || '', to = ui.bankDateTo
     ui.bankDateFrom = '';
     ui.bankDateTo = '';
     return rerenderBankTransactions();
-} const valid = x => /^\d{4}-\d{2}-\d{2}$/.test(String(x || '')) ? String(x) : '', nextFrom = valid(from), nextTo = valid(to); if (!nextFrom && !nextTo) {
+} const valid = x => evidenceDate(x) ? x : '', nextFrom = valid(from), nextTo = valid(to); if (!nextFrom && !nextTo) {
     ui.bankDateMode = 'all';
     ui.bankDateFrom = '';
     ui.bankDateTo = '';
@@ -237,7 +238,7 @@ else {
     ui.bankDateFrom = nextFrom;
     ui.bankDateTo = nextTo;
 } rerenderBankTransactions(); }
-function setBankDateBoundary(side,value){const key=side==='to'?'bankDateTo':'bankDateFrom',other=side==='to'?'bankDateFrom':'bankDateTo',next=/^\d{4}-\d{2}-\d{2}$/.test(String(value||''))?String(value):'';ui.bankDateMode='range';ui[key]=next;if(next&&ui[other]){if(side==='from'&&next>ui[other])ui.bankDateTo=next;if(side==='to'&&next<ui[other])ui.bankDateFrom=next}rerenderBankTransactions()}
+function setBankDateBoundary(side,value){const key=side==='to'?'bankDateTo':'bankDateFrom',other=side==='to'?'bankDateFrom':'bankDateTo',next=evidenceDate(value)?value:'';ui.bankDateMode='range';ui[key]=next;if(next&&ui[other]){if(side==='from'&&next>ui[other])ui.bankDateTo=next;if(side==='to'&&next<ui[other])ui.bankDateFrom=next}rerenderBankTransactions()}
 function toggleBankSyncOptions(){ui.bankSyncOpen=!ui.bankSyncOpen;const panel=document.getElementById('bankSyncPanel'),button=document.getElementById('bankSyncHeadline');if(panel)panel.hidden=!ui.bankSyncOpen;if(button){button.classList.toggle('open',ui.bankSyncOpen);button.setAttribute('aria-expanded',String(ui.bankSyncOpen))}}
 
 function updateBridgePanel(){
