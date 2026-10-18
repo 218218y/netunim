@@ -10,11 +10,11 @@ import {STORAGE_PREF_KEY} from '../netunim-kupa/site/assets/js/state/constants.j
 const deferred=()=>{let resolve;const promise=new Promise(done=>{resolve=done});return {promise,resolve}};
 function fixture(t){
   const events=[],remembered=[],values=new Map([[STORAGE_PREF_KEY,'file']]);
-  const descriptors=['localStorage','document','window'].map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]);
+  const descriptors=['localStorage','document','window','alert'].map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]);
   t.after(()=>{for(const [key,descriptor] of descriptors){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}});
   const screen={style:{display:'flex'}},element=()=>({style:{},textContent:'',innerHTML:''});
   const elements=new Map([['connectScreen',screen]]),storage={getItem:key=>values.get(key)??null,setItem:(key,value)=>values.set(key,value)};
-  const window={};Object.defineProperties(globalThis,{localStorage:{configurable:true,value:storage},window:{configurable:true,value:window},document:{configurable:true,value:{getElementById:id=>{if(!elements.has(id))elements.set(id,element());return elements.get(id)},body:{classList:{toggle(){}}}}}});
+  const window={};Object.defineProperties(globalThis,{alert:{configurable:true,writable:true,value:()=>{}},localStorage:{configurable:true,value:storage},window:{configurable:true,value:window},document:{configurable:true,value:{getElementById:id=>{if(!elements.has(id))elements.set(id,element());return elements.get(id)},body:{classList:{toggle(){}}}}}});
   t.mock.method(console,'error',(...args)=>events.push(['error',args[0]]));
   const oldFile={name:'old.json'},oldRoot={name:'old-root'},oldBackup={name:'old-backup'},oldDirectory={name:'old-backups'};
   const files={dataFileHandle:oldFile,rootDirHandle:oldRoot,backupRootDirHandle:oldBackup,backupsDirHandle:oldDirectory};
@@ -88,7 +88,7 @@ test('an older folder picker cannot replace a newer completed selection',async t
 
 test('automatic opening uses the same candidate import and retains old data on a mismatch',async t=>{
   const f=fixture(t),folders=f.create(),before=f.before();
-  const connection=createUiConnection({session:f.session,tab:f.tab,supaConfigured:()=>false,getRememberedHandle:async()=>f.root,connectDirectory:(...args)=>folders.connectDirectory(...args)});
+  const connection=createUiConnection({session:f.session,tab:f.tab,supaConfigured:()=>false,getRememberedHandle:async()=>f.root,connectDirectory:(...args)=>folders.connectDirectory(...args),captureSourceScope:f.ports.captureSourceScope});
   assert.equal(await connection.tryAutoOpenRemembered(),true);assert.deepEqual(f.before(),before);assert.ok(!f.events.some(([event])=>event==='boundary'));
 });
 
@@ -116,4 +116,13 @@ test('new business saves cannot enter while a source transition is pending',asyn
   const owner=createLocalCommitOwner({model:{state:{}},session,tab:{primaryTab:true},journal:{},projection:{},publication:{},view:{setSaveStatus:()=>{statuses++}}});
   assert.equal(await owner.saveStateAccepted('pending source'),false);
   assert.equal(session.localGeneration,8);assert.equal(statuses,1);
+});
+
+for(const action of ['chooseFolder','chooseDataFile','chooseBackupFolder','openLastFolder'])test(`account replacement while ${action} waits cannot adopt a former-account source`,async t=>{
+  const f=fixture(t),gate=deferred(),before=f.before();
+  f.window.showDirectoryPicker=()=>gate.promise;f.window.showOpenFilePicker=()=>gate.promise;
+  f.ports.getRememberedHandle=()=>gate.promise;
+  const alerts=[];t.mock.method(globalThis,'alert',message=>alerts.push(message));
+  const pending=f.create()[action]();f.changeScope();gate.resolve(action==='chooseDataFile'?[f.source.dataFileHandle]:f.root);await pending;
+  assert.deepEqual(f.before(),before);assert.ok(!f.events.some(([event])=>event==='boundary'));
 });
