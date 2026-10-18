@@ -2,15 +2,16 @@
   "base": "a6cc5fac24cbfae98c6d930543fa9d40fe6ebd82",
   "policies": {
     "kupa": {
-      "bankArchivePayload": "563cf79df02b83aeb94c9884770dd3e6775f70a78731e39730a009b96cfd491c",
-      "syncBankTransactionsSnapshot": "90ebaf1b05641efb7df9505eee4579070df967f5aa5e36734f97d7d44eba25a1",
+      "syncBankTransactionsSnapshot": "c26e15d63174bd80de3c9e3e4b58c62371ae0d51007560eed1c1dde4bc918c0e",
       "saveBankSyncSnapshot": "b1c82c2e44117dbef431881db811c59dfcd16c93e3cf27ce8130ed70a4161169"
     },
     "orders": {
-      "bankArchivePayload": "563cf79df02b83aeb94c9884770dd3e6775f70a78731e39730a009b96cfd491c",
-      "syncBankTransactionsSnapshot": "7cc5c23e541357c88e050b0e2a21dd0b9ad44e4bd8fa821ddb365c6ab122f29d",
+      "syncBankTransactionsSnapshot": "431fc1959a804e2863e9939dd645b79a7d03b66e0d80674419e98abeae91d2c5",
       "saveBankSyncSnapshot": "961db33f713cacfa1b41d8224e40a66e55ba682fc2463f16ea4e41b80e7b008d"
     }
   },
-  "reviewedAuthorityChange": "Only archive reconciliation success now requires the seven-field server receipt; snapshot and identity policies are unchanged."
+  "reviewedAuthorityChange": "Archive command validation now precedes I/O in both transports. The shared command enforces scope, exact timestamp and ordered full calendar coverage, then preserves existing serial/reference/fallback identities. Atomic balance snapshots and lease fences remain unchanged. Golden-key, malformed-command, scope-change, receipt and mutation regressions cover the intentional authority change.",
+  "command": {
+    "readBankArchiveCommand": "7ddc9b380ac632e54f001346bd278444d182389aef372da5e1627513db3cd053"
+  }
 }

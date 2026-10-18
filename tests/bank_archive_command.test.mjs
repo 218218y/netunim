@@ -53,6 +53,17 @@ test('accepted command is detached and immutable; warnings never acquire absence
   assert.equal(partial.p_coverage_from, null);
   assert.equal(partial.p_coverage_to, null);
 });
+test('captured identity policy retains serial, reference, explicit and duplicate fallback keys', () => {
+  const rows = [
+    {...row, bankSerial: '5'},
+    {...row, bankSerial: '0', bankReference: 'R', description: 'payment', memo: 'memo'},
+    {...row, mergeKey: 'retained-key'}, row, row,
+  ];
+  assert.deepEqual(readBankArchiveCommand({...command, transactions: rows}).p_transactions.map(tx => tx.mergeKey), [
+    'serial:2026-10-18:5:20', 'ref:2026-10-18:R:20:payment:memo', 'retained-key',
+    'fallback:2026-10-18||20|||null:3', 'fallback:2026-10-18||20|||null:4',
+  ]);
+});
 test('removing the real timestamp guard restores calendar rollover authority', async () => {
   const file = new URL('../shared/bank-transaction-evidence.js', import.meta.url);
   let source = readFileSync(file, 'utf8');

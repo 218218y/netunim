@@ -11,7 +11,7 @@ for(const [name,create] of [['orders',ordersTransport],['kupa',kupaTransport]])t
   return {ok:true,text:async()=>JSON.stringify(result)};
  };
  const api=create({supaFetch:send,supaRest:send}),lease=await api.claimFinanceSyncLease('bank','A');assert.equal(lease.fenceEpoch,100);assert.equal(lease.leaseToken,'A');
- await api.saveBankSyncSnapshot({},'watermark',3,lease);await api.syncBankTransactionsSnapshot('account','business',[],{snapshotAt:'2026-09-01',lease});await api.rpcSaveFinanceSync({},1,'op',{},lease);
+ await api.saveBankSyncSnapshot({},'watermark',3,lease);await api.syncBankTransactionsSnapshot('account','business',[],{snapshotAt:'2026-09-01T00:00:00Z',lease});await api.rpcSaveFinanceSync({},1,'op',{},lease);
  for(const r of requests.slice(1)){assert.equal(r.body.p_lease_token,'A');assert.equal(r.body.p_fence_epoch,100);assert.equal(r.body.p_lease_name,'bank')}
 });
 import {startFinanceLeaseHeartbeat} from '../shared/finance-lease-heartbeat.js';

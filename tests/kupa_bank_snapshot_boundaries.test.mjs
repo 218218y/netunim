@@ -111,7 +111,7 @@ test('both application transports retire the unused raw merge export and retain 
       !read(`netunim-${app}/site/assets/js/cloud/transport.js`).includes('mergeBankTransactions')
     );
 });
-test('canonical snapshot/atomic transports and archive identity algorithms retain their pre-retirement bodies', () => {
+test('reviewed snapshot transports and captured archive command retain their policy bodies', () => {
   const fixture = JSON.parse(read('tests/fixtures/bank-snapshot-transports-policy.json'));
   for (const app of ['kupa', 'orders']) {
     const source = read(`netunim-${app}/site/assets/js/cloud/transport.js`),
@@ -128,4 +128,8 @@ test('canonical snapshot/atomic transports and archive identity algorithms retai
     });
     assert.deepEqual(creditAdapterPolicyHashes(declarations).policies, fixture.policies[app]);
   }
+  const source = read('shared/bank-transaction-evidence.js');
+  const ast = parse(source, {sourceType: 'module', ecmaVersion: 'latest'});
+  const command = ast.body.find(row => row.declaration?.id?.name === 'readBankArchiveCommand').declaration;
+  assert.deepEqual(creditAdapterPolicyHashes([source.slice(command.start, command.end)]).policies, fixture.command);
 });
