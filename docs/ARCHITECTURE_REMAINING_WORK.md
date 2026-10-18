@@ -56,7 +56,10 @@ restore and live-provider release exercises therefore remain explicitly unverifi
    existing exact calendar/timestamp predicates. Morning retains processing-date
    precedence and local timestamp days. Unknown money remains `null`, distinct
    from numeric zero; missing balances cannot create a feed. No stored history is
-   rewritten. Focused regression cases cover leap years, three time zones,
+   rewritten. Date helpers extend the existing time module, adding no startup
+   request. Kupa eager source measures 1,757,880 bytes; its source-only allowance
+   increases by 2 KB (0.12%) for the validation code, with the 302-module and
+   browser timing limits retained. Focused regression cases cover leap years, three time zones,
    malformed inputs and snapshot coverage. Full branch CI is required to merge.
 2. **Domain ownership:** next, remove the Customers/Finance catalogue inversion
    and give Kupa search explicit read capabilities, guarded by module contracts.
