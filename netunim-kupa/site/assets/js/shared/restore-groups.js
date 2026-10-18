@@ -57,10 +57,10 @@ export async function createRestoreGroup({appSite,owner=null,main,checks=null,be
     };
   };
   const createdAt=new Date(Number(typeof now==='function'?now():now)).toISOString();
-  return assertRestoreGroup({schemaVersion:RESTORE_SCHEMA_VERSION,restoreGroupId:id,appSite,...(owner===null?{}:{owner}),phase:'staged',mutationSeq:1,createdAt,updatedAt:createdAt,main:await makeTarget(main,'main'),checks:await makeTarget(checks,'checks'),beforeState:clone(beforeState),localTargetState:clone(localTargetState)});
+  return assertRestoreGroup({schemaVersion:RESTORE_SCHEMA_VERSION,checkAmountPrecision:2,restoreGroupId:id,appSite,...(owner===null?{}:{owner}),phase:'staged',mutationSeq:1,createdAt,updatedAt:createdAt,main:await makeTarget(main,'main'),checks:await makeTarget(checks,'checks'),beforeState:clone(beforeState),localTargetState:clone(localTargetState)});
 }
 
-function samePayload(a,b){return a?.restoreGroupId===b?.restoreGroupId&&a?.main?.payloadHash===b?.main?.payloadHash&&a?.checks?.payloadHash===b?.checks?.payloadHash}
+function samePayload(a,b){return a?.restoreGroupId===b?.restoreGroupId&&a?.checkAmountPrecision===b?.checkAmountPrecision&&a?.main?.payloadHash===b?.main?.payloadHash&&a?.checks?.payloadHash===b?.checks?.payloadHash}
 function chooseNewer(a,b){if(!a)return b||null;if(!b)return a;const delta=Number(a.mutationSeq||0)-Number(b.mutationSeq||0);return delta?delta>0?a:b:(canonicalJson(a)>=canonicalJson(b)?a:b)}
 
 export function createRestoreGroupStore({localKey,put,get,remove,storage=globalThis.localStorage,now=Date.now}={}){
@@ -125,7 +125,7 @@ export function restoreGroupRpcPayload(group){
     p_main_document_name:group.main.documentName,p_main_base_revision:group.main.baseRevision,p_main_state:group.main.state,p_main_delete_intents:group.main.deleteIntents||{},
     p_checks_document_name:group.checks?.documentName||'main',p_checks_base_revision:group.checks?.baseRevision??null,p_checks_state:group.checks?.state??null,p_checks_delete_ids:group.checks?.deleteIds||[],
     p_main_operation_id:group.main.operationId,p_checks_operation_id:group.checks?.operationId??null,
-    p_audit:{mutationType:'restore',restoreGroupId:group.restoreGroupId,app:group.appSite,surface:'backup.restore'},
+    p_audit:{mutationType:'restore',restoreGroupId:group.restoreGroupId,app:group.appSite,surface:'backup.restore',...(group.checkAmountPrecision===2?{checkAmountPrecision:2}:{})},
   };
 }
 

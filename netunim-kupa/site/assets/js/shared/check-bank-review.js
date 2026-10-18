@@ -152,7 +152,8 @@ export function checkBankActivityMarkup(checks,account,page=0,imageOptions={}, {
   const navigation=pages>1?`<nav class="row-actions" aria-label="עמודי הודעות הבנק"><button type="button" class="btn" data-action="check-bank-history-page" data-click-arg0="${currentPage-1}" ${currentPage===0?'disabled':''}>הקודם</button><span>עמוד ${currentPage+1} מתוך ${pages}</span><button type="button" class="btn" data-action="check-bank-history-page" data-click-arg0="${currentPage+1}" ${currentPage===pages-1?'disabled':''}>הבא</button></nav>`:'';
   const countLabel=groups.length===1?'צ׳ק אחד':`${groups.length} צ׳קים`;
   const menuHost=floatingMenu?' data-dismiss-on-outside':'',menuPanel=floatingMenu?' data-menu-panel':'';
-  return `<details class="section check-bank-activity"${menuHost}><summary>הודעות ופעולות אוטומטיות בבנק (${countLabel})</summary><div class="section-body"${menuPanel}>${groups.length?groups.slice(currentPage*25,(currentPage+1)*25).map(group=>activityGroupMarkup(group,imageOptions)).join(''):'<p>פעולות הזיהוי והמעקב יופיעו כאן לאחר סנכרון הבנק. התאמות ודאיות ופירעון תקין מתועדים כאן ללא אזהרה.</p>'}${navigation}</div></details>`;
+  return `<div class="row-actions"><button type="button" class="btn" data-action="refresh-check-bank" title="בדיקה">רענן התאמות</button></div>
+<details class="section check-bank-activity"${menuHost}><summary>הודעות ופעולות אוטומטיות בבנק (${countLabel})</summary><div class="section-body"${menuPanel}>${groups.length?groups.slice(currentPage*25,(currentPage+1)*25).map(group=>activityGroupMarkup(group,imageOptions)).join(''):'<p>פעולות הזיהוי והמעקב יופיעו כאן לאחר סנכרון הבנק. התאמות ודאיות ופירעון תקין מתועדים כאן ללא אזהרה.</p>'}${navigation}</div></details>`;
 }
 
 export function applyCheckBankReview(checks,id,eventId,action){
@@ -177,4 +178,12 @@ export function checkBankStatusMarkup(check){
   const m=check.bankMatch;
   const label=check.bankAutomationDisabled?labels.manual:provisionalReferenceEvent(m)?'זוהתה הפקדה ממתינה לפי מספר הצ׳ק · ממתין לאימות סופי':m?.phase==='deposited'&&m.provisional?'זיהוי ראשוני · תנועת בנק ממתינה':m?.phase==='deposited'&&m.autoConfirmed&&!m.warning?'זוהתה הפקדה בבנק · אושרה אוטומטית':m?.phase==='deposited'&&check.bankReview===m.eventId?'זוהתה הפקדה בבנק · ההתאמה אושרה':incidentLabel(m);
   return m&&checkBankNoMatchIsActionable(m)?`<small class="check-bank-status">${esc(label||'התאמה לבנק')}${m.clearAfter&&!check.bankAutomationDisabled?` · בדיקת פירעון מ־${esc(m.clearAfter)}`:''}</small>`:'';
+}
+
+export function checkMorningSourceMarkup(check,{documentAction=''}={}){
+  const source=check.morningSource;if(!source)return '';
+  const label=source.documentType===320?'חשבונית מס / קבלה':'קבלה';
+  const link=documentAction&&source.operationId?` <button type="button" class="iconbtn" data-action="${esc(documentAction)}" data-click-arg1="${esc(source.operationId)}">צפה במסמך</button>`:'';
+  return `<small class="check-bank-status">נוצר מ${label} ${esc(source.documentNumber||'')} במורנינג${source.reviewCheckIds?.length?' · ייתכן שקיים גם צ׳ק ידני — נדרשת בדיקה':''}${link}</small>
+<small class="check-bank-status">חשבון מושך: ${esc(check.bankName||check.bankNumber||'')} · סניף ${esc(check.branchNumber||'')} · חשבון ${esc(check.accountNumber||'')}</small>`;
 }

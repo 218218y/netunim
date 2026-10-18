@@ -40,7 +40,8 @@ async function recoverPendingMorningOperation({quiet=false,assertCurrent}={}){
         operation=abandoned.operation;
       }
       if(operation?.state==='created'&&operation.verified_at){
-        const result=await application.apply(context,{operationId:operation.operation_id,documentId:operation.document_id,documentNumber:operation.document_number,type:operation.document_type,amount:Number(operation.amount),verifiedAt:operation.verified_at},{assertCurrent});assertCurrent();const settlement=application.settle(context.operationId,result,{serverLinkPending:!!data.bank_link_pending});if(settlement.recoveryCleared)publish.notify(context,data.bank_link);
+        const result=await application.apply(context,{operationId:operation.operation_id,documentId:operation.document_id,documentNumber:operation.document_number,type:operation.document_type,amount:Number(operation.amount),verifiedAt:operation.verified_at},{assertCurrent});assertCurrent();
+        const settlement=application.settle(context.operationId,result,{serverLinkPending:!!(data.bank_link_pending||data.checks_registration_pending)});if(settlement.recoveryCleared)publish.notify(context,data.bank_link);
         if(settlement.durable&&settlement.recoveryCleared){publish.state(false,true);publish.toast(context.debtId?'הפקת Morning הקודמת אומתה לאחר ההתאוששות והחוב עודכן לפי הבחירות שנשמרו.':'הפקת Morning הקודמת אומתה לאחר ההתאוששות.');return {ok:true,state:'created',result}}
         publish.state(true,settlement.durable);lifetime.scheduleRecovery(60_000,assertCurrent);if(settlement.durable&&!quiet)publish.toast('המסמך אומת והעדכון המקומי נשמר, אך נקודת ההתאוששות עדיין לא נמחקה בבטחה. ההפקה נשארת נעולה עד לניקוי מוצלח.');return {ok:false,state:settlement.durable?'cleanup-pending':'local-pending',result};
       }

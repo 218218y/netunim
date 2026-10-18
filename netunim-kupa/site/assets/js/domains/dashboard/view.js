@@ -37,7 +37,7 @@ function bankOverviewMarkup(){
         <div class="bank-account-metrics">
           <div class="bank-mini"><div class="bank-label">אשראי עסקי עד אופק התזרים</div><div class="bank-value">${money(cycle.nextCreditTotal)}</div><div class="muted">${cycle.nextCreditCycles.length?`${esc(cycle.nextCreditCycles.length)} מחזורים עד ${esc(cycleDate)} · ${esc(cycleLabel)}`:'אין חיובי אשראי עסקיים עתידיים'}${cycle.forecastIncomplete?' · אומדן ₪ חלקי: חסר סכום מלא או שכיסוי החברה הוא LKG/חסר':''}</div></div>
           <div class="bank-mini"><div class="bank-label">הוצאות עסקיות עד אופק התזרים</div><div class="bank-value">${money(cycle.targetExpenseTotal)}</div><div class="muted">כל ההוצאות העסקיות עד ${esc(cycleDate)}</div></div>
-          <div class="bank-mini positive"><div class="bank-label">צ׳קים עסקיים לתזרים</div><div class="bank-value">+${money(cycle.checks)}</div><div class="muted">צ׳קים בקופה עד ${esc(dateFmt(cycle.checkCutoffDate))}, ולא מעבר לאופק</div></div>
+          <div class="bank-mini positive"><div class="bank-label">צ׳קים עסקיים לתזרים</div><div class="bank-value">+${moneyWithCents(cycle.checks)}</div><div class="muted">צ׳קים בקופה עד ${esc(dateFmt(cycle.checkCutoffDate))}, ולא מעבר לאופק</div></div>
           <button type="button" class="bank-mini cashflow-breakdown-trigger" data-action="cashflow-breakdown" data-click-arg0="business" aria-haspopup="dialog"><span class="bank-label">שינוי צפוי ⓘ</span><span class="bank-value">${moneyWithCents(cycle.expectedChange)}</span><span class="muted">לחץ לפירוט סכומים ומועדים</span></button>
           <button type="button" data-action="cashflow-breakdown" data-click-arg0="business" aria-haspopup="dialog" class="bank-mini cashflow-breakdown-trigger ${esc(businessCashflowAlert.active?'cashflow-alert':after!==null&&after>=0?'positive':'warning')}"><span class="bank-label">עו״ש עסקי באופק ${esc(cycleDate)}${cycle.forecastIncomplete?' · תחזית חלקית':''}</span><span class="bank-value">${formatNullableMoney(after)}</span><span class="muted">עו״ש פחות מחזורי אשראי והוצאות עד האופק, ובתוספת צ׳קים עד אותו אופק${cycle.forecastIncomplete?' · יש לבדוק את הנתונים החסרים בפירוט השינוי הצפוי':''}</span></button>
         </div>
@@ -55,7 +55,7 @@ function bankOverviewMarkup(){
         <div class="bank-account-metrics">
           <div class="bank-mini"><div class="bank-label">אשראי ביתי עד אופק התזרים</div><div class="bank-value">${money(homeCycle.nextCreditTotal)}</div><div class="muted">${homeCycle.nextCreditCycles.length?`${esc(homeCycle.nextCreditCycles.length)} מחזורים עד ${esc(homeCycleDate)} · ${esc(homeCycleLabel)}`:'אין חיובי אשראי ביתיים עתידיים'}${homeCycle.forecastIncomplete?' · אומדן ₪ חלקי: חסר סכום מלא או שכיסוי החברה הוא LKG/חסר':''}</div></div>
           <div class="bank-mini"><div class="bank-label">הוצאות ביתיות עד אופק התזרים</div><div class="bank-value">${money(homeCycle.targetExpenseTotal)}</div><div class="muted">כל ההוצאות הביתיות עד ${esc(homeCycleDate)}</div></div>
-          <div class="bank-mini positive"><div class="bank-label">צ׳קים ביתיים לתזרים</div><div class="bank-value">+${money(homeCycle.checks)}</div><div class="muted">צ׳קים בקופה עד ${esc(dateFmt(homeCycle.checkCutoffDate))}, ולא מעבר לאופק</div></div>
+          <div class="bank-mini positive"><div class="bank-label">צ׳קים ביתיים לתזרים</div><div class="bank-value">+${moneyWithCents(homeCycle.checks)}</div><div class="muted">צ׳קים בקופה עד ${esc(dateFmt(homeCycle.checkCutoffDate))}, ולא מעבר לאופק</div></div>
           <button type="button" class="bank-mini cashflow-breakdown-trigger" data-action="cashflow-breakdown" data-click-arg0="home" aria-haspopup="dialog"><span class="bank-label">שינוי צפוי ⓘ</span><span class="bank-value">${moneyWithCents(homeCycle.expectedChange)}</span><span class="muted">לחץ לפירוט סכומים ומועדים</span></button>
           <button type="button" data-action="cashflow-breakdown" data-click-arg0="home" aria-haspopup="dialog" class="bank-mini cashflow-breakdown-trigger ${esc(homeCashflowAlert.active?'cashflow-alert':homeAfter!==null&&homeAfter>=0?'positive':'warning')}"><span class="bank-label">עו״ש ביתי באופק ${esc(homeCycleDate)}${homeCycle.forecastIncomplete?' · תחזית חלקית':''}</span><span class="bank-value">${formatNullableMoney(homeAfter)}</span><span class="muted">עו״ש פחות מחזורי אשראי והוצאות עד האופק, ובתוספת צ׳קים עד אותו אופק${homeCycle.forecastIncomplete?' · יש לבדוק את הנתונים החסרים בפירוט השינוי הצפוי':''}</span></button>
         </div>
@@ -71,13 +71,13 @@ function renderDashboardContent(){
   const overdue=checks.active().filter(c=>daysFromToday(c.dueDate)<0).sort((a,b)=>(a.dueDate||'').localeCompare(b.dueDate||''));
   const depOver=checks.deposited().filter(c=>daysFromToday(c.dueDate)<0).sort((a,b)=>(a.dueDate||'').localeCompare(b.dueDate||''));
   const criticalAlerts=[
-    ...overdue.map(c=>({kind:'open',id:c.id,c:'#b86561',t:`${c.name} — ${money(c.amount)}`,s:`צק בקופה עבר מועד (${dateFmt(c.dueDate)})`})),
-    ...depOver.map(c=>({kind:'deposited',id:c.id,c:'#8b7ca0',t:`${c.name} — ${money(c.amount)}`,s:`הופקד וממתין לסימון נפרע · פירעון ${dateFmt(c.dueDate)}`}))
+    ...overdue.map(c=>({kind:'open',id:c.id,c:'#b86561',t:`${c.name} — ${moneyWithCents(c.amount)}`,s:`צק בקופה עבר מועד (${dateFmt(c.dueDate)})`})),
+    ...depOver.map(c=>({kind:'deposited',id:c.id,c:'#8b7ca0',t:`${c.name} — ${moneyWithCents(c.amount)}`,s:`הופקד וממתין לסימון נפרע · פירעון ${dateFmt(c.dueDate)}`}))
   ].sort((a,b)=>{
     const ca=model.state.checks.find(x=>x.id===a.id),cb=model.state.checks.find(x=>x.id===b.id);
     return (ca?.dueDate||'').localeCompare(cb?.dueDate||'');
   });
-  const upcomingAlerts=due7.map(c=>({kind:'open',id:c.id,c:'#c59661',t:`${c.name} — ${money(c.amount)}`,s:`פירעון קרוב ${dateFmt(c.dueDate)}`}));
+  const upcomingAlerts=due7.map(c=>({kind:'open',id:c.id,c:'#c59661',t:`${c.name} — ${moneyWithCents(c.amount)}`,s:`פירעון קרוב ${dateFmt(c.dueDate)}`}));
   const alerts=[...criticalAlerts,...upcomingAlerts];
   const long=dashboardNetPositionData(bankQueries.longTermPosition(),orders.summary());
   const partial=long.forecastIncomplete===true,partialFacts=[long.missingAmountCount?`${long.missingAmountCount} ללא סכום ₪`:null,long.coverageGapCount?`${long.coverageGapCount} בכיסוי חברה חסר/ישן`:null,long.unassignedCount?`${long.unassignedCount} ללא מועד חיוב ודאי`:null].filter(Boolean);

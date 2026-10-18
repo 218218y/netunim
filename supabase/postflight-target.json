@@ -6,7 +6,9 @@
   "required_migrations": [
     {"version": "20261016120000", "name": "bank_transaction_status_authority"},
     {"version": "20261016130000", "name": "bank_business_evidence_authority"},
-    {"version": "20261016140000", "name": "bank_snapshot_temporal_authority"}
+    {"version": "20261016140000", "name": "bank_snapshot_temporal_authority"},
+    {"version": "20261018120000", "name": "check_bank_refresh"},
+    {"version": "20261018121000", "name": "morning_check_registration"}
   ],
   "status": "Canonical reviewed migrations plus an authenticated Production baseline. Static uploads verify live SQL and schema, deriving an exact pending upgrade locally when the saved receipt is older. A new committed receipt is optional after a matching live verification.",
   "deployment_receipt": "production-deployment-receipt.json"

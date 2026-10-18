@@ -203,5 +203,15 @@
     "version": "20261016140000",
     "name": "bank_snapshot_temporal_authority",
     "sha256": "2666ce8e136774c3a5dc82fc97e0b630b5dd8f134da9fb188c2e5da5ae199897"
+  },
+  {
+    "version": "20261018120000",
+    "name": "check_bank_refresh",
+    "sha256": "be83a97b224cb3ba675790d149987a87cd72b31c93549d848870b3b12c69c05e"
+  },
+  {
+    "version": "20261018121000",
+    "name": "morning_check_registration",
+    "sha256": "55ae5f4cd7f92171fba35a967f1e334dcbe6858fb91824c3b8354e42f62d36ca"
   }
 ]

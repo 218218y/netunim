@@ -413,6 +413,12 @@ export function createCloudTransport({supaFetch,localResetReadOnlyFetch}){
     }
     return {r,j,txt,row:r.ok?readDocumentWriteResponseRow(j):Array.isArray(j)?j[0]:j}
   }
+  async function refreshCheckBankMatches(revision){
+    const response=await supaFetch('/rest/v1/rpc/refresh_check_bank_matches',{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify({p_expected_revision:revision})});
+    const result=await response.json();
+    if(!response.ok||!result||!['no_checks','no_bank_data','unchanged','checked','busy'].includes(result.status))throw new Error(result?.message||'check_bank_refresh_failed');
+    return result;
+  }
   async function rpcSaveSharedChecksV2(checks,expectedRevision,operationId,deletedCheckIds=[],audit={}){
     const payload={version:1,checks:normalizeSharedChecks(checks)},expected=Number(expectedRevision||0),op=String(operationId||'').trim();
     const deletedIds=[...new Set((Array.isArray(deletedCheckIds)?deletedCheckIds:[]).map(x=>String(x||'').trim()).filter(Boolean))].sort();
@@ -557,7 +563,7 @@ export function createCloudTransport({supaFetch,localResetReadOnlyFetch}){
     readKupaReadOnlyCloud,
     readKupaReadOnlyMeta,
     rpcSaveKupaDocument,
-    rpcSaveSharedChecksV2,
+    rpcSaveSharedChecksV2,refreshCheckBankMatches,
     stageRestoreGroup,
     applyRestoreGroup,
     listIncompleteRestoreGroups,

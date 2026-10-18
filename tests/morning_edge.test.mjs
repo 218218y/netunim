@@ -30,13 +30,13 @@ const mockFetch=async(url,init={})=>{
   if(url.endsWith('/documents/search')){lastSearch=JSON.parse(init.body);return Response.json({items:lookupItems,total:lookupItems.length,pages:lookupItems.length?1:0,page:1})}
   if(url.endsWith('/download/links')){const value={he:`https://example.org/document.pdf?fresh=${++linkCount}`};return Response.json(failure==='wrapped-links'?{data:value}:value)};
   if(url.startsWith('https://example.org/document.pdf?fresh='))return new Response(new TextEncoder().encode('%PDF-1.4\nmock document\n'),{status:200,headers:{'Content-Type':'application/pdf','Content-Length':'24'}});
-  if(url.endsWith('/documents')){postCount++;if(failure==='timeout')throw new Error('network lost');if(failure==='401')return Response.json({message:'rejected'},{status:401});if(failure==='408-create')return Response.json({message:'request timeout'},{status:408});if(failure==='521-create')return Response.json({message:'upstream unavailable'},{status:521});if(failure==='429-create')return Response.json({message:'rate limited'},{status:429,headers:{'Retry-After':'0'}});const payload=JSON.parse(init.body||'{}'),id=postCount===1?documentId:`00000000-0000-4000-8000-${String(100+postCount).padStart(12,'0')}`,created={...sample,id,number:122+postCount,type:Number(payload.type||305),amount:Number(payload.income?.[0]?.price||100),documentDate:String(payload.date||'2026-09-08'),creationDate:Math.floor(Date.now()/1000),client:{name:String(payload.client?.name||'Test')},description:String(payload.description||'Test document')};morningDocs.set(id,created);return Response.json(created)}
+  if(url.endsWith('/documents')){postCount++;if(failure==='timeout')throw new Error('network lost');if(failure==='401')return Response.json({message:'rejected'},{status:401});if(failure==='408-create')return Response.json({message:'request timeout'},{status:408});if(failure==='521-create')return Response.json({message:'upstream unavailable'},{status:521});if(failure==='429-create')return Response.json({message:'rate limited'},{status:429,headers:{'Retry-After':'0'}});const payload=JSON.parse(init.body||'{}'),id=postCount===1?documentId:`00000000-0000-4000-8000-${String(100+postCount).padStart(12,'0')}`,created={...sample,id,number:122+postCount,type:Number(payload.type||305),amount:Number(payload.income?.[0]?.price||100),documentDate:String(payload.date||'2026-09-08'),creationDate:Math.floor(Date.now()/1000),payment:payload.payment,client:{name:String(payload.client?.name||'Test')},description:String(payload.description||'Test document')};morningDocs.set(id,created);return Response.json(created)}
   if(url.includes('/documents/')){if(failure==='readback')return Response.json({message:'read-back unavailable'},{status:503});if(failure==='read429'&&rateLimitHits++===0)return Response.json({message:'rate limited'},{status:429,headers:{'Retry-After':'0'}});const id=decodeURIComponent(url.split('/documents/')[1].split('/')[0]),doc=morningDocs.get(id)||sample;if(failure==='mismatch')return Response.json({...doc,amount:999});if(failure==='wrapped-read')return Response.json({data:doc});return Response.json(doc)};
   throw new Error('Unexpected request '+url);
 };
 const context=vm.createContext({console,Response,Request,URL,AbortController,TextEncoder,crypto:globalThis.crypto,atob:globalThis.atob,setTimeout,clearTimeout,fetch:mockFetch,createClient:()=>({from:()=>new Query(),auth:{getUser:async()=>({data:{user:{id:owner}}})}}),Deno:{env:{get:key=>({SUPABASE_URL:'https://example.supabase.co',SUPABASE_ANON_KEY:'test',SUPABASE_SERVICE_ROLE_KEY:'test',MORNING_CLIENT_ID:'test',MORNING_CLIENT_SECRET:'test',MORNING_ENV:'sandbox'})[key]},serve:handler=>{servedHandler=handler}}});
 const source=readFileSync(new URL('../netunim-orders/supabase/functions/morning-documents/index.ts',import.meta.url),'utf8').replace(/^import .*?;\r?\n/,'');
-vm.runInContext(stripTypeScriptTypes(source)+`\nglobalThis.api={create,status,reserve,abandonReservation,searchInput,searchDocuments,getDocument,getDocumentPdf,normalizeInput,validateLinkedDocument,readResponseBytesBounded,validatePreviewPdfBase64,sha256};`,context);
+vm.runInContext(stripTypeScriptTypes(source)+`\nglobalThis.api={create,status,reserve,abandonReservation,searchInput,searchDocuments,getDocument,getDocumentPdf,normalizeInput,matchesCheckPayments,validateLinkedDocument,readResponseBytesBounded,validatePreviewPdfBase64,sha256};`,context);
 const api=context.api;
 const body=(amount=100,description='Test document')=>({operation_id:crypto.randomUUID(),document:{type:305,amount,date:'2026-09-08',description,client:{name:'Test'}}});
 const decode=async response=>({status:response.status,...await response.json()});
@@ -149,3 +149,42 @@ assert.equal(accountRaceResults.filter(result=>result.status===409).length,1);
 assert.equal(rows.filter(row=>row.request_fingerprint===rows.find(row=>row.amount===201).request_fingerprint&&['pending','needs_reconciliation'].includes(row.state)).length,1);
 failure='';
 console.log('PASS Morning Edge: account-wide unresolved deduplication with safe cross-user reconciliation, operation-scoped exactly-once, atomic pre-issue reservation, verified create semantics, safe 429 handling, read-back failure blocking, races, replay, uncertain POST, reconciliation, outage visibility, owner isolation, search whitelist, manual invoice linking, bounded transient PDF, CORS and auth');
+
+// Cheque intent is durable before POST, keeps the original payment indices, and survives a lost response.
+const chequeOperation={operation_id:crypto.randomUUID(),document:{type:400,amount:200.75,date:'2026-09-08',description:'Cheque tracking',client:{name:'Test'},payment:[
+  {type:2,date:'2026-11-01',price:100.25,chequeNum:'9001',bankName:'Test Bank',bankCode:'12',bankBranch:'123',bankAccount:'000456'},
+  {type:1,date:'2026-09-08',price:0.25},
+  {type:2,date:'2026-12-01',price:100.25,chequeNum:'9002',bankName:'Test Bank',bankCode:'12',bankBranch:'123',bankAccount:'000456'},
+]}};
+const beforeCheques=postCount;await api.reserve(owner,chequeOperation);assert.equal(postCount,beforeCheques);
+const chequeRow=rows.find(r=>r.operation_id===chequeOperation.operation_id);
+assert.equal(chequeRow.check_intent.length,2);assert.equal(chequeRow.check_intent[1].paymentIndex,2);
+assert.equal(chequeRow.check_intent[0].name,'Test');assert.equal(chequeRow.check_intent[0].amount,100.25);
+assert.equal(chequeRow.check_intent[0].dueDate,'2026-11-01');assert.equal(chequeRow.check_intent[0].bankNumber,'12');
+assert.equal(api.matchesCheckPayments({payment:[{type:2,price:100.25},{type:1,price:0.25},{type:2,price:100.25}]},chequeRow),true,'the official read-back schema only guarantees type and price');
+assert.equal(api.matchesCheckPayments({payment:[{type:2,price:100.24},{type:2,price:100.26}]},chequeRow),false,'equal totals cannot conceal a changed cheque amount');
+assert.equal(api.matchesCheckPayments({payment:[{type:2,price:100.25,chequeNum:'wrong'},{type:2,price:100.25}]},chequeRow),false,'drawer details must match whenever Morning returns them');
+assert.equal(api.matchesCheckPayments({payment:[{type:2,price:100.25},{type:2,price:100.25,chequeNum:'9001'}]},chequeRow),true,'a partial row must not consume the only compatible full row of a similar cheque');
+failure='readback';const uncertainCheque=await decode(await api.create(owner,chequeOperation));
+assert.equal(uncertainCheque.code,'morning_creation_verification_pending');assert.equal(chequeRow.state,'created_unverified');
+assert.equal(chequeRow.checks_registered_at,undefined);
+failure='';const verifiedCheque=await decode(await api.status(owner,{operation_id:chequeOperation.operation_id,reconcile:true}));
+assert.equal(verifiedCheque.operation.state,'created');assert.equal(verifiedCheque.checks_registration_pending,true);
+assert.equal(postCount,beforeCheques+1,'read-back recovery must never reissue a document');
+chequeRow.checks_registered_at=new Date().toISOString();
+assert.equal((await decode(await api.create(owner,chequeOperation))).checks_registration_pending,false);
+assert.equal(postCount,beforeCheques+1);
+console.log('PASS Morning cheque intent: frozen owner/name/drawer/cents/date/payment indices, verified-only follow-up and recovery without reissue');
+
+// A search result can omit payments even when the canonical document contains them.
+const lostCheque={...chequeOperation,operation_id:crypto.randomUUID(),document:{...chequeOperation.document,description:'Cheque search recovery'}};
+const beforeLostCheque=postCount;failure='timeout';assert.equal((await decode(await api.create(owner,lostCheque))).uncertain,true);
+const lostChequeRow=rows.find(r=>r.operation_id===lostCheque.operation_id),lostStart=new Date(Date.now()-600_000).toISOString();
+lostChequeRow.created_at=lostStart;lostChequeRow.issuance_started_at=lostStart;
+const foundCheque={...sample,id:'00000000-0000-4000-8000-000000009901',type:400,amount:200.75,description:'Cheque search recovery',creationDate:Math.floor(Date.parse(lostStart)/1000)+1,payment:api.normalizeInput(lostCheque).payload.payment};
+morningDocs.set(foundCheque.id,foundCheque);lookupItems=[{...foundCheque,payment:[]}];failure='';
+const recoveredCheque=await decode(await api.status(owner,{operation_id:lostCheque.operation_id,reconcile:true}));
+assert.equal(recoveredCheque.operation.state,'created');assert.equal(recoveredCheque.operation.document_id,foundCheque.id);
+assert.equal(postCount,beforeLostCheque+1,'search and canonical read-back never send another creating POST');
+lookupItems=[];
+console.log('PASS cheque recovery after a lost creating response: incomplete search summary leads to full read-back, never another POST');

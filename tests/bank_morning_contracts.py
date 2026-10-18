@@ -89,7 +89,7 @@ ok("async function validateBankSource" in edge and ".eq('owner_id',ownerId)" in 
    'Edge Function independently verifies both exact transfer payments and structured cheque subsets against the owned finalized bank transaction')
 ok('const raw=Array.isArray(doc.payment)' in edge and 'raw.length>12' in edge and 'totalCents!==Math.round(amount*100)' in edge and 'payload.payment=lines' in edge,
    'Multi-payment contract is bounded and exact to the agorot on the server')
-ok('morning-payment-add' in payments and 'data-payment-field="price"' in payments and 'step="1"' in payments and 'data-payment-kinds="4"' in payments and 'data-payment-kinds="2,4"' in payments and 'data-payment-kinds="3"' in payments and 'bankDetailsLocked=bankLocked&&type===2' in payments and '.morning-payment-row [data-payment-kinds][hidden]{display:none}' in app_css,
+ok('morning-payment-add' in payments and 'data-payment-field="price"' in payments and 'step="0.01"' in payments and 'data-payment-kinds="4"' in payments and 'data-payment-kinds="2,4"' in payments and 'data-payment-kinds="3"' in payments and 'bankDetailsLocked=bankLocked&&type===2' in payments and '.morning-payment-row [data-payment-kinds][hidden]{display:none}' in app_css,
    'Client payment editor actually hides method-irrelevant fields in CSS, keeps cheque source identity locked and lets transfer bank details be completed manually')
 ok('inputmode="text" maxlength="4"' in payments and "cardNum=rawCardNum||'****'" in payments and "/^(?:\\d{4}|\\*{4})$/" in payments and "cardNum=rawCardNum||'****'" in edge and "/^(?:\\d{4}|\\*{4})$/" in edge,
    'Credit-card receipt suffix accepts either four digits or four asterisks, and both client and Edge normalize an empty value to the masked placeholder')

@@ -19,12 +19,13 @@ Object.defineProperty(globalThis,'navigator',{value:{onLine:true},configurable:t
 
 function fixture(site='orders',options={}){
   let owner='A',mode='primary',n=0,visible=state([{id:'C',amount:100},{id:'D',amount:200}]);
-  let head={revision:7,state:clone(visible)},rpcHook=null,readHook=null;
-  const databases=new Map(),emergency=emergencyStore(),calls=[],ledger=new Map();
+  let head={revision:7,state:clone(visible)},rpcHook=null,readHook=null,refreshHook=null;
+  const databases=new Map(),emergency=emergencyStore(),calls=[],refreshCalls=[],ledger=new Map();
   const merge=(site==='orders'?ordersChecks:kupaChecks)({}).mergeSharedChecks;
   const create=()=>createSharedChecksV2Runtime({site,owner:()=>owner,primary:()=>true,mode:()=>mode,readState:()=>visible,applyState:value=>{visible=clone(value)},merge,
     createStorage:args=>{if(!databases.has(owner))databases.set(owner,memoryDb());return createSharedChecksStorageV2({...args,db:databases.get(owner),emergency,...options})},
     operationId:()=>`flight-${++n}`,readRemote:async()=>readHook?readHook():clone(head),
+    refreshBankRpc:async revision=>{refreshCalls.push(revision);return refreshHook?refreshHook():{status:'checked'}},
     rpc:async(...args)=>{
       calls.push(clone(args));if(rpcHook)return rpcHook(...args);
       const [checks,revision,id]=args;
@@ -32,13 +33,23 @@ function fixture(site='orders',options={}){
       if(revision!==head.revision)return {r:{ok:false,status:409},j:{code:'PT409',message:'revision_conflict'}};
       head={revision:revision+1,state:{checks:clone(checks),bankEvents:[{seq:42,checkId:'C',delta:100}]}};ledger.set(id,clone(head));return {r:{ok:true},row:clone(head)};
     }});
-  return {create,calls,databases,ledger,get visible(){return visible},set visible(value){visible=value},get head(){return head},set head(value){head=value},
-    set owner(value){owner=value},set mode(value){mode=value},set rpcHook(value){rpcHook=value},set readHook(value){readHook=value},
+  return {create,calls,refreshCalls,databases,ledger,get visible(){return visible},set visible(value){visible=value},get head(){return head},set head(value){head=value},
+    set owner(value){owner=value},set mode(value){mode=value},set rpcHook(value){rpcHook=value},set readHook(value){readHook=value},set refreshHook(value){refreshHook=value},
     async start(){const runtime=create();await runtime.initialize({state:visible,revision:7,intent:'cloud-authoritative',sourceOwner:'A'});return runtime},
     edit(runtime,id,values){visible.checks=visible.checks.map(row=>row.id===id?{...row,...values}:row);return runtime.persist([put(id)],{generation:++n})}};
 }
 
 for(const site of ['orders','kupa']){
+  test(`${site}: stored-bank refresh requires a clean recovered V2 head and fences owner replacement`,async()=>{
+    const f=fixture(site),runtime=await f.start();
+    assert.deepEqual(await runtime.refreshBankMatches(),{status:'checked'});assert.deepEqual(f.refreshCalls,[7]);
+    await f.edit(runtime,'C',{note:'pending'}).committed;
+    assert.deepEqual(await runtime.refreshBankMatches(),{status:'pending'});assert.equal(f.refreshCalls.length,1);
+    await runtime.sync();assert.equal(f.calls[0][4].checkAmountPrecision,2,'precision belongs to the immutable flight audit');
+    const held=gate();f.refreshHook=()=>held.promise;const refreshing=runtime.refreshBankMatches();
+    while(f.refreshCalls.length<2)await Promise.resolve();
+    f.owner='B';held.resolve({status:'checked'});await assert.rejects(refreshing,/owner_handoff/);
+  });
   test(`${site}: an edit racing a clean Shared adoption is reconciled without losing either computer`,async()=>{
     const f=fixture(site),runtime=await f.start();
     f.head={revision:8,state:state([{id:'C',amount:100},{id:'D',amount:500}])};

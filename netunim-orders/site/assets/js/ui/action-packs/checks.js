@@ -27,6 +27,7 @@ export function createChecksActions({ financeReadout, domainsChecksEditor, domai
   const toggleChecksBulkVisible = (...args) => domainsChecksView.toggleChecksBulkVisible(...args);
   const checksSearch = search ?? createLazyDeferredSearchUpdater(value => { ui.checkSearchValue = value; }, renderChecksSearch);
   const actions = {
+    'refresh-check-bank': element => domainsChecksEditor.refreshBankMatches?.(element),
     'review-check-bank': element => reviewCheckBank(element.dataset.clickArg2 === 'remove-selected' ? [...ui.checksBulkSelected] : element.dataset.clickArg0, element.dataset.clickArg1, element.dataset.clickArg2),
     'handle-check-date-part-input': (element, event) => { return handleCheckDatePartInput(element); },
     'handle-check-date-part-blur': (element, event) => { return handleCheckDatePartBlur(element); },
@@ -60,5 +61,5 @@ export function createChecksActions({ financeReadout, domainsChecksEditor, domai
     'sync-check-series-from-first': (element, event) => { return syncCheckSeriesFromFirst(); },
     'mark-check-series-manual': (element, event) => { return markCheckSeriesManual(element); },
   };
-  return markMutationActions(actions, { checks: ['review-check-bank', 'open-check-modal', 'open-check-modal-2', 'mark-check-deposited', 'mark-check-cleared', 'save-check', 'delete-check', 'save-check-series', 'delete-checks-bulk-selected'] });
+  return markMutationActions(actions, { checks: ['refresh-check-bank', 'review-check-bank', 'open-check-modal', 'open-check-modal-2', 'mark-check-deposited', 'mark-check-cleared', 'save-check', 'delete-check', 'save-check-series', 'delete-checks-bulk-selected'] });
 }

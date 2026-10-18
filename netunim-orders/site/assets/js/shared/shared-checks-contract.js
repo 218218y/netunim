@@ -1,10 +1,9 @@
 import {assertEntityCollection} from './data-invariants.js';
 
-// Shared Checks are whole-shekel JSON records. Keep non-finite historical
-// values at zero, matching both check editors and Kupa's existing reader.
-function wholeCheckAmount(value){
+// Preserve ILS cents in checks and in server-issued balance deltas.
+function checkAmount(value){
   const number=Number(value);
-  return Math.round(Number.isFinite(number)?number:0);
+  return Math.round((Number.isFinite(number)?number:0)*100)/100;
 }
 
 export function checkAccountData(check){
@@ -26,7 +25,7 @@ export function normalizeSharedBankEvents(events){
     return {
       seq:Number.isSafeInteger(seq)&&seq>0?seq:null,
       at:event?.at||null,
-      delta:wholeCheckAmount(event?.delta),
+      delta:checkAmount(event?.delta),
       kind:String(event?.kind||'check_effect_delta'),
       checkId:String(event?.checkId||''),
     };
@@ -43,7 +42,7 @@ export function normalizeSharedChecks(checks){
       id:String(check.id),
       name:String(check.name||''),
       account:checkAccountData(check),
-      amount:wholeCheckAmount(check.amount),
+      amount:checkAmount(check.amount),
       dueDate:String(check.dueDate||''),
       status:String(check.status||'בקופה'),
       depositDate:check.depositDate||null,

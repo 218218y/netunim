@@ -1,5 +1,5 @@
 import {esc, uid} from '../../core/values.js';
-import {checkNum, checkWholeMoney} from '../../core/money.js';
+import {checkNum, checkMoney} from '../../core/money.js';
 import {generatedCheckSeriesRow, nextSeriesCheckNumber} from './model.js';
 import {checkAddMonthsISO, checkTodayISO} from '../../core/dates.js';
 import {$} from '../../state/constants.js';
@@ -12,7 +12,7 @@ export function createDomainsChecksEditor({model, ui, toast, checkDateEditorMark
       const c=model.state.checks.find(x=>x.id===id);
       if(!c)return toast('הצ\'ק לא נמצא');
       modal('עריכת צ\'ק',(
-        `<div class="form-grid"><div class="field"><label>שם</label><input id="fName" value="${esc(c.name)}" autofocus></div><div class="field"><label>סכום</label><input id="fAmount" type="number" min="0" step="1" inputmode="numeric" value="` +
+        `<div class="form-grid"><div class="field"><label>שם</label><input id="fName" value="${esc(c.name)}" autofocus></div><div class="field"><label>סכום</label><input id="fAmount" type="number" min="0" step="0.01" inputmode="decimal" value="` +
         `${esc(c.amount||'')}"></div><div class="field"><label>תאריך פירעון</label>${checkDateEditorMarkup('fDue',c.dueDate||'',{label:'תאריך פירעון'})}<div class="check-date-hint">יום / חודש / 2 ספרות שנה</div></div><div class="field"><label>סטטוס</label><select id="fStatus">` +
         `${['בקופה','הופקד - במעקב','נפרע','חזר','בוטל'].map(s=>`<option ${c.status===s?'selected':''}>${esc(s)}</option>`).join('')}</select></div><div class="field"><label>סיווג</label><label class="check-account-checkbox"><input id="fCheckHome" type="checkbox" ` +
         `${c.account==='ביתי'?'checked':''}> צ׳ק ביתי</label></div><div class="field"><label>מספר צ'ק</label><input id="fNum" value="${esc(c.checkNumber)}"></div><div class="field full"><label>הערה</label><textarea id="fNote">` +
@@ -45,7 +45,7 @@ export function createDomainsChecksEditor({model, ui, toast, checkDateEditorMark
     const host=$('#checkSeriesRows');
     if(!host)return;
     host.innerHTML=rows.map((r,i)=>(`<div class="check-series-row"><div class="check-series-index">${i+1}</div>${checkDateEditorMarkup('',r.date||'',{series:true,seriesField:'date',manual:r.manualDate,role:i===0?'series-first':'series-manual',label:`תאריך פירעון בצ'ק ${i+1}`})}<input data-series-field="amount" data-manual="` +
-      `${esc(r.manualAmount?'1':'0')}" type="number" min="0" step="1" inputmode="numeric" value="${esc(r.amount||'')}" ${i===0?'data-input="sync-check-series-from-first"':'data-input="mark-check-series-manual"'}><input data-series-field="number" data-manual="` +
+      `${esc(r.manualAmount?'1':'0')}" type="number" min="0" step="0.01" inputmode="decimal" value="${esc(r.amount||'')}" ${i===0?'data-input="sync-check-series-from-first"':'data-input="mark-check-series-manual"'}><input data-series-field="number" data-manual="` +
       `${esc(r.manualNumber?'1':'0')}" value="${esc(r.number||'')}" ${i===0?'data-input="sync-check-series-from-first"':'data-input="mark-check-series-manual"'}></div>`)).join('')
   }
   function markCheckSeriesManual(input){
@@ -89,7 +89,7 @@ export function createDomainsChecksEditor({model, ui, toast, checkDateEditorMark
     const drafts=checkSeriesDrafts();
     if(!name)return toast('יש למלא שם לקוח');
     if(!drafts.length)return toast('יש להוסיף לפחות צ\'ק אחד');
-    const invalid=drafts.findIndex(r=>!r.date||checkWholeMoney(r.amount)<=0);
+    const invalid=drafts.findIndex(r=>!r.date||checkMoney(r.amount)<=0);
     if(invalid>=0)return toast(`יש למלא תאריך וסכום בצ'ק ${invalid+1}`);
     const depositedStatus=['הופקד - במעקב','נפרע'].includes(status);
     const createdAt=checkTodayISO(),
@@ -98,7 +98,7 @@ export function createDomainsChecksEditor({model, ui, toast, checkDateEditorMark
       id:uid('CHK'),
       name,
       account,
-      amount:checkWholeMoney(r.amount),
+      amount:checkMoney(r.amount),
       dueDate:r.date,
       status,
       depositDate:depositedStatus?r.date:null,
@@ -124,7 +124,7 @@ export function createDomainsChecksEditor({model, ui, toast, checkDateEditorMark
       id,
       name:$('#fName').value.trim(),
       account:$('#fCheckHome')?.checked?'ביתי':'עסקי',
-      amount:checkWholeMoney($('#fAmount').value),
+      amount:checkMoney($('#fAmount').value),
       dueDate:$('#fDue').value,
       bankAutomationDisabled:document.getElementById('fCheckAuto')?.checked===false,
       status:$('#fStatus').value,
@@ -136,6 +136,7 @@ export function createDomainsChecksEditor({model, ui, toast, checkDateEditorMark
       note:$('#fNote').value.trim(),
       createdAt:old.createdAt||checkTodayISO()
     };
+    if(rec.amount!==Number(old.amount))rec.amountEditId=uid('CHECK_AMOUNT');
     if(!rec.name||!rec.amount||!rec.dueDate)return toast('יש למלא שם, סכום ותאריך');
     const wasDeposited=['הופקד - במעקב','נפרע'].includes(old.status),isDeposited=['הופקד - במעקב','נפרע'].includes(rec.status);
     rec.depositDate=isDeposited?rec.dueDate:(rec.status==='חזר'&&old.depositDate?rec.dueDate:null);

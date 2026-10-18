@@ -7,7 +7,7 @@ const stale=error=>/^storage_(ack_checkpoint_stale|rebase_checkpoint_stale|check
 // One owner, one journal and one immutable RPC payload. Application adapters
 // supply their existing check merge/normalization; this module owns durability.
 // In particular, an authentication change is never a migration instruction.
-export function createSharedChecksV2Runtime({owner,primary,captureCommitAuthority=()=>primary,mode=()=> 'off',readState,applyState,merge,readRemote,rpc,site,
+export function createSharedChecksV2Runtime({owner,primary,captureCommitAuthority=()=>primary,mode=()=> 'off',readState,applyState,merge,readRemote,rpc,refreshBankRpc,site,
   createStorage=createSharedChecksStorageV2,operationId=()=>createOperationId('shared-checks-v2'),now=()=>Date.now()}={}){
   if([owner,primary,readState,applyState,merge,readRemote,rpc].some(value=>typeof value!=='function'))throw new Error('shared_checks_runtime_configuration');
   let storage=null,identity='',opening=null,syncing=null,commits=Promise.resolve(),active=false,cursorReady=false,lastRemoteUpdatedAt=null,boundaryGate=()=>false;
@@ -140,7 +140,7 @@ export function createSharedChecksV2Runtime({owner,primary,captureCommitAuthorit
         try{assertSyncAllowed(store);await store.adoptCloudHead(row.revision,remote)}catch(error){if(error.message==='shared_checks_cloud_pending'||error.message==='storage_cloud_pending'||stale(error))continue;throw error}
         assertContext(store);lastRemoteUpdatedAt=row.updated_at||lastRemoteUpdatedAt;await publish(store);return true;
       }
-      assertSyncAllowed(store);const flight=await store.materializeFlight({operationId:operationId(),prepareAudit:value=>operationAuditMetadata({site,mutationType:value.mutationType,surface:value.surface,baseRevision:value.baseRevision,beforeState:cloud.base.state,afterState:value.snapshot,collections:['checks'],deleteCount:(value.deleteIntents?.checks||[]).length})});assertContext(store);
+      assertSyncAllowed(store);const flight=await store.materializeFlight({operationId:operationId(),prepareAudit:value=>({...operationAuditMetadata({site,mutationType:value.mutationType,surface:value.surface,baseRevision:value.baseRevision,beforeState:cloud.base.state,afterState:value.snapshot,collections:['checks'],deleteCount:(value.deleteIntents?.checks||[]).length}),checkAmountPrecision:2})});assertContext(store);
       const deletedIds=flight.deleteIntents?.checks||[];
       const audit=flight.audit;
       const result=await runBusyCloudWriteWithPolicy(()=>{assertContext(store);return rpc(structuredClone(flight.snapshot.checks),flight.baseRevision,flight.operationId,[...deletedIds],audit)});assertContext(store);
@@ -189,7 +189,16 @@ export function createSharedChecksV2Runtime({owner,primary,captureCommitAuthorit
     const store=storage;await commits;assertContext(store);
     const result=await store.resetCloudHead(revision,canonical(state),{boundaryId});assertContext(store);workPending=true;await publish(store);return result;
   }
-  return {recover,recoverReadOnly,initialize,initializeLocal,persist,sync,diagnostics,setBoundaryGate:gate=>{if(typeof gate!=='function')throw new Error('storage_boundary_gate_invalid');boundaryGate=gate},
+  async function refreshBankMatches(){
+    assertSyncAllowed();const store=storage;await commits;assertSyncAllowed(store);
+    if(mode()!=='primary'||!active||!cursorReady)throw new Error('shared_checks_not_recovered');
+    if(typeof refreshBankRpc!=='function')throw new Error('check_bank_refresh_unavailable');
+    const cloud=await store.cloudState();assertSyncAllowed(store);
+    if(cloud.pending||cloud.flight||cloud.control||commitsInFlight||workPending||syncing?.store===store||[...risks.values()].some(risk=>risk.owner===identity))return {status:'pending'};
+    const result=await refreshBankRpc(cloud.base.revision);assertSyncAllowed(store);
+    return result;
+  }
+  return {recover,recoverReadOnly,initialize,initializeLocal,persist,sync,refreshBankMatches,diagnostics,setBoundaryGate:gate=>{if(typeof gate!=='function')throw new Error('storage_boundary_gate_invalid');boundaryGate=gate},
     replaceAuthoritativeState,replaceLocalWithPending,replaceLocalAuthoritativeState,resetCloudHead,
     async cloudState(){assertContext();const cloud=await storage.cloudState();cursorReady=!!cloud.base;if(cloud.pending||cloud.flight||cloud.control)workPending=true;return cloud},
     async flush(){await commits;return true},

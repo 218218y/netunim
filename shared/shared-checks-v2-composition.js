@@ -10,7 +10,7 @@ import {createSharedChecksStorageV2} from './shared-checks-storage-v2.js';
 // starts only after the durable V2 namespace has been verified. A local V2
 // birth does not inspect abandoned V1 data; account adoption verifies its
 // cloud heads before the displayed owner changes.
-export function createSharedChecksV2Composition({site,owner,primary,captureCommitAuthority=()=>primary,preparing=()=>false,model,checksSession,eventsKey,domainRevisions,merge,readRemote,rpc,validateMainCloud,applyMainState,main,db=createStorageJournalDb()}={}){
+export function createSharedChecksV2Composition({site,owner,primary,captureCommitAuthority=()=>primary,preparing=()=>false,model,checksSession,eventsKey,domainRevisions,merge,readRemote,rpc,refreshBankRpc,validateMainCloud,applyMainState,main,db=createStorageJournalDb()}={}){
   const accountMarker=createStorageV2AccountMarker({app:site,owner,primary,db});
   const accountV2Requested=()=>isStorageV2ActivationCached(site,owner());
   const preparationRequested=()=>!!preparing()&&!accountV2Requested();
@@ -20,7 +20,7 @@ export function createSharedChecksV2Composition({site,owner,primary,captureCommi
   const runtime=createSharedChecksV2Runtime({site,owner,primary,captureCommitAuthority,mode:()=>accountV2Requested()?'primary':preparationRequested()?'preparing':'off',
     readState:()=>({checks:model.state.checks,bankEvents:checksSession[eventsKey]||[]}),
     applyState:value=>{model.state.checks=value.checks;checksSession[eventsKey]=value.bankEvents;domainRevisions.touch('checks')},
-    merge,readRemote,rpc,createStorage:options=>createSharedChecksStorageV2({...options,db})});
+    merge,readRemote,rpc,refreshBankRpc,createStorage:options=>createSharedChecksStorageV2({...options,db})});
   const boundary=createStorageV2Boundary({owner,primary,main,shared:runtime,validateMainCloud,db});
   main.setBoundaryGate?.(()=>boundary.locked);
   runtime.setBoundaryGate(()=>boundary.locked);

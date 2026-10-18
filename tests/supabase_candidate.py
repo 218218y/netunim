@@ -8,6 +8,7 @@ from check_bank_reconciliation import run as check_bank_reconciliation
 from check_bank_items import run as check_bank_items
 from check_notification_retention import run as check_notification_retention
 from notes_workbook_delete import run as notes_workbook_delete
+from checks_upgrade import run as checks_upgrade
 
 sys.path.insert(0, str(ROOT / 'tools'))
 from supabase_candidate_schema import (
@@ -309,3 +310,6 @@ with IsolatedPostgres(schema_files=all_files) as db:
     check_notification_retention(db)
 
 print('PASS candidate migration chain: authenticated prefix replay, generic pending suffix, clean install, authorization and fence regressions pass')
+
+with IsolatedPostgres(schema_files=all_files) as db:
+    checks_upgrade(db)

@@ -3,10 +3,10 @@ import {evidenceTimestamp} from '../../shared/response-evidence.js';
 /** @typedef {'reserved'|'pending'|'created_unverified'|'needs_reconciliation'|'created'|'failed'} OperationState */
 /** @typedef {{operation_id:string,state:OperationState,document_type?:number,amount?:number,document_id?:string,document_number?:string|number,verified_at?:string,allocation_number?:string|number}} LedgerOperation */
 /** @typedef {{pending?:boolean,operationId?:string,documentId?:string,documentNumber?:string|number,documentType?:number,documentAmount?:number,transactionId?:number,linkId?:number,verifiedAt?:string,handledAt?:string}} BankLink */
-/** @typedef {{ok:true,operation:LedgerOperation|null,configured?:boolean,available?:boolean,unresolved?:boolean,retryable_reserved?:boolean,environment?:string,bank_link_pending?:boolean,bank_link?:BankLink|null}} OperationStatus */
+/** @typedef {{ok:true,operation:LedgerOperation|null,configured?:boolean,available?:boolean,unresolved?:boolean,retryable_reserved?:boolean,environment?:string,checks_registration_pending?:boolean,bank_link_pending?:boolean,bank_link?:BankLink|null}} OperationStatus */
 /** @typedef {{ok:true,reserved:boolean,operation:{operation_id:string,state:OperationState}}} Reservation */
 /** @typedef {{id:string,type:number,amount:number,number?:string|number,allocationNumber?:string|number}} OfficialDocument */
-/** @typedef {{ok:true,verified:true,document:OfficialDocument,local_link_pending?:boolean,bank_link_pending?:boolean,bank_link?:BankLink|null}} CreatedDocument */
+/** @typedef {{ok:true,verified:true,document:OfficialDocument,local_link_pending?:boolean,checks_registration_pending?:boolean,bank_link_pending?:boolean,bank_link?:BankLink|null}} CreatedDocument */
 /** @typedef {{ok:true,abandoned:boolean,operation:LedgerOperation|null}} Abandonment */
 /** @typedef {{operation_id?:string,prevent_retry?:boolean,uncertain?:boolean,document?:{id:string,number?:string|number,allocationNumber?:string|number}}} FailureDetails */
 
@@ -85,7 +85,7 @@ function operation(value,expectedId){
 export function decodeMorningOperationStatus(value,expectedId){
   const row=success(value);
   /** @type {OperationStatus} */ const result={ok:true,operation:operation(row.operation,expectedId)};
-  for(const name of /** @type {const} */ (['configured','available','unresolved','retryable_reserved','bank_link_pending']))if(row[name]!==undefined)result[name]=flag(row[name]);
+  for(const name of /** @type {const} */ (['configured','available','unresolved','retryable_reserved','checks_registration_pending','bank_link_pending']))if(row[name]!==undefined)result[name]=flag(row[name]);
   if(row.environment!==undefined){if(typeof row.environment!=='string'||row.environment.length>40||(result.configured!==false&&!['production','sandbox'].includes(row.environment)))throw invalid();result.environment=row.environment}
   if(row.bank_link!==undefined)result.bank_link=bankLink(row.bank_link,expectedId);
   const ledger=result.operation;
@@ -109,7 +109,7 @@ export function decodeMorningCreatedDocument(value,payload){
   if(doc.number!==undefined&&doc.number!==null)document.number=numberLabel(doc.number);
   if(doc.allocationNumber!==undefined&&doc.allocationNumber!==null)document.allocationNumber=numberLabel(doc.allocationNumber);
   /** @type {CreatedDocument} */ const result={ok:true,verified:true,document};
-  for(const name of /** @type {const} */ (['local_link_pending','bank_link_pending']))if(row[name]!==undefined)result[name]=flag(row[name]);
+  for(const name of /** @type {const} */ (['local_link_pending','checks_registration_pending','bank_link_pending']))if(row[name]!==undefined)result[name]=flag(row[name]);
   if(row.bank_link!==undefined)result.bank_link=bankLink(row.bank_link,payload.operation_id);
   linkedDocument(result.bank_link,document,result.bank_link_pending);
   return result;

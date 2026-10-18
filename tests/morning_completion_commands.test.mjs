@@ -24,6 +24,15 @@ function issueFixture(factory=createMorningIssueCommand){
 for(const key of ['createBusy','blocked','completed'])test('issuance admission rejects '+key,async()=>{
  const f=issueFixture();f.state[key]=true;await f.command().create();assert.deepEqual(f.calls,[]);
 });
+
+test('verified issuance keeps the independent cheque follow-up pending without issuing again',async()=>{
+ const f=issueFixture();let pending=false;
+ f.ports.issuance.issue=async()=>{f.calls.push('issue');return {document:{id:'official',amount:42,type:320},checks_registration_pending:true}};
+ f.ports.recovery.settle=(_id,_result,options)=>{pending=options.serverLinkPending;return {durable:true,recoveryCleared:!pending,blocked:pending}};
+ await f.command().create();assert.equal(pending,true);assert.equal(f.state.completed,true);assert.equal(f.state.blocked,true);
+ assert.equal(f.calls.includes('notify'),false);assert.ok(f.calls.some(row=>row.schedule===60_000));
+ await f.command().create();assert.equal(f.calls.filter(row=>row==='issue').length,1);
+});
 test('a held confirmation excludes a second create and cancellation never reserves',async()=>{
  const f=issueFixture(),held=gate();f.ports.display.confirmDialog=()=>held.promise;const command=f.command(),work=command.create();
  await command.create();assert.equal(f.state.createBusy,true);held.resolve(false);await work;assert.equal(f.calls.includes('issue'),false);assert.equal(f.state.createBusy,false);

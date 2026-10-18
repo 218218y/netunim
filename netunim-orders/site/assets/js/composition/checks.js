@@ -80,7 +80,7 @@ export function createOrdersChecksCapability({
     search = createLazyDeferredSearchUpdater(value => { if (!disposed) ui.checkSearchValue = value; },
       (...args) => view.renderChecksSearch(...args));
     const nextActions = createChecksActions({financeReadout:finance.readout, domainsFinanceView:finance.presentation,
-      domainsChecksEditor:nextEditor, domainsChecksView:view, ui, uiDateEditor:date, uiModal:ownedModal, search});
+      domainsChecksEditor:{...nextEditor,refreshBankMatches:(...args)=>ready('sync',sync).refreshBankMatches(...args)}, domainsChecksView:view, ui, uiDateEditor:date, uiModal:ownedModal, search});
     // Mutation labels are consumed by the shell's startup/ownership gate.
     actions = Object.fromEntries(Object.entries(nextActions).map(([name, handler]) => {
       const owned = (...args) => disposed ? false : handler(...args);
@@ -122,7 +122,7 @@ export function createOrdersChecksCapability({
     poll:(...args) => disposed ? Promise.resolve(false) : ready('sync', sync).pollSharedChecks(...args),
     isSaving:() => sync?.runtime.isSaving() ?? false,
     isPending:() => sync?.runtime.isPending() ?? false,
-    cancelPending:() => persistence?.runtime.cancelPending() ?? false,
+    cancelPending:() => {sync?.runtime.cancelBankRefresh();return persistence?.runtime.cancelPending() ?? false},
     // Waiting for scheduled follow-ups first includes any flight they create.
     async drain() { await persistence?.runtime.drain(); await sync?.runtime.drain(); },
     dispose() {

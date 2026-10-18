@@ -59,7 +59,8 @@ class RetentionContracts(unittest.TestCase):
         with IsolatedPostgres(schema_files=files, demotable_postgres=True) as db:
             before = json.loads(db.sql(inventory_sql))
             jobs = before['operations']['jobs']
-            self.assertEqual(len(jobs), 2)
+            retention_names={row['jobname'] for row in EXPECTED}
+            self.assertEqual(len([row for row in jobs if row['jobname'] in retention_names]), 2)
             before['operations'].update(pg_cron=True, timezone='GMT', launch_active_jobs='on')
             self.assertEqual(operational_errors(before), [])
             # Any accidental direct invocation must throw, even on empty tables.
@@ -83,18 +84,19 @@ class RetentionContracts(unittest.TestCase):
             after = json.loads(db.sql(inventory_sql))
             self.assertEqual(after['operations']['jobs'], jobs)
             self.assertFalse(drift(before, after))
-            db.sql("update cron.job set active=false,schedule='* * * * *',command='select 1';")
+            names=','.join("'"+name+"'" for name in sorted(retention_names))
+            db.sql("update cron.job set active=false,schedule='* * * * *',command='select 1' where jobname in ("+names+");")
             db.migrate(migration)
             self.assertEqual(json.loads(db.sql(inventory_sql))['operations']['jobs'], jobs)
             for mutate in [
-                "insert into cron.job(jobname,schedule,command,username) select jobname,schedule,command,'foreign' from cron.job limit 1;",
+                "insert into cron.job(jobname,schedule,command,username) select jobname,schedule,command,'foreign' from cron.job where jobname in ("+names+") limit 1;",
                 "update cron.job set database='other';",
             ]:
                 with self.assertRaisesRegex(RuntimeError, 'Ambiguous retention jobs'):
                     db.sql('begin; ' + mutate + '\n' + fixture_migration + '\ncommit;')
                 self.assertEqual(json.loads(db.sql(inventory_sql))['operations']['jobs'], jobs)
             with self.assertRaisesRegex(RuntimeError, 'Ambiguous retention jobs'):
-                db.sql("begin; insert into cron.job(jobname,schedule,command) select 'renamed-extra',schedule,command from cron.job limit 1;\n" + fixture_migration + '\ncommit;')
+                db.sql("begin; insert into cron.job(jobname,schedule,command) select 'renamed-extra',schedule,command from cron.job where jobname in ("+names+") limit 1;\n" + fixture_migration + '\ncommit;')
             self.assertEqual(json.loads(db.sql(inventory_sql))['operations']['jobs'], jobs)
             # Execute the deployment entrypoint; operational failures must block it.
             target = json.loads((ROOT / 'supabase/postflight-target.json').read_text(encoding='utf8'))

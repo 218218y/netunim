@@ -17,13 +17,19 @@ async function createMorningDocument(button){
     if(!confirmed)return;assertCurrent();if(!session.isActive(generation))return;
     if(rejectCurrentIssuance())return;
     const data=await issuance.issue(payload,context,assertCurrent);assertCurrent();
-    const result=await application.apply(context,{operationId:context.operationId,documentId:data.document.id,documentNumber:data.document.number,type:data.document.type??type,amount:data.document.amount??amount,verifiedAt:new Date().toISOString()},{immediate:issuanceEpoch===session.interruptionEpoch()&&connectivity.isOnline(),assertCurrent,isCurrent:()=>session.isActive(generation)});assertCurrent();const settlement=recovery.settle(context.operationId,result,{serverLinkPending:!!data.local_link_pending||!!data.bank_link_pending}),durable=settlement.durable,recoveryCleared=settlement.recoveryCleared;if(recoveryCleared)recovery.notify(context,data.bank_link);
+    const result=await application.apply(context,{operationId:context.operationId,documentId:data.document.id,documentNumber:data.document.number,type:data.document.type??type,amount:data.document.amount??amount,verifiedAt:new Date().toISOString()},{immediate:issuanceEpoch===session.interruptionEpoch()&&connectivity.isOnline(),assertCurrent,isCurrent:()=>session.isActive(generation)});assertCurrent();
+    const settlement=recovery.settle(context.operationId,result,{serverLinkPending:!!data.local_link_pending||!!(data.bank_link_pending||data.checks_registration_pending)}),
+      durable=settlement.durable,recoveryCleared=settlement.recoveryCleared;if(recoveryCleared)recovery.notify(context,data.bank_link);
     media.invalidateCache();
     let pdfLoaded=false;if(session.isActive(generation))pdfLoaded=await media.viewDocument(data.document.id,null,{quiet:true});assertCurrent();
     if(session.isActive(generation)){
       display.operation({state:'created',verified_at:new Date().toISOString(),document_id:data.document.id,document_number:data.document.number,allocation_number:data.document.allocationNumber});
-      const message=!durable?'המסמך הופק ואומת ב-Morning, אך עדכון החוב עדיין ממתין לשמירה מקומית בטוחה.':(data.local_link_pending||data.bank_link_pending)?'המסמך הופק ואומת ב-Morning. שמירת הקישור המקומי עדיין בבדיקה.':!recoveryCleared?'המסמך הופק ואומת, אך נקודת ההתאוששות המקומית לא נמחקה ולכן ההפקה נשארת נעולה עד בדיקה נוספת.':pdfLoaded?'המסמך הופק, אומת וה-PDF הרשמי נטען מ-Morning.':'המסמך הופק ואומת ב-Morning. ה-PDF הרשמי לא נטען כרגע; אפשר ללחוץ „צפה”.';
-      display.status(!durable||data.local_link_pending||data.bank_link_pending||!recoveryCleared||!pdfLoaded?'warning':'ready',message);
+      const message=!durable?'המסמך הופק ואומת ב-Morning, אך עדכון החוב עדיין ממתין לשמירה מקומית בטוחה.':
+        data.checks_registration_pending?'המסמך הופק ואומת. רישום הצ׳קים למעקב ממתין להשלמה אוטומטית; אין להפיק את המסמך שוב.':
+        (data.local_link_pending||data.bank_link_pending)?'המסמך הופק ואומת ב-Morning. שמירת הקישור המקומי עדיין בבדיקה.':
+        !recoveryCleared?'המסמך הופק ואומת, אך נקודת ההתאוששות המקומית לא נמחקה ולכן ההפקה נשארת נעולה עד בדיקה נוספת.':
+        pdfLoaded?'המסמך הופק, אומת וה-PDF הרשמי נטען מ-Morning.':'המסמך הופק ואומת ב-Morning. ה-PDF הרשמי לא נטען כרגע; אפשר ללחוץ „צפה”.';
+      display.status(!durable||data.local_link_pending||data.checks_registration_pending||data.bank_link_pending||!recoveryCleared||!pdfLoaded?'warning':'ready',message);
       if(button){button.dataset.idleLabel='הופק ואומת';button.textContent='הופק ואומת'}
     }
     session.update({blocked:settlement.blocked,completed:true});if(session.isActive(generation))display.markSaved();

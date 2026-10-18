@@ -40,7 +40,7 @@ export function createKupaChecksRuntime({model,ui,checksSession={},sharedChecksH
   };
   const runtime={
     poll:(...args)=>disposed?Promise.resolve():requireSync().pollSharedChecks(...args),
-    cancelPending:()=>persistence?.runtime.cancelPending()??false,
+    cancelPending:()=>{sync?.runtime.cancelBankRefresh();return persistence?.runtime.cancelPending()??false},
     isPending:()=>!!(sync?.runtime.isPending()||persistence?.runtime.isPending()),
     async drain(){
       do{
@@ -111,7 +111,7 @@ export function createKupaChecksRuntime({model,ui,checksSession={},sharedChecksH
       normalizeCheckModalDates:(...args)=>uiDateEditor.normalizeCheckModalDates(...args),
       closeModal:(...args)=>uiModal.closeModal(...args),
     });
-    const nextActions=createChecksActions({domainsChecksEditor:nextEditor,domainsChecksView:view,ui,uiBulk,uiDateEditor,uiModal,search});
+    const nextActions=createChecksActions({domainsChecksEditor:{...nextEditor,refreshBankMatches:(...args)=>requireSync().refreshBankMatches(...args)},domainsChecksView:view,ui,uiBulk,uiDateEditor,uiModal,search});
     editor=nextEditor;
     actions=Object.fromEntries(Object.entries(nextActions).map(([name,run])=>[name,(...args)=>!disposed&&run(...args)]));
   }

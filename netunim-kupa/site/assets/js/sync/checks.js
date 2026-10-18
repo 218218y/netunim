@@ -1,4 +1,4 @@
-import {createSharedChecksFlight} from '../shared/shared-checks-flight.js';
+import {createSharedChecksFlight,createDeferredCheckBankRefresh} from '../shared/shared-checks-flight.js';
 import {clone} from '../core/values.js';
 import {createSharedChecksMerge} from './checks-merge.js';
 import {jsonEq} from './merge-records.js';
@@ -9,11 +9,16 @@ const slots={};
 let disposed=false;
 const flight=createSharedChecksFlight({state:slots,pullKey:'pull',saveKey:'save',busyKey:'busy'});
 Object.defineProperty(checksSession,'sharedChecksBusy',{configurable:true,enumerable:true,get:()=>slots.busy});
+const bankRefresh=createDeferredCheckBankRefresh({owner:()=>loadSession()?.user?.id,
+    ready:()=>!disposed&&tab.primaryTab&&isOnline()&&!!loadSession()?.user?.id&&sharedChecksV2?.primaryReady,
+    checks:()=>model.state.checks,refresh:()=>sharedChecksV2.refreshBankMatches(),
+    sync:()=>syncSharedChecksFromCloud({quiet:true}),render:render,toast});
 const runtime={
+  cancelBankRefresh:bankRefresh.cancel,
   isSaving:()=>!!slots.save,
   isPending:()=>!!(slots.pull||slots.save),
-  async drain(){while(slots.pull||slots.save)await Promise.allSettled([slots.pull,slots.save].filter(Boolean))},
-  dispose(){if(disposed)return false;disposed=true;return true},
+  async drain(){while(slots.pull||slots.save)await Promise.allSettled([slots.pull,slots.save].filter(Boolean));await bankRefresh.drain()},
+  dispose(){if(disposed)return false;disposed=true;bankRefresh.dispose();return true},
 };
 const mergeSharedChecks=createSharedChecksMerge({checksSession});
 
@@ -43,7 +48,7 @@ async function syncChecksV2({required=false,quiet=false}={}){
     const conflict=!!cloud.control?.conflict;
     setSaveStatus(synced?'מסונכרן לענן':checksSession.sharedChecksLastError||'צקים ממתינים לסנכרון',conflict?'error':synced?'ok':'saving');
     setCloudHeaderStatus(conflict?'conflict':synced?'synced':'syncing',conflict?'ענן: התנגשות בצ׳קים':synced?'ענן: מסונכרן':'ענן: ממתין לסנכרון');refreshCloudHeaderTimestamp();
-    if(!quiet)render();return synced;
+    if(synced)bankRefresh.observe();if(!quiet)render();return synced;
   }catch(error){if(current()){checksSession.sharedChecksLastError=error.message;setSaveStatus('בדיקת ענן הצ׳קים נכשלה','error');setCloudHeaderStatus('syncing','ענן: ממתין להתאוששות הצ׳קים');if(!quiet)toast(error.message)}if(required)throw error;return false}
 }
 
@@ -68,5 +73,5 @@ async function pollSharedChecks(){
   if(!disposed&&synced&&!jsonEq(before,model.state.checks)){render();refreshCloudHeaderTimestamp()}
 }
 
-return {mergeSharedChecks,syncSharedChecksFromCloud,saveSharedChecksToCloud,pollSharedChecks,runtime};
+return {refreshBankMatches:bankRefresh.manual,mergeSharedChecks,syncSharedChecksFromCloud,saveSharedChecksToCloud,pollSharedChecks,runtime};
 }

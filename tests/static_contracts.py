@@ -110,9 +110,15 @@ for label, site in [("kupa", K / "site"), ("orders", O / "site")]:
 ks = browser_code(K / "site")
 os = browser_code(O / "site")
 number_markup = ks + os + (K / "site/index.html").read_text(encoding="utf-8") + (O / "site/index.html").read_text(encoding="utf-8")
+cent_editors = [K/'site/assets/js/domains/checks/editor.js', O/'site/assets/js/domains/checks/editor.js',
+                O/'site/assets/js/domains/customers/morning-payments.js']
+for path in cent_editors:
+    content=path.read_text(encoding='utf-8')
+    # Only cheque/receipt editors opt into cents; other financial spinners retain their policy.
+    number_markup=number_markup.replace(content,content.replace('step="0.01"','step="1"'))
 fractional_step = re.search(r'\bstep\s*=\s*"[^"]*0\.\d+[^"]*"|\bstep\s*=\s*\'[^\']*0\.\d+[^\']*\'', number_markup)
 ok(fractional_step is None,
-   "money number inputs: spinner increments stay on whole units; decimals remain manual-entry only")
+   "money number inputs: only cheque/receipt editors use exact-cent spinner increments")
 ok("KUPA_CHECKS_TABLE" not in os and "saveChecksToKupaCloud" not in os and "reconcileKupaBankForChecks" not in os,
    "orders: legacy Kupa-as-check-owner code removed")
 ok("delete x.checks" in ks, "kupa: cloud payload removes checks")

@@ -35,7 +35,7 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
   const createSharedComposition=({model,checksSession,domainRevisions,main,stateNormalization,getCloudTransport})=>createSharedChecksV2Composition({
     site:'orders',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,captureCommitAuthority:()=>owner.captureCommitAuthority(),preparing,
     model,checksSession,eventsKey:'checksBankEvents',domainRevisions,main,
-    merge:mergeSharedChecks,readRemote:(...args)=>getCloudTransport().readSharedChecksCloud(...args),rpc:(...args)=>getCloudTransport().rpcSaveSharedChecksV2(...args),
+    merge:mergeSharedChecks,readRemote:(...args)=>getCloudTransport().readSharedChecksCloud(...args),rpc:(...args)=>getCloudTransport().rpcSaveSharedChecksV2(...args),refreshBankRpc:(...args)=>getCloudTransport().refreshCheckBankMatches(...args),
     validateMainCloud:state=>assertValidOrderCloudState(state,'Orders V2 restore cloud state'),applyMainState:state=>{const previous=model.state;model.state=stateNormalization.normalizeState({...state,checks:previous.checks});domainRevisions.reconcile(previous,model.state,{forceAll:true})},
   });
 

@@ -2,11 +2,11 @@ import {checkFutureTotalData,checkMonthSummaryMarkup} from '../../shared/check-s
 import {esc} from '../../core/values.js';
 import {checkUrgency, checkBelongsToAccountData, checkIsClosedStatus} from './model.js';
 import {daysFromToday, monthKey, monthLabel, dateFmt, todayISO} from '../../core/dates.js';
-import {money} from '../../core/money.js';
+import {moneyWithCents as money} from '../../core/money.js';
 import {searchMatch} from '../../core/search.js';
 import {localSearchMarkup} from '../../ui-primitives/local-search.js';
 
-import {checkBankReviewMarkup,checkBankStatusMarkup,checkBankActivityMarkup} from '../../shared/check-bank-review.js';
+import {checkBankReviewMarkup,checkBankStatusMarkup,checkBankActivityMarkup,checkMorningSourceMarkup} from '../../shared/check-bank-review.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createDomainsChecksView({getBankImageContext=()=>({}), ui, model, syncBulkUi, bulkControls, bulkHeader, bulkCell, futureCheckMonths}){
@@ -44,7 +44,8 @@ function renderChecksSearch(v){ui.checkSearchValue=v;const rows=visibleChecks(),
 
 function renderCheckGroups(groups){const keys=Object.keys(groups).sort();if(!keys.length)return '<section class="section"><div class="empty">אין צקים בתצוגה הזאת.</div></section>';return keys.map(k=>{const arr=groups[k];return `<div class="month-group"><div class="month-title"><b>${monthLabel(k)}</b><span class="month-check-total">${checkMonthSummaryMarkup(arr,money)}</span></div><div class="table-scroll"><table class="mobile-card-table checks-table"><thead><tr>${bulkHeader('checks')}<th>שם</th><th>סכום</th><th>פירעון</th><th>סטטוס</th><th>התראה</th><th>מס׳ צק</th><th>הערה</th><th></th></tr></thead><tbody>${arr.map(checkRow).join('')}</tbody></table></div></div>`}).join('')}
 
-function checkRow(c){return `<tr data-bulk-collection="checks" data-bulk-id="${esc(c.id)}" class="${esc(ui.bulkSelected.has(c.id)?'bulk-selected-row':'')}">${bulkCell('checks',c.id)}<td data-label="שם"><b>${esc(c.name)}</b></td><td data-label="סכום" class="amount">${money(c.amount)}</td><td data-label="פירעון">${dateFmt(c.dueDate)}</td><td data-label="סטטוס">${badgeStatus(c.status)}${checkBankStatusMarkup(c)}</td><td data-label="התראה">${dueBadge(c)}</td><td data-label="מספר צק">${esc(c.checkNumber)||'—'}</td><td data-label="הערה" class="muted">${esc(c.note)||'—'}</td><td data-label="פעולות"><div class="row-actions">${c.status==='בקופה'?`<button class="iconbtn" data-action="mark-deposited" data-click-arg0="${esc(c.id)}">הופקד</button>`:''}${c.status==='הופקד - במעקב'?`<button class="iconbtn" data-action="mark-cleared" data-click-arg0="${esc(c.id)}">נפרע</button>`:''}<button class="iconbtn" data-action="open-check-modal-2" data-click-arg0="${esc(c.id)}">עריכה</button></div></td></tr>`}
+function checkRow(c){return `<tr data-bulk-collection="checks" data-bulk-id="${esc(c.id)}" class="${esc(ui.bulkSelected.has(c.id)?'bulk-selected-row':'')}">${bulkCell('checks',c.id)}<td data-label="שם"><b>${esc(c.name)}</b>${checkMorningSourceMarkup(c)}</td>
+<td data-label="סכום" class="amount">${money(c.amount)}</td><td data-label="פירעון">${dateFmt(c.dueDate)}</td><td data-label="סטטוס">${badgeStatus(c.status)}${checkBankStatusMarkup(c)}</td><td data-label="התראה">${dueBadge(c)}</td><td data-label="מספר צק">${esc(c.checkNumber)||'—'}</td><td data-label="הערה" class="muted">${esc(c.note)||'—'}</td><td data-label="פעולות"><div class="row-actions">${c.status==='בקופה'?`<button class="iconbtn" data-action="mark-deposited" data-click-arg0="${esc(c.id)}">הופקד</button>`:''}${c.status==='הופקד - במעקב'?`<button class="iconbtn" data-action="mark-cleared" data-click-arg0="${esc(c.id)}">נפרע</button>`:''}<button class="iconbtn" data-action="open-check-modal-2" data-click-arg0="${esc(c.id)}">עריכה</button></div></td></tr>`}
 
 return { badgeStatus, dueBadge, checkFocusMatch, clearCheckFocus, checkAccountFilterMatch, visibleChecks, visibleChecksTotal, renderChecks, renderChecksSearch, renderCheckGroups, checkRow, checkForecastMarkup };
 }

@@ -62,6 +62,7 @@ def verify_operation_contract(db):
         'bank-archive-snapshot': 'public.sync_bank_transactions_snapshot_v6',
         'bank-balance-snapshot': 'public.save_bank_sync_snapshot_v6',
         'finance-document-save': 'public.save_finance_sync_document_v6',
+        'check-bank-refresh': 'public.refresh_check_bank_matches',
     }
     expected_domains = {
         'orders-save': ['orders'],
@@ -78,6 +79,7 @@ def verify_operation_contract(db):
         'bank-archive-snapshot': ['kupa', 'shared-checks'],
         'bank-balance-snapshot': ['kupa'],
         'finance-document-save': ['kupa'],
+        'check-bank-refresh': ['shared-checks'],
     }
     expected_leases = {
         'bank-merge': ['bank'],
@@ -85,6 +87,10 @@ def verify_operation_contract(db):
         'bank-balance-snapshot': ['bank'],
         'finance-document-save': ['bank', 'credit'],
     }
+    # This suite also inspects the historical operation-contract checkpoint.
+    if db.sql("select to_regprocedure('public.refresh_check_bank_matches(bigint)') is null").strip()=='t':
+        expected_entrypoints.pop('check-bank-refresh')
+        expected_domains.pop('check-bank-refresh')
     entrypoints = db.sql("select operation||'|'||entrypoint from netunim_internal.storage_writer_operations order by operation").strip().splitlines()
     domains = db.sql("select operation||'|'||domain from netunim_internal.storage_writer_operation_domains order by operation,ordinal").strip().splitlines()
     leases = db.sql("select operation||'|'||lease_name from netunim_internal.storage_writer_operation_leases order by operation,lease_name").strip().splitlines()

@@ -1,4 +1,4 @@
-import {createSharedChecksFlight} from '../shared/shared-checks-flight.js';
+import {createSharedChecksFlight,createDeferredCheckBankRefresh} from '../shared/shared-checks-flight.js';
 import {eq} from './merge-records.js';
 import {mergeSharedChecks} from './checks-merge.js';
 import {clone} from '../core/values.js';
@@ -14,13 +14,19 @@ export function createSyncChecks({
   let disposed = false;
   const flight = createSharedChecksFlight({state:slots, pullKey:'pull', saveKey:'save', busyKey:'busy'});
   Object.defineProperty(checksSession, 'checksCloudBusy', {configurable:true, enumerable:true, get:() => slots.busy});
+  const bankRefresh=createDeferredCheckBankRefresh({owner:()=>loadSession()?.user?.id,
+    ready:()=>!disposed&&tab.primaryTab&&isOnline()&&!!loadSession()?.user?.id&&sharedChecksV2?.primaryReady,
+    checks:()=>model.state.checks,refresh:()=>sharedChecksV2.refreshBankMatches(),
+    sync:()=>syncSharedChecksFromCloud({quiet:true}),render:renderKupaDependentView,toast});
   const runtime = {
+    cancelBankRefresh:bankRefresh.cancel,
     isSaving:() => !!slots.save,
     isPending:() => !!(slots.pull || slots.save),
     async drain() {
       while (slots.pull || slots.save) await Promise.all([slots.pull, slots.save].filter(Boolean));
+      await bankRefresh.drain();
     },
-    dispose() { if (disposed) return false; disposed = true; return true; },
+    dispose() { if (disposed) return false; disposed = true; bankRefresh.dispose(); return true; },
   };
 
   function rememberCloud(cloud) {
@@ -62,6 +68,7 @@ export function createSyncChecks({
         cloud.control?.conflict ? 'error' : synced ? 'synced' : '', checksSession.checksCloudLastError);
       refreshCloudTimestamp();
       if (!quiet) renderKupaDependentView();
+      if(synced)bankRefresh.observe();
       return synced;
     } catch (error) {
       if (current()) {
@@ -102,5 +109,5 @@ export function createSyncChecks({
     if (!disposed && synced && !eq(before, model.state.checks)) renderKupaDependentView();
   }
 
-  return {mergeSharedChecks, syncSharedChecksFromCloud, saveSharedChecksToCloud, pollSharedChecks, runtime};
+  return {refreshBankMatches:bankRefresh.manual,mergeSharedChecks, syncSharedChecksFromCloud, saveSharedChecksToCloud, pollSharedChecks, runtime};
 }

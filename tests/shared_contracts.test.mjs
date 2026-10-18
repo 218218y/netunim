@@ -35,7 +35,7 @@ test('existing app-specific date and clone contracts remain isolated',()=>{
  assert.equal(Object.hasOwn(orderValues.clone({x:undefined}),'x'),true);
 });
 
-test('Shared Checks use one finite whole-shekel contract in both apps',()=>{
+test('Shared Checks use one finite exact-cent contract in both apps',()=>{
  const input=[{id:'valid',amount:'1200',account:'ביתי',depositSeq:'2'},
    {id:'rounded',amount:12.5},
    {id:'malformed',amount:'1,200',account:'other',depositSeq:'invalid'},
@@ -43,7 +43,7 @@ test('Shared Checks use one finite whole-shekel contract in both apps',()=>{
    {id:'nonfinite',amount:Infinity}];
  const expected=kupaChecks.normalizeSharedChecks(input);
  assert.deepEqual(orderChecks.normalizeSharedChecks(input),expected);
- assert.deepEqual(expected.map(check=>check.amount),[1200,13,0,0,0]);
+ assert.deepEqual(expected.map(check=>check.amount),[1200,12.5,0,0,0]);
  assert.deepEqual(expected.map(check=>check.account),['ביתי','עסקי','עסקי','עסקי','עסקי']);
  assert.deepEqual(expected.map(check=>check.depositSeq),[2,null,null,null,null]);
  const events=[{seq:1,checkId:'valid',delta:'1,200'}];

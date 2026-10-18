@@ -23,6 +23,7 @@ type OperationRow={
   owner_id:string;operation_id:string;environment:string;request_fingerprint:string;state:OperationState;
   document_type:number;amount:number|string;document_date:string;client_name:string;description:string;
   document_id?:string|null;document_number?:string|null;
+  check_intent?:JsonRecord[]|null;checks_registered_at?:string|null;checks_registration_error?:string|null;
   allocation_number?:string|null;allocation_checked_at?:string|null;verified_at?:string|null;issuance_started_at?:string|null;
   reconciliation_attempts:number;last_reconciliation_at?:string|null;error_code?:string|null;error_message?:string|null;
   source_kind?:'standalone'|'debt'|'bank';source_bank_transaction_id?:number|null;created_at:string;updated_at:string;
@@ -112,7 +113,7 @@ function normalizeInput(body:any){
   if(sourceKind==='bank'&&![320,400].includes(type))throw new Error('invalid_bank_document_type');
   const client:any={name:clientName,add:false};if(email)client.emails=[email];if(taxId)client.taxId=taxId;if(phone)client.phone=phone;
   const payload:any={type,description,date,lang:'he',currency:'ILS',vatType:0,signed:true,rounding:false,client,income:[{price:amount,currency:'ILS',quantity:1,description,vatType:1}]};if(dueDate)payload.dueDate=dueDate;if(remarks)payload.remarks=remarks;if(orderNumber)payload.description=description+' · הזמנה '+orderNumber;
-  const bankSourcePayments:any[]=[];
+  const bankSourcePayments:any[]=[],checkIntent:JsonRecord[]=[];
   if(type===320||type===400){
     const raw=Array.isArray(doc.payment)?doc.payment:(doc.payment&&typeof doc.payment==='object'?[doc.payment]:[]);if(!raw.length||raw.length>12)throw new Error('invalid_payment');const lines:any[]=[];let totalCents=0;
     for(let paymentIndex=0;paymentIndex<raw.length;paymentIndex++){const payment=raw[paymentIndex],paymentType=Number(payment?.type),paymentDate=String(payment?.date||''),price=amountNumber(payment?.price??(raw.length===1?amount:NaN));if(!PAYMENT_TYPES.has(paymentType)||!validDate(paymentDate)||!Number.isFinite(price)||price<=0)throw new Error('invalid_payment');totalCents+=Math.round(price*100);const line:any={type:paymentType,date:paymentDate,price,currency:'ILS'},bankName=clean(payment.bankName,80),bankBranch=clean(payment.bankBranch,30),bankAccount=clean(payment.bankAccount,40),bankCode=digits(payment.bankCode,20);
@@ -120,6 +121,7 @@ function normalizeInput(body:any){
       if(paymentType===3){const cardType=Number(payment.cardType),rawCardNum=String(payment.cardNum||'').trim(),cardNum=rawCardNum||'****';if(!CARD_TYPES.has(cardType)||!/^(?:\d{4}|\*{4})$/.test(cardNum))throw new Error('invalid_card_payment');Object.assign(line,{dealType:1,cardType,cardNum})}
       if(paymentType===2){const chequeNum=clean(payment.chequeNum,40);if(!bankName||!bankBranch||!bankAccount||!chequeNum)throw new Error('invalid_check_payment');Object.assign(line,{bankName,bankBranch,bankAccount,chequeNum})}
       const bankSourceKey=clean(payment.bankSourceKey,180);if(bankSourceKey)bankSourcePayments.push({index:paymentIndex,key:bankSourceKey,bankCode,line});
+      if(paymentType===2)checkIntent.push({paymentIndex,name:clientName,amount:price,dueDate:paymentDate,checkNumber:line.chequeNum,bankName,bankNumber:bankCode,branchNumber:bankBranch,accountNumber:bankAccount,...(sourceKind==='bank'&&bankSourceKey?{bankSourceKey}:{})});
       lines.push(line);
     }
     if(totalCents!==Math.round(amount*100))throw new Error('invalid_payment_total');payload.payment=lines;
@@ -128,7 +130,7 @@ function normalizeInput(body:any){
   // Local debt/source metadata must never weaken account-wide duplicate protection.
   // The fingerprint describes only the Morning-side financial document.
   const fingerprintSource={type,amount,date,dueDate,description,remarks,orderNumber,client:{name:clientName,email,taxId,phone},payment:payload.payment||[],linked:payload.linkedDocumentIds||[]};
-  return {operationId,type,amount,date,dueDate,description:payload.description,remarks,orderNumber,clientName,linkedDocumentId:linked||'',payload,fingerprintSource,sourceKind,sourceDebtId,sourceBankTransactionId:sourceKind==='bank'?sourceBankTransactionId:null,bankSourcePayments};
+  return {operationId,type,amount,date,dueDate,description:payload.description,remarks,orderNumber,clientName,linkedDocumentId:linked||'',payload,fingerprintSource,sourceKind,sourceDebtId,sourceBankTransactionId:sourceKind==='bank'?sourceBankTransactionId:null,bankSourcePayments,checkIntent};
 }
 
 function userMessage(code:string){const messages:Record<string,string>={invalid_operation_id:'מזהה הפעולה אינו תקין',invalid_document_type:'סוג המסמך אינו נתמך',invalid_amount:'סכום המסמך אינו תקין',invalid_document_date:'תאריך המסמך אינו תקין',invalid_due_date:'תאריך לתשלום אינו תקין או מוקדם מתאריך המסמך',missing_description:'תיאור המסמך חסר',missing_client_name:'שם הלקוח חסר',invalid_email:'כתובת האימייל אינה תקינה',invalid_tax_id:'מספר העוסק / ח.פ. אינו תקין',invalid_payment:'פרטי התשלום אינם תקינים',invalid_card_payment:'פרטי כרטיס האשראי אינם תקינים',invalid_check_payment:'פרטי הצ׳ק אינם מלאים',invalid_payment_total:'סכום התקבולים חייב להיות זהה לסכום המסמך',invalid_source:'מקור המסמך אינו תקין',invalid_bank_source:'תנועת הבנק המקורית אינה תקינה',invalid_bank_document_type:'מתנועת בנק ניתן להפיק חשבונית מס / קבלה או קבלה בלבד',invalid_linked_document:'מזהה החשבונית המקושרת אינו תקין'};return messages[code]||'פרטי המסמך אינם תקינים'}
@@ -147,7 +149,7 @@ async function abandonStaleReservation(row:OperationRow){const now=new Date().to
 async function reserveOperation(ownerId:string,input:any,fingerprint:string,allowStaleRelease=true){
   const existing=await readOperation(ownerId,input.operationId);
   if(existing){if(existing.request_fingerprint!==fingerprint)throw Object.assign(new Error('operation_id_conflict'),{code:'operation_id_conflict'});return {row:existing,created:false}}
-  const row={owner_id:ownerId,environment:MORNING_ENV,operation_id:input.operationId,request_fingerprint:fingerprint,state:'reserved',document_type:input.type,amount:input.amount,document_date:input.date,client_name:input.clientName,description:input.description,source_kind:input.sourceKind,source_bank_transaction_id:input.sourceBankTransactionId};
+  const row={owner_id:ownerId,environment:MORNING_ENV,operation_id:input.operationId,request_fingerprint:fingerprint,state:'reserved',document_type:input.type,amount:input.amount,document_date:input.date,client_name:input.clientName,description:input.description,source_kind:input.sourceKind,source_bank_transaction_id:input.sourceBankTransactionId,...(input.checkIntent.length?{check_intent:input.checkIntent}:{})};
   const {data,error}=await admin.from('morning_document_operations').insert(row).select('*').single();
   if(error){
     if(String(error.code||'')==='23505'){
@@ -195,12 +197,38 @@ async function persistVerifiedBankLink(ownerId:string,row:OperationRow){
 }
 
 function candidateItems(data:any){if(Array.isArray(data?.items))return data.items;if(Array.isArray(data?.data?.items))return data.data.items;if(Array.isArray(data))return data;return[]}
+function matchesCheckPayments(item:any,row:OperationRow){
+  if(!row.check_intent?.length||!Array.isArray(item?.payment))return true;
+  // GET DocumentPaymentRow guarantees type/price, but does not promise drawer/date
+  // fields or request ordering. Compare every field actually returned, once per row.
+  const actualPayments=item.payment.filter((payment:any)=>Number(payment.type)===2),expectedPayments=row.check_intent;
+  if(actualPayments.length!==expectedPayments.length)return false;
+  const compatible=(expected:JsonRecord,actual:any)=>sameAmount(actual.price,expected.amount)
+      &&(actual.currency==null||actual.currency==='ILS')
+      &&(actual.date==null||String(actual.date).slice(0,10)===expected.dueDate)
+      &&[['chequeNum','checkNumber'],['bankBranch','branchNumber'],['bankAccount','accountNumber'],['bankName','bankName']]
+        .every(([key,field])=>actual[key]==null||normalizeText(actual[key])===normalizeText(expected[field]));
+  const assigned:number[]=actualPayments.map(()=>-1);
+  function assign(index:number,seen:Set<number>):boolean{
+    for(let slot=0;slot<actualPayments.length;slot++){
+      if(seen.has(slot)||!compatible(expectedPayments[index],actualPayments[slot]))continue;
+      seen.add(slot);
+      if(assigned[slot]===-1||assign(assigned[slot],seen)){assigned[slot]=index;return true}
+    }
+    return false;
+  }
+  return expectedPayments.every((_,index)=>assign(index,new Set()));
+}
+async function checkRegistrationPending(ownerId:string,row:OperationRow){
+  if(!row.check_intent?.length)return false;
+  try{const current=await readOperation(ownerId,row.operation_id);return !current?.checks_registered_at}catch{return true}
+}
 function matchesDocumentCore(item:any,row:OperationRow,strict=false){
   if(Number(item?.type)!==Number(row.document_type))return false;const rawAmount=item?.amount??item?.amountLocal;if(strict&&!Number.isFinite(Number(rawAmount)))return false;if(!sameAmount(rawAmount,row.amount))return false;
   const itemDate=String(item?.documentDate||item?.date||'').slice(0,10),expectedDate=String(row.document_date).slice(0,10);if(strict&&!itemDate)return false;if(itemDate&&itemDate!==expectedDate)return false;
   const expectedClient=normalizeText(row.client_name),actualClient=normalizeText(item?.client?.name||item?.clientName);if(strict&&expectedClient&&!actualClient)return false;if(expectedClient&&actualClient&&expectedClient!==actualClient)return false;
   const expectedDescription=normalizeText(row.description),actualDescription=normalizeText(item?.description);if(strict&&expectedDescription&&!actualDescription)return false;if(expectedDescription&&actualDescription&&expectedDescription!==actualDescription)return false;
-  return !!item?.id;
+  return !!item?.id&&(!strict||matchesCheckPayments(item,row));
 }
 function matchesCandidate(item:any,row:OperationRow,strict=false){
   if(!matchesDocumentCore(item,row,strict))return false;if(strict){const created=timestampMs(item?.creationDate),start=new Date(row.issuance_started_at||row.created_at).getTime();if(!Number.isFinite(created)||created<start-1000||created>start+RECONCILE_WINDOW_MS)return false}return true;
@@ -274,7 +302,7 @@ async function status(ownerId:string,body:any){
   const id=clean(body?.operation_id,80);if(id&&!isUuid(id))return json({ok:false,code:'invalid_operation_id',message:'מזהה פעולה אינו תקין'},400);
   try{let operation=id?await readOperation(ownerId,id):null,available=true,connectionError='';try{await verifyMorning()}catch(error:any){available=false;connectionError=clean(error?.message,250)}
     if(body?.reconcile===true&&operation&&available){if(['pending','created_unverified','needs_reconciliation'].includes(operation.state))operation=await reconcileRow(ownerId,operation);else if(operation.state==='created')operation=await refreshCreatedAllocation(ownerId,operation)}
-    let bankLink={pending:false} as any;if(operation?.state==='created'&&operation?.verified_at)bankLink=await persistVerifiedBankLink(ownerId,operation);return json({ok:true,configured:true,available,connection_error:connectionError||null,operation,unresolved:!!operation&&['pending','created_unverified','needs_reconciliation'].includes(operation.state),retryable_reserved:operation?.state==='reserved',environment:MORNING_ENV,bank_link_pending:bankLink.pending,bank_link:bankLink.pending?null:bankLink});
+    let bankLink={pending:false} as any;if(operation?.state==='created'&&operation?.verified_at)bankLink=await persistVerifiedBankLink(ownerId,operation);return json({ok:true,configured:true,available,connection_error:connectionError||null,operation,unresolved:!!operation&&['pending','created_unverified','needs_reconciliation'].includes(operation.state),retryable_reserved:operation?.state==='reserved',environment:MORNING_ENV,checks_registration_pending:operation?await checkRegistrationPending(ownerId,operation):false,bank_link_pending:bankLink.pending,bank_link:bankLink.pending?null:bankLink});
   }catch(error){return dbError(error,'morning_status_failed')}
 }
 async function preview(ownerId:string,body:any){if(!configured())return json({ok:false,code:MORNING_ENV_VALID?'morning_not_configured':'morning_invalid_environment',message:MORNING_ENV_VALID?'Morning אינו מוגדר ב-Supabase':'MORNING_ENV חייב להיות production או sandbox'},503);let input;try{input=normalizeInput(body);await validateLinkedDocument(input);await validateBankSource(ownerId,input)}catch(error:any){const code=String(error?.code||error?.message||'invalid_document');return json({ok:false,code,message:code==='linked_document_not_linkable'?'החשבונית שנבחרה אינה פתוחה או אינה מתאימה לקישור':userMessage(code)},400)}try{const data=await morningRequest('/documents/preview',{method:'POST',body:JSON.stringify(input.payload)}),pdfBase64=findPdfBase64(data);if(!pdfBase64)return json({ok:false,code:'morning_preview_missing_pdf',message:'Morning לא החזירה PDF לתצוגה מקדימה'},502);return json({ok:true,pdfBase64:validatePreviewPdfBase64(pdfBase64)})}catch(error:any){return json({ok:false,code:'morning_preview_failed',message:String(error?.message||'תצוגה מקדימה נכשלה')},error?.status===413?413:error?.status>=400&&error.status<500?400:502)}}
@@ -285,7 +313,7 @@ async function create(ownerId:string,body:any){
       if(canReconcile){try{blockedRow=await reconcileRow(blockedRow!.owner_id,blockedRow!)}catch(reconcileError){console.warn('Morning duplicate guard reconciliation failed',blockedRow?.operation_id,reconcileError)}}
       if(blockedRow?.state==='created'&&blockedRow.document_id&&blockedRow.verified_at){const ownOperation=blockedRow.owner_id===ownerId;return json({ok:false,code:'morning_similar_operation_verified',message:'ניסיון הפקה זהה קודם כבר אומת ב-Morning. החלון ננעל כדי שלא יופק מסמך כפול; אם נדרש מסמך נוסף בכוונה, יש לסגור ולפתוח חלון הפקה חדש.',prevent_retry:true,uncertain:false,...(ownOperation?{operation_id:blockedRow.operation_id,document:{id:blockedRow.document_id,number:blockedRow.document_number||'',allocationNumber:blockedRow.allocation_number||''}}:{})},409)}
       const ownOperation=blockedRow?.owner_id===ownerId?blockedRow.operation_id:undefined;return json({ok:false,code:'morning_operation_unresolved',message:'קיים ניסיון הפקה זהה שעדיין לא אומת. לא נשלח מסמך נוסף.',uncertain:true,...(ownOperation?{operation_id:ownOperation}:{})},409)}if(error?.code==='operation_id_conflict')return json({ok:false,code:'morning_operation_conflict',message:'מזהה הפעולה כבר שייך לבקשה אחרת'},409);return dbError(error,'morning_operation_reserve_failed')}
-  let row=reserved.row;if(row.state==='created'&&row.document_id&&row.verified_at){const bankLink=await persistVerifiedBankLink(ownerId,row);return json({ok:true,verified:true,replayed:true,document:{id:row.document_id,number:row.document_number,type:row.document_type,amount:Number(row.amount),date:row.document_date,allocationNumber:row.allocation_number||''},bank_link_pending:bankLink.pending,bank_link:bankLink.pending?null:bankLink})}
+  let row=reserved.row;if(row.state==='created'&&row.document_id&&row.verified_at){const bankLink=await persistVerifiedBankLink(ownerId,row);return json({ok:true,verified:true,replayed:true,checks_registration_pending:await checkRegistrationPending(ownerId,row),document:{id:row.document_id,number:row.document_number,type:row.document_type,amount:Number(row.amount),date:row.document_date,allocationNumber:row.allocation_number||''},bank_link_pending:bankLink.pending,bank_link:bankLink.pending?null:bankLink})}
   if(row.state==='reserved'){try{const claimed=await claimReservedOperation(ownerId,row.operation_id);if(!claimed)return json({ok:false,code:'morning_operation_unresolved',message:'ניסיון ההפקה נתפס כעת על ידי בקשה אחרת. לא נשלח מסמך נוסף.',uncertain:true,operation_id:row.operation_id},409);row=claimed}catch(error){return dbError(error,'morning_operation_claim_failed')}}
   else if(!reserved.created)return json({ok:false,code:'morning_operation_unresolved',message:'ניסיון ההפקה הזה עדיין בבדיקה. לא נשלח מסמך נוסף.',uncertain:true,operation_id:row.operation_id},409);
   let data:any;try{data=await morningRequest('/documents',{method:'POST',body:JSON.stringify(input.payload)},false,false)}catch(error:any){
@@ -295,9 +323,9 @@ async function create(ownerId:string,body:any){
   let doc=documentSummary(data,input);if(!doc.id){const error=await updateOperation(ownerId,input.operationId,{state:'needs_reconciliation',error_code:'creation_success_without_id',error_message:'Morning returned success without a document ID'});if(error)console.error('Morning operation ambiguity persistence failed',input.operationId,error);return json({ok:false,code:'morning_creation_uncertain',message:'Morning החזירה תשובת הצלחה ללא מזהה מסמך. לא יישלח ניסיון נוסף עד לאימות.',uncertain:true,operation_id:input.operationId},502)}
   const provisionalError=await updateOperation(ownerId,input.operationId,{state:'created_unverified',document_id:doc.id,document_number:doc.number||null,allocation_number:doc.allocationNumber||null,error_code:'creation_verification_pending',error_message:'Morning returned a document ID; canonical read-back is still required'});if(provisionalError)console.error('Morning document ID persistence failed before verification',input.operationId,provisionalError);
   let detail:any;try{detail=await verifyKnownDocument(doc.id,{...row,document_id:doc.id} as OperationRow);doc=documentSummary(detail,input)}catch(error:any){if(!provisionalError){const persistError=await updateOperation(ownerId,input.operationId,{state:'created_unverified',error_code:'creation_verification_pending',error_message:clean(error?.message,500)});if(persistError)console.error('Morning verification-pending persistence failed',input.operationId,persistError)}return json({ok:false,code:'morning_creation_verification_pending',message:'Morning החזירה מזהה למסמך, אבל הקריאה החוזרת לא אימתה עדיין את פרטיו. לא יישלח מסמך נוסף; יש להשתמש ב„בדוק מצב הפקה”.',uncertain:true,known_document:true,operation_id:input.operationId,document:{id:doc.id,number:doc.number||''}},502)}
-  const verifiedAt=new Date().toISOString(),persistError=await updateOperation(ownerId,input.operationId,{state:'created',document_id:doc.id,document_number:doc.number||null,allocation_number:doc.allocationNumber||null,allocation_checked_at:verifiedAt,verified_at:verifiedAt,error_code:null,error_message:null,client_name:'',description:''});if(persistError){console.error('Morning document verified but metadata persistence failed',input.operationId,persistError);return json({ok:true,verified:true,document:doc,local_link_pending:true})}
+  const verifiedAt=new Date().toISOString(),persistError=await updateOperation(ownerId,input.operationId,{state:'created',document_id:doc.id,document_number:doc.number||null,allocation_number:doc.allocationNumber||null,allocation_checked_at:verifiedAt,verified_at:verifiedAt,error_code:null,error_message:null,client_name:'',description:''});if(persistError){console.error('Morning document verified but metadata persistence failed',input.operationId,persistError);return json({ok:true,verified:true,document:doc,local_link_pending:true,checks_registration_pending:!!row.check_intent?.length})}
   const verifiedRow={...row,state:'created',document_id:doc.id,document_number:doc.number||null,allocation_number:doc.allocationNumber||null,verified_at:verifiedAt,source_kind:input.sourceKind,source_bank_transaction_id:input.sourceBankTransactionId} as OperationRow,bankLink=await persistVerifiedBankLink(ownerId,verifiedRow);
-  return json({ok:true,verified:true,document:doc,bank_link_pending:bankLink.pending,bank_link:bankLink.pending?null:bankLink});
+  return json({ok:true,verified:true,document:doc,checks_registration_pending:await checkRegistrationPending(ownerId,verifiedRow),bank_link_pending:bankLink.pending,bank_link:bankLink.pending?null:bankLink});
 }
 // Request and response whitelists: no free-form Morning proxy and no persisted URLs.
 const SEARCH_TYPES=new Set([10,20,100,200,210,300,305,320,330,400,405,410,500,600,610]);

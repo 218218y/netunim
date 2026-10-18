@@ -13,3 +13,5 @@ export function checkNum(v){const n=Number(v);return Number.isFinite(n)?n:0}
 export function checkWholeMoney(v){return Math.round(checkNum(v))}
 
 export function kupaWholeMoney(v){return Math.round(checkNum(v))}
+
+export function checkMoney(v){return Math.round(checkNum(v)*100)/100}

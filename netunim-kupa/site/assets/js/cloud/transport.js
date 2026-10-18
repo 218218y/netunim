@@ -421,6 +421,12 @@ export function createCloudTransport({session, supaRest, localResetReadOnlyFetch
     if(!r.ok)throw new Error(j?.message||'קריאת סטטוס הצקים המשותפים נכשלה');
     return readCloudMetaRows(j,SHARED_CHECKS_DOC)
   }
+  async function refreshCheckBankMatches(revision){
+    const response=await supaRest('/rest/v1/rpc/refresh_check_bank_matches',{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify({p_expected_revision:revision})});
+    const result=await response.json();
+    if(!response.ok||!result||!['no_checks','no_bank_data','unchanged','checked','busy'].includes(result.status))throw new Error(result?.message||'check_bank_refresh_failed');
+    return result;
+  }
   async function rpcSaveSharedChecksV2(checks,expectedRevision,operationId,deletedCheckIds=[],audit={}){
     const payload={version:1,checks:normalizeSharedChecks(checks)},expected=Number(expectedRevision||0),op=String(operationId||'').trim();
     const deletedIds=[...new Set((Array.isArray(deletedCheckIds)?deletedCheckIds:[]).map(x=>String(x||'').trim()).filter(Boolean))].sort();
@@ -492,7 +498,7 @@ export function createCloudTransport({session, supaRest, localResetReadOnlyFetch
     readSharedChecksDocument,
     readSharedChecksMeta,
     readStorageProtocolState,
-    rpcSaveSharedChecksV2,
+    rpcSaveSharedChecksV2,refreshCheckBankMatches,
     stageRestoreGroup,
     applyRestoreGroup,
     listIncompleteRestoreGroups,

@@ -42,7 +42,7 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
   const createSharedComposition=({model,checksSession,domainRevisions,main,stateNormalization,mergeSharedChecks,getCloudTransport})=>createSharedChecksV2Composition({
     site:'kupa',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,captureCommitAuthority:()=>owner.captureCommitAuthority(),preparing,
     model,checksSession,eventsKey:'sharedChecksBankEvents',domainRevisions,main,
-    merge:(...args)=>mergeSharedChecks(...args),readRemote:(...args)=>getCloudTransport().readSharedChecksDocument(...args),rpc:(...args)=>getCloudTransport().rpcSaveSharedChecksV2(...args),
+    merge:(...args)=>mergeSharedChecks(...args),readRemote:(...args)=>getCloudTransport().readSharedChecksDocument(...args),rpc:(...args)=>getCloudTransport().rpcSaveSharedChecksV2(...args),refreshBankRpc:(...args)=>getCloudTransport().refreshCheckBankMatches(...args),
     validateMainCloud:state=>assertValidCloudState(state,'Kupa V2 restore cloud state'),applyMainState:state=>{model.state=stateNormalization.normalizeState({...state,checks:model.state.checks});domainRevisions.touchAll()},
   });
 

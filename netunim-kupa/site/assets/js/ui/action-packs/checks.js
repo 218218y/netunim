@@ -23,6 +23,7 @@ export function createChecksActions({ domainsChecksEditor, domainsChecksView, ui
   const toggleBulkVisible = (...args) => uiBulk.toggleBulkVisible(...args);
   const checksSearch = search || createLazyDeferredSearchUpdater(value => { ui.checkSearchValue = value; }, renderChecksSearch);
   return {
+    'refresh-check-bank': element => domainsChecksEditor.refreshBankMatches?.(element),
     'review-check-bank': element => reviewCheckBank(element.dataset.clickArg2 === 'remove-selected' ? [...ui.bulkSelected] : element.dataset.clickArg0, element.dataset.clickArg1, element.dataset.clickArg2),
     'handle-check-date-part-input': (element, event) => { return handleCheckDatePartInput(element); },
     'handle-check-date-part-blur': (element, event) => { return handleCheckDatePartBlur(element); },

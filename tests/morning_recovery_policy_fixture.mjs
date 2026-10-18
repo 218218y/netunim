@@ -1,5 +1,7 @@
 import {declaration,tokens} from './bank_policy_ast_fixture.mjs';
 export function originalMorningRecoveryPolicy(source){
+  // Check the historical financial policy with the new cheque follow-up absent.
+  source=source.replaceAll('!!(data.bank_link_pending||data.checks_registration_pending)','!!data.bank_link_pending');
   const node=declaration(source,'recoverPendingMorningOperation');
   return tokens(source.slice(node.start,node.end))
     .replaceAll('lifetime.capture()', 'captureScope()')
