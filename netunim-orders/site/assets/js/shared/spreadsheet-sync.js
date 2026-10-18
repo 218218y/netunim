@@ -179,20 +179,8 @@ export function createSpreadsheetSync({domain,request,account,accountScope,enabl
     }
   }
   async function incidentSample(){
-    const scopedOwner=currentAccount(),scopedKey=scopedOwner+':'+domain+':main';
-    if(scopedOwner==='local')return {known:false};
-    try{
-      const live=!!record&&key===scopedKey,at=generation,captured=record;
-      const saved=await store.load(scopedKey),emergency=store.inspectEmergency(scopedKey),value=live?captured:saved.record;
-      if(!value)return {known:false};
-      const working=live?model.state.notesSheet:value.working;
-      assertSpreadsheet(value.base);assertSpreadsheet(working);
-      const pending=!!(value.flight||value.legacy||value.legacyRecovery||value.needsLegacyCheck||saved.drafts.length||emergency.length||!equalSyncJson(value.base,working)||live&&(dirty||generation>committedGeneration));
-      return {known:true,pending,blocked:!!value.conflict,conflict:!!value.conflict,
-        durabilityError:live&&localCommitError,epoch:value.monitorEpoch||'spreadsheet-v1',evidence:'spreadsheet',errorCode:'',
-        verified:!pending&&!value.conflict&&Number.isSafeInteger(value.revision)&&(value.revision>0||value.revision===0&&value.syncIncidentVerified===true)&&(!live||!localCommitError&&!loading&&!sending&&generation<=committedGeneration),
-        isCurrent:()=>currentAccount()===scopedOwner&&primary()&&record===captured&&generation===at&&!loading&&!sending&&(!live||!dirty&&!localCommitError)};
-    }catch{return {known:false,durabilityError:!!record&&key===scopedKey&&localCommitError,epoch:record?.monitorEpoch||'spreadsheet-v1',evidence:'unknown'}}
+    return (await import('./sync-incident-adapters.js')).sampleSpreadsheetIncident({account:currentAccount,domain,primary,store,
+      capture:()=>({record,key,generation,dirty,committedGeneration,loading:!!loading,sending:!!sending,localCommitError,working:model.state.notesSheet})});
   }
   return {incidentSample,model,open,changed,flush,poll,pagehide,beforeUnload,backups,restore,importWorkbook,useRemoteAfterExport,captureLegacy,metrics,get cacheStamp(){return `${key}:${record?.revision||0}:${generation}`},get ownerKey(){return key},get recovery(){return record?.legacyRecovery||record?.legacy||model.state.notesSheet},get status(){return status},get error(){return error},get revision(){return record?.revision||0},get ready(){return !!record&&owner===currentAccount()&&status!=='loading'&&status!=='error'},get conflict(){return record?.conflict||null}};
 }

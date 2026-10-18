@@ -1,10 +1,5 @@
+import {syncIncidentDescription} from './sync-incident-model.js';
 const escape=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
-const domains={orders_main:'נתוני הזמנות',kupa_main:'נתוני קופה',shared_checks:'צ׳קים משותפים',orders_sheet:'גיליונות הזמנות',kupa_sheet:'גיליונות קופה',orders_calendar:'יומן Google'};
-const reasons={stalled:'שינויים ממתינים ללא אישור סנכרון',conflict:'התנגשות שדורשת בדיקה',recovery_blocked:'התאוששות הסנכרון נעצרה',local_durability_error:'לא ניתן לאמת שמירה מקומית עמידה'};
-
-export function syncIncidentDescription(row,clientId){
-  return `${row.device_label||'עמדה ללא שם'} · ${row.client_instance_id===clientId?'התקנה זו':'התקנה אחרת'} · ${row.site==='orders'?'הזמנות':'קופה'} · ${domains[row.domain]} · ${reasons[row.reason_code]}`;
-}
 export function createSyncIncidentUi({document=globalThis.document,clientId,label,saveLabel,refresh,review,confirmReview=async()=>false}){
   const root=document.createElement('section');root.className='sync-incidents';root.dir='rtl';root.hidden=true;root.setAttribute('aria-label','התראות סנכרון בין מחשבים');
   document.body.append(root);

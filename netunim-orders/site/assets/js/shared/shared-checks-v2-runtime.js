@@ -1,5 +1,4 @@
 import {createSharedChecksStorageV2,validateSharedChecksState} from './shared-checks-storage-v2.js';
-import {journalIncidentSample} from './sync-incident-model.js';
 import {storageRecoveryFailure} from './storage-v2-runtime.js';
 import {CLOUD_WRITE_POLICY,cloudWriteError,createOperationId,equalSyncJson,normalizeCloudError,operationAuditMetadata,runBusyCloudWriteWithPolicy,structuredSyncConflict} from './cloud-sync.js';
 
@@ -203,12 +202,10 @@ export function createSharedChecksV2Runtime({owner,primary,captureCommitAuthorit
   async function incidentSample(){
     const store=storage,scopedIdentity=identity;
     const current=()=>!!store&&store===storage&&active&&primaryMode()&&primary()&&scopedIdentity===currentOwner()&&!boundaryGate();
-    if(!current())return {known:false,blocked:incidentRecoveryBlocked&&primary()&&scopedIdentity===currentOwner(),epoch:'unavailable',evidence:'unknown'};
-    try{
-      const cloud=await store.cloudState();
-      return journalIncidentSample(cloud,{durabilityError:[...risks.values()].some(risk=>risk.owner===scopedIdentity&&risk.failed),
-        current:()=>current()&&store.seq===cloud.seq&&commitsInFlight===0&&![...risks.values()].some(risk=>risk.owner===scopedIdentity)});
-    }catch(error){return {known:false,blocked:current()&&storageRecoveryFailure(error)==='fatal',durabilityError:current()&&[...risks.values()].some(risk=>risk.owner===scopedIdentity&&risk.failed),epoch:'unavailable',evidence:'unknown'}}
+    return (await import('./sync-incident-adapters.js')).sampleJournalIncident({read:()=>store.cloudState(),ready:current,
+      current:cloud=>store.seq===cloud.seq&&commitsInFlight===0&&![...risks.values()].some(risk=>risk.owner===scopedIdentity),
+      epoch:()=>null,durabilityError:()=>current()&&[...risks.values()].some(risk=>risk.owner===scopedIdentity&&risk.failed),
+      blocked:()=>incidentRecoveryBlocked&&primary()&&scopedIdentity===currentOwner(),fatal:storageRecoveryFailure});
   }
   return {incidentSample,recover,recoverReadOnly,initialize,initializeLocal,persist,sync,refreshBankMatches,diagnostics,setBoundaryGate:gate=>{if(typeof gate!=='function')throw new Error('storage_boundary_gate_invalid');boundaryGate=gate},
     replaceAuthoritativeState,replaceLocalWithPending,replaceLocalAuthoritativeState,resetCloudHead,

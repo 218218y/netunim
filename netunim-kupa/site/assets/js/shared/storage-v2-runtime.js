@@ -5,7 +5,6 @@ import {equalSyncJson} from './cloud-sync.js';
 import {storageOwnerReady} from './storage-owner.js';
 import {isStorageV2ActivationCached} from './storage-v2-activation-cache.js';
 import {captureStorageCommandOptions} from './storage-journal-authority.js';
-import {journalIncidentSample} from './sync-incident-model.js';
 
 // Only invalid persisted data poisons an identity. IDB open/abort, blocked
 // connections and owner fencing may recover without a page reload.
@@ -258,12 +257,10 @@ export function createStorageV2Runtime({app,owner,primary,captureCommitAuthority
   async function incidentSample(){
     const active=journal,scopedIdentity=identity;
     const current=()=>active===journal&&scopedIdentity===currentOwner()&&readyForCurrentOwner()&&!boundaryGate();
-    if(!current())return {known:false,blocked:identity===currentOwner()&&primary()&&corruptIdentity===identity,durabilityError:identity===currentOwner()&&undurableFailures.has(active),epoch:journal?.epoch||'unavailable',evidence:'unknown'};
-    try{
-      const cloud=await cloudState();
-      const isCurrent=()=>current()&&active.seq===cloud.seq&&active.epoch===cloud.base?.epoch&&undurableCount===0&&undurableFailures.size===0;
-      return journalIncidentSample(cloud,{durabilityError:undurableFailures.has(active),current:isCurrent});
-    }catch(error){return {known:false,blocked:current()&&storageRecoveryFailure(error)==='fatal',durabilityError:current()&&undurableFailures.has(active),epoch:active?.epoch||'unavailable',evidence:'unknown'}}
+    return (await import('./sync-incident-adapters.js')).sampleJournalIncident({read:cloudState,ready:current,
+      current:cloud=>active.seq===cloud.seq&&active.epoch===cloud.base?.epoch&&undurableCount===0&&undurableFailures.size===0,
+      epoch:()=>active?.epoch,durabilityError:()=>identity===currentOwner()&&undurableFailures.has(active),
+      blocked:()=>identity===currentOwner()&&primary()&&corruptIdentity===identity,fatal:storageRecoveryFailure});
   }
   return {incidentSample,recover,recoverReadOnly,recoverForOwner,initializeLocal,initializeCloudHead,initializeUploadLocalCloudHead,persist,flush,
     setBoundaryGate:gate=>{if(typeof gate!=='function')throw new Error('storage_boundary_gate_invalid');boundaryGate=gate},

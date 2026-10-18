@@ -1,5 +1,4 @@
 import {startupMark} from './shared/startup-timing.js';
-import {createSyncIncidentFeature} from './shared/sync-incident-feature.js';
 import {createOrdersChecksCapability} from './composition/checks.js';
 import {createOrdersFinanceCapability} from './composition/finance.js';
 import {readCloudWriteScope} from './shared/cloud-write-scope.js';
@@ -509,7 +508,7 @@ uiEvents.bindActionEvents(document.getElementById('modal'),startupUiActions);
 uiGlobalSearch.bind();
 uiKeyboardNavigation.bind();
 startupMark('composition-end');
-syncIncidents=createSyncIncidentFeature({site:'orders',accountScope:cloudAuth.getAccountScope,subscribeAccountScope:cloudAuth.subscribeAccountScope,
+void import('./shared/sync-incident-feature.js').then(({createSyncIncidentFeature})=>{syncIncidents=createSyncIncidentFeature({site:'orders',accountScope:cloudAuth.getAccountScope,subscribeAccountScope:cloudAuth.subscribeAccountScope,
   confirmReview:message=>uiModal.confirmDialog('טיפול ידני בהתראת סנכרון',message,{confirmText:'סימון כטופל ללא אימות',tone:'danger'}),
   primary:()=>tab.primaryTab,request:cloudAuth.supaFetch,
   domains:[
@@ -518,7 +517,7 @@ syncIncidents=createSyncIncidentFeature({site:'orders',accountScope:cloudAuth.ge
     {domain:'orders_sheet',read:()=>spreadsheetWorkspace.sync.incidentSample()},
     {domain:'orders_calendar',read:()=>calendarRuntime.incidentSample()},
   ],onChange:()=>uiAlertCenter.refreshIndicator(),
-});
+})}).catch(()=>{const warning=document.createElement('section');warning.className='sync-incidents';warning.dataset.warning='true';warning.textContent='לא ניתן לטעון התראות סנכרון. יש לרענן את האתר.';warning.setAttribute('role','status');document.body.append(warning)});
 export const appReady=lifecycle.boot().then(()=>{if(session.storageProtocolBlocked||!storageRecovery.isReady()||session.syncCapabilitiesError)return false;domainsCalendarController.start();connectivity.resumeStartup();return true});
 void appReady.then(()=>{startupMark('boot-complete');if(tab.primaryTab&&!session.storageProtocolBlocked&&storageRecovery.isReady()&&!session.syncCapabilitiesError)startupMark('command-ready')},()=>{});
 export async function sharedChecksStorageV2Diagnostics(){await sharedChecksV2.flush();return {...sharedChecksV2.diagnostics}}

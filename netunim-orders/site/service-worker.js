@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-46f96c9a26c4';
+const CACHE='orders-app-shell-esm-a6867c35f22a';
 const SHELL=[
   './',
   './index.html',
@@ -344,6 +344,7 @@ const SHELL=[
   './assets/js/shared/storage-v2-schema.js',
   './assets/js/shared/storage-v2-server-protocol.js',
   './assets/js/shared/sync-capabilities.js',
+  './assets/js/shared/sync-incident-adapters.js',
   './assets/js/shared/sync-incident-feature.js',
   './assets/js/shared/sync-incident-model.js',
   './assets/js/shared/sync-incident-monitor.js',

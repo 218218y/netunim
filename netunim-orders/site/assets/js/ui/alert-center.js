@@ -7,7 +7,6 @@ import {checkDateFmt,checkTodayISO} from '../core/dates.js';
 import {bankWarningItems,cashflowWarningItems} from '../domains/bank/alerts.js';
 import {dueCheckWarningItems} from '../domains/checks/alerts.js';
 import {noteReminderWarningItems} from '../domains/notes/alerts.js';
-import {syncIncidentDescription} from '../shared/sync-incident-ui.js';
 
 function cashflowReason(item){
   return item.reason==='negative'
@@ -36,7 +35,7 @@ function noteAlertCard(item){
 }
 
 function alertCard(item){
-  if(item.kind==='sync_incident')return `<button type="button" class="alert-center-card" data-action="open-alert-target" data-click-arg0="${esc(item.id)}"><div class="alert-center-card-main"><strong>אזהרת סנכרון בין מחשבים</strong><p>${esc(syncIncidentDescription(item,item.clientId))}</p></div></button>`;
+  if(item.kind==='sync_incident')return `<button type="button" class="alert-center-card" data-action="open-alert-target" data-click-arg0="${esc(item.id)}"><div class="alert-center-card-main"><strong>אזהרת סנכרון בין מחשבים</strong><p>${esc(item.description)}</p></div></button>`;
   if(item.kind==='check_bank')return checkBankReviewCard(item);
   if(item.kind==='bank_returned_cheque'||item.kind==='bank_missing')return bankAlertCard(item);
   if(item.kind==='note_reminder')return noteAlertCard(item);

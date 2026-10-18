@@ -1,5 +1,10 @@
 export const SYNC_INCIDENT_GRACE_MS=90_000;
 export const SYNC_INCIDENT_DOMAINS=Object.freeze(['orders_main','kupa_main','shared_checks','orders_sheet','kupa_sheet','orders_calendar']);
+const domainLabels={orders_main:'נתוני הזמנות',kupa_main:'נתוני קופה',shared_checks:'צ׳קים משותפים',orders_sheet:'גיליונות הזמנות',kupa_sheet:'גיליונות קופה',orders_calendar:'יומן Google'};
+const reasonLabels={stalled:'שינויים ממתינים ללא אישור סנכרון',conflict:'התנגשות שדורשת בדיקה',recovery_blocked:'התאוששות הסנכרון נעצרה',local_durability_error:'לא ניתן לאמת שמירה מקומית עמידה'};
+export function syncIncidentDescription(row,clientId){
+  return `${row.device_label||'עמדה ללא שם'} · ${row.client_instance_id===clientId?'התקנה זו':'התקנה אחרת'} · ${row.site==='orders'?'הזמנות':'קופה'} · ${domainLabels[row.domain]} · ${reasonLabels[row.reason_code]}`;
+}
 
 // Unknown is deliberately different from a verified empty outbox.
 export function classifySyncIncident(sample,{pendingSince=null,now=Date.now(),graceMs=SYNC_INCIDENT_GRACE_MS}={}){
