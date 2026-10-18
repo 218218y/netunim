@@ -4,6 +4,7 @@ import {STORAGE_SCHEMAS} from './storage-v2-schema.js';
 import {equalSyncJson} from './cloud-sync.js';
 import {storageOwnerReady} from './storage-owner.js';
 import {isStorageV2ActivationCached} from './storage-v2-activation-cache.js';
+import {captureStorageCommandOptions} from './storage-journal-authority.js';
 
 // Only invalid persisted data poisons an identity. IDB open/abort, blocked
 // connections and owner fencing may recover without a page reload.
@@ -90,7 +91,7 @@ export function createStorageV2Runtime({app,owner,primary,captureCommitAuthority
   }
   async function initializeLocal(state,{appMetadata={}}={}){
     if(currentOwner()!=='local'||!primaryMode()||!primary())throw new Error('storage_local_birth_owner_required');
-    const canonical=checkpointState(state);validate(canonical);
+    const canonical=checkpointState(state);validate(canonical);appMetadata=structuredClone(appMetadata);
     const active=create(),scopedIdentity=identity;
     let recovered=await active.open();
     if(recovered){
@@ -180,34 +181,78 @@ export function createStorageV2Runtime({app,owner,primary,captureCommitAuthority
     if(active!==journal||identity!==scopedIdentity||!readyForCurrentOwner())throw new Error('storage_owner_changed_during_operation');
     return active;
   }
-  async function setCloudBase(revision,state,options={}){guardCloudMutation();return (await settledJournal()).setCloudBase(revision,state,options)}
-  async function captureCloudCursor(revision,options={}){guardCloudMutation();return (await settledJournal()).captureCloudCursor(revision,options)}
-  async function cloudState(options={}){if(!readyForCurrentOwner())return null;return (await settledJournal()).cloudState(options)}
-  async function materializeFlight(options={}){guardCloudMutation();return (await settledJournal()).materializeFlight(options)}
-  async function acknowledgeFlight(operationId,revision,state,options={}){guardCloudMutation();const next={...options};if(Object.hasOwn(next,'currentState')){next.checkpointState=checkpointState(next.currentState);delete next.currentState}const active=await settledJournal();guardCloudMutation();return active.acknowledge(operationId,revision,state,next)}
-  async function rejectFlight(operationId,revision,state,options={}){guardCloudMutation();const next={...options};if(Object.hasOwn(next,'currentState')){next.checkpointState=checkpointState(next.currentState);delete next.currentState}const active=await settledJournal();guardCloudMutation();return active.rejectAndRebase(operationId,revision,state,next)}
-  async function setCloudControl(control={},options={}){
-    guardCloudMutation();const expected=options.expectedScope||{owner:`${identity}:${app}`,epoch:journal?.epoch},active=await settledJournal();guardCloudMutation();
-    if(expected.owner!==`${identity}:${app}`||expected.epoch!==active.epoch)throw Object.assign(new Error('storage_cloud_scope_changed'),{code:'storage_cloud_scope_changed'});
-    return active.setCloudControl(control,{expectedEpoch:expected.epoch,isCurrent:options.isCurrent});
+  async function setCloudBase(revision,state,options={}){
+    guardCloudMutation();const candidate=structuredClone(state),next=captureStorageCommandOptions(options);
+    const active=await settledJournal();guardCloudMutation();return active.setCloudBase(revision,candidate,next);
   }
-  async function clearCloudControl(options={}){guardCloudMutation();if(!readyForCurrentOwner())return false;const active=await settledJournal();guardCloudMutation();return active.clearCloudControl(options)}
-  async function readCloudRecovery(options={}){const active=await settledJournal(),next={...options};if(next.previousState!==null&&next.previousState!==undefined)next.previousState=checkpointState(next.previousState);return active.readCloudRecovery(next)}
-  async function commitCloudRecovery(state,options={}){guardCloudMutation();const candidate=checkpointState(state),active=await settledJournal();guardCloudMutation();return active.commitCloudRecovery(candidate,options)}
-  async function replaceCurrentState(state,options={}){const active=await settledJournal(),result=await active.replaceCurrentState(checkpointState(state),options);operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
+  async function captureCloudCursor(revision,options={}){
+    guardCloudMutation();const next=captureStorageCommandOptions(options),active=await settledJournal();
+    guardCloudMutation();return active.captureCloudCursor(revision,next);
+  }
+  async function cloudState(options={}){if(!readyForCurrentOwner())return null;return (await settledJournal()).cloudState(options)}
+  async function materializeFlight(options={}){
+    guardCloudMutation();const next=captureStorageCommandOptions(options),active=await settledJournal();
+    guardCloudMutation();return active.materializeFlight(next);
+  }
+  async function acknowledgeFlight(operationId,revision,state,options={}){
+    guardCloudMutation();const candidate=structuredClone(state),next=captureStorageCommandOptions(options);
+    if(Object.hasOwn(next,'currentState')){next.checkpointState=checkpointState(next.currentState);delete next.currentState}
+    const active=await settledJournal();guardCloudMutation();return active.acknowledge(operationId,revision,candidate,next);
+  }
+  async function rejectFlight(operationId,revision,state,options={}){
+    guardCloudMutation();const candidate=structuredClone(state),next=captureStorageCommandOptions(options);
+    if(Object.hasOwn(next,'currentState')){next.checkpointState=checkpointState(next.currentState);delete next.currentState}
+    const active=await settledJournal();guardCloudMutation();return active.rejectAndRebase(operationId,revision,candidate,next);
+  }
+  async function setCloudControl(control={},options={}){
+    guardCloudMutation();const candidate=structuredClone(control),next=captureStorageCommandOptions(options);
+    const expected=next.expectedScope||{owner:`${identity}:${app}`,epoch:journal?.epoch},active=await settledJournal();guardCloudMutation();
+    if(expected.owner!==`${identity}:${app}`||expected.epoch!==active.epoch)throw Object.assign(new Error('storage_cloud_scope_changed'),{code:'storage_cloud_scope_changed'});
+    return active.setCloudControl(candidate,{expectedEpoch:expected.epoch,isCurrent:next.isCurrent});
+  }
+  async function clearCloudControl(options={}){
+    guardCloudMutation();if(!readyForCurrentOwner())return false;
+    const next=captureStorageCommandOptions(options),active=await settledJournal();guardCloudMutation();return active.clearCloudControl(next);
+  }
+  async function readCloudRecovery(options={}){
+    const next=captureStorageCommandOptions(options);
+    if(next.previousState!==null&&next.previousState!==undefined)next.previousState=checkpointState(next.previousState);
+    const active=await settledJournal();return active.readCloudRecovery(next);
+  }
+  async function commitCloudRecovery(state,options={}){
+    guardCloudMutation();const candidate=checkpointState(state),next=captureStorageCommandOptions(options),active=await settledJournal();
+    guardCloudMutation();return active.commitCloudRecovery(candidate,next);
+  }
+  async function replaceCurrentState(state,options={}){
+    const candidate=checkpointState(state),next=captureStorageCommandOptions(options),active=await settledJournal();
+    const result=await active.replaceCurrentState(candidate,next);operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result;
+  }
   async function replaceLocalAuthoritativeState(state,{boundaryId,expectedSeq}={}){
     if(currentOwner()!=='local')throw new Error('storage_boundary_local_owner_required');
-    const active=await settledJournal(),result=await active.replaceLocalAuthoritativeState(checkpointState(state),{boundaryId,expectedSeq});
+    const candidate=checkpointState(state),active=await settledJournal();
+    const result=await active.replaceLocalAuthoritativeState(candidate,{boundaryId,expectedSeq});
     operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result;
   }
   async function adoptCloudHead(revision,cloudState,currentState,options={}){guardCloudMutation();const durableCloud=structuredClone(cloudState),durableCurrent=checkpointState(currentState),next={...options,appMetadata:structuredClone(options.appMetadata||{}),expectedHead:options.expectedHead&&structuredClone(options.expectedHead)};const active=await settledJournal();guardCloudMutation();const result=await active.adoptCloudHead(revision,durableCloud,durableCurrent,next);operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
-  async function replaceAuthoritativeState(currentState,options={}){if(!readyForCurrentOwner())return false;const active=await settledJournal(),metadata={...options.appMetadata,mainProjectionVersion:2};const result=await active.replaceAuthoritativeState(checkpointState(currentState),{...options,appMetadata:metadata});operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
+  async function replaceAuthoritativeState(currentState,options={}){
+    if(!readyForCurrentOwner())return false;
+    const candidate=checkpointState(currentState),next=captureStorageCommandOptions(options);
+    const metadata={...next.appMetadata,mainProjectionVersion:2},active=await settledJournal();
+    const result=await active.replaceAuthoritativeState(candidate,{...next,appMetadata:metadata});
+    operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result;
+  }
   async function replaceLocalWithPending(currentState,{boundaryId,expectedSeq,expectedBaseRevision,validateBase=validate,mutationType='import',surface='backup.local-import'}={}){
-    const active=await settledJournal();
-    const result=await active.replaceLocalWithPending(checkpointState(currentState),{boundaryId,expectedSeq,expectedBaseRevision,validateBase,mutationType,surface,requireCurrentState:mutationType==='cloud-normalization',deleteCollections:STORAGE_SCHEMAS[app].collections});
+    const candidate=checkpointState(currentState),active=await settledJournal();
+    const result=await active.replaceLocalWithPending(candidate,{boundaryId,expectedSeq,expectedBaseRevision,validateBase,mutationType,surface,requireCurrentState:mutationType==='cloud-normalization',deleteCollections:STORAGE_SCHEMAS[app].collections});
     diagnostics.operations++;operationsSinceCheckpoint++;return result;
   }
-  async function resetCloudHead(revision,cloudState,currentState,options={}){if(!readyForCurrentOwner())return false;const active=await settledJournal(),metadata={...options.appMetadata,mainProjectionVersion:2};const result=await active.resetCloudHead(revision,cloudState,checkpointState(currentState),{...options,appMetadata:metadata});operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
+  async function resetCloudHead(revision,cloudState,currentState,options={}){
+    if(!readyForCurrentOwner())return false;
+    const durableCloud=structuredClone(cloudState),candidate=checkpointState(currentState),next=captureStorageCommandOptions(options);
+    const metadata={...next.appMetadata,mainProjectionVersion:2},active=await settledJournal();
+    const result=await active.resetCloudHead(revision,durableCloud,candidate,{...next,appMetadata:metadata});
+    operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result;
+  }
   async function compact(){if(!readyForCurrentOwner())return false;const active=await settledJournal(),result=await active.compact();operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
   return {recover,recoverReadOnly,recoverForOwner,initializeLocal,initializeCloudHead,initializeUploadLocalCloudHead,persist,flush,setBoundaryGate:gate=>{if(typeof gate!=='function')throw new Error('storage_boundary_gate_invalid');boundaryGate=gate},setCloudBase,captureCloudCursor,cloudState,materializeFlight,acknowledgeFlight,rejectFlight,setCloudControl,clearCloudControl,readCloudRecovery,commitCloudRecovery,replaceCurrentState,replaceLocalAuthoritativeState,replaceLocalWithPending,adoptCloudHead,replaceAuthoritativeState,resetCloudHead,compact,primaryDiagnostics:diagnostics,get diagnostics(){return diagnostics},get primaryReady(){return readyForCurrentOwner()},get cloudScope(){return authoritative&&identity===currentOwner()&&journal?.ready?{owner:`${identity}:${app}`,epoch:journal.epoch,accountOwner:identity,writable:readyForCurrentOwner()}:null},get accountV2Active(){const active=currentOwner();return !storageOwnerReady(active)||isStorageV2ActivationCached(app,active)},get durabilityAtRisk(){return undurableCount>0||undurableFailures.size>0},get commitPromise(){return commits}};
 }

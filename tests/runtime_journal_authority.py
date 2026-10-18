@@ -83,3 +83,40 @@ with BrowserSession(ROOT/'netunim-orders/site', 'journal-authority', instrument=
     assert result == {'rejected': 9, 'decisionsRejected': 36}, result
     assert not browser.drain_serious_errors()
     print('PASS native journal business schemas, detached commands and request-success/transaction-abort receipts')
+    runtime_capture = browser.evaluate("""(async()=>{
+      const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
+      const {createStorageJournal}=await import('./assets/js/shared/storage-journal.js');
+      const {createStorageV2Runtime}=await import('./assets/js/shared/storage-v2-runtime.js');
+      const results=[];
+      for(const app of ['orders','kupa']){
+        const db=createStorageJournalDb({name:'runtime-admission-'+app}),rows=new Map();
+        const emergency={get length(){return rows.size},key:i=>[...rows.keys()][i]??null,
+          getItem:key=>rows.get(key)??null,setItem:(key,value)=>rows.set(key,value),removeItem:key=>rows.delete(key)};
+        const runtime=createStorageV2Runtime({app,owner:()=> 'local',primary:()=>true,
+          mode:()=> 'primary',validate:()=>{},createJournal:options=>createStorageJournal({...options,db,emergency})});
+        await runtime.initializeLocal({notes:[{id:'N',content:'initial'}]});
+        const originalAppend=db.append;let release;
+        const blocked=new Promise(resolve=>{release=resolve});
+        db.append=async(...args)=>{await blocked;return originalAppend(...args)};
+        const edited={notes:[{id:'N',content:'edit'}]};
+        const write=runtime.persist(edited,{operations:[{type:'put',collection:'notes',id:'N',mode:'replace',record:edited.notes[0]}]});
+        if(!write.handled)throw Error('native write admission: '+write.reason+': '+write.error?.message);
+        const candidate={notes:[{id:'N',content:'accepted replacement'}]};
+        const options={expectedSeq:1,appMetadata:{captureEvidence:'accepted metadata'}};
+        const pending=runtime.replaceCurrentState(candidate,options);
+        candidate.notes[0].content='later caller mutation';options.expectedSeq=99;
+        options.appMetadata.captureEvidence='later caller mutation';
+        release();await pending;
+        const durable=await db.load('local:'+app);
+        if(durable.checkpoints.data.state.notes[0].content!=='accepted replacement'
+          ||durable.checkpoints.data.appMetadata.captureEvidence!=='accepted metadata'
+          ||durable.checkpoints.data.seq!==1)throw Error('runtime admitted mutable command');
+        const recovered=await runtime.recover();
+        if(recovered.state.notes[0].content!=='accepted replacement')throw Error('runtime capture lost on recovery');
+        results.push(app);
+      }
+      return results;
+    })()""")
+    assert runtime_capture == ['orders', 'kupa'], runtime_capture
+    assert not browser.drain_serious_errors()
+    print('PASS both runtime command entrances capture before queued native IDB writes and recover exact checkpoints')
