@@ -28,3 +28,6 @@ policies remain pinned.
 No live bank or production data was used. Physical two-computer operation,
 live provider testing and deployment verification require separate measured
 operator evidence.
+The archive preservation fixtures now pin the deliberately corrected coverage
+algorithm; all other helpers and orchestration snapshots remain unchanged. The
+Bridge model import budgets allow only the existing pure calendar/money codecs.

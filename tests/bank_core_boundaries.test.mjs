@@ -8,6 +8,8 @@ import { analyze } from 'eslint-scope';
 const root = fileURLToPath(new URL('../netunim-kupa/bank-bridge/', import.meta.url));
 const read = (name) => fs.readFileSync(path.join(root, name + '.mjs'), 'utf8');
 const budgets = {
+  'observation-time': [],
+  'bank-money-value': [],
   'hapoalim-policy': [],
   'hapoalim-navigation-policy': ['./hapoalim-policy.mjs'],
   'hapoalim-login-runtime': ['./hapoalim-policy.mjs'],
@@ -25,13 +27,14 @@ const budgets = {
     './hapoalim-detail-keys.mjs',
     './hapoalim-detail-values.mjs',
   ],
-  'hapoalim-date-codec': [],
+  'hapoalim-date-codec': ['./observation-time.mjs'],
   'hapoalim-transaction-model': [
     './hapoalim-policy.mjs',
     './hapoalim-detail-values.mjs',
     './hapoalim-credit-settlement-model.mjs',
     './hapoalim-cheque-model.mjs',
     './hapoalim-date-codec.mjs',
+    './bank-money-value.mjs',
   ],
   'hapoalim-failure-policy': [],
 };
