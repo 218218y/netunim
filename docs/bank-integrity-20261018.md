@@ -126,6 +126,7 @@ Merged stages with full branch verification:
 
 - Source/coverage: PR #242, head `5b4466da`, successful run `39112825138`.
 - Identity/shared feed: PR #243, head `4289c420`, successful run `39114116219`.
+- Canonical clocks/archive links and strict pipeline: PR #244, head `f107e3c2`, successful run `39115754139`.
 
 No schema migration, production data mutation or live bank call is part of these
 changes. Completing automated gates does not stand in for the physical/live

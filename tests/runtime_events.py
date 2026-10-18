@@ -149,6 +149,22 @@ expressions = {
 
 for label, expression in expressions.items():
     with BrowserSession(ROOT / f'netunim-{label}/site', label+'-events') as browser:
+        completion = browser.evaluate(r"""(async()=>{
+          const {bindActionEvents}=await import('./assets/js/shared/events.js');
+          const container=document.createElement('div'),root=document.createElement('div'),button=document.createElement('button');
+          button.dataset.action='test-rejected-command';root.append(button);container.append(root);document.body.append(container);
+          const reports=[],failure=new Error('isolated command failure');let parent=0;
+          container.addEventListener('click',()=>parent++);
+          bindActionEvents(root,{'test-rejected-command':(_element,event)=>{
+            event.preventDefault();event.stopPropagation();return Promise.reject(failure);
+          }},{onError:(error,context)=>reports.push({same:error===failure,...context})});
+          const event=new MouseEvent('click',{bubbles:true,cancelable:true});
+          button.dispatchEvent(event);const synchronous=event.defaultPrevented&&parent===0;
+          await new Promise(resolve=>setTimeout(resolve,0));container.remove();
+          return {synchronous,reports};
+        })()""")
+        assert completion == {'synchronous': True, 'reports': [
+            {'same': True, 'name': 'test-rejected-command', 'type': 'click'}]}, completion
         result = browser.evaluate('(async()=>{'+common+expression+'})()')
         errors = browser.drain_serious_errors()
         print(label, json.dumps(result), errors)

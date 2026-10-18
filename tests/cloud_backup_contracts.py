@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from presentation_sources import presentation_contains
 from pathlib import Path
 import subprocess
 import sys
@@ -69,11 +70,11 @@ check("saved_at=lte." in orders_transport and "shared_checks_periodic_backups" i
 
 kupa_actions = read("netunim-kupa/site/assets/js/ui/action-packs/backup.js")
 orders_actions = read("netunim-orders/site/assets/js/ui/action-packs/backup.js")
-check("'restore-cloud-backup':(element,event)=>{previewCloudBackup" in kupa_actions, "kupa: list restore action is preview-first")
-check("load-more-cloud-backups" in kupa_actions, "kupa: older backup pages are explicit user actions")
-check("'restore-orders-cloud-backup':(element,event)=>{previewCloudBackup" in orders_actions, "orders: list restore action is preview-first")
-check("load-more-orders-cloud-backups" in orders_actions, "orders: older backup pages are explicit user actions")
-check("apply-orders-cloud-backup-restore" in orders_actions and "markMutationActions(actions,{all:['apply-json-restore', 'apply-orders-cloud-backup-restore', 'begin-json-restore']})" in orders_actions, "orders: destructive cloud restore is protected by the startup mutation guard")
+check(presentation_contains(kupa_actions,"'restore-cloud-backup':(element,event)=>{return previewCloudBackup"), "kupa: list restore action is preview-first")
+check(presentation_contains(kupa_actions,"load-more-cloud-backups"), "kupa: older backup pages are explicit user actions")
+check(presentation_contains(orders_actions,"'restore-orders-cloud-backup':(element,event)=>{return previewCloudBackup"), "orders: list restore action is preview-first")
+check(presentation_contains(orders_actions,"load-more-orders-cloud-backups"), "orders: older backup pages are explicit user actions")
+check(presentation_contains(orders_actions,"apply-orders-cloud-backup-restore") and presentation_contains(orders_actions,"markMutationActions(actions,{all:['apply-json-restore', 'apply-orders-cloud-backup-restore', 'begin-json-restore']})"), "orders: destructive cloud restore is protected by the startup mutation guard")
 
 kupa_backup = backup_ui_source(ROOT / 'netunim-kupa')
 orders_backup = backup_ui_source(ROOT / 'netunim-orders')

@@ -49,6 +49,17 @@ restore and live-provider release exercises therefore remain explicitly unverifi
 
 ## Prioritized remaining work
 
+### Final quality continuation after PR #244, 2026-10-18
+
+The Bank UI range/boundary filters now use the canonical calendar predicate.
+The application action packs return delegated completion, and both event roots
+observe escaped Promise rejections without duplicating domain-owned notices or
+changing persistence receipts. See [UI completion evidence](UI_ACTION_COMPLETION.md).
+Further work follows the review's order: demonstrated authority gaps, loaded-data
+measurement, deterministic feature-entry enforcement and a dated release evidence
+report. Physical machines, installed Bridge and live providers remain unverified;
+the sections below are completed evidence, not another active plan.
+
 Workbook connection lifecycle now uses the existing factory with bounded
 reopening, explicit upgrade blocking and atomic abort handling. Its reentrant
 browser bindings release every listener on disposal while retaining accepted

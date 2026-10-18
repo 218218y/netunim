@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from presentation_sources import presentation_contains
 from pathlib import Path
 import re
 import sys
@@ -142,10 +143,10 @@ for label, project in APPS.items():
     cloud_transport = (site / "assets/js/cloud/transport.js").read_text(encoding="utf-8")
     ok(deployed_reset == reset_source, f"{label}: deployed local reset helper is generated from the shared source")
     ok('data-action="reset-local-site-storage"' in settings, f"{label}: Supabase settings expose the local-storage reset action")
-    ok("'reset-local-site-storage'" in actions and "resetLocalSiteStorage" in actions,
+    ok(presentation_contains(actions,"'reset-local-site-storage'") and presentation_contains(actions,"resetLocalSiteStorage"),
        f"{label}: reset action is wired through the UI action map")
     reset_wiring = ("createCloudActions({syncDocument,uiCloud})" in main) if label == "kupa" else ("createCloudActions({uiCloud})" in main)
-    reset_wiring &= "resetLocalSiteStorage=(...args)=>uiCloud.resetLocalSiteStorage(...args)" in actions
+    reset_wiring &= presentation_contains(actions,"resetLocalSiteStorage=(...args)=>uiCloud.resetLocalSiteStorage(...args)")
     ok("installLocalSiteResetPeerListener" in main and reset_wiring,
        f"{label}: composition root parks peer tabs and supplies the reset recovery port")
     ok("confirmDialog('איפוס אחסון מקומי'" in cloud and "beginLocalSiteResetNavigation" in cloud,
@@ -158,7 +159,7 @@ for label, project in APPS.items():
     if label == "orders":
         ok("authPasswordForLocalReset" in cloud_auth and "authPasswordForLocalReset" in composition and
            "loginModal('reset')" in cloud and "finishLocalResetLogin" in cloud and
-           "'finish-local-reset-login'" in actions and "finishLocalResetLogin=(...args)=>uiCloud.finishLocalResetLogin(...args)" in actions and "createCloudActions({uiCloud})" in main,
+           presentation_contains(actions,"'finish-local-reset-login'") and presentation_contains(actions,"finishLocalResetLogin=(...args)=>uiCloud.finishLocalResetLogin(...args)") and "createCloudActions({uiCloud})" in main,
            "orders: reset-only auth is separate from owner adoption and remains reachable during recovery")
         reset_auth_body=cloud_auth.split("async function authPasswordForLocalReset",1)[1].split("async function localResetReadOnlyFetch",1)[0]
         ok("assertSessionOwner" not in reset_auth_body and "saveSession" not in reset_auth_body and "localStorage" not in reset_auth_body,

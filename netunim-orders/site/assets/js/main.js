@@ -444,7 +444,13 @@ const lifecycle=createLifecycle({
   loadSession:(...args)=>cloudAuth.loadSession(...args),
 });
 
-const uiEvents={bindActionEvents:(root,actions)=>bindActionEvents(root,actions)};
+const uiEvents={bindActionEvents:(root,actions)=>bindActionEvents(root,actions,{
+
+  onError:(error,context)=>{
+    console.error('UI action failed',context,error);
+    uiStatus.toast('?? ???? ?????? ?? ??????. ???? ?? ???? ???? ?????? ????.');
+  },
+})};
 
 const calendarPorts=calendarRuntime.actionPorts();
 const uiActions=composeActionRegistry([

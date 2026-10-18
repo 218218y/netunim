@@ -593,7 +593,13 @@ const lifecycle=createLifecycle({
   setConnectUI:(...args)=>uiConnection.setConnectUI(...args),
 });
 
-const uiEvents={bindActionEvents:(root,actions)=>bindActionEvents(root,actions,{canRun:(...args)=>uiStatus.canRunInteractiveAction(...args)})};
+const uiEvents={bindActionEvents:(root,actions)=>bindActionEvents(root,actions,{
+  canRun:(...args)=>uiStatus.canRunInteractiveAction(...args),
+  onError:(error,context)=>{
+    console.error('UI action failed',context,error);
+    uiStatus.toast('?? ???? ?????? ?? ??????. ???? ?? ???? ???? ?????? ????.');
+  },
+})};
 
 document.getElementById('checkBankAlerts').addEventListener('click',()=>{if(uiStatus.canRunInteractiveAction('view-check-bank-alerts'))uiModal.modal('התאמות צ׳קים בבנק',checkBankReviewMarkup(model.state.checks),'סגור',()=>uiModal.closeModal(true))});
 
