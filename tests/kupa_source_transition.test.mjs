@@ -4,6 +4,7 @@ import {createUiFolders} from '../netunim-kupa/site/assets/js/ui/folders.js';
 import {createUiConnection} from '../netunim-kupa/site/assets/js/ui/connection.js';
 import {createLocalFileAdoption} from '../netunim-kupa/site/assets/js/storage/local-file-adoption.js';
 import {createStorageBackup} from '../netunim-kupa/site/assets/js/storage/backup.js';
+import {createLocalCommitOwner} from '../netunim-kupa/site/assets/js/storage/local-commit.js';
 import {STORAGE_PREF_KEY} from '../netunim-kupa/site/assets/js/state/constants.js';
 
 const deferred=()=>{let resolve;const promise=new Promise(done=>{resolve=done});return {promise,resolve}};
@@ -107,4 +108,12 @@ test('directory preparation never changes live backup handles even if the file o
   const api=createStorageBackup({files,model:{state:{}},session:{},normalizeState:value=>value,writeJsonHandle:async()=>{},readJsonHandle:async()=>null});
   const root={getDirectoryHandle:async name=>name==='backups'?{name:'candidate-backups'}:{getFileHandle:async()=>{throw Error('file open denied')}}};
   await assert.rejects(api.prepareDirectory(root),/file open denied/);assert.deepEqual(files,before);
+});
+
+test('new business saves cannot enter while a source transition is pending',async()=>{
+  let statuses=0;
+  const session={localSourceSwitchPending:true,localGeneration:8};
+  const owner=createLocalCommitOwner({model:{state:{}},session,tab:{primaryTab:true},journal:{},projection:{},publication:{},view:{setSaveStatus:()=>{statuses++}}});
+  assert.equal(await owner.saveStateAccepted('pending source'),false);
+  assert.equal(session.localGeneration,8);assert.equal(statuses,1);
 });

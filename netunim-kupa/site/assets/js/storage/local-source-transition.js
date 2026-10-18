@@ -1,12 +1,13 @@
 // @ts-check
 
-/** @param {{captureScope:()=>()=>void,drain:()=>Promise<void>,setBusy:(busy:boolean)=>void}} ports */
+/** @typedef {()=>undefined} SourceAssertion */
+/** @param {{captureScope:()=>SourceAssertion,drain:()=>Promise<void>,setBusy:(busy:boolean)=>void}} ports */
 export function createLocalSourceTransition({captureScope,drain,setBusy}){
   let busy=false;
   /**
    * @template Candidate, Result
-   * @param {(assertCurrent:()=>void)=>Promise<Candidate>} prepare
-   * @param {(candidate:Candidate,assertCurrent:()=>void)=>Promise<Result>} adopt
+   * @param {(assertCurrent:SourceAssertion)=>Promise<Candidate>} prepare
+   * @param {(candidate:Candidate,assertCurrent:SourceAssertion)=>Promise<Result>} adopt
    * @returns {Promise<Result>}
    */
   async function run(prepare,adopt){
