@@ -1,4 +1,4 @@
-import {readBankTransactions as decodeBankTransactions} from '../shared/bank-transaction-evidence.js';
+import {readBankArchiveCommand} from '../shared/bank-transaction-evidence.js';
 import {readDocumentWriteResponseRow} from '../shared/document-write-ack.js';
 import {readRestoreGroupRows,readRestoreStageReceipt,readRestoreApplyReceipt} from '../shared/restore-response-records.js';
 import {readBankArchiveSyncReceipt,readBankAcknowledgementReceipt,readBankArchiveRows,readBankSnapshotRows} from '../shared/bank-response-records.js';
@@ -143,21 +143,11 @@ async function saveBankSyncSnapshot(bankState,snapshotToken,snapshotSeq,lease=nu
   const r=await supaRest('/rest/v1/rpc/save_bank_sync_snapshot_v6',{method:'POST',networkRetry:true,dataPriority:'high',...(assertCurrent?{assertRequestScope:assertCurrent}:{}),body:JSON.stringify({p_document_name:FINANCE_DOC,p_bank_state:bankState,p_snapshot_token:token,p_snapshot_seq:seq,...financeFencePayload(lease)})});
   const body=await r.text();assertCurrent?.();let j;try{j=body?JSON.parse(body):null}catch{j=null}if(!r.ok)throw new Error(j?.message||j?.hint||body||'שמירת צילום הבנק האטומי נכשלה');return readBankSnapshotReceipt(j);
 }
-function bankArchivePayload(transactions){
-  const occurrences=new Map();
-  return decodeBankTransactions(transactions).map(tx=>{
-    const day=String(tx.date||'').slice(0,10),serial=String(tx.bankSerial||''),reference=String(tx.bankReference||''),signature=`${day}|${String(tx.processedDate||'').slice(0,10)}|${tx.amount}|${tx.description||''}|${tx.memo||''}|${JSON.stringify(tx.checkDetails||null)}`,occ=(occurrences.get(signature)||0)+1;
-    occurrences.set(signature,occ);
-    const stableKey=serial&&serial!=='0'&&day?`serial:${day}:${serial}:${tx.amount}`:reference&&day?`ref:${day}:${reference}:${tx.amount}:${tx.description||''}:${tx.memo||''}`:`fallback:${signature}:${occ}`;
-    return {...tx,mergeKey:String(tx.mergeKey||stableKey)};
-  });
-}
-
 async function syncBankTransactionsSnapshot(accountKey,accountRole,transactions,{snapshotAt,coverage=null,complete=false,lease=null}={}){
   const assertCurrent=lease?.assertCurrent;assertCurrent?.();
-  const payload=bankArchivePayload(transactions),when=String(snapshotAt||'').trim(),from=String(coverage?.from||'').slice(0,10),to=String(coverage?.to||'').slice(0,10),isComplete=complete===true&&coverage?.complete===true&&!coverage?.warning&&/^\d{4}-\d{2}-\d{2}$/.test(from)&&/^\d{4}-\d{2}-\d{2}$/.test(to);
-  if(!when||!Number.isFinite(Date.parse(when)))throw new Error('זמן צילום תנועות הבנק אינו תקין');
-  const r=await supaRest('/rest/v1/rpc/sync_bank_transactions_snapshot_v6',{method:'POST',networkRetry:true,dataPriority:'high',...(assertCurrent?{assertRequestScope:assertCurrent}:{}),body:JSON.stringify({p_account_key:String(accountKey||''),p_account_role:accountRole==='home'?'home':'business',p_transactions:payload,p_snapshot_at:new Date(when).toISOString(),p_coverage_from:isComplete?from:null,p_coverage_to:isComplete?to:null,p_complete:isComplete,...financeFencePayload(lease)})});
+  const command=readBankArchiveCommand({accountKey,accountRole,transactions,snapshotAt,coverage,complete});
+  const payload=command.p_transactions,isComplete=command.p_complete;
+  const r=await supaRest('/rest/v1/rpc/sync_bank_transactions_snapshot_v6',{method:'POST',networkRetry:true,dataPriority:'high',...(assertCurrent?{assertRequestScope:assertCurrent}:{}),body:JSON.stringify({...command,...financeFencePayload(lease)})});
   const body=await r.text();assertCurrent?.();let j;try{j=body?JSON.parse(body):null}catch{j=null}if(!r.ok)throw new Error(j?.message||j?.hint||body||'שמירת צילום תנועות הבנק נכשלה');
   const result=readBankArchiveSyncReceipt(j,isComplete);return {result,sourcePayload:payload,complete:isComplete};
 }
