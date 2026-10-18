@@ -1,3 +1,7 @@
+import {normalizedCalendarTimestamp as cleanIso} from '../../shared/observation-time.js';
+import {readBankMoney} from '../../shared/bank-money-value.js';
+import {evidenceDate} from '../../shared/observation-time.js';
+
 export const BANK_FEED_VERSION=5;
 export const BANK_FEED_TRANSACTION_LIMIT=20000;
 
@@ -6,9 +10,7 @@ export function bankTransactionIdentity(row={},role='business',index=0){
   return `${side}:${fallback}:${when}:${Number(row.amount||0)}`;
 }
 
-function finiteNumber(value,fallback=0){const n=Number(value);return Number.isFinite(n)?n:fallback}
 function cleanText(value,max=260){return String(value??'').replace(/\s+/g,' ').trim().slice(0,max)}
-function cleanIso(value){const s=String(value||'').trim();return s&&Number.isFinite(Date.parse(s))?new Date(s).toISOString():null}
 function normalizeCreditSettlementDetails(value){
   if(!value||typeof value!=='object')return null;
   const provider=['visaCal','max','isracard','amex'].includes(value.provider)?value.provider:'';if(!provider)return null;
@@ -47,7 +49,7 @@ export function normalizeBankFeedTransaction(value){
     id:cleanText(row.id,100),
     date:cleanIso(row.date),
     processedDate:cleanIso(row.processedDate),
-    amount:finiteNumber(row.amount,0),
+    amount:readBankMoney(row.amount),
     currency:cleanText(row.currency||'ILS',8)||'ILS',
     description:cleanText(row.description,180)||'תנועת בנק',
     memo:cleanText(row.memo,260),
@@ -71,7 +73,7 @@ export function normalizeBankFeedTransaction(value){
 }
 
 
-function cleanCoverageDate(value){const s=String(value||'').slice(0,10);return /^\d{4}-\d{2}-\d{2}$/.test(s)?s:''}
+function cleanCoverageDate(value){const s=String(value||'').slice(0,10);return evidenceDate(s)?s:''}
 function normalizeDirectSnapshot(value){
   if(!value||typeof value!=='object')return null;
   const snapshotAt=cleanIso(value.snapshotAt),coverageFrom=cleanCoverageDate(value.coverageFrom),coverageTo=cleanCoverageDate(value.coverageTo);
@@ -89,8 +91,8 @@ function normalizeDirectSnapshot(value){
 export function normalizeBankFeed(feed){
   if(!feed||typeof feed!=='object')return null;
   const syncedAt=cleanIso(feed.syncedAt||feed.fetchedAt);
-  const balance=Number(feed.balance);
-  if(!syncedAt||!Number.isFinite(balance))return null;
+  const balance=readBankMoney(feed.balance);
+  if(!syncedAt||balance===null)return null;
   const seen=new Set(),transactions=[];
   for(const raw of Array.isArray(feed.transactions)?feed.transactions:[]){
     const row=normalizeBankFeedTransaction(raw),key=`${row.id}|${row.date}|${row.amount}|${row.description}`;
