@@ -110,6 +110,22 @@ function fixture({ hold, confirmation = true } = {}) {
   };
 }
 
+for (const shape of ['balance', 'business', 'home'])
+  test('Orders rejects missing observation before archive or snapshot writes: ' + shape, async () => {
+    const f = fixture(), api = f.create();
+    delete f.input.fetchedAt;
+    if (shape === 'balance') f.input.accounts = { business: { balance: 0 } };
+    else f.input.accounts[shape].transactionCoverage = { complete: true };
+    const before = structuredClone(f.input);
+    await assert.rejects(api.commands.publish(f.input, f.options), { code: 'BANK_OBSERVATION_TIME_INVALID' });
+    await api.runtime.drain();
+    assert.deepEqual(f.events, []);
+    assert.equal(f.saved(), undefined);
+    assert.equal(f.display(), undefined);
+    assert.deepEqual(f.input, before);
+    api.runtime.dispose();
+  });
+
 test('the actual model publishes dual feeds with one separate token/sequence and retains current bank fields', async () => {
   const f = fixture(),
     api = f.create(),

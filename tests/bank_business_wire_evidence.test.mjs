@@ -23,7 +23,7 @@ for(const row of cases)test('Bank business wire parity: '+row.name,()=>{
   }
   const entrances=[
     [()=>readBankTransaction(value),'BANK_TRANSACTIONS_INVALID'],
-    [()=>readBankBalanceResult({balance:0,transactionCoverage:{complete:true},transactions:[value]}),'BANK_TRANSACTIONS_INVALID'],
+    [()=>readBankBalanceResult({fetchedAt:at,balance:0,transactionCoverage:{complete:true},transactions:[value]}),'BANK_TRANSACTIONS_INVALID'],
     [()=>readBankArchiveRows([sql],'A','business'),'BANK_RESPONSE_EVIDENCE_INVALID'],
     [()=>readBankSnapshotRows([{...snapshot,transactions:[value]}],'A','business'),'BANK_RESPONSE_EVIDENCE_INVALID'],
   ];

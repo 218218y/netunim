@@ -9,7 +9,7 @@ test('complete Bank coverage requires a transaction array before it can imply ab
     assert.throws(()=>readBankBalanceResult({accounts:{business:{balance:200},
       [role]:{balance:100,transactionCoverage:{complete:true},transactions}}}),{code:'BANK_TRANSACTIONS_INVALID'});
   }
-  assert.equal(readBankBalanceResult({accounts:{business:{balance:0,transactionCoverage:{complete:true},transactions:[]}}}).business.balance,0);
+  assert.equal(readBankBalanceResult({fetchedAt:'2026-10-13T00:00:00Z',accounts:{business:{balance:0,transactionCoverage:{complete:true},transactions:[]}}}).business.balance,0);
   assert.equal(readBankBalanceResult({balance:100}).business.balance,100,'legacy balance-only results do not claim complete transaction coverage');
 });
 for (const value of [
@@ -114,7 +114,7 @@ test('Bank flat/dual-account formats preserve transaction identities and partial
   assert.equal(result.homeFailure, homeFailure);
   assert.equal(result.home, null);
   assert.equal(
-    readBankBalanceResult({ balance: '0', transactions: [transaction] }).business.balance,
+    readBankBalanceResult({ fetchedAt: raw.fetchedAt, balance: '0', transactions: [transaction] }).business.balance,
     0
   );
   // Existing partial-home presence semantics do not disappear during money validation.

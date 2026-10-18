@@ -26,13 +26,13 @@ for(const [field,sqlField,values] of [
     {...settlement,cardIdentitySource:'guessed'},{...settlement,bankActivityTypeCode:true}]],
 ])for(const value of values)test(`${field}: malformed business evidence rejects at every current Bank entrance ${JSON.stringify(value)}`,()=>{
   const bad={...tx,[field]:value};
-  assert.throws(()=>readBankBalanceResult({balance:0,transactions:[bad],transactionCoverage:{complete:true}}),{code:'BANK_TRANSACTIONS_INVALID'});
+  assert.throws(()=>readBankBalanceResult({fetchedAt:at,balance:0,transactions:[bad],transactionCoverage:{complete:true}}),{code:'BANK_TRANSACTIONS_INVALID'});
   assert.throws(()=>readBankArchiveRows([{...archive,[sqlField]:value}],'A','business'),{code:'BANK_RESPONSE_EVIDENCE_INVALID'});
   assert.throws(()=>readBankSnapshotRows([{...snapshot,transactions:[bad]}],'A','business'),{code:'BANK_RESPONSE_EVIDENCE_INVALID'});
 });
 test('decoded evidence preserves explicit false, identities and amounts and cannot change after acceptance',()=>{
   const raw={...tx,checkDetails:structuredClone(check),creditSettlementDetails:structuredClone(settlement)};
-  const accepted=readBankBalanceResult({balance:0,transactions:[raw],transactionCoverage:{complete:true}}).business;
+  const accepted=readBankBalanceResult({fetchedAt:at,balance:0,transactions:[raw],transactionCoverage:{complete:true}}).business;
   raw.checkDetails.checkItems[0].amount=999;raw.creditSettlementDetails.cardLast4s[0]='9999';
   assert.deepEqual(accepted.transactions[0].checkDetails,check);
   assert.deepEqual(accepted.transactions[0].creditSettlementDetails,settlement);

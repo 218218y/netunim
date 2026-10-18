@@ -1,6 +1,6 @@
 // @ts-check
 import { createRuntimeTaskOwner } from '../../shared/runtime-task-owner.js';
-import { readBankBalanceResult } from '../../shared/bank-balance-result.js';
+import { readBankSnapshotResult } from '../../shared/bank-balance-result.js';
 import { FINANCE_PUBLICATION_WARNING } from './document-publication.js';
 
 /** @typedef {() => undefined} SnapshotGuard */
@@ -92,8 +92,8 @@ export function createOrdersBankSnapshotPublication({
     };
     assertCurrent();
     lease = { ...lease, assertCurrent };
-    const { business, home, homeFailure, source } = readBankBalanceResult(result);
-    const fetchedAt=source.fetchedAt||new Date().toISOString();
+    const { business, home, homeFailure, source } = readBankSnapshotResult(result);
+    const fetchedAt = source.fetchedAt;
     const {businessAccount,businessCoverage,homeCoverage,businessArchive,homeArchive,archiveCandidate,archiveAudit,imageSyncWarning}=await reconciliation.commands.sync({business,home,fetchedAt,historyDays,lease});assertCurrent();
     await prepareBankSnapshot(assertCurrent);
     assertCurrent();

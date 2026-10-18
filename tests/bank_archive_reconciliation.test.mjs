@@ -43,6 +43,7 @@ function fixture({ hold } = {}) {
     homeRows = [];
   const coverage = { complete: true, from: '2025-10-14', to: '2026-10-14', days: 365 };
   const decoded = readBankBalanceResult({
+    fetchedAt: stamp,
     accounts: {
       business: {
         balance: 500,
@@ -181,7 +182,8 @@ test('image errors remain warnings while authority errors stop reconciliation', 
 });
 test('a missing home account key does not issue a home write or archive read target', async () => {
   const f = fixture();
-  const decoded = readBankBalanceResult({ balance: 500, accountId: 'B', transactions: [source] });
+  const decoded = readBankBalanceResult({
+    fetchedAt: stamp, balance: 500, accountId: 'B', transactions: [source] });
   f.request.business = decoded.business;
   f.request.home = null;
   f.ports.archive.read = async (targets) => {

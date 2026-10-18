@@ -9,7 +9,7 @@ const stamp='2026-10-15T00:00:00.000Z';
 const coverage=complete=>({complete,from:'2025-10-15',to:'2026-10-15',days:365});
 function fixture({cloud=true,days=365,ready=false,businessComplete=true,home='complete'}={}){
  const prior={currentBalance:100,feed:normalizeBankFeed({accountNumber:'B',balance:100,transactions:[]}),homeFeed:{accountNumber:'H',balance:80},archiveInitialized:ready,archiveVersion:ready?2:1,archiveInitializedAt:'2025-01-01',archiveBaselineAudit:{id:'prior'},archiveAudit:{id:'prior-audit'},adjustments:[{id:'manual'}]};
- const evidence=readBankBalanceResult({accounts:{business:{balance:500.4,accountId:'B',transactionCoverage:coverage(businessComplete),transactions:[]},...(home==='complete'||home==='partial'?{home:{balance:250,accountId:'H',transactionCoverage:coverage(home==='complete'),transactions:[]}}:{})}});
+ const evidence=readBankBalanceResult({fetchedAt:stamp,accounts:{business:{balance:500.4,accountId:'B',transactionCoverage:coverage(businessComplete),transactions:[]},...(home==='complete'||home==='partial'?{home:{balance:250,accountId:'H',transactionCoverage:coverage(home==='complete'),transactions:[]}}:{})}});
  let sequence=7,now=stamp,identityReads=0,watermarkReads=0;
  const policy=createKupaBankSnapshotPolicy({
   feeds:{normalize:normalizeBankFeed,recurringHistory:bankRecurringDebitHistoryData,roundMoney:wholeMoney},
