@@ -305,16 +305,16 @@ const splitAccountState={...structuredClone(businessOnlyBankState),expenses:[
   {id:'biz-exp',description:'שכירות עסק',account:'עסקי',date:'2999-09-12',amount:40,recurring:true,active:true},
   {id:'home-exp',description:'משכנתא',account:'ביתי',date:'2999-09-13',amount:60,recurring:true,active:true},
 ],bank:{...structuredClone(businessOnlyBankState.bank),homeFeed:{version:4,provider:'hapoalim',accountNumber:'home',balance:2000,syncedAt:'2999-09-01T08:00:00.000Z',transactions:[]}}};
-const businessCycle=bankNextCycleCommitmentsData(splitAccountState),homeCycle=bankHomeNextCycleCommitmentsData(splitAccountState),splitLong=bankLongTermPositionData(splitAccountState);
+const businessCycle=bankNextCycleCommitmentsData(splitAccountState,'2999-09-01'),homeCycle=bankHomeNextCycleCommitmentsData(splitAccountState,'2999-09-01'),splitLong=bankLongTermPositionData(splitAccountState,'2999-09-01');
 assert.equal(businessCycle.nextCreditTotal,100);assert.equal(businessCycle.targetExpenseTotal,40,'business expenses through mid-month are included');
 assert.equal(homeCycle.nextCreditTotal,250);assert.equal(homeCycle.targetExpenseTotal,60,'home expenses through mid-month are included');
-assert.equal(bankProjectedThisMonthData(splitAccountState),860,'business projected checking includes the monthly expense window');
-assert.equal(bankHomeProjectedThisMonthData(splitAccountState),1690,'home projected checking includes the monthly expense window');
-const ordersBusinessCashflow=kupaAccountCashflowData(splitAccountState,'עסקי'),ordersHomeCashflow=kupaAccountCashflowData(splitAccountState,'ביתי');
+assert.equal(bankProjectedThisMonthData(splitAccountState,'2999-09-01'),860,'business projected checking includes the monthly expense window');
+assert.equal(bankHomeProjectedThisMonthData(splitAccountState,'2999-09-01'),1690,'home projected checking includes the monthly expense window');
+const ordersBusinessCashflow=kupaAccountCashflowData(splitAccountState,'עסקי','2999-09-01'),ordersHomeCashflow=kupaAccountCashflowData(splitAccountState,'ביתי','2999-09-01');
 assert.equal(ordersBusinessCashflow.total,businessCycle.total,'Orders uses the exact same business next-cycle commitment total as Kupa');
-assert.equal(ordersBusinessCashflow.projected,bankProjectedThisMonthData(splitAccountState),'Orders business projected checking is numerically identical to Kupa');
+assert.equal(ordersBusinessCashflow.projected,bankProjectedThisMonthData(splitAccountState,'2999-09-01'),'Orders business projected checking is numerically identical to Kupa');
 assert.equal(ordersHomeCashflow.total,homeCycle.total,'Orders uses the exact same home next-cycle commitment total as Kupa');
-assert.equal(ordersHomeCashflow.projected,bankHomeProjectedThisMonthData(splitAccountState),'Orders home projected checking is numerically identical to Kupa');
+assert.equal(ordersHomeCashflow.projected,bankHomeProjectedThisMonthData(splitAccountState,'2999-09-01'),'Orders home projected checking is numerically identical to Kupa');
 const checkCashflowState={...structuredClone(splitAccountState),cashflowSettings:{businessMinimum:null,homeMinimum:null,businessCheckCutoffDay:14,homeCheckCutoffDay:9},checks:[
   {id:'biz-in',account:'עסקי',status:'בקופה',dueDate:'2999-09-14',amount:100},
   {id:'biz-out',account:'עסקי',status:'בקופה',dueDate:'2999-09-15',amount:200},
