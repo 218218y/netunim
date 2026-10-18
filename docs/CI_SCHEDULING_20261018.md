@@ -50,7 +50,14 @@ verifying every pushed version without cancelling earlier pushes.
   compiler host, program and diagnostic check for every mutation. No assertion,
   negative type fixture or full-program check was removed or cached.
 - Sync retains two machines and receives the same duration-based balancing.
-- The matrix has 13 groups instead of 12. Its fixed 12-job cap was removed, and
+- Contracts, database and browser-database share one `contracts-database` machine.
+  Their 25 suites remain sequential and isolated. Their sampled test execution
+  sums to roughly 113–118s; combining them reuses checkout, npm/Python setup,
+  dependency installation and a single PostgreSQL 18 installation. Browser and
+  PostgreSQL requirements are derived from the actual selected suites, rather
+  than the combined job's name. Local original group selections remain available.
+- The final matrix has 11 groups instead of the original 12 (and the first
+  post-change matrix's 13). Its fixed 12-job cap was removed, and
   groups are offered in descending estimated duration. GitHub owns actual dispatch
   order and account concurrency, so this ordering does not guarantee start times.
 
@@ -75,6 +82,24 @@ post-change execution times. The expected test critical path is around five
 minutes before setup, artifact upload and runner queues. Total runner minutes
 need not decrease: the purpose is to shorten elapsed verification time while
 keeping resource contention and repeated setup controlled.
+
+The three short groups are compatible with the same Node/Python environment,
+and both database groups require the same PostgreSQL 18 installation. The first
+post-change run spent 192s summed across their three complete jobs, versus 118s
+of actual test execution. One combined job should finish below three minutes
+under similar conditions, leaving it below the browser critical path. It saves
+two matrix jobs and one redundant PostgreSQL installation per workflow. This
+reduces startup work and queue demand; when runners are immediately available it
+need not reduce overall wall time, because the long browser jobs still set it.
+Windows remains separate because it validates a different operating system.
+
+The existing full local runner already supports these suites on one workstation.
+Every `SuiteProcess` has its own scratch directory and process-tree cleanup;
+every database fixture creates a temporary cluster and free loopback port and
+stops it on exit. The combined CI job reuses installed binaries, not database
+state, browser profiles or test results. Bundle validation rejects unknown,
+repeated or already sharded members, and deployment validation requires the new
+combined job to pass in full.
 
 ## Coverage, failures and reporting
 

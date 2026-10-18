@@ -48,6 +48,9 @@ RUNTIME_SUITES = [suite for group, suites in GROUPS.items() if group.startswith(
 # loads. Models split their discovered files across two machines, each retaining
 # two isolated Node workers. Only checked-in cost estimates influence scheduling.
 CI_SHARDS = {"models": 2, "browser-lifecycle": 4, "browser-sync": 2}
+# These short groups share compatible setup and remain below the browser critical
+# path when combined. Only CI placement changes; local selections stay available.
+CI_BUNDLES = {"contracts-database": ("contracts", "database", "browser-database")}
 
 
 def suite_estimates():
@@ -71,6 +74,14 @@ def validate_plan():
     for group, count in CI_SHARDS.items():
         if group not in GROUPS or type(count) is not int or not 1 <= count <= len(GROUPS[group]):
             raise ValueError(f"Invalid CI shard count for {group}: {count}")
+    bundled = set()
+    for name, members in CI_BUNDLES.items():
+        if name in GROUPS or not isinstance(members, (tuple, list)) or not members:
+            raise ValueError(f"Invalid CI bundle: {name}")
+        for group in members:
+            if group not in GROUPS or group in bundled or CI_SHARDS.get(group, 1) != 1:
+                raise ValueError(f"Invalid or repeated CI bundle member: {group}")
+            bundled.add(group)
 
 
 def ci_groups():
@@ -86,6 +97,11 @@ def ci_groups():
             if shard in selections or (count > 1 and shard in GROUPS):
                 raise ValueError(f"Duplicate CI group name: {shard}")
             selections[shard] = part
+    for name, members in CI_BUNDLES.items():
+        if name in selections:
+            raise ValueError(f"Duplicate CI group name: {name}")
+        bundled = [suite for member in members for suite in selections.pop(member)]
+        selections[name] = balanced_partition(bundled, 1, weights)[0]
     # Offer the longest jobs first when runner capacity is limited. GitHub still
     # owns actual dispatch order; its account queues are outside this scheduler.
     return dict(sorted(selections.items(), key=lambda row: (-sum(weights[name] for name in row[1]), row[0])))
@@ -93,7 +109,7 @@ def ci_groups():
 
 def ci_matrix():
     weights = suite_estimates()
-    return {"include": [{"group": name, "browser": name.startswith("browser-"),
-                         "postgres": name in ("database", "browser-database"),
+    return {"include": [{"group": name, "browser": any(suite in RUNTIME_SUITES for suite in suites),
+                         "postgres": any(suite in GROUPS["database"] + GROUPS["browser-database"] for suite in suites),
                          "estimated_seconds": round(sum(weights[suite] for suite in suites), 1)}
                         for name, suites in ci_groups().items()]}

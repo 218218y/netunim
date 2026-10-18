@@ -13,7 +13,7 @@ import time
 import unittest
 from unittest.mock import patch
 
-from verification_plan import CORE_SUITES, RUNTIME_SUITES, GROUPS, CI_SHARDS, ci_groups, ci_matrix, validate_plan
+from verification_plan import CORE_SUITES, RUNTIME_SUITES, GROUPS, CI_SHARDS, CI_BUNDLES, ci_groups, ci_matrix, validate_plan
 import run_all
 import browser_harness
 import node_models
@@ -231,6 +231,25 @@ with patch.object(h, 'HOST_STATE_ROOT', root / 'host'), \\
             groups = ci_groups()
         self.assertEqual(sum(suites.count(added) for suites in groups.values()), 1)
 
+    def test_short_groups_share_one_machine_with_all_required_dependencies(self):
+        groups = ci_groups()
+        self.assertCountEqual(groups["contracts-database"], GROUPS["contracts"] + GROUPS["database"] + GROUPS["browser-database"])
+        self.assertTrue(all(name not in groups for name in ("contracts", "database", "browser-database")))
+        row = next(row for row in ci_matrix()["include"] if row["group"] == "contracts-database")
+        self.assertTrue(row["browser"])
+        self.assertTrue(row["postgres"])
+        with tempfile.TemporaryDirectory() as directory, patch.object(run_all, "preflight", return_value=0) as preflight, \
+             patch.object(run_all, "run_suites", return_value=0), redirect_stdout(io.StringIO()):
+            self.assertEqual(run_all.main(["--group", "contracts-database", "--report-dir", directory]), 0)
+            preflight.assert_called_once_with(require_browser=True, require_postgres=True)
+
+    def test_invalid_bundles_cannot_drop_or_duplicate_verification(self):
+        for changes in ({"contracts-database": ()}, {"contracts-database": ("unknown",)},
+                        {"contracts-database": ("contracts", "contracts")}, {"contracts-database": ("models",)},
+                        {"contracts": ("database",)}, {"extra": ("database",)}):
+            with self.subTest(changes=changes), patch.dict(CI_BUNDLES, changes), self.assertRaises(ValueError):
+                ci_matrix()
+
     def test_invalid_shard_configuration_cannot_produce_a_partial_matrix(self):
         for changes in ({"unknown": 2}, {"browser-ui": 0}, {"browser-ui": 100}, {"browser-ui": True}):
             with self.subTest(changes=changes), patch.dict(CI_SHARDS, changes), self.assertRaises(ValueError):
@@ -240,7 +259,8 @@ with patch.object(h, 'HOST_STATE_ROOT', root / 'host'), \\
             ci_matrix()
 
     def test_cli_selects_a_shard_and_preserves_the_original_local_group(self):
-        for group in ("browser-lifecycle", "browser-lifecycle-4", "browser-sync-2", "browser-ui", "models", "models-2"):
+        for group in ("browser-lifecycle", "browser-lifecycle-4", "browser-sync-2", "browser-ui", "models", "models-2",
+                      "contracts-database", "contracts", "database", "browser-database"):
             expected = {**GROUPS, **ci_groups()}[group]
             with self.subTest(group=group), tempfile.TemporaryDirectory() as tmp, \
                  patch.object(run_all, "preflight", return_value=0), \
