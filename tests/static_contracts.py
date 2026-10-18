@@ -673,7 +673,7 @@ ok(presentation_contains(orders_finance_view, 'class="kupa-subcontent kupa-subco
    and '.checks-header-activity>.check-bank-activity>.section-body{position:absolute;' in orders_css,
    "orders Kupa compact rhythm: Credit keeps its joined report layout, while embedded Checks use a lower filter row and zero empty spacing from filters to monthly disclosure to the first month")
 kupa_credit_render = section_between(kupa_credit_view, 'function renderCreditContent(){', 'function creditLocalProfileRow')
-ok('function renderCredit(...args){return runFinance(()=>renderCreditContent(...args))}' in kupa_credit_view
+ok(re.search(r'function renderCredit\(\.\.\.args\)\{\s*return runFinance\(\(\)=>renderCreditContent\(\.\.\.args\)\)\s*\}', kupa_credit_view)
    and 'class="credit-report-stack"' in kupa_credit_render
    and 'class="credit-primary-report"' in kupa_credit_render
    and kupa_credit_render.index('class="toolbar credit-filter-toolbar"') < kupa_credit_render.index('${creditTransactionSectionsMarkup()}') < kupa_credit_render.index('class="section credit-forecast-section forecast-disclosure-section"') < kupa_credit_render.index("${summary.hasData?renderSyncedAccounts(summary):''}")
