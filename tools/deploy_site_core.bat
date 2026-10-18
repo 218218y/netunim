@@ -297,13 +297,9 @@ if not "%DEPLOY_EXIT%"=="0" (
   exit /b %DEPLOY_EXIT%
 )
 
-rem Each site must prove its own critical release before the pair continues.
-python "%~dp0deployment_smoke.py" --site-dir "%SITE_DIR%" --url "https://%PROJECT_NAME%.pages.dev/" --report "%~dp0..\.work\deploy\%PROJECT_NAME%-smoke.json"
-if errorlevel 1 (
-  echo ERROR: upload completed but release smoke failed for %PROJECT_NAME%.
-  echo The pair may be partially deployed. Follow docs\DEPLOYMENT_COMPATIBILITY.md before continuing.
-  exit /b 4
-)
+rem Wrangler's exit code is the upload result. Public HTTP verification is a
+rem separate read-only operation: local filtering (for example NetFree) can block
+rem a published site and must not prevent the next site's upload.
 
 echo.
 echo Deployment completed successfully.
@@ -311,4 +307,5 @@ echo Production URL:
 echo   https://%PROJECT_NAME%.pages.dev/
 echo.
 echo Wrangler may also print the unique URL for this deployment above.
+echo Public HTTP verification was not run. See docs\DEPLOYMENT_COMPATIBILITY.md for the optional check.
 exit /b 0

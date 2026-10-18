@@ -94,20 +94,52 @@ class WindowsDeploymentContracts(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertEqual(calls, [])
 
-    def test_real_post_upload_smoke_failure_stops_the_release(self):
+    def install_real_upload_tail(self):
         source = (ROOT/'tools/deploy_site_core.bat').read_text(encoding='utf8')
         tail = source[source.index('call npx --yes'):]
-        self.write('tools/postupload.bat', '@echo off\nsetlocal\nset "PROJECT_NAME=bargig-orders"\n'
-                   'set "SITE_DIR=%~dp0..\\netunim-orders\\site"\n'
+        self.write('tools/deploy_site_core.bat', '@echo off\nsetlocal\n'
+                   'if not "%NETUNIM_DEPLOY_VERIFIED%"=="1" exit /b 99\n'
+                   'if /I "%~6"=="--preflight-only" exit /b 0\n'
+                   'set "PROJECT_NAME=%~2"\nset "SITE_DIR=%~1\\site"\n'
                    'set "DEPLOY_WORK_DIR=%~dp0..\\isolated-upload"\n'+tail)
-        self.write('tools/npx.cmd', '@echo off\necho upload>>"%CI_CALLS%"\nexit /b %UPLOAD_EXIT%\n')
-        self.write('tools/deployment_smoke.py', "import os\nfrom pathlib import Path\nwith Path(os.environ['CI_CALLS']).open('a') as f: f.write('smoke\\n')\nraise SystemExit(int(os.environ['SMOKE_EXIT']))\n")
+        self.write('tools/npx.cmd', '@echo off\necho upload:%PROJECT_NAME%>>"%CI_CALLS%"\n'
+                   'if "%PROJECT_NAME%"=="%FAIL_UPLOAD_SITE%" exit /b 7\nexit /b 0\n')
+        # A public check from this workstation would fail exactly as reported.
+        # Trap any accidental invocation while all real entrypoints use the
+        # production upload/error-handling tail and a stubbed Cloudflare upload.
+        self.write('tools/deployment_smoke.py', "import os\nfrom pathlib import Path\n"
+                   "with Path(os.environ['CI_CALLS']).open('a') as f: f.write('smoke\\n')\n"
+                   "print('HTTP Error 418: Blocked by NetFree')\nraise SystemExit(2)\n")
         self.env['PATH'] = str(self.root/'tools')+os.pathsep+self.env['PATH']
-        for upload, smoke, expected, calls in [('7','0',7,['upload']), ('0','2',4,['upload','smoke']), ('0','0',0,['upload','smoke'])]:
-            self.env.update(UPLOAD_EXIT=upload, SMOKE_EXIT=smoke)
-            result, recorded = self.run_bat('tools/postupload.bat', '')
-            self.assertEqual(result.returncode, expected, result.stdout+result.stderr)
-            self.assertEqual(recorded, calls)
+        self.env['FAIL_UPLOAD_SITE'] = 'none'
+
+    def test_all_entrypoints_complete_uploads_without_public_http_access(self):
+        self.install_real_upload_tail()
+        for name, gates, sites in (
+            ('deploy_all.bat', ['local'], ['orders', 'kupa']),
+            ('deploy_all_fast.bat', ['remote', 'public'], ['orders', 'kupa']),
+            ('netunim-orders/deploy_site.bat', ['local'], ['orders']),
+            ('netunim-orders/deploy_site_fast.bat', ['remote', 'public'], ['orders']),
+            ('netunim-kupa/deploy_site.bat', ['local'], ['kupa']),
+            ('netunim-kupa/deploy_site_fast.bat', ['remote', 'public'], ['kupa']),
+        ):
+            with self.subTest(name=name):
+                result, calls = self.run_bat(name, '')
+                self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+                self.assertEqual(calls, gates+[f'upload:bargig-{site}' for site in sites])
+                self.assertEqual(result.stdout.count('Public HTTP verification was not run.'), len(sites))
+
+    def test_paired_upload_failures_still_stop_and_propagate_wrangler_exit(self):
+        self.install_real_upload_tail()
+        for name, gates in [('deploy_all.bat', ['local']), ('deploy_all_fast.bat', ['remote', 'public'])]:
+            for failed, uploaded in [('orders', ['orders']), ('kupa', ['orders', 'kupa'])]:
+                with self.subTest(name=name, failed=failed):
+                    self.env['FAIL_UPLOAD_SITE'] = 'bargig-'+failed
+                    result, calls = self.run_bat(name, '')
+                    self.assertEqual(result.returncode, 7, result.stdout+result.stderr)
+                    self.assertEqual(calls, gates+[f'upload:bargig-{site}' for site in uploaded])
+                    self.assertIn('Deployment failed. Wrangler exit code: 7', result.stdout)
+                    self.assertEqual(result.stdout.count('Deployment completed successfully.'), len(uploaded)-1)
 
     def test_real_engine_database_gate_runs_before_preflight_success_and_stops_both_sites(self):
         shutil.copyfile(ROOT/'tools/deploy_site_core.bat', self.root/'tools/deploy_site_core.bat')

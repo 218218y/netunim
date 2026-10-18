@@ -41,25 +41,47 @@ independent cryptographic signature of every HTTP response.
 
 1. Verify both sites and record the exact source commit, previous deployments and
    fresh database postflight. Use disposable data for release exercises.
-2. Upload Orders. Its shared engine runs `deployment_smoke.py` before returning
-   success. The read-only smoke compares 11 critical static files, response release,
-   JavaScript MIME and nosniff to the local verified source. It records hashes in
-   `.work/deploy/bargig-orders-smoke.json` and never reads business data.
-3. Upload Kupa only after Orders passes. Its smoke records the equivalent Kupa
-   report. A failure is a partial release, including an upload that succeeded but
-   whose smoke failed. Inspect the actual deployment and reports before retrying.
+2. Upload Orders. After all pre-upload gates pass, its shared engine uses Wrangler's
+   exit code as the upload result. It does not fetch the public site from the
+   deployment workstation. Local filtering such as NetFree can return HTTP 418
+   even after Cloudflare accepts an upload; public reachability is a separate check.
+3. Upload Kupa only after the Orders upload succeeds. The normal, fast, paired and
+   individual entrypoints all use this shared behavior. A failed upload still
+   returns a nonzero code and stops the pair. If Kupa's upload fails after Orders
+   succeeds, inspect the actual deployments before retrying the failed project.
 4. Prefer roll-forward of only the failed project from the same verified commit:
    `netunim-kupa\deploy_site_fast.bat` or the Orders counterpart. Retain the fresh
-   database check and smoke. Do not rerun database migrations just to retry static
-   assets. Run the read-only smoke for both projects to confirm the final pair.
+   database check. Do not rerun database migrations just to retry static assets.
+   When public access is available, run the separate read-only checks below to
+   confirm the final pair.
 5. If roll-forward is unsuitable, use Cloudflare's previous deployment for only
    the affected project. Independently smoke it against a clean checkout of its
    exact previous verified commit. Do not compare a rollback to current source or
    reset, restore or delete browser/database business state. Reopen saved app tabs
    so their waiting workers can activate; recheck local and cloud status.
 
-A smoke failure returns a nonzero code and stops the pair. Recovery remains an
-explicit operator action; the scripts never guess which deployment to roll back.
+Recovery remains an explicit operator action; the scripts never guess which
+deployment to roll back.
+
+## Optional public release verification
+
+Deployment success means Wrangler accepted the upload. It does not prove that the
+production URL serves the expected release. From a workstation with public access,
+run these commands separately from the repository root, using the exact source
+checkout that was uploaded:
+
+```bat
+python tools\deployment_smoke.py --site-dir netunim-orders\site --url https://bargig-orders.pages.dev/ --report .work\deploy\bargig-orders-smoke.json
+python tools\deployment_smoke.py --site-dir netunim-kupa\site --url https://bargig-kupa.pages.dev/ --report .work\deploy\bargig-kupa-smoke.json
+```
+
+The check compares 11 critical static files, response release, JavaScript MIME and
+nosniff to the local verified source. It records hashes in the requested report
+and never reads business data. It still returns a nonzero code for any failed
+check, including blocked access. A NetFree 418 leaves the public release unverified;
+it does not establish that the upload failed. Existing reports are from the last
+public check and are not refreshed by deployment. Neither a failed manual check
+nor an old report changes the upload result or prevents the other site's upload.
 
 ## Evidence and remaining limits
 
@@ -67,6 +89,7 @@ The original worker reproduced mixed module bytes in both actual worker bodies.
 The regression now covers wrong network release, offline retry, no matching cache,
 failed install and waiting update. Native Chromium tests cover the same mixed
 response/offline path, legacy update, restart and preserved Local V2 data. Actual
-Windows BAT tests prove upload failure skips smoke and smoke failure blocks success.
+Windows BAT tests prove public checks are separate, both uploads can complete
+without public access, and upload failures still stop the pair.
 Physical weak-PC, two-device and live Bank/Credit exercises remain the separate
 release-authority backlog; synthetic results do not close them.

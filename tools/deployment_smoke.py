@@ -1,4 +1,4 @@
-"""Read-only post-upload proof of a release's critical public assets."""
+"""Optional read-only public release check, run separately from deployment."""
 from __future__ import annotations
 
 import argparse
