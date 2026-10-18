@@ -7,6 +7,12 @@ const OP='11111111-1111-4111-8111-111111111111',OTHER='22222222-2222-4222-8222-2
 const payload=()=>({operation_id:OP,document:{type:320,amount:42}});
 const ledger=()=>({operation_id:OP,state:'created',document_id:'historical-document',document_type:320,amount:'42.00',document_number:'4001',verified_at:'2026-10-14T00:00:00Z'});
 
+test('only an explicit manual check asks to bypass the cheque follow-up cooldown',async()=>{
+  const requests=[],commands=createMorningOperationCommands({request:{json:async(action,body)=>{requests.push({action,body});return {ok:true,operation:ledger()}}}});
+  await commands.status(OP,true,guard);await commands.status(OP,true,guard,true);
+  assert.equal(requests[0].body.retry_checks,undefined);assert.equal(requests[1].body.retry_checks,true);
+});
+
 test('current ledger evidence decodes decimal SQL text and retains historical document identities',()=>{
   const status=decodeMorningOperationStatus({ok:true,configured:true,environment:'sandbox',operation:ledger(),bank_link:{pending:false}},OP);
   assert.equal(status.operation.amount,42);assert.equal(status.operation.document_id,'historical-document');assert.equal(status.operation.document_number,'4001');

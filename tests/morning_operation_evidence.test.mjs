@@ -5,10 +5,23 @@ import {createMorningRequest} from '../netunim-orders/site/assets/js/integration
 import {createMorningOperationCommands} from '../netunim-orders/site/assets/js/domains/customers/morning-operation-commands.js';
 import {createDomainsCustomersDocuments} from '../netunim-orders/site/assets/js/domains/customers/documents.js';
 import {createMorningDebtRecoveryContext,saveMorningDebtRecoveryContext,loadMorningDebtRecoveryContext} from '../netunim-orders/site/assets/js/domains/customers/morning-debt-recovery.js';
+import {decodeMorningOperationStatus,decodeMorningCreatedDocument,morningCheckRegistrationMessage} from '../netunim-orders/site/assets/js/domains/customers/morning-operation-evidence.js';
 
 const OP='11111111-1111-4111-8111-111111111111',OTHER='22222222-2222-4222-8222-222222222222';
 const operationScope={capture:()=>()=>undefined,captureRead:()=>()=>undefined};
 const requestFor=read=>createMorningRequest({operationScope,supaFetch:async(_path,options)=>new Response(JSON.stringify(read(JSON.parse(options.body))))});
+
+test('follow-up diagnostics are decoded and distinguish missing proof from persistent failure',()=>{
+  for(const state of ['evidence_pending','attention']){
+    const data=decodeMorningOperationStatus({ok:true,operation:null,checks_registration_pending:true,checks_registration_state:state,checks_registration_attempts:5},OP);
+    assert.equal(data.checks_registration_state,state);assert.match(morningCheckRegistrationMessage(data),/המסמך הופק ואומת/);
+    assert.match(morningCheckRegistrationMessage(data),/אין להפיק שוב/);
+  }
+  for(const value of [{checks_registration_state:'unknown'},{checks_registration_attempts:-1},{checks_registration_attempts:'5'}]){
+    assert.throws(()=>decodeMorningOperationStatus({ok:true,operation:null,...value},OP),/אינה תואמת/);
+    assert.throws(()=>decodeMorningCreatedDocument({ok:true,verified:true,document:{id:'official',type:400,amount:5},...value},{operation_id:OP,document:{type:400,amount:5}}),/אינה תואמת/);
+  }
+});
 
 for(const operationId of [OTHER,undefined])test(`reservation ${operationId?'for another operation':'without identity'} cannot persist recovery or enter create`,async()=>{
   const calls=[];let persisted=0;

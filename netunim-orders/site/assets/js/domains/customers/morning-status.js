@@ -39,7 +39,7 @@ export function createMorningStatus({lifetime,commands,session,recovery,applicat
     return lifetime.run(async()=>{
       if(canPublish())presentation.status('loading','בודק חיבור ל-Morning…');
       try{
-        let data=await commands.status(operationId,reconcile,assertCurrent);assertCurrent();
+        let data=await commands.status(operationId,reconcile,assertCurrent,reconcile);assertCurrent();
         if(!canPublish()||!sameOperation()||session.read().busy)return data;
         if(reconcile&&data.retryable_reserved&&operationId){
           const abandoned=await recovery.abandon(operationId,{assertCurrent});assertCurrent();

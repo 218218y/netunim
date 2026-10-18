@@ -2,11 +2,14 @@
 begin;
 alter table public.morning_document_operations
   add column check_intent jsonb,
+  add column check_payment_evidence text check (check_payment_evidence in ('matched','missing','mismatch')),
   add column checks_registered_at timestamptz,
-  add column checks_registration_error text;
+  add column checks_registration_error text,
+  add column checks_registration_attempts integer not null default 0 check (checks_registration_attempts>=0),
+  add column checks_registration_next_retry_at timestamptz;
 alter table public.morning_document_operations add constraint morning_check_intent_array
   check (check_intent is null or (jsonb_typeof(check_intent)='array' and jsonb_array_length(check_intent)<=12));
-create index morning_checks_pending on public.morning_document_operations(updated_at)
+create index morning_checks_pending on public.morning_document_operations(checks_registration_next_retry_at,updated_at)
   where check_intent is not null and checks_registered_at is null and state='created' and verified_at is not null;
 
 create table netunim_internal.morning_check_registrations (
@@ -46,7 +49,7 @@ declare op public.morning_document_operations; doc public.shared_checks_document
 begin
   select * into op from public.morning_document_operations where operation_id=p_operation for update;
   if not found or op.state<>'created' or op.verified_at is null or op.document_id is null
-    or op.check_intent is null or op.checks_registered_at is not null then return 0; end if;
+    or op.check_intent is null or op.checks_registered_at is not null or op.check_payment_evidence is distinct from 'matched' then return 0; end if;
   -- No browser state or third-party payload can choose the owner of this write.
   perform set_config('request.jwt.claim.sub',op.owner_id::text,true);
   if not pg_try_advisory_xact_lock(hashtextextended('netunim_financial_write:'||op.owner_id::text,0)) then
@@ -86,9 +89,21 @@ begin
     perform public.save_shared_checks_document_v6('main',coalesce(doc.revision,0),jsonb_build_object('version',1,'checks',rows,'bankEvents',coalesce(doc.state->'bankEvents','[]')),
       'morning-checks:'||op.operation_id::text,'[]',jsonb_build_object('site','orders','mutationType','morning-check-import','checkAmountPrecision',2));
   end if;
-  update public.morning_document_operations set checks_registered_at=clock_timestamp(),checks_registration_error=null where operation_id=p_operation;
+  update public.morning_document_operations set checks_registered_at=clock_timestamp(),checks_registration_error=null,checks_registration_next_retry_at=null where operation_id=p_operation;
   perform set_config('request.jwt.claim.sub',coalesce(prior_identity,''),true);
   return n;
+end $$;
+
+-- Keep failures observable without a second queue. Busy contention is transient,
+-- not a failed business attempt. Repeated failures back off but remain retryable.
+create function netunim_internal.record_morning_check_failure(p_operation uuid,p_error text,p_code text)
+returns void language plpgsql security definer set search_path=pg_catalog,public as $$
+begin
+  update public.morning_document_operations
+    set checks_registration_error=left(p_error,500),updated_at=clock_timestamp(),
+      checks_registration_attempts=checks_registration_attempts+case when p_code='PT429' then 0 else 1 end,
+      checks_registration_next_retry_at=clock_timestamp()+case when p_code<>'PT429' and checks_registration_attempts>=4 then interval '15 minutes' else interval '1 minute' end
+    where operation_id=p_operation;
 end $$;
 
 create function netunim_internal.complete_morning_checks()
@@ -99,12 +114,12 @@ begin
       perform netunim_internal.register_morning_checks(new.operation_id);
     exception when others then
       -- The document remains verified even if its independent follow-up needs retry.
-      update public.morning_document_operations set checks_registration_error=left(sqlerrm,500),updated_at=clock_timestamp() where operation_id=new.operation_id;
+      perform netunim_internal.record_morning_check_failure(new.operation_id,sqlerrm,sqlstate);
     end;
   end if;
   return new;
 end $$;
-create trigger morning_complete_checks after insert or update of state,verified_at on public.morning_document_operations
+create trigger morning_complete_checks after insert or update of state,verified_at,check_payment_evidence on public.morning_document_operations
   for each row execute function netunim_internal.complete_morning_checks();
 
 -- Persist the source through edits by either application, and prevent client forgery.
@@ -144,17 +159,18 @@ declare op record;
 begin
   for op in select m.operation_id from public.morning_document_operations m where m.state='created' and m.verified_at is not null
     and m.check_intent is not null and m.checks_registered_at is null
+    and m.check_payment_evidence='matched' and (m.checks_registration_next_retry_at is null or m.checks_registration_next_retry_at<=clock_timestamp())
     and exists(select 1 from auth.users u where u.id=m.owner_id) order by m.updated_at limit 50
   loop
     begin perform netunim_internal.register_morning_checks(op.operation_id);
     exception when others then
-      update public.morning_document_operations set checks_registration_error=left(sqlerrm,500),updated_at=clock_timestamp() where operation_id=op.operation_id;
+      perform netunim_internal.record_morning_check_failure(op.operation_id,sqlerrm,sqlstate);
     end;
   end loop;
 end $$;
 select cron.schedule('morning-check-registration','* * * * *','select netunim_internal.retry_morning_check_registrations()');
 revoke all on function netunim_internal.freeze_morning_check_intent(),netunim_internal.register_morning_checks(uuid),
-  netunim_internal.complete_morning_checks(),netunim_internal.protect_morning_check_source(),netunim_internal.retry_morning_check_registrations()
+  netunim_internal.complete_morning_checks(),netunim_internal.record_morning_check_failure(uuid,text,text),netunim_internal.protect_morning_check_source(),netunim_internal.retry_morning_check_registrations()
   from public,anon,authenticated,service_role;
 create or replace function netunim_internal.save_shared_checks_document_current(
   p_document_name text,p_expected_revision bigint,p_state jsonb,p_operation_id text,p_deleted_check_ids jsonb,p_audit jsonb)

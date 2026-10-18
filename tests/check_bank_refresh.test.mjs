@@ -40,9 +40,33 @@ test('single flight and ownership loss fence publication; disposal cancels defer
 });
 
 test('adopting a matching result during sync does not schedule a redundant replay',async()=>{
-  const f=fixture(createCheckBankRefresh,()=>{f.rows[0].status='הופקד - במעקב';f.api.observe()});
+  const f=fixture(createCheckBankRefresh,()=>{f.rows[0].status='הופקד - במעקב';f.rows[0].bankMatch={eventId:'server-deposit'};f.api.observe()});
   f.api.observe();await f.fire();
   assert.equal(f.pending.size,0);assert.equal(f.stats().calls,1);
+});
+
+test('a canonical change during the RPC survives single-flight and runs once more',async()=>{
+  const f=fixture();let finish;f.setResult(()=>new Promise(resolve=>finish=resolve));
+  const running=f.api.run();f.rows[0].amount=124.45;f.api.observe();assert.equal(f.api.run(),running);
+  finish({status:'checked'});await running;await f.api.drain();assert.equal(f.pending.size,1);
+  f.setResult({status:'unchanged'});await f.fire();assert.equal(f.stats().calls,2);assert.equal(f.pending.size,0);
+});
+
+test('an edit during canonical sync is evaluated next; bank status adoption alone is covered',async()=>{
+  let first=true;
+  const f=fixture(createCheckBankRefresh,()=>{if(first){first=false;f.rows[0].checkNumber='new';f.api.observe()}});
+  await f.api.run();assert.equal(f.pending.size,1);await f.fire();assert.equal(f.stats().calls,2);assert.equal(f.pending.size,0);
+});
+
+test('revision conflict syncs canonically and retries once, respecting cancellation and local work',async()=>{
+  const f=fixture();let first=true;f.setResult(()=>{if(first){first=false;throw Error('revision_conflict')}return {status:'checked'}});
+  assert.equal((await f.api.run()).status,'checked');assert.deepEqual(f.stats(),{calls:2,syncs:2,renders:1});
+  f.setResult(()=>{throw Error('revision_conflict')});await assert.rejects(f.api.run(),/revision_conflict/);
+  assert.equal(f.stats().calls,4,'a second conflict is surfaced without a third attempt');
+  const g=fixture(createCheckBankRefresh,()=>g.setOwner('other'));g.setResult(()=>{throw Error('revision_conflict')});
+  assert.equal((await g.api.run()).status,'unavailable');assert.equal(g.stats().calls,1);
+  const h=fixture();let attempt=0;h.setResult(()=>{if(++attempt===1)throw Error('revision_conflict');return {status:'pending'}});
+  assert.equal((await h.api.run()).status,'pending');assert.equal(h.stats().calls,2);assert.equal(h.stats().renders,0);
 });
 test('manual refresh refuses unsynced work and communicates the actual stored observation time',async()=>{
   const f=fixture(),button={disabled:false,textContent:'רענן התאמות'};

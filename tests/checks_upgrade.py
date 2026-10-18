@@ -81,8 +81,9 @@ def run(db):
     assert len(rows())==count,'No import before verified issuance'
     # Force the follow-up to fail while preserving official-document success.
     db.sql("create function netunim_internal.test_import_failure() returns trigger language plpgsql as $$begin raise exception 'test_import_failure';end$$;create trigger test_import_failure before insert on netunim_internal.morning_check_registrations for each row execute function netunim_internal.test_import_failure()")
-    db.sql("update public.morning_document_operations set state='created',document_id='verified-901',document_number='901',verified_at=now() where operation_id="+quote(operation))
+    db.sql("update public.morning_document_operations set check_payment_evidence='matched',state='created',document_id='verified-901',document_number='901',verified_at=now() where operation_id="+quote(operation))
     assert scalar("select state||':'||checks_registration_error from public.morning_document_operations where operation_id="+quote(operation))=='created:test_import_failure'
+    assert scalar("select checks_registration_attempts from public.morning_document_operations where operation_id="+quote(operation))=='1'
     assert len(rows())==count and scalar('select count(*) from netunim_internal.morning_check_registrations')=='0'
     db.sql('drop trigger test_import_failure on netunim_internal.morning_check_registrations;drop function netunim_internal.test_import_failure()')
     with ThreadPoolExecutor(max_workers=2) as pool:
@@ -100,7 +101,7 @@ def run(db):
     assert rows()[-1]['note']=='edited' and len(rows())==count+2
     second='00000000-0000-4000-8000-000000000902'
     insert(second,intent)
-    db.sql("update public.morning_document_operations set state='created',issuance_started_at=now(),document_id='verified-902',document_number='902',verified_at=now() where operation_id="+quote(second))
+    db.sql("update public.morning_document_operations set check_payment_evidence='matched',state='created',issuance_started_at=now(),document_id='verified-902',document_number='902',verified_at=now() where operation_id="+quote(second))
     assert len(rows())==count+4,'Two intentionally similar official documents have independent payment identities'
     removed=rows()[-1]['id'];save([c for c in rows() if c['id']!=removed],deleted=[removed])
     db.sql('select netunim_internal.register_morning_checks('+quote(second)+');select netunim_internal.retry_morning_check_registrations()')
@@ -145,11 +146,21 @@ def run(db):
     source_operation='00000000-0000-4000-8000-000000000903'
     source_intent=[{**intent[0],'amount':50.25,'dueDate':'2026-07-01','checkNumber':'222','bankSourceKey':'check:12:123:000456:222:5025'}]
     insert(source_operation,source_intent)
-    db.sql("update public.morning_document_operations set state='created',issuance_started_at=now(),source_kind='bank',source_bank_transaction_id="+transaction+",document_id='verified-903',document_number='903',verified_at=now() where operation_id="+quote(source_operation))
+    db.sql("update public.morning_document_operations set check_payment_evidence='matched',state='created',issuance_started_at=now(),source_kind='bank',source_bank_transaction_id="+transaction+",document_id='verified-903',document_number='903',verified_at=now() where operation_id="+quote(source_operation))
     refresh()
     source_check=next(c for c in rows() if c.get('morningSource',{}).get('documentId')=='verified-903')
     assert source_check['status']=='הופקד - במעקב',source_check
     assert str(source_check['bankMatch']['transactionId'])==transaction
+    # An official document without payment rows is valid, but not cheque proof.
+    evidence_operation='00000000-0000-4000-8000-000000000905'
+    insert(evidence_operation,intent)
+    count=len(rows())
+    db.sql("update public.morning_document_operations set state='created',check_payment_evidence='missing',issuance_started_at=now(),document_id='verified-905',verified_at=now() where operation_id="+quote(evidence_operation))
+    db.sql('select netunim_internal.retry_morning_check_registrations()')
+    assert len(rows())==count
+    assert scalar("select state||':'||checks_registration_attempts from public.morning_document_operations where operation_id="+quote(evidence_operation))=='created:0'
+    db.sql("update public.morning_document_operations set check_payment_evidence='matched' where operation_id="+quote(evidence_operation))
+    assert len(rows())==count+2
     # Both background entry points use the established financial-write lock.
     # Busy work remains durable; neither path waits while holding document locks.
     busy_operation='00000000-0000-4000-8000-000000000904'
@@ -163,13 +174,32 @@ def run(db):
             assert time.monotonic()<deadline,'Fixture financial lock was not acquired'
             time.sleep(.03)
         assert refresh()['status']=='busy'
-        db.sql("update public.morning_document_operations set state='created',issuance_started_at=now(),document_id='verified-904',document_number='904',verified_at=now() where operation_id="+quote(busy_operation))
+        db.sql("update public.morning_document_operations set check_payment_evidence='matched',state='created',issuance_started_at=now(),document_id='verified-904',document_number='904',verified_at=now() where operation_id="+quote(busy_operation))
         assert len(rows())==count
         assert scalar("select state||':'||checks_registration_error from public.morning_document_operations where operation_id="+quote(busy_operation))=='created:save_busy'
         assert scalar("select revision from public.shared_checks_documents where owner_id="+quote(OWNER))==revision
         held.result()
     db.sql('select netunim_internal.retry_morning_check_registrations()')
-    assert len(rows())==count+2
+    assert len(rows())==count,'Busy work obeys its retry delay'
+    assert scalar("select checks_registration_attempts from public.morning_document_operations where operation_id="+quote(busy_operation))=='0'
+    db.sql("update public.morning_document_operations set verified_at=verified_at where operation_id="+quote(busy_operation))
+    assert len(rows())==count+2,'The existing status recheck safely retries the verified follow-up'
     db.sql("update netunim_internal.check_bank_refresh_state set requested_at=clock_timestamp()-interval '5 seconds';select netunim_internal.run_check_bank_refresh_queue()")
     assert scalar("select requested_at is null and error is null from netunim_internal.check_bank_refresh_state where owner_id="+quote(OWNER))=='t'
+    # Persistent failures remain diagnosable and retryable; no intent/document loss.
+    failed_operation='00000000-0000-4000-8000-000000000906'
+    insert(failed_operation,intent);count=len(rows())
+    db.sql("create function netunim_internal.test_import_failure() returns trigger language plpgsql as $$begin raise exception 'persistent_fixture';end$$;create trigger test_import_failure before insert on netunim_internal.morning_check_registrations for each row execute function netunim_internal.test_import_failure()")
+    db.sql("update public.morning_document_operations set check_payment_evidence='matched',state='created',issuance_started_at=now(),document_id='verified-906',verified_at=now() where operation_id="+quote(failed_operation))
+    for _ in range(4):
+        db.sql("update public.morning_document_operations set checks_registration_next_retry_at=clock_timestamp()-interval '1 second' where operation_id="+quote(failed_operation)+";select netunim_internal.retry_morning_check_registrations()")
+    assert scalar("select state||':'||checks_registration_attempts from public.morning_document_operations where operation_id="+quote(failed_operation))=='created:5'
+    assert scalar("select checks_registration_next_retry_at>clock_timestamp()+interval '14 minutes' from public.morning_document_operations where operation_id="+quote(failed_operation))=='t'
+    db.sql('select netunim_internal.retry_morning_check_registrations()')
+    assert scalar("select checks_registration_attempts from public.morning_document_operations where operation_id="+quote(failed_operation))=='5'
+    assert len(rows())==count
+    db.sql('drop trigger test_import_failure on netunim_internal.morning_check_registrations;drop function netunim_internal.test_import_failure()')
+    db.sql("update public.morning_document_operations set verified_at=verified_at where operation_id="+quote(failed_operation))
+    assert len(rows())==count+2
+    assert scalar("select checks_registered_at is not null and checks_registration_error is null from public.morning_document_operations where operation_id="+quote(failed_operation))=='t'
     print('PASS cheque upgrade: stored evidence replay, cents, V2 scope, no-op revisions, verified-only import, atomic failure, durable retry and payment-index idempotency')

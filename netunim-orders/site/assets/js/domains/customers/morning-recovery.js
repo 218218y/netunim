@@ -1,4 +1,5 @@
 // @ts-check
+import {morningCheckRegistrationMessage} from './morning-operation-evidence.js';
 /** @typedef {import('../../core/morning-operation-scope.js').MorningAssertion} MorningAssertion */
 /** @typedef {import('./morning-debt-application.js').ApplicationContext} ApplicationContext */
 /** @typedef {import('./morning-debt-application.js').ApplicationResult} ApplicationResult */
@@ -43,7 +44,7 @@ async function recoverPendingMorningOperation({quiet=false,assertCurrent}={}){
         const result=await application.apply(context,{operationId:operation.operation_id,documentId:operation.document_id,documentNumber:operation.document_number,type:operation.document_type,amount:Number(operation.amount),verifiedAt:operation.verified_at},{assertCurrent});assertCurrent();
         const settlement=application.settle(context.operationId,result,{serverLinkPending:!!(data.bank_link_pending||data.checks_registration_pending)});if(settlement.recoveryCleared)publish.notify(context,data.bank_link);
         if(settlement.durable&&settlement.recoveryCleared){publish.state(false,true);publish.toast(context.debtId?'הפקת Morning הקודמת אומתה לאחר ההתאוששות והחוב עודכן לפי הבחירות שנשמרו.':'הפקת Morning הקודמת אומתה לאחר ההתאוששות.');return {ok:true,state:'created',result}}
-        publish.state(true,settlement.durable);lifetime.scheduleRecovery(60_000,assertCurrent);if(settlement.durable&&!quiet)publish.toast('המסמך אומת והעדכון המקומי נשמר, אך נקודת ההתאוששות עדיין לא נמחקה בבטחה. ההפקה נשארת נעולה עד לניקוי מוצלח.');return {ok:false,state:settlement.durable?'cleanup-pending':'local-pending',result};
+        publish.state(true,settlement.durable);lifetime.scheduleRecovery(60_000,assertCurrent);if(settlement.durable&&!quiet)publish.toast(morningCheckRegistrationMessage(data)||'המסמך אומת והעדכון המקומי נשמר, אך נקודת ההתאוששות עדיין לא נמחקה בבטחה. ההפקה נשארת נעולה עד לניקוי מוצלח.');return {ok:false,state:settlement.durable?'cleanup-pending':'local-pending',result};
       }
       if(operation?.state==='failed'){if(!recovery.reset(context.operationId))return {ok:false,state:'cleanup-pending'};publish.toast('ניסיון Morning הקודם הסתיים ללא מסמך מאומת; החוב לא שונה.');return {ok:true,state:'failed'}}
       publish.state(true);lifetime.scheduleRecovery(operation?60_000:30_000,assertCurrent);if(!quiet)publish.toast('נמצא ניסיון Morning שעדיין ממתין לאימות. המערכת תשמור את הקשר לחוב ולא תזקוף אותו עד לאימות ודאי.');return {ok:true,state:operation?.state||'waiting'};
