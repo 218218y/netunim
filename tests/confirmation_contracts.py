@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from presentation_sources import presentation_contains
 from pathlib import Path
 import re
 import sys
@@ -43,7 +44,7 @@ def main() -> int:
     supplier_bulk = read(apps["orders"] / "assets/js/domains/suppliers/bulk.js")
     ok &= check("modalHasUnsavedDraft" in orders_modal and "dismissModal" in orders_modal, "orders: generic dirty-form dismissal guard exists")
     ok &= check("markModalDraftSaved" in orders_modal, "orders: successful workflows can explicitly commit the modal draft baseline")
-    ok &= check("'close-modal':(element,event)=>{dismissModal()}" in orders_actions.replace(" ", ""), "orders: user close action goes through guarded dismissal")
+    ok &= check(presentation_contains(orders_actions,"'close-modal':(element,event)=>{return dismissModal();}"), "orders: user close action goes through guarded dismissal")
     ok &= check("אישור העברת תנועה" in supplier_bulk and "confirmDialog" in supplier_bulk, "orders: supplier transaction move uses styled confirmation")
 
     kupa_modal = read(apps["kupa"] / "assets/js/ui/modal.js")

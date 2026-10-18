@@ -1,3 +1,4 @@
+from presentation_sources import presentation_contains
 from pathlib import Path
 import re
 
@@ -90,10 +91,10 @@ ok(not re.search(r'\b(pdf|base64|blob|document_content)\b\s+(?:text|jsonb|bytea)
    'Morning storage: ledger schema does not store PDF/base64/document bodies')
 ok('on delete cascade' not in sql.lower() and 'drop constraint if exists morning_document_operations_owner_id_fkey' in owner_retention.lower(),
    'Morning ledger retention: deleting an app user cannot erase issuance/idempotency evidence')
-ok("createDomainsCustomers" in composition and "createMorningActions({domainsCustomers:domain})" in capability and "openMorningDocument=(...args)=>domainsCustomers.openMorningDocument(...args)" in actions and "from './composition/customers.js'" in main and main.count("./domains/customers/") == 0 and len(main.encode('utf-8')) < 60_000,
+ok("createDomainsCustomers" in composition and "createMorningActions({domainsCustomers:domain})" in capability and presentation_contains(actions,"openMorningDocument=(...args)=>domainsCustomers.openMorningDocument(...args)") and "from './composition/customers.js'" in main and main.count("./domains/customers/") == 0 and len(main.encode('utf-8')) < 60_000,
    'Customer composition: the shell uses one capability boundary, and Morning actions stay with the customer domain')
 for action in ('open-morning-document','open-morning-standalone','morning-document-type','morning-payment-type','morning-payment-add','morning-payment-remove','morning-payment-amount','morning-bank-debt-select','morning-bank-debt-clear','morning-bank-transaction-select','morning-bank-transaction-clear','morning-bank-transaction-search','morning-preview','morning-create','morning-open-document','morning-reconcile'):
-    ok(f"'{action}':" in actions, f'Morning UI action registered: {action}')
+    ok(presentation_contains(actions,f"'{action}':"), f'Morning UI action registered: {action}')
 
 command_form=(ROOT/'netunim-orders/site/assets/js/domains/customers/morning-command-form.js').read_text(encoding='utf-8')
 confirmation_view=(ROOT/'netunim-orders/site/assets/js/domains/customers/morning-debt-confirmation.js').read_text(encoding='utf-8')
@@ -138,7 +139,7 @@ ok('verify_jwt = false' in morning_config and 'requireUser(req)' in edge and 'cl
    'Morning function auth/CORS: preflight reaches the handler while every POST still requires a Supabase-authenticated user')
 customer_pack=(SITE/'assets/js/ui/action-packs/customers.js').read_text(encoding='utf-8')
 ok('const domainsCustomers=createOrdersCustomersRuntime({' in main and 'const renderCustomers=' not in main
-   and 'createCustomersActions({customerUi,domainsCustomers:domain})' in capability and 'renderCustomers=(...args)=>domainsCustomers.renderCustomers(...args)' in customer_pack
+   and 'createCustomersActions({customerUi,domainsCustomers:domain})' in capability and presentation_contains(customer_pack,'renderCustomers=(...args)=>domainsCustomers.renderCustomers(...args)')
    and 'domainsCustomers.bindUi({' in main and 'domainsCustomers.assertReady()' in main,
    'Customer composition: navigation uses the guarded capability API after its explicitly validated bind phase')
 customer_actions=(
@@ -149,7 +150,7 @@ customer_actions=(
 composition=(ROOT/'netunim-orders/site/assets/js/domains/customers/composition.js').read_text(encoding='utf-8')
 action_ports=customer_pack+'\n'+actions
 ok(all(f'{name}:(...args)=>' in composition for name in customer_actions)
-   and all(f'{name}=(...args)=>domainsCustomers.{name}(...args)' in action_ports for name in customer_actions)
+   and all(presentation_contains(action_ports,f'{name}=(...args)=>domainsCustomers.{name}(...args)') for name in customer_actions)
    and 'createCustomersActions({customerUi,domainsCustomers:domain})' in capability and 'createMorningActions({domainsCustomers:domain})' in capability
    and "name:'customers',actions:domainsCustomers.actions" in main and "name:'morning',actions:domainsCustomers.morningActions" in main,
    'Customer composition: both delegated action maps come from one bound domain runtime')
@@ -233,7 +234,7 @@ ok("if(session.read().createBusy||session.read().blocked||session.read().complet
    'Issued-document UI: a verified success locks the same issuance dialog so a second click cannot create an accidental duplicate')
 ok('id="morningAmount"' in document_view and 'step="1"' in document_view.split('id="morningAmount"',1)[1].split('>',1)[0] and 'data-payment-field="price"' in morning_payments and 'step="1"' in morning_payments and 'Math.round' in command_form and 'Math.round' in morning_payments,
    'Morning amount UI: document and multi-payment amounts support exact agorot')
-ok('data-input="morning-document-amount"' in document_view and 'amount.readOnly=false' in documents and 'morningPaymentTotalCents(payments)' in command_form_compact and 'אינו תואם לסך התקבולים' in command_form and 'id="morningPaymentSummary"' in morning_payments and 'id="morningPaymentTotal"' in morning_payments and 'is-mismatch' in morning_payments and 'is-match' in morning_payments and "'morning-document-amount':" in actions,
+ok('data-input="morning-document-amount"' in document_view and 'amount.readOnly=false' in documents and 'morningPaymentTotalCents(payments)' in command_form_compact and 'אינו תואם לסך התקבולים' in command_form and 'id="morningPaymentSummary"' in morning_payments and 'id="morningPaymentTotal"' in morning_payments and 'is-mismatch' in morning_payments and 'is-match' in morning_payments and presentation_contains(actions,"'morning-document-amount':"),
    'Morning payment documents keep an independent editable document amount, show a live receipts total and block preview/issuance on any cent mismatch')
 ok('markModalDraftSaved' in documents and 'if(session.isActive(generation))display.markSaved()' in issue_command and 'markSaved:()=>markModalDraftSaved?.()' in documents and 'markModalDraftSaved:(...args)=>uiModal.markModalDraftSaved(...args)' in (ROOT/'netunim-orders/site/assets/js/domains/customers/composition.js').read_text(encoding='utf-8'),
    'Issued-document UI: verified completion commits only the still-active Morning modal draft baseline so closing does not warn about already-consumed edits')
