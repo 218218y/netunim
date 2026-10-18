@@ -1,20 +1,140 @@
 import {STORAGE_PREF_KEY} from '../state/constants.js';
+import {createLocalSourceTransition} from '../storage/local-source-transition.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createUiFolders({files, session, tab, ui, rememberHandle, rememberBackupHandle, showSecondaryTabGuard, permissionFor, ensureDirectoryFile, loadState, render, listBackups, backupSnapshotToComputer, toast, renderSettings, getRememberedHandle, getRememberedBackupHandle, showFirstRun, showRememberedFolderPrompt}){
-async function connectDirectory(handle){if(!tab.primaryTab){showSecondaryTabGuard();return}if(!await permissionFor(handle))throw new Error('לא ניתנה הרשאת קריאה וכתיבה');files.rootDirHandle=handle;files.backupRootDirHandle=handle;session.connectionMode='directory';localStorage.setItem(STORAGE_PREF_KEY,'directory');files.dataFileHandle=await ensureDirectoryFile(handle);await rememberHandle(handle);await rememberBackupHandle(handle);await loadState();document.getElementById('connectScreen').style.display='none';render()}
+export function createUiFolders({files, session, tab, ui, rememberHandle, rememberBackupHandle, showSecondaryTabGuard, permissionFor, prepareDirectory, loadState, render, listBackups, backupSnapshotToComputer, toast, renderSettings, getRememberedHandle, getRememberedBackupHandle, showFirstRun, showRememberedFolderPrompt, captureSourceScope, drainSources, resumeSources}){
+const transition=createLocalSourceTransition({captureScope:captureSourceScope,drain:drainSources,setBusy:value=>{session.localSourceSwitchPending=value;if(!value)resumeSources()}});
+let pickerGeneration=0;
 
-async function chooseFolder(){try{if(!window.showDirectoryPicker)throw new Error('DIRECTORY_UNSUPPORTED');const h=await window.showDirectoryPicker({id:'kupa-main-folder',mode:'readwrite'});await connectDirectory(h)}catch(e){if(e.name==='AbortError')return;if(e.message==='DIRECTORY_UNSUPPORTED'){document.getElementById('chooseDataFile').style.display='inline-block';document.getElementById('connectNote').innerHTML='<b>הדפדפן לא מאפשר בחירת תיקייה.</b><br>אפשר לבחור ישירות את קובץ הנתונים; לשימוש מלא מומלץ Chrome או Edge עדכני.';return}console.error(e);alert('לא ניתן לפתוח את התיקייה: '+e.message)}}
+function primary(){if(tab.primaryTab)return true;showSecondaryTabGuard();return false}
 
-async function connectDataFile(handle){if(!tab.primaryTab){showSecondaryTabGuard();return}if(!await permissionFor(handle))throw new Error('לא ניתנה הרשאת כתיבה');files.rootDirHandle=null;files.backupsDirHandle=null;session.connectionMode='file';localStorage.setItem(STORAGE_PREF_KEY,'file');files.dataFileHandle=handle;await loadState();document.getElementById('connectScreen').style.display='none';render()}
+function installSource(source){
+  const {connectionMode,...handles}=source;
+  Object.assign(files,handles);
+  session.connectionMode=connectionMode;
+}
 
-async function chooseDataFile(){try{if(window.showOpenFilePicker){const [h]=await window.showOpenFilePicker({id:'kupa-data-file',types:[{description:'קובץ נתוני קופה',accept:{'application/json':['.json']}}],multiple:false});await connectDataFile(h)}else{document.getElementById('legacyFileInput').click()}}catch(e){if(e.name!=='AbortError')alert('לא ניתן לפתוח את הקובץ: '+e.message)}}
+async function rememberSource(source){
+  try{
+    localStorage.setItem(STORAGE_PREF_KEY,source.connectionMode);
+    if(source.rootDirHandle){
+      const root=await rememberHandle(source.rootDirHandle),backup=await rememberBackupHandle(source.backupRootDirHandle);
+      if(root===false||backup===false)throw new Error('storage_source_handle_not_remembered');
+    }
+  }catch(error){console.error('remember connected source',error);toast('המקור חובר, אך פתיחתו האוטומטית בפעם הבאה לא נשמרה.')}
+}
 
-async function chooseBackupFolder(){try{if(!window.showDirectoryPicker)throw new Error('הדפדפן אינו תומך בבחירת תיקיית גיבוי');const h=await window.showDirectoryPicker({id:'kupa-backup-folder',mode:'readwrite'});if(!await permissionFor(h))throw new Error('לא ניתנה הרשאת כתיבה');files.backupRootDirHandle=h;files.backupsDirHandle=await h.getDirectoryHandle('backups',{create:true});await rememberBackupHandle(h);session.serverInfo.backups=await listBackups();await backupSnapshotToComputer();toast('תיקיית הגיבוי המקומית חוברה');if(ui.currentPage==='settings')renderSettings()}catch(e){if(e.name!=='AbortError'){console.error(e);alert('לא ניתן לחבר תיקיית גיבוי: '+e.message)}}}
+async function adoptSource(source,assertCurrent,{automatic=false}={}){
+  await loadState({automatic,source,assertCurrent,installSource:()=>{assertCurrent();installSource(source)}});
+  assertCurrent();
+  document.getElementById('connectScreen').style.display='none';
+  render();
+  await rememberSource(source);
+  return true;
+}
 
-async function restoreRememberedBackupTarget(){try{const h=await getRememberedBackupHandle()||await getRememberedHandle();if(!h)return false;const p=await h.queryPermission?.({mode:'readwrite'});if(p!=='granted')return false;files.backupRootDirHandle=h;files.backupsDirHandle=await h.getDirectoryHandle('backups',{create:true});session.serverInfo.backups=await listBackups();return true}catch(e){console.error('restore backup target',e);return false}}
+async function connectDirectory(handle,{automatic=false,permissionGranted=false}={}){
+  if(!primary())return false;
+  return transition.run(async assertCurrent=>{
+    if(!permissionGranted&&!await permissionFor(handle))throw new Error('לא ניתנה הרשאת קריאה וכתיבה');
+    assertCurrent();
+    return prepareDirectory(handle);
+  },(source,assertCurrent)=>adoptSource(source,assertCurrent,{automatic}));
+}
 
-async function openLastFolder(){const h=await getRememberedHandle();if(!h)return showFirstRun();try{await connectDirectory(h)}catch(e){console.error(e);showRememberedFolderPrompt('לא ניתן לפתוח את הקופה השמורה. אפשר לאשר גישה מחדש או לבחור תיקייה אחרת.')}}
+async function chooseFolder(){
+  if(!primary())return;
+  const selection=++pickerGeneration;
+  try{
+    const assertCurrent=captureSourceScope();
+    if(!window.showDirectoryPicker)throw new Error('DIRECTORY_UNSUPPORTED');
+    const handle=await window.showDirectoryPicker({id:'kupa-main-folder',mode:'readwrite'});
+    if(selection===pickerGeneration){assertCurrent();await connectDirectory(handle)}
+  }catch(error){
+    if(selection!==pickerGeneration||error.name==='AbortError')return;
+    if(error.message==='DIRECTORY_UNSUPPORTED'){
+      document.getElementById('chooseDataFile').style.display='inline-block';
+      document.getElementById('connectNote').innerHTML='<b>הדפדפן לא מאפשר בחירת תיקייה.</b><br>אפשר לבחור ישירות את קובץ הנתונים; לשימוש מלא מומלץ Chrome או Edge עדכני.';
+      return;
+    }
+    console.error(error);alert('לא ניתן לפתוח את התיקייה: '+error.message);
+  }
+}
+
+async function connectDataFile(handle){
+  if(!primary())return false;
+  return transition.run(async assertCurrent=>{
+    if(!await permissionFor(handle))throw new Error('לא ניתנה הרשאת כתיבה');
+    assertCurrent();
+    return {rootDirHandle:null,backupRootDirHandle:null,backupsDirHandle:null,dataFileHandle:handle,connectionMode:'file'};
+  },adoptSource);
+}
+
+async function chooseDataFile(){
+  if(!primary())return;
+  const selection=++pickerGeneration;
+  try{
+    const assertCurrent=captureSourceScope();
+    if(window.showOpenFilePicker){
+      const [handle]=await window.showOpenFilePicker({id:'kupa-data-file',types:[{description:'קובץ נתוני קופה',accept:{'application/json':['.json']}}],multiple:false});
+      if(selection===pickerGeneration){assertCurrent();await connectDataFile(handle)}
+    }else document.getElementById('legacyFileInput').click();
+  }catch(error){if(selection===pickerGeneration&&error.name!=='AbortError')alert('לא ניתן לפתוח את הקובץ: '+error.message)}
+}
+
+async function connectBackupTarget(handle,{automatic=false}={}){
+  if(!primary())return false;
+  return transition.run(async assertCurrent=>{
+    if(!automatic&&!await permissionFor(handle))throw new Error('לא ניתנה הרשאת כתיבה');
+    assertCurrent();
+    const directory=await handle.getDirectoryHandle('backups',{create:true});assertCurrent();
+    const backups=await listBackups(directory);assertCurrent();
+    return {handle,directory,backups};
+  },async(candidate,assertCurrent)=>{
+    assertCurrent();
+    files.backupRootDirHandle=candidate.handle;files.backupsDirHandle=candidate.directory;
+    session.serverInfo.backups=candidate.backups;
+    if(!automatic){
+      try{if(await rememberBackupHandle(candidate.handle)===false)throw new Error('backup_handle_not_remembered')}
+      catch(error){console.error('remember backup target',error);toast('תיקיית הגיבוי חוברה, אך לא נשמרה לפתיחה הבאה.')}
+      try{await backupSnapshotToComputer()}
+      catch(error){console.error('connected backup target snapshot',error);toast('התיקייה חוברה, אך יצירת הגיבוי נכשלה. יש לנסות שוב.')}
+    }
+    return true;
+  });
+}
+
+async function chooseBackupFolder(){
+  if(!primary())return;
+  const selection=++pickerGeneration;
+  try{
+    const assertCurrent=captureSourceScope();
+    if(!window.showDirectoryPicker)throw new Error('הדפדפן אינו תומך בבחירת תיקיית גיבוי');
+    const handle=await window.showDirectoryPicker({id:'kupa-backup-folder',mode:'readwrite'});
+    if(selection!==pickerGeneration)return;
+    assertCurrent();
+    if(await connectBackupTarget(handle)){toast('תיקיית הגיבוי המקומית חוברה');if(ui.currentPage==='settings')renderSettings()}
+  }catch(error){if(error.name!=='AbortError'){console.error(error);alert('לא ניתן לחבר תיקיית גיבוי: '+error.message)}}
+}
+
+async function restoreRememberedBackupTarget(){
+  try{
+    const assertCurrent=captureSourceScope();
+    const handle=await getRememberedBackupHandle()||await getRememberedHandle();
+    assertCurrent();
+    if(!handle||await handle.queryPermission?.({mode:'readwrite'})!=='granted')return false;
+    assertCurrent();
+    return await connectBackupTarget(handle,{automatic:true});
+  }catch(error){console.error('restore backup target',error);return false}
+}
+
+async function openLastFolder(){
+  try{
+    const assertCurrent=captureSourceScope(),handle=await getRememberedHandle();assertCurrent();
+    if(!handle)return showFirstRun();
+    await connectDirectory(handle);
+  }catch(error){console.error(error);showRememberedFolderPrompt('לא ניתן לפתוח את הקופה השמורה. אפשר לאשר גישה מחדש או לבחור תיקייה אחרת.')}
+}
 
 return { connectDirectory, chooseFolder, connectDataFile, chooseDataFile, chooseBackupFolder, restoreRememberedBackupTarget, openLastFolder };
 }

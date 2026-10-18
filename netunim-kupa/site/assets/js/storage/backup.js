@@ -8,7 +8,18 @@ import {DATA_FILE, INITIAL_STATE, BACKUP_PREFIX, AUTO_BACKUP_PREFIX, AUTO_BACKUP
 export function createStorageBackup({files, model, session, normalizeState, writeJsonHandle, readJsonHandle, timers=globalThis}){
 const operations=createRuntimeTaskOwner();
 let validatedBackupDirectory=null,validatedBackupAt=0,validatedBackupUntil=0,listedBackupDirectory=null;
-async function ensureDirectoryFile(root){const dataDir=await root.getDirectoryHandle('data',{create:true});files.backupRootDirHandle=root;files.backupsDirHandle=await root.getDirectoryHandle('backups',{create:true});let h;try{h=await dataDir.getFileHandle(DATA_FILE)}catch(e){if(e.name!=='NotFoundError')throw e;h=await dataDir.getFileHandle(DATA_FILE,{create:true});await writeJsonHandle(h,payloadFromState(normalizeState(clone(INITIAL_STATE)),1))}return h}
+async function prepareDirectory(root){
+  const dataDir=await root.getDirectoryHandle('data',{create:true});
+  const backupsDirHandle=await root.getDirectoryHandle('backups',{create:true});
+  let dataFileHandle;
+  try{dataFileHandle=await dataDir.getFileHandle(DATA_FILE)}
+  catch(error){
+    if(error.name!=='NotFoundError')throw error;
+    dataFileHandle=await dataDir.getFileHandle(DATA_FILE,{create:true});
+    await writeJsonHandle(dataFileHandle,payloadFromState(normalizeState(clone(INITIAL_STATE)),1));
+  }
+  return {rootDirHandle:root,backupRootDirHandle:root,backupsDirHandle,dataFileHandle,connectionMode:'directory'};
+}
 
 async function listBackups(directory=files.backupsDirHandle){const arr=[];if(!directory)return arr;try{for await (const [name,h] of directory.entries()){if(h.kind==='file'&&name.endsWith('.json')&&name.startsWith(BACKUP_PREFIX)){const f=await h.getFile();arr.push({name,size:f.size,lastModified:f.lastModified})}}}catch(e){}arr.sort((a,b)=>b.lastModified-a.lastModified);return arr}
 
@@ -90,5 +101,5 @@ const runtime={cancelPending:automatic.cancelPending,isPending:()=>operations.is
   async drain(){do{await Promise.all([operations.drain(),automatic.drain()])}while(operations.isPending())},
   dispose(){if(!operations.close())return false;automatic.dispose();return true}};
 
-return { runtime, ensureDirectoryFile, listBackups, writeVerifiedBackup, createManualBackup, clearPendingAutomaticBackup, queueAutomaticBackup, maybeCreateAutomaticBackup, backupSnapshotToComputer };
+return { runtime, prepareDirectory, listBackups, writeVerifiedBackup, createManualBackup, clearPendingAutomaticBackup, queueAutomaticBackup, maybeCreateAutomaticBackup, backupSnapshotToComputer };
 }

@@ -7,8 +7,11 @@ const baseline=JSON.parse(readFileSync(new URL('./fixtures/kupa-persistence-poli
 const read=file=>readFileSync(new URL('../netunim-kupa/site/assets/js/storage/'+file,import.meta.url),'utf8');
 const body=(source,name)=>{const node=declaration(source,name);return source.slice(node.start,node.end)};
 
-test('Kupa mutation and file adoption retain the pre-extraction decisions',()=>{
-  for(const [file,names] of [['local-commit.js',['mergeDeleteIntents','saveStateAccepted']],['local-file-adoption.js',['loadState']],['save-publication.js',['requestCloudSave']]]){
+test('Kupa mutation and publication retain earlier decisions outside reviewed source admission',()=>{
+  // File adoption deliberately gained detached source preparation and a paired
+  // commit point. Its behavior is covered by kupa_source_transition and native
+  // OPFS/IDB recovery, rather than freezing the old unsafe installation order.
+  for(const [file,names] of [['local-commit.js',['mergeDeleteIntents','saveStateAccepted']],['save-publication.js',['requestCloudSave']]]){
     for(const name of names){
       let expected=body(baseline.policies[file],name),actual=body(read(file),name);
       // These two queue submissions moved behind the serialized publication
@@ -16,6 +19,7 @@ test('Kupa mutation and file adoption retain the pre-extraction decisions',()=>{
       expected=expected.replace("saveQueue=saveQueue.catch(e=>{console.error('previous save queue',e)}).then(()=>persistState(snapshot,msg,currentGeneration,deleteIntents));return saveQueue.then",'return publication.saveFile(snapshot,msg,currentGeneration).then');
       expected=expected.replace("saveQueue=saveQueue.catch(e=>{console.error('previous save queue',e)}).then(()=>persistState(snapshot,msg,generation,effectiveDeleteIntents));\n    return saveQueue.then",'return publication.saveFile(snapshot,msg,generation).then');
       actual=actual.replaceAll('publication.requestCloudSave(','requestCloudSave(');
+      actual=actual.replace("if(session.localSourceSwitchPending){setSaveStatus('ממתין להשלמת חיבור מקור הנתונים','saving');return Promise.resolve(false)}",'');
       assert.equal(tokens(actual),tokens(expected),name);
     }
   }

@@ -53,6 +53,10 @@ The 2026-10-18 continuation also closes Kupa credential resurrection after a fai
 IndexedDB logout delete, orders credential mirror writes and scopes refresh flights
 to their login. See [credential authority](KUPA_AUTH_SESSION_AUTHORITY.md).
 
+Directory/file/remembered-source opening and backup-target replacement now prepare
+detached candidates before committing active references. See
+[local source transitions](KUPA_LOCAL_SOURCE_TRANSITIONS.md).
+
 All three Bank authority migrations (`20261016120000`, `20261016130000` and
 `20261016140000`) are installed. The complete authenticated read-only
 [2026-10-18 Production postflight](PRODUCTION_POSTFLIGHT_20261018.md) verified all

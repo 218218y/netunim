@@ -19,6 +19,7 @@ function markMainPending(){if(session.connectionMode==='supabase'&&session.backe
 
 function saveStateAccepted(msg='נשמר',{deleteIntents={},mutationType='autosave',surface='kupa',domains=null,operations=null}={}){
   if(!tab.primaryTab){showSecondaryTabGuard();return Promise.resolve(false)}
+  if(session.localSourceSwitchPending){setSaveStatus('ממתין להשלמת חיבור מקור הנתונים','saving');return Promise.resolve(false)}
   if(!storageV2Primary()){setSaveStatus('אחסון V2 אינו מוכן — השמירה נעצרה','error');return Promise.resolve(false)}
   measureStorage('validate',()=>assertKupaEntityInvariants(model.state,{includeChecks:true,required:true}));
   if(mutationType==='restore'||mutationType==='import')domainRevisions?.touchAll();else if(Array.isArray(domains)&&domains.length)domainRevisions?.touch(domains);else domainRevisions?.touchAll();

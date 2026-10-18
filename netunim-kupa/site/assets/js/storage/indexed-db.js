@@ -11,11 +11,11 @@ async function idbGet(store,key){const db=await idbOpen();return await new Promi
 
 async function idbDelete(store,key){const db=await idbOpen();return await new Promise((res,rej)=>{const tx=db.transaction(store,'readwrite');tx.objectStore(store).delete(key);tx.oncomplete=()=>res();tx.onerror=()=>rej(tx.error);tx.onabort=()=>rej(tx.error||new Error('IndexedDB delete aborted'))})}
 
-async function rememberHandle(handle){try{await idbPut('handles','root',handle)}catch(e){console.error('remember root handle',e)}}
+async function rememberHandle(handle){try{await idbPut('handles','root',handle);return true}catch(e){console.error('remember root handle',e);return false}}
 
 async function getRememberedHandle(){try{return await idbGet('handles','root')}catch(e){return null}}
 
-async function rememberBackupHandle(handle){try{await idbPut('handles','backup-root',handle)}catch(e){console.error('remember backup handle',e)}}
+async function rememberBackupHandle(handle){try{await idbPut('handles','backup-root',handle);return true}catch(e){console.error('remember backup handle',e);return false}}
 
 async function getRememberedBackupHandle(){try{return await idbGet('handles','backup-root')}catch(e){return null}}
 
