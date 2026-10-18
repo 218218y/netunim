@@ -66,6 +66,11 @@ tabs to close. Every site upload is followed by critical-asset smoke before the
 pair continues. See [paired rollout and recovery](DEPLOYMENT_COMPATIBILITY.md),
 including the first protected-release adoption limit and per-project recovery.
 
+The actual workbook store is strict checked and captures commit/draft inputs
+before IDB awaits. Emergency writes cannot ACK absent storage. Raw historical
+reads remain unknown until model/sync validation. See
+[workbook store contracts](WORKBOOK_STORE_CONTRACTS.md).
+
 ### Four-stage review continuation, 2026-10-18
 
 1. **Bank calendar and monetary integrity:** reproduced impossible Morning dates

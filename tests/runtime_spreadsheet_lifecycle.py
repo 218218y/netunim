@@ -31,7 +31,8 @@ for app in ['orders', 'kupa']:
             });return request;
           }};
           const store=createSpreadsheetStore({indexedDB:factory}),key='A:orders:main',patch={rowId:'r',columnId:'c',value:'draft'};
-          await store.commit(key,{value:'before'});await store.journal(key,[patch]);
+          const input={value:'before'},writing=store.commit(key,input);input.value='late mutation';await writing;
+          const journaling=store.journal(key,[patch]);patch.value='late mutation';await journaling;
           native.close();
           let saved=await store.load(key);
           if(opens!==2||saved.record.value!=='before'||saved.drafts[0].value!=='draft')throw Error('close/reopen lost draft');
