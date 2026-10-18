@@ -310,7 +310,7 @@ assert.equal(businessCycle.nextCreditTotal,100);assert.equal(businessCycle.targe
 assert.equal(homeCycle.nextCreditTotal,250);assert.equal(homeCycle.targetExpenseTotal,60,'home expenses through mid-month are included');
 assert.equal(bankProjectedThisMonthData(splitAccountState,'2999-09-01'),860,'business projected checking includes the monthly expense window');
 assert.equal(bankHomeProjectedThisMonthData(splitAccountState,'2999-09-01'),1690,'home projected checking includes the monthly expense window');
-const ordersBusinessCashflow=kupaAccountCashflowData(splitAccountState,'עסקי'),ordersHomeCashflow=kupaAccountCashflowData(splitAccountState,'ביתי');
+const ordersBusinessCashflow=kupaAccountCashflowData(splitAccountState,'עסקי','2999-09-01'),ordersHomeCashflow=kupaAccountCashflowData(splitAccountState,'ביתי','2999-09-01');
 assert.equal(ordersBusinessCashflow.total,businessCycle.total,'Orders uses the exact same business next-cycle commitment total as Kupa');
 assert.equal(ordersBusinessCashflow.projected,bankProjectedThisMonthData(splitAccountState,'2999-09-01'),'Orders business projected checking is numerically identical to Kupa');
 assert.equal(ordersHomeCashflow.total,homeCycle.total,'Orders uses the exact same home next-cycle commitment total as Kupa');

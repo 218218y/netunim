@@ -3,7 +3,7 @@ import {todayISO, monthKey} from '../../core/dates.js';
 import {normalizeSharedBankEvents, checksBalanceData} from '../checks/model.js';
 import {expenseOccurrencesForMonthData} from '../expenses/model.js';
 import {cashBalanceData} from '../cash/model.js';
-import {kupaAccountCashflowData, kupaReconciledCreditRowsData} from '../../shared/kupa-cashflow.js';
+import {kupaAccountCashflowData, kupaReconciledCreditRowsData, kupaAccountBankAsOfDateData} from '../../shared/kupa-cashflow.js';
 import {bankRecurringExpensesData} from '../../shared/bank-recurring-debits.js';
 
 function accountRole(account){return account==='ביתי'?'ביתי':'עסקי'}
@@ -18,9 +18,9 @@ export function bankAdjustmentsData(state){return (Array.isArray(state.bank?.adj
 
 export function bankAdjustmentsTotalData(state){return bankAdjustmentsData(state).reduce((a,x)=>a+num(x.amount),0)}
 
-export function bankAsOfDateData(state){return state.bank?.asOfDate||(state.bank?.updatedAt?String(state.bank.updatedAt).slice(0,10):todayISO())}
+export function bankAsOfDateData(state,reference=todayISO()){return kupaAccountBankAsOfDateData(state,'עסקי',reference)}
 
-export function bankHomeAsOfDateData(state){const syncedAt=state.bank?.homeFeed?.syncedAt;return syncedAt?String(syncedAt).slice(0,10):todayISO()}
+export function bankHomeAsOfDateData(state,reference=todayISO()){return kupaAccountBankAsOfDateData(state,'ביתי',reference)}
 
 export function sharedChecksObservedSequenceData(sharedChecksBankEvents,state){const floor=Number(state.bank?.snapshotSeq),start=Number.isSafeInteger(floor)&&floor>=0?floor:0;return normalizeSharedBankEvents(sharedChecksBankEvents).reduce((m,e)=>Math.max(m,e.seq),start)}
 
@@ -42,7 +42,7 @@ export function bankNextCycleCommitmentsData(state,reference=todayISO()){return 
 export function bankHomeNextCycleCommitmentsData(state,reference=todayISO()){return bankAccountNextCycleCommitmentsData(state,'ביתי',reference)}
 
 export function bankLongTermPositionData(state,reference=todayISO()){
-  const asOf=reference||todayISO(),b=bankCurrentBalanceData(state),start=bankAsOfDateData(state),cycle=kupaAccountCashflowData(state,'עסקי',asOf);
+  const asOf=reference||todayISO(),b=bankCurrentBalanceData(state),start=bankAsOfDateData(state,asOf),cycle=kupaAccountCashflowData(state,'עסקי',asOf);
   const reconciledRows=kupaReconciledCreditRowsData(state,'עסקי',asOf),remainingRows=reconciledRows.filter(row=>row.date&&row.date>=start),creditRows=remainingRows.filter(row=>row.includedInIlsTotal&&Math.abs(row.amount)>0.004);
   const incompleteCreditRows=[...reconciledRows.filter(row=>(!row.date||row.date>=start)&&row.bankSettlementState!=='expired'&&row.bankSettlementState!=='settled'&&(!row.includedInIlsTotal||row.coverageIncomplete)),...cycle.elapsedIncompleteCreditRows].filter((row,index,all)=>all.findIndex(candidate=>candidate.creditId===row.creditId&&candidate.part===row.part)===index);
   const credit=creditRows.reduce((a,x)=>a+x.amount,0);

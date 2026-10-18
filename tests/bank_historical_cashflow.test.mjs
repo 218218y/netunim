@@ -3,11 +3,12 @@ import assert from 'node:assert/strict';
 import * as shared from '../shared/kupa-cashflow.js';
 import * as orders from '../netunim-orders/site/assets/js/shared/kupa-cashflow.js';
 import * as kupa from '../netunim-kupa/site/assets/js/shared/kupa-cashflow.js';
+import {bankAsOfDateData,bankHomeAsOfDateData,bankLongTermPositionData} from '../netunim-kupa/site/assets/js/domains/bank/model.js';
 
 const reference = '2026-10-16', now = Date.parse('2026-10-18T10:00:00Z');
 function fixture(role, stamp) {
   return {
-    checks: [], expenses: [],
+    checks: [], expenses: [], cash: [], cards: [],
     credits: [{ id: 'card', card: 'card', account: role, active: true,
       firstChargeDate: reference, totalAmount: 100, installments: 1 }],
     bank: { source: 'hapoalim', currentBalance: 1000, asOfDate: stamp,
@@ -38,6 +39,9 @@ for (const role of ['עסקי', 'ביתי']) for (const stamp of [
     assert.ok(rows.some(row => row.creditId === 'card' && row.bankSettlementState !== 'settled'));
   }
   assert.deepEqual(state, retained, 'retain corrupt observations and rows for diagnosis/recovery');
+  assert.equal(bankAsOfDateData(state, reference), reference);
+  assert.equal(bankHomeAsOfDateData(state, reference), reference);
+  if (role === 'עסקי') assert.equal(bankLongTermPositionData(state, reference).credit, 100);
   assert.equal(before.bank.bankSyncAt, stamp);
 });
 
