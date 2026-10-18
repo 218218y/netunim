@@ -68,8 +68,17 @@ restore and live-provider release exercises therefore remain explicitly unverifi
    and Morning regressions plus a read-capability isolation case pass locally.
    The single new composition costs one eager module (303 total) and 1,083 bytes;
    the existing 1,759,000-byte and browser timing limits remain in force.
-3. **Authority contracts:** next, extend checked implementation and malformed
-   response evidence at demonstrated transport/decoder gaps.
+3. **Authority contracts:** reproduced impossible snapshot timestamps rolling
+   forward and impossible/reversed full coverage reaching both archive RPCs.
+   Both transports now capture one checked immutable command in the existing
+   transaction-evidence owner before I/O. Existing merge keys and partial-warning
+   semantics are unchanged. Invalid money/status/scope/calendar data sends no
+   request; stale accounts and malformed receipts cannot publish success. Strict
+   negative consumers and a real-guard mutation prove the boundary. Kupa eager
+   Morning's direct prefill/eligibility entrance also uses the existing monetary
+   reader: boolean/array/object coercion cannot invent a positive receipt amount.
+   source measures 1,760,215 bytes: a 2 KB source-only allowance covers the added
+   command guard, with 303 modules and browser timing limits unchanged.
 4. **Readability:** next, simplify touched dense paths with behavior evidence and
    lower the existing readability ratchet; avoid unnecessary new modules.
 
