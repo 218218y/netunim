@@ -1,3 +1,4 @@
+import {morningCheckRegistrationMessage} from './morning-operation-evidence.js';
 import {documentLabel} from './morning-document-view.js';
 import {money} from '../../core/money.js';
 
@@ -25,7 +26,7 @@ async function createMorningDocument(button){
     if(session.isActive(generation)){
       display.operation({state:'created',verified_at:new Date().toISOString(),document_id:data.document.id,document_number:data.document.number,allocation_number:data.document.allocationNumber});
       const message=!durable?'המסמך הופק ואומת ב-Morning, אך עדכון החוב עדיין ממתין לשמירה מקומית בטוחה.':
-        data.checks_registration_pending?'המסמך הופק ואומת. רישום הצ׳קים למעקב ממתין להשלמה אוטומטית; אין להפיק את המסמך שוב.':
+        data.checks_registration_pending?morningCheckRegistrationMessage(data)||'המסמך הופק ואומת. רישום הצ׳קים למעקב ממתין להשלמה אוטומטית; אין להפיק את המסמך שוב.':
         (data.local_link_pending||data.bank_link_pending)?'המסמך הופק ואומת ב-Morning. שמירת הקישור המקומי עדיין בבדיקה.':
         !recoveryCleared?'המסמך הופק ואומת, אך נקודת ההתאוששות המקומית לא נמחקה ולכן ההפקה נשארת נעולה עד בדיקה נוספת.':
         pdfLoaded?'המסמך הופק, אומת וה-PDF הרשמי נטען מ-Morning.':'המסמך הופק ואומת ב-Morning. ה-PDF הרשמי לא נטען כרגע; אפשר ללחוץ „צפה”.';

@@ -36,10 +36,15 @@ const mockFetch=async(url,init={})=>{
 };
 const context=vm.createContext({console,Response,Request,URL,AbortController,TextEncoder,crypto:globalThis.crypto,atob:globalThis.atob,setTimeout,clearTimeout,fetch:mockFetch,createClient:()=>({from:()=>new Query(),auth:{getUser:async()=>({data:{user:{id:owner}}})}}),Deno:{env:{get:key=>({SUPABASE_URL:'https://example.supabase.co',SUPABASE_ANON_KEY:'test',SUPABASE_SERVICE_ROLE_KEY:'test',MORNING_CLIENT_ID:'test',MORNING_CLIENT_SECRET:'test',MORNING_ENV:'sandbox'})[key]},serve:handler=>{servedHandler=handler}}});
 const source=readFileSync(new URL('../netunim-orders/supabase/functions/morning-documents/index.ts',import.meta.url),'utf8').replace(/^import .*?;\r?\n/,'');
-vm.runInContext(stripTypeScriptTypes(source)+`\nglobalThis.api={create,status,reserve,abandonReservation,searchInput,searchDocuments,getDocument,getDocumentPdf,normalizeInput,matchesCheckPayments,validateLinkedDocument,readResponseBytesBounded,validatePreviewPdfBase64,sha256};`,context);
+vm.runInContext(stripTypeScriptTypes(source)+`\nglobalThis.api={create,status,reserve,abandonReservation,searchInput,searchDocuments,getDocument,getDocumentPdf,normalizeInput,amountCents,sameAmount,matchesCheckPayments,validateBankSource,validateLinkedDocument,readResponseBytesBounded,validatePreviewPdfBase64,sha256};`,context);
 const api=context.api;
 const body=(amount=100,description='Test document')=>({operation_id:crypto.randomUUID(),document:{type:305,amount,date:'2026-09-08',description,client:{name:'Test'}}});
 const decode=async response=>({status:response.status,...await response.json()});
+
+for(const [a,b] of [[.1,.11],[5,5.01],['9999999999.98','9999999999.99'],[0,.01]])assert.equal(api.sameAmount(a,b),false,`${a} must differ from ${b} by one cent`);
+for(const [a,b] of [[0,'0.00'],[.1,'0.10'],[123.45,'123.4500'],['90071992547409.91','90071992547409.91']])assert.equal(api.sameAmount(a,b),true);
+for(const invalid of [undefined,null,true,false,'',' ','no',NaN,Infinity,{},'1.001',.101,'90071992547409.92'])assert.equal(api.sameAmount(invalid,invalid),false,`invalid amount ${invalid}`);
+assert.throws(()=>api.normalizeInput(body('1.001')),/invalid_amount/);
 
 const first=body(100);const results=await Promise.all([api.create(owner,first),api.create(owner,first)]);
 if(postCount!==1)console.log(await Promise.all(results.map(r=>r.clone().json())));
@@ -188,3 +193,40 @@ assert.equal(recoveredCheque.operation.state,'created');assert.equal(recoveredCh
 assert.equal(postCount,beforeLostCheque+1,'search and canonical read-back never send another creating POST');
 lookupItems=[];
 console.log('PASS cheque recovery after a lost creating response: incomplete search summary leads to full read-back, never another POST');
+
+// The official Document schema leaves payment optional. Verify the document,
+// but hold cheque registration until a canonical GET supplies matching rows.
+const noPayments={...chequeOperation,operation_id:crypto.randomUUID(),document:{...chequeOperation.document,description:'Optional payment evidence'}};
+failure='readback';await api.create(owner,noPayments);failure='';
+const noPaymentsRow=rows.find(r=>r.operation_id===noPayments.operation_id),official=morningDocs.get(noPaymentsRow.document_id),savedPayments=official.payment;
+delete official.payment;const beforeEvidence=postCount;
+const missingEvidence=await decode(await api.status(owner,{operation_id:noPayments.operation_id,reconcile:true}));
+assert.equal(missingEvidence.operation.state,'created');assert.equal(noPaymentsRow.check_payment_evidence,'missing');
+assert.equal(missingEvidence.checks_registration_state,'evidence_pending');assert.equal(missingEvidence.checks_registration_pending,true);
+assert.equal(api.matchesCheckPayments(official,noPaymentsRow),false,'absence is never verified cheque evidence');
+official.payment=savedPayments;
+const recoveredEvidence=await decode(await api.status(owner,{operation_id:noPayments.operation_id,reconcile:true}));
+assert.equal(noPaymentsRow.check_payment_evidence,'matched');assert.equal(recoveredEvidence.checks_registration_state,'pending');
+noPaymentsRow.checks_registration_attempts=5;noPaymentsRow.checks_registration_error='fixture';
+assert.equal((await decode(await api.status(owner,{operation_id:noPayments.operation_id}))).checks_registration_state,'attention');
+noPaymentsRow.checks_registration_next_retry_at=new Date(Date.now()+900_000).toISOString();
+const heldVerifiedAt=noPaymentsRow.verified_at;official.allocationNumber='new-allocation';
+await api.status(owner,{operation_id:noPayments.operation_id,reconcile:true});
+assert.equal(noPaymentsRow.verified_at,heldVerifiedAt);
+// Inspect the actual update patches rather than changing server attempt state in
+// this Edge mock; SQL integration below verifies the retry/cooldown execution.
+const preservedEvidence=noPaymentsRow.check_payment_evidence;noPaymentsRow.check_payment_evidence='missing';
+await api.status(owner,{operation_id:noPayments.operation_id,reconcile:true,retry_checks:true});
+assert.equal(noPaymentsRow.check_payment_evidence,preservedEvidence);
+assert.equal(postCount,beforeEvidence,'missing evidence and manual retry never issue another document');
+console.log('PASS exact cents, optional cheque evidence, recovery and observable follow-up failures');
+
+// Exercise the same exact-cent comparison through the real bank-source validator.
+const bankFixture={id:99801,owner_id:owner,account_role:'business',status:'completed',currency:'ILS',amount:5.01};rows.push(bankFixture);
+const bankInput={sourceKind:'bank',sourceBankTransactionId:bankFixture.id,bankSourcePayments:[],payload:{payment:[{type:4,price:5}]}};
+await assert.rejects(api.validateBankSource(owner,bankInput),/bank_payment_mismatch/);
+bankInput.payload.payment[0].price=5.01;assert.equal((await api.validateBankSource(owner,bankInput)).id,bankFixture.id);
+bankFixture.cheque=true;bankFixture.check_details={kind:'deposit',checkItems:[{bankNumber:'12',branchNumber:'123',accountNumber:'456',checkNumber:'789',amount:5.01}]};
+bankInput.bankSourcePayments=[{key:'check:12:123:456:789:501',bankCode:'12',line:{type:2,price:5,bankBranch:'123',bankAccount:'456',chequeNum:'789'}}];
+await assert.rejects(api.validateBankSource(owner,bankInput),/bank_payment_mismatch/);
+bankInput.bankSourcePayments[0].line.price=5.01;await api.validateBankSource(owner,bankInput);

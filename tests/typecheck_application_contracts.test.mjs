@@ -79,7 +79,7 @@ test('Morning status and application bodies reject fabricated session, presentat
 test('Morning operation evidence, commands, issuance and recovery reject implementation authority mutations',()=>{
  for(const [file,from,to] of [
   ['morning-operation-evidence.js','result.document_id=identity(row.document_id)','result.document_id=true'],
-  ['morning-operation-commands.js',"decodeMorningOperationStatus(await read('status',{operation_id:operationId,reconcile},assertCurrent),operationId)","await read('status',{operation_id:operationId,reconcile},assertCurrent)"],
+  ['morning-operation-commands.js',"decodeMorningOperationStatus(await read('status',{operation_id:operationId,reconcile,...(retryChecks?{retry_checks:true}:{})},assertCurrent),operationId)","await read('status',{operation_id:operationId,reconcile,...(retryChecks?{retry_checks:true}:{})},assertCurrent)"],
   ['morning-issuance.js','return data;',"return 'created';"],
   ['morning-recovery.js',"return {ok:false,state:'scope-changed',error}","return {ok:'cancelled',state:'scope-changed',error}"],
  ]){

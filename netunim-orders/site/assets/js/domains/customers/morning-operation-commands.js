@@ -3,7 +3,7 @@ import {decodeMorningOperationStatus,decodeMorningReservation,decodeMorningCreat
 /** @typedef {import('../../core/morning-operation-scope.js').MorningAssertion} MorningAssertion */
 /** @typedef {Record<string,unknown> & {operation_id:string,document:Record<string,unknown> & {type:number,amount:number}}} IssuePayload */
 /** @typedef {{
- * status:(operationId:string,reconcile:boolean,assertCurrent:MorningAssertion)=>Promise<import('./morning-operation-evidence.js').OperationStatus>,
+ * status:(operationId:string,reconcile:boolean,assertCurrent:MorningAssertion,retryChecks?:boolean)=>Promise<import('./morning-operation-evidence.js').OperationStatus>,
  * reserve:(payload:IssuePayload,assertCurrent:MorningAssertion)=>Promise<import('./morning-operation-evidence.js').Reservation>,
  * create:(payload:IssuePayload,assertCurrent:MorningAssertion)=>Promise<import('./morning-operation-evidence.js').CreatedDocument>,
  * abandonReservation:(operationId:string,assertCurrent:MorningAssertion)=>Promise<import('./morning-operation-evidence.js').Abandonment>
@@ -30,7 +30,7 @@ export function createMorningOperationCommands({request}){
     return decodeMorningCreatedDocument(await read('create',payload,assertCurrent),expected);
   }
   return {
-    status:async(operationId,reconcile,assertCurrent)=>decodeMorningOperationStatus(await read('status',{operation_id:operationId,reconcile},assertCurrent),operationId),
+    status:async(operationId,reconcile,assertCurrent,retryChecks=false)=>decodeMorningOperationStatus(await read('status',{operation_id:operationId,reconcile,...(retryChecks?{retry_checks:true}:{})},assertCurrent),operationId),
     reserve,create,
     abandonReservation:async(operationId,assertCurrent)=>decodeMorningAbandonment(await read('abandon_reservation',{operation_id:operationId},assertCurrent),operationId),
   };

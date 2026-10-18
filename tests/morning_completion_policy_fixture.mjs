@@ -232,7 +232,7 @@ const ports={
 export function originalMorningCompletionPolicy(source,name){
  // Preserve the historical financial/issuance policy when the NEW cheque
  // follow-up is absent. Its pending behavior is exercised by command tests.
- if(name==='createMorningDocument')source=source
+ if(name==='createMorningDocument')source=source.replaceAll('morningCheckRegistrationMessage(data)||','')
    .replaceAll('!!(data.bank_link_pending||data.checks_registration_pending)','!!data.bank_link_pending')
    .replaceAll('data.local_link_pending||data.checks_registration_pending||data.bank_link_pending','data.local_link_pending||data.bank_link_pending')
    .replace("data.checks_registration_pending?'המסמך הופק ואומת. רישום הצ׳קים למעקב ממתין להשלמה אוטומטית; אין להפיק את המסמך שוב.':",'');
