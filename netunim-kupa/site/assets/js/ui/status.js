@@ -55,6 +55,7 @@ function toast(t){const el=document.getElementById('toast');el.textContent=t;el.
 function canRunInteractiveAction(name=''){
   if(!tab.primaryTab&&!SECONDARY_READ_ONLY_ACTIONS.has(name)){toast('לקריאה בלבד — העריכה זמינה בטאב הראשי.');return false}
   if(name==='reset-local-site-storage')return true;
+  if(session.localSourceSwitchPending){toast('ממתין להשלמת חיבור מקור הנתונים.');return false}
   if(session.storageProtocolBlocked){toast('העריכה חסומה עד לאימות שדרוג האחסון. יש לרענן לאחר התחברות וחיבור לרשת.');return false}
   if(!storageRecovery.isReady()){toast('העריכה חסומה עד להשלמת שחזור הנתונים המקומיים והצ׳קים המשותפים.');return false}
   if(session.syncCapabilitiesError){toast('העריכה חסומה עד להשלמת התאמת מסד הנתונים לגרסת האתר.');return false}

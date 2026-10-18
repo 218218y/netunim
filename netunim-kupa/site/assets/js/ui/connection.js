@@ -1,7 +1,7 @@
 import {esc} from '../core/values.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createUiConnection({session, tab, files, setCloudHeaderStatus, storeSupaSession, openSupabaseLoginModal, openCloudUsingSavedSession, supaProjectRef, supaConfigured, getRememberedHandle, ensureDirectoryFile, loadState, render}){
+export function createUiConnection({session, tab, setCloudHeaderStatus, storeSupaSession, openSupabaseLoginModal, openCloudUsingSavedSession, supaProjectRef, supaConfigured, getRememberedHandle, connectDirectory}){
 function configureCloudConnectButton(label='פתח קופה מהענן',action='open'){
   session.cloudConnectAction=action;
   const b=document.getElementById('openCloud');
@@ -50,7 +50,7 @@ async function tryAutoOpenRemembered(){
   try{
     const permission=await last.queryPermission?.({mode:'readwrite'});
     if(permission==='granted'){
-      files.rootDirHandle=last;session.connectionMode='directory';files.dataFileHandle=await ensureDirectoryFile(last);await loadState({automatic:true});document.getElementById('connectScreen').style.display='none';render();return true;
+      await connectDirectory(last,{automatic:true,permissionGranted:true});return true;
     }
     showRememberedFolderPrompt();
     return true;

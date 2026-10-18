@@ -41,6 +41,7 @@ GROUPS = {
     "browser-database": ["runtime_sync_postgres.py"],
 }
 GROUPS["browser-sync"].append("runtime_auth_session_persistence.py")
+GROUPS["browser-sync"].append("runtime_kupa_source_transition.py")
 CORE_SUITES = [suite for group, suites in GROUPS.items() if not group.startswith("browser-") for suite in suites]
 RUNTIME_SUITES = [suite for group, suites in GROUPS.items() if group.startswith("browser-") for suite in suites]
 

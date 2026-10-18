@@ -84,7 +84,6 @@ const {owner:storageOwner,preparing:storagePreparationActive}=storageV2Coordinat
 const uiConnection=createUiConnection({
   session,
   tab,
-  files,
   setCloudHeaderStatus:(...args)=>uiStatus.setCloudHeaderStatus(...args),
   storeSupaSession:(...args)=>cloudAuth.storeSupaSession(...args),
   openSupabaseLoginModal:(...args)=>uiCloud.openSupabaseLoginModal(...args),
@@ -92,9 +91,7 @@ const uiConnection=createUiConnection({
   supaProjectRef:(...args)=>uiStatus.supaProjectRef(...args),
   supaConfigured:(...args)=>cloudAuth.supaConfigured(...args),
   getRememberedHandle:(...args)=>storageIndexedDb.getRememberedHandle(...args),
-  ensureDirectoryFile:(...args)=>storageBackup.ensureDirectoryFile(...args),
-  loadState:(...args)=>storagePersistence.loadState(...args),
-  render:(...args)=>uiNavigation.render(...args),
+  connectDirectory:(...args)=>uiFolders.connectDirectory(...args),
 });
 
 const stateNormalization=createStateNormalization({
@@ -230,6 +227,7 @@ checks.bindPersistence({
   backupSnapshotToComputer:(...args)=>storageBackup.backupSnapshotToComputer(...args),
 });
 
+let resumeSourcePolling=false;
 const uiFolders=createUiFolders({
   files,
   session,
@@ -239,7 +237,7 @@ const uiFolders=createUiFolders({
   rememberBackupHandle:(...args)=>storageIndexedDb.rememberBackupHandle(...args),
   showSecondaryTabGuard:(...args)=>uiConnection.showSecondaryTabGuard(...args),
   permissionFor:(...args)=>storageFiles.permissionFor(...args),
-  ensureDirectoryFile:(...args)=>storageBackup.ensureDirectoryFile(...args),
+  prepareDirectory:(...args)=>storageBackup.prepareDirectory(...args),
   loadState:(...args)=>storagePersistence.loadState(...args),
   render:(...args)=>uiNavigation.render(...args),
   listBackups:(...args)=>storageBackup.listBackups(...args),
@@ -250,6 +248,26 @@ const uiFolders=createUiFolders({
   getRememberedBackupHandle:(...args)=>storageIndexedDb.getRememberedBackupHandle(...args),
   showFirstRun:(...args)=>uiConnection.showFirstRun(...args),
   showRememberedFolderPrompt:(...args)=>uiConnection.showRememberedFolderPrompt(...args),
+  captureSourceScope:()=>{
+    const accepted=storageOwner.captureCommitAuthority(),account=cloudAuth.getAccountScope(),generation=session.localGeneration;
+    resumeSourcePolling=!!session.cloudPollingEnabled;
+    return ()=>{
+      const current=cloudAuth.getAccountScope();
+      if(!accepted()||storagePreparationActive()||current.epoch!==account.epoch||current.owner!==account.owner||session.localGeneration!==generation)
+        throw new Error('storage_source_scope_changed');
+    };
+  },
+  drainSources:async()=>{
+    await syncDocument.quiesceForStorageCutover();
+    await storagePersistence.runtime.drain();
+    await checks.runtime.drain();
+    storageBackup.runtime.cancelPending();
+    await storageBackup.runtime.drain();
+  },
+  resumeSources:()=>{
+    const resume=resumeSourcePolling;resumeSourcePolling=false;
+    if(resume&&tab.primaryTab&&!storagePreparationActive()&&session.connectionMode==='supabase'&&session.backendReady)syncDocument.startCloudPolling();
+  },
 });
 
 const cloudAuth=createCloudAuth({

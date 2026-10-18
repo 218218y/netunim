@@ -20,6 +20,8 @@
     "types": []
   },
   "files": [
+    "netunim-kupa/site/assets/js/storage/local-source-transition.js",
+    "tests/fixtures/checked-local-source-transition.mjs",
     "tests/fixtures/checked-auth-session-persistence.mjs",
     "netunim-kupa/site/assets/js/cloud/session-store.js",
     "tests/fixtures/checked-owner-transactions.mjs",
