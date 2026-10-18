@@ -31,6 +31,18 @@ for(const app of ['orders','kupa'])test(`${app} Main observer follows journal se
   const after=await runtime.incidentSample();assert.equal(classifySyncIncident(after).state,'clean_verified');assert.equal(after.isCurrent(),true);
   activeOwner=other;assert.equal(classifySyncIncident(await runtime.incidentSample()).state,'unknown');assert.equal(after.isCurrent(),false);
 });
+test('failed durability in account A cannot prevent verified recovery in account B',async()=>{
+  let activeOwner=owner;
+  const source=memoryDb(),target=memoryDb();source.append=async()=>{throw new Error('quota')};
+  const runtime=createStorageV2Runtime({app:'orders',owner:()=>activeOwner,primary:()=>true,mode:()=> 'primary',validate:()=>{},scheduleIdle:()=>{},
+    createJournal:args=>createStorageJournal({...args,db:activeOwner===owner?source:target,emergency:emergencyStore({failWrites:activeOwner===owner})})});
+  await runtime.initializeCloudHead(1,{notes:[]},{sourceOwner:owner,intent:'cloud-authoritative'});
+  const write=runtime.persist({notes:[{id:'N',content:'failed'}]},{operations:[{type:'put',collection:'notes',id:'N',mode:'insert',index:0}]});
+  const settled=runtime.commitPromise.catch(()=>{});await assert.rejects(write.committed,/quota/);await settled;
+  assert.equal(classifySyncIncident(await runtime.incidentSample()).state,'local_durability_error');
+  activeOwner=other;await runtime.initializeCloudHead(1,{notes:[]},{sourceOwner:other,intent:'cloud-authoritative'});
+  const verified=await runtime.incidentSample();assert.equal(classifySyncIncident(verified).state,'clean_verified');assert.equal(verified.isCurrent(),true);
+});
 function fixture(){
   const f={scope:{owner,epoch:1},time:0,primary:true,samples:{orders_main:clean(),shared_checks:clean()},calls:[],records:new Map(),rows:new Map(),timers:new Map(),view:null,unavailable:false};
   let count=0,timer=0;

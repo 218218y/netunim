@@ -258,7 +258,7 @@ export function createStorageV2Runtime({app,owner,primary,captureCommitAuthority
     const active=journal,scopedIdentity=identity;
     const current=()=>active===journal&&scopedIdentity===currentOwner()&&readyForCurrentOwner()&&!boundaryGate();
     return (await import('./sync-incident-adapters.js')).sampleJournalIncident({read:cloudState,ready:current,
-      current:cloud=>active.seq===cloud.seq&&active.epoch===cloud.base?.epoch&&undurableCount===0&&undurableFailures.size===0,
+      current:cloud=>active.seq===cloud.seq&&active.epoch===cloud.base?.epoch&&!undurableFailures.has(active),
       epoch:()=>active?.epoch,durabilityError:()=>identity===currentOwner()&&undurableFailures.has(active),
       blocked:()=>identity===currentOwner()&&primary()&&corruptIdentity===identity,fatal:storageRecoveryFailure});
   }
