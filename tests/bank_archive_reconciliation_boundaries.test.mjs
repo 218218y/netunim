@@ -33,7 +33,11 @@ test('both actual archive consumers preserve their complete provider/publication
     ast(declaration(restoreKupaReconciliation(read(kp + 'controller.js')), 'refreshBankBalance')),
     ast(declaration(fixture.kupaRefresh, 'refreshBankBalance'))
   );
-  const restored = expandOrdersReconciliation(read(op + 'bank-snapshot-publication.js'));
+  // Compare the unchanged archive policy; actual publication tests separately
+  // require explicit observations and prove zero writes on missing evidence.
+  const restored = expandOrdersReconciliation(read(op + 'bank-snapshot-publication.js'))
+    .replace('readBankSnapshotResult(result)', 'readBankBalanceResult(result)')
+    .replace('source.fetchedAt', 'source.fetchedAt||new Date().toISOString()');
   assert.deepEqual(
     ast(declaration(restored, 'publish').body.body.filter((n) => n.type !== 'EmptyStatement')),
     ast(

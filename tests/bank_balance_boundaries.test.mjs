@@ -51,14 +51,14 @@ test('both actual Bank publication callers use the validated scalar boundary bef
       if(index===0){
         const file=from==='readBankBalanceResult(result)'?'refresh':'snapshot-policy';
         const actual=read('netunim-kupa/site/assets/js/domains/bank/'+file+'.js');
-        const changed=actual.replace(from==='readBankBalanceResult(result)'?'readBankBalanceResult(evidence)':from,to);
+        const changed=actual.replace(from==='readBankBalanceResult(result)'?'readBankSnapshotResult(evidence)':from,to);
         assert.notEqual(changed,actual);assert.throws(()=>boundary(source,name,{[file==='refresh'?'owner':'model']:changed}));
       }
       else {
         const file=from==='readBankBalanceResult(result)'?'bank-snapshot-publication':'bank-snapshot-policy';
         const actual=read('netunim-orders/site/assets/js/domains/finance/'+file+'.js');
         const pattern=from==='...bankSnapshotFinancials(business)'?/\.\.\.bankSnapshotFinancials\(business\)/g:from;
-        const changed=actual.replace(pattern,to);assert.notEqual(changed,actual);
+        const changed=actual.replace(from==='readBankBalanceResult(result)'?'readBankSnapshotResult(result)':pattern,to);assert.notEqual(changed,actual);
         assert.throws(()=>boundary(source,name,{[file==='bank-snapshot-policy'?'model':'owner']:changed}));
       }
   }

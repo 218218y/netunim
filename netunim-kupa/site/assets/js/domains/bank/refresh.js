@@ -1,6 +1,6 @@
 // @ts-check
 import { createRuntimeTaskOwner } from '../../shared/runtime-task-owner.js';
-import { readBankBalanceResult } from '../../shared/bank-balance-result.js';
+import { readBankSnapshotResult } from '../../shared/bank-balance-result.js';
 import { bankArchiveAccountId as accountIdOf } from '../../shared/bank-archive-policy.js';
 /** @typedef {()=>undefined} Guard */
 /** @typedef {import('../../shared/finance-lease-owner.js').OperationLease} Lease */
@@ -207,9 +207,9 @@ export function createKupaBankRefresh({
         business,
         home,
         homeFailure: failure
-      } = readBankBalanceResult(evidence);
+      } = readBankSnapshotResult(evidence);
       const homeFailure = readHomeFailure(failure);
-      const fetchedAt = result.fetchedAt || new Date().toISOString(),
+      const fetchedAt = result.fetchedAt,
         businessAccount = accountIdOf(business);
       /** @type {readonly unknown[]} */ let businessArchive = Array.isArray(
         business.transactions

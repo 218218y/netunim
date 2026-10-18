@@ -60,7 +60,9 @@ export function restoreOrdersBankPublication(
   );
   pipeline = tokens(pipeline)
     .replace('const {business,home,homeFailure,source}=', 'const {business,home,homeFailure}=')
-    .replace('source.fetchedAt', 'result.fetchedAt')
+    // The explicit observation gate is verified separately at the actual owner.
+    .replace('readBankSnapshotResult(result)', 'readBankBalanceResult(result)')
+    .replace('source.fetchedAt', 'result.fetchedAt||new Date().toISOString()')
     .replaceAll('policy.accountId(', 'accountIdOf(')
     .replaceAll('policy.coverage(', 'completeTransactionCoverage(')
     .replaceAll('policy.audit(', 'assertBankArchiveCoverage(')

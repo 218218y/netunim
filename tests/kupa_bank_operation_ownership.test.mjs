@@ -61,6 +61,19 @@ test('Kupa file Bank retains explicit local-only mode without requiring cloud au
  const f=fixture(t);f.ports.session.connectionMode='file';f.ports.claimFinanceSyncLease=async()=>({acquired:true,localOnly:true});
  const api=f.create();assert.equal(await api.refreshBankBalance(),true);assert.equal(f.counts.provider,1);assert.equal(f.counts.local,1);assert.equal(f.counts.atomic||0,0);assert.equal(f.model.state.bank.currentBalance,500);api.runtime.dispose();
 });
+for (const mode of ['supabase', 'file']) for (const shape of ['balance', 'business', 'home'])
+test('Kupa rejects missing observation before archive/publication: '+mode+' '+shape, async t=>{
+ const f=fixture(t);f.ports.session.connectionMode=mode;
+ const input={accounts:{business:{balance:500,accountId:'same-account'},
+   ...(shape==='home'?{home:{balance:20,accountId:'H',transactions:[],transactionCoverage:{complete:true}}}:{})}};
+ if(shape==='business')Object.assign(input.accounts.business,{transactions:[],transactionCoverage:{complete:true}});
+ f.ports.bridge.fetchBalance=async()=>input;
+ const api=f.create();assert.equal(await api.refreshBankBalance(),false);await api.runtime.drain();
+ assert.deepEqual(f.model.state,f.before);assert.equal(f.counts['archive-business']||0,0);
+ assert.equal(f.counts.atomic||0,0);assert.equal(f.counts.local||0,0);assert.equal(f.counts.release,1);
+ assert.equal(api.bankBridgeUiState().lastErrorCode,'BANK_OBSERVATION_TIME_INVALID');api.runtime.dispose();
+});
+
 for(const failure of ['failed',true,[],42])test('Kupa malformed home failure cannot authorize archive/publication: '+JSON.stringify(failure),async t=>{
  const f=fixture(t);f.ports.bridge.fetchBalance=async()=>({fetchedAt:stamp,accounts:{business:{balance:500,accountId:'same-account',transactions:[]}},accountFailures:{home:failure}});
  const api=f.create();assert.equal(await api.refreshBankBalance(),false);assert.deepEqual(f.model.state,f.before);assert.equal(f.counts['archive-business']||0,0);assert.equal(f.counts.atomic||0,0);assert.equal(f.counts.release,1);assert.equal(api.bankBridgeUiState().lastErrorCode,'BANK_HOME_FAILURE_INVALID');api.runtime.dispose();
@@ -254,7 +267,7 @@ test('Kupa unavailable optional Bank money stays unknown instead of becoming zer
 
 
 for(const version of [72,73,74])test('Kupa Bank version gate blocks former money parsing before provider entry: '+version,async t=>{
- const f=fixture(t);let providers=0;f.ports.bridge.status=async()=>({bridgeVersion:version,configured:true});f.ports.bridge.fetchBalance=async()=>{providers++;return {balance:0,accounts:{business:{balance:0,accountId:'same-account',transactions:[]}}}};
+ const f=fixture(t);let providers=0;f.ports.bridge.status=async()=>({bridgeVersion:version,configured:true});f.ports.bridge.fetchBalance=async()=>{providers++;return {fetchedAt:stamp,balance:0,accounts:{business:{balance:0,accountId:'same-account',transactions:[]}}}};
  const api=f.create();try{assert.equal(await api.refreshBankBalance(),version>=74);assert.equal(providers,version>=74?1:0);if(version>=74)assert.equal(f.model.state.bank.currentBalance,0)}finally{api.runtime.dispose()}
 });
 
@@ -262,7 +275,7 @@ for(const version of [72,73,74])test('Kupa Bank version gate blocks former money
 test('Kupa Bank captured version cannot authorize a replacement device',async t=>{
  const f=fixture(t);let token='A',providers=0;f.ports.bridge.getBridgeToken=()=>token;
  f.ports.bridge.status=async()=>{token='B';return {bridgeVersion:74,configured:true}};
- f.ports.bridge.fetchBalance=async()=>{providers++;return {balance:0,accounts:{business:{balance:0,accountId:'same-account',transactions:[]}}}};
+ f.ports.bridge.fetchBalance=async()=>{providers++;return {fetchedAt:stamp,balance:0,accounts:{business:{balance:0,accountId:'same-account',transactions:[]}}}};
  const api=f.create();try{assert.equal(await api.refreshBankBalance(),false);assert.equal(providers,0);assert.equal(f.counts.atomic||0,0);assert.equal(f.counts.release,1);
  const readout=api.bankBridgeUiState();assert.equal(readout.lastErrorCode,'BRIDGE_PAIRING_SCOPE_CHANGED');assert.ok(readout.lastError.length>0,'a safely stopped financial operation needs an operator explanation');assert.equal(readout.accountNumber,'');
  }finally{api.runtime.dispose()}

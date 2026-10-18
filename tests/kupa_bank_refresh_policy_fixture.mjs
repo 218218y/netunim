@@ -126,9 +126,12 @@ export function restoreKupaBankRefresh(
       'const result=await device.fetchBalance'
     )
     .replace(
-      'const {source:result,business,home,homeFailure:failure}=readBankBalanceResult(evidence);const homeFailure=readHomeFailure(failure);',
+      'const {source:result,business,home,homeFailure:failure}=readBankSnapshotResult(evidence);const homeFailure=readHomeFailure(failure);',
       'const {business,home,homeFailure}=readBankBalanceResult(result);'
     )
+    // Observation authority is covered by real-owner rejection regressions;
+    // recompose the older business policy with its original display fallback.
+    .replace('const fetchedAt=result.fetchedAt,', 'const fetchedAt=result.fetchedAt||new Date().toISOString(),')
     .replace(
       "let businessArchive=Array.isArray(business.transactions)?business.transactions:[];let homeArchive=home&&Array.isArray(home.transactions)?home.transactions:[];let archiveAudit=null;let imageSyncWarning='';let archiveCandidate=null;",
       "let businessArchive=Array.isArray(business.transactions)?business.transactions:[],homeArchive=home&&Array.isArray(home.transactions)?home.transactions:[],archiveAudit=null,imageSyncWarning='',archiveCandidate=null;"

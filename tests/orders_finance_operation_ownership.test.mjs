@@ -340,7 +340,7 @@ test('Orders unavailable optional Bank money stays unknown instead of becoming z
 
 
 for(const version of [72,73,74])test('Orders Bank version gate blocks former money parsing before provider entry: '+version,async t=>{
- const f=fixture(t);let providers=0;f.ports.bridge.status=async()=>({bridgeVersion:version,configured:true});f.ports.bridge.fetchBalance=async()=>{providers++;return {balance:0,accounts:{business:{balance:0,accountId:'same-account',transactions:[]}}}};
+ const f=fixture(t);let providers=0;f.ports.bridge.status=async()=>({bridgeVersion:version,configured:true});f.ports.bridge.fetchBalance=async()=>{providers++;return {fetchedAt:stamp,balance:0,accounts:{business:{balance:0,accountId:'same-account',transactions:[]}}}};
  const api=f.create();try{assert.equal(await api.refreshBank(),version>=74);assert.equal(providers,version>=74?1:0);if(version>=74)assert.equal(f.remote().bank.currentBalance,0)}finally{api.runtime.dispose()}
 });
 
@@ -348,6 +348,6 @@ for(const version of [72,73,74])test('Orders Bank version gate blocks former mon
 test('Orders Bank captured version cannot authorize a replacement device',async t=>{
  const f=fixture(t);let token='A',providers=0;f.ports.bridge.getBridgeToken=()=>token;
  f.ports.bridge.status=async()=>{token='B';return {bridgeVersion:74,configured:true}};
- f.ports.bridge.fetchBalance=async()=>{providers++;return {balance:0,accounts:{business:{balance:0,accountId:'same-account',transactions:[]}}}};
+ f.ports.bridge.fetchBalance=async()=>{providers++;return {fetchedAt:stamp,balance:0,accounts:{business:{balance:0,accountId:'same-account',transactions:[]}}}};
  const api=f.create();try{assert.equal(await api.refreshBank(),false);assert.equal(providers,0);assert.equal(f.counts.atomic||0,0);assert.equal(f.counts.release,1)}finally{api.runtime.dispose()}
 });
