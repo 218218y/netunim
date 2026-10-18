@@ -5,6 +5,7 @@ import {cashflowAlertForAccount,cashflowCheckCutoffDayForAccount} from './cashfl
 import {cashflowNotificationData} from './cashflow-notification.js';
 import {bankRecurringExpensesData,bankRecurringIncomeData} from './bank-recurring-debits.js';
 import {creditAccountNextDisplayBillingDateData,creditAccountStatementCycleDateData,creditBillingISODate,creditBillingRowsData,creditCyclesThroughHorizonData,creditCyclesThroughHorizonRowsData} from './credit-billing-cycles.js';
+import {evidenceDate,observationTimeMs} from './observation-time.js';
 
 function finite(value){if(value===null||value===undefined||value==='')return null;const n=Number(value);return Number.isFinite(n)?n:null}
 function num(value){const n=Number(value);return Number.isFinite(n)?n:0}
@@ -16,6 +17,12 @@ function isoDay(value){return creditBillingISODate(value)}
 function monthKey(value){const day=isoDay(value);return day?day.slice(0,7):''}
 function daysInMonth(year,month){return new Date(Date.UTC(year,month,0)).getUTCDate()}
 function localTodayISO(){const d=new Date();return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`}
+// Retained observations may use the historical date-only format. Validate these
+// clocks against today, never against a requested future billing/forecast date.
+function bankObservationDay(value){
+  if(evidenceDate(value))return value<=localTodayISO()?value:'';
+  return observationTimeMs(value)===null?'':isoDay(value);
+}
 function addMonthsISO(value,delta){const raw=isoDay(value);if(!raw)return '';const [year,month,day]=raw.split('-').map(Number),index=year*12+(month-1)+Number(delta||0),targetYear=Math.floor(index/12),targetMonth=index-targetYear*12+1,targetDay=Math.min(day,daysInMonth(targetYear,targetMonth));return `${targetYear}-${pad2(targetMonth)}-${pad2(targetDay)}`}
 function addDaysISO(value,delta){const raw=isoDay(value);if(!raw)return '';const [year,month,day]=raw.split('-').map(Number),date=new Date(Date.UTC(year,month-1,day+Number(delta||0)));return `${date.getUTCFullYear()}-${pad2(date.getUTCMonth()+1)}-${pad2(date.getUTCDate())}`}
 function monthCutoffISO(key,day){const match=/^(\d{4})-(\d{2})$/.exec(String(key||''));if(!match)return '';const year=Number(match[1]),month=Number(match[2]);if(month<1||month>12)return '';const bounded=Math.max(1,Math.min(Math.trunc(Number(day)||1),daysInMonth(year,month)));return `${year}-${pad2(month)}-${pad2(bounded)}`}
@@ -331,7 +338,7 @@ function expiredSettlementWarnings(account,rows){
   return [...groups.values()].map(group=>{const first=group[0],due=String(first?.date||''),releaseDate=addDaysISO(due,CREDIT_SETTLEMENT_MAX_HOLD_DAYS);return {id:settlementWarningId(account,group),kind:'credit_settlement_unmatched',account:accountRole(account),dueDate:due,releaseDate,provider:String(first?.provider||''),profileId:String(first?.profileId||''),accountNumber:String(first?.accountNumber||''),card:String(first?.card||'כרטיס אשראי'),amount:group.reduce((sum,row)=>sum+num(row.amount),0),rowCount:group.length,amountKnown:group.every(row=>row.includedInIlsTotal),missingAmountCount:group.filter(row=>!row.includedInIlsTotal).length}}).sort((a,b)=>a.dueDate.localeCompare(b.dueDate)||String(a.card).localeCompare(String(b.card),'he'));
 }
 function pendingCreditSettlementData(kupa,account,settlementRows,start,reference){
-  const feed=bankFeedForAccount(kupa,account),hasFeed=!!isoDay(feed?.syncedAt);
+  const feed=bankFeedForAccount(kupa,account),hasFeed=!!bankObservationDay(feed?.syncedAt);
   const unresolvedRows=settlementRows.filter(row=>row.date<reference&&row.bankSettlementState!=='settled'&&(!row.includedInIlsTotal||row.coverageIncomplete||moneyCents(row.amount)!==0)&&((hasFeed&&row.date<start)||!row.includedInIlsTotal||row.coverageIncomplete));
   const expiredRows=[],rows=[];
   for(const row of unresolvedRows){const releaseDate=addDaysISO(row.date,CREDIT_SETTLEMENT_MAX_HOLD_DAYS);if(releaseDate&&reference>=releaseDate)expiredRows.push(row);else rows.push(row)}
@@ -379,7 +386,7 @@ function calculateReconciledCreditRows(kupa,account,reference,{retainSettledComp
     const currentCards=new Set(candidates.filter(row=>row.date===forecastStart).map(creditCardKey));
     for(let i=candidates.length-1;i>=0;i--)if(candidates[i].date<start&&candidates[i].date<forecastStart&&currentCards.has(creditCardKey(candidates[i]))&&candidates[i].includedInIlsTotal&&!candidates[i].coverageIncomplete)candidates.splice(i,1);
   }
-  const feed=bankFeedForAccount(kupa,role),synced=isoDay(feed?.syncedAt),bankRows=synced&&Array.isArray(feed.transactions)?feed.transactions:[],settlementReference=synced&&synced<forecastStart?synced:forecastStart,unresolved=unresolvedSettlementIndexes(bankRows,candidates,settlementReference,{monthlySettlement}),pendingBankGroups=pendingBankSettlementGroupKeys(kupa,bankRows,billingRows,role,settlementReference);
+  const feed=bankFeedForAccount(kupa,role),synced=bankObservationDay(feed?.syncedAt),bankRows=synced&&Array.isArray(feed.transactions)?feed.transactions:[],settlementReference=synced&&synced<forecastStart?synced:forecastStart,unresolved=unresolvedSettlementIndexes(bankRows,candidates,settlementReference,{monthlySettlement}),pendingBankGroups=pendingBankSettlementGroupKeys(kupa,bankRows,billingRows,role,settlementReference);
   const settlementRows=candidates.map((row,index)=>({...row,bankSettlementState:unresolved.has(index)?'awaiting':'settled'}));
   const settlingCredit=pendingCreditSettlementData(kupa,role,settlementRows.filter(row=>!row.settlementShell),start,forecastStart),expiredKeys=new Set(settlingCredit.expiredRows.map(creditRowKey));
   const states=new Map(settlementRows.map(row=>[creditRowKey(row),expiredKeys.has(creditRowKey(row))?'expired':row.bankSettlementState]));
@@ -512,8 +519,8 @@ export function kupaAccountBankBalanceData(kupa,account='עסקי'){
 
 export function kupaAccountBankAsOfDateData(kupa,account='עסקי',reference=localTodayISO()){
   const role=accountRole(account),bank=kupa?.bank&&typeof kupa.bank==='object'?kupa.bank:{},ref=isoDay(reference)||localTodayISO();
-  if(role==='ביתי')return isoDay(bank.homeFeed?.syncedAt)||ref;
-  return isoDay(bank.asOfDate)||isoDay(bank.updatedAt)||ref;
+  if(role==='ביתי')return bankObservationDay(bank.homeFeed?.syncedAt)||ref;
+  return bankObservationDay(bank.asOfDate)||bankObservationDay(bank.updatedAt)||ref;
 }
 
 export function kupaAccountCheckDepositsData(kupa,account='עסקי',reference=localTodayISO(),targetMonth=monthKey(reference),horizonDate=''){
@@ -568,7 +575,7 @@ function calculateAccountCashflow(kupa,account,reference,options){
   const role=accountRole(account),ref=isoDay(reference)||localTodayISO(),balance=kupaAccountBankBalanceData(kupa,role);
   const reconciliation=reconciledCreditRowsForAccount(kupa,role,ref,{monthlySettlement:true});
   const {start,forecastStart,unassignedRows}=reconciliation;
-  const hasFeed=!!isoDay(bankFeedForAccount(kupa,role)?.syncedAt);
+  const hasFeed=!!bankObservationDay(bankFeedForAccount(kupa,role)?.syncedAt);
   const remaining=reconciliation.rows.filter(row=>row.date&&(row.date>=start||(hasFeed&&['awaiting','expired'].includes(row.bankSettlementState))||(!row.includedInIlsTotal||row.coverageIncomplete)));
   const automatic=automaticCashflowHorizon(kupa,role,reconciliation,remaining);
   const requested=options.targetDate?isoDay(options.targetDate):'';
