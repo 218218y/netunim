@@ -15,7 +15,14 @@ from startup_evidence import capture_environment
 COUNTS = [int(value) for value in os.environ.get('NETUNIM_LOADED_COUNTS', '1000,10000').split(',')]
 assert COUNTS and all(1 <= count <= 10000 for count in COUNTS)
 REPORT = {'environment': capture_environment(), 'cpuThrottleRate': 4,
-          'instrumented': True, 'physicalWeakMachine': False, 'samples': {}}
+          'instrumented': True, 'physicalWeakMachine': False, 'requestedCounts': COUNTS,
+          'complete': False, 'samples': {}}
+OUTPUT = ROOT / '.work/loaded-performance/latest.json'
+
+
+def record_progress():
+    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
+    OUTPUT.write_text(json.dumps(REPORT, indent=2)+'\n', encoding='utf8')
 
 SEED = r"""(async()=>{
   const count=COUNT,app='APP',day=new Date().toISOString().slice(0,10);
@@ -33,7 +40,7 @@ SEED = r"""(async()=>{
 })()"""
 
 MEASURE = r"""(async()=>{
-  const app='APP',count=COUNT,frame=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+  const app='APP',count=COUNT;
   const {startupSnapshot}=await import('./assets/js/shared/startup-timing.js');
   const {kupaAccountCashflowData}=await import('./assets/js/shared/kupa-cashflow.js');
   const timeline=startupSnapshot(),results={recovery:timeline.durations};
@@ -61,7 +68,12 @@ MEASURE = r"""(async()=>{
     results.open=time(()=>{switchView('supplier');return document.querySelectorAll('tr[data-tx-id]').length});
     const input=document.querySelector('.supplier-search');input.value='Loaded transaction '+(count-1);
     const start=performance.now();input.dispatchEvent(new Event('input',{bubbles:true}));
-    while(searchText!==input.value&&performance.now()-start<5000)await frame();
+    // Observe scheduled input completion at 10k rows/4x CPU. Timer polling keeps
+    // extra layout frames out of each sample. Existing unthrottled timing gates
+    // retain their own ceilings; this window bounds baseline collection.
+    while(searchText!==input.value&&performance.now()-start<30000){
+      await new Promise(resolve=>setTimeout(resolve,25));
+    }
     if(searchText!==input.value)throw Error('loaded delegated search did not settle');
     results.search={ms:performance.now()-start,value:[...document.querySelectorAll('tr[data-tx-id]')].filter(row=>!row.hidden).length};
     results.customersOpen=time(()=>{switchView('customers');return document.querySelectorAll('[data-customer-bulk-id]').length});
@@ -96,6 +108,8 @@ for app in ['kupa', 'orders']:
         browser.call('Performance.enable')
         browser.call('Emulation.setCPUThrottlingRate', {'rate': 4})
         samples = []
+        REPORT['samples'][app] = samples
+        record_progress()
         for count in COUNTS:
             seed = browser.evaluate(expression(SEED, app, count), timeout=45)
             browser._navigate()
@@ -119,10 +133,8 @@ for app in ['kupa', 'orders']:
                 assert not browser.drain_serious_errors()
             assert not browser.drain_serious_errors()
             samples.append({'fixture': seed, 'results': measured})
+            record_progress()
             print('PASS', app, count, 'loaded rows; CPU x4; actual IDB reload/search; fenced second tab;',
                   json.dumps(samples[-1]), flush=True)
-        REPORT['samples'][app] = samples
-
-output = ROOT / '.work/loaded-performance/latest.json'
-output.parent.mkdir(parents=True, exist_ok=True)
-output.write_text(json.dumps(REPORT, indent=2)+'\n', encoding='utf8')
+REPORT['complete'] = True
+record_progress()

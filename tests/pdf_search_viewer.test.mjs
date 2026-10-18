@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import {parse} from 'acorn';
 import {buildPdfFindRequest,copyablePdfTextFieldModel,createPdfSearchViewer,findPdfFormFieldMatches,joinPdfTextSelectionSegments,matchPdfTextWithNativeNormalization,pdfAnnotationAppearanceMetrics,pdfFieldKey,PdfJsFindControllerAdapter,PDF_SEARCH_RUNTIME} from '../netunim-orders/site/assets/js/domains/documents/pdf-search-viewer.js';
 import {collectPdfFormFields} from '../netunim-orders/document-bridge/pdf_form_index.mjs';
 
@@ -443,7 +444,20 @@ test('PDF.js find adapter owns match enumeration, selection, scrolling and text-
 
 test('global search routes ordinary local PDFs through the controlled PDF.js viewer',()=>{
   const source=fs.readFileSync(new URL('../shared/global-document-search.js',import.meta.url),'utf8');
-  assert.match(source,/if\(data\.mime==='application\/pdf'\)\{[^\r\n]*createPdfSearchViewer/);
+  function* nodes(node){
+    if(!node?.type)return;
+    yield node;
+    for(const value of Object.values(node))for(const child of Array.isArray(value)?value:[value]){
+      if(child?.type)yield* nodes(child);
+    }
+  }
+  const branches=[...nodes(parse(source,{ecmaVersion:'latest',sourceType:'module'}))].filter(node=>
+    node.type==='IfStatement'&&node.test.type==='BinaryExpression'&&node.test.operator==='==='&&
+    node.test.left.type==='MemberExpression'&&node.test.left.object.name==='data'&&
+    node.test.left.property.name==='mime'&&node.test.right.value==='application/pdf');
+  assert.equal(branches.length,1,'ordinary PDFs have one unconditional MIME branch');
+  assert.ok([...nodes(branches[0].consequent)].some(node=>
+    node.type==='CallExpression'&&node.callee.name==='createPdfSearchViewer'));
   assert.doesNotMatch(source,/data\.mime==='application\/pdf'&&selectedDocumentMode==='content'/);
 });
 
