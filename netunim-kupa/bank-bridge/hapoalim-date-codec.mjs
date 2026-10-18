@@ -1,4 +1,5 @@
 // @ts-check
+import { evidenceDate } from './observation-time.mjs';
 
 /** @param {unknown} value @returns {string} */
 function dateDigits(value) {
@@ -20,9 +21,10 @@ export function ymdDate(value = new Date()) {
 export function isoFromBankDate(value) {
   const d = dateDigits(value);
   if (!d) return null;
-  const y = Number(d.slice(0, 4)),
-    m = Number(d.slice(4, 6)),
-    day = Number(d.slice(6, 8));
-  const date = new Date(y, m - 1, day, 12, 0, 0, 0);
+  // Validate the calendar before the local-noon conversion can roll a bad day
+  // into a valid one. Keep the established local timezone policy unchanged.
+  const calendar = `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;
+  if (!evidenceDate(calendar)) return null;
+  const date = new Date(`${calendar}T12:00:00`);
   return Number.isFinite(date.getTime()) ? date.toISOString() : null;
 }

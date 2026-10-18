@@ -1,4 +1,5 @@
 import {creditBillingISODate} from './credit-billing-cycles.js';
+import {bankTransactionCoverage} from './bank-archive-policy.js';
 
 // Explicit obligations requested for this installation. The user confirmed that
 // each bank label identifies exactly one obligation in its account. Amounts are
@@ -27,7 +28,8 @@ function combinedRows(feed){const rows=new Map();for(const row of [...(Array.isA
 // Persist just the recognized source rows alongside the same account snapshot.
 // Fresh rows (including missing/pending corrections) replace older evidence.
 // Absence invalidates a retained row only inside a complete bank coverage window.
-export function bankRecurringDebitHistoryData(previousFeed,nextFeed,account,{complete=false,from='',to=''}={}){
+export function bankRecurringDebitHistoryData(previousFeed,nextFeed,account,coverage={}){
+  const {complete,from,to}=bankTransactionCoverage({transactionCoverage:coverage});
   const rules=[...BANK_RECURRING_DEBITS,...BANK_RECURRING_CREDITS].filter(rule=>rule.account===role(account));
   const sameAccount=!!nextFeed?.accountNumber&&nextFeed.accountNumber===previousFeed?.accountNumber;
   const current=combinedRows(nextFeed),seen=new Set(current.map(keyOf)),rows=new Map();
