@@ -1,9 +1,9 @@
 import {customerDebtProgressData} from '../../shared/customer-debt-progress.js';
+import {bankDocumentDate as dateOnly} from '../../shared/bank-feed-values.js';
 import {inferMorningBankFromText,morningBankCode,morningBankName,resolveMorningBank} from '../customers/morning-banks.js';
 
 function clean(value,max=250){return String(value??'').trim().replace(/\s+/g,' ').slice(0,max)}
 function amountCents(value){const number=Number(value);return Number.isFinite(number)?Math.round(number*100):NaN}
-function dateOnly(value){const text=String(value||'').trim();if(/^\d{4}-\d{2}-\d{2}$/.test(text))return text;const date=new Date(text);if(!Number.isFinite(date.getTime()))return'';const shift=date.getTimezoneOffset()*60_000;return new Date(date.getTime()-shift).toISOString().slice(0,10)}
 function normalizeParty(value){return clean(value,180).toLocaleLowerCase('he').replace(/["'׳״`]/g,'').replace(/[-–—_/.,()[\]{}:;]+/g,' ').replace(/\s+/g,' ').trim()}
 function partyWords(value){return normalizeParty(value).split(' ').filter(word=>word.length>=2)}
 function transactionParty(row){return clean(row?.partyName,160)||clean(row?.partyHeadline,160)||clean(row?.messageHeadline,160)}

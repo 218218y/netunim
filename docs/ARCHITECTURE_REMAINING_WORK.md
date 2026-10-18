@@ -49,6 +49,22 @@ restore and live-provider release exercises therefore remain explicitly unverifi
 
 ## Prioritized remaining work
 
+### Four-stage review continuation, 2026-10-18
+
+1. **Bank calendar and monetary integrity:** reproduced impossible Morning dates
+   and zero coercion in both historical feed readers. Feed dates now use the
+   existing exact calendar/timestamp predicates. Morning retains processing-date
+   precedence and local timestamp days. Unknown money remains `null`, distinct
+   from numeric zero; missing balances cannot create a feed. No stored history is
+   rewritten. Focused regression cases cover leap years, three time zones,
+   malformed inputs and snapshot coverage. Full branch CI is required to merge.
+2. **Domain ownership:** next, remove the Customers/Finance catalogue inversion
+   and give Kupa search explicit read capabilities, guarded by module contracts.
+3. **Authority contracts:** next, extend checked implementation and malformed
+   response evidence at demonstrated transport/decoder gaps.
+4. **Readability:** next, simplify touched dense paths with behavior evidence and
+   lower the existing readability ratchet; avoid unnecessary new modules.
+
 The 2026-10-18 continuation also closes Kupa credential resurrection after a failed
 IndexedDB logout delete, orders credential mirror writes and scopes refresh flights
 to their login. See [credential authority](KUPA_AUTH_SESSION_AUTHORITY.md).
