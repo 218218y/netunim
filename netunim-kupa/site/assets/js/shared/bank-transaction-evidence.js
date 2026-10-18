@@ -1,6 +1,7 @@
 // @ts-check
 import {evidenceObject as object,evidenceText as text,evidenceTimestamp as timestamp,evidenceDate as date,evidenceMoney as money} from './response-evidence.js';
 import {assertBankCheckDetails,assertBankCreditSettlementDetails} from './bank-business-evidence.js';
+import {bankTransactionMergeKey} from './bank-transaction-identity.js';
 
 /** @typedef {Readonly<Record<string,unknown>&{status:'pending'|'completed',amount:number|string,currency:string}>} BankTransaction */
 export function invalidBankTransaction(){
@@ -60,20 +61,8 @@ export function readBankArchiveCommand(value) {
   const complete = value.complete === true && object(coverage) && coverage.complete === true && !coverage.warning;
   if (complete && (!date(coverage.from) || !date(coverage.to) || coverage.from > coverage.to)) throw invalidBankTransaction();
   const occurrences = new Map();
-  const transactions = readBankTransactions(value.transactions).map(tx => {
-    const day = String(tx.date || '').slice(0, 10);
-    const processedDay = String(tx.processedDate || '').slice(0, 10);
-    const serial = String(tx.bankSerial || '');
-    const reference = String(tx.bankReference || '');
-    const signature = `${day}|${processedDay}|${tx.amount}|${tx.description || ''}|${tx.memo || ''}|${JSON.stringify(tx.checkDetails || null)}`;
-    const occurrence = (occurrences.get(signature) || 0) + 1;
-    occurrences.set(signature, occurrence);
-    let stableKey;
-    if (serial && serial !== '0' && day) stableKey = `serial:${day}:${serial}:${tx.amount}`;
-    else if (reference && day) stableKey = `ref:${day}:${reference}:${tx.amount}:${tx.description || ''}:${tx.memo || ''}`;
-    else stableKey = `fallback:${signature}:${occurrence}`;
-    return Object.freeze({...tx, mergeKey: String(tx.mergeKey || stableKey)});
-  });
+  const transactions = readBankTransactions(value.transactions).map(tx =>
+    Object.freeze({...tx, mergeKey: bankTransactionMergeKey(tx, occurrences)}));
   return Object.freeze({
     p_account_key: value.accountKey,
     p_account_role: /** @type {'business'|'home'} */ (value.accountRole),

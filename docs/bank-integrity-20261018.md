@@ -31,3 +31,30 @@ operator evidence.
 The archive preservation fixtures now pin the deliberately corrected coverage
 algorithm; all other helpers and orchestration snapshots remain unchanged. The
 Bridge model import budgets allow only the existing pure calendar/money codecs.
+
+## Identity, projection and multiplicity
+
+`bank_identity_integrity.test.mjs` reproduced four more failures before changes:
+both app feeds lost a distinct serial, search IDs collided, and recurring history
+collapsed repeated source movements. The archive-key/document-link control
+already passed and its key format is retained byte for byte.
+
+The shared identity policy now names source, archive-command, archive-record,
+navigation and recurring-history responsibilities separately. The archive still
+owns reconciliation and collision rejection. Neither feed reader removes source
+rows, including identical occurrences, and stored history is never truncated by
+the transport page budget. A count-aware one-to-one history overlay replaces the
+former `Map` collapse. Distinct archive IDs remain separate; unknown raw-reference
+identity cannot overwrite different financial content. Forecast ambiguity uses
+the existing warning policy.
+
+Canonical feed normalization now serves both apps. Kupa re-exports the reader;
+Orders keeps Morning handling/document decoration in its adapter. Search uses
+archive IDs or source occurrences and the bank table retains original occurrence
+positions after display filtering/sorting. Details are in
+`shared/bank-transaction-identity.md`.
+
+Local regressions include repeated JSON reloads, source permutation, raw-to-archive
+transition, stable document IDs, archive corrections, one-to-one multiplicity and
+20,001 retained rows. The unchanged archive key-format test, existing recurring
+policies, strict source/evidence, archive-readout and Bridge tests pass locally.
