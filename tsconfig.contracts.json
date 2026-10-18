@@ -20,6 +20,10 @@
     "types": []
   },
   "files": [
+    "shared/bank-feed.js",
+    "shared/bank-transaction-identity.js",
+    "netunim-kupa/bank-bridge/hapoalim-transaction-model.mjs",
+    "tests/fixtures/checked-bank-identity.mjs",
     "shared/indexed-db-connection.js",
     "shared/spreadsheet-store.js",
     "tests/fixtures/checked-spreadsheet-store.mjs",

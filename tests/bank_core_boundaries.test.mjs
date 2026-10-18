@@ -23,6 +23,7 @@ const budgets = {
     './hapoalim-detail-keys.mjs',
   ],
   'hapoalim-additional-details-model': [
+    './bank-money-value.mjs',
     './hapoalim-cheque-model.mjs',
     './hapoalim-detail-keys.mjs',
     './hapoalim-detail-values.mjs',

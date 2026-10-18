@@ -64,3 +64,58 @@ graphs contain 305 Kupa / 402 Orders eager modules and about 1.774 MB / 2.383 MB
 of source. The deterministic budgets permit exactly those two modules and 8 KB
 additional source per app (under 0.5%); browser timing ceilings are unchanged.
 Bridge structural checks now follow the real canonical feed/identity imports.
+
+## Strict source contracts and integration evidence
+
+The shared feed reader, identity policy and actual Hapoalim transaction producer
+are checked by the strict contract compiler. Four deliberate mutations prove
+that money cannot become display text, archive keys cannot become booleans and
+history evidence cannot become a textual confirmation. The checked consumers
+also require explicit handling of nullable historical financial values.
+
+Further source inspection found missing direction/serial fields and missing
+transaction arrays could manufacture completed credits or complete empty
+history. Hapoalim now rejects these inputs, including sparse batches. Raw date
+syntax accepts only numeric/compact or dashed bank calendar dates, with the
+existing local-noon conversion. Expanded cheque amounts and document flags also
+reject coercible arrays/booleans. Historical optional balances, archive IDs and
+Morning document amounts use the canonical scalar boundary. Direct snapshot
+coverage must be ordered and its declared count must match an actual array.
+
+The new `bank_identity_pipeline.py` runs inside the existing disposable candidate
+database suite. Its input comes from the real Hapoalim normalizer, balance
+decoder and archive command. It executes the installed snapshot RPC, replays a
+reversed source, checks stable archive IDs, rejects a conflicting batch and
+checks unchanged durable archive/snapshot state. The actual Orders/Kupa cloud
+transports then decode the SQL output; both feeds undergo repeated JSON reload,
+recurring-history overlay, search and cashflow ambiguity checks.
+
+The existing native IndexedDB Bank command test now uses the same generated
+two-serial source, checks durable amounts and isolation from Shared Checks,
+reloads the browser and verifies search/forecast multiplicity. A focused Windows
+local attempt timed out at DevTools, without a financial assertion result. The
+full hosted browser/SQL suites remain the release gate for this stage.
+
+Formatting in the touched canonical policy files was checked with Acorn AST
+comparisons separately from the behavioral changes. The readability ratchet and
+startup module/byte budgets remain enforced; timing thresholds were unchanged.
+
+## Scope of completion
+
+| Plan area | Evidence / remaining requirement |
+| --- | --- |
+| Regression reproduction | Original source and identity failures reproduced before fixes; timezone/key-format positive controls retained. |
+| Identity and source integrity | Canonical identities, count-preserving readers, strict raw money/date/direction/status and calendar coverage implemented. |
+| Shared ownership and types | One feed policy, small app adapters, strict producer/identity/feed contracts and negative compiler mutations. |
+| Failure and integration tests | Actual RPC/SQL/readback pipeline and native IDB refresh/reload added to full CI; existing ownership/network/recovery suites retained. |
+| Compatibility and cleanup | Persisted v5 format and archive keys retained; compatibility readers preserved; touched policies made readable. |
+| Operational release | Physical two-computer/live-provider tests and real staggered production deployment remain unperformed. Existing automated mixed-release tests are included in CI. |
+
+Merged stages with full branch verification:
+
+- Source/coverage: PR #242, head `5b4466da`, successful run `39112825138`.
+- Identity/shared feed: PR #243, head `4289c420`, successful run `39114116219`.
+
+No schema migration, production data mutation or live bank call is part of these
+changes. Completing automated gates does not stand in for the physical/live
+operator experiments in the original plan.

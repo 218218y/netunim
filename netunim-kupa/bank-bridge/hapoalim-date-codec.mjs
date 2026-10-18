@@ -3,8 +3,10 @@ import { evidenceDate } from './observation-time.mjs';
 
 /** @param {unknown} value @returns {string} */
 function dateDigits(value) {
-  const s = String(value ?? '').replace(/\D/g, '');
-  return s.length >= 8 ? s.slice(0, 8) : '';
+  if (typeof value !== 'number' && typeof value !== 'string') return '';
+  const text = String(value);
+  if (/^\d{8}$/.test(text)) return text;
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text.replaceAll('-', '') : '';
 }
 
 /** @param {Date|string|number} [value] @returns {string} */

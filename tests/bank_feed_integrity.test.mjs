@@ -57,3 +57,31 @@ test('invalid balances and calendar coverage cannot create a usable feed or snap
     assert.equal(feed.directSnapshot, null);
   }
 });
+
+test('all optional feed money remains unknown on coercible input and snapshot counts are checked', () => {
+  for (const normalize of [ordersFeed, kupaFeed]) {
+    for (const value of [true, false, [], {}, ' ', null]) {
+      const feed = normalize({balance: 0, syncedAt: '2026-10-18', availableBalance: value,
+        creditLimit: value, creditLimitUsed: value, creditLimitUsedPercent: value,
+        transactions: [{balanceAfter: value}]});
+      for (const field of ['availableBalance','creditLimit','creditLimitUsed','creditLimitUsedPercent']) assert.equal(feed[field], null);
+      assert.equal(feed.transactions[0].balanceAfter, null);
+    }
+    const base = {balance: 0, syncedAt: '2026-10-18', directSnapshot: {
+      snapshotAt: '2026-10-18', coverageFrom: '2026-10-01', coverageTo: '2026-10-18', transactions: [{id: 'one'}], transactionCount: 2}};
+    assert.equal(normalize(base).directSnapshot, null);
+    base.directSnapshot.transactionCount = 1;
+    assert.equal(normalize(base).directSnapshot.transactions.length, 1);
+    base.directSnapshot.coverageFrom = '2026-10-19';
+    assert.equal(normalize(base).directSnapshot, null);
+  }
+});
+
+test('historical archive IDs and Morning amounts cannot be forged by coercible values', () => {
+  for (const value of [true, [1], {}, ' ']) {
+    for (const normalize of [ordersRow, kupaRow]) assert.equal(normalize({archiveId: value}).archiveId, null);
+    const row = ordersRow({documentLinks: [{documentId: 'D', documentType: 320, documentAmount: value, verifiedAt: '2026-10-18'}]});
+    assert.equal(row.documentLinks.length, 0);
+  }
+  assert.equal(ordersRow({archiveId: '42'}).archiveId, 42);
+});

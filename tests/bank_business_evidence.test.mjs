@@ -41,7 +41,7 @@ test('decoded evidence preserves explicit false, identities and amounts and cann
   assert.throws(()=>{accepted.transactionCoverage.complete=false},TypeError);
 });
 test('the actual Hapoalim producer emits decodable business transactions',()=>{
-  const produced=normalizeHapoalimTransaction({eventAmount:20,serialNumber:1,referenceNumber:'T',eventDate:20261016,valueDate:20261016});
+  const produced=normalizeHapoalimTransaction({eventAmount:20,eventActivityTypeCode:1,serialNumber:1,referenceNumber:'T',eventDate:20261016,valueDate:20261016});
   assert.deepEqual(readBankTransaction(produced),produced);
 });
 test('historical feed normalization never turns the text false into a document reference',()=>{

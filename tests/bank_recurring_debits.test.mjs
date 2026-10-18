@@ -21,6 +21,14 @@ function state(reference='2026-09-11'){
 const automatic=(value,account='ביתי',reference='2026-09-11',horizon='2026-09-20')=>bankRecurringExpensesData(value,account,reference,horizon);
 
 const allowance=(date='2026-08-20',amount=1522)=>({...tx('קצבת ילדים',-amount,date),id:'allowance:'+date});
+test('direct historical forecasts cannot coerce booleans or arrays into bank money',()=>{
+  for(const amount of [true,false,[],[-100],[100],{},' ',null]){
+    const value=state();value.bank.homeFeed.transactions=[{...allowance(),amount}];
+    assert.equal(bankRecurringIncomeData(value,'home','2026-09-11','2026-10-20').rows.length,0);
+    value.bank.feed.transactions=[{...pension(),amount}];
+    assert.equal(bankRecurringExpensesData(value,'business','2026-09-11','2026-10-20').rows.length,0);
+  }
+});
 test('child allowance is a separate home income from the latest bank amount, with an inclusive monthly 20th',()=>{
   const value=state();value.bank.homeFeed.transactions.push(allowance());
   const before=structuredClone(value);

@@ -23,13 +23,13 @@ const fixture = JSON.parse(
   fs.readFileSync(new URL('./fixtures/credit-core-policy.json', import.meta.url), 'utf8')
 );
 const retired = ['normalizeAccountNumber', 'selectBalanceAccount', 'isHapoalimChequeTransaction'];
-test('all 70 active Bank declarations match their immutable reviewed library digests', () => {
+test('all 72 active Bank declarations match their reviewed policy digests', () => {
   const expected = { ...fixture.bankPolicies };
   for (const name of retired) {
     assert.ok(Object.hasOwn(expected, name));
     delete expected[name];
   }
-  assert.equal(Object.keys(expected).length, 70);
+  assert.equal(Object.keys(expected).length, 72);
   assert.deepEqual(creditAdapterPolicyHashes(modules.map(read)).policies, expected);
 });
 test('Bank policy digests detect altered cheque identity, pending status, account selection and login bounds', () => {
@@ -42,8 +42,8 @@ test('Bank policy digests detect altered cheque identity, pending status, accoun
     ],
     [
       'hapoalim-transaction-model',
-      /Number\(txn\?\.serialNumber\)\s*===\s*0/,
-      'Number(txn?.serialNumber)!==0',
+      /serial\s*===\s*0/,
+      'serial!==0',
       'normalizeHapoalimTransaction',
     ],
     [
