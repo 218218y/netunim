@@ -58,3 +58,9 @@ Local regressions include repeated JSON reloads, source permutation, raw-to-arch
 transition, stable document IDs, archive corrections, one-to-one multiplicity and
 20,001 retained rows. The unchanged archive key-format test, existing recurring
 policies, strict source/evidence, archive-readout and Bridge tests pass locally.
+
+The two canonical policy files add two eager modules per app. Measured working
+graphs contain 305 Kupa / 402 Orders eager modules and about 1.774 MB / 2.383 MB
+of source. The deterministic budgets permit exactly those two modules and 8 KB
+additional source per app (under 0.5%); browser timing ceilings are unchanged.
+Bridge structural checks now follow the real canonical feed/identity imports.
