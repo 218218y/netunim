@@ -1,0 +1,203 @@
+{
+  "environment": {
+    "schemaVersion": 2,
+    "capturedAt": "2026-10-18T11:26:51.495596+00:00",
+    "sourceRevision": "224d74636243d99cdd936c4a0a8dc86c56efef00",
+    "workingTreeDirty": false,
+    "execution": "github-actions",
+    "os": "Linux",
+    "architecture": "x86_64",
+    "workload": "fresh-isolated-profile",
+    "browserMode": "headless-chromium"
+  },
+  "cpuThrottleRate": 4,
+  "instrumented": true,
+  "physicalWeakMachine": false,
+  "requestedCounts": [
+    1000,
+    10000
+  ],
+  "complete": true,
+  "samples": {
+    "kupa": [
+      {
+        "fixture": {
+          "rows": 1000,
+          "jsonBytes": 78880,
+          "checkpointMs": 90.60000000003492
+        },
+        "results": {
+          "recovery": {
+            "moduleEvaluation": 5.599999999976717,
+            "composition": 36.100000000034925,
+            "localRecovery": 90.10000000003492,
+            "boot": 244.30000000004657,
+            "firstView": null,
+            "commandReady": null
+          },
+          "open": {
+            "ms": 536.5999999999767,
+            "value": 1000
+          },
+          "bankRows": 2000,
+          "bankHistoryYears": 0.68,
+          "bankOpen": {
+            "ms": 1309.7999999999884,
+            "value": 1000
+          },
+          "forecast": {
+            "ms": 70.79999999998836,
+            "value": 0
+          },
+          "search": {
+            "ms": 390.20000000001164,
+            "value": 5
+          },
+          "globalSearch": {
+            "ms": 1013.7000000000116
+          },
+          "edit": {
+            "ms": 1139.5,
+            "durable": true
+          },
+          "memory": {
+            "JSHeapUsedSize": 7594288,
+            "JSHeapTotalSize": 8130560
+          },
+          "secondaryReadOnly": true
+        }
+      },
+      {
+        "fixture": {
+          "rows": 10000,
+          "jsonBytes": 802930,
+          "checkpointMs": 511.70000000001164
+        },
+        "results": {
+          "recovery": {
+            "moduleEvaluation": 7.900000000023283,
+            "composition": 91.89999999996508,
+            "localRecovery": 515.5999999999767,
+            "boot": 575.0999999999767,
+            "firstView": null,
+            "commandReady": null
+          },
+          "open": {
+            "ms": 4454.800000000047,
+            "value": 10000
+          },
+          "bankRows": 20000,
+          "bankHistoryYears": 6.85,
+          "bankOpen": {
+            "ms": 11955.700000000012,
+            "value": 10000
+          },
+          "forecast": {
+            "ms": 544.2999999999884,
+            "value": 0
+          },
+          "search": {
+            "ms": 3843.399999999965,
+            "value": 29
+          },
+          "globalSearch": {
+            "ms": 8515.700000000012
+          },
+          "edit": {
+            "ms": 9472,
+            "durable": true
+          },
+          "memory": {
+            "JSHeapUsedSize": 24824132,
+            "JSHeapTotalSize": 25571328
+          },
+          "secondaryReadOnly": true
+        }
+      }
+    ],
+    "orders": [
+      {
+        "fixture": {
+          "rows": 1000,
+          "jsonBytes": 203769,
+          "checkpointMs": 154.29999999998836
+        },
+        "results": {
+          "recovery": {
+            "moduleEvaluation": 12.099999999976717,
+            "composition": 55.100000000034925,
+            "localRecovery": 203.29999999998836,
+            "boot": 2584.8000000000466,
+            "firstView": 1472.600000000035,
+            "commandReady": 3189.100000000035
+          },
+          "open": {
+            "ms": 511.79999999998836,
+            "value": 1000
+          },
+          "search": {
+            "ms": 1929,
+            "value": 1
+          },
+          "customersOpen": {
+            "ms": 271.4000000000233,
+            "value": 150
+          },
+          "globalSearch": {
+            "ms": 590.2000000000116
+          },
+          "edit": {
+            "ms": 1011.0999999999767,
+            "durable": true
+          },
+          "memory": {
+            "JSHeapUsedSize": 7446456,
+            "JSHeapTotalSize": 7999488
+          },
+          "secondaryReadOnly": true
+        }
+      },
+      {
+        "fixture": {
+          "rows": 10000,
+          "jsonBytes": 2083960,
+          "checkpointMs": 1471.7000000000116
+        },
+        "results": {
+          "recovery": {
+            "moduleEvaluation": 12.799999999988358,
+            "composition": 132,
+            "localRecovery": 1548.399999999965,
+            "boot": 21836.79999999999,
+            "firstView": 6684.900000000023,
+            "commandReady": 22539.79999999999
+          },
+          "open": {
+            "ms": 5259.899999999965,
+            "value": 10000
+          },
+          "search": {
+            "ms": 18618.20000000001,
+            "value": 1
+          },
+          "customersOpen": {
+            "ms": 1262.899999999965,
+            "value": 150
+          },
+          "globalSearch": {
+            "ms": 2614.9000000000233
+          },
+          "edit": {
+            "ms": 8299.900000000023,
+            "durable": true
+          },
+          "memory": {
+            "JSHeapUsedSize": 22643296,
+            "JSHeapTotalSize": 23732224
+          },
+          "secondaryReadOnly": true
+        }
+      }
+    ]
+  }
+}

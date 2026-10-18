@@ -99,11 +99,11 @@ expressions = {
  if(state.transactions[0].invoiceReceived!==true)throw new Error('Tri-state yes failed');
  document.querySelector('.status-toggle .yes').click();
  if(state.transactions[0].invoiceReceived!==null)throw new Error('Tri-state toggle failed');
- const search=document.querySelector('.supplier-search'),supplierRow=document.querySelector('tr[data-tx-id]');
+ const search=document.querySelector('.supplier-search');
  search.value='missing';fire(search,'input');
- await eventually(()=>supplierRow.hidden,'Delegated search failed');
+ await eventually(()=>!document.querySelector('tr[data-tx-id]:not([hidden])'),'Delegated search failed');
  search.value='';fire(search,'input');
- await eventually(()=>!supplierRow.hidden,'Delegated search clear failed');
+ await eventually(()=>!!document.querySelector('tr[data-tx-id]:not([hidden])'),'Delegated search clear failed');
  const openSupplierPicker=async()=>{
    document.getElementById('supplierMenuTrigger').click();await frame();
    const input=document.getElementById('supplierMenuSearch');

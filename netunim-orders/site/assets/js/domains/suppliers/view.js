@@ -10,9 +10,6 @@ export function createDomainsSuppliersView({ model, supplierUi, mountViewLayout,
     function normalizeSupplierSearch(value) {
         return String(value ?? '').normalize('NFC').trim().toLowerCase();
     }
-    function matchesSupplierSearch(text, query) {
-        return normalizeSupplierSearch(text).includes(normalizeSupplierSearch(query));
-    }
     function supplierViewState() {
         const suppliers = orderedSuppliers(), allMode = supplierUi.currentSupplierId === ALL_SUPPLIERS_ID;
         let selectedSupplier = allMode ? null : model.state.suppliers.find(x => x.id === supplierUi.currentSupplierId);
@@ -50,26 +47,26 @@ export function createDomainsSuppliersView({ model, supplierUi, mountViewLayout,
         const moving = !state.allMode && !!supplierUi.supplierMoveTargetId;
         const rows = supplierViewRowsData(model.state, state.supplierIds, moving ? 'all' : supplierUi.supplierYearView, moving ? 'all' : supplierUi.filterMode, state.renderModel);
         const q = includeSearch && !moving ? normalizeSupplierSearch(supplierUi.searchText) : '';
-        return q ? rows.filter(({ supplier, t, assignedYear }) => matchesSupplierSearch(supplierSearchText(t, assignedYear, state.allMode ? supplier.name : ''), q)) : rows;
+        return q ? rows.filter(({ supplier, t, assignedYear }) => normalizeSupplierSearch(supplierSearchText(t, assignedYear, state.allMode ? supplier.name : '')).includes(q)) : rows;
     }
     function supplierFullBalance(state) {
         return state.displaySuppliers.reduce((sum, sp) => sum + state.renderModel.get(sp.id).balance, 0);
     }
-    function supplierDisplayedFinancial(state = supplierViewState()) {
+    function supplierDisplayedFinancial(state = supplierViewState(), preparedRows = null) {
         if (!state.displaySuppliers.length)
             return { financial: transactionFinancialStatsData([]), financialPeriod: '', headerBalance: 0 };
-        const rows = filteredSupplierRows(state, { includeSearch: true }), financial = transactionFinancialStatsData(rows.map(({ t }) => t)), fullBalance = supplierFullBalance(state);
+        const rows = preparedRows ?? filteredSupplierRows(state, { includeSearch: true }), financial = transactionFinancialStatsData(rows.map(({ t }) => t)), fullBalance = supplierFullBalance(state);
         const headerBalance = supplierUi.supplierMoveTargetId || supplierUi.filterMode === 'all' ? fullBalance : financial.net;
         return {
             financial, financialPeriod: supplierFinancialPeriod(state.contexts, state.selectedArchiveYear, state.allMode), headerBalance
         };
     }
-    function updateSupplierFinancialSummary(state) {
+    function updateSupplierFinancialSummary(state, preparedRows = null) {
         const main = $('#main');
         if (!main)
             return;
         const summary = main.querySelector('.supplier-bottom-summary'), headerBalanceEl = main.querySelector('[data-supplier-header-balance]');
-        const { financial, financialPeriod, headerBalance } = supplierDisplayedFinancial(state);
+        const { financial, financialPeriod, headerBalance } = supplierDisplayedFinancial(state, preparedRows);
         if (headerBalanceEl) {
             headerBalanceEl.textContent = money(headerBalance);
             headerBalanceEl.classList.toggle('badtext', headerBalance < 0);
@@ -93,6 +90,15 @@ export function createDomainsSuppliersView({ model, supplierUi, mountViewLayout,
         if (meta)
             meta.textContent = `${financialPeriod} · ${financial.txCount} תנועות מוצגות`;
     }
+    function supplierRowsMarkup(rows, { allMode }, moveLocked = false) {
+        const columns = 11 + (allMode ? 1 : 0) + (supplierUi.supplierBulkMode ? 1 : 0);
+        if (!rows.length)
+            return `<tr><td colspan="${esc(columns)}" class="empty">אין שורות המתאימות לסינון.</td></tr>`;
+        return `${moveLocked ? supplierMoveTargetRow(null, 0) : ''}${rows.map((row, index) => {
+            const groupStart = allMode && (index === 0 || rows[index - 1].supplier.id !== row.supplier.id);
+            return `${txRow(row.t, row.balance, row.assignedYear, allMode ? row.supplier.name : '', groupStart)}${moveLocked ? supplierMoveTargetRow(row.t.id, row.t.sequence) : ''}`;
+        }).join('')}`;
+    }
     function renderSupplier({ scrollMode = 'auto' } = {}) {
         const viewport = captureSupplierViewport(), state = supplierViewState();
         if (!state.displaySuppliers.length) {
@@ -108,18 +114,14 @@ export function createDomainsSuppliersView({ model, supplierUi, mountViewLayout,
         }
         else if (supplierUi.supplierMoveTargetId && (!supplierUi.supplierBulkMode || !model.state.transactions.some(t => t.id === supplierUi.supplierMoveTargetId && t.supplierId === selectedSupplier.id)))
             supplierUi.supplierMoveTargetId = null;
-        const rows = filteredSupplierRows(state), visibleRows = filteredSupplierRows(state, { includeSearch: true });
+        const visibleRows = filteredSupplierRows(state, { includeSearch: true });
         const totalBalance = supplierFullBalance(state);
         const yearOptions = availableYears.map(y => `<option value="${esc(y)}" ${String(y) === supplierUi.supplierYearView ? 'selected' : ''}>ארכיון ${esc(y)}</option>`).join(''),
             allYearsOption = `<option value="all" ${supplierUi.supplierYearView === 'all' ? 'selected' : ''}>כל השנים</option>`,
             currentLabel = currentPeriodLabel(contexts, allMode);
         const movingTx = !allMode && supplierUi.supplierMoveTargetId ? model.state.transactions.find(t => t.id === supplierUi.supplierMoveTargetId && t.supplierId === selectedSupplier.id) : null,
             moveLocked = !!movingTx;
-        const tableColumnCount = 11 + (allMode ? 1 : 0) + (supplierUi.supplierBulkMode ? 1 : 0);
-        const moveRowsHtml = rows.length ? `${moveLocked ? supplierMoveTargetRow(null, 0) : ''}${rows.map((row, index) => {
-            const groupStart = allMode && (index === 0 || rows[index - 1].supplier.id !== row.supplier.id);
-            return `${txRow(row.t, row.balance, row.assignedYear, allMode ? row.supplier.name : '', groupStart)}${moveLocked ? supplierMoveTargetRow(row.t.id, row.t.sequence) : ''}`;
-        }).join('')}` : `<tr><td colspan="${esc(tableColumnCount)}" class="empty">אין שורות המתאימות לסינון.</td></tr>`;
+        const moveRowsHtml = supplierRowsMarkup(visibleRows, state, moveLocked);
         const moveGuide = moveLocked ? (
             `<div class="supplier-move-guide"><div class="supplier-move-guide-main"><span class="supplier-move-guide-icon">↕</span><div class="supplier-move-guide-text"><b>בחירת יעד לתנועה ${esc(movingTx.sequence)}</b>` +
             `<span>כל התנועות מוצגות זמנית לפי הסדר האמיתי. העבר את העכבר בין שורות ולחץ על ＋ במקום הרצוי.</span></div></div><button class="btn small" data-action="cancel-supplier-move-target">ביטול</button></div>`
@@ -199,25 +201,29 @@ export function createDomainsSuppliersView({ model, supplierUi, mountViewLayout,
             ) +
             `</div></section></div></div>`);
         mountViewLayout({ headCount: 1, className: 'supplier-view-shell' });
-        filterSupplierSearch(supplierUi.searchText, state);
+        filterSupplierSearch(supplierUi.searchText, state, visibleRows);
         syncSupplierBulkUi();
         restoreSupplierViewport(viewport, viewKey, scrollMode);
     }
-    function filterSupplierSearch(value, state) {
-        const rows = $('#main')?.querySelectorAll('tbody tr[data-search]') ?? [];
+    function filterSupplierSearch(value, state = supplierViewState(), preparedRows = null) {
         if (supplierUi.supplierMoveTargetId) {
-            rows.forEach(row => row.hidden = false);
             updateSupplierFinancialSummary(state);
             syncSupplierBulkUi();
             return;
         }
         const hadQuery = !!normalizeSupplierSearch(supplierUi.searchText);
         supplierUi.searchText = value;
-        const q = normalizeSupplierSearch(value);
-        rows.forEach(row => row.hidden = !matchesSupplierSearch(row.dataset.search, q));
-        updateSupplierFinancialSummary(state);
+        const rows = preparedRows ?? filteredSupplierRows(state, { includeSearch: true });
+        const body = $('#main')?.querySelector('.supplier-data-table tbody');
+        // Render matches once, avoiding layout writes to every stored row.
+        // Reuse rows when result IDs are unchanged.
+        if (body && (body.children.length !== rows.length ||
+            rows.some((row, index) => body.children[index]?.dataset.txId !== String(row.t.id)))) {
+            body.innerHTML = supplierRowsMarkup(rows, state);
+        }
+        updateSupplierFinancialSummary(state, rows);
         syncSupplierBulkUi();
-        if (hadQuery && !q) {
+        if (hadQuery && !normalizeSupplierSearch(value)) {
             const wrap = $('#main')?.querySelector('.supplier-table-panel .table-wrap');
             if (wrap)
                 requestAnimationFrame(() => {

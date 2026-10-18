@@ -58,6 +58,10 @@ changing persistence receipts. See [UI completion evidence](UI_ACTION_COMPLETION
 The focused orchestration audit also reproduced mutable runtime command inputs
 while earlier commits drain. These entrances now capture before waiting and
 recheck cloud boundary admission; see [runtime command evidence](STORAGE_RUNTIME_COMMAND_ADMISSION.md).
+The loaded CI baseline then reproduced 18.6-second Supplier search at 10k rows /
+4x CPU. Its presentation now projects model matches without per-row layout writes;
+see [loaded Supplier search evidence](SUPPLIER_LOADED_SEARCH.md). Other large-table
+costs remain measured follow-up targets rather than a reason for architectural churn.
 The continuation adds loaded-data recovery/search/forecast/edit/heap measurements,
 deterministic feature-entry enforcement, a tighter readability ratchet and fresh
 read-only Production postflight. See the [dated closure matrix](QUALITY_CLOSURE_20261018.md)

@@ -43,3 +43,49 @@ with BrowserSession(ROOT/'netunim-orders/site', 'supplier-search') as browser:
     assert result is True
     assert not browser.drain_serious_errors()
     print('PASS supplier search case/summary parity, Hebrew, filter/year rerenders, edited rows and empty input')
+    bounded = browser.evaluate("""(async()=>{
+      await new Promise(resolve=>setTimeout(resolve,150));
+      state=normalizeState({suppliers:[{id:'S',name:'Loaded search',active:true}],
+        transactions:Array.from({length:1000},(_,i)=>({id:'L'+i,supplierId:'S',sequence:i+1,
+          action:i===999?'TARGET-END':'ordinary row '+i,debit:1,credit:0,note:''}))});
+      currentSupplierId='S';currentView='supplier';supplierYearView='all';filterMode='all';searchText='';
+      renderSupplier();
+      const before=JSON.stringify(state),input=document.querySelector('.supplier-search');input.focus();
+      const table=document.querySelector('.supplier-data-table'),head=table.tHead;
+      let hiddenWrites=0;
+      const observer=new MutationObserver(records=>{hiddenWrites+=records.length});
+      observer.observe(table,{attributes:true,subtree:true,attributeFilter:['hidden']});
+      const query=async value=>{
+        input.value=value;input.dispatchEvent(new Event('input',{bubbles:true}));
+        const deadline=performance.now()+3000;
+        while(searchText!==value&&performance.now()<deadline)await new Promise(resolve=>setTimeout(resolve,25));
+        if(searchText!==value)throw Error('loaded input did not settle');
+      };
+      await query('TARGET-END');
+      const rows=()=>[...document.querySelectorAll('.supplier-data-table tbody tr[data-tx-id]')];
+      if(rows().length!==1||rows()[0].dataset.txId!=='L999')throw Error('search retained unmatched DOM rows');
+      const match=rows()[0];
+      await query('target-end');
+      if(rows()[0]!==match)throw Error('equivalent query replaced a surviving result row');
+      if(document.activeElement!==input||document.querySelector('.supplier-data-table')!==table||table.tHead!==head)
+        throw Error('search replaced its editor or surrounding table');
+      observer.disconnect();
+      toggleSupplierBulkMode();
+      document.getElementById('supplierBulkAll').checked=true;
+      document.getElementById('supplierBulkAll').dispatchEvent(new Event('change',{bubbles:true}));
+      if([...supplierBulkSelected].join()!=='L999')throw Error('filtered bulk selection included an unmatched row');
+      toggleSupplierBulkMode();
+      // The toolbar can change for bulk mode, so use the owning presentation
+      // command for the remaining read-only result transitions.
+      filterSupplierSearch('');
+      if(rows().length!==1000)throw Error('clearing search lost transactions');
+      filterSupplierSearch('no-such-transaction');
+      if(rows().length)throw Error('empty search kept transaction rows');
+      observer.disconnect();
+      if(hiddenWrites)throw Error('search wrote hidden on unmatched rows: '+hiddenWrites);
+      if(JSON.stringify(state)!==before)throw Error('presentation changed business data');
+      return {rows:1000,matched:1,hiddenWrites,cleared:true,bulk:true,stableEditor:true};
+    })()""", timeout=30)
+    assert bounded['hiddenWrites'] == 0 and bounded['cleared'] and bounded['bulk'], bounded
+    assert not browser.drain_serious_errors()
+    print('PASS loaded supplier search projects matching rows, stable editor, full clear/empty/bulk parity;', bounded)
