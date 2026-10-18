@@ -1,4 +1,4 @@
-import {bankFeedTimestamp as cleanIso} from '../../shared/bank-feed-values.js';
+import {normalizedCalendarTimestamp as cleanIso} from '../../shared/observation-time.js';
 import {readBankMoney} from '../../shared/bank-money-value.js';
 import {evidenceDate} from '../../shared/observation-time.js';
 

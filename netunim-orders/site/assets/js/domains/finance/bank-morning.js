@@ -1,5 +1,5 @@
 import {customerDebtProgressData} from '../../shared/customer-debt-progress.js';
-import {bankDocumentDate as dateOnly} from '../../shared/bank-feed-values.js';
+import {localCalendarDate as dateOnly} from '../../shared/observation-time.js';
 import {inferMorningBankFromText,morningBankCode,morningBankName,resolveMorningBank} from '../../core/morning-banks.js';
 
 function clean(value,max=250){return String(value??'').trim().replace(/\s+/g,' ').slice(0,max)}

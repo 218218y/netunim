@@ -21,9 +21,9 @@ test('valid leap days and the processing-date precedence are preserved', () => {
   assert.equal(bankMorningPrefill({...transaction, processedDate: '2026-10-17'}).date, '2026-10-17');
 });
 test('date-only days stay fixed across time zones and timestamps use the existing local day', () => {
-  const module = new URL('../shared/bank-feed-values.js', import.meta.url).href;
+  const module = new URL('../shared/observation-time.js', import.meta.url).href;
   for (const [TZ, expected] of [['UTC', '2026-10-17'], ['Asia/Jerusalem', '2026-10-18'], ['America/New_York', '2026-10-17']]) {
-    const script = `import {bankDocumentDate as date} from ${JSON.stringify(module)}; console.log(JSON.stringify([date('2024-02-29'),date('2026-10-17T23:30:00Z'),date('2026-02-30T23:30:00Z')]))`;
+    const script = `import {localCalendarDate as date} from ${JSON.stringify(module)}; console.log(JSON.stringify([date('2024-02-29'),date('2026-10-17T23:30:00Z'),date('2026-02-30T23:30:00Z')]))`;
     const output = execFileSync(process.execPath, ['--input-type=module', '-e', script], {env: {...process.env, TZ}, encoding: 'utf8'});
     assert.deepEqual(JSON.parse(output), ['2024-02-29', expected, '']);
   }
