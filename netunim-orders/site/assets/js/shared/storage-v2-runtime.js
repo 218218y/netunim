@@ -254,5 +254,20 @@ export function createStorageV2Runtime({app,owner,primary,captureCommitAuthority
     operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result;
   }
   async function compact(){if(!readyForCurrentOwner())return false;const active=await settledJournal(),result=await active.compact();operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
-  return {recover,recoverReadOnly,recoverForOwner,initializeLocal,initializeCloudHead,initializeUploadLocalCloudHead,persist,flush,setBoundaryGate:gate=>{if(typeof gate!=='function')throw new Error('storage_boundary_gate_invalid');boundaryGate=gate},setCloudBase,captureCloudCursor,cloudState,materializeFlight,acknowledgeFlight,rejectFlight,setCloudControl,clearCloudControl,readCloudRecovery,commitCloudRecovery,replaceCurrentState,replaceLocalAuthoritativeState,replaceLocalWithPending,adoptCloudHead,replaceAuthoritativeState,resetCloudHead,compact,primaryDiagnostics:diagnostics,get diagnostics(){return diagnostics},get primaryReady(){return readyForCurrentOwner()},get cloudScope(){return authoritative&&identity===currentOwner()&&journal?.ready?{owner:`${identity}:${app}`,epoch:journal.epoch,accountOwner:identity,writable:readyForCurrentOwner()}:null},get accountV2Active(){const active=currentOwner();return !storageOwnerReady(active)||isStorageV2ActivationCached(app,active)},get durabilityAtRisk(){return undurableCount>0||undurableFailures.size>0},get commitPromise(){return commits}};
+  async function incidentSample(){
+    const active=journal,scopedIdentity=identity;
+    const current=()=>active===journal&&scopedIdentity===currentOwner()&&readyForCurrentOwner()&&!boundaryGate();
+    return (await import('./sync-incident-adapters.js')).sampleJournalIncident({read:cloudState,ready:current,
+      current:cloud=>active.seq===cloud.seq&&active.epoch===cloud.base?.epoch&&!undurableFailures.has(active),
+      epoch:()=>active?.epoch,durabilityError:()=>active===journal&&scopedIdentity===currentOwner()&&undurableFailures.has(active),
+      blocked:()=>active===journal&&scopedIdentity===currentOwner()&&primary()&&(corruptIdentity===scopedIdentity||!!active?.error),fatal:storageRecoveryFailure});
+  }
+  return {incidentSample,recover,recoverReadOnly,recoverForOwner,initializeLocal,initializeCloudHead,initializeUploadLocalCloudHead,persist,flush,
+    setBoundaryGate:gate=>{if(typeof gate!=='function')throw new Error('storage_boundary_gate_invalid');boundaryGate=gate},
+    setCloudBase,captureCloudCursor,cloudState,materializeFlight,acknowledgeFlight,rejectFlight,setCloudControl,clearCloudControl,readCloudRecovery,commitCloudRecovery,
+    replaceCurrentState,replaceLocalAuthoritativeState,replaceLocalWithPending,adoptCloudHead,replaceAuthoritativeState,resetCloudHead,compact,primaryDiagnostics:diagnostics,
+    get diagnostics(){return diagnostics},get primaryReady(){return readyForCurrentOwner()},
+    get cloudScope(){return authoritative&&identity===currentOwner()&&journal?.ready?{owner:`${identity}:${app}`,epoch:journal.epoch,accountOwner:identity,writable:readyForCurrentOwner()}:null},
+    get accountV2Active(){const active=currentOwner();return !storageOwnerReady(active)||isStorageV2ActivationCached(app,active)},
+    get durabilityAtRisk(){return undurableCount>0||undurableFailures.size>0},get commitPromise(){return commits}};
 }

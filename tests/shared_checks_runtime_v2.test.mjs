@@ -10,6 +10,7 @@ import {createSyncChecksPersistence} from '../netunim-orders/site/assets/js/sync
 import {createChecksPersistence} from '../netunim-kupa/site/assets/js/sync/checks-persistence.js';
 import {normalizeSharedChecks} from '../netunim-kupa/site/assets/js/domains/checks/model.js';
 import {memoryDb,emergencyStore} from './storage-v2-fixture.mjs';
+import {classifySyncIncident} from '../shared/sync-incident-model.js';
 
 const clone=structuredClone,noop=()=>{},forbidden=()=>assert.fail('V1/Main write in Shared Checks primary');
 const gate=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b});return {promise,resolve,reject}};
@@ -38,6 +39,20 @@ function fixture(site='orders',options={}){
     async start(){const runtime=create();await runtime.initialize({state:visible,revision:7,intent:'cloud-authoritative',sourceOwner:'A'});return runtime},
     edit(runtime,id,values){visible.checks=visible.checks.map(row=>row.id===id?{...row,...values}:row);return runtime.persist([put(id)],{generation:++n})}};
 }
+
+test('incident observation distinguishes unreadiness, journal work, retry and a durable checks ACK',async()=>{
+  const f=fixture(),unready=f.create();assert.equal(unready.hasLocalWork,true);assert.equal(classifySyncIncident(await unready.incidentSample()).state,'unknown');
+  const runtime=await f.start(),first=await runtime.incidentSample();assert.equal(classifySyncIncident(first).state,'clean_verified');
+  await f.edit(runtime,'C',{amount:111}).committed;assert.equal(first.isCurrent(),false);assert.equal((await runtime.incidentSample()).pending,true);
+  f.rpcHook=()=>{throw new Error('network')};await assert.rejects(runtime.sync());await assert.rejects(runtime.sync());
+  assert.equal(classifySyncIncident(await runtime.incidentSample()).state,'stalled');
+  f.rpcHook=null;await runtime.sync();const final=await runtime.incidentSample();assert.equal(classifySyncIncident(final).state,'clean_verified');assert.equal(final.isCurrent(),true);
+});
+test('an accepted checks write with an intact emergency copy still reports a blocked IDB journal',async()=>{
+  const f=fixture(),runtime=await f.start();f.databases.get('A').append=async()=>{throw new Error('IDB write failed')};
+  const write=f.edit(runtime,'C',{amount:112});assert.equal(write.emergencyDurable,true);await assert.rejects(write.committed,/IDB write failed/);
+  const sample=await runtime.incidentSample();assert.equal(classifySyncIncident(sample).reason,'recovery_blocked');assert.equal(sample.verified,undefined);
+});
 
 for(const site of ['orders','kupa']){
   test(`${site}: stored-bank refresh requires a clean recovered V2 head and fences owner replacement`,async()=>{

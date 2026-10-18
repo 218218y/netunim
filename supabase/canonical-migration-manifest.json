@@ -213,5 +213,10 @@
     "version": "20261018121000",
     "name": "morning_check_registration",
     "sha256": "5134d2e00f116f700a2b67fae8a2c81115894de81099e37c51c7f4d9b83c18fb"
+  },
+  {
+    "version": "20261018180000",
+    "name": "sync_incidents",
+    "sha256": "a4b9cd667580fa31456eaece6cb88e075144e079712bc3295170dc82ace9c505"
   }
 ]

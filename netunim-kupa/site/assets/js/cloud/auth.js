@@ -1,7 +1,7 @@
 import {createAuthenticatedAccountScope} from '../shared/authenticated-account-scope.js';
 import {createBrowserAccountObservation} from '../shared/browser-account-observation.js';
 import {createAuthSessionPersistence} from './session-store.js';
-import {createSyncCapabilityGate,syncRequestNeedsCapabilities} from '../shared/sync-capabilities.js';
+import {createSyncCapabilityGate,syncRequestNeedsCapabilities,isSyncIncidentRpc} from '../shared/sync-capabilities.js';
 import {supabaseConfig as SUPA_CONFIG} from '../../../supabase/config.js';
 import {SUPA_SESSION_KEY, SUPA_SESSION_IDB_KEY, SUPA_EMAIL_KEY, SUPA_AUTO_KEY} from '../state/constants.js';
 import {createDataApiScheduler} from '../shared/cloud-sync.js';
@@ -41,11 +41,14 @@ async function withSupaDataApiSlot(path,request,{priority='low',coalesceKey='',s
     if(Date.now()<supaDataApiBlockedUntil)throw supaDataApiBlockedError();
     try{
       const response=await request(),status=Number(response?.status);
+      // Keep endpoint-local monitoring errors out of the business circuit;
+      // authentication, shared scheduling and service throttling remain intact.
+      if(isSyncIncidentRpc(path)&&status!==429)return response;
       if(SUPA_DATA_API_RETRY_STATUSES.has(status))tripSupaDataApiBreaker();
       else if(status===429){if(await responseIsAppBusy(response))resetSupaDataApiBreaker();else tripSupaDataApiRateLimit(response)}
       else resetSupaDataApiBreaker();
       return response;
-    }catch(error){if(isSupaDataApiTransportFailure(error))recordSupaDataApiTransportFailure({priority,safeRead,retried});throw error}
+    }catch(error){if(!isSyncIncidentRpc(path)&&isSupaDataApiTransportFailure(error))recordSupaDataApiTransportFailure({priority,safeRead,retried});throw error}
   },{priority,key:coalesceKey,blockedError:supaDataApiBlockedError});
   return scheduled.then(response=>typeof response?.clone==='function'?response.clone():response);
 }

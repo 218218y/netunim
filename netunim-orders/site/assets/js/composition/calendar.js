@@ -49,5 +49,24 @@ export function createOrdersCalendarRuntime({calendarSession,supaFetch,accountSc
   }
 
   function dispose(){if(disposed)return false;disposed=true;if(controller)controller.dispose();else effects.dispose();return true}
-  return {createController,actionPorts,dispose,drain:()=>controller?controller.runtime.drain():effects.drain()};
+  async function incidentSample(){
+    // Historical Google queue rows carry no Supabase owner. Do not attribute
+    // them to a login until the existing Google account check has succeeded.
+    if(!calendarAuth.hasUsableToken()||!calendarSession.accountVerified)return {known:false};
+    const operation=calendarAuth.captureOperation(),accountId=calendarSession.accountId;
+    const stored=await calendarStorage.getMeta('accountId');operation.assertCurrent();
+    if(!accountId||stored!==accountId)return {known:false};
+    const hash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(accountId));
+    let result={known:false};
+    await calendarStorage.confirmPendingSnapshot(snapshot=>{
+      operation.assertCurrent();
+      const pending=snapshot.operations.length>0;
+      result={known:true,pending,verified:!pending&&snapshot.isSettled(),epoch:'calendar:'+Array.from(new Uint8Array(hash),byte=>byte.toString(16).padStart(2,'0')).join(''),evidence:'calendar_queue',
+        failures:Math.max(0,...snapshot.operations.map(row=>row.attempts)),errorCode:'',
+        isCurrent:()=>{try{operation.assertCurrent();return snapshot.isCurrent()&&snapshot.isSettled()&&calendarSession.accountVerified&&calendarSession.accountId===accountId}catch{return false}}};
+      return true;
+    });
+    operation.assertCurrent();return result;
+  }
+  return {incidentSample,createController,actionPorts,dispose,drain:()=>controller?controller.runtime.drain():effects.drain()};
 }

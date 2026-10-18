@@ -641,6 +641,15 @@ uiEvents.bindActionEvents(document.getElementById('modal'),uiActions);
 uiGlobalSearch.bind();
 dashboard.runtime.start();
 startupMark('composition-end');
+void import('./shared/sync-incident-feature.js').then(({createSyncIncidentFeature})=>createSyncIncidentFeature({site:'kupa',accountScope:cloudAuth.getAccountScope,subscribeAccountScope:cloudAuth.subscribeAccountScope,
+  confirmReview:message=>uiModal.confirmDialog('טיפול ידני בהתראת סנכרון',message,{confirmText:'סימון כטופל ללא אימות',tone:'danger'}),
+  primary:()=>tab.primaryTab,request:cloudAuth.supaRest,
+  domains:[
+    {domain:'kupa_main',read:()=>storageOwner.current()===cloudAuth.getAccountScope().owner?mainStorageV2.incidentSample():{known:false}},
+    {domain:'shared_checks',read:()=>storageOwner.current()===cloudAuth.getAccountScope().owner?sharedChecksV2.incidentSample():{known:false}},
+    {domain:'kupa_sheet',read:()=>notes.workbook.sync.incidentSample()},
+  ],
+})).catch(()=>{const warning=document.createElement('section');warning.className='sync-incidents';warning.dataset.warning='true';warning.textContent='לא ניתן לטעון התראות סנכרון. יש לרענן את האתר.';warning.setAttribute('role','status');document.body.append(warning)});
 export const appReady=lifecycle.boot();
 void appReady.then(()=>{startupMark('boot-complete');if(tab.primaryTab&&!session.storageProtocolBlocked&&storageRecovery.isReady()&&!session.syncCapabilitiesError&&session.backendReady&&!session.startupCloudHydrating)startupMark('command-ready')},()=>{});
 export async function sharedChecksStorageV2Diagnostics(){await sharedChecksV2.flush();return {...sharedChecksV2.diagnostics}}

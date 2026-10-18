@@ -1,0 +1,11 @@
+.sync-incidents{position:fixed;bottom:12px;left:12px;z-index:900;max-width:min(480px,calc(100vw - 24px));font:inherit;color:#293443;border:1px solid #cbd5e1;border-radius:12px;background:#fff;box-shadow:0 4px 24px #0002}
+.sync-incidents[hidden],.sync-incidents-panel[hidden]{display:none}
+.sync-incidents button{font:inherit;cursor:pointer;border:1px solid #cbd5e1;border-radius:7px;padding:7px 10px;background:#fff;color:inherit}
+.sync-incidents .sync-incidents-toggle{display:flex;gap:20px;align-items:center;justify-content:space-between;width:100%;border:0;border-radius:12px;padding:10px 14px;text-align:right;background:#f1f5f9;font-size:13px}
+.sync-incidents[data-warning=true] .sync-incidents-toggle{background:#fff0cf;color:#703c08;font-weight:700}
+.sync-incidents-panel{padding:0 16px 12px;max-height:65vh;overflow:auto;font-size:14px;line-height:1.6}
+.sync-incidents-panel ul{list-style:none;padding:0}.sync-incidents-panel li{padding:12px 0;border-bottom:1px solid #e2e8f0}
+.sync-incidents-panel p{margin:10px 0}.sync-incidents-panel label{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0}
+.sync-incidents-panel input{font:inherit;min-width:0;padding:6px 8px;max-width:100%;border:1px solid #94a3b8;border-radius:6px}
+.sync-incidents-actions{display:flex;gap:6px;flex-wrap:wrap}.sync-incidents-error{color:#a32424}
+@media(max-width:600px){.sync-incidents{bottom:8px;left:8px;max-width:calc(100vw - 16px)}.sync-incidents .sync-incidents-toggle{font-size:12px;gap:10px}}

@@ -7,4 +7,5 @@ export function createSyncCapabilityGate(read){
     return promise;
   }};
 }
-export function syncRequestNeedsCapabilities(path,method){return /^\/rest\/v1(?:\/|\?|$)/.test(path)&&!['GET','HEAD'].includes(String(method||'GET').toUpperCase())&&!/^\/rest\/v1\/rpc\/(get_netunim_sync_capabilities|list_incomplete_restore_groups_v5)$/.test(path)}
+export function isSyncIncidentRpc(path){return /^\/rest\/v1\/rpc\/(report_sync_incident_v1|resolve_sync_incident_v1|list_active_sync_incidents_v1|mark_sync_incident_reviewed_v1)$/.test(path)}
+export function syncRequestNeedsCapabilities(path,method){return /^\/rest\/v1(?:\/|\?|$)/.test(path)&&!['GET','HEAD'].includes(String(method||'GET').toUpperCase())&&!isSyncIncidentRpc(path)&&!/^\/rest\/v1\/rpc\/(get_netunim_sync_capabilities|list_incomplete_restore_groups_v5)$/.test(path)}

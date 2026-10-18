@@ -171,6 +171,10 @@
     {
       "version": "20261018121000",
       "name": "morning_check_registration"
+    },
+    {
+      "version": "20261018180000",
+      "name": "sync_incidents"
     }
   ]
 }
