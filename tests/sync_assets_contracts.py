@@ -170,6 +170,18 @@ class SyncAssetContracts(unittest.TestCase):
                 self.assertEqual(self.hashes()[1], previous[1])
                 self.run_sync(check=True)
 
+    def test_worker_behavior_and_response_header_share_one_idempotent_release(self):
+        before = self.hashes()
+        worker = self.root/'netunim-kupa/site/service-worker.js'
+        worker.write_bytes(worker.read_bytes()+b'\n// reviewed worker behavior change\n')
+        self.run_sync()
+        self.assertNotEqual(self.hashes()[0], before[0])
+        self.assertEqual(self.hashes()[1], before[1])
+        headers = (self.root/'netunim-kupa/site/_headers').read_text()
+        self.assertEqual(headers.count('X-Netunim-Release:'), 1)
+        self.assertIn('X-Netunim-Release: '+self.hashes()[0], headers)
+        self.run_sync(check=True)
+
     def test_binary_newlines_remain_significant_and_bytes_are_preserved(self):
         for name in ('favicon.ico', 'favicon-16x16.png'):
             with self.subTest(binary=name):

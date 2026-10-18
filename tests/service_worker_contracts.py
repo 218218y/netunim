@@ -29,11 +29,12 @@ def runtime_probe(sw_path: Path):
     probe = r"""
 const fs=require('fs'),vm=require('vm');
 const source=fs.readFileSync(process.argv[1],'utf8'),hasLazyRuntime=source.includes('LAZY_RUNTIME_PREFIXES');
+const release=source.match(/const CACHE='([^']+)'/)[1],headers={get:()=>release};
 (async()=>{
   const handlers={},calls={open:[],addAll:[],put:[],deleted:[],currentMatch:[],globalMatch:[],claim:0,skip:0,network:0};
   let currentAssetRequest=null,lazyPutEntered=false,lazyPutRelease;
   const lazyPutGate=new Promise(resolve=>{lazyPutRelease=resolve});
-  const currentAsset={tag:'current-app-js'},currentIndex={tag:'current-index'};
+  const currentAsset={tag:'current-app-js',headers},currentIndex={tag:'current-index',headers};
   const unrelatedAsset={tag:'unrelated-app-js'},unrelatedIndex={tag:'unrelated-index'};
   const cache={
     addAll:async items=>{calls.addAll.push([...items])},
@@ -46,6 +47,7 @@ const source=fs.readFileSync(process.argv[1],'utf8'),hasLazyRuntime=source.inclu
       calls.currentMatch.push(typeof key==='string'?key:key.url||'request');
       if(key===currentAssetRequest)return currentAsset;
       if(key==='./index.html')return currentIndex;
+      if(typeof key==='string'&&key.startsWith('./'))return {headers};
       return null;
     }
   };
@@ -63,7 +65,7 @@ const source=fs.readFileSync(process.argv[1],'utf8'),hasLazyRuntime=source.inclu
         return null;
       }
     },
-    fetch:async request=>{calls.network++;return {ok:true,tag:'network',clone(){return {ok:true,tag:'clone'}}}}
+    fetch:async request=>{calls.network++;return {ok:true,headers,tag:'network',clone(){return {ok:true,headers,tag:'clone'}}}}
   };
   vm.createContext(context);vm.runInContext(source,context,{filename:process.argv[1]});
   const event=extra=>{const waits=[];let response=null;return Object.assign({waitUntil:p=>waits.push(Promise.resolve(p)),respondWith:p=>{response=Promise.resolve(p)},_waits:waits,_response:()=>response},extra)};

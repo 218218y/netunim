@@ -94,6 +94,21 @@ class WindowsDeploymentContracts(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertEqual(calls, [])
 
+    def test_real_post_upload_smoke_failure_stops_the_release(self):
+        source = (ROOT/'tools/deploy_site_core.bat').read_text(encoding='utf8')
+        tail = source[source.index('call npx --yes'):]
+        self.write('tools/postupload.bat', '@echo off\nsetlocal\nset "PROJECT_NAME=bargig-orders"\n'
+                   'set "SITE_DIR=%~dp0..\\netunim-orders\\site"\n'
+                   'set "DEPLOY_WORK_DIR=%~dp0..\\isolated-upload"\n'+tail)
+        self.write('tools/npx.cmd', '@echo off\necho upload>>"%CI_CALLS%"\nexit /b %UPLOAD_EXIT%\n')
+        self.write('tools/deployment_smoke.py', "import os\nfrom pathlib import Path\nwith Path(os.environ['CI_CALLS']).open('a') as f: f.write('smoke\\n')\nraise SystemExit(int(os.environ['SMOKE_EXIT']))\n")
+        self.env['PATH'] = str(self.root/'tools')+os.pathsep+self.env['PATH']
+        for upload, smoke, expected, calls in [('7','0',7,['upload']), ('0','2',4,['upload','smoke']), ('0','0',0,['upload','smoke'])]:
+            self.env.update(UPLOAD_EXIT=upload, SMOKE_EXIT=smoke)
+            result, recorded = self.run_bat('tools/postupload.bat', '')
+            self.assertEqual(result.returncode, expected, result.stdout+result.stderr)
+            self.assertEqual(recorded, calls)
+
     def test_real_engine_database_gate_runs_before_preflight_success_and_stops_both_sites(self):
         shutil.copyfile(ROOT/'tools/deploy_site_core.bat', self.root/'tools/deploy_site_core.bat')
         shutil.copyfile(ROOT/'tools/wrangler-version.txt', self.root/'tools/wrangler-version.txt')

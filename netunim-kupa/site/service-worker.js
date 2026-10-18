@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='kupa-app-shell-';
-const CACHE='kupa-app-shell-esm-ba64841fa607';
+const CACHE='kupa-app-shell-esm-657d6722e01a';
 const SHELL=[
   './',
   './index.html',
@@ -345,9 +345,17 @@ const SHELL=[
 const SHELL_PATHS=new Set(SHELL.map(item=>new URL(item,self.location.href||self.location.origin+'/').pathname));
 const LAZY_RUNTIME_PREFIXES=['./assets/vendor/'].map(item=>new URL(item,self.location.href||self.location.origin+'/').pathname);
 const isLazyRuntimePath=pathname=>LAZY_RUNTIME_PREFIXES.some(prefix=>pathname.startsWith(prefix));
+const sameRelease=response=>response?.headers.get('X-Netunim-Release')===CACHE;
 
 self.addEventListener('install',event=>{
-  event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(SHELL)).then(()=>self.skipWaiting()));
+  event.waitUntil((async()=>{
+    const cache=await caches.open(CACHE);
+    await cache.addAll(SHELL);
+    for(const path of SHELL)if(!sameRelease(await cache.match(path)))throw new Error('shell_release_mismatch');
+    // Existing tabs finish with their controlling release. The new worker waits
+    // until those tabs close; it never swaps a running page's module graph.
+    if(!self.registration?.active)await self.skipWaiting();
+  })());
 });
 
 self.addEventListener('activate',event=>{
@@ -369,6 +377,7 @@ self.addEventListener('fetch',event=>{
     const lazyResponse=(async()=>{
       try{
         const response=await fetch(event.request);
+        if(!response.ok||!sameRelease(response))throw new Error('shell_release_mismatch');
         if(response.ok){
           const cache=await caches.open(CACHE);
           await cache.put(event.request,response.clone());
@@ -377,7 +386,7 @@ self.addEventListener('fetch',event=>{
       }catch(error){
         const cache=await caches.open(CACHE);
         const cached=await cache.match(event.request);
-        if(cached)return cached;
+        if(sameRelease(cached))return cached;
         throw error;
       }
     })();
@@ -389,7 +398,10 @@ self.addEventListener('fetch',event=>{
   // Network-first prevents a previously installed PWA from keeping stale HTML,
   // config or icons after a deployment. Offline remains fully supported by the
   // verified app-shell cache and navigation fallback.
-  const network=fetch(event.request);
+  const network=fetch(event.request).then(response=>{
+    if(!response.ok||!sameRelease(response))throw new Error('shell_release_mismatch');
+    return response;
+  });
   const cacheWrite=network.then(response=>{
     if(!response.ok||!SHELL_PATHS.has(url.pathname))return;
     return caches.open(CACHE).then(cache=>cache.put(event.request,response.clone()));
@@ -399,8 +411,11 @@ self.addEventListener('fetch',event=>{
     network.catch(async()=>{
       const cache=await caches.open(CACHE);
       const cached=await cache.match(event.request);
-      if(cached)return cached;
-      if(event.request.mode==='navigate')return cache.match('./index.html');
+      if(sameRelease(cached))return cached;
+      if(event.request.mode==='navigate'){
+        const index=await cache.match('./index.html');
+        if(sameRelease(index))return index;
+      }
       throw new Error('offline_and_not_cached');
     })
   );

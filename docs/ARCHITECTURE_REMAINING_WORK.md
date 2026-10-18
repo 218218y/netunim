@@ -60,6 +60,12 @@ complete; native abort after request success grants no receipt and preserves
 prior state. See [durable receipts](IDB_DURABLE_RECEIPTS.md). Full journal/runtime
 strict conversion remains selective rather than implied by this boundary.
 
+Mixed-release module responses were reproduced in both worker bodies. Generated
+release response headers now fence network/cache adoption; updates wait for old
+tabs to close. Every site upload is followed by critical-asset smoke before the
+pair continues. See [paired rollout and recovery](DEPLOYMENT_COMPATIBILITY.md),
+including the first protected-release adoption limit and per-project recovery.
+
 ### Four-stage review continuation, 2026-10-18
 
 1. **Bank calendar and monetary integrity:** reproduced impossible Morning dates

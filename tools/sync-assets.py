@@ -230,7 +230,13 @@ def render_worker(label: str, snapshot: OverlaySnapshot, worker_path: str) -> by
     for item in shell[1:] + ['./_headers']:
         relative = f'{site}/{item[2:]}'
         digest.update(item.encode('utf-8'))
-        digest.update(asset_hash_bytes(relative, snapshot.read(relative)))
+        content = asset_hash_bytes(relative, snapshot.read(relative))
+        if item == './_headers':
+            # The derived release header must not hash itself.
+            content = re.sub(rb'^  X-Netunim-Release: [^\n]+\n?', b'', content, flags=re.MULTILINE)
+        digest.update(content)
+    # Worker behavior is part of a release, too. Ignore only its derived key.
+    digest.update(re.sub(r"const CACHE='[^']+';", "const CACHE='derived';", updated).encode('utf-8'))
     # Vendor trees are lazy-cached, but runtime upgrades must still rotate the
     # app cache so an offline session cannot combine a new adapter with stale
     # third-party code. Hash every deterministic vendor runtime manifest.
@@ -331,6 +337,13 @@ def plan_sync(snapshot: WorktreeSnapshot | IndexSnapshot) -> list[Change]:
         normalized_current = current.replace(b'\r\n', b'\n').replace(b'\r', b'\n')
         if expected != normalized_current:
             changes.append(Change(worker, expected, f'{label}: refreshed service-worker shell and cache key'))
+        release = re.search(rb"const CACHE='([^']+)'", expected)[1]
+        headers = f'netunim-{label}/site/_headers'
+        current_headers = asset_hash_bytes(headers, overlay.read(headers))
+        clean_headers = re.sub(rb'^  X-Netunim-Release: [^\n]+\n?', b'', current_headers, flags=re.MULTILINE)
+        expected_headers = clean_headers.rstrip(b'\n') + b'\n  X-Netunim-Release: ' + release + b'\n'
+        if current_headers != expected_headers:
+            changes.append(Change(headers, expected_headers, f'{label}: refreshed release response header'))
     return changes
 
 

@@ -145,19 +145,27 @@ def test_worker_upgrade(label, fixture):
         })()""")
         browser.publish_upgrade()
         check_http_headers(browser)
+        waiting = browser.evaluate("""(async()=>{
+          const previous=navigator.serviceWorker.controller,registration=await navigator.serviceWorker.ready;
+          await registration.update();
+          for(let i=0;i<300;i++){
+            if(registration.waiting)return navigator.serviceWorker.controller===previous;
+            await new Promise(resolve=>setTimeout(resolve,50));
+          }
+          throw Error('Worker update did not wait for the open legacy page');
+        })()""")
+        assert waiting, 'Update replaced the active page mid-session'
+        # Closing the last scoped page permits the waiting release to activate.
+        browser.call('Page.navigate', {'url': 'about:blank'})
+        time.sleep(.1)
+        browser._navigate()
         upgraded = browser.evaluate("""(async()=>{
-          const previous=navigator.serviceWorker.controller;
-          const changed=new Promise((resolve,reject)=>{
-            const timer=setTimeout(()=>reject(new Error('Worker upgrade timed out')),15000);
-            navigator.serviceWorker.addEventListener('controllerchange',()=>{clearTimeout(timer);resolve()},{once:true});
-          });
-          await (await navigator.serviceWorker.ready).update();
-          await changed;
+          await navigator.serviceWorker.ready;
           const active=(await navigator.serviceWorker.ready).active;
           if(active.state!=='activated')await new Promise(resolve=>active.addEventListener('statechange',()=>{if(active.state==='activated')resolve()}));
           const names=await caches.keys(),cacheName=names.find(n=>n.includes('app-shell-esm-')),cache=await caches.open(cacheName);
           const sha=async path=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',await (await cache.match(path)).arrayBuffer()))).map(x=>x.toString(16).padStart(2,'0')).join('');
-          return {changed:navigator.serviceWorker.controller!==previous,names,
+          return {changed:!!navigator.serviceWorker.controller,names,
             cacheName,globalEntry:await (await caches.match('./assets/app.js')).text(),
             globalIndex:await (await caches.match('./index.html')).text(),
             paths:(await cache.keys()).map(r=>new URL(r.url).pathname),
