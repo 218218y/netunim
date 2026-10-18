@@ -40,6 +40,7 @@ GROUPS = {
     "browser-sync": ["runtime_restore_server_recovery.py", "runtime_backup_restore_scope.py", "runtime_backup_browser_resources.py", "runtime_local_birth_gate.py", "runtime_owner_transfer.py", "runtime_storage_owner_binding.py", "runtime_owner_transactions.py", "runtime_checkpoint_authority.py", "runtime_journal_authority.py", "runtime_journal_input_capture.py", "runtime_main_ownership.py", "runtime_automatic_backup_ownership.py", "runtime_orders_folder_write_ownership.py", "runtime_primary_tab_lock_ownership.py", "runtime_storage.py", "runtime_orders_save_scheduling.py", "runtime_orders_checks_capability.py", "runtime_ack_checkpoint_sequence.py", "runtime_cloud_publication_scope.py", "runtime_post_ack_recovery.py", "runtime_cloud_record_recovery.py", "runtime_kupa_save_confirmation.py", "spreadsheet_runtime.py", "runtime_spreadsheet_confirmation.py", "runtime_workflows.py", "runtime_sync_multitab.py", "runtime_sync_two_computers.py", "runtime_financial.py"],
     "browser-database": ["runtime_sync_postgres.py"],
 }
+GROUPS["browser-sync"].append("runtime_auth_session_persistence.py")
 CORE_SUITES = [suite for group, suites in GROUPS.items() if not group.startswith("browser-") for suite in suites]
 RUNTIME_SUITES = [suite for group, suites in GROUPS.items() if group.startswith("browser-") for suite in suites]
 
