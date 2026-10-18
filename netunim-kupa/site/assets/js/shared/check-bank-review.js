@@ -152,8 +152,8 @@ export function checkBankActivityMarkup(checks,account,page=0,imageOptions={}, {
   const navigation=pages>1?`<nav class="row-actions" aria-label="עמודי הודעות הבנק"><button type="button" class="btn" data-action="check-bank-history-page" data-click-arg0="${currentPage-1}" ${currentPage===0?'disabled':''}>הקודם</button><span>עמוד ${currentPage+1} מתוך ${pages}</span><button type="button" class="btn" data-action="check-bank-history-page" data-click-arg0="${currentPage+1}" ${currentPage===pages-1?'disabled':''}>הבא</button></nav>`:'';
   const countLabel=groups.length===1?'צ׳ק אחד':`${groups.length} צ׳קים`;
   const menuHost=floatingMenu?' data-dismiss-on-outside':'',menuPanel=floatingMenu?' data-menu-panel':'';
-  return `<div class="row-actions"><button type="button" class="btn" data-action="refresh-check-bank" title="בדיקה">רענן התאמות</button></div>
-<details class="section check-bank-activity"${menuHost}><summary>הודעות ופעולות אוטומטיות בבנק (${countLabel})</summary><div class="section-body"${menuPanel}>${groups.length?groups.slice(currentPage*25,(currentPage+1)*25).map(group=>activityGroupMarkup(group,imageOptions)).join(''):'<p>פעולות הזיהוי והמעקב יופיעו כאן לאחר סנכרון הבנק. התאמות ודאיות ופירעון תקין מתועדים כאן ללא אזהרה.</p>'}${navigation}</div></details>`;
+  return `<div class="check-bank-controls${floatingMenu?' checks-header-activity':''}"><button type="button" class="btn check-bank-refresh" data-action="refresh-check-bank" title="בדיקה">רענן התאמות</button>
+<details class="section check-bank-activity"${menuHost}><summary>הודעות ופעולות אוטומטיות בבנק (${countLabel})</summary><div class="section-body"${menuPanel}>${groups.length?groups.slice(currentPage*25,(currentPage+1)*25).map(group=>activityGroupMarkup(group,imageOptions)).join(''):'<p>פעולות הזיהוי והמעקב יופיעו כאן לאחר סנכרון הבנק. התאמות ודאיות ופירעון תקין מתועדים כאן ללא אזהרה.</p>'}${navigation}</div></details></div>`;
 }
 
 export function applyCheckBankReview(checks,id,eventId,action){

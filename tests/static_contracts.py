@@ -657,8 +657,8 @@ ok(presentation_contains(orders_finance_view, "if(section==='bank')return `${ban
 ok(presentation_contains(orders_finance_view, "checksView.checksMarkup({embedded:true,showEmbeddedStatus:false,showBankActivity:false})") and presentation_contains(orders_finance_view, "dashboardView.summaryMarkup({embedded:true})")
    and presentation_contains(orders_finance_view, "if(section==='checks')return checksView.checksHeaderContextMarkup()")
    and 'function checksHeaderContextMarkup()' in orders_checks_view
-   and 'class="checks-header-activity"' in orders_checks_view
-   and orders_checks_view.index('class="checks-header-activity"') < orders_checks_view.index('${checksCloudLabel()}</div>`;', orders_checks_view.index('function checksHeaderContextMarkup'))
+   and '{floatingMenu:true}' in orders_checks_view
+   and orders_checks_view.index('checkBankActivityMarkup(', orders_checks_view.index('function checksHeaderContextMarkup')) < orders_checks_view.index('${checksCloudLabel()}</div>`;', orders_checks_view.index('function checksHeaderContextMarkup'))
    and "checksMarkup({embedded=false,showEmbeddedStatus=true,showBankActivity=true}" in orders_checks_view and "summaryMarkup({embedded=false}" in orders_dashboard_view,
    "orders Kupa Checks header: the live bank-activity disclosure moves beside the shared-checks source label while embedded content omits the duplicate body disclosure")
 credit_markup_block = orders_finance_view.split('function creditMarkup(s)', 1)[1].split('function headerContextMarkup', 1)[0]
