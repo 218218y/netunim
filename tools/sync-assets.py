@@ -16,6 +16,7 @@ import subprocess
 import sys
 
 # Also loaded through importlib by the staged-snapshot contract suite.
+sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from public_asset_names import asset_name_violations
 

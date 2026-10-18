@@ -13,6 +13,8 @@ including untracked root files outside its generated-shell inventory. Staged
 synchronization checks the captured proposed Git tree and validates both plans
 before changing either surface. These gates report and stop; they never silently
 delete an unfamiliar asset.
+Helper imports disable bytecode generation so checks and installed Git hooks
+leave a clean worktree, including isolated repositories without ignore rules.
 
 Versioned APIs, compatibility readers, `copy.js`, ordinary copy icons and verified
 vendor/runtime/map names remain valid. A deliberately named historical exception

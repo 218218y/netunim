@@ -4,6 +4,7 @@ import re
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.dont_write_bytecode = True
 sys.path.insert(0, str(ROOT / 'tools'))
 from public_asset_names import asset_name_issue
 ALLOWED={'.html','.css','.js','.webmanifest','.ico','.png'}

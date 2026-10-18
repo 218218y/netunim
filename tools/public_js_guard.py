@@ -12,6 +12,7 @@ import argparse
 import re
 import sys
 
+sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from public_asset_names import site_name_violations
 
