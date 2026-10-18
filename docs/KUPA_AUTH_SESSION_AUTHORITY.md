@@ -17,6 +17,13 @@ before waiting for a browser lock. Both refresh replies and password login repli
 are rejected if logout or account replacement occurred while they were pending.
 Business data ownership and the Storage V2 writer remain unchanged.
 
+The deterministic eager graph changes from 300 to 301 modules and measures
+1,749,511 source bytes on the branch. Only the module-count ceiling is adjusted
+for this required authority owner; the 1,753,000-byte and all native/4x CPU timing
+ceilings remain unchanged. Full CI's startup timing suite passed on the initial
+candidate. The Finance automation runtime fixture now uses the real auth command
+instead of mutating its credential projection directly.
+
 Evidence: `auth_session_persistence.test.mjs`, existing auth/account/browser
 observation suites, and the strict checked implementation with negative consumers
 in `checked-auth-session-persistence.mjs`. Physical process interruption remains a

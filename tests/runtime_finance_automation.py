@@ -27,7 +27,7 @@ FLOW = r"""(async()=>{
  try{
    assert(tab.primaryTab&&storageRecovery.isReady(),'fixture requires primary recovered storage');
    session.connectionMode=CASE==='owner'||CASE==='logout'?'supabase':'local';session.backendReady=true;
-   if(session.connectionMode==='supabase')session.supaSession={user:{id:'fixture-owner-A'}};
+   if(session.connectionMode==='supabase')cloudAuth.storeSupaSession({user:{id:'fixture-owner-A'}});
    state=normalizeState({...state,creditSync:{version:4,syncedAt:'2020-01-01T00:00:00Z',profiles:[],errors:[]}});
    const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
    const database=createStorageJournalDb(),identity=storageOwner.current()+':kupa';
@@ -36,7 +36,7 @@ FLOW = r"""(async()=>{
    const one=financeAutomation.start(),two=financeAutomation.start();assert(one===two,'parallel start must join one operation');
    await waitFor(()=>statusCalls===1);
    if(CASE==='offline'){online=false;window.dispatchEvent(new Event('offline'))}
-   if(CASE==='owner')session.supaSession={user:{id:'fixture-owner-B'}};
+   if(CASE==='owner')cloudAuth.storeSupaSession({user:{id:'fixture-owner-B'}});
    if(CASE==='secondary')tab.primaryTab=false;
    if(CASE==='logout')assert(uiCloud.logoutSupabase()===true,'actual UI logout must stop automation');
    // Simulate the pending status response failing as connectivity disappears.
@@ -59,7 +59,7 @@ FLOW = r"""(async()=>{
    return {singleStatus:true,noProvider:true,noTimer:true,stateRetained:true,journalRetained:true,reconnect:CASE!=='offline'||statusCalls===2};
  }finally{
    financeAutomation.stop();for(const gate of held)gate.resolve(reply());
-   globalThis.fetch=realFetch;tab.primaryTab=true;session.connectionMode=originalMode;session.backendReady=originalReady;session.supaSession=originalAuth;state=originalState;
+   globalThis.fetch=realFetch;tab.primaryTab=true;session.connectionMode=originalMode;session.backendReady=originalReady;cloudAuth.storeSupaSession(originalAuth);state=originalState;
    if(oldOnline)Object.defineProperty(navigator,'onLine',oldOnline);else delete navigator.onLine;
  }
 })()"""

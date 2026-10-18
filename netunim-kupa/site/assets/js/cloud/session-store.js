@@ -11,6 +11,8 @@ export function createAuthSessionPersistence({key,initial,decode,storage,mirror,
   let cached=initial;
   let loaded=initial!==null;
   let generation=0;
+  /** @type {string|null|undefined} */
+  let observedRaw;
   /** @type {Promise<void>|null} */
   let pending=null;
 
@@ -22,11 +24,20 @@ export function createAuthSessionPersistence({key,initial,decode,storage,mirror,
   function reread(){
     generation++;
     loaded=true;
-    try{cached=parse(storage().getItem(key))}catch{cached=null}
+    try{observedRaw=storage().getItem(key);cached=parse(observedRaw)}catch{observedRaw=undefined;cached=null}
     return cached;
   }
 
-  function load(){return loaded?cached:reread()}
+  function load(){
+    if(!loaded)return reread();
+    // Missed browser notifications cannot authorize an old account's reply.
+    // Keep the parsed cache only while its local authority record still agrees.
+    if(observedRaw!==undefined){
+      try{if(storage().getItem(key)!==observedRaw)return reread()}
+      catch{generation++;observedRaw=undefined;cached=null}
+    }
+    return cached;
+  }
 
   /** @param {T|null} value */
   function enqueueMirror(value){
@@ -51,9 +62,11 @@ export function createAuthSessionPersistence({key,initial,decode,storage,mirror,
       // A failed or late IDB delete can never override it on the next startup.
       storage().setItem(key,raw);
     }catch(cause){
+      observedRaw=undefined;
       // Revoke this instance, but never report durable logout/login as successful.
       throw Object.assign(new Error('לא ניתן לשמור את מצב ההתחברות במחשב. יש לאפשר אחסון ולנסות שוב.'),{code:'cloud_session_persistence_failed',cause});
     }
+    observedRaw=raw;
     cached=captured;
     enqueueMirror(captured);
   }

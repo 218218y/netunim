@@ -89,10 +89,35 @@ for(const success of [true,false])test(`logout during token refresh fences a lat
 
 test('refresh flights belong to one auth instance and login epoch',async t=>{
   const f=await production(t),one=f.create(),two=f.create(),gate=deferred(),calls=[];
-  one.storeSupaSession(authSession('A'));two.storeSupaSession(authSession('B'));
-  t.mock.method(globalThis,'fetch',async(_url,options)=>{const token=JSON.parse(options.body).refresh_token;calls.push(token);if(token==='refresh-A')return gate.promise;return Response.json(authSession('B'))});
-  const pending=one.supaRefresh();await two.supaRefresh();assert.deepEqual(calls,['refresh-A','refresh-B']);
+  one.storeSupaSession(authSession('A'));two.storeSupaSession(authSession('A'));
+  t.mock.method(globalThis,'fetch',async(_url,options)=>{calls.push(JSON.parse(options.body).refresh_token);if(calls.length===1)return gate.promise;return Response.json(authSession('A'))});
+  const pending=one.supaRefresh();await two.supaRefresh();assert.deepEqual(calls,['refresh-A','refresh-A']);
   gate.resolve(Response.json(authSession('A')));await pending;
+});
+
+test('a new login starts its own refresh while the obsolete flight drains',async t=>{
+  const f=await production(t),auth=f.create(),gate=deferred();auth.storeSupaSession(authSession('A'));
+  t.mock.method(globalThis,'fetch',async(_url,options)=>JSON.parse(options.body).refresh_token==='refresh-A'?gate.promise:Response.json(authSession('B')));
+  const old=assert.rejects(auth.supaRefresh(),{code:'cloud_auth_scope_changed'});
+  auth.storeSupaSession(null);auth.storeSupaSession(authSession('B'));
+  assert.equal((await auth.supaRefresh()).user.id,'B');gate.resolve(Response.json(authSession('A')));await old;
+  assert.equal(auth.loadSupaSession().user.id,'B');
+});
+
+test('refresh waiting for a browser lock cannot start under a later login',async t=>{
+  const f=await production(t),auth=f.create(),gate=deferred();let requests=0;
+  navigator.locks={request:async(_key,_options,work)=>{await gate.promise;return work()}};
+  t.mock.method(globalThis,'fetch',async()=>{requests++;return Response.json(authSession('A'))});
+  auth.storeSupaSession(authSession('A'));const old=assert.rejects(auth.supaRefresh(),{code:'cloud_auth_scope_changed'});
+  auth.storeSupaSession(null);auth.storeSupaSession(authSession('B'));gate.resolve();await old;
+  assert.equal(requests,0);assert.equal(auth.loadSupaSession().user.id,'B');
+});
+
+test('missed cross-tab notifications cannot let a former account refresh overwrite the current one',async t=>{
+  const f=await production(t),auth=f.create(),other=f.create(),gate=deferred();auth.storeSupaSession(authSession('A'));
+  t.mock.method(globalThis,'fetch',()=>gate.promise);const old=assert.rejects(auth.supaRefresh(),{code:'cloud_auth_scope_changed'});
+  other.storeSupaSession(authSession('B'));gate.resolve(Response.json(authSession('A')));await old;
+  assert.equal(auth.loadSupaSession().user.id,'B');assert.equal((await f.create().restoreSupaSession()).user.id,'B');
 });
 
 test('an obsolete password response cannot undo logout or replace a newer login',async t=>{
