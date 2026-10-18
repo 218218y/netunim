@@ -21,7 +21,19 @@ async function prepareDirectory(root){
   return {rootDirHandle:root,backupRootDirHandle:root,backupsDirHandle,dataFileHandle,connectionMode:'directory'};
 }
 
-async function listBackups(directory=files.backupsDirHandle){const arr=[];if(!directory)return arr;try{for await (const [name,h] of directory.entries()){if(h.kind==='file'&&name.endsWith('.json')&&name.startsWith(BACKUP_PREFIX)){const f=await h.getFile();arr.push({name,size:f.size,lastModified:f.lastModified})}}}catch(e){}arr.sort((a,b)=>b.lastModified-a.lastModified);return arr}
+async function listBackups(directory=files.backupsDirHandle,{strict=false}={}){
+  const arr=[];
+  if(!directory)return arr;
+  try{
+    for await(const [name,h] of directory.entries()){
+      if(h.kind==='file'&&name.endsWith('.json')&&name.startsWith(BACKUP_PREFIX)){
+        const f=await h.getFile();arr.push({name,size:f.size,lastModified:f.lastModified});
+      }
+    }
+  }catch(error){if(strict)throw error}
+  arr.sort((a,b)=>b.lastModified-a.lastModified);
+  return arr;
+}
 
 async function pruneAutomaticBackups(max=AUTO_BACKUP_KEEP,directory=files.backupsDirHandle){if(!directory)return;const arr=[];for await(const [name,h] of directory.entries()){if(h.kind!=='file'||!name.startsWith(AUTO_BACKUP_PREFIX)||!name.endsWith('.json'))continue;const f=await h.getFile();arr.push({name,lastModified:f.lastModified})}arr.sort((a,b)=>b.lastModified-a.lastModified);for(const x of arr.slice(max)){try{await directory.removeEntry(x.name)}catch(e){console.error('backup prune',e)}}}
 

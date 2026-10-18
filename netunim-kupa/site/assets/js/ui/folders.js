@@ -88,7 +88,7 @@ async function connectBackupTarget(handle,{automatic=false}={}){
     if(!automatic&&!await permissionFor(handle))throw new Error('לא ניתנה הרשאת כתיבה');
     assertCurrent();
     const directory=await handle.getDirectoryHandle('backups',{create:true});assertCurrent();
-    const backups=await listBackups(directory);assertCurrent();
+    const backups=await listBackups(directory,{strict:true});assertCurrent();
     return {handle,directory,backups};
   },async(candidate,assertCurrent)=>{
     assertCurrent();
@@ -97,6 +97,7 @@ async function connectBackupTarget(handle,{automatic=false}={}){
     if(!automatic){
       try{if(await rememberBackupHandle(candidate.handle)===false)throw new Error('backup_handle_not_remembered')}
       catch(error){console.error('remember backup target',error);toast('תיקיית הגיבוי חוברה, אך לא נשמרה לפתיחה הבאה.')}
+      assertCurrent();
       try{await backupSnapshotToComputer()}
       catch(error){console.error('connected backup target snapshot',error);toast('התיקייה חוברה, אך יצירת הגיבוי נכשלה. יש לנסות שוב.')}
     }

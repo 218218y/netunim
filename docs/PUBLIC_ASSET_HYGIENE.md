@@ -34,3 +34,12 @@ its token gate. This continuation does not silently narrow installed Bank client
 to the Document defaults. A future rollout must inventory actual installed
 origins and preserve explicit configuration/native no-Origin clients before
 changing that protocol. Physical/provider release exercises remain unverified.
+
+The same cleanup distinguishes critical candidate validation from optional
+display cleanup: backup catalogs are now read strictly when selecting/importing
+a source, while ordinary catalog display keeps its existing best-effort policy.
+A backup selection rechecks its captured account after remembering a handle,
+before taking a snapshot, so a late old-account command cannot back up the new
+account's state. Focused behavioral regressions cover both decisions. The final
+eager graph measures 302 modules / 1,756,970 bytes, within the retained
+1,757,000-byte ceiling and unchanged native/4x CPU timing gates.

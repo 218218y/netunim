@@ -110,6 +110,21 @@ test('directory preparation never changes live backup handles even if the file o
   await assert.rejects(api.prepareDirectory(root),/file open denied/);assert.deepEqual(files,before);
 });
 
+test('candidate backup enumeration fails closed while optional catalog rendering stays best effort',async()=>{
+  const api=createStorageBackup({files:{},model:{state:{}},session:{},normalizeState:value=>value,writeJsonHandle:async()=>{},readJsonHandle:async()=>null});
+  const directory={entries:async function*(){throw Error('catalog access denied')}};
+  assert.deepEqual(await api.listBackups(directory),[]);
+  await assert.rejects(api.listBackups(directory,{strict:true}),/catalog access denied/);
+});
+
+test('an old backup selection cannot snapshot a replacement account after remembering its handle',async t=>{
+  const f=fixture(t),gate=deferred(),entered=deferred();
+  f.window.showDirectoryPicker=async()=>f.root;
+  f.ports.rememberBackupHandle=async()=>{entered.resolve();await gate.promise};
+  const pending=f.create().chooseBackupFolder();await entered.promise;f.changeScope();gate.resolve();await pending;
+  assert.ok(!f.events.some(([event])=>event==='backup'),'former-account command started a new snapshot');
+});
+
 test('new business saves cannot enter while a source transition is pending',async()=>{
   let statuses=0;
   const session={localSourceSwitchPending:true,localGeneration:8};
