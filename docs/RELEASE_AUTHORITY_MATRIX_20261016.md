@@ -1,5 +1,10 @@
 # Authority release verification matrix, 2026-10-16
 
+Updated 2026-10-18: the [complete Production postflight](PRODUCTION_POSTFLIGHT_20261018.md)
+passed for all 41 migrations and the live schema/security/operational contract.
+The temporal Bank migration is installed and the hash-bound receipt is current.
+The October 16 scoped observations below describe the earlier state only.
+
 Each authority stage runs the full repository workflow on its branch before merge.
 Local checks are focused; PostgreSQL, complete browser coverage and Windows run in
 GitHub Actions. The same checks are not required to finish a second time on Main
@@ -15,7 +20,8 @@ after an unchanged, verified branch is merged.
 | Actual Credit guard mutations and focused follow-up audit | `credit_account_authority_mutations.test.mjs`: eleven removed production checks reproduce financial replacement, issuer/routing loss, ghost/empty/duplicate keys, monthly empty replacement and cross-profile collapse. Monthly enums and owner identity are validated before normalization |
 | Malformed Bank acknowledgement/archive/snapshot/link success | `bank_response_evidence.test.mjs`, archive and Morning transport suites |
 | Bank reconciliation with an empty source | `business_response_evidence.test.mjs`; malformed counters/flags cannot authorize publication |
-| Provider claims complete coverage without transaction rows | `bank_balance_result.test.mjs`; malformed/missing arrays cannot authorize absence reconciliation |
+| Provider claims complete coverage without transaction rows or observation time | `bank_balance_result.test.mjs`, `bank_temporal_authority.test.mjs` and real refresh/publication owner tests; missing Bridge observation causes zero archive/snapshot writes, while legacy balance-only reads remain supported |
+| Historical future/malformed Bank clocks in cashflow | `bank_historical_cashflow.test.mjs`; both accounts and generated apps retain corrupt evidence without moving the basis or granting credit-settlement authority; explicit future forecasts remain supported |
 | Restore list and stage/apply response evidence | `restore_response_evidence.test.mjs`; malformed success is an error, never empty recovery |
 | Server-only incomplete restore, post-commit failure, fresh client | `runtime_restore_server_recovery.py`; real IndexedDB pending identity and paired Main/Shared adoption |
 | Startup edits during or after failed restore | `startup_recovery_readiness.test.mjs`; both app lifecycle gates remain closed until adoption |
@@ -59,10 +65,9 @@ restore or physical-device performance result is claimed by the code stages.
 The [temporal Production observation](evidence/temporal-authority-production-20261016.json)
 is deliberately scoped: at 13:57 UTC there were zero future Bank snapshots and
 zero future presence rows, while the new temporal migration/guard was absent.
-The previous two-migration observation does not certify this new guard. The
-postflight gate now names all three migrations and blocks static rollout until
-the complete live migration SQL and schema match. Follow the existing database
-release path; do not substitute these aggregate observations for that gate.
+The later 2026-10-18 complete postflight verified the installed guard and full
+SQL/schema contract. Do not reapply the migration based on the October 16 record.
+The gate still requires all three migrations and fresh rollout verification.
 
 Current Credit `/sync` omission compatibility remains intentional until a real
 MAX/Cal/Isracard/Amex response has proved explicit v2 on every supported installed
