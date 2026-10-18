@@ -4,21 +4,51 @@ import {assertSpreadsheet} from './spreadsheet-model.js';
 export function createSpreadsheetWorkspace({domain,request,account,accountScope,enabled,primary,active,render,legacy,esc,confirmDialog,modal,closeModal}){
   const labels={unloaded:'הגליון נטען בעת פתיחתו',loading:'טוען גליון…',saved:'הגליון נשמר',saving:'שומר גליון…',pending:'השינויים נשמרים במרוכז…',offline:'עותק מקומי · ממתין לרשת',error:'שמירת הגליון נעצרה',conflict:'נדרשת הכרעה בין שינויים'};
   const sync=createSpreadsheetSync({domain,request,account,accountScope,enabled,primary,legacy,
-    onChange:()=>{if(active())render()},
-    onStatus:state=>{for(const element of document.querySelectorAll('[data-spreadsheet-status]')){element.textContent=state.error||labels[state.status];element.dataset.state=state.status}},
+    onChange:()=>{if(started&&active())render()},
+    onStatus:state=>{if(started)for(const element of document.querySelectorAll('[data-spreadsheet-status]')){element.textContent=state.error||labels[state.status];element.dataset.state=state.status}},
   });
-  let pollTimer=null,started=false,activation=null,refreshError='';
+  let pollTimer=null,started=false,activation=null,refreshError='',bindingGeneration=0;
   function activate(){
     if(!active())return Promise.resolve(false);
+    start();
     if(activation)return activation;
+    const binding=bindingGeneration;
     refreshError='';
     activation=(async()=>{
       if(!sync.ready)return sync.open();
       for(const element of document.querySelectorAll('[data-spreadsheet-status]'))element.textContent='\u05d1\u05d5\u05d3\u05e7 \u05e2\u05d3\u05db\u05d5\u05e0\u05d9\u05dd\u2026';
-      try{return await sync.poll()}catch{refreshError='לא ניתן לבדוק עדכונים כרגע — מוצג העותק המקומי';return false}finally{if(active())for(const element of document.querySelectorAll('[data-spreadsheet-status]'))element.textContent=refreshError||sync.error||labels[sync.status]}
+      try{return await sync.poll()}catch{refreshError='לא ניתן לבדוק עדכונים כרגע — מוצג העותק המקומי';return false}finally{if(started&&binding===bindingGeneration&&active())for(const element of document.querySelectorAll('[data-spreadsheet-status]'))element.textContent=refreshError||sync.error||labels[sync.status]}
     })().catch(()=>false).finally(()=>{activation=null});return activation;
   }
-  function start(){if(started)return;started=true;window.addEventListener('pagehide',sync.pagehide);window.addEventListener('beforeunload',sync.beforeUnload);document.addEventListener('visibilitychange',()=>{if(document.hidden){sync.pagehide();void sync.flush({send:false})}else if(active())void sync.poll().catch(()=>{})});window.addEventListener('online',()=>{if(sync.ready)void sync.flush()});document.addEventListener('click',event=>{if(sync.ready&&event.target.closest?.('[data-page],[data-view],[data-action="notes-workspace-notes"]'))void sync.flush()},true);pollTimer=setInterval(()=>{if(active()&&!document.hidden)void sync.poll().catch(()=>{})},20000)}
+  function visibilityChanged(){
+    if(document.hidden){sync.pagehide();void sync.flush({send:false})}
+    else if(active())void sync.poll().catch(()=>{});
+  }
+  function online(){if(sync.ready)void sync.flush()}
+  function navigationClicked(event){
+    if(sync.ready&&event.target?.closest?.('[data-page],[data-view],[data-action="notes-workspace-notes"]'))void sync.flush();
+  }
+  function start(){
+    if(started)return;
+    started=true;bindingGeneration++;
+    window.addEventListener('pagehide',sync.pagehide);
+    window.addEventListener('beforeunload',sync.beforeUnload);
+    document.addEventListener('visibilitychange',visibilityChanged);
+    window.addEventListener('online',online);
+    document.addEventListener('click',navigationClicked,true);
+    pollTimer=setInterval(()=>{if(active()&&!document.hidden)void sync.poll().catch(()=>{})},20000);
+  }
+  function dispose(){
+    if(!started)return;
+    // Preserve the visible draft before relinquishing browser-event ownership.
+    sync.pagehide();
+    window.removeEventListener('pagehide',sync.pagehide);
+    window.removeEventListener('beforeunload',sync.beforeUnload);
+    document.removeEventListener('visibilitychange',visibilityChanged);
+    window.removeEventListener('online',online);
+    document.removeEventListener('click',navigationClicked,{capture:true});
+    clearInterval(pollTimer);pollTimer=null;started=false;
+  }
   function exportLocal(){const source=sync.model.state.notesSheet||legacy();if(!source&&!sync.recovery)return;const blob=new Blob([JSON.stringify({format:'netunim-workbook',domain,version:1,workbook:source,recovery:sync.recovery!==source?sync.recovery:undefined},null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`${domain}-workbook-${new Date().toISOString().replace(/[:.]/g,'-')}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
   async function showBackups(){
     try{const rows=await sync.backups();modal('גיבויי הגליונות',`<div class="spreadsheet-backups"><p>שחזור זה משנה רק את הגליונות של ${domain==='kupa'?'הקופה':'ההזמנות'}.</p>${rows.map(row=>`<div><span>${esc(new Date(row.created_at).toLocaleString('he-IL'))} · גרסה ${row.revision}</span><button class="btn small" data-action="spreadsheet-restore" data-click-arg0="${row.id}">שחזור</button></div>`).join('')||'<p>אין עדיין גיבויים זמינים.</p>'}</div>`,`<button class="btn" data-action="close-modal">סגור</button>`)}catch(e){modal('גיבויי הגליונות',`<p>${esc(e.message)}</p>`,`<button class="btn" data-action="close-modal">סגור</button>`)}
@@ -46,5 +76,5 @@ export function createSpreadsheetWorkspace({domain,request,account,accountScope,
   function toolbarMarkup(){start();return `<div class="spreadsheet-toolbar"><span data-spreadsheet-status data-state="${sync.status}" role="status">${esc(sync.error||labels[sync.status])}</span><div><button class="btn small" data-action="spreadsheet-export">ייצוא גליון</button><button class="btn small" data-action="spreadsheet-import">ייבוא JSON</button><button class="btn small" data-action="spreadsheet-backups">גיבויים ושחזור</button>${sync.conflict?'<button class="btn small" data-action="spreadsheet-use-remote">פתרון התנגשות</button>':''}</div></div>`}
   function saveWorkbook(message,options={}){if(message==='תא בגליון עודכן')return;sync.changed(null,{immediate:true,deleteIntents:options.deleteIntents})}
   function cellChanged(rowId,columnId,value,updatedAt){sync.changed({rowId,columnId,value,updatedAt})}
-  return {sync,activate,model:sync.model,saveWorkbook,cellChanged,loadingMarkup,toolbarMarkup,actions,get ready(){return sync.ready},get readOnly(){return !!sync.conflict||!primary()},dispose(){if(pollTimer)clearInterval(pollTimer)}};
+  return {sync,activate,model:sync.model,saveWorkbook,cellChanged,loadingMarkup,toolbarMarkup,actions,get ready(){return sync.ready},get readOnly(){return !!sync.conflict||!primary()},dispose};
 }
