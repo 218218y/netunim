@@ -2,9 +2,9 @@
   "version": 1,
   "files": {
     "netunim-kupa/site/assets/js/cloud/auth.js": {
-      "over500": 2,
-      "over1000": 1,
-      "longest": 1217
+      "over500": 1,
+      "over1000": 0,
+      "longest": 518
     },
     "netunim-kupa/site/assets/js/domains/bank/connection-owner.js": {
       "over500": 2,
@@ -180,11 +180,6 @@
       "over500": 6,
       "over1000": 1,
       "longest": 1974
-    },
-    "netunim-kupa/site/assets/js/ui/folders.js": {
-      "over500": 3,
-      "over1000": 0,
-      "longest": 678
     },
     "netunim-kupa/site/assets/js/ui/modal.js": {
       "over500": 1,
@@ -637,9 +632,9 @@
       "longest": 664
     },
     "shared/spreadsheet-workspace.js": {
-      "over500": 5,
+      "over500": 4,
       "over1000": 0,
-      "longest": 662
+      "longest": 638
     },
     "shared/storage-journal-idb.js": {
       "over500": 3,

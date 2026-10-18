@@ -49,6 +49,11 @@ restore and live-provider release exercises therefore remain explicitly unverifi
 
 ## Prioritized remaining work
 
+Workbook connection lifecycle now uses the existing factory with bounded
+reopening, explicit upgrade blocking and atomic abort handling. Its reentrant
+browser bindings release every listener on disposal while retaining accepted
+sync work and drafts. See [workbook lifecycle](SPREADSHEET_LIFECYCLE.md).
+
 ### Four-stage review continuation, 2026-10-18
 
 1. **Bank calendar and monetary integrity:** reproduced impossible Morning dates
