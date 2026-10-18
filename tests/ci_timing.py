@@ -28,14 +28,20 @@ def estimates(items, weights):
     return {name: weights.get(name, fallback) for name in items}
 
 
-def balanced_partition(items, count, weights):
+def balanced_partition(items, count, weights, *, initial_loads=None):
     """Longest processing time first, with stable names as the tie breaker."""
     if type(count) is not int or not 1 <= count <= len(items) or len(items) != len(set(items)):
         raise ValueError("A disjoint inventory and a valid partition count are required")
     costs = estimates(items, weights)
-    groups, loads = [[] for _ in range(count)], [0.0] * count
-    for name in sorted(items, key=lambda name: (-costs[name], name)):
-        index = min(range(count), key=lambda index: (loads[index], index))
+    loads = list(initial_loads) if initial_loads is not None else [0.0] * count
+    if len(loads) != count or any(type(value) not in (int, float) or not math.isfinite(value) or value < 0 for value in loads):
+        raise ValueError("Partition overhead must be finite, nonnegative and match the partition count")
+    groups = [[] for _ in range(count)]
+    ordered = sorted(items, key=lambda name: (-costs[name], name))
+    for position, name in enumerate(ordered):
+        empty = [index for index, group in enumerate(groups) if not group]
+        candidates = empty if len(ordered) - position == len(empty) else range(count)
+        index = min(candidates, key=lambda index: (loads[index], index))
         groups[index].append(name)
         loads[index] += costs[name]
     return groups

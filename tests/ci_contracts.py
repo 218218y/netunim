@@ -266,6 +266,15 @@ with patch.object(h, 'HOST_STATE_ROOT', root / 'host'), \\
         self.assertEqual(estimates(["a", "b", "new"], weights)["new"], 8.5)
         self.assertIn("new", sum(balanced_partition(["a", "b", "new"], 2, weights), []))
         self.assertEqual(estimates(["new"], {})["new"], 1)
+        costs = {str(index): 1 for index in range(10)}
+        parts = balanced_partition(list(costs), 2, costs, initial_loads=[4, 0])
+        self.assertEqual([len(parts[0]) + 4, len(parts[1])], [7, 7])
+        parts = balanced_partition(list(costs), 2, costs, initial_loads=[1000, 0])
+        self.assertTrue(all(parts))
+        self.assertCountEqual(sum(parts, []), costs)
+        for overhead in ([0], [True, 0], [-1, 0], [float("nan"), 0]):
+            with self.subTest(overhead=overhead), self.assertRaises(ValueError):
+                balanced_partition(list(costs), 2, costs, initial_loads=overhead)
         for count in (0, 7, True):
             with self.subTest(count=count), self.assertRaises(ValueError):
                 balanced_partition(list(weights), count, weights)
@@ -297,17 +306,18 @@ with patch.object(h, 'HOST_STATE_ROOT', root / 'host'), \\
     def test_real_node_reporter_preserves_failures_and_times_plain_assertion_files(self):
         with tempfile.TemporaryDirectory(prefix="node timing contracts ") as directory:
             root = Path(directory)
-            good, bad = root / "good.test.mjs", root / "bad.test.mjs"
+            good, bad, broken_import = root / "good.test.mjs", root / "bad.test.mjs", root / "import.test.mjs"
             good.write_text("import assert from 'node:assert/strict'; assert.equal(1,1);\n")
             bad.write_text("import test from 'node:test'; test('fails',()=>{throw new Error('expected fixture failure')});\n")
+            broken_import.write_text("import './not-installed.mjs';\n")
             # This native invocation covers spaces and Windows file: reporter URLs.
             real_call = subprocess.call
             with (root / "console.log").open("w", encoding="utf-8") as log, patch.object(node_models.subprocess, "call") as call:
                 call.side_effect = lambda command, **kwargs: real_call(command, stdout=log, stderr=subprocess.STDOUT, **kwargs)
-                self.assertNotEqual(node_models.run_files([str(good), str(bad)], root / "reports"), 0)
+                self.assertNotEqual(node_models.run_files([str(good), str(bad), str(broken_import)], root / "reports"), 0)
             rows = [json.loads(line) for line in (root / "reports/node-files.jsonl").read_text().splitlines()]
-            self.assertEqual(len(rows), 2)
-            self.assertEqual({Path(row["file"]).name: row["status"] for row in rows}, {good.name: "passed", bad.name: "failed"})
+            self.assertEqual(len(rows), 3)
+            self.assertEqual({Path(row["file"]).name: row["status"] for row in rows}, {good.name: "passed", bad.name: "failed", broken_import.name: "failed"})
             self.assertTrue(all(row["seconds"] > 0 for row in rows))
             self.assertIn("expected fixture failure", (root / "console.log").read_text(encoding="utf-8"))
 

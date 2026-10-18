@@ -40,9 +40,13 @@ verifying every pushed version without cancelling earlier pushes.
 - Models uses two machines. Every discovered JavaScript file belongs to exactly
   one partition; each machine keeps the existing two isolated Node workers.
   Module, asset, type and lint contracts join one of the model partitions.
+  File balancing reserves that additional workload before assigning Node files,
+  so it balances the complete jobs rather than only their JavaScript portions.
 - The 83 large implementation mutation cases now live in four independent files
   for core contracts, application behavior, documents and finance. The test bodies
-  were transferred unchanged. The shared compiler fixture preserves a fresh
+  were transferred unchanged except for normalizing CRLF before one multiline
+  mutation, so that case also exercises its intended change on Windows. The
+  shared compiler fixture preserves a fresh
   compiler host, program and diagnostic check for every mutation. No assertion,
   negative type fixture or full-program check was removed or cached.
 - Sync retains two machines and receives the same duration-based balancing.
@@ -73,6 +77,36 @@ need not decrease: the purpose is to shorten elapsed verification time while
 keeping resource contention and repeated setup controlled.
 
 ## Coverage, failures and reporting
+
+### First measured post-change run
+
+[39093704842](https://github.com/218218y/netunim/actions/runs/39093704842)
+passed every job, including Windows and the complete verification gate, in
+**305s (5:05)**. The same run recorded these execution times, excluding setup:
+
+| Group | Measured test time |
+| --- | --- |
+| Lifecycle 1 / 2 / 3 / 4 | 215 / 211 / 267 / 266s |
+| Models 1 / 2 | 203 / 140s |
+| Combined UI | 216s |
+| Sync 1 / 2 | 219 / 147s |
+| Morning | 187s |
+
+The Node reports contain exactly 424 distinct file completions across the two
+models jobs, with no failures; all 83 implementation mutation cases passed.
+The models difference includes both module-check overhead and the initial file
+estimates. The final snapshot replaces the initial Windows/derived Node estimates
+with these actual Ubuntu file measurements, combines all four runs' suite
+measurements using medians, and reserves module overhead during Node allocation.
+The final estimates are about 151s for each complete models job and 262–263s for
+each lifecycle job. Actual timing still depends on runner conditions.
+
+The local contracts group (all 19 suites), the scheduler/cleanup contracts, the
+CI contracts and targeted ESLint checks passed on Windows. The full original
+local models baseline exposed one existing CRLF-sensitive mutation; its
+normalization fix was then verified against the real Windows source files.
+
+### Coverage and artifacts
 
 `verification_plan.py` remains the Python suite inventory. `node_models.py`
 discovers all `tests/*.test.mjs` files, including new files. The versioned

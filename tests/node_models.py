@@ -19,7 +19,11 @@ def test_files(*, shard=None):
         return names
     if type(shard) is not int or shard not in (1, 2):
         raise ValueError("Node model shard must be 1 or 2")
-    return balanced_partition(names, 2, timing_weights("node_seconds"))[shard - 1]
+    # One CI machine also runs module contracts. Reserve its wall-time cost in
+    # worker-seconds (two Node workers) so the complete models jobs balance too.
+    module_seconds = timing_weights("suite_seconds").get("module_contracts.py", 0)
+    return balanced_partition(names, 2, timing_weights("node_seconds"),
+                              initial_loads=[2 * module_seconds, 0])[shard - 1]
 
 
 def run_files(files, report_dir):
