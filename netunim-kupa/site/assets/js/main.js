@@ -81,6 +81,15 @@ const financeDerivations=createFinanceDerivationStore({revision:()=>domainRevisi
 const storageV2Coordinator=createKupaStorageV2Coordinator({tab,session});
 const {owner:storageOwner,preparing:storagePreparationActive}=storageV2Coordinator;
 
+function captureLocalSourceScope(){
+  const accepted=storageOwner.captureCommitAuthority(),account=cloudAuth.getAccountScope(),generation=session.localGeneration;
+  return ()=>{
+    const current=cloudAuth.getAccountScope();
+    if(!accepted()||storagePreparationActive()||current.epoch!==account.epoch||current.owner!==account.owner||session.localGeneration!==generation)
+      throw new Error('storage_source_scope_changed');
+  };
+}
+
 const uiConnection=createUiConnection({
   session,
   tab,
@@ -92,6 +101,7 @@ const uiConnection=createUiConnection({
   supaConfigured:(...args)=>cloudAuth.supaConfigured(...args),
   getRememberedHandle:(...args)=>storageIndexedDb.getRememberedHandle(...args),
   connectDirectory:(...args)=>uiFolders.connectDirectory(...args),
+  captureSourceScope:captureLocalSourceScope,
 });
 
 const stateNormalization=createStateNormalization({
@@ -248,16 +258,9 @@ const uiFolders=createUiFolders({
   getRememberedBackupHandle:(...args)=>storageIndexedDb.getRememberedBackupHandle(...args),
   showFirstRun:(...args)=>uiConnection.showFirstRun(...args),
   showRememberedFolderPrompt:(...args)=>uiConnection.showRememberedFolderPrompt(...args),
-  captureSourceScope:()=>{
-    const accepted=storageOwner.captureCommitAuthority(),account=cloudAuth.getAccountScope(),generation=session.localGeneration;
-    resumeSourcePolling=!!session.cloudPollingEnabled;
-    return ()=>{
-      const current=cloudAuth.getAccountScope();
-      if(!accepted()||storagePreparationActive()||current.epoch!==account.epoch||current.owner!==account.owner||session.localGeneration!==generation)
-        throw new Error('storage_source_scope_changed');
-    };
-  },
+  captureSourceScope:captureLocalSourceScope,
   drainSources:async()=>{
+    resumeSourcePolling=!!session.cloudPollingEnabled;
     await syncDocument.quiesceForStorageCutover();
     await storagePersistence.runtime.drain();
     await checks.runtime.drain();

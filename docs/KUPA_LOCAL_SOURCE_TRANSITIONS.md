@@ -33,7 +33,7 @@ suites and `checked-local-source-transition.mjs`. Physical interruption and real
 external-file permissions remain in the operator release matrix.
 
 The second required authority owner brings the eager graph to 302 modules and
-approximately 1,756,200 bytes (1,757,000-byte ceiling). This is a bounded correctness
+1,756,823 bytes (1,757,000-byte ceiling). This is a bounded correctness
 addition to the previous 301-module/1,753,000-byte gate; timing ceilings are
 unchanged and repeated native/4x CPU measurements remain required by Full CI.
 
@@ -43,3 +43,6 @@ excluded. File adoption intentionally changes order and is now verified by the
 failure/recovery behavior suites instead of freezing the previous unsafe order.
 The unused `ensureDirectoryFile` wrapper is removed; `prepareDirectory` replaces
 that internal port without increasing the backup capability's public API budget.
+Picker dialogs and remembered-handle reads capture the same authority before
+their first await, so an account replaced while a native dialog is open cannot
+import its late result into the new account.
