@@ -15,7 +15,14 @@ export function createCheckBankRefresh({owner,ready,checks,refresh,sync,render,t
   /** @type {ReturnType<typeof globalThis.setTimeout>|null} */ let timer=null;
   /** @type {{owner:RefreshOwner,promise:Promise<RefreshResult>}|null} */ let flight=null;
   /** @type {RefreshOwner} */ let observedOwner='';
-  const snapshot=()=>checks().map(c=>({id:c.id,status:c.status,bank:JSON.stringify(c.bankMatch??null),
+  /** @param {unknown} match */
+  function bankStatus(match){
+    if(!match||typeof match!=='object'||!('eventId' in match)||!match.eventId||!('phase' in match))return;
+    if(match.phase==='cleared')return 'נפרע';
+    if(match.phase==='deposited'||match.phase==='missing')return 'הופקד - במעקב';
+    if(match.phase==='returned')return 'חזר';
+  }
+  const snapshot=()=>checks().map(c=>({id:c.id,status:c.status,bank:JSON.stringify(c.bankMatch??null),bankStatus:bankStatus(c.bankMatch),
     input:JSON.stringify([c.id,c.account,c.amount,c.dueDate,c.checkNumber,c.bankNumber,c.branchNumber,c.accountNumber,c.bankAutomationDisabled,c.bankReview])})).sort((a,b)=>a.id.localeCompare(b.id));
   /** @param {ReturnType<typeof snapshot>} rows */
   const fingerprint=rows=>JSON.stringify(rows.map(c=>[c.input,c.status]));
@@ -23,7 +30,7 @@ export function createCheckBankRefresh({owner,ready,checks,refresh,sync,render,t
    * input changes during adoption still require another evaluation.
    * @param {ReturnType<typeof snapshot>} before @param {ReturnType<typeof snapshot>} after */
   const bankAdoption=(before,after)=>before.length===after.length&&before.every((c,i)=>{
-    const next=after[i];return !!next&&c.input===next.input&&(c.status===next.status||c.bank!==next.bank);
+    const next=after[i];return !!next&&c.input===next.input&&(c.status===next.status||(c.bank!==next.bank&&next.bankStatus===next.status));
   });
   const clearTimer=()=>{if(timer!==null)timers.clearTimeout(timer);timer=null};
   const cancel=()=>{generation++;clearTimer()};

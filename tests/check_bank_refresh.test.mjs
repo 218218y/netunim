@@ -40,7 +40,7 @@ test('single flight and ownership loss fence publication; disposal cancels defer
 });
 
 test('adopting a matching result during sync does not schedule a redundant replay',async()=>{
-  const f=fixture(createCheckBankRefresh,()=>{f.rows[0].status='הופקד - במעקב';f.rows[0].bankMatch={eventId:'server-deposit'};f.api.observe()});
+  const f=fixture(createCheckBankRefresh,()=>{f.rows[0].status='הופקד - במעקב';f.rows[0].bankMatch={eventId:'server-deposit',phase:'deposited'};f.api.observe()});
   f.api.observe();await f.fire();
   assert.equal(f.pending.size,0);assert.equal(f.stats().calls,1);
 });
@@ -55,6 +55,12 @@ test('a canonical change during the RPC survives single-flight and runs once mor
 test('an edit during canonical sync is evaluated next; bank status adoption alone is covered',async()=>{
   let first=true;
   const f=fixture(createCheckBankRefresh,()=>{if(first){first=false;f.rows[0].checkNumber='new';f.api.observe()}});
+  await f.api.run();assert.equal(f.pending.size,1);await f.fire();assert.equal(f.stats().calls,2);assert.equal(f.pending.size,0);
+});
+
+test('a manual status change with a changed bank marker during sync still needs evaluation',async()=>{
+  let first=true;
+  const f=fixture(createCheckBankRefresh,()=>{if(first){first=false;f.rows[0].status='נפרע';f.rows[0].bankMatch={eventId:'manual',phase:'manual'};f.api.observe()}});
   await f.api.run();assert.equal(f.pending.size,1);await f.fire();assert.equal(f.stats().calls,2);assert.equal(f.pending.size,0);
 });
 
