@@ -109,6 +109,8 @@ jobs:
         run: python tests/windows_deploy_contracts.py
       - name: Exercise Windows parallel scheduling and process cleanup
         run: python tests/runner_contracts.py
+      - name: Exercise staged asset hooks and captured Git objects on Windows
+        run: python tests/sync_assets_contracts.py StagedAssetContracts
 
   complete:
     name: Verification complete
