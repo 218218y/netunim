@@ -55,6 +55,9 @@ The Bank UI range/boundary filters now use the canonical calendar predicate.
 The application action packs return delegated completion, and both event roots
 observe escaped Promise rejections without duplicating domain-owned notices or
 changing persistence receipts. See [UI completion evidence](UI_ACTION_COMPLETION.md).
+The focused orchestration audit also reproduced mutable runtime command inputs
+while earlier commits drain. These entrances now capture before waiting and
+recheck cloud boundary admission; see [runtime command evidence](STORAGE_RUNTIME_COMMAND_ADMISSION.md).
 Further work follows the review's order: demonstrated authority gaps, loaded-data
 measurement, deterministic feature-entry enforcement and a dated release evidence
 report. Physical machines, installed Bridge and live providers remain unverified;

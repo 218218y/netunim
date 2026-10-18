@@ -9,6 +9,18 @@ import {STORAGE_SCHEMAS,SHARED_CHECKS_STORAGE_SCHEMA} from './storage-v2-schema.
 /** @typedef {Head & {baseChecksum:string,controlChecksum:string|null}} CloudHead */
 /** @typedef {Head & {epoch:string}} LocalHead */
 
+// Runtime commands can wait for earlier commits before reaching the journal.
+// Detach their data at that first entrance; retain the explicit policy callbacks.
+/** @template {object} T @param {T} options @returns {T} */
+export function captureStorageCommandOptions(options){
+  const captured={...options};
+  for(const key in captured){
+    const value=captured[key];
+    if(typeof value!=='function')captured[key]=structuredClone(value);
+  }
+  return captured;
+}
+
 /** @param {string} owner @param {import('./storage-operation.js').StorageOperationSchema} [configuredSchema] @returns {import('./storage-operation.js').StorageOperationSchema} */
 function schemaForOwner(owner,configuredSchema){
   const separator=owner.lastIndexOf(':');

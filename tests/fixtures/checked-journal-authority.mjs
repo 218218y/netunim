@@ -61,3 +61,13 @@ assertStorageJournalRejection(scope,flight,cursor,cursor,scope,'1','F');
 assertStorageJournalReplacement(scope,{...scope,seq:'1'});
 // @ts-expect-error a local reset requires a decoded epoch
 assertStorageJournalLocalReset(scope.owner,{...checkpoint,epoch:null});
+
+import {captureStorageCommandOptions} from '../../shared/storage-journal-authority.js';
+const capturedCommand=captureStorageCommandOptions({expectedSeq:1,validate:(/** @type {unknown} */ value)=>typeof value==='string'});
+/** @type {number} */ const capturedSequence=capturedCommand.expectedSeq;
+/** @type {boolean} */ const capturedValidation=capturedCommand.validate('state');
+// @ts-expect-error command sequence must retain its original numeric type
+capturedCommand.expectedSeq='1';
+// @ts-expect-error options must be an object
+captureStorageCommandOptions(null);
+void [capturedSequence,capturedValidation];
