@@ -8,12 +8,29 @@ import {createDefaultNotesSheet} from '../shared/notes-sheet-model.js';
 import {syncRequestNeedsCapabilities,MIN_SYNC_CAPABILITIES} from '../shared/sync-capabilities.js';
 import {createCloudAuth as ordersAuth} from '../netunim-orders/site/assets/js/cloud/auth.js';
 import {createCloudAuth as kupaAuth} from '../netunim-kupa/site/assets/js/cloud/auth.js';
+import {createStorageV2Runtime} from '../shared/storage-v2-runtime.js';
+import {createStorageJournal} from '../shared/storage-journal.js';
+import {memoryDb,emergencyStore} from './storage-v2-fixture.mjs';
 
 const owner='11111111-1111-4111-8111-111111111111',other='22222222-2222-4222-8222-222222222222';
 const uuid=n=>'33333333-3333-4333-8333-'+String(n).padStart(12,'0');
 const clean=()=>({known:true,pending:false,verified:true,epoch:'E',evidence:'journal',isCurrent:()=>true});
 const pending=()=>({...clean(),pending:true,verified:false});
 const conflict=()=>({...pending(),blocked:true,conflict:true});
+for(const app of ['orders','kupa'])test(`${app} Main observer follows journal sequence and durable ACK rather than HTTP success`,async()=>{
+  let activeOwner=owner;
+  const db=memoryDb(),emergency=emergencyStore(),runtime=createStorageV2Runtime({app,owner:()=>activeOwner,primary:()=>true,mode:()=> 'primary',validate:()=>{},scheduleIdle:()=>{},
+    createJournal:args=>createStorageJournal({...args,db,emergency})});
+  await runtime.initializeCloudHead(1,{notes:[]},{sourceOwner:owner,intent:'cloud-authoritative'});
+  const before=await runtime.incidentSample();assert.equal(classifySyncIncident(before).state,'clean_verified');
+  const state={notes:[{id:'N',content:'unsynchronized'}]};
+  await runtime.persist(state,{operations:[{type:'put',collection:'notes',id:'N',mode:'insert'}]}).committed;
+  assert.equal(before.isCurrent(),false);assert.equal((await runtime.incidentSample()).pending,true);
+  const flight=await runtime.materializeFlight();assert.notEqual(classifySyncIncident(await runtime.incidentSample()).state,'clean_verified');
+  await runtime.acknowledgeFlight(flight.operationId,2,state,{currentState:state,expectedSeq:1});
+  const after=await runtime.incidentSample();assert.equal(classifySyncIncident(after).state,'clean_verified');assert.equal(after.isCurrent(),true);
+  activeOwner=other;assert.equal(classifySyncIncident(await runtime.incidentSample()).state,'unknown');assert.equal(after.isCurrent(),false);
+});
 function fixture(){
   const f={scope:{owner,epoch:1},time:0,primary:true,samples:{orders_main:clean(),shared_checks:clean()},calls:[],records:new Map(),rows:new Map(),timers:new Map(),view:null,unavailable:false};
   let count=0,timer=0;
@@ -100,6 +117,14 @@ test('registry rejects mixed accounts, malformed receipts and stale login bodies
   row={...serverRow(),owner_id:other};await assert.rejects(registry.report(serverRow(),scope),/response_invalid/);
   row={...serverRow(),incident_id:uuid(2)};await assert.rejects(registry.report(serverRow(),scope),/receipt_mismatch/);
   row=serverRow();hold=true;await assert.rejects(registry.report(row,scope),/account_changed/);
+});
+test('resolution proof is checked again by the authenticated scheduler before transport',async()=>{
+  let verified=true,release,entered,writes=0;
+  const entry=new Promise(resolve=>{entered=resolve}),hold=new Promise(resolve=>{release=resolve});
+  const scope={owner,epoch:1},registry=createSyncIncidentRegistry({accountScope:()=>scope,request:async(_path,options)=>{
+    entered();await hold;options.assertRequestScope();writes++;return new Response(JSON.stringify({...serverRow(),resolved_at:'2026-10-18T12:00:00Z',resolution_kind:'clean_verified'}));
+  }});
+  const task=registry.resolve(serverRow(),scope,()=>verified);await entry;verified=false;release();await assert.rejects(task,/observation_changed/);assert.equal(writes,0);
 });
 test('only exact monitoring RPC names bypass business capability handshake',()=>{
   for(const name of ['report','resolve','list_active','mark']){

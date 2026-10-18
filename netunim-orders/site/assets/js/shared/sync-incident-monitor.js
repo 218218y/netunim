@@ -40,12 +40,14 @@ export function createSyncIncidentMonitor({site,clientId,deviceLabel=()=>'',acco
     for(const episode of record.episodes){
       if(!current(scope)||!primary())return;
       if(episode.client!==clientId||episode.sentVersion===episode.version||episode.nextAttempt>now())continue;
+      let observationCurrent=()=>true;
       if(episode.phase==='resolve'){
         const fresh=await sampleDomain(adapter,scope);
         if(!current(scope)||!primary()||fresh.epoch!==episode.epoch||classifySyncIncident(fresh).state!=='clean_verified'||!fresh.isCurrent?.())continue;
+        observationCurrent=fresh.isCurrent;
       }
       try{
-        const receipt=await registry[episode.phase==='resolve'?'resolve':'report'](payload(episode),scope);
+        const receipt=await registry[episode.phase==='resolve'?'resolve':'report'](payload(episode),scope,()=>current(scope)&&primary()&&observationCurrent());
         if(!current(scope)||!primary())return;
         await store.update(key,value=>{
           if(!current(scope)||!primary())return value;
@@ -56,8 +58,9 @@ export function createSyncIncidentMonitor({site,clientId,deviceLabel=()=>'',acco
           return value;
         });
         nextRead=0;
-      }catch{
+      }catch(error){
         if(!current(scope)||!primary())return;
+        if(error?.message==='sync_incident_observation_changed')continue;
         await store.update(key,value=>{
           if(!current(scope)||!primary())return value;
           const live=value.episodes.find(item=>item.id===episode.id);

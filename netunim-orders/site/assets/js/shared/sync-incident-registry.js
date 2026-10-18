@@ -14,23 +14,23 @@ export function decodeSyncIncident(row,owner){
   return structuredClone(row);
 }
 export function createSyncIncidentRegistry({request,accountScope}){
-  async function rpc(name,body,scope){
-    const assertCurrent=()=>{const live=accountScope();if(!live.owner||live.owner!==scope.owner||live.epoch!==scope.epoch)throw new Error('sync_incident_account_changed')};
+  async function rpc(name,body,scope,guard=()=>true){
+    const assertCurrent=()=>{const live=accountScope();if(!live.owner||live.owner!==scope.owner||live.epoch!==scope.epoch)throw new Error('sync_incident_account_changed');if(!guard())throw new Error('sync_incident_observation_changed')};
     assertCurrent();
     const response=await request('/rest/v1/rpc/'+name,{method:'POST',body:JSON.stringify(body),dataPriority:'low',networkRetry:false,assertRequestScope:assertCurrent});
     assertCurrent();if(!response.ok)throw new Error('sync_incident_rpc_'+response.status);
     const value=await response.json();assertCurrent();return value;
   }
-  async function write(name,incident,scope){
-    const row=decodeSyncIncident(await rpc(name,{p_incident:incident},scope),scope.owner);
+  async function write(name,incident,scope,guard){
+    const row=decodeSyncIncident(await rpc(name,{p_incident:incident},scope,guard),scope.owner);
     for(const key of ['incident_id','client_instance_id','site','domain','scope_epoch'])if(row[key]!==incident[key])throw new Error('sync_incident_receipt_mismatch');
     if(row.report_version<incident.report_version&&row.resolved_at===null)throw new Error('sync_incident_receipt_stale');
     if(name==='resolve_sync_incident_v1'&&row.resolved_at===null)throw new Error('sync_incident_resolution_unconfirmed');
     return row;
   }
   return {
-    report:(value,scope)=>write('report_sync_incident_v1',value,scope),
-    resolve:(value,scope)=>write('resolve_sync_incident_v1',value,scope),
+    report:(value,scope,guard)=>write('report_sync_incident_v1',value,scope,guard),
+    resolve:(value,scope,guard)=>write('resolve_sync_incident_v1',value,scope,guard),
     async list(scope){const rows=await rpc('list_active_sync_incidents_v1',{},scope);if(!Array.isArray(rows))throw new Error('sync_incident_list_invalid');const ids=new Set();return rows.map(row=>{const value=decodeSyncIncident(row,scope.owner);if(value.resolved_at!==null||ids.has(value.incident_id))throw new Error('sync_incident_list_invalid');ids.add(value.incident_id);return value})},
     async review(row,scope){const receipt=decodeSyncIncident(await rpc('mark_sync_incident_reviewed_v1',{p_incident_id:row.incident_id,p_expected_report_version:row.report_version},scope),scope.owner);if(receipt.incident_id!==row.incident_id||receipt.resolution_kind!=='operator_reviewed_unverified')throw new Error('sync_incident_review_unconfirmed');return receipt},
   };
