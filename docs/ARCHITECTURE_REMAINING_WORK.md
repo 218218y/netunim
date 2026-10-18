@@ -75,6 +75,8 @@ restore and live-provider release exercises therefore remain explicitly unverifi
    semantics are unchanged. Invalid money/status/scope/calendar data sends no
    request; stale accounts and malformed receipts cannot publish success. Strict
    negative consumers and a real-guard mutation prove the boundary. Kupa eager
+   Morning's direct prefill/eligibility entrance also uses the existing monetary
+   reader: boolean/array/object coercion cannot invent a positive receipt amount.
    source measures 1,760,215 bytes: a 2 KB source-only allowance covers the added
    command guard, with 303 modules and browser timing limits unchanged.
 4. **Readability:** next, simplify touched dense paths with behavior evidence and

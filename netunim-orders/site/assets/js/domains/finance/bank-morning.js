@@ -1,9 +1,10 @@
 import {customerDebtProgressData} from '../../shared/customer-debt-progress.js';
 import {localCalendarDate as dateOnly} from '../../shared/observation-time.js';
+import {readBankMoney} from '../../shared/bank-money-value.js';
 import {inferMorningBankFromText,morningBankCode,morningBankName,resolveMorningBank} from '../../core/morning-banks.js';
 
 function clean(value,max=250){return String(value??'').trim().replace(/\s+/g,' ').slice(0,max)}
-function amountCents(value){const number=Number(value);return Number.isFinite(number)?Math.round(number*100):NaN}
+function amountCents(value){const number=readBankMoney(value);return number===null?NaN:Math.round(number*100)}
 function normalizeParty(value){return clean(value,180).toLocaleLowerCase('he').replace(/["'׳״`]/g,'').replace(/[-–—_/.,()[\]{}:;]+/g,' ').replace(/\s+/g,' ').trim()}
 function partyWords(value){return normalizeParty(value).split(' ').filter(word=>word.length>=2)}
 function transactionParty(row){return clean(row?.partyName,160)||clean(row?.partyHeadline,160)||clean(row?.messageHeadline,160)}
@@ -36,7 +37,7 @@ function checkPayment(item,date,{removable=false}={}){
 }
 
 export function bankMorningEligibility(row,role='business'){
-  const archiveId=Number(row?.archiveId),amount=Number(row?.amount),currency=String(row?.currency||'ILS').trim().toUpperCase(),status=String(row?.status||'').trim().toLowerCase(),kind=String(row?.checkDetails?.kind||'').trim();
+  const archiveId=Number(row?.archiveId),amount=readBankMoney(row?.amount),currency=String(row?.currency||'ILS').trim().toUpperCase(),status=String(row?.status||'').trim().toLowerCase(),kind=String(row?.checkDetails?.kind||'').trim();
   if(role!=='business')return {eligible:false,code:'home-account',reason:'הפקת מסמך זמינה רק בתנועות החשבון העסקי'};
   if(!Number.isSafeInteger(archiveId)||archiveId<=0)return {eligible:false,code:'not-archived',reason:'התנועה עדיין לא קיבלה מזהה ארכיון יציב בענן'};
   if(!Number.isFinite(amount)||amount<=0)return {eligible:false,code:'not-credit',reason:'ניתן להפיק מסמך רק מתנועת זכות שהתקבלה'};

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {bankMorningPrefill} from '../netunim-orders/site/assets/js/domains/finance/bank-morning.js';
+import {bankMorningEligibility, bankMorningPrefill} from '../netunim-orders/site/assets/js/domains/finance/bank-morning.js';
 import {normalizeBankFeed as ordersFeed, normalizeBankFeedTransaction as ordersRow} from '../netunim-orders/site/assets/js/domains/finance/bank-feed.js';
 import {normalizeBankFeed as kupaFeed, normalizeBankFeedTransaction as kupaRow} from '../netunim-kupa/site/assets/js/domains/bank/feed.js';
 
@@ -38,6 +38,14 @@ test('missing or malformed historical money stays unknown; actual zero stays kno
     assert.equal(normalize({...transaction, amount: 0}).amount, 0);
     assert.equal(normalize({...transaction, amount: '20.50'}).amount, 20.5);
   }
+});
+test('direct Morning entry cannot coerce booleans, arrays or objects into a receipt amount', () => {
+  for (const amount of [null, undefined, '', 'invalid', true, false, [], [20], {}, {valueOf: () => 20}]) {
+    const row = {...transaction, amount};
+    assert.equal(bankMorningEligibility(row).code, 'not-credit');
+    assert.throws(() => bankMorningPrefill(row), /bank_morning_invalid_amount/);
+  }
+  assert.equal(bankMorningPrefill({...transaction, amount: '20.50'}).amount, 20.5);
 });
 test('invalid balances and calendar coverage cannot create a usable feed or snapshot', () => {
   for (const normalize of [ordersFeed, kupaFeed]) {
