@@ -10,6 +10,10 @@ from __future__ import annotations
 from pathlib import Path
 import argparse
 import re
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from public_asset_names import site_name_violations
 
 SCRIPT_SUFFIXES = {".js", ".mjs", ".cjs"}
 PATTERNS = (
@@ -52,6 +56,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"ERROR: public site directory was not found: {site_dir}")
         return 2
     try:
+        names = site_name_violations(site_dir)
+        if names:
+            for relative, issue in names:
+                print(f'ERROR: unapproved public asset ({issue}): {relative}')
+            return 1
         found = violations(site_dir)
     except (OSError, ValueError) as error:
         print(f"ERROR: public JavaScript guard failed: {error}")

@@ -1,8 +1,11 @@
 """Read-only public-root safety gate. Never contacts Cloudflare or Supabase."""
 from pathlib import Path
 import re
+import sys
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'tools'))
+from public_asset_names import asset_name_issue
 ALLOWED={'.html','.css','.js','.webmanifest','.ico','.png'}
 VENDOR_ALLOWED={'.mjs','.js','.css','.bcmap','.wasm','.ttf','.pfb','.svg','.gif','.icc','.map','.txt'}
 VENDOR_LICENSE_NAMES={'LICENSE','LICENSE_LIBERATION','LICENSE_FOXIT','LICENSE_PDFJS_QCMS','LICENSE_OPENJPEG','LICENSE_PDFJS_OPENJPEG','LICENSE_QCMS','LICENSE_PDFJS_JBIG2','LICENSE_JBIG2'}
@@ -14,6 +17,8 @@ for label in ('kupa','orders'):
         if not file.is_file():
             continue
         relative=file.relative_to(site)
+        issue=asset_name_issue(relative.as_posix())
+        assert issue is None, f'{label}: unapproved public asset ({issue}): {relative}'
         vendor_asset=relative.parts[:2]==('assets','vendor')
         allowed_vendor=vendor_asset and (file.suffix.lower() in VENDOR_ALLOWED or file.name in VENDOR_LICENSE_NAMES or file.name.startswith('LICENSE'))
         assert file.name=='_headers' or file.suffix in ALLOWED or allowed_vendor, f'{label}: unexpected deployable file {file}'

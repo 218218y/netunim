@@ -101,6 +101,7 @@ class WindowsDeploymentContracts(unittest.TestCase):
         shutil.copyfile(ROOT/'tools/pdfjs-runtime-lock.json', self.root/'tools/pdfjs-runtime-lock.json')
         shutil.copyfile(ROOT/'tools/document-viewers-runtime.py', self.root/'tools/document-viewers-runtime.py')
         shutil.copyfile(ROOT/'tools/public_js_guard.py', self.root/'tools/public_js_guard.py')
+        shutil.copyfile(ROOT/'tools/public_asset_names.py', self.root/'tools/public_asset_names.py')
         config = self.root/'shared/document-search/domains/documents/pdfjs-runtime-config.js'
         config.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(ROOT/'shared/document-search/domains/documents/pdfjs-runtime-config.js', config)
