@@ -132,4 +132,8 @@ test('reviewed snapshot transports and captured archive command retain their pol
   const ast = parse(source, {sourceType: 'module', ecmaVersion: 'latest'});
   const command = ast.body.find(row => row.declaration?.id?.name === 'readBankArchiveCommand').declaration;
   assert.deepEqual(creditAdapterPolicyHashes([source.slice(command.start, command.end)]).policies, fixture.command);
+  const identity = read('shared/bank-transaction-identity.js');
+  const identityAst = parse(identity, {sourceType: 'module', ecmaVersion: 'latest'});
+  const mergeKey = identityAst.body.find(row => row.declaration?.id?.name === 'bankTransactionMergeKey').declaration;
+  assert.deepEqual(creditAdapterPolicyHashes([identity.slice(mergeKey.start, mergeKey.end)]).policies, fixture.identity);
 });

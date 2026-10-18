@@ -77,7 +77,7 @@ const bank=normalizeBankFeed({balance:1234,syncedAt:'2026-09-01T01:00:00Z',accou
   {id:'a',date:'2026-09-01T00:00:00Z',amount:5,description:'הפקדה'},
   {id:'a',date:'2026-09-01T00:00:00Z',amount:5,description:'הפקדה'},
 ]});
-assert.equal(bank.transactions.length,1,'Orders normalizes the same canonical bank feed instead of duplicating rows');
+assert.equal(bank.transactions.length,2,'Orders preserves both source occurrences; matching display facts do not prove a duplicate');
 
 const initialCredit=normalizeCreditSync({version:3,syncedAt:'2026-08-31T00:00:00Z',profiles:[{profileId:'p1',provider:'max',accounts:[{accountNumber:'1111',txns:[{id:'old',date:'2026-08-31T00:00:00Z',chargedAmount:-50,category:'בדיקת קטגוריה'}]}]}],cardMappings:{'p1:1111':{included:true,account:'עסקי',cardName:'עסקי'}}});
 assert.equal(initialCredit.profiles[0].accounts[0].txns[0].category,'בדיקת קטגוריה','Orders credit feed preserves issuer category metadata through finance normalization');

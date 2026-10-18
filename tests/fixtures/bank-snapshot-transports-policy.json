@@ -12,6 +12,9 @@
   },
   "reviewedAuthorityChange": "Archive command validation now precedes I/O in both transports. The shared command enforces scope, exact timestamp and ordered full calendar coverage, then preserves existing serial/reference/fallback identities. Atomic balance snapshots and lease fences remain unchanged. Golden-key, malformed-command, scope-change, receipt and mutation regressions cover the intentional authority change.",
   "command": {
-    "readBankArchiveCommand": "7ddc9b380ac632e54f001346bd278444d182389aef372da5e1627513db3cd053"
+    "readBankArchiveCommand": "ef6627286b0e4da704173dae015c3bff679feb2d21134c6ecddc921efa862a26"
+  },
+  "identity": {
+    "bankTransactionMergeKey": "c035aecc9aa7c87915fefd6db69ca4cfe67b2f88cfb8f8ede36911cc81fbc7b5"
   }
 }
