@@ -7,6 +7,7 @@ import {bankRecurringExpensesData, bankRecurringDebitHistoryData, BANK_RECURRING
 import {readBankArchiveCommand} from '../shared/bank-transaction-evidence.js';
 import {createKupaSearchModel} from '../netunim-kupa/site/assets/js/domains/search/model.js';
 import {overlayBankTransactionHistory} from '../shared/bank-transaction-identity.js';
+import {attachBankArchiveMetadata} from '../netunim-orders/site/assets/js/domains/finance/bank-morning.js';
 
 const syncedAt = '2026-10-18T06:00:00Z';
 const raw = {eventDate: '20260915', valueDate: '20260915', eventAmount: 100, eventActivityTypeCode: 2,
@@ -88,4 +89,16 @@ test('historical feed reads do not silently truncate a stored bank row at the tr
     assert.equal(feed.transactions.length, transactions.length);
     assert.equal(feed.directSnapshot.transactions.length, transactions.length);
   }
+});
+
+test('long archive keys remain distinct and retain Morning links on the direct snapshot', () => {
+  const rows = source();
+  const keys = rows.map((_, index) => `fallback:${'same-prefix:'.repeat(30)}:${index}`);
+  const archive = rows.map((row, index) => ({...row, id: keys[index], archiveId: index + 1,
+    documentLinks: [{documentId: `document-${index}`, documentType: 320, documentAmount: 100, verifiedAt: syncedAt}]}));
+  const feed = ordersFeed({...snapshot(archive), directSnapshot: {...snapshot(rows).directSnapshot,
+    transactions: rows.map((row, index) => ({...row, mergeKey: keys[index]}))}});
+  const direct = attachBankArchiveMetadata(feed.directSnapshot.transactions, feed.transactions);
+  assert.deepEqual(direct.map(row => row.archiveId), [1, 2]);
+  assert.deepEqual(direct.map(row => row.documentLinks[0].documentId), ['document-0', 'document-1']);
 });

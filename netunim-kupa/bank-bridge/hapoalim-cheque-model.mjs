@@ -188,7 +188,8 @@ function normalizeHapoalimChequeListItem(value) {
   const branchNumber = compactText(meaningfulDetailValue(value.branch), 20);
   const accountNumber = compactText(meaningfulDetailValue(value.account), 40);
   const checkNumber = compactText(meaningfulDetailValue(value.number), 80);
-  const amountNumber = Number(String(value.amount ?? '').replace(/[,\s₪]/g, ''));
+  const amountNumber = typeof value.amount === 'number' || typeof value.amount === 'string'
+    ? Number(String(value.amount).replace(/[,\s₪]/g, '')) : NaN;
   const amount = Number.isFinite(amountNumber) && amountNumber > 0 ? amountNumber : null;
   const hasDocumentReference = Object.entries(value).some(
     ([key, child]) => isDocumentDetailKey(key) && !!meaningfulDetailValue(child)

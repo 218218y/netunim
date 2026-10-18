@@ -271,6 +271,8 @@ with IsolatedPostgres(schema_files=all_files) as db:
         'Production-upgrade replay and clean install disagree on the bank merge function contract'
     db.sql((ROOT / 'tests/finance_fencing_server.sql').read_text(encoding='utf8'))
     db.sql((ROOT / 'tests/bank_transaction_evidence_server.sql').read_text(encoding='utf8'))
+    from bank_identity_pipeline import run as bank_identity_pipeline
+    bank_identity_pipeline(db)
     temporal_sql = (ROOT / 'tests/bank_temporal_authority_server.sql').read_text(encoding='utf8')
     db.sql(temporal_sql)
     # Remove the actual installed guard: the durable T1/future/T2 regression must

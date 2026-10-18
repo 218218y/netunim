@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { readBankMoney } from './bank-money-value.mjs';
 import {
   chequeItemKey,
   explicitChequeNumberFromText,
@@ -129,25 +130,23 @@ export function mergeHapoalimAdditionalDetails(...sources) {
   for (const source of sources) {
     if (!source || typeof source !== 'object') continue;
     if (!referenceNumber) referenceNumber = compactText(source.referenceNumber, 100);
-    const count = Number(source.checkCount);
+    const count = readBankMoney(source.checkCount);
     if (Number.isFinite(count) && count > 0)
       declaredCount = Math.max(declaredCount, Math.trunc(count));
-    if (source.hasDocumentReference) hasDocumentReference = true;
+    if (source.hasDocumentReference === true) hasDocumentReference = true;
     for (const value of Array.isArray(source.checkNumbers) ? source.checkNumbers : []) {
       const clean = compactText(value, 80);
       if (clean && clean !== '0') checkNumbers.add(clean);
     }
     for (const raw of Array.isArray(source.checkItems) ? source.checkItems : []) {
+      const amount = readBankMoney(raw?.amount);
       const item = {
         bankNumber: compactText(raw?.bankNumber, 20),
         branchNumber: compactText(raw?.branchNumber, 20),
         accountNumber: compactText(raw?.accountNumber, 40),
         checkNumber: compactText(raw?.checkNumber, 80),
-        amount:
-          Number.isFinite(Number(raw?.amount)) && Number(raw.amount) > 0
-            ? Number(raw.amount)
-            : null,
-        hasDocumentReference: !!raw?.hasDocumentReference,
+        amount: amount !== null && amount > 0 ? amount : null,
+        hasDocumentReference: raw?.hasDocumentReference === true,
         imageFrontKey: /^[a-f0-9]{64}$/.test(String(raw?.imageFrontKey || ''))
           ? String(raw.imageFrontKey)
           : '',

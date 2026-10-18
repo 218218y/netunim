@@ -108,7 +108,7 @@ test('Bank flat/dual-account formats preserve transaction identities and partial
       accountFailures: { home: homeFailure },
     };
   const result = readBankBalanceResult(raw);
-  assert.equal(result.source.fetchedAt, raw.fetchedAt);
+  assert.equal(result.source.fetchedAt, new Date(raw.fetchedAt).toISOString());
   assert.deepEqual(result.business.transactions[0], transaction);
   assert.notEqual(result.business.transactions[0], transaction);
   assert.equal(result.homeFailure, homeFailure);

@@ -27,6 +27,16 @@ test('observation time accepts real zoned ISO instants within the reviewed skew'
     assert.equal(observationTimeMs(stamp, now), Date.parse(stamp));
   assert.equal(observationTimeMs(new Date(now + OBSERVATION_FUTURE_TOLERANCE_MS).toISOString(), now), now + OBSERVATION_FUTURE_TOLERANCE_MS);
 });
+
+test('equivalent Bridge clocks become one canonical observation before durable publication', () => {
+  for (const fetchedAt of ['2026-10-16T10:00:00Z', '2026-10-16T13:00:00+03:00', '2026-10-16T10:00:00.0000Z']) {
+    const raw = {balance: 0, fetchedAt};
+    for (const decode of [readBankBalanceResult, readBankSnapshotResult]) {
+      assert.equal(decode(raw, now).source.fetchedAt, '2026-10-16T10:00:00.000Z');
+      assert.equal(raw.fetchedAt, fetchedAt);
+    }
+  }
+});
 test('Bank rejects supplied malformed/future clocks instead of inventing freshness', () => {
   for (const fetchedAt of [null, '', false, 0, [], {}, '2026-10-16', '2026-10-16T10:00:00', '2026-02-30T10:00:00Z', '2099-01-01T00:00:00Z', new Date(now + OBSERVATION_FUTURE_TOLERANCE_MS + 1).toISOString()]) {
     assert.equal(observationTimeMs(fetchedAt, now), null);
