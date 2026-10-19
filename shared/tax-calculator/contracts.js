@@ -1,6 +1,6 @@
 // @ts-check
 /** Money is integer agorot; rates are integer basis points (10000 = 100%). */
-export const ENGINE_VERSION = '1.2.0';
+export const ENGINE_VERSION = '1.3.0';
 export const GROUPS = [
   'vat',
   'insurance',
@@ -65,6 +65,7 @@ export function createAnnual(taxYear, profile = createProfile(), rules = null) {
     expensesMonthly: 0,
     inputVatMonthly: 0,
     activeSelfEmployed: true,
+    insuranceAdvanceMonthly: null,
     pensionRequired: true,
     pensionActual: null,
     pensionMethod: 'deduction',
@@ -324,7 +325,8 @@ export function assertRules(value) {
 }
 export function assertAnnual(value) {
   if (
-    !exactKeys(value, Object.keys(createAnnual(2026))) ||
+    !exactKeys(value, Object.keys(createAnnual(2026)).filter(key =>
+      key !== 'insuranceAdvanceMonthly' || Object.hasOwn(value ?? {}, key))) ||
     value.kind !== 'annual' ||
     value.schema !== 2 ||
     !integer(value.taxYear, 2000, 2200) ||
@@ -335,6 +337,11 @@ export function assertAnnual(value) {
   )
     throw new Error('נתוני השנה אינם תקינים');
   assertProfile(value.profile);
+  // An additive optional amount preserves existing documents and immutable ACKs
+  // byte for byte. Absence means no advance entered, never a payment of zero.
+  if (Object.hasOwn(value, 'insuranceAdvanceMonthly') &&
+      value.insuranceAdvanceMonthly !== null && !integer(value.insuranceAdvanceMonthly))
+    throw new Error('מקדמות ביטוח לאומי אינן תקינות');
   if (value.rules !== null) {
     assertRules(value.rules);
     if (value.rules.taxYear !== value.taxYear) throw new Error('גרסת הכללים אינה שייכת לשנת המס');

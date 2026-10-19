@@ -249,3 +249,10 @@ Restore requires an exact owner/document/history snapshot match. No existing
 business documents or restore groups participate. Real PostgreSQL tests are in
 `tests/tax_calculator_database.py`; malformed ACK, account/primary fencing and
 native IndexedDB recovery are covered by the calculator transport/runtime tests.
+
+The optional `insuranceAdvanceMonthly` extension is validated as nullable integer
+agorot by `20261019110000_tax_insurance_advances.sql`. Its absence is accepted
+without modifying the document, history or idempotent receipt. The migration
+replaces only the internal validator; ownership, RPC grants and RLS stay intact.
+Database tests cover malformed advances, exact replay and restoring snapshots
+without the optional field. Apply this migration before deploying both clients.

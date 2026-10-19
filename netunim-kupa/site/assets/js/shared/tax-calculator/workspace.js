@@ -25,6 +25,7 @@ import {
   diffMarkup,
   normalizeDate,
   arnonaResultsMarkup,
+  insuranceSettlementMarkup,
 } from './view.js';
 
 const statusLabels = {
@@ -166,13 +167,15 @@ export function createTaxWorkspace({
       if (live)
         live.innerHTML = output
           ? `<span>
-נטו חודשי משוער</span>
+נטו חודשי · עסק ושכירות</span>
 <b>
 ${output.complete ? money(output.monthly.net) : 'נתונים חסרים'}</b>
 `
           : '';
       const arnonaPanel = root.querySelector('[data-tax-arnona-results]');
       if (arnonaPanel && output) arnonaPanel.innerHTML = arnonaResultsMarkup(output);
+      const insurancePanel = root.querySelector('[data-tax-insurance-settlement]');
+      if (insurancePanel && output) insurancePanel.innerHTML = insuranceSettlementMarkup(output);
       for (const field of root.querySelectorAll('[data-tax-auto-field]')) {
         const path = field.dataset.taxAutoField, automatic = draft[path] === null;
         const input = field.querySelector('input');
@@ -419,7 +422,7 @@ class="tax-live">
 ${
   output
     ? `<span>
-נטו חודשי משוער</span>
+נטו חודשי · עסק ושכירות</span>
 <b>
 ${output.complete ? money(output.monthly.net) : 'נתונים חסרים'}</b>
 `
@@ -598,6 +601,7 @@ data-action="tax-retry">
       editRevision++;
       const next = clone(draft);
       try {
+        if (element.dataset.field === 'insuranceAdvanceMonthly') next.insuranceAdvanceMonthly ??= null;
         set(next, element.dataset.field, readInput(element));
         assertAnnual(next);
       } catch (error) { return stageInput(element, error); }

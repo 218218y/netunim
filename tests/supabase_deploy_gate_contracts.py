@@ -50,6 +50,7 @@ class SupabaseDeployGateContracts(unittest.TestCase):
             {'version': '20261018121000', 'name': 'morning_check_registration'},
             {'version': '20261019041407', 'name': 'tax_calculator'},
             {'version': '20261019064633', 'name': 'tax_arnona_assessment_income'},
+            {'version': '20261019110000', 'name': 'tax_insurance_advances'},
         ])
         for row in required:
             for ledger in (self.history, self.manifest):

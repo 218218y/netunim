@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createTaxSync} from '../shared/tax-calculator/sync.js';
-import {createProfile,clone,same} from '../shared/tax-calculator/contracts.js';
+import {createProfile,createAnnual,clone,same} from '../shared/tax-calculator/contracts.js';
+import {defaultRules} from '../shared/tax-calculator/rules.js';
 
 function fixture(){
   const db=new Map(),cloud=new Map(),operations=new Map();let sequence=0;
@@ -48,6 +49,22 @@ test('same-account relogin and loss of primary authority invalidate a queued wri
   const f=fixture(),s=f.create();await s.open('profile',createProfile());f.epoch++;assert.equal(s.current('profile'),null);await s.open('profile',createProfile());f.writable=false;await assert.rejects(async()=>edit(s,9));assert.equal(f.writes.length,0);
 });
 test('JSONB key reordering is immaterial to operation confirmation',()=>{assert.ok(same({schema:1,kind:'profile'},{kind:'profile',schema:1}));});
+
+test('annual advances survive offline recovery, lost ACK and another origin without rewriting an absent field',async()=>{
+  const f=fixture(),s=f.create(),old=createAnnual(2026,undefined,defaultRules());
+  delete old.insuranceAdvanceMonthly;
+  await s.open('year/2026',old);await s.flush();
+  assert.equal(Object.hasOwn(f.cloud.get('A/year/2026').state,'insuranceAdvanceMonthly'),false);
+  f.online=false;await s.save('year/2026',{...s.current('year/2026'),insuranceAdvanceMonthly:123456});
+  await assert.rejects(s.flush());
+  const reopened=f.create();await reopened.open('year/2026',old);
+  assert.equal(reopened.current('year/2026').insuranceAdvanceMonthly,123456);
+  f.online=true;f.dropAck=true;await assert.rejects(reopened.flush());
+  const first=clone(f.writes.at(-1));await reopened.flush();assert.deepEqual(f.writes.at(-1),first);
+  const other=fixture();other.cloud.set('A/year/2026',clone(f.cloud.get('A/year/2026')));
+  const b=other.create();await b.open('year/2026',old);
+  assert.equal(b.current('year/2026').insuranceAdvanceMonthly,123456);
+});
 test('disposal drains an accepted network flight before closing local storage',async()=>{
   const f=fixture(),s=f.create();await s.open('profile',createProfile());await edit(s,3);let release;f.delay=new Promise(resolve=>{release=resolve;});const flight=s.flush();await tick();let disposed=false;const drain=s.dispose().then(()=>{disposed=true;});await tick();assert.equal(disposed,false);release();await flight;await drain;assert.equal(disposed,true);assert.equal(f.cloud.get('A/profile').state.adults,3);
 });

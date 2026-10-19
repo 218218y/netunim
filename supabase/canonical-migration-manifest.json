@@ -228,5 +228,10 @@
     "version": "20261019064633",
     "name": "tax_arnona_assessment_income",
     "sha256": "1f99065e092adecb46c224286c54f7a542653091c4e971b255118fe9e0c8d2bb"
+  },
+  {
+    "version": "20261019110000",
+    "name": "tax_insurance_advances",
+    "sha256": "c1b51f8263b8f1959798f0c23dfa7905c000a6f7ed766c471cc92fb00365603a"
   }
 ]

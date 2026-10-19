@@ -48,6 +48,17 @@ def run(db):
     denied(db,OWNER,expression('year/2026',1,{**fixtures['annual'],'rentEligible':True,'rentRoute':'auto'},'legacy-rental-fields'),'22023')
     modern={**fixtures['annual'],'arnonaRentReceivedMonthly':500000}
     save(OWNER,'year/2026',1,modern,'modern-year')
+    # The optional advance is additive: old snapshots/receipts remain byte-exact.
+    without_advance={k:v for k,v in fixtures['annual'].items() if k!='insuranceAdvanceMonthly'}
+    old=save(OWNER,'year/2027',0,{**without_advance,'taxYear':2027,'rules':None},'no-advance')
+    assert 'insuranceAdvanceMonthly' not in old['state']
+    with_advance={**old['state'],'insuranceAdvanceMonthly':125000}
+    assert save(OWNER,'year/2027',1,with_advance,'advance')['state']['insuranceAdvanceMonthly']==125000
+    replay=save(OWNER,'year/2027',0,old['state'],'no-advance')
+    assert replay['operation_replayed'] is True and replay['state']==old['state']
+    assert save(OWNER,'year/2027',2,old['state'],'restore-no-advance',1)['state']==old['state']
+    for value in [-1,1.5,'1000',1000000000001]:
+        denied(db,OWNER,expression('year/2027',3,{**old['state'],'insuranceAdvanceMonthly':value},'invalid-advance-'+str(value)),'22023')
     r=fixtures['rules'];rule_name='rules/2026/'+r['version']
     save(OWNER,rule_name,0,r,'rules')
     denied(db,OWNER,expression(rule_name,1,r,'overwrite-rules'),'22023')
@@ -67,6 +78,7 @@ if __name__=='__main__':
         db.sql('create schema netunim_internal')
         db.migrate((next((ROOT/'supabase/migrations').glob('*_tax_calculator.sql'))).read_text(encoding='utf8'))
         db.migrate((ROOT/'supabase/migrations/20261019064633_tax_arnona_assessment_income.sql').read_text(encoding='utf8'))
+        db.migrate((ROOT/'supabase/migrations/20261019110000_tax_insurance_advances.sql').read_text(encoding='utf8'))
         # The ledger is intentionally unreadable, including to its owner.
         try:
             run(db)
