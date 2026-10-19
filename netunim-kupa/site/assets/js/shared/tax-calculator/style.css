@@ -1,5 +1,6 @@
 .tax-page{--tax-ink:#173a35;--tax-green:#257665;--tax-soft:#f0f6f3;max-width:1240px;margin:0 auto;color:#213b35;padding:12px 12px 40px;text-align:start}
 .tax-page *{box-sizing:border-box}
+#main>.tax-page{height:100%;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
 .tax-hero{background:var(--tax-ink);color:#fff;border-radius:16px;padding:18px 24px;display:flex;justify-content:space-between;align-items:center;gap:24px}
 .tax-hero h1{font-size:clamp(21px,2vw,26px);margin:6px 0}
 .tax-hero p{color:#cde1d9;margin:6px 0;font-size:13px}

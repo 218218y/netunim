@@ -69,6 +69,8 @@ for app in ['orders','kupa']:
             browser.call('Emulation.setDeviceMetricsOverride',{'width':width,'height':900,'deviceScaleFactor':1,'mobile':False})
             layout=browser.evaluate("(async()=>{await new Promise(requestAnimationFrame);const root=document.querySelector('.tax-page'),r=root.getBoundingClientRect();return {left:r.left,right:r.right,width:innerWidth,dir:getComputedStyle(root).direction};})()")
             assert layout['left']>=-1 and layout['right']<=layout['width']+1 and layout['dir']=='rtl',layout
+            scroll=browser.evaluate("""(async()=>{const root=document.querySelector('.tax-page'),scroller=__APP__==='orders'?root:document.scrollingElement;scroller.scrollTop=scroller.scrollHeight;await new Promise(requestAnimationFrame);const footer=root.querySelector('footer').getBoundingClientRect(),result={bottom:footer.bottom,viewport:innerHeight,scrolled:scroller.scrollTop};scroller.scrollTop=0;return result;})()""".replace('__APP__',json.dumps(app)))
+            assert scroll['scrolled']>0 and scroll['bottom']<=scroll['viewport']+1,scroll
         if app=='orders':
             image=browser.call('Page.captureScreenshot',{'format':'png','captureBeyondViewport':False})['result']['data']
             target=ROOT/'.work/tax-calculator-desktop.png';target.write_bytes(base64.b64decode(image))

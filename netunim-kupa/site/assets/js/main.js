@@ -1,6 +1,6 @@
+import {startupMark} from './shared/startup-timing.js';
 import {createKupaTaxCalculator} from './composition/tax-calculator.js';
 import {createTaxCalculatorActions} from './ui/action-packs/tax-calculator.js';
-import {startupMark} from './shared/startup-timing.js';
 import {createKupaDashboardCapability} from './composition/dashboard.js';
 import {createKupaBankQueries} from './composition/bank-queries.js';
 import {readCloudWriteScope} from './shared/cloud-write-scope.js';

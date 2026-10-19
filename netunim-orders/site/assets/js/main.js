@@ -1,6 +1,6 @@
+import {startupMark} from './shared/startup-timing.js';
 import {createOrdersTaxCalculator} from './composition/tax-calculator.js';
 import {createTaxCalculatorActions} from './ui/action-packs/tax-calculator.js';
-import {startupMark} from './shared/startup-timing.js';
 import {createOrdersChecksCapability} from './composition/checks.js';
 import {createOrdersFinanceCapability} from './composition/finance.js';
 import {readCloudWriteScope} from './shared/cloud-write-scope.js';
