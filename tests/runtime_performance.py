@@ -24,14 +24,15 @@ def root_listeners(browser, selector):
         browser.call('Runtime.releaseObject',{'objectId':ident})
 
 
+# Independent feature APIs also expose render; measure the navigation owner explicitly.
 fixtures={
  'kupa':"""
  state=normalizeState({version:4,cash:Array.from({length:1000},(_,i)=>({id:'C'+i,date:'2026-08-27',description:'Cash '+i,amount:i})),checks:[],credits:[],expenses:[],cards:[]});
- backendReady=true;currentPage='cash';render();
+ backendReady=true;currentPage='cash';uiNavigation.render();
  """,
  'orders':"""
  state=normalizeState({suppliers:[{id:'S',name:'Performance',active:true}],transactions:Array.from({length:1000},(_,i)=>({id:'T'+i,supplierId:'S',sequence:i+1,action:'Transaction '+i,debit:i,credit:0}))});
- currentSupplierId='S';currentView='supplier';render();
+ currentSupplierId='S';currentView='supplier';uiNavigation.render();
  """,
 }
 for label,setup in fixtures.items():
@@ -49,7 +50,7 @@ for label,setup in fixtures.items():
           let writes=0,requests=0;
           Storage.prototype.setItem=function(...args){writes++;return originalWrite.apply(this,args)};
           window.fetch=(...args)=>{requests++;return originalFetch(...args)};
-          try{for(let i=0;i<RENDER_SAMPLES;i++){const start=performance.now();render();times.push(performance.now()-start)}}
+          try{for(let i=0;i<RENDER_SAMPLES;i++){const start=performance.now();uiNavigation.render();times.push(performance.now()-start)}}
           finally{Storage.prototype.setItem=originalWrite;window.fetch=originalFetch}
           times.sort((a,b)=>a-b);
           return {maxMs:Math.round(Math.max(...times)),p95Ms:Math.round(times[Math.ceil(times.length*.95)-1]),meanMs:Math.round(times.reduce((a,b)=>a+b)/times.length),writes,requests,rows:document.querySelectorAll('tbody tr').length};
@@ -111,7 +112,7 @@ with BrowserSession(ROOT/'netunim-kupa/site','kupa-finance-performance') as brow
       backendReady=false;const results={};metrics.configurePerformance(true);
       try{
         for(const page of ['dashboard','bank','credit']){
-          currentPage=page;metrics.clearPerformance();const start=performance.now();render();
+          currentPage=page;metrics.clearPerformance();const start=performance.now();uiNavigation.render();
           results[page]={ms:Math.round(performance.now()-start),metrics:metrics.performanceSummary()};
         }
         metrics.clearPerformance();const times=[];
@@ -159,7 +160,7 @@ with BrowserSession(ROOT/'netunim-orders/site','orders-domain-performance') as b
           domainRevisions.touchAll();customerFilter='all';warehouseTab='stock';inventoryGrouping='category';inventoryLocation='';
           for(const view of ['customers','service','warehouse']){
             metrics.clearPerformance();let start=performance.now();switchView(view);const cold=performance.now()-start;
-            metrics.clearPerformance();start=performance.now();render();const warm=performance.now()-start;
+            metrics.clearPerformance();start=performance.now();uiNavigation.render();const warm=performance.now()-start;
             results[count+':'+view]={coldMs:Math.round(cold),warmMs:Math.round(warm),rows:document.querySelectorAll(view==='service'?'.service-card':view==='customers'?'.customer-table tbody tr':'[data-stock-bulk-id]').length,metrics:metrics.performanceSummary()};
           }
           // Exercise real delegated pagination, then search must reset to page 1.

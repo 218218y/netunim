@@ -404,7 +404,7 @@ with BrowserSession(ROOT/'netunim-kupa/site','sheet-warm-navigation-freshness') 
       session.connectionMode='supabase';session.backendReady=false;ui.notesTab='sheet';
       await notes.workbook.sync.open();setPage('notes');await notes.workbook.activate();
       // Establish the navigation stamp after the asynchronous initial load.
-      render();const previous=document.getElementById('content').firstChild;setPage('cash');
+      uiNavigation.render();const previous=document.getElementById('content').firstChild;setPage('cash');
       remote=structuredClone(remote);remote.revision=2;remote.state.rows[0].cells[book.columns[0].id]='updated elsewhere';
       const before=reads;setPage('notes');
       const restoredImmediately=document.getElementById('content').firstChild===previous;
