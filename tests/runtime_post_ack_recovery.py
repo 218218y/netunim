@@ -21,7 +21,7 @@ model.state=normalization.normalizeState(model.state);
 const db=createStorageJournalDb(),wrapped={...db},calls=[],statuses=[],recoveryObservations=[];let owner='post-ack-native',loginEpoch=1,onAck=null,onRecovery=null,remoteRow=null;
 const originalError=console.error;console.error=(...args)=>{recoveryObservations.push({errors:args.filter(value=>value instanceof Error).map(value=>value.message)});originalError(...args)};
 wrapped.acknowledge=async(...args)=>{await db.acknowledge(...args);const callback=onAck;onAck=null;if(callback)await callback()};
-wrapped.commitCloudRecovery=async(...args)=>{if(onRecovery)await onRecovery();return db.commitCloudRecovery(...args)};
+wrapped.commitCloudRecovery=async(...args)=>{if(onRecovery)await onRecovery();try{return await db.commitCloudRecovery(...args)}catch(error){recoveryObservations.push({casFailure:error.message});throw error}};
 const options={app,owner:()=>owner,primary:()=>tab.primaryTab,mode:()=> 'primary',validate:state=>check(Array.isArray(state.notes),'notes required'),
   prepareCheckpoint:app==='kupa'?normalization.prepareKupaStorageState:clone,prepareOperation:app==='kupa'?normalization.prepareKupaStorageOperation:clone,
   createJournal:args=>createStorageJournal({...args,db:wrapped})};
@@ -59,7 +59,9 @@ if(privateSnapshot){
  const recovered=await runtime.recoverForOwner({intent:'load-account'});check(recovered,'private capture did not recover');model.state=normalization.normalizeState(recovered.state);
  remoteRow={revision:1575,state:(await runtime.cloudState()).base.state,updated_at:'2026-10-11T10:07:06.944304Z'};
 }else{
- await runtime.initializeCloudHead(10,model.state,{sourceOwner:owner,intent:'cloud-authoritative',cloudState:project(model.state)});await driver.refreshStorageV2CloudState();await edit('original-note','flight-value');
+ const revision=phase==='typing-5'?1779:10;session.cloudRevision=revision;session.dbRevision=revision;
+ await runtime.initializeCloudHead(revision,model.state,{sourceOwner:owner,intent:'cloud-authoritative',cloudState:project(model.state)});await driver.refreshStorageV2CloudState();
+ for(let seed=0;seed<(phase==='typing-5'?385:1);seed++)await edit('original-note','flight-value');
 }
 if(phase.startsWith('review')){
  if(!privateSnapshot){
@@ -107,20 +109,38 @@ if(phase.startsWith('review')){
  }
 }else{
  let independentFinance=null;
+ let typing=null,typingEdits=0;
+ const typingCount=phase.startsWith('typing-')?Number(phase.split('-')[1]):null;
+ let nextEdit=null;
  onAck=async()=>{
    if(app==='kupa'){
      model.state.bank={...model.state.bank,currentBalance:321,source:'hapoalim',sourceAccount:'synthetic-account',updatedAt:'2026-10-11T10:08:00Z'};
      model.state.creditSync={...model.state.creditSync,syncedAt:'2026-10-11T10:08:00.000Z'};
      independentFinance=clone({bank:model.state.bank,creditSync:model.state.creditSync});
    }
-   if(phase==='draft'){model.state.notes[0].content='undurable-draft';session.localGeneration++}else await edit(phase==='conflict'?'original-note':'late-note','late-local-value');
+   if(typingCount!==null){
+     typing=(async()=>{for(let index=1;index<=typingCount;index++){
+       await new Promise(resolve=>setTimeout(resolve,index===1?52:183));
+       await edit('original-note','typing-'+index);typingEdits=index;nextEdit?.();nextEdit=null;
+     }})();
+     if(typingCount)await new Promise(resolve=>{nextEdit=resolve});
+   }else if(phase==='draft'){model.state.notes[0].content='undurable-draft';session.localGeneration++}else await edit(phase==='conflict'?'original-note':'late-note','late-local-value');
  };
  let recoveryCount=0;
  if(phase==='cas-race')onRecovery=async()=>{if(++recoveryCount===1)await edit('third-note','late-before-cas')};
+ if(typingCount!==null)onRecovery=async()=>{recoveryCount++;if(recoveryCount<=2&&typingEdits<typingCount)await new Promise(resolve=>{nextEdit=resolve})};
  if(phase==='owner-loss')onRecovery=async()=>{loginEpoch++};
  const saved=app==='orders'?await api.requestCloudSave(''):await api.persistSupabaseState(project(model.state),'');
+ if(typing)await typing;
  const head=await driver.refreshStorageV2CloudState();
- if(['conflict','draft','owner-loss'].includes(phase)){
+ if(typingCount!==null){
+   check(saved===true,'typing burst left permanent fence '+JSON.stringify({typingCount,typingEdits,recoveryCount,ackSeq:head.base.ackSeq,seq:head.seq,controlKind:head.control?.conflict?.kind,recoveryObservations}));
+   check(!head.control&&!head.pending&&!head.flight,'typing burst not drained');
+   check(head.seq===(phase==='typing-5'?385:1)+typingCount&&head.base.ackSeq===head.seq,'typing ACK advanced incorrectly');
+   check(model.state.notes.find(note=>note.id==='original-note').content===(typingCount?'typing-'+typingCount:'flight-value'),'typing content lost');
+   check(calls.length===(typingCount?2:1)&&new Set(calls.map(call=>call.operationId)).size===calls.length,'duplicate write or ACK resend');
+   check(equalSyncJson(project(model.state),remoteRow.state),'remote does not contain all local work');
+ }else if(['conflict','draft','owner-loss'].includes(phase)){
    check(saved===false,'unsafe publication claimed success');check(calls.length===1,'unsafe follow-up write');
    check(phase==='owner-loss'?!head.control:head.control?.conflict?.kind==='concurrent-ack','wrong retained fence');
    check(!statuses.some(args=>args.includes('synced')),'false synced');
@@ -146,25 +166,68 @@ check(JSON.stringify(project(recovered.state))===expected.cloudHash,'fresh runti
 check(head.seq===expected.seq&&head.base.revision===expected.revision&&head.base.ackSeq===expected.ackSeq&&head.pending===expected.pending&&(head.control?.conflict?.kind??null)===expected.controlKind,'fresh runtime changed cursor');
 return {records:expected.notes.length,seq:head.seq,revision:head.base.revision,ackSeq:head.base.ackSeq,pending:head.pending,calls:expected.calls};
 """
+RESTART_CAPTURE=r"""
+await runtime.initializeCloudHead(10,model.state,{sourceOwner:owner,intent:'cloud-authoritative',cloudState:project(model.state)});
+await driver.refreshStorageV2CloudState();await edit('original-note','flight-value');
+onAck=()=>edit('original-note','typing-1');
+let retries=0,ready;
+const waiting=new Promise(resolve=>{ready=resolve});
+onRecovery=async()=>{if(++retries<=2){await edit('original-note','typing-'+(retries+1));if(retries===2)setTimeout(ready,0)}};
+window.pendingAckSave=api.requestCloudSave('');
+await waiting;
+const recovered=await runtime.recoverReadOnly(),head=await driver.refreshStorageV2CloudState();
+check(head.base.ackSeq===1&&head.seq===4&&!head.control&&calls.length===1,'reload did not interrupt pending recovery');
+return {owner,notes:recovered.state.notes,cloudHash:JSON.stringify(project(recovered.state)),seq:head.seq,revision:head.base.revision,ackSeq:head.base.ackSeq,pending:true,controlKind:null,calls:1,remoteRow};
+"""
+RESTART_RESUME=r"""
+const expected=__EXPECTED__;owner=expected.owner;remoteRow=expected.remoteRow;
+const recovered=await runtime.recoverForOwner({intent:'load-account'});
+check(recovered&&JSON.stringify(project(recovered.state))===expected.cloudHash,'reload lost durable work or remote addition');
+model.state=normalization.normalizeState(recovered.state);session.cloudRevision=expected.revision;
+await driver.refreshStorageV2CloudState();
+// The fake server starts with the saved remote head, without injecting a second
+// synthetic addition into the resumed operation.
+onAck=null;calls.push({operationId:'earlier-ack',expected:10,state:expected.remoteRow.state});
+check(await api.requestCloudSave(''),'reload did not drain through the ordinary outbox');
+const head=await driver.refreshStorageV2CloudState(),durable=await runtime.recoverReadOnly();
+check(!head.control&&!head.pending&&!head.flight&&head.seq===4&&head.base.ackSeq===4,'reload cursor not clean');
+check(JSON.stringify(project(durable.state))===expected.cloudHash,'reload changed full business content');
+check(equalSyncJson(remoteRow.state,project(durable.state))&&calls.length===2,'reload duplicated a write or lost pending work');
+return {owner,notes:durable.state.notes,cloudHash:expected.cloudHash,seq:head.seq,revision:head.base.revision,ackSeq:head.base.ackSeq,pending:false,controlKind:null,calls:1};
+"""
 parser=argparse.ArgumentParser()
 parser.add_argument('--app',choices=('orders','kupa'))
-parser.add_argument('--phase',action='append',choices=('benign','cas-race','conflict','draft','owner-loss','review','review-abort','review-quota','review-ui'))
+parser.add_argument('--phase',action='append',choices=('benign','cas-race','conflict','draft','owner-loss','review','review-abort','review-quota','review-ui','typing-0','typing-1','typing-2','typing-5','typing-10','typing-restart'))
+parser.add_argument('--typing-baseline',action='store_true',help='use shared recovery from --typing-baseline-ref in the disposable site')
+parser.add_argument('--typing-baseline-ref',default='93d75389c32df3d8e9c71b3dfe85afc9dae99d1d')
 parser.add_argument('--baseline',action='store_true')
 parser.add_argument('--private-snapshot',type=Path)
 args=parser.parse_args()
 if args.private_snapshot and (args.app!='orders' or args.phase!=['review']):parser.error('private replay requires --app orders --phase review')
 private=json.loads(args.private_snapshot.read_text(encoding='utf-8')) if args.private_snapshot else None
 for app in (args.app,) if args.app else ('orders','kupa'):
-    for phase in args.phase or (('benign','cas-race','conflict','draft','owner-loss','review','review-abort','review-quota','review-ui') if app=='orders' else ('benign','cas-race','conflict','draft','owner-loss')):
+    for phase in args.phase or (('benign','cas-race','conflict','draft','owner-loss','review','review-abort','review-quota','review-ui','typing-0','typing-1','typing-2','typing-5','typing-10','typing-restart') if app=='orders' else ('benign','cas-race','conflict','draft','owner-loss')):
         setup=SETUP.replace('__APP__',json.dumps(app)).replace('__PHASE__',json.dumps(phase))
         with BrowserSession(ROOT/f'netunim-{app}/site',f'post-ack-{app}-{phase}') as browser:
+            if args.typing_baseline:
+                target=browser.tmp/'site/assets/js/shared/cloud-post-ack-recovery.js'
+                old=subprocess.check_output(['git','show',f'{args.typing_baseline_ref}:shared/cloud-post-ack-recovery.js'],cwd=ROOT)
+                trailer=target.read_text(encoding='utf-8').split('\nexport const __testBindings=',1)
+                if len(trailer)>1:old+=('\nexport const __testBindings='+trailer[1]).encode('utf-8')
+                target.write_bytes(old)
+                browser._navigate()
             if args.baseline:
                 target=browser.tmp/'site/assets/js/sync/document.js'
                 old=subprocess.check_output(['git','show',f'e1a2dbe3:netunim-{app}/site/assets/js/sync/document.js'],cwd=ROOT)
                 trailer=target.read_text(encoding='utf-8').split('\nexport const __testBindings=',1)
                 if len(trailer)>1:old+=('\nexport const __testBindings='+trailer[1]).encode('utf-8')
                 target.write_bytes(old);browser._navigate()
-            try:outcome=evaluate_sync(browser, '(async()=>{'+setup+FLOW.replace('__PRIVATE__',json.dumps(private))+'})()',baseline=args.baseline,timeout=70)
+            try:
+                flow=RESTART_CAPTURE if phase=='typing-restart' else FLOW.replace('__PRIVATE__',json.dumps(private))
+                outcome=evaluate_sync(browser, '(async()=>{'+setup+flow+'})()',baseline=args.baseline,timeout=70)
+                if phase=='typing-restart':
+                    browser._navigate()
+                    outcome=evaluate_sync(browser,'(async()=>{'+setup+RESTART_RESUME.replace('__EXPECTED__',json.dumps(outcome))+'})()',timeout=45)
             except RuntimeError:
                 if not private:print('Native error diagnostics: '+json.dumps(browser.drain_serious_errors()),flush=True)
                 raise

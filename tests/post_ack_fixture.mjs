@@ -3,7 +3,7 @@ import {createStorageV2Runtime} from '../shared/storage-v2-runtime.js';
 import {createStorageJournal} from '../shared/storage-journal.js';
 import {memoryDb,emergencyStore} from './storage-v2-fixture.mjs';
 import {equalSyncJson} from '../shared/cloud-sync.js';
-export async function postAckFixture(app,{onCommitted=async()=>{},remoteChange=false,onRecovery=async()=>{},remoteEdit=null,composed=false}={}){
+export async function postAckFixture(app,{onCommitted=async()=>{},remoteChange=false,onRecovery=async()=>{},remoteEdit=null,composed=false,enforceRevision=false}={}){
   const root=`../netunim-${app}/site/assets/js/`,{INITIAL_STATE}=await import(root+'state/constants.js'),{createStorageBrowser}=await import(root+'storage/browser.js'),{createSyncMerge}=await import(root+'sync/merge.js');
   const clone=structuredClone,noop=()=>{},project=value=>{const next=clone(value);delete next.checks;delete next._meta;return next};
   const model={state:clone(INITIAL_STATE)},session={localGeneration:0,cloudRevision:10,dbRevision:10,connectionMode:'supabase',backendReady:true,serverInfo:{}},tab={primaryTab:true},files={},db=memoryDb(),wrapped={...db},calls=[],statuses=[];
@@ -27,10 +27,11 @@ export async function postAckFixture(app,{onCommitted=async()=>{},remoteChange=f
     await result.committed;
   }
   Object.defineProperty(globalThis,'navigator',{configurable:true,value:{onLine:true}});
-  const rpc=async(snapshot,revision,operationId)=>{calls.push({snapshot:clone(snapshot),revision,operationId});const state=clone(snapshot);if(calls.length===1){if(remoteChange)state.notes.push({id:'remote-note',content:'remote-only',createdAt:'2026-10-11',updatedAt:'2026-10-11'});if(remoteEdit)state.notes[0].content=remoteEdit}remoteRow={revision:revision+1,state,updated_at:'2026-10-11T10:07:06Z'};return {r:{ok:true},row:clone(remoteRow)}};
+  const rpc=async(snapshot,revision,operationId)=>{calls.push({snapshot:clone(snapshot),revision,operationId});if(enforceRevision&&revision!==remoteRow.revision)return {r:{ok:false,status:409},j:{code:'PT409',message:'revision_conflict'}};const state=clone(snapshot);if(calls.length===1){if(remoteChange)state.notes.push({id:'remote-note',content:'remote-only',createdAt:'2026-10-11',updatedAt:'2026-10-11'});if(remoteEdit)state.notes[0].content=remoteEdit}remoteRow={revision:revision+1,state,updated_at:'2026-10-11T10:07:06Z'};return {r:{ok:true},row:clone(remoteRow)}};
   const ports={getCloudWriteScope:()=>({...runtime.cloudScope,accountOwner:owner,loginEpoch}),model,session,files,tab,toast:noop,render:noop,
     readCloud:async()=>clone(remoteRow),
     refreshStorageV2CloudState:()=>driver.refreshStorageV2CloudState(),materializeStorageV2CloudFlight:args=>driver.materializeStorageV2CloudFlight(args),acknowledgeStorageV2CloudFlight:(...args)=>driver.acknowledgeStorageV2CloudFlight(...args),setStorageV2CloudControl:(...args)=>driver.setStorageV2CloudControl(...args),storageV2CommitPromise:()=>runtime.commitPromise,
+    rejectStorageV2CloudFlight:(...args)=>driver.rejectStorageV2CloudFlight(...args),
     readStorageV2CloudRecovery:(...args)=>driver.readStorageV2CloudRecovery(...args),commitStorageV2CloudRecovery:(...args)=>driver.commitStorageV2CloudRecovery(...args)};
   const create=composed?p=>createComposedSync(app,p):app==='orders'?createOrdersSync:createKupaSync;
   const api=app==='orders'?create({...ports,prepareCloudState:project,composeOrderCloudState:(cloud,current)=>({...clone(cloud),checks:clone(current.checks)}),cloudEnabled:()=>true,cloudHasLocalWork:()=>!!(session.storageV2CloudPending||session.cloudSaveRequested),sameOrderCloudData:(a,b)=>equalSyncJson(project(a),project(b)),applyOrderCloudState:state=>{model.state={...clone(state),checks:clone(model.state.checks)}},rpcSaveV2:rpc,merge3:merge.merge3,setCloud:(...args)=>statuses.push(args),writeStateToFolder:async()=>{},pollSharedChecks:async()=>{},refreshKupaReadout:async()=>false,refreshCloudTimestamp:noop}):create({...ports,

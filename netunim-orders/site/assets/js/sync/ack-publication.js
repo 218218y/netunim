@@ -2,7 +2,6 @@ import {readDocumentWriteAck} from '../shared/document-write-ack.js';
 import {structuredSyncConflict} from '../shared/cloud-sync.js';
 import {clone} from '../core/values.js';
 import {commitCloudCheckpoint} from '../shared/cloud-checkpoint-publication.js';
-import {recoverPostAckPublication} from '../shared/cloud-post-ack-recovery.js';
 import {cloudAckPublicationDiagnostic} from '../shared/cloud-ack-diagnostic.js';
 
 // Owns durable ACK publication and post-ACK recovery.
@@ -12,7 +11,7 @@ export function createCloudAckPublication({model,session,tab,files,access,journa
   const {prepareCloudState,sameOrderCloudData,merge3,composeOrderCloudState=(cloud,current)=>({...clone(cloud),checks:clone(current.checks||[])}),applyOrderCloudState}=projection;
   const {setCloud,toast}=view;
   const {writeStateToFolder}=mirror;
-  const {readStorageV2CloudRecovery=null,commitStorageV2CloudRecovery=null}=recovery;
+  const {readStorageV2CloudRecovery=null,commitStorageV2CloudRecovery=null,waitForPostAckQuiet=null}=recovery;
 
 async function publishAcknowledgedFlight({res,flight,serverSnapshot,scope}){
   let state;
@@ -38,16 +37,20 @@ async function publishAcknowledgedFlight({res,flight,serverSnapshot,scope}){
   }
   let expectedGeneration=Number(session.localGeneration||0);
   const previousState=clone(model.state),currentState=composeOrderCloudState(currentCloud,model.state);
+  const recoveryTrace=[];
   let publication=await commitCloudCheckpoint({
     commit:()=>acknowledgeStorageV2CloudFlight(flight.operationId,newRevision,authoritative,{currentState,expectedSeq}),
     isCurrent:committed=>writeScopeCurrent(scope,committed)&&Number(session.localGeneration||0)===expectedGeneration&&committed?.seq===expectedSeq,
     publish:()=>{if(!sameOrderCloudData(model.state,currentCloud))applyOrderCloudState(currentCloud)},
   });
+  if(!publication.published)recoveryTrace.push({reason:publication.reason==='publication-error'?'publication_exception':Number(session.localGeneration||0)!==expectedGeneration?'publication_stale_generation':publication.committed?.seq!==expectedSeq?'publication_stale_seq':'scope_lost',attempt:0});
   if(!publication.published&&publication.reason==='stale'&&writeScopeCurrent(scope,publication.committed)&&readStorageV2CloudRecovery&&commitStorageV2CloudRecovery){
     try{
+      const {recoverPostAckPublication}=await import('../shared/cloud-post-ack-recovery.js');
       const recovered=await recoverPostAckPublication({isCurrent:head=>writeScopeCurrent(scope,head),generation:()=>Number(session.localGeneration||0),visible:()=>model.state,
         equal:sameOrderCloudData,merge:(before,local,candidate,deleteIntents)=>merge3(prepareCloudState(before),prepareCloudState(local),prepareCloudState(candidate),{deleteIntents}),
-        read:readStorageV2CloudRecovery,commit:commitStorageV2CloudRecovery,publish:state=>{applyOrderCloudState(state)}},
+        read:readStorageV2CloudRecovery,commit:commitStorageV2CloudRecovery,publish:state=>{applyOrderCloudState(state)},
+        diagnose:record=>{recoveryTrace.push(record)},waitForQuiet:waitForPostAckQuiet?()=>waitForPostAckQuiet(scope):null},
         {previousState,candidateState:currentState,candidateSeq:expectedSeq,baseState:authoritative,ackRevision:newRevision,ackSeq:flight.endSeq});
       if(recovered){publication={committed:recovered.state,published:true};expectedGeneration=recovered.generation}
     }catch(error){console.error('post-ACK recovery retained for review',error)}
@@ -62,7 +65,7 @@ async function publishAcknowledgedFlight({res,flight,serverSnapshot,scope}){
     session.cloudConflictBlocked=true;session.cloudSaveRequested=false;
     if(!tab.primaryTab)return false;
     if(publication.reason==='publication-error')console.error('post-ACK model publication',publication.error);
-    await setWriteControl(scope,{conflict:{kind:publication.reason==='publication-error'?'ack-publication-failed':'concurrent-ack',domain:'orders',baseRevision:flight.baseRevision,currentRemoteRevision:newRevision}});
+    await setWriteControl(scope,{conflict:{kind:publication.reason==='publication-error'?'ack-publication-failed':'concurrent-ack',domain:'orders',baseRevision:flight.baseRevision,currentRemoteRevision:newRevision,...(recoveryTrace.length?{recoveryTrace}: {})}});
     if(!writeScopeCurrent(scope))return false;
     setCloud('ענן: הסנכרון נעצר לשמירת שינוי מקביל','error');
     toast(publication.reason==='publication-error'?'אישור הענן נשמר, אבל עדכון הנתונים לתצוגה נכשל. הסנכרון נעצר לבדיקה; הנתונים נשמרו באחסון המקומי.':'שינוי בוצע בזמן שמירת אישור הענן. הנתונים נשמרו מקומית; ייצא גיבוי ובדוק את המצב לפני חידוש הסנכרון.');
