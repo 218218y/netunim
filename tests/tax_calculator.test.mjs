@@ -90,12 +90,13 @@ test('arnona 2026 uses assessed 2025 business and residential rent, never curren
   const approved=calculateTax({...i,approvedDiscount:1250});
   assert.equal(approved.annual.arnona,1050000,'input is effective approved rate against whole bill');
 });
-test('missing 2025 assessment business or rental income never falls back to 2026 numbers',()=>{
+test('automatic amounts are forecasts and never become assessed 2025 income',()=>{
   const base=input({revenue:60000000,rentMonthly:565400,rentMode:'residential-auto',arnonaAnnual:1200000,assessmentYear:2025});
   for(const update of [{},{arnonaBusinessAnnual:0},{arnonaRentReceivedMonthly:0}]){
     const c=calculateTax({...base,...update});
-    assert.equal(c.arnona.assessedIncome,null);
-    assert.equal(c.arnona.estimatedDiscount,null);
+    assert.equal(c.arnona.basis,'forecast');
+    assert.equal(c.arnona.assessmentComplete,false);
+    assert.ok(c.arnona.reasons.length>0);
     assert.equal(c.annual.arnona,1200000);
   }
   const c=calculateTax({...base,arnonaBusinessAnnual:0,arnonaRentReceivedMonthly:0});
@@ -103,15 +104,18 @@ test('missing 2025 assessment business or rental income never falls back to 2026
   assert.equal(c.arnona.estimatedDiscount,9000);
   assert.equal(c.arnona.discount,0);
   const none=calculateTax({...base,assessmentYear:null,arnonaBusinessAnnual:0,arnonaRentReceivedMonthly:500000});
-  assert.equal(none.arnona.assessedIncome,null,'year is required before classifying assessed income');
+  assert.equal(none.arnona.assessedIncome,500000);
+  assert.equal(none.arnona.basis,'forecast','an unassigned year permits a labeled forecast, never assessment status');
   const wrong=calculateTax({...base,assessmentYear:2026,arnonaBusinessAnnual:0,arnonaRentReceivedMonthly:0});
-  assert.equal(wrong.arnona.estimatedDiscount,null,'2026 Bnei Brak does not test current-year income');
+  assert.equal(wrong.arnona.basis,'forecast');
+  assert.equal(wrong.arnona.assessmentComplete,false,'current-year figures are not assessed prior-year income');
   assert.ok(wrong.warnings.some(w=>w.includes('2025')));
   const older=calculateTax({...base,assessmentYear:2024,arnonaBusinessAnnual:20000000,arnonaRentReceivedMonthly:350000,householdOtherMonthly:100000});
   assert.equal(older.arnona.assessedAnnualIncome,25400000,'older assessment arithmetic remains visible for inspection');
-  assert.equal(older.arnona.estimatedDiscount,null,'older assessment does not imply 2026 eligibility');
+  assert.equal(older.arnona.basis,'forecast');
+  assert.equal(older.arnona.assessmentComplete,false,'older assessment does not imply 2026 eligibility');
   const sameYear=calculateTax({...base,taxYear:2027,rules:defaultRules(2027),assessmentYear:2027});
-  assert.equal(sameYear.arnona.assessedIncome,null,'even matching years require explicit assessment input');
+  assert.equal(sameYear.arnona.basis,'forecast','matching years alone do not establish an assessment');
 });
 test('only complete current annual documents are accepted; no legacy normalization',()=>{
   const legacy=input({revenue:10000000,assessmentYear:2025,arnonaBusinessAnnual:0});

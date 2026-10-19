@@ -24,6 +24,7 @@ import {
   auditMarkup,
   diffMarkup,
   normalizeDate,
+  arnonaResultsMarkup,
 } from './view.js';
 
 const statusLabels = {
@@ -54,6 +55,11 @@ function readInput(element) {
   if (type === 'boolean') return element.checked;
   if (type === 'date') return normalizeDate(value);
   if (['money', 'percent'].includes(type)) return value === '' ? null : toMinor(value);
+  if (type === 'year') {
+    if (value === '') return null;
+    if (!/^\d{4}$/.test(value)) throw new Error('יש להשלים שנה בארבע ספרות');
+    return Number(value);
+  }
   if (['integer', 'points'].includes(type)) return value === '' ? null : Number(value);
   return value;
 }
@@ -87,7 +93,8 @@ export function createTaxWorkspace({
     rulesCatalog = [],
     reviewName = null;
   const sync = createTaxSync({ accountScope, request, writable, onChange: refreshStatus });
-  const invalidDates = new Set();
+  const pendingInputs = new Map();
+  let editRevision = 0;
   const name = () => `year/${year}`;
   function capture(edit = false) {
     const guard = sync.capture(edit),
@@ -105,15 +112,47 @@ export function createTaxWorkspace({
     if (!active()) return;
     const root = container();
     if (!root) return;
-    for (const node of root.querySelectorAll('[data-tax-status]'))
-      node.textContent = dirty
+    for (const node of root.querySelectorAll('[data-tax-status]')) {
+      node.textContent = pendingInputs.size ? 'הקלדה בתהליך · ערך חלקי טרם נשמר' : dirty
         ? 'שינויים טרם נשמרו מקומית'
         : sync.state.error || statusLabels[sync.state.status];
+      node.title = node.textContent;
+    }
   }
   function fail(error) {
     message = error?.message ?? 'הפעולה לא הושלמה';
-    if (active()) render();
+    if (active()) {
+      const notice = container()?.querySelector('[data-tax-message]');
+      if (notice) notice.textContent = message;
+      else render();
+    }
     return false;
+  }
+  function fieldError(element, text = '') {
+    const notice = element.closest?.('label')?.querySelector('[data-tax-field-error]');
+    if (notice) { notice.textContent = text; notice.hidden = !text; }
+    if (text) element.setAttribute?.('aria-invalid', 'true');
+    else element.removeAttribute?.('aria-invalid');
+  }
+  function stageInput(element, error) {
+    const text = element.dataset.type === 'year'
+      ? 'יש להשלים שנה בארבע ספרות, בין 2000 ל־2200.'
+      : element.dataset.type === 'date' ? 'יש להשלים תאריך תקין בפורמט יום/חודש/שנה.'
+        : element.dataset.type === 'money' ? 'יש להשלים סכום תקין, אפס או יותר, עם עד שתי ספרות אחרי הנקודה.'
+          : error.message;
+    pendingInputs.set(element.dataset.field, { value: element.value, error: text });
+    fieldError(element);
+    refreshStatus();
+    return false;
+  }
+  function finishInput(element) {
+    const pending = pendingInputs.get(element?.dataset?.field);
+    if (pending) { fieldError(element, pending.error); refreshStatus(); return false; }
+    return commit();
+  }
+  function editingField() {
+    const focused = document.activeElement;
+    return container()?.contains(focused) && focused?.matches('input[data-field],select[data-field],textarea[data-field]');
   }
   function result() {
     return draft?.rules ? calculateTax(draft) : null;
@@ -132,6 +171,20 @@ export function createTaxWorkspace({
 ${output.complete ? money(output.monthly.net) : 'נתונים חסרים'}</b>
 `
           : '';
+      const arnonaPanel = root.querySelector('[data-tax-arnona-results]');
+      if (arnonaPanel && output) arnonaPanel.innerHTML = arnonaResultsMarkup(output);
+      for (const field of root.querySelectorAll('[data-tax-auto-field]')) {
+        const path = field.dataset.taxAutoField, automatic = draft[path] === null;
+        const input = field.querySelector('input');
+        const amount = path === 'arnonaBusinessAnnual' ? output?.arnona.businessAnnual : output?.arnona.rentalReceivedMonthly;
+        if (automatic && input !== document.activeElement) input.value = amount === null || amount === undefined ? '' : amount / 100;
+        const source = field.querySelector('[data-tax-auto-source]');
+        if (source) source.textContent = automatic ? 'מחושב אוטומטית · תחזית מנתוני העסק והשכירות' : 'הוזן ידנית · מחליף את החישוב האוטומטי';
+        const reset = field.querySelector('[data-action="tax-reset-automatic"]');
+        if (reset) reset.hidden = automatic;
+      }
+      const notice = root.querySelector('[data-tax-message]');
+      if (notice) notice.textContent = message;
       refreshStatus();
     } catch (error) {
       const node = container()?.querySelector('[data-tax-message]');
@@ -176,10 +229,11 @@ ${output.complete ? money(output.monthly.net) : 'נתונים חסרים'}</b>
       rulesDraft = clone(value.rules ?? rules);
       dirty = false;
       rulesDirty = false;
-      invalidDates.clear();
+      pendingInputs.clear();
       loadedScope = { ...accountScope() };
       message = '';
       render();
+      const observedEdit = editRevision;
       try {
         const rows = await sync.remote.catalog(accountScope().owner);
         guard();
@@ -192,12 +246,17 @@ ${output.complete ? money(output.monthly.net) : 'נתונים חסרים'}</b>
         try {
           await sync.flush();
           guard();
-          draft = clone(sync.current(name()));
-          rulesDraft = clone(draft.rules ?? rules);
+          if (observedEdit === editRevision && !dirty && !rulesDirty && !pendingInputs.size && !editingField()) {
+            draft = clone(sync.current(name()));
+            rulesDraft = clone(draft.rules ?? rules);
+          }
         } catch {
           guard();
         }
-      if (active()) render();
+      if (active()) {
+        if (observedEdit === editRevision && !pendingInputs.size && !editingField()) render();
+        else refreshResult();
+      }
       return true;
     })()
       .catch((error) => {
@@ -218,8 +277,8 @@ ${output.complete ? money(output.monthly.net) : 'נתונים חסרים'}</b>
     return task;
   }
   function commit() {
-    if ([...invalidDates].some((path) => !path.startsWith('groups.')))
-      throw new Error('יש להשלים תאריך תקין בפורמט יום/חודש/שנה');
+    if ([...pendingInputs.keys()].some(path => !path.startsWith('groups.')))
+      throw new Error('יש להשלים את השדות שבעריכה לפני שמירה או מעבר מסך.');
     if (!draft || !dirty) return localQueue;
     const value = assertAnnual(clone(draft)),
       doc = name(),
@@ -486,7 +545,7 @@ ${!writable() ? 'disabled' : ''}>
 ${tab === 'summary' ? summaryMarkup(output) : tab === 'rules' ? rulesMarkup(rulesDraft) : tab === 'audit' ? auditMarkup(output) : tab === 'recovery' ? recoveryMarkup() : inputMarkup(tab, draft, output)}</fieldset>
 </div>
 ${!['summary', 'audit', 'rules', 'recovery'].includes(tab) ? '<div class="tax-toolbar"><button class="btn primary" data-action="tax-save">שמור נתוני שנה</button><span>ערכים תקינים נשמרים מקומית במהלך ההקלדה.</span></div>' : ''}<footer>
-נתוני המחשבון נפרדים מהמאזן התזרימי. אין משיכת הכנסות אוטומטית. חישובי המס וההנחה הם אומדן; אישור הרשות והנתונים מהשומה קובעים.</footer>
+נתוני המחשבון נפרדים מהמאזן התזרימי. חישובי המס וההנחה הם אומדן; אישור הרשות והנתונים מהשומה קובעים.</footer>
 `
         : `<div
 class="tax-panel">
@@ -501,15 +560,20 @@ data-action="tax-retry">
     }</section>
 `;
     refreshStatus();
+    for (const element of root.querySelectorAll('[data-field]')) {
+      const pending = pendingInputs.get(element.dataset.field);
+      if (pending) element.value = pending.value;
+    }
   }
   async function refresh() {
     if (!active() || disposed) return;
     if (!isCurrent()) return load();
-    if (dirty || rulesDirty || !writable()) return;
+    if (dirty || rulesDirty || pendingInputs.size || editingField() || !writable()) return;
+    const observedEdit = editRevision;
     try {
       await localQueue;
       await sync.flush();
-      if (!isCurrent()) return;
+      if (!isCurrent() || dirty || rulesDirty || pendingInputs.size || editingField() || observedEdit !== editRevision) return;
       profile = clone(sync.current('profile'));
       const value = sync.current(name());
       if (value && !same(value, draft)) {
@@ -531,41 +595,65 @@ data-action="tax-retry">
   const commands = {
     'tax-input': (element) => {
       if (!isCurrent() || !writable()) throw new Error('יש לטעון את המחשבון בלשונית הראשית');
-      if (element.dataset.type === 'date' && !normalizeDate(element.value)) {
-        invalidDates.add(element.dataset.field);
-        dirty = true;
-        refreshStatus();
-        return false;
-      }
-      invalidDates.delete(element.dataset.field);
+      editRevision++;
       const next = clone(draft);
-      set(next, element.dataset.field, readInput(element));
-      assertAnnual(next);
+      try {
+        set(next, element.dataset.field, readInput(element));
+        assertAnnual(next);
+      } catch (error) { return stageInput(element, error); }
+      pendingInputs.delete(element.dataset.field);
+      fieldError(element);
       draft = next;
       dirty = true;
       message = '';
       refreshResult();
+      if ([...pendingInputs.keys()].some(path => !path.startsWith('groups.'))) { refreshStatus(); return false; }
       return commit();
     },
-    'tax-save': () => commit(),
+    'tax-save': (element) => finishInput(element),
+    'tax-reset-automatic': async (element) => {
+      if (!isCurrent() || !writable()) throw new Error('אין הרשאת עריכה');
+      const path = element.dataset.field;
+      if (!['arnonaBusinessAnnual', 'arnonaRentReceivedMonthly'].includes(path)) throw new Error('שדה אוטומטי אינו תקין');
+      pendingInputs.delete(path);
+      draft[path] = null;
+      dirty = true;
+      editRevision++;
+      const input = container()?.querySelector(`input[data-field="${path}"]`);
+      if (input) {
+        fieldError(input);
+        const output = result();
+        const amount = path === 'arnonaBusinessAnnual' ? output.arnona.businessAnnual : output.arnona.rentalReceivedMonthly;
+        input.value = amount === null ? '' : amount / 100;
+      }
+      refreshResult();
+      return commit();
+    },
     'tax-rule-input': (element) => {
       if (!isCurrent() || !writable()) throw new Error('אין הרשאת עריכה');
-      if (element.dataset.type === 'date' && !normalizeDate(element.value)) {
-        invalidDates.add(element.dataset.field);
-        rulesDirty = true;
-        return false;
-      }
-      invalidDates.delete(element.dataset.field);
-      const path = element.dataset.field;
-      set(rulesDraft, path, readInput(element));
-      const key = path.split('.')[1];
-      if (rulesDraft.groups[key]) {
-        rulesDraft.groups[key].status = 'draft';
-        rulesDraft.groups[key].checkedAt = null;
-      }
+      editRevision++;
       rulesDirty = true;
+      const path = element.dataset.field;
+      const next = clone(rulesDraft);
+      const key = path.split('.')[1];
+      try {
+        set(next, path, readInput(element));
+        if (next.groups[key]) {
+          next.groups[key].status = 'draft';
+          next.groups[key].checkedAt = null;
+          next.groups[key].checkedBy = null;
+        }
+        assertRules(next);
+      } catch (error) { return stageInput(element, error); }
+      pendingInputs.delete(path);
+      fieldError(element);
+      rulesDraft = next;
+      refreshStatus();
     },
-    'tax-rule-change': () => {},
+    'tax-rule-change': (element) => {
+      const pending = pendingInputs.get(element.dataset.field);
+      if (pending) fieldError(element, pending.error);
+    },
     'tax-back': async () => {
       await commit();
       if (
@@ -609,6 +697,8 @@ data-action="tax-retry">
     'tax-sync': async () => {
       await commit();
       await sync.flush();
+      message = '';
+      refreshResult();
       return refresh();
     },
     'tax-add-child': async () => {
@@ -658,8 +748,8 @@ data-action="tax-retry">
       const guard = capture(true),
         key = element.dataset.group;
       if (!GROUPS.includes(key)) return;
-      if ([...invalidDates].some((path) => path.startsWith('groups.' + key + '.')))
-        throw new Error('יש להשלים את תאריכי הקבוצה לפני סימון בדיקה');
+      if ([...pendingInputs.keys()].some(path => path.startsWith('groups.' + key + '.')))
+        throw new Error('יש להשלים את שדות הקבוצה לפני סימון בדיקה');
       if (
         !(await confirmDialog(
           'סימון בדיקה',
@@ -681,7 +771,7 @@ data-action="tax-retry">
     },
     'tax-publish-rules': async () => {
       const guard = capture(true);
-      if (invalidDates.size) throw new Error('יש להשלים תאריכים לפני פרסום כללים');
+      if (pendingInputs.size) throw new Error('יש להשלים את השדות שבעריכה לפני פרסום כללים');
       assertRules(rulesDraft);
       if (
         !(await confirmDialog(
@@ -886,7 +976,7 @@ ${esc(r.document_name.split('/')[2])}</button>
     if (active()) return refresh();
   };
   const onUnload = (event) => {
-    if (dirty || rulesDirty) {
+    if (dirty || rulesDirty || pendingInputs.size) {
       event.preventDefault();
       event.returnValue = '';
     }
@@ -894,7 +984,7 @@ ${esc(r.document_name.split('/')[2])}</button>
   const unsubscribe = subscribeAccountScope(() => {
     clearTimeout(cloudTimer);
     cloudTimer = null;
-    invalidDates.clear();
+    pendingInputs.clear();
     sync.reset();
     draft = null;
     rulesDraft = null;

@@ -1,6 +1,6 @@
 // @ts-check
 /** Money is integer agorot; rates are integer basis points (10000 = 100%). */
-export const ENGINE_VERSION = '1.1.0';
+export const ENGINE_VERSION = '1.2.0';
 export const GROUPS = [
   'vat',
   'insurance',

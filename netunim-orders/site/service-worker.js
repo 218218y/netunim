@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-63ec4ac586bf';
+const CACHE='orders-app-shell-esm-8c4b59419613';
 const SHELL=[
   './',
   './index.html',
@@ -356,6 +356,7 @@ const SHELL=[
   './assets/js/shared/sync-json.js',
   './assets/js/shared/sync-status.js',
   './assets/js/shared/tab-lock.js',
+  './assets/js/shared/tax-calculator/arnona.js',
   './assets/js/shared/tax-calculator/compute.js',
   './assets/js/shared/tax-calculator/contracts.js',
   './assets/js/shared/tax-calculator/entry.js',

@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='kupa-app-shell-';
-const CACHE='kupa-app-shell-esm-7a23ed8ed73d';
+const CACHE='kupa-app-shell-esm-7ee992576a94';
 const SHELL=[
   './',
   './index.html',
@@ -259,6 +259,7 @@ const SHELL=[
   './assets/js/shared/sync-json.js',
   './assets/js/shared/sync-status.js',
   './assets/js/shared/tab-lock.js',
+  './assets/js/shared/tax-calculator/arnona.js',
   './assets/js/shared/tax-calculator/compute.js',
   './assets/js/shared/tax-calculator/contracts.js',
   './assets/js/shared/tax-calculator/entry.js',
