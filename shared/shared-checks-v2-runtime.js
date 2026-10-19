@@ -204,7 +204,7 @@ export function createSharedChecksV2Runtime({owner,primary,captureCommitAuthorit
     const current=()=>!!store&&store===storage&&active&&store.ready&&primaryMode()&&primary()&&scopedIdentity===currentOwner()&&!boundaryGate();
     return (await import('./sync-incident-adapters.js')).sampleJournalIncident({read:()=>store.cloudState(),ready:current,
       current:cloud=>store.seq===cloud.seq&&commitsInFlight===0&&![...risks.values()].some(risk=>risk.owner===scopedIdentity),
-      epoch:()=>null,durabilityError:()=>current()&&[...risks.values()].some(risk=>risk.owner===scopedIdentity&&risk.failed),
+      epoch:()=>store?.epoch,durabilityError:()=>current()&&[...risks.values()].some(risk=>risk.owner===scopedIdentity&&risk.failed),
       blocked:()=>store===storage&&(incidentRecoveryBlocked||!!store?.journalBlocked)&&primary()&&scopedIdentity===currentOwner(),fatal:storageRecoveryFailure});
   }
   return {incidentSample,recover,recoverReadOnly,initialize,initializeLocal,persist,sync,refreshBankMatches,diagnostics,setBoundaryGate:gate=>{if(typeof gate!=='function')throw new Error('storage_boundary_gate_invalid');boundaryGate=gate},

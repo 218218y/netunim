@@ -11,6 +11,7 @@ import {createCloudAuth as kupaAuth} from '../netunim-kupa/site/assets/js/cloud/
 import {createStorageV2Runtime} from '../shared/storage-v2-runtime.js';
 import {createStorageJournal} from '../shared/storage-journal.js';
 import {memoryDb,emergencyStore} from './storage-v2-fixture.mjs';
+import {sampleJournalIncident} from '../shared/sync-incident-adapters.js';
 
 const owner='11111111-1111-4111-8111-111111111111',other='22222222-2222-4222-8222-222222222222';
 const uuid=n=>'33333333-3333-4333-8333-'+String(n).padStart(12,'0');
@@ -169,4 +170,81 @@ for(const app of ['orders','kupa'])test(`${app} monitoring HTTP/transport errors
   assert.equal((await request('/rest/v1/rpc/report_sync_incident_v1',{method:'POST',body:'{}',networkRetry:false})).status,503);
   mode='network';await assert.rejects(request('/rest/v1/rpc/report_sync_incident_v1',{method:'POST',body:'{}',networkRetry:false}));
   assert.equal((await request('/rest/v1/rpc/save_kupa_document_v6',{method:'POST',body:'{}'})).status,200);assert.equal(writes,1);
+});
+
+test('runtime recovery blockage overrides a successful clean Journal read and invalidates its proof',async()=>{
+  let blocked=true,duringRead=false;
+  const read=()=>sampleJournalIncident({ready:()=>true,blocked:()=>blocked,durabilityError:()=>false,epoch:()=> 'E',fatal:()=> 'fatal',current:()=>true,
+    read:async()=>{if(duringRead)blocked=true;return {seq:1,base:{epoch:'E',ackSeq:1,revision:1}}}});
+  assert.equal(classifySyncIncident(await read()).reason,'recovery_blocked');
+  blocked=false;const verified=await read();assert.equal(classifySyncIncident(verified).state,'clean_verified');
+  blocked=true;assert.equal(verified.isCurrent(),false);
+  blocked=false;duringRead=true;assert.equal(classifySyncIncident(await read()).reason,'recovery_blocked');
+});
+
+test('closed sheet revalidates durable records before accepting its clean proof',async()=>{
+  const book=createDefaultNotesSheet();let saved={record:{base:book,working:book,revision:1,flight:null,conflict:null},drafts:[]};
+  const store={load:async()=>structuredClone(saved),inspectEmergency:()=>[],withSnapshot:async(_key,publish)=>publish(structuredClone(saved))};
+  const sync=createSpreadsheetSync({domain:'orders',account:()=>owner,enabled:()=>true,store});
+  const cleanSample=await sync.incidentSample();assert.equal(classifySyncIncident(cleanSample).state,'clean_verified');
+  saved.record.flight={operationId:'new-flight'};
+  assert.equal(await cleanSample.confirmCurrent(),false);
+  let sent=false;await assert.rejects(cleanSample.withRequestScope(()=>{sent=true;return Promise.resolve()}),/observation_changed/);assert.equal(sent,false);
+});
+
+for(const app of ['orders','kupa'])test(`${app} incident probe survives business 503 without resetting the business circuit`,async t=>{
+  const oldStorage=globalThis.localStorage,oldFetch=globalThis.fetch;t.after(()=>{globalThis.localStorage=oldStorage;globalThis.fetch=oldFetch});
+  const credentials={user:{id:owner},access_token:'fixture',expires_at:9999999999};globalThis.localStorage={getItem:()=>JSON.stringify(credentials)};
+  const {createCloudAuth}=await import(`../netunim-${app}/site/assets/js/cloud/auth.js?incident-business-regression`);
+  const api=createCloudAuth({session:{supaSession:credentials}}),request=app==='orders'?api.supaFetch:api.supaRest;
+  const paths=[];globalThis.fetch=async url=>{paths.push(url);return new Response('{}',{status:url.endsWith('/orders_documents')?503:200})};
+  assert.equal((await request('/rest/v1/orders_documents')).status,503);
+  assert.equal((await request('/rest/v1/rpc/report_sync_incident_v1',{method:'POST',body:'{}'})).status,200);
+  await assert.rejects(request('/rest/v1/orders_documents'),error=>error.code==='SUPABASE_DATA_API_BACKOFF');
+  assert.equal(paths.length,2);
+});
+
+test('remote warnings are published before a stalled local report completes',async()=>{
+  const f=fixture(),row=serverRow();row.incident_id=uuid(90);f.rows.set(row.incident_id,row);f.samples.orders_main=conflict();
+  let release;f.registry.report=()=>new Promise(resolve=>{release=()=>resolve({resolved_at:null})});
+  const run=f.monitor.start();while(!release)await Promise.resolve();
+  const during=f.view;release();await run;
+  assert.equal(during.status,'incidents');assert.equal(during.incidents[0].incident_id,row.incident_id);
+});
+
+test('an incident with unknowable storage ancestry requires explicit unverified review after recovery',async()=>{
+  const f=fixture();f.samples.orders_main={known:false,blocked:true,epoch:'unavailable',evidence:'unknown'};
+  await f.monitor.start();const first=f.view.incidents[0];f.samples.orders_main=clean();await f.monitor.tick();
+  assert.equal(f.view.incidents[0].incident_id,first.incident_id);assert.equal(f.calls.length,1);
+  await f.monitor.review(first);assert.equal(f.view.incidents.length,0);assert.equal(first.resolution_kind,'operator_reviewed_unverified');
+});
+
+for(const app of ['orders','kupa'])test(`${app} monitoring retains rate limits, bounded retries, 401 refresh and login fencing`,async t=>{
+  const oldStorage=globalThis.localStorage,oldFetch=globalThis.fetch,values=new Map();
+  globalThis.localStorage={getItem:key=>values.get(key)||null,setItem:(key,value)=>values.set(key,value),removeItem:key=>values.delete(key)};
+  t.after(()=>{globalThis.localStorage=oldStorage;globalThis.fetch=oldFetch});
+  let time=0,calls=0; t.mock.method(Date,'now',()=>time);
+  const {createCloudAuth}=await import(`../netunim-${app}/site/assets/js/cloud/auth.js?incident-gates`);
+  const api=createCloudAuth({session:{},idbGet:async()=>null,idbPut:async()=>{},idbDelete:async()=>{},setCloudHeaderStatus:()=>{}});
+  const save=app==='orders'?api.saveSession:api.storeSupaSession,request=app==='orders'?api.supaFetch:api.supaRest;
+  const credentials={user:{id:owner},access_token:'old',refresh_token:'refresh',expires_at:9999999999};save(credentials);
+  globalThis.fetch=async()=>{calls++;return new Response('{}',{status:429,headers:{'retry-after':'60'}})};
+  const report=()=>request('/rest/v1/rpc/report_sync_incident_v1',{method:'POST',body:'{}'});
+  assert.equal((await report()).status,429);
+  for(const task of [report(),request('/rest/v1/example')])await assert.rejects(task,error=>error.code==='SUPABASE_DATA_API_RATE_LIMIT');
+  assert.equal(calls,1);time=60_001;
+  globalThis.fetch=async()=>{calls++;return new Response('{}',{status:503})};assert.equal((await report()).status,503);
+  for(let n=0;n<10;n++)await assert.rejects(report());assert.equal(calls,2);
+  globalThis.fetch=async()=>{calls++;return new Response('{}')};assert.equal((await request('/rest/v1/example')).status,200);assert.equal(calls,3);
+  time+=15_001;let reports=0,refreshes=0;
+  globalThis.fetch=async(url,options)=>{
+    if(url.includes('/auth/v1/token')){refreshes++;return Response.json({...credentials,access_token:'new',expires_in:3600})}
+    reports++;assert.equal(options.headers.Authorization,reports===1?'Bearer old':'Bearer new');return new Response('{}',{status:reports===1?401:200});
+  };
+  assert.equal((await report()).status,200);assert.equal(reports,2);assert.equal(refreshes,1);
+  let release,entered;const entry=new Promise(resolve=>{entered=resolve});
+  globalThis.fetch=async()=>{entered();await new Promise(resolve=>{release=resolve});return new Response('{}')};
+  const held=request('/rest/v1/held');await entry;
+  const queued=report();save({...credentials,user:{id:other}});release();
+  await assert.rejects(held,error=>error.code==='cloud_auth_scope_changed');await assert.rejects(queued,error=>error.code==='cloud_auth_scope_changed');
 });

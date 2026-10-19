@@ -8,18 +8,24 @@ export function createSyncIncidentUi({document=globalThis.document,clientId,labe
     root.hidden=state.status==='signed_out';
     if(root.hidden){opened=false;root.replaceChildren();return}
     const count=state.incidents.length;
+    const input=root.querySelector('[data-incident-label]'),focused=input&&document.activeElement===input;
+    root.dataset.quiet=String(!opened&&state.status==='no_reported_incidents'&&!state.localError);
     root.dataset.warning=String(count>0||state.status==='unavailable'||state.localError);
     const title=count?`אזהרת סנכרון: ${count} ${count===1?'תקלה מדווחת':'תקלות מדווחות'}`:state.status==='unavailable'?'לא ניתן לבדוק התראות סנכרון כרגע':'לא נמצאו תקלות סנכרון מדווחות';
-    root.innerHTML=`<button type="button" class="sync-incidents-toggle" aria-expanded="${opened}" data-incident-action="toggle"><span role="status">${escape(title)}</span><span>${opened?'סגירה':'פרטים'}</span></button>
+    root.innerHTML=`<button type="button" class="sync-incidents-toggle" aria-expanded="${opened}" data-incident-action="toggle">
+      <span role="status" title="${escape(title)}">${escape(root.dataset.quiet==='true'?'התראות סנכרון':title)}</span><span>${opened?'סגירה':'פרטים'}</span></button>
       <div class="sync-incidents-panel" ${opened?'':'hidden'}>
         <p>התראות על שינויים שלא סונכרנו ותקלות בעמדות. היעדר דיווח אינו הוכחה שכל המחשבים מסונכרנים.</p>
         ${state.status==='unavailable'?'<p role="status">רשימת התקלות אינה מעודכנת כרגע. כדאי לבדוק את החיבור ולרענן.</p>':''}
         ${state.localError?'<p role="status">דיווח התקלות ממחשב זה לא הושלם. השמירה העסקית ממשיכה לפי מצב הסנכרון שלה.</p>':''}
-        <ul>${state.incidents.map(row=>`<li><strong>${escape(syncIncidentDescription(row,clientId))}</strong><p>דווח: ${escape(new Date(row.first_reported_at).toLocaleString('he-IL'))}</p><button type="button" data-incident-action="review" data-incident-id="${escape(row.incident_id)}">טיפול ידני בעמדה שאינה זמינה</button></li>`).join('')}</ul>
+        <ul>${state.incidents.map(row=>`<li>${row.scope_epoch==='unavailable'?'<p>דור האחסון לא זוהה בזמן התקלה. יש לבדוק את השינויים בעמדה המדווחת ולטפל ידנית; סנכרון מדור אחר אינו מוכיח שהתקלה נפתרה.</p>':''}
+          <strong>${escape(syncIncidentDescription(row,clientId))}</strong><p>דווח: ${escape(new Date(row.first_reported_at).toLocaleString('he-IL'))}</p>
+          <button type="button" data-incident-action="review" data-incident-id="${escape(row.incident_id)}">בדיקה וטיפול ידני</button></li>`).join('')}</ul>
         <label>שם עמדה באתר זה <input data-incident-label maxlength="80" value="${escape(label())}" placeholder="למשל: מחשב משרד"></label>
         <div class="sync-incidents-actions"><button type="button" data-incident-action="label">שמירת שם</button><button type="button" data-incident-action="refresh">רענון</button><button type="button" data-incident-action="toggle">הבנתי</button></div>
         <p role="status" class="sync-incidents-error">${escape(error)}</p>
       </div>`;
+    if(input){root.querySelector('[data-incident-label]').replaceWith(input);if(focused)input.focus()}
   }
   async function click(event){
     const button=event.target.closest?.('[data-incident-action]');if(!button||!root.contains(button))return;
@@ -28,11 +34,11 @@ export function createSyncIncidentUi({document=globalThis.document,clientId,labe
     if(action==='toggle'){opened=!opened;render();return}
     button.disabled=true;
     try{
-      if(action==='label'){saveLabel(root.querySelector('[data-incident-label]').value.trim());await refresh()}
+      if(action==='label'){const input=root.querySelector('[data-incident-label]');input.value=input.value.trim();saveLabel(input.value);await refresh()}
       if(action==='refresh')await refresh();
       if(action==='review'){
         const row=state.incidents.find(item=>item.incident_id===button.dataset.incidentId);
-        if(row&&await confirmReview('הפעולה מיועדת לעמדה שנהרסה או שיצאה משימוש, לאחר בדיקת השינויים שלה. היא מסירה את ההתראה בלי לאמת סנכרון. להמשיך?'))await review(row);
+        if(row&&await confirmReview('יש לבדוק תחילה את השינויים בעמדה המדווחת. הפעולה מיועדת לעמדה שאינה זמינה או לאירוע שלא ניתן לאמת את דור האחסון שלו. היא מסירה את ההתראה בלי לאמת סנכרון. להמשיך?'))await review(row);
       }
     }catch{error='הפעולה לא הושלמה. יש לרענן ולנסות שוב.'}
     render();

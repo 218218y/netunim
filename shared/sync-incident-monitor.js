@@ -40,14 +40,15 @@ export function createSyncIncidentMonitor({site,clientId,deviceLabel=()=>'',acco
     for(const episode of record.episodes){
       if(!current(scope)||!primary())return;
       if(episode.client!==clientId||episode.sentVersion===episode.version||episode.nextAttempt>now())continue;
-      let observationCurrent=()=>true;
+      let observationCurrent=()=>true,withRequestScope;
       if(episode.phase==='resolve'){
         const fresh=await sampleDomain(adapter,scope);
-        if(!current(scope)||!primary()||fresh.epoch!==episode.epoch||classifySyncIncident(fresh).state!=='clean_verified'||!fresh.isCurrent?.())continue;
+        if(!current(scope)||!primary()||fresh.epoch!==episode.epoch||classifySyncIncident(fresh).state!=='clean_verified'||!fresh.isCurrent?.()||fresh.confirmCurrent&&!await fresh.confirmCurrent())continue;
         observationCurrent=fresh.isCurrent;
+        withRequestScope=fresh.withRequestScope;
       }
       try{
-        const receipt=await registry[episode.phase==='resolve'?'resolve':'report'](payload(episode),scope,()=>current(scope)&&primary()&&observationCurrent());
+        const receipt=await registry[episode.phase==='resolve'?'resolve':'report'](payload(episode),scope,()=>current(scope)&&primary()&&observationCurrent(),withRequestScope);
         if(!current(scope)||!primary())return;
         await store.update(key,value=>{
           if(!current(scope)||!primary())return value;
@@ -84,15 +85,7 @@ export function createSyncIncidentMonitor({site,clientId,deviceLabel=()=>'',acco
       });
     }
   }
-  async function run(){
-    const scope=accountScope();resetAccount(scope);
-    if(!scope.owner||stopped)return;
-    view.localError=false;
-    if(primary())for(const adapter of domains){
-      if(!current(scope))return;
-      try{await observeDomain(adapter,scope)}catch{if(current(scope))view.localError=true}
-    }
-    if(!current(scope))return;
+  async function readIncidents(scope){
     if(visible()&&now()>=nextRead){
       try{
         const rows=await registry.list(scope);
@@ -105,6 +98,21 @@ export function createSyncIncidentMonitor({site,clientId,deviceLabel=()=>'',acco
       }
     }
     if(current(scope))emit();
+  }
+  async function run(){
+    const scope=accountScope();resetAccount(scope);
+    if(!scope.owner||stopped)return;
+    view.localError=false;
+    // Publish remote warnings before waiting for local reports. Reconciliation
+    // finishes before new writes, so an older list cannot discard their receipt.
+    await readIncidents(scope);
+    if(primary())for(const adapter of domains){
+      if(!current(scope))return;
+      try{await observeDomain(adapter,scope)}catch{if(current(scope))view.localError=true}
+    }
+    if(!current(scope))return;
+    // A successful write invalidates the list; ordinary ticks do not reread it.
+    await readIncidents(scope);
   }
   function schedule(){if(!stopped&&timer===null)timer=timers.setTimeout(()=>{timer=null;void tick()},5000)}
   function tick(){
