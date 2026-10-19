@@ -17,7 +17,6 @@
     "cloud_sync_v3_contracts.py": 0.052,
     "confirmation_contracts.py": 0.202,
     "deploy_preflight.py": 0.678,
-    "deployment_smoke_contracts.py": 0.102,
     "google_drive_contracts.py": 0.052,
     "module_contracts.py": 40.659,
     "morning_documents_contracts.py": 0.152,

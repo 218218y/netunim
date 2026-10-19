@@ -43,8 +43,8 @@ independent cryptographic signature of every HTTP response.
    fresh database postflight. Use disposable data for release exercises.
 2. Upload Orders. After all pre-upload gates pass, its shared engine uses Wrangler's
    exit code as the upload result. It does not fetch the public site from the
-   deployment workstation. Local filtering such as NetFree can return HTTP 418
-   even after Cloudflare accepts an upload; public reachability is a separate check.
+   deployment workstation. Use the permanent public domains for the application
+   checks below; generated Cloudflare deployment URLs are blocked by NetFree.
 3. Upload Kupa only after the Orders upload succeeds. The normal, fast, paired and
    individual entrypoints all use this shared behavior. A failed upload still
    returns a nonzero code and stops the pair. If Kupa's upload fails after Orders
@@ -52,36 +52,34 @@ independent cryptographic signature of every HTTP response.
 4. Prefer roll-forward of only the failed project from the same verified commit:
    `netunim-kupa\deploy_site_fast.bat` or the Orders counterpart. Retain the fresh
    database check. Do not rerun database migrations just to retry static assets.
-   When public access is available, run the separate read-only checks below to
-   confirm the final pair.
+   Check both applications through their permanent public domains.
 5. If roll-forward is unsuitable, use Cloudflare's previous deployment for only
-   the affected project. Independently smoke it against a clean checkout of its
-   exact previous verified commit. Do not compare a rollback to current source or
+   the affected project. Check its login and representative workflows against its
+   exact previous verified release. Do not compare a rollback to current source or
    reset, restore or delete browser/database business state. Reopen saved app tabs
    so their waiting workers can activate; recheck local and cloud status.
 
 Recovery remains an explicit operator action; the scripts never guess which
 deployment to roll back.
 
-## Optional public release verification
+## Published application checks
 
 Deployment success means Wrangler accepted the upload. It does not prove that the
-production URL serves the expected release. From a workstation with public access,
-run these commands separately from the repository root, using the exact source
-checkout that was uploaded:
+production URL serves the expected release. Use the permanent public domains:
 
-```bat
-python tools\deployment_smoke.py --site-dir netunim-orders\site --url https://bargig-orders.pages.dev/ --report .work\deploy\bargig-orders-smoke.json
-python tools\deployment_smoke.py --site-dir netunim-kupa\site --url https://bargig-kupa.pages.dev/ --report .work\deploy\bargig-kupa-smoke.json
-```
+- Orders: https://orders.bargig-furniture.com/
+- Kupa: https://kupa.bargig-furniture.com/
 
-The check compares 11 critical static files, response release, JavaScript MIME and
-nosniff to the local verified source. It records hashes in the requested report
-and never reads business data. It still returns a nonzero code for any failed
-check, including blocked access. A NetFree 418 leaves the public release unverified;
-it does not establish that the upload failed. Existing reports are from the last
-public check and are not refreshed by deployment. Neither a failed manual check
-nor an old report changes the upload result or prevents the other site's upload.
+Check authorized login, a representative workflow, offline reload and installed-PWA
+startup. Save and close existing app tabs before reopening them to activate waiting
+workers. These operational checks do not run inside the upload scripts.
+
+The old public byte-comparison tool was removed after testing these domains:
+NetFree and Cloudflare inject scripts into HTML, so the delivered page differs
+from the uploaded source. Some identical assets also returned stale or missing
+release headers through the public delivery path. Changing only the hostname
+would still reject successful uploads. The repository/security/database gates and
+the service worker's release protections remain in place.
 
 ## Evidence and remaining limits
 
@@ -89,7 +87,7 @@ The original worker reproduced mixed module bytes in both actual worker bodies.
 The regression now covers wrong network release, offline retry, no matching cache,
 failed install and waiting update. Native Chromium tests cover the same mixed
 response/offline path, legacy update, restart and preserved Local V2 data. Actual
-Windows BAT tests prove public checks are separate, both uploads can complete
-without public access, and upload failures still stop the pair.
+Windows BAT tests prove both uploads can complete without public access, display
+the permanent domains, and still stop the pair on upload failure.
 Physical weak-PC, two-device and live Bank/Credit exercises remain the separate
 release-authority backlog; synthetic results do not close them.

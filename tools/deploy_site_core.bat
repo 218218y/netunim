@@ -297,15 +297,13 @@ if not "%DEPLOY_EXIT%"=="0" (
   exit /b %DEPLOY_EXIT%
 )
 
-rem Wrangler's exit code is the upload result. Public HTTP verification is a
-rem separate read-only operation: local filtering (for example NetFree) can block
-rem a published site and must not prevent the next site's upload.
+rem Wrangler's exit code is the upload result. Display the permanent public
+rem domains; Cloudflare also prints a generated deployment URL in its own output.
 
 echo.
 echo Deployment completed successfully.
 echo Production URL:
-echo   https://%PROJECT_NAME%.pages.dev/
+if /I "%PROJECT_NAME%"=="bargig-orders" echo   https://orders.bargig-furniture.com/
+if /I "%PROJECT_NAME%"=="bargig-kupa" echo   https://kupa.bargig-furniture.com/
 echo.
-echo Wrangler may also print the unique URL for this deployment above.
-echo Public HTTP verification was not run. See docs\DEPLOYMENT_COMPATIBILITY.md for the optional check.
 exit /b 0

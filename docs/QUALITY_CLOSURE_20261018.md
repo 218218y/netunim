@@ -75,9 +75,9 @@ certify a future static upload; the next upload needs its own fresh gate.
 The safe next operational sequence is the existing
 [paired rollout/recovery runbook](DEPLOYMENT_COMPATIBILITY.md): record exact source
 and previous deployment IDs, obtain a fresh DB gate, upload Orders, then upload
-Kupa. Run the separate optional public checks when network access is available.
+Kupa. Check the published applications through their permanent public domains.
 Roll forward only the failed project or restore that project's
-recorded prior deployment and smoke it against its exact prior checkout. Saving,
+recorded prior deployment and check its login and representative workflows. Saving,
 closing and reopening existing app tabs activates their waiting workers. Browser
 or database business state is never reset to recover a static deployment.
 

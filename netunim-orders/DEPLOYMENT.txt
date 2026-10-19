@@ -32,8 +32,7 @@ then runs the Wrangler version managed in ..\tools\wrangler-version.txt in a fre
 directory. Only the absolute site/ path is uploaded. The configured Pages project is bargig-orders.
 Do not bypass the verification gate with a direct Wrangler upload.
 Upload success follows Wrangler's exit code; deployment does not fetch the public site.
-NetFree can block that separate HTTP check after a successful upload. Optional manual
-public-release verification is documented in ..\docs\DEPLOYMENT_COMPATIBILITY.md.
+The permanent public address is https://orders.bargig-furniture.com/.
 Before Wrangler, the deployment engine always verifies that the repository database contract
 still matches the last authenticated Production receipt. Ordinary frontend-only deployments
 do not require PGHOST/PGDATABASE/PGUSER or a database password. If NETUNIM_SUPABASE_CAPTURE,

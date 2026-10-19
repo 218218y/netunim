@@ -104,12 +104,6 @@ class WindowsDeploymentContracts(unittest.TestCase):
                    'set "DEPLOY_WORK_DIR=%~dp0..\\isolated-upload"\n'+tail)
         self.write('tools/npx.cmd', '@echo off\necho upload:%PROJECT_NAME%>>"%CI_CALLS%"\n'
                    'if "%PROJECT_NAME%"=="%FAIL_UPLOAD_SITE%" exit /b 7\nexit /b 0\n')
-        # A public check from this workstation would fail exactly as reported.
-        # Trap any accidental invocation while all real entrypoints use the
-        # production upload/error-handling tail and a stubbed Cloudflare upload.
-        self.write('tools/deployment_smoke.py', "import os\nfrom pathlib import Path\n"
-                   "with Path(os.environ['CI_CALLS']).open('a') as f: f.write('smoke\\n')\n"
-                   "print('HTTP Error 418: Blocked by NetFree')\nraise SystemExit(2)\n")
         self.env['PATH'] = str(self.root/'tools')+os.pathsep+self.env['PATH']
         self.env['FAIL_UPLOAD_SITE'] = 'none'
 
@@ -127,7 +121,12 @@ class WindowsDeploymentContracts(unittest.TestCase):
                 result, calls = self.run_bat(name, '')
                 self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
                 self.assertEqual(calls, gates+[f'upload:bargig-{site}' for site in sites])
-                self.assertEqual(result.stdout.count('Public HTTP verification was not run.'), len(sites))
+                for site in sites:
+                    self.assertIn(f'https://{site}.bargig-furniture.com/', result.stdout)
+                for absent in {'orders', 'kupa'}-set(sites):
+                    self.assertNotIn(f'https://{absent}.bargig-furniture.com/', result.stdout)
+                self.assertNotIn('.pages.dev', result.stdout)
+                self.assertNotIn('Public HTTP verification', result.stdout)
 
     def test_paired_upload_failures_still_stop_and_propagate_wrangler_exit(self):
         self.install_real_upload_tail()
