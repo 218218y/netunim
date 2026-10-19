@@ -1,4 +1,5 @@
 import {createClient} from 'npm:@supabase/supabase-js@2.112.4';
+import {createMorningReportsHandler} from './reports.js';
 
 const corsHeaders={
   'Access-Control-Allow-Origin':'*',
@@ -384,8 +385,10 @@ async function getDocumentPdf(body:any){
   }catch(error:any){return json({ok:false,code:'morning_document_pdf_failed',message:clean(error?.message,250)},error?.status===404?404:error?.status===413?413:502)}
 }
 
+const morningReports=createMorningReportsHandler({request:morningRequest,environment:MORNING_ENV,allowedIds:()=>Deno.env.get('MORNING_REPORT_USER_IDS')||''});
 Deno.serve(async(req:Request)=>{
   if(req.method==='OPTIONS')return new Response('ok',{headers:corsHeaders});if(req.method!=='POST')return json({ok:false,code:'method_not_allowed'},405);if(!SUPABASE_URL||!PUBLISHABLE_KEY||!SECRET_KEY)return json({ok:false,code:'supabase_backend_not_configured',message:'Supabase Edge Function configuration is incomplete'},503);
   const user=await requireUser(req);if(!user)return json({ok:false,code:'morning_cloud_auth_required',message:'נדרשת התחברות לענן לפני שימוש ב-Morning'},401);const body=await req.json().catch(()=>({})),action=String(body?.action||'');
+  if(action==='report_page'){if(!MORNING_ENV_VALID)return json({ok:false,code:'morning_environment_invalid',message:'סביבת מורנינג אינה מוגדרת כראוי'},503);const result=await morningReports(user,body);return json(result.body,result.status)}
   if(action==='status')return status(user.id,body);if(action==='reserve')return reserve(user.id,body);if(action==='abandon_reservation')return abandonReservation(user.id,body);if(action==='preview')return preview(user.id,body);if(action==='create')return create(user.id,body);if(action==='search_documents')return searchDocuments(body);if(action==='get_document')return getDocument(body);if(action==='document_links')return getDocument(body,true);if(action==='document_pdf')return getDocumentPdf(body);return json({ok:false,code:'morning_unknown_action',message:'פעולת Morning אינה מוכרת'},400);
 });

@@ -120,7 +120,7 @@ const checks=createOrdersChecksCapability({
 
 const finance=createOrdersFinanceCapability({
   model,ui,checksSession,tab,
-  auth:{loadSession:(...args)=>cloudAuth.loadSession(...args),supaFetch:(...args)=>cloudAuth.supaFetch(...args),ensureSession:(...args)=>cloudAuth.ensureSession(...args)},
+  auth:{loadSession:(...args)=>cloudAuth.loadSession(...args),supaFetch:(...args)=>cloudAuth.supaFetch(...args),ensureSession:(...args)=>cloudAuth.ensureSession(...args),subscribeAccountScope:(...args)=>cloudAuth.subscribeAccountScope(...args)},
   readAccess:()=>({
     account:cloudAuth.getAccountScope(),connectionMode:'supabase',storageOwner:storageOwner.current(),
     readable:storageOwner.ready&&!storagePreparationActive()&&!session.storageProtocolBlocked&&storageRecovery.isReady(),
@@ -308,6 +308,7 @@ finance.bindCore({
   toast:(...args)=>uiStatus.toast(...args),
 });
 finance.bindUi({
+  morningOperationScope,
   layout:uiLayout,modal:uiModal,date:uiDateEditor,
   checksView:{checksMarkup:(...args)=>checks.presentation.checksMarkup(...args),checksHeaderContextMarkup:(...args)=>checks.presentation.checksHeaderContextMarkup(...args),syncChecksBulkUi:(...args)=>checks.presentation.syncChecksBulkUi(...args)},
   dashboard:{summaryMarkup:(...args)=>domainsDashboardView.summaryMarkup(...args)},

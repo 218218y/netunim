@@ -26,7 +26,7 @@ import { bankMorningActionCell, bankMorningLinkedDocumentsMarkup, createBankMorn
 import { bankDateLabel, bankRowMatchesSearch } from './bank-view-helpers.js';
 import { creditDiagnostics, creditHeadlineState } from './credit-status-view.js';
 const KUPA_SECTIONS = ['bank', 'credit', 'checks', 'summary'];
-const KUPA_SECTION_LABELS = { bank: 'בנק', credit: 'אשראי', checks: 'צ׳קים', summary: 'מאזן' };
+const KUPA_SECTION_LABELS = { bank: 'בנק', credit: 'אשראי', checks: 'צ׳קים', summary: 'מאזן ודוחות' };
 function rowCardKey(row) {
     return row?.creditAccountKey || '';
 }
@@ -35,7 +35,7 @@ function creditRowMatchesSearch(row, query) {
         row?.card, row?.account, row?.ownerLabel, row?.description, row?.transactionDate, row?.transactionTime, row?.date, row?.part, row?.totalParts, row?.amount, row?.displayAmount, row?.displayCurrency, row?.originalAmount, row?.originalCurrency, row?.totalAmount, row?.provider, row?.source, row?.status, row?.status === 'pending' ? 'ממתינה' : '', row?.foreignCurrency ? 'מט״ח' : '', CREDIT_PROVIDER_LABELS[row?.provider] || ''
     ], [row?.transactionDate, row?.date]);
 }
-export function createDomainsFinanceView({ runFinance = withFinanceDerivations, ui, controller, checksView, dashboardView, mountViewLayout, modal, closeModal, downloadBankChequeImage = async () => null, confirmDialog, dateEditorMarkup, openBankMorningDocument = () => {
+export function createDomainsFinanceView({ runFinance = withFinanceDerivations, ui, controller, checksView, dashboardView, morningReportsMarkup = () => '', mountViewLayout, modal, closeModal, downloadBankChequeImage = async () => null, confirmDialog, dateEditorMarkup, openBankMorningDocument = () => {
 }, isActive = () => true }) {
     function currentSection() {
         if (!KUPA_SECTIONS.includes(ui.kupaSubView))
@@ -587,7 +587,7 @@ export function createDomainsFinanceView({ runFinance = withFinanceDerivations, 
             return creditCommandMarkup(s);
         if (section === 'checks')
             return checksView.checksHeaderContextMarkup();
-        return '';
+        return '<button type="button" class="btn finance-tax-shortcut" data-action="tax-open"><span aria-hidden="true">▦</span> מחשבון מסים וארנונה</button>';
     }
     function contentMarkup(s) {
         const section = currentSection();
@@ -597,7 +597,7 @@ export function createDomainsFinanceView({ runFinance = withFinanceDerivations, 
             return `${creditSyncPanelMarkup(s)}${creditMarkup(s)}`;
         if (section === 'checks')
             return checksView.checksMarkup({ embedded: true, showEmbeddedStatus: false, showBankActivity: false });
-        return `<div class="tax-entry"><button class="btn" data-action="tax-open">מחשבון מסים וארנונה</button></div>${dashboardView.summaryMarkup({ embedded: true })}`;
+        return `${morningReportsMarkup()}${dashboardView.summaryMarkup({ embedded: true })}`;
     }
     function renderKupa(...args) {
         if (!isActive())

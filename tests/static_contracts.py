@@ -621,8 +621,8 @@ orders_bank_refresh_compact=re.sub(r"\s+", "", orders_bank_refresh)
 ok('data-view="kupa"' in orders_html and 'data-view="checks"' not in orders_html and 'data-view="summary"' not in orders_html,
    "orders Kupa UI: one top-level Kupa tab replaces standalone checks and balance tabs")
 ok(presentation_contains(orders_finance_view, "const KUPA_SECTIONS=['bank','credit','checks','summary']")
-   and all(presentation_contains(orders_finance_view, label) for label in ("bank:'בנק'","credit:'אשראי'","checks:'צ׳קים'","summary:'מאזן'")),
-   "orders Kupa UI: Bank, Credit, Checks and Balance are explicit internal sections")
+   and all(presentation_contains(orders_finance_view, label) for label in ("bank:'בנק'","credit:'אשראי'","checks:'צ׳קים'","summary:'מאזן ודוחות'")),
+   "orders Kupa UI: Bank, Credit, Checks and Balance/Reports are explicit internal sections")
 ok(presentation_contains(orders_finance_view, '<section class="kupa-hero">${kupaTabsMarkup()}${headerContextMarkup(s)}</section>')
    and presentation_contains(orders_finance_view, "if(section==='bank')return bankCommandMarkup(s)")
    and presentation_contains(orders_finance_view, "if(section==='credit')return creditCommandMarkup(s)")

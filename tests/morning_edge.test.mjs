@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {stripTypeScriptTypes} from 'node:module';
 import vm from 'node:vm';
+import {createMorningReportsHandler} from '../netunim-orders/supabase/functions/morning-documents/reports.js';
 
 const rows=[],requests=[];
 let failure='',postCount=0,tokenCount=0,linkCount=0,rateLimitHits=0,lookupItems=[],lastSearch,servedHandler=null;
@@ -35,7 +36,8 @@ const mockFetch=async(url,init={})=>{
   throw new Error('Unexpected request '+url);
 };
 const context=vm.createContext({console,Response,Request,URL,AbortController,TextEncoder,crypto:globalThis.crypto,atob:globalThis.atob,setTimeout,clearTimeout,fetch:mockFetch,createClient:()=>({from:()=>new Query(),auth:{getUser:async()=>({data:{user:{id:owner}}})}}),Deno:{env:{get:key=>({SUPABASE_URL:'https://example.supabase.co',SUPABASE_ANON_KEY:'test',SUPABASE_SERVICE_ROLE_KEY:'test',MORNING_CLIENT_ID:'test',MORNING_CLIENT_SECRET:'test',MORNING_ENV:'sandbox'})[key]},serve:handler=>{servedHandler=handler}}});
-const source=readFileSync(new URL('../netunim-orders/supabase/functions/morning-documents/index.ts',import.meta.url),'utf8').replace(/^import .*?;\r?\n/,'');
+context.createMorningReportsHandler=createMorningReportsHandler;
+const source=readFileSync(new URL('../netunim-orders/supabase/functions/morning-documents/index.ts',import.meta.url),'utf8').replace(/^import .*?;\r?\n/gm,'');
 vm.runInContext(stripTypeScriptTypes(source)+`\nglobalThis.api={create,status,reserve,abandonReservation,searchInput,searchDocuments,getDocument,getDocumentPdf,normalizeInput,amountCents,sameAmount,matchesCheckPayments,validateBankSource,validateLinkedDocument,readResponseBytesBounded,validatePreviewPdfBase64,sha256};`,context);
 const api=context.api;
 const body=(amount=100,description='Test document')=>({operation_id:crypto.randomUUID(),document:{type:305,amount,date:'2026-09-08',description,client:{name:'Test'}}});
@@ -230,3 +232,9 @@ bankFixture.cheque=true;bankFixture.check_details={kind:'deposit',checkItems:[{b
 bankInput.bankSourcePayments=[{key:'check:12:123:456:789:501',bankCode:'12',line:{type:2,price:5,bankBranch:'123',bankAccount:'456',chequeNum:'789'}}];
 await assert.rejects(api.validateBankSource(owner,bankInput),/bank_payment_mismatch/);
 bankInput.bankSourcePayments[0].line.price=5.01;await api.validateBankSource(owner,bankInput);
+
+const reportRequestsBefore=requests.length;
+const forbiddenReport=await servedHandler(new Request('https://example.supabase.co/functions/v1/morning-documents',{method:'POST',headers:{Authorization:'Bearer test','Content-Type':'application/json'},body:JSON.stringify({action:'report_page',source:'documents',fromDate:'2026-01-01',toDate:'2026-02-28'})}));
+assert.equal(forbiddenReport.status,403);
+assert.equal((await forbiddenReport.json()).code,'morning_reports_forbidden');
+assert.equal(requests.length,reportRequestsBefore,'a regular login cannot read the global business reports without an explicit server grant');

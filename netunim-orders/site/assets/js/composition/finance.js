@@ -34,6 +34,36 @@ function requireMethods(name, port, methods) {
   }
 }
 
+function createLazyMorningReports(ports, notify) {
+  let feature = null, flight = null, active = true;
+  function markup() {
+    if (feature) return feature.markup();
+    return `<section class="morning-reports" data-morning-reports><div class="morning-report-heading">
+      <button type="button" class="morning-report-trigger" data-action="morning-report-toggle" aria-expanded="false">
+      <b>דוחות מורנינג</b></button>
+      </div></section>`;
+  }
+  function ensure() {
+    if (!active || feature) return Promise.resolve(active ? feature : null);
+    if (!flight) flight = import('./morning-reports.js').then(module => {
+      if (active) feature = module.createFinanceMorningReports(ports);
+      return feature;
+    }).finally(() => { flight = null; });
+    return flight;
+  }
+  const names = 'toggle period option load cancel type detail detail-page export pdf'.split(' ');
+  const actions = Object.fromEntries(names.map(name => [`morning-report-${name}`, (...args) => {
+    if (feature) return active ? feature.actions[`morning-report-${name}`](...args) : false;
+    return ensure().then(loaded => active ? loaded?.actions[`morning-report-${name}`](...args) : false)
+      .catch(() => { if (active) notify('הדוחות לא זמינים כרגע'); return false; });
+  }]));
+  return {markup, actions, runtime:{
+    isPending:() => !!flight || feature?.runtime.isPending() === true,
+    drain:async () => { await flight?.catch(() => {}); await feature?.runtime.drain(); },
+    dispose:() => { if (!active) return false; active = false; feature?.runtime.dispose(); return true; },
+  }};
+}
+
 // Finance owns its adapters, readout, controller and presentation. Binding is
 // staged because Checks and the shell need readout ports before cloud/UI exist.
 export function createOrdersFinanceCapability({
@@ -225,7 +255,7 @@ export function createOrdersFinanceCapability({
     });
   }
 
-  function bindUi({layout, modal, date, checksView, dashboard, openBankMorningDocument, toast}) {
+  function bindUi({layout, modal, date, checksView, dashboard, openBankMorningDocument, morningOperationScope, toast}) {
     coreReady();
     if (presentation) throw new Error('orders_finance_ui_already_bound');
     requireMethods('layout', layout, ['mountViewLayout']);
@@ -244,11 +274,14 @@ export function createOrdersFinanceCapability({
       },
     };
     const notify = (...args) => { if (!disposed) toast(...args); };
+    const reports = morningOperationScope ? createLazyMorningReports({auth, morningOperationScope, modal:ownedModal.modal,
+      toast:notify, dateEditorMarkup:date.dateEditorMarkup, isActive:() => !disposed}, notify) : null;
     const view = createDomainsFinanceView({
       ui, controller, checksView, dashboardView:dashboard, runFinance, isActive:() => !disposed,
       mountViewLayout:layout.mountViewLayout, modal:ownedModal.modal, closeModal:ownedModal.closeModal,
       confirmDialog:ownedModal.confirmDialog, dateEditorMarkup:date.dateEditorMarkup,
       downloadBankChequeImage:images.download, openBankMorningDocument,
+      morningReportsMarkup:() => reports?.markup() || '',
     });
     const importConnections = createFinanceConnectionImportCapability({
       bridge, getCreditProfiles:() => controller.snapshot().creditSync?.profiles || [],
@@ -267,6 +300,7 @@ export function createOrdersFinanceCapability({
       modal:ownedModal.modal, closeModal:ownedModal.closeModal, render:view.renderKupa, escapeHtml:esc,
     });
     const packs = [
+      {name:'morning-reports', actions:reports?.actions || {}},
       {name:'credit-order', actions:markMutationActions(creditOrder.actions, {finance:['credit-card-order-save']})},
       {name:'finance-bank', actions:createFinanceBankActions({domainsFinanceController:controller, domainsFinanceView:view, importFinanceConnections:importConnections.commands.importConnections, ui, uiStatus:{toast:notify}})},
       {name:'finance-credit', actions:createFinanceCreditActions({domainsFinanceView:view, ui})},
@@ -280,7 +314,7 @@ export function createOrdersFinanceCapability({
         return [name, guarded];
       }),
     )}));
-    presentation = {view, importConnections, packs:guardedPacks};
+    presentation = {view, importConnections, reports, packs:guardedPacks};
   }
 
   const queries = {
@@ -310,9 +344,9 @@ export function createOrdersFinanceCapability({
     renderKupaDependentView:(...args) => readoutReady().renderKupaDependentView(...args),
   };
   const runtime = {
-    isPending:() => !!(controller?.runtime.isPending() || archiveReconciliation?.runtime.isPending() || bankSnapshots?.runtime.isPending() || connections?.runtime.isPending() || bankConnections?.runtime.isPending() || archive?.runtime.isPending() || presentation?.view.connectionRuntime.isPending() || presentation?.importConnections.runtime.isPending()),
+    isPending:() => !!(presentation?.reports?.runtime.isPending() || controller?.runtime.isPending() || archiveReconciliation?.runtime.isPending() || bankSnapshots?.runtime.isPending() || connections?.runtime.isPending() || bankConnections?.runtime.isPending() || archive?.runtime.isPending() || presentation?.view.connectionRuntime.isPending() || presentation?.importConnections.runtime.isPending()),
     async drain() {
-      do { await Promise.all([controller?.runtime.drain(), archiveReconciliation?.runtime.drain(), bankSnapshots?.runtime.drain(), connections?.runtime.drain(), bankConnections?.runtime.drain(), archive?.runtime.drain(), presentation?.view.connectionRuntime.drain(), presentation?.importConnections.runtime.drain()]); } while(runtime.isPending());
+      do { await Promise.all([presentation?.reports?.runtime.drain(), controller?.runtime.drain(), archiveReconciliation?.runtime.drain(), bankSnapshots?.runtime.drain(), connections?.runtime.drain(), bankConnections?.runtime.drain(), archive?.runtime.drain(), presentation?.view.connectionRuntime.drain(), presentation?.importConnections.runtime.drain()]); } while(runtime.isPending());
     },
     start() { uiReady(); return controller.startAutoSync(); },
     stop() { return controller?.stopAutoSync(); },
@@ -324,6 +358,7 @@ export function createOrdersFinanceCapability({
     dispose() {
       if (disposed) return false;
       disposed = true;
+      presentation?.reports?.runtime.dispose();
       archiveReconciliation?.runtime.dispose();
       bankSnapshots?.runtime.dispose();
       presentation?.importConnections.runtime.dispose();
