@@ -1,0 +1,186 @@
+{
+  "sourceSha256": "a42229b1a6a2a9e681c8b2bc78621b78be95c883568ac94ab83d5e5873336dbc",
+  "method": "Original formula text evaluated independently with Python Decimal and synthetic inputs. No cached Excel values or personal examples. Tolerance: 5 agorot for explicit per-step rounding.",
+  "cases": [
+    {
+      "label": "annual-deduction-rental",
+      "profile": {
+        "adults": 2,
+        "basePoints": 2.25
+      },
+      "input": {
+        "revenue": 18000000,
+        "revenuePeriod": "annual",
+        "vatIncluded": false,
+        "expensesMonthly": 100000,
+        "inputVatMonthly": 18000,
+        "activeSelfEmployed": true,
+        "pensionRequired": true,
+        "pensionActual": 1400000,
+        "pensionMethod": "deduction",
+        "extraPensionCredit": false,
+        "pensionDeduction": 0,
+        "pensionCredit": 0,
+        "rentMonthly": 600000,
+        "rentExpenses": 120000,
+        "rentRoute": "auto",
+        "over60": false,
+        "rentEligible": true,
+        "arnonaAnnual": 600000,
+        "rentPaidMonthly": 400000,
+        "householdOtherMonthly": 50000,
+        "otherResidentsMonthly": 0
+      },
+      "expected": {
+        "revenue": 18000000,
+        "profit": 16800000,
+        "outputVat": 3240000,
+        "inputVat": 216000,
+        "netVat": 3024000,
+        "national": 1127812,
+        "health": 586534,
+        "pensionMinimum": 1404438,
+        "pension": 1400000,
+        "taxable": 14813538,
+        "incomeTax": 1501641,
+        "arnona": 600000,
+        "net": 18664013
+      }
+    },
+    {
+      "label": "monthly-including-vat-credit",
+      "profile": {
+        "adults": 4,
+        "basePoints": 2.25
+      },
+      "input": {
+        "revenue": 2950000,
+        "revenuePeriod": "monthly",
+        "vatIncluded": true,
+        "expensesMonthly": 150000,
+        "inputVatMonthly": 27000,
+        "activeSelfEmployed": true,
+        "pensionRequired": true,
+        "pensionActual": 1800000,
+        "pensionMethod": "credit",
+        "extraPensionCredit": false,
+        "pensionDeduction": 0,
+        "pensionCredit": 0,
+        "rentMonthly": 400000,
+        "rentExpenses": 0,
+        "rentRoute": "auto",
+        "over60": false,
+        "rentEligible": true,
+        "arnonaAnnual": 500000,
+        "rentPaidMonthly": 0,
+        "householdOtherMonthly": 0,
+        "otherResidentsMonthly": 0
+      },
+      "expected": {
+        "revenue": 30000000,
+        "profit": 28200000,
+        "outputVat": 5400000,
+        "inputVat": 324000,
+        "netVat": 5076000,
+        "national": 2549711,
+        "health": 1159505,
+        "pensionMinimum": 1404438,
+        "pension": 1800000,
+        "taxable": 25896150,
+        "incomeTax": 3517907,
+        "arnona": 500000,
+        "net": 23472877
+      }
+    },
+    {
+      "label": "high-income-flat-surtax",
+      "profile": {
+        "adults": 12,
+        "basePoints": 2.25
+      },
+      "input": {
+        "revenue": 100000000,
+        "revenuePeriod": "annual",
+        "vatIncluded": false,
+        "expensesMonthly": 200000,
+        "inputVatMonthly": 0,
+        "activeSelfEmployed": true,
+        "pensionRequired": true,
+        "pensionActual": 3000000,
+        "pensionMethod": "credit",
+        "extraPensionCredit": true,
+        "pensionDeduction": 0,
+        "pensionCredit": 0,
+        "rentMonthly": 2000000,
+        "rentExpenses": 600000,
+        "rentRoute": "flat",
+        "over60": false,
+        "rentEligible": true,
+        "arnonaAnnual": 800000,
+        "rentPaidMonthly": 0,
+        "householdOtherMonthly": 0,
+        "otherResidentsMonthly": 0
+      },
+      "expected": {
+        "revenue": 100000000,
+        "profit": 97600000,
+        "outputVat": 18000000,
+        "inputVat": 0,
+        "netVat": 18000000,
+        "national": 7219299,
+        "health": 3041171,
+        "pensionMinimum": 1404438,
+        "pension": 3000000,
+        "taxable": 92037565,
+        "incomeTax": 34507272,
+        "arnona": 800000,
+        "net": 72432258
+      }
+    },
+    {
+      "label": "manual-pension-ordinary",
+      "profile": {
+        "adults": 3,
+        "basePoints": 2.25
+      },
+      "input": {
+        "revenue": 50000000,
+        "revenuePeriod": "annual",
+        "vatIncluded": false,
+        "expensesMonthly": 400000,
+        "inputVatMonthly": 0,
+        "activeSelfEmployed": true,
+        "pensionRequired": true,
+        "pensionActual": 1600000,
+        "pensionMethod": "manual",
+        "extraPensionCredit": false,
+        "pensionDeduction": 500000,
+        "pensionCredit": 100000,
+        "rentMonthly": 1200000,
+        "rentExpenses": 1000000,
+        "rentRoute": "ordinary",
+        "over60": true,
+        "rentEligible": true,
+        "arnonaAnnual": 700000,
+        "rentPaidMonthly": 0,
+        "householdOtherMonthly": 0,
+        "otherResidentsMonthly": 0
+      },
+      "expected": {
+        "revenue": 50000000,
+        "profit": 45200000,
+        "outputVat": 9000000,
+        "inputVat": 0,
+        "netVat": 9000000,
+        "national": 4651890,
+        "health": 2006603,
+        "pensionMinimum": 1404438,
+        "pension": 1600000,
+        "taxable": 42281017,
+        "incomeTax": 13961356,
+        "arnona": 700000,
+        "net": 35680152
+      }
+    }
+  ]
+}

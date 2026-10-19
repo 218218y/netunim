@@ -218,5 +218,10 @@
     "version": "20261018180000",
     "name": "sync_incidents",
     "sha256": "a4b9cd667580fa31456eaece6cb88e075144e079712bc3295170dc82ace9c505"
+  },
+  {
+    "version": "20261019041407",
+    "name": "tax_calculator",
+    "sha256": "fad1e52f1f076a6aded0689094323db28368119892c8a44d39156209071d4991"
   }
 ]

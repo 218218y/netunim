@@ -1,0 +1,2328 @@
+{
+  "sourceSha256": "a42229b1a6a2a9e681c8b2bc78621b78be95c883568ac94ab83d5e5873336dbc",
+  "privacy": "No input values, cached results, names or dates of birth are exported. Audit formulas expose dependencies only.",
+  "sheets": [
+    {
+      "name": "מחשבון",
+      "implementation": "Annual input/result UI",
+      "formulas": [
+        {
+          "cell": "A1",
+          "references": [
+            "'עדכון שנתי'!B4"
+          ],
+          "functions": [],
+          "formula": "\"מחשבון לעצמאי | שנת \"&'עדכון שנתי'!B4&\" | תוצאות שמתעדכנות לפי התאריך\""
+        },
+        {
+          "cell": "A3",
+          "references": [
+            "'עדכון שנתי'!A21"
+          ],
+          "functions": [],
+          "formula": "'עדכון שנתי'!A21"
+        },
+        {
+          "cell": "F7",
+          "references": [
+            "חישוב!F7"
+          ],
+          "functions": [],
+          "formula": "חישוב!F7"
+        },
+        {
+          "cell": "G7",
+          "references": [
+            "חישוב!G7"
+          ],
+          "functions": [],
+          "formula": "חישוב!G7"
+        },
+        {
+          "cell": "F8",
+          "references": [
+            "חישוב!F12"
+          ],
+          "functions": [],
+          "formula": "חישוב!F12"
+        },
+        {
+          "cell": "G8",
+          "references": [
+            "חישוב!G12"
+          ],
+          "functions": [],
+          "formula": "חישוב!G12"
+        },
+        {
+          "cell": "F9",
+          "references": [
+            "חישוב!F10"
+          ],
+          "functions": [],
+          "formula": "חישוב!F10"
+        },
+        {
+          "cell": "G9",
+          "references": [
+            "חישוב!G10"
+          ],
+          "functions": [],
+          "formula": "חישוב!G10"
+        },
+        {
+          "cell": "F10",
+          "references": [
+            "חישוב!F18"
+          ],
+          "functions": [],
+          "formula": "חישוב!F18"
+        },
+        {
+          "cell": "G10",
+          "references": [
+            "חישוב!G18"
+          ],
+          "functions": [],
+          "formula": "חישוב!G18"
+        },
+        {
+          "cell": "F11",
+          "references": [
+            "חישוב!F15"
+          ],
+          "functions": [],
+          "formula": "חישוב!F15"
+        },
+        {
+          "cell": "G11",
+          "references": [
+            "חישוב!G15"
+          ],
+          "functions": [],
+          "formula": "חישוב!G15"
+        },
+        {
+          "cell": "F12",
+          "references": [
+            "חישוב!F23"
+          ],
+          "functions": [],
+          "formula": "חישוב!F23"
+        },
+        {
+          "cell": "G12",
+          "references": [
+            "חישוב!G23"
+          ],
+          "functions": [],
+          "formula": "חישוב!G23"
+        },
+        {
+          "cell": "F16",
+          "references": [
+            "'משפחה וארנונה'!B35"
+          ],
+          "functions": [],
+          "formula": "'משפחה וארנונה'!B35"
+        },
+        {
+          "cell": "G16",
+          "references": [
+            "'משפחה וארנונה'!B34"
+          ],
+          "functions": [],
+          "formula": "'משפחה וארנונה'!B34"
+        },
+        {
+          "cell": "F17",
+          "references": [
+            "'משפחה וארנונה'!B32"
+          ],
+          "functions": [],
+          "formula": "'משפחה וארנונה'!B32"
+        },
+        {
+          "cell": "G17",
+          "references": [
+            "'משפחה וארנונה'!B32"
+          ],
+          "functions": [],
+          "formula": "'משפחה וארנונה'!B32*12"
+        },
+        {
+          "cell": "F18",
+          "references": [
+            "'משפחה וארנונה'!B36"
+          ],
+          "functions": [],
+          "formula": "'משפחה וארנונה'!B36"
+        },
+        {
+          "cell": "G18",
+          "references": [
+            "'משפחה וארנונה'!B36"
+          ],
+          "functions": [],
+          "formula": "'משפחה וארנונה'!B36*12"
+        },
+        {
+          "cell": "F19",
+          "references": [
+            "'משפחה וארנונה'!B37"
+          ],
+          "functions": [],
+          "formula": "'משפחה וארנונה'!B37"
+        },
+        {
+          "cell": "F20",
+          "references": [
+            "חישוב!B64"
+          ],
+          "functions": [],
+          "formula": "חישוב!B64"
+        },
+        {
+          "cell": "F21",
+          "references": [
+            "חישוב!F26"
+          ],
+          "functions": [],
+          "formula": "חישוב!F26"
+        },
+        {
+          "cell": "G21",
+          "references": [
+            "חישוב!G26"
+          ],
+          "functions": [],
+          "formula": "חישוב!G26"
+        },
+        {
+          "cell": "H24",
+          "references": [
+            "חישוב!F28"
+          ],
+          "functions": [],
+          "formula": "חישוב!F28"
+        },
+        {
+          "cell": "H25",
+          "references": [
+            "'משפחה וארנונה'!B36"
+          ],
+          "functions": [],
+          "formula": "'משפחה וארנונה'!B36"
+        },
+        {
+          "cell": "A28",
+          "references": [
+            "'עדכון שנתי'!B4"
+          ],
+          "functions": [],
+          "formula": "\"ארנונה — בני ברק \"&'עדכון שנתי'!B4"
+        },
+        {
+          "cell": "B30",
+          "references": [
+            "חישוב!G12"
+          ],
+          "functions": [],
+          "formula": "חישוב!G12"
+        },
+        {
+          "cell": "B31",
+          "references": [
+            "B22"
+          ],
+          "functions": [],
+          "formula": "B22"
+        },
+        {
+          "cell": "B36",
+          "references": [
+            "'משפחה וארנונה'!B25"
+          ],
+          "functions": [],
+          "formula": "'משפחה וארנונה'!B25"
+        },
+        {
+          "cell": "B37",
+          "references": [
+            "'משפחה וארנונה'!B26"
+          ],
+          "functions": [],
+          "formula": "'משפחה וארנונה'!B26"
+        }
+      ],
+      "validationRanges": [
+        "B6:B7",
+        "B24:B26 B16:B17 B13:B14 B9:B11",
+        "B15:B16",
+        "B23:B24",
+        "B31",
+        "B8"
+      ]
+    },
+    {
+      "name": "תעריפים וכללים",
+      "implementation": "Versioned nine-group ruleset",
+      "formulas": [],
+      "validationRanges": []
+    },
+    {
+      "name": "ביקורת",
+      "implementation": "Synthetic regression tests and audit UI; personal examples excluded",
+      "formulas": [
+        {
+          "cell": "C19",
+          "references": [
+            "'תעריפים וכללים'!$B$3"
+          ],
+          "functions": []
+        },
+        {
+          "cell": "D19",
+          "references": [
+            "C19"
+          ],
+          "functions": [
+            "ABS",
+            "IF"
+          ]
+        },
+        {
+          "cell": "C20",
+          "references": [],
+          "functions": []
+        },
+        {
+          "cell": "D20",
+          "references": [
+            "C20"
+          ],
+          "functions": [
+            "IF"
+          ]
+        },
+        {
+          "cell": "C21",
+          "references": [
+            "'תעריפים וכללים'!$B$26"
+          ],
+          "functions": [
+            "IF"
+          ]
+        },
+        {
+          "cell": "D21",
+          "references": [
+            "C21"
+          ],
+          "functions": [
+            "IF"
+          ]
+        },
+        {
+          "cell": "C22",
+          "references": [],
+          "functions": []
+        },
+        {
+          "cell": "D22",
+          "references": [
+            "C22"
+          ],
+          "functions": [
+            "IF"
+          ]
+        },
+        {
+          "cell": "C23",
+          "references": [
+            "'תעריפים וכללים'!$B$21"
+          ],
+          "functions": []
+        },
+        {
+          "cell": "D23",
+          "references": [
+            "C23"
+          ],
+          "functions": [
+            "IF"
+          ]
+        },
+        {
+          "cell": "C28",
+          "references": [
+            "חישוב!G12"
+          ],
+          "functions": []
+        },
+        {
+          "cell": "D28",
+          "references": [
+            "'מחשבון'!B30",
+            "C28"
+          ],
+          "functions": [
+            "ABS",
+            "IF"
+          ]
+        },
+        {
+          "cell": "C29",
+          "references": [
+            "'משפחה וארנונה'!B36"
+          ],
+          "functions": []
+        },
+        {
+          "cell": "D29",
+          "references": [
+            "C29"
+          ],
+          "functions": [
+            "IF"
+          ]
+        },
+        {
+          "cell": "C30",
+          "references": [
+            "'משפחה וארנונה'!B37"
+          ],
+          "functions": []
+        },
+        {
+          "cell": "D30",
+          "references": [
+            "C30"
+          ],
+          "functions": [
+            "AND",
+            "IF"
+          ]
+        },
+        {
+          "cell": "C31",
+          "references": [
+            "חישוב!B65"
+          ],
+          "functions": []
+        },
+        {
+          "cell": "D31",
+          "references": [
+            "'מחשבון'!B29",
+            "C30",
+            "C31"
+          ],
+          "functions": [
+            "ABS",
+            "IF"
+          ]
+        },
+        {
+          "cell": "C39",
+          "references": [
+            "'עדכון שנתי'!B4"
+          ],
+          "functions": []
+        },
+        {
+          "cell": "D39",
+          "references": [
+            "C39"
+          ],
+          "functions": [
+            "IF",
+            "TODAY",
+            "YEAR"
+          ]
+        },
+        {
+          "cell": "C40",
+          "references": [
+            "'משפחה וארנונה'!B5"
+          ],
+          "functions": []
+        },
+        {
+          "cell": "D40",
+          "references": [
+            "C39",
+            "C40"
+          ],
+          "functions": [
+            "IF"
+          ]
+        },
+        {
+          "cell": "C41",
+          "references": [
+            "'משפחה וארנונה'!B26"
+          ],
+          "functions": []
+        },
+        {
+          "cell": "D41",
+          "references": [
+            "'משפחה וארנונה'!B24",
+            "'משפחה וארנונה'!B25",
+            "C41"
+          ],
+          "functions": [
+            "IF"
+          ]
+        },
+        {
+          "cell": "C42",
+          "references": [
+            "'עדכון שנתי'!B20"
+          ],
+          "functions": []
+        },
+        {
+          "cell": "D42",
+          "references": [
+            "C42"
+          ],
+          "functions": [
+            "IF"
+          ]
+        },
+        {
+          "cell": "C43",
+          "references": [
+            "'משפחה וארנונה'!B9"
+          ],
+          "functions": []
+        },
+        {
+          "cell": "D43",
+          "references": [
+            "C43"
+          ],
+          "functions": [
+            "IF"
+          ]
+        }
+      ],
+      "validationRanges": []
+    },
+    {
+      "name": "משפחה וארנונה",
+      "implementation": "Permanent profile and independent annual snapshot",
+      "formulas": [
+        {
+          "cell": "A1",
+          "references": [
+            "'עדכון שנתי'!B4"
+          ],
+          "functions": [],
+          "formula": "\"משפחה, נקודות זיכוי וארנונה | \"&'עדכון שנתי'!B4"
+        },
+        {
+          "cell": "B5",
+          "references": [
+            "'עדכון שנתי'!B4"
+          ],
+          "functions": [],
+          "formula": "'עדכון שנתי'!B4"
+        },
+        {
+          "cell": "B9",
+          "references": [
+            "B6",
+            "D13:D20",
+            "E13:E20"
+          ],
+          "functions": [
+            "IF",
+            "SUM"
+          ],
+          "formula": "IF(B6=\"אם / הורה שמקבל/ת קצבת הילדים\",SUM(D13:D20),SUM(E13:E20))"
+        },
+        {
+          "cell": "B10",
+          "references": [
+            "B7:B9"
+          ],
+          "functions": [
+            "SUM"
+          ],
+          "formula": "SUM(B7:B9)"
+        },
+        {
+          "cell": "C12",
+          "references": [
+            "$B$5"
+          ],
+          "functions": [],
+          "formula": "\"גיל בשנת \"&$B$5"
+        },
+        {
+          "cell": "C13",
+          "references": [
+            "$B$5",
+            "B13"
+          ],
+          "functions": [
+            "IF",
+            "YEAR"
+          ],
+          "formula": "IF(B13=\"\",\"\",$B$5-YEAR(B13))"
+        },
+        {
+          "cell": "D13",
+          "references": [
+            "'תעריפים וכללים'!$B$58:$B$65",
+            "'תעריפים וכללים'!$G$58:$G$65",
+            "'תעריפים וכללים'!$H$58:$H$65",
+            "C13"
+          ],
+          "functions": [
+            "IF",
+            "SUMIFS"
+          ],
+          "formula": "IF(C13=\"\",0,IF(C13<0,0,SUMIFS('תעריפים וכללים'!$B$58:$B$65,'תעריפים וכללים'!$G$58:$G$65,\"<=\"&C13,'תעריפים וכללים'!$H$58:$H$65,\">=\"&C13)))"
+        },
+        {
+          "cell": "E13",
+          "references": [
+            "'תעריפים וכללים'!$C$58:$C$65",
+            "'תעריפים וכללים'!$G$58:$G$65",
+            "'תעריפים וכללים'!$H$58:$H$65",
+            "C13"
+          ],
+          "functions": [
+            "IF",
+            "SUMIFS"
+          ],
+          "formula": "IF(C13=\"\",0,IF(C13<0,0,SUMIFS('תעריפים וכללים'!$C$58:$C$65,'תעריפים וכללים'!$G$58:$G$65,\"<=\"&C13,'תעריפים וכללים'!$H$58:$H$65,\">=\"&C13)))"
+        },
+        {
+          "cell": "F13",
+          "references": [
+            "B13"
+          ],
+          "functions": [
+            "DATE",
+            "DAY",
+            "IF",
+            "MONTH",
+            "TODAY",
+            "YEAR"
+          ],
+          "formula": "IF(B13=\"\",\"\",YEAR(TODAY())-YEAR(B13)-IF(DATE(YEAR(TODAY()),MONTH(B13),DAY(B13))>TODAY(),1,0))"
+        },
+        {
+          "cell": "C14",
+          "references": [
+            "$B$5",
+            "B14"
+          ],
+          "functions": [
+            "IF",
+            "YEAR"
+          ],
+          "formula": "IF(B14=\"\",\"\",$B$5-YEAR(B14))"
+        },
+        {
+          "cell": "D14",
+          "references": [
+            "'תעריפים וכללים'!$B$58:$B$65",
+            "'תעריפים וכללים'!$G$58:$G$65",
+            "'תעריפים וכללים'!$H$58:$H$65",
+            "C14"
+          ],
+          "functions": [
+            "IF",
+            "SUMIFS"
+          ],
+          "formula": "IF(C14=\"\",0,IF(C14<0,0,SUMIFS('תעריפים וכללים'!$B$58:$B$65,'תעריפים וכללים'!$G$58:$G$65,\"<=\"&C14,'תעריפים וכללים'!$H$58:$H$65,\">=\"&C14)))"
+        },
+        {
+          "cell": "E14",
+          "references": [
+            "'תעריפים וכללים'!$C$58:$C$65",
+            "'תעריפים וכללים'!$G$58:$G$65",
+            "'תעריפים וכללים'!$H$58:$H$65",
+            "C14"
+          ],
+          "functions": [
+            "IF",
+            "SUMIFS"
+          ],
+          "formula": "IF(C14=\"\",0,IF(C14<0,0,SUMIFS('תעריפים וכללים'!$C$58:$C$65,'תעריפים וכללים'!$G$58:$G$65,\"<=\"&C14,'תעריפים וכללים'!$H$58:$H$65,\">=\"&C14)))"
+        },
+        {
+          "cell": "F14",
+          "references": [
+            "B14"
+          ],
+          "functions": [
+            "DATE",
+            "DAY",
+            "IF",
+            "MONTH",
+            "TODAY",
+            "YEAR"
+          ],
+          "formula": "IF(B14=\"\",\"\",YEAR(TODAY())-YEAR(B14)-IF(DATE(YEAR(TODAY()),MONTH(B14),DAY(B14))>TODAY(),1,0))"
+        },
+        {
+          "cell": "C15",
+          "references": [
+            "$B$5",
+            "B15"
+          ],
+          "functions": [
+            "IF",
+            "YEAR"
+          ],
+          "formula": "IF(B15=\"\",\"\",$B$5-YEAR(B15))"
+        },
+        {
+          "cell": "D15",
+          "references": [
+            "'תעריפים וכללים'!$B$58:$B$65",
+            "'תעריפים וכללים'!$G$58:$G$65",
+            "'תעריפים וכללים'!$H$58:$H$65",
+            "C15"
+          ],
+          "functions": [
+            "IF",
+            "SUMIFS"
+          ],
+          "formula": "IF(C15=\"\",0,IF(C15<0,0,SUMIFS('תעריפים וכללים'!$B$58:$B$65,'תעריפים וכללים'!$G$58:$G$65,\"<=\"&C15,'תעריפים וכללים'!$H$58:$H$65,\">=\"&C15)))"
+        },
+        {
+          "cell": "E15",
+          "references": [
+            "'תעריפים וכללים'!$C$58:$C$65",
+            "'תעריפים וכללים'!$G$58:$G$65",
+            "'תעריפים וכללים'!$H$58:$H$65",
+            "C15"
+          ],
+          "functions": [
+            "IF",
+            "SUMIFS"
+          ],
+          "formula": "IF(C15=\"\",0,IF(C15<0,0,SUMIFS('תעריפים וכללים'!$C$58:$C$65,'תעריפים וכללים'!$G$58:$G$65,\"<=\"&C15,'תעריפים וכללים'!$H$58:$H$65,\">=\"&C15)))"
+        },
+        {
+          "cell": "F15",
+          "references": [
+            "B15"
+          ],
+          "functions": [
+            "DATE",
+            "DAY",
+            "IF",
+            "MONTH",
+            "TODAY",
+            "YEAR"
+          ],
+          "formula": "IF(B15=\"\",\"\",YEAR(TODAY())-YEAR(B15)-IF(DATE(YEAR(TODAY()),MONTH(B15),DAY(B15))>TODAY(),1,0))"
+        },
+        {
+          "cell": "C16",
+          "references": [
+            "$B$5",
+            "B16"
+          ],
+          "functions": [
+            "IF",
+            "YEAR"
+          ],
+          "formula": "IF(B16=\"\",\"\",$B$5-YEAR(B16))"
+        },
+        {
+          "cell": "D16",
+          "references": [
+            "'תעריפים וכללים'!$B$58:$B$65",
+            "'תעריפים וכללים'!$G$58:$G$65",
+            "'תעריפים וכללים'!$H$58:$H$65",
+            "C16"
+          ],
+          "functions": [
+            "IF",
+            "SUMIFS"
+          ],
+          "formula": "IF(C16=\"\",0,IF(C16<0,0,SUMIFS('תעריפים וכללים'!$B$58:$B$65,'תעריפים וכללים'!$G$58:$G$65,\"<=\"&C16,'תעריפים וכללים'!$H$58:$H$65,\">=\"&C16)))"
+        },
+        {
+          "cell": "E16",
+          "references": [
+            "'תעריפים וכללים'!$C$58:$C$65",
+            "'תעריפים וכללים'!$G$58:$G$65",
+            "'תעריפים וכללים'!$H$58:$H$65",
+            "C16"
+          ],
+          "functions": [
+            "IF",
+            "SUMIFS"
+          ],
+          "formula": "IF(C16=\"\",0,IF(C16<0,0,SUMIFS('תעריפים וכללים'!$C$58:$C$65,'תעריפים וכללים'!$G$58:$G$65,\"<=\"&C16,'תעריפים וכללים'!$H$58:$H$65,\">=\"&C16)))"
+        },
+        {
+          "cell": "F16",
+          "references": [
+            "B16"
+          ],
+          "functions": [
+            "DATE",
+            "DAY",
+            "IF",
+            "MONTH",
+            "TODAY",
+            "YEAR"
+          ],
+          "formula": "IF(B16=\"\",\"\",YEAR(TODAY())-YEAR(B16)-IF(DATE(YEAR(TODAY()),MONTH(B16),DAY(B16))>TODAY(),1,0))"
+        },
+        {
+          "cell": "C17",
+          "references": [
+            "$B$5",
+            "B17"
+          ],
+          "functions": [
+            "IF",
+            "YEAR"
+          ],
+          "formula": "IF(B17=\"\",\"\",$B$5-YEAR(B17))"
+        },
+        {
+          "cell": "D17",
+          "references": [
+            "'תעריפים וכללים'!$B$58:$B$65",
+            "'תעריפים וכללים'!$G$58:$G$65",
+            "'תעריפים וכללים'!$H$58:$H$65",
+            "C17"
+          ],
+          "functions": [
+            "IF",
+            "SUMIFS"
+          ],
+          "formula": "IF(C17=\"\",0,IF(C17<0,0,SUMIFS('תעריפים וכללים'!$B$58:$B$65,'תעריפים וכללים'!$G$58:$G$65,\"<=\"&C17,'תעריפים וכללים'!$H$58:$H$65,\">=\"&C17)))"
+        },
+        {
+          "cell": "E17",
+          "references": [
+            "'תעריפים וכללים'!$C$58:$C$65",
+            "'תעריפים וכללים'!$G$58:$G$65",
+            "'תעריפים וכללים'!$H$58:$H$65",
+            "C17"
+          ],
+          "functions": [
+            "IF",
+            "SUMIFS"
+          ],
+          "formula": "IF(C17=\"\",0,IF(C17<0,0,SUMIFS('תעריפים וכללים'!$C$58:$C$65,'תעריפים וכללים'!$G$58:$G$65,\"<=\"&C17,'תעריפים וכללים'!$H$58:$H$65,\">=\"&C17)))"
+        },
+        {
+          "cell": "F17",
+          "references": [
+            "B17"
+          ],
+          "functions": [
+            "DATE",
+            "DAY",
+            "IF",
+            "MONTH",
+            "TODAY",
+            "YEAR"
+          ],
+          "formula": "IF(B17=\"\",\"\",YEAR(TODAY())-YEAR(B17)-IF(DATE(YEAR(TODAY()),MONTH(B17),DAY(B17))>TODAY(),1,0))"
+        },
+        {
+          "cell": "C18",
+          "references": [
+            "$B$5",
+            "B18"
+          ],
+          "functions": [
+            "IF",
+            "YEAR"
+          ],
+          "formula": "IF(B18=\"\",\"\",$B$5-YEAR(B18))"
+        },
+        {
+          "cell": "D18",
+          "references": [
+            "'תעריפים וכללים'!$B$58:$B$65",
+            "'תעריפים וכללים'!$G$58:$G$65",
+            "'תעריפים וכללים'!$H$58:$H$65",
+            "C18"
+          ],
+          "functions": [
+            "IF",
+            "SUMIFS"
+          ],
+          "formula": "IF(C18=\"\",0,IF(C18<0,0,SUMIFS('תעריפים וכללים'!$B$58:$B$65,'תעריפים וכללים'!$G$58:$G$65,\"<=\"&C18,'תעריפים וכללים'!$H$58:$H$65,\">=\"&C18)))"
+        },
+        {
+          "cell": "E18",
+          "references": [
+            "'תעריפים וכללים'!$C$58:$C$65",
+            "'תעריפים וכללים'!$G$58:$G$65",
+            "'תעריפים וכללים'!$H$58:$H$65",
+            "C18"
+          ],
+          "functions": [
+            "IF",
+            "SUMIFS"
+          ],
+          "formula": "IF(C18=\"\",0,IF(C18<0,0,SUMIFS('תעריפים וכללים'!$C$58:$C$65,'תעריפים וכללים'!$G$58:$G$65,\"<=\"&C18,'תעריפים וכללים'!$H$58:$H$65,\">=\"&C18)))"
+        },
+        {
+          "cell": "F18",
+          "references": [
+            "B18"
+          ],
+          "functions": [
+            "DATE",
+            "DAY",
+            "IF",
+            "MONTH",
+            "TODAY",
+            "YEAR"
+          ],
+          "formula": "IF(B18=\"\",\"\",YEAR(TODAY())-YEAR(B18)-IF(DATE(YEAR(TODAY()),MONTH(B18),DAY(B18))>TODAY(),1,0))"
+        },
+        {
+          "cell": "C19",
+          "references": [
+            "$B$5",
+            "B19"
+          ],
+          "functions": [
+            "IF",
+            "YEAR"
+          ],
+          "formula": "IF(B19=\"\",\"\",$B$5-YEAR(B19))"
+        },
+        {
+          "cell": "D19",
+          "references": [
+            "'תעריפים וכללים'!$B$58:$B$65",
+            "'תעריפים וכללים'!$G$58:$G$65",
+            "'תעריפים וכללים'!$H$58:$H$65",
+            "C19"
+          ],
+          "functions": [
+            "IF",
+            "SUMIFS"
+          ],
+          "formula": "IF(C19=\"\",0,IF(C19<0,0,SUMIFS('תעריפים וכללים'!$B$58:$B$65,'תעריפים וכללים'!$G$58:$G$65,\"<=\"&C19,'תעריפים וכללים'!$H$58:$H$65,\">=\"&C19)))"
+        },
+        {
+          "cell": "E19",
+          "references": [
+            "'תעריפים וכללים'!$C$58:$C$65",
+            "'תעריפים וכללים'!$G$58:$G$65",
+            "'תעריפים וכללים'!$H$58:$H$65",
+            "C19"
+          ],
+          "functions": [
+            "IF",
+            "SUMIFS"
+          ],
+          "formula": "IF(C19=\"\",0,IF(C19<0,0,SUMIFS('תעריפים וכללים'!$C$58:$C$65,'תעריפים וכללים'!$G$58:$G$65,\"<=\"&C19,'תעריפים וכללים'!$H$58:$H$65,\">=\"&C19)))"
+        },
+        {
+          "cell": "F19",
+          "references": [
+            "B19"
+          ],
+          "functions": [
+            "DATE",
+            "DAY",
+            "IF",
+            "MONTH",
+            "TODAY",
+            "YEAR"
+          ],
+          "formula": "IF(B19=\"\",\"\",YEAR(TODAY())-YEAR(B19)-IF(DATE(YEAR(TODAY()),MONTH(B19),DAY(B19))>TODAY(),1,0))"
+        },
+        {
+          "cell": "C20",
+          "references": [
+            "$B$5",
+            "B20"
+          ],
+          "functions": [
+            "IF",
+            "YEAR"
+          ],
+          "formula": "IF(B20=\"\",\"\",$B$5-YEAR(B20))"
+        },
+        {
+          "cell": "D20",
+          "references": [
+            "'תעריפים וכללים'!$B$58:$B$65",
+            "'תעריפים וכללים'!$G$58:$G$65",
+            "'תעריפים וכללים'!$H$58:$H$65",
+            "C20"
+          ],
+          "functions": [
+            "IF",
+            "SUMIFS"
+          ],
+          "formula": "IF(C20=\"\",0,IF(C20<0,0,SUMIFS('תעריפים וכללים'!$B$58:$B$65,'תעריפים וכללים'!$G$58:$G$65,\"<=\"&C20,'תעריפים וכללים'!$H$58:$H$65,\">=\"&C20)))"
+        },
+        {
+          "cell": "E20",
+          "references": [
+            "'תעריפים וכללים'!$C$58:$C$65",
+            "'תעריפים וכללים'!$G$58:$G$65",
+            "'תעריפים וכללים'!$H$58:$H$65",
+            "C20"
+          ],
+          "functions": [
+            "IF",
+            "SUMIFS"
+          ],
+          "formula": "IF(C20=\"\",0,IF(C20<0,0,SUMIFS('תעריפים וכללים'!$C$58:$C$65,'תעריפים וכללים'!$G$58:$G$65,\"<=\"&C20,'תעריפים וכללים'!$H$58:$H$65,\">=\"&C20)))"
+        },
+        {
+          "cell": "F20",
+          "references": [
+            "B20"
+          ],
+          "functions": [
+            "DATE",
+            "DAY",
+            "IF",
+            "MONTH",
+            "TODAY",
+            "YEAR"
+          ],
+          "formula": "IF(B20=\"\",\"\",YEAR(TODAY())-YEAR(B20)-IF(DATE(YEAR(TODAY()),MONTH(B20),DAY(B20))>TODAY(),1,0))"
+        },
+        {
+          "cell": "A22",
+          "references": [
+            "'עדכון שנתי'!B4"
+          ],
+          "functions": [],
+          "formula": "\"ארנונה — בני ברק \"&'עדכון שנתי'!B4"
+        },
+        {
+          "cell": "C23",
+          "references": [
+            "$B$5"
+          ],
+          "functions": [],
+          "formula": "\"בקשת הנחה לשנת \"&$B$5"
+        },
+        {
+          "cell": "B24",
+          "references": [
+            "'מחשבון'!B35",
+            "F13:F20",
+            "G13:G20"
+          ],
+          "functions": [
+            "COUNTIFS"
+          ],
+          "formula": "'מחשבון'!B35+COUNTIFS(G13:G20,\"כן\",F13:F20,\">=18\")"
+        },
+        {
+          "cell": "E24",
+          "references": [
+            "B36"
+          ],
+          "functions": [],
+          "formula": "B36"
+        },
+        {
+          "cell": "B25",
+          "references": [
+            "F13:F20",
+            "G13:G20"
+          ],
+          "functions": [
+            "COUNTIFS"
+          ],
+          "formula": "COUNTIFS(G13:G20,\"כן\",F13:F20,\">=0\",F13:F20,\"<18\")"
+        },
+        {
+          "cell": "E25",
+          "references": [
+            "B37"
+          ],
+          "functions": [],
+          "formula": "B37"
+        },
+        {
+          "cell": "B26",
+          "references": [
+            "B24",
+            "B25"
+          ],
+          "functions": [],
+          "formula": "B24+B25"
+        },
+        {
+          "cell": "E26",
+          "references": [
+            "'מחשבון'!B29"
+          ],
+          "functions": [],
+          "formula": "'מחשבון'!B29"
+        },
+        {
+          "cell": "B27",
+          "references": [
+            "'מחשבון'!B32"
+          ],
+          "functions": [],
+          "formula": "'מחשבון'!B32"
+        },
+        {
+          "cell": "E27",
+          "references": [
+            "חישוב!B65"
+          ],
+          "functions": [],
+          "formula": "חישוב!B65"
+        },
+        {
+          "cell": "B28",
+          "references": [
+            "'מחשבון'!B33"
+          ],
+          "functions": [],
+          "formula": "'מחשבון'!B33"
+        },
+        {
+          "cell": "E28",
+          "references": [
+            "חישוב!B65"
+          ],
+          "functions": [],
+          "formula": "חישוב!B65/12"
+        },
+        {
+          "cell": "B29",
+          "references": [
+            "'מחשבון'!B34"
+          ],
+          "functions": [],
+          "formula": "'מחשבון'!B34"
+        },
+        {
+          "cell": "B30",
+          "references": [
+            "'מחשבון'!B31"
+          ],
+          "functions": [],
+          "formula": "'מחשבון'!B31"
+        },
+        {
+          "cell": "B31",
+          "references": [
+            "B27",
+            "B30"
+          ],
+          "functions": [
+            "MAX",
+            "MIN"
+          ],
+          "formula": "MIN(MAX(B30,0),MAX(B27,0))"
+        },
+        {
+          "cell": "B32",
+          "references": [
+            "B30",
+            "B31"
+          ],
+          "functions": [
+            "MAX"
+          ],
+          "formula": "MAX(B30-B31,0)"
+        },
+        {
+          "cell": "B33",
+          "references": [
+            "חישוב!F12"
+          ],
+          "functions": [],
+          "formula": "חישוב!F12"
+        },
+        {
+          "cell": "B34",
+          "references": [
+            "חישוב!G12"
+          ],
+          "functions": [],
+          "formula": "חישוב!G12"
+        },
+        {
+          "cell": "B35",
+          "references": [
+            "B34"
+          ],
+          "functions": [
+            "MAX"
+          ],
+          "formula": "MAX(B34,0)/12"
+        },
+        {
+          "cell": "B36",
+          "references": [
+            "B28",
+            "B29",
+            "B32",
+            "B35"
+          ],
+          "functions": [
+            "MAX"
+          ],
+          "formula": "MAX(B35,0)+MAX(B28,0)+MAX(B29,0)+MAX(B32,0)"
+        },
+        {
+          "cell": "B37",
+          "references": [
+            "חישוב!B63"
+          ],
+          "functions": [],
+          "formula": "חישוב!B63"
+        }
+      ],
+      "validationRanges": [
+        "B6",
+        "G13:G20"
+      ]
+    },
+    {
+      "name": "חישוב",
+      "implementation": "Pure integer-money compute.js",
+      "formulas": [
+        {
+          "cell": "B5",
+          "references": [
+            "'מחשבון'!B6"
+          ],
+          "functions": [],
+          "formula": "'מחשבון'!B6"
+        },
+        {
+          "cell": "B6",
+          "references": [
+            "'מחשבון'!B7"
+          ],
+          "functions": [],
+          "formula": "'מחשבון'!B7"
+        },
+        {
+          "cell": "B7",
+          "references": [
+            "'מחשבון'!B8"
+          ],
+          "functions": [],
+          "formula": "'מחשבון'!B8"
+        },
+        {
+          "cell": "F7",
+          "references": [
+            "'תעריפים וכללים'!$B$3",
+            "B5",
+            "B6",
+            "B7"
+          ],
+          "functions": [
+            "IF"
+          ],
+          "formula": "IF(B6=\"שנתי\",B5/12,B5)/IF(B7=\"כולל מע״מ\",1+'תעריפים וכללים'!$B$3,1)"
+        },
+        {
+          "cell": "G7",
+          "references": [
+            "F7"
+          ],
+          "functions": [],
+          "formula": "F7*12"
+        },
+        {
+          "cell": "B8",
+          "references": [
+            "'מחשבון'!B9"
+          ],
+          "functions": [],
+          "formula": "'מחשבון'!B9"
+        },
+        {
+          "cell": "F8",
+          "references": [
+            "'תעריפים וכללים'!$B$3",
+            "F7"
+          ],
+          "functions": [],
+          "formula": "F7*'תעריפים וכללים'!$B$3"
+        },
+        {
+          "cell": "G8",
+          "references": [
+            "F8"
+          ],
+          "functions": [],
+          "formula": "F8*12"
+        },
+        {
+          "cell": "B9",
+          "references": [
+            "'מחשבון'!B10"
+          ],
+          "functions": [],
+          "formula": "'מחשבון'!B10"
+        },
+        {
+          "cell": "F9",
+          "references": [
+            "B9"
+          ],
+          "functions": [],
+          "formula": "B9"
+        },
+        {
+          "cell": "G9",
+          "references": [
+            "F9"
+          ],
+          "functions": [],
+          "formula": "F9*12"
+        },
+        {
+          "cell": "B10",
+          "references": [
+            "'מחשבון'!B11"
+          ],
+          "functions": [],
+          "formula": "'מחשבון'!B11"
+        },
+        {
+          "cell": "F10",
+          "references": [
+            "F8",
+            "F9"
+          ],
+          "functions": [],
+          "formula": "F8-F9"
+        },
+        {
+          "cell": "G10",
+          "references": [
+            "G8",
+            "G9"
+          ],
+          "functions": [],
+          "formula": "G8-G9"
+        },
+        {
+          "cell": "B12",
+          "references": [
+            "'משפחה וארנונה'!B10"
+          ],
+          "functions": [],
+          "formula": "'משפחה וארנונה'!B10"
+        },
+        {
+          "cell": "F12",
+          "references": [
+            "B8",
+            "F7"
+          ],
+          "functions": [],
+          "formula": "F7-B8"
+        },
+        {
+          "cell": "G12",
+          "references": [
+            "F12"
+          ],
+          "functions": [],
+          "formula": "F12*12"
+        },
+        {
+          "cell": "B13",
+          "references": [
+            "'מחשבון'!B14"
+          ],
+          "functions": [],
+          "formula": "'מחשבון'!B14"
+        },
+        {
+          "cell": "B14",
+          "references": [
+            "'מחשבון'!B15"
+          ],
+          "functions": [],
+          "formula": "'מחשבון'!B15"
+        },
+        {
+          "cell": "F14",
+          "references": [
+            "B36"
+          ],
+          "functions": [],
+          "formula": "B36/12"
+        },
+        {
+          "cell": "G14",
+          "references": [
+            "B36"
+          ],
+          "functions": [],
+          "formula": "B36"
+        },
+        {
+          "cell": "B15",
+          "references": [
+            "'מחשבון'!B16"
+          ],
+          "functions": [],
+          "formula": "'מחשבון'!B16"
+        },
+        {
+          "cell": "F15",
+          "references": [
+            "B37"
+          ],
+          "functions": [],
+          "formula": "B37/12"
+        },
+        {
+          "cell": "G15",
+          "references": [
+            "B37"
+          ],
+          "functions": [],
+          "formula": "B37"
+        },
+        {
+          "cell": "B16",
+          "references": [
+            "'מחשבון'!B17"
+          ],
+          "functions": [],
+          "formula": "'מחשבון'!B17"
+        },
+        {
+          "cell": "F16",
+          "references": [
+            "B47"
+          ],
+          "functions": [],
+          "formula": "B47/12"
+        },
+        {
+          "cell": "G16",
+          "references": [
+            "B47"
+          ],
+          "functions": [],
+          "formula": "B47"
+        },
+        {
+          "cell": "B17",
+          "references": [
+            "'מחשבון'!B18"
+          ],
+          "functions": [],
+          "formula": "'מחשבון'!B18"
+        },
+        {
+          "cell": "F17",
+          "references": [
+            "B48"
+          ],
+          "functions": [],
+          "formula": "B48/12"
+        },
+        {
+          "cell": "G17",
+          "references": [
+            "B48"
+          ],
+          "functions": [],
+          "formula": "B48"
+        },
+        {
+          "cell": "B18",
+          "references": [
+            "'מחשבון'!B19"
+          ],
+          "functions": [],
+          "formula": "'מחשבון'!B19"
+        },
+        {
+          "cell": "F18",
+          "references": [
+            "B47",
+            "B48"
+          ],
+          "functions": [],
+          "formula": "(B47+B48)/12"
+        },
+        {
+          "cell": "G18",
+          "references": [
+            "B47",
+            "B48"
+          ],
+          "functions": [],
+          "formula": "B47+B48"
+        },
+        {
+          "cell": "H18",
+          "references": [
+            "'תעריפים וכללים'!$B$7",
+            "B10",
+            "G12"
+          ],
+          "functions": [
+            "AND",
+            "IF"
+          ],
+          "formula": "IF(AND(B10=\"כן\",G12>0,G12<'תעריפים וכללים'!$B$7*12),\"החיוב כולל בסיס מזערי לביטוח לאומי: 3,442 ₪ לחודש\",\"\")"
+        },
+        {
+          "cell": "F20",
+          "references": [
+            "B50"
+          ],
+          "functions": [],
+          "formula": "B50/12"
+        },
+        {
+          "cell": "G20",
+          "references": [
+            "B50"
+          ],
+          "functions": [],
+          "formula": "B50"
+        },
+        {
+          "cell": "B21",
+          "references": [
+            "'מחשבון'!B22"
+          ],
+          "functions": [],
+          "formula": "'מחשבון'!B22"
+        },
+        {
+          "cell": "F21",
+          "references": [
+            "B54"
+          ],
+          "functions": [],
+          "formula": "B54/12"
+        },
+        {
+          "cell": "G21",
+          "references": [
+            "B54"
+          ],
+          "functions": [],
+          "formula": "B54"
+        },
+        {
+          "cell": "B22",
+          "references": [
+            "'מחשבון'!B23"
+          ],
+          "functions": [],
+          "formula": "'מחשבון'!B23"
+        },
+        {
+          "cell": "G22",
+          "references": [
+            "B61"
+          ],
+          "functions": [],
+          "formula": "B61"
+        },
+        {
+          "cell": "B23",
+          "references": [
+            "'מחשבון'!B24"
+          ],
+          "functions": [],
+          "formula": "'מחשבון'!B24"
+        },
+        {
+          "cell": "F23",
+          "references": [
+            "B62"
+          ],
+          "functions": [],
+          "formula": "B62/12"
+        },
+        {
+          "cell": "G23",
+          "references": [
+            "B62"
+          ],
+          "functions": [],
+          "formula": "B62"
+        },
+        {
+          "cell": "B24",
+          "references": [
+            "'מחשבון'!B25"
+          ],
+          "functions": [],
+          "formula": "'מחשבון'!B25"
+        },
+        {
+          "cell": "B25",
+          "references": [
+            "'מחשבון'!B26"
+          ],
+          "functions": [],
+          "formula": "'מחשבון'!B26"
+        },
+        {
+          "cell": "G25",
+          "references": [
+            "B64"
+          ],
+          "functions": [],
+          "formula": "B64"
+        },
+        {
+          "cell": "F26",
+          "references": [
+            "B65"
+          ],
+          "functions": [],
+          "formula": "B65/12"
+        },
+        {
+          "cell": "G26",
+          "references": [
+            "B65"
+          ],
+          "functions": [],
+          "formula": "B65"
+        },
+        {
+          "cell": "A27",
+          "references": [
+            "'עדכון שנתי'!B4"
+          ],
+          "functions": [],
+          "formula": "\"ארנונה — בני ברק \"&'עדכון שנתי'!B4"
+        },
+        {
+          "cell": "B28",
+          "references": [
+            "'מחשבון'!B29"
+          ],
+          "functions": [],
+          "formula": "'מחשבון'!B29"
+        },
+        {
+          "cell": "F28",
+          "references": [
+            "B22",
+            "B37",
+            "B47",
+            "B48",
+            "B51",
+            "B62",
+            "B65",
+            "G12"
+          ],
+          "functions": [],
+          "formula": "(G12+B51-B22-B47-B48-B37-B62-B65)/12"
+        },
+        {
+          "cell": "G28",
+          "references": [
+            "B22",
+            "B37",
+            "B47",
+            "B48",
+            "B51",
+            "B62",
+            "B65",
+            "G12"
+          ],
+          "functions": [],
+          "formula": "G12+B51-B22-B47-B48-B37-B62-B65"
+        },
+        {
+          "cell": "B29",
+          "references": [
+            "'משפחה וארנונה'!B26"
+          ],
+          "functions": [],
+          "formula": "'משפחה וארנונה'!B26"
+        },
+        {
+          "cell": "B30",
+          "references": [
+            "'משפחה וארנונה'!B36"
+          ],
+          "functions": [],
+          "formula": "'משפחה וארנונה'!B36"
+        },
+        {
+          "cell": "B31",
+          "references": [
+            "'מחשבון'!B39"
+          ],
+          "functions": [
+            "IF"
+          ],
+          "formula": "IF('מחשבון'!B39=\"\",\"אוטומטי — שיעור מרבי בני ברק\",\"ידני\")"
+        },
+        {
+          "cell": "B32",
+          "references": [
+            "'מחשבון'!B39"
+          ],
+          "functions": [
+            "IF"
+          ],
+          "formula": "IF('מחשבון'!B39=\"\",0,'מחשבון'!B39)"
+        },
+        {
+          "cell": "B33",
+          "references": [
+            "'מחשבון'!B32"
+          ],
+          "functions": [],
+          "formula": "'מחשבון'!B32"
+        },
+        {
+          "cell": "B34",
+          "references": [
+            "'מחשבון'!B33"
+          ],
+          "functions": [],
+          "formula": "'מחשבון'!B33"
+        },
+        {
+          "cell": "B36",
+          "references": [
+            "'תעריפים וכללים'!$B$13",
+            "'תעריפים וכללים'!$B$14",
+            "'תעריפים וכללים'!$B$4",
+            "B13",
+            "G12"
+          ],
+          "functions": [
+            "IF",
+            "MAX",
+            "MIN"
+          ],
+          "formula": "IF(B13=\"כן\",MIN(MAX(G12,0),'תעריפים וכללים'!$B$4*6)*'תעריפים וכללים'!$B$13+MAX(MIN(MAX(G12,0),'תעריפים וכללים'!$B$4*12)-'תעריפים וכללים'!$B$4*6,0)*'תעריפים וכללים'!$B$14,0)"
+        },
+        {
+          "cell": "B37",
+          "references": [
+            "B14",
+            "B36"
+          ],
+          "functions": [
+            "IF"
+          ],
+          "formula": "IF(B14>0,B14,B36)"
+        },
+        {
+          "cell": "B38",
+          "references": [
+            "'תעריפים וכללים'!$B$15",
+            "G12"
+          ],
+          "functions": [
+            "MAX",
+            "MIN"
+          ],
+          "formula": "MIN(MAX(G12,0),'תעריפים וכללים'!$B$15)"
+        },
+        {
+          "cell": "B39",
+          "references": [
+            "'תעריפים וכללים'!$B$18",
+            "'תעריפים וכללים'!$B$19",
+            "B16",
+            "B38"
+          ],
+          "functions": [
+            "IF"
+          ],
+          "formula": "B38*('תעריפים וכללים'!$B$18+IF(B16=\"כן\",'תעריפים וכללים'!$B$19,0))"
+        },
+        {
+          "cell": "B40",
+          "references": [
+            "'תעריפים וכללים'!$B$17",
+            "B15",
+            "B37",
+            "B38",
+            "B39"
+          ],
+          "functions": [
+            "IF",
+            "MAX",
+            "MIN"
+          ],
+          "formula": "IF(B15=\"זיכוי קודם\",MIN(MAX(B37-MIN(B37,B39),0),B38*'תעריפים וכללים'!$B$17),MIN(B37,B38*'תעריפים וכללים'!$B$17))"
+        },
+        {
+          "cell": "B41",
+          "references": [
+            "B15",
+            "B37",
+            "B39",
+            "B40"
+          ],
+          "functions": [
+            "IF",
+            "MAX",
+            "MIN"
+          ],
+          "formula": "IF(B15=\"זיכוי קודם\",MIN(B37,B39),MIN(MAX(B37-B40,0),B39))"
+        },
+        {
+          "cell": "B42",
+          "references": [
+            "B15",
+            "B17",
+            "B40"
+          ],
+          "functions": [
+            "IF",
+            "MAX"
+          ],
+          "formula": "IF(B15=\"ידני\",MAX(B17,0),B40)"
+        },
+        {
+          "cell": "B43",
+          "references": [
+            "'תעריפים וכללים'!$B$20",
+            "B15",
+            "B18",
+            "B41"
+          ],
+          "functions": [
+            "IF",
+            "MAX"
+          ],
+          "formula": "IF(B15=\"ידני\",MAX(B18,0),B41*'תעריפים וכללים'!$B$20)"
+        },
+        {
+          "cell": "B44",
+          "references": [
+            "B42",
+            "G12"
+          ],
+          "functions": [
+            "MAX"
+          ],
+          "formula": "MAX(G12-B42,0)"
+        },
+        {
+          "cell": "B45",
+          "references": [
+            "'תעריפים וכללים'!$B$12",
+            "'תעריפים וכללים'!$B$5",
+            "'תעריפים וכללים'!$B$8",
+            "'תעריפים וכללים'!$B$9",
+            "B44"
+          ],
+          "functions": [
+            "IF"
+          ],
+          "formula": "IF(B44<='תעריפים וכללים'!$B$5*12*(1+'תעריפים וכללים'!$B$12*'תעריפים וכללים'!$B$8),B44/(1+'תעריפים וכללים'!$B$12*'תעריפים וכללים'!$B$8),(B44+'תעריפים וכללים'!$B$12*('תעריפים וכללים'!$B$5*12)*('תעריפים וכללים'!$B$9-'תעריפים וכללים'!$B$8))/(1+'תעריפים וכללים'!$B$12*'תעריפים וכללים'!$B$9))"
+        },
+        {
+          "cell": "B46",
+          "references": [
+            "'תעריפים וכללים'!$B$6",
+            "'תעריפים וכללים'!$B$7",
+            "B10",
+            "B45",
+            "G12"
+          ],
+          "functions": [
+            "IF",
+            "MAX",
+            "MIN"
+          ],
+          "formula": "IF(B10=\"כן\",IF(G12>0,MIN(MAX(B45,'תעריפים וכללים'!$B$7*12),'תעריפים וכללים'!$B$6*12),0),0)"
+        },
+        {
+          "cell": "B47",
+          "references": [
+            "'תעריפים וכללים'!$B$5",
+            "'תעריפים וכללים'!$B$6",
+            "'תעריפים וכללים'!$B$8",
+            "'תעריפים וכללים'!$B$9",
+            "B46"
+          ],
+          "functions": [
+            "MAX",
+            "MIN"
+          ],
+          "formula": "MIN(B46,'תעריפים וכללים'!$B$5*12)*'תעריפים וכללים'!$B$8+MAX(MIN(B46,'תעריפים וכללים'!$B$6*12)-'תעריפים וכללים'!$B$5*12,0)*'תעריפים וכללים'!$B$9"
+        },
+        {
+          "cell": "B48",
+          "references": [
+            "'תעריפים וכללים'!$B$10",
+            "'תעריפים וכללים'!$B$11",
+            "'תעריפים וכללים'!$B$5",
+            "'תעריפים וכללים'!$B$6",
+            "B46"
+          ],
+          "functions": [
+            "MAX",
+            "MIN"
+          ],
+          "formula": "MIN(B46,'תעריפים וכללים'!$B$5*12)*'תעריפים וכללים'!$B$10+MAX(MIN(B46,'תעריפים וכללים'!$B$6*12)-'תעריפים וכללים'!$B$5*12,0)*'תעריפים וכללים'!$B$11"
+        },
+        {
+          "cell": "B49",
+          "references": [
+            "'תעריפים וכללים'!$B$12",
+            "B47"
+          ],
+          "functions": [],
+          "formula": "B47*'תעריפים וכללים'!$B$12"
+        },
+        {
+          "cell": "B50",
+          "references": [
+            "B42",
+            "B49",
+            "G12"
+          ],
+          "functions": [
+            "MAX"
+          ],
+          "formula": "MAX(G12-B42-B49,0)"
+        },
+        {
+          "cell": "B51",
+          "references": [
+            "B21"
+          ],
+          "functions": [
+            "MAX"
+          ],
+          "formula": "MAX(B21,0)*12"
+        },
+        {
+          "cell": "B52",
+          "references": [
+            "'תעריפים וכללים'!$B$26",
+            "B21",
+            "B25",
+            "B51"
+          ],
+          "functions": [
+            "IF",
+            "OR"
+          ],
+          "formula": "IF(OR(B25<>\"כן\",B51=0),0,IF(B21<='תעריפים וכללים'!$B$26,0,IF(B21<2*'תעריפים וכללים'!$B$26,2*(B21-'תעריפים וכללים'!$B$26)*12,B51)))"
+        },
+        {
+          "cell": "B53",
+          "references": [
+            "B22",
+            "B51",
+            "B52"
+          ],
+          "functions": [
+            "IF",
+            "MIN"
+          ],
+          "formula": "IF(B51>0,MIN(B22*B52/B51,B52),0)"
+        },
+        {
+          "cell": "B54",
+          "references": [
+            "B52",
+            "B53"
+          ],
+          "functions": [
+            "MAX"
+          ],
+          "formula": "MAX(B52-B53,0)"
+        },
+        {
+          "cell": "B55",
+          "references": [
+            "'תעריפים וכללים'!$B$31",
+            "'תעריפים וכללים'!$B$32",
+            "'תעריפים וכללים'!$B$33",
+            "'תעריפים וכללים'!$B$34",
+            "'תעריפים וכללים'!$B$35",
+            "'תעריפים וכללים'!$C$31",
+            "'תעריפים וכללים'!$C$32",
+            "'תעריפים וכללים'!$C$33",
+            "'תעריפים וכללים'!$C$34",
+            "'תעריפים וכללים'!$C$35",
+            "'תעריפים וכללים'!$C$36",
+            "B50"
+          ],
+          "functions": [
+            "MAX",
+            "MIN"
+          ],
+          "formula": "MIN(B50,'תעריפים וכללים'!$B$31)*'תעריפים וכללים'!$C$31+MAX(MIN(B50,'תעריפים וכללים'!$B$32)-'תעריפים וכללים'!$B$31,0)*'תעריפים וכללים'!$C$32+MAX(MIN(B50,'תעריפים וכללים'!$B$33)-'תעריפים וכללים'!$B$32,0)*'תעריפים וכללים'!$C$33+MAX(MIN(B50,'תעריפים וכללים'!$B$34)-'תעריפים וכללים'!$B$33,0)*'תעריפים וכללים'!$C$34+MAX(MIN(B50,'תעריפים וכללים'!$B$35)-'תעריפים וכללים'!$B$34,0)*'תעריפים וכללים'!$C$35+MAX(B50-'תעריפים וכללים'!$B$35,0)*'תעריפים וכללים'!$C$36"
+        },
+        {
+          "cell": "B56",
+          "references": [
+            "'תעריפים וכללים'!$B$31",
+            "'תעריפים וכללים'!$B$32",
+            "'תעריפים וכללים'!$B$33",
+            "'תעריפים וכללים'!$B$34",
+            "'תעריפים וכללים'!$B$35",
+            "'תעריפים וכללים'!$C$31",
+            "'תעריפים וכללים'!$C$32",
+            "'תעריפים וכללים'!$C$33",
+            "'תעריפים וכללים'!$C$34",
+            "'תעריפים וכללים'!$C$35",
+            "'תעריפים וכללים'!$C$36",
+            "B24",
+            "B50",
+            "B54",
+            "B55"
+          ],
+          "functions": [
+            "IF",
+            "MAX",
+            "MIN"
+          ],
+          "formula": "IF(B24=\"כן\",MIN(B50+B54,'תעריפים וכללים'!$B$31)*'תעריפים וכללים'!$C$31+MAX(MIN(B50+B54,'תעריפים וכללים'!$B$32)-'תעריפים וכללים'!$B$31,0)*'תעריפים וכללים'!$C$32+MAX(MIN(B50+B54,'תעריפים וכללים'!$B$33)-'תעריפים וכללים'!$B$32,0)*'תעריפים וכללים'!$C$33+MAX(MIN(B50+B54,'תעריפים וכללים'!$B$34)-'תעריפים וכללים'!$B$33,0)*'תעריפים וכללים'!$C$34+MAX(MIN(B50+B54,'תעריפים וכללים'!$B$35)-'תעריפים וכללים'!$B$34,0)*'תעריפים וכללים'!$C$35+MAX(B50+B54-'תעריפים וכללים'!$B$35,0)*'תעריפים וכללים'!$C$36,B55+MAX(MIN(B50+B54,'תעריפים וכללים'!$B$34)-B50,0)*'תעריפים וכללים'!$C$34+MAX(MIN(B50+B54,'תעריפים וכללים'!$B$35)-MAX(B50,'תעריפים וכללים'!$B$34),0)*'תעריפים וכללים'!$C$35+MAX(B50+B54-MAX(B50,'תעריפים וכללים'!$B$35),0)*'תעריפים וכללים'!$C$36)"
+        },
+        {
+          "cell": "B57",
+          "references": [
+            "'תעריפים וכללים'!$B$21",
+            "B12",
+            "B43"
+          ],
+          "functions": [
+            "MAX"
+          ],
+          "formula": "MAX(B12,0)*'תעריפים וכללים'!$B$21+B43"
+        },
+        {
+          "cell": "B58",
+          "references": [
+            "'תעריפים וכללים'!$B$22",
+            "'תעריפים וכללים'!$B$23",
+            "'תעריפים וכללים'!$B$24",
+            "'תעריפים וכללים'!$B$25",
+            "B50",
+            "B54",
+            "B56",
+            "B57"
+          ],
+          "functions": [
+            "MAX"
+          ],
+          "formula": "MAX(B56-B57,0)+MAX(B50+B54-'תעריפים וכללים'!$B$22,0)*'תעריפים וכללים'!$B$23+MAX(B54-'תעריפים וכללים'!$B$24,0)*'תעריפים וכללים'!$B$25"
+        },
+        {
+          "cell": "B59",
+          "references": [
+            "'תעריפים וכללים'!$B$22",
+            "'תעריפים וכללים'!$B$23",
+            "'תעריפים וכללים'!$B$24",
+            "'תעריפים וכללים'!$B$25",
+            "'תעריפים וכללים'!$B$27",
+            "B50",
+            "B51",
+            "B55",
+            "B57"
+          ],
+          "functions": [
+            "MAX"
+          ],
+          "formula": "MAX(B55-B57,0)+B51*'תעריפים וכללים'!$B$27+MAX(B50+B51-'תעריפים וכללים'!$B$22,0)*'תעריפים וכללים'!$B$23+MAX(B51-'תעריפים וכללים'!$B$24,0)*'תעריפים וכללים'!$B$25"
+        },
+        {
+          "cell": "B60",
+          "references": [
+            "'תעריפים וכללים'!$B$22",
+            "'תעריפים וכללים'!$B$23",
+            "B50",
+            "B55",
+            "B57"
+          ],
+          "functions": [
+            "MAX"
+          ],
+          "formula": "MAX(B55-B57,0)+MAX(B50-'תעריפים וכללים'!$B$22,0)*'תעריפים וכללים'!$B$23"
+        },
+        {
+          "cell": "B61",
+          "references": [
+            "B21",
+            "B23",
+            "B25",
+            "B58",
+            "B59"
+          ],
+          "functions": [
+            "IF",
+            "OR"
+          ],
+          "formula": "IF(OR(B25<>\"כן\",B21=0,B23=\"ללא\"),\"ללא\",IF(B23=\"פטור-רגיל\",\"פטור-רגיל\",IF(B23=\"10%\",\"10%\",IF(B58<=B59,\"פטור-רגיל\",\"10%\"))))"
+        },
+        {
+          "cell": "B62",
+          "references": [
+            "B58",
+            "B59",
+            "B60",
+            "B61"
+          ],
+          "functions": [
+            "IF"
+          ],
+          "formula": "IF(B61=\"פטור-רגיל\",B58,IF(B61=\"10%\",B59,B60))"
+        },
+        {
+          "cell": "B63",
+          "references": [
+            "'תעריפים וכללים'!B41",
+            "'תעריפים וכללים'!B42",
+            "'תעריפים וכללים'!B43",
+            "'תעריפים וכללים'!B44",
+            "'תעריפים וכללים'!B45",
+            "'תעריפים וכללים'!B46",
+            "'תעריפים וכללים'!B47",
+            "'תעריפים וכללים'!B48",
+            "'תעריפים וכללים'!B49",
+            "'תעריפים וכללים'!C41",
+            "'תעריפים וכללים'!C42",
+            "'תעריפים וכללים'!C43",
+            "'תעריפים וכללים'!C44",
+            "'תעריפים וכללים'!C45",
+            "'תעריפים וכללים'!C46",
+            "'תעריפים וכללים'!C47",
+            "'תעריפים וכללים'!C48",
+            "'תעריפים וכללים'!C49",
+            "'תעריפים וכללים'!D41",
+            "'תעריפים וכללים'!D42",
+            "'תעריפים וכללים'!D43",
+            "'תעריפים וכללים'!D44",
+            "'תעריפים וכללים'!D45",
+            "'תעריפים וכללים'!D46",
+            "'תעריפים וכללים'!D47",
+            "'תעריפים וכללים'!D48",
+            "'תעריפים וכללים'!D49",
+            "'תעריפים וכללים'!E41",
+            "'תעריפים וכללים'!E42",
+            "'תעריפים וכללים'!E43",
+            "'תעריפים וכללים'!E44",
+            "'תעריפים וכללים'!E45",
+            "'תעריפים וכללים'!E46",
+            "'תעריפים וכללים'!E47",
+            "'תעריפים וכללים'!E48",
+            "'תעריפים וכללים'!E49",
+            "B29",
+            "B30"
+          ],
+          "functions": [
+            "IF"
+          ],
+          "formula": "IF(B30=\"\",0,IF(B29<1,0,IF(B29=1,IF(B30<='תעריפים וכללים'!B41,90%,IF(B30<='תעריפים וכללים'!C41,70%,IF(B30<='תעריפים וכללים'!D41,50%,IF(B30<='תעריפים וכללים'!E41,30%,0)))),IF(B29=2,IF(B30<='תעריפים וכללים'!B42,90%,IF(B30<='תעריפים וכללים'!C42,70%,IF(B30<='תעריפים וכללים'!D42,50%,IF(B30<='תעריפים וכללים'!E42,30%,0)))),IF(B29=3,IF(B30<='תעריפים וכללים'!B43,90%,IF(B30<='תעריפים וכללים'!C43,70%,IF(B30<='תעריפים וכללים'!D43,50%,IF(B30<='תעריפים וכללים'!E43,30%,0)))),IF(B29=4,IF(B30<='תעריפים וכללים'!B44,90%,IF(B30<='תעריפים וכללים'!C44,70%,IF(B30<='תעריפים וכללים'!D44,50%,IF(B30<='תעריפים וכללים'!E44,30%,0)))),IF(B29=5,IF(B30<='תעריפים וכללים'!B45,90%,IF(B30<='תעריפים וכללים'!C45,70%,IF(B30<='תעריפים וכללים'!D45,50%,IF(B30<='תעריפים וכללים'!E45,30%,0)))),IF(B29=6,IF(B30<='תעריפים וכללים'!B46,90%,IF(B30<='תעריפים וכללים'!C46,70%,IF(B30<='תעריפים וכללים'!D46,50%,IF(B30<='תעריפים וכללים'!E46,30%,0)))),IF(B29=7,IF(B30<='תעריפים וכללים'!B47,90%,IF(B30<='תעריפים וכללים'!C47,70%,IF(B30<='תעריפים וכללים'!D47,50%,IF(B30<='תעריפים וכללים'!E47,30%,0)))),IF(B29=8,IF(B30<='תעריפים וכללים'!B48,90%,IF(B30<='תעריפים וכללים'!C48,70%,IF(B30<='תעריפים וכללים'!D48,50%,IF(B30<='תעריפים וכללים'!E48,30%,0)))),IF(B29=9,IF(B30<='תעריפים וכללים'!B49,90%,IF(B30<='תעריפים וכללים'!C49,70%,IF(B30<='תעריפים וכללים'!D49,50%,IF(B30<='תעריפים וכללים'!E49,30%,0)))),IF(B30<='תעריפים וכללים'!B49+(B29-9)*1125,90%,IF(B30<='תעריפים וכללים'!C49+(B29-9)*1374,70%,IF(B30<='תעריפים וכללים'!D49+(B29-9)*1624,50%,IF(B30<='תעריפים וכללים'!E49+(B29-9)*1874,30%,0)))))))))))))))"
+        },
+        {
+          "cell": "B64",
+          "references": [
+            "B31",
+            "B32",
+            "B63"
+          ],
+          "functions": [
+            "IF",
+            "MAX",
+            "MIN"
+          ],
+          "formula": "IF(B31=\"ידני\",MAX(MIN(B32,100%),0),B63)"
+        },
+        {
+          "cell": "B65",
+          "references": [
+            "B28",
+            "B64"
+          ],
+          "functions": [
+            "MAX"
+          ],
+          "formula": "MAX(B28*(1-B64),0)"
+        }
+      ],
+      "validationRanges": []
+    },
+    {
+      "name": "עדכון שנתי",
+      "implementation": "Israel calendar default plus explicit per-group review",
+      "formulas": [
+        {
+          "cell": "B4",
+          "references": [],
+          "functions": [
+            "TODAY",
+            "YEAR"
+          ],
+          "formula": "YEAR(TODAY())"
+        },
+        {
+          "cell": "B5",
+          "references": [],
+          "functions": [
+            "TODAY"
+          ],
+          "formula": "TODAY()"
+        },
+        {
+          "cell": "B6",
+          "references": [
+            "B4"
+          ],
+          "functions": [],
+          "formula": "B4-1"
+        },
+        {
+          "cell": "F9",
+          "references": [
+            "$B$4",
+            "B9"
+          ],
+          "functions": [
+            "IF"
+          ],
+          "formula": "IF(B9=$B$4,\"בתוקף לשנה הנוכחית\",\"נדרש עדכון\")"
+        },
+        {
+          "cell": "F10",
+          "references": [
+            "$B$4",
+            "B10"
+          ],
+          "functions": [
+            "IF"
+          ],
+          "formula": "IF(B10=$B$4,\"בתוקף לשנה הנוכחית\",\"נדרש עדכון\")"
+        },
+        {
+          "cell": "F11",
+          "references": [
+            "$B$4",
+            "B11"
+          ],
+          "functions": [
+            "IF"
+          ],
+          "formula": "IF(B11=$B$4,\"בתוקף לשנה הנוכחית\",\"נדרש עדכון\")"
+        },
+        {
+          "cell": "F12",
+          "references": [
+            "$B$4",
+            "B12"
+          ],
+          "functions": [
+            "IF"
+          ],
+          "formula": "IF(B12=$B$4,\"בתוקף לשנה הנוכחית\",\"נדרש עדכון\")"
+        },
+        {
+          "cell": "F13",
+          "references": [
+            "$B$4",
+            "B13"
+          ],
+          "functions": [
+            "IF"
+          ],
+          "formula": "IF(B13=$B$4,\"בתוקף לשנה הנוכחית\",\"נדרש עדכון\")"
+        },
+        {
+          "cell": "F14",
+          "references": [
+            "$B$4",
+            "B14"
+          ],
+          "functions": [
+            "IF"
+          ],
+          "formula": "IF(B14=$B$4,\"בתוקף לשנה הנוכחית\",\"נדרש עדכון\")"
+        },
+        {
+          "cell": "F15",
+          "references": [
+            "$B$4",
+            "B15"
+          ],
+          "functions": [
+            "IF"
+          ],
+          "formula": "IF(B15=$B$4,\"בתוקף לשנה הנוכחית\",\"נדרש עדכון\")"
+        },
+        {
+          "cell": "F16",
+          "references": [
+            "$B$4",
+            "B16"
+          ],
+          "functions": [
+            "IF"
+          ],
+          "formula": "IF(B16=$B$4,\"בתוקף לשנה הנוכחית\",\"נדרש עדכון\")"
+        },
+        {
+          "cell": "F17",
+          "references": [
+            "$B$4",
+            "B17"
+          ],
+          "functions": [
+            "IF"
+          ],
+          "formula": "IF(B17=$B$4,\"בתוקף לשנה הנוכחית\",\"נדרש עדכון\")"
+        },
+        {
+          "cell": "B20",
+          "references": [
+            "F9:F17"
+          ],
+          "functions": [
+            "COUNTIF"
+          ],
+          "formula": "COUNTIF(F9:F17,\"נדרש עדכון\")"
+        },
+        {
+          "cell": "A21",
+          "references": [
+            "B20",
+            "B4"
+          ],
+          "functions": [
+            "IF"
+          ],
+          "formula": "IF(B20=0,\"נתוני הכללים מסומנים לשנת \"&B4&\". בדוק שאכן אומתו מול המקורות לפני הסתמכות.\",\"⚠ שנת \"&B4&\": יש \"&B20&\" קבוצות כללים שלא עודכנו. התוצאות הכספיות מחושבות על סמך נתונים קודמים והן אומדן בלבד!\")"
+        }
+      ],
+      "validationRanges": [
+        "B9:B17"
+      ]
+    }
+  ]
+}

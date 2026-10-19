@@ -20,6 +20,8 @@
     "types": []
   },
   "files": [
+    "shared/tax-calculator/remote.js",
+    "shared/tax-calculator/store.js",
     "shared/bank-feed.js",
     "shared/bank-transaction-identity.js",
     "netunim-kupa/bank-bridge/hapoalim-transaction-model.mjs",

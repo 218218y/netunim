@@ -1,3 +1,5 @@
+import {createOrdersTaxCalculator} from './composition/tax-calculator.js';
+import {createTaxCalculatorActions} from './ui/action-packs/tax-calculator.js';
 import {startupMark} from './shared/startup-timing.js';
 import {createOrdersChecksCapability} from './composition/checks.js';
 import {createOrdersFinanceCapability} from './composition/finance.js';
@@ -208,6 +210,7 @@ const uiNavigation=createUiNavigation({
   renderWarehouse:(...args)=>warehouse.renderWarehouse(...args),
   renderNotes:(...args)=>domainsNotesController.renderNotes(...args),
   renderCalendar:(...args)=>domainsCalendarController.renderCalendar(...args),
+  renderTaxCalculator:()=>taxCalculator.render(),
   renderSettings:(...args)=>uiSettings.renderSettings(...args),
   refreshAlertCenter:(...args)=>uiAlertCenter.refreshIndicator(...args),
   dataRevision:view=>orderViewRevision(domainRevisions,view)+':'+new Date().toLocaleDateString('en-CA'),
@@ -456,7 +459,10 @@ const uiEvents={bindActionEvents:(root,actions)=>bindActionEvents(root,actions,{
 })};
 
 const calendarPorts=calendarRuntime.actionPorts();
+const taxCalculator=createOrdersTaxCalculator({cloudAuth,tab,ui,navigation:uiNavigation,modal:uiModal});
+
 const uiActions=composeActionRegistry([
+  {name:'tax-calculator',actions:createTaxCalculatorActions({tax:taxCalculator})},
   ...createExternalActionPacks({notesSheetActions:domainsNotesController.sheetActions}),
   ...finance.actionPacks(),
   {name:'alerts',actions:createAlertsActions({uiAlertCenter})},

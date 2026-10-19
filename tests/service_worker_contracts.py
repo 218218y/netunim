@@ -143,7 +143,7 @@ for label, site in APPS.items():
         "./android-chrome-512x512.png",
     }
     required.update('./'+p.relative_to(site).as_posix() for p in (site/'assets').rglob('*.js') if 'vendor' not in p.relative_to(site/'assets').parts)
-    required.update('./'+p.relative_to(site).as_posix() for p in (site/'assets/js/shared').glob('*.css'))
+    required.update('./'+p.relative_to(site).as_posix() for p in (site/'assets/js/shared').rglob('*.css'))
     ok(set(shell) == required and len(shell)==len(required), f"{label}: shell contains exactly the expected public app files")
     ok(not any('/assets/vendor/' in item for item in shell), f"{label}: third-party runtimes are not eagerly pre-cached in the install shell")
     if label == 'orders':

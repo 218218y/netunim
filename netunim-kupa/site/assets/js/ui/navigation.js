@@ -5,7 +5,7 @@ import {createCleanViewCache} from '../shared/clean-view-cache.js';
 import {TITLES} from '../state/constants.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createUiNavigation({onPageActivated=()=>{},runFinance=withFinanceDerivations, ui, renderDashboard, renderChecks, renderCredit, renderCash, renderBank, renderNotes, renderSettings, maybeAutoRefreshBankBalance, maybeAutoRefreshCreditSync, refreshCheckBankIndicator=()=>{}, maybeShowCashflowStartupAlert=()=>{},dataRevision=()=>''}){
+export function createUiNavigation({renderTaxCalculator=()=>{},onPageActivated=()=>{},runFinance=withFinanceDerivations, ui, renderDashboard, renderChecks, renderCredit, renderCash, renderBank, renderNotes, renderSettings, maybeAutoRefreshBankBalance, maybeAutoRefreshCreditSync, refreshCheckBankIndicator=()=>{}, maybeShowCashflowStartupAlert=()=>{},dataRevision=()=>''}){
 const setKey=value=>[...(value||[])].map(String).sort().join(',');
 function viewStateKey(page){
   if(page==='checks')return JSON.stringify([ui.checkTab,ui.checkAccount,ui.checkYear,ui.checkFocus,ui.checkSearchValue,ui.bulkCollection,setKey(ui.bulkSelected)]);
@@ -21,7 +21,7 @@ function afterNavigation(){refreshCheckBankIndicator();maybeAutoRefreshBankBalan
 function setPage(p){ui.bulkCollection=null;ui.bulkSelected.clear();ui.currentPage=p;document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===p));const [t,s]=TITLES[p];document.getElementById('pageTitle').textContent=t;document.getElementById('pageSub').textContent=s;document.getElementById('sidebar').classList.remove('open');if(viewCache.activate(p)){afterNavigation();onPageActivated(p);return}render();onPageActivated(p)}
 
 function render(){return runFinance(renderContent)}
-function renderContent(){const done=beginMeasure(`kupa:render:${ui.currentPage}`);try{if(ui.currentPage==='dashboard')renderDashboard();if(ui.currentPage==='checks')renderChecks();if(ui.currentPage==='credit')renderCredit();if(ui.currentPage==='cash')renderCash();if(ui.currentPage==='bank')renderBank();if(ui.currentPage==='expenses')renderBank();if(ui.currentPage==='notes')renderNotes();if(ui.currentPage==='settings')renderSettings();viewCache.markRendered(ui.currentPage);afterNavigation();startupMark('first-view-render')}finally{done()}}
+function renderContent(){const done=beginMeasure(`kupa:render:${ui.currentPage}`);try{if(ui.currentPage==='dashboard')renderDashboard();if(ui.currentPage==='checks')renderChecks();if(ui.currentPage==='credit')renderCredit();if(ui.currentPage==='cash')renderCash();if(ui.currentPage==='bank')renderBank();if(ui.currentPage==='expenses')renderBank();if(ui.currentPage==='notes')renderNotes();if(ui.currentPage==='settings')renderSettings();if(ui.currentPage==='tax-calculator')renderTaxCalculator();viewCache.markRendered(ui.currentPage);afterNavigation();startupMark('first-view-render')}finally{done()}}
 
 // Checks affect financial projections, but never require rebuilding Notes or Cash.
 function checksChanged(){if(['checks','dashboard','bank','expenses','credit'].includes(ui.currentPage))render();else refreshCheckBankIndicator()}

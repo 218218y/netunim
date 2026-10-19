@@ -28,6 +28,7 @@ BRIDGE_SHARED_SOURCES = {
     'shared/observation-time.js': 'netunim-kupa/bank-bridge/observation-time.mjs',
     'shared/credit-cooldown-policy.js': 'netunim-kupa/bank-bridge/credit-cooldown-policy.mjs',
 }
+TAX_SHARED_ROOT = PurePosixPath('shared/tax-calculator')
 DOCUMENT_SEARCH_SHARED_ROOT = PurePosixPath('shared/document-search')
 DOCUMENT_SEARCH_TARGET_ROOT = PurePosixPath('assets/js')
 TEXT_ASSET_SUFFIXES = {'.html', '.css', '.js', '.mjs', '.txt', '.webmanifest'}
@@ -67,6 +68,9 @@ class WorktreeSnapshot:
         document_search = root / DOCUMENT_SEARCH_SHARED_ROOT
         if document_search.is_dir():
             paths.extend(path for path in document_search.rglob('*.js') if path.is_file())
+        tax_root = root / TAX_SHARED_ROOT
+        if tax_root.is_dir():
+            paths.extend(path for path in tax_root.rglob('*') if path.is_file() and path.suffix in {'.js', '.css'})
         fixed = (
             'service-worker.js', 'index.html', 'assets/app.css', 'manifest.webmanifest',
             'supabase/config.js', 'favicon.ico', 'favicon-16x16.png', 'favicon-32x32.png',
@@ -75,7 +79,7 @@ class WorktreeSnapshot:
         for label in APPS:
             site = root / f'netunim-{label}/site'
             paths.extend((site / 'assets').rglob('*.js'))
-            paths.extend((site / 'assets/js/shared').glob('*.css'))
+            paths.extend((site / 'assets/js/shared').rglob('*.css'))
             vendor = site / 'assets/vendor'
             if vendor.is_dir():
                 paths.extend(path for path in vendor.rglob('*') if path.is_file())
@@ -292,6 +296,19 @@ def plan_sync(snapshot: WorktreeSnapshot | IndexSnapshot) -> list[Change]:
             expected = snapshot.read(source_path)
             if target not in snapshot.files or snapshot.read(target) != expected:
                 changes.append(Change(target, expected, f'{label}: synchronized shared source: {PurePosixPath(source_path).name}'))
+
+    tax_sources = sorted(path for path in snapshot.files if PurePosixPath(path).is_relative_to(TAX_SHARED_ROOT) and PurePosixPath(path).suffix in {'.js', '.css'})
+    for label in APPS:
+        target_root = PurePosixPath(f'netunim-{label}/site/assets/js/shared/tax-calculator')
+        expected_targets = {(target_root / PurePosixPath(path).relative_to(TAX_SHARED_ROOT)).as_posix() for path in tax_sources}
+        managed_targets = {path for path in snapshot.files if PurePosixPath(path).is_relative_to(target_root) and PurePosixPath(path).suffix in {'.js', '.css'}}
+        for target in sorted(managed_targets - expected_targets):
+            changes.append(Change(target, None, f'{label}: removed obsolete calculator asset'))
+        for source in tax_sources:
+            target = (target_root / PurePosixPath(source).relative_to(TAX_SHARED_ROOT)).as_posix()
+            expected = snapshot.read(source)
+            if target not in snapshot.files or snapshot.read(target) != expected:
+                changes.append(Change(target, expected, f'{label}: synchronized calculator asset: {PurePosixPath(source).name}'))
 
     document_sources = sorted(
         path for path in snapshot.files

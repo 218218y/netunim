@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='kupa-app-shell-';
-const CACHE='kupa-app-shell-esm-c03803197af9';
+const CACHE='kupa-app-shell-esm-74d0a5a2396e';
 const SHELL=[
   './',
   './index.html',
@@ -26,6 +26,7 @@ const SHELL=[
   './assets/js/composition/search.js',
   './assets/js/composition/state-normalization.js',
   './assets/js/composition/storage-v2.js',
+  './assets/js/composition/tax-calculator.js',
   './assets/js/connectivity.js',
   './assets/js/core/dates.js',
   './assets/js/core/money.js',
@@ -258,6 +259,16 @@ const SHELL=[
   './assets/js/shared/sync-json.js',
   './assets/js/shared/sync-status.js',
   './assets/js/shared/tab-lock.js',
+  './assets/js/shared/tax-calculator/compute.js',
+  './assets/js/shared/tax-calculator/contracts.js',
+  './assets/js/shared/tax-calculator/entry.js',
+  './assets/js/shared/tax-calculator/remote.js',
+  './assets/js/shared/tax-calculator/rules.js',
+  './assets/js/shared/tax-calculator/store.js',
+  './assets/js/shared/tax-calculator/style.css',
+  './assets/js/shared/tax-calculator/sync.js',
+  './assets/js/shared/tax-calculator/view.js',
+  './assets/js/shared/tax-calculator/workspace.js',
   './assets/js/startup/cloud-hydration.js',
   './assets/js/startup/connection.js',
   './assets/js/startup/local-services.js',
@@ -307,6 +318,7 @@ const SHELL=[
   './assets/js/ui/action-packs/notes.js',
   './assets/js/ui/action-packs/settings.js',
   './assets/js/ui/action-packs/shell.js',
+  './assets/js/ui/action-packs/tax-calculator.js',
   './assets/js/ui/actions.js',
   './assets/js/ui/backup-catalog.js',
   './assets/js/ui/backup-local.js',

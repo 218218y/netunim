@@ -175,6 +175,10 @@
     {
       "version": "20261018180000",
       "name": "sync_incidents"
+    },
+    {
+      "version": "20261019041407",
+      "name": "tax_calculator"
     }
   ]
 }
