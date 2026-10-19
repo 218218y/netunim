@@ -45,7 +45,7 @@ function createLazyMorningReports(ports, notify) {
   }
   function ensure() {
     if (!active || feature) return Promise.resolve(active ? feature : null);
-    if (!flight) flight = import('../domains/finance/morning-reports.js').then(module => {
+    if (!flight) flight = import('./morning-reports.js').then(module => {
       if (active) feature = module.createFinanceMorningReports(ports);
       return feature;
     }).finally(() => { flight = null; });

@@ -4,15 +4,6 @@ import { checkTodayISO } from '../../core/dates.js';
 import { createRuntimeTaskOwner } from '../../shared/runtime-task-owner.js';
 import { buildMorningReport, REPORT_METHODS, REPORT_TYPES, reportPeriod, validReportDate, reportCsv } from './morning-report-model.js';
 import { loadMorningReportSource } from './morning-report-loader.js';
-import {createMorningRequest} from '../../integrations/morning.js';
-import {createMorningMediaComposition} from '../../composition/morning-media.js';
-
-export function createFinanceMorningReports({auth, morningOperationScope, modal, toast, dateEditorMarkup, isActive}) {
-    const request = createMorningRequest({supaFetch:(...args) => auth.supaFetch(...args), operationScope:morningOperationScope});
-    const media = createMorningMediaComposition({request, modal, toast}).create({capture:() => morningOperationScope.captureRead(), onStandalone:() => {}});
-    return createMorningReports({request:request.json, captureRead:() => morningOperationScope.captureRead(),
-        subscribeAccountScope:listener => auth.subscribeAccountScope?.(listener) || (() => {}), media, dateEditorMarkup, isActive});
-}
 const OFFICIAL = 'https://app.greeninvoice.co.il/business/accounting/reports';
 const amount = value => value === null ? '—' : money(value / 100);
 const rowOutputVat = row => [305, 320, 330].includes(row.type) && (row.selfInvoice || !Number.isSafeInteger(row.vatCents)) ? null : row.outputVatCents;
