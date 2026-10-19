@@ -117,6 +117,8 @@ for case in cases:
     wb=Workbook(overrides)
     output={key:int((wb.cell('חישוב',cell)*100).quantize(Decimal(1),rounding=ROUND_HALF_UP)) for key,cell in {'revenue':'G7','profit':'G12','outputVat':'G8','inputVat':'G9','netVat':'G10','national':'G16','health':'G17','pensionMinimum':'G14','pension':'G15','taxable':'G20','incomeTax':'G23','arnona':'G26','net':'G28'}.items()}
     i.pop('adults');i.pop('label');i={k:int(v*100) if k in money_fields else v for k,v in i.items()}
+    eligible=i.pop('rentEligible');route=i.pop('rentRoute')
+    i['rentMode']='other-ordinary' if not eligible else {'auto':'residential-auto','ordinary':'residential-exemption','flat':'residential-flat','none':'excluded'}[route]
     results.append({'label':case['label'],'profile':{'adults':case.get('adults',1),'basePoints':2.25},'input':i,'expected':output})
 args.output.write_text(json.dumps({'sourceSha256':hashlib.sha256(source.read_bytes()).hexdigest(),'method':'Original formula text evaluated independently with Python Decimal and synthetic inputs. No cached Excel values or personal examples. Tolerance: 5 agorot for explicit per-step rounding.','cases':results},ensure_ascii=False,indent=2)+'\n',encoding='utf8')
 print('Generated',len(results),'synthetic original-formula regression cases')

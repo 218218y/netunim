@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createAnnual,createProfile,assertAnnual,assertRules,toMinor,ratio,currentTaxYear,same,applyRentalChoice,rentalChoiceFromAnnual} from '../shared/tax-calculator/contracts.js';
+import {createAnnual,createProfile,assertAnnual,assertRules,toMinor,ratio,currentTaxYear,same} from '../shared/tax-calculator/contracts.js';
 import {defaultRules,ruleWarnings} from '../shared/tax-calculator/rules.js';
 import {calculateTax,progressiveTax,ageOn} from '../shared/tax-calculator/compute.js';
 import {normalizeDate,inputMarkup,summaryMarkup} from '../shared/tax-calculator/view.js';
@@ -43,11 +43,11 @@ test('pension zero is distinct from unknown; manual credit and priority are pres
   const manual=calculateTax(input({revenue:18000000,pensionMethod:'manual',pensionDeduction:100000,pensionCredit:50000}));assert.equal(manual.annual.pensionDeduction,100000);assert.equal(manual.annual.pensionCredit,50000);
 });
 test('ineligible rental income is taxed under ordinary rules rather than disappearing',()=>{
-  const ordinary=calculateTax(input({rentMonthly:1000000,rentEligible:false}));assert.equal(ordinary.rental.route,'ordinary');assert.equal(ordinary.annual.rentTax,3720000);
-  const eligible=calculateTax(input({rentMonthly:1000000,rentEligible:true}));assert.equal(eligible.rental.route,'flat');assert.equal(eligible.annual.rentTax,1200000);
-  const exempt=calculateTax(input({rentMonthly:565400,rentEligible:true}));assert.equal(exempt.annual.rentTax,0);
-  const older=calculateTax(input({rentMonthly:1000000,rentEligible:false,over60:true}));assert.equal(older.annual.incomeTax,1343520);
-  const excluded=calculateTax(input({rentMonthly:1000000,rentEligible:true,rentRoute:'none'}));assert.equal(excluded.complete,false);
+  const ordinary=calculateTax(input({rentMonthly:1000000,rentMode:'other-ordinary'}));assert.equal(ordinary.rental.route,'ordinary');assert.equal(ordinary.annual.rentTax,3720000);
+  const eligible=calculateTax(input({rentMonthly:1000000,rentMode:'residential-auto'}));assert.equal(eligible.rental.route,'flat');assert.equal(eligible.annual.rentTax,1200000);
+  const exempt=calculateTax(input({rentMonthly:565400,rentMode:'residential-auto'}));assert.equal(exempt.annual.rentTax,0);
+  const older=calculateTax(input({rentMonthly:1000000,rentMode:'other-ordinary',over60:true}));assert.equal(older.annual.incomeTax,1343520);
+  const excluded=calculateTax(input({rentMonthly:1000000,rentMode:'excluded'}));assert.equal(excluded.complete,false);
 });
 test('age, child points and household size use independent dates with no eight-child limit',()=>{
   const p=createProfile();p.adults=2;p.children=Array.from({length:12},(_,i)=>({id:String(i),birthDate:`${2008+i}-12-31`,resident:true}));
@@ -77,7 +77,7 @@ test('date typing supports explicit birth century and rejects incomplete or inva
 
 test('arnona 2026 uses assessed 2025 business and residential rent, never current-year figures',()=>{
   const p=createProfile();p.adults=2;
-  const i=input({profile:p,revenue:15000000,assessmentYear:2025,arnonaBusinessAnnual:3600000,arnonaRentReceivedMonthly:500000,rentMonthly:565400,rentEligible:true,arnonaAnnual:1200000});
+  const i=input({profile:p,revenue:15000000,assessmentYear:2025,arnonaBusinessAnnual:3600000,arnonaRentReceivedMonthly:500000,rentMonthly:565400,rentMode:'residential-auto',arnonaAnnual:1200000});
   const c=calculateTax(i);
   assert.equal(c.annual.rentTax,0,'residential rent within 2026 exemption stays tax exempt');
   assert.equal(c.arnona.businessMonthly,300000);
@@ -91,7 +91,7 @@ test('arnona 2026 uses assessed 2025 business and residential rent, never curren
   assert.equal(approved.annual.arnona,1050000,'input is effective approved rate against whole bill');
 });
 test('missing 2025 assessment business or rental income never falls back to 2026 numbers',()=>{
-  const base=input({revenue:60000000,rentMonthly:565400,rentEligible:true,arnonaAnnual:1200000,assessmentYear:2025});
+  const base=input({revenue:60000000,rentMonthly:565400,rentMode:'residential-auto',arnonaAnnual:1200000,assessmentYear:2025});
   for(const update of [{},{arnonaBusinessAnnual:0},{arnonaRentReceivedMonthly:0}]){
     const c=calculateTax({...base,...update});
     assert.equal(c.arnona.assessedIncome,null);
@@ -106,25 +106,30 @@ test('missing 2025 assessment business or rental income never falls back to 2026
   assert.equal(none.arnona.assessedIncome,null,'year is required before classifying assessed income');
   const wrong=calculateTax({...base,assessmentYear:2026,arnonaBusinessAnnual:0,arnonaRentReceivedMonthly:0});
   assert.equal(wrong.arnona.estimatedDiscount,null,'2026 Bnei Brak does not test current-year income');
-  assert.ok(wrong.warnings.some(w=>w.includes('שנת 2025')));
+  assert.ok(wrong.warnings.some(w=>w.includes('2025')));
+  const older=calculateTax({...base,assessmentYear:2024,arnonaBusinessAnnual:20000000,arnonaRentReceivedMonthly:350000,householdOtherMonthly:100000});
+  assert.equal(older.arnona.assessedAnnualIncome,25400000,'older assessment arithmetic remains visible for inspection');
+  assert.equal(older.arnona.estimatedDiscount,null,'older assessment does not imply 2026 eligibility');
+  const sameYear=calculateTax({...base,taxYear:2027,rules:defaultRules(2027),assessmentYear:2027});
+  assert.equal(sameYear.arnona.assessedIncome,null,'even matching years require explicit assessment input');
 });
-test('existing year documents without assessment rent are readable and normalized without inventing 2025 income',()=>{
+test('only complete current annual documents are accepted; no legacy normalization',()=>{
   const legacy=input({revenue:10000000,assessmentYear:2025,arnonaBusinessAnnual:0});
   delete legacy.arnonaRentReceivedMonthly;
-  const migrated=assertAnnual(legacy);
-  assert.equal(migrated.arnonaRentReceivedMonthly,null);
-  assert.equal(calculateTax(migrated).arnona.assessedIncome,null);
-  assert.equal(legacy.arnonaRentReceivedMonthly,undefined);
-  assert.throws(()=>assertAnnual({...migrated,arnonaRentReceivedMonthly:-1}));
+  assert.throws(()=>assertAnnual(legacy));
+  assert.throws(()=>assertAnnual({...input(),schema:1}));
+  assert.throws(()=>assertAnnual({...input(),arnonaRentReceivedMonthly:undefined}));
+  assert.throws(()=>assertAnnual({...input(),arnonaRentReceivedMonthly:-1}));
+  assert.equal(assertAnnual(input()).arnonaRentReceivedMonthly,null);
 });
 test('2026 statutory rent exemption threshold vs arnona assessed income boundaries',()=>{
   for(const rentShekels of [0,4000,5654]){
-    const i=input({rentMonthly:rentShekels*100,rentEligible:true,assessmentYear:2025,arnonaBusinessAnnual:0,arnonaRentReceivedMonthly:rentShekels*100,arnonaAnnual:100000});
+    const i=input({rentMonthly:rentShekels*100,rentMode:'residential-auto',assessmentYear:2025,arnonaBusinessAnnual:0,arnonaRentReceivedMonthly:rentShekels*100,arnonaAnnual:100000});
     const c=calculateTax(i);
     assert.equal(c.annual.rentTax,0);
     assert.equal(c.arnona.assessedIncome,rentShekels*100);
   }
-  const limitPlus=calculateTax(input({rentMonthly:565500,rentEligible:true}));
+  const limitPlus=calculateTax(input({rentMonthly:565500,rentMode:'residential-auto'}));
   assert.ok(limitPlus.annual.rentTax>0);
 });
 
@@ -136,7 +141,7 @@ test('assessment income uses gross business figure before section-5 deductions +
   const annual=20000000, exemptRent=350000, kollel=100000;
   const c=calculateTax(input({profile:p,revenue:80000000,expensesMonthly:100000,
     assessmentYear:2025,arnonaBusinessAnnual:annual,arnonaRentReceivedMonthly:exemptRent,
-    householdOtherMonthly:kollel,rentMonthly:exemptRent,rentEligible:true,rentRoute:'ordinary',
+    householdOtherMonthly:kollel,rentMonthly:exemptRent,rentMode:'residential-exemption',
     arnonaAnnual:1200000}));
   assert.equal(c.annual.rentTax,0,'tax-exempt rental income does not create income tax');
   assert.equal(c.arnona.businessAnnual,20000000,'gross assessed figure, NOT income after personal deductions');
@@ -150,25 +155,18 @@ test('assessment income uses gross business figure before section-5 deductions +
   assert.ok(c.arnona.assessedAnnualIncome > 18200000 + 4200000 + 1200000);
 });
 
-test('rental single-choice control maps existing documents without changing cloud schema',()=>{
-  for(const [choice,eligible,route] of [
-    ['other-ordinary',false,'ordinary'],
-    ['residential-exemption',true,'ordinary'],
-    ['residential-flat',true,'flat'],
-    ['residential-auto',true,'auto'],
-    ['excluded',true,'none'],
-  ]){
-    const doc=input({rentMonthly:400000});
-    applyRentalChoice(doc,choice);
-    assert.equal(doc.rentEligible,eligible);
-    assert.equal(doc.rentRoute,route);
-    assert.equal(rentalChoiceFromAnnual(assertAnnual(doc)),choice);
-    assert.equal(Object.keys(doc).length,Object.keys(input()).length,'no extra persisted property');
+test('rental single-choice control consistently sets eligibility and route',()=>{
+  for(const choice of ['other-ordinary','residential-exemption','residential-flat','residential-auto','excluded']){
+    const doc=input({rentMonthly:400000,rentMode:choice});
+    assert.equal(assertAnnual(doc).rentMode,choice);
+    assert.equal(Object.hasOwn(doc,'rentRoute'),false);
+    assert.equal(Object.hasOwn(doc,'rentEligible'),false);
   }
-  assert.throws(()=>applyRentalChoice(input(),'made-up-choice'));
-  const exempt=input({rentMonthly:400000});applyRentalChoice(exempt,'residential-exemption');
+  assert.throws(()=>assertAnnual(input({rentMode:'made-up-choice'})));
+  assert.throws(()=>assertAnnual({...input(),rentEligible:true,rentRoute:'auto'}));
+  const exempt=input({rentMonthly:400000,rentMode:'residential-exemption'});
   assert.equal(calculateTax(exempt).annual.rentTax,0);
-  const flat=input({rentMonthly:400000});applyRentalChoice(flat,'residential-flat');
+  const flat=input({rentMonthly:400000,rentMode:'residential-flat'});
   assert.equal(calculateTax(flat).annual.rentTax,480000);
   assert.match(inputMarkup('rent',exempt,calculateTax(exempt)),/פטור עד התקרה ומס רגיל על היתרה/);
   assert.doesNotMatch(inputMarkup('rent',exempt,calculateTax(exempt)),/data-field="rentEligible"/);

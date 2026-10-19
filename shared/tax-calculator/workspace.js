@@ -10,7 +10,6 @@ import {
   toMinor,
   validDate,
   GROUPS,
-  applyRentalChoice,
 } from './contracts.js';
 import { defaultRules, ruleWarnings } from './rules.js';
 import { calculateTax } from './compute.js';
@@ -352,13 +351,8 @@ class="tax-hero">
 class="tax-back"
 data-action="tax-back">
 ← חזרה למסך הקודם</button>
-<p
-class="tax-eyebrow">
-NETUNIM · מרחב אישי</p>
 <h1>
 מחשבון מסים וארנונה</h1>
-<p>
-תכנון שנתי, עם פירוט לכל סכום</p>
 </div>
 <div
 data-tax-live
@@ -545,8 +539,7 @@ data-action="tax-retry">
       }
       invalidDates.delete(element.dataset.field);
       const next = clone(draft);
-      if (element.dataset.field === 'rentChoice') applyRentalChoice(next, element.value);
-      else set(next, element.dataset.field, readInput(element));
+      set(next, element.dataset.field, readInput(element));
       assertAnnual(next);
       draft = next;
       dirty = true;

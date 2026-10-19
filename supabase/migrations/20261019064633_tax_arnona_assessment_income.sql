@@ -1,5 +1,5 @@
--- Adds an independent assessment-year rental amount while retaining old snapshots and clients.
--- Deploy before deploying either updated client. Existing documents remain untouched.
+-- Clean annual contract: explicit assessment-period rent and schema 2.
+-- Deploy before the updated clients. Old annual documents are not accepted.
 create or replace function netunim_internal.validate_tax_document(p_name text, v jsonb) returns boolean
 language plpgsql immutable set search_path = pg_catalog as $$
 declare
@@ -7,7 +7,7 @@ declare
   rules_spec jsonb := '{"kind":{"$enum":["rules"]},"schema":1,"taxYear":"year","version":"id","jurisdiction":"city","groups":{}}';
   group_spec jsonb := '{"year":"year","status":{"$enum":["draft","reviewed"]},"checkedAt":"nullableDate","checkedBy":"nullableId","validFrom":"date","validTo":"date","source":"url","notes":"text","values":{}}';
   values_spec jsonb := '{"vat":{"rate":"bps"},"insurance":{"minimumMonthly":"money","reducedMonthly":"money","maximumMonthly":"money","nationalLow":"bps","nationalHigh":"bps","healthLow":"bps","healthHigh":"bps","deductible":"bps"},"pension":{"averageMonthly":"money","qualifyingAnnual":"money","beneficiaryAnnual":"money","beneficiaryMinimum":"money","mandatoryLow":"bps","mandatoryHigh":"bps","deduction":"bps","creditBase":"bps","extraCreditBase":"bps","creditRate":"bps"},"credits":{"pointAnnual":"money"},"incomeTax":{"brackets":[{"ceiling":"nullableMoney","rate":"bps"}],"surtaxThreshold":"money","surtaxRate":"bps","capitalThreshold":"money","capitalRate":"bps"},"rent":{"exemptionMonthly":"money","flatRate":"bps"},"arnonaIncome":{"thresholds":[["money"]],"extraPerson":["money"]},"children":{"points":[["points"]]},"arnonaRates":{"rates":[["money"]]}}';
-  annual_spec jsonb := '{"kind":{"$enum":["annual"]},"schema":1,"taxYear":"year","mode":{"$enum":["forecast","actual"]},"source":{"$enum":["manual","assessment"]},"ageDate":"date","assessmentYear":"nullableYear","profile":{},"rules":{},"revenue":"nullableMoney","revenuePeriod":{"$enum":["annual","monthly"]},"vatIncluded":"boolean","vatExempt":"boolean","expensesMonthly":"money","inputVatMonthly":"money","activeSelfEmployed":"boolean","pensionRequired":"boolean","pensionActual":"nullableMoney","pensionMethod":{"$enum":["deduction","credit","manual"]},"extraPensionCredit":"boolean","pensionDeduction":"money","pensionCredit":"money","rentMonthly":"money","rentExpenses":"money","rentRoute":{"$enum":["auto","ordinary","flat","none"]},"rentEligible":"boolean","over60":"boolean","arnonaAnnual":"nullableMoney","rentPaidMonthly":"money","arnonaRentReceivedMonthly":"nullableMoney","householdOtherMonthly":"money","otherResidentsMonthly":"money","arnonaBusinessAnnual":"nullableMoney","approvedDiscount":"nullableBps"}';
+  annual_spec jsonb := '{"kind":{"$enum":["annual"]},"schema":2,"taxYear":"year","mode":{"$enum":["forecast","actual"]},"source":{"$enum":["manual","assessment"]},"ageDate":"date","assessmentYear":"nullableYear","profile":{},"rules":{},"revenue":"nullableMoney","revenuePeriod":{"$enum":["annual","monthly"]},"vatIncluded":"boolean","vatExempt":"boolean","expensesMonthly":"money","inputVatMonthly":"money","activeSelfEmployed":"boolean","pensionRequired":"boolean","pensionActual":"nullableMoney","pensionMethod":{"$enum":["deduction","credit","manual"]},"extraPensionCredit":"boolean","pensionDeduction":"money","pensionCredit":"money","rentMonthly":"money","rentExpenses":"money","rentMode":{"$enum":["other-ordinary","residential-exemption","residential-flat","residential-auto","excluded"]},"over60":"boolean","arnonaAnnual":"nullableMoney","rentPaidMonthly":"money","arnonaRentReceivedMonthly":"nullableMoney","householdOtherMonthly":"money","otherResidentsMonthly":"money","arnonaBusinessAnnual":"nullableMoney","approvedDiscount":"nullableBps"}';
   k text; s jsonb; g jsonb; b jsonb; row_value jsonb; prev numeric := 0; idx integer := 0; bands jsonb;
 begin
   if p_name is null or v is null or octet_length(v::text) > 2097152 then return false; end if;
@@ -20,7 +20,7 @@ begin
     annual_spec := jsonb_set(annual_spec,'{profile}',profile_spec);
     -- Detailed nested validation is deliberately shared with immutable rules docs.
     annual_spec := annual_spec - 'rules';
-    if not (netunim_internal.tax_shape(v-'rules',annual_spec) or netunim_internal.tax_shape(v-'rules',annual_spec - 'arnonaRentReceivedMonthly')) or not (v ? 'rules') then return false; end if;
+    if not netunim_internal.tax_shape(v-'rules',annual_spec) or not (v ? 'rules') then return false; end if;
     if not netunim_internal.validate_tax_document('profile',v->'profile') then return false; end if;
     return case when v->'rules' = 'null'::jsonb then true else
       netunim_internal.validate_tax_document('rules/'||(v->'rules'->>'taxYear')||'/'||(v->'rules'->>'version'),v->'rules') and v->'rules'->>'taxYear' = v->>'taxYear' end;

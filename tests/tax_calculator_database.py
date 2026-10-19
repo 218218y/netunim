@@ -42,8 +42,10 @@ def run(db):
     # The new field is nullable; malformed amounts are rejected on the server.
     denied(db,OWNER,expression('year/2026',1,{**fixtures['annual'],'arnonaRentReceivedMonthly':-1},'invalid-arnona-rent'),'22023')
     legacy={k:v for k,v in fixtures['annual'].items() if k!='arnonaRentReceivedMonthly'}
-    # Both older cloud snapshots and new documents continue to pass validation.
-    save(OWNER,'year/2025',0,{**legacy,'taxYear':2025,'rules':None},'legacy-year')
+    # Only the current complete annual contract is accepted, including on restore.
+    denied(db,OWNER,expression('year/2025',0,{**legacy,'taxYear':2025,'rules':None},'legacy-year'),'22023')
+    denied(db,OWNER,expression('year/2026',1,{**fixtures['annual'],'schema':1},'legacy-schema'),'22023')
+    denied(db,OWNER,expression('year/2026',1,{**fixtures['annual'],'rentEligible':True,'rentRoute':'auto'},'legacy-rental-fields'),'22023')
     modern={**fixtures['annual'],'arnonaRentReceivedMonthly':500000}
     save(OWNER,'year/2026',1,modern,'modern-year')
     r=fixtures['rules'];rule_name='rules/2026/'+r['version']
@@ -53,7 +55,7 @@ def run(db):
     for field,value in [('adults',0),('adults',1.5),('city',{'html':'bad'}),('creditTrack','arbitrary'),('children',[{'id':'c','birthDate':'2026-02-31','resident':True}])]:
         denied(db,OWNER,expression('profile',3,{**profile,field:value},'bad-'+field),'22023')
     denied(db,OWNER,expression('profile',3,{**profile,'identityNumber':'unneeded'},'extra'),'22023')
-    for field,value in [('revenue',-1),('revenue',1.5),('mode','unknown'),('approvedDiscount',10001),('ageDate','bad')]:
+    for field,value in [('revenue',-1),('revenue',1.5),('mode','unknown'),('rentMode','unknown'),('approvedDiscount',10001),('ageDate','bad')]:
         denied(db,OWNER,expression('year/2026',2,{**fixtures['annual'],field:value},'bad-annual-'+field),'22023')
     bad=json.loads(json.dumps(r));bad['groups']['vat']['values']['rate']=10001;bad['version']='bad'
     denied(db,OWNER,expression('rules/2026/bad',0,bad,'bad-rules'),'22023')
@@ -64,7 +66,7 @@ if __name__=='__main__':
     with IsolatedPostgres(schema_files=[]) as db:
         db.sql('create schema netunim_internal')
         db.migrate((next((ROOT/'supabase/migrations').glob('*_tax_calculator.sql'))).read_text(encoding='utf8'))
-        db.migrate((ROOT/'supabase/migrations/20261019090000_tax_arnona_assessment_income.sql').read_text(encoding='utf8'))
+        db.migrate((ROOT/'supabase/migrations/20261019064633_tax_arnona_assessment_income.sql').read_text(encoding='utf8'))
         # The ledger is intentionally unreadable, including to its owner.
         try:
             run(db)

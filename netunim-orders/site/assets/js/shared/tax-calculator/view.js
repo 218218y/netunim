@@ -1,5 +1,5 @@
 import { RULE_LABELS } from './rules.js';
-import { validDate, rentalChoiceFromAnnual } from './contracts.js';
+import { validDate } from './contracts.js';
 export function normalizeDate(value) {
   const text = String(value ?? '').trim();
   if (validDate(text)) return text;
@@ -46,7 +46,6 @@ export const LABELS = {
   pensionCredit: 'זיכוי מס פנסיה שנתי לפי אישור מס',
   rentMonthly: 'שכירות חודשית מתקבלת',
   rentExpenses: 'הוצאות שכירות שנתיות מוכרות',
-  rentEligible: 'שכירות למגורים העומדת בתנאי החוק',
   over60: 'גיל 60 ומעלה לצורך המסלול הרגיל',
   arnonaAnnual: 'ארנונה שנתית מלאה מחשבון הרשות',
   rentPaidMonthly: 'שכירות מגורים ששולמה בשנת השומה לארנונה (לקיזוז כנגד השכרה באותה תקופה)',
@@ -233,7 +232,8 @@ export function arnonaBandMarkup(result) {
   const arnona = result.arnona;
   if (!arnona.jurisdictionMatches) return '<p>טבלת הנחות בני ברק אינה מתאימה ליישוב שהוגדר; לא מוצגות מדרגות זכאות.</p>';
   return `<section class="tax-arnona-bands" aria-label="מדרגות הנחה בארנונה">
-<h3>מדרגות הנחת ארנונה לפי הכנסה (${esc(arnona.assessmentYear ?? 'שנת שומה חסרה')})</h3>
+<h3>מדרגות הנחת ארנונה לשנת ${result.taxYear}</h3>
+<p>שנת ההכנסה שהוזנה: ${esc(arnona.assessmentYear ?? 'לא נבחרה')}${arnona.periodMatches ? '' : ' · אינה תקופת ההכנסה הנדרשת; אין אומדן זכאות'}.</p>
 <p>הכנסה חודשית ממוצעת: <strong>${arnona.assessedIncome === null ? 'לא ניתן לחשב — חסרים נתונים' : money(arnona.assessedIncome)}</strong>.
 זכאות משוערת: <strong>${arnona.estimatedDiscount === null ? 'לא ידועה' : 'עד ' + arnona.estimatedDiscount / 100 + '%'}</strong>.
 הנחה שהוחלה בפועל בחיוב: <strong>${arnona.discount / 100}%</strong>${arnona.approved ? ' (לפי נתון אישור שהוזן)' : ' (לא הוזן אישור)'}. </p>
@@ -281,15 +281,15 @@ ${f('pensionRequired', 'boolean')}${f('pensionActual')}${field(
     return `<h2>שכירות למגורים ומס הכנסה</h2>
 <p>יש לבחור אפשרות אחת בלבד. בבחירת <strong>פטור עד לתקרה</strong> המערכת מחשבת פטור לשכירות למגורים העומדת בתנאי החוק, ומס רגיל רק על יתרה חייבת אם קיימת. אין צורך לסמן וי נוסף. בחירת 10% היא מסלול אחר, ללא פטור. בכל מקרה הכנסה משכירות נכללת בנפרד במבחן ההכנסה לארנונה של שנת השומה המתאימה.</p>
 <div class="tax-fields">
-${f('rentMonthly')}${f('rentExpenses')}${field('rentChoice', 'סוג השכירות ומסלול המס', rentalChoiceFromAnnual(i), 'text', [
+${f('rentMonthly')}${f('rentExpenses')}${field('rentMode', 'סוג השכירות ומסלול המס', i.rentMode, 'text', [
   ['other-ordinary', 'השכרה שאינה זכאית למסלולי המגורים — מס רגיל'],
   ['residential-exemption', 'דירת מגורים — פטור עד התקרה ומס רגיל על היתרה'],
   ['residential-flat', 'דירת מגורים — מסלול 10% על התקבולים'],
   ['residential-auto', 'דירת מגורים — השוואה אוטומטית בין המסלולים'],
   ['excluded', 'לא לחשב כרגע מס על השכירות — חישוב חסר'],
 ], 'tax-input')}${f('over60', 'boolean')}</div>
-${!i.rentEligible && i.rentMonthly > 0 ? '<p class="tax-warning">נבחרה השכרה שאינה זכאית למסלולי המגורים. כדי לחשב פטור על דירה למגורים העומדת בתנאים, בחרו באפשרות ״דירת מגורים — פטור עד התקרה״.</p>' : ''}
-${result ? `<p>מסלול החישוב: <strong>${result.rental.route === 'ordinary' ? (i.rentEligible ? 'פטור עד לתקרה + מס רגיל על יתרה חייבת' : 'מס רגיל ללא פטור') : result.rental.route === 'flat' ? '10% ללא פטור' : result.rental.route === 'none' ? 'השכירות לא נכללה במס (חישוב חסר)' : 'ללא שכירות'}</strong>. הכנסה פטורה בחישוב מס הכנסה: ${money(result.rental.exemption)}. תוספת מס שכירות: ${money(result.annual.rentTax)}.</p>
+${i.rentMode === 'other-ordinary' && i.rentMonthly > 0 ? '<p class="tax-warning">נבחרה השכרה שאינה זכאית למסלולי המגורים. כדי לחשב פטור על דירה למגורים העומדת בתנאים, בחרו באפשרות ״דירת מגורים — פטור עד התקרה״.</p>' : ''}
+${result ? `<p>מסלול החישוב: <strong>${result.rental.route === 'ordinary' ? (i.rentMode !== 'other-ordinary' ? 'פטור עד לתקרה + מס רגיל על יתרה חייבת' : 'מס רגיל ללא פטור') : result.rental.route === 'flat' ? '10% ללא פטור' : result.rental.route === 'none' ? 'השכירות לא נכללה במס (חישוב חסר)' : 'ללא שכירות'}</strong>. הכנסה פטורה בחישוב מס הכנסה: ${money(result.rental.exemption)}. תוספת מס שכירות: ${money(result.annual.rentTax)}.</p>
 <div class="tax-fields">${result.rental.comparisons.map(c => `<div class="tax-mini"><b>${c.route === 'ordinary' ? 'מסלול פטור/רגיל' : 'מסלול 10%'}</b><span>${c.valid ? money(c.tax) : 'לא זכאי לפי הקלט'}</span></div>`).join('')}</div>` : ''}`;
   if (tab === 'family') {
     const p = i.profile,

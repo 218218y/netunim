@@ -116,8 +116,10 @@ export function calculateTax(input, rules = input.rules) {
     baseTax =
       positive(businessTax.total - credits) +
       rate(positive(taxable - t.surtaxThreshold), t.surtaxRate);
+  const rentEligible = i.rentMode !== 'other-ordinary';
+  const requestedRentRoute = { 'other-ordinary': 'ordinary', 'residential-exemption': 'ordinary', 'residential-flat': 'flat', 'residential-auto': 'auto', excluded: 'none' }[i.rentMode];
   const rent = i.rentMonthly * 12,
-    exemption = i.rentEligible
+    exemption = rentEligible
       ? positive(Math.min(i.rentMonthly, g.rent.values.exemptionMonthly * 2 - i.rentMonthly)) * 12
       : 0;
   const rentBeforeExpenses = positive(rent - exemption),
@@ -142,14 +144,14 @@ export function calculateTax(input, rules = input.rules) {
     rate(positive(rent - t.capitalThreshold), t.capitalRate);
   let route = !rent
     ? 'none'
-    : !i.rentEligible
+    : !rentEligible
       ? 'ordinary'
-      : i.rentRoute === 'auto'
+      : requestedRentRoute === 'auto'
         ? ordinary <= flat
           ? 'ordinary'
           : 'flat'
-        : i.rentRoute;
-  if (rent && !i.rentEligible)
+        : requestedRentRoute;
+  if (rent && !rentEligible)
     warnings.push(
       'השכירות אינה זכאית למסלולים המיוחדים; חושב מס רגיל ללא פטור, במקום השמטת ההכנסה שבאקסל',
     );
@@ -162,21 +164,18 @@ export function calculateTax(input, rules = input.rules) {
   const people = i.profile.adults + children.filter((c) => c.resident && c.age >= 0).length;
   // Arnona for taxYear 2026 tests *2025* household income. An assessment's
   // rent and business profit must never be silently read from taxYear 2026.
-  const assessedYearMatchesTaxYear = i.assessmentYear === i.taxYear;
-  const arnonaBusiness = i.arnonaBusinessAnnual ?? (assessedYearMatchesTaxYear ? profit : null);
-  const arnonaRent = i.arnonaRentReceivedMonthly ?? (assessedYearMatchesTaxYear ? i.rentMonthly : null);
+  const arnonaBusiness = i.arnonaBusinessAnnual;
+  const arnonaRent = i.arnonaRentReceivedMonthly;
   const published2026ArnonaYearMatches = !(i.taxYear === 2026 &&
     i.profile.city.trim() === 'בני ברק' && i.assessmentYear !== 2025);
   if (!published2026ArnonaYearMatches)
-    warnings.push('להנחת ארנונה בבני ברק לשנת 2026 יש להשתמש בהכנסות שנת 2025; אין להשתמש בשנת שומה אחרת');
+    warnings.push('מבחן ההכנסה בבני ברק לשנת 2026 מתייחס להכנסות 2025. נתוני שנה אחרת מוצגים לעיון בלבד, ללא אומדן זכאות');
   const assessmentComplete = i.assessmentYear !== null && arnonaBusiness !== null &&
-    arnonaRent !== null && published2026ArnonaYearMatches;
+    arnonaRent !== null;
   if (i.assessmentYear !== null && arnonaBusiness === null)
     warnings.push(`לא הוזנה הכנסה עסקית לשנת ${i.assessmentYear} לצורך הנחת הארנונה`);
   if (i.assessmentYear !== null && arnonaRent === null)
     warnings.push(`לא הוזנו תקבולי שכירות לשנת ${i.assessmentYear} לצורך הנחת הארנונה (יש להזין גם אפס)`);
-  if (assessedYearMatchesTaxYear && i.arnonaBusinessAnnual === null)
-    warnings.push('בסיס העסק למבחן הארנונה הוא תחזית מהרווח העסקי; לא הוזנה שומה');
   // The assessment lists business income *before deductions* (parts 2+3), not
   // taxable income after provident fund and National Insurance deductions.
   // The caller must enter that assessment figure; it cannot be derived safely
@@ -193,7 +192,7 @@ export function calculateTax(input, rules = input.rules) {
   );
   const band = assessedIncome === null ? -1 : thresholds.findIndex((v) => assessedIncome <= v);
   const jurisdictionMatches = i.profile.city.trim() === r.jurisdiction.trim();
-  const estimatedDiscount = !assessmentComplete || !jurisdictionMatches
+  const estimatedDiscount = !assessmentComplete || !jurisdictionMatches || !published2026ArnonaYearMatches
     ? null
     : band < 0 ? 0 : [9000, 7000, 5000, 3000][band];
   if (!jurisdictionMatches)
@@ -260,6 +259,7 @@ export function calculateTax(input, rules = input.rules) {
       householdOtherMonthly: i.householdOtherMonthly,
       otherResidentsMonthly: i.otherResidentsMonthly,
       assessmentComplete,
+      periodMatches: published2026ArnonaYearMatches,
       thresholds,
       estimatedDiscount,
       discount,
@@ -272,7 +272,7 @@ export function calculateTax(input, rules = input.rules) {
       rentAllowedExpenses,
       comparisons: [
         { route: 'ordinary', tax: ordinary, valid: true },
-        { route: 'flat', tax: flat, valid: i.rentEligible },
+        { route: 'flat', tax: flat, valid: rentEligible },
       ],
     },
     trace: [

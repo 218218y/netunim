@@ -24,9 +24,13 @@ SETUP=r"""(async()=>{
   if(app==='orders')cloudAuth.supaFetch=request;else cloudAuth.supaRest=request;
   tab.primaryTab=true;
   const baseline=JSON.stringify(model.state);
+  // A fresh calculator release discards its former local journal, not business data.
+  await new Promise((resolve,reject)=>{const q=indexedDB.open('netunim-tax-calculator-v1',1);q.onupgradeneeded=()=>q.result.createObjectStore('documents');q.onerror=()=>reject(q.error);q.onsuccess=()=>{const db=q.result,tx=db.transaction('documents','readwrite');tx.objectStore('documents').put({obsolete:true},'old-owner/year/2026');tx.oncomplete=()=>{db.close();resolve()};tx.onabort=()=>reject(tx.error)};});
   if(app==='orders'){ui.kupaSubView='summary';uiNavigation.switchView('kupa');}else uiNavigation.setPage('dashboard');
   if(!document.querySelector('[data-action="tax-open"]'))throw Error('entry missing');
   await taxCalculator.open();
+  const cleanJournal=await new Promise((resolve,reject)=>{const q=indexedDB.open('netunim-tax-calculator-v1',2);q.onerror=()=>reject(q.error);q.onsuccess=()=>{const db=q.result,tx=db.transaction('documents');const r=tx.objectStore('documents').get('old-owner/year/2026');tx.oncomplete=()=>{db.close();resolve(r.result===undefined)};tx.onabort=()=>reject(tx.error)};});
+  if(!cleanJournal)throw Error('obsolete calculator journal was retained');
   if(document.querySelector('[data-tax-message]').offsetHeight!==0)throw Error('empty error strip visible');
   if(document.querySelectorAll('.tax-tabs button').length!==8)throw Error('calculator tabs missing');
   await taxCalculator.command('tax-year',{value:'2026'});
@@ -58,7 +62,7 @@ SETUP=r"""(async()=>{
   if(!document.querySelector('.tax-results'))throw Error('summary missing');
   window.taxBaseline=baseline;
   if(JSON.stringify(model.state)!==baseline)throw Error('calculator changed existing business state');
-  if(parseFloat(getComputedStyle(document.querySelector('.tax-hero h1')).fontSize)>26)throw Error('oversized calculator heading');
+  if(parseFloat(getComputedStyle(document.querySelector('.tax-hero h1')).fontSize)>18)throw Error('oversized calculator heading');
   return {tabs:8,cloud:cloud.size,offline:true,snapshot:true};
 })()"""
 
@@ -66,10 +70,18 @@ for app in ['orders','kupa']:
     with BrowserSession(ROOT/f'netunim-{app}/site',app+'-tax') as browser:
         result=browser.evaluate(SETUP.replace('__APP__',json.dumps(app)),timeout=45)
         assert result['offline'] and result['snapshot'],result
-        for width in [393,1280]:
+        for width in [320,393,768,1280]:
             browser.call('Emulation.setDeviceMetricsOverride',{'width':width,'height':900,'deviceScaleFactor':1,'mobile':False})
             layout=browser.evaluate("(async()=>{await new Promise(requestAnimationFrame);const root=document.querySelector('.tax-page'),r=root.getBoundingClientRect();return {left:r.left,right:r.right,width:innerWidth,dir:getComputedStyle(root).direction};})()")
             assert layout['left']>=-1 and layout['right']<=layout['width']+1 and layout['dir']=='rtl',layout
+            for tab in ['summary','family','audit']:
+                browser.evaluate("taxCalculator.command('tax-tab',{dataset:{tab:"+json.dumps(tab)+"}})")
+                compact=browser.evaluate("""(()=>{const root=document.querySelector('.tax-page'),hero=root.querySelector('.tax-hero'),tables=[...root.querySelectorAll('.tax-results')];return {width:root.clientWidth,scroll:root.scrollWidth,hero:hero.getBoundingClientRect().height,live:root.querySelector('.tax-live').getBoundingClientRect().height,extra:!!root.querySelector('.tax-eyebrow'),tables:tables.map(t=>({width:t.clientWidth,scroll:t.scrollWidth,wrap:t.parentElement.clientWidth}))};})()""")
+                assert compact['scroll']<=compact['width']+1, (app,width,tab,compact)
+                assert compact['hero']<=100 and compact['live']<=55 and not compact['extra'],compact
+                for table in compact['tables']:
+                    assert table['scroll']<=table['width']+1 and table['width']<=table['wrap']+1,(app,width,tab,table)
+            browser.evaluate("taxCalculator.command('tax-tab',{dataset:{tab:'summary'}})")
             scroll=browser.evaluate("""(async()=>{const root=document.querySelector('.tax-page'),scroller=__APP__==='orders'?root:document.scrollingElement;scroller.scrollTop=scroller.scrollHeight;await new Promise(requestAnimationFrame);const footer=root.querySelector('footer').getBoundingClientRect(),result={bottom:footer.bottom,viewport:innerHeight,scrolled:scroller.scrollTop};scroller.scrollTop=0;return result;})()""".replace('__APP__',json.dumps(app)))
             assert scroll['scrolled']>0 and scroll['bottom']<=scroll['viewport']+1,scroll
         if app=='orders':

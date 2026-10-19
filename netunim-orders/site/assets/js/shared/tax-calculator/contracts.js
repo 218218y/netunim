@@ -50,7 +50,7 @@ export function createProfile() {
 export function createAnnual(taxYear, profile = createProfile(), rules = null) {
   return {
     kind: 'annual',
-    schema: 1,
+    schema: 2,
     taxYear,
     mode: 'forecast',
     source: 'manual',
@@ -73,8 +73,7 @@ export function createAnnual(taxYear, profile = createProfile(), rules = null) {
     pensionCredit: 0,
     rentMonthly: 0,
     rentExpenses: 0,
-    rentRoute: 'auto',
-    rentEligible: false,
+    rentMode: 'other-ordinary',
     over60: false,
     arnonaAnnual: null,
     rentPaidMonthly: 0,
@@ -325,11 +324,9 @@ export function assertRules(value) {
 }
 export function assertAnnual(value) {
   if (
-    !(exactKeys(value, Object.keys(createAnnual(2026))) ||
-      // Historical cloud and IndexedDB documents predate the assessment rent field.
-      exactKeys(value, Object.keys(createAnnual(2026)).filter(k => k !== 'arnonaRentReceivedMonthly'))) ||
+    !exactKeys(value, Object.keys(createAnnual(2026))) ||
     value.kind !== 'annual' ||
-    value.schema !== 1 ||
+    value.schema !== 2 ||
     !integer(value.taxYear, 2000, 2200) ||
     !['forecast', 'actual'].includes(value.mode) ||
     !['manual', 'assessment'].includes(value.source) ||
@@ -363,26 +360,24 @@ export function assertAnnual(value) {
       ['revenue', 'pensionActual', 'arnonaAnnual', 'arnonaBusinessAnnual', 'arnonaRentReceivedMonthly'].includes(field)
     )
       continue;
-    if (field === 'arnonaRentReceivedMonthly' && value[field] === undefined) continue;
     if (!integer(value[field])) throw new Error('סכום אינו תקין: ' + field);
   }
   if (
     !['annual', 'monthly'].includes(value.revenuePeriod) ||
     !['deduction', 'credit', 'manual'].includes(value.pensionMethod) ||
-    !['auto', 'ordinary', 'flat', 'none'].includes(value.rentRoute) ||
+    !['other-ordinary', 'residential-exemption', 'residential-flat', 'residential-auto', 'excluded'].includes(value.rentMode) ||
     ![
       'vatIncluded',
       'vatExempt',
       'activeSelfEmployed',
       'pensionRequired',
       'extraPensionCredit',
-      'rentEligible',
-      'over60',
+        'over60',
     ].every((key) => typeof value[key] === 'boolean') ||
     !(value.approvedDiscount === null || integer(value.approvedDiscount, 0, 10000))
   )
     throw new Error('אפשרויות השנה אינן תקינות');
-  return clone({ ...value, arnonaRentReceivedMonthly: value.arnonaRentReceivedMonthly ?? null });
+  return clone(value);
 }
 export function assertDocument(name, value) {
   if (name === 'profile') return assertProfile(value);
@@ -395,28 +390,4 @@ export function assertDocument(name, value) {
   )
     return assertRules(value);
   throw new Error('מסמך מחשבון אינו תקין');
-}
-
-/** One explicit UI choice defines both persisted rental fields. No document migration. */
-export function rentalChoiceFromAnnual(annual) {
-  if (!annual.rentEligible) return 'other-ordinary';
-  return {
-    auto: 'residential-auto',
-    ordinary: 'residential-exemption',
-    flat: 'residential-flat',
-    none: 'excluded',
-  }[annual.rentRoute];
-}
-export function applyRentalChoice(annual, choice) {
-  const mapped = {
-    'other-ordinary': [false, 'ordinary'],
-    'residential-auto': [true, 'auto'],
-    'residential-exemption': [true, 'ordinary'],
-    'residential-flat': [true, 'flat'],
-    excluded: [true, 'none'],
-  }[choice];
-  if (!mapped) throw new Error('מסלול שכירות אינו תקין');
-  annual.rentEligible = mapped[0];
-  annual.rentRoute = mapped[1];
-  return annual;
 }
