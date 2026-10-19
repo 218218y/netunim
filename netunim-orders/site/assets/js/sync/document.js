@@ -123,7 +123,7 @@ const {publishAcknowledgedFlight}=createCloudAckPublication({
   projection:{prepareCloudState,sameOrderCloudData,merge3,composeOrderCloudState,applyOrderCloudState},
   view:{setCloud,toast},
   mirror:{writeStateToFolder},
-  recovery:{readStorageV2CloudRecovery,commitStorageV2CloudRecovery},
+  recovery:{readStorageV2CloudRecovery,commitStorageV2CloudRecovery,waitForPostAckQuiet:scope=>saveOperation.waitForPostAckQuiet(scope)},
 });
 const {saveStorageV2CloudFlight}=createCloudWriteFlight({
   model,

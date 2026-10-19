@@ -12,9 +12,27 @@ const {saveStorageV2CloudFlight}=write;
 const {markCloudSynced,confirmCloudPollSynced}=confirmation;
 const {setCloud,toast}=view;
 const followup=createDebouncedTask({delay:0,onError:error=>console.error('orders cloud follow-up',error)});
+const recoveryWake=createDebouncedTask({delay:250,onError:error=>console.error('orders ACK recovery wake',error)});
+let recoveryWait=null;
 const outboxRetryScheduler=createOutboxRetryScheduler();
 let savingScope=null,cloudSavePromise=null,wakeEpoch=0;
 const saveWork=createRuntimeTaskOwner();
+// Remain inside the joined save lifetime. Cancellation settles the waiter so
+// account cutover/drain cannot strand a sleeping save or wake a replacement.
+async function waitForPostAckQuiet(scope){
+  const epoch=wakeEpoch,current=()=>epoch===wakeEpoch&&writeScopeCurrent(scope);
+  for(let sample=0;sample<24&&current();sample++){
+    const generation=Number(session.localGeneration||0);
+    const awake=await new Promise(resolve=>{
+      recoveryWait?.(false);
+      recoveryWait=resolve;
+      if(!recoveryWake.schedule(()=>{recoveryWait=null;resolve(true)})){recoveryWait=null;resolve(false)}
+    });
+    if(!awake||!current())return false;
+    if(Number(session.localGeneration||0)===generation)return true;
+  }
+  return false;
+}
 function v2RetryRecord(state,flight=null){return {domain:'orders',documentName:'suppliers-v2',generation:Number(flight?.generation??state?.pendingGeneration??0),operationId:String(flight?.operationId||'orders-v2'),retry:state?.control?.retry||null}}
 
 function requestStorageV2CloudSave(...args){
@@ -66,7 +84,8 @@ return {
     runtime:{isPending:saveWork.isPending,drain:saveWork.drain},
     isSaving:()=>!!cloudSavePromise,
     cancelRetry:()=>outboxRetryScheduler.cancel(),
-    stop(){wakeEpoch++;followup.cancel()},
+    waitForPostAckQuiet,
+    stop(){wakeEpoch++;followup.cancel();recoveryWake.cancel();recoveryWait?.(false);recoveryWait=null},
     joinFlight:()=>cloudSavePromise,
     drainFollowup:()=>followup.drain(),
 };
