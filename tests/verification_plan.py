@@ -53,9 +53,9 @@ GROUPS["browser-lifecycle"].append("runtime_loaded_data.py")
 CORE_SUITES = [suite for group, suites in GROUPS.items() if not group.startswith("browser-") for suite in suites]
 RUNTIME_SUITES = [suite for group, suites in GROUPS.items() if group.startswith("browser-") for suite in suites]
 
-# October 18 reports put lifecycle at 18 minutes of sequential work and UI at
-# 5 minutes. Four balanced lifecycle machines and one UI machine have comparable
-# loads. Models split their discovered files across two machines, each retaining
+# October 19 recalibration includes loaded-data scenarios previously assigned a
+# median fallback: four lifecycle machines now estimate 265-267s each, versus
+# 289s for UI. Models split discovered files across two machines, each retaining
 # two isolated Node workers. Only checked-in cost estimates influence scheduling.
 CI_SHARDS = {"models": 2, "browser-lifecycle": 4, "browser-sync": 2}
 # These short groups share compatible setup and remain below the browser critical
