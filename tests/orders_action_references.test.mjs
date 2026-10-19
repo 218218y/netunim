@@ -7,6 +7,7 @@ const root=path.resolve(import.meta.dirname,'..');
 const site=path.join(root,'netunim-orders/site');
 const packs=path.join(site,'assets/js/ui/action-packs');
 const actionSources=[...fs.readdirSync(packs).map(name=>path.join(packs,name)),
+  path.join(site,'assets/js/domains/finance/morning-reports.js'),
   ...['notes-workbook.js','spreadsheet-workspace.js','credit-card-order-view.js'].map(name=>path.join(root,'shared',name))];
 const registered=new Set(actionSources.flatMap(file=>[...fs.readFileSync(file,'utf8').matchAll(/^\s*'([a-z][a-z0-9-]+)'\s*:/gm)].map(match=>match[1])));
 registered.add('orders-notes-sheet-search'); // Added to the workbook map by Orders notes composition.
