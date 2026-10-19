@@ -5,6 +5,12 @@ from browser_harness import BrowserSession, ROOT
 
 SETUP=r"""(async()=>{
   await appReady;
+  if(__APP__==='orders'){
+    uiNavigation.switchView('settings');await new Promise(requestAnimationFrame);
+    const grid=document.querySelector('.settings-grid');
+    if(grid.querySelector('[data-action="tax-open"]')||grid.querySelector(':scope>.section'))throw Error('calculator left a standalone settings section');
+    if(!grid.firstElementChild.matches('[data-sync-incident-settings]'))throw Error('settings start was displaced');
+  }
   const app=__APP__,scope={owner:'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',epoch:1},cloud=new Map(),ops=new Map(),listeners=new Set(),history=[];
   window.taxFixture={scope,cloud,ops,listeners,online:true,drop:false};
   const request=async(path,options)=>{
@@ -24,6 +30,10 @@ SETUP=r"""(async()=>{
   if(app==='orders')cloudAuth.supaFetch=request;else cloudAuth.supaRest=request;
   tab.primaryTab=true;
   const baseline=JSON.stringify(model.state);
+  const {createAnnual:annualFixture}=await import('./assets/js/shared/tax-calculator/contracts.js');
+  const {defaultRules:rulesFixture}=await import('./assets/js/shared/tax-calculator/rules.js');
+  const existingYear=annualFixture(2026,undefined,rulesFixture());delete existingYear.insuranceAdvanceMonthly;
+  cloud.set(scope.owner+'/year/2026',{owner_id:scope.owner,document_name:'year/2026',revision:1,state:existingYear});
   // A fresh calculator release discards its former local journal, not business data.
   await new Promise((resolve,reject)=>{const q=indexedDB.open('netunim-tax-calculator-v1',1);q.onupgradeneeded=()=>q.result.createObjectStore('documents');q.onerror=()=>reject(q.error);q.onsuccess=()=>{const db=q.result,tx=db.transaction('documents','readwrite');tx.objectStore('documents').put({obsolete:true},'old-owner/year/2026');tx.oncomplete=()=>{db.close();resolve()};tx.onabort=()=>reject(tx.error)};});
   if(app==='orders'){ui.kupaSubView='summary';uiNavigation.switchView('kupa');}else uiNavigation.setPage('dashboard');
@@ -145,9 +155,23 @@ for app in ['orders','kupa']:
             browser.call('Input.insertText',{'text':value[-1]})
             edited_value(value)
         browser.evaluate("document.querySelector('[data-field=\"groups.vat.year\"]').blur()")
+        browser.evaluate("taxCalculator.command('tax-tab',{dataset:{tab:'tax'}})")
+        assert browser.evaluate("Object.hasOwn(taxFixture.cloud.get(taxFixture.scope.owner+'/year/2026').state,'insuranceAdvanceMonthly')") is False
+        begin_edit('insuranceAdvanceMonthly')
+        browser.call('Input.insertText',{'text':'1000'})
+        edited_value('1000')
+        assert browser.evaluate("document.querySelector('[data-tax-insurance-settlement]').textContent.includes('תוספת משוערת לתשלום')")
+        browser.evaluate("window.taxTypingTarget.select()")
+        browser.call('Input.insertText',{'text':'5000'})
+        edited_value('5000')
+        assert browser.evaluate("document.querySelector('[data-tax-insurance-settlement]').textContent.includes('החזר משוער')")
+        browser.evaluate("taxCalculator.command('tax-save')")
+        browser.evaluate("taxCalculator.command('tax-tab',{dataset:{tab:'summary'}})")
+        cards=browser.evaluate("(()=>{const p=document.querySelector('.tax-panel'),cards=p.querySelector('.tax-summary-grid'),table=p.querySelector('.tax-results');return {before:!!(cards.compareDocumentPosition(table)&Node.DOCUMENT_POSITION_FOLLOWING),text:cards.textContent,bad:p.textContent.includes('NaN')};})()")
+        assert cards['before'] and 'החזר משוער' in cards['text'] and not cards['bad'],cards
         # Native IDB opened by a fresh synchronization owner recovers offline data.
-        recovered=browser.evaluate("""(async()=>{const {createTaxSync}=await import('./assets/js/shared/tax-calculator/sync.js');const {createAnnual}=await import('./assets/js/shared/tax-calculator/contracts.js');const s=createTaxSync({accountScope:()=>({...taxFixture.scope}),request:async()=>{throw Error('offline')}});const value=await s.open('year/2026',createAnnual(2026));return {revenue:value.revenue,arnona:value.arnonaAnnual,children:value.profile.children.length};})()""")
-        assert recovered=={'revenue':18000000,'arnona':600000,'children':1},recovered
+        recovered=browser.evaluate("""(async()=>{const {createTaxSync}=await import('./assets/js/shared/tax-calculator/sync.js');const {createAnnual}=await import('./assets/js/shared/tax-calculator/contracts.js');const s=createTaxSync({accountScope:()=>({...taxFixture.scope}),request:async()=>{throw Error('offline')}});const value=await s.open('year/2026',createAnnual(2026));return {revenue:value.revenue,arnona:value.arnonaAnnual,children:value.profile.children.length,advance:value.insuranceAdvanceMonthly};})()""")
+        assert recovered=={'revenue':18000000,'arnona':600000,'children':1,'advance':500000},recovered
         # Account invalidation clears family/financial DOM immediately.
         switched=browser.evaluate("""(async()=>{taxFixture.scope.owner='bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb';taxFixture.scope.epoch++;for(const fn of taxFixture.listeners)fn({...taxFixture.scope});await taxCalculator.command('tax-retry');await taxCalculator.command('tax-tab',{dataset:{tab:'family'}});return !document.querySelector('[data-field="profile.children.0.birthDate"]');})()""")
         assert switched

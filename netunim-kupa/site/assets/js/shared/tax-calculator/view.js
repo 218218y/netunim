@@ -1,5 +1,5 @@
 import { RULE_LABELS } from './rules.js';
-import { validDate } from './contracts.js';
+import { validDate, ratio } from './contracts.js';
 export function normalizeDate(value) {
   const text = String(value ?? '').trim();
   if (validDate(text)) return text;
@@ -39,6 +39,7 @@ export const LABELS = {
   expensesMonthly: 'הוצאות מוכרות לחודש, לפני מע״מ',
   inputVatMonthly: 'מע״מ תשומות מוכר לחודש',
   activeSelfEmployed: 'מעמד עצמאי פעיל בביטוח לאומי',
+  insuranceAdvanceMonthly: 'מקדמות לביטוח לאומי לחודש, כולל בריאות (ריק = לא הוזן)',
   pensionRequired: 'חלה חובת הפקדה לפנסיה',
   pensionActual: 'הפקדת פנסיה שנתית בפועל (ריק = תחזית מינימום)',
   extraPensionCredit: 'זכאות ידועה לזיכוי נוסף 0.5%',
@@ -65,6 +66,8 @@ export const LABELS = {
 export const RESULT_LABELS = {
   revenue: 'מחזור ללא מע״מ',
   profit: 'רווח עסקי לפני מסים ופנסיה',
+  rent: 'שכירות שהתקבלה · נכללת בנטו',
+  rentExpenses: 'הוצאות שכירות · מופחתות מהנטו',
   outputVat: 'מע״מ עסקאות',
   inputVat: 'מע״מ תשומות',
   netVat: 'מע״מ לתשלום / החזר',
@@ -81,7 +84,7 @@ export const RESULT_LABELS = {
   rentTax: 'תוספת מס בשל השכירות',
   incomeTax: 'מס הכנסה כולל שכירות ויסף',
   arnona: 'ארנונה לפי הנחה מאושרת',
-  net: 'נטו לאחר מסים, פנסיה וארנונה',
+  net: 'נטו כולל עסק ושכירות, לאחר מסים, פנסיה וארנונה',
 };
 export const RATE_LABELS = {
   rate: 'שיעור',
@@ -153,35 +156,57 @@ ${esc(label)}</span>
 ${control}<small id="${esc(id)}-error" data-tax-field-error class="tax-field-error" hidden></small></label>
 `;
 }
+function summaryValue(label, annual, note = '') {
+  return `<div><span>${esc(label)}</span><b>${annual === null ? 'נדרשים נתונים' : money(annual) + ' לשנה'}</b>
+${annual === null ? '' : `<small>${money(ratio(annual, 1, 12))} בממוצע לחודש</small>`}
+${note ? `<small>${esc(note)}</small>` : ''}</div>`;
+}
+export function insuranceSettlementMarkup(result) {
+  const s = result.insuranceSettlement;
+  const label = { due: 'תוספת משוערת לתשלום', refund: 'החזר משוער', balanced: 'המקדמות מכסות את החיוב',
+    'not-entered': 'לא הוזנו מקדמות', 'missing-income': 'נדרש מחזור עסקי לחישוב ההפרש' }[s.status];
+  const amount = s.balance === null ? null : Math.abs(s.balance);
+  return `<div class="tax-settlement tax-settlement-${s.status}" role="status">
+<div class="tax-card-values">${summaryValue('חיוב ביטוח לאומי ובריאות לפי הרווח', s.liability)}
+${summaryValue('מקדמות בחישוב שנתי · 12 חודשים', s.advancesAnnual)}
+${summaryValue(label, amount)}</div>
+<p>ההשוואה מניחה את המקדמה החודשית שהוזנה בכל 12 חודשי השנה, כולל דמי בריאות. זו תחזית להפרשי שומה; היא אינה אישור ששולמו המקדמות. בחיובים משתנים ניתן להזין ממוצע חודשי של הסכום השנתי. החיוב השנתי כבר מופחת פעם אחת מהנטו; המקדמות וההפרש אינם מופחתים שוב.</p>
+</div>`;
+}
+export function summaryHighlightsMarkup(result) {
+  const a = result.annual, known = !result.missing.includes('מחזור עסקי');
+  const net = result.complete ? a.net : null;
+  const deductions = a.insurance + a.pension + a.incomeTax + a.arnona;
+  return `<div class="tax-metrics tax-summary-top">
+<div><span>מחזור העסק ללא מע״מ</span><strong>${known ? money(a.revenue) : 'טרם הוזן מחזור'}</strong><small>לשנה · הסכום העסקי שהוזן, לפני הוצאות</small></div>
+<div class="tax-net-metric"><span>נטו משוער כולל עסק ושכירות</span><strong>${net === null ? 'נתונים חסרים' : money(result.monthly.net)}</strong><small>${net === null ? 'יש להשלים: ' + esc(result.missing.join(', ')) : money(net) + ' לשנה · ממוצע חודשי'}</small></div>
+<div><span>נקודות זיכוי</span><strong>${result.family.points}</strong><small>${result.family.people} נפשות במבחן ארנונה</small></div></div>
+<section class="tax-net-explanation" aria-label="הרכב הנטו">
+<h3>מה נכלל בנטו?</h3><div class="tax-net-equation">
+<span>רווח עסקי <b>${known ? money(a.profit) : 'טרם הוזן'}</b></span><span>+ שכירות לאחר הוצאות <b>${money(a.rent - a.rentExpenses)}</b></span>
+<span>− מסים, ביטוח, פנסיה וארנונה <b>${known ? money(deductions) : 'נדרש מחזור'}</b></span><span>= נטו לשנה <b>${net === null ? 'נתונים חסרים' : money(net)}</b></span></div>
+<p>מחזור העסק והנטו הם סכומים שונים. הנטו כולל גם שכירות, ללא מלגות והכנסות מתגוררים המשמשות למבחן הארנונה בלבד. מע״מ מוצג בנפרד.</p></section>
+<div class="tax-summary-grid">
+<section class="tax-summary-card" aria-label="צפי מס הכנסה"><h3>צפי מס הכנסה</h3>
+<div class="tax-card-values">${summaryValue('מס הכנסה כולל שכירות ויסף', known ? a.incomeTax : null)}
+${summaryValue('זיכוי בגין נקודות ופנסיה', a.pointCredit + a.pensionCredit)}</div>
+<p>מס העסק: ${known ? money(a.businessTax) : 'נדרש מחזור'} · תוספת בשל שכירות: ${known ? money(a.rentTax) : 'נדרש מחזור'}. הזיכוי מפחית מס עד אפס ואינו תוספת הכנסה לנטו.</p></section>
+<section class="tax-summary-card" aria-label="צפי פנסיה"><h3>צפי הפקדה לפנסיה</h3>
+<div class="tax-card-values">${summaryValue('מינימום הפקדה מחושב', known ? a.pensionMinimum : null)}
+${summaryValue('הפקדה בפועל שהוזנה', result.pensionFunding.actual)}
+${summaryValue('נותר להשלמת המינימום', known ? result.pensionFunding.remaining : null)}</div>
+<p>${result.pensionFunding.actual === null ? 'לא הוזנה הפקדה בפועל; בנטו חושבה תחזית מינימום.' : 'הנטו מחושב לפי ההפקדה בפועל שהוזנה. היתרה מתייחסת למינימום בלבד.'}</p></section>
+<section class="tax-summary-card tax-summary-wide" aria-label="צפי ביטוח לאומי"><h3>ביטוח לאומי ובריאות · הפרשי מקדמות</h3>
+${insuranceSettlementMarkup(result)}</section>
+<section class="tax-summary-card tax-summary-wide" aria-label="צפי מע״מ"><h3>צפי מע״מ · ${a.netVat < 0 ? 'יתרה להחזר' : 'יתרה לתשלום'}</h3>
+<div class="tax-card-values">${summaryValue('מע״מ עסקאות', known ? a.outputVat : null)}${summaryValue('מע״מ תשומות', a.inputVat)}${summaryValue('יתרת מע״מ', known ? a.netVat : null)}</div></section>
+<div class="tax-summary-wide">${arnonaResultsMarkup(result)}</div>
+</div>`;
+}
 export function summaryMarkup(result) {
   if (!result) return '<p>יש לטעון נתוני שנה וכללים כדי לחשב.</p>';
-  return `<div
-class="tax-metrics">
-<div>
-<span>
-נטו חודשי משוער</span>
-<strong>
-${result.complete ? money(result.monthly.net) : 'נתונים חסרים'}</strong>
-<small>
-${result.complete ? money(result.annual.net) + ' לשנה' : 'יש להשלים: ' + esc(result.missing.join(', '))}</small>
-</div>
-<div>
-<span>
-מסים וביטוח לשנה</span>
-<strong>
-${money(result.annual.incomeTax + result.annual.insurance)}</strong>
-<small>
-לפי הנתונים הידועים והכללים שנבחרו</small>
-</div>
-<div>
-<span>
-נקודות זיכוי</span>
-<strong>
-${result.family.points}</strong>
-<small>
-${result.family.people} נפשות במבחן ארנונה</small>
-</div>
-</div>
+  return `${summaryHighlightsMarkup(result)}
+<h3>פירוט חודשי ושנתי</h3>
 <div
 class="tax-table-wrap">
 <table
@@ -221,20 +246,20 @@ ${money(result.annual[key])}</td>
   .join('')}</tbody>
 </table>
 </div>
-${arnonaBandMarkup(result)}
+${arnonaBandMarkup(result, false)}
 <p
 class="tax-hint">
 מע״מ מוצג בנפרד מהנטו, משום שהמחזור וההוצאות מחושבים ללא מע״מ. ממוצע חודשי הוא תוצאה שנתית חלקי 12.</p>
 `;
 }
 /** The ceiling chart is a what-if reference, never an approved deduction. */
-export function arnonaBandMarkup(result) {
+export function arnonaBandMarkup(result, includeOutcome = true) {
   if (!result) return '';
   const arnona = result.arnona;
   if (!arnona.jurisdictionMatches) return '<p>טבלת הנחות בני ברק אינה מתאימה ליישוב שהוגדר; לא מוצגות מדרגות זכאות.</p>';
   return `<section class="tax-arnona-bands" aria-label="מדרגות הנחה בארנונה">
 <h3>מדרגות הנחת ארנונה לשנת ${result.taxYear}</h3>
-${arnonaResultsMarkup(result)}
+${includeOutcome ? arnonaResultsMarkup(result) : ''}
 <div class="tax-table-wrap"><table class="tax-results"><thead><tr><th scope="col">הכנסה חודשית עד</th><th scope="col">הנחה מרבית לפי מדרגה</th><th scope="col">תשלום שנתי תיאורטי</th></tr></thead><tbody>
 ${arnona.discountBands.map((entry) => `<tr${entry.matches ? ' class="tax-selected-band"' : ''}><td>${money(entry.maximum)}</td><td>עד ${entry.percent / 100}%${entry.matches ? ' — המדרגה המחושבת' : ''}</td><td>${entry.hypotheticalAnnualPayment === null ? 'חסר חיוב שנתי' : money(entry.hypotheticalAnnualPayment)}</td></tr>`).join('')}
 </tbody></table></div>
@@ -264,7 +289,7 @@ ${field(path, LABELS[path], automatic ? amount ?? null : i[path])}
 </div>`;
 }
 export function inputMarkup(tab, i, result) {
-  const f = (key, type = 'money', options = null) => field(key, LABELS[key], i[key], type, options);
+  const f = (key, type = 'money', options = null) => field(key, LABELS[key], i[key] ?? null, type, options);
   if (tab === 'business')
     return `<h2>
 עסק ומע״מ</h2>
@@ -297,6 +322,9 @@ ${f('pensionRequired', 'boolean')}${f('pensionActual')}${field(
     )}${f('extraPensionCredit', 'boolean')}${f('pensionDeduction')}${f('pensionCredit')}</div>
 <p>
 אפס בהפקדה בפועל משמעו שלא הופקד כסף; השארת השדה ריק מחשבת תחזית לפי מינימום חובה.</p>
+<h3>מקדמות ביטוח לאומי ובריאות</h3>
+<div class="tax-fields">${f('insuranceAdvanceMonthly')}</div>
+<div data-tax-insurance-settlement>${result ? insuranceSettlementMarkup(result) : ''}</div>
 `;
   if (tab === 'rent')
     return `<h2>שכירות למגורים ומס הכנסה</h2>

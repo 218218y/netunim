@@ -165,6 +165,11 @@ export function calculateTax(input, rules = input.rules) {
   warnings.push(...arnonaCalculation.warnings);
   const arnona = arnonaCalculation.annualPayment;
   const net = profit + rent - i.rentExpenses - national - health - pension - incomeTax - arnona;
+  const insuranceLiability = i.revenue === null ? null : national + health;
+  const advanceMonthly = i.insuranceAdvanceMonthly ?? null;
+  const advancesAnnual = advanceMonthly === null ? null : advanceMonthly * 12;
+  const insuranceBalance = insuranceLiability === null || advancesAnnual === null
+    ? null : insuranceLiability - advancesAnnual;
   const annual = {
     revenue,
     expenses,
@@ -186,6 +191,7 @@ export function calculateTax(input, rules = input.rules) {
     businessTax: baseTax,
     rentTax,
     rent,
+    rentExpenses: i.rentExpenses,
     rentTaxable,
     arnona,
     net,
@@ -201,6 +207,15 @@ export function calculateTax(input, rules = input.rules) {
     monthly: Object.fromEntries(Object.entries(annual).map(([k, v]) => [k, ratio(v, 1, 12)])),
     family: { children, childPoints, points, people },
     arnona: arnonaCalculation.detail,
+    insuranceSettlement: {
+      advanceMonthly, advancesAnnual, liability: insuranceLiability, balance: insuranceBalance,
+      additionalDue: insuranceBalance === null ? null : positive(insuranceBalance),
+      refund: insuranceBalance === null ? null : positive(-insuranceBalance),
+      status: insuranceLiability === null ? 'missing-income' : advancesAnnual === null ? 'not-entered'
+        : insuranceBalance > 0 ? 'due' : insuranceBalance < 0 ? 'refund' : 'balanced',
+    },
+    pensionFunding: { actual: i.pensionActual, remaining: i.pensionActual === null
+      ? pensionMinimum : positive(pensionMinimum - i.pensionActual) },
     rental: {
       route,
       exemption,
