@@ -55,7 +55,12 @@ function readInput(element) {
   if (type === 'boolean') return element.checked;
   if (type === 'date') return normalizeDate(value);
   if (['money', 'percent'].includes(type)) return value === '' ? null : toMinor(value);
-  if (['integer', 'year', 'points'].includes(type)) return value === '' ? null : Number(value);
+  if (type === 'year') {
+    if (value === '') return null;
+    if (!/^\d{4}$/.test(value)) throw new Error('יש להשלים שנה בארבע ספרות');
+    return Number(value);
+  }
+  if (['integer', 'points'].includes(type)) return value === '' ? null : Number(value);
   return value;
 }
 export function createTaxWorkspace({

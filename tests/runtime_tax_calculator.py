@@ -103,6 +103,9 @@ for app in ['orders','kupa']:
             assert abs(value['top']-value['beforeTop'])<=2,value
             return value
         begin_edit('assessmentYear')
+        browser.call('Input.insertText',{'text':'2e3'})
+        assert edited_value('2e3')['notice']=='','year input must stage non-decimal notation rather than accepting 2000'
+        browser.evaluate("window.taxTypingTarget.select()")
         for value in ['2','20','202','2025']:
             browser.call('Input.insertText',{'text':value[-1]})
             assert edited_value(value)['notice']=='',value
