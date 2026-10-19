@@ -20,6 +20,9 @@ import {createOrdersBankArchiveReadout} from '../domains/finance/bank-archive-re
 import {createBankArchiveReconciliation} from '../shared/bank-archive-reconciliation.js';
 import {bankArchiveTargets,bankArchiveSourceRows} from '../domains/finance/bank-archive-model.js';
 import {createDomainsFinanceView} from '../domains/finance/view.js';
+import {createMorningReports} from '../domains/finance/morning-reports.js';
+import {createMorningRequest} from '../integrations/morning.js';
+import {createMorningMediaComposition} from './morning-media.js';
 import {createOrdersBankChequeImageRuntime} from '../domains/finance/bank-cheque-image-runtime.js';
 import {createFinanceConnectionImportCapability} from '../shared/finance-connection-import-capability.js';
 import {createCreditCardOrderView} from '../shared/credit-card-order-view.js';
@@ -225,7 +228,7 @@ export function createOrdersFinanceCapability({
     });
   }
 
-  function bindUi({layout, modal, date, checksView, dashboard, openBankMorningDocument, toast}) {
+  function bindUi({layout, modal, date, checksView, dashboard, openBankMorningDocument, morningOperationScope, toast}) {
     coreReady();
     if (presentation) throw new Error('orders_finance_ui_already_bound');
     requireMethods('layout', layout, ['mountViewLayout']);
@@ -244,11 +247,16 @@ export function createOrdersFinanceCapability({
       },
     };
     const notify = (...args) => { if (!disposed) toast(...args); };
+    const reportRequest = morningOperationScope ? createMorningRequest({supaFetch:(...args) => auth.supaFetch(...args), operationScope:morningOperationScope}) : null;
+    const reportMedia = reportRequest ? createMorningMediaComposition({request:reportRequest, modal:ownedModal.modal, toast:notify}).create({capture:() => morningOperationScope.captureRead(), onStandalone:() => {}}) : null;
+    const reports = reportRequest ? createMorningReports({request:reportRequest.json, captureRead:() => morningOperationScope.captureRead(),
+      subscribeAccountScope:listener => auth.subscribeAccountScope?.(listener) || (() => {}), media:reportMedia, dateEditorMarkup:date.dateEditorMarkup, isActive:() => !disposed}) : null;
     const view = createDomainsFinanceView({
       ui, controller, checksView, dashboardView:dashboard, runFinance, isActive:() => !disposed,
       mountViewLayout:layout.mountViewLayout, modal:ownedModal.modal, closeModal:ownedModal.closeModal,
       confirmDialog:ownedModal.confirmDialog, dateEditorMarkup:date.dateEditorMarkup,
       downloadBankChequeImage:images.download, openBankMorningDocument,
+      morningReportsMarkup:() => reports?.markup() || '',
     });
     const importConnections = createFinanceConnectionImportCapability({
       bridge, getCreditProfiles:() => controller.snapshot().creditSync?.profiles || [],
@@ -267,6 +275,7 @@ export function createOrdersFinanceCapability({
       modal:ownedModal.modal, closeModal:ownedModal.closeModal, render:view.renderKupa, escapeHtml:esc,
     });
     const packs = [
+      {name:'morning-reports', actions:reports?.actions || {}},
       {name:'credit-order', actions:markMutationActions(creditOrder.actions, {finance:['credit-card-order-save']})},
       {name:'finance-bank', actions:createFinanceBankActions({domainsFinanceController:controller, domainsFinanceView:view, importFinanceConnections:importConnections.commands.importConnections, ui, uiStatus:{toast:notify}})},
       {name:'finance-credit', actions:createFinanceCreditActions({domainsFinanceView:view, ui})},
@@ -280,7 +289,7 @@ export function createOrdersFinanceCapability({
         return [name, guarded];
       }),
     )}));
-    presentation = {view, importConnections, packs:guardedPacks};
+    presentation = {view, importConnections, reports, packs:guardedPacks};
   }
 
   const queries = {
@@ -310,9 +319,9 @@ export function createOrdersFinanceCapability({
     renderKupaDependentView:(...args) => readoutReady().renderKupaDependentView(...args),
   };
   const runtime = {
-    isPending:() => !!(controller?.runtime.isPending() || archiveReconciliation?.runtime.isPending() || bankSnapshots?.runtime.isPending() || connections?.runtime.isPending() || bankConnections?.runtime.isPending() || archive?.runtime.isPending() || presentation?.view.connectionRuntime.isPending() || presentation?.importConnections.runtime.isPending()),
+    isPending:() => !!(presentation?.reports?.runtime.isPending() || controller?.runtime.isPending() || archiveReconciliation?.runtime.isPending() || bankSnapshots?.runtime.isPending() || connections?.runtime.isPending() || bankConnections?.runtime.isPending() || archive?.runtime.isPending() || presentation?.view.connectionRuntime.isPending() || presentation?.importConnections.runtime.isPending()),
     async drain() {
-      do { await Promise.all([controller?.runtime.drain(), archiveReconciliation?.runtime.drain(), bankSnapshots?.runtime.drain(), connections?.runtime.drain(), bankConnections?.runtime.drain(), archive?.runtime.drain(), presentation?.view.connectionRuntime.drain(), presentation?.importConnections.runtime.drain()]); } while(runtime.isPending());
+      do { await Promise.all([presentation?.reports?.runtime.drain(), controller?.runtime.drain(), archiveReconciliation?.runtime.drain(), bankSnapshots?.runtime.drain(), connections?.runtime.drain(), bankConnections?.runtime.drain(), archive?.runtime.drain(), presentation?.view.connectionRuntime.drain(), presentation?.importConnections.runtime.drain()]); } while(runtime.isPending());
     },
     start() { uiReady(); return controller.startAutoSync(); },
     stop() { return controller?.stopAutoSync(); },
@@ -324,6 +333,7 @@ export function createOrdersFinanceCapability({
     dispose() {
       if (disposed) return false;
       disposed = true;
+      presentation?.reports?.runtime.dispose();
       archiveReconciliation?.runtime.dispose();
       bankSnapshots?.runtime.dispose();
       presentation?.importConnections.runtime.dispose();
