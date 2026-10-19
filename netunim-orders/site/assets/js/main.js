@@ -378,6 +378,7 @@ const domainsCalendarController=calendarRuntime.createController({
 const {spreadsheetWorkspace,domainsNotesController}=createNotesDomain({cloudAuth,tab,ui,notesUi,model,uiModal,storagePersistence,uiStatus,uiLayout,uiAlertCenter,uiDateEditor});
 
 const uiSettings=createUiSettings({
+  mountSyncIncidents:container=>void syncIncidentsReady.then(feature=>{if(container.isConnected)feature?.mountSettings(container)}),
   model,
   ui,
   supplierUi,
@@ -508,7 +509,7 @@ uiEvents.bindActionEvents(document.getElementById('modal'),startupUiActions);
 uiGlobalSearch.bind();
 uiKeyboardNavigation.bind();
 startupMark('composition-end');
-void import('./shared/sync-incident-feature.js').then(({createSyncIncidentFeature})=>{syncIncidents=createSyncIncidentFeature({site:'orders',accountScope:cloudAuth.getAccountScope,subscribeAccountScope:cloudAuth.subscribeAccountScope,
+const syncIncidentsReady=import('./shared/sync-incident-feature.js').then(({createSyncIncidentFeature})=>{return syncIncidents=createSyncIncidentFeature({site:'orders',accountScope:cloudAuth.getAccountScope,subscribeAccountScope:cloudAuth.subscribeAccountScope,
   confirmReview:message=>uiModal.confirmDialog('טיפול ידני בהתראת סנכרון',message,{confirmText:'סימון כטופל ללא אימות',tone:'danger'}),
   primary:()=>tab.primaryTab,request:cloudAuth.supaFetch,
   domains:[
