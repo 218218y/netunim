@@ -100,7 +100,7 @@ export function createMorningReports({ request, captureRead, subscribeAccountSco
       </tr>
       </thead>
       <tbody>${r.buckets.map(bucket => `<tr>
-      <th scope="row">${esc(periodLabel(bucket.key))}</th>${cells(bucket)}<td data-label="פירוט">
+      <th scope="row"><span class="morning-report-period-label">${esc(periodLabel(bucket.key))}</span></th>${cells(bucket)}<td data-label="פירוט">
       <button type="button" class="btn small" data-action="morning-report-detail" data-click-arg0="${esc(bucket.key)}">${bucket.records.length} מסמכים</button>
       </td>
       </tr>`).join('') ||

@@ -10,8 +10,8 @@ FLOW = r"""(async()=>{
  const click=(action,value)=>{const e=[...document.querySelectorAll('[data-action="'+action+'"]')].find(row=>value===undefined||row.dataset.clickArg0===value);check(e,'missing '+action);e.click()};
  morningOperationScope.captureRead=()=>()=>{};
  const uuid=i=>'aaaaaaaa-aaaa-4aaa-aaaa-'+String(i).padStart(12,'0');
- const docs=Array.from({length:51},(_,i)=>({kind:'document',id:uuid(i),number:String(100+i),type:i===0?400:305,date:'2026-01-10',documentDate:'2026-01-10',status:0,currency:'ILS',grossCents:11800,vatCents:i===0?0:1800,name:'לקוח דוח פרטי',description:'מסמך בדיקה',selfInvoice:false,businessType:1,payments:i===0?[{type:3,amountCents:6000},{type:1,amountCents:2800},{type:2,amountCents:3000}]:[]}));
- const expenses=[1,2].map(i=>({kind:'expense',id:uuid(100+i),number:String(20+i),type:305,date:'2026-01-01',documentDate:'2025-12-28',status:30,currency:'ILS',grossCents:5900,vatCents:900,deductibleVatCents:450,deductibleCents:5000,category:'עבודות חוץ',name:'ספק דוח '+ 'בדיקה'.repeat(30),description:'הוצאה לבדיקה '+ 'תיאור'.repeat(80)}));
+ const docs=Array.from({length:51},(_,i)=>({kind:'document',id:uuid(i),number:String(100+i),type:i===0?400:305,date:'2026-07-10',documentDate:'2026-07-10',status:0,currency:'ILS',grossCents:i===0?30650500:11800,vatCents:i===0?0:1800,name:'לקוח דוח פרטי',description:'מסמך בדיקה',selfInvoice:false,businessType:1,payments:i===0?[{type:3,amountCents:14154000},{type:1,amountCents:750000},{type:2,amountCents:8270000},{type:4,amountCents:7476500}]:[]}));
+ const expenses=[1,2].map(i=>({kind:'expense',id:uuid(100+i),number:String(20+i),type:305,date:'2026-07-01',documentDate:'2026-06-28',status:30,currency:'ILS',grossCents:5900,vatCents:900,deductibleVatCents:450,deductibleCents:5000,category:'עבודות חוץ',name:'ספק דוח '+ 'בדיקה'.repeat(30),description:'הוצאה לבדיקה '+ 'תיאור'.repeat(80)}));
  const calls=[];
  cloudAuth.supaFetch=async(path,options)=>{
   const body=JSON.parse(options.body);calls.push(body);check(path==='/functions/v1/morning-documents','wrong route');
@@ -33,7 +33,7 @@ FLOW = r"""(async()=>{
  check(document.querySelector('.morning-report-notice').textContent.includes('2 הוצאות'),'edited-expense notice missing');
  click('morning-report-detail','edited-expenses');check(document.querySelectorAll('.morning-report-details tbody tr').length===2,'edited expense list not isolated');
  click('morning-report-record',uuid(101));
- check(document.querySelector('.morning-report-record-fields').textContent.includes('28.12.2025'),'source date missing');
+ check(document.querySelector('.morning-report-record-fields').textContent.includes('28.06.2026'),'source date missing');
  check(document.querySelector('.morning-report-record-fields').textContent.includes('עבודות חוץ'),'source classification missing');
  click('morning-report-record',uuid(101));click('morning-report-detail','');
  click('morning-report-type','profit');
@@ -43,7 +43,7 @@ FLOW = r"""(async()=>{
  const vat=[...document.querySelectorAll('.morning-report-table tfoot td')].map(x=>x.textContent);
  check(vat[0].includes('900')&&vat[1].includes('9')&&vat[2].includes('891'),'wrong deductible VAT '+vat.join('|'));
  click('morning-report-type','profit');
- click('morning-report-detail','2026-01');check(document.querySelectorAll('.morning-report-details tbody tr').length===53,'drill-down lost source documents');
+ click('morning-report-detail','2026-07');check(document.querySelectorAll('.morning-report-details tbody tr').length===53,'drill-down lost source documents');
  click('morning-report-pdf');await wait(()=>document.querySelector('#morningStandalonePreviewFrame')?.src.startsWith('blob:'));click('close-modal');
  let csvBlob=null;const createUrl=URL.createObjectURL,nativeClick=HTMLAnchorElement.prototype.click;
  URL.createObjectURL=blob=>{csvBlob=blob;return createUrl(blob)};HTMLAnchorElement.prototype.click=function(){};
@@ -86,17 +86,28 @@ if __name__ == '__main__':
             browser.call('Emulation.setDeviceMetricsOverride', {'width':width,'height':1000,'deviceScaleFactor':1,'mobile':width<500})
             layouts.append(browser.evaluate(r"""(()=>{
               const overflow=[];
-              for(const type of ['receipts','profit','vat']){
+              for(const group of ['month','bimonth','quarter']){
+               const select=document.querySelector('[data-report-option="group"]');select.value=group;select.dispatchEvent(new Event('change',{bubbles:true}));
+               for(const type of ['receipts','profit','vat']){
                 document.querySelector('[data-action="morning-report-type"][data-click-arg0="'+type+'"]').click();
-                document.querySelector('[data-action="morning-report-detail"][data-click-arg0="2026-01"]').click();
+                document.querySelector('[data-action="morning-report-detail"][data-click-arg0="2026-07"]').click();
                 document.querySelector('[data-action="morning-report-record"][data-click-arg0="aaaaaaaa-aaaa-4aaa-aaaa-000000000101"]').click();
                 document.querySelectorAll('.morning-report-explanation').forEach(e=>e.open=true);
                 for(const el of document.querySelectorAll('.morning-reports table,.morning-reports th,.morning-reports td,.morning-report-table-wrap,.morning-report-record-fields')){
                   const header=el.closest('thead');if(header&&getComputedStyle(header).clipPath!=='none')continue;
                   if(el.getBoundingClientRect().width>0&&el.scrollWidth>el.clientWidth+1)overflow.push({type,tag:el.tagName,cls:el.className,scroll:el.scrollWidth,width:el.clientWidth});
                 }
+                for(const label of document.querySelectorAll('.morning-report-period-label')){
+                  const cell=label.closest('th').getBoundingClientRect(),adjacent=label.closest('th').nextElementSibling.getBoundingClientRect();
+                  const range=document.createRange();range.selectNodeContents(label);
+                  for(const rect of range.getClientRects()){
+                    if(rect.left<cell.left-1||rect.right>cell.right+1||rect.left<adjacent.right&&rect.right>adjacent.left&&rect.top<adjacent.bottom&&rect.bottom>adjacent.top)overflow.push({type,group,periodOverlap:label.textContent});
+                  }
+                }
+               }
               }
               document.querySelector('[data-action="morning-report-detail"][data-click-arg0=""]').click();
+              const select=document.querySelector('[data-report-option="group"]');select.value='month';select.dispatchEvent(new Event('change',{bubbles:true}));
               document.querySelector('[data-action="morning-report-type"][data-click-arg0="receipts"]').click();
               return {width:innerWidth,scroll:document.documentElement.scrollWidth,overflow};
             })()"""))
