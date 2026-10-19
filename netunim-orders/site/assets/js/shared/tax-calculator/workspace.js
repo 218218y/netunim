@@ -10,6 +10,7 @@ import {
   toMinor,
   validDate,
   GROUPS,
+  applyRentalChoice,
 } from './contracts.js';
 import { defaultRules, ruleWarnings } from './rules.js';
 import { calculateTax } from './compute.js';
@@ -544,7 +545,8 @@ data-action="tax-retry">
       }
       invalidDates.delete(element.dataset.field);
       const next = clone(draft);
-      set(next, element.dataset.field, readInput(element));
+      if (element.dataset.field === 'rentChoice') applyRentalChoice(next, element.value);
+      else set(next, element.dataset.field, readInput(element));
       assertAnnual(next);
       draft = next;
       dirty = true;

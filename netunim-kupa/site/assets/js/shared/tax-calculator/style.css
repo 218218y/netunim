@@ -75,3 +75,8 @@
 .tax-hero{color:#173a35;background:white}
 .tax-page{max-width:none}
 .tax-results{font-size:11px}}
+
+.tax-arnona-bands{margin-top:24px}
+.tax-arnona-bands .tax-results tr:last-child{background:transparent;font-weight:400}
+.tax-arnona-bands .tax-results tr.tax-selected-band{background:var(--tax-soft);font-weight:700}
+.tax-results small{font-size:12px;color:#537368;display:block;line-height:1.6;margin-top:4px}

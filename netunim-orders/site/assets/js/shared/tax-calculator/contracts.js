@@ -1,6 +1,6 @@
 // @ts-check
 /** Money is integer agorot; rates are integer basis points (10000 = 100%). */
-export const ENGINE_VERSION = '1.0.0';
+export const ENGINE_VERSION = '1.1.0';
 export const GROUPS = [
   'vat',
   'insurance',
@@ -78,6 +78,8 @@ export function createAnnual(taxYear, profile = createProfile(), rules = null) {
     over60: false,
     arnonaAnnual: null,
     rentPaidMonthly: 0,
+    // Income-test rent belongs to the assessment year, not the selected tax year.
+    arnonaRentReceivedMonthly: null,
     householdOtherMonthly: 0,
     otherResidentsMonthly: 0,
     arnonaBusinessAnnual: null,
@@ -323,7 +325,9 @@ export function assertRules(value) {
 }
 export function assertAnnual(value) {
   if (
-    !exactKeys(value, Object.keys(createAnnual(2026))) ||
+    !(exactKeys(value, Object.keys(createAnnual(2026))) ||
+      // Historical cloud and IndexedDB documents predate the assessment rent field.
+      exactKeys(value, Object.keys(createAnnual(2026)).filter(k => k !== 'arnonaRentReceivedMonthly'))) ||
     value.kind !== 'annual' ||
     value.schema !== 1 ||
     !integer(value.taxYear, 2000, 2200) ||
@@ -349,15 +353,17 @@ export function assertAnnual(value) {
     'rentExpenses',
     'arnonaAnnual',
     'rentPaidMonthly',
+    'arnonaRentReceivedMonthly',
     'householdOtherMonthly',
     'otherResidentsMonthly',
     'arnonaBusinessAnnual',
   ]) {
     if (
       value[field] === null &&
-      ['revenue', 'pensionActual', 'arnonaAnnual', 'arnonaBusinessAnnual'].includes(field)
+      ['revenue', 'pensionActual', 'arnonaAnnual', 'arnonaBusinessAnnual', 'arnonaRentReceivedMonthly'].includes(field)
     )
       continue;
+    if (field === 'arnonaRentReceivedMonthly' && value[field] === undefined) continue;
     if (!integer(value[field])) throw new Error('סכום אינו תקין: ' + field);
   }
   if (
@@ -376,7 +382,7 @@ export function assertAnnual(value) {
     !(value.approvedDiscount === null || integer(value.approvedDiscount, 0, 10000))
   )
     throw new Error('אפשרויות השנה אינן תקינות');
-  return clone(value);
+  return clone({ ...value, arnonaRentReceivedMonthly: value.arnonaRentReceivedMonthly ?? null });
 }
 export function assertDocument(name, value) {
   if (name === 'profile') return assertProfile(value);
@@ -389,4 +395,28 @@ export function assertDocument(name, value) {
   )
     return assertRules(value);
   throw new Error('מסמך מחשבון אינו תקין');
+}
+
+/** One explicit UI choice defines both persisted rental fields. No document migration. */
+export function rentalChoiceFromAnnual(annual) {
+  if (!annual.rentEligible) return 'other-ordinary';
+  return {
+    auto: 'residential-auto',
+    ordinary: 'residential-exemption',
+    flat: 'residential-flat',
+    none: 'excluded',
+  }[annual.rentRoute];
+}
+export function applyRentalChoice(annual, choice) {
+  const mapped = {
+    'other-ordinary': [false, 'ordinary'],
+    'residential-auto': [true, 'auto'],
+    'residential-exemption': [true, 'ordinary'],
+    'residential-flat': [true, 'flat'],
+    excluded: [true, 'none'],
+  }[choice];
+  if (!mapped) throw new Error('מסלול שכירות אינו תקין');
+  annual.rentEligible = mapped[0];
+  annual.rentRoute = mapped[1];
+  return annual;
 }
