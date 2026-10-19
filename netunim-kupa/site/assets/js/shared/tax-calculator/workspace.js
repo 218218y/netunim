@@ -351,13 +351,8 @@ class="tax-hero">
 class="tax-back"
 data-action="tax-back">
 ← חזרה למסך הקודם</button>
-<p
-class="tax-eyebrow">
-NETUNIM · מרחב אישי</p>
 <h1>
 מחשבון מסים וארנונה</h1>
-<p>
-תכנון שנתי, עם פירוט לכל סכום</p>
 </div>
 <div
 data-tax-live

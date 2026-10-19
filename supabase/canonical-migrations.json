@@ -179,6 +179,10 @@
     {
       "version": "20261019041407",
       "name": "tax_calculator"
+    },
+    {
+      "version": "20261019064633",
+      "name": "tax_arnona_assessment_income"
     }
   ]
 }

@@ -1,6 +1,6 @@
 // @ts-check
 /** Money is integer agorot; rates are integer basis points (10000 = 100%). */
-export const ENGINE_VERSION = '1.0.0';
+export const ENGINE_VERSION = '1.1.0';
 export const GROUPS = [
   'vat',
   'insurance',
@@ -50,7 +50,7 @@ export function createProfile() {
 export function createAnnual(taxYear, profile = createProfile(), rules = null) {
   return {
     kind: 'annual',
-    schema: 1,
+    schema: 2,
     taxYear,
     mode: 'forecast',
     source: 'manual',
@@ -73,11 +73,12 @@ export function createAnnual(taxYear, profile = createProfile(), rules = null) {
     pensionCredit: 0,
     rentMonthly: 0,
     rentExpenses: 0,
-    rentRoute: 'auto',
-    rentEligible: false,
+    rentMode: 'other-ordinary',
     over60: false,
     arnonaAnnual: null,
     rentPaidMonthly: 0,
+    // Income-test rent belongs to the assessment year, not the selected tax year.
+    arnonaRentReceivedMonthly: null,
     householdOtherMonthly: 0,
     otherResidentsMonthly: 0,
     arnonaBusinessAnnual: null,
@@ -325,7 +326,7 @@ export function assertAnnual(value) {
   if (
     !exactKeys(value, Object.keys(createAnnual(2026))) ||
     value.kind !== 'annual' ||
-    value.schema !== 1 ||
+    value.schema !== 2 ||
     !integer(value.taxYear, 2000, 2200) ||
     !['forecast', 'actual'].includes(value.mode) ||
     !['manual', 'assessment'].includes(value.source) ||
@@ -349,13 +350,14 @@ export function assertAnnual(value) {
     'rentExpenses',
     'arnonaAnnual',
     'rentPaidMonthly',
+    'arnonaRentReceivedMonthly',
     'householdOtherMonthly',
     'otherResidentsMonthly',
     'arnonaBusinessAnnual',
   ]) {
     if (
       value[field] === null &&
-      ['revenue', 'pensionActual', 'arnonaAnnual', 'arnonaBusinessAnnual'].includes(field)
+      ['revenue', 'pensionActual', 'arnonaAnnual', 'arnonaBusinessAnnual', 'arnonaRentReceivedMonthly'].includes(field)
     )
       continue;
     if (!integer(value[field])) throw new Error('סכום אינו תקין: ' + field);
@@ -363,14 +365,13 @@ export function assertAnnual(value) {
   if (
     !['annual', 'monthly'].includes(value.revenuePeriod) ||
     !['deduction', 'credit', 'manual'].includes(value.pensionMethod) ||
-    !['auto', 'ordinary', 'flat', 'none'].includes(value.rentRoute) ||
+    !['other-ordinary', 'residential-exemption', 'residential-flat', 'residential-auto', 'excluded'].includes(value.rentMode) ||
     ![
       'vatIncluded',
       'vatExempt',
       'activeSelfEmployed',
       'pensionRequired',
       'extraPensionCredit',
-      'rentEligible',
       'over60',
     ].every((key) => typeof value[key] === 'boolean') ||
     !(value.approvedDiscount === null || integer(value.approvedDiscount, 0, 10000))

@@ -30,7 +30,7 @@ export function calculateTax(input, rules = input.rules) {
   if (i.revenue === null) missing.push('מחזור עסקי');
   if (i.arnonaAnnual === null) missing.push('חיוב ארנונה שנתי');
   if (i.assessmentYear === null)
-    warnings.push('לא נבחרה שנת שומה לארנונה; מבחן ההכנסה מוצג כתחזית בלבד');
+    warnings.push('לא נבחרה שנת שומה לארנונה; אין לחשב זכאות להנחה בלי שנת הכנסה מתאימה');
   const annualRevenue = (i.revenue ?? 0) * (i.revenuePeriod === 'monthly' ? 12 : 1);
   const revenue =
     i.vatIncluded && !i.vatExempt
@@ -116,8 +116,10 @@ export function calculateTax(input, rules = input.rules) {
     baseTax =
       positive(businessTax.total - credits) +
       rate(positive(taxable - t.surtaxThreshold), t.surtaxRate);
+  const rentEligible = i.rentMode !== 'other-ordinary';
+  const requestedRentRoute = { 'other-ordinary': 'ordinary', 'residential-exemption': 'ordinary', 'residential-flat': 'flat', 'residential-auto': 'auto', excluded: 'none' }[i.rentMode];
   const rent = i.rentMonthly * 12,
-    exemption = i.rentEligible
+    exemption = rentEligible
       ? positive(Math.min(i.rentMonthly, g.rent.values.exemptionMonthly * 2 - i.rentMonthly)) * 12
       : 0;
   const rentBeforeExpenses = positive(rent - exemption),
@@ -142,14 +144,14 @@ export function calculateTax(input, rules = input.rules) {
     rate(positive(rent - t.capitalThreshold), t.capitalRate);
   let route = !rent
     ? 'none'
-    : !i.rentEligible
+    : !rentEligible
       ? 'ordinary'
-      : i.rentRoute === 'auto'
+      : requestedRentRoute === 'auto'
         ? ordinary <= flat
           ? 'ordinary'
           : 'flat'
-        : i.rentRoute;
-  if (rent && !i.rentEligible)
+        : requestedRentRoute;
+  if (rent && !rentEligible)
     warnings.push(
       'השכירות אינה זכאית למסלולים המיוחדים; חושב מס רגיל ללא פטור, במקום השמטת ההכנסה שבאקסל',
     );
@@ -160,26 +162,56 @@ export function calculateTax(input, rules = input.rules) {
   const incomeTax = route === 'ordinary' ? ordinary : route === 'flat' ? flat : baseTax,
     rentTax = positive(incomeTax - baseTax);
   const people = i.profile.adults + children.filter((c) => c.resident && c.age >= 0).length;
-  const arnonaBusiness = i.arnonaBusinessAnnual ?? profit;
-  if (i.arnonaBusinessAnnual === null)
-    warnings.push(
-      'בסיס העסק לארנונה נגזר משנת החישוב; לצורך בקשה יש להזין את ההכנסה מהשומה הרלוונטית',
-    );
-  const assessedIncome =
-    positive(ratio(arnonaBusiness, 1, 12)) +
-    positive(i.rentMonthly - i.rentPaidMonthly) +
-    i.householdOtherMonthly +
-    i.otherResidentsMonthly;
+  // Arnona for taxYear 2026 tests *2025* household income. An assessment's
+  // rent and business profit must never be silently read from taxYear 2026.
+  const arnonaBusiness = i.arnonaBusinessAnnual;
+  const arnonaRent = i.arnonaRentReceivedMonthly;
+  const published2026ArnonaYearMatches = !(i.taxYear === 2026 &&
+    i.profile.city.trim() === 'בני ברק' && i.assessmentYear !== 2025);
+  if (!published2026ArnonaYearMatches)
+    warnings.push('מבחן ההכנסה בבני ברק לשנת 2026 מתייחס להכנסות 2025. נתוני שנה אחרת מוצגים לעיון בלבד, ללא אומדן זכאות');
+  const assessmentComplete = i.assessmentYear !== null && arnonaBusiness !== null &&
+    arnonaRent !== null;
+  if (i.assessmentYear !== null && arnonaBusiness === null)
+    warnings.push(`לא הוזנה הכנסה עסקית לשנת ${i.assessmentYear} לצורך הנחת הארנונה`);
+  if (i.assessmentYear !== null && arnonaRent === null)
+    warnings.push(`לא הוזנו תקבולי שכירות לשנת ${i.assessmentYear} לצורך הנחת הארנונה (יש להזין גם אפס)`);
+  // The assessment lists business income *before deductions* (parts 2+3), not
+  // taxable income after provident fund and National Insurance deductions.
+  // The caller must enter that assessment figure; it cannot be derived safely
+  // from the taxable income calculated for another year.
+  const businessMonthlyForArnona = assessmentComplete ? ratio(positive(arnonaBusiness), 1, 12) : null;
+  const arnonaRentalMonthly = assessmentComplete ? positive(arnonaRent - i.rentPaidMonthly) : null;
+  const assessedAnnualIncome = assessmentComplete
+    ? positive(arnonaBusiness) +
+      12 * (arnonaRentalMonthly + i.householdOtherMonthly + i.otherResidentsMonthly)
+    : null;
+  const assessedIncome = assessedAnnualIncome === null ? null : ratio(assessedAnnualIncome, 1, 12);
   const thresholds = g.arnonaIncome.values.thresholds[Math.min(people, 9) - 1].map(
     (v, j) => v + positive(people - 9) * g.arnonaIncome.values.extraPerson[j],
   );
-  const band = thresholds.findIndex((v) => assessedIncome <= v),
-    estimatedDiscount = band < 0 ? 0 : [9000, 7000, 5000, 3000][band];
+  const band = assessedIncome === null ? -1 : thresholds.findIndex((v) => assessedIncome <= v);
   const jurisdictionMatches = i.profile.city.trim() === r.jurisdiction.trim();
+  const estimatedDiscount = !assessmentComplete || !jurisdictionMatches || !published2026ArnonaYearMatches
+    ? null
+    : band < 0 ? 0 : [9000, 7000, 5000, 3000][band];
   if (!jurisdictionMatches)
-    warnings.push('טבלת הנחות הארנונה אינה תואמת ליישוב; יושמה רק הנחה מאושרת אם הוזנה');
-  const discount = i.approvedDiscount ?? (jurisdictionMatches ? estimatedDiscount : 0),
-    arnona = rate(i.arnonaAnnual ?? 0, 10000 - discount);
+    warnings.push('טבלת הנחות הארנונה אינה תואמת ליישוב; לא ניתן להציג אומדן זכאות מקומי');
+  if (assessmentComplete && estimatedDiscount !== null && i.approvedDiscount === null)
+    warnings.push('הנחת הארנונה היא אומדן זכאות בלבד: לפני אישור הרשות לא הופחתה מהנטו');
+  if (i.approvedDiscount !== null && i.approvedDiscount > 0)
+    warnings.push('השיעור המאושר שהוזן חייב להיות שיעור הנחה אפקטיבי על כל החשבון; ייתכנו מגבלות שטח וסיווג');
+  // A potentially eligible band is not an approved discount on a specific bill.
+  // The user may enter only the effective approved percentage of the whole bill.
+  const discount = i.approvedDiscount ?? 0;
+  const arnona = rate(i.arnonaAnnual ?? 0, 10000 - discount);
+  const discountBands = thresholds.map((maximum, index) => ({
+    maximum,
+    percent: [9000, 7000, 5000, 3000][index],
+    matches: estimatedDiscount !== null && index === band,
+    hypotheticalAnnualPayment: i.arnonaAnnual === null ? null :
+      rate(i.arnonaAnnual, 10000 - [9000, 7000, 5000, 3000][index]),
+  }));
   const net = profit + rent - i.rentExpenses - national - health - pension - incomeTax - arnona;
   const annual = {
     revenue,
@@ -218,8 +250,18 @@ export function calculateTax(input, rules = input.rules) {
     family: { children, childPoints, points, people },
     arnona: {
       assessedIncome,
+      jurisdictionMatches,
+      assessedAnnualIncome,
+      discountBands,
+      businessAnnual: assessmentComplete ? positive(arnonaBusiness) : null,
+      businessMonthly: businessMonthlyForArnona,
+      rentalMonthly: arnonaRentalMonthly,
+      householdOtherMonthly: i.householdOtherMonthly,
+      otherResidentsMonthly: i.otherResidentsMonthly,
+      assessmentComplete,
+      periodMatches: published2026ArnonaYearMatches,
       thresholds,
-      estimatedDiscount: jurisdictionMatches ? estimatedDiscount : null,
+      estimatedDiscount,
       discount,
       approved: i.approvedDiscount !== null,
       assessmentYear: i.assessmentYear,
@@ -230,7 +272,7 @@ export function calculateTax(input, rules = input.rules) {
       rentAllowedExpenses,
       comparisons: [
         { route: 'ordinary', tax: ordinary, valid: true },
-        { route: 'flat', tax: flat, valid: i.rentEligible },
+        { route: 'flat', tax: flat, valid: rentEligible },
       ],
     },
     trace: [
@@ -240,7 +282,7 @@ export function calculateTax(input, rules = input.rules) {
       { label: 'רווח פחות ניכוי פנסיה ופחות 52% ביטוח לאומי', value: taxable },
       { label: 'נקודות זיכוי × שווי נקודה + זיכוי פנסיה', value: credits },
       { label: 'מס הכנסה כולל המסלול שנבחר ויסף', value: incomeTax },
-      { label: 'ארנונה לפי החשבון לאחר הנחה', value: arnona },
+      { label: 'ארנונה לפי החשבון, לאחר הנחה אפקטיבית שהוזנה ואושרה בלבד', value: arnona },
       { label: 'רווח + שכירות פחות הוצאות שכירות, ביטוח, פנסיה, מס וארנונה', value: net },
     ],
     taxSteps: businessTax.steps,

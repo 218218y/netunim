@@ -27,8 +27,8 @@ export function createTaxStore({indexedDB=globalThis.indexedDB,decodeState}) {
     if(record.restoreRevision!=null&&(typeof record.restoreRevision!=='number'||!Number.isSafeInteger(record.restoreRevision)||record.restoreRevision<1))throw new Error('כוונת השחזור אינה תקינה');
     return {owner,name,version:record.version,base,draft:decodeState(name,record.draft),flight,restoreRevision:typeof record.restoreRevision==='number'?record.restoreRevision:null};
   }
-  const connection=createIndexedDbConnection('netunim-tax-calculator-v1',1,
-    db=>{if(!db.objectStoreNames.contains('documents'))db.createObjectStore('documents');},{indexedDB});
+  const connection=createIndexedDbConnection('netunim-tax-calculator-v1',2,
+    db=>{if(db.objectStoreNames.contains('documents'))db.deleteObjectStore('documents');db.createObjectStore('documents');},{indexedDB,stopOnVersionChange:true});
   /** @param {string} owner @param {string} name @param {((current:TaxRecord<D>|null)=>TaxRecord<D>)} [change] @returns {Promise<TaxRecord<D>|null>} */
   async function transaction(owner,name,change) {
     const db=await connection();

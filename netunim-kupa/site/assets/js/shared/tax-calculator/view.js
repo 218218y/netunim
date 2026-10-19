@@ -46,14 +46,14 @@ export const LABELS = {
   pensionCredit: 'זיכוי מס פנסיה שנתי לפי אישור מס',
   rentMonthly: 'שכירות חודשית מתקבלת',
   rentExpenses: 'הוצאות שכירות שנתיות מוכרות',
-  rentEligible: 'השכירות זכאית עקרונית לפטור או למסלול 10%',
   over60: 'גיל 60 ומעלה לצורך המסלול הרגיל',
   arnonaAnnual: 'ארנונה שנתית מלאה מחשבון הרשות',
-  rentPaidMonthly: 'שכירות חודשית שמשולמת למגורים',
-  householdOtherMonthly: 'הכנסות נוספות למשק הבית לחודש לפי מבחן הרשות',
+  rentPaidMonthly: 'שכירות מגורים ששולמה בשנת השומה לארנונה (לקיזוז כנגד השכרה באותה תקופה)',
+  arnonaRentReceivedMonthly: 'שכירות חודשית שהתקבלה בשנת השומה לארנונה (גם אם פטורה ממס)',
+  householdOtherMonthly: 'מלגות, תמיכות ושאר הכנסות נוספות לחודש בשנת מבחן הארנונה',
   otherResidentsMonthly: 'הכנסת בן/בת זוג ומתגוררים לחודש לאחר התאמות הרשות',
-  arnonaBusinessAnnual: 'הכנסה עסקית שנתית מהשומה לארנונה (ריק = תחזית מרווח העסק)',
-  approvedDiscount: 'הנחת ארנונה שאושרה בפועל, % (ריק = אומדן)',
+  arnonaBusinessAnnual: 'סך הכנסות מעסק בשומה השנתית, לפני ניכויים (חלקים 2–3)',
+  approvedDiscount: 'הנחה אפקטיבית מאושרת על כלל חשבון הארנונה, % (ריק = 0 לתשלום)',
   ageDate: 'תאריך ייחוס לגיל ולמגורים',
   assessmentYear: 'שנת הכנסה/שומה למבחן הארנונה',
   city: 'יישוב',
@@ -208,7 +208,7 @@ scope="row">
 <a
 href="#tax-breakdown"
 data-action="tax-audit">
-${label}</a>
+${label}${key === 'arnona' ? `<small> · אומדן הנחה: ${result.arnona.estimatedDiscount === null ? 'לא חושב' : 'עד ' + result.arnona.estimatedDiscount / 100 + '%'} · הוחלה: ${result.arnona.discount / 100}% ${result.arnona.approved ? '(לפי אישור שהוזן)' : '(אין אישור)'}</small>` : ''}</a>
 </th>
 <td>
 ${money(result.monthly[key])}</td>
@@ -220,10 +220,27 @@ ${money(result.annual[key])}</td>
   .join('')}</tbody>
 </table>
 </div>
+${arnonaBandMarkup(result)}
 <p
 class="tax-hint">
 מע״מ מוצג בנפרד מהנטו, משום שהמחזור וההוצאות מחושבים ללא מע״מ. ממוצע חודשי הוא תוצאה שנתית חלקי 12.</p>
 `;
+}
+/** The ceiling chart is a what-if reference, never an approved deduction. */
+export function arnonaBandMarkup(result) {
+  if (!result) return '';
+  const arnona = result.arnona;
+  if (!arnona.jurisdictionMatches) return '<p>טבלת הנחות בני ברק אינה מתאימה ליישוב שהוגדר; לא מוצגות מדרגות זכאות.</p>';
+  return `<section class="tax-arnona-bands" aria-label="מדרגות הנחה בארנונה">
+<h3>מדרגות הנחת ארנונה לשנת ${result.taxYear}</h3>
+<p>שנת ההכנסה שהוזנה: ${esc(arnona.assessmentYear ?? 'לא נבחרה')}${arnona.periodMatches ? '' : ' · אינה תקופת ההכנסה הנדרשת; אין אומדן זכאות'}.</p>
+<p>הכנסה חודשית ממוצעת: <strong>${arnona.assessedIncome === null ? 'לא ניתן לחשב — חסרים נתונים' : money(arnona.assessedIncome)}</strong>.
+זכאות משוערת: <strong>${arnona.estimatedDiscount === null ? 'לא ידועה' : 'עד ' + arnona.estimatedDiscount / 100 + '%'}</strong>.
+הנחה שהוחלה בפועל בחיוב: <strong>${arnona.discount / 100}%</strong>${arnona.approved ? ' (לפי נתון אישור שהוזן)' : ' (לא הוזן אישור)'}. </p>
+<div class="tax-table-wrap"><table class="tax-results"><thead><tr><th scope="col">הכנסה חודשית עד</th><th scope="col">הנחה מרבית לפי מדרגה</th><th scope="col">תשלום שנתי תיאורטי</th></tr></thead><tbody>
+${arnona.discountBands.map((entry) => `<tr${entry.matches ? ' class="tax-selected-band"' : ''}><td>${money(entry.maximum)}</td><td>עד ${entry.percent / 100}%${entry.matches ? ' — המדרגה המחושבת' : ''}</td><td>${entry.hypotheticalAnnualPayment === null ? 'חסר חיוב שנתי' : money(entry.hypotheticalAnnualPayment)}</td></tr>`).join('')}
+</tbody></table></div>
+<p class="tax-hint">הסכומים בטבלה להמחשה בלבד, לפני בדיקת זכאות, אישור הרשות ומגבלות שטח וסיווג; הם אינם סכומי התשלום בפועל. עבור עד חמש נפשות בבני ברק עשויה לחול מגבלת שטח של 100 מ״ר. התשלום שבסיכום מחושב רק לפי ההנחה האפקטיבית שאושרה והוזנה.</p></section>`;
 }
 export function inputMarkup(tab, i, result) {
   const f = (key, type = 'money', options = null) => field(key, LABELS[key], i[key], type, options);
@@ -261,45 +278,19 @@ ${f('pensionRequired', 'boolean')}${f('pensionActual')}${field(
 אפס בהפקדה בפועל משמעו שלא הופקד כסף; השארת השדה ריק מחשבת תחזית לפי מינימום חובה.</p>
 `;
   if (tab === 'rent')
-    return `<h2>
-שכירות</h2>
-<div
-class="tax-fields">
-${f('rentMonthly')}${f('rentExpenses')}${f('rentEligible', 'boolean')}${f('over60', 'boolean')}${field(
-      'rentRoute',
-      'מסלול',
-      i.rentRoute,
-      'text',
-      [
-        ['auto', 'אוטומטי — המס הנמוך'],
-        ['ordinary', 'פטור / רגיל'],
-        ['flat', '10% — בכפוף לזכאות'],
-        ['none', 'ללא — החרגה מהאומדן'],
-      ],
-    )}</div>
-${
-  result
-    ? `<p>
-המסלול שנבחר: <b>
-${result.rental.route === 'ordinary' ? 'פטור / רגיל' : result.rental.route === 'flat' ? '10%' : 'ללא'}</b>
-. ההשוואה כוללת את סך מס ההכנסה והיסף.</p>
-<div
-class="tax-fields">
-${result.rental.comparisons
-  .map(
-    (c) => `<div
-class="tax-mini">
-<b>
-${c.route === 'ordinary' ? 'פטור / רגיל' : '10%'}</b>
-<span>
-${c.valid ? money(c.tax) : 'אינו זכאי לפי הקלט'}</span>
-</div>
-`,
-  )
-  .join('')}</div>
-`
-    : ''
-}`;
+    return `<h2>שכירות למגורים ומס הכנסה</h2>
+<p>יש לבחור אפשרות אחת בלבד. בבחירת <strong>פטור עד לתקרה</strong> המערכת מחשבת פטור לשכירות למגורים העומדת בתנאי החוק, ומס רגיל רק על יתרה חייבת אם קיימת. אין צורך לסמן וי נוסף. בחירת 10% היא מסלול אחר, ללא פטור. בכל מקרה הכנסה משכירות נכללת בנפרד במבחן ההכנסה לארנונה של שנת השומה המתאימה.</p>
+<div class="tax-fields">
+${f('rentMonthly')}${f('rentExpenses')}${field('rentMode', 'סוג השכירות ומסלול המס', i.rentMode, 'text', [
+  ['other-ordinary', 'השכרה שאינה זכאית למסלולי המגורים — מס רגיל'],
+  ['residential-exemption', 'דירת מגורים — פטור עד התקרה ומס רגיל על היתרה'],
+  ['residential-flat', 'דירת מגורים — מסלול 10% על התקבולים'],
+  ['residential-auto', 'דירת מגורים — השוואה אוטומטית בין המסלולים'],
+  ['excluded', 'לא לחשב כרגע מס על השכירות — חישוב חסר'],
+], 'tax-input')}${f('over60', 'boolean')}</div>
+${i.rentMode === 'other-ordinary' && i.rentMonthly > 0 ? '<p class="tax-warning">נבחרה השכרה שאינה זכאית למסלולי המגורים. כדי לחשב פטור על דירה למגורים העומדת בתנאים, בחרו באפשרות ״דירת מגורים — פטור עד התקרה״.</p>' : ''}
+${result ? `<p>מסלול החישוב: <strong>${result.rental.route === 'ordinary' ? (i.rentMode !== 'other-ordinary' ? 'פטור עד לתקרה + מס רגיל על יתרה חייבת' : 'מס רגיל ללא פטור') : result.rental.route === 'flat' ? '10% ללא פטור' : result.rental.route === 'none' ? 'השכירות לא נכללה במס (חישוב חסר)' : 'ללא שכירות'}</strong>. הכנסה פטורה בחישוב מס הכנסה: ${money(result.rental.exemption)}. תוספת מס שכירות: ${money(result.annual.rentTax)}.</p>
+<div class="tax-fields">${result.rental.comparisons.map(c => `<div class="tax-mini"><b>${c.route === 'ordinary' ? 'מסלול פטור/רגיל' : 'מסלול 10%'}</b><span>${c.valid ? money(c.tax) : 'לא זכאי לפי הקלט'}</span></div>`).join('')}</div>` : ''}`;
   if (tab === 'family') {
     const p = i.profile,
       fp = (key, type = 'points', options = null) =>
@@ -366,21 +357,24 @@ data-action="tax-apply-profile">
 </div>
 <h3>
 נתוני מבחן ההכנסה</h3>
+<p>
+לפי הנחיות בני ברק, הנחה בארנונה לשנת ${i.taxYear} נבחנת בדרך כלל לפי הכנסות שנת ${i.taxYear - 1}. לצורך 2026 נדרשת הכנסה מ־2025. בשדה העסק הזינו את <strong>סך ההכנסות מחלקים 2–3 בשומה, לפני ניכויי חלק 5</strong>, ולא את ההכנסה החייבת אחרי ניכויים. אין להשתמש בהכנסות משנת 2024 כתחליף לשנת 2025 ללא אסמכתה מתאימה. מלאו בנפרד את הכנסות שנת המבחן, גם אם השכירות פטורה ממס הכנסה. הזינו אפס מפורש אם לא הייתה הכנסה משכירות. אין להעביר לכאן אוטומטית את מחזור המס של ${i.taxYear}.</p>
 <div
 class="tax-fields">
-${f('arnonaAnnual')}${f('arnonaBusinessAnnual')}${f('rentPaidMonthly')}${f('householdOtherMonthly')}${f('otherResidentsMonthly')}${f('approvedDiscount', 'percent')}</div>
+${f('arnonaAnnual')}${f('arnonaBusinessAnnual')}${f('arnonaRentReceivedMonthly')}${f('rentPaidMonthly')}${f('householdOtherMonthly')}${f('otherResidentsMonthly')}${f('approvedDiscount', 'percent')}</div>
 <p>
-הכנסות נוספות מוזנות לאחר התאמות לפי הוראות הרשות, לרבות הכנסות ילדים וקצבאות שאינן נספרות. ההנחה המשוערת היא שיעור מרבי, כפוף לאישור הרשות.</p>
+לדוגמה, מלגת כולל של 1,000 ₪ בחודש מוזנת בשדה ״מלגות, תמיכות ושאר הכנסות״. הכנסות בני הבית מוזנות לפי שנת השומה שנבחרה, לאחר החריגים לפי הוראות הרשות. בהשכרת דירה ושכירת דירה אחרת למגורים במקביל, ניתן לקזז מההכנסה משכירות עד גובה השכירות ששולמה. הנחה בטבלת זכאות היא שיעור מרבי ולא אישור; לתשלום מחושבת הנחה רק מהשיעור האפקטיבי המאושר שהזנתם. אם ההנחה מוגבלת בשטח, יש לחשב שיעור אפקטיבי ביחס לחשבון כולו.</p>
 ${
   result
     ? `<div
 class="tax-mini">
 הכנסה חודשית למבחן: <b>
-${money(result.arnona.assessedIncome)}</b>
+${result.arnona.assessedIncome === null ? 'חסרים נתוני שנת השומה' : money(result.arnona.assessedIncome)}</b>${result.arnona.assessedAnnualIncome === null ? '' : ` · סה״כ שנתי: ${money(result.arnona.assessedAnnualIncome)}`}
+${result.arnona.assessedIncome !== null ? ` · עסק: ${money(result.arnona.businessMonthly)} · שכירות לאחר קיזוז: ${money(result.arnona.rentalMonthly)} · הכנסות אחרות: ${money(result.arnona.householdOtherMonthly + result.arnona.otherResidentsMonthly)}` : ''}
  · הנחה מרבית: <b>
 ${result.arnona.estimatedDiscount === null ? 'לא ידועה' : result.arnona.estimatedDiscount / 100 + '%'}</b>
  · הנחה שהוחלה: <b>
-${result.arnona.discount / 100}% ${result.arnona.approved ? 'מאושרת לפי הזנה' : 'משוערת'}</b>
+${result.arnona.discount / 100}% ${result.arnona.approved ? 'אפקטיבית לפי הזנת אישור' : 'ללא הנחה מאושרת'}</b>
 </div>
 `
     : ''

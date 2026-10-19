@@ -27,6 +27,10 @@
     {
       "version": "20261019041407",
       "name": "tax_calculator"
+    },
+    {
+      "version": "20261019064633",
+      "name": "tax_arnona_assessment_income"
     }
   ],
   "status": "Canonical reviewed migrations plus an authenticated Production baseline. Static uploads verify live SQL and schema, deriving an exact pending upgrade locally when the saved receipt is older. A new committed receipt is optional after a matching live verification.",

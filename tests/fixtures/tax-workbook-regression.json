@@ -23,13 +23,12 @@
         "pensionCredit": 0,
         "rentMonthly": 600000,
         "rentExpenses": 120000,
-        "rentRoute": "auto",
         "over60": false,
-        "rentEligible": true,
         "arnonaAnnual": 600000,
         "rentPaidMonthly": 400000,
         "householdOtherMonthly": 50000,
-        "otherResidentsMonthly": 0
+        "otherResidentsMonthly": 0,
+        "rentMode": "residential-auto"
       },
       "expected": {
         "revenue": 18000000,
@@ -68,13 +67,12 @@
         "pensionCredit": 0,
         "rentMonthly": 400000,
         "rentExpenses": 0,
-        "rentRoute": "auto",
         "over60": false,
-        "rentEligible": true,
         "arnonaAnnual": 500000,
         "rentPaidMonthly": 0,
         "householdOtherMonthly": 0,
-        "otherResidentsMonthly": 0
+        "otherResidentsMonthly": 0,
+        "rentMode": "residential-auto"
       },
       "expected": {
         "revenue": 30000000,
@@ -113,13 +111,12 @@
         "pensionCredit": 0,
         "rentMonthly": 2000000,
         "rentExpenses": 600000,
-        "rentRoute": "flat",
         "over60": false,
-        "rentEligible": true,
         "arnonaAnnual": 800000,
         "rentPaidMonthly": 0,
         "householdOtherMonthly": 0,
-        "otherResidentsMonthly": 0
+        "otherResidentsMonthly": 0,
+        "rentMode": "residential-flat"
       },
       "expected": {
         "revenue": 100000000,
@@ -158,13 +155,12 @@
         "pensionCredit": 100000,
         "rentMonthly": 1200000,
         "rentExpenses": 1000000,
-        "rentRoute": "ordinary",
         "over60": true,
-        "rentEligible": true,
         "arnonaAnnual": 700000,
         "rentPaidMonthly": 0,
         "householdOtherMonthly": 0,
-        "otherResidentsMonthly": 0
+        "otherResidentsMonthly": 0,
+        "rentMode": "residential-exemption"
       },
       "expected": {
         "revenue": 50000000,
