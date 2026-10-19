@@ -24,7 +24,15 @@ FLOW = r"""(async()=>{
  check(document.querySelector('[data-action="set-kupa-section"][data-click-arg0="summary"]').textContent==='מאזן ודוחות','tab label');
  check(document.querySelector('.kupa-hero [data-action="tax-open"]'),'calculator not in heading');
  check(document.querySelector('.forecast-note').textContent.includes('לא חישוב רווח חשבונאי'),'cashflow forecast lost');
- click('morning-report-toggle');await wait(()=>document.querySelector('#morningReportBody'));
+ const initial=document.querySelector('.morning-report-trigger');
+ const heading=()=>({subtitle:document.querySelector('.morning-report-trigger small')?.textContent,arrow:document.querySelector('.morning-report-trigger>span:last-child')?.textContent});
+ const initialHeading=heading();
+ check(initial.getAttribute('aria-expanded')==='false'&&initialHeading.arrow==='⌄','initial expand arrow missing');
+ check(initialHeading.subtitle==='תקבולים לפי אמצעי תשלום · רווח והפסד · מע״מ','initial report subtitle missing');
+ check(calls.length===0&&!document.querySelector('.morning-report-controls'),'initial header eagerly loaded reports');
+ click('morning-report-toggle');await wait(()=>document.querySelector('.morning-report-controls'));
+ click('morning-report-toggle');check(JSON.stringify(heading())===JSON.stringify(initialHeading),'initial and loaded collapsed headings differ');
+ click('morning-report-toggle');
  check(document.querySelector('[data-action="morning-report-period"][data-click-arg0="bimonth"]').getAttribute('aria-pressed')==='true','bimonth default missing');
  click('morning-report-period','year');click('morning-report-load');await wait(()=>document.querySelector('.morning-report-cards'));
  check(calls.filter(x=>x.source==='documents').length===2,'not all document pages read');

@@ -40,7 +40,7 @@ function createLazyMorningReports(ports, notify) {
     if (feature) return feature.markup();
     return `<section class="morning-reports" data-morning-reports><div class="morning-report-heading">
       <button type="button" class="morning-report-trigger" data-action="morning-report-toggle" aria-expanded="false">
-      <b>דוחות מורנינג</b></button>
+      <span><b>דוחות מורנינג</b><small>תקבולים לפי אמצעי תשלום · רווח והפסד · מע״מ</small></span><span aria-hidden="true">⌄</span></button>
       </div></section>`;
   }
   function ensure() {
