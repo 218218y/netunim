@@ -152,7 +152,10 @@ export function createMorningReports({ request, captureRead, subscribeAccountSco
       <td data-label="סוג / מספר">${row.kind === 'expense' ? 'הוצאה' : esc(REPORT_TYPES[row.type] || row.type)} ${esc(row.number)}${row.kind === 'expense' && row.status === 30 ? '<small>נערכה מחדש · נכללת בחישוב</small>' : row.status === 4 ? '<small>בוטל; נכלל לצד מסמך הביטול</small>' : ''}</td>
       <td data-label="לקוח / ספק">${esc(row.name)}</td>
       <td data-label="סכום כולל מע״מ" class="morning-report-amount">${esc(amount(row.grossCents))}</td>
-      <td data-label="פרטים ומסמך"><div class="morning-report-row-actions"><button type="button" class="btn small" data-action="morning-report-record" data-click-arg0="${esc(row.id)}" aria-expanded="${expandedRecord === row.id}">${expandedRecord === row.id ? 'סגירת פרטים' : 'כל הפרטים'}</button>${row.kind === 'document' ? `<button type="button" class="btn small" data-action="morning-report-pdf" data-click-arg0="${esc(row.id)}">צפייה ב־PDF</button>` : '<a class="btn small" href="https://app.greeninvoice.co.il" target="_blank" rel="noopener noreferrer">במורנינג ↗</a>'}</div></td>
+      <td data-label="פרטים ומסמך"><div class="morning-report-row-actions">
+      <button type="button" class="btn small" data-action="morning-report-record" data-click-arg0="${esc(row.id)}" aria-expanded="${expandedRecord === row.id}">${expandedRecord === row.id ? 'סגירת פרטים' : 'כל הפרטים'}</button>
+      ${row.kind === 'document' ? `<button type="button" class="btn small" data-action="morning-report-pdf" data-click-arg0="${esc(row.id)}">צפייה ב־PDF</button>` : '<a class="btn small" href="https://app.greeninvoice.co.il" target="_blank" rel="noopener noreferrer">במורנינג ↗</a>'}
+      </div></td>
       </tr>${expandedRecord === row.id ? recordFields(row) : ''}`).join('') ||
             '<tr><td colspan="5">אין מסמכים בתקופה זו.</td></tr>'}</tbody>
       </table>
@@ -199,7 +202,12 @@ export function createMorningReports({ request, captureRead, subscribeAccountSco
       </div>${r.issues.length ? `<div class="morning-report-warning" role="status">
       <b>הדוח דורש השלמה</b>
       <ul>${r.issues.map(item => `<li>${esc(item.label)}${item.count > 1 ? ` (${item.count})` : ''}</li>`).join('')}</ul>רווח והפסד אינו מחושב כאשר חסרים נתוני הכנסות או הוצאות.</div>` : ''}
-      ${r.notices.length ? `<div class="morning-report-notice" role="status"><b>נתונים עדכניים · ${r.notices[0].count} הוצאות נערכו מחדש</b><p>ההוצאות נכללות ברווח ובהוצאות, ובסיכום המע״מ כאשר סכום התשומות המותר זמין, לפי חודש הדיווח והסכומים העדכניים במורנינג. הסטטוס אינו מציין שחסר סכום. יש להשוות מול הדוח הרשמי לתקופה, במיוחד אם כבר דווחה: הסכומים העדכניים עשויים להיות שונים מהדוח שהופק קודם.</p><button type="button" class="btn small" data-action="morning-report-detail" data-click-arg0="edited-expenses">הצגת ההוצאות שנערכו מחדש (${r.notices[0].count})</button> <a href="${OFFICIAL}" target="_blank" rel="noopener noreferrer">לבדיקה מול הדוח במורנינג ↗</a></div>` : ''}
+      ${r.notices.length ? `<div class="morning-report-notice" role="status">
+      <b>נתונים עדכניים · ${r.notices[0].count} הוצאות נערכו מחדש</b>
+      <p>ההוצאות נכללות ברווח ובהוצאות, ובסיכום המע״מ כאשר סכום התשומות המותר זמין, לפי חודש הדיווח והסכומים העדכניים במורנינג. הסטטוס אינו מציין שחסר סכום.
+      יש להשוות מול הדוח הרשמי לתקופה, במיוחד אם כבר דווחה: הסכומים העדכניים עשויים להיות שונים מהדוח שהופק קודם.</p>
+      <button type="button" class="btn small" data-action="morning-report-detail" data-click-arg0="edited-expenses">הצגת ההוצאות שנערכו מחדש (${r.notices[0].count})</button>
+      <a href="${OFFICIAL}" target="_blank" rel="noopener noreferrer">לבדיקה מול הדוח במורנינג ↗</a></div>` : ''}
       <div class="morning-report-cards">${card('הכנסות לפני מע״מ', r.incomeComplete ? r.total.incomeCents : null, 'לפי מסמכי הכנסה')}${
         card('הוצאות לפני מע״מ', r.expensesComplete ? r.total.expensesCents : null, 'לפי תאריך הדיווח במורנינג')}${
         card('רווח / הפסד ניהולי', r.profitCents, 'לפני התאמות מס ופחת')}${
