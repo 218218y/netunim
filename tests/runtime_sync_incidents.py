@@ -4,6 +4,7 @@ The fixture registry tests transport/UI; PostgreSQL semantics have their own sui
 import http.server
 import json
 import threading
+import sys
 from browser_harness import BrowserSession, ROOT, _free_port, _RuntimeHTTPServer
 
 OWNER='11111111-1111-4111-8111-111111111111'
@@ -88,6 +89,49 @@ SETUP=r"""(async()=>{
   await monitor.start();
   return monitor.view;
 })()"""
+
+
+def check_visibility_and_settings(browser, app):
+    assert browser.evaluate("""(async()=>{
+      await (await import('./assets/js/main.js')).appReady;
+      const {createSyncIncidentUi}=await import('./assets/js/shared/sync-incident-ui.js');
+      let name='Office',refreshes=0;
+      const healthy={status:'no_reported_incidents',incidents:[],localError:false};
+      const ui=createSyncIncidentUi({clientId:'test',label:()=>name,saveLabel:value=>{name=value},refresh:async()=>{refreshes++}});
+      const root=document.querySelector('.sync-incidents:last-child'),check=(ok,message)=>{if(!ok)throw Error(message)};
+      try{
+        ui.update(healthy);check(root.hidden,'named healthy device must not have a floating control');
+        name='';ui.update(healthy);check(!root.hidden,'unnamed device needs a naming prompt');
+        ui.open();root.querySelector('[data-incident-label]').value='Office';
+        root.querySelector('[data-incident-action=label]').click();await Promise.resolve();await Promise.resolve();
+        check(name==='Office'&&root.hidden,'saving the name must immediately hide the healthy control');
+        ui.update({...healthy,status:'unavailable'});check(!root.hidden,'monitor read errors must remain visible');
+        ui.update({...healthy,localError:true});check(!root.hidden,'report errors must remain visible');
+        ui.open();ui.update(healthy);check(root.hidden,'recovery hides even an opened floating control');
+        ui.update({...healthy,status:'signed_out'});check(root.hidden,'signed out floating control stays hidden');
+        check(refreshes===1,'naming must not duplicate refresh requests');
+      }finally{ui.dispose()}
+      const container=document.createElement('div');document.body.append(container);
+      const settings=createSyncIncidentUi({container,inline:true,clientId:'test',label:()=>name,saveLabel:value=>{name=value},refresh:async()=>{}});
+      try{
+        settings.update({...healthy,status:'signed_out'});check(!container.firstChild.hidden,'settings remain available before login');
+        const input=container.querySelector('[data-incident-label]');name='Updated office';settings.update(healthy);
+        check(input.value===name,'an unchanged input follows the saved device name');
+        input.value='Unsaved draft';input.focus();input.setSelectionRange(2,6);settings.update({...healthy,localError:true});
+        check(container.querySelector('[data-incident-label]')===input&&input.value==='Unsaved draft'&&document.activeElement===input&&input.selectionStart===2&&input.selectionEnd===6,'polling must preserve the inline draft, focus and caret');
+      }finally{settings.dispose();container.remove()}
+      return true;
+    })()""")
+    selector = '[data-view="settings"]' if app == 'orders' else '[data-page="settings"]'
+    assert browser.evaluate("""(async()=>{
+      document.querySelector(__SELECTOR__).click();
+      for(let n=0;n<100&&!document.querySelector('[data-sync-incident-settings] .sync-incidents');n++)await new Promise(resolve=>setTimeout(resolve,20));
+      const root=document.querySelector('[data-sync-incident-settings] .sync-incidents');
+      if(!root||root.hidden||getComputedStyle(root).position==='fixed')throw Error('settings must contain the inline device controls');
+      const input=root.querySelector('[data-incident-label]');input.value='Settings office';root.querySelector('[data-incident-action=label]').click();
+      await Promise.resolve();
+      return localStorage.getItem('netunim.sync.device-label.v1')==='Settings office'&&!root.hidden;
+    })()""".replace('__SELECTOR__', json.dumps(selector)))
 
 
 def run():
@@ -195,10 +239,18 @@ def run():
           let sent=false;try{await closedSheetProof.withRequestScope(()=>{sent=true;return Promise.resolve()})}catch(error){if(error.message!=='sync_incident_observation_changed')throw error}
           return !sent&&!await closedSheetProof.confirmCurrent();
         })()""")
+        check_visibility_and_settings(orders, 'orders')
+        check_visibility_and_settings(kupa, 'kupa')
         assert not orders.drain_serious_errors()
         assert not kupa.drain_serious_errors()
     print('PASS independent orders/kupa profiles: cross-site warnings, durable reload, native IDB races, domain ACK isolation, UI acknowledgement and closed-sheet detection')
 
 
 if __name__=='__main__':
-    run()
+    if '--ui-only' in sys.argv:
+        for app in ('orders', 'kupa'):
+            with IncidentBrowser(app, Registry()) as browser:
+                check_visibility_and_settings(browser, app)
+        print('PASS sync incident visibility and settings in both applications')
+    else:
+        run()

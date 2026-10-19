@@ -445,6 +445,7 @@ checks.bindView({
 });
 
 const uiSettings=createUiSettings({
+  mountSyncIncidents:container=>void syncIncidentsReady.then(feature=>{if(container.isConnected)feature?.mountSettings(container)}),
   model,
   session,
   ui,
@@ -641,7 +642,7 @@ uiEvents.bindActionEvents(document.getElementById('modal'),uiActions);
 uiGlobalSearch.bind();
 dashboard.runtime.start();
 startupMark('composition-end');
-void import('./shared/sync-incident-feature.js').then(({createSyncIncidentFeature})=>createSyncIncidentFeature({site:'kupa',accountScope:cloudAuth.getAccountScope,subscribeAccountScope:cloudAuth.subscribeAccountScope,
+const syncIncidentsReady=import('./shared/sync-incident-feature.js').then(({createSyncIncidentFeature})=>createSyncIncidentFeature({site:'kupa',accountScope:cloudAuth.getAccountScope,subscribeAccountScope:cloudAuth.subscribeAccountScope,
   confirmReview:message=>uiModal.confirmDialog('טיפול ידני בהתראת סנכרון',message,{confirmText:'סימון כטופל ללא אימות',tone:'danger'}),
   primary:()=>tab.primaryTab,request:cloudAuth.supaRest,
   domains:[
