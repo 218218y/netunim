@@ -17,7 +17,7 @@ SETUP=r"""(async()=>{
     }
     const url=new URL('https://test'+path),owner=url.searchParams.get('owner_id')?.slice(3),name=url.searchParams.get('document_name')?.slice(3);
     if(path.includes('tax_calculator_history'))return new Response(JSON.stringify(history.filter(r=>r.owner_id===owner&&r.document_name===name).reverse().slice(0,40)));
-    if(!name)return new Response(JSON.stringify([...cloud.values()].filter(r=>r.owner_id===owner).map(r=>({document_name:r.document_name,revision:r.revision}))));
+    if(!name){if(taxFixture.catalogGate){taxFixture.catalogWaiting=true;await taxFixture.catalogGate;taxFixture.catalogWaiting=false;}return new Response(JSON.stringify([...cloud.values()].filter(r=>r.owner_id===owner).map(r=>({document_name:r.document_name,revision:r.revision}))));}
     const row=cloud.get(owner+'/'+name);return new Response(JSON.stringify(row?[row]:[]));
   };
   cloudAuth.getAccountScope=()=>({...scope});cloudAuth.subscribeAccountScope=fn=>{listeners.add(fn);return ()=>listeners.delete(fn);};
@@ -87,6 +87,61 @@ for app in ['orders','kupa']:
         if app=='orders':
             image=browser.call('Page.captureScreenshot',{'format':'png','captureBeyondViewport':False})['result']['data']
             target=ROOT/'.work/tax-calculator-desktop.png';target.write_bytes(base64.b64decode(image))
+        # Real keyboard input used to reject the first year digit and replace the
+        # whole page, erasing focus/scroll. Exercise actual delegated events.
+        browser.evaluate("taxCalculator.command('tax-tab',{dataset:{tab:'family'}})")
+        # Finish a slow opening request while the first year digit is staged.
+        browser.evaluate("(()=>{taxFixture.catalogGate=new Promise(resolve=>taxFixture.releaseCatalog=resolve);window.taxReload=taxCalculator.command('tax-retry');return true;})()")
+        browser.evaluate("(async()=>{for(let n=0;n<100&&!taxFixture.catalogWaiting;n++)await new Promise(r=>setTimeout(r,10));if(!taxFixture.catalogWaiting)throw Error('catalog request did not start');return true;})()")
+        def begin_edit(path):
+            return browser.evaluate("""(()=>{const e=document.querySelector('[data-field='+JSON.stringify(PATH)+']');e.scrollIntoView({block:'center'});e.focus();e.select();window.taxTypingTarget=e;const s=APP==='orders'?document.querySelector('.tax-page'):document.scrollingElement;window.taxTypingScroll=s.scrollTop;window.taxTypingTop=e.getBoundingClientRect().top;return {scroll:s.scrollTop,value:e.value};})()""".replace('PATH',json.dumps(path)).replace('APP',json.dumps(app)))
+        def edited_value(expected):
+            value=browser.evaluate("""(async()=>{await new Promise(r=>setTimeout(r,35));const e=window.taxTypingTarget,s=APP==='orders'?document.querySelector('.tax-page'):document.scrollingElement;return {connected:e.isConnected,focused:document.activeElement===e,value:e.value,scroll:s.scrollTop,before:window.taxTypingScroll,top:e.getBoundingClientRect().top,beforeTop:window.taxTypingTop,notice:document.querySelector('[data-tax-message]').textContent};})()""".replace('APP',json.dumps(app)))
+            assert value['connected'] and value['focused'] and value['value']==expected,value
+            # Browser scroll anchoring may adjust scrollTop when an error appears
+            # above the viewport; the input's visible position must stay fixed.
+            assert abs(value['top']-value['beforeTop'])<=2,value
+            return value
+        begin_edit('assessmentYear')
+        for value in ['2','20','202','2025']:
+            browser.call('Input.insertText',{'text':value[-1]})
+            assert edited_value(value)['notice']=='',value
+            if value=='2':
+                state=browser.evaluate("(async()=>{const {createTaxStore}=await import('./assets/js/shared/tax-calculator/store.js');const {assertDocument}=await import('./assets/js/shared/tax-calculator/contracts.js');const s=createTaxStore({decodeState:assertDocument});const row=await s.read(taxFixture.scope.owner,'year/2026');await s.close();return row.draft.assessmentYear;})()")
+                assert state is None,'partial year reached durable data'
+                browser.evaluate("(async()=>{taxFixture.releaseCatalog();await window.taxReload;taxFixture.catalogGate=null;return true;})()")
+                edited_value('2')
+                browser.evaluate("(()=>{const e=window.taxTypingTarget;e.blur();e.focus();return e.getAttribute('aria-invalid');})()")
+                assert browser.evaluate("window.taxTypingTarget.getAttribute('aria-invalid')")=='true'
+                edited_value('2')
+        browser.evaluate("taxCalculator.command('tax-save')")
+        assert browser.evaluate("taxFixture.cloud.get(taxFixture.scope.owner+'/year/2026').state.schema")==2
+        begin_edit('householdOtherMonthly')
+        browser.call('Input.dispatchKeyEvent',{'type':'keyDown','key':'Backspace','code':'Backspace','windowsVirtualKeyCode':8})
+        browser.call('Input.dispatchKeyEvent',{'type':'keyUp','key':'Backspace','code':'Backspace','windowsVirtualKeyCode':8})
+        edited_value('')
+        browser.call('Input.insertText',{'text':'1000'})
+        edited_value('1000')
+        browser.evaluate("(async()=>{taxFixture.online=false;await taxCalculator.command('tax-sync');})()")
+        assert edited_value('1000')['notice'],'a failed save must be visible without rebuilding inputs'
+        browser.evaluate("(async()=>{taxFixture.online=true;await taxCalculator.command('tax-sync');})()")
+        assert edited_value('1000')['notice']==''
+        # Manual zero is distinct from returning to the derived value.
+        begin_edit('arnonaBusinessAnnual')
+        browser.call('Input.insertText',{'text':'0'})
+        edited_value('0')
+        browser.evaluate("taxCalculator.command('tax-save')")
+        assert browser.evaluate("(async()=>{const {createTaxStore}=await import('./assets/js/shared/tax-calculator/store.js');const {assertDocument}=await import('./assets/js/shared/tax-calculator/contracts.js');const s=createTaxStore({decodeState:assertDocument});const row=await s.read(taxFixture.scope.owner,'year/2026');await s.close();return row.draft.arnonaBusinessAnnual;})()")==0
+        browser.evaluate("taxCalculator.command('tax-reset-automatic',{dataset:{field:'arnonaBusinessAnnual'}})")
+        edited_value('180000')
+        browser.evaluate("document.querySelector('[data-field=arnonaBusinessAnnual]').blur()")
+        browser.evaluate("taxCalculator.command('tax-tab',{dataset:{tab:'rules'}})")
+        browser.evaluate("document.querySelector('.tax-rule').open=true")
+        begin_edit('groups.vat.year')
+        for value in ['2','20','202','2026']:
+            browser.call('Input.insertText',{'text':value[-1]})
+            edited_value(value)
+        browser.evaluate("document.querySelector('[data-field=\"groups.vat.year\"]').blur()")
         # Native IDB opened by a fresh synchronization owner recovers offline data.
         recovered=browser.evaluate("""(async()=>{const {createTaxSync}=await import('./assets/js/shared/tax-calculator/sync.js');const {createAnnual}=await import('./assets/js/shared/tax-calculator/contracts.js');const s=createTaxSync({accountScope:()=>({...taxFixture.scope}),request:async()=>{throw Error('offline')}});const value=await s.open('year/2026',createAnnual(2026));return {revenue:value.revenue,arnona:value.arnonaAnnual,children:value.profile.children.length};})()""")
         assert recovered=={'revenue':18000000,'arnona':600000,'children':1},recovered

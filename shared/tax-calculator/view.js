@@ -52,10 +52,10 @@ export const LABELS = {
   arnonaRentReceivedMonthly: 'שכירות חודשית שהתקבלה בשנת השומה לארנונה (גם אם פטורה ממס)',
   householdOtherMonthly: 'מלגות, תמיכות ושאר הכנסות נוספות לחודש בשנת מבחן הארנונה',
   otherResidentsMonthly: 'הכנסת בן/בת זוג ומתגוררים לחודש לאחר התאמות הרשות',
-  arnonaBusinessAnnual: 'סך הכנסות מעסק בשומה השנתית, לפני ניכויים (חלקים 2–3)',
+  arnonaBusinessAnnual: 'בסיס העסק לארנונה, לפני ניכויים אישיים (אפשר להזין סכום מהשומה)',
   approvedDiscount: 'הנחה אפקטיבית מאושרת על כלל חשבון הארנונה, % (ריק = 0 לתשלום)',
   ageDate: 'תאריך ייחוס לגיל ולמגורים',
-  assessmentYear: 'שנת הכנסה/שומה למבחן הארנונה',
+  assessmentYear: 'שנת ההכנסה בשומה · ארבע ספרות (ריק = תחזית)',
   city: 'יישוב',
   basePoints: 'נקודות זיכוי בסיסיות',
   extraPoints: 'נקודות נוספות לאחר בדיקת זכאות',
@@ -80,7 +80,7 @@ export const RESULT_LABELS = {
   businessTax: 'מס עסק כולל יסף',
   rentTax: 'תוספת מס בשל השכירות',
   incomeTax: 'מס הכנסה כולל שכירות ויסף',
-  arnona: 'ארנונה לתשלום',
+  arnona: 'ארנונה לפי הנחה מאושרת',
   net: 'נטו לאחר מסים, פנסיה וארנונה',
 };
 export const RATE_LABELS = {
@@ -115,7 +115,7 @@ export const RATE_LABELS = {
 const get = (object, path) => path.split('.').reduce((v, k) => v?.[k], object);
 export function field(path, label, value, type = 'money', options = null, action = 'tax-input') {
   const id = 'tax-' + path.replaceAll('.', '-'),
-    attrs = `id="${esc(id)}" data-field="${esc(path)}" data-type="${type}" data-input="${action}" data-change="${action === 'tax-input' ? 'tax-save' : 'tax-rule-change'}"`;
+    attrs = `id="${esc(id)}" aria-describedby="${esc(id)}-error" data-field="${esc(path)}" data-type="${type}" data-input="${action}" data-change="${action === 'tax-input' ? 'tax-save' : 'tax-rule-change'}"`;
   const control = options
     ? `<select
 ${attrs}>
@@ -137,8 +137,9 @@ ${value ? 'checked' : ''}>
 `
       : `<input
 ${attrs}
-type="${['date', 'text'].includes(type) ? 'text' : 'number'}"
+type="${['date', 'year', 'text'].includes(type) ? 'text' : 'number'}"
 ${type === 'date' ? 'inputmode="numeric" maxlength="10" placeholder="יום/חודש/שנה" dir="ltr"' : ''}
+${type === 'year' ? 'inputmode="numeric" maxlength="4" placeholder="למשל 2025" dir="ltr"' : ''}
 ${['money', 'percent', 'points'].includes(type) ? 'step="0.01" inputmode="decimal"' : type === 'integer' ? 'step="1"' : ''}
 ${!['date', 'text'].includes(type) ? 'min="0"' : ''}
 value="${esc(value === null ? '' : type === 'date' ? displayDate(value) : type === 'money' || type === 'percent' ? value / 100 : value)}"
@@ -149,7 +150,7 @@ class="tax-field ${type === 'boolean' ? 'tax-check' : ''}"
 for="${id}">
 <span>
 ${esc(label)}</span>
-${control}</label>
+${control}<small id="${esc(id)}-error" data-tax-field-error class="tax-field-error" hidden></small></label>
 `;
 }
 export function summaryMarkup(result) {
@@ -208,7 +209,7 @@ scope="row">
 <a
 href="#tax-breakdown"
 data-action="tax-audit">
-${label}${key === 'arnona' ? `<small> · אומדן הנחה: ${result.arnona.estimatedDiscount === null ? 'לא חושב' : 'עד ' + result.arnona.estimatedDiscount / 100 + '%'} · הוחלה: ${result.arnona.discount / 100}% ${result.arnona.approved ? '(לפי אישור שהוזן)' : '(אין אישור)'}</small>` : ''}</a>
+${label}${key === 'arnona' ? `<small> · ${result.arnona.basis === 'forecast' ? 'תחזית הנחה' : 'אומדן הנחה'}: ${result.arnona.estimatedDiscount === null ? 'לא חושב' : 'עד ' + result.arnona.estimatedDiscount / 100 + '%'} · הוחלה: ${result.arnona.discount / 100}% ${result.arnona.approved ? '(לפי אישור שהוזן)' : '(אין אישור)'}</small>` : ''}</a>
 </th>
 <td>
 ${money(result.monthly[key])}</td>
@@ -233,14 +234,34 @@ export function arnonaBandMarkup(result) {
   if (!arnona.jurisdictionMatches) return '<p>טבלת הנחות בני ברק אינה מתאימה ליישוב שהוגדר; לא מוצגות מדרגות זכאות.</p>';
   return `<section class="tax-arnona-bands" aria-label="מדרגות הנחה בארנונה">
 <h3>מדרגות הנחת ארנונה לשנת ${result.taxYear}</h3>
-<p>שנת ההכנסה שהוזנה: ${esc(arnona.assessmentYear ?? 'לא נבחרה')}${arnona.periodMatches ? '' : ' · אינה תקופת ההכנסה הנדרשת; אין אומדן זכאות'}.</p>
-<p>הכנסה חודשית ממוצעת: <strong>${arnona.assessedIncome === null ? 'לא ניתן לחשב — חסרים נתונים' : money(arnona.assessedIncome)}</strong>.
-זכאות משוערת: <strong>${arnona.estimatedDiscount === null ? 'לא ידועה' : 'עד ' + arnona.estimatedDiscount / 100 + '%'}</strong>.
-הנחה שהוחלה בפועל בחיוב: <strong>${arnona.discount / 100}%</strong>${arnona.approved ? ' (לפי נתון אישור שהוזן)' : ' (לא הוזן אישור)'}. </p>
+${arnonaResultsMarkup(result)}
 <div class="tax-table-wrap"><table class="tax-results"><thead><tr><th scope="col">הכנסה חודשית עד</th><th scope="col">הנחה מרבית לפי מדרגה</th><th scope="col">תשלום שנתי תיאורטי</th></tr></thead><tbody>
 ${arnona.discountBands.map((entry) => `<tr${entry.matches ? ' class="tax-selected-band"' : ''}><td>${money(entry.maximum)}</td><td>עד ${entry.percent / 100}%${entry.matches ? ' — המדרגה המחושבת' : ''}</td><td>${entry.hypotheticalAnnualPayment === null ? 'חסר חיוב שנתי' : money(entry.hypotheticalAnnualPayment)}</td></tr>`).join('')}
 </tbody></table></div>
 <p class="tax-hint">הסכומים בטבלה להמחשה בלבד, לפני בדיקת זכאות, אישור הרשות ומגבלות שטח וסיווג; הם אינם סכומי התשלום בפועל. עבור עד חמש נפשות בבני ברק עשויה לחול מגבלת שטח של 100 מ״ר. התשלום שבסיכום מחושב רק לפי ההנחה האפקטיבית שאושרה והוזנה.</p></section>`;
+}
+export function arnonaResultsMarkup(result) {
+  const a = result.arnona;
+  return `<div class="tax-arnona-outcome" aria-live="polite">
+<p><b>${a.basis === 'assessment' ? 'אומדן לפי נתוני השומה' : a.basis === 'forecast' ? 'תחזית הנחת ארנונה' : 'נדרשים נתוני הכנסה לחישוב'}</b>
+ · שנת הכנסה שהוזנה: ${esc(a.assessmentYear ?? 'טרם נבחרה')}${a.requiredAssessmentYear === null ? '' : ` · התקופה הנדרשת בכללי ${result.taxYear}: ${a.requiredAssessmentYear}`}</p>
+<div class="tax-arnona-values">
+<span>הכנסה חודשית למבחן <b>${a.assessedIncome === null ? 'חסר בסיס הכנסה עסקית' : money(a.assessedIncome)}</b>${a.assessedAnnualIncome === null ? '' : `<small>${money(a.assessedAnnualIncome)} לשנה</small>`}</span>
+<span>הנחה מרבית ${a.basis === 'forecast' ? 'בתחזית' : 'משוערת'} <b>${a.estimatedDiscount === null ? 'לא ניתן לחשב' : 'עד ' + a.estimatedDiscount / 100 + '%'}</b></span>
+<span>ארנונה לאחר הנחה — תחזית בלבד <b>${a.estimatedAnnualPayment === null ? 'נדרש חיוב שנתי ובסיס הכנסה' : money(a.estimatedAnnualPayment) + ' לשנה'}</b>${a.estimatedMonthlyPayment === null ? '' : `<small>${money(a.estimatedMonthlyPayment)} לחודש</small>`}</span>
+</div>
+${a.reasons.length ? `<ul class="tax-arnona-reasons">${a.reasons.map(r => `<li>${esc(r.text)}</li>`).join('')}</ul>` : ''}
+<p>הנחה שהוחלה בחיוב שבנטו: <b>${a.discount / 100}%</b>${a.approved ? ' (לפי נתון אישור שהוזן)' : ' (לא הוזן אישור)'}. סכום התחזית מוצג בנפרד ואינו אישור הרשות.</p>
+</div>`;
+}
+function automaticArnonaField(path, i, result) {
+  const automatic = i[path] === null;
+  const amount = path === 'arnonaBusinessAnnual' ? result?.arnona.businessAnnual : result?.arnona.rentalReceivedMonthly;
+  return `<div class="tax-auto-field" data-tax-auto-field="${path}">
+${field(path, LABELS[path], automatic ? amount ?? null : i[path])}
+<small data-tax-auto-source>${automatic ? 'מחושב אוטומטית · תחזית מנתוני העסק והשכירות' : 'הוזן ידנית · מחליף את החישוב האוטומטי'}</small>
+<button class="tax-link" data-action="tax-reset-automatic" data-field="${path}" ${automatic ? 'hidden' : ''}>חזור לחישוב אוטומטי</button>
+</div>`;
 }
 export function inputMarkup(tab, i, result) {
   const f = (key, type = 'money', options = null) => field(key, LABELS[key], i[key], type, options);
@@ -304,7 +325,7 @@ class="tax-fields">
 ${fp('city', 'text')}${fp('creditTrack', 'text', [
       ['other', 'אב / הורה שאינו מקבל קצבת ילדים'],
       ['recipient', 'אם / הורה המקבל קצבת ילדים'],
-    ])}${fp('basePoints')}${fp('extraPoints')}${fp('adults', 'integer')}${f('ageDate', 'date')}${f('assessmentYear', 'integer')}</div>
+    ])}${fp('basePoints')}${fp('extraPoints')}${fp('adults', 'integer')}${f('ageDate', 'date')}</div>
 <h3>
 ילדים ומתגוררים</h3>
 <p>
@@ -358,27 +379,13 @@ data-action="tax-apply-profile">
 <h3>
 נתוני מבחן ההכנסה</h3>
 <p>
-לפי הנחיות בני ברק, הנחה בארנונה לשנת ${i.taxYear} נבחנת בדרך כלל לפי הכנסות שנת ${i.taxYear - 1}. לצורך 2026 נדרשת הכנסה מ־2025. בשדה העסק הזינו את <strong>סך ההכנסות מחלקים 2–3 בשומה, לפני ניכויי חלק 5</strong>, ולא את ההכנסה החייבת אחרי ניכויים. אין להשתמש בהכנסות משנת 2024 כתחליף לשנת 2025 ללא אסמכתה מתאימה. מלאו בנפרד את הכנסות שנת המבחן, גם אם השכירות פטורה ממס הכנסה. הזינו אפס מפורש אם לא הייתה הכנסה משכירות. אין להעביר לכאן אוטומטית את מחזור המס של ${i.taxYear}.</p>
+בסיס העסק מחושב אוטומטית מ<strong>המחזור ללא מע״מ פחות הוצאות עסקיות מוכרות, לפני ניכויים אישיים</strong>. אפשר להחליפו בסכום מהשומה, לפני ניכויי חלק 5. תקבולי שכירות פטורים ממס נכללים גם הם במבחן. חישוב מנתוני שנת המס או ללא שנת שומה מסומן כתחזית. אומדן לפי שומה דורש שנה מתאימה וסכומי עסק ושכירות מפורשים; לפי כללי בני ברק לשנת 2026 התקופה היא שנת 2025.</p>
 <div
 class="tax-fields">
-${f('arnonaAnnual')}${f('arnonaBusinessAnnual')}${f('arnonaRentReceivedMonthly')}${f('rentPaidMonthly')}${f('householdOtherMonthly')}${f('otherResidentsMonthly')}${f('approvedDiscount', 'percent')}</div>
+${f('assessmentYear', 'year')}${f('arnonaAnnual')}${automaticArnonaField('arnonaBusinessAnnual', i, result)}${automaticArnonaField('arnonaRentReceivedMonthly', i, result)}${f('rentPaidMonthly')}${f('householdOtherMonthly')}${f('otherResidentsMonthly')}${f('approvedDiscount', 'percent')}</div>
 <p>
 לדוגמה, מלגת כולל של 1,000 ₪ בחודש מוזנת בשדה ״מלגות, תמיכות ושאר הכנסות״. הכנסות בני הבית מוזנות לפי שנת השומה שנבחרה, לאחר החריגים לפי הוראות הרשות. בהשכרת דירה ושכירת דירה אחרת למגורים במקביל, ניתן לקזז מההכנסה משכירות עד גובה השכירות ששולמה. הנחה בטבלת זכאות היא שיעור מרבי ולא אישור; לתשלום מחושבת הנחה רק מהשיעור האפקטיבי המאושר שהזנתם. אם ההנחה מוגבלת בשטח, יש לחשב שיעור אפקטיבי ביחס לחשבון כולו.</p>
-${
-  result
-    ? `<div
-class="tax-mini">
-הכנסה חודשית למבחן: <b>
-${result.arnona.assessedIncome === null ? 'חסרים נתוני שנת השומה' : money(result.arnona.assessedIncome)}</b>${result.arnona.assessedAnnualIncome === null ? '' : ` · סה״כ שנתי: ${money(result.arnona.assessedAnnualIncome)}`}
-${result.arnona.assessedIncome !== null ? ` · עסק: ${money(result.arnona.businessMonthly)} · שכירות לאחר קיזוז: ${money(result.arnona.rentalMonthly)} · הכנסות אחרות: ${money(result.arnona.householdOtherMonthly + result.arnona.otherResidentsMonthly)}` : ''}
- · הנחה מרבית: <b>
-${result.arnona.estimatedDiscount === null ? 'לא ידועה' : result.arnona.estimatedDiscount / 100 + '%'}</b>
- · הנחה שהוחלה: <b>
-${result.arnona.discount / 100}% ${result.arnona.approved ? 'אפקטיבית לפי הזנת אישור' : 'ללא הנחה מאושרת'}</b>
-</div>
-`
-    : ''
-}`;
+<div data-tax-arnona-results>${result ? arnonaResultsMarkup(result) : ''}</div>`;
   }
   return '';
 }
@@ -449,7 +456,7 @@ ${g.status === 'reviewed' ? 'סומן כנבדק לשנת ' + g.year : 'דורש
 </summary>
 <div
 class="tax-fields">
-${field(`groups.${key}.year`, 'שנת תחולת הקבוצה', g.year, 'integer', null, 'tax-rule-input')}${field(`groups.${key}.validFrom`, 'תחולה מתאריך', g.validFrom, 'date', null, 'tax-rule-input')}${field(`groups.${key}.validTo`, 'תחולה עד תאריך', g.validTo, 'date', null, 'tax-rule-input')}${field(`groups.${key}.source`, 'מקור (https)', g.source, 'text', null, 'tax-rule-input')}${field(`groups.${key}.notes`, 'הערות', g.notes, 'text', null, 'tax-rule-input')}</div>
+${field(`groups.${key}.year`, 'שנת תחולת הקבוצה', g.year, 'year', null, 'tax-rule-input')}${field(`groups.${key}.validFrom`, 'תחולה מתאריך', g.validFrom, 'date', null, 'tax-rule-input')}${field(`groups.${key}.validTo`, 'תחולה עד תאריך', g.validTo, 'date', null, 'tax-rule-input')}${field(`groups.${key}.source`, 'מקור (https)', g.source, 'text', null, 'tax-rule-input')}${field(`groups.${key}.notes`, 'הערות', g.notes, 'text', null, 'tax-rule-input')}</div>
 <a
 href="${esc(g.source)}"
 target="_blank"

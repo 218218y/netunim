@@ -10,7 +10,7 @@
 .tax-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:12px 0}
 .tax-toolbar label{display:flex;align-items:center;gap:8px}
 .tax-toolbar input[type=number]{width:100px}
-.tax-status{margin-inline-start:auto;font-size:13px;background:#e8f0ec;border-radius:20px;padding:8px 13px}
+.tax-status{margin-inline-start:auto;font-size:13px;background:#e8f0ec;border-radius:20px;padding:8px 13px;inline-size:260px;max-inline-size:100%;flex:0 0 auto;line-height:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tax-warning{display:grid;gap:8px;background:#fff5df;color:#674a1c;border:1px solid #ead6a8;padding:10px 14px;border-radius:10px;margin:12px 0;font-size:12px}
 .tax-message:empty{display:none}
 .tax-message{color:#9a342c;background:#fff1ee;padding:12px;border-radius:8px}
@@ -89,3 +89,15 @@
 .tax-arnona-bands .tax-results tr:last-child{background:transparent;font-weight:400}
 .tax-arnona-bands .tax-results tr.tax-selected-band{background:var(--tax-soft);font-weight:700}
 .tax-results small{font-size:11px;color:#537368;display:block;line-height:1.6;margin-top:4px}
+.tax-field-error:not([hidden]){font-size:12px;line-height:1.5;color:#9a342c}
+.tax-field [aria-invalid=true]{border-color:#b85443;outline-color:#b85443}
+.tax-auto-field{min-width:0;display:flex;flex-direction:column;gap:5px}
+.tax-auto-field>small{font-size:11px;line-height:1.5;color:#586c63}
+.tax-auto-field>.tax-link{align-self:start;font-size:12px;padding:2px 0;color:var(--tax-green)}
+.tax-arnona-outcome{margin-top:12px;padding:10px 12px;border:1px solid #d6e5dc;border-radius:10px;background:var(--tax-soft)}
+.tax-arnona-values{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;font-size:12px;line-height:1.5}
+.tax-arnona-values>span{min-width:0;overflow-wrap:anywhere}
+.tax-arnona-values b{display:block;font-size:17px;margin-top:4px}
+.tax-arnona-values small{display:block;font-size:11px}
+.tax-arnona-reasons{font-size:12px;line-height:1.6;padding-inline-start:18px}
+@media(max-width:720px){.tax-arnona-values{gap:8px;font-size:11px}.tax-arnona-values b{font-size:14px}}

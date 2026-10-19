@@ -2,6 +2,7 @@ export function createTaxCalculatorActions({tax}) {
   return {
     'tax-open':()=>tax.open(),
     'tax-input':(element,event)=>tax.command('tax-input',element,event),
+    'tax-reset-automatic':(element,event)=>tax.command('tax-reset-automatic',element,event),
     'tax-save':(element,event)=>tax.command('tax-save',element,event),
     'tax-rule-input':(element,event)=>tax.command('tax-rule-input',element,event),
     'tax-rule-change':(element,event)=>tax.command('tax-rule-change',element,event),
