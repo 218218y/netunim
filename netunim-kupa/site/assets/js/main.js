@@ -1,4 +1,6 @@
 import {startupMark} from './shared/startup-timing.js';
+import {createKupaTaxCalculator} from './composition/tax-calculator.js';
+import {createTaxCalculatorActions} from './ui/action-packs/tax-calculator.js';
 import {createKupaDashboardCapability} from './composition/dashboard.js';
 import {createKupaBankQueries} from './composition/bank-queries.js';
 import {readCloudWriteScope} from './shared/cloud-write-scope.js';
@@ -253,6 +255,7 @@ const uiFolders=createUiFolders({
   listBackups:(...args)=>storageBackup.listBackups(...args),
   backupSnapshotToComputer:(...args)=>storageBackup.backupSnapshotToComputer(...args),
   toast:(...args)=>uiStatus.toast(...args),
+  renderTaxCalculator:()=>taxCalculator.render(),
   renderSettings:(...args)=>uiSettings.renderSettings(...args),
   getRememberedHandle:(...args)=>storageIndexedDb.getRememberedHandle(...args),
   getRememberedBackupHandle:(...args)=>storageIndexedDb.getRememberedBackupHandle(...args),
@@ -604,7 +607,10 @@ const uiEvents={bindActionEvents:(root,actions)=>bindActionEvents(root,actions,{
 
 document.getElementById('checkBankAlerts').addEventListener('click',()=>{if(uiStatus.canRunInteractiveAction('view-check-bank-alerts'))uiModal.modal('התאמות צ׳קים בבנק',checkBankReviewMarkup(model.state.checks),'סגור',()=>uiModal.closeModal(true))});
 
+const taxCalculator=createKupaTaxCalculator({cloudAuth,tab,ui,navigation:uiNavigation,modal:uiModal});
+
 const uiActions=composeActionRegistry([
+  {name:'tax-calculator',actions:createTaxCalculatorActions({tax:taxCalculator})},
   {name:'checks',actions:checks.actions},
   bank.actionPack(),
   {name:'shell',actions:createShellActions({uiModal,uiNavigation})},

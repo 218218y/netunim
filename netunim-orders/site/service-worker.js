@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-ed04d29e9d72';
+const CACHE='orders-app-shell-esm-3c57c5c773c0';
 const SHELL=[
   './',
   './index.html',
@@ -38,6 +38,7 @@ const SHELL=[
   './assets/js/composition/service.js',
   './assets/js/composition/storage-v2.js',
   './assets/js/composition/suppliers.js',
+  './assets/js/composition/tax-calculator.js',
   './assets/js/composition/warehouse.js',
   './assets/js/connectivity.js',
   './assets/js/contracts/note-reminder-date.js',
@@ -355,6 +356,16 @@ const SHELL=[
   './assets/js/shared/sync-json.js',
   './assets/js/shared/sync-status.js',
   './assets/js/shared/tab-lock.js',
+  './assets/js/shared/tax-calculator/compute.js',
+  './assets/js/shared/tax-calculator/contracts.js',
+  './assets/js/shared/tax-calculator/entry.js',
+  './assets/js/shared/tax-calculator/remote.js',
+  './assets/js/shared/tax-calculator/rules.js',
+  './assets/js/shared/tax-calculator/store.js',
+  './assets/js/shared/tax-calculator/style.css',
+  './assets/js/shared/tax-calculator/sync.js',
+  './assets/js/shared/tax-calculator/view.js',
+  './assets/js/shared/tax-calculator/workspace.js',
   './assets/js/startup/background.js',
   './assets/js/startup/cloud-hydration.js',
   './assets/js/startup/local-services.js',
@@ -404,6 +415,7 @@ const SHELL=[
   './assets/js/ui/action-packs/service.js',
   './assets/js/ui/action-packs/shell.js',
   './assets/js/ui/action-packs/suppliers.js',
+  './assets/js/ui/action-packs/tax-calculator.js',
   './assets/js/ui/action-packs/warehouse.js',
   './assets/js/ui/actions.js',
   './assets/js/ui/alert-center.js',

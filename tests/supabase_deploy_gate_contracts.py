@@ -48,6 +48,7 @@ class SupabaseDeployGateContracts(unittest.TestCase):
             {'version': '20261016140000', 'name': 'bank_snapshot_temporal_authority'},
             {'version': '20261018120000', 'name': 'check_bank_refresh'},
             {'version': '20261018121000', 'name': 'morning_check_registration'},
+            {'version': '20261019041407', 'name': 'tax_calculator'},
         ])
         for row in required:
             for ledger in (self.history, self.manifest):

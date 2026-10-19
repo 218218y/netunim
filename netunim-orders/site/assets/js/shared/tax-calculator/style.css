@@ -1,0 +1,77 @@
+.tax-page{--tax-ink:#173a35;--tax-green:#257665;--tax-soft:#f0f6f3;max-width:1240px;margin:0 auto;color:#213b35;padding:12px 12px 40px;text-align:start}
+.tax-page *{box-sizing:border-box}
+#main>.tax-page{height:100%;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
+.tax-hero{background:var(--tax-ink);color:#fff;border-radius:16px;padding:18px 24px;display:flex;justify-content:space-between;align-items:center;gap:24px}
+.tax-hero h1{font-size:clamp(21px,2vw,26px);margin:6px 0}
+.tax-hero p{color:#cde1d9;margin:6px 0;font-size:13px}
+.tax-eyebrow{font-size:10px;letter-spacing:1.3px}
+.tax-back,.tax-link{background:none;border:0;color:inherit;cursor:pointer;text-decoration:underline;font:inherit}
+.tax-back{font-size:13px;padding:0}
+.tax-live{min-width:190px;background:#ffffff12;border:1px solid #ffffff25;border-radius:12px;padding:15px 18px;display:grid;gap:8px}
+.tax-live b{font-size:23px;font-variant-numeric:tabular-nums}
+.tax-toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:18px 0}
+.tax-toolbar label{display:flex;align-items:center;gap:8px}
+.tax-toolbar input[type=number]{width:100px}
+.tax-status{margin-inline-start:auto;font-size:13px;background:#e8f0ec;border-radius:20px;padding:8px 13px}
+.tax-warning{display:grid;gap:8px;background:#fff5df;color:#674a1c;border:1px solid #ead6a8;padding:16px 20px;border-radius:14px;margin:16px 0}
+.tax-message:empty{display:none}
+.tax-message{color:#9a342c;background:#fff1ee;padding:12px;border-radius:8px}
+.tax-tabs{display:flex;gap:6px;overflow-x:auto;padding:8px 0 18px}
+.tax-tabs button{white-space:nowrap;font-size:13px;background:transparent;border:1px solid transparent;border-radius:9px;color:#4a625a;padding:10px 14px;font:inherit;cursor:pointer}
+.tax-tabs button.active{background:var(--tax-ink);color:#fff}
+.tax-panel{background:#fff;border:1px solid #dfe9e2;border-radius:18px;padding:24px}
+.tax-panel h2{margin-top:0;font-size:19px}
+.tax-panel p{line-height:1.7;color:#53685f}
+.tax-edit{border:0;padding:0;margin:0;min-width:0}
+.tax-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin:20px 0}
+.tax-field{display:flex;flex-direction:column;gap:8px;font-size:14px}
+.tax-field input,.tax-field select,.tax-toolbar input,.tax-toolbar select,.tax-child input{font:inherit;color:#244239;background:#fbfdfb;border:1px solid #bdcfc4;border-radius:9px;padding:11px;min-width:0;max-width:100%;width:100%}
+.tax-field input:focus,.tax-field select:focus{outline:2px solid #3b8a78;outline-offset:2px}
+.tax-check{flex-direction:row;justify-content:space-between;align-items:center;border:1px solid #dce6e0;padding:12px;border-radius:9px}
+.tax-check input{width:20px;height:20px;accent-color:var(--tax-green)}
+.tax-metrics{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:16px;margin-bottom:24px}
+.tax-metrics>div{background:var(--tax-soft);border:1px solid #d6e5dc;border-radius:14px;padding:20px;display:grid;gap:9px}
+.tax-metrics strong{font-size:22px;font-variant-numeric:tabular-nums}
+.tax-metrics small{color:#5a6d65;line-height:1.5}
+.tax-table-wrap{overflow-x:auto}
+.tax-results{width:100%;border-collapse:collapse;font-size:14px}
+.tax-results th,.tax-results td{text-align:start;padding:13px 12px;border-bottom:1px solid #e4ece7;vertical-align:top}
+.tax-results thead{background:#f4f7f4}
+.tax-results tbody th{font-weight:500}
+.tax-results td{font-variant-numeric:tabular-nums;white-space:nowrap}
+.tax-results a{color:inherit;text-decoration-style:dotted;text-underline-offset:4px}
+.tax-results tr:last-child{background:#eef6f1;font-weight:700}
+.tax-mini{display:flex;gap:12px;flex-wrap:wrap;background:var(--tax-soft);border-radius:10px;padding:17px;align-items:center}
+.tax-children{border-top:1px solid #dce7df}
+.tax-child{display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:12px 0;border-bottom:1px solid #e5ece7}
+.tax-child .tax-field{flex:1;min-width:160px}
+.tax-child span{font-size:13px}
+.tax-rule{border:1px solid #d7e4dc;border-radius:12px;padding:18px;margin:12px 0}
+.tax-rule summary{font-weight:600;cursor:pointer}
+.tax-rule summary span{font-weight:400;float:left;font-size:13px}
+.tax-rule fieldset{border:1px solid #e0e9e3;border-radius:8px;margin:12px 0;padding:12px;min-width:0}
+.tax-rule fieldset .tax-fields{margin:8px 0}
+.tax-rule fieldset legend{font-size:13px}
+.tax-trace{padding-inline-start:24px}
+.tax-trace li{padding:12px;border-bottom:1px solid #e1e8e2}
+.tax-trace b{display:block;margin-top:8px}
+.tax-page footer{font-size:12px;line-height:1.8;padding:20px;color:#61766b}
+.tax-page button:focus-visible{outline:2px solid #328574;outline-offset:3px}
+.tax-page .btn{white-space:normal}
+.tax-page .primary{background:var(--tax-green);color:#fff;border-color:var(--tax-green)}
+@media(max-width:720px){.tax-page{padding:4px 0 24px}
+.tax-hero{padding:18px;display:block;border-radius:14px}
+.tax-live{margin-top:20px;min-width:0}
+.tax-live b{font-size:22px}
+.tax-metrics,.tax-fields{grid-template-columns:1fr}
+.tax-panel{padding:16px}
+.tax-status{margin-inline-start:0}
+.tax-toolbar{gap:10px}
+.tax-rule summary span{float:none;display:block;margin-top:8px}
+.tax-results th,.tax-results td{padding:12px 8px}
+.tax-child{gap:10px}}
+@media print{.tax-toolbar,.tax-tabs,.tax-back{display:none}
+.tax-panel{border:0}
+.tax-hero{color:#173a35;background:white}
+.tax-page{max-width:none}
+.tax-results{font-size:11px}}

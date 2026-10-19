@@ -233,3 +233,19 @@ python tests/run_all.py
 Production normalization and post-change Advisor verification are complete. Ten
 intentional public DEFINER warnings remain; the capability warning disappeared.
 The separate Auth leaked-password setting was not changed.
+
+
+## Calculator ownership — 2026-10-19
+
+`save_tax_calculator_document_v1` is an intentional authenticated SECURITY DEFINER
+boundary. It derives ownership from `auth.uid()` and requires the authenticated
+role; there is no owner argument. Direct client writes and operation-ledger reads
+are revoked. Documents and history use owner-scoped SELECT RLS. The internal
+operation ledger has RLS with no client policy and is accessed only inside the RPC.
+The function uses a fixed pg_catalog search path and qualified relations/helpers,
+validates the complete JSON shape, serializes the owner's CAS/idempotency check,
+rejects operation-ID reuse with different intent, and keeps rules versions immutable.
+Restore requires an exact owner/document/history snapshot match. No existing
+business documents or restore groups participate. Real PostgreSQL tests are in
+`tests/tax_calculator_database.py`; malformed ACK, account/primary fencing and
+native IndexedDB recovery are covered by the calculator transport/runtime tests.
