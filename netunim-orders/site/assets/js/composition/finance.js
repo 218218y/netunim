@@ -51,7 +51,7 @@ function createLazyMorningReports(ports, notify) {
     }).finally(() => { flight = null; });
     return flight;
   }
-  const names = 'toggle period option load cancel type detail detail-page export pdf'.split(' ');
+  const names = 'toggle period option load cancel type detail detail-page record export pdf'.split(' ');
   const actions = Object.fromEntries(names.map(name => [`morning-report-${name}`, (...args) => {
     if (feature) return active ? feature.actions[`morning-report-${name}`](...args) : false;
     return ensure().then(loaded => active ? loaded?.actions[`morning-report-${name}`](...args) : false)

@@ -24,7 +24,7 @@ export function reportBucketKey(date, group) {
 }
 export function buildMorningReport({documents, expenses, fromDate, toDate, group = 'month', errors = []}) {
   if (!validReportDate(fromDate) || !validReportDate(toDate) || fromDate > toDate) throw new Error('טווח התאריכים אינו תקין');
-  const total = zero(), buckets = new Map(), issues = new Map(), records = [];
+  const total = zero(), buckets = new Map(), issues = new Map(), notices = new Map(), records = [];
   const issue = (code, label) => issues.set(code, {code, label, count:(issues.get(code)?.count || 0) + 1});
   let incomeComplete = Array.isArray(documents), expensesComplete = Array.isArray(expenses), receiptsComplete = Array.isArray(documents);
   let outputVatComplete = Array.isArray(documents), inputVatComplete = Array.isArray(expenses), deductibleExpensesComplete = Array.isArray(expenses);
@@ -47,7 +47,9 @@ export function buildMorningReport({documents, expenses, fromDate, toDate, group
       else { inputVatComplete = false; issue('input-vat', 'חסר סכום מע״מ תשומות מותר ממורנינג; אין השלמה ממע״מ החשבונית'); }
       if (moneyValue(row.deductibleCents)) entry.deductibleExpensesCents = signed(row, row.deductibleCents);
       else deductibleExpensesComplete = false;
-      if (row.status === 30) { expensesComplete = false; inputVatComplete = false; issue('expense-edited', 'הוצאות שנערכו מחדש דורשות אימות במורנינג'); }
+      // Morning status 30 describes an edited expense, not missing amounts.
+      // Sum the current source values; historical filed reports need reconciliation.
+      if (row.status === 30) notices.set('expense-edited', {code:'expense-edited', label:'הוצאות שנערכו מחדש נכללות לפי הנתונים העדכניים במורנינג', count:(notices.get('expense-edited')?.count || 0) + 1});
     } else {
       const receipt = [320, 400, 405, 410].includes(row.type);
       const exempt = [3, 4, 5].includes(row.businessType);
@@ -103,7 +105,7 @@ export function buildMorningReport({documents, expenses, fromDate, toDate, group
   const profitComplete = incomeComplete && expensesComplete;
   const vatComplete = outputVatComplete && inputVatComplete && fullVatPeriod;
   return {fromDate, toDate, group, total, buckets:[...buckets.values()].sort((a, b) => a.key.localeCompare(b.key)), records,
-    issues:[...issues.values()], incomeComplete, expensesComplete, receiptsComplete, profitComplete,
+    issues:[...issues.values()], notices:[...notices.values()], incomeComplete, expensesComplete, receiptsComplete, profitComplete,
     outputVatComplete, inputVatComplete, vatComplete, deductibleExpensesComplete,
     vatBalanceCents:vatComplete ? total.outputVatCents - total.inputVatCents : null,
     complete:profitComplete && receiptsComplete && vatComplete && errors.length === 0,

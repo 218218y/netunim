@@ -38,7 +38,24 @@ test('expense reporting date controls the report, deleted expenses and credit si
   assert.equal(r.total.expensesCents, 0); assert.equal(r.records.length, 2);
   assert.equal(report([], [expense()], {fromDate:'2026-01-15'}).total.expensesCents, 0);
   assert.equal(report([], [expense({vat:null})]).profitCents, null);
-  assert.equal(report([], [expense({status:30})]).profitCents, null);
+  assert.equal(report([], [expense({status:30})]).profitCents, -5000);
+});
+test('four edited expenses in July-August retain current totals, VAT and a reconciliation notice', () => {
+  const rows = Array.from({length:4}, (_, i) => expense({id:id(30 + i), status:30, reportingDate:i < 2 ? '2026-07-01' : '2026-08-01', date:'2026-06-20'}));
+  const options = reportPeriod('bimonth', 2026, 4);
+  const r = report([doc({documentDate:'2026-07-10', amount:1180, amountLocal:1180, vat:180})], rows, options);
+  assert.equal(r.complete, true); assert.equal(r.profitCents, 80000);
+  assert.equal(r.total.expensesCents, 20000); assert.equal(r.total.deductibleExpensesCents, 20000);
+  assert.equal(r.total.inputVatCents, 3600); assert.equal(r.vatBalanceCents, 14400);
+  assert.equal(r.notices[0].code, 'expense-edited'); assert.equal(r.notices[0].count, 4);
+  assert.equal(r.issues.length, 0); assert.equal(r.records.length, 5);
+  const missingVat = report([], [expense({status:30, deductibleVat:null})]);
+  assert.equal(missingVat.profitCents, -5000); assert.equal(missingVat.vatBalanceCents, null);
+  assert.equal(missingVat.complete, false); assert.equal(missingVat.issues[0].code, 'input-vat');
+  const missingAmount = report([], [expense({status:30, amountLocal:null, amount:null})]);
+  assert.equal(missingAmount.profitCents, null); assert.equal(missingAmount.expensesComplete, false);
+  const outside = report([], [expense({status:30})], options);
+  assert.equal(outside.notices.length, 0); assert.equal(outside.total.expensesCents, 0);
 });
 test('foreign currencies use explicit rates, never mix native amounts into ILS', () => {
   const r = report([doc({currency:'USD', currencyRate:3.5, amount:100, amountLocal:350, vat:10, type:320, payment:[{type:3, currency:'USD', price:100}]})]);

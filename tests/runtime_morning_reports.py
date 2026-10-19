@@ -11,7 +11,7 @@ FLOW = r"""(async()=>{
  morningOperationScope.captureRead=()=>()=>{};
  const uuid=i=>'aaaaaaaa-aaaa-4aaa-aaaa-'+String(i).padStart(12,'0');
  const docs=Array.from({length:51},(_,i)=>({kind:'document',id:uuid(i),number:String(100+i),type:i===0?400:305,date:'2026-01-10',documentDate:'2026-01-10',status:0,currency:'ILS',grossCents:11800,vatCents:i===0?0:1800,name:'לקוח דוח פרטי',description:'מסמך בדיקה',selfInvoice:false,businessType:1,payments:i===0?[{type:3,amountCents:6000},{type:1,amountCents:2800},{type:2,amountCents:3000}]:[]}));
- const expenses=[1,2].map(i=>({kind:'expense',id:uuid(100+i),number:String(20+i),type:305,date:'2026-01-01',documentDate:'2025-12-28',status:10,currency:'ILS',grossCents:5900,vatCents:900,deductibleVatCents:450,deductibleCents:5000,category:'עבודות חוץ',name:'ספק דוח',description:'הוצאה לבדיקה'}));
+ const expenses=[1,2].map(i=>({kind:'expense',id:uuid(100+i),number:String(20+i),type:305,date:'2026-01-01',documentDate:'2025-12-28',status:30,currency:'ILS',grossCents:5900,vatCents:900,deductibleVatCents:450,deductibleCents:5000,category:'עבודות חוץ',name:'ספק דוח '+ 'בדיקה'.repeat(30),description:'הוצאה לבדיקה '+ 'תיאור'.repeat(80)}));
  const calls=[];
  cloudAuth.supaFetch=async(path,options)=>{
   const body=JSON.parse(options.body);calls.push(body);check(path==='/functions/v1/morning-documents','wrong route');
@@ -29,6 +29,13 @@ FLOW = r"""(async()=>{
  click('morning-report-period','year');click('morning-report-load');await wait(()=>document.querySelector('.morning-report-cards'));
  check(calls.filter(x=>x.source==='documents').length===2,'not all document pages read');
  check(document.querySelectorAll('.morning-report-table tbody tr').length===12,'year not grouped into twelve months');
+ check(!document.querySelector('.morning-report-warning'),'edited status alone marked report incomplete');
+ check(document.querySelector('.morning-report-notice').textContent.includes('2 הוצאות'),'edited-expense notice missing');
+ click('morning-report-detail','edited-expenses');check(document.querySelectorAll('.morning-report-details tbody tr').length===2,'edited expense list not isolated');
+ click('morning-report-record',uuid(101));
+ check(document.querySelector('.morning-report-record-fields').textContent.includes('28.12.2025'),'source date missing');
+ check(document.querySelector('.morning-report-record-fields').textContent.includes('עבודות חוץ'),'source classification missing');
+ click('morning-report-record',uuid(101));click('morning-report-detail','');
  click('morning-report-type','profit');
  const totals=[...document.querySelectorAll('.morning-report-table tfoot td')].map(x=>x.textContent);
  check(totals[0].includes('5,000')&&totals[1].includes('100')&&totals[2].includes('4,900'),'incorrect profit '+totals.join('|'));
@@ -42,7 +49,8 @@ FLOW = r"""(async()=>{
  URL.createObjectURL=blob=>{csvBlob=blob;return createUrl(blob)};HTMLAnchorElement.prototype.click=function(){};
  click('morning-report-export');const csv=await csvBlob.text();URL.createObjectURL=createUrl;HTMLAnchorElement.prototype.click=nativeClick;
  check(csv.includes('רווח / הפסד ניהולי')&&csv.includes('4900')&&csv.includes('לקוח דוח פרטי'),'CSV missing totals or source rows');
- click('morning-report-detail','');return {pagesRead:3,sourceDocuments:53,profitILS:4900,pdf:true,csv:true};
+ check(csv.includes('סטטוס במורנינג')&&csv.includes('נערכה מחדש')&&csv.includes('התאמה לדיווח קודם'),'CSV lost edited-expense context');
+ click('morning-report-detail','');click('morning-report-type','receipts');return {pagesRead:3,sourceDocuments:53,profitILS:4900,pdf:true,csv:true,editedExpensesIncluded:true};
 })()"""
 
 FOLLOWUP = r"""(async()=>{
@@ -73,9 +81,29 @@ if __name__ == '__main__':
         output.mkdir(parents=True, exist_ok=True)
         capture = browser.call('Page.captureScreenshot', {'format':'png','captureBeyondViewport':False})
         (output/'desktop.png').write_bytes(base64.b64decode(capture['result']['data']))
+        layouts = []
+        for width in (1440, 1280, 1024, 768, 390, 320):
+            browser.call('Emulation.setDeviceMetricsOverride', {'width':width,'height':1000,'deviceScaleFactor':1,'mobile':width<500})
+            layouts.append(browser.evaluate(r"""(()=>{
+              const overflow=[];
+              for(const type of ['receipts','profit','vat']){
+                document.querySelector('[data-action="morning-report-type"][data-click-arg0="'+type+'"]').click();
+                document.querySelector('[data-action="morning-report-detail"][data-click-arg0="2026-01"]').click();
+                document.querySelector('[data-action="morning-report-record"][data-click-arg0="aaaaaaaa-aaaa-4aaa-aaaa-000000000101"]').click();
+                document.querySelectorAll('.morning-report-explanation').forEach(e=>e.open=true);
+                for(const el of document.querySelectorAll('.morning-reports table,.morning-reports th,.morning-reports td,.morning-report-table-wrap,.morning-report-record-fields')){
+                  const header=el.closest('thead');if(header&&getComputedStyle(header).clipPath!=='none')continue;
+                  if(el.getBoundingClientRect().width>0&&el.scrollWidth>el.clientWidth+1)overflow.push({type,tag:el.tagName,cls:el.className,scroll:el.scrollWidth,width:el.clientWidth});
+                }
+              }
+              document.querySelector('[data-action="morning-report-detail"][data-click-arg0=""]').click();
+              document.querySelector('[data-action="morning-report-type"][data-click-arg0="receipts"]').click();
+              return {width:innerWidth,scroll:document.documentElement.scrollWidth,overflow};
+            })()"""))
+            assert layouts[-1]['scroll'] <= layouts[-1]['width'] + 1 and not layouts[-1]['overflow'], layouts[-1]
         browser.call('Emulation.setDeviceMetricsOverride', {'width':390,'height':844,'deviceScaleFactor':1,'mobile':True})
         mobile = browser.evaluate("({width:innerWidth,scroll:document.documentElement.scrollWidth,tableOverflow:document.querySelector('.morning-report-table-wrap').scrollWidth>document.querySelector('.morning-report-table-wrap').clientWidth})")
-        assert mobile['scroll'] <= mobile['width'] + 1, mobile
+        assert mobile['scroll'] <= mobile['width'] + 1 and not mobile['tableOverflow'], mobile
         capture = browser.call('Page.captureScreenshot', {'format':'png','captureBeyondViewport':False})
         (output/'mobile.png').write_bytes(base64.b64decode(capture['result']['data']))
         custom = browser.evaluate("""(()=>{document.querySelector('[data-action="morning-report-period"][data-click-arg0="custom"]').click();return {width:innerWidth,scroll:document.documentElement.scrollWidth,parts:document.querySelectorAll('#morningReportBody [data-date-part]').length}})()""")
@@ -92,4 +120,4 @@ if __name__ == '__main__':
         browser.evaluate("document.querySelector('[data-action=\"morning-report-period\"][data-click-arg0=\"year\"]').click()")
         isolation = browser.evaluate(FOLLOWUP, timeout=35)
         assert not browser.drain_serious_errors()
-        print('PASS Morning reports UI: '+json.dumps({**result,**isolation,'mobile':mobile}), flush=True)
+        print('PASS Morning reports UI: '+json.dumps({**result,**isolation,'mobile':mobile,'layouts':layouts}), flush=True)
