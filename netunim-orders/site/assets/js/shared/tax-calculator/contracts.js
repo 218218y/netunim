@@ -372,7 +372,7 @@ export function assertAnnual(value) {
       'activeSelfEmployed',
       'pensionRequired',
       'extraPensionCredit',
-        'over60',
+      'over60',
     ].every((key) => typeof value[key] === 'boolean') ||
     !(value.approvedDiscount === null || integer(value.approvedDiscount, 0, 10000))
   )
