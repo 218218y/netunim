@@ -27,6 +27,7 @@ SETUP=r"""(async()=>{
   if(app==='orders'){ui.kupaSubView='summary';uiNavigation.switchView('kupa');}else uiNavigation.setPage('dashboard');
   if(!document.querySelector('[data-action="tax-open"]'))throw Error('entry missing');
   await taxCalculator.open();
+  if(document.querySelector('[data-tax-message]').offsetHeight!==0)throw Error('empty error strip visible');
   if(document.querySelectorAll('.tax-tabs button').length!==8)throw Error('calculator tabs missing');
   await taxCalculator.command('tax-year',{value:'2026'});
   await taxCalculator.command('tax-tab',{dataset:{tab:'business'}});

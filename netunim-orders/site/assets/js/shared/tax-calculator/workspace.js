@@ -453,8 +453,7 @@ data-action="tax-sync">
 <p
 class="tax-message"
 data-tax-message
-role="alert">
-${esc(message)}</p>
+role="alert">${esc(message)}</p>
 ${
   ruleAlerts.length
     ? `<div
