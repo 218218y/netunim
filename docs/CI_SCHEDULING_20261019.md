@@ -63,5 +63,17 @@ have measurements; the fallback is a scheduling estimate, not a runtime limit.
 
 Local CI contracts verify complete, disjoint Python and JavaScript coverage,
 deterministic allocation, inclusion of new tests and unchanged failure gates.
-The full GitHub workflow validates every group and Windows deployment contracts.
-Measured post-change runs are recorded below after completion.
+All 31 local CI contracts passed. The full GitHub workflow validates every group
+and Windows deployment contracts.
+
+The first post-change full run,
+[39190286918](https://github.com/218218y/netunim/actions/runs/39190286918),
+passed all 133 suites and Windows in **6:44**, compared with the latest baseline's
+**8:11**. Complete lifecycle jobs took **5:40 / 4:47 / 4:14 / 6:29**. The longest
+job dropped from 7:55 to 6:29, although actual jobs still varied substantially.
+Every lifecycle-4 suite took 1.18–1.65 times its estimate, while lifecycle-3's
+suites took 0.79–1.01 times their estimates. This is consistent with machine-wide
+speed variation; it does not prove a particular hardware cause. The new timing
+estimates balance expected work, rather than promising identical elapsed times
+on independently assigned machines. Further full runs on the final PR commit
+are linked from the PR validation record.

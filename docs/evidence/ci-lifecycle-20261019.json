@@ -356,5 +356,27 @@
       "runtime_orders_finance_capability.py",
       "runtime_kupa_bank_capability.py"
     ]
-  }
+  },
+  "post_change_validation": [
+    {
+      "run_id": 39190286918,
+      "url": "https://github.com/218218y/netunim/actions/runs/39190286918",
+      "commit": "eec8d37d4e9380cc0b52eefc6e88f5fbc6e914ef",
+      "conclusion": "success",
+      "workflow_seconds": 404.0,
+      "lifecycle_job_seconds": {
+        "browser-lifecycle-1": 340.0,
+        "browser-lifecycle-2": 287.0,
+        "browser-lifecycle-3": 254.0,
+        "browser-lifecycle-4": 389.0
+      },
+      "lifecycle_suite_seconds": {
+        "browser-lifecycle-1": 321.148,
+        "browser-lifecycle-2": 275.31,
+        "browser-lifecycle-3": 239.422,
+        "browser-lifecycle-4": 370.389
+      },
+      "passed_suites": 133
+    }
+  ]
 }
