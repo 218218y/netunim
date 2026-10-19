@@ -54,6 +54,19 @@ test('an accepted checks write with an intact emergency copy still reports a blo
   const sample=await runtime.incidentSample();assert.equal(classifySyncIncident(sample).reason,'recovery_blocked');assert.equal(sample.verified,undefined);
 });
 
+test('recovery publish failure after activation keeps its original epoch and blocks resolution until recovery',async()=>{
+  const f=fixture(),initial=await f.start(),epoch=(await initial.incidentSample()).epoch;
+  let fail=true;
+  const runtime=createSharedChecksV2Runtime({site:'orders',owner:()=> 'A',primary:()=>true,mode:()=> 'primary',readState:()=>f.visible,applyState:()=>{},merge:noop,readRemote:noop,rpc:noop,
+    createStorage:args=>{
+      const store=createSharedChecksStorageV2({...args,db:f.databases.get('A'),emergency:emergencyStore()}),recover=store.recover;
+      store.recover=()=>{if(fail)throw new Error('storage_invalid_checkpoint');return recover()};return store;
+    }});
+  await assert.rejects(runtime.recover(),/storage_invalid_checkpoint/);
+  const blocked=await runtime.incidentSample();assert.equal(blocked.epoch,epoch);assert.equal(classifySyncIncident(blocked).reason,'recovery_blocked');
+  fail=false;await runtime.recover();const verified=await runtime.incidentSample();assert.equal(verified.epoch,epoch);assert.equal(classifySyncIncident(verified).state,'clean_verified');
+});
+
 for(const site of ['orders','kupa']){
   test(`${site}: stored-bank refresh requires a clean recovered V2 head and fences owner replacement`,async()=>{
     const f=fixture(site),runtime=await f.start();

@@ -128,6 +128,73 @@ def run():
           const sample=await sync.incidentSample();
           return sample.pending===true&&sync.status==='unloaded';
         })()""")
+        # A queued resolve must re-read native IDB inside the network slot.
+        # Exercise every durable path without opening the sheet UI.
+        assert orders.evaluate("""(async()=>{
+          const {createSpreadsheetSync}=await import('./assets/js/shared/spreadsheet-sync.js');
+          const {createSpreadsheetStore}=await import('./assets/js/shared/spreadsheet-store.js');
+          const {createDefaultNotesSheet}=await import('./assets/js/shared/notes-sheet-model.js');
+          const {createCloudAuth}=await import('./assets/js/cloud/auth.js?sheet-confirmation');
+          const {createSyncIncidentRegistry}=await import('./assets/js/shared/sync-incident-registry.js');
+          const owner=incidentFixture.scope().owner,key=owner+':orders:main',base=createDefaultNotesSheet();
+          const store=createSpreadsheetStore(),writer=createSpreadsheetStore(),record={version:1,base,working:base,revision:1,flight:null,conflict:null};
+          const auth=createCloudAuth({}),fetchBefore=globalThis.fetch;
+          // Match the real site's session key, without depending on its literal spelling.
+          auth.saveSession({user:{id:owner},access_token:'test',expires_at:9999999999});
+          let release,entered,dispatched=0;
+          const scope=auth.getAccountScope(),registry=createSyncIncidentRegistry({request:auth.supaFetch,accountScope:auth.getAccountScope});
+          const row={...incidentFixture.monitor.view.incidents[0],incident_id:crypto.randomUUID(),client_instance_id:'sheet',site:'orders',domain:'orders_sheet',scope_epoch:'spreadsheet-v1',report_version:2};
+          const sync=createSpreadsheetSync({domain:'orders',account:()=>owner,enabled:()=>true,store});
+          try{
+            for(const mode of ['commit','journal','emergency']){
+              await store.commit(key,record);store.saveEmergency(key,[]);
+              const sample=await sync.incidentSample();if(!await sample.confirmCurrent())throw Error('clean proof absent');
+              const held=new Promise(resolve=>{release=resolve}),entry=new Promise(resolve=>{entered=resolve});
+              globalThis.fetch=(url,options)=>{
+                if(String(url).endsWith('/hold')){entered();return held.then(()=>new Response('{}'))}
+                dispatched++;return Promise.resolve(new Response(JSON.stringify({...row,owner_id:owner,resolved_at:'2026-10-19T10:00:00Z',resolution_kind:'clean_verified'})));
+              };
+              const blocker=auth.supaFetch('/rest/v1/hold');await entry;
+              const pending=registry.resolve(row,scope,sample.isCurrent,sample.withRequestScope).then(()=>false,error=>error.message==='sync_incident_observation_changed');
+              if(mode==='commit')await writer.commit(key,{...record,flight:{operationId:'new'}});
+              if(mode==='journal')await writer.journal(key,[{rowId:'R',columnId:'C',value:'new'}]);
+              if(mode==='emergency')writer.saveEmergency(key,[{rowId:'R',columnId:'C',value:'new'}]);
+              if(await sample.confirmCurrent())throw Error('stale proof accepted: '+mode);
+              release();await blocker;if(!await pending)throw Error('stale resolve dispatched: '+mode);
+            }
+            if(dispatched!==0)throw Error('unexpected resolve fetch');
+            await store.commit(key,record);store.saveEmergency(key,[]);
+            const sample=await sync.incidentSample();await registry.resolve(row,scope,sample.isCurrent,sample.withRequestScope);
+            return dispatched===1;
+          }finally{globalThis.fetch=fetchBefore;release?.()}
+        })()""")
+        # Preserve the actual input node, draft, focus and caret through polling.
+        assert kupa.evaluate("""(()=>{
+          const f=incidentFixture;f.ui.open();const root=document.querySelectorAll('.sync-incidents')[1],input=root.querySelector('[data-incident-label]');
+          input.value='Office draft';input.focus();input.setSelectionRange(3,7);
+          f.ui.update({...f.monitor.view,localError:true});
+          return root.querySelector('[data-incident-label]')===input&&input.value==='Office draft'&&document.activeElement===input&&input.selectionStart===3&&input.selectionEnd===7;
+        })()""")
+        # An independent JS realm shares the native workbook DB.
+        assert orders.evaluate("""(async()=>{
+          const {createSpreadsheetSync}=await import('./assets/js/shared/spreadsheet-sync.js');
+          const {createSpreadsheetStore}=await import('./assets/js/shared/spreadsheet-store.js');
+          const store=createSpreadsheetStore(),key=incidentFixture.scope().owner+':orders:main';
+          const saved=await store.load(key);await store.commit(key,{...saved.record,flight:null});store.saveEmergency(key,[]);
+          globalThis.closedSheetProof=await createSpreadsheetSync({domain:'orders',account:()=>incidentFixture.scope().owner,enabled:()=>true,store}).incidentSample();
+          return await closedSheetProof.confirmCurrent();
+        })()""")
+        with orders.second_tab():
+            assert orders.evaluate("""(async()=>{
+              const {createSpreadsheetStore}=await import('./assets/js/shared/spreadsheet-store.js');
+              const store=createSpreadsheetStore();
+              await store.journal('11111111-1111-4111-8111-111111111111:orders:main',[{rowId:'R',columnId:'C',value:'from another tab'}]);return true;
+            })()""")
+            assert not orders.drain_serious_errors()
+        assert orders.evaluate("""(async()=>{
+          let sent=false;try{await closedSheetProof.withRequestScope(()=>{sent=true;return Promise.resolve()})}catch(error){if(error.message!=='sync_incident_observation_changed')throw error}
+          return !sent&&!await closedSheetProof.confirmCurrent();
+        })()""")
         assert not orders.drain_serious_errors()
         assert not kupa.drain_serious_errors()
     print('PASS independent orders/kupa profiles: cross-site warnings, durable reload, native IDB races, domain ACK isolation, UI acknowledgement and closed-sheet detection')

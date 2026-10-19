@@ -9,3 +9,5 @@
 .sync-incidents-panel input{font:inherit;min-width:0;padding:6px 8px;max-width:100%;border:1px solid #94a3b8;border-radius:6px}
 .sync-incidents-actions{display:flex;gap:6px;flex-wrap:wrap}.sync-incidents-error{color:#a32424}
 @media(max-width:600px){.sync-incidents{bottom:8px;left:8px;max-width:calc(100vw - 16px)}.sync-incidents .sync-incidents-toggle{font-size:12px;gap:10px}}
+
+.sync-incidents[data-quiet=true]{box-shadow:none}.sync-incidents[data-quiet=true] .sync-incidents-toggle{padding:5px 9px;font-size:12px;gap:10px}

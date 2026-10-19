@@ -43,20 +43,26 @@ export function createSpreadsheetStore({indexedDB=globalThis.indexedDB,emergency
   function transaction(mode,operation){
     return completeIndexedDbTransaction(()=>begin(mode),operation,'spreadsheet_storage_aborted');
   }
-  /** Raw document and recovery data retain the sync/model owner's validation.
-   * @param {string} key @returns {Promise<SpreadsheetStoredRead>} */
-  async function load(key){
+  /** Invoke synchronously while the readonly transaction owns both stores.
+   * Conflicting writes, including other tabs, cannot commit before publication.
+   * @template T @param {string} key @param {(value:SpreadsheetStoredRead)=>T} publish
+   * @returns {Promise<T>} */
+  function withSnapshot(key,publish){
     return transaction('readonly',(tx,done,fail)=>{
       const record=tx.objectStore('documents').get(key),patches=tx.objectStore('drafts').get(key);
       let count=0;
       const read=()=>{if(++count===2){try{
         /** @type {unknown} */ const raw=patches.result;
         if(raw!=null&&!Array.isArray(raw))throw new Error('spreadsheet_drafts_invalid');
-        done({record:record.result??null,drafts:raw??[]});
+        const result=publish({record:record.result??null,drafts:raw??[]});
+        // A dispatched fetch may reject before IDB's completion event.
+        void Promise.resolve(result).catch(()=>{});done(result);
       }catch(error){fail(error)}}};
       record.onsuccess=read;patches.onsuccess=read;
     });
   }
+  /** @param {string} key @returns {Promise<SpreadsheetStoredRead>} */
+  function load(key){return withSnapshot(key,value=>value)}
   /** Capture before opening/queuing IDB. The caller cannot mutate accepted work.
    * @param {string} key @param {unknown} record @returns {Promise<boolean>} */
   async function commit(key,record){
@@ -105,5 +111,5 @@ export function createSpreadsheetStore({indexedDB=globalThis.indexedDB,emergency
     if(!emergency)throw new Error('spreadsheet_emergency_unavailable');
     return captureDrafts(JSON.parse(emergency.getItem(emergencyKey(key))||'[]'));
   }
-  return {load,commit,journal,saveEmergency,readEmergency,inspectEmergency};
+  return {load,withSnapshot,commit,journal,saveEmergency,readEmergency,inspectEmergency};
 }
