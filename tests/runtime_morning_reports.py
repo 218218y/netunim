@@ -80,6 +80,15 @@ if __name__ == '__main__':
         (output/'mobile.png').write_bytes(base64.b64decode(capture['result']['data']))
         custom = browser.evaluate("""(()=>{document.querySelector('[data-action="morning-report-period"][data-click-arg0="custom"]').click();return {width:innerWidth,scroll:document.documentElement.scrollWidth,parts:document.querySelectorAll('#morningReportBody [data-date-part]').length}})()""")
         assert custom['scroll'] <= custom['width'] + 1 and custom['parts'] == 6, custom
+        typing = browser.evaluate(r"""(()=>{
+          const editor=document.getElementById('morningReport-fromDate').closest('[data-date-editor]');
+          const day=editor.querySelector('[data-date-part="day"]');day.focus();day.value='2';day.dispatchEvent(new Event('input',{bubbles:true}));
+          const connected=day.isConnected;day.value='31';editor.querySelector('[data-date-part="month"]').value='02';day.dispatchEvent(new Event('input',{bubbles:true}));
+          let calls=0;const original=cloudAuth.supaFetch;cloudAuth.supaFetch=(...args)=>{calls++;return original(...args)};
+          document.querySelector('[data-action="morning-report-load"]').click();cloudAuth.supaFetch=original;
+          return {connected,calls,error:document.querySelector('.morning-report-status').textContent};
+        })()""")
+        assert typing['connected'] and typing['calls'] == 0 and typing['error'], typing
         browser.evaluate("document.querySelector('[data-action=\"morning-report-period\"][data-click-arg0=\"year\"]').click()")
         isolation = browser.evaluate(FOLLOWUP, timeout=35)
         assert not browser.drain_serious_errors()

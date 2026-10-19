@@ -227,7 +227,9 @@ export function createMorningReports({ request, captureRead, subscribeAccountSco
       </div>
       <div id="morningReportBody" ${expanded ? '' : 'hidden'}>${controls()}<div class="morning-report-note">ההכנסות והתקבולים מוצגים לפי תאריך המסמך. ההוצאות לפי תאריך הדיווח במורנינג (היום הראשון בחודש), גם בטווח מותאם. בטווח שמתחיל באמצע חודש, הוצאות שדווחו בתחילת אותו חודש אינן נכללות.</div>
       <div class="morning-report-status" role="status" aria-live="polite">${esc(busy ? progressText ||
-            'טוען את כל עמודי הדוח…' : reading ? 'ממתין לסיום הבקשה הקודמת…' : error)}</div>${r ? results(r) : busy ? '' : '<div class="morning-report-empty">בחרו תקופה ולחצו על „הצגת הדוח” לקבלת נתוני העסק ממורנינג.</div>'}<details class="morning-report-explanation">
+            'טוען את כל עמודי הדוח…' : reading ? 'ממתין לסיום הבקשה הקודמת…' : error)}</div>
+      <div data-morning-report-output>${r ? results(r) : busy ? '' : '<div class="morning-report-empty">בחרו תקופה ולחצו על „הצגת הדוח” לקבלת נתוני העסק ממורנינג.</div>'}</div>
+      <details class="morning-report-explanation">
       <summary>איך לקרוא את הדוחות</summary>
       <p>זהו דוח ניהולי מנתוני מורנינג. חשבוניות מס, חשבוניות מס/קבלה וזיכויים נכללים בהכנסות; קבלות נכללות בתקבולים, ובעסק פטור או עמותה גם בהכנסות. חשבוניות עצמיות אינן הכנסה. מסמך שבוטל נשמר בחישוב לצד מסמכי הזיכוי והקבלה השלילית, לפי התקופה של כל מסמך.</p>
       <p>רווח והפסד ניהולי מחושב כהכנסות פחות הוצאות, לפני מע״מ. הוא כולל רכישות שנרשמו כהוצאות ואינו מבצע התאמות מס, הוצאות מוכרות, רכוש קבוע או פחת. לדוח חשבונאי רשמי יש להשתמש בדוחות מורנינג.</p>
@@ -261,6 +263,16 @@ export function createMorningReports({ request, captureRead, subscribeAccountSco
         }
         clear();
         options = next;
+        if (next.mode === 'custom' && ['fromDate', 'toDate'].includes(key)) {
+            // The common date editor commits valid intermediate keystrokes.
+            // Keep its DOM/focus and let the explicit Load action validate it.
+            document.querySelector('[data-morning-report-output]')?.replaceChildren();
+            const status = document.querySelector('.morning-report-status');
+            if (status) status.textContent = '';
+            const button = document.querySelector('[data-action="morning-report-load"]');
+            if (button) { button.disabled = reading; button.textContent = 'הצגת הדוח'; }
+            return true;
+        }
         render();
         return true;
     }
@@ -281,7 +293,12 @@ export function createMorningReports({ request, captureRead, subscribeAccountSco
     function load() {
         if (reading || !tasks.isActive())
             return Promise.resolve(false);
+        if (options.mode === 'custom') {
+            options.fromDate = document.getElementById('morningReport-fromDate')?.value ?? '';
+            options.toDate = document.getElementById('morningReport-toDate')?.value ?? '';
+        }
         if (!validReportDate(options.fromDate) || !validReportDate(options.toDate) || options.fromDate > options.toDate || options.toDate > String(Number(options.fromDate.slice(0, 4)) + 10) + options.fromDate.slice(4)) {
+            clear();
             error = 'יש לבחור טווח תאריכים תקין של עד עשר שנים.';
             render();
             return Promise.resolve(false);
