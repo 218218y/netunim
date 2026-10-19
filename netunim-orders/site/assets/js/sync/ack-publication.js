@@ -2,7 +2,6 @@ import {readDocumentWriteAck} from '../shared/document-write-ack.js';
 import {structuredSyncConflict} from '../shared/cloud-sync.js';
 import {clone} from '../core/values.js';
 import {commitCloudCheckpoint} from '../shared/cloud-checkpoint-publication.js';
-import {recoverPostAckPublication} from '../shared/cloud-post-ack-recovery.js';
 import {cloudAckPublicationDiagnostic} from '../shared/cloud-ack-diagnostic.js';
 
 // Owns durable ACK publication and post-ACK recovery.
@@ -47,6 +46,7 @@ async function publishAcknowledgedFlight({res,flight,serverSnapshot,scope}){
   if(!publication.published)recoveryTrace.push({reason:publication.reason==='publication-error'?'publication_exception':Number(session.localGeneration||0)!==expectedGeneration?'publication_stale_generation':publication.committed?.seq!==expectedSeq?'publication_stale_seq':'scope_lost',attempt:0});
   if(!publication.published&&publication.reason==='stale'&&writeScopeCurrent(scope,publication.committed)&&readStorageV2CloudRecovery&&commitStorageV2CloudRecovery){
     try{
+      const {recoverPostAckPublication}=await import('../shared/cloud-post-ack-recovery.js');
       const recovered=await recoverPostAckPublication({isCurrent:head=>writeScopeCurrent(scope,head),generation:()=>Number(session.localGeneration||0),visible:()=>model.state,
         equal:sameOrderCloudData,merge:(before,local,candidate,deleteIntents)=>merge3(prepareCloudState(before),prepareCloudState(local),prepareCloudState(candidate),{deleteIntents}),
         read:readStorageV2CloudRecovery,commit:commitStorageV2CloudRecovery,publish:state=>{applyOrderCloudState(state)},
