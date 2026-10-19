@@ -4,8 +4,18 @@ import { checkTodayISO } from '../../core/dates.js';
 import { createRuntimeTaskOwner } from '../../shared/runtime-task-owner.js';
 import { buildMorningReport, REPORT_METHODS, REPORT_TYPES, reportPeriod, validReportDate, reportCsv } from './morning-report-model.js';
 import { loadMorningReportSource } from './morning-report-loader.js';
+import {createMorningRequest} from '../../integrations/morning.js';
+import {createMorningMediaComposition} from '../../composition/morning-media.js';
+
+export function createFinanceMorningReports({auth, morningOperationScope, modal, toast, dateEditorMarkup, isActive}) {
+    const request = createMorningRequest({supaFetch:(...args) => auth.supaFetch(...args), operationScope:morningOperationScope});
+    const media = createMorningMediaComposition({request, modal, toast}).create({capture:() => morningOperationScope.captureRead(), onStandalone:() => {}});
+    return createMorningReports({request:request.json, captureRead:() => morningOperationScope.captureRead(),
+        subscribeAccountScope:listener => auth.subscribeAccountScope?.(listener) || (() => {}), media, dateEditorMarkup, isActive});
+}
 const OFFICIAL = 'https://app.greeninvoice.co.il/business/accounting/reports';
 const amount = value => value === null ? '—' : money(value / 100);
+const rowOutputVat = row => [305, 320, 330].includes(row.type) && (row.selfInvoice || !Number.isSafeInteger(row.vatCents)) ? null : row.outputVatCents;
 const dateLabel = value => value?.length === 10 ? value.split('-').reverse().join('.') : value;
 const bucketLabel = key => key.length === 7 ? new Intl.DateTimeFormat('he-IL', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(key + '-01T00:00:00Z')) : dateLabel(key);
 const option = (value, title, current) => `<option value="${esc(value)}" ${String(value) === String(current) ? 'selected' : ''}>${esc(title)}</option>`;
@@ -147,7 +157,7 @@ export function createMorningReports({ request, captureRead, subscribeAccountSco
       <td class="morning-report-amount">${esc(amount(row.grossCents))}</td>
       <td>${Object.entries(row.methods).map(([key, value]) => `${esc(REPORT_METHODS[key])}: ${esc(amount(value))}`).join('<br>') ||
             '—'}</td>
-      <td class="morning-report-amount">${row.kind === 'document' ? amount(row.outputVatCents) : '—'}</td>
+      <td class="morning-report-amount">${row.kind === 'document' ? amount(rowOutputVat(row)) : '—'}</td>
       <td class="morning-report-amount">${row.kind === 'expense' ? amount(Number.isSafeInteger(row.deductibleVatCents) ? row.inputVatCents : null) : '—'}</td>
       <td class="morning-report-amount">${row.kind === 'expense' ? amount(Number.isSafeInteger(row.deductibleCents) ? row.deductibleExpensesCents : null) : '—'}</td>
       <td>${esc(row.category || '—')}</td>
@@ -165,9 +175,10 @@ export function createMorningReports({ request, captureRead, subscribeAccountSco
         if (options.report !== 'profit' || !loaded.expenses) return '';
         const categories = new Map();
         for (const row of r.records.filter(item => item.kind === 'expense')) {
-            const key = row.category || 'ללא סיווג', value = categories.get(key) || {count:0, net:0, vat:0, deductible:0, vatKnown:true, deductibleKnown:true};
+            const key = row.category || 'ללא סיווג', value = categories.get(key) || {count:0, net:0, vat:0, deductible:0, netKnown:true, vatKnown:true, deductibleKnown:true};
             value.count++; value.net += row.expensesCents; value.vat += row.inputVatCents; value.deductible += row.deductibleExpensesCents;
             value.vatKnown &&= Number.isSafeInteger(row.deductibleVatCents);
+            value.netKnown &&= Number.isSafeInteger(row.grossCents) && Number.isSafeInteger(row.vatCents) && row.status !== 30;
             value.deductibleKnown &&= Number.isSafeInteger(row.deductibleCents);
             categories.set(key, value);
         }
@@ -177,7 +188,7 @@ export function createMorningReports({ request, captureRead, subscribeAccountSco
           <div class="morning-report-table-wrap"><table class="morning-report-table"><thead><tr>
           ${['סיווג', 'מסמכים', 'לפני מע״מ', 'מע״מ תשומות מותר', 'סכום מוכר ממורנינג'].map(label => `<th scope="col">${label}</th>`).join('')}
           </tr></thead><tbody>${[...categories].sort(([a], [b]) => a.localeCompare(b, 'he')).map(([key, value]) =>
-            `<tr><th scope="row">${esc(key)}</th><td>${value.count}</td><td>${amount(value.net)}</td>
+            `<tr><th scope="row">${esc(key)}</th><td>${value.count}</td><td>${amount(value.netKnown ? value.net : null)}</td>
             <td>${amount(value.vatKnown ? value.vat : null)}</td><td>${amount(value.deductibleKnown ? value.deductible : null)}</td></tr>`).join('')}
           </tbody></table></div></details>`;
     }
@@ -385,7 +396,7 @@ export function createMorningReports({ request, captureRead, subscribeAccountSco
                 row.name,
                 row.description,
                 row.grossCents === null ? '' : row.grossCents / 100,
-                row.currency, row.kind === 'document' ? row.outputVatCents / 100 : '',
+                row.currency, row.kind === 'document' && rowOutputVat(row) !== null ? row.outputVatCents / 100 : '',
                 row.kind === 'expense' && Number.isSafeInteger(row.deductibleVatCents) ? row.inputVatCents / 100 : '',
                 row.kind === 'expense' && Number.isSafeInteger(row.deductibleCents) ? row.deductibleExpensesCents / 100 : '', row.category || ''])];
         const url = URL.createObjectURL(new Blob([reportCsv(rows)], { type: 'text/csv;charset=utf-8' }));

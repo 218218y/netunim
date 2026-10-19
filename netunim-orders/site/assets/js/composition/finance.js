@@ -20,9 +20,6 @@ import {createOrdersBankArchiveReadout} from '../domains/finance/bank-archive-re
 import {createBankArchiveReconciliation} from '../shared/bank-archive-reconciliation.js';
 import {bankArchiveTargets,bankArchiveSourceRows} from '../domains/finance/bank-archive-model.js';
 import {createDomainsFinanceView} from '../domains/finance/view.js';
-import {createMorningReports} from '../domains/finance/morning-reports.js';
-import {createMorningRequest} from '../integrations/morning.js';
-import {createMorningMediaComposition} from './morning-media.js';
 import {createOrdersBankChequeImageRuntime} from '../domains/finance/bank-cheque-image-runtime.js';
 import {createFinanceConnectionImportCapability} from '../shared/finance-connection-import-capability.js';
 import {createCreditCardOrderView} from '../shared/credit-card-order-view.js';
@@ -35,6 +32,36 @@ function requireMethods(name, port, methods) {
   for (const method of methods) {
     if (typeof port?.[method] !== 'function') throw new TypeError(`orders_finance_${name}_${method}_required`);
   }
+}
+
+function createLazyMorningReports(ports, notify) {
+  let feature = null, flight = null, active = true;
+  function markup() {
+    if (feature) return feature.markup();
+    return `<section class="morning-reports" data-morning-reports><div class="morning-report-heading">
+      <button type="button" class="morning-report-trigger" data-action="morning-report-toggle" aria-expanded="false">
+      <b>דוחות מורנינג</b></button>
+      </div></section>`;
+  }
+  function ensure() {
+    if (!active || feature) return Promise.resolve(active ? feature : null);
+    if (!flight) flight = import('../domains/finance/morning-reports.js').then(module => {
+      if (active) feature = module.createFinanceMorningReports(ports);
+      return feature;
+    }).finally(() => { flight = null; });
+    return flight;
+  }
+  const names = 'toggle period option load cancel type detail detail-page export pdf'.split(' ');
+  const actions = Object.fromEntries(names.map(name => [`morning-report-${name}`, (...args) => {
+    if (feature) return active ? feature.actions[`morning-report-${name}`](...args) : false;
+    return ensure().then(loaded => active ? loaded?.actions[`morning-report-${name}`](...args) : false)
+      .catch(() => { if (active) notify('הדוחות לא זמינים כרגע'); return false; });
+  }]));
+  return {markup, actions, runtime:{
+    isPending:() => !!flight || feature?.runtime.isPending() === true,
+    drain:async () => { await flight?.catch(() => {}); await feature?.runtime.drain(); },
+    dispose:() => { if (!active) return false; active = false; feature?.runtime.dispose(); return true; },
+  }};
 }
 
 // Finance owns its adapters, readout, controller and presentation. Binding is
@@ -247,10 +274,8 @@ export function createOrdersFinanceCapability({
       },
     };
     const notify = (...args) => { if (!disposed) toast(...args); };
-    const reportRequest = morningOperationScope ? createMorningRequest({supaFetch:(...args) => auth.supaFetch(...args), operationScope:morningOperationScope}) : null;
-    const reportMedia = reportRequest ? createMorningMediaComposition({request:reportRequest, modal:ownedModal.modal, toast:notify}).create({capture:() => morningOperationScope.captureRead(), onStandalone:() => {}}) : null;
-    const reports = reportRequest ? createMorningReports({request:reportRequest.json, captureRead:() => morningOperationScope.captureRead(),
-      subscribeAccountScope:listener => auth.subscribeAccountScope?.(listener) || (() => {}), media:reportMedia, dateEditorMarkup:date.dateEditorMarkup, isActive:() => !disposed}) : null;
+    const reports = morningOperationScope ? createLazyMorningReports({auth, morningOperationScope, modal:ownedModal.modal,
+      toast:notify, dateEditorMarkup:date.dateEditorMarkup, isActive:() => !disposed}, notify) : null;
     const view = createDomainsFinanceView({
       ui, controller, checksView, dashboardView:dashboard, runFinance, isActive:() => !disposed,
       mountViewLayout:layout.mountViewLayout, modal:ownedModal.modal, closeModal:ownedModal.closeModal,

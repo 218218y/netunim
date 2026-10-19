@@ -24,7 +24,8 @@ FLOW = r"""(async()=>{
  check(document.querySelector('[data-action="set-kupa-section"][data-click-arg0="summary"]').textContent==='מאזן ודוחות','tab label');
  check(document.querySelector('.kupa-hero [data-action="tax-open"]'),'calculator not in heading');
  check(document.querySelector('.forecast-note').textContent.includes('לא חישוב רווח חשבונאי'),'cashflow forecast lost');
- click('morning-report-toggle');check(document.querySelector('[data-action="morning-report-period"][data-click-arg0="bimonth"]').getAttribute('aria-pressed')==='true','bimonth default missing');
+ click('morning-report-toggle');await wait(()=>document.querySelector('#morningReportBody'));
+ check(document.querySelector('[data-action="morning-report-period"][data-click-arg0="bimonth"]').getAttribute('aria-pressed')==='true','bimonth default missing');
  click('morning-report-period','year');click('morning-report-load');await wait(()=>document.querySelector('.morning-report-cards'));
  check(calls.filter(x=>x.source==='documents').length===2,'not all document pages read');
  check(document.querySelectorAll('.morning-report-table tbody tr').length===12,'year not grouped into twelve months');
@@ -77,6 +78,9 @@ if __name__ == '__main__':
         assert mobile['scroll'] <= mobile['width'] + 1, mobile
         capture = browser.call('Page.captureScreenshot', {'format':'png','captureBeyondViewport':False})
         (output/'mobile.png').write_bytes(base64.b64decode(capture['result']['data']))
+        custom = browser.evaluate("""(()=>{document.querySelector('[data-action="morning-report-period"][data-click-arg0="custom"]').click();return {width:innerWidth,scroll:document.documentElement.scrollWidth,parts:document.querySelectorAll('#morningReportBody [data-date-part]').length}})()""")
+        assert custom['scroll'] <= custom['width'] + 1 and custom['parts'] == 6, custom
+        browser.evaluate("document.querySelector('[data-action=\"morning-report-period\"][data-click-arg0=\"year\"]').click()")
         isolation = browser.evaluate(FOLLOWUP, timeout=35)
         assert not browser.drain_serious_errors()
         print('PASS Morning reports UI: '+json.dumps({**result,**isolation,'mobile':mobile}), flush=True)
