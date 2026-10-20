@@ -12,6 +12,42 @@ const row = (date, serial = 1) => ({
   activityDescription: 'fixture transfer',
 });
 
+test('an unreported or invalid page size never proves complete bank coverage', async () => {
+  for (const size of [undefined, null, '', true, [], 150.5, -1, 0]) {
+    const f = readerFixture({respond: async url => url.pathname.endsWith('balanceAndCreditLimit')
+      ? {currentBalance: 42} : {numItemsPerPage: size, transactions: Array.from({length: 150}, (_, i) => row('20261013', i))}});
+    const result = await f.api.read(f.page, credentials, f.ready, 4);
+    assert.equal(result.transactionCoverage.complete, false, String(size));
+    assert.equal(result.transactions.length, 150);
+    assert.ok(result.transactionWarning);
+    assert.equal(f.calls.filter(call => call[0] === 'request' && call[1].url.includes('/transactions?')).length, 1,
+      'unknown capacity must not fan out into unbounded date requests');
+  }
+});
+
+test('a failed later window retains validated rows from successful windows without absence authority', async () => {
+  let windows = 0;
+  const f = readerFixture({respond: async url => url.pathname.endsWith('balanceAndCreditLimit')
+    ? {currentBalance: 42} : ++windows === 1
+      ? {numItemsPerPage: 150, transactions: [row('20261013')]}
+      : {httpFailure: 403}});
+  const result = await f.api.read(f.page, credentials, f.ready, 90);
+  assert.equal(result.balance, 42);
+  assert.equal(result.transactionCoverage.complete, false);
+  assert.equal(result.transactions.length, 1);
+  assert.ok(result.transactionWarning);
+});
+
+test('reported capacity proves a short page but never a saturated single day', async () => {
+  for (const count of [149, 150]) {
+    const f = readerFixture({respond: async url => url.pathname.endsWith('balanceAndCreditLimit')
+      ? {currentBalance: 42} : {numItemsPerPage: '150', transactions: Array.from({length: count}, (_, i) => row('20261013', i))}});
+    const result = await f.api.read(f.page, credentials, f.ready, 1);
+    assert.equal(result.transactionCoverage.complete, count === 149);
+    assert.equal(result.transactions.length, count);
+  }
+});
+
 test('bank account reader selects only open configured roles and preserves a partial home failure', async () => {
   const f = readerFixture({
     accounts: [
@@ -24,7 +60,7 @@ test('bank account reader selects only open configured roles and preserves a par
         ? url.searchParams.get('accountId').endsWith('111111')
           ? { httpFailure: 503 }
           : { currentBalance: 42 }
-        : { transactions: [] },
+        : { numItemsPerPage: 150, transactions: [] },
   });
   const result = await f.api.read(
     f.page,
@@ -84,7 +120,7 @@ test('all returned transactions survive normalization without a hidden limit or 
     respond: async (url) =>
       url.pathname.endsWith('balanceAndCreditLimit')
         ? { currentBalance: 42 }
-        : { transactions: [row('20261013'), row('20261013')] },
+        : { numItemsPerPage: 150, transactions: [row('20261013'), row('20261013')] },
   });
   const result = await f.api.read(f.page, credentials, f.ready, 1);
   assert.equal(result.transactions.length, 2);

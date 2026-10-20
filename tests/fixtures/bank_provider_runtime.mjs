@@ -11,7 +11,7 @@ async function fetchFixture(url){
   const parsed=new URL(url);assertOrigin(parsed);
   if(parsed.pathname==='/ServerServices/general/accounts')return response([{bankNumber:12,branchNumber:345,accountNumber:678901,accountClosingReasonCode:0}]);
   if(parsed.pathname.endsWith('/balanceAndCreditLimit'))return response({currentBalance:42,withdrawalBalance:40,creditLimitAmount:100});
-  if(parsed.pathname.endsWith('/transactions'))return response({transactions:[]});
+  if(parsed.pathname.endsWith('/transactions'))return response({numItemsPerPage:150,transactions:[]});
   throw new Error('Unexpected synthetic bank endpoint: '+parsed.pathname);
 }
 function assertOrigin(url){if(url.origin!=='https://login.bankhapoalim.co.il')throw new Error('synthetic provider must never access another origin')}

@@ -87,9 +87,9 @@ export function createHapoalimAccountReader({ session, json, enrichment, diagnos
       to: isoLocalDate(end),
       days,
     };
+    const all = [];
     try {
-      const all = [],
-        coverageWarnings = [];
+      const coverageWarnings = [];
       async function fetchWindow(windowStart, windowEnd) {
         const txResult = await pageFetchJson(
           page,
@@ -140,6 +140,8 @@ export function createHapoalimAccountReader({ session, json, enrichment, diagnos
           coverageWarnings.push(
             `ב-${day} הבנק החזיר ${raw.length} תנועות בגבול העמוד (${limit}); התנועות שהתקבלו נשמרו, אך ייתכן שחסרות תנועות נוספות באותו יום.`
           );
+        } else if (!pageState.complete) {
+          coverageWarnings.push('הבנק לא דיווח על גודל העמוד בפועל; התנועות שהתקבלו נשמרו, אך שלמות הסריקה אינה מאומתת.');
         }
         const enriched = await enrichHapoalimTransactions(page, raw, accountId, {
           initialReady: reusableReady,
@@ -147,7 +149,9 @@ export function createHapoalimAccountReader({ session, json, enrichment, diagnos
           diagnosticRun,
         });
         reusableReady = enriched.ready || reusableReady;
-        all.push(...enriched.transactions);
+        // Validate each window before retaining it. A later network failure
+        // must not discard earlier valid windows or publish invalid rows.
+        all.push(...normalizeRecentTransactions(enriched.transactions, enriched.transactions.length));
       }
       const chunkDays = days > HAPOALIM_TRANSACTION_LOOKBACK_DAYS ? 60 : days;
       for (let offset = 0; offset < days; offset += chunkDays) {
@@ -157,12 +161,12 @@ export function createHapoalimAccountReader({ session, json, enrichment, diagnos
         chunkStart.setDate(chunkStart.getDate() - Math.min(chunkDays - 1, days - offset - 1));
         await fetchWindow(chunkStart, chunkEnd);
       }
-      transactions = normalizeRecentTransactions(all, all.length);
       transactionCoverage = { ...transactionCoverage, complete: coverageWarnings.length === 0 };
       if (coverageWarnings.length) transactionWarning = coverageWarnings.join(' ');
     } catch (e) {
       transactionWarning = `היתרה התקבלה, אבל לא ניתן היה לטעון כרגע תנועות אחרונות: ${e?.message || e}`;
     }
+    transactions = all.sort((a, b) => String(b.date || b.processedDate || '').localeCompare(String(a.date || a.processedDate || '')));
 
     recordBankAccountDiagnostic(diagnosticRun, {
       role,

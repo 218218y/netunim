@@ -26,7 +26,7 @@ export function readerFixture({
         ? respond(url, request)
         : url.pathname.endsWith('balanceAndCreditLimit')
           ? { currentBalance: 42 }
-          : { transactions: [] });
+          : { numItemsPerPage: 150, transactions: [] });
       if (data?.httpFailure)
         return { ok: false, status: data.httpFailure, data: null, text: 'fixture failure' };
       return { ok: true, status: 200, data, text: '' };

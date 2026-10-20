@@ -22,15 +22,20 @@ export function hapoalimTransactionPageState(data, requestedLimit = HAPOALIM_TRA
   const page = record(data) ? data : {};
   if (!Array.isArray(page.transactions)) throw invalidSource();
   const transactions = page.transactions;
-  const reported = Number(page.numItemsPerPage),
+  const size = page.numItemsPerPage;
+  const reported = typeof size === 'number' || (typeof size === 'string' && size.trim()) ? Number(size) : NaN,
     requested = Number(requestedLimit);
-  const reportedPageSize = Number.isFinite(reported) && reported > 0 ? Math.trunc(reported) : null;
+  const reportedPageSize = Number.isSafeInteger(reported) && reported > 0 ? reported : null;
   const effectivePageSize =
     reportedPageSize || (Number.isFinite(requested) && requested > 0 ? Math.trunc(requested) : 0);
   return {
     transactions,
     reportedPageSize,
     effectivePageSize,
+    // Requested capacity is only a saturation safeguard; it does not prove
+    // which limit the server actually applied. Unknown metadata stays partial.
+    complete: reportedPageSize !== null && transactions.length < reportedPageSize,
+    completenessEvidence: reportedPageSize !== null ? 'reported-page-size' : 'unknown',
     isFull: effectivePageSize > 0 && transactions.length >= effectivePageSize,
   };
 }
