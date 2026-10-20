@@ -4,14 +4,31 @@ const UUID = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
 const DOCUMENT_TYPES = [305, 320, 330, 400, 405, 410];
 const integer = value => typeof value === 'number' && Number.isSafeInteger(value);
 const text = (value, max = 180) => typeof value === 'string' || typeof value === 'number' ? String(value).slice(0, max) : '';
-function number(value) {
-  return (typeof value === 'number' || typeof value === 'string' && /^-?\d+(\.\d+)?$/.test(value)) && Number.isFinite(Number(value)) ? Number(value) : null;
+function decimal(value) {
+  // JSON numbers use their canonical decimal spelling. Keep decimal strings
+  // exact, including digits beyond binary floating point precision. Bound the
+  // representation before allocating BigInts; absent/unsafe source data stays unknown.
+  const numeric = typeof value === 'number';
+  if (numeric && (!Number.isFinite(value) || Number.isInteger(value) && !Number.isSafeInteger(value))) return null;
+  if (!numeric && (typeof value !== 'string' || value.length > 100 || !/^-?\d+(\.\d+)?$/.test(value))) return null;
+  const text = String(value);
+  if (text.length > 100) return null;
+  const match = /^(-?)(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/i.exec(text);
+  if (!match) return null;
+  const fraction = match[3] || '', scale = fraction.length - Number(match[4] || 0);
+  let coefficient = BigInt(match[2] + fraction) * (match[1] ? -1n : 1n);
+  if (scale < 0) coefficient *= 10n ** BigInt(-scale);
+  return {coefficient, denominator:10n ** BigInt(Math.max(0, scale))};
 }
 function cents(value, rate = 1) {
-  const amount = number(value);
-  if (amount === null || rate === null || rate <= 0) return null;
-  const result = Math.sign(amount) * Math.round((Math.abs(amount * rate) + Number.EPSILON) * 100);
-  return Number.isSafeInteger(result) ? result : null;
+  const amount = decimal(value), exchange = decimal(rate);
+  if (!amount || !exchange || exchange.coefficient <= 0n) return null;
+  const product = amount.coefficient * exchange.coefficient * 100n;
+  const divisor = amount.denominator * exchange.denominator, absolute = product < 0n ? -product : product;
+  // Round once, at the final ILS cent, with decimal half values away from zero.
+  // Adding Number.EPSILON to a binary product cannot guarantee this behavior.
+  const rounded = absolute / divisor + (absolute % divisor * 2n >= divisor ? 1n : 0n);
+  return rounded <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(product < 0n ? -rounded : rounded) : null;
 }
 export function reportDate(value) {
   return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
@@ -32,7 +49,7 @@ function sourceTimestamp(value) {
 function common(raw, kind) {
   if (!raw || typeof raw !== 'object' || !UUID.test(raw.id)) throw new Error('invalid_report_record');
   const currency = /^[A-Z]{3}$/.test(raw.currency) ? raw.currency : '';
-  const rate = currency === 'ILS' ? 1 : number(raw.currencyRate);
+  const rate = currency === 'ILS' ? 1 : raw.currencyRate ?? null;
   const local = cents(raw.amountLocal), grossCents = local ?? cents(raw.amount, rate);
   const date = kind === 'expense' ? raw.reportingDate : raw.documentDate;
   if (!reportDate(date) || !integer(raw.status)) throw new Error('invalid_report_record');
@@ -48,11 +65,11 @@ function common(raw, kind) {
 export function reportDocument(raw) {
   const row = common(raw, 'document');
   if (!DOCUMENT_TYPES.includes(row.type) || ![0, 1, 2, 3, 4].includes(row.status)) throw new Error('invalid_report_record');
-  const rate = row.currency === 'ILS' ? 1 : number(raw.currencyRate);
+  const rate = row.currency === 'ILS' ? 1 : raw.currencyRate ?? null;
   return {...row, selfInvoice:raw.client?.self === true, businessType:[1, 2, 3, 4, 5, 6].includes(raw.business?.type) ? raw.business.type : null,
     payments:Array.isArray(raw.payment) ? raw.payment.map(payment => {
       const currency = payment.currency || row.currency;
-      const paymentRate = currency === 'ILS' ? 1 : currency === row.currency ? rate : number(payment.currencyRate);
+      const paymentRate = currency === 'ILS' ? 1 : currency === row.currency ? rate : payment.currencyRate ?? null;
       return {type:integer(payment.type) ? payment.type : null, amountCents:cents(payment.price, paymentRate),
         date:reportDate(payment.date) ? payment.date : '', chequeNumber:text(payment.chequeNum, 30)};
     }) : null};
