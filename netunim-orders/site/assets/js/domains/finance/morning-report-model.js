@@ -11,10 +11,53 @@ export function reportPeriod(mode, year, part = 1) {
   const month = (part - 1) * length + 1;
   return {fromDate:`${year}-${String(month).padStart(2, '0')}-01`, toDate:new Date(Date.UTC(year, month + length - 1, 0)).toISOString().slice(0, 10)};
 }
-const SUM_FIELDS = ['incomeCents', 'expensesCents', 'receiptsCents', 'outputVatCents', 'inputVatCents', 'deductibleExpensesCents'];
-const zero = () => ({...Object.fromEntries(SUM_FIELDS.map(key => [key, 0])), methods:Object.fromEntries(Object.keys(REPORT_METHODS).map(key => [key, 0])), records:[]});
+const SUM_FIELDS = ['incomeCents', 'expensesCents', 'expenseCostCents', 'unrecoverableVatCents', 'receiptsCents', 'outputVatCents', 'inputVatCents', 'deductibleExpensesCents'];
+const DOCUMENT_FIELDS = new Set(['incomeCents', 'receiptsCents', 'outputVatCents', 'methods']);
+const COMPLETENESS_FIELDS = [...SUM_FIELDS, 'methods'];
+// Sums always contain the known integer amounts. They must be read through
+// reportMetric when presented as a verified total, rather than treating a
+// partial known sum (including zero) as the complete amount.
+const zero = (documents = true, expenses = true, record = false) => ({
+  ...Object.fromEntries(SUM_FIELDS.map(key => [key, 0])),
+  completeness:Object.fromEntries(COMPLETENESS_FIELDS.map(key => [key, DOCUMENT_FIELDS.has(key) ? documents : expenses])),
+  methods:record ? {} : Object.fromEntries(Object.keys(REPORT_METHODS).map(key => [key, 0])), records:[], issues:[], notices:[],
+});
 const moneyValue = value => Number.isSafeInteger(value);
+const addMoney = (left, right) => {
+  const value = left + right;
+  if (!moneyValue(value)) throw new Error('סכומי הדוח חורגים מטווח החישוב הנתמך');
+  return value;
+};
 const signed = (row, value) => [330, 410].includes(row.type) ? -Math.abs(value) : value;
+const fullMonths = (fromDate, toDate) => fromDate.endsWith('-01') && new Date(Date.parse(toDate) + 86400000).getUTCDate() === 1;
+function addIssue(scope, item) {
+  const existing = scope.issues.find(issue => issue.code === item.code);
+  if (existing) existing.count += item.count;
+  else scope.issues.push({...item});
+}
+function finalize(scope, fullVatPeriod) {
+  const c = scope.completeness;
+  Object.assign(scope, {
+    incomeComplete:c.incomeCents, expensesComplete:c.expensesCents, expenseCostComplete:c.expenseCostCents,
+    unrecoverableVatComplete:c.unrecoverableVatCents, receiptAmountComplete:c.receiptsCents,
+    paymentBreakdownComplete:c.methods, receiptsComplete:c.receiptsCents && c.methods,
+    outputVatComplete:c.outputVatCents, inputVatComplete:c.inputVatCents, deductibleExpensesComplete:c.deductibleExpensesCents,
+    profitComplete:c.incomeCents && c.expenseCostCents, vatComplete:c.outputVatCents && c.inputVatCents && fullVatPeriod,
+  });
+  scope.profitCents = scope.profitComplete ? addMoney(scope.incomeCents, -scope.expenseCostCents) : null;
+  scope.vatBalanceCents = scope.vatComplete ? addMoney(scope.outputVatCents, -scope.inputVatCents) : null;
+  scope.complete = scope.profitComplete && scope.receiptsComplete && scope.vatComplete;
+  return scope;
+}
+export function reportMetric(scope, field, method) {
+  if (!scope) return null;
+  if (field === 'methods') {
+    const value = scope.methods?.[method] ?? 0;
+    return Object.hasOwn(REPORT_METHODS, method) && scope.receiptAmountComplete && scope.paymentBreakdownComplete && moneyValue(value) ? value : null;
+  }
+  if (field === 'profitCents' || field === 'vatBalanceCents') return moneyValue(scope[field]) ? scope[field] : null;
+  return scope.completeness?.[field] === true && moneyValue(scope[field]) ? scope[field] : null;
+}
 export function reportBucketKey(date, group) {
   if (group === 'day') return date;
   if (group === 'year') return date.slice(0, 4);
@@ -24,45 +67,63 @@ export function reportBucketKey(date, group) {
 }
 export function buildMorningReport({documents, expenses, fromDate, toDate, group = 'month', errors = []}) {
   if (!validReportDate(fromDate) || !validReportDate(toDate) || fromDate > toDate) throw new Error('טווח התאריכים אינו תקין');
-  const total = zero(), buckets = new Map(), issues = new Map(), notices = new Map(), records = [];
-  const issue = (code, label) => issues.set(code, {code, label, count:(issues.get(code)?.count || 0) + 1});
-  let incomeComplete = Array.isArray(documents), expensesComplete = Array.isArray(expenses), receiptsComplete = Array.isArray(documents);
-  let outputVatComplete = Array.isArray(documents), inputVatComplete = Array.isArray(expenses), deductibleExpensesComplete = Array.isArray(expenses);
-  const fullVatPeriod = fromDate.endsWith('-01') && new Date(Date.parse(toDate) + 86400000).getUTCDate() === 1;
-  if (!fullVatPeriod) issue('vat-period', 'סיכום מע״מ דורש חודשים מלאים; יש לבחור חודש או דו־חודש זוגי');
+  const documentsKnown = Array.isArray(documents) && !errors.some(error => error.source === 'documents');
+  const expensesKnown = Array.isArray(expenses) && !errors.some(error => error.source === 'expenses');
+  const total = zero(documentsKnown, expensesKnown), buckets = new Map(), notices = new Map(), records = [];
+  function issue(entry, code, label, fields) {
+    for (const field of fields) entry.completeness[field] = false;
+    addIssue(entry, {code, label, count:1, fields});
+  }
+  const fullVatPeriod = fullMonths(fromDate, toDate);
+  if (!fullVatPeriod) addIssue(total, {code:'vat-period', label:'סיכום מע״מ דורש חודשים מלאים; יש לבחור חודש או דו־חודש זוגי', count:1});
   function bucket(date) {
     const key = reportBucketKey(date, group);
-    if (!buckets.has(key)) buckets.set(key, {key, ...zero()});
+    if (!buckets.has(key)) buckets.set(key, {key, ...zero(documentsKnown, expensesKnown)});
     return buckets.get(key);
   }
-  for (const row of [...(documents || []), ...(expenses || [])]) {
+  for (const row of [...(Array.isArray(documents) ? documents : []), ...(Array.isArray(expenses) ? expenses : [])]) {
     if (row.date < fromDate || row.date > toDate) continue;
     if (row.kind === 'expense' && row.status === 100) continue;
-    const b = bucket(row.date), entry = {...row, ...Object.fromEntries(SUM_FIELDS.map(key => [key, 0])), methods:{}};
+    const b = bucket(row.date), entry = {...row, ...zero(true, true, true)};
     const hasMoney = moneyValue(row.grossCents) && moneyValue(row.vatCents);
     if (row.kind === 'expense') {
-      if (hasMoney) entry.expensesCents = signed(row, row.grossCents) - signed(row, row.vatCents);
-      else { expensesComplete = false; issue('expense-money', 'חסרים סכום, מע״מ או שער המרה בהוצאות'); }
-      if (moneyValue(row.deductibleVatCents)) entry.inputVatCents = signed(row, row.deductibleVatCents);
-      else { inputVatComplete = false; issue('input-vat', 'חסר סכום מע״מ תשומות מותר ממורנינג; אין השלמה ממע״מ החשבונית'); }
+      if (hasMoney) entry.expensesCents = addMoney(signed(row, row.grossCents), -signed(row, row.vatCents));
+      else issue(entry, 'expense-money', 'חסרים סכום, מע״מ או שער המרה לחישוב הוצאות לפני מע״מ', ['expensesCents']);
+      const deductibleKnown = moneyValue(row.deductibleVatCents);
+      // Deductible VAT is supplied in ILS by Morning. A zero is meaningful;
+      // absence never means that the full invoice VAT is recoverable.
+      const vat = moneyValue(row.vatCents) ? signed(row, row.vatCents) : null;
+      const deductibleVat = deductibleKnown ? signed(row, row.deductibleVatCents) : null;
+      const invalidDeduction = vat !== null && deductibleKnown && (Math.abs(deductibleVat) > Math.abs(vat) || vat * deductibleVat < 0);
+      if (deductibleKnown && !invalidDeduction) entry.inputVatCents = deductibleVat;
+      else if (invalidDeduction) issue(entry, 'input-vat-inconsistent', 'מע״מ התשומות המותר אינו תואם למע״מ ההוצאה במורנינג; יש לאמת את נתוני המקור', ['inputVatCents', 'expenseCostCents', 'unrecoverableVatCents']);
+      else issue(entry, 'input-vat', 'חסר סכום מע״מ תשומות מותר ממורנינג; עלות ההוצאה אינה מניחה ניכוי מע״מ', ['inputVatCents', 'expenseCostCents', 'unrecoverableVatCents']);
+      if (moneyValue(row.grossCents) && entry.completeness.inputVatCents) entry.expenseCostCents = addMoney(signed(row, row.grossCents), -deductibleVat);
+      else if (!moneyValue(row.grossCents)) issue(entry, 'expense-cost', 'חסר סכום ההוצאה בשקלים לחישוב העלות הניהולית', ['expenseCostCents']);
+      if (vat !== null && entry.completeness.inputVatCents) entry.unrecoverableVatCents = addMoney(vat, -deductibleVat);
+      else entry.completeness.unrecoverableVatCents = false;
       if (moneyValue(row.deductibleCents)) entry.deductibleExpensesCents = signed(row, row.deductibleCents);
-      else deductibleExpensesComplete = false;
+      else entry.completeness.deductibleExpensesCents = false;
       // Morning status 30 describes an edited expense, not missing amounts.
       // Sum the current source values; historical filed reports need reconciliation.
-      if (row.status === 30) notices.set('expense-edited', {code:'expense-edited', label:'הוצאות שנערכו מחדש נכללות לפי הנתונים העדכניים במורנינג', count:(notices.get('expense-edited')?.count || 0) + 1});
+      if (row.status === 30) {
+        const notice = {code:'expense-edited', label:'הוצאות שנערכו מחדש נכללות לפי הנתונים העדכניים במורנינג', count:1};
+        entry.notices.push(notice);
+        notices.set(notice.code, {...notice, count:(notices.get(notice.code)?.count || 0) + 1});
+      }
     } else {
       const receipt = [320, 400, 405, 410].includes(row.type);
       const exempt = [3, 4, 5].includes(row.businessType);
       const isIncome = !row.selfInvoice && ([305, 320, 330].includes(row.type) || exempt && [400, 405, 410].includes(row.type));
-      if ([400, 405, 410].includes(row.type) && row.businessType === null) { incomeComplete = false; issue('business-type', 'חסר סוג העסק בקבלות לצורך סיווג ההכנסה'); }
+      if ([400, 405, 410].includes(row.type) && row.businessType == null) issue(entry, 'business-type', 'חסר סוג העסק בקבלות לצורך סיווג ההכנסה', ['incomeCents']);
       if (isIncome) {
-        if (hasMoney) entry.incomeCents = signed(row, row.grossCents) - signed(row, row.vatCents);
-        else { incomeComplete = false; issue('income-money', 'חסרים סכום, מע״מ או שער המרה במסמכי הכנסה'); }
+        if (hasMoney) entry.incomeCents = addMoney(signed(row, row.grossCents), -signed(row, row.vatCents));
+        else issue(entry, 'income-money', 'חסרים סכום, מע״מ או שער המרה במסמכי הכנסה', ['incomeCents']);
       }
       if ([305, 320, 330].includes(row.type)) {
-        if (row.selfInvoice) { outputVatComplete = false; issue('self-vat', 'חשבוניות עצמיות דורשות התאמת מע״מ בדוח הרשמי'); }
+        if (row.selfInvoice) issue(entry, 'self-vat', 'חשבוניות עצמיות דורשות התאמת מע״מ בדוח הרשמי', ['outputVatCents']);
         else if (moneyValue(row.vatCents)) entry.outputVatCents = signed(row, row.vatCents);
-        else { outputVatComplete = false; issue('output-vat', 'חסר סכום מע״מ שקלי במסמכי ההכנסה'); }
+        else issue(entry, 'output-vat', 'חסר סכום מע״מ שקלי במסמכי ההכנסה', ['outputVatCents']);
       }
       if (receipt) {
         if (moneyValue(row.grossCents)) {
@@ -71,27 +132,35 @@ export function buildMorningReport({documents, expenses, fromDate, toDate, group
           const allPositive = payments.length > 0 && payments.every(p => moneyValue(p.amountCents) && p.amountCents >= 0);
           let paymentTotal = 0;
           for (const payment of payments) {
-            if (!moneyValue(payment.amountCents)) { receiptsComplete = false; issue('payment-money', 'חסר סכום או שער המרה בתקבולים'); continue; }
+            if (!moneyValue(payment.amountCents)) { issue(entry, 'payment-money', 'חסר סכום או שער המרה בפירוט אמצעי התשלום', ['methods']); continue; }
             let value = signed(row, payment.amountCents);
             if (entry.receiptsCents < 0 && allPositive) value = -Math.abs(value);
             const method = METHODS[payment.type] || 'unknown';
-            if (method === 'unknown') { receiptsComplete = false; issue('payment-type', 'אמצעי תשלום לא מוכר מוצג ללא פירוט'); }
-            entry.methods[method] = (entry.methods[method] || 0) + value;
-            paymentTotal += value;
+            if (method === 'unknown') issue(entry, 'payment-type', 'אמצעי תשלום לא מוכר מוצג ללא פירוט', ['methods']);
+            entry.methods[method] = addMoney(entry.methods[method] || 0, value);
+            paymentTotal = addMoney(paymentTotal, value);
           }
-          const delta = entry.receiptsCents - paymentTotal;
+          const delta = addMoney(entry.receiptsCents, -paymentTotal);
           if (delta !== 0) {
-            entry.methods.unknown = (entry.methods.unknown || 0) + delta;
-            receiptsComplete = false; issue('payment-difference', 'פירוט אמצעי התשלום חסר או אינו תואם לסכום הקבלה');
+            entry.methods.unknown = addMoney(entry.methods.unknown || 0, delta);
+            issue(entry, 'payment-difference', 'פירוט אמצעי התשלום חסר או אינו תואם לסכום הקבלה', ['methods']);
           }
-        } else { receiptsComplete = false; issue('receipt-money', 'חסר סכום שקלי בתקבולים'); }
+        } else issue(entry, 'receipt-money', 'חסר סכום שקלי בקבלה; סך הקבלות ואמצעי התשלום אינם מלאים', ['receiptsCents', 'methods']);
       }
     }
-    for (const field of SUM_FIELDS) { b[field] += entry[field]; total[field] += entry[field]; }
-    for (const [method, value] of Object.entries(entry.methods)) { b.methods[method] += value; total.methods[method] += value; }
+    // A source record can be complete even though a VAT reporting period
+    // consists of full months. The period restriction belongs to aggregates.
+    finalize(entry, true);
+    for (const field of SUM_FIELDS) { b[field] = addMoney(b[field], entry[field]); total[field] = addMoney(total[field], entry[field]); }
+    for (const field of COMPLETENESS_FIELDS) {
+      b.completeness[field] &&= entry.completeness[field];
+      total.completeness[field] &&= entry.completeness[field];
+    }
+    for (const item of entry.issues) { addIssue(b, item); addIssue(total, item); }
+    for (const [method, value] of Object.entries(entry.methods)) { b.methods[method] = addMoney(b.methods[method], value); total.methods[method] = addMoney(total.methods[method], value); }
     b.records.push(entry); records.push(entry);
   }
-  for (const error of errors) issue(`source-${error.source}`, error.message);
+  for (const error of errors) addIssue(total, {code:`source-${error.source}`, label:error.message, count:1});
   // Retain zero-activity months so a yearly report is comparable month to month.
   if (['month', 'bimonth', 'quarter'].includes(group)) {
     for (let month = fromDate.slice(0, 7); month <= toDate.slice(0, 7);) {
@@ -100,16 +169,20 @@ export function buildMorningReport({documents, expenses, fromDate, toDate, group
       month = new Date(Date.UTC(year, part, 1)).toISOString().slice(0, 7);
     }
   }
-  const safe = [total, ...buckets.values()].every(b => SUM_FIELDS.every(key => Number.isSafeInteger(b[key])) && Object.values(b.methods).every(Number.isSafeInteger));
+  const safe = [total, ...buckets.values(), ...records].every(b => SUM_FIELDS.every(key => Number.isSafeInteger(b[key])) && Object.values(b.methods).every(Number.isSafeInteger));
   if (!safe) throw new Error('סכומי הדוח חורגים מטווח החישוב הנתמך');
-  const profitComplete = incomeComplete && expensesComplete;
-  const vatComplete = outputVatComplete && inputVatComplete && fullVatPeriod;
+  finalize(total, fullVatPeriod);
+  for (const b of buckets.values()) {
+    const start = b.key.length === 4 ? b.key + '-01-01' : b.key.length === 7 ? b.key + '-01' : b.key;
+    const length = group === 'year' ? 12 : group === 'quarter' ? 3 : group === 'bimonth' ? 2 : 1;
+    const end = group === 'day' ? start : new Date(Date.UTC(Number(start.slice(0, 4)), Number(start.slice(5, 7)) + length - 1, 0)).toISOString().slice(0, 10);
+    finalize(b, fullMonths(start < fromDate ? fromDate : start, end > toDate ? toDate : end));
+  }
+  total.notices = [...notices.values()];
   return {fromDate, toDate, group, total, buckets:[...buckets.values()].sort((a, b) => a.key.localeCompare(b.key)), records,
-    issues:[...issues.values()], notices:[...notices.values()], incomeComplete, expensesComplete, receiptsComplete, profitComplete,
-    outputVatComplete, inputVatComplete, vatComplete, deductibleExpensesComplete,
-    vatBalanceCents:vatComplete ? total.outputVatCents - total.inputVatCents : null,
-    complete:profitComplete && receiptsComplete && vatComplete && errors.length === 0,
-    profitCents:profitComplete ? total.incomeCents - total.expensesCents : null};
+    issues:total.issues, notices:total.notices,
+    ...Object.fromEntries(Object.entries(total).filter(([key]) => key.endsWith('Complete') || ['complete', 'profitCents', 'vatBalanceCents'].includes(key))),
+    complete:total.complete && errors.length === 0};
 }
 export function reportCsv(rows) {
   const cell = value => '"' + String(typeof value === 'string' && /^[=+\-@\t\r\n]/.test(value) ? "'" + value : value ?? '').replaceAll('"', '""') + '"';

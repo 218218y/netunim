@@ -1,5 +1,5 @@
 import {createClient} from 'npm:@supabase/supabase-js@2.112.4';
-import {createMorningReportsHandler} from './reports.js';
+import {createMorningReportsHandler, reportPermission} from './reports.js';
 
 const corsHeaders={
   'Access-Control-Allow-Origin':'*',
@@ -386,9 +386,28 @@ async function getDocumentPdf(body:any){
 }
 
 const morningReports=createMorningReportsHandler({request:morningRequest,environment:MORNING_ENV,allowedIds:()=>Deno.env.get('MORNING_REPORT_USER_IDS')||''});
+function documentReadPermission(user:any){
+  // app_metadata is set by the server. User-editable user_metadata is ignored.
+  return reportPermission(user,Deno.env.get('MORNING_REPORT_USER_IDS')||'')||!!user?.id&&(user.app_metadata?.morning_documents===true||(Deno.env.get('MORNING_DOCUMENT_USER_IDS')||'').split(',').map(id=>id.trim()).filter(Boolean).includes(user.id));
+}
+async function mayReadDocument(user:any,body:any){
+  if(documentReadPermission(user))return true;
+  const id=clean(body?.document_id,80);if(!isUuid(id))return false;
+  // Ordinary issuers retain access to their own verified results, never to an
+  // arbitrary Morning ID, another user's operation, or another environment.
+  const {data,error}=await operationQuery(user.id).eq('document_id',id).eq('state','created').limit(1).maybeSingle();
+  if(error)throw error;
+  return !!(data?.verified_at&&data.owner_id===user.id&&data.environment===MORNING_ENV&&data.document_id===id&&data.state==='created');
+}
+function documentReadForbidden(){return json({ok:false,code:'morning_documents_forbidden',message:'אין הרשאה לצפייה במסמכי העסק במורנינג. יש לפנות למנהל המערכת.'},403)}
 Deno.serve(async(req:Request)=>{
   if(req.method==='OPTIONS')return new Response('ok',{headers:corsHeaders});if(req.method!=='POST')return json({ok:false,code:'method_not_allowed'},405);if(!SUPABASE_URL||!PUBLISHABLE_KEY||!SECRET_KEY)return json({ok:false,code:'supabase_backend_not_configured',message:'Supabase Edge Function configuration is incomplete'},503);
   const user=await requireUser(req);if(!user)return json({ok:false,code:'morning_cloud_auth_required',message:'נדרשת התחברות לענן לפני שימוש ב-Morning'},401);const body=await req.json().catch(()=>({})),action=String(body?.action||'');
   if(action==='report_page'){if(!MORNING_ENV_VALID)return json({ok:false,code:'morning_environment_invalid',message:'סביבת מורנינג אינה מוגדרת כראוי'},503);const result=await morningReports(user,body);return json(result.body,result.status)}
+  if(['search_documents','get_document','document_links','document_pdf'].includes(action)&&!MORNING_ENV_VALID)return json({ok:false,code:'morning_environment_invalid',message:'סביבת מורנינג אינה מוגדרת כראוי'},503);
+  if(action==='search_documents'&&!documentReadPermission(user))return documentReadForbidden();
+  if(['get_document','document_links','document_pdf'].includes(action)){
+    try{if(!await mayReadDocument(user,body))return documentReadForbidden()}catch(error){return dbError(error,'morning_document_permission_failed')}
+  }
   if(action==='status')return status(user.id,body);if(action==='reserve')return reserve(user.id,body);if(action==='abandon_reservation')return abandonReservation(user.id,body);if(action==='preview')return preview(user.id,body);if(action==='create')return create(user.id,body);if(action==='search_documents')return searchDocuments(body);if(action==='get_document')return getDocument(body);if(action==='document_links')return getDocument(body,true);if(action==='document_pdf')return getDocumentPdf(body);return json({ok:false,code:'morning_unknown_action',message:'פעולת Morning אינה מוכרת'},400);
 });

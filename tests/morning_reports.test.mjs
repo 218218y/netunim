@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {reportDocument, reportExpense, reportPermission, reportInput, createMorningReportsHandler} from '../netunim-orders/supabase/functions/morning-documents/reports.js';
-import {buildMorningReport, reportPeriod, reportCsv} from '../netunim-orders/site/assets/js/domains/finance/morning-report-model.js';
+import {buildMorningReport, reportPeriod, reportCsv, reportMetric} from '../netunim-orders/site/assets/js/domains/finance/morning-report-model.js';
 import {loadMorningReportSource} from '../netunim-orders/site/assets/js/domains/finance/morning-report-loader.js';
 
 const id = value => `aaaaaaaa-aaaa-4aaa-aaaa-${String(value).padStart(12, '0')}`;
@@ -16,7 +16,7 @@ test('invoices and receipts never double count revenue; exact cents and monthly 
   assert.equal(r.total.expensesCents, 5000); assert.equal(r.profitCents, 5000);
   assert.deepEqual(r.total.methods, {credit:6800, cash:2000, cheque:3000, bank:0, paypal:0, app:0, other:0, withholding:0, unknown:0});
   assert.equal(r.buckets.length, 12); assert.equal(r.complete, true);
-  const cents = report([doc({amount:0.3, amountLocal:0.3, vat:0.1})], [expense({amount:0.1, amountLocal:0.1, vat:0})]);
+  const cents = report([doc({amount:0.3, amountLocal:0.3, vat:0.1})], [expense({amount:0.1, amountLocal:0.1, vat:0, deductibleVat:0})]);
   assert.equal(cents.profitCents, 10);
 });
 test('invoice receipts, credit notes, cancelled originals and negative receipts balance once', () => {
@@ -37,7 +37,9 @@ test('expense reporting date controls the report, deleted expenses and credit si
   const r = report([], [expense(), expense({id:id(21), status:100}), expense({id:id(22), documentType:330})]);
   assert.equal(r.total.expensesCents, 0); assert.equal(r.records.length, 2);
   assert.equal(report([], [expense()], {fromDate:'2026-01-15'}).total.expensesCents, 0);
-  assert.equal(report([], [expense({vat:null})]).profitCents, null);
+  const missingInvoiceVat = report([], [expense({vat:null})]);
+  assert.equal(missingInvoiceVat.expensesComplete, false);
+  assert.equal(missingInvoiceVat.profitCents, -5000, 'known gross and source deductible VAT are sufficient for managerial cost');
   assert.equal(report([], [expense({status:30})]).profitCents, -5000);
 });
 test('four edited expenses in July-August retain current totals, VAT and a reconciliation notice', () => {
@@ -50,7 +52,8 @@ test('four edited expenses in July-August retain current totals, VAT and a recon
   assert.equal(r.notices[0].code, 'expense-edited'); assert.equal(r.notices[0].count, 4);
   assert.equal(r.issues.length, 0); assert.equal(r.records.length, 5);
   const missingVat = report([], [expense({status:30, deductibleVat:null})]);
-  assert.equal(missingVat.profitCents, -5000); assert.equal(missingVat.vatBalanceCents, null);
+  assert.equal(missingVat.profitCents, null); assert.equal(missingVat.vatBalanceCents, null);
+  assert.equal(missingVat.expensesComplete, true); assert.equal(missingVat.expenseCostComplete, false);
   assert.equal(missingVat.complete, false); assert.equal(missingVat.issues[0].code, 'input-vat');
   const missingAmount = report([], [expense({status:30, amountLocal:null, amount:null})]);
   assert.equal(missingAmount.profitCents, null); assert.equal(missingAmount.expensesComplete, false);
@@ -97,6 +100,122 @@ test('VAT uses deductible input VAT in reporting months, including zero recognit
   assert.equal(report([], [], {group:'bimonth'}).buckets.length, 6);
   assert.equal(report([], [], {group:'quarter'}).buckets.length, 4);
 });
+test('managerial expense cost includes unrecoverable VAT, separately from net expense analysis', () => {
+  for (const [deductibleVat, cost, profit, unrecoverable] of [[0, 11800, -1800, 1800], [6, 11200, -1200, 1200], [18, 10000, 0, 0]]) {
+    const r = report([doc()], [expense({amount:118, amountLocal:118, vat:18, deductibleVat})]);
+    assert.equal(r.total.expensesCents, 10000);
+    assert.equal(reportMetric(r.total, 'expenseCostCents'), cost);
+    assert.equal(reportMetric(r.total, 'unrecoverableVatCents'), unrecoverable);
+    assert.equal(r.profitCents, profit);
+    assert.equal(reportMetric(r.buckets[0], 'profitCents'), profit);
+    assert.equal(r.expenseCostComplete, true);
+  }
+  const exempt = report([doc({type:400, business:{type:3}, amount:100, amountLocal:100, vat:0, payment:[{type:1, price:100}]})],
+    [expense({amount:118, amountLocal:118, vat:18, deductibleVat:0})]);
+  assert.equal(exempt.profitCents, -1800, 'source zero deductible VAT preserves the full acquisition cost for exempt entities');
+  const unknown = report([doc()], [expense({amount:118, amountLocal:118, vat:18, deductibleVat:null})]);
+  assert.equal(reportMetric(unknown.total, 'expensesCents'), 10000);
+  assert.equal(reportMetric(unknown.total, 'expenseCostCents'), null);
+  assert.equal(unknown.profitCents, null, 'missing deductible VAT must not imply a full reclaim');
+  assert.ok(unknown.records.find(row => row.kind === 'expense').issues.some(item => item.code === 'input-vat'));
+});
+
+test('expense credits reverse cost, deductible VAT and unrecoverable VAT consistently', () => {
+  const r = report([], [expense({documentType:330, amount:118, amountLocal:118, vat:18, deductibleVat:6})]);
+  assert.equal(r.total.expensesCents, -10000);
+  assert.equal(r.total.expenseCostCents, -11200);
+  assert.equal(r.total.unrecoverableVatCents, -1200);
+  assert.equal(r.total.inputVatCents, -600);
+  assert.equal(r.profitCents, 11200);
+  const signedCredit = report([], [expense({documentType:330, amount:-118, amountLocal:-118, vat:-18, deductibleVat:-6})]);
+  assert.equal(signedCredit.total.expenseCostCents, -11200);
+  const inconsistent = report([], [expense({vat:9, deductibleVat:18})]);
+  assert.equal(reportMetric(inconsistent.total, 'expenseCostCents'), null);
+  assert.equal(reportMetric(inconsistent.total, 'inputVatCents'), null);
+  assert.ok(inconsistent.issues.some(item => item.code === 'input-vat-inconsistent'));
+});
+
+test('unknown receipt amounts never appear as verified zero and do not hide good months', () => {
+  const r = report([
+    doc({type:400, amountLocal:null, amount:null, payment:[{type:3, price:118}]}),
+    doc({id:id(2), type:400, documentDate:'2026-02-10', payment:[{type:1, price:118}]}),
+  ]);
+  assert.equal(r.total.receiptsCents, 11800, 'known subtotal remains available internally');
+  assert.equal(reportMetric(r.total, 'receiptsCents'), null);
+  assert.equal(r.receiptAmountComplete, false);
+  assert.equal(reportMetric(r.buckets[0], 'receiptsCents'), null);
+  assert.equal(reportMetric(r.buckets[1], 'receiptsCents'), 11800);
+  assert.equal(reportMetric(r.buckets[1], 'methods', 'cash'), 11800);
+  assert.equal(reportMetric(r.buckets[2], 'receiptsCents'), 0, 'a successfully read inactive month is a real zero');
+  assert.equal(reportMetric(r.records[0], 'receiptsCents'), null);
+  assert.equal(r.records[0].issues[0].code, 'receipt-money');
+});
+
+test('verified receipt totals remain usable when only their allocation is incomplete', () => {
+  const r = report([doc({type:400, payment:[{type:3, price:60}]})]);
+  assert.equal(r.receiptAmountComplete, true);
+  assert.equal(r.paymentBreakdownComplete, false);
+  assert.equal(r.receiptsComplete, false, 'legacy composite still indicates allocation problems');
+  assert.equal(reportMetric(r.total, 'receiptsCents'), 11800);
+  assert.equal(reportMetric(r.total, 'methods', 'credit'), null, 'incomplete method totals are not presented as verified');
+  assert.equal(r.total.methods.credit, 6000);
+  assert.equal(r.total.methods.unknown, 5800);
+  const zeroReceipt = report([doc({type:400, amount:0, amountLocal:0, vat:0, payment:[]})]);
+  assert.equal(reportMetric(zeroReceipt.total, 'receiptsCents'), 0);
+  assert.equal(zeroReceipt.receiptsComplete, true);
+});
+
+test('completeness is independent for each record, month and total metric', () => {
+  const r = report([doc(), doc({id:id(2), documentDate:'2026-02-10', vat:null})], [expense()]);
+  assert.equal(r.incomeComplete, false); assert.equal(r.outputVatComplete, false);
+  assert.equal(reportMetric(r.total, 'incomeCents'), null);
+  assert.equal(reportMetric(r.total, 'outputVatCents'), null);
+  assert.equal(reportMetric(r.buckets[0], 'incomeCents'), 10000);
+  assert.equal(reportMetric(r.buckets[0], 'outputVatCents'), 1800);
+  assert.equal(reportMetric(r.buckets[0], 'expenseCostCents'), 5000);
+  assert.equal(reportMetric(r.buckets[0], 'profitCents'), 5000);
+  assert.equal(reportMetric(r.buckets[0], 'vatBalanceCents'), 900);
+  assert.equal(reportMetric(r.buckets[1], 'incomeCents'), null);
+  assert.equal(reportMetric(r.buckets[1], 'outputVatCents'), null);
+  assert.equal(reportMetric(r.buckets[1], 'expenseCostCents'), 0);
+  assert.equal(reportMetric(r.buckets[2], 'profitCents'), 0);
+  assert.equal(r.buckets[0].issues.length, 0);
+  assert.deepEqual(r.buckets[1].issues.map(item => item.code), ['income-money', 'output-vat']);
+  assert.equal(r.records[0].outputVatComplete, true);
+  assert.equal(r.records[1].outputVatComplete, false);
+});
+
+test('missing sources propagate to all zero-activity months instead of inventing complete zero totals', () => {
+  for (const missing of ['documents', 'expenses']) {
+    const r = report(missing === 'documents' ? null : [], missing === 'expenses' ? null : []);
+    const missingFields = missing === 'documents' ? ['incomeCents', 'receiptsCents', 'outputVatCents'] : ['expensesCents', 'expenseCostCents', 'inputVatCents'];
+    for (const scope of [r.total, ...r.buckets]) for (const field of missingFields) assert.equal(reportMetric(scope, field), null, `${missing}: ${field} must remain unknown`);
+    assert.equal(r.profitCents, null);
+    assert.equal(r.buckets.length, 12);
+    assert.equal(reportMetric(r.buckets[0], missing === 'documents' ? 'expenseCostCents' : 'incomeCents'), 0);
+  }
+  const failed = report([], [], {errors:[{source:'expenses', message:'unavailable'}]});
+  assert.equal(reportMetric(failed.total, 'expenseCostCents'), null);
+  assert.equal(reportMetric(failed.buckets[0], 'expenseCostCents'), null);
+});
+
+test('a partial custom period does not hide VAT of full interior months', () => {
+  const r = report([doc({documentDate:'2026-02-10'})], [expense({reportingDate:'2026-02-01'})], {fromDate:'2026-01-15', toDate:'2026-03-31'});
+  assert.equal(r.vatComplete, false);
+  assert.equal(reportMetric(r.total, 'vatBalanceCents'), null);
+  assert.equal(reportMetric(r.buckets[0], 'vatBalanceCents'), null);
+  assert.equal(reportMetric(r.buckets[1], 'vatBalanceCents'), 900);
+  assert.equal(reportMetric(r.buckets[2], 'vatBalanceCents'), 0);
+});
+
+test('known arithmetic and derived profit are constrained to safe integer cents', () => {
+  const huge = {...doc(), grossCents:Number.MAX_SAFE_INTEGER, vatCents:0};
+  assert.throws(() => report([huge, {...huge, id:id(2)}]), /טווח החישוב/);
+  assert.throws(() => report([huge], [{...expense(), grossCents:-Number.MAX_SAFE_INTEGER, vatCents:0, deductibleVatCents:0}]), /טווח החישוב/);
+  assert.throws(() => report([huge, {...huge, id:id(2), grossCents:2}, {...huge, id:id(3), grossCents:-2}]), /טווח החישוב/, 'an unsafe intermediate sum cannot be made accurate by a later reversal');
+  assert.throws(() => report([{...huge, type:400, payments:[{type:3, amountCents:Number.MAX_SAFE_INTEGER}, {type:3, amountCents:2}, {type:3, amountCents:-2}]}]), /טווח החישוב/, 'payment allocation uses checked arithmetic too');
+});
+
 test('report permissions are server controlled and upstream receives only whitelisted reads', async () => {
   assert.equal(reportPermission({id:id(1), user_metadata:{morning_reports:true}}), false);
   assert.equal(reportPermission({id:id(1)}, id(1)), true);
