@@ -1,10 +1,25 @@
 import {equalSyncJson} from '../shared/cloud-sync.js';
 import {clone} from '../core/values.js';
 import {customerDebtProgressData,customerDebtActiveProgressEntries} from '../shared/customer-debt-progress.js';
+import {mergeBusinessRecord3,competingTransactionOrder} from '../shared/business-field-merge.js';
 
 export function eq(a,b){return equalSyncJson(a,b)}
 
-export function mergeArray(base,local,remote,key,conflicts,label,preferLocalConflicts=false){const bm=new Map((base||[]).map(x=>[String(x?.[key]),x])),lm=new Map((local||[]).map(x=>[String(x?.[key]),x])),rm=new Map((remote||[]).map(x=>[String(x?.[key]),x])),keys=new Set([...bm.keys(),...lm.keys(),...rm.keys()]),out=[];for(const k of keys){const b=bm.get(k),l=lm.get(k),r=rm.get(k),lc=!eq(l,b),rc=!eq(r,b);if(lc&&rc&&!eq(l,r)){conflicts.push(`${label}:${k}`);if(preferLocalConflicts&&l!==undefined)out.push(clone(l));continue}const v=lc?l:r;if(v!==undefined)out.push(clone(v))}return out}
+export function mergeArray(base,local,remote,key,conflicts,label,preferLocalConflicts=false){
+  const competing=label==='transaction'&&competingTransactionOrder(base,local,remote);
+  if(competing)conflicts.push('transactionOrder');
+  const bm=new Map((base||[]).map(x=>[String(x?.[key]),x])),lm=new Map((local||[]).map(x=>[String(x?.[key]),x])),rm=new Map((remote||[]).map(x=>[String(x?.[key]),x])),keys=new Set([...bm.keys(),...lm.keys(),...rm.keys()]),out=[];
+  for(const k of keys){
+    const b=bm.get(k),l=lm.get(k),r=rm.get(k),lc=!eq(l,b),rc=!eq(r,b);
+    if(lc&&rc&&!eq(l,r)){
+      const merged=competing?null:mergeBusinessRecord3(b,l,r,`orders.${label}`);
+      if(merged){out.push(merged);continue}
+      conflicts.push(`${label}:${k}`);if(preferLocalConflicts&&l!==undefined)out.push(clone(l));continue;
+    }
+    const v=lc?l:r;if(v!==undefined)out.push(clone(v));
+  }
+  return out;
+}
 
 function withoutDebtProgress(row){if(row===undefined)return undefined;const value=clone(row);delete value.debtProgress;delete value.morningDocuments;return value}
 function comparableDebtRow(row){const value=withoutDebtProgress(row);if(value===undefined)return undefined;delete value.updatedAt;delete value.paidAt;delete value.invoiceIssuedAt;delete value.closedAt;return value}

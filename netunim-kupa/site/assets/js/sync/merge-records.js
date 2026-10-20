@@ -1,5 +1,6 @@
 import {equalSyncJson} from '../shared/cloud-sync.js';
 import {clone} from '../core/values.js';
+import {mergeBusinessRecord3} from '../shared/business-field-merge.js';
 
 export function jsonEq(a,b){return equalSyncJson(a,b)}
 
@@ -10,7 +11,11 @@ export function mergeRecordArray(baseArr,localArr,remoteArr,keyName,path,conflic
   for(const k of keys){
     const b=bm.has(k)?bm.get(k):undefined,l=lm.has(k)?lm.get(k):undefined,r=rm.has(k)?rm.get(k):undefined;
     const lc=!jsonEq(l,b),rc=!jsonEq(r,b);
-    if(lc&&rc&&!jsonEq(l,r)){conflicts.push(`${path}:${k}`);continue}
+    if(lc&&rc&&!jsonEq(l,r)){
+      const merged=mergeBusinessRecord3(b,l,r,`kupa.${path}`);
+      if(merged){out.push(merged);continue}
+      conflicts.push(`${path}:${k}`);continue;
+    }
     const chosen=lc?l:r;
     if(chosen!==undefined)out.push(clone(chosen));
   }

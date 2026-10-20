@@ -208,7 +208,7 @@ export function createDataApiScheduler({maxHighBurst=4,canRun=()=>true}={}){
 
 // Capture evidence before rebasing. Missing entities are represented by null, never dropped.
 export function structuredSyncConflict({domain,conflicts,base,local,remote,generation,baseRevision,currentRemoteRevision}){
-  const aliases={supplier:'suppliers',transaction:'transactions',customerDebt:'customerDebts',customerOrder:'customerOrders',serviceCall:'serviceCalls',note:'notes',inventoryItem:'inventoryItems',inventoryEvent:'inventoryEvents',warehouseOrder:'warehouseOrders',check:'checks'};
+  const aliases={supplier:'suppliers',transaction:'transactions',transactionOrder:'transactions',customerDebt:'customerDebts',customerOrder:'customerOrders',serviceCall:'serviceCalls',note:'notes',inventoryItem:'inventoryItems',inventoryEvent:'inventoryEvents',warehouseOrder:'warehouseOrders',check:'checks'};
   const value=(state,type,id)=>{const path=aliases[type]||type;const data=Array.isArray(state)?state:path.split('.').reduce((v,k)=>v?.[k],state);return structuredClone((id&&Array.isArray(data)?data.find(row=>String(row?.id??row?.name)===id):data)??null)};
   return {kind:'entity-conflict',domain,generation,baseRevision,currentRemoteRevision,items:conflicts.map(key=>{const [entityType,...parts]=String(key).split(':'),entityId=parts.join(':')||null;return {domain,entityType,entityId,base:value(base,entityType,entityId),local:value(local,entityType,entityId),remote:value(remote,entityType,entityId),generation,baseRevision,currentRemoteRevision}})};
 }
