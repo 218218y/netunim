@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-4cc85dc886ba';
+const CACHE='orders-app-shell-esm-e8bdd801397a';
 const SHELL=[
   './',
   './index.html',
@@ -146,6 +146,7 @@ const SHELL=[
   './assets/js/domains/finance/document-commands.js',
   './assets/js/domains/finance/document-publication.js',
   './assets/js/domains/finance/kupa-write-state.js',
+  './assets/js/domains/finance/morning-report-cache.js',
   './assets/js/domains/finance/morning-report-loader.js',
   './assets/js/domains/finance/morning-report-model.js',
   './assets/js/domains/finance/morning-reports.js',

@@ -6,7 +6,7 @@ import {CLOUD_SESSION_KEY, CLOUD_EMAIL_KEY, CLOUD_AUTO_KEY} from '../state/const
 import {createDataApiScheduler} from '../shared/cloud-sync.js';
 
 const SUPA_NETWORK_ATTEMPTS=3;
-// A single un-retried background read timeout is not evidence that writes are unavailable.
+// Background read timeouts do not imply write failure.
 const SUPA_BACKGROUND_FAILURES_TO_TRIP=2;
 const SUPA_NETWORK_TIMEOUT_MS=20*1000;
 const SUPA_BACKGROUND_TIMEOUT_MS=8*1000;
@@ -30,13 +30,11 @@ function tripSupaDataApiBreaker(){supaDataApiBackgroundFailures=0;const index=Ma
 function tripSupaDataApiRateLimit(response){supaDataApiBackgroundFailures=0;const delay=Math.max(1_000,responseRetryAfterMs(response)||SUPA_DATA_API_BACKOFF_MS[0]);supaDataApiBlockedUntil=Math.max(supaDataApiBlockedUntil,Date.now()+delay);supaDataApiBlockCode='SUPABASE_DATA_API_RATE_LIMIT';return delay}
 function isSupaDataApiTransportFailure(error){return ['SUPABASE_NETWORK_TIMEOUT','SUPABASE_NETWORK_UNAVAILABLE'].includes(String(error?.code||''))}
 function recordSupaDataApiTransportFailure({priority,safeRead,retried}){
-  // After a fully retried read or an uncertain write failure, keep the existing immediate breaker.
-  // Only a one-shot background GET/HEAD needs corroboration before blocking unrelated writes.
+  // Retried reads/uncertain writes trip; corroborate single background GET/HEAD failures.
   if(priority==='low'&&safeRead&&!retried&&++supaDataApiBackgroundFailures<SUPA_BACKGROUND_FAILURES_TO_TRIP)return;
   tripSupaDataApiBreaker();
 }
 async function responseIsAppBusy(response){if(Number(response?.status)!==429)return false;try{const body=await response.clone().json();return String(body?.code||'')==='PT429'||String(body?.message||'').toLowerCase().includes('save_busy')}catch{return false}}
-// Both lanes retain the same serial scheduler and priority fairness.
 const supaDataApiScheduler=createDataApiScheduler({maxHighBurst:4});
 function tripIncidentBackoff(){supaIncidentBlockedUntil=Date.now()+SUPA_DATA_API_BACKOFF_MS[Math.min(supaIncidentFailures++,3)]}
 async function withSupaDataApiSlot(path,request,{priority='low',coalesceKey='',safeRead=false,retried=false}={}){
@@ -47,8 +45,7 @@ async function withSupaDataApiSlot(path,request,{priority='low',coalesceKey='',s
     if(monitoring&&Date.now()<supaIncidentBlockedUntil)throw supaDataApiBlockedError(supaIncidentBlockedUntil);
     try{
       const response=await request(),status=Number(response?.status);
-      // An isolated monitoring endpoint failure must not trip (or reset) the
-      // business circuit. Service-wide throttling still applies normally.
+      // Monitoring never trips/resets business backoff; keep global throttling.
       if(monitoring){
         if(status===429&&!await responseIsAppBusy(response))tripSupaDataApiRateLimit(response);
         else if(status>=500||status===429)tripIncidentBackoff();
@@ -64,12 +61,21 @@ async function withSupaDataApiSlot(path,request,{priority='low',coalesceKey='',s
   return scheduled.then(response=>typeof response?.clone==='function'?response.clone():response);
 }
 
-function sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms))}
+function sleep(ms,signal){return new Promise((resolve,reject)=>{const abort=()=>{clearTimeout(timer);reject(signal.reason)},timer=setTimeout(()=>{signal?.removeEventListener('abort',abort);resolve()},ms);signal?.addEventListener('abort',abort,{once:true});if(signal?.aborted)abort()})}
 function isSupaNetworkError(error){const name=String(error?.name||''),message=String(error?.message||error||'').toLowerCase();return name==='AbortError'||name==='TypeError'||message.includes('failed to fetch')||message.includes('networkerror')||message.includes('load failed')}
 function supaNetworkFailure(error,{attempts=1}={}){const timedOut=String(error?.name||'')==='AbortError',repeated=attempts>1,e=new Error(timedOut?(repeated?'החיבור ל-Supabase לא הגיב בזמן גם לאחר ניסיונות חוזרים.':'החיבור ל-Supabase לא הגיב בזמן.'):(repeated?'לא ניתן להגיע כרגע ל-Supabase גם לאחר ניסיונות חוזרים.':'לא ניתן להגיע כרגע ל-Supabase.'));e.code=timedOut?'SUPABASE_NETWORK_TIMEOUT':'SUPABASE_NETWORK_UNAVAILABLE';e.cause=error;return e}
-async function fetchSupaNetwork(url,options,{retry=false,timeoutMs=SUPA_NETWORK_TIMEOUT_MS,assertRequestScope,withRequestScope}={}){const attempts=retry?SUPA_NETWORK_ATTEMPTS:1;let lastError=null;for(let attempt=0;attempt<attempts;attempt++){assertRequestScope?.();const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),Math.max(1000,Number(timeoutMs)||SUPA_NETWORK_TIMEOUT_MS));try{const send=()=>{assertRequestScope?.();return fetch(url,{...options,signal:controller.signal})};return await (withRequestScope?withRequestScope(send):send())}catch(error){lastError=error;if(!isSupaNetworkError(error))throw error;if(attempt+1>=attempts)throw supaNetworkFailure(error,{attempts});await sleep(SUPA_NETWORK_BACKOFF_MS[Math.min(attempt,SUPA_NETWORK_BACKOFF_MS.length-1)])}finally{clearTimeout(timer)}}throw supaNetworkFailure(lastError,{attempts})}
+async function fetchSupaNetwork(url,options,{retry=false,timeoutMs=SUPA_NETWORK_TIMEOUT_MS,assertRequestScope,withRequestScope}={}){
+  const attempts=retry?SUPA_NETWORK_ATTEMPTS:1;let lastError=null;
+  for(let attempt=0;attempt<attempts;attempt++){
+    options.signal?.throwIfAborted();assertRequestScope?.();
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),Math.max(1000,Number(timeoutMs)||SUPA_NETWORK_TIMEOUT_MS));
+    try{const send=()=>{assertRequestScope?.();return fetch(url,{...options,signal:options.signal?AbortSignal.any([controller.signal,options.signal]):controller.signal})};return await (withRequestScope?withRequestScope(send):send())}
+    catch(error){options.signal?.throwIfAborted();lastError=error;if(!isSupaNetworkError(error))throw error;if(attempt+1>=attempts)throw supaNetworkFailure(error,{attempts});await sleep(SUPA_NETWORK_BACKOFF_MS[Math.min(attempt,SUPA_NETWORK_BACKOFF_MS.length-1)],options.signal)}
+    finally{clearTimeout(timer)}
+  }
+  throw supaNetworkFailure(lastError,{attempts})
+}
 
-// Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createCloudAuth({session={},assertSessionOwner=()=>true}){
 const capabilityGate=createSyncCapabilityGate(async()=>{const response=await supaFetch('/rest/v1/rpc/get_netunim_sync_capabilities',{method:'POST',body:'{}',dataPriority:'high'});if(!response.ok)throw Object.assign(new Error('ה־DB אינו תואם לגרסת האתר; יש להשלים את עדכון מסד הנתונים.'),{code:'netunim_sync_capabilities_missing'});return response.json()});
 async function ensureSyncCapabilities(){session.syncCapabilitiesChecking=true;try{const ready=await capabilityGate.ensure();session.syncCapabilitiesError=null;return ready}catch(error){session.syncCapabilitiesError=error;throw error}finally{session.syncCapabilitiesChecking=false}}
@@ -105,16 +111,16 @@ async function refreshSession({force=true,observedAccessToken=''}={}){if(refresh
 async function ensureSession(){let s=loadSession();if(!s)throw cloudAuthRequired();assertSessionOwner(s);if(Number(s.expires_at||0)<Math.floor(Date.now()/1000)+60)s=await refreshSession({force:false,observedAccessToken:s.access_token});return s}
 
 async function supaFetch(path,opt={}){
-  // Capture the caller's login before any asynchronous capability/session work.
-  // Neither a queued request nor an in-flight response may cross a login epoch.
+  // Capture login before async work; fence queued/in-flight responses.
   const requestScope=accountScope.current(),assertRequestScope=opt.assertRequestScope;
   const assertCurrent=()=>{
-    // Caller-owned cancellation keeps its specific error semantics.
+    // Caller cancellation survives.
     assertRequestScope?.();
-    // With no session, preserve the normal 'login required' path; still fence any later login.
+    opt.signal?.throwIfAborted();
+    // Preserve login-required; fence later logins.
     if(requestScope.owner||accountScope.current().epoch!==requestScope.epoch)accountScope.assertCurrent(requestScope);
   };
-  if(syncRequestNeedsCapabilities(path,opt.method))await ensureSyncCapabilities();
+  assertCurrent();if(syncRequestNeedsCapabilities(path,opt.method))await ensureSyncCapabilities();
   assertCurrent();
   const {networkRetry,networkTimeoutMs,dataPriority,coalesceKey,assertRequestScope:_callerGuard,withRequestScope,...requestOptions}=opt,
     method=String(requestOptions.method||'GET').toUpperCase(),safeRead=method==='GET'||method==='HEAD',
@@ -128,7 +134,7 @@ async function supaFetch(path,opt={}){
       const observed=s.access_token;s=await refreshSession({force:true,observedAccessToken:observed});assertCurrent();r=await fetchSupaNetwork(SUPA_CONFIG.url+path,{...requestOptions,headers:{...supaHeaders(s.access_token),...(requestOptions.headers||{})}},{retry,timeoutMs,assertRequestScope:assertCurrent,withRequestScope});assertCurrent()}
     return r;
   };
-  // De-duplicate only for the same login AND operation guard, including explicit keys.
+  // Keys require the same login/operation guard.
   const key=coalesceKey||(priority==='low'&&safeRead?`${method}:${path}`:'');
   const scopedKey=key?`${cloudAuthInstance}:${requestScope.epoch}:${requestScope.owner||''}:${guardCoalesceIdentity(assertRequestScope)}:${key}`:'';
   return withSupaDataApiSlot(path,request,{priority,safeRead,retried:retry,coalesceKey:scopedKey});

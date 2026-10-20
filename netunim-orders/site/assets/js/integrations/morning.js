@@ -3,7 +3,7 @@
  * @typedef {import('../core/morning-operation-scope.js').MorningAssertion} MorningAssertion
  * @typedef {import('../core/morning-operation-scope.js').MorningOperationScope} MorningOperationScope
  * @typedef {Record<string,unknown>} MorningResult
- * @typedef {{method:'POST',networkRetry:false,dataPriority:'high',body:string,assertRequestScope:MorningAssertion}} MorningRequestOptions
+ * @typedef {{method:'POST',networkRetry:false,dataPriority:'high',body:string,assertRequestScope:MorningAssertion,signal?:AbortSignal}} MorningRequestOptions
  */
 const PATH='/functions/v1/morning-documents';
 /** @param {unknown} value @returns {value is MorningResult} */
@@ -13,22 +13,25 @@ function message(value){return value instanceof Error?value.message:'לא נית
 /** @param {{supaFetch:(path:string,options:MorningRequestOptions)=>Promise<Response>,operationScope:MorningOperationScope}} ports */
 export function createMorningRequest({supaFetch,operationScope}){
   if(typeof supaFetch!=='function'||typeof operationScope?.captureRead!=='function')throw new TypeError('morning_request_ports_required');
-  /** @param {string} action @param {MorningResult} payload @param {MorningAssertion} assertCurrent */
-  async function response(action,payload,assertCurrent){
-    assertCurrent();
-    try{const result=await supaFetch(PATH,{method:'POST',networkRetry:false,dataPriority:'high',assertRequestScope:assertCurrent,body:JSON.stringify({action,...payload})});assertCurrent();return result}
-    catch(error){assertCurrent();throw Object.assign(new Error(message(error)),{code:object(error)&&typeof error.code==='string'?error.code:'morning_backend_unreachable'})}
+  /** @param {string} action @param {MorningResult} payload @param {MorningAssertion} check @param {AbortSignal} [signal] */
+  async function response(action,payload,check,signal){
+    check();
+    try{const result=await supaFetch(PATH,{method:'POST',networkRetry:false,dataPriority:'high',assertRequestScope:check,body:JSON.stringify({action,...payload}),...(signal?{signal}:{})});check();return result}
+    catch(error){check();throw Object.assign(new Error(message(error)),{code:object(error)&&typeof error.code==='string'?error.code:'morning_backend_unreachable'})}
   }
-  /** @param {Response} result @param {MorningAssertion} assertCurrent */
-  async function body(result,assertCurrent){
-    let data;try{data=await result.json()}catch(error){assertCurrent();throw Object.assign(new Error(message(error)),{code:'morning_response_invalid'})}
-    assertCurrent();
+  /** @param {Response} result @param {MorningAssertion} check */
+  async function body(result,check){
+    let data;try{data=await result.json()}catch(error){check();throw Object.assign(new Error(message(error)),{code:'morning_response_invalid'})}
+    check();
     if(!object(data))throw Object.assign(new Error('שירות Morning החזיר תשובה שאינה תקינה'),{code:'morning_response_invalid'});
     if(!result.ok||data.ok===false)throw Object.assign(new Error(typeof data.message==='string'?data.message:'שירות Morning החזיר שגיאה'),{code:typeof data.code==='string'?data.code:'morning_backend_error',status:result.status,details:data});
     return data;
   }
-  /** @param {string} action @param {MorningResult} [payload] @param {MorningAssertion} [assertCurrent] */
-  async function json(action,payload={},assertCurrent=operationScope.captureRead()){return body(await response(action,payload,assertCurrent),assertCurrent)}
+  /** @param {string} action @param {MorningResult} [payload] @param {MorningAssertion} [assertCurrent] @param {{signal?:AbortSignal}} [options] */
+  async function json(action,payload={},assertCurrent=operationScope.captureRead(),{signal}={}){
+    const check=()=>{signal?.throwIfAborted();return assertCurrent()};
+    return body(await response(action,payload,check,signal),check);
+  }
   /** @param {string} id @param {MorningAssertion} [assertCurrent] */
   async function pdf(id,assertCurrent=operationScope.captureRead()){
     const result=await response('document_pdf',{document_id:id},assertCurrent);
