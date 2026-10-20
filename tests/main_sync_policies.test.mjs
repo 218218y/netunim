@@ -16,6 +16,9 @@ for(const [app,policies] of Object.entries(baseline.policies)){
     actual=actual.replaceAll('isOnline()','navigator.onLine').replaceAll('saveOperation.isSaving()','cloudSavePromise').replaceAll('saveOperation.joinFlight()','cloudSavePromise').replaceAll('saveOperation.runtime.','saveWork.').replaceAll('saveOperation.cancelRetry()','outboxRetryScheduler.cancel()').replaceAll('saveOperation.drainFollowup()','followup.drain()');
     if(app==='kupa')actual=actual.replace('void wake()','void polling.wake()').replace('markCloudMode();',"localStorage.setItem(STORAGE_PREF_KEY,'supabase');localStorage.setItem(SUPA_AUTO_KEY,'1');");
     if(name==='rpcSaveCloudV2')actual=actual.replace("request('/rest/v1/rpc/'+rpc", "supaRest('/rest/v1/rpc/'+rpc").replace('documentName()', 'session.cloudDocumentName').replace('validate(snapshot,','assertValidCloudState(snapshot,');
-    assert.equal(actual,expected);
+    // Reviewed audit change: persist bounded backoff for transient errors with
+    // no Retry-After. Preserve every other historical save-policy token.
+    const reviewed=name==='runStorageV2CloudSave'?expected.replace('const normalized=normalizeCloudError(error),attempts=Number(state?.control?.retry?.attempts||0)+1,nextAttemptAt=normalized.retryAfterMs?new Date(Date.now()+normalized.retryAfterMs).toISOString():null,retry={attempts,lastErrorCode:normalized.code||normalized.kind,lastAttemptAt:new Date().toISOString(),nextAttemptAt};','const retry=createCloudRetryControl(error,state?.control?.retry);'):expected;
+    assert.equal(actual,reviewed);
   });
 }

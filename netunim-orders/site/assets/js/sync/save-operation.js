@@ -1,5 +1,5 @@
 import {captureCloudWriteScope,cloudWriteScopeIsCurrent,cloudWriteScopeHasIdentity} from '../shared/cloud-write-scope.js';
-import {createOutboxRetryScheduler,normalizeCloudError} from '../shared/cloud-sync.js';
+import {createOutboxRetryScheduler,createCloudRetryControl} from '../shared/cloud-sync.js';
 import {createRuntimeTaskOwner} from '../shared/runtime-task-owner.js';
 import {createDebouncedTask} from '../shared/debounced-task.js';
 
@@ -70,7 +70,7 @@ async function runStorageV2CloudSave(message='השינויים סונכרנו',{
       if(!writeScopeCurrent(scope)||(!force&&!cloudEnabled()))return false;
       state=await refreshStorageV2CloudState();
       if(!tab.primaryTab||(!force&&!cloudEnabled())||!writeScopeCurrent(scope,state))return false;
-      const normalized=normalizeCloudError(error),attempts=Number(state?.control?.retry?.attempts||0)+1,nextAttemptAt=normalized.retryAfterMs?new Date(Date.now()+normalized.retryAfterMs).toISOString():null,retry={attempts,lastErrorCode:normalized.code||normalized.kind,lastAttemptAt:new Date().toISOString(),nextAttemptAt};
+      const retry=createCloudRetryControl(error,state?.control?.retry);
       await setWriteControl(scope,{retry});state=await refreshStorageV2CloudState();if(!writeScopeCurrent(scope,state))return false;
       if(!tab.primaryTab||(!force&&!cloudEnabled())||!writeScopeCurrent(scope,state))return false;
       outboxRetryScheduler.schedule(v2RetryRecord(state,state?.flight),()=>writeScopeCurrent(scope)?requestStorageV2CloudSave(msg,{force}):false);setCloud(isOnline()?'ענן: ממתין לסנכרון':'ענן: אופליין',isOnline()?'':'offline');allOk=false;break

@@ -163,7 +163,7 @@ export function normalizeCloudError(input){
   else if(code==='PT409'||lower.includes('revision_conflict'))kind='revision_conflict';
   else if(status===429||code==='SUPABASE_DATA_API_RATE_LIMIT')kind='rate_limited';
   else if(status===409)kind='conflict';
-  else if([502,503,504].includes(status)||['PGRST002','PGRST003','SUPABASE_DATA_API_BACKOFF'].includes(code))kind='service_unavailable';
+  else if([500,502,503,504].includes(status)||['PGRST002','PGRST003','SUPABASE_DATA_API_BACKOFF'].includes(code))kind='service_unavailable';
   else if(status===401||status===403||code==='42501'||code==='cloud_auth_required')kind='auth';
   else if(code==='SUPABASE_NETWORK_TIMEOUT'||String(input?.name||'')==='AbortError'||lower.includes('timeout')||lower.includes('timed out'))kind='timeout';
   else if(code==='SUPABASE_NETWORK_UNAVAILABLE'||String(input?.name||'')==='TypeError'||lower.includes('failed to fetch')||lower.includes('networkerror')||lower.includes('load failed'))kind='network';
@@ -179,6 +179,16 @@ export function cloudWriteError(input,fallbackMessage='cloud_write_failed'){
 
 export function contentionDelay(attempt=0,{baseMs=300,maxMs=2400,jitterMs=200,random=Math.random}={}){
   return Math.min(maxMs,baseMs*Math.pow(2,Math.max(0,Number(attempt)||0)))+Math.floor(random()*Math.max(0,jitterMs));
+}
+
+// Store a not-before deadline in the existing durable control, so polling,
+// new edits and a browser restart all respect the same retry budget.
+export function createCloudRetryControl(error,previous=null,{now=Date.now,random=Math.random}={}){
+  const normalized=normalizeCloudError(error),attempts=Math.min(Number.MAX_SAFE_INTEGER,finiteGeneration(previous?.attempts)+1),at=nowMilliseconds(now);
+  const transient=['busy','rate_limited','service_unavailable','timeout','network'].includes(normalized.kind);
+  const cap=Math.min(60000,2000*2**Math.min(attempts-1,16)),sample=Number(random()),jitter=Number.isFinite(sample)?Math.max(0,Math.min(1,sample)):0.5;
+  const delay=transient?(normalized.retryAfterMs||Math.floor(cap*(0.75+jitter*0.25))):0;
+  return {attempts,lastErrorCode:normalized.code||normalized.kind,lastAttemptAt:new Date(at).toISOString(),nextAttemptAt:delay?new Date(at+delay).toISOString():null};
 }
 
 export async function runBusyCloudWriteWithPolicy(write,{attempts=CLOUD_WRITE_POLICY.busyAttempts,delay=contentionDelay,sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms))}={}){

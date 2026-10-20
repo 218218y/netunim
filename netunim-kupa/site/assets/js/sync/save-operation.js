@@ -1,5 +1,5 @@
 import {captureCloudWriteScope,cloudWriteScopeIsCurrent,cloudWriteScopeHasIdentity} from '../shared/cloud-write-scope.js';
-import {createOutboxRetryScheduler,normalizeCloudError} from '../shared/cloud-sync.js';
+import {createOutboxRetryScheduler,createCloudRetryControl} from '../shared/cloud-sync.js';
 import {createRuntimeTaskOwner} from '../shared/runtime-task-owner.js';
 
 // Main save admission, joined flight and retry/follow-up lifetime. ACK, RPC,
@@ -57,7 +57,7 @@ async function runStorageV2CloudSave(message='הקופה סונכרנה לענן
         console.error('kupa cloud save V2',error);
         if(!writeScopeCurrent(scope)||!cloudScopeAccess(force))return false;
         state=await refreshStorageV2CloudState();if(!cloudScopeAccess(force)||!writeScopeCurrent(scope,state))return false;
-        const normalized=normalizeCloudError(error),attempts=Number(state?.control?.retry?.attempts||0)+1,nextAttemptAt=normalized.retryAfterMs?new Date(Date.now()+normalized.retryAfterMs).toISOString():null,retry={attempts,lastErrorCode:normalized.code||normalized.kind,lastAttemptAt:new Date().toISOString(),nextAttemptAt};
+        const retry=createCloudRetryControl(error,state?.control?.retry);
         await setWriteControl(scope,{retry});state=await refreshStorageV2CloudState();
         if(!cloudScopeAccess(force)||!writeScopeCurrent(scope,state))return false;
         outboxRetryScheduler.schedule(v2RetryRecord(state,state?.flight),()=>writeScopeCurrent(scope)?requestStorageV2CloudSave(message,{force}):false);

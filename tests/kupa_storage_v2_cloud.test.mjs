@@ -208,9 +208,19 @@ test('Kupa a post-commit publication failure retains the ACK and prevents anothe
   assert.ok(errors.some(args=>args.includes(failure)));assert.equal(await f.api.persistSupabaseState(f.cloud(),'reconnect',1),false);assert.equal(f.sent.length,1);
 });
 
+test('Kupa persists a fallback retry deadline for a temporary service failure',async t=>{
+  t.mock.method(console,'error',noop);
+  const f=fixture({write:()=>response(false,{code:'PGRST002'},503)});
+  assert.equal(await f.api.persistSupabaseState(f.cloud(),'',1),false);
+  assert.ok(Date.parse(f.getControl().retry.nextAttemptAt)>Date.now());
+  const sent=f.sent.length;assert.equal(await f.api.persistSupabaseState(f.cloud(),'',1),false);assert.equal(f.sent.length,sent);
+  await f.api.quiesceForStorageCutover();
+});
+
 test('Kupa V2 keeps the immutable flight across a lost ACK retry and never falls back to V1 outbox',async()=>{
   let calls=0;const f=fixture({write:body=>{if(++calls===1)throw new TypeError('Failed to fetch');return response(true,{revision:body.p_expected_revision+1,state:clone(body.p_state)})}});
   assert.equal(await f.api.persistSupabaseState(f.cloud(),'first',1),false);assert.equal(f.sent.length,1);const firstId=f.sent[0].operationId;assert.ok(f.getState().flight);
+  assert.ok(f.getControl().retry.nextAttemptAt);f.setControl({retry:{...f.getControl().retry,nextAttemptAt:null}});
   assert.equal(await f.api.persistSupabaseState(f.cloud(),'retry',1),true);assert.equal(f.sent.length,2);assert.equal(f.sent[1].operationId,firstId);assert.equal(f.getState().flight,null);assert.equal(f.getState().pending,false);
 });
 

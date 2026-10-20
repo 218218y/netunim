@@ -30,7 +30,7 @@ export function storageV2Mode(app,storage=globalThis.localStorage,owner='local',
 // committed to IndexedDB. Durable boundaries install coordinated checkpoints.
 export function createStorageV2Runtime({app,owner,primary,captureCommitAuthority=()=>primary,validate,prepareCheckpoint=state=>structuredClone(state),prepareOperation=operation=>structuredClone(operation),mode=()=>storageV2Mode(app,globalThis.localStorage,owner()),createJournal=createStorageJournal,scheduleIdle=callback=>globalThis.requestIdleCallback?requestIdleCallback(callback,{timeout:5000}):setTimeout(callback,1000),compactEvery=128,compactAfterMs=5*60*1000}={}){
   if(!STORAGE_SCHEMAS[app]||typeof owner!=='function'||typeof primary!=='function'||typeof validate!=='function')throw new Error('storage_v2_runtime_configuration');
-  const diagnostics={mode:'off',recoveries:0,operations:0,emergencyFailures:0,commitFailures:0,errors:0,lastError:''};
+  const diagnostics={mode:'off',recoveries:0,operations:0,emergencyFailures:0,commitFailures:0,errors:0,lastError:'',pendingCommits:0,peakPendingCommits:0,undurableCommits:0,maxCommitLatencyMs:0};
   let journal=null,identity='',authoritative=false,starting=null,startingIdentity='',commits=Promise.resolve(),corruptIdentity='',operationsSinceCheckpoint=0,lastCheckpointAt=Date.now(),compactionScheduled=false,undurableCount=0,boundaryGate=()=>false;
   const guardCloudMutation=()=>{if(boundaryGate())throw new Error('storage_boundary_in_progress')};
   const undurableFailures=new Map();
@@ -158,13 +158,16 @@ export function createStorageV2Runtime({app,owner,primary,captureCommitAuthority
     if(Object.hasOwn(options,'storageBoundary')){diagnostics.errors++;diagnostics.lastError='storage_legacy_boundary_forbidden';return {handled:false,reason:'legacy-boundary'} }
     if(!typed){diagnostics.errors++;diagnostics.lastError='storage_mutation_contract_required';return {handled:false,reason:'contract'} }
     try{
-      const write=active.append(canonicalOperations(state,operations),{generation,surface,mutationType,deleteIntents,appMetadata:{...appMetadata,storageRole:'primary'}});diagnostics.operations++;operationsSinceCheckpoint++;
+      const started=Date.now(),write=active.append(canonicalOperations(state,operations),{generation,surface,mutationType,deleteIntents,appMetadata:{...appMetadata,storageRole:'primary'}});diagnostics.operations++;operationsSinceCheckpoint++;
+      diagnostics.pendingCommits++;diagnostics.peakPendingCommits=Math.max(diagnostics.peakPendingCommits,diagnostics.pendingCommits);
+      const settled=()=>{diagnostics.pendingCommits--;diagnostics.maxCommitLatencyMs=Math.max(diagnostics.maxCommitLatencyMs,Math.max(0,Date.now()-started))};
+      write.committed.then(settled,settled);
       if(!write.emergencyDurable){
-        diagnostics.emergencyFailures++;undurableCount++;
+        diagnostics.emergencyFailures++;undurableCount++;diagnostics.undurableCommits++;
         // This mutation has no synchronous durable copy. It becomes safe only
         // after the IndexedDB transaction completes; until then unload is blocked.
         const failedEpoch=active.epoch;
-        write.committed.then(()=>{undurableCount--},()=>{undurableCount--;const prior=undurableFailures.get(active);undurableFailures.set(active,{epoch:failedEpoch,seq:Math.max(Number(prior?.seq||0),Number(write.seq||0))})});
+        write.committed.then(()=>{undurableCount--;diagnostics.undurableCommits--},()=>{undurableCount--;diagnostics.undurableCommits--;const prior=undurableFailures.get(active);undurableFailures.set(active,{epoch:failedEpoch,seq:Math.max(Number(prior?.seq||0),Number(write.seq||0))})});
       }
       commits=commits.catch(()=>{}).then(()=>write.committed).catch(error=>{diagnostics.commitFailures++;diagnostics.lastError=error.message;throw error});
       if(operationsSinceCheckpoint>=compactEvery||Date.now()-lastCheckpointAt>=compactAfterMs)scheduleCompaction();

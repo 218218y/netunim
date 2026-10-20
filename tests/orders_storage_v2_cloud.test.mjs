@@ -4,6 +4,15 @@ import {createOrdersSync as createSyncDocument} from './sync_document_ports.mjs'
 import {ORDERS_CLOUD_BASE_KEY as CLOUD_BASE_KEY} from './retired_business_storage_keys.mjs';
 
 const clone=structuredClone,noop=()=>{};
+
+test('Orders persists a fallback retry deadline for a temporary service failure',async t=>{
+  t.mock.method(console,'error',noop);
+  const f=fixture({rpcSave:async()=>({r:{ok:false,status:503},j:{code:'PGRST002'}})});
+  assert.equal(await f.api.requestCloudSave(''),false);
+  assert.ok(Date.parse(f.getControl().retry.nextAttemptAt)>Date.now());
+  const sent=f.sent.length;assert.equal(await f.api.requestCloudSave(''),false);assert.equal(f.sent.length,sent);
+  await f.api.quiesceForStorageCutover();
+});
 function deferred(){let resolve;const promise=new Promise(r=>{resolve=r});return {promise,resolve}}
 
 function fixture({rpcSave,readCloud=async()=>null,merge3=(_base,local)=>({state:clone(local),conflicts:[]}),failRefreshAfterAck=false,returnCommittedScope=false,onControl=async()=>{},onRejected=()=>{},onAcknowledge=async()=>{},onAcknowledged=()=>{},tab={primaryTab:true},onPublication=()=>{},files={},writeStateToFolder=async()=>{},refreshCloudTimestamp=()=>{}}={}){
@@ -72,6 +81,7 @@ for(const change of ['owner','epoch','login'])test(`Orders post-rebase ${change}
 test('Orders V2 keeps the exact immutable flight across a lost ACK retry',async()=>{
   let calls=0;const f=fixture({rpcSave:async(snapshot,expected)=>{if(++calls===1)throw new TypeError('Failed to fetch');return {r:{ok:true},row:{revision:expected+1,state:clone(snapshot)}}}});
   assert.equal(await f.api.requestCloudSave('first'),false);assert.equal(f.sent.length,1);const firstId=f.sent[0].operationId;assert.ok(f.getState().flight,'lost ACK must keep the durable flight');
+  assert.ok(f.getControl().retry.nextAttemptAt);f.setControl({retry:{...f.getControl().retry,nextAttemptAt:null}});
   assert.equal(await f.api.requestCloudSave('retry'),true);assert.equal(f.sent.length,2);assert.equal(f.sent[1].operationId,firstId);assert.equal(f.getState().flight,null);assert.equal(f.getState().pending,false);assert.equal(f.legacyWrites.includes(CLOUD_BASE_KEY),false,'V2 ACK must not mirror a full cloud base to localStorage');
 });
 
