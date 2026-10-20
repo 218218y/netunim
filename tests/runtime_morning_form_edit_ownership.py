@@ -23,6 +23,25 @@ FLOW=r"""(async()=>{
   uiModal.modal('Other feature',trap.innerHTML+'<input id="replacementFormDraft" value="initial">');await Promise.resolve();document.getElementById('replacementFormDraft').value='exact dirty draft';
   const replacement=document.getElementById('modal').innerHTML;for(const [name,...args] of commands)check(documents[name](...args)===false,'replaced form rejects '+name);
   check(document.getElementById('modal').innerHTML===replacement&&uiModal.modalHasUnsavedDraft(),'replaced editor preserves another feature controls and draft guard');check(await raw()===before,'form/link edits preserve exact Main, Shared and recovery evidence');
+  await documents.openMorningDocumentModal({prefill:{customerName:'Cheque series',amount:6253.75,description:'Monthly cheques'},initialType:320});
+  const receipt=(index,key)=>document.querySelector(`#modal [data-payment-row="${index}"] [data-payment-field="${key}"]`);
+  const receiptDate=(index,date)=>uiDateEditor.setDateValue(document.getElementById('morningPaymentDate'+index),date,false);
+  for(const [key,value] of Object.entries({type:'2',price:'1250.75',bankName:'12',bankBranch:'600',bankAccount:'0012345',chequeNum:'000099'}))receipt(0,key).value=value;
+  receiptDate(0,'2026-11-15');documents.syncPaymentType();await documents.addMorningPayment();
+  check(receipt(1,'chequeNum').value==='000100'&&document.getElementById('morningPaymentDate1').value==='2026-12-15','native add continues the entered cheque '+JSON.stringify([receipt(1,'chequeNum').value,document.getElementById('morningPaymentDate0').value,document.getElementById('morningPaymentDate1').value]));
+  receiptDate(1,'2026-12-31');receipt(1,'chequeNum').value='000200';receipt(1,'bankBranch').value='777';
+  for(let i=0;i<3;i++)await documents.addMorningPayment();
+  check(await documents.previewMorningDocument()===true,'native cheque form validates through the real preview command');
+  const cheques=payloads.at(-1).document.payment;
+  check(JSON.stringify(cheques.map(row=>row.date))===JSON.stringify(['2026-11-15','2026-12-31','2027-01-31','2027-02-28','2027-03-31']),'manual date restarts the real form schedule without February drift');
+  check(JSON.stringify(cheques.map(row=>row.chequeNum))===JSON.stringify(['000099','000200','000201','000202','000203']),'native payload preserves manually edited and sequential cheque numbers');
+  check(cheques.every(row=>row.price===1250.75&&row.bankCode==='12'&&row.bankAccount==='0012345')&&cheques.slice(1).every(row=>row.bankBranch==='777'),'native payload preserves cents, bank details and leading account zeros');
+  check(cheques.every(row=>!Object.hasOwn(row,'bankSourceKey')),'draft cheques cannot acquire verified bank provenance');
+  const queued=documents.addMorningPayment();check(documents.runtime.isPending(),'lazy receipt work is retained by the Morning lifetime');
+  uiModal.modal('Queued replacement','<p id="queuedReplacement">exact replacement</p>');
+  check(await queued===false,'receipt import cannot append after form replacement');await documents.runtime.drain();
+  check(document.getElementById('queuedReplacement')?.textContent==='exact replacement','late receipt work preserves the replacement display');
+  check(await raw()===before,'cheque editing and preview preserve exact Main, Shared and recovery evidence');
   const gate=()=>{let resolve,reject;const promise=new Promise((ok,no)=>{resolve=ok;reject=no});return {promise,resolve,reject}},held=gate(),entered=gate(),originalError=console.error,diagnostics=[];
   ensure=()=>{entered.resolve();return held.promise};console.error=(...args)=>diagnostics.push(args);
   try{

@@ -50,7 +50,7 @@ function modalAssert(){modalSession.assert()}
 function currentRoot(){return modalSession.element}
 function currentField(id){return modalSession.element?.closest('#modal')?.querySelector('#'+id)||null}
 if(pendingRecovery){activeOperationId=pendingRecovery.operationId;activeDebtId=pendingRecovery.debtId;activeSource=sourceFromRecovery(pendingRecovery);issuanceContext=pendingRecovery;blocked=true}
-const {paymentFields,readPaymentRows,replaceMorningPayments,addMorningPayment,removeMorningPayment,syncPaymentType,syncPaymentBank,syncPaymentTotal}=createMorningPayments({dateEditorMarkup,toast,currentField,getSource:()=>activeSource,getSelectedType:()=>selectedType()});
+const {paymentFields,readPaymentRows,replaceMorningPayments,addMorningPayment,removeMorningPayment,syncPaymentType,syncPaymentBank,syncPaymentTotal}=createMorningPayments({dateEditorMarkup,toast,currentField,getSource:()=>activeSource,getSelectedType:()=>selectedType(),canEdit:()=>!disposed&&!createBusy&&!blocked&&!completed});
 const bankTransactionLinker=createMorningBankLinks({
   session:{generation:()=>modalSession.generation,isActive,root:currentRoot,field:currentField},
   catalog:{read:getBusinessBankTransactions,ensure:ensureBusinessBankTransactions},
@@ -267,7 +267,7 @@ return {
   linkBankTransaction:(...args)=>editCommand(linkBankTransaction,args),
   clearBankTransactionLink:(...args)=>editCommand(clearBankTransactionLink,args),
   filterBankTransactionPicker:(...args)=>editCommand(filterBankTransactionPicker,args),
-  addMorningPayment:(...args)=>editCommand(addMorningPayment,args),
+  addMorningPayment:(...args)=>editCommand(command,[addMorningPayment,args]),
   removeMorningPayment:(...args)=>editCommand(removeMorningPayment,args),
   syncPaymentTotal:(...args)=>editCommand(syncPaymentTotal,args),
   syncDocumentType:(...args)=>editCommand(syncDocumentType,args),

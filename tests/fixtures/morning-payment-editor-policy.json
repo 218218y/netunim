@@ -11,11 +11,11 @@
     "readPaymentRows": "65dd669d0e6df18951fc9102020be006f05227acf3cdb59f6fe6f78a7a09d72f",
     "renderPaymentRows": "9d8ed88a5a8f61cfc8ddf02297843baa7c930d352beadbfec3776bea3262eb28",
     "replaceMorningPayments": "9677612b85499c2756c0dee0fe0e1fe9609f203b3bde67dd880174c93d2bded5",
-    "addMorningPayment": "faafccc87899a11dc96903e8feeca9390107ee5be0fcce90ca82b9dca59a3c0e",
+    "addMorningPayment": "2f8975e2afb2736485b71d32e59e385bbd815d19b45bc778d92ef0c35ce7f172",
     "removeMorningPayment": "9ae9993a250828eaea78abcfb60151ae95ef8e72b1305f298512a8208341d97e",
     "syncPaymentTotal": "d91e3be5f6bacbe9874438bd770bab2c1564a8df281a814c6842b8622d5df896"
   },
   "approvedDeltas": {
-    "addMorningPayment": "2026-10-20: append an editable, sequential cheque draft based on live cheque rows; preserve non-cheque fallback and bank-source locks"
+    "addMorningPayment": "2026-10-20: lazy-load sequential cheque drafts, then re-read the same editable form; preserve the 12-row limit, transfer fallback and bank-source locks"
   }
 }
