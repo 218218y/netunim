@@ -627,7 +627,7 @@ for app in ('kupa', 'orders'):
               prepareKupaCloudState:project,applyKupaCloudState:normalization.applyKupaCloudState,mergeKupaCloudState3Way:merge.mergeKupaCloudState3Way,
               storageV2CloudOutboxActive:()=>true,assertAccountOwner:()=>owner,setSaveStatus:noop,setCloudHeaderStatus:noop,showSecondaryTabGuard:noop,backupSnapshotToComputer:async()=>{},
               supaRest:async(_path,options)=>{const body=JSON.parse(options.body),result=await rpc(body.p_state,body.p_expected_revision,body.p_operation_id);return {ok:true,text:async()=>JSON.stringify(result.row)}}});
-            return {model,session,storage,driver,save:()=>app==='orders'?api.requestCloudSave(''):api.persistSupabaseState(project(model.state),'')};
+            return {model,session,storage,driver,stop:()=>api.quiesceForStorageCutover(),save:()=>app==='orders'?api.requestCloudSave(''):api.persistSupabaseState(project(model.state),'')};
           }
           async function edit(runtime,content){
             runtime.model.state.notes=runtime.model.state.notes.map(row=>row.id==='N'?note(content):row);runtime.session.localGeneration++;
@@ -637,21 +637,26 @@ for app in ('kupa', 'orders'):
           }
           const originalError=console.error,expectedErrors=[];console.error=(...args)=>expectedErrors.push(args);
           const previousOnline=Object.getOwnPropertyDescriptor(navigator,'onLine'),put=IDBObjectStore.prototype.put;
+          const originalNow=Date.now;let clockOffset=0,runtime=null;Date.now=()=>originalNow()+clockOffset;
           try{
-            let runtime=await make(true);await edit(runtime,'offline-A');
+            runtime=await make(true);await edit(runtime,'offline-A');
             check(await runtime.save()===false,'lost RPC response retains pending work');
             const firstFlight=(await runtime.driver.refreshStorageV2CloudState()).flight;
             check(firstFlight&&firstFlight.endSeq===1&&server.revision===11,'server committed while the immutable local flight survives');
+            const retry=(await runtime.driver.refreshStorageV2CloudState()).control?.retry;
+            check(Date.parse(retry?.nextAttemptAt)>Date.now(),'lost response persists a future retry deadline');
+            check(await runtime.save()===false&&calls.length===1,'a foreground save cannot bypass persisted backoff');
             Object.defineProperty(navigator,'onLine',{configurable:true,value:false});await edit(runtime,'offline-B');
             check(await runtime.save()===false&&calls.length===1,'offline edit is journaled without another RPC');
             server.state.notes.push({id:'R',content:'other-computer',createdAt:'2026-10-08',updatedAt:'2026-10-08'});server.revision++;
             Object.defineProperty(navigator,'onLine',{configurable:true,value:true});
+            clockOffset+=60001; // Advance the test clock, without a real backoff sleep.
             omitNextState=true;
             check(await runtime.save()===false,'successful replay without its authoritative state is not ACKed');
             const malformed=await runtime.driver.refreshStorageV2CloudState(),malformedRecovery=await runtime.storage.recoverForOwner({intent:'load-account'});
             check(malformed.base.revision===10&&malformed.base.ackSeq===0&&malformed.seq===2&&malformed.pending&&JSON.stringify(malformed.flight)===JSON.stringify(firstFlight),'missing response state retains the exact flight, cursor and newer pending generation');
             check(runtime.model.state.notes.some(row=>row.id==='N'&&row.content==='offline-B')&&malformedRecovery.state.notes.some(row=>row.id==='N'&&row.content==='offline-B'),'malformed success preserves note identity and content in memory and IndexedDB');
-            runtime=await make();
+            await runtime.stop();runtime=await make();
             check(runtime.model.state.notes.some(row=>row.id==='N'&&row.content==='offline-B'),'fresh runtime recovers the retained edit after malformed success');
             let aborted=false;
             IDBObjectStore.prototype.put=function(...args){const result=put.apply(this,args);if(!aborted&&this.name==='bases'){aborted=true;this.transaction.abort();throw new DOMException('injected ACK abort','AbortError')}return result};
@@ -660,7 +665,7 @@ for app in ('kupa', 'orders'):
             check(runtime.model.state.notes.length===1&&runtime.model.state.notes[0].content==='offline-B','failed ACK does not publish the remote merge');
             const pending=await runtime.driver.refreshStorageV2CloudState();
             check(pending.base.revision===10&&pending.base.ackSeq===0&&pending.seq===2&&pending.flight.operationId===firstFlight.operationId,'aborted ACK leaves cursor, pending generations and flight atomic');
-            runtime=await make();
+            await runtime.stop();runtime=await make();clockOffset+=60001;
             check(runtime.model.state.notes[0].content==='offline-B','fresh application runtime replays both offline edits from IndexedDB');
             check(await runtime.save()===true,'restarted runtime retries and acknowledges both generations');
             const final=await runtime.driver.refreshStorageV2CloudState(),recovered=await runtime.storage.recoverForOwner({intent:'load-account'});
@@ -677,7 +682,7 @@ for app in ('kupa', 'orders'):
             const stale=await runtime.driver.refreshStorageV2CloudState(),staleRecovery=await runtime.storage.recoverForOwner({intent:'load-account'});
             check(stale.seq===4&&stale.base.ackSeq===2&&stale.base.revision===13&&stale.flight.endSeq===3&&stale.pending&&!stale.control?.conflict,'stale checkpoint preserves its original flight, cursor and later work');
             check(runtime.model.state.notes.find(row=>row.id==='N').content==='late-before-adapter'&&staleRecovery.state.notes.find(row=>row.id==='N').content==='late-before-adapter','stale candidate cannot lose the late edit in memory or real IDB');
-            runtime=await make();
+            await runtime.stop();runtime=await make();clockOffset+=60001;
             check(await runtime.save()===true,'fresh runtime replays the retained flight and drains the late edit');
             const afterStale=await runtime.driver.refreshStorageV2CloudState();
             check(!afterStale.pending&&!afterStale.flight&&!afterStale.control&&afterStale.base.ackSeq===4,'new candidate is acknowledged only at its own sequence');
@@ -690,10 +695,11 @@ for app in ('kupa', 'orders'):
             const concurrent=await runtime.driver.refreshStorageV2CloudState(),late=await runtime.storage.recoverForOwner({intent:'load-account'});
             check(runtime.model.state.notes.some(row=>row.id==='N'&&row.content==='edited-during-ack')&&late.state.notes.some(row=>row.id==='N'&&row.content==='edited-during-ack'),'late edit survives in the visible model and durable journal');
             check(concurrent.pending&&!concurrent.flight&&concurrent.seq===6&&concurrent.base.ackSeq===5&&concurrent.control.conflict.kind==='concurrent-ack'&&calls.length===9,'only the sent generation is ACKed; the late generation and explicit fence survive');
-            runtime=await make();check(await runtime.save()===false&&calls.length===9,'fresh runtime respects the persisted concurrent-ACK fence');
+            await runtime.stop();runtime=await make();check(await runtime.save()===false&&calls.length===9,'fresh runtime respects the persisted concurrent-ACK fence');
             check(expectedErrors.length>=2,'expected transport and IndexedDB failures were observed');
             return done;
           }finally{
+            if(runtime)await runtime.stop();Date.now=originalNow;
             console.error=originalError;IDBObjectStore.prototype.put=put;
             if(previousOnline)Object.defineProperty(navigator,'onLine',previousOnline);else delete navigator.onLine;
           }
