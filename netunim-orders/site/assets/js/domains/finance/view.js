@@ -587,7 +587,7 @@ export function createDomainsFinanceView({ runFinance = withFinanceDerivations, 
             return creditCommandMarkup(s);
         if (section === 'checks')
             return checksView.checksHeaderContextMarkup();
-        return '<button type="button" class="btn finance-tax-shortcut" data-action="tax-open"><span aria-hidden="true">▦</span> מחשבון מסים וארנונה</button>';
+        return '';
     }
     function contentMarkup(s) {
         const section = currentSection();
@@ -597,7 +597,7 @@ export function createDomainsFinanceView({ runFinance = withFinanceDerivations, 
             return `${creditSyncPanelMarkup(s)}${creditMarkup(s)}`;
         if (section === 'checks')
             return checksView.checksMarkup({ embedded: true, showEmbeddedStatus: false, showBankActivity: false });
-        return `${morningReportsMarkup()}${dashboardView.summaryMarkup({ embedded: true })}`;
+        return `<button type="button" class="btn finance-tax-shortcut" data-action="tax-open"><span aria-hidden="true">▦</span> מחשבון מסים וארנונה</button>${morningReportsMarkup()}${dashboardView.summaryMarkup({ embedded: true })}`;
     }
     function renderKupa(...args) {
         if (!isActive())
