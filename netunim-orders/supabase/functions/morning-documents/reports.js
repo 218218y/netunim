@@ -24,6 +24,11 @@ export function reportInput(body) {
 export function reportPermission(user, allowedIds = '') {
   return !!user?.id && (user.app_metadata?.morning_reports === true || allowedIds.split(',').map(id => id.trim()).filter(Boolean).includes(user.id));
 }
+function sourceTimestamp(value) {
+  // Morning documents and expenses expose Unix SECONDS, not a document date.
+  if (!integer(value) || value < 0 || value > 253402300799) return '';
+  return new Date(value * 1000).toISOString();
+}
 function common(raw, kind) {
   if (!raw || typeof raw !== 'object' || !UUID.test(raw.id)) throw new Error('invalid_report_record');
   const currency = /^[A-Z]{3}$/.test(raw.currency) ? raw.currency : '';
@@ -31,8 +36,12 @@ function common(raw, kind) {
   const local = cents(raw.amountLocal), grossCents = local ?? cents(raw.amount, rate);
   const date = kind === 'expense' ? raw.reportingDate : raw.documentDate;
   if (!reportDate(date) || !integer(raw.status)) throw new Error('invalid_report_record');
+  const sourceDocumentDate = kind === 'expense' ? (reportDate(raw.date) ? raw.date : '') : raw.documentDate;
   return {id:raw.id, kind, number:text(raw.number, 60), type:kind === 'expense' ? raw.documentType : raw.type,
-    date, documentDate:reportDate(raw.date) ? raw.date : date, status:raw.status,
+    // Version 1 aliases remain available. Income raw.date is not an API response
+    // field and must never override its documented documentDate reference date.
+    date, documentDate:sourceDocumentDate || date, reportingDate:date, sourceDocumentDate,
+    createdAt:sourceTimestamp(raw.creationDate), updatedAt:sourceTimestamp(raw.lastUpdateDate), status:raw.status,
     currency, grossCents, vatCents:cents(raw.vat, rate),
     name:text(kind === 'expense' ? raw.supplier?.name : raw.client?.name), description:text(raw.description, 250)};
 }
@@ -52,7 +61,10 @@ export function reportExpense(raw) {
   const row = common(raw, 'expense');
   if (![10, 20, 30, 40, 100].includes(row.status) || ![20, 305, 320, 330, 400, 405].includes(row.type) || !row.date.endsWith('-01')) throw new Error('invalid_report_record');
   return {...row, deductibleCents:cents(raw.deductibleAmount), deductibleVatCents:cents(raw.deductibleVat),
-    category:text(raw.accountingClassification?.title)};
+    category:text(raw.accountingClassification?.title),
+    // Type/key are source evidence, not an inferred official-report inclusion rule.
+    categoryKey:text(raw.accountingClassification?.key, 60), categoryCode:text(raw.accountingClassification?.code, 60),
+    categoryType:integer(raw.accountingClassification?.type) ? raw.accountingClassification.type : null};
 }
 export function createMorningReportsHandler({request, environment, allowedIds = () => ''}) {
   return async function reportPage(user, body) {

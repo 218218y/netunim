@@ -46,7 +46,7 @@ FLOW = r"""(async()=>{
  click('morning-report-record',uuid(101));click('morning-report-detail','');
  click('morning-report-type','profit');
  const totals=[...document.querySelectorAll('.morning-report-table tfoot td')].map(x=>x.textContent);
- check(totals[0].includes('5,000')&&totals[1].includes('100')&&totals[2].includes('4,900'),'incorrect profit '+totals.join('|'));
+ check(totals[0].includes('5,000')&&totals[1].includes('100')&&totals[2].includes('109')&&totals[3].includes('4,891'),'incorrect cost/profit '+totals.join('|'));
  click('morning-report-type','vat');
  const vat=[...document.querySelectorAll('.morning-report-table tfoot td')].map(x=>x.textContent);
  check(vat[0].includes('900')&&vat[1].includes('9')&&vat[2].includes('891'),'wrong deductible VAT '+vat.join('|'));
@@ -56,9 +56,10 @@ FLOW = r"""(async()=>{
  let csvBlob=null;const createUrl=URL.createObjectURL,nativeClick=HTMLAnchorElement.prototype.click;
  URL.createObjectURL=blob=>{csvBlob=blob;return createUrl(blob)};HTMLAnchorElement.prototype.click=function(){};
  click('morning-report-export');const csv=await csvBlob.text();URL.createObjectURL=createUrl;HTMLAnchorElement.prototype.click=nativeClick;
- check(csv.includes('רווח / הפסד ניהולי')&&csv.includes('4900')&&csv.includes('לקוח דוח פרטי'),'CSV missing totals or source rows');
+ check(csv.includes('רווח / הפסד ניהולי')&&csv.includes('4891')&&csv.includes('לקוח דוח פרטי'),'CSV missing totals or source rows');
+ check(csv.includes('מזהה מקור במורנינג')&&csv.includes('עלות הוצאה ניהולית')&&csv.includes('מע״מ לא ניתן לקיזוז'),'CSV lost source identity or cost basis');
  check(csv.includes('סטטוס במורנינג')&&csv.includes('נערכה מחדש')&&csv.includes('התאמה לדיווח קודם'),'CSV lost edited-expense context');
- click('morning-report-detail','');click('morning-report-type','receipts');return {pagesRead:3,sourceDocuments:53,profitILS:4900,pdf:true,csv:true,editedExpensesIncluded:true};
+ click('morning-report-detail','');click('morning-report-type','receipts');return {pagesRead:3,sourceDocuments:53,profitILS:4891,pdf:true,csv:true,editedExpensesIncluded:true};
 })()"""
 
 FOLLOWUP = r"""(async()=>{
@@ -78,7 +79,21 @@ FOLLOWUP = r"""(async()=>{
  document.querySelector('[data-action="morning-report-load"]').click();await wait(()=>document.querySelector('.morning-report-cards'));
  document.querySelector('[data-action="morning-report-type"][data-click-arg0="receipts"]').click();
  check([...document.querySelectorAll('.morning-report-table tfoot td')].slice(0,-1).every(cell=>cell.textContent==='—'),'unavailable receipts displayed as zero');
- return {accountIsolation:true,staleCompletionBlocked:true,missingExpensesNoProfit:true,missingDocumentsNoZero:true};
+ cloudAuth.supaFetch=async(path,options)=>{
+   const response=await original(path,options),body=JSON.parse(options.body);
+   if(body.action!=='report_page')return response;
+   const data=await response.json();
+   if(body.source==='documents')data.items=data.items.map(row=>row.number==='100'?{...row,grossCents:null}:row.number==='101'?{...row,date:'2026-08-10',vatCents:null}:row);
+   return Response.json(data);
+ };
+ document.querySelector('[data-action="morning-report-load"]').click();await wait(()=>document.querySelector('.morning-report-cards'));
+ check([...document.querySelectorAll('.morning-report-card strong')][3].textContent==='—','unknown receipt amount appeared as a complete zero');
+ document.querySelector('[data-action="morning-report-type"][data-click-arg0="vat"]').click();
+ const month=title=>[...document.querySelectorAll('.morning-report-summary-table tbody tr')].find(row=>row.querySelector('th')?.textContent.includes(title));
+ check(month('יולי').querySelector('[data-label="מע״מ עסקאות"]').textContent.includes('882'),'good July VAT hidden by bad August');
+ check(month('אוגוסט').querySelector('[data-label="מע״מ עסקאות"]').textContent==='—','bad August VAT presented as complete');
+ check(document.querySelector('.morning-report-summary-table tfoot [data-label="מע״מ עסקאות"]').textContent==='—','partial total VAT presented as verified');
+ return {accountIsolation:true,staleCompletionBlocked:true,missingExpensesNoProfit:true,missingDocumentsNoZero:true,missingReceiptNoZero:true,goodMonthRemainsVisible:true};
 })()"""
 
 if __name__ == '__main__':
