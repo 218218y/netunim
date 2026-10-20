@@ -1,6 +1,7 @@
 import {esc} from '../../core/values.js';
 import {money} from '../../core/money.js';
 import {formatMorningBank,morningBankCode,morningBankDatalistMarkup,morningBankName,resolveMorningBank} from '../../core/morning-banks.js';
+import {nextMorningPaymentDraft} from './morning-cheque-series.js';
 
 const PAYMENT_TYPES=Object.freeze({1:'מזומן',2:'צ׳ק',3:'כרטיס אשראי',4:'העברה בנקאית'});
 const CARD_TYPES=Object.freeze({1:'ישראכרט',2:'Visa',3:'Mastercard',4:'American Express',5:'Diners'});
@@ -63,7 +64,7 @@ function readPaymentRows({strict=true}={}){
 }
 function renderPaymentRows(payments){const host=currentField('morningPaymentRows');if(!host)return;host.innerHTML=(Array.isArray(payments)?payments:[]).slice(0,12).map((payment,index)=>paymentRowMarkup(index,payment,getSource())).join('');syncPaymentType();syncPaymentTotal()}
 function replaceMorningPayments(payments){const rows=Array.isArray(payments)?payments:(payments&&typeof payments==='object'?[payments]:[]);if(!rows.length)return false;renderPaymentRows(rows.map(row=>({...row})));return true}
-function addMorningPayment(){const payments=readPaymentRows({strict:false});if(payments.length>=12)return toast('ניתן להוסיף עד 12 תקבולים למסמך');payments.push({type:4,date:todayLocal(),price:'',currency:'ILS'});renderPaymentRows(payments)}
+function addMorningPayment(){const payments=readPaymentRows({strict:false});if(payments.length>=12)return toast('ניתן להוסיף עד 12 תקבולים למסמך');payments.push(nextMorningPaymentDraft(payments,{type:4,date:todayLocal(),price:'',currency:'ILS'}));renderPaymentRows(payments)}
 function removeMorningPayment(index){
   const payments=readPaymentRows({strict:false}),i=Number(index);if(!Number.isInteger(i)||i<0||i>=payments.length)return;if(payments.length<=1)return toast('יש להשאיר לפחות תקבול אחד');const target=payments[i];if(target.bankSourceKey){const bankRows=payments.filter(row=>row.bankSourceKey);if(!target.removable)return toast('התקבול שמייצג את תנועת הבנק אינו ניתן להסרה');if(bankRows.length<=1)return toast('יש להשאיר לפחות תקבול אחד שמקורו בתנועת הבנק')}
   payments.splice(i,1);renderPaymentRows(payments);
