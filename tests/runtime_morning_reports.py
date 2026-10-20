@@ -36,8 +36,12 @@ FLOW = r"""(async()=>{
  check(document.querySelector('[data-action="morning-report-period"][data-click-arg0="bimonth"]').getAttribute('aria-pressed')==='true','bimonth default missing');
  click('morning-report-period','year');click('morning-report-load');await wait(()=>document.querySelector('.morning-report-cards'));
  check(calls.filter(x=>x.source==='documents').length===2,'not all document pages read');
+ check(calls.filter(x=>x.source==='expenses').length===0,'receipt report fetched unnecessary expenses');
+ check([...document.querySelectorAll('.morning-report-card strong')][2].textContent==='—','unloaded expenses produced profit');
  check(document.querySelectorAll('.morning-report-table tbody tr').length===12,'year not grouped into twelve months');
  check(!document.querySelector('.morning-report-warning'),'edited status alone marked report incomplete');
+ click('morning-report-type','profit');await wait(()=>document.querySelector('.morning-report-notice'));
+ check(calls.filter(x=>x.source==='documents').length===2&&calls.filter(x=>x.source==='expenses').length===1,'profit did not reuse complete documents');
  check(document.querySelector('.morning-report-notice').textContent.includes('2 הוצאות'),'edited-expense notice missing');
  click('morning-report-detail','edited-expenses');check(document.querySelectorAll('.morning-report-details tbody tr').length===2,'edited expense list not isolated');
  click('morning-report-record',uuid(101));
@@ -65,6 +69,8 @@ FLOW = r"""(async()=>{
 FOLLOWUP = r"""(async()=>{
  const check=(v,m)=>{if(!v)throw Error(m)};
  const wait=async predicate=>{for(let i=0;i<160;i++){if(predicate())return;await new Promise(r=>setTimeout(r,20))}throw Error('followup timeout')};
+ document.querySelector('[data-action="morning-report-type"][data-click-arg0="profit"]').click();
+ document.querySelector('[data-action="morning-report-load"]').click();await wait(()=>document.querySelector('.morning-report-cards'));
  let release;const held=new Promise(resolve=>release=resolve),original=cloudAuth.supaFetch;let hold=true;
  cloudAuth.supaFetch=async(...args)=>{if(hold)await held;return original(...args)};
  document.querySelector('[data-action="morning-report-load"]').click();
@@ -77,8 +83,7 @@ FOLLOWUP = r"""(async()=>{
  check(document.querySelector('.morning-report-warning').textContent.includes('הוצאות לא זמינות'),'missing-source notice absent');
  cloudAuth.supaFetch=async(path,options)=>{const body=JSON.parse(options.body);if(body.source==='documents')return Response.json({ok:false,message:'מסמכים לא זמינים לבדיקה'},{status:502});return original(path,options)};
  document.querySelector('[data-action="morning-report-load"]').click();await wait(()=>document.querySelector('.morning-report-cards'));
- document.querySelector('[data-action="morning-report-type"][data-click-arg0="receipts"]').click();
- check([...document.querySelectorAll('.morning-report-table tfoot td')].slice(0,-1).every(cell=>cell.textContent==='—'),'unavailable receipts displayed as zero');
+ check([...document.querySelectorAll('.morning-report-card strong')][3].textContent==='—','unavailable receipts displayed as zero');
  cloudAuth.supaFetch=async(path,options)=>{
    const response=await original(path,options),body=JSON.parse(options.body);
    if(body.action!=='report_page')return response;

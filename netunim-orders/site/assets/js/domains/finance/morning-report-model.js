@@ -179,7 +179,7 @@ export function buildMorningReport({documents, expenses, fromDate, toDate, group
     finalize(b, fullMonths(start < fromDate ? fromDate : start, end > toDate ? toDate : end));
   }
   total.notices = [...notices.values()];
-  return {fromDate, toDate, group, total, buckets:[...buckets.values()].sort((a, b) => a.key.localeCompare(b.key)), records,
+  return {fromDate, toDate, group, sources:{documents:documentsKnown, expenses:expensesKnown}, total, buckets:[...buckets.values()].sort((a, b) => a.key.localeCompare(b.key)), records,
     issues:total.issues, notices:total.notices,
     ...Object.fromEntries(Object.entries(total).filter(([key]) => key.endsWith('Complete') || ['complete', 'profitCents', 'vatBalanceCents'].includes(key))),
     complete:total.complete && errors.length === 0};
