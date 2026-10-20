@@ -25,6 +25,10 @@ const fixture = JSON.parse(
 const retired = ['normalizeAccountNumber', 'selectBalanceAccount', 'isHapoalimChequeTransaction'];
 test('all 72 active Bank declarations match their reviewed policy digests', () => {
   const expected = { ...fixture.bankPolicies };
+  // Reviewed audit change: unknown server capacity cannot prove completeness.
+  // Keep the historical fixture intact and authorize only this declaration.
+  assert.equal(expected.hapoalimTransactionPageState,'660bee221042dd50d5ac7052929e635910f24817954d0c83001f26bbc7feb294');
+  expected.hapoalimTransactionPageState='1b6956762b3fefae99869dc115474f67140ebc5da818cc5cadc4485f6771c087';
   for (const name of retired) {
     assert.ok(Object.hasOwn(expected, name));
     delete expected[name];

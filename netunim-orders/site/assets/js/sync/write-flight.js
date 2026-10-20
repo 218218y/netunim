@@ -1,15 +1,17 @@
 import {normalizeCloudError,contentionDelay,CLOUD_WRITE_POLICY,operationAuditMetadata,runBusyCloudWriteWithPolicy,structuredSyncConflict,cloudWriteError} from '../shared/cloud-sync.js';
 import {cloudWriteScopeIsCurrent} from '../shared/cloud-write-scope.js';
+import {equalSyncJson} from '../shared/sync-json.js';
 import {clone} from '../core/values.js';
 
 // Owns one immutable send and conflict rebase.
-export function createCloudWriteFlight({model,session,access,journal,projection,transport,view,publication}){
+export function createCloudWriteFlight({model,session,access,journal,projection,transport,view,publication,recovery={}}){
   const {writeScopeCurrent,getCloudWriteScope=()=>null}=access;
   const {refreshStorageV2CloudState=async()=>null,materializeStorageV2CloudFlight=async()=>null,rejectStorageV2CloudFlight=async()=>null,setWriteControl}=journal;
   const {prepareCloudState,merge3,composeOrderCloudState=(cloud,current)=>({...clone(cloud),checks:clone(current.checks||[])}),applyOrderCloudState}=projection;
   const {rpcSaveV2,readCloud}=transport;
   const {setCloud,toast}=view;
   const {publishAcknowledgedFlight}=publication;
+  const {readStorageV2CloudRecovery,commitStorageV2CloudRecovery}=recovery;
 
 function revisionConflict(res){return !res?.r?.ok&&normalizeCloudError(res).kind==='revision_conflict'}
 
@@ -60,21 +62,33 @@ async function saveStorageV2CloudFlight(initialFlight,scope){
       }
       currentCloud=rebased.state;
     }
-    const expectedGeneration=Number(session.localGeneration||0),rebasedCurrent=composeOrderCloudState(currentCloud,model.state);
+    const previousState=clone(model.state),expectedGeneration=Number(session.localGeneration||0),rebasedCurrent=composeOrderCloudState(currentCloud,model.state);
     await rejectStorageV2CloudFlight(previousOperationId,remoteRevision,remoteState,{currentState:rebasedCurrent,expectedSeq});
     // The IDB rebase is atomic, but a new edit may be journaled while its
     // transaction is committing. Never overwrite that edit with the earlier
     // merged view or construct a flight from a stale visible model.
     const postRebase=await refreshStorageV2CloudState();
     if(!writeScopeCurrent(scope,postRebase))return false;
-    if(postRebase?.seq!==expectedSeq||Number(session.localGeneration||0)!==expectedGeneration){
+    let recoveredPublication=false;
+    if((postRebase?.seq!==expectedSeq||Number(session.localGeneration||0)!==expectedGeneration)&&readStorageV2CloudRecovery&&commitStorageV2CloudRecovery){
+      try{
+        const {recoverPostAckPublication}=await import('../shared/cloud-post-ack-recovery.js');
+        const recovered=await recoverPostAckPublication({isCurrent:head=>writeScopeCurrent(scope,head),generation:()=>Number(session.localGeneration||0),visible:()=>model.state,
+          equal:(a,b)=>equalSyncJson(prepareCloudState(a),prepareCloudState(b)),merge:(before,local,candidate,deleteIntents)=>merge3(prepareCloudState(before),prepareCloudState(local),prepareCloudState(candidate),{deleteIntents}),
+          read:readStorageV2CloudRecovery,commit:(value,options)=>commitStorageV2CloudRecovery(composeOrderCloudState(value,model.state),options),publish:applyOrderCloudState},
+          {previousState,candidateState:rebasedCurrent,candidateSeq:expectedSeq,baseState:remoteState,ackRevision:remoteRevision,ackSeq:state.base.ackSeq});
+        recoveredPublication=!!recovered;
+      }catch(error){console.error('rebase recovery retained for review',error)}
+    }
+    if(!writeScopeCurrent(scope))return false;
+    if(!recoveredPublication&&(postRebase?.seq!==expectedSeq||Number(session.localGeneration||0)!==expectedGeneration)){
       await setWriteControl(scope,{conflict:{kind:'concurrent-rebase',domain:'orders',baseRevision:expected,currentRemoteRevision:remoteRevision}});
       if(!writeScopeCurrent(scope))return false;
       session.cloudConflictBlocked=true;session.cloudSaveRequested=false;setCloud('ענן: הסנכרון נעצר לשמירת שינוי מקביל','error');
       toast('שינוי בוצע בזמן מיזוג הענן. הנתונים נשמרו מקומית; ייצא גיבוי ובדוק את המצב לפני חידוש הסנכרון.');
       return false;
     }
-    applyOrderCloudState(currentCloud);
+    if(!recoveredPublication)applyOrderCloudState(currentCloud);
     if(!writeScopeCurrent(scope))return false;
     base=remoteState;serverSnapshot=prepareCloudState(merged.state);expected=remoteRevision;
     flight=await materializeStorageV2CloudFlight({throughSeq,snapshot:serverSnapshot});if(!writeScopeCurrent(scope)||!cloudWriteScopeIsCurrent(scope,getCloudWriteScope(),{base:flight}))return false;

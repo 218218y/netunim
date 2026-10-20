@@ -47,7 +47,7 @@ export function createOrdersLocalCommit({access,session,journal,projection,view,
         const confirmed=await committed;
         if (confirmed!==true) throw new Error('storage_local_commit_unconfirmed');
         session.localUndurableGenerations?.delete(generation);
-        if (tasks.isActive()&&generation===session.localGeneration) view.setSave('?????: ????','',view.folderSaveTitle());
+        if (tasks.isActive()&&generation===session.localGeneration) view.setSave('מקומי: שמור','',view.folderSaveTitle());
       } catch {
         if (!tasks.isActive()) return;
         view.setSave('השינוי לא נשמר באחסון הדפדפן — אין לסגור את החלון','error');

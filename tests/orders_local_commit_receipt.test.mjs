@@ -19,6 +19,7 @@ test('a false synchronous emergency result can confirm an actual IDB-only commit
   const f=fixture(t,{emergency:false,risk:true}),work=f.persistence.commitSave('metadata',typed());
   assert.equal(f.session.localUndurableGenerations.has(1),true);f.gate.resolve(true);assert.equal(await work,true);
   assert.equal(f.session.localUndurableGenerations.has(1),false);
+  assert.ok(f.messages.some(row=>row[0]==='מקומי: שמור'));
 });
 test('commitSave rejection propagates and leaves an IDB-only generation undurable',async t=>{
   const f=fixture(t,{emergency:false,risk:true}),work=f.persistence.commitSave('metadata',typed());

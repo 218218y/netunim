@@ -63,6 +63,7 @@ const {saveStorageV2CloudFlight}=createCloudWriteFlight({
   transport:{rpcSaveCloudV2,readSupabaseDocument},
   view:{setSaveStatus,setCloudHeaderStatus,reportError,render},
   publication:{publishAcknowledgedFlight},
+  recovery:{readStorageV2CloudRecovery,commitStorageV2CloudRecovery},
 });
 const confirmation=createCloudConfirmation({
   model,

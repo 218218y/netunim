@@ -11,6 +11,12 @@ const sources=()=>['server','finance-commands','provider-errors','hapoalim-sessi
 
 for(const [name,file] of [['Bank and credit provider policies','bank-provider-policy.json'],['Bank session and error policies','bank-session-policy.json'],['Bank read, image and installed-browser policies','bank-read-policy.json']])test(name+' match their reviewed pre-refactor AST fixtures',()=>{
   const fixture=JSON.parse(fs.readFileSync(new URL('./fixtures/'+file,import.meta.url),'utf8'));
+  if(file==='bank-read-policy.json'){
+    // Reviewed audit change: retain validated windows on later failure and
+    // require reported capacity. Other provider policies stay immutable.
+    assert.equal(fixture.policies.fetchHapoalimAccountSnapshot,'7adfc1e5b8f5082e640270ed1c7756b5ec3de163eec3acba76cf8a154058d263');
+    fixture.policies.fetchHapoalimAccountSnapshot='71a805331b89adb67b7bf027186070c880de3c71d2497d2e11631b9e1ef2ec08';
+  }
   assert.deepEqual(providerPolicyHashes(sources(),Object.keys(fixture.policies)),fixture.policies);
 });
 

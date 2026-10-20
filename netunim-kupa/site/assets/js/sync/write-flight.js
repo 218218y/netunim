@@ -4,13 +4,14 @@ import {canonicalCloudSyncBase} from './state-projection.js';
 import {jsonEq} from './merge-records.js';
 
 // Owns one immutable send and conflict rebase.
-export function createCloudWriteFlight({model,session,access,journal,projection,transport,view,publication}){
+export function createCloudWriteFlight({model,session,access,journal,projection,transport,view,publication,recovery={}}){
   const {writeScopeCurrent,getCloudWriteScope=()=>null}=access;
   const {refreshStorageV2CloudState=async()=>null,materializeStorageV2CloudFlight=async()=>null,rejectStorageV2CloudFlight=async()=>null,setWriteControl}=journal;
   const {prepareKupaCloudState,mergeKupaCloudState3Way,applyKupaCoreState,replaceVisibleState}=projection;
   const {rpcSaveCloudV2,readSupabaseDocument}=transport;
   const {setSaveStatus,setCloudHeaderStatus,reportError,render}=view;
   const {publishAcknowledgedFlight}=publication;
+  const {readStorageV2CloudRecovery,commitStorageV2CloudRecovery}=recovery;
 
 function revisionConflict(res){return !res?.r?.ok&&normalizeCloudError(res).kind==='revision_conflict'}
 
@@ -41,21 +42,33 @@ async function saveStorageV2CloudFlight(initialFlight,scope){
     if(merged.conflicts.length){const conflict=structuredSyncConflict({domain:'kupa',conflicts:merged.conflicts,base,local:serverSnapshot,remote:remoteState,generation:flight.generation,baseRevision:expected,currentRemoteRevision:remoteRevision});const conflictCommit=await rejectStorageV2CloudFlight(flight.operationId,remoteRevision,remoteState,{currentState:model.state,expectedSeq,control:{conflict}});if(!writeScopeCurrent(scope,conflictCommit?.cloudState||conflictCommit))return false;session.dbRevision=remoteRevision;session.lastSavedSnapshot=JSON.stringify(remoteState);session.serverInfo.lastSavedAt=remote.coreUpdatedAt||session.serverInfo.lastSavedAt||null;session.cloudConflictPending=true;setSaveStatus('התנגשות שמורה מקומית','error');setCloudHeaderStatus('conflict','ענן: התנגשות');reportError('הסנכרון נעצר: אותה רשומה שונתה במקביל בשני מקומות. השינוי המקומי נשמר ולא נדרס.');return false}
     const throughSeq=Number(flight.endSeq),previousOperationId=flight.operationId;let currentCore=merged.state;
     if(state.afterFlightPending){const localCore=prepareKupaCloudState(model.state),rebased=mergeKupaCloudState3Way(serverSnapshot,localCore,merged.state,{deleteIntents:state.afterFlightDeleteIntents||{}});if(rebased.conflicts.length){const conflict=structuredSyncConflict({domain:'kupa',conflicts:rebased.conflicts,base:serverSnapshot,local:localCore,remote:merged.state,generation:state.afterFlightGeneration,baseRevision:expected,currentRemoteRevision:remoteRevision});const conflictCommit=await rejectStorageV2CloudFlight(previousOperationId,remoteRevision,remoteState,{currentState:model.state,expectedSeq,control:{conflict}});if(!writeScopeCurrent(scope,conflictCommit?.cloudState||conflictCommit))return false;session.cloudConflictPending=true;setSaveStatus('התנגשות שמורה מקומית','error');setCloudHeaderStatus('conflict','ענן: התנגשות');return false}currentCore=rebased.state}
-    const expectedGeneration=Number(session.localGeneration||0),rebasedCurrent=applyKupaCoreState(currentCore,model.state.checks,model.state);
+    const previousState=structuredClone(model.state),expectedGeneration=Number(session.localGeneration||0),rebasedCurrent=applyKupaCoreState(currentCore,model.state.checks,model.state);
     await rejectStorageV2CloudFlight(previousOperationId,remoteRevision,remoteState,{currentState:rebasedCurrent,expectedSeq});
     // A user edit may commit while the rebase transaction is in flight.
     // Keep the visible edit and block another send until the recovered head is
     // inspected, rather than replacing it with an older merged snapshot.
     const postRebase=await refreshStorageV2CloudState();
     if(!writeScopeCurrent(scope,postRebase))return false;
-    if(postRebase?.seq!==expectedSeq||Number(session.localGeneration||0)!==expectedGeneration){
+    let recoveredPublication=false;
+    if((postRebase?.seq!==expectedSeq||Number(session.localGeneration||0)!==expectedGeneration)&&readStorageV2CloudRecovery&&commitStorageV2CloudRecovery){
+      try{
+        const {recoverPostAckPublication}=await import('../shared/cloud-post-ack-recovery.js');
+        const recovered=await recoverPostAckPublication({isCurrent:head=>writeScopeCurrent(scope,head),generation:()=>Number(session.localGeneration||0),visible:()=>model.state,
+          equal:(a,b)=>jsonEq(prepareKupaCloudState(a),prepareKupaCloudState(b)),merge:(before,local,candidate,deleteIntents)=>mergeKupaCloudState3Way(prepareKupaCloudState(before),prepareKupaCloudState(local),prepareKupaCloudState(candidate),{deleteIntents}),
+          read:readStorageV2CloudRecovery,commit:(value,options)=>commitStorageV2CloudRecovery(applyKupaCoreState(value,model.state.checks,model.state),options),publish:value=>{replaceVisibleState(applyKupaCoreState(value,model.state.checks,model.state));render()}},
+          {previousState,candidateState:rebasedCurrent,candidateSeq:expectedSeq,baseState:remoteState,ackRevision:remoteRevision,ackSeq:state.base.ackSeq});
+        recoveredPublication=!!recovered;
+      }catch(error){console.error('rebase recovery retained for review',error)}
+    }
+    if(!writeScopeCurrent(scope))return false;
+    if(!recoveredPublication&&(postRebase?.seq!==expectedSeq||Number(session.localGeneration||0)!==expectedGeneration)){
       await setWriteControl(scope,{conflict:{kind:'concurrent-rebase',domain:'kupa',baseRevision:expected,currentRemoteRevision:remoteRevision}});
       if(!writeScopeCurrent(scope))return false;
       session.cloudConflictPending=true;setSaveStatus('שינוי מקביל נשמר מקומית; הסנכרון נעצר לבדיקה','error');setCloudHeaderStatus('conflict','ענן: נדרשת בדיקה');
       reportError('שינוי בוצע בזמן מיזוג הענן. הנתונים נשמרו מקומית; ייצא גיבוי JSON ובדוק את המצב לפני חידוש הסנכרון.');
       return false;
     }
-    if(!jsonEq(model.state,rebasedCurrent)){replaceVisibleState(rebasedCurrent);render()}
+    if(!recoveredPublication&&!jsonEq(model.state,rebasedCurrent)){replaceVisibleState(rebasedCurrent);render()}
     if(!writeScopeCurrent(scope))return false;
     base=remoteState;serverSnapshot=prepareKupaCloudState(merged.state);expected=remoteRevision;flight=await materializeStorageV2CloudFlight({throughSeq,snapshot:serverSnapshot});if(!writeScopeCurrent(scope)||!cloudWriteScopeIsCurrent(scope,getCloudWriteScope(),{base:flight}))return false;if(!flight||flight.operationId===previousOperationId)throw new Error('kupa_v2_rebase_flight_not_rotated')
   }
