@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-e8bdd801397a';
+const CACHE='orders-app-shell-esm-24863ea0181c';
 const SHELL=[
   './',
   './index.html',
@@ -146,9 +146,17 @@ const SHELL=[
   './assets/js/domains/finance/document-commands.js',
   './assets/js/domains/finance/document-publication.js',
   './assets/js/domains/finance/kupa-write-state.js',
+  './assets/js/domains/finance/morning-report-analysis-view.js',
+  './assets/js/domains/finance/morning-report-analysis.js',
   './assets/js/domains/finance/morning-report-cache.js',
+  './assets/js/domains/finance/morning-report-comparison-view.js',
+  './assets/js/domains/finance/morning-report-exports.js',
+  './assets/js/domains/finance/morning-report-filters.js',
   './assets/js/domains/finance/morning-report-loader.js',
   './assets/js/domains/finance/morning-report-model.js',
+  './assets/js/domains/finance/morning-report-reader.js',
+  './assets/js/domains/finance/morning-report-reconciliation-view.js',
+  './assets/js/domains/finance/morning-report-reconciliation.js',
   './assets/js/domains/finance/morning-reports.js',
   './assets/js/domains/finance/reporting.js',
   './assets/js/domains/finance/status-view.js',

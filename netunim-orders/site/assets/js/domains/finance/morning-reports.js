@@ -2,9 +2,16 @@ import { esc } from '../../core/values.js';
 import { money } from '../../core/money.js';
 import { checkTodayISO } from '../../core/dates.js';
 import { createRuntimeTaskOwner } from '../../shared/runtime-task-owner.js';
-import { buildMorningReport, REPORT_METHODS, REPORT_TYPES, reportPeriod, validReportDate, reportCsv, reportMetric } from './morning-report-model.js';
-import { loadMorningReportSource } from './morning-report-loader.js';
+import { buildMorningReport, REPORT_METHODS, REPORT_TYPES, reportPeriod, validReportDate, reportMetric } from './morning-report-model.js';
+import { readMorningReportBundle } from './morning-report-reader.js';
 import { createMorningReportCache } from './morning-report-cache.js';
+import { filterMorningRecords, parseMorningFilterAmount } from './morning-report-filters.js';
+import { morningRecordFiltersMarkup, morningTrendMarkup } from './morning-report-analysis-view.js';
+import { morningReportTrend, morningComparisonRange, compareMorningReportMetrics } from './morning-report-analysis.js';
+import { morningComparisonMarkup } from './morning-report-comparison-view.js';
+import { morningReconciliationMarkup } from './morning-report-reconciliation-view.js';
+import { morningReportCsv } from './morning-report-exports.js';
+import { RECONCILIATION_METRICS } from './morning-report-reconciliation.js';
 const OFFICIAL = 'https://app.greeninvoice.co.il/business/accounting/reports';
 const EXPENSE_STATUSES = {10:'אושרה לדוח', 20:'נכללת בדוח', 30:'נערכה מחדש · נתונים עדכניים', 40:'אושרה על ידי מייצג'};
 const amount = value => Number.isSafeInteger(value) ? money(value / 100) : '—';
@@ -14,9 +21,13 @@ const bucketLabel = key => key.length === 7 ? new Intl.DateTimeFormat('he-IL', {
 const option = (value, title, current) => `<option value="${esc(value)}" ${String(value) === String(current) ? 'selected' : ''}>${esc(title)}</option>`;
 export function createMorningReports({ request, captureRead, subscribeAccountScope = () => () => { }, media, dateEditorMarkup, isActive = () => true }) {
     const today = checkTodayISO(), tasks = createRuntimeTaskOwner(), cache = createMorningReportCache();
+    let preferences = {};
+    try { preferences = JSON.parse(localStorage.getItem('morningReportViewPreferences') || '{}') || {}; } catch { /* Defaults contain no financial data. */ }
     const currentPart = Math.ceil(Number(today.slice(5, 7)) / 2);
     let options = { mode: 'bimonth', year: Number(today.slice(0, 4)), part:currentPart,
-        ...reportPeriod('bimonth', today.slice(0, 4), currentPart), group: 'bimonth', report: 'receipts' };
+        ...reportPeriod('bimonth', today.slice(0, 4), currentPart),
+        group:['month', 'bimonth', 'quarter', 'day', 'year'].includes(preferences.group) ? preferences.group : 'bimonth',
+        report:['receipts', 'profit', 'vat'].includes(preferences.report) ? preferences.report : 'receipts' };
     const periodLabel = key => {
         if (key.length !== 7 || !['bimonth', 'quarter'].includes(options.group)) return bucketLabel(key);
         const length = options.group === 'bimonth' ? 2 : 3, [year, month] = key.split('-').map(Number);
@@ -25,8 +36,17 @@ export function createMorningReports({ request, captureRead, subscribeAccountSco
     };
     let expanded = false, busy = false, reading = false, generation = 0, loaded = null, acceptedScope = null, error = '', progressText = '', detail = '', detailPage = 0, expandedRecord = '';
     let activeRead = null, sourceEnvironment = '';
+    let filters = {}, sort = {field:'date', direction:'asc'}, filterError = '', showTrend = preferences.showTrend !== false;
+    let modelSnapshot = null, modelKey = '', modelValue = null, trendSnapshot = null, trendValue = null;
+    let officialInputs = {}, comparisonMode = 'previous', comparisonBundle = null, comparisonBusy = false, comparisonError = '', comparisonRead = null;
+    function savePreferences() {
+        try { localStorage.setItem('morningReportViewPreferences', JSON.stringify({version:1, group:options.group, report:options.report, showTrend})); } catch { /* Optional display preferences only. */ }
+    }
     function clear() {
         activeRead?.abort(); activeRead = null; generation++; busy = false; reading = false;
+        comparisonRead?.abort(); comparisonRead = null; comparisonBundle = null; comparisonBusy = false; comparisonError = '';
+        filters = {}; sort = {field:'date', direction:'asc'}; filterError = ''; officialInputs = {};
+        modelSnapshot = null; modelValue = null; trendSnapshot = null; trendValue = null;
         loaded = null; acceptedScope = null; error = ''; progressText = ''; detail = ''; detailPage = 0; expandedRecord = ''; media?.cancelPending();
     }
     const unsubscribe = subscribeAccountScope(() => { cache.clear(); sourceEnvironment = ''; clear(); render(); });
@@ -38,7 +58,21 @@ export function createMorningReports({ request, captureRead, subscribeAccountSco
             cache.clear(); sourceEnvironment = ''; clear();
         }
     } }
-    function report() { return loaded ? buildMorningReport({ ...loaded, ...options }) : null; }
+    function report() {
+        if (!loaded) return null;
+        const key = `${options.fromDate}|${options.toDate}|${options.group}`;
+        if (modelSnapshot !== loaded || modelKey !== key) {
+            modelValue = buildMorningReport({...loaded, ...options}); modelSnapshot = loaded; modelKey = key;
+        }
+        return modelValue;
+    }
+    function trend(r) {
+        if (!showTrend) return '';
+        if (trendSnapshot !== r) { trendValue = morningReportTrend(r); trendSnapshot = r; }
+        const series = options.report === 'receipts' ? ['method:credit', 'method:cash', 'method:cheque', 'method:bank']
+            : options.report === 'vat' ? ['outputVatCents', 'inputVatCents', 'vatBalanceCents'] : ['incomeCents', 'expenseCostCents', 'profitCents'];
+        return morningTrendMarkup(trendValue, {title:'מגמה חודשית · ' + (options.report === 'receipts' ? 'אמצעי תשלום' : options.report === 'vat' ? 'מע״מ' : 'הכנסות ועלויות'), series});
+    }
     function render() {
         if (!isActive() || !tasks.isActive())
             return;
@@ -150,17 +184,25 @@ export function createMorningReports({ request, captureRead, subscribeAccountSco
         ];
         return `<tr class="morning-report-record-row"><td colspan="5"><dl class="morning-report-record-fields">${fields.map(([label, value]) => `<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>`).join('')}</dl></td></tr>`;
     }
+    function sourceSelection(r) {
+        const edited = detail === 'edited-expenses', all = detail === 'all', bucket = r.buckets.find(item => item.key === detail);
+        const records = all ? r.records : edited ? r.records.filter(row => row.kind === 'expense' && row.status === 30) : bucket?.records || [];
+        return {title:all ? 'כל מסמכי התקופה' : edited ? 'הוצאות שנערכו מחדש' : `מסמכי ${periodLabel(detail)}`,
+            records, rows:filterError ? [] : filterMorningRecords(records, filters, sort)};
+    }
     function detailRows(r) {
-        const edited = detail === 'edited-expenses', bucket = r.buckets.find(item => item.key === detail);
-        if (!bucket && !edited)
+        if (!detail)
             return '';
-        const rows = (edited ? r.records.filter(row => row.kind === 'expense' && row.status === 30) : [...bucket.records]).sort((a, b) => a.date.localeCompare(b.date) || a.number.localeCompare(b.number));
+        const selection = sourceSelection(r), rows = selection.rows;
         detailPage = Math.min(detailPage, Math.max(0, Math.ceil(rows.length / 100) - 1));
         return `<section class="morning-report-details">
       <div class="morning-report-toolbar">
-      <h3>${edited ? 'הוצאות שנערכו מחדש' : `מסמכי ${esc(periodLabel(detail))}`}</h3>
+      <h3>${esc(selection.title)}</h3>
       <button type="button" class="btn small" data-action="morning-report-detail" data-click-arg0="">סגירת פירוט</button>
       </div>
+      ${morningRecordFiltersMarkup(selection.records, filters, sort)}
+      ${filterError ? `<p class="morning-report-warning" role="status">${esc(filterError)}</p>` : ''}
+      <p class="morning-report-note">מוצגים ${rows.length} מתוך ${selection.records.length} מסמכים. סיכומי הדוח נשארים לכל התקופה; סינון זה משנה רק את הפירוט ואת יצוא מסמכי המקור.</p>
       <div class="morning-report-table-wrap">
       <table class="morning-report-table morning-report-source-table">
       <caption>מסמכי המקור · ${rows.length} מסמכים · כל הנתונים זמינים בכפתור „כל הפרטים”</caption>
@@ -226,7 +268,11 @@ export function createMorningReports({ request, captureRead, subscribeAccountSco
       <span class="morning-report-read-at"> נקרא ב־${esc(new Intl.DateTimeFormat('he-IL', { dateStyle: 'short',
             timeStyle: 'short',
             timeZone: 'Asia/Jerusalem' }).format(new Date(loaded.readAt)))}</span>${loaded.environment === 'sandbox' ? '<b class="morning-report-badge partial">סביבת בדיקה</b>' : ''}</div>
-      <button type="button" class="btn small" data-action="morning-report-export">יצוא לאקסל (CSV)</button>
+      <div class="morning-report-export-actions" role="group" aria-label="יצוא נתוני הדוח">
+      <button type="button" class="btn small" data-action="morning-report-export" data-click-arg0="combined">יצוא משולב (CSV)</button>
+      <button type="button" class="btn small" data-action="morning-report-export" data-click-arg0="summary">סיכום בלבד</button>
+      <button type="button" class="btn small" data-action="morning-report-export" data-click-arg0="sources">מסמכי מקור בלבד</button>
+      </div>
       </div>${r.issues.length ? `<div class="morning-report-warning" role="status">
       <b>הדוח דורש השלמה</b>
       <ul>${r.issues.map(item => `<li>${esc(item.label)}${item.count > 1 ? ` (${item.count})` : ''}</li>`).join('')}</ul>חוסר בנתון מסתיר רק את המדד והתקופה המושפעים. סכום כולל מוצג רק כשהנתונים הדרושים לו שלמים.</div>` : ''}
@@ -244,7 +290,15 @@ export function createMorningReports({ request, captureRead, subscribeAccountSco
       ${options.report === 'profit' ? '<p class="morning-report-note">הוצאות לפני מע״מ מוצגות לניתוח. הרווח מחושב לפי עלות ההוצאה: סכום כולל פחות מע״מ תשומות שניתן לקזז, ולכן מע״מ שאינו ניתן לקיזוז נשאר בעלות. כולל רכישות שנרשמו כהוצאות; ללא התאמות מס ופחת.</p>' : ''}
       ${options.report === 'vat' ? `<div class="morning-report-note">מע״מ עסקאות בניכוי מע״מ התשומות המותר שמורנינג מספקת. ההוצאות משויכות לחודש הדיווח. סכום שלילי מציין עודף תשומות. זהו סיכום ניהולי לבדיקה מול הדוח הרשמי, ללא הפקה או הגשה של PCN874.</div>
       <div class="morning-report-cards">${card('מע״מ עסקאות', r.outputVatComplete ? r.total.outputVatCents : null)}${card('מע״מ תשומות מותר', r.inputVatComplete ? r.total.inputVatCents : null)}${card('הפרש לתשלום / להחזר', r.vatBalanceCents)}</div>` : ''}
-      ${table(r)}${detailRows(r)}${expenseBreakdown(r)}`;
+      <div class="morning-report-toolbar">
+      <button type="button" class="btn small" data-action="morning-report-detail" data-click-arg0="all">חיפוש בכל מסמכי התקופה (${r.records.length})</button>
+      <label class="morning-report-display-toggle"><input type="checkbox" data-change="morning-report-option" data-report-option="display:trend" ${showTrend ? 'checked' : ''}> הצגת מגמה חודשית</label>
+      </div>
+      ${trend(r)}${table(r)}${detailRows(r)}${expenseBreakdown(r)}
+      ${morningComparisonMarkup({comparison:comparisonBundle?.comparison,
+            readAt:comparisonBundle?.readAt, reportType:options.report,
+            error:comparisonError, busy:comparisonBusy, mode:comparisonMode, fromDate:r.fromDate, toDate:r.toDate})}
+      ${morningReconciliationMarkup({report:r, environment:loaded.environment, reportType:options.report, inputs:officialInputs})}`;
     }
     function markup() {
         ensureScope();
@@ -282,13 +336,80 @@ export function createMorningReports({ request, captureRead, subscribeAccountSco
       </div>
       </section>`;
     }
+    function changeFilter(key, value) {
+        if (key === 'reset') { filters = {}; sort = {field:'date', direction:'asc'}; }
+        else if (key === 'sortField') sort.field = String(value);
+        else if (key === 'sortDirection') sort.direction = String(value);
+        else if (['search', 'kind', 'type', 'method', 'category', 'minAmount', 'maxAmount'].includes(key)) filters[key] = String(value).slice(0, 500);
+        else return false;
+        filterError = '';
+        try {
+            filters.minCents = parseMorningFilterAmount(filters.minAmount);
+            filters.maxCents = parseMorningFilterAmount(filters.maxAmount);
+            filterMorningRecords([], filters, sort);
+        } catch (failure) { filterError = failure.message; }
+        detailPage = 0; expandedRecord = ''; render(); return true;
+    }
+    function changeOfficial(key, value) {
+        if (key === 'reference') officialInputs.reference = String(value).slice(0, 240);
+        else if (key === 'scope') officialInputs.scopeConfirmed = value === true;
+        else {
+            const [kind, metric] = key.split(':');
+            if (!['value', 'basis'].includes(kind) || !RECONCILIATION_METRICS.some(item => item.key === metric)) return false;
+            const target = kind === 'value' ? 'values' : 'basisConfirmed';
+            officialInputs[target] = {...officialInputs[target], [metric]:kind === 'value' ? String(value).slice(0, 80) : value === true};
+        }
+        render(); return true;
+    }
+    function loadComparison() {
+        ensureScope();
+        const current = report(), snapshot = loaded, scope = acceptedScope;
+        if (!current || !scope || busy || comparisonBusy) return Promise.resolve(false);
+        const range = morningComparisonRange(current, comparisonMode), controller = new AbortController(), ticket = generation, reportType = options.report;
+        if (comparisonBundle) cache.clear();
+        comparisonRead = controller; comparisonBusy = true; comparisonError = ''; comparisonBundle = null; render();
+        const assertCurrent = () => { scope(); controller.signal.throwIfAborted();
+            if (!tasks.isActive() || !isActive() || ticket !== generation || snapshot !== loaded || reportType !== options.report) throw new Error('report_cancelled'); };
+        return tasks.run(async () => {
+            try {
+                const bundle = await readMorningReportBundle({request, cache, scope, assertCurrent, environment:snapshot.environment,
+                    ...range, reportType, signal:controller.signal});
+                assertCurrent();
+                if (bundle.environment !== snapshot.environment) {
+                    cache.clear(); sourceEnvironment = '';
+                    throw new Error('סביבת מורנינג השתנתה; יש לרענן את הדוח הראשי לפני השוואה');
+                }
+                const comparison = compareMorningReportMetrics(current, buildMorningReport({...bundle, ...range, group:options.group}));
+                comparisonBundle = {comparison, readAt:bundle.readAt, environment:bundle.environment};
+                return true;
+            } catch (failure) {
+                if (failure.code === 'morning_report_environment_mismatch') { cache.clear(); sourceEnvironment = ''; }
+                if (comparisonRead === controller && ticket === generation && !controller.signal.aborted) comparisonError = failure.message;
+                return false;
+            } finally {
+                if (comparisonRead === controller && ticket === generation) { comparisonRead = null; comparisonBusy = false; render(); }
+            }
+        });
+    }
     function change(key, value) {
+        if (key.startsWith('filter:')) return changeFilter(key.slice(7), value);
+        if (key.startsWith('official:')) return changeOfficial(key.slice(9), value);
+        if (key === 'display:trend') { showTrend = value === true; savePreferences(); render(); return true; }
+        if (key === 'comparison:load') return loadComparison();
+        if (key === 'comparison:cancel') {
+            comparisonRead?.abort(); comparisonRead = null; comparisonBundle = null; comparisonBusy = false; comparisonError = ''; render(); return true;
+        }
+        if (key === 'comparison:mode') {
+            if (!['previous', 'year'].includes(value)) return false;
+            comparisonRead?.abort(); comparisonRead = null; comparisonBundle = null; comparisonBusy = false; comparisonError = ''; comparisonMode = value; render(); return true;
+        }
         if (!['year', 'part', 'fromDate', 'toDate', 'group'].includes(key))
             return false;
         if (key === 'group') {
             if (!['day', 'month', 'bimonth', 'quarter', 'year'].includes(value))
                 return false;
             options.group = value;
+            savePreferences();
             detail = '';
             detailPage = 0;
             render();
@@ -366,47 +487,21 @@ export function createMorningReports({ request, captureRead, subscribeAccountSco
         render();
         return tasks.run(async () => {
             try {
-                const sources = selection.report === 'receipts' ? ['documents'] : ['documents', 'expenses'];
-                const settled = await Promise.allSettled(sources.map(async source => {
-                    const query = {source, fromDate:selection.fromDate, toDate:selection.toDate, environment:sourceEnvironment, assertScope:scope};
-                    const cached = cache.read(query);
-                    if (cached) return cached;
-                    return loadMorningReportSource({ request, source, ...selection, assertCurrent, signal:controller.signal,
-                        progress: ({ loaded: count, total, page, pages }) => {
-                            assertCurrent(); progressText = `${source === 'documents' ? 'מסמכים' : 'הוצאות'}: ${count} מתוך ${total} · עמוד ${page} מתוך ${pages}`;
-                            const status = document.querySelector('.morning-report-status');
-                            if (status) status.textContent = progressText;
-                        } });
-                }));
-                assertCurrent();
-                const errors = [], data = { documents: null, expenses: null }, sourceResults = {};
-                let environment = '', readAt = '';
-                settled.forEach((result, index) => {
-                    if (result.status === 'fulfilled') {
-                        if (environment && environment !== result.value.environment) {
-                            cache.clear(); sourceEnvironment = '';
-                            throw new Error('מקורות הדוח שייכים לסביבות מורנינג שונות');
-                        }
-                        environment = result.value.environment;
-                        if (!readAt || result.value.readAt < readAt) readAt = result.value.readAt;
-                        data[sources[index]] = result.value.items;
-                        sourceResults[sources[index]] = result.value;
-                    }
-                    else
-                        errors.push({ source: sources[index], message: `${sources[index] === 'documents' ? 'מסמכים' : 'הוצאות'}: ${result.reason?.message || 'הקריאה נכשלה'}` });
-                });
-                if (!environment)
-                    throw new Error(errors.map(item => item.message).join(' · '));
-                for (const source of sources) if (sourceResults[source] && !sourceResults[source].cacheHit)
-                    cache.write({source, ...selection, ...sourceResults[source], assertScope:scope});
-                sourceEnvironment = environment;
-                loaded = { ...data, errors, environment, readAt, sourceResults };
+                const bundle = await readMorningReportBundle({request, cache, scope, assertCurrent,
+                    environment:sourceEnvironment, ...selection, reportType:selection.report, signal:controller.signal,
+                    progress:({source, loaded:count, total, page, pages}) => {
+                        assertCurrent(); progressText = `${source === 'documents' ? 'מסמכים' : 'הוצאות'}: ${count} מתוך ${total} · עמוד ${page} מתוך ${pages}`;
+                        const status = document.querySelector('.morning-report-status');
+                        if (status) status.textContent = progressText;
+                    }});
+                assertCurrent(); sourceEnvironment = bundle.environment; loaded = bundle;
                 acceptedScope = scope;
                 detail = '';
                 detailPage = 0;
                 return true;
             }
             catch (failure) {
+                if (failure.code === 'morning_report_environment_mismatch') { cache.clear(); sourceEnvironment = ''; }
                 if (ticket === generation) {
                     loaded = null;
                     error = failure.message;
@@ -420,66 +515,16 @@ export function createMorningReports({ request, captureRead, subscribeAccountSco
             }
         });
     }
-    function exportCsv() {
+    function exportCsv(element) {
         ensureScope();
-        const r = report();
-        if (!r)
-            return false;
-        const values = b => bucketValues(r, b).map(value => value === null ? '' : value / 100);
-        const rows = [['דוח ניהולי ממורנינג',
-                reportComplete(r.total) ? 'כל העמודים נקראו; אינו דוח רשמי' : 'נתונים חלקיים',
-                loaded.environment],
-            ['מתאריך',
-                r.fromDate,
-                'עד תאריך',
-                r.toDate],
-            ['בסיס תאריכים',
-                'הכנסות ותקבולים לפי מסמך; הוצאות לפי תאריך דיווח'],
-            ['רווח ניהולי',
-                'הכנסות ללא מע״מ פחות סכום הוצאות כולל בניכוי תשומות מותרות; לפני התאמות מס ופחת, כולל רכישות שנרשמו כהוצאות'],
-            ...(r.toDate >= today ? [['מצב התקופה', 'תקופה פתוחה — נתוני ביניים']] : []),
-            ...r.issues.map(item => ['חוסר בנתונים',
-                item.label,
-                item.count]),
-            ...r.notices.map(item => ['הערה לנתונים העדכניים', item.label, item.count]),
-            ...(r.notices.length ? [['התאמה לדיווח קודם', 'הוצאות שנערכו מחדש נכללות לפי הסכומים העדכניים; יש להשוות לדוח הרשמי שהופק או הוגש']] : []),
-            ['תקופה',
-                ...reportColumns()],
-            ...r.buckets.map(b => [periodLabel(b.key),
-                ...values(b)]),
-            ['סה״כ',
-                ...values(r.total)],
-            [],
-            ['מסמכי מקור'],
-            ['מזהה מקור במורנינג',
-                'תאריך הדוח',
-                'תאריך מסמך המקור',
-                'סוג',
-                'מספר',
-                'לקוח / ספק',
-                'תיאור',
-                'סכום כולל מע״מ (ש״ח)',
-                'מטבע מקור', 'מע״מ עסקאות', 'מע״מ תשומות מותר', 'סכום מוכר ממורנינג', 'סיווג הוצאה', 'סטטוס במורנינג',
-                'עלות הוצאה ניהולית', 'מע״מ לא ניתן לקיזוז', 'נוצר במורנינג', 'עודכן במורנינג', 'נתונים חסרים', 'קוד סיווג מקור'],
-            ...r.records.map(row => [row.id,
-                row.reportingDate || row.date,
-                row.sourceDocumentDate ?? row.documentDate,
-                row.kind === 'expense' ? 'הוצאה' : REPORT_TYPES[row.type],
-                row.number,
-                row.name,
-                row.description,
-                row.grossCents === null ? '' : row.grossCents / 100,
-                row.currency, row.kind === 'document' && rowOutputVat(row) !== null ? row.outputVatCents / 100 : '',
-                row.kind === 'expense' && reportMetric(row, 'inputVatCents') !== null ? row.inputVatCents / 100 : '',
-                row.kind === 'expense' && reportMetric(row, 'deductibleExpensesCents') !== null ? row.deductibleExpensesCents / 100 : '',
-                row.category || '', row.kind === 'expense' ? EXPENSE_STATUSES[row.status] || row.status : row.status,
-                row.kind === 'expense' && reportMetric(row, 'expenseCostCents') !== null ? row.expenseCostCents / 100 : '',
-                row.kind === 'expense' && reportMetric(row, 'unrecoverableVatCents') !== null ? row.unrecoverableVatCents / 100 : '',
-                row.createdAt || '', row.updatedAt || '', row.issues.map(item => item.label).join(' · '), row.categoryKey || ''])];
-        const url = URL.createObjectURL(new Blob([reportCsv(rows)], { type: 'text/csv;charset=utf-8' }));
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `morning-${options.report}-${r.fromDate}-${r.toDate}.csv`;
+        const r = report(), kind = element?.dataset?.clickArg0 || 'combined';
+        if (!r || !['summary', 'sources', 'combined'].includes(kind) || kind !== 'summary' && filterError) return false;
+        const selection = detail ? sourceSelection(r) : {rows:r.records, title:'כל מסמכי התקופה'};
+        const csv = morningReportCsv({report:r, kind, records:selection.rows, periodLabel,
+            metadata:{reportType:options.report, environment:loaded.environment, readAt:loaded.readAt,
+                openPeriod:r.toDate >= today, selectionLabel:`${selection.title} · ${selection.rows.length} מסמכים לאחר סינון`}});
+        const url = URL.createObjectURL(new Blob([csv], {type:'text/csv;charset=utf-8'})), link = document.createElement('a');
+        link.href = url; link.download = `morning-${options.report}-${kind}-${r.fromDate}-${r.toDate}.csv`;
         try { document.body.append(link); link.click(); }
         finally { link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
         return true;
@@ -487,12 +532,13 @@ export function createMorningReports({ request, captureRead, subscribeAccountSco
     const actions = {
         'morning-report-toggle': () => { expanded = !expanded; render(); },
         'morning-report-period': element => setPeriod(element.dataset.clickArg0),
-        'morning-report-option': element => change(element.dataset.reportOption, element.value),
+        'morning-report-option': element => change(element.dataset.reportOption, element.type === 'checkbox' ? element.checked : element.value),
         'morning-report-load': () => load({refresh:!!loaded}),
         'morning-report-cancel': () => { clear(); render(); },
         'morning-report-type': element => {
             if (!['receipts', 'profit', 'vat'].includes(element.dataset.clickArg0)) return;
-            options.report = element.dataset.clickArg0;
+            comparisonRead?.abort(); comparisonRead = null; comparisonBundle = null; comparisonBusy = false; comparisonError = '';
+            options.report = element.dataset.clickArg0; savePreferences();
             const required = options.report === 'receipts' ? ['documents'] : ['documents', 'expenses'];
             if (reading || loaded && required.some(source => loaded[source] === null)) return load();
             render();
