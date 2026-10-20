@@ -36,7 +36,8 @@ function fixture(t, serve = () => ({})) {
     const busy = () => /data-action="morning-report-load"[^>]*disabled/.test(view.markup());
     const details = () => { action('detail', calls.at(-1).fromDate.slice(0, 7)); return view.markup(); };
     const switchAccount = owner => { account.owner = owner; account.epoch++; listener?.(); };
-    return {view, calls, action, busy, details, switchAccount};
+    const option = (key, value) => view.actions['morning-report-option']({dataset:{reportOption:key}, value, type:typeof value === 'boolean' ? 'checkbox' : 'text', checked:value === true});
+    return {view, calls, action, option, busy, details, switchAccount};
 }
 
 test('initial receipts read documents only; profit requests only missing expenses and VAT reuses both', async t => {
@@ -110,4 +111,64 @@ test('same-range reuse expires at exactly 60 seconds and does not renew cache li
     now += 30_000; await revisit(); assert.equal(f.calls.length, 1);
     now += 29_999; await revisit(); assert.equal(f.calls.length, 1);
     now++; await revisit(); assert.equal(f.calls.length, 2);
+});
+
+test('local filters and manual numeric references never request data or change report totals', async t => {
+    const f = fixture(t); await f.action('type', 'profit'); await f.action('load');
+    f.action('detail', 'all');
+    const count = f.calls.length;
+    f.option('filter:minAmount', '118.01');
+    assert.match(f.view.markup(), /מוצגים 0 מתוך 2/);
+    f.option('filter:minAmount', '1.001');
+    assert.match(f.view.markup(), /morning-report-warning/);
+    f.option('filter:reset', '1'); assert.match(f.view.markup(), /מוצגים 2 מתוך 2/);
+    f.option('official:reference', 'Synthetic reference'); f.option('official:value:profitCents', '-9');
+    assert.doesNotMatch(f.view.markup(), /data-reconciliation-state="match"/);
+    f.option('official:scope', true); f.option('official:basis:profitCents', true);
+    assert.match(f.view.markup(), /data-reconciliation-state="match"/);
+    assert.equal(f.calls.length, count);
+    f.action('period', 'month'); assert.doesNotMatch(f.view.markup(), /Synthetic reference|morning-report-cards/);
+});
+
+test('comparison reads only on explicit action; cancellation allows a new comparison and blocks late results', async t => {
+    const old = deferred(), fresh = deferred(); let comparisonRequests = 0;
+    const f = fixture(t, async () => {
+        if (f.calls.length > 1) await (++comparisonRequests === 1 ? old.promise : fresh.promise);
+        return {};
+    });
+    await f.action('load'); assert.equal(f.calls.length, 1);
+    const first = f.option('comparison:load', '1'); assert.equal(f.calls.length, 2);
+    const signal = f.calls[1].signal; f.option('comparison:cancel', '1'); assert.equal(signal.aborted, true);
+    const second = f.option('comparison:load', '1'); assert.equal(f.calls.length, 3);
+    old.resolve(); assert.equal(await first, false);
+    assert.match(f.view.markup(), /morning-report-comparison" aria-busy="true"/);
+    fresh.resolve(); assert.equal(await second, true);
+    assert.match(f.view.markup(), /morning-report-comparison-table/);
+    f.option('filter:search', 'A'); assert.equal(f.calls.length, 3);
+});
+
+test('account switch cancels comparison and clears financial drafts before old completion', async t => {
+    const held = deferred(); let comparison = false;
+    const f = fixture(t, async () => { if (comparison) await held.promise; return {}; });
+    await f.action('load'); f.option('official:reference', 'private-account-A'); comparison = true;
+    const read = f.option('comparison:load', '1'), signal = f.calls.at(-1).signal;
+    f.switchAccount('B'); assert.equal(signal.aborted, true);
+    held.resolve(); assert.equal(await read, false);
+    assert.doesNotMatch(f.view.markup(), /private-account-A|morning-report-cards|morning-report-comparison-table/);
+});
+
+test('display preferences persist only whitelisted nonfinancial settings', async t => {
+    const original = Object.getOwnPropertyDescriptor(globalThis, 'localStorage'), writes = [];
+    Object.defineProperty(globalThis, 'localStorage', {configurable:true, value:{
+        getItem:() => JSON.stringify({group:'quarter', report:'vat', showTrend:false, name:'injected-private-data'}),
+        setItem:(key, value) => writes.push({key, value:JSON.parse(value)}),
+    }});
+    t.after(() => { if (original) Object.defineProperty(globalThis, 'localStorage', original); else delete globalThis.localStorage; });
+    const f = fixture(t); await f.action('load');
+    assert.match(f.view.markup(), /value="quarter" selected/);
+    assert.doesNotMatch(f.view.markup(), /<figure class="morning-report-trend"/);
+    f.option('official:reference', 'private-draft'); f.option('filter:search', 'private-client');
+    assert.equal(writes.length, 0);
+    f.option('display:trend', true);
+    assert.deepEqual(writes, [{key:'morningReportViewPreferences', value:{version:1, group:'quarter', report:'vat', showTrend:true}}]);
 });
