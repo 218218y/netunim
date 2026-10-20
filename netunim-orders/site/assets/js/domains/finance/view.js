@@ -74,8 +74,7 @@ export function createDomainsFinanceView({ runFinance = withFinanceDerivations, 
     function syncHeadlineMarkup(state) {
         return `<span class="finance-sync-state-icon" aria-hidden="true">${esc(state.icon)}</span><span class="finance-sync-state-copy"><b>${esc(state.title)}</b><small>${esc(state.meta)}</small></span>`;
     }
-    function kupaTabsMarkup() {
-        const active = currentSection();
+    function kupaTabsMarkup(active) {
         return (
             `<div class="kupa-subtabs" role="tablist" aria-label="תחומי קופה">` +
             `${KUPA_SECTIONS.map(section => `<button type="button" role="tab" aria-selected="${section === active}" class="kupa-subtab ${section === active ? 'active' : ''}" data-action="set-kupa-section" data-click-arg0="${section}">${KUPA_SECTION_LABELS[section]}</button>`).join('')}` +
@@ -579,8 +578,7 @@ export function createDomainsFinanceView({ runFinance = withFinanceDerivations, 
         const summary = creditSummary(s.kupa), filtered = creditFilteredSummary(summary);
         return `${creditSettlementWarningsMarkup(s)}${creditUnassignedNotice(filtered)}<div class="credit-primary-report">${creditFiltersMarkup(s, filtered)}${creditDetailSectionMarkup(s, summary)}</div>${creditForecastSectionMarkup(s)}${summary.hasData ? creditLiveMarkup(summary) : ''}`;
     }
-    function headerContextMarkup(s) {
-        const section = currentSection();
+    function headerContextMarkup(s, section = currentSection()) {
         if (section === 'bank')
             return bankCommandMarkup(s);
         if (section === 'credit')
@@ -589,8 +587,7 @@ export function createDomainsFinanceView({ runFinance = withFinanceDerivations, 
             return checksView.checksHeaderContextMarkup();
         return '';
     }
-    function contentMarkup(s) {
-        const section = currentSection();
+    function contentMarkup(s, section) {
         if (section === 'bank')
             return `${bankSyncPanelMarkup(s, { open: ui.bankSyncOpen === true })}${bankMarkup(s)}`;
         if (section === 'credit')
@@ -608,26 +605,26 @@ export function createDomainsFinanceView({ runFinance = withFinanceDerivations, 
         const main = document.getElementById('main');
         if (!main)
             return;
-        const s = snapshot();
+        const s = snapshot(), section = currentSection();
         lastRenderedData = s;
-        main.innerHTML = `<div class="kupa-page"><section class="kupa-hero">${kupaTabsMarkup()}${headerContextMarkup(s)}</section><div class="kupa-subcontent kupa-subcontent-${currentSection()}">${contentMarkup(s)}</div></div>`;
+        main.innerHTML = `<div class="kupa-page"><section class="kupa-hero">${kupaTabsMarkup(section)}${headerContextMarkup(s, section)}</section><div class="kupa-subcontent kupa-subcontent-${section}">${contentMarkup(s, section)}</div></div>`;
         mountViewLayout({
-            sourceSelector: '.kupa-page', headCount: 1, className: 'kupa-view-shell', scrollKey: `kupa:${currentSection()}`, resetTop: resetScroll
+            sourceSelector: '.kupa-page', headCount: 1, className: 'kupa-view-shell', scrollKey: `kupa:${section}`, resetTop: resetScroll
         });
         bankConnectionView.bind();
-        if (currentSection() === 'checks')
+        if (section === 'checks')
             checksView.syncChecksBulkUi();
-        if (currentSection() === 'bank' && typeof controller.ensureBankDisplayArchive === 'function')
+        if (section === 'bank' && typeof controller.ensureBankDisplayArchive === 'function')
             controller.ensureBankDisplayArchive().then(changed => {
                 if (changed && ui.currentView === 'kupa' && currentSection() === 'bank')
                     renderKupa();
             }).catch(error => console.error('orders bank display archive', error));
-        if (currentSection() === 'bank' && s.bridgeTokenConfigured && !s.bankStatusChecked && !s.bankBusy)
+        if (section === 'bank' && s.bridgeTokenConfigured && !s.bankStatusChecked && !s.bankBusy)
             controller.refreshBankBridgeStatus({ quiet: true }).then(() => {
                 if (ui.currentView === 'kupa' && currentSection() === 'bank')
                     refreshFinanceStatus('bank');
             });
-        if (currentSection() === 'credit' && s.bridgeTokenConfigured && !s.creditStatusChecked && !s.creditBusy)
+        if (section === 'credit' && s.bridgeTokenConfigured && !s.creditStatusChecked && !s.creditBusy)
             controller.refreshCreditBridgeStatus({ quiet: true }).then(() => {
                 if (ui.currentView === 'kupa' && currentSection() === 'credit')
                     refreshFinanceStatus('credit');

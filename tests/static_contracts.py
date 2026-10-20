@@ -623,7 +623,7 @@ ok('data-view="kupa"' in orders_html and 'data-view="checks"' not in orders_html
 ok(presentation_contains(orders_finance_view, "const KUPA_SECTIONS=['bank','credit','checks','summary']")
    and all(presentation_contains(orders_finance_view, label) for label in ("bank:'בנק'","credit:'אשראי'","checks:'צ׳קים'","summary:'מאזן ודוחות'")),
    "orders Kupa UI: Bank, Credit, Checks and Balance/Reports are explicit internal sections")
-ok(presentation_contains(orders_finance_view, '<section class="kupa-hero">${kupaTabsMarkup()}${headerContextMarkup(s)}</section>')
+ok(presentation_contains(orders_finance_view, '<section class="kupa-hero">${kupaTabsMarkup(section)}${headerContextMarkup(s, section)}</section>')
    and presentation_contains(orders_finance_view, "if(section==='bank')return bankCommandMarkup(s)")
    and presentation_contains(orders_finance_view, "if(section==='credit')return creditCommandMarkup(s)")
    and presentation_contains(orders_finance_view, "if(section==='checks')return checksView.checksHeaderContextMarkup()")
@@ -664,7 +664,7 @@ ok(presentation_contains(orders_finance_view, "checksView.checksMarkup({embedded
    "orders Kupa Checks header: the live bank-activity disclosure moves beside the shared-checks source label while embedded content omits the duplicate body disclosure")
 credit_markup_block = orders_finance_view.split('function creditMarkup(s)', 1)[1].split('function headerContextMarkup', 1)[0]
 credit_markup_policy = re.sub(r'\s+', '', credit_markup_block)
-ok(presentation_contains(orders_finance_view, 'class="kupa-subcontent kupa-subcontent-${currentSection()}"')
+ok(presentation_contains(orders_finance_view, 'class="kupa-subcontent kupa-subcontent-${section}"')
    and '.kupa-subcontent-credit{gap:6px}' in orders_css
    and 'class="credit-primary-report"' in credit_markup_block
    and credit_markup_policy.index('creditFiltersMarkup(s,filtered)') < credit_markup_policy.index('creditDetailSectionMarkup(s,summary)') < credit_markup_policy.index('creditForecastSectionMarkup(s)') < credit_markup_policy.index('creditLiveMarkup(summary)')
