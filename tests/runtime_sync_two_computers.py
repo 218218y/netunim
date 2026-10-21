@@ -182,6 +182,35 @@ def run_rapid_fields(app, count):
         print(f'PASS {app}: {count*2} rapid same-record edits across isolated profiles, immutable lost ACK, real business merge, restart convergence and durable contradiction',flush=True)
 
 
+def run_order_additions(same_supplier):
+    fixture=(Path(__file__).parent/'fixtures/rapid-profile-fields.mjs').read_text(encoding='utf-8').replace('export async function','async function')
+    def setup(browser, initialize):
+        return browser.evaluate('(async()=>{'+fixture+';window.rapid=await createRapidProfile("orders",'+str(initialize).lower()+');return rapid.state()})()')
+    with BrowserSession(ROOT/'netunim-orders/site','order-additions-A') as a, \
+         BrowserSession(ROOT/'netunim-orders/site','order-additions-B') as b:
+        setup(a,True);setup(b,True)
+        first=a.evaluate('rapid.addTransaction("A",'+js('S' if same_supplier else 'SA')+')')
+        second=b.evaluate('rapid.addTransaction("B",'+js('S' if same_supplier else 'SB')+')')
+        # Crash before the local ACK: retain the original flight, then merge
+        # through the actual order topology and persist the rebased checkpoint.
+        a._navigate();a.evaluate('appReady.then(()=>true)');setup(a,False)
+        assert a.evaluate('rapid.retry()')==first
+        b.evaluate(f'rapid.acknowledge({js(second)},11)')
+        merged=a.evaluate(f'rapid.reconcile({js({"revision":11,"state":second["snapshot"]})})')
+        assert merged['conflicts']==[],merged
+        final={'revision':12,'state':merged['flight']['snapshot']}
+        a.evaluate(f'rapid.acknowledge({js(merged["flight"])},12)')
+        b.evaluate(f'rapid.adopt({js(final)})')
+        for browser in (a,b):
+            browser._navigate();browser.evaluate('appReady.then(()=>true)');after=setup(browser,False)
+            assert after['state']==final['state'] and not after['cloud']['pending']
+            rows=after['state']['transactions'];assert {row['id'] for row in rows}=={'R','A','B'}
+            for supplier in {row['supplierId'] for row in rows}:
+                assert sorted(row['sequence'] for row in rows if row['supplierId']==supplier)==list(range(1,1+sum(row['supplierId']==supplier for row in rows)))
+            assert not browser.drain_serious_errors()
+        print('PASS orders: concurrent additions, restart and two-profile convergence; same supplier=',same_supplier,flush=True)
+
+
 if __name__=='__main__':
     import argparse
     parser=argparse.ArgumentParser()
@@ -193,3 +222,4 @@ if __name__=='__main__':
         if not options.rapid_only:
             for same_record in (True,False):run(app,same_record)
         run_rapid_fields(app,options.rapid_count)
+    for same_supplier in (False,True):run_order_additions(same_supplier)

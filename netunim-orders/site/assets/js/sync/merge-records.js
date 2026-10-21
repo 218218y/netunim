@@ -1,7 +1,7 @@
 import {equalSyncJson} from '../shared/cloud-sync.js';
 import {clone} from '../core/values.js';
 import {customerDebtProgressData,customerDebtActiveProgressEntries} from '../shared/customer-debt-progress.js';
-import {mergeBusinessRecord3,competingTransactionOrder} from '../shared/business-field-merge.js';
+import {mergeBusinessRecord3,competingTransactionOrder,reconcileTransactionOrder} from '../shared/business-field-merge.js';
 
 export function eq(a,b){return equalSyncJson(a,b)}
 
@@ -10,13 +10,24 @@ export function mergeArray(base,local,remote,key,conflicts,label,preferLocalConf
   if(competing)conflicts.push('transactionOrder');
   const bm=new Map((base||[]).map(x=>[String(x?.[key]),x])),lm=new Map((local||[]).map(x=>[String(x?.[key]),x])),rm=new Map((remote||[]).map(x=>[String(x?.[key]),x])),keys=new Set([...bm.keys(),...lm.keys(),...rm.keys()]),out=[];
   for(const k of keys){
-    const b=bm.get(k),l=lm.get(k),r=rm.get(k),lc=!eq(l,b),rc=!eq(r,b);
+    let b=bm.get(k),l=lm.get(k),r=rm.get(k);
+    // Numeric sequence changes also arise from insertion/deletion. Merge the
+    // content independently; the card topology below owns sequence allocation.
+    if(label==='transaction'&&!competing&&b&&l&&r&&b.supplierId===l.supplierId&&b.supplierId===r.supplierId){
+      l={...l,sequence:b.sequence};r={...r,sequence:b.sequence};
+    }
+    const lc=!eq(l,b),rc=!eq(r,b);
     if(lc&&rc&&!eq(l,r)){
       const merged=competing?null:mergeBusinessRecord3(b,l,r,`orders.${label}`);
       if(merged){out.push(merged);continue}
       conflicts.push(`${label}:${k}`);if(preferLocalConflicts&&l!==undefined)out.push(clone(l));continue;
     }
     const v=lc?l:r;if(v!==undefined)out.push(clone(v));
+  }
+  if(label==='transaction'){
+    if(!competing&&!reconcileTransactionOrder(base,local,remote,out))conflicts.push('transactionOrder');
+    const rank=new Map((base||[]).map((row,index)=>[String(row[key]),index]));
+    out.sort((a,b)=>(rank.get(String(a[key]))??Infinity)-(rank.get(String(b[key]))??Infinity)||(String(a[key])<String(b[key])?-1:String(a[key])>String(b[key])?1:0));
   }
   return out;
 }
