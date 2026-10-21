@@ -50,7 +50,7 @@ async function cloudPoll(){
     // checks remain independent; only Main's projection is compared here.
     observation.local=prepareCloudState(model.state);
     if(!meaningful){session.lastCloudState=prepareCloudState(row.state||model.state);return true}
-    try{if(files.dirHandle)await writeStateToFolder()}catch(localError){console.error('local backup/mirror',localError)}
+    try{if(files.dirHandle)void Promise.resolve(writeStateToFolder()).catch(localError=>console.error('local backup/mirror',localError))}catch(localError){console.error('local backup/mirror',localError)}
     render();toast('התקבל עדכון מהענן');return true;
   }
   try{

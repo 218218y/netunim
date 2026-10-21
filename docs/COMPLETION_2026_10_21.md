@@ -27,3 +27,26 @@ are recorded in the stage PR. Generated site copies and release hashes use
 Next stages: detach optional backup from cloud/ACK; make failed mutation
 admission explicit across both applications; align shared-check retry and
 fault-test incident monitoring before deciding whether it needs a change.
+
+## Stage 2: optional file I/O outside cloud progress
+
+Three fault-injection regressions failed before the change: Orders publication
+and both applications' post-ACK completion waited indefinitely for a folder.
+They now pass, including a second durable flight while the original backup is
+still held and revoked permission after ACK. The native Orders scheduling
+suite also holds the folder while real IndexedDB commits and cloud wakeups drain.
+
+Publication submits directly to existing file/automatic-backup owners, observes
+rejections, and does not join their completion. Their captured targets, detached
+inputs, serialization, verification, coalescing and cutover drains remain owned
+by the existing runtimes. Polling, cloud opening and shared-check confirmation
+have the same separation. Kupa backup verification failures now have an explicit
+folder error and a deduplicated notice; verified recovery clears that error.
+
+A folder copy never clears an IDB durability risk. Manual import/restore and
+explicit file-mode saves retain their file confirmation requirements. Storage
+cutover still joins accepted native file operations before changing ownership;
+this stage changes ordinary cloud progress, not the cutover protocol.
+
+Focused validation: 65 owner/backup/shared-check tests passed; targeted ESLint
+and contract typecheck passed. Full CI evidence belongs to the stage PR.

@@ -87,7 +87,7 @@ async function openCloud({renderAfter=true,quiet=false,hydrateSecondary=true,man
       if(publication.reason==='publication-error')throw publication.error;
       throw new Error('cloud_hydration_publication_stale');
     }
-    try{if(files.dirHandle)await writeStateToFolder()}catch(localError){console.error('local backup/mirror',localError)}
+    try{if(files.dirHandle)void Promise.resolve(writeStateToFolder()).catch(localError=>console.error('local backup/mirror',localError))}catch(localError){console.error('local backup/mirror',localError)}
     // The account owner is already bound; secondary domains hydrate after Main.
     if(renderAfter)render();
     if(hydrateSecondary){if(manageStatus)setCloud('ענן: מסנכרן צ׳קים…');await syncSharedChecksFromCloud({quiet:true,required:true});if(manageStatus)setCloud('ענן: מסונכרן','synced');const financeOk=await refreshKupaReadout({force:true,renderIfChanged:true});if(!financeOk)console.warn('finance readout unavailable after orders cloud open; header status remains scoped to orders + checks');if(startPoll)startPolling();startFinanceAutoSync()}

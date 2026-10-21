@@ -21,9 +21,9 @@ with BrowserSession(ROOT/'netunim-orders/site', 'orders-save-scheduling') as bro
       };
       const errors=[];console.error=(...args)=>errors.push(args);
       try{
-        for(const scenario of ['main-first','checks-first','main-abort','checks-abort']){
+        for(const scenario of ['main-first','checks-first','main-abort','checks-abort','folder-stalled']){
           const mainOwner='save-main:'+scenario+':orders',checksOwner='save-checks:'+scenario+':shared-checks';
-          const mainGate=gate(),checksGate=gate(),mainEntered=gate(),checksEntered=gate();
+          const mainGate=gate(),checksGate=gate(),mainEntered=gate(),checksEntered=gate(),folderGate=gate();
           const native=createStorageJournalDb(),blocked=(release,entered)=>({...native,append:async(...args)=>{
             entered.resolve();await release.promise;return native.append(...args);
           }});
@@ -46,7 +46,7 @@ with BrowserSession(ROOT/'netunim-orders/site', 'orders-save-scheduling') as bro
             projection:{touch:noop,touchAll:noop},
             platform:{timers,isOnline:()=>true,reload:noop},
             view:{setSave:noop,setCloud:noop,folderSaveTitle:()=>''},
-            mirror:{available:()=>false,write:async()=>true,refreshAccess:noop},
+            mirror:{available:()=>scenario==='folder-stalled',write:()=>folderGate.promise,refreshAccess:noop},
             journal:{localSnapshot:(_state,{operations})=>{mainWrite=mainJournal.append(operations);return mainWrite.emergencyDurable},
               storageV2DurabilityAtRisk:()=>true,storageV2CommitPromise:()=>mainWrite.committed},
             cloud:{enabled:()=>true,save:async()=>{check((await native.load(mainOwner)).metadata.seq===1,scenario+': Main cloud follows native commit');sent.push('main')}}});
@@ -65,6 +65,7 @@ with BrowserSession(ROOT/'netunim-orders/site', 'orders-save-scheduling') as bro
           mainGate.resolve();checksGate.resolve();
           const outcomes=await Promise.allSettled([mainWrite.committed,checksWrite.committed]);
           await Promise.all([main.runtime.drain(),checks.runtime.drain()]);
+          folderGate.resolve(true);
           check(outcomes[0].status===(scenario==='main-abort'?'rejected':'fulfilled')&&outcomes[1].status===(scenario==='checks-abort'?'rejected':'fulfilled'),scenario+': exact commit results retained');
           const expected=scenario==='main-abort'?['checks']:scenario==='checks-abort'?['main']:['checks','main'];
           check(JSON.stringify(sent.sort())===JSON.stringify(expected),scenario+': independent cloud obligations');

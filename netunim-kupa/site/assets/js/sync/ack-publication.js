@@ -58,7 +58,7 @@ async function publishAcknowledgedFlight({res,flight,serverSnapshot,scope}){
   }
   if(businessChanged)try{render()}catch(error){console.error('post-ACK render',error)}
   if(!writeScopeCurrent(scope))return false;
-  try{await backupSnapshotToComputer(structuredClone(model.state),newRevision)}catch(error){console.error('post-ACK local backup',error)}
+  try{void Promise.resolve(backupSnapshotToComputer(structuredClone(model.state),newRevision)).catch(error=>console.error('post-ACK local backup',error))}catch(error){console.error('post-ACK local backup',error)}
   if(!writeScopeCurrent(scope,committedState))return false;
   return {committed:true,state:committedState};
 }

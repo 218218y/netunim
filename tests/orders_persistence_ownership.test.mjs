@@ -5,7 +5,7 @@ import {createStoragePersistence} from './orders_persistence_ports.mjs';
 
 function gate() { let resolve,reject; const promise=new Promise((yes,no)=>{resolve=yes;reject=no}); return {promise,resolve,reject}; }
 async function settle() { for(let i=0;i<30;i++) await Promise.resolve(); }
-function fixture(t,{localOk=false,folder=false,folderFailure=false}={}) {
+function fixture(t,{localOk=false,folder=false,folderFailure=false,folderWork=async()=>{}}={}) {
   t.mock.timers.enable({apis:['setTimeout']});
   t.mock.method(console,'error',()=>{});
   const pending=gate(),session={localGeneration:0},events=[];
@@ -16,7 +16,7 @@ function fixture(t,{localOk=false,folder=false,folderFailure=false}={}) {
     setSave:(text,mode)=>events.push(['save',text,mode]),setCloud:(text,mode)=>events.push(['cloud',text,mode]),
     cloudEnabled:()=>true,requestCloudSave:async()=>events.push('cloud'),
     folderBackupAvailable:()=>folder,folderSaveTitle:()=>'',syncFolderAccessButton:()=>{},
-    writeStateToFolder:async()=>{events.push('folder');if(folderFailure)throw Error('folder unavailable');return true},platform:{isOnline:()=>false,reload:()=>events.push('reload')},
+    writeStateToFolder:async()=>{events.push('folder');if(folderFailure)throw Error('folder unavailable');await folderWork();return true},platform:{isOnline:()=>false,reload:()=>events.push('reload')},
   });
   return {owner,pending,session,events,setReceipt:value=>{receipt=value}};
 }
@@ -39,6 +39,13 @@ test('a successful folder copy cannot replace the captured failed IDB receipt wi
 test('folder failure leaves a durable local commit eligible for cloud publication',async t=>{
   const f=fixture(t,{localOk:true,folder:true,folderFailure:true});f.owner.scheduleSave('edit');f.pending.resolve(true);
   t.mock.timers.tick(200);await f.owner.runtime.drain();assert.equal(f.events.includes('cloud'),true);
+});
+
+test('a hanging optional folder copy cannot hold the durable cloud publication',async t=>{
+  const backup=gate(),f=fixture(t,{folder:true,folderWork:()=>backup.promise});
+  f.owner.scheduleSave('edit');f.pending.resolve(true);t.mock.timers.tick(200);await settle();
+  try{assert.equal(f.events.includes('folder'),true);assert.equal(f.events.includes('cloud'),true)}
+  finally{backup.resolve();await f.owner.runtime.drain()}
 });
 test('disposal joins local completion without repainting a closed owner',async t=>{
   const f=fixture(t);f.owner.scheduleSave('edit');assert.equal(f.owner.runtime.dispose(),true);

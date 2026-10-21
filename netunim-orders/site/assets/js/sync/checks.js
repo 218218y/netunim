@@ -54,7 +54,7 @@ export function createSyncChecks({
       rememberCloud(observed);
       let cloud = observed;
       if (files.dirHandle) {
-        await writeStateToFolder();
+        try{void Promise.resolve(writeStateToFolder()).catch(error=>console.error('checks folder backup',error))}catch(error){console.error('checks folder backup',error)}
         cloud = await sharedChecksV2.cloudState();
       }
       if (!current()) return false;

@@ -28,13 +28,23 @@ function fixture(app,t){
   const io={async writeJsonHandle(handle,value){handle.text=JSON.stringify(value);handle.lastModified=Date.now()},
     async readJsonHandle(handle){return JSON.parse(await (await handle.getFile()).text())},
     async writeTextHandle(handle,text){handle.text=text;handle.lastModified=Date.now()}};
-  const api=app==='kupa'?kupaBackup({files,model:{state:snapshot('initial')},session:{dbRevision:1,serverInfo:{}},normalizeState:x=>x,...io}):ordersBackup({files,...io});
+  const errors=[];
+  const api=app==='kupa'?kupaBackup({files,model:{state:snapshot('initial')},session:{dbRevision:1,serverInfo:{}},normalizeState:x=>x,reportBackupError:message=>errors.push(message),...io}):ordersBackup({files,...io});
   const queue=app==='kupa'?api.queueAutomaticBackup:api.queueAutomaticFolderBackup;
   const save=app==='kupa'?api.maybeCreateAutomaticBackup:api.maybeCreateAutomaticFolderBackup;
   t.after(()=>{(api.runtime?.dispose??api.clearPendingAutomaticBackup??api.clearPendingAutomaticFolderBackup)()});
   async function wake(){const run=[...jobs.values()][0];assert.equal(typeof run,'function');jobs.clear();await run();await api.runtime?.drain()}
-  return {api,files,key,a,b,jobs,io,queue,save,wake};
+  return {api,files,key,a,b,jobs,io,queue,save,wake,errors};
 }
+
+test('Kupa optional backup failure is visible once and a later verified backup clears it',async t=>{
+  t.mock.method(console,'error',()=>{});
+  const f=fixture('kupa',t),get=f.a.getFileHandle.bind(f.a);
+  f.a.getFileHandle=async()=>{throw Error('permission revoked')};
+  for(let i=0;i<2;i++)assert.equal(await f.api.backupSnapshotToComputer(),null);
+  assert.equal(f.files.backupLastError,'permission revoked');assert.equal(f.errors.length,1);
+  f.a.getFileHandle=get;assert.ok(await f.api.backupSnapshotToComputer());assert.equal(f.files.backupLastError,'');
+});
 
 for(const app of ['kupa','orders'])test(`${app}: a queued backup cannot write its old payload into a newly selected folder`,async t=>{
   const f=fixture(app,t);f.queue(snapshot('old target data'),1000);f.files[f.key]=f.b;

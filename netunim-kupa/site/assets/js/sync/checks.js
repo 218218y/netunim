@@ -39,7 +39,10 @@ async function syncChecksV2({required=false,quiet=false}={}){
     if(!sharedChecksV2.primaryReady)throw new Error('shared_checks_owner_handoff_required');
     rememberCloud(observed);
     let cloud=observed;
-    if(files.backupsDirHandle){await backupSnapshotToComputer(model.state,session.dbRevision);cloud=await sharedChecksV2.cloudState()}
+    if(files.backupsDirHandle){
+      try{void Promise.resolve(backupSnapshotToComputer(structuredClone(model.state),session.dbRevision)).catch(error=>console.error('checks local backup',error))}catch(error){console.error('checks local backup',error)}
+      cloud=await sharedChecksV2.cloudState();
+    }
     if(!current())return false;
     if(!sharedChecksV2.primaryReady)throw new Error('shared_checks_owner_handoff_required');
     if(cloud.base?.owner!==observed.base?.owner||cloud.base?.epoch!==observed.base?.epoch)return false;

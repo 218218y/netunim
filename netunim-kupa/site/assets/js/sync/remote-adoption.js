@@ -11,7 +11,7 @@ const {refreshStorageV2CloudState,replaceStorageV2CurrentState,clearStorageV2Clo
 const {domainRevisions,prepareKupaCloudState,applyKupaCloudState}=projection;
 const {readSupabaseDocument,readFinanceSyncDocument}=transport;
 const {setSaveStatus,setCloudHeaderStatus,hideConnectScreen,setConnectedStatus,render}=view;
-const {listBackups,backupSnapshotToComputer}=mirror;
+const {backupSnapshotToComputer}=mirror;
 const {syncSharedChecksFromCloud,refreshOrdersFinanceSummary}=secondary;
 const {requestStorageV2CloudSave,startCloudPolling}=write;
 function replaceVisibleState(next,{forceAll=false}={}){const previous=model.state;model.state=next;domainRevisions?.reconcile(previous,model.state,{forceAll});return model.state}
@@ -111,7 +111,9 @@ async function applyCloudRow(row,{renderNow=true}={}){
   startCloudPolling();
   await syncSharedChecksFromCloud({quiet:true,required:true});
   await refreshOrdersFinanceSummary({force:true,renderIfChanged:false});
-  try{session.serverInfo.backups=await listBackups();await backupSnapshotToComputer(model.state,revision)}catch(error){console.error('post-hydration local backup',error)}
+  // The backup owner captures the target, verifies the file and refreshes its
+  // catalog. Native file I/O is outside Main's hydration/polling lifecycle.
+  try{void Promise.resolve(backupSnapshotToComputer(structuredClone(model.state),revision)).catch(error=>console.error('post-hydration local backup',error))}catch(error){console.error('post-hydration local backup',error)}
   assertAccountOwner();
   setConnectedStatus('Supabase מחובר');
   if(Number(session.localGeneration||0)!==generation||v2Normalization){setSaveStatus('שינוי שמור מקומית וממתין לסנכרון','saving');setCloudHeaderStatus('syncing','ענן: מסנכרן…')}
