@@ -53,6 +53,15 @@ export function createKupaConnectivityRuntime({access,cloud,bank,credit,status,e
     return true;
   }
 
+  // Browser event listeners alone do not fire for an already-online page.
+  // Boot may have attempted to arm finance before its ownership gate was ready.
+  // Retry once after the caller has completed cloud/startup hydration.
+  function resumeStartup(){
+    if(!started||disposed||!cloudReady())return false;
+    refreshFinance();
+    return true;
+  }
+
   function dispose(){if(disposed)return false;disposed=true;bank.stopAutoSync();credit.stopAutoSync();return resources.dispose()}
-  return {start,dispose};
+  return {start,resumeStartup,dispose};
 }

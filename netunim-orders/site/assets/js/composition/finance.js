@@ -349,6 +349,7 @@ export function createOrdersFinanceCapability({
       do { await Promise.all([presentation?.reports?.runtime.drain(), controller?.runtime.drain(), archiveReconciliation?.runtime.drain(), bankSnapshots?.runtime.drain(), connections?.runtime.drain(), bankConnections?.runtime.drain(), archive?.runtime.drain(), presentation?.view.connectionRuntime.drain(), presentation?.importConnections.runtime.drain()]); } while(runtime.isPending());
     },
     start() { uiReady(); return controller.startAutoSync(); },
+    resume() { uiReady(); return controller.resumeAutoSync(); },
     stop() { return controller?.stopAutoSync(); },
     wake(kind) {
       uiReady();

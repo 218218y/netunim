@@ -5,7 +5,7 @@ export function createOrdersConnectivityRuntime({access,cloud,checks,finance,mor
     ['access',access,['primary','blocked','authenticated']],
     ['cloud',cloud,['enabled','resumeAfterReconnect']],
     ['checks',checks,['pollSharedChecks']],
-    ['finance',finance,['startAutoSync','stopAutoSync']],
+    ['finance',finance,['startAutoSync','resumeAutoSync','stopAutoSync']],
     ['morning',morning,['recoverPendingMorningOperation']],
     ['status',status,['startupDomainLocked','setCloud']],
   ])for(const method of methods)if(typeof port?.[method]!=='function')throw new TypeError(`orders_connectivity_${name}_${method}_required`);
@@ -18,7 +18,7 @@ export function createOrdersConnectivityRuntime({access,cloud,checks,finance,mor
 
   function scheduleChecks(delay){resources.schedule('checks',delay,()=>{if(checksReady())return checks.pollSharedChecks()})}
   function scheduleMorning(delay,quiet=true){return resources.schedule('morning',delay,()=>{if(morningReady())return morning.recoverPendingMorningOperation({quiet})})}
-  function scheduleFinance(){resources.schedule('finance',0,()=>{if(allowed()&&!status.startupDomainLocked('finance'))return finance.startAutoSync()})}
+  function scheduleFinance({resume=false}={}){resources.schedule('finance',0,()=>{if(allowed()&&access.primary()&&access.authenticated()&&!status.startupDomainLocked('finance'))return resume?finance.resumeAutoSync():finance.startAutoSync()})}
 
   function online(){
     if(access.blocked())return;
@@ -53,6 +53,11 @@ export function createOrdersConnectivityRuntime({access,cloud,checks,finance,mor
   }
 
   function dispose(){if(disposed)return false;disposed=true;finance.stopAutoSync();return resources.dispose()}
-  function resumeStartup(){return started&&!disposed&&morningReady()?scheduleMorning(350,false):false}
+  function resumeStartup(){
+    if(!started||disposed)return false;
+    const morning=morningReady()?scheduleMorning(350,false):false;
+    if(allowed()&&access.primary()&&access.authenticated()&&!status.startupDomainLocked('finance'))scheduleFinance({resume:true});
+    return morning;
+  }
   return {start,resumeStartup,dispose};
 }

@@ -9,7 +9,7 @@ export function bindOrdersRuntimeEvents({uiModal,uiNavigation,domainsSuppliersNa
   const connectivity=createOrdersConnectivityRuntime({
     access:{primary:()=>tab.primaryTab,blocked:()=>session.storageProtocolBlocked||!storageRecovery.isReady()||session.syncCapabilitiesChecking||!!session.syncCapabilitiesError,authenticated:()=>!!cloudAuth.loadSession()},
     cloud:{enabled:()=>cloudAuth.cloudEnabled(),resumeAfterReconnect:()=>syncDocument.resumeAfterReconnect()},
-    checks:{pollSharedChecks:(...args)=>checksRuntime.poll(...args)},finance:{startAutoSync:(...args)=>financeRuntime.start(...args),stopAutoSync:()=>financeRuntime.stop()},morning:{recoverPendingMorningOperation},status:uiStatus,
+    checks:{pollSharedChecks:(...args)=>checksRuntime.poll(...args)},finance:{startAutoSync:(...args)=>financeRuntime.start(...args),resumeAutoSync:(...args)=>financeRuntime.resume(...args),stopAutoSync:()=>financeRuntime.stop()},morning:{recoverPendingMorningOperation},status:uiStatus,
   });
   connectivity.start();
   window.addEventListener('beforeunload',event=>{if(!tab.primaryTab||!(storageV2?.durabilityAtRisk||sharedChecksV2?.durabilityAtRisk||session?.localUndurableGenerations?.size))return;event.preventDefault();event.returnValue=''});

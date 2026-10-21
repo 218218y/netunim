@@ -30,10 +30,18 @@ export function createOrdersFinanceAutomation({access,preferences,readLastSyncAt
     const startedEpoch=epoch;return commands[kind]({interactive:false,auto:true,isCurrent:()=>startedEpoch===epoch});
   }
   function startAutoSync(){active=true;guard=null;epoch++;schedule('bank');schedule('credit')}
+  // Startup recovery must not revoke the epoch of an in-flight provider
+  // operation that the normal cloud-open path has already admitted.
+  function resumeAutoSync(){
+    if(!active)return startAutoSync();
+    if(handles.bank===null)schedule('bank');
+    if(handles.credit===null)schedule('credit');
+    return true;
+  }
   function preferenceState(){readingView=true;try{return preferenceOwner.view()}finally{readingView=false}}
   function setEnabled(kind,value){const saved=preferenceOwner.setEnabled(kind,value);if(saved){if(value&&!active)startAutoSync();else schedule(kind)}return saved}
   function setBankAutoEnabled(value){return setEnabled('bank',value)}
   function setCreditAutoEnabled(value){return setEnabled('credit',value)}
   function setCreditAutoMode(value){const saved=preferenceOwner.setMode(value);if(saved)schedule('credit');return saved}
-  return {startAutoSync,stopAutoSync,allowed,preferenceState,markAttempt:preferenceOwner.markAttempt,tokenConfigured:preferenceOwner.tokenConfigured,currentEpoch:()=>epoch,scheduleBankAuto:()=>schedule('bank'),scheduleCreditAuto:()=>schedule('credit'),maybeAutoRefreshBank:()=>maybeRefresh('bank'),maybeAutoRefreshCredit:()=>maybeRefresh('credit'),setBankAutoEnabled,setCreditAutoEnabled,setCreditAutoMode};
+  return {startAutoSync,resumeAutoSync,stopAutoSync,allowed,preferenceState,markAttempt:preferenceOwner.markAttempt,tokenConfigured:preferenceOwner.tokenConfigured,currentEpoch:()=>epoch,scheduleBankAuto:()=>schedule('bank'),scheduleCreditAuto:()=>schedule('credit'),maybeAutoRefreshBank:()=>maybeRefresh('bank'),maybeAutoRefreshCredit:()=>maybeRefresh('credit'),setBankAutoEnabled,setCreditAutoEnabled,setCreditAutoMode};
 }

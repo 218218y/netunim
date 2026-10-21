@@ -658,5 +658,5 @@ const syncIncidentsReady=import('./shared/sync-incident-feature.js').then(({crea
   ],
 })).catch(()=>{const warning=document.createElement('section');warning.className='sync-incidents';warning.dataset.warning='true';warning.textContent='לא ניתן לטעון התראות סנכרון. יש לרענן את האתר.';warning.setAttribute('role','status');document.body.append(warning)});
 export const appReady=lifecycle.boot();
-void appReady.then(()=>{startupMark('boot-complete');if(tab.primaryTab&&!session.storageProtocolBlocked&&storageRecovery.isReady()&&!session.syncCapabilitiesError&&session.backendReady&&!session.startupCloudHydrating)startupMark('command-ready')},()=>{});
+void appReady.then(()=>{startupMark('boot-complete');if(tab.primaryTab&&!session.storageProtocolBlocked&&storageRecovery.isReady()&&!session.syncCapabilitiesError&&session.backendReady&&!session.startupCloudHydrating){startupMark('command-ready');connectivity.resumeStartup()}},()=>{});
 export async function sharedChecksStorageV2Diagnostics(){await sharedChecksV2.flush();return {...sharedChecksV2.diagnostics}}

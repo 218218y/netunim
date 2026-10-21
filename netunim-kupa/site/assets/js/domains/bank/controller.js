@@ -36,9 +36,14 @@ function connectionState() {
   }
   return value;
 }
-function connectionCommand(method, ...args) {
+async function connectionCommand(method, ...args) {
   if (financialFeedback.busy) return false;
-  return connections.commands[method](...args);
+  const completed = await connections.commands[method](...args);
+  // Pairing, credentials and account selection can remove an earlier admission
+  // blocker. The polling owner will check every gate again before doing work.
+  if (completed && automaticActive && !disposed && method !== 'deleteCredentials')
+    startAutoSync();
+  return completed;
 }
 if(typeof autoScope!=='function')throw new Error('bank_auto_scope_required');
 if(typeof operationScope?.capture!=='function'||typeof operationScope?.captureRead!=='function')throw new Error('bank_operation_scope_required');
@@ -286,7 +291,11 @@ return {
   bankBridgeUiState,bankLocalSnapshotState:localSnapshot.state,
   retryLocalBankSnapshot:(...args)=>track(()=>retryLocalBankSnapshot(...args)),
   ensureBankDisplayArchive:(...args)=>track(()=>ensureBankDisplayArchive(...args)),
-  refreshBankBridgeStatus:(...args)=>track(()=>connections.queries.refreshStatus(...args)),
+  refreshBankBridgeStatus:(...args)=>track(async()=>{
+    const status=await connections.queries.refreshStatus(...args);
+    if(automaticActive&&!disposed&&status.available===true&&status.configured&&!status.upgradeRequired)startAutoSync();
+    return status;
+  }),
   saveBankBridgeToken:(...args)=>track(()=>connectionCommand('saveToken',...args)),
   configureBankBridge:(...args)=>track(()=>connectionCommand('configure',...args)),
   selectBankBridgeAccount:(...args)=>track(()=>connectionCommand('selectAccount',...args)),
