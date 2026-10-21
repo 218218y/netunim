@@ -49,6 +49,7 @@ GROUPS["browser-sync"].append("runtime_sync_incidents.py")
 GROUPS["browser-sync"].append("runtime_idb_receipts.py")
 GROUPS["browser-lifecycle"].append("runtime_release_compatibility.py")
 GROUPS["browser-lifecycle"].append("runtime_loaded_data.py")
+GROUPS["browser-sync"].append("runtime_mutation_admission.py")
 CORE_SUITES = [suite for group, suites in GROUPS.items() if not group.startswith("browser-") for suite in suites]
 RUNTIME_SUITES = [suite for group, suites in GROUPS.items() if group.startswith("browser-") for suite in suites]
 

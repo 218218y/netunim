@@ -52,6 +52,7 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
     p.notesRuntime.cancelPending();p.checksRuntime.cancelPending();p.backupRuntime.cancelPending();
     await p.syncDocument.quiesceForStorageCutover();
     await p.notesRuntime.drain();await p.saveRuntime.drain();await p.checksRuntime.drain();
+    if(session.localUndurableGenerations?.size)throw new Error('storage_uncommitted_mutation');
     // Accepted Main/Checks completion can submit a later backup wakeup.
     p.backupRuntime.cancelPending();await p.backupRuntime.drain();
   }

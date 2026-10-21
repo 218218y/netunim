@@ -1,6 +1,7 @@
 import {captureCloudWriteScope,cloudWriteScopeIsCurrent,cloudWriteScopeHasIdentity} from '../shared/cloud-write-scope.js';
 import {createOutboxRetryScheduler,createCloudRetryControl} from '../shared/cloud-sync.js';
 import {createRuntimeTaskOwner} from '../shared/runtime-task-owner.js';
+import {hasFailedLocalMutation} from '../shared/local-mutation-admission.js';
 
 // Main save admission, joined flight and retry/follow-up lifetime. ACK, RPC,
 // conflict/rebase and authoritative publication remain separate owners.
@@ -19,6 +20,7 @@ function requestStorageV2CloudSave(...args){
   return saveWork.run(()=>runStorageV2CloudSave(...args));
 }
 async function runStorageV2CloudSave(message='הקופה סונכרנה לענן',{force=false}={}){
+  if(hasFailedLocalMutation(session)){setSaveStatus('שינוי לא נשמר — ייצא JSON לפני סגירת החלון','error');return false}
   const wakeGeneration=wakeEpoch;
   const liveScope=getCloudWriteScope();if(!tab.primaryTab){showSecondaryTabGuard();return false}if(!force&&(session.connectionMode!=='supabase'||!session.backendReady))return false;let state=await refreshStorageV2CloudState();const scope=captureCloudWriteScope(liveScope,state);if(!writeScopeCurrent(scope,state))return false;if(!state?.base)return false;if(state.control?.conflict){session.cloudConflictPending=true;setSaveStatus('התנגשות שמורה מקומית','error');setCloudHeaderStatus('conflict','ענן: התנגשות');return false}
   if(!isOnline()){try{await storageV2CommitPromise()}catch(error){console.error('kupa V2 journal offline commit',error)}if(!writeScopeCurrent(scope))return false;setSaveStatus('אופליין — שינוי שמור מקומית וממתין','saving');setCloudHeaderStatus('offline','ענן: אופליין');return false}
@@ -26,7 +28,7 @@ async function runStorageV2CloudSave(message='הקופה סונכרנה לענן
   savingScope=scope;
   let followup=false;
   const saving=(async()=>{
-    while(writeScopeCurrent(scope)&&cloudConfirmationAccess(force)&&!session.cloudConflictPending){
+    while(writeScopeCurrent(scope)&&cloudConfirmationAccess(force)&&!session.cloudConflictPending&&!hasFailedLocalMutation(session)){
       const generation=Number(session.localGeneration||0);
       state=await refreshStorageV2CloudState();
       if(!cloudConfirmationAccess(force)||!writeScopeCurrent(scope,state))return false;

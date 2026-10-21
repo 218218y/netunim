@@ -1,6 +1,7 @@
 import {supabaseConfig as SUPA_CONFIG} from '../../../supabase/config.js';
 import {formatCloudSyncTime, latestCloudUpdatedAt} from '../core/dates.js';
 import {SECONDARY_READ_ONLY_ACTIONS} from './secondary-read-only-actions.js';
+import {hasFailedLocalMutation} from '../shared/local-mutation-admission.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createUiStatus({session, checksSession, tab, storageRecovery}){
@@ -13,6 +14,7 @@ function setSaveStatus(text,cls='',source='main'){
   saveStatuses.set(source,{text,mode:cls});
   const status=selectStatus(saveStatuses,{error:3,saving:2,ok:1});
   const el=document.getElementById('saveIndicator');if(!el)return;
+  if(hasFailedLocalMutation(session)){el.hidden=false;el.textContent='שינוי לא נשמר — אין לסגור את החלון; ייצא JSON לשמירת הטיוטה';el.className='save-indicator error';return}
   const cloud=session.connectionMode==='supabase';
   const blocked=cloud&&session.cloudConflictPending;
   el.hidden=cloud&&!blocked&&status.mode==='ok';
@@ -35,6 +37,7 @@ function syncedHeaderText(text='ענן: מסונכרן'){const at=latestSyncedAt
 
 function renderCloudHeader(){
   const el=document.getElementById('cloudHeaderStatus');if(!el)return;
+  if(hasFailedLocalMutation(session)){el.className='cloud-head-status error';el.textContent='ענן: שינוי לא נשמר מקומית';return}
   const status=selectStatus(cloudStatuses,{conflict:5,auth:4,offline:3,syncing:2,synced:1})||{mode:'off',text:'ענן: לא מחובר'};
   const blocked=session.connectionMode==='supabase'&&session.cloudConflictPending&&status.mode!=='off';
   const mode=blocked?'conflict':status.mode,text=blocked?'ענן: התנגשות':status.text;

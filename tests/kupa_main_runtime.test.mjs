@@ -18,7 +18,7 @@ test('Kupa Main drain covers accepted fast saves before their deferred cloud wor
   const session={connectionMode:'supabase',backendReady:true,localGeneration:0,dbRevision:1},jobs=[],entered=gate(),release=gate(),writes=[];
   t.mock.method(globalThis,'setTimeout',run=>{jobs.push(run);return jobs.length});
   const api=createStoragePersistence({...normalization,model,session,tab:{primaryTab:true},files:{},checksSession:{},
-    storageV2Primary:()=>true,persistImmediateBrowserSnapshot:()=>true,storageV2CommitPromise:()=>Promise.resolve(),
+    storageV2Primary:()=>true,persistImmediateBrowserSnapshot:()=>true,storageV2CommitPromise:()=>Promise.resolve(true),
     refreshStorageV2CloudState:async()=>({base:{}}),setSaveStatus:noop,setCloudHeaderStatus:noop,
     persistSupabaseState:async(_snapshot,message)=>{writes.push(message);entered.resolve();await release.promise;return true}});
   const options={domains:['notes'],operations:[{type:'put',collection:'notes',id:'N',mode:'replace',record:{id:'N',content:'retained'}}]};

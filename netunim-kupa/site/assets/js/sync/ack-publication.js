@@ -1,4 +1,5 @@
 import {observeOptionalTask} from '../shared/runtime-task-owner.js';
+import {hasFailedLocalMutation} from '../shared/local-mutation-admission.js';
 import {readDocumentWriteAck} from '../shared/document-write-ack.js';
 import {jsonEq} from './merge-records.js';
 import {structuredSyncConflict} from '../shared/cloud-sync.js';
@@ -31,10 +32,10 @@ async function publishAcknowledgedFlight({res,flight,serverSnapshot,scope}){
   let businessChanged=false;
   let publication=await commitCloudCheckpoint({
     commit:()=>acknowledgeStorageV2CloudFlight(flight.operationId,newRevision,authoritative,{currentState,expectedSeq}),
-    isCurrent:committed=>writeScopeCurrent(scope,committed)&&Number(session.localGeneration||0)===expectedGeneration&&committed?.seq===expectedSeq,
+    isCurrent:committed=>!hasFailedLocalMutation(session)&&writeScopeCurrent(scope,committed)&&Number(session.localGeneration||0)===expectedGeneration&&committed?.seq===expectedSeq,
     publish:()=>{if(reconcile)businessChanged=applyAcknowledgedCoreState(currentCore)},
   });
-  if(!publication.published&&publication.reason==='stale'&&writeScopeCurrent(scope,publication.committed)&&readStorageV2CloudRecovery&&commitStorageV2CloudRecovery){
+  if(!hasFailedLocalMutation(session)&&!publication.published&&publication.reason==='stale'&&writeScopeCurrent(scope,publication.committed)&&readStorageV2CloudRecovery&&commitStorageV2CloudRecovery){
     try{
       const recovered=await recoverPostAckPublication({isCurrent:head=>writeScopeCurrent(scope,head),generation:()=>Number(session.localGeneration||0),visible:()=>model.state,
         equal:(a,b)=>jsonEq(prepareKupaCloudState(a),prepareKupaCloudState(b)),merge:(before,local,candidate,deleteIntents)=>mergeKupaCloudState3Way(prepareKupaCloudState(before),prepareKupaCloudState(local),prepareKupaCloudState(candidate),{deleteIntents}),

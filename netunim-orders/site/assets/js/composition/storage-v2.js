@@ -51,6 +51,7 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
       p.saveRuntime.folder.cancelPending();
       p.saveRuntime.backup.cancelPending();
       await Promise.all([p.saveRuntime.main.drain(),p.saveRuntime.checks.drain()]);
+      if(session.localUndurableGenerations?.size)throw new Error('storage_uncommitted_mutation');
       p.saveRuntime.folder.cancelPending();await p.saveRuntime.folder.drain();
       // Main/Checks and accepted working-file completion may submit a backup.
       p.saveRuntime.backup.cancelPending();await p.saveRuntime.backup.drain();

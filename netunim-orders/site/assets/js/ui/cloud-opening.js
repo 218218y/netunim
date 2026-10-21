@@ -1,4 +1,5 @@
 import {observeOptionalTask} from '../shared/runtime-task-owner.js';
+import {hasFailedLocalMutation} from '../shared/local-mutation-admission.js';
 import {CLOUD_AUTO_KEY} from '../state/constants.js';
 import {commitCloudCheckpoint} from '../shared/cloud-checkpoint-publication.js';
 
@@ -49,6 +50,7 @@ async function enableCloud(afterLogin=false){
 }
 
 async function openCloud({renderAfter=true,quiet=false,hydrateSecondary=true,manageStatus=true,startPoll=true}={}){
+  if(hasFailedLocalMutation(session)){setCloud('ענן: שינוי לא נשמר מקומית','error');return false}
   if(!tab.primaryTab)return false;if(!loadSession()){if(!quiet)loginModal('open');return false}
   try{
     if(manageStatus)setCloud('ענן: מאמת נתוני הזמנות…');
@@ -77,7 +79,7 @@ async function openCloud({renderAfter=true,quiet=false,hydrateSecondary=true,man
     const nextState=composeOrderCloudState(row.state,model.state);
     const publication=await commitCloudCheckpoint({
       commit:()=>adoptStorageV2CloudHead(rowRevision,nextState,{expectedHead:{seq:observedSeq,baseRevision:v2Head.base.revision}}),
-      isCurrent:committed=>committed?.seq===observedSeq&&committed?.revision===rowRevision&&!committed.pending&&!committed.control&&tab.primaryTab&&storageV2CloudOutboxActive()&&sameAccount()&&Number(session.localGeneration||0)===observedGeneration,
+      isCurrent:committed=>!hasFailedLocalMutation(session)&&committed?.seq===observedSeq&&committed?.revision===rowRevision&&!committed.pending&&!committed.control&&tab.primaryTab&&storageV2CloudOutboxActive()&&sameAccount()&&Number(session.localGeneration||0)===observedGeneration,
       publish:()=>{applyOrderCloudState(row.state);session.cloudRevision=rowRevision;session.cloudUpdatedAt=row.updated_at||session.cloudUpdatedAt;session.lastCloudState=prepareCloudState(model.state);session.cloudConflictBlocked=false},
     });
     if(!publication.published){

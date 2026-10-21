@@ -2,6 +2,7 @@ import {captureCloudWriteScope,cloudWriteScopeIsCurrent,cloudWriteScopeHasIdenti
 import {createOutboxRetryScheduler,createCloudRetryControl} from '../shared/cloud-sync.js';
 import {createRuntimeTaskOwner} from '../shared/runtime-task-owner.js';
 import {createDebouncedTask} from '../shared/debounced-task.js';
+import {hasFailedLocalMutation} from '../shared/local-mutation-admission.js';
 
 // Main save admission, joined flight and retry/follow-up lifetime. ACK, RPC,
 // conflict/rebase and authoritative publication remain separate owners.
@@ -39,6 +40,7 @@ function requestStorageV2CloudSave(...args){
   return saveWork.run(()=>runStorageV2CloudSave(...args));
 }
 async function runStorageV2CloudSave(message='השינויים סונכרנו',{force=false}={}){
+  if(hasFailedLocalMutation(session)){setCloud('ענן: שינוי לא נשמר מקומית','error');return false}
   const wakeGeneration=wakeEpoch;
   if(!tab.primaryTab)return false;if(message)session.cloudSaveMessage=message;session.cloudSaveRequested=true;if(!force&&!cloudEnabled())return false;
   const liveScope=getCloudWriteScope();
@@ -50,7 +52,7 @@ async function runStorageV2CloudSave(message='השינויים סונכרנו',{
   if(!isOnline()){try{await storageV2CommitPromise()}catch(error){console.error('orders V2 journal offline commit',error)}if(!writeScopeCurrent(scope))return false;setCloud('ענן: אופליין','offline');return false}
   if(cloudSavePromise&&cloudWriteScopeHasIdentity(scope,savingScope))return cloudSavePromise;
   savingScope=scope;
-  const saving=(async()=>{let allOk=true;while(writeScopeCurrent(scope)&&session.cloudSaveRequested&&(force||cloudEnabled())&&isOnline()&&!session.cloudConflictBlocked){
+  const saving=(async()=>{let allOk=true;while(writeScopeCurrent(scope)&&session.cloudSaveRequested&&(force||cloudEnabled())&&isOnline()&&!session.cloudConflictBlocked&&!hasFailedLocalMutation(session)){
     session.cloudSaveRequested=false;const msg=session.cloudSaveMessage||'השינויים סונכרנו';session.cloudSaveMessage='';state=await refreshStorageV2CloudState();
     if(!writeScopeCurrent(scope,state))return false;
     if(!state?.base){allOk=false;break}

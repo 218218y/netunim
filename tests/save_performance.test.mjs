@@ -21,7 +21,7 @@ test('Kupa V2 burst journals every typed edit while coalescing the cloud request
   const firstStarted=deferred(),releaseFirst=deferred(),writes=[],sent=[];
   const api=createStoragePersistence({model,session,files:{},tab:{primaryTab:true},checksSession:{},
     storageV2Primary:()=>true,refreshStorageV2CloudState:async()=>({base:{revision:10,ackSeq:0},pending:true}),
-    storageV2CommitPromise:()=>Promise.resolve(),persistImmediateBrowserSnapshot:(_state,_revision,options)=>{writes.push(clone(options));return true},
+    storageV2CommitPromise:()=>Promise.resolve(true),persistImmediateBrowserSnapshot:(_state,_revision,options)=>{writes.push(clone(options));return true},
     normalizeState:normalizer.normalizeState,prepareKupaCloudState:normalizer.prepareKupaCloudState,
     setSaveStatus:noop,showSecondaryTabGuard:noop,persistSupabaseState:async snapshot=>{
       sent.push(clone(snapshot));if(sent.length===1){firstStarted.resolve();await releaseFirst.promise}return true;
