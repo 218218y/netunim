@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-bb1e9855c7c9';
+const CACHE='orders-app-shell-esm-3b7cd7a756fa';
 const SHELL=[
   './',
   './index.html',
@@ -290,6 +290,7 @@ const SHELL=[
   './assets/js/shared/indexed-db-connection.js',
   './assets/js/shared/kupa-cashflow.js',
   './assets/js/shared/lazy-global-document-search.js',
+  './assets/js/shared/local-mutation-admission.js',
   './assets/js/shared/local-site-reset-page.js',
   './assets/js/shared/local-site-reset.js',
   './assets/js/shared/main-sync-browser.js',

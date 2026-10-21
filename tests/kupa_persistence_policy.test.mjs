@@ -11,7 +11,9 @@ test('Kupa mutation and publication retain earlier decisions outside reviewed so
   // File adoption deliberately gained detached source preparation and a paired
   // commit point. Its behavior is covered by kupa_source_transition and native
   // OPFS/IDB recovery, rather than freezing the old unsafe installation order.
-  for(const [file,names] of [['local-commit.js',['mergeDeleteIntents','saveStateAccepted']],['save-publication.js',['requestCloudSave']]]){
+  // Admission is now covered by local_mutation_admission fault/restart tests.
+  // Keep exact policy guards for delete intent normalization and cloud queuing.
+  for(const [file,names] of [['local-commit.js',['mergeDeleteIntents']],['save-publication.js',['requestCloudSave']]]){
     for(const name of names){
       let expected=body(baseline.policies[file],name),actual=body(read(file),name);
       // These two queue submissions moved behind the serialized publication

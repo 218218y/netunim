@@ -19,6 +19,17 @@ for(const [app,policies] of Object.entries(baseline.policies)){
     // Reviewed backup separation: the existing backup owner now maintains the
     // optional catalog outside Main hydration. Preserve all other policy tokens.
     if(app==='kupa'&&name==='applyCloudRow')actual=actual.replace('observeOptionalTask(()=>backupSnapshotToComputer(structuredClone(model.state),revision));',"try{session.serverInfo.backups=await listBackups();await backupSnapshotToComputer(model.state,revision)}catch(error){console.error('post-hydration local backup',error)}");
+    // Reviewed admission change: a failed optimistic draft cannot be sent or
+    // replaced. Fault/ACK/reload tests cover these guards; all other CAS,
+    // normalization, monetary, authority and retry decisions remain frozen.
+    if(name==='runStorageV2CloudSave'){
+      const guard=app==='orders'?"if(hasFailedLocalMutation(session)){setCloud('ענן: שינוי לא נשמר מקומית','error');return false}":"if(hasFailedLocalMutation(session)){setSaveStatus('שינוי לא נשמר — ייצא JSON לפני סגירת החלון','error');return false}";
+      assert.ok(actual.includes(guard));actual=actual.replace(guard,'').replace('&&!hasFailedLocalMutation(session)','');
+    }
+    if(name==='adoptRemoteRow'||name==='applyCloudRow'){
+      const guard=name==='adoptRemoteRow'?'if(hasFailedLocalMutation(session))return false;':"if(hasFailedLocalMutation(session))throw new Error('storage_uncommitted_mutation');";
+      assert.ok(actual.includes(guard));actual=actual.replace(guard,'').replace('return!hasFailedLocalMutation(session)&&','return ').replace('!hasFailedLocalMutation(session)&&','');
+    }
     // Reviewed audit change: persist bounded backoff for transient errors with
     // no Retry-After. Preserve every other historical save-policy token.
     const reviewed=name==='runStorageV2CloudSave'?expected.replace('const normalized=normalizeCloudError(error),attempts=Number(state?.control?.retry?.attempts||0)+1,nextAttemptAt=normalized.retryAfterMs?new Date(Date.now()+normalized.retryAfterMs).toISOString():null,retry={attempts,lastErrorCode:normalized.code||normalized.kind,lastAttemptAt:new Date().toISOString(),nextAttemptAt};','const retry=createCloudRetryControl(error,state?.control?.retry);'):expected;

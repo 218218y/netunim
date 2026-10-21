@@ -56,6 +56,12 @@ test('Orders late Finance startup completion cannot overwrite a live Main error'
   assert.equal(f.synced(),false);assert.match(f.header().textContent,/התנגשות/);
 });
 
+for(const app of ['orders','kupa'])test(`${app}: another document's success cannot hide an unadmitted local draft`,t=>{
+  const f=fixture(app,t);f.session.localUndurableGenerations=new Set(['failed:1']);
+  if(app==='orders')f.status.setSave('מקומי: שמור');else f.status.setSaveStatus('מסונכרן לענן','ok');
+  f.main('ענן: מסונכרן','synced');assert.equal(f.synced(),false);assert.match(f.header().textContent,/לא נשמר/);
+});
+
 test('Orders Shared conflict remains visible when Main confirms its own clean head',async t=>{
   const f=fixture('orders',t);f.main('ענן: מסונכרן','synced');f.head.control={conflict:{kind:'check-conflict'}};f.ok(false);
   assert.equal(await f.api.syncSharedChecksFromCloud({quiet:true}),false);

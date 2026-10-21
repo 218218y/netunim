@@ -198,6 +198,7 @@ const storagePersistence=createStoragePersistence({
     storageV2Primary:()=>mainStorageV2.primaryReady,
     recoverStorageV2State:()=>mainStorageV2.recoverForOwner({intent:'load-account'}),
     storageV2DurabilityAtRisk:()=>mainStorageV2.durabilityAtRisk,
+    mutationScope:()=>JSON.stringify([mainStorageV2.cloudScope?.owner,mainStorageV2.cloudScope?.epoch,cloudAuth.getAccountScope()]),
     storageV2CommitPromise:()=>storageV2Cloud.storageV2CommitPromise(),
     refreshStorageV2CloudState:()=>storageV2Cloud.refreshStorageV2CloudState(),
     persistImmediateBrowserSnapshot:(...args)=>storageBrowser.persistImmediateBrowserSnapshot(...args),

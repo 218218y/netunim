@@ -57,3 +57,35 @@ correctness logic (measured 2,430,570 bytes at this stage). Eager module count
 remains 405 and all latency budgets are unchanged. Kupa retains both original
 source/module caps; Orders topology stays with its existing merge owner so Kupa
 does not eagerly load Orders-only code.
+
+## Stage 3: explicit optimistic mutation admission
+
+Mapped supplier status/text/editor/reorder/bulk mutations and Kupa cash, rights,
+expenses, record commands and notes through their existing Main save owners.
+Those handlers already mutate the visible model optimistically. The shared
+`local-mutation-admission.js` now captures each synchronous submission and its
+exact commit receipt: proposed -> durable-pending -> durable, or rejected/failed.
+Cloud-pending and cloud-acknowledged remain owned by the existing V2 flight.
+
+No rollback is performed. A rejected draft stays visible with a persistent
+"not saved" warning and the existing beforeunload risk. The production JSON
+export includes that visible draft. A later successful generation cannot clear
+another failed generation. Cloud publication, remote adoption, ACK model
+publication and source/account transfer cannot silently replace that draft.
+The user can export it, reload the durable source, then deliberately reapply or
+import it. There is no automatic retry of an operation with unknown admission.
+
+Focused tests cover pre-receipt exceptions, rejected/false commit results,
+50 interleaved receipts with one failure, replacement-account fencing, actual
+save owners in both apps, and failed drafts during ACK. The native browser
+suite injects a synchronous rejection or an actual IndexedDB transaction abort
+with emergency storage unavailable, checks production JSON export and verifies
+the original durable row on reload. This distinguishes failed drafts from data
+that was actually journaled; it does not claim that an unadmitted edit survives
+a crash.
+
+There is one new shared admission module: module budgets become 310/406 for
+Kupa/Orders. Kupa's source cap becomes 1.82 MB for this explicit contract;
+Orders remains within the stage-2 2.44 MB cap. Runtime latency budgets stay
+unchanged. The old AST freeze of Kupa's admission body is replaced by behavioral
+fault/restart coverage; delete-intent and publication policy freezes remain.

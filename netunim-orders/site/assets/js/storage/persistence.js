@@ -8,7 +8,7 @@ export function createStoragePersistence({access,session,journal,projection,mirr
   const publication=createOrdersSavePublication({session,journal,mirror,cloud,view,platform});
   function accept(message='השינויים נשמרו',options={}) {
     const receipt=local.accept(options);
-    if (receipt) publication.schedule(receipt,message);
+    if (receipt?.accepted) publication.schedule(receipt,message);
     return receipt;
   }
   function scheduleSave(message,options) { return accept(message,options)?.localOk??false; }

@@ -1,4 +1,5 @@
 import {observeOptionalTask} from '../shared/runtime-task-owner.js';
+import {hasFailedLocalMutation} from '../shared/local-mutation-admission.js';
 import {canonicalCloudSyncBase} from './state-projection.js';
 import {commitCloudCheckpoint} from '../shared/cloud-checkpoint-publication.js';
 import {normalizeSharedChecks} from '../shared/shared-checks-contract.js';
@@ -74,6 +75,7 @@ async function reviewCleanConflict(cloud){
   }catch(error){console.warn('Kupa conflict review deferred; local journal retained',error);return cloud}
 }
 async function applyCloudRow(row,{renderNow=true}={}){
+  if(hasFailedLocalMutation(session))throw new Error('storage_uncommitted_mutation');
   const currentV2=await refreshStorageV2CloudState();
   if(!currentV2?.base)throw new Error('kupa_v2_account_head_initialization_required');
   if(!storageV2CloudOutboxActive())throw new Error('kupa_v2_account_head_not_ready');
@@ -86,7 +88,7 @@ async function applyCloudRow(row,{renderNow=true}={}){
   const removed=model.lastNormalizeRemovedCredits,normalizationBase=canonicalCloudSyncBase(row.state,prepareKupaCloudState);
   const publication=await commitCloudCheckpoint({
     commit:()=>adoptStorageV2CloudHead(revision,next,{cloudState:normalizationBase,expectedHead:{seq:currentV2.seq,baseRevision:currentV2.base.revision}}),
-    isCurrent:committed=>{assertAccountOwner();return committed?.seq===currentV2.seq&&committed?.revision===revision&&!committed.pending&&!committed.control&&tab.primaryTab&&storageV2CloudOutboxActive()&&Number(session.localGeneration||0)===generation},
+    isCurrent:committed=>{assertAccountOwner();return !hasFailedLocalMutation(session)&&committed?.seq===currentV2.seq&&committed?.revision===revision&&!committed.pending&&!committed.control&&tab.primaryTab&&storageV2CloudOutboxActive()&&Number(session.localGeneration||0)===generation},
     // Shared Checks owns its own journal and can advance while Main commits.
     publish:()=>{next.checks=normalizeSharedChecks(model.state.checks);replaceVisibleState(Number(session.financeRevision||0)===financeRevision?next:applyKupaCoreState(next,model.state.checks,model.state))},
   });

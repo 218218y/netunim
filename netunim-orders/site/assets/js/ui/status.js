@@ -1,5 +1,6 @@
 import {$} from '../state/constants.js';
 import {formatCloudSyncTime, latestCloudUpdatedAt} from '../core/dates.js';
+import {hasFailedLocalMutation} from '../shared/local-mutation-admission.js';
 
 const STARTUP_DOMAIN_ORDER=['orders','checks','finance'];
 const HEADER_DOMAIN_ORDER=['orders','checks'];
@@ -11,13 +12,14 @@ export function createUiStatus({session, checksSession, tab, storageRecovery}){
 if(typeof storageRecovery?.isReady!=='function')throw new TypeError('ui_storage_recovery_required');
 function toast(msg){const el=$('#toast');el.textContent=msg;el.classList.add('show');clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove('show'),2600)}
 
-function setSave(text,cls='',title=''){const e=$('#savePill');if(e){e.textContent=text;e.className='save-pill '+cls;e.title=title||''}}
+function setSave(text,cls='',title=''){const e=$('#savePill');if(e){const failed=hasFailedLocalMutation(session);e.textContent=failed?'שינוי לא נשמר — אין לסגור את החלון; ייצא JSON לשמירת הטיוטה':text;e.className='save-pill '+(failed?'error':cls);e.title=title||''}}
 
 function latestSyncedAt(){return latestCloudUpdatedAt(session.cloudUpdatedAt,checksSession.checksCloudUpdatedAt)}
 function syncedCloudText(text='ענן: מסונכרן'){const at=latestSyncedAt();return at?`${text} ${formatCloudSyncTime(at)}`:text}
 const cloudStatuses=new Map();
 function renderCloudStatus(){
   const e=$('#cloudPill');if(!e)return;
+  if(hasFailedLocalMutation(session)){e.textContent='ענן: שינוי לא נשמר מקומית';e.className='cloud-pill error';return}
   const main=cloudStatuses.get('orders');
   if(main?.cls==='off'){e.textContent=main.text;e.className='cloud-pill';e.title=main.title;return}
   const domains=startupDomains(),statuses=HEADER_DOMAIN_ORDER.map(domain=>{
