@@ -13,9 +13,10 @@ for(const [name,file] of [['Bank and credit provider policies','bank-provider-po
   const fixture=JSON.parse(fs.readFileSync(new URL('./fixtures/'+file,import.meta.url),'utf8'));
   if(file==='bank-read-policy.json'){
     // Reviewed audit change: retain validated windows on later failure and
-    // require reported capacity. Other provider policies stay immutable.
+    // require reported capacity; independently readable ranges survive a
+    // temporary server failure. Other provider policies stay immutable.
     assert.equal(fixture.policies.fetchHapoalimAccountSnapshot,'7adfc1e5b8f5082e640270ed1c7756b5ec3de163eec3acba76cf8a154058d263');
-    fixture.policies.fetchHapoalimAccountSnapshot='71a805331b89adb67b7bf027186070c880de3c71d2497d2e11631b9e1ef2ec08';
+    fixture.policies.fetchHapoalimAccountSnapshot='afb4cf77df480c96d6fa4921c581692308a024da4229bf37d2f3862f8235c585';
   }
   assert.deepEqual(providerPolicyHashes(sources(),Object.keys(fixture.policies)),fixture.policies);
 });

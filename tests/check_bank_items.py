@@ -103,6 +103,38 @@ commit""")
     tx('return-after-maturity-restore',-550,[item('111',550)],day='2026-08-15',description='החזרת שיק');snapshot('2026-08-15')
     assert checks()[0]['status']=='חזר' and checks()[0]['bankMatch']['phase']=='returned','A proven cheque return must still override durable clearing maturity'
 
+    # Characterization only: the current settlement policy has no exemption by
+    # cheque age. An old active match and a recent active match both reopen on
+    # proven missing presence, but simple expiry from the scan range is benign.
+    for observed_day in ('2026-08-13','2026-10-15'):
+        reset([check('Age policy',550,'111')])
+        age_deposit=tx('age-policy',550,[item('111',550)])
+        snapshot();snapshot('2026-08-10');cleared_date=checks()[0]['clearedDate']
+        snapshot(observed_day, fresh=False, coverage_from='2026-08-11')
+        assert checks()[0]['status']=='נפרע','An old last_seen_at or a scan excluding the deposit date does not itself reopen settlement'
+        db.sql("update public.bank_transactions set check_details='{}' where id="+age_deposit)
+        snapshot(observed_day)
+        assert checks()[0]['status']=='נפרע','Loss of enrichment preserves both recent and old settled deposits'
+        db.sql("update public.bank_transactions set check_details="+quote(json.dumps(restored_details))+"::jsonb where id="+age_deposit)
+        lease=claim_bank_lease('age-policy-rpc')
+        def age_rpc(second, complete, coverage_from, payload=None):
+            return auth("set local role authenticated;select to_jsonb(x) from public.sync_bank_transactions_snapshot_v6('item-tests','business',"+quote(json.dumps(payload or []))+"::jsonb,"+quote(observed_day+'T13:00:'+str(second).zfill(2)+'Z')+","+quote(coverage_from)+","+quote(observed_day)+","+str(complete).lower()+",'bank','age-policy-rpc',"+str(lease['fence_epoch'])+") x")
+        age_rpc(1,False,'2026-07-01')
+        assert checks()[0]['status']=='נפרע','A partial archive read cannot manufacture missing presence for a settled cheque'
+        age_rpc(2,True,'2026-08-11')
+        assert checks()[0]['status']=='נפרע','A complete scan excluding the deposit date preserves both recent and old settled cheques'
+        age_rpc(3,True,'2026-07-01')
+        missing=checks()[0]
+        assert missing['status']=='הופקד - במעקב' and missing['bankMatch']['phase']=='missing','Proven disappearance reopens an active settlement irrespective of its age'
+        assert missing['bankMatch']['settledEvidenceDate']==cleared_date
+        source=dict(mergeKey='age-policy',date='2026-08-02T00:00:00Z',processedDate='2026-08-02T00:00:00Z',amount=550,currency='ILS',status='completed',description='הפק.שיק בסלולר',bankSerial='1',bankReference='age-reference',activityTypeCode=1,cheque=True,checkDetails=restored_details)
+        age_rpc(4,True,'2026-07-01',[source])
+        assert checks()[0]['status']=='נפרע' and checks()[0]['clearedDate']==cleared_date,'Same-deposit reappearance restores the original settlement date'
+        release_bank_lease('age-policy-rpc')
+    reset([{**check('Manual paid',550,'111'),'status':'נפרע','clearedDate':'2026-07-01'}])
+    snapshot('2026-10-15')
+    assert checks()[0]['status']=='נפרע' and not checks()[0].get('bankMatch'),'A paid record without an active bank match is outside automatic disappearance reconciliation'
+
     # Upgrade repair for the exact pre-migration failure: the old reconciler already
     # reopened a cleared cheque after details_unavailable, then a good refresh built a
     # clean deposited match with a fresh completedSeenDate. History must recover the

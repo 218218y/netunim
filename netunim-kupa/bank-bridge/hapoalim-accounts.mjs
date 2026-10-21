@@ -130,8 +130,8 @@ export function createHapoalimAccountReader({ session, json, enrichment, diagnos
           mid.setDate(mid.getDate() + Math.floor((spanDays - 1) / 2));
           const next = new Date(mid);
           next.setDate(next.getDate() + 1);
-          await fetchWindow(windowStart, mid);
-          await fetchWindow(next, windowEnd);
+          await fetchAvailableWindow(windowStart, mid);
+          await fetchAvailableWindow(next, windowEnd);
           return;
         }
         if (pageState.isFull) {
@@ -153,13 +153,23 @@ export function createHapoalimAccountReader({ session, json, enrichment, diagnos
         // must not discard earlier valid windows or publish invalid rows.
         all.push(...normalizeRecentTransactions(enriched.transactions, enriched.transactions.length));
       }
+      async function fetchAvailableWindow(windowStart, windowEnd) {
+        try { await fetchWindow(windowStart, windowEnd); }
+        catch (error) {
+          // A temporary server failure in one date range cannot erase the
+          // independent ranges. Auth, throttling and invalid source evidence
+          // still stop the read; no extra requests bypass those failures.
+          if (![500,502,503,504].includes(Number(error?.httpStatus))) throw error;
+          coverageWarnings.push(`לא ניתן היה להשלים את סריקת התנועות מ-${isoLocalDate(windowStart)} עד ${isoLocalDate(windowEnd)}: ${error?.message || error}`);
+        }
+      }
       const chunkDays = days > HAPOALIM_TRANSACTION_LOOKBACK_DAYS ? 60 : days;
       for (let offset = 0; offset < days; offset += chunkDays) {
         const chunkEnd = new Date(end);
         chunkEnd.setDate(chunkEnd.getDate() - offset);
         const chunkStart = new Date(chunkEnd);
         chunkStart.setDate(chunkStart.getDate() - Math.min(chunkDays - 1, days - offset - 1));
-        await fetchWindow(chunkStart, chunkEnd);
+        await fetchAvailableWindow(chunkStart, chunkEnd);
       }
       transactionCoverage = { ...transactionCoverage, complete: coverageWarnings.length === 0 };
       if (coverageWarnings.length) transactionWarning = coverageWarnings.join(' ');

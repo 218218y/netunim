@@ -48,6 +48,43 @@ test('reported capacity proves a short page but never a saturated single day', a
   }
 });
 
+test('a failed history window does not prevent independent windows from being read', async () => {
+  let windows=0;
+  const f=readerFixture({respond:async url=>url.pathname.endsWith('balanceAndCreditLimit')
+    ? {currentBalance:42} : ++windows===1?{httpFailure:503}
+      : {numItemsPerPage:150,transactions:[row(url.searchParams.get('retrievalEndDate'))]}});
+  const result=await f.api.read(f.page,credentials,f.ready,150);
+  assert.equal(windows,3);
+  assert.equal(result.transactions.length,2);
+  assert.equal(result.transactionCoverage.complete,false);
+  assert.ok(result.transactionWarning);
+});
+
+test('a failed split child does not discard its independent sibling', async () => {
+  const f=readerFixture({respond:async url=>{
+    if(url.pathname.endsWith('balanceAndCreditLimit'))return {currentBalance:42};
+    const from=url.searchParams.get('retrievalStartDate'),to=url.searchParams.get('retrievalEndDate');
+    if(from!==to)return {numItemsPerPage:2,transactions:[row(from),row(to,2)]};
+    if(from==='20261012')return {httpFailure:503};
+    return {numItemsPerPage:2,transactions:[row(to,3)]};
+  }});
+  const result=await f.api.read(f.page,credentials,f.ready,2);
+  assert.equal(result.transactions.length,1);
+  assert.equal(result.transactions[0].date.slice(0,10),'2026-10-13');
+  assert.equal(result.transactionCoverage.complete,false);
+  assert.ok(result.transactionWarning);
+});
+
+test('authentication and rate-limit failures stop further history requests', async()=>{
+  for(const status of [401,403,429]){
+    let windows=0;
+    const f=readerFixture({respond:async url=>url.pathname.endsWith('balanceAndCreditLimit')
+      ? {currentBalance:42} : (++windows,{httpFailure:status})});
+    const result=await f.api.read(f.page,credentials,f.ready,150);
+    assert.equal(windows,1);assert.equal(result.transactionCoverage.complete,false);
+  }
+});
+
 test('bank account reader selects only open configured roles and preserves a partial home failure', async () => {
   const f = readerFixture({
     accounts: [
