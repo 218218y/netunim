@@ -884,14 +884,14 @@ for app in ('orders', 'kupa'):
           const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
           const persistenceModule=await import('./assets/js/sync/checks-persistence.js');
           const owner='shared-status-owner',db=createStorageJournalDb(),tab={primaryTab:true};
-          let authenticated=owner,n=0,lostResponse=true,holdAck=false,backupEdit=false,readHold=null;
+          let authenticated=owner,n=0,lostResponse=true,holdAck=false,backupEdit=false,readHold=null,clock=Date.now();
           const ackEntered=gate(),ackRelease=gate(),ledger=new Map(),calls=[];
           const session={localGeneration:0,connectionMode:'supabase',backendReady:true,serverInfo:{},dbRevision:10,cloudRevision:10};
           const checksSession={checksGeneration:0,sharedChecksGeneration:0},files={};
           const model={state:{checks:normalizeSharedChecks([{id:'C',amount:100,note:'original'},{id:'D',amount:200,note:'original'}])}};
           let remote={revision:7,state:{checks:clone(model.state.checks),bankEvents:[]}},runtime;
           const merge=createSyncChecks({}).mergeSharedChecks;
-          const make=()=>createSharedChecksV2Runtime({site:app,owner:()=>owner,primary:()=>tab.primaryTab,mode:()=> 'primary',
+          const make=()=>createSharedChecksV2Runtime({site:app,owner:()=>owner,primary:()=>tab.primaryTab,mode:()=> 'primary',now:()=>clock,random:()=>0,
             readState:()=>({checks:model.state.checks,bankEvents:checksSession.checksBankEvents||checksSession.sharedChecksBankEvents||[]}),
             applyState:state=>{model.state.checks=clone(state.checks);checksSession.checksBankEvents=clone(state.bankEvents);checksSession.sharedChecksBankEvents=clone(state.bankEvents)},
             merge,operationId:()=>`shared-status-flight-${++n}`,
@@ -946,7 +946,10 @@ for app in ('orders', 'kupa'):
           const failed=await runtime.cloudState(),first=clone(calls[0]);
           check(failed.pending&&failed.flight&&failed.base.ackSeq===0&&failed.seq===1,'lost response retains the real pending journal and immutable flight');
           await restart();check(model.state.checks[0].id==='C'&&model.state.checks[0].note==='offline-change','restart restores the original ID and offline edit');
-          await edit('D','during-outage');holdAck=true;
+          await edit('D','during-outage');
+          check(Date.parse(failed.control.retry.nextAttemptAt)>clock,'network loss persists a future retry deadline');
+          check(await api().saveSharedChecksToCloud()===false&&calls.length===1,'restart respects backoff without another RPC');
+          clock=Date.parse(failed.control.retry.nextAttemptAt)+1;holdAck=true;
           const saving=api().saveSharedChecksToCloud();await ackEntered.promise;
           const held=await runtime.cloudState();
           check(!synced()&&held.pending&&held.flight&&held.base.ackSeq===0&&held.seq===2,'RPC success cannot confirm Shared status before durable ACK');
