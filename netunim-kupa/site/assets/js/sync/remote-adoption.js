@@ -1,3 +1,4 @@
+import {observeOptionalTask} from '../shared/runtime-task-owner.js';
 import {canonicalCloudSyncBase} from './state-projection.js';
 import {commitCloudCheckpoint} from '../shared/cloud-checkpoint-publication.js';
 import {normalizeSharedChecks} from '../shared/shared-checks-contract.js';
@@ -113,7 +114,7 @@ async function applyCloudRow(row,{renderNow=true}={}){
   await refreshOrdersFinanceSummary({force:true,renderIfChanged:false});
   // The backup owner captures the target, verifies the file and refreshes its
   // catalog. Native file I/O is outside Main's hydration/polling lifecycle.
-  try{void Promise.resolve(backupSnapshotToComputer(structuredClone(model.state),revision)).catch(error=>console.error('post-hydration local backup',error))}catch(error){console.error('post-hydration local backup',error)}
+  observeOptionalTask(()=>backupSnapshotToComputer(structuredClone(model.state),revision));
   assertAccountOwner();
   setConnectedStatus('Supabase מחובר');
   if(Number(session.localGeneration||0)!==generation||v2Normalization){setSaveStatus('שינוי שמור מקומית וממתין לסנכרון','saving');setCloudHeaderStatus('syncing','ענן: מסנכרן…')}

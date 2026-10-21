@@ -9,8 +9,9 @@ Reproduced three failing cases in `business_field_merge.test.mjs`: independent
 births, concurrent same-card insertions and reorders in separate cards.
 The old global topology guard rejected all three with `transactionOrder`.
 
-`shared/business-field-merge.js` now compares surviving existing row order per
-supplier. Content merging delegates numeric sequence allocation to an anchored
+The Orders merge owner now compares surviving existing row order per supplier.
+The shared business field module retains only the common content policy.
+Content merging delegates numeric sequence allocation to an anchored
 order graph. Both insertion chains are retained; ties use stable ID ordering;
 accepted changed cards receive contiguous unique sequences. Incompatible
 reorders, cyclic anchors, monetary conflicts and delete/edit conflicts remain
@@ -50,3 +51,9 @@ this stage changes ordinary cloud progress, not the cutover protocol.
 
 Focused validation: 65 owner/backup/shared-check tests passed; targeted ESLint
 and contract typecheck passed. Full CI evidence belongs to the stage PR.
+
+The Orders static source cap moves from 2.43 MB to 2.44 MB to budget this added
+correctness logic (measured 2,430,570 bytes at this stage). Eager module count
+remains 405 and all latency budgets are unchanged. Kupa retains both original
+source/module caps; Orders topology stays with its existing merge owner so Kupa
+does not eagerly load Orders-only code.

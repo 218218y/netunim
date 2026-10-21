@@ -1,5 +1,14 @@
 // @ts-check
 
+// Submit synchronously so the existing owner captures its target now. The
+// caller observes failures without joining that owner's independent I/O drain.
+/** @param {()=>unknown} submit */
+export function observeOptionalTask(submit){
+  /** @param {unknown} error */
+  const failed=error=>console.error('Optional file follow-up',error);
+  try{void Promise.resolve(submit()).catch(failed)}catch(error){failed(error)}
+}
+
 // Tracks accepted work from entry, including asynchronous preflight. Closing
 // rejects new work but never aborts accepted journal/file/cloud operations.
 export function createRuntimeTaskOwner(){

@@ -1,3 +1,4 @@
+import {observeOptionalTask} from '../shared/runtime-task-owner.js';
 import {createSharedChecksFlight,createDeferredCheckBankRefresh} from '../shared/shared-checks-flight.js';
 import {eq} from './merge-records.js';
 import {mergeSharedChecks} from './checks-merge.js';
@@ -54,7 +55,7 @@ export function createSyncChecks({
       rememberCloud(observed);
       let cloud = observed;
       if (files.dirHandle) {
-        try{void Promise.resolve(writeStateToFolder()).catch(error=>console.error('checks folder backup',error))}catch(error){console.error('checks folder backup',error)}
+        observeOptionalTask(()=>writeStateToFolder());
         cloud = await sharedChecksV2.cloudState();
       }
       if (!current()) return false;
