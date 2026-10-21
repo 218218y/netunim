@@ -17,9 +17,10 @@ export function createCloudAckPublication({model,session,tab,access,journal,proj
   const {readStorageV2CloudRecovery=null,commitStorageV2CloudRecovery=null}=recovery;
 
 async function publishAcknowledgedFlight({res,flight,serverSnapshot,scope}){
+  if(hasFailedLocalMutation(session))return false;
   let state;
   const {state:authoritative,revision:newRevision}=readDocumentWriteAck(res.row,{baseRevision:flight.baseRevision,sentState:serverSnapshot,prepareState:prepareKupaCloudState,equalState:jsonEq,errorCode:'kupa_v2_ack_revision_invalid',stateErrorCode:'kupa_v2_ack_state_invalid'});
-  state=await refreshStorageV2CloudState();if(!writeScopeCurrent(scope,state))return false;if(!state?.flight||state.flight.operationId!==flight.operationId)throw new Error('kupa_v2_flight_changed_before_ack');
+  state=await refreshStorageV2CloudState();if(hasFailedLocalMutation(session)||!writeScopeCurrent(scope,state))return false;if(!state?.flight||state.flight.operationId!==flight.operationId)throw new Error('kupa_v2_flight_changed_before_ack');
   const expectedSeq=state.seq;
   let currentCore=authoritative;
   if(state.afterFlightPending){

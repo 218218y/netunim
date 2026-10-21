@@ -126,13 +126,45 @@ test('monitor storage failure is isolated from domain writers and is visible',as
   const f=fixture();let writes=0;f.store.update=async()=>{throw Error('quota')};await f.monitor.start();writes++;assert.equal(writes,1);assert.equal(f.view.localError,true);
 });
 
+test('a stalled incident store must not hold remote warnings or unrelated domain reporting',async t=>{
+  const f=fixture(),update=f.store.update;let release,calls=0;
+  const row=serverRow();row.incident_id=uuid(90);f.rows.set(row.incident_id,row);f.samples.shared_checks=conflict();
+  f.store.update=(key,change)=>{
+    if(key.endsWith(':orders_main')){calls++;return new Promise(resolve=>{release=()=>update(key,change).then(resolve)})}
+    return update(key,change);
+  };
+  let finished=false;const first=f.monitor.start().then(()=>{finished=true});
+  t.after(async()=>{release?.();f.monitor.stop();await first});await spin();
+  for(const fire of [...f.timers.values()])fire();await spin();
+  assert.equal(finished,true,'one stuck store cannot own the whole monitor run');
+  assert.ok(f.view.incidents.some(item=>item.incident_id===row.incident_id));
+  assert.ok(f.calls.some(([,value])=>value.domain==='shared_checks'));
+  const next=f.monitor.tick();await spin();for(const fire of [...f.timers.values()])fire();await next;
+  assert.equal(calls,1,'do not time out and duplicate an outstanding IDB update');
+});
+
+test('a timed-out report keeps its exact episode and cannot duplicate writes on later ticks',async t=>{
+  const f=fixture(),report=f.registry.report;let release,started=0;
+  f.samples.orders_main=conflict();f.samples.shared_checks=conflict();
+  f.registry.report=(value,scope,...args)=>{
+    if(value.domain==='orders_main'){started++;return new Promise(resolve=>{release=()=>report(value,scope,...args).then(resolve)})}
+    return report(value,scope,...args);
+  };
+  const first=f.monitor.start();await spin();for(const fire of [...f.timers.values()])fire();await first;
+  const episode=f.record('orders_main').episodes[0];assert.equal(started,1);assert.equal(episode.sentVersion,0);
+  assert.ok(f.calls.some(([,value])=>value.domain==='shared_checks'));
+  for(let i=0;i<3;i++){const tick=f.monitor.tick();await spin();for(const fire of [...f.timers.values()])fire();await tick}
+  assert.equal(started,1);release();await spin();assert.equal(f.record('orders_main').episodes[0].id,episode.id);
+  assert.equal(f.record('orders_main').episodes[0].sentVersion,episode.version);f.monitor.stop();
+});
+
 const spin=async()=>{for(let i=0;i<60;i++)await Promise.resolve()};
 test('a stalled journal read times out as unknown and cannot hide another domain conflict',async t=>{
   const f=fixture();let release;
   f.samples.orders_main=new Promise(resolve=>{release=resolve});f.samples.shared_checks=conflict();
   const work=f.monitor.start();t.after(()=>{release(clean());f.monitor.stop()});
-  await spin();assert.equal(f.timers.size,1,'a pending observation needs a bounded deadline');
-  [...f.timers.values()][0]();await work;
+  await spin();assert.ok(f.timers.size>0,'a pending observation needs a bounded deadline');
+  for(const fire of [...f.timers.values()])fire();await work;
   assert.equal(f.calls.length,1);assert.equal(f.calls[0][1].domain,'shared_checks');
   assert.equal(f.view.localError,true);assert.equal(f.record('orders_main').episodes.length,0);
   release(clean());await spin();assert.equal(f.calls.length,1,'a late clean read cannot resolve an unverified incident');
@@ -165,7 +197,8 @@ test('an A-B-A account cycle cannot let an old report receipt retire a current e
   const old=f.monitor.start();await spin();
   t.after(()=>{release({resolved_at:'late-old-receipt'});f.monitor.stop()});
   f.scope={owner:other,epoch:2};f.samples.orders_main=clean();await f.monitor.accountChanged();
-  f.scope={owner,epoch:1};f.samples.orders_main=conflict();await f.monitor.accountChanged();
+  f.scope={owner,epoch:1};f.samples.orders_main=conflict();const resumed=f.monitor.accountChanged();await spin();
+  for(const fire of [...f.timers.values()])fire();await resumed;
   assert.equal(f.record('orders_main').episodes.length,1);
   release({resolved_at:'late-old-receipt'});await old;
   assert.equal(f.record('orders_main').episodes.length,1,'a late terminal receipt belongs to the earlier monitor scope');

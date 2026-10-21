@@ -1,6 +1,6 @@
 import {createSharedChecksStorageV2,validateSharedChecksState} from './shared-checks-storage-v2.js';
 import {storageRecoveryFailure} from './storage-v2-runtime.js';
-import {CLOUD_WRITE_POLICY,cloudWriteError,createOperationId,equalSyncJson,normalizeCloudError,operationAuditMetadata,runBusyCloudWriteWithPolicy,structuredSyncConflict} from './cloud-sync.js';
+import {CLOUD_WRITE_POLICY,cloudWriteError,createCloudRetryControl,createOperationId,equalSyncJson,normalizeCloudError,operationAuditMetadata,runBusyCloudWriteWithPolicy,structuredSyncConflict} from './cloud-sync.js';
 
 const canonical=state=>{validateSharedChecksState(state);return structuredClone({checks:state.checks,bankEvents:state.bankEvents})};
 const stale=error=>/^storage_(ack_checkpoint_stale|rebase_checkpoint_stale|checkpoint_stale|cloud_adoption_stale)$/.test(error?.message||'');
@@ -9,7 +9,7 @@ const stale=error=>/^storage_(ack_checkpoint_stale|rebase_checkpoint_stale|check
 // supply their existing check merge/normalization; this module owns durability.
 // In particular, an authentication change is never a migration instruction.
 export function createSharedChecksV2Runtime({owner,primary,captureCommitAuthority=()=>primary,mode=()=> 'off',readState,applyState,merge,readRemote,rpc,refreshBankRpc,site,
-  createStorage=createSharedChecksStorageV2,operationId=()=>createOperationId('shared-checks-v2'),now=()=>Date.now()}={}){
+  createStorage=createSharedChecksStorageV2,operationId=()=>createOperationId('shared-checks-v2'),now=()=>Date.now(),random=Math.random}={}){
   if([owner,primary,readState,applyState,merge,readRemote,rpc].some(value=>typeof value!=='function'))throw new Error('shared_checks_runtime_configuration');
   let storage=null,identity='',opening=null,syncing=null,commits=Promise.resolve(),active=false,cursorReady=false,lastRemoteUpdatedAt=null,boundaryGate=()=>false;
   let workPending=true,commitsInFlight=0,incidentRecoveryBlocked=false;
@@ -162,7 +162,7 @@ export function createSharedChecksV2Runtime({owner,primary,captureCommitAuthorit
       if(error?.message==='shared_checks_cursor_missing')throw error;
       // Errors leave the flight intact. An old account's request cannot write
       // retry metadata or update the visible state after a handoff.
-      try{assertSyncAllowed(store);const cloud=await store.cloudState();assertSyncAllowed(store);if(!cloud.control?.conflict){const normalized=normalizeCloudError(error);await store.setCloudControl({retry:{attempts:Number(cloud.control?.retry?.attempts||0)+1,lastErrorCode:normalized.code||normalized.kind,lastAttemptAt:new Date(now()).toISOString(),nextAttemptAt:normalized.retryAfterMs?new Date(now()+normalized.retryAfterMs).toISOString():null}})}}catch{/* The original error remains actionable. */}
+      try{assertSyncAllowed(store);const cloud=await store.cloudState();assertSyncAllowed(store);if(!cloud.control?.conflict)await store.setCloudControl({retry:createCloudRetryControl(error,cloud.control?.retry,{now,random})})}catch{/* The original error remains actionable. */}
       throw error;
     }).then(async result=>{
       assertContext(store);const cloud=await store.cloudState();assertContext(store);

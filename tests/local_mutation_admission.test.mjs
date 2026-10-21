@@ -84,3 +84,18 @@ for(const app of ['orders','kupa'])test(`${app}: failure during an in-flight ACK
   const head=await f.runtime.cloudState();assert.equal(head.base.revision,11);assert.ok(head.control.conflict);
   assert.equal((await f.runtime.recoverReadOnly()).state.notes[0].content,'flight-value');
 });
+
+for(const app of ['orders','kupa'])test(`${app}: ACK cannot journal an unadmitted draft beside a later admitted edit`,async t=>{
+  t.mock.method(console,'warn',noop);
+  const f=await postAckFixture(app,{beforeResponse:async f=>{
+    await f.edit('later','admitted after flight');
+    f.model.state.notes[0].content='draft outside journal';
+    f.session.localUndurableGenerations=new Set(['failed:late']);
+  }});
+  assert.equal(await f.save(),false);
+  const durable=await f.runtime.recoverReadOnly(),head=await f.runtime.cloudState();
+  assert.equal(durable.state.notes.find(row=>row.id==='original-note').content,'flight-value');
+  assert.ok(durable.state.notes.some(row=>row.id==='later'&&row.content==='admitted after flight'));
+  assert.ok(head.flight||head.control?.conflict,'the unknown publication needs an actionable fence');
+  assert.equal(f.model.state.notes[0].content,'draft outside journal');
+});
