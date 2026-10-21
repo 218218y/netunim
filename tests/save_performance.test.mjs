@@ -107,7 +107,7 @@ test('backup ACK fast path skips directory scans but retains the latest payload 
   const files={backupsDirHandle:directory()},session={dbRevision:10,serverInfo:{}};let stored;
   let clock=Date.now(),wakeup=null;t.mock.method(Date,'now',()=>clock);
   const timers={setTimeout:run=>{wakeup=run;return 1},clearTimeout:()=>{wakeup=null}};
-  const api=createStorageBackup({files,model,session,...normalizer,timers,writeJsonHandle:async(h,payload)=>{stored=clone(payload);writes++},readJsonHandle:async()=>clone(stored)});
+  const api=createStorageBackup({files,model,session,...normalizer,platform:{timers},writeJsonHandle:async(h,payload)=>{stored=clone(payload);writes++},readJsonHandle:async()=>clone(stored)});
   try{
     assert.ok(await api.backupSnapshotToComputer());const initialScans=scans;assert.equal(writes,1);
     model.state.notes[0].content='second';await api.backupSnapshotToComputer();
