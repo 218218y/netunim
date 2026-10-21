@@ -93,6 +93,7 @@ async function connectBackupTarget(handle,{automatic=false}={}){
   },async(candidate,assertCurrent)=>{
     assertCurrent();
     files.backupRootDirHandle=candidate.handle;files.backupsDirHandle=candidate.directory;
+    files.backupLastError='';
     session.serverInfo.backups=candidate.backups;
     if(!automatic){
       try{if(await rememberBackupHandle(candidate.handle)===false)throw new Error('backup_handle_not_remembered')}

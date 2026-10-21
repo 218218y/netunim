@@ -1,3 +1,4 @@
+import {observeOptionalTask} from '../shared/runtime-task-owner.js';
 import {readDocumentWriteAck} from '../shared/document-write-ack.js';
 import {jsonEq} from './merge-records.js';
 import {structuredSyncConflict} from '../shared/cloud-sync.js';
@@ -58,7 +59,7 @@ async function publishAcknowledgedFlight({res,flight,serverSnapshot,scope}){
   }
   if(businessChanged)try{render()}catch(error){console.error('post-ACK render',error)}
   if(!writeScopeCurrent(scope))return false;
-  try{await backupSnapshotToComputer(structuredClone(model.state),newRevision)}catch(error){console.error('post-ACK local backup',error)}
+  observeOptionalTask(()=>backupSnapshotToComputer(structuredClone(model.state),newRevision));
   if(!writeScopeCurrent(scope,committedState))return false;
   return {committed:true,state:committedState};
 }

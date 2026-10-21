@@ -1,3 +1,4 @@
+import {observeOptionalTask} from '../shared/runtime-task-owner.js';
 import {readDocumentWriteAck} from '../shared/document-write-ack.js';
 import {structuredSyncConflict} from '../shared/cloud-sync.js';
 import {clone} from '../core/values.js';
@@ -71,7 +72,7 @@ async function publishAcknowledgedFlight({res,flight,serverSnapshot,scope}){
     toast(publication.reason==='publication-error'?'אישור הענן נשמר, אבל עדכון הנתונים לתצוגה נכשל. הסנכרון נעצר לבדיקה; הנתונים נשמרו באחסון המקומי.':'שינוי בוצע בזמן שמירת אישור הענן. הנתונים נשמרו מקומית; ייצא גיבוי ובדוק את המצב לפני חידוש הסנכרון.');
     return false;
   }
-  try{if(files.dirHandle)await writeStateToFolder()}catch(localError){console.error('local backup/mirror',localError)}
+  if(files.dirHandle)observeOptionalTask(()=>writeStateToFolder());
   if(!writeScopeCurrent(scope,committedState))return false;
   return {committed:true,state:committedState,generation:expectedGeneration}
 }

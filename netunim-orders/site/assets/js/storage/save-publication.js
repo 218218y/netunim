@@ -20,7 +20,9 @@ export function createOrdersSavePublication({session,journal,mirror,cloud,view,p
     return task.schedule(async()=>{
       try {
         if (mirror.available()) {
-          if (await mirror.write()) session.localUndurableGenerations?.delete(generation);
+          // The file owner captures/coalesces the snapshot and owns its drain.
+          // This optional copy cannot acknowledge IDB or hold the cloud queue.
+          void mirror.write().catch(error=>console.error('folder save',error));
         } else mirror.refreshAccess();
       } catch (error) { console.error('folder save',error); }
       // A folder copy cannot turn a failed IDB receipt into cloud authority.

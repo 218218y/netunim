@@ -1,3 +1,4 @@
+import {observeOptionalTask} from '../shared/runtime-task-owner.js';
 import {createSharedChecksFlight,createDeferredCheckBankRefresh} from '../shared/shared-checks-flight.js';
 import {clone} from '../core/values.js';
 import {createSharedChecksMerge} from './checks-merge.js';
@@ -39,7 +40,10 @@ async function syncChecksV2({required=false,quiet=false}={}){
     if(!sharedChecksV2.primaryReady)throw new Error('shared_checks_owner_handoff_required');
     rememberCloud(observed);
     let cloud=observed;
-    if(files.backupsDirHandle){await backupSnapshotToComputer(model.state,session.dbRevision);cloud=await sharedChecksV2.cloudState()}
+    if(files.backupsDirHandle){
+      observeOptionalTask(()=>backupSnapshotToComputer(structuredClone(model.state),session.dbRevision));
+      cloud=await sharedChecksV2.cloudState();
+    }
     if(!current())return false;
     if(!sharedChecksV2.primaryReady)throw new Error('shared_checks_owner_handoff_required');
     if(cloud.base?.owner!==observed.base?.owner||cloud.base?.epoch!==observed.base?.epoch)return false;

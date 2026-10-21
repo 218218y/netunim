@@ -5,7 +5,8 @@ import {payloadFromState, comparableBackupPayload} from '../state/serialization.
 import {DATA_FILE, INITIAL_STATE, BACKUP_PREFIX, AUTO_BACKUP_PREFIX, AUTO_BACKUP_KEEP, AUTO_BACKUP_INTERVAL_MS} from '../state/constants.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createStorageBackup({files, model, session, normalizeState, writeJsonHandle, readJsonHandle, timers=globalThis}){
+export function createStorageBackup({files, model, session, normalizeState, writeJsonHandle, readJsonHandle, platform={}}){
+const {timers=globalThis,reportBackupError=()=>{}}=platform;
 const operations=createRuntimeTaskOwner();
 let validatedBackupDirectory=null,validatedBackupAt=0,validatedBackupUntil=0,listedBackupDirectory=null;
 async function prepareDirectory(root){
@@ -92,7 +93,20 @@ async function automaticBackup(directory,payload,{defer}){
   return name;
 }
 
-const automatic=createAutomaticBackupRuntime({readTarget:()=>files.backupsDirHandle??null,clonePayload:clone,write:automaticBackup,timers,
+async function writeAutomatic(directory,payload,continuation){
+  try{
+    const result=await automaticBackup(directory,payload,continuation);
+    if(operations.isActive()&&files.backupsDirHandle===directory)files.backupLastError='';
+    return result;
+  }catch(error){
+    if(operations.isActive()&&files.backupsDirHandle===directory){
+      const message=error.message||String(error),previous=files.backupLastError;files.backupLastError=message;
+      if(previous!==message)reportBackupError('הגיבוי המקומי נכשל. סנכרון הענן ממשיך; בדוק הרשאה לתיקיית הגיבוי ונסה שוב.');
+    }
+    throw error;
+  }
+}
+const automatic=createAutomaticBackupRuntime({readTarget:()=>files.backupsDirHandle??null,clonePayload:clone,write:writeAutomatic,timers,
   onError:error=>console.error('scheduled automatic backup',error)});
 const clearPendingAutomaticBackup=automatic.cancelPending,queueAutomaticBackup=automatic.schedule,maybeCreateAutomaticBackup=automatic.submit;
 function backupSnapshotToComputer(snapshot=model.state,revision=session.dbRevision){
