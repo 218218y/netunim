@@ -4,6 +4,7 @@ The remote compare-and-swap head is relayed by this harness. No production
 service is contacted, and no V1 browser snapshot or outbox is installed.
 """
 import json
+from pathlib import Path
 
 from browser_harness import BrowserSession, ROOT
 
@@ -131,6 +132,64 @@ def run(app, same_record):
         print('PASS',label,'V2 IndexedDB flight/rebase/ACK/restart across two profiles')
 
 
-for app in ('orders','kupa'):
-    for same_record in (True,False):
-        run(app,same_record)
+def run_rapid_fields(app, count):
+    fixture=(Path(__file__).parent/'fixtures/rapid-profile-fields.mjs').read_text(encoding='utf-8').replace('export async function','async function')
+    def setup(browser, initialize):
+        return browser.evaluate('(async()=>{'+fixture+';window.rapid=await createRapidProfile('+js(app)+','+str(initialize).lower()+');return rapid.state()})()',timeout=30)
+    def restart(browser):
+        browser._navigate();browser.evaluate('appReady.then(()=>true)');return setup(browser,False)
+    with BrowserSession(ROOT/f'netunim-{app}/site',app+'-rapid-fields-A') as a, \
+         BrowserSession(ROOT/f'netunim-{app}/site',app+'-rapid-fields-B') as b:
+        setup(a,True);setup(b,True)
+        first=a.evaluate(f"rapid.burst('A',{count})",timeout=60)
+        second=b.evaluate(f"rapid.burst('B',{count})",timeout=60)
+        collection='transactions' if app=='orders' else 'cash'
+        assert first['head']['seq']==second['head']['seq']==count
+        # B's server commit was accepted but its response was lost. Its profile
+        # restarts with precisely the same immutable flight and operation ID.
+        remote={'revision':11,'state':second['flight']['snapshot']}
+        restart(b)
+        assert b.evaluate('rapid.retry()')==second['flight']
+        b.evaluate(f"rapid.acknowledge({js(second['flight'])},11)")
+        restart(a)
+        assert a.evaluate('rapid.retry()')==first['flight']
+        merged=a.evaluate(f'rapid.reconcile({js(remote)})')
+        assert merged['conflicts']==[]
+        assert merged['flight']['operationId']!=first['flight']['operationId']
+        final={'revision':12,'state':merged['flight']['snapshot']}
+        a.evaluate(f"rapid.acknowledge({js(merged['flight'])},12)")
+        b.evaluate(f'rapid.adopt({js(final)})')
+        for browser in (a,b):
+            after=restart(browser)
+            assert after['state']==final['state'] and not after['cloud']['pending']
+            rows=after['state'][collection];assert len(rows)==1
+            assert rows[0]['note']==f'remote-{count}'
+            assert rows[0]['message' if app=='orders' else 'description']==f'local-{count}'
+            if app=='orders':assert rows[0]['invoiceReceived']==(count%2==0)
+        # A genuine same-field contradiction remains durable after restart;
+        # recording it never silently promotes either side's note to authority.
+        local_conflict=a.evaluate("rapid.contradict('A')")
+        remote_conflict=b.evaluate("rapid.contradict('B')")
+        b.evaluate(f'rapid.acknowledge({js(remote_conflict)},13)')
+        blocked=a.evaluate(f"rapid.reconcile({js({'revision':13,'state':remote_conflict['snapshot']})})")
+        assert len(blocked['conflicts'])==1
+        retained=restart(a)
+        assert retained['cloud']['pending'] and retained['cloud']['control']['conflict']['kind']=='entity-conflict'
+        assert retained['state'][collection][0]['note']=='contradiction-A'
+        assert retained['cloud']['base']['state'][collection][0]['note']=='contradiction-B'
+        assert retained['seq']==count+1 and local_conflict['startSeq']==count+1
+        for browser in (a,b):assert not browser.drain_serious_errors()
+        print(f'PASS {app}: {count*2} rapid same-record edits across isolated profiles, immutable lost ACK, real business merge, restart convergence and durable contradiction',flush=True)
+
+
+if __name__=='__main__':
+    import argparse
+    parser=argparse.ArgumentParser()
+    parser.add_argument('--rapid-only',action='store_true')
+    parser.add_argument('--rapid-count',type=int,default=1000)
+    options=parser.parse_args()
+    if not 1<=options.rapid_count<=2000:parser.error('rapid-count must be between 1 and 2000')
+    for app in ('orders','kupa'):
+        if not options.rapid_only:
+            for same_record in (True,False):run(app,same_record)
+        run_rapid_fields(app,options.rapid_count)
