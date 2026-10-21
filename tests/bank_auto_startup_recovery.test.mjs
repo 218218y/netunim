@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {createKupaConnectivityRuntime} from '../netunim-kupa/site/assets/js/connectivity.js';
 import {createOrdersConnectivityRuntime} from '../netunim-orders/site/assets/js/connectivity.js';
 import {createOrdersFinanceAutomation} from '../netunim-orders/site/assets/js/domains/finance/automation.js';
+import {createFinanceBridgeIntegration} from '../netunim-orders/site/assets/js/integrations/bank-bridge.js';
 
 function environment(){
   const listeners=new Map(),jobs=new Map();let next=0;
@@ -122,7 +123,7 @@ test('Kupa successful new pairing re-arms a stopped bank scheduler without navig
 
 // A browser wakeup must only arm missing timers. Restarting the finance owner
 // invalidates its epoch and falsely aborts work that already entered the bank.
-test('Orders browser wakeups do not revoke an already-admitted bank refresh',async()=>{
+for(const kind of ['bank','credit'])test(`Orders browser wakeups do not revoke an already-admitted ${kind} refresh`,async()=>{
   const f=environment();
   let admit, release;
   const entered=new Promise(resolve=>{admit=resolve});
@@ -130,9 +131,9 @@ test('Orders browser wakeups do not revoke an already-admitted bank refresh',asy
   let current;
   const scheduler=createOrdersFinanceAutomation({
     access:{primary:()=>true,authenticated:()=>true,online:()=>true,busy:()=>false,capture:()=>()=>{}},
-    preferences:{getBridgeToken:()=> 'paired',bankAutoEnabled:()=>true,creditAutoEnabled:()=>false,creditAutoMode:()=> 'smart',bankAttemptDelayMs:()=>0},
+    preferences:{getBridgeToken:()=> 'paired',bankAutoEnabled:()=>kind==='bank',creditAutoEnabled:()=>kind==='credit',creditAutoMode:()=> 'smart'},
     readLastSyncAt:()=>null,
-    commands:{bank:async({isCurrent})=>{current=isCurrent;admit();await pending;return isCurrent()},credit:async()=>true},
+    commands:{[kind]:async({isCurrent})=>{current=isCurrent;admit();await pending;return isCurrent()},[kind==='bank'?'credit':'bank']:async()=>assert.fail('disabled resource')},
     timers:f.timers,
   });
   const connectivity=createOrdersConnectivityRuntime({
@@ -147,17 +148,83 @@ test('Orders browser wakeups do not revoke an already-admitted bank refresh',asy
   try{
     connectivity.start();
     scheduler.startAutoSync();
-    const bankTimer=[...f.jobs.entries()].find(([,job])=>job.ms>=1000&&job.ms<=1500);
-    assert.ok(bankTimer,'automatic bank wakeup scheduled');
-    f.jobs.delete(bankTimer[0]);bankTimer[1].fn();
+    const timer=[...f.jobs.entries()].find(([,job])=>job.ms>=1000&&job.ms<=1500);
+    assert.ok(timer,`automatic ${kind} wakeup scheduled`);
+    f.jobs.delete(timer[0]);timer[1].fn();
     await entered;
     const activeEpoch=scheduler.currentEpoch();
     assert.equal(current(),true);
     await f.signal('online');await f.flush();
-    assert.equal(scheduler.currentEpoch(),activeEpoch,'online event must not revoke started bank operation');
+    assert.equal(scheduler.currentEpoch(),activeEpoch,'online event must not revoke started operation');
     assert.equal(current(),true);
     await f.signal('visibilitychange');await f.flush();
-    assert.equal(scheduler.currentEpoch(),activeEpoch,'foreground event must not revoke started bank operation');
+    assert.equal(scheduler.currentEpoch(),activeEpoch,'foreground event must not revoke started operation');
     assert.equal(current(),true);
   }finally{release?.();connectivity.dispose()}
+});
+
+test('Orders repeated startup and browser wakeups preserve four-hour bank and daily credit deadlines',async t=>{
+  const f=environment(),now=Date.parse('2026-10-21T06:00:00Z'),hour=60*60*1000;
+  t.mock.method(Date,'now',()=>now);
+  const scheduler=createOrdersFinanceAutomation({
+    access:{primary:()=>true,authenticated:()=>true,online:()=>true,busy:()=>false,capture:()=>()=>{}},
+    preferences:{getBridgeToken:()=> 'paired',bankAutoEnabled:()=>true,creditAutoEnabled:()=>true,creditAutoMode:()=> 'smart'},
+    readLastSyncAt:()=>new Date(now-hour).toISOString(),
+    commands:{bank:async()=>assert.fail('bank is still fresh'),credit:async()=>assert.fail('credit is still fresh')},
+    timers:f.timers,
+  });
+  const connectivity=createOrdersConnectivityRuntime({
+    access:{primary:()=>true,blocked:()=>false,authenticated:()=>true},
+    cloud:{enabled:()=>false,resumeAfterReconnect:async()=>{}},checks:{pollSharedChecks:async()=>{}},
+    finance:{resumeAutoSync:()=>scheduler.resumeAutoSync(),stopAutoSync:()=>scheduler.stopAutoSync()},
+    morning:{recoverPendingMorningOperation:async()=>{}},status:{startupDomainLocked:()=>false,setCloud:()=>{}},
+    environment:f.environment,timers:f.timers,
+  });
+  try{
+    connectivity.start();scheduler.startAutoSync();
+    const epoch=scheduler.currentEpoch(),scheduled=[...f.jobs.entries()];
+    assert.deepEqual(scheduled.map(([,job])=>job.ms),[3*hour+250,23*hour+250]);
+    for(let i=0;i<3;i++){
+      connectivity.resumeStartup();await f.flush();
+      await f.signal('online');await f.flush();
+      await f.signal('visibilitychange');await f.flush();
+      assert.equal(scheduler.currentEpoch(),epoch);
+      assert.deepEqual([...f.jobs.entries()].filter(([,job])=>job.ms>=1000),scheduled);
+    }
+  }finally{connectivity.dispose()}
+  assert.equal(f.jobs.size,0);
+});
+
+test('Orders resumed bank scheduling honors a persisted failure cooldown after reopening',async t=>{
+  const f=environment(),now=Date.parse('2026-10-21T06:00:00Z');
+  t.mock.method(Date,'now',()=>now);
+  const values=new Map([
+    ['netunim_kupa_bank_bridge_token_v1','paired'],
+    ['netunim_orders_bank_auto_attempt_v1',String(now-15*60*1000)],
+    ['netunim_orders_credit_auto_daily_v1','0'],
+  ]);
+  const preferences=createFinanceBridgeIntegration({platform:{
+    preferences:{getItem:key=>values.get(key)??null,setItem:(key,value)=>values.set(key,value),removeItem:key=>values.delete(key)},
+    clock:{now:()=>now},timers:f.timers,createAbortController:()=>new AbortController(),fetchRequest:()=>assert.fail('cooldown must prevent provider entry'),
+  }});
+  const scheduler=createOrdersFinanceAutomation({
+    access:{primary:()=>true,authenticated:()=>true,online:()=>true,busy:()=>false,capture:()=>()=>{}},
+    preferences,readLastSyncAt:()=>null,
+    commands:{bank:async()=>assert.fail('bank retry is not due'),credit:async()=>assert.fail('credit is disabled')},timers:f.timers,
+  });
+  try{
+    scheduler.stopAutoSync();scheduler.resumeAutoSync();
+    const epoch=scheduler.currentEpoch(),scheduled=[...f.jobs.entries()];
+    assert.equal(scheduled.length,1);
+    assert.equal(scheduled[0][1].ms,45*60*1000+250);
+    for(let i=0;i<3;i++){
+      scheduler.resumeAutoSync();
+      assert.equal(scheduler.currentEpoch(),epoch);
+      assert.deepEqual([...f.jobs.entries()],scheduled);
+    }
+    assert.equal(await scheduler.maybeAutoRefreshBank(),false);
+    assert.deepEqual([...f.jobs.values()].map(job=>job.ms),[45*60*1000+250]);
+    assert.equal(values.get('netunim_orders_bank_auto_attempt_v1'),String(now-15*60*1000));
+  }finally{scheduler.stopAutoSync()}
+  assert.equal(f.jobs.size,0);
 });

@@ -408,7 +408,16 @@ ok("const TOKEN_KEY='netunim_kupa_bank_bridge_token_v1'" in orders_finance_bridg
 ok('http://127.0.0.1:8765' in orders_headers, 'Orders CSP: only the intended loopback Bank Bridge endpoint is added to connect-src')
 ok('./assets/js/domains/finance/controller.js' in orders_worker and './assets/js/integrations/bank-bridge.js' in orders_worker and './assets/js/domains/finance/credit-feed.js' in orders_worker, 'Orders finance PWA: cross-app synchronization modules are part of the deterministic offline shell')
 ok('await finance.start()' in orders_background and 'hydrateSecondary().then(()=>backgroundStartup.start(plan))' in orders_lifecycle and 'start:()=>finance.runtime.start()' in orders_main, 'Orders lifecycle: finance auto scheduling starts only after normal Orders boot/cloud recovery completes')
-ok("resources.listen(document,'visibilitychange'" in orders_connectivity and 'finance.startAutoSync()' in orders_connectivity and "resources.listen(window,'online'" in orders_connectivity and 'connectivity.start()' in orders_runtime, 'Orders background finance: bank/credit scheduling is independent of opening the Kupa subview and is re-armed when the app returns to foreground or network')
+# Browser wakeups resume the current owner; starting it again would revoke an
+# in-flight provider operation. Keep the runtime/composition wiring covered too.
+ok(contains_js(orders_connectivity,"resources.listen(document,'visibilitychange'")
+   and contains_js(orders_connectivity,"resources.listen(window,'online'")
+   and contains_js(orders_connectivity,'finance.resumeAutoSync()')
+   and not contains_js(orders_connectivity,'finance.startAutoSync()')
+   and contains_js(orders_runtime,'resumeAutoSync:(...args)=>financeRuntime.resume(...args)')
+   and contains_js(orders_finance_composition,'resume(){uiReady();return controller.resumeAutoSync();}')
+   and 'connectivity.start()' in orders_runtime,
+   'Orders background finance: foreground/network wakeups resume bank/credit scheduling through composition without restarting an active sync owner')
 ok("resources.listen(document,'visibilitychange'" in kupa_connectivity and 'bank.startAutoSync()' in kupa_connectivity and 'credit.startAutoSync()' in kupa_connectivity and 'bank.stopAutoSync()' in kupa_connectivity and 'credit.stopAutoSync()' in kupa_connectivity and "resources.listen(window,'online'" in kupa_connectivity and 'connectivity.start()' in main, 'Kupa background finance: bank/credit auto checks resume from the app lifecycle even when the user never opens Bank or Credit')
 ok('refreshFinanceCloudSnapshot' in finance_composition and "cloudTransport.readSupabaseDocument(" in finance_cloud and "async function refreshFinanceCloudSnapshot(" in finance_cloud and 'syncDocument.cloudPoll()' in finance_cloud and 'composeKupaFinance({' in main, 'Kupa cross-app freshness: automatic finance refresh has a direct shared-cloud preflight instead of waiting for the 12-second poll')
 ok('awaitcloud.refresh({assertCurrent})' in kupa_bank_refresh and 'automation.due(cloud.lastSyncAt(latest.state||cloud.currentState()))' in kupa_bank_refresh, 'Kupa bank cross-app freshness: a fresh Orders bank snapshot suppresses the local automatic Bridge scrape')
