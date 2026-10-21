@@ -16,6 +16,7 @@ export function createCloudAckPublication({model,session,tab,files,access,journa
   const {readStorageV2CloudRecovery=null,commitStorageV2CloudRecovery=null,waitForPostAckQuiet=null}=recovery;
 
 async function publishAcknowledgedFlight({res,flight,serverSnapshot,scope}){
+  if(hasFailedLocalMutation(session))return false;
   let state;
   const {state:authoritative,revision:newRevision}=readDocumentWriteAck(res.row,{baseRevision:flight.baseRevision,sentState:serverSnapshot,prepareState:prepareCloudState,equalState:sameOrderCloudData,errorCode:'orders_v2_ack_revision_invalid',stateErrorCode:'orders_v2_ack_state_invalid'});
   // Reconcile edits that arrived while this immutable flight was in progress
@@ -23,7 +24,7 @@ async function publishAcknowledgedFlight({res,flight,serverSnapshot,scope}){
   // transaction, so a crash cannot advance the cloud cursor without persisting
   // the corresponding rebased local head.
   state=await refreshStorageV2CloudState();
-  if(!writeScopeCurrent(scope,state))return false;
+  if(hasFailedLocalMutation(session)||!writeScopeCurrent(scope,state))return false;
   if(!state?.flight||state.flight.operationId!==flight.operationId)throw new Error('orders_v2_flight_changed_before_ack');
   const expectedSeq=state.seq;
   let currentCloud=authoritative;

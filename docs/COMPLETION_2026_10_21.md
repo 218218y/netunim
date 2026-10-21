@@ -93,3 +93,35 @@ Kupa/Orders. Kupa's source cap becomes 1.82 MB for this explicit contract;
 Orders remains within the stage-2 2.44 MB cap. Runtime latency budgets stay
 unchanged. The old AST freeze of Kupa's admission body is replaced by behavioral
 fault/restart coverage; delete-intent and publication policy freezes remain.
+
+## Stage 4: Shared Checks retry and incident liveness
+
+Shared Checks now persists the existing `createCloudRetryControl` policy in its
+existing cloud control. Network/timeout/503 failures without Retry-After back
+off exponentially with jitter; 429 keeps Retry-After. Restart respects the
+stored deadline. The flight ID and payload remain immutable until definitive
+ACK/rejection. Auth remains actionable, business conflicts stay fenced, and
+another account inherits no deadline. Nine focused policy cases cover both
+adapters, multiple attempts, restart, eventual ACK and account change.
+
+The conditional monitor issue was reproduced: a stalled `store.update` held
+the entire run, hiding remote warnings and preventing other domain reports.
+The monitor now publishes the remote list before domain work, isolates each
+domain in a tracked single flight and bounds only the observer's wait. It does
+not cancel or discard an unknown IDB/RPC write. Subsequent ticks reuse its slot;
+late completion retains its original account/monitor fence and is reconciled
+from the journal and next fresh list. Total slots are capped at twice the
+domain count, including previous-account work. Domain storage and business
+sync are unchanged. Failure/stop/account-cycle tests cover late completion,
+same-episode reconciliation and no duplicate update/report.
+
+The native incident test uses actual IndexedDB, delays a committed receipt,
+verifies other-domain progress and account fencing, and reuses the retained
+episode when its account returns. Model coverage: 85 retry/incident tests pass.
+
+Final admission audit also reproduced a separate race: an admitted post-flight
+edit plus an unadmitted draft could be checkpointed together during ACK rebase.
+The two new regressions failed in both applications. ACK now stops before
+rebase when a failed admission exists, leaving the immutable flight and all
+admitted journal entries intact for explicit recovery. This prevents an ACK
+from silently admitting a draft outside the mutation boundary.

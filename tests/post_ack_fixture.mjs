@@ -3,7 +3,7 @@ import {createStorageV2Runtime} from '../shared/storage-v2-runtime.js';
 import {createStorageJournal} from '../shared/storage-journal.js';
 import {memoryDb,emergencyStore} from './storage-v2-fixture.mjs';
 import {equalSyncJson} from '../shared/cloud-sync.js';
-export async function postAckFixture(app,{onCommitted=async()=>{},onRejected=async()=>{},remoteChange=false,onRecovery=async()=>{},remoteEdit=null,composed=false,enforceRevision=false,backup=async()=>{}}={}){
+export async function postAckFixture(app,{onCommitted=async()=>{},onRejected=async()=>{},remoteChange=false,onRecovery=async()=>{},remoteEdit=null,composed=false,enforceRevision=false,backup=async()=>{},beforeResponse=async()=>{}}={}){
   const root=`../netunim-${app}/site/assets/js/`,{INITIAL_STATE}=await import(root+'state/constants.js'),{createStorageBrowser}=await import(root+'storage/browser.js'),{createSyncMerge}=await import(root+'sync/merge.js');
   const clone=structuredClone,noop=()=>{},project=value=>{const next=clone(value);delete next.checks;delete next._meta;return next};
   const model={state:clone(INITIAL_STATE)},session={localGeneration:0,cloudRevision:10,dbRevision:10,connectionMode:'supabase',backendReady:true,serverInfo:{}},tab={primaryTab:true},files={},db=memoryDb(),wrapped={...db},calls=[],statuses=[];
@@ -28,7 +28,7 @@ export async function postAckFixture(app,{onCommitted=async()=>{},onRejected=asy
     await result.committed;
   }
   Object.defineProperty(globalThis,'navigator',{configurable:true,value:{onLine:true}});
-  const rpc=async(snapshot,revision,operationId)=>{calls.push({snapshot:clone(snapshot),revision,operationId});if(enforceRevision&&revision!==remoteRow.revision)return {r:{ok:false,status:409},j:{code:'PT409',message:'revision_conflict'}};const state=clone(snapshot);if(calls.length===1){if(remoteChange)state.notes.push({id:'remote-note',content:'remote-only',createdAt:'2026-10-11',updatedAt:'2026-10-11'});if(remoteEdit)state.notes[0].content=remoteEdit}remoteRow={revision:revision+1,state,updated_at:'2026-10-11T10:07:06Z'};return {r:{ok:true},row:clone(remoteRow)}};
+  const rpc=async(snapshot,revision,operationId)=>{calls.push({snapshot:clone(snapshot),revision,operationId});if(enforceRevision&&revision!==remoteRow.revision)return {r:{ok:false,status:409},j:{code:'PT409',message:'revision_conflict'}};const state=clone(snapshot);if(calls.length===1){if(remoteChange)state.notes.push({id:'remote-note',content:'remote-only',createdAt:'2026-10-11',updatedAt:'2026-10-11'});if(remoteEdit)state.notes[0].content=remoteEdit}remoteRow={revision:revision+1,state,updated_at:'2026-10-11T10:07:06Z'};await beforeResponse(f);return {r:{ok:true},row:clone(remoteRow)}};
   const ports={getCloudWriteScope:()=>({...runtime.cloudScope,accountOwner:owner,loginEpoch}),model,session,files,tab,toast:noop,render:noop,
     readCloud:async()=>clone(remoteRow),
     readSupabaseDocument:async()=>clone(remoteRow),

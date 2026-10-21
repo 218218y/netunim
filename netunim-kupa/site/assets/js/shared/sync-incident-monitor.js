@@ -8,6 +8,7 @@ export function createSyncIncidentMonitor({site,clientId,deviceLabel=()=>'',acco
   publish=()=>{},visible=()=>true,now=()=>Date.now(),random=Math.random,id=()=>crypto.randomUUID(),timers=globalThis,readTimeoutMs=15000}={}){
   let stopped=true,timer=null,running=null,runningScope=null,monitorEpoch=0,observed=null,nextRead=0,readFailures=0;
   const pendingReads=new Set(),readDeadline=Math.max(1,Math.min(60000,Number(readTimeoutMs)||15000));
+  const domainWork=new Map();
   let view={status:'unavailable',incidents:[],localError:false};
   const emit=()=>{try{publish(structuredClone(view))}catch{/* Rendering cannot affect durability. */}};
   const cancelReads=()=>{for(const cancel of pendingReads)cancel()};
@@ -86,16 +87,14 @@ export function createSyncIncidentMonitor({site,clientId,deviceLabel=()=>'',acco
   }
   // A manually reviewed incident is terminal. Its originating installation must
   // rotate the episode on its next observation if the problem is still present.
-  async function reconcileReviewed(scope,rows){
+  async function reconcileReviewed(adapter,scope,rows){
     const activeIds=new Set(rows.map(row=>row.incident_id));
-    for(const adapter of domains){
-      if(!current(scope)||!primary())return;
-      await store.update(scope.owner+':'+site+':'+adapter.domain,value=>{
-        if(!current(scope)||!primary())return value;
-        value.episodes=value.episodes.filter(episode=>episode.phase!=='open'||episode.sentVersion!==episode.version||episode.client!==clientId||activeIds.has(episode.id));
-        return value;
-      });
-    }
+    if(!current(scope)||!primary())return;
+    await store.update(scope.owner+':'+site+':'+adapter.domain,value=>{
+      if(!current(scope)||!primary())return value;
+      value.episodes=value.episodes.filter(episode=>episode.phase!=='open'||episode.sentVersion!==episode.version||episode.client!==clientId||activeIds.has(episode.id));
+      return value;
+    });
   }
   async function readIncidents(scope){
     if(visible()&&now()>=nextRead){
@@ -103,25 +102,36 @@ export function createSyncIncidentMonitor({site,clientId,deviceLabel=()=>'',acco
         const rows=await boundedRead(()=>registry.list(scope),scope);
         if(!current(scope))return;
         view.status=rows.length?'incidents':'no_reported_incidents';view.incidents=rows;readFailures=0;nextRead=now()+45_000;
-        try{await reconcileReviewed(scope,rows)}catch{view.localError=true}
+        if(current(scope))emit();
+        return rows;
       }catch{
         if(!current(scope))return;
         view.status='unavailable';readFailures=Math.min(8,readFailures+1);nextRead=now()+Math.min(300_000,15_000*2**(readFailures-1))*(0.8+random()*0.4);
       }
     }
     if(current(scope))emit();
+    return null;
+  }
+  // A timed-out observer keeps its original IDB/RPC operation and slot. Later
+  // ticks can read warnings and serve other domains, but cannot duplicate that
+  // domain's unknown write. Completion is reconciled by the next fresh list.
+  async function serviceDomain(adapter,scope,rows){
+    const key=scope.owner+':'+site+':'+adapter.domain;
+    let work=domainWork.get(key);
+    if(!work){
+      if(domainWork.size>=Math.max(1,domains.length*2)){if(current(scope))view.localError=true;return}
+      work=(async()=>{if(rows)await reconcileReviewed(adapter,scope,rows);if(current(scope))await observeDomain(adapter,scope)})();
+      domainWork.set(key,work);
+      void work.finally(()=>{if(domainWork.get(key)===work)domainWork.delete(key)}).catch(()=>{});
+    }
+    try{await boundedRead(()=>work,scope)}catch{if(current(scope))view.localError=true}
   }
   async function run(scope){
     resetAccount(scope);
     if(!scope.owner||stopped)return;
     view.localError=false;
-    // Publish remote warnings before waiting for local reports. Reconciliation
-    // finishes before new writes, so an older list cannot discard their receipt.
-    await readIncidents(scope);
-    if(primary())for(const adapter of domains){
-      if(!current(scope))return;
-      try{await observeDomain(adapter,scope)}catch{if(current(scope))view.localError=true}
-    }
+    const rows=await readIncidents(scope);
+    if(primary()&&current(scope))await Promise.all(domains.map(adapter=>serviceDomain(adapter,scope,rows)));
     if(!current(scope))return;
     // A successful write invalidates the list; ordinary ticks do not reread it.
     await readIncidents(scope);

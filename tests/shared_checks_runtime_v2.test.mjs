@@ -19,11 +19,11 @@ const put=id=>({type:'put',collection:'checks',id,mode:'replace'});
 Object.defineProperty(globalThis,'navigator',{value:{onLine:true},configurable:true});
 
 function fixture(site='orders',options={}){
-  let owner='A',mode='primary',n=0,visible=state([{id:'C',amount:100},{id:'D',amount:200}]);
+  let owner='A',mode='primary',n=0,time=0,visible=state([{id:'C',amount:100},{id:'D',amount:200}]);
   let head={revision:7,state:clone(visible)},rpcHook=null,readHook=null,refreshHook=null;
   const databases=new Map(),emergency=emergencyStore(),calls=[],refreshCalls=[],ledger=new Map();
   const merge=(site==='orders'?ordersChecks:kupaChecks)({}).mergeSharedChecks;
-  const create=()=>createSharedChecksV2Runtime({site,owner:()=>owner,primary:()=>true,mode:()=>mode,readState:()=>visible,applyState:value=>{visible=clone(value)},merge,
+  const create=()=>createSharedChecksV2Runtime({site,owner:()=>owner,primary:()=>true,mode:()=>mode,readState:()=>visible,applyState:value=>{visible=clone(value)},merge,now:()=>time,random:()=>0,
     createStorage:args=>{if(!databases.has(owner))databases.set(owner,memoryDb());return createSharedChecksStorageV2({...args,db:databases.get(owner),emergency,...options})},
     operationId:()=>`flight-${++n}`,readRemote:async()=>readHook?readHook():clone(head),
     refreshBankRpc:async revision=>{refreshCalls.push(revision);return refreshHook?refreshHook():{status:'checked'}},
@@ -34,7 +34,7 @@ function fixture(site='orders',options={}){
       if(revision!==head.revision)return {r:{ok:false,status:409},j:{code:'PT409',message:'revision_conflict'}};
       head={revision:revision+1,state:{checks:clone(checks),bankEvents:[{seq:42,checkId:'C',delta:100}]}};ledger.set(id,clone(head));return {r:{ok:true},row:clone(head)};
     }});
-  return {create,calls,refreshCalls,databases,ledger,get visible(){return visible},set visible(value){visible=value},get head(){return head},set head(value){head=value},
+  return {create,calls,refreshCalls,databases,ledger,advance:ms=>{time+=ms},get time(){return time},get visible(){return visible},set visible(value){visible=value},get head(){return head},set head(value){head=value},
     set owner(value){owner=value},set mode(value){mode=value},set rpcHook(value){rpcHook=value},set readHook(value){readHook=value},set refreshHook(value){refreshHook=value},
     async start(){const runtime=create();await runtime.initialize({state:visible,revision:7,intent:'cloud-authoritative',sourceOwner:'A'});return runtime},
     edit(runtime,id,values){visible.checks=visible.checks.map(row=>row.id===id?{...row,...values}:row);return runtime.persist([put(id)],{generation:++n})}};
@@ -153,7 +153,7 @@ for(const site of ['orders','kupa']){
     const f=fixture(site);let runtime=await f.start();await f.edit(runtime,'C',{status:'הופקד - במעקב'}).committed;
     f.rpcHook=async(checks,revision,id)=>{f.head={revision:revision+1,state:state(checks,[{seq:42,checkId:'C',delta:100}])};f.ledger.set(id,clone(f.head));throw new TypeError('Failed to fetch')};
     await assert.rejects(runtime.sync(),/fetch/);assert.equal(runtime.hasLocalWork,true);const first=clone(f.calls[0]);
-    runtime=f.create();await runtime.recover();assert.equal(runtime.hasLocalWork,true);await f.edit(runtime,'D',{note:'during outage'}).committed;f.rpcHook=null;
+    runtime=f.create();await runtime.recover();assert.equal(runtime.hasLocalWork,true);await f.edit(runtime,'D',{note:'during outage'}).committed;f.rpcHook=null;f.advance(1501);
     assert.equal(await runtime.sync(),true);assert.deepEqual(f.calls[1],first);assert.equal(f.visible.checks[1].note,'during outage');
     assert.notEqual(f.calls[2][2],first[2]);assert.equal(f.visible.bankEvents[0].seq,42);
   });
@@ -294,4 +294,33 @@ test('Shared Checks read-only recovery uses an isolated non-writer store',async(
   assert.equal(openCalls,0);
   assert.deepEqual(applied,visible);
   assert.equal(runtime.primaryReady,false);
+});
+
+for(const site of ['orders','kupa'])for(const kind of ['network','timeout','503','429'])test(`${site}: ${kind} retry survives restart and preserves the immutable flight`,async()=>{
+  const f=fixture(site);let runtime=await f.start();await f.edit(runtime,'C',{note:'retry me'}).committed;
+  f.rpcHook=()=>{
+    if(kind==='network')throw new TypeError('Failed to fetch');
+    if(kind==='timeout')throw Object.assign(new Error('request timed out'),{name:'AbortError'});
+    return {r:{ok:false,status:kind==='503'?503:429,headers:{get:()=>kind==='429'?'60':null}}};
+  };
+  await assert.rejects(runtime.sync());
+  let head=await runtime.cloudState();const first=clone(f.calls[0]),deadline=Date.parse(head.control.retry.nextAttemptAt);
+  assert.equal(deadline-f.time,kind==='429'?60000:1500);assert.equal(head.control.retry.attempts,1);
+  runtime=f.create();await runtime.recover();assert.equal(await runtime.sync(),false);assert.equal(f.calls.length,1);
+  f.advance(deadline-f.time+1);await assert.rejects(runtime.sync());head=await runtime.cloudState();
+  assert.equal(head.control.retry.attempts,2);assert.equal(Date.parse(head.control.retry.nextAttemptAt)-f.time,kind==='429'?60000:3000);
+  assert.deepEqual(f.calls[1],first);f.advance(Date.parse(head.control.retry.nextAttemptAt)-f.time+1);f.rpcHook=null;
+  assert.equal(await runtime.sync(),true);assert.deepEqual(f.calls[2],first);
+  assert.equal(f.ledger.size,1);assert.equal((await runtime.cloudState()).control,null);
+});
+test('Shared Checks auth failure is actionable without transient backoff; another account inherits no retry deadline',async()=>{
+  const f=fixture();let runtime=await f.start();await f.edit(runtime,'C',{note:'pending A'}).committed;
+  f.rpcHook=()=>({r:{ok:false,status:401}});await assert.rejects(runtime.sync());
+  assert.equal((await runtime.cloudState()).control.retry.nextAttemptAt,null);
+  f.rpcHook=()=>{throw new TypeError('Failed to fetch')};await assert.rejects(runtime.sync());
+  assert.ok(Date.parse((await runtime.cloudState()).control.retry.nextAttemptAt)>f.time);
+  f.owner='B';f.visible=state([{id:'B-check',amount:77}]);f.head={revision:7,state:clone(f.visible)};f.rpcHook=null;
+  runtime=f.create();await runtime.initialize({state:f.visible,revision:7,intent:'cloud-authoritative',sourceOwner:'B'});
+  assert.equal((await runtime.cloudState()).control,null);assert.equal(await runtime.sync(),true);
+  assert.equal(f.visible.checks[0].id,'B-check');
 });
