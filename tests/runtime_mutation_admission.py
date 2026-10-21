@@ -14,6 +14,26 @@ FLOW = r"""(async()=>{
   state.notes.push(record);
   await save({operations:[{type:'put',collection:'notes',id,mode:'insert',index:state.notes.length-1,record}]});
   await mainStorageV2.commitPromise;storagePersistence.runtime.cancelPending?.();await storagePersistence.runtime.drain();
+  let protectedFile=null,protectedText='';
+  if(!kupa){
+    const root=await navigator.storage.getDirectory(),directory=await root.getDirectoryHandle('admission-mirror-'+fault,{create:true});
+    storageFiles.selectDirectory({queryPermission:async()=> 'granted',getDirectoryHandle:(...args)=>directory.getDirectoryHandle(...args)});
+    await storageFiles.refreshDirPermission();
+    check(await storageFiles.writeStateToFolder(),'durable initial mirror was not confirmed');
+    const data=await directory.getDirectoryHandle('data');protectedFile=await data.getFileHandle('orders-data.json');
+    protectedText=await (await protectedFile.getFile()).text();
+    check(JSON.parse(protectedText).notes.some(row=>row.id===id&&row.content==='durable original'),'initial mirror content');
+    const proof=await storageV2Coordinator.captureFolderState(),accountScope=cloudAuth.getAccountScope;
+    check(!!proof&&proof.current(),'fresh durable mirror proof');
+    try{
+      cloudAuth.getAccountScope=()=>({owner:'replacement-account',epoch:999});
+      check(!proof.current(),'mirror proof survived an authentication scope change');
+    }finally{cloudAuth.getAccountScope=accountScope}
+    state.notes.find(row=>row.id===id).content='unadmitted same-generation draft';
+    check(!proof.current()&&await storageFiles.writeStateToFolder()===false,'unadmitted visible mutation bypassed durable proof');
+    check(await (await protectedFile.getFile()).text()===protectedText,'unadmitted draft changed the last good native file');
+    state.notes.find(row=>row.id===id).content='durable original';
+  }
   const method=kupa?'persistImmediateBrowserSnapshot':'localSnapshot',original=storageBrowser[method],set=Storage.prototype.setItem,put=IDBObjectStore.prototype.put,error=console.error;
   const create=URL.createObjectURL,click=HTMLAnchorElement.prototype.click;let exported=null;
   try{
@@ -31,6 +51,11 @@ FLOW = r"""(async()=>{
     const indicator=document.getElementById(kupa?'saveIndicator':'savePill');
     check(indicator.textContent.includes('לא נשמר')&&!indicator.hidden,'false saved indicator');
     check(state.notes.find(row=>row.id===id).content===record.content,'draft was rolled back');
+    if(!kupa){
+      check(await storageFiles.writeStateToFolder()===false,'a failed draft was admitted by an independent mirror trigger');
+      await storageFiles.runtime.drain();
+      check(await (await protectedFile.getFile()).text()===protectedText,'failed draft replaced the exact last good native file');
+    }
     URL.createObjectURL=function(blob){exported=blob;return create.call(this,blob)};HTMLAnchorElement.prototype.click=noop;
     if(kupa)uiBackup.downloadJsonBackup();else uiBackup.exportJson();
     await uiBackup.runtime.drain();

@@ -31,10 +31,25 @@ test('cancelled publication still drains its accepted local commit and retains o
   assert.ok(f.events.some(row=>row[0]==='cloud'&&row[2]==='offline'));
   f.pending.resolve(true);await work;assert.equal(f.session.localUndurableGenerations.size,0);assert.equal(f.events.includes('cloud'),false);
 });
-test('a successful folder copy cannot replace the captured failed IDB receipt with a newer success',async t=>{
+test('a failed captured IDB receipt cannot overwrite a folder with a draft despite a newer success',async t=>{
   const f=fixture(t,{folder:true});f.owner.scheduleSave('first');
   f.setReceipt(Promise.resolve(true));f.pending.reject(Error('first commit aborted'));
-  t.mock.timers.tick(200);await f.owner.runtime.drain();assert.equal(f.events.includes('folder'),true);assert.equal(f.events.includes('cloud'),false);
+  t.mock.timers.tick(200);await f.owner.runtime.drain();assert.equal(f.events.includes('folder'),false);assert.equal(f.events.includes('cloud'),false);
+});
+
+for(const result of [false,undefined])test(`unconfirmed receipt ${result} preserves an available folder`,async t=>{
+  const f=fixture(t,{folder:true});f.owner.scheduleSave('draft');f.pending.resolve(result);
+  t.mock.timers.tick(200);await f.owner.runtime.drain();
+  assert.equal(f.events.includes('folder'),false);assert.equal(f.events.includes('cloud'),false);
+});
+
+test('an earlier durable receipt cannot capture a later pending or failed visible generation',async t=>{
+  const f=fixture(t,{folder:true}),next=gate();
+  f.owner.scheduleSave('first');t.mock.timers.tick(200);await settle();
+  f.setReceipt(next.promise);f.owner.scheduleSave('newer draft');f.pending.resolve(true);await settle();
+  assert.equal(f.events.includes('folder'),false,'old receipt cannot copy the new visible draft');
+  next.reject(Error('newer IDB abort'));t.mock.timers.tick(200);await f.owner.runtime.drain();
+  assert.equal(f.events.includes('folder'),false);assert.ok(f.session.localUndurableGenerations.has('failed:2'));
 });
 test('folder failure leaves a durable local commit eligible for cloud publication',async t=>{
   const f=fixture(t,{localOk:true,folder:true,folderFailure:true});f.owner.scheduleSave('edit');f.pending.resolve(true);
@@ -57,7 +72,7 @@ test('publication implementation mutation exposes a false receipt as cloud autho
   const source=fs.readFileSync('netunim-orders/site/assets/js/storage/save-publication.js','utf8');
   const expression="if (await committed!==true) throw new Error('storage_local_commit_unconfirmed');";
   assert.equal(source.split(expression).length,2);
-  const mutated=source.replace("'../shared/debounced-task.js'",JSON.stringify(new URL('../shared/debounced-task.js',import.meta.url).href)).replace(expression,'await committed;');
+  const mutated=source.replace(/'\.\.\/shared\/([^']+)'/g,(_match,name)=>JSON.stringify(new URL('../shared/'+name,import.meta.url).href)).replace(expression,'await committed;');
   const {createOrdersSavePublication}=await import('data:text/javascript;base64,'+Buffer.from(mutated).toString('base64'));
   let sent=0;const owner=createOrdersSavePublication({session:{localGeneration:1},journal:{storageV2CommitPromise:async()=>true},mirror:{available:()=>false,refreshAccess:()=>{}},cloud:{enabled:()=>true,save:async()=>{sent++}},view:{setSave:()=>{},setCloud:()=>{},folderSaveTitle:()=>''},platform:{isOnline:()=>true}});
   owner.schedule({generation:1,localOk:false,accepted:true,committed:Promise.resolve(false)},'unsafe');

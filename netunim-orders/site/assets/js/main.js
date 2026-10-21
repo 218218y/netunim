@@ -271,6 +271,7 @@ const storageFiles=createStorageFiles({
   canWrite:()=>tab.primaryTab&&storageOwner.writable&&!storagePreparationActive()&&!session.storageProtocolBlocked&&storageRecovery.isReady(),
   syncFolderAccessButton:(...args)=>uiFolderStatus.syncFolderAccessButton(...args),
   prepareState:(...args)=>stateSelectors.prepareState(...args),
+  captureMirrorState:async()=>{const proof=await storageV2Coordinator.captureFolderState();return proof?{payload:stateSelectors.prepareState(proof.state),current:proof.current}:null},
   writeVerifiedFolderBackup:(...args)=>storageBackup.writeVerifiedFolderBackup(...args),
   maybeCreateAutomaticFolderBackup:(...args)=>storageBackup.maybeCreateAutomaticFolderBackup(...args),
 });
