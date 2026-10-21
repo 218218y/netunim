@@ -5,17 +5,29 @@ const summary=(sample,state)=>({severity:state.severity,reason_code:state.reason
 const payload=episode=>({incident_id:episode.id,client_instance_id:episode.client,device_label:episode.label,site:episode.site,domain:episode.domain,scope_epoch:episode.epoch,report_version:episode.version,...episode.summary});
 
 export function createSyncIncidentMonitor({site,clientId,deviceLabel=()=>'',accountScope,primary,domains,store,registry,
-  publish=()=>{},visible=()=>true,now=()=>Date.now(),random=Math.random,id=()=>crypto.randomUUID(),timers=globalThis}={}){
-  let stopped=true,timer=null,running=null,observed=null,nextRead=0,readFailures=0;
+  publish=()=>{},visible=()=>true,now=()=>Date.now(),random=Math.random,id=()=>crypto.randomUUID(),timers=globalThis,readTimeoutMs=15000}={}){
+  let stopped=true,timer=null,running=null,runningScope=null,monitorEpoch=0,observed=null,nextRead=0,readFailures=0;
+  const pendingReads=new Set(),readDeadline=Math.max(1,Math.min(60000,Number(readTimeoutMs)||15000));
   let view={status:'unavailable',incidents:[],localError:false};
   const emit=()=>{try{publish(structuredClone(view))}catch{/* Rendering cannot affect durability. */}};
+  const cancelReads=()=>{for(const cancel of pendingReads)cancel()};
   function resetAccount(scope){
     if(sameAccount(scope,observed))return;
+    monitorEpoch++;cancelReads();
     observed={...scope};nextRead=0;readFailures=0;
     view={status:scope.owner?'unavailable':'signed_out',incidents:[],localError:false};emit();
   }
-  const current=scope=>!stopped&&sameAccount(accountScope(),scope);
-  async function sampleDomain(adapter,scope){try{const sample=await adapter.read();return current(scope)?sample:{known:false}}catch{return {known:false}}}
+  const current=scope=>!stopped&&scope.monitorEpoch===monitorEpoch&&sameAccount(accountScope(),scope);
+  function boundedRead(read,scope){
+    return new Promise((resolve,reject)=>{
+      let settled=false,deadline=null;
+      const finish=(error,value)=>{if(settled)return;settled=true;timers.clearTimeout(deadline);pendingReads.delete(cancel);if(error)reject(error);else resolve(value)};
+      const cancel=()=>finish(new Error('sync_incident_read_cancelled'));
+      pendingReads.add(cancel);deadline=timers.setTimeout(()=>finish(new Error('sync_incident_read_timeout')),readDeadline);
+      Promise.resolve().then(()=>{if(!current(scope))throw new Error('sync_incident_read_cancelled');return read()}).then(value=>finish(null,value),error=>finish(error));
+    });
+  }
+  async function sampleDomain(adapter,scope){try{const sample=await boundedRead(()=>adapter.read(),scope);return current(scope)?sample:{known:false}}catch{if(current(scope))view.localError=true;return {known:false}}}
   async function observeDomain(adapter,scope){
     const sample=await sampleDomain(adapter,scope);
     if(!current(scope)||!primary())return;
@@ -88,7 +100,7 @@ export function createSyncIncidentMonitor({site,clientId,deviceLabel=()=>'',acco
   async function readIncidents(scope){
     if(visible()&&now()>=nextRead){
       try{
-        const rows=await registry.list(scope);
+        const rows=await boundedRead(()=>registry.list(scope),scope);
         if(!current(scope))return;
         view.status=rows.length?'incidents':'no_reported_incidents';view.incidents=rows;readFailures=0;nextRead=now()+45_000;
         try{await reconcileReviewed(scope,rows)}catch{view.localError=true}
@@ -99,8 +111,8 @@ export function createSyncIncidentMonitor({site,clientId,deviceLabel=()=>'',acco
     }
     if(current(scope))emit();
   }
-  async function run(){
-    const scope=accountScope();resetAccount(scope);
+  async function run(scope){
+    resetAccount(scope);
     if(!scope.owner||stopped)return;
     view.localError=false;
     // Publish remote warnings before waiting for local reports. Reconciliation
@@ -117,18 +129,18 @@ export function createSyncIncidentMonitor({site,clientId,deviceLabel=()=>'',acco
   function schedule(){if(!stopped&&timer===null)timer=timers.setTimeout(()=>{timer=null;void tick()},5000)}
   function tick(){
     if(stopped)return Promise.resolve();
-    resetAccount(accountScope());
-    if(running)return running;
-    running=run().catch(()=>{view.localError=true;emit()}).finally(()=>{running=null;schedule()});
-    return running;
+    const identity=accountScope();resetAccount(identity);const scope={...identity,monitorEpoch};
+    if(running&&sameAccount(scope,runningScope)&&runningScope.monitorEpoch===monitorEpoch)return running;
+    const work=run(scope).catch(()=>{if(current(scope)){view.localError=true;emit()}}).finally(()=>{if(running===work){running=null;runningScope=null;schedule()}});
+    runningScope=scope;running=work;return work;
   }
   function wake(){resetAccount(accountScope());nextRead=0;return tick()}
   async function review(row){
-    const scope=accountScope();if(!current(scope)||row.owner_id!==scope.owner)throw new Error('sync_incident_account_changed');
+    const scope={...accountScope(),monitorEpoch};if(!current(scope)||row.owner_id!==scope.owner)throw new Error('sync_incident_account_changed');
     await registry.review(row,scope);if(current(scope))await wake();
   }
   return {start(){if(!stopped)return tick();stopped=false;return wake()},wake,tick,review,
     accountChanged(){resetAccount(accountScope());return wake()},
-    stop(){stopped=true;if(timer!==null)timers.clearTimeout(timer);timer=null;view={status:'signed_out',incidents:[],localError:false};emit()},
+    stop(){stopped=true;monitorEpoch++;cancelReads();if(timer!==null)timers.clearTimeout(timer);timer=null;view={status:'signed_out',incidents:[],localError:false};emit()},
     get view(){return structuredClone(view)}};
 }

@@ -125,6 +125,51 @@ test('late network reply cannot commit into a replacement account or primary tab
 test('monitor storage failure is isolated from domain writers and is visible',async()=>{
   const f=fixture();let writes=0;f.store.update=async()=>{throw Error('quota')};await f.monitor.start();writes++;assert.equal(writes,1);assert.equal(f.view.localError,true);
 });
+
+const spin=async()=>{for(let i=0;i<60;i++)await Promise.resolve()};
+test('a stalled journal read times out as unknown and cannot hide another domain conflict',async t=>{
+  const f=fixture();let release;
+  f.samples.orders_main=new Promise(resolve=>{release=resolve});f.samples.shared_checks=conflict();
+  const work=f.monitor.start();t.after(()=>{release(clean());f.monitor.stop()});
+  await spin();assert.equal(f.timers.size,1,'a pending observation needs a bounded deadline');
+  [...f.timers.values()][0]();await work;
+  assert.equal(f.calls.length,1);assert.equal(f.calls[0][1].domain,'shared_checks');
+  assert.equal(f.view.localError,true);assert.equal(f.record('orders_main').episodes.length,0);
+  release(clean());await spin();assert.equal(f.calls.length,1,'a late clean read cannot resolve an unverified incident');
+});
+
+test('an account switch observes the new account without waiting for a stalled old journal',async t=>{
+  const f=fixture();let release;
+  f.samples.orders_main=new Promise(resolve=>{release=resolve});const old=f.monitor.start();
+  t.after(()=>{release(clean());f.monitor.stop()});await spin();
+  f.samples.orders_main=clean();f.scope={owner:other,epoch:2};
+  let settled=false;const switched=f.monitor.accountChanged().then(()=>{settled=true});await spin();
+  assert.equal(settled,true);assert.equal(f.view.status,'no_reported_incidents');
+  release(conflict());await Promise.all([old,switched]);assert.equal(f.calls.length,0);
+});
+
+test('stop/start fences a late list response even when the account epoch is unchanged',async t=>{
+  const f=fixture(),list=f.registry.list;let release,reads=0;
+  f.registry.list=scope=>++reads===1?new Promise(resolve=>{release=resolve}):list(scope);
+  const old=f.monitor.start();await spin();f.monitor.stop();
+  let settled=false;const fresh=f.monitor.start().then(()=>{settled=true});await spin();
+  t.after(()=>{release([]);f.monitor.stop()});
+  assert.equal(settled,true);assert.equal(reads,2);
+  release([serverRow()]);await Promise.all([old,fresh]);assert.equal(f.view.incidents.length,0);
+});
+
+test('an A-B-A account cycle cannot let an old report receipt retire a current episode',async t=>{
+  const f=fixture(),report=f.registry.report;let release,reports=0;
+  f.samples.orders_main=conflict();
+  f.registry.report=(...args)=>++reports===1?new Promise(resolve=>{release=resolve}):report(...args);
+  const old=f.monitor.start();await spin();
+  t.after(()=>{release({resolved_at:'late-old-receipt'});f.monitor.stop()});
+  f.scope={owner:other,epoch:2};f.samples.orders_main=clean();await f.monitor.accountChanged();
+  f.scope={owner,epoch:1};f.samples.orders_main=conflict();await f.monitor.accountChanged();
+  assert.equal(f.record('orders_main').episodes.length,1);
+  release({resolved_at:'late-old-receipt'});await old;
+  assert.equal(f.record('orders_main').episodes.length,1,'a late terminal receipt belongs to the earlier monitor scope');
+});
 function serverRow(){return {owner_id:owner,incident_id:uuid(1),client_instance_id:'client',device_label:'Office',site:'orders',domain:'orders_main',scope_epoch:'E',severity:'warning',reason_code:'stalled',evidence_kind:'journal',has_pending:true,last_error_code:'',report_version:1,first_reported_at:'2026-10-18T10:00:00Z',last_reported_at:'2026-10-18T10:00:00Z',resolved_at:null,resolution_kind:null}}
 test('registry rejects mixed accounts, malformed receipts and stale login bodies',async()=>{
   let scope={owner,epoch:1},row=serverRow(),hold=false;
