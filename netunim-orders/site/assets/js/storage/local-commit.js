@@ -6,9 +6,9 @@ import {createLocalMutationAdmission,hasFailedLocalMutation} from '../shared/loc
 /**
  * @typedef {{localGeneration:number,localUndurableGenerations?:Set<number|string>,cloudSaveRequested?:boolean,cloudSaveMessage?:string}} SaveSession
  * @typedef {{deleteIntents?:object,mutationType?:string,surface?:string,domains?:string[]|null,operations?:unknown[]|null}} SaveOptions
- * @typedef {{generation:number,localOk:boolean,accepted:boolean,committed:Promise<unknown>|null}} LocalReceipt
+ * @typedef {{generation:number,localOk:boolean,accepted:boolean,committed:Promise<unknown>|null,current?:()=>boolean}} LocalReceipt
  * @typedef {{setSave:(message:string,mode:string,title?:string)=>unknown,setCloud:(message:string,mode:string)=>unknown,folderSaveTitle:()=>string}} SaveView
- * @typedef {{localSnapshot:(state:undefined,options:SaveOptions&{generation:number})=>boolean,storageV2CommitPromise:()=>Promise<unknown>,storageV2DurabilityAtRisk:()=>boolean}} SaveJournal
+ * @typedef {{localSnapshot:(state:undefined,options:SaveOptions&{generation:number})=>boolean,storageV2CommitPromise:()=>Promise<unknown>,storageV2DurabilityAtRisk:()=>boolean,confirmVisibleState?:()=>Promise<boolean>}} SaveJournal
  */
 
 /** @param {{access:{primary:()=>boolean,error:()=>{message:string}|null|undefined,showSecondaryTabGuard:()=>unknown,mutationScope?:()=>unknown},session:SaveSession,journal:SaveJournal,projection:{touch:(domains:string[])=>unknown,touchAll:()=>unknown},view:SaveView,platform:{reload:()=>unknown}}} ports */
@@ -47,8 +47,16 @@ export function createOrdersLocalCommit({access,session,journal,projection,view,
       return {localOk,accepted,committed:accepted?journal.storageV2CommitPromise():null};
     });
     done();
+    const proof=journal.confirmVisibleState;
+    if(proof){
+      receipt.committed=receipt.committed.then(async confirmed=>{
+        if(confirmed&&receipt.current()&&hasFailedLocalMutation(session))await admission.reconcile(proof);
+        return confirmed;
+      });
+      receipt.settled=receipt.committed.catch(()=>false);
+    }
     void tasks.run(async()=>{
-      if(await receipt.committed&&receipt.current()&&tasks.isActive()&&generation===session.localGeneration&&!hasFailedLocalMutation(session))view.setSave('מקומי: שמור','',view.folderSaveTitle());
+      if(await receipt.settled&&receipt.current()&&tasks.isActive()&&generation===session.localGeneration&&!hasFailedLocalMutation(session))view.setSave('מקומי: שמור','',view.folderSaveTitle());
     });
     return {generation,...receipt};
   }

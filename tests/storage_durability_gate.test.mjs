@@ -93,7 +93,7 @@ test('Orders does not send an edit whose IDB-only journal commit fails',async()=
   await new Promise(resolve=>setTimeout(resolve,220));
   commit.reject(new Error('injected IDB failure'));await tick();
   assert.deepEqual(sent,[]);
-  assert.equal(session.localUndurableGenerations?.size,1);
+  assert.ok(session.localUndurableGenerations?.has('failed:1'));
 });
 
 test('Kupa does not send V2 cloud work before an IDB-only journal commit',async()=>{
@@ -109,7 +109,7 @@ test('Kupa does not send V2 cloud work before an IDB-only journal commit',async(
   });
   const saving=persistence.saveState('edit',{domains:['notes'],operations:[{type:'put',collection:'notes',id:'N1',record:{id:'N1'}}]});
   await tick();await tick();assert.deepEqual(sent,[]);
-  commit.resolve();assert.equal(await saving,true);
+  commit.resolve(true);assert.equal(await saving,true);
   assert.deepEqual(sent,['sent']);
 });
 
@@ -156,8 +156,8 @@ test('Kupa does not send a cloud write after local V2 durability fails',async()=
   const original=console.error;console.error=noop;
   try{assert.equal(await persistence.saveState('edit',{domains:['notes'],operations:[{type:'put',collection:'notes',id:'N1',record:{id:'N1'}}]}),false)}
   finally{console.error=original}
-  assert.deepEqual(sent,[]);assert.ok(statuses.some(value=>value.includes('שגיאת עותק מקומי')));
-  assert.equal(session.localUndurableGenerations?.size,1);
+  assert.deepEqual(sent,[]);assert.ok(statuses.some(value=>value.includes('לא נשמר')));
+  assert.ok(session.localUndurableGenerations?.has('failed:state:1'));
 });
 
 test('an account change cannot clear an uncommitted IDB-only mutation guard',async()=>{

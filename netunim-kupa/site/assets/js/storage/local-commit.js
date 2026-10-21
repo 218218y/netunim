@@ -23,11 +23,21 @@ function stageLocal(snapshot,options){
     return {localOk,accepted:localOk||storageV2DurabilityAtRisk(),committed:storageV2CommitPromise()};
   });
 }
+async function confirmLocal(receipt){
+  if(await receipt.settled!==true||!receipt.current())return false;
+  if(hasFailedLocalMutation(session))return admission.reconcile(async()=>{
+    if(await storageV2CommitPromise()!==true)return false;
+    const recovered=await recoverStorageV2State();
+    return !!recovered&&equalSyncJson(mainBusinessState(recovered.state),mainBusinessState(model.state));
+  });
+  return true;
+}
 function mergeDeleteIntents(...values){const out={};for(const value of values){if(!value||typeof value!=='object'||Array.isArray(value))continue;for(const [key,ids] of Object.entries(value)){const clean=[...new Set((Array.isArray(ids)?ids:[]).map(x=>String(x||'').trim()).filter(Boolean))];if(clean.length)out[key]=[...new Set([...(out[key]||[]),...clean])].sort()}}return out}
 const nextTurn=work=>new Promise(resolve=>setTimeout(resolve,0)).then(work);
 function markMainPending(){if(session.connectionMode==='supabase'&&session.backendReady)setCloudHeaderStatus(!isOnline()?'offline':'syncing',!isOnline()?'ענן: אופליין':'ענן: ממתין לסנכרון')}
 
 function saveStateAccepted(...args){
+  if(tab.primaryTab&&!session.localSourceSwitchPending&&storageV2Primary())measureStorage('validate',()=>assertKupaEntityInvariants(model.state,{includeChecks:true,required:true}));
   try{const pending=saveStateProposed(...args),token=`state:${session.localGeneration}`;return Promise.resolve(pending).catch(error=>admission.reject(token,error))}
   catch(error){admission.reject(`state:${session.localGeneration}`,error);return Promise.resolve(false)}
 }
@@ -35,7 +45,6 @@ function saveStateProposed(msg='נשמר',{deleteIntents={},mutationType='autosa
   if(!tab.primaryTab){showSecondaryTabGuard();return Promise.resolve(false)}
   if(session.localSourceSwitchPending){setSaveStatus('ממתין להשלמת חיבור מקור הנתונים','saving');return Promise.resolve(false)}
   if(!storageV2Primary()){setSaveStatus('אחסון V2 אינו מוכן — השמירה נעצרה','error');return Promise.resolve(false)}
-  measureStorage('validate',()=>assertKupaEntityInvariants(model.state,{includeChecks:true,required:true}));
   if(mutationType==='restore'||mutationType==='import')domainRevisions?.touchAll();else if(Array.isArray(domains)&&domains.length)domainRevisions?.touch(domains);else domainRevisions?.touchAll();
   const localDone=beginMeasure('kupa:save-local',{paint:true});
   // Only the business layer knows whether normalization may remove a credit.
@@ -49,7 +58,7 @@ function saveStateProposed(msg='נשמר',{deleteIntents={},mutationType='autosa
     // The operation is already durable. Yield so normalization, cloud projection
     // and file I/O cannot delay the paint caused by the user's edit.
     return nextTurn(async()=>{
-      if(await receipt.committed!==true||!receipt.current()||hasFailedLocalMutation(session))return false;
+      if(!await confirmLocal(receipt))return false;
       const currentGeneration=session.localGeneration,fullSnapshot=measureStorage('normalize',()=>normalizeState(model.state)),snapshot=session.connectionMode==='supabase'?prepareKupaCloudState(fullSnapshot,{normalized:true}):fullSnapshot;
       if(session.connectionMode==='supabase'&&session.backendReady){
         const head=await refreshStorageV2CloudState();
@@ -85,7 +94,7 @@ function saveStateProposed(msg='נשמר',{deleteIntents={},mutationType='autosa
   if(!receipt.localOk)setSaveStatus('ממתין לאישור שמירה ב־IndexedDB','saving');
   markMainPending();
   const continueSave=async()=>{
-    if(await receipt.committed!==true||!receipt.current()||hasFailedLocalMutation(session))return false;
+    if(!await confirmLocal(receipt))return false;
     if(session.connectionMode==='supabase'&&session.backendReady){
       const head=await refreshStorageV2CloudState();
       if(!head?.base){setSaveStatus('ראש ענן V2 חסר — השינוי נשמר מקומית אך הסנכרון נעצר','error');return false}

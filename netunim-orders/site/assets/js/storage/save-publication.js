@@ -29,6 +29,7 @@ export function createOrdersSavePublication({session,journal,mirror,cloud,view,p
       if (accepted) {
         try {
           if (await committed!==true) throw new Error('storage_local_commit_unconfirmed');
+          if(receipt.current&&!receipt.current())return;
           if (!disposed&&generation===session.localGeneration) view.setSave('מקומי: שמור','',view.folderSaveTitle());
           if (cloud.enabled()) {
             if (await journal.storageV2CommitPromise()!==true) throw new Error('storage_local_commit_unconfirmed');

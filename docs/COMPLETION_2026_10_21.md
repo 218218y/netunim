@@ -73,7 +73,11 @@ export includes that visible draft. A later successful generation cannot clear
 another failed generation. Cloud publication, remote adoption, ACK model
 publication and source/account transfer cannot silently replace that draft.
 The user can export it, reload the durable source, then deliberately reapply or
-import it. There is no automatic retry of an operation with unknown admission.
+import it. An explicit retry can retire old failure markers only when a fresh
+journal recovery equals the complete visible business state and the captured
+generation and account scope have not changed. This preserves the existing
+Bank local-snapshot retry, without allowing an unrelated newer edit to conceal
+an earlier failed draft. There is no automatic duplicate admission.
 
 Focused tests cover pre-receipt exceptions, rejected/false commit results,
 50 interleaved receipts with one failure, replacement-account fencing, actual

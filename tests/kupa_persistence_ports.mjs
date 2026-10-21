@@ -7,7 +7,7 @@ export function createStoragePersistence(p){
     journal:{
       sharedChecksV2:p.sharedChecksV2??null,storageV2Boundary:p.storageV2Boundary??null,
       storageV2Primary:p.storageV2Primary??(()=>false),
-      storageV2CommitPromise:p.storageV2CommitPromise??(()=>Promise.resolve()),
+      storageV2CommitPromise:p.storageV2CommitPromise??(()=>Promise.resolve(true)),
       storageV2DurabilityAtRisk:p.storageV2DurabilityAtRisk??(()=>false),
       recoverStorageV2State:p.recoverStorageV2State??(async()=>null),
       refreshStorageV2CloudState:p.refreshStorageV2CloudState??(async()=>null),

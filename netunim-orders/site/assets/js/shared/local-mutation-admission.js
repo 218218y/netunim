@@ -1,5 +1,5 @@
 // @ts-check
-/** @typedef {{localUndurableGenerations?:Set<string|number>}} MutationSession */
+/** @typedef {{localGeneration?:number,localUndurableGenerations?:Set<string|number>}} MutationSession */
 /** @param {MutationSession} session */
 export function hasFailedLocalMutation(session){
   return [...(session.localUndurableGenerations||[])].some(token=>String(token).startsWith('failed:'));
@@ -24,18 +24,30 @@ export function createLocalMutationAdmission({session,scope=()=>null,onFailure})
    * @param {()=>{localOk:boolean,accepted:boolean,committed:Promise<unknown>|null}} submit */
   function admit(token,submit){
     const guard=capture(token);
-    const receipt={localOk:false,accepted:false,phase:'proposed',committed:Promise.resolve(false),current:guard.current};
+    const receipt={localOk:false,accepted:false,phase:'proposed',committed:Promise.resolve(false),settled:Promise.resolve(false),current:guard.current};
     try{
       const result=submit();
       if(!result.accepted||typeof result.committed?.then!=='function')throw new Error('storage_local_commit_receipt_required');
       receipt.localOk=result.localOk;receipt.accepted=true;receipt.phase='durable-pending';
       if(!result.localOk)guard.risks.add(token);
       receipt.committed=result.committed.then(confirmed=>{
-        if(confirmed!==true)throw new Error('storage_local_commit_unconfirmed');
+        if(confirmed!==true){receipt.phase='failed';guard.fail(new Error('storage_local_commit_unconfirmed'));return false}
         guard.risks.delete(token);receipt.phase='durable';return true;
-      }).catch(error=>{receipt.phase='failed';guard.fail(error);return false});
+      },error=>{receipt.phase='failed';guard.fail(error);throw error});
+      receipt.settled=receipt.committed.catch(()=>false);
     }catch(error){receipt.phase='rejected';guard.fail(error)}
     return receipt;
   }
-  return {admit,reject};
+  /** Retire failed drafts only after the actual journal proves the complete
+   * visible business state, with no intervening generation/scope change.
+   * @param {()=>Promise<boolean>} prove */
+  async function reconcile(prove){
+    if(!hasFailedLocalMutation(session))return true;
+    const guard=capture('reconcile'),generation=session.localGeneration,failed=[...guard.risks].filter(token=>String(token).startsWith('failed:'));
+    if(await prove()&&guard.current()&&generation===session.localGeneration){
+      for(const token of failed){guard.risks.delete(token);const original=String(token).slice(7);for(const value of guard.risks)if(String(value)===original)guard.risks.delete(value)}
+    }
+    return !hasFailedLocalMutation(session);
+  }
+  return {admit,reject,reconcile};
 }
