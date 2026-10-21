@@ -20,6 +20,8 @@ export function createLocalMutationAdmission({session,scope=()=>null,onFailure})
   }
   /** @param {string|number} token @param {unknown} error */
   function reject(token,error){capture(token).fail(error);return false}
+  /** @param {string|number} token @returns {(error:unknown)=>false} */
+  function captureFailure(token){const guard=capture(token);return error=>{guard.fail(error);return false}}
   /** @param {string|number} token
    * @param {()=>{localOk:boolean,accepted:boolean,committed:Promise<unknown>|null}} submit */
   function admit(token,submit){
@@ -49,5 +51,5 @@ export function createLocalMutationAdmission({session,scope=()=>null,onFailure})
     }
     return !hasFailedLocalMutation(session);
   }
-  return {admit,reject,reconcile};
+  return {admit,reject,captureFailure,reconcile};
 }
