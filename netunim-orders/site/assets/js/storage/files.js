@@ -6,7 +6,7 @@ import {createFolderWriteRuntime} from './folder-write-runtime.js';
 
 // Native I/O stays at this boundary. The private selection owns preparation;
 // every command captures that selection and its detached input at submission.
-export function createStorageFiles({files,tab,syncFolderAccessButton,prepareState,writeVerifiedFolderBackup,maybeCreateAutomaticFolderBackup,canWrite=()=>tab.primaryTab}){
+export function createStorageFiles({files,tab,syncFolderAccessButton,prepareState,writeVerifiedFolderBackup,maybeCreateAutomaticFolderBackup,canWrite=()=>tab.primaryTab,captureMirrorState=async()=>null}){
   const permissions=createRuntimeTaskOwner();
   let selection=null,active=true,generation=0;
   function readTarget(){
@@ -106,7 +106,14 @@ export function createStorageFiles({files,tab,syncFolderAccessButton,prepareStat
   function writeStateToFolder(forceBackup=false){
     if(!active||!canWrite()||!files.dirHandle)return Promise.resolve(false);
     if(files.dirPermission!=='granted'){syncFolderAccessButton();return Promise.resolve(false)}
-    return writer.mirror(prepareState(),forceBackup);
+    const current=captureSelection();
+    // Track proof work in this file owner's existing preflight drain. Capture
+    // precedes native I/O; neither path joins the Main/Shared cloud queue.
+    return permissions.run(async()=>{
+      const proof=await captureMirrorState();
+      if(!proof?.current()||!current())return false;
+      return writer.mirror(proof.payload,forceBackup);
+    });
   }
   function cancelPending(){generation++;writer.cancelPending()}
   const runtime={

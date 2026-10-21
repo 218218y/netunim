@@ -132,7 +132,9 @@ for (const first of ['main', 'checks']) {
     assert.deepEqual(f.events.filter(Array.isArray).sort(), [
       ['checks-cloud', 'Check edit'], ['main-cloud', 'Main edit'],
     ]);
-    assert.equal(f.events.filter(event => event === 'folder').length, 2);
+    // Main's older receipt cannot copy a newer Checks generation. The latest
+    // document still supplies the combined mirror; both cloud duties remain.
+    assert.equal(f.events.filter(event => event === 'folder').length, first==='main'?1:2);
     assert.equal(f.session.cloudSaveRequested, true);
     assert.equal(f.checksSession.checksSaveRequested, true);
   });

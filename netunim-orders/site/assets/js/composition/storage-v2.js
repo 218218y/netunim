@@ -12,6 +12,8 @@ import {createStorageV2CloudPorts} from '../storage/v2-cloud-ports.js';
 import {createSharedChecksV2Composition} from '../shared/shared-checks-v2-composition.js';
 import {assertValidOrderCloudState} from '../state/validation.js';
 import {INITIAL_STATE} from '../state/constants.js';
+import {createSharedChecksStorageV2} from '../shared/shared-checks-storage-v2.js';
+import {equalSyncJson} from '../shared/cloud-sync.js';
 
 // Owns the Orders V2 storage lifecycle. main.js supplies application ports.
 export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis.localStorage}={}){
@@ -172,7 +174,29 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
     const p=requirePorts(),recovered=await p.sharedChecksV2Composition.recoverPrimary();
     return recovered;
   }
-  return {owner,bootstrap,preparing,mode,createRuntime,createCloudPorts,createSharedComposition,recoverShared,configure,ownerAdoption,startupProtocol,startupAdmission,startStorageV2OwnerTransfer,resumeStorageV2OwnerTransfer,
+  async function captureFolderState(){
+    const p=requirePorts(),identity=owner.current(),generation=session.localGeneration;
+    const account=JSON.stringify(p.cloudAuth.getAccountScope()),scope=JSON.stringify(p.mainStorageV2.cloudScope);
+    const mainCommit=p.mainStorageV2.commitPromise,sharedCommit=p.sharedChecksV2.commitPromise;
+    const current=()=>tab.primaryTab&&owner.writable&&!preparing()&&owner.current()===identity&&generation===session.localGeneration
+      &&account===JSON.stringify(p.cloudAuth.getAccountScope())&&scope===JSON.stringify(p.mainStorageV2.cloudScope)
+      &&p.mainStorageV2.primaryReady&&p.sharedChecksV2.localReady&&!session.localUndurableGenerations?.size
+      &&!p.mainStorageV2.durabilityAtRisk&&!p.sharedChecksV2.durabilityAtRisk
+      &&mainCommit===p.mainStorageV2.commitPromise&&sharedCommit===p.sharedChecksV2.commitPromise;
+    if(!current())return null;
+    await Promise.all([mainCommit,sharedCommit]);if(!current())return null;
+    // Read without publishing into the visible model. A backup is never an
+    // implicit admission or recovery of an optimistic draft.
+    const shared=createSharedChecksStorageV2({owner:()=>identity,primary:()=>false});
+    const [main,checks]=await Promise.all([p.mainStorageV2.recoverReadOnly(),shared.recoverReadOnly()]);
+    if(!current()||!main?.state||!checks?.state)return null;
+    // Workbooks have their own durable owner; use the established Main
+    // projection so its UI-only external-workbook marker is canonical too.
+    const snapshot={...p.stateSnapshots.prepareCloudState(main.state),checks:checks.state.checks};
+    const matches=()=>current()&&p.stateSnapshots.sameOrderCloudData(snapshot,p.model.state)&&equalSyncJson(snapshot.checks,p.model.state.checks);
+    return matches()?{state:snapshot,current:matches}:null;
+  }
+  return {owner,bootstrap,preparing,mode,createRuntime,createCloudPorts,createSharedComposition,recoverShared,captureFolderState,configure,ownerAdoption,startupProtocol,startupAdmission,startStorageV2OwnerTransfer,resumeStorageV2OwnerTransfer,
     ownerUiPorts:()=>({storageOwnerCurrent:()=>owner.current(),storageOwnerAdoption:()=>ownerAdoption()}),
     localBirthLifecyclePorts:()=>({hydrateLocalBirth:()=>localBirth.hydrate()}),
     ownerTransferLifecyclePorts:()=>({hydrateStorageV2OwnerTransfer:()=>ownerTransfer.hydrate()}),

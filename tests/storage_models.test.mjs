@@ -49,6 +49,7 @@ test('Orders folder writes serialize and back up pre-existing data before replac
  data.files.set('orders-data.json',memoryFile(JSON.stringify(old)));
  let snapshot={...old,businessName:'first'},backups=[];
  const api=orderFiles({files,tab,syncFolderAccessButton:()=>{},prepareState:()=>structuredClone(snapshot),
+   captureMirrorState:async()=>({payload:structuredClone(snapshot),current:()=>true}),
    writeVerifiedFolderBackup:async(_dir,name,payload)=>{backups.push({name,payload:structuredClone(payload)})},maybeCreateAutomaticFolderBackup:async()=>{}});
  const first=api.writeStateToFolder();snapshot={...old,businessName:'latest'};const second=api.writeStateToFolder(true);
  assert.deepEqual(await Promise.all([first,second]),[true,true]);

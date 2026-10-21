@@ -21,10 +21,11 @@ function directory(){
       return entries.get(name);
     }};
 }
-function fixture(){
+function fixture({capture}={}){
   const a=directory(),b=directory(),files={dirHandle:a,dirPermission:'granted',folderLastError:''},tab={primaryTab:true},backups=[];
   let state=snapshot('current');
   const api=createStorageFiles({files,tab,prepareState:()=>structuredClone(state),syncFolderAccessButton:()=>{},
+    captureMirrorState:capture??(async()=>({payload:structuredClone(state),current:()=>true})),
     writeVerifiedFolderBackup:async(dir,name,payload)=>{backups.push({dir,name,payload:structuredClone(payload)});return name},
     maybeCreateAutomaticFolderBackup:async()=>null});
   return {a,b,files,tab,api,backups,setState:value=>{state=value}};
@@ -36,6 +37,26 @@ test('a held permission result cannot grant or write the newly selected director
   f.files.dirHandle=f.b;f.files.dirPermission='prompt';held.resolve('granted');
   await writing;
   assert.equal(f.files.dirPermission,'prompt');assert.equal(f.b.dirs.size,0);
+});
+
+test('unproven or stale mirror evidence cannot replace the exact last good file',async()=>{
+  for(const proof of [null,{payload:snapshot('unaccepted draft'),current:()=>false}]){
+    const f=fixture({capture:async()=>proof});
+    const data=await f.a.getDirectoryHandle('data',{create:true}),file=await data.getFileHandle('orders-data.json',{create:true});
+    const text=JSON.stringify(snapshot('last good')),stream=await file.createWritable();await stream.write(text);await stream.close();
+    assert.equal(await f.api.writeStateToFolder(),false);assert.equal(file.text,text);assert.equal(f.backups.length,0);
+  }
+});
+
+test('late mirror evidence cannot write after account invalidation, reselection or disposal',async()=>{
+  for(const change of ['account','selection','dispose']){
+    const entered=gate(),held=gate();let current=true;
+    const f=fixture({capture:async()=>{entered.resolve();await held.promise;return {payload:snapshot('captured'),current:()=>current}}});
+    const writing=f.api.writeStateToFolder();await entered.promise;
+    if(change==='account')current=false;else if(change==='selection')f.api.selectDirectory(f.b);else f.api.runtime.dispose();
+    let drained=false;const drain=f.api.runtime.drain().then(()=>{drained=true});await Promise.resolve();assert.equal(drained,false);
+    held.resolve();assert.equal(await writing,false);await drain;assert.equal(f.a.dirs.size,0);assert.equal(f.b.dirs.size,0);
+  }
 });
 test('a started working-file stream keeps its captured target for backups after a folder change',async()=>{
   const f=fixture(),entered=gate(),held=gate();
