@@ -211,7 +211,22 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
     const p=requirePorts(),recovered=await p.sharedChecksV2Composition.recoverPrimary();
     return recovered;
   }
-  return {owner,bootstrap,preparing,mode,createRuntime,createCloudPorts,createSharedComposition,recoverShared,configure,ownerAdoption,startupProtocol,startupAdmission,recoverLocalV2State,recoverReadOnlyV2State,
+  async function confirmVisibleState(){
+    const p=requirePorts(),identity=owner.current(),generation=session.localGeneration;
+    const scope=JSON.stringify([p.mainStorageV2.cloudScope,p.cloudAuth.getAccountScope()]);
+    const mainCommit=p.mainStorageV2.commitPromise,sharedCommit=p.sharedChecksV2.commitPromise;
+    const current=()=>tab.primaryTab&&owner.writable&&!preparing()&&identity===owner.current()&&generation===session.localGeneration
+      &&scope===JSON.stringify([p.mainStorageV2.cloudScope,p.cloudAuth.getAccountScope()])&&p.mainStorageV2.primaryReady&&p.sharedChecksV2.localReady
+      &&mainCommit===p.mainStorageV2.commitPromise&&sharedCommit===p.sharedChecksV2.commitPromise;
+    if(!current())return false;
+    await Promise.all([mainCommit,sharedCommit]);if(!current())return false;
+    const shared=createSharedChecksStorageV2({owner:()=>identity,primary:()=>false});
+    const [main,checks]=await Promise.all([p.mainStorageV2.recoverReadOnly(),shared.recoverReadOnly()]);
+    if(!current()||!main?.state||!checks?.state)return false;
+    const business=state=>{const snapshot=p.stateNormalization.prepareKupaStorageState(state);delete snapshot._meta;return snapshot};
+    return equalSyncJson(business({...main.state,checks:checks.state.checks}),business(p.model.state));
+  }
+  return {owner,bootstrap,preparing,mode,createRuntime,createCloudPorts,createSharedComposition,recoverShared,confirmVisibleState,configure,ownerAdoption,startupProtocol,startupAdmission,recoverLocalV2State,recoverReadOnlyV2State,
     ownerUiPorts:()=>({storageOwnerCurrent:()=>owner.current(),storageOwnerAdoption:()=>ownerAdoption(),
       startStorageV2OwnerTransfer,storageV2OwnerTransferPreparing:()=>!!ownerTransfer?.preparing||transferRebinding}),
     accountContextPort:()=>({assertAccountOwner:assertAuthenticatedAccountOwner}),

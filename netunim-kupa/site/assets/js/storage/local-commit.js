@@ -27,8 +27,7 @@ async function confirmLocal(receipt){
   if(await receipt.settled!==true||!receipt.current())return false;
   if(hasFailedLocalMutation(session))return admission.reconcile(async()=>{
     if(await storageV2CommitPromise()!==true)return false;
-    const recovered=await recoverStorageV2State();
-    return !!recovered&&equalSyncJson(mainBusinessState(recovered.state),mainBusinessState(model.state));
+    return !!await journal.confirmVisibleState?.();
   });
   return true;
 }
@@ -36,20 +35,30 @@ function mergeDeleteIntents(...values){const out={};for(const value of values){i
 const nextTurn=work=>new Promise(resolve=>setTimeout(resolve,0)).then(work);
 function markMainPending(){if(session.connectionMode==='supabase'&&session.backendReady)setCloudHeaderStatus(!isOnline()?'offline':'syncing',!isOnline()?'ענן: אופליין':'ענן: ממתין לסנכרון')}
 
-function saveStateAccepted(...args){
-  if(tab.primaryTab&&!session.localSourceSwitchPending&&storageV2Primary())measureStorage('validate',()=>assertKupaEntityInvariants(model.state,{includeChecks:true,required:true}));
-  try{const pending=saveStateProposed(...args),token=`state:${session.localGeneration}`;return Promise.resolve(pending).catch(error=>admission.reject(token,error))}
-  catch(error){admission.reject(`state:${session.localGeneration}`,error);return Promise.resolve(false)}
+function saveStateAccepted(msg='נשמר',options={}){
+  const generation=Number(session.localGeneration||0)+1,reject=admission.captureFailure(`proposal:${generation}`);
+  try{
+    let blocked='';
+    if(!tab.primaryTab){showSecondaryTabGuard();blocked='storage_secondary_tab'}
+    else if(session.localSourceSwitchPending){setSaveStatus('ממתין להשלמת חיבור מקור הנתונים','saving');blocked='storage_source_switch_pending'}
+    else if(!storageV2Primary()){setSaveStatus('אחסון V2 אינו מוכן — השמירה נעצרה','error');blocked='storage_v2_not_ready'}
+    if(blocked){
+      // Every Main UI mutation submits typed operations. A guard-only probe
+      // has no mutation intent and must not invent an unsafe draft.
+      if(Array.isArray(options?.operations)&&options.operations.length){session.localGeneration=generation;reject(new Error(blocked))}
+      return Promise.resolve(false);
+    }
+    session.localGeneration=generation;
+    measureStorage('validate',()=>assertKupaEntityInvariants(model.state,{includeChecks:true,required:true}));
+    return Promise.resolve(saveStateProposed(msg,options,generation)).catch(reject);
+  }catch(error){return Promise.resolve(reject(error))}
 }
-function saveStateProposed(msg='נשמר',{deleteIntents={},mutationType='autosave',surface='kupa',domains=null,operations=null}={}){
-  if(!tab.primaryTab){showSecondaryTabGuard();return Promise.resolve(false)}
-  if(session.localSourceSwitchPending){setSaveStatus('ממתין להשלמת חיבור מקור הנתונים','saving');return Promise.resolve(false)}
-  if(!storageV2Primary()){setSaveStatus('אחסון V2 אינו מוכן — השמירה נעצרה','error');return Promise.resolve(false)}
+function saveStateProposed(msg,{deleteIntents={},mutationType='autosave',surface='kupa',domains=null,operations=null},generation){
   if(mutationType==='restore'||mutationType==='import')domainRevisions?.touchAll();else if(Array.isArray(domains)&&domains.length)domainRevisions?.touch(domains);else domainRevisions?.touchAll();
   const localDone=beginMeasure('kupa:save-local',{paint:true});
   // Only the business layer knows whether normalization may remove a credit.
   // Without its policy, take the full normalization path instead of skipping it.
-  const generation=++session.localGeneration,typed=Array.isArray(operations)&&operations.length>0,normalizationMayDelete=(model.state.credits||[]).some(creditNormalizationMayDelete),fastLocal=typed&&!normalizationMayDelete;
+  const typed=Array.isArray(operations)&&operations.length>0,normalizationMayDelete=(model.state.credits||[]).some(creditNormalizationMayDelete),fastLocal=typed&&!normalizationMayDelete;
   if(fastLocal){
     const receipt=stageLocal(model.state,{operations,generation,mutationType,surface,deleteIntents});localDone();
     if(!receipt.accepted)return Promise.resolve(false);

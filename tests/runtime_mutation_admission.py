@@ -35,10 +35,16 @@ FLOW = r"""(async()=>{
     state.notes.find(row=>row.id===id).content='durable original';
   }
   const method=kupa?'persistImmediateBrowserSnapshot':'localSnapshot',original=storageBrowser[method],set=Storage.prototype.setItem,put=IDBObjectStore.prototype.put,error=console.error;
+  const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js'),db=createStorageJournalDb();
+  const mainBefore=JSON.stringify(await db.load('local:'+app)),sharedBefore=JSON.stringify(await db.load('local:shared-checks'));
   const create=URL.createObjectURL,click=HTMLAnchorElement.prototype.click;let exported=null;
   try{
     console.error=noop;
-    if(fault==='synchronous')storageBrowser[method]=()=>{throw Error('storage_v2_write_unavailable')};
+    if(fault==='validation'){
+      check(kupa,'validation scenario belongs to Kupa');
+      const invalid={id:'duplicate-check',name:'invalid draft',amount:10,status:'בקופה',account:'עסקי',dueDate:'2026-10-21'};
+      state.checks.push(invalid,{...invalid});
+    }else if(fault==='synchronous')storageBrowser[method]=()=>{throw Error('storage_v2_write_unavailable')};
     else{
       Storage.prototype.setItem=function(key,value){if(String(key).startsWith('netunim-storage-v2-emergency:'))throw Error('emergency unavailable');return set.call(this,key,value)};
       IDBObjectStore.prototype.put=function(...args){const result=put.apply(this,args);if(this.name==='journal'&&args[1]?.[0]==='local:'+app){this.transaction.abort();throw Error('injected native journal abort')}return result};
@@ -46,6 +52,7 @@ FLOW = r"""(async()=>{
     record.content='visible draft without durable admission';state.notes.find(row=>row.id===id).content=record.content;
     await save(options());storagePersistence.runtime.cancelPending?.();await storagePersistence.runtime.drain();
     check([...session.localUndurableGenerations].some(token=>String(token).startsWith('failed:')),'failure lacks unload/draft marker');
+    if(fault==='validation')check(JSON.stringify(await db.load('local:'+app))===mainBefore&&JSON.stringify(await db.load('local:shared-checks'))===sharedBefore,'validation failure wrote invalid state to a journal');
     if(kupa){uiStatus.setSaveStatus('saved','ok');uiStatus.setCloudHeaderStatus('synced','synced')}
     else{uiStatus.setSave('saved');uiStatus.setCloud('synced','synced')}
     const indicator=document.getElementById(kupa?'saveIndicator':'savePill');
@@ -60,16 +67,22 @@ FLOW = r"""(async()=>{
     if(kupa)uiBackup.downloadJsonBackup();else uiBackup.exportJson();
     await uiBackup.runtime.drain();
     check(exported&&JSON.parse(await exported.text()).notes.some(row=>row.id===id&&row.content===record.content),'production JSON export lost draft');
+    if(fault==='validation'){
+      check(JSON.parse(await exported.text()).checks.filter(row=>row.id==='duplicate-check').length===2,'draft export silently repaired invalid user data');
+      state.notes.find(row=>row.id===id).content='durable original';state.checks.pop();
+      check(await storageV2Coordinator.confirmVisibleState()===false,'Main equality hid a valid but unjournaled Shared draft');
+      check(state.checks.some(row=>row.id==='duplicate-check'),'durable proof mutated the visible draft');
+    }
   }finally{storageBrowser[method]=original;Storage.prototype.setItem=set;IDBObjectStore.prototype.put=put;console.error=error;URL.createObjectURL=create;HTMLAnchorElement.prototype.click=click}
   return {id,expected:'durable original'};
 })()"""
 
 parser=argparse.ArgumentParser()
 parser.add_argument('--app',choices=['orders','kupa'])
-parser.add_argument('--fault',choices=['synchronous','native-abort'])
+parser.add_argument('--fault',choices=['synchronous','native-abort','validation'])
 options=parser.parse_args()
 for app in ([options.app] if options.app else ('orders','kupa')):
-    for fault in ([options.fault] if options.fault else ('synchronous','native-abort')):
+    for fault in ([options.fault] if options.fault else (('synchronous','native-abort','validation') if app=='kupa' else ('synchronous','native-abort'))):
         with BrowserSession(ROOT/f'netunim-{app}/site',f'{app}-mutation-{fault}') as browser:
             result=browser.evaluate(FLOW.replace('APP',json.dumps(app)).replace('FAULT',json.dumps(fault)),timeout=45)
             browser._navigate();browser.evaluate('appReady.then(()=>true)')
