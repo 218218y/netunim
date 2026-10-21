@@ -119,3 +119,45 @@ test('Kupa successful new pairing re-arms a stopped bank scheduler without navig
   assert.equal(bankJobs.size,0);
   controller.runtime.dispose();
 });
+
+// A browser wakeup must only arm missing timers. Restarting the finance owner
+// invalidates its epoch and falsely aborts work that already entered the bank.
+test('Orders browser wakeups do not revoke an already-admitted bank refresh',async()=>{
+  const f=environment();
+  let admit, release;
+  const entered=new Promise(resolve=>{admit=resolve});
+  const pending=new Promise(resolve=>{release=resolve});
+  let current;
+  const scheduler=createOrdersFinanceAutomation({
+    access:{primary:()=>true,authenticated:()=>true,online:()=>true,busy:()=>false,capture:()=>()=>{}},
+    preferences:{getBridgeToken:()=> 'paired',bankAutoEnabled:()=>true,creditAutoEnabled:()=>false,creditAutoMode:()=> 'smart',bankAttemptDelayMs:()=>0},
+    readLastSyncAt:()=>null,
+    commands:{bank:async({isCurrent})=>{current=isCurrent;admit();await pending;return isCurrent()},credit:async()=>true},
+    timers:f.timers,
+  });
+  const connectivity=createOrdersConnectivityRuntime({
+    access:{primary:()=>true,blocked:()=>false,authenticated:()=>true},
+    cloud:{enabled:()=>false,resumeAfterReconnect:async()=>{}},
+    checks:{pollSharedChecks:async()=>{}},
+    finance:{resumeAutoSync:()=>scheduler.resumeAutoSync(),stopAutoSync:()=>scheduler.stopAutoSync()},
+    morning:{recoverPendingMorningOperation:async()=>{}},
+    status:{startupDomainLocked:()=>false,setCloud:()=>{}},
+    environment:f.environment,timers:f.timers,
+  });
+  try{
+    connectivity.start();
+    scheduler.startAutoSync();
+    const bankTimer=[...f.jobs.entries()].find(([,job])=>job.ms>=1000&&job.ms<=1500);
+    assert.ok(bankTimer,'automatic bank wakeup scheduled');
+    f.jobs.delete(bankTimer[0]);bankTimer[1].fn();
+    await entered;
+    const activeEpoch=scheduler.currentEpoch();
+    assert.equal(current(),true);
+    await f.signal('online');await f.flush();
+    assert.equal(scheduler.currentEpoch(),activeEpoch,'online event must not revoke started bank operation');
+    assert.equal(current(),true);
+    await f.signal('visibilitychange');await f.flush();
+    assert.equal(scheduler.currentEpoch(),activeEpoch,'foreground event must not revoke started bank operation');
+    assert.equal(current(),true);
+  }finally{release?.();connectivity.dispose()}
+});

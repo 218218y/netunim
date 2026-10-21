@@ -109,7 +109,7 @@ function orders(){
   const runtime=createOrdersConnectivityRuntime({timers,environment,
     access:{primary:()=>state.primary,blocked:()=>state.blocked,authenticated:()=>state.authenticated},
     cloud:{enabled:()=>state.cloud,resumeAfterReconnect:async()=>events.push('reconnect')},
-    checks:{pollSharedChecks:async()=>events.push('checks')},finance:{startAutoSync:()=>events.push('finance'),stopAutoSync:()=>stops.push('finance')},
+    checks:{pollSharedChecks:async()=>events.push('checks')},finance:{resumeAutoSync:()=>events.push('finance'),stopAutoSync:()=>stops.push('finance')},
     morning:{recoverPendingMorningOperation:async options=>{morningOptions.push(options);events.push('morning')}},
     status:{startupDomainLocked:domain=>state.locks.has(domain),setCloud:()=>events.push('offline')}});
   return {timers,environment,events,stops,morningOptions,state,runtime};
@@ -143,7 +143,7 @@ test('Orders connectivity coalesces wakeups and validates the current startup do
 test('Orders secondary tab may poll Shared but cannot reconnect Main or recover Morning writes',async()=>{
   const f=orders();f.state.primary=false;f.runtime.start();emit(f.environment.window,'online');
   f.timers.fire();await settle();
-  assert.deepEqual(f.events,['checks','finance']);
+  assert.deepEqual(f.events,['checks']);
   f.runtime.dispose();
 });
 
