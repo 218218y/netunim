@@ -5,7 +5,8 @@ import {payloadFromState, comparableBackupPayload} from '../state/serialization.
 import {DATA_FILE, INITIAL_STATE, BACKUP_PREFIX, AUTO_BACKUP_PREFIX, AUTO_BACKUP_KEEP, AUTO_BACKUP_INTERVAL_MS} from '../state/constants.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createStorageBackup({files, model, session, normalizeState, writeJsonHandle, readJsonHandle, timers=globalThis,reportBackupError=()=>{}}){
+export function createStorageBackup({files, model, session, normalizeState, writeJsonHandle, readJsonHandle, platform={}}){
+const {timers=globalThis,reportBackupError=()=>{}}=platform;
 const operations=createRuntimeTaskOwner();
 let validatedBackupDirectory=null,validatedBackupAt=0,validatedBackupUntil=0,listedBackupDirectory=null;
 async function prepareDirectory(root){

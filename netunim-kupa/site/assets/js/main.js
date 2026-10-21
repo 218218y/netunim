@@ -188,7 +188,7 @@ const storageBackup=createStorageBackup({
   normalizeState:(...args)=>stateNormalization.normalizeState(...args),
   writeJsonHandle:(...args)=>storageFiles.writeJsonHandle(...args),
   readJsonHandle:(...args)=>storageFiles.readJsonHandle(...args),
-  reportBackupError:message=>uiStatus.toast(message),
+  platform:{reportBackupError:message=>uiStatus.toast(message)},
 });
 
 const storagePersistence=createStoragePersistence({

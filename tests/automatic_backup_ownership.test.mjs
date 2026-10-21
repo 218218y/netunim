@@ -29,7 +29,7 @@ function fixture(app,t){
     async readJsonHandle(handle){return JSON.parse(await (await handle.getFile()).text())},
     async writeTextHandle(handle,text){handle.text=text;handle.lastModified=Date.now()}};
   const errors=[];
-  const api=app==='kupa'?kupaBackup({files,model:{state:snapshot('initial')},session:{dbRevision:1,serverInfo:{}},normalizeState:x=>x,reportBackupError:message=>errors.push(message),...io}):ordersBackup({files,...io});
+  const api=app==='kupa'?kupaBackup({files,model:{state:snapshot('initial')},session:{dbRevision:1,serverInfo:{}},normalizeState:x=>x,platform:{reportBackupError:message=>errors.push(message)},...io}):ordersBackup({files,...io});
   const queue=app==='kupa'?api.queueAutomaticBackup:api.queueAutomaticFolderBackup;
   const save=app==='kupa'?api.maybeCreateAutomaticBackup:api.maybeCreateAutomaticFolderBackup;
   t.after(()=>{(api.runtime?.dispose??api.clearPendingAutomaticBackup??api.clearPendingAutomaticFolderBackup)()});
