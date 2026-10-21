@@ -50,7 +50,15 @@ export async function createRapidProfile(app,initialize){
     const seq=journal.seq+1;await journal.append([{type:'put',collection,id:'R',mode:'replace',record:row}],{generation:seq}).committed;
     const cloud=await journal.cloudState();return journal.materializeFlight({operationId:`rapid-${app}-conflict-${side}`,baseRevision:cloud.base.revision});
   }
-  return {collection,state,burst,reconcile,contradict,
+  async function addTransaction(side,supplierId='S'){
+    const current=(await journal.recover()).state,operations=[];
+    if(!current.suppliers.some(row=>row.id===supplierId))operations.push({type:'put',collection:'suppliers',id:supplierId,mode:'insert',index:current.suppliers.length,record:{id:supplierId,name:supplierId,sortOrder:current.suppliers.length}});
+    const record={...current.transactions[0],id:side,supplierId,sequence:current.transactions.filter(row=>row.supplierId===supplierId).length+1};
+    operations.push({type:'put',collection:'transactions',id:side,mode:'insert',index:current.transactions.length,record});
+    await journal.append(operations,{generation:journal.seq+1,surface:'test.concurrent-insertion'}).committed;
+    const cloud=await journal.cloudState();return journal.materializeFlight({operationId:`addition-${side}`,baseRevision:cloud.base.revision});
+  }
+  return {collection,state,burst,reconcile,contradict,addTransaction,
     retry:async()=>journal.materializeFlight(),
     acknowledge:(flight,revision)=>journal.acknowledge(flight.operationId,revision,flight.snapshot),
     adopt:remote=>journal.adoptCloudHead(remote.revision,remote.state,remote.state)};

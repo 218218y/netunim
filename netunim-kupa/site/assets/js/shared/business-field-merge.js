@@ -34,10 +34,3 @@ export function mergeBusinessRecord3(base,local,remote,policy){
   return result;
 }
 
-// Row-by-row merging cannot detect two reorders which produce duplicate
-// sequence values on different rows. Fence the topology as one collection.
-export function competingTransactionOrder(base,local,remote){
-  const topology=rows=>(rows||[]).map(row=>[row.id,row.supplierId,row.sequence]).sort((a,b)=>String(a[0]).localeCompare(String(b[0])));
-  const b=topology(base),l=topology(local),r=topology(remote);
-  return !equalSyncJson(l,b)&&!equalSyncJson(r,b)&&!equalSyncJson(l,r);
-}

@@ -58,3 +58,39 @@ test('1000 deterministic independent edits converge with no duplicate rows or fi
     assert.deepEqual(orders([b],[r],[l]),result);
   }
 });
+
+const transaction=(id,supplierId,sequence)=>({...base,id,supplierId,sequence});
+const sequenced=rows=>rows.map((row,index)=>({...row,sequence:index+1}));
+function symmetricOrder(b,l,r,expected){
+  const forward=orders(b,l,r),backward=orders(b,r,l);
+  assert.deepEqual(forward.conflicts,[]);
+  assert.deepEqual(backward,forward);
+  for(const [supplier,ids] of Object.entries(expected)){
+    const rows=forward.rows.filter(row=>row.supplierId===supplier).sort((a,b)=>a.sequence-b.sequence);
+    assert.deepEqual(rows.map(row=>row.id),ids);
+    assert.deepEqual(rows.map(row=>row.sequence),rows.map((_,i)=>i+1));
+  }
+  return forward;
+}
+test('independent births in different suppliers merge without topology conflicts',()=>{
+  const b=[transaction('A','S1',1)];
+  symmetricOrder(b,[...b,transaction('B','S2',1)],[...b,transaction('C','S3',1)],{S1:['A'],S2:['B'],S3:['C']});
+});
+test('concurrent inserts in one supplier preserve anchors and deterministically resequence',()=>{
+  const a=transaction('A','S',1),z=transaction('Z','S',2),b=[a,z];
+  const merged=symmetricOrder(b,sequenced([a,transaction('B','S',0),z]),sequenced([a,transaction('C','S',0),z]),{S:['A','B','C','Z']});
+  assert.deepEqual(orders(merged.rows,merged.rows,merged.rows),merged);
+});
+test('reorders in different supplier cards and insertion versus commentary merge',()=>{
+  const b=['A','B','C'].map((id,i)=>transaction(id,'S1',i+1)).concat(['D','E','F'].map((id,i)=>transaction(id,'S2',i+1)));
+  const l=sequenced([b[1],b[0],b[2]]).concat(b.slice(3));
+  const r=b.slice(0,3).concat(sequenced([b[3],b[5],b[4]]));
+  symmetricOrder(b,l,r,{S1:['B','A','C'],S2:['D','F','E']});
+  const result=symmetricOrder(b,[...b,transaction('G','S1',4)],b.map(row=>row.id==='A'?{...row,note:'changed'}:row),{S1:['A','B','C','G'],S2:['D','E','F']});
+  assert.equal(result.rows.find(row=>row.id==='A').note,'changed');
+});
+test('delete versus moved row and incompatible insertion anchors remain conflicts',()=>{
+  const b=['A','B','C'].map((id,i)=>transaction(id,'S',i+1));
+  assert.ok(orders(b,b.slice(1),sequenced([b[1],b[0],b[2]])).conflicts.length);
+  assert.ok(orders(b,sequenced([b[0],transaction('X','S',0),b[1],b[2]]),sequenced([b[1],b[0],b[2]])).conflicts.includes('transactionOrder'));
+});
