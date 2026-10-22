@@ -182,6 +182,19 @@ test('disconnect after accepted shutdown still drains the command and invokes fi
   assert.deepEqual(f.logs,[]);
 });
 
+test('accepted command failure remains audited after its caller disconnects',{timeout:3000},async t=>{
+  let entered,release,closed;
+  const started=new Promise(resolve=>{entered=resolve}),held=new Promise(resolve=>{release=resolve});
+  const disconnected=new Promise(resolve=>{closed=resolve});
+  const unused=async()=>assert.fail('unrelated command');
+  const f=await fixture(t,{files:{open:async()=>{entered();await held;throw Object.assign(Error('synthetic failure'),{code:'ACCEPTED_FAILURE'})},reveal:unused,delete:unused}});
+  f.server.once('request',(_req,res)=>res.once('close',()=>closed()));
+  const client=http.request(f.base+'/documents/open',{method:'POST',headers:{Authorization:'Bearer private-pairing-token',Origin:origin}});
+  client.on('error',()=>{});client.end('{"id":"owned"}');await started;client.destroy();await disconnected;
+  release();while(!f.logs.length)await new Promise(resolve=>setImmediate(resolve));
+  assert.match(f.logs[0],/ACCEPTED_FAILURE/);
+});
+
 test('wire routes without payload retain independent service and maintenance ownership', async t => {
   const f = await fixture(t);
   for (const [target, method] of [['/status', 'GET'], ['/documents/warm', 'POST'], ['/documents/pdf-index/status', 'GET'], ['/documents/pdf-index/start', 'POST'], ['/documents/pdf-index/stop', 'POST'], ['/documents/select-folder', 'POST'], ['/documents/native-preview/hide', 'POST']]) {

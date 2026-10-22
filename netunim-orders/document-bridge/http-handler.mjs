@@ -75,6 +75,7 @@ export function createDocumentBridgeHttpHandler({loadConfig, readToken, routes, 
       sendJson(req, res, 401, {ok: false, code: 'UNAUTHORIZED', message: 'מפתח Document Bridge שגוי או חסר.'}, config);
       return;
     }
+    let cancelledRead = false;
     try {
       // Match the exact method and request target, preserving the wire contract:
       // query strings, trailing slashes and alternate methods are not aliases.
@@ -84,7 +85,9 @@ export function createDocumentBridgeHttpHandler({loadConfig, readToken, routes, 
       // completed. IncomingMessage's normal close is not a cancellation signal.
       // Commands/previews retain their accepted-work drain independently.
       const controller = route.cancellable ? new AbortController() : null;
-      const disconnected = () => { if (!res.writableFinished) controller?.abort(); };
+      const disconnected = () => {
+        if (controller && !res.writableFinished) { cancelledRead = true; controller.abort(); }
+      };
       if (controller) res.once('close', disconnected);
       try {
         const body = route.readBody ? await readJson(req) : {};
@@ -100,8 +103,9 @@ export function createDocumentBridgeHttpHandler({loadConfig, readToken, routes, 
         if (controller) res.off('close', disconnected);
       }
     } catch (error) {
-      if (res.destroyed) return;
+      if (res.destroyed && cancelledRead) return;
       await appendLog(`${req.method} ${req.url} ${error?.code || 'ERROR'} ${error?.message || error}`);
+      if (res.destroyed) return;
       const status = error?.code === 'QUERY_TOO_SHORT' ? 400 : error?.code === 'RESULT_EXPIRED' ? 410 : 503;
       sendJson(req, res, status, documentBridgeErrorResponse(error), config);
     }
