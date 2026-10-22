@@ -24,7 +24,8 @@ See [native reproduction and limits](EVERYTHING_PROXIMITY_20261022.md).
 
 `tools/probe-document-bridge-upgrade.py` copies the real root modules from pinned
 historical commits (38: `cbe8f80a0fecf7644ff35a4e08cdff0ddca037a5`,
-39: `530ea4832d094d84b5ffd3e9718e355fbf5f2cef`) and the current source. A reviewed,
+39: `530ea4832d094d84b5ffd3e9718e355fbf5f2cef`,
+40: `b062c1cccbc77ade2b2dc2cca5cb053621bf66db`) and the final v41 source. A reviewed,
 hash-verified private Node executable starts each listener in a disposable root.
 Only the staged port constant is substituted; the working installation is never
 contacted. A copied Node executable rejects ES arguments, preventing a real
@@ -33,6 +34,8 @@ belongs to its owned child, runs the actual newer `--check-running` (must reject
 the older service), then `--stop-existing`, and confirms clean old-process exit.
 Each new version passes its real health/version check and preserves the token and
 configuration. The final owned service shuts down cleanly.
+The browser requires v41 so an intermediate v40 installation cannot silently
+serve the former native whole-word candidate policy.
 
 The [raw observation](evidence/document-bridge-upgrade-20261022.json) identifies
 revisions, staged module hashes, port substitution and the private executable hash.
