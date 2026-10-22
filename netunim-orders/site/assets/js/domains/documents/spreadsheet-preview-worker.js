@@ -34,4 +34,24 @@ function scan(){
 }
 function windowFor(sheetIndex,focus){const meta=sheets[sheetIndex],range=meta.range;if(meta.full)return range;const center=focus||{row:range.s.r,col:range.s.c};const halfRows=Math.floor(MAX_ROWS/2),halfCols=Math.floor(MAX_COLS/2);let sr=Math.max(range.s.r,center.row-halfRows),sc=Math.max(range.s.c,center.col-halfCols);let er=Math.min(range.e.r,sr+MAX_ROWS-1),ec=Math.min(range.e.c,sc+MAX_COLS-1);sr=Math.max(range.s.r,er-MAX_ROWS+1);sc=Math.max(range.s.c,ec-MAX_COLS+1);return {s:{r:sr,c:sc},e:{r:er,c:ec}}}
 function renderModel(sheetIndex,focus){const meta=sheets[sheetIndex],ws=workbook.Sheets[meta.name],range=windowFor(sheetIndex,focus),cells=[];for(let r=range.s.r;r<=range.e.r;r++)for(let c=range.s.c;c<=range.e.c;c++){const text=cellText(cellAt(ws,r,c));if(text)cells.push({row:r,col:c,text})}return {sheet:meta,window:range,cells}}
-self.onmessage=event=>{try{const msg=event.data||{};if(loadError)throw new Error(`SheetJS local runtime failed to load: ${loadError}`);if(!globalThis.XLSX)throw new Error('SheetJS local runtime is unavailable');if(msg.type==='open'){query=String(msg.query||'').trim();contentSearch=createDocumentTextMatcher('',msg.contentSearch).search;workbook=globalThis.XLSX.read(msg.buffer,{type:'array',dense:true,cellDates:true,cellText:true,cellNF:false,cellStyles:false});scan();const first=matches[0]||null;self.postMessage({id:msg.id,ok:true,type:'opened',sheets,matches,capped:matches.length>=MAX_MATCHES,initialSheet:first?.sheet||0,model:renderModel(first?.sheet||0,first?{row:first.row,col:first.col}:null)});return}if(msg.type==='render-sheet'){if(!workbook)throw new Error('Workbook is not open');self.postMessage({id:msg.id,ok:true,type:'sheet',model:renderModel(Number(msg.sheet)||0,msg.focus||null)});return}}catch(error){self.postMessage({id:event.data?.id,ok:false,error:String(error?.message||error)})}}
+self.onmessage=event=>{
+  try{
+    const msg=event.data||{};
+    if(loadError)throw new Error(`SheetJS local runtime failed to load: ${loadError}`);
+    if(!globalThis.XLSX)throw new Error('SheetJS local runtime is unavailable');
+    if(msg.type==='open'){
+      query=String(msg.query||'').trim();
+      contentSearch=createDocumentTextMatcher('',msg.contentSearch).search;
+      workbook=globalThis.XLSX.read(msg.buffer,{type:'array',dense:true,cellDates:true,cellText:true,cellNF:false,cellStyles:false});
+      scan();
+      const first=matches[0]||null;
+      self.postMessage({id:msg.id,ok:true,type:'opened',sheets,matches,capped:matches.length>=MAX_MATCHES,
+        initialSheet:first?.sheet||0,model:renderModel(first?.sheet||0,first?{row:first.row,col:first.col}:null)});
+      return;
+    }
+    if(msg.type==='render-sheet'){
+      if(!workbook)throw new Error('Workbook is not open');
+      self.postMessage({id:msg.id,ok:true,type:'sheet',model:renderModel(Number(msg.sheet)||0,msg.focus||null)});
+    }
+  }catch(error){self.postMessage({id:event.data?.id,ok:false,error:String(error?.message||error)})}
+};
