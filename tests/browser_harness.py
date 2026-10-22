@@ -577,7 +577,10 @@ class BrowserSession:
             # A fresh CI machine can need more than 10s for its first Chrome boot.
             # Poll readiness, fail immediately on process exit, and leave application
             # assertions/timeouts unchanged. Include stderr before temp cleanup.
-            deadline = time.monotonic()+30
+            # Ownership verification adds a version query before the original
+            # page enumeration. Retain a bounded cold-start window for both;
+            # do not spend nearly all of it waiting for Chromium's first bind.
+            deadline = time.monotonic()+60
             devtools_port, browser_path = _wait_owned_devtools(self.profile, self.proc, timeout=30)
             version = _wait_json(_devtools_urls(devtools_port, '/json/version'), timeout=max(.01, deadline-time.monotonic()),
                                  process=self.proc, expected_browser_path=browser_path)
@@ -610,7 +613,7 @@ class BrowserSession:
                 + str(download_behavior["error"])
             )
 
-    def restart_process(self, *, crash=False):
+    def restart_process(self, *, crash=False, navigate=True):
         """Restart this owned browser, retaining its actual on-disk profile."""
         if self.proc is None or self.proc.poll() is not None:
             raise RuntimeError('no live owned browser to restart')
@@ -635,9 +638,10 @@ class BrowserSession:
         self.events = []
         self._start_browser()
         # A hard-killed profile needs crash recovery plus a cold module graph.
-        self._navigate(timeout=30 if crash else None)
-        if self.instrument:
-            self.evaluate('appReady.then(()=>true)')
+        if navigate:
+            self._navigate(timeout=30 if crash else None)
+            if self.instrument:
+                self.evaluate('appReady.then(()=>true)')
         return {'previous_pid': previous_pid, 'new_pid': self.proc.pid, 'hard_process_failure': crash}
 
     @contextlib.contextmanager
@@ -683,14 +687,14 @@ class BrowserSession:
         # measure elapsed readiness separately; this is a transport deadline.
         if timeout is None:
             timeout = 30 if os.name == 'nt' else 10
-        result = self.call("Page.navigate", {"url": self.url})
+        end = time.monotonic() + timeout
+        result = self.call("Page.navigate", {"url": self.url}, timeout=timeout)
         nav = result.get("result", {})
         if nav.get("errorText"):
             raise RuntimeError('Native ESM runtime requires localhost navigation: '+nav['errorText'])
-        end = time.time() + timeout
         last_error = None
         state = None
-        while time.time() < end:
+        while time.monotonic() < end:
             try:
                 # Loading-state inspection must not import test-access.js into a
                 # document which may still be navigating/reloading.

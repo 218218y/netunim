@@ -204,6 +204,14 @@ and requires the original DB to still be listed. Chromium uses the explicit
 owned `Default` subprofile throughout. Large-heap diagnostic GC has its own 30s
 transport deadline and recorded elapsed time, rather than the generic 5s socket
 timeout; application interaction timings and failure assertions are unchanged.
+The `Page.navigate` command uses that navigation deadline too, so a default 5s
+socket cannot abort before the loading wait starts. Cold DevTools publication
+still has a 30s bound; UUID verification and first page enumeration share a 60s
+overall startup bound. Legacy-worker upgrade observes native installing/waiting
+state for up to 60s instead of a fixed 15s loop, fails immediately on install
+errors or premature controller replacement, and requests the update only once.
+Offline PWA process restart reuses the same verified graceful tree shutdown;
+offline transport is configured before navigating the new process.
 
 ### Remaining full-install execution protocol
 

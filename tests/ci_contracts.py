@@ -132,6 +132,22 @@ class VerificationContracts(unittest.TestCase):
                 session.restart_process()
             self.assertEqual(stop.call_args.kwargs['graceful_timeout'],30)
 
+    def test_worker_update_wait_preserves_controller_and_propagates_install_errors(self):
+        from unittest.mock import Mock
+        from pwa_upgrade import wait_for_waiting_upgrade
+        installing={'sameController':True,'error':None,'installing':'installing','waiting':None,'active':'activated'}
+        installed={**installing,'installing':None,'waiting':'installed'}
+        browser=Mock();browser.call.return_value={};browser.events=[]
+        browser.evaluate.side_effect=[True,installing,installed]
+        with patch('pwa_upgrade.time.sleep'):
+            self.assertTrue(wait_for_waiting_upgrade(browser))
+        browser.evaluate.side_effect=[True,{**installed,'sameController':False}]
+        with self.assertRaisesRegex(AssertionError,'replaced the active page'):
+            wait_for_waiting_upgrade(browser)
+        browser.evaluate.side_effect=[True,{**installing,'error':'synthetic cache write failure'}]
+        with self.assertRaisesRegex(RuntimeError,'synthetic cache write failure'):
+            wait_for_waiting_upgrade(browser)
+
     def test_browser_profile_cleanup_retries_transient_lock_and_never_hides_failure(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "profile"
