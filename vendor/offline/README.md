@@ -28,7 +28,8 @@ npm run offline:check      verify lockfile/hash integrity without installing
 npm run offline:install    install only from local archives; network is not used
 npm run offline:doctor     verify vendored Node/Python plus real localhost browser capability
 npm run test:offline       strict complete verification gate; browser runtime failures remain failures
-npm run test:chat          repair-session command: full gate when browser works, otherwise explicit core-only gate
+npm run test:chat          full gate when browser/PostgreSQL are available; otherwise explicit partial repair checks
+npm run test:repair        native local unit/contracts selection without browser or PostgreSQL
 npm run lint:offline       run ESLint through the vendored Node/toolchain
 npm run offline:update     update allowed versions, redownload transactionally, then remove superseded archives
 npm run offline:clean      remove the current generated cache entry and legacy .offline state
@@ -60,9 +61,18 @@ npm run offline:check
 and is the command that also advances the allowed Python dependency before refreshing the vendor. The redundant step
 in the old four-command sequence was `offline:download` immediately before `offline:update`.
 
-`test:chat` is deliberately not a deployment gate. If the host browser is unavailable or policy-blocked, it runs
-only the deterministic non-browser suites and prints that the runtime suites were skipped. `test:offline`,
-`python tests/run_all.py`, `verify.bat` and deployment preflight remain strict and never downgrade to core-only.
+`test:chat` is deliberately not a deployment gate. If the host browser is unavailable or policy-blocked,
+or PostgreSQL server tools are missing, it runs `--repair-only` and explicitly reports partial verification.
+Browser probe failures other than known unavailability and actual suite failures retain their error codes.
+Installed but incompatible PostgreSQL versions still fail the full preflight; no failed full run is retried
+as repair. `test:offline`, `python tests/run_all.py`, `verify.bat` and deployment preflight remain strict.
+
+`npm run test:repair` uses the normal local Python/Node development dependencies (`npm ci` and
+`python -m pip install -r tests/requirements.txt`), so it also works on Windows without installing
+the Linux offline vendor. It runs the canonical contracts and model groups, including type, module,
+asset and lint checks. Its reports are labelled `repair-only` and cannot authorize deployment.
+The older `--core-only` keeps its existing PostgreSQL suites; CI still partitions the complete
+inventory exactly once, including browser, database, recovery and installed-runtime contracts.
 
 `offline:download` and `offline:update` may be executed on Windows before uploading the repository to ChatGPT.
 `offline:install`, `offline:doctor`, `test:offline`, `test:chat` and `lint:offline` intentionally target Linux

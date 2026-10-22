@@ -271,7 +271,7 @@ ok('content-addressed cache **outside the repository**' in readme and 'NETUNIM_O
 ok('NETUNIM_BROWSER' in browser_harness, 'offline deps: browser harness supports an explicit unmanaged test-browser override')
 ok('ERR_BLOCKED_BY_ADMINISTRATOR' in browser_probe and 'BROWSER_RUNTIME_UNAVAILABLE' in browser_probe, 'offline deps: environment doctor distinguishes host browser policy from application test failures')
 ok('CORE_SUITES' in run_all and 'RUNTIME_SUITES' in run_all and '--core-only' in run_all, 'offline deps: chat repair mode can run deterministic core suites without weakening the full gate')
-ok('chat_test()' in source and '"--core-only"' in source and 'probe_rc == 3' in source, 'offline deps: chat test falls back only for an explicitly unavailable browser runtime')
+ok('chat_test()' in source and '"--repair-only"' in source and 'probe_rc == 3' in source and 'missing_postgres' in source, 'offline deps: chat repair excludes both browser and database prerequisites without changing the strict full gate')
 ok('args.command == "test"' in source and 'run_all.py")])' in source, 'offline deps: strict offline test still runs the complete verification gate')
 ok('setlocal' in orders_launcher.lower() and 'setlocal' in kupa_launcher.lower(), 'windows local launchers: temporary environment changes are scoped to the launcher process')
 ok('NO_UPDATE_CHECK=1' in orders_launcher and 'NO_UPDATE_CHECK=1' in kupa_launcher, 'windows local launchers: serve network update checks cannot delay normal startup')

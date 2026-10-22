@@ -55,8 +55,10 @@ restore and live-provider release exercises therefore remain explicitly unverifi
   canonical matcher shared by Bridge v39, DOM and the spreadsheet worker.
   Workbook-wide AND presence is independent of highlight caps. See
   [matching contract and evidence](DOCUMENT_TEXT_SEARCH.md).
-- Next: a clearly partial browser/PostgreSQL-free repair selection, then a
-  focused Bridge origin/auth threat model and measured performance review.
+- A clearly partial browser/PostgreSQL-free repair selection is available as
+  `npm run test:repair`; `test:chat` selects it for known missing prerequisites.
+  Full CI/deployment and the existing PostgreSQL-bearing core selection stay strict.
+- Next: a focused Bridge origin/auth threat model and measured performance review.
 - Physical-machine, installed-Bridge and live-provider interruption/restore
   acceptance still requires an isolated environment; production data must not
   be used to manufacture evidence for these outstanding operational checks.

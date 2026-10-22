@@ -53,6 +53,9 @@ GROUPS["browser-sync"].append("runtime_mutation_admission.py")
 GROUPS["browser-sync"].append("runtime_incident_storage_liveness.py")
 CORE_SUITES = [suite for group, suites in GROUPS.items() if not group.startswith("browser-") for suite in suites]
 RUNTIME_SUITES = [suite for group, suites in GROUPS.items() if group.startswith("browser-") for suite in suites]
+# Repair feedback is an explicit subset, never part of CI's partition or a
+# deployment authorization. Keep core-only's existing database coverage intact.
+REPAIR_SUITES = [suite for suite in CORE_SUITES if suite not in GROUPS["database"]]
 
 # October 19 recalibration includes loaded-data scenarios previously assigned a
 # median fallback: four lifecycle machines now estimate 265-267s each, versus
