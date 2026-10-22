@@ -15,6 +15,7 @@ import zipfile
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--output', type=Path)
+parser.add_argument('--from-revision', help='Test one pinned existing runtime instead of repeating the historical chain')
 args = parser.parse_args()
 if os.name != 'nt':
     parser.error('This opt-in native listener probe requires Windows.')
@@ -89,7 +90,14 @@ with tempfile.TemporaryDirectory(prefix='bridge-upgrade-', dir=ROOT / '.work') a
     token_digest = None
     try:
         current_version = re.search(r'BRIDGE_VERSION=(\d+);', (SOURCE / 'lib.mjs').read_text(encoding='utf8')).group(1)
-        for version, revision in [*HISTORY, (current_version, None)]:
+        history = HISTORY
+        if args.from_revision:
+            revision = git('rev-parse', '--verify', args.from_revision + '^{commit}').decode().strip()
+            old_lib = git('show', revision + ':' + PREFIX + 'lib.mjs').decode('utf8')
+            old_version = re.search(r'BRIDGE_VERSION=(\d+);', old_lib).group(1)
+            assert int(old_version) < int(current_version), 'replacement must advance the runtime version'
+            history = [(old_version, revision)]
+        for version, revision in [*history, (current_version, None)]:
             runtime = app / ('app-v' + version)
             runtime.mkdir()
             if revision:

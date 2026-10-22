@@ -1,0 +1,552 @@
+{
+  "instance": "NETUNIM_VERIFY_5cb598c939634232a9aee505fa2f62f8",
+  "source": {
+    "revision": "a2562f73897b7c3c7491a91043389b83ad19e3a8",
+    "dirty": true,
+    "coordinatorSha256": "4b56b66d093498dbd6b1cccb05dafc86292150c4c0d70c6ceca0c12095078e65"
+  },
+  "binaries": {
+    "Everything.exe": "4c994da9c376ce264fb4f0b8a46d76abad3ce160d0cb8aa85883867ebc725fd4",
+    "es.exe": "f7378761cf6e01f51c4123a485e628d70e3fea147d341f473ce2820844e5cee5"
+  },
+  "measurements": [
+    {
+      "case": "legacy-six",
+      "sample": 0,
+      "wallMs": 5010.965200002829,
+      "cpuSeconds": 1.453125,
+      "cpuAfterClientExitSeconds": 0.0,
+      "exitCode": "host-timeout",
+      "results": [],
+      "stderr": ""
+    },
+    {
+      "case": "legacy-whole-candidates",
+      "sample": 0,
+      "wallMs": 2291.052000000491,
+      "cpuSeconds": 0.265625,
+      "cpuAfterClientExitSeconds": 0.0,
+      "exitCode": 0,
+      "results": [
+        "whole-combining.txt",
+        "whole-punctuation.txt"
+      ],
+      "stderr": ""
+    },
+    {
+      "case": "missing-six",
+      "sample": 0,
+      "wallMs": 289.84449999552453,
+      "cpuSeconds": 0.21875,
+      "cpuAfterClientExitSeconds": 0.0,
+      "exitCode": 0,
+      "results": [
+        "gap-overflow.txt",
+        "late-valid.txt",
+        "short-valid.txt",
+        "wrong-order.txt"
+      ],
+      "stderr": ""
+    },
+    {
+      "case": "all-terms",
+      "sample": 0,
+      "wallMs": 279.6401999949012,
+      "cpuSeconds": 0.234375,
+      "cpuAfterClientExitSeconds": 0.0,
+      "exitCode": 0,
+      "results": [
+        "gap-overflow.txt",
+        "late-valid.txt",
+        "short-valid.txt",
+        "wrong-order.txt"
+      ],
+      "stderr": ""
+    },
+    {
+      "case": "ordered-valid",
+      "sample": 0,
+      "wallMs": 242.03250000573462,
+      "cpuSeconds": 0.21875,
+      "cpuAfterClientExitSeconds": 0.0,
+      "exitCode": 0,
+      "results": [
+        "adjacent.txt",
+        "positive.txt"
+      ],
+      "stderr": ""
+    },
+    {
+      "case": "adjacent-valid",
+      "sample": 0,
+      "wallMs": 246.67879999469733,
+      "cpuSeconds": 0.203125,
+      "cpuAfterClientExitSeconds": 0.0,
+      "exitCode": 0,
+      "results": [
+        "adjacent.txt",
+        "positive.txt"
+      ],
+      "stderr": ""
+    },
+    {
+      "case": "read-content",
+      "sample": 0,
+      "wallMs": 72.46760000271024,
+      "cpuSeconds": 0.0,
+      "cpuAfterClientExitSeconds": 0.0,
+      "exitCode": 0,
+      "results": [
+        {
+          "bytes": 30166,
+          "hasSuffix": true
+        }
+      ],
+      "stderr": ""
+    },
+    {
+      "case": "actual-bridge-search",
+      "wallMs": 519.6106999967014,
+      "cpuSeconds": 0.3125,
+      "cpuAfterClientExitSeconds": 0.0,
+      "exitCode": 0,
+      "output": {
+        "names": [
+          "late-valid.txt",
+          "short-valid.txt"
+        ],
+        "elapsedMs": 408,
+        "partial": false
+      },
+      "stderr": ""
+    },
+    {
+      "case": "actual-bridge-whole-boundaries",
+      "wallMs": 341.52910000120755,
+      "cpuSeconds": 0.1875,
+      "cpuAfterClientExitSeconds": 0.0,
+      "exitCode": 0,
+      "output": {
+        "names": [
+          "whole-punctuation.txt",
+          "whole-underscore.txt"
+        ],
+        "elapsedMs": 247,
+        "partial": false
+      },
+      "stderr": ""
+    },
+    {
+      "case": "actual-bridge-abort",
+      "wallMs": 202.51199999911478,
+      "cpuSeconds": 0.046875,
+      "cpuAfterClientExitSeconds": 0.0,
+      "exitCode": 0,
+      "output": {
+        "name": "AbortError",
+        "code": "ABORT_ERR"
+      },
+      "stderr": ""
+    },
+    {
+      "case": "actual-bridge-timeout",
+      "wallMs": 194.1904000006616,
+      "cpuSeconds": 0.046875,
+      "cpuAfterClientExitSeconds": 0.0,
+      "exitCode": 0,
+      "output": {
+        "name": "Error",
+        "code": "ES_TIMEOUT"
+      },
+      "stderr": ""
+    },
+    {
+      "case": "actual-bridge-resources",
+      "wallMs": 7213.663400000951,
+      "cpuSeconds": 0.96875,
+      "cpuAfterClientExitSeconds": 0.0,
+      "exitCode": 0,
+      "output": {
+        "observations": [
+          {
+            "case": "native-100-overflow",
+            "wallMs": 398.8999,
+            "memoryBefore": {
+              "rss": 50860032,
+              "heapTotal": 8167424,
+              "heapUsed": 5758984,
+              "external": 2527630,
+              "arrayBuffers": 137507
+            },
+            "memoryAfter": {
+              "rss": 119291904,
+              "heapTotal": 88645632,
+              "heapUsed": 57681216,
+              "external": 7972689,
+              "arrayBuffers": 5648062
+            },
+            "code": "ES_OUTPUT_LIMIT"
+          },
+          {
+            "case": "native-25-success",
+            "wallMs": 245.25629999999995,
+            "memoryBefore": {
+              "rss": 119291904,
+              "heapTotal": 88645632,
+              "heapUsed": 57682216,
+              "external": 7972689,
+              "arrayBuffers": 5648062
+            },
+            "memoryAfter": {
+              "rss": 149049344,
+              "heapTotal": 142503936,
+              "heapUsed": 87082568,
+              "external": 14533247,
+              "arrayBuffers": 203021
+            },
+            "rows": 25,
+            "bytes": 6560551,
+            "contentCharacters": 6554300
+          },
+          {
+            "case": "native-single-overflow",
+            "wallMs": 480.86249999999995,
+            "memoryBefore": {
+              "rss": 148848640,
+              "heapTotal": 142503936,
+              "heapUsed": 87084032,
+              "external": 14533247,
+              "arrayBuffers": 203021
+            },
+            "memoryAfter": {
+              "rss": 150335488,
+              "heapTotal": 108834816,
+              "heapUsed": 61667368,
+              "external": 19239562,
+              "arrayBuffers": 16914935
+            },
+            "code": "ES_OUTPUT_LIMIT"
+          },
+          {
+            "case": "adaptive-complete",
+            "wallMs": 1675.9247,
+            "memoryBefore": {
+              "rss": 150335488,
+              "heapTotal": 108834816,
+              "heapUsed": 61668000,
+              "external": 19239562,
+              "arrayBuffers": 16914935
+            },
+            "memoryAfter": {
+              "rss": 232439808,
+              "heapTotal": 146321408,
+              "heapUsed": 6737568,
+              "external": 2886865,
+              "arrayBuffers": 203007
+            },
+            "names": [
+              "large-000.txt",
+              "large-001.txt",
+              "large-002.txt",
+              "large-003.txt",
+              "large-004.txt",
+              "large-005.txt",
+              "large-006.txt",
+              "large-007.txt",
+              "large-008.txt",
+              "large-009.txt",
+              "large-010.txt",
+              "large-011.txt",
+              "large-012.txt",
+              "large-013.txt",
+              "large-014.txt",
+              "large-015.txt",
+              "large-016.txt",
+              "large-017.txt",
+              "large-018.txt",
+              "large-019.txt",
+              "large-020.txt",
+              "large-021.txt",
+              "large-022.txt",
+              "large-023.txt",
+              "large-024.txt",
+              "large-025.txt",
+              "large-026.txt",
+              "large-027.txt",
+              "large-028.txt",
+              "large-029.txt",
+              "large-030.txt",
+              "large-031.txt",
+              "large-032.txt",
+              "large-033.txt",
+              "large-034.txt",
+              "large-035.txt",
+              "large-036.txt",
+              "large-037.txt",
+              "large-038.txt",
+              "large-039.txt",
+              "large-040.txt",
+              "large-041.txt",
+              "large-042.txt",
+              "large-043.txt",
+              "large-044.txt",
+              "large-045.txt",
+              "large-046.txt",
+              "large-047.txt",
+              "large-048.txt",
+              "large-049.txt",
+              "large-050.txt",
+              "large-051.txt",
+              "large-052.txt",
+              "large-053.txt",
+              "large-054.txt",
+              "large-055.txt",
+              "large-056.txt",
+              "large-057.txt",
+              "large-058.txt",
+              "large-059.txt",
+              "large-060.txt",
+              "large-061.txt",
+              "large-062.txt",
+              "large-063.txt",
+              "large-064.txt",
+              "large-065.txt",
+              "large-066.txt",
+              "large-067.txt",
+              "large-068.txt",
+              "large-069.txt",
+              "large-070.txt",
+              "large-071.txt",
+              "large-072.txt",
+              "large-073.txt",
+              "large-074.txt",
+              "large-075.txt",
+              "large-076.txt",
+              "large-077.txt",
+              "large-078.txt",
+              "large-079.txt",
+              "large-080.txt",
+              "large-081.txt",
+              "large-082.txt",
+              "large-083.txt",
+              "large-084.txt",
+              "large-085.txt",
+              "large-086.txt",
+              "large-087.txt",
+              "large-088.txt",
+              "large-089.txt",
+              "large-090.txt",
+              "large-091.txt",
+              "large-092.txt",
+              "large-093.txt",
+              "large-094.txt",
+              "large-095.txt",
+              "large-096.txt",
+              "large-097.txt",
+              "large-098.txt",
+              "large-099.txt"
+            ],
+            "partial": false,
+            "hasMore": false,
+            "attempts": [
+              {
+                "limit": 100,
+                "offset": 0,
+                "code": "ES_OUTPUT_LIMIT"
+              },
+              {
+                "limit": 50,
+                "offset": 0,
+                "bytes": 13121101
+              },
+              {
+                "limit": 50,
+                "offset": 50,
+                "bytes": 13121101
+              },
+              {
+                "limit": 50,
+                "offset": 100,
+                "bytes": 0
+              }
+            ],
+            "published": 100
+          },
+          {
+            "case": "adaptive-filtered-offset",
+            "wallMs": 942.4313999999999,
+            "memoryBefore": {
+              "rss": 232439808,
+              "heapTotal": 146321408,
+              "heapUsed": 6739752,
+              "external": 2886865,
+              "arrayBuffers": 203007
+            },
+            "memoryAfter": {
+              "rss": 277069824,
+              "heapTotal": 202002432,
+              "heapUsed": 78653936,
+              "external": 3280126,
+              "arrayBuffers": 989515
+            },
+            "names": [
+              "b-valid-020.txt",
+              "b-valid-021.txt",
+              "b-valid-022.txt",
+              "b-valid-023.txt",
+              "b-valid-024.txt",
+              "b-valid-025.txt",
+              "b-valid-026.txt",
+              "b-valid-027.txt",
+              "b-valid-028.txt",
+              "b-valid-029.txt"
+            ],
+            "partial": false,
+            "hasMore": true,
+            "attempts": [
+              {
+                "limit": 100,
+                "offset": 0,
+                "bytes": 27901
+              },
+              {
+                "limit": 100,
+                "offset": 100,
+                "bytes": 27901
+              },
+              {
+                "limit": 100,
+                "offset": 200,
+                "bytes": 27901
+              },
+              {
+                "limit": 100,
+                "offset": 300,
+                "bytes": 13135201
+              }
+            ],
+            "published": 10
+          },
+          {
+            "case": "adaptive-single-rejected",
+            "wallMs": 3211.0049000000004,
+            "memoryBefore": {
+              "rss": 277069824,
+              "heapTotal": 202002432,
+              "heapUsed": 78654592,
+              "external": 3280126,
+              "arrayBuffers": 989515
+            },
+            "memoryAfter": {
+              "rss": 283189248,
+              "heapTotal": 175157248,
+              "heapUsed": 61221416,
+              "external": 19267329,
+              "arrayBuffers": 16914935
+            },
+            "code": "ES_CONTENT_TOO_LARGE",
+            "attempts": [
+              {
+                "limit": 100,
+                "offset": 0,
+                "code": "ES_OUTPUT_LIMIT"
+              },
+              {
+                "limit": 50,
+                "offset": 0,
+                "code": "ES_OUTPUT_LIMIT"
+              },
+              {
+                "limit": 25,
+                "offset": 0,
+                "code": "ES_OUTPUT_LIMIT"
+              },
+              {
+                "limit": 12,
+                "offset": 0,
+                "code": "ES_OUTPUT_LIMIT"
+              },
+              {
+                "limit": 6,
+                "offset": 0,
+                "code": "ES_OUTPUT_LIMIT"
+              },
+              {
+                "limit": 3,
+                "offset": 0,
+                "code": "ES_OUTPUT_LIMIT"
+              },
+              {
+                "limit": 1,
+                "offset": 0,
+                "code": "ES_OUTPUT_LIMIT"
+              }
+            ],
+            "published": 0
+          },
+          {
+            "case": "large-output-abort",
+            "wallMs": 75.60950000000048,
+            "memoryBefore": {
+              "rss": 283189248,
+              "heapTotal": 175157248,
+              "heapUsed": 61222800,
+              "external": 19267329,
+              "arrayBuffers": 16914935
+            },
+            "memoryAfter": {
+              "rss": 283512832,
+              "heapTotal": 175292416,
+              "heapUsed": 61670568,
+              "external": 19333107,
+              "arrayBuffers": 16980713
+            },
+            "code": "ABORT_ERR",
+            "bytesBeforeStop": 65771,
+            "published": 0
+          },
+          {
+            "case": "large-output-timeout",
+            "wallMs": 76.60829999999987,
+            "memoryBefore": {
+              "rss": 283512832,
+              "heapTotal": 175292416,
+              "heapUsed": 61671944,
+              "external": 19333107,
+              "arrayBuffers": 16980713
+            },
+            "memoryAfter": {
+              "rss": 283791360,
+              "heapTotal": 175427584,
+              "heapUsed": 62072936,
+              "external": 19398885,
+              "arrayBuffers": 17112027
+            },
+            "code": "ES_TIMEOUT",
+            "bytesBeforeStop": 65771,
+            "published": 0
+          }
+        ]
+      },
+      "stderr": ""
+    }
+  ],
+  "isolatedIndexVerified": true,
+  "everythingVersion": "1.5.0.1424",
+  "files": 563,
+  "resourceFixtures": {
+    "resource-batch": {
+      "files": 100,
+      "bytes": 26217500
+    },
+    "resource-filter": {
+      "files": 450,
+      "bytes": 26228000
+    },
+    "resource-single": {
+      "files": 1,
+      "bytes": 18400031
+    }
+  },
+  "ownedProcessExited": true
+}

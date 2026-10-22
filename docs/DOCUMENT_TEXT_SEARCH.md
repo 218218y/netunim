@@ -48,13 +48,24 @@ ranges on exhaustive whitespace fixtures. Existing normalization tests remain re
 Everything proximity now requests an AND of distinct terms and the content
 property, then verifies ordered distance with that same canonical matcher before
 publication. Native ordering, scope and file-type filters are preserved. Candidate
-pages are read in batches of 100 until enough verified rows exist; only then is
+pages start at 100 candidates until enough verified rows exist; only then is
 the result offset applied. The candidate ceiling is 5,000 and the existing search
 timeout plus subprocess grace bounds each scan. Exhaustion is explicitly partial,
 including in the UI and after pagination. Missing/non-string content fails
 explicitly; extracted text is never published in result rows. Phone-like queries
 retain their existing native separator contract. Everything still owns extraction
 and its index coverage; this is not a claim that every on-disk format is indexed.
+
+The native subprocess retains its 16 MiB output ceiling. A stdout overflow is
+typed as `ES_OUTPUT_LIMIT`; verification retries the same candidate cursor with
+half the batch (minimum one), retaining the original scan deadline and candidate
+budget. A successful smaller batch advances normally. A single candidate that
+still overflows fails explicitly as `ES_CONTENT_TOO_LARGE`, including after prior
+verified progress; no content is silently skipped or published without verification.
+Large stderr, malformed data and ordinary IPC failures keep their error behavior.
+Only `ES_TIMEOUT` after verified progress may yield a partial page; caller abort
+always prevents publication. PDF preparation/partial state participates only for
+file types that include PDF. See the [batch follow-up](SEARCH_BATCH_FOLLOWUP_20261022.md).
 
 See [native Everything research](EVERYTHING_PROXIMITY_20261022.md) for the actual
 Windows reproduction, before/after observations, cancellation and its limits.

@@ -47,6 +47,10 @@ export function createEverythingProcess({ commands }) {
         String(errorField(error, 'code') || '') === 'ABORT_ERR'
       )
         throw error;
+      if (errorField(error, 'code') === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' &&
+          String(errorField(error, 'message')).startsWith('stdout maxBuffer')) {
+        throw Object.assign(new Error('Everything output exceeded the bounded search response.'), {code:'ES_OUTPUT_LIMIT'});
+      }
       // execFile reports timeout termination with code:null. Number(null) is
       // zero, which must never turn that failure into an ES_EXIT_0 diagnostic.
       if (errorField(error, 'code') == null && errorField(error, 'killed') === true && errorField(error, 'signal')) {

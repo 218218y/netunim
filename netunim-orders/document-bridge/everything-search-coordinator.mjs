@@ -56,18 +56,24 @@ export function createEverythingSearchCoordinator({configuration,session,process
     if(request.mode!=='content'||!contentQueryRequiresVerification(request.query,request.contentSearch))return runEverythingJson((config,probe)=>build(request,config,probe),{signal:request.signal});
     const config=await loadConfig(),started=performance.now(),deadline=started+config.searchTimeoutMs+5000;
     const wanted=request.offset+request.limit,rows=[],verifiedPaths=new Set();
-    let candidateOffset=0,partial=false;
+    let candidateOffset=0,partial=false,batchSize=100;
     // Candidates retain native sorting and scope. Filter before applying the
     // result offset; a rejected candidate must never consume a result slot.
     while(rows.length<wanted){
       request.signal?.throwIfAborted();
       if(candidateOffset>=MAX_RESULTS||performance.now()>=deadline){partial=true;break}
-      const limit=Math.min(100,MAX_RESULTS-candidateOffset);
+      const limit=Math.min(batchSize,MAX_RESULTS-candidateOffset);
       let result;
       try{
         result=await runEverythingJson((current,probe)=>build({...request,offset:candidateOffset,limit},current,probe),{decode:parseEsContentRows,deadline,signal:request.signal});
       }catch(error){
         request.signal?.throwIfAborted();
+        if(error?.code==='ES_OUTPUT_LIMIT'&&error?.name!=='AbortError'){
+          // Retain the same native cursor and deadline. Failed output is never
+          // decoded or published; successful batches alone advance the cursor.
+          if(limit===1)throw Object.assign(new Error('תוכן מסמך יחיד חורג ממגבלת האימות של החיפוש. אפשר לצמצם לתיקייה או לסוג קבצים אחר.'),{code:'ES_CONTENT_TOO_LARGE'});
+          batchSize=Math.max(1,Math.floor(limit/2));continue;
+        }
         // Only an expected deadline after verified progress can yield a partial
         // page. Decode/extraction/IPC failures cannot certify this result set.
         if(error?.code!=='ES_TIMEOUT'||error?.name==='AbortError'||!rows.length)throw error;

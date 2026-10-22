@@ -26,6 +26,11 @@ Those results do not execute the global installer/autostart/task registration,
 two-computer workflow or real financial provider scenarios below. Their remaining
 physical acceptance status is still NOT RUN.
 
+The [batch follow-up](SEARCH_BATCH_FOLLOWUP_20261022.md) adds native large-content
+Everything measurements and isolated Bridge 41→43 replacement evidence. These
+also leave every physical/full-install/provider scenario below NOT RUN. Use v43
+for new acceptance; its client explicitly rejects earlier Bridge runtimes.
+
 | Scenario | Required persisted evidence after restart |
 | --- | --- |
 | Two physical computers; disconnected concurrent edits; reconnect in both orders | Expected content converges; original operation IDs are retained; no duplicated financial action; revisions/ACKs agree on both clients |
