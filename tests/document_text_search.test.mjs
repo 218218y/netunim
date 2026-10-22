@@ -92,6 +92,7 @@ test('classic worker and installed Bridge derive exactly from the dependency-fre
 test('Unicode whole-word boundaries and case expansion retain original highlight coordinates',()=>{
   for(const match of [bridge,findTextMatchOffsets]){
     assert.deepEqual(match('𐐀abc abc𐐀 abc','abc',{wordMatch:'whole'}).matches,[{start:12,end:15}]);
+    assert.deepEqual(match('a\uDC00abc abc','abc',{wordMatch:'whole'}).matches,[{start:2,end:5},{start:6,end:9}]);
     const text='İ AB אב סוף';
     assert.deepEqual(match(text,'ab').matches,[{start:2,end:4}]);
     assert.deepEqual(match(text,'אב סוף',{matchMode:'proximity'}).matches,[{start:5,end:11}]);

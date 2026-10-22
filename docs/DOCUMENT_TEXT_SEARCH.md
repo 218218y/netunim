@@ -15,6 +15,12 @@ Proximity tokenizes whitespace-delimited words and works backwards through the
 query. Each stage computes the rightmost viable successor inside its allowed
 distance window. Its work is O(query terms * document tokens), with linear
 scratch space. A missing final term cannot cause combinatorial backtracking.
+The canonical implementation itself is in strict checkJs (including unchecked
+index access), with typed numeric UTF-16 ranges, explicit mode unions and separate
+term-presence evidence. Negative consumers reject malformed result/collection
+types; mutations of actual implementation coordinates and term evidence must fail
+compilation. This is targeted coverage of the new boundary, not a claim of full
+application typing.
 The old greedy, ordered, non-overlapping ranges remain intentional: the first
 term may be a token suffix, intermediate terms occupy entire tokens, and the
 last may be a prefix. Whole-word matching additionally checks Unicode letters,
