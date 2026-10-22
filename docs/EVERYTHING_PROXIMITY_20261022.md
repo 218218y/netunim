@@ -32,6 +32,17 @@ The fix removes that multi-gap regex from application proximity queries; it does
 not claim that ES cancellation can stop arbitrary native Everything work.
 Raw Everything expressions remain the user's external query language.
 
+Read cancellation now travels from the HTTP response's premature `close` through
+the search owner and coordinator to the existing ES process port. Only search
+and recent-result reads opt into this context; normal request-body completion
+does not cancel them. A cancellation check also fences late output from a read
+port that ignored its signal, before decoding/publication or another candidate
+batch. Accepted file, preview and shutdown commands retain their existing drain;
+disconnected shutdown callers still trigger final teardown. Native process
+timeouts now report `ES_TIMEOUT`, rather than the erroneous `ES_EXIT_0` caused by
+converting execFile's `code:null` to a number. Actual HTTP disconnect, late-read,
+native subprocess timeout and accepted-shutdown tests cover these boundaries.
+
 Implementation and bounds are described in
 [the canonical search contract](DOCUMENT_TEXT_SEARCH.md). Regression cases cover
 the repeated late suffix, wrong order, distance overflow, result pagination after

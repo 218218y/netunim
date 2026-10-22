@@ -47,6 +47,11 @@ export function createEverythingProcess({ commands }) {
         String(errorField(error, 'code') || '') === 'ABORT_ERR'
       )
         throw error;
+      // execFile reports timeout termination with code:null. Number(null) is
+      // zero, which must never turn that failure into an ES_EXIT_0 diagnostic.
+      if (errorField(error, 'code') == null && errorField(error, 'killed') === true && errorField(error, 'signal')) {
+        throw Object.assign(new Error('Everything did not finish before the search deadline.'), {code:'ES_TIMEOUT'});
+      }
       const code = Number(errorField(error, 'code')),
         stderr = errorField(error, 'stderr');
       throw Object.assign(

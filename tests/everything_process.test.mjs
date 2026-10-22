@@ -40,7 +40,7 @@ test('native platform retains ES cwd/Unicode/large output, timeout and abort and
  const owner=createEverythingProcess(createEverythingProcessPlatform({root}));t.after(()=>owner.dispose());
  const result=await owner.es(process.execPath,['-e',"process.stdout.write(JSON.stringify({cwd:process.cwd(),text:'תוכן'}))"]);assert.deepEqual(JSON.parse(result.stdout),{cwd:root,text:'תוכן'});
  assert.equal((await owner.es(process.execPath,['-e',"process.stdout.write('x'.repeat(1200000))"])).stdout.length,1200000);
- await assert.rejects(owner.es(process.execPath,['-e','setInterval(()=>{},1000)'],{timeout:60}));
+ await assert.rejects(owner.es(process.execPath,['-e','setInterval(()=>{},1000)'],{timeout:60}),{code:'ES_TIMEOUT'});
  const abort=new AbortController(),pending=owner.es(process.execPath,['-e','setInterval(()=>{},1000)'],{signal:abort.signal});abort.abort();await assert.rejects(pending,{code:'ABORT_ERR'});
  await assert.rejects(owner.start(path.join(root,'missing-app.exe'),[]),{code:'ENOENT'});
  assert.equal((await owner.command(process.execPath,['-e',"process.stdout.write('still alive')"])).stdout,'still alive');
