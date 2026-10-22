@@ -1,5 +1,14 @@
 import {esc} from '../core/values.js';
 
+export function documentSearchEmptyHtml(label,partial=false){
+  const message=partial?'החיפוש לא הושלם; עדיין לא אותרו התאמות בחלק שנבדק.':`לא נמצאו תוצאות ב־${label}.`;
+  return `<div class="global-search-source-empty">${esc(message)}</div>`;
+}
+
+export function documentSearchPartialHtml(partial){
+  return partial?'<div class="document-search-partial" role="status">החיפוש הושלם באופן חלקי. ייתכן שקיימות תוצאות נוספות; אפשר לצמצם לתיקייה או לנסות שוב.</div>':'';
+}
+
 export function bytes(value){const size=Number(value);if(!Number.isFinite(size)||size<0)return '';if(size<1024)return `${size} B`;if(size<1024*1024)return `${Math.round(size/1024)} KB`;return `${(size/1024/1024).toFixed(size<10*1024*1024?1:0)} MB`}
 export function localDate(value){const time=Date.parse(value||'');if(!Number.isFinite(time))return '';try{return new Intl.DateTimeFormat('he-IL',{dateStyle:'short',timeStyle:'short'}).format(new Date(time))}catch{return ''}}
 export function safeCloudViewUrl(value){try{const url=new URL(String(value||''));const host=url.hostname.toLowerCase();return url.protocol==='https:'&&(host==='google.com'||host.endsWith('.google.com'))?url.toString():''}catch{return ''}}

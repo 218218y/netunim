@@ -55,7 +55,7 @@ export function createEverythingSearchCoordinator({configuration,session,process
     const build=(read,config,probe)=>buildEsSearchArgs({...read,timeoutMs:config.searchTimeoutMs,instance:probe.instance});
     if(request.mode!=='content'||!contentQueryRequiresVerification(request.query,request.contentSearch))return runEverythingJson((config,probe)=>build(request,config,probe),{signal:request.signal});
     const config=await loadConfig(),started=performance.now(),deadline=started+config.searchTimeoutMs+5000;
-    const wanted=request.offset+request.limit,rows=[];
+    const wanted=request.offset+request.limit,rows=[],verifiedPaths=new Set();
     let candidateOffset=0,partial=false;
     // Candidates retain native sorting and scope. Filter before applying the
     // result offset; a rejected candidate must never consume a result slot.
@@ -63,9 +63,21 @@ export function createEverythingSearchCoordinator({configuration,session,process
       request.signal?.throwIfAborted();
       if(candidateOffset>=MAX_RESULTS||performance.now()>=deadline){partial=true;break}
       const limit=Math.min(100,MAX_RESULTS-candidateOffset);
-      const result=await runEverythingJson((current,probe)=>build({...request,offset:candidateOffset,limit},current,probe),{decode:parseEsContentRows,deadline,signal:request.signal});
+      let result;
+      try{
+        result=await runEverythingJson((current,probe)=>build({...request,offset:candidateOffset,limit},current,probe),{decode:parseEsContentRows,deadline,signal:request.signal});
+      }catch(error){
+        request.signal?.throwIfAborted();
+        // Only an expected deadline after verified progress can yield a partial
+        // page. Decode/extraction/IPC failures cannot certify this result set.
+        if(error?.code!=='ES_TIMEOUT'||error?.name==='AbortError'||!rows.length)throw error;
+        partial=true;break;
+      }
       for(const {content,...row} of result.rows){
-        if(contentSearchMatches(content,request.query,request.contentSearch))rows.push(row);
+        const identity=row.fullPath.toLocaleLowerCase('en-US');
+        if(!verifiedPaths.has(identity)&&contentSearchMatches(content,request.query,request.contentSearch)){
+          verifiedPaths.add(identity);rows.push(row);
+        }
         if(rows.length>=wanted)break;
       }
       candidateOffset+=result.rows.length;
