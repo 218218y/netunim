@@ -147,6 +147,13 @@ versions and the other application's format with byte-identical journals.
 These are supported-contract fixtures, not copied live historical backups or
 proof of every historical exporter version.
 
+The expanded Windows run also observed an owned post-crash browser reach
+`interactive` without application errors but miss the ordinary 10-second load
+deadline. Only navigation immediately after a hard process kill receives a
+30-second recovery window; normal startup keeps its existing deadline. No
+storage operation or restore is retried to hide a failed result, and the
+separate startup/performance measurements retain their actual elapsed times.
+
 ### Remaining full-install execution protocol
 
 Status is NOT RUN until all evidence below exists. Use a snapshot-backed disposable

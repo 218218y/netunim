@@ -593,7 +593,10 @@ class BrowserSession:
         self.ws.close()
         self.events = []
         self._start_browser()
-        self._navigate()
+        # A hard-killed profile needs crash recovery plus a cold module graph.
+        # Windows CI reached interactive without errors but exceeded the ordinary
+        # 10s page deadline. Keep normal startup's budget and bound this phase.
+        self._navigate(timeout=30 if crash else 10)
         if self.instrument:
             self.evaluate('appReady.then(()=>true)')
         return {'previous_pid': previous_pid, 'new_pid': self.proc.pid, 'hard_process_failure': crash}
@@ -635,12 +638,12 @@ class BrowserSession:
             if timeout is not None:
                 self.ws.settimeout(previous_timeout)
 
-    def _navigate(self):
+    def _navigate(self, *, timeout=10):
         result = self.call("Page.navigate", {"url": self.url})
         nav = result.get("result", {})
         if nav.get("errorText"):
             raise RuntimeError('Native ESM runtime requires localhost navigation: '+nav['errorText'])
-        end = time.time() + 10
+        end = time.time() + timeout
         last_error = None
         state = None
         while time.time() < end:
