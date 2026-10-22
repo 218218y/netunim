@@ -33,8 +33,9 @@ provider access. Its only private dispatch path passes the common access gate.
    schedules the existing listener/process teardown. No new cancellation or
    retry policy is introduced.
 
-The current version is still 38; endpoints, pairing keys, configurations,
-installation rollback, PDF data and client compatibility are unchanged. The
+This extraction retained version 38. The current v39 text-search correction is
+documented in [the matching contract](DOCUMENT_TEXT_SEARCH.md); endpoints, pairing
+keys, configurations, installation rollback and PDF data remain compatible. The
 installer explicitly stages both HTTP modules before initialization/activation.
 
 ## Verification

@@ -65,6 +65,9 @@ restore and live-provider release exercises therefore remain explicitly unverifi
   admission is verified; reflected CORS remains a documented hardening opportunity.
 - A lightweight synthetic search benchmark records raw samples, median/p95 and
   exact source identity; representative physical UI/storage measurements remain open.
+- The canonical matcher implementation is strictly checked, including indexed
+  access and negative consumers; implementation mutations prove numeric coordinate
+  and term-presence types cannot silently become display strings or counts.
 - Physical-machine, installed-Bridge and live-provider interruption/restore
   acceptance still requires an isolated environment; production data must not
   be used to manufacture evidence for these outstanding operational checks.

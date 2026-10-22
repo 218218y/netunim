@@ -22,6 +22,14 @@ test('all checks every required term after the highlight cap is filled', () => {
   }
 });
 
+test('Bridge matching preserves its existing control-character and 240-character wire-query normalization',()=>{
+  assert.equal(contentSearchMatches('אב סוף','אב\u0000סוף'),true);
+  assert.deepEqual(bridge('אב סוף','אב\u0000סוף').matches,[{start:0,end:6}]);
+  const bounded='אב'.repeat(120),longer=bounded+'סוף';
+  assert.equal(contentSearchMatches(bounded,longer),true);
+  assert.deepEqual(bridge(bounded,longer).matches,[{start:0,end:bounded.length}]);
+});
+
 test('proximity missing suffix completes on thousands of repetitions in a separate bounded process', () => {
   const script = `
     import {contentSearchMatches,contentMatchRanges} from './netunim-orders/document-bridge/lib.mjs';
@@ -92,6 +100,7 @@ test('classic worker and installed Bridge derive exactly from the dependency-fre
 test('Unicode whole-word boundaries and case expansion retain original highlight coordinates',()=>{
   for(const match of [bridge,findTextMatchOffsets]){
     assert.deepEqual(match('𐐀abc abc𐐀 abc','abc',{wordMatch:'whole'}).matches,[{start:12,end:15}]);
+    assert.deepEqual(match('a\uDC00abc abc','abc',{wordMatch:'whole'}).matches,[{start:2,end:5},{start:6,end:9}]);
     const text='İ AB אב סוף';
     assert.deepEqual(match(text,'ab').matches,[{start:2,end:4}]);
     assert.deepEqual(match(text,'אב סוף',{matchMode:'proximity'}).matches,[{start:5,end:11}]);

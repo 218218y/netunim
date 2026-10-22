@@ -171,12 +171,12 @@ export function buildContentQuery(value,options={}){
 }
 
 export function contentMatchRanges(source,query,{maxMatches=5000,...options}={}){
-  const matcher=createDocumentTextMatcher(query,options),found=matcher.find(source,{maxMatches});
+  const matcher=createDocumentTextMatcher(normalizeSearchText(query),options),found=matcher.find(source,{maxMatches});
   return {needle:matcher.needle,search:matcher.search,ranges:found.matches.map(row=>({index:row.start,length:row.end-row.start})),capped:found.capped};
 }
 
 export function contentSearchMatches(value,query,options={}){
-  return createDocumentTextMatcher(query,options).find(value,{maxMatches:1}).matches.length>0;
+  return createDocumentTextMatcher(normalizeSearchText(query),options).find(value,{maxMatches:1}).matches.length>0;
 }
 
 export function buildContentMatchInfo(value,query,{contextChars=90,maxSnippets=12,maxMatches=5000,matchMode='phrase',wordMatch='partial',proximityWords=0}={}){

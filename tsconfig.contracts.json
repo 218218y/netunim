@@ -20,6 +20,8 @@
     "types": []
   },
   "files": [
+    "shared/document-text-search.js",
+    "tests/fixtures/checked-document-text-search.mjs",
     "shared/tax-calculator/remote.js",
     "shared/tax-calculator/store.js",
     "shared/bank-feed.js",

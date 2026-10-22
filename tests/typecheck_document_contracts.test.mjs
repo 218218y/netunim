@@ -4,6 +4,19 @@ import {readFileSync} from 'node:fs';
 import path from 'node:path';
 import {root, check, describe} from './typecheck_contract_fixture.mjs';
 
+test('canonical text matcher bodies reject text coordinates and numeric term-presence evidence',()=>{
+  const source=path.join(root,'shared/document-text-search.js'),original=readFileSync(source,'utf8');
+  for(const [from,to] of [
+    ['matches.push(folded.range(start, end));',"matches.push({start:'match',end});"],
+    ['if (found) foundTerms.push(term);','if (found) foundTerms.push(1);'],
+  ]){
+    const changed=original.replace(from,to);
+    assert.notEqual(changed,original,from);
+    const diagnostics=check(new Map([[source,changed]]));
+    assert.ok(diagnostics.some(item=>item.file&&path.resolve(item.file.fileName)===source&&[2322,2345].includes(item.code)),describe(diagnostics));
+  }
+});
+
 test('PDF preview and process bodies reject text form authority, invalid preview text and unjoined disposal',()=>{
  for(const [file,from,to]of [
   ['pdf-extraction-result.mjs','hasForm: value.hasForm',"hasForm: 'yes'"],
