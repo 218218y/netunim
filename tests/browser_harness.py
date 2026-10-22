@@ -190,7 +190,7 @@ def _bootstrap_host_state(browser: str, seed_profile: Path) -> dict:
 
 
 def _seed_windows_profile(browser: str, profile: Path) -> None:
-    """Copy exactly two host preferences to a disposable, otherwise empty profile."""
+    """Copy two host preferences, preserving this owned profile on restart."""
     if not _is_windows():
         return
     root = HOST_STATE_ROOT
@@ -220,9 +220,12 @@ def _seed_windows_profile(browser: str, profile: Path) -> None:
                 state = json.loads(local_state.read_text(encoding="utf-8"))
                 state["password_manager"] = cache
                 local_state.write_text(json.dumps(state), encoding="utf-8")
-            (profile / "Local State").write_text(
-                json.dumps({"password_manager": cache}), encoding="utf-8"
-            )
+            destination = profile / 'Local State'
+            state = json.loads(destination.read_text(encoding='utf8')) if destination.exists() else {}
+            if not isinstance(state, dict) or not isinstance(state.get('password_manager', {}), dict):
+                raise RuntimeError('invalid owned Chromium Local State')
+            state['password_manager'] = {**state.get('password_manager', {}), **cache}
+            destination.write_text(json.dumps(state), encoding='utf8')
     except Exception as exc:
         raise RuntimeError(
             "Windows Chromium password-check seed is unavailable; browser launch stopped "
@@ -282,7 +285,7 @@ def _free_port() -> int:
     raise RuntimeError('No free localhost port in the dynamic range')
 
 
-def _wait_json(url: str | tuple[str, ...], timeout: float = 10.0, *, process=None):
+def _wait_json(url: str | tuple[str, ...], timeout: float = 10.0, *, process=None, expected_browser_path=None):
     # A cold Chromium process can publish the DevTools socket before /json/list
     # finishes its first target enumeration. A 0.5s per-request timeout makes
     # that state self-perpetuating: every poll aborts the slow first response
@@ -303,7 +306,12 @@ def _wait_json(url: str | tuple[str, ...], timeout: float = 10.0, *, process=Non
                 break
             try:
                 with urllib.request.urlopen(candidate, timeout=min(5.0, remaining)) as response:
-                    return json.load(response)
+                    result = json.load(response)
+                    if expected_browser_path is not None:
+                        actual = urllib.parse.urlsplit(result.get('webSocketDebuggerUrl', '')).path if isinstance(result, dict) else None
+                        if actual != expected_browser_path:
+                            raise RuntimeError('DevTools listener does not belong to the owned profile')
+                    return result
             except Exception as exc:  # startup race / cold target enumeration
                 last = exc
         remaining = end - time.monotonic()
@@ -311,6 +319,22 @@ def _wait_json(url: str | tuple[str, ...], timeout: float = 10.0, *, process=Non
             break
         time.sleep(min(0.1, remaining))
     raise RuntimeError(f"Chrome DevTools did not become available: {last}")
+
+
+def _wait_owned_devtools(profile, process, *, timeout=30):
+    deadline = time.monotonic()+timeout
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            raise RuntimeError('owned Chromium exited before publishing DevTools')
+        try:
+            lines = (profile/'DevToolsActivePort').read_text(encoding='utf8').splitlines()
+            port, browser_path = int(lines[0]), lines[1]
+            if not 0 < port < 65536 or not browser_path.startswith('/devtools/browser/') or urllib.parse.urlsplit(browser_path).netloc:
+                raise ValueError('invalid owned DevTools identity')
+            return port, browser_path
+        except (OSError, ValueError, IndexError):
+            time.sleep(.05)
+    raise RuntimeError('owned Chromium did not publish its private DevTools identity')
 
 
 class _QuietHandler(http.server.SimpleHTTPRequestHandler):
@@ -358,13 +382,14 @@ def _stop_browser_process(process, graceful_close=None) -> None:
         try:
             graceful_close()
         except Exception:
+            # Browser.close can close the socket before its response arrives.
+            # Still allow the accepted shutdown to flush the private profile.
             pass
-        else:
-            try:
-                process.wait(timeout=5)
-                return
-            except subprocess.TimeoutExpired:
-                pass
+        try:
+            process.wait(timeout=5)
+            return
+        except subprocess.TimeoutExpired:
+            pass
     process.terminate()
     try:
         process.wait(timeout=3)
@@ -549,7 +574,11 @@ class BrowserSession:
             self.browser_owner = None
         allowed = browser_preflight(self)
         _seed_windows_profile(self.browser, self.profile)
-        devtools_port = _free_port()
+        # Let Chromium bind its own port, then trust only the browser UUID it
+        # publishes inside this private profile. A free IPv4 port alone cannot
+        # identify a listener when Chromium uses the IPv6 loopback family.
+        (self.profile/'DevToolsActivePort').unlink(missing_ok=True)
+        devtools_port = 0
         args = _browser_args(self.browser, self.profile, devtools_port)
         args.extend(self.network_guard.arguments(allowed))
         browser_log = self.tmp / 'browser.log'
@@ -568,7 +597,14 @@ class BrowserSession:
             # A fresh CI machine can need more than 10s for its first Chrome boot.
             # Poll readiness, fail immediately on process exit, and leave application
             # assertions/timeouts unchanged. Include stderr before temp cleanup.
-            pages = _wait_json(_devtools_urls(devtools_port, "/json/list"), timeout=30, process=self.proc)
+            deadline = time.monotonic()+30
+            devtools_port, browser_path = _wait_owned_devtools(self.profile, self.proc, timeout=30)
+            version = _wait_json(_devtools_urls(devtools_port, '/json/version'), timeout=max(.01, deadline-time.monotonic()),
+                                 process=self.proc, expected_browser_path=browser_path)
+            endpoint = urllib.parse.urlsplit(version['webSocketDebuggerUrl'])
+            if endpoint.hostname not in ('127.0.0.1', '::1', 'localhost') or endpoint.port != devtools_port:
+                raise RuntimeError('owned DevTools endpoint escaped loopback')
+            pages = _wait_json(f'http://{endpoint.netloc}/json/list', timeout=max(.01, deadline-time.monotonic()), process=self.proc)
         except Exception as error:
             diagnostics = browser_log.read_text(encoding='utf-8', errors='replace')[-8000:]
             raise RuntimeError(f"{error}\nChrome startup log:\n{diagnostics}") from error

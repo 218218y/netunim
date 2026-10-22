@@ -63,6 +63,34 @@ class VerificationContracts(unittest.TestCase):
         self.assertGreater(request.call_args.kwargs["timeout"], 0.5)
         self.assertLessEqual(request.call_args.kwargs["timeout"], 5.0)
 
+    def test_devtools_rejects_a_different_browser_on_the_same_port(self):
+        wrong = io.BytesIO(json.dumps({'webSocketDebuggerUrl':'ws://[::1]:1234/devtools/browser/OTHER'}).encode())
+        owned = io.BytesIO(json.dumps({'webSocketDebuggerUrl':'ws://127.0.0.1:1234/devtools/browser/OWNED'}).encode())
+        with patch.object(browser_harness.urllib.request, 'urlopen', side_effect=[wrong, owned]):
+            result = browser_harness._wait_json(('http://[::1]:1234/json/version','http://127.0.0.1:1234/json/version'),
+                                                expected_browser_path='/devtools/browser/OWNED')
+        self.assertTrue(result['webSocketDebuggerUrl'].endswith('/OWNED'))
+
+    def test_windows_seed_preserves_private_profile_metadata_on_restart(self):
+        cache={'os_password_blank':False,'os_password_last_changed':'10000000'}
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);profile=root/'owned';profile.mkdir()
+            host=root/'host'/browser_harness._seed_key('chrome.exe')/'profile';host.mkdir(parents=True)
+            (host/'Local State').write_text(json.dumps({'password_manager':cache,'host_only':'never-copy'}),encoding='utf8')
+            original={'os_crypt':{'encrypted_key':'synthetic-owned-key'},'profile':{'last_used':'Profile 2'},
+                      'password_manager':{'private_preference':True}}
+            destination=profile/'Local State';destination.write_text(json.dumps(original),encoding='utf8')
+            with patch.object(browser_harness,'HOST_STATE_ROOT',root/'host'), \
+                 patch.object(browser_harness,'_is_windows',return_value=True), \
+                 patch.object(browser_harness,'_windows_password_check_state',return_value=cache):
+                for _ in range(2):
+                    browser_harness._seed_windows_profile('chrome.exe',profile)
+                    self.assertEqual(json.loads(destination.read_text(encoding='utf8')),
+                                     {**original,'password_manager':{**original['password_manager'],**cache}})
+                destination.write_text('{partial',encoding='utf8')
+                with self.assertRaises(RuntimeError):browser_harness._seed_windows_profile('chrome.exe',profile)
+                self.assertEqual(destination.read_text(encoding='utf8'),'{partial')
+
     def test_browser_shutdown_prefers_graceful_cdp_close(self):
         from unittest.mock import Mock
         process = Mock(returncode=None)
@@ -79,14 +107,21 @@ class VerificationContracts(unittest.TestCase):
         from unittest.mock import Mock
         process = Mock(returncode=None)
         process.poll.return_value = None
-        process.wait.side_effect = [subprocess.TimeoutExpired("chrome", 3), 0]
+        process.wait.side_effect = [subprocess.TimeoutExpired("chrome", 5), subprocess.TimeoutExpired("chrome", 3), 0]
         graceful = Mock(side_effect=RuntimeError("cdp unavailable"))
         browser_harness._stop_browser_process(process, graceful)
         graceful.assert_called_once_with()
         process.terminate.assert_called_once_with()
         process.kill.assert_called_once_with()
-        self.assertEqual(process.wait.call_count, 2)
+        self.assertEqual(process.wait.call_count, 3)
         self.assertEqual(process.wait.call_args_list[-1].kwargs["timeout"], 5)
+
+    def test_browser_shutdown_lost_close_ack_still_allows_profile_flush(self):
+        from unittest.mock import Mock
+        process=Mock(returncode=None);process.poll.return_value=None;process.wait.return_value=0
+        browser_harness._stop_browser_process(process,Mock(side_effect=RuntimeError('socket closed after accepted Browser.close')))
+        process.wait.assert_called_once_with(timeout=5)
+        process.terminate.assert_not_called();process.kill.assert_not_called()
 
     def test_browser_profile_cleanup_retries_transient_lock_and_never_hides_failure(self):
         with tempfile.TemporaryDirectory() as directory:

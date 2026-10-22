@@ -25,8 +25,8 @@ export async function createRestoreProcessBoundary(app,{initialize=false,pauseAt
   const shared={...checks,resetCloudHead:(revision,state,{boundaryId}={})=>checks.resetCloudHead(revision,state,state,{appMetadata:{boundaryId}})};
   const boundary=createStorageV2Boundary({owner:()=>owner,primary:()=>true,main,shared,db:faultDb});
   async function state(){
-    const view=async journal=>{const row=await journal.recover();return {state:row.state,seq:row.seq,epoch:row.epoch,appMetadata:row.appMetadata,checkpointChecksum:row.stored.checkpoints.checksum}};
-    return {main:await view(main),shared:await view(checks),mainCloud:await main.cloudState(),sharedCloud:await checks.cloudState(),boundary:await db.readBoundary(owner)};
+    const view=async(journal,key)=>{const row=await journal.recover();if(!row)throw Error('restore_process_missing_journal '+JSON.stringify({key,databases:await indexedDB.databases(),stored:await db.load(key),boundary:await db.readBoundary(owner),origin:location.origin}));return {state:row.state,seq:row.seq,epoch:row.epoch,appMetadata:row.appMetadata,checkpointChecksum:row.stored.checkpoints.checksum}};
+    return {main:await view(main,owner+':main'),shared:await view(checks,owner+':shared'),mainCloud:await main.cloudState(),sharedCloud:await checks.cloudState(),boundary:await db.readBoundary(owner)};
   }
   async function start(){
     const v2Source=captureStorageV2RestoreSource(await main.cloudState(),await checks.cloudState());

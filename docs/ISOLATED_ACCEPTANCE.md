@@ -162,6 +162,27 @@ and handles. This replaces process-tree enumeration; it does not ignore a failed
 kill or signal unrelated browsers. The same owner already covers suite cleanup
 and its native process-resource stress contracts.
 
+Restart auditing found the Windows host-preference helper replaced the private
+profile's entire `Local State` on each launch. It now merges only its two host
+preferences into the existing owned file, retaining profile selection,
+encryption metadata and all other fields; malformed existing state fails closed
+without replacement. Unit regressions prove preservation and that host-profile
+metadata is never copied into the private profile.
+
+Actual DevTools ownership is now tied to the browser UUID written into that
+profile's freshly created `DevToolsActivePort` file. Chromium allocates its own
+port, and the HTTP version endpoint must match that UUID before selecting a page.
+This removes the ambiguity of a guessed port on separate IPv4/IPv6 listeners.
+The real-browser isolation case now restarts A normally and then forcibly while
+B remains live, verifying LocalStorage, IndexedDB and CacheStorage persistence
+and B's independence. Its LocalStorage baseline is flushed by the first normal
+shutdown; this does not claim crash durability for an unflushed LocalStorage
+write. The journal commit/kill tests retain their separate durable assertions.
+If `Browser.close` closes its socket before acknowledging, the harness still
+waits for process exit before forcing termination, allowing the accepted shutdown
+to flush its profile. Missing restore-journal failures retain database/namespace
+diagnostics; no test creates a replacement journal to manufacture recovery.
+
 ### Remaining full-install execution protocol
 
 Status is NOT RUN until all evidence below exists. Use a snapshot-backed disposable
