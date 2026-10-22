@@ -154,6 +154,14 @@ deadline. Only navigation immediately after a hard process kill receives a
 storage operation or restore is retried to hide a failed result, and the
 separate startup/performance measurements retain their actual elapsed times.
 
+A further Windows run reproduced `taskkill /T /F` exiting 255 while terminating
+the live browser tree. Windows browsers now reuse the existing `SuiteProcess`
+gated Job Object owner: its child cannot start Chromium before job assignment,
+and both hard termination and ordinary cleanup wait for the owned descendants
+and handles. This replaces process-tree enumeration; it does not ignore a failed
+kill or signal unrelated browsers. The same owner already covers suite cleanup
+and its native process-resource stress contracts.
+
 ### Remaining full-install execution protocol
 
 Status is NOT RUN until all evidence below exists. Use a snapshot-backed disposable

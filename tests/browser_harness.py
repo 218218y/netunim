@@ -21,6 +21,7 @@ import time
 import urllib.request
 import urllib.parse
 from acceptance_safety import browser_preflight, sandbox_config, DenyProxy
+from suite_process import SuiteProcess
 
 try:
     import websocket
@@ -419,6 +420,7 @@ class BrowserSession:
         self.httpd = None
         self.http_thread = None
         self.proc = None
+        self.browser_owner = None
         self.ws = None
         self.network_guard = None
         self.seq = 0
@@ -453,7 +455,11 @@ class BrowserSession:
             graceful_close = None
             if self.ws:
                 graceful_close = lambda: self.call("Browser.close", timeout=3)
-            _stop_browser_process(self.proc, graceful_close)
+            try:
+                _stop_browser_process(self.proc, graceful_close)
+            finally:
+                if self.browser_owner:
+                    self.browser_owner.close()
         except Exception as error:
             cleanup_error = error
         finally:
@@ -538,14 +544,26 @@ class BrowserSession:
         self.url = f"http://127.0.0.1:{port}/index.html"
 
     def _start_browser(self):
+        if self.browser_owner:
+            self.browser_owner.close()
+            self.browser_owner = None
         allowed = browser_preflight(self)
         _seed_windows_profile(self.browser, self.profile)
         devtools_port = _free_port()
         args = _browser_args(self.browser, self.profile, devtools_port)
         args.extend(self.network_guard.arguments(allowed))
         browser_log = self.tmp / 'browser.log'
-        with browser_log.open('w', encoding='utf-8') as log:
-            self.proc = subprocess.Popen(args, stdout=log, stderr=subprocess.STDOUT, start_new_session=os.name != 'nt')
+        if os.name == 'nt':
+            # Reuse the runner's gated Job Object owner. The Python child is
+            # assigned before it can create Chromium or any of its descendants.
+            # This avoids taskkill's racy enumeration of a changing browser tree.
+            entry = self.tmp / 'owned-browser.py'
+            entry.write_text('import subprocess\nraise SystemExit(subprocess.call('+repr(args)+', stdin=subprocess.DEVNULL))\n', encoding='utf8')
+            self.browser_owner = SuiteProcess(entry, browser_log, cwd=ROOT)
+            self.proc = self.browser_owner.proc
+        else:
+            with browser_log.open('w', encoding='utf-8') as log:
+                self.proc = subprocess.Popen(args, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
         try:
             # A fresh CI machine can need more than 10s for its first Chrome boot.
             # Poll readiness, fail immediately on process exit, and leave application
@@ -583,8 +601,10 @@ class BrowserSession:
         previous_pid = self.proc.pid
         if crash:
             if os.name == 'nt':
-                subprocess.run(['taskkill', '/PID', str(previous_pid), '/T', '/F'],
-                               check=True, capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                if self.browser_owner is None:
+                    raise RuntimeError('hard restart requires its owned Windows job')
+                self.browser_owner.close()
+                self.browser_owner = None
             else:
                 os.killpg(previous_pid, signal.SIGKILL)
             self.proc.wait(timeout=10)
