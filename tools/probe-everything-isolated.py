@@ -7,6 +7,7 @@ parser.add_argument("--everything-exe",required=True,type=Path)
 parser.add_argument("--es-exe",required=True,type=Path)
 parser.add_argument("--output",type=Path)
 parser.add_argument("--resources",action="store_true",help="Include bounded synthetic large-content and cancellation measurements")
+parser.add_argument("--parity",action="store_true",help="Compare all content modes with the canonical matcher on an isolated Unicode corpus")
 
 
 args=parser.parse_args()
@@ -31,6 +32,12 @@ if args.resources:
   (files/'resource-filter'/f'a-rejected-{index:03}.txt').write_text('resource_end resource_start',encoding='utf-8-sig')
  (files/'resource-single'/'single-large.txt').write_text('resource_start resource_end '+('padding '*2300000),encoding='utf-8-sig')
 instance='NETUNIM_VERIFY_'+uuid.uuid4().hex
+if args.parity:
+ corpus=json.loads((ROOT/'tests/fixtures/document-search-parity.json').read_text(encoding='utf8'))
+ (files/'parity').mkdir()
+ for name,text in corpus['documents'].items():
+  if Path(name).name!=name:raise RuntimeError('invalid corpus fixture name')
+  (files/'parity'/name).write_text(text,encoding='utf-8-sig')
 settings={'app_data':'0','run_as_admin':'0','run_in_background':'1','show_tray_icon':'0','service':'0',
  'auto_include_fixed_volumes':'0','auto_include_removable_volumes':'0','auto_include_fixed_refs_volumes':'0',
  'auto_include_removable_refs_volumes':'0','ntfs_volume_guids':'','ntfs_volume_paths':'','ntfs_volume_includes':'',
@@ -42,6 +49,7 @@ ini='[Everything]\n'+''.join(k+'='+v+'\n' for k,v in settings.items())
 env={**os.environ,'APPDATA':str(work/'AppData'),'LOCALAPPDATA':str(work/'LocalAppData'),'TEMP':str(work/'Temp'),'TMP':str(work/'Temp')}
 process=subprocess.Popen([str(work/'Everything.exe'),'-instance',instance,'-config',str(work/'isolated.ini'),'-no-db','-startup'],cwd=work,env=env,creationflags=subprocess.CREATE_NO_WINDOW)
 report={'instance':instance,'source':{'revision':subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),'dirty':bool(subprocess.check_output(['git','status','--porcelain'],cwd=ROOT,text=True).strip()),'coordinatorSha256':hashlib.sha256((ROOT/'netunim-orders/document-bridge/everything-search-coordinator.mjs').read_bytes()).hexdigest()},'binaries':{name:hashlib.sha256((work/name).read_bytes()).hexdigest() for name in ('Everything.exe','es.exe')},'measurements':[],'isolatedIndexVerified':False}
+report['source']['moduleSha256']={name:hashlib.sha256((ROOT/name).read_bytes()).hexdigest() for name in ('netunim-orders/document-bridge/lib.mjs','shared/document-text-search.js','tests/fixtures/document-search-parity.json','tools/probe-everything-isolated.mjs')}
 def query(args,timeout=3):
  result=subprocess.run([str(work/'es.exe'),'-instance',instance,*args],cwd=work,env=env,capture_output=True,timeout=timeout,creationflags=subprocess.CREATE_NO_WINDOW)
  return result.returncode,result.stdout.decode('utf-8',errors='replace'),result.stderr.decode('utf-8',errors='replace')
@@ -72,6 +80,7 @@ try:
  legacy='regex:content:"'+r'(?:\s+\S+){0,50}\s+'.join(['אב']*5+['אין'])+'" no-background-search:'
  planned.insert(0,('legacy-six',legacy))
  planned.insert(1,('legacy-whole-candidates','whole-words:content:<"alpha" "beta"> no-background-search:'))
+ if args.parity:planned=[]
  for name,search in planned:
   for sample in range(1):
    before=cpu();start=time.monotonic()
@@ -80,9 +89,9 @@ try:
    elapsed=(time.monotonic()-start)*1000;after=cpu();time.sleep(.2);settled=cpu()
    report['measurements'].append({'case':name,'sample':sample,'wallMs':elapsed,'cpuSeconds':after-before,'cpuAfterClientExitSeconds':settled-after,'exitCode':rc,'results':([Path(line).name for line in out.splitlines() if line.strip()] if name!='read-content' else [{'bytes':len(out),'hasSuffix':'אין' in out}]),'stderr':error})
    output.write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
- for mode in ('search','whole-boundaries','abort','timeout',*(['resources'] if args.resources else [])):
+ for mode in (('parity',) if args.parity else ('search','whole-boundaries','abort','timeout',*(['resources'] if args.resources else []))):
   before=cpu();start=time.monotonic()
-  result=subprocess.run(['node',str(ROOT/'tools/probe-everything-isolated.mjs'),instance,str(work/'es.exe'),str(work),mode,legacy],cwd=ROOT,env=env,capture_output=True,timeout=60 if mode=='resources' else 8,creationflags=subprocess.CREATE_NO_WINDOW)
+  result=subprocess.run(['node',str(ROOT/'tools/probe-everything-isolated.mjs'),instance,str(work/'es.exe'),str(work),mode,legacy],cwd=ROOT,env=env,capture_output=True,timeout=60 if mode in ('resources','parity') else 8,creationflags=subprocess.CREATE_NO_WINDOW)
   after=cpu();time.sleep(.8);settled=cpu()
   decoded=json.loads(result.stdout.decode('utf8'))
   if result.returncode:raise RuntimeError('actual Bridge probe failed: '+result.stderr.decode('utf8'))

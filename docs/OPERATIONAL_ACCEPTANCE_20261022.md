@@ -28,8 +28,10 @@ physical acceptance status is still NOT RUN.
 
 The [batch follow-up](SEARCH_BATCH_FOLLOWUP_20261022.md) adds native large-content
 Everything measurements and isolated Bridge 41→43 replacement evidence. These
-also leave every physical/full-install/provider scenario below NOT RUN. Use v43
-for new acceptance; its client explicitly rejects earlier Bridge runtimes.
+also leave every physical/full-install/provider scenario below NOT RUN. The
+[quality completion](QUALITY_COMPLETION_20261022.md) adds isolated search parity
+evidence and requires v44 for new acceptance; its client explicitly rejects
+earlier Bridge runtimes. Physical/full-install/provider status is unchanged.
 
 | Scenario | Required persisted evidence after restart |
 | --- | --- |

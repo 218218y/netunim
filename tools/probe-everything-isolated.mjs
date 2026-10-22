@@ -1,7 +1,7 @@
 import {createEverythingSearchCoordinator} from '../netunim-orders/document-bridge/everything-search-coordinator.mjs';
 import {createEverythingProcess} from '../netunim-orders/document-bridge/everything-process.mjs';
 import {createEverythingProcessPlatform} from '../netunim-orders/document-bridge/everything-process-platform.mjs';
-import {buildEsSearchArgs,parseEsContentRows} from '../netunim-orders/document-bridge/lib.mjs';
+import {buildEsSearchArgs,parseEsContentRows,parseEsJson,contentSearchMatches} from '../netunim-orders/document-bridge/lib.mjs';
 import {execFile} from 'node:child_process';
 import assert from 'node:assert/strict';
 import path from 'node:path';
@@ -14,7 +14,38 @@ const resolved=await fs.realpath(root),ownedParent=await fs.realpath(workspace);
 if(path.dirname(resolved)!==ownedParent||!/^everything-isolated-[a-f0-9]{32}$/.test(path.basename(resolved)))throw Error('probe root is outside its disposable workspace');
 if(await fs.realpath(esPath)!==path.join(resolved,'es.exe'))throw Error('probe must execute only its copied ES binary');
 const owner=createEverythingProcess(createEverythingProcessPlatform({root}));
-if(mode==='resources'){
+if(mode==='parity'){
+ const corpus=JSON.parse(await fs.readFile(new URL('../tests/fixtures/document-search-parity.json',import.meta.url),'utf8'));
+ const scope=path.join(root,'fixtures','parity'),sort={field:'name',direction:'asc'},observations=[];
+ const coordinator=createEverythingSearchCoordinator({
+  configuration:{load:async()=>({searchTimeoutMs:5000})},session:{probe:async()=>({esPath,instance}),executable:async()=>'',invalidate:()=>{}},
+  process:{run:owner.es},pdf:{prepare:async()=>({partial:false}),search:()=>[]},
+  publication:{prune:()=>{},publish:row=>row},audit:{write:async()=>{}}
+ });
+ try{
+  for(const query of corpus.queries)for(const matchMode of corpus.modes)for(const wordMatch of corpus.wordMatches){
+   const contentSearch={matchMode,wordMatch,proximityWords:1};
+   const canonical=Object.entries(corpus.documents).filter(([,text])=>contentSearchMatches(text,query,contentSearch)).map(([name])=>name).sort();
+   const nativeArgs=buildEsSearchArgs({query,mode:'content',contentSearch,scopePath:scope,sort,limit:100,instance});
+   const {stdout}=await owner.es(esPath,nativeArgs);
+   const native=parseEsJson(stdout).map(row=>row.name).sort();
+   const exactArgs=[...nativeArgs];exactArgs[exactArgs.indexOf('--')+1]='diacritics:'+exactArgs[exactArgs.indexOf('--')+1];
+   const exact=parseEsJson((await owner.es(esPath,exactArgs)).stdout).map(row=>row.name).sort();
+   const result=await coordinator.searchDocuments(query,100,'content',contentSearch,scope,0,sort);
+   const bridge=result.results.map(row=>row.name).sort();
+   observations.push({query,...contentSearch,canonical,native,exact,bridge,partial:result.partial,
+    missing:canonical.filter(name=>!bridge.includes(name)),extra:bridge.filter(name=>!canonical.includes(name))});
+   if(!observations.at(-1).missing.length&&!observations.at(-1).extra.length){
+    const page=await coordinator.searchDocuments(query,2,'content',contentSearch,scope,1,sort);
+    assert.deepEqual(page.results.map(row=>row.name),canonical.slice(1,3));
+    assert.equal(page.hasMore,canonical.length>3);assert.equal(page.partial,false);
+   }
+  }
+  const filtered=await coordinator.searchDocuments('alpha',100,'content',{},scope,0,sort,'word');
+  assert.equal(filtered.results.length,0);assert.equal(filtered.partial,false);
+  console.log(JSON.stringify({observations,fileTypeFilterPassed:true}));
+ }finally{await coordinator.runtime.dispose();await owner.dispose()}
+}else if(mode==='resources'){
  const contentSearch={matchMode:'proximity',proximityWords:0,wordMatch:'partial'},sort={field:'name',direction:'asc'};
  const scope=folder=>path.join(root,'fixtures',folder),observations=[];
  async function measure(name,work){
