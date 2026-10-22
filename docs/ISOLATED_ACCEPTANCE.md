@@ -129,6 +129,24 @@ post-GC JS heap. Local-only loaded tests do not measure cloud ACK or total proce
 memory. Three samples do not establish p95 or certify a physical weak computer;
 no production optimization follows merely from these measurements.
 
+The recorded 4x-CPU CI median for 10,000 Orders records included about 21.5 s
+for delegated search, versus about 2.1 s at 1,000 records. These are slow
+synthetic interactions, not a passing usability budget. The next performance
+decision requires an unthrottled profile separating script, layout and paint;
+physical target-machine acceptance remains open. The same measurement tool
+accepts `NETUNIM_LOADED_CPU_RATE=1` (default remains 4), so an unthrottled control
+needs no production code or alternative harness. Raw samples always retain the
+actual selected CPU rate.
+
+Earlier-schema acceptance is included in the existing native backup suite:
+`python tests/runtime_backup_browser_resources.py --phase legacy`. Synthetic
+Orders schema 3 and Kupa schema 5/state 3 fixtures omit later optional fields and
+exercise old notes/card identity defaults plus a genuine zero check. The native
+file pipeline imports both, survives a hard process restart and rejects future
+versions and the other application's format with byte-identical journals.
+These are supported-contract fixtures, not copied live historical backups or
+proof of every historical exporter version.
+
 ### Remaining full-install execution protocol
 
 Status is NOT RUN until all evidence below exists. Use a snapshot-backed disposable

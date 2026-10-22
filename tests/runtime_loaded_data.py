@@ -16,7 +16,9 @@ COUNTS = [int(value) for value in os.environ.get('NETUNIM_LOADED_COUNTS', '1000,
 assert COUNTS and all(1 <= count <= 10000 for count in COUNTS)
 REPETITIONS = int(os.environ.get('NETUNIM_LOADED_REPETITIONS', '3'))
 assert 2 <= REPETITIONS <= 10, 'loaded measurements require 2..10 independent recoveries per size'
-REPORT = {'environment': capture_environment(), 'cpuThrottleRate': 4,
+CPU_RATE = int(os.environ.get('NETUNIM_LOADED_CPU_RATE', '4'))
+assert CPU_RATE in (1, 4), 'use native CPU or the existing 4x diagnostic profile'
+REPORT = {'environment': capture_environment(), 'cpuThrottleRate': CPU_RATE,
           'instrumented': True, 'physicalWeakMachine': False, 'requestedCounts': COUNTS,
           'repetitions': REPETITIONS, 'complete': False, 'samples': {}, 'summaries': {},
           'measurementKinds': {'open': 'synchronous compute and DOM, excludes next paint',
@@ -113,7 +115,7 @@ def expression(source, app, count):
 for app in ['kupa', 'orders']:
     with BrowserSession(ROOT / f'netunim-{app}/site', app+'-loaded-data') as browser:
         browser.call('Performance.enable')
-        browser.call('Emulation.setCPUThrottlingRate', {'rate': 4})
+        browser.call('Emulation.setCPUThrottlingRate', {'rate': CPU_RATE})
         samples = []
         REPORT['samples'][app] = samples
         record_progress()
@@ -141,7 +143,7 @@ for app in ['kupa', 'orders']:
             assert not browser.drain_serious_errors()
             samples.append({'fixture': seed, 'repetition': repetition, 'results': measured})
             record_progress()
-            print('PASS', app, count, 'loaded rows; repetition', repetition, 'CPU x4; actual IDB reload/search; fenced second tab;',
+            print('PASS', app, count, 'loaded rows; repetition', repetition, 'CPU x'+str(CPU_RATE)+'; actual IDB reload/search; fenced second tab;',
                   json.dumps(samples[-1]), flush=True)
         summaries = REPORT['summaries'][app] = {}
         for count in COUNTS:

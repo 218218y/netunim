@@ -1,0 +1,11 @@
+{
+  "_meta": {"format": "order-management-portable", "schemaVersion": 3},
+  "version": 3,
+  "businessName": "Synthetic historical orders",
+  "suppliers": [{"id": "LEGACY-SUPPLIER", "name": "Synthetic supplier"}],
+  "transactions": [{"id": "LEGACY-TRANSACTION", "supplierId": "LEGACY-SUPPLIER", "sequence": 1, "action": "Synthetic historical charge", "debit": 125, "credit": 0}],
+  "customerDebts": [], "customerOrders": [], "serviceCalls": [],
+  "inventoryItems": [], "inventoryEvents": [], "warehouseOrders": [],
+  "checks": [{"id": "LEGACY-CHECK", "name": "Synthetic zero check", "amount": 0, "dueDate": "2026-01-01"}],
+  "notes": [{"id": "LEGACY-NOTE", "content": "Synthetic earlier note"}]
+}
