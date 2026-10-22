@@ -93,7 +93,7 @@ jobs:
   windows:
     name: Windows deployment contracts
     runs-on: windows-2025
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -106,11 +106,29 @@ jobs:
           node-version: '24'
           package-manager-cache: false
       - name: Exercise actual cmd.exe entrypoints with isolated upload stubs
-        run: python tests/windows_deploy_contracts.py
+        # Includes staged DPAPI/native provider stubs and real Chromium
+        # restore/PWA scenarios; global installers and real providers stay off.
+        # The same locked dependencies support the existing browser harness.
+        # No external account, browser profile or installed Bridge is reused.
+        run: |
+          npm ci --cache "$env:RUNNER_TEMP/netunim-npm-cache" --ignore-scripts --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pip install --no-cache-dir -r tests/requirements-ci.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tests/windows_deploy_contracts.py
       - name: Exercise Windows parallel scheduling and process cleanup
         run: python tests/runner_contracts.py
       - name: Exercise staged asset hooks and captured Git objects on Windows
         run: python tests/sync_assets_contracts.py StagedAssetContracts
+      - name: Preserve isolated Windows acceptance logs and evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-isolated-acceptance
+          path: .work/ci/windows-acceptance/
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 14
 
   complete:
     name: Verification complete

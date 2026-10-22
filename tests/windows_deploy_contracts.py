@@ -12,12 +12,31 @@ import tempfile
 import time
 import unittest
 import zipfile
+from run_all import run_suites
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 @unittest.skipUnless(os.name == "nt", "Actual cmd.exe coverage runs in the required Windows CI job")
 class WindowsDeploymentContracts(unittest.TestCase):
+    def test_windows_native_bank_vault_and_provider_stub_acceptance(self):
+        # Each staged native fixture owns an ephemeral port/LOCALAPPDATA and
+        # supplies inert provider modules. No installed service is contacted.
+        suites = ['bank_bridge_runtime', 'bank_provider_native', 'credit_adapter_native',
+                  'bank_shutdown_native', 'bank_artifact_shutdown_native', 'bank_image_shutdown_native']
+        result = subprocess.run(['node', '--test', '--test-concurrency=2',
+                                 *['tests/'+name+'.test.mjs' for name in suites]], cwd=ROOT,
+                                capture_output=True, text=True, encoding='utf8', errors='replace', timeout=180)
+        print(result.stdout, flush=True)
+        self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+
+    def test_windows_real_browser_recovery_and_pwa_acceptance(self):
+        suites = ['runtime_browser_isolation.py', 'runtime_backup_browser_resources.py',
+                  'runtime_restore_server_recovery.py', 'runtime_pwa.py', 'runtime_release_compatibility.py']
+        result = run_suites(suites, keep_going=True, report_dir=ROOT/'.work/ci/windows-acceptance',
+                            label='windows-isolated-acceptance', jobs=1, browser_jobs=1)
+        self.assertEqual(result, 0, 'see .work/ci/windows-acceptance for native browser evidence')
+
     def setUp(self):
         self.scratch = tempfile.TemporaryDirectory(prefix="netunim deploy spaces ")
         self.addCleanup(self.scratch.cleanup)

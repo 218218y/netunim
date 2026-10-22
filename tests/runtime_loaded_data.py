@@ -10,13 +10,20 @@ import sys
 from browser_harness import BrowserSession, ROOT
 
 sys.path.insert(0, str(ROOT / 'tools'))
-from startup_evidence import capture_environment
+from startup_evidence import capture_environment, distribution
 
 COUNTS = [int(value) for value in os.environ.get('NETUNIM_LOADED_COUNTS', '1000,10000').split(',')]
 assert COUNTS and all(1 <= count <= 10000 for count in COUNTS)
+REPETITIONS = int(os.environ.get('NETUNIM_LOADED_REPETITIONS', '3'))
+assert 2 <= REPETITIONS <= 10, 'loaded measurements require 2..10 independent recoveries per size'
 REPORT = {'environment': capture_environment(), 'cpuThrottleRate': 4,
           'instrumented': True, 'physicalWeakMachine': False, 'requestedCounts': COUNTS,
-          'complete': False, 'samples': {}}
+          'repetitions': REPETITIONS, 'complete': False, 'samples': {}, 'summaries': {},
+          'measurementKinds': {'open': 'synchronous compute and DOM, excludes next paint',
+                               'search': 'application search interaction elapsed',
+                               'edit': 'command through local durable commit, excludes cloud ACK',
+                               'memory': 'post-GC JS heap, not total process memory',
+                               'cloudACK': 'NOT RUN: local-only loaded fixture'}}
 OUTPUT = ROOT / '.work/loaded-performance/latest.json'
 
 
@@ -110,7 +117,7 @@ for app in ['kupa', 'orders']:
         samples = []
         REPORT['samples'][app] = samples
         record_progress()
-        for count in COUNTS:
+        for count, repetition in [(count, repetition) for count in COUNTS for repetition in range(1, REPETITIONS+1)]:
             seed = browser.evaluate(expression(SEED, app, count), timeout=45)
             browser._navigate()
             browser.evaluate("import('./assets/js/main.js').then(m=>m.appReady).then(()=>true)", timeout=45)
@@ -132,9 +139,25 @@ for app in ['kupa', 'orders']:
                 measured['secondaryReadOnly'] = True
                 assert not browser.drain_serious_errors()
             assert not browser.drain_serious_errors()
-            samples.append({'fixture': seed, 'results': measured})
+            samples.append({'fixture': seed, 'repetition': repetition, 'results': measured})
             record_progress()
-            print('PASS', app, count, 'loaded rows; CPU x4; actual IDB reload/search; fenced second tab;',
+            print('PASS', app, count, 'loaded rows; repetition', repetition, 'CPU x4; actual IDB reload/search; fenced second tab;',
                   json.dumps(samples[-1]), flush=True)
+        summaries = REPORT['summaries'][app] = {}
+        for count in COUNTS:
+            observations = [row['results'] for row in samples if row['fixture']['rows'] == count]
+            series = {}
+            series['localCheckpoint.ms'] = [row['fixture']['checkpointMs'] for row in samples if row['fixture']['rows'] == count]
+            for row in observations:
+                for key, value in row.items():
+                    if isinstance(value, dict) and isinstance(value.get('ms'), (int, float)):
+                        series.setdefault(key+'.ms', []).append(value['ms'])
+                for key, value in row['recovery'].items():
+                    series.setdefault('recovery.'+key, []).append(value)
+                for key, value in row['memory'].items():
+                    series.setdefault('memory.'+key+'.bytes', []).append(value)
+            summaries[str(count)] = {key: {field: value for field, value in distribution(values).items() if field != 'p95'}
+                                    for key, values in series.items()}
+            print('MEASURED', app, count, json.dumps(summaries[str(count)]), flush=True)
 REPORT['complete'] = True
 record_progress()

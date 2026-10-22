@@ -77,3 +77,78 @@ Full Windows installers must run on a disposable Windows runner/profile, never
 the working machine. Real provider acceptance requires an official sandbox;
 two physical computers, a full local Supabase stack, global installer/autostart
 and a live provider remain distinct from browser/SQL/staged-process tests.
+
+## Windows, providers and performance
+
+The existing required `Windows deployment contracts` CI job additionally runs:
+
+- The real staged Bank HTTP/DPAPI vault, token revocation/restart and retained
+  image test, plus native Bank/Credit provider compositions with inert scrapers
+  and shutdown/drain tests. Every native service uses a fresh LOCALAPPDATA and
+  ephemeral port. The provider modules cannot navigate or fetch real accounts.
+- The existing browser isolation, native backup-file roundtrip, three paired
+  restore process boundaries, actual Service Worker/offline/PWA upgrade and
+  mixed-release fencing suites on Windows Chromium. The existing scheduler owns
+  child-process cleanup and preserves suite logs/evidence as a CI artifact.
+
+This extends the current runner and fixtures, not the deployed installers. The
+existing real staged Document Bridge/private Node/C# preview test remains in that
+same job. No global installation, scheduled-task registration or OS PWA install
+is inferred from these results.
+
+Financial mock coverage uses the existing `bank_balance_result`,
+`bank_source_integrity`, `bank_snapshot_confirmation`, archive reconciliation,
+provider/credit and ownership suites. Missing versus zero, partial/malformed
+history, disappearing rows, unknown confirmation and cross-account evidence have
+explicit assertions. The focused 85-test money/source/receipt/origin/native-vault
+selection passed on Windows during preparation. No live provider credentials are
+available or required. Official Bank/Credit sandbox integration remains NOT RUN.
+
+Bank Origin policy is unchanged. The source inventory and actual HTTP tests in
+`BRIDGE_THREAT_MODEL_20261022.md` still show that a valid stolen token can be used
+from a foreign origin. Existing custom-domain/client migration and rollback
+evidence is insufficient to change the default. This is an explicit unresolved
+security/product decision, not a fixed vulnerability or permission bypass.
+
+The existing loaded-data measurement now performs three independent IDB reloads
+per app/size (1,000 and 10,000 synthetic records), retaining each sample and
+median/min/max plus sample count. It distinguishes checkpoint, instrumented
+startup, synchronous compute/DOM, search interaction, local durable edit and
+post-GC JS heap. Local-only loaded tests do not measure cloud ACK or total process
+memory. Three samples do not establish p95 or certify a physical weak computer;
+no production optimization follows merely from these measurements.
+
+### Remaining full-install execution protocol
+
+Status is NOT RUN until all evidence below exists. Use a snapshot-backed disposable
+Windows VM with a newly created OS account and no NETUNIM installation. Record the
+tested SHA and hashes of both installer packages; never copy working account
+profiles, configuration, secrets or backups into it.
+
+1. Prove 8765/8766 have no listeners and neither NETUNIM directory/startup launcher
+   nor the PDF maintenance task exists. If any exists, discard/recreate the VM.
+2. Install reviewed Everything/ES in that VM, disable all automatic volume
+   inclusion and configure only a newly generated fixture directory. Enumerate
+   every indexed path and reject any path outside that directory. The isolated
+   native research helper can verify its own named fixture index separately:
+   `python tools/probe-everything-isolated.py --everything-exe <reviewed-exe> --es-exe <reviewed-es> --parity --resources`.
+   Its success does not prove the installer's selected index is equally scoped.
+3. Run the unchanged `netunim-orders/document-bridge/install_document_bridge.bat`
+   and `netunim-kupa/bank-bridge/install_bank_bridge.bat` interactively inside the
+   VM. Configure the Document roots/index only to those fixtures. Do not configure
+   a financial login. Capture exit codes, actual runtime paths, versions (Document
+   45, Bank 74), token fingerprints, Startup targets and maintenance-task action.
+4. Reboot/log on; verify exactly one owned listener per Bridge. Stage the supported
+   historical package on a separate VM snapshot, repeat the upgrade and rollback,
+   and compare fingerprints, synthetic vault/settings/data and the selected index.
+   The existing historical native replacement probe alone is not this install.
+5. Install the isolated site as an OS PWA and repeat the old-tab/update/offline
+   workflow. Record browser/private-network permission behavior and client refusal
+   of an incompatible Bridge. Use the test site's loopback backend only.
+6. Interrupt only the VM's owned processes at the recorded boundaries, repeat
+   startup/shutdown, then verify no owned Everything/browser/helper survives and
+   no file outside the enumerated installation/fixture/OS startup locations was
+   changed. Export redacted evidence, then discard the VM snapshot.
+
+Two physical computers, a full Supabase service stack and official provider
+sandboxes retain their separate NOT RUN entries even if this VM protocol passes.
