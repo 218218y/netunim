@@ -7,6 +7,7 @@ import { kupaBankCreditSettlementIdentitiesData } from '../../shared/kupa-cashfl
 import { updateCashflowExplorer, cashflowExplorerMarkup } from '../../shared/cashflow-breakdown.js';
 import { esc } from '../../core/values.js';
 import { money } from '../../core/money.js';
+import {readBankMoney} from '../../shared/bank-money-value.js';
 import { checkDateFmt, checkMonthKey, checkMonthLabel, checkTodayISO } from '../../core/dates.js';
 import { CREDIT_PROVIDER_LABELS, normalizeCreditSync } from './credit-feed.js';
 import { creditAccountAggregate, creditDetailMonths, creditUpcomingDetailRows, creditFilterAccountModels, creditMonthBuckets, creditSummary } from './reporting.js';
@@ -110,7 +111,7 @@ export function createDomainsFinanceView({ runFinance = withFinanceDerivations, 
         const creditIdentities = kupaBankCreditSettlementIdentitiesData(state.kupa, rows, role === 'home' ? 'ביתי' : 'עסקי');
         return (`${caption}${context}<div class="bank-transactions-table-wrap"><table class="bank-transactions-table"><thead><tr>${role === 'business' ? '<th class="bank-transaction-actions-head">פעולות</th>' : ''}<th>תאריך</th><th>פעולה</th><th>חובה</th><th>זכות</th><th>יתרה לאחר תנועה</th></tr></thead><tbody>` +
             `${rows.map(row => {
-                const amount = Number(row.amount) || 0,
+                const amount = readBankMoney(row.amount), balanceAfter = readBankMoney(row.balanceAfter),
                     when = row.date || row.processedDate,
                     valueDate = row.processedDate && row.processedDate !== row.date ? bankDateLabel(row.processedDate) : '',
                     activeMissing = mode === 'history' && bankMissingActive(row);
@@ -124,10 +125,10 @@ export function createDomainsFinanceView({ runFinance = withFinanceDerivations, 
                         `${row.memo ? `<small>${esc(row.memo)}</small>` : ''}${activeMissing ? bankMissingDetail(row) : ''}`
                     ) +
                     (
-                        `${bankTransferReferenceDetails(row)}${bankCreditSettlementDetails(row, creditIdentities.get(row))}${bankChequeDetails(row)}${bankMorningLinkedDocumentsMarkup(row)}</td><td class="bank-transaction-money debit">` +
-                        `${amount < 0 ? money(Math.abs(amount)) : ''}</td><td class="bank-transaction-money credit">${amount > 0 ? money(amount) : ''}</td>`
+                        `${bankTransferReferenceDetails(row)}${bankCreditSettlementDetails(row, creditIdentities.get(row))}${bankChequeDetails(row)}${bankMorningLinkedDocumentsMarkup(row)}</td>` +
+                        `${amount === null ? '<td colspan="2" class="bank-transaction-money unknown">סכום לא ידוע</td>' : `<td class="bank-transaction-money debit">${amount < 0 ? money(Math.abs(amount)) : ''}</td><td class="bank-transaction-money credit">${amount >= 0 ? money(amount) : ''}</td>`}`
                     ) +
-                    `<td class="bank-transaction-money">${row.balanceAfter !== null && row.balanceAfter !== undefined && Number.isFinite(Number(row.balanceAfter)) ? money(Number(row.balanceAfter)) : '—'}</td></tr>`);
+                    `<td class="bank-transaction-money">${balanceAfter === null ? '—' : money(balanceAfter)}</td></tr>`);
             }).join('')}` +
             `</tbody></table></div>${feed.transactionWarning ? `<div class="bank-feed-warning">${esc(feed.transactionWarning)}</div>` : ''}`);
     }
