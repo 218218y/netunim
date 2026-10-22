@@ -10,7 +10,7 @@ FLOW = r"""(async()=>{
  async function eventually(predicate,message){const end=performance.now()+5000;while(!predicate()){if(performance.now()>end)throw Error(message);await frame()}}
  for(const id of ['globalSearchBackdrop','globalSearchButton']){const node=document.getElementById(id);node.replaceWith(node.cloneNode(true))}
  const byId=id=>document.getElementById(id),results=byId('globalSearchResults'),input=byId('globalSearchInput');
- const jobs=new Map(),held=[],calls=[];let next=0,failPath='',driveCalls=0,previewKind='text',hasMore=false;
+ const jobs=new Map(),held=[],calls=[];let next=0,failPath='',driveCalls=0,previewKind='text',hasMore=false,partial=false,empty=false;
  const row={id:'D',name:'fixture.txt',fullPath:'C:\\fixture.txt',relativePath:'fixture.txt',size:5,modifiedAt:'2026-10-08'};
  const client=createDocumentBridgeClient({tokenStore:{get:()=> 'test-pair',set:()=>{}},createAbortController:()=>new AbortController(),
   timers:{setTimeout:(run,delay)=>{jobs.set(++next,{run,delay});return next},clearTimeout:id=>jobs.delete(id)},
@@ -23,7 +23,7 @@ FLOW = r"""(async()=>{
    }
    if(path==='/documents/preview')return new Response(JSON.stringify({ok:true,kind:previewKind,mime:'image/png',text:'fixture query',name:row.name}));
    if(path==='/documents/preview-file')return new Response(Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aV1EAAAAASUVORK5CYII='),char=>char.charCodeAt(0)),{headers:{'Content-Type':'image/png'}});
-   return new Response(JSON.stringify({ok:true,bridgeVersion:39,results:[{...row,name:body.query==='new'?'new.txt':row.name}],hasMore,elapsedMs:1,count:0}));
+   return new Response(JSON.stringify({ok:true,bridgeVersion:40,results:empty?[]:[{...row,name:body.query==='new'?'new.txt':row.name}],hasMore,partial,elapsedMs:1,count:0}));
   }});
  const local={...client,warm:async()=>({ok:true}),pdfIndexStatus:undefined};
  const source=createDomainsDocumentSearch({localBridge:local,googleDrive:{getToken:()=> 'drive',search:async()=>{driveCalls++;return {results:[]}}},userAgent:'Windows'});
@@ -35,6 +35,15 @@ FLOW = r"""(async()=>{
  async function assertError(host,spinner,label){await frame();check(!host.querySelector(spinner),label+' stayed loading');check(host.textContent.includes('לא הגיב בזמן'),label+' hid the timeout');check(host.textContent.includes('DOCUMENT_BRIDGE_TIMEOUT'),label+' lacks diagnostic code');check(host.querySelector('[data-document-retry]'),label+' lacks explicit retry')}
  const done=[];
  try{
+  partial=true;empty=true;await start('partial','all');
+  await eventually(()=>results.querySelector('.document-search-partial'),'partial empty search lost its visible notice');
+  await eventually(()=>byId('globalSearchMeta').textContent.includes('חיפוש חלקי'),'partial search metadata falsely claimed completion');
+  empty=false;hasMore=true;await start('partial-rows','content');
+  await eventually(()=>results.querySelector('[data-document-load-more]'),'partial rows fixture missing');
+  partial=false;results.dispatchEvent(new Event('scroll'));
+  await eventually(()=>!results.querySelector('[data-document-load-more]'),'second page did not settle');
+  check(results.querySelector('.document-search-partial'),'paging erased partial evidence');
+  done.push('partial search remains visible across empty all-source results and pagination');hasMore=false;
   for(const [query,filter,path,label] of [['','files','/documents/recent','recent'],['query','files','/documents/search','file search'],['query','content','/documents/search','content search']]){
    const pending=await deadline(path);await start(query,filter);await pending.fire();
    await assertError(results,'.document-search-spinner',label);done.push(label);

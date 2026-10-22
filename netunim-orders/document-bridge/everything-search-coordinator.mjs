@@ -1,5 +1,6 @@
 import {BRIDGE_VERSION,MAX_RESULTS,DEFAULT_RESULT_LIMIT,RECENT_RESULT_LIMIT,buildEsCountArgs,buildEsRawSearchArgs,parseEsCount,parseEsJson,buildEsSearchArgs,buildEsRecentFilesArgs,mergeDocumentResults,compareDocumentRows,normalizeDocumentSearchMode,normalizeContentSearchOptions,normalizeSearchScopePath,normalizeDocumentSort,normalizeDocumentFileType,buildDocumentQuery,documentFileTypeIncludesPdf} from './lib.mjs';
 import {createDocumentSearch} from './search-owner.mjs';
+import {contentQueryRequiresVerification,contentSearchMatches,parseEsContentRows} from './lib.mjs';
 
 // Coordinates scoped Everything retries, diagnostics and the established search
 // owner. It does not own process construction, registry paths or HTTP admission.
@@ -30,11 +31,11 @@ export function createEverythingSearchCoordinator({configuration,session,process
     }catch(err){error=String(err?.message||err)}
     return {config,probe,diagnostics:{fileCount,indexedContentCount,sampleOk,error}};
   }
-  async function runEverythingJson(buildArgs,{signal=null}={}){
+  async function runEverythingJson(buildArgs,{signal=null,decode=parseEsJson,deadline=Infinity}={}){
     const config=await loadConfig();
     let probe=await probeEverything({autoStart:true});
     const started=Date.now();
-    const runSearch=currentProbe=>runEs(currentProbe.esPath,buildArgs(config,currentProbe),{timeout:config.searchTimeoutMs+5000,signal});
+    const runSearch=currentProbe=>runEs(currentProbe.esPath,buildArgs(config,currentProbe),{timeout:Math.max(1,Math.min(config.searchTimeoutMs+5000,Math.ceil(deadline-performance.now()))),signal});
     let output;
     try{output=await runSearch(probe)}catch(error){
       if(error?.exitCode!==8)throw error;
@@ -42,11 +43,32 @@ export function createEverythingSearchCoordinator({configuration,session,process
       probe=await probeEverything({fresh:true,autoStart:true});
       output=await runSearch(probe);
     }
-    return {rows:parseEsJson(output.stdout),elapsedMs:Date.now()-started};
+    return {rows:decode(output.stdout),elapsedMs:Date.now()-started};
+  }
+  async function searchEverything(request){
+    const build=(read,config,probe)=>buildEsSearchArgs({...read,timeoutMs:config.searchTimeoutMs,instance:probe.instance});
+    if(request.mode!=='content'||!contentQueryRequiresVerification(request.query,request.contentSearch))return runEverythingJson((config,probe)=>build(request,config,probe));
+    const config=await loadConfig(),started=performance.now(),deadline=started+config.searchTimeoutMs+5000;
+    const wanted=request.offset+request.limit,rows=[];
+    let candidateOffset=0,partial=false;
+    // Candidates retain native sorting and scope. Filter before applying the
+    // result offset; a rejected candidate must never consume a result slot.
+    while(rows.length<wanted){
+      if(candidateOffset>=MAX_RESULTS||performance.now()>=deadline){partial=true;break}
+      const limit=Math.min(100,MAX_RESULTS-candidateOffset);
+      const result=await runEverythingJson((current,probe)=>build({...request,offset:candidateOffset,limit},current,probe),{decode:parseEsContentRows,deadline});
+      for(const {content,...row} of result.rows){
+        if(contentSearchMatches(content,request.query,request.contentSearch))rows.push(row);
+        if(rows.length>=wanted)break;
+      }
+      candidateOffset+=result.rows.length;
+      if(result.rows.length<limit)break;
+    }
+    return {rows:rows.slice(request.offset,wanted),elapsedMs:Math.round(performance.now()-started),partial};
   }
   const documentSearch=createDocumentSearch({
     everything:{
-      search:request=>runEverythingJson((config,probe)=>buildEsSearchArgs({...request,timeoutMs:config.searchTimeoutMs,instance:probe.instance})),
+      search:searchEverything,
       recent:request=>runEverythingJson((config,probe)=>buildEsRecentFilesArgs({...request,timeoutMs:config.searchTimeoutMs,instance:probe.instance})),
     },
     pdf:{

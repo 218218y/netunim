@@ -317,7 +317,7 @@ class WindowsDocumentBridgeRuntimeContracts(unittest.TestCase):
                         time.sleep(0.025)
                 self.assertEqual(status, 200)
                 self.assertEqual(health["service"], "netunim-orders-document-bridge")
-                self.assertEqual(health["version"], 39)
+                self.assertEqual(health["version"], 40)
                 self.assertEqual(health["pid"], process.pid)
                 status, data, _ = request("/health", headers={"Origin": "https://untrusted.example"})
                 self.assertEqual((status, data["code"]), (403, "ORIGIN_NOT_ALLOWED"))

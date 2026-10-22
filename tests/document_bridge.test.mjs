@@ -63,12 +63,12 @@ test('content search supports Everything 1.5 phrase, AND, OR and ordered word-di
   assert.match(phoneQuery,/05/);assert.match(phoneQuery,/050/);assert.match(phoneQuery,/\\s/);
   assert.equal(buildContentQuery('מה שלומך',{matchMode:'all'}),'content:<"מה" "שלומך"> no-background-search:');
   assert.equal(buildContentQuery('מה שלומך',{matchMode:'any'}),'content:<"מה"|"שלומך"> no-background-search:');
-  assert.equal(buildContentQuery('מה שלומך',{matchMode:'proximity',proximityWords:10}),'regex:content:"מה(?:\\s+\\S+){0,10}\\s+שלומך" no-background-search:');
-  assert.equal(buildContentQuery('a+b c?',{matchMode:'proximity',proximityWords:3}),'regex:content:"a\\+b(?:\\s+\\S+){0,3}\\s+c\\?" no-background-search:');
+  assert.equal(buildContentQuery('מה שלומך',{matchMode:'proximity',proximityWords:10}),'content:<"מה" "שלומך"> no-background-search:');
+  assert.equal(buildContentQuery('a+b c?',{matchMode:'proximity',proximityWords:3}),'content:<"a+b" "c?"> no-background-search:');
   assert.equal(buildContentQuery('מזר',{wordMatch:'whole'}),'whole-words:content:"מזר" no-background-search:');
   assert.equal(buildContentQuery('מה שלומך',{matchMode:'all',wordMatch:'whole'}),'whole-words:content:<"מה" "שלומך"> no-background-search:');
   assert.equal(buildContentQuery('מה שלומך',{matchMode:'any',wordMatch:'whole'}),'whole-words:content:<"מה"|"שלומך"> no-background-search:');
-  assert.equal(buildContentQuery('מה שלומך',{matchMode:'proximity',proximityWords:2,wordMatch:'whole'}),'regex:content:"(?<![\\p{L}\\p{N}\\p{M}])מה(?![\\p{L}\\p{N}\\p{M}])(?:\\s+\\S+){0,2}\\s+(?<![\\p{L}\\p{N}\\p{M}])שלומך(?![\\p{L}\\p{N}\\p{M}])" no-background-search:');
+  assert.equal(buildContentQuery('מה שלומך',{matchMode:'proximity',proximityWords:2,wordMatch:'whole'}),'whole-words:content:<"מה" "שלומך"> no-background-search:');
   assert.equal(buildContentQuery('a'),'');
   assert.equal(buildEverythingQuery('  יבמות   ext:pdf  '),'יבמות ext:pdf');
   assert.equal(buildEverythingQuery('a'),'a');

@@ -42,3 +42,64 @@ test('actual Everything coordinator re-probes exactly once for exit 8 and decode
   await owner.searchDocuments('form',5);assert.equal(invalidated,1);assert.equal(probes.length,2);assert.equal(probes[1].fresh,true);assert.deepEqual(commands[0],commands[1]);assert.equal(published,0);
   await owner.runtime.dispose();await assert.rejects(owner.searchDocuments('form',5),{code:'DOCUMENT_SEARCH_DISPOSED'});
 });
+
+function contentSearchFixture(rawRows){
+  const reads=[],published=[];
+  const owner=createEverythingSearchCoordinator({
+    configuration:{load:async()=>({searchTimeoutMs:1000})},
+    session:{probe:async()=>({esPath:'isolated-es',instance:'synthetic'}),invalidate:()=>{},executable:async()=>''},
+    process:{run:async(_file,args)=>{
+      reads.push(args);
+      const offset=args.includes('-offset')?Number(args[args.indexOf('-offset')+1]):0,limit=Number(args[args.indexOf('-max-results')+1]);
+      return {stdout:JSON.stringify(rawRows.slice(offset,offset+limit))};
+    }},
+    pdf:{prepare:async()=>({partial:false}),search:()=>[]},
+    publication:{prune:()=>{},publish:row=>{published.push(row);return {...row,id:row.name}}},audit:{write:async()=>{}}
+  });
+  return {owner,reads,published};
+}
+const candidate=(name,content)=>({name,path:'C:\\synthetic',content});
+
+test('native proximity candidates are verified before publication, with repeated late suffixes and no content disclosure',async()=>{
+  const f=contentSearchFixture([
+    candidate('late-valid.txt','אב '.repeat(10000)+'אין'),
+    candidate('repeated.txt','אב '.repeat(10000)),
+    candidate('wrong-order.txt','אין '+'אב '.repeat(1000)),
+    candidate('gap-overflow.txt','אב '.repeat(1000)+'אחר '.repeat(300)+'אין'),
+    candidate('short-valid.txt','אב '.repeat(5)+'אין')
+  ]);
+  const result=await f.owner.searchDocuments('אב אב אב אב אב אין',5,'content',{matchMode:'proximity',proximityWords:50},'',0,{field:'name',direction:'asc'});
+  assert.deepEqual(result.results.map(row=>row.name),['late-valid.txt','short-valid.txt']);
+  assert.equal(result.partial,false);assert.equal(result.hasMore,false);
+  assert.ok(f.reads[0].includes('content'));assert.doesNotMatch(f.reads[0].at(-1),/regex:/);
+  assert.ok(f.published.every(row=>!Object.hasOwn(row,'content')));
+});
+
+test('candidate pages cannot consume verified result offsets or change native sort, scope and type filters',async()=>{
+  const rows=Array.from({length:105},(_,i)=>candidate(String(i).padStart(3,'0')+'.txt',i<101?'beta alpha':'alpha beta'));
+  const f=contentSearchFixture(rows);
+  const result=await f.owner.searchDocuments('alpha beta',2,'content',{matchMode:'proximity',proximityWords:0},'C:\\synthetic',1,{field:'name',direction:'asc'},'documents');
+  assert.deepEqual(result.results.map(row=>row.name),['102.txt','103.txt']);assert.equal(result.hasMore,true);
+  assert.equal(f.reads.length,2);
+  for(const args of f.reads){assert.equal(args[args.indexOf('-path')+1],'C:\\synthetic');assert.match(args.at(-1),/^doc:/);assert.equal(args[args.indexOf('-sort')+1],'name-ascending');}
+});
+
+test('unavailable native content fails explicitly instead of silently dropping a candidate',async()=>{
+  const f=contentSearchFixture([{name:'missing.txt',path:'C:\\synthetic'}]);
+  await assert.rejects(f.owner.searchDocuments('alpha beta',5,'content',{matchMode:'proximity'}),{code:'ES_CONTENT_UNAVAILABLE'});
+  assert.deepEqual(f.published,[]);
+});
+
+test('exhausting the candidate budget remains partial rather than reporting a complete empty search',async()=>{
+  const f=contentSearchFixture(Array.from({length:5001},(_,i)=>candidate(i+'.txt','beta alpha')));
+  const result=await f.owner.searchDocuments('alpha beta',1,'content',{matchMode:'proximity',proximityWords:0});
+  assert.deepEqual(result.results,[]);assert.equal(result.partial,true);assert.equal(f.reads.length,50);
+});
+
+test('phone-like proximity and ordinary Everything expressions retain their existing native contracts',async()=>{
+  const f=contentSearchFixture([]);
+  await f.owner.searchDocuments('050 1234567',1,'content',{matchMode:'proximity'});
+  assert.match(f.reads[0].at(-1),/regex:content:/);assert.equal(f.reads[0].includes('content'),false);
+  await f.owner.searchDocuments('regex:report',1,'everything',{matchMode:'proximity'});
+  assert.equal(f.reads[1].at(-1),'regex:report');assert.equal(f.reads[1].includes('content'),false);
+});

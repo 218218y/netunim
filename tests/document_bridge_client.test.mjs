@@ -9,7 +9,7 @@ const TOKEN_KEY='netunim_document_bridge_token_v1';
 const LEGACY_KEYS=['netunim_orders_document_bridge_token_v1','netunim_kupa_document_bridge_token_v1'];
 const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no});return {promise,resolve,reject}};
 function fixture(create){
-  const values=new Map([[TOKEN_KEY,'paired-token']]),calls=[],timers=new Map();let timerId=0,reply=()=>new Response('{"ok":true,"bridgeVersion":39,"version":39}');
+  const values=new Map([[TOKEN_KEY,'paired-token']]),calls=[],timers=new Map();let timerId=0,reply=()=>new Response('{"ok":true,"bridgeVersion":40,"version":40}');
   const preferences={getItem:key=>values.get(key)||null,setItem:(key,value)=>values.set(key,String(value)),removeItem:key=>values.delete(key)};
   const platform={preferences,timers:{setTimeout:(fn,delay)=>{const id=++timerId;timers.set(id,{fn,delay});return id},clearTimeout:id=>timers.delete(id)},fetchRequest:async(url,options)=>{calls.push({url,options});return reply(url,options)},createAbortController:()=>new AbortController()};
   return {api:create({platform}),calls,values,timers,preferences,reply:fn=>{reply=fn}};
@@ -39,7 +39,7 @@ for(const [app,create] of [['kupa',createKupa],['orders',createOrders]]){
   for(const [method,args,[path,verb,body,timeout]] of matrix)test(`${app} ${method} preserves endpoint, payload and deadline`,async()=>{
     const f=fixture(create);f.reply(url=>{
       assert.equal([...f.timers.values()][0].delay,url.endsWith('/health')?2500:timeout);
-      return new Response(method==='previewFile'?'pdf-bytes':'{"ok":true,"version":39,"bridgeVersion":39}',{headers:{'Content-Type':method==='previewFile'?'application/pdf':'application/json'}});
+      return new Response(method==='previewFile'?'pdf-bytes':'{"ok":true,"version":40,"bridgeVersion":40}',{headers:{'Content-Type':method==='previewFile'?'application/pdf':'application/json'}});
     });
     const result=await f.api[method](...args),call=f.calls.at(-1);
     assert.equal(call.url,'http://127.0.0.1:8766'+path);assert.equal(call.options.method,verb);
@@ -62,7 +62,7 @@ for(const [app,create] of [['kupa',createKupa],['orders',createOrders]]){
   });
   test(`${app} anonymous health does not depend on paired-token storage`,async t=>{
     const f=fixture(create,t);f.preferences.getItem=()=>{throw new Error('preferences unavailable')};
-    assert.equal((await f.api.health()).version,39);
+    assert.equal((await f.api.health()).version,40);
     assert.equal(f.calls[0].options.headers.Authorization,undefined);
   });
   test(`${app} cancellation while decoding a preview HTTP error remains cancellation`,async t=>{
@@ -106,13 +106,13 @@ for(const [app,create] of [['kupa',createKupa],['orders',createOrders]]){
     const one=f.api.search('one',{signal:first.signal}),two=f.api.search('two',{signal:second.signal});
     assert.equal(f.timers.size,2);const rejected=assert.rejects(one,error=>error.code==='DOCUMENT_BRIDGE_ABORTED');first.abort();await rejected;
     assert.equal(f.timers.size,1);assert.equal(f.calls[1].options.signal.aborted,false);
-    b.resolve(new Response('{"ok":true,"bridgeVersion":39}'));await two;assert.equal(f.timers.size,0);
+    b.resolve(new Response('{"ok":true,"bridgeVersion":40}'));await two;assert.equal(f.timers.size,0);
     assert.equal(add.mock.calls.length,1);assert.equal(remove.mock.calls.length,1);
     assert.equal(add.mock.calls[0].arguments[1],remove.mock.calls[0].arguments[1]);
     second.abort();assert.equal(f.calls[1].options.signal.aborted,false,'completed requests detach their cancellation listener');
   });
   test(`${app} cancelled buffered results cannot publish success`,async()=>{
-    const f=fixture(create),controller=new AbortController();f.reply(()=>({ok:true,status:200,text:async()=>{controller.abort();return '{"ok":true,"bridgeVersion":39}'}}));
+    const f=fixture(create),controller=new AbortController();f.reply(()=>({ok:true,status:200,text:async()=>{controller.abort();return '{"ok":true,"bridgeVersion":40}'}}));
     await assert.rejects(f.api.search('query',{signal:controller.signal}),error=>error.code==='DOCUMENT_BRIDGE_ABORTED');assert.equal(f.timers.size,0);
   });
   test(`${app} explicit request recovers after an offline failure`,async()=>{
@@ -137,7 +137,7 @@ for(const [app,create] of [['kupa',createKupa],['orders',createOrders]]){
   test(`${app} unpaired authenticated calls do no network work`,async()=>{
     const f=fixture(create);f.values.clear();await assert.rejects(f.api.search('query'),error=>error.code==='DOCUMENT_BRIDGE_NOT_PAIRED');assert.equal(f.calls.length,0);assert.equal(f.timers.size,0);
   });
-  for(const version of [38,40])test(`${app} version ${version} cannot serve a version-39 search`,async()=>{
+  for(const version of [39,41])test(`${app} version ${version} cannot serve a version-40 search`,async()=>{
     const f=fixture(create);f.reply(()=>new Response(JSON.stringify({ok:true,bridgeVersion:version})));
     await assert.rejects(f.api.search('query'),error=>error.code==='DOCUMENT_BRIDGE_UPGRADE_REQUIRED');assert.equal(f.calls.length,1);
   });
