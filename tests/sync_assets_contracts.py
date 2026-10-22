@@ -286,6 +286,11 @@ class StagedAssetContracts(unittest.TestCase):
         self.git('config', 'user.email', 'asset-test@example.invalid')
         self.git('config', 'commit.gpgsign', 'false')
         self.git('config', 'core.autocrlf', 'false')
+        # Disposable fixture repositories must have no detached object-store
+        # writer after a command returns. CI observed .git/objects change during
+        # TemporaryDirectory cleanup; maintenance is not part of these contracts.
+        self.git('config', 'maintenance.auto', 'false')
+        self.git('config', 'gc.auto', '0')
         self.git('add', '.')
         self.git('-c', 'core.hooksPath=NUL', 'commit', '-m', 'fixture')
 

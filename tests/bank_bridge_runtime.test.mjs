@@ -26,4 +26,24 @@ test('staged Bank runtime starts its real HTTP capabilities with isolated files 
   }
   assert.deepEqual(await (await request('/shutdown',{method:'POST'})).json(),{ok:true});
   const [code]=await exited;assert.equal(code,0,f.output());assert.ok(!f.output().includes('native-fixture-token'));assert.ok(!f.output().includes('synthetic'));
+
+  // Revoke only this disposable installation's token after a confirmed drain.
+  // Persisted vault bytes and retained images must survive re-pairing.
+  const vault=new Map();
+  if(process.platform==='win32')for(const file of ['hapoalim-credentials.dpapi','credit-card-profiles.dpapi'])vault.set(file,await fs.readFile(path.join(app,file)));
+  await fs.rename(path.join(app,'bridge-token.txt'),path.join(app,'revoked-test-token.txt'));
+  await f.restart();
+  const replacement=(await fs.readFile(path.join(app,'bridge-token.txt'),'utf8')).trim();
+  assert.ok(/^[A-Za-z0-9_-]{43}$/.test(replacement),'replacement must encode 32 random bytes');
+  assert.equal(Buffer.from(replacement,'base64url').length,32);assert.notEqual(replacement,'native-fixture-token');
+  for(const [target,method] of [['/status','GET'],['/credentials','DELETE'],['/reset','POST'],['/shutdown','POST']]){
+    assert.equal((await request(target,{method,token:'native-fixture-token'})).status,401,`old token remained authorized for ${target}`);
+  }
+  const repaired=await (await request('/status',{token:replacement})).json();
+  assert.equal(repaired.configured,process.platform==='win32');
+  for(const [file,bytes] of vault)assert.deepEqual(await fs.readFile(path.join(app,file)),bytes);
+  if(process.platform==='win32')assert.equal((await (await request('/v2/credit/status',{token:replacement})).json()).profiles.length,2);
+  assert.deepEqual(Buffer.from(await (await request('/bank/cheque-image/'+key,{token:replacement})).arrayBuffer()),image);
+  assert.equal((await request('/shutdown',{method:'POST',token:replacement})).status,200);
+  assert.equal((await f.exited)[0],0,f.output());assert.ok(!f.output().includes(replacement));
 });

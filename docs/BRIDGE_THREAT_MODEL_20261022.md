@@ -20,6 +20,17 @@ initialization/print-token operation intentionally prints the pairing secret.
 Credential/profile DPAPI protection does not by itself protect a leaked pairing
 token, browser token storage, terminal history or same-user process access.
 
+The compromised-key exercise is now automated against the actual staged Bank
+server in `tests/bank_bridge_runtime.test.mjs`. After authenticated shutdown and
+confirmed child exit, only the disposable root's token is moved aside; restarting
+generates a new 32-byte base64url token. The old token receives 401 for status,
+credentials deletion, reset and shutdown. The new token reads status and the
+synthetic retained image, and shuts down normally. On Windows the original DPAPI
+vault/profile bytes are unchanged and both synthetic credit profiles remain.
+The fixture uses an ephemeral port, an isolated LOCALAPPDATA and no provider
+login. This proves restart/revocation behavior, not browser re-pairing UX or the
+ACLs/default-origin compatibility of an installed financial service.
+
 The review's CORS observation is confirmed. It is not a token bypass: real HTTP
 tests from foreign, null, local and absent origins return 401 without a valid
 token, including credentials deletion/import, reset, shutdown, provider and image

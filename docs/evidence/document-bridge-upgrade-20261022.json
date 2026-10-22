@@ -1,0 +1,48 @@
+{
+  "kind": "isolated-native-listener-upgrade",
+  "stages": [
+    {
+      "version": 38,
+      "revision": "cbe8f80a0fecf7644ff35a4e08cdff0ddca037a5",
+      "originalLibSha256": "6230211d400ee00c90290974d2d3ce2457ee17a146cd86f0863db540dc45aa2c",
+      "modules": 46,
+      "stagedModulesSha256": "4a4290fedfa4e8ea9f72ceaf8154a1c987b30bdfe1ab0accc0ef06fe5a7aca5b",
+      "newVersionCheckPassed": true,
+      "tokenPreserved": true,
+      "configurationPreserved": true
+    },
+    {
+      "version": 39,
+      "revision": "530ea4832d094d84b5ffd3e9718e355fbf5f2cef",
+      "originalLibSha256": "75927f9044e8754ea3ae134a19cf83a0ca570ffc6824aeef72c528c10f405353",
+      "modules": 47,
+      "stagedModulesSha256": "b88a750eb8d15d278d6d0b55685ad560df9b40289fbf587579d2ac00aea58467",
+      "oldVersionCheckRejected": true,
+      "oldOwnedProcessExitedCleanly": true,
+      "newVersionCheckPassed": true,
+      "tokenPreserved": true,
+      "configurationPreserved": true
+    },
+    {
+      "version": 40,
+      "revision": "760fa8edb2e62173328a417feaff88841a7fa0ee",
+      "originalLibSha256": "31711dc6a4b250245cd49c7ca60ff88e17a4a48f2f42ddb0b9afc0a81d4a1fa3",
+      "modules": 47,
+      "stagedModulesSha256": "ac8921fde73f8eec848282007e6e3fcdb7dadfd648d8e9e5414a4697cc971715",
+      "oldVersionCheckRejected": true,
+      "oldOwnedProcessExitedCleanly": true,
+      "newVersionCheckPassed": true,
+      "tokenPreserved": true,
+      "configurationPreserved": true
+    }
+  ],
+  "installerExecuted": false,
+  "providersUsed": false,
+  "disposablePort": 10895,
+  "privateNodeSha256": "ba4e6d110e8c1592a1ecd390f6b05f3da124b13871a5be62b341a07a853c6c32",
+  "portSubstitution": "Only the disposable lib.mjs BRIDGE_PORT was changed.",
+  "currentSource": "760fa8edb2e62173328a417feaff88841a7fa0ee",
+  "dirty": true,
+  "finalShutdownClean": true,
+  "allOwnedProcessesExited": true
+}

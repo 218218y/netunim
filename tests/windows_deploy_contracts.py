@@ -254,13 +254,11 @@ class WindowsBankVaultContracts(unittest.TestCase):
 @unittest.skipUnless(os.name == "nt", "Production Document Bridge startup runs in the required Windows CI job")
 class WindowsDocumentBridgeRuntimeContracts(unittest.TestCase):
     def test_staged_runtime_uses_its_http_modules_and_preserves_private_file_gates(self):
-        # Isolated application root and reviewed private executable. Do not stop
-        # or pair with an operator's installed service if this port is occupied.
+        # Only the copied runtime's port changes. A working installation no
+        # longer prevents this native test or participates in its shutdown.
         with socket.socket() as probe:
-            occupied = probe.connect_ex(("127.0.0.1", 8766)) == 0
-        if occupied and os.environ.get("GITHUB_ACTIONS") != "true":
-            self.skipTest("Installed loopback service occupies port 8766; isolated production startup remains required in Windows CI")
-        self.assertFalse(occupied, "Windows CI requires an unused bridge port; never stop another listener")
+            probe.bind(("127.0.0.1", 0))
+            test_port = probe.getsockname()[1]
         source = ROOT / "netunim-orders/document-bridge"
         with tempfile.TemporaryDirectory(prefix="netunim bridge stage ") as directory:
             app = Path(directory)
@@ -270,6 +268,10 @@ class WindowsDocumentBridgeRuntimeContracts(unittest.TestCase):
             staged = re.search(r"for %%F in \((server\.mjs[^)]+)\)", installer).group(1).split()
             for name in staged:
                 shutil.copyfile(source / name, runtime / name)
+            staged_lib = runtime / "lib.mjs"
+            lib_source = staged_lib.read_text(encoding="utf8")
+            self.assertEqual(lib_source.count("BRIDGE_PORT=8766;"), 1)
+            staged_lib.write_text(lib_source.replace("BRIDGE_PORT=8766;", f"BRIDGE_PORT={test_port};"), encoding="utf8")
             private_name = "node-v24.21.0-win-x64-20261011-000000-1-1234abcd"
             private = app / private_name
             private.mkdir()
@@ -296,7 +298,7 @@ class WindowsDocumentBridgeRuntimeContracts(unittest.TestCase):
                                        creationflags=subprocess.CREATE_NO_WINDOW)
 
             def request(target, method="GET", body=None, headers=None):
-                connection = http.client.HTTPConnection("127.0.0.1", 8766, timeout=3)
+                connection = http.client.HTTPConnection("127.0.0.1", test_port, timeout=3)
                 try:
                     connection.request(method, target, body=body, headers=headers or {})
                     response = connection.getresponse()

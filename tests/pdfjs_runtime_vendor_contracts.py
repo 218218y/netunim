@@ -168,7 +168,7 @@ class PdfJsRuntimeVendorContracts(unittest.TestCase):
         manifest = json.loads((ROOT / "tests/fixtures/pdf-corpus/manifest.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["baselinePdfjsVersion"], RUNTIME.VERSION)
         self.assertEqual(manifest["baselinePdfjsBuild"], RUNTIME.BUILD)
-        self.assertEqual({case["kind"] for case in manifest["cases"]}, {"ordinary", "acroform", "large", "empty", "corrupt", "password", "many-highlights"})
+        self.assertEqual({case["kind"] for case in manifest["cases"]}, {"ordinary", "acroform", "large", "empty", "corrupt", "password", "many-highlights", "text-boundaries"})
 
     def test_git_never_rewrites_vendored_runtime_or_corpus_bytes(self):
         attrs = (ROOT / ".gitattributes").read_text(encoding="utf-8")

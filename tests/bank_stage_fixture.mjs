@@ -25,13 +25,19 @@ export async function bankStage(t,{prepare=async()=>{}}={}){
   await fs.writeFile(entry,original.replace('const PORT=8765;',`const PORT=${port};`));
   await fs.writeFile(path.join(app,'bridge-token.txt'),'native-fixture-token\n');
   await prepare({runtime,app,directory,port});
-  let output='';child=spawn(process.execPath,[entry],{cwd:runtime,env:{...process.env,LOCALAPPDATA:directory,CAMOUFOX_INSTALL_DIR:path.join(app,'camoufox')},windowsHide:true,stdio:['ignore','pipe','pipe']});
-  exited=once(child,'exit');child.stdout.on('data',chunk=>{output+=chunk});child.stderr.on('data',chunk=>{output+=chunk});
-  await new Promise((resolve,reject)=>{
-    const timer=setTimeout(()=>reject(new Error('Bank staged startup deadline: '+output)),10000);
-    const inspect=()=>{if(output.includes('listening on')){clearTimeout(timer);resolve()}};
-    child.stdout.on('data',inspect);child.once('exit',code=>{clearTimeout(timer);reject(new Error('Bank exited during startup '+code+': '+output))});inspect();
-  });
+  let output='';
+  async function start(){
+    assert.ok(!child||child.exitCode!==null,'only a stopped owned child can be restarted');
+    const offset=output.length;
+    child=spawn(process.execPath,[entry],{cwd:runtime,env:{...process.env,LOCALAPPDATA:directory,CAMOUFOX_INSTALL_DIR:path.join(app,'camoufox')},windowsHide:true,stdio:['ignore','pipe','pipe']});
+    exited=once(child,'exit');child.stdout.on('data',chunk=>{output+=chunk});child.stderr.on('data',chunk=>{output+=chunk});
+    await new Promise((resolve,reject)=>{
+      const timer=setTimeout(()=>reject(new Error('Bank staged startup deadline: '+output.slice(offset))),10000);
+      const inspect=()=>{if(output.slice(offset).includes('listening on')){clearTimeout(timer);resolve()}};
+      child.stdout.on('data',inspect);child.once('exit',code=>{clearTimeout(timer);reject(new Error('Bank exited during startup '+code+': '+output.slice(offset)))});inspect();
+    });
+  }
+  await start();
   const base=`http://127.0.0.1:${port}`;
   const request=(target,{method='GET',body,token='native-fixture-token'}={})=>new Promise((resolve,reject)=>{
     const req=http.request(base+target,{method,agent:false,headers:{Authorization:'Bearer '+token}},res=>{
@@ -41,5 +47,5 @@ export async function bankStage(t,{prepare=async()=>{}}={}){
     });
     req.on('error',reject);req.setTimeout(10000,()=>req.destroy(new Error(`staged HTTP deadline: ${method} ${new URL(base+target).pathname}`)));req.end(body===undefined?'':JSON.stringify(body));
   });
-  return {directory,runtime,app,port,base,child,exited,request,output:()=>output};
+  return {directory,runtime,app,port,base,get child(){return child},get exited(){return exited},restart:start,request,output:()=>output};
 }

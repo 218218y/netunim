@@ -75,6 +75,15 @@
       },
       "sha256": "c7626db3867ead4b966f4f6c3c049948c98b310166703b1c6750def978b02677",
       "bytes": 87156
+    },
+    {
+      "file": "text-boundary-runs.pdf",
+      "kind": "text-boundaries",
+      "expect": {
+        "pages": 1
+      },
+      "sha256": "8faed46733928a8ce3867cc0e532f1e3007b568b471563bc3bd2a3655fc76f5d",
+      "bytes": 978
     }
   ],
   "baselinePdfjsVersion": "6.4.299",
