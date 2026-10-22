@@ -192,6 +192,18 @@ If `Browser.close` closes its socket before acknowledging, the harness still
 waits for process exit before forcing termination, allowing the accepted shutdown
 to flush its profile. Missing restore-journal failures retain database/namespace
 diagnostics; no test creates a replacement journal to manufacture recovery.
+Normal process restarts must now prove a graceful exit: they wait up to 30s,
+then fail if forced cleanup was needed instead of calling that a normal restart.
+On Windows they also require the entire Job Object to become empty naturally;
+root-process exit alone cannot authorize terminating a storage utility process
+that is still flushing. A native regression keeps a child alive after parent
+exit, verifies the wait fails without killing it, then lets it flush and exit.
+The paired restore fixture establishes a cleanly flushed LocalStorage canary
+before injection, checks it before opening any fixture DB after both restarts,
+and requires the original DB to still be listed. Chromium uses the explicit
+owned `Default` subprofile throughout. Large-heap diagnostic GC has its own 30s
+transport deadline and recorded elapsed time, rather than the generic 5s socket
+timeout; application interaction timings and failure assertions are unchanged.
 
 ### Remaining full-install execution protocol
 

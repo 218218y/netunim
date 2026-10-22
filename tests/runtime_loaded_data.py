@@ -7,6 +7,7 @@ No live provider, account, production row, or deployment is accessed.
 import json
 import os
 import sys
+import time
 from browser_harness import BrowserSession, ROOT
 
 sys.path.insert(0, str(ROOT / 'tools'))
@@ -130,7 +131,9 @@ for app in ['kupa', 'orders']:
                 assert measured['search']['value'] < count, measured
             if app == 'orders':
                 assert 0 < measured['customersOpen']['value'] <= 150, measured
-            browser.call('HeapProfiler.collectGarbage')
+            gc_start=time.monotonic()
+            browser.call('HeapProfiler.collectGarbage', timeout=30)
+            measured['memoryCollection']={'ms':(time.monotonic()-gc_start)*1000}
             metrics = browser.call('Performance.getMetrics')['result']['metrics']
             measured['memory'] = {row['name']: row['value'] for row in metrics
                                   if row['name'] in ['JSHeapUsedSize', 'JSHeapTotalSize']}

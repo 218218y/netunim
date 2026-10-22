@@ -144,7 +144,7 @@ def _host_state_lock(root: Path):
 
 def _browser_args(browser: str, profile: Path, port: int) -> list[str]:
     return [browser, "--headless=new", "--no-sandbox", "--disable-gpu",
-            f"--remote-debugging-port={port}", f"--user-data-dir={profile}",
+            f"--remote-debugging-port={port}", f"--user-data-dir={profile}", "--profile-directory=Default",
             "--remote-allow-origins=*", "--disable-background-networking",
             "--no-first-run", "about:blank"]
 
@@ -347,7 +347,7 @@ class _RuntimeHTTPServer(http.server.ThreadingHTTPServer):
     request_queue_size = 128
 
 
-def _stop_browser_process(process, graceful_close=None) -> None:
+def _stop_browser_process(process, graceful_close=None, *, graceful_timeout=5) -> bool:
     """Stop Chromium completely before its disposable profile is removed.
 
     Chrome is multi-process. Closing the browser through CDP gives all child
@@ -356,7 +356,7 @@ def _stop_browser_process(process, graceful_close=None) -> None:
     while Chrome is still exiting can race with late profile writes.
     """
     if process is None or process.poll() is not None:
-        return
+        return True
     if graceful_close is not None:
         try:
             graceful_close()
@@ -365,18 +365,19 @@ def _stop_browser_process(process, graceful_close=None) -> None:
             # Still allow the accepted shutdown to flush the private profile.
             pass
         try:
-            process.wait(timeout=5)
-            return
+            process.wait(timeout=graceful_timeout)
+            return True
         except subprocess.TimeoutExpired:
             pass
     process.terminate()
     try:
         process.wait(timeout=3)
-        return
+        return False
     except subprocess.TimeoutExpired:
         process.kill()
     # kill() is asynchronous too. Do not race profile deletion against exit.
     process.wait(timeout=5)
+    return False
 
 
 def _remove_tree_verified(path: Path, *, timeout: float = 5.0) -> None:
@@ -624,7 +625,12 @@ class BrowserSession:
                 os.killpg(previous_pid, signal.SIGKILL)
             self.proc.wait(timeout=10)
         else:
-            _stop_browser_process(self.proc, lambda: self.call('Browser.close', timeout=3))
+            if not _stop_browser_process(self.proc, lambda: self.call('Browser.close', timeout=3), graceful_timeout=30):
+                raise RuntimeError('owned Chromium required forced termination during a graceful restart')
+            if self.browser_owner:
+                # Root exit alone does not prove storage utility processes have
+                # finished. Starting again must not force-kill late flushes.
+                self.browser_owner.job.wait_empty(timeout=30)
         self.ws.close()
         self.events = []
         self._start_browser()

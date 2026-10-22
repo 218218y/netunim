@@ -95,6 +95,18 @@ def paired_process_boundaries(app):
     results=[]
     for phase in ('prepared','shared-applied','main-applied'):
         with BrowserSession(ROOT/f'netunim-{app}/site',app+'-restore-process-'+phase,instrument=False) as browser:
+            marker=app+'-'+phase+'-owned-profile'
+            marker_expression="({marker:localStorage.getItem('restore-profile-canary'),databases:(await indexedDB.databases()).map(row=>row.name)})"
+            browser.evaluate("localStorage.setItem('restore-profile-canary',"+json.dumps(marker)+");true")
+            # Establish a cleanly flushed profile identity before any injected
+            # kill. Check it before opening the fixture DB after both restarts.
+            browser.restart_process()
+            def check_profile(*, database_required=False):
+                observed=browser.evaluate('(async()=>'+marker_expression+')()')
+                assert observed['marker']==marker,{'profile_canary_lost':observed,'phase':phase}
+                if database_required:
+                    assert 'restore-process-'+app in observed['databases'],{'fixture_database_disappeared':observed,'phase':phase}
+            check_profile()
             def setup(initialize):
                 return browser.evaluate('(async()=>{'+fixture+';window.paired=await createRestoreProcessBoundary('
                                         +json.dumps(app)+','+json.dumps({'initialize':initialize,'pauseAt':phase if initialize else None})+');return true})()')
@@ -107,6 +119,7 @@ def paired_process_boundaries(app):
             before=browser.evaluate('paired.state()')
             assert before['boundary']['phase']==phase
             browser.restart_process(crash=True)
+            check_profile(database_required=True)
             assert setup(False)
             assert browser.evaluate('paired.state()')['boundary']['phase']==phase
             assert browser.evaluate('paired.resume()')['phase']=='complete'
@@ -118,6 +131,7 @@ def paired_process_boundaries(app):
             assert after['main']['appMetadata']['boundaryId']==after['shared']['appMetadata']['boundaryId']=='paired-process-restore'
             # A second process restart and recovery must not replay either side.
             browser.restart_process()
+            check_profile(database_required=True)
             assert setup(False)
             browser.evaluate('paired.resume()')
             assert browser.evaluate('paired.state()')==after

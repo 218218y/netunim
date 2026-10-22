@@ -97,7 +97,7 @@ class VerificationContracts(unittest.TestCase):
         process.poll.return_value = None
         process.wait.return_value = 0
         graceful = Mock()
-        browser_harness._stop_browser_process(process, graceful)
+        self.assertTrue(browser_harness._stop_browser_process(process, graceful))
         graceful.assert_called_once_with()
         process.wait.assert_called_once_with(timeout=5)
         process.terminate.assert_not_called()
@@ -109,7 +109,7 @@ class VerificationContracts(unittest.TestCase):
         process.poll.return_value = None
         process.wait.side_effect = [subprocess.TimeoutExpired("chrome", 5), subprocess.TimeoutExpired("chrome", 3), 0]
         graceful = Mock(side_effect=RuntimeError("cdp unavailable"))
-        browser_harness._stop_browser_process(process, graceful)
+        self.assertFalse(browser_harness._stop_browser_process(process, graceful))
         graceful.assert_called_once_with()
         process.terminate.assert_called_once_with()
         process.kill.assert_called_once_with()
@@ -122,6 +122,15 @@ class VerificationContracts(unittest.TestCase):
         browser_harness._stop_browser_process(process,Mock(side_effect=RuntimeError('socket closed after accepted Browser.close')))
         process.wait.assert_called_once_with(timeout=5)
         process.terminate.assert_not_called();process.kill.assert_not_called()
+
+    def test_browser_restart_never_labels_a_forced_shutdown_as_graceful(self):
+        from unittest.mock import Mock
+        session=object.__new__(browser_harness.BrowserSession)
+        session.proc=Mock();session.proc.poll.return_value=None
+        with patch.object(browser_harness,'_stop_browser_process',return_value=False) as stop:
+            with self.assertRaisesRegex(RuntimeError,'forced termination during a graceful restart'):
+                session.restart_process()
+            self.assertEqual(stop.call_args.kwargs['graceful_timeout'],30)
 
     def test_browser_profile_cleanup_retries_transient_lock_and_never_hides_failure(self):
         with tempfile.TemporaryDirectory() as directory:
