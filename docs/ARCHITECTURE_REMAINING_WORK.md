@@ -49,6 +49,18 @@ restore and live-provider release exercises therefore remain explicitly unverifi
 
 ## Prioritized remaining work
 
+### Review continuation, 2026-10-22
+
+- The two reproduced local text-search bugs are fixed through one bounded
+  canonical matcher shared by Bridge v39, DOM and the spreadsheet worker.
+  Workbook-wide AND presence is independent of highlight caps. See
+  [matching contract and evidence](DOCUMENT_TEXT_SEARCH.md).
+- Next: a clearly partial browser/PostgreSQL-free repair selection, then a
+  focused Bridge origin/auth threat model and measured performance review.
+- Physical-machine, installed-Bridge and live-provider interruption/restore
+  acceptance still requires an isolated environment; production data must not
+  be used to manufacture evidence for these outstanding operational checks.
+
 ### Final quality continuation after PR #244, 2026-10-18
 
 The Bank UI range/boundary filters now use the canonical calendar predicate.

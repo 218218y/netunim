@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='kupa-app-shell-';
-const CACHE='kupa-app-shell-esm-6c57e198eee9';
+const CACHE='kupa-app-shell-esm-8d97f2dd8c08';
 const SHELL=[
   './',
   './index.html',
@@ -155,6 +155,8 @@ const SHELL=[
   './assets/js/shared/debounced-task.js',
   './assets/js/shared/document-bridge-client.js',
   './assets/js/shared/document-search-composition.js',
+  './assets/js/shared/document-text-search-worker.js',
+  './assets/js/shared/document-text-search.js',
   './assets/js/shared/document-write-ack.js',
   './assets/js/shared/domain-revisions.js',
   './assets/js/shared/events.js',

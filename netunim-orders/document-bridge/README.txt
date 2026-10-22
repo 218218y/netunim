@@ -1,4 +1,4 @@
-NETUNIM Document Bridge v38 - paged Everything search + AcroForm-aware PDF content + native preview
+NETUNIM Document Bridge v39 - paged Everything search + AcroForm-aware PDF content + native preview
 ======================================================================
 
 Shared website integration
@@ -250,7 +250,7 @@ Run install_document_bridge.bat on each PC. The installer:
   so a short-lived Windows file/current-directory handle cannot block an upgrade;
 - cleans up verified old Bridge cmd/Node/NetunimPreviewHost helper processes and
   removes inactive Bridge/Node runtimes only as best-effort maintenance after
-  the new v38 runtime has passed its health check;
+  the new v39 runtime has passed its health check;
 - opens %LOCALAPPDATA%\NetunimDocumentBridge\INSTALLATION-LOG.txt.
 The website key is near the top of this file.
 

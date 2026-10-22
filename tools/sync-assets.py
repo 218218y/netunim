@@ -23,6 +23,7 @@ from public_asset_names import asset_name_violations
 ROOT = Path(__file__).resolve().parents[1]
 APPS = ('kupa', 'orders')
 BRIDGE_SHARED_SOURCES = {
+    'shared/document-text-search.js': 'netunim-orders/document-bridge/document-text-search.mjs',
     'shared/bank-money-value.js': 'netunim-kupa/bank-bridge/bank-money-value.mjs',
     'shared/credit-transaction-evidence.js': 'netunim-kupa/bank-bridge/credit-transaction-evidence.mjs',
     'shared/observation-time.js': 'netunim-kupa/bank-bridge/observation-time.mjs',
@@ -284,7 +285,13 @@ def plan_sync(snapshot: WorktreeSnapshot | IndexSnapshot) -> list[Change]:
         if target not in snapshot.files or asset_hash_bytes(target, snapshot.read(target)) != asset_hash_bytes(source, expected):
             changes.append(Change(target, expected, f'bridge: synchronized canonical source: {source}'))
     sources = direct_javascript_files(snapshot.files, 'shared') | {path for path in snapshot.files if str(PurePosixPath(path).parent) == 'shared' and path.endswith('.css')}
+    # Classic workers cannot import ESM. This generated script changes only the
+    # module envelope; matching logic stays byte-for-byte canonical.
+    search_source = 'shared/document-text-search.js'
+    worker_name = 'document-text-search-worker.js'
     source_names = {PurePosixPath(path).name for path in sources}
+    if search_source in snapshot.files:
+        source_names.add(worker_name)
     for label in APPS:
         target_dir = f'netunim-{label}/site/assets/js/shared'
         targets = direct_javascript_files(snapshot.files, target_dir) | {path for path in snapshot.files if str(PurePosixPath(path).parent) == target_dir and path.endswith('.css')}
@@ -296,6 +303,11 @@ def plan_sync(snapshot: WorktreeSnapshot | IndexSnapshot) -> list[Change]:
             expected = snapshot.read(source_path)
             if target not in snapshot.files or snapshot.read(target) != expected:
                 changes.append(Change(target, expected, f'{label}: synchronized shared source: {PurePosixPath(source_path).name}'))
+        if search_source in snapshot.files:
+            expected = re.sub(rb'^export (?=function )', b'', snapshot.read(search_source), flags=re.MULTILINE)
+            target = f'{target_dir}/{worker_name}'
+            if target not in snapshot.files or snapshot.read(target) != expected:
+                changes.append(Change(target, expected, f'{label}: generated classic text-search worker module'))
 
     tax_sources = sorted(path for path in snapshot.files if PurePosixPath(path).is_relative_to(TAX_SHARED_ROOT) and PurePosixPath(path).suffix in {'.js', '.css'})
     for label in APPS:
