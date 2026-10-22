@@ -1,11 +1,14 @@
 """Real backup composition, native input/Blob resources and V2 journals; no user files."""
 import argparse
 import json
+import hashlib
+import time
 from browser_harness import BrowserSession, ROOT
+from acceptance_safety import write_evidence
 
 parser=argparse.ArgumentParser()
 parser.add_argument('--app',choices=('orders','kupa'))
-parser.add_argument('--phase',choices=('read-dispose','read-account','confirmation','success','downloads'),action='append')
+parser.add_argument('--phase',choices=('read-dispose','read-account','confirmation','success','downloads','roundtrip'),action='append')
 args=parser.parse_args()
 
 FLOW=r"""(async()=>{
@@ -71,8 +74,74 @@ FLOW=r"""(async()=>{
  }
 })()"""
 
+def roundtrip(app):
+    with BrowserSession(ROOT/f'netunim-{app}/site', app+'-backup-export') as source:
+        exported = source.evaluate(r"""(async()=>{
+          await appReady;const app=__APP__,kupa=app==='kupa';
+          const note={id:'roundtrip-note',content:'synthetic exported note',createdAt:'',updatedAt:''};state.notes.push(note);
+          const options={domains:['notes'],operations:[{type:'put',collection:'notes',id:note.id,mode:'insert',index:state.notes.length-1,record:note}]};
+          if(kupa)await storagePersistence.saveState('fixture',options);else storagePersistence.scheduleSave('fixture',options);
+          await mainStorageV2.commitPromise;if(!kupa)storagePersistence.runtime.cancelPending();await storagePersistence.runtime.drain();
+          const {normalizeSharedChecks}=await import('./assets/js/shared/shared-checks-contract.js');
+          const check=normalizeSharedChecks([{id:'roundtrip-check',amount:123,name:'Synthetic check',dueDate:'2026-10-22'}])[0];state.checks.push(check);
+          await sharedChecksV2.persist([{type:'put',collection:'checks',id:check.id,mode:'insert',index:state.checks.length-1,record:check}],{surface:'test.backup-roundtrip'}).committed;
+          if(kupa)uiBackup.downloadJsonBackup();else uiBackup.exportJson();
+          return {note,check};
+        })()""".replace('__APP__', json.dumps(app)))
+        deadline = time.monotonic()+10
+        while time.monotonic() < deadline:
+            files = list(source.downloads.glob(app+'-backup*.json'))
+            if len(files) == 1:
+                break
+            time.sleep(.05)
+        assert len(files) == 1, 'actual backup download missing'
+        backup = files[0].resolve()
+        assert backup.is_relative_to(source.downloads.resolve())
+        payload = json.loads(backup.read_text(encoding='utf8'))
+        assert next(row for row in payload['notes'] if row['id']=='roundtrip-note') == exported['note']
+        assert next(row for row in payload['checks'] if row['id']=='roundtrip-check') == exported['check']
+        backup_hash = hashlib.sha256(backup.read_bytes()).hexdigest()
+        with BrowserSession(ROOT/f'netunim-{app}/site', app+'-backup-import') as target:
+            assert 'error' not in target.call('Page.setInterceptFileChooserDialog', {'enabled': True})
+            target.evaluate("(()=>{uiModal.confirmDialog=async()=>true;window.fileRoundtrip="
+                            +('uiBackup.beginRestoreBackup()' if app=='kupa' else 'uiBackup.beginJsonRestore()')+';return true})()', user_gesture=True)
+            deadline = time.monotonic()+5
+            chooser = None
+            while time.monotonic() < deadline:
+                chooser = next((event['params'] for event in target.events if event.get('method')=='Page.fileChooserOpened'), None)
+                if chooser:
+                    break
+                target.evaluate('true')
+                time.sleep(.02)
+            assert chooser and chooser.get('backendNodeId'), 'native file chooser missing'
+            response = target.call('DOM.setFileInputFiles', {'files': [str(backup)], 'backendNodeId': chooser['backendNodeId']})
+            assert 'error' not in response, response
+            if app == 'orders':
+                target.evaluate("(async()=>{await fileRoundtrip;document.getElementById('restoreJsonChecks').checked=true;return await uiBackup.applyJsonRestore()})()")
+            else:
+                assert target.evaluate('fileRoundtrip') is True
+            target.evaluate('uiBackup.runtime.drain().then(()=>true)')
+            inspect = r"""(async()=>{
+              await appReady;
+              const main=await mainStorageV2.recoverForOwner({intent:'load-account'}),shared=await sharedChecksV2.recover();
+              return {note:main.state.notes.find(row=>row.id==='roundtrip-note'),checks:shared.state.checks.filter(row=>row.id==='roundtrip-check')};
+            })()"""
+            before = target.evaluate(inspect)
+            assert before['note'] == exported['note'] and before['checks'] == [exported['check']], {'actual':before,'exported':exported}
+            target.restart_process(crash=True)
+            assert target.evaluate(inspect) == before
+            assert not target.drain_serious_errors()
+        write_evidence(app+'-backup-file-roundtrip', [{'scenario': 'actual UI download / native file chooser / Main and Shared restore / hard process restart',
+                       'status': 'PASS', 'backup_sha256': backup_hash, 'note_id': exported['note']['id'],
+                       'check_id': exported['check']['id'], 'check_count_after_restart': 1}])
+        print('PASS', app, 'actual synthetic backup file roundtrip and paired journals after hard process restart', flush=True)
+
+
 for app in (args.app,) if args.app else ('orders','kupa'):
-    for phase in args.phase or ('read-dispose','read-account','confirmation','success','downloads'):
+    for phase in args.phase or ('read-dispose','read-account','confirmation','success','downloads','roundtrip'):
+        if phase == 'roundtrip':
+            roundtrip(app)
+            continue
         with BrowserSession(ROOT/f'netunim-{app}/site',f'backup-resources-{app}-{phase}') as browser:
             result=browser.evaluate(FLOW.replace('__APP__',json.dumps(app)).replace('__PHASE__',json.dumps(phase)),timeout=45)
             errors=browser.drain_serious_errors()
