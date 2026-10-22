@@ -9,7 +9,9 @@ import os
 import shutil
 import subprocess
 import tempfile
+import secrets
 from browser_harness import ROOT, _free_port
+from acceptance_safety import postgres_environment, temporary_root
 
 OWNER='11111111-1111-4111-8111-111111111111'
 class IsolatedPostgres:
@@ -23,12 +25,13 @@ class IsolatedPostgres:
         self.bin=Path(binary).parent
         self.tmp=Path(tempfile.mkdtemp(prefix='netunim-sync-postgres-')).resolve()
         self.port=_free_port()
-        self.env={**os.environ,'PGCLIENTENCODING':'UTF8'}
-        for key in ('PGPASSWORD','PGSERVICE','PGSERVICEFILE','PGHOST','PGDATABASE','PGUSER','PGPORT','PGOPTIONS'):
-            self.env.pop(key,None)
+        temporary_root(self.tmp, 'netunim-sync-postgres-')
+        self.env=postgres_environment()
         try:
             bootstrap='fixture_bootstrap' if self.demotable_postgres else 'postgres'
             self.run('initdb','-D',str(self.tmp/'data'),'-U',bootstrap,'-A','trust','--encoding=UTF8','--no-locale')
+            marker=secrets.token_hex(32)
+            (self.tmp/'data/netunim-isolation-marker').write_text(marker,encoding='ascii')
             # Every fixture client uses explicit loopback TCP. Ubuntu's PostgreSQL
             # defaults to /var/run/postgresql for Unix sockets, which the unprivileged
             # CI user cannot write. Do not depend on (or chmod) host service state.
@@ -39,6 +42,11 @@ class IsolatedPostgres:
                 # PostgreSQL 18 cannot demote its bootstrap superuser. A separate
                 # fixture bootstrap permits testing Supabase's non-superuser postgres.
                 self.run('psql','-h','127.0.0.1','-p',str(self.port),'-U',bootstrap,'-d','postgres','-X','-qAt','-v','ON_ERROR_STOP=1',input='create role postgres login superuser;')
+            # A fresh challenge read relative to the live data directory also
+            # works on Windows builds whose SHOW path loses non-ASCII characters.
+            actual = json.loads(self.sql("select json_build_object('marker',pg_read_file('netunim-isolation-marker'),'port',inet_server_port(),'address',inet_server_addr())").strip())
+            if actual != {'marker':marker,'port':self.port,'address':'127.0.0.1'}:
+                raise RuntimeError('PostgreSQL isolation preflight failed')
             self.sql('''create role anon;create role authenticated;create role service_role;
 create role supabase_admin;
 create schema auth;create table auth.users(id uuid primary key);
