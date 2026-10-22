@@ -1,10 +1,12 @@
 """Server-only restore: fresh writers, native IDB and failure after remote commit."""
 import json
 import argparse
+import time
 from browser_harness import BrowserSession, ROOT
+from acceptance_safety import write_evidence
 
 FLOW = r"""(async()=>{
- const app=__APP__,check=(ok,label)=>{if(!ok)throw Error(label)};
+ const app=__APP__,phase=__PHASE__,check=(ok,label)=>{if(!ok)throw Error(label)};
  const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
  const {createStorageJournal}=await import('./assets/js/shared/storage-journal.js');
  const {createStorageV2Boundary}=await import('./assets/js/shared/storage-v2-boundary.js');
@@ -26,9 +28,11 @@ FLOW = r"""(async()=>{
  const db=createStorageJournalDb({name:'restore-journals-'+app}),owner='restore-fixture',id='aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',at='2026-10-16T10:00:00Z';
  const emergency={read:()=>[],write:()=>{},remove:()=>{}};
  const create=()=>({main:createStorageJournal({owner:owner+':'+app,schema:{collections:['notes']},validate:()=>{},db,emergency}),shared:createStorageJournal({owner:owner+':shared-checks',schema:{collections:['checks'],fields:['bankEvents']},validate:()=>{},db,emergency})});
- let client=create();await client.main.initializeCloudHead(8,{notes:[]});await client.shared.initializeCloudHead(11,{checks:[],bankEvents:[]});
+ let client=create();
+ if(phase==='resume'){await client.main.open();await client.shared.open()}
+ else{await client.main.initializeCloudHead(8,{notes:[]});await client.shared.initializeCloudHead(11,{checks:[],bankEvents:[]})}
  const group={restore_group_id:id,app_site:app,phase:'staged',created_at:at,updated_at:at};
- if(app==='orders'){
+ if(app==='orders'&&phase!=='resume'){
    // Exercise the actual signed-in startup recovery owner through the actual
    // Orders adapter, before any pending row or legacy restore database exists.
    const {createBackupRestore}=await import('./assets/js/ui/backup-restore.js');
@@ -42,14 +46,16 @@ FLOW = r"""(async()=>{
  await makeStore().stageServerPending(foreign);
  const keys=createRestoreGroupKeys(RESTORE_GROUP_NAMESPACES[app]);
  const malformed={...group,owner,phase:'garbage'};
- await ports.put(keys.server(owner),malformed);
- let invalid=false;try{await makeStore().loadServerPending(owner)}catch(error){invalid=error.code==='RESTORE_RESPONSE_EVIDENCE_INVALID'}
- check(invalid&&JSON.stringify(await ports.get(keys.server(owner)))===JSON.stringify(malformed),'invalid recovery evidence was erased or accepted');
- await ports.remove(keys.server(owner));
+ if(phase!=='resume'){
+   await ports.put(keys.server(owner),malformed);
+   let invalid=false;try{await makeStore().loadServerPending(owner)}catch(error){invalid=error.code==='RESTORE_RESPONSE_EVIDENCE_INVALID'}
+   check(invalid&&JSON.stringify(await ports.get(keys.server(owner)))===JSON.stringify(malformed),'invalid recovery evidence was erased or accepted');
+   await ports.remove(keys.server(owner));
+ }
  const receipt={restore_group_id:id,phase:'completed',main_revision:9,checks_revision:12};
  const heads={main:{document_name:'main',revision:9,updated_at:at,state:{notes:[{id:'RESTORED',content:'authoritative'}]}},
    shared:{document_name:'main',revision:12,updated_at:at,state:{checks:[{id:'CHECK',amount:100}],bankEvents:[]}}};
- let committed=false,failRead=true,adopted=false,requests=0;
+ let committed=phase==='resume',failRead=phase!=='resume',adopted=false,requests=0;
  const run=async()=>{
    const shared={...client.shared,resetCloudHead:(revision,state,{boundaryId}={})=>client.shared.resetCloudHead(revision,state,state,{appMetadata:{boundaryId}})};
    const boundary=createStorageV2Boundary({owner:()=>owner,primary:()=>true,main:client.main,shared,db});
@@ -61,14 +67,17 @@ FLOW = r"""(async()=>{
      applyLocally:async(plan,result)=>{await applyStorageV2RestoreGroup({boundary,group:plan,result,target:plan.main.state,sharedState:plan.checks.state});adopted=true},
    });
  };
- let rejected=false;try{await run()}catch(error){rejected=error.message==='controlled read failure after server commit'}
- check(rejected&&committed&&!adopted,'unknown result was accepted');check((await makeStore().loadServerPending(owner))?.restore_group_id===id,'pending identity lost');
+ if(phase!=='resume'){
+   let rejected=false;try{await run()}catch(error){rejected=error.message==='controlled read failure after server commit'}
+   check(rejected&&committed&&!adopted,'unknown result was accepted');check((await makeStore().loadServerPending(owner))?.restore_group_id===id,'pending identity lost');
+   if(phase==='stop-after-remote')return {unknownRetained:true,restoreGroupId:id,mainRevision:(await client.main.cloudState()).base.revision,sharedRevision:(await client.shared.cloudState()).base.revision};
+ }
  client=create();await client.main.open();await client.shared.open();failRead=false;
  check(await run()===true&&adopted,'fresh client did not adopt completed restore');
  const main=await client.main.recover(),shared=await client.shared.recover(),mainCloud=await client.main.cloudState(),sharedCloud=await client.shared.cloudState();
  check(main.state.notes[0].content==='authoritative'&&shared.state.checks[0].amount===100,'paired state missing');
  check(mainCloud.base.revision===9&&sharedCloud.base.revision===12&&!mainCloud.pending&&!sharedCloud.pending,'restored heads missing');
- check(await makeStore().loadServerPending(owner)===null&&requests===2,'recovery did not finish exactly');
+ check(await makeStore().loadServerPending(owner)===null&&requests===(phase==='resume'?1:2),'recovery did not finish exactly');
  check(JSON.stringify(await makeStore().loadServerPending('other-owner'))===JSON.stringify(foreign),'completion changed another account pending restore');
  return {productionAdapter:true,serverOnly:true,freshClient:true,durableRetry:true,pairedAdoption:true,accountIsolation:true};
 })()"""
@@ -80,6 +89,44 @@ args=parser.parse_args()
 if args.baseline and args.app!='orders':
     parser.error('--baseline requires --app orders')
 
+
+def paired_process_boundaries(app):
+    fixture=(ROOT/'tests/fixtures/restore-process-boundary.mjs').read_text(encoding='utf8').replace('export async function','async function')
+    results=[]
+    for phase in ('prepared','shared-applied','main-applied'):
+        with BrowserSession(ROOT/f'netunim-{app}/site',app+'-restore-process-'+phase,instrument=False) as browser:
+            def setup(initialize):
+                return browser.evaluate('(async()=>{'+fixture+';window.paired=await createRestoreProcessBoundary('
+                                        +json.dumps(app)+','+json.dumps({'initialize':initialize,'pauseAt':phase if initialize else None})+');return true})()')
+            assert setup(True)
+            assert browser.evaluate('window.pairedCompletion=paired.start();true')
+            deadline=time.monotonic()+5
+            while browser.evaluate('window.restoreProcessReached||null')!=phase:
+                assert time.monotonic()<deadline,'paired restore did not reach '+phase
+                time.sleep(.02)
+            before=browser.evaluate('paired.state()')
+            assert before['boundary']['phase']==phase
+            browser.restart_process(crash=True)
+            assert setup(False)
+            assert browser.evaluate('paired.state()')['boundary']['phase']==phase
+            assert browser.evaluate('paired.resume()')['phase']=='complete'
+            after=browser.evaluate('paired.state()')
+            assert after['main']['state']=={'notes':[{'id':'RESTORED','content':'paired restored note'}]}
+            assert after['shared']['state']=={'checks':[{'id':'RESTORED-CHECK','amount':123}],'bankEvents':[]}
+            assert after['mainCloud']['base']['revision']==9 and after['sharedCloud']['base']['revision']==12
+            assert not after['mainCloud']['pending'] and not after['sharedCloud']['pending']
+            assert after['main']['appMetadata']['boundaryId']==after['shared']['appMetadata']['boundaryId']=='paired-process-restore'
+            # A second process restart and recovery must not replay either side.
+            browser.restart_process()
+            assert setup(False)
+            browser.evaluate('paired.resume()')
+            assert browser.evaluate('paired.state()')==after
+            results.append({'scenario':app+' hard process failure after '+phase,'status':'PASS',
+                            'before_phase':before['boundary']['phase'],'after_phase':after['boundary']['phase'],
+                            'main_revision':9,'shared_revision':12,'restored_check_count':1})
+            print('PASS',app,'paired restore hard process failure at',phase,'and idempotent restart',flush=True)
+    write_evidence(app+'-paired-restore-process',results)
+
 for app in ([args.app] if args.app else ('orders', 'kupa')):
     with BrowserSession(ROOT / f'netunim-{app}/site', app+'-restore-server-recovery', instrument=False,auto_navigate=False) as browser:
         if args.baseline:
@@ -89,7 +136,17 @@ for app in ([args.app] if args.app else ('orders', 'kupa')):
             assert 'return restoreGroupKeys.read(key);' in source
             target.write_text(source.replace('return restoreGroupKeys.read(key);',old),encoding='utf-8')
         browser._navigate()
-        result = browser.evaluate(FLOW.replace('__APP__', json.dumps(app)), timeout=40)
+        def flow(phase):
+            return FLOW.replace('__APP__', json.dumps(app)).replace('__PHASE__', json.dumps(phase))
+        before = browser.evaluate(flow('stop-after-remote'), timeout=40)
+        assert before == {'unknownRetained': True, 'restoreGroupId': 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa', 'mainRevision': 8, 'sharedRevision': 11}, before
+        process = browser.restart_process(crash=True)
+        result = browser.evaluate(flow('resume'), timeout=40)
         assert result and all(result.values()), result
         assert not browser.drain_serious_errors()
-        print(f'PASS {app} server-only restore: fresh client, native pending identity and paired authoritative heads')
+        write_evidence(app+'-restore-server', [{'scenario': 'remote result read failure followed by hard browser-process restart',
+                       'status': 'PASS', 'before': before, 'after': result, 'hard_process_failure': process['hard_process_failure'],
+                       'remote_transport': 'controlled stub; native production adapter and IndexedDB'}])
+        print(f'PASS {app} server-only restore: hard process restart, native pending identity and paired authoritative heads')
+    if not args.baseline:
+        paired_process_boundaries(app)

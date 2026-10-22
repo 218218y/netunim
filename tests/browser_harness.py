@@ -9,6 +9,7 @@ import json
 import os
 import re
 import secrets
+import signal
 from pathlib import Path
 import shutil
 import stat
@@ -544,7 +545,7 @@ class BrowserSession:
         args.extend(self.network_guard.arguments(allowed))
         browser_log = self.tmp / 'browser.log'
         with browser_log.open('w', encoding='utf-8') as log:
-            self.proc = subprocess.Popen(args, stdout=log, stderr=subprocess.STDOUT)
+            self.proc = subprocess.Popen(args, stdout=log, stderr=subprocess.STDOUT, start_new_session=os.name != 'nt')
         try:
             # A fresh CI machine can need more than 10s for its first Chrome boot.
             # Poll readiness, fail immediately on process exit, and leave application
@@ -574,6 +575,28 @@ class BrowserSession:
                 f"{self.label}: Chromium refused isolated download directory: "
                 + str(download_behavior["error"])
             )
+
+    def restart_process(self, *, crash=False):
+        """Restart this owned browser, retaining its actual on-disk profile."""
+        if self.proc is None or self.proc.poll() is not None:
+            raise RuntimeError('no live owned browser to restart')
+        previous_pid = self.proc.pid
+        if crash:
+            if os.name == 'nt':
+                subprocess.run(['taskkill', '/PID', str(previous_pid), '/T', '/F'],
+                               check=True, capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+            else:
+                os.killpg(previous_pid, signal.SIGKILL)
+            self.proc.wait(timeout=10)
+        else:
+            _stop_browser_process(self.proc, lambda: self.call('Browser.close', timeout=3))
+        self.ws.close()
+        self.events = []
+        self._start_browser()
+        self._navigate()
+        if self.instrument:
+            self.evaluate('appReady.then(()=>true)')
+        return {'previous_pid': previous_pid, 'new_pid': self.proc.pid, 'hard_process_failure': crash}
 
     @contextlib.contextmanager
     def second_tab(self):
@@ -633,7 +656,7 @@ class BrowserSession:
             time.sleep(0.05)
         raise RuntimeError(f"{self.label}: page did not finish loading at {self.url}; state: {state}; last error: {last_error}; browser errors: {self.drain_serious_errors()}")
 
-    def evaluate(self, expression: str, *, await_promise: bool = True, timeout: float | None = None):
+    def evaluate(self, expression: str, *, await_promise: bool = True, timeout: float | None = None, user_gesture: bool = False):
         if self.instrument:
             expression = self._module_probe({'mode':'expression','expression':expression,'names':self.probe_names})
         if '__netunimProbe.' in expression:
@@ -644,6 +667,7 @@ class BrowserSession:
                 "expression": expression,
                 "returnByValue": True,
                 "awaitPromise": await_promise,
+                "userGesture": user_gesture,
             },
             timeout=timeout,
         )
