@@ -54,7 +54,7 @@ const byKind=kind=>manifest.cases.find(item=>item.kind===kind);
 
 test('PDF.js regression corpus bytes are immutable',async()=>{
   assert.equal(manifest.schema,1);
-  assert.equal(manifest.cases.length,7);
+  assert.equal(manifest.cases.length,8);
   for(const fixture of manifest.cases){
     assert.equal(await digest(fixture.file),fixture.sha256,`${fixture.file} changed without a reviewed corpus manifest update`);
     assert.equal((await fs.stat(new URL(`./fixtures/pdf-corpus/${fixture.file}`,import.meta.url))).size,fixture.bytes,`${fixture.file} byte count drifted`);
@@ -71,6 +71,25 @@ test('PDF.js corpus opens ordinary, large and empty PDFs with stable page/text s
       if(fixture.expect.textEmpty)assert.equal(await pageText(document,1),'');
     }finally{await task.destroy()}
   }
+});
+
+test('actual PDF.js text items distinguish font runs and geometry without providing universal word boundaries',async()=>{
+  const fixture=byKind('text-boundaries'),{task,document}=await openPdf(fixture.file);
+  try{
+    const page=await document.getPage(1),content=await page.getTextContent({disableNormalization:true});
+    const at=y=>content.items.filter(item=>typeof item.str==='string'&&item.str.length&&Math.abs(item.transform[5]-y)<.01);
+    const single=at(700),touching=at(650),smallGap=at(600),spaced=at(550);
+    assert.deepEqual(single.map(item=>item.str),['alphabeta']);
+    assert.deepEqual(touching.map(item=>item.str),['alpha','beta']);
+    assert.deepEqual(smallGap.map(item=>item.str),['alpha','beta']);
+    assert.deepEqual(spaced.map(item=>item.str),['alpha',' ','beta']);
+    const gap=items=>items[1].transform[4]-(items[0].transform[4]+items[0].width);
+    assert.ok(Math.abs(gap(touching))<.01,'font change splits text without a word gap');
+    assert.ok(gap(smallGap)>1&&gap(smallGap)<2,'small positive geometry gap remains absent from text');
+    const broken=content.items.find(item=>item.hasEOL&&Math.abs(item.transform[5]-500)<.01);
+    assert.ok(broken,'line break must retain explicit EOL evidence');
+    assert.deepEqual(at(470).map(item=>item.str),['beta']);
+  }finally{await task.destroy()}
 });
 
 test('PDF.js corpus preserves Hebrew AcroForm values and checkbox/select metadata',async()=>{

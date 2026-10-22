@@ -18,6 +18,14 @@ Use existing diagnostic/backup exports with secrets and business content removed
 An interface label alone is insufficient. Missing evidence remains NOT RUN;
 injected failures in CI remain automated evidence, not physical execution.
 
+Additional isolated native evidence is available in
+[the October 22 closeout](UPGRADE_CLOSEOUT_20261022.md): owned historical Windows
+Bridge listeners upgrade through 38/39/40, and the actual staged Bank process
+rejects its revoked test token after restart while retaining vault/image data.
+Those results do not execute the global installer/autostart/task registration,
+two-computer workflow or real financial provider scenarios below. Their remaining
+physical acceptance status is still NOT RUN.
+
 | Scenario | Required persisted evidence after restart |
 | --- | --- |
 | Two physical computers; disconnected concurrent edits; reconnect in both orders | Expected content converges; original operation IDs are retained; no duplicated financial action; revisions/ACKs agree on both clients |
