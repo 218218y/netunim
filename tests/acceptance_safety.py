@@ -67,7 +67,7 @@ def postgres_environment():
     # PGHOSTADDR overrides the network destination even with psql -h. Service,
     # auth, SSL and future libpq settings must not leak from a working account.
     return {**{key: value for key, value in os.environ.items() if not key.upper().startswith('PG')},
-            'PGCLIENTENCODING': 'UTF8'}
+            'PGCLIENTENCODING': 'UTF8', 'PGPASSFILE': os.devnull}
 
 
 class DenyProxy:

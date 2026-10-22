@@ -17,6 +17,8 @@ This is application/browser network isolation, not an OS or VM security sandbox.
 PostgreSQL is initialized from empty files on a fresh loopback port and migrations
 run against that instance. All inherited `PG*` settings are removed, including
 `PGHOSTADDR` which can override the destination even with an explicit `-h`.
+The explicit null-device `PGPASSFILE` also prevents reading a user's default
+libpq password file, even though the isolated cluster uses trust authentication.
 Before migrations, the live server must report the owned data directory, address
 and port. No Docker or hosted Supabase project is required for these SQL/browser
 tests. Supabase Auth, PostgREST, Storage and Realtime services are **NOT RUN**;

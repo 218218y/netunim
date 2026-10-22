@@ -12,10 +12,11 @@ from acceptance_safety import browser_preflight, contained, postgres_environment
 class SafetyContracts(unittest.TestCase):
     def test_libpq_destination_and_service_environment_cannot_escape(self):
         with patch.dict(os.environ, {'PGHOSTADDR': '192.0.2.1', 'PGSERVICE': 'production',
-                                     'PGSSLCERT': '/private/cert', 'PGFUTUREOPTION': 'unsafe'}):
+                                     'PGSSLCERT': '/private/cert', 'PGFUTUREOPTION': 'unsafe',
+                                     'PGPASSFILE': '/private/passwords'}):
             env = postgres_environment()
         self.assertEqual({key: value for key, value in env.items() if key.upper().startswith('PG')},
-                         {'PGCLIENTENCODING': 'UTF8'})
+                         {'PGCLIENTENCODING': 'UTF8', 'PGPASSFILE': os.devnull})
 
     def test_config_origin_profile_and_storage_are_checked_before_launch(self):
         with tempfile.TemporaryDirectory(prefix='netunim-safety-') as directory, \
