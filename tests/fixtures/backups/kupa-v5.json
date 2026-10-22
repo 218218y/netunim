@@ -1,0 +1,10 @@
+{
+  "_meta": {"format": "kupa-portable", "schemaVersion": 5},
+  "version": 3,
+  "businessName": "Synthetic historical kupa",
+  "cash": [{"id": "LEGACY-CASH", "date": "2026-01-01", "description": "Synthetic historical cash", "amount": 125}],
+  "checks": [{"id": "LEGACY-CHECK", "name": "Synthetic zero check", "amount": 0, "dueDate": "2026-01-01"}],
+  "credits": [], "expenses": [],
+  "cards": [{"name": "Synthetic card without a historical id", "account": "business"}],
+  "notes": [{"id": "LEGACY-NOTE", "content": "Synthetic earlier note"}]
+}

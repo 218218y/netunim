@@ -111,6 +111,21 @@ class WindowsJob:
         finally:
             self.api.CloseHandle(handle)
 
+    def wait_empty(self, *, timeout=10):
+        """Observe natural descendant exit without terminating the job."""
+        if not self.handle:
+            raise RuntimeError('Windows job is already closed')
+        deadline=time.monotonic()+timeout
+        while True:
+            accounting=self.accounting_type()
+            if not self.api.QueryInformationJobObject(self.handle,1,ctypes.byref(accounting),ctypes.sizeof(accounting),None):
+                raise ctypes.WinError(ctypes.get_last_error())
+            if not accounting.active:
+                return
+            if time.monotonic()>=deadline:
+                raise TimeoutError('Windows job still has live descendants after graceful parent exit')
+            time.sleep(.01)
+
     def close(self):
         if self.handle:
             process_handles = []

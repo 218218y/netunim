@@ -1,5 +1,4 @@
 """Upgrade a real legacy worker; old local V1 data stays non-authoritative."""
-import contextlib
 import hashlib
 import json
 import os
@@ -44,6 +43,35 @@ def wait_for_worker_control(browser, timeout=60):
 class _DropConnection(socketserver.BaseRequestHandler):
     def handle(self):
         self.request.close()
+
+
+def wait_for_waiting_upgrade(browser, timeout=60):
+    """Install one update while requiring the existing page's controller to stay."""
+    assert 'error' not in browser.call('ServiceWorker.enable')
+    browser.evaluate("""(async()=>{
+      const registration=await navigator.serviceWorker.ready;
+      window.__pwaUpgrade={registration,previous:navigator.serviceWorker.controller,error:null};
+      registration.update().catch(error=>{window.__pwaUpgrade.error=String(error)});
+      return true;
+    })()""", timeout=10)
+    deadline=time.monotonic()+timeout
+    state=None
+    while time.monotonic()<deadline:
+        state=browser.evaluate("""(()=>{
+          const {registration,previous,error}=window.__pwaUpgrade;
+          return {sameController:navigator.serviceWorker.controller===previous,error,
+            installing:registration.installing?.state||null,waiting:registration.waiting?.state||null,
+            active:registration.active?.state||null};
+        })()""", timeout=5)
+        errors=[event['params'] for event in browser.events if event.get('method')=='ServiceWorker.workerErrorReported']
+        if not state['sameController']:
+            raise AssertionError('Update replaced the active page mid-session: '+json.dumps(state))
+        if state['error'] or errors:
+            raise RuntimeError('Service Worker update failed: '+json.dumps({'state':state,'errors':errors}))
+        if state['waiting']=='installed':
+            return True
+        time.sleep(.1)
+    raise RuntimeError('Worker waiting deadline: '+json.dumps(state))
 
 
 class _OfflineOrigin(socketserver.ThreadingTCPServer):
@@ -98,12 +126,9 @@ class UpgradeBrowser(BrowserSession):
         self.httpd = _OfflineOrigin(('127.0.0.1', port), _DropConnection)
         self.http_thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
         self.http_thread.start()
-        with contextlib.suppress(Exception):
-            self.call('Browser.close')
-        self.ws.close()
-        self.proc.wait(timeout=10)
-        self.events = []
-        self._start_browser()
+        # Reuse the same confirmed graceful tree shutdown as journal recovery;
+        # configure offline transport before the first navigation of the new process.
+        self.restart_process(navigate=False)
         self.call('Network.enable')
         offline = {
             'offline': True,
@@ -173,15 +198,7 @@ def test_worker_upgrade(label, fixture):
         })()""")
         browser.publish_upgrade()
         check_http_headers(browser)
-        waiting = browser.evaluate("""(async()=>{
-          const previous=navigator.serviceWorker.controller,registration=await navigator.serviceWorker.ready;
-          await registration.update();
-          for(let i=0;i<300;i++){
-            if(registration.waiting)return navigator.serviceWorker.controller===previous;
-            await new Promise(resolve=>setTimeout(resolve,50));
-          }
-          throw Error('Worker update did not wait for the open legacy page');
-        })()""")
+        waiting = wait_for_waiting_upgrade(browser)
         assert waiting, 'Update replaced the active page mid-session'
         assert 'error' not in browser.call('ServiceWorker.enable')
         browser.call('Runtime.evaluate', {'expression': 'true'})
@@ -191,7 +208,8 @@ def test_worker_upgrade(label, fixture):
         assert installed, 'DevTools did not observe the waiting worker'
         # Closing the last scoped page permits the waiting release to activate.
         browser.call('Page.navigate', {'url': 'about:blank'})
-        for attempt in range(300):
+        activation_deadline=time.monotonic()+60
+        while time.monotonic()<activation_deadline:
             browser.call('Runtime.evaluate', {'expression': 'true'})
             if any(version['versionId'] in installed and version['status'] == 'activated'
                    for event in browser.events if event.get('method') == 'ServiceWorker.workerVersionUpdated'

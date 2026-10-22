@@ -129,6 +129,90 @@ post-GC JS heap. Local-only loaded tests do not measure cloud ACK or total proce
 memory. Three samples do not establish p95 or certify a physical weak computer;
 no production optimization follows merely from these measurements.
 
+The recorded 4x-CPU CI median for 10,000 Orders records included about 21.5 s
+for delegated search, versus about 2.1 s at 1,000 records. These are slow
+synthetic interactions, not a passing usability budget. The next performance
+decision requires an unthrottled profile separating script, layout and paint;
+physical target-machine acceptance remains open. The same measurement tool
+accepts `NETUNIM_LOADED_CPU_RATE=1` (default remains 4), so an unthrottled control
+needs no production code or alternative harness. Raw samples always retain the
+actual selected CPU rate.
+
+Earlier-schema acceptance is included in the existing native backup suite:
+`python tests/runtime_backup_browser_resources.py --phase legacy`. Synthetic
+Orders schema 3 and Kupa schema 5/state 3 fixtures omit later optional fields and
+exercise old notes/card identity defaults plus a genuine zero check. The native
+file pipeline imports both, survives a hard process restart and rejects future
+versions and the other application's format with byte-identical journals.
+These are supported-contract fixtures, not copied live historical backups or
+proof of every historical exporter version.
+
+The expanded Windows runs observed both post-crash and initial cold browsers
+reach `interactive` without application errors but miss the Linux-oriented
+10-second load deadline. Windows functional navigation has a 30-second deadline;
+other platforms retain 10 seconds. A timeout records recent resource timings.
+No storage operation or restore is retried to hide a failed result, and separate
+startup/performance measurements retain their actual elapsed times and gates.
+
+A further Windows run reproduced `taskkill /T /F` exiting 255 while terminating
+the live browser tree. Windows browsers now reuse the existing `SuiteProcess`
+gated Job Object owner: its child cannot start Chromium before job assignment,
+and both hard termination and ordinary cleanup wait for the owned descendants
+and handles. This replaces process-tree enumeration; it does not ignore a failed
+kill or signal unrelated browsers. The same owner already covers suite cleanup
+and its native process-resource stress contracts.
+
+Restart auditing found the Windows host-preference helper replaced the private
+profile's entire `Local State` on each launch. It now merges only its two host
+preferences into the existing owned file, retaining profile selection,
+encryption metadata and all other fields; malformed existing state fails closed
+without replacement. Unit regressions prove preservation and that host-profile
+metadata is never copied into the private profile.
+
+A cold Windows run also exposed the seed initializer waiting on an unnecessary
+unseeded blank Chromium process. The seed now writes exactly the same two OS
+preferences directly from `NetUserGetInfo`, without launching a browser first.
+No generated Chromium field was previously used by session seeding. Failed OS
+metadata initialization still prevents every browser launch. The native Bank
+HTTP fixture separately allows 30 seconds per Windows request and 120 seconds
+for its multi-operation test: a cold DPAPI roundtrip on CI measured 12.4 seconds
+against the old 10-second HTTP deadline. No operation is retried and these
+functional deadlines do not certify production vault latency.
+
+Actual DevTools ownership is now tied to the browser UUID written into that
+profile's freshly created `DevToolsActivePort` file. Chromium allocates its own
+port, and the HTTP version endpoint must match that UUID before selecting a page.
+This removes the ambiguity of a guessed port on separate IPv4/IPv6 listeners.
+The real-browser isolation case now restarts A normally and then forcibly while
+B remains live, verifying LocalStorage, IndexedDB and CacheStorage persistence
+and B's independence. Its LocalStorage baseline is flushed by the first normal
+shutdown; this does not claim crash durability for an unflushed LocalStorage
+write. The journal commit/kill tests retain their separate durable assertions.
+If `Browser.close` closes its socket before acknowledging, the harness still
+waits for process exit before forcing termination, allowing the accepted shutdown
+to flush its profile. Missing restore-journal failures retain database/namespace
+diagnostics; no test creates a replacement journal to manufacture recovery.
+Normal process restarts must now prove a graceful exit: they wait up to 30s,
+then fail if forced cleanup was needed instead of calling that a normal restart.
+On Windows they also require the entire Job Object to become empty naturally;
+root-process exit alone cannot authorize terminating a storage utility process
+that is still flushing. A native regression keeps a child alive after parent
+exit, verifies the wait fails without killing it, then lets it flush and exit.
+The paired restore fixture establishes a cleanly flushed LocalStorage canary
+before injection, checks it before opening any fixture DB after both restarts,
+and requires the original DB to still be listed. Chromium uses the explicit
+owned `Default` subprofile throughout. Large-heap diagnostic GC has its own 30s
+transport deadline and recorded elapsed time, rather than the generic 5s socket
+timeout; application interaction timings and failure assertions are unchanged.
+The `Page.navigate` command uses that navigation deadline too, so a default 5s
+socket cannot abort before the loading wait starts. Cold DevTools publication
+still has a 30s bound; UUID verification and first page enumeration share a 60s
+overall startup bound. Legacy-worker upgrade observes native installing/waiting
+state for up to 60s instead of a fixed 15s loop, fails immediately on install
+errors or premature controller replacement, and requests the update only once.
+Offline PWA process restart reuses the same verified graceful tree shutdown;
+offline transport is configured before navigating the new process.
+
 ### Remaining full-install execution protocol
 
 Status is NOT RUN until all evidence below exists. Use a snapshot-backed disposable

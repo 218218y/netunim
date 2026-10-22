@@ -63,13 +63,41 @@ class VerificationContracts(unittest.TestCase):
         self.assertGreater(request.call_args.kwargs["timeout"], 0.5)
         self.assertLessEqual(request.call_args.kwargs["timeout"], 5.0)
 
+    def test_devtools_rejects_a_different_browser_on_the_same_port(self):
+        wrong = io.BytesIO(json.dumps({'webSocketDebuggerUrl':'ws://[::1]:1234/devtools/browser/OTHER'}).encode())
+        owned = io.BytesIO(json.dumps({'webSocketDebuggerUrl':'ws://127.0.0.1:1234/devtools/browser/OWNED'}).encode())
+        with patch.object(browser_harness.urllib.request, 'urlopen', side_effect=[wrong, owned]):
+            result = browser_harness._wait_json(('http://[::1]:1234/json/version','http://127.0.0.1:1234/json/version'),
+                                                expected_browser_path='/devtools/browser/OWNED')
+        self.assertTrue(result['webSocketDebuggerUrl'].endswith('/OWNED'))
+
+    def test_windows_seed_preserves_private_profile_metadata_on_restart(self):
+        cache={'os_password_blank':False,'os_password_last_changed':'10000000'}
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);profile=root/'owned';profile.mkdir()
+            host=root/'host'/browser_harness._seed_key('chrome.exe')/'profile';host.mkdir(parents=True)
+            (host/'Local State').write_text(json.dumps({'password_manager':cache,'host_only':'never-copy'}),encoding='utf8')
+            original={'os_crypt':{'encrypted_key':'synthetic-owned-key'},'profile':{'last_used':'Profile 2'},
+                      'password_manager':{'private_preference':True}}
+            destination=profile/'Local State';destination.write_text(json.dumps(original),encoding='utf8')
+            with patch.object(browser_harness,'HOST_STATE_ROOT',root/'host'), \
+                 patch.object(browser_harness,'_is_windows',return_value=True), \
+                 patch.object(browser_harness,'_windows_password_check_state',return_value=cache):
+                for _ in range(2):
+                    browser_harness._seed_windows_profile('chrome.exe',profile)
+                    self.assertEqual(json.loads(destination.read_text(encoding='utf8')),
+                                     {**original,'password_manager':{**original['password_manager'],**cache}})
+                destination.write_text('{partial',encoding='utf8')
+                with self.assertRaises(RuntimeError):browser_harness._seed_windows_profile('chrome.exe',profile)
+                self.assertEqual(destination.read_text(encoding='utf8'),'{partial')
+
     def test_browser_shutdown_prefers_graceful_cdp_close(self):
         from unittest.mock import Mock
         process = Mock(returncode=None)
         process.poll.return_value = None
         process.wait.return_value = 0
         graceful = Mock()
-        browser_harness._stop_browser_process(process, graceful)
+        self.assertTrue(browser_harness._stop_browser_process(process, graceful))
         graceful.assert_called_once_with()
         process.wait.assert_called_once_with(timeout=5)
         process.terminate.assert_not_called()
@@ -79,14 +107,46 @@ class VerificationContracts(unittest.TestCase):
         from unittest.mock import Mock
         process = Mock(returncode=None)
         process.poll.return_value = None
-        process.wait.side_effect = [subprocess.TimeoutExpired("chrome", 3), 0]
+        process.wait.side_effect = [subprocess.TimeoutExpired("chrome", 5), subprocess.TimeoutExpired("chrome", 3), 0]
         graceful = Mock(side_effect=RuntimeError("cdp unavailable"))
-        browser_harness._stop_browser_process(process, graceful)
+        self.assertFalse(browser_harness._stop_browser_process(process, graceful))
         graceful.assert_called_once_with()
         process.terminate.assert_called_once_with()
         process.kill.assert_called_once_with()
-        self.assertEqual(process.wait.call_count, 2)
+        self.assertEqual(process.wait.call_count, 3)
         self.assertEqual(process.wait.call_args_list[-1].kwargs["timeout"], 5)
+
+    def test_browser_shutdown_lost_close_ack_still_allows_profile_flush(self):
+        from unittest.mock import Mock
+        process=Mock(returncode=None);process.poll.return_value=None;process.wait.return_value=0
+        browser_harness._stop_browser_process(process,Mock(side_effect=RuntimeError('socket closed after accepted Browser.close')))
+        process.wait.assert_called_once_with(timeout=5)
+        process.terminate.assert_not_called();process.kill.assert_not_called()
+
+    def test_browser_restart_never_labels_a_forced_shutdown_as_graceful(self):
+        from unittest.mock import Mock
+        session=object.__new__(browser_harness.BrowserSession)
+        session.proc=Mock();session.proc.poll.return_value=None
+        with patch.object(browser_harness,'_stop_browser_process',return_value=False) as stop:
+            with self.assertRaisesRegex(RuntimeError,'forced termination during a graceful restart'):
+                session.restart_process()
+            self.assertEqual(stop.call_args.kwargs['graceful_timeout'],30)
+
+    def test_worker_update_wait_preserves_controller_and_propagates_install_errors(self):
+        from unittest.mock import Mock
+        from pwa_upgrade import wait_for_waiting_upgrade
+        installing={'sameController':True,'error':None,'installing':'installing','waiting':None,'active':'activated'}
+        installed={**installing,'installing':None,'waiting':'installed'}
+        browser=Mock();browser.call.return_value={};browser.events=[]
+        browser.evaluate.side_effect=[True,installing,installed]
+        with patch('pwa_upgrade.time.sleep'):
+            self.assertTrue(wait_for_waiting_upgrade(browser))
+        browser.evaluate.side_effect=[True,{**installed,'sameController':False}]
+        with self.assertRaisesRegex(AssertionError,'replaced the active page'):
+            wait_for_waiting_upgrade(browser)
+        browser.evaluate.side_effect=[True,{**installing,'error':'synthetic cache write failure'}]
+        with self.assertRaisesRegex(RuntimeError,'synthetic cache write failure'):
+            wait_for_waiting_upgrade(browser)
 
     def test_browser_profile_cleanup_retries_transient_lock_and_never_hides_failure(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -107,6 +167,16 @@ class VerificationContracts(unittest.TestCase):
                 browser_harness._remove_tree_verified(root, timeout=1)
             self.assertEqual(attempts, 2)
             self.assertFalse(root.exists())
+
+    def test_windows_initial_seed_needs_no_unseeded_browser_or_user_profile(self):
+        cache={'os_password_blank':False,'os_password_last_changed':'10000000'}
+        with tempfile.TemporaryDirectory() as directory, \
+             patch.object(browser_harness,'_windows_password_check_state',return_value=cache), \
+             patch.object(browser_harness.subprocess,'Popen',side_effect=AssertionError('must not launch before seeding')):
+            profile=Path(directory)/'seed'
+            self.assertEqual(browser_harness._bootstrap_host_state('nonexistent-browser',profile),cache)
+            self.assertEqual(json.loads((profile/'Local State').read_text(encoding='utf8')),{'password_manager':cache})
+            self.assertEqual([p.name for p in profile.iterdir()],['Local State'])
 
     def test_windows_seed_is_shared_without_sharing_browser_profiles(self):
         with tempfile.TemporaryDirectory() as directory:

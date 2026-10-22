@@ -211,6 +211,30 @@ print('grandchild ready', flush=True)
             for process in processes:
                 process.close()
 
+    @unittest.skipUnless(os.name == 'nt','Windows native job accounting')
+    def test_graceful_job_wait_observes_children_after_parent_exit_without_killing_them(self):
+        ready=self.root/'ready';release=self.root/'release';flushed=self.root/'flushed'
+        child=self.script('natural-child.py',f'''import time
+from pathlib import Path
+Path({str(ready)!r}).touch()
+while not Path({str(release)!r}).exists():time.sleep(.01)
+Path({str(flushed)!r}).write_text('natural exit')
+''')
+        parent=self.script('natural-parent.py',f'''import subprocess,sys,time
+from pathlib import Path
+subprocess.Popen([sys.executable,{str(child)!r}])
+while not Path({str(ready)!r}).exists():time.sleep(.01)
+''')
+        process=SuiteProcess(parent,self.root/'natural.log',cwd=self.root)
+        try:
+            self.assertEqual(process.proc.wait(timeout=10),0)
+            with self.assertRaises(TimeoutError):process.job.wait_empty(timeout=.05)
+            self.assertFalse(flushed.exists())
+            release.touch()
+            process.job.wait_empty(timeout=10)
+            self.assertEqual(flushed.read_text(),'natural exit')
+        finally:process.close()
+
     def test_timeout_and_normal_exit_both_clean_remaining_descendants(self):
         for normal in (False, True):
             with self.subTest(normal=normal):

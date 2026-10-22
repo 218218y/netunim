@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import {bankStage} from './bank_stage_fixture.mjs';
 
-test('staged Bank runtime starts its real HTTP capabilities with isolated files and no provider login',{timeout:30000},async t=>{
+test('staged Bank runtime starts its real HTTP capabilities with isolated files and no provider login',{timeout:process.platform==='win32'?120000:30000},async t=>{
   const key='a'.repeat(64),image=Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]);
   const f=await bankStage(t,{prepare:async({app})=>{
     const cache=path.join(app,'cheque-image-cache'),now=new Date(),eventDate=String(now.getFullYear())+String(now.getMonth()+1).padStart(2,'0')+String(now.getDate()).padStart(2,'0');

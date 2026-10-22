@@ -68,11 +68,25 @@ with tempfile.TemporaryDirectory(prefix="netunim-browser-isolation-site-") as di
             server.shutdown()
             server.server_close()
             thread.join(timeout=2)
+        # localStorage does not expose a crash-durable receipt. Establish its
+        # baseline through clean shutdown before testing preservation on a kill.
+        # Journal commit/kill guarantees are asserted separately by restore/SQL.
+        for crash in (False, True):
+            a.restart_process(crash=crash)
+            assert a.evaluate("localStorage.getItem('harness-isolation')") == 'A'
+            assert a.evaluate("""(async()=>{
+              const db=await new Promise((resolve,reject)=>{const r=indexedDB.open('harness-isolation',1);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});
+              try{return await new Promise((resolve,reject)=>{if(!db.objectStoreNames.contains('items'))return resolve(null);const r=db.transaction('items').objectStore('items').get('owner');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})}finally{db.close()}
+            })()""") == 'A'
+            assert a.evaluate("caches.match('/marker').then(r=>r?.text())") == 'A'
+            assert b.evaluate("localStorage.getItem('harness-isolation')") is None
+            assert b.evaluate("caches.keys()") == []
     assert all(not profile.exists() for profile in profiles)
     if _is_windows():
         assert (HOST_STATE_ROOT / _seed_key(a.browser) / "profile" / "Local State").exists()
 
 write_evidence('browser-isolation', [{'scenario': 'same-origin separate profiles and LocalStorage/IndexedDB/CacheStorage', 'status': 'PASS'},
                                    {'scenario': 'foreign HTTP and other loopback listeners denied; owned origin allowed', 'status': 'PASS'},
+                                   {'scenario': 'graceful flush then hard restart retain all three stores without terminating sibling profile', 'status': 'PASS'},
                                    {'scenario': 'owned browser profiles deleted after exit', 'status': 'PASS'}])
 print("PASS browser isolation: separate LocalStorage/IndexedDB/CacheStorage, owned profiles, denied foreign and loopback egress")

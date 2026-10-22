@@ -21,6 +21,7 @@ import time
 import urllib.request
 import urllib.parse
 from acceptance_safety import browser_preflight, sandbox_config, DenyProxy
+from suite_process import SuiteProcess
 
 try:
     import websocket
@@ -143,7 +144,7 @@ def _host_state_lock(root: Path):
 
 def _browser_args(browser: str, profile: Path, port: int) -> list[str]:
     return [browser, "--headless=new", "--no-sandbox", "--disable-gpu",
-            f"--remote-debugging-port={port}", f"--user-data-dir={profile}",
+            f"--remote-debugging-port={port}", f"--user-data-dir={profile}", "--profile-directory=Default",
             "--remote-allow-origins=*", "--disable-background-networking",
             "--no-first-run", "about:blank"]
 
@@ -153,43 +154,22 @@ def _devtools_urls(port: int, path: str) -> tuple[str, str]:
     return (f"http://127.0.0.1:{port}{path}", f"http://[::1]:{port}{path}")
 
 
-def _bootstrap_host_state(browser: str, seed_profile: Path) -> dict:
-    """Initialize a dedicated browser profile, then add only host preferences."""
+def _bootstrap_host_state(_browser: str, seed_profile: Path) -> dict:
+    """Initialize only host preferences, without launching an unseeded browser.
+
+    No other field from Chromium's generated Local State was ever copied into a
+    session. Query the same OS metadata directly before its very first launch;
+    a blank browser launch added no information and could itself hang or trigger
+    the Windows password check that this seed is intended to avoid.
+    """
     seed_profile.mkdir(parents=True, exist_ok=True)
-    log_path = seed_profile.parent / "bootstrap.log"
-    port = _free_port()
-    with log_path.open("w", encoding="utf-8") as log:
-        process = subprocess.Popen(
-            _browser_args(browser, seed_profile, port),
-            stdout=log, stderr=subprocess.STDOUT,
-        )
-        try:
-            _wait_json(_devtools_urls(port, "/json/list"), timeout=30, process=process)
-        finally:
-            # Browser.close lets Chromium flush Local State; terminate() on
-            # Windows is a hard kill and can lose the preferences we need.
-            if process.poll() is None:
-                try:
-                    version = _wait_json(_devtools_urls(port, "/json/version"), timeout=3, process=process)
-                    with websocket.create_connection(version["webSocketDebuggerUrl"], timeout=3) as ws:
-                        ws.send(json.dumps({"id": 1, "method": "Browser.close"}))
-                except Exception:
-                    process.terminate()
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait(timeout=5)
-    local_state = seed_profile / "Local State"
-    state = json.loads(local_state.read_text(encoding="utf-8"))
     cache = _windows_password_check_state()
-    state["password_manager"] = cache
-    local_state.write_text(json.dumps(state), encoding="utf-8")
+    (seed_profile / "Local State").write_text(json.dumps({"password_manager":cache}), encoding="utf-8")
     return cache
 
 
 def _seed_windows_profile(browser: str, profile: Path) -> None:
-    """Copy exactly two host preferences to a disposable, otherwise empty profile."""
+    """Copy two host preferences, preserving this owned profile on restart."""
     if not _is_windows():
         return
     root = HOST_STATE_ROOT
@@ -219,9 +199,12 @@ def _seed_windows_profile(browser: str, profile: Path) -> None:
                 state = json.loads(local_state.read_text(encoding="utf-8"))
                 state["password_manager"] = cache
                 local_state.write_text(json.dumps(state), encoding="utf-8")
-            (profile / "Local State").write_text(
-                json.dumps({"password_manager": cache}), encoding="utf-8"
-            )
+            destination = profile / 'Local State'
+            state = json.loads(destination.read_text(encoding='utf8')) if destination.exists() else {}
+            if not isinstance(state, dict) or not isinstance(state.get('password_manager', {}), dict):
+                raise RuntimeError('invalid owned Chromium Local State')
+            state['password_manager'] = {**state.get('password_manager', {}), **cache}
+            destination.write_text(json.dumps(state), encoding='utf8')
     except Exception as exc:
         raise RuntimeError(
             "Windows Chromium password-check seed is unavailable; browser launch stopped "
@@ -281,7 +264,7 @@ def _free_port() -> int:
     raise RuntimeError('No free localhost port in the dynamic range')
 
 
-def _wait_json(url: str | tuple[str, ...], timeout: float = 10.0, *, process=None):
+def _wait_json(url: str | tuple[str, ...], timeout: float = 10.0, *, process=None, expected_browser_path=None):
     # A cold Chromium process can publish the DevTools socket before /json/list
     # finishes its first target enumeration. A 0.5s per-request timeout makes
     # that state self-perpetuating: every poll aborts the slow first response
@@ -302,7 +285,12 @@ def _wait_json(url: str | tuple[str, ...], timeout: float = 10.0, *, process=Non
                 break
             try:
                 with urllib.request.urlopen(candidate, timeout=min(5.0, remaining)) as response:
-                    return json.load(response)
+                    result = json.load(response)
+                    if expected_browser_path is not None:
+                        actual = urllib.parse.urlsplit(result.get('webSocketDebuggerUrl', '')).path if isinstance(result, dict) else None
+                        if actual != expected_browser_path:
+                            raise RuntimeError('DevTools listener does not belong to the owned profile')
+                    return result
             except Exception as exc:  # startup race / cold target enumeration
                 last = exc
         remaining = end - time.monotonic()
@@ -310,6 +298,22 @@ def _wait_json(url: str | tuple[str, ...], timeout: float = 10.0, *, process=Non
             break
         time.sleep(min(0.1, remaining))
     raise RuntimeError(f"Chrome DevTools did not become available: {last}")
+
+
+def _wait_owned_devtools(profile, process, *, timeout=30):
+    deadline = time.monotonic()+timeout
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            raise RuntimeError('owned Chromium exited before publishing DevTools')
+        try:
+            lines = (profile/'DevToolsActivePort').read_text(encoding='utf8').splitlines()
+            port, browser_path = int(lines[0]), lines[1]
+            if not 0 < port < 65536 or not browser_path.startswith('/devtools/browser/') or urllib.parse.urlsplit(browser_path).netloc:
+                raise ValueError('invalid owned DevTools identity')
+            return port, browser_path
+        except (OSError, ValueError, IndexError):
+            time.sleep(.05)
+    raise RuntimeError('owned Chromium did not publish its private DevTools identity')
 
 
 class _QuietHandler(http.server.SimpleHTTPRequestHandler):
@@ -343,7 +347,7 @@ class _RuntimeHTTPServer(http.server.ThreadingHTTPServer):
     request_queue_size = 128
 
 
-def _stop_browser_process(process, graceful_close=None) -> None:
+def _stop_browser_process(process, graceful_close=None, *, graceful_timeout=5) -> bool:
     """Stop Chromium completely before its disposable profile is removed.
 
     Chrome is multi-process. Closing the browser through CDP gives all child
@@ -352,26 +356,28 @@ def _stop_browser_process(process, graceful_close=None) -> None:
     while Chrome is still exiting can race with late profile writes.
     """
     if process is None or process.poll() is not None:
-        return
+        return True
     if graceful_close is not None:
         try:
             graceful_close()
         except Exception:
+            # Browser.close can close the socket before its response arrives.
+            # Still allow the accepted shutdown to flush the private profile.
             pass
-        else:
-            try:
-                process.wait(timeout=5)
-                return
-            except subprocess.TimeoutExpired:
-                pass
+        try:
+            process.wait(timeout=graceful_timeout)
+            return True
+        except subprocess.TimeoutExpired:
+            pass
     process.terminate()
     try:
         process.wait(timeout=3)
-        return
+        return False
     except subprocess.TimeoutExpired:
         process.kill()
     # kill() is asynchronous too. Do not race profile deletion against exit.
     process.wait(timeout=5)
+    return False
 
 
 def _remove_tree_verified(path: Path, *, timeout: float = 5.0) -> None:
@@ -419,6 +425,7 @@ class BrowserSession:
         self.httpd = None
         self.http_thread = None
         self.proc = None
+        self.browser_owner = None
         self.ws = None
         self.network_guard = None
         self.seq = 0
@@ -453,7 +460,11 @@ class BrowserSession:
             graceful_close = None
             if self.ws:
                 graceful_close = lambda: self.call("Browser.close", timeout=3)
-            _stop_browser_process(self.proc, graceful_close)
+            try:
+                _stop_browser_process(self.proc, graceful_close)
+            finally:
+                if self.browser_owner:
+                    self.browser_owner.close()
         except Exception as error:
             cleanup_error = error
         finally:
@@ -538,19 +549,45 @@ class BrowserSession:
         self.url = f"http://127.0.0.1:{port}/index.html"
 
     def _start_browser(self):
+        if self.browser_owner:
+            self.browser_owner.close()
+            self.browser_owner = None
         allowed = browser_preflight(self)
         _seed_windows_profile(self.browser, self.profile)
-        devtools_port = _free_port()
+        # Let Chromium bind its own port, then trust only the browser UUID it
+        # publishes inside this private profile. A free IPv4 port alone cannot
+        # identify a listener when Chromium uses the IPv6 loopback family.
+        (self.profile/'DevToolsActivePort').unlink(missing_ok=True)
+        devtools_port = 0
         args = _browser_args(self.browser, self.profile, devtools_port)
         args.extend(self.network_guard.arguments(allowed))
         browser_log = self.tmp / 'browser.log'
-        with browser_log.open('w', encoding='utf-8') as log:
-            self.proc = subprocess.Popen(args, stdout=log, stderr=subprocess.STDOUT, start_new_session=os.name != 'nt')
+        if os.name == 'nt':
+            # Reuse the runner's gated Job Object owner. The Python child is
+            # assigned before it can create Chromium or any of its descendants.
+            # This avoids taskkill's racy enumeration of a changing browser tree.
+            entry = self.tmp / 'owned-browser.py'
+            entry.write_text('import subprocess\nraise SystemExit(subprocess.call('+repr(args)+', stdin=subprocess.DEVNULL))\n', encoding='utf8')
+            self.browser_owner = SuiteProcess(entry, browser_log, cwd=ROOT)
+            self.proc = self.browser_owner.proc
+        else:
+            with browser_log.open('w', encoding='utf-8') as log:
+                self.proc = subprocess.Popen(args, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
         try:
             # A fresh CI machine can need more than 10s for its first Chrome boot.
             # Poll readiness, fail immediately on process exit, and leave application
             # assertions/timeouts unchanged. Include stderr before temp cleanup.
-            pages = _wait_json(_devtools_urls(devtools_port, "/json/list"), timeout=30, process=self.proc)
+            # Ownership verification adds a version query before the original
+            # page enumeration. Retain a bounded cold-start window for both;
+            # do not spend nearly all of it waiting for Chromium's first bind.
+            deadline = time.monotonic()+60
+            devtools_port, browser_path = _wait_owned_devtools(self.profile, self.proc, timeout=30)
+            version = _wait_json(_devtools_urls(devtools_port, '/json/version'), timeout=max(.01, deadline-time.monotonic()),
+                                 process=self.proc, expected_browser_path=browser_path)
+            endpoint = urllib.parse.urlsplit(version['webSocketDebuggerUrl'])
+            if endpoint.hostname not in ('127.0.0.1', '::1', 'localhost') or endpoint.port != devtools_port:
+                raise RuntimeError('owned DevTools endpoint escaped loopback')
+            pages = _wait_json(f'http://{endpoint.netloc}/json/list', timeout=max(.01, deadline-time.monotonic()), process=self.proc)
         except Exception as error:
             diagnostics = browser_log.read_text(encoding='utf-8', errors='replace')[-8000:]
             raise RuntimeError(f"{error}\nChrome startup log:\n{diagnostics}") from error
@@ -576,26 +613,35 @@ class BrowserSession:
                 + str(download_behavior["error"])
             )
 
-    def restart_process(self, *, crash=False):
+    def restart_process(self, *, crash=False, navigate=True):
         """Restart this owned browser, retaining its actual on-disk profile."""
         if self.proc is None or self.proc.poll() is not None:
             raise RuntimeError('no live owned browser to restart')
         previous_pid = self.proc.pid
         if crash:
             if os.name == 'nt':
-                subprocess.run(['taskkill', '/PID', str(previous_pid), '/T', '/F'],
-                               check=True, capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                if self.browser_owner is None:
+                    raise RuntimeError('hard restart requires its owned Windows job')
+                self.browser_owner.close()
+                self.browser_owner = None
             else:
                 os.killpg(previous_pid, signal.SIGKILL)
             self.proc.wait(timeout=10)
         else:
-            _stop_browser_process(self.proc, lambda: self.call('Browser.close', timeout=3))
+            if not _stop_browser_process(self.proc, lambda: self.call('Browser.close', timeout=3), graceful_timeout=30):
+                raise RuntimeError('owned Chromium required forced termination during a graceful restart')
+            if self.browser_owner:
+                # Root exit alone does not prove storage utility processes have
+                # finished. Starting again must not force-kill late flushes.
+                self.browser_owner.job.wait_empty(timeout=30)
         self.ws.close()
         self.events = []
         self._start_browser()
-        self._navigate()
-        if self.instrument:
-            self.evaluate('appReady.then(()=>true)')
+        # A hard-killed profile needs crash recovery plus a cold module graph.
+        if navigate:
+            self._navigate(timeout=30 if crash else None)
+            if self.instrument:
+                self.evaluate('appReady.then(()=>true)')
         return {'previous_pid': previous_pid, 'new_pid': self.proc.pid, 'hard_process_failure': crash}
 
     @contextlib.contextmanager
@@ -635,15 +681,20 @@ class BrowserSession:
             if timeout is not None:
                 self.ws.settimeout(previous_timeout)
 
-    def _navigate(self):
-        result = self.call("Page.navigate", {"url": self.url})
+    def _navigate(self, *, timeout=None):
+        # Functional loading of hundreds of cold ESM files outlasted 10s on
+        # Windows CI, even before crash injection. Startup-performance probes
+        # measure elapsed readiness separately; this is a transport deadline.
+        if timeout is None:
+            timeout = 30 if os.name == 'nt' else 10
+        end = time.monotonic() + timeout
+        result = self.call("Page.navigate", {"url": self.url}, timeout=timeout)
         nav = result.get("result", {})
         if nav.get("errorText"):
             raise RuntimeError('Native ESM runtime requires localhost navigation: '+nav['errorText'])
-        end = time.time() + 10
         last_error = None
         state = None
-        while time.time() < end:
+        while time.monotonic() < end:
             try:
                 # Loading-state inspection must not import test-access.js into a
                 # document which may still be navigating/reloading.
@@ -654,7 +705,11 @@ class BrowserSession:
             except Exception as error:
                 last_error = error
             time.sleep(0.05)
-        raise RuntimeError(f"{self.label}: page did not finish loading at {self.url}; state: {state}; last error: {last_error}; browser errors: {self.drain_serious_errors()}")
+        resources = None
+        # Optional diagnostics must never replace the original load failure.
+        with contextlib.suppress(Exception):
+            resources = self.call('Runtime.evaluate', {'expression': "performance.getEntriesByType('resource').slice(-8).map(r=>({path:new URL(r.name).pathname,duration:r.duration,responseEnd:r.responseEnd}))", 'returnByValue': True}, timeout=5).get('result',{}).get('result',{}).get('value')
+        raise RuntimeError(f"{self.label}: page did not finish loading at {self.url}; state: {state}; resources: {resources}; last error: {last_error}; browser errors: {self.drain_serious_errors()}")
 
     def evaluate(self, expression: str, *, await_promise: bool = True, timeout: float | None = None, user_gesture: bool = False):
         if self.instrument:

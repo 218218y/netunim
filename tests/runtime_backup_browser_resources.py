@@ -8,7 +8,7 @@ from acceptance_safety import write_evidence
 
 parser=argparse.ArgumentParser()
 parser.add_argument('--app',choices=('orders','kupa'))
-parser.add_argument('--phase',choices=('read-dispose','read-account','confirmation','success','downloads','roundtrip'),action='append')
+parser.add_argument('--phase',choices=('read-dispose','read-account','confirmation','success','downloads','roundtrip','legacy'),action='append')
 args=parser.parse_args()
 
 FLOW=r"""(async()=>{
@@ -74,6 +74,30 @@ FLOW=r"""(async()=>{
  }
 })()"""
 
+def import_native_file(target, backup, app):
+    bookmark = len(target.events)
+    assert 'error' not in target.call('Page.setInterceptFileChooserDialog', {'enabled': True})
+    target.evaluate("(()=>{uiModal.confirmDialog=async()=>true;window.alert=()=>{};window.fileRoundtrip="
+                    +('uiBackup.beginRestoreBackup()' if app=='kupa' else 'uiBackup.beginJsonRestore()')+';return true})()', user_gesture=True)
+    deadline = time.monotonic()+5
+    chooser = None
+    while time.monotonic() < deadline:
+        chooser = next((event['params'] for event in target.events[bookmark:] if event.get('method')=='Page.fileChooserOpened'), None)
+        if chooser:
+            break
+        target.evaluate('true')
+        time.sleep(.02)
+    assert chooser and chooser.get('backendNodeId'), 'native file chooser missing'
+    response = target.call('DOM.setFileInputFiles', {'files': [str(backup.resolve())], 'backendNodeId': chooser['backendNodeId']})
+    assert 'error' not in response, response
+    if app == 'orders':
+        accepted = target.evaluate("(async()=>{const opened=await fileRoundtrip;if(!opened)return false;document.getElementById('restoreJsonChecks').checked=true;await uiBackup.applyJsonRestore();return true})()")
+    else:
+        accepted = target.evaluate('fileRoundtrip')
+    target.evaluate('uiBackup.runtime.drain().then(()=>true)')
+    return accepted
+
+
 def roundtrip(app):
     with BrowserSession(ROOT/f'netunim-{app}/site', app+'-backup-export') as source:
         exported = source.evaluate(r"""(async()=>{
@@ -102,25 +126,7 @@ def roundtrip(app):
         assert next(row for row in payload['checks'] if row['id']=='roundtrip-check') == exported['check']
         backup_hash = hashlib.sha256(backup.read_bytes()).hexdigest()
         with BrowserSession(ROOT/f'netunim-{app}/site', app+'-backup-import') as target:
-            assert 'error' not in target.call('Page.setInterceptFileChooserDialog', {'enabled': True})
-            target.evaluate("(()=>{uiModal.confirmDialog=async()=>true;window.fileRoundtrip="
-                            +('uiBackup.beginRestoreBackup()' if app=='kupa' else 'uiBackup.beginJsonRestore()')+';return true})()', user_gesture=True)
-            deadline = time.monotonic()+5
-            chooser = None
-            while time.monotonic() < deadline:
-                chooser = next((event['params'] for event in target.events if event.get('method')=='Page.fileChooserOpened'), None)
-                if chooser:
-                    break
-                target.evaluate('true')
-                time.sleep(.02)
-            assert chooser and chooser.get('backendNodeId'), 'native file chooser missing'
-            response = target.call('DOM.setFileInputFiles', {'files': [str(backup)], 'backendNodeId': chooser['backendNodeId']})
-            assert 'error' not in response, response
-            if app == 'orders':
-                target.evaluate("(async()=>{await fileRoundtrip;document.getElementById('restoreJsonChecks').checked=true;return await uiBackup.applyJsonRestore()})()")
-            else:
-                assert target.evaluate('fileRoundtrip') is True
-            target.evaluate('uiBackup.runtime.drain().then(()=>true)')
+            assert import_native_file(target, backup, app) is True
             inspect = r"""(async()=>{
               await appReady;
               const main=await mainStorageV2.recoverForOwner({intent:'load-account'}),shared=await sharedChecksV2.recover();
@@ -137,10 +143,55 @@ def roundtrip(app):
         print('PASS', app, 'actual synthetic backup file roundtrip and paired journals after hard process restart', flush=True)
 
 
+def legacy_roundtrip(app):
+    name = 'orders-v3.json' if app == 'orders' else 'kupa-v5.json'
+    fixture = ROOT/'tests/fixtures/backups'/name
+    payload = json.loads(fixture.read_text(encoding='utf8'))
+    with BrowserSession(ROOT/f'netunim-{app}/site', app+'-legacy-backup') as target:
+        backup = target.downloads/name
+        backup.write_bytes(fixture.read_bytes())
+        assert import_native_file(target, backup, app) is True
+        inspect = r"""(async()=>{
+          await appReady;
+          const main=await mainStorageV2.recoverForOwner({intent:'load-account'}),shared=await sharedChecksV2.recover();
+          return {state:main.state,checks:shared.state.checks};
+        })()"""
+        before = target.evaluate(inspect)
+        assert before['state']['version'] == 4
+        assert before['state']['notes'] == [{'id':'LEGACY-NOTE','content':'Synthetic earlier note','createdAt':'','updatedAt':''}]
+        assert len(before['checks']) == 1 and before['checks'][0]['id'] == 'LEGACY-CHECK' and before['checks'][0]['amount'] == 0
+        if app == 'kupa':
+            assert len(before['state']['cash']) == 1 and before['state']['cash'][0]['amount'] == 125
+            assert before['state']['bank']['currentBalance'] is None
+            assert len(before['state']['cards']) == 1 and before['state']['cards'][0]['id']
+        else:
+            assert len(before['state']['transactions']) == 1 and before['state']['transactions'][0]['debit'] == 125
+        target.restart_process(crash=True)
+        assert target.evaluate(inspect) == before
+        assert not target.drain_serious_errors()
+        raw = "(async()=>{const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');const db=createStorageJournalDb();return JSON.stringify({main:await db.load('local:"+app+"'),shared:await db.load('local:shared-checks')})})()"
+        stored = target.evaluate(raw)
+        for kind, changes in [('future', {'version':99}), ('foreign', {'_meta': {'format': 'kupa-portable' if app=='orders' else 'order-management-portable'}})]:
+            invalid = target.downloads/(kind+'.json')
+            invalid.write_text(json.dumps({**payload, **changes}),encoding='utf8')
+            assert import_native_file(target, invalid, app) is False
+            assert target.evaluate(raw) == stored
+            # The UI intentionally logs rejected input; journal identity/state
+            # equality above, not an absence of console logs, proves refusal.
+            target.drain_serious_errors()
+        write_evidence(app+'-legacy-backup', [{'scenario':name+' native import and hard process restart','status':'PASS',
+                       'fixture_sha256':hashlib.sha256(fixture.read_bytes()).hexdigest(), 'financial_record_count':1,
+                       'zero_check_count':1, 'future_and_foreign_input_unchanged_journals':True}])
+        print('PASS',app,'earlier-schema file, restart, stable identity/zero money and future/foreign refusal',flush=True)
+
+
 for app in (args.app,) if args.app else ('orders','kupa'):
-    for phase in args.phase or ('read-dispose','read-account','confirmation','success','downloads','roundtrip'):
+    for phase in args.phase or ('read-dispose','read-account','confirmation','success','downloads','roundtrip','legacy'):
         if phase == 'roundtrip':
             roundtrip(app)
+            continue
+        if phase == 'legacy':
+            legacy_roundtrip(app)
             continue
         with BrowserSession(ROOT/f'netunim-{app}/site',f'backup-resources-{app}-{phase}') as browser:
             result=browser.evaluate(FLOW.replace('__APP__',json.dumps(app)).replace('__PHASE__',json.dumps(phase)),timeout=45)
