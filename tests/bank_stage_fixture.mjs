@@ -45,7 +45,10 @@ export async function bankStage(t,{prepare=async()=>{}}={}){
         const bytes=Buffer.concat(chunks);resolve({status:res.statusCode,headers:{get:key=>res.headers[key.toLowerCase()]},json:async()=>JSON.parse(bytes),arrayBuffer:async()=>bytes});
       });
     });
-    req.on('error',reject);req.setTimeout(10000,()=>req.destroy(new Error(`staged HTTP deadline: ${method} ${new URL(base+target).pathname}`)));req.end(body===undefined?'':JSON.stringify(body));
+    // Functional native-vault coverage includes cold PowerShell/DPAPI startup.
+    // A Windows CI DPAPI roundtrip alone took 12.4s; this is not a latency gate.
+    const deadline=process.platform==='win32'?30000:10000;
+    req.on('error',reject);req.setTimeout(deadline,()=>req.destroy(new Error(`staged HTTP deadline: ${method} ${new URL(base+target).pathname}`)));req.end(body===undefined?'':JSON.stringify(body));
   });
   return {directory,runtime,app,port,base,get child(){return child},get exited(){return exited},restart:start,request,output:()=>output};
 }

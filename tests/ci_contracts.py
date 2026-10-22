@@ -143,6 +143,16 @@ class VerificationContracts(unittest.TestCase):
             self.assertEqual(attempts, 2)
             self.assertFalse(root.exists())
 
+    def test_windows_initial_seed_needs_no_unseeded_browser_or_user_profile(self):
+        cache={'os_password_blank':False,'os_password_last_changed':'10000000'}
+        with tempfile.TemporaryDirectory() as directory, \
+             patch.object(browser_harness,'_windows_password_check_state',return_value=cache), \
+             patch.object(browser_harness.subprocess,'Popen',side_effect=AssertionError('must not launch before seeding')):
+            profile=Path(directory)/'seed'
+            self.assertEqual(browser_harness._bootstrap_host_state('nonexistent-browser',profile),cache)
+            self.assertEqual(json.loads((profile/'Local State').read_text(encoding='utf8')),{'password_manager':cache})
+            self.assertEqual([p.name for p in profile.iterdir()],['Local State'])
+
     def test_windows_seed_is_shared_without_sharing_browser_profiles(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

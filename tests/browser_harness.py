@@ -154,38 +154,17 @@ def _devtools_urls(port: int, path: str) -> tuple[str, str]:
     return (f"http://127.0.0.1:{port}{path}", f"http://[::1]:{port}{path}")
 
 
-def _bootstrap_host_state(browser: str, seed_profile: Path) -> dict:
-    """Initialize a dedicated browser profile, then add only host preferences."""
+def _bootstrap_host_state(_browser: str, seed_profile: Path) -> dict:
+    """Initialize only host preferences, without launching an unseeded browser.
+
+    No other field from Chromium's generated Local State was ever copied into a
+    session. Query the same OS metadata directly before its very first launch;
+    a blank browser launch added no information and could itself hang or trigger
+    the Windows password check that this seed is intended to avoid.
+    """
     seed_profile.mkdir(parents=True, exist_ok=True)
-    log_path = seed_profile.parent / "bootstrap.log"
-    port = _free_port()
-    with log_path.open("w", encoding="utf-8") as log:
-        process = subprocess.Popen(
-            _browser_args(browser, seed_profile, port),
-            stdout=log, stderr=subprocess.STDOUT,
-        )
-        try:
-            _wait_json(_devtools_urls(port, "/json/list"), timeout=30, process=process)
-        finally:
-            # Browser.close lets Chromium flush Local State; terminate() on
-            # Windows is a hard kill and can lose the preferences we need.
-            if process.poll() is None:
-                try:
-                    version = _wait_json(_devtools_urls(port, "/json/version"), timeout=3, process=process)
-                    with websocket.create_connection(version["webSocketDebuggerUrl"], timeout=3) as ws:
-                        ws.send(json.dumps({"id": 1, "method": "Browser.close"}))
-                except Exception:
-                    process.terminate()
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait(timeout=5)
-    local_state = seed_profile / "Local State"
-    state = json.loads(local_state.read_text(encoding="utf-8"))
     cache = _windows_password_check_state()
-    state["password_manager"] = cache
-    local_state.write_text(json.dumps(state), encoding="utf-8")
+    (seed_profile / "Local State").write_text(json.dumps({"password_manager":cache}), encoding="utf-8")
     return cache
 
 

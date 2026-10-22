@@ -169,6 +169,16 @@ encryption metadata and all other fields; malformed existing state fails closed
 without replacement. Unit regressions prove preservation and that host-profile
 metadata is never copied into the private profile.
 
+A cold Windows run also exposed the seed initializer waiting on an unnecessary
+unseeded blank Chromium process. The seed now writes exactly the same two OS
+preferences directly from `NetUserGetInfo`, without launching a browser first.
+No generated Chromium field was previously used by session seeding. Failed OS
+metadata initialization still prevents every browser launch. The native Bank
+HTTP fixture separately allows 30 seconds per Windows request and 120 seconds
+for its multi-operation test: a cold DPAPI roundtrip on CI measured 12.4 seconds
+against the old 10-second HTTP deadline. No operation is retried and these
+functional deadlines do not certify production vault latency.
+
 Actual DevTools ownership is now tied to the browser UUID written into that
 profile's freshly created `DevToolsActivePort` file. Chromium allocates its own
 port, and the HTTP version endpoint must match that UUID before selecting a page.
