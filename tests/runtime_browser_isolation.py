@@ -4,8 +4,12 @@ from __future__ import annotations
 from contextlib import ExitStack
 from pathlib import Path
 import tempfile
+import http.server
+import json
+import threading
+from acceptance_safety import write_evidence
 
-from browser_harness import BrowserSession, HOST_STATE_ROOT, _is_windows, _seed_key
+from browser_harness import BrowserSession, HOST_STATE_ROOT, _is_windows, _seed_key, _RuntimeHTTPServer
 
 
 with tempfile.TemporaryDirectory(prefix="netunim-browser-isolation-site-") as directory:
@@ -13,12 +17,10 @@ with tempfile.TemporaryDirectory(prefix="netunim-browser-isolation-site-") as di
     (site / "index.html").write_text("<!doctype html><title>isolation</title>", encoding="utf-8")
     with ExitStack() as stack:
         a = stack.enter_context(BrowserSession(site, "isolation-A", instrument=False))
-        b = stack.enter_context(BrowserSession(site, "isolation-B", instrument=False))
+        b = stack.enter_context(BrowserSession(site, "isolation-B", instrument=False, origin_owner=a))
         profiles = a.profile, b.profile
         assert a.profile != b.profile
         # Use the same origin, so only the profile boundary can explain isolation.
-        b.url = a.url
-        b._navigate()
         assert a.evaluate("""(async()=>{
           localStorage.setItem('harness-isolation','A');
           const db=await new Promise((resolve,reject)=>{
@@ -39,8 +41,38 @@ with tempfile.TemporaryDirectory(prefix="netunim-browser-isolation-site-") as di
           databases:(await indexedDB.databases()).map(db=>db.name)
         }))()""") == {"local": None, "databases": []}
         assert a.evaluate("localStorage.getItem('harness-isolation')") == "A"
+        assert a.evaluate("caches.open('isolation').then(c=>c.put('/marker',new Response('A'))).then(()=>true)")
+        assert b.evaluate("caches.keys()") == []
+        # A decoy represents another local service; even implicit localhost and
+        # IPv6 loopback bypasses must not reach it. No installed Bridge is probed.
+        hits = []
+        class Decoy(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                hits.append(self.path)
+                self.send_response(200)
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+            def log_message(self, *_args):
+                pass
+        server = _RuntimeHTTPServer(('127.0.0.1', 0), Decoy)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            for host in ('127.0.0.1', 'localhost', '[::1]', 'provider.invalid'):
+                target = f'http://{host}:{server.server_port}/must-not-arrive'
+                assert a.evaluate('fetch('+json.dumps(target)+').then(r=>r.ok,()=>false)') is False
+            assert hits == [], hits
+            assert a.network_guard.denied, 'requests did not exercise the rejecting proxy'
+            assert a.evaluate("fetch('/index.html').then(r=>r.ok)") is True
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
     assert all(not profile.exists() for profile in profiles)
     if _is_windows():
         assert (HOST_STATE_ROOT / _seed_key(a.browser) / "profile" / "Local State").exists()
 
-print("PASS browser isolation: separate LocalStorage/IndexedDB, disposable profiles, persistent host seed")
+write_evidence('browser-isolation', [{'scenario': 'same-origin separate profiles and LocalStorage/IndexedDB/CacheStorage', 'status': 'PASS'},
+                                   {'scenario': 'foreign HTTP and other loopback listeners denied; owned origin allowed', 'status': 'PASS'},
+                                   {'scenario': 'owned browser profiles deleted after exit', 'status': 'PASS'}])
+print("PASS browser isolation: separate LocalStorage/IndexedDB/CacheStorage, owned profiles, denied foreign and loopback egress")

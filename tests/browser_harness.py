@@ -19,6 +19,7 @@ import threading
 import time
 import urllib.request
 import urllib.parse
+from acceptance_safety import browser_preflight, sandbox_config, DenyProxy
 
 try:
     import websocket
@@ -404,7 +405,7 @@ def _remove_tree_verified(path: Path, *, timeout: float = 5.0) -> None:
 class BrowserSession:
     """Real localhost + headless Chromium session with a small CDP client."""
 
-    def __init__(self, site: Path, label: str, *, instrument=True, service_worker=False, auto_navigate=True, native_incidents=False):
+    def __init__(self, site: Path, label: str, *, instrument=True, service_worker=False, auto_navigate=True, native_incidents=False, origin_owner=None):
         self.site = Path(site)
         self.label = label
         self.browser = find_browser()
@@ -418,6 +419,7 @@ class BrowserSession:
         self.http_thread = None
         self.proc = None
         self.ws = None
+        self.network_guard = None
         self.seq = 0
         self.events: list[dict] = []
         self.mode = "localhost"
@@ -425,11 +427,14 @@ class BrowserSession:
         self.native_incidents = native_incidents
         self.service_worker = service_worker
         self.auto_navigate = auto_navigate
+        self.origin_owner = origin_owner
 
     def __enter__(self):
         try:
             self._prepare_site()
             self._start_server()
+            browser_preflight(self)
+            self.network_guard = DenyProxy()
             self._start_browser()
             if self.auto_navigate:
                 self._navigate()
@@ -460,6 +465,8 @@ class BrowserSession:
                 self.httpd.server_close()
         if self.http_thread:
             self.http_thread.join(timeout=2)
+        if self.network_guard:
+            self.network_guard.close()
         for path in (self.profile, self.tmp):
             try:
                 _remove_tree_verified(path)
@@ -481,7 +488,7 @@ class BrowserSession:
         # test origin (allowed by the unchanged production CSP), never production.
         config_url = 'location.origin' if self.service_worker else "'https://example.invalid'"
         config.write_text(
-            "export const supabaseConfig=Object.freeze({url:"+config_url+",publishableKey:'test'});\n",
+            sandbox_config(config_url),
             encoding="utf-8",
         )
         # Unrelated screen/ownership fixtures mock their own backend endpoints.
@@ -517,6 +524,10 @@ class BrowserSession:
         return json.loads(result.stdout)
 
     def _start_server(self):
+        if self.origin_owner is not None:
+            browser_preflight(self.origin_owner)
+            self.url = self.origin_owner.url
+            return
         port = _free_port()
         directory = str(self.tmp / "site")
         handler = lambda *args, **kwargs: _QuietHandler(*args, directory=directory, **kwargs)
@@ -526,9 +537,11 @@ class BrowserSession:
         self.url = f"http://127.0.0.1:{port}/index.html"
 
     def _start_browser(self):
+        allowed = browser_preflight(self)
         _seed_windows_profile(self.browser, self.profile)
         devtools_port = _free_port()
         args = _browser_args(self.browser, self.profile, devtools_port)
+        args.extend(self.network_guard.arguments(allowed))
         browser_log = self.tmp / 'browser.log'
         with browser_log.open('w', encoding='utf-8') as log:
             self.proc = subprocess.Popen(args, stdout=log, stderr=subprocess.STDOUT)
