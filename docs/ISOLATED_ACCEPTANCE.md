@@ -98,6 +98,15 @@ existing real staged Document Bridge/private Node/C# preview test remains in tha
 same job. No global installation, scheduled-task registration or OS PWA install
 is inferred from these results.
 
+The first Windows expansion exposed a test-only CRLF mismatch in the mixed-release
+assertion: Python's universal-newline read did not equal the cached HTTP bytes.
+The fixture now preserves and compares exact module bytes on both platforms.
+Cold PWA installation also exhausted a short single CDP socket wait; the harness
+now polls native registration/controller state with a bounded installation
+deadline and worker-error diagnostics. It does not retry or suppress an install
+failure. Both complete PWA/legacy-worker and mixed-release suites passed locally
+on Windows after these changes; exact-candidate CI remains required.
+
 Financial mock coverage uses the existing `bank_balance_result`,
 `bank_source_integrity`, `bank_snapshot_confirmation`, archive reconciliation,
 provider/credit and ownership suites. Missing versus zero, partial/malformed

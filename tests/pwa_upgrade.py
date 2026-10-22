@@ -13,6 +13,34 @@ import urllib.request
 from browser_harness import BrowserSession, ROOT
 
 
+def wait_for_worker_control(browser, timeout=60):
+    """Observe cold shell installation, with bounded time and useful diagnostics.
+
+    Windows file/cache I/O can outlast a single CDP socket's short timeout while
+    installing hundreds of modules. Poll native state instead of abandoning a
+    still-pending Runtime.evaluate promise and desynchronizing that socket.
+    """
+    response = browser.call('ServiceWorker.enable')
+    if response.get('error'):
+        raise RuntimeError('Service Worker diagnostics unavailable: '+str(response['error']))
+    deadline = time.monotonic()+timeout
+    state = None
+    while time.monotonic() < deadline:
+        state = browser.evaluate("""(async()=>{
+          const registration=await navigator.serviceWorker.getRegistration();
+          return {controlled:!!navigator.serviceWorker.controller,
+            active:registration?.active?.state||null,installing:registration?.installing?.state||null,
+            waiting:registration?.waiting?.state||null,caches:await caches.keys()};
+        })()""", timeout=5)
+        errors = [event['params'] for event in browser.events if event.get('method')=='ServiceWorker.workerErrorReported']
+        if errors:
+            raise RuntimeError('Service Worker install error: '+json.dumps({'state':state,'errors':errors}))
+        if state['controlled'] and state['active']=='activated':
+            return state
+        time.sleep(.1)
+    raise RuntimeError('Service Worker control deadline: '+json.dumps({'state':state,'errors':browser.drain_serious_errors()}))
+
+
 class _DropConnection(socketserver.BaseRequestHandler):
     def handle(self):
         self.request.close()

@@ -5,7 +5,7 @@ are used. All data and cloud endpoints live in a disposable local test origin.
 """
 from browser_harness import BrowserSession, ROOT
 import json
-from pwa_upgrade import test_worker_upgrade
+from pwa_upgrade import test_worker_upgrade, wait_for_worker_control
 
 
 def ready(browser):
@@ -33,6 +33,7 @@ legacy_fixtures = {
 for label, fixture in legacy_fixtures.items():
     with BrowserSession(ROOT/f'netunim-{label}/site', label+'-pwa', instrument=False, service_worker=True) as browser:
         assert ready(browser)
+        wait_for_worker_control(browser)
         browser.ws.settimeout(20)
         installed = browser.evaluate("""(async()=>{
           await navigator.serviceWorker.ready;
