@@ -55,20 +55,20 @@ test('selected-file content match info is bounded and returns highlighted snippe
 });
 
 test('content search supports Everything 1.5 phrase, AND, OR and ordered word-distance syntax',()=>{
-  assert.equal(buildContentQuery('  יבמות   פרק  '),'content:"יבמות פרק" no-background-search:');
+  assert.equal(buildContentQuery('  יבמות   פרק  '),'diacritics:content:"יבמות פרק" no-background-search:');
   const phoneQuery=buildContentQuery('0501234567');
   assert.match(phoneQuery,/^regex:content:/);
   assert.equal(buildContentQuery('050-1234567'),phoneQuery);
   assert.equal(buildContentQuery('050 1234567'),phoneQuery);
   assert.match(phoneQuery,/05/);assert.match(phoneQuery,/050/);assert.match(phoneQuery,/\\s/);
-  assert.equal(buildContentQuery('מה שלומך',{matchMode:'all'}),'content:<"מה" "שלומך"> no-background-search:');
-  assert.equal(buildContentQuery('מה שלומך',{matchMode:'any'}),'content:<"מה"|"שלומך"> no-background-search:');
-  assert.equal(buildContentQuery('מה שלומך',{matchMode:'proximity',proximityWords:10}),'content:<"מה" "שלומך"> no-background-search:');
-  assert.equal(buildContentQuery('a+b c?',{matchMode:'proximity',proximityWords:3}),'content:<"a+b" "c?"> no-background-search:');
-  assert.equal(buildContentQuery('מזר',{wordMatch:'whole'}),'whole-words:content:"מזר" no-background-search:');
-  assert.equal(buildContentQuery('מה שלומך',{matchMode:'all',wordMatch:'whole'}),'whole-words:content:<"מה" "שלומך"> no-background-search:');
-  assert.equal(buildContentQuery('מה שלומך',{matchMode:'any',wordMatch:'whole'}),'whole-words:content:<"מה"|"שלומך"> no-background-search:');
-  assert.equal(buildContentQuery('מה שלומך',{matchMode:'proximity',proximityWords:2,wordMatch:'whole'}),'content:<"מה" "שלומך"> no-background-search:');
+  assert.equal(buildContentQuery('מה שלומך',{matchMode:'all'}),'diacritics:content:<"מה" "שלומך"> no-background-search:');
+  assert.equal(buildContentQuery('מה שלומך',{matchMode:'any'}),'diacritics:content:<"מה"|"שלומך"> no-background-search:');
+  assert.equal(buildContentQuery('מה שלומך',{matchMode:'proximity',proximityWords:10}),'diacritics:content:<"מה" "שלומך"> no-background-search:');
+  assert.equal(buildContentQuery('a+b c?',{matchMode:'proximity',proximityWords:3}),'diacritics:content:<"a+b" "c?"> no-background-search:');
+  assert.equal(buildContentQuery('מזר',{wordMatch:'whole'}),'diacritics:content:"מזר" no-background-search:');
+  assert.equal(buildContentQuery('מה שלומך',{matchMode:'all',wordMatch:'whole'}),'diacritics:content:<"מה" "שלומך"> no-background-search:');
+  assert.equal(buildContentQuery('מה שלומך',{matchMode:'any',wordMatch:'whole'}),'diacritics:content:<"מה"|"שלומך"> no-background-search:');
+  assert.equal(buildContentQuery('מה שלומך',{matchMode:'proximity',proximityWords:2,wordMatch:'whole'}),'diacritics:content:<"מה" "שלומך"> no-background-search:');
   assert.equal(buildContentQuery('a'),'');
   assert.equal(buildEverythingQuery('  יבמות   ext:pdf  '),'יבמות ext:pdf');
   assert.equal(buildEverythingQuery('a'),'a');
@@ -86,7 +86,7 @@ test('document file-type filters use Everything-native syntax and apply before p
   assert.equal(documentFileTypeEverythingFilter('pdf'),'ext:pdf');
   assert.equal(documentFileTypeEverythingFilter('word'),'ext:doc;docx;docm;dot;dotx;dotm;rtf');
   assert.equal(buildDocumentQuery('foo | bar','everything',{},'pdf'),'ext:pdf <foo | bar>','file type must constrain the whole free-form Everything expression');
-  assert.equal(buildDocumentQuery('יבמות','content',{},'word'),'ext:doc;docx;docm;dot;dotx;dotm;rtf content:"יבמות" no-background-search:');
+  assert.equal(buildDocumentQuery('יבמות','content',{},'word'),'ext:doc;docx;docm;dot;dotx;dotm;rtf diacritics:content:"יבמות" no-background-search:');
   assert.equal(documentFileTypeIncludesPdf('all'),true);
   assert.equal(documentFileTypeIncludesPdf('documents'),true);
   assert.equal(documentFileTypeIncludesPdf('pdf'),true);
@@ -96,7 +96,7 @@ test('document file-type filters use Everything-native syntax and apply before p
   assert.equal(pdfArgs[pdfArgs.indexOf('--')+1],'ext:pdf <foo | bar>');
   const wordContentArgs=buildEsSearchArgs({query:'יבמות',mode:'content',fileType:'word',limit:150});
   assert.ok(wordContentArgs.includes('/a-d'));
-  assert.equal(wordContentArgs[wordContentArgs.indexOf('--')+1],'ext:doc;docx;docm;dot;dotx;dotm;rtf content:"יבמות" no-background-search:');
+  assert.equal(wordContentArgs[wordContentArgs.indexOf('--')+1],'ext:doc;docx;docm;dot;dotx;dotm;rtf diacritics:content:"יבמות" no-background-search:');
 });
 
 test('whole-word content search excludes prefixes inside longer Hebrew, Latin and numeric tokens',()=>{
@@ -255,10 +255,10 @@ test('ES invocation forces Unicode argv parsing and UTF-8 pipe output',()=>{
   const content=buildEsSearchArgs({query:'יבמות',mode:'content'});
   assert.ok(content.includes('/a-d'));
   assert.equal(content.includes('-search'),false);
-  assert.equal(content[content.indexOf('--')+1],'content:"יבמות" no-background-search:');
+  assert.equal(content[content.indexOf('--')+1],'diacritics:content:"יבמות" no-background-search:');
 
   const phrase=buildEsSearchArgs({query:'מילה אחת',mode:'content'});
-  assert.equal(phrase[phrase.indexOf('--')+1],'content:"מילה אחת" no-background-search:');
+  assert.equal(phrase[phrase.indexOf('--')+1],'diacritics:content:"מילה אחת" no-background-search:');
 });
 
 test('ES JSON parser preserves Hebrew/Unicode names and full indexed paths without root filtering',()=>{

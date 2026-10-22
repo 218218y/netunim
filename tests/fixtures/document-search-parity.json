@@ -1,0 +1,23 @@
+{
+  "documents": {
+    "01-plain.txt": "alpha beta",
+    "02-underscore.txt": "alpha_beta alpha beta_",
+    "03-combining.txt": "alpha betá",
+    "04-joined.txt": "alphabet betamax",
+    "05-punctuation.txt": "(alpha), beta!",
+    "06-repeated.txt": "alpha alpha beta alpha",
+    "07-reversed.txt": "beta alpha",
+    "08-gap.txt": "alpha other beta",
+    "09-tab.txt": "alpha\tbeta",
+    "10-lines.txt": "alpha\nbeta",
+    "11-hebrew.txt": "שלום עולם אב סוף",
+    "12-hebrew-marks.txt": "שָׁלוֹם עוֹלָם אב סוֹף",
+    "13-hebrew-underscore.txt": "שלום_עולם אב סוף_",
+    "14-mixed.txt": "alpha שלום beta עולם",
+    "15-numeric.txt": "order_42 amount 0 25.50",
+    "16-empty.txt": "no matching content"
+  },
+  "queries": ["alpha beta", "alpha", "beta", "אב סוף", "שלום עולם", "alpha alpha beta"],
+  "modes": ["phrase", "all", "any", "proximity"],
+  "wordMatches": ["partial", "whole"]
+}

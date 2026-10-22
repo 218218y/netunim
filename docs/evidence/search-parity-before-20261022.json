@@ -1,0 +1,2204 @@
+{
+  "instance": "NETUNIM_VERIFY_ad5cecf95a824c15b33ed14827295427",
+  "source": {
+    "revision": "2768d51f238c94a4d88b87b8e39be07a366e5827",
+    "dirty": true,
+    "coordinatorSha256": "4b56b66d093498dbd6b1cccb05dafc86292150c4c0d70c6ceca0c12095078e65",
+    "moduleSha256": {
+      "netunim-orders/document-bridge/lib.mjs": "40525b64d8190f4bdc10d9791f8007d8dc02d2698a6d182d46e7fbea38bc629f",
+      "shared/document-text-search.js": "a706f0a9d9038e4ce6c1455b4cc3cd7654046620cb1bad20035ba287910f5070",
+      "tests/fixtures/document-search-parity.json": "d45dd003f47f42dabdcb7f662de8fa4f2bc9ceabd2b00a9e1f6c683b5d1d1fc6",
+      "tools/probe-everything-isolated.mjs": "eabd392019a1048919a409a2b8b14b84adfd7f3e238508302efc78655f584323"
+    }
+  },
+  "binaries": {
+    "Everything.exe": "4c994da9c376ce264fb4f0b8a46d76abad3ce160d0cb8aa85883867ebc725fd4",
+    "es.exe": "f7378761cf6e01f51c4123a485e628d70e3fea147d341f473ce2820844e5cee5"
+  },
+  "measurements": [
+    {
+      "case": "actual-bridge-parity",
+      "wallMs": 10866.882900004566,
+      "cpuSeconds": 0.34375,
+      "cpuAfterClientExitSeconds": 0.0,
+      "exitCode": 0,
+      "output": {
+        "observations": [
+          {
+            "query": "alpha beta",
+            "matchMode": "phrase",
+            "wordMatch": "partial",
+            "proximityWords": 1,
+            "canonical": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "06-repeated.txt"
+            ],
+            "native": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "06-repeated.txt"
+            ],
+            "exact": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "06-repeated.txt"
+            ],
+            "bridge": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "06-repeated.txt"
+            ],
+            "partial": false,
+            "missing": [],
+            "extra": []
+          },
+          {
+            "query": "alpha beta",
+            "matchMode": "phrase",
+            "wordMatch": "whole",
+            "proximityWords": 1,
+            "canonical": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "06-repeated.txt"
+            ],
+            "native": [
+              "01-plain.txt",
+              "03-combining.txt",
+              "06-repeated.txt"
+            ],
+            "exact": [
+              "01-plain.txt",
+              "06-repeated.txt"
+            ],
+            "bridge": [
+              "01-plain.txt",
+              "03-combining.txt",
+              "06-repeated.txt"
+            ],
+            "partial": false,
+            "missing": [
+              "02-underscore.txt"
+            ],
+            "extra": [
+              "03-combining.txt"
+            ]
+          },
+          {
+            "query": "alpha beta",
+            "matchMode": "all",
+            "wordMatch": "partial",
+            "proximityWords": 1,
+            "canonical": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "native": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "exact": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "bridge": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "partial": false,
+            "missing": [],
+            "extra": []
+          },
+          {
+            "query": "alpha beta",
+            "matchMode": "all",
+            "wordMatch": "whole",
+            "proximityWords": 1,
+            "canonical": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "native": [
+              "01-plain.txt",
+              "03-combining.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "exact": [
+              "01-plain.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "bridge": [
+              "01-plain.txt",
+              "03-combining.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "partial": false,
+            "missing": [
+              "02-underscore.txt"
+            ],
+            "extra": [
+              "03-combining.txt"
+            ]
+          },
+          {
+            "query": "alpha beta",
+            "matchMode": "any",
+            "wordMatch": "partial",
+            "proximityWords": 1,
+            "canonical": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "native": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "exact": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "bridge": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "partial": false,
+            "missing": [],
+            "extra": []
+          },
+          {
+            "query": "alpha beta",
+            "matchMode": "any",
+            "wordMatch": "whole",
+            "proximityWords": 1,
+            "canonical": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "native": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "exact": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "bridge": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "partial": false,
+            "missing": [],
+            "extra": []
+          },
+          {
+            "query": "alpha beta",
+            "matchMode": "proximity",
+            "wordMatch": "partial",
+            "proximityWords": 1,
+            "canonical": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "06-repeated.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "native": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "exact": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "bridge": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "06-repeated.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "partial": false,
+            "missing": [],
+            "extra": []
+          },
+          {
+            "query": "alpha beta",
+            "matchMode": "proximity",
+            "wordMatch": "whole",
+            "proximityWords": 1,
+            "canonical": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "06-repeated.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "native": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "exact": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "bridge": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "06-repeated.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "partial": false,
+            "missing": [],
+            "extra": []
+          },
+          {
+            "query": "alpha",
+            "matchMode": "phrase",
+            "wordMatch": "partial",
+            "proximityWords": 1,
+            "canonical": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "native": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "exact": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "bridge": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "partial": false,
+            "missing": [],
+            "extra": []
+          },
+          {
+            "query": "alpha",
+            "matchMode": "phrase",
+            "wordMatch": "whole",
+            "proximityWords": 1,
+            "canonical": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "native": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "exact": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "bridge": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "partial": false,
+            "missing": [],
+            "extra": []
+          },
+          {
+            "query": "alpha",
+            "matchMode": "all",
+            "wordMatch": "partial",
+            "proximityWords": 1,
+            "canonical": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "native": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "exact": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "bridge": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "partial": false,
+            "missing": [],
+            "extra": []
+          },
+          {
+            "query": "alpha",
+            "matchMode": "all",
+            "wordMatch": "whole",
+            "proximityWords": 1,
+            "canonical": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "native": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "exact": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "bridge": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "partial": false,
+            "missing": [],
+            "extra": []
+          },
+          {
+            "query": "alpha",
+            "matchMode": "any",
+            "wordMatch": "partial",
+            "proximityWords": 1,
+            "canonical": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "native": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "exact": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "bridge": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "partial": false,
+            "missing": [],
+            "extra": []
+          },
+          {
+            "query": "alpha",
+            "matchMode": "any",
+            "wordMatch": "whole",
+            "proximityWords": 1,
+            "canonical": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "native": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "exact": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "bridge": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "partial": false,
+            "missing": [],
+            "extra": []
+          },
+          {
+            "query": "alpha",
+            "matchMode": "proximity",
+            "wordMatch": "partial",
+            "proximityWords": 1,
+            "canonical": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "native": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "exact": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "bridge": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "partial": false,
+            "missing": [],
+            "extra": []
+          },
+          {
+            "query": "alpha",
+            "matchMode": "proximity",
+            "wordMatch": "whole",
+            "proximityWords": 1,
+            "canonical": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "native": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "exact": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "bridge": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "partial": false,
+            "missing": [],
+            "extra": []
+          },
+          {
+            "query": "beta",
+            "matchMode": "phrase",
+            "wordMatch": "partial",
+            "proximityWords": 1,
+            "canonical": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "native": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "exact": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "bridge": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "partial": false,
+            "missing": [],
+            "extra": []
+          },
+          {
+            "query": "beta",
+            "matchMode": "phrase",
+            "wordMatch": "whole",
+            "proximityWords": 1,
+            "canonical": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "native": [
+              "01-plain.txt",
+              "03-combining.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "exact": [
+              "01-plain.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "bridge": [
+              "01-plain.txt",
+              "03-combining.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "partial": false,
+            "missing": [
+              "02-underscore.txt"
+            ],
+            "extra": [
+              "03-combining.txt"
+            ]
+          },
+          {
+            "query": "beta",
+            "matchMode": "all",
+            "wordMatch": "partial",
+            "proximityWords": 1,
+            "canonical": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "native": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "exact": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "bridge": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "partial": false,
+            "missing": [],
+            "extra": []
+          },
+          {
+            "query": "beta",
+            "matchMode": "all",
+            "wordMatch": "whole",
+            "proximityWords": 1,
+            "canonical": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "native": [
+              "01-plain.txt",
+              "03-combining.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "exact": [
+              "01-plain.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "bridge": [
+              "01-plain.txt",
+              "03-combining.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "partial": false,
+            "missing": [
+              "02-underscore.txt"
+            ],
+            "extra": [
+              "03-combining.txt"
+            ]
+          },
+          {
+            "query": "beta",
+            "matchMode": "any",
+            "wordMatch": "partial",
+            "proximityWords": 1,
+            "canonical": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "native": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "exact": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "bridge": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "partial": false,
+            "missing": [],
+            "extra": []
+          },
+          {
+            "query": "beta",
+            "matchMode": "any",
+            "wordMatch": "whole",
+            "proximityWords": 1,
+            "canonical": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "native": [
+              "01-plain.txt",
+              "03-combining.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "exact": [
+              "01-plain.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "bridge": [
+              "01-plain.txt",
+              "03-combining.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "partial": false,
+            "missing": [
+              "02-underscore.txt"
+            ],
+            "extra": [
+              "03-combining.txt"
+            ]
+          },
+          {
+            "query": "beta",
+            "matchMode": "proximity",
+            "wordMatch": "partial",
+            "proximityWords": 1,
+            "canonical": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "native": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "exact": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "bridge": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "partial": false,
+            "missing": [],
+            "extra": []
+          },
+          {
+            "query": "beta",
+            "matchMode": "proximity",
+            "wordMatch": "whole",
+            "proximityWords": 1,
+            "canonical": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "native": [
+              "01-plain.txt",
+              "03-combining.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "exact": [
+              "01-plain.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "bridge": [
+              "01-plain.txt",
+              "03-combining.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "partial": false,
+            "missing": [
+              "02-underscore.txt"
+            ],
+            "extra": [
+              "03-combining.txt"
+            ]
+          },
+          {
+            "query": "אב סוף",
+            "matchMode": "phrase",
+            "wordMatch": "partial",
+            "proximityWords": 1,
+            "canonical": [
+              "11-hebrew.txt",
+              "13-hebrew-underscore.txt"
+            ],
+            "native": [
+              "11-hebrew.txt",
+              "12-hebrew-marks.txt",
+              "13-hebrew-underscore.txt"
+            ],
+            "exact": [
+              "11-hebrew.txt",
+              "13-hebrew-underscore.txt"
+            ],
+            "bridge": [
+              "11-hebrew.txt",
+              "12-hebrew-marks.txt",
+              "13-hebrew-underscore.txt"
+            ],
+            "partial": false,
+            "missing": [],
+            "extra": [
+              "12-hebrew-marks.txt"
+            ]
+          },
+          {
+            "query": "אב סוף",
+            "matchMode": "phrase",
+            "wordMatch": "whole",
+            "proximityWords": 1,
+            "canonical": [
+              "11-hebrew.txt",
+              "13-hebrew-underscore.txt"
+            ],
+            "native": [
+              "11-hebrew.txt",
+              "12-hebrew-marks.txt"
+            ],
+            "exact": [
+              "11-hebrew.txt"
+            ],
+            "bridge": [
+              "11-hebrew.txt",
+              "12-hebrew-marks.txt"
+            ],
+            "partial": false,
+            "missing": [
+              "13-hebrew-underscore.txt"
+            ],
+            "extra": [
+              "12-hebrew-marks.txt"
+            ]
+          },
+          {
+            "query": "אב סוף",
+            "matchMode": "all",
+            "wordMatch": "partial",
+            "proximityWords": 1,
+            "canonical": [
+              "11-hebrew.txt",
+              "13-hebrew-underscore.txt"
+            ],
+            "native": [
+              "11-hebrew.txt",
+              "12-hebrew-marks.txt",
+              "13-hebrew-underscore.txt"
+            ],
+            "exact": [
+              "11-hebrew.txt",
+              "13-hebrew-underscore.txt"
+            ],
+            "bridge": [
+              "11-hebrew.txt",
+              "12-hebrew-marks.txt",
+              "13-hebrew-underscore.txt"
+            ],
+            "partial": false,
+            "missing": [],
+            "extra": [
+              "12-hebrew-marks.txt"
+            ]
+          },
+          {
+            "query": "אב סוף",
+            "matchMode": "all",
+            "wordMatch": "whole",
+            "proximityWords": 1,
+            "canonical": [
+              "11-hebrew.txt",
+              "13-hebrew-underscore.txt"
+            ],
+            "native": [
+              "11-hebrew.txt",
+              "12-hebrew-marks.txt"
+            ],
+            "exact": [
+              "11-hebrew.txt"
+            ],
+            "bridge": [
+              "11-hebrew.txt",
+              "12-hebrew-marks.txt"
+            ],
+            "partial": false,
+            "missing": [
+              "13-hebrew-underscore.txt"
+            ],
+            "extra": [
+              "12-hebrew-marks.txt"
+            ]
+          },
+          {
+            "query": "אב סוף",
+            "matchMode": "any",
+            "wordMatch": "partial",
+            "proximityWords": 1,
+            "canonical": [
+              "11-hebrew.txt",
+              "12-hebrew-marks.txt",
+              "13-hebrew-underscore.txt"
+            ],
+            "native": [
+              "11-hebrew.txt",
+              "12-hebrew-marks.txt",
+              "13-hebrew-underscore.txt"
+            ],
+            "exact": [
+              "11-hebrew.txt",
+              "12-hebrew-marks.txt",
+              "13-hebrew-underscore.txt"
+            ],
+            "bridge": [
+              "11-hebrew.txt",
+              "12-hebrew-marks.txt",
+              "13-hebrew-underscore.txt"
+            ],
+            "partial": false,
+            "missing": [],
+            "extra": []
+          },
+          {
+            "query": "אב סוף",
+            "matchMode": "any",
+            "wordMatch": "whole",
+            "proximityWords": 1,
+            "canonical": [
+              "11-hebrew.txt",
+              "12-hebrew-marks.txt",
+              "13-hebrew-underscore.txt"
+            ],
+            "native": [
+              "11-hebrew.txt",
+              "12-hebrew-marks.txt",
+              "13-hebrew-underscore.txt"
+            ],
+            "exact": [
+              "11-hebrew.txt",
+              "12-hebrew-marks.txt",
+              "13-hebrew-underscore.txt"
+            ],
+            "bridge": [
+              "11-hebrew.txt",
+              "12-hebrew-marks.txt",
+              "13-hebrew-underscore.txt"
+            ],
+            "partial": false,
+            "missing": [],
+            "extra": []
+          },
+          {
+            "query": "אב סוף",
+            "matchMode": "proximity",
+            "wordMatch": "partial",
+            "proximityWords": 1,
+            "canonical": [
+              "11-hebrew.txt",
+              "13-hebrew-underscore.txt"
+            ],
+            "native": [
+              "11-hebrew.txt",
+              "12-hebrew-marks.txt",
+              "13-hebrew-underscore.txt"
+            ],
+            "exact": [
+              "11-hebrew.txt",
+              "13-hebrew-underscore.txt"
+            ],
+            "bridge": [
+              "11-hebrew.txt",
+              "13-hebrew-underscore.txt"
+            ],
+            "partial": false,
+            "missing": [],
+            "extra": []
+          },
+          {
+            "query": "אב סוף",
+            "matchMode": "proximity",
+            "wordMatch": "whole",
+            "proximityWords": 1,
+            "canonical": [
+              "11-hebrew.txt",
+              "13-hebrew-underscore.txt"
+            ],
+            "native": [
+              "11-hebrew.txt",
+              "12-hebrew-marks.txt",
+              "13-hebrew-underscore.txt"
+            ],
+            "exact": [
+              "11-hebrew.txt",
+              "13-hebrew-underscore.txt"
+            ],
+            "bridge": [
+              "11-hebrew.txt",
+              "13-hebrew-underscore.txt"
+            ],
+            "partial": false,
+            "missing": [],
+            "extra": []
+          },
+          {
+            "query": "שלום עולם",
+            "matchMode": "phrase",
+            "wordMatch": "partial",
+            "proximityWords": 1,
+            "canonical": [
+              "11-hebrew.txt"
+            ],
+            "native": [
+              "11-hebrew.txt",
+              "12-hebrew-marks.txt"
+            ],
+            "exact": [
+              "11-hebrew.txt"
+            ],
+            "bridge": [
+              "11-hebrew.txt",
+              "12-hebrew-marks.txt"
+            ],
+            "partial": false,
+            "missing": [],
+            "extra": [
+              "12-hebrew-marks.txt"
+            ]
+          },
+          {
+            "query": "שלום עולם",
+            "matchMode": "phrase",
+            "wordMatch": "whole",
+            "proximityWords": 1,
+            "canonical": [
+              "11-hebrew.txt"
+            ],
+            "native": [
+              "11-hebrew.txt",
+              "12-hebrew-marks.txt"
+            ],
+            "exact": [
+              "11-hebrew.txt"
+            ],
+            "bridge": [
+              "11-hebrew.txt",
+              "12-hebrew-marks.txt"
+            ],
+            "partial": false,
+            "missing": [],
+            "extra": [
+              "12-hebrew-marks.txt"
+            ]
+          },
+          {
+            "query": "שלום עולם",
+            "matchMode": "all",
+            "wordMatch": "partial",
+            "proximityWords": 1,
+            "canonical": [
+              "11-hebrew.txt",
+              "13-hebrew-underscore.txt",
+              "14-mixed.txt"
+            ],
+            "native": [
+              "11-hebrew.txt",
+              "12-hebrew-marks.txt",
+              "13-hebrew-underscore.txt",
+              "14-mixed.txt"
+            ],
+            "exact": [
+              "11-hebrew.txt",
+              "13-hebrew-underscore.txt",
+              "14-mixed.txt"
+            ],
+            "bridge": [
+              "11-hebrew.txt",
+              "12-hebrew-marks.txt",
+              "13-hebrew-underscore.txt",
+              "14-mixed.txt"
+            ],
+            "partial": false,
+            "missing": [],
+            "extra": [
+              "12-hebrew-marks.txt"
+            ]
+          },
+          {
+            "query": "שלום עולם",
+            "matchMode": "all",
+            "wordMatch": "whole",
+            "proximityWords": 1,
+            "canonical": [
+              "11-hebrew.txt",
+              "13-hebrew-underscore.txt",
+              "14-mixed.txt"
+            ],
+            "native": [
+              "11-hebrew.txt",
+              "12-hebrew-marks.txt",
+              "14-mixed.txt"
+            ],
+            "exact": [
+              "11-hebrew.txt",
+              "14-mixed.txt"
+            ],
+            "bridge": [
+              "11-hebrew.txt",
+              "12-hebrew-marks.txt",
+              "14-mixed.txt"
+            ],
+            "partial": false,
+            "missing": [
+              "13-hebrew-underscore.txt"
+            ],
+            "extra": [
+              "12-hebrew-marks.txt"
+            ]
+          },
+          {
+            "query": "שלום עולם",
+            "matchMode": "any",
+            "wordMatch": "partial",
+            "proximityWords": 1,
+            "canonical": [
+              "11-hebrew.txt",
+              "13-hebrew-underscore.txt",
+              "14-mixed.txt"
+            ],
+            "native": [
+              "11-hebrew.txt",
+              "12-hebrew-marks.txt",
+              "13-hebrew-underscore.txt",
+              "14-mixed.txt"
+            ],
+            "exact": [
+              "11-hebrew.txt",
+              "13-hebrew-underscore.txt",
+              "14-mixed.txt"
+            ],
+            "bridge": [
+              "11-hebrew.txt",
+              "12-hebrew-marks.txt",
+              "13-hebrew-underscore.txt",
+              "14-mixed.txt"
+            ],
+            "partial": false,
+            "missing": [],
+            "extra": [
+              "12-hebrew-marks.txt"
+            ]
+          },
+          {
+            "query": "שלום עולם",
+            "matchMode": "any",
+            "wordMatch": "whole",
+            "proximityWords": 1,
+            "canonical": [
+              "11-hebrew.txt",
+              "13-hebrew-underscore.txt",
+              "14-mixed.txt"
+            ],
+            "native": [
+              "11-hebrew.txt",
+              "12-hebrew-marks.txt",
+              "14-mixed.txt"
+            ],
+            "exact": [
+              "11-hebrew.txt",
+              "14-mixed.txt"
+            ],
+            "bridge": [
+              "11-hebrew.txt",
+              "12-hebrew-marks.txt",
+              "14-mixed.txt"
+            ],
+            "partial": false,
+            "missing": [
+              "13-hebrew-underscore.txt"
+            ],
+            "extra": [
+              "12-hebrew-marks.txt"
+            ]
+          },
+          {
+            "query": "שלום עולם",
+            "matchMode": "proximity",
+            "wordMatch": "partial",
+            "proximityWords": 1,
+            "canonical": [
+              "11-hebrew.txt",
+              "14-mixed.txt"
+            ],
+            "native": [
+              "11-hebrew.txt",
+              "12-hebrew-marks.txt",
+              "13-hebrew-underscore.txt",
+              "14-mixed.txt"
+            ],
+            "exact": [
+              "11-hebrew.txt",
+              "13-hebrew-underscore.txt",
+              "14-mixed.txt"
+            ],
+            "bridge": [
+              "11-hebrew.txt",
+              "14-mixed.txt"
+            ],
+            "partial": false,
+            "missing": [],
+            "extra": []
+          },
+          {
+            "query": "שלום עולם",
+            "matchMode": "proximity",
+            "wordMatch": "whole",
+            "proximityWords": 1,
+            "canonical": [
+              "11-hebrew.txt",
+              "14-mixed.txt"
+            ],
+            "native": [
+              "11-hebrew.txt",
+              "12-hebrew-marks.txt",
+              "13-hebrew-underscore.txt",
+              "14-mixed.txt"
+            ],
+            "exact": [
+              "11-hebrew.txt",
+              "13-hebrew-underscore.txt",
+              "14-mixed.txt"
+            ],
+            "bridge": [
+              "11-hebrew.txt",
+              "14-mixed.txt"
+            ],
+            "partial": false,
+            "missing": [],
+            "extra": []
+          },
+          {
+            "query": "alpha alpha beta",
+            "matchMode": "phrase",
+            "wordMatch": "partial",
+            "proximityWords": 1,
+            "canonical": [
+              "06-repeated.txt"
+            ],
+            "native": [
+              "06-repeated.txt"
+            ],
+            "exact": [
+              "06-repeated.txt"
+            ],
+            "bridge": [
+              "06-repeated.txt"
+            ],
+            "partial": false,
+            "missing": [],
+            "extra": []
+          },
+          {
+            "query": "alpha alpha beta",
+            "matchMode": "phrase",
+            "wordMatch": "whole",
+            "proximityWords": 1,
+            "canonical": [
+              "06-repeated.txt"
+            ],
+            "native": [
+              "06-repeated.txt"
+            ],
+            "exact": [
+              "06-repeated.txt"
+            ],
+            "bridge": [
+              "06-repeated.txt"
+            ],
+            "partial": false,
+            "missing": [],
+            "extra": []
+          },
+          {
+            "query": "alpha alpha beta",
+            "matchMode": "all",
+            "wordMatch": "partial",
+            "proximityWords": 1,
+            "canonical": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "native": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "exact": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "bridge": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "partial": false,
+            "missing": [],
+            "extra": []
+          },
+          {
+            "query": "alpha alpha beta",
+            "matchMode": "all",
+            "wordMatch": "whole",
+            "proximityWords": 1,
+            "canonical": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "native": [
+              "01-plain.txt",
+              "03-combining.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "exact": [
+              "01-plain.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "bridge": [
+              "01-plain.txt",
+              "03-combining.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "partial": false,
+            "missing": [
+              "02-underscore.txt"
+            ],
+            "extra": [
+              "03-combining.txt"
+            ]
+          },
+          {
+            "query": "alpha alpha beta",
+            "matchMode": "any",
+            "wordMatch": "partial",
+            "proximityWords": 1,
+            "canonical": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "native": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "exact": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "bridge": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "partial": false,
+            "missing": [],
+            "extra": []
+          },
+          {
+            "query": "alpha alpha beta",
+            "matchMode": "any",
+            "wordMatch": "whole",
+            "proximityWords": 1,
+            "canonical": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "native": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "exact": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "bridge": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "partial": false,
+            "missing": [],
+            "extra": []
+          },
+          {
+            "query": "alpha alpha beta",
+            "matchMode": "proximity",
+            "wordMatch": "partial",
+            "proximityWords": 1,
+            "canonical": [
+              "06-repeated.txt"
+            ],
+            "native": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "exact": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "bridge": [
+              "06-repeated.txt"
+            ],
+            "partial": false,
+            "missing": [],
+            "extra": []
+          },
+          {
+            "query": "alpha alpha beta",
+            "matchMode": "proximity",
+            "wordMatch": "whole",
+            "proximityWords": 1,
+            "canonical": [
+              "06-repeated.txt"
+            ],
+            "native": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "exact": [
+              "01-plain.txt",
+              "02-underscore.txt",
+              "03-combining.txt",
+              "04-joined.txt",
+              "05-punctuation.txt",
+              "06-repeated.txt",
+              "07-reversed.txt",
+              "08-gap.txt",
+              "09-tab.txt",
+              "10-lines.txt",
+              "14-mixed.txt"
+            ],
+            "bridge": [
+              "06-repeated.txt"
+            ],
+            "partial": false,
+            "missing": [],
+            "extra": []
+          }
+        ],
+        "fileTypeFilterPassed": true
+      },
+      "stderr": ""
+    }
+  ],
+  "isolatedIndexVerified": true,
+  "everythingVersion": "1.5.0.1424",
+  "files": 28,
+  "ownedProcessExited": true
+}

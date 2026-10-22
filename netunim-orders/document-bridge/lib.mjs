@@ -4,7 +4,7 @@ import {decodeEverythingCount,decodeEverythingRows} from './everything-result-co
 
 export const BRIDGE_PORT=8766;
 export const BRIDGE_SERVICE='netunim-orders-document-bridge';
-export const BRIDGE_VERSION=43;
+export const BRIDGE_VERSION=45;
 export const BRIDGE_NODE_VERSION='24.21.0';
 export const BRIDGE_NODE_WIN_X64_SHA256='ba4e6d110e8c1592a1ecd390f6b05f3da124b13871a5be62b341a07a853c6c32';
 export const MAX_QUERY_CHARS=240;
@@ -145,7 +145,8 @@ function phoneSearchRegex(value){
 
 export function contentQueryRequiresVerification(value,options={}){
   const normalized=normalizeSearchText(value);
-  return normalizeContentSearchOptions(options).matchMode==='proximity'&&contentTerms(normalized).length>1&&!phoneSearchDigits(normalized);
+  const search=normalizeContentSearchOptions(options);
+  return !phoneSearchDigits(normalized)&&(search.wordMatch==='whole'||search.matchMode==='proximity'&&contentTerms(normalized).length>1);
 }
 
 export function buildContentQuery(value,options={}){
@@ -158,14 +159,17 @@ export function buildContentQuery(value,options={}){
   // indexing is enabled Everything uses it; otherwise Everything applies its
   // normal on-disk content behavior. no-background-search makes ES wait for
   // the completed result set instead of returning while content work continues.
-  const prefix=whole?'whole-words:':'';
+  // Everything otherwise ignores combining marks inside words. Keep literal
+  // matching aligned with the canonical matcher without extracting all partial
+  // searches. Whole-word candidates omit native boundaries and are verified.
+  const prefix='diacritics:';
   if(search.matchMode==='all'&&terms.length>1)return `${prefix}content:<${terms.map(term=>`"${everythingLiteral(term)}"`).join(' ')}> no-background-search:`;
   if(search.matchMode==='any'&&terms.length>1)return `${prefix}content:<${terms.map(term=>`"${everythingLiteral(term)}"`).join('|')}> no-background-search:`;
   // Ordered distance is verified by the canonical matcher over returned content.
   // Native PCRE can silently omit valid suffixes after its internal match limit.
   // Candidates must be a superset: Everything's whole-words boundaries differ
   // for underscores/combining marks. Only the canonical verifier decides them.
-  if(contentQueryRequiresVerification(normalized,search))return `content:<${[...new Set(terms)].map(term=>`"${everythingLiteral(term)}"`).join(' ')}> no-background-search:`;
+  if(search.matchMode==='proximity'&&terms.length>1)return `${prefix}content:<${[...new Set(terms)].map(term=>`"${everythingLiteral(term)}"`).join(' ')}> no-background-search:`;
   return `${prefix}content:"${everythingLiteral(normalized)}" no-background-search:`;
 }
 

@@ -5,6 +5,10 @@ import {plain,row,serverFixture} from './document_search_server_fixture.mjs';
 // The historical fixture stays immutable. Native transport now intentionally
 // adds content decoding and an overall deadline; its retry behavior is exercised
 // against the actual factory in document_index_coordinators.test.mjs.
+// Compare unchanged native partial-search paging here. Whole-word publication
+// now intentionally uses canonical verification over candidate pages; the real
+// factory/corpus regressions cover that separate behavior without rewriting this
+// immutable historical policy.
 
 test('old and current search preserve 4,608 pagination, filter, order and partial-PDF combinations',async()=>{
  let cases=0;
@@ -13,7 +17,7 @@ test('old and current search preserve 4,608 pagination, filter, order and partia
  for(const offset of [-2,0,1,3,4999,5000])for(const limit of [undefined,0,1,2.8,150,6000]){
   const options={partial:cases%2===0,rows:[row(1),row(2),row(3),row(8,{size:null})],pdfRows:[row(2,{fullPath:'c:\\SYNTHETIC\\DOCUMENT-2.pdf'}),row(4),row(5)]};
   const old=serverFixture('baseline',options),current=serverFixture('current',options);
-  const args=[' document ',limit,mode,{matchMode:'all',wordMatch:'whole',proximityWords:4},'C:\\synthetic',offset,{field,direction},type];
+  const args=[' document ',limit,mode,{matchMode:'all',wordMatch:'partial',proximityWords:4},'C:\\synthetic',offset,{field,direction},type];
   const expected=await old.search(...args),actual=await current.search(...args);
   const excludesPdf=mode==='content'&&!['all','documents','pdf'].includes(type);
   if(excludesPdf)expected.partial=false;

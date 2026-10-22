@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import {createHash} from 'node:crypto';
 import {parse} from 'acorn';
 import {tokens} from './bank_policy_ast_fixture.mjs';
+import {setImmediate} from 'node:timers/promises';
 import * as lib from '../netunim-orders/document-bridge/lib.mjs';
 import {createDocumentSearch} from '../netunim-orders/document-bridge/search-owner.mjs';
 import {createDocumentResultRegistry} from '../netunim-orders/document-bridge/result-registry.mjs';
@@ -32,7 +33,7 @@ export const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)
 export function serverFixture(version='current',options={}) {
  let time=10_000,id=0;const calls=[],logs=[],stats=[],invalidations=[];
  const stat={size:20,mtimeMs:50,mtime:new Date(50),isDirectory:()=>false};
- const context={...lib,createDocumentSearch,createDocumentResultRegistry,performance,
+ const context={...lib,createDocumentSearch,createDocumentResultRegistry,performance,setImmediate,
   Date:{now:()=>time},everythingSession:{dispose:async()=>{}},everythingDiscovery:{dispose:async()=>{}},everythingProcesses:{dispose:async()=>{}},crypto:{randomUUID:()=>`opaque-${++id}`},fs:{stat:async fullPath=>{stats.push(fullPath);return options.stat?options.stat(fullPath):stat}},
   requestResults:new Map(),pdfFormIndex:new Map(),previewTextCache:{invalidate:key=>invalidations.push(key),dispose:()=>{}},
   loadPdfFormIndex:async()=>{if(options.pdfLoad){calls.push(['pdf-prepare']);await options.pdfLoad()}},appendPdfIndexJournal:async()=>{},

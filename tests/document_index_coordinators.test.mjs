@@ -7,6 +7,8 @@ import {createPdfIndexCoordinator} from '../netunim-orders/document-bridge/pdf-i
 import {createEverythingSearchCoordinator} from '../netunim-orders/document-bridge/everything-search-coordinator.mjs';
 import {createFileLockOwner} from '../netunim-orders/document-bridge/file-lock-owner.mjs';
 import {createFileLockPlatform} from '../netunim-orders/document-bridge/file-lock-platform.mjs';
+import {readFileSync} from 'node:fs';
+import {contentQueryRequiresVerification,contentSearchMatches,buildEsSearchArgs} from '../netunim-orders/document-bridge/lib.mjs';
 
 async function fixture(t) {
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'bridge-index-composition-'));
@@ -61,6 +63,51 @@ function contentSearchFixture(rawRows,{beforeReturn=async()=>{},pdfPrepare=async
   return {owner,reads,published,get pdfPrepareCalls(){return pdfPrepareCalls}};
 }
 const candidate=(name,content)=>({name,path:'C:\\synthetic',content});
+
+test('whole-word modes publish only canonical Unicode corpus matches before offset and lookahead',async()=>{
+  const corpus=JSON.parse(readFileSync(new URL('./fixtures/document-search-parity.json',import.meta.url),'utf8'));
+  for(const query of corpus.queries)for(const matchMode of corpus.modes){
+    const contentSearch={matchMode,wordMatch:'whole',proximityWords:1};
+    const expected=Object.entries(corpus.documents).filter(([,text])=>contentSearchMatches(text,query,contentSearch)).map(([name])=>name);
+    const f=contentSearchFixture(Object.entries(corpus.documents).map(([name,text])=>candidate(name,text)));
+    try{
+      const page=await f.owner.searchDocuments(query,2,'content',contentSearch,'',1,{field:'name',direction:'asc'});
+      assert.deepEqual(page.results.map(row=>row.name),expected.slice(1,3),`${query}/${matchMode}`);
+      assert.equal(page.hasMore,expected.length>3);assert.equal(page.partial,false);
+      assert.ok(f.reads.every(args=>args.includes('-add-columns')));
+      assert.ok(f.published.every(row=>!('content' in row)));
+    }finally{await f.owner.runtime.dispose()}
+  }
+});
+
+test('literal partial searches retain native filtering; whole-word boundaries alone require content verification',()=>{
+  for(const matchMode of ['phrase','all','any']){
+    assert.equal(contentQueryRequiresVerification('alpha beta',{matchMode,wordMatch:'partial'}),false);
+    assert.equal(contentQueryRequiresVerification('alpha beta',{matchMode,wordMatch:'whole'}),true);
+    const args=buildEsSearchArgs({query:'alpha beta',mode:'content',contentSearch:{matchMode,wordMatch:'partial'}});
+    assert.ok(!args.includes('-add-columns'));assert.match(args.at(-1),/^diacritics:content:/);
+  }
+});
+
+test('pending event-loop cancellation after extraction wins before canonical results are published',async()=>{
+  const controller=new AbortController();
+  const f=contentSearchFixture([candidate('large.txt','אב '.repeat(100000))],{beforeReturn:async()=>{setImmediate(()=>controller.abort())}});
+  try{
+    await assert.rejects(f.owner.searchDocuments('אב אב',1,'content',{matchMode:'proximity',proximityWords:50},'',0,{},'word',controller.signal),{name:'AbortError'});
+    assert.equal(f.published.length,0);
+    const recovered=await f.owner.searchDocuments('אב אב',1,'content',{matchMode:'proximity',proximityWords:50},'',0,{},'word');
+    assert.equal(recovered.results.length,1);
+  }finally{await f.owner.runtime.dispose()}
+});
+
+test('time spent decoding and verifying content cannot become an unqualified complete response',async t=>{
+  let clock=0;t.mock.method(performance,'now',()=>clock);
+  const f=contentSearchFixture([candidate('valid.txt','alpha beta')],{beforeReturn:async()=>{clock=6500}});
+  try{
+    const result=await f.owner.searchDocuments('alpha beta',2,'content',{matchMode:'proximity'},'',0,{},'word');
+    assert.equal(result.results.length,1);assert.equal(result.partial,true);
+  }finally{await f.owner.runtime.dispose()}
+});
 
 test('transport retries only exit 8 once; abort, malformed JSON and ordinary failures cannot publish',async()=>{
   for(const failure of [{exitCode:8},{exitCode:2},{name:'AbortError',code:'ABORT_ERR'},'invalid-json']){

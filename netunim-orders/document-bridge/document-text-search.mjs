@@ -79,10 +79,21 @@ function foldedSource(source) {
 /** @param {string} source @param {FoldedText} folded @param {string[]} terms
  * @param {ContentSearchOptions} search @param {number} limit @returns {TextMatchRange[]} */
 function proximityRanges(source, folded, terms, search, limit) {
-  const tokens = Array.from(folded.text.matchAll(/\S+/gu), match => ({
-    text: match[0], start: match.index, end: match.index + match[0].length,
-  }));
-  let suffixEnds = new Int32Array(tokens.length).fill(-1);
+  // Missing required literals cannot yield a range. Avoid building a token
+  // index at all for the common long-document/missing-suffix case.
+  if (terms.some(term => !folded.text.includes(term))) return [];
+  let count = 0;
+  const words = /\S+/gu;
+  while (words.exec(folded.text)) count++;
+  // Keep only UTF-16 positions, not a retained string/object per word. Two
+  // passes bound retained token memory to eight bytes per token.
+  const starts = new Uint32Array(count), ends = new Uint32Array(count);
+  let index = 0;
+  for (const token of folded.text.matchAll(/\S+/gu)) {
+    starts[index] = token.index;
+    ends[index++] = token.index + token[0].length;
+  }
+  let suffixEnds = new Int32Array(count).fill(-1), stageEnds = new Int32Array(count);
   const whole = search.wordMatch === 'whole';
   /** @param {number} start @param {number} end */
   const boundary = (start, end) => {
@@ -91,41 +102,40 @@ function proximityRanges(source, folded, terms, search, limit) {
   };
   const last = terms[terms.length - 1], first = terms[0];
   if (!first || !last) return [];
-  for (let i = 0; i < tokens.length; i++) {
-    const token = tokens[i];
-    if (!token) throw new RangeError('document_search_token_out_of_bounds');
-    const end = token.start + last.length;
-    if (token.text.startsWith(last) && boundary(token.start, end)) suffixEnds[i] = end;
+  for (let i = 0; i < count; i++) {
+    const start = starts[i], tokenEnd = ends[i];
+    if (start === undefined || tokenEnd === undefined) throw new RangeError('document_search_token_out_of_bounds');
+    const end = start + last.length;
+    if (end <= tokenEnd && folded.text.startsWith(last, start) && boundary(start, end)) suffixEnds[i] = end;
   }
   // Dynamic programming over token positions. Each stage records the rightmost
   // viable successor in the distance window, preserving the old greedy ranges.
   // Work is O(terms * tokens), including a long missing suffix; no backtracking.
   for (let stage = terms.length - 2; stage >= 0; stage--) {
-    const rightmost = new Int32Array(tokens.length);
-    let latest = -1;
-    for (let i = 0; i < tokens.length; i++) {
-      if ((suffixEnds[i] ?? -1) >= 0) latest = i;
-      rightmost[i] = latest;
-    }
-    const ends = new Int32Array(tokens.length).fill(-1), term = terms[stage];
+    stageEnds.fill(-1);
+    const term = terms[stage];
     if (term === undefined) throw new RangeError('document_search_term_out_of_bounds');
-    for (let i = 0; i < tokens.length; i++) {
-      const token = tokens[i];
-      if (!token) throw new RangeError('document_search_token_out_of_bounds');
-      if (stage === 0 ? !token.text.endsWith(term) : token.text !== term) continue;
-      const start = stage === 0 ? token.end - term.length : token.start;
-      if (!boundary(start, token.end)) continue;
-      const next = rightmost[Math.min(tokens.length - 1, i + search.proximityWords + 1)] ?? -1;
-      if (next > i) ends[i] = suffixEnds[next] ?? -1;
+    // A descending window cursor finds the same rightmost viable successor
+    // without a third per-stage array. Each position is visited at most once.
+    let next = count - 1;
+    for (let i = count - 1; i >= 0; i--) {
+      next = Math.min(next, i + search.proximityWords + 1);
+      while (next > i && (suffixEnds[next] ?? -1) < 0) next--;
+      const tokenStart = starts[i], tokenEnd = ends[i];
+      if (tokenStart === undefined || tokenEnd === undefined) throw new RangeError('document_search_token_out_of_bounds');
+      const start = stage === 0 ? tokenEnd - term.length : tokenStart;
+      if (start < tokenStart || (stage > 0 && tokenEnd - tokenStart !== term.length)
+        || !folded.text.startsWith(term, start) || !boundary(start, tokenEnd)) continue;
+      if (next > i) stageEnds[i] = suffixEnds[next] ?? -1;
     }
-    suffixEnds = ends;
+    [suffixEnds, stageEnds] = [stageEnds, suffixEnds];
   }
   /** @type {TextMatchRange[]} */ const matches = [];
   let cursor = 0;
-  for (let i = 0; i < tokens.length && matches.length < limit; i++) {
-    const token = tokens[i];
-    if (!token) throw new RangeError('document_search_token_out_of_bounds');
-    const start = token.end - first.length, end = suffixEnds[i] ?? -1;
+  for (let i = 0; i < count && matches.length < limit; i++) {
+    const tokenEnd = ends[i];
+    if (tokenEnd === undefined) throw new RangeError('document_search_token_out_of_bounds');
+    const start = tokenEnd - first.length, end = suffixEnds[i] ?? -1;
     if (end >= 0 && start >= cursor) {
       matches.push(folded.range(start, end));
       cursor = end;

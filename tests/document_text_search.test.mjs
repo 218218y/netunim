@@ -108,3 +108,17 @@ test('Unicode whole-word boundaries and case expansion retain original highlight
   const matcher=createDocumentTextMatcher('אב אין',{matchMode:'any'});
   assert.deepEqual(matcher.find('אב '.repeat(6000)+'אין',{maxMatches:1}).foundTerms,['אב','אין']);
 });
+
+test('large repeated proximity stays within a 96 MiB V8 heap without losing greedy ranges or the display cap',()=>{
+  const module=new URL('../shared/document-text-search.js',import.meta.url).href;
+  const script=`import assert from 'node:assert/strict';import {createDocumentTextMatcher} from ${JSON.stringify(module)};
+    const text='אב '.repeat(Math.floor(8*1024*1024/5));
+    for(const maxMatches of [1,5000]){
+      const result=createDocumentTextMatcher('אב אב אב אב אב אב',{matchMode:'proximity',proximityWords:50}).find(text,{maxMatches});
+      assert.equal(result.matches.length,maxMatches);assert.equal(result.capped,true);
+      assert.deepEqual(result.matches[0],{start:0,end:767});
+    }
+    assert.equal(createDocumentTextMatcher('אב אב אב אב אב אין',{matchMode:'proximity',proximityWords:50}).find(text).matches.length,0);`;
+  const child=spawnSync(process.execPath,['--max-old-space-size=96','--input-type=module','-e',script],{encoding:'utf8',timeout:10000});
+  assert.equal(child.status,0,child.stderr);
+});

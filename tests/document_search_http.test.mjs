@@ -11,13 +11,13 @@ import {BRIDGE_SERVICE,BRIDGE_VERSION} from '../netunim-orders/document-bridge/l
 import {createEverythingSearchCoordinator} from '../netunim-orders/document-bridge/everything-search-coordinator.mjs';
 import {deferred,row,serverFixture} from './document_search_server_fixture.mjs';
 
-async function httpFixture(t,f,{afterResponse=()=>{}}={}) {
+async function httpFixture(t,f,{afterResponse=()=>{},onHealth=()=>{}}={}) {
  const closing=deferred(),unused=async()=>{throw new Error('unexpected unrelated capability')},origin='https://bargig-furniture.com';
  const routes=createDocumentBridgeRoutes({service:{status:unused,warm:unused},maintenance:{status:unused,start:unused,stop:unused},
   search:{selectFolder:unused,search:f.search,recent:f.recent},preview:{document:unused,matches:unused,file:unused},
   nativePreview:{open:unused,move:unused,hide:unused},files:{open:unused,reveal:unused,delete:unused},shutdown:{prepare:()=>{const pending=f.shutdown();closing.resolve();return pending},afterResponse}});
  const handler=createDocumentBridgeHttpHandler({loadConfig:async()=>({allowedOrigins:[origin]}),readToken:async()=> 'test-key',routes,
-  health:()=>({ok:true,service:BRIDGE_SERVICE,version:BRIDGE_VERSION,pid:0}),appendLog:async()=>{}});
+  health:()=>{onHealth();return {ok:true,service:BRIDGE_SERVICE,version:BRIDGE_VERSION,pid:0}},appendLog:async()=>{}});
  const server=http.createServer((req,res)=>handler(req,res).catch(error=>res.destroy(error)));
  await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve)});
  t.after(async()=>{server.closeAllConnections();await new Promise(resolve=>server.close(resolve))});
@@ -28,6 +28,30 @@ async function httpFixture(t,f,{afterResponse=()=>{}}={}) {
  }
  return {server,port,request,closing:closing.promise};
 }
+
+test('concurrent content verification serves health and recovers after a timeout without publishing failed reads',async t=>{
+ const extracted=deferred(),content='אב '.repeat(60000);let failNext=false,published=0,healthDuringSearch=false;
+ const coordinator=createEverythingSearchCoordinator({
+  configuration:{load:async()=>({searchTimeoutMs:1000})},session:{probe:async()=>({esPath:'inert',instance:'synthetic'}),invalidate:()=>{}},
+  process:{run:async()=>{
+   if(failNext){failNext=false;throw Object.assign(Error('controlled native timeout'),{code:'ES_TIMEOUT'})}
+   extracted.resolve();return {stdout:JSON.stringify(Array.from({length:8},(_,i)=>({name:`${i}.txt`,path:'C:\\synthetic',content})))};
+  }},pdf:{prepare:async()=>({partial:false}),search:()=>[]},
+  publication:{prune:()=>{},publish:row=>{published++;return {...row,id:row.name}}},audit:{write:async()=>{}}
+ });
+ t.after(()=>coordinator.runtime.dispose());
+ const h=await httpFixture(t,{search:coordinator.searchDocuments,recent:coordinator.recentDocuments},{onHealth:()=>{healthDuringSearch=published<14}});
+ const body={query:'אב אב',mode:'content',contentSearch:{matchMode:'proximity',proximityWords:50},limit:7,fileType:'word'};
+ const reads=[h.request('/documents/search',body),h.request('/documents/search',body)];
+ await extracted.promise;
+ const health=await fetch(`http://127.0.0.1:${h.port}/health`);
+ assert.equal(health.status,200);assert.equal(healthDuringSearch,true);
+ for(const result of await Promise.all(reads)){assert.equal(result.status,200);assert.equal(result.data.results.length,7);assert.equal(result.data.partial,false)}
+ assert.equal(published,14);
+ failNext=true;
+ const failed=await h.request('/documents/search',body);assert.ok(failed.status>=400);assert.equal(failed.data.code,'ES_TIMEOUT');assert.equal(published,14);
+ const recovered=await h.request('/documents/search',body);assert.equal(recovered.status,200);assert.equal(recovered.data.results.length,7);
+});
 
 test('authenticated HTTP keeps accepted shutdown pending, rejects new search and releases no late result IDs',async t=>{
  const entered=deferred(),release=deferred(),f=serverFixture('current',{everything:async()=>{entered.resolve();return release.promise}});
@@ -59,7 +83,7 @@ test('actual installer stop client grants the joined shutdown its own deadline b
  release.resolve({rows:[row(1)],elapsedMs:17});await stopping;assert.equal((await reading).status,503);assert.equal(f.ids(),0);
 });
 
-for(const kind of ['search','proximity','recent'])test(`disconnect after a complete ${kind} request cancels the accepted ES read`,{timeout:5000},async t=>{
+for(const kind of ['search','proximity','whole','recent'])test(`disconnect after a complete ${kind} request cancels the accepted ES read`,{timeout:5000},async t=>{
  const entered=deferred(),cancelled=deferred();let commands=0,published=0;
  const coordinator=createEverythingSearchCoordinator({
   configuration:{load:async()=>({searchTimeoutMs:1000})},
@@ -75,7 +99,7 @@ for(const kind of ['search','proximity','recent'])test(`disconnect after a compl
  t.after(()=>coordinator.runtime.dispose());
  const h=await httpFixture(t,{search:coordinator.searchDocuments,recent:coordinator.recentDocuments,shutdown:async()=>({ok:true})});
  const target=kind==='recent'?'/documents/recent':'/documents/search';
- const body=JSON.stringify({query:'alpha beta',mode:'content',contentSearch:{matchMode:kind==='proximity'?'proximity':'phrase'}});
+ const body=JSON.stringify({query:'alpha beta',mode:'content',contentSearch:{matchMode:kind==='proximity'?'proximity':'phrase',wordMatch:kind==='whole'?'whole':'partial'}});
  const client=http.request({host:'127.0.0.1',port:h.port,path:target,method:'POST',headers:{Authorization:'Bearer test-key',Origin:'https://bargig-furniture.com','Content-Type':'application/json'}},()=>assert.fail('cancelled read published a response'));
  client.on('error',()=>{});client.end(body);await entered.promise;client.destroy();await cancelled.promise;
  const recovered=await h.request('/documents/recent');assert.equal(recovered.status,200);assert.equal(published,0);assert.equal(commands,2);
