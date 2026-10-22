@@ -91,7 +91,9 @@ function proximityRanges(source, folded, terms, search, limit) {
   };
   const last = terms[terms.length - 1], first = terms[0];
   if (!first || !last) return [];
-  for (const [i, token] of tokens.entries()) {
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    if (!token) throw new RangeError('document_search_token_out_of_bounds');
     const end = token.start + last.length;
     if (token.text.startsWith(last) && boundary(token.start, end)) suffixEnds[i] = end;
   }
@@ -107,7 +109,9 @@ function proximityRanges(source, folded, terms, search, limit) {
     }
     const ends = new Int32Array(tokens.length).fill(-1), term = terms[stage];
     if (term === undefined) throw new RangeError('document_search_term_out_of_bounds');
-    for (const [i, token] of tokens.entries()) {
+    for (let i = 0; i < tokens.length; i++) {
+      const token = tokens[i];
+      if (!token) throw new RangeError('document_search_token_out_of_bounds');
       if (stage === 0 ? !token.text.endsWith(term) : token.text !== term) continue;
       const start = stage === 0 ? token.end - term.length : token.start;
       if (!boundary(start, token.end)) continue;
