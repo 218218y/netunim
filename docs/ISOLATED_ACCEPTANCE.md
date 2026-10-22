@@ -147,12 +147,12 @@ versions and the other application's format with byte-identical journals.
 These are supported-contract fixtures, not copied live historical backups or
 proof of every historical exporter version.
 
-The expanded Windows run also observed an owned post-crash browser reach
-`interactive` without application errors but miss the ordinary 10-second load
-deadline. Only navigation immediately after a hard process kill receives a
-30-second recovery window; normal startup keeps its existing deadline. No
-storage operation or restore is retried to hide a failed result, and the
-separate startup/performance measurements retain their actual elapsed times.
+The expanded Windows runs observed both post-crash and initial cold browsers
+reach `interactive` without application errors but miss the Linux-oriented
+10-second load deadline. Windows functional navigation has a 30-second deadline;
+other platforms retain 10 seconds. A timeout records recent resource timings.
+No storage operation or restore is retried to hide a failed result, and separate
+startup/performance measurements retain their actual elapsed times and gates.
 
 A further Windows run reproduced `taskkill /T /F` exiting 255 while terminating
 the live browser tree. Windows browsers now reuse the existing `SuiteProcess`

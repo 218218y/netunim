@@ -614,9 +614,7 @@ class BrowserSession:
         self.events = []
         self._start_browser()
         # A hard-killed profile needs crash recovery plus a cold module graph.
-        # Windows CI reached interactive without errors but exceeded the ordinary
-        # 10s page deadline. Keep normal startup's budget and bound this phase.
-        self._navigate(timeout=30 if crash else 10)
+        self._navigate(timeout=30 if crash else None)
         if self.instrument:
             self.evaluate('appReady.then(()=>true)')
         return {'previous_pid': previous_pid, 'new_pid': self.proc.pid, 'hard_process_failure': crash}
@@ -658,7 +656,12 @@ class BrowserSession:
             if timeout is not None:
                 self.ws.settimeout(previous_timeout)
 
-    def _navigate(self, *, timeout=10):
+    def _navigate(self, *, timeout=None):
+        # Functional loading of hundreds of cold ESM files outlasted 10s on
+        # Windows CI, even before crash injection. Startup-performance probes
+        # measure elapsed readiness separately; this is a transport deadline.
+        if timeout is None:
+            timeout = 30 if os.name == 'nt' else 10
         result = self.call("Page.navigate", {"url": self.url})
         nav = result.get("result", {})
         if nav.get("errorText"):
@@ -677,7 +680,11 @@ class BrowserSession:
             except Exception as error:
                 last_error = error
             time.sleep(0.05)
-        raise RuntimeError(f"{self.label}: page did not finish loading at {self.url}; state: {state}; last error: {last_error}; browser errors: {self.drain_serious_errors()}")
+        resources = None
+        # Optional diagnostics must never replace the original load failure.
+        with contextlib.suppress(Exception):
+            resources = self.call('Runtime.evaluate', {'expression': "performance.getEntriesByType('resource').slice(-8).map(r=>({path:new URL(r.name).pathname,duration:r.duration,responseEnd:r.responseEnd}))", 'returnByValue': True}, timeout=5).get('result',{}).get('result',{}).get('value')
+        raise RuntimeError(f"{self.label}: page did not finish loading at {self.url}; state: {state}; resources: {resources}; last error: {last_error}; browser errors: {self.drain_serious_errors()}")
 
     def evaluate(self, expression: str, *, await_promise: bool = True, timeout: float | None = None, user_gesture: bool = False):
         if self.instrument:
