@@ -18,6 +18,17 @@ property included its suffix. The actual corrected coordinator returned exactly
 both valid files, with `partial:false`, in about 80 ms of coordinator time in this
 sample. These are isolated observations, not a general performance percentile.
 
+A second actual native probe found that `whole-words:content:` is not a safe
+candidate filter for the canonical Unicode boundary contract: Everything omitted
+`alpha beta_`, which the canonical matcher accepts, and accepted `alpha betá`,
+whose combining mark the canonical matcher rejects. Proximity candidates now
+always use partial literal presence; canonical verification alone decides whole
+words. The [boundary observations](evidence/everything-isolated-boundaries-20261022.json)
+include underscore, punctuation, joined-word and combining-mark files, and the
+actual coordinator returns exactly the canonical whole-word results. Broader
+candidates consume the same explicit scan budget; they never become results
+without verification.
+
 This is consistent with the maintainer's description of native PCRE recursion
 limits and silently missing results in
 [Regex file content match limit](https://www.voidtools.com/forum/viewtopic.php?t=16619).

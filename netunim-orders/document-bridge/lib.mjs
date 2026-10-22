@@ -163,7 +163,9 @@ export function buildContentQuery(value,options={}){
   if(search.matchMode==='any'&&terms.length>1)return `${prefix}content:<${terms.map(term=>`"${everythingLiteral(term)}"`).join('|')}> no-background-search:`;
   // Ordered distance is verified by the canonical matcher over returned content.
   // Native PCRE can silently omit valid suffixes after its internal match limit.
-  if(contentQueryRequiresVerification(normalized,search))return `${prefix}content:<${[...new Set(terms)].map(term=>`"${everythingLiteral(term)}"`).join(' ')}> no-background-search:`;
+  // Candidates must be a superset: Everything's whole-words boundaries differ
+  // for underscores/combining marks. Only the canonical verifier decides them.
+  if(contentQueryRequiresVerification(normalized,search))return `content:<${[...new Set(terms)].map(term=>`"${everythingLiteral(term)}"`).join(' ')}> no-background-search:`;
   return `${prefix}content:"${everythingLiteral(normalized)}" no-background-search:`;
 }
 

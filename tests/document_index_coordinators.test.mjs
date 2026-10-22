@@ -101,6 +101,17 @@ test('candidate pages cannot consume verified result offsets or change native so
   for(const args of f.reads){assert.equal(args[args.indexOf('-path')+1],'C:\\synthetic');assert.match(args.at(-1),/^doc:/);assert.equal(args[args.indexOf('-sort')+1],'name-ascending');}
 });
 
+test('whole-word proximity candidates retain underscore and punctuation matches and canonically reject combining marks',async()=>{
+  const f=contentSearchFixture([
+    candidate('combining.txt','alpha beta\u0301'),candidate('joined.txt','alpha betamax'),
+    candidate('punctuation.txt','alpha beta!'),candidate('underscore.txt','alpha beta_')
+  ]);
+  const page=await f.owner.searchDocuments('alpha beta',10,'content',{matchMode:'proximity',proximityWords:0,wordMatch:'whole'},'',0,{field:'name',direction:'asc'});
+  assert.deepEqual(page.results.map(row=>row.name),['punctuation.txt','underscore.txt']);
+  assert.doesNotMatch(f.reads[0].at(-1),/whole-words:|regex:/);
+  assert.equal(page.partial,false);
+});
+
 test('unavailable native content fails explicitly instead of silently dropping a candidate',async()=>{
   const f=contentSearchFixture([{name:'missing.txt',path:'C:\\synthetic'}]);
   await assert.rejects(f.owner.searchDocuments('alpha beta',5,'content',{matchMode:'proximity'}),{code:'ES_CONTENT_UNAVAILABLE'});

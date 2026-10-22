@@ -12,6 +12,9 @@
   commands still drain and disconnected command failures remain audited.
 - A native execFile timeout had `code:null`, which numeric conversion mislabeled
   `ES_EXIT_0`. It now reports `ES_TIMEOUT`.
+- Native whole-word candidate filtering differed on underscores and combining
+  marks. Actual native cases proved both directions; only canonical verification
+  now decides proximity word boundaries, over a literal-presence superset.
 
 The existing canonical browser/Bridge/classic-worker matching contract is retained;
 no second text algorithm, storage layer or synchronization owner was introduced.
@@ -81,9 +84,17 @@ PR [276](https://github.com/218218y/netunim/pull/276) passed the complete gate a
 `b007847e7a9d7e1f44511018f37a4cd5615fd664` in
 [run 39756263950](https://github.com/218218y/netunim/actions/runs/39756263950), including
 Windows, PostgreSQL, strict contracts and real-browser suites. Its merged main
-tree was verified identical. Subsequent cancellation/evidence changes require
-their own complete branch gates; the final completion message records their exact
-passing revisions/runs. Duplicate runs of an identical tested merge tree may be
+tree was verified identical. The cancellation stage passed all 14 jobs at
+`760fa8edb2e62173328a417feaff88841a7fa0ee` in
+[run 39758055352](https://github.com/218218y/netunim/actions/runs/39758055352), including
+one retry of the temporary-object cleanup failure below. PR
+[277](https://github.com/218218y/netunim/pull/277) is merged. The isolated-evidence
+stage passed all 14 jobs at `530627fc12ea6dd4c04bc5336ee3cbc01fd479ac` in
+[run 39759097407](https://github.com/218218y/netunim/actions/runs/39759097407); PR
+[278](https://github.com/218218y/netunim/pull/278) is merged and its main tree is
+identical to that tested source. The subsequent candidate-boundary correction
+requires its own full gate; the final completion message records the exact
+passing revision/run. Duplicate runs of an identical tested merge tree may be
 cancelled without rerunning that source solely because it reached main.
 
 A CI attempt also observed `.git/objects` changing during temporary test-repository
