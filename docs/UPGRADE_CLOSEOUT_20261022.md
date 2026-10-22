@@ -1,5 +1,11 @@
 # Search and Bridge completion evidence, 2026-10-22
 
+The continuation after PRs 276–279 is recorded in the
+[batch follow-up](SEARCH_BATCH_FOLLOWUP_20261022.md). It corrects later-batch
+timeout handling, unnecessary Word/PDF coupling and a reproduced native output
+overflow, with Bridge v43 and additional isolated 41→43 replacement evidence.
+The historical stages below retain their original source versions and results.
+
 ## Proven defects corrected
 
 - Native Everything proximity silently omitted a valid long repeated-prefix

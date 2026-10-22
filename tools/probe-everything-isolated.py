@@ -6,6 +6,7 @@ parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--everything-exe",required=True,type=Path)
 parser.add_argument("--es-exe",required=True,type=Path)
 parser.add_argument("--output",type=Path)
+parser.add_argument("--resources",action="store_true",help="Include bounded synthetic large-content and cancellation measurements")
 
 
 args=parser.parse_args()
@@ -20,6 +21,15 @@ shutil.copyfile(args.everything_exe.resolve(strict=True),work/'Everything.exe')
 shutil.copyfile(args.es_exe.resolve(strict=True),work/'es.exe')
 for name,text in {'whole-combining.txt':'alpha beta\u0301','whole-joined.txt':'alpha betamax','whole-punctuation.txt':'alpha beta!','whole-underscore.txt':'alpha beta_','late-valid.txt':'אב '*10000+'אין','short-valid.txt':'אב '*5+'אין','repeated.txt':'אב '*10000,'wrong-order.txt':'אין '+'אב '*1000,'gap-overflow.txt':'אב '*1000+'אחר '*300+'אין','positive.txt':'אב אחד סוף','adjacent.txt':'אב סוף','phone.txt':'050-1234567'}.items():
  (files/name).write_text(text,encoding='utf-8-sig')
+if args.resources:
+ large='resource_start resource_end '+('padding '*32768)
+ for folder in ('resource-batch','resource-filter','resource-single'):(files/folder).mkdir()
+ for index in range(100):
+  (files/'resource-batch'/f'large-{index:03}.txt').write_text(large,encoding='utf-8-sig')
+  (files/'resource-filter'/f'b-valid-{index:03}.txt').write_text(large,encoding='utf-8-sig')
+ for index in range(350):
+  (files/'resource-filter'/f'a-rejected-{index:03}.txt').write_text('resource_end resource_start',encoding='utf-8-sig')
+ (files/'resource-single'/'single-large.txt').write_text('resource_start resource_end '+('padding '*2300000),encoding='utf-8-sig')
 instance='NETUNIM_VERIFY_'+uuid.uuid4().hex
 settings={'app_data':'0','run_as_admin':'0','run_in_background':'1','show_tray_icon':'0','service':'0',
  'auto_include_fixed_volumes':'0','auto_include_removable_volumes':'0','auto_include_fixed_refs_volumes':'0',
@@ -53,8 +63,9 @@ try:
  rc,all_files,error=query(['-argv','-cp','65001','-ipc3','/a-d','-full-path-and-name','-timeout','1000','--','*'])
  listed=[Path(line.strip()) for line in all_files.splitlines() if line.strip()]
  if rc or not listed or any(not path.is_relative_to(files) for path in listed):raise RuntimeError('isolated index escaped fixture directory: '+repr((rc,all_files,error)))
- if {path.name for path in listed}!={path.name for path in files.iterdir()}:raise RuntimeError('fixture index is incomplete')
+ if set(listed)!={path for path in files.rglob('*') if path.is_file()}:raise RuntimeError('fixture index is incomplete')
  report['isolatedIndexVerified']=True;report['files']=len(listed)
+ if args.resources:report['resourceFixtures']={folder:{'files':len(list((files/folder).iterdir())),'bytes':sum(path.stat().st_size for path in (files/folder).iterdir())} for folder in ('resource-batch','resource-filter','resource-single')}
  query_builder="import {buildContentQuery} from './netunim-orders/document-bridge/lib.mjs'; console.log(JSON.stringify([['missing-six',buildContentQuery('אב אב אב אב אב אין',{matchMode:'proximity',proximityWords:50})],['all-terms',buildContentQuery('אב אין',{matchMode:'all'})],['ordered-valid',buildContentQuery('אב סוף',{matchMode:'proximity',proximityWords:1})],['adjacent-valid',buildContentQuery('אב סוף',{matchMode:'proximity',proximityWords:0})]]));"
  planned=json.loads(subprocess.check_output(['node','--input-type=module','-e',query_builder],cwd=ROOT,text=True,encoding='utf-8'))
  planned.append(('read-content', 'late-valid.txt'))
@@ -69,9 +80,9 @@ try:
    elapsed=(time.monotonic()-start)*1000;after=cpu();time.sleep(.2);settled=cpu()
    report['measurements'].append({'case':name,'sample':sample,'wallMs':elapsed,'cpuSeconds':after-before,'cpuAfterClientExitSeconds':settled-after,'exitCode':rc,'results':([Path(line).name for line in out.splitlines() if line.strip()] if name!='read-content' else [{'bytes':len(out),'hasSuffix':'אין' in out}]),'stderr':error})
    output.write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
- for mode in ('search','whole-boundaries','abort','timeout'):
+ for mode in ('search','whole-boundaries','abort','timeout',*(['resources'] if args.resources else [])):
   before=cpu();start=time.monotonic()
-  result=subprocess.run(['node',str(ROOT/'tools/probe-everything-isolated.mjs'),instance,str(work/'es.exe'),str(work),mode,legacy],cwd=ROOT,env=env,capture_output=True,timeout=8,creationflags=subprocess.CREATE_NO_WINDOW)
+  result=subprocess.run(['node',str(ROOT/'tools/probe-everything-isolated.mjs'),instance,str(work/'es.exe'),str(work),mode,legacy],cwd=ROOT,env=env,capture_output=True,timeout=60 if mode=='resources' else 8,creationflags=subprocess.CREATE_NO_WINDOW)
   after=cpu();time.sleep(.8);settled=cpu()
   decoded=json.loads(result.stdout.decode('utf8'))
   if result.returncode:raise RuntimeError('actual Bridge probe failed: '+result.stderr.decode('utf8'))

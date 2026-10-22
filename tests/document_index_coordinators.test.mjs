@@ -200,3 +200,51 @@ test('Word content searches exclude PDF preparation and its failures/partial sta
     assert.equal(page.partial,true);assert.equal(f.pdfPrepareCalls,1);
   }
 });
+
+test('native output overflow reduces only the candidate batch and retries the same cursor before verification',async()=>{
+  const rows=Array.from({length:260},(_,i)=>candidate(String(i).padStart(3,'0')+'.txt',i<125?'beta alpha':'alpha beta'));
+  const f=contentSearchFixture(rows,{beforeReturn:async(_options,args)=>{
+    if(Number(args[args.indexOf('-max-results')+1])>25)throw Object.assign(Error('bounded native output'),{code:'ES_OUTPUT_LIMIT'});
+  }});
+  const page=await f.owner.searchDocuments('alpha beta',10,'content',{matchMode:'proximity',proximityWords:0},'',35,{field:'name',direction:'asc'},'word');
+  assert.deepEqual(page.results.map(row=>row.name),Array.from({length:10},(_,i)=>String(i+160).padStart(3,'0')+'.txt'));
+  assert.equal(page.partial,false);assert.equal(page.hasMore,true);
+  assert.deepEqual(f.reads.slice(0,3).map(args=>Number(args[args.indexOf('-max-results')+1])),[100,50,25]);
+  assert.ok(f.reads.slice(0,3).every(args=>!args.includes('-offset')));
+  assert.equal(f.reads[3][f.reads[3].indexOf('-offset')+1],'25');
+});
+
+test('an individually oversized candidate fails explicitly without publishing a false complete page',async()=>{
+  const f=contentSearchFixture([candidate('too-large.txt','alpha beta')],{beforeReturn:async()=>{
+    throw Object.assign(Error('bounded native output'),{code:'ES_OUTPUT_LIMIT'});
+  }});
+  await assert.rejects(f.owner.searchDocuments('alpha beta',5,'content',{matchMode:'proximity'}),{code:'ES_CONTENT_TOO_LARGE'});
+  assert.equal(f.reads.length,7);assert.deepEqual(f.published,[]);
+});
+
+test('cancellation during overflow wins before smaller-batch retry or result publication',async()=>{
+  const controller=new AbortController();
+  const f=contentSearchFixture([],{beforeReturn:async()=>{controller.abort();throw Object.assign(Error('overflow after ignored abort'),{code:'ES_OUTPUT_LIMIT'})}});
+  await assert.rejects(f.owner.searchDocuments('alpha beta',5,'content',{matchMode:'proximity'},'',0,{},'word',controller.signal),{name:'AbortError'});
+  assert.equal(f.reads.length,1);assert.deepEqual(f.published,[]);
+});
+
+test('smaller successful batches retain the verified-timeout policy and result offset',async()=>{
+  const rows=Array.from({length:100},(_,i)=>candidate(String(i).padStart(3,'0')+'.txt','alpha beta'));
+  const f=contentSearchFixture(rows,{beforeReturn:async(_options,_args,call)=>{
+    if(call===1)throw Object.assign(Error('output ceiling'),{code:'ES_OUTPUT_LIMIT'});
+    if(call===3)throw Object.assign(Error('deadline'),{code:'ES_TIMEOUT'});
+  }});
+  const page=await f.owner.searchDocuments('alpha beta',10,'content',{matchMode:'proximity'},'',45,{field:'name',direction:'asc'},'word');
+  assert.deepEqual(page.results.map(row=>row.name),['045.txt','046.txt','047.txt','048.txt','049.txt']);
+  assert.equal(page.partial,true);assert.equal(page.hasMore,false);
+});
+
+test('oversized single content after verified progress remains an error, never a partial success',async()=>{
+  const rows=Array.from({length:100},(_,i)=>candidate(i+'.txt','alpha beta'));
+  const f=contentSearchFixture(rows,{beforeReturn:async(_options,_args,call)=>{
+    if(call>1)throw Object.assign(Error('output ceiling'),{code:'ES_OUTPUT_LIMIT'});
+  }});
+  await assert.rejects(f.owner.searchDocuments('alpha beta',150,'content',{matchMode:'proximity'}),{code:'ES_CONTENT_TOO_LARGE'});
+  assert.equal(f.reads.length,8);assert.deepEqual(f.published,[]);
+});

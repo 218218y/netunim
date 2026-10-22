@@ -1,0 +1,36 @@
+{
+  "kind": "isolated-native-listener-upgrade",
+  "stages": [
+    {
+      "version": 41,
+      "revision": "2ddb34af3f0eb42c04d397baa6e6241d0165999e",
+      "originalLibSha256": "0fe1742315a2a4c9c0546216aee99d738a6d1074e6fa656f687b780505018c81",
+      "modules": 47,
+      "stagedModulesSha256": "4c9a150bb97e1d4b16d556359c7a39be9d32da2eff24b9d31f0331e91151c774",
+      "newVersionCheckPassed": true,
+      "tokenPreserved": true,
+      "configurationPreserved": true
+    },
+    {
+      "version": 43,
+      "revision": "a2562f73897b7c3c7491a91043389b83ad19e3a8",
+      "originalLibSha256": "d151bc9738b8a903f6117f70e3a9e15b290edb9323512cc59ced311cd7d5b798",
+      "modules": 47,
+      "stagedModulesSha256": "281189fb4c0e612d428b0d037ec3673276d3b746c0d9f5877a922acf68142417",
+      "oldVersionCheckRejected": true,
+      "oldOwnedProcessExitedCleanly": true,
+      "newVersionCheckPassed": true,
+      "tokenPreserved": true,
+      "configurationPreserved": true
+    }
+  ],
+  "installerExecuted": false,
+  "providersUsed": false,
+  "disposablePort": 8584,
+  "privateNodeSha256": "ba4e6d110e8c1592a1ecd390f6b05f3da124b13871a5be62b341a07a853c6c32",
+  "portSubstitution": "Only the disposable lib.mjs BRIDGE_PORT was changed.",
+  "currentSource": "a2562f73897b7c3c7491a91043389b83ad19e3a8",
+  "dirty": true,
+  "finalShutdownClean": true,
+  "allOwnedProcessesExited": true
+}
