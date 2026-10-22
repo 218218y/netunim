@@ -23,7 +23,7 @@ FLOW = r"""(async()=>{
    }
    if(path==='/documents/preview')return new Response(JSON.stringify({ok:true,kind:previewKind,mime:'image/png',text:'fixture query',name:row.name}));
    if(path==='/documents/preview-file')return new Response(Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aV1EAAAAASUVORK5CYII='),char=>char.charCodeAt(0)),{headers:{'Content-Type':'image/png'}});
-   return new Response(JSON.stringify({ok:true,bridgeVersion:41,results:empty?[]:[{...row,name:body.query==='new'?'new.txt':row.name}],hasMore,partial,elapsedMs:1,count:0}));
+   return new Response(JSON.stringify({ok:true,bridgeVersion:42,results:empty?[]:[{...row,name:body.query==='new'?'new.txt':row.name}],hasMore,partial,elapsedMs:1,count:0}));
   }});
  const local={...client,warm:async()=>({ok:true}),pdfIndexStatus:undefined};
  const source=createDomainsDocumentSearch({localBridge:local,googleDrive:{getToken:()=> 'drive',search:async()=>{driveCalls++;return {results:[]}}},userAgent:'Windows'});
@@ -36,7 +36,8 @@ FLOW = r"""(async()=>{
  const done=[];
  try{
   partial=true;empty=true;await start('partial','all');
-  await eventually(()=>results.querySelector('.document-search-partial'),'partial empty search lost its visible notice');
+  await eventually(()=>results.querySelector('[data-search-source="content"] .document-search-partial'),'partial empty search lost its visible notice');
+  check(!results.querySelector('[data-search-source="content"] .global-search-source-empty')?.textContent.includes('לא נמצאו תוצאות'),'partial content search falsely claimed no matches');
   await eventually(()=>byId('globalSearchMeta').textContent.includes('חיפוש חלקי'),'partial search metadata falsely claimed completion');
   empty=false;hasMore=true;await start('partial-rows','content');
   await eventually(()=>results.querySelector('[data-document-load-more]'),'partial rows fixture missing');

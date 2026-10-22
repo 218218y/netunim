@@ -172,7 +172,7 @@ export function createDocumentSearch(
     } else {
       const [result, indexState] = await readTogether(
         () => everything.search(request(plan, wanted, 0)),
-        () => pdf.prepare()
+        () => plan.includePdf ? pdf.prepare() : Promise.resolve({partial:false})
       );
       assertActive(plan.signal);
       rows = result.rows;

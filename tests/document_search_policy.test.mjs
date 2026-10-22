@@ -15,9 +15,16 @@ test('old and current search preserve 4,608 pagination, filter, order and partia
   const old=serverFixture('baseline',options),current=serverFixture('current',options);
   const args=[' document ',limit,mode,{matchMode:'all',wordMatch:'whole',proximityWords:4},'C:\\synthetic',offset,{field,direction},type];
   const expected=await old.search(...args),actual=await current.search(...args);
+  const excludesPdf=mode==='content'&&!['all','documents','pdf'].includes(type);
+  if(excludesPdf)expected.partial=false;
   assert.deepEqual(plain(actual),plain(expected),JSON.stringify(args));
   for(const result of actual.results){assert.deepEqual(plain(await current.resolve(result.id)),plain(await old.resolve(result.id)));assert.equal(Object.hasOwn(result,'fullPath'),false)}
-  assert.deepEqual(current.observation(),old.observation());cases++;
+  const historical=old.observation();
+  if(excludesPdf){
+    historical.calls=historical.calls.filter(call=>call[0]!=='pdf-prepare');
+    historical.logs=historical.logs.map(message=>message.replace('partial=true','partial=false'));
+  }
+  assert.deepEqual(current.observation(),historical);cases++;
  }
  assert.equal(cases,4608);
 });

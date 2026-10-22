@@ -43,21 +43,22 @@ test('actual Everything coordinator re-probes exactly once for exit 8 and decode
   await owner.runtime.dispose();await assert.rejects(owner.searchDocuments('form',5),{code:'DOCUMENT_SEARCH_DISPOSED'});
 });
 
-function contentSearchFixture(rawRows,{beforeReturn=async()=>{}}={}){
-  const reads=[],published=[];
+function contentSearchFixture(rawRows,{beforeReturn=async()=>{},pdfPrepare=async()=>({partial:false})}={}){
+  const reads=[],published=[];let pdfPrepareCalls=0;
   const owner=createEverythingSearchCoordinator({
     configuration:{load:async()=>({searchTimeoutMs:1000})},
     session:{probe:async()=>({esPath:'isolated-es',instance:'synthetic'}),invalidate:()=>{},executable:async()=>''},
     process:{run:async(_file,args,options)=>{
       reads.push(args);
-      await beforeReturn(options);
+      const override=await beforeReturn(options,args,reads.length);
+      if(override!==undefined)return override;
       const offset=args.includes('-offset')?Number(args[args.indexOf('-offset')+1]):0,limit=Number(args[args.indexOf('-max-results')+1]);
       return {stdout:JSON.stringify(rawRows.slice(offset,offset+limit))};
     }},
-    pdf:{prepare:async()=>({partial:false}),search:()=>[]},
+    pdf:{prepare:async()=>{pdfPrepareCalls++;return pdfPrepare()},search:()=>[]},
     publication:{prune:()=>{},publish:row=>{published.push(row);return {...row,id:row.name}}},audit:{write:async()=>{}}
   });
-  return {owner,reads,published};
+  return {owner,reads,published,get pdfPrepareCalls(){return pdfPrepareCalls}};
 }
 const candidate=(name,content)=>({name,path:'C:\\synthetic',content});
 
@@ -146,4 +147,56 @@ test('pre-cancelled and late cancelled native reads cannot scan another batch or
   await started;signal.abort();release();await rejected;
   assert.deepEqual(late.published,[]);assert.equal(late.reads.length,1);
   await early.owner.runtime.dispose();await late.owner.runtime.dispose();
+});
+
+test('later batch timeout retains only verified unique results, offsets and explicit partial evidence',async()=>{
+  const rows=Array.from({length:160},(_,i)=>candidate(String(i).padStart(3,'0')+'.txt','alpha beta'));
+  rows[1]=rows[0];rows[2]=candidate('002.txt','beta alpha');
+  let timeout=true;
+  const f=contentSearchFixture(rows,{beforeReturn:async(_options,_args,call)=>{
+    if(call===2&&timeout)throw Object.assign(Error('late timeout'),{code:'ES_TIMEOUT'});
+  }});
+  const search=()=>f.owner.searchDocuments('alpha beta',10,'content',{matchMode:'proximity',proximityWords:0},'',95,{field:'name',direction:'asc'},'word');
+  const partial=await search();
+  assert.deepEqual(partial.results.map(row=>row.name),['097.txt','098.txt','099.txt']);
+  assert.equal(partial.partial,true);assert.equal(partial.hasMore,false);
+  assert.ok(f.published.every(row=>!Object.hasOwn(row,'content')));
+  timeout=false;const recovered=await search();
+  assert.deepEqual(recovered.results.map(row=>row.name),Array.from({length:10},(_,i)=>String(i+97).padStart(3,'0')+'.txt'));
+  assert.equal(recovered.partial,false);assert.equal(recovered.hasMore,true);
+});
+
+test('first-batch timeout and later malformed/missing-content/disconnected/unauthorized failures remain errors',async()=>{
+  const rows=Array.from({length:100},(_,i)=>candidate(i+'.txt','alpha beta'));
+  for(const [at,failure] of [[1,{code:'ES_TIMEOUT'}],[2,{code:'ECONNRESET'}],[2,{code:'UNAUTHORIZED'}],[2,{name:'AbortError',code:'ES_TIMEOUT'}],[2,{stdout:'{"results":null}'}],[2,{stdout:'[{"name":"missing.txt","path":"C:\\\\synthetic"}]'}]]){
+    const f=contentSearchFixture(rows,{beforeReturn:async(_options,_args,call)=>{
+      if(call!==at)return;
+      if(failure.stdout!==undefined)return failure;
+      throw Object.assign(Error('synthetic batch failure'),failure);
+    }});
+    await assert.rejects(f.owner.searchDocuments('alpha beta',150,'content',{matchMode:'proximity'}));
+    assert.deepEqual(f.published,[]);
+  }
+});
+
+test('caller cancellation wins over late batch timeout after verified results',async()=>{
+  const controller=new AbortController(),rows=Array.from({length:100},(_,i)=>candidate(i+'.txt','alpha beta'));
+  const f=contentSearchFixture(rows,{beforeReturn:async(_options,_args,call)=>{
+    if(call===2){controller.abort();throw Object.assign(Error('ignored abort timeout'),{code:'ES_TIMEOUT'})}
+  }});
+  await assert.rejects(f.owner.searchDocuments('alpha beta',150,'content',{matchMode:'proximity'},'',0,{},'word',controller.signal),{name:'AbortError'});
+  assert.deepEqual(f.published,[]);
+});
+
+test('Word content searches exclude PDF preparation and its failures/partial state',async()=>{
+  for(const pdfPrepare of [async()=>({partial:true}),async()=>{throw Error('PDF unavailable')}]){
+    const f=contentSearchFixture([candidate('one.docx','alpha beta')],{pdfPrepare});
+    const page=await f.owner.searchDocuments('alpha beta',5,'content',{matchMode:'proximity'},'',0,{},'word');
+    assert.equal(page.results.length,1);assert.equal(page.partial,false);assert.equal(f.pdfPrepareCalls,0);
+  }
+  for(const fileType of ['all','documents','pdf']){
+    const f=contentSearchFixture([],{pdfPrepare:async()=>({partial:true})});
+    const page=await f.owner.searchDocuments('alpha beta',5,'content',{matchMode:'proximity'},'',0,{},fileType);
+    assert.equal(page.partial,true);assert.equal(f.pdfPrepareCalls,1);
+  }
 });

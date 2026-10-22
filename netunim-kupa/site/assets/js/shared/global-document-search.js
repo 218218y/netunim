@@ -192,7 +192,8 @@ export function createGlobalDocumentSearch({documentBridge=null,siteSearch,siteR
     else if(state.status==='unavailable'||state.status==='error')body=documentErrorHtml(state.error||{message:'רכיב החיפוש המקומי אינו זמין.'},`search:${mode}`);
     else if(state.status==='short')body=documentIntro(mode);
     else if(state.status==='done'){
-      body=hasRows?renderDocumentTable(state.rows,mode,{hasMore:state.hasMore}):`<div class="global-search-source-empty">לא נמצאו תוצאות ב־${label}.</div>`;
+      const emptyMessage=state.partial?'החיפוש לא הושלם; עדיין לא אותרו התאמות בחלק שנבדק.':`לא נמצאו תוצאות ב־${label}.`;
+      body=hasRows?renderDocumentTable(state.rows,mode,{hasMore:state.hasMore}):`<div class="global-search-source-empty">${emptyMessage}</div>`;
       if(hasRows&&(state.loadingMore||state.hasMore))body+=state.loadingMore?'<div class="document-search-load-more loading"><span class="document-search-spinner">⌕</span>טוען עוד תוצאות…</div>':`<div class="document-search-load-more" data-document-load-more="${esc(mode)}">גלול להמשך התוצאות</div>`;
       if(state.partial)body+='<div class="document-search-partial" role="status">החיפוש הושלם באופן חלקי. ייתכן שקיימות תוצאות נוספות; אפשר לצמצם לתיקייה או לנסות שוב.</div>';
       if(state.error)body+=documentErrorHtml(state.error,`more:${mode}`);
