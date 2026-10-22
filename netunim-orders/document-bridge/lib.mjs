@@ -4,7 +4,7 @@ import {decodeEverythingCount,decodeEverythingRows} from './everything-result-co
 
 export const BRIDGE_PORT=8766;
 export const BRIDGE_SERVICE='netunim-orders-document-bridge';
-export const BRIDGE_VERSION=40;
+export const BRIDGE_VERSION=41;
 export const BRIDGE_NODE_VERSION='24.21.0';
 export const BRIDGE_NODE_WIN_X64_SHA256='ba4e6d110e8c1592a1ecd390f6b05f3da124b13871a5be62b341a07a853c6c32';
 export const MAX_QUERY_CHARS=240;
@@ -163,7 +163,9 @@ export function buildContentQuery(value,options={}){
   if(search.matchMode==='any'&&terms.length>1)return `${prefix}content:<${terms.map(term=>`"${everythingLiteral(term)}"`).join('|')}> no-background-search:`;
   // Ordered distance is verified by the canonical matcher over returned content.
   // Native PCRE can silently omit valid suffixes after its internal match limit.
-  if(contentQueryRequiresVerification(normalized,search))return `${prefix}content:<${[...new Set(terms)].map(term=>`"${everythingLiteral(term)}"`).join(' ')}> no-background-search:`;
+  // Candidates must be a superset: Everything's whole-words boundaries differ
+  // for underscores/combining marks. Only the canonical verifier decides them.
+  if(contentQueryRequiresVerification(normalized,search))return `content:<${[...new Set(terms)].map(term=>`"${everythingLiteral(term)}"`).join(' ')}> no-background-search:`;
   return `${prefix}content:"${everythingLiteral(normalized)}" no-background-search:`;
 }
 

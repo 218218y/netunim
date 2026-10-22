@@ -18,7 +18,7 @@ work.mkdir();files=work/'fixtures';files.mkdir()
 for directory in ('AppData','LocalAppData','Temp'):(work/directory).mkdir()
 shutil.copyfile(args.everything_exe.resolve(strict=True),work/'Everything.exe')
 shutil.copyfile(args.es_exe.resolve(strict=True),work/'es.exe')
-for name,text in {'late-valid.txt':'אב '*10000+'אין','short-valid.txt':'אב '*5+'אין','repeated.txt':'אב '*10000,'wrong-order.txt':'אין '+'אב '*1000,'gap-overflow.txt':'אב '*1000+'אחר '*300+'אין','positive.txt':'אב אחד סוף','adjacent.txt':'אב סוף','phone.txt':'050-1234567'}.items():
+for name,text in {'whole-combining.txt':'alpha beta\u0301','whole-joined.txt':'alpha betamax','whole-punctuation.txt':'alpha beta!','whole-underscore.txt':'alpha beta_','late-valid.txt':'אב '*10000+'אין','short-valid.txt':'אב '*5+'אין','repeated.txt':'אב '*10000,'wrong-order.txt':'אין '+'אב '*1000,'gap-overflow.txt':'אב '*1000+'אחר '*300+'אין','positive.txt':'אב אחד סוף','adjacent.txt':'אב סוף','phone.txt':'050-1234567'}.items():
  (files/name).write_text(text,encoding='utf-8-sig')
 instance='NETUNIM_VERIFY_'+uuid.uuid4().hex
 settings={'app_data':'0','run_as_admin':'0','run_in_background':'1','show_tray_icon':'0','service':'0',
@@ -60,6 +60,7 @@ try:
  planned.append(('read-content', 'late-valid.txt'))
  legacy='regex:content:"'+r'(?:\s+\S+){0,50}\s+'.join(['אב']*5+['אין'])+'" no-background-search:'
  planned.insert(0,('legacy-six',legacy))
+ planned.insert(1,('legacy-whole-candidates','whole-words:content:<"alpha" "beta"> no-background-search:'))
  for name,search in planned:
   for sample in range(1):
    before=cpu();start=time.monotonic()
@@ -68,13 +69,14 @@ try:
    elapsed=(time.monotonic()-start)*1000;after=cpu();time.sleep(.2);settled=cpu()
    report['measurements'].append({'case':name,'sample':sample,'wallMs':elapsed,'cpuSeconds':after-before,'cpuAfterClientExitSeconds':settled-after,'exitCode':rc,'results':([Path(line).name for line in out.splitlines() if line.strip()] if name!='read-content' else [{'bytes':len(out),'hasSuffix':'אין' in out}]),'stderr':error})
    output.write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
- for mode in ('search','abort','timeout'):
+ for mode in ('search','whole-boundaries','abort','timeout'):
   before=cpu();start=time.monotonic()
   result=subprocess.run(['node',str(ROOT/'tools/probe-everything-isolated.mjs'),instance,str(work/'es.exe'),str(work),mode,legacy],cwd=ROOT,env=env,capture_output=True,timeout=8,creationflags=subprocess.CREATE_NO_WINDOW)
   after=cpu();time.sleep(.8);settled=cpu()
   decoded=json.loads(result.stdout.decode('utf8'))
   if result.returncode:raise RuntimeError('actual Bridge probe failed: '+result.stderr.decode('utf8'))
   if mode=='search' and (decoded.get('names')!=['late-valid.txt','short-valid.txt'] or decoded.get('partial') is not False):raise RuntimeError('actual Bridge failed canonical proximity parity')
+  if mode=='whole-boundaries' and (decoded.get('names')!=['whole-punctuation.txt','whole-underscore.txt'] or decoded.get('partial') is not False):raise RuntimeError('actual Bridge failed canonical whole-word parity')
   report['measurements'].append({'case':'actual-bridge-'+mode,'wallMs':(time.monotonic()-start)*1000-800,'cpuSeconds':after-before,'cpuAfterClientExitSeconds':settled-after,'exitCode':result.returncode,'output':decoded,'stderr':result.stderr.decode('utf8')})
  print(json.dumps(report,ensure_ascii=False,indent=2))
 finally:

@@ -26,7 +26,8 @@ output = args.output or ROOT / '.work/native-upgrade-evidence.json'
 SOURCE = ROOT / 'netunim-orders/document-bridge'
 PREFIX = 'netunim-orders/document-bridge/'
 HISTORY = [('38', 'cbe8f80a0fecf7644ff35a4e08cdff0ddca037a5'),
-           ('39', '530ea4832d094d84b5ffd3e9718e355fbf5f2cef')]
+           ('39', '530ea4832d094d84b5ffd3e9718e355fbf5f2cef'),
+           ('40', 'b062c1cccbc77ade2b2dc2cca5cb053621bf66db')]
 report = {'kind': 'isolated-native-listener-upgrade', 'stages': [],
           'installerExecuted': False, 'providersUsed': False}
 children = []

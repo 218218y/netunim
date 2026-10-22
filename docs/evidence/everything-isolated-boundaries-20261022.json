@@ -1,0 +1,170 @@
+{
+  "instance": "NETUNIM_VERIFY_e089054891ac4e7fbc6fbb3ce7c9ecfa",
+  "source": {
+    "revision": "b062c1cccbc77ade2b2dc2cca5cb053621bf66db",
+    "dirty": true,
+    "coordinatorSha256": "3907edf4b9c880978ed9ccf7d1e359212344c9dbd4f646e0c7deae9114a301e5"
+  },
+  "binaries": {
+    "Everything.exe": "4c994da9c376ce264fb4f0b8a46d76abad3ce160d0cb8aa85883867ebc725fd4",
+    "es.exe": "f7378761cf6e01f51c4123a485e628d70e3fea147d341f473ce2820844e5cee5"
+  },
+  "measurements": [
+    {
+      "case": "legacy-six",
+      "sample": 0,
+      "wallMs": 2977.361400000518,
+      "cpuSeconds": 2.5,
+      "cpuAfterClientExitSeconds": 0.0,
+      "exitCode": 0,
+      "results": [
+        "short-valid.txt"
+      ],
+      "stderr": ""
+    },
+    {
+      "case": "legacy-whole-candidates",
+      "sample": 0,
+      "wallMs": 171.5714999991178,
+      "cpuSeconds": 0.0,
+      "cpuAfterClientExitSeconds": 0.0,
+      "exitCode": 0,
+      "results": [
+        "whole-combining.txt",
+        "whole-punctuation.txt"
+      ],
+      "stderr": ""
+    },
+    {
+      "case": "missing-six",
+      "sample": 0,
+      "wallMs": 138.0602999997791,
+      "cpuSeconds": 0.015625,
+      "cpuAfterClientExitSeconds": 0.0,
+      "exitCode": 0,
+      "results": [
+        "gap-overflow.txt",
+        "late-valid.txt",
+        "short-valid.txt",
+        "wrong-order.txt"
+      ],
+      "stderr": ""
+    },
+    {
+      "case": "all-terms",
+      "sample": 0,
+      "wallMs": 128.55190000118455,
+      "cpuSeconds": 0.015625,
+      "cpuAfterClientExitSeconds": 0.0,
+      "exitCode": 0,
+      "results": [
+        "gap-overflow.txt",
+        "late-valid.txt",
+        "short-valid.txt",
+        "wrong-order.txt"
+      ],
+      "stderr": ""
+    },
+    {
+      "case": "ordered-valid",
+      "sample": 0,
+      "wallMs": 199.26590000250144,
+      "cpuSeconds": 0.0,
+      "cpuAfterClientExitSeconds": 0.0,
+      "exitCode": 0,
+      "results": [
+        "adjacent.txt",
+        "positive.txt"
+      ],
+      "stderr": ""
+    },
+    {
+      "case": "adjacent-valid",
+      "sample": 0,
+      "wallMs": 161.24000000127126,
+      "cpuSeconds": 0.0,
+      "cpuAfterClientExitSeconds": 0.0,
+      "exitCode": 0,
+      "results": [
+        "adjacent.txt",
+        "positive.txt"
+      ],
+      "stderr": ""
+    },
+    {
+      "case": "read-content",
+      "sample": 0,
+      "wallMs": 199.11590000265278,
+      "cpuSeconds": 0.0,
+      "cpuAfterClientExitSeconds": 0.0,
+      "exitCode": 0,
+      "results": [
+        {
+          "bytes": 30166,
+          "hasSuffix": true
+        }
+      ],
+      "stderr": ""
+    },
+    {
+      "case": "actual-bridge-search",
+      "wallMs": 516.0802999991574,
+      "cpuSeconds": 0.015625,
+      "cpuAfterClientExitSeconds": 0.0,
+      "exitCode": 0,
+      "output": {
+        "names": [
+          "late-valid.txt",
+          "short-valid.txt"
+        ],
+        "elapsedMs": 262,
+        "partial": false
+      },
+      "stderr": ""
+    },
+    {
+      "case": "actual-bridge-whole-boundaries",
+      "wallMs": 424.57520000170916,
+      "cpuSeconds": 0.0,
+      "cpuAfterClientExitSeconds": 0.0,
+      "exitCode": 0,
+      "output": {
+        "names": [
+          "whole-punctuation.txt",
+          "whole-underscore.txt"
+        ],
+        "elapsedMs": 197,
+        "partial": false
+      },
+      "stderr": ""
+    },
+    {
+      "case": "actual-bridge-abort",
+      "wallMs": 276.0383999986516,
+      "cpuSeconds": 0.0,
+      "cpuAfterClientExitSeconds": 0.0,
+      "exitCode": 0,
+      "output": {
+        "name": "AbortError",
+        "code": "ABORT_ERR"
+      },
+      "stderr": ""
+    },
+    {
+      "case": "actual-bridge-timeout",
+      "wallMs": 288.2732999998552,
+      "cpuSeconds": 0.0,
+      "cpuAfterClientExitSeconds": 0.0,
+      "exitCode": 0,
+      "output": {
+        "name": "Error",
+        "code": "ES_TIMEOUT"
+      },
+      "stderr": ""
+    }
+  ],
+  "isolatedIndexVerified": true,
+  "everythingVersion": "1.5.0.1424",
+  "files": 12,
+  "ownedProcessExited": true
+}

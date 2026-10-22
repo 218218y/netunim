@@ -68,7 +68,7 @@ test('content search supports Everything 1.5 phrase, AND, OR and ordered word-di
   assert.equal(buildContentQuery('מזר',{wordMatch:'whole'}),'whole-words:content:"מזר" no-background-search:');
   assert.equal(buildContentQuery('מה שלומך',{matchMode:'all',wordMatch:'whole'}),'whole-words:content:<"מה" "שלומך"> no-background-search:');
   assert.equal(buildContentQuery('מה שלומך',{matchMode:'any',wordMatch:'whole'}),'whole-words:content:<"מה"|"שלומך"> no-background-search:');
-  assert.equal(buildContentQuery('מה שלומך',{matchMode:'proximity',proximityWords:2,wordMatch:'whole'}),'whole-words:content:<"מה" "שלומך"> no-background-search:');
+  assert.equal(buildContentQuery('מה שלומך',{matchMode:'proximity',proximityWords:2,wordMatch:'whole'}),'content:<"מה" "שלומך"> no-background-search:');
   assert.equal(buildContentQuery('a'),'');
   assert.equal(buildEverythingQuery('  יבמות   ext:pdf  '),'יבמות ext:pdf');
   assert.equal(buildEverythingQuery('a'),'a');
