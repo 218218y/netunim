@@ -13,7 +13,7 @@ import tempfile
 import time
 import xml.etree.ElementTree as ET
 
-from verification_plan import CORE_SUITES, RUNTIME_SUITES, GROUPS, ci_groups, ci_matrix, validate_plan
+from verification_plan import CORE_SUITES, RUNTIME_SUITES, REPAIR_SUITES, GROUPS, ci_groups, ci_matrix, validate_plan
 from local_scheduler import can_start, default_jobs, schedule_order
 from suite_process import SuiteProcess
 
@@ -185,6 +185,7 @@ def main(argv: list[str] | None = None) -> int:
     groups = {**GROUPS, **ci_groups()}
     selection = parser.add_mutually_exclusive_group()
     selection.add_argument("--core-only", action="store_true", help="repair feedback only; browser suites are skipped")
+    selection.add_argument("--repair-only", action="store_true", help="partial unit/contracts feedback without browser or PostgreSQL; never a deployment gate")
     selection.add_argument("--group", choices=groups, help="one partial group or CI shard, never a full deployment gate by itself")
     selection.add_argument("--ci-matrix", action="store_true", help="print the complete GitHub matrix without running tests")
     parser.add_argument("--keep-going", action="store_true", help="run remaining suites after failures and return failure at the end")
@@ -203,9 +204,15 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("NETUNIM_VERIFY_JOBS must be a positive integer")
     if jobs < 1:
         parser.error("--jobs / NETUNIM_VERIFY_JOBS must be a positive integer")
-    suites = groups[args.group] if args.group else CORE_SUITES + ([] if args.core_only else RUNTIME_SUITES)
-    label = args.group or ("core-only" if args.core_only else "full")
-    partial = bool(args.group or args.core_only)
+    if args.group:
+        suites, label = groups[args.group], args.group
+    elif args.repair_only:
+        suites, label = REPAIR_SUITES, "repair-only"
+    elif args.core_only:
+        suites, label = CORE_SUITES, "core-only"
+    else:
+        suites, label = CORE_SUITES + RUNTIME_SUITES, "full"
+    partial = bool(args.group or args.core_only or args.repair_only)
     print(f"NETUNIM VERIFY - {label} ({len(suites)} suites)", flush=True)
     if partial:
         print("PARTIAL verification: this selection alone is not a full deployment gate.", flush=True)

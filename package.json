@@ -21,6 +21,7 @@
     "offline:clean": "python tools/offline_deps.py clean",
     "test:offline": "python tools/offline_deps.py test",
     "test:chat": "python tools/offline_deps.py chat-test",
+    "test:repair": "python tests/run_all.py --repair-only",
     "lint:offline": "python tools/offline_deps.py lint",
     "pdfjs:install": "python tools/pdfjs-runtime.py install && python tools/sync-assets.py && node --test tests/pdfjs_corpus.test.mjs",
     "pdfjs:check": "python tools/pdfjs-runtime.py check && python tools/sync-assets.py --check && node --test tests/pdfjs_corpus.test.mjs",

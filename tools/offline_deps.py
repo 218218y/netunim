@@ -548,17 +548,19 @@ def browser_probe() -> int:
 def chat_test() -> int:
     probe_rc = browser_probe()
     env = offline_env()
-    if probe_rc == 0:
+    missing_postgres = [name for name in ("postgres", "initdb", "pg_ctl", "psql") if not shutil.which(name)]
+    if probe_rc == 0 and not missing_postgres:
         print("OK: browser runtime is usable; running the complete offline verification gate", flush=True)
         return subprocess.run([sys.executable, str(ROOT / "tests" / "run_all.py")], cwd=ROOT, env=env).returncode
-    if probe_rc == 3:
+    if probe_rc == 3 or (probe_rc == 0 and missing_postgres):
+        reason = "browser runtime is unavailable" if probe_rc == 3 else "PostgreSQL tools are missing: " + ", ".join(missing_postgres)
         print(
-            "WARNING: browser runtime is unavailable in this host; running core repair verification only. "
+            f"WARNING: {reason}; running PARTIAL unit/contracts repair verification without browser or PostgreSQL. "
             "Use test:offline for the strict full gate.",
             flush=True,
         )
         return subprocess.run(
-            [sys.executable, str(ROOT / "tests" / "run_all.py"), "--core-only"],
+            [sys.executable, str(ROOT / "tests" / "run_all.py"), "--repair-only"],
             cwd=ROOT,
             env=env,
         ).returncode
@@ -629,7 +631,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("doctor", help="verify installed offline tools and real localhost browser capability")
     sub.add_parser("install", help="install the vendored Linux dependencies without network access")
     sub.add_parser("test", help="install as needed and run the complete verification gate offline")
-    sub.add_parser("chat-test", help="run full verification when browser works, otherwise explicit core-only repair checks")
+    sub.add_parser("chat-test", help="full verification when browser/PostgreSQL are available; otherwise explicit partial repair checks")
     sub.add_parser("lint", help="install as needed and run ESLint offline")
     sub.add_parser("update", help="update reviewed dependency ranges, redownload, then delete superseded vendor files")
     sub.add_parser("clean", help="remove the current generated cache entry and legacy .offline state")

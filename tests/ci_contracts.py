@@ -13,7 +13,7 @@ import time
 import unittest
 from unittest.mock import patch
 
-from verification_plan import CORE_SUITES, RUNTIME_SUITES, GROUPS, CI_SHARDS, CI_BUNDLES, ci_groups, ci_matrix, validate_plan
+from verification_plan import CORE_SUITES, RUNTIME_SUITES, REPAIR_SUITES, GROUPS, CI_SHARDS, CI_BUNDLES, ci_groups, ci_matrix, validate_plan
 import run_all
 import browser_harness
 import node_models
@@ -23,6 +23,7 @@ from ci_timing import balanced_partition, estimates, timing_weights
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 import github_verification as gate
+import offline_deps
 from update_ci_timings import collect_timings
 
 
@@ -223,6 +224,52 @@ with patch.object(h, 'HOST_STATE_ROOT', root / 'host'), \\
         # Nested audits remain exercised by their original parent suites.
         self.assertIn("runtime_morning.py", selected)
         self.assertIn("supabase_candidate.py", selected)
+
+    def test_repair_selection_excludes_external_services_but_does_not_change_the_full_inventory(self):
+        self.assertEqual(REPAIR_SUITES, GROUPS['contracts'] + GROUPS['models'])
+        self.assertTrue(set(REPAIR_SUITES).isdisjoint(GROUPS['database'] + RUNTIME_SUITES))
+        self.assertEqual(set(REPAIR_SUITES + GROUPS['database'] + RUNTIME_SUITES), set(CORE_SUITES + RUNTIME_SUITES))
+        self.assertNotIn('repair-only', ci_groups())
+
+    def test_repair_dispatch_is_partial_and_core_and_full_prerequisites_remain_strict(self):
+        cases = [(['--repair-only'], REPAIR_SUITES, False, False, 'repair-only'),
+                 (['--core-only'], CORE_SUITES, False, True, 'core-only'),
+                 ([], CORE_SUITES + RUNTIME_SUITES, True, True, 'full')]
+        for arguments, selected, browser, postgres, label in cases:
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as directory, \
+                 patch.object(run_all, 'preflight', return_value=0) as preflight, \
+                 patch.object(run_all, 'run_suites', return_value=7) as run, redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(run_all.main([*arguments, '--report-dir', directory]), 7)
+                preflight.assert_called_once_with(require_browser=browser, require_postgres=postgres)
+                self.assertEqual(run.call_args.args[0], selected)
+                self.assertEqual(run.call_args.kwargs['label'], label)
+                self.assertEqual('PARTIAL verification' in output.getvalue(), label != 'full')
+
+    def test_repair_preflight_does_not_probe_database_or_browser_prerequisites(self):
+        with patch.object(run_all.shutil, 'which', side_effect=lambda name: '/node' if name == 'node' else None) as which, \
+             patch.object(run_all.Path, 'is_file', return_value=True), \
+             patch.object(run_all.importlib.util, 'find_spec') as find_spec:
+            self.assertEqual(run_all.preflight(require_browser=False, require_postgres=False), 0)
+            which.assert_called_once_with('node')
+            find_spec.assert_not_called()
+
+    def test_chat_repair_fallback_is_explicit_and_never_hides_a_probe_or_suite_failure(self):
+        cases = [(0, True, False), (0, False, True), (3, True, True), (3, False, True), (2, True, None), (4, False, None)]
+        for probe_rc, postgres, repair in cases:
+            with self.subTest(probe=probe_rc, postgres=postgres), \
+                 patch.object(offline_deps, 'browser_probe', return_value=probe_rc), \
+                 patch.object(offline_deps, 'offline_env', return_value={}), \
+                 patch.object(offline_deps.shutil, 'which', return_value='/postgres' if postgres else None), \
+                 patch.object(offline_deps.subprocess, 'run', return_value=subprocess.CompletedProcess([], 9)) as run, \
+                 redirect_stdout(io.StringIO()) as output:
+                result = offline_deps.chat_test()
+                if repair is None:
+                    self.assertEqual(result, probe_rc)
+                    run.assert_not_called()
+                else:
+                    self.assertEqual(result, 9)
+                    self.assertEqual('--repair-only' in run.call_args.args[0], repair)
+                    self.assertEqual('PARTIAL' in output.getvalue(), repair)
 
     def test_new_suite_is_included_without_a_second_shard_inventory(self):
         added = "new-runtime-suite.py"
