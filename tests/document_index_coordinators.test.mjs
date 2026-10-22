@@ -60,6 +60,22 @@ function contentSearchFixture(rawRows){
 }
 const candidate=(name,content)=>({name,path:'C:\\synthetic',content});
 
+test('transport retries only exit 8 once; abort, malformed JSON and ordinary failures cannot publish',async()=>{
+  for(const failure of [{exitCode:8},{exitCode:2},{name:'AbortError',code:'ABORT_ERR'},'invalid-json']){
+    let attempts=0,invalidations=0,published=0;
+    const owner=createEverythingSearchCoordinator({
+      configuration:{load:async()=>({searchTimeoutMs:100})},
+      session:{probe:async()=>({esPath:'synthetic',instance:'A'}),invalidate:()=>{invalidations++}},
+      process:{run:async()=>{attempts++;if(failure==='invalid-json')return {stdout:'{"results":null}'};throw failure}},
+      pdf:{prepare:async()=>({partial:false}),search:()=>[]},
+      publication:{prune:()=>{},publish:()=>{published++}},audit:{write:async()=>{}}
+    });
+    await assert.rejects(owner.searchDocuments('form',1));
+    assert.equal(attempts,failure.exitCode===8?2:1);assert.equal(invalidations,failure.exitCode===8?1:0);assert.equal(published,0);
+    await owner.runtime.dispose();
+  }
+});
+
 test('native proximity candidates are verified before publication, with repeated late suffixes and no content disclosure',async()=>{
   const f=contentSearchFixture([
     candidate('late-valid.txt','אב '.repeat(10000)+'אין'),
