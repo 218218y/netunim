@@ -73,14 +73,15 @@ test('small exhaustive cases retain the former regex proximity ranges', () => {
 });
 
 test('classic worker and installed Bridge derive exactly from the dependency-free canonical matcher', () => {
-  const canonical=fs.readFileSync(new URL('../shared/document-text-search.js',import.meta.url),'utf8');
+  const read=path=>fs.readFileSync(new URL(path,import.meta.url),'utf8').replace(/\r\n?/g,'\n');
+  const canonical=read('../shared/document-text-search.js');
   const program=parse(canonical,{ecmaVersion:'latest',sourceType:'module'});
   assert.ok(program.body.every(node=>!node.type.startsWith('Import')&&(!node.type.startsWith('Export')||node.type==='ExportNamedDeclaration'&&node.declaration?.type==='FunctionDeclaration')));
   const classic=canonical.replace(/^export (?=function )/gm,'');
-  const installed=fs.readFileSync(new URL('../netunim-orders/document-bridge/document-text-search.mjs',import.meta.url),'utf8');
+  const installed=read('../netunim-orders/document-bridge/document-text-search.mjs');
   assert.equal(installed,canonical);
   for(const app of ['orders','kupa']){
-    const code=fs.readFileSync(new URL(`../netunim-${app}/site/assets/js/shared/document-text-search-worker.js`,import.meta.url),'utf8');
+    const code=read(`../netunim-${app}/site/assets/js/shared/document-text-search-worker.js`);
     assert.equal(code,classic);
     const context=vm.createContext({});vm.runInContext(code,context,{timeout:1000});
     const result=context.createDocumentTextMatcher('אב אין',{matchMode:'all'}).find('אב '.repeat(6000));

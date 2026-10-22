@@ -304,9 +304,10 @@ def plan_sync(snapshot: WorktreeSnapshot | IndexSnapshot) -> list[Change]:
             if target not in snapshot.files or snapshot.read(target) != expected:
                 changes.append(Change(target, expected, f'{label}: synchronized shared source: {PurePosixPath(source_path).name}'))
         if search_source in snapshot.files:
-            expected = re.sub(rb'^export (?=function )', b'', snapshot.read(search_source), flags=re.MULTILINE)
+            canonical = asset_hash_bytes(search_source, snapshot.read(search_source))
+            expected = re.sub(rb'^export (?=function )', b'', canonical, flags=re.MULTILINE)
             target = f'{target_dir}/{worker_name}'
-            if target not in snapshot.files or snapshot.read(target) != expected:
+            if target not in snapshot.files or asset_hash_bytes(target, snapshot.read(target)) != expected:
                 changes.append(Change(target, expected, f'{label}: generated classic text-search worker module'))
 
     tax_sources = sorted(path for path in snapshot.files if PurePosixPath(path).is_relative_to(TAX_SHARED_ROOT) and PurePosixPath(path).suffix in {'.js', '.css'})
