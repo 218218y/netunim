@@ -3,7 +3,7 @@ import {esc} from '../core/values.js';
 import {createRuntimeResources} from './runtime-resources.js';
 import {createDocumentResultMenu,deleteLocalDocumentResult} from '../ui/document-result-menu.js';
 import {buildPdfPreviewSrc} from '../domains/documents/pdf-text-fragments.js';
-import {documentResultsTableHtml,previewDetailsHtml,previewMatchBarPresentation,previewTextLabel,safeCloudViewUrl} from '../ui/document-search-view.js';
+import {documentResultsTableHtml,documentSearchEmptyHtml,documentSearchPartialHtml,previewDetailsHtml,previewMatchBarPresentation,previewTextLabel,safeCloudViewUrl} from '../ui/document-search-view.js';
 import {createDocumentSearchFolderScope} from '../ui/document-search-folder-scope.js';
 import {createDocumentFileTypeFilter} from '../ui/document-search-file-type.js';
 import {createDocumentIndexRefresh} from '../ui/document-index-refresh.js';
@@ -192,10 +192,9 @@ export function createGlobalDocumentSearch({documentBridge=null,siteSearch,siteR
     else if(state.status==='unavailable'||state.status==='error')body=documentErrorHtml(state.error||{message:'רכיב החיפוש המקומי אינו זמין.'},`search:${mode}`);
     else if(state.status==='short')body=documentIntro(mode);
     else if(state.status==='done'){
-      const emptyMessage=state.partial?'החיפוש לא הושלם; עדיין לא אותרו התאמות בחלק שנבדק.':`לא נמצאו תוצאות ב־${label}.`;
-      body=hasRows?renderDocumentTable(state.rows,mode,{hasMore:state.hasMore}):`<div class="global-search-source-empty">${emptyMessage}</div>`;
+      body=hasRows?renderDocumentTable(state.rows,mode,{hasMore:state.hasMore}):documentSearchEmptyHtml(label,state.partial);
       if(hasRows&&(state.loadingMore||state.hasMore))body+=state.loadingMore?'<div class="document-search-load-more loading"><span class="document-search-spinner">⌕</span>טוען עוד תוצאות…</div>':`<div class="document-search-load-more" data-document-load-more="${esc(mode)}">גלול להמשך התוצאות</div>`;
-      if(state.partial)body+='<div class="document-search-partial" role="status">החיפוש הושלם באופן חלקי. ייתכן שקיימות תוצאות נוספות; אפשר לצמצם לתיקייה או לנסות שוב.</div>';
+      body+=documentSearchPartialHtml(state.partial);
       if(state.error)body+=documentErrorHtml(state.error,`more:${mode}`);
     }else body=raw?'<div class="global-search-source-empty">החיפוש המקומי עדיין לא הופעל.</div>':documentIntro(mode);
     const header=hasRows?'':sourceHeader(label,count,{loading:state.status==='loading'}),notice=providerNoticeHtml();
