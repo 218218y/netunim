@@ -58,10 +58,17 @@ restore and live-provider release exercises therefore remain explicitly unverifi
 - A clearly partial browser/PostgreSQL-free repair selection is available as
   `npm run test:repair`; `test:chat` selects it for known missing prerequisites.
   Full CI/deployment and the existing PostgreSQL-bearing core selection stay strict.
-- Next: a focused Bridge origin/auth threat model and measured performance review.
+- PDF native-coordinate proximity now retains later viable repeated terms and
+  computes suffix reachability without repeated candidate/gap scans.
+- The [Bridge threat model](BRIDGE_THREAT_MODEL_20261022.md) records isolated HTTP
+  evidence and the explicit pending default-origin rollout decision. Bank token
+  admission is verified; reflected CORS remains a documented hardening opportunity.
+- A lightweight synthetic search benchmark records raw samples, median/p95 and
+  exact source identity; representative physical UI/storage measurements remain open.
 - Physical-machine, installed-Bridge and live-provider interruption/restore
   acceptance still requires an isolated environment; production data must not
   be used to manufacture evidence for these outstanding operational checks.
+  Use the concrete [physical acceptance protocol](OPERATIONAL_ACCEPTANCE_20261022.md).
 
 ### Final quality continuation after PR #244, 2026-10-18
 

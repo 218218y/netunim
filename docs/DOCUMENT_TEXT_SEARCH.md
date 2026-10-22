@@ -27,7 +27,12 @@ existing conservative signal (the returned count reached the limit), rather
 than claiming an exact undisplayed count. Spreadsheet `all` remains workbook-wide:
 presence can span cells or sheets, and scanning continues after highlights fill.
 PDF.js keeps its own normalized page/item matching and uses the shared matcher
-for form-value text; existing native-normalization regressions remain required.
+for form-value text. A further reproduced failure selected the earliest repeated
+intermediate word even when only a later occurrence could complete the query.
+PDF proximity now computes reachable suffixes in native coordinates, using word
+prefix counts and binary searches instead of repeated candidate/gap scans.
+It preserves zero-width visual item boundaries and agrees with canonical greedy
+ranges on exhaustive whitespace fixtures. Existing normalization tests remain required.
 
 The Everything query string is still its external search language, executed by
 the existing process owner with its deadline. This change eliminates backtracking
@@ -39,3 +44,9 @@ Local evidence: both regression failures were observed before replacement;
 replacement. Exhaustive small inputs compare exact ranges with the former regex.
 Focused Bridge, DOM, spreadsheet, PDF, installer, ESLint and strict-contract checks
 pass. Full browser/database/recovery verification is required in branch CI.
+
+`node tools/benchmark-document-search.mjs` emits five raw samples plus median/p95
+for 1,000, 10,000 and 100,000 synthetic tokens. Its source hash, revision, dirty
+state and host metadata keep observations attributable. It measures matcher compute
+only, including missing and late terms under a one-highlight cap; no claim about UI,
+disk, cloud, installed Everything or weak physical machines follows from the numbers.

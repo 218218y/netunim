@@ -72,16 +72,52 @@ function pdfWholeWordMatches(matches,pageContent){
   const source=String(pageContent??'');
   return (Array.isArray(matches)?matches:[]).filter(match=>{const start=Math.max(0,Number(match?.index)||0),length=Math.max(0,Number(match?.length)||0);return length>0&&isWholeWordTextRange(source,start,start+length)});
 }
-function pdfProximityGapMatches(pageContent,from,to,maxWords){
-  if(to<from)return false;
-  const gap=String(pageContent??'').slice(from,to),limit=Math.max(0,Math.min(50,Math.trunc(Number(maxWords)||0)));
-  // PDFFindController concatenates adjacent PDF text items without inserting a
-  // separator. Everything/the Bridge index the same visual boundary as whitespace.
-  // Treat a zero-length gap as zero intervening words so proximity navigation does
-  // not lose a real match merely because the PDF split the words into text items.
-  if(!gap)return true;
-  if(!/^\s/u.test(gap)||!/\s$/u.test(gap))return false;
-  return gap.trim().split(/\s+/u).filter(Boolean).length<=limit;
+function orderedPdfProximityMatches(byTerm,source,maxWords){
+  // PDF.js owns normalization and coordinates. Count whitespace-delimited word
+  // starts once, rather than slicing/rescanning gaps for every candidate pair.
+  const wordStarts=new Uint32Array(source.length+1);
+  let previousSpace=true;
+  for(let i=0;i<source.length;i++){
+    const space=/\s/u.test(source[i]);
+    wordStarts[i+1]=wordStarts[i]+(!space&&previousSpace?1:0);
+    previousSpace=space;
+  }
+  let suffix=byTerm[byTerm.length-1].map(row=>({...row,chainEnd:row.index+row.length}));
+  for(let stage=byTerm.length-2;stage>=0;stage--){
+    const touching=new Map(),spaced=[];
+    for(const row of suffix){
+      if(!touching.has(row.index))touching.set(row.index,row);
+      if(row.index>0&&/\s/u.test(source[row.index-1]))spaced.push(row);
+    }
+    const reachable=[];
+    for(const row of byTerm[stage]){
+      const end=row.index+row.length;
+      // Adjacent visual PDF text items can have no separator in pageContent.
+      // Preserve that zero-width boundary as zero intervening words.
+      let next=touching.get(end);
+      if(/\s/u.test(source[end]||'')){
+        const ceiling=wordStarts[end]+maxWords;
+        let low=0,high=spaced.length;
+        while(low<high){
+          const mid=(low+high)>>>1;
+          if(wordStarts[spaced[mid].index]<=ceiling)low=mid+1;else high=mid;
+        }
+        const candidate=spaced[low-1];
+        if(candidate&&candidate.index>end)next=candidate;
+      }
+      if(next)reachable.push({...row,chainEnd:next.chainEnd});
+    }
+    if(!reachable.length)return [];
+    suffix=reachable;
+  }
+  const matches=[];
+  let consumedUntil=-1;
+  for(const row of suffix){
+    if(row.index<consumedUntil)continue;
+    matches.push({index:row.index,length:row.chainEnd-row.index});
+    consumedUntil=row.chainEnd;
+  }
+  return matches;
 }
 function pdfLogicalPhraseMatches(nativeMatch,query,pageContent,pageIndex){
   if(typeof query!=='string')return [];
@@ -114,21 +150,12 @@ export function matchPdfTextWithNativeNormalization(nativeMatch,query,pageConten
   }
   const terms=contentSearchTerms(Array.isArray(query)?query.join(' '):query);
   if(terms.length<2){const matches=nativeMatch(query,source,pageIndex);return search.wordMatch==='whole'?pdfWholeWordMatches(matches,source):(Array.isArray(matches)?matches:[])}
-  const byTerm=terms.map(term=>{const matches=nativeMatch(term,source,pageIndex);return search.wordMatch==='whole'?pdfWholeWordMatches(matches,source):(Array.isArray(matches)?matches:[])});
+  const byTerm=terms.map(term=>{
+    const matches=mergePdfMatches(nativeMatch(term,source,pageIndex));
+    return search.wordMatch==='whole'?pdfWholeWordMatches(matches,source):matches;
+  });
   if(byTerm.some(matches=>!matches.length))return [];
-  const rows=[];let consumedUntil=-1;
-  for(const first of byTerm[0]){
-    const firstStart=Math.max(0,Number(first?.index)||0),firstLength=Math.max(0,Number(first?.length)||0),firstEnd=firstStart+firstLength;
-    if(!firstLength||firstStart<consumedUntil)continue;
-    let previousEnd=firstEnd,lastEnd=firstEnd,valid=true;
-    for(let termIndex=1;termIndex<byTerm.length;termIndex+=1){
-      const next=byTerm[termIndex].find(match=>{const start=Math.max(0,Number(match?.index)||0),length=Math.max(0,Number(match?.length)||0);return length>0&&start>=previousEnd&&pdfProximityGapMatches(source,previousEnd,start,search.proximityWords)});
-      if(!next){valid=false;break}
-      const nextStart=Math.max(0,Number(next.index)||0),nextLength=Math.max(0,Number(next.length)||0);previousEnd=nextStart+nextLength;lastEnd=previousEnd;
-    }
-    if(valid){rows.push({index:firstStart,length:lastEnd-firstStart});consumedUntil=lastEnd}
-  }
-  return rows;
+  return orderedPdfProximityMatches(byTerm,source,search.proximityWords);
 }
 
 export function buildPdfFindRequest(query,{type='',findPrevious=false,entireWord=false}={}){

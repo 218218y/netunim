@@ -4,12 +4,48 @@ import fs from 'node:fs';
 import {parse} from 'acorn';
 import {buildPdfFindRequest,copyablePdfTextFieldModel,createPdfSearchViewer,findPdfFormFieldMatches,joinPdfTextSelectionSegments,matchPdfTextWithNativeNormalization,pdfAnnotationAppearanceMetrics,pdfFieldKey,PdfJsFindControllerAdapter,PDF_SEARCH_RUNTIME} from '../netunim-orders/site/assets/js/domains/documents/pdf-search-viewer.js';
 import {collectPdfFormFields} from '../netunim-orders/document-bridge/pdf_form_index.mjs';
+import {contentMatchRanges} from '../netunim-orders/document-bridge/lib.mjs';
+import {spawnSync} from 'node:child_process';
 
 class FakeEventBus{
   constructor(){this.listeners=new Map();this.dispatched=[]}
   on(name,handler){const list=this.listeners.get(name)||[];list.push(handler);this.listeners.set(name,list)}
   dispatch(name,payload){this.dispatched.push({name,payload});for(const handler of this.listeners.get(name)||[])handler(payload)}
 }
+
+test('PDF proximity retains a later repeated term when the first candidate has no valid suffix',()=>{
+  const text='אב גד גד X סוף';
+  const nativeMatch=(term,source)=>Array.from(source.matchAll(new RegExp(term,'gu')),row=>({index:row.index,length:row[0].length}));
+  const options={matchMode:'proximity',proximityWords:1};
+  const expected=contentMatchRanges(text,'אב גד סוף',options).ranges;
+  assert.deepEqual(expected,[{index:0,length:text.length}]);
+  assert.deepEqual(matchPdfTextWithNativeNormalization(nativeMatch,'אב גד סוף',text,0,options),expected);
+});
+
+test('PDF native-coordinate proximity agrees with canonical ranges on exhaustive small whitespace inputs',()=>{
+  const nativeMatch=(term,source)=>Array.from(source.matchAll(new RegExp(term,'gu')),row=>({index:row.index,length:row[0].length}));
+  const words=['אב','גד','Xאב','אב,'];
+  for(let value=0;value<256;value++){
+    let code=value;
+    const text=Array.from({length:4},()=>{const word=words[code%4];code>>=2;return word}).join(' ');
+    for(const query of ['אב גד','אב אב גד','אב אב'])for(const distance of [0,1,2]){
+      const options={matchMode:'proximity',proximityWords:distance};
+      const expected=contentMatchRanges(text,query,options).ranges;
+      assert.deepEqual(matchPdfTextWithNativeNormalization(nativeMatch,query,text,0,options),expected,`${text} / ${query} / ${distance}`);
+    }
+  }
+});
+
+test('PDF proximity with a present but unreachable suffix avoids quadratic candidate rescanning',()=>{
+  const script=`
+    import {matchPdfTextWithNativeNormalization} from './netunim-orders/site/assets/js/domains/documents/pdf-search-viewer.js';
+    const nativeMatch=(term,source)=>Array.from(source.matchAll(new RegExp(term,'gu')),row=>({index:row.index,length:row[0].length}));
+    const result=matchPdfTextWithNativeNormalization(nativeMatch,'אב אב גד סוף','אב '.repeat(10000)+'גד X X סוף',0,{matchMode:'proximity',proximityWords:0});
+    if(result.length)process.exit(1);
+  `;
+  const result=spawnSync(process.execPath,['--input-type=module','-e',script],{cwd:new URL('../',import.meta.url),timeout:3000,encoding:'utf8'});
+  assert.ifError(result.error);assert.equal(result.status,0,result.stderr);
+});
 
 function fakeRuntime(){
   const state={eventBus:null,viewer:null,linkService:null,findController:null,setDocumentCalls:0,scaleValues:[],updateCalls:0,documentOptions:null};
