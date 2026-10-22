@@ -22,6 +22,14 @@ test('all checks every required term after the highlight cap is filled', () => {
   }
 });
 
+test('Bridge matching preserves its existing control-character and 240-character wire-query normalization',()=>{
+  assert.equal(contentSearchMatches('אב סוף','אב\u0000סוף'),true);
+  assert.deepEqual(bridge('אב סוף','אב\u0000סוף').matches,[{start:0,end:6}]);
+  const bounded='אב'.repeat(120),longer=bounded+'סוף';
+  assert.equal(contentSearchMatches(bounded,longer),true);
+  assert.deepEqual(bridge(bounded,longer).matches,[{start:0,end:bounded.length}]);
+});
+
 test('proximity missing suffix completes on thousands of repetitions in a separate bounded process', () => {
   const script = `
     import {contentSearchMatches,contentMatchRanges} from './netunim-orders/document-bridge/lib.mjs';
