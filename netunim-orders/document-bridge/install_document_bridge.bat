@@ -4,7 +4,7 @@ cd /d "%~dp0"
 
 set "APPROOT=%LOCALAPPDATA%\NetunimDocumentBridge"
 set "LEGACYAPP=%APPROOT%\app"
-set "RUNTIMENAME=app-v39-%RANDOM%-%RANDOM%"
+set "RUNTIMENAME=app-v40-%RANDOM%-%RANDOM%"
 set "RUNTIME=%APPROOT%\%RUNTIMENAME%"
 set "STAGING=%APPROOT%\app-staging-%RANDOM%-%RANDOM%"
 set "ACTIVEFILE=%APPROOT%\active-runtime.txt"

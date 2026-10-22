@@ -194,12 +194,13 @@ export function createGlobalDocumentSearch({documentBridge=null,siteSearch,siteR
     else if(state.status==='done'){
       body=hasRows?renderDocumentTable(state.rows,mode,{hasMore:state.hasMore}):`<div class="global-search-source-empty">לא נמצאו תוצאות ב־${label}.</div>`;
       if(hasRows&&(state.loadingMore||state.hasMore))body+=state.loadingMore?'<div class="document-search-load-more loading"><span class="document-search-spinner">⌕</span>טוען עוד תוצאות…</div>':`<div class="document-search-load-more" data-document-load-more="${esc(mode)}">גלול להמשך התוצאות</div>`;
+      if(state.partial)body+='<div class="document-search-partial" role="status">החיפוש הושלם באופן חלקי. ייתכן שקיימות תוצאות נוספות; אפשר לצמצם לתיקייה או לנסות שוב.</div>';
       if(state.error)body+=documentErrorHtml(state.error,`more:${mode}`);
     }else body=raw?'<div class="global-search-source-empty">החיפוש המקומי עדיין לא הופעל.</div>':documentIntro(mode);
     const header=hasRows?'':sourceHeader(label,count,{loading:state.status==='loading'}),notice=providerNoticeHtml();
-    return {total:count,settledEmpty:state.status==='done'&&count===0,html:`<section class="global-search-source-section" data-search-source="${esc(mode)}">${header}<div class="global-search-source-body">${notice}${body}</div></section>`};
+    return {total:count,settledEmpty:state.status==='done'&&count===0&&!state.partial,html:`<section class="global-search-source-section" data-search-source="${esc(mode)}">${header}<div class="global-search-source-body">${notice}${body}</div></section>`};
   }
-  function updateMeta(siteTotal,documentTotal,loading){const {meta}=refs();if(!meta)return;const total=siteTotal+documentTotal;if(loading){meta.textContent=total?`${total} תוצאות עד כה · החיפוש דרך ${documentProviderLabel()} ממשיך…`:`מחפש דרך ${documentProviderLabel()}…`;return}meta.textContent=total?`${total} תוצאות`:'לא נמצאו תוצאות'}
+  function updateMeta(siteTotal,documentTotal,loading){const {meta}=refs();if(!meta)return;const total=siteTotal+documentTotal;if(loading){meta.textContent=total?`${total} תוצאות עד כה · החיפוש דרך ${documentProviderLabel()} ממשיך…`:`מחפש דרך ${documentProviderLabel()}…`;return}const partial=requestedDocumentModes().some(mode=>documentStates[mode].partial);meta.textContent=partial?`${total} תוצאות · חיפוש חלקי`:total?`${total} תוצאות`:'לא נמצאו תוצאות'}
   function recentDocumentLabel(){const type=documentFileType.value();return type==='all'?'פריטים אחרונים':type==='folders'?'תיקיות אחרונות':'קבצים אחרונים'}
   function recentDocumentEmptyLabel(){const type=documentFileType.value();return type==='all'?'לא נמצאו פריטים':type==='folders'?'לא נמצאו תיקיות':'לא נמצאו קבצים'}
   function renderRecentDocuments(){
@@ -263,7 +264,7 @@ export function createGlobalDocumentSearch({documentBridge=null,siteSearch,siteR
     const controller=new AbortController();documentPageAbort=controller;for(const mode of modes)documentStates[mode]={...documentStates[mode],loadingMore:true};renderCombinedResults(raw);
     await Promise.all(modes.map(async mode=>{const before=documentStates[mode],offset=before.rows.length,limit=Math.min(DOCUMENT_RESULT_BATCH,DOCUMENT_RESULT_MAX-offset);try{const data=await documentBridge.search(raw,{mode,contentSearch:mode==='content'?documentContentOptions.value():undefined,scopePath:documentFolderScope.path,fileType:documentFileType.value(),limit,offset,
   sort:documentSorts[mode],signal:controller.signal});if(controller.signal.aborted||sequence!==documentSequence||raw!==activeQuery||!includesDocumentMode(mode))return;const incoming=Array.isArray(data.results)?data.results:[],rows=appendUniqueDocumentRows(before.rows,incoming),madeProgress=rows.length>before.rows.length;documentStates[mode]={mode,status:'done',rows,error:null,
-  elapsedMs:Math.max(before.elapsedMs||0,Number(data.elapsedMs)||0),hasMore:!!data.hasMore&&madeProgress&&rows.length<DOCUMENT_RESULT_MAX,loadingMore:false};renderCombinedResults(raw)}catch(error){if(controller.signal.aborted||sequence!==documentSequence||error?.code==='DOCUMENT_BRIDGE_ABORTED'||raw!==activeQuery)return;documentStates[mode]={...before,loadingMore:false,hasMore:false,error};renderCombinedResults(raw)}}));
+  elapsedMs:Math.max(before.elapsedMs||0,Number(data.elapsedMs)||0),hasMore:!!data.hasMore&&madeProgress&&rows.length<DOCUMENT_RESULT_MAX,loadingMore:false,partial:!!before.partial||!!data.partial};renderCombinedResults(raw)}catch(error){if(controller.signal.aborted||sequence!==documentSequence||error?.code==='DOCUMENT_BRIDGE_ABORTED'||raw!==activeQuery)return;documentStates[mode]={...before,loadingMore:false,hasMore:false,error};renderCombinedResults(raw)}}));
     if(documentPageAbort===controller)documentPageAbort=null;queueMicrotask(()=>maybeLoadMoreDocumentResults());
   }
   function applyDocumentSort(scope,field){

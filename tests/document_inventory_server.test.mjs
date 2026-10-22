@@ -19,7 +19,7 @@ async function fixture(t,{count='0',page='',abortPhase='',handoffAbort=false,abo
   const f=await indexFixture(t);await f.read();const controller=new AbortController(),commands=[];
   const {source,ast}=documentBridgeSource();
   let pruned=0,registered=0;
-  Object.assign(f.context,{...lib,AbortController,createPdfInventoryReconciliation,everythingSession:{invalidate:()=>{}},createEverythingInventorySource,createDocumentSearch,pruneResults:()=>{pruned++},publicResult:()=>{registered++;return {id:'synthetic'}},
+  Object.assign(f.context,{...lib,AbortController,performance,createPdfInventoryReconciliation,everythingSession:{invalidate:()=>{}},createEverythingInventorySource,createDocumentSearch,pruneResults:()=>{pruned++},publicResult:()=>{registered++;return {id:'synthetic'}},
     preparePdfFormIndexForSearch:async()=>({partial:false}),searchPdfFormIndex:()=>[],appendLog:async()=>{},createPdfInventory:ports=>{
     const inventory=createPdfInventory(ports,{pageSize:2});if(!handoffAbort)return inventory;
     return {...inventory,read:async options=>{const rows=await inventory.read(options);queueMicrotask(()=>controller.abort());return rows}};
@@ -33,7 +33,7 @@ async function fixture(t,{count='0',page='',abortPhase='',handoffAbort=false,abo
   });
   if(abortAfterAppend){const append=f.context.appendPdfIndexJournal;f.context.appendPdfIndexJournal=async records=>{await append(records);controller.abort()}}
   const reconciliation=ast.body.find(node=>node.type==='VariableDeclaration'&&node.declarations.some(value=>value.id.name==='pdfReconciliation'));
-  const functions=ast.body.filter(node=>node.type==='FunctionDeclaration'&&['rebuildPdfFormIndexBacklog','runEverythingJson','searchDocuments'].includes(node.id.name));
+  const functions=ast.body.filter(node=>node.type==='FunctionDeclaration'&&['rebuildPdfFormIndexBacklog','runEverythingJson','searchEverything','searchDocuments'].includes(node.id.name));
   const variable=ast.body.find(node=>node.type==='VariableDeclaration'&&node.declarations.some(value=>value.id.name==='pdfInventory'));
   const search=ast.body.find(node=>node.type==='VariableDeclaration'&&node.declarations.some(value=>value.id.name==='documentSearch'));
   const root=vm.runInNewContext([source.slice(variable.start,variable.end),source.slice(reconciliation.start,reconciliation.end),source.slice(search.start,search.end),...functions.map(node=>source.slice(node.start,node.end)),'({rebuild:rebuildPdfFormIndexBacklog,search:searchDocuments})'].join('\n'),f.context);

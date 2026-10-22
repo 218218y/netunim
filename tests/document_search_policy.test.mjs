@@ -1,17 +1,10 @@
-import {documentBridgeSource} from './document_bridge_source.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import {createHash} from 'node:crypto';
-import {declaration,tokens} from './bank_policy_ast_fixture.mjs';
-import {baseline,plain,row,serverFixture} from './document_search_server_fixture.mjs';
+import {plain,row,serverFixture} from './document_search_server_fixture.mjs';
 
-test('search extraction leaves the actual Everything exit-8 reprobe and decoded transport policy immutable',()=>{
- const {source,ast}=documentBridgeSource();
- const node=ast.body.find(node=>node.type==='FunctionDeclaration'&&node.id.name==='runEverythingJson');
- const policy=source.slice(node.start,node.end).replace('everythingSession.invalidate();','cachedProbe=null;');
- assert.equal(createHash('sha256').update(tokens(policy)).digest('hex'),baseline.functions.runEverythingJson.digest);
-});
+// The historical fixture stays immutable. Native transport now intentionally
+// adds content decoding and an overall deadline; its retry behavior is exercised
+// against the actual factory in document_index_coordinators.test.mjs.
 
 test('old and current search preserve 4,608 pagination, filter, order and partial-PDF combinations',async()=>{
  let cases=0;

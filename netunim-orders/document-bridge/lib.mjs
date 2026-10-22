@@ -4,7 +4,7 @@ import {decodeEverythingCount,decodeEverythingRows} from './everything-result-co
 
 export const BRIDGE_PORT=8766;
 export const BRIDGE_SERVICE='netunim-orders-document-bridge';
-export const BRIDGE_VERSION=39;
+export const BRIDGE_VERSION=40;
 export const BRIDGE_NODE_VERSION='24.21.0';
 export const BRIDGE_NODE_WIN_X64_SHA256='ba4e6d110e8c1592a1ecd390f6b05f3da124b13871a5be62b341a07a853c6c32';
 export const MAX_QUERY_CHARS=240;
@@ -128,7 +128,6 @@ function applyDocumentFileType(search,fileType,{wrap=false}={}){
 
 export function normalizeContentSearchOptions(value={}){return normalizeContentSearch(value)}
 function contentTerms(value){return normalizeSearchText(value).split(' ').filter(Boolean).slice(0,16)}
-function everythingWholeWordRegexPart(value){return `(?<![\\p{L}\\p{N}\\p{M}])${regexLiteral(value)}(?![\\p{L}\\p{N}\\p{M}])`}
 
 const PHONE_QUERY_IGNORED=/[\s\u002d\u2010-\u2015\u2212\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
 function phoneSearchDigits(value){
@@ -144,10 +143,9 @@ function phoneSearchRegex(value){
   return variants.length===1?variants[0]:`(?:${variants.join('|')})`;
 }
 
-function buildEverythingProximityRegex(terms,proximityWords,{wholeWords=false}={}){
-  if(terms.length<2)return '';
-  const gap=`(?:\\s+\\S+){0,${proximityWords}}\\s+`,render=wholeWords?everythingWholeWordRegexPart:regexLiteral;
-  return terms.map(render).join(gap);
+export function contentQueryRequiresVerification(value,options={}){
+  const normalized=normalizeSearchText(value);
+  return normalizeContentSearchOptions(options).matchMode==='proximity'&&contentTerms(normalized).length>1&&!phoneSearchDigits(normalized);
 }
 
 export function buildContentQuery(value,options={}){
@@ -163,10 +161,9 @@ export function buildContentQuery(value,options={}){
   const prefix=whole?'whole-words:':'';
   if(search.matchMode==='all'&&terms.length>1)return `${prefix}content:<${terms.map(term=>`"${everythingLiteral(term)}"`).join(' ')}> no-background-search:`;
   if(search.matchMode==='any'&&terms.length>1)return `${prefix}content:<${terms.map(term=>`"${everythingLiteral(term)}"`).join('|')}> no-background-search:`;
-  if(search.matchMode==='proximity'&&terms.length>1){
-    const pattern=buildEverythingProximityRegex(terms,search.proximityWords,{wholeWords:whole});
-    return `regex:content:"${everythingLiteral(pattern)}" no-background-search:`;
-  }
+  // Ordered distance is verified by the canonical matcher over returned content.
+  // Native PCRE can silently omit valid suffixes after its internal match limit.
+  if(contentQueryRequiresVerification(normalized,search))return `${prefix}content:<${[...new Set(terms)].map(term=>`"${everythingLiteral(term)}"`).join(' ')}> no-background-search:`;
   return `${prefix}content:"${everythingLiteral(normalized)}" no-background-search:`;
 }
 
@@ -310,7 +307,9 @@ export function buildEsRawSearchArgs({search,limit=DEFAULT_RESULT_LIMIT,timeoutM
 export function buildEsSearchArgs({query,mode='everything',contentSearch={},fileType='all',limit=DEFAULT_RESULT_LIMIT,offset=0,timeoutMs=15000,instance='',scopePath='',sort={}}){
   const normalizedMode=normalizeDocumentSearchMode(mode),normalizedFileType=normalizeDocumentFileType(fileType),search=buildDocumentQuery(query,normalizedMode,contentSearch,normalizedFileType);
   if(!search)throw new TypeError('Search query must contain at least two characters');
-  return buildEsRawSearchArgs({search,limit,offset,timeoutMs,instance,filesOnly:normalizedMode==='content',scopePath,sort});
+  const args=buildEsRawSearchArgs({search,limit,offset,timeoutMs,instance,filesOnly:normalizedMode==='content',scopePath,sort});
+  if(normalizedMode==='content'&&contentQueryRequiresVerification(query,contentSearch))args.splice(args.indexOf('--'),0,'-add-columns','content');
+  return args;
 }
 
 export function buildEsRecentFilesArgs({limit=RECENT_RESULT_LIMIT,timeoutMs=15000,instance='',scopePath='',fileType='all'}={}){
@@ -366,6 +365,15 @@ function normalizeEsResultRow(row){
     return {name,fullPath,relativePath:parent,modified,size:Number.isFinite(size)?size:null,extension,attributes,isDirectory,rootId:'everything',rootLabel:'Everything'};
 }
 export function parseEsJson(stdout){return decodeEverythingRows(stdout,normalizeEsResultRow)}
+
+export function parseEsContentRows(stdout){
+  return decodeEverythingRows(stdout,raw=>{
+    const row=normalizeEsResultRow(raw),content=Object.entries(raw).find(([key])=>normalizedKey(key)==='content')?.[1];
+    if(!row)return null;
+    if(typeof content!=='string')throw Object.assign(new Error('Everything did not return the content required to verify proximity. Narrow the search or check content extraction.'),{code:'ES_CONTENT_UNAVAILABLE'});
+    return {...row,content};
+  });
+}
 
 export function parseEsContentPreview(stdout){
   const raw=String(stdout??'').replace(/^\uFEFF/,'').trim();

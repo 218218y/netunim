@@ -23,7 +23,7 @@
  * scopePath: string, results: PublicDocumentRow[], elapsedMs: number,
  * partial: false, rootErrors: unknown[]}} RecentPage
  * @typedef {{everything: {
- * search: (request: SearchRead) => Promise<{rows: DocumentRow[], elapsedMs: number}>,
+ * search: (request: SearchRead) => Promise<{rows: DocumentRow[], elapsedMs: number, partial?: boolean}>,
  * recent: (request: RecentPlan & {limit: number}) => Promise<{rows: DocumentRow[], elapsedMs: number}>},
  * pdf: {prepare: () => Promise<{partial: boolean}>,
  * search: (request: SearchPlan, limit: number) => DocumentRow[]},
@@ -181,7 +181,7 @@ export function createDocumentSearch(
       hasMore =
         merged.length > pageOffset + pageRows.length &&
         pageOffset + boundedLimit < maxResults;
-      partial = indexState.partial;
+      partial = indexState.partial || result.partial === true;
     }
     assertActive();
     publication.prune();
