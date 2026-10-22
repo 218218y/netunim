@@ -89,6 +89,26 @@ test('literal partial searches retain native filtering; whole-word boundaries al
   }
 });
 
+test('pending event-loop cancellation after extraction wins before canonical results are published',async()=>{
+  const controller=new AbortController();
+  const f=contentSearchFixture([candidate('large.txt','אב '.repeat(100000))],{beforeReturn:async()=>{setImmediate(()=>controller.abort())}});
+  try{
+    await assert.rejects(f.owner.searchDocuments('אב אב',1,'content',{matchMode:'proximity',proximityWords:50},'',0,{},'word',controller.signal),{name:'AbortError'});
+    assert.equal(f.published.length,0);
+    const recovered=await f.owner.searchDocuments('אב אב',1,'content',{matchMode:'proximity',proximityWords:50},'',0,{},'word');
+    assert.equal(recovered.results.length,1);
+  }finally{await f.owner.runtime.dispose()}
+});
+
+test('time spent decoding and verifying content cannot become an unqualified complete response',async t=>{
+  let clock=0;t.mock.method(performance,'now',()=>clock);
+  const f=contentSearchFixture([candidate('valid.txt','alpha beta')],{beforeReturn:async()=>{clock=6500}});
+  try{
+    const result=await f.owner.searchDocuments('alpha beta',2,'content',{matchMode:'proximity'},'',0,{},'word');
+    assert.equal(result.results.length,1);assert.equal(result.partial,true);
+  }finally{await f.owner.runtime.dispose()}
+});
+
 test('transport retries only exit 8 once; abort, malformed JSON and ordinary failures cannot publish',async()=>{
   for(const failure of [{exitCode:8},{exitCode:2},{name:'AbortError',code:'ABORT_ERR'},'invalid-json']){
     let attempts=0,invalidations=0,published=0;

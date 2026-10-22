@@ -1,6 +1,7 @@
 import {BRIDGE_VERSION,MAX_RESULTS,DEFAULT_RESULT_LIMIT,RECENT_RESULT_LIMIT,buildEsCountArgs,buildEsRawSearchArgs,parseEsCount,parseEsJson,buildEsSearchArgs,buildEsRecentFilesArgs,mergeDocumentResults,compareDocumentRows,normalizeDocumentSearchMode,normalizeContentSearchOptions,normalizeSearchScopePath,normalizeDocumentSort,normalizeDocumentFileType,buildDocumentQuery,documentFileTypeIncludesPdf} from './lib.mjs';
 import {createDocumentSearch} from './search-owner.mjs';
 import {contentQueryRequiresVerification,contentSearchMatches,parseEsContentRows} from './lib.mjs';
+import {setImmediate} from 'node:timers/promises';
 
 // Coordinates scoped Everything retries, diagnostics and the established search
 // owner. It does not own process construction, registry paths or HTTP admission.
@@ -81,13 +82,19 @@ export function createEverythingSearchCoordinator({configuration,session,process
       }
       for(const {content,...row} of result.rows){
         const identity=row.fullPath.toLocaleLowerCase('en-US');
-        if(!verifiedPaths.has(identity)&&contentSearchMatches(content,request.query,request.contentSearch)){
+        const matches=!verifiedPaths.has(identity)&&contentSearchMatches(content,request.query,request.contentSearch);
+        // Give disconnects, sibling reads and health requests an event-loop turn
+        // after each bounded document verification, before granting any result.
+        await setImmediate();
+        request.signal?.throwIfAborted();
+        if(matches){
           verifiedPaths.add(identity);rows.push(row);
         }
+        if(performance.now()>=deadline){partial=true;break}
         if(rows.length>=wanted)break;
       }
       candidateOffset+=result.rows.length;
-      if(result.rows.length<limit)break;
+      if(partial||result.rows.length<limit)break;
     }
     return {rows:rows.slice(request.offset,wanted),elapsedMs:Math.round(performance.now()-started),partial};
   }

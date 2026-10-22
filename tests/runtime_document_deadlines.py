@@ -23,7 +23,7 @@ FLOW = r"""(async()=>{
    }
    if(path==='/documents/preview')return new Response(JSON.stringify({ok:true,kind:previewKind,mime:'image/png',text:'fixture query',name:row.name}));
    if(path==='/documents/preview-file')return new Response(Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aV1EAAAAASUVORK5CYII='),char=>char.charCodeAt(0)),{headers:{'Content-Type':'image/png'}});
-   return new Response(JSON.stringify({ok:true,bridgeVersion:44,results:empty?[]:[{...row,name:body.query==='new'?'new.txt':row.name}],hasMore,partial,elapsedMs:1,count:0}));
+   return new Response(JSON.stringify({ok:true,bridgeVersion:45,results:empty?[]:[{...row,name:body.query==='new'?'new.txt':row.name}],hasMore,partial,elapsedMs:1,count:0}));
   }});
  const local={...client,warm:async()=>({ok:true}),pdfIndexStatus:undefined};
  const source=createDomainsDocumentSearch({localBridge:local,googleDrive:{getToken:()=> 'drive',search:async()=>{driveCalls++;return {results:[]}}},userAgent:'Windows'});

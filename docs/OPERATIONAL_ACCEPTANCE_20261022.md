@@ -30,7 +30,8 @@ The [batch follow-up](SEARCH_BATCH_FOLLOWUP_20261022.md) adds native large-conte
 Everything measurements and isolated Bridge 41→43 replacement evidence. These
 also leave every physical/full-install/provider scenario below NOT RUN. The
 [quality completion](QUALITY_COMPLETION_20261022.md) adds isolated search parity
-evidence and requires v44 for new acceptance; its client explicitly rejects
+evidence, peak-resource measurements and isolated 43→45 replacement. Use v45 for
+new acceptance; its client explicitly rejects
 earlier Bridge runtimes. Physical/full-install/provider status is unchanged.
 
 | Scenario | Required persisted evidence after restart |
