@@ -159,11 +159,27 @@ test('wire forwarding preserves search fields and passes only opaque IDs to file
     assert.equal(response.headers['cache-control'], 'no-store');
     assert.equal(response.headers.vary, 'Origin');
   }
-  assert.deepEqual(f.calls, [
+  for(const call of f.calls.slice(0,2)){
+    assert.ok(call.at(-1) instanceof AbortSignal);
+    assert.equal(call.at(-1).aborted,false,'normal request-body completion is not caller cancellation');
+  }
+  assert.deepEqual(f.calls.map(call=>['search','recent'].includes(call[0])?call.slice(0,-1):call), [
     ['search', body.query, body.limit, body.mode, body.contentSearch, body.scopePath, body.offset, body.sort, body.fileType],
     ['recent', body.limit, body.scopePath, body.fileType], ['preview', body.id], ['matches', body.id],
     ['native', body.id, body.geometry], ['move', body.geometry], ['open', body.id], ['reveal', body.id], ['delete', body.id],
   ]);
+});
+
+test('disconnect after accepted shutdown still drains the command and invokes final teardown',{timeout:3000},async t=>{
+  let entered,release,finished,closed;
+  const started=new Promise(resolve=>{entered=resolve}),held=new Promise(resolve=>{release=resolve});
+  const stopped=new Promise(resolve=>{finished=resolve}),disconnected=new Promise(resolve=>{closed=resolve});
+  const f=await fixture(t,{shutdown:{prepare:async()=>{entered();await held;return {ok:true}},afterResponse:()=>finished()}});
+  f.server.once('request',(_req,res)=>res.once('close',()=>closed()));
+  const client=http.request(f.base+'/shutdown',{method:'POST',headers:{Authorization:'Bearer private-pairing-token',Origin:origin}});
+  client.on('error',()=>{});client.end();await started;client.destroy();await disconnected;
+  release();await stopped;
+  assert.deepEqual(f.logs,[]);
 });
 
 test('wire routes without payload retain independent service and maintenance ownership', async t => {

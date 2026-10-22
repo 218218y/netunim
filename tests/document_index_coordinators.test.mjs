@@ -43,13 +43,14 @@ test('actual Everything coordinator re-probes exactly once for exit 8 and decode
   await owner.runtime.dispose();await assert.rejects(owner.searchDocuments('form',5),{code:'DOCUMENT_SEARCH_DISPOSED'});
 });
 
-function contentSearchFixture(rawRows){
+function contentSearchFixture(rawRows,{beforeReturn=async()=>{}}={}){
   const reads=[],published=[];
   const owner=createEverythingSearchCoordinator({
     configuration:{load:async()=>({searchTimeoutMs:1000})},
     session:{probe:async()=>({esPath:'isolated-es',instance:'synthetic'}),invalidate:()=>{},executable:async()=>''},
-    process:{run:async(_file,args)=>{
+    process:{run:async(_file,args,options)=>{
       reads.push(args);
+      await beforeReturn(options);
       const offset=args.includes('-offset')?Number(args[args.indexOf('-offset')+1]):0,limit=Number(args[args.indexOf('-max-results')+1]);
       return {stdout:JSON.stringify(rawRows.slice(offset,offset+limit))};
     }},
@@ -118,4 +119,20 @@ test('phone-like proximity and ordinary Everything expressions retain their exis
   assert.match(f.reads[0].at(-1),/regex:content:/);assert.equal(f.reads[0].includes('content'),false);
   await f.owner.searchDocuments('regex:report',1,'everything',{matchMode:'proximity'});
   assert.equal(f.reads[1].at(-1),'regex:report');assert.equal(f.reads[1].includes('content'),false);
+});
+
+test('pre-cancelled and late cancelled native reads cannot scan another batch or publish result IDs',async()=>{
+  const controller=new AbortController();controller.abort();
+  const early=contentSearchFixture([]);
+  await assert.rejects(early.owner.searchDocuments('alpha beta',1,'content',{matchMode:'proximity'},'',0,{},'all',controller.signal),{name:'AbortError'});
+  assert.deepEqual(early.reads,[]);
+  let entered,release;
+  const started=new Promise(resolve=>{entered=resolve}),held=new Promise(resolve=>{release=resolve});
+  const signal=new AbortController();
+  const late=contentSearchFixture([candidate('late.txt','alpha beta')],{beforeReturn:async options=>{assert.equal(options.signal,signal.signal);entered();await held}});
+  const pending=late.owner.searchDocuments('alpha beta',1,'content',{matchMode:'proximity'},'',0,{},'all',signal.signal);
+  const rejected=assert.rejects(pending,{name:'AbortError'});
+  await started;signal.abort();release();await rejected;
+  assert.deepEqual(late.published,[]);assert.equal(late.reads.length,1);
+  await early.owner.runtime.dispose();await late.owner.runtime.dispose();
 });

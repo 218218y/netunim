@@ -11,10 +11,10 @@
  * @typedef {{field: 'name' | 'path' | 'size' | 'modified', direction: 'asc' | 'desc'}} DocumentSort
  * @typedef {{query: unknown, mode: 'everything' | 'content', contentSearch: ContentSearch,
  * scopePath: string, sort: DocumentSort, fileType: string, everythingQuery: string,
- * includePdf: boolean}} SearchPlan
+ * includePdf: boolean, signal?: AbortSignal | null}} SearchPlan
  * @typedef {{query: unknown, mode: 'everything' | 'content', contentSearch: ContentSearch,
- * scopePath: string, sort: DocumentSort, fileType: string, limit: number, offset: number}} SearchRead
- * @typedef {{scopePath: string, fileType: string}} RecentPlan
+ * scopePath: string, sort: DocumentSort, fileType: string, limit: number, offset: number, signal?: AbortSignal | null}} SearchRead
+ * @typedef {{scopePath: string, fileType: string, signal?: AbortSignal | null}} RecentPlan
  * @typedef {{ok: true, bridgeVersion: number, query: string, mode: 'everything' | 'content',
  * contentSearch: ContentSearch, fileType: string, scopePath: string, sort: DocumentSort,
  * offset: number, limit: number, results: PublicDocumentRow[], hasMore: boolean,
@@ -71,7 +71,9 @@ export function createDocumentSearch(
 ) {
   let disposed = false;
   /** @type {Set<Promise<void>>} */ const pending = new Set();
-  function assertActive() {
+  /** @param {AbortSignal | null} [signal] */
+  function assertActive(signal) {
+    signal?.throwIfAborted();
     if (disposed)
       throw Object.assign(new Error('Document search is closing.'), {
         code: 'DOCUMENT_SEARCH_DISPOSED'
@@ -106,11 +108,13 @@ export function createDocumentSearch(
       sort: plan.sort,
       fileType: plan.fileType,
       limit,
-      offset
+      offset,
+      ...(plan.signal ? {signal:plan.signal} : {})
     };
   }
   /** @param {SearchPlan} plan @param {unknown} limit @param {unknown} offset @returns {Promise<SearchPage>} */
   async function searchPage(plan, limit, offset) {
+    assertActive(plan.signal);
     const {
       query,
       mode,
@@ -170,7 +174,7 @@ export function createDocumentSearch(
         () => everything.search(request(plan, wanted, 0)),
         () => pdf.prepare()
       );
-      assertActive();
+      assertActive(plan.signal);
       rows = result.rows;
       elapsedMs = result.elapsedMs;
       supplemental = plan.includePdf ? pdf.search(plan, wanted) : [];
@@ -183,7 +187,7 @@ export function createDocumentSearch(
         pageOffset + boundedLimit < maxResults;
       partial = indexState.partial || result.partial === true;
     }
-    assertActive();
+    assertActive(plan.signal);
     publication.prune();
     const results = pageRows.map(row =>
       publication.publish(row, {
@@ -195,11 +199,12 @@ export function createDocumentSearch(
     await audit.write(
       `SEARCH mode=${mode} offset=${pageOffset} limit=${boundedLimit} hasMore=${hasMore} partial=${partial} contentSearch=${JSON.stringify(contentSearch)} fileType=${fileType} sort=${sort.field}:${sort.direction} scope=everything-index+interactive-pdf scopePath=${JSON.stringify(scopePath)} results=${results.length} everythingResults=${rows.length} pdfSupplemental=${supplemental.length} elapsedMs=${elapsedMs} input=${JSON.stringify(String(query || ''))} everythingQuery=${JSON.stringify(everythingQuery)}`
     );
-    assertActive();
+    assertActive(plan.signal);
     return page(results, hasMore, elapsedMs, partial);
   }
   /** @param {RecentPlan} plan @param {unknown} limit @returns {Promise<RecentPage>} */
-  async function recentPage({ scopePath, fileType }, limit) {
+  async function recentPage({ scopePath, fileType, signal }, limit) {
+    assertActive(signal);
     const boundedLimit = Math.min(
       recentLimit,
       Math.max(1, Number(limit) || recentLimit)
@@ -207,9 +212,10 @@ export function createDocumentSearch(
     const { rows, elapsedMs } = await everything.recent({
       limit: boundedLimit,
       scopePath,
-      fileType
+      fileType,
+      ...(signal ? {signal} : {})
     });
-    assertActive();
+    assertActive(signal);
     publication.prune();
     const results = ordering.merge([rows], boundedLimit, recentLimit).map(row =>
       publication.publish(row, {
@@ -225,7 +231,7 @@ export function createDocumentSearch(
     await audit.write(
       `RECENT scope=everything-index scopePath=${JSON.stringify(scopePath)} fileType=${fileType} sort=date-modified-descending results=${results.length} elapsedMs=${elapsedMs}`
     );
-    assertActive();
+    assertActive(signal);
     return {
       ok: true,
       bridgeVersion,

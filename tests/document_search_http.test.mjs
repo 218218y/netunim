@@ -8,6 +8,7 @@ import {parse} from 'acorn';
 import {createDocumentBridgeRoutes} from '../netunim-orders/document-bridge/http-routes.mjs';
 import {createDocumentBridgeHttpHandler} from '../netunim-orders/document-bridge/http-handler.mjs';
 import {BRIDGE_SERVICE,BRIDGE_VERSION} from '../netunim-orders/document-bridge/lib.mjs';
+import {createEverythingSearchCoordinator} from '../netunim-orders/document-bridge/everything-search-coordinator.mjs';
 import {deferred,row,serverFixture} from './document_search_server_fixture.mjs';
 
 async function httpFixture(t,f,{afterResponse=()=>{}}={}) {
@@ -56,4 +57,26 @@ test('actual installer stop client grants the joined shutdown its own deadline b
  assert.equal(f.context.shuttingDown,true);assert.deepEqual(deadlines.find(([target])=>target==='/shutdown'),['/shutdown',120000]);
  assert.equal(deadlines.some(([target])=>target==='/health'),true);
  release.resolve({rows:[row(1)],elapsedMs:17});await stopping;assert.equal((await reading).status,503);assert.equal(f.ids(),0);
+});
+
+for(const kind of ['search','proximity','recent'])test(`disconnect after a complete ${kind} request cancels the accepted ES read`,{timeout:5000},async t=>{
+ const entered=deferred(),cancelled=deferred();let commands=0,published=0;
+ const coordinator=createEverythingSearchCoordinator({
+  configuration:{load:async()=>({searchTimeoutMs:1000})},
+  session:{probe:async()=>({esPath:'inert',instance:'synthetic'}),invalidate:()=>{}},
+  process:{run:async(_file,_args,{signal})=>{
+   if(commands++)return {stdout:'[]'};
+   assert.ok(signal instanceof AbortSignal);entered.resolve();
+   return new Promise((_resolve,reject)=>signal.addEventListener('abort',()=>{cancelled.resolve();reject(signal.reason)},{once:true}));
+  }},
+  pdf:{prepare:async()=>({partial:false}),search:()=>[]},
+  publication:{prune:()=>{},publish:()=>{published++}},audit:{write:async()=>{}}
+ });
+ t.after(()=>coordinator.runtime.dispose());
+ const h=await httpFixture(t,{search:coordinator.searchDocuments,recent:coordinator.recentDocuments,shutdown:async()=>({ok:true})});
+ const target=kind==='recent'?'/documents/recent':'/documents/search';
+ const body=JSON.stringify({query:'alpha beta',mode:'content',contentSearch:{matchMode:kind==='proximity'?'proximity':'phrase'}});
+ const client=http.request({host:'127.0.0.1',port:h.port,path:target,method:'POST',headers:{Authorization:'Bearer test-key',Origin:'https://bargig-furniture.com','Content-Type':'application/json'}},()=>assert.fail('cancelled read published a response'));
+ client.on('error',()=>{});client.end(body);await entered.promise;client.destroy();await cancelled.promise;
+ const recovered=await h.request('/documents/recent');assert.equal(recovered.status,200);assert.equal(published,0);assert.equal(commands,2);
 });

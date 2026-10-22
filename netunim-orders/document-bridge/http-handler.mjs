@@ -80,11 +80,27 @@ export function createDocumentBridgeHttpHandler({loadConfig, readToken, routes, 
       // query strings, trailing slashes and alternate methods are not aliases.
       const route = routes.get(`${req.method} ${req.url}`);
       if (!route) { sendJson(req, res, 404, {ok: false, code: 'NOT_FOUND', message: 'נתיב לא קיים'}, config); return; }
-      const result = await route.run(route.readBody ? await readJson(req) : {});
-      if (route.response === 'binary') sendBinary(req, res, result, config);
-      else sendJson(req, res, 200, result, config);
-      route.afterResponse?.();
+      // A response closes on caller cancellation even after the request body
+      // completed. IncomingMessage's normal close is not a cancellation signal.
+      // Commands/previews retain their accepted-work drain independently.
+      const controller = route.cancellable ? new AbortController() : null;
+      const disconnected = () => { if (!res.writableFinished) controller?.abort(); };
+      if (controller) res.once('close', disconnected);
+      try {
+        const body = route.readBody ? await readJson(req) : {};
+        if (res.destroyed) disconnected();
+        controller?.signal.throwIfAborted();
+        const result = await route.run(body, controller ? {signal:controller.signal} : undefined);
+        if (!res.destroyed) {
+          if (route.response === 'binary') sendBinary(req, res, result, config);
+          else sendJson(req, res, 200, result, config);
+        }
+        route.afterResponse?.();
+      } finally {
+        if (controller) res.off('close', disconnected);
+      }
     } catch (error) {
+      if (res.destroyed) return;
       await appendLog(`${req.method} ${req.url} ${error?.code || 'ERROR'} ${error?.message || error}`);
       const status = error?.code === 'QUERY_TOO_SHORT' ? 400 : error?.code === 'RESULT_EXPIRED' ? 410 : 503;
       sendJson(req, res, status, documentBridgeErrorResponse(error), config);
