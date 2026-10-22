@@ -1,5 +1,6 @@
 import {esc} from '../../core/values.js';
 import {money} from '../../core/money.js';
+import {readBankMoney} from '../../shared/bank-money-value.js';
 import {bankMorningEligibility} from '../finance/bank-morning.js';
 function field(root,id){return root.querySelector?.('#'+id)||root.getElementById?.(id)||null}
 
@@ -7,8 +8,9 @@ const MAX_RESULTS=80;
 const RECENT_DAYS=45;
 function clean(value,max=260){return String(value??'').trim().replace(/\s+/g,' ').slice(0,max)}
 function bankDate(value){const text=String(value||'').slice(0,10),match=text.match(/^(\d{4})-(\d{2})-(\d{2})$/);return match?`${match[3]}/${match[2]}/${match[1].slice(2)}`:text||'—'}
-function searchText(row){return [bankDate(row?.processedDate||row?.date),row?.description,row?.memo,row?.partyName,row?.partyHeadline,row?.messageHeadline,row?.messageDetail,row?.bankReference,row?.bankSerial,Number.isFinite(Number(row?.amount))?Number(row.amount).toFixed(2):''].map(value=>clean(value,260).toLocaleLowerCase('he')).filter(Boolean).join(' ')}
-function label(row){const party=clean(row?.partyName||row?.partyHeadline,90),description=clean(row?.description,110)||'תנועת זכות',date=bankDate(row?.processedDate||row?.date);return `${party?party+' · ':''}${description} · ${date} · ${money(Number(row?.amount)||0)}`}
+function amountLabel(row){const amount=readBankMoney(row?.amount);return amount===null?'סכום לא ידוע':money(amount)}
+function searchText(row){return [bankDate(row?.processedDate||row?.date),row?.description,row?.memo,row?.partyName,row?.partyHeadline,row?.messageHeadline,row?.messageDetail,row?.bankReference,row?.bankSerial,readBankMoney(row?.amount)?.toFixed(2)??''].map(value=>clean(value,260).toLocaleLowerCase('he')).filter(Boolean).join(' ')}
+function label(row){const party=clean(row?.partyName||row?.partyHeadline,90),description=clean(row?.description,110)||'תנועת זכות',date=bankDate(row?.processedDate||row?.date);return `${party?party+' · ':''}${description} · ${date} · ${amountLabel(row)}`}
 function links(row){return Array.isArray(row?.documentLinks)?row.documentLinks:[]}
 
 function localDateKey(value){const d=value instanceof Date?value:new Date(value);if(!Number.isFinite(d.getTime()))return'';const pad=n=>String(n).padStart(2,'0');return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`}
@@ -29,7 +31,7 @@ function rowMarkup(row,activeTransactionId){
     <span class="morning-bank-transaction-cell" data-label="תאריך"><b>${esc(bankDate(row?.processedDate||row?.date))}</b></span>
     <span class="morning-bank-transaction-cell morning-bank-transaction-description" data-label="פעולה"><b>${esc(row?.description||'תנועת זכות')}</b>${detail?`<small>${esc(detail)}</small>`:''}${row?.partyName?`<small>${esc(row.partyName)}</small>`:''}</span>
     <span class="morning-bank-transaction-cell" data-label="אסמכתא">${esc(reference||'—')}</span>
-    <span class="morning-bank-transaction-cell money" data-label="זכות"><b>${money(Number(row?.amount)||0)}</b></span>
+    <span class="morning-bank-transaction-cell money" data-label="זכות"><b>${amountLabel(row)}</b></span>
     <span class="morning-bank-transaction-cell" data-label="מצב">${alreadyLinked?`<span class="badge green">מסמך ${esc(existing[0]?.documentNumber||'מקושר')}</span>`:'<span class="badge blue">זמין</span>'}</span>
   </button>`;
 }

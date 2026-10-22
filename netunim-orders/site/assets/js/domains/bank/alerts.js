@@ -1,5 +1,6 @@
 import {cashflowNotificationData} from '../../shared/cashflow-notification.js';
 import {kupaAccountCashflowData} from './readout.js';
+import {readBankMoney} from '../../shared/bank-money-value.js';
 
 const RETURNED_CHEQUE_ALERT_KIND='returned_cheque';
 const RETURNED_CHEQUE_PATTERNS=[
@@ -41,7 +42,7 @@ export function bankWarningItems(bank){
           id:`bank_missing:${archiveId}`,
           kind:'bank_missing',
           account,role,archiveId,
-          amount:Number(row?.amount)||0,
+          amount:readBankMoney(row?.amount),
           description:text(row?.description)||'תנועת בנק',
           date:row?.date||row?.processedDate||null,
           lastSeenAt:row?.lastSeenAt||null,
@@ -55,7 +56,7 @@ export function bankWarningItems(bank){
           kind:'bank_returned_cheque',
           alertKind:RETURNED_CHEQUE_ALERT_KIND,
           account,role,archiveId,
-          amount:Number(row?.amount)||0,
+          amount:readBankMoney(row?.amount),
           description:text(row?.description)||'החזרת שיק',
           reason:bankReturnedChequeReason(row),
           date:row?.date||row?.processedDate||null,

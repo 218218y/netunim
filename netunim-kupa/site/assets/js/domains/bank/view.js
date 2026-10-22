@@ -4,6 +4,7 @@ import {updateCashflowExplorer,cashflowExplorerMarkup,cashflowBreachMarkup} from
 import {kupaAccountCashflowData,kupaBankCreditSettlementIdentitiesData} from '../../shared/kupa-cashflow.js';
 import {esc} from '../../core/values.js';
 import {money, moneyWithCents} from '../../core/money.js';
+import {readBankMoney} from '../../shared/bank-money-value.js';
 import {dateFmt} from '../../core/dates.js';
 import {syncEventCurrent} from '../../shared/sync-status.js';
 import {dateInRange,searchMatch} from '../../core/search.js';
@@ -162,9 +163,9 @@ function bankChequeDetailsMarkup(row){
 }
 
 function bankTransactionsTableMarkup(feed,role){
-  const mode=bankDataMode(),directSnapshot=feed?.directSnapshot||null,historyRows=bankSmartRows(feed?.transactions||[],directSnapshot?.transactions||[]),allRows=mode==='direct'?(directSnapshot?.transactions||[]):historyRows,periodRows=allRows.filter(bankRowMatchesDateRange),query=ui.bankSearchValue||'',rows=query.trim()?periodRows.filter(row=>bankRowMatchesSearch(row,query)):periodRows,balance=Number(feed?.balance);
+  const mode=bankDataMode(),directSnapshot=feed?.directSnapshot||null,historyRows=bankSmartRows(feed?.transactions||[],directSnapshot?.transactions||[]),allRows=mode==='direct'?(directSnapshot?.transactions||[]):historyRows,periodRows=allRows.filter(bankRowMatchesDateRange),query=ui.bankSearchValue||'',rows=query.trim()?periodRows.filter(row=>bankRowMatchesSearch(row,query)):periodRows,balance=readBankMoney(feed?.balance);
   const scoped=bankDateFilterActive()||query.trim(),countLabel=scoped?`${rows.length} מתוך ${allRows.length} תנועות`:`${rows.length} תנועות`;
-  const available=feed?.availableBalance===null||feed?.availableBalance===undefined?null:Number(feed.availableBalance),limit=feed?.creditLimit===null||feed?.creditLimit===undefined?null:Number(feed.creditLimit),difference=Number.isFinite(balance)&&Number.isFinite(available)?available-balance:null;
+  const available=readBankMoney(feed?.availableBalance),limit=readBankMoney(feed?.creditLimit),difference=Number.isFinite(balance)&&Number.isFinite(available)?available-balance:null;
   const roleName=role==='home'?'ביתי':'עסקי',cashflow=kupaAccountCashflowData(model.state,roleName),facts=[];
   if(Number.isFinite(balance))facts.push(`<span class="bank-primary-balance"><span>יתרה ${roleName}</span><b>${moneyWithCents(balance)}</b></span>`);
   if(Number.isFinite(available))facts.push(`<span class="bank-available-balance"><span>למשיכה</span><b>${moneyWithCents(available)}</b>${Number.isFinite(difference)?`<span class="bank-balance-delta" title="הפרש בין היתרה ליתרה הזמינה למשיכה">(${moneyWithCents(difference)})</span>`:''}</span>`);
@@ -182,8 +183,8 @@ function bankTransactionsTableMarkup(feed,role){
   const searchIndexes=new Map(searchSource.map((row,index)=>[row,index]));
   const body=rows.map((row,index)=>{
     const searchId=bankTransactionIdentity(row,role,searchIndexes.get(row)??index);
-    const amount=Number(row.amount)||0,when=row.date||row.processedDate,valueDate=row.processedDate&&row.processedDate!==row.date?bankDateLabel(row.processedDate):'',activeMissing=mode==='history'&&bankMissingActive(row);
-    return `<tr class="${row.status==='pending'?'pending ':''}${activeMissing?'bank-transaction-missing active':''}" data-bank-search-id="${esc(searchId)}"><td class="bank-transaction-date"><b>${esc(bankDateLabel(when))}</b>${valueDate?`<small>ערך ${esc(valueDate)}</small>`:''}</td><td class="bank-transaction-description"><div><b>${esc(row.description||'תנועת בנק')}</b>${row.status==='pending'?'<span class="bank-transaction-pending">ממתינה</span>':''}${activeMissing?'<span class="bank-transaction-missing-badge">דורש בדיקה</span>':''}</div>${row.memo?`<small>${esc(row.memo)}</small>`:''}${activeMissing?bankMissingDetailMarkup(row):''}${bankCreditSettlementDetailsMarkup(row,creditIdentities.get(row))}${bankChequeDetailsMarkup(row)}</td><td class="bank-transaction-money debit">${amount<0?money(Math.abs(amount)):''}</td><td class="bank-transaction-money credit">${amount>0?money(amount):''}</td><td class="bank-transaction-money balance-after">${row.balanceAfter!==null&&row.balanceAfter!==undefined&&row.balanceAfter!==''&&Number.isFinite(Number(row.balanceAfter))?money(Number(row.balanceAfter)):'—'}</td></tr>`;
+    const amount=readBankMoney(row.amount),balanceAfter=readBankMoney(row.balanceAfter),when=row.date||row.processedDate,valueDate=row.processedDate&&row.processedDate!==row.date?bankDateLabel(row.processedDate):'',activeMissing=mode==='history'&&bankMissingActive(row);
+    return `<tr class="${row.status==='pending'?'pending ':''}${activeMissing?'bank-transaction-missing active':''}" data-bank-search-id="${esc(searchId)}"><td class="bank-transaction-date"><b>${esc(bankDateLabel(when))}</b>${valueDate?`<small>ערך ${esc(valueDate)}</small>`:''}</td><td class="bank-transaction-description"><div><b>${esc(row.description||'תנועת בנק')}</b>${row.status==='pending'?'<span class="bank-transaction-pending">ממתינה</span>':''}${activeMissing?'<span class="bank-transaction-missing-badge">דורש בדיקה</span>':''}</div>${row.memo?`<small>${esc(row.memo)}</small>`:''}${activeMissing?bankMissingDetailMarkup(row):''}${bankCreditSettlementDetailsMarkup(row,creditIdentities.get(row))}${bankChequeDetailsMarkup(row)}</td>${amount===null?'<td colspan="2" class="bank-transaction-money unknown">סכום לא ידוע</td>':`<td class="bank-transaction-money debit">${amount<0?money(Math.abs(amount)):''}</td><td class="bank-transaction-money credit">${amount>=0?money(amount):''}</td>`}<td class="bank-transaction-money balance-after">${balanceAfter===null?'—':money(balanceAfter)}</td></tr>`;
   }).join('');
   return `${caption}${context}<div class="bank-transactions-table-wrap"><table class="bank-transactions-table"><thead><tr><th>תאריך</th><th>פעולה</th><th>חובה</th><th>זכות</th><th>יתרה לאחר תנועה</th></tr></thead><tbody>${body}</tbody></table></div>${feed.transactionWarning?`<div class="bank-feed-warning">${esc(feed.transactionWarning)}</div>`:''}`;
 }
