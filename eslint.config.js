@@ -94,5 +94,14 @@ export default [
       'no-constant-binary-expression':'error'
       ,'no-unused-vars':['error',{args:'none',caughtErrors:'none',ignoreRestSiblings:true}]
     }
+  },
+  {
+    files:['shared/document-search/domains/documents/spreadsheet-preview-worker.js','netunim-*/site/assets/js/domains/documents/spreadsheet-preview-worker.js'],
+    languageOptions:{globals:{createDocumentTextMatcher:'readonly'}}
+  },
+  {
+    files:['netunim-*/site/assets/js/shared/document-text-search-worker.js'],
+    languageOptions:{sourceType:'script'},
+    rules:{'no-unused-vars':['error',{args:'none',caughtErrors:'none',varsIgnorePattern:'^createDocumentTextMatcher$'}]}
   }
 ];

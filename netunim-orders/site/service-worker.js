@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-1086a0238f9b';
+const CACHE='orders-app-shell-esm-23cde2a33f63';
 const SHELL=[
   './',
   './index.html',
@@ -266,6 +266,8 @@ const SHELL=[
   './assets/js/shared/debounced-task.js',
   './assets/js/shared/document-bridge-client.js',
   './assets/js/shared/document-search-composition.js',
+  './assets/js/shared/document-text-search-worker.js',
+  './assets/js/shared/document-text-search.js',
   './assets/js/shared/document-write-ack.js',
   './assets/js/shared/domain-revisions.js',
   './assets/js/shared/events.js',

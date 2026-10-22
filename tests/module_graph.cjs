@@ -157,6 +157,17 @@ for(const app of ['kupa','orders']){
         const spec=url.arguments[0];assert.equal(spec?.type,'Literal',relative+': Worker entrypoint must be statically verifiable');assert.ok(String(spec.value||'').startsWith('.'),relative+': Worker entrypoint must be local and relative');
         const target=path.resolve(path.dirname(file),String(spec.value));assert.ok(target.startsWith(site+path.sep)&&fs.existsSync(target),relative+': missing or cross-site Worker dependency '+spec.value);edges.push(target);
       }
+      if(node.type==='CallExpression'&&node.callee.type==='Identifier'&&node.callee.name==='importScripts'){
+        for(const spec of node.arguments){
+          assert.equal(spec.type,'Literal',relative+': classic worker imports must be statically verifiable');
+          assert.ok(typeof spec.value==='string'&&spec.value.startsWith('.'),relative+': classic worker imports must be local and relative');
+          const target=path.resolve(path.dirname(file),spec.value);
+          assert.ok(target.startsWith(site+path.sep)&&fs.existsSync(target),relative+': missing or cross-site classic worker dependency '+spec.value);
+          // Vendored runtimes have independent integrity/API checks. First-party
+          // worker scripts participate in reachability and cycle detection.
+          if(!path.relative(site,target).split(path.sep).includes('vendor'))edges.push(target);
+        }
+      }
       if(node.type==='ImportDeclaration'||node.type==='ExportAllDeclaration'||node.type==='ExportNamedDeclaration'&&node.source||node.type==='ImportExpression'){
         const spec=node.source.value;assert.ok(spec.startsWith('.'),relative+': runtime must use local relative imports');
         const target=path.resolve(path.dirname(file),spec);

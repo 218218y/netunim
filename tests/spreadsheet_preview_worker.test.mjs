@@ -8,7 +8,12 @@ const workerSource=fs.readFileSync(new URL('../netunim-orders/site/assets/js/dom
 function runWorkerOpen(workbook,query='needle',contentSearch={}){
   const posted=[];
   const context={
-    importScripts(){},
+    importScripts(...paths){
+      for(const name of paths)if(name.endsWith('document-text-search-worker.js')){
+        const code=fs.readFileSync(new URL('../netunim-orders/site/assets/js/shared/document-text-search-worker.js',import.meta.url),'utf8');
+        vm.runInContext(code,context,{filename:name,timeout:2000});
+      }
+    },
     XLSX:{
       read(){return workbook},
       utils:{
@@ -21,8 +26,9 @@ function runWorkerOpen(workbook,query='needle',contentSearch={}){
   };
   context.globalThis=context;
   vm.createContext(context);
-  vm.runInContext(workerSource,context,{filename:'spreadsheet-preview-worker.js'});
-  context.self.onmessage({data:{id:1,type:'open',query,contentSearch,buffer:new ArrayBuffer(0)}});
+  vm.runInContext(workerSource,context,{filename:'spreadsheet-preview-worker.js',timeout:2000});
+  context.input={id:1,type:'open',query,contentSearch,buffer:new ArrayBuffer(0)};
+  vm.runInContext('self.onmessage({data:input})',context,{timeout:3000});
   assert.equal(posted.length,1);
   assert.equal(posted[0].ok,true,posted[0].error);
   return posted[0];
@@ -71,4 +77,26 @@ test('spreadsheet worker highlights phone-number variants with one optional pref
   const opened=runWorkerOpen(workbook,'050 1234567');
   assert.equal(opened.matches.length,4);
   assert.deepEqual(Array.from(opened.matches,match=>match.snippet.match),['0501234567','050-1234567','050 1234567','05-01234567']);
+});
+
+test('workbook-wide all presence survives a full highlight cap in an earlier cell or sheet',()=>{
+  const workbook={SheetNames:['Frequent','Rare'],Sheets:{
+    Frequent:{'!ref':'A1:A1','!data':[[{v:'אב '.repeat(6000)}]]},
+    Rare:{'!ref':'A1:A1','!data':[[{v:'אין'}]]},
+  }};
+  assert.equal(runWorkerOpen(workbook,'אב אין',{matchMode:'all'}).matches.length,5000);
+  workbook.Sheets.Rare['!data'][0][0].v='חסר';
+  assert.equal(runWorkerOpen(workbook,'אב אין',{matchMode:'all'}).matches.length,0);
+  workbook.Sheets.Frequent['!data'][0][0].v='אב '.repeat(6000)+'אין';
+  assert.equal(runWorkerOpen(workbook,'אב אין',{matchMode:'all'}).matches.length,5000);
+});
+
+test('spreadsheet ordered proximity has bounded work on a long missing suffix',()=>{
+  const workbook={SheetNames:['Repeated'],Sheets:{Repeated:{'!ref':'A1:A1','!data':[[{v:'אב '.repeat(10000)}]]}}};
+  assert.equal(runWorkerOpen(workbook,'אב אב אב אב אב אין',{matchMode:'proximity',proximityWords:50}).matches.length,0);
+});
+
+test('spreadsheet all with a spaced phone query uses phone presence rather than separate digits',()=>{
+  const workbook={SheetNames:['Phone'],Sheets:{Phone:{'!ref':'A1:A1','!data':[[{v:'050-1234567'}]]}}};
+  assert.equal(runWorkerOpen(workbook,'050 1234567',{matchMode:'all'}).matches.length,1);
 });

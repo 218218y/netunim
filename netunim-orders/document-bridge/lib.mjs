@@ -1,9 +1,10 @@
+import {createDocumentTextMatcher,normalizeContentSearch} from './document-text-search.mjs';
 import path from 'node:path';
 import {decodeEverythingCount,decodeEverythingRows} from './everything-result-codec.mjs';
 
 export const BRIDGE_PORT=8766;
 export const BRIDGE_SERVICE='netunim-orders-document-bridge';
-export const BRIDGE_VERSION=38;
+export const BRIDGE_VERSION=39;
 export const BRIDGE_NODE_VERSION='24.21.0';
 export const BRIDGE_NODE_WIN_X64_SHA256='ba4e6d110e8c1592a1ecd390f6b05f3da124b13871a5be62b341a07a853c6c32';
 export const MAX_QUERY_CHARS=240;
@@ -125,26 +126,8 @@ function applyDocumentFileType(search,fileType,{wrap=false}={}){
   return `${filter} ${wrap?`<${expression}>`:expression}`;
 }
 
-const CONTENT_MATCH_MODES=new Set(['phrase','all','any','proximity']);
-const CONTENT_WORD_MATCHES=new Set(['partial','whole']);
-const CONTENT_WORD_CHAR=/[\p{L}\p{N}\p{M}]/u;
-export function normalizeContentSearchOptions(value={}){
-  const source=value&&typeof value==='object'?value:{};
-  const matchMode=CONTENT_MATCH_MODES.has(source.matchMode)?source.matchMode:'phrase';
-  const wordMatch=CONTENT_WORD_MATCHES.has(source.wordMatch)?source.wordMatch:'partial';
-  const proximityWords=Math.max(0,Math.min(50,Math.trunc(Number(source.proximityWords) || 0)));
-  return {matchMode,wordMatch,proximityWords};
-}
-
-function contentTerms(value){
-  return normalizeSearchText(value).split(' ').map(term=>term.trim()).filter(Boolean).slice(0,16);
-}
-
-function wholeWordRange(source,index,length){
-  const start=Math.max(0,Number(index)||0),end=start+Math.max(0,Number(length)||0),before=start>0?source[start-1]:'',after=end<source.length?source[end]:'';
-  return (!before||!CONTENT_WORD_CHAR.test(before))&&(!after||!CONTENT_WORD_CHAR.test(after));
-}
-function wholeWordRegexPart(value){return `(?<![\\p{L}\\p{N}\\p{M}])${regexLiteral(value)}(?![\\p{L}\\p{N}\\p{M}])`}
+export function normalizeContentSearchOptions(value={}){return normalizeContentSearch(value)}
+function contentTerms(value){return normalizeSearchText(value).split(' ').filter(Boolean).slice(0,16)}
 function everythingWholeWordRegexPart(value){return `(?<![\\p{L}\\p{N}\\p{M}])${regexLiteral(value)}(?![\\p{L}\\p{N}\\p{M}])`}
 
 const PHONE_QUERY_IGNORED=/[\s\u002d\u2010-\u2015\u2212\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
@@ -161,9 +144,9 @@ function phoneSearchRegex(value){
   return variants.length===1?variants[0]:`(?:${variants.join('|')})`;
 }
 
-function buildContentProximityRegex(terms,proximityWords,{wholeWords=false,everything=false}={}){
+function buildEverythingProximityRegex(terms,proximityWords,{wholeWords=false}={}){
   if(terms.length<2)return '';
-  const gap=`(?:\\s+\\S+){0,${proximityWords}}\\s+`,render=wholeWords?(everything?everythingWholeWordRegexPart:wholeWordRegexPart):regexLiteral;
+  const gap=`(?:\\s+\\S+){0,${proximityWords}}\\s+`,render=wholeWords?everythingWholeWordRegexPart:regexLiteral;
   return terms.map(render).join(gap);
 }
 
@@ -181,53 +164,19 @@ export function buildContentQuery(value,options={}){
   if(search.matchMode==='all'&&terms.length>1)return `${prefix}content:<${terms.map(term=>`"${everythingLiteral(term)}"`).join(' ')}> no-background-search:`;
   if(search.matchMode==='any'&&terms.length>1)return `${prefix}content:<${terms.map(term=>`"${everythingLiteral(term)}"`).join('|')}> no-background-search:`;
   if(search.matchMode==='proximity'&&terms.length>1){
-    const pattern=buildContentProximityRegex(terms,search.proximityWords,{wholeWords:whole,everything:true});
+    const pattern=buildEverythingProximityRegex(terms,search.proximityWords,{wholeWords:whole});
     return `regex:content:"${everythingLiteral(pattern)}" no-background-search:`;
   }
   return `${prefix}content:"${everythingLiteral(normalized)}" no-background-search:`;
 }
 
-export function contentMatchRanges(source,query,{matchMode='phrase',wordMatch='partial',proximityWords=0,maxMatches=5000}={}){
-  const needle=normalizeSearchText(query),search=normalizeContentSearchOptions({matchMode,wordMatch,proximityWords}),terms=contentTerms(needle);
-  if(!source||needle.length<2)return {needle,search,ranges:[],capped:false};
-  const haystack=source.toLocaleLowerCase('he-IL'),limit=Math.max(1,Math.min(20000,Number(maxMatches)||5000)),whole=search.wordMatch==='whole';
-  let ranges=[],capped=false;
-  const phonePattern=phoneSearchRegex(needle);
-  if(phonePattern){
-    const regex=new RegExp(phonePattern,'gu');let match;
-    while((match=regex.exec(source))){if(!whole||wholeWordRange(source,match.index,match[0].length)){ranges.push({index:match.index,length:match[0].length});if(ranges.length>=limit){capped=true;break}}if(!match[0].length)regex.lastIndex+=1}
-    return {needle,search,ranges,capped};
-  }
-  if(search.matchMode==='proximity'&&terms.length>1){
-    const regex=new RegExp(buildContentProximityRegex(terms.map(term=>term.toLocaleLowerCase('he-IL')),search.proximityWords,{wholeWords:whole}),'gu');
-    let match;while((match=regex.exec(haystack))){ranges.push({index:match.index,length:match[0].length});if(ranges.length>=limit){capped=true;break}if(!match[0].length)regex.lastIndex+=1}
-    return {needle,search,ranges,capped};
-  }
-  if(search.matchMode==='all'||search.matchMode==='any'){
-    const unique=[...new Set(terms.map(term=>term.toLocaleLowerCase('he-IL')))];
-    const termRanges=[];let missing=false;
-    for(const term of unique){let found=0,offset=0;while(offset<=haystack.length-term.length){const index=haystack.indexOf(term,offset);if(index<0)break;if(!whole||wholeWordRange(source,index,term.length)){termRanges.push({index,length:term.length});found+=1;if(termRanges.length>=limit){capped=true;break}}offset=index+Math.max(1,whole?1:term.length)}if(!found)missing=true;if(capped)break}
-    if(search.matchMode==='all'&&missing)return {needle,search,ranges:[],capped:false};
-    ranges=termRanges.sort((a,b)=>a.index-b.index||b.length-a.length).filter((row,index,list)=>index===0||row.index!==list[index-1].index||row.length!==list[index-1].length).slice(0,limit);
-    return {needle,search,ranges,capped:capped||termRanges.length>limit};
-  }
-  const target=needle.toLocaleLowerCase('he-IL');let offset=0;
-  while(offset<=haystack.length-target.length){const index=haystack.indexOf(target,offset);if(index<0)break;if(!whole||wholeWordRange(source,index,target.length)){ranges.push({index,length:target.length});if(ranges.length>=limit){capped=true;break}}offset=index+Math.max(1,whole?1:target.length)}
-  return {needle,search,ranges,capped};
+export function contentMatchRanges(source,query,{maxMatches=5000,...options}={}){
+  const matcher=createDocumentTextMatcher(query,options),found=matcher.find(source,{maxMatches});
+  return {needle:matcher.needle,search:matcher.search,ranges:found.matches.map(row=>({index:row.start,length:row.end-row.start})),capped:found.capped};
 }
 
 export function contentSearchMatches(value,query,options={}){
-  const source=String(value??''),needle=normalizeSearchText(query),search=normalizeContentSearchOptions(options),terms=contentTerms(needle),whole=search.wordMatch==='whole';
-  if(!source||needle.length<2)return false;
-  const phonePattern=phoneSearchRegex(needle);if(phonePattern){const regex=new RegExp(phonePattern,'gu');let match;while((match=regex.exec(source))){if(!whole||wholeWordRange(source,match.index,match[0].length))return true;if(!match[0].length)regex.lastIndex+=1}return false}
-  const haystack=source.toLocaleLowerCase('he-IL');
-  if(search.matchMode==='proximity'&&terms.length>1)return new RegExp(buildContentProximityRegex(terms.map(term=>term.toLocaleLowerCase('he-IL')),search.proximityWords,{wholeWords:whole}),'u').test(haystack);
-  if(search.matchMode==='all'||search.matchMode==='any'){
-    const unique=[...new Set(terms.map(term=>term.toLocaleLowerCase('he-IL')))];
-    const matchesTerm=term=>{let offset=0;while(offset<=haystack.length-term.length){const index=haystack.indexOf(term,offset);if(index<0)return false;if(!whole||wholeWordRange(source,index,term.length))return true;offset=index+1}return false};
-    return search.matchMode==='all'?unique.every(matchesTerm):unique.some(matchesTerm);
-  }
-  const target=needle.toLocaleLowerCase('he-IL');let offset=0;while(offset<=haystack.length-target.length){const index=haystack.indexOf(target,offset);if(index<0)return false;if(!whole||wholeWordRange(source,index,target.length))return true;offset=index+1}return false;
+  return createDocumentTextMatcher(query,options).find(value,{maxMatches:1}).matches.length>0;
 }
 
 export function buildContentMatchInfo(value,query,{contextChars=90,maxSnippets=12,maxMatches=5000,matchMode='phrase',wordMatch='partial',proximityWords=0}={}){
