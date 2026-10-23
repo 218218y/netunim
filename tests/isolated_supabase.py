@@ -216,7 +216,14 @@ enabled = false
         for source in sorted((ROOT/'supabase/migrations').glob('*.sql')):
             shutil.copyfile(source, destination/source.name)
             self.migrations[source.name] = hashlib.sha256(source.read_bytes()).hexdigest()
-        self.cli('migration', 'up', '--local', timeout=240)
+            # The historical catalog baseline includes default privileges *for*
+            # supabase_admin. The local postgres runtime role is deliberately
+            # not a superuser and cannot reconstruct those platform-owned ACLs.
+            # Replay only that catalog baseline as the real platform owner;
+            # every incremental migration keeps the normal postgres authority.
+            role = 'supabase_admin' if source.name.endswith('_production_schema_baseline.sql') else 'postgres'
+            self._sql(source.read_text(encoding='utf8'), role=role)
+        self._sql("notify pgrst, 'reload schema';")
         # PostgREST's schema cache notification is asynchronous.
         for _ in range(60):
             code, _ = self.request('/rest/v1/rpc/get_netunim_sync_capabilities', {}, token=self.service)
@@ -274,9 +281,9 @@ enabled = false
         if action == 'remove':
             self.run('sudo', '-n', 'iptables', '-w', '-X', self.chain)
 
-    def _sql(self, sql):
+    def _sql(self, sql, *, role='postgres'):
         return self.run('docker', 'exec', '-i', self.db, 'psql', '-X', '-A', '-t',
-                        '-v', 'ON_ERROR_STOP=1', '-U', 'postgres', '-d', 'postgres', input=sql)
+                        '-v', 'ON_ERROR_STOP=1', '-U', role, '-d', 'postgres', input=sql)
 
     def preflight(self):
         self.attest_resources()
@@ -323,6 +330,8 @@ enabled = false
         return {'kind': 'real-local-supabase', 'project': self.project, 'api': self.url,
                 'container_egress_firewall': True, 'certificate_spki': self.spki,
                 'cli_version': CLI_VERSION, 'migration_sha256': self.migrations,
+                'catalog_baseline_role': 'supabase_admin; original SQL, platform-owned default privileges',
+                'incremental_migration_role': 'postgres',
                 'images': {name.split('_'+self.project)[0]:
                     json.loads(self.run('docker', 'inspect', cid))[0]['Config']['Image']
                     for name, cid in self.containers.items()},
