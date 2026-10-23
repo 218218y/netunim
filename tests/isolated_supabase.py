@@ -33,9 +33,8 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def isolated_environment(root):
-    env = {k: v for k, v in os.environ.items()
-           if not k.upper().startswith(('SUPABASE_', 'PG', 'DOCKER_', 'AWS_', 'S3_', 'SMTP_', 'OPENAI_'))
-           and k.upper() not in ('HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY')}
+    # Do not depend on recognizing every future provider credential variable.
+    env = {k: os.environ[k] for k in ('PATH', 'LD_LIBRARY_PATH', 'LANG', 'LC_ALL', 'TERM', 'NO_COLOR') if k in os.environ}
     env.update(HOME=str(root/'home'), XDG_CONFIG_HOME=str(root/'home/config'),
                DOCKER_HOST='unix:///var/run/docker.sock', DOCKER_CONFIG=str(root/'docker-config'),
                SUPABASE_TELEMETRY_DISABLED='true', PGCLIENTENCODING='UTF8', PGPASSFILE=os.devnull)
@@ -213,16 +212,23 @@ enabled = false
         print('Applying the original migration chain to the attested empty platform', flush=True)
         destination = contained(self.root, self.root/'supabase/migrations')
         destination.mkdir(exist_ok=True)
-        for source in sorted((ROOT/'supabase/migrations').glob('*.sql')):
-            shutil.copyfile(source, destination/source.name)
-            self.migrations[source.name] = hashlib.sha256(source.read_bytes()).hexdigest()
-            # The historical catalog baseline includes default privileges *for*
-            # supabase_admin. The local postgres runtime role is deliberately
-            # not a superuser and cannot reconstruct those platform-owned ACLs.
-            # Replay only that catalog baseline as the real platform owner;
-            # every incremental migration keeps the normal postgres authority.
-            role = 'supabase_admin' if source.name.endswith('_production_schema_baseline.sql') else 'postgres'
-            self._sql(source.read_text(encoding='utf8'), role=role)
+        self.postgres_was_superuser = self._sql("select rolsuper from pg_roles where rolname='postgres';")
+        # This historical catalog reconstruction includes platform-owned default
+        # ACLs and a postgres-owned event trigger. A restore needs bootstrap
+        # superuser authority, but the HTTP/runtime tests must use the platform's
+        # original role attributes. No migration SQL is rewritten or omitted.
+        self._sql('alter role postgres superuser;', role='supabase_admin')
+        try:
+            for source in sorted((ROOT/'supabase/migrations').glob('*.sql')):
+                shutil.copyfile(source, destination/source.name)
+                self.migrations[source.name] = hashlib.sha256(source.read_bytes()).hexdigest()
+                print('Replay', source.name, flush=True)
+                self._sql(source.read_text(encoding='utf8'))
+        finally:
+            if self.postgres_was_superuser == 'f':
+                self._sql('alter role postgres nosuperuser;', role='supabase_admin')
+        if self._sql("select rolsuper from pg_roles where rolname='postgres';") != self.postgres_was_superuser:
+            raise RuntimeError('bootstrap privileges were not restored before runtime acceptance')
         self._sql("notify pgrst, 'reload schema';")
         # PostgREST's schema cache notification is asynchronous.
         for _ in range(60):
@@ -330,11 +336,15 @@ enabled = false
         return {'kind': 'real-local-supabase', 'project': self.project, 'api': self.url,
                 'container_egress_firewall': True, 'certificate_spki': self.spki,
                 'cli_version': CLI_VERSION, 'migration_sha256': self.migrations,
-                'catalog_baseline_role': 'supabase_admin; original SQL, platform-owned default privileges',
-                'incremental_migration_role': 'postgres',
+                'migration_bootstrap': 'temporarily elevated local postgres for original catalog restore; no migration rewriting',
+                'runtime_postgres_superuser': self._sql("select rolsuper from pg_roles where rolname='postgres';"),
+                'original_postgres_superuser': self.postgres_was_superuser,
                 'images': {name.split('_'+self.project)[0]:
-                    json.loads(self.run('docker', 'inspect', cid))[0]['Config']['Image']
+                    {key: value for key, value in json.loads(self.run('docker', 'inspect', cid))[0].items()
+                     if key == 'Image'} | {'tag': json.loads(self.run('docker', 'inspect', cid))[0]['Config']['Image']}
                     for name, cid in self.containers.items()},
+                'harness_sha256': {name: hashlib.sha256((ROOT/'tests'/name).read_bytes()).hexdigest()
+                    for name in ('isolated_supabase.py', 'runtime_supabase_stack.py')},
                 'postgres': self._sql('show server_version;'),
                 'realtime': 'NOT APPLICABLE: application uses BroadcastChannel, no Supabase Realtime calls',
                 'isolation_boundary': 'owned Docker bridge with verified egress firewall and browser deny proxy; not an OS sandbox'}
