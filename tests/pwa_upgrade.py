@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 import shutil
+import socket
 import socketserver
 import threading
 import time
@@ -77,6 +78,12 @@ def wait_for_waiting_upgrade(browser, timeout=60):
 class _OfflineOrigin(socketserver.ThreadingTCPServer):
     allow_reuse_address = True
     daemon_threads = True
+
+    def server_bind(self):
+        if os.name == 'nt':
+            self.allow_reuse_address = False
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
 
 
 class UpgradeBrowser(BrowserSession):

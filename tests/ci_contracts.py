@@ -71,6 +71,24 @@ class VerificationContracts(unittest.TestCase):
                                                 expected_browser_path='/devtools/browser/OWNED')
         self.assertTrue(result['webSocketDebuggerUrl'].endswith('/OWNED'))
 
+    def test_browser_network_failure_diagnostics_exclude_credentials_and_payloads(self):
+        destination = 'http://user:password@127.0.0.1:1234/assets/js/main.js?token=private#private'
+        events = [
+            {'method': 'Network.requestWillBeSent', 'params': {'requestId': '1', 'request':
+                {'url': destination, 'headers': {'Authorization': 'Bearer private'}, 'postData': 'private-body'}}},
+            {'method': 'Network.loadingFailed', 'params': {'requestId': '1', 'errorText': 'net::ERR_CONNECTION_RESET private'}},
+            {'method': 'Log.entryAdded', 'params': {'entry': {'source': 'network', 'level': 'error',
+                'url': destination, 'text': 'Failed: net::ERR_CONNECTION_RESET private'}}},
+        ]
+        result = browser_harness._network_failure_diagnostics(events)
+        self.assertEqual(len(result), 2)
+        for row in result:
+            self.assertEqual((row['host'], row['port'], row['path']), ('127.0.0.1', 1234, '/assets/js/main.js'))
+            self.assertEqual(row['errors'], ['net::ERR_CONNECTION_RESET'])
+        self.assertNotIn('private', json.dumps(result))
+        self.assertNotIn('password', json.dumps(result))
+        self.assertNotIn('Authorization', json.dumps(result))
+
     def test_cold_browser_publication_shares_the_overall_startup_deadline(self):
         from unittest.mock import Mock
         with tempfile.TemporaryDirectory() as directory:

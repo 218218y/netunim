@@ -7,12 +7,30 @@ import tempfile
 import unittest
 import copy
 import json
+import http.server
+import socket
 
-from acceptance_safety import browser_preflight, contained, postgres_environment, sandbox_config
+from acceptance_safety import browser_preflight, contained, postgres_environment, sandbox_config, OwnedHTTPServer, DenyProxy
 from isolated_supabase import IsolatedSupabase, isolated_environment, loopback_url, LABEL, NoRedirect, clean_diagnostics
 
 
 class SafetyContracts(unittest.TestCase):
+    def test_owned_site_proxy_and_offline_origin_reject_a_reusing_second_listener(self):
+        from pwa_upgrade import _OfflineOrigin, _DropConnection
+        site = OwnedHTTPServer(('127.0.0.1', 0), http.server.SimpleHTTPRequestHandler)
+        offline = _OfflineOrigin(('127.0.0.1', 0), _DropConnection)
+        proxy = DenyProxy()
+        try:
+            for server in (site, proxy.server, offline):
+                with self.subTest(server=type(server).__name__), socket.socket(socket.AF_INET, socket.SOCK_STREAM) as intruder:
+                    intruder.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                    with self.assertRaises(OSError):
+                        intruder.bind(server.server_address)
+        finally:
+            site.server_close()
+            offline.server_close()
+            proxy.close()
+
     def test_diagnostics_redact_generated_secrets_but_keep_sql_failures(self):
         value = clean_diagnostics('API key: eyJfake.generated.secret\n'
             'postgresql://postgres:private@127.0.0.1:19471/postgres\n'

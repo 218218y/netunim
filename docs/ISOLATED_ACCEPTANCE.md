@@ -13,6 +13,10 @@ on 8765/8766 are not reachable. QUIC and non-proxied WebRTC UDP are disabled.
 The real-browser regression uses a disposable decoy, never an installed service,
 to verify loopback/localhost/IPv6 and foreign-host denial plus allowed site access.
 This is application/browser network isolation, not an OS or VM security sandbox.
+On Windows, site, deny-proxy and offline-origin listeners use
+`SO_EXCLUSIVEADDRUSE`: a second socket requesting `SO_REUSEADDR` must fail to bind
+the owned address. Windows' permissive reuse otherwise allows ambiguous delivery
+even while the test server object still reports the expected address.
 
 PostgreSQL is initialized from empty files on a fresh loopback port and migrations
 run against that instance. All inherited `PG*` settings are removed, including
@@ -323,6 +327,10 @@ harness retains bounded, credential-free stderr, browser version, IDB histogram
 and file-metadata diagnostics before removing its private profile. Logs from prior
 owned browser generations are retained until that session is cleaned up. It does
 not retry failed database opens, replace missing journals or change restore logic.
+Network-domain failures and network log errors are captured for failures during
+the whole session, including uninstrumented PWA readiness checks. Only destination
+host/port/path, error codes and blocked/canceled status are retained; request
+headers, query strings, credentials and bodies are excluded.
 
 Chromium startup shares its existing 60-second readiness budget across private
 DevTools identity publication, listener ownership verification and page discovery.
