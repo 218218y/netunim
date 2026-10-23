@@ -324,16 +324,21 @@ def run_cron(stack, owner):
 
 def main():
     results = []
-    with IsolatedSupabase() as stack:
-        owner, foreign = create_user(stack, 1), create_user(stack, 2)
-        for app in ('orders', 'kupa'):
-            results.append(run_app(stack, app, owner, foreign))
-            print('PASS', results[-1]['scenario'], flush=True)
-        for run in (run_storage, run_restore):
-            results.append(run(stack, owner, foreign))
-            print('PASS', results[-1]['scenario'], flush=True)
-        results.append(run_cron(stack, owner))
-        results.append({'scenario': 'resource and destination attestation', 'status': 'PASS', **stack.evidence()})
+    try:
+        with IsolatedSupabase() as stack:
+            owner, foreign = create_user(stack, 1), create_user(stack, 2)
+            for app in ('orders', 'kupa'):
+                results.append(run_app(stack, app, owner, foreign))
+                print('PASS', results[-1]['scenario'], flush=True)
+            for run in (run_storage, run_restore):
+                results.append(run(stack, owner, foreign))
+                print('PASS', results[-1]['scenario'], flush=True)
+            results.append(run_cron(stack, owner))
+            results.append({'scenario': 'resource and destination attestation', 'status': 'PASS', **stack.evidence()})
+    except Exception as error:
+        write_evidence('full-supabase-stack', [*results, {'scenario': 'full service acceptance',
+            'status': 'FAIL', 'error_type': type(error).__name__}])
+        raise
     # Emit PASS only after scoped container/volume/profile cleanup succeeded.
     results.append({'scenario': 'scoped stack and browser cleanup', 'status': 'PASS'})
     write_evidence('full-supabase-stack', results)

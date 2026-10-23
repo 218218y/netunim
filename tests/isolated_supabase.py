@@ -76,6 +76,7 @@ class IsolatedSupabase:
         self.chain = 'NETUNIM_'+secrets.token_hex(6)
         self.containers = {}
         self.anon = self.service = ''
+        self.db_password = ''
         self.marker = secrets.token_hex(32)
         self.migrations = {}
 
@@ -207,6 +208,11 @@ enabled = false
         if loopback_url(status['API_URL'], self.api_port) != self.url:
             raise RuntimeError('CLI reported a different API listener')
         self.anon, self.service = status['ANON_KEY'], status['SERVICE_ROLE_KEY']
+        database_url = urllib.parse.urlsplit(status['DB_URL'])
+        if (database_url.hostname != '127.0.0.1' or database_url.port != self.db_port
+                or database_url.username != 'postgres' or database_url.path != '/postgres'):
+            raise RuntimeError('CLI database URL differs from the owned listener')
+        self.db_password = urllib.parse.unquote(database_url.password or '')
         if len(self.anon) < 30 or self.anon == self.service:
             raise RuntimeError('the local stack did not provide distinct API roles')
         print('Applying the original migration chain to the attested empty platform', flush=True)
@@ -288,7 +294,13 @@ enabled = false
             self.run('sudo', '-n', 'iptables', '-w', '-X', self.chain)
 
     def _sql(self, sql, *, role='postgres'):
-        return self.run('docker', 'exec', '-i', self.db, 'psql', '-X', '-A', '-t',
+        # Retention's inet_server_port() contract must observe the real server
+        # port; a Unix socket returns NULL. Keep SQL inside the attested DB
+        # container, using only its newly generated local connection secret.
+        tcp = role == 'postgres' and self.db_password
+        environment = ['-e', 'PGPASSWORD='+self.db_password] if tcp else []
+        connection = ['-h', '127.0.0.1', '-p', '5432'] if tcp else []
+        return self.run('docker', 'exec', '-i', *environment, self.db, 'psql', '-X', '-A', '-t', *connection,
                         '-v', 'ON_ERROR_STOP=1', '-U', role, '-d', 'postgres', input=sql)
 
     def preflight(self):
