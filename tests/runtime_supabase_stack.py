@@ -319,7 +319,7 @@ def run_cron(stack, owner):
     expected_jobs = expected['jobs'] if isinstance(expected, dict) else expected
     expected_names = {r['jobname'] for r in expected_jobs}
     platform_jobs = [r['jobname'] for r in catalog if r['jobname'] not in expected_names]
-    assert not any(name.startswith('netunim-') for name in platform_jobs), platform_jobs
+    assert not any(str(name or '').startswith('netunim-') for name in platform_jobs), platform_jobs
     # The real platform has its own maintenance jobs; they are not application
     # retention jobs and must never be executed/changed by this acceptance suite.
     catalog = [r for r in catalog if r['jobname'] in expected_names]
@@ -328,8 +328,8 @@ def run_cron(stack, owner):
         wanted = next(r for r in expected_jobs if r['jobname'] == actual['jobname'])
         assert all(actual[k] == wanted[k] for k in ('schedule', 'command', 'active', 'username', 'database'))
     stack.sql(f"""insert into public.order_management_periodic_backups(owner_id,document_name,revision,state,saved_at)
-      values ('{owner['id']}','suppliers',1,'{{}}',now()-interval '400 days'),
-             ('{owner['id']}','suppliers',2,'{{}}',now());
+      values ('{owner['id']}','retention-fixture',1,'{{}}',now()-interval '400 days'),
+             ('{owner['id']}','retention-fixture',2,'{{}}',now());
       insert into netunim_internal.document_sync_operations(owner_id,domain,document_name,operation_id,payload_sha256,applied_revision,created_at)
       select '{owner['id']}','orders','retention-fixture','old-'||i,repeat('a',64),i,now()-interval '800 days'+i*interval '1 second' from generate_series(1,101) i;""")
     runs = []
@@ -353,7 +353,7 @@ def run_cron(stack, owner):
             stack.sql(f'select cron.unschedule({job});')
     assert stack.sql(f"select count(*) from public.order_management_periodic_backups where owner_id='{owner['id']}' and saved_at<now()-interval '365 days';") == '0'
     assert stack.sql("select count(*) from netunim_internal.document_sync_operations where document_name='retention-fixture';") == '100'
-    assert stack.sql(f"select count(*) from public.order_management_periodic_backups where owner_id='{owner['id']}' and revision=2;") == '1'
+    assert stack.sql(f"select count(*) from public.order_management_periodic_backups where owner_id='{owner['id']}' and document_name='retention-fixture' and revision=2;") == '1'
     return {'scenario': 'real pg_cron retention schedules and timed executions', 'status': 'PASS',
             'catalog': catalog, 'executions': runs, 'platform_jobs_untouched': platform_jobs,
             'expired_removed_recent_preserved': True}

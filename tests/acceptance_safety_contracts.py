@@ -9,10 +9,18 @@ import copy
 import json
 
 from acceptance_safety import browser_preflight, contained, postgres_environment, sandbox_config
-from isolated_supabase import IsolatedSupabase, isolated_environment, loopback_url, LABEL, NoRedirect
+from isolated_supabase import IsolatedSupabase, isolated_environment, loopback_url, LABEL, NoRedirect, clean_diagnostics
 
 
 class SafetyContracts(unittest.TestCase):
+    def test_diagnostics_redact_generated_secrets_but_keep_sql_failures(self):
+        value = clean_diagnostics('API key: eyJfake.generated.secret\n'
+            'postgresql://postgres:private@127.0.0.1:19471/postgres\n'
+            'sb_secret_privateopaque\nERROR: duplicate key value violates unique constraint backup_owner_revision_key')
+        for secret in ('eyJfake.generated.secret', 'postgres:private', 'sb_secret_privateopaque'):
+            self.assertNotIn(secret, value)
+        self.assertIn('duplicate key value', value)
+
     def test_full_stack_refuses_workstation_before_creating_resources(self):
         with patch.dict(os.environ, {'GITHUB_ACTIONS': 'false'}), \
              patch('isolated_supabase.tempfile.mkdtemp', side_effect=AssertionError('must not allocate')):
