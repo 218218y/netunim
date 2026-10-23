@@ -1,0 +1,22 @@
+{
+  "source_sha": "37ec5cbd79b49618bac534353884019f127068ca",
+  "source_tree": "df7513f744b1a11a264a3388567d4532f0baa62b",
+  "dirty": false,
+  "platform": "posix",
+  "synthetic_only": true,
+  "harness_sha256": {
+    "tests/acceptance_safety.py": "6f3b547277dc521ea32411e3725f06ac16ca78fce6544839b6b9d3d8fb6a2cf0",
+    "tests/browser_harness.py": "6515a997d0a0f571119752cb037c50e6af8f1396a13f3acc78f81b61a5e43f16",
+    "tests/isolated_sync_postgres.py": "03f6f1c9f990ba9292ac1f46fb6bbfcca70f00b3ca8aa4914b1b932b36e71230"
+  },
+  "scenarios": [
+    {
+      "scenario": "actual UI download / native file chooser / Main and Shared restore / hard process restart",
+      "status": "PASS",
+      "backup_sha256": "41bffcbee3308ea308746caae50527f84ec2d591ef6eb5638ab211f1b500189e",
+      "note_id": "roundtrip-note",
+      "check_id": "roundtrip-check",
+      "check_count_after_restart": 1
+    }
+  ]
+}

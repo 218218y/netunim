@@ -146,6 +146,7 @@ def _browser_args(browser: str, profile: Path, port: int) -> list[str]:
     return [browser, "--headless=new", "--no-sandbox", "--disable-gpu",
             f"--remote-debugging-port={port}", f"--user-data-dir={profile}", "--profile-directory=Default",
             "--remote-allow-origins=*", "--disable-background-networking",
+            "--enable-logging=stderr", "--log-level=0",
             "--no-first-run", "about:blank"]
 
 
@@ -437,6 +438,7 @@ class BrowserSession:
         self.auto_navigate = auto_navigate
         self.origin_owner = origin_owner
         self.supabase = supabase
+        self.browser_generation = 0
 
     def __enter__(self):
         try:
@@ -468,10 +470,35 @@ class BrowserSession:
                                 'errors': re.findall(r'(?:net::)?ERR_[A-Z_]+', str(entry.get('text', '')))})
                     if network:
                         error.add_note('Native browser startup network diagnostics: '+json.dumps(network[-20:]))
-            self.__exit__(None, None, None)
+            self.__exit__(type(error), error, error.__traceback__)
             raise
 
     def __exit__(self, exc_type, exc, tb):
+        if exc is not None:
+            with contextlib.suppress(Exception):
+                version, histograms = None, []
+                with contextlib.suppress(Exception):
+                    version = self.call('Browser.getVersion', timeout=2).get('result', {}).get('product')
+                    raw = self.call('Browser.getHistograms', {'query': 'IndexedDB'}, timeout=2).get('result', {}).get('histograms', [])
+                    histograms = [{**row, 'buckets': row.get('buckets', [])[:8]} for row in raw
+                        if row.get('count') and re.search(r'Open|BackingStore|LevelDB|Init', row['name'])][:15]
+                lines = []
+                for log in sorted(self.tmp.glob('browser*.log')):
+                    for line in log.read_text(encoding='utf8', errors='replace').splitlines():
+                        if re.search(r'(?i)indexed.?db|leveldb|backing.?store|quota|os_crypt|ERROR', line):
+                            line = re.sub(r'eyJ[A-Za-z0-9_.-]+|sb_(?:publishable|secret)_[A-Za-z0-9_-]+', '[redacted]', line)
+                            # Never retain query credentials in a browser error.
+                            line = re.sub(r'(https?://[^\s?]+)\?[^\s]+', r'\1?[redacted]', line)
+                            lines.append(log.name+': '+line)
+                files = []
+                for path in (self.profile/'Default/IndexedDB').rglob('*'):
+                    with contextlib.suppress(OSError):
+                        if path.is_file():
+                            files.append({'path': str(path.relative_to(self.profile)), 'bytes': path.stat().st_size})
+                exc.add_note('Owned Chromium failure diagnostics: '+json.dumps({
+                    'stderr': [line[-700:] for line in lines[-15:]], 'indexed_db_files': files[:30],
+                    'browser': version, 'indexed_db_histograms': histograms,
+                    'disk_free_bytes': shutil.disk_usage(self.profile).free}))
         cleanup_error = None
         try:
             graceful_close = None
@@ -591,6 +618,9 @@ class BrowserSession:
             args.extend(self.supabase.browser_arguments())
         args.extend(self.network_guard.arguments(allowed))
         browser_log = self.tmp / 'browser.log'
+        if browser_log.exists():
+            browser_log.rename(self.tmp/f'browser-{self.browser_generation:03d}.log')
+        self.browser_generation += 1
         if os.name == 'nt':
             # Reuse the runner's gated Job Object owner. The Python child is
             # assigned before it can create Chromium or any of its descendants.

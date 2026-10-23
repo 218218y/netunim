@@ -84,6 +84,8 @@ FLOW = r"""(async()=>{
 
 parser=argparse.ArgumentParser()
 parser.add_argument('--app',choices=('orders','kupa'))
+parser.add_argument('--paired-only',action='store_true')
+parser.add_argument('--paired-phase',choices=('prepared','shared-applied','main-applied'),action='append')
 parser.add_argument('--baseline',action='store_true',help='Restore the old Orders key gate only in the disposable test site; the regression must fail.')
 args=parser.parse_args()
 if args.baseline and args.app!='orders':
@@ -93,7 +95,7 @@ if args.baseline and args.app!='orders':
 def paired_process_boundaries(app):
     fixture=(ROOT/'tests/fixtures/restore-process-boundary.mjs').read_text(encoding='utf8').replace('export async function','async function')
     results=[]
-    for phase in ('prepared','shared-applied','main-applied'):
+    for phase in (args.paired_phase or ('prepared','shared-applied','main-applied')):
         with BrowserSession(ROOT/f'netunim-{app}/site',app+'-restore-process-'+phase,instrument=False) as browser:
             marker=app+'-'+phase+'-owned-profile'
             marker_expression="({marker:localStorage.getItem('restore-profile-canary'),databases:(await indexedDB.databases()).map(row=>row.name)})"
@@ -142,6 +144,9 @@ def paired_process_boundaries(app):
     write_evidence(app+'-paired-restore-process',results)
 
 for app in ([args.app] if args.app else ('orders', 'kupa')):
+    if args.paired_only:
+        paired_process_boundaries(app)
+        continue
     with BrowserSession(ROOT / f'netunim-{app}/site', app+'-restore-server-recovery', instrument=False,auto_navigate=False) as browser:
         if args.baseline:
             target=browser.tmp/'site/assets/js/storage/browser.js'

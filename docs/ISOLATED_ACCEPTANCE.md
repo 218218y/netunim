@@ -305,3 +305,18 @@ It restores and verifies the original role attributes before creating test users
 or running HTTP/RLS acceptance. This is a catalog-restore bootstrap, not a test of
 production migration deployment permissions. TCP inside the owned DB container
 preserves retention's real `inet_server_port()` contract; Unix sockets do not.
+
+The October 23 completed service/profiling campaign and its exact source/tree are
+recorded in [the acceptance report](ACCEPTANCE_REPORT_20261023_HE.md). Twenty clean
+source-bound acceptance reports, raw latency samples and artifact digests are
+checked in under `docs/acceptance/2026-10-23/`; full Chrome traces remain artifacts.
+The two timed retention jobs are separate from the additional application jobs
+`check-bank-refresh` and `morning-check-registration`, whose definitions are preserved.
+
+Focused process-boundary diagnosis can run locally without the whole suite:
+`python tests/runtime_restore_server_recovery.py --app kupa --paired-only --paired-phase main-applied`.
+Defaults still run every app and every boundary in CI. On failure the browser
+harness retains bounded, credential-free stderr, browser version, IDB histogram
+and file-metadata diagnostics before removing its private profile. Logs from prior
+owned browser generations are retained until that session is cleaned up. It does
+not retry failed database opens, replace missing journals or change restore logic.

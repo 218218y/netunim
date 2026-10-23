@@ -1,0 +1,154 @@
+{
+  "source_sha": "37ec5cbd79b49618bac534353884019f127068ca",
+  "source_tree": "df7513f744b1a11a264a3388567d4532f0baa62b",
+  "dirty": false,
+  "platform": "posix",
+  "synthetic_only": true,
+  "harness_sha256": {
+    "tests/acceptance_safety.py": "6f3b547277dc521ea32411e3725f06ac16ca78fce6544839b6b9d3d8fb6a2cf0",
+    "tests/browser_harness.py": "6515a997d0a0f571119752cb037c50e6af8f1396a13f3acc78f81b61a5e43f16",
+    "tests/isolated_sync_postgres.py": "03f6f1c9f990ba9292ac1f46fb6bbfcca70f00b3ca8aa4914b1b932b36e71230"
+  },
+  "scenarios": [
+    {
+      "scenario": "orders Main immutable lost ACK",
+      "status": "PASS"
+    },
+    {
+      "scenario": "kupa Main immutable lost ACK",
+      "status": "PASS"
+    },
+    {
+      "scenario": "orders Shared immutable lost ACK",
+      "status": "PASS"
+    },
+    {
+      "scenario": "kupa Shared immutable lost ACK",
+      "status": "PASS"
+    },
+    {
+      "scenario": "orders two real browser profiles / real PostgreSQL",
+      "status": "PASS",
+      "offline_transport": true,
+      "hard_process_failures": 2,
+      "lost_ack": {
+        "operation_id": "rapid-orders-A-5",
+        "operation_revision": 11,
+        "observed_head": 12
+      },
+      "restart_snapshots": [
+        {
+          "seq": 5,
+          "base": 12,
+          "state_sha256": "71a664679f46d727808de2552595b83df51eb3cd421d75794bde93236d9909b0",
+          "persisted": {
+            "checkpoint_seq": 5,
+            "journal_sequences": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "metadata_seq": 5,
+            "base_checksum": "685e0dec17cb9298",
+            "flight": null
+          }
+        },
+        {
+          "seq": 5,
+          "base": 12,
+          "state_sha256": "71a664679f46d727808de2552595b83df51eb3cd421d75794bde93236d9909b0",
+          "persisted": {
+            "checkpoint_seq": 5,
+            "journal_sequences": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "metadata_seq": 5,
+            "base_checksum": "cc912ea548b3c5c5",
+            "flight": null
+          }
+        }
+      ],
+      "durable_conflict": "entity-conflict",
+      "operation_ledger": [
+        {
+          "operation_id": "rapid-orders-rotated-5",
+          "applied_revision": 12
+        },
+        {
+          "operation_id": "rapid-orders-A-5",
+          "applied_revision": 11
+        }
+      ],
+      "shared_head_unchanged": true,
+      "financial_record_count": 1
+    },
+    {
+      "scenario": "kupa two real browser profiles / real PostgreSQL",
+      "status": "PASS",
+      "offline_transport": true,
+      "hard_process_failures": 2,
+      "lost_ack": {
+        "operation_id": "rapid-kupa-A-5",
+        "operation_revision": 11,
+        "observed_head": 12
+      },
+      "restart_snapshots": [
+        {
+          "seq": 5,
+          "base": 12,
+          "state_sha256": "38dd1b189a76f1f60b4750fd5b18eba3db83ea271989e144454afb7efac6c8d0",
+          "persisted": {
+            "checkpoint_seq": 5,
+            "journal_sequences": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "metadata_seq": 5,
+            "base_checksum": "5891f62e026f7502",
+            "flight": null
+          }
+        },
+        {
+          "seq": 5,
+          "base": 12,
+          "state_sha256": "38dd1b189a76f1f60b4750fd5b18eba3db83ea271989e144454afb7efac6c8d0",
+          "persisted": {
+            "checkpoint_seq": 5,
+            "journal_sequences": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "metadata_seq": 5,
+            "base_checksum": "12e172cf480a667f",
+            "flight": null
+          }
+        }
+      ],
+      "durable_conflict": "entity-conflict",
+      "operation_ledger": [
+        {
+          "operation_id": "rapid-kupa-rotated-5",
+          "applied_revision": 12
+        },
+        {
+          "operation_id": "rapid-kupa-A-5",
+          "applied_revision": 11
+        }
+      ],
+      "shared_head_unchanged": true,
+      "financial_record_count": 1
+    }
+  ]
+}

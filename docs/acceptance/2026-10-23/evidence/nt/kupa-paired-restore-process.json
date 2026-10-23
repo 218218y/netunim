@@ -1,0 +1,41 @@
+{
+  "source_sha": "37ec5cbd79b49618bac534353884019f127068ca",
+  "source_tree": "df7513f744b1a11a264a3388567d4532f0baa62b",
+  "dirty": false,
+  "platform": "nt",
+  "synthetic_only": true,
+  "harness_sha256": {
+    "tests/acceptance_safety.py": "5296020c197021a1418f84624dc005e094ae5c345210871455cca84a8767b4cb",
+    "tests/browser_harness.py": "d15415acdb1fb8030da611ebf906c7e635d35304af8be4224ae772e6fec32bc8",
+    "tests/isolated_sync_postgres.py": "8aaea29d3ca9c40711e57271324ad809d90034c3ffeec1b845e1aed0981e2531"
+  },
+  "scenarios": [
+    {
+      "scenario": "kupa hard process failure after prepared",
+      "status": "PASS",
+      "before_phase": "prepared",
+      "after_phase": "complete",
+      "main_revision": 9,
+      "shared_revision": 12,
+      "restored_check_count": 1
+    },
+    {
+      "scenario": "kupa hard process failure after shared-applied",
+      "status": "PASS",
+      "before_phase": "shared-applied",
+      "after_phase": "complete",
+      "main_revision": 9,
+      "shared_revision": 12,
+      "restored_check_count": 1
+    },
+    {
+      "scenario": "kupa hard process failure after main-applied",
+      "status": "PASS",
+      "before_phase": "main-applied",
+      "after_phase": "complete",
+      "main_revision": 9,
+      "shared_revision": 12,
+      "restored_check_count": 1
+    }
+  ]
+}
