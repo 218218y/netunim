@@ -297,3 +297,11 @@ private CLI state, certificate private keys and raw Docker environment dumps
 are never artifacts. PASS is written only after owned resources are removed.
 Until this exact source passes the real required job, this route is NOT RUN,
 regardless of passing local safety contracts.
+
+Catalog reconstruction temporarily elevates the disposable database's `postgres`
+role through its existing `supabase_admin`, because the historical catalog export
+contains platform-owned default privileges and a postgres-owned event trigger.
+It restores and verifies the original role attributes before creating test users
+or running HTTP/RLS acceptance. This is a catalog-restore bootstrap, not a test of
+production migration deployment permissions. TCP inside the owned DB container
+preserves retention's real `inet_server_port()` contract; Unix sockets do not.

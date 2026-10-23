@@ -61,7 +61,13 @@ class StackBrowser(BrowserSession):
     def rpc(self, name, body, *, wait=True):
         expression = "request('/rest/v1/rpc/"+name+"',{method:'POST',body:JSON.stringify("+js(body)+")}).then(async r=>{const value=await r.json();if(!r.ok)throw Error('RPC HTTP '+r.status+': '+JSON.stringify(value));return value})"
         if wait:
-            return self.evaluate(expression, timeout=40)
+            value = self.evaluate(expression, timeout=40)
+            # PostgREST represents RETURNS TABLE as a row array; the older SQL
+            # fixture selected its single row directly. Preserve list RPCs.
+            if isinstance(value, list) and name != 'list_incomplete_restore_groups_v5':
+                assert len(value) == 1, ('single-row RPC', name, len(value))
+                return value[0]
+            return value
         return self.evaluate('window.upload='+expression+".catch(e=>({uncertain:true,code:e.code||e.name}));true")
 
 
