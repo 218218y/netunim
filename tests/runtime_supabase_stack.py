@@ -325,10 +325,10 @@ def run_cron(stack, owner):
     # a separate temporary second-based schedule, observing real job_run_details.
     expected_jobs = expected['jobs'] if isinstance(expected, dict) else expected
     expected_names = {r['jobname'] for r in expected_jobs}
-    platform_jobs = [r['jobname'] for r in catalog if r['jobname'] not in expected_names]
-    assert not any(str(name or '').startswith('netunim-') for name in platform_jobs), platform_jobs
-    # The real platform has its own maintenance jobs; they are not application
-    # retention jobs and must never be executed/changed by this acceptance suite.
+    other_jobs = [r['jobname'] for r in catalog if r['jobname'] not in expected_names]
+    assert not any(str(name or '').startswith('netunim-') for name in other_jobs), other_jobs
+    # The complete chain also schedules bank refresh and Morning registration.
+    # Preserve those jobs: this timed fixture asserts only the retention jobs.
     catalog = [r for r in catalog if r['jobname'] in expected_names]
     assert len(catalog) == len(expected_jobs) and {r['jobname'] for r in catalog} == expected_names
     for actual in catalog:
@@ -362,7 +362,7 @@ def run_cron(stack, owner):
     assert stack.sql("select count(*) from netunim_internal.document_sync_operations where document_name='retention-fixture';") == '100'
     assert stack.sql(f"select count(*) from public.order_management_periodic_backups where owner_id='{owner['id']}' and document_name='retention-fixture' and revision=2;") == '1'
     return {'scenario': 'real pg_cron retention schedules and timed executions', 'status': 'PASS',
-            'catalog': catalog, 'executions': runs, 'platform_jobs_untouched': platform_jobs,
+            'catalog': catalog, 'executions': runs, 'other_application_jobs_preserved': other_jobs,
             'expired_removed_recent_preserved': True}
 
 

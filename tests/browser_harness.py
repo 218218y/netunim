@@ -451,7 +451,23 @@ class BrowserSession:
                 if self.instrument:
                     self.evaluate("appReady.then(()=>true)")
             return self
-        except BaseException:
+        except BaseException as error:
+            # A dynamic import hides the underlying local HTTP failure behind a
+            # generic TypeError. Preserve origin/path and browser error codes,
+            # never request headers, query credentials or response bodies.
+            with contextlib.suppress(Exception):
+                if self.ws:
+                    self.call('Runtime.evaluate', {'expression': 'true'}, timeout=2)
+                    import re
+                    network = []
+                    for event in self.events:
+                        entry = event.get('params', {}).get('entry', {})
+                        if event.get('method') == 'Log.entryAdded' and entry.get('source') == 'network' and entry.get('level') == 'error':
+                            url = urllib.parse.urlsplit(entry.get('url', ''))
+                            network.append({'host': url.hostname, 'port': url.port, 'path': url.path,
+                                'errors': re.findall(r'(?:net::)?ERR_[A-Z_]+', str(entry.get('text', '')))})
+                    if network:
+                        error.add_note('Native browser startup network diagnostics: '+json.dumps(network[-20:]))
             self.__exit__(None, None, None)
             raise
 
