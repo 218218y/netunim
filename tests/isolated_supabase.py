@@ -252,6 +252,7 @@ enabled = false
                 or network['Options'].get('com.docker.network.bridge.host_binding_ipv4') != '127.0.0.1'):
             raise RuntimeError('Docker network isolation cannot be proven')
         self.firewall('check')
+        published = set()
         for name, cid in self.containers.items():
             item = json.loads(self.run('docker', 'inspect', cid))[0]
             if (item['Config']['Labels'].get(LABEL) != self.project or not name.endswith('_'+self.project)
@@ -264,6 +265,7 @@ enabled = false
                 for binding in bindings or []:
                     if binding['HostIp'] not in ('127.0.0.1', '::1') or int(binding['HostPort']) in (8765, 8766):
                         raise RuntimeError('Supabase published a non-isolated port')
+                    published.add((name, int(binding['HostPort'])))
             for mount in item['Mounts']:
                 if mount['Type'] == 'bind':
                     contained(self.root, mount['Source'])
@@ -273,6 +275,9 @@ enabled = false
                         raise RuntimeError('Supabase reused an unowned volume')
                 elif mount['Type'] != 'tmpfs':
                     raise RuntimeError('unrecognized Supabase storage destination')
+        if not {('supabase_db_'+self.project, self.db_port),
+                ('supabase_kong_'+self.project, self.api_port)} <= published:
+            raise RuntimeError('the actual API/database port mapping is not owned by this stack')
         if (self.root/'supabase/.temp/project-ref').exists():
             raise RuntimeError('a linked remote project was found')
 

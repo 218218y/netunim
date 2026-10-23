@@ -125,6 +125,9 @@ def run_app(stack, app, owner, foreign):
             assert a.rpc('save_shared_checks_document_v6', {'p_document_name': 'main', 'p_expected_revision': 0,
                 'p_state': shared, 'p_operation_id': 'shared-seed', 'p_audit': {}, 'p_deleted_check_ids': []})['revision'] == 1
         shared_before = head(stack, owner, 'shared_checks_documents', 'main')
+        code, foreign_shared = stack.request('/rest/v1/shared_checks_documents'
+            +f"?owner_id=eq.{owner['id']}&select=*", token=foreign['token'])
+        assert code == 200 and foreign_shared == []
         a.call('Network.enable')
         offline = {'offline': True, 'latency': 0, 'downloadThroughput': -1, 'uploadThroughput': -1}
         assert 'error' not in a.call('Network.emulateNetworkConditions', offline)
@@ -314,7 +317,13 @@ def run_cron(stack, owner):
     # Validate production schedules, then execute each *original command* using
     # a separate temporary second-based schedule, observing real job_run_details.
     expected_jobs = expected['jobs'] if isinstance(expected, dict) else expected
-    assert {r['jobname'] for r in catalog} == {r['jobname'] for r in expected_jobs}
+    expected_names = {r['jobname'] for r in expected_jobs}
+    platform_jobs = [r['jobname'] for r in catalog if r['jobname'] not in expected_names]
+    assert not any(name.startswith('netunim-') for name in platform_jobs), platform_jobs
+    # The real platform has its own maintenance jobs; they are not application
+    # retention jobs and must never be executed/changed by this acceptance suite.
+    catalog = [r for r in catalog if r['jobname'] in expected_names]
+    assert len(catalog) == len(expected_jobs) and {r['jobname'] for r in catalog} == expected_names
     for actual in catalog:
         wanted = next(r for r in expected_jobs if r['jobname'] == actual['jobname'])
         assert all(actual[k] == wanted[k] for k in ('schedule', 'command', 'active', 'username', 'database'))
@@ -346,7 +355,8 @@ def run_cron(stack, owner):
     assert stack.sql("select count(*) from netunim_internal.document_sync_operations where document_name='retention-fixture';") == '100'
     assert stack.sql(f"select count(*) from public.order_management_periodic_backups where owner_id='{owner['id']}' and revision=2;") == '1'
     return {'scenario': 'real pg_cron retention schedules and timed executions', 'status': 'PASS',
-            'catalog': catalog, 'executions': runs, 'expired_removed_recent_preserved': True}
+            'catalog': catalog, 'executions': runs, 'platform_jobs_untouched': platform_jobs,
+            'expired_removed_recent_preserved': True}
 
 
 def main():

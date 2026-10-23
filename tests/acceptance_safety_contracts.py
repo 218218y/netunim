@@ -42,15 +42,18 @@ class SafetyContracts(unittest.TestCase):
             root = Path(directory)
             stack = IsolatedSupabase.__new__(IsolatedSupabase)
             stack.root, stack.project, stack.network = root, 'owned', 'owned-network'
-            stack.containers = {'supabase_db_owned': 'owned-id'}
+            stack.containers = {'supabase_db_owned': 'owned-id', 'supabase_kong_owned': 'kong-id'}
+            stack.db_port, stack.api_port = 19471, 19472
             network = {'Labels': {LABEL: 'owned'}, 'Internal': True,
                        'Options': {'com.docker.network.bridge.host_binding_ipv4': '127.0.0.1'}}
             item = {'Config': {'Labels': {LABEL: 'owned'}}, 'NetworkSettings': {'Networks': {'owned-network': {}},
                     'Ports': {'5432/tcp': [{'HostIp': '127.0.0.1', 'HostPort': '19471'}]}},
                     'HostConfig': {'Privileged': False, 'PortBindings': {'5432/tcp': [{'HostIp': '127.0.0.1', 'HostPort': '19471'}]}},
                     'Mounts': [{'Type': 'bind', 'Source': str(root/'new-db')}]}
+            kong = copy.deepcopy(item)
+            kong['NetworkSettings']['Ports']['5432/tcp'][0]['HostPort'] = '19472'
             def run(*args):
-                return json.dumps([network if args[1] == 'network' else current])
+                return json.dumps([network if args[1] == 'network' else kong if args[-1] == 'kong-id' else current])
             current = item
             with patch.object(stack, 'run', side_effect=run), patch.object(stack, 'firewall'):
                 stack.attest_resources()
@@ -58,6 +61,7 @@ class SafetyContracts(unittest.TestCase):
                     lambda x: x['Mounts'][0].update(Source=str(root.parent/'real-data')),
                     lambda x: x['Config']['Labels'].update({LABEL: 'foreign'}),
                     lambda x: x['NetworkSettings']['Ports']['5432/tcp'][0].update(HostIp='0.0.0.0'),
+                    lambda x: x['NetworkSettings']['Ports']['5432/tcp'][0].update(HostPort='19473'),
                     lambda x: x['NetworkSettings']['Networks'].update({'external-network': {}}),
                     lambda x: x['HostConfig'].update(Privileged=True)):
                     current = copy.deepcopy(item)
