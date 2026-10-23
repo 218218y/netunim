@@ -48,7 +48,14 @@ def browser_preflight(session):
     site = contained(root, root / 'site')
     config = contained(root, site / 'supabase/config.js')
     expected = 'location.origin' if session.service_worker else "'https://example.invalid'"
-    if config.read_text(encoding='utf-8') != sandbox_config(expected):
+    stack = getattr(session, 'supabase', None)
+    config_source = sandbox_config(expected)
+    if stack is not None:
+        from isolated_supabase import IsolatedSupabase
+        if not isinstance(stack, IsolatedSupabase):
+            raise RuntimeError('unrecognized isolated Supabase owner')
+        config_source = stack.browser_config()
+    if config.read_text(encoding='utf-8') != config_source:
         raise RuntimeError('test Supabase configuration is not the isolated fixture')
     url = urllib.parse.urlsplit(session.url)
     if url.scheme != 'http' or url.hostname != '127.0.0.1' or not url.port or url.port in (8765, 8766) or url.username or url.password:
@@ -56,7 +63,10 @@ def browser_preflight(session):
     listener = session.origin_owner or session
     if listener.httpd is None or listener.httpd.server_address != ('127.0.0.1', url.port):
         raise RuntimeError('test origin does not match its owned listener')
-    return f'127.0.0.1:{url.port}'
+    allowed = f'127.0.0.1:{url.port}'
+    if stack is not None:
+        allowed += f';127.0.0.1:{stack.api_port}'
+    return allowed
 
 
 def sandbox_config(url):

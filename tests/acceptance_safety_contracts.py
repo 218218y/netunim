@@ -5,11 +5,69 @@ from unittest.mock import patch
 import os
 import tempfile
 import unittest
+import copy
+import json
 
 from acceptance_safety import browser_preflight, contained, postgres_environment, sandbox_config
+from isolated_supabase import IsolatedSupabase, isolated_environment, loopback_url, LABEL, NoRedirect
 
 
 class SafetyContracts(unittest.TestCase):
+    def test_full_stack_refuses_workstation_before_creating_resources(self):
+        with patch.dict(os.environ, {'GITHUB_ACTIONS': 'false'}), \
+             patch('isolated_supabase.tempfile.mkdtemp', side_effect=AssertionError('must not allocate')):
+            with self.assertRaisesRegex(RuntimeError, 'disposable'):
+                IsolatedSupabase()
+
+    def test_stack_strips_remote_credentials_and_targets(self):
+        with patch.dict(os.environ, {'SUPABASE_ACCESS_TOKEN': 'real', 'DOCKER_CONTEXT': 'remote',
+            'DOCKER_HOST': 'tcp://production:2375', 'AWS_SECRET_ACCESS_KEY': 'real', 'S3_KEY': 'real',
+            'SMTP_PASSWORD': 'real', 'PGHOSTADDR': '192.0.2.1', 'HTTPS_PROXY': 'http://external'}):
+            env = isolated_environment(Path('/disposable'))
+        self.assertEqual(env['DOCKER_HOST'], 'unix:///var/run/docker.sock')
+        self.assertEqual(env['HOME'], str(Path('/disposable')/'home'))
+        for key in ('SUPABASE_ACCESS_TOKEN', 'DOCKER_CONTEXT', 'AWS_SECRET_ACCESS_KEY', 'S3_KEY',
+                    'SMTP_PASSWORD', 'PGHOSTADDR', 'HTTPS_PROXY'):
+            self.assertNotIn(key, env)
+        for value in ('https://production.supabase.co', 'https://127.0.0.1:8765',
+                      'http://127.0.0.1:19471', 'https://localhost:19471',
+                      'https://127.0.0.1:19471@production.supabase.co', 'https://127.0.0.1:19471/path'):
+            with self.subTest(value=value), self.assertRaises(RuntimeError):
+                loopback_url(value, 19471)
+        with self.assertRaisesRegex(RuntimeError, 'redirect'):
+            NoRedirect().redirect_request(None, None, 302, '', {}, 'https://production.supabase.co')
+
+    def test_actual_container_mount_network_and_binding_must_be_owned(self):
+        with tempfile.TemporaryDirectory(prefix='netunim-supabase-') as directory:
+            root = Path(directory)
+            stack = IsolatedSupabase.__new__(IsolatedSupabase)
+            stack.root, stack.project, stack.network = root, 'owned', 'owned-network'
+            stack.containers = {'supabase_db_owned': 'owned-id'}
+            network = {'Labels': {LABEL: 'owned'}, 'Internal': True,
+                       'Options': {'com.docker.network.bridge.host_binding_ipv4': '127.0.0.1'}}
+            item = {'Config': {'Labels': {LABEL: 'owned'}}, 'NetworkSettings': {'Networks': {'owned-network': {}}},
+                    'HostConfig': {'Privileged': False, 'PortBindings': {'5432/tcp': [{'HostIp': '127.0.0.1', 'HostPort': '19471'}]}},
+                    'Mounts': [{'Type': 'bind', 'Source': str(root/'new-db')}]}
+            def run(*args):
+                return json.dumps([network if args[1] == 'network' else current])
+            current = item
+            with patch.object(stack, 'run', side_effect=run):
+                stack.attest_resources()
+                for mutate in (
+                    lambda x: x['Mounts'][0].update(Source=str(root.parent/'real-data')),
+                    lambda x: x['Config']['Labels'].update({LABEL: 'foreign'}),
+                    lambda x: x['HostConfig']['PortBindings']['5432/tcp'][0].update(HostIp='0.0.0.0'),
+                    lambda x: x['NetworkSettings']['Networks'].update({'external-network': {}}),
+                    lambda x: x['HostConfig'].update(Privileged=True)):
+                    current = copy.deepcopy(item)
+                    mutate(current)
+                    with self.assertRaises(RuntimeError):
+                        stack.attest_resources()
+                current = item
+                network['Internal'] = False
+                with self.assertRaises(RuntimeError):
+                    stack.attest_resources()
+
     def test_libpq_destination_and_service_environment_cannot_escape(self):
         with patch.dict(os.environ, {'PGHOSTADDR': '192.0.2.1', 'PGSERVICE': 'production',
                                      'PGSSLCERT': '/private/cert', 'PGFUTUREOPTION': 'unsafe',

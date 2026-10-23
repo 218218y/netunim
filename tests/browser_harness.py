@@ -412,7 +412,7 @@ def _remove_tree_verified(path: Path, *, timeout: float = 5.0) -> None:
 class BrowserSession:
     """Real localhost + headless Chromium session with a small CDP client."""
 
-    def __init__(self, site: Path, label: str, *, instrument=True, service_worker=False, auto_navigate=True, native_incidents=False, origin_owner=None):
+    def __init__(self, site: Path, label: str, *, instrument=True, service_worker=False, auto_navigate=True, native_incidents=False, origin_owner=None, supabase=None):
         self.site = Path(site)
         self.label = label
         self.browser = find_browser()
@@ -436,6 +436,7 @@ class BrowserSession:
         self.service_worker = service_worker
         self.auto_navigate = auto_navigate
         self.origin_owner = origin_owner
+        self.supabase = supabase
 
     def __enter__(self):
         try:
@@ -500,9 +501,19 @@ class BrowserSession:
         # test origin (allowed by the unchanged production CSP), never production.
         config_url = 'location.origin' if self.service_worker else "'https://example.invalid'"
         config.write_text(
-            sandbox_config(config_url),
+            self.supabase.browser_config() if self.supabase is not None else sandbox_config(config_url),
             encoding="utf-8",
         )
+        if self.supabase is not None:
+            # Tighten only the disposable copy: no production or installed Bridge
+            # endpoints remain in connect-src. Other production directives stay.
+            import re
+            headers = prepared / '_headers'
+            original = headers.read_text(encoding='utf8')
+            updated, count = re.subn(r"connect-src [^;]+;", "connect-src 'self' "+self.supabase.url+';', original)
+            if count != 1:
+                raise RuntimeError('the test copy has no unique connect-src directive')
+            headers.write_text(updated, encoding='utf8')
         # Unrelated screen/ownership fixtures mock their own backend endpoints.
         # Supply the new background service with its own transport fixture so it
         # cannot consume those mocks or escape to example.invalid. The dedicated
@@ -560,6 +571,8 @@ class BrowserSession:
         (self.profile/'DevToolsActivePort').unlink(missing_ok=True)
         devtools_port = 0
         args = _browser_args(self.browser, self.profile, devtools_port)
+        if self.supabase is not None:
+            args.extend(self.supabase.browser_arguments())
         args.extend(self.network_guard.arguments(allowed))
         browser_log = self.tmp / 'browser.log'
         if os.name == 'nt':

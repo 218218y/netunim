@@ -247,3 +247,49 @@ profiles, configuration, secrets or backups into it.
 
 Two physical computers, a full Supabase service stack and official provider
 sandboxes retain their separate NOT RUN entries even if this VM protocol passes.
+# Full Supabase service acceptance (October 23 follow-up)
+
+`Full Supabase acceptance` is an additional required job in `verify.yml` and the
+exact-commit deployment gate. Run `python tests/runtime_supabase_stack.py` only
+on a disposable GitHub-hosted Linux runner with Docker and the pinned Supabase
+CLI 2.121.0. A workstation or self-hosted runner is rejected before allocation.
+The ordinary PostgreSQL/browser suites remain independently required.
+
+The harness starts a fresh, unlinked platform without application migrations,
+attests actual Docker labels, internal network, published loopback ports, mounts
+and volumes, and challenges the owned database before applying the original
+application migration files byte for byte. It removes inherited cloud, database,
+Docker, SMTP and provider credentials and uses a private CLI home. No production
+project, backup, account, browser profile or installed Bridge is read or used.
+Only the test copy's Supabase configuration and CSP connect-src are changed.
+Its fresh HTTPS certificate is trusted by its SPKI in owned Chromium processes;
+global certificate validation remains enabled. The browser deny proxy still
+blocks every destination except the owned site and API ports. API redirects are
+rejected. Docker image pulls occur on the host; service containers have no
+external network route. This remains application/container isolation, not an OS
+sandbox or proof of zero host-level network traffic.
+
+Coverage uses real GoTrue, PostgREST, RPC, RLS, Storage and pg_cron. Two private
+Chromium profiles import the production Auth/journal/merge modules, authenticate,
+persist sessions, rotate tokens, recover after process restarts, and retry an
+immutable operation after an actual HTTP response is withheld following commit.
+Offline and HTTP-503 failures are explicitly injected transport faults. Foreign
+users are probed directly through the API, including Storage read/list/upload/
+delete attempts. Paired restore is staged/applied through the real HTTP RPCs and
+retried after restart. This component integration does not claim full UI end-to-
+end coverage; existing native UI backup/recovery suites remain required.
+
+Real retention job definitions are compared with `supabase/retention-jobs.json`.
+Separate owned, one-second cron jobs execute those exact original commands and
+must produce successful `cron.job_run_details` plus the expected deletion of old
+synthetic rows and preservation of recent rows. Catalog stubs do not satisfy it.
+Supabase Realtime is not used by the application (its tab channel is the browser
+BroadcastChannel), so it is disabled and explicitly not claimed as tested.
+
+`full-supabase-acceptance/full-supabase-stack.json` records the exact Git source,
+migration hashes, service versions, owner-scoped operation receipts, durable
+restart snapshots and isolation evidence. Generated keys, passwords, JWTs,
+private CLI state, certificate private keys and raw Docker environment dumps
+are never artifacts. PASS is written only after owned resources are removed.
+Until this exact source passes the real required job, this route is NOT RUN,
+regardless of passing local safety contracts.
