@@ -72,7 +72,7 @@ def create_user(stack, index):
         {'email': email, 'password': password, 'email_confirm': True}, token=stack.service)
     assert code in (200, 201), ('synthetic user creation', code)
     code, session = stack.request('/auth/v1/token?grant_type=password', {'email': email, 'password': password})
-    assert code == 200 and session['user']['id'] == user['id'], ('real password grant', code)
+    assert code == 200 and session['user']['id'] == user['id'], ('real password grant', code, session.get('error_code'))
     return {'id': user['id'], 'email': email, 'password': password, 'token': session['access_token']}
 
 
@@ -206,7 +206,12 @@ def wait_pause(browser):
         for event in browser.events:
             if event.get('method') == 'Fetch.requestPaused':
                 browser.events.remove(event)
-                return event['params']
+                params = event['params']
+                if params['request']['method'] != 'POST':
+                    browser.call('Fetch.continueResponse' if 'responseStatusCode' in params else 'Fetch.continueRequest',
+                                 {'requestId': params['requestId']})
+                    continue
+                return params
         time.sleep(.05)
     raise RuntimeError('the controlled HTTP interception did not pause')
 

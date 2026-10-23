@@ -174,7 +174,7 @@ enable_signup = false
 enable_refresh_token_rotation = true
 refresh_token_reuse_interval = 0
 [auth.email]
-enable_signup = false
+enable_signup = true
 enable_confirmations = false
 [analytics]
 enabled = false
