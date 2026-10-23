@@ -1,0 +1,22 @@
+{
+  "source_sha": "37ec5cbd79b49618bac534353884019f127068ca",
+  "source_tree": "df7513f744b1a11a264a3388567d4532f0baa62b",
+  "dirty": false,
+  "platform": "posix",
+  "synthetic_only": true,
+  "harness_sha256": {
+    "tests/acceptance_safety.py": "6f3b547277dc521ea32411e3725f06ac16ca78fce6544839b6b9d3d8fb6a2cf0",
+    "tests/browser_harness.py": "6515a997d0a0f571119752cb037c50e6af8f1396a13f3acc78f81b61a5e43f16",
+    "tests/isolated_sync_postgres.py": "03f6f1c9f990ba9292ac1f46fb6bbfcca70f00b3ca8aa4914b1b932b36e71230"
+  },
+  "scenarios": [
+    {
+      "scenario": "kupa-v5.json native import and hard process restart",
+      "status": "PASS",
+      "fixture_sha256": "ed3de9751eaa97dbc7f19a651102313843de7e36afe68736c4eb3d264cb2e975",
+      "financial_record_count": 1,
+      "zero_check_count": 1,
+      "future_and_foreign_input_unchanged_journals": true
+    }
+  ]
+}

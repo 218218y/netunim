@@ -1,0 +1,30 @@
+{
+  "source_sha": "37ec5cbd79b49618bac534353884019f127068ca",
+  "source_tree": "df7513f744b1a11a264a3388567d4532f0baa62b",
+  "dirty": false,
+  "platform": "posix",
+  "synthetic_only": true,
+  "harness_sha256": {
+    "tests/acceptance_safety.py": "6f3b547277dc521ea32411e3725f06ac16ca78fce6544839b6b9d3d8fb6a2cf0",
+    "tests/browser_harness.py": "6515a997d0a0f571119752cb037c50e6af8f1396a13f3acc78f81b61a5e43f16",
+    "tests/isolated_sync_postgres.py": "03f6f1c9f990ba9292ac1f46fb6bbfcca70f00b3ca8aa4914b1b932b36e71230"
+  },
+  "scenarios": [
+    {
+      "scenario": "same-origin separate profiles and LocalStorage/IndexedDB/CacheStorage",
+      "status": "PASS"
+    },
+    {
+      "scenario": "foreign HTTP and other loopback listeners denied; owned origin allowed",
+      "status": "PASS"
+    },
+    {
+      "scenario": "graceful flush then hard restart retain all three stores without terminating sibling profile",
+      "status": "PASS"
+    },
+    {
+      "scenario": "owned browser profiles deleted after exit",
+      "status": "PASS"
+    }
+  ]
+}

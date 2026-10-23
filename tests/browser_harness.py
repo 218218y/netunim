@@ -20,7 +20,7 @@ import threading
 import time
 import urllib.request
 import urllib.parse
-from acceptance_safety import browser_preflight, sandbox_config, DenyProxy
+from acceptance_safety import browser_preflight, sandbox_config, DenyProxy, OwnedHTTPServer
 from suite_process import SuiteProcess
 
 try:
@@ -146,6 +146,7 @@ def _browser_args(browser: str, profile: Path, port: int) -> list[str]:
     return [browser, "--headless=new", "--no-sandbox", "--disable-gpu",
             f"--remote-debugging-port={port}", f"--user-data-dir={profile}", "--profile-directory=Default",
             "--remote-allow-origins=*", "--disable-background-networking",
+            "--enable-logging=stderr", "--log-level=0",
             "--no-first-run", "about:blank"]
 
 
@@ -316,6 +317,27 @@ def _wait_owned_devtools(profile, process, *, timeout=30):
     raise RuntimeError('owned Chromium did not publish its private DevTools identity')
 
 
+def _network_failure_diagnostics(events):
+    """Retain failed destinations/codes only, never headers, queries or bodies."""
+    requests, failures = {}, []
+    for event in events:
+        method, params = event.get('method'), event.get('params', {})
+        if method == 'Network.requestWillBeSent':
+            requests[params['requestId']] = params.get('request', {}).get('url', '')
+        elif method == 'Network.loadingFailed':
+            url = urllib.parse.urlsplit(requests.get(params.get('requestId'), ''))
+            failures.append({'host': url.hostname, 'port': url.port, 'path': url.path,
+                'errors': re.findall(r'(?:net::)?ERR_[A-Z_]+', str(params.get('errorText', ''))),
+                'blocked': params.get('blockedReason'), 'canceled': params.get('canceled', False)})
+        elif method == 'Log.entryAdded':
+            entry = params.get('entry', {})
+            if entry.get('source') == 'network' and entry.get('level') == 'error':
+                url = urllib.parse.urlsplit(entry.get('url', ''))
+                failures.append({'host': url.hostname, 'port': url.port, 'path': url.path,
+                    'errors': re.findall(r'(?:net::)?ERR_[A-Z_]+', str(entry.get('text', '')))})
+    return failures[-20:]
+
+
 class _QuietHandler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, _format, *_args):
         pass
@@ -340,7 +362,7 @@ class _QuietHandler(http.server.SimpleHTTPRequestHandler):
         super().end_headers()
 
 
-class _RuntimeHTTPServer(http.server.ThreadingHTTPServer):
+class _RuntimeHTTPServer(OwnedHTTPServer):
     # Native ESM fans out across many local modules. Windows' small default
     # accept backlog can reset parallel requests and poison the browser module
     # cache before test assertions start. Keep accepted sockets fully threaded.
@@ -437,6 +459,7 @@ class BrowserSession:
         self.auto_navigate = auto_navigate
         self.origin_owner = origin_owner
         self.supabase = supabase
+        self.browser_generation = 0
 
     def __enter__(self):
         try:
@@ -452,26 +475,37 @@ class BrowserSession:
                     self.evaluate("appReady.then(()=>true)")
             return self
         except BaseException as error:
-            # A dynamic import hides the underlying local HTTP failure behind a
-            # generic TypeError. Preserve origin/path and browser error codes,
-            # never request headers, query credentials or response bodies.
-            with contextlib.suppress(Exception):
-                if self.ws:
-                    self.call('Runtime.evaluate', {'expression': 'true'}, timeout=2)
-                    import re
-                    network = []
-                    for event in self.events:
-                        entry = event.get('params', {}).get('entry', {})
-                        if event.get('method') == 'Log.entryAdded' and entry.get('source') == 'network' and entry.get('level') == 'error':
-                            url = urllib.parse.urlsplit(entry.get('url', ''))
-                            network.append({'host': url.hostname, 'port': url.port, 'path': url.path,
-                                'errors': re.findall(r'(?:net::)?ERR_[A-Z_]+', str(entry.get('text', '')))})
-                    if network:
-                        error.add_note('Native browser startup network diagnostics: '+json.dumps(network[-20:]))
-            self.__exit__(None, None, None)
+            self.__exit__(type(error), error, error.__traceback__)
             raise
 
     def __exit__(self, exc_type, exc, tb):
+        if exc is not None:
+            with contextlib.suppress(Exception):
+                version, histograms = None, []
+                with contextlib.suppress(Exception):
+                    version = self.call('Browser.getVersion', timeout=2).get('result', {}).get('product')
+                    raw = self.call('Browser.getHistograms', {'query': 'IndexedDB'}, timeout=2).get('result', {}).get('histograms', [])
+                    histograms = [{**row, 'buckets': row.get('buckets', [])[:8]} for row in raw
+                        if row.get('count') and re.search(r'Open|BackingStore|LevelDB|Init', row['name'])][:15]
+                lines = []
+                for log in sorted(self.tmp.glob('browser*.log')):
+                    for line in log.read_text(encoding='utf8', errors='replace').splitlines():
+                        if re.search(r'(?i)indexed.?db|leveldb|backing.?store|quota|os_crypt|ERROR', line):
+                            line = re.sub(r'eyJ[A-Za-z0-9_.-]+|sb_(?:publishable|secret)_[A-Za-z0-9_-]+', '[redacted]', line)
+                            # Never retain query credentials in a browser error.
+                            line = re.sub(r'(https?://[^\s?]+)\?[^\s]+', r'\1?[redacted]', line)
+                            lines.append(log.name+': '+line)
+                files = []
+                for path in (self.profile/'Default/IndexedDB').rglob('*'):
+                    with contextlib.suppress(OSError):
+                        if path.is_file():
+                            files.append({'path': str(path.relative_to(self.profile)), 'bytes': path.stat().st_size})
+                exc.add_note('Owned Chromium failure diagnostics: '+json.dumps({
+                    'stderr': [line[-700:] for line in lines[-15:]], 'indexed_db_files': files[:30],
+                    'network': _network_failure_diagnostics(self.events),
+                    'proxy_denied': self.network_guard.denied[-20:] if self.network_guard else [],
+                    'browser': version, 'indexed_db_histograms': histograms,
+                    'disk_free_bytes': shutil.disk_usage(self.profile).free}))
         cleanup_error = None
         try:
             graceful_close = None
@@ -591,6 +625,9 @@ class BrowserSession:
             args.extend(self.supabase.browser_arguments())
         args.extend(self.network_guard.arguments(allowed))
         browser_log = self.tmp / 'browser.log'
+        if browser_log.exists():
+            browser_log.rename(self.tmp/f'browser-{self.browser_generation:03d}.log')
+        self.browser_generation += 1
         if os.name == 'nt':
             # Reuse the runner's gated Job Object owner. The Python child is
             # assigned before it can create Chromium or any of its descendants.
@@ -606,11 +643,13 @@ class BrowserSession:
             # A fresh CI machine can need more than 10s for its first Chrome boot.
             # Poll readiness, fail immediately on process exit, and leave application
             # assertions/timeouts unchanged. Include stderr before temp cleanup.
-            # Ownership verification adds a version query before the original
-            # page enumeration. Retain a bounded cold-start window for both;
-            # do not spend nearly all of it waiting for Chromium's first bind.
+            # Share one cold-start budget across publication, ownership and page
+            # enumeration. Windows CI logged Chrome's first startup message at
+            # 29s: a separate 30s publication cutoff discarded a live cold boot
+            # despite the remaining overall budget. Never restart or accept a
+            # different listener to compensate for slow publication.
             deadline = time.monotonic()+60
-            devtools_port, browser_path = _wait_owned_devtools(self.profile, self.proc, timeout=30)
+            devtools_port, browser_path = _wait_owned_devtools(self.profile, self.proc, timeout=max(.01, deadline-time.monotonic()))
             version = _wait_json(_devtools_urls(devtools_port, '/json/version'), timeout=max(.01, deadline-time.monotonic()),
                                  process=self.proc, expected_browser_path=browser_path)
             endpoint = urllib.parse.urlsplit(version['webSocketDebuggerUrl'])
@@ -628,6 +667,7 @@ class BrowserSession:
         self.call("Runtime.enable")
         self.call("Page.enable")
         self.call("Log.enable")
+        self.call("Network.enable")
         # Runtime workflows intentionally exercise production download actions (for
         # example, the safety JSON created before a restore). Keep every browser
         # download inside this disposable session so tests can never pollute the

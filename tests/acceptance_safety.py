@@ -4,6 +4,7 @@ import http.server
 import hashlib
 import json
 import os
+import socket
 import subprocess
 import tempfile
 import threading
@@ -80,6 +81,17 @@ def postgres_environment():
             'PGCLIENTENCODING': 'UTF8', 'PGPASSFILE': os.devnull}
 
 
+class OwnedHTTPServer(http.server.ThreadingHTTPServer):
+    def server_bind(self):
+        # Windows SO_REUSEADDR permits a second listener on the same address,
+        # making request delivery ambiguous. Protect both the site and deny proxy
+        # from replacement even by a socket which explicitly requests reuse.
+        if os.name == 'nt':
+            self.allow_reuse_address = False
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+
 class DenyProxy:
     """A real non-forwarding proxy. Chromium bypasses only its owned test port.
 
@@ -105,7 +117,7 @@ class DenyProxy:
             def log_message(self, *_args):
                 pass
 
-        self.server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        self.server = OwnedHTTPServer(('127.0.0.1', 0), Handler)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
 

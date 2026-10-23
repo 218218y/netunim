@@ -1,0 +1,578 @@
+{
+  "environment": {
+    "schemaVersion": 2,
+    "capturedAt": "2026-10-23T02:30:38.602397+00:00",
+    "sourceRevision": "37ec5cbd79b49618bac534353884019f127068ca",
+    "workingTreeDirty": false,
+    "execution": "github-actions",
+    "os": "Linux",
+    "architecture": "x86_64",
+    "workload": "fresh-isolated-profile",
+    "browserMode": "headless-chromium"
+  },
+  "instrumented": true,
+  "physicalTargetMachine": false,
+  "inclusiveTraceDurationsMayOverlap": true,
+  "samples": [
+    {
+      "rows": 1000,
+      "cpuThrottleRate": 1,
+      "unprofiled": [
+        {
+          "modelMs": 153.1999999999971,
+          "twoFramesMs": 168.29999999998836,
+          "visible": 1
+        },
+        {
+          "modelMs": 143.29999999998836,
+          "twoFramesMs": 151.1999999999971,
+          "visible": 1
+        },
+        {
+          "modelMs": 144.6999999999971,
+          "twoFramesMs": 154.1999999999971,
+          "visible": 1
+        }
+      ],
+      "latencyDistributionMs": {
+        "modelMs": {
+          "n": 3,
+          "missing": 0,
+          "complete": true,
+          "min": 143.29999999998836,
+          "median": 144.6999999999971,
+          "max": 153.1999999999971
+        },
+        "twoFramesMs": {
+          "n": 3,
+          "missing": 0,
+          "complete": true,
+          "min": 151.1999999999971,
+          "median": 154.1999999999971,
+          "max": 168.29999999998836
+        }
+      },
+      "profiled": {
+        "modelMs": 148.8000000000029,
+        "twoFramesMs": 174.89999999999418,
+        "visible": 1,
+        "inclusiveTimelineMs": {
+          "EventDispatch": 0.344,
+          "FunctionCall": 4.939,
+          "UpdateLayoutTree": 41.105999999999995,
+          "Layout": 2.319,
+          "PrePaint": 33.313,
+          "Paint": 11.736,
+          "TimerFire": 4.906999999999999
+        },
+        "hotSelfSamplesMs": [
+          {
+            "ms": 229.85800000000003,
+            "function": "(program)",
+            "url": "",
+            "line": 0
+          },
+          {
+            "ms": 133.52299999999994,
+            "function": "(idle)",
+            "url": "",
+            "line": 0
+          },
+          {
+            "ms": 1.57,
+            "function": "normalizeSupplierSearch",
+            "url": "http://127.0.0.1:64496/assets/js/domains/suppliers/view.js",
+            "line": 11
+          },
+          {
+            "ms": 1.517,
+            "function": "",
+            "url": "http://127.0.0.1:64496/assets/js/domains/suppliers/view.js",
+            "line": 218
+          },
+          {
+            "ms": 1.085,
+            "function": "",
+            "url": "",
+            "line": 1
+          },
+          {
+            "ms": 1.084,
+            "function": "normalizeSupplierSearch",
+            "url": "http://127.0.0.1:64496/assets/js/domains/suppliers/view.js",
+            "line": 11
+          },
+          {
+            "ms": 0.717,
+            "function": "mark",
+            "url": "",
+            "line": 0
+          },
+          {
+            "ms": 0.11,
+            "function": "dispatchEvent",
+            "url": "",
+            "line": 0
+          },
+          {
+            "ms": 0.038,
+            "function": "mark",
+            "url": "",
+            "line": 0
+          }
+        ],
+        "profilerOverhead": true
+      }
+    },
+    {
+      "rows": 1000,
+      "cpuThrottleRate": 4,
+      "unprofiled": [
+        {
+          "modelMs": 387.70000000001164,
+          "twoFramesMs": 407.20000000001164,
+          "visible": 1
+        },
+        {
+          "modelMs": 377.70000000001164,
+          "twoFramesMs": 410.29999999998836,
+          "visible": 1
+        },
+        {
+          "modelMs": 376.69999999998254,
+          "twoFramesMs": 406.19999999998254,
+          "visible": 1
+        }
+      ],
+      "latencyDistributionMs": {
+        "modelMs": {
+          "n": 3,
+          "missing": 0,
+          "complete": true,
+          "min": 376.69999999998254,
+          "median": 377.70000000001164,
+          "max": 387.70000000001164
+        },
+        "twoFramesMs": {
+          "n": 3,
+          "missing": 0,
+          "complete": true,
+          "min": 406.19999999998254,
+          "median": 407.20000000001164,
+          "max": 410.29999999998836
+        }
+      },
+      "profiled": {
+        "modelMs": 386,
+        "twoFramesMs": 407.80000000001746,
+        "visible": 1,
+        "inclusiveTimelineMs": {
+          "EventDispatch": 1.892,
+          "FunctionCall": 15.704999999999997,
+          "UpdateLayoutTree": 161.55,
+          "Layout": 10.357999999999999,
+          "PrePaint": 141.33700000000002,
+          "Paint": 58.282999999999994,
+          "TimerFire": 16.445
+        },
+        "hotSelfSamplesMs": [
+          {
+            "ms": 625.6749999999998,
+            "function": "(program)",
+            "url": "",
+            "line": 0
+          },
+          {
+            "ms": 5.734,
+            "function": "",
+            "url": "http://127.0.0.1:64496/assets/js/domains/suppliers/view.js",
+            "line": 218
+          },
+          {
+            "ms": 2.977,
+            "function": "querySelectorAll",
+            "url": "",
+            "line": 0
+          },
+          {
+            "ms": 2.872,
+            "function": "(idle)",
+            "url": "",
+            "line": 0
+          },
+          {
+            "ms": 2.303,
+            "function": "querySelectorAll",
+            "url": "",
+            "line": 0
+          },
+          {
+            "ms": 1.621,
+            "function": "mark",
+            "url": "",
+            "line": 0
+          },
+          {
+            "ms": 1.5510000000000002,
+            "function": "",
+            "url": "",
+            "line": 1
+          },
+          {
+            "ms": 1.451,
+            "function": "supplierRenderModelData",
+            "url": "http://127.0.0.1:64496/assets/js/domains/suppliers/model.js",
+            "line": 19
+          },
+          {
+            "ms": 1.111,
+            "function": "matchesSupplierSearch",
+            "url": "http://127.0.0.1:64496/assets/js/domains/suppliers/view.js",
+            "line": 14
+          },
+          {
+            "ms": 1.084,
+            "function": "normalizeSupplierSearch",
+            "url": "http://127.0.0.1:64496/assets/js/domains/suppliers/view.js",
+            "line": 11
+          },
+          {
+            "ms": 0.899,
+            "function": "supplierViewRowsData",
+            "url": "http://127.0.0.1:64496/assets/js/domains/suppliers/model.js",
+            "line": 53
+          },
+          {
+            "ms": 0.764,
+            "function": "filterSupplierSearch",
+            "url": "http://127.0.0.1:64496/assets/js/domains/suppliers/view.js",
+            "line": 207
+          },
+          {
+            "ms": 0.752,
+            "function": "",
+            "url": "http://127.0.0.1:64496/assets/js/shared/events.js",
+            "line": 10
+          },
+          {
+            "ms": 0.093,
+            "function": "dispatchEvent",
+            "url": "",
+            "line": 0
+          },
+          {
+            "ms": 0.034,
+            "function": "mark",
+            "url": "",
+            "line": 0
+          }
+        ],
+        "profilerOverhead": true
+      }
+    },
+    {
+      "rows": 10000,
+      "cpuThrottleRate": 1,
+      "unprofiled": [
+        {
+          "modelMs": 910.8999999999942,
+          "twoFramesMs": 931.6000000000058,
+          "visible": 1
+        },
+        {
+          "modelMs": 786.7999999999884,
+          "twoFramesMs": 797.2999999999884,
+          "visible": 1
+        },
+        {
+          "modelMs": 803.0999999999767,
+          "twoFramesMs": 808.0999999999767,
+          "visible": 1
+        }
+      ],
+      "latencyDistributionMs": {
+        "modelMs": {
+          "n": 3,
+          "missing": 0,
+          "complete": true,
+          "min": 786.7999999999884,
+          "median": 803.0999999999767,
+          "max": 910.8999999999942
+        },
+        "twoFramesMs": {
+          "n": 3,
+          "missing": 0,
+          "complete": true,
+          "min": 797.2999999999884,
+          "median": 808.0999999999767,
+          "max": 931.6000000000058
+        }
+      },
+      "profiled": {
+        "modelMs": 851.7999999999884,
+        "twoFramesMs": 858.7000000000116,
+        "visible": 1,
+        "inclusiveTimelineMs": {
+          "EventDispatch": 0.248,
+          "FunctionCall": 37.413000000000004,
+          "UpdateLayoutTree": 403.033,
+          "Layout": 15.689,
+          "PrePaint": 349.196,
+          "Paint": 59.815999999999995,
+          "TimerFire": 37.386
+        },
+        "hotSelfSamplesMs": [
+          {
+            "ms": 909.6739999999952,
+            "function": "(program)",
+            "url": "",
+            "line": 0
+          },
+          {
+            "ms": 57.03699999999999,
+            "function": "(idle)",
+            "url": "",
+            "line": 0
+          },
+          {
+            "ms": 7.516,
+            "function": "normalizeSupplierSearch",
+            "url": "http://127.0.0.1:64496/assets/js/domains/suppliers/view.js",
+            "line": 11
+          },
+          {
+            "ms": 6.5600000000000005,
+            "function": "matchesSupplierSearch",
+            "url": "http://127.0.0.1:64496/assets/js/domains/suppliers/view.js",
+            "line": 14
+          },
+          {
+            "ms": 6.443,
+            "function": "normalizeSupplierSearch",
+            "url": "http://127.0.0.1:64496/assets/js/domains/suppliers/view.js",
+            "line": 11
+          },
+          {
+            "ms": 5.429,
+            "function": "querySelectorAll",
+            "url": "",
+            "line": 0
+          },
+          {
+            "ms": 4.719,
+            "function": "querySelectorAll",
+            "url": "",
+            "line": 0
+          },
+          {
+            "ms": 3.2510000000000003,
+            "function": "filterSupplierSearch",
+            "url": "http://127.0.0.1:64496/assets/js/domains/suppliers/view.js",
+            "line": 207
+          },
+          {
+            "ms": 2.206,
+            "function": "",
+            "url": "",
+            "line": 1
+          },
+          {
+            "ms": 2.183,
+            "function": "",
+            "url": "http://127.0.0.1:64496/assets/js/domains/suppliers/view.js",
+            "line": 218
+          },
+          {
+            "ms": 2.141,
+            "function": "filteredSupplierRows",
+            "url": "http://127.0.0.1:64496/assets/js/domains/suppliers/view.js",
+            "line": 50
+          },
+          {
+            "ms": 1.265,
+            "function": "mark",
+            "url": "",
+            "line": 0
+          },
+          {
+            "ms": 1.191,
+            "function": "supplierViewState",
+            "url": "http://127.0.0.1:64496/assets/js/domains/suppliers/view.js",
+            "line": 17
+          },
+          {
+            "ms": 1.087,
+            "function": "supplierSearchText",
+            "url": "http://127.0.0.1:64496/assets/js/domains/suppliers/view.js",
+            "line": 8
+          },
+          {
+            "ms": 0.996,
+            "function": "balanceRowsData",
+            "url": "http://127.0.0.1:64496/assets/js/domains/suppliers/model.js",
+            "line": 8
+          }
+        ],
+        "profilerOverhead": true
+      }
+    },
+    {
+      "rows": 10000,
+      "cpuThrottleRate": 4,
+      "unprofiled": [
+        {
+          "modelMs": 4118,
+          "twoFramesMs": 4130.6999999999825,
+          "visible": 1
+        },
+        {
+          "modelMs": 3847.5999999999767,
+          "twoFramesMs": 3855.2999999999884,
+          "visible": 1
+        },
+        {
+          "modelMs": 4691.599999999977,
+          "twoFramesMs": 4705.399999999965,
+          "visible": 1
+        }
+      ],
+      "latencyDistributionMs": {
+        "modelMs": {
+          "n": 3,
+          "missing": 0,
+          "complete": true,
+          "min": 3847.5999999999767,
+          "median": 4118,
+          "max": 4691.599999999977
+        },
+        "twoFramesMs": {
+          "n": 3,
+          "missing": 0,
+          "complete": true,
+          "min": 3855.2999999999884,
+          "median": 4130.6999999999825,
+          "max": 4705.399999999965
+        }
+      },
+      "profiled": {
+        "modelMs": 4016.9000000000233,
+        "twoFramesMs": 4029.7000000000116,
+        "visible": 1,
+        "inclusiveTimelineMs": {
+          "EventDispatch": 0.634,
+          "FunctionCall": 167.591,
+          "UpdateLayoutTree": 1709.328,
+          "Layout": 67.706,
+          "PrePaint": 1383.16,
+          "Paint": 211.82,
+          "TimerFire": 167.5
+        },
+        "hotSelfSamplesMs": [
+          {
+            "ms": 4127.196999999995,
+            "function": "(program)",
+            "url": "",
+            "line": 0
+          },
+          {
+            "ms": 71.661,
+            "function": "",
+            "url": "http://127.0.0.1:64496/assets/js/domains/suppliers/view.js",
+            "line": 218
+          },
+          {
+            "ms": 20.356999999999996,
+            "function": "querySelectorAll",
+            "url": "",
+            "line": 0
+          },
+          {
+            "ms": 19.820999999999998,
+            "function": "filterSupplierSearch",
+            "url": "http://127.0.0.1:64496/assets/js/domains/suppliers/view.js",
+            "line": 207
+          },
+          {
+            "ms": 15.258999999999999,
+            "function": "normalizeSupplierSearch",
+            "url": "http://127.0.0.1:64496/assets/js/domains/suppliers/view.js",
+            "line": 11
+          },
+          {
+            "ms": 14.231,
+            "function": "querySelectorAll",
+            "url": "",
+            "line": 0
+          },
+          {
+            "ms": 9.85,
+            "function": "normalizeSupplierSearch",
+            "url": "http://127.0.0.1:64496/assets/js/domains/suppliers/view.js",
+            "line": 11
+          },
+          {
+            "ms": 6.555000000000001,
+            "function": "",
+            "url": "",
+            "line": 1
+          },
+          {
+            "ms": 5.523999999999999,
+            "function": "(garbage collector)",
+            "url": "",
+            "line": 0
+          },
+          {
+            "ms": 4.1530000000000005,
+            "function": "supplierRenderModelData",
+            "url": "http://127.0.0.1:64496/assets/js/domains/suppliers/model.js",
+            "line": 19
+          },
+          {
+            "ms": 3.5440000000000005,
+            "function": "matchesSupplierSearch",
+            "url": "http://127.0.0.1:64496/assets/js/domains/suppliers/view.js",
+            "line": 14
+          },
+          {
+            "ms": 3.3529999999999998,
+            "function": "",
+            "url": "",
+            "line": 10
+          },
+          {
+            "ms": 3.2379999999999995,
+            "function": "supplierSearchText",
+            "url": "http://127.0.0.1:64496/assets/js/domains/suppliers/view.js",
+            "line": 8
+          },
+          {
+            "ms": 3.191,
+            "function": "",
+            "url": "http://127.0.0.1:64496/assets/js/domains/suppliers/model.js",
+            "line": 8
+          },
+          {
+            "ms": 2.341,
+            "function": "supplierYearContextData",
+            "url": "http://127.0.0.1:64496/assets/js/domains/suppliers/model.js",
+            "line": 16
+          }
+        ],
+        "profilerOverhead": true
+      }
+    }
+  ],
+  "complete": true,
+  "browser": {
+    "protocolVersion": "1.3",
+    "product": "Chrome/155.0.8059.39",
+    "revision": "@3ff7ac5a9224be9156d7f8703a06e22890aafd34",
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36",
+    "jsVersion": "15.5.35.20"
+  },
+  "system": {
+    "logicalCPUs": 4,
+    "processor": "AMD EPYC 7763 64-Core Processor"
+  }
+}

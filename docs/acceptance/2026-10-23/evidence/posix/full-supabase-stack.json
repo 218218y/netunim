@@ -1,0 +1,297 @@
+{
+  "source_sha": "37ec5cbd79b49618bac534353884019f127068ca",
+  "source_tree": "df7513f744b1a11a264a3388567d4532f0baa62b",
+  "dirty": false,
+  "platform": "posix",
+  "synthetic_only": true,
+  "harness_sha256": {
+    "tests/acceptance_safety.py": "6f3b547277dc521ea32411e3725f06ac16ca78fce6544839b6b9d3d8fb6a2cf0",
+    "tests/browser_harness.py": "6515a997d0a0f571119752cb037c50e6af8f1396a13f3acc78f81b61a5e43f16",
+    "tests/isolated_sync_postgres.py": "03f6f1c9f990ba9292ac1f46fb6bbfcca70f00b3ca8aa4914b1b932b36e71230"
+  },
+  "scenarios": [
+    {
+      "scenario": "orders native Auth + two profiles + real PostgREST",
+      "status": "PASS",
+      "offline": true,
+      "http_503": "injected before send",
+      "lost_ack": "real HTTP response withheld after DB commit",
+      "hard_process_failure": true,
+      "restart_snapshots": [
+        {
+          "state_sha256": "71a664679f46d727808de2552595b83df51eb3cd421d75794bde93236d9909b0",
+          "revision": 12,
+          "persisted": {
+            "checkpoint_seq": 5,
+            "journal_sequences": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "metadata_seq": 5,
+            "base_checksum": "04d053ce5b2e44b2",
+            "flight": null
+          }
+        },
+        {
+          "state_sha256": "71a664679f46d727808de2552595b83df51eb3cd421d75794bde93236d9909b0",
+          "revision": 12,
+          "persisted": {
+            "checkpoint_seq": 5,
+            "journal_sequences": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "metadata_seq": 5,
+            "base_checksum": "1428e6b926a24949",
+            "flight": null
+          }
+        }
+      ],
+      "operation_ledger": [
+        {
+          "operation_id": "rapid-orders-A-5",
+          "applied_revision": 11
+        },
+        {
+          "operation_id": "rapid-orders-rotated-5",
+          "applied_revision": 12
+        }
+      ],
+      "foreign_user_unchanged": true,
+      "shared_unchanged": true,
+      "token_rotation_restart_logout": true,
+      "native_401_refresh_retry": true,
+      "financial_record_count": 1
+    },
+    {
+      "scenario": "kupa native Auth + two profiles + real PostgREST",
+      "status": "PASS",
+      "offline": true,
+      "http_503": "injected before send",
+      "lost_ack": "real HTTP response withheld after DB commit",
+      "hard_process_failure": true,
+      "restart_snapshots": [
+        {
+          "state_sha256": "38dd1b189a76f1f60b4750fd5b18eba3db83ea271989e144454afb7efac6c8d0",
+          "revision": 12,
+          "persisted": {
+            "checkpoint_seq": 5,
+            "journal_sequences": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "metadata_seq": 5,
+            "base_checksum": "8ecfb58e2cbadb2a",
+            "flight": null
+          }
+        },
+        {
+          "state_sha256": "38dd1b189a76f1f60b4750fd5b18eba3db83ea271989e144454afb7efac6c8d0",
+          "revision": 12,
+          "persisted": {
+            "checkpoint_seq": 5,
+            "journal_sequences": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "metadata_seq": 5,
+            "base_checksum": "c7af27c5249be065",
+            "flight": null
+          }
+        }
+      ],
+      "operation_ledger": [
+        {
+          "operation_id": "rapid-kupa-A-5",
+          "applied_revision": 11
+        },
+        {
+          "operation_id": "rapid-kupa-rotated-5",
+          "applied_revision": 12
+        }
+      ],
+      "foreign_user_unchanged": true,
+      "shared_unchanged": true,
+      "token_rotation_restart_logout": true,
+      "native_401_refresh_retry": true,
+      "financial_record_count": 1
+    },
+    {
+      "scenario": "native cheque image module + real Storage/RLS",
+      "status": "PASS",
+      "image_source": "synthetic PNG fixture; no Bridge/provider",
+      "object_path": "5262ae2a-0100-4a3e-bbf4-f2bb48d0e481/20261023_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.img",
+      "bytes": 68,
+      "foreign_read_list_write_delete_denied": true,
+      "repeat_upload_deduplicated": true
+    },
+    {
+      "scenario": "paired restore via real PostgREST, process restart and idempotent retry",
+      "status": "PASS",
+      "group": "4d3c43eb-c258-472d-a155-417f1db9d08d",
+      "before_revision": 12,
+      "after_revision": 13,
+      "main_sha256": "3462196f628a5c039a84e8f92d916b754cd6ba0fc9c595cd0945511a778be200",
+      "shared_sha256": "0528eefb69230570022c5b6fce454cdfd8ed1397d8808f025d7b1c50738218a1",
+      "foreign_apply_denied": true,
+      "retry_did_not_increment": true,
+      "credential_baseline_gracefully_flushed": true
+    },
+    {
+      "scenario": "real pg_cron retention schedules and timed executions",
+      "status": "PASS",
+      "catalog": [
+        {
+          "jobname": "netunim-document-backup-retention-daily",
+          "schedule": "43 3 * * *",
+          "command": "select * from netunim_internal.prune_document_backups();",
+          "active": true,
+          "username": "postgres",
+          "database": "postgres"
+        },
+        {
+          "jobname": "netunim-sync-ledger-retention-weekly",
+          "schedule": "17 3 * * 0",
+          "command": "select * from netunim_internal.prune_sync_operation_ledgers();",
+          "active": true,
+          "username": "postgres",
+          "database": "postgres"
+        }
+      ],
+      "executions": [
+        {
+          "original_job": "netunim-document-backup-retention-daily",
+          "temporary_job_id": 5,
+          "runs": [
+            {
+              "status": "succeeded",
+              "return_message": "1 row"
+            }
+          ]
+        },
+        {
+          "original_job": "netunim-sync-ledger-retention-weekly",
+          "temporary_job_id": 6,
+          "runs": [
+            {
+              "status": "succeeded",
+              "return_message": "1 row"
+            }
+          ]
+        }
+      ],
+      "other_application_jobs_preserved": [
+        "check-bank-refresh",
+        "morning-check-registration"
+      ],
+      "expired_removed_recent_preserved": true
+    },
+    {
+      "scenario": "resource and destination attestation",
+      "status": "PASS",
+      "kind": "real-local-supabase",
+      "project": "netunim-acceptance-2cfc18d5dfac7b45b66b",
+      "api": "https://127.0.0.1:42835",
+      "container_egress_firewall": true,
+      "certificate_spki": "ZoH/TxUgcqwJMrhL+V/T75UzVJHIdZ/vVSB+gCD6wMA=",
+      "cli_version": "2.121.0",
+      "migration_sha256": {
+        "20260906200304_production_schema_baseline.sql": "fa02f7efbeae79e1acf92a51a3bf86b9fa22e9e4c9d4d62991cb94eb0e63b32b",
+        "20260906203818_capabilities_security_invoker.sql": "a9e0848534bc2bedb540419af0694c683ce24c98c3aef2b602ca20786ac800cd",
+        "20260906203827_restore_group_qualified_owner_updates.sql": "abac1fc77be8ddca17d02cda2523e1d62774d68260540c27554bbeb8f6639260",
+        "20260906203837_oauth_owner_index.sql": "7650aff1bdb551187970b8fef90a133dafc719e909666ab8521c3dae8a1f75ef",
+        "20260907035930_retention_cron_jobs.sql": "313c57a668cf3a7a6986382859b4ea6e75ed833980d61f58f434b71031263c98",
+        "20260908103011_morning_operation_ledger.sql": "783f601f7a7cb8a8122bb4e56cc95d6a1e1b6cbb56a3a22c68ceada86031cf97",
+        "20260908190000_morning_verified_creation.sql": "58fc15f0f7fa56a8681ba201c41f31edf0fbaba149f18d9dbbb5237c15f21b8d",
+        "20260908194500_morning_global_idempotency.sql": "7db16bc878f89c0eb59718a176fc5dc1036bb6159569aaf9a523e74da1693349",
+        "20260908203000_morning_ledger_owner_retention.sql": "8d7795af8ba40ae9fb71820d3fb9a12d81c08b2141c6bfbbc63887b4587d3c7b",
+        "20260908204500_morning_preissue_reservation.sql": "872ebb36358280a734cf00f4c73ce1a8da4eb611ece6cc2ebfbecdfd8acfe1ec",
+        "20260910211500_bank_instant_credit_reconciliation.sql": "1cfb820769f979dc3b1fbd54de118efdc47747e1c00a17dcdaeb52613f2f2278",
+        "20260913120000_check_bank_reconciliation.sql": "2b483a940b412e5b280e05d569e1885e2db982e60225cc7a63be41a8a00addc3",
+        "20260914120000_check_bank_item_reconciliation.sql": "f56a250a559c0c6455de4169d773c3b0596318c64a2ba4e6c46113f0df78e6d1",
+        "20260914150000_check_manual_deposit_tracking.sql": "1174c8109551cfbbfea43d1c190347e9212bd5fb92832bd7405d0b4e6e729c2c",
+        "20260914160000_bank_cheque_image_storage_v1.sql": "32ddc0c614033aa8bc6a87219da38db936017e4f28ae54ced7cde9cff204d201",
+        "20260914183000_bank_credit_settlement_identity.sql": "3de2afb155dbcae58488bcc9bd4dbaa61910d1a3eaf7cf78c1888f5fb8d45912",
+        "20260915090000_check_confirmed_automation.sql": "0113174fce5676996907bca415bcd529e9823c76ba6406c9321f73e9601c88ca",
+        "20260916090000_check_notification_retention.sql": "d4ae8a18485707e7dece685612415163052b6b4bc28eb75ff746d271dbeefa9d",
+        "20260917120000_notes_workbook_delete.sql": "f15ef0ccd2b02cbdd233616ef63041fca3eb5b8e9df5dc84954ad67956e508dc",
+        "20260917150000_orders_notes_workbook.sql": "c723caa5fb21609e6cc1a582cddbc56ebb5c29ff9494868b3e50f6caa0bd0be6",
+        "20260917180000_independent_spreadsheet_documents.sql": "c6a9a9e429ac03c7d72213d16178d64b85e9b57522c1ef31b7402ecc65f09b9b",
+        "20260919234500_bank_cheque_deposit_pending_transition.sql": "75df913c47b443043d86197a7cdeb5ccf3a0105aafa0465fec2bc8bb01f8982f",
+        "20260920024000_check_pending_direct_deposit_reference.sql": "8f9e3da175fb5085531ceb11200efac8f78527242fe87bba1ffb44a815f5e60b",
+        "20260920034500_bank_pending_direct_deposit_date_rollover.sql": "bab2a78e049c00e1840368fd3457b853457a671d85859b2ea162fc909d6ece9b",
+        "20260922043000_bank_morning_documents.sql": "df970244b88ade30f62169d1e017ae0f01677f4579766d8ba6fc590a1499f22b",
+        "20260922050000_bank_morning_payments_v2.sql": "74d38389f483c41f79021b08af9f72eb5f929b6eb9a0d3f58e33e12984f4dea0",
+        "20260922101500_bank_handled_rpc_security_fix.sql": "c5257a433e966ff9da60d751c618a88496818013619b5c897313132a70949f6e",
+        "20260923063000_bank_pending_cheque_batch_completion.sql": "33907b1d6192a6d153f54f5a25e0ab2cf99c2f9a4f959c7a99ccba6ab5e1a0e7",
+        "20260923070000_bank_merge_inserted_identity.sql": "36346ce88d761f2e91610bdc0d99585a1b65a4705c2629448378d336b3afa906",
+        "20260924120000_storage_writer_protocol_v2.sql": "86ce40f153b77d3a19d8690e92365943a04d51c775be8aecfb0f2113c5881fcc",
+        "20260924180000_finance_storage_writer_protocol_v2.sql": "036fb58401b393f87fce7217eab4ae97468b5d93f68b1e465f0e8c727d742dcc",
+        "20260925120000_storage_writer_internalization.sql": "1c3141d651456da53df1e44a21a92b937d0e8b514724b96a23062cbc21bdaca3",
+        "20260925123000_revoke_legacy_storage_writers.sql": "b2fc88d266829d6149e6a33f3a4f863d4cc23def683bf9648e4450b013ef51be",
+        "20260927121000_google_drive_oauth_search.sql": "5bbc2a48f8a2854d0c9971ddac137a3a7e74d9eda5575c18ec48a5e7fe255c53",
+        "20260928210313_bank_snapshot_shared_writer_context.sql": "70c4168d7da021b30a4b3ae0a08f64d9377c6672f16820c202118e3c905ef41d",
+        "20260929093000_storage_writer_operation_contract.sql": "ef0a9f435d8b391b460b72efab6112bdf7464e2f95073173e79ac24c46204c9e",
+        "20260930122000_check_bank_no_match_after_due_date.sql": "cda7ad22ae0724b2a1b2774c15942e87c277a1b304df9325b2491799e3f2fb90",
+        "20261001012000_check_cleared_deposit_evidence_retention.sql": "d7e3f18d5ec57c0ea07f8000c89806118dbcb4428374616e0154b3072c0e7b09",
+        "20261016120000_bank_transaction_status_authority.sql": "a5926e04d37e6f65c0f0fbbe30dc6126517223d9bd5546e8f7d2b02faa114cbb",
+        "20261016130000_bank_business_evidence_authority.sql": "2e1507e89821c239478908f23e8ba8036ec37ecab955bc05a238794a3300c3cc",
+        "20261016140000_bank_snapshot_temporal_authority.sql": "2666ce8e136774c3a5dc82fc97e0b630b5dd8f134da9fb188c2e5da5ae199897",
+        "20261018120000_check_bank_refresh.sql": "be83a97b224cb3ba675790d149987a87cd72b31c93549d848870b3b12c69c05e",
+        "20261018121000_morning_check_registration.sql": "5134d2e00f116f700a2b67fae8a2c81115894de81099e37c51c7f4d9b83c18fb",
+        "20261018180000_sync_incidents.sql": "a4b9cd667580fa31456eaece6cb88e075144e079712bc3295170dc82ace9c505",
+        "20261019041407_tax_calculator.sql": "fad1e52f1f076a6aded0689094323db28368119892c8a44d39156209071d4991",
+        "20261019064633_tax_arnona_assessment_income.sql": "1f99065e092adecb46c224286c54f7a542653091c4e971b255118fe9e0c8d2bb",
+        "20261019110000_tax_insurance_advances.sql": "c1b51f8263b8f1959798f0c23dfa7905c000a6f7ed766c471cc92fb00365603a"
+      },
+      "migration_bootstrap": "temporarily elevated local postgres for original catalog restore; no migration rewriting",
+      "runtime_postgres_superuser": "f",
+      "original_postgres_superuser": "f",
+      "images": {
+        "supabase_storage": {
+          "Image": "sha256:ed2afc0194b24a697cfa9b245c60d5fd0b41a9ba5a255083418cd643577098a3",
+          "tag": "ghcr.io/supabase/storage-api:v1.82.1"
+        },
+        "supabase_rest": {
+          "Image": "sha256:1ad5f2ea5501150ec9c7953ae9bf04111ced39a53ca01fc0f08af6d0b7ba67be",
+          "tag": "ghcr.io/supabase/postgrest:v16.4"
+        },
+        "supabase_auth": {
+          "Image": "sha256:1181bff5ba4ce440013a63cef9f4cf13024c432d705c9b1fbc9e5b949e852f48",
+          "tag": "ghcr.io/supabase/gotrue:v2.197.0"
+        },
+        "supabase_kong": {
+          "Image": "sha256:3cefb958bcd694597b65adc00053a762b1f9a6df3c6031af528d052d75a64e1a",
+          "tag": "ghcr.io/supabase/kong:2.8.1"
+        },
+        "supabase_db": {
+          "Image": "sha256:c4be96218454e68421a29c712e1a83c7a9fe186208c725d8bb2ebb474e2042f2",
+          "tag": "ghcr.io/supabase/postgres:17.11.0.004"
+        }
+      },
+      "harness_sha256": {
+        "isolated_supabase.py": "d70e06f4b2c74dd942804ae8a4368673bf5738e44996e5da4104f2eb4f6c16bc",
+        "runtime_supabase_stack.py": "17cfc9aacc2edde367424966b6f99890e8b5234a6aa7095b449598f6c8e3c1e0"
+      },
+      "postgres": "17.11",
+      "realtime": "NOT APPLICABLE: application uses BroadcastChannel, no Supabase Realtime calls",
+      "isolation_boundary": "owned Docker bridge with verified egress firewall and browser deny proxy; not an OS sandbox"
+    },
+    {
+      "scenario": "scoped stack and browser cleanup",
+      "status": "PASS"
+    }
+  ]
+}

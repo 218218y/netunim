@@ -1,0 +1,549 @@
+{
+  "candidate_sha": "37ec5cbd79b49618bac534353884019f127068ca",
+  "candidate_tree": "df7513f744b1a11a264a3388567d4532f0baa62b",
+  "main_merge_sha": "84ec2170b58f34b40db7ff8873e8685cb251d831",
+  "full_run": 39889936624,
+  "profile_run": 39889936636,
+  "jobs": [
+    {
+      "id": 120207005405,
+      "name": "Plan verification",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 120207005748,
+      "name": "Windows deployment contracts",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 120207005776,
+      "name": "Full Supabase acceptance",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 120207044432,
+      "name": "Verify / browser-lifecycle-4",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 120207044457,
+      "name": "Verify / browser-sync-1",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 120207044472,
+      "name": "Verify / contracts-database",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 120207044488,
+      "name": "Verify / browser-lifecycle-2",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 120207044493,
+      "name": "Verify / browser-sync-2",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 120207044502,
+      "name": "Verify / browser-ui",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 120207044506,
+      "name": "Verify / models-1",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 120207044514,
+      "name": "Verify / browser-lifecycle-3",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 120207044522,
+      "name": "Verify / browser-lifecycle-1",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 120207044585,
+      "name": "Verify / models-2",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 120207044608,
+      "name": "Verify / browser-morning",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 120209948133,
+      "name": "Verification complete",
+      "status": "completed",
+      "conclusion": "success"
+    }
+  ],
+  "artifacts": [
+    {
+      "id": 12474960170,
+      "name": "verification-browser-lifecycle-4",
+      "run_id": 39889936624,
+      "source_sha": "37ec5cbd79b49618bac534353884019f127068ca",
+      "digest": "sha256:6dfa9b80d7b9ae85eb89f1f3cc576654221323c67c5960728a032531b73bb696",
+      "expires_at": "2026-11-06T02:36:25Z"
+    },
+    {
+      "id": 12474830379,
+      "name": "verification-browser-lifecycle-3",
+      "run_id": 39889936624,
+      "source_sha": "37ec5cbd79b49618bac534353884019f127068ca",
+      "digest": "sha256:be08a8c3287b98e4af11b473d37fb1b72fc3dc5c71a27fbd051b2718dca8bc18",
+      "expires_at": "2026-11-06T02:36:27Z"
+    },
+    {
+      "id": 12474617025,
+      "name": "verification-browser-morning",
+      "run_id": 39889936624,
+      "source_sha": "37ec5cbd79b49618bac534353884019f127068ca",
+      "digest": "sha256:6b680469edc636477cfa09737311f79a88a31cdb8ada8db908332952d98f3ff0",
+      "expires_at": "2026-11-06T02:34:34Z"
+    },
+    {
+      "id": 12474463194,
+      "name": "verification-browser-lifecycle-2",
+      "run_id": 39889936624,
+      "source_sha": "37ec5cbd79b49618bac534353884019f127068ca",
+      "digest": "sha256:8c44db91e80f92ad099569e555af5fb89afdd461e751f1e43627998cdcb789fd",
+      "expires_at": "2026-11-06T02:39:16Z"
+    },
+    {
+      "id": 12474398856,
+      "name": "windows-isolated-acceptance",
+      "run_id": 39889936624,
+      "source_sha": "37ec5cbd79b49618bac534353884019f127068ca",
+      "digest": "sha256:ecc4ade3fe28b379d97db3588bcc602f6f2865d1569333b43bb6d9b5f179eb76",
+      "expires_at": "2026-11-06T02:40:17Z"
+    },
+    {
+      "id": 12474373283,
+      "name": "verification-browser-lifecycle-1",
+      "run_id": 39889936624,
+      "source_sha": "37ec5cbd79b49618bac534353884019f127068ca",
+      "digest": "sha256:4f68ef3973be73ad962b03ade4900d4ef942ef5750a66f11999a0abbc0ae1dc8",
+      "expires_at": "2026-11-06T02:36:41Z"
+    },
+    {
+      "id": 12474332772,
+      "name": "verification-models-1",
+      "run_id": 39889936624,
+      "source_sha": "37ec5cbd79b49618bac534353884019f127068ca",
+      "digest": "sha256:039bea807827180760321b76b9e25509fbf8256ec789a91e5bf0c8092782431e",
+      "expires_at": "2026-11-06T02:34:22Z"
+    },
+    {
+      "id": 12474009459,
+      "name": "verification-browser-sync-1",
+      "run_id": 39889936624,
+      "source_sha": "37ec5cbd79b49618bac534353884019f127068ca",
+      "digest": "sha256:b6200079da7c83c6caee2cd59b7594d58bf2b5e54d28e8d1fcb204c83ae82fbf",
+      "expires_at": "2026-11-06T02:36:33Z"
+    },
+    {
+      "id": 12473998742,
+      "name": "verification-contracts-database",
+      "run_id": 39889936624,
+      "source_sha": "37ec5cbd79b49618bac534353884019f127068ca",
+      "digest": "sha256:25e6c1c98e429f4cf25c8d7cbea74110124790843a56be0ba877e602dfde2731",
+      "expires_at": "2026-11-06T02:33:29Z"
+    },
+    {
+      "id": 12473934526,
+      "name": "verification-browser-sync-2",
+      "run_id": 39889936624,
+      "source_sha": "37ec5cbd79b49618bac534353884019f127068ca",
+      "digest": "sha256:726e59819bd4c2e06806e4c6f1b2ef7fdf579fa27ae564ffe459754c63d17b05",
+      "expires_at": "2026-11-06T02:34:19Z"
+    },
+    {
+      "id": 12473864979,
+      "name": "verification-browser-ui",
+      "run_id": 39889936624,
+      "source_sha": "37ec5cbd79b49618bac534353884019f127068ca",
+      "digest": "sha256:c99c2062cda9c4c96207a34b000151b2a83121725a7a8afceec6f020e1302a08",
+      "expires_at": "2026-11-06T02:36:43Z"
+    },
+    {
+      "id": 12473769907,
+      "name": "verification-models-2",
+      "run_id": 39889936624,
+      "source_sha": "37ec5cbd79b49618bac534353884019f127068ca",
+      "digest": "sha256:feebd8db948de70a2696aaad157e32e05960ba4b52e388cae80ec34e7e564341",
+      "expires_at": "2026-11-06T02:33:59Z"
+    },
+    {
+      "id": 12473584691,
+      "name": "full-supabase-acceptance",
+      "run_id": 39889936624,
+      "source_sha": "37ec5cbd79b49618bac534353884019f127068ca",
+      "digest": "sha256:34936361fd0e301107fd58ac7e7db5d92f2f1bd19685b23e2b5ba667cac3c9f6",
+      "expires_at": "2026-11-06T02:33:07Z"
+    },
+    {
+      "id": 12474358349,
+      "name": "orders-search-profile",
+      "run_id": 39889936636,
+      "source_sha": "37ec5cbd79b49618bac534353884019f127068ca",
+      "digest": "sha256:75a843277016fb120e544e18e82692a22e7a713c35995c57cdf2abc675f061d4",
+      "expires_at": "2026-11-06T02:36:02Z"
+    }
+  ],
+  "evidence": [
+    {
+      "path": "evidence/posix/full-supabase-stack.json",
+      "scenarios": 7,
+      "platform": "posix",
+      "harness_line_endings": {
+        "tests/acceptance_safety.py": "LF",
+        "tests/browser_harness.py": "LF",
+        "tests/isolated_sync_postgres.py": "LF"
+      }
+    },
+    {
+      "path": "evidence/posix/kupa-paired-restore-process.json",
+      "scenarios": 3,
+      "platform": "posix",
+      "harness_line_endings": {
+        "tests/acceptance_safety.py": "LF",
+        "tests/browser_harness.py": "LF",
+        "tests/isolated_sync_postgres.py": "LF"
+      }
+    },
+    {
+      "path": "evidence/posix/kupa-restore-server.json",
+      "scenarios": 1,
+      "platform": "posix",
+      "harness_line_endings": {
+        "tests/acceptance_safety.py": "LF",
+        "tests/browser_harness.py": "LF",
+        "tests/isolated_sync_postgres.py": "LF"
+      }
+    },
+    {
+      "path": "evidence/posix/orders-paired-restore-process.json",
+      "scenarios": 3,
+      "platform": "posix",
+      "harness_line_endings": {
+        "tests/acceptance_safety.py": "LF",
+        "tests/browser_harness.py": "LF",
+        "tests/isolated_sync_postgres.py": "LF"
+      }
+    },
+    {
+      "path": "evidence/posix/orders-restore-server.json",
+      "scenarios": 1,
+      "platform": "posix",
+      "harness_line_endings": {
+        "tests/acceptance_safety.py": "LF",
+        "tests/browser_harness.py": "LF",
+        "tests/isolated_sync_postgres.py": "LF"
+      }
+    },
+    {
+      "path": "evidence/posix/kupa-backup-file-roundtrip.json",
+      "scenarios": 1,
+      "platform": "posix",
+      "harness_line_endings": {
+        "tests/acceptance_safety.py": "LF",
+        "tests/browser_harness.py": "LF",
+        "tests/isolated_sync_postgres.py": "LF"
+      }
+    },
+    {
+      "path": "evidence/posix/kupa-legacy-backup.json",
+      "scenarios": 1,
+      "platform": "posix",
+      "harness_line_endings": {
+        "tests/acceptance_safety.py": "LF",
+        "tests/browser_harness.py": "LF",
+        "tests/isolated_sync_postgres.py": "LF"
+      }
+    },
+    {
+      "path": "evidence/posix/orders-backup-file-roundtrip.json",
+      "scenarios": 1,
+      "platform": "posix",
+      "harness_line_endings": {
+        "tests/acceptance_safety.py": "LF",
+        "tests/browser_harness.py": "LF",
+        "tests/isolated_sync_postgres.py": "LF"
+      }
+    },
+    {
+      "path": "evidence/posix/orders-legacy-backup.json",
+      "scenarios": 1,
+      "platform": "posix",
+      "harness_line_endings": {
+        "tests/acceptance_safety.py": "LF",
+        "tests/browser_harness.py": "LF",
+        "tests/isolated_sync_postgres.py": "LF"
+      }
+    },
+    {
+      "path": "evidence/posix/browser-isolation.json",
+      "scenarios": 4,
+      "platform": "posix",
+      "harness_line_endings": {
+        "tests/acceptance_safety.py": "LF",
+        "tests/browser_harness.py": "LF",
+        "tests/isolated_sync_postgres.py": "LF"
+      }
+    },
+    {
+      "path": "evidence/posix/browser-postgres.json",
+      "scenarios": 6,
+      "platform": "posix",
+      "harness_line_endings": {
+        "tests/acceptance_safety.py": "LF",
+        "tests/browser_harness.py": "LF",
+        "tests/isolated_sync_postgres.py": "LF"
+      }
+    },
+    {
+      "path": "evidence/nt/kupa-backup-file-roundtrip.json",
+      "scenarios": 1,
+      "platform": "nt",
+      "harness_line_endings": {
+        "tests/acceptance_safety.py": "CRLF",
+        "tests/browser_harness.py": "CRLF",
+        "tests/isolated_sync_postgres.py": "CRLF"
+      }
+    },
+    {
+      "path": "evidence/nt/kupa-legacy-backup.json",
+      "scenarios": 1,
+      "platform": "nt",
+      "harness_line_endings": {
+        "tests/acceptance_safety.py": "CRLF",
+        "tests/browser_harness.py": "CRLF",
+        "tests/isolated_sync_postgres.py": "CRLF"
+      }
+    },
+    {
+      "path": "evidence/nt/orders-backup-file-roundtrip.json",
+      "scenarios": 1,
+      "platform": "nt",
+      "harness_line_endings": {
+        "tests/acceptance_safety.py": "CRLF",
+        "tests/browser_harness.py": "CRLF",
+        "tests/isolated_sync_postgres.py": "CRLF"
+      }
+    },
+    {
+      "path": "evidence/nt/orders-legacy-backup.json",
+      "scenarios": 1,
+      "platform": "nt",
+      "harness_line_endings": {
+        "tests/acceptance_safety.py": "CRLF",
+        "tests/browser_harness.py": "CRLF",
+        "tests/isolated_sync_postgres.py": "CRLF"
+      }
+    },
+    {
+      "path": "evidence/nt/browser-isolation.json",
+      "scenarios": 4,
+      "platform": "nt",
+      "harness_line_endings": {
+        "tests/acceptance_safety.py": "CRLF",
+        "tests/browser_harness.py": "CRLF",
+        "tests/isolated_sync_postgres.py": "CRLF"
+      }
+    },
+    {
+      "path": "evidence/nt/kupa-paired-restore-process.json",
+      "scenarios": 3,
+      "platform": "nt",
+      "harness_line_endings": {
+        "tests/acceptance_safety.py": "CRLF",
+        "tests/browser_harness.py": "CRLF",
+        "tests/isolated_sync_postgres.py": "CRLF"
+      }
+    },
+    {
+      "path": "evidence/nt/kupa-restore-server.json",
+      "scenarios": 1,
+      "platform": "nt",
+      "harness_line_endings": {
+        "tests/acceptance_safety.py": "CRLF",
+        "tests/browser_harness.py": "CRLF",
+        "tests/isolated_sync_postgres.py": "CRLF"
+      }
+    },
+    {
+      "path": "evidence/nt/orders-paired-restore-process.json",
+      "scenarios": 3,
+      "platform": "nt",
+      "harness_line_endings": {
+        "tests/acceptance_safety.py": "CRLF",
+        "tests/browser_harness.py": "CRLF",
+        "tests/isolated_sync_postgres.py": "CRLF"
+      }
+    },
+    {
+      "path": "evidence/nt/orders-restore-server.json",
+      "scenarios": 1,
+      "platform": "nt",
+      "harness_line_endings": {
+        "tests/acceptance_safety.py": "CRLF",
+        "tests/browser_harness.py": "CRLF",
+        "tests/isolated_sync_postgres.py": "CRLF"
+      }
+    }
+  ],
+  "files": [
+    {
+      "path": "evidence/posix/full-supabase-stack.json",
+      "sha256": "5b99bc3fad4595835cb6a6c4a88fdb7a430c44beb6a7ffd96a80a9935ac6a2c0"
+    },
+    {
+      "path": "evidence/posix/kupa-paired-restore-process.json",
+      "sha256": "647fb95d9cd9603b2332978f8498d17c22e9f4a2b1f1cb80d6f68f384ca52d56"
+    },
+    {
+      "path": "evidence/posix/kupa-restore-server.json",
+      "sha256": "af484aebf9c4e5e9998d8b11a10917f14da05f955c82c635f7ac9600c991268b"
+    },
+    {
+      "path": "evidence/posix/orders-paired-restore-process.json",
+      "sha256": "e41f71f4a38a6c0d9216d37196466d4e1c6aae7cb254adc2f9147fda90eb9c36"
+    },
+    {
+      "path": "evidence/posix/orders-restore-server.json",
+      "sha256": "af484aebf9c4e5e9998d8b11a10917f14da05f955c82c635f7ac9600c991268b"
+    },
+    {
+      "path": "evidence/posix/kupa-backup-file-roundtrip.json",
+      "sha256": "51972a924a56a9901272df7159572216f275f943837acf4e364519b445a4635f"
+    },
+    {
+      "path": "evidence/posix/kupa-legacy-backup.json",
+      "sha256": "af8a30b9dc9344762b77fa583c9a8f3b8773b32901cef3b29f2605d0f945e762"
+    },
+    {
+      "path": "evidence/posix/orders-backup-file-roundtrip.json",
+      "sha256": "a5e50e14c48a38db2b1a5c09cbeaf93d8264e298f9cff5c465d9adcf3565d554"
+    },
+    {
+      "path": "evidence/posix/orders-legacy-backup.json",
+      "sha256": "04e3577435bd9fc3b72de0fe827dde8677125558bb8941d753ff96840312590e"
+    },
+    {
+      "path": "evidence/posix/browser-isolation.json",
+      "sha256": "b985a469e350e1ba88b707af45189ac73d6008d722b753c75429d2a718ba23d5"
+    },
+    {
+      "path": "evidence/posix/browser-postgres.json",
+      "sha256": "75426636aa1a6a4f3120938b7cbba2181f41809d487f6386f7b950711b6b2103"
+    },
+    {
+      "path": "evidence/nt/kupa-backup-file-roundtrip.json",
+      "sha256": "2353975d669c8bbd55131cc7e0857c85a74a2b135d7486dac5fccc463ad575c1"
+    },
+    {
+      "path": "evidence/nt/kupa-legacy-backup.json",
+      "sha256": "786803b5f472cffac2ef7344cf3387532a39b9c84f5629ac82cd235437bc6b0b"
+    },
+    {
+      "path": "evidence/nt/orders-backup-file-roundtrip.json",
+      "sha256": "25b0517048cdc1033b67141e5261006a24f12fe234eb6aa8e21b09798d4fdefa"
+    },
+    {
+      "path": "evidence/nt/orders-legacy-backup.json",
+      "sha256": "63ad724dfaf918c719fdf78b90990c58beb6b546ca977df026eb70b682d6825d"
+    },
+    {
+      "path": "evidence/nt/browser-isolation.json",
+      "sha256": "c42c1a51b2ccc72f6c56ed003bd88cb0ef4fa8b765c985adddad94e39bc5eab0"
+    },
+    {
+      "path": "evidence/nt/kupa-paired-restore-process.json",
+      "sha256": "de34e20563230887b9cae4b688a0960c6dc19dc3f6f5c916687d9070a23f68c2"
+    },
+    {
+      "path": "evidence/nt/kupa-restore-server.json",
+      "sha256": "0cc618ab0da9dc271c4d91262e92d0ffe818458a1b71b8b66de1ed88e41e3478"
+    },
+    {
+      "path": "evidence/nt/orders-paired-restore-process.json",
+      "sha256": "5a717d92c9c360ceae571a86b712f90237727f3682cff87570fc36df865dda13"
+    },
+    {
+      "path": "evidence/nt/orders-restore-server.json",
+      "sha256": "0cc618ab0da9dc271c4d91262e92d0ffe818458a1b71b8b66de1ed88e41e3478"
+    },
+    {
+      "path": "orders-search-summary.json",
+      "sha256": "a5d217d5208d47f14e23d5a6158e3cac38c6fc216335939ea49ab634dc890bea"
+    },
+    {
+      "artifact_path": "1000-cpu1.trace.json",
+      "sha256": "243809956f68bb752e7ca60f4eed2be2c3f9f2f81e8475c454dd92e9113694e6",
+      "stored": "profiling CI artifact"
+    },
+    {
+      "artifact_path": "1000-cpu4.trace.json",
+      "sha256": "8e97c797c9b90f1e8471e4fb7d2a7719de74ae5b4803e7609b8a9e041b9e2b80",
+      "stored": "profiling CI artifact"
+    },
+    {
+      "artifact_path": "10000-cpu1.trace.json",
+      "sha256": "517bd57203900e282aa9ec3d2f5c57932d75a40eca27a721101ac6352418af7e",
+      "stored": "profiling CI artifact"
+    },
+    {
+      "artifact_path": "10000-cpu4.trace.json",
+      "sha256": "5d6bdc67f5ac9256a28d22c6b556fbd5f644f4bb4a551bc9fc36519db9e48005",
+      "stored": "profiling CI artifact"
+    },
+    {
+      "artifact_path": "1000-cpu1.cpuprofile",
+      "sha256": "f63eb5856f467e0f1080ef94e2724c74284ddb95f3bdfa980f150abff85172d4",
+      "stored": "profiling CI artifact"
+    },
+    {
+      "artifact_path": "1000-cpu4.cpuprofile",
+      "sha256": "4254de90c9542423d6d660e996a0649153223cc51105121bf3042ec05d439045",
+      "stored": "profiling CI artifact"
+    },
+    {
+      "artifact_path": "10000-cpu1.cpuprofile",
+      "sha256": "6898f62e88001902e6d637264a63af6226f8375dbb7f3176a70c30246b035516",
+      "stored": "profiling CI artifact"
+    },
+    {
+      "artifact_path": "10000-cpu4.cpuprofile",
+      "sha256": "379d6fb5d0b18dd81b6c451014d4fa6d725689409b1e0dec70b2d494bec25baa",
+      "stored": "profiling CI artifact"
+    }
+  ],
+  "production_roots": {
+    "netunim-orders/site": "e35ce14961d29b82e6d17dfaee8903e6e3e12fbb",
+    "netunim-kupa/site": "ff769f2e6066a61d94fc1efa519a27e0abf24a0f",
+    "netunim-orders/document-bridge": "db0d41fd619915f98e3423972cd9d18e9f5b892d",
+    "netunim-kupa/bank-bridge": "8c3097ba28dcde9d7cc76343dd3241a3da10d96c",
+    "shared": "f2beb3f26639f0792bd8ed98f4bd6bd73a9bca26",
+    "supabase": "b9627e96bf086f01e46230d0b60419868b600743"
+  }
+}

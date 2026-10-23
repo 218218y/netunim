@@ -13,6 +13,10 @@ on 8765/8766 are not reachable. QUIC and non-proxied WebRTC UDP are disabled.
 The real-browser regression uses a disposable decoy, never an installed service,
 to verify loopback/localhost/IPv6 and foreign-host denial plus allowed site access.
 This is application/browser network isolation, not an OS or VM security sandbox.
+On Windows, site, deny-proxy and offline-origin listeners use
+`SO_EXCLUSIVEADDRUSE`: a second socket requesting `SO_REUSEADDR` must fail to bind
+the owned address. Windows' permissive reuse otherwise allows ambiguous delivery
+even while the test server object still reports the expected address.
 
 PostgreSQL is initialized from empty files on a fresh loopback port and migrations
 run against that instance. All inherited `PG*` settings are removed, including
@@ -21,8 +25,10 @@ The explicit null-device `PGPASSFILE` also prevents reading a user's default
 libpq password file, even though the isolated cluster uses trust authentication.
 Before migrations, the live server must report the owned data directory, address
 and port. No Docker or hosted Supabase project is required for these SQL/browser
-tests. Supabase Auth, PostgREST, Storage and Realtime services are **NOT RUN**;
-the fixture uses a synthetic authenticated SQL role and a local RPC relay.
+tests. These SQL/relay suites use a synthetic authenticated SQL role and do not
+run Supabase Auth, PostgREST or Storage. The separate required full-service job
+below covers those services; see the October 23 acceptance report for its results.
+Realtime is not used by the application and is not claimed as tested.
 
 Run the safety gate and isolated browser check:
 
@@ -205,9 +211,9 @@ owned `Default` subprofile throughout. Large-heap diagnostic GC has its own 30s
 transport deadline and recorded elapsed time, rather than the generic 5s socket
 timeout; application interaction timings and failure assertions are unchanged.
 The `Page.navigate` command uses that navigation deadline too, so a default 5s
-socket cannot abort before the loading wait starts. Cold DevTools publication
-still has a 30s bound; UUID verification and first page enumeration share a 60s
-overall startup bound. Legacy-worker upgrade observes native installing/waiting
+socket cannot abort before the loading wait starts. Cold DevTools publication,
+UUID verification and first page enumeration share one 60s overall startup
+bound. Legacy-worker upgrade observes native installing/waiting
 state for up to 60s instead of a fixed 15s loop, fails immediately on install
 errors or premature controller replacement, and requests the update only once.
 Offline PWA process restart reuses the same verified graceful tree shutdown;
@@ -245,8 +251,9 @@ profiles, configuration, secrets or backups into it.
    no file outside the enumerated installation/fixture/OS startup locations was
    changed. Export redacted evidence, then discard the VM snapshot.
 
-Two physical computers, a full Supabase service stack and official provider
-sandboxes retain their separate NOT RUN entries even if this VM protocol passes.
+Two physical computers and official provider sandboxes retain their separate
+NOT RUN entries even if this VM protocol passes. Full Supabase service acceptance
+has its own required CI job and evidence, described below.
 # Full Supabase service acceptance (October 23 follow-up)
 
 `Full Supabase acceptance` is an additional required job in `verify.yml` and the
@@ -305,3 +312,28 @@ It restores and verifies the original role attributes before creating test users
 or running HTTP/RLS acceptance. This is a catalog-restore bootstrap, not a test of
 production migration deployment permissions. TCP inside the owned DB container
 preserves retention's real `inet_server_port()` contract; Unix sockets do not.
+
+The October 23 completed service/profiling campaign and its exact source/tree are
+recorded in [the acceptance report](ACCEPTANCE_REPORT_20261023_HE.md). Twenty clean
+source-bound acceptance reports, raw latency samples and artifact digests are
+checked in under `docs/acceptance/2026-10-23/`; full Chrome traces remain artifacts.
+The two timed retention jobs are separate from the additional application jobs
+`check-bank-refresh` and `morning-check-registration`, whose definitions are preserved.
+
+Focused process-boundary diagnosis can run locally without the whole suite:
+`python tests/runtime_restore_server_recovery.py --app kupa --paired-only --paired-phase main-applied`.
+Defaults still run every app and every boundary in CI. On failure the browser
+harness retains bounded, credential-free stderr, browser version, IDB histogram
+and file-metadata diagnostics before removing its private profile. Logs from prior
+owned browser generations are retained until that session is cleaned up. It does
+not retry failed database opens, replace missing journals or change restore logic.
+Network-domain failures and network log errors are captured for failures during
+the whole session, including uninstrumented PWA readiness checks. Only destination
+host/port/path, error codes and blocked/canceled status are retained; request
+headers, query strings, credentials and bodies are excluded.
+
+Chromium startup shares its existing 60-second readiness budget across private
+DevTools identity publication, listener ownership verification and page discovery.
+There is no separate 30-second publication cutoff or browser relaunch on timeout;
+later phases receive only the remaining budget. A regression exercises publication
+after 39 seconds without a real wait and still requires the owned browser UUID.
