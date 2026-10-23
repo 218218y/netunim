@@ -256,7 +256,7 @@ CLI 2.121.0. A workstation or self-hosted runner is rejected before allocation.
 The ordinary PostgreSQL/browser suites remain independently required.
 
 The harness starts a fresh, unlinked platform without application migrations,
-attests actual Docker labels, internal network, published loopback ports, mounts
+attests actual Docker labels, dedicated network, egress firewall, loopback ports, mounts
 and volumes, and challenges the owned database before applying the original
 application migration files byte for byte. It removes inherited cloud, database,
 Docker, SMTP and provider credentials and uses a private CLI home. No production
@@ -265,8 +265,12 @@ Only the test copy's Supabase configuration and CSP connect-src are changed.
 Its fresh HTTPS certificate is trusted by its SPKI in owned Chromium processes;
 global certificate validation remains enabled. The browser deny proxy still
 blocks every destination except the owned site and API ports. API redirects are
-rejected. Docker image pulls occur on the host; service containers have no
-external network route. This remains application/container isolation, not an OS
+rejected. Docker image pulls occur on the host; an owned DOCKER-USER chain blocks
+new container connections outside their subnet, and an interface-scoped INPUT
+rule blocks new connections to host services. Every preflight checks the rules.
+Docker internal-only networks cannot publish the ports needed by the CLI, so
+this uses a dedicated ordinary bridge with verified firewall rules instead.
+The rules are removed with the stack. This remains container isolation, not an OS
 sandbox or proof of zero host-level network traffic.
 
 Coverage uses real GoTrue, PostgREST, RPC, RLS, Storage and pg_cron. Two private

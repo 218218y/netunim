@@ -45,18 +45,19 @@ class SafetyContracts(unittest.TestCase):
             stack.containers = {'supabase_db_owned': 'owned-id'}
             network = {'Labels': {LABEL: 'owned'}, 'Internal': True,
                        'Options': {'com.docker.network.bridge.host_binding_ipv4': '127.0.0.1'}}
-            item = {'Config': {'Labels': {LABEL: 'owned'}}, 'NetworkSettings': {'Networks': {'owned-network': {}}},
+            item = {'Config': {'Labels': {LABEL: 'owned'}}, 'NetworkSettings': {'Networks': {'owned-network': {}},
+                    'Ports': {'5432/tcp': [{'HostIp': '127.0.0.1', 'HostPort': '19471'}]}},
                     'HostConfig': {'Privileged': False, 'PortBindings': {'5432/tcp': [{'HostIp': '127.0.0.1', 'HostPort': '19471'}]}},
                     'Mounts': [{'Type': 'bind', 'Source': str(root/'new-db')}]}
             def run(*args):
                 return json.dumps([network if args[1] == 'network' else current])
             current = item
-            with patch.object(stack, 'run', side_effect=run):
+            with patch.object(stack, 'run', side_effect=run), patch.object(stack, 'firewall'):
                 stack.attest_resources()
                 for mutate in (
                     lambda x: x['Mounts'][0].update(Source=str(root.parent/'real-data')),
                     lambda x: x['Config']['Labels'].update({LABEL: 'foreign'}),
-                    lambda x: x['HostConfig']['PortBindings']['5432/tcp'][0].update(HostIp='0.0.0.0'),
+                    lambda x: x['NetworkSettings']['Ports']['5432/tcp'][0].update(HostIp='0.0.0.0'),
                     lambda x: x['NetworkSettings']['Networks'].update({'external-network': {}}),
                     lambda x: x['HostConfig'].update(Privileged=True)):
                     current = copy.deepcopy(item)
@@ -64,7 +65,7 @@ class SafetyContracts(unittest.TestCase):
                     with self.assertRaises(RuntimeError):
                         stack.attest_resources()
                 current = item
-                network['Internal'] = False
+                network['EnableIPv6'] = True
                 with self.assertRaises(RuntimeError):
                     stack.attest_resources()
 

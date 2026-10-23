@@ -73,6 +73,8 @@ class IsolatedSupabase:
             (self.root/path).mkdir(parents=True)
         self.started = False
         self.network_created = False
+        self.firewall_created = False
+        self.chain = 'NETUNIM_'+secrets.token_hex(6)
         self.containers = {}
         self.anon = self.service = ''
         self.marker = secrets.token_hex(32)
@@ -177,11 +179,16 @@ enable_confirmations = false
 [analytics]
 enabled = false
 ''', encoding='utf8')
-        # Internal Docker network has no external route; published ports bind
-        # loopback only. Image pulls are performed by the host Docker daemon.
-        self.run('docker', 'network', 'create', '--internal', '--label', f'{LABEL}={self.project}',
+        # Docker does not publish ports on an internal-only network. Use its
+        # ordinary loopback-published bridge with an owned egress firewall chain.
+        # Image pulls are performed by the host daemon, outside this bridge.
+        self.run('docker', 'network', 'create', '--label', f'{LABEL}={self.project}',
                  '-o', 'com.docker.network.bridge.host_binding_ipv4=127.0.0.1', self.network)
         self.network_created = True
+        network = json.loads(self.run('docker', 'network', 'inspect', self.network))[0]
+        self.bridge = 'br-'+network['Id'][:12]
+        self.subnet = network['IPAM']['Config'][0]['Subnet']
+        self.firewall('new')
         self.started = True  # cleanup partial starts too
         print('Starting the empty isolated Supabase platform', flush=True)
         self.cli('start', '--network-id', self.network, '-x',
@@ -222,16 +229,19 @@ enabled = false
     def attest_resources(self):
         temporary_root(self.root, 'netunim-supabase-')
         network = json.loads(self.run('docker', 'network', 'inspect', self.network))[0]
-        if (network.get('Labels', {}).get(LABEL) != self.project or not network['Internal']
+        if (network.get('Labels', {}).get(LABEL) != self.project or network.get('EnableIPv6')
                 or network['Options'].get('com.docker.network.bridge.host_binding_ipv4') != '127.0.0.1'):
             raise RuntimeError('Docker network isolation cannot be proven')
+        self.firewall('check')
         for name, cid in self.containers.items():
             item = json.loads(self.run('docker', 'inspect', cid))[0]
             if (item['Config']['Labels'].get(LABEL) != self.project or not name.endswith('_'+self.project)
                     or set(item['NetworkSettings']['Networks']) != {self.network}
                     or item['HostConfig']['Privileged'] or item['HostConfig'].get('PidMode') == 'host'):
                 raise RuntimeError('a Supabase container escaped its project')
-            for bindings in item['HostConfig']['PortBindings'].values():
+            # HostConfig stores requested defaults (often HostIp=''); inspect
+            # the actual published mapping after Docker applies network options.
+            for bindings in item['NetworkSettings']['Ports'].values():
                 for binding in bindings or []:
                     if binding['HostIp'] not in ('127.0.0.1', '::1') or int(binding['HostPort']) in (8765, 8766):
                         raise RuntimeError('Supabase published a non-isolated port')
@@ -246,6 +256,23 @@ enabled = false
                     raise RuntimeError('unrecognized Supabase storage destination')
         if (self.root/'supabase/.temp/project-ref').exists():
             raise RuntimeError('a linked remote project was found')
+
+    def firewall(self, action):
+        rules = [
+            (self.chain, '-m', 'conntrack', '--ctstate', 'ESTABLISHED,RELATED', '-j', 'RETURN'),
+            (self.chain, '-d', self.subnet, '-j', 'RETURN'),
+            (self.chain, '-j', 'REJECT'),
+            ('DOCKER-USER', '-i', self.bridge, '-j', self.chain),
+            ('INPUT', '-i', self.bridge, '-m', 'conntrack', '--ctstate', 'NEW', '-j', 'REJECT'),
+        ]
+        if action == 'new':
+            self.run('sudo', '-n', 'iptables', '-w', '-N', self.chain)
+            self.firewall_created = True
+        for rule in (reversed(rules) if action == 'remove' else rules):
+            operation = '-C' if action == 'check' else '-D' if action == 'remove' else '-I' if rule[0] in ('DOCKER-USER', 'INPUT') else '-A'
+            self.run('sudo', '-n', 'iptables', '-w', operation, *rule)
+        if action == 'remove':
+            self.run('sudo', '-n', 'iptables', '-w', '-X', self.chain)
 
     def _sql(self, sql):
         return self.run('docker', 'exec', '-i', self.db, 'psql', '-X', '-A', '-t',
@@ -294,14 +321,14 @@ enabled = false
     def evidence(self):
         self.preflight()
         return {'kind': 'real-local-supabase', 'project': self.project, 'api': self.url,
-                'internal_network': True, 'certificate_spki': self.spki,
+                'container_egress_firewall': True, 'certificate_spki': self.spki,
                 'cli_version': CLI_VERSION, 'migration_sha256': self.migrations,
                 'images': {name.split('_'+self.project)[0]:
                     json.loads(self.run('docker', 'inspect', cid))[0]['Config']['Image']
                     for name, cid in self.containers.items()},
                 'postgres': self._sql('show server_version;'),
                 'realtime': 'NOT APPLICABLE: application uses BroadcastChannel, no Supabase Realtime calls',
-                'isolation_boundary': 'owned Docker internal network and browser deny proxy; not an OS sandbox'}
+                'isolation_boundary': 'owned Docker bridge with verified egress firewall and browser deny proxy; not an OS sandbox'}
 
     def __exit__(self, *_args):
         try:
@@ -316,5 +343,9 @@ enabled = false
                 if self.run('docker', kind, 'ls', '-q', '--filter', f'label={LABEL}={self.project}'):
                     raise RuntimeError('owned Supabase resources remained after cleanup')
         finally:
-            root = temporary_root(self.root, 'netunim-supabase-')
-            shutil.rmtree(root)
+            try:
+                if self.firewall_created:
+                    self.firewall('remove')
+            finally:
+                root = temporary_root(self.root, 'netunim-supabase-')
+                shutil.rmtree(root)
