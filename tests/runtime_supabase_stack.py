@@ -116,7 +116,7 @@ def run_app(stack, app, owner, foreign):
         code, _ = stack.request('/rest/v1/'+table+f"?owner_id=eq.{owner['id']}", {'state': {'forged': True}},
                                 token=foreign['token'], method='PATCH')
         assert code in (200, 204, 401, 403)  # RLS may hide rows rather than raise.
-        assert head(stack, owner, table, document)['revision'] == 10
+        assert head(stack, owner, table, document) == {'state': base, 'revision': 10}
         code, _ = stack.request('/rest/v1/rpc/'+rpc, seed)
         assert code in (401, 403)
         # Shared Checks use a separate real head, preserved throughout Main sync.
@@ -189,6 +189,12 @@ def run_app(stack, app, owner, foreign):
         # Actual token rotation, native session persistence and server logout.
         assert a.evaluate('''(async()=>{const before=sessionRead();const after=await (auth.refreshSession||auth.supaRefresh)();
           return before.refresh_token!==after.refresh_token&&before.user.id===after.user.id})()''', timeout=40)
+        assert a.evaluate('''(async()=>{
+          const session={...sessionRead(),access_token:'synthetic-invalid-access-token',expires_at:Math.floor(Date.now()/1000)+3600};
+          (auth.saveSession||auth.storeSupaSession)(session,{refresh:true});
+          const response=await request('''+js('/rest/v1/'+table+'?document_name=eq.'+document+'&select=revision')+''');
+          return response.ok&&sessionRead().access_token!==session.access_token;
+        })()''', timeout=40), 'native HTTP-401 refresh-and-retry did not recover'
         a.restart_process()
         assert a.auth()['owner'] == owner['id']
         assert a.evaluate('''(async()=>{const {supabaseConfig:c}=await import('./supabase/config.js');const s=sessionRead();
@@ -202,7 +208,7 @@ def run_app(stack, app, owner, foreign):
                 'offline': True, 'http_503': 'injected before send', 'lost_ack': 'real HTTP response withheld after DB commit',
                 'hard_process_failure': crash['hard_process_failure'], 'restart_snapshots': snapshots,
                 'operation_ledger': ledger, 'foreign_user_unchanged': True, 'shared_unchanged': True,
-                'token_rotation_restart_logout': True, 'financial_record_count': 1}
+                'token_rotation_restart_logout': True, 'native_401_refresh_retry': True, 'financial_record_count': 1}
 
 
 def wait_pause(browser):
@@ -242,13 +248,17 @@ def run_storage(stack, owner, foreign):
         assert code in (400, 403, 404)
         code, rows = stack.request('/storage/v1/object/list/bank-cheque-images', {'prefix': owner['id']}, token=foreign['token'])
         assert code == 200 and rows == []
-        code, _ = stack.request('/storage/v1/object/bank-cheque-images/'+path, b'forged', token=foreign['token'], content_type='image/png')
-        assert code in (400, 403, 409)
+        foreign_target = path.replace('a'*64, 'b'*64)
+        assert foreign_target != path
+        code, _ = stack.request('/storage/v1/object/bank-cheque-images/'+foreign_target, b'forged', token=foreign['token'], content_type='image/png')
+        assert code in (400, 403)
         # Deleting a hidden row may report an empty successful result. The owner
         # must still download its original object afterwards.
         stack.request('/storage/v1/object/bank-cheque-images', {'prefixes': [path]}, token=foreign['token'], method='DELETE')
         code, data = stack.request('/storage/v1/object/bank-cheque-images/'+path, token=owner['token'], raw=True)
         assert code == 200 and len(data) == result['expected']
+        code, owned = stack.request('/storage/v1/object/list/bank-cheque-images', {'prefix': owner['id']}, token=owner['token'])
+        assert code == 200 and len(owned) == 1
         return {'scenario': 'native cheque image module + real Storage/RLS', 'status': 'PASS',
                 'image_source': 'synthetic PNG fixture; no Bridge/provider', 'object_path': path,
                 'bytes': len(data), 'foreign_read_list_write_delete_denied': True, 'repeat_upload_deduplicated': True}
@@ -267,22 +277,22 @@ def run_restore(stack, owner, foreign):
             'p_checks_document_name': 'main', 'p_checks_base_revision': shared_before['revision'],
             'p_checks_state': shared_before['state'], 'p_checks_delete_ids': [],
             'p_main_operation_id': 'full-stack-restore-main', 'p_checks_operation_id': 'full-stack-restore-checks', 'p_audit': {}}
-        browser.rpc('stage_restore_group_v5', payload)
+        browser.rpc('stage_restore_group_v6', payload)
         browser.restart_process(crash=True)
         assert browser.auth()['owner'] == owner['id']
         pending = browser.rpc('list_incomplete_restore_groups_v5', {})
         assert any(r['restore_group_id'] == group for r in pending)
         code, foreign_groups = stack.request('/rest/v1/rpc/list_incomplete_restore_groups_v5', {}, token=foreign['token'])
         assert code == 200 and all(r['restore_group_id'] != group for r in foreign_groups)
-        code, _ = stack.request('/rest/v1/rpc/apply_restore_group_v5', {'p_restore_group_id': group}, token=foreign['token'])
+        code, _ = stack.request('/rest/v1/rpc/apply_restore_group_v6', {'p_restore_group_id': group}, token=foreign['token'])
         assert code >= 400
-        browser.rpc('apply_restore_group_v5', {'p_restore_group_id': group})
+        browser.rpc('apply_restore_group_v6', {'p_restore_group_id': group})
         after = head(stack, owner, 'order_management_documents', 'suppliers')
         checks_after = head(stack, owner, 'shared_checks_documents', 'main')
         assert after['state'] == restored and after['revision'] == before['revision']+1
         browser.restart_process()
         assert browser.auth()['owner'] == owner['id']
-        browser.rpc('apply_restore_group_v5', {'p_restore_group_id': group})
+        browser.rpc('apply_restore_group_v6', {'p_restore_group_id': group})
         assert head(stack, owner, 'order_management_documents', 'suppliers') == after
         assert head(stack, owner, 'shared_checks_documents', 'main') == checks_after
         assert browser.rpc('list_incomplete_restore_groups_v5', {}) == []
