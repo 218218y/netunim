@@ -636,11 +636,13 @@ class BrowserSession:
             # A fresh CI machine can need more than 10s for its first Chrome boot.
             # Poll readiness, fail immediately on process exit, and leave application
             # assertions/timeouts unchanged. Include stderr before temp cleanup.
-            # Ownership verification adds a version query before the original
-            # page enumeration. Retain a bounded cold-start window for both;
-            # do not spend nearly all of it waiting for Chromium's first bind.
+            # Share one cold-start budget across publication, ownership and page
+            # enumeration. Windows CI logged Chrome's first startup message at
+            # 29s: a separate 30s publication cutoff discarded a live cold boot
+            # despite the remaining overall budget. Never restart or accept a
+            # different listener to compensate for slow publication.
             deadline = time.monotonic()+60
-            devtools_port, browser_path = _wait_owned_devtools(self.profile, self.proc, timeout=30)
+            devtools_port, browser_path = _wait_owned_devtools(self.profile, self.proc, timeout=max(.01, deadline-time.monotonic()))
             version = _wait_json(_devtools_urls(devtools_port, '/json/version'), timeout=max(.01, deadline-time.monotonic()),
                                  process=self.proc, expected_browser_path=browser_path)
             endpoint = urllib.parse.urlsplit(version['webSocketDebuggerUrl'])

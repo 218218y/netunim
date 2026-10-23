@@ -71,6 +71,48 @@ class VerificationContracts(unittest.TestCase):
                                                 expected_browser_path='/devtools/browser/OWNED')
         self.assertTrue(result['webSocketDebuggerUrl'].endswith('/OWNED'))
 
+    def test_cold_browser_publication_shares_the_overall_startup_deadline(self):
+        from unittest.mock import Mock
+        with tempfile.TemporaryDirectory() as directory:
+            session = object.__new__(browser_harness.BrowserSession)
+            session.tmp = Path(directory)
+            session.profile = session.tmp / 'private-profile'; session.profile.mkdir()
+            session.downloads = session.tmp / 'downloads'; session.downloads.mkdir()
+            session.browser = 'synthetic-browser'
+            session.browser_owner = None
+            session.browser_generation = 0
+            session.supabase = None
+            session.network_guard = Mock()
+            session.network_guard.arguments.return_value = []
+            session.call = Mock(return_value={})
+            process = Mock(); process.poll.return_value = None
+            owner = Mock(proc=process)
+            identity = '/devtools/browser/OWNED'
+            version = {'webSocketDebuggerUrl': 'ws://127.0.0.1:1234'+identity}
+            pages = [{'type': 'page', 'webSocketDebuggerUrl': 'ws://127.0.0.1:1234/devtools/page/PAGE'}]
+
+            def cold_publication(_profile, _process, *, timeout):
+                # The old 30s phase cutoff fails even though 21s of the shared
+                # 60s budget remain after a 39s cold publication.
+                self.assertGreaterEqual(timeout, 39)
+                return 1234, identity
+
+            with patch.object(browser_harness, 'browser_preflight', return_value=[]), \
+                 patch.object(browser_harness, '_seed_windows_profile'), \
+                 patch.object(browser_harness, '_browser_args', return_value=['synthetic-browser']), \
+                 patch.object(browser_harness, 'SuiteProcess', return_value=owner), \
+                 patch.object(browser_harness.subprocess, 'Popen', return_value=process), \
+                 patch.object(browser_harness.time, 'monotonic', side_effect=[100, 100, 139, 144]), \
+                 patch.object(browser_harness, '_wait_owned_devtools', side_effect=cold_publication) as publication, \
+                 patch.object(browser_harness, '_wait_json', side_effect=[version, pages]) as request, \
+                 patch.object(browser_harness.websocket, 'create_connection'):
+                session._start_browser()
+            self.assertEqual(publication.call_count, 1)
+            self.assertEqual(publication.call_args.kwargs['timeout'], 60)
+            self.assertEqual([call.kwargs['timeout'] for call in request.call_args_list], [21, 16])
+            self.assertEqual(request.call_args_list[0].kwargs['expected_browser_path'], identity)
+            self.assertTrue(all(call.kwargs['process'] is process for call in request.call_args_list))
+
     def test_windows_seed_preserves_private_profile_metadata_on_restart(self):
         cache={'os_password_blank':False,'os_password_last_changed':'10000000'}
         with tempfile.TemporaryDirectory() as directory:
