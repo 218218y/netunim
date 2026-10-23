@@ -16,8 +16,9 @@ class SafetyContracts(unittest.TestCase):
     def test_diagnostics_redact_generated_secrets_but_keep_sql_failures(self):
         value = clean_diagnostics('API key: eyJfake.generated.secret\n'
             'postgresql://postgres:private@127.0.0.1:19471/postgres\n'
+            'JWT secret: private-signing-value\n'
             'sb_secret_privateopaque\nERROR: duplicate key value violates unique constraint backup_owner_revision_key')
-        for secret in ('eyJfake.generated.secret', 'postgres:private', 'sb_secret_privateopaque'):
+        for secret in ('eyJfake.generated.secret', 'postgres:private', 'sb_secret_privateopaque', 'private-signing-value'):
             self.assertNotIn(secret, value)
         self.assertIn('duplicate key value', value)
 

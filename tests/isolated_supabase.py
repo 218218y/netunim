@@ -56,7 +56,7 @@ def clean_diagnostics(value):
     value = re.sub(r'sb_(?:publishable|secret)_[A-Za-z0-9_-]+', '[redacted API key]', value)
     value = re.sub(r'(?i)(postgres(?:ql)?://)[^\s]+', r'\1[redacted]', value)
     return '\n'.join(line for line in value.splitlines()
-                     if not re.search(r'(?i)api.?key|secret.?key|access.?token|refresh.?token|'
+                     if not re.search(r'(?i)api.?key|secret.?key|jwt.?secret|access.?token|refresh.?token|'
                                       r'publishable.?key|service.?role.?key|password\s*[:=]|credential\s*[:=]', line))[-4000:]
 
 

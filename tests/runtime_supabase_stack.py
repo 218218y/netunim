@@ -68,7 +68,9 @@ class StackBrowser(BrowserSession):
                 assert len(value) == 1, ('single-row RPC', name, len(value))
                 return value[0]
             return value
-        return self.evaluate('window.upload='+expression+".catch(e=>({uncertain:true,code:e.code||e.name}));true")
+        return self.evaluate('window.uploadSettled=null;window.upload='+expression+
+            ".then(value=>{window.uploadSettled={outcome:'ack',revision:(Array.isArray(value)?value[0]:value)?.revision};return value})"
+            ".catch(e=>window.uploadSettled={uncertain:true,code:e.code||e.name,message:String(e.message).slice(0,300)});true")
 
 
 def create_user(stack, index):
@@ -141,6 +143,7 @@ def run_app(stack, app, owner, foreign):
         a.restart_process()
         assert a.auth()['owner'] == owner['id']
         assert a.setup()['cloud']['flight'] == flight_a
+        assert a.evaluate('auth.ensureSyncCapabilities().then(()=>true)', timeout=40)
         a.call('Fetch.enable', {'patterns': [{'urlPattern': '*rest/v1/rpc/'+rpc, 'requestStage': 'Request'}]})
         a.rpc(rpc, body(flight_a), wait=False)
         paused = wait_pause(a)
@@ -153,6 +156,7 @@ def run_app(stack, app, owner, foreign):
         a.restart_process()
         assert a.auth()['owner'] == owner['id']
         assert a.setup()['cloud']['flight'] == flight_a
+        assert a.evaluate('auth.ensureSyncCapabilities().then(()=>true)', timeout=40)
         flight_b = b.evaluate('rapid.burst("B",5)')['flight']
         # Intercept the *response* after the actual GoTrue-authenticated
         # PostgREST transaction committed. Kill the owned browser before ACK.
@@ -227,6 +231,9 @@ def wait_pause(browser):
                                  {'requestId': params['requestId']})
                     continue
                 return params
+        settled = browser.evaluate('window.uploadSettled')
+        if settled is not None:
+            raise RuntimeError('RPC settled before the controlled interception: '+json.dumps(settled))
         time.sleep(.05)
     raise RuntimeError('the controlled HTTP interception did not pause')
 
