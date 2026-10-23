@@ -531,7 +531,7 @@ class GithubGateContracts(unittest.TestCase):
             gate.successful_run([green, {**green, "id": 11, "run_number": 5, "conclusion": "failure"}], "abc123", "owner/repo")
 
     def test_partial_skipped_or_duplicate_jobs_never_authorize_upload(self):
-        names = ["Plan verification", "Windows deployment contracts", gate.GATE_JOB, *[f"Verify / {name}" for name in ci_groups()]]
+        names = ["Plan verification", "Windows deployment contracts", "Full Supabase acceptance", gate.GATE_JOB, *[f"Verify / {name}" for name in ci_groups()]]
         jobs = [{"name": name, "status": "completed", "conclusion": "success"} for name in names]
         gate.validate_jobs(jobs)
         for index, job in enumerate(jobs):
@@ -554,7 +554,7 @@ class GithubGateContracts(unittest.TestCase):
 
     def test_successful_end_to_end_api_contract_and_rerun_race(self):
         run = successful_fixture()
-        names = ["Plan verification", "Windows deployment contracts", gate.GATE_JOB, *[f"Verify / {name}" for name in ci_groups()]]
+        names = ["Plan verification", "Windows deployment contracts", "Full Supabase acceptance", gate.GATE_JOB, *[f"Verify / {name}" for name in ci_groups()]]
         jobs = [{"name": name, "status": "completed", "conclusion": "success"} for name in names]
         responses = [{"workflow_runs": [run]}, {"total_count": len(jobs), "jobs": jobs}, run]
         for last, allowed in ((run, True), ({**run, "run_attempt": 2, "status": "queued"}, False)):

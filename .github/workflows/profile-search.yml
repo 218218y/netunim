@@ -1,0 +1,52 @@
+name: Orders search profiling
+
+# Measure when the probe itself changes; application-only changes can request a
+# campaign manually. This diagnostic is separate from the full correctness gate.
+on:
+  workflow_dispatch:
+  push:
+    branches: ['codex/**']
+    paths:
+      - tests/profile_orders_search.py
+      - tests/browser_harness.py
+      - tests/acceptance_safety.py
+      - .github/workflows/profile-search.yml
+
+permissions:
+  contents: read
+
+jobs:
+  profile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      PYTHONUTF8: '1'
+      PYTHONUNBUFFERED: '1'
+      NETUNIM_SUITE_REPORT_DIR: .work/search-profile
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14'
+      - name: Install locked verification dependencies
+        run: |
+          npm ci --cache "$RUNNER_TEMP/netunim-npm-cache" --ignore-scripts --no-audit --no-fund
+          python -m pip install --no-cache-dir -r tests/requirements-ci.txt
+          echo "NETUNIM_BROWSER=$(command -v google-chrome)" >> "$GITHUB_ENV"
+      - name: Compare native CPU and CPU x4 on the same runner
+        run: python tests/profile_orders_search.py --counts 1000 10000 --rates 1 4 --repetitions 3
+      - name: Preserve latency distributions and scoped Chrome traces
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: orders-search-profile
+          path: .work/search-profile/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14

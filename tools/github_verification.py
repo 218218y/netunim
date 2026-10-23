@@ -68,7 +68,7 @@ def successful_run(runs, sha, repo):
 
 
 def validate_jobs(jobs):
-    expected = {"Plan verification", "Windows deployment contracts", GATE_JOB, *[f"Verify / {group}" for group in ci_groups()]}
+    expected = {"Plan verification", "Windows deployment contracts", "Full Supabase acceptance", GATE_JOB, *[f"Verify / {group}" for group in ci_groups()]}
     counts = Counter(job.get("name") for job in jobs)
     if any(counts[name] != 1 for name in expected):
         raise RuntimeError("Full verification jobs are missing or duplicated; refusing a partial green run.")

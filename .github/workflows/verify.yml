@@ -130,10 +130,47 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  supabase:
+    name: Full Supabase acceptance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14'
+      - uses: supabase/setup-cli@45a513f8c64c0bc8e0e3dfe572b5c95be85f6359 # v3
+        with:
+          version: 2.121.0
+      - name: Install locked browser dependencies
+        run: |
+          python -m pip install --no-cache-dir -r tests/requirements-ci.txt
+          browser_path="$(command -v google-chrome)"
+          echo "NETUNIM_BROWSER=$browser_path" >> "$GITHUB_ENV"
+      - name: Exercise the actual disposable Supabase services
+        env:
+          NETUNIM_SUITE_REPORT_DIR: .work/ci/full-supabase
+        run: python tests/runtime_supabase_stack.py
+      - name: Preserve credential-free service and restart evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: full-supabase-acceptance
+          path: .work/ci/full-supabase/
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 14
+
   complete:
     name: Verification complete
     if: always()
-    needs: [plan, verify, windows]
+    needs: [plan, verify, windows, supabase]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -142,8 +179,10 @@ jobs:
           PLAN_RESULT: ${{ needs.plan.result }}
           VERIFY_RESULT: ${{ needs.verify.result }}
           WINDOWS_RESULT: ${{ needs.windows.result }}
+          SUPABASE_RESULT: ${{ needs.supabase.result }}
         run: |
           printf 'Plan: %s\nSuites: %s\nWindows: %s\n' "$PLAN_RESULT" "$VERIFY_RESULT" "$WINDOWS_RESULT"
           test "$PLAN_RESULT" = success
           test "$VERIFY_RESULT" = success
           test "$WINDOWS_RESULT" = success
+          test "$SUPABASE_RESULT" = success
