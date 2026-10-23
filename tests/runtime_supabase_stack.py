@@ -267,6 +267,11 @@ def run_storage(stack, owner, foreign):
 def run_restore(stack, owner, foreign):
     with StackBrowser(stack, 'orders', 'restore') as browser:
         browser.auth(owner['email'], owner['password'])
+        # localStorage is not a crash-durable credential journal. Establish a
+        # flushed login baseline before testing death during server restoration,
+        # as in the existing browser/paired-restore process-boundary fixtures.
+        browser.restart_process()
+        assert browser.auth().get('owner') == owner['id']
         before = head(stack, owner, 'order_management_documents', 'suppliers')
         shared_before = head(stack, owner, 'shared_checks_documents', 'main')
         restored = json.loads(json.dumps(before['state']))
@@ -299,7 +304,8 @@ def run_restore(stack, owner, foreign):
         return {'scenario': 'paired restore via real PostgREST, process restart and idempotent retry', 'status': 'PASS',
                 'group': group, 'before_revision': before['revision'], 'after_revision': after['revision'],
                 'main_sha256': digest(after['state']), 'shared_sha256': digest(checks_after['state']),
-                'foreign_apply_denied': True, 'retry_did_not_increment': True}
+                'foreign_apply_denied': True, 'retry_did_not_increment': True,
+                'credential_baseline_gracefully_flushed': True}
 
 
 def run_cron(stack, owner):
