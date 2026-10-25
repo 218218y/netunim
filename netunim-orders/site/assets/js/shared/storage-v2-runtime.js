@@ -47,7 +47,7 @@ export function createStorageV2Runtime({app:configuredApp,owner:configuredOwner,
   /** @type {Journal|null} */ let startingIdentity=null;
   /** @type {Promise<unknown>} */ let commits=Promise.resolve();
   /** @type {object|false} */ let compactionScheduled=false;
-  let identity='',authoritative=false,corruptIdentity='',operationsSinceCheckpoint=0,lastCheckpointAt=Date.now(),undurableCount=0,boundaryGate=()=>false;
+  let identity='',authoritative=false,corruptIdentity='',operationsSinceCheckpoint=0,lastCheckpointAt=Date.now(),undurableCount=0,boundaryGate=()=>false,commitAuthority=()=>false;
   const guardCloudMutation=()=>{if(boundaryGate())throw new Error('storage_boundary_in_progress')};
   /** @type {Map<Journal,{epoch:string|null,seq:number}>} */ const undurableFailures=new Map();
   /** @param {State} state */
@@ -56,15 +56,16 @@ export function createStorageV2Runtime({app:configuredApp,owner:configuredOwner,
   const checkpointState=state=>{const copy=prepareCheckpoint(business(state));delete copy.checks;return copy};
   const primaryMode=()=>{const value=mode();return value==='primary'||value==='preparing'};
   function currentOwner(){return String(owner()||'').trim()||'local'}
-  function readyForCurrentOwner(){return primaryMode()&&primary()&&authoritative&&identity===currentOwner()&&!!journal?.ready}
+  function readyForCurrentOwner(){return primaryMode()&&primary()&&commitAuthority()&&authoritative&&identity===currentOwner()&&!!journal?.ready}
   function create(){
     const next=currentOwner();
-    if(journal&&identity===next)return journal;
+    if(journal&&identity===next&&commitAuthority())return journal;
     identity=next;authoritative=false;commits=Promise.resolve();operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();compactionScheduled=false;const scopedOwner=next,commitPrimary=captureCommitAuthority();
-    journal=createJournal({owner:`${scopedOwner}:${app}`,schema:STORAGE_SCHEMAS[app],validate,primary:()=>primaryMode()&&primary()&&scopedOwner===currentOwner(),commitPrimary:()=>primaryMode()&&commitPrimary()&&scopedOwner===currentOwner()});corruptIdentity='';return journal;
+    commitAuthority=commitPrimary;
+    journal=createJournal({owner:`${scopedOwner}:${app}`,schema:STORAGE_SCHEMAS[app],validate,primary:()=>primaryMode()&&primary()&&commitPrimary()&&scopedOwner===currentOwner(),commitPrimary:()=>primaryMode()&&commitPrimary()&&scopedOwner===currentOwner()});corruptIdentity='';return journal;
   }
   /** @param {Journal|null} active @param {boolean} [writer] */
-  function currentJournal(active,writer=true){return active===journal&&identity===currentOwner()&&primaryMode()&&(!writer||primary())}
+  function currentJournal(active,writer=true){return active===journal&&identity===currentOwner()&&primaryMode()&&(!writer||primary()&&commitAuthority())}
   /** @param {Journal} active @param {number} seq @param {string|null} epoch */
   function checkpointCompleted(active,seq,epoch){
     if(!currentJournal(active)||active.epoch!==epoch||!readyForCurrentOwner())return;
@@ -84,6 +85,7 @@ export function createStorageV2Runtime({app:configuredApp,owner:configuredOwner,
     diagnostics.mode=mode();const active=create(),activeIdentity=identity;
     if(corruptIdentity===activeIdentity)return null;
     if(starting&&startingIdentity===active)return starting;
+    authoritative=false;
     /** @type {Promise<import('./storage-v2-runtime-contracts.js').Recovery|null>|undefined} */ let request;
     request=(async()=>{
       try{
@@ -107,14 +109,14 @@ export function createStorageV2Runtime({app:configuredApp,owner:configuredOwner,
   /** @type {RuntimeMethods['recoverReadOnly']} */
   async function recoverReadOnly(){
     if(!primaryMode())return null;
-    const runtimeMode=mode();diagnostics.mode=runtimeMode;const active=create(),activeIdentity=identity;
+    const runtimeMode=mode();diagnostics.mode=runtimeMode;const active=create(),activeIdentity=identity,writerAuthority=primary()?commitAuthority:null;
     if(corruptIdentity===activeIdentity)return null;
     try{
       const recovered=await active.recover();
-      if(!currentJournal(active,false))throw new Error('storage_owner_changed_during_recovery');
+      if(!currentJournal(active,false)||writerAuthority&&!writerAuthority())throw new Error('storage_owner_changed_during_recovery');
       if(!recovered||recovered.appMetadata?.storageRole!=='primary')return null;
       diagnostics.recoveries++;return {...recovered,appMetadata:{...recovered.appMetadata,storageRole:recovered.appMetadata.storageRole},source:'v2-readonly'};
-    }catch(error){if(currentJournal(active,false)){diagnostics.errors++;diagnostics.lastError=errorMessage(error);diagnostics.recoveryFailure=storageRecoveryFailure(error);if(diagnostics.recoveryFailure==='fatal'){authoritative=false;corruptIdentity=activeIdentity}}return null}
+    }catch(error){if(currentJournal(active,false)&&(!writerAuthority||writerAuthority())){diagnostics.errors++;diagnostics.lastError=errorMessage(error);diagnostics.recoveryFailure=storageRecoveryFailure(error);if(diagnostics.recoveryFailure==='fatal'){authoritative=false;corruptIdentity=activeIdentity}}return null}
   }
   /** @type {RuntimeMethods['recoverForOwner']} */
   async function recoverForOwner(options){
@@ -127,6 +129,7 @@ export function createStorageV2Runtime({app:configuredApp,owner:configuredOwner,
     if(currentOwner()!=='local'||!primaryMode()||!primary())throw new Error('storage_local_birth_owner_required');
     const canonical=checkpointState(state);validate(canonical);appMetadata=structuredClone(appMetadata);
     const active=create(),scopedIdentity=identity;
+    authoritative=false;
     let recovered=await active.open();
     if(!currentJournal(active))throw new Error('storage_local_birth_owner_changed');
     if(recovered){
@@ -152,6 +155,7 @@ export function createStorageV2Runtime({app:configuredApp,owner:configuredOwner,
     const validIntent=intent==='cloud-authoritative'&&sourceOwner===scopedIdentity||intent==='upload-local'&&sourceOwner==='local'&&revision===0;
     if(!validIntent||sourceOwner===undefined||intent===undefined)throw new Error('storage_owner_transfer_intent_required');
     const prepared=checkpointState(state),preparedChanges=changes?.map(change=>change?.type==='replace-state'?{...change,state:checkpointState(change.state)}:change)??null;
+    authoritative=false;
     /** @type {State} */ const metadata={...appMetadata,storageRole:'primary',sourceOwner,targetOwner:scopedIdentity,migrationIntent:intent,mainProjectionVersion:2};
     let result;
     try{result=await active.initializeCloudHead(revision,prepared,{cloudState,changes:preparedChanges,validateBase,appMetadata:metadata})}
@@ -257,7 +261,12 @@ export function createStorageV2Runtime({app:configuredApp,owner:configuredOwner,
     guardCloudMutation();return active.captureCloudCursor(revision,next);
   }
   /** @type {RuntimeMethods['cloudState']} */
-  async function cloudState(options={}){if(!readyForCurrentOwner())return null;return (await settledJournal()).cloudState(options)}
+  async function cloudState(options={}){
+    if(!readyForCurrentOwner())return null;
+    const active=await settledJournal(),epoch=active.epoch,result=await active.cloudState(options);
+    if(!currentJournal(active)||active.epoch!==epoch||!readyForCurrentOwner())throw new Error('storage_owner_changed_during_operation');
+    return result;
+  }
   /** @type {RuntimeMethods['materializeFlight']} */
   async function materializeFlight(options={}){
     guardCloudMutation();const next=captureStorageCommandOptions(options),active=await settledJournal();
