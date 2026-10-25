@@ -47,6 +47,10 @@ export function createSharedChecksV2Runtime({owner:configuredOwner,primary:confi
   function assertSyncAllowed(store=storage){const storeContext=assertContext(store);if(!active)throw new Error('shared_checks_not_recovered');if(boundaryGate())throw new Error('storage_boundary_in_progress');return storeContext}
   /** @param {Store|null} store */
   const current=store=>!!store&&store===storage&&identity===currentOwner()&&commitAuthority();
+  /** @param {Store} store @param {unknown} error */
+  function publicationFailed(store,error){
+    if(current(store)){active=false;cursorReady=false;workPending=true;incidentRecoveryBlocked=storageRecoveryFailure(error)==='fatal'||/^shared_checks_(cursor_missing|local_head_invalid)$/.test(errorMessage(error))}
+  }
   /** @param {Store} store @param {string|null} epoch */
   function assertEpoch(store,epoch){assertContext(store);if(store.epoch!==epoch)throw new Error('shared_checks_owner_changed_during_operation')}
   function context(){
@@ -60,22 +64,24 @@ export function createSharedChecksV2Runtime({owner:configuredOwner,primary:confi
   }
   /** @param {Store} store */
   async function publish(store){
-    // A local mutation can arrive while IDB is reading. Never replace it with
-    // an earlier checkpoint, including just after a successful ACK transaction.
-    for(let attempt=0;attempt<8;attempt++){
-      assertContext(store);const recovered=await store.recover();assertContext(store);
-      if(!recovered)throw new Error('shared_checks_not_recovered');
-      if(recovered.seq!==store.seq)continue;
-      applyState(canonical(recovered.state));return recovered;
-    }
-    throw new Error('shared_checks_concurrent_publish');
+    try{
+      // A local mutation can arrive while IDB is reading. Never replace it with
+      // an earlier checkpoint, including just after a successful ACK transaction.
+      for(let attempt=0;attempt<8;attempt++){
+        assertContext(store);const recovered=await store.recover();assertContext(store);
+        if(!recovered)throw new Error('shared_checks_not_recovered');
+        if(recovered.seq!==store.seq)continue;
+        applyState(canonical(recovered.state));return recovered;
+      }
+      throw new Error('shared_checks_concurrent_publish');
+    }catch(error){publicationFailed(store,error);throw error}
   }
   /** @template {import('./storage-journal-model.js').ReplayedStorageJournal|null} T @param {Store} store @param {()=>Promise<T>} task */
   function activate(store,task){
     if(opening?.store===store)throw new Error('shared_checks_activation_in_progress');
     active=false;cursorReady=false;workPending=true;
     const promise=Promise.resolve().then(task).catch(error=>{
-      if(current(store)){active=false;cursorReady=false;workPending=true;incidentRecoveryBlocked=storageRecoveryFailure(error)==='fatal'||/^shared_checks_(cursor_missing|local_head_invalid)$/.test(errorMessage(error))}
+      publicationFailed(store,error);
       throw error;
     });
     opening={store,promise};promise.finally(()=>{if(opening?.promise===promise)opening=null}).catch(()=>{});return promise;
