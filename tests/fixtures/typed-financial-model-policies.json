@@ -68,5 +68,27 @@
       "before": "55f2846637ee682a1ba4e0fb2be79a94134a42e6a86127f710d8c6d1885874d7",
       "after": "b14af24996dc407ef8c058749afa9c0da7e322580bf51505a774ec2782e5c13a"
     }
+  },
+  "coveragePolicies": {
+    "safeError": {
+      "before": "b70541ef2c6d22ce422414f07ef1f6335260d44c4a2703f5bb4d25ac445d1bac",
+      "after": "e51e20fed60e8620d34f3e92e6482523ffe9d6aedd6965a4043593bf6462e027"
+    },
+    "errorFetchStatus": {
+      "before": "8f8876506efc57ec9b6ded7138f056670278b3a3470e9274e6e8083ec41b1e07",
+      "after": "287e1209f017623fa0c29550b3ce44d12ff61895002d7cdf736dd3f94b7dabd5"
+    },
+    "field": {
+      "before": null,
+      "after": "1b876f63b68d5052a4ac9db8a1b69eca4c4efb2404f90b924b98e33218b95493"
+    },
+    "monthlyCoverageFailure": {
+      "before": "315771163416acc2d22f70de39097f759886ada3340126b9755a6df8204b4ddf",
+      "after": "be45703e11a20706fc27df0a17a006deebe9715162ede9f774cf228206503c92"
+    },
+    "coverageError": {
+      "before": "b8e154881732d2eaff19b15da6df8c27c43a50a152d7c07917372a9a99b1e3e1",
+      "after": "832f0c0db8ce374c5361289b9d111aee1cea2c4806e7eb03e729cf5d691ee24b"
+    }
   }
 }
