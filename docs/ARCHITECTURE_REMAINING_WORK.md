@@ -72,6 +72,11 @@ The actual decoder/policy is strict checked; parsed domain JSON stays unknown.
 See [provider HTTP receipts](PROVIDER_HTTP_RECEIPTS.md). Complete provider models
 and official provider sandbox acceptance are not implied by this slice.
 
+Supplier search's connected-DOM bottleneck is under focused comparison through
+the existing probe, preserving the exact rendered row/input identities and
+model-backed totals; see [Supplier DOM lifetime](SUPPLIER_SEARCH_DOM.md). It is
+not a framework/cache migration or physical-target performance certification.
+
 ### Review continuation, 2026-10-25
 
 - Orders Finance controller disposal now permanently closes its existing automatic

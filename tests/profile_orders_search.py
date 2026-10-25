@@ -6,10 +6,12 @@ runner. These instrumented component timings are not a physical-machine SLA.
 import argparse
 import ast
 import collections
+import hashlib
 import json
 import os
 from pathlib import Path
 import platform
+import subprocess
 import sys
 import time
 
@@ -18,6 +20,19 @@ from browser_harness import BrowserSession, ROOT
 
 sys.path.insert(0, str(ROOT/'tools'))
 from startup_evidence import capture_environment, distribution
+
+
+class SupplierVariantSession(BrowserSession):
+    def __init__(self,source):
+        super().__init__(ROOT/'netunim-orders/site','orders-search-profile')
+        self.supplier_source=source
+
+    def _module_probe(self,payload):
+        # Install the selected production source before the existing lexical
+        # test instrumentation. Only this disposable site's view is replaced.
+        if payload['mode']=='instrument':
+            (Path(payload['site'])/'assets/js/domains/suppliers/view.js').write_bytes(self.supplier_source)
+        return super()._module_probe(payload)
 
 
 def seed_expression(count):
@@ -61,6 +76,9 @@ def measure(browser, count, directory, *, trace=False, label=''):
     assert browser.evaluate("(()=>{currentSupplierId='S';supplierYearView='all';filterMode='all';searchText='';switchView('supplier');return document.querySelectorAll('tr[data-tx-id]').length})()", timeout=90) == count
     # Finish the preceding full render before delimiting attribution.
     browser.evaluate('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))', timeout=60)
+    browser.call('Performance.enable')
+    before={row['name']:row['value'] for row in browser.call('Performance.getMetrics')['result']['metrics']
+            if row['name'] in ('Nodes','JSHeapUsedSize','LayoutCount','RecalcStyleCount')}
     bookmark = len(browser.events)
     if trace:
         browser.call('Tracing.start', {'categories': 'devtools.timeline,blink.user_timing,v8', 'transferMode': 'ReportEvents'}, timeout=30)
@@ -68,6 +86,10 @@ def measure(browser, count, directory, *, trace=False, label=''):
         browser.call('Profiler.start', timeout=30)
     result = browser.evaluate(SEARCH.replace('COUNT', str(count)), timeout=120)
     assert result['visible'] == 1, result
+    result['connectedTransactionRows']=browser.evaluate("document.querySelectorAll('tr[data-tx-id]').length")
+    result['resourcesBefore']=before
+    result['resourcesAfter']={row['name']:row['value'] for row in browser.call('Performance.getMetrics')['result']['metrics']
+            if row['name'] in ('Nodes','JSHeapUsedSize','LayoutCount','RecalcStyleCount')}
     if trace:
         profile = browser.call('Profiler.stop', timeout=30)['result']['profile']
         browser.call('Tracing.end', timeout=30)
@@ -99,6 +121,7 @@ def main():
     parser.add_argument('--rates', type=int, nargs='+', default=[1, 4])
     parser.add_argument('--repetitions', type=int, default=3)
     parser.add_argument('--report-dir', type=Path, default=ROOT/'.work/search-profile')
+    parser.add_argument('--baseline-ref',help='Compare only the previous supplier view in the disposable site; the checkout is untouched.')
     args = parser.parse_args()
     if (not 1 <= args.repetitions <= 10 or any(n not in (1000, 10000) for n in args.counts)
             or any(n not in (1, 4) for n in args.rates)):
@@ -110,28 +133,38 @@ def main():
     def save():
         (args.report_dir/'summary.json').write_text(json.dumps(report, indent=2)+'\n', encoding='utf8')
     save()
-    with BrowserSession(ROOT/'netunim-orders/site', 'orders-search-profile') as browser:
-        report['browser'] = browser.call('Browser.getVersion')['result']
-        report['system'] = {'logicalCPUs': os.cpu_count(), 'processor': platform.processor()}
-        if Path('/proc/cpuinfo').exists():
-            report['system']['processor'] = next((line.split(':', 1)[1].strip()
-                for line in Path('/proc/cpuinfo').read_text().splitlines() if line.startswith('model name')), platform.processor())
-        for count in args.counts:
-            for rate in args.rates:
-                assert 'error' not in browser.call('Emulation.setCPUThrottlingRate', {'rate': rate}), 'CPU throttle was not acknowledged'
-                row = {'rows': count, 'cpuThrottleRate': rate, 'unprofiled': []}
-                results.append(row)
-                for repetition in range(args.repetitions):
-                    sample = measure(browser, count, args.report_dir)
-                    row['unprofiled'].append(sample)
+    view='assets/js/domains/suppliers/view.js'
+    current=(ROOT/'netunim-orders/site'/view).read_bytes()
+    variants=[('current',current)]
+    report['viewVariants']={'current':{'sha256':hashlib.sha256(current).hexdigest()}}
+    if args.baseline_ref:
+        baseline_revision=subprocess.check_output(['git','rev-parse','--verify',args.baseline_ref+'^{commit}'],cwd=ROOT,text=True).strip()
+        baseline=subprocess.check_output(['git','show',baseline_revision+':netunim-orders/site/'+view],cwd=ROOT)
+        variants.insert(0,('baseline',baseline))
+        report['viewVariants']['baseline']={'revision':baseline_revision,'sha256':hashlib.sha256(baseline).hexdigest()}
+    for variant,source in variants:
+        with SupplierVariantSession(source) as browser:
+            report['browser'] = browser.call('Browser.getVersion')['result']
+            report['system'] = {'logicalCPUs': os.cpu_count(), 'processor': platform.processor()}
+            if Path('/proc/cpuinfo').exists():
+                report['system']['processor'] = next((line.split(':', 1)[1].strip()
+                    for line in Path('/proc/cpuinfo').read_text().splitlines() if line.startswith('model name')), platform.processor())
+            for count in args.counts:
+                for rate in args.rates:
+                    assert 'error' not in browser.call('Emulation.setCPUThrottlingRate', {'rate': rate}), 'CPU throttle was not acknowledged'
+                    row = {'variant':variant,'rows': count, 'cpuThrottleRate': rate, 'unprofiled': []}
+                    results.append(row)
+                    for repetition in range(args.repetitions):
+                        sample = measure(browser, count, args.report_dir)
+                        row['unprofiled'].append(sample)
+                        save()
+                        print('MEASURE',variant,count,'CPU',rate,'sample',repetition+1,json.dumps(sample),flush=True)
+                    # Three samples support a median/range, not a useful tail SLA.
+                    row['latencyDistributionMs'] = {key: {field: value for field, value in
+                        distribution([s[key] for s in row['unprofiled']]).items() if field != 'p95'}
+                        for key in ('modelMs', 'twoFramesMs')}
+                    row['profiled'] = measure(browser,count,args.report_dir,trace=True,label=f'{variant}-{count}-cpu{rate}')
                     save()
-                    print('MEASURE', count, 'CPU', rate, 'sample', repetition+1, json.dumps(sample), flush=True)
-                # Three samples support a median/range, not a useful tail SLA.
-                row['latencyDistributionMs'] = {key: {field: value for field, value in
-                    distribution([s[key] for s in row['unprofiled']]).items() if field != 'p95'}
-                    for key in ('modelMs', 'twoFramesMs')}
-                row['profiled'] = measure(browser, count, args.report_dir, trace=True, label=f'{count}-cpu{rate}')
-                save()
     report['complete'] = True
     save()
     write_evidence('orders-search-profile', [{'scenario': 'same-runner scoped Orders search profiling', 'status': 'PASS', **report}])
