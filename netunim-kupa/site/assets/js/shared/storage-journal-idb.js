@@ -58,7 +58,7 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
   });
   /** @template Result @param {string[]} names @param {IDBTransactionMode} mode @param {TransactionWork<Result>} work @param {string} [abortCode] @returns {Promise<Result>} */
   function transactStores(names,mode,work,abortCode){
-    return completeIndexedDbTransaction(async()=>(await open()).transaction(names,mode),work,abortCode);
+    return completeIndexedDbTransaction(async()=>(await open()).transaction(names,mode,mode==='readwrite'?{durability:'strict'}:{}),work,abortCode);
   }
   /** @template Result @param {IDBTransactionMode} mode @param {TransactionWork<Result>} work @returns {Promise<Result>} */
   function transact(mode,work){return transactStores(stores,mode,work)}
@@ -342,7 +342,7 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
     if(!['orders','kupa'].includes(app)||!String(identity||'').trim())throw new Error('storage_cutover_scope_invalid');
     return open().then(db=>new Promise((resolve,reject)=>{
       const owner=String(identity),scope=`${app}:${owner}`,mainOwner=`${owner}:${app}`,sharedOwner=`${owner}:shared-checks`;
-      const tx=db.transaction(['cutovers','checkpoints','metadata','bases','flights','controls','boundaries','bootstrap-groups'],'readwrite');
+      const tx=db.transaction(['cutovers','checkpoints','metadata','bases','flights','controls','boundaries','bootstrap-groups'],'readwrite',{durability:'strict'});
       /** @type {IDBRequest<unknown>[]} */
       const requests=[tx.objectStore('cutovers').get(scope),tx.objectStore('checkpoints').get(mainOwner),tx.objectStore('checkpoints').get(sharedOwner),tx.objectStore('metadata').get(mainOwner),tx.objectStore('metadata').get(sharedOwner),tx.objectStore('bases').get(mainOwner),tx.objectStore('bases').get(sharedOwner),tx.objectStore('flights').get(mainOwner),tx.objectStore('flights').get(sharedOwner),tx.objectStore('controls').get(mainOwner),tx.objectStore('controls').get(sharedOwner),tx.objectStore('boundaries').get(owner),tx.objectStore('bootstrap-groups').get(scope)];
       let remaining=requests.length;
@@ -396,7 +396,7 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
     if(!['orders','kupa'].includes(app))throw new Error('storage_local_engine_app_invalid');
     return open().then(db=>new Promise((resolve,reject)=>{
       const scope=`${app}:local`,mainOwner=`local:${app}`,sharedOwner='local:shared-checks',markerKey=`local-engine:${scope}`;
-      const tx=db.transaction(['cutovers','local-births','owner-bindings','checkpoints','metadata','bases','flights','controls','boundaries'],'readwrite');
+      const tx=db.transaction(['cutovers','local-births','owner-bindings','checkpoints','metadata','bases','flights','controls','boundaries'],'readwrite',{durability:'strict'});
       /** @type {IDBRequest<unknown>[]} */
       const requests=[tx.objectStore('cutovers').get(markerKey),tx.objectStore('local-births').get(scope),tx.objectStore('owner-bindings').get(app),tx.objectStore('checkpoints').get(mainOwner),tx.objectStore('checkpoints').get(sharedOwner),tx.objectStore('metadata').get(mainOwner),tx.objectStore('metadata').get(sharedOwner),tx.objectStore('bases').get(mainOwner),tx.objectStore('bases').get(sharedOwner),tx.objectStore('flights').get(mainOwner),tx.objectStore('flights').get(sharedOwner),tx.objectStore('controls').get(mainOwner),tx.objectStore('controls').get(sharedOwner),tx.objectStore('boundaries').get('local')];
       let remaining=requests.length;
@@ -444,7 +444,7 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
     });
     return open().then(db=>new Promise((resolve,reject)=>{
       const names=['cutovers','owner-bindings','owner-handoffs','bootstrap-groups','local-births','boundaries',...stores];
-      const tx=db.transaction(names,'readwrite');
+      const tx=db.transaction(names,'readwrite',{durability:'strict'});
       /** @type {State|null} */ let result=null;
       /** @type {unknown} */ let error=null;
       /** @type {Record<string,IDBRequest<unknown>|IDBRequest<unknown[]>>} */
