@@ -51,6 +51,12 @@ restore and live-provider release exercises therefore remain explicitly unverifi
 
 ### Review continuation, 2026-10-25
 
+- Orders Finance controller disposal now permanently closes its existing automatic
+  scheduler, preventing retained start/resume ports from recreating timers or
+  persisting preferences. Stop remains resumable and accepted work keeps its
+  original drain. The actual scheduler is strict checked; see
+  [Finance automatic lifetime](FINANCE_AUTOMATION_LIFECYCLE.md).
+
 - Bank Bridge v75 supports a persisted opt-in Origin allowlist with exact custom
   origins, startup validation, restart revocation and explicit rollback. Isolated
   HTTP/staged-runtime evidence is recorded in [Bank origin policy](BANK_ORIGIN_POLICY.md).

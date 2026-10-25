@@ -180,7 +180,7 @@ export function createDomainsFinanceController({
     async drain(){await Promise.all([work.drain(),creditRefresh.runtime.drain(),bankRefresh.runtime.drain()])},
     dispose(){
       if(!work.close())return false;
-      stopAutoSync();creditRefresh.runtime.dispose();bankRefresh.runtime.dispose();financeStatusListener=()=>{};
+      financeAutomation.dispose();creditRefresh.runtime.dispose();bankRefresh.runtime.dispose();financeStatusListener=()=>{};
       return true;
     },
   }};

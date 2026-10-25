@@ -1,5 +1,10 @@
 # Incremental JavaScript contracts
 
+Orders Finance's actual automatic scheduler now checks its explicit access,
+preference, command and timer ports, including synchronous captured authority,
+timer handles and domain kinds. Negative consumers/body mutations accompany
+terminal-disposal regressions; see [automatic lifetime](FINANCE_AUTOMATION_LIFECYCLE.md).
+
 Bank Bridge's actual optional Origin configuration decoder and captured boolean
 admission policy are strict checked, including malformed-policy consumers and a
 mutation of the real decision body. The complete HTTP server remains separately
