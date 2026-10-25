@@ -19,17 +19,17 @@ export function assertOrderEntityInvariants(d,{includeChecks=false,required=fals
   return state;
 }
 
-/** @param {unknown} d @returns {d is import('./validation-contracts.js').OrderCloudState} */
+/** @param {unknown} d @returns {d is import('../../../../../shared/orders-document-contracts.js').OrderCloudState} */
 export function validOrderCloudState(d){try{
   if(!d||typeof d!=='object'||Array.isArray(d)||Object.prototype.hasOwnProperty.call(d,'checks'))return false;
   const state=/** @type {Record<string,unknown>} */ (d);
   return !!(['suppliers','transactions','customerDebts','customerOrders','serviceCalls','inventoryItems','inventoryCategoryOrder','inventoryEvents','warehouseOrders','notes'].every(k=>Array.isArray(state[k]))&&assertOrderEntityInvariants(state,{required:true}));
 }catch{return false}}
 
-/** @param {unknown} d @param {string} [context] @returns {import('./validation-contracts.js').OrderCloudState} */
+/** @param {unknown} d @param {string} [context] @returns {import('../../../../../shared/orders-document-contracts.js').OrderCloudState} */
 export function assertValidOrderCloudState(d,context='Orders cloud state'){if(!validOrderCloudState(d))throw new Error(`${context}: invalid entity IDs or document shape`);return d}
 
 export function restoreJsonRequiredArrays(){return ['suppliers','transactions','customerDebts','customerOrders','serviceCalls','inventoryItems','inventoryEvents','warehouseOrders','checks']}
 
-/** @param {import('./validation-contracts.js').RestoreCountInput} x */
+/** @param {import('../../../../../shared/orders-document-contracts.js').RestoreCountInput} x */
 export function restoreJsonCounts(x){return {suppliers:x.suppliers?.length||0,transactions:x.transactions?.length||0,customerDebts:x.customerDebts?.length||0,customerOrders:x.customerOrders?.length||0,serviceCalls:x.serviceCalls?.length||0,inventoryItems:x.inventoryItems?.length||0,inventoryEvents:x.inventoryEvents?.length||0,warehouseOrders:x.warehouseOrders?.length||0,checks:x.checks?.length||0,notes:x.notes?.length||0,sheets:x.notesSheet?.sheets?.length||0,sheetRows:x.notesSheet?.rows?.length||0}}

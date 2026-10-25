@@ -253,8 +253,8 @@ document shapes. Sixty-three focused behavior/startup tests and five compiler
 tests pass. Runtime mutations independently remove document, duplicate-ID and
 debt-kind guards and demonstrate the invalid data those guards prevent.
 
-The eager graph adds 2,079 bytes in Kupa and 2,845 in Orders, without additional
-modules. Totals are 1,839,121/2,463,510 source bytes; each source budget increases
+The eager graph adds 2,079 bytes in Kupa and 2,920 in Orders, without additional
+modules. Totals are 1,839,275/2,463,739 source bytes; each source budget increases
 by 4,000 bytes. Timing and module budgets are unchanged. Current strict coverage
 is 317 roots: 197 product modules and 120 fixtures, with 408 loaded JS/MJS files.
 The large transport implementations are still outside these roots; this stage

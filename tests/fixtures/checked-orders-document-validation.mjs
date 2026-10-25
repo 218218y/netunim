@@ -3,13 +3,13 @@ import {customerDebtProgressData,customerDebtProgressMode,validateCustomerDebtPr
 import {validOrderCloudState,assertValidOrderCloudState,restoreJsonCounts} from '../../netunim-orders/site/assets/js/state/validation.js';
 /** @type {unknown} */ const raw=JSON.parse('{}');
 // @ts-expect-error Unvalidated JSON is not an Orders document.
-/** @type {import('../../netunim-orders/site/assets/js/state/validation-contracts.js').OrderCloudState} */ const premature=raw;
+/** @type {import('../../shared/orders-document-contracts.js').OrderCloudState} */ const premature=raw;
 const document=assertValidOrderCloudState(raw);
 /** @type {string} */ const id=document.suppliers[0]?.id||'';
 /** @type {number} */ const count=restoreJsonCounts(document).customerDebts;
 if('notesSheet' in document){
   // @ts-expect-error A present optional workbook can still be explicitly undefined.
-  /** @type {import('../../netunim-orders/site/assets/js/state/validation-contracts.js').NotesWorkbook} */ const book=document.notesSheet;
+  /** @type {import('../../shared/orders-document-contracts.js').NotesWorkbook} */ const book=document.notesSheet;
   void book;
 }
 // @ts-expect-error Document shape validation does not certify arbitrary debt amounts.
