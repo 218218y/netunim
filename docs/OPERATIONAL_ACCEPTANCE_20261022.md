@@ -1,5 +1,20 @@
 # Remaining physical acceptance, 2026-10-22
 
+## Status refresh, 2026-10-25
+
+The user confirmed that no separate Windows/cloud/provider test environment is
+available. Full original installer/account/PWA/private-network/custom-origin
+acceptance, other-account ACL inspection, two physical computers, weak-target
+hardware and official provider Sandbox runs remain **NOT RUN**. No working
+installation, profile, account or backup was used to fill these gaps.
+
+The bounded automated [crash investigation](WINDOWS_CRASH_INVESTIGATION.md)
+passed 24/24 crash/control cases and retained byte evidence; the two historical
+native LevelDB incidents remain UNRESOLVED. Bank Origin stays opt-in, and the
+[command authority decision](BRIDGE_COMMAND_AUTHORITY.md) retains one full-trust
+pairing key with explicit residual risk. None of these code/CI observations
+changes a physical acceptance row to PASS.
+
 Automated CI and the October 22 code corrections do not complete physical/provider
 acceptance. The current workspace has no established isolated two-computer/provider
 test environment. No destructive interruption, backup restore or live financial

@@ -4,7 +4,7 @@ This is the single current backlog, updated against the 2026-10-25 continuation.
 [Completion stages](COMPLETION_STAGES_20261015.md) and the focused design notes
 are historical implementation/evidence records, not competing remaining-work lists.
 A passed synthetic gate is not evidence of live providers or physical machines.
-On 2026-10-18 the operator confirmed there is no separate Bridge/test-account
+On 2026-10-25 the operator reconfirmed there is no separate Bridge/test-account
 environment, only the working-data connection. Installed interruption, destructive
 restore and live-provider release exercises therefore remain explicitly unverified.
 
@@ -55,12 +55,16 @@ restore and live-provider release exercises therefore remain explicitly unverifi
    preserves both original checksum incidents and adds stopped-profile bytes,
    independent crash/control samples and exact persisted-state checks. Native
    corruption remains UNRESOLVED; a green rerun is not a causal explanation.
+   The first bounded Windows campaign passed 24/24 independent crash/control
+   cases with matched persisted-state digests and retained stopped DB bytes.
 2. **Installed Origin acceptance:** keep v75 opt-in until a separate Windows
    installation, PWA/private-network/custom-domain and ACL matrix is available.
    Existing staged/HTTP tests are automated evidence only. No working account
    or installed service may substitute for a sandbox.
 3. **Sensitive command policy:** retain one pairing authority pending a concrete
-   read/write/destructive/admin risk decision and compatibility evidence.
+   limited-client requirement. The [explicit authority decision](BRIDGE_COMMAND_AUTHORITY.md)
+   classifies all sixteen private route shapes and keeps the existing token as
+   full authority, with residual risk and reopening/compatibility conditions.
 4. **Performance and types:** use existing synthetic probes and retained read
    models; change only measured bottlenecks or critical validated boundaries.
    Normal/weak physical-machine timing and external-provider scenarios stay
@@ -72,10 +76,18 @@ The actual decoder/policy is strict checked; parsed domain JSON stays unknown.
 See [provider HTTP receipts](PROVIDER_HTTP_RECEIPTS.md). Complete provider models
 and official provider sandbox acceptance are not implied by this slice.
 
-Supplier search's connected-DOM bottleneck is under focused comparison through
-the existing probe, preserving the exact rendered row/input identities and
-model-backed totals; see [Supplier DOM lifetime](SUPPLIER_SEARCH_DOM.md). It is
-not a framework/cache migration or physical-target performance certification.
+Supplier search's connected-DOM experiment was rejected after the same-runner
+1k/10k comparison: the native 10k median regressed and CPU x4 improved only
+slightly. Production rendering is unchanged. The comparison probe, original
+samples and draft/focus/selection assertions remain; see
+[Supplier measurement](SUPPLIER_SEARCH_DOM.md). The synthetic 10k latency remains
+an open performance limitation, with no physical-target SLA claim.
+
+The code campaign closes at these demonstrated boundaries. Remaining physical
+acceptance is NOT RUN; historical native corruption is UNRESOLVED; further
+architecture changes require a reproduced defect, concrete feature requirement
+or a candidate that improves comparable measurements. No broad core refactor is
+queued simply because a composition root or view is large.
 
 ### Review continuation, 2026-10-25
 
@@ -88,8 +100,9 @@ not a framework/cache migration or physical-target performance certification.
 - Bank Bridge v75 supports a persisted opt-in Origin allowlist with exact custom
   origins, startup validation, restart revocation and explicit rollback. Isolated
   HTTP/staged-runtime evidence is recorded in [Bank origin policy](BANK_ORIGIN_POLICY.md).
-  Default rollout, installed browser/Windows ACL acceptance and separate destructive
-  command permissions remain explicit operational/product decisions.
+  Default rollout and installed browser/Windows ACL acceptance remain pending.
+  The [command-authority decision](BRIDGE_COMMAND_AUTHORITY.md) explicitly retains
+  one full-trust token and defines the conditions for reconsidering permissions.
 
 - Four damaged notices are repaired. The canonical-source quality gate checks
   cooked user strings and templates without a historical corruption allowance;

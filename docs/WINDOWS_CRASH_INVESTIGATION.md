@@ -60,6 +60,17 @@ local synthetic control, not a physical-machine or installed-provider acceptance
 The dedicated workflow preserves all phase results and stopped DB archives,
 including failures, separately from the unchanged full verification gate.
 
+The first complete campaign, run `40212617727`, passed **24/24 independent cases**
+on Windows Server 2025 10.0.26100 with Chrome 156.0.8078.48. There were twelve hard
+kills and twelve clean controls, covering both apps and all three phases twice.
+Every pre/post-open recovery digest and completed/stable-restart digest matched.
+Downloaded stopped archives were checked against their reported byte hashes.
+The source-bound [24-case result](evidence/restore-investigation-20261025.json)
+retains per-case digests, browser/Windows identity and artifact IDs/hashes; the
+full snapshots and ZIPs remain in the original diagnostic artifacts/local copies.
+This is a bounded non-reproduction result, not an explanation of the original
+checksum incidents. The original issue remains **UNRESOLVED**.
+
 ## Classification and reopening conditions
 
 - A Chromium LevelDB checksum/deletion message is `native-leveldb-corruption`.

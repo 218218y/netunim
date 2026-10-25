@@ -1,0 +1,1575 @@
+{
+  "schemaVersion": 1,
+  "decision": "reject-dom-detachment-candidate-retain-existing-production-view",
+  "run": 40213900089,
+  "artifactId": 12607485017,
+  "artifactSha256": "c3a74c205fb4096a482a44f57a336ac654900d78101d596091b5e339b50de4db",
+  "originalSummarySha256": "23e3884b145dff948f29aa0e0f2377d66796abaf3aea91ebe12c3fa6fd89e28d",
+  "finalProductionViewNormalizedSha256": "1cd63543bce2c6f014e2cf22d2aa6f1139d59d374be7b9386521e71f1c3c07d0",
+  "physicalAcceptance": false,
+  "report": {
+    "environment": {
+      "schemaVersion": 2,
+      "capturedAt": "2026-10-25T16:54:32.723106+00:00",
+      "sourceRevision": "c083d833933856d8079d300ae702fdfdcbc35800",
+      "workingTreeDirty": false,
+      "execution": "github-actions",
+      "os": "Linux",
+      "architecture": "x86_64",
+      "workload": "fresh-isolated-profile",
+      "browserMode": "headless-chromium"
+    },
+    "instrumented": true,
+    "physicalTargetMachine": false,
+    "inclusiveTraceDurationsMayOverlap": true,
+    "samples": [
+      {
+        "variant": "baseline",
+        "rows": 1000,
+        "cpuThrottleRate": 1,
+        "unprofiled": [
+          {
+            "modelMs": 144.8000000000029,
+            "twoFramesMs": 147.90000000000146,
+            "visible": 1,
+            "connectedTransactionRows": 1000,
+            "resourcesBefore": {
+              "Nodes": 99147,
+              "LayoutCount": 0,
+              "RecalcStyleCount": 0,
+              "JSHeapUsedSize": 8532252
+            },
+            "resourcesAfter": {
+              "Nodes": 99136,
+              "LayoutCount": 2,
+              "RecalcStyleCount": 2,
+              "JSHeapUsedSize": 9301080
+            }
+          },
+          {
+            "modelMs": 141.5,
+            "twoFramesMs": 167.5,
+            "visible": 1,
+            "connectedTransactionRows": 1000,
+            "resourcesBefore": {
+              "Nodes": 197870,
+              "LayoutCount": 5,
+              "RecalcStyleCount": 8,
+              "JSHeapUsedSize": 25457900
+            },
+            "resourcesAfter": {
+              "Nodes": 54539,
+              "LayoutCount": 7,
+              "RecalcStyleCount": 10,
+              "JSHeapUsedSize": 6535128
+            }
+          },
+          {
+            "modelMs": 146.90000000000146,
+            "twoFramesMs": 148.09999999999854,
+            "visible": 1,
+            "connectedTransactionRows": 1000,
+            "resourcesBefore": {
+              "Nodes": 148272,
+              "LayoutCount": 5,
+              "RecalcStyleCount": 8,
+              "JSHeapUsedSize": 23861432
+            },
+            "resourcesAfter": {
+              "Nodes": 148278,
+              "LayoutCount": 7,
+              "RecalcStyleCount": 10,
+              "JSHeapUsedSize": 24522656
+            }
+          }
+        ],
+        "latencyDistributionMs": {
+          "modelMs": {
+            "n": 3,
+            "missing": 0,
+            "complete": true,
+            "min": 141.5,
+            "median": 144.8000000000029,
+            "max": 146.90000000000146
+          },
+          "twoFramesMs": {
+            "n": 3,
+            "missing": 0,
+            "complete": true,
+            "min": 147.90000000000146,
+            "median": 148.09999999999854,
+            "max": 167.5
+          }
+        },
+        "profiled": {
+          "modelMs": 142.6999999999971,
+          "twoFramesMs": 174,
+          "visible": 1,
+          "connectedTransactionRows": 1000,
+          "resourcesBefore": {
+            "Nodes": 98706,
+            "LayoutCount": 5,
+            "RecalcStyleCount": 8,
+            "JSHeapUsedSize": 21244672
+          },
+          "resourcesAfter": {
+            "Nodes": 98712,
+            "LayoutCount": 7,
+            "RecalcStyleCount": 10,
+            "JSHeapUsedSize": 22069520
+          },
+          "inclusiveTimelineMs": {
+            "EventDispatch": 0.29400000000000004,
+            "FunctionCall": 4.574000000000001,
+            "UpdateLayoutTree": 35.673,
+            "Layout": 3.092,
+            "PrePaint": 29.068,
+            "Paint": 10.32,
+            "TimerFire": 4.561999999999999
+          },
+          "hotSelfSamplesMs": [
+            {
+              "ms": 239.23200000000034,
+              "function": "(program)",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 175.2520000000001,
+              "function": "(idle)",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 1.076,
+              "function": "normalizeSupplierSearch",
+              "url": "http://127.0.0.1:53324/assets/js/domains/suppliers/view.js",
+              "line": 11
+            },
+            {
+              "ms": 1.069,
+              "function": "querySelectorAll",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 1.068,
+              "function": "mark",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 1.057,
+              "function": "filterSupplierSearch",
+              "url": "http://127.0.0.1:53324/assets/js/domains/suppliers/view.js",
+              "line": 207
+            },
+            {
+              "ms": 1.057,
+              "function": "",
+              "url": "http://127.0.0.1:53324/assets/js/domains/suppliers/view.js",
+              "line": 218
+            },
+            {
+              "ms": 0.747,
+              "function": "mark",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 0.093,
+              "function": "dispatchEvent",
+              "url": "",
+              "line": 0
+            }
+          ],
+          "profilerOverhead": true
+        }
+      },
+      {
+        "variant": "baseline",
+        "rows": 1000,
+        "cpuThrottleRate": 4,
+        "unprofiled": [
+          {
+            "modelMs": 311.5,
+            "twoFramesMs": 333.79999999998836,
+            "visible": 1,
+            "connectedTransactionRows": 1000,
+            "resourcesBefore": {
+              "Nodes": 197446,
+              "LayoutCount": 5,
+              "RecalcStyleCount": 7,
+              "JSHeapUsedSize": 23952020
+            },
+            "resourcesAfter": {
+              "Nodes": 197452,
+              "LayoutCount": 7,
+              "RecalcStyleCount": 9,
+              "JSHeapUsedSize": 24611408
+            }
+          },
+          {
+            "modelMs": 316.6000000000058,
+            "twoFramesMs": 338,
+            "visible": 1,
+            "connectedTransactionRows": 1000,
+            "resourcesBefore": {
+              "Nodes": 296143,
+              "LayoutCount": 5,
+              "RecalcStyleCount": 7,
+              "JSHeapUsedSize": 26421788
+            },
+            "resourcesAfter": {
+              "Nodes": 296149,
+              "LayoutCount": 7,
+              "RecalcStyleCount": 9,
+              "JSHeapUsedSize": 27081256
+            }
+          },
+          {
+            "modelMs": 334.8000000000029,
+            "twoFramesMs": 366.8999999999942,
+            "visible": 1,
+            "connectedTransactionRows": 1000,
+            "resourcesBefore": {
+              "Nodes": 349645,
+              "LayoutCount": 5,
+              "RecalcStyleCount": 7,
+              "JSHeapUsedSize": 28811600
+            },
+            "resourcesAfter": {
+              "Nodes": 349651,
+              "LayoutCount": 7,
+              "RecalcStyleCount": 9,
+              "JSHeapUsedSize": 29471416
+            }
+          }
+        ],
+        "latencyDistributionMs": {
+          "modelMs": {
+            "n": 3,
+            "missing": 0,
+            "complete": true,
+            "min": 311.5,
+            "median": 316.6000000000058,
+            "max": 334.8000000000029
+          },
+          "twoFramesMs": {
+            "n": 3,
+            "missing": 0,
+            "complete": true,
+            "min": 333.79999999998836,
+            "median": 338,
+            "max": 366.8999999999942
+          }
+        },
+        "profiled": {
+          "modelMs": 364.8999999999942,
+          "twoFramesMs": 386.5,
+          "visible": 1,
+          "connectedTransactionRows": 1000,
+          "resourcesBefore": {
+            "Nodes": 440688,
+            "LayoutCount": 5,
+            "RecalcStyleCount": 7,
+            "JSHeapUsedSize": 14518792
+          },
+          "resourcesAfter": {
+            "Nodes": 440694,
+            "LayoutCount": 7,
+            "RecalcStyleCount": 9,
+            "JSHeapUsedSize": 15251888
+          },
+          "inclusiveTimelineMs": {
+            "EventDispatch": 1.202,
+            "FunctionCall": 24.237,
+            "UpdateLayoutTree": 156.845,
+            "Layout": 12.187999999999999,
+            "PrePaint": 119.187,
+            "Paint": 50.857,
+            "TimerFire": 24.006
+          },
+          "hotSelfSamplesMs": [
+            {
+              "ms": 650.7900000000002,
+              "function": "(program)",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 6.458,
+              "function": "",
+              "url": "http://127.0.0.1:53324/assets/js/domains/suppliers/view.js",
+              "line": 218
+            },
+            {
+              "ms": 4.555,
+              "function": "matchesSupplierSearch",
+              "url": "http://127.0.0.1:53324/assets/js/domains/suppliers/view.js",
+              "line": 14
+            },
+            {
+              "ms": 3.441,
+              "function": "querySelectorAll",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 3.021,
+              "function": "querySelectorAll",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 2.8529999999999998,
+              "function": "(idle)",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 2.646,
+              "function": "querySelectorAll",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 2.359,
+              "function": "supplierRenderModelData",
+              "url": "http://127.0.0.1:53324/assets/js/domains/suppliers/model.js",
+              "line": 19
+            },
+            {
+              "ms": 2.115,
+              "function": "filterSupplierSearch",
+              "url": "http://127.0.0.1:53324/assets/js/domains/suppliers/view.js",
+              "line": 207
+            },
+            {
+              "ms": 1.602,
+              "function": "",
+              "url": "",
+              "line": 10
+            },
+            {
+              "ms": 1.465,
+              "function": "",
+              "url": "http://127.0.0.1:53324/assets/js/shared/events.js",
+              "line": 10
+            },
+            {
+              "ms": 1.395,
+              "function": "mark",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 1.112,
+              "function": "capturePublicApi",
+              "url": "http://127.0.0.1:53324/test-probe-runtime.js",
+              "line": 5
+            },
+            {
+              "ms": 1.076,
+              "function": "supplierFinancialPeriod",
+              "url": "http://127.0.0.1:53324/assets/js/domains/suppliers/view.js",
+              "line": 42
+            },
+            {
+              "ms": 1.01,
+              "function": "matchesSupplierSearch",
+              "url": "http://127.0.0.1:53324/assets/js/domains/suppliers/view.js",
+              "line": 14
+            }
+          ],
+          "profilerOverhead": true
+        }
+      },
+      {
+        "variant": "baseline",
+        "rows": 10000,
+        "cpuThrottleRate": 1,
+        "unprofiled": [
+          {
+            "modelMs": 707,
+            "twoFramesMs": 722.5999999999913,
+            "visible": 1,
+            "connectedTransactionRows": 10000,
+            "resourcesBefore": {
+              "Nodes": 980528,
+              "LayoutCount": 5,
+              "RecalcStyleCount": 8,
+              "JSHeapUsedSize": 14545548
+            },
+            "resourcesAfter": {
+              "Nodes": 980534,
+              "LayoutCount": 7,
+              "RecalcStyleCount": 10,
+              "JSHeapUsedSize": 21110720
+            }
+          },
+          {
+            "modelMs": 721.5,
+            "twoFramesMs": 732.1000000000058,
+            "visible": 1,
+            "connectedTransactionRows": 10000,
+            "resourcesBefore": {
+              "Nodes": 1961084,
+              "LayoutCount": 5,
+              "RecalcStyleCount": 8,
+              "JSHeapUsedSize": 92295656
+            },
+            "resourcesAfter": {
+              "Nodes": 1961090,
+              "LayoutCount": 7,
+              "RecalcStyleCount": 10,
+              "JSHeapUsedSize": 97617928
+            }
+          },
+          {
+            "modelMs": 689.1000000000058,
+            "twoFramesMs": 705.1000000000058,
+            "visible": 1,
+            "connectedTransactionRows": 10000,
+            "resourcesBefore": {
+              "Nodes": 2941601,
+              "LayoutCount": 5,
+              "RecalcStyleCount": 8,
+              "JSHeapUsedSize": 102506580
+            },
+            "resourcesAfter": {
+              "Nodes": 2941607,
+              "LayoutCount": 7,
+              "RecalcStyleCount": 10,
+              "JSHeapUsedSize": 107992492
+            }
+          }
+        ],
+        "latencyDistributionMs": {
+          "modelMs": {
+            "n": 3,
+            "missing": 0,
+            "complete": true,
+            "min": 689.1000000000058,
+            "median": 707,
+            "max": 721.5
+          },
+          "twoFramesMs": {
+            "n": 3,
+            "missing": 0,
+            "complete": true,
+            "min": 705.1000000000058,
+            "median": 722.5999999999913,
+            "max": 732.1000000000058
+          }
+        },
+        "profiled": {
+          "modelMs": 812.9000000000233,
+          "twoFramesMs": 818.6000000000058,
+          "visible": 1,
+          "connectedTransactionRows": 10000,
+          "resourcesBefore": {
+            "Nodes": 1471006,
+            "LayoutCount": 5,
+            "RecalcStyleCount": 8,
+            "JSHeapUsedSize": 22418628
+          },
+          "resourcesAfter": {
+            "Nodes": 1471012,
+            "LayoutCount": 7,
+            "RecalcStyleCount": 10,
+            "JSHeapUsedSize": 28715224
+          },
+          "inclusiveTimelineMs": {
+            "EventDispatch": 0.30400000000000005,
+            "FunctionCall": 33.663999999999994,
+            "UpdateLayoutTree": 405.246,
+            "Layout": 21.203,
+            "PrePaint": 311.527,
+            "Paint": 50.20100000000001,
+            "TimerFire": 33.488
+          },
+          "hotSelfSamplesMs": [
+            {
+              "ms": 939.9020000000004,
+              "function": "(program)",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 11.748999999999999,
+              "function": "",
+              "url": "http://127.0.0.1:53324/assets/js/domains/suppliers/view.js",
+              "line": 218
+            },
+            {
+              "ms": 5.7860000000000005,
+              "function": "querySelectorAll",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 5.772,
+              "function": "querySelectorAll",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 5.304,
+              "function": "querySelectorAll",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 4.284,
+              "function": "normalizeSupplierSearch",
+              "url": "http://127.0.0.1:53324/assets/js/domains/suppliers/view.js",
+              "line": 11
+            },
+            {
+              "ms": 4.2459999999999996,
+              "function": "normalizeSupplierSearch",
+              "url": "http://127.0.0.1:53324/assets/js/domains/suppliers/view.js",
+              "line": 11
+            },
+            {
+              "ms": 3.181,
+              "function": "mark",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 2.172,
+              "function": "balanceRowsData",
+              "url": "http://127.0.0.1:53324/assets/js/domains/suppliers/model.js",
+              "line": 8
+            },
+            {
+              "ms": 2.12,
+              "function": "",
+              "url": "",
+              "line": 1
+            },
+            {
+              "ms": 1.238,
+              "function": "supplierYearContextData",
+              "url": "http://127.0.0.1:53324/assets/js/domains/suppliers/model.js",
+              "line": 16
+            },
+            {
+              "ms": 1.069,
+              "function": "filterSupplierSearch",
+              "url": "http://127.0.0.1:53324/assets/js/domains/suppliers/view.js",
+              "line": 207
+            },
+            {
+              "ms": 1.069,
+              "function": "supplierRenderModelData",
+              "url": "http://127.0.0.1:53324/assets/js/domains/suppliers/model.js",
+              "line": 19
+            },
+            {
+              "ms": 1.067,
+              "function": "(garbage collector)",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 1.064,
+              "function": "",
+              "url": "",
+              "line": 10
+            }
+          ],
+          "profilerOverhead": true
+        }
+      },
+      {
+        "variant": "baseline",
+        "rows": 10000,
+        "cpuThrottleRate": 4,
+        "unprofiled": [
+          {
+            "modelMs": 3496,
+            "twoFramesMs": 3508.7999999999884,
+            "visible": 1,
+            "connectedTransactionRows": 10000,
+            "resourcesBefore": {
+              "Nodes": 987133,
+              "LayoutCount": 5,
+              "RecalcStyleCount": 8,
+              "JSHeapUsedSize": 94104380
+            },
+            "resourcesAfter": {
+              "Nodes": 980532,
+              "LayoutCount": 7,
+              "RecalcStyleCount": 10,
+              "JSHeapUsedSize": 37619124
+            }
+          },
+          {
+            "modelMs": 3393.2000000000116,
+            "twoFramesMs": 3399.2999999999884,
+            "visible": 1,
+            "connectedTransactionRows": 10000,
+            "resourcesBefore": {
+              "Nodes": 1471003,
+              "LayoutCount": 5,
+              "RecalcStyleCount": 8,
+              "JSHeapUsedSize": 22544200
+            },
+            "resourcesAfter": {
+              "Nodes": 1471009,
+              "LayoutCount": 7,
+              "RecalcStyleCount": 10,
+              "JSHeapUsedSize": 23757068
+            }
+          },
+          {
+            "modelMs": 3495.2999999999884,
+            "twoFramesMs": 3507.899999999965,
+            "visible": 1,
+            "connectedTransactionRows": 10000,
+            "resourcesBefore": {
+              "Nodes": 1958946,
+              "LayoutCount": 5,
+              "RecalcStyleCount": 8,
+              "JSHeapUsedSize": 22717716
+            },
+            "resourcesAfter": {
+              "Nodes": 1958952,
+              "LayoutCount": 7,
+              "RecalcStyleCount": 10,
+              "JSHeapUsedSize": 24019088
+            }
+          }
+        ],
+        "latencyDistributionMs": {
+          "modelMs": {
+            "n": 3,
+            "missing": 0,
+            "complete": true,
+            "min": 3393.2000000000116,
+            "median": 3495.2999999999884,
+            "max": 3496
+          },
+          "twoFramesMs": {
+            "n": 3,
+            "missing": 0,
+            "complete": true,
+            "min": 3399.2999999999884,
+            "median": 3507.899999999965,
+            "max": 3508.7999999999884
+          }
+        },
+        "profiled": {
+          "modelMs": 3580,
+          "twoFramesMs": 3596.399999999965,
+          "visible": 1,
+          "connectedTransactionRows": 10000,
+          "resourcesBefore": {
+            "Nodes": 1471003,
+            "LayoutCount": 5,
+            "RecalcStyleCount": 8,
+            "JSHeapUsedSize": 22708728
+          },
+          "resourcesAfter": {
+            "Nodes": 1471009,
+            "LayoutCount": 7,
+            "RecalcStyleCount": 10,
+            "JSHeapUsedSize": 23960060
+          },
+          "inclusiveTimelineMs": {
+            "EventDispatch": 1.549,
+            "FunctionCall": 148.52499999999998,
+            "UpdateLayoutTree": 1545.084,
+            "Layout": 88.897,
+            "PrePaint": 1188.6080000000002,
+            "Paint": 194.46599999999998,
+            "TimerFire": 147.675
+          },
+          "hotSelfSamplesMs": [
+            {
+              "ms": 3756.6069999999954,
+              "function": "(program)",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 50.573999999999984,
+              "function": "",
+              "url": "http://127.0.0.1:53324/assets/js/domains/suppliers/view.js",
+              "line": 218
+            },
+            {
+              "ms": 27.907999999999998,
+              "function": "querySelectorAll",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 22.464000000000002,
+              "function": "querySelectorAll",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 22.380999999999997,
+              "function": "querySelectorAll",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 17.194999999999997,
+              "function": "normalizeSupplierSearch",
+              "url": "http://127.0.0.1:53324/assets/js/domains/suppliers/view.js",
+              "line": 11
+            },
+            {
+              "ms": 17.069,
+              "function": "filterSupplierSearch",
+              "url": "http://127.0.0.1:53324/assets/js/domains/suppliers/view.js",
+              "line": 207
+            },
+            {
+              "ms": 13.497,
+              "function": "normalizeSupplierSearch",
+              "url": "http://127.0.0.1:53324/assets/js/domains/suppliers/view.js",
+              "line": 11
+            },
+            {
+              "ms": 7.561,
+              "function": "",
+              "url": "",
+              "line": 1
+            },
+            {
+              "ms": 5.7620000000000005,
+              "function": "(garbage collector)",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 4.802,
+              "function": "supplierRenderModelData",
+              "url": "http://127.0.0.1:53324/assets/js/domains/suppliers/model.js",
+              "line": 19
+            },
+            {
+              "ms": 4.374,
+              "function": "",
+              "url": "",
+              "line": 10
+            },
+            {
+              "ms": 2.51,
+              "function": "matchesSupplierSearch",
+              "url": "http://127.0.0.1:53324/assets/js/domains/suppliers/view.js",
+              "line": 14
+            },
+            {
+              "ms": 1.88,
+              "function": "",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 1.732,
+              "function": "dispatchEvent",
+              "url": "",
+              "line": 0
+            }
+          ],
+          "profilerOverhead": true
+        }
+      },
+      {
+        "variant": "current",
+        "rows": 1000,
+        "cpuThrottleRate": 1,
+        "unprofiled": [
+          {
+            "modelMs": 133.40000000002328,
+            "twoFramesMs": 146,
+            "visible": 1,
+            "connectedTransactionRows": 1,
+            "resourcesBefore": {
+              "Nodes": 99146,
+              "LayoutCount": 0,
+              "RecalcStyleCount": 0,
+              "JSHeapUsedSize": 8528164
+            },
+            "resourcesAfter": {
+              "Nodes": 99136,
+              "LayoutCount": 2,
+              "RecalcStyleCount": 2,
+              "JSHeapUsedSize": 9254796
+            }
+          },
+          {
+            "modelMs": 131.59999999997672,
+            "twoFramesMs": 141.89999999996508,
+            "visible": 1,
+            "connectedTransactionRows": 1,
+            "resourcesBefore": {
+              "Nodes": 197870,
+              "LayoutCount": 5,
+              "RecalcStyleCount": 7,
+              "JSHeapUsedSize": 21425872
+            },
+            "resourcesAfter": {
+              "Nodes": 49570,
+              "LayoutCount": 7,
+              "RecalcStyleCount": 9,
+              "JSHeapUsedSize": 7215112
+            }
+          },
+          {
+            "modelMs": 136,
+            "twoFramesMs": 136.60000000003492,
+            "visible": 1,
+            "connectedTransactionRows": 1,
+            "resourcesBefore": {
+              "Nodes": 98706,
+              "LayoutCount": 5,
+              "RecalcStyleCount": 8,
+              "JSHeapUsedSize": 21324252
+            },
+            "resourcesAfter": {
+              "Nodes": 98712,
+              "LayoutCount": 7,
+              "RecalcStyleCount": 10,
+              "JSHeapUsedSize": 21946384
+            }
+          }
+        ],
+        "latencyDistributionMs": {
+          "modelMs": {
+            "n": 3,
+            "missing": 0,
+            "complete": true,
+            "min": 131.59999999997672,
+            "median": 133.40000000002328,
+            "max": 136
+          },
+          "twoFramesMs": {
+            "n": 3,
+            "missing": 0,
+            "complete": true,
+            "min": 136.60000000003492,
+            "median": 141.89999999996508,
+            "max": 146
+          }
+        },
+        "profiled": {
+          "modelMs": 134.29999999998836,
+          "twoFramesMs": 142.20000000001164,
+          "visible": 1,
+          "connectedTransactionRows": 1,
+          "resourcesBefore": {
+            "Nodes": 98706,
+            "LayoutCount": 5,
+            "RecalcStyleCount": 7,
+            "JSHeapUsedSize": 21365428
+          },
+          "resourcesAfter": {
+            "Nodes": 98712,
+            "LayoutCount": 7,
+            "RecalcStyleCount": 9,
+            "JSHeapUsedSize": 22149380
+          },
+          "inclusiveTimelineMs": {
+            "EventDispatch": 0.255,
+            "FunctionCall": 31.319,
+            "UpdateLayoutTree": 0.35500000000000004,
+            "Layout": 3.266,
+            "PrePaint": 29.952,
+            "Paint": 11.252,
+            "TimerFire": 31.482
+          },
+          "hotSelfSamplesMs": [
+            {
+              "ms": 178.45700000000025,
+              "function": "(program)",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 158.30599999999995,
+              "function": "(idle)",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 27.592,
+              "function": "replaceChildren",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 1.456,
+              "function": "mark",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 1.079,
+              "function": "matchesSupplierSearch",
+              "url": "http://127.0.0.1:52975/assets/js/domains/suppliers/view.js",
+              "line": 18
+            },
+            {
+              "ms": 1.079,
+              "function": "owner",
+              "url": "http://127.0.0.1:52975/test-access.js",
+              "line": 921
+            },
+            {
+              "ms": 1.077,
+              "function": "",
+              "url": "http://127.0.0.1:52975/assets/js/domains/suppliers/view.js",
+              "line": 58
+            },
+            {
+              "ms": 1.064,
+              "function": "",
+              "url": "http://127.0.0.1:52975/assets/js/domains/suppliers/view.js",
+              "line": 235
+            },
+            {
+              "ms": 0.11,
+              "function": "dispatchEvent",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 0.02,
+              "function": "mark",
+              "url": "",
+              "line": 0
+            }
+          ],
+          "profilerOverhead": true
+        }
+      },
+      {
+        "variant": "current",
+        "rows": 1000,
+        "cpuThrottleRate": 4,
+        "unprofiled": [
+          {
+            "modelMs": 286,
+            "twoFramesMs": 302.29999999998836,
+            "visible": 1,
+            "connectedTransactionRows": 1,
+            "resourcesBefore": {
+              "Nodes": 197446,
+              "LayoutCount": 5,
+              "RecalcStyleCount": 7,
+              "JSHeapUsedSize": 23971744
+            },
+            "resourcesAfter": {
+              "Nodes": 197452,
+              "LayoutCount": 7,
+              "RecalcStyleCount": 9,
+              "JSHeapUsedSize": 24593496
+            }
+          },
+          {
+            "modelMs": 278,
+            "twoFramesMs": 290.8999999999651,
+            "visible": 1,
+            "connectedTransactionRows": 1,
+            "resourcesBefore": {
+              "Nodes": 296143,
+              "LayoutCount": 5,
+              "RecalcStyleCount": 7,
+              "JSHeapUsedSize": 26644284
+            },
+            "resourcesAfter": {
+              "Nodes": 296149,
+              "LayoutCount": 7,
+              "RecalcStyleCount": 9,
+              "JSHeapUsedSize": 27266056
+            }
+          },
+          {
+            "modelMs": 280.4000000000233,
+            "twoFramesMs": 301.9000000000233,
+            "visible": 1,
+            "connectedTransactionRows": 1,
+            "resourcesBefore": {
+              "Nodes": 298119,
+              "LayoutCount": 5,
+              "RecalcStyleCount": 7,
+              "JSHeapUsedSize": 21444392
+            },
+            "resourcesAfter": {
+              "Nodes": 109141,
+              "LayoutCount": 7,
+              "RecalcStyleCount": 9,
+              "JSHeapUsedSize": 22066188
+            }
+          }
+        ],
+        "latencyDistributionMs": {
+          "modelMs": {
+            "n": 3,
+            "missing": 0,
+            "complete": true,
+            "min": 278,
+            "median": 280.4000000000233,
+            "max": 286
+          },
+          "twoFramesMs": {
+            "n": 3,
+            "missing": 0,
+            "complete": true,
+            "min": 290.8999999999651,
+            "median": 301.9000000000233,
+            "max": 302.29999999998836
+          }
+        },
+        "profiled": {
+          "modelMs": 290.0999999999767,
+          "twoFramesMs": 301.5999999999767,
+          "visible": 1,
+          "connectedTransactionRows": 1,
+          "resourcesBefore": {
+            "Nodes": 197446,
+            "LayoutCount": 5,
+            "RecalcStyleCount": 7,
+            "JSHeapUsedSize": 23881024
+          },
+          "resourcesAfter": {
+            "Nodes": 153505,
+            "LayoutCount": 7,
+            "RecalcStyleCount": 9,
+            "JSHeapUsedSize": 24496364
+          },
+          "inclusiveTimelineMs": {
+            "EventDispatch": 1.091,
+            "FunctionCall": 113.06200000000003,
+            "UpdateLayoutTree": 1.637,
+            "Layout": 13.718,
+            "PrePaint": 113.48400000000001,
+            "Paint": 47.117,
+            "TimerFire": 112.84699999999998
+          },
+          "hotSelfSamplesMs": [
+            {
+              "ms": 469.3230000000002,
+              "function": "(program)",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 100.68200000000004,
+              "function": "replaceChildren",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 2.3899999999999997,
+              "function": "",
+              "url": "http://127.0.0.1:52975/assets/js/domains/suppliers/view.js",
+              "line": 235
+            },
+            {
+              "ms": 1.979,
+              "function": "hasAttribute",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 1.568,
+              "function": "normalizeSupplierSearch",
+              "url": "http://127.0.0.1:52975/assets/js/domains/suppliers/view.js",
+              "line": 15
+            },
+            {
+              "ms": 1.514,
+              "function": "filterSupplierSearch",
+              "url": "http://127.0.0.1:52975/assets/js/domains/suppliers/view.js",
+              "line": 211
+            },
+            {
+              "ms": 1.361,
+              "function": "supplierViewRowsData",
+              "url": "http://127.0.0.1:52975/assets/js/domains/suppliers/model.js",
+              "line": 53
+            },
+            {
+              "ms": 1.309,
+              "function": "mark",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 1.067,
+              "function": "beginMeasure",
+              "url": "http://127.0.0.1:52975/assets/js/shared/runtime-performance.js",
+              "line": 25
+            },
+            {
+              "ms": 0.916,
+              "function": "updateSupplierFinancialSummary",
+              "url": "http://127.0.0.1:52975/assets/js/domains/suppliers/view.js",
+              "line": 72
+            },
+            {
+              "ms": 0.847,
+              "function": "",
+              "url": "http://127.0.0.1:52975/assets/js/domains/suppliers/view.js",
+              "line": 228
+            },
+            {
+              "ms": 0.826,
+              "function": "",
+              "url": "",
+              "line": 1
+            },
+            {
+              "ms": 0.784,
+              "function": "money",
+              "url": "http://127.0.0.1:52975/assets/js/core/money.js",
+              "line": 4
+            },
+            {
+              "ms": 0.764,
+              "function": "mark",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 0.659,
+              "function": "",
+              "url": "http://127.0.0.1:52975/assets/js/domains/suppliers/view.js",
+              "line": 58
+            }
+          ],
+          "profilerOverhead": true
+        }
+      },
+      {
+        "variant": "current",
+        "rows": 10000,
+        "cpuThrottleRate": 1,
+        "unprofiled": [
+          {
+            "modelMs": 617,
+            "twoFramesMs": 632.5999999999767,
+            "visible": 1,
+            "connectedTransactionRows": 1,
+            "resourcesBefore": {
+              "Nodes": 1030092,
+              "LayoutCount": 5,
+              "RecalcStyleCount": 8,
+              "JSHeapUsedSize": 18101376
+            },
+            "resourcesAfter": {
+              "Nodes": 1030098,
+              "LayoutCount": 7,
+              "RecalcStyleCount": 10,
+              "JSHeapUsedSize": 24429648
+            }
+          },
+          {
+            "modelMs": 797.5,
+            "twoFramesMs": 813.7999999999884,
+            "visible": 1,
+            "connectedTransactionRows": 1,
+            "resourcesBefore": {
+              "Nodes": 980526,
+              "LayoutCount": 5,
+              "RecalcStyleCount": 8,
+              "JSHeapUsedSize": 81161076
+            },
+            "resourcesAfter": {
+              "Nodes": 976329,
+              "LayoutCount": 7,
+              "RecalcStyleCount": 10,
+              "JSHeapUsedSize": 18725252
+            }
+          },
+          {
+            "modelMs": 805.7999999999884,
+            "twoFramesMs": 817,
+            "visible": 1,
+            "connectedTransactionRows": 1,
+            "resourcesBefore": {
+              "Nodes": 980526,
+              "LayoutCount": 5,
+              "RecalcStyleCount": 7,
+              "JSHeapUsedSize": 81355236
+            },
+            "resourcesAfter": {
+              "Nodes": 976332,
+              "LayoutCount": 7,
+              "RecalcStyleCount": 9,
+              "JSHeapUsedSize": 19035504
+            }
+          }
+        ],
+        "latencyDistributionMs": {
+          "modelMs": {
+            "n": 3,
+            "missing": 0,
+            "complete": true,
+            "min": 617,
+            "median": 797.5,
+            "max": 805.7999999999884
+          },
+          "twoFramesMs": {
+            "n": 3,
+            "missing": 0,
+            "complete": true,
+            "min": 632.5999999999767,
+            "median": 813.7999999999884,
+            "max": 817
+          }
+        },
+        "profiled": {
+          "modelMs": 777.5,
+          "twoFramesMs": 794,
+          "visible": 1,
+          "connectedTransactionRows": 1,
+          "resourcesBefore": {
+            "Nodes": 980526,
+            "LayoutCount": 5,
+            "RecalcStyleCount": 8,
+            "JSHeapUsedSize": 81100920
+          },
+          "resourcesAfter": {
+            "Nodes": 980532,
+            "LayoutCount": 7,
+            "RecalcStyleCount": 10,
+            "JSHeapUsedSize": 19115596
+          },
+          "inclusiveTimelineMs": {
+            "EventDispatch": 0.492,
+            "FunctionCall": 346.92600000000004,
+            "UpdateLayoutTree": 5.568,
+            "Layout": 62.862,
+            "PrePaint": 318.279,
+            "Paint": 49.055,
+            "TimerFire": 349.054
+          },
+          "hotSelfSamplesMs": [
+            {
+              "ms": 618.4750000000007,
+              "function": "(program)",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 267.2080000000001,
+              "function": "replaceChildren",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 142.61499999999995,
+              "function": "(garbage collector)",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 6.433999999999999,
+              "function": "normalizeSupplierSearch",
+              "url": "http://127.0.0.1:52975/assets/js/domains/suppliers/view.js",
+              "line": 15
+            },
+            {
+              "ms": 6.431,
+              "function": "",
+              "url": "http://127.0.0.1:52975/assets/js/domains/suppliers/view.js",
+              "line": 235
+            },
+            {
+              "ms": 6.4079999999999995,
+              "function": "",
+              "url": "http://127.0.0.1:52975/assets/js/domains/suppliers/view.js",
+              "line": 228
+            },
+            {
+              "ms": 5.343,
+              "function": "querySelector",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 4.419,
+              "function": "",
+              "url": "",
+              "line": 1
+            },
+            {
+              "ms": 4.244,
+              "function": "normalizeSupplierSearch",
+              "url": "http://127.0.0.1:52975/assets/js/domains/suppliers/view.js",
+              "line": 15
+            },
+            {
+              "ms": 2.3890000000000002,
+              "function": "hasAttribute",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 2.185,
+              "function": "supplierYearContextData",
+              "url": "http://127.0.0.1:52975/assets/js/domains/suppliers/model.js",
+              "line": 16
+            },
+            {
+              "ms": 2.127,
+              "function": "filterSupplierSearch",
+              "url": "http://127.0.0.1:52975/assets/js/domains/suppliers/view.js",
+              "line": 211
+            },
+            {
+              "ms": 1.989,
+              "function": "mark",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 1.09,
+              "function": "filteredSupplierRows",
+              "url": "http://127.0.0.1:52975/assets/js/domains/suppliers/view.js",
+              "line": 54
+            },
+            {
+              "ms": 1.082,
+              "function": "balanceRowsData",
+              "url": "http://127.0.0.1:52975/assets/js/domains/suppliers/model.js",
+              "line": 8
+            }
+          ],
+          "profilerOverhead": true
+        }
+      },
+      {
+        "variant": "current",
+        "rows": 10000,
+        "cpuThrottleRate": 4,
+        "unprofiled": [
+          {
+            "modelMs": 3396.7999999999884,
+            "twoFramesMs": 3418.600000000035,
+            "visible": 1,
+            "connectedTransactionRows": 1,
+            "resourcesBefore": {
+              "Nodes": 1471006,
+              "LayoutCount": 5,
+              "RecalcStyleCount": 8,
+              "JSHeapUsedSize": 23425220
+            },
+            "resourcesAfter": {
+              "Nodes": 1471012,
+              "LayoutCount": 7,
+              "RecalcStyleCount": 10,
+              "JSHeapUsedSize": 28920324
+            }
+          },
+          {
+            "modelMs": 3699.2000000000116,
+            "twoFramesMs": 3705.0999999999767,
+            "visible": 1,
+            "connectedTransactionRows": 1,
+            "resourcesBefore": {
+              "Nodes": 980526,
+              "LayoutCount": 5,
+              "RecalcStyleCount": 7,
+              "JSHeapUsedSize": 78817800
+            },
+            "resourcesAfter": {
+              "Nodes": 980532,
+              "LayoutCount": 7,
+              "RecalcStyleCount": 9,
+              "JSHeapUsedSize": 17844768
+            }
+          },
+          {
+            "modelMs": 3171.3000000000466,
+            "twoFramesMs": 3187.9000000000233,
+            "visible": 1,
+            "connectedTransactionRows": 1,
+            "resourcesBefore": {
+              "Nodes": 1958595,
+              "LayoutCount": 5,
+              "RecalcStyleCount": 7,
+              "JSHeapUsedSize": 23535424
+            },
+            "resourcesAfter": {
+              "Nodes": 1958601,
+              "LayoutCount": 7,
+              "RecalcStyleCount": 9,
+              "JSHeapUsedSize": 28959888
+            }
+          }
+        ],
+        "latencyDistributionMs": {
+          "modelMs": {
+            "n": 3,
+            "missing": 0,
+            "complete": true,
+            "min": 3171.3000000000466,
+            "median": 3396.7999999999884,
+            "max": 3699.2000000000116
+          },
+          "twoFramesMs": {
+            "n": 3,
+            "missing": 0,
+            "complete": true,
+            "min": 3187.9000000000233,
+            "median": 3418.600000000035,
+            "max": 3705.0999999999767
+          }
+        },
+        "profiled": {
+          "modelMs": 3893.4000000000233,
+          "twoFramesMs": 3906.20000000007,
+          "visible": 1,
+          "connectedTransactionRows": 1,
+          "resourcesBefore": {
+            "Nodes": 980526,
+            "LayoutCount": 5,
+            "RecalcStyleCount": 7,
+            "JSHeapUsedSize": 78817700
+          },
+          "resourcesAfter": {
+            "Nodes": 976303,
+            "LayoutCount": 7,
+            "RecalcStyleCount": 9,
+            "JSHeapUsedSize": 14866584
+          },
+          "inclusiveTimelineMs": {
+            "EventDispatch": 1.618,
+            "FunctionCall": 1549.0909999999997,
+            "UpdateLayoutTree": 3.0180000000000002,
+            "Layout": 211.00300000000001,
+            "PrePaint": 1482.1950000000002,
+            "Paint": 225.45100000000002,
+            "TimerFire": 1555.389
+          },
+          "hotSelfSamplesMs": [
+            {
+              "ms": 2733.9929999999968,
+              "function": "(program)",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 1276.897,
+              "function": "replaceChildren",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 220.70599999999993,
+              "function": "(garbage collector)",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 46.509000000000015,
+              "function": "filterSupplierSearch",
+              "url": "http://127.0.0.1:52975/assets/js/domains/suppliers/view.js",
+              "line": 211
+            },
+            {
+              "ms": 23.487999999999996,
+              "function": "",
+              "url": "http://127.0.0.1:52975/assets/js/domains/suppliers/view.js",
+              "line": 235
+            },
+            {
+              "ms": 13.823,
+              "function": "",
+              "url": "",
+              "line": 1
+            },
+            {
+              "ms": 12.163,
+              "function": "normalizeSupplierSearch",
+              "url": "http://127.0.0.1:52975/assets/js/domains/suppliers/view.js",
+              "line": 15
+            },
+            {
+              "ms": 7.068,
+              "function": "hasAttribute",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 4.197,
+              "function": "supplierRenderModelData",
+              "url": "http://127.0.0.1:52975/assets/js/domains/suppliers/model.js",
+              "line": 19
+            },
+            {
+              "ms": 3.614,
+              "function": "supplierYearContextData",
+              "url": "http://127.0.0.1:52975/assets/js/domains/suppliers/model.js",
+              "line": 16
+            },
+            {
+              "ms": 3.561,
+              "function": "(idle)",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 1.634,
+              "function": "mark",
+              "url": "",
+              "line": 0
+            },
+            {
+              "ms": 1.332,
+              "function": "",
+              "url": "http://127.0.0.1:52975/assets/js/domains/suppliers/view.js",
+              "line": 58
+            },
+            {
+              "ms": 1.324,
+              "function": "filteredSupplierRows",
+              "url": "http://127.0.0.1:52975/assets/js/domains/suppliers/view.js",
+              "line": 54
+            },
+            {
+              "ms": 1.232,
+              "function": "expose",
+              "url": "http://127.0.0.1:52975/test-probe-runtime.js",
+              "line": 9
+            }
+          ],
+          "profilerOverhead": true
+        }
+      }
+    ],
+    "complete": true,
+    "viewVariants": {
+      "current": {
+        "sha256": "c4b9e2518d13582191d952af0d4aef469d621055d2ecb908c643d147808321fb"
+      },
+      "baseline": {
+        "revision": "fc3ddf0b0cf9b76b6a098566710dcb1c46a70729",
+        "sha256": "1cd63543bce2c6f014e2cf22d2aa6f1139d59d374be7b9386521e71f1c3c07d0"
+      }
+    },
+    "browser": {
+      "protocolVersion": "1.3",
+      "product": "Chrome/155.0.8059.39",
+      "revision": "@3ff7ac5a9224be9156d7f8703a06e22890aafd34",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36",
+      "jsVersion": "15.5.35.20"
+    },
+    "system": {
+      "logicalCPUs": 4,
+      "processor": "INTEL(R) XEON(R) PLATINUM 8573C"
+    }
+  }
+}
