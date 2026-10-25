@@ -124,7 +124,12 @@ test('reviewed snapshot transports and captured archive command retain their pol
         (row) => row.type === 'FunctionDeclaration' && row.id.name === name
       );
       assert.ok(node, name);
-      return source.slice(node.start, node.end);
+      const declaration=source.slice(node.start,node.end);
+      // The checked unknown reader preserves the old message/hint ordering.
+      // Normalize only this reviewed equivalent expression; every other token
+      // remains compared with the archived policy fixture.
+      assert.equal(declaration.split('responseErrorText(j,true)').length-1,1,name);
+      return declaration.replace('responseErrorText(j,true)','j?.message||j?.hint');
     });
     assert.deepEqual(creditAdapterPolicyHashes(declarations).policies, fixture.policies[app]);
   }

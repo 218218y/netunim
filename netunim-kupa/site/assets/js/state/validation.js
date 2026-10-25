@@ -18,7 +18,21 @@ export function assertKupaEntityInvariants(input,{includeChecks=false,required=f
 }
 
 /** @param {unknown} value */
-function validNotesSheet(value){if(value===undefined)return true;if(!record(value)||Array.isArray(value)||!Array.isArray(value.columns)||!value.columns.length||!Array.isArray(value.rows))return false;const workbook=Number(value.version)>=2;if(workbook){if(!Array.isArray(value.sheets)||!value.sheets.length||!value.sheets.every((/** @type {unknown} */ sheet)=>record(sheet)&&String(sheet.id||'').trim()&&String(sheet.name||'').trim()))return false;const ids=new Set(value.sheets.map((/** @type {unknown} */ sheet)=>String(field(sheet,'id'))));if(ids.size!==value.sheets.length)return false;if(value.columns.some((/** @type {unknown} */ column)=>!record(column)||!String(column.id||'').trim()||!ids.has(String(column.sheetId||''))))return false;if(value.rows.some((/** @type {unknown} */ row)=>!record(row)||!String(row.id||'').trim()||!ids.has(String(row.sheetId||''))||!row.cells||typeof row.cells!=='object'||Array.isArray(row.cells)))return false;return true}return value.columns.every((/** @type {unknown} */ column)=>record(column)&&String(column.id||'').trim())&&value.rows.every((/** @type {unknown} */ row)=>record(row)&&String(row.id||'').trim()&&row.cells&&typeof row.cells==='object'&&!Array.isArray(row.cells))}
+function validNotesSheet(value){
+  if(value===undefined)return true;
+  if(!record(value)||Array.isArray(value)||!Array.isArray(value.columns)||!value.columns.length||!Array.isArray(value.rows))return false;
+  const workbook=Number(value.version)>=2;
+  if(workbook){
+    if(!Array.isArray(value.sheets)||!value.sheets.length||!value.sheets.every((/** @type {unknown} */ sheet)=>record(sheet)&&String(sheet.id||'').trim()&&String(sheet.name||'').trim()))return false;
+    const ids=new Set(value.sheets.map((/** @type {unknown} */ sheet)=>String(field(sheet,'id'))));
+    if(ids.size!==value.sheets.length)return false;
+    if(value.columns.some((/** @type {unknown} */ column)=>!record(column)||!String(column.id||'').trim()||!ids.has(String(column.sheetId||''))))return false;
+    if(value.rows.some((/** @type {unknown} */ row)=>!record(row)||!String(row.id||'').trim()||!ids.has(String(row.sheetId||''))||!row.cells||typeof row.cells!=='object'||Array.isArray(row.cells)))return false;
+    return true
+  }
+  return value.columns.every((/** @type {unknown} */ column)=>record(column)&&String(column.id||'').trim())
+    &&value.rows.every((/** @type {unknown} */ row)=>record(row)&&String(row.id||'').trim()&&row.cells&&typeof row.cells==='object'&&!Array.isArray(row.cells))
+}
 
 /** @param {unknown} state */
 export function validState(state){
@@ -36,7 +50,12 @@ export function assertPortablePayload(payload){
 
 /** @param {unknown} state @param {{allowLegacyCards?:boolean,requiredEntities?:boolean}} [options] */
 export function validKupaCloudState(state,{allowLegacyCards=false,requiredEntities=true}={}){
-  try{return !!(record(state)&&!Array.isArray(state)&&!Object.hasOwn(state,'checks')&&Array.isArray(state.credits)&&Array.isArray(state.cash)&&(!Object.hasOwn(state,'rights')||Array.isArray(state.rights))&&(!Object.hasOwn(state,'notes')||Array.isArray(state.notes))&&validNotesSheet(state.notesSheet)&&(state.rightsLastCalculatedDate===undefined||state.rightsLastCalculatedDate===null||typeof state.rightsLastCalculatedDate==='string')&&Array.isArray(state.expenses)&&Array.isArray(state.cards)&&record(state.bank)&&!Array.isArray(state.bank)&&Array.isArray(state.bank.adjustments)&&!state.bank.adjustments.some((/** @type {unknown} */ item)=>field(item,'type')==='check_deposit')&&assertKupaEntityInvariants(state,{required:requiredEntities,allowLegacyCards}))}catch{return false}
+  try{return !!(record(state)&&!Array.isArray(state)&&!Object.hasOwn(state,'checks')&&Array.isArray(state.credits)&&Array.isArray(state.cash)
+    &&(!Object.hasOwn(state,'rights')||Array.isArray(state.rights))&&(!Object.hasOwn(state,'notes')||Array.isArray(state.notes))&&validNotesSheet(state.notesSheet)
+    &&(state.rightsLastCalculatedDate===undefined||state.rightsLastCalculatedDate===null||typeof state.rightsLastCalculatedDate==='string')
+    &&Array.isArray(state.expenses)&&Array.isArray(state.cards)&&record(state.bank)&&!Array.isArray(state.bank)&&Array.isArray(state.bank.adjustments)
+    &&!state.bank.adjustments.some((/** @type {unknown} */ item)=>field(item,'type')==='check_deposit')
+    &&assertKupaEntityInvariants(state,{required:requiredEntities,allowLegacyCards}))}catch{return false}
 }
 
 /** @template T @param {T} state @param {string} [context] @returns {T} */
@@ -50,4 +69,9 @@ export function assertReadableCloudState(state,context='נתוני הקופה ב
 }
 
 /** @param {unknown} input */
-export function hasMeaningfulState(input){const state=record(input)?input:{},bank=record(state.bank)?state.bank:{},credit=record(state.creditSync)?state.creditSync:{};return ['checks','credits','cash','rights','notes','expenses','cards'].some(key=>Array.isArray(state?.[key])&&(Array.isArray(state[key])?state[key].length:0))||notesSheetHasMeaningfulData(state?.notesSheet)||!!state?.rightsLastCalculatedDate||bank.currentBalance!==null&&bank.currentBalance!==undefined||Array.isArray(bank.adjustments)&&bank.adjustments.length||Array.isArray(credit.profiles)&&credit.profiles.length}
+export function hasMeaningfulState(input){
+  const state=record(input)?input:{},bank=record(state.bank)?state.bank:{},credit=record(state.creditSync)?state.creditSync:{};
+  return ['checks','credits','cash','rights','notes','expenses','cards'].some(key=>Array.isArray(state?.[key])&&(Array.isArray(state[key])?state[key].length:0))
+    ||notesSheetHasMeaningfulData(state?.notesSheet)||!!state?.rightsLastCalculatedDate||bank.currentBalance!==null&&bank.currentBalance!==undefined
+    ||Array.isArray(bank.adjustments)&&bank.adjustments.length||Array.isArray(credit.profiles)&&credit.profiles.length
+}
