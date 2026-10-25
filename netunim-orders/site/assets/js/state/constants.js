@@ -18,4 +18,4 @@ export const DATA_FILE='orders-data.json';
 export const AUTO_BACKUP_INTERVAL_MS=12*60*60*1000;
 export const AUTO_BACKUP_PREFIX='orders-backup-auto_';
 export const AUTO_BACKUP_KEEP=60;
-export const $=s=>document.querySelector(s);
+export const $=(/** @type {string} */ s)=>document.querySelector(s);

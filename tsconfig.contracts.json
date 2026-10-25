@@ -345,6 +345,11 @@
     "shared/storage-v2-activation-cache.js",
     "shared/sync-journal-incident.js",
     "shared/sync-incident-model.js",
-    "tests/fixtures/checked-storage-runtime.mjs"
+    "tests/fixtures/checked-storage-runtime.mjs",
+    "netunim-orders/site/assets/js/cloud/transport.js",
+    "netunim-kupa/site/assets/js/cloud/transport.js",
+    "shared/notes-sheet-model.js",
+    "netunim-kupa/site/assets/js/state/validation.js",
+    "tests/fixtures/checked-cloud-transports.mjs"
   ]
 }
