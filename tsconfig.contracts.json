@@ -20,6 +20,10 @@
     "types": []
   },
   "files": [
+    "tests/fixtures/checked-orders-document-validation.mjs",
+    "netunim-orders/site/assets/js/state/validation.js",
+    "shared/data-invariants.js",
+    "shared/customer-debt-progress.js",
     "shared/bank-recurring-debits.js",
     "tests/fixtures/checked-bank-recurring.mjs",
     "shared/storage-journal.js",
