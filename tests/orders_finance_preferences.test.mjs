@@ -16,6 +16,22 @@ function fixture(){
   return {owner,scheduler,values,failures,jobs,calls,inject:(operation,key,name='SecurityError')=>{failure={operation,key,error:new DOMException('sensitive details',name)}},restore:()=>{failure=null}};
 }
 const key=(kind,setting)=>`netunim_orders_${kind}_auto_${setting}_v1`;
+test('terminal scheduler disposal closes every mutation and stale callback without changing saved preferences',async()=>{
+  const f=fixture();f.scheduler.startAutoSync();
+  const callbacks=[...f.jobs.values()],saved=[...f.values];
+  assert.equal(f.scheduler.dispose(),true);assert.equal(f.scheduler.dispose(),false);
+  assert.equal(f.jobs.size,0);
+  assert.equal(f.scheduler.startAutoSync(),false);assert.equal(f.scheduler.resumeAutoSync(),false);
+  assert.equal(f.scheduler.setBankAutoEnabled(true),false);assert.equal(f.scheduler.setCreditAutoEnabled(false),false);
+  assert.equal(f.scheduler.setCreditAutoMode('quick'),false);
+  for(const kind of ['bank','credit']){
+    assert.equal(f.scheduler.markAttempt(kind),false);assert.equal(f.scheduler.allowed(kind),false);
+  }
+  f.scheduler.scheduleBankAuto();f.scheduler.scheduleCreditAuto();
+  for(const run of callbacks)run();
+  assert.equal(await f.scheduler.maybeAutoRefreshBank(),false);assert.equal(await f.scheduler.maybeAutoRefreshCredit(),false);
+  assert.deepEqual([...f.values],saved);assert.equal(f.jobs.size,0);assert.deepEqual(f.calls,[]);
+});
 for(const kind of ['bank','credit']){
   test(`${kind} failed disable cannot resume on login/read/reconnect without explicit permission`,async()=>{
     const f=fixture();f.scheduler.startAutoSync();assert.equal(f.jobs.size,2);
