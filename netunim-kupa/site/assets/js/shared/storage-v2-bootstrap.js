@@ -105,9 +105,10 @@ export function createStorageV2BootstrapCoordinator({app,owner,primary=()=>true,
     const group=await createStorageV2BootstrapGroup({app:site,owner:target,id:operationId(),now,cryptoImpl,...options});guard(scoped);
     const durable=await db.beginBootstrapGroup(scoped,group);guard(scoped);return remember(durable);
   }
-  async function advance(expectedPhase,details={}){
+  async function advance(expectedPhase,details={},expectedGroup=null){
     const scoped=scope();guard(scoped);const current=await db.readBootstrapGroup(scoped);guard(scoped);if(!current)throw new Error('storage_bootstrap_group_missing');assertStorageV2BootstrapGroup(current);
     if(completedHistoricalBootstrapGroup(current))throw new Error('storage_bootstrap_historical_incomplete');
+    if(expectedGroup&&(expectedGroup.scope!==scoped||expectedGroup.id!==current.id||expectedGroup.planHash!==current.planHash))throw new Error('storage_bootstrap_group_changed');
     const next=NEXT_PHASE.get(expectedPhase);if(!next||current.phase!==expectedPhase)throw new Error('storage_bootstrap_phase_invalid');
     const updated=await db.advanceBootstrapGroup(scoped,current.id,expectedPhase,next,{...copy(details),updatedAt:String(typeof now==='function'?now():now)});guard(scoped);return remember(updated);
   }
@@ -123,25 +124,27 @@ export function createStorageV2BootstrapExecutor({coordinator,primary=()=>true,i
   const guard=()=>{if(!primary())throw new Error('storage_bootstrap_primary_required')};
   async function execute(group){
     let current=group;
+    const expected={scope:group.scope,id:group.id,planHash:group.planHash};
+    const advance=(phase,details={})=>coordinator.advance(phase,details,expected);
     while(current){
       guard();
       if(completedHistoricalBootstrapGroup(current))return current;
       if(current.phase==='prepared'){
-        const proof=await initializeMain(copy(current.main),copy(current));guard();current=await coordinator.advance('prepared',{mainProof:copy(proof)});continue;
+        const proof=await initializeMain(copy(current.main),copy(current));guard();current=await advance('prepared',{mainProof:copy(proof)});continue;
       }
       if(current.phase==='main-initialized'){
-        const proof=await initializeShared(copy(current.shared),copy(current));guard();current=await coordinator.advance('main-initialized',{sharedProof:copy(proof)});continue;
+        const proof=await initializeShared(copy(current.shared),copy(current));guard();current=await advance('main-initialized',{sharedProof:copy(proof)});continue;
       }
       if(current.phase==='shared-initialized'){
-        const proof=await syncMain(copy(current.main),copy(current));guard();current=await coordinator.advance('shared-initialized',{mainSyncProof:copy(proof)});continue;
+        const proof=await syncMain(copy(current.main),copy(current));guard();current=await advance('shared-initialized',{mainSyncProof:copy(proof)});continue;
       }
       if(current.phase==='main-synced'){
-        const proof=await syncShared(copy(current.shared),copy(current));guard();current=await coordinator.advance('main-synced',{sharedSyncProof:copy(proof)});continue;
+        const proof=await syncShared(copy(current.shared),copy(current));guard();current=await advance('main-synced',{sharedSyncProof:copy(proof)});continue;
       }
       if(current.phase==='shared-synced'){
-        const proof=await verify(copy(current));guard();current=await coordinator.advance('shared-synced',{verificationProof:copy(proof)});continue;
+        const proof=await verify(copy(current));guard();current=await advance('shared-synced',{verificationProof:copy(proof)});continue;
       }
-      if(current.phase==='verified'){current=await coordinator.advance('verified');continue}
+      if(current.phase==='verified'){current=await advance('verified');continue}
       if(current.phase==='complete')return current;
       throw new Error('storage_bootstrap_phase_invalid');
     }

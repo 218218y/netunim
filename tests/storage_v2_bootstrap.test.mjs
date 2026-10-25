@@ -29,6 +29,24 @@ const remotes={mainRemote:{revision:11,state:state('main-cloud')},sharedRemote:{
 const matchingMainRemote={revision:11,state:state('main-local')};
 const matchingSharedRemote={revision:9,state:sharedState('shared-local')};
 
+for(const replacement of ['owner','group'])test(`bootstrap cannot apply an old phase proof to a replacement ${replacement}`,async()=>{
+  const db=fakeDb();let owner='A',id=0,entered,release;
+  const waiting=new Promise(resolve=>{entered=resolve}),held=new Promise(resolve=>{release=resolve});
+  const coordinator=createStorageV2BootstrapCoordinator({app:'orders',owner:()=>owner,db,operationId:()=>`group-${++id}`});
+  const options={...sources,...remotes,sourceOwner:'local',transferIntent:'load-account'};
+  const original=await coordinator.prepare(options);
+  const executor=createStorageV2BootstrapExecutor({coordinator,
+    initializeMain:async()=>{entered();await held;return {proofOwner:'A',proofId:original.id}},
+    initializeShared:async()=>({}),syncMain:async()=>({}),syncShared:async()=>({}),verify:async()=>({})});
+  const running=executor.resume(),rejected=assert.rejects(running,/owner_changed|group_changed/);await waiting;
+  if(replacement==='owner')owner='B';
+  else for(const phase of STORAGE_BOOTSTRAP_PHASES.slice(0,-1))await coordinator.advance(phase);
+  const next=await coordinator.prepare({...options,mainSource:{seq:8,state:state('replacement')}});
+  release();await rejected;
+  const stored=await db.readBootstrapGroup(next.scope);
+  assert.equal(stored.phase,'prepared');assert.equal(stored.mainProof,undefined);
+});
+
 test('new bootstrap plans cannot create historical first-cloud or legacy-upgrade intents',async()=>{
   for(const transferIntent of ['first-cloud','legacy-upgrade']){
     await assert.rejects(createStorageV2BootstrapGroup({app:'orders',owner:'account-A',sourceOwner:'account-A',transferIntent,...sources,mainRemote:null,sharedRemote:null,id:`retired-${transferIntent}`,cryptoImpl:webcrypto}),/transfer_intent_required/);

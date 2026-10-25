@@ -62,3 +62,25 @@ source delta is comments; the rest is explicit narrowing, option forwarding and
 validation/error handling. Source allowances increase by 5,000 bytes per app to
 1,885,000/2,505,000. Timing and module budgets remain unchanged and CI still runs
 the real browser and IndexedDB gates. The compiler stays TypeScript 6.0.3.
+
+## Boundary, bootstrap and local-birth handoffs
+
+Five deterministic regressions failed before this separate runtime repair:
+Shared/Main recovery could complete across an account handoff and still authorize
+a boundary replacement; an old bootstrap callback could advance another owner's
+group, or a replacement group under the same owner; Local Birth could advance its
+durable phase after initialization lost its owner.
+
+Boundary now rechecks its captured owner after recovery and before each side's
+mutation. Bootstrap advancement accepts optional expected scope/group ID/plan
+hash evidence, and the executor supplies the identity frozen at execution start.
+An old proof cannot be attached to a new plan. Local Birth rechecks authority
+after awaited initialization, auxiliary work and durable phase transitions.
+Already completed side effects remain discoverable through normal idempotent
+recovery; the fix does not rewind a committed journal or invent completion.
+
+The five regressions and existing crash-phase, local-birth, detached-target and
+account-transfer tests pass (77 focused tests). Strict checking of existing roots
+and ESLint pass. Eager totals are 1,885,007/2,505,184 bytes, still 310/406 modules;
+source allowances increase by 1,000 bytes per app for the measured fences.
+Record formats, phase ordering and cloud payloads are unchanged.

@@ -188,6 +188,16 @@ function fixture(){
   return {create,action,main,shared,applyCount,get record(){return record},set failPhase(value){failPhase=value},set owner(value){owner=value}};
 }
 
+for(const side of ['shared','main'])test(`boundary refuses ${side} mutation after its recovery crossed an owner handoff`,async()=>{
+  const f=fixture(),boundary=f.create(),runtime=f[side],recover=runtime.recover;
+  let entered,release;const waiting=new Promise(resolve=>{entered=resolve}),held=new Promise(resolve=>{release=resolve});
+  runtime.recover=async()=>{const value=await recover();entered();await held;return value};
+  const running=boundary.run(f.action),rejected=assert.rejects(running,/owner_changed/);await waiting;
+  f.owner='B';release();await rejected;
+  assert.equal(f.applyCount[side],0,'a stale recovery must not authorize a replacement on the current runtime');
+  assert.equal(f.record.phase,side==='shared'?'prepared':'shared-applied');
+});
+
 test('restore resumes after shared commit without applying Shared Checks twice',async()=>{
   const f=fixture(),coordinator=f.create();f.failPhase='shared-applied';
   await assert.rejects(coordinator.run(f.action),/injected/);
