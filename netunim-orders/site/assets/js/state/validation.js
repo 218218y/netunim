@@ -21,7 +21,7 @@ export function assertOrderEntityInvariants(d,{includeChecks=false,required=fals
 
 /** @param {unknown} d @returns {d is import('../../../../../shared/orders-document-contracts.js').OrderCloudState} */
 export function validOrderCloudState(d){try{
-  if(!d||typeof d!=='object'||Array.isArray(d)||Object.prototype.hasOwnProperty.call(d,'checks'))return false;
+  if(!(d&&typeof d==='object'&&!Array.isArray(d))||Object.prototype.hasOwnProperty.call(d,'checks'))return false;
   const state=/** @type {Record<string,unknown>} */ (d);
   return !!(['suppliers','transactions','customerDebts','customerOrders','serviceCalls','inventoryItems','inventoryCategoryOrder','inventoryEvents','warehouseOrders','notes'].every(k=>Array.isArray(state[k]))&&assertOrderEntityInvariants(state,{required:true}));
 }catch{return false}}
