@@ -26,6 +26,24 @@ for(const [app,policies] of Object.entries(baseline.policies)){
       const guard=app==='orders'?"if(hasFailedLocalMutation(session)){setCloud('ענן: שינוי לא נשמר מקומית','error');return false}":"if(hasFailedLocalMutation(session)){setSaveStatus('שינוי לא נשמר — ייצא JSON לפני סגירת החלון','error');return false}";
       assert.ok(actual.includes(guard));actual=actual.replace(guard,'').replace('&&!hasFailedLocalMutation(session)','');
     }
+    // Reviewed safety repair: held head/HTTP/adoption regressions prove the
+    // Morning path cannot borrow a replacement account, login or epoch.
+    // Normalize only these additions; retain the historical policy comparison.
+    if(app==='orders'&&name==='adoptRemoteRow'){
+      assert.ok(actual.includes('if(!isCurrent()||hasFailedLocalMutation(session))return false;'));
+      assert.ok(actual.includes('isCurrent:committed=>isCurrent()&&'));
+      actual=actual.replace(',isCurrent=()=>true','').replace('if(!isCurrent()||hasFailedLocalMutation(session))','if(hasFailedLocalMutation(session))')
+        .replace('isCurrent:committed=>isCurrent()&&','isCurrent:committed=>').replace('!publication.published&&isCurrent()&&','!publication.published&&');
+    }
+    if(app==='orders'&&name==='refreshForMorningRecovery'){
+      assert.ok(actual.includes('const requestedScope=getCloudWriteScope();'));
+      assert.ok(actual.includes('if(!current())return false;'));
+      assert.ok(actual.includes('finally{if(cloudWriteScopeHasIdentity(requestedScope,getCloudWriteScope()))session.cloudBusy=false}'));
+      actual=actual.replace('const requestedScope=getCloudWriteScope();','').replace('writeScopeCurrent(requestedScope)&&','')
+        .replace('const head=await refreshStorageV2CloudState();const scope=captureCloudWriteScope(requestedScope,head),current=()=>available()&&writeScopeCurrent(scope,head);if(!current())return false;const generation=', 'const head=await refreshStorageV2CloudState(),generation=')
+        .replace('adoptRemoteRow(row,generation,head,{isCurrent:current})||!current()','adoptRemoteRow(row,generation,head)')
+        .replace('if(cloudWriteScopeHasIdentity(requestedScope,getCloudWriteScope()))session.cloudBusy=false','session.cloudBusy=false');
+    }
     if(name==='adoptRemoteRow'||name==='applyCloudRow'){
       const guard=name==='adoptRemoteRow'?'if(hasFailedLocalMutation(session))return false;':"if(hasFailedLocalMutation(session))throw new Error('storage_uncommitted_mutation');";
       assert.ok(actual.includes(guard));actual=actual.replace(guard,'').replace('return!hasFailedLocalMutation(session)&&','return ').replace('!hasFailedLocalMutation(session)&&','');

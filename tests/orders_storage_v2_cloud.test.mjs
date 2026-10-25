@@ -208,6 +208,7 @@ test('Orders remote refresh leaves the visible state unchanged when durable V2 a
     const model={state:clone(local)},session={localGeneration:0,cloudRevision:10,lastCloudState:clone(local),cloudBusy:false};
     let adopted=0,rendered=0;
     const api=createSyncDocument({
+      getCloudWriteScope:()=>({owner:'A:orders',epoch:'E',accountOwner:'A',loginEpoch:1,writable:true}),
       model,files:{},session,tab:{primaryTab:true},toast:noop,setCloud:noop,
       prepareCloudState:state=>clone(state),writeStateToFolder:async()=>{},
       readCloud:async()=>({revision:11,state:clone(remote)}),rpcSaveV2:async()=>{throw new Error('unexpected write')},
@@ -216,7 +217,7 @@ test('Orders remote refresh leaves the visible state unchanged when durable V2 a
       cloudEnabled:()=>true,sameOrderCloudData:(a,b)=>JSON.stringify(a.notes)===JSON.stringify(b.notes),
       cloudHasLocalWork:()=>false,render:()=>{rendered++},readCloudMeta:async()=>({revision:11}),
       refreshKupaReadout:async()=>true,pollSharedChecks:async()=>{},refreshCloudTimestamp:noop,
-      refreshStorageV2CloudState:async()=>({seq:0,base:{revision:10,ackSeq:0},pending:false,flight:null,control:null}),
+      refreshStorageV2CloudState:async()=>({seq:0,base:{owner:'A:orders',epoch:'E',revision:10,ackSeq:0},pending:false,flight:null,control:null}),
       adoptStorageV2CloudHead:async(_revision,state)=>{adopted++;assert.deepEqual(state.checks,local.checks);throw new Error('idb adoption failed')}
     });
     assert.equal(await api[method](),false,method);
