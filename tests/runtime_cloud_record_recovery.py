@@ -102,6 +102,45 @@ for app in ('kupa', 'orders'):
         print(f'{app} cloud-record recovery: {json.dumps(result,ensure_ascii=False)}',flush=True)
         assert not browser.drain_serious_errors()
         all_failures.extend({'app':app,**row} for row in failures)
+        corrupt=browser.evaluate(r"""(async()=>{
+          const app=APP,report=[];
+          const {createStorageV2Runtime}=await import('./assets/js/shared/storage-v2-runtime.js');
+          const {createStorageJournal}=await import('./assets/js/shared/storage-journal.js');
+          const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
+          const {sealStorageRecord}=await import('./assets/js/shared/storage-journal-model.js');
+          const {STORAGE_SCHEMAS}=await import('./assets/js/shared/storage-v2-schema.js');
+          const db=createStorageJournalDb(),slots=['checkpoints','metadata','journal','bases','flights','controls'];
+          for(const kind of ['metadata','collection']){
+            const account='persisted-corruption-'+kind,owner=account+':'+app;
+            const seed=createStorageJournal({owner,schema:STORAGE_SCHEMAS[app],validate:()=>{},db});
+            await seed.initializeCloudHead(1,{notes:[{id:'N'}]},{appMetadata:{storageRole:'primary',mainProjectionVersion:2}});
+            await seed.append([{type:'put',collection:'notes',mode:'replace',id:'N',record:{id:'N',content:'retained'}}]).committed;
+            const stored=await db.load(owner);
+            const handle=await new Promise((resolve,reject)=>{const r=indexedDB.open('netunim-storage-v2');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});
+            try{
+              await new Promise((resolve,reject)=>{
+                const tx=handle.transaction(slots,'readwrite');
+                if(kind==='metadata')tx.objectStore('metadata').put({...stored.metadata,seq:'1'},owner);
+                else tx.objectStore('checkpoints').put(sealStorageRecord({...stored.checkpoints.data,state:{notes:[null]}}),owner);
+                tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);
+              });
+              const snapshot=()=>new Promise((resolve,reject)=>{
+                const tx=handle.transaction(slots),values={};
+                for(const slot of slots){const request=slot==='journal'?tx.objectStore(slot).getAll(IDBKeyRange.bound([owner],[owner,[]])):tx.objectStore(slot).get(owner);request.onsuccess=()=>{values[slot]=request.result}}
+                tx.oncomplete=()=>resolve(JSON.stringify(values));tx.onabort=()=>reject(tx.error);
+              });
+              const before=await snapshot();let opens=0;
+              const runtime=createStorageV2Runtime({app,owner:()=>account,primary:()=>true,mode:()=> 'primary',validate:()=>{},createJournal:options=>{
+                const journal=createStorageJournal({...options,db}),open=journal.open;
+                journal.open=()=>{opens++;return open()};return journal;
+              }});
+              const recovered=await runtime.recover();await runtime.recover();
+              report.push({kind,error:runtime.diagnostics.lastError,fatal:runtime.diagnostics.recoveryFailure==='fatal',blocked:!runtime.primaryReady&&!runtime.cloudScope&&!recovered,opens,unchanged:before===await snapshot()});
+            }finally{handle.close()}
+          }return report;
+        })()""".replace('APP',json.dumps(app)))
+        assert all(row['fatal'] and row['blocked'] and row['opens']==1 and row['unchanged'] and row['error']==('storage_journal_metadata_invalid' if row['kind']=='metadata' else 'storage_invalid_collection_record') for row in corrupt), corrupt
+        print(f'PASS {app} persisted corruption blocks repeated recovery and preserves every owned IDB record: '+json.dumps(corrupt),flush=True)
         if not failures:
             print(f'PASS {app} real IDB cloud record decoding: {len(result)} Main/Shared scenarios, retained stores/writer, exact restoration and original IDs after durable ACK')
 assert not all_failures, f'real IDB cloud record failures: {json.dumps(all_failures,ensure_ascii=False)}'

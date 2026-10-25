@@ -192,12 +192,12 @@ test('an owner switch immediately fences the old V2 cloud cursor before the new 
 });
 
 test('overlapping recoveries remain scoped to the account that started them',async()=>{
-  const firstOpen=deferred(),record={state:{notes:[]},appMetadata:{storageRole:'primary',snapshotSeq:0},seq:0,stored:{checkpoints:{data:{seq:0}}}};
+  const firstOpen=deferred(),entered=deferred(),record={state:{notes:[]},appMetadata:{storageRole:'primary',snapshotSeq:0},seq:0,stored:{checkpoints:{data:{seq:0}}}};
   let owner='A',bOpens=0;
   const runtime=createStorageV2Runtime({app:'orders',owner:()=>owner,primary:()=>true,validate:noop,mode:()=> 'primary',createJournal:options=>({
-    ready:true,open:()=>options.owner.startsWith('A:')?firstOpen.promise:(bOpens++,Promise.resolve(record)),settled:()=>Promise.resolve(),
+    ready:true,open:()=>{if(options.owner.startsWith('A:')){entered.resolve();return firstOpen.promise}bOpens++;return Promise.resolve(record)},settled:()=>Promise.resolve(),
   })});
-  const oldRecovery=runtime.recover();owner='B';
+  const oldRecovery=runtime.recover();await entered.promise;owner='B';
   const current=await runtime.recover();assert.equal(current?.source,'v2');
   firstOpen.reject(new Error('old account failed'));
   assert.equal(await oldRecovery,null);
