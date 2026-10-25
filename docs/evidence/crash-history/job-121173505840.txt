@@ -1,0 +1,370 @@
+﻿2026-10-25T12:50:24.3274133Z Current runner version: '2.338.0'
+2026-10-25T12:50:24.3292922Z ##[group]Runner Image Provisioner
+2026-10-25T12:50:24.3293447Z Hosted Compute Agent
+2026-10-25T12:50:24.3293778Z Version: 20261021.618
+2026-10-25T12:50:24.3294122Z Commit: 21505ad2541d5be6135ed84fc33697146cf75b8e
+2026-10-25T12:50:24.3294552Z Build Date: 2026-10-21T00:45:21Z
+2026-10-25T12:50:24.3294934Z Worker ID: {80566c94-f34a-4d3f-a4b6-04ec9355203d}
+2026-10-25T12:50:24.3295348Z Region: centralus
+2026-10-25T12:50:24.3295652Z Cloud: Azure
+2026-10-25T12:50:24.3295943Z ##[endgroup]
+2026-10-25T12:50:24.3296658Z ##[group]Operating System
+2026-10-25T12:50:24.3297002Z Microsoft Windows Server 2025
+2026-10-25T12:50:24.3297379Z 10.0.26100
+2026-10-25T12:50:24.3297670Z Datacenter
+2026-10-25T12:50:24.3297954Z ##[endgroup]
+2026-10-25T12:50:24.3298244Z ##[group]Runner Image
+2026-10-25T12:50:24.3298584Z Image: windows-2025-vs2026
+2026-10-25T12:50:24.3298919Z Version: 20261021.278.1
+2026-10-25T12:50:24.3299853Z Included Software: https://github.com/actions/runner-images/blob/win25-vs2026/20261021.278/images/windows/Windows2025-VS2026-Readme.md
+2026-10-25T12:50:24.3300724Z Image Release: https://github.com/actions/runner-images/releases/tag/win25-vs2026%2F20261021.278
+2026-10-25T12:50:24.3301285Z ##[endgroup]
+2026-10-25T12:50:24.3301881Z ##[group]GITHUB_TOKEN Permissions
+2026-10-25T12:50:24.3303047Z Contents: read
+2026-10-25T12:50:24.3303339Z Metadata: read
+2026-10-25T12:50:24.3303645Z ##[endgroup]
+2026-10-25T12:50:24.3304969Z Secret source: Actions
+2026-10-25T12:50:24.3305749Z Cache mode: write
+2026-10-25T12:50:24.3306186Z Prepare workflow directory
+2026-10-25T12:50:24.3575400Z Prepare all required actions
+2026-10-25T12:50:24.3609120Z Getting action download info
+2026-10-25T12:50:24.5846990Z Download action repository 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1' (SHA:3d3c42e5aac5ba805825da76410c181273ba90b1)
+2026-10-25T12:50:24.6634847Z Download action repository 'actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97' (SHA:5fda3b95a4ea91299a34e894583c3862153e4b97)
+2026-10-25T12:50:24.7539835Z Download action repository 'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020' (SHA:820762786026740c76f36085b0efc47a31fe5020)
+2026-10-25T12:50:24.9563159Z Download action repository 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a' (SHA:043fb46d1a93c77aae656e7c1c64a875d1fc6a0a)
+2026-10-25T12:50:25.1092612Z Complete job name: Windows deployment contracts
+2026-10-25T12:50:25.2224600Z ##[group]Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+2026-10-25T12:50:25.2225407Z with:
+2026-10-25T12:50:25.2225647Z   persist-credentials: false
+2026-10-25T12:50:25.2225920Z   repository: 218218y/netunim
+2026-10-25T12:50:25.2228182Z   token: ***
+2026-10-25T12:50:25.2228403Z   ssh-strict: true
+2026-10-25T12:50:25.2228632Z   ssh-user: git
+2026-10-25T12:50:25.2228849Z   clean: true
+2026-10-25T12:50:25.2229078Z   sparse-checkout-cone-mode: true
+2026-10-25T12:50:25.2229354Z   fetch-depth: 1
+2026-10-25T12:50:25.2229601Z   fetch-tags: false
+2026-10-25T12:50:25.2229831Z   show-progress: true
+2026-10-25T12:50:25.2230065Z   lfs: false
+2026-10-25T12:50:25.2230277Z   submodules: false
+2026-10-25T12:50:25.2230519Z   set-safe-directory: true
+2026-10-25T12:50:25.2230786Z   allow-unsafe-pr-checkout: false
+2026-10-25T12:50:25.2231148Z env:
+2026-10-25T12:50:25.2231350Z   PYTHONUTF8: 1
+2026-10-25T12:50:25.2231572Z   PYTHONUNBUFFERED: 1
+2026-10-25T12:50:25.2231832Z ##[endgroup]
+2026-10-25T12:50:25.3332399Z Syncing repository: 218218y/netunim
+2026-10-25T12:50:25.3333421Z ##[group]Getting Git version info
+2026-10-25T12:50:25.3333748Z Working directory is 'D:\a\netunim\netunim'
+2026-10-25T12:50:25.3833351Z [command]"C:\Program Files\Git\bin\git.exe" version
+2026-10-25T12:50:25.6700264Z git version 2.56.0.windows.2
+2026-10-25T12:50:25.6738535Z ##[endgroup]
+2026-10-25T12:50:25.6750005Z Temporarily overriding HOME='D:\a\_temp\2aef939c-bd26-4430-a7d5-739e9da2c237' before making global git config changes
+2026-10-25T12:50:25.6752404Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-25T12:50:25.6757098Z [command]"C:\Program Files\Git\bin\git.exe" config --global --add safe.directory D:\a\netunim\netunim
+2026-10-25T12:50:25.7303797Z Deleting the contents of 'D:\a\netunim\netunim'
+2026-10-25T12:50:25.7307892Z ##[group]Determining repository object format
+2026-10-25T12:50:25.7309503Z ##[endgroup]
+2026-10-25T12:50:25.7310210Z ##[group]Initializing the repository
+2026-10-25T12:50:25.7316371Z [command]"C:\Program Files\Git\bin\git.exe" init D:\a\netunim\netunim
+2026-10-25T12:50:25.8086575Z Initialized empty Git repository in D:/a/netunim/netunim/.git/
+2026-10-25T12:50:25.8127088Z [command]"C:\Program Files\Git\bin\git.exe" remote add origin https://github.com/218218y/netunim
+2026-10-25T12:50:25.8632766Z ##[endgroup]
+2026-10-25T12:50:25.8633283Z ##[group]Disabling automatic garbage collection
+2026-10-25T12:50:25.8639745Z [command]"C:\Program Files\Git\bin\git.exe" config --local gc.auto 0
+2026-10-25T12:50:25.8919982Z ##[endgroup]
+2026-10-25T12:50:25.8920547Z ##[group]Setting up auth
+2026-10-25T12:50:25.8920962Z Removing SSH command configuration
+2026-10-25T12:50:25.8931190Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp core\.sshCommand
+2026-10-25T12:50:25.9246690Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\""
+2026-10-25T12:50:27.1259538Z Removing HTTP extra header
+2026-10-25T12:50:27.1267254Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-25T12:50:27.1526300Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :\""
+2026-10-25T12:50:27.5455350Z Removing includeIf entries pointing to credentials config files
+2026-10-25T12:50:27.5464320Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-25T12:50:27.5739979Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "git config --local --show-origin --name-only --get-regexp remote.origin.url"
+2026-10-25T12:50:27.9909551Z [command]"C:\Program Files\Git\bin\git.exe" config --file D:\a\_temp\git-credentials-29f7dc77-1baf-46bf-9e59-15e4e894bd51.config http.https://github.com/.extraheader "AUTHORIZATION: basic ***"
+2026-10-25T12:50:28.0213176Z [command]"C:\Program Files\Git\bin\git.exe" config --local includeIf.gitdir:D:/a/netunim/netunim/.git.path D:\a\_temp\git-credentials-29f7dc77-1baf-46bf-9e59-15e4e894bd51.config
+2026-10-25T12:50:28.0499159Z [command]"C:\Program Files\Git\bin\git.exe" config --local includeIf.gitdir:D:/a/netunim/netunim/.git/worktrees/*.path D:\a\_temp\git-credentials-29f7dc77-1baf-46bf-9e59-15e4e894bd51.config
+2026-10-25T12:50:28.0822520Z [command]"C:\Program Files\Git\bin\git.exe" config --local includeIf.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-29f7dc77-1baf-46bf-9e59-15e4e894bd51.config
+2026-10-25T12:50:28.1102319Z [command]"C:\Program Files\Git\bin\git.exe" config --local includeIf.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-29f7dc77-1baf-46bf-9e59-15e4e894bd51.config
+2026-10-25T12:50:28.1376358Z ##[endgroup]
+2026-10-25T12:50:28.1376732Z ##[group]Fetching the repository
+2026-10-25T12:50:28.1386686Z [command]"C:\Program Files\Git\bin\git.exe" -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +799752350f2feed72321bf2b8769c8d2e683d24a:refs/remotes/pull/320/merge
+2026-10-25T12:50:30.6040340Z From https://github.com/218218y/netunim
+2026-10-25T12:50:30.6041514Z  * [new ref]         799752350f2feed72321bf2b8769c8d2e683d24a -> pull/320/merge
+2026-10-25T12:50:30.6077945Z ##[endgroup]
+2026-10-25T12:50:30.6078423Z ##[group]Determining the checkout info
+2026-10-25T12:50:30.6078740Z ##[endgroup]
+2026-10-25T12:50:30.6085775Z [command]"C:\Program Files\Git\bin\git.exe" sparse-checkout disable
+2026-10-25T12:50:30.6484129Z [command]"C:\Program Files\Git\bin\git.exe" config --local --unset-all extensions.worktreeConfig
+2026-10-25T12:50:30.6760713Z ##[group]Checking out the ref
+2026-10-25T12:50:30.6771518Z [command]"C:\Program Files\Git\bin\git.exe" checkout --progress --force refs/remotes/pull/320/merge
+2026-10-25T12:50:31.5375651Z Note: switching to 'refs/remotes/pull/320/merge'.
+2026-10-25T12:50:31.5377398Z 
+2026-10-25T12:50:31.5377782Z You are in 'detached HEAD' state. You can look around, make experimental
+2026-10-25T12:50:31.5378244Z changes and commit them, and you can discard any commits you make in this
+2026-10-25T12:50:31.5378833Z state without impacting any branches by switching back to a branch.
+2026-10-25T12:50:31.5379120Z 
+2026-10-25T12:50:31.5379381Z If you want to create a new branch to retain commits you create, you may
+2026-10-25T12:50:31.5380222Z do so (now or later) by using -c with the switch command. Example:
+2026-10-25T12:50:31.5380465Z 
+2026-10-25T12:50:31.5380631Z   git switch -c <new-branch-name>
+2026-10-25T12:50:31.5380823Z 
+2026-10-25T12:50:31.5380910Z Or undo this operation with:
+2026-10-25T12:50:31.5381046Z 
+2026-10-25T12:50:31.5381112Z   git switch -
+2026-10-25T12:50:31.5381287Z 
+2026-10-25T12:50:31.5381667Z Turn off this advice by setting config variable advice.detachedHead to false
+2026-10-25T12:50:31.5381943Z 
+2026-10-25T12:50:31.5382257Z HEAD is now at 7997523 Merge 8bfc4108298be71ffd9c3a4c68deb92717ff487b into d11df8953d37680e8a6e4ca96359cf04945a87ae
+2026-10-25T12:50:31.5536786Z ##[endgroup]
+2026-10-25T12:50:31.5895273Z [command]"C:\Program Files\Git\bin\git.exe" log -1 --format=%H
+2026-10-25T12:50:31.6152348Z 799752350f2feed72321bf2b8769c8d2e683d24a
+2026-10-25T12:50:31.6187652Z ##[group]Removing auth
+2026-10-25T12:50:31.6187915Z Removing SSH command configuration
+2026-10-25T12:50:31.6194502Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp core\.sshCommand
+2026-10-25T12:50:31.6479577Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\""
+2026-10-25T12:50:32.0532472Z Removing HTTP extra header
+2026-10-25T12:50:32.0538022Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-25T12:50:32.0803951Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :\""
+2026-10-25T12:50:32.5455301Z Removing includeIf entries pointing to credentials config files
+2026-10-25T12:50:32.5465967Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-25T12:50:32.5717001Z includeif.gitdir:D:/a/netunim/netunim/.git.path
+2026-10-25T12:50:32.5718289Z includeif.gitdir:D:/a/netunim/netunim/.git/worktrees/*.path
+2026-10-25T12:50:32.5718613Z includeif.gitdir:/github/workspace/.git.path
+2026-10-25T12:50:32.5718918Z includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-10-25T12:50:32.5755853Z [command]"C:\Program Files\Git\bin\git.exe" config --local --get-all includeif.gitdir:D:/a/netunim/netunim/.git.path
+2026-10-25T12:50:32.5992936Z D:\a\_temp\git-credentials-29f7dc77-1baf-46bf-9e59-15e4e894bd51.config
+2026-10-25T12:50:32.6023793Z [command]"C:\Program Files\Git\bin\git.exe" config --local --unset includeif.gitdir:D:/a/netunim/netunim/.git.path D\:\\a\\_temp\\git\-credentials\-29f7dc77\-1baf\-46bf\-9e59\-15e4e894bd51\.config
+2026-10-25T12:50:32.6277379Z [command]"C:\Program Files\Git\bin\git.exe" config --local --get-all includeif.gitdir:D:/a/netunim/netunim/.git/worktrees/*.path
+2026-10-25T12:50:32.6501724Z D:\a\_temp\git-credentials-29f7dc77-1baf-46bf-9e59-15e4e894bd51.config
+2026-10-25T12:50:32.6532391Z [command]"C:\Program Files\Git\bin\git.exe" config --local --unset includeif.gitdir:D:/a/netunim/netunim/.git/worktrees/*.path D\:\\a\\_temp\\git\-credentials\-29f7dc77\-1baf\-46bf\-9e59\-15e4e894bd51\.config
+2026-10-25T12:50:32.6790248Z [command]"C:\Program Files\Git\bin\git.exe" config --local --get-all includeif.gitdir:/github/workspace/.git.path
+2026-10-25T12:50:32.7016689Z /github/runner_temp/git-credentials-29f7dc77-1baf-46bf-9e59-15e4e894bd51.config
+2026-10-25T12:50:32.7045612Z [command]"C:\Program Files\Git\bin\git.exe" config --local --unset includeif.gitdir:/github/workspace/.git.path \/github\/runner_temp\/git\-credentials\-29f7dc77\-1baf\-46bf\-9e59\-15e4e894bd51\.config
+2026-10-25T12:50:32.7293864Z [command]"C:\Program Files\Git\bin\git.exe" config --local --get-all includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-10-25T12:50:32.7511891Z /github/runner_temp/git-credentials-29f7dc77-1baf-46bf-9e59-15e4e894bd51.config
+2026-10-25T12:50:32.7540645Z [command]"C:\Program Files\Git\bin\git.exe" config --local --unset includeif.gitdir:/github/workspace/.git/worktrees/*.path \/github\/runner_temp\/git\-credentials\-29f7dc77\-1baf\-46bf\-9e59\-15e4e894bd51\.config
+2026-10-25T12:50:32.7790311Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "git config --local --show-origin --name-only --get-regexp remote.origin.url"
+2026-10-25T12:50:33.1790925Z Removing credentials config 'D:\a\_temp\git-credentials-29f7dc77-1baf-46bf-9e59-15e4e894bd51.config'
+2026-10-25T12:50:33.1801239Z ##[endgroup]
+2026-10-25T12:50:33.2117572Z ##[group]Run actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+2026-10-25T12:50:33.2117853Z with:
+2026-10-25T12:50:33.2117966Z   python-version: 3.14
+2026-10-25T12:50:33.2118092Z   check-latest: false
+2026-10-25T12:50:33.2119542Z   token: ***
+2026-10-25T12:50:33.2119674Z   update-environment: true
+2026-10-25T12:50:33.2119803Z   allow-prereleases: false
+2026-10-25T12:50:33.2119927Z   freethreaded: false
+2026-10-25T12:50:33.2120038Z env:
+2026-10-25T12:50:33.2120139Z   PYTHONUTF8: 1
+2026-10-25T12:50:33.2120249Z   PYTHONUNBUFFERED: 1
+2026-10-25T12:50:33.2120362Z ##[endgroup]
+2026-10-25T12:50:33.3154627Z ##[group]Installed versions
+2026-10-25T12:50:33.3247935Z Successfully set up CPython (3.14.9)
+2026-10-25T12:50:33.3248375Z ##[endgroup]
+2026-10-25T12:50:33.3487923Z ##[group]Run actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+2026-10-25T12:50:33.3488181Z with:
+2026-10-25T12:50:33.3488293Z   node-version: 24
+2026-10-25T12:50:33.3488418Z   package-manager-cache: false
+2026-10-25T12:50:33.3488568Z   check-latest: false
+2026-10-25T12:50:33.3490035Z   token: ***
+2026-10-25T12:50:33.3490141Z env:
+2026-10-25T12:50:33.3490243Z   PYTHONUTF8: 1
+2026-10-25T12:50:33.3490357Z   PYTHONUNBUFFERED: 1
+2026-10-25T12:50:33.3490533Z   pythonLocation: C:\hostedtoolcache\windows\Python\3.14.9\x64
+2026-10-25T12:50:33.3490815Z   PKG_CONFIG_PATH: C:\hostedtoolcache\windows\Python\3.14.9\x64/lib/pkgconfig
+2026-10-25T12:50:33.3491063Z   Python_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.14.9\x64
+2026-10-25T12:50:33.3491290Z   Python2_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.14.9\x64
+2026-10-25T12:50:33.3491509Z   Python3_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.14.9\x64
+2026-10-25T12:50:33.3491699Z ##[endgroup]
+2026-10-25T12:50:33.4706561Z Found in cache @ C:\hostedtoolcache\windows\node\24.22.1\x64
+2026-10-25T12:50:33.4710769Z ##[group]Environment details
+2026-10-25T12:50:37.5416382Z node: v24.22.1
+2026-10-25T12:50:37.5416637Z npm: 11.19.1
+2026-10-25T12:50:37.5416800Z yarn: 1.22.22
+2026-10-25T12:50:37.5417311Z ##[endgroup]
+2026-10-25T12:50:37.5703855Z ##[group]Run npm ci --cache "$env:RUNNER_TEMP/netunim-npm-cache" --ignore-scripts --no-audit --no-fund
+2026-10-25T12:50:37.5704366Z [36;1mnpm ci --cache "$env:RUNNER_TEMP/netunim-npm-cache" --ignore-scripts --no-audit --no-fund[0m
+2026-10-25T12:50:37.5704820Z [36;1mif ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }[0m
+2026-10-25T12:50:37.5705063Z [36;1mpython -m pip install --no-cache-dir -r tests/requirements-ci.txt[0m
+2026-10-25T12:50:37.5705290Z [36;1mif ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }[0m
+2026-10-25T12:50:37.5705481Z [36;1mpython tests/windows_deploy_contracts.py[0m
+2026-10-25T12:50:37.6212529Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2026-10-25T12:50:37.6212754Z env:
+2026-10-25T12:50:37.6212871Z   PYTHONUTF8: 1
+2026-10-25T12:50:37.6212984Z   PYTHONUNBUFFERED: 1
+2026-10-25T12:50:37.6213148Z   pythonLocation: C:\hostedtoolcache\windows\Python\3.14.9\x64
+2026-10-25T12:50:37.6213437Z   PKG_CONFIG_PATH: C:\hostedtoolcache\windows\Python\3.14.9\x64/lib/pkgconfig
+2026-10-25T12:50:37.6213681Z   Python_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.14.9\x64
+2026-10-25T12:50:37.6213897Z   Python2_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.14.9\x64
+2026-10-25T12:50:37.6214125Z   Python3_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.14.9\x64
+2026-10-25T12:50:37.6214305Z ##[endgroup]
+2026-10-25T12:50:40.6776743Z 
+2026-10-25T12:50:40.6782004Z added 79 packages in 3s
+2026-10-25T12:50:45.2528520Z Collecting websocket-client==1.9.0 (from -r tests/requirements-ci.txt (line 2))
+2026-10-25T12:50:45.3273243Z   Downloading websocket_client-1.9.0-py3-none-any.whl.metadata (8.3 kB)
+2026-10-25T12:50:45.3539451Z Downloading websocket_client-1.9.0-py3-none-any.whl (82 kB)
+2026-10-25T12:50:45.5227413Z Installing collected packages: websocket-client
+2026-10-25T12:50:45.6312466Z Successfully installed websocket-client-1.9.0
+2026-10-25T12:50:46.1461847Z test_startup_failure_cannot_swap_a_runtime_without_confirmed_shutdown (__main__.WindowsBankInstallerRollbackContracts.test_startup_failure_cannot_swap_a_runtime_without_confirmed_shutdown) ... ok
+2026-10-25T12:50:56.1959595Z test_native_configuration_vault_and_current_user_protection (__main__.WindowsBankVaultContracts.test_native_configuration_vault_and_current_user_protection) ... ok
+2026-10-25T12:50:56.5868720Z test_all_entrypoints_complete_uploads_without_public_http_access (__main__.WindowsDeploymentContracts.test_all_entrypoints_complete_uploads_without_public_http_access) ... ok
+2026-10-25T12:50:56.8364650Z test_fast_entrypoints_use_remote_gate_and_only_selected_sites (__main__.WindowsDeploymentContracts.test_fast_entrypoints_use_remote_gate_and_only_selected_sites) ... ok
+2026-10-25T12:50:56.9705408Z test_fast_failures_stop_before_site_engine (__main__.WindowsDeploymentContracts.test_fast_failures_stop_before_site_engine) ... ok
+2026-10-25T12:50:57.1497027Z test_fast_upload_preflights_both_sites_before_uploading_either (__main__.WindowsDeploymentContracts.test_fast_upload_preflights_both_sites_before_uploading_either) ... ok
+2026-10-25T12:50:57.1721702Z test_invalid_option_fails_before_any_gate_or_upload (__main__.WindowsDeploymentContracts.test_invalid_option_fails_before_any_gate_or_upload) ... ok
+2026-10-25T12:50:57.2861897Z test_normal_entrypoints_still_verify_once_and_propagate_failure (__main__.WindowsDeploymentContracts.test_normal_entrypoints_still_verify_once_and_propagate_failure) ... ok
+2026-10-25T12:50:57.5458114Z test_paired_upload_failures_still_stop_and_propagate_wrangler_exit (__main__.WindowsDeploymentContracts.test_paired_upload_failures_still_stop_and_propagate_wrangler_exit) ... ok
+2026-10-25T12:51:03.8491531Z test_real_engine_database_gate_runs_before_preflight_success_and_stops_both_sites (__main__.WindowsDeploymentContracts.test_real_engine_database_gate_runs_before_preflight_success_and_stops_both_sites) ... ok
+2026-10-25T12:51:03.8684777Z test_real_internal_engine_rejects_direct_unverified_invocation (__main__.WindowsDeploymentContracts.test_real_internal_engine_rejects_direct_unverified_invocation) ... ok
+2026-10-25T12:51:09.3195702Z ✔ native shutdown retains an accepted artifact read after its HTTP client disconnects (416.9049ms)
+2026-10-25T12:51:09.3198656Z ✔ native shutdown retains an accepted diagnostic summary after its HTTP client disconnects (588.9105ms)
+2026-10-25T12:51:09.3199473Z ✔ staged Bank runtime starts its real HTTP capabilities with isolated files and no provider login (2219.4142ms)
+2026-10-25T12:51:09.3200144Z ✔ native shutdown retains an accepted image read after its HTTP client disconnects (434.8988ms)
+2026-10-25T12:51:09.3200786Z ✔ native Bank provider composition keeps browser cleanup owned before public metadata publication (2117.3027ms)
+2026-10-25T12:51:09.3201283Z ✔ the actual replacement CLI cannot mistake an unanswered health probe for an absent process (1578.4404ms)
+2026-10-25T12:51:09.3201787Z ✔ native shutdown retains an accepted vault deletion after its HTTP client disconnects (406.7401ms)
+2026-10-25T12:51:09.3202383Z ✔ native shutdown waits for accepted diagnostic bytes after its HTTP listener becomes otherwise idle (369.409ms)
+2026-10-25T12:51:09.3202833Z ✔ the actual replacement CLI refuses to force-stop a bridge still draining (664.0396ms)
+2026-10-25T12:51:09.3203282Z ✔ native staged Credit composition retains adapter cleanup before status and diagnostic publication (339.0032ms)
+2026-10-25T12:51:09.3203577Z ℹ tests 10
+2026-10-25T12:51:09.3203700Z ℹ suites 0
+2026-10-25T12:51:09.3203836Z ℹ pass 10
+2026-10-25T12:51:09.3204046Z ℹ fail 0
+2026-10-25T12:51:09.3204171Z ℹ cancelled 0
+2026-10-25T12:51:09.3204298Z ℹ skipped 0
+2026-10-25T12:51:09.3204414Z ℹ todo 0
+2026-10-25T12:51:09.3204544Z ℹ duration_ms 5397.9127
+2026-10-25T12:51:09.3204634Z 
+2026-10-25T12:51:09.3224877Z test_windows_native_bank_vault_and_provider_stub_acceptance (__main__.WindowsDeploymentContracts.test_windows_native_bank_vault_and_provider_stub_acceptance) ... ok
+2026-10-25T12:51:09.3297541Z >>> runtime_browser_isolation.py
+2026-10-25T12:51:19.9450392Z PASS browser isolation: separate LocalStorage/IndexedDB/CacheStorage, owned profiles, denied foreign and loopback egress
+2026-10-25T12:51:19.9450823Z PASSED: runtime_browser_isolation.py (10.62s)
+2026-10-25T12:51:19.9454689Z >>> runtime_backup_browser_resources.py
+2026-10-25T12:51:24.3809744Z RUNNING [15s total]: runtime_backup_browser_resources.py 4s
+2026-10-25T12:51:39.3945251Z RUNNING [30s total]: runtime_backup_browser_resources.py 19s
+2026-10-25T12:51:54.4026992Z RUNNING [45s total]: runtime_backup_browser_resources.py 34s
+2026-10-25T12:52:09.4299582Z RUNNING [60s total]: runtime_backup_browser_resources.py 49s
+2026-10-25T12:52:24.4547466Z RUNNING [75s total]: runtime_backup_browser_resources.py 65s
+2026-10-25T12:52:39.4966384Z RUNNING [90s total]: runtime_backup_browser_resources.py 80s
+2026-10-25T12:52:54.5070686Z RUNNING [105s total]: runtime_backup_browser_resources.py 95s
+2026-10-25T12:53:07.6224183Z PASS native backup resources orders: {"phase": "read-dispose", "drained": true, "retained": true, "restored": false}
+2026-10-25T12:53:07.6224980Z PASS native backup resources orders: {"phase": "read-account", "drained": true, "retained": true, "restored": false}
+2026-10-25T12:53:07.6225672Z PASS native backup resources orders: {"phase": "confirmation", "drained": true, "retained": true, "restored": false}
+2026-10-25T12:53:07.6226337Z PASS native backup resources orders: {"phase": "success", "drained": true, "retained": false, "restored": true}
+2026-10-25T12:53:07.6226895Z PASS native backup resources orders: {"phase": "downloads", "cycles": 50, "urls": 0}
+2026-10-25T12:53:07.6227471Z PASS orders actual synthetic backup file roundtrip and paired journals after hard process restart
+2026-10-25T12:53:07.6228070Z PASS orders earlier-schema file, restart, stable identity/zero money and future/foreign refusal
+2026-10-25T12:53:07.6228709Z PASS native backup resources kupa: {"phase": "read-dispose", "drained": true, "retained": true, "restored": false}
+2026-10-25T12:53:07.6230326Z PASS native backup resources kupa: {"phase": "read-account", "drained": true, "retained": true, "restored": false}
+2026-10-25T12:53:07.6231090Z PASS native backup resources kupa: {"phase": "confirmation", "drained": true, "retained": true, "restored": false}
+2026-10-25T12:53:07.6231976Z PASS native backup resources kupa: {"phase": "success", "drained": true, "retained": false, "restored": true}
+2026-10-25T12:53:07.6232545Z PASS native backup resources kupa: {"phase": "downloads", "cycles": 50, "urls": 0}
+2026-10-25T12:53:07.6233092Z PASS kupa actual synthetic backup file roundtrip and paired journals after hard process restart
+2026-10-25T12:53:07.6233642Z PASS kupa earlier-schema file, restart, stable identity/zero money and future/foreign refusal
+2026-10-25T12:53:07.6234082Z PASSED: runtime_backup_browser_resources.py (107.67s)
+2026-10-25T12:53:07.6234405Z >>> runtime_restore_server_recovery.py
+2026-10-25T12:53:09.5464157Z RUNNING [120s total]: runtime_restore_server_recovery.py 2s
+2026-10-25T12:53:23.0577569Z PASS orders server-only restore: hard process restart, native pending identity and paired authoritative heads
+2026-10-25T12:53:23.0578239Z Traceback (most recent call last):
+2026-10-25T12:53:23.0579193Z   File "<string>", line 9, in <module>
+2026-10-25T12:53:23.0579500Z     runpy.run_path(path, run_name='__main__')
+2026-10-25T12:53:23.0579743Z     ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2026-10-25T12:53:23.0580642Z   File "<frozen runpy>", line 294, in run_path
+2026-10-25T12:53:23.0581339Z   File "<frozen runpy>", line 98, in _run_module_code
+2026-10-25T12:53:23.0581689Z   File "<frozen runpy>", line 88, in _run_code
+2026-10-25T12:53:23.0582136Z   File "D:\a\netunim\netunim\tests\runtime_restore_server_recovery.py", line 171, in <module>
+2026-10-25T12:53:23.0582542Z     paired_process_boundaries(app)
+2026-10-25T12:53:23.0582778Z     ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^
+2026-10-25T12:53:23.0583235Z   File "D:\a\netunim\netunim\tests\runtime_restore_server_recovery.py", line 136, in paired_process_boundaries
+2026-10-25T12:53:23.0583929Z     check_profile(database_required=True)
+2026-10-25T12:53:23.0584181Z     ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+2026-10-25T12:53:23.0585040Z   File "D:\a\netunim\netunim\tests\runtime_restore_server_recovery.py", line 110, in check_profile
+2026-10-25T12:53:23.0585914Z     assert 'restore-process-'+app in observed['databases'],{'fixture_database_disappeared':observed,'phase':phase}
+2026-10-25T12:53:23.0586381Z            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2026-10-25T12:53:23.0587416Z AssertionError: {'fixture_database_disappeared': {'marker': 'orders-prepared-owned-profile', 'databases': ['netunim-storage-v2']}, 'phase': 'prepared'}
+2026-10-25T12:53:23.0598918Z Owned Chromium failure diagnostics: {"stderr": ["browser.log: [10080:3248:1025/125321.459:ERROR:content\\browser\\indexed_db\\instance\\leveldb\\backing_store.cc:237] Failed to open LevelDB database from C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\nv-fvc_qovp\\netunim-orders-restore-process-prepared-chrome-s7czvcpi\\Default\\IndexedDB\\http_127.0.0.1_56027.indexeddb.leveldb,Corruption: checksum mismatch", "browser.log: [10080:3248:1025/125321.459:ERROR:content\\browser\\indexed_db\\instance\\leveldb\\backing_store.cc:1642] Got corruption for { origin: http://127.0.0.1:56027, top-level site: http://127.0.0.1, nonce: <null>, ancestor chain bit: Same-Site }, checksum mismatch", "browser.log: [10080:3248:1025/125321.468:ERROR:content\\browser\\indexed_db\\instance\\leveldb\\backing_store.cc:1502] IndexedDB recovering from a corrupted (and deleted) database.", "browser.log: [10080:2852:1025/125321.504:INFO:CONSOLE:14] \"Uncaught (in promise) Error: storage_local_engine_marker_mismatch\", source: http://127.0.0.1:56027/assets/js/shared/storage-v2-local-birth.js (14)"], "indexed_db_files": [{"path": "Default\\IndexedDB\\http_127.0.0.1_56027.indexeddb.leveldb\\000003.log", "bytes": 9306}, {"path": "Default\\IndexedDB\\http_127.0.0.1_56027.indexeddb.leveldb\\CURRENT", "bytes": 16}, {"path": "Default\\IndexedDB\\http_127.0.0.1_56027.indexeddb.leveldb\\LOCK", "bytes": 0}, {"path": "Default\\IndexedDB\\http_127.0.0.1_56027.indexeddb.leveldb\\LOG", "bytes": 447}, {"path": "Default\\IndexedDB\\http_127.0.0.1_56027.indexeddb.leveldb\\MANIFEST-000001", "bytes": 23}], "network": [], "proxy_denied": [{"method": "GET", "host": "clients2.google.com", "port": null}, {"method": "CONNECT", "host": "www.gstatic.com", "port": 443}, {"method": "CONNECT", "host": "update.googleapis.com", "port": 443}, {"method": "CONNECT", "host": "www.google.com", "port": 443}, {"method": "CONNECT", "host": "accounts.google.com", "port": 443}, {"method": "POST", "host": "update.googleapis.com", "port": null}, {"method": "CONNECT", "host": "www.google.com", "port": 443}, {"method": "CONNECT", "host": "content-autofill.googleapis.com", "port": 443}, {"method": "CONNECT", "host": "content-autofill.googleapis.com", "port": 443}, {"method": "CONNECT", "host": "accounts.google.com", "port": 443}, {"method": "CONNECT", "host": "www.google.com", "port": 443}, {"method": "GET", "host": "clients2.google.com", "port": null}, {"method": "CONNECT", "host": "www.gstatic.com", "port": 443}, {"method": "CONNECT", "host": "www.google.com", "port": 443}, {"method": "CONNECT", "host": "accounts.google.com", "port": 443}, {"method": "CONNECT", "host": "update.googleapis.com", "port": 443}, {"method": "POST", "host": "update.googleapis.com", "port": null}, {"method": "CONNECT", "host": "www.google.com", "port": 443}, {"method": "CONNECT", "host": "content-autofill.googleapis.com", "port": 443}, {"method": "CONNECT", "host": "content-autofill.googleapis.com", "port": 443}], "browser": "Chrome/156.0.8078.48", "indexed_db_histograms": [{"name": "IndexedDB.BackendDuration.OpenCursor.OnDisk", "sum": 0, "count": 1, "buckets": [{"low": 0, "high": 1, "count": 1}]}, {"name": "IndexedDB.BackingStore.BeginTransaction.OnDisk", "sum": 0, "count": 7, "buckets": [{"low": 0, "high": 1, "count": 7}]}, {"name": "IndexedDB.BackingStore.ChangeDatabaseVersion.OnDisk", "sum": 0, "count": 1, "buckets": [{"low": 0, "high": 1, "count": 1}]}, {"name": "IndexedDB.BackingStore.CommitPhaseOne.OnDisk", "sum": 0, "count": 7, "buckets": [{"low": 0, "high": 1, "count": 7}]}, {"name": "IndexedDB.BackingStore.CommitPhaseTwo.OnDisk", "sum": 0, "count": 7, "buckets": [{"low": 0, "high": 1, "count": 7}]}, {"name": "IndexedDB.BackingStore.CreateIfMissing.OnDisk", "sum": 0, "count": 1, "buckets": [{"low": 0, "high": 1, "count": 1}]}, {"name": "IndexedDB.BackingStore.CreateIndex.OnDisk", "sum": 0, "count": 1, "buckets": [{"low": 0, "high": 1, "count": 1}]}, {"name": "IndexedDB.BackingStore.CreateObjectStore.OnDisk", "sum": 0, "count": 12, "buckets": [{"low": 0, "high": 1, "count": 12}]}, {"name": "IndexedDB.BackingStore.CreateOrOpenDatabase.OnDisk", "sum": 0, "count": 1, "buckets": [{"low": 0, "high": 1, "count": 1}]}, {"name": "IndexedDB.BackingStore.GetDatabaseNamesAndVersions.OnDisk", "sum": 0, "count": 1, "buckets": [{"low": 0, "high": 1, "count": 1}]}, {"name": "IndexedDB.BackingStore.GetRecord.OnDisk", "sum": 0, "count": 9, "buckets": [{"low": 0, "high": 1, "count": 9}]}, {"name": "IndexedDB.BackingStore.OpenCursor.OnDisk", "sum": 0, "count": 1, "buckets": [{"low": 0, "high": 1, "count": 1}]}, {"name": "IndexedDB.BackingStore.PutRecord.OnDisk", "sum": 0, "count": 1, "buckets": [{"low": 0, "high": 1, "count": 1}]}, {"name": "IndexedDB.DatabaseConnectionOpenResult.OnDisk", "sum": 6, "count": 8, "buckets": [{"low": 0, "high": 1, "count": 4}, {"low": 1, "high": 2, "count": 3}, {"low": 3, "high": 4, "count": 1}]}, {"name": "IndexedDB.FilePathLengthOverflow.LevelDB", "sum": 0, "count": 1, "buckets": [{"low": 0, "high": 1, "count": 1}]}], "disk_free_bytes": 30376779776}
+2026-10-25T12:53:23.0607475Z FAILED: runtime_restore_server_recovery.py (15.43s)
+2026-10-25T12:53:23.0607665Z >>> runtime_pwa.py
+2026-10-25T12:53:24.5810334Z RUNNING [135s total]: runtime_pwa.py 2s
+2026-10-25T12:53:39.6165631Z RUNNING [150s total]: runtime_pwa.py 17s
+2026-10-25T12:53:54.6306343Z RUNNING [165s total]: runtime_pwa.py 32s
+2026-10-25T12:54:07.2060304Z PASS kupa native ESM, 351 cached application modules, lazy vendor runtime, V2 offline recovery, second-tab guard
+2026-10-25T12:54:07.2061077Z PASS kupa legacy SW upgrade, cache-scoped offline fallback, real HTTP headers/MIME, browser restart offline in 779 ms with cloud-free Local V2 birth
+2026-10-25T12:54:07.2061778Z PASS orders native ESM, 462 cached application modules, lazy vendor runtime, V2 offline recovery, second-tab guard
+2026-10-25T12:54:07.2062513Z PASS orders legacy SW upgrade, cache-scoped offline fallback, real HTTP headers/MIME, browser restart offline in 996 ms with cloud-free Local V2 birth
+2026-10-25T12:54:07.2063108Z PASSED: runtime_pwa.py (44.15s)
+2026-10-25T12:54:07.2065972Z >>> runtime_release_compatibility.py
+2026-10-25T12:54:09.6413363Z RUNNING [180s total]: runtime_release_compatibility.py 2s
+2026-10-25T12:54:24.6822710Z RUNNING [195s total]: runtime_release_compatibility.py 17s
+2026-10-25T12:54:25.0854186Z PASS orders native release fence retains current module through mixed network and offline
+2026-10-25T12:54:25.0854693Z PASS kupa native release fence retains current module through mixed network and offline
+2026-10-25T12:54:25.0855140Z PASS native worker error, registration/cache state and timestamps survive isolated failing installation
+2026-10-25T12:54:25.0855522Z PASSED: runtime_release_compatibility.py (17.88s)
+2026-10-25T12:54:25.0866809Z Verification wall time: 195.75s
+2026-10-25T12:54:25.0880808Z test_windows_real_browser_recovery_and_pwa_acceptance (__main__.WindowsDeploymentContracts.test_windows_real_browser_recovery_and_pwa_acceptance) ... FAIL
+2026-10-25T12:54:29.5628660Z test_staged_runtime_uses_its_http_modules_and_preserves_private_file_gates (__main__.WindowsDocumentBridgeRuntimeContracts.test_staged_runtime_uses_its_http_modules_and_preserves_private_file_gates) ... ok
+2026-10-25T12:54:29.5629464Z 
+2026-10-25T12:54:29.5629686Z ======================================================================
+2026-10-25T12:54:29.5630474Z FAIL: test_windows_real_browser_recovery_and_pwa_acceptance (__main__.WindowsDeploymentContracts.test_windows_real_browser_recovery_and_pwa_acceptance)
+2026-10-25T12:54:29.5631197Z ----------------------------------------------------------------------
+2026-10-25T12:54:29.5631702Z Traceback (most recent call last):
+2026-10-25T12:54:29.5632343Z   File "D:\a\netunim\netunim\tests\windows_deploy_contracts.py", line 38, in test_windows_real_browser_recovery_and_pwa_acceptance
+2026-10-25T12:54:29.5633143Z     self.assertEqual(result, 0, 'see .work/ci/windows-acceptance for native browser evidence')
+2026-10-25T12:54:29.5633524Z     ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2026-10-25T12:54:29.5633875Z AssertionError: 1 != 0 : see .work/ci/windows-acceptance for native browser evidence
+2026-10-25T12:54:29.5634090Z 
+2026-10-25T12:54:29.5634247Z ----------------------------------------------------------------------
+2026-10-25T12:54:29.5634498Z Ran 14 tests in 223.621s
+2026-10-25T12:54:29.5634606Z 
+2026-10-25T12:54:29.5634861Z FAILED (failures=1)
+2026-10-25T12:54:29.6048471Z ##[error]Process completed with exit code 1.
+2026-10-25T12:54:29.6224309Z ##[group]Run actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+2026-10-25T12:54:29.6224667Z with:
+2026-10-25T12:54:29.6224845Z   name: windows-isolated-acceptance
+2026-10-25T12:54:29.6225053Z   path: .work/ci/windows-acceptance/
+2026-10-25T12:54:29.6225255Z   include-hidden-files: true
+2026-10-25T12:54:29.6225437Z   if-no-files-found: warn
+2026-10-25T12:54:29.6225630Z   retention-days: 14
+2026-10-25T12:54:29.6225797Z   compression-level: 6
+2026-10-25T12:54:29.6225960Z   overwrite: false
+2026-10-25T12:54:29.6226117Z   archive: true
+2026-10-25T12:54:29.6226288Z env:
+2026-10-25T12:54:29.6226435Z   PYTHONUTF8: 1
+2026-10-25T12:54:29.6226598Z   PYTHONUNBUFFERED: 1
+2026-10-25T12:54:29.6226811Z   pythonLocation: C:\hostedtoolcache\windows\Python\3.14.9\x64
+2026-10-25T12:54:29.6227107Z   PKG_CONFIG_PATH: C:\hostedtoolcache\windows\Python\3.14.9\x64/lib/pkgconfig
+2026-10-25T12:54:29.6227410Z   Python_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.14.9\x64
+2026-10-25T12:54:29.6227759Z   Python2_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.14.9\x64
+2026-10-25T12:54:29.6228631Z   Python3_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.14.9\x64
+2026-10-25T12:54:29.6228858Z ##[endgroup]
+2026-10-25T12:54:29.7664964Z With the provided path, there will be 27 files uploaded
+2026-10-25T12:54:29.7668947Z Artifact name is valid!
+2026-10-25T12:54:29.7669501Z Root directory input is valid!
+2026-10-25T12:54:30.0228941Z Uploading artifact: windows-isolated-acceptance.zip
+2026-10-25T12:54:30.0264839Z Beginning upload of artifact content to blob storage
+2026-10-25T12:54:30.2514052Z Uploaded bytes 29293
+2026-10-25T12:54:30.2930972Z Finished uploading artifact content to blob storage!
+2026-10-25T12:54:30.2931704Z SHA256 digest of uploaded artifact is 3ff8f6965bffc58e8fc1e173af5b1b1b54623ef14ca8a18f85df143915831d36
+2026-10-25T12:54:30.2932316Z Finalizing artifact upload
+2026-10-25T12:54:30.7385633Z Artifact windows-isolated-acceptance successfully finalized. Artifact ID 12599288982
+2026-10-25T12:54:30.7386341Z Artifact windows-isolated-acceptance has been successfully uploaded! Final size is 29293 bytes. Artifact ID is 12599288982
+2026-10-25T12:54:30.7392570Z Artifact download URL: https://github.com/218218y/netunim/actions/runs/40194893068/artifacts/12599288982
+2026-10-25T12:54:30.7682065Z Post job cleanup.
+2026-10-25T12:54:30.8799625Z [command]"C:\Program Files\Git\bin\git.exe" version
+2026-10-25T12:54:30.9048389Z git version 2.56.0.windows.2
+2026-10-25T12:54:30.9095512Z Temporarily overriding HOME='D:\a\_temp\ac228cb9-cdfa-46db-a973-4ac0bec871bf' before making global git config changes
+2026-10-25T12:54:30.9096140Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-25T12:54:30.9102306Z [command]"C:\Program Files\Git\bin\git.exe" config --global --add safe.directory D:\a\netunim\netunim
+2026-10-25T12:54:30.9361879Z Removing SSH command configuration
+2026-10-25T12:54:30.9369102Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp core\.sshCommand
+2026-10-25T12:54:30.9647102Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\""
+2026-10-25T12:54:31.4072854Z Removing HTTP extra header
+2026-10-25T12:54:31.4080553Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-25T12:54:31.4349476Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :\""
+2026-10-25T12:54:31.8511432Z Removing includeIf entries pointing to credentials config files
+2026-10-25T12:54:31.8521094Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-25T12:54:31.8804817Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "git config --local --show-origin --name-only --get-regexp remote.origin.url"
+2026-10-25T12:54:32.2937447Z Cleaning up orphan processes

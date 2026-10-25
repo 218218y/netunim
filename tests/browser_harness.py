@@ -721,7 +721,7 @@ class BrowserSession:
                 + str(download_behavior["error"])
             )
 
-    def restart_process(self, *, crash=False, navigate=True):
+    def restart_process(self, *, crash=False, navigate=True, after_stop=None):
         """Restart this owned browser, retaining its actual on-disk profile."""
         if self.proc is None or self.proc.poll() is not None:
             raise RuntimeError('no live owned browser to restart')
@@ -744,6 +744,11 @@ class BrowserSession:
                 self.browser_owner.job.wait_empty(timeout=30)
         self.ws.close()
         self.events = []
+        # For bounded diagnostics only: the callback can retain the disposable
+        # on-disk evidence before Chromium's next open/recovery changes it.
+        # Both crash and graceful paths have already joined owned processes.
+        if after_stop is not None:
+            after_stop()
         self._start_browser()
         # A hard-killed profile needs crash recovery plus a cold module graph.
         if navigate:

@@ -87,15 +87,11 @@ parser.add_argument('--app',choices=('orders','kupa'))
 parser.add_argument('--paired-only',action='store_true')
 parser.add_argument('--paired-phase',choices=('prepared','shared-applied','main-applied'),action='append')
 parser.add_argument('--baseline',action='store_true',help='Restore the old Orders key gate only in the disposable test site; the regression must fail.')
-args=parser.parse_args()
-if args.baseline and args.app!='orders':
-    parser.error('--baseline requires --app orders')
-
-
-def paired_process_boundaries(app):
+def paired_process_boundaries(app, *, phases=('prepared','shared-applied','main-applied'), crash=True,
+                              observation=None, capture_stopped=None):
     fixture=(ROOT/'tests/fixtures/restore-process-boundary.mjs').read_text(encoding='utf8').replace('export async function','async function')
     results=[]
-    for phase in (args.paired_phase or ('prepared','shared-applied','main-applied')):
+    for phase in phases:
         with BrowserSession(ROOT/f'netunim-{app}/site',app+'-restore-process-'+phase,instrument=False) as browser:
             marker=app+'-'+phase+'-owned-profile'
             marker_expression="({marker:localStorage.getItem('restore-profile-canary'),databases:(await indexedDB.databases()).map(row=>row.name)})"
@@ -120,10 +116,22 @@ def paired_process_boundaries(app):
                 time.sleep(.02)
             before=browser.evaluate('paired.state()')
             assert before['boundary']['phase']==phase
-            browser.restart_process(crash=True)
+            if observation is not None:
+                observation.update({'before':before,'storedBefore':browser.evaluate('paired.inspectStored()'),
+                    'browser':browser.call('Browser.getVersion')['result'],
+                    'crash':crash,'phase':phase,'profileMarker':marker})
+            after_stop=(lambda:capture_stopped(browser)) if capture_stopped else None
+            process=browser.restart_process(crash=crash,after_stop=after_stop)
             check_profile(database_required=True)
             assert setup(False)
-            assert browser.evaluate('paired.state()')['boundary']['phase']==phase
+            restarted=browser.evaluate('paired.state()')
+            if observation is not None:
+                observation.update({'process':process,'restarted':restarted,'storedRestarted':browser.evaluate('paired.inspectStored()')})
+            assert restarted['boundary']['phase']==phase
+            # A reopened writer may change fencing metadata, but opening alone
+            # must preserve acknowledged records, sequences, heads and checksums.
+            for name in ('main','shared','mainCloud','sharedCloud','boundary'):
+                assert restarted[name]==before[name],{'changedBeforeResume':name,'phase':phase}
             assert browser.evaluate('paired.resume()')['phase']=='complete'
             after=browser.evaluate('paired.state()')
             assert after['main']['state']=={'notes':[{'id':'RESTORED','content':'paired restored note'}]}
@@ -137,35 +145,48 @@ def paired_process_boundaries(app):
             assert setup(False)
             browser.evaluate('paired.resume()')
             assert browser.evaluate('paired.state()')==after
-            results.append({'scenario':app+' hard process failure after '+phase,'status':'PASS',
+            if observation is not None:
+                observation.update({'completed':after,'stableRestart':browser.evaluate('paired.state()'),
+                    'storedCompleted':browser.evaluate('paired.inspectStored()')})
+            results.append({'scenario':app+(' hard process failure' if crash else ' clean restart')+' after '+phase,'status':'PASS',
                             'before_phase':before['boundary']['phase'],'after_phase':after['boundary']['phase'],
                             'main_revision':9,'shared_revision':12,'restored_check_count':1})
-            print('PASS',app,'paired restore hard process failure at',phase,'and idempotent restart',flush=True)
+            print('PASS',app,'paired restore',('hard process failure' if crash else 'clean restart'),
+                  'at',phase,'and idempotent restart',flush=True)
     write_evidence(app+'-paired-restore-process',results)
+    return results
 
-for app in ([args.app] if args.app else ('orders', 'kupa')):
-    if args.paired_only:
-        paired_process_boundaries(app)
-        continue
-    with BrowserSession(ROOT / f'netunim-{app}/site', app+'-restore-server-recovery', instrument=False,auto_navigate=False) as browser:
-        if args.baseline:
-            target=browser.tmp/'site/assets/js/storage/browser.js'
-            source=target.read_text(encoding='utf-8')
-            old="const current='orders.restore.group.v1:current',archive='orders.restore.group.v1:archive:';if(key===current||typeof key==='string'&&key.startsWith(archive)&&key.length>archive.length)return key;throw Error('storage_restore_group_key_required');"
-            assert 'return restoreGroupKeys.read(key);' in source
-            target.write_text(source.replace('return restoreGroupKeys.read(key);',old),encoding='utf-8')
-        browser._navigate()
-        def flow(phase):
-            return FLOW.replace('__APP__', json.dumps(app)).replace('__PHASE__', json.dumps(phase))
-        before = browser.evaluate(flow('stop-after-remote'), timeout=40)
-        assert before == {'unknownRetained': True, 'restoreGroupId': 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa', 'mainRevision': 8, 'sharedRevision': 11}, before
-        process = browser.restart_process(crash=True)
-        result = browser.evaluate(flow('resume'), timeout=40)
-        assert result and all(result.values()), result
-        assert not browser.drain_serious_errors()
-        write_evidence(app+'-restore-server', [{'scenario': 'remote result read failure followed by hard browser-process restart',
-                       'status': 'PASS', 'before': before, 'after': result, 'hard_process_failure': process['hard_process_failure'],
-                       'remote_transport': 'controlled stub; native production adapter and IndexedDB'}])
-        print(f'PASS {app} server-only restore: hard process restart, native pending identity and paired authoritative heads')
-    if not args.baseline:
-        paired_process_boundaries(app)
+def main():
+    args=parser.parse_args()
+    if args.baseline and args.app!='orders':
+        parser.error('--baseline requires --app orders')
+    for app in ([args.app] if args.app else ('orders', 'kupa')):
+        if args.paired_only:
+            paired_process_boundaries(app,phases=args.paired_phase or ('prepared','shared-applied','main-applied'))
+            continue
+        with BrowserSession(ROOT / f'netunim-{app}/site', app+'-restore-server-recovery', instrument=False,auto_navigate=False) as browser:
+            if args.baseline:
+                target=browser.tmp/'site/assets/js/storage/browser.js'
+                source=target.read_text(encoding='utf-8')
+                old="const current='orders.restore.group.v1:current',archive='orders.restore.group.v1:archive:';if(key===current||typeof key==='string'&&key.startsWith(archive)&&key.length>archive.length)return key;throw Error('storage_restore_group_key_required');"
+                assert 'return restoreGroupKeys.read(key);' in source
+                target.write_text(source.replace('return restoreGroupKeys.read(key);',old),encoding='utf-8')
+            browser._navigate()
+            def flow(phase):
+                return FLOW.replace('__APP__', json.dumps(app)).replace('__PHASE__', json.dumps(phase))
+            before = browser.evaluate(flow('stop-after-remote'), timeout=40)
+            assert before == {'unknownRetained': True, 'restoreGroupId': 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa', 'mainRevision': 8, 'sharedRevision': 11}, before
+            process = browser.restart_process(crash=True)
+            result = browser.evaluate(flow('resume'), timeout=40)
+            assert result and all(result.values()), result
+            assert not browser.drain_serious_errors()
+            write_evidence(app+'-restore-server', [{'scenario': 'remote result read failure followed by hard browser-process restart',
+                           'status': 'PASS', 'before': before, 'after': result, 'hard_process_failure': process['hard_process_failure'],
+                           'remote_transport': 'controlled stub; native production adapter and IndexedDB'}])
+            print(f'PASS {app} server-only restore: hard process restart, native pending identity and paired authoritative heads')
+        if not args.baseline:
+            paired_process_boundaries(app,phases=args.paired_phase or ('prepared','shared-applied','main-applied'))
+
+
+if __name__=='__main__':
+    main()

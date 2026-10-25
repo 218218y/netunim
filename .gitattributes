@@ -9,6 +9,9 @@ netunim-kupa/site/assets/vendor/pdfjs/** -text
 netunim-orders/document-bridge/pdfjs/** -text -diff
 tests/fixtures/pdf-corpus/*.pdf -text -diff
 
+# Original diagnostic job logs retain their manifest's byte hashes on Windows.
+docs/evidence/crash-history/*.txt -text
+
 # Vendored document viewers are integrity-checked byte-for-byte.
 netunim-orders/site/assets/vendor/document-viewers/** -text
 netunim-kupa/site/assets/vendor/document-viewers/** -text

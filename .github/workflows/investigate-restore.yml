@@ -1,0 +1,62 @@
+name: Bounded Windows restore investigation
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['codex/**']
+    paths:
+      - tests/investigate_restore_process.py
+      - tests/crash_evidence.py
+      - tests/runtime_restore_server_recovery.py
+      - tests/fixtures/restore-process-boundary.mjs
+      - .github/workflows/investigate-restore.yml
+
+permissions:
+  contents: read
+
+jobs:
+  investigate:
+    runs-on: windows-2025
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        app: [orders, kupa]
+        restart: [crash, graceful]
+    env:
+      PYTHONUTF8: '1'
+      PYTHONUNBUFFERED: '1'
+      NETUNIM_SUITE_REPORT_DIR: .work/restore-investigation/${{ matrix.app }}-${{ matrix.restart }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14'
+      - name: Install locked verification dependencies
+        shell: pwsh
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pip install --no-cache-dir -r tests/requirements-ci.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Preserve two independent samples at each durable phase
+        env:
+          INVESTIGATE_APP: ${{ matrix.app }}
+          INVESTIGATE_RESTART: ${{ matrix.restart }}
+        run: python tests/investigate_restore_process.py --app "$env:INVESTIGATE_APP" --restart "$env:INVESTIGATE_RESTART" --repetitions 2 --report-dir "$env:NETUNIM_SUITE_REPORT_DIR"
+      - name: Preserve successes, failures and stopped database bytes
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: restore-${{ matrix.app }}-${{ matrix.restart }}
+          path: .work/restore-investigation/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
