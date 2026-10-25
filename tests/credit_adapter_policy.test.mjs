@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { creditAdapterPolicyHashes } from './credit_adapter_policy_fixture.mjs';
 import {restoreRetryAfterRangeGuard} from './credit_cooldown_policy_fixture.mjs';
+import {typedFinancialPolicies} from './typed_financial_policy_fixture.mjs';
 const read = (name) =>
   fs.readFileSync(new URL('../netunim-kupa/bank-bridge/' + name + '.mjs', import.meta.url), 'utf8').replaceAll('\r\n','\n');
 const modules = [
@@ -42,7 +43,7 @@ test('credit provider methods, normalization, wire constants and fallback policy
   const active = { ...fixture.policies };
   for (const name of ['creditStartDate', 'GenericScraperAdapter', 'maxRawDiagnosticSamples'])
     delete active[name];
-  assert.deepEqual(creditAdapterPolicyHashes(sources()).policies, active);
+  assert.deepEqual(creditAdapterPolicyHashes(sources()).policies, typedFinancialPolicies(active,'coveragePolicies'));
   assert.equal(Object.keys(fixture.policies).length, 118);
 });
 

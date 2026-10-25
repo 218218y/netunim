@@ -353,6 +353,11 @@
     "tests/fixtures/checked-cloud-transports.mjs",
     "shared/cashflow.js",
     "shared/cashflow-notification.js",
-    "tests/fixtures/checked-cashflow-thresholds.mjs"
+    "tests/fixtures/checked-cashflow-thresholds.mjs",
+    "netunim-kupa/bank-bridge/credit-coverage.mjs",
+    "netunim-kupa/bank-bridge/credit-value-codec.mjs",
+    "netunim-kupa/bank-bridge/credit-adapter-wire.mjs",
+    "netunim-kupa/bank-bridge/credit-month-plan.mjs",
+    "tests/fixtures/checked-credit-coverage.mjs"
   ]
 }

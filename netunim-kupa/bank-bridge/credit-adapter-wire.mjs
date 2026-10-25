@@ -1,4 +1,4 @@
-// @ts-nocheck
+// @ts-check
 
 export const CREDIT_CONNECTOR_CONTRACT_VERSION = 2;
 
