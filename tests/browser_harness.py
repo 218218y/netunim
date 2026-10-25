@@ -338,6 +338,23 @@ def _network_failure_diagnostics(events):
     return failures[-20:]
 
 
+def _netlog_failures(path):
+    """Extract failed paths/codes, never retain NetLog headers or body data."""
+    raw = json.loads(path.read_text(encoding='utf-8'))
+    types = {value:key for key,value in raw.get('constants', {}).get('logEventTypes', {}).items()}
+    destinations = {}
+    failures = []
+    for event in raw.get('events', []):
+        params=event.get('params', {});source=event.get('source', {}).get('id')
+        if 'url' in params:
+            url=urllib.parse.urlsplit(params['url'])
+            destinations[source]={'host':url.hostname,'port':url.port,'path':url.path}
+        if isinstance(params.get('net_error'),int) and params['net_error'] < 0:
+            failures.append({'time':event.get('time'),'type':types.get(event.get('type'),event.get('type')),
+                             'source':source,'net_error':params['net_error'],**destinations.get(source,{})})
+    return failures[-100:]
+
+
 class _QuietHandler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, _format, *_args):
         pass
@@ -452,6 +469,8 @@ class BrowserSession:
         self.network_guard = None
         self.seq = 0
         self.events: list[dict] = []
+        self.worker_events: list[dict] = []
+        self.worker_states: list[dict] = []
         self.mode = "localhost"
         self.instrument = instrument
         self.native_incidents = native_incidents
@@ -480,6 +499,10 @@ class BrowserSession:
 
     def __exit__(self, exc_type, exc, tb):
         if exc is not None:
+            if self.service_worker:
+                with contextlib.suppress(Exception):
+                    evidence = self.save_worker_evidence('session-failure')
+                    exc.add_note('Service Worker evidence: '+str(evidence))
             with contextlib.suppress(Exception):
                 version, histograms = None, []
                 with contextlib.suppress(Exception):
@@ -522,6 +545,12 @@ class BrowserSession:
             with contextlib.suppress(Exception):
                 if self.ws:
                     self.ws.close()
+        if self.service_worker:
+            with contextlib.suppress(Exception):
+                directory=Path(os.environ.get('NETUNIM_SUITE_REPORT_DIR',ROOT/'.work/service-worker'))
+                directory.mkdir(parents=True,exist_ok=True)
+                failures=[{'log':path.name,'failures':_netlog_failures(path)} for path in sorted(self.tmp.glob('netlog-*.json'))]
+                (directory/(re.sub(r'[^A-Za-z0-9_-]','_',self.label)+f'-network-{os.getpid()}-{time.time_ns()}.json')).write_text(json.dumps(failures,indent=2),encoding='utf-8')
         if self.httpd:
             with contextlib.suppress(Exception):
                 self.httpd.shutdown()
@@ -621,6 +650,8 @@ class BrowserSession:
         (self.profile/'DevToolsActivePort').unlink(missing_ok=True)
         devtools_port = 0
         args = _browser_args(self.browser, self.profile, devtools_port)
+        if self.service_worker:
+            args.append('--log-net-log='+str(self.tmp/f'netlog-{self.browser_generation}.json'))
         if self.supabase is not None:
             args.extend(self.supabase.browser_arguments())
         args.extend(self.network_guard.arguments(allowed))
@@ -668,6 +699,10 @@ class BrowserSession:
         self.call("Page.enable")
         self.call("Log.enable")
         self.call("Network.enable")
+        if self.service_worker:
+            response = self.call('ServiceWorker.enable')
+            if response.get('error'):
+                raise RuntimeError('Service Worker diagnostics unavailable: '+str(response['error']))
         # Runtime workflows intentionally exercise production download actions (for
         # example, the safety JSON created before a restore). Keep every browser
         # download inside this disposable session so tests can never pollute the
@@ -745,7 +780,7 @@ class BrowserSession:
                 message = json.loads(self.ws.recv())
                 if message.get("id") == ident:
                     return message
-                self.events.append(message)
+                self._record_event(message)
         finally:
             if timeout is not None:
                 self.ws.settimeout(previous_timeout)
@@ -780,6 +815,50 @@ class BrowserSession:
             resources = self.call('Runtime.evaluate', {'expression': "performance.getEntriesByType('resource').slice(-8).map(r=>({path:new URL(r.name).pathname,duration:r.duration,responseEnd:r.responseEnd}))", 'returnByValue': True}, timeout=5).get('result',{}).get('result',{}).get('value')
         raise RuntimeError(f"{self.label}: page did not finish loading at {self.url}; state: {state}; resources: {resources}; last error: {last_error}; browser errors: {self.drain_serious_errors()}")
 
+    def _record_event(self, message):
+        self.events.append(message)
+        method = message.get('method', '')
+        if self.service_worker and (method.startswith('ServiceWorker.') or method == 'Network.loadingFailed'
+                                   or method == 'Network.responseReceived' and message.get('params', {}).get('response', {}).get('status', 0) >= 400):
+            # Only disposable localhost evidence; redact queries before persisting.
+            serialized = json.dumps(message)
+            serialized = re.sub(r'(https?://[^\s"?]+)\?[^\s"]*', r'\1?[redacted]', serialized)
+            self.worker_events.append({'observed_at_unix': time.time(), 'generation': self.browser_generation,
+                                       'event': json.loads(serialized)})
+            self.worker_events = self.worker_events[-200:]
+
+    def worker_state(self):
+        state = self.evaluate("""(async()=>{
+          const registration=await navigator.serviceWorker.getRegistration();
+          const worker=value=>value?{state:value.state,scriptURL:value.scriptURL}:null;
+          return {registration:registration?.scope||null,controller:worker(navigator.serviceWorker.controller),
+            active:worker(registration?.active),installing:worker(registration?.installing),waiting:worker(registration?.waiting)};
+        })()""", timeout=5)
+        if not self.worker_states or state != self.worker_states[-1]['state']:
+            self.worker_states.append({'observed_at_unix': time.time(), 'generation': self.browser_generation, 'state': state})
+            self.worker_states = self.worker_states[-100:]
+        return state
+
+    def save_worker_evidence(self, reason, *, started=None):
+        cache = None
+        with contextlib.suppress(Exception):
+            self.worker_state()
+        with contextlib.suppress(Exception):
+            cache = self.evaluate("""(async()=>{
+              const result=[];for(const name of await caches.keys()){
+                const cache=await caches.open(name),keys=await cache.keys();
+                result.push({name,entries:keys.length,paths:keys.slice(-8).map(key=>new URL(key.url).pathname)});
+              }return result;
+            })()""", timeout=2)
+        directory = Path(os.environ.get('NETUNIM_SUITE_REPORT_DIR', ROOT/'.work/service-worker'))
+        directory.mkdir(parents=True, exist_ok=True)
+        path = directory / (re.sub(r'[^A-Za-z0-9_-]', '_', self.label)+f'-worker-{os.getpid()}-{time.time_ns()}.json')
+        path.write_text(json.dumps({'reason': reason, 'observed_at_unix': time.time(),
+            'elapsed_seconds': time.monotonic()-started if started is not None else None,
+            'browser_generation': self.browser_generation, 'states': self.worker_states,
+            'events': self.worker_events, 'cache': cache}, indent=2), encoding='utf-8')
+        return path
+
     def evaluate(self, expression: str, *, await_promise: bool = True, timeout: float | None = None, user_gesture: bool = False):
         if self.instrument:
             expression = self._module_probe({'mode':'expression','expression':expression,'names':self.probe_names})
@@ -807,7 +886,7 @@ class BrowserSession:
         self.ws.settimeout(0.1)
         try:
             while True:
-                self.events.append(json.loads(self.ws.recv()))
+                self._record_event(json.loads(self.ws.recv()))
         except Exception:
             pass
         finally:

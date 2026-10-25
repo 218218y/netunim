@@ -4,6 +4,7 @@ Timing limits are generous regression ceilings, not cross-machine speed claims.
 The ESM graph test separately enforces deterministic bytes/module budgets.
 """
 from browser_harness import BrowserSession, ROOT
+from pwa_upgrade import wait_for_worker_control
 import json
 import os
 import sys
@@ -68,11 +69,7 @@ def sample_profile(app, cpu_rate):
             browser.call('Page.addScriptToEvaluateOnNewDocument', {'source': 'performance.setResourceTimingBufferSize(3000)'})
             browser._navigate()
             samples = {'cold': measure(browser, app)}
-            installed = browser.evaluate("""(async()=>{
-              await navigator.serviceWorker.ready;
-              if(!navigator.serviceWorker.controller)await new Promise(resolve=>navigator.serviceWorker.addEventListener('controllerchange',resolve,{once:true}));
-              return !!navigator.serviceWorker.controller;
-            })()""", timeout=30)
+            installed = wait_for_worker_control(browser,timeout=30)
             assert installed
             browser._navigate()
             samples['cached'] = measure(browser, app)
