@@ -18,6 +18,19 @@ import {createSyncChecks} from '../netunim-kupa/site/assets/js/sync/checks.js';
 
 const canonical=value=>JSON.stringify(value);
 
+test('unknown error payloads cannot invent response fields or invoke a non-callable header',()=>{
+  for(const value of [null,undefined,0,false,'response',[],{r:{headers:{get:'invalid'}}}]){
+    const normalized=normalizeCloudError(value);
+    assert.equal(normalized.kind,'fatal');
+    assert.equal(normalized.retryAfterMs,null);
+  }
+  const source={generation:'7',snapshot:{notes:[{id:'N'}]}};
+  const normalized=createOutboxRecord(source);
+  source.snapshot.notes[0].id='changed';
+  assert.equal(normalized.generation,7);
+  assert.deepEqual(normalized.snapshot,{notes:[{id:'N'}]});
+});
+
 test('v2/marker migration produces a complete v3 record and ACK is generation-exact',()=>{
   const v2=migrateOutboxRecord({schemaVersion:2,generation:7,baseRevision:11,baseState:{n:1},snapshot:{n:2},savedAt:'2026-01-01T00:00:00Z'},
     {domain:'kupa',documentName:'main'});
