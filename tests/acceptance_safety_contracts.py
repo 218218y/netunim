@@ -15,6 +15,34 @@ from isolated_supabase import IsolatedSupabase, isolated_environment, loopback_u
 
 
 class SafetyContracts(unittest.TestCase):
+    def test_worker_evidence_retains_native_events_timestamps_and_redacts_queries(self):
+        from browser_harness import BrowserSession
+        browser=object.__new__(BrowserSession)
+        browser.events=[];browser.worker_events=[];browser.worker_states=[]
+        browser.service_worker=True;browser.browser_generation=2;browser.label='worker-test'
+        browser._record_event({'method':'ServiceWorker.workerErrorReported','params':{'errorMessage':'http://127.0.0.1/service-worker.js?private=value failed'}})
+        browser._record_event({'method':'Network.loadingFailed','params':{'errorText':'net::ERR_FAILED'}})
+        browser._record_event({'method':'ServiceWorker.workerVersionUpdated','params':{'versions':[{'status':'redundant'}]}})
+        self.assertEqual(len(browser.worker_events),3)
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {'NETUNIM_SUITE_REPORT_DIR':tmp}), \
+             patch.object(browser,'worker_state',side_effect=RuntimeError('CDP unavailable')), \
+             patch.object(browser,'evaluate',side_effect=RuntimeError('CDP unavailable')):
+            evidence=json.loads(browser.save_worker_evidence('worker-error').read_text())
+        self.assertEqual(evidence['reason'],'worker-error')
+        self.assertIsNone(evidence['cache'])
+        self.assertGreater(evidence['events'][0]['observed_at_unix'],0)
+        self.assertEqual(evidence['events'][0]['generation'],2)
+        self.assertNotIn('private=value',json.dumps(evidence))
+        self.assertIn('redundant',json.dumps(evidence))
+
+    def test_worker_wait_reports_install_error_even_with_an_active_controller(self):
+        from pwa_upgrade import wait_for_worker_control
+        browser=SimpleNamespace(call=lambda *args: {},worker_state=lambda: {'registration':'scope','active':{'state':'activated'},'controller':True},
+            events=[{'method':'ServiceWorker.workerErrorReported','params':{'errorMessage':'cache addAll failed'}}],
+            save_worker_evidence=lambda *args,**kwargs: 'evidence.json')
+        with self.assertRaisesRegex(RuntimeError,'install error.*evidence.json'):
+            wait_for_worker_control(browser)
+
     def test_owned_site_proxy_and_offline_origin_reject_a_reusing_second_listener(self):
         from pwa_upgrade import _OfflineOrigin, _DropConnection
         site = OwnedHTTPServer(('127.0.0.1', 0), http.server.SimpleHTTPRequestHandler)

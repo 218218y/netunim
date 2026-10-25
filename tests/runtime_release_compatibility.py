@@ -1,6 +1,7 @@
 """An actual controlling worker rejects another deployment's module bytes."""
 from browser_harness import BrowserSession, ROOT
 from pwa_upgrade import wait_for_worker_control
+import json
 
 for app in ['orders', 'kupa']:
     with BrowserSession(ROOT/f'netunim-{app}/site', app+'-release-fence', instrument=False, service_worker=True) as browser:
@@ -34,3 +35,23 @@ for app in ['orders', 'kupa']:
         browser.call('Network.emulateNetworkConditions', offline)
         assert browser.evaluate("fetch('./assets/js/shared/spreadsheet-store.js').then(r=>r.text())") == original
         print('PASS', app, 'native release fence retains current module through mixed network and offline')
+
+# A real script-evaluation failure must leave native evidence before cleanup.
+# This owns a separate cold profile and never changes either product worker.
+with BrowserSession(ROOT/'netunim-kupa/site', 'worker-error-evidence', instrument=False,
+                    service_worker=True, auto_navigate=False) as browser:
+    (browser.tmp/'site/service-worker.js').write_text("throw new Error('controlled_install_failure');",encoding='utf-8')
+    (browser.tmp/'site/assets/app.js').write_text("navigator.serviceWorker.register('./service-worker.js').catch(()=>{});",encoding='utf-8')
+    (browser.tmp/'site/index.html').write_text('<script defer src="./assets/app.js"></script>',encoding='utf-8')
+    browser._navigate()
+    try:
+        wait_for_worker_control(browser,timeout=5)
+        raise AssertionError('invalid worker unexpectedly installed')
+    except RuntimeError as error:
+        assert 'install error' in str(error), str(error)
+        assert 'controlled_install_failure' in str(error), str(error)
+    evidence=browser.save_worker_evidence('expected-script-failure')
+    saved=json.loads(evidence.read_text(encoding='utf-8'))
+    assert any(item['event'].get('method')=='ServiceWorker.workerErrorReported' for item in saved['events']), saved
+    assert saved['states'] and saved['cache'] is not None, saved
+    print('PASS native worker error, registration/cache state and timestamps survive isolated failing installation')

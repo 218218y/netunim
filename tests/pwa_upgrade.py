@@ -23,22 +23,22 @@ def wait_for_worker_control(browser, timeout=60):
     response = browser.call('ServiceWorker.enable')
     if response.get('error'):
         raise RuntimeError('Service Worker diagnostics unavailable: '+str(response['error']))
-    deadline = time.monotonic()+timeout
+    started = time.monotonic()
+    deadline = started+timeout
     state = None
     while time.monotonic() < deadline:
-        state = browser.evaluate("""(async()=>{
-          const registration=await navigator.serviceWorker.getRegistration();
-          return {controlled:!!navigator.serviceWorker.controller,
-            active:registration?.active?.state||null,installing:registration?.installing?.state||null,
-            waiting:registration?.waiting?.state||null,caches:await caches.keys()};
-        })()""", timeout=5)
+        state = browser.worker_state()
         errors = [event['params'] for event in browser.events if event.get('method')=='ServiceWorker.workerErrorReported']
         if errors:
-            raise RuntimeError('Service Worker install error: '+json.dumps({'state':state,'errors':errors}))
-        if state['controlled'] and state['active']=='activated':
+            path=browser.save_worker_evidence('worker-error',started=started)
+            raise RuntimeError('Service Worker install error: '+json.dumps({'state':state,'errors':errors,'evidence':str(path)}))
+        if state['controller'] and state['active'] and state['active']['state']=='activated':
+            browser.save_worker_evidence('controlled',started=started)
             return state
         time.sleep(.1)
-    raise RuntimeError('Service Worker control deadline: '+json.dumps({'state':state,'errors':browser.drain_serious_errors()}))
+    phase='no-registration' if not state or not state['registration'] else 'installing' if state['installing'] else 'waiting' if state['waiting'] else 'activation-or-control'
+    path=browser.save_worker_evidence('deadline-'+phase,started=started)
+    raise RuntimeError('Service Worker control deadline: '+json.dumps({'phase':phase,'state':state,'errors':browser.drain_serious_errors(),'evidence':str(path)}))
 
 
 class _DropConnection(socketserver.BaseRequestHandler):
@@ -58,6 +58,7 @@ def wait_for_waiting_upgrade(browser, timeout=60):
     deadline=time.monotonic()+timeout
     state=None
     while time.monotonic()<deadline:
+        browser.worker_state()
         state=browser.evaluate("""(()=>{
           const {registration,previous,error}=window.__pwaUpgrade;
           return {sameController:navigator.serviceWorker.controller===previous,error,
@@ -68,11 +69,13 @@ def wait_for_waiting_upgrade(browser, timeout=60):
         if not state['sameController']:
             raise AssertionError('Update replaced the active page mid-session: '+json.dumps(state))
         if state['error'] or errors:
-            raise RuntimeError('Service Worker update failed: '+json.dumps({'state':state,'errors':errors}))
+            path=browser.save_worker_evidence('update-error')
+            raise RuntimeError('Service Worker update failed: '+json.dumps({'state':state,'errors':errors,'evidence':str(path)}))
         if state['waiting']=='installed':
             return True
         time.sleep(.1)
-    raise RuntimeError('Worker waiting deadline: '+json.dumps(state))
+    path=browser.save_worker_evidence('update-waiting-deadline')
+    raise RuntimeError('Worker waiting deadline: '+json.dumps({'state':state,'evidence':str(path)}))
 
 
 class _OfflineOrigin(socketserver.ThreadingTCPServer):
