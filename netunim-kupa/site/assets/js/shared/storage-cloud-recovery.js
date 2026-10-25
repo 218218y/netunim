@@ -6,7 +6,7 @@
 /**
  * A recovery checkpoint changes only the projection at the captured local
  * sequence. It cannot ACK more work, replace a base, or retire another fence.
- * @param {{seq:number,base:{owner:string,epoch:string,revision:number,ackSeq:number}|null,flight:unknown,control:{retry?:unknown,conflict?:{kind?:string,currentRemoteRevision?:number}}|null}} head
+ * @param {{seq:number,base:{owner:string,epoch:string,revision:number,ackSeq:number}|null,flight:unknown,control:{retry?:unknown,conflict?:{kind?:unknown,currentRemoteRevision?:unknown}|null}|null}} head
  * @param {CloudRecoveryHead} expected
  * @param {'concurrent-ack'|null} conflictKind
  */

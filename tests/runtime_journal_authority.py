@@ -5,7 +5,7 @@ with BrowserSession(ROOT/'netunim-orders/site', 'journal-authority', instrument=
     result = browser.evaluate("""(async()=>{
       const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
       const {sealStorageJsonRecord:seal}=await import('./assets/js/shared/storage-json-codec.js');
-      let serial=0,rejected=0,decisionsRejected=0;
+      let serial=0,rejected=0,decisionsRejected=0,metadataRejected=0;
       for(const domain of ['orders','kupa','shared-checks']){
         const owner='A:'+domain,collection=domain==='shared-checks'?'checks':'notes';
         const checkpoint=()=>seal({version:2,owner,epoch:'E',seq:0,state:{[collection]:[]}});
@@ -77,10 +77,30 @@ with BrowserSession(ROOT/'netunim-orders/site', 'journal-authority', instrument=
         let receipt=false;
         try{await abortDb.append(owner,'E','W',operation());receipt=true}catch{}finally{IDBObjectStore.prototype.put=put}
         if(receipt||!requestSucceeded||await snapshot(abortDb)!==before)throw Error('request success granted aborted authority');
+        // A corrupted boolean sequence used to coerce true + 1 to numeric 2.
+        // Neither load nor append may promote that raw metadata to authority.
+        const corruptDb=make(),corruptName='journal-authority-'+serial;
+        await corruptDb.install(owner,checkpoint(),'W');
+        const raw=await new Promise((resolve,reject)=>{const request=indexedDB.open(corruptName);request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error)});
+        await new Promise((resolve,reject)=>{const tx=raw.transaction('metadata','readwrite');tx.objectStore('metadata').put({epoch:'E',seq:true,writer:'W'},owner);tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error)});
+        const next=seal({...operation().data,seq:2});
+        for(const attempt of [()=>corruptDb.load(owner),()=>corruptDb.append(owner,'E','W',next)]){
+          try{await attempt();throw Error('accepted corrupt journal metadata')}
+          catch(error){if(error.message!=='storage_journal_metadata_invalid')throw error;metadataRejected++}
+        }
+        const entries=await new Promise((resolve,reject)=>{const request=raw.transaction('journal').objectStore('journal').getAll();request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error)});
+        raw.close();
+        if(entries.length)throw Error('corrupt metadata authorized an append');
+        const boundaryDb=make(),id='boundary-complete-'+domain;
+        await boundaryDb.beginBoundary(owner,{version:2,owner,id,kind:'restore',phase:'prepared',
+          main:{kind:'replace-authoritative',state:{}},shared:{kind:'replace-authoritative',state:{}}});
+        await boundaryDb.advanceBoundary(owner,id,'prepared','shared-applied');
+        await boundaryDb.advanceBoundary(owner,id,'shared-applied','main-applied');
+        if(await boundaryDb.completeBoundary(owner,id)!==true||(await boundaryDb.readBoundary(owner)).phase!=='complete')throw Error('signed boundary envelope was not decoded before completion');
       }
-      return {rejected,decisionsRejected};
+      return {rejected,decisionsRejected,metadataRejected};
     })()""")
-    assert result == {'rejected': 9, 'decisionsRejected': 36}, result
+    assert result == {'rejected': 9, 'decisionsRejected': 36, 'metadataRejected': 6}, result
     assert not browser.drain_serious_errors()
     print('PASS native journal business schemas, detached commands and request-success/transaction-abort receipts')
     runtime_capture = browser.evaluate("""(async()=>{

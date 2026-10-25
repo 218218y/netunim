@@ -7,13 +7,20 @@ import {validateStoredOperation,readStorageOperation} from './storage-operation.
 export {assertStorageJson,storageChecksum,readStorageJsonRecord as readStorageRecord} from './storage-json-codec.js';
 export {validateStoredOperation,readStorageOperation} from './storage-operation.js';
 export const STORAGE_JOURNAL_VERSION=2;
+/** @typedef {import('./storage-json.js').StorageJsonObject} StorageState */
+/** @typedef {import('./storage-operation.js').StorageOperationSchema & {mainProjection?:number}} ReplaySchema */
+/** @typedef {{state:StorageState,seq:number,epoch:string,owner:string,appMetadata:StorageState}} ReplayedStorageJournal */
+/** @template {import('./storage-json.js').StorageJson} Data
+ * @param {Data} value @param {{kind?:string|null}} [options]
+ * @returns {import('./storage-json-codec.js').SealedStorageRecord<Data>} */
 export function sealStorageRecord(value,{kind=null}={}){
   return sealStorageJsonRecord(value,{kind,measure:(name,work)=>kind?measureStorage(name,work):work(),onSerialized:text=>{if(kind)storageBytes(kind,text)}});
 }
 // Mutates only the owned replay state. Validation precedes any changes to it.
+/** @param {StorageState} state @param {unknown} operation @param {ReplaySchema} schema @returns {StorageState} */
 export function applyStoredOperation(state,operation,schema){
-  validateStoredOperation(operation,schema);
-  for(const change of operation.changes){
+  const decoded=validateStoredOperation(operation,schema);
+  for(const change of decoded.changes){
     if(change.type==='replace-state'){
       for(const key of Object.keys(state))delete state[key];
       Object.assign(state,structuredClone(change.state));
@@ -21,7 +28,10 @@ export function applyStoredOperation(state,operation,schema){
     }
     if(change.type==='set'){state[change.field]=structuredClone(change.value);continue}
     const rows=state[change.collection];if(!Array.isArray(rows))throw new Error('storage_missing_collection');
-    const index=rows.findIndex(row=>row.id===change.id);
+    const index=rows.findIndex(row=>{
+      if(row===null||typeof row!=='object'||Array.isArray(row))throw new Error('storage_invalid_collection_record');
+      return row.id===change.id;
+    });
     if(change.type==='delete'){if(index<0)throw new Error('storage_delete_target_missing');rows.splice(index,1)}
     else if(change.mode==='insert'){
       if(index>=0||change.index>rows.length)throw new Error('storage_insert_conflict');
@@ -30,12 +40,16 @@ export function applyStoredOperation(state,operation,schema){
   }
   return state;
 }
+/** @param {unknown} checkpoint @param {readonly unknown[]} records @param {ReplaySchema} schema @returns {ReplayedStorageJournal} */
 export function replayStorageJournal(checkpoint,records,schema){
   const base=readStorageCheckpoint(checkpoint);
   // A Main checkpoint from the transition era cannot be mistaken for current
   // authority. An old device must explicitly reset and adopt the cloud head.
   if(schema.mainProjection===2&&(base.appMetadata?.mainProjectionVersion!==2||Object.hasOwn(base.state,'checks')))throw new Error('storage_main_projection_invalid');
-  const state=structuredClone(base.state),bySeq=new Map(),ids=new Set();let seq=base.seq,appMetadata=structuredClone(base.appMetadata||{});
+  const state=structuredClone(base.state);
+  /** @type {Map<number,import('./storage-operation.js').StoredStorageOperation>} */ const bySeq=new Map();
+  /** @type {Set<string>} */ const ids=new Set();
+  let seq=base.seq,appMetadata=structuredClone(base.appMetadata||{});
   for(const sealed of records){
     const operation=readStorageOperation(sealed,schema);
     if(operation.owner!==base.owner||operation.epoch!==base.epoch)throw new Error('storage_foreign_operation');
