@@ -230,3 +230,33 @@ At this stage the strict configuration has 313 explicit roots: 194 product
 modules and 119 consumer fixtures. The compiler loads 402 JS/MJS sources in total
 (including dependencies and fixtures); 23 Bridge files still use `@ts-nocheck`.
 These categories are distinct and do not imply full application coverage.
+
+## Orders document admission and debt progress
+
+The actual shared entity-invariant and customer-debt implementations, together
+with Orders document validation, now join the strict roots. External document
+input remains unknown until the existing runtime guards accept its required
+arrays, canonical unique IDs, workbook parents and debt-progress evidence.
+The admitted document type specifies only proven shape and identities; arbitrary
+debt amounts and other row metadata remain unknown. Retained debt calculations
+have numeric balances, boolean completion flags and explicit payment/invoice
+domains. Existing legacy rounding and coercion behavior is preserved.
+
+Raw array elements remain unknown while runtime object/field guards inspect
+them. Record assertions occur after the corresponding object/collection checks;
+they do not replace validation with a declaration or certify raw JSON as storage
+data. The actual validator and calculation bodies remain compiler-checked.
+
+The changes matched the previous code in 1,704 input/output/error cases, including
+canonical/duplicate IDs, missing and signed money, reset events and malformed
+document shapes. Sixty-three focused behavior/startup tests and five compiler
+tests pass. Runtime mutations independently remove document, duplicate-ID and
+debt-kind guards and demonstrate the invalid data those guards prevent.
+
+The eager graph adds 2,079 bytes in Kupa and 2,845 in Orders, without additional
+modules. Totals are 1,839,121/2,463,510 source bytes; each source budget increases
+by 4,000 bytes. Timing and module budgets are unchanged. Current strict coverage
+is 317 roots: 197 product modules and 120 fixtures, with 408 loaded JS/MJS files.
+The large transport implementations are still outside these roots; this stage
+hardens their document-admission dependencies without claiming full transport
+coverage.
