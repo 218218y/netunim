@@ -288,3 +288,27 @@ separate strict-durability repair are 1,842,519/2,466,986 bytes. Each source bud
 increases by 4,000 bytes, retaining timing and module limits. Large application
 transports and sync coordinators still need their own focused implementation
 checking; these dependencies no longer require an unchecked restore store.
+
+## Shared check and bank-event model
+
+The actual `shared-checks-contract.js` normalization now joins the strict roots
+for both applications. Check identities, normalized numeric amounts and account
+roles are explicit. Deposit sequences remain nullable, while admitted bank-effect
+events require positive safe sequences and check identities. Date/observation
+metadata remains unknown where the runtime never validates it. A bank event is
+not a cloud ACK receipt.
+
+Shared entity validation still rejects malformed, duplicate and noncanonical
+check IDs before normalized records are returned. Legacy amount coercion and
+cent rounding are retained; normalized money alone does not certify issuer or
+settlement evidence. The changes matched the prior code in 1,130 input/output/
+error cases. Seventy focused model/V2/flight/startup tests and five compiler tests
+exercise the real normalizers. A runtime mutation removes event admission and
+demonstrates the invalid sequence it would publish.
+
+This stage adds 978 eager source bytes per app without adding modules or raising
+budgets. Measured totals are 1,843,497/2,467,964 bytes. The strict configuration
+now has 321 explicit roots: 199 product modules and 122 consumer fixtures. It
+loads 412 JS/MJS sources including dependencies and fixtures; 23 Bridge files
+remain explicitly excluded. The large application transport and sync
+coordinators, V2 runtime and full cashflow reconciler remain separate targets.
