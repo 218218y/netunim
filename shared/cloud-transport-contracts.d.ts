@@ -1,0 +1,11 @@
+import type {StorageJsonObject as State} from './storage-json.js';
+import type {FenceLease,FinanceGuard} from './finance-fence.js';
+export type {State,FenceLease};
+export type RequestOptions = RequestInit & {networkRetry?:boolean,dataPriority?:'high'|'low',assertRequestScope?:FinanceGuard};
+export type Response = {ok:boolean,status?:number,headers?:{get:(name:string)=>string|null},text:()=>Promise<string>,json:()=>Promise<unknown>};
+export type Request = (path:string,options:RequestOptions)=>Promise<Response>;
+export type ReadScope = {assertCurrent?:FinanceGuard};
+export type LocalResetRead = (session:unknown,path:string)=>Promise<Response>;
+export type Session = {cloudDocumentName:string,financeRevision?:number,financeUpdatedAt?:string|null};
+export type ArchiveOptions = {snapshotAt?:unknown,coverage?:unknown,complete?:boolean,lease?:FenceLease|null};
+export type ListOptions = ReadScope & {days?:number|'all'|null,maxRows?:number};

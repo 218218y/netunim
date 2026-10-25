@@ -88,13 +88,14 @@ export function readBankSnapshotRows(response,accountKey,role){
   if(!timestamp(row.snapshot_at)||!date(row.coverage_from)||!date(row.coverage_to)||row.coverage_to<row.coverage_from||
     !integer(row.transaction_count)||!Array.isArray(row.transactions)||row.transaction_count!==row.transactions.length)throw invalid();
   const keys=new Set();
-  for(const tx of row.transactions){
+  /** @type {Record<string,unknown>[]} */ const transactions=[];
+  for(const tx of /** @type {unknown[]} */ (row.transactions)){
     try{readBankTransaction(tx)}catch{throw invalid()}
     if(!object(tx)||!text(tx.mergeKey)||keys.has(tx.mergeKey)||!money(tx.amount)||
       (tx.date!=null&&!timestamp(tx.date))||(tx.processedDate!=null&&!timestamp(tx.processedDate)))throw invalid();
-    keys.add(tx.mergeKey);
+    keys.add(tx.mergeKey);transactions.push(tx);
   }
-  return structuredClone(row);
+  return {...structuredClone(row),snapshot_at:row.snapshot_at,coverage_from:row.coverage_from,coverage_to:row.coverage_to,transaction_count:row.transaction_count,transactions:structuredClone(transactions)};
 }
 /** The RPC scopes links by owner/account in SQL; its output carries transaction identity, not account columns.
  * @param {unknown} response */

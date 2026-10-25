@@ -1,3 +1,4 @@
+import {responseErrorText,firstResponseValue,jsonObjectProperty} from '../shared/response-evidence.js';
 import {readBankArchiveCommand} from '../shared/bank-transaction-evidence.js';
 import {readDocumentWriteResponseRow} from '../shared/document-write-ack.js';
 import {readRestoreGroupRows,readRestoreStageReceipt,readRestoreApplyReceipt} from '../shared/restore-response-records.js';
@@ -20,10 +21,12 @@ const ORDERS_DOC='suppliers';
 const ORDERS_TABLE='order_management_documents';
 const FINANCE_RPC='save_finance_sync_document';
 const FINANCE_LEASE_TTL_SECONDS=20*60;
+/** @param {unknown} a @param {unknown} b */
 function sameCloudTimestamp(a,b){
   const x=String(a||''),y=String(b||'');
   return !!x&&!!y&&x===y
 }
+/** @param {import('../shared/cloud-read-records.js').CloudDocument} row @param {string|null|undefined} financeUpdatedAt @param {boolean} [financeAvailable] */
 function resolveKupaCoreUpdatedAt(row,financeUpdatedAt,financeAvailable=true){
   if(row?.core_updated_at)return row.core_updated_at;
   if(!financeAvailable)return null;
@@ -34,19 +37,23 @@ function contentionBackoff(attempt=0){
   return new Promise(resolve=>setTimeout(resolve,contentionDelay(attempt)))
 }
 
+/** @typedef {import('../shared/cloud-transport-contracts.js').State} State */
+/** @typedef {import('../shared/cloud-transport-contracts.js').FenceLease} FenceLease */
 // Dependencies are supplied by the composition root; this module has no startup side effects.
+/** @param {{session:import('../shared/cloud-transport-contracts.js').Session,supaRest:import('../shared/cloud-transport-contracts.js').Request,localResetReadOnlyFetch?:import('../shared/cloud-transport-contracts.js').LocalResetRead}} ports */
 export function createCloudTransport({session, supaRest, localResetReadOnlyFetch}){
   const {claimFinanceSyncLease,releaseFinanceSyncLease}=createFinanceLeaseTransport({request:supaRest,ttlSeconds:FINANCE_LEASE_TTL_SECONDS});
   const {rpcSaveCloudV2}=createMainDocumentWrite({documentName:()=>session.cloudDocumentName,request:(...args)=>supaRest(...args),validate:assertValidCloudState,beginMeasure});
   const manualFinanceQueue=createFinanceManualQueue({claim:claimFinanceSyncLease,release:releaseFinanceSyncLease,createToken:()=>createOperationId('finance-manual')});
+  /** @param {unknown} resetSession */
   async function verifyLocalResetCloud(resetSession){
     if(typeof localResetReadOnlyFetch!=='function')throw new Error('local_reset_read_only_transport_unavailable');
     const mainPath=`/rest/v1/kupa_documents?document_name=eq.${encodeURIComponent(session.cloudDocumentName)}&select=document_name,revision,state,updated_at`,
       sharedPath=`/rest/v1/${SHARED_CHECKS_TABLE}?document_name=eq.${encodeURIComponent(SHARED_CHECKS_DOC)}&select=document_name,revision,state,updated_at`;
     const [mainResponse,sharedResponse]=await Promise.all([localResetReadOnlyFetch(resetSession,mainPath),localResetReadOnlyFetch(resetSession,sharedPath)]),
       [mainJson,sharedJson]=await Promise.all([mainResponse.json().catch(()=>null),sharedResponse.json().catch(()=>null)]);
-    if(!mainResponse.ok)throw new Error(mainJson?.message||mainJson?.hint||'קריאת הקופה מהענן נכשלה');
-    if(!sharedResponse.ok)throw new Error(sharedJson?.message||sharedJson?.hint||'קריאת מאגר הצקים המשותף נכשלה');
+    if(!mainResponse.ok)throw new Error(responseErrorText(mainJson,true)||'קריאת הקופה מהענן נכשלה');
+    if(!sharedResponse.ok)throw new Error(responseErrorText(sharedJson,true)||'קריאת מאגר הצקים המשותף נכשלה');
     const main=readCloudDocumentRows(mainJson,session.cloudDocumentName),shared=readCloudDocumentRows(sharedJson,SHARED_CHECKS_DOC);
     if(main){
       assertReadableCloudState(main.state,'מסמך הקופה בענן');
@@ -60,20 +67,22 @@ export function createCloudTransport({session, supaRest, localResetReadOnlyFetch
     }
     return {main,shared};
   }
+  /** @param {import('../shared/cloud-transport-contracts.js').ReadScope} [options] */
   async function readOrdersReadOnlyMeta({assertCurrent}={}){
     assertCurrent?.();
     const q=`/rest/v1/${ORDERS_TABLE}?document_name=eq.${encodeURIComponent(ORDERS_DOC)}&select=document_name,revision,updated_at`;
     const r=await supaRest(q,{method:'GET',...(assertCurrent?{assertRequestScope:assertCurrent}:{})}),j=await r.json().catch(()=>null);
     assertCurrent?.();
-    if(!r.ok)throw new Error(j?.message||j?.hint||'קריאת סטטוס ניהול ההזמנות נכשלה');
+    if(!r.ok)throw new Error(responseErrorText(j,true)||'קריאת סטטוס ניהול ההזמנות נכשלה');
     return readCloudMetaRows(j,ORDERS_DOC);
   }
+  /** @param {import('../shared/cloud-transport-contracts.js').ReadScope} [options] @returns {Promise<import('../shared/cloud-read-records.js').CloudDocument|null>} */
   async function readOrdersReadOnlyCloud({assertCurrent}={}){
     assertCurrent?.();
     const q=`/rest/v1/${ORDERS_TABLE}?document_name=eq.${encodeURIComponent(ORDERS_DOC)}&select=document_name,revision,state,updated_at`;
     const r=await supaRest(q,{method:'GET',...(assertCurrent?{assertRequestScope:assertCurrent}:{})}),j=await r.json().catch(()=>null);
     assertCurrent?.();
-    if(!r.ok)throw new Error(j?.message||j?.hint||'קריאת נתוני ניהול ההזמנות נכשלה');
+    if(!r.ok)throw new Error(responseErrorText(j,true)||'קריאת נתוני ניהול ההזמנות נכשלה');
     const row=readCloudDocumentRows(j,ORDERS_DOC);
     if(row){
       const rev=Number(row.revision);
@@ -81,36 +90,39 @@ export function createCloudTransport({session, supaRest, localResetReadOnlyFetch
     }
     return row;
   }
+  /** @param {import('../shared/cloud-transport-contracts.js').ReadScope} [options] @returns {Promise<import('../shared/cloud-read-records.js').CloudDocument|null>} */
   async function readFinanceSyncDocument({assertCurrent}={}){
     assertCurrent?.();
     const q=`/rest/v1/${FINANCE_TABLE}?document_name=eq.${encodeURIComponent(FINANCE_DOC)}&select=document_name,revision,state,updated_at`;
     const r=await supaRest(q,{method:'GET',...(assertCurrent?{assertRequestScope:assertCurrent}:{})}),j=await r.json().catch(()=>null);
     assertCurrent?.();
-    if(!r.ok)throw new Error(j?.message||j?.hint||'קריאת נתוני הסינכרון הפיננסי נכשלה');
+    if(!r.ok)throw new Error(responseErrorText(j,true)||'קריאת נתוני הסינכרון הפיננסי נכשלה');
     return readFinanceDocumentRows(j,FINANCE_DOC);
   }
+  /** @param {State} base @param {import('../shared/cloud-read-records.js').CloudDocument|null} finance */
   function overlayFinanceState(base,finance){
     const out=structuredClone(base||{}),fs=finance?.state&&typeof finance.state==='object'?finance.state:{};
     if(fs.bank&&typeof fs.bank==='object'){
-      const kupaBank=out.bank&&typeof out.bank==='object'?out.bank:{},financeBank=structuredClone(fs.bank);
+      const kupaBank=out.bank&&typeof out.bank==='object'?out.bank:{},financeBank=structuredClone(fs.bank),adjustments=jsonObjectProperty(kupaBank,'adjustments');
       out.bank={
         ...kupaBank,
         ...financeBank,
-        adjustments:Array.isArray(kupaBank.adjustments)?structuredClone(kupaBank.adjustments):[],
-        snapshotToken:kupaBank.snapshotToken??null,
-        snapshotSeq:kupaBank.snapshotSeq??null
+        adjustments:Array.isArray(adjustments)?structuredClone(adjustments):[],
+        snapshotToken:jsonObjectProperty(kupaBank,'snapshotToken')??null,
+        snapshotSeq:jsonObjectProperty(kupaBank,'snapshotSeq')??null
       }
     }
     ;
     if(fs.creditSync&&typeof fs.creditSync==='object')out.creditSync=structuredClone(fs.creditSync);
     return out;
   }
+  /** @param {import('../shared/cloud-transport-contracts.js').ReadScope & {includeFinance?:boolean}} [options] @returns {Promise<import('../shared/cloud-read-records.js').CloudDocument|null>} */
   async function readSupabaseDocument({assertCurrent,includeFinance=true}={}){
     assertCurrent?.();
     const q=`/rest/v1/kupa_documents?document_name=eq.${encodeURIComponent(session.cloudDocumentName)}&select=*`;
     const [docResult,financeResult]=await Promise.allSettled([
       supaRest(q,{method:'GET',...(assertCurrent?{assertRequestScope:assertCurrent}:{})}),
-      includeFinance?readFinanceSyncDocument({assertCurrent}):Promise.resolve(null)
+      includeFinance?readFinanceSyncDocument(assertCurrent?{assertCurrent}:{}):Promise.resolve(null)
     ]);
     assertCurrent?.();
     if(docResult.status!=='fulfilled')throw docResult.reason;
@@ -118,7 +130,7 @@ export function createCloudTransport({session, supaRest, localResetReadOnlyFetch
     if(!financeAvailable)console.warn('finance document read unavailable; Kupa core cloud read continues independently',financeResult.reason);
     const r=docResult.value,j=await r.json().catch(()=>null);
     assertCurrent?.();
-    if(!r.ok)throw new Error(j?.message||j?.hint||'קריאת הקופה מהענן נכשלה');
+    if(!r.ok)throw new Error(responseErrorText(j,true)||'קריאת הקופה מהענן נכשלה');
     const row=readCloudDocumentRows(j,session.cloudDocumentName);
     if(row){
       assertReadableCloudState(row.state,'מסמך הקופה בענן');
@@ -142,6 +154,7 @@ export function createCloudTransport({session, supaRest, localResetReadOnlyFetch
     }
     return row;
   }
+  /** @param {State} state @param {number} expectedRevision @param {string} operationId @param {State} [audit] @param {FenceLease|null} [lease] */
   async function rpcSaveFinanceSync(state,expectedRevision,operationId,audit={},lease=null){
     const assertCurrent=lease?.assertCurrent;
     assertCurrent?.();
@@ -158,20 +171,22 @@ export function createCloudTransport({session, supaRest, localResetReadOnlyFetch
     });
     const body=await r.text();
     assertCurrent?.();
-    let j;
+    /** @type {unknown} */ let j;
     try{
       j=body?JSON.parse(body):null
     }catch{
       j=null
     }
-    return {r,j,body,row:Array.isArray(j)?j[0]:j};
+    return {r,j,body,row:firstResponseValue(j)};
   }
+  /** @param {(state:State)=>State|null|false|undefined} mutator @param {FenceLease|null} [lease] @param {import('../shared/cloud-transport-contracts.js').ReadScope} [options]
+   * @returns {Promise<{saved:false,row:import('../shared/cloud-read-records.js').CloudDocument|null}|{saved:true,row:import('../shared/finance-write-receipt.js').FinanceWriteReceipt}>} */
   async function saveFinancePatch(mutator,lease=null,{assertCurrent=lease?.assertCurrent}={}){
     assertCurrent?.();
-    if(!lease)return manualFinanceQueue(held=>saveFinancePatch(mutator,held),{assertCurrent});
+    if(!lease)return manualFinanceQueue(held=>saveFinancePatch(mutator,held),assertCurrent?{assertCurrent}:{});
     if(assertCurrent)lease={...lease,assertCurrent};
     const operationId=createOperationId('finance');
-    let row=await readFinanceSyncDocument({assertCurrent});
+    let row=await readFinanceSyncDocument(assertCurrent?{assertCurrent}:{});
     for(let conflictAttempt=0;conflictAttempt<CLOUD_WRITE_POLICY.conflictAttempts;conflictAttempt++){
       assertCurrent?.();
       const base=row?.state&&typeof row.state==='object'?structuredClone(row.state):{},candidate=mutator(base);
@@ -185,13 +200,14 @@ export function createCloudTransport({session, supaRest, localResetReadOnlyFetch
       const error=normalizeCloudError(res);
       if(error.kind==='revision_conflict'){
         await contentionBackoff(conflictAttempt);
-        row=await readFinanceSyncDocument({assertCurrent});
+        row=await readFinanceSyncDocument(assertCurrent?{assertCurrent}:{});
         continue
       }
-      throw new Error(res?.j?.message||res?.body||'שמירת הסינכרון הפיננסי נכשלה');
+      throw new Error(responseErrorText(res?.j)||res?.body||'שמירת הסינכרון הפיננסי נכשלה');
     }
     throw new Error('נתוני הסינכרון הפיננסי השתנו במקביל; לא נדרס שום נתון');
   }
+  /** @param {State} bankState @param {string} snapshotToken @param {number} snapshotSeq @param {FenceLease|null} [lease] @returns {Promise<ReturnType<typeof readBankSnapshotReceipt>>} */
   async function saveBankSyncSnapshot(bankState,snapshotToken,snapshotSeq,lease=null){
     const assertCurrent=lease?.assertCurrent;
     assertCurrent?.();
@@ -209,15 +225,16 @@ export function createCloudTransport({session, supaRest, localResetReadOnlyFetch
     });
     const body=await r.text();
     assertCurrent?.();
-    let j;
+    /** @type {unknown} */ let j;
     try{
       j=body?JSON.parse(body):null
     }catch{
       j=null
     }
-    if(!r.ok)throw new Error(j?.message||j?.hint||body||'שמירת צילום הבנק האטומי נכשלה');
+    if(!r.ok)throw new Error(responseErrorText(j,true)||body||'שמירת צילום הבנק האטומי נכשלה');
     return readBankSnapshotReceipt(j);
   }
+  /** @param {unknown} accountKey @param {unknown} accountRole @param {unknown} transactions @param {import('../shared/cloud-transport-contracts.js').ArchiveOptions} [options] */
   async function syncBankTransactionsSnapshot(accountKey,accountRole,transactions,{snapshotAt,coverage=null,complete=false,lease=null}={}){
     const assertCurrent=lease?.assertCurrent;
     assertCurrent?.();
@@ -232,20 +249,21 @@ export function createCloudTransport({session, supaRest, localResetReadOnlyFetch
     });
     const body=await r.text();
     assertCurrent?.();
-    let j;
+    /** @type {unknown} */ let j;
     try{
       j=body?JSON.parse(body):null
     }catch{
       j=null
     }
-    if(!r.ok)throw new Error(j?.message||j?.hint||body||'שמירת צילום תנועות הבנק נכשלה');
+    if(!r.ok)throw new Error(responseErrorText(j,true)||body||'שמירת צילום תנועות הבנק נכשלה');
     const result=readBankArchiveSyncReceipt(j,isComplete);
     return {result,sourcePayload:payload,complete:isComplete};
   }
+  /** @param {unknown} accountKey @param {unknown} accountRole @param {import('../shared/cloud-transport-contracts.js').ListOptions} [options] */
   async function readBankTransactions(accountKey,accountRole,{days=370,maxRows=20000,assertCurrent}={}){
     assertCurrent?.();
     const dayCount=days===null||days==='all'?null:Number(days),
-      since=Number.isFinite(dayCount)&&dayCount>0?new Date(Date.now()-dayCount*86400000).toISOString():'',
+      since=dayCount!==null&&Number.isFinite(dayCount)&&dayCount>0?new Date(Date.now()-dayCount*86400000).toISOString():'',
       dateClause=since?`&transaction_date=gte.${encodeURIComponent(since)}`:'',
       pageSize=1000,
       cap=Math.max(pageSize,Number(maxRows)||20000),
@@ -253,12 +271,12 @@ export function createCloudTransport({session, supaRest, localResetReadOnlyFetch
       seen=new Set();
     for(let offset=0;offset<cap;offset+=pageSize){
       assertCurrent?.();
-      const q=(`/rest/v1/bank_transactions?account_key=eq.${encodeURIComponent(accountKey)}&account_role=eq.${accountRole==='home'?'home':'business'}${dateClause}&select=id,account_key,account_role,merge_key,transaction_date,processed_date,amount,currency,description,memo,party_name,party_headline,message_headline,message_detail,status,` +
+      const q=(`/rest/v1/bank_transactions?account_key=eq.${encodeURIComponent(String(accountKey))}&account_role=eq.${accountRole==='home'?'home':'business'}${dateClause}&select=id,account_key,account_role,merge_key,transaction_date,processed_date,amount,currency,description,memo,party_name,party_headline,message_headline,message_detail,status,` +
         `balance_after,bank_reference,bank_serial,activity_type_code,cheque,check_details,credit_settlement_details,first_seen_at,presence_state,last_seen_at,missing_since,` +
         `missing_acknowledged_at,alert_acknowledgements&order=transaction_date.desc,id.desc&limit=${pageSize}&offset=${offset}`);
       const r=await supaRest(q,{method:'GET',...(assertCurrent?{assertRequestScope:assertCurrent}:{})}),j=await r.json().catch(()=>null);
       assertCurrent?.();
-      if(!r.ok)throw new Error(j?.message||'קריאת ארכיון הבנק נכשלה');
+      if(!r.ok)throw new Error(responseErrorText(j)||'קריאת ארכיון הבנק נכשלה');
       const page=readBankArchiveRows(j,String(accountKey),accountRole==='home'?'home':'business',seen);
       rows.push(...page);
       if(page.length<pageSize)return rows.map(x=>({
@@ -292,17 +310,19 @@ export function createCloudTransport({session, supaRest, localResetReadOnlyFetch
     }
     throw new Error('ארכיון הבנק גדול ממגבלת הקריאה הבטוחה; התצוגה נעצרה במקום להציג היסטוריה חלקית');
   }
+  /** @param {unknown} accountKey @param {unknown} accountRole @param {import('../shared/cloud-transport-contracts.js').ReadScope} [options] */
   async function readBankTransactionSnapshot(accountKey,accountRole,{assertCurrent}={}){
     assertCurrent?.();
-    const q=`/rest/v1/bank_transaction_snapshots?account_key=eq.${encodeURIComponent(accountKey)}&account_role=eq.${accountRole==='home'?'home':'business'}&select=account_key,account_role,snapshot_at,coverage_from,coverage_to,transaction_count,transactions&limit=1`;
+    const q=`/rest/v1/bank_transaction_snapshots?account_key=eq.${encodeURIComponent(String(accountKey))}&account_role=eq.${accountRole==='home'?'home':'business'}&select=account_key,account_role,snapshot_at,coverage_from,coverage_to,transaction_count,transactions&limit=1`;
     const r=await supaRest(q,{method:'GET',...(assertCurrent?{assertRequestScope:assertCurrent}:{})}),j=await r.json().catch(()=>null);
     assertCurrent?.();
-    if(!r.ok)throw new Error(j?.message||'קריאת צילום הבנק הישיר נכשלה');
+    if(!r.ok)throw new Error(responseErrorText(j)||'קריאת צילום הבנק הישיר נכשלה');
     const row=readBankSnapshotRows(j,String(accountKey),accountRole==='home'?'home':'business');
     if(!row)return null;
     const transactions=row.transactions.map(tx=>({...tx,id:String(tx?.mergeKey||tx?.id||'')}));
     return {snapshotAt:row.snapshot_at,coverageFrom:row.coverage_from,coverageTo:row.coverage_to,transactionCount:row.transaction_count,transactions};
   }
+  /** @param {string} transactionId @param {import('../shared/cloud-transport-contracts.js').ReadScope} [options] @returns {Promise<ReturnType<typeof readBankAcknowledgementReceipt>>} */
   async function acknowledgeBankTransactionMissing(transactionId,{assertCurrent}={}){
     assertCurrent?.();
     const id=Number(transactionId);
@@ -310,15 +330,16 @@ export function createCloudTransport({session, supaRest, localResetReadOnlyFetch
     const r=await supaRest('/rest/v1/rpc/acknowledge_bank_transaction_missing',{method:'POST',networkRetry:true,dataPriority:'high',...(assertCurrent?{assertRequestScope:assertCurrent}:{}),body:JSON.stringify({p_transaction_id:id})});
     const body=await r.text();
     assertCurrent?.();
-    let j;
+    /** @type {unknown} */ let j;
     try{
       j=body?JSON.parse(body):null
     }catch{
       j=null
     }
-    if(!r.ok)throw new Error(j?.message||j?.hint||body||'סימון תנועת הבנק כנבדקה נכשל');
+    if(!r.ok)throw new Error(responseErrorText(j,true)||body||'סימון תנועת הבנק כנבדקה נכשל');
     return readBankAcknowledgementReceipt(j,id,'missing');
   }
+  /** @param {string} transactionId @param {string} alertKind @param {import('../shared/cloud-transport-contracts.js').ReadScope} [options] @returns {Promise<ReturnType<typeof readBankAcknowledgementReceipt>>} */
   async function acknowledgeBankTransactionAlert(transactionId,alertKind,{assertCurrent}={}){
     assertCurrent?.();
     const id=Number(transactionId),kind=String(alertKind||'').trim();
@@ -333,23 +354,25 @@ export function createCloudTransport({session, supaRest, localResetReadOnlyFetch
     });
     const body=await r.text();
     assertCurrent?.();
-    let j;
+    /** @type {unknown} */ let j;
     try{
       j=body?JSON.parse(body):null
     }catch{
       j=null
     }
-    if(!r.ok)throw new Error(j?.message||j?.hint||body||'הסרת התראת הבנק נכשלה');
+    if(!r.ok)throw new Error(responseErrorText(j,true)||body||'הסרת התראת הבנק נכשלה');
     return readBankAcknowledgementReceipt(j,id,kind);
   }
+  /** @param {string} table @param {string} documentName @param {number} limit @param {number} [offset] */
   async function readBackupList(table,documentName,limit,offset=0){
     const safeLimit=Math.max(1,Math.min(20,Math.trunc(Number(limit)||8))),
       safeOffset=Math.max(0,Math.min(5000,Math.trunc(Number(offset)||0))),
       q=`/rest/v1/${table}?document_name=eq.${encodeURIComponent(documentName)}&select=id,revision,saved_at&order=saved_at.desc,id.desc&limit=${safeLimit}&offset=${safeOffset}`;
     const r=await supaRest(q,{method:'GET'}),j=await r.json().catch(()=>null);
-    if(!r.ok)throw new Error(j?.message||'קריאת רשימת גיבויי הענן נכשלה');
+    if(!r.ok)throw new Error(responseErrorText(j)||'קריאת רשימת גיבויי הענן נכשלה');
     return readCloudBackupRows(j);
   }
+  /** @param {{limit?:number,rollingOffset?:number,periodicOffset?:number}} [options] */
   async function listKupaCloudBackups({limit=8,rollingOffset=0,periodicOffset=0}={}){
     const [rolling,periodic]=await Promise.all([
       readBackupList('kupa_document_backups',session.cloudDocumentName,limit,rollingOffset),
@@ -357,25 +380,27 @@ export function createCloudTransport({session, supaRest, localResetReadOnlyFetch
     ]);
     return {rolling,periodic};
   }
+  /** @param {string} table @param {string} documentName @param {unknown} id */
   async function readBackupState(table,documentName,id){
     const safeId=Number(id);
     if(!Number.isSafeInteger(safeId)||safeId<=0)throw new Error('מזהה הגיבוי אינו תקין');
     const q=`/rest/v1/${table}?id=eq.${safeId}&document_name=eq.${encodeURIComponent(documentName)}&select=id,revision,state,saved_at&limit=1`,r=await supaRest(q,{method:'GET',dataPriority:'high'}),j=await r.json().catch(()=>null);
-    if(!r.ok)throw new Error(j?.message||'קריאת גיבוי הענן נכשלה');
+    if(!r.ok)throw new Error(responseErrorText(j)||'קריאת גיבוי הענן נכשלה');
     return readCloudBackupPointRows(j,safeId);
   }
+  /** @param {string} savedAt */
   async function readChecksBackupAtOrBefore(savedAt){
     const at=String(savedAt||'').trim();
     if(!Number.isFinite(Date.parse(at)))throw new Error('זמן הגיבוי אינו תקין');
-    const encoded=encodeURIComponent(at),query=table=>`/rest/v1/${table}?document_name=eq.${encodeURIComponent(SHARED_CHECKS_DOC)}&saved_at=lte.${encoded}&select=id,revision,state,saved_at&order=saved_at.desc,id.desc&limit=1`;
+    const encoded=encodeURIComponent(at),query=(/** @type {string} */ table)=>`/rest/v1/${table}?document_name=eq.${encodeURIComponent(SHARED_CHECKS_DOC)}&saved_at=lte.${encoded}&select=id,revision,state,saved_at&order=saved_at.desc,id.desc&limit=1`;
     const [live,rollingResult,periodicResult]=await Promise.all([
       readSharedChecksDocument(),
       supaRest(query('shared_checks_document_backups'),{method:'GET',dataPriority:'high'}),
       supaRest(query('shared_checks_periodic_backups'),{method:'GET',dataPriority:'high'})
     ]);
-    const parse=async(result,label)=>{
+    const parse=async(/** @type {import('../shared/cloud-transport-contracts.js').Response} */ result,/** @type {string} */ label)=>{
       const j=await result.json().catch(()=>null);
-      if(!result.ok)throw new Error(j?.message||`קריאת ${label} נכשלה`);
+      if(!result.ok)throw new Error(responseErrorText(j)||`קריאת ${label} נכשלה`);
       return readCloudBackupPointRows(j,null,at)
     };
     const [rolling,periodic]=await Promise.all([parse(rollingResult,'גיבויי הצ׳קים'),parse(periodicResult,'גיבויי הצ׳קים התקופתיים')]),candidates=[];
@@ -385,6 +410,7 @@ export function createCloudTransport({session, supaRest, localResetReadOnlyFetch
     candidates.sort((a,b)=>Date.parse(b.saved_at||'')-Date.parse(a.saved_at||''));
     return candidates[0]||null;
   }
+  /** @param {string} source @param {unknown} id */
   async function readKupaCloudBackupPoint(source,id){
     const kind=source==='periodic'?'periodic':'rolling',table=kind==='periodic'?'kupa_periodic_backups':'kupa_document_backups',row=await readBackupState(table,session.cloudDocumentName,id);
     if(!row)throw new Error('הגיבוי המבוקש כבר אינו קיים בענן');
@@ -403,10 +429,11 @@ export function createCloudTransport({session, supaRest, localResetReadOnlyFetch
       checksSource:checks?.source||null
     };
   }
+  /** @returns {Promise<import('../shared/cloud-read-records.js').CloudDocument|null>} */
   async function readSharedChecksDocument(){
     const q=`/rest/v1/${SHARED_CHECKS_TABLE}?document_name=eq.${encodeURIComponent(SHARED_CHECKS_DOC)}&select=document_name,revision,state,updated_at`;
     const r=await supaRest(q,{method:'GET',networkRetry:true}),j=await r.json().catch(()=>null);
-    if(!r.ok)throw new Error(j?.message||j?.hint||'קריאת מאגר הצקים המשותף נכשלה');
+    if(!r.ok)throw new Error(responseErrorText(j,true)||'קריאת מאגר הצקים המשותף נכשלה');
     const row=readCloudDocumentRows(j,SHARED_CHECKS_DOC);
     if(row){
       if(!row.state||!Array.isArray(row.state.checks)||!Array.isArray(row.state.bankEvents))throw new Error('מסמך הצקים המשותף בענן במבנה לא תקין');
@@ -415,18 +442,21 @@ export function createCloudTransport({session, supaRest, localResetReadOnlyFetch
     }
     return row
   }
+  /** @returns {Promise<import('../shared/cloud-read-records.js').CloudMeta|null>} */
   async function readSharedChecksMeta(){
     const q=`/rest/v1/${SHARED_CHECKS_TABLE}?document_name=eq.${encodeURIComponent(SHARED_CHECKS_DOC)}&select=document_name,revision,updated_at`;
     const r=await supaRest(q,{method:'GET',networkRetry:true}),j=await r.json().catch(()=>null);
-    if(!r.ok)throw new Error(j?.message||'קריאת סטטוס הצקים המשותפים נכשלה');
+    if(!r.ok)throw new Error(responseErrorText(j)||'קריאת סטטוס הצקים המשותפים נכשלה');
     return readCloudMetaRows(j,SHARED_CHECKS_DOC)
   }
+  /** @param {number} revision */
   async function refreshCheckBankMatches(revision){
     const response=await supaRest('/rest/v1/rpc/refresh_check_bank_matches',{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify({p_expected_revision:revision})});
     const result=await response.json();
-    if(!response.ok||!result||!['no_checks','no_bank_data','unchanged','checked','busy'].includes(result.status))throw new Error(result?.message||'check_bank_refresh_failed');
+    if(!response.ok||!result||typeof result!=='object'||!('status' in result)||typeof result.status!=='string'||!['no_checks','no_bank_data','unchanged','checked','busy'].includes(result.status))throw new Error(responseErrorText(result)||'check_bank_refresh_failed');
     return result;
   }
+  /** @param {unknown} checks @param {number} expectedRevision @param {string} operationId @param {string[]} [deletedCheckIds] @param {State} [audit] */
   async function rpcSaveSharedChecksV2(checks,expectedRevision,operationId,deletedCheckIds=[],audit={}){
     const payload={version:1,checks:normalizeSharedChecks(checks)},expected=Number(expectedRevision||0),op=String(operationId||'').trim();
     const deletedIds=[...new Set((Array.isArray(deletedCheckIds)?deletedCheckIds:[]).map(x=>String(x||'').trim()).filter(Boolean))].sort();
@@ -440,53 +470,57 @@ export function createCloudTransport({session, supaRest, localResetReadOnlyFetch
       body:JSON.stringify({p_document_name:SHARED_CHECKS_DOC,p_expected_revision:expected,p_state:payload,p_operation_id:op,p_deleted_check_ids:deletedIds,p_audit:audit})
     });
     const body=await r.text();
-    let j;
+    /** @type {unknown} */ let j;
     try{
       j=body?JSON.parse(body):null
     }catch(e){
       j=null
     }
-    return {r,j,body,row:r.ok?readDocumentWriteResponseRow(j):Array.isArray(j)?j[0]:j}
+    return {r,j,body,row:r.ok?readDocumentWriteResponseRow(j):firstResponseValue(j)}
   }
+  /** @param {string} name @param {object} body @param {import('../shared/cloud-transport-contracts.js').ReadScope} [options] */
   async function restoreRpc(name,body,{assertCurrent}={}){
     assertCurrent?.();
     const r=await supaRest(`/rest/v1/rpc/${name}`,{method:'POST',networkRetry:true,dataPriority:'high',...(assertCurrent?{assertRequestScope:assertCurrent}:{}),body:JSON.stringify(body)});
     const raw=await r.text();
     assertCurrent?.();
-    let j;
+    /** @type {unknown} */ let j;
     try{
       j=raw?JSON.parse(raw):null
     }catch{
       j=null
     }
-    if(!r.ok)throw new Error(j?.message||j?.hint||raw||`restore rpc failed: ${name}`);
+    if(!r.ok)throw new Error(responseErrorText(j,true)||raw||`restore rpc failed: ${name}`);
     return j
   }
+  /** @param {import('../shared/restore-group-contracts.js').StoredRestoreGroup} group @param {import('../shared/cloud-transport-contracts.js').ReadScope} [options] @returns {Promise<ReturnType<typeof readRestoreStageReceipt>>} */
   async function stageRestoreGroup(group,options={}){
     const payload=restoreGroupRpcPayload(group);
     return readRestoreStageReceipt(await restoreRpc('stage_restore_group_v6',payload,options),payload.p_restore_group_id);
   }
+  /** @param {string} restoreGroupId @param {import('../shared/cloud-transport-contracts.js').ReadScope} [options] @returns {Promise<ReturnType<typeof readRestoreApplyReceipt>>} */
   async function applyRestoreGroup(restoreGroupId,options={}){
     const id=String(restoreGroupId);
     return readRestoreApplyReceipt(await restoreRpc('apply_restore_group_v6',{p_restore_group_id:id},options),id);
   }
+  /** @param {import('../shared/cloud-transport-contracts.js').ReadScope} [options] */
   async function listIncompleteRestoreGroups({assertCurrent}={}){
     assertCurrent?.();
     const r=await supaRest('/rest/v1/rpc/list_incomplete_restore_groups_v5',{method:'POST',networkRetry:true,dataPriority:'high',...(assertCurrent?{assertRequestScope:assertCurrent}:{}),body:'{}'});
     const raw=await r.text();
     assertCurrent?.();
-    let j;
+    /** @type {unknown} */ let j;
     try{
       j=raw?JSON.parse(raw):null
     }catch{
       j=null
     }
-    if(!r.ok)throw new Error(j?.message||raw||'restore group status failed');
+    if(!r.ok)throw new Error(responseErrorText(j)||raw||'restore group status failed');
     return readRestoreGroupRows(j)
   }
   async function readStorageProtocolState(){
     const r=await supaRest('/rest/v1/rpc/get_storage_protocol_state',{method:'POST',networkRetry:true,dataPriority:'high',body:'{}'}),state=await r.json().catch(()=>null);
-    if(!r.ok)throw new Error(state?.message||'בדיקת פרוטוקול האחסון בענן נכשלה');
+    if(!r.ok)throw new Error(responseErrorText(state)||'בדיקת פרוטוקול האחסון בענן נכשלה');
     return state
   }
   return {

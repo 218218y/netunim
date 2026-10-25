@@ -9,7 +9,7 @@ import {readDocumentWriteResponseRow} from '../shared/document-write-ack.js';
  *   documentName:()=>string,
  *   request:(path:string,options:{method:'POST',networkRetry:true,dataPriority:'high',body:string})=>Promise<RpcResponse>,
  *   validate:(state:JsonObject,context:string)=>JsonObject,
- *   beginMeasure:(name:string)=>()=>undefined
+ *   beginMeasure:(name:string)=>()=>void
  * }} MainDocumentWritePorts
  */
 

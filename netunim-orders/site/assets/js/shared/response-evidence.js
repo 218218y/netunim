@@ -20,3 +20,18 @@ export function evidenceRows(response,invalid){
   if(!Array.isArray(response)||!response.every(evidenceObject))throw invalid();
   return response;
 }
+
+/** Error text is presentation only, not RPC receipt evidence.
+ * @param {unknown} value @param {boolean} [includeHint] */
+export function responseErrorText(value,includeHint=false){
+  if(!evidenceObject(value))return '';
+  return String(value.message||(includeHint?value.hint:null)||'');
+}
+/** Preserve the historical raw RPC selection without certifying its fields.
+ * @param {unknown} value @returns {unknown} */
+export function firstResponseValue(value){return Array.isArray(value)?value[0]:value}
+
+/** JSON arrays have no named business fields; retain their numeric spread keys.
+ * @param {import('./storage-json.js').StorageJsonObject|import('./storage-json.js').StorageJsonArray} value
+ * @param {string} key @returns {import('./storage-json.js').StorageJson|undefined} */
+export function jsonObjectProperty(value,key){return Array.isArray(value)?undefined:value[key]}
