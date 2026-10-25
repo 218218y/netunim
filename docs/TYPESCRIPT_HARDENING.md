@@ -199,3 +199,34 @@ The native authority test inspects actual transaction durability across more tha
 The existing real hard-process-kill tests remain unchanged and mandatory in CI.
 The focused connection/owner/startup suites pass 24 tests. This change adds 154
 eager source bytes per app, no modules and no budget changes.
+
+## Bank recurring debit and credit forecasts
+
+The actual `bank-recurring-debits.js` implementation now joins the strict roots;
+the isolated baseline probe reported 31 diagnostics without expanding into new
+unchecked dependencies. Forecast rows have numeric amounts, a literal estimated
+flag and a distinct `bank_recurring` source. An obligation without a bank seed
+retains nullable money. Retained source rows reuse `BankIdentityRow`; their
+unvalidated identity and description fields remain unknown. These declarations
+do not turn arbitrary historical rows into validated bank transactions.
+
+Existing runtime date, amount, status, currency, presence and coverage checks
+continue to gate admission. The existing month advancement calculation is reused
+directly for the next due month rather than indexing a generated calendar. The
+changes matched the prior implementation in 2,616 input/output/error cases,
+including missing/zero/coercible amounts, credits/debits, ambiguous sources,
+coverage corrections and year rollover. Forty behavior/identity/source tests and
+three startup tests pass. Five compiler tests include real implementation
+mutations that attempt to finalize an estimate, change its source, remove its
+numeric amount or replace absent obligation money with text.
+
+This stage adds 1,510 eager source bytes and no modules. Measured totals are
+1,837,196/2,460,819 bytes and fit the current source budgets; no budget changes
+are needed. The larger cashflow reconciler and V2/application transport
+coordinators remain outside the strict roots. All prior negative consumers,
+mutation checks and browser/database acceptance suites are retained.
+
+At this stage the strict configuration has 313 explicit roots: 194 product
+modules and 119 consumer fixtures. The compiler loads 402 JS/MJS sources in total
+(including dependencies and fixtures); 23 Bridge files still use `@ts-nocheck`.
+These categories are distinct and do not imply full application coverage.
