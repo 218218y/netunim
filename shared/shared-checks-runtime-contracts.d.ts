@@ -20,6 +20,6 @@ export interface Methods {
   replaceLocalAuthoritativeState:StorageMethods['replaceLocalAuthoritativeState'];
   resetCloudHead(revision:number,state:unknown,options:{boundaryId:string}):ReturnType<StorageMethods['resetCloudHead']>;
 }
-export type Opening = {store:Storage,promise:Promise<RecoveredJournal|null>};
+export type Opening = {store:Storage,promise:Promise<import('./storage-journal-model.js').ReplayedStorageJournal|null>};
 export type Syncing = {store:Storage,promise:Promise<boolean>};
 export type {Storage,SharedState,RemoteRow as Row,StoredCloudFlight as Flight,CloudSnapshot as Cloud};
