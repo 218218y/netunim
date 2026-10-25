@@ -92,3 +92,26 @@ roots. An initial combined probe produced 454 diagnostics, including broad
 validation/restore dependencies and old generated shared copies. This is a scope
 boundary, not a claim of 454 business bugs. Their existing runtime and response
 reader tests remain mandatory in CI.
+
+## Canonical Bridge financial models
+
+Four actual models now use `@ts-check` and join the strict roots: credit
+transactions, credit profiles, Hapoalim cheque normalization and Hapoalim credit
+settlements. Bridge exclusions decrease from 27 to 23. The canonical shared
+transaction guard supplies its existing validated pending/completed and issuer
+amount-status evidence to both browser and Bridge copies.
+
+Normalized amounts remain `number | null`; missing money cannot silently become
+zero at a checked consumer. Installments, provider identities, account identities,
+coverage states, cheque records and card suffix lists have checked result types.
+Unvalidated date/observation metadata deliberately remains unknown. Provider login,
+scheduler, cooldown and anti-blocking policy are unchanged.
+
+The small equivalent normalization rewrites were compared against `5b2598ba` in
+288 input/output/error cases. Existing runtime producer-guard mutations remain
+active. Historical AST policy fixtures are preserved; a separate explicit
+before/after allowlist covers only reviewed changed declarations and new guards.
+Policy mutation tests compare against the current implementation digest, so an
+old baseline difference cannot make a mutant pass trivially. Compiler mutations
+independently check returned amounts, statuses, installment counts and cheque
+amounts. Startup/module/time budgets do not change in this stage.

@@ -99,3 +99,13 @@ test('actual Bridge normalization retains valid nullable amounts, installments a
   assert.equal(decoded.months[0].transactions[0].originalAmount,null);
   assert.deepEqual(decoded.months[0].transactions[0].installments,{number:1,total:3});
 });
+
+test('typed issuer normalization preserves missing, zero, charge and refund amounts',()=>{
+  for(const status of ['pending','completed']){
+    const values=[null,0,-120,120].map(chargedAmount=>normalizeCreditScrapeTransaction({
+      ...tx,status,chargedAmount,chargeAmountStatus:chargedAmount===null?'missing':'reported',
+    }));
+    assert.deepEqual(values.map(row=>row.chargedAmount),[null,0,-120,120]);
+    assert.deepEqual(values.map(row=>row.status),[status,status,status,status]);
+  }
+});

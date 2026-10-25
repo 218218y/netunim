@@ -1,4 +1,4 @@
-// @ts-nocheck
+// @ts-check
 import { compactText, detailKeyToken, meaningfulDetailValue } from './hapoalim-detail-values.mjs';
 import {
   isDocumentDetailKey,
@@ -7,6 +7,7 @@ import {
   isUnsafeTechnicalDetailKey,
 } from './hapoalim-detail-keys.mjs';
 
+/** @param {unknown} value */
 function normalizedBankDescriptor(value) {
   return compactText(value, 220)
     .normalize('NFKC')
@@ -23,6 +24,7 @@ const CREDIT_SETTLEMENT_PROVIDER_LABELS = {
   amex: 'אמריקן אקספרס',
 };
 
+/** @param {Record<string,unknown>|null|undefined} txn @returns {''|'visaCal'|'max'|'isracard'|'amex'} */
 export function hapoalimCreditSettlementProvider(txn) {
   if (Number(txn?.eventActivityTypeCode) !== 2) return '';
   const description = normalizedBankDescriptor(txn?.activityDescription),
@@ -42,10 +44,12 @@ export function hapoalimCreditSettlementProvider(txn) {
   return '';
 }
 
+/** @param {Record<string,unknown>|null|undefined} txn */
 export function isHapoalimCompletedCreditSettlement(txn) {
   return !!hapoalimCreditSettlementProvider(txn) && Number(txn?.serialNumber) !== 0;
 }
 
+/** @param {Record<string,unknown>|null|undefined} txn */
 export function isHapoalimCreditPermissionDetails(txn) {
   if (!hapoalimCreditSettlementProvider(txn)) return false;
   const value = String(txn?.details || '').trim();
@@ -58,6 +62,7 @@ export function isHapoalimCreditPermissionDetails(txn) {
   }
 }
 
+/** @param {string} key */
 function isExplicitCardNumberKey(key) {
   const token = detailKeyToken(key);
   return /(?:creditcard|card).*(?:number|no|num|last4|lastfour|lastdigits|suffix)|(?:number|no|num|last4|lastfour|lastdigits|suffix).*(?:creditcard|card)|(?:מספר|מס)(?:ה)?כרטיס|כרטיס(?:מספר|מס)|(?:4|ארבע)(?:ה)?ספרות(?:ה)?אחרונות(?:של)?(?:ה)?כרטיס|ספרותאחרונות(?:של)?(?:ה)?כרטיס/.test(
@@ -65,6 +70,7 @@ function isExplicitCardNumberKey(key) {
   );
 }
 
+/** @param {unknown} value */
 function explicitCardLast4(value) {
   const clean = meaningfulDetailValue(value);
   if (!clean) return '';
@@ -72,8 +78,10 @@ function explicitCardLast4(value) {
   return digits.length >= 4 && digits.length <= 19 ? digits.slice(-4) : '';
 }
 
+/** @param {unknown} payload @returns {{cardLast4s:string[]}} */
 export function normalizeHapoalimCreditPermissionDetails(payload) {
-  const cardLast4s = new Set();
+  /** @type {Set<string>} */ const cardLast4s = new Set();
+  /** @param {string} key @param {unknown} value */
   const consume = (key, value) => {
     if (
       isUnsafeTechnicalDetailKey(key) ||
@@ -84,6 +92,7 @@ export function normalizeHapoalimCreditPermissionDetails(payload) {
     const suffix = explicitCardLast4(value);
     if (suffix) cardLast4s.add(suffix);
   };
+  /** @param {unknown} value @param {string} [path] @param {number} [depth] */
   const visit = (value, path = '', depth = 0) => {
     if (depth > 7 || value === null || value === undefined) return;
     if (Array.isArray(value)) {
@@ -120,8 +129,9 @@ export function normalizeHapoalimCreditPermissionDetails(payload) {
   return { cardLast4s: [...cardLast4s].sort().slice(0, 20) };
 }
 
+/** @param {...({cardLast4s?:unknown}|null|undefined)} sources @returns {{cardLast4s:string[]}} */
 export function mergeHapoalimCreditPermissionDetails(...sources) {
-  const cardLast4s = new Set();
+  /** @type {Set<string>} */ const cardLast4s = new Set();
   for (const source of sources)
     for (const suffix of Array.isArray(source?.cardLast4s) ? source.cardLast4s : []) {
       const clean = String(suffix || '').replace(/\D/g, '');
@@ -130,12 +140,14 @@ export function mergeHapoalimCreditPermissionDetails(...sources) {
   return { cardLast4s: [...cardLast4s].sort().slice(0, 20) };
 }
 
+/** @param {Record<string,unknown>|null|undefined} txn @param {string} bankReference */
 export function normalizedCreditSettlementDetails(txn, bankReference) {
   const provider = hapoalimCreditSettlementProvider(txn);
   if (!provider) return null;
+  /** @type {Record<string,unknown>} */
   const extra =
     txn?.netunimCreditSettlementDetails && typeof txn.netunimCreditSettlementDetails === 'object'
-      ? txn.netunimCreditSettlementDetails
+      ? {...txn.netunimCreditSettlementDetails}
       : {};
   const cardLast4s = [
     ...new Set(
@@ -151,9 +163,9 @@ export function normalizedCreditSettlementDetails(txn, bankReference) {
     issuerReference: bankReference,
     permissionReference: permissionLink ? compactText(txn?.referenceCatenatedNumber, 100) : '',
     bankActivityTypeCode: Number.isFinite(Number(txn?.activityTypeCode))
-      ? Number(txn.activityTypeCode)
+      ? Number(txn?.activityTypeCode)
       : null,
-    bankTextCode: Number.isFinite(Number(txn?.textCode)) ? Number(txn.textCode) : null,
+    bankTextCode: Number.isFinite(Number(txn?.textCode)) ? Number(txn?.textCode) : null,
     cardLast4s,
     cardIdentitySource: cardLast4s.length ? 'bank_detail_explicit' : '',
     detailFetched: extra.detailFetched === true,

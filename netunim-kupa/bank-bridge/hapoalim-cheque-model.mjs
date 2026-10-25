@@ -1,4 +1,4 @@
-// @ts-nocheck
+// @ts-check
 import { compactText, meaningfulDetailValue } from './hapoalim-detail-values.mjs';
 import {
   isAccountNumberKey,
@@ -13,6 +13,12 @@ import {
   isUnsafeTechnicalDetailKey,
 } from './hapoalim-detail-keys.mjs';
 
+/** @typedef {[string,unknown]} DetailPair */
+/** @typedef {{bankNumber:string,branchNumber:string,accountNumber:string,checkNumber:string,amount:number,hasDocumentReference:boolean}} ChequeItem */
+/** @param {unknown} value @returns {value is Record<string,unknown>} */
+function object(value){return value!==null&&typeof value==='object'&&!Array.isArray(value)}
+
+/** @param {unknown} value */
 export function explicitChequeNumberFromText(value) {
   const text = compactText(value, 240);
   if (!text) return '';
@@ -22,6 +28,7 @@ export function explicitChequeNumberFromText(value) {
   return match ? compactText(match[1], 80) : '';
 }
 
+/** @param {unknown} value */
 function depositDescriptionToken(value) {
   return String(value ?? '')
     .toLowerCase()
@@ -30,6 +37,7 @@ function depositDescriptionToken(value) {
     .trim();
 }
 
+/** @param {Record<string,unknown>|null|undefined} txn */
 export function hapoalimChequeTransactionKind(txn) {
   // Only the bank's activity description is authoritative here. Do not scan beneficiary names:
   // Hebrew names such as "זרצקי" contain the letters צק and previously caused false positives.
@@ -52,10 +60,11 @@ export function hapoalimChequeTransactionKind(txn) {
   return '';
 }
 
+/** @param {unknown} value @returns {DetailPair[]} */
 function semanticPairsFromObject(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+  if (!object(value)) return [];
   const entries = Object.entries(value),
-    pairs = [];
+    /** @type {DetailPair[]} */ pairs = [];
   const labelEntry = entries.find(
     ([key, child]) => isSemanticLabelKey(key) && meaningfulDetailValue(child)
   );
@@ -71,9 +80,10 @@ function semanticPairsFromObject(value) {
   return pairs;
 }
 
+/** @param {unknown} value @returns {DetailPair[]} */
 function semanticCellPairsFromArray(value) {
   if (!Array.isArray(value) || !value.length) return [];
-  const pairs = [];
+  /** @type {DetailPair[]} */ const pairs = [];
   let objectCells = 0;
   for (const child of value.slice(0, 30)) {
     if (!child || typeof child !== 'object' || Array.isArray(child)) return [];
@@ -105,8 +115,9 @@ function semanticCellPairsFromArray(value) {
   return pairs.length === objectCells ? pairs : [];
 }
 
+/** @param {unknown} value @param {number} [depth] @returns {DetailPair[]} */
 function nestedSemanticPairsFromObject(value, depth = 0) {
-  if (!value || typeof value !== 'object' || Array.isArray(value) || depth > 3) return [];
+  if (!object(value) || depth > 3) return [];
   const pairs = semanticPairsFromObject(value);
   for (const [rawKey, child] of Object.entries(value)) {
     if (!child || typeof child !== 'object') continue;
@@ -129,12 +140,13 @@ function nestedSemanticPairsFromObject(value, depth = 0) {
   return pairs;
 }
 
+/** @param {DetailPair[]} pairs @returns {ChequeItem|null} */
 function normalizeChequeItemPairs(pairs) {
   let bankNumber = '',
     branchNumber = '',
     accountNumber = '',
     checkNumber = '',
-    amount = null,
+    /** @type {number|null} */ amount = null,
     hasDocumentReference = false;
   for (const [rawKey, rawValue] of pairs) {
     const key = String(rawKey || '');
@@ -173,12 +185,13 @@ function normalizeChequeItemPairs(pairs) {
     }
   }
   const fullAccountIdentity = !!(bankNumber && branchNumber && accountNumber);
-  if (!(Number.isFinite(amount) && amount > 0 && (checkNumber || fullAccountIdentity))) return null;
+  if (!(amount!==null && Number.isFinite(amount) && amount > 0 && (checkNumber || fullAccountIdentity))) return null;
   return { bankNumber, branchNumber, accountNumber, checkNumber, amount, hasDocumentReference };
 }
 
+/** @param {unknown} value @returns {ChequeItem|null} */
 function normalizeHapoalimChequeListItem(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  if (!object(value)) return null;
   // Captured Hapoalim /current-account/cheques/... responses use this exact row
   // contract: {bank, branch, account, number, amount, ...}. `number` is the bank's
   // authoritative cheque number. Do not reinterpret the transaction reference.
@@ -198,8 +211,9 @@ function normalizeHapoalimChequeListItem(value) {
   return { bankNumber, branchNumber, accountNumber, checkNumber, amount, hasDocumentReference };
 }
 
+/** @param {unknown} value @returns {ChequeItem|null} */
 export function normalizeChequeItemObject(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  if (!object(value)) return null;
   const nativeChequeItem = normalizeHapoalimChequeListItem(value);
   if (nativeChequeItem) return nativeChequeItem;
   // Other Hapoalim views may render a table cell as a nested {label,value}-like
@@ -208,9 +222,10 @@ export function normalizeChequeItemObject(value) {
   return normalizeChequeItemPairs(nestedSemanticPairsFromObject(value));
 }
 
+/** @param {unknown} value @returns {ChequeItem|null} */
 export function normalizeChequeItemSemanticArray(value) {
   if (!Array.isArray(value) || !value.length) return null;
-  const pairs = [];
+  /** @type {DetailPair[]} */ const pairs = [];
   let semanticCells = 0,
     objectCells = 0;
   for (const child of value.slice(0, 30)) {
@@ -247,9 +262,10 @@ export function normalizeChequeItemSemanticArray(value) {
   return normalizeChequeItemPairs(pairs);
 }
 
+/** @param {unknown} value */
 function semanticColumnLabel(value) {
   if (typeof value === 'string' || typeof value === 'number') return meaningfulDetailValue(value);
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return '';
+  if (!object(value)) return '';
   for (const [key, child] of Object.entries(value)) {
     if (isSemanticLabelKey(key)) {
       const clean = meaningfulDetailValue(child);
@@ -259,6 +275,7 @@ function semanticColumnLabel(value) {
   return '';
 }
 
+/** @param {unknown} value */
 function semanticCellValue(value) {
   if (value === null || value === undefined) return '';
   if (typeof value !== 'object') return value;
@@ -269,8 +286,9 @@ function semanticCellValue(value) {
   return '';
 }
 
+/** @param {unknown} value @returns {ChequeItem[]} */
 export function normalizeChequeTableObject(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+  if (!object(value)) return [];
   const arrays = Object.values(value).filter(Array.isArray),
     headerCandidates = [];
   for (const candidate of arrays) {
@@ -290,8 +308,10 @@ export function normalizeChequeTableObject(value) {
     headerCandidates.push(labels);
   }
   if (headerCandidates.length !== 1) return [];
-  const labels = headerCandidates[0],
-    items = [];
+  const labels = headerCandidates[0];if(!labels)return [];
+  const
+    /** @type {ChequeItem[]} */ items = [];
+  /** @param {unknown} row */
   const addRow = (row) => {
     const cells = Array.isArray(row)
       ? row
@@ -299,7 +319,7 @@ export function normalizeChequeTableObject(value) {
         ? Object.values(row).find(Array.isArray)
         : null;
     if (!Array.isArray(cells) || cells.length < labels.length) return;
-    const pairs = labels.map((label, index) => [label, semanticCellValue(cells[index])]);
+    /** @type {DetailPair[]} */ const pairs = labels.map((label, index) => [label, semanticCellValue(cells[index])]);
     const item = normalizeChequeItemPairs(pairs);
     if (item) items.push(item);
   };
@@ -312,6 +332,7 @@ export function normalizeChequeTableObject(value) {
   return items;
 }
 
+/** @param {ChequeItem} item @returns {string} */
 export function chequeItemKey(item) {
   return [
     item.bankNumber,

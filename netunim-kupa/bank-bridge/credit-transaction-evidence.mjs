@@ -1,5 +1,8 @@
 // @ts-check
 // Standalone so the browser and packaged Bridge execute the same contract.
+/** @typedef {'pending'|'completed'} CreditTransactionStatus */
+/** @typedef {'reported'|'missing'|'not_billed'} CreditChargeAmountStatus */
+/** @typedef {Record<string,unknown> & {status:CreditTransactionStatus,chargeAmountStatus?:CreditChargeAmountStatus,foreignTransaction?:boolean,installments?:{number:number,total:number}|null}} CreditTransactionEvidence */
 /** @param {unknown} value @returns {value is Record<string,unknown>} */
 function object(value){return value!==null&&typeof value==='object'&&!Array.isArray(value)}
 /** @param {unknown} value @returns {value is number|string} */
@@ -89,7 +92,7 @@ function transactions(value){
   if(!Array.isArray(value))return invalid();
   for(const tx of Array.from(value))assertCreditTransactionEvidence(tx);
 }
-/** @param {unknown} tx */
+/** @param {unknown} tx @returns {asserts tx is CreditTransactionEvidence} */
 export function assertCreditTransactionEvidence(tx){
   if(!object(tx)||!(tx.status==='pending'||tx.status==='completed'))return invalid();
   amounts(tx,['originalAmount','chargedAmount']);
