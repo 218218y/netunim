@@ -20,6 +20,10 @@
     "types": []
   },
   "files": [
+    "tests/fixtures/checked-storage-boundary.mjs",
+    "tests/fixtures/checked-storage-bootstrap.mjs",
+    "shared/storage-v2-bootstrap.js",
+    "shared/storage-v2-boundary.js",
     "shared/shared-checks-storage-v2.js",
     "tests/fixtures/checked-shared-checks-storage.mjs",
     "tests/fixtures/checked-shared-checks-runtime.mjs",

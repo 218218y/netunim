@@ -2,11 +2,11 @@
   "graph": {
     "kupa": {
       "modules": 310,
-      "sourceBytes": 1886000
+      "sourceBytes": 1890000
     },
     "orders": {
       "modules": 406,
-      "sourceBytes": 2506000
+      "sourceBytes": 2510000
     }
   },
   "milliseconds": {

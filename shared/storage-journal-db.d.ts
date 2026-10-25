@@ -46,7 +46,7 @@ interface JournalTransactions {
   completeBoundary(owner:string,id:string): Promise<boolean>;
   readBootstrapGroup(scope:string): Promise<State|null>;
   beginBootstrapGroup(scope:string,record:State): Promise<State>;
-  advanceBootstrapGroup(scope:string,id:string,fromPhase:string,toPhase:string,patch?:State): Promise<State>;
+  advanceBootstrapGroup(scope:string,id:import('./storage-json.js').StorageJson,fromPhase:string,toPhase:string,patch?:State): Promise<State>;
   readV2Marker(scope:string): Promise<State|null>;
   markAccountMarker(app:'orders'|'kupa',identity:string): Promise<State|null>;
   readLocalBirth(scope:string): Promise<State|null>;
