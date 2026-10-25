@@ -20,6 +20,8 @@
     "types": []
   },
   "files": [
+    "shared/shared-checks-contract.js",
+    "tests/fixtures/checked-shared-check-model.mjs",
     "shared/restore-groups.js",
     "tests/fixtures/checked-restore-groups.mjs",
     "tests/fixtures/checked-orders-document-validation.mjs",
