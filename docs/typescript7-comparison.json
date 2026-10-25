@@ -1,0 +1,96 @@
+{
+  "date": "2026-10-25",
+  "sourceCommit": "5a5c7c2e",
+  "platform": "Windows x64",
+  "sampling": "Process PeakWorkingSetSize via Windows GetProcessMemoryInfo, polled every 20 ms. TS 7 native compiler directly; JS launcher excluded.",
+  "samples": {
+    "6.0.3": [
+      {
+        "seconds": 15.738,
+        "peak_working_set_mib": 425.05,
+        "exit": 0
+      },
+      {
+        "seconds": 8.662,
+        "peak_working_set_mib": 420.11,
+        "exit": 0
+      },
+      {
+        "seconds": 8.433,
+        "peak_working_set_mib": 417.48,
+        "exit": 0
+      }
+    ],
+    "7.0.2": [
+      {
+        "seconds": 1.458,
+        "peak_working_set_mib": 230.49,
+        "exit": 1
+      },
+      {
+        "seconds": 0.746,
+        "peak_working_set_mib": 234.59,
+        "exit": 1
+      },
+      {
+        "seconds": 0.661,
+        "peak_working_set_mib": 221.92,
+        "exit": 1
+      }
+    ]
+  },
+  "diagnostics": {
+    "6.0.3": [],
+    "7.0.2": [
+      "netunim-orders/site/assets/js/calendar/connection.js(7,130): error TS2694: Namespace '\"C:/Users/\\u05D9\\u05E2\\u05E7\\u05D1/Downloads/pro/netunim/.work/ts-hardening/compiler-baseline/netunim-orders/site/assets/js/calendar/auth\"' has no exported member 'createCalendarAuth'.",
+      "netunim-orders/site/assets/js/calendar/session-runtime.js(43,51): error TS2694: Namespace '\"C:/Users/\\u05D9\\u05E2\\u05E7\\u05D1/Downloads/pro/netunim/.work/ts-hardening/compiler-baseline/netunim-orders/site/assets/js/calendar/auth\"' has no exported member 'createCalendarAuth'.",
+      "netunim-orders/site/assets/js/calendar/session-runtime.js(57,223): error TS2694: Namespace '\"C:/Users/\\u05D9\\u05E2\\u05E7\\u05D1/Downloads/pro/netunim/.work/ts-hardening/compiler-baseline/netunim-orders/site/assets/js/platform/calendar-browser-effects\"' has no exported member 'createCalendarBrowserEffects'.",
+      "netunim-orders/site/assets/js/calendar/session-runtime.js(227,14): error TS7006: Parameter 'error' implicitly has an 'any' type.",
+      "netunim-orders/site/assets/js/domains/calendar/presentation.js(11,59): error TS2694: Namespace '\"C:/Users/\\u05D9\\u05E2\\u05E7\\u05D1/Downloads/pro/netunim/.work/ts-hardening/compiler-baseline/netunim-orders/site/assets/js/calendar/view\"' has no exported member 'calendarRangeFor'.",
+      "netunim-orders/site/assets/js/domains/customers/morning-debt-application.js(22,61): error TS2694: Namespace '\"C:/Users/\\u05D9\\u05E2\\u05E7\\u05D1/Downloads/pro/netunim/.work/ts-hardening/compiler-baseline/netunim-orders/site/assets/js/domains/customers/morning-lifetime\"' has no exported member 'createMorningLifetime'.",
+      "tests/fixtures/checked-calendar-session.mjs(32,1): error TS2578: Unused '@ts-expect-error' directive.",
+      "tests/fixtures/checked-contracts.mjs(62,29): error TS2339: Property 'error' does not exist on type '{ committed: { revision: number; ackSeq: number; }; published: false; reason: \"stale\"; } | { committed: { revision: number; ackSeq: number; }; published: false; reason: \"publication-error\"; error: unknown; }'.",
+      "tests/fixtures/checked-morning-status-consumers.mjs(25,72): error TS7006: Parameter '_key' implicitly has an 'any' type.",
+      "tests/fixtures/checked-morning-status-consumers.mjs(25,77): error TS7006: Parameter '_assert' implicitly has an 'any' type.",
+      "tests/fixtures/checked-morning-status-consumers.mjs(25,85): error TS7006: Parameter 'work' implicitly has an 'any' type."
+    ]
+  },
+  "mutations": [
+    {
+      "file": "shared/storage-records.js",
+      "replacement": "version:2,owner,epoch,seq:\"1\",state",
+      "results": {
+        "6.0.3": {
+          "exit": 2,
+          "newDiagnostics": [
+            "shared/storage-records.js(39,33): error TS2322: Type 'string' is not assignable to type 'number'.\r"
+          ]
+        },
+        "7.0.2": {
+          "exit": 1,
+          "newDiagnostics": [
+            "shared/storage-records.js(39,33): error TS2322: Type 'string' is not assignable to type 'number'."
+          ]
+        }
+      }
+    },
+    {
+      "file": "shared/indexed-db-connection.js",
+      "replacement": "resolve('saved')",
+      "results": {
+        "6.0.3": {
+          "exit": 2,
+          "newDiagnostics": [
+            "shared/indexed-db-connection.js(61,31): error TS2345: Argument of type 'string' is not assignable to parameter of type 'T | PromiseLike<T>'.\r"
+          ]
+        },
+        "7.0.2": {
+          "exit": 1,
+          "newDiagnostics": [
+            "shared/indexed-db-connection.js(61,31): error TS2345: Argument of type 'string' is not assignable to parameter of type 'T | PromiseLike<T>'."
+          ]
+        }
+      }
+    }
+  ]
+}
