@@ -39,8 +39,8 @@ export async function bankStage(t,{prepare=async()=>{}}={}){
   }
   await start();
   const base=`http://127.0.0.1:${port}`;
-  const request=(target,{method='GET',body,token='native-fixture-token'}={})=>new Promise((resolve,reject)=>{
-    const req=http.request(base+target,{method,agent:false,headers:{Authorization:'Bearer '+token}},res=>{
+  const request=(target,{method='GET',body,token='native-fixture-token',origin}={})=>new Promise((resolve,reject)=>{
+    const req=http.request(base+target,{method,agent:false,headers:{Authorization:'Bearer '+token,...(origin===undefined?{}:{Origin:origin})}},res=>{
       const chunks=[];res.on('error',reject);res.on('data',chunk=>chunks.push(chunk));res.on('end',()=>{
         const bytes=Buffer.concat(chunks);resolve({status:res.statusCode,headers:{get:key=>res.headers[key.toLowerCase()]},json:async()=>JSON.parse(bytes),arrayBuffer:async()=>bytes});
       });

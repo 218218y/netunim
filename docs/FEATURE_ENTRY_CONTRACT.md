@@ -16,6 +16,13 @@ dependencies, collisions and markup ownership. This does not infer business
 authority from a name or prove every intermediate asynchronous continuation;
 owner-level failure, receipt and lifetime tests remain necessary.
 
+Before implementation, record this short feature entry in the change description:
+the existing owner; input/result and command/query ports; affected retained data;
+view/controller responsibilities; creation/binding/start/stop/dispose/drain order;
+and compatibility consumers/removal evidence. Select only the role ports that
+the feature needs. Existing composition roots may keep legitimate wiring; a
+generic registry or global service locator does not satisfy these fields.
+
 | Boundary | Required feature contract |
 | --- | --- |
 | Business authority | Identify the existing owning Main, Shared Checks, Finance, Calendar or independent workbook path before adding a command. A localStorage preference or file/Bridge mirror cannot become another business writer. |

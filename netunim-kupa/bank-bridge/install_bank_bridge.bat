@@ -32,7 +32,7 @@ mkdir "%STAGING%" >nul 2>nul || (
 )
 
 rem Build the new runtime first. The currently installed bridge stays untouched until all checks pass.
-for %%F in (server.mjs bank-money-value.mjs credit-value-codec.mjs credit-month-plan.mjs credit-sync-scope.mjs credit-http-policy.mjs credit-http.mjs credit-scheduler.mjs visa-cal-model.mjs credit-coverage.mjs visa-cal-session.mjs credit-adapter-base.mjs visa-cal-adapter.mjs max-model.mjs credit-monthly-projection.mjs max-adapter.mjs isracard-group-adapter.mjs credit-adapter-factory.mjs credit-adapter-wire.mjs json-artifact-owner.mjs bridge-artifacts.mjs credit-diagnostic-model.mjs credit-diagnostic-log.mjs hapoalim-wire.mjs hapoalim-json.mjs hapoalim-enrichment.mjs hapoalim-accounts.mjs cheque-images.mjs file-task-owner.mjs browser-locator.mjs windows-browser.mjs provider-errors.mjs hapoalim-session.mjs hapoalim-provider.mjs credit-session.mjs credit-provider.mjs shutdown-owner.mjs replacement-command.mjs loopback-port.mjs http-handler.mjs http-routes.mjs wire-errors.mjs finance-commands.mjs connection-queries.mjs diagnostic-queries.mjs operation-owner.mjs connection-commands.mjs connection-settings.mjs connection-vault.mjs windows-platform.mjs hapoalim-policy.mjs hapoalim-navigation-policy.mjs hapoalim-login-runtime.mjs hapoalim-account-selector.mjs hapoalim-account-model.mjs hapoalim-detail-values.mjs hapoalim-detail-keys.mjs hapoalim-cheque-model.mjs hapoalim-credit-settlement-model.mjs hapoalim-additional-details-model.mjs hapoalim-date-codec.mjs hapoalim-transaction-model.mjs hapoalim-failure-policy.mjs bank-diagnostics.mjs credit-core-values.mjs credit-profile-model.mjs credit-transaction-model.mjs credit-transaction-evidence.mjs credit-failure-policy.mjs observation-time.mjs credit-cooldown-policy.mjs credit-data-diagnostics.mjs credit-identity.mjs amex-digitalv3.mjs isracard-digitalv3.mjs isracard-group-utils.mjs isracard-camoufox.mjs provision-camoufox.mjs package.json package-lock.json start_bank_bridge.bat) do (
+for %%F in (server.mjs bank-money-value.mjs credit-value-codec.mjs credit-month-plan.mjs credit-sync-scope.mjs credit-http-policy.mjs credit-http.mjs credit-scheduler.mjs visa-cal-model.mjs credit-coverage.mjs visa-cal-session.mjs credit-adapter-base.mjs visa-cal-adapter.mjs max-model.mjs credit-monthly-projection.mjs max-adapter.mjs isracard-group-adapter.mjs credit-adapter-factory.mjs credit-adapter-wire.mjs json-artifact-owner.mjs bridge-artifacts.mjs credit-diagnostic-model.mjs credit-diagnostic-log.mjs hapoalim-wire.mjs hapoalim-json.mjs hapoalim-enrichment.mjs hapoalim-accounts.mjs cheque-images.mjs file-task-owner.mjs browser-locator.mjs windows-browser.mjs provider-errors.mjs hapoalim-session.mjs hapoalim-provider.mjs credit-session.mjs credit-provider.mjs shutdown-owner.mjs replacement-command.mjs loopback-port.mjs http-handler.mjs origin-policy.mjs http-routes.mjs wire-errors.mjs finance-commands.mjs connection-queries.mjs diagnostic-queries.mjs operation-owner.mjs connection-commands.mjs connection-settings.mjs connection-vault.mjs windows-platform.mjs hapoalim-policy.mjs hapoalim-navigation-policy.mjs hapoalim-login-runtime.mjs hapoalim-account-selector.mjs hapoalim-account-model.mjs hapoalim-detail-values.mjs hapoalim-detail-keys.mjs hapoalim-cheque-model.mjs hapoalim-credit-settlement-model.mjs hapoalim-additional-details-model.mjs hapoalim-date-codec.mjs hapoalim-transaction-model.mjs hapoalim-failure-policy.mjs bank-diagnostics.mjs credit-core-values.mjs credit-profile-model.mjs credit-transaction-model.mjs credit-transaction-evidence.mjs credit-failure-policy.mjs observation-time.mjs credit-cooldown-policy.mjs credit-data-diagnostics.mjs credit-identity.mjs amex-digitalv3.mjs isracard-digitalv3.mjs isracard-group-utils.mjs isracard-camoufox.mjs provision-camoufox.mjs package.json package-lock.json start_bank_bridge.bat) do (
   copy /Y "%~dp0%%F" "%STAGING%\%%F" >nul || (
     echo ERROR: Could not copy %%F into the Bank Bridge staging folder.
     rmdir /S /Q "%STAGING%" >nul 2>nul
@@ -149,7 +149,7 @@ copy /Y "%~dp0rollback_bank_bridge.bat" "%APPROOT%\rollback_bank_bridge.bat" >nu
 
 start "" wscript.exe "%AUTOSTART%"
 timeout /t 2 /nobreak >nul
-node -e "fetch('http://127.0.0.1:8765/health',{cache:'no-store'}).then(r=>r.json()).then(j=>{if(j.service!=='netunim-kupa-bank-bridge'||!(Number(j.version)>=74)||Number(j.creditContractVersion)!==2)process.exit(2)}).catch(()=>process.exit(1))"
+node -e "fetch('http://127.0.0.1:8765/health',{cache:'no-store'}).then(r=>r.json()).then(j=>{if(j.service!=='netunim-kupa-bank-bridge'||!(Number(j.version)>=75)||Number(j.creditContractVersion)!==2)process.exit(2)}).catch(()=>process.exit(1))"
 if errorlevel 1 (
   node "%APPDIR%\server.mjs" --stop-existing
   if errorlevel 1 (
@@ -162,7 +162,7 @@ if errorlevel 1 (
   if exist "%APPDIR%" move "%APPDIR%" "%APPFAILED%" >nul 2>nul
   if exist "%APPBACKUP%" move "%APPBACKUP%" "%APPDIR%" >nul 2>nul
   if exist "%APPDIR%" start "" wscript.exe "%AUTOSTART%"
-  echo ERROR: Bank Bridge v74 did not start correctly. The previous runtime was restored when available.
+  echo ERROR: Bank Bridge v75 did not start correctly. The previous runtime was restored when available.
   echo See: %APPROOT%\bridge.log
   pause
   exit /b 1

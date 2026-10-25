@@ -28,6 +28,19 @@ legacy, v1 or migration. It is not a certificate that old user data has disappea
 | Unused assertStorageJson import after Shared Checks validation extraction | Dead | No remaining binding consumer; full lint detects the orphan; removed in Stage 11 | Removed without deleting its canonical validator or any retained-data reader |
 | Old server-local implementations after coordinator extraction | Current, relocated | Actual functions now live in the index/search/document/service owners; source-based behavior fixtures follow them | Keep one implementation; the removed duplicate listener bodies are not a data migration |
 
+The first-column module path identifies the code owner for each retained format;
+changes stay with that module's existing capability or deployment tool. The
+consumer and removal-proof columns are required review fields, not permission
+to add a second writer. New entries must name their owning implementation,
+live consumer and concrete removal evidence in the same way.
+
+Bank Bridge v75 adds one current compatibility policy owned by
+`bank-bridge/origin-policy.mjs`: absent configuration retains `legacy-reflect`
+for installed browser/native clients. Its removal condition is the isolated
+installed-browser/custom-domain upgrade and rollback evidence in
+[Bank origin rollout](BANK_ORIGIN_POLICY.md). No historical record reader is
+removed by that transition.
+
 No additional historical reader was proven Dead during this continuation.
 A retirement PR must identify the consumer closure, the retained format, the
 replacement/migration and old-record/restart evidence. Synthetic CI does not prove
