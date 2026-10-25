@@ -15,6 +15,26 @@ from isolated_supabase import IsolatedSupabase, isolated_environment, loopback_u
 
 
 class SafetyContracts(unittest.TestCase):
+    def test_native_static_server_reuses_one_socket_for_multiple_assets(self):
+        import functools
+        import http.client
+        import threading
+        from browser_harness import _RuntimeHTTPServer,_QuietHandler
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp,'asset.js').write_text('export const value=1;',encoding='utf-8')
+            server=_RuntimeHTTPServer(('127.0.0.1',0),functools.partial(_QuietHandler,directory=tmp))
+            worker=threading.Thread(target=server.serve_forever,daemon=True);worker.start()
+            connection=http.client.HTTPConnection(*server.server_address,timeout=3)
+            try:
+                connection.request('GET','/asset.js');first=connection.getresponse()
+                self.assertEqual(first.version,11);self.assertFalse(first.will_close)
+                self.assertEqual(first.read(),b'export const value=1;');owned=connection.sock
+                connection.request('GET','/asset.js');second=connection.getresponse()
+                self.assertEqual(second.read(),b'export const value=1;')
+                self.assertIs(connection.sock,owned)
+            finally:
+                connection.close();server.shutdown();server.server_close();worker.join(timeout=3)
+
     def test_worker_netlog_extracts_only_failed_paths_and_codes(self):
         from browser_harness import _netlog_failures
         with tempfile.TemporaryDirectory() as tmp:
