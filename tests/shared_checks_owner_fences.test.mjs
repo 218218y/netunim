@@ -3,19 +3,22 @@ import assert from 'node:assert/strict';
 import {createSharedChecksV2Runtime} from '../shared/shared-checks-v2-runtime.js';
 import {createSharedChecksStorageV2} from '../shared/shared-checks-storage-v2.js';
 import {memoryDb,emergencyStore} from './storage-v2-fixture.mjs';
+import {createStorageOwnerBinding} from '../shared/storage-owner-binding.js';
+import {fakeDb,fakeStorage} from './storage_owner_ports.mjs';
 
 const gate=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b});return {promise,resolve,reject}};
 const state=id=>({checks:[{id,amount:10}],bankEvents:[]});
-function fixture(){
-  let owner='A',visible=state('A'),primary=true;
+function fixture(binding=null){
+  let owner='A',visible=state('A'),primary=true,generation=1;
   const stores=[],databases=new Map();
-  const runtime=createSharedChecksV2Runtime({site:'orders',owner:()=>owner,primary:()=>primary,mode:()=> 'primary',
+  const runtime=createSharedChecksV2Runtime({site:'orders',owner:()=>binding?binding.current():owner,primary:()=>primary&&(!binding||binding.writable),mode:()=> 'primary',
+    captureCommitAuthority:()=>{if(binding)return binding.captureCommitAuthority();const accepted=generation;return ()=>primary&&accepted===generation},
     readState:()=>visible,applyState:value=>{visible=value},merge:()=>assert.fail('unexpected merge'),readRemote:async()=>null,rpc:async()=>null,
     createStorage:options=>{
       if(!databases.has(owner))databases.set(owner,memoryDb());
       const store=createSharedChecksStorageV2({...options,db:databases.get(owner),emergency:emergencyStore()});stores.push(store);return store;
     }});
-  return {runtime,stores,databases,get visible(){return visible},set primary(value){primary=value},
+  return {runtime,stores,databases,get visible(){return visible},set primary(value){primary=value},nextGeneration(){generation++},
     async activate(next){owner=next;const recovered=await runtime.recover();if(!recovered)await runtime.initialize({state:state(next),revision:1,intent:'cloud-authoritative',sourceOwner:next})},
     edit(){visible.checks[0].amount++;return runtime.persist([{type:'put',collection:'checks',id:visible.checks[0].id,mode:'replace'}])},
     set owner(value){owner=value}};
@@ -84,4 +87,41 @@ test('cloud state cannot publish after primary authority is lost',async()=>{
   const f=fixture();await f.activate('A');const release=gate();f.stores[0].cloudState=()=>release.promise;
   const reading=f.runtime.cloudState(),rejected=assert.rejects(reading,/primary_required/);f.primary=false;release.resolve({base:null,pending:true});await rejected;
   f.primary=true;assert.equal(f.runtime.cloudReady,true);assert.equal(f.runtime.hasLocalWork,false);
+});
+
+for(const operation of ['cloudState','flush'])test(`${operation} rejects a revoked generation even when account and journal epoch are unchanged`,async()=>{
+  const f=fixture();await f.activate('A');const store=f.stores[0],release=gate(),entered=gate();
+  store[operation==='cloudState'?'cloudState':'settled']=()=>{entered.resolve();return release.promise};
+  const running=f.runtime[operation](),rejected=assert.rejects(running,/owner_handoff|owner_changed/);await entered.promise;
+  f.nextGeneration();
+  const wasReady=f.runtime.primaryReady;release.resolve(operation==='cloudState'?{base:null,pending:true}:undefined);
+  await rejected;assert.equal(wasReady,false,'an old same-account lease is not primary readiness');
+});
+
+test('recovery creates a fresh journal context for a new generation of the same account',async()=>{
+  const f=fixture();await f.activate('A');const original=f.stores[0],epoch=original.epoch;
+  f.nextGeneration();assert.throws(()=>f.edit(),/owner_handoff|owner_changed/);
+  await f.runtime.recover();assert.equal(f.stores.length,2);assert.equal(f.runtime.primaryReady,true);
+  assert.equal(f.stores[1].epoch,epoch,'new authority claims the existing durable journal without resetting it');
+  await f.edit().committed;assert.equal(await f.runtime.flush(),true);
+});
+
+test('the production owner binding revokes a same-account Shared completion after generation refresh',async()=>{
+  const db=fakeDb(),row={version:1,app:'orders',owner:'A',generation:1,source:'bootstrap',createdAt:'T',updatedAt:'T'};
+  db.seedBinding('orders',row);
+  const binding=createStorageOwnerBinding({app:'orders',db,storage:fakeStorage()});await binding.hydrate();
+  const f=fixture(binding);await f.runtime.initialize({state:state('A'),revision:1,intent:'cloud-authoritative',sourceOwner:'A'});
+  const store=f.stores[0],release=gate(),entered=gate();store.cloudState=()=>{entered.resolve();return release.promise};
+  const running=f.runtime.cloudState(),rejected=assert.rejects(running,/owner_handoff/);await entered.promise;
+  db.seedBinding('orders',{...row,generation:3});await binding.refresh();
+  assert.equal(binding.current(),'A');assert.equal(binding.writable,true);assert.equal(f.runtime.primaryReady,false);
+  release.resolve({base:null,pending:true});await rejected;
+  await f.runtime.recover();assert.equal(f.runtime.cloudReady,true);await f.edit().committed;assert.equal(await f.runtime.flush(),true);
+});
+
+test('writer read-only publication also rejects a revoked same-account generation',async()=>{
+  const f=fixture();await f.activate('A');const db=f.databases.get('A'),load=db.load,entered=gate(),release=gate();
+  db.load=async(...args)=>{const result=await load(...args);entered.resolve();await release.promise;return result};
+  const reading=f.runtime.recoverReadOnly();await entered.promise;f.nextGeneration();
+  const before={...f.runtime.diagnostics};release.resolve();assert.equal(await reading,null);assert.deepEqual(f.runtime.diagnostics,before);
 });

@@ -175,3 +175,25 @@ not arbitrary sleeps. Main/Shared journal protocols and business merge policies
 are unchanged. Remaining static Local Birth/Detached Target and wider provider
 coverage are bounded follow-ups; another broad hardening campaign is not required
 to claim the repaired critical ownership paths.
+
+## Final generation audit
+
+A final held-promise review found a narrower A-B-A case: if ownership returns to
+the same account without this runtime having opened the intervening account, its
+store and journal epoch can remain identical while the durable owner generation
+has changed. Three regressions failed before the repair: stale cloud-state and
+flush completion succeeded, and persist admitted the old generation.
+
+Shared runtime now retains its existing captured commit-authority predicate and
+requires it for publication, readiness and admission. Recovery creates a fresh
+store when that predicate is revoked, claiming the existing durable journal
+without resetting its epoch or data. Writer read-only publication captures the
+same predicate; secondary read-only recovery retains its non-writer route.
+Accepted commit counters still drain on their own store even when admission or
+leadership closes, while stale diagnostics cannot publish into a new generation.
+
+Fifteen deterministic owner/epoch/generation tests pass, including a production
+`createStorageOwnerBinding` refresh with an unchanged account and incremented
+generation, plus writer read-only revocation. Existing Shared storage, sync,
+accepted-commit and owner-transfer tests pass. No owner-binding protocol, journal
+record, cloud payload or source budget change is required.
