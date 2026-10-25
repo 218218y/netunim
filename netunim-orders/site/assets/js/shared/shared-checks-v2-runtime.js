@@ -217,7 +217,8 @@ export function createSharedChecksV2Runtime({owner:configuredOwner,primary:confi
     syncing={store,promise};promise.finally(()=>{if(syncing?.promise===promise)syncing=null}).catch(()=>{});return promise;
   }
   /** @type {Methods['replaceAuthoritativeState']} */
-  async function replaceAuthoritativeState(state,{boundaryId}={}){
+  async function replaceAuthoritativeState(state,options){
+    const {boundaryId}=options||{};
     assertContext();if(!active||!boundaryId)throw new Error('shared_checks_coordinated_boundary_required');
     const store=assertContext();await store.settled();assertContext(store);
     const result=await store.replaceAuthoritativeState(canonical(state),{boundaryId});assertContext(store);workPending=true;await publish(store);return result;
@@ -237,7 +238,8 @@ export function createSharedChecksV2Runtime({owner:configuredOwner,primary:confi
     const result=await store.replaceLocalAuthoritativeState(canonical(state),{boundaryId,expectedSeq});assertContext(store);workPending=true;await publish(store);return result;
   }
   /** @type {Methods['resetCloudHead']} */
-  async function resetCloudHead(revision,state,{boundaryId}={}){
+  async function resetCloudHead(revision,state,options){
+    const {boundaryId}=options||{};
     assertContext();if(!active||!boundaryId)throw new Error('shared_checks_coordinated_boundary_required');
     const store=assertContext();await store.settled();assertContext(store);
     const result=await store.resetCloudHead(revision,canonical(state),{boundaryId});assertContext(store);workPending=true;await publish(store);return result;

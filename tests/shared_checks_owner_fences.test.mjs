@@ -125,3 +125,10 @@ test('writer read-only publication also rejects a revoked same-account generatio
   const reading=f.runtime.recoverReadOnly();await entered.promise;f.nextGeneration();
   const before={...f.runtime.diagnostics};release.resolve();assert.equal(await reading,null);assert.deepEqual(f.runtime.diagnostics,before);
 });
+
+test('authoritative replacement and cloud reset require a coordinated boundary even on an active owner',async()=>{
+  const f=fixture();await f.activate('A');const epoch=f.stores[0].epoch;
+  await assert.rejects(f.runtime.replaceAuthoritativeState(state('A')),/coordinated_boundary/);
+  await assert.rejects(f.runtime.resetCloudHead(2,state('A'),{}),/coordinated_boundary/);
+  assert.equal(f.stores[0].epoch,epoch);assert.equal(f.runtime.cloudReady,true);
+});

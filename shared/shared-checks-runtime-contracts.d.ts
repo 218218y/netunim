@@ -15,10 +15,10 @@ export interface Methods {
   initialize(options:InitializeOptions & {state:unknown,revision:number}):Promise<import('./storage-journal-model.js').ReplayedStorageJournal>;
   initializeLocal(options:{state:unknown}):Promise<RecoveredJournal>;
   persist(operations:CheckChange[],options?:PersistOptions):{handled:false}|({handled:true}&AppendAdmission);
-  replaceAuthoritativeState:StorageMethods['replaceAuthoritativeState'];
+  replaceAuthoritativeState(state:unknown,options:{boundaryId:string}):ReturnType<StorageMethods['replaceAuthoritativeState']>;
   replaceLocalWithPending:StorageMethods['replaceLocalWithPending'];
   replaceLocalAuthoritativeState:StorageMethods['replaceLocalAuthoritativeState'];
-  resetCloudHead:StorageMethods['resetCloudHead'];
+  resetCloudHead(revision:number,state:unknown,options:{boundaryId:string}):ReturnType<StorageMethods['resetCloudHead']>;
 }
 export type Opening = {store:Storage,promise:Promise<RecoveredJournal|null>};
 export type Syncing = {store:Storage,promise:Promise<boolean>};

@@ -197,3 +197,8 @@ Fifteen deterministic owner/epoch/generation tests pass, including a production
 generation, plus writer read-only revocation. Existing Shared storage, sync,
 accepted-commit and owner-transfer tests pass. No owner-binding protocol, journal
 record, cloud payload or source budget change is required.
+
+The final declaration review also narrows authoritative replacement and cloud
+reset options to require a boundary ID, matching their existing runtime guard.
+Negative consumers and an actual-body boundary-ID mutation enforce the signature;
+an active-owner regression confirms missing IDs cannot alter the journal epoch.
