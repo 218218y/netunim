@@ -9,6 +9,14 @@ const checkpoint=()=>sealStorageRecord({version:2,owner:'a',epoch:'e',seq:0,stat
 const operation=(seq,changes)=>({version:2,owner:'a',epoch:'e',seq,generation:seq,operationId:'op'+seq,at:'2026-09-22',changes});
 const put=text=>({type:'put',collection:'notes',mode:'replace',id:'n',record:{id:'n',text}});
 
+test('replay rejects malformed collection records before mutating the owned collection',()=>{
+  for(const row of [null,false,3,'row',[]]){
+    const state={notes:[row]};
+    assert.throws(()=>applyStoredOperation(state,operation(1,[put('new')]),schema),/storage_invalid_collection_record/);
+    assert.deepEqual(state,{notes:[row]});
+  }
+});
+
 test('typed replay is deterministic, detached, ordered and explicitly deletes',()=>{
   const base=checkpoint(),first=sealStorageRecord(operation(1,[put('new')])),second=sealStorageRecord(operation(2,[{type:'delete',collection:'notes',id:'n'}]));
   assert.deepEqual(replayStorageJournal(base,[second,first,first],schema).state,{notes:[],setting:1});
