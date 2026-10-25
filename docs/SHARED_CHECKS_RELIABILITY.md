@@ -114,3 +114,64 @@ Relative to the safety repair, most of the canonical source increase is JSDoc
 allowances increase by 4,000 bytes per app to 1,890,000/2,510,000; timing limits
 remain unchanged. Full Local Birth and Detached Target static coverage is
 deferred; their ownership repairs and existing native crash tests are retained.
+
+## Selected Bank Bridge account identity
+
+`hapoalim-account-model.mjs` now joins the strict roots. Canonical bank, branch,
+account number and composite account ID are strings; unrelated retained provider
+metadata stays unknown. Object boxing preserves the old optional property access
+and object-spread semantics, including partial rows. The exact-one-match rule,
+bank/branch comparison, error codes and public descriptor projection remain.
+
+Two actual-body mutations reject a numeric composite identity and an unnormalized
+raw account number. A negative consumer rejects treating raw balance metadata as
+verified money. Three compiler tests, nine focused model/policy/boundary tests
+and 4,399 prior/current input-output-error comparisons pass. Only the three
+changed equivalent declaration digests are individually authorized in the
+existing reviewed-policy fixture; historical hashes and policy mutation checks
+remain intact. No browser source budget or dependency inventory changes.
+
+The monthly projection candidate was also probed. It pulls the MAX diagnostic
+dependency graph into strict checking (77 initial diagnostics), so it is not
+included in this focused stage. MAX, CAL and Isracard adapters are deferred to
+separate provider-specific evidence work. There are now 375 strict roots: 242
+product modules and 133 fixtures, with 18 remaining Bridge `@ts-nocheck` files.
+This count is an inventory, not a completion metric.
+
+## Maintenance decisions and operational limits
+
+The required compiler remains TypeScript 6.0.3. On 2026-10-25 the official
+[7.1 Beta announcement](https://devblogs.microsoft.com/typescript/announcing-typescript-7-1-beta/)
+still describes the new sync/async API in a beta release. The
+[7.0 announcement](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/)
+states that 7.0 has no supported compiler API. The prior isolated 7.0.2 CLI
+experiment is not full mutation/API/offline parity, and was not rerun as a
+substitute for it. A single complete migration should be reconsidered after the
+appropriate API stabilizes; no second permanent compiler was installed.
+
+Service Worker root cause remains unproven. Eleven local diagnostic/safety tests
+pass, including native-event persistence, original-error preservation, query/header
+redaction, NetLog failed-path/network-code extraction and HTTP/1.1 connection reuse.
+Existing CI still covers cold/cached/offline startup, release compatibility,
+process restart and Windows PWA acceptance. Passing those gates does not prove
+that HTTP persistence caused or repaired the historical installation failure.
+Reopen the investigation on a new installation worker error or deadline with the
+isolated profile's worker/version state and redacted NetLog failure evidence;
+identify the failed URL/code before changing product retries or timeouts.
+
+In run `40186227810`, Windows job `121147475735` again recorded native LevelDB
+checksum corruption and deletion of the isolated `restore-process-orders` fixture
+database after a hard process kill. The owned profile marker survived, while
+Chromium logged recovery from a corrupted database. Production PWA/release tests
+in that same Windows job passed. Supabase job `121147475967` separately recorded
+a Chromium network-service crash and an aborted loopback Kupa RPC before the
+controlled response interception. These are distinct native failures; neither is
+evidence of a Service Worker installation regression. Original logs/artifacts are
+retained, with one bounded manual retry per failed job and no weakened gate.
+
+No new TypeScript suppressions or broad `any` contracts were introduced. Mutation
+tests check changed real JS bodies; held-promise regressions use explicit gates,
+not arbitrary sleeps. Main/Shared journal protocols and business merge policies
+are unchanged. Remaining static Local Birth/Detached Target and wider provider
+coverage are bounded follow-ups; another broad hardening campaign is not required
+to claim the repaired critical ownership paths.

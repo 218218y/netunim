@@ -1,14 +1,19 @@
-// @ts-nocheck
+// @ts-check
 import { normalizeAccountPart, parseAccountSelector } from './hapoalim-account-selector.mjs';
 
+/** @typedef {Record<string,unknown> & {bankNumber:string,branchNumber:string,accountNumber:string,accountId:string}} AccountDescriptor */
+/** @param {unknown} account @returns {AccountDescriptor} */
 function accountDescriptor(account) {
-  const bankNumber = normalizeAccountPart(account?.bankNumber);
-  const branchNumber = normalizeAccountPart(account?.branchNumber);
-  const accountNumber = normalizeAccountPart(account?.accountNumber);
+  // Object boxing matches property access/spread for the retained raw provider row.
+  /** @type {Record<string,unknown>} */ const source=Object(account);
+  const bankNumber = normalizeAccountPart(source.bankNumber);
+  const branchNumber = normalizeAccountPart(source.branchNumber);
+  const accountNumber = normalizeAccountPart(source.accountNumber);
   const accountId = [bankNumber, branchNumber, accountNumber].filter(Boolean).join('-');
-  return { ...account, bankNumber, branchNumber, accountNumber, accountId };
+  return { ...source, bankNumber, branchNumber, accountNumber, accountId };
 }
 
+/** @param {unknown} accounts */
 export function publicAccountDescriptors(accounts) {
   return (Array.isArray(accounts) ? accounts : [])
     .map(accountDescriptor)
@@ -21,13 +26,13 @@ export function publicAccountDescriptors(accounts) {
     }));
 }
 
+/** @param {string} code @param {string} message @param {unknown} accounts */
 function accountSelectionError(code, message, accounts) {
-  const e = new Error(message);
-  e.code = code;
-  e.availableAccounts = publicAccountDescriptors(accounts);
+  const e = Object.assign(new Error(message),{code,availableAccounts:publicAccountDescriptors(accounts)});
   return e;
 }
 
+/** @param {AccountDescriptor} descriptor @param {import('./hapoalim-account-selector.mjs').BankAccountSelector} selector */
 function descriptorMatchesSelector(descriptor, selector) {
   if (!selector.accountNumber) return false;
   if (descriptor.accountNumber !== selector.accountNumber) return false;
@@ -42,19 +47,19 @@ function descriptorMatchesSelector(descriptor, selector) {
   return true;
 }
 
+/** @param {unknown} accounts @param {unknown} [targetAccount] @returns {AccountDescriptor} */
 export function selectAccountDescriptor(accounts, targetAccount = '') {
   const normalized = (Array.isArray(accounts) ? accounts : [])
     .map(accountDescriptor)
     .filter((x) => x.branchNumber && x.accountNumber);
   if (!normalized.length) {
     const e = new Error('בנק הפועלים לא החזיר חשבונות עו״ש פעילים');
-    e.code = 'NO_ACCOUNTS';
-    throw e;
+    throw Object.assign(e,{code:'NO_ACCOUNTS'});
   }
   const selector = parseAccountSelector(targetAccount);
   if (selector.accountNumber) {
     const matches = normalized.filter((x) => descriptorMatchesSelector(x, selector));
-    if (matches.length === 1) return matches[0];
+    if (matches.length === 1) return /** @type {AccountDescriptor} */ (matches[0]);
     if (matches.length > 1)
       throw accountSelectionError(
         'AMBIGUOUS_ACCOUNT',
@@ -67,7 +72,7 @@ export function selectAccountDescriptor(accounts, targetAccount = '') {
       normalized
     );
   }
-  if (normalized.length === 1) return normalized[0];
+  if (normalized.length === 1) return /** @type {AccountDescriptor} */ (normalized[0]);
   throw accountSelectionError(
     'MULTIPLE_ACCOUNTS',
     'נמצאו כמה חשבונות בבנק הפועלים. יש לבחור סניף ומספר חשבון מדויקים.',

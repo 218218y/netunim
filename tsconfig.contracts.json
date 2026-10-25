@@ -20,6 +20,8 @@
     "types": []
   },
   "files": [
+    "tests/fixtures/checked-hapoalim-account-model.mjs",
+    "netunim-kupa/bank-bridge/hapoalim-account-model.mjs",
     "tests/fixtures/checked-storage-boundary.mjs",
     "tests/fixtures/checked-storage-bootstrap.mjs",
     "shared/storage-v2-bootstrap.js",
