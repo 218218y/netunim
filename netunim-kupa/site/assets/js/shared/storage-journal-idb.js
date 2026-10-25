@@ -15,17 +15,13 @@ import {captureStorageJournalOperation,captureStorageCloudBase,captureStorageClo
   assertStorageJournalCloudReset,assertStorageJournalReplacement,assertStorageJournalLocalReplacement,
   assertStorageJournalFlight,assertStorageJournalRejection,assertStorageJournalLocalReset} from './storage-journal-authority.js';
 
-/** @typedef {import('./storage-json.js').StorageJsonObject} State */
-/** @typedef {import('./storage-json-codec.js').SealedStorageRecord<import('./storage-checkpoint.js').StoredStorageCheckpoint>} Checkpoint */
-/** @typedef {import('./storage-json-codec.js').SealedStorageRecord<import('./storage-cloud-records.js').StoredCloudBase>} Base */
-/** @typedef {import('./storage-json-codec.js').SealedStorageRecord<import('./storage-cloud-records.js').StoredCloudFlight>} Flight */
-/** @typedef {import('./storage-json-codec.js').SealedStorageRecord<import('./storage-cloud-records.js').StoredCloudControl>} Control */
-/** @typedef {import('./storage-json-codec.js').SealedStorageRecord<import('./storage-operation.js').StoredStorageOperation>} Operation */
-/** @typedef {{data:unknown,checksum:string}} Envelope */
-/** @typedef {{epoch:string,seq:number,writer:string}} Metadata */
-/** @typedef {{checkpoints:Envelope|null,metadata:Metadata|null,bases:Envelope|null,flights:Envelope|null,controls:Envelope|null,journal:unknown[],journalKeys?:unknown}} Snapshot */
-/** @typedef {Omit<Snapshot,'journalKeys'> & {journalKeys:import('./storage-checkpoint.js').StorageJournalKey[]}} EditableSnapshot */
-/** @template Result @typedef {(tx:IDBTransaction,done:(result:Result)=>undefined,fail:(cause:unknown)=>undefined)=>undefined} TransactionWork */
+/** @typedef {import('./storage-journal-db.js').StorageJournalDb} Db */
+/** @typedef {import('./storage-journal-db.js').State} State */
+/** @typedef {import('./storage-journal-db.js').Envelope} Envelope */
+/** @typedef {import('./storage-journal-db.js').Metadata} Metadata */
+/** @typedef {import('./storage-journal-db.js').Snapshot} Snapshot */
+/** @typedef {import('./storage-journal-db.js').EditableSnapshot} EditableSnapshot */
+/** @template Result @typedef {import('./storage-journal-db.js').TransactionWork<Result>} TransactionWork */
 /** @param {unknown} record @returns {State} */
 function readJournalObject(record){return readStorageState(readStorageRecord(record))}
 /** @param {unknown} value @returns {Metadata|null} */
@@ -91,7 +87,7 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
       }catch(error){fail(error)}};
     }
   }
-  /** @param {string} owner @returns {Promise<Snapshot>} */
+  /** @type {Db['load']} */
   function load(owner){return transact('readonly',(tx,done,fail)=>read(tx,owner,done,fail))}
   /** @template Result @param {string} owner @param {(tx:IDBTransaction,current:EditableSnapshot,done:(value:Result)=>undefined)=>undefined} edit @returns {Promise<Result>} */
   function change(owner,edit){return transact('readwrite',(tx,done,fail)=>read(tx,owner,current=>{const journalKeys=readStorageJournalDeletionKeys(current.journal,current.journalKeys,owner);edit(tx,{...current,journalKeys},done)},fail,{retirement:true}))}
@@ -102,7 +98,7 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
     // Append keeps its two-record hot path; it neither ACKs nor clears a head.
     if(Object.hasOwn(current,'bases'))readStorageCloudHead({base:current.bases,flight:current.flights,control:current.controls},{owner,epoch,seq:current.metadata.seq});
   }
-  /** @param {string} owner @param {Checkpoint} checkpoint @param {string} writer @param {{expectedEpoch?:string|null}} [options] @returns {Promise<boolean>} */
+  /** @type {Db['install']} */
   async function install(owner,checkpoint,writer,{expectedEpoch=null}={}){checkpoint=captureStorageCheckpoint(checkpoint);return change(owner,(tx,current,done)=>{
     const data=readStorageCheckpoint(checkpoint);
     assertStorageJournalInstall(owner,data,current.metadata?.epoch??null,expectedEpoch,Boolean(current.flights));
@@ -111,9 +107,9 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
     // New epochs never inherit an old cloud cursor, flight or control state implicitly.
     tx.objectStore('bases').delete(owner);tx.objectStore('flights').delete(owner);tx.objectStore('controls').delete(owner);done(true);
   })}
-  /** @param {string} owner @param {string} epoch @param {string} writer @returns {Promise<boolean>} */
+  /** @type {Db['claim']} */
   function claim(owner,epoch,writer){return change(owner,(tx,current,done)=>{if(current.metadata?.epoch!==epoch)throw new Error('storage_epoch_changed');readStorageCloudHead({base:current.bases,flight:current.flights,control:current.controls},{owner,epoch,seq:current.metadata.seq});tx.objectStore('metadata').put({...current.metadata,writer},owner);done(true)})}
-  /** @param {string} owner @param {Checkpoint} checkpoint @param {Base} base @param {string} writer @param {Operation|null} [operation] @returns {Promise<boolean>} */
+  /** @type {Db['initializeCloudHead']} */
   async function initializeCloudHead(owner,checkpoint,base,writer,operation=null){
     checkpoint=captureStorageCheckpoint(checkpoint);
     base=captureStorageCloudBase(base);
@@ -128,7 +124,7 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
     if(entry)tx.objectStore('journal').put(operation,[owner,head.epoch,1]);
     tx.objectStore('metadata').put({epoch:head.epoch,seq:entry?1:0,writer},owner);done(true);
   })}
-  /** @param {string} owner @param {string} epoch @param {string} writer @param {Operation} record @returns {Promise<boolean>} */
+  /** @type {Db['append']} */
   async function append(owner,epoch,writer,record){
     record=captureStorageJournalOperation(record,owner,epoch,configuredSchema);
     return transact('readwrite',(tx,done,fail)=>{
@@ -143,7 +139,7 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
     }catch(error){fail(error)}};
     metadata.onsuccess=finish;existing.onsuccess=finish;
   })}
-  /** @param {string} owner @param {string} epoch @param {string} writer @param {Checkpoint} checkpoint @returns {Promise<boolean>} */
+  /** @type {Db['compact']} */
   async function compact(owner,epoch,writer,checkpoint){checkpoint=captureStorageCheckpoint(checkpoint);return change(owner,(tx,current,done)=>{
     assertFence(current,owner,epoch,writer);const data=readStorageCheckpoint(checkpoint),prior=readStorageCheckpoint(current.checkpoints);
     const base=current.bases?readStorageCloudBase(current.bases):null;
@@ -154,7 +150,7 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
     // explicit deletes and audit metadata until the cloud has acknowledged them.
     for(const key of current.journalKeys)if(key[1]===epoch&&key[2]<=deleteThrough)tx.objectStore('journal').delete(key);done(true);
   })}
-  /** @param {string} owner @param {string} epoch @param {string} writer @param {Checkpoint} checkpoint @returns {Promise<boolean>} */
+  /** @type {Db['replaceCheckpoint']} */
   async function replaceCheckpoint(owner,epoch,writer,checkpoint){checkpoint=captureStorageCheckpoint(checkpoint);return change(owner,(tx,current,done)=>{
     assertFence(current,owner,epoch,writer);const data=readStorageCheckpoint(checkpoint);
     assertStorageJournalReplacement({owner,epoch,seq:current.metadata.seq},data);
@@ -162,7 +158,7 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
     // unacknowledged journal stay intact; replay starts from the new current head.
     tx.objectStore('checkpoints').put(checkpoint,owner);done(true);
   })}
-  /** @param {string} owner @param {string} epoch @param {string} writer @param {Checkpoint} checkpoint @param {number} expectedSeq @returns {Promise<boolean>} */
+  /** @type {Db['replaceLocalCheckpoint']} */
   async function replaceLocalCheckpoint(owner,epoch,writer,checkpoint,expectedSeq){checkpoint=captureStorageCheckpoint(checkpoint);return change(owner,(tx,current,done)=>{
     assertFence(current,owner,epoch,writer);const data=readStorageCheckpoint(checkpoint);
     assertStorageJournalLocalReplacement({owner,epoch,seq:current.metadata.seq},data,expectedSeq,
@@ -172,10 +168,10 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
     for(const key of current.journalKeys)tx.objectStore('journal').delete(key);
     tx.objectStore('checkpoints').put(checkpoint,owner);done(true);
   })}
-  /** @param {string} owner @param {string} epoch @param {string} writer @param {Base} base @returns {Promise<boolean>} */
+  /** @type {Db['setBase']} */
   async function setBase(owner,epoch,writer,base){base=captureStorageCloudBase(base);
     return change(owner,(tx,current,done)=>{assertFence(current,owner,epoch,writer);if(current.flights)throw new Error('storage_flight_pending');const data=readStorageCloudBase(base);if(data.owner!==owner||data.epoch!==epoch||!Number.isSafeInteger(data.revision)||data.revision<0||!Number.isSafeInteger(data.ackSeq)||data.ackSeq<0||data.ackSeq>current.metadata.seq)throw new Error('storage_cloud_base_mismatch');readStorageCloudBase(base);tx.objectStore('bases').put(base,owner);done(true)})}
-  /** @param {string} owner @param {string} epoch @param {string} writer @param {Flight} flight @returns {Promise<Flight>} */
+  /** @type {Db['beginFlight']} */
   async function beginFlight(owner,epoch,writer,flight){flight=captureStorageCloudFlight(flight);return change(owner,(tx,current,done)=>{
     assertFence(current,owner,epoch,writer);const data=readStorageCloudFlight(flight);
     const base=current.bases&&readStorageCloudBase(current.bases);
@@ -183,7 +179,7 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
     if(current.flights){if(JSON.stringify(current.flights)!==JSON.stringify(flight))throw new Error('storage_flight_pending');done(captureStorageCloudFlight(current.flights));return}
     tx.objectStore('flights').put(flight,owner);done(flight);
   })}
-  /** @param {string} owner @param {string} epoch @param {string} writer @param {string} operationId @param {Base} base @param {{checkpoint?:Checkpoint|null,control?:Control|null}} [options] @returns {Promise<boolean>} */
+  /** @type {Db['acknowledge']} */
   async function acknowledge(owner,epoch,writer,operationId,base,{checkpoint=null,control=null}={}){
     base=captureStorageCloudBase(base);if(control!==null)control=captureStorageCloudControl(control);if(checkpoint!==null)checkpoint=captureStorageCheckpoint(checkpoint);return change(owner,(tx,current,done)=>{
     assertFence(current,owner,epoch,writer);if(!current.flights||readStorageCloudFlight(current.flights).operationId!==operationId)throw new Error('storage_ack_mismatch');
@@ -194,7 +190,7 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
     tx.objectStore('bases').put(base,owner);tx.objectStore('flights').delete(owner);done(true);
     // ACK never deletes journal entries. Only an atomic checkpoint can compact.
   })}
-  /** @param {string} owner @param {string} epoch @param {string} writer @param {string} operationId @param {Base} base @param {{checkpoint:Checkpoint,expectedSeq:number,control?:Control|null}} options @returns {Promise<boolean>} */
+  /** @type {Db['rejectFlight']} */
   async function rejectFlight(owner,epoch,writer,operationId,base,{checkpoint,expectedSeq,control=null}){
     base=captureStorageCloudBase(base);if(control!==null)control=captureStorageCloudControl(control);checkpoint=captureStorageCheckpoint(checkpoint);return change(owner,(tx,current,done)=>{
     assertFence(current,owner,epoch,writer);const flight=current.flights&&readStorageCloudFlight(current.flights),prior=current.bases&&readStorageCloudBase(current.bases),next=readStorageCloudBase(base);
@@ -206,16 +202,16 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
     tx.objectStore('checkpoints').put(checkpoint,owner);tx.objectStore('bases').put(base,owner);tx.objectStore('flights').delete(owner);
     if(control){const nextControl=readStorageCloudControl(control);if(nextControl.owner!==owner||nextControl.epoch!==epoch)throw new Error('storage_control_scope');readStorageCloudControl(control);tx.objectStore('controls').put(control,owner)}else tx.objectStore('controls').delete(owner);done(true);
   })}
-  /** @param {string} owner @param {string} epoch @param {string} writer @param {Control} control @returns {Promise<boolean>} */
+  /** @type {Db['setControl']} */
   async function setControl(owner,epoch,writer,control){control=captureStorageCloudControl(control);
     return change(owner,(tx,current,done)=>{assertFence(current,owner,epoch,writer);const data=readStorageCloudControl(control);if(data.owner!==owner||data.epoch!==epoch)throw new Error('storage_control_scope');readStorageCloudControl(control);tx.objectStore('controls').put(control,owner);done(true)})}
-  /** @param {string} owner @param {string} epoch @param {string} writer @param {{expectedHead?:import('./storage-journal-authority.js').CloudHead|null}} [options] @returns {Promise<boolean>} */
+  /** @type {Db['clearControl']} */
   async function clearControl(owner,epoch,writer,{expectedHead=null}={}){expectedHead=captureStorageExpectedHead(expectedHead);return change(owner,(tx,current,done)=>{
     assertFence(current,owner,epoch,writer);
     if(expectedHead&&(current.metadata.seq!==expectedHead.seq||current.flights||current.checkpoints?.checksum!==expectedHead.checkpointChecksum||current.bases?.checksum!==expectedHead.baseChecksum||current.controls?.checksum!==expectedHead.controlChecksum))throw new Error('storage_control_head_changed');
     tx.objectStore('controls').delete(owner);done(true);
   })}
-  /** @param {string} owner @param {string} epoch @param {string} writer @param {Checkpoint} checkpoint @param {{expectedHead:import('./storage-cloud-recovery.js').CloudRecoveryHead,conflictKind?:'concurrent-ack'|null,isCurrent?:()=>boolean}} options @returns {Promise<boolean>} */
+  /** @type {Db['commitCloudRecovery']} */
   async function commitCloudRecovery(owner,epoch,writer,checkpoint,{expectedHead,conflictKind=null,isCurrent=()=>true}){
     checkpoint=captureStorageCheckpoint(checkpoint);expectedHead=captureStorageRecoveryHead(expectedHead);return change(owner,(tx,current,done)=>{
     assertFence(current,owner,epoch,writer);
@@ -230,7 +226,7 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
     // The base/ACK, journal, physical keys and operation IDs are untouched.
     done(true);
   })}
-  /** @param {string} owner @param {string} epoch @param {string} writer @param {Checkpoint} checkpoint @param {Base} base @param {{expectedHead?:import('./storage-journal-authority.js').CloudHead|null}} [options] @returns {Promise<boolean>} */
+  /** @type {Db['adoptCloudHead']} */
   async function adoptCloudHead(owner,epoch,writer,checkpoint,base,{expectedHead=null}={}){
     base=captureStorageCloudBase(base);expectedHead=captureStorageExpectedHead(expectedHead);checkpoint=captureStorageCheckpoint(checkpoint);return change(owner,(tx,current,done)=>{
     assertFence(current,owner,epoch,writer);if(current.flights)throw new Error('storage_flight_pending');
@@ -240,7 +236,7 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
       Boolean(current.controls&&readStorageCloudControl(current.controls).conflict));readStorageCloudBase(base);
     tx.objectStore('checkpoints').put(checkpoint,owner);tx.objectStore('bases').put(base,owner);tx.objectStore('controls').delete(owner);done(true);
   })}
-  /** @param {string} owner @param {string} epoch @param {string} writer @param {Checkpoint} checkpoint @param {{expectedLocalHead?:import('./storage-journal-authority.js').LocalHead|null}} [options] @returns {Promise<boolean>} */
+  /** @type {Db['resetState']} */
   async function resetState(owner,epoch,writer,checkpoint,{expectedLocalHead=null}={}){
     expectedLocalHead=captureStorageLocalHead(expectedLocalHead);checkpoint=captureStorageCheckpoint(checkpoint);return change(owner,(tx,current,done)=>{
     assertFence(current,owner,epoch,writer);const nextCheckpoint=readStorageCheckpoint(checkpoint);
@@ -250,7 +246,7 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
     for(const key of current.journalKeys)tx.objectStore('journal').delete(key);
     tx.objectStore('bases').delete(owner);tx.objectStore('flights').delete(owner);tx.objectStore('controls').delete(owner);done(true);
   })}
-  /** @param {string} owner @param {string} epoch @param {string} writer @param {Checkpoint} checkpoint @param {Base} base @param {{expectedCleanHead?:(import('./storage-journal-authority.js').LocalHead & {revision:number})|null}} [options] @returns {Promise<boolean>} */
+  /** @type {Db['resetCloudHead']} */
   async function resetCloudHead(owner,epoch,writer,checkpoint,base,{expectedCleanHead=null}={}){
     base=captureStorageCloudBase(base);expectedCleanHead=captureStorageCleanHead(expectedCleanHead);checkpoint=captureStorageCheckpoint(checkpoint);return change(owner,(tx,current,done)=>{
     assertFence(current,owner,epoch,writer);const nextCheckpoint=readStorageCheckpoint(checkpoint),nextBase=readStorageCloudBase(base);
@@ -260,7 +256,7 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
     for(const key of current.journalKeys)tx.objectStore('journal').delete(key);
     tx.objectStore('bases').put(base,owner);tx.objectStore('flights').delete(owner);tx.objectStore('controls').delete(owner);done(true);
   })}
-  /** @param {string} owner @param {string} epoch @param {string} writer @param {Operation} record @param {{expectedSeq:number,expectedBaseRevision:number}} options @returns {Promise<boolean>} */
+  /** @type {Db['appendBoundary']} */
   async function appendBoundary(owner,epoch,writer,record,{expectedSeq,expectedBaseRevision}){
     record=captureStorageJournalOperation(record,owner,epoch,configuredSchema);
     return change(owner,(tx,current,done)=>{
@@ -281,9 +277,9 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
     const request=tx.objectStore(name).get(key);
     request.onsuccess=()=>{try{done(request.result?readJournalObject(request.result):null)}catch(error){fail(error)}};
   })}
-  /** @param {string} owner */
+  /** @type {Db['readBoundary']} */
   function readBoundary(owner){return readTransition('boundaries',owner)}
-  /** @param {string} owner @param {State} record @returns {Promise<State>} */
+  /** @type {Db['beginBoundary']} */
   async function beginBoundary(owner,record){record=captureStorageJournalPayload(record);return boundaryTransaction((store,done,fail)=>{
     const request=store.get(owner);request.onsuccess=()=>{try{
       if(request.result){const prior=readJournalObject(request.result);if(prior.id===record.id&&prior.phase==='complete'){done(prior);return}if(prior.phase!=='complete')throw new Error('storage_boundary_pending')}
@@ -291,7 +287,7 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
       store.put(sealStorageRecord(record),owner);done(structuredClone(record));
     }catch(error){fail(error)}};
   })}
-  /** @param {string} owner @param {string} id @param {string} fromPhase @param {string} toPhase @returns {Promise<State>} */
+  /** @type {Db['advanceBoundary']} */
   function advanceBoundary(owner,id,fromPhase,toPhase){return boundaryTransaction((store,done,fail)=>{
     const request=store.get(owner);request.onsuccess=()=>{try{
       if(!request.result)throw new Error('storage_boundary_missing');
@@ -300,19 +296,19 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
       /** @type {State} */ const next={...record,phase:toPhase};store.put(sealStorageRecord(next),owner);done(next);
     }catch(error){fail(error)}};
   })}
-  /** @param {string} owner @param {string} id @returns {Promise<boolean>} */
+  /** @type {Db['completeBoundary']} */
   function completeBoundary(owner,id){return boundaryTransaction((store,done,fail)=>{
     const request=store.get(owner);request.onsuccess=()=>{try{
       if(!request.result)throw new Error('storage_boundary_missing');
-      const record=readStorageBoundary(request.result,owner);
+      const record=readStorageBoundary(readStorageRecord(request.result),owner);
       if(!record||record.id!==id||record.phase!=='main-applied')throw new Error('storage_boundary_changed');
       store.put(sealStorageRecord({version:2,id,owner,kind:record.kind,phase:'complete',completedAt:new Date().toISOString()}),owner);done(true);
     }catch(error){fail(error)}};
   })}
   const {readOwnerState,readOwnerBinding,readOwnerHandoff,initializeOwnerBinding,reserveLocalOwnerTarget,adoptPreparedLocalOwner,beginOwnerHandoff,advanceOwnerHandoff,activateOwnerHandoff,completeOwnerHandoff}=createStorageOwnerTransactions({open});
-  /** @param {string} scope */
+  /** @type {Db['readBootstrapGroup']} */
   function readBootstrapGroup(scope){return readTransition('bootstrap-groups',scope)}
-  /** @param {string} scope @param {State} record @returns {Promise<State>} */
+  /** @type {Db['beginBootstrapGroup']} */
   async function beginBootstrapGroup(scope,record){record=captureStorageJournalPayload(record);return transactStores(['bootstrap-groups'],'readwrite',(tx,done,fail)=>{
     const store=tx.objectStore('bootstrap-groups'),request=store.get(scope);
     request.onsuccess=()=>{try{
@@ -325,7 +321,7 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
       const result=structuredClone(record);store.put(sealStorageRecord(result),scope);done(result);
     }catch(cause){fail(cause)}};
   },'storage_bootstrap_group_aborted')}
-  /** @param {string} scope @param {string} id @param {string} fromPhase @param {string} toPhase @param {State} [patch] @returns {Promise<State>} */
+  /** @type {Db['advanceBootstrapGroup']} */
   async function advanceBootstrapGroup(scope,id,fromPhase,toPhase,patch={}){patch=captureStorageJournalPayload(patch);return transactStores(['bootstrap-groups'],'readwrite',(tx,done,fail)=>{
     const store=tx.objectStore('bootstrap-groups'),request=store.get(scope);
     request.onsuccess=()=>{try{
@@ -335,13 +331,13 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
       const result={...current,...structuredClone(patch),phase:toPhase};store.put(sealStorageRecord(result),scope);done(result);
     }catch(cause){fail(cause)}};
   },'storage_bootstrap_group_aborted')}
-  /** @param {string} scope @returns {Promise<State|null>} */
+  /** @type {Db['readV2Marker']} */
   function readV2Marker(scope){return open().then(db=>new Promise((resolve,reject)=>{
     const tx=db.transaction(['cutovers'],'readonly'),request=tx.objectStore('cutovers').get(scope);
     request.onsuccess=()=>{try{resolve(request.result?readJournalObject(request.result):null)}catch(error){reject(error)}};
     request.onerror=()=>reject(request.error);
   }))}
-  /** @param {'orders'|'kupa'} app @param {string} identity @returns {Promise<State|null>} */
+  /** @type {Db['markAccountMarker']} */
   function markAccountMarker(app,identity){
     if(!['orders','kupa'].includes(app)||!String(identity||'').trim())throw new Error('storage_cutover_scope_invalid');
     return open().then(db=>new Promise((resolve,reject)=>{
@@ -371,9 +367,9 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
       tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(tx.error||new Error('storage_cutover_aborted'));
     }))
   }
-  /** @param {string} scope */
+  /** @type {Db['readLocalBirth']} */
   function readLocalBirth(scope){return readTransition('local-births',scope)}
-  /** @param {string} scope @param {State} record @returns {Promise<State>} */
+  /** @type {Db['beginLocalBirth']} */
   async function beginLocalBirth(scope,record){record=captureStorageJournalPayload(record);return transactStores(['local-births'],'readwrite',(tx,done,fail)=>{
     const store=tx.objectStore('local-births'),request=store.get(scope);
     request.onsuccess=()=>{try{
@@ -382,7 +378,7 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
       const result=structuredClone(record);store.put(sealStorageRecord(result),scope);done(result);
     }catch(cause){fail(cause)}};
   },'storage_local_birth_aborted')}
-  /** @param {string} scope @param {string} id @param {string} fromPhase @param {string} toPhase @returns {Promise<State>} */
+  /** @type {Db['advanceLocalBirth']} */
   function advanceLocalBirth(scope,id,fromPhase,toPhase){return transactStores(['local-births'],'readwrite',(tx,done,fail)=>{
     const store=tx.objectStore('local-births'),request=store.get(scope);
     request.onsuccess=()=>{try{
@@ -395,7 +391,7 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
       store.put(sealStorageRecord(result),scope);done(result);
     }catch(cause){fail(cause)}};
   },'storage_local_birth_aborted')}
-  /** @param {'orders'|'kupa'} app @returns {Promise<State|null>} */
+  /** @type {Db['markLocalEngine']} */
   function markLocalEngine(app){
     if(!['orders','kupa'].includes(app))throw new Error('storage_local_engine_app_invalid');
     return open().then(db=>new Promise((resolve,reject)=>{
@@ -425,13 +421,13 @@ export function createStorageJournalDb({name='netunim-storage-v2',operationSchem
       tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_local_engine_aborted'));tx.onerror=()=>{error??=tx.error};
     }))
   }
-  /** @param {'orders'|'kupa'} app */
+  /** @type {Db['readLocalEngine']} */
   function readLocalEngine(app){return readV2Marker(`local-engine:${app}:local`)}
   // An account browser without a durable V2 marker may adopt the cloud only
   // after the server has proved protocol 2 and both remote documents have been
   // validated. Install both owners and the marker in one transaction: a crash
   // can never expose Main V2 with an old Shared Checks checkpoint (or vice versa).
-  /** @param {'orders'|'kupa'} app @param {string} identity @param {{mainState:State,mainCloudState:State,mainRevision:number,sharedState:State,sharedRevision:number,sourceOwner?:string}} options @returns {Promise<State|null>} */
+  /** @type {Db['adoptFencedAccount']} */
   function adoptFencedAccount(app,identity,{mainState,mainCloudState,mainRevision,sharedState,sharedRevision,sourceOwner=identity}){
     if(!['orders','kupa'].includes(app)||!String(identity||'').trim()||identity==='local'||
       ![identity,'local'].includes(sourceOwner)||!Number.isSafeInteger(mainRevision)||mainRevision<0||!Number.isSafeInteger(sharedRevision)||sharedRevision<0)

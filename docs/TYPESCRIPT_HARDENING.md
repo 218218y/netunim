@@ -54,6 +54,16 @@ Shared Checks, a checkpoint or local commit used as an ACK, and premature
 synchronous success. Implementation mutations replace transaction results with
 text or unfinished promises and replay sequences with strings.
 
+The named IDB function contracts live in a type-only declaration file and annotate
+the actual JavaScript function bodies with `@type`. The same implementation
+mutations remain required: declarations do not substitute for body checking.
+This avoids transferring repeated long signatures in the eager browser graph.
+Measured source sizes are 1,822,619 bytes (Kupa) and 2,446,242 bytes (Orders).
+The source budgets increase by 4,000/8,000 bytes respectively to account for
+the remaining annotations and corruption decoders; module counts and all timing
+budgets are unchanged. A native regression also completes all boundary phases
+and verifies the compact completion marker.
+
 Remaining priority: the journal/V2 coordinators, cloud transport implementations,
 canonical financial models, then selected financial calculations. Existing
 authority/read/ACK contracts should be extended, not duplicated. TypeScript 7

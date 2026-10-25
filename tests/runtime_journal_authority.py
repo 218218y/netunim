@@ -91,6 +91,12 @@ with BrowserSession(ROOT/'netunim-orders/site', 'journal-authority', instrument=
         const entries=await new Promise((resolve,reject)=>{const request=raw.transaction('journal').objectStore('journal').getAll();request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error)});
         raw.close();
         if(entries.length)throw Error('corrupt metadata authorized an append');
+        const boundaryDb=make(),id='boundary-complete-'+domain;
+        await boundaryDb.beginBoundary(owner,{version:2,owner,id,kind:'restore',phase:'prepared',
+          main:{kind:'replace-authoritative',state:{}},shared:{kind:'replace-authoritative',state:{}}});
+        await boundaryDb.advanceBoundary(owner,id,'prepared','shared-applied');
+        await boundaryDb.advanceBoundary(owner,id,'shared-applied','main-applied');
+        if(await boundaryDb.completeBoundary(owner,id)!==true||(await boundaryDb.readBoundary(owner)).phase!=='complete')throw Error('signed boundary envelope was not decoded before completion');
       }
       return {rejected,decisionsRejected,metadataRejected};
     })()""")
