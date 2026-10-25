@@ -1,5 +1,10 @@
 # Incremental JavaScript contracts
 
+The actual Credit HTTP policy now strictly decodes unknown page receipts and
+returns unknown JSON, with negative consumers and status/error-body mutations.
+CAL/MAX call that validator before body/status coercion. Wider provider adapters
+remain separately behavior-tested. See [provider HTTP receipts](PROVIDER_HTTP_RECEIPTS.md).
+
 Orders Finance's actual automatic scheduler now checks its explicit access,
 preference, command and timer ports, including synchronous captured authority,
 timer handles and domain kinds. Negative consumers/body mutations accompany

@@ -66,6 +66,12 @@ restore and live-provider release exercises therefore remain explicitly unverifi
    Normal/weak physical-machine timing and external-provider scenarios stay
    NOT RUN without an appropriate environment. No new core rewrite is planned.
 
+The CAL/MAX page HTTP receipt gap is now closed in the existing policy boundary;
+string/fractional statuses and nontext bodies cannot become successful JSON/null.
+The actual decoder/policy is strict checked; parsed domain JSON stays unknown.
+See [provider HTTP receipts](PROVIDER_HTTP_RECEIPTS.md). Complete provider models
+and official provider sandbox acceptance are not implied by this slice.
+
 ### Review continuation, 2026-10-25
 
 - Orders Finance controller disposal now permanently closes its existing automatic

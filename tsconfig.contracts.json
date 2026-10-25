@@ -20,6 +20,8 @@
     "types": []
   },
   "files": [
+    "tests/fixtures/checked-credit-http-policy.mjs",
+    "netunim-kupa/bank-bridge/credit-http-policy.mjs",
     "tests/fixtures/checked-finance-automation.mjs",
     "netunim-orders/site/assets/js/domains/finance/automation.js",
     "tests/fixtures/checked-bank-origin-policy.mjs",
