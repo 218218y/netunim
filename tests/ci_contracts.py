@@ -193,6 +193,26 @@ class VerificationContracts(unittest.TestCase):
                 session.restart_process()
             self.assertEqual(stop.call_args.kwargs['graceful_timeout'],30)
 
+    def test_restart_evidence_is_captured_after_owned_exit_and_before_reopening(self):
+        from unittest.mock import Mock
+        for crash in (True,False):
+            session=object.__new__(browser_harness.BrowserSession)
+            events=[]
+            session.proc=Mock(pid=123);session.proc.poll.return_value=None
+            session.proc.wait.side_effect=lambda **kwargs:events.append('process-wait')
+            session.browser_owner=Mock()
+            session.browser_owner.close.side_effect=lambda:events.append('job-close')
+            session.browser_owner.job.wait_empty.side_effect=lambda **kwargs:events.append('job-empty')
+            session.ws=Mock();session.ws.close.side_effect=lambda:events.append('socket-close')
+            session._start_browser=Mock(side_effect=lambda:events.append('open'))
+            def stop(*args,**kwargs):
+                events.append('graceful-stop');return True
+            with patch.object(browser_harness.os,'name','nt'), \
+                 patch.object(browser_harness,'_stop_browser_process',side_effect=stop):
+                session.restart_process(crash=crash,navigate=False,after_stop=lambda:events.append('evidence'))
+            self.assertLess(events.index('evidence'),events.index('open'))
+            self.assertLess(events.index('process-wait' if crash else 'job-empty'),events.index('evidence'))
+
     def test_worker_update_wait_preserves_controller_and_propagates_install_errors(self):
         from unittest.mock import Mock
         from pwa_upgrade import wait_for_waiting_upgrade

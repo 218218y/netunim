@@ -34,5 +34,7 @@ export async function createRestoreProcessBoundary(app,{initialize=false,pauseAt
     return applyStorageV2RestoreGroup({boundary,group:{restoreGroupId:id,v2Source,main:{state:target},checks:{state:sharedState}},
       result:{main_revision:9,checks_revision:12},target,sharedState});
   }
-  return {start,state,resume:()=>boundary.resume()};
+  return {start,state,resume:()=>boundary.resume(),
+    inspectStored:async()=>({main:await db.load(owner+':main'),shared:await db.load(owner+':shared'),boundary:await db.readBoundary(owner)}),
+  };
 }

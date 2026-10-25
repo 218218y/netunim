@@ -12,9 +12,40 @@ import socket
 
 from acceptance_safety import browser_preflight, contained, postgres_environment, sandbox_config, OwnedHTTPServer, DenyProxy
 from isolated_supabase import IsolatedSupabase, isolated_environment, loopback_url, LABEL, NoRedirect, clean_diagnostics
+from crash_evidence import capture_stopped_indexeddb,classify_failure,snapshot_digest
 
 
 class SafetyContracts(unittest.TestCase):
+    def test_crash_diagnostics_distinguish_native_corruption_from_invalid_records_and_timeouts(self):
+        native=AssertionError('fixture_database_disappeared')
+        native.add_note('LevelDB Corruption: checksum mismatch')
+        self.assertEqual(classify_failure(native),'native-leveldb-corruption')
+        self.assertEqual(classify_failure(RuntimeError('storage_checksum_mismatch')),'application-record-validation')
+        self.assertEqual(classify_failure(RuntimeError('page did not finish loading')),'browser-startup-or-load')
+        self.assertEqual(classify_failure(AssertionError('fixture_database_disappeared')),'missing-persistence-unclassified')
+        self.assertEqual(classify_failure(RuntimeError('unknown')),'unclassified')
+
+    def test_stopped_profile_archive_retains_exact_bytes_and_rejects_unowned_profile(self):
+        import hashlib
+        import zipfile
+        with tempfile.TemporaryDirectory(prefix='netunim-diagnostic-runtime-') as runtime, \
+             tempfile.TemporaryDirectory(prefix='netunim-diagnostic-chrome-') as profile, \
+             tempfile.TemporaryDirectory() as reports:
+            file=Path(profile)/'Default/IndexedDB/fixture.leveldb/000001.log'
+            file.parent.mkdir(parents=True);data=b'\x00retained synthetic journal\xff';file.write_bytes(data)
+            session=SimpleNamespace(tmp=Path(runtime),profile=Path(profile),label='diagnostic')
+            result=capture_stopped_indexeddb(session,Path(reports)/'one')
+            with zipfile.ZipFile(Path(reports)/'one/stopped-indexeddb.zip') as archive:
+                self.assertEqual(archive.read(result['files'][0]['path']),data)
+            self.assertEqual(result['files'][0]['sha256'],hashlib.sha256(data).hexdigest())
+            self.assertEqual(file.read_bytes(),data)
+            self.assertEqual(snapshot_digest({'b':2,'a':1}),snapshot_digest({'a':1,'b':2}))
+            with self.assertRaisesRegex(RuntimeError,'survive scratch'):
+                capture_stopped_indexeddb(session,Path(profile)/'evidence')
+            session.profile=Path(reports)
+            with self.assertRaisesRegex(RuntimeError,'unowned'):
+                capture_stopped_indexeddb(session,Path(reports)/'foreign')
+
     def test_native_static_server_reuses_one_socket_for_multiple_assets(self):
         import functools
         import http.client

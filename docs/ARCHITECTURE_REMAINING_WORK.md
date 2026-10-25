@@ -1,6 +1,6 @@
 # Current architecture backlog
 
-This is the single current backlog, updated against the 2026-10-18 continuation.
+This is the single current backlog, updated against the 2026-10-25 continuation.
 [Completion stages](COMPLETION_STAGES_20261015.md) and the focused design notes
 are historical implementation/evidence records, not competing remaining-work lists.
 A passed synthetic gate is not evidence of live providers or physical machines.
@@ -48,6 +48,23 @@ restore and live-provider release exercises therefore remain explicitly unverifi
 - All checkpoint writers now capture decoded commands before awaiting IDB. Journal retirement proves sealed row/physical-key agreement and retains mismatched evidence. See [checkpoint retirement](CHECKPOINT_RETIREMENT_AUTHORITY.md).
 
 ## Prioritized remaining work
+
+### Operational completion after PR #325
+
+1. **Windows crash evidence:** [bounded investigation](WINDOWS_CRASH_INVESTIGATION.md)
+   preserves both original checksum incidents and adds stopped-profile bytes,
+   independent crash/control samples and exact persisted-state checks. Native
+   corruption remains UNRESOLVED; a green rerun is not a causal explanation.
+2. **Installed Origin acceptance:** keep v75 opt-in until a separate Windows
+   installation, PWA/private-network/custom-domain and ACL matrix is available.
+   Existing staged/HTTP tests are automated evidence only. No working account
+   or installed service may substitute for a sandbox.
+3. **Sensitive command policy:** retain one pairing authority pending a concrete
+   read/write/destructive/admin risk decision and compatibility evidence.
+4. **Performance and types:** use existing synthetic probes and retained read
+   models; change only measured bottlenecks or critical validated boundaries.
+   Normal/weak physical-machine timing and external-provider scenarios stay
+   NOT RUN without an appropriate environment. No new core rewrite is planned.
 
 ### Review continuation, 2026-10-25
 
