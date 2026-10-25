@@ -5,6 +5,12 @@ with BrowserSession(ROOT/'netunim-orders/site', 'journal-authority', instrument=
     result = browser.evaluate("""(async()=>{
       const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
       const {sealStorageJsonRecord:seal}=await import('./assets/js/shared/storage-json-codec.js');
+      const transaction=IDBDatabase.prototype.transaction,durabilities=[];
+      IDBDatabase.prototype.transaction=function(...args){
+        const tx=transaction.apply(this,args);
+        if(this.name.startsWith('journal-authority-')&&args[1]==='readwrite')durabilities.push(tx.durability);
+        return tx;
+      };
       let serial=0,rejected=0,decisionsRejected=0,metadataRejected=0;
       for(const domain of ['orders','kupa','shared-checks']){
         const owner='A:'+domain,collection=domain==='shared-checks'?'checks':'notes';
@@ -94,10 +100,15 @@ with BrowserSession(ROOT/'netunim-orders/site', 'journal-authority', instrument=
         const boundaryDb=make(),id='boundary-complete-'+domain;
         await boundaryDb.beginBoundary(owner,{version:2,owner,id,kind:'restore',phase:'prepared',
           main:{kind:'replace-authoritative',state:{}},shared:{kind:'replace-authoritative',state:{}}});
+        await boundaryDb.initializeOwnerBinding(domain==='shared-checks'?'orders':domain,'local');
         await boundaryDb.advanceBoundary(owner,id,'prepared','shared-applied');
         await boundaryDb.advanceBoundary(owner,id,'shared-applied','main-applied');
         if(await boundaryDb.completeBoundary(owner,id)!==true||(await boundaryDb.readBoundary(owner)).phase!=='complete')throw Error('signed boundary envelope was not decoded before completion');
       }
+      IDBDatabase.prototype.transaction=transaction;
+      // The deliberate raw metadata corruption above uses the browser default.
+      // Every other journal/boundary/owner write must request durable completion.
+      if(durabilities.filter(value=>value!=='strict').length!==3||durabilities.filter(value=>value==='strict').length<100)throw Error('journal writes did not request strict durability: '+JSON.stringify(durabilities));
       return {rejected,decisionsRejected,metadataRejected};
     })()""")
     assert result == {'rejected': 9, 'decisionsRejected': 36, 'metadataRejected': 6}, result

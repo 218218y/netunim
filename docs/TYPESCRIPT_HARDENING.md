@@ -175,3 +175,27 @@ The eager graphs add 5,175 source bytes and no modules. Measured totals are
 timing limits remain unchanged. The V2 runtime coordinator, application cloud
 transports and document coordinators still require further focused work; adding
 them as roots is not implied by checking this Journal implementation.
+
+## Durable IndexedDB completion
+
+Native Windows crash tests exposed intermittent disappearance of the isolated
+paired-restore database after an intentional hard process kill. Journal and
+owner write transactions previously used the browser's default durability hint.
+All journal, boundary, owner binding, cutover, local-birth and fenced-adoption
+read/write transactions now explicitly request `durability: 'strict'`. Read-only
+transactions and the existing transaction-complete/abort receipt rules remain.
+No database version, persisted record or business calculation changes.
+
+The [IndexedDB specification](https://w3c.github.io/IndexedDB/#transaction-durability-hint)
+distinguishes persistent-medium verification from the default browser policy.
+Strict durability is a browser hint, not a guarantee against every storage or
+hardware failure. The observed database corruption does not by itself prove the
+cause; the missing durability request is a concrete gap in the intended crash
+contract. Stronger commits can cost I/O time, so existing performance acceptance
+remains mandatory without increasing limits.
+
+The native authority test inspects actual transaction durability across more than
+100 journal/boundary/owner writes, retaining request-success/abort regressions.
+The existing real hard-process-kill tests remain unchanged and mandatory in CI.
+The focused connection/owner/startup suites pass 24 tests. This change adds 154
+eager source bytes per app, no modules and no budget changes.

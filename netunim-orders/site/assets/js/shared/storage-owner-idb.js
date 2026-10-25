@@ -36,7 +36,7 @@ export function createStorageOwnerTransactions({open}){
     if(app!=='orders'&&app!=='kupa')throw new Error('storage_owner_app_invalid');
     const database=await open();
     return new Promise((resolve,reject)=>{
-      const tx=database.transaction(['owner-bindings','owner-handoffs'],mode);
+      const tx=database.transaction(['owner-bindings','owner-handoffs'],mode,mode==='readwrite'?{durability:'strict'}:{});
       /** @type {{value:T}|null} */ let outcome=null;
       /** @type {unknown} */ let error=null;
       const binding=tx.objectStore('owner-bindings').get(app),handoff=tx.objectStore('owner-handoffs').get(app);let remaining=2;
