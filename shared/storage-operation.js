@@ -74,7 +74,7 @@ export function readStorageOperation(record,schema={}){
 /**
  * @typedef {'restore'|'import'|'authoritative-load'|'local-file-rebase'} BoundaryKind
  * @typedef {'prepared'|'shared-applied'|'main-applied'} BoundaryPhase
- * @typedef {StorageJsonObject & {kind:'replace-authoritative'|'reset-cloud-head'|'replace-local-with-pending'|'replace-local-authoritative',state:StorageJsonObject,cloudState?:StorageJsonObject,expectedSeq?:number,expectedBaseRevision?:number,requireCleanCloud?:true,revision?:number,options?:StorageJsonObject & {appMetadata?:StorageJsonObject}}} BoundaryAction
+ * @typedef {import('./storage-boundary-contracts.js').Action} BoundaryAction
  * @typedef {{version:2,owner:string,id:string,kind:BoundaryKind,phase:BoundaryPhase,main:BoundaryAction,shared:BoundaryAction}} PendingBoundary
  * @typedef {{version:2,owner:string,id:string,kind:BoundaryKind,phase:'complete'}} CompletedBoundary
  * @typedef {PendingBoundary|CompletedBoundary} StorageBoundary

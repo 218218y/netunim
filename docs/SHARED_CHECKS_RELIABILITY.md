@@ -84,3 +84,33 @@ account-transfer tests pass (77 focused tests). Strict checking of existing root
 and ESLint pass. Eager totals are 1,885,007/2,505,184 bytes, still 310/406 modules;
 source allowances increase by 1,000 bytes per app for the measured fences.
 Record formats, phase ordering and cloud payloads are unchanged.
+
+## Boundary and bootstrap implementation contracts
+
+The actual Boundary and Bootstrap implementations now join the strict program.
+Boundary actions are a discriminated union: a cloud reset requires its revision,
+and a pending import requires frozen sequences/revisions and the clean-cloud
+precondition. Compact completion records do not contain executable actions.
+Raw database reads remain separate from decoded, validated records. Main and
+Shared keep their distinct replacement/reset signatures.
+
+Bootstrap has a closed phase domain, awaited JSON proof callbacks and frozen
+execution identities. Its historical validator deliberately accepts some
+coercible sequence/identity/hash evidence; reader types retain those JSON values
+instead of falsely claiming normalized strings/numbers. Current creation still
+normalizes the fields it normalized before. The generic DB's bootstrap ID input
+reflects its actual retained-JSON equality comparison; no key encoding changed.
+
+Two negative fixtures and six actual-body mutations cover raw record bypass,
+frozen numeric sequences, invalid phases, missing await, scope identity and
+bootstrap admission. Seven compiler tests pass. Boundary/bootstrap/detached/
+owner-transfer behavior tests pass (72 tests), and the prior/new bootstrap
+implementations agree on 566 input/output/error cases, including malformed and
+historical coercible records. No runtime guard was replaced with an assertion.
+
+Eager totals are 1,889,498/2,509,675 source bytes, with unchanged module counts.
+Relative to the safety repair, most of the canonical source increase is JSDoc
+(about 3.2KB net); narrowing/reorganization accounts for the remainder. Source
+allowances increase by 4,000 bytes per app to 1,890,000/2,510,000; timing limits
+remain unchanged. Full Local Birth and Detached Target static coverage is
+deferred; their ownership repairs and existing native crash tests are retained.
