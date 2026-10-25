@@ -350,6 +350,9 @@
     "netunim-kupa/site/assets/js/cloud/transport.js",
     "shared/notes-sheet-model.js",
     "netunim-kupa/site/assets/js/state/validation.js",
-    "tests/fixtures/checked-cloud-transports.mjs"
+    "tests/fixtures/checked-cloud-transports.mjs",
+    "shared/cashflow.js",
+    "shared/cashflow-notification.js",
+    "tests/fixtures/checked-cashflow-thresholds.mjs"
   ]
 }
