@@ -1,3 +1,4 @@
+import {synchronizedCardKey,rowCardKey,filterMatch,selectKupaCreditDetail} from './detail-read-model.js';
 import {createResultPages} from '../../shared/result-pages.js';
 import {createRevisionSelector} from '../../shared/revision-selector.js';
 import {withFinanceDerivations} from '../../shared/finance-derivations.js';
@@ -10,16 +11,10 @@ import {kupaCardDisplayBillingDateFromRowsData,kupaReconciledCardUpcomingChargeD
 import {prepareSearchValues,createPreparedSearchMatcher} from '../../core/search.js';
 import {localSearchMarkup} from '../../ui-primitives/local-search.js';
 import {
-  creditDetailMonthIsPast,
-  creditDetailRangeMatch,
-  creditDetailQuickPeriodMatch,
+  creditViewAllowsMonth,
   creditDateRangeMarkup,
   replaceCreditDetailMarkup,
-  creditViewAllowsMonth,
-  creditDetailDayMatch,
-  creditDetailMonthDayMatch,
   creditDetailMonthlySections,
-  creditDetailFutureMonths,
   creditUpcomingSelectorMarkup,
   creditHistoryMenuMarkup,
   creditFutureMenuMarkup,
@@ -27,22 +22,6 @@ import {
 import {creditCycleRowsMarkup,creditUpcomingSectionsMarkup} from '../../shared/credit-detail-sections.js';
 import {creditSyncHeadlineState,creditSyncHeadlineMarkup,creditSyncDiagnosticsMarkup} from './sync-view.js';
 export {creditSyncHeadlineState} from './sync-view.js';
-function synchronizedCardKey(profileId,accountNumber){
-  return `sync:${profileId}:${accountNumber}`
-}
-function rowCardKey(row){
-  if(row?.creditAccountKey)return row.creditAccountKey;
-  if(row?.profileId&&row?.accountNumber)return synchronizedCardKey(row.profileId,row.accountNumber);
-  if(row?.source==='manual'&&row?.card)return `manual:${row.card}`;
-  return '';
-}
-function filterMatch(ui,row){
-  const account=ui.creditAccountFilter||'all',provider=ui.creditProviderFilter||'all',card=ui.creditCardFilter||'all';
-  if(account!=='all'&&row.account!==account)return false;
-  if(provider!=='all'&&row.provider!==provider)return false;
-  if(card!=='all'&&rowCardKey(row)!==card)return false;
-  return true;
-}
 function creditSearchValues(row){
   return prepareSearchValues([
     row?.card,
@@ -152,84 +131,16 @@ const detailModel=createRevisionSelector({
 })
 });
 function creditDetailState(){
-  const prepared=detailModel(),matches=createPreparedSearchMatcher(ui.creditSearchValue);
-  const mode=['month','range','all','recent3'].includes(ui.creditDetailMode)?ui.creditDetailMode:'upcoming',
-  chargeDay=ui.creditDetailChargeDay==='10'||ui.creditDetailChargeDay==='15'?ui.creditDetailChargeDay:'all',
-  detailData=prepared.detail,
-  upcomingData=prepared.upcoming,
-  currentMonth=monthKey(todayISO());
-  const allDetailMonths=detailData.months.map(month=>{
-    const items=month.items.filter(item=>filterMatch(ui,item)),
-  missingAmountCount=items.filter(row=>row.amountStatus!=='known_ils').length,
-  coverageGapCount=items.filter(row=>row.coverageIncomplete).length,
-  incompleteCount=items.filter(row=>!row.includedInIlsTotal||row.coverageIncomplete).length;
-    return {...month,items,total:items.reduce((sum,item)=>sum+item.amount,0),missingAmountCount,coverageGapCount,incompleteCount,partial:incompleteCount>0};
-  }).filter(month=>month.items.length);
-  const historyMonths=allDetailMonths.filter(month=>creditDetailMonthIsPast(month,todayISO())),
-  detailMonths=allDetailMonths.filter(month=>!creditDetailMonthIsPast(month,todayISO())&&(month.key==='unassigned'||creditViewAllowsMonth(month.key,ui.creditView,currentMonth))),
-  selectableMonths=[...historyMonths,...detailMonths],
-  allUpcomingItems=upcomingData.items.filter(item=>filterMatch(ui,item));
-  if(mode==='range'||mode==='all'||mode==='recent3'){
-    const allItems=allDetailMonths.flatMap(month=>month.items),
-  focusedItems=mode==='range'?allItems.filter(item=>creditDetailRangeMatch(item,ui.creditDateFrom,ui.creditDateTo)):allItems.filter(item=>creditDetailQuickPeriodMatch(item,mode,todayISO())),
-  detailItems=focusedItems.filter(item=>matches(item.search));
-    return {
-  mode,
-  chargeDay:'all',
-  detailMonths,
-  futureMonths:creditDetailFutureMonths(detailMonths,allUpcomingItems),
-  historyMonths,
-  detailFocus:null,
-  detailItems,
-  focusedCount:focusedItems.length,
-  detailFocusLabel:'',
-  upcomingTotal:0
-};
-  }
-  if(mode==='upcoming'){
-    const focusedItems=allUpcomingItems.filter(item=>creditDetailDayMatch(item,chargeDay)),detailItems=focusedItems.filter(item=>matches(item.search));
-    return {
-  mode,
-  chargeDay,
-  detailMonths,
-  futureMonths:creditDetailFutureMonths(detailMonths,allUpcomingItems),
-  historyMonths,
-  detailFocus:null,
-  detailItems,
-  focusedCount:focusedItems.length,
-  detailFocusLabel:'',
-  upcomingTotal:allUpcomingItems.reduce((sum,item)=>sum+item.amount,0)
-};
-  }
-  const detailToday=todayISO(),
-  nearestDetailMonth=detailMonths.find(month=>month.key!=='unassigned'&&month.items.some(item=>(item.date||item.detailDisplayBillingDate||'')>=detailToday))?.key||detailMonths.find(month=>month.key===currentMonth)?.key||detailMonths.find(month=>month.key!=='unassigned')?.key||historyMonths.at(-1)?.key||detailMonths.at(-1)?.key||currentMonth;
-  let detailFocus=ui.creditDetailFocus;
-  if(!selectableMonths.length){
-  detailFocus=null;
-  ui.creditDetailFocus=null
-}
-  else{
-    if(!detailFocus||!selectableMonths.some(month=>month.key===detailFocus.monthKey))detailFocus={monthKey:nearestDetailMonth,cardKey:''};
-    const selected=selectableMonths.find(month=>month.key===detailFocus.monthKey);
-    if(detailFocus.cardKey&&!selected?.items.some(item=>rowCardKey(item)===detailFocus.cardKey))detailFocus={monthKey:detailFocus.monthKey,cardKey:''};
-    ui.creditDetailFocus=detailFocus;
-  }
-  const detailMonth=detailFocus?selectableMonths.find(month=>month.key===detailFocus.monthKey):null;
-  const focusedItems=(detailMonth?.items||[]).filter(item=>(!detailFocus?.cardKey||rowCardKey(item)===detailFocus.cardKey)&&creditDetailMonthDayMatch(item,chargeDay));
-  const detailItems=focusedItems.filter(item=>matches(item.search));
-  const detailFocusLabel=detailFocus?.cardKey?summaryCard(detailMonth?.items.find(item=>rowCardKey(item)===detailFocus.cardKey)||{}):'';
-  return {
-  mode,
-  chargeDay,
-  detailMonths,
-  futureMonths:creditDetailFutureMonths(detailMonths,allUpcomingItems,detailFocus?.monthKey||''),
-  historyMonths,
-  detailFocus,
-  detailItems,
-  focusedCount:focusedItems.length,
-  detailFocusLabel,
-  upcomingTotal:0
-};
+  const matches=createPreparedSearchMatcher(ui.creditSearchValue);
+  const query={
+    creditDetailMode:ui.creditDetailMode,creditDetailChargeDay:ui.creditDetailChargeDay,
+    creditDetailFocus:ui.creditDetailFocus,creditAccountFilter:ui.creditAccountFilter,
+    creditProviderFilter:ui.creditProviderFilter,creditCardFilter:ui.creditCardFilter,
+    creditView:ui.creditView,creditDateFrom:ui.creditDateFrom,creditDateTo:ui.creditDateTo,
+  };
+  const detail=selectKupaCreditDetail({prepared:detailModel(),query,reference:todayISO(),matches:row=>matches(row.search)});
+  if(detail.mode==='month')ui.creditDetailFocus=detail.detailFocus;
+  return detail;
 }
 function creditTransactionSectionsMarkup(){
   return `<div id="credit-transaction-sections">${creditDetailSectionMarkup()}</div>`

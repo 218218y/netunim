@@ -1,3 +1,5 @@
+import {selectOrdersCreditDetail} from './credit-detail-read-model.js';
+import {creditViewAllowsMonth} from '../../shared/credit-detail-policy.js';
 import {evidenceDate} from '../../shared/observation-time.js';
 import { createBankConnectionCommands } from './bank-connection-commands.js';
 import { createFinanceStatusView } from './status-view.js';
@@ -19,7 +21,7 @@ import { bankChequeImageDownloadName, retainBankChequeImagePreviewUrl } from '..
 import { createCreditConnectionView, creditMappingRow } from './credit-connection-view.js';
 import { creditDetailRowMarkup } from './credit-detail-view.js';
 import { bankHeadlineState, bankSyncPanelMarkup } from './bank-connection-view.js';
-import { creditDetailMonthIsPast, creditDetailRangeMatch, creditDetailQuickPeriodMatch, creditDateRangeMarkup, replaceCreditDetailMarkup, creditViewAllowsMonth, creditDetailDayMatch, creditDetailMonthDayMatch, creditDetailMonthlySections, creditDetailFutureMonths, creditUpcomingSelectorMarkup, creditHistoryMenuMarkup, creditFutureMenuMarkup, creditDetailChargeHeadingMarkup } from '../../shared/credit-detail-controls.js';
+import { creditDateRangeMarkup, replaceCreditDetailMarkup, creditDetailMonthlySections, creditUpcomingSelectorMarkup, creditHistoryMenuMarkup, creditFutureMenuMarkup, creditDetailChargeHeadingMarkup } from '../../shared/credit-detail-controls.js';
 import { creditCycleRowsMarkup, creditUpcomingSectionsMarkup } from '../../shared/credit-detail-sections.js';
 import { CREDIT_DETAIL_HISTORY_MONTHS } from '../../shared/credit-history.js';
 import { attachBankArchiveMetadata } from './bank-morning.js';
@@ -220,13 +222,6 @@ export function createDomainsFinanceView({ runFinance = withFinanceDerivations, 
             account: ui.creditAccountFilter || 'all', provider: ui.creditProviderFilter || 'all', card: ui.creditCardFilter || 'all'
         };
     }
-    function creditDetailMonthSets(s) {
-        const allMonths = creditDetailMonths(s.kupa, creditDetailFilters()),
-            current = checkMonthKey(checkTodayISO()),
-            historyMonths = allMonths.filter(month => creditDetailMonthIsPast(month, checkTodayISO())),
-            months = allMonths.filter(month => !creditDetailMonthIsPast(month, checkTodayISO()) && (month.key === 'unassigned' || creditViewAllowsMonth(month.key, ui.creditView, current)));
-        return { allMonths, historyMonths, months, selectableMonths: [...historyMonths, ...months], current };
-    }
     const creditControlBase = {
         formatMoney: money, formatMonth: checkMonthLabel, escapeHtml: esc, monthAction: 'orders-credit-detail-month', monthDayAction: 'orders-credit-detail-month-day'
     };
@@ -245,14 +240,22 @@ export function createDomainsFinanceView({ runFinance = withFinanceDerivations, 
         return creditDetailChargeHeadingMarkup(items, money, esc);
     }
     function creditDetailSectionMarkup(s, summary = creditSummary(s.kupa)) {
-        const upcoming = !['month', 'range', 'all', 'recent3'].includes(ui.creditDetailMode),
-            chargeDay = ui.creditDetailChargeDay === '10' || ui.creditDetailChargeDay === '15' ? ui.creditDetailChargeDay : 'all',
-            upcomingRows = creditUpcomingDetailRows(s.kupa, creditDetailFilters()),
-            upcomingTotal = upcomingRows.reduce((sum, row) => sum + row.amount, 0),
-            { historyMonths, months } = creditDetailMonthSets(s),
-            detailMarkup = creditDetailMarkup(s),
-            selectedMonthKey = upcoming ? '' : ui.creditDetailFocus?.monthKey || '',
-            futureMonths = creditDetailFutureMonths(months, upcomingRows, selectedMonthKey);
+        const query={
+            creditDetailMode:ui.creditDetailMode,creditDetailChargeDay:ui.creditDetailChargeDay,
+            creditDetailFocus:ui.creditDetailFocus,creditAccountFilter:ui.creditAccountFilter,
+            creditProviderFilter:ui.creditProviderFilter,creditCardFilter:ui.creditCardFilter,
+            creditView:ui.creditView,creditDateFrom:ui.creditDateFrom,creditDateTo:ui.creditDateTo,
+        };
+        const search=String(ui.creditSearchValue||'');
+        const detail=selectOrdersCreditDetail({
+            allMonths:creditDetailMonths(s.kupa,creditDetailFilters()),
+            upcomingRows:creditUpcomingDetailRows(s.kupa,creditDetailFilters()),
+            query,reference:checkTodayISO(),matches:row=>!search.trim()||creditRowMatchesSearch(row,search),
+        });
+        ui.creditDetailFocus=detail.focus;
+        const upcoming=detail.mode==='upcoming',chargeDay=detail.chargeDay,
+            {historyMonths,upcomingTotal,futureMonths}=detail,
+            detailMarkup=creditDetailMarkup(detail),selectedMonthKey=upcoming?'':detail.focus?.monthKey||'';
         const explanation = upcoming ? 'מוצג המחזור הקרוב שטרם אומת כנפרע בכל כרטיס, גם אם מועדו חלף או שהכרטיס הבא שייך לחודש אחר. חיוב מיידי שכבר בוצע אינו נספר כאן שוב.' : 'פירוט החודש כולל את כל מחזורי אותו חודש, גם אם מועד החיוב עבר או שהחיוב כבר נפרע. פירוט החודש והחיוב הקרוב חופפים; אין לחבר את הסכומים.';
         return (`<section id="ordersCreditDetailRegion" class="finance-report-section credit-detail-section"><div class="section-head credit-detail-section-head"><div class="credit-detail-title-row"><h3>עסקאות ותשלומים</h3>${creditHistoryControl(historyMonths, selectedMonthKey, upcoming ? 'all' : chargeDay)}` +
             `${creditUpcomingControl(upcoming, chargeDay, upcomingTotal)}${creditFutureControl(futureMonths, selectedMonthKey, upcoming ? 'all' : chargeDay)}` +
@@ -404,52 +407,29 @@ export function createDomainsFinanceView({ runFinance = withFinanceDerivations, 
             `</div>`
         );
     }
-    function creditDetailMarkup(s) {
+    function creditDetailMarkup(detail) {
         const rowPresentation = { colspan: 7, rowMarkup: creditDetailRowMarkup, escapeHtml: esc, formatDate: checkDateFmt };
-        const filters = creditDetailFilters(),
-            { historyMonths, months, selectableMonths, current } = creditDetailMonthSets(s),
-            quickPeriod = ui.creditDetailMode === 'all' || ui.creditDetailMode === 'recent3',
-            upcoming = !['month', 'range', 'all', 'recent3'].includes(ui.creditDetailMode),
-            chargeDay = ui.creditDetailChargeDay === '10' || ui.creditDetailChargeDay === '15' ? ui.creditDetailChargeDay : 'all',
-            monthLabelFor = key => key === 'unassigned' ? 'מחזור לא ודאי' : checkMonthLabel(key),
-            query = ui.creditSearchValue || '';
-        if (upcoming || ui.creditDetailMode === 'range' || quickPeriod) {
-            ui.creditDetailFocus = null;
-            const allRows = creditDetailMonths(s.kupa, filters).flatMap(month => month.items),
-                periodRows = upcoming ? creditUpcomingDetailRows(s.kupa, filters) : ui.creditDetailMode === 'range' ? allRows.filter(row => creditDetailRangeMatch(row, ui.creditDateFrom, ui.creditDateTo)) : allRows.filter(row => creditDetailQuickPeriodMatch(row, ui.creditDetailMode, checkTodayISO())),
-                focusedRows = upcoming ? periodRows.filter(row => creditDetailDayMatch(row, chargeDay)) : periodRows,
-                items = query.trim() ? focusedRows.filter(row => creditRowMatchesSearch(row, query)) : focusedRows,
-                orderedItems = upcoming ? creditDetailMonthlySections(items).ordered : items,
-                emptyText = query.trim() && focusedRows.length ? 'אין עסקאות המתאימות לחיפוש בתקופה שנבחרה.' : ui.creditDetailMode === 'range' ? 'אין עסקאות בטווח תאריכי החיוב שנבחר.' : ui.creditDetailMode === 'recent3' ? 'אין עסקאות בשלושת החודשים האחרונים.' : ui.creditDetailMode === 'all' ? 'אין עסקאות שמורות להצגה במסנן הנוכחי.' : 'אין חיוב קרוב להצגה במסנן הנוכחי.',
+        const {mode,items,focusedCount,selected,focus}=detail,
+            monthLabelFor=key=>key==='unassigned'?'מחזור לא ודאי':checkMonthLabel(key),
+            quickPeriod=mode==='all'||mode==='recent3',upcoming=mode==='upcoming',query=ui.creditSearchValue||'';
+        if (upcoming || mode==='range' || quickPeriod) {
+            const orderedItems = upcoming ? creditDetailMonthlySections(items).ordered : items,
+                emptyText = query.trim() && focusedCount ? 'אין עסקאות המתאימות לחיפוש בתקופה שנבחרה.' : ui.creditDetailMode === 'range' ? 'אין עסקאות בטווח תאריכי החיוב שנבחר.' : ui.creditDetailMode === 'recent3' ? 'אין עסקאות בשלושת החודשים האחרונים.' : ui.creditDetailMode === 'all' ? 'אין עסקאות שמורות להצגה במסנן הנוכחי.' : 'אין חיוב קרוב להצגה במסנן הנוכחי.',
                 rowsMarkup = orderedItems.length ? (upcoming ? creditUpcomingSectionsMarkup(orderedItems, rowPresentation) : creditCycleRowsMarkup(orderedItems, rowPresentation)) : `<tr><td colspan="7"><div class="empty compact">${emptyText}</div></td></tr>`;
             return (
                 `<div class="credit-detail-table-wrap"><table class="credit-detail-table"><thead><tr><th>כרטיס</th><th>תיאור</th><th>תאריך עסקה</th><th>סכום מקורי</th><th>תשלום</th><th data-column-label="חיוב בחודש">${creditChargeHeading(items)}</th><th>מקור</th>` +
                 `</tr></thead><tbody>${rowsMarkup}</tbody></table></div>`
             );
         }
-        if (!selectableMonths.length) {
-            ui.creditDetailFocus = null;
+        if (!selected||!focus) {
             return `<div class="empty">אין עסקאות ידועות ב-${esc(CREDIT_DETAIL_HISTORY_MONTHS)} החודשים הקודמים או בחודשים העתידיים במסנן הנוכחי.</div>`;
         }
-        let focus = ui.creditDetailFocus;
-        if (!focus || !selectableMonths.some(month => month.key === focus.monthKey))
-            focus = {
-                monthKey: months.find(month => month.key !== 'unassigned' && month.key >= current)?.key || months.find(month => month.key === current)?.key || months.find(month => month.key !== 'unassigned')?.key || historyMonths.at(-1)?.key || months.at(-1)?.key,
-                cardKey: ''
-            };
-        let selected = selectableMonths.find(month => month.key === focus.monthKey) || selectableMonths[0];
-        if (focus.cardKey && !selected.items.some(row => rowCardKey(row) === focus.cardKey))
-            focus = { monthKey: selected.key, cardKey: '' };
-        ui.creditDetailFocus = focus;
-        selected = selectableMonths.find(month => month.key === focus.monthKey) || selected;
-        const focusedItems = selected.items.filter(row => (!focus.cardKey || rowCardKey(row) === focus.cardKey) && creditDetailMonthDayMatch(row, chargeDay)),
-            items = query.trim() ? focusedItems.filter(row => creditRowMatchesSearch(row, query)) : focusedItems,
-            { foreign: foreignItems, uncertain: uncertainItems, regular: regularItems } = creditDetailMonthlySections(items),
+        const { foreign: foreignItems, uncertain: uncertainItems, regular: regularItems } = creditDetailMonthlySections(items),
             focusRow = focus.cardKey ? selected.items.find(row => rowCardKey(row) === focus.cardKey) : null,
             focusLabel = focusRow?.card || '',
             rowsMarkup = items.length ? (`${foreignItems.length ? `<tr class="credit-detail-cycle-divider certain foreign"><td colspan="7"><b>עסקאות חו״ל / מט״ח</b><small>עסקאות בחיוב מיידי משויכות למחזור הכרטיס שבין חיוב חודשי אחד לבא; בשורה נשמר מועד החיוב בפועל.</small></td></tr>${foreignItems.map(creditDetailRowMarkup).join('')}` : ''}` +
             `${uncertainItems.length ? `<tr class="credit-detail-cycle-divider uncertain"><td colspan="7"><b>מחזור לא ודאי</b><small>עסקאות ממתינות שמועד החיוב הסופי שלהן טרם נקבע; מוצגות כאן ליד החיוב הסמוך של אותו כרטיס.</small></td></tr>${uncertainItems.map(creditDetailRowMarkup).join('')}` : ''}` +
-            `${regularItems.length ? `${foreignItems.length || uncertainItems.length ? `<tr class="credit-detail-cycle-divider certain"><td colspan="7"><b>חיוב ${esc(monthLabelFor(selected.key))}</b></td></tr>` : ''}${regularItems.map(creditDetailRowMarkup).join('')}` : ''}`) : `<tr><td colspan="7"><div class="empty compact">${query.trim() && focusedItems.length ? 'אין עסקאות המתאימות לחיפוש במיקוד שנבחר.' : 'אין עסקאות להצגה במיקוד שנבחר.'}</div></td></tr>`;
+            `${regularItems.length ? `${foreignItems.length || uncertainItems.length ? `<tr class="credit-detail-cycle-divider certain"><td colspan="7"><b>חיוב ${esc(monthLabelFor(selected.key))}</b></td></tr>` : ''}${regularItems.map(creditDetailRowMarkup).join('')}` : ''}`) : `<tr><td colspan="7"><div class="empty compact">${query.trim() && focusedCount ? 'אין עסקאות המתאימות לחיפוש במיקוד שנבחר.' : 'אין עסקאות להצגה במיקוד שנבחר.'}</div></td></tr>`;
         return (`${focus.cardKey ? (
             `<div class="credit-detail-focus"><span><b>${esc(focusLabel)}</b><small>${esc(monthLabelFor(focus.monthKey))} · מיקוד בכרטיס מתוך התחזית</small></span>` +
             `<button type="button" class="iconbtn" data-action="clear-orders-credit-detail-focus" data-click-arg0="${esc(focus.monthKey)}">כל הכרטיסים ×</button></div>`

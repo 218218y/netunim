@@ -20,6 +20,10 @@
     "types": []
   },
   "files": [
+    "tests/fixtures/checked-credit-detail-read-models.mjs",
+    "shared/credit-detail-policy.js",
+    "netunim-kupa/site/assets/js/domains/credit/detail-read-model.js",
+    "netunim-orders/site/assets/js/domains/finance/credit-detail-read-model.js",
     "tests/fixtures/checked-hapoalim-account-model.mjs",
     "netunim-kupa/bank-bridge/hapoalim-account-model.mjs",
     "tests/fixtures/checked-storage-boundary.mjs",

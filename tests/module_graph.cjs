@@ -34,6 +34,8 @@ for(const app of ['kupa','orders']){
         assert.ok(node.params[0]?.type==='ObjectPattern'&&node.params[0].properties.length<=5,relative+': spreadsheet transport requires domain, request, access and codec roles');
       if(relative==='assets/js/shared/spreadsheet-sync.js'&&node.type==='MemberExpression')
         assert.ok(!(node.object?.name==='JSON'&&node.property?.name==='parse')&&node.property?.name!=='text'&&node.property?.name!=='json',relative+': raw network and ACK decoding belong to the scoped spreadsheet boundary');
+      if(/(?:credit-detail-read-model|detail-read-model|credit-detail-policy)\.js$/.test(relative)&&node.type==='Identifier'&&!(parent?.type==='MemberExpression'&&parent.property===node&&!parent.computed))
+        assert.ok(!['window','document','navigator','localStorage','indexedDB','fetch'].includes(node.name),relative+': Credit detail selection requires captured read projections and explicit time');
       if(relative==='assets/js/shared/spreadsheet-remote.js'&&node.type==='Identifier'&&!(parent?.type==='MemberExpression'&&parent.property===node&&!parent.computed))
         assert.ok(!['window','document','navigator','localStorage','indexedDB','fetch'].includes(node.name),relative+': spreadsheet RPC policy requires explicit I/O and authority ports');
       if(app==='kupa'&&relative==='assets/js/main.js'&&node.type==='Identifier')
