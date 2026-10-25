@@ -20,6 +20,10 @@
     "types": []
   },
   "files": [
+    "shared/shared-checks-storage-v2.js",
+    "tests/fixtures/checked-shared-checks-storage.mjs",
+    "tests/fixtures/checked-shared-checks-runtime.mjs",
+    "shared/shared-checks-v2-runtime.js",
     "shared/shared-checks-contract.js",
     "tests/fixtures/checked-shared-check-model.mjs",
     "shared/restore-groups.js",

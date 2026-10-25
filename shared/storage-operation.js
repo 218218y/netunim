@@ -129,7 +129,7 @@ export function storageV2BootstrapStateHash(role,value,{cryptoImpl=globalThis.cr
   if(!Array.isArray(state.checks)||!Array.isArray(state.bankEvents))throw new Error('storage_bootstrap_shared_state_invalid');
   return storageJsonHash({checks:state.checks,bankEvents:state.bankEvents},cryptoImpl);
 }
-/** @param {unknown} value @returns {StorageJsonObject} */
+/** @param {unknown} value @returns {import('./shared-checks-storage-contracts.js').SharedState} */
 export function readSharedChecksState(value) {
   const state=readStorageState(value);
   if(!Array.isArray(state.checks)||!Array.isArray(state.bankEvents))throw new Error('shared_checks_state_invalid');
@@ -142,7 +142,8 @@ export function readSharedChecksState(value) {
     if(!object(event)||!integer(event.seq,1)||typeof event.checkId!=='string'||!event.checkId.trim()||sequences.has(event.seq))throw new Error('shared_checks_bank_event_invalid');
     sequences.add(event.seq);
   }
-  return state;
+  // The JSON object, arrays, identities and event sequences were checked above.
+  return /** @type {import('./shared-checks-storage-contracts.js').SharedState} */ (state);
 }
 /** @param {unknown} value @param {string} error @returns {{seq:number,revision:number}} */
 export function readCleanStorageHead(value,error) {

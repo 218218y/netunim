@@ -33,3 +33,32 @@ browser, IndexedDB, crash recovery and database gates remain mandatory in CI.
 
 Static implementation checking of Shared Checks and adjacent boundary/bootstrap
 modules is the next stage. This safety repair alone does not add strict roots.
+
+## Shared Checks implementation contracts
+
+Both Shared Checks implementations now join the strict roots. The existing JSON,
+check identity and bank-event sequence validator exposes the shape it proves;
+amounts, status and other unvalidated metadata remain JSON values. External state
+is unknown until that validator runs. Canonical journal, receipt, cloud ACK,
+sequence, retry and owner contracts are reused. Initialization retains explicit
+source-owner provenance; coordinated writes require boundary/sequence arguments.
+
+The runtime checks a missing recovery/cursor/flight before dereferencing it and
+validates recovered merge inputs. These paths already failed closed; the new
+errors identify the failed contract. Optional Journal options are forwarded only
+when present, preserving the engine's defaults. Incident sampling imports its
+existing specific module directly, avoiding an unrelated spreadsheet dependency
+graph. No alternate compiler or runtime declaration facade was added.
+
+Two negative consumer fixtures and six real-body compiler mutations distinguish
+admission from ACK, asynchronous durability, missing recovery, raw remote data,
+string epochs and JSON bank-event evidence. The seven compiler tests and 84
+focused runtime tests pass. The new reader return shape does not certify check
+amounts as normalized money. Existing corrupt-record and mutation gates remain.
+
+Measured eager totals are approximately 1,884,550/2,504,730 bytes, with unchanged
+310/406 modules. Relative to the safety commit, roughly 3KB of the 6KB canonical
+source delta is comments; the rest is explicit narrowing, option forwarding and
+validation/error handling. Source allowances increase by 5,000 bytes per app to
+1,885,000/2,505,000. Timing and module budgets remain unchanged and CI still runs
+the real browser and IndexedDB gates. The compiler stays TypeScript 6.0.3.
