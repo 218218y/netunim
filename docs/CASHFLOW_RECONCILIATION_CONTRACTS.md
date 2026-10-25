@@ -31,6 +31,13 @@ timing budget increases: modules remain 310/406. The source ceilings increase by
 is recorded by the startup budget test, with less than 1 KB headroom. Canonical
 sources and both shipped copies are synchronized.
 
+The per-module raw cap needed a separate annotation-aware check: source grows
+from 58,470 to 66,511 bytes, while executable tokens grow from 51,914 to 53,157.
+The focused module guard now enforces both 67,000 source and 53,500 token bytes;
+the generic 60,000-byte cap stays unchanged for other modules. This accounts for
+actual checked-body comments instead of splitting a working algorithm to hide
+its size. The aggregate graph budget still counts every annotation byte.
+
 This does not make every boolean relationship in historical BillingRow a
 compile-time theorem. Runtime money, coverage, FX and settlement regressions
 remain necessary. General Sync Document bodies and larger provider models are
