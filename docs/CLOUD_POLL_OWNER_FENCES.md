@@ -30,7 +30,7 @@ guards; the historical policy archive remains frozen. No module or timing gate
 changes. The measured small source increase is covered by 2,000/1,000 additional
 bytes for Kupa/Orders; startup graph and readability limits remain enforced.
 
-This closes the demonstrated polling path. Arbitrary direct callers of Kupa's
-explicit cloud-load/discard command still have their own account/storage
-preconditions; the optional polling cancellation callback does not claim to
-prove all possible account transitions in those separate commands.
+This closes the demonstrated polling path. The explicit Kupa load/discard
+command is reviewed separately in
+[CLOUD_LOAD_COMMAND_SCOPE.md](CLOUD_LOAD_COMMAND_SCOPE.md); its initiating scope
+must also survive every asynchronous step before further publication.

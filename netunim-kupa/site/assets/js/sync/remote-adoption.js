@@ -11,7 +11,7 @@ import {jsonEq} from './merge-records.js';
 // Finance and Shared Checks keep their original journals and ordering fences.
 /** @param {import('../shared/sync-document-contracts.js').KupaRemoteAdoptionPorts} ports */
 export function createRemoteAdoption({model,session,tab,access,journal,projection,transport,view,mirror,secondary,write}){
-const {storageV2CloudOutboxActive,assertAccountOwner,markCloudMode}=access;
+const {getCloudWriteScope,writeScopeCurrent,storageV2CloudOutboxActive,assertAccountOwner,markCloudMode}=access;
 const {refreshStorageV2CloudState,replaceStorageV2CurrentState,clearStorageV2CloudControl,adoptStorageV2CloudHead,setStorageV2CloudControl,queueStorageV2CloudNormalization,resetStorageV2CloudHead}=journal;
 const {domainRevisions,prepareKupaCloudState,applyKupaCloudState}=projection;
 const {readSupabaseDocument,readFinanceSyncDocument}=transport;
@@ -141,12 +141,24 @@ async function applyCloudRow(row,{renderNow=true,isCurrent=()=>true}={}){
 }
 
 async function loadSupabaseState({discardLocalV2=false}={}){
+  const scope=getCloudWriteScope(),current=()=>writeScopeCurrent(scope);
+  const assertCurrent=()=>{if(!current())throw new Error('cloud_sync_scope_changed')};
+  assertCurrent();
   let v2=await refreshStorageV2CloudState();
-  if(discardLocalV2&&v2?.base&&(v2.pending||v2.flight||v2.control)){const row=await readSupabaseDocument();if(!row)throw new Error('מסמך הענן לא נמצא');const next=applyKupaCoreState(row.state,model.state.checks,model.state);replaceVisibleState(next,{forceAll:true});await resetStorageV2CloudHead(Number(row.revision||0),model.state);session.dbRevision=Number(row.revision||0);session.lastSavedSnapshot=JSON.stringify(prepareKupaCloudState(row.state));session.cloudConflictPending=false;v2=await refreshStorageV2CloudState();return applyCloudRow(row)}
-  if(storageV2CloudOutboxActive()&&(v2?.pending||v2?.flight||v2?.control)){session.connectionMode='supabase';session.backendReady=true;hideConnectScreen();await requestStorageV2CloudSave('שינויים מקומיים שוחזרו וסונכרנו');return model.state}
+  if(!writeScopeCurrent(scope,v2))throw new Error('cloud_sync_scope_changed');
+  if(discardLocalV2&&v2?.base&&(v2.pending||v2.flight||v2.control)){
+    const row=await readSupabaseDocument();assertCurrent();if(!row)throw new Error('מסמך הענן לא נמצא');
+    const next=applyKupaCoreState(row.state,model.state.checks,model.state);replaceVisibleState(next,{forceAll:true});
+    await resetStorageV2CloudHead(Number(row.revision||0),model.state);assertCurrent();
+    session.dbRevision=Number(row.revision||0);session.lastSavedSnapshot=JSON.stringify(prepareKupaCloudState(row.state));session.cloudConflictPending=false;
+    v2=await refreshStorageV2CloudState();if(!writeScopeCurrent(scope,v2))throw new Error('cloud_sync_scope_changed');
+    return applyCloudRow(row,{isCurrent:current});
+  }
+  if(storageV2CloudOutboxActive()&&(v2?.pending||v2?.flight||v2?.control)){session.connectionMode='supabase';session.backendReady=true;hideConnectScreen();await requestStorageV2CloudSave('שינויים מקומיים שוחזרו וסונכרנו');assertCurrent();return model.state}
   const row=await readSupabaseDocument();
+  assertCurrent();
   if(!row)throw new Error('מסמך הענן לא נמצא');
-  return applyCloudRow(row)
+  return applyCloudRow(row,{isCurrent:current})
 }
 
 return {replaceVisibleState,applyKupaCoreState,applyAcknowledgedCoreState,applyFinanceOnlyRow,pollIndependentFinance,reviewCleanConflict,applyCloudRow,loadSupabaseState};

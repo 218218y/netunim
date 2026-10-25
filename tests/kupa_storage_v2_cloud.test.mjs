@@ -250,8 +250,9 @@ test('Kupa V2 account load reads and applies the cloud document with a clean loc
   const remote=clone(model.state);remote.notes=[{id:'cloud-note',content:'from cloud',createdAt:'2026-10-05',updatedAt:'2026-10-05'}];
   const session={serverInfo:{},connectionMode:'supabase',backendReady:true};let reads=0,adopted=0;
   const api=createSyncDocument({model,session,checksSession:{},tab:{primaryTab:true},
+    getCloudWriteScope:()=>({owner:'A:kupa',epoch:'E',accountOwner:'A',loginEpoch:1,writable:true}),
     prepareKupaCloudState:normalization.prepareKupaCloudState,applyKupaCloudState:normalization.applyKupaCloudState,
-    refreshStorageV2CloudState:async()=>({seq:0,base:{revision:6,ackSeq:0,state:normalization.prepareKupaCloudState(remote)},pending:false,flight:null,control:null}),
+    refreshStorageV2CloudState:async()=>({seq:0,base:{owner:'A:kupa',epoch:'E',revision:6,ackSeq:0,state:normalization.prepareKupaCloudState(remote)},pending:false,flight:null,control:null}),
     storageV2CloudOutboxActive:()=>true,readSupabaseDocument:async()=>{reads++;return {state:remote,revision:6,coreUpdatedAt:'2026-10-05T00:00:00Z'}},
     syncSharedChecksFromCloud:async()=>true,refreshOrdersFinanceSummary:async()=>false,
     adoptStorageV2CloudHead:async revision=>{adopted++;return {seq:0,revision}},assertAccountOwner:()=>true,

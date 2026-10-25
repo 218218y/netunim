@@ -33,7 +33,7 @@ const {isCurrent:writeScopeCurrent,setControl:setWriteControl}=createCloudWriteA
 
 
 const {replaceVisibleState,applyKupaCoreState,applyAcknowledgedCoreState,applyFinanceOnlyRow,pollIndependentFinance,reviewCleanConflict,applyCloudRow,loadSupabaseState}=createRemoteAdoption({
-  model,session,tab,access:{storageV2CloudOutboxActive,assertAccountOwner,markCloudMode},
+  model,session,tab,access:{getCloudWriteScope,writeScopeCurrent,storageV2CloudOutboxActive,assertAccountOwner,markCloudMode},
   journal:{refreshStorageV2CloudState,replaceStorageV2CurrentState,clearStorageV2CloudControl,adoptStorageV2CloudHead,setStorageV2CloudControl,queueStorageV2CloudNormalization,resetStorageV2CloudHead},
   projection:{domainRevisions,prepareKupaCloudState,applyKupaCloudState},transport:{readSupabaseDocument,readFinanceSyncDocument},
   view:{setSaveStatus,setCloudHeaderStatus,hideConnectScreen,setConnectedStatus,render},mirror:{listBackups,backupSnapshotToComputer},
