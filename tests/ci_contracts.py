@@ -99,6 +99,7 @@ class VerificationContracts(unittest.TestCase):
             session.browser = 'synthetic-browser'
             session.browser_owner = None
             session.browser_generation = 0
+            session.service_worker = False
             session.supabase = None
             session.network_guard = Mock()
             session.network_guard.arguments.return_value = []

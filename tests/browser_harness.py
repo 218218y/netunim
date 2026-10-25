@@ -338,6 +338,23 @@ def _network_failure_diagnostics(events):
     return failures[-20:]
 
 
+def _netlog_failures(path):
+    """Extract failed paths/codes, never retain NetLog headers or body data."""
+    raw = json.loads(path.read_text(encoding='utf-8'))
+    types = {value:key for key,value in raw.get('constants', {}).get('logEventTypes', {}).items()}
+    destinations = {}
+    failures = []
+    for event in raw.get('events', []):
+        params=event.get('params', {});source=event.get('source', {}).get('id')
+        if 'url' in params:
+            url=urllib.parse.urlsplit(params['url'])
+            destinations[source]={'host':url.hostname,'port':url.port,'path':url.path}
+        if isinstance(params.get('net_error'),int) and params['net_error'] < 0:
+            failures.append({'time':event.get('time'),'type':types.get(event.get('type'),event.get('type')),
+                             'source':source,'net_error':params['net_error'],**destinations.get(source,{})})
+    return failures[-100:]
+
+
 class _QuietHandler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, _format, *_args):
         pass
@@ -528,6 +545,12 @@ class BrowserSession:
             with contextlib.suppress(Exception):
                 if self.ws:
                     self.ws.close()
+        if self.service_worker:
+            with contextlib.suppress(Exception):
+                directory=Path(os.environ.get('NETUNIM_SUITE_REPORT_DIR',ROOT/'.work/service-worker'))
+                directory.mkdir(parents=True,exist_ok=True)
+                failures=[{'log':path.name,'failures':_netlog_failures(path)} for path in sorted(self.tmp.glob('netlog-*.json'))]
+                (directory/(re.sub(r'[^A-Za-z0-9_-]','_',self.label)+f'-network-{os.getpid()}-{time.time_ns()}.json')).write_text(json.dumps(failures,indent=2),encoding='utf-8')
         if self.httpd:
             with contextlib.suppress(Exception):
                 self.httpd.shutdown()
@@ -627,6 +650,8 @@ class BrowserSession:
         (self.profile/'DevToolsActivePort').unlink(missing_ok=True)
         devtools_port = 0
         args = _browser_args(self.browser, self.profile, devtools_port)
+        if self.service_worker:
+            args.append('--log-net-log='+str(self.tmp/f'netlog-{self.browser_generation}.json'))
         if self.supabase is not None:
             args.extend(self.supabase.browser_arguments())
         args.extend(self.network_guard.arguments(allowed))

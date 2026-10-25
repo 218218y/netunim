@@ -1,7 +1,7 @@
 # Service Worker installation investigation — 2026-10-25
 
-The historical intermittent Windows installation failure has not been reproduced
-in this investigation. Passing reruns do not establish its cause or resolution.
+Windows CI reproduced a real installation rejection during this investigation.
+Passing reruns do not establish its cause or resolution.
 Both production workers still install with atomic `cache.addAll(SHELL)`, validate
 release headers, wait behind existing controllers and claim only at activation.
 No product worker algorithm, retry policy or timeout has been changed.
@@ -43,5 +43,22 @@ profiles and loopback origins, sequentially, without real providers:
 The existing cold/cached/offline CPU startup, legacy upgrade, process-restart
 offline and release compatibility suites remain in the mandatory CI inventory.
 Startup now uses the same observed wait with its original 30-second deadline.
-Further root-cause work requires a failing artifact; concurrency/Windows backend,
-network/cache rejection and a product install race remain unproven hypotheses.
+In PR #302 run `40171105395`, Windows job `121101929824` failed during the legacy
+upgrade: worker version 2 rejected `event.waitUntil`, with `TypeError: Failed to
+fetch` at the `cache.addAll(SHELL)` installation line. The existing controller
+remained activated, with no installing/waiting replacement. This is a genuine
+installation rejection, not a polling deadline. Page-target network diagnostics
+were empty: worker-initiated fetches are not reliably represented on that target.
+
+For that reason SW browser sessions also write temporary native NetLog files.
+After owned-browser shutdown the harness extracts only failed source IDs, paths,
+timestamps and network codes into the suite artifact directory. Raw headers,
+queries and payloads are never copied into artifacts; raw files disappear with
+the disposable session. Network logging does not alter install requests or add
+retries. A synthetic NetLog contract checks extraction and redaction.
+
+The failing asset/network code is not yet established. Concurrency/Windows
+backend, loopback server rejection and a product install race remain hypotheses.
+One manual failed-job diagnostic rerun is permissible; it does not resolve or
+erase the preserved first failure. The unrelated mock-browser CI contract was
+updated to explicitly initialize its no-worker mode.

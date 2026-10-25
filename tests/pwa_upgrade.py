@@ -208,11 +208,12 @@ def test_worker_upgrade(label, fixture):
         })()""")
         browser.publish_upgrade()
         check_http_headers(browser)
+        upgrade_events=len(browser.events)
         waiting = wait_for_waiting_upgrade(browser)
         assert waiting, 'Update replaced the active page mid-session'
         assert 'error' not in browser.call('ServiceWorker.enable')
         browser.call('Runtime.evaluate', {'expression': 'true'})
-        installed = {version['versionId'] for event in browser.events
+        installed = {version['versionId'] for event in browser.events[upgrade_events:]
                      if event.get('method') == 'ServiceWorker.workerVersionUpdated'
                      for version in event['params']['versions'] if version['status'] == 'installed'}
         assert installed, 'DevTools did not observe the waiting worker'
@@ -222,7 +223,7 @@ def test_worker_upgrade(label, fixture):
         while time.monotonic()<activation_deadline:
             browser.call('Runtime.evaluate', {'expression': 'true'})
             if any(version['versionId'] in installed and version['status'] == 'activated'
-                   for event in browser.events if event.get('method') == 'ServiceWorker.workerVersionUpdated'
+                   for event in browser.events[upgrade_events:] if event.get('method') == 'ServiceWorker.workerVersionUpdated'
                    for version in event['params']['versions']):
                 break
             time.sleep(.05)
