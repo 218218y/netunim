@@ -953,7 +953,7 @@ ok("lastSync=summary?.sync?.syncedAt||null" in kupa_credit_sync_view and "lastSy
    "credit status ownership: Kupa headline uses the shared cloud sync timestamp instead of stale local Bridge history")
 ok("row.financeRevision=Number(financeResult.value.revision||0)" in kupa_transport
    and "financeChanged=!!row&&Number(row.financeRevision||0)>Number(session.financeRevision||0)" in kupa_sync_document
-   and "applyFinanceOnlyRow(row)" in kupa_sync_document
+   and "applyFinanceOnlyRow(row,{isCurrent:current})" in kupa_sync_document
    and "financeChanged=Number(row.financeRevision||0)>Number(session.financeRevision||0)" in kupa_finance_cloud,
    "Kupa finance freshness: finance_sync_documents has an independent revision and finance-only updates wake an already-open Kupa without overwriting pending Kupa edits")
 ok("financeReadRevision" in orders_bank_cache and "financeRev<=Number(checksSession.financeReadRevision||0)" in orders_bank_cache
