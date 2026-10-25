@@ -20,6 +20,8 @@
     "types": []
   },
   "files": [
+    "shared/bank-recurring-debits.js",
+    "tests/fixtures/checked-bank-recurring.mjs",
     "shared/storage-journal.js",
     "tests/fixtures/checked-journal-coordinator.mjs",
     "shared/credit-billing-cycles.js",
