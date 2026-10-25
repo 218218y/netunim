@@ -1,0 +1,26 @@
+{
+  "httpFailure": {
+    "before": null,
+    "after": "2e3bf4cfa05e8991579940863dd4b4e80bb6b6150a7d30c0a029fcb8f1027af4"
+  },
+  "decodeCreditHttpReply": {
+    "before": null,
+    "after": "74e5360254feb7d5239c89ba0fd2f9a960d5c03bf3eccea4ec16164e34d3162b"
+  },
+  "classifyCreditHttpResponse": {
+    "before": "e141c85eb7759fb6812ef47f41ebed7ca4e8787f8a4c57d738380f711d216a74",
+    "after": "22c2967ad2546ab4d7135d1984859cd8bfff210e55466ca327a480980db15789"
+  },
+  "parseCreditJsonResponse": {
+    "before": "b57db9fcd48d0a5cd8f8be8be79b5f8f7be9b1545ba72972b4bbf65a4cddaf98",
+    "after": "0bb654409f49e8ce5a19357b66ba6103dba184c75dbb408c78ca42cdc28a7c97"
+  },
+  "postVisaCalJson": {
+    "before": "18e0122974b535306e52d5254046b6f49f1103c29aedc5e74dca87eafdecd614",
+    "after": "a416a382b91bcfc7ed16e34ff82c2bf76f2d146c950795aa865c5ae5346a51d6"
+  },
+  "maxGetJsonWithinPage": {
+    "before": "5e9c52122461f0571a42aa8857b2a99b5a8ea6ca727163db36d862c3548c868d",
+    "after": "e782a2871107dfed32861bd0f86c2ce34c823e069cb03278697a3e7f3fdcb391"
+  }
+}

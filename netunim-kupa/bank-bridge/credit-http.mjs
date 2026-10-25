@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { safeError, text } from './credit-value-codec.mjs';
-import { classifyCreditHttpResponse, parseCreditJsonResponse } from './credit-http-policy.mjs';
+import { classifyCreditHttpResponse, parseCreditJsonResponse,decodeCreditHttpReply } from './credit-http-policy.mjs';
 
 async function postJson(
   fetchImpl,
@@ -85,11 +85,12 @@ export async function postVisaCalJson(
   }
   if (!inPageError) {
     try {
+      const reply=decodeCreditHttpReply(pageResponse,stage);
       return {
-        data: parseCreditJsonResponse(String(pageResponse?.body ?? ''), {
-          status: pageResponse?.status,
+        data: parseCreditJsonResponse(reply.body, {
+          status: reply.status,
           stage,
-          retryAfter: pageResponse?.retryAfter || '',
+          retryAfter: reply.retryAfter,
           now,
         }),
         transport: 'browser',
@@ -140,12 +141,13 @@ export async function maxGetJsonWithinPage(page, url, stage, now = Date.now()) {
     throw safeError('החיבור לשירות הנתונים של MAX נקטע.', 'CREDIT_PROVIDER_NETWORK_ERROR', {
       stage,
     });
-  const body = String(payload?.body || ''),
+  const reply=decodeCreditHttpReply(payload,stage);
+  const body = reply.body,
     failure = classifyCreditHttpResponse({
-      status: Number(payload?.status) || 0,
+      status: reply.status,
       text: body,
       stage,
-      retryAfter: payload?.retryAfter || '',
+      retryAfter: reply.retryAfter,
       now,
     });
   if (failure) throw failure;
@@ -155,7 +157,7 @@ export async function maxGetJsonWithinPage(page, url, stage, now = Date.now()) {
   } catch {
     throw safeError('MAX החזירה תשובה שאינה JSON תקין.', 'CREDIT_PROVIDER_RESPONSE_NOT_JSON', {
       stage,
-      httpStatus: Number(payload?.status) || 0,
+      httpStatus: reply.status,
     });
   }
 }
