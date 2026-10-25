@@ -55,3 +55,15 @@ test('restart completes a verified local birth after the durable marker committe
   assert.equal(f.plan.phase,'complete');assert.equal(restarted.preparing,false);
   assert.equal(f.sourceReads,1);
 });
+
+test('local birth cannot advance a durable phase after initialization loses its owner',async()=>{
+  let owner='local',plan=null,entered,release,advances=0;
+  const waiting=new Promise(resolve=>{entered=resolve}),held=new Promise(resolve=>{release=resolve});
+  const birth=createStorageV2LocalBirth({app:'orders',owner:()=>owner,primary:()=>true,
+    main:{initializeLocal:async()=>{entered();await held},recover:async()=>null},shared:{initializeLocal:async()=>{},recover:async()=>null},
+    readSource:async()=>({mainState:{notes:[]},sharedState:{checks:[],bankEvents:[]}}),operationId:()=> 'birth-owner-fence',
+    db:{readLocalBirth:async()=>null,readLocalEngine:async()=>null,beginLocalBirth:async(_scope,record)=>{plan=record;return record},
+      advanceLocalBirth:async(_scope,_id,_from,to)=>{advances++;return {...plan,phase:to}}},storage:{getItem:()=>null}});
+  const running=birth.begin(),rejected=assert.rejects(running,/owner_changed/);await waiting;
+  owner='B';release();await rejected;assert.equal(advances,0);assert.equal(birth.plan.phase,'prepared');
+});

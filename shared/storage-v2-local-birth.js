@@ -44,23 +44,23 @@ export function createStorageV2LocalBirth({app,owner,primary,main,shared,enableS
     while(current.phase!=='complete'){
       guard();
       if(current.phase==='prepared'){
-        await main.initializeLocal(current.mainState,{appMetadata:{localBirthId:current.id}});
-        current=await db.advanceLocalBirth(scope,current.id,'prepared','main-initialized');plan=current;continue;
+        await main.initializeLocal(current.mainState,{appMetadata:{localBirthId:current.id}});guard();
+        current=await db.advanceLocalBirth(scope,current.id,'prepared','main-initialized');guard();plan=current;continue;
       }
       if(current.phase==='main-initialized'){
-        await shared.initializeLocal({state:current.sharedState});
-        current=await db.advanceLocalBirth(scope,current.id,'main-initialized','shared-initialized');plan=current;continue;
+        await shared.initializeLocal({state:current.sharedState});guard();
+        current=await db.advanceLocalBirth(scope,current.id,'main-initialized','shared-initialized');guard();plan=current;continue;
       }
       if(current.phase==='shared-initialized'){
-        if(current.auxiliaryState!=null){await applyAuxiliary(current.auxiliaryState);if(await verifyAuxiliary(current.auxiliaryState)!==true)throw new Error('storage_local_birth_auxiliary_unverified')}
-        const mainState=(await main.recover(null))?.state,sharedState=(await shared.recover())?.state;
+        if(current.auxiliaryState!=null){await applyAuxiliary(current.auxiliaryState);guard();const verified=await verifyAuxiliary(current.auxiliaryState);guard();if(verified!==true)throw new Error('storage_local_birth_auxiliary_unverified')}
+        const mainState=(await main.recover(null))?.state;guard();const sharedState=(await shared.recover())?.state;guard();
         if(!mainState||!sharedState||!equalSyncJson(mainState,current.mainState)||!equalSyncJson(sharedState,current.sharedState))throw new Error('storage_local_birth_parity_mismatch');
-        current=await db.advanceLocalBirth(scope,current.id,'shared-initialized','verified');plan=current;continue;
+        current=await db.advanceLocalBirth(scope,current.id,'shared-initialized','verified');guard();plan=current;continue;
       }
       if(current.phase==='verified'){
         if(current.auxiliaryState!=null&&await verifyAuxiliary(current.auxiliaryState)!==true)throw new Error('storage_local_birth_auxiliary_unverified');
         guard();await db.markLocalEngine(app);guard();cacheMarker();
-        current=await db.advanceLocalBirth(scope,current.id,'verified','complete');plan=current;continue;
+        current=await db.advanceLocalBirth(scope,current.id,'verified','complete');guard();plan=current;continue;
       }
       throw new Error('storage_local_birth_phase_invalid');
     }
@@ -70,7 +70,7 @@ export function createStorageV2LocalBirth({app,owner,primary,main,shared,enableS
   async function begin(){
     guard();if(running)return running;
     running=(async()=>{
-      const existing=await hydrate(),marked=await verify();
+      const existing=await hydrate(),marked=await verify();guard();
       if(marked){
         // The marker is committed before the plan moves to complete. A crash in
         // that window must retire the plan instead of freezing startup forever.

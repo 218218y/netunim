@@ -27,8 +27,9 @@ export function createStorageV2Boundary({owner,primary,main,shared,validateMainC
     if(expected.intent&&decoded&&(decoded.kind!==expected.intent.kind||decoded.phase!=='complete'&&(!equalSyncJson(decoded.main,expected.intent.main)||!equalSyncJson(decoded.shared,expected.intent.shared))))throw new Error('storage_boundary_transition_changed');
     return decoded;
   }
-  async function apply(action,runtime,id,side){
-    const recovered=await runtime.recover();
+  async function apply(action,runtime,id,side,scoped){
+    guard(scoped);
+    const recovered=await runtime.recover();guard(scoped);
     if(!recovered)throw new Error('storage_boundary_journal_missing');
     if(recovered.appMetadata?.boundaryId===id)return;
     let result;
@@ -56,13 +57,13 @@ export function createStorageV2Boundary({owner,primary,main,shared,validateMainC
       lockedOwner=scoped;
       read(record,scoped);
       if(record.phase==='prepared'){
-        await apply(record.shared,shared,record.id,'shared');guard(scoped);
+        await apply(record.shared,shared,record.id,'shared',scoped);guard(scoped);
         const id=record.id,intent=record;
         record=await db.advanceBoundary(scoped,id,'prepared','shared-applied');guard(scoped);
         record=read(record,scoped,{id,phase:'shared-applied',intent});
       }
       if(record.phase==='shared-applied'){
-        await apply(record.main,main,record.id,'main');guard(scoped);
+        await apply(record.main,main,record.id,'main',scoped);guard(scoped);
         const id=record.id,intent=record;
         record=await db.advanceBoundary(scoped,id,'shared-applied','main-applied');guard(scoped);
         record=read(record,scoped,{id,phase:'main-applied',intent});
@@ -100,7 +101,7 @@ export function createStorageV2Boundary({owner,primary,main,shared,validateMainC
       // the restore. A stale target must never become a durable intent.
       for(const [action,runtime] of [[record.shared,shared],[record.main,main]]){
         if(action.expectedSeq===undefined)continue;
-        const recovered=await runtime.recover();guard(scoped);
+        const recovered=await runtime.recover();guard(scoped);guard(scoped);
         if(!recovered||recovered.seq!==action.expectedSeq)throw new Error('storage_boundary_source_changed');
         if(action.requireCleanCloud){const cloud=await runtime.cloudState();guard(scoped);if(!cloud?.base||cloud.pending||cloud.flight||cloud.control||action.expectedBaseRevision!==undefined&&cloud.base.revision!==action.expectedBaseRevision)throw new Error('storage_boundary_cloud_changed')}
         if(action.kind==='replace-local-authoritative'){const cloud=await runtime.cloudState();guard(scoped);if(cloud?.base||cloud?.flight||cloud?.control)throw new Error('storage_boundary_local_cloud_head_exists')}
