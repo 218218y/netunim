@@ -20,6 +20,8 @@
     "types": []
   },
   "files": [
+    "shared/storage-journal.js",
+    "tests/fixtures/checked-journal-coordinator.mjs",
     "shared/credit-billing-cycles.js",
     "shared/credit-card-account.js",
     "tests/fixtures/checked-credit-calculations.mjs",
