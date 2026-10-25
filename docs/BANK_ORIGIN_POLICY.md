@@ -62,6 +62,12 @@ argument. The installed-directory ACL audit remains an operator acceptance item.
 
 Destructive commands still use the shared pairing authority. UI confirmation is
 not server-side user presence. Separate read/write/destructive scopes and browser
-re-pairing UX remain explicit product decisions; this change adds no substitute
+re-pairing UX require explicit product decisions; this change adds no substitute
 token store or second authentication mechanism. Existing token revocation and
 vault-retention tests remain required.
+
+The [October 25 command-authority decision](BRIDGE_COMMAND_AUTHORITY.md) now
+explicitly retains that full-trust pairing policy and inventories every sensitive
+route. The user confirmed that no separate installation/provider environment is
+available. Installed Origin/default, PWA/private-network and cross-account ACL
+acceptance stay NOT RUN; the default therefore remains opt-in.

@@ -27,6 +27,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 2
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '24'
@@ -40,7 +41,7 @@ jobs:
           python -m pip install --no-cache-dir -r tests/requirements-ci.txt
           echo "NETUNIM_BROWSER=$(command -v google-chrome)" >> "$GITHUB_ENV"
       - name: Compare native CPU and CPU x4 on the same runner
-        run: python tests/profile_orders_search.py --counts 1000 10000 --rates 1 4 --repetitions 3
+        run: python tests/profile_orders_search.py --counts 1000 10000 --rates 1 4 --repetitions 3 --baseline-ref HEAD^
       - name: Preserve latency distributions and scoped Chrome traces
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

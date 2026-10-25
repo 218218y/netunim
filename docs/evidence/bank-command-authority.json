@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "decision": "retain-single-pairing-authority",
+  "entries": [
+    {"route":"GET /status","effect":"read","capability":"service.bankStatus","risk":"local bank connection metadata"},
+    {"route":"GET /credit/status","effect":"read","capability":"service.creditStatus","risk":"local credit profile metadata"},
+    {"route":"GET /credit/diagnostics","effect":"read","capability":"diagnostics.credit","risk":"bounded technical diagnostics"},
+    {"route":"GET /credit/data-diagnostics","effect":"read","capability":"diagnostics.creditData","risk":"retained sensitive financial diagnostic export"},
+    {"route":"GET /bank/diagnostics","effect":"read","capability":"diagnostics.bank","risk":"retained sensitive bank diagnostic export"},
+    {"route":"GET /bank/cheque-image/:key","effect":"read","capability":"cheques.read","risk":"retained sensitive cheque image"},
+    {"route":"POST /credit/profiles","effect":"write","capability":"connections.saveCreditProfile","risk":"replace local provider credentials and profile"},
+    {"route":"POST /credentials","effect":"write","capability":"connections.saveCredentials","risk":"replace local bank credentials"},
+    {"route":"POST /account-selection","effect":"write","capability":"connections.selectAccount","risk":"change local bank account selection"},
+    {"route":"POST /balance","effect":"provider","capability":"finance.balance","risk":"provider login/request, retained bank metadata and image effects"},
+    {"route":"POST /credit/sync","effect":"provider","capability":"finance.syncCredit","risk":"provider login/request, local credit metadata and diagnostics"},
+    {"route":"DELETE /credit/profiles","effect":"destructive","capability":"connections.deleteCreditProfile","risk":"remove local credential/profile and its browser identity"},
+    {"route":"POST /credit/reset","effect":"destructive","capability":"connections.resetCreditProfiles","risk":"remove all local credit connections and associated artifacts"},
+    {"route":"DELETE /credentials","effect":"destructive","capability":"connections.deleteCredentials","risk":"remove local bank connection and associated artifacts"},
+    {"route":"POST /settings/import","effect":"destructive","capability":"connections.importConnectionSettings","risk":"replace bank and credit connection secrets and cleanup artifacts"},
+    {"route":"POST /shutdown","effect":"administrative","capability":"shutdown.afterResponse","risk":"stop availability after accepted work drains"}
+  ]
+}

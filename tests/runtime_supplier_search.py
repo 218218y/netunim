@@ -10,6 +10,8 @@ with BrowserSession(ROOT/'netunim-orders/site', 'supplier-search') as browser:
       const head=await mainStorageV2.cloudState();
       await mainStorageV2.replaceLocalAuthoritativeState(state,{boundaryId:'supplier-search-fixture',expectedSeq:head.seq});
       currentSupplierId='S';currentView='supplier';supplierYearView='all';filterMode='all';searchText='';renderSupplier();
+      const originalA=document.querySelector('tr[data-tx-id="A"]'),originalB=document.querySelector('tr[data-tx-id="B"]');
+      const draft=originalB.querySelector('.col-note input');draft.value='UNSAVED retained draft';
       const visible=()=>[...document.querySelectorAll('tbody tr[data-tx-id]')].filter(row=>!row.hidden).map(row=>row.dataset.txId);
       const summary=()=>document.querySelector('[data-supplier-summary="debit"]').textContent;
       const frame=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
@@ -23,6 +25,12 @@ with BrowserSession(ROOT/'netunim-orders/site', 'supplier-search') as browser:
       };
       // Single-supplier search excludes the supplier's own name, as does its DOM index.
       const reference=await query('office');
+      await query('');
+      if(document.querySelector('tr[data-tx-id="A"]')!==originalA||document.querySelector('tr[data-tx-id="B"]')!==originalB)throw Error('filter recreated rendered row nodes');
+      if(draft.value!=='UNSAVED retained draft'||state.transactions.find(row=>row.id==='B').note)throw Error('filter lost or persisted an unsaved row draft');
+      const searchInput=document.querySelector('.supplier-search');searchInput.focus();searchInput.setSelectionRange(1,3);
+      await query('office');
+      if(document.activeElement!==searchInput)throw Error('filter stole search focus');
       if(JSON.parse(reference).rows.join()!=='A')throw Error('lowercase search failed: '+reference+' '+document.querySelector('.supplier-year-select')?.value+' '+JSON.stringify([...document.querySelectorAll('tbody tr[data-tx-id]')].map(row=>({id:row.dataset.txId,search:row.dataset.search,hidden:row.hidden}))));
       if(!summary().includes('100'))throw Error('summary includes a hidden row');
       for(const value of ['Office','OFFICE',' office '])if(await query(value)!==reference)throw Error('case/summary mismatch');
@@ -36,6 +44,17 @@ with BrowserSession(ROOT/'netunim-orders/site', 'supplier-search') as browser:
       if(await query('english')!==await query('ENGLISH')||visible().join()!=='A')throw Error('edited note search/summary mismatch');
       const resetYear=document.querySelector('.supplier-year-select');resetYear.value='all';resetYear.dispatchEvent(new Event('change',{bubbles:true}));await frame();
       await query('');if(visible().length!==2)throw Error('empty query did not restore rows');
+      supplierBulkMode=true;renderSupplier();
+      const bulkB=document.querySelector('tr[data-tx-id="B"] .bulk-check');
+      bulkB.checked=true;bulkB.dispatchEvent(new Event('change',{bubbles:true}));await frame();
+      await query('office');
+      if(!supplierBulkSelected.has('B'))throw Error('filtered bulk selection lost its identity');
+      await query('');
+      if(document.querySelector('tr[data-tx-id="B"] .bulk-check')!==bulkB||!bulkB.checked)throw Error('bulk row was recreated or unchecked');
+      const scroll=document.querySelector('.supplier-table-panel .table-wrap');
+      scroll.scrollLeft=25;await query('office');
+      if(document.querySelector('.supplier-table-panel .table-wrap')!==scroll)throw Error('search replaced its scroll host');
+      await query('');
       const input=document.querySelector('.supplier-search');input.value='office';input.dispatchEvent(new Event('input',{bubbles:true}));
       if(state.transactions[0].action!=='Office Supplies'||state.transactions[0].note!=='English NOTE')throw Error('search changed business data');
       await mainStorageV2.flush();return true;
