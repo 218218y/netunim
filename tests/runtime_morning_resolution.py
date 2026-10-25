@@ -20,6 +20,7 @@ if(localStorage.getItem('audit.startup')){
   const startupMorningAuthority=createMorningOperationScope({readAccess:()=>({account:{owner:'startup-fixture',epoch:1},storageOwner:'startup-fixture',readable:true,writable:tab.primaryTab})});
   morningOperationScope.capture=startupMorningAuthority.capture;morningOperationScope.captureRead=startupMorningAuthority.captureRead;
   cloudAuth.loadSession=()=>({access_token:'fixture',expires_at:9999999999});
+  cloudAuth.getAccountScope=()=>({owner:mainStorageV2.cloudScope?.accountOwner||null,epoch:1});
   cloudAuth.cloudEnabled=()=>true;cloudAuth.ensureSyncCapabilities=async()=>true;
   uiBackup.resumeIncompleteRestore=async()=>false;
   // Model a failed initial hydration. The real appReady Morning timer still runs.
