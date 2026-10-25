@@ -5,6 +5,7 @@ import {hasFailedLocalMutation} from '../shared/local-mutation-admission.js';
 
 // Main save admission, joined flight and retry/follow-up lifetime. ACK, RPC,
 // conflict/rebase and authoritative publication remain separate owners.
+/** @param {import('../shared/sync-document-contracts.js').KupaSaveOperationPorts} ports */
 export function createMainSaveOperation({session,tab,access,journal,write,confirmation,view}){
 const {getCloudWriteScope,writeScopeCurrent,setWriteControl,isOnline,storageV2CloudOutboxActive}=access;
 const {refreshStorageV2CloudState,materializeStorageV2CloudFlight,storageV2CommitPromise}=journal;
@@ -12,13 +13,19 @@ const {saveStorageV2CloudFlight,wake}=write;
 const {cloudScopeAccess,cloudConfirmationAccess,confirmCloudSynced}=confirmation;
 const {setSaveStatus,setCloudHeaderStatus,showSecondaryTabGuard,toast}=view;
 const outboxRetryScheduler=createOutboxRetryScheduler();
-let savingScope=null,cloudSavePromise=null,wakeEpoch=0;
+/** @type {import('../shared/sync-document-contracts.js').Scope} */
+let savingScope=null;
+/** @type {Promise<boolean>|null} */
+let cloudSavePromise=null;let wakeEpoch=0;
 const saveWork=createRuntimeTaskOwner();
+/** @param {import('../shared/sync-document-contracts.js').Head} state @param {import('../shared/storage-cloud-records.js').StoredCloudFlight|null} [flight] */
 function v2RetryRecord(state,flight=null){return {domain:'kupa',documentName:`${session.cloudDocumentName||'main'}-v2`,generation:Number(flight?.generation??state?.pendingGeneration??0),operationId:String(flight?.operationId||'kupa-v2'),retry:state?.control?.retry||null}}
 
+/** @param {Parameters<import('../shared/sync-document-contracts.js').SaveRequest>} args @returns {Promise<boolean>} */
 function requestStorageV2CloudSave(...args){
   return saveWork.run(()=>runStorageV2CloudSave(...args));
 }
+/** @type {import('../shared/sync-document-contracts.js').SaveRequest} */
 async function runStorageV2CloudSave(message='הקופה סונכרנה לענן',{force=false}={}){
   if(hasFailedLocalMutation(session)){setSaveStatus('שינוי לא נשמר — ייצא JSON לפני סגירת החלון','error');return false}
   const wakeGeneration=wakeEpoch;
@@ -31,7 +38,7 @@ async function runStorageV2CloudSave(message='הקופה סונכרנה לענן
     while(writeScopeCurrent(scope)&&cloudConfirmationAccess(force)&&!session.cloudConflictPending&&!hasFailedLocalMutation(session)){
       const generation=Number(session.localGeneration||0);
       state=await refreshStorageV2CloudState();
-      if(!cloudConfirmationAccess(force)||!writeScopeCurrent(scope,state))return false;
+      if(!state||!cloudConfirmationAccess(force)||!writeScopeCurrent(scope,state))return false;
       if(state.control?.conflict){session.cloudConflictPending=true;return false}
       const currentFlight=state.flight||null,retryDelay=outboxRetryScheduler.schedule(v2RetryRecord(state,currentFlight),()=>writeScopeCurrent(scope)?requestStorageV2CloudSave(message,{force}):false);
       if(retryDelay>0){setSaveStatus('ממתין למועד הסנכרון שהשרת קבע','saving');setCloudHeaderStatus('syncing','ענן: ממתין לסנכרון');return false}
@@ -75,6 +82,7 @@ async function runStorageV2CloudSave(message='הקופה סונכרנה לענן
   });cloudSavePromise=saving;return saving
 }
 
+/** @param {import('../shared/storage-json.js').StorageJsonObject} _snapshot @param {string} [msg] */
 async function persistSupabaseState(_snapshot,msg){
   if(!tab.primaryTab){showSecondaryTabGuard();return false}
   if(!storageV2CloudOutboxActive())throw new Error('kupa_v2_account_head_required');

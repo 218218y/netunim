@@ -83,13 +83,13 @@ export function createOutboxRetryScheduler({now=Date.now,setTimer=(callback,dela
   const MAX_TIMER_DELAY=2_147_483_647;
   /** @type {number|null} */ let timer=null;let key='',dueAt=0;
   function cancel(){if(timer!==null)clearTimer(timer);timer=null;key='';dueAt=0}
-  /** @param {OutboxRecord} record @param {()=>void|Promise<unknown>} resume */
+  /** @param {import('./cloud-policy.js').RetryScheduleRecord} record @param {import('./cloud-policy.js').RetryResume} resume */
   function schedule(record,resume){
     const delay=getOutboxRetryDelay(record,now);if(delay<=0){if(timer!==null&&dueAt<=nowMilliseconds(now))cancel();return 0}
     const nextKey=[record?.domain,record?.documentName,finiteGeneration(record?.generation),record?.operationId,record?.retry?.nextAttemptAt].map(value=>String(value??'')).join('|');
     if(timer!==null&&key===nextKey)return delay;
     cancel();key=nextKey;dueAt=nowMilliseconds(now)+delay;
-    const arm=()=>{const remaining=getOutboxRetryDelay(record,now);if(remaining>0){timer=setTimer(arm,Math.min(remaining,MAX_TIMER_DELAY));return}timer=null;key='';dueAt=0;try{const result=resume();if(result&&typeof result.catch==='function')result.catch(onError)}catch(error){onError(error)}};
+    const arm=()=>{const remaining=getOutboxRetryDelay(record,now);if(remaining>0){timer=setTimer(arm,Math.min(remaining,MAX_TIMER_DELAY));return}timer=null;key='';dueAt=0;try{const result=resume();if(result&&typeof result==='object'&&typeof result.catch==='function')result.catch(onError)}catch(error){onError(error)}};
     timer=setTimer(arm,Math.min(delay,MAX_TIMER_DELAY));return delay;
   }
   function stats(){return {scheduled:timer!==null,key,dueAt}}

@@ -2,6 +2,7 @@ import {jsonEq} from './merge-records.js';
 import {createPollingTask} from '../shared/runtime-polling.js';
 
 // Owns polling for Main; journal and secondary domains remain ports.
+/** @param {import('../shared/sync-document-contracts.js').KupaPollingPorts} ports */
 export function createCloudPolling({model,session,tab,access,state,view,remote,adoption,secondary,write,confirmation}){
   const {isOnline,storageV2PreparationActive,storageV2CloudOutboxActive,assertAccountOwner}=access;
   const {prepareKupaCloudState,refreshStorageV2CloudState}=state;
@@ -12,9 +13,10 @@ export function createCloudPolling({model,session,tab,access,state,view,remote,a
   const {requestStorageV2CloudSave}=write;
   const {pollAccessCurrent,markCloudPollSynced,markCloudPollFailure}=confirmation;
 
+/** @type {Promise<boolean>|null} */
 let cloudPollPromise=null;
 const cloudPoller=createPollingTask({run:()=>trackedCloudPoll(),delay:()=>12_000+Math.floor(Math.random()*2_000),
-  canRun:()=>session.cloudPollingEnabled&&!storageV2PreparationActive(),
+  canRun:()=>!!session.cloudPollingEnabled&&!storageV2PreparationActive(),
   onError:error=>console.error('kupa background cloud poll',error),
   onState:({enabled})=>{session.cloudPollingEnabled=enabled}});
 function trackedCloudPoll(){if(cloudPollPromise)return cloudPollPromise;cloudPollPromise=cloudPoll().finally(()=>{cloudPollPromise=null});return cloudPollPromise}

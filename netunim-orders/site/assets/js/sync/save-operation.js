@@ -6,6 +6,7 @@ import {hasFailedLocalMutation} from '../shared/local-mutation-admission.js';
 
 // Main save admission, joined flight and retry/follow-up lifetime. ACK, RPC,
 // conflict/rebase and authoritative publication remain separate owners.
+/** @param {import('../shared/sync-document-contracts.js').OrdersSaveOperationPorts} ports */
 export function createMainSaveOperation({session,tab,access,journal,write,confirmation,view}){
 const {cloudEnabled,getCloudWriteScope,writeScopeCurrent,setWriteControl,isOnline}=access;
 const {refreshStorageV2CloudState,materializeStorageV2CloudFlight,storageV2CommitPromise}=journal;
@@ -14,12 +15,17 @@ const {markCloudSynced,confirmCloudPollSynced}=confirmation;
 const {setCloud,toast}=view;
 const followup=createDebouncedTask({delay:0,onError:error=>console.error('orders cloud follow-up',error)});
 const recoveryWake=createDebouncedTask({delay:250,onError:error=>console.error('orders ACK recovery wake',error)});
+/** @type {((awake:boolean)=>void)|null} */
 let recoveryWait=null;
 const outboxRetryScheduler=createOutboxRetryScheduler();
-let savingScope=null,cloudSavePromise=null,wakeEpoch=0;
+/** @type {import('../shared/sync-document-contracts.js').Scope} */
+let savingScope=null;
+/** @type {Promise<boolean>|null} */
+let cloudSavePromise=null;let wakeEpoch=0;
 const saveWork=createRuntimeTaskOwner();
 // Remain inside the joined save lifetime. Cancellation settles the waiter so
 // account cutover/drain cannot strand a sleeping save or wake a replacement.
+/** @param {import('../shared/sync-document-contracts.js').Scope} scope */
 async function waitForPostAckQuiet(scope){
   const epoch=wakeEpoch,current=()=>epoch===wakeEpoch&&writeScopeCurrent(scope);
   for(let sample=0;sample<24&&current();sample++){
@@ -34,11 +40,14 @@ async function waitForPostAckQuiet(scope){
   }
   return false;
 }
+/** @param {import('../shared/sync-document-contracts.js').Head} state @param {import('../shared/storage-cloud-records.js').StoredCloudFlight|null} [flight] */
 function v2RetryRecord(state,flight=null){return {domain:'orders',documentName:'suppliers-v2',generation:Number(flight?.generation??state?.pendingGeneration??0),operationId:String(flight?.operationId||'orders-v2'),retry:state?.control?.retry||null}}
 
+/** @param {Parameters<import('../shared/sync-document-contracts.js').SaveRequest>} args @returns {Promise<boolean>} */
 function requestStorageV2CloudSave(...args){
   return saveWork.run(()=>runStorageV2CloudSave(...args));
 }
+/** @type {import('../shared/sync-document-contracts.js').SaveRequest} */
 async function runStorageV2CloudSave(message='השינויים סונכרנו',{force=false}={}){
   if(hasFailedLocalMutation(session)){setCloud('ענן: שינוי לא נשמר מקומית','error');return false}
   const wakeGeneration=wakeEpoch;

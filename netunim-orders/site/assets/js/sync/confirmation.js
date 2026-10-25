@@ -1,7 +1,9 @@
+import {responseProperty} from '../shared/response-evidence.js';
 import {cloudHeadIsSynced} from '../shared/storage-cloud-status.js';
 import {normalizeCloudError} from '../shared/cloud-sync.js';
 
 // Owns confirmation for Main; journal and secondary domains remain ports.
+/** @param {import('../shared/sync-document-contracts.js').OrdersConfirmationPorts} ports */
 export function createCloudConfirmation({model,session,tab,access,state,view}){
   const {isOnline,storageV2PreparationActive,cloudEnabled,cloudHasLocalWork,writeScopeCurrent}=access;
   const {sameOrderCloudData,refreshStorageV2CloudState}=state;
@@ -10,8 +12,10 @@ export function createCloudConfirmation({model,session,tab,access,state,view}){
 
 function pollAccessCurrent(){return !storageV2PreparationActive()&&tab.primaryTab&&cloudEnabled()&&isOnline()&&!session.syncCapabilitiesError&&!session.syncCapabilitiesChecking}
 
+/** @param {Partial<import('../shared/sync-document-contracts.js').Observation>} [observation] */
 function pollViewCurrent({generation,local}={}){return pollAccessCurrent()&&!session.cloudConflictBlocked&&Number(session.localGeneration||0)===generation&&!session.cloudSaveRequested&&!cloudHasLocalWork()&&(!local||sameOrderCloudData(model.state,local))}
 
+/** @param {import('../shared/sync-document-contracts.js').Head} [head] @returns {false} */
 function markCloudPollDeferred(head){
   if(storageV2PreparationActive()||!tab.primaryTab||!cloudEnabled())return false;
   if(!isOnline())setCloud('ענן: אופליין','offline');
@@ -20,11 +24,13 @@ function markCloudPollDeferred(head){
   return false;
 }
 
+/** @type {import('../shared/sync-document-contracts.js').Confirmation['markCloudSynced']} */
 function markCloudSynced(head,observation){
-  if(!pollViewCurrent(observation)||!cloudHeadIsSynced(head,{revision:Number(session.cloudRevision||0),observedHead:observation.head}))return markCloudPollDeferred(head);
+  if(!pollViewCurrent(observation)||!cloudHeadIsSynced(head,{revision:Number(session.cloudRevision||0),observedHead:observation.head||null}))return markCloudPollDeferred(head);
   setCloud('ענן: מסונכרן','synced');return true;
 }
 
+/** @type {import('../shared/sync-document-contracts.js').Confirmation['confirmCloudPollSynced']} */
 async function confirmCloudPollSynced(observation,{refreshTimestamp=false,scope=null}={}){
   const head=await refreshStorageV2CloudState();
   if(scope&&!writeScopeCurrent(scope,head))return false;
@@ -32,12 +38,13 @@ async function confirmCloudPollSynced(observation,{refreshTimestamp=false,scope=
   if(synced&&refreshTimestamp)refreshCloudTimestamp();return synced;
 }
 
+/** @param {unknown} error @returns {false} */
 function markCloudPollFailure(error){
   const normalized=normalizeCloudError(error),transient=['network','timeout','service_unavailable','rate_limited'].includes(normalized.kind);
   if(!isOnline())setCloud('ענן: אופליין','offline');
   else if(transient)setCloud('ענן: ממתין להתאוששות');
   else setCloud('ענן: שגיאת סנכרון','error');
-  if(transient)console.warn('orders cloud poll deferred',error?.message||error);else console.error(error);
+  if(transient)console.warn('orders cloud poll deferred',responseProperty(error,'message')||error);else console.error(error);
   return false
 }
 

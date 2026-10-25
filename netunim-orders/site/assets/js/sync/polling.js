@@ -3,6 +3,7 @@ import {cloudHeadIsSynced} from '../shared/storage-cloud-status.js';
 import {createPollingTask} from '../shared/runtime-polling.js';
 
 // Owns polling for Main; journal and secondary domains remain ports.
+/** @param {import('../shared/sync-document-contracts.js').OrdersPollingPorts} ports */
 export function createCloudPolling({model,session,tab,files,access,state,view,remote,adoption,secondary,write,confirmation}){
   const {isOnline,storageV2PreparationActive,cloudEnabled,cloudHasLocalWork}=access;
   const {prepareCloudState,sameOrderCloudData,refreshStorageV2CloudState}=state;
@@ -13,9 +14,10 @@ export function createCloudPolling({model,session,tab,files,access,state,view,re
   const {requestCloudSave}=write;
   const {pollViewCurrent,markCloudPollDeferred,confirmCloudPollSynced,markCloudPollFailure}=confirmation;
 
+/** @type {Promise<boolean>|null} */
 let cloudPollPromise=null;
 const cloudPoller=createPollingTask({run:()=>trackedCloudPoll(),delay:()=>12_000+Math.floor(Math.random()*2_000),
-  canRun:()=>session.cloudPollingEnabled&&!storageV2PreparationActive(),
+  canRun:()=>!!session.cloudPollingEnabled&&!storageV2PreparationActive(),
   onError:error=>console.error('orders background cloud poll',error),
   onState:({enabled})=>{session.cloudPollingEnabled=enabled}});
 function trackedCloudPoll(){if(cloudPollPromise)return cloudPollPromise;cloudPollPromise=cloudPoll().finally(()=>{cloudPollPromise=null});return cloudPollPromise}
@@ -28,6 +30,7 @@ async function cloudPoll(){
   if(storageV2PreparationActive()||!tab.primaryTab||!cloudEnabled()||session.cloudBusy||!isOnline())return false;
   if(cloudHasLocalWork()){const saved=await requestCloudSave('סונכרנו שינויים מקומיים ועדכון מרחוק');await pollSharedChecks();return saved}
   let dataApiReadOk=false;
+  /** @type {import('../shared/sync-document-contracts.js').Observation} */
   const observation={generation:Number(session.localGeneration||0),local:prepareCloudState(model.state),head:null};
   let ready=false;
   async function readMain(){

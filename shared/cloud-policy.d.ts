@@ -1,4 +1,6 @@
 export type CloudRetry = {attempts:number,lastErrorCode:string|null,lastAttemptAt:string|null,nextAttemptAt:string|null};
+export type RetryScheduleRecord = {domain:string,documentName:string,operationId:string,generation:number,retry?:{nextAttemptAt?:unknown}|null};
+export type RetryResume = ()=>void|boolean|Promise<unknown>;
 export type OutboxRecord = {schemaVersion:4,domain:string,documentName:string,operationId:string,generation:number,mutationSeq:number,baseRevision:number,baseState:unknown,snapshot:unknown,createdAt:string,updatedAt:string,conflict:unknown,mutationType:string,surface:string,restoreGroupId:string|null,retry:CloudRetry};
 export type CloudErrorKind = 'fatal'|'busy'|'revision_conflict'|'rate_limited'|'conflict'|'service_unavailable'|'auth'|'timeout'|'network';
 export type NormalizedCloudError = {kind:CloudErrorKind,code:string|null,status:number|null,retryAfterMs:number|null,original:unknown};
@@ -25,7 +27,7 @@ export interface CloudPolicy {
   createOutboxRecord(input:Record<string,unknown>,options?:{now?:()=>number,random?:()=>number,randomUUID?:(()=>string)|null}): OutboxRecord;
   getOutboxRetryDelay(record:{retry?:{nextAttemptAt?:unknown}|null}|null|undefined,now?:number|(()=>number)): number;
   outboxRetryForGeneration(existing:{retry?:unknown}|null|undefined,options?:{sameGeneration?:boolean,retry?:unknown,now?:()=>number}): CloudRetry;
-  createOutboxRetryScheduler(options?:{now?:()=>number,setTimer?:(callback:()=>void,delay:number)=>number,clearTimer?:(timer:number)=>void,onError?:(error:unknown)=>void}): {schedule:(record:OutboxRecord,resume:()=>void|Promise<unknown>)=>number,cancel:()=>void,stats:()=>{scheduled:boolean,key:string,dueAt:number}};
+  createOutboxRetryScheduler(options?:{now?:()=>number,setTimer?:(callback:()=>void,delay:number)=>number,clearTimer?:(timer:number)=>void,onError?:(error:unknown)=>void}): {schedule:(record:RetryScheduleRecord,resume:RetryResume)=>number,cancel:()=>void,stats:()=>{scheduled:boolean,key:string,dueAt:number}};
   migrateOutboxRecord(value:unknown,options?:Record<string,unknown> & {now?:()=>number}): OutboxRecord|null;
   updateOutboxSnapshot(existing:OutboxRecord|null,options?:Record<string,unknown>): OutboxRecord;
   acknowledgedGenerationMatches(record:{generation?:unknown}|null|undefined,acknowledgedGeneration:unknown): boolean;

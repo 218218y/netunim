@@ -1,0 +1,38 @@
+{
+  "base": "1e66be1a",
+  "reason": "Reviewed checked-body guards, JSON object admission, captured base revisions and current null-head rejection. Existing policy fixture stays frozen; actual-body mutations and ownership/hydration/rebase tests remain mandatory.",
+  "policies": {
+    "orders": {
+      "adoptRemoteRow": {
+        "before": "3634f91f7bc024d0b06b1b0193866120585df8236961f568d50d161b3c85bd05",
+        "after": "cb8942ecdbe212dc0ad1de2bfc65148071b151301609bef83d2bc6d0d7702c39"
+      },
+      "prepareConcurrentAckRecovery": {
+        "before": "5ba2504f499cb01594ba889decf5f7e731589d720fdcd27be4568a511d2fe09e",
+        "after": "4c273efcf34b7d400926dec36df5f49ecb3afcebe0fb9d6dd53684cfa69854cd"
+      },
+      "resumeConcurrentAckRecovery": {
+        "before": "7da70fd8ab224f07a399bf7123b681051d806d269f3a6697531d2873ef766a31",
+        "after": "53b4d659945f0e6844231d9af084477dd22236daa75f1d98a46bba800f87b1a2"
+      }
+    },
+    "kupa": {
+      "applyKupaCoreState": {
+        "before": "bae655e58f64798f986067c8cdf874d64fef4b7fcd0beaa0288250ee04f4c683",
+        "after": "be592fb59244f28b25521c460fd7020697f7c6024e95a26f16f1e21547469bb2"
+      },
+      "applyFinanceOnlyRow": {
+        "before": "f72c8d3884b75ef53c7b1fcfb8d56f2e8640e63f47a9979ba50d2b20601f79a2",
+        "after": "4d989fd563da6b83cf0673825396ec35a40577e07dfecdb57beda416948de038"
+      },
+      "applyCloudRow": {
+        "before": "187384518da733c74d01a0ec1edf8d2a37f725929ada50fd0f9fb0150bb8b02c",
+        "after": "eafc9f78974a4120bd1f91351e7b3b05b47f80eb7c0d12bdeecccbdd89ddaa77"
+      },
+      "runStorageV2CloudSave": {
+        "before": "bfa575b3836add922b50f41c579911bcd45c0bd4ce73842f25f6e5fe3785b98b",
+        "after": "486b422ea1de535dddfdf97d91110b56e162dc4f668a5a4ff921415529b22409"
+      }
+    }
+  }
+}

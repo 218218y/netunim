@@ -1,6 +1,7 @@
 export {esc} from '../shared/html.js';
 
 
+/** @template T @param {T} o @returns {T} */
 export const clone=o=>structuredClone(o);
 
 

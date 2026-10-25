@@ -1,3 +1,5 @@
+import {assertStorageJsonObject} from '../shared/storage-json-codec.js';
+import {responseProperty} from '../shared/response-evidence.js';
 import {observeOptionalTask} from '../shared/runtime-task-owner.js';
 import {hasFailedLocalMutation} from '../shared/local-mutation-admission.js';
 import {readDocumentWriteAck} from '../shared/document-write-ack.js';
@@ -8,6 +10,7 @@ import {recoverPostAckPublication} from '../shared/cloud-post-ack-recovery.js';
 import {cloudAckPublicationDiagnostic} from '../shared/cloud-ack-diagnostic.js';
 
 // Owns durable ACK publication and post-ACK recovery.
+/** @param {import('../shared/sync-document-contracts.js').KupaAckPublicationPorts} ports */
 export function createCloudAckPublication({model,session,tab,access,journal,projection,view,mirror,recovery}){
   const {writeScopeCurrent}=access;
   const {refreshStorageV2CloudState=async()=>null,acknowledgeStorageV2CloudFlight=async()=>null,setWriteControl}=journal;
@@ -16,6 +19,7 @@ export function createCloudAckPublication({model,session,tab,access,journal,proj
   const {backupSnapshotToComputer}=mirror;
   const {readStorageV2CloudRecovery=null,commitStorageV2CloudRecovery=null}=recovery;
 
+/** @param {import('../shared/sync-document-contracts.js').AckInput} input @returns {Promise<false|import('../shared/sync-document-contracts.js').Publication>} */
 async function publishAcknowledgedFlight({res,flight,serverSnapshot,scope}){
   if(hasFailedLocalMutation(session))return false;
   let state;
@@ -25,7 +29,7 @@ async function publishAcknowledgedFlight({res,flight,serverSnapshot,scope}){
   let currentCore=authoritative;
   if(state.afterFlightPending){
     const local=prepareKupaCloudState(model.state),rebased=mergeKupaCloudState3Way(serverSnapshot,local,authoritative,{deleteIntents:state.afterFlightDeleteIntents||{}});
-    if(rebased.conflicts.length){const conflict=structuredSyncConflict({domain:'kupa',conflicts:rebased.conflicts,base:serverSnapshot,local,remote:authoritative,generation:state.afterFlightGeneration,baseRevision:flight.baseRevision,currentRemoteRevision:newRevision});const conflictCommit=await acknowledgeStorageV2CloudFlight(flight.operationId,newRevision,authoritative,{currentState:model.state,expectedSeq,control:{conflict}});if(!writeScopeCurrent(scope,conflictCommit?.cloudState||conflictCommit))return false;session.dbRevision=newRevision;session.lastSavedSnapshot=JSON.stringify(authoritative);session.cloudConflictPending=true;setSaveStatus('התנגשות שמורה מקומית','error');setCloudHeaderStatus('conflict','ענן: התנגשות');return false}
+    if(rebased.conflicts.length){const conflict=assertStorageJsonObject(structuredSyncConflict({domain:'kupa',conflicts:rebased.conflicts,base:serverSnapshot,local,remote:authoritative,generation:state.afterFlightGeneration,baseRevision:flight.baseRevision,currentRemoteRevision:newRevision}));const conflictCommit=await acknowledgeStorageV2CloudFlight(flight.operationId,newRevision,authoritative,{currentState:model.state,expectedSeq,control:{conflict}});if(!writeScopeCurrent(scope,conflictCommit))return false;session.dbRevision=newRevision;session.lastSavedSnapshot=JSON.stringify(authoritative);session.cloudConflictPending=true;setSaveStatus('התנגשות שמורה מקומית','error');setCloudHeaderStatus('conflict','ענן: התנגשות');return false}
     currentCore=rebased.state;
   }
   const reconcile=state.afterFlightPending||!jsonEq(prepareKupaCloudState(model.state),authoritative);
@@ -46,8 +50,8 @@ async function publishAcknowledgedFlight({res,flight,serverSnapshot,scope}){
     }catch(error){console.error('post-ACK recovery retained for review',error)}
   }
   const committedState=publication.committed;
-  if(!writeScopeCurrent(scope,committedState)){console.warn('Main cloud ACK',cloudAckPublicationDiagnostic('SCOPE_CHANGED_AFTER_COMMIT',{baseRevision:flight.baseRevision,ackRevision:newRevision,endSeq:flight.endSeq,candidateSeq:expectedSeq,observedSeq:committedState?.seq}));return false}
-  session.dbRevision=newRevision;session.lastSavedSnapshot=JSON.stringify(authoritative);session.serverInfo.lastSavedAt=res.row?.updated_at||res.row?.coreUpdatedAt||session.serverInfo.lastSavedAt||null;session.cloudConflictPending=false;
+  if(!committedState||!writeScopeCurrent(scope,committedState)){console.warn('Main cloud ACK',cloudAckPublicationDiagnostic('SCOPE_CHANGED_AFTER_COMMIT',{baseRevision:flight.baseRevision,ackRevision:newRevision,endSeq:flight.endSeq,candidateSeq:expectedSeq,observedSeq:committedState?.seq}));return false}
+  session.dbRevision=newRevision;session.lastSavedSnapshot=JSON.stringify(authoritative);session.serverInfo.lastSavedAt=responseProperty(res.row,'updated_at')||responseProperty(res.row,'coreUpdatedAt')||session.serverInfo.lastSavedAt||null;session.cloudConflictPending=false;
   if(!publication.published){
     console.warn('Main cloud ACK',cloudAckPublicationDiagnostic(publication.reason==='publication-error'?'ACK_PUBLICATION_EXCEPTION':'ACK_COMMITTED_PUBLICATION_STALE',{baseRevision:flight.baseRevision,ackRevision:newRevision,endSeq:flight.endSeq,candidateSeq:expectedSeq,observedSeq:committedState?.seq}));
     session.cloudConflictPending=true;
@@ -62,8 +66,8 @@ async function publishAcknowledgedFlight({res,flight,serverSnapshot,scope}){
   if(businessChanged)try{render()}catch(error){console.error('post-ACK render',error)}
   if(!writeScopeCurrent(scope))return false;
   observeOptionalTask(()=>backupSnapshotToComputer(structuredClone(model.state),newRevision));
-  if(!writeScopeCurrent(scope,committedState))return false;
-  return {committed:true,state:committedState};
+  if(!committedState||!writeScopeCurrent(scope,committedState))return false;
+  return {committed:/** @type {const} */(true),state:committedState};
 }
 
 return {publishAcknowledgedFlight};

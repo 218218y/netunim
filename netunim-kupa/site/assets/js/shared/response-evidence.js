@@ -27,6 +27,9 @@ export function responseErrorText(value,includeHint=false){
   if(!evidenceObject(value))return '';
   return String(value.message||(includeHint?value.hint:null)||'');
 }
+/** Read a field without certifying it as metadata, money or an ACK.
+ * @param {unknown} value @param {string} key @returns {unknown} */
+export function responseProperty(value,key){return evidenceObject(value)?value[key]:undefined}
 /** Preserve the historical raw RPC selection without certifying its fields.
  * @param {unknown} value @returns {unknown} */
 export function firstResponseValue(value){return Array.isArray(value)?value[0]:value}

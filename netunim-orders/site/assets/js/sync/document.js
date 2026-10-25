@@ -11,6 +11,7 @@ import {captureCloudWriteScope,cloudWriteScopeHasIdentity} from '../shared/cloud
 import {clone} from '../core/values.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
+/** @param {import('../shared/sync-document-contracts.js').OrdersDocumentPorts} ports */
 export function createSyncDocument({model,session,tab,access,journal,checkpoint,recovery,projection,transport,view,mirror,secondary}){
 const {getCloudWriteScope,storageV2PreparationActive,cloudEnabled,cloudHasLocalWork,isOnline}=access;
 const {refreshStorageV2CloudState,materializeStorageV2CloudFlight,acknowledgeStorageV2CloudFlight,rejectStorageV2CloudFlight,setStorageV2CloudControl,storageV2CommitPromise}=journal;
@@ -22,6 +23,7 @@ const {setCloud,toast,render,refreshCloudTimestamp}=view;
 const {files,writeStateToFolder}=mirror;
 const {pollSharedChecks,refreshKupaReadout}=secondary;
 
+/** @type {import('../shared/sync-document-contracts.js').ConcurrentReview|null} */
 let concurrentAckReview=null;
 const {isCurrent:writeScopeCurrent,setControl:setWriteControl}=createCloudWriteAuthority({
   scope:{read:getCloudWriteScope},
@@ -29,6 +31,7 @@ const {isCurrent:writeScopeCurrent,setControl:setWriteControl}=createCloudWriteA
   control:{write:setStorageV2CloudControl},
 });
 
+/** @type {Promise<boolean>|null} */
 let morningRefreshPromise=null;
 
 
@@ -37,6 +40,7 @@ const {adoptRemoteRow}=createRemoteAdoption({model,session,tab,
   access:{cloudEnabled},journal:{adoptStorageV2CloudHead,setStorageV2CloudControl},
   projection:{composeOrderCloudState,applyOrderCloudState,prepareCloudState},view:{setCloud},
 });
+/** @param {Parameters<import('../shared/sync-document-contracts.js').SaveRequest>} args @returns {Promise<boolean>} */
 function requestStorageV2CloudSave(...args){return saveOperation.request(...args)}
 
 function refreshForMorningRecovery(){
@@ -81,11 +85,11 @@ async function prepareConcurrentAckRecovery(){
   let evidence=await readStorageV2CloudRecovery();
   const scope=captureCloudWriteScope(live,evidence.head),head=evidence.head;
   if(!writeScopeCurrent(scope,head)||Number(session.localGeneration||0)!==generation)throw new Error('orders_recovery_scope_changed');
-  if(head.flight||head.control?.retry||head.control?.conflict?.kind!=='concurrent-ack'||head.control.conflict.currentRemoteRevision!==head.base.revision)throw new Error('orders_recovery_not_concurrent_ack');
+  if(!head.base||head.flight||head.control?.retry||head.control?.conflict?.kind!=='concurrent-ack'||head.control.conflict.currentRemoteRevision!==head.base.revision)throw new Error('orders_recovery_not_concurrent_ack');
   if(!sameOrderCloudData(evidence.state,visible))throw new Error('orders_recovery_unsaved_view');
   const expected=evidence.expectedHead;
   evidence=await readStorageV2CloudRecovery({afterSeq:head.base.ackSeq,previousState:composeOrderCloudState(head.base.state,evidence.state)});
-  if(Object.keys(expected).some(key=>expected[key]!==evidence.expectedHead[key]))throw new Error('storage_cloud_recovery_stale');
+  if((/** @type {(keyof typeof expected)[]} */(Object.keys(expected))).some(key=>expected[key]!==evidence.expectedHead[key]))throw new Error('storage_cloud_recovery_stale');
   if(!sameOrderCloudData(evidence.replayedPrevious,evidence.state))throw new Error('orders_recovery_journal_mismatch');
   const remote=await readCloud();
   if(!writeScopeCurrent(scope,head)||Number(session.localGeneration||0)!==generation||!sameOrderCloudData(model.state,visible))throw new Error('orders_recovery_view_changed');
@@ -95,6 +99,7 @@ async function prepareConcurrentAckRecovery(){
     backup:{kind:'orders-concurrent-ack-review',version:1,capturedAt:new Date().toISOString(),localState:visible,remote:clone(remote),storage:clone(evidence.backup)},
     resume:()=>resumeConcurrentAckRecovery(review)};
 }
+/** @param {import('../shared/sync-document-contracts.js').ConcurrentReview} review */
 async function resumeConcurrentAckRecovery(review){
   if(!review||review!==concurrentAckReview)throw new Error('orders_recovery_review_required');
   concurrentAckReview=null;
@@ -105,7 +110,7 @@ async function resumeConcurrentAckRecovery(review){
   if(!current())throw new Error('orders_recovery_scope_changed');
   if(Number(freshRemote?.revision)!==Number(remote.revision)||!freshRemote?.state||!sameOrderCloudData(freshRemote.state,remote.state))throw new Error('orders_recovery_remote_changed');
   const committed=await commitStorageV2CloudRecovery(evidence.state,{expectedHead:evidence.expectedHead,conflictKind:'concurrent-ack',isCurrent:current});
-  if(!writeScopeCurrent(scope,committed))return false;
+  if(!committed.base||!writeScopeCurrent(scope,committed))return false;
   // No model replacement: it was proven identical to the durable recovered
   // state. A later edit remains live and will use the ordinary pending flight.
   session.cloudConflictBlocked=false;session.cloudRevision=committed.base.revision;session.cloudUpdatedAt=freshRemote.updated_at||session.cloudUpdatedAt;session.lastCloudState=clone(committed.base.state);

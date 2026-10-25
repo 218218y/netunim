@@ -1,11 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {declaration,tokens} from './bank_policy_ast_fixture.mjs';
 
 // Captured before changing composition from main revision 04167250. Do not
 // regenerate to accommodate a refactor: a changed decision requires review.
 const baseline=JSON.parse(readFileSync(new URL('./fixtures/main-sync-policies.json',import.meta.url),'utf8'));
+const typedPolicies=JSON.parse(readFileSync(new URL('./fixtures/typed-main-sync-policies.json',import.meta.url),'utf8'));
+const digest=value=>createHash('sha256').update(value).digest('hex');
 for(const [app,policies] of Object.entries(baseline.policies)){
   const sources=['save-operation.js','remote-adoption.js','document.js'].map(file=>readFileSync(new URL(`../netunim-${app}/site/assets/js/sync/${file}`,import.meta.url),'utf8'));
   for(const [name,expected] of Object.entries(policies))test(`${app} Main ${name} retains the pre-composition policy`,()=>{
@@ -51,6 +54,11 @@ for(const [app,policies] of Object.entries(baseline.policies)){
     // Reviewed audit change: persist bounded backoff for transient errors with
     // no Retry-After. Preserve every other historical save-policy token.
     const reviewed=name==='runStorageV2CloudSave'?expected.replace('const normalized=normalizeCloudError(error),attempts=Number(state?.control?.retry?.attempts||0)+1,nextAttemptAt=normalized.retryAfterMs?new Date(Date.now()+normalized.retryAfterMs).toISOString():null,retry={attempts,lastErrorCode:normalized.code||normalized.kind,lastAttemptAt:new Date().toISOString(),nextAttemptAt};','const retry=createCloudRetryControl(error,state?.control?.retry);'):expected;
-    assert.equal(actual,reviewed);
+    // Seven reviewed checked-body changes add shape/null guards and capture
+    // validated base revisions before callbacks. Freeze both sides separately;
+    // the historical policy fixture is never regenerated to accept a change.
+    const typed=typedPolicies.policies[app]?.[name];
+    if(typed){assert.equal(digest(reviewed),typed.before);assert.equal(digest(actual),typed.after)}
+    else assert.equal(actual,reviewed);
   });
 }

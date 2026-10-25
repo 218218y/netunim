@@ -9,6 +9,7 @@ import {createCloudPolling} from './polling.js';
 
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
+/** @param {import('../shared/sync-document-contracts.js').KupaDocumentPorts} ports */
 export function createSyncDocument({model,session,tab,access,journal,checkpoint,recovery,projection,transport,view,mirror,secondary}){
 const {getCloudWriteScope,storageV2PreparationActive,storageV2CloudOutboxActive,assertAccountOwner,isOnline,markCloudMode}=access;
 const {refreshStorageV2CloudState,materializeStorageV2CloudFlight,acknowledgeStorageV2CloudFlight,rejectStorageV2CloudFlight,setStorageV2CloudControl,storageV2CommitPromise}=journal;
@@ -38,7 +39,9 @@ const {replaceVisibleState,applyKupaCoreState,applyAcknowledgedCoreState,applyFi
   view:{setSaveStatus,setCloudHeaderStatus,hideConnectScreen,setConnectedStatus,render},mirror:{listBackups,backupSnapshotToComputer},
   secondary:{syncSharedChecksFromCloud,refreshOrdersFinanceSummary},write:{requestStorageV2CloudSave,startCloudPolling},
 });
+/** @param {Parameters<import('../shared/sync-document-contracts.js').SaveRequest>} args @returns {Promise<boolean>} */
 function requestStorageV2CloudSave(...args){return saveOperation.request(...args)}
+/** @param {Parameters<ReturnType<typeof createMainSaveOperation>['persistSupabaseState']>} args */
 function persistSupabaseState(...args){return saveOperation.persistSupabaseState(...args)}
 
 function startCloudPolling(){return polling.start()}
