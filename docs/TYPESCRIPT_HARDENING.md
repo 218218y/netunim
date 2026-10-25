@@ -4,6 +4,12 @@ The canonical product remains JavaScript ESM. The strict project checks real
 implementations with JSDoc, `checkJs`, `noUncheckedIndexedAccess` and
 `exactOptionalPropertyTypes`. A passing compiler is not business acceptance.
 
+The current Shared Checks, Boundary/Bootstrap and selected account-identity work
+is recorded in [SHARED_CHECKS_RELIABILITY.md](SHARED_CHECKS_RELIABILITY.md).
+Its inventory is 375 explicit roots (242 product modules, 133 consumer fixtures)
+and 18 remaining Bridge exclusions. The dated counts below describe earlier
+stages and are retained as historical measurements.
+
 ## Baseline — 2026-10-25, `5a5c7c2e`
 
 The TS 6.0.3 compiler program, not only its root list, was inspected using

@@ -62,3 +62,21 @@ backend, loopback server rejection and a product install race remain hypotheses.
 One manual failed-job diagnostic rerun is permissible; it does not resolve or
 erase the preserved first failure. The unrelated mock-browser CI contract was
 updated to explicitly initialize its no-worker mode.
+
+## Completion review
+
+Eleven local harness safety contracts pass, including failed NetLog URL/code
+extraction and redaction. The mandatory cold/cached/offline, release-upgrade,
+process-restart and Windows acceptance suites remain enabled. HTTP/1.1 connection
+reuse is a verified harness improvement; it has not established the cause of the
+historical `cache.addAll` rejection.
+
+The bounded investigation remains open only on new evidence: preserve a fresh
+isolated profile's worker error/version/lifecycle state together with redacted
+NetLog path and network code. Classify native browser/storage/network crashes
+separately from worker installation. In particular, run `40186227810` recorded
+Windows LevelDB checksum corruption after a hard kill and a separate Linux
+Chromium network-service crash; its Windows PWA and release scenarios passed.
+These failures do not justify product retries, timeout increases or a changed
+worker installation algorithm. Retain original failure artifacts even if a
+single diagnostic retry passes.

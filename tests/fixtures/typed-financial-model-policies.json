@@ -37,6 +37,18 @@
     "normalizedCreditSettlementDetails": {
       "before": "c7b8f7b9a2b2adc428c5ee495739c443550eddc05ac43c9fc0d7a9070d18c004",
       "after": "a2537d49670a2e03d28387ad5d64a2a576e1276c05de4cc8543269475fdcd359"
+    },
+    "accountDescriptor": {
+      "before": "b3c63dcdbb316a999836061320ff79819ca3059d6494dc6576213deb236de11a",
+      "after": "1b6e1c05fd979d5cc9d3124adc89018c583b075f2945d923cf6e149777b81e91"
+    },
+    "accountSelectionError": {
+      "before": "8d4fb409c981a7c108038ce498e5029eb4bf9f6f7967c220fe07ace99698b1a4",
+      "after": "e24468c8b7a8854bf44111c113869b8c883d63ac7f67ba6a2304ff904eaf3f1d"
+    },
+    "selectAccountDescriptor": {
+      "before": "63fa4d4f1527248c44ab45e0a0b606bc4483cf9babda813f147880a485afdad6",
+      "after": "73189d7ae99011774a6e4e59ce7319348fb97231160031be2e3f9ebd03e4b37f"
     }
   },
   "creditPolicies": {
