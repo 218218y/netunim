@@ -170,8 +170,8 @@ Existing immutable flights remain readable without allocating a new operation ID
 The four compiler tests include mutations of actual append completion, ACK
 sequence and admission sequence, plus positive and negative public consumers.
 
-The eager graphs add 5,105 source bytes and no modules. Measured totals are
-1,835,462/2,459,085 bytes; source budgets increase by 6,000 bytes each. Module and
+The eager graphs add 5,175 source bytes and no modules. Measured totals are
+1,835,532/2,459,155 bytes; source budgets increase by 6,000 bytes each. Module and
 timing limits remain unchanged. The V2 runtime coordinator, application cloud
 transports and document coordinators still require further focused work; adding
 them as roots is not implied by checking this Journal implementation.

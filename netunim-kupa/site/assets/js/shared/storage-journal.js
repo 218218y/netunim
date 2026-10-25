@@ -217,7 +217,17 @@ export function createStorageJournal({owner:configuredOwner,schema:configuredSch
     const pendingRecords=base?stored.journal.map(record=>readScopedOperation(record,epoch)).filter(operation=>operation.seq>base.ackSeq&&operation.seq<=committedSeq).sort((a,b)=>a.seq-b.seq):[];
     if(base)for(let expected=base.ackSeq+1;expected<=committedSeq;expected++)if(pendingRecords[expected-base.ackSeq-1]?.seq!==expected)throw new Error('storage_cloud_journal_gap');
     const latest=pendingRecords.at(-1),afterFlightRecords=flight?pendingRecords.filter(operation=>operation.seq>flight.endSeq):pendingRecords,afterFlightLatest=afterFlightRecords.at(-1);
-    return {seq:committedSeq,base,flight,control,pending:!!base&&committedSeq>base.ackSeq,pendingDeleteIntents:mergeDeleteIntents(...pendingRecords.map(operation=>operation.deleteIntents||{})),pendingGeneration:Math.max(0,...pendingRecords.map(operation=>Number(operation.generation||0))),pendingMutationType:pendingRecords.some(operation=>operation.mutationType==='bulk-delete')?'bulk-delete':latest?.mutationType||'autosave',pendingSurface:latest?.surface||'unknown',afterFlightPending:!!flight&&committedSeq>flight.endSeq,afterFlightDeleteIntents:mergeDeleteIntents(...afterFlightRecords.map(operation=>operation.deleteIntents||{})),afterFlightGeneration:Math.max(0,...afterFlightRecords.map(operation=>Number(operation.generation||0))),afterFlightMutationType:afterFlightRecords.some(operation=>operation.mutationType==='bulk-delete')?'bulk-delete':afterFlightLatest?.mutationType||'autosave',afterFlightSurface:afterFlightLatest?.surface||'unknown'};
+    return {seq:committedSeq,base,flight,control,
+      pending:!!base&&committedSeq>base.ackSeq,
+      pendingDeleteIntents:mergeDeleteIntents(...pendingRecords.map(operation=>operation.deleteIntents||{})),
+      pendingGeneration:Math.max(0,...pendingRecords.map(operation=>Number(operation.generation||0))),
+      pendingMutationType:pendingRecords.some(operation=>operation.mutationType==='bulk-delete')?'bulk-delete':latest?.mutationType||'autosave',
+      pendingSurface:latest?.surface||'unknown',
+      afterFlightPending:!!flight&&committedSeq>flight.endSeq,
+      afterFlightDeleteIntents:mergeDeleteIntents(...afterFlightRecords.map(operation=>operation.deleteIntents||{})),
+      afterFlightGeneration:Math.max(0,...afterFlightRecords.map(operation=>Number(operation.generation||0))),
+      afterFlightMutationType:afterFlightRecords.some(operation=>operation.mutationType==='bulk-delete')?'bulk-delete':afterFlightLatest?.mutationType||'autosave',
+      afterFlightSurface:afterFlightLatest?.surface||'unknown'};
   }
   /** @type {JournalMethods['materializeFlight']} */
   async function materializeFlight({operationId:flightId,baseRevision,throughSeq,snapshot:exactSnapshot,project=(/** @type {State} */ state)=>state,validateCloud=validate,prepareAudit=null}={}){
