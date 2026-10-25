@@ -143,3 +143,35 @@ module and timing limits remain. The wider `kupa-cashflow.js` and recurring-bank
 calculations remain outside the strict roots; their existing business tests stay
 in full verification. See `TYPESCRIPT7_COMPATIBILITY.md` for the separate compiler
 assessment and its explicit untested platform gates.
+
+## Journal coordinator and cloud publication receipts
+
+The actual `storage-journal.js` coordinator now joins the strict roots, after an
+isolated probe found 227 diagnostics within that module. The type-only method
+contracts contextualize every real function body; generic queue helpers retain
+their own checked parameters and result inference. An append admission includes
+`committed: Promise<boolean>`, while a cloud ACK carries its operation ID,
+revision and acknowledged sequence. Neither receipt substitutes for the other.
+Validation, projection and scope callbacks must complete synchronously.
+
+Recovery explicitly distinguishes an absent checkpoint from an owned durable
+snapshot. Internal write paths require a recovered checkpoint rather than
+dereferencing a nullable recovery result. A missing checkpoint fails before any
+write. Collection identities must be nonempty strings before a replacement can
+derive deletion authority. Native IDB authority, transaction completion, detached
+commands and recovery tests pass; two new behavioral regressions verify these
+failure paths leave durable data unchanged. The focused coordinator/recovery/
+authority suites contain 231 passing tests.
+
+Emergency envelopes remain JSON-decoded and checksum-checked at runtime. Only
+current-epoch operations undergo the current operation-schema validation; stale
+epochs remain available for diagnostics without being replayed across a restore.
+Existing immutable flights remain readable without allocating a new operation ID.
+The four compiler tests include mutations of actual append completion, ACK
+sequence and admission sequence, plus positive and negative public consumers.
+
+The eager graphs add 5,105 source bytes and no modules. Measured totals are
+1,835,462/2,459,085 bytes; source budgets increase by 6,000 bytes each. Module and
+timing limits remain unchanged. The V2 runtime coordinator, application cloud
+transports and document coordinators still require further focused work; adding
+them as roots is not implied by checking this Journal implementation.
