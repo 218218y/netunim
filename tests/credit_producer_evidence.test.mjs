@@ -55,7 +55,9 @@ test('three actual producer-guard mutations reproduce the previously accepted ev
     ['assertCreditProfileTransactions({accounts:[{months:[slice]}]})','normalizeCreditMonthSlice',fn=>fn({month:'2026-10',fetchStatus:'success'}).transactions,[]],
     ['assertCreditProfileTransactions({accounts:[account]})','normalizeCreditScrapeAccount',fn=>fn({pendingStatus:'success'}).pendingTransactions,[]],
   ]){
-    const source=original.replace('assertProviderEvidence(()=>'+guard+');','');
+    const source=guard==='assertCreditTransactionEvidence(tx)'
+      ?original.replace(guard+';','')
+      :original.replace('assertProviderEvidence(()=>'+guard+');','');
     assert.notEqual(source,original);
     const absolute=source.replaceAll(/(['"])\.\/(.*?)\1/g,(_,quote,file)=>JSON.stringify(new URL('../netunim-kupa/bank-bridge/'+file,import.meta.url).href));
     const mutant=await import('data:text/javascript;base64,'+Buffer.from(absolute).toString('base64'));

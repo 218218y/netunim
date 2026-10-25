@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { creditAdapterPolicyHashes } from './credit_adapter_policy_fixture.mjs';
+import {typedFinancialPolicies} from './typed_financial_policy_fixture.mjs';
 const modules = [
   'hapoalim-policy',
   'hapoalim-navigation-policy',
@@ -23,7 +24,7 @@ const fixture = JSON.parse(
   fs.readFileSync(new URL('./fixtures/credit-core-policy.json', import.meta.url), 'utf8')
 );
 const retired = ['normalizeAccountNumber', 'selectBalanceAccount', 'isHapoalimChequeTransaction'];
-test('all 72 active Bank declarations match their reviewed policy digests', () => {
+test('all 73 active Bank declarations match their reviewed policy digests', () => {
   const expected = { ...fixture.bankPolicies };
   // Reviewed audit change: unknown server capacity cannot prove completeness.
   // Keep the historical fixture intact and authorize only this declaration.
@@ -34,7 +35,7 @@ test('all 72 active Bank declarations match their reviewed policy digests', () =
     delete expected[name];
   }
   assert.equal(Object.keys(expected).length, 72);
-  assert.deepEqual(creditAdapterPolicyHashes(modules.map(read)).policies, expected);
+  assert.deepEqual(creditAdapterPolicyHashes(modules.map(read)).policies, typedFinancialPolicies(expected,'bankPolicies'));
 });
 test('Bank policy digests detect altered cheque identity, pending status, account selection and login bounds', () => {
   for (const [module, before, after, name] of [
@@ -75,6 +76,6 @@ test('Bank policy digests detect altered cheque identity, pending status, accoun
     const actual = creditAdapterPolicyHashes(
       modules.map((row) => (row === module ? changed : read(row)))
     ).policies;
-    assert.notEqual(actual[name], fixture.bankPolicies[name], name);
+    assert.notEqual(actual[name], creditAdapterPolicyHashes(modules.map(read)).policies[name], name);
   }
 });

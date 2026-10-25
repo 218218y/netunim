@@ -1,0 +1,72 @@
+{
+  "baseline": "5b2598ba",
+  "reason": "Reviewed equivalent typed normalization: explicit guards, tuple records, contextual results and tagged errors. Behavioral and mutation tests are retained.",
+  "bankPolicies": {
+    "object": {
+      "before": null,
+      "after": "a0d05f610121535f4690f1ea8413cee491daa1223cd733b0db8e468b2335748c"
+    },
+    "semanticPairsFromObject": {
+      "before": "c5e502332ab0f1877488b5a7ac2f8ca1782960a8d7868d90c64fb69f7030105b",
+      "after": "1e9077d2ea77456fd70d5d540ed0eb224ad83a812404faee925f905ac16783f4"
+    },
+    "nestedSemanticPairsFromObject": {
+      "before": "cb1bc78a295700b51434bd97727f8216f4e086a02b2b54c097b202373449547c",
+      "after": "b0d362f4a729ba806bac7cc52ca6b3f7dcc98a154ecf43e256c143b5e68140a8"
+    },
+    "normalizeChequeItemPairs": {
+      "before": "bad1b99a82cfca8306beeb9057f757facf6484c93da65f3fa41cd759577b4094",
+      "after": "409c4d621eb1cc879dc69ce171ff164b28f05ba7b1b11b7ce23b9d6fb1aba5bc"
+    },
+    "normalizeHapoalimChequeListItem": {
+      "before": "2fddc08dec50fc97ea814fbe142a4ac8d27a449762cc8c95bf66d19056180790",
+      "after": "8ff66e4444cb9e25b761346aef09968524c3a3ebe425fbb5ae5c9a1c1e45db04"
+    },
+    "normalizeChequeItemObject": {
+      "before": "5cdd96170121e8b621c77e24e4ae8d2fb1374de99e7a41ac05c59933b9a04076",
+      "after": "86ec7241bde3ac6e77ef3996e32bf428ae489a0548130add962f6fffc32c1f38"
+    },
+    "semanticColumnLabel": {
+      "before": "45f9d40c9cb803083d4046a881b81a472dcd1a98cc5af3080e66ffdc0eda9246",
+      "after": "0bfceebd28784a3aac1760a81ce4b8d0397733791d1f53c7e99ee69de028ad7d"
+    },
+    "normalizeChequeTableObject": {
+      "before": "54104b720e576aa48106a75d7e99128db92a190711aea0014b255bd73545c779",
+      "after": "7ef21bb1df6dac1cf6f25af903930c6a46611eb19e25e91c5f1edb6e5d062aff"
+    },
+    "normalizedCreditSettlementDetails": {
+      "before": "c7b8f7b9a2b2adc428c5ee495739c443550eddc05ac43c9fc0d7a9070d18c004",
+      "after": "a2537d49670a2e03d28387ad5d64a2a576e1276c05de4cc8543269475fdcd359"
+    }
+  },
+  "creditPolicies": {
+    "normalizeCreditProfileInput": {
+      "before": "68d5db50514bf82132bfc5e822fed8d459e6ea135b06d90c6fc29191d9c10839",
+      "after": "4ec466535c74125b111ed1b1e1d922846d665aa91871a9ed9c132a80db5eb334"
+    },
+    "assertProviderEvidence": {
+      "before": "30908dd6a7608fca6da0c526eddba38173ca284f4d491022f403747aec787c2f",
+      "after": "0fe5bb5f78a7ae2906f5c6467992642c505a6946b2a814e72887bda567a3e827"
+    },
+    "isFetchStatus": {
+      "before": null,
+      "after": "15644aa6f35372910ad0372c40816a2e1fca01dcf7495825b4366b6a3efb5f9c"
+    },
+    "frameStatus": {
+      "before": null,
+      "after": "08cb0b15fa61ad3206c13f9ae0afe93823e889f55be181b5f009643771dddd8f"
+    },
+    "normalizeCreditScrapeTransaction": {
+      "before": "449d6fa5459a777f0dd712436453d0421f0328da0e2b46b15b5bd4a24737ef43",
+      "after": "b6e7d289dcb9d0c5f34a10765da9d814d1bcb8a73eed4a0c052c7310eb2f9f38"
+    },
+    "normalizeCreditMonthSlice": {
+      "before": "154521893f16f7c92898831aa57dd4287e9d0f5aefeb27698216f65be1b63a19",
+      "after": "3db5bc2d82f90e568405aa5c85de8dc885175604323ed0f7bb10c605e86ce8a0"
+    },
+    "normalizeCreditScrapeAccount": {
+      "before": "55f2846637ee682a1ba4e0fb2be79a94134a42e6a86127f710d8c6d1885874d7",
+      "after": "b14af24996dc407ef8c058749afa9c0da7e322580bf51505a774ec2782e5c13a"
+    }
+  }
+}

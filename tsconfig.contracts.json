@@ -20,6 +20,11 @@
     "types": []
   },
   "files": [
+    "netunim-kupa/bank-bridge/credit-transaction-model.mjs",
+    "netunim-kupa/bank-bridge/credit-profile-model.mjs",
+    "netunim-kupa/bank-bridge/hapoalim-cheque-model.mjs",
+    "netunim-kupa/bank-bridge/hapoalim-credit-settlement-model.mjs",
+    "tests/fixtures/checked-bridge-financial-models.mjs",
     "shared/cloud-sync.js",
     "tests/fixtures/checked-cloud-policy.mjs",
     "shared/storage-journal-idb.js",

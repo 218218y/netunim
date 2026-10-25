@@ -1,47 +1,55 @@
-// @ts-nocheck
+// @ts-check
 import { creditNumber, creditText, creditTransactionTime } from './credit-core-values.mjs';
 import {assertCreditTransactionEvidence,assertCreditProfileTransactions} from './credit-transaction-evidence.mjs';
 
+/** @template Result @param {()=>Result} check @returns {Result} */
 function assertProviderEvidence(check){
-  try{check()}catch(cause){
+  try{return check()}catch(cause){
     throw Object.assign(new Error('Credit provider business evidence is invalid',{cause}),{
       code:'CREDIT_PROVIDER_SCHEMA_ERROR',stage:'Transactions',retryable:false,
     });
   }
 }
 
+/** @param {unknown} value @returns {value is 'success'|'provider_error'|'schema_error'|'network_error'} */
+function isFetchStatus(value){return value==='success'||value==='provider_error'||value==='schema_error'||value==='network_error'}
+/** @param {unknown} value @returns {value is 'fresh'|'stale'|'missing'} */
+function frameStatus(value){return value==='fresh'||value==='stale'||value==='missing'}
+
+/** @param {unknown} tx @returns {import('./credit-model-contracts.js').CreditScrapeTransaction} */
 export function normalizeCreditScrapeTransaction(tx = {}) {
-  assertProviderEvidence(()=>assertCreditTransactionEvidence(tx));
+  const data=assertProviderEvidence(()=>{assertCreditTransactionEvidence(tx);return tx});
   const installments =
-    Number(tx?.installments?.number) > 0 && Number(tx?.installments?.total) > 0
+    data.installments && Number(data.installments.number) > 0 && Number(data.installments.total) > 0
       ? {
-          number: Math.trunc(Number(tx.installments.number)),
-          total: Math.trunc(Number(tx.installments.total)),
+          number: Math.trunc(Number(data.installments.number)),
+          total: Math.trunc(Number(data.installments.total)),
         }
       : null;
   return {
-    id: creditText(tx.id || tx.identifier || '', 120),
-    type: creditText(tx.type || 'normal', 30) || 'normal',
-    date: tx.date || null,
-    processedDate: tx.processedDate || null,
-    transactionDate: tx.transactionDate || null,
-    transactionTime: creditTransactionTime(tx.transactionTime),
-    originalAmount: creditNumber(tx.originalAmount),
-    originalCurrency: creditText(tx.originalCurrency || '', 12),
-    chargedAmount: creditNumber(tx.chargedAmount),
-    ...(['reported', 'missing', 'not_billed'].includes(tx.chargeAmountStatus)
-      ? { chargeAmountStatus: tx.chargeAmountStatus }
+    id: creditText(data.id || data.identifier || '', 120),
+    type: creditText(data.type || 'normal', 30) || 'normal',
+    date: data.date || null,
+    processedDate: data.processedDate || null,
+    transactionDate: data.transactionDate || null,
+    transactionTime: creditTransactionTime(data.transactionTime),
+    originalAmount: creditNumber(data.originalAmount),
+    originalCurrency: creditText(data.originalCurrency || '', 12),
+    chargedAmount: creditNumber(data.chargedAmount),
+    ...(data.chargeAmountStatus!==undefined
+      ? { chargeAmountStatus: data.chargeAmountStatus }
       : {}),
-    chargedCurrency: creditText(tx.chargedCurrency || tx.originalCurrency || 'ILS', 12) || 'ILS',
-    foreignTransaction: tx.foreignTransaction === true,
-    description: creditText(tx.description || 'עסקת אשראי', 220) || 'עסקת אשראי',
-    memo: creditText(tx.memo || '', 260),
-    category: creditText(tx.category || '', 160) || undefined,
+    chargedCurrency: creditText(data.chargedCurrency || data.originalCurrency || 'ILS', 12) || 'ILS',
+    foreignTransaction: data.foreignTransaction === true,
+    description: creditText(data.description || 'עסקת אשראי', 220) || 'עסקת אשראי',
+    memo: creditText(data.memo || '', 260),
+    category: creditText(data.category || '', 160) || undefined,
     installments,
-    status: tx.status,
+    status: data.status,
   };
 }
 
+/** @param {unknown} [values] @returns {import('./credit-model-contracts.js').CreditScrapeTransaction[]} */
 function dedupeCreditScrapeTransactions(values = []) {
   const rows = [],
     seen = new Set();
@@ -76,15 +84,14 @@ function dedupeCreditScrapeTransactions(values = []) {
   return rows;
 }
 
+/** @param {Record<string,unknown>} [slice] @returns {import('./credit-model-contracts.js').CreditMonthSlice} */
 export function normalizeCreditMonthSlice(slice = {}) {
   assertProviderEvidence(()=>assertCreditProfileTransactions({accounts:[{months:[slice]}]}));
   const month = /^\d{4}-(?:0[1-9]|1[0-2])$/.test(String(slice?.month || ''))
     ? String(slice.month)
     : '';
-  const fetchStatus = ['success', 'provider_error', 'schema_error', 'network_error'].includes(
-    String(slice?.fetchStatus)
-  )
-    ? String(slice.fetchStatus)
+  const fetchStatus = isFetchStatus(slice.fetchStatus)
+    ? slice.fetchStatus
     : 'provider_error';
   return {
     month,
@@ -102,6 +109,7 @@ export function normalizeCreditMonthSlice(slice = {}) {
   };
 }
 
+/** @param {Record<string,unknown>} [account] @param {string} [provider] @returns {import('./credit-model-contracts.js').CreditScrapeAccount} */
 export function normalizeCreditScrapeAccount(account = {}, provider = '') {
   assertProviderEvidence(()=>assertCreditProfileTransactions({accounts:[account]}));
   const balance = creditNumber(account.balance),
@@ -130,20 +138,14 @@ export function normalizeCreditScrapeAccount(account = {}, provider = '') {
         ]
       : legacyTransactions;
   const hasFrameValue = balance !== null || cardFrame !== null || directAvailable !== null,
-    frameStatus = ['fresh', 'stale', 'missing'].includes(String(account.frameStatus))
-      ? String(account.frameStatus)
+    frameState = frameStatus(account.frameStatus)
+      ? account.frameStatus
       : hasFrameValue
         ? 'fresh'
         : 'missing',
-    frameFetchStatus = [
-      'success',
-      'unavailable',
-      'provider_error',
-      'schema_error',
-      'network_error',
-    ].includes(String(account.frameFetchStatus))
-      ? String(account.frameFetchStatus)
-      : frameStatus === 'fresh'
+    frameFetchStatus = isFetchStatus(account.frameFetchStatus)||account.frameFetchStatus==='unavailable'
+      ? account.frameFetchStatus
+      : frameState === 'fresh'
         ? 'success'
         : 'unavailable';
   return {
@@ -153,17 +155,15 @@ export function normalizeCreditScrapeAccount(account = {}, provider = '') {
     cardType: creditText(account.cardType || '', 80),
     cardFrame,
     availableCredit: directAvailable ?? issuerAvailable,
-    frameStatus,
+    frameStatus:frameState,
     frameFetchStatus,
     frameFetchedAt: account.frameFetchedAt || null,
     frameErrorCode: creditText(account.frameErrorCode || '', 80),
     frameErrorAt: account.frameErrorAt || null,
     months,
     pendingTransactions,
-    pendingStatus: ['success', 'provider_error', 'schema_error', 'network_error', 'missing'].includes(
-      String(account.pendingStatus)
-    )
-      ? String(account.pendingStatus)
+    pendingStatus: isFetchStatus(account.pendingStatus)||account.pendingStatus==='missing'
+      ? account.pendingStatus
       : pendingTransactions.length
         ? 'success'
         : 'missing',
