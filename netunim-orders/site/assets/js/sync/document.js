@@ -6,7 +6,7 @@ import {createCloudAckPublication} from './ack-publication.js';
 import {createCloudConfirmation} from './confirmation.js';
 import {createCloudPolling} from './polling.js';
 
-import {captureCloudWriteScope} from '../shared/cloud-write-scope.js';
+import {captureCloudWriteScope,cloudWriteScopeHasIdentity} from '../shared/cloud-write-scope.js';
 
 import {clone} from '../core/values.js';
 
@@ -41,8 +41,9 @@ function requestStorageV2CloudSave(...args){return saveOperation.request(...args
 
 function refreshForMorningRecovery(){
   if(morningRefreshPromise)return morningRefreshPromise;
+  const requestedScope=getCloudWriteScope();
   morningRefreshPromise=(async()=>{
-    const available=()=>tab.primaryTab&&cloudEnabled()&&isOnline()&&!session.cloudConflictBlocked&&!session.syncCapabilitiesError;
+    const available=()=>writeScopeCurrent(requestedScope)&&tab.primaryTab&&cloudEnabled()&&isOnline()&&!session.cloudConflictBlocked&&!session.syncCapabilitiesError;
     if(!available())return false;
     // Await actual completion, including a poll already reading the remote head.
     await polling.runtime.drain();
@@ -54,13 +55,16 @@ function refreshForMorningRecovery(){
     if(!available()||session.cloudBusy)return false;
     session.cloudBusy=true;
     try{
-      const head=await refreshStorageV2CloudState(),generation=Number(session.localGeneration||0),local=prepareCloudState(model.state),row=await readCloud();
+      const head=await refreshStorageV2CloudState();
+      const scope=captureCloudWriteScope(requestedScope,head),current=()=>available()&&writeScopeCurrent(scope,head);
+      if(!current())return false;
+      const generation=Number(session.localGeneration||0),local=prepareCloudState(model.state),row=await readCloud();
       if(!available()||!row?.state||!Number.isSafeInteger(Number(row.revision))||Number(row.revision)<Number(session.cloudRevision||0))return false;
       // A local edit/save during the GET invalidates this refresh; never apply a stale head.
       if(Number(session.localGeneration||0)!==generation||saveOperation.isSaving()||cloudHasLocalWork()||!sameOrderCloudData(model.state,local))return false;
-      if(!await adoptRemoteRow(row,generation,head))return false;
+      if(!await adoptRemoteRow(row,generation,head,{isCurrent:current})||!current())return false;
       render();refreshCloudTimestamp();return true;
-    }finally{session.cloudBusy=false}
+    }finally{if(cloudWriteScopeHasIdentity(requestedScope,getCloudWriteScope()))session.cloudBusy=false}
   })().catch(error=>{console.error('Morning recovery cloud refresh',error);return false}).finally(()=>{morningRefreshPromise=null});
   return morningRefreshPromise;
 }

@@ -115,9 +115,10 @@ for(const method of ['cloudPoll','refreshForMorningRecovery'])test(`Orders ${met
   environment();const model={state:{notes:[{id:'N',content:'local'}],checks:[]}},session={localGeneration:0,cloudRevision:10},tab={primaryTab:true};
   const before=clone(model.state),remote={revision:11,state:{notes:[{id:'N',content:'remote'}]}};
   const api=createOrdersSync({model,session,tab,files:{},toast:noop,setCloud:noop,prepareCloudState:clone,
+    getCloudWriteScope:()=>({owner:'A:orders',epoch:'E',accountOwner:'A',loginEpoch:1,writable:tab.primaryTab}),
     cloudEnabled:()=>true,cloudHasLocalWork:()=>false,sameOrderCloudData:(a,b)=>JSON.stringify(a.notes)===JSON.stringify(b.notes),
     readCloud:async()=>clone(remote),readCloudMeta:async()=>({revision:11}),
-    refreshStorageV2CloudState:async()=>({seq:0,base:{revision:10,ackSeq:0},pending:false,flight:null,control:null}),
+    refreshStorageV2CloudState:async()=>({seq:0,base:{owner:'A:orders',epoch:'E',revision:10,ackSeq:0},pending:false,flight:null,control:null}),
     adoptStorageV2CloudHead:async()=>{tab.primaryTab=false;return {seq:0,revision:11}},
     applyOrderCloudState:state=>{model.state=clone(state)},render:noop,refreshCloudTimestamp:noop,pollSharedChecks:async()=>{},refreshKupaReadout:async()=>false});
   assert.equal(await api[method](),false);assert.deepEqual(model.state,before);assert.equal(session.cloudRevision,10);
@@ -126,9 +127,10 @@ for(const method of ['cloudPoll','refreshForMorningRecovery'])test(`Orders ${met
 for(const method of ['cloudPoll','refreshForMorningRecovery'])test(`Orders ${method} retains a local edit made during commit and persists a recovery fence`,async()=>{
   environment();const model={state:{notes:[{id:'N',content:'local'}],checks:[]}},session={localGeneration:0,cloudRevision:10},tab={primaryTab:true},controls=[];
   const api=createOrdersSync({model,session,tab,files:{},toast:noop,setCloud:noop,prepareCloudState:clone,
+    getCloudWriteScope:()=>({owner:'A:orders',epoch:'E',accountOwner:'A',loginEpoch:1,writable:tab.primaryTab}),
     cloudEnabled:()=>true,cloudHasLocalWork:()=>false,sameOrderCloudData:(a,b)=>JSON.stringify(a.notes)===JSON.stringify(b.notes),
     readCloud:async()=>({revision:11,state:{notes:[{id:'N',content:'remote'}]}}),readCloudMeta:async()=>({revision:11}),
-    refreshStorageV2CloudState:async()=>({seq:0,base:{revision:10,ackSeq:0},pending:false,flight:null,control:null}),
+    refreshStorageV2CloudState:async()=>({seq:0,base:{owner:'A:orders',epoch:'E',revision:10,ackSeq:0},pending:false,flight:null,control:null}),
     adoptStorageV2CloudHead:async()=>{session.localGeneration++;model.state.notes[0].content='later edit';return {seq:0,revision:11}},
     setStorageV2CloudControl:async value=>controls.push(value),
     applyOrderCloudState:state=>{model.state=clone(state)},render:noop,refreshCloudTimestamp:noop,pollSharedChecks:async()=>{},refreshKupaReadout:async()=>false});

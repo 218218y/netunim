@@ -20,6 +20,7 @@ function fixture(app,t){
   const head={seq:0,base:{revision:7,ackSeq:0,owner:app+':A',epoch:'E',state:clone(model.state)},pending:false,flight:null,control:null};
   let reads=0,preparing=false;
   const ports={model,session,tab,files:{},checksSession:{},toast:noop,render:noop,
+    getCloudWriteScope:()=>({owner:app+':A',epoch:'E',accountOwner:'A',loginEpoch:1,writable:tab.primaryTab}),
     setCloud:noop,setCloudHeaderStatus:noop,setSaveStatus:noop,
     prepareCloudState:clone,prepareKupaCloudState:clone,cloudEnabled:()=>true,cloudHasLocalWork:()=>false,
     sameOrderCloudData:(a,b)=>JSON.stringify(a)===JSON.stringify(b),
