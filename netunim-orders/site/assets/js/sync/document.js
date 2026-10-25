@@ -163,7 +163,7 @@ const polling=createCloudPolling({
   session,
   tab,
   files,
-  access:{isOnline,storageV2PreparationActive,cloudEnabled,cloudHasLocalWork},
+  access:{getCloudWriteScope,writeScopeCurrent,isOnline,storageV2PreparationActive,cloudEnabled,cloudHasLocalWork},
   state:{prepareCloudState,sameOrderCloudData,refreshStorageV2CloudState},
   view:{setCloud,render,toast},
   remote:{readCloudMeta,readCloud},

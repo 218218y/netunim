@@ -57,7 +57,7 @@ const revision=publication.committed.revision;
 if(!publication.published){
   /** @type {'stale'|'publication-error'} */
   const reason=publication.reason;
-  if(reason==='publication-error'){
+  if(publication.reason==='publication-error'){
     /** @type {unknown} */
     const cause=publication.error;
     // @ts-expect-error unknown thrown values require narrowing before inspection

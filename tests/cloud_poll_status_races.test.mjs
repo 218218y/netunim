@@ -19,6 +19,7 @@ function fixture(app,t){
   }
   head.base.state=project(model.state);
   const ports={model,session,tab,files:{},checksSession:{},toast:noop,render:noop,
+    getCloudWriteScope:()=>({owner:app+':A',epoch:'E',accountOwner:'A',loginEpoch:1,writable:tab.primaryTab}),
     refreshStorageV2CloudState:async()=>clone(head),storageV2PreparationActive:()=>false,
     setCloud:(...args)=>statuses.push(args),setCloudHeaderStatus:(...args)=>statuses.push(args),setSaveStatus:noop,
     prepareCloudState:project,prepareKupaCloudState:project,applyOrderCloudState:noop,applyKupaCloudState:noop,

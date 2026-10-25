@@ -11,11 +11,12 @@ const noop=()=>{};
 function ordersFixture({primaryTab=true,readCloudMeta=async()=>({revision:7,updated_at:'2026-09-30T08:00:00Z'})}={}){
   const statuses=[],model={state:{suppliers:[]}},session={cloudBusy:false,cloudRevision:7,cloudUpdatedAt:null,localGeneration:0,cloudConflictBlocked:false};
   const api=createOrdersSyncDocument({
+    getCloudWriteScope:()=>({owner:'A:orders',epoch:'E',accountOwner:'A',loginEpoch:1,writable:primaryTab}),
     model,files:{},session,ui:{},tab:{primaryTab},normalizeState:value=>value,localSnapshot:noop,markCloudPending:noop,getCloudPending:async()=>null,clearCloudPending:async()=>true,
     toast:noop,setCloud:(...args)=>statuses.push(args),prepareCloudState:(value=model.state)=>structuredClone(value),writeStateToFolder:async()=>{},readCloud:async()=>({revision:7,state:structuredClone(model.state),updated_at:'2026-09-30T08:00:00Z'}),
     rpcSave:async()=>{},merge3:()=>({state:model.state,conflicts:[]}),applyOrderCloudState:noop,cloudPendingExists:()=>false,setSave:noop,cloudEnabled:()=>true,loadCloudPendingState:()=>null,
     sameOrderCloudData:(a,b)=>JSON.stringify(a)===JSON.stringify(b),cloudHasLocalWork:()=>false,render:noop,readCloudMeta,refreshKupaReadout:async()=>true,pollSharedChecks:async()=>{},refreshCloudTimestamp:noop,
-    refreshStorageV2CloudState:async()=>({seq:0,base:{revision:7,ackSeq:0,state:structuredClone(model.state)},pending:false,flight:null,control:null}),
+    refreshStorageV2CloudState:async()=>({seq:0,base:{owner:'A:orders',epoch:'E',revision:7,ackSeq:0,state:structuredClone(model.state)},pending:false,flight:null,control:null}),
   });
   return {api,statuses,session};
 }
@@ -26,12 +27,13 @@ function kupaFixture({financeRevision=3,rowFinanceRevision=3,readSupabaseDocumen
   const session={localGeneration:0,dbRevision:9,financeRevision,financeUpdatedAt:null,connectionMode:'supabase',backendReady:true,cloudConflictPending:false,cloudSyncBusy:false,cloudWriteBusy:false,serverInfo:{lastSavedAt:null},cloudDocumentName:'main'};
   const cloudState=normalization.prepareKupaCloudState(model.state),read=readSupabaseDocument||(async()=>({revision:9,financeRevision:rowFinanceRevision,state:structuredClone(cloudState),coreUpdatedAt:'2026-09-30T08:00:00Z'}));
   const api=createKupaSyncDocument({
+    getCloudWriteScope:()=>({owner:'A:kupa',epoch:'E',accountOwner:'A',loginEpoch:1,writable:true}),
     hideConnectScreen:noop,reportError:noop,model,session,checksSession:{},tab:{primaryTab:true},prepareKupaCloudState:normalization.prepareKupaCloudState,applyKupaCloudState:normalization.applyKupaCloudState,
     setSaveStatus:(...args)=>saveStatuses.push(args),setConnectedStatus:noop,setCloudHeaderStatus:(...args)=>statuses.push(args),persistImmediateBrowserSnapshot:()=>true,loadSharedChecksBase:()=>[],loadSharedChecksBankEvents:()=>[],
     listBackups:async()=>[],backupSnapshotToComputer:async()=>{},saveState:async()=>true,syncSharedChecksFromCloud:async()=>true,render:noop,getCloudPending:async()=>null,readSupabaseDocument:read,supaRest:async()=>{},
     putCloudPending:async()=>{},clearCloudPending:async()=>true,mergeKupaCloudState3Way:()=>({state:cloudState,conflicts:[]}),rebaseNewerPending:async()=>null,lastSavedCloudState:()=>null,showSecondaryTabGuard:noop,
     stageCloudPendingLocal:noop,toast:noop,pollSharedChecks:async()=>{},refreshOrdersFinanceSummary:async()=>false,
-    refreshStorageV2CloudState:async()=>({seq:0,base:{revision:9,ackSeq:0,state:structuredClone(cloudState)},pending:false,flight:null,control:null}),storageV2CloudOutboxActive:()=>true,
+    refreshStorageV2CloudState:async()=>({seq:0,base:{owner:'A:kupa',epoch:'E',revision:9,ackSeq:0,state:structuredClone(cloudState)},pending:false,flight:null,control:null}),storageV2CloudOutboxActive:()=>true,
     replaceStorageV2CurrentState:async()=>0,assertAccountOwner:()=>true,
   });
   return {api,statuses,saveStatuses,session};

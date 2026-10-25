@@ -1,0 +1,384 @@
+{
+  "baseline": {
+    "source": "5600bcb820e6efc4767a21ffc3e53bfcea24ee24",
+    "corpusSha256": "1b5c368cddaf0c9ab2b5cd094d295f3dc3955580af7a45bf6df93d05a9374767",
+    "roots": 365,
+    "sourceFiles": 510,
+    "platform": "win32",
+    "arch": "x64",
+    "node": "v24.21.0",
+    "versions": {
+      "authoritative": "6.0.3",
+      "candidate": "7.0.2"
+    },
+    "samples": {
+      "authoritative": [
+        {
+          "seconds": 12.467,
+          "exit": 0,
+          "diagnostics": [],
+          "output": ""
+        },
+        {
+          "seconds": 10.552,
+          "exit": 0,
+          "diagnostics": [],
+          "output": ""
+        }
+      ],
+      "candidate": [
+        {
+          "seconds": 0.941,
+          "exit": 1,
+          "diagnostics": [
+            "netunim-orders/site/assets/js/calendar/connection.js(7,130): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/calendar/auth\"' has no exported member 'createCalendarAuth'.",
+            "netunim-orders/site/assets/js/calendar/session-runtime.js(43,51): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/calendar/auth\"' has no exported member 'createCalendarAuth'.",
+            "netunim-orders/site/assets/js/calendar/session-runtime.js(57,223): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/platform/calendar-browser-effects\"' has no exported member 'createCalendarBrowserEffects'.",
+            "netunim-orders/site/assets/js/calendar/session-runtime.js(227,14): error TS7006: Parameter 'error' implicitly has an 'any' type.",
+            "netunim-orders/site/assets/js/domains/calendar/presentation.js(11,59): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/calendar/view\"' has no exported member 'calendarRangeFor'.",
+            "netunim-orders/site/assets/js/domains/customers/morning-debt-application.js(22,61): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/domains/customers/morning-lifetime\"' has no exported member 'createMorningLifetime'.",
+            "tests/fixtures/checked-calendar-session.mjs(32,1): error TS2578: Unused '@ts-expect-error' directive.",
+            "tests/fixtures/checked-contracts.mjs(62,29): error TS2339: Property 'error' does not exist on type '{ committed: { revision: number; ackSeq: number; }; published: false; reason: \"stale\"; } | { committed: { revision: number; ackSeq: number; }; published: false; reason: \"publication-error\"; error: unknown; }'.",
+            "tests/fixtures/checked-morning-status-consumers.mjs(25,72): error TS7006: Parameter '_key' implicitly has an 'any' type.",
+            "tests/fixtures/checked-morning-status-consumers.mjs(25,77): error TS7006: Parameter '_assert' implicitly has an 'any' type.",
+            "tests/fixtures/checked-morning-status-consumers.mjs(25,85): error TS7006: Parameter 'work' implicitly has an 'any' type."
+          ],
+          "output": "netunim-orders/site/assets/js/calendar/connection.js(7,130): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/calendar/auth\"' has no exported member 'createCalendarAuth'.\nnetunim-orders/site/assets/js/calendar/session-runtime.js(43,51): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/calendar/auth\"' has no exported member 'createCalendarAuth'.\nnetunim-orders/site/assets/js/calendar/session-runtime.js(57,223): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/platform/calendar-browser-effects\"' has no exported member 'createCalendarBrowserEffects'.\nnetunim-orders/site/assets/js/calendar/session-runtime.js(227,14): error TS7006: Parameter 'error' implicitly has an 'any' type.\nnetunim-orders/site/assets/js/domains/calendar/presentation.js(11,59): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/calendar/view\"' has no exported member 'calendarRangeFor'.\nnetunim-orders/site/assets/js/domains/customers/morning-debt-application.js(22,61): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/domains/customers/morning-lifetime\"' has no exported member 'createMorningLifetime'.\ntests/fixtures/checked-calendar-session.mjs(32,1): error TS2578: Unused '@ts-expect-error' directive.\ntests/fixtures/checked-contracts.mjs(62,29): error TS2339: Property 'error' does not exist on type '{ committed: { revision: number; ackSeq: number; }; published: false; reason: \"stale\"; } | { committed: { revision: number; ackSeq: number; }; published: false; reason: \"publication-error\"; error: unknown; }'.\n  Property 'error' does not exist on type '{ committed: { revision: number; ackSeq: number; }; published: false; reason: \"stale\"; }'.\ntests/fixtures/checked-morning-status-consumers.mjs(25,72): error TS7006: Parameter '_key' implicitly has an 'any' type.\ntests/fixtures/checked-morning-status-consumers.mjs(25,77): error TS7006: Parameter '_assert' implicitly has an 'any' type.\ntests/fixtures/checked-morning-status-consumers.mjs(25,85): error TS7006: Parameter 'work' implicitly has an 'any' type.\n"
+        },
+        {
+          "seconds": 0.989,
+          "exit": 1,
+          "diagnostics": [
+            "netunim-orders/site/assets/js/calendar/connection.js(7,130): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/calendar/auth\"' has no exported member 'createCalendarAuth'.",
+            "netunim-orders/site/assets/js/calendar/session-runtime.js(43,51): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/calendar/auth\"' has no exported member 'createCalendarAuth'.",
+            "netunim-orders/site/assets/js/calendar/session-runtime.js(57,223): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/platform/calendar-browser-effects\"' has no exported member 'createCalendarBrowserEffects'.",
+            "netunim-orders/site/assets/js/calendar/session-runtime.js(227,14): error TS7006: Parameter 'error' implicitly has an 'any' type.",
+            "netunim-orders/site/assets/js/domains/calendar/presentation.js(11,59): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/calendar/view\"' has no exported member 'calendarRangeFor'.",
+            "netunim-orders/site/assets/js/domains/customers/morning-debt-application.js(22,61): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/domains/customers/morning-lifetime\"' has no exported member 'createMorningLifetime'.",
+            "tests/fixtures/checked-calendar-session.mjs(32,1): error TS2578: Unused '@ts-expect-error' directive.",
+            "tests/fixtures/checked-contracts.mjs(62,29): error TS2339: Property 'error' does not exist on type '{ committed: { revision: number; ackSeq: number; }; published: false; reason: \"stale\"; } | { committed: { revision: number; ackSeq: number; }; published: false; reason: \"publication-error\"; error: unknown; }'.",
+            "tests/fixtures/checked-morning-status-consumers.mjs(25,72): error TS7006: Parameter '_key' implicitly has an 'any' type.",
+            "tests/fixtures/checked-morning-status-consumers.mjs(25,77): error TS7006: Parameter '_assert' implicitly has an 'any' type.",
+            "tests/fixtures/checked-morning-status-consumers.mjs(25,85): error TS7006: Parameter 'work' implicitly has an 'any' type."
+          ],
+          "output": "netunim-orders/site/assets/js/calendar/connection.js(7,130): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/calendar/auth\"' has no exported member 'createCalendarAuth'.\nnetunim-orders/site/assets/js/calendar/session-runtime.js(43,51): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/calendar/auth\"' has no exported member 'createCalendarAuth'.\nnetunim-orders/site/assets/js/calendar/session-runtime.js(57,223): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/platform/calendar-browser-effects\"' has no exported member 'createCalendarBrowserEffects'.\nnetunim-orders/site/assets/js/calendar/session-runtime.js(227,14): error TS7006: Parameter 'error' implicitly has an 'any' type.\nnetunim-orders/site/assets/js/domains/calendar/presentation.js(11,59): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/calendar/view\"' has no exported member 'calendarRangeFor'.\nnetunim-orders/site/assets/js/domains/customers/morning-debt-application.js(22,61): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/domains/customers/morning-lifetime\"' has no exported member 'createMorningLifetime'.\ntests/fixtures/checked-calendar-session.mjs(32,1): error TS2578: Unused '@ts-expect-error' directive.\ntests/fixtures/checked-contracts.mjs(62,29): error TS2339: Property 'error' does not exist on type '{ committed: { revision: number; ackSeq: number; }; published: false; reason: \"stale\"; } | { committed: { revision: number; ackSeq: number; }; published: false; reason: \"publication-error\"; error: unknown; }'.\n  Property 'error' does not exist on type '{ committed: { revision: number; ackSeq: number; }; published: false; reason: \"stale\"; }'.\ntests/fixtures/checked-morning-status-consumers.mjs(25,72): error TS7006: Parameter '_key' implicitly has an 'any' type.\ntests/fixtures/checked-morning-status-consumers.mjs(25,77): error TS7006: Parameter '_assert' implicitly has an 'any' type.\ntests/fixtures/checked-morning-status-consumers.mjs(25,85): error TS7006: Parameter 'work' implicitly has an 'any' type.\n"
+        }
+      ]
+    },
+    "mutations": [
+      {
+        "name": "asynchronous local commit",
+        "file": "shared/storage-v2-runtime.js",
+        "results": {
+          "authoritative": {
+            "seconds": 11.964,
+            "exit": 2,
+            "diagnostics": [
+              "shared/storage-v2-runtime.js(236,126): error TS2322: Type 'boolean' is not assignable to type 'Promise<boolean>'."
+            ],
+            "output": "shared/storage-v2-runtime.js(236,126): error TS2322: Type 'boolean' is not assignable to type 'Promise<boolean>'.\r\n",
+            "additionalDiagnostics": [
+              "shared/storage-v2-runtime.js(236,126): error TS2322: Type 'boolean' is not assignable to type 'Promise<boolean>'."
+            ]
+          },
+          "candidate": {
+            "seconds": 0.833,
+            "exit": 1,
+            "diagnostics": [
+              "netunim-orders/site/assets/js/calendar/connection.js(7,130): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/calendar/auth\"' has no exported member 'createCalendarAuth'.",
+              "netunim-orders/site/assets/js/calendar/session-runtime.js(43,51): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/calendar/auth\"' has no exported member 'createCalendarAuth'.",
+              "netunim-orders/site/assets/js/calendar/session-runtime.js(57,223): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/platform/calendar-browser-effects\"' has no exported member 'createCalendarBrowserEffects'.",
+              "netunim-orders/site/assets/js/calendar/session-runtime.js(227,14): error TS7006: Parameter 'error' implicitly has an 'any' type.",
+              "netunim-orders/site/assets/js/domains/calendar/presentation.js(11,59): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/calendar/view\"' has no exported member 'calendarRangeFor'.",
+              "netunim-orders/site/assets/js/domains/customers/morning-debt-application.js(22,61): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/domains/customers/morning-lifetime\"' has no exported member 'createMorningLifetime'.",
+              "shared/storage-v2-runtime.js(236,126): error TS2322: Type 'boolean' is not assignable to type 'Promise<boolean>'.",
+              "tests/fixtures/checked-calendar-session.mjs(32,1): error TS2578: Unused '@ts-expect-error' directive.",
+              "tests/fixtures/checked-contracts.mjs(62,29): error TS2339: Property 'error' does not exist on type '{ committed: { revision: number; ackSeq: number; }; published: false; reason: \"stale\"; } | { committed: { revision: number; ackSeq: number; }; published: false; reason: \"publication-error\"; error: unknown; }'.",
+              "tests/fixtures/checked-morning-status-consumers.mjs(25,72): error TS7006: Parameter '_key' implicitly has an 'any' type.",
+              "tests/fixtures/checked-morning-status-consumers.mjs(25,77): error TS7006: Parameter '_assert' implicitly has an 'any' type.",
+              "tests/fixtures/checked-morning-status-consumers.mjs(25,85): error TS7006: Parameter 'work' implicitly has an 'any' type."
+            ],
+            "output": "netunim-orders/site/assets/js/calendar/connection.js(7,130): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/calendar/auth\"' has no exported member 'createCalendarAuth'.\nnetunim-orders/site/assets/js/calendar/session-runtime.js(43,51): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/calendar/auth\"' has no exported member 'createCalendarAuth'.\nnetunim-orders/site/assets/js/calendar/session-runtime.js(57,223): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/platform/calendar-browser-effects\"' has no exported member 'createCalendarBrowserEffects'.\nnetunim-orders/site/assets/js/calendar/session-runtime.js(227,14): error TS7006: Parameter 'error' implicitly has an 'any' type.\nnetunim-orders/site/assets/js/domains/calendar/presentation.js(11,59): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/calendar/view\"' has no exported member 'calendarRangeFor'.\nnetunim-orders/site/assets/js/domains/customers/morning-debt-application.js(22,61): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/domains/customers/morning-lifetime\"' has no exported member 'createMorningLifetime'.\nshared/storage-v2-runtime.js(236,126): error TS2322: Type 'boolean' is not assignable to type 'Promise<boolean>'.\ntests/fixtures/checked-calendar-session.mjs(32,1): error TS2578: Unused '@ts-expect-error' directive.\ntests/fixtures/checked-contracts.mjs(62,29): error TS2339: Property 'error' does not exist on type '{ committed: { revision: number; ackSeq: number; }; published: false; reason: \"stale\"; } | { committed: { revision: number; ackSeq: number; }; published: false; reason: \"publication-error\"; error: unknown; }'.\n  Property 'error' does not exist on type '{ committed: { revision: number; ackSeq: number; }; published: false; reason: \"stale\"; }'.\ntests/fixtures/checked-morning-status-consumers.mjs(25,72): error TS7006: Parameter '_key' implicitly has an 'any' type.\ntests/fixtures/checked-morning-status-consumers.mjs(25,77): error TS7006: Parameter '_assert' implicitly has an 'any' type.\ntests/fixtures/checked-morning-status-consumers.mjs(25,85): error TS7006: Parameter 'work' implicitly has an 'any' type.\n",
+            "additionalDiagnostics": [
+              "shared/storage-v2-runtime.js(236,126): error TS2322: Type 'boolean' is not assignable to type 'Promise<boolean>'."
+            ]
+          }
+        }
+      },
+      {
+        "name": "missing balance versus zero",
+        "file": "shared/kupa-cashflow.js",
+        "results": {
+          "authoritative": {
+            "seconds": 12.462,
+            "exit": 2,
+            "diagnostics": [
+              "shared/kupa-cashflow.js(712,9): error TS2322: Type '{ balance: null; projected: number; }' is not assignable to type 'CashflowProjection'."
+            ],
+            "output": "shared/kupa-cashflow.js(712,9): error TS2322: Type '{ balance: null; projected: number; }' is not assignable to type 'CashflowProjection'.\r\n  Types of property 'projected' are incompatible.\r\n    Type 'number' is not assignable to type 'null'.\r\n",
+            "additionalDiagnostics": [
+              "shared/kupa-cashflow.js(712,9): error TS2322: Type '{ balance: null; projected: number; }' is not assignable to type 'CashflowProjection'."
+            ]
+          },
+          "candidate": {
+            "seconds": 1.206,
+            "exit": 1,
+            "diagnostics": [
+              "netunim-orders/site/assets/js/calendar/connection.js(7,130): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/calendar/auth\"' has no exported member 'createCalendarAuth'.",
+              "netunim-orders/site/assets/js/calendar/session-runtime.js(43,51): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/calendar/auth\"' has no exported member 'createCalendarAuth'.",
+              "netunim-orders/site/assets/js/calendar/session-runtime.js(57,223): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/platform/calendar-browser-effects\"' has no exported member 'createCalendarBrowserEffects'.",
+              "netunim-orders/site/assets/js/calendar/session-runtime.js(227,14): error TS7006: Parameter 'error' implicitly has an 'any' type.",
+              "netunim-orders/site/assets/js/domains/calendar/presentation.js(11,59): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/calendar/view\"' has no exported member 'calendarRangeFor'.",
+              "netunim-orders/site/assets/js/domains/customers/morning-debt-application.js(22,61): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/domains/customers/morning-lifetime\"' has no exported member 'createMorningLifetime'.",
+              "shared/kupa-cashflow.js(712,9): error TS2322: Type '{ balance: null; projected: number; } | { balance: number; projected: number; }' is not assignable to type 'CashflowProjection'.",
+              "tests/fixtures/checked-calendar-session.mjs(32,1): error TS2578: Unused '@ts-expect-error' directive.",
+              "tests/fixtures/checked-contracts.mjs(62,29): error TS2339: Property 'error' does not exist on type '{ committed: { revision: number; ackSeq: number; }; published: false; reason: \"stale\"; } | { committed: { revision: number; ackSeq: number; }; published: false; reason: \"publication-error\"; error: unknown; }'.",
+              "tests/fixtures/checked-morning-status-consumers.mjs(25,72): error TS7006: Parameter '_key' implicitly has an 'any' type.",
+              "tests/fixtures/checked-morning-status-consumers.mjs(25,77): error TS7006: Parameter '_assert' implicitly has an 'any' type.",
+              "tests/fixtures/checked-morning-status-consumers.mjs(25,85): error TS7006: Parameter 'work' implicitly has an 'any' type."
+            ],
+            "output": "netunim-orders/site/assets/js/calendar/connection.js(7,130): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/calendar/auth\"' has no exported member 'createCalendarAuth'.\nnetunim-orders/site/assets/js/calendar/session-runtime.js(43,51): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/calendar/auth\"' has no exported member 'createCalendarAuth'.\nnetunim-orders/site/assets/js/calendar/session-runtime.js(57,223): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/platform/calendar-browser-effects\"' has no exported member 'createCalendarBrowserEffects'.\nnetunim-orders/site/assets/js/calendar/session-runtime.js(227,14): error TS7006: Parameter 'error' implicitly has an 'any' type.\nnetunim-orders/site/assets/js/domains/calendar/presentation.js(11,59): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/calendar/view\"' has no exported member 'calendarRangeFor'.\nnetunim-orders/site/assets/js/domains/customers/morning-debt-application.js(22,61): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/domains/customers/morning-lifetime\"' has no exported member 'createMorningLifetime'.\nshared/kupa-cashflow.js(712,9): error TS2322: Type '{ balance: null; projected: number; } | { balance: number; projected: number; }' is not assignable to type 'CashflowProjection'.\n  Type '{ balance: null; projected: number; }' is not assignable to type 'CashflowProjection'.\n    Types of property 'projected' are incompatible.\n      Type 'number' is not assignable to type 'null'.\ntests/fixtures/checked-calendar-session.mjs(32,1): error TS2578: Unused '@ts-expect-error' directive.\ntests/fixtures/checked-contracts.mjs(62,29): error TS2339: Property 'error' does not exist on type '{ committed: { revision: number; ackSeq: number; }; published: false; reason: \"stale\"; } | { committed: { revision: number; ackSeq: number; }; published: false; reason: \"publication-error\"; error: unknown; }'.\n  Property 'error' does not exist on type '{ committed: { revision: number; ackSeq: number; }; published: false; reason: \"stale\"; }'.\ntests/fixtures/checked-morning-status-consumers.mjs(25,72): error TS7006: Parameter '_key' implicitly has an 'any' type.\ntests/fixtures/checked-morning-status-consumers.mjs(25,77): error TS7006: Parameter '_assert' implicitly has an 'any' type.\ntests/fixtures/checked-morning-status-consumers.mjs(25,85): error TS7006: Parameter 'work' implicitly has an 'any' type.\n",
+            "additionalDiagnostics": [
+              "shared/kupa-cashflow.js(712,9): error TS2322: Type '{ balance: null; projected: number; } | { balance: number; projected: number; }' is not assignable to type 'CashflowProjection'."
+            ]
+          }
+        }
+      },
+      {
+        "name": "raw RPC row versus ACK",
+        "file": "netunim-orders/site/assets/js/sync/ack-publication.js",
+        "results": {
+          "authoritative": {
+            "seconds": 7.674,
+            "exit": 2,
+            "diagnostics": [
+              "netunim-orders/site/assets/js/sync/ack-publication.js(25,10): error TS2339: Property 'state' does not exist on type 'unknown'.",
+              "netunim-orders/site/assets/js/sync/ack-publication.js(25,30): error TS2339: Property 'revision' does not exist on type 'unknown'."
+            ],
+            "output": "netunim-orders/site/assets/js/sync/ack-publication.js(25,10): error TS2339: Property 'state' does not exist on type 'unknown'.\r\nnetunim-orders/site/assets/js/sync/ack-publication.js(25,30): error TS2339: Property 'revision' does not exist on type 'unknown'.\r\n",
+            "additionalDiagnostics": [
+              "netunim-orders/site/assets/js/sync/ack-publication.js(25,10): error TS2339: Property 'state' does not exist on type 'unknown'.",
+              "netunim-orders/site/assets/js/sync/ack-publication.js(25,30): error TS2339: Property 'revision' does not exist on type 'unknown'."
+            ]
+          },
+          "candidate": {
+            "seconds": 1.096,
+            "exit": 1,
+            "diagnostics": [
+              "netunim-orders/site/assets/js/calendar/connection.js(7,130): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/calendar/auth\"' has no exported member 'createCalendarAuth'.",
+              "netunim-orders/site/assets/js/calendar/session-runtime.js(43,51): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/calendar/auth\"' has no exported member 'createCalendarAuth'.",
+              "netunim-orders/site/assets/js/calendar/session-runtime.js(57,223): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/platform/calendar-browser-effects\"' has no exported member 'createCalendarBrowserEffects'.",
+              "netunim-orders/site/assets/js/calendar/session-runtime.js(227,14): error TS7006: Parameter 'error' implicitly has an 'any' type.",
+              "netunim-orders/site/assets/js/domains/calendar/presentation.js(11,59): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/calendar/view\"' has no exported member 'calendarRangeFor'.",
+              "netunim-orders/site/assets/js/domains/customers/morning-debt-application.js(22,61): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/domains/customers/morning-lifetime\"' has no exported member 'createMorningLifetime'.",
+              "netunim-orders/site/assets/js/sync/ack-publication.js(25,10): error TS2339: Property 'state' does not exist on type 'unknown'.",
+              "netunim-orders/site/assets/js/sync/ack-publication.js(25,30): error TS2339: Property 'revision' does not exist on type 'unknown'.",
+              "tests/fixtures/checked-calendar-session.mjs(32,1): error TS2578: Unused '@ts-expect-error' directive.",
+              "tests/fixtures/checked-contracts.mjs(62,29): error TS2339: Property 'error' does not exist on type '{ committed: { revision: number; ackSeq: number; }; published: false; reason: \"stale\"; } | { committed: { revision: number; ackSeq: number; }; published: false; reason: \"publication-error\"; error: unknown; }'.",
+              "tests/fixtures/checked-morning-status-consumers.mjs(25,72): error TS7006: Parameter '_key' implicitly has an 'any' type.",
+              "tests/fixtures/checked-morning-status-consumers.mjs(25,77): error TS7006: Parameter '_assert' implicitly has an 'any' type.",
+              "tests/fixtures/checked-morning-status-consumers.mjs(25,85): error TS7006: Parameter 'work' implicitly has an 'any' type."
+            ],
+            "output": "netunim-orders/site/assets/js/calendar/connection.js(7,130): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/calendar/auth\"' has no exported member 'createCalendarAuth'.\nnetunim-orders/site/assets/js/calendar/session-runtime.js(43,51): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/calendar/auth\"' has no exported member 'createCalendarAuth'.\nnetunim-orders/site/assets/js/calendar/session-runtime.js(57,223): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/platform/calendar-browser-effects\"' has no exported member 'createCalendarBrowserEffects'.\nnetunim-orders/site/assets/js/calendar/session-runtime.js(227,14): error TS7006: Parameter 'error' implicitly has an 'any' type.\nnetunim-orders/site/assets/js/domains/calendar/presentation.js(11,59): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/calendar/view\"' has no exported member 'calendarRangeFor'.\nnetunim-orders/site/assets/js/domains/customers/morning-debt-application.js(22,61): error TS2694: Namespace '\"<snapshot>/netunim-orders/site/assets/js/domains/customers/morning-lifetime\"' has no exported member 'createMorningLifetime'.\nnetunim-orders/site/assets/js/sync/ack-publication.js(25,10): error TS2339: Property 'state' does not exist on type 'unknown'.\nnetunim-orders/site/assets/js/sync/ack-publication.js(25,30): error TS2339: Property 'revision' does not exist on type 'unknown'.\ntests/fixtures/checked-calendar-session.mjs(32,1): error TS2578: Unused '@ts-expect-error' directive.\ntests/fixtures/checked-contracts.mjs(62,29): error TS2339: Property 'error' does not exist on type '{ committed: { revision: number; ackSeq: number; }; published: false; reason: \"stale\"; } | { committed: { revision: number; ackSeq: number; }; published: false; reason: \"publication-error\"; error: unknown; }'.\n  Property 'error' does not exist on type '{ committed: { revision: number; ackSeq: number; }; published: false; reason: \"stale\"; }'.\ntests/fixtures/checked-morning-status-consumers.mjs(25,72): error TS7006: Parameter '_key' implicitly has an 'any' type.\ntests/fixtures/checked-morning-status-consumers.mjs(25,77): error TS7006: Parameter '_assert' implicitly has an 'any' type.\ntests/fixtures/checked-morning-status-consumers.mjs(25,85): error TS7006: Parameter 'work' implicitly has an 'any' type.\n",
+            "additionalDiagnostics": [
+              "netunim-orders/site/assets/js/sync/ack-publication.js(25,10): error TS2339: Property 'state' does not exist on type 'unknown'.",
+              "netunim-orders/site/assets/js/sync/ack-publication.js(25,30): error TS2339: Property 'revision' does not exist on type 'unknown'."
+            ]
+          }
+        }
+      }
+    ],
+    "integration": {
+      "legacyCreateProgram": false,
+      "offlineFiles": {
+        "lib/typescript.js": false,
+        "lib/tsc.js": true,
+        "lib/_tsc.js": false
+      },
+      "candidateExports": [
+        "./package.json",
+        ".",
+        "./unstable/sync",
+        "./unstable/async",
+        "./unstable/fs",
+        "./unstable/proto",
+        "./unstable/ast",
+        "./unstable/ast/is",
+        "./unstable/ast/factory",
+        "./unstable/ast/utils",
+        "./unstable/ast/scanner",
+        "./unstable/ast/visitor",
+        "./unstable/ast/clone"
+      ],
+      "fullCiParityMeasured": false
+    },
+    "experimentSeconds": 60.249
+  },
+  "portable": {
+    "source": "5600bcb820e6efc4767a21ffc3e53bfcea24ee24",
+    "workingTreePaths": [
+      "netunim-orders/site/_headers",
+      "netunim-orders/site/assets/js/calendar/connection.js",
+      "netunim-orders/site/assets/js/calendar/session-runtime.js",
+      "netunim-orders/site/assets/js/domains/calendar/presentation.js",
+      "netunim-orders/site/assets/js/domains/customers/morning-debt-application.js",
+      "netunim-orders/site/service-worker.js",
+      "tests/fixtures/checked-contracts.mjs"
+    ],
+    "corpusSha256": "7462b93778b67c7134b12d6bc3458e33bccc2ca4e95eb74b743014ff5317f385",
+    "roots": 365,
+    "sourceFiles": 510,
+    "platform": "win32",
+    "arch": "x64",
+    "node": "v24.21.0",
+    "versions": {
+      "authoritative": "6.0.3",
+      "candidate": "7.0.2"
+    },
+    "samples": {
+      "authoritative": [
+        {
+          "seconds": 7.244,
+          "exit": 0,
+          "diagnostics": [],
+          "output": ""
+        },
+        {
+          "seconds": 8.058,
+          "exit": 0,
+          "diagnostics": [],
+          "output": ""
+        }
+      ],
+      "candidate": [
+        {
+          "seconds": 1.857,
+          "exit": 0,
+          "diagnostics": [],
+          "output": ""
+        },
+        {
+          "seconds": 0.904,
+          "exit": 0,
+          "diagnostics": [],
+          "output": ""
+        }
+      ]
+    },
+    "mutations": [
+      {
+        "name": "asynchronous local commit",
+        "file": "shared/storage-v2-runtime.js",
+        "results": {
+          "authoritative": {
+            "seconds": 7.357,
+            "exit": 2,
+            "diagnostics": [
+              "shared/storage-v2-runtime.js(236,126): error TS2322: Type 'boolean' is not assignable to type 'Promise<boolean>'."
+            ],
+            "output": "shared/storage-v2-runtime.js(236,126): error TS2322: Type 'boolean' is not assignable to type 'Promise<boolean>'.\r\n",
+            "additionalDiagnostics": [
+              "shared/storage-v2-runtime.js(236,126): error TS2322: Type 'boolean' is not assignable to type 'Promise<boolean>'."
+            ]
+          },
+          "candidate": {
+            "seconds": 0.909,
+            "exit": 1,
+            "diagnostics": [
+              "shared/storage-v2-runtime.js(236,126): error TS2322: Type 'boolean' is not assignable to type 'Promise<boolean>'."
+            ],
+            "output": "shared/storage-v2-runtime.js(236,126): error TS2322: Type 'boolean' is not assignable to type 'Promise<boolean>'.\n",
+            "additionalDiagnostics": [
+              "shared/storage-v2-runtime.js(236,126): error TS2322: Type 'boolean' is not assignable to type 'Promise<boolean>'."
+            ]
+          }
+        }
+      },
+      {
+        "name": "missing balance versus zero",
+        "file": "shared/kupa-cashflow.js",
+        "results": {
+          "authoritative": {
+            "seconds": 5.876,
+            "exit": 2,
+            "diagnostics": [
+              "shared/kupa-cashflow.js(712,9): error TS2322: Type '{ balance: null; projected: number; }' is not assignable to type 'CashflowProjection'."
+            ],
+            "output": "shared/kupa-cashflow.js(712,9): error TS2322: Type '{ balance: null; projected: number; }' is not assignable to type 'CashflowProjection'.\r\n  Types of property 'projected' are incompatible.\r\n    Type 'number' is not assignable to type 'null'.\r\n",
+            "additionalDiagnostics": [
+              "shared/kupa-cashflow.js(712,9): error TS2322: Type '{ balance: null; projected: number; }' is not assignable to type 'CashflowProjection'."
+            ]
+          },
+          "candidate": {
+            "seconds": 0.963,
+            "exit": 1,
+            "diagnostics": [
+              "shared/kupa-cashflow.js(712,9): error TS2322: Type '{ balance: null; projected: number; } | { balance: number; projected: number; }' is not assignable to type 'CashflowProjection'."
+            ],
+            "output": "shared/kupa-cashflow.js(712,9): error TS2322: Type '{ balance: null; projected: number; } | { balance: number; projected: number; }' is not assignable to type 'CashflowProjection'.\n  Type '{ balance: null; projected: number; }' is not assignable to type 'CashflowProjection'.\n    Types of property 'projected' are incompatible.\n      Type 'number' is not assignable to type 'null'.\n",
+            "additionalDiagnostics": [
+              "shared/kupa-cashflow.js(712,9): error TS2322: Type '{ balance: null; projected: number; } | { balance: number; projected: number; }' is not assignable to type 'CashflowProjection'."
+            ]
+          }
+        }
+      },
+      {
+        "name": "raw RPC row versus ACK",
+        "file": "netunim-orders/site/assets/js/sync/ack-publication.js",
+        "results": {
+          "authoritative": {
+            "seconds": 5.471,
+            "exit": 2,
+            "diagnostics": [
+              "netunim-orders/site/assets/js/sync/ack-publication.js(25,10): error TS2339: Property 'state' does not exist on type 'unknown'.",
+              "netunim-orders/site/assets/js/sync/ack-publication.js(25,30): error TS2339: Property 'revision' does not exist on type 'unknown'."
+            ],
+            "output": "netunim-orders/site/assets/js/sync/ack-publication.js(25,10): error TS2339: Property 'state' does not exist on type 'unknown'.\r\nnetunim-orders/site/assets/js/sync/ack-publication.js(25,30): error TS2339: Property 'revision' does not exist on type 'unknown'.\r\n",
+            "additionalDiagnostics": [
+              "netunim-orders/site/assets/js/sync/ack-publication.js(25,10): error TS2339: Property 'state' does not exist on type 'unknown'.",
+              "netunim-orders/site/assets/js/sync/ack-publication.js(25,30): error TS2339: Property 'revision' does not exist on type 'unknown'."
+            ]
+          },
+          "candidate": {
+            "seconds": 0.96,
+            "exit": 1,
+            "diagnostics": [
+              "netunim-orders/site/assets/js/sync/ack-publication.js(25,10): error TS2339: Property 'state' does not exist on type 'unknown'.",
+              "netunim-orders/site/assets/js/sync/ack-publication.js(25,30): error TS2339: Property 'revision' does not exist on type 'unknown'."
+            ],
+            "output": "netunim-orders/site/assets/js/sync/ack-publication.js(25,10): error TS2339: Property 'state' does not exist on type 'unknown'.\nnetunim-orders/site/assets/js/sync/ack-publication.js(25,30): error TS2339: Property 'revision' does not exist on type 'unknown'.\n",
+            "additionalDiagnostics": [
+              "netunim-orders/site/assets/js/sync/ack-publication.js(25,10): error TS2339: Property 'state' does not exist on type 'unknown'.",
+              "netunim-orders/site/assets/js/sync/ack-publication.js(25,30): error TS2339: Property 'revision' does not exist on type 'unknown'."
+            ]
+          }
+        }
+      }
+    ],
+    "integration": {
+      "legacyCreateProgram": false,
+      "offlineFiles": {
+        "lib/typescript.js": false,
+        "lib/tsc.js": true,
+        "lib/_tsc.js": false
+      },
+      "candidateExports": [
+        "./package.json",
+        ".",
+        "./unstable/sync",
+        "./unstable/async",
+        "./unstable/fs",
+        "./unstable/proto",
+        "./unstable/ast",
+        "./unstable/ast/is",
+        "./unstable/ast/factory",
+        "./unstable/ast/utils",
+        "./unstable/ast/scanner",
+        "./unstable/ast/visitor",
+        "./unstable/ast/clone"
+      ],
+      "fullCiParityMeasured": false
+    },
+    "experimentSeconds": 39.7
+  }
+}

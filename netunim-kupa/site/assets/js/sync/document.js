@@ -86,7 +86,7 @@ const polling=createCloudPolling({
   model,
   session,
   tab,
-  access:{isOnline,storageV2PreparationActive,storageV2CloudOutboxActive,assertAccountOwner},
+  access:{getCloudWriteScope,writeScopeCurrent,isOnline,storageV2PreparationActive,storageV2CloudOutboxActive,assertAccountOwner},
   state:{prepareKupaCloudState,refreshStorageV2CloudState},
   view:{setSaveStatus,setCloudHeaderStatus,toast},
   remote:{readSupabaseDocument},

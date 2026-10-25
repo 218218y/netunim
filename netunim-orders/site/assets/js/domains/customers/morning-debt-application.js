@@ -19,7 +19,7 @@
  * explicit decision when financial state has changed. The lifetime owns the
  * accepted application flight; this workflow has no DOM or persistence I/O.
  * @param {{
- * lifetime:Pick<ReturnType<import('./morning-lifetime.js').createMorningLifetime>,'capture'|'join'|'pending'>,
+ * lifetime:Pick<ReturnType<typeof import('./morning-lifetime.js').createMorningLifetime>,'capture'|'join'|'pending'>,
  * recovery:{read:()=>ApplicationContext|null},
  * debts:{read:(id:string)=>unknown,refresh:()=>Promise<unknown>,isBlocked:()=>boolean,apply:(command:DebtApplication)=>ApplicationResult},
  * policy:{

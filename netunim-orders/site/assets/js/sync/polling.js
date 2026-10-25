@@ -1,3 +1,4 @@
+import {cloudWriteScopeHasIdentity} from '../shared/cloud-write-scope.js';
 import {observeOptionalTask} from '../shared/runtime-task-owner.js';
 import {cloudHeadIsSynced} from '../shared/storage-cloud-status.js';
 import {createPollingTask} from '../shared/runtime-polling.js';
@@ -5,7 +6,7 @@ import {createPollingTask} from '../shared/runtime-polling.js';
 // Owns polling for Main; journal and secondary domains remain ports.
 /** @param {import('../shared/sync-document-contracts.js').OrdersPollingPorts} ports */
 export function createCloudPolling({model,session,tab,files,access,state,view,remote,adoption,secondary,write,confirmation}){
-  const {isOnline,storageV2PreparationActive,cloudEnabled,cloudHasLocalWork}=access;
+  const {getCloudWriteScope,writeScopeCurrent,isOnline,storageV2PreparationActive,cloudEnabled,cloudHasLocalWork}=access;
   const {prepareCloudState,sameOrderCloudData,refreshStorageV2CloudState}=state;
   const {setCloud,render,toast}=view;
   const {readCloudMeta,readCloud}=remote;
@@ -28,28 +29,29 @@ const runtime={
 
 async function cloudPoll(){
   if(storageV2PreparationActive()||!tab.primaryTab||!cloudEnabled()||session.cloudBusy||!isOnline())return false;
-  if(cloudHasLocalWork()){const saved=await requestCloudSave('סונכרנו שינויים מקומיים ועדכון מרחוק');await pollSharedChecks();return saved}
+  const scope=getCloudWriteScope(),current=()=>writeScopeCurrent(scope);if(!current())return false;
+  if(cloudHasLocalWork()){const saved=await requestCloudSave('סונכרנו שינויים מקומיים ועדכון מרחוק');if(!current())return false;await pollSharedChecks();return current()&&saved}
   let dataApiReadOk=false;
   /** @type {import('../shared/sync-document-contracts.js').Observation} */
   const observation={generation:Number(session.localGeneration||0),local:prepareCloudState(model.state),head:null};
   let ready=false;
   async function readMain(){
-    const head=await refreshStorageV2CloudState();observation.head=head;
+    const head=await refreshStorageV2CloudState();observation.head=head;if(!writeScopeCurrent(scope,head))return false;
     if(!pollViewCurrent(observation)||!cloudHeadIsSynced(head,{revision:Number(session.cloudRevision||0)}))return markCloudPollDeferred(head);
     const meta=await readCloudMeta();dataApiReadOk=true;
-    if(!pollViewCurrent(observation))return markCloudPollDeferred();
+    if(!current())return false;if(!pollViewCurrent(observation))return markCloudPollDeferred();
     if(!meta){setCloud('ענן: מסמך לא נמצא','error');return false}
     const metaRevision=Number(meta.revision||0);
     if(!Number.isSafeInteger(metaRevision)||metaRevision<1)throw new Error('orders_v2_remote_revision_invalid');
     if(metaRevision<=session.cloudRevision){session.cloudUpdatedAt=meta.updated_at||session.cloudUpdatedAt;return true}
     const row=await readCloud();
-    if(!pollViewCurrent(observation))return markCloudPollDeferred();
+    if(!current())return false;if(!pollViewCurrent(observation))return markCloudPollDeferred();
     if(!row){setCloud('ענן: מסמך לא נמצא','error');return false}
     const rowRevision=Number(row.revision||0);
     if(!Number.isSafeInteger(rowRevision)||rowRevision<1)throw new Error('orders_v2_remote_revision_invalid');
     if(rowRevision<=session.cloudRevision){session.cloudUpdatedAt=row.updated_at||meta.updated_at||session.cloudUpdatedAt;return true}
     const meaningful=!sameOrderCloudData(model.state,row.state);
-    if(!await adoptRemoteRow(row,observation.generation,head,{applyState:meaningful}))return false;
+    if(!await adoptRemoteRow(row,observation.generation,head,{applyState:meaningful,isCurrent:current})||!current())return false;
     // The adopted projection replaces the earlier comparison candidate. Shared
     // checks remain independent; only Main's projection is compared here.
     observation.local=prepareCloudState(model.state);
@@ -60,25 +62,26 @@ async function cloudPoll(){
   try{
     session.cloudBusy=true;
     ready=await readMain();
-  }catch(error){return markCloudPollFailure(error)}
-  finally{session.cloudBusy=false;if(dataApiReadOk){await pollSharedChecks();await refreshKupaReadout({renderIfChanged:true})}}
+  }catch(error){return current()?markCloudPollFailure(error):false}
+  finally{if(cloudWriteScopeHasIdentity(scope,getCloudWriteScope()))session.cloudBusy=false;if(dataApiReadOk&&current()){await pollSharedChecks();if(current())await refreshKupaReadout({renderIfChanged:true})}}
   // The final authoritative read occurs after independent hydration too. An edit
   // during any of those awaits cannot publish a stale "synced" assertion.
-  if(!ready)return false;
-  try{return await confirmCloudPollSynced(observation,{refreshTimestamp:true})}catch(error){return markCloudPollFailure(error)}
+  if(!ready||!current())return false;
+  try{return await confirmCloudPollSynced(observation,{refreshTimestamp:true,scope})}catch(error){return current()?markCloudPollFailure(error):false}
 }
 
 async function resumeAfterReconnect(){
   if(storageV2PreparationActive()||!tab.primaryTab||!cloudEnabled()||!isOnline())return false;
+  const scope=getCloudWriteScope(),current=()=>writeScopeCurrent(scope);if(!current())return false;
   if(session.cloudBusy)return trackedCloudPoll();
   setCloud('ענן: חזרה רשת…');
   try{
     if(cloudHasLocalWork()){
-      const saved=await requestCloudSave('שינויים ממתינים סונכרנו');
+      const saved=await requestCloudSave('שינויים ממתינים סונכרנו');if(!current())return false;
       if(!saved&&cloudHasLocalWork())return false;
     }
     return await trackedCloudPoll()
-  }catch(error){return markCloudPollFailure(error)}
+  }catch(error){return current()?markCloudPollFailure(error):false}
 }
 
 return {poll:trackedCloudPoll,resumeAfterReconnect,start:cloudPoller.start,stop:cloudPoller.stop,wake:cloudPoller.wake,runtime};

@@ -41,12 +41,13 @@ function applyAcknowledgedCoreState(snapshot){
   return changed;
 }
 /** @type {import('../shared/sync-document-contracts.js').Adoption['applyFinanceOnlyRow']} */
-async function applyFinanceOnlyRow(row){
+async function applyFinanceOnlyRow(row,{isCurrent=()=>true}={}){
+  if(!isCurrent())return false;
   if(row?.financeAvailable===false)return false;
   const revision=Number(row?.financeRevision);
   if(!Number.isSafeInteger(revision)||revision<1)throw new Error('finance_read_revision_invalid');
   if(revision<=Number(session.financeRevision||0))return false;
-  const cloud=await refreshStorageV2CloudState();if(!cloud?.base)throw new Error('kupa_v2_checkpoint_required');
+  const cloud=await refreshStorageV2CloudState();if(!isCurrent())return false;if(!cloud?.base)throw new Error('kupa_v2_checkpoint_required');
   const generation=Number(session.localGeneration||0),previousRevision=Number(session.financeRevision||0),current=structuredClone(model.state),remote=row.state||{},bank=assertStorageJsonObject(current.bank||{});
   const financeBank=remote.bank?{...bank,...assertStorageJsonObject(structuredClone(remote.bank)),adjustments:structuredClone(bank.adjustments||[]),snapshotToken:bank.snapshotToken??null,snapshotSeq:bank.snapshotSeq??null}:bank;
   if(bank.source==='manual')for(const key of ['currentBalance','updatedAt','asOfDate','source','sourceAccount']){const value=bank[key];if(value===undefined)delete financeBank[key];else financeBank[key]=value};
@@ -55,18 +56,20 @@ async function applyFinanceOnlyRow(row){
   if(!jsonEq(prepareKupaCloudState(current),prepareKupaCloudState(next)))throw new Error('finance_hydration_main_changed');
   const publication=await commitCloudCheckpoint({
     commit:()=>replaceStorageV2CurrentState(next,{expectedSeq:cloud.seq}),
-    isCurrent:committed=>committed===cloud.seq&&tab.primaryTab&&Number(session.localGeneration||0)===generation&&Number(session.financeRevision||0)===previousRevision,
+    isCurrent:committed=>isCurrent()&&committed===cloud.seq&&tab.primaryTab&&Number(session.localGeneration||0)===generation&&Number(session.financeRevision||0)===previousRevision,
     publish:()=>{replaceVisibleState(next)},
   });
   if(!publication.published){if(publication.reason==='publication-error')throw publication.error;return false}
+  if(!isCurrent())return false;
   session.financeRevision=revision;session.financeUpdatedAt=row.financeUpdatedAt||session.financeUpdatedAt||null;
   render();return true;
 }
 
-async function pollIndependentFinance(){
+/** @param {{isCurrent?:()=>boolean}} [options] */
+async function pollIndependentFinance({isCurrent=()=>true}={}){
   try{
-    const row=await readFinanceSyncDocument();if(!row)return false;
-    return await applyFinanceOnlyRow({state:row.state,financeRevision:row.revision,financeUpdatedAt:row.updated_at});
+    if(!isCurrent())return false;const row=await readFinanceSyncDocument();if(!isCurrent()||!row)return false;
+    return await applyFinanceOnlyRow({state:row.state,financeRevision:row.revision,financeUpdatedAt:row.updated_at},{isCurrent});
   }catch(error){console.warn('Independent Finance hydration deferred; Kupa local work retained',error);return false}
 }
 
@@ -83,9 +86,10 @@ async function reviewCleanConflict(cloud){
   }catch(error){console.warn('Kupa conflict review deferred; local journal retained',error);return cloud}
 }
 /** @type {import('../shared/sync-document-contracts.js').Adoption['applyCloudRow']} */
-async function applyCloudRow(row,{renderNow=true}={}){
+async function applyCloudRow(row,{renderNow=true,isCurrent=()=>true}={}){
+  if(!isCurrent())throw new Error('cloud_sync_scope_changed');
   if(hasFailedLocalMutation(session))throw new Error('storage_uncommitted_mutation');
-  const currentV2=await refreshStorageV2CloudState();
+  const currentV2=await refreshStorageV2CloudState();if(!isCurrent())throw new Error('cloud_sync_scope_changed');
   if(!currentV2?.base)throw new Error('kupa_v2_account_head_initialization_required');
   if(!storageV2CloudOutboxActive())throw new Error('kupa_v2_account_head_not_ready');
   assertAccountOwner();
@@ -97,12 +101,12 @@ async function applyCloudRow(row,{renderNow=true}={}){
   const removed=model.lastNormalizeRemovedCredits,normalizationBase=canonicalCloudSyncBase(row.state,prepareKupaCloudState);
   const publication=await commitCloudCheckpoint({
     commit:()=>adoptStorageV2CloudHead(revision,next,{cloudState:normalizationBase,expectedHead:{seq:currentV2.seq,baseRevision}}),
-    isCurrent:committed=>{assertAccountOwner();return !hasFailedLocalMutation(session)&&committed?.seq===currentV2.seq&&committed?.revision===revision&&!committed.pending&&!committed.control&&tab.primaryTab&&storageV2CloudOutboxActive()&&Number(session.localGeneration||0)===generation},
+    isCurrent:committed=>{assertAccountOwner();return isCurrent()&&!hasFailedLocalMutation(session)&&committed?.seq===currentV2.seq&&committed?.revision===revision&&!committed.pending&&!committed.control&&tab.primaryTab&&storageV2CloudOutboxActive()&&Number(session.localGeneration||0)===generation},
     // Shared Checks owns its own journal and can advance while Main commits.
     publish:()=>{next.checks=assertStorageJson(normalizeSharedChecks(model.state.checks));replaceVisibleState(Number(session.financeRevision||0)===financeRevision?next:applyKupaCoreState(next,model.state.checks,model.state))},
   });
   if(!publication.published){
-    if(tab.primaryTab&&storageV2CloudOutboxActive()){
+    if(isCurrent()&&tab.primaryTab&&storageV2CloudOutboxActive()){
       session.cloudConflictPending=true;
       if(!publication.committed?.control?.conflict)await setStorageV2CloudControl({conflict:{kind:publication.reason==='publication-error'?'cloud-publication-failed':'concurrent-hydration',domain:'kupa',baseRevision,currentRemoteRevision:revision}});
       setSaveStatus('הנתונים נשמרו מקומית; נדרשת בדיקת סנכרון','error');setCloudHeaderStatus('conflict','ענן: נדרשת בדיקה');
@@ -110,19 +114,21 @@ async function applyCloudRow(row,{renderNow=true}={}){
     if(publication.reason==='publication-error')throw publication.error;
     throw new Error('cloud_hydration_publication_stale');
   }
+  if(!isCurrent())throw new Error('cloud_sync_scope_changed');
   session.dbRevision=revision;session.lastSavedSnapshot=JSON.stringify(normalizationBase);
   if(financeAvailable&&Number(session.financeRevision||0)===financeRevision){session.financeRevision=Number(row.financeRevision||0);session.financeUpdatedAt=row.financeUpdatedAt||session.financeUpdatedAt||null}
   session.connectionMode='supabase';session.backendReady=true;session.cloudConflictPending=false;
   session.serverInfo={...session.serverInfo,schemaVersion:6,lastSavedAt:row.coreUpdatedAt||session.serverInfo?.lastSavedAt||null,databaseFile:'Supabase'};
   const v2Normalization=removed>0||legacyCards;
   if(v2Normalization)await queueStorageV2CloudNormalization(model.state,revision);
+  if(!isCurrent())throw new Error('cloud_sync_scope_changed');
   markCloudMode();session.cloudAuthNoDocument=false;hideConnectScreen();
   if(renderNow)render();
   // Secondary hydration must not prevent Main's checkpoint from committing.
   // Its failure remains visible to the caller and is retried by the next poll.
   startCloudPolling();
-  await syncSharedChecksFromCloud({quiet:true,required:true});
-  await refreshOrdersFinanceSummary({force:true,renderIfChanged:false});
+  await syncSharedChecksFromCloud({quiet:true,required:true});if(!isCurrent())throw new Error('cloud_sync_scope_changed');
+  await refreshOrdersFinanceSummary({force:true,renderIfChanged:false});if(!isCurrent())throw new Error('cloud_sync_scope_changed');
   // The backup owner captures the target, verifies the file and refreshes its
   // catalog. Native file I/O is outside Main's hydration/polling lifecycle.
   observeOptionalTask(()=>backupSnapshotToComputer(structuredClone(model.state),revision));
