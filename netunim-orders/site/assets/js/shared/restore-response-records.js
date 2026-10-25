@@ -41,5 +41,6 @@ export function readRestoreApplyReceipt(response,requestedId){
 export function readServerRestorePending(record,owner){
   const row=readRestoreGroupRows([record])[0];
   if(!row||!evidenceText(owner)||row.owner!==owner)throw invalid();
-  return {...row,owner};
+  // The group reader already verified this string identity before publication.
+  return {...row,owner,restore_group_id:String(row.restore_group_id)};
 }

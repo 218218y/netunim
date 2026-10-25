@@ -260,3 +260,31 @@ is 317 roots: 197 product modules and 120 fixtures, with 408 loaded JS/MJS files
 The large transport implementations are still outside these roots; this stage
 hardens their document-admission dependencies without claiming full transport
 coverage.
+
+## Restore group storage and remote completion
+
+The actual restore-group constructor, durable store and executor now join the
+strict roots. Created groups have numeric revisions/sequences, while historical
+records retain unknown-valued fields where the old runtime guard accepts
+coercible evidence. Validation does not silently normalize those records or
+declare their raw values numeric. Stored identities additionally pass the
+existing string key boundary before they are exposed as durable groups.
+
+Raw store reads remain unknown, are reconciled with the local copy, then pass the
+existing group/phase/target validation. Server-pending identities continue through
+their canonical response reader and account scope. The generic executor carries
+the actual remote result through its awaited apply/adoption/completion stages.
+No record version, key, hash algorithm, phase ordering or RPC protocol changes.
+
+The changes matched the previous implementation in 181 validation, constructor,
+storage and executor comparisons. Forty-one focused behavior/startup tests and
+five compiler tests pass. Actual-body mutations remove an awaited remote result,
+fabricate a durable receipt or replace decoded data. New asynchronous regressions
+hold both remote completion and local adoption, proving the group cannot complete
+early; malformed retained records remain available instead of being overwritten.
+
+The eager graph adds 3,244 source bytes per app and no modules. Totals including the
+separate strict-durability repair are 1,842,519/2,466,986 bytes. Each source budget
+increases by 4,000 bytes, retaining timing and module limits. Large application
+transports and sync coordinators still need their own focused implementation
+checking; these dependencies no longer require an unchecked restore store.

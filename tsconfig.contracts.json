@@ -20,6 +20,8 @@
     "types": []
   },
   "files": [
+    "shared/restore-groups.js",
+    "tests/fixtures/checked-restore-groups.mjs",
     "tests/fixtures/checked-orders-document-validation.mjs",
     "netunim-orders/site/assets/js/state/validation.js",
     "shared/data-invariants.js",
