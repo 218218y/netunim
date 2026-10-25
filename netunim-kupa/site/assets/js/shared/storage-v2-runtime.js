@@ -45,7 +45,7 @@ export function createStorageV2Runtime({app,owner,primary,captureCommitAuthority
     identity=next;authoritative=false;commits=Promise.resolve();operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();compactionScheduled=false;const scopedOwner=next,commitPrimary=captureCommitAuthority();
     journal=createJournal({owner:`${scopedOwner}:${app}`,schema:STORAGE_SCHEMAS[app],validate,primary:()=>primaryMode()&&primary()&&scopedOwner===currentOwner(),commitPrimary:()=>primaryMode()&&commitPrimary()&&scopedOwner===currentOwner()});corruptIdentity='';return journal;
   }
-  function currentJournal(active){return active===journal&&identity===currentOwner()&&primaryMode()&&primary()}
+  function currentJournal(active,writer=true){return active===journal&&identity===currentOwner()&&primaryMode()&&(!writer||primary())}
   function checkpointCompleted(active,seq,epoch){
     if(!currentJournal(active)||active.epoch!==epoch||!readyForCurrentOwner())return;
     operationsSinceCheckpoint=Math.max(0,active.seq-seq);lastCheckpointAt=Date.now();
@@ -86,10 +86,10 @@ export function createStorageV2Runtime({app,owner,primary,captureCommitAuthority
     if(corruptIdentity===activeIdentity)return null;
     try{
       const recovered=await active.recover();
-      if(!currentJournal(active))throw new Error('storage_owner_changed_during_recovery');
+      if(!currentJournal(active,false))throw new Error('storage_owner_changed_during_recovery');
       if(!recovered||recovered.appMetadata?.storageRole!=='primary')return null;
       diagnostics.recoveries++;return {...recovered,source:'v2-readonly'};
-    }catch(error){if(currentJournal(active)){diagnostics.errors++;diagnostics.lastError=error.message;diagnostics.recoveryFailure=storageRecoveryFailure(error);if(diagnostics.recoveryFailure==='fatal'){authoritative=false;corruptIdentity=activeIdentity}}return null}
+    }catch(error){if(currentJournal(active,false)){diagnostics.errors++;diagnostics.lastError=error.message;diagnostics.recoveryFailure=storageRecoveryFailure(error);if(diagnostics.recoveryFailure==='fatal'){authoritative=false;corruptIdentity=activeIdentity}}return null}
   }
   async function recoverForOwner({intent}={}){
     if(intent!=='load-account')throw new Error('storage_owner_transfer_intent_required');
