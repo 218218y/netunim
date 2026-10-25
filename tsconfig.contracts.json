@@ -20,6 +20,8 @@
     "types": []
   },
   "files": [
+    "shared/cloud-sync.js",
+    "tests/fixtures/checked-cloud-policy.mjs",
     "shared/storage-journal-idb.js",
     "shared/storage-journal-model.js",
     "shared/storage-metrics.js",

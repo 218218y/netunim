@@ -6,14 +6,30 @@ export {documentWriteAckRevision} from './document-write-ack.js';
 export const OUTBOX_SCHEMA_VERSION=4;
 export const CLOUD_WRITE_POLICY=Object.freeze({busyAttempts:3,conflictAttempts:3});
 
+/** @typedef {import('./cloud-policy.js').CloudPolicy} Policy */
+/** @typedef {import('./cloud-policy.js').OutboxRecord} OutboxRecord */
+/** @typedef {import('./cloud-policy.js').CloudErrorKind} CloudErrorKind */
+/** @template Result @typedef {import('./cloud-policy.js').QueueItem<Result>} QueueItem */
+/** @type {Policy['object']} */
+function object(value){return value!==null&&typeof value==='object'}
+/** @type {Policy['record']} */
+function record(value){return object(value)?value:{}}
+
+/** @template Value @param {Value} value @returns {Value} */
 function copy(value){return value==null?value:structuredClone(value)}
+/** @type {Policy['finiteRevision']} */
 function finiteRevision(value){const n=Number(value);return Number.isSafeInteger(n)&&n>=0?n:0}
+/** @type {Policy['finiteGeneration']} */
 function finiteGeneration(value){const n=Number(value);return Number.isSafeInteger(n)&&n>=0?n:0}
+/** @type {Policy['iso']} */
 function iso(value,now){const parsed=Date.parse(String(value||''));return Number.isFinite(parsed)?new Date(parsed).toISOString():new Date(now()).toISOString()}
+/** @type {Policy['nowMilliseconds']} */
 function nowMilliseconds(now=Date.now){const value=Number(typeof now==='function'?now():now);return Number.isFinite(value)?value:Date.now()}
+/** @type {Policy['futureIso']} */
 function futureIso(value,now=Date.now){const parsed=Date.parse(String(value||'')),current=nowMilliseconds(now);return Number.isFinite(parsed)&&parsed>current?new Date(parsed).toISOString():null}
 
 
+/** @type {Policy['createOutboxRecord']} */
 export function createOutboxRecord({domain,documentName,operationId,generation,mutationSeq,baseRevision,baseState,snapshot,createdAt,updatedAt,conflict=null,retry=null,mutationType='autosave',surface='unknown',restoreGroupId=null},options={}){
   const now=options.now||Date.now,created=iso(createdAt,now),updated=iso(updatedAt||created,now);
   const normalizedGeneration=finiteGeneration(generation),normalizedMutationSeq=Math.max(normalizedGeneration,finiteGeneration(mutationSeq));
@@ -21,7 +37,7 @@ export function createOutboxRecord({domain,documentName,operationId,generation,m
     schemaVersion:OUTBOX_SCHEMA_VERSION,
     domain:String(domain||'unknown'),
     documentName:String(documentName||'main'),
-    operationId:String(operationId||createOperationId(domain,{now,random:options.random||Math.random,...(Object.hasOwn(options,'randomUUID')?{randomUUID:options.randomUUID}:{})})),
+    operationId:String(operationId||createOperationId(String(domain||'sync'),{now,random:options.random||Math.random,...(Object.hasOwn(options,'randomUUID')?{randomUUID:options.randomUUID??null}:{})})),
     generation:normalizedGeneration,
     mutationSeq:normalizedMutationSeq,
     baseRevision:finiteRevision(baseRevision),
@@ -34,35 +50,40 @@ export function createOutboxRecord({domain,documentName,operationId,generation,m
     surface:String(surface||'unknown').slice(0,120),
     restoreGroupId:restoreGroupId==null?null:String(restoreGroupId),
     retry:{
-      attempts:finiteGeneration(retry?.attempts),
-      lastErrorCode:retry?.lastErrorCode==null?null:String(retry.lastErrorCode),
-      lastAttemptAt:retry?.lastAttemptAt?iso(retry.lastAttemptAt,now):null,
-      nextAttemptAt:retry?.nextAttemptAt?iso(retry.nextAttemptAt,now):null,
+      attempts:finiteGeneration(record(retry).attempts),
+      lastErrorCode:record(retry).lastErrorCode==null?null:String(record(retry).lastErrorCode),
+      lastAttemptAt:record(retry).lastAttemptAt?iso(record(retry).lastAttemptAt,now):null,
+      nextAttemptAt:record(retry).nextAttemptAt?iso(record(retry).nextAttemptAt,now):null,
     },
   };
 }
 
+/** @type {Policy['getOutboxRetryDelay']} */
 export function getOutboxRetryDelay(record,now=Date.now){
   const nextAttempt=Date.parse(String(record?.retry?.nextAttemptAt||''));
   if(!Number.isFinite(nextAttempt))return 0;
   return Math.max(0,nextAttempt-nowMilliseconds(now));
 }
 
+/** @type {Policy['outboxRetryForGeneration']} */
 export function outboxRetryForGeneration(existing,{sameGeneration=false,retry=undefined,now=Date.now}={}){
   const selected=retry===undefined?(sameGeneration?existing?.retry:null):retry,current=nowMilliseconds(now);
-  const previousNotBefore=futureIso(existing?.retry?.nextAttemptAt,current),selectedNotBefore=futureIso(selected?.nextAttemptAt,current);
+  const previousNotBefore=futureIso(record(existing?.retry).nextAttemptAt,current),selectedNotBefore=futureIso(record(selected).nextAttemptAt,current);
   const nextAttemptAt=!previousNotBefore?selectedNotBefore:!selectedNotBefore?previousNotBefore:(Date.parse(previousNotBefore)>=Date.parse(selectedNotBefore)?previousNotBefore:selectedNotBefore);
   return {
-    attempts:finiteGeneration(selected?.attempts),
-    lastErrorCode:selected?.lastErrorCode==null?null:String(selected.lastErrorCode),
-    lastAttemptAt:selected?.lastAttemptAt?iso(selected.lastAttemptAt,()=>current):null,
+    attempts:finiteGeneration(record(selected).attempts),
+    lastErrorCode:record(selected).lastErrorCode==null?null:String(record(selected).lastErrorCode),
+    lastAttemptAt:record(selected).lastAttemptAt?iso(record(selected).lastAttemptAt,()=>current):null,
     nextAttemptAt,
   };
 }
 
+/** @param {import('./cloud-policy.js').RetrySchedulerOptions} [options] */
 export function createOutboxRetryScheduler({now=Date.now,setTimer=(callback,delay)=>setTimeout(callback,delay),clearTimer=timer=>clearTimeout(timer),onError=error=>console.error('outbox retry callback',error)}={}){
-  const MAX_TIMER_DELAY=2_147_483_647;let timer=null,key='',dueAt=0;
+  const MAX_TIMER_DELAY=2_147_483_647;
+  /** @type {number|null} */ let timer=null;let key='',dueAt=0;
   function cancel(){if(timer!==null)clearTimer(timer);timer=null;key='';dueAt=0}
+  /** @param {OutboxRecord} record @param {()=>void|Promise<unknown>} resume */
   function schedule(record,resume){
     const delay=getOutboxRetryDelay(record,now);if(delay<=0){if(timer!==null&&dueAt<=nowMilliseconds(now))cancel();return 0}
     const nextKey=[record?.domain,record?.documentName,finiteGeneration(record?.generation),record?.operationId,record?.retry?.nextAttemptAt].map(value=>String(value??'')).join('|');
@@ -75,31 +96,34 @@ export function createOutboxRetryScheduler({now=Date.now,setTimer=(callback,dela
   return {schedule,cancel,stats};
 }
 
+/** @type {Policy['migrateOutboxRecord']} */
 export function migrateOutboxRecord(value,{domain,documentName,baseRevision=0,baseState={},snapshot={},generation=1,now=Date.now}={}){
   if(!value||typeof value!=='object')return null;
-  const marker=value.pending===true&&!value.snapshot;
-  const sourceSnapshot=marker?snapshot:(value.snapshot??snapshot);
-  const sourceBase=value.baseState??baseState;
-  const sourceConflict=value.conflict===true?{kind:'unresolved'}:value.conflict;
+  const data=record(value);
+  const marker=data.pending===true&&!data.snapshot;
+  const sourceSnapshot=marker?snapshot:(data.snapshot??snapshot);
+  const sourceBase=data.baseState??baseState;
+  const sourceConflict=data.conflict===true?{kind:'unresolved'}:data.conflict;
   return createOutboxRecord({
-    domain:value.domain||domain,
-    documentName:value.documentName||documentName,
-    operationId:value.operationId||value.id,
-    generation:Math.max(finiteGeneration(value.generation),finiteGeneration(generation)),
-    mutationSeq:Math.max(finiteGeneration(value.mutationSeq),finiteGeneration(value.commitSeq),finiteGeneration(value.generation),finiteGeneration(generation)),
-    baseRevision:value.baseRevision??baseRevision,
+    domain:data.domain||domain,
+    documentName:data.documentName||documentName,
+    operationId:data.operationId||data.id,
+    generation:Math.max(finiteGeneration(data.generation),finiteGeneration(generation)),
+    mutationSeq:Math.max(finiteGeneration(data.mutationSeq),finiteGeneration(data.commitSeq),finiteGeneration(data.generation),finiteGeneration(generation)),
+    baseRevision:data.baseRevision??baseRevision,
     baseState:sourceBase,
     snapshot:sourceSnapshot,
-    createdAt:value.createdAt||value.savedAt||value.updatedAt,
-    updatedAt:value.updatedAt||value.savedAt,
+    createdAt:data.createdAt||data.savedAt||data.updatedAt,
+    updatedAt:data.updatedAt||data.savedAt,
     conflict:sourceConflict,
-    retry:value.retry,
-    mutationType:value.mutationType,
-    surface:value.surface,
-    restoreGroupId:value.restoreGroupId,
+    retry:data.retry,
+    mutationType:data.mutationType,
+    surface:data.surface,
+    restoreGroupId:data.restoreGroupId,
   },{now});
 }
 
+/** @type {Policy['updateOutboxSnapshot']} */
 export function updateOutboxSnapshot(existing,{snapshot,generation,mutationSeq,updatedAt,conflict,retry}={}){
   if(!existing)throw new Error('outbox_record_required');
   return createOutboxRecord({...existing,
@@ -112,11 +136,13 @@ export function updateOutboxSnapshot(existing,{snapshot,generation,mutationSeq,u
   });
 }
 
+/** @type {Policy['acknowledgedGenerationMatches']} */
 export function acknowledgedGenerationMatches(record,acknowledgedGeneration){
   const acknowledged=Number(acknowledgedGeneration);
   return !!record&&Number.isSafeInteger(acknowledged)&&acknowledged>=0&&finiteGeneration(record.generation)===acknowledged;
 }
 
+/** @type {Policy['compareOutboxFreshness']} */
 export function compareOutboxFreshness(a,b){
   const generationDelta=finiteGeneration(a?.generation)-finiteGeneration(b?.generation);
   if(generationDelta)return generationDelta;
@@ -134,17 +160,23 @@ export function clientInstanceId(){
   try{const existing=localStorage.getItem(CLIENT_INSTANCE_KEY);if(existing)return ephemeralClientInstanceId=existing;const id=globalThis.crypto?.randomUUID?.()||createOperationId('client');localStorage.setItem(CLIENT_INSTANCE_KEY,id);return ephemeralClientInstanceId=id}catch{return ephemeralClientInstanceId=globalThis.crypto?.randomUUID?.()||createOperationId('client-ephemeral')}
 }
 
+/** @type {Policy['operationAuditMetadata']} */
 export function operationAuditMetadata({site,build='sync-v5',mutationType='autosave',surface='unknown',baseRevision=0,beforeState={},afterState={},collections=[],deleteCount=0,restoreGroupId=null}={}){
-  const counts=source=>Object.fromEntries(collections.map(path=>{const value=String(path).split('.').reduce((x,key)=>x?.[key],source);return [path,Array.isArray(value)?value.length:0]}));
+  /** @param {unknown} source */
+  const counts=source=>Object.fromEntries(collections.map(path=>{const value=String(path).split('.').reduce((x,key)=>record(x)[key],source);return [path,Array.isArray(value)?value.length:0]}));
   return {clientInstanceId:clientInstanceId(),app:String(site||'unknown'),build:String(build),mutationType:String(mutationType),surface:String(surface),baseRevision:finiteRevision(baseRevision),beforeCount:counts(beforeState),afterCount:counts(afterState),deleteCount:finiteGeneration(deleteCount),restoreGroupId:restoreGroupId==null?null:String(restoreGroupId),timestamp:new Date().toISOString()};
 }
 
-function errorMessage(input){return String(input?.j?.message||input?.message||input?.body||input?.txt||input?.original?.message||'')}
+/** @type {Policy['errorMessage']} */
+function errorMessage(input){const data=record(input);return String(record(data.j).message||data.message||data.body||data.txt||record(data.original).message||'')}
 
+/** @type {Policy['retryAfterMilliseconds']} */
 function retryAfterMilliseconds(response,input){
-  const explicit=Number(input?.retryAfterMs);
+  const explicit=Number(record(input).retryAfterMs);
   if(Number.isFinite(explicit)&&explicit>0)return explicit;
-  const raw=String(response?.headers?.get?.('retry-after')||'').trim();
+  const headers=record(record(response).headers);
+  /** @type {unknown} */ const retryAfter=typeof headers.get==='function'?headers.get('retry-after'):null;
+  const raw=String(retryAfter||'').trim();
   if(!raw)return null;
   const seconds=Number(raw);
   if(Number.isFinite(seconds)&&seconds>=0)return Math.round(seconds*1000);
@@ -152,29 +184,30 @@ function retryAfterMilliseconds(response,input){
   return Number.isFinite(at)?Math.max(0,at-Date.now()):null;
 }
 
+/** @type {Policy['normalizeCloudError']} */
 export function normalizeCloudError(input){
-  const response=input?.r||input?.response||input;
-  const status=Number(response?.status||input?.status||0)||null;
-  const code=String(input?.j?.code||input?.code||input?.errorCode||'');
+  const data=record(input),response=record(data.r||data.response||input);
+  const status=Number(response.status||data.status||0)||null;
+  const code=String(record(data.j).code||data.code||data.errorCode||'');
   const message=errorMessage(input);
   const lower=message.toLowerCase();
-  let kind='fatal';
+  /** @type {CloudErrorKind} */ let kind='fatal';
   if(code==='PT429'||lower.includes('save_busy'))kind='busy';
   else if(code==='PT409'||lower.includes('revision_conflict'))kind='revision_conflict';
   else if(status===429||code==='SUPABASE_DATA_API_RATE_LIMIT')kind='rate_limited';
   else if(status===409)kind='conflict';
-  else if([500,502,503,504].includes(status)||['PGRST002','PGRST003','SUPABASE_DATA_API_BACKOFF'].includes(code))kind='service_unavailable';
+  else if(status!==null&&[500,502,503,504].includes(status)||['PGRST002','PGRST003','SUPABASE_DATA_API_BACKOFF'].includes(code))kind='service_unavailable';
   else if(status===401||status===403||code==='42501'||code==='cloud_auth_required')kind='auth';
-  else if(code==='SUPABASE_NETWORK_TIMEOUT'||String(input?.name||'')==='AbortError'||lower.includes('timeout')||lower.includes('timed out'))kind='timeout';
-  else if(code==='SUPABASE_NETWORK_UNAVAILABLE'||String(input?.name||'')==='TypeError'||lower.includes('failed to fetch')||lower.includes('networkerror')||lower.includes('load failed'))kind='network';
+  else if(code==='SUPABASE_NETWORK_TIMEOUT'||String(data.name||'')==='AbortError'||lower.includes('timeout')||lower.includes('timed out'))kind='timeout';
+  else if(code==='SUPABASE_NETWORK_UNAVAILABLE'||String(data.name||'')==='TypeError'||lower.includes('failed to fetch')||lower.includes('networkerror')||lower.includes('load failed'))kind='network';
   const retryAfterMs=retryAfterMilliseconds(response,input);
   return {kind,code:code||null,status,retryAfterMs:retryAfterMs||null,original:input};
 }
 
+/** @type {Policy['cloudWriteError']} */
 export function cloudWriteError(input,fallbackMessage='cloud_write_failed'){
-  const normalized=normalizeCloudError(input),error=new Error(errorMessage(input)||fallbackMessage);
-  error.name='CloudWriteError';error.kind=normalized.kind;error.code=normalized.code;error.status=normalized.status;error.retryAfterMs=normalized.retryAfterMs;error.response=input?.r||input?.response||null;error.cause=input;
-  return error;
+  const normalized=normalizeCloudError(input),data=record(input);
+  return Object.assign(new Error(errorMessage(input)||fallbackMessage),{name:'CloudWriteError',kind:normalized.kind,code:normalized.code,status:normalized.status,retryAfterMs:normalized.retryAfterMs,response:data.r||data.response||null,cause:input});
 }
 
 export function contentionDelay(attempt=0,{baseMs=300,maxMs=2400,jitterMs=200,random=Math.random}={}){
@@ -183,6 +216,7 @@ export function contentionDelay(attempt=0,{baseMs=300,maxMs=2400,jitterMs=200,ra
 
 // Store a not-before deadline in the existing durable control, so polling,
 // new edits and a browser restart all respect the same retry budget.
+/** @type {Policy['createCloudRetryControl']} */
 export function createCloudRetryControl(error,previous=null,{now=Date.now,random=Math.random}={}){
   const normalized=normalizeCloudError(error),attempts=Math.min(Number.MAX_SAFE_INTEGER,finiteGeneration(previous?.attempts)+1),at=nowMilliseconds(now);
   const transient=['busy','rate_limited','service_unavailable','timeout','network'].includes(normalized.kind);
@@ -191,8 +225,9 @@ export function createCloudRetryControl(error,previous=null,{now=Date.now,random
   return {attempts,lastErrorCode:normalized.code||normalized.kind,lastAttemptAt:new Date(at).toISOString(),nextAttemptAt:delay?new Date(at+delay).toISOString():null};
 }
 
+/** @template Result @param {(attempt:number)=>Promise<Result>} write @param {import('./cloud-policy.js').BusyWriteOptions} [options] @returns {Promise<Result|null>} */
 export async function runBusyCloudWriteWithPolicy(write,{attempts=CLOUD_WRITE_POLICY.busyAttempts,delay=contentionDelay,sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms))}={}){
-  let result=null;
+  /** @type {Result|null} */ let result=null;
   for(let attempt=0;attempt<Math.max(1,Number(attempts)||1);attempt++){
     result=await write(attempt);
     if(normalizeCloudError(result).kind!=='busy')return result;
@@ -201,14 +236,19 @@ export async function runBusyCloudWriteWithPolicy(write,{attempts=CLOUD_WRITE_PO
   return result;
 }
 
+/** @template [Result=unknown] @param {import('./cloud-policy.js').SchedulerOptions} [options] */
 export function createDataApiScheduler({maxHighBurst=4,canRun=()=>true}={}){
-  const high=[],low=[],coalesced=new Map();let running=false,highBurst=0;
+  /** @type {QueueItem<Result>[]} */ const high=[];
+  /** @type {QueueItem<Result>[]} */ const low=[];
+  /** @type {Map<string,Promise<Result>>} */ const coalesced=new Map();let running=false,highBurst=0;
   function choose(){if(high.length&&(!low.length||highBurst<maxHighBurst)){highBurst++;return high.shift()}if(low.length){highBurst=0;return low.shift()}if(high.length){highBurst=1;return high.shift()}return null}
   async function drain(){if(running)return;running=true;try{for(;;){const item=choose();if(!item)break;try{if(!canRun(item))throw item.blockedError();item.resolve(await item.task())}catch(error){item.reject(error)}}}finally{running=false;if(high.length||low.length)queueMicrotask(drain)}}
+  /** @param {()=>Result|PromiseLike<Result>} task @param {{priority?:'high'|'low',key?:string,blockedError?:()=>unknown}} [options] @returns {Promise<Result>} */
   function schedule(task,{priority='low',key='',blockedError=()=>new Error('scheduler_blocked')}={}){
     const normalizedPriority=priority==='high'?'high':'low',coalesceKey=normalizedPriority==='low'&&key?String(key):'';
-    if(coalesceKey&&coalesced.has(coalesceKey))return coalesced.get(coalesceKey);
-    const promise=new Promise((resolve,reject)=>{(normalizedPriority==='high'?high:low).push({task,priority:normalizedPriority,key:coalesceKey,blockedError,resolve,reject});queueMicrotask(drain)});
+    const pending=coalesceKey?coalesced.get(coalesceKey):undefined;
+    if(pending)return pending;
+    /** @type {Promise<Result>} */ const promise=new Promise((resolve,reject)=>{(normalizedPriority==='high'?high:low).push({task,priority:normalizedPriority,key:coalesceKey,blockedError,resolve,reject});queueMicrotask(drain)});
     if(coalesceKey){coalesced.set(coalesceKey,promise);promise.finally(()=>{if(coalesced.get(coalesceKey)===promise)coalesced.delete(coalesceKey)}).catch(()=>{})}
     return promise;
   }
@@ -217,8 +257,10 @@ export function createDataApiScheduler({maxHighBurst=4,canRun=()=>true}={}){
 }
 
 // Capture evidence before rebasing. Missing entities are represented by null, never dropped.
+/** @type {Policy['structuredSyncConflict']} */
 export function structuredSyncConflict({domain,conflicts,base,local,remote,generation,baseRevision,currentRemoteRevision}){
-  const aliases={supplier:'suppliers',transaction:'transactions',transactionOrder:'transactions',customerDebt:'customerDebts',customerOrder:'customerOrders',serviceCall:'serviceCalls',note:'notes',inventoryItem:'inventoryItems',inventoryEvent:'inventoryEvents',warehouseOrder:'warehouseOrders',check:'checks'};
-  const value=(state,type,id)=>{const path=aliases[type]||type;const data=Array.isArray(state)?state:path.split('.').reduce((v,k)=>v?.[k],state);return structuredClone((id&&Array.isArray(data)?data.find(row=>String(row?.id??row?.name)===id):data)??null)};
-  return {kind:'entity-conflict',domain,generation,baseRevision,currentRemoteRevision,items:conflicts.map(key=>{const [entityType,...parts]=String(key).split(':'),entityId=parts.join(':')||null;return {domain,entityType,entityId,base:value(base,entityType,entityId),local:value(local,entityType,entityId),remote:value(remote,entityType,entityId),generation,baseRevision,currentRemoteRevision}})};
+  /** @type {Record<string,string>} */ const aliases={supplier:'suppliers',transaction:'transactions',transactionOrder:'transactions',customerDebt:'customerDebts',customerOrder:'customerOrders',serviceCall:'serviceCalls',note:'notes',inventoryItem:'inventoryItems',inventoryEvent:'inventoryEvents',warehouseOrder:'warehouseOrders',check:'checks'};
+  /** @param {unknown} state @param {string} type @param {string|null} id @returns {unknown} */
+  const value=(state,type,id)=>{const path=aliases[type]||type;const data=Array.isArray(state)?state:path.split('.').reduce((v,k)=>record(v)[k],state);return structuredClone((id&&Array.isArray(data)?data.find(row=>String(record(row).id??record(row).name)===id):data)??null)};
+  return {kind:'entity-conflict',domain,generation,baseRevision,currentRemoteRevision,items:conflicts.map(key=>{const [entityType='',...parts]=String(key).split(':'),entityId=parts.join(':')||null;return {domain,entityType,entityId,base:value(base,entityType,entityId),local:value(local,entityType,entityId),remote:value(remote,entityType,entityId),generation,baseRevision,currentRemoteRevision}})};
 }

@@ -68,3 +68,27 @@ Remaining priority: the journal/V2 coordinators, cloud transport implementations
 canonical financial models, then selected financial calculations. Existing
 authority/read/ACK contracts should be extended, not duplicated. TypeScript 7
 compatibility is evaluated independently of these changes.
+
+## Shared cloud request policy
+
+The actual `cloud-sync.js` implementation is now checked. Outbox generation,
+mutation sequence, retry metadata and normalized error kinds have explicit
+contracts. Migrating or cloning a snapshot retains `unknown` provenance; it does
+not turn persisted or remote content into a validated application document.
+
+The coalescing scheduler carries one result type across its queue and cache, so
+tasks sharing a scheduler cannot return incompatible response types. Busy retries
+preserve the asynchronous result type. Existing classification and retry behavior
+are retained; a malformed non-callable `headers.get` is treated as absent metadata.
+Mutation tests exercise the real counters, classification and queue completion.
+The long signatures are kept in `cloud-policy.d.ts` while the actual generic
+scheduler functions retain checked JSDoc parameters and callback bodies. The
+eager graph adds 2,741 source bytes with no additional module. Measured totals
+are 1,825,360/2,448,983 bytes; each source budget increases by 2,000 bytes. Timing
+budgets and all behavioral acceptance suites are retained.
+
+The two large cloud transports and document coordinators remain outside the strict
+roots. An initial combined probe produced 454 diagnostics, including broad
+validation/restore dependencies and old generated shared copies. This is a scope
+boundary, not a claim of 454 business bugs. Their existing runtime and response
+reader tests remain mandatory in CI.
