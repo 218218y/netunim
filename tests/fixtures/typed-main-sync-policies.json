@@ -1,6 +1,6 @@
 {
   "base": "1e66be1a",
-  "reason": "Reviewed checked-body guards, JSON object admission, captured base revisions and current null-head rejection. Existing policy fixture stays frozen; actual-body mutations and ownership/hydration/rebase tests remain mandatory. Reviewed poll ownership callbacks now guard Finance reads and Main commits/publication; held account/epoch/login regressions require this authority change.",
+  "reason": "Reviewed checked-body guards, JSON object admission, captured base revisions and current null-head rejection. Existing policy fixture stays frozen; actual-body mutations and ownership/hydration/rebase tests remain mandatory. Reviewed poll ownership callbacks now guard Finance reads and Main commits/publication; held account/epoch/login regressions require this authority change. Explicit Kupa load/discard now retains its initiating account/epoch/login through HTTP and reset; 15 held replacements fail before and pass after the guards.",
   "policies": {
     "orders": {
       "adoptRemoteRow": {
@@ -36,6 +36,10 @@
       "pollIndependentFinance": {
         "before": "10a7e8594e18c14a1cc0f2c4f0da71539fe4824975d8c91d98a02e981b0ebaa5",
         "after": "eebf4409e99cf7d68e8edf982db74892bb0c8fff1b0bc8b76e7016ef68139f33"
+      },
+      "loadSupabaseState": {
+        "before": "18767e8e2abcc7e9517c020a7064e169167f452fb99c75e1453b92c87b94fc8c",
+        "after": "d92e9da7d9b68f667249c7eb89bbf7ee069776d5023756562338e9e31de87ac6"
       }
     }
   }
