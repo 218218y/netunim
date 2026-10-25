@@ -26,7 +26,7 @@ export type BillingRow = {
   amount:number,displayAmount:number,transactionAmount:number,displayCurrency:string,
   isShekel:boolean,foreignCurrency:boolean,originalAmount:number|null,originalCurrency:string,
   part:number,totalParts:number,card:string,account:AccountRole,ownerLabel:string,hidden:boolean,
-  description:string,memo:string,status:string,pendingFresh:boolean,chargeDateSource:BillingProjection['source']|'manual_schedule',
+  description:string,memo:string,status:string,pendingFresh:boolean,chargeDateSource:BillingProjection['source']|'manual_schedule'|'bank_settlement_next_known_cycle'|'unassigned_after_bank_settlement',
   billingDateConfidence:BillingProjection['confidence']|'manual',includedInIlsTotal:boolean,amountEstimated:boolean,
   amountSource:AmountSource|'coverage_missing'|'manual',amountStatus:'known_ils'|'foreign_unconverted'|'unknown_amount',
   unconverted:boolean,unknownAmount:boolean,uncertainBillingDate:boolean,coverageIncomplete:boolean,coverageStatus:string,totalAmount:number,
