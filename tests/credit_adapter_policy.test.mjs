@@ -38,12 +38,20 @@ const sources = () =>
 const fixture = JSON.parse(
   fs.readFileSync(new URL('./fixtures/credit-adapter-policy.json', import.meta.url), 'utf8')
 );
+const httpReceiptPolicies=JSON.parse(fs.readFileSync(new URL('./fixtures/credit-http-receipt-policies.json',import.meta.url),'utf8'));
 
 test('credit provider methods, normalization, wire constants and fallback policy match the reviewed baseline', () => {
   const active = { ...fixture.policies };
   for (const name of ['creditStartDate', 'GenericScraperAdapter', 'maxRawDiagnosticSamples'])
     delete active[name];
-  assert.deepEqual(creditAdapterPolicyHashes(sources()).policies, typedFinancialPolicies(active,'coveragePolicies'));
+  const reviewed=typedFinancialPolicies(active,'coveragePolicies');
+  // These individually reviewed changes validate unknown page receipts and
+  // retain bounded typed error metadata. The historical baseline stays intact.
+  for(const [name,{before,after}] of Object.entries(httpReceiptPolicies)){
+    assert.equal(reviewed[name]??null,before,name);
+    reviewed[name]=after;
+  }
+  assert.deepEqual(creditAdapterPolicyHashes(sources()).policies,reviewed);
   assert.equal(Object.keys(fixture.policies).length, 118);
 });
 
