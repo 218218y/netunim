@@ -15,6 +15,18 @@ from isolated_supabase import IsolatedSupabase, isolated_environment, loopback_u
 
 
 class SafetyContracts(unittest.TestCase):
+    def test_worker_netlog_extracts_only_failed_paths_and_codes(self):
+        from browser_harness import _netlog_failures
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/'netlog.json'
+            path.write_text(json.dumps({'constants':{'logEventTypes':{'URL_REQUEST_START_JOB':1,'URL_REQUEST_FAILED':2}},'events':[
+                {'source':{'id':7},'type':1,'time':'100','params':{'url':'http://127.0.0.1:1234/assets/app.js?private=value','headers':['Authorization: private']}},
+                {'source':{'id':7},'type':2,'time':'110','params':{'net_error':-101,'headers':['private']}},
+            ]}),encoding='utf-8')
+            result=_netlog_failures(path)
+        self.assertEqual(result,[{'source':7,'type':'URL_REQUEST_FAILED','time':'110','net_error':-101,'host':'127.0.0.1','port':1234,'path':'/assets/app.js'}])
+        self.assertNotIn('private',json.dumps(result))
+
     def test_worker_evidence_retains_native_events_timestamps_and_redacts_queries(self):
         from browser_harness import BrowserSession
         browser=object.__new__(BrowserSession)
