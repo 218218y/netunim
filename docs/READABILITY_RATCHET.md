@@ -27,6 +27,29 @@ maintenance operation requiring review of the baseline diff; CI never rewrites
 it. Intentional cleanup should tighten the affected entries. Compatibility
 readers, immutable migrations and generated copies remain intentional.
 
+## User text integrity and edited-code conventions, 2026-10-25
+
+The same canonical-source audit now checks cooked JavaScript strings and template
+parts for repeated question-mark words and Unicode replacement characters. This
+gate has no historical allowance. Operators, comments, regular expressions, URL
+query strings and isolated placeholders are excluded. Escaped damaged text is
+checked after decoding. The existing Node model discovery runs the regression
+gate in CI; `node tools/readability-audit.mjs` also reports file/line locations.
+This detects the reproduced corruption pattern, not every possible mistranslation.
+
+Four unreadable notices were corrected in the two action roots and the Kupa
+Credit export entrance. The fallback action notice reports incomplete execution;
+it does not infer whether a local save or cloud acknowledgement succeeded.
+
+For edited code, keep one responsibility per function, use explicit port names
+and return delegated completion. Capture authority before asynchronous work and
+keep runtime validation at external boundaries. Domain owners report durable-save
+and publication outcomes; connectivity failures describe unavailable transport;
+presentation failures describe incomplete display/action work. A generic catch
+must not claim data loss, successful persistence or a cloud ACK without a receipt.
+Expand edited dense branches and tighten their existing readability allowance
+when cleanup removes historical long lines. Do not reformat unrelated modules.
+
 Readability adds about 17 KB of uncompressed source in Orders with no additional
 startup requests; its deterministic source ceiling records that explicit cost.
 Cold/cached/offline and 1000-row render gates still decide runtime regressions.

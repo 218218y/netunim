@@ -58,9 +58,15 @@ export function createDomainsCreditController({model,toast,render,renderStatus=r
   const deleteCreditConnection=connections.commands.deleteConnection;
   async function exportCreditDataDiagnostics(){
     if(local.busy)return false;
-    if(!connections.queries.tokenConfigured()){toast('?? ???? ?? ????? ?-Bank Bridge ???? ????? ????? ?????');return false}
+    if(!connections.queries.tokenConfigured()){
+      toast('יש להגדיר מפתח ל-Bank Bridge לפני ייצוא נתוני האשראי');
+      return false;
+    }
     const {status}=connections.queries.snapshot();
-    if(status&&!supportedCreditBridge(status)){toast('?? ????? ???? install_bank_bridge.bat ???? ????? ????? ????? ?????');return false}
+    if(status&&!supportedCreditBridge(status)){
+      toast('יש להפעיל את install_bank_bridge.bat לשדרוג Bank Bridge לפני ייצוא נתוני האשראי');
+      return false;
+    }
     return connections.commands.exportData();
   }
 
