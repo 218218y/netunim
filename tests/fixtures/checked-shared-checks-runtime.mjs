@@ -18,6 +18,10 @@ runtime.initialize({state:{},revision:0});
 runtime.initialize({state:{},revision:0,intent:'legacy-upgrade',sourceOwner:'A'});
 // @ts-expect-error a coordinated replacement needs a real boundary identity
 runtime.replaceLocalWithPending({}, {boundaryId:200,expectedSeq:0,expectedBaseRevision:1});
+// @ts-expect-error authoritative replacement cannot bypass the coordinated boundary
+runtime.replaceAuthoritativeState({}, {});
+// @ts-expect-error resetting a cloud head also requires a coordinated boundary
+runtime.resetCloudHead(0,{});
 // @ts-expect-error primary authority must be synchronous
 createSharedChecksV2Runtime({primary:async()=>true});
 /** @type {boolean} */ const ready=runtime.primaryReady;

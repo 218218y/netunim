@@ -12,6 +12,7 @@ for(const [file,label,from,to] of [
   ['shared-checks-v2-runtime.js','epoch identity','epoch=store.epoch,cloud=await store.cloudState()','epoch=200,cloud=await store.cloudState()'],
   ['shared-checks-v2-runtime.js','missing recovery','if(!recovered)throw new Error(\'shared_checks_not_recovered\');',''],
   ['shared-checks-v2-runtime.js','unvalidated remote state','const remote=canonical(row.state);','const remote=row.state;'],
+  ['shared-checks-v2-runtime.js','boundary identity','store.replaceAuthoritativeState(canonical(state),{boundaryId})','store.replaceAuthoritativeState(canonical(state),{boundaryId:200})'],
   ['shared-checks-storage-v2.js','local receipt versus ACK','return journal.append(changes,{generation,surface,mutationType,deleteIntents:{checks:[...explicitDeletes]}});','return {seq:1,operationId:"F",emergencyDurable:true,transitionFallbackDurable:false,transitioning:false,committed:Promise.resolve({operationId:"F",revision:3,ackSeq:1})};'],
   ['shared-checks-storage-v2.js','bank event evidence','checkpointState:current,expectedSeq,control','checkpointState:{checks:current.checks,bankEvents:undefined},expectedSeq,control'],
 ])test('actual Shared Checks implementation rejects a mutation of '+label,()=>{
