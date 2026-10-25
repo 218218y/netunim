@@ -6,16 +6,17 @@ function today(){const d=new Date();return `${d.getFullYear()}-${String(d.getMon
 // Consume the engine's warning window, which can extend beyond the displayed
 // projection. Any first threshold crossing inside that explicit window is active.
 // Net same-day movements together; never invent intraday order.
+/** @param {import('./cashflow-contracts.js').WarningInput} cashflow @param {unknown} [settings] @param {string} [reference] @returns {import('./cashflow-contracts.js').CashflowNotification} */
 export function cashflowNotificationData(cashflow,settings={},reference=today()){
   const asOf=creditBillingISODate(reference)||today(),role=cashflow.account;
   const window=cashflow.warningProjection||cashflow;
   const base=cashflowAlertForAccount(cashflow.balance,settings,role),result={...base,active:false,breachDate:'',daysUntilBreach:null,projectedAtHorizon:cashflow.projected,warningTargetDate:window.targetDate||'',forecastIncomplete:!!window.forecastIncomplete};
   if(cashflow.balance===null||cashflow.balance===undefined||!Number.isFinite(Number(cashflow.balance)))return result;
-  const movements=new Map();
-  const add=(rows,sign,dateKey)=>{for(const row of rows||[]){const due=creditBillingISODate(row[dateKey]);if(!due)continue;const date=due<asOf?asOf:due;movements.set(date,(movements.get(date)||0)+sign*Math.round(Number(row.amount||0)*100))}};
+  /** @type {Map<string,number>} */ const movements=new Map();
+  const add=(/** @type {import('./cashflow-contracts.js').Movement[]|undefined} */ rows,/** @type {1|-1} */ sign,/** @type {'date'|'dueDate'} */ dateKey)=>{for(const row of rows||[]){const due=creditBillingISODate(row[dateKey]);if(!due)continue;const date=due<asOf?asOf:due;movements.set(date,(movements.get(date)||0)+sign*Math.round(Number(row.amount||0)*100))}};
   add(window.creditRows,-1,'date');add(window.expenseRows,-1,'dueDate');add(window.checkRows,1,'dueDate');add(window.incomeRows,1,'dueDate');
   let cents=Math.round(Number(cashflow.balance)*100);
-  const breach=(date)=>{const alert=cashflowAlertForAccount(cents/100,settings,role),daysUntilBreach=Math.round((Date.parse(date)-Date.parse(asOf))/86400000);return alert.active?{...result,...alert,active:true,breachDate:date,daysUntilBreach}:null};
+  const breach=(/** @type {string} */ date)=>{const alert=cashflowAlertForAccount(cents/100,settings,role),daysUntilBreach=Math.round((Date.parse(date)-Date.parse(asOf))/86400000);return alert.active?{...result,...alert,active:true,breachDate:date,daysUntilBreach}:null};
   // A bank balance already below the threshold warrants an immediate notification.
   const current=breach(asOf);if(current)return current;
   for(const [date,delta] of [...movements].sort(([a],[b])=>a.localeCompare(b))){cents+=delta;const warning=breach(date);if(warning)return warning}
