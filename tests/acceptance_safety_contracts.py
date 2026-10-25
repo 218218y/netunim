@@ -16,6 +16,13 @@ from crash_evidence import capture_stopped_indexeddb,classify_failure,snapshot_d
 
 
 class SafetyContracts(unittest.TestCase):
+    def test_historical_crash_evidence_retains_original_job_bytes(self):
+        import hashlib
+        root=Path(__file__).resolve().parents[1]/'docs/evidence/crash-history'
+        manifest=json.loads((root/'manifest.json').read_text(encoding='utf8'))
+        for entry in manifest['entries']:
+            self.assertEqual(hashlib.sha256((root/entry['file']).read_bytes()).hexdigest(),entry['sha256'])
+
     def test_crash_diagnostics_distinguish_native_corruption_from_invalid_records_and_timeouts(self):
         native=AssertionError('fixture_database_disappeared')
         native.add_note('LevelDB Corruption: checksum mismatch')
