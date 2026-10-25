@@ -4,7 +4,7 @@ import {createCalendarSessionRuntime} from './session-runtime.js';
 /**
  * The Calendar display reads credential availability and supplies its scoped
  * projection; Google transport, connection intent and polling stay private.
- * @param {Omit<Parameters<typeof createCalendarSessionRuntime>[0],'authority'|'display'> & {auth:ReturnType<import('./auth.js').createCalendarAuth>}} ports
+ * @param {Omit<Parameters<typeof createCalendarSessionRuntime>[0],'authority'|'display'> & {auth:ReturnType<typeof import('./auth.js').createCalendarAuth>}} ports
  */
 export function createCalendarConnection(ports){
   let composed=false;

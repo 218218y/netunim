@@ -8,7 +8,7 @@ import {
   eventOccursOnDay
 } from './read-model.js';
 /** @typedef {import('./read-model.js').CalendarEvent} CalendarEvent */
-/** @typedef {ReturnType<import('../../calendar/view.js').calendarRangeFor>} CalendarRange */
+/** @typedef {ReturnType<typeof import('../../calendar/view.js').calendarRangeFor>} CalendarRange */
 /** @typedef {Readonly<{range:CalendarRange,mode:string,events:readonly CalendarEvent[],cacheFetchedAt:string|null,online:boolean,connected:boolean,canCreate:boolean,now:Date}>} PresentationModel */
 const HEBREW_WEEKDAYS = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'שבת'];
 const monthFormatter = new Intl.DateTimeFormat('he-IL', {

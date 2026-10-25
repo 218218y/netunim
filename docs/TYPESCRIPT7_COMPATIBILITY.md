@@ -1,5 +1,9 @@
 # TypeScript 7 compatibility assessment — 2026-10-25
 
+This is the historical `5a5c7c2e` experiment. The expanded 365-root comparison,
+individual diagnostic analysis and current decision are in
+[TYPESCRIPT7_CURRENT_COMPARISON.md](TYPESCRIPT7_CURRENT_COMPARISON.md).
+
 Decision: retain the locked TypeScript 6.0.3 compiler and Compiler API. Do not add
 a second production/compiler dependency yet. A native compiler speedup is real
 in this experiment, but diagnostic equivalence fails on this project's baseline.

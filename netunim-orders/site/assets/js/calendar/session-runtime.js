@@ -40,7 +40,7 @@ import {consumeCalendarOAuthReturn,calendarOAuthReturnUrl} from '../platform/cal
  * @property {()=>void} render
  * @property {()=>void} status
  */
-/** @typedef {Pick<ReturnType<import('./auth.js').createCalendarAuth>,'restore'|'beginConnect'|'disconnect'|'rejectToken'|'hasUsableToken'|'authRequiredError'|'configured'|'ready'|'prepare'>} SessionAuth */
+/** @typedef {Pick<ReturnType<typeof import('./auth.js').createCalendarAuth>,'restore'|'beginConnect'|'disconnect'|'rejectToken'|'hasUsableToken'|'authRequiredError'|'configured'|'ready'|'prepare'>} SessionAuth */
 /** @typedef {{listCalendars:(scope:RequestScope)=>Promise<CalendarIdentity[]>,fetchEvents:(calendars:CalendarIdentity[],range:CalendarSyncRange,scope:RequestScope)=>Promise<unknown[]>}} SessionApi */
 /** @typedef {{code?:unknown,message?:unknown,status?:unknown,retryAfterMs?:unknown}} OperationError */
 /** @param {unknown} error @returns {OperationError} */
@@ -54,7 +54,7 @@ function errorMessage(error,fallback=''){return String(details(error).message||f
  * Owns Google connection intent, sync/reconnect flights and browser wakeups.
  * The display port publishes only inside the queue's synchronous transaction;
  * this runtime cannot acknowledge or delete a durable pending event itself.
- * @param {{session:CalendarSession,auth:SessionAuth,storage:SessionStorage,api:SessionApi,journal:{flushPending:(scope:RequestScope)=>Promise<unknown>},effects:ReturnType<import('../platform/calendar-browser-effects.js').createCalendarBrowserEffects>,authority:DisplayLifetime,display:SessionDisplay,feedback:{toast:(text:string)=>void,requestCloudLogin:()=>void}}} ports
+ * @param {{session:CalendarSession,auth:SessionAuth,storage:SessionStorage,api:SessionApi,journal:{flushPending:(scope:RequestScope)=>Promise<unknown>},effects:ReturnType<typeof import('../platform/calendar-browser-effects.js').createCalendarBrowserEffects>,authority:DisplayLifetime,display:SessionDisplay,feedback:{toast:(text:string)=>void,requestCloudLogin:()=>void}}} ports
  */
 export function createCalendarSessionRuntime({session,auth,storage,api,journal,effects,authority:lifetime,display,feedback}){
   let disposed=false,started=false;
