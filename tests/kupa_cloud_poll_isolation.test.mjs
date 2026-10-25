@@ -15,7 +15,7 @@ function fixture({onCheckpoint=async()=>{},financeReadError=null}={}){
   model.state.notes=[{id:'local-note',content:'preserve local work',createdAt:'2026-10-07',updatedAt:'2026-10-07'}];
   const session={connectionMode:'supabase',backendReady:true,dbRevision:479,financeRevision:10,localGeneration:0,cloudConflictPending:true,serverInfo:{lastSavedAt:null}};
   const checksSession={},tab={primaryTab:true},statuses=[],saveStatuses=[],checkpoints=[],reads=[];
-  const cloud={seq:1,base:{revision:479,ackSeq:0,state:normalization.prepareKupaCloudState(model.state)},pending:true,flight:null,control:{conflict:{kind:'record-conflict',domain:'kupa'}}};
+  const cloud={seq:1,base:{owner:'A:kupa',epoch:'E',revision:479,ackSeq:0,state:normalization.prepareKupaCloudState(model.state)},pending:true,flight:null,control:{conflict:{kind:'record-conflict',domain:'kupa'}}};
   const remote={revision:480,financeRevision:11,financeAvailable:true,financeUpdatedAt:'2026-10-08T07:00:00Z',state:clone(model.state)};
   remote.state.notes=[{id:'remote-note',content:'remote work',createdAt:'2026-10-08',updatedAt:'2026-10-08'}];
   remote.state.bank={...remote.state.bank,source:'hapoalim',currentBalance:12345,updatedAt:'2026-10-08T07:00:00Z',asOfDate:'2026-10-08',bankSyncAt:'2026-10-08T07:00:00Z'};
@@ -28,6 +28,7 @@ function fixture({onCheckpoint=async()=>{},financeReadError=null}={}){
   const sharedChecksV2={requested:true,primaryReady:true,hasLocalWork:false,lastRemoteUpdatedAt:'2026-10-08T07:00:00Z',sync:async()=>true,cloudState:async()=>({seq:0,base:{revision:139,ackSeq:0,owner:'A',epoch:'E',state:{checks:[],bankEvents:[]}},pending:false,flight:null,control:null})};
   const checks=createSyncChecks({sharedChecksV2,checksSession,model,session,tab,loadSession:()=>({user:{id:'A'}}),toast:noop,render:noop,setSaveStatus:(text,mode)=>setSaveStatus(text,mode,'shared-checks'),setCloudHeaderStatus:(mode,text)=>setCloudHeaderStatus(mode,text,'shared-checks'),refreshCloudHeaderTimestamp:status.refreshCloudHeaderTimestamp});
   const api=createSyncDocument({model,session,checksSession,tab,
+    getCloudWriteScope:()=>({owner:'A:kupa',epoch:'E',accountOwner:'A',loginEpoch:1,writable:tab.primaryTab}),
     prepareKupaCloudState:normalization.prepareKupaCloudState,applyKupaCloudState:normalization.applyKupaCloudState,
     refreshStorageV2CloudState:async()=>clone(cloud),storageV2CloudOutboxActive:()=>true,
     readSupabaseDocument:async()=>{reads.push('main');return clone(remote)},
@@ -36,7 +37,7 @@ function fixture({onCheckpoint=async()=>{},financeReadError=null}={}){
     clearStorageV2CloudControl:async({onlyIfClean})=>{assert.equal(onlyIfClean.kind,cloud.control.conflict.kind);assert.equal(onlyIfClean.seq,cloud.seq);assert.equal(onlyIfClean.baseRevision,cloud.base.revision);cloud.control=null;return true},
     assertAccountOwner:()=>true,syncSharedChecksFromCloud:checks.syncSharedChecksFromCloud,
     listBackups:async()=>[],backupSnapshotToComputer:async()=>{},setConnectedStatus:noop,hideConnectScreen:noop,
-    adoptStorageV2CloudHead:async(revision,state,{cloudState})=>{cloud.base={revision,state:clone(cloudState),ackSeq:cloud.seq};checkpoints.push(clone(state));return {seq:cloud.seq,revision}},
+    adoptStorageV2CloudHead:async(revision,state,{cloudState})=>{cloud.base={...cloud.base,revision,state:clone(cloudState),ackSeq:cloud.seq};checkpoints.push(clone(state));return {seq:cloud.seq,revision}},
     pollSharedChecks:checks.pollSharedChecks,setCloudHeaderStatus,setSaveStatus,
     render:noop,toast:noop,refreshOrdersFinanceSummary:async()=>false,
   });

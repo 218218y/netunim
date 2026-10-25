@@ -45,7 +45,7 @@ async function confirmCloudSynced(generation,observedHead,{force=false,scope=nul
 }
 
 /** @type {import('../shared/sync-document-contracts.js').Confirmation['markCloudPollSynced']} */
-async function markCloudPollSynced(generation,observedHead){return (await confirmCloudSynced(generation,observedHead)).synced}
+async function markCloudPollSynced(generation,observedHead,options={}){return (await confirmCloudSynced(generation,observedHead,options)).synced}
 
 /** @param {unknown} error @returns {false} */
 function markCloudPollFailure(error){

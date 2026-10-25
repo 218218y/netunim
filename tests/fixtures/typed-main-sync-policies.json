@@ -1,6 +1,6 @@
 {
   "base": "1e66be1a",
-  "reason": "Reviewed checked-body guards, JSON object admission, captured base revisions and current null-head rejection. Existing policy fixture stays frozen; actual-body mutations and ownership/hydration/rebase tests remain mandatory.",
+  "reason": "Reviewed checked-body guards, JSON object admission, captured base revisions and current null-head rejection. Existing policy fixture stays frozen; actual-body mutations and ownership/hydration/rebase tests remain mandatory. Reviewed poll ownership callbacks now guard Finance reads and Main commits/publication; held account/epoch/login regressions require this authority change.",
   "policies": {
     "orders": {
       "adoptRemoteRow": {
@@ -23,15 +23,19 @@
       },
       "applyFinanceOnlyRow": {
         "before": "f72c8d3884b75ef53c7b1fcfb8d56f2e8640e63f47a9979ba50d2b20601f79a2",
-        "after": "4d989fd563da6b83cf0673825396ec35a40577e07dfecdb57beda416948de038"
+        "after": "cc3b152a6b164c2128d1d24289b47be0753f1b03c39ebd7b686b57107e87fe0c"
       },
       "applyCloudRow": {
         "before": "187384518da733c74d01a0ec1edf8d2a37f725929ada50fd0f9fb0150bb8b02c",
-        "after": "eafc9f78974a4120bd1f91351e7b3b05b47f80eb7c0d12bdeecccbdd89ddaa77"
+        "after": "84c564d64d854014fdc22fe2cb070943b4d9de016c24c0fd77393fed4004b3a3"
       },
       "runStorageV2CloudSave": {
         "before": "bfa575b3836add922b50f41c579911bcd45c0bd4ce73842f25f6e5fe3785b98b",
         "after": "486b422ea1de535dddfdf97d91110b56e162dc4f668a5a4ff921415529b22409"
+      },
+      "pollIndependentFinance": {
+        "before": "10a7e8594e18c14a1cc0f2c4f0da71539fe4824975d8c91d98a02e981b0ebaa5",
+        "after": "eebf4409e99cf7d68e8edf982db74892bb0c8fff1b0bc8b76e7016ef68139f33"
       }
     }
   }

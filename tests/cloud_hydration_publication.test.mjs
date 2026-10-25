@@ -46,6 +46,13 @@ test('Kupa local edit during hydration stays visible and creates a durable publi
   assert.equal(f.controls.at(-1).conflict.kind,'concurrent-hydration');
 });
 
+test('Kupa poll cancellation during the actual checkpoint commit cannot publish or fence a replacement',async t=>{
+  let current=true;
+  const f=kupaFixture({adopt:async()=>{current=false}});t.after(f.stop);const before=clone(f.model.state);
+  await assert.rejects(f.api.applyCloudRow(f.remote,{isCurrent:()=>current}),/cloud_hydration_publication_stale/);
+  assert.deepEqual(f.model.state,before);assert.equal(f.session.dbRevision,10);assert.equal(f.controls.length,0);
+});
+
 test('Kupa Shared failure after Main commit cannot roll back its committed Main cursor',async t=>{
   const f=kupaFixture({secondary:async()=>{throw new TypeError('Failed to fetch')}});t.after(f.stop);
   await assert.rejects(f.api.applyCloudRow(f.remote),/Failed to fetch/);

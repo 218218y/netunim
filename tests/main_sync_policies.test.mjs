@@ -54,8 +54,8 @@ for(const [app,policies] of Object.entries(baseline.policies)){
     // Reviewed audit change: persist bounded backoff for transient errors with
     // no Retry-After. Preserve every other historical save-policy token.
     const reviewed=name==='runStorageV2CloudSave'?expected.replace('const normalized=normalizeCloudError(error),attempts=Number(state?.control?.retry?.attempts||0)+1,nextAttemptAt=normalized.retryAfterMs?new Date(Date.now()+normalized.retryAfterMs).toISOString():null,retry={attempts,lastErrorCode:normalized.code||normalized.kind,lastAttemptAt:new Date().toISOString(),nextAttemptAt};','const retry=createCloudRetryControl(error,state?.control?.retry);'):expected;
-    // Seven reviewed checked-body changes add shape/null guards and capture
-    // validated base revisions before callbacks. Freeze both sides separately;
+    // Reviewed checked-body changes add shape/null guards, capture validated
+    // revisions and fence poll publication. Freeze both sides separately;
     // the historical policy fixture is never regenerated to accept a change.
     const typed=typedPolicies.policies[app]?.[name];
     if(typed){assert.equal(digest(reviewed),typed.before);assert.equal(digest(actual),typed.after)}
