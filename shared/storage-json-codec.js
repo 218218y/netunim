@@ -2,6 +2,7 @@
 
 /**
  * @typedef {import('./storage-json.js').StorageJson} StorageJson
+ * @typedef {import('./storage-json.js').StorageJsonObject} StorageJsonObject
  */
 /** @template {StorageJson} Data @typedef {{data: Data, checksum: string}} SealedStorageRecord */
 /** @typedef {<Result>(name: string, work: () => Result) => Result} StorageRecordMeasure */
@@ -33,6 +34,14 @@ function validJson(value){
 export function assertStorageJson(value){
   if(validJson(value))return value;
   throw new Error('storage_non_json_value');
+}
+
+/** Admit a deeply validated JSON object, including unknown conflict evidence.
+ * @param {unknown} value @returns {StorageJsonObject} */
+export function assertStorageJsonObject(value){
+  const json=assertStorageJson(value);
+  if(!json||typeof json!=='object'||Array.isArray(json))throw new Error('storage_json_object_required');
+  return json;
 }
 
 /** @param {StorageJson} value @returns {string} */

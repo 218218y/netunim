@@ -1,4 +1,5 @@
 import {commitCloudCheckpoint} from './cloud-checkpoint-publication.js';
+import {responseProperty} from './response-evidence.js';
 
 // A new local head is not a new remote conflict. Prove its visible edits are
 // journaled, merge only that delta onto the committed ACK candidate, and CAS a
@@ -6,7 +7,9 @@ import {commitCloudCheckpoint} from './cloud-checkpoint-publication.js';
 // Two immediate attempts, then (only for a moving local head) up to four quiet
 // retries owned by the existing save operation. No new flight, ACK or timer
 // owner is created. Unproven data and real conflicts still fail closed.
+/** @param {import('./sync-document-contracts.js').PostAckPorts} ports @param {import('./sync-document-contracts.js').PostAckCandidate} candidate */
 export async function recoverPostAckPublication(ports,{previousState,candidateState,candidateSeq,baseState,ackRevision,ackSeq}){
+  /** @param {string} reason @param {number} attempt */
   const diagnose=(reason,attempt)=>ports.diagnose?.({reason,attempt});
   for(let attempt=0;attempt<6;attempt++){
     if(!ports.isCurrent()){diagnose('scope_lost',attempt);return null}
@@ -41,8 +44,8 @@ export async function recoverPostAckPublication(ports,{previousState,candidateSt
       diagnose('publication_stale',attempt);
     }catch(error){
       if(!ports.isCurrent()){diagnose('scope_lost',attempt);return null}
-      if(error?.message==='storage_cloud_scope_changed'&&ports.generation()!==generation){diagnose('cas_stale_generation',attempt);continue}
-      if(error?.message!=='storage_cloud_recovery_stale'){diagnose('storage_error',attempt);throw error}
+      if(responseProperty(error,'message')==='storage_cloud_scope_changed'&&ports.generation()!==generation){diagnose('cas_stale_generation',attempt);continue}
+      if(responseProperty(error,'message')!=='storage_cloud_recovery_stale'){diagnose('storage_error',attempt);throw error}
       diagnose('cas_stale',attempt);
     }
   }

@@ -1,9 +1,12 @@
+import {assertStorageJsonObject} from '../shared/storage-json-codec.js';
+import {responseProperty} from '../shared/response-evidence.js';
 import {normalizeCloudError,contentionDelay,CLOUD_WRITE_POLICY,operationAuditMetadata,runBusyCloudWriteWithPolicy,structuredSyncConflict,cloudWriteError} from '../shared/cloud-sync.js';
 import {cloudWriteScopeIsCurrent} from '../shared/cloud-write-scope.js';
 import {equalSyncJson} from '../shared/sync-json.js';
 import {clone} from '../core/values.js';
 
 // Owns one immutable send and conflict rebase.
+/** @param {import('../shared/sync-document-contracts.js').OrdersWriteFlightPorts} ports */
 export function createCloudWriteFlight({model,session,access,journal,projection,transport,view,publication,recovery={}}){
   const {writeScopeCurrent,getCloudWriteScope=()=>null}=access;
   const {refreshStorageV2CloudState=async()=>null,materializeStorageV2CloudFlight=async()=>null,rejectStorageV2CloudFlight=async()=>null,setWriteControl}=journal;
@@ -13,18 +16,29 @@ export function createCloudWriteFlight({model,session,access,journal,projection,
   const {publishAcknowledgedFlight}=publication;
   const {readStorageV2CloudRecovery,commitStorageV2CloudRecovery}=recovery;
 
+/** @param {import('../shared/sync-document-contracts.js').RpcResult|null} res */
 function revisionConflict(res){return !res?.r?.ok&&normalizeCloudError(res).kind==='revision_conflict'}
 
+/** @param {import('../shared/sync-document-contracts.js').RpcResult|null} res */
 function saveBusy(res){return !res?.r?.ok&&normalizeCloudError(res).kind==='busy'}
 
 function contentionBackoff(attempt=0){return new Promise(resolve=>setTimeout(resolve,contentionDelay(attempt)))}
 
-function normalizeDeleteIntents(value){const out={};if(!value||typeof value!=='object'||Array.isArray(value))return out;for(const [key,ids] of Object.entries(value)){const clean=[...new Set((Array.isArray(ids)?ids:[]).map(x=>String(x||'').trim()).filter(Boolean))].sort();if(clean.length)out[key]=clean}return out}
+/** @param {unknown} value @returns {import('../shared/storage-records.js').StorageDeleteIntents} */
+function normalizeDeleteIntents(value){
+  /** @type {import('../shared/storage-records.js').StorageDeleteIntents} */
+  const out={};if(!value||typeof value!=='object'||Array.isArray(value))return out;for(const [key,ids] of Object.entries(value)){/** @type {unknown[]} */ const entries=Array.isArray(ids)?ids:[];const clean=[...new Set(entries.map(x=>String(x||'').trim()).filter(Boolean))].sort();if(clean.length)out[key]=clean}return out}
 
-function collectionRows(state,key){const value=key.split('.').reduce((obj,part)=>obj?.[part],state);return Array.isArray(value)?value:[]}
+/** @param {import('../shared/storage-json.js').StorageJsonObject} state @param {string} key @returns {unknown[]} */
+function collectionRows(state,key){let value=/** @type {unknown} */(state);for(const part of key.split('.'))value=responseProperty(value,part);return Array.isArray(value)?value:[]}
 
-function effectiveDeleteIntents(base,candidate,intents){const out={},declared=normalizeDeleteIntents(intents);for(const [key,ids] of Object.entries(declared)){const before=collectionRows(base,key),after=collectionRows(candidate,key),keyField=key==='cards'?'name':'id',kept=new Set(after.map(x=>String(x?.[keyField]??'')));const removed=before.map(x=>String(x?.[keyField]??'')).filter(id=>id&&ids.includes(id)&&!kept.has(id)).sort();if(removed.length)out[key]=removed}return out}
+/** @param {import('../shared/storage-json.js').StorageJsonObject} base @param {import('../shared/storage-json.js').StorageJsonObject} candidate @param {unknown} intents @returns {import('../shared/storage-records.js').StorageDeleteIntents} */
+function effectiveDeleteIntents(base,candidate,intents){
+  /** @type {import('../shared/storage-records.js').StorageDeleteIntents} */
+  const out={};
+  const declared=normalizeDeleteIntents(intents);for(const [key,ids] of Object.entries(declared)){const before=collectionRows(base,key),after=collectionRows(candidate,key),keyField=key==='cards'?'name':'id',kept=new Set(after.map(x=>String(responseProperty(x,keyField)??'')));const removed=before.map(x=>String(responseProperty(x,keyField)??'')).filter(id=>id&&ids.includes(id)&&!kept.has(id)).sort();if(removed.length)out[key]=removed}return out}
 
+/** @param {import('../shared/storage-cloud-records.js').StoredCloudFlight|null} initialFlight @param {import('../shared/sync-document-contracts.js').Scope} scope */
 async function saveStorageV2CloudFlight(initialFlight,scope){
   let state=await refreshStorageV2CloudState(),flight=initialFlight||state?.flight;
   if(!state?.base||!flight)throw new Error('orders_v2_flight_missing');
@@ -32,7 +46,7 @@ async function saveStorageV2CloudFlight(initialFlight,scope){
   let base=prepareCloudState(state.base.state),serverSnapshot=prepareCloudState(flight.snapshot),expected=Number(flight.baseRevision),res=null;
   for(let conflictAttempt=0;conflictAttempt<CLOUD_WRITE_POLICY.conflictAttempts;conflictAttempt++){
     const deleteIntents=normalizeDeleteIntents(flight.deleteIntents),exactIntents=effectiveDeleteIntents(base,serverSnapshot,deleteIntents),deleteCount=Object.values(exactIntents).reduce((sum,ids)=>sum+ids.length,0),audit=operationAuditMetadata({site:'orders',mutationType:exactIntents['notesSheet.sheets']?.length?'bulk-delete':flight.mutationType||'autosave',surface:flight.surface||'orders',baseRevision:expected,beforeState:base,afterState:serverSnapshot,collections:['suppliers','transactions','customerDebts','customerOrders','serviceCalls','notes','inventoryItems','inventoryEvents','warehouseOrders','notesSheet.sheets','notesSheet.columns','notesSheet.rows'],deleteCount});
-    res=await runBusyCloudWriteWithPolicy(()=>{if(!writeScopeCurrent(scope))throw Object.assign(new Error('cloud_sync_scope_changed'),{code:'cloud_sync_scope_changed'});return rpcSaveV2(serverSnapshot,expected,flight.operationId,exactIntents,audit)});
+    const sendingFlight=flight;res=await runBusyCloudWriteWithPolicy(()=>{if(!writeScopeCurrent(scope))throw Object.assign(new Error('cloud_sync_scope_changed'),{code:'cloud_sync_scope_changed'});return rpcSaveV2(serverSnapshot,expected,sendingFlight.operationId,exactIntents,audit)});
     if(!writeScopeCurrent(scope))return false;
     if(saveBusy(res))throw new Error('save_busy');
     if(!revisionConflict(res))break;
@@ -46,8 +60,9 @@ async function saveStorageV2CloudFlight(initialFlight,scope){
     if(!state?.flight||state.flight.operationId!==flight.operationId)throw new Error('orders_v2_flight_changed_before_rebase');
     const expectedSeq=state.seq;
     if(merged.conflicts.length){
-      const conflict=structuredSyncConflict({domain:'orders',conflicts:merged.conflicts,base,local:serverSnapshot,remote:remoteState,generation:flight.generation,baseRevision:expected,currentRemoteRevision:remoteRevision});
-      const conflictCommit=await rejectStorageV2CloudFlight(flight.operationId,remoteRevision,remoteState,{currentState:model.state,expectedSeq,control:{conflict}});if(!writeScopeCurrent(scope,conflictCommit?.cloudState||conflictCommit))return false;
+      const conflict=assertStorageJsonObject(structuredSyncConflict({domain:'orders',conflicts:merged.conflicts,base,local:serverSnapshot,remote:remoteState,generation:Number(flight.generation||0),baseRevision:expected,currentRemoteRevision:remoteRevision}));
+      const conflictCommit=await rejectStorageV2CloudFlight(flight.operationId,remoteRevision,remoteState,{currentState:model.state,expectedSeq,control:{conflict}});
+      if(!writeScopeCurrent(scope,conflictCommit?.cloudState||conflictCommit))return false;
       session.lastCloudState=clone(remoteState);session.cloudRevision=remoteRevision;session.cloudUpdatedAt=remote.updated_at||session.cloudUpdatedAt;session.cloudConflictBlocked=true;session.cloudSaveRequested=false;
       setCloud('ענן: התנגשות','error');toast('יש התנגשות בענן באותה רשומה. הנתונים המקומיים נשמרו ולא נדרסו.');return false
     }
@@ -56,8 +71,9 @@ async function saveStorageV2CloudFlight(initialFlight,scope){
     if(state.afterFlightPending){
       const rebased=merge3(serverSnapshot,prepareCloudState(model.state),merged.state,{deleteIntents:state.afterFlightDeleteIntents||{}});
       if(rebased.conflicts.length){
-        const conflict=structuredSyncConflict({domain:'orders',conflicts:rebased.conflicts,base:serverSnapshot,local:prepareCloudState(model.state),remote:merged.state,generation:state.afterFlightGeneration,baseRevision:expected,currentRemoteRevision:remoteRevision});
-        const conflictCommit=await rejectStorageV2CloudFlight(previousOperationId,remoteRevision,remoteState,{currentState:model.state,expectedSeq,control:{conflict}});if(!writeScopeCurrent(scope,conflictCommit?.cloudState||conflictCommit))return false;
+        const conflict=assertStorageJsonObject(structuredSyncConflict({domain:'orders',conflicts:rebased.conflicts,base:serverSnapshot,local:prepareCloudState(model.state),remote:merged.state,generation:state.afterFlightGeneration,baseRevision:expected,currentRemoteRevision:remoteRevision}));
+        const conflictCommit=await rejectStorageV2CloudFlight(previousOperationId,remoteRevision,remoteState,{currentState:model.state,expectedSeq,control:{conflict}});
+      if(!writeScopeCurrent(scope,conflictCommit?.cloudState||conflictCommit))return false;
         session.cloudConflictBlocked=true;session.cloudSaveRequested=false;setCloud('ענן: התנגשות','error');return false;
       }
       currentCloud=rebased.state;
@@ -76,7 +92,7 @@ async function saveStorageV2CloudFlight(initialFlight,scope){
         const recovered=await recoverPostAckPublication({isCurrent:head=>writeScopeCurrent(scope,head),generation:()=>Number(session.localGeneration||0),visible:()=>model.state,
           equal:(a,b)=>equalSyncJson(prepareCloudState(a),prepareCloudState(b)),merge:(before,local,candidate,deleteIntents)=>merge3(prepareCloudState(before),prepareCloudState(local),prepareCloudState(candidate),{deleteIntents}),
           read:readStorageV2CloudRecovery,commit:(value,options)=>commitStorageV2CloudRecovery(composeOrderCloudState(value,model.state),options),publish:applyOrderCloudState},
-          {previousState,candidateState:rebasedCurrent,candidateSeq:expectedSeq,baseState:remoteState,ackRevision:remoteRevision,ackSeq:state.base.ackSeq});
+          {previousState,candidateState:rebasedCurrent,candidateSeq:expectedSeq,baseState:remoteState,ackRevision:remoteRevision,ackSeq:state.base?.ackSeq||0});
         recoveredPublication=!!recovered;
       }catch(error){console.error('rebase recovery retained for review',error)}
     }

@@ -1,15 +1,17 @@
+import {responseProperty} from '../shared/response-evidence.js';
 import {cloudHeadIsSynced} from '../shared/storage-cloud-status.js';
 import {jsonEq} from './merge-records.js';
 import {normalizeCloudError} from '../shared/cloud-sync.js';
 
 // Owns confirmation for Main; journal and secondary domains remain ports.
+/** @param {import('../shared/sync-document-contracts.js').KupaConfirmationPorts} ports */
 export function createCloudConfirmation({model,session,tab,access,state,view}){
   const {isOnline,storageV2PreparationActive,storageV2CloudOutboxActive,assertAccountOwner,writeScopeCurrent}=access;
   const {prepareKupaCloudState,refreshStorageV2CloudState}=state;
   const {setSaveStatus,setCloudHeaderStatus}=view;
 
 
-function pollAccessCurrent(){return !storageV2PreparationActive()&&tab.primaryTab&&isOnline()&&session.connectionMode==='supabase'&&session.backendReady&&storageV2CloudOutboxActive()&&!session.syncCapabilitiesError&&!session.syncCapabilitiesChecking}
+function pollAccessCurrent(){return !storageV2PreparationActive()&&tab.primaryTab&&isOnline()&&session.connectionMode==='supabase'&&!!session.backendReady&&storageV2CloudOutboxActive()&&!session.syncCapabilitiesError&&!session.syncCapabilitiesChecking}
 
 function cloudScopeAccess(force=false){
   if(storageV2PreparationActive()||session.storageProtocolBlocked||!tab.primaryTab||!storageV2CloudOutboxActive()||session.syncCapabilitiesError||session.syncCapabilitiesChecking||(!force&&(session.connectionMode!=='supabase'||!session.backendReady)))return false;
@@ -18,8 +20,10 @@ function cloudScopeAccess(force=false){
 
 function cloudConfirmationAccess(force=false){return isOnline()&&cloudScopeAccess(force)}
 
+/** @param {import('../shared/sync-document-contracts.js').Head} head @param {import('../shared/sync-document-contracts.js').Head} observedHead */
 function sameCloudScope(head,observedHead){return !!head?.base&&!!observedHead?.base&&head.base.owner===observedHead.base.owner&&head.base.epoch===observedHead.base.epoch}
 
+/** @type {import('../shared/sync-document-contracts.js').Confirmation['confirmCloudSynced']} */
 async function confirmCloudSynced(generation,observedHead,{force=false,scope=null}={}){
   let head;
   try{head=await refreshStorageV2CloudState()}catch(error){
@@ -27,7 +31,7 @@ async function confirmCloudSynced(generation,observedHead,{force=false,scope=nul
     return {synced:false,head:null,advanced:false};
   }
   if(scope&&!writeScopeCurrent(scope,head))return {synced:false,head,advanced:false};
-  if(!cloudConfirmationAccess(force)||!sameCloudScope(head,observedHead)){
+  if(!head?.base||!observedHead?.base||!cloudConfirmationAccess(force)||!sameCloudScope(head,observedHead)){
     if(!isOnline()&&cloudScopeAccess(force)&&sameCloudScope(head,observedHead)){setSaveStatus('אופליין — שינוי שמור מקומית וממתין','saving');setCloudHeaderStatus('offline','ענן: אופליין')}
     return {synced:false,head,advanced:false};
   }
@@ -40,14 +44,16 @@ async function confirmCloudSynced(generation,observedHead,{force=false,scope=nul
   setSaveStatus?.('מסונכרן לענן','ok');setCloudHeaderStatus?.('synced','ענן: מסונכרן');return {synced:true,head,advanced:false};
 }
 
+/** @type {import('../shared/sync-document-contracts.js').Confirmation['markCloudPollSynced']} */
 async function markCloudPollSynced(generation,observedHead){return (await confirmCloudSynced(generation,observedHead)).synced}
 
+/** @param {unknown} error @returns {false} */
 function markCloudPollFailure(error){
   const normalized=normalizeCloudError(error),transient=['network','timeout','service_unavailable','rate_limited'].includes(normalized.kind);
   if(!isOnline()){setSaveStatus?.('אופליין — שינויים יישמרו מקומית','saving');setCloudHeaderStatus?.('offline','ענן: אופליין')}
   else if(transient){setSaveStatus?.('ממתין לחידוש חיבור הענן','saving');setCloudHeaderStatus?.('syncing','ענן: ממתין להתאוששות')}
   else{setSaveStatus?.('בדיקת הענן נכשלה','error');setCloudHeaderStatus?.('conflict','ענן: שגיאת סנכרון')}
-  if(transient)console.warn('cloud poll deferred',error?.message||error);else console.error('cloud poll',error);
+  if(transient)console.warn('cloud poll deferred',responseProperty(error,'message')||error);else console.error('cloud poll',error);
   return false
 }
 
