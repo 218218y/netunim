@@ -202,3 +202,29 @@ The final declaration review also narrows authoritative replacement and cloud
 reset options to require a boundary ID, matching their existing runtime guard.
 Negative consumers and an actual-body boundary-ID mutation enforce the signature;
 an active-owner regression confirms missing IDs cannot alter the journal epoch.
+
+## Fail-closed activation and publication
+
+The next review confirmed premature readiness in all three Shared entry paths:
+recovery enabled writes before the final Journal read/publication, and cloud/local
+initialization enabled them before `applyState`. Seven new regressions failed on
+the old implementation, including repeated recovery of an already active writer.
+
+Activation now closes admission before asynchronous work starts and shares one
+opening operation per store. Readiness and success counters are published only
+after the visible state applies successfully and current authority is rechecked.
+Failures clear readiness and retain local-work uncertainty. Sync and bank refresh
+reject before cloud actions; flush also rechecks activation after its queue wait.
+Concurrent initialization cannot overtake recovery or another initialization.
+
+Fourteen deterministic real-Journal/Memory DB tests cover publication read and DB
+failures, throwing cloud/local `applyState`, retained pending data/epoch/cursor,
+same-store retry, successful subsequent edits, in-progress admission, overlapping
+initialization/flush and stale A-B/A-B-A successes and failures. Existing owner,
+generation, boundary and crash-phase regressions remain mandatory in CI. The
+opening contract reflects initialization's replay result as well as recovery.
+No Journal/Storage/RPC format, owner-generation protocol or V1 route changed.
+
+Measured eager source is 1,890,527/2,510,704 bytes (310/406 modules). The shared
+activation guard adds about 1KB per app. Source allowances increase by 1,000 bytes
+per app to 1,891,000/2,511,000; module and timing budgets remain unchanged.

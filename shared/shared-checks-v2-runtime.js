@@ -44,7 +44,7 @@ export function createSharedChecksV2Runtime({owner:configuredOwner,primary:confi
     return store;
   }
   /** @param {Store|null} [store] @returns {Store} */
-  function assertSyncAllowed(store=storage){const active=assertContext(store);if(boundaryGate())throw new Error('storage_boundary_in_progress');return active}
+  function assertSyncAllowed(store=storage){const storeContext=assertContext(store);if(!active)throw new Error('shared_checks_not_recovered');if(boundaryGate())throw new Error('storage_boundary_in_progress');return storeContext}
   /** @param {Store|null} store */
   const current=store=>!!store&&store===storage&&identity===currentOwner()&&commitAuthority();
   /** @param {Store} store @param {string|null} epoch */
@@ -70,18 +70,27 @@ export function createSharedChecksV2Runtime({owner:configuredOwner,primary:confi
     }
     throw new Error('shared_checks_concurrent_publish');
   }
+  /** @template {import('./storage-journal-model.js').ReplayedStorageJournal|null} T @param {Store} store @param {()=>Promise<T>} task */
+  function activate(store,task){
+    if(opening?.store===store)throw new Error('shared_checks_activation_in_progress');
+    active=false;cursorReady=false;workPending=true;
+    const promise=Promise.resolve().then(task).catch(error=>{
+      if(current(store)){active=false;cursorReady=false;workPending=true;incidentRecoveryBlocked=storageRecoveryFailure(error)==='fatal'||/^shared_checks_(cursor_missing|local_head_invalid)$/.test(errorMessage(error))}
+      throw error;
+    });
+    opening={store,promise};promise.finally(()=>{if(opening?.promise===promise)opening=null}).catch(()=>{});return promise;
+  }
   function recover(){
     const store=context();if(opening?.store===store)return opening.promise;
-    const promise=(async()=>{
+    return activate(store,async()=>{
       const recovered=await store.open();assertContext(store);
       if(!recovered)return null;
       const cloud=await store.cloudState();assertContext(store);
       if(!cloud.base&&currentOwner()!=='local')throw new Error('shared_checks_cursor_missing');
       if(!cloud.base&&(cloud.flight||cloud.control))throw new Error('shared_checks_local_head_invalid');
-      active=true;cursorReady=!!cloud.base;workPending=!!(cloud.pending||cloud.flight||cloud.control);diagnostics.recoveries++;
-      const result=await publish(store);assertContext(store);incidentRecoveryBlocked=false;return result;
-    })().catch(error=>{if(current(store))incidentRecoveryBlocked=storageRecoveryFailure(error)==='fatal'||/^shared_checks_(cursor_missing|local_head_invalid)$/.test(errorMessage(error));throw error});
-    opening={store,promise};promise.finally(()=>{if(opening?.promise===promise)opening=null}).catch(()=>{});return promise;
+      const result=await publish(store);assertContext(store);
+      active=true;cursorReady=!!cloud.base;workPending=!!(cloud.pending||cloud.flight||cloud.control);diagnostics.recoveries++;incidentRecoveryBlocked=false;return result;
+    });
   }
   async function recoverReadOnly(){
     if(!primaryMode()||!currentOwner())return null;
@@ -101,15 +110,18 @@ export function createSharedChecksV2Runtime({owner:configuredOwner,primary:confi
     const store=context(),snapshot=canonical(state);
     if(active)throw new Error('shared_checks_already_active');
     assertContext(store);
-    let recovered;
-    try{recovered=await store.initializeCloudHead(revision,snapshot,{intent,sourceOwner,bootstrapOperationId})}
-    catch(error){
-      if(errorMessage(error)!=='storage_initialization_exists'||!String(bootstrapOperationId||'').trim())throw error;
-      recovered=await store.open();const cloud=await store.cloudState();
-      if(!recovered||recovered.appMetadata?.bootstrapOperationId!==bootstrapOperationId||recovered.appMetadata?.migrationIntent!==intent||recovered.appMetadata?.sourceOwner!==sourceOwner||cloud?.base?.revision!==revision||!equalSyncJson(recovered.state,snapshot))throw new Error('shared_checks_bootstrap_existing_head_mismatch');
-    }
-    const cloud=await store.cloudState();assertContext(store);
-    active=true;cursorReady=true;workPending=!!(cloud.pending||cloud.flight||cloud.control);diagnostics.initializations++;applyState(canonical(recovered.state));return recovered;
+    return activate(store,async()=>{
+      let recovered;
+      try{recovered=await store.initializeCloudHead(revision,snapshot,{intent,sourceOwner,bootstrapOperationId})}
+      catch(error){
+        if(errorMessage(error)!=='storage_initialization_exists'||!String(bootstrapOperationId||'').trim())throw error;
+        recovered=await store.open();const cloud=await store.cloudState();
+        if(!recovered||recovered.appMetadata?.bootstrapOperationId!==bootstrapOperationId||recovered.appMetadata?.migrationIntent!==intent||recovered.appMetadata?.sourceOwner!==sourceOwner||cloud?.base?.revision!==revision||!equalSyncJson(recovered.state,snapshot))throw new Error('shared_checks_bootstrap_existing_head_mismatch');
+      }
+      const cloud=await store.cloudState();assertContext(store);
+      applyState(canonical(recovered.state));assertContext(store);
+      active=true;cursorReady=true;workPending=!!(cloud.pending||cloud.flight||cloud.control);diagnostics.initializations++;incidentRecoveryBlocked=false;return recovered;
+    });
   }
   /** @type {Methods['initializeLocal']} */
   async function initializeLocal(options){
@@ -117,10 +129,13 @@ export function createSharedChecksV2Runtime({owner:configuredOwner,primary:confi
     const store=context(),snapshot=canonical(state);
     if(identity!=='local')throw new Error('shared_checks_local_owner_required');
     assertContext(store);
-    const recovered=await store.open({migrationState:snapshot,migrationIntent:'local-birth',sourceOwner:'local'});
-    if(!recovered||!equalSyncJson(canonical(recovered.state),snapshot))throw new Error('shared_checks_local_birth_parity_mismatch');
-    const cloud=await store.cloudState();if(cloud.base||cloud.flight||cloud.control)throw new Error('shared_checks_local_birth_cloud_head_exists');
-    assertContext(store);active=true;cursorReady=false;workPending=false;diagnostics.initializations++;applyState(snapshot);return recovered;
+    return activate(store,async()=>{
+      const recovered=await store.open({migrationState:snapshot,migrationIntent:'local-birth',sourceOwner:'local'});
+      if(!recovered||!equalSyncJson(canonical(recovered.state),snapshot))throw new Error('shared_checks_local_birth_parity_mismatch');
+      const cloud=await store.cloudState();if(cloud.base||cloud.flight||cloud.control)throw new Error('shared_checks_local_birth_cloud_head_exists');
+      assertContext(store);applyState(snapshot);assertContext(store);
+      active=true;cursorReady=false;workPending=false;diagnostics.initializations++;incidentRecoveryBlocked=false;return recovered;
+    });
   }
   /** @type {Methods['persist']} */
   function persist(operations,options={}){
@@ -265,7 +280,7 @@ export function createSharedChecksV2Runtime({owner:configuredOwner,primary:confi
   return {incidentSample,recover,recoverReadOnly,initialize,initializeLocal,persist,sync,refreshBankMatches,diagnostics,setBoundaryGate:(/** @type {()=>boolean} */ gate)=>{if(typeof gate!=='function')throw new Error('storage_boundary_gate_invalid');boundaryGate=gate},
     replaceAuthoritativeState,replaceLocalWithPending,replaceLocalAuthoritativeState,resetCloudHead,
     async cloudState(){const store=assertContext(),epoch=store.epoch,cloud=await store.cloudState();assertEpoch(store,epoch);cursorReady=!!cloud.base;if(cloud.pending||cloud.flight||cloud.control)workPending=true;return cloud},
-    async flush(){const store=assertContext(),epoch=store.epoch;if(!active)throw new Error('shared_checks_not_recovered');await store.settled();assertEpoch(store,epoch);if(!store.ready)throw new Error('shared_checks_not_recovered');return true},
+    async flush(){const store=assertContext(),epoch=store.epoch;if(!active)throw new Error('shared_checks_not_recovered');await store.settled();assertEpoch(store,epoch);if(!active||!store.ready)throw new Error('shared_checks_not_recovered');return true},
     get requested(){return primaryMode()},
     get primaryReady(){return localReady()},
     get localReady(){return localReady()},
