@@ -340,6 +340,11 @@
     "shared/restore-server-recovery.js",
     "shared/bank-response-records.js",
     "tests/fixtures/checked-bank-response-records.mjs",
-    "tests/fixtures/checked-cloud-read-records.mjs"
+    "tests/fixtures/checked-cloud-read-records.mjs",
+    "shared/storage-v2-runtime.js",
+    "shared/storage-v2-activation-cache.js",
+    "shared/sync-journal-incident.js",
+    "shared/sync-incident-model.js",
+    "tests/fixtures/checked-storage-runtime.mjs"
   ]
 }

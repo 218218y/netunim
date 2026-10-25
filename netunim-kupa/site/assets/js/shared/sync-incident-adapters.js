@@ -1,20 +1,7 @@
-import {journalIncidentSample} from './sync-incident-model.js';
 import {assertSpreadsheet} from './spreadsheet-model.js';
 import {equalSyncJson} from './cloud-sync.js';
 
-// Loaded by observers, outside the business journal's startup dependency graph.
-export async function sampleJournalIncident({read,ready,current,epoch,durabilityError,blocked,fatal}){
-  const unavailable=error=>({known:false,blocked:blocked()||ready()&&!!error&&fatal(error)==='fatal',durabilityError:durabilityError(),epoch:epoch()||'unavailable',evidence:'unknown'});
-  if(!ready())return unavailable();
-  try{
-    const cloud=await read();
-    if(!ready())return unavailable();
-    const sample=journalIncidentSample(cloud,{durabilityError:durabilityError(),current:()=>ready()&&!blocked()&&!durabilityError()&&current(cloud)});
-    sample.blocked=sample.blocked||!!blocked();
-    if(sample.blocked)sample.verified=false;
-    return sample;
-  }catch(error){return unavailable(error)}
-}
+export {sampleJournalIncident} from './sync-journal-incident.js';
 
 export async function sampleSpreadsheetIncident({account,domain,primary,store,capture}){
   const scopedOwner=account(),scopedKey=scopedOwner+':'+domain+':main';

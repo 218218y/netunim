@@ -356,6 +356,10 @@ def _netlog_failures(path):
 
 
 class _QuietHandler(http.server.SimpleHTTPRequestHandler):
+    # Reuse loopback sockets across the hundreds of ESM/shell requests in each
+    # cold profile. HTTP/1.0 churn exhausts Windows network buffers in long suites.
+    protocol_version = 'HTTP/1.1'
+
     def log_message(self, _format, *_args):
         pass
 

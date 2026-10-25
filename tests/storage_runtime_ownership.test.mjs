@@ -50,7 +50,7 @@ for(const phase of ['queued','commit','epoch'])test('compaction cannot cross its
 for(const method of ['compact','replaceCurrentState','replaceLocalAuthoritativeState','adoptCloudHead','replaceAuthoritativeState','resetCloudHead','replaceLocalWithPending'])test(method+' completion cannot reset another owner maintenance',async()=>{
   const f=fixture();if(method==='replaceLocalAuthoritativeState')f.owner('local');
   await f.runtime.recover();const a=f.journals[0],hold=deferred();a[method]=()=>hold.promise;
-  const args=method==='compact'?[]:['adoptCloudHead','resetCloudHead'].includes(method)?[1,{},{},{}]:[{},{}];
+  const args=method==='compact'?[]:['adoptCloudHead','resetCloudHead'].includes(method)?[1,{},{},{}]:[{}, {boundaryId:'held-command',expectedSeq:0,expectedBaseRevision:1}];
   const pending=f.runtime[method](...args);await tick();
   f.owner('B');await f.runtime.recover();f.persist();
   hold.resolve(['compact','replaceCurrentState'].includes(method)?0:{seq:0,epoch:a.epoch});await pending;
