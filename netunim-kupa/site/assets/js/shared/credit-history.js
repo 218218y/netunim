@@ -1,7 +1,9 @@
 // Retention is independent of the connector's fetch window: accumulate existing
 // months through ordinary syncs without asking the issuer for older history.
+/** @typedef {Partial<Pick<import('./credit-calculation-contracts.js').BillingRow,'creditAccountKey'|'card'>>} SortRow */
 export const CREDIT_DETAIL_HISTORY_MONTHS=12;
 
+/** @param {unknown} reference */
 export function creditHistoryCutoffMonth(reference){
   const match=/^(\d{4})-(0[1-9]|1[0-2])-/.exec(String(reference||''));
   if(!match)return '';
@@ -9,20 +11,24 @@ export function creditHistoryCutoffMonth(reference){
   return `${Math.floor(index/12)}-${String(index%12+1).padStart(2,'0')}`;
 }
 
+/** @param {unknown} value */
 export function creditCardSortOrder(value){
   if(value===null||value===undefined||String(value).trim()==='')return null;
   const order=Number(value);
   return Number.isSafeInteger(order)&&order>=1?order:null;
 }
 
+/** @param {SortRow} row */
 function creditCardMappingKey(row){return String(row?.creditAccountKey||'').replace(/^sync:/,'')}
 
+/** @param {SortRow} a @param {SortRow} b @param {Record<string,import('./credit-calculation-contracts.js').CardMapping>} [mappings] */
 export function creditCardConfiguredOrderCompare(a,b,mappings={}){
   const left=creditCardSortOrder(mappings[creditCardMappingKey(a)]?.sortOrder),right=creditCardSortOrder(mappings[creditCardMappingKey(b)]?.sortOrder);
   if(left===null&&right===null)return 0;
   return (left??Number.MAX_SAFE_INTEGER)-(right??Number.MAX_SAFE_INTEGER);
 }
 
+/** @param {SortRow} a @param {SortRow} b @param {Record<string,import('./credit-calculation-contracts.js').CardMapping>} [mappings] */
 export function creditCardCompare(a,b,mappings={}){
   return creditCardConfiguredOrderCompare(a,b,mappings)||String(a.card||'').localeCompare(String(b.card||''),'he')||creditCardMappingKey(a).localeCompare(creditCardMappingKey(b));
 }

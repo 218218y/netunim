@@ -358,6 +358,10 @@
     "netunim-kupa/bank-bridge/credit-value-codec.mjs",
     "netunim-kupa/bank-bridge/credit-adapter-wire.mjs",
     "netunim-kupa/bank-bridge/credit-month-plan.mjs",
-    "tests/fixtures/checked-credit-coverage.mjs"
+    "tests/fixtures/checked-credit-coverage.mjs",
+    "shared/kupa-cashflow.js",
+    "shared/finance-derivations.js",
+    "shared/credit-history.js",
+    "tests/fixtures/checked-kupa-cashflow.mjs"
   ]
 }

@@ -4,7 +4,7 @@ import type {AccountRole} from './credit-calculation-contracts.js';
 // Retained bank rows keep their existing unknown-valued evidence fields. This
 // model still reads dates, money, currency and status before admitting a seed.
 export type BankRow = BankIdentityRow;
-export type BankFeed = {accountNumber?:unknown,syncedAt?:unknown,transactions?:BankRow[],recurringDebitHistory?:BankRow[]};
+export type BankFeed = {accountNumber?:unknown,balance?:unknown,syncedAt?:unknown,transactions?:BankRow[],recurringDebitHistory?:BankRow[]};
 export type BankState = {bank?:{source?:unknown,feed?:BankFeed|null,homeFeed?:BankFeed|null}|null};
 export type RecurringRule = {id:string,account:AccountRole,name:string,bankLabels:string[],startMonth:string,day:number,direction?:1|-1,moveSaturday?:boolean};
 export type SourceMovement = {date:string,amount:number,transactionId:unknown};
