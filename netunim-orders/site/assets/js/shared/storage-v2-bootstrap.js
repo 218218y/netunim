@@ -32,7 +32,11 @@ function validateSide(value){
 /** @template Value @param {Value} value @returns {Value & Group} */
 export function assertStorageV2BootstrapGroup(value){
   const data=assertStorageJson(value),group=data!==null&&typeof data==='object'&&!Array.isArray(data)?data:null;
-  if(!group||group.version!==2||(typeof group.app!=='string'||!VALID_APPS.has(group.app))||group.scope!==`${group.app}:${group.owner}`||!String(group.id||'').trim()||!identity(group.owner)||!identity(group.sourceOwner)||!(typeof group.transferIntent==='string'&&CURRENT_TRANSFER_INTENTS.includes(group.transferIntent)||isHistoricalBootstrapIntent(group.transferIntent))||!STORAGE_BOOTSTRAP_PHASES.some(phase=>phase===group.phase)||!validHash(group.planHash)||!String(group.createdAt||'').trim()||!String(group.updatedAt||'').trim())throw new Error('storage_bootstrap_group_invalid');
+  if(!group||group.version!==2||typeof group.app!=='string'||!VALID_APPS.has(group.app)||
+    group.scope!==`${group.app}:${group.owner}`||!String(group.id||'').trim()||!identity(group.owner)||!identity(group.sourceOwner)||
+    !(typeof group.transferIntent==='string'&&CURRENT_TRANSFER_INTENTS.includes(group.transferIntent)||isHistoricalBootstrapIntent(group.transferIntent))||
+    !STORAGE_BOOTSTRAP_PHASES.some(phase=>phase===group.phase)||!validHash(group.planHash)||
+    !String(group.createdAt||'').trim()||!String(group.updatedAt||'').trim())throw new Error('storage_bootstrap_group_invalid');
   validateSide(group.main);validateSide(group.shared);
   return /** @type {Value & Group} */ (value);
 }
