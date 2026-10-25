@@ -51,6 +51,12 @@ restore and live-provider release exercises therefore remain explicitly unverifi
 
 ### Review continuation, 2026-10-25
 
+- Bank Bridge v75 supports a persisted opt-in Origin allowlist with exact custom
+  origins, startup validation, restart revocation and explicit rollback. Isolated
+  HTTP/staged-runtime evidence is recorded in [Bank origin policy](BANK_ORIGIN_POLICY.md).
+  Default rollout, installed browser/Windows ACL acceptance and separate destructive
+  command permissions remain explicit operational/product decisions.
+
 - Four damaged notices are repaired. The canonical-source quality gate checks
   cooked user strings and templates without a historical corruption allowance;
   see [readability and text integrity](READABILITY_RATCHET.md).

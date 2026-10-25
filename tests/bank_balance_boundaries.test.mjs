@@ -114,7 +114,7 @@ test('Hapoalim account reader consumes canonical financial evidence and installe
       'server.mjs bank-money-value.mjs'
     )
   );
-  assert.ok(read('netunim-kupa/bank-bridge/server.mjs').includes('const BRIDGE_VERSION=74'));
+  assert.ok(read('netunim-kupa/bank-bridge/server.mjs').includes('const BRIDGE_VERSION=75'));
   assert.ok(read('netunim-kupa/site/assets/js/domains/bank/connection-owner.js').includes('KUPA_BANK_BRIDGE_MINIMUM_VERSION = 74'));
   const kupa = read('netunim-kupa/site/assets/js/domains/bank/refresh.js').replace(/\s+/g,'');
   assert.ok(kupa.includes('if(!device.supported(bridgeStatus))'));

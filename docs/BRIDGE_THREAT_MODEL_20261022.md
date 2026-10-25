@@ -3,6 +3,11 @@
 This is a source review plus isolated real-HTTP characterization. No installed
 Bridge, pairing token, provider account or business data was accessed.
 
+The [2026-10-25 v75 continuation](BANK_ORIGIN_POLICY.md) now implements and tests
+an opt-in persisted allowlist, exact custom origins, restart revocation and explicit
+rollback. The deployed default remains legacy reflection pending installed-browser
+acceptance. The original decision/evidence below describes the v74 baseline.
+
 | Boundary | Bank Bridge | Document Bridge |
 | --- | --- | --- |
 | Listener | `127.0.0.1:8765` | `127.0.0.1:8766` |

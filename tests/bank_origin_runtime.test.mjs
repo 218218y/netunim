@@ -1,0 +1,33 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import {bankStage} from './bank_stage_fixture.mjs';
+
+test('staged Bank loads persisted origin policy, captures it until restart and supports explicit rollback',{timeout:30000},async t=>{
+  const config={version:1,mode:'allowlist',allowedOrigins:['https://custom.example']};
+  const f=await bankStage(t,{prepare:({app})=>fs.writeFile(path.join(app,'origin-policy.json'),JSON.stringify(config))});
+  const policyFile=path.join(f.app,'origin-policy.json');
+  const tokenBefore=await fs.readFile(path.join(f.app,'bridge-token.txt'));
+  assert.equal((await f.request('/health',{origin:'https://foreign.example'})).status,403);
+  assert.equal((await f.request('/status',{origin:'https://custom.example'})).status,200);
+  assert.equal((await f.request('/status',{origin:'https://bargig-kupa.pages.dev',token:'wrong'})).status,401);
+  assert.equal((await f.request('/health')).status,200,'native installer health probe remains available');
+  await fs.writeFile(policyFile,JSON.stringify({...config,allowedOrigins:['https://new.example']}));
+  assert.equal((await f.request('/status',{origin:'https://new.example'})).status,403,'file edits do not widen a running policy');
+  assert.equal((await f.request('/shutdown',{method:'POST'})).status,200);
+  assert.equal((await f.exited)[0],0,f.output());
+  await f.restart();
+  assert.equal((await f.request('/status',{origin:'https://new.example'})).status,200);
+  assert.equal((await f.request('/status',{origin:'https://custom.example'})).status,403,'removed custom permission is revoked at restart');
+  await fs.writeFile(policyFile,JSON.stringify({version:1,mode:'legacy-reflect'}));
+  assert.equal((await f.request('/shutdown',{method:'POST'})).status,200);
+  assert.equal((await f.exited)[0],0,f.output());
+  await f.restart();
+  assert.equal((await f.request('/status',{origin:'https://foreign.example'})).status,200);
+  assert.deepEqual(await fs.readFile(path.join(f.app,'bridge-token.txt')),tokenBefore,'policy changes do not rotate pairing');
+  assert.equal((await f.request('/shutdown',{method:'POST'})).status,200);
+  assert.equal((await f.exited)[0],0,f.output());
+  await fs.writeFile(policyFile,JSON.stringify({version:1,mode:'typo'}));
+  await assert.rejects(f.restart(),/BANK_ORIGIN_CONFIG_INVALID/,'invalid persisted policy cannot fall back to reflection');
+});

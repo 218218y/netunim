@@ -13,6 +13,7 @@ import {createBridgeShutdownOwner} from './shutdown-owner.mjs';
 import {createBridgeReplacementCommand} from './replacement-command.mjs';
 import {isLoopbackPortClosed} from './loopback-port.mjs';
 import {createBankBridgeHttpHandler} from './http-handler.mjs';
+import {createBankOriginPolicy} from './origin-policy.mjs';
 import {createBankBridgeRoutes} from './http-routes.mjs';
 import {createConnectionQueries} from './connection-queries.mjs';
 import {createFinanceCommands} from './finance-commands.mjs';
@@ -37,7 +38,7 @@ import {createBankDiagnosticRun,finishBankDiagnosticRun,recordBankAccountDiagnos
 
 const HOST='127.0.0.1';
 const PORT=8765;
-const BRIDGE_VERSION=74;
+const BRIDGE_VERSION=75;
 const BROWSER_IDENTITY_PROBE_URL=`http://${HOST}:${PORT}/health`;
 const APP_DIR=path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimKupaBankBridge');
 const TOKEN_FILE=path.join(APP_DIR,'bridge-token.txt');
@@ -185,6 +186,13 @@ if(args.has('--doctor')){
 const token=await ensureToken();
 if(args.has('--init')||args.has('--print-token')){console.log('Bank Bridge key:');console.log(token);console.log(`Credentials directory: ${APP_DIR}`);process.exit(0)}
 
+const originPolicy=await fs.readFile(path.join(APP_DIR,'origin-policy.json'),'utf8')
+  .then(source=>createBankOriginPolicy(JSON.parse(source)))
+  .catch(error=>{
+    if(error?.code==='ENOENT')return createBankOriginPolicy();
+    throw error;
+  });
+
 const service=createConnectionQueries({operations,vault,metadata:{bank:readMeta,credit:readCreditMeta}});
 const finance=createFinanceCommands({operations,
   bank:{readCredentials:vault.readCredentials,scrape:bankProvider.read,writeMeta},
@@ -202,7 +210,7 @@ const routes=createBankBridgeRoutes({version:BRIDGE_VERSION,contractVersion:CRED
   cheques:{read:async key=>{const image=await images.read(key);return image&&images.inRetention(image.eventDate)?image:null}},
   shutdown:{afterResponse:()=>{void shutdown.request()}},
 });
-const handler=createBankBridgeHttpHandler({token,routes,admission:{assertAccepting:operations.assertAccepting},health:()=>({ok:true,service:'netunim-kupa-bank-bridge',version:BRIDGE_VERSION,creditContractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION})});
+const handler=createBankBridgeHttpHandler({token,routes,originPolicy,admission:{assertAccepting:operations.assertAccepting},health:()=>({ok:true,service:'netunim-kupa-bank-bridge',version:BRIDGE_VERSION,creditContractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION})});
 activeServer=http.createServer(handler);
 shutdown.start();
 activeServer.on('error',e=>{if(e?.code==='EADDRINUSE'){console.error(`Bank Bridge already appears to be running on ${HOST}:${PORT}`);process.exit(0)}console.error(e);process.exit(1)});

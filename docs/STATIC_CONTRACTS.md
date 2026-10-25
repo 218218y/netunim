@@ -1,5 +1,10 @@
 # Incremental JavaScript contracts
 
+Bank Bridge's actual optional Origin configuration decoder and captured boolean
+admission policy are strict checked, including malformed-policy consumers and a
+mutation of the real decision body. The complete HTTP server remains separately
+behavior-tested. See [Bank origin rollout](BANK_ORIGIN_POLICY.md).
+
 Both actual Credit detail read models and the canonical date/cycle/selection
 policy now check strictly with explicit generic retained-row and result types.
 Negative consumers and numeric-count implementation mutations protect the
