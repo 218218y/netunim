@@ -49,6 +49,17 @@ restore and live-provider release exercises therefore remain explicitly unverifi
 
 ## Prioritized remaining work
 
+### Review continuation, 2026-10-25
+
+- Four damaged notices are repaired. The canonical-source quality gate checks
+  cooked user strings and templates without a historical corruption allowance;
+  see [readability and text integrity](READABILITY_RATCHET.md).
+- Orders Finance and Kupa Credit detail selection now have separate pure,
+  strictly checked read models with explicit display inputs/results. The shared
+  policy is canonical; Orders avoids repeated collection derivation per render.
+  See [Credit detail read models](CREDIT_DETAIL_READ_MODELS.md). Wider presentation,
+  physical DOM/paint performance and full controller coverage remain incremental.
+
 ### Review continuation, 2026-10-22
 
 - The two reproduced local text-search bugs are fixed through one bounded

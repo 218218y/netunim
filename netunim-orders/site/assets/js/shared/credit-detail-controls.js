@@ -1,33 +1,41 @@
+import {
+  creditDetailDisplayDate,
+  creditDetailCycleDisplayDate,
+  creditDetailMonthIsPast,
+  creditDetailRangeMatch,
+  creditDetailRecentThreeRange,
+  creditDetailQuickPeriodMatch,
+  creditViewAllowsMonth,
+  creditDetailChargeDay,
+  creditDetailNominalChargeDay,
+  creditUpcomingCycleHeadingData,
+  creditDetailChargeCycleKey,
+  creditDetailDayMatch,
+  creditDetailMonthDayMatch,
+  creditDetailMonthlySections,
+  creditDetailFutureMonths,
+  creditDetailSelectionTotal
+} from './credit-detail-policy.js';
+export {
+  creditDetailDisplayDate,
+  creditDetailCycleDisplayDate,
+  creditDetailMonthIsPast,
+  creditDetailRangeMatch,
+  creditDetailRecentThreeRange,
+  creditDetailQuickPeriodMatch,
+  creditViewAllowsMonth,
+  creditDetailChargeDay,
+  creditDetailNominalChargeDay,
+  creditUpcomingCycleHeadingData,
+  creditDetailChargeCycleKey,
+  creditDetailDayMatch,
+  creditDetailMonthDayMatch,
+  creditDetailMonthlySections,
+  creditDetailFutureMonths,
+  creditDetailSelectionTotal
+};
+
 function safe(value,escapeHtml){return escapeHtml?escapeHtml(String(value??'')):String(value??'')}
-
-export function creditDetailDisplayDate(row){return String(row?.date||row?.detailDisplayBillingDate||'').slice(0,10)}
-export function creditDetailCycleDisplayDate(row){return String(row?.detailCycleBillingDate||row?.detailDisplayBillingDate||row?.date||'').slice(0,10)}
-
-export function creditDetailMonthIsPast(month,reference){
-  return month.key!=='unassigned'&&month.items.length>0&&month.items.every(row=>{
-    const date=creditDetailCycleDisplayDate(row),statementAssigned=!!row?.detailCycleBillingDate;
-    return !!date&&(date<reference||(!statementAssigned&&row.bankSettlementState==='settled'));
-  });
-}
-
-export function creditDetailRangeMatch(row,from='',to=''){
-  const date=creditDetailDisplayDate(row);
-  return !!date&&(!from||date>=from)&&(!to||date<=to);
-}
-
-export function creditDetailRecentThreeRange(reference){
-  const match=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(reference||''));
-  if(!match)return {from:'',to:''};
-  const year=Number(match[1]),month=Number(match[2]),start=new Date(Date.UTC(year,month-3,1));
-  return {from:`${start.getUTCFullYear()}-${String(start.getUTCMonth()+1).padStart(2,'0')}-01`,to:String(reference)};
-}
-
-export function creditDetailQuickPeriodMatch(row,period,reference){
-  if(period==='all')return true;
-  if(period!=='recent3')return false;
-  const {from,to}=creditDetailRecentThreeRange(reference);
-  return !!from&&creditDetailRangeMatch(row,from,to);
-}
 
 export function creditDetailQuickPeriodMarkup({mode='',action,escapeHtml}){
   const button=(value,label)=>`<button type="button" class="credit-date-shortcut ${mode===value?'active':''}" data-action="${safe(action,escapeHtml)}" data-click-arg0="${value}" aria-pressed="${mode===value?'true':'false'}">${label}</button>`;
@@ -63,98 +71,6 @@ export function replaceCreditDetailMarkup(host,markup){
   for(const {node,top,left} of positions){node.scrollTop=top;node.scrollLeft=left}
 }
 
-
-export function creditViewAllowsMonth(monthValue,view,currentMonth){
-  const key=String(monthValue||''),current=String(currentMonth||'');
-  if(!/^\d{4}-\d{2}$/.test(key)||!/^\d{4}-\d{2}$/.test(current)||key<current)return false;
-  const selected=String(view||'rolling12');
-  if(selected==='all')return true;
-  if(/^\d{4}$/.test(selected))return key.startsWith(`${selected}-`);
-  const [year,month]=key.split('-').map(Number),[currentYear,currentMonthNumber]=current.split('-').map(Number);
-  return year*12+month<=currentYear*12+currentMonthNumber+11;
-}
-
-export function creditDetailChargeDay(row){
-  const date=creditDetailCycleDisplayDate(row),day=Number(date.slice(8,10));
-  if(!Number.isInteger(day))return '';
-  if(day>=7&&day<=12)return '10';
-  if(day>=13&&day<=18)return '15';
-  return '';
-}
-
-export function creditDetailNominalChargeDay(row){
-  if(Number.isInteger(Number(row?.detailCycleNominalDay))&&Number(row.detailCycleNominalDay)>=1&&Number(row.detailCycleNominalDay)<=31)return String(Number(row.detailCycleNominalDay));
-  const date=creditDetailCycleDisplayDate(row),match=/^(\d{4})-(\d{2})-(\d{2})$/.exec(date);if(!match)return '';
-  const year=Number(match[1]),month=Number(match[2]),day=Number(match[3]);
-  if(day===10||day===15)return String(day);
-  if(day===11&&new Date(Date.UTC(year,month-1,10)).getUTCDay()===6)return '10';
-  if(day===16&&new Date(Date.UTC(year,month-1,15)).getUTCDay()===6)return '15';
-  return '';
-}
-
-// The same nominal debit day can represent different calendar months. Always
-// expose the full actual cycle date in upcoming-section headers.
-export function creditUpcomingCycleHeadingData(row,formatDate){
-  const date=creditDetailCycleDisplayDate(row),nominal=creditDetailNominalChargeDay(row);
-  if(!date)return 'מועד חיוב לא ידוע';
-  return nominal?`חיוב ${nominal} בחודש · מועד ${formatDate(date)}`:`חיוב במועד ${formatDate(date)}`;
-}
-
-export function creditDetailChargeCycleKey(row){
-  const date=creditDetailCycleDisplayDate(row),nominal=creditDetailNominalChargeDay(row);
-  return date&&nominal?`${date.slice(0,7)}:${nominal}`:date;
-}
-
-export function creditDetailDayMatch(row,day){return day!=='10'&&day!=='15'||creditDetailChargeDay(row)===day}
-
-export function creditDetailMonthDayMatch(row,day){
-  return (row?.status!=='pending'&&row?.foreignCurrency===true)||creditDetailDayMatch(row,day);
-}
-
-export function creditDetailMonthlySections(items=[]){
-  const foreign=[],uncertain=[],regular=[];
-  for(const row of Array.isArray(items)?items:[]){
-    if(row?.detailCycleUncertain===true)uncertain.push(row);
-    else if(row?.foreignCurrency===true)foreign.push(row);
-    else regular.push(row);
-  }
-  return {foreign,uncertain,regular,ordered:[...foreign,...uncertain,...regular]};
-}
-
-function creditDetailCycleOwnerKey(row){
-  if(row?.creditAccountKey)return String(row.creditAccountKey);
-  if(row?.profileId&&row?.accountNumber)return `sync:${String(row.profileId)}:${String(row.accountNumber)}`;
-  if(row?.source==='manual'||row?.card)return `manual:${String(row?.card||'')}:${String(row?.account||'')}:${String(row?.ownerLabel||'')}`;
-  return '';
-}
-
-function creditDetailUpcomingCycleKey(row){
-  const owner=creditDetailCycleOwnerKey(row),date=creditDetailCycleDisplayDate(row);
-  return owner&&date?`${owner}\u0000${date}`:'';
-}
-
-export function creditDetailFutureMonths(months=[],upcomingItems=[],selectedKey=''){
-  const upcomingCycles=new Set((Array.isArray(upcomingItems)?upcomingItems:[]).map(creditDetailUpcomingCycleKey).filter(Boolean));
-  return (Array.isArray(months)?months:[]).filter(month=>{
-    if(!month||month.key==='unassigned'||month.key===selectedKey||!Array.isArray(month.items)||!month.items.length)return true;
-    // A calendar month is redundant only when every visible card-cycle in it is
-    // already represented by the per-card nearest-charge view.  If the month
-    // contains even one later cycle, keep it in "future charges" so the user
-    // can still reach data that is not present in the nearest-charge view.
-    return month.items.some(row=>{const key=creditDetailUpcomingCycleKey(row);return !key||!upcomingCycles.has(key)});
-  });
-}
-
-export function creditDetailSelectionTotal(items=[]){
-  let total=0,excluded=0;
-  for(const item of items){
-    const amount=Number(item?.amount),included=item?.includedInIlsTotal===true;
-    if(included&&Number.isFinite(amount))total+=amount;
-    else excluded++;
-    if(item?.coverageIncomplete===true&&included)excluded++;
-  }
-  return {total:Math.round(total*100)/100,partial:excluded>0,excluded};
-}
 
 function chargeDayButtonsMarkup({action,contextKey='',selectedDay='all',escapeHtml}){
   const context=contextKey?`data-click-arg0="${safe(contextKey,escapeHtml)}" data-click-arg1=`:'data-click-arg0=';

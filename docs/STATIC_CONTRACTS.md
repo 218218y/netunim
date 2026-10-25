@@ -1,5 +1,11 @@
 # Incremental JavaScript contracts
 
+Both actual Credit detail read models and the canonical date/cycle/selection
+policy now check strictly with explicit generic retained-row and result types.
+Negative consumers and numeric-count implementation mutations protect the
+boundary; this does not claim full view/controller coverage. See
+[Credit detail read models](CREDIT_DETAIL_READ_MODELS.md).
+
 Calendar's persisted decoders and actual IndexedDB callers now check their
 bodies under strict checkJs. Native request results remain unknown until decoded;
 durable sequences, retry metadata, cache attribution and transaction completion
