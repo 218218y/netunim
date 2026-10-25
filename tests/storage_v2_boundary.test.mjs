@@ -126,6 +126,16 @@ test('Kupa file export requires the Shared journal to own the checks being writt
   assert.equal(fileReads,0,'an unjournaled check cannot reach the file');
 });
 
+test('Kupa file export stops before recovery or file IO when Shared flush rejects an owner handoff',async()=>{
+  const state={notes:[],checks:[]},forbidden=()=>assert.fail('export continued after a stale flush');
+  const storage=createKupaStoragePersistence({model:{state},session:{connectionMode:'file',localGeneration:1},
+    files:{dataFileHandle:{name:'local.json'}},storageV2Primary:()=>true,storageV2CommitPromise:async()=>{},
+    sharedChecksV2:{flush:async()=>{throw new Error('shared_checks_owner_changed_during_operation')},recoverReadOnly:forbidden},
+    recoverStorageV2State:forbidden,readJsonHandle:forbidden,writeJsonHandleVerified:forbidden,setSaveStatus:()=>{},reportError:()=>{}});
+  const priorError=console.error;console.error=()=>{};
+  try{assert.equal(await storage.persistState(state,'saved',1),false)}finally{console.error=priorError}
+});
+
 test('Kupa file save with a V2 cloud cursor requires a journaled state and preserves its cursor',async()=>{
   const state={notes:[{id:'n',content:'journaled'}],checks:[]},model={state:clone(state)},session={connectionMode:'file',backendReady:true,dbRevision:3,localGeneration:1,serverInfo:{}};
   const calls=[],files={dataFileHandle:{name:'local.json'}};
