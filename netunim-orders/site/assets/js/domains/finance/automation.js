@@ -5,7 +5,7 @@ import {createAutomationPreferences} from './automation-preferences.js';
 
 // The scheduler owns future provider starts, while a started operation owns its
 // independent authorization/commit guard. Stopping never discards a commit.
-/** @param {import('./automation-contracts.js').AutomationPorts} ports */
+/** @param {import('../../shared/orders-finance-automation-contracts.js').AutomationPorts} ports */
 export function createOrdersFinanceAutomation({access,preferences,readLastSyncAt,commands,onPreferenceFailure=()=>{},timers=globalThis}){
   const accessMethods=/** @type {const} */(['primary','authenticated','online','busy','capture']);
   for(const method of accessMethods)if(typeof access?.[method]!=='function')throw new TypeError(`orders_finance_automation_${method}_required`);

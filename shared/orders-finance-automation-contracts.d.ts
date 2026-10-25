@@ -1,6 +1,6 @@
-import type {FinanceGuard} from '../../shared/finance-fence.js';
-import type {FinanceTimers} from '../../shared/finance-browser-effects.js';
-import type {PreferencesPort,FinanceKind,PreferenceFailure} from './automation-preferences.js';
+import type {FinanceGuard} from './finance-fence.js';
+import type {FinanceTimers} from './finance-browser-effects.js';
+import type {PreferencesPort,FinanceKind,PreferenceFailure} from '../netunim-orders/site/assets/js/domains/finance/automation-preferences.js';
 
 export type AutomaticCommand = (options:{interactive:false,auto:true,isCurrent:()=>boolean})=>Promise<unknown>;
 export type AutomationPorts = {

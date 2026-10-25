@@ -1,6 +1,6 @@
 // @ts-check
 import {createOrdersFinanceAutomation} from '../../netunim-orders/site/assets/js/domains/finance/automation.js';
-/** @type {import('../../netunim-orders/site/assets/js/domains/finance/automation-contracts.js').AutomationPorts} */
+/** @type {import('../../shared/orders-finance-automation-contracts.js').AutomationPorts} */
 const ports={
   access:{primary:()=>true,authenticated:()=>true,online:()=>true,busy:()=>false,capture:()=>()=>undefined},
   preferences:{getBridgeToken:()=> 'paired',bankAutoEnabled:()=>true,creditAutoEnabled:()=>true,creditAutoMode:()=> 'smart'},
