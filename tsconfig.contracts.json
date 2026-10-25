@@ -20,6 +20,9 @@
     "types": []
   },
   "files": [
+    "shared/credit-billing-cycles.js",
+    "shared/credit-card-account.js",
+    "tests/fixtures/checked-credit-calculations.mjs",
     "netunim-kupa/bank-bridge/credit-transaction-model.mjs",
     "netunim-kupa/bank-bridge/credit-profile-model.mjs",
     "netunim-kupa/bank-bridge/hapoalim-cheque-model.mjs",

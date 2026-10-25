@@ -115,3 +115,31 @@ Policy mutation tests compare against the current implementation digest, so an
 old baseline difference cannot make a mutant pass trivially. Compiler mutations
 independently check returned amounts, statuses, installment counts and cheque
 amounts. Startup/module/time budgets do not change in this stage.
+
+## Credit billing and historical account calculations
+
+The actual `credit-billing-cycles.js` and `credit-card-account.js` implementations
+join the strict roots. A discriminated amount result separates included issuer
+money, an ILS pending estimate, unconverted foreign money and an unknown amount.
+Excluded/unknown amounts cannot acquire an included success flag in a checked
+implementation. Cycle status, horizon totals, incomplete coverage, historical
+account transitions and issuer-balance fallback results also have contracts.
+
+Historical application records remain distinct from raw Bridge/network evidence.
+The calculations retain their existing runtime normalization and admission rules.
+Typed nonempty groups and explicit selections replace unchecked indexed access;
+they do not invent transactions, billing dates, amounts or coverage. Long function
+signatures stay in a type-only file and contextualize the actual JS bodies.
+
+The changes matched the previous implementation in 854 input/output/error cases,
+including missing/zero/signed amounts, currencies, billing horizons, invalid dates
+and account-history transitions. The 67 focused billing/sign/temporal tests pass.
+Compiler mutations exercise unknown-to-included promotion, a pending estimate
+presented as final, string amounts and invalid account roles.
+
+This stage adds 4,582 eager source bytes and no runtime modules. Measured totals
+are 1,830,357/2,453,980 bytes. Source budgets increase by 6,000 bytes each; all
+module and timing limits remain. The wider `kupa-cashflow.js` and recurring-bank
+calculations remain outside the strict roots; their existing business tests stay
+in full verification. See `TYPESCRIPT7_COMPATIBILITY.md` for the separate compiler
+assessment and its explicit untested platform gates.
