@@ -187,6 +187,10 @@
     {
       "version": "20261019110000",
       "name": "tax_insurance_advances"
+    },
+    {
+      "version": "20261026080000",
+      "name": "morning_expense_operations"
     }
   ]
 }
