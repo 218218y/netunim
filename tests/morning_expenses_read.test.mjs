@@ -44,6 +44,16 @@ test('supplier tax searches pass only a validated canonical identity and bounded
   assert.equal((await service(user, {action:'suppliers', taxId:'123456789'})).status, 200);
   assert.deepEqual(calls[0], {path:'/suppliers/search', body:{page:1, pageSize:50, active:true, taxId:'123456789'}});
 });
+
+test('restored supplier preferences resolve canonical IDs without exposing supplier bank data', async () => {
+  const service = createExpenseService({environment:'sandbox', request:async path => {
+    assert.equal(path, '/suppliers/' + id(3)); return {id:id(3),name:'Supplier',active:true,country:'IL',taxId:'123456789',bankAccount:'private-bank'};
+  }});
+  const result = await service(user, {action:'get_supplier',id:id(3)});
+  assert.equal(result.status,200); assert.equal(result.body.environment,'sandbox'); assert.equal(result.body.item.id,id(3));
+  assert.ok(!JSON.stringify(result).includes('private-bank'));
+  assert.equal((await service(user,{action:'get_supplier',id:'local'})).status,400);
+});
 test('expense and OCR ranges have distinct semantics; unsupported actions and local IDs never reach Morning', async () => {
   const calls = [], service = createExpenseService({environment:'sandbox', request:async (...args) => {calls.push(args); return page();}});
   for (const body of [{action:'expenses', fromDate:'2026-10-02', toDate:'2026-10-30'}, {action:'expenses', fromDate:'2026-02-30', toDate:'2026-03-01'}, {action:'suppliers', page:-1}, {action:'get_expense', id:'local-supplier-1'}, {action:'create'}]) {

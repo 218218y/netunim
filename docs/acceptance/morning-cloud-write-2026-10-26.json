@@ -1,0 +1,92 @@
+{
+  "testedAt": "2026-10-26T12:09:01.377207+00:00",
+  "project": "bupoidcurcxuypfrjqio",
+  "morningEnvironment": "sandbox",
+  "actualEdgeAndPostgrest": true,
+  "morningProductionWrites": false,
+  "authorizedWriteUsers": 1,
+  "cases": [
+    {
+      "name": "september",
+      "verified": true,
+      "ledgerState": "created",
+      "documentType": 305,
+      "date": "2026-09-20",
+      "reportingDate": "2026-09-01",
+      "amount": 118,
+      "vat": 18,
+      "sameOperationReplayReturnedSameExpense": true
+    },
+    {
+      "name": "october-manual",
+      "verified": true,
+      "ledgerState": "created",
+      "documentType": 305,
+      "date": "2026-10-20",
+      "reportingDate": "2026-10-01",
+      "amount": 1160,
+      "vat": 160,
+      "sameOperationReplayReturnedSameExpense": true
+    },
+    {
+      "name": "credit",
+      "verified": true,
+      "ledgerState": "created",
+      "documentType": 330,
+      "date": "2026-10-20",
+      "reportingDate": "2026-10-01",
+      "amount": 59,
+      "vat": 9,
+      "sameOperationReplayReturnedSameExpense": true
+    },
+    {
+      "name": "late",
+      "verified": true,
+      "ledgerState": "created",
+      "documentType": 305,
+      "date": "2026-08-20",
+      "reportingDate": "2026-10-01",
+      "amount": 11.8,
+      "vat": 1.8,
+      "sameOperationReplayReturnedSameExpense": true
+    }
+  ],
+  "duplicate": {
+    "status": 409,
+    "code": "morning_expense_duplicate"
+  },
+  "pGuard": {
+    "status": 400,
+    "code": "morning_expense_p_unverified"
+  },
+  "file": {
+    "accepted204": true,
+    "fileLinked": true,
+    "fileState": "file_linked",
+    "approvalVerified": false
+  },
+  "report": {
+    "expensesCents": 106000,
+    "inputVatCents": 17080,
+    "buckets": 1
+  },
+  "recovery": {
+    "actualEdgeAndPostgrest": true,
+    "fixtureRowsClearlyIdentified": true,
+    "unsentCancellation": true,
+    "lateSenderCASRefused": true,
+    "pendingCancellationStatus": 409,
+    "wrongReconciliationStatus": 400,
+    "exactCanonicalReconciliation": true,
+    "killSwitchBlocksNewWrites": true,
+    "operationRecoveryWithWritesDisabled": true,
+    "fileRecoveryWithWritesDisabled": true,
+    "noProductionMorningWrites": true
+  },
+  "recoveryScope": "Service-role-seeded fixture reservations in the real ledger; reconciliation reads an actual prior Sandbox expense. No network failure was injected into a live financial POST.",
+  "sourceLFHashes": {
+    "netunim-orders/supabase/functions/morning-expenses/writer.js": "9f8bc917d777290e89c0ba66440db579436f62024deccf7a9a49b1019f98f1f4",
+    "netunim-orders/supabase/functions/morning-expenses/ledger.js": "b23cf0895e4356b145af3382e385de79fdd138ecd3853e034ea9f3688dc73cc1",
+    "netunim-orders/supabase/functions/morning-expenses/upload.js": "9806628a15caed834b4312bd75e681335122209d54313bd3e5c9ecbd509fe30b"
+  }
+}
