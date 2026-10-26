@@ -17,7 +17,7 @@ FLOW = r"""(async()=>{
  const request=async(action,body,assertCurrent)=>{
   assertCurrent();requests.push({action,body});if(held&&action==='suppliers')await held;
   if(action==='capabilities')return {ok:true,version:1,environment:'sandbox',create:true,upload:true};
-  if(action==='suppliers')return paged([supplier]);if(action==='expenses')return paged([expense]);
+  if(action==='suppliers')return paged(body.name==='missing'?[]:[supplier]);if(action==='expenses')return paged([expense]);
   if(action==='create'){posts++;check(body.expense.vat==='160.00','manual VAT changed');return {ok:true,state:'created',verified:true,expenseId:id(8),fileLinked:false};}
   if(action==='operation_status')return {ok:true,state:recoveryState,verified:recoveryState==='created',expenseId:recoveryState==='created'?id(8):'',fileLinked:linked,intent};
   if(action==='reconcile'){check(body.expenseId===id(8),'wrong canonical ID');recoveryState='created';return {ok:true,state:'created',verified:true,expenseId:id(8),fileLinked:linked,intent};}
@@ -44,6 +44,9 @@ FLOW = r"""(async()=>{
  field('date','2026-09-20','change');check(fixture.querySelector('[data-expense-field="reportingDate"]').value==='2026-09-01','September reporting month changed');
  field('date','2026-10-20','change');check(fixture.querySelector('[data-expense-field="reportingDate"]').value==='2026-10-01','October reporting month changed');
  field('supplierId',id(2),'change');check(fixture.querySelector('[data-expense-field="classificationExpenseId"]').value===id(3),'last category missing');
+ field('supplierQuery','123456789');click('search');await settle();check(requests.at(-1).body.taxId==='123456789','tax search not passed to provider');
+ click('favorite');field('supplierQuery','missing');click('search');await settle();check(fixture.querySelector('[data-expense-field="supplierId"]').value===id(2),'search discarded selected favorite');
+ click('use-favorite');check(fixture.querySelector('[data-expense-field="supplierId"]').value===id(2),'favorite did not restore supplier');
  field('number','000123');field('net','1000.00');field('vat','160.00');field('gross','1160.00');check(field('description','הוצאה לבדיקה').isConnected,'typing replaced field');
  field('date','2026-08-20','change');check(fixture.querySelector('[data-expense-field="reportingDateConfirmed"]'),'late-report confirmation missing');click('save');await settle();check(posts===0&&confirms===0,'late month bypassed explicit approval');field('reportingDateConfirmed',true,'change');field('date','2026-10-20','change');
  field('pcnClassification','P','change');check(fixture.querySelector('[data-action="morning-expense-save"]').disabled,'P write available');field('pcnClassification','T','change');
@@ -52,6 +55,11 @@ FLOW = r"""(async()=>{
  const selection=new DataTransfer();for(const name of ['first.png','second.png'])selection.items.add(new File([png],name,{type:'image/png'}));
  const input=fixture.querySelector('input[type="file"]');input.files=selection.files;input.dispatchEvent(new Event('change',{bubbles:true}));await settle();check(fixture.querySelector('img')?.src.startsWith('blob:'),'source preview missing');
  fixture.innerHTML=uiFeature.markup();const paste=new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:selection});fixture.querySelector('[data-morning-expense-intake]').dispatchEvent(paste);await settle();check(paste.defaultPrevented&&fixture.querySelector('img'),'file paste failed after parent rerender');
+ check(fixture.querySelectorAll('.morning-expense-queue li').length===4,'paste replaced queued files');
+ const queueClick=(name,index)=>fixture.querySelector('[data-expense-command="'+name+'"][data-expense-index="'+index+'"]').click();
+ queueClick('choose-file',1);check(fixture.querySelector('.morning-expense-source>b').textContent==='second.png','queue selection failed');
+ queueClick('remove-file',2);queueClick('remove-file',2);queueClick('choose-file',1);
+ check(fixture.querySelectorAll('.morning-expense-queue li').length===2&&fixture.querySelector('.morning-expense-source>b').textContent==='first.png','queue removal lost another file');
  click('save');await settle();check(posts===1&&confirms===1,'save not exactly once');
  const recovery=localStorage.getItem('morningExpenseOperation:'+owner);check(recovery&&!recovery.includes('000123')&&!recovery.includes('first.png'),'recovery retained invoice data');
  check(fixture.querySelector('[data-action="morning-expense-save"]').disabled,'created invoice can save again');

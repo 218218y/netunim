@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {createExpenseRequest} from '../netunim-orders/site/assets/js/integrations/morning-expenses.js';
-import {readExpenseCatalog} from '../netunim-orders/site/assets/js/domains/finance/morning-expense-catalog.js';
+import {readExpenseCatalog, readExpenseCatalogPage, expenseSupplierEligibility} from '../netunim-orders/site/assets/js/domains/finance/morning-expense-catalog.js';
 import {validateExpenseFile, uploadExpenseFile} from '../netunim-orders/site/assets/js/platform/morning-expense-files.js';
 
 test('expense client fences auth refresh, body consumption and errors to the entering account', async () => {
@@ -15,17 +15,39 @@ test('expense client fences auth refresh, body consumption and errors to the ent
   await assert.rejects(request('capabilities', {}, check), /account_changed/);
   await assert.rejects(request('create', {}, check), /account_changed/); assert.equal(calls, 1);
 });
-test('a late partial catalog, duplicate or switched environment invalidates the whole catalog', async () => {
+test('malformed pages and switched environments invalidate catalog suggestions', async () => {
   for (const fault of ['total', 'duplicate', 'environment']) {
     const request = async (action, body) => {
       if (action === 'capabilities') return {version:1, environment:'sandbox'};
-      const rows = action === 'suppliers' ? Array.from({length:body.page === 0 ? 50 : 1}, (_, index) => ({id:String(body.page * 50 + index), name:'Supplier', active:true})) : [];
-      if (body.page === 1 && fault === 'duplicate') rows[0].id = '0';
-      return {version:1, environment:body.page === 1 && fault === 'environment' ? 'production' : 'sandbox', page:body.page, pageSize:50,
-        total:body.page === 1 && fault === 'total' ? 52 : action === 'suppliers' ? 51 : 0, pages:action === 'suppliers' ? 2 : 0, items:rows};
+      const rows = Array.from({length:50}, (_, index) => ({id:String(index), name:'Supplier', active:true}));
+      if (fault === 'duplicate') rows[1].id = '0';
+      return {version:1, environment:fault === 'environment' ? 'production' : 'sandbox', page:body.page, pageSize:50,
+        total:fault === 'total' ? 49 : 51, pages:2, items:rows};
     };
     await assert.rejects(readExpenseCatalog(request, () => {}, '2026-10-26'));
   }
+});
+
+test('large directories load one page only and later searches remain bounded and account fenced', async () => {
+  const calls = [], capabilities = {version:1, environment:'sandbox'};
+  const request = async (action, body) => {
+    calls.push({action, body}); if (action === 'capabilities') return capabilities;
+    return {version:1, environment:'sandbox', page:body.page, pageSize:50, total:5000, pages:100,
+      items:Array.from({length:50}, (_, index) => ({id:String(body.page * 50 + index), kind:'expense', name:'Supplier', active:true}))};
+  };
+  const catalog = await readExpenseCatalog(request, () => {}, '2026-10-26');
+  assert.equal(calls.length, 3); assert.equal(catalog.suppliers.length, 50); assert.equal(catalog.expenses.length, 50);
+  assert.equal(catalog.supplierPage.total, 5000);
+  const page = await readExpenseCatalogPage(request, capabilities, 'suppliers', {taxId:'123456789'}, 5, () => {});
+  assert.equal(page.items.length, 50); assert.deepEqual(calls.at(-1).body, {taxId:'123456789',page:5});
+  await assert.rejects(readExpenseCatalogPage(request, capabilities, 'suppliers', {}, 6, () => {throw Error('account_changed');}), /account_changed/);
+});
+
+test('supplier eligibility exposes missing identities, foreign suppliers and protected P matches before submission', () => {
+  const supplier = {id:'one', taxId:'123456789', active:true, country:'IL'};
+  assert.equal(expenseSupplierEligibility(supplier).eligible, true);
+  for (const patch of [{taxId:''}, {country:'PS'}, {active:false}]) assert.equal(expenseSupplierEligibility({...supplier, ...patch}).eligible, false);
+  assert.equal(expenseSupplierEligibility(supplier, [{id:'different',taxId:'123456789'}]).p, true);
 });
 test('catalog classifications retain source expense IDs and genuine recognition percentages', async () => {
   const request = async action => action === 'capabilities' ? {version:1, environment:'sandbox'} : {
