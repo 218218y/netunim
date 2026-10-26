@@ -1,4 +1,5 @@
-import {expensePermission, expenseUuid} from './service.js';
+import {expenseUuid} from './service.js';
+import {expenseWriteAccess} from './write-access.js';
 
 const TYPES = new Set(['application/pdf', 'image/jpeg', 'image/png']);
 const MAX_BYTES = 20 * 1024 * 1024;
@@ -14,12 +15,12 @@ export function expenseUploadTicket(raw, environment) {
   if (raw.fields.bucket !== bucket || raw.fields['x-amz-meta-file-context'] !== 'expense') throw new Error('invalid_expense_upload_ticket');
   return {url:raw.url, fields:raw.fields, maxFileSize:raw.maxFileSize};
 }
-export function createExpenseUpload({request, ledger, environment, enabled = false, writeIds = () => '', now = Date.now}) {
-  const authorized = user => environment === 'sandbox' && expensePermission(user, 'write', writeIds());
+export function createExpenseUpload({request, ledger, environment, enabled = false, writeIds = () => '', productionUserId = '', now = Date.now}) {
+  const authorized = user => expenseWriteAccess(user, environment, writeIds(), productionUserId);
   const allowed = user => enabled === true && authorized(user);
   return {allowed, async handle(user, body) {
     const result = (status, data) => ({status, body:{ok:status < 400, ...data}});
-    if (!(body?.action === 'upload_status' ? authorized(user) : allowed(user))) return result(403, {code:'morning_expense_upload_unverified', message:'העלאה זמינה רק בבדיקת Sandbox מורשית.'});
+    if (!(body?.action === 'upload_status' ? authorized(user) : allowed(user))) return result(403, {code:'morning_expense_upload_unverified', message:'צירוף קבצים לא הופעל למשתמש בסביבת החשבון. בדיקת מצב נשארת זמינה למשתמש המורשה.'});
     let issuing = null;
     try {
       if (!expenseUuid(body.operationId)) throw new Error('invalid_expense_input');

@@ -65,3 +65,23 @@ test('undelivered ticket failure can retry; legacy tickets remain blocked and re
  assert.equal((await disabled.handle(user, {action:'upload_status', operationId:id(1)})).status, 200);
  const reported = fixture(); reported.report(); assert.equal((await reported.uploader.handle(user, prepare)).status, 503); assert.equal(reported.count(), 0);
 });
+
+test('Production file activation requires the pilot identity; disabling it keeps canonical status readable', async () => {
+ const f = fixture(), options = {...f.options, environment:'production', productionUserId:user.id};
+ const closed = createExpenseUpload({...options, enabled:false});
+ assert.equal((await closed.handle(user, prepare)).status, 403);
+ assert.equal((await closed.handle(user, {action:'upload_status', operationId:id(1)})).status, 200);
+ const open = createExpenseUpload(options);
+ assert.equal((await open.handle({...user, id:id(9)}, prepare)).status, 403);
+ const ready = await open.handle(user, prepare); assert.equal(ready.status, 200);
+ // Sandbox tickets must fail even for a correctly authorized Production user.
+ assert.equal((await open.handle(user, {action:'upload_ticket', operationId:id(1), fileGeneration:ready.body.fileGeneration})).status, 503);
+ assert.equal(f.row.file_state, 'not_started');
+ const raw = ticket(); raw.url = raw.url.replace('sandbox-', ''); raw.fields.bucket = 'file-upload-service-uploaded';
+ assert.equal(expenseUploadTicket(raw, 'production').fields.bucket, 'file-upload-service-uploaded');
+ const accepted = createExpenseUpload({...options, request:async (path, ...args) => path.startsWith('/file-upload/') ? raw : f.options.request(path, ...args)});
+ const generation = (await accepted.handle(user, prepare)).body.fileGeneration;
+ assert.equal((await accepted.handle(user, {action:'upload_ticket', operationId:id(1), fileGeneration:generation})).status, 200);
+ assert.equal((await accepted.handle(user, {action:'upload_ack', operationId:id(1), fileGeneration:generation})).body.fileLinked, false);
+ f.link(); assert.equal((await closed.handle(user, {action:'upload_status', operationId:id(1)})).body.fileLinked, true);
+});

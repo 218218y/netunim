@@ -39,7 +39,7 @@ test('large directories load one page only and later searches remain bounded and
   assert.equal(calls.length, 3); assert.equal(catalog.suppliers.length, 50); assert.equal(catalog.expenses.length, 50);
   assert.equal(catalog.supplierPage.total, 5000);
   const page = await readExpenseCatalogPage(request, capabilities, 'suppliers', {taxId:'123456789'}, 5, () => {});
-  assert.equal(page.items.length, 50); assert.deepEqual(calls.at(-1).body, {taxId:'123456789',page:5});
+  assert.equal(page.items.length, 50); assert.deepEqual(calls.at(-1).body, {taxId:'123456789',page:5,expectedEnvironment:'sandbox'});
   await assert.rejects(readExpenseCatalogPage(request, capabilities, 'suppliers', {}, 6, () => {throw Error('account_changed');}), /account_changed/);
 });
 

@@ -5,11 +5,12 @@ import {expenseBimonth, expenseReportingChoice} from '../../core/morning-report-
 import {createRuntimeTaskOwner} from '../../shared/runtime-task-owner.js';
 import {readExpenseCatalog, readExpenseCatalogPage, expenseCatalogClassifications, expenseSupplierEligibility} from './morning-expense-catalog.js';
 import {readExpensePreferences, writeExpensePreferences} from './morning-expense-preferences.js';
+import {readExpenseRecovery, writeExpenseRecovery, clearExpenseRecovery} from './morning-expense-recovery.js';
 
 const stateLabels = {reserved:'טרם נשלחה · אפשר לבטל בבטחה', cancelled:'בוטלה לפני שליחה', pending:'נשלחה · טרם אומתה', created_unverified:'נוצרה · אימות הפרטים ממתין', created:'נוצרה והפרטים אומתו', needs_reconciliation:'תוצאה לא ברורה · נדרש בירור ב־Morning', blocked:'הפעולה נחסמה · נדרש בירור'};
 const fieldLabels = {number:'מספר חשבונית', date:'תאריך המסמך', net:'לפני מע״מ', vat:'מע״מ מהחשבונית', gross:'כולל מע״מ', description:'תיאור', allocationNumber:'מספר הקצאה, אם נדרש'};
 const fileLabels = {not_started:'העלאה טרם התחילה', prepared:'הכנה הושלמה · אפשר להכין מחדש', upload_started:'הנפקת הרשאת העלאה בבדיקה', ticket_issued:'הרשאת העלאה נמסרה · נדרשת בדיקת קישור', file_accepted:'הקובץ התקבל לעיבוד · הקישור טרם אומת', file_linked:'Morning מציגה קובץ מצורף'};
-export function createMorningExpenseIntake({request, captureRead, captureWrite, accountId, subscribeAccountScope, confirmDialog, files, todayISO = checkTodayISO, isActive = () => true}) {
+export function createMorningExpenseIntake({request:sendRequest, captureRead, captureWrite, accountId, subscribeAccountScope, confirmDialog, files, todayISO = checkTodayISO, isActive = () => true}) {
   const tasks = createRuntimeTaskOwner();
   let expanded = false, catalog = null, busy = false, generation = 0, reading = null, message = '', result = null, operationId = '', fileAttempted = false;
   let queue = [], selected = null, previewUrl = '', reconciliationId = '', supplierQuery = '', searchedQuery = '', favorites = [], extraExpenses = [], preferences = null, historyYear = todayISO().slice(0, 4), draft = defaults();
@@ -26,15 +27,20 @@ export function createMorningExpenseIntake({request, captureRead, captureWrite, 
     return () => { check(); if (!active() || generation !== epoch) throw new Error('פעולת ההוצאות שייכת למסך או להתחברות קודמים.'); };
   }
   function releasePreview() { if (previewUrl) URL.revokeObjectURL(previewUrl); previewUrl = ''; }
-  function key() { const owner = accountId(); if (!owner) throw new Error('נדרשת התחברות לענן.'); return 'morningExpenseOperation:' + owner; }
+  async function request(action, payload, check, options) {
+    const expectedEnvironment = payload?.expectedEnvironment || (['create', 'operation_status', 'reconcile', 'cancel_reserved', 'upload_prepare', 'upload_ticket', 'upload_ack', 'upload_status'].includes(action) ? catalog?.capabilities.environment : undefined);
+    const value = await sendRequest(action, {...payload, ...(expectedEnvironment ? {expectedEnvironment} : {})}, check, options); check();
+    if (expectedEnvironment && (value.environment !== expectedEnvironment || value.version !== 1)) throw new Error('סביבת Morning השתנתה. יש לבדוק מצב לאחר רענון המסך.');
+    return value;
+  }
   function remember() {
     // Persist before POST; a failure to persist blocks submission. No invoice data or file bytes are retained.
-    localStorage.setItem(key(), JSON.stringify({version:1, operationId, environment:catalog.capabilities.environment}));
+    writeExpenseRecovery(localStorage, accountId(), catalog.capabilities.environment, operationId);
   }
   function restore() {
     try {
-      const saved = JSON.parse(localStorage.getItem(key()) || 'null');
-      if (saved?.version === 1 && /^[\da-f-]{36}$/i.test(saved.operationId) && saved.environment === catalog.capabilities.environment) {
+      const saved = readExpenseRecovery(localStorage, accountId(), catalog.capabilities.environment);
+      if (saved) {
         operationId = saved.operationId; result = {state:'needs_reconciliation', verified:false}; message = 'נמצאה פעולה קודמת. יש לבדוק את מצבה לפני קליטה נוספת.';
       }
     } catch { /* No prior recovery metadata. */ }
@@ -70,6 +76,7 @@ export function createMorningExpenseIntake({request, captureRead, captureWrite, 
     return run(async () => {
       const check = capture(), controller = new AbortController(); reading = controller;
       const loaded = await readExpenseCatalog(request, check, todayISO(), {signal:controller.signal}); check();
+      if (operationId && catalog?.capabilities.environment !== loaded.capabilities.environment) throw new Error('סביבת Morning השתנתה. הפעולה הקודמת נשמרה לשחזור בסביבתה; יש לפתוח מחדש את המסך.');
       preferences = readExpensePreferences(localStorage, accountId(), loaded.capabilities.environment);
       const restored = [];
       for (const id of preferences.favorites) {
@@ -134,6 +141,7 @@ export function createMorningExpenseIntake({request, captureRead, captureWrite, 
     return run(async () => {
       const check = capture(true);
       if (!catalog?.capabilities.create || operationId) throw new Error('שמירה אינה זמינה לפעולה זו.');
+      if (selected && !catalog.capabilities.upload) throw new Error('צירוף קבצים עדיין כבוי בחשבון זה. אין לשמור הוצאה עם קובץ בתור עד להפעלתו.');
       const eligibility = expenseSupplierEligibility(catalog.suppliers.find(row => row.id === draft.supplierId), catalog.capabilities.pSuppliers);
       if (!eligibility.eligible) throw new Error(eligibility.reason);
       const nextId = crypto.randomUUID(), snapshot = structuredClone(draft);
@@ -144,7 +152,7 @@ export function createMorningExpenseIntake({request, captureRead, captureWrite, 
       const details = `${supplier?.name || ''} · ${snapshot.documentType === 330 ? 'חשבונית זיכוי' : 'חשבונית מס'} ${snapshot.number} · תאריך ${snapshot.date} · סיווג ${classification.title}`;
       const amounts = `לפני מע״מ ${snapshot.net} ₪ · מע״מ ${snapshot.vat} ₪ · סה״כ ${snapshot.gross} ₪`;
       const period = `תקופה ${expenseBimonth(snapshot.reportingDate).label} · חודש דיווח ${snapshot.reportingDate.slice(0, 7)}`;
-      const confirmed = await confirmDialog('שמירת הוצאה ב־Sandbox', `${details} · ${amounts} · ${period}. האם הפרטים תואמים למסמך המקור?`, {confirmText:'שמור ב־Morning'});
+      const confirmed = await confirmDialog(catalog.capabilities.environment === 'production' ? 'שמירת הוצאה בחשבון Morning האמיתי' : 'שמירת הוצאה ב־Sandbox', `${details} · ${amounts} · ${period}. האם הפרטים תואמים למסמך המקור?`, {confirmText:'שמור ב־Morning'});
       check();
       if (!confirmed || !surface?.isConnected || host() !== surface) return false;
       operationId = nextId; result = {state:'pending', verified:false}; remember();
@@ -189,8 +197,9 @@ export function createMorningExpenseIntake({request, captureRead, captureWrite, 
   }
   function next() {
     if (busy || operationId && !result?.verified && !['not_found', 'cancelled'].includes(result?.state)) return false;
-    if (operationId && result?.verified && selected && !result.fileLinked) { updateMessage('יש לאמת את קישור קובץ המקור לפני המעבר לחשבונית הבאה.'); return false; }
-    if (operationId) { try { localStorage.removeItem(key()); } catch { updateMessage('לא ניתן לנקות את מזהה הפעולה.'); return false; } }
+    const filePending = result?.fileState && !['not_started', 'prepared'].includes(result.fileState);
+    if (operationId && result?.verified && (selected || filePending) && !result.fileLinked) { updateMessage('יש לאמת את קישור קובץ המקור לפני המעבר לחשבונית הבאה.'); return false; }
+    if (operationId) { try { clearExpenseRecovery(localStorage, accountId(), catalog.capabilities.environment); } catch { updateMessage('לא ניתן לנקות את מזהה הפעולה.'); return false; } }
     const completed = result?.verified;
     operationId = ''; result = null; fileAttempted = false; reconciliationId = ''; draft = defaults(draft);
     if (completed) selectNextFile(); message = 'מוכן לחשבונית הבאה.'; render(); return true;
@@ -200,7 +209,7 @@ export function createMorningExpenseIntake({request, captureRead, captureWrite, 
   }
   function sourceExpenses() {return [...(catalog?.expenses || []), ...extraExpenses];}
   async function canonicalItem(action, id, check, environment = catalog.capabilities.environment) {
-    const value = await request(action, {id}, check); check();
+    const value = await request(action, {id, expectedEnvironment:environment}, check); check();
     if (value.version !== 1 || value.environment !== environment || value.item?.id !== id) throw new Error('לא ניתן לאמת את ההעדפה בחשבון Morning הנוכחי.');
     return value.item;
   }
@@ -298,6 +307,15 @@ export function createMorningExpenseIntake({request, captureRead, captureWrite, 
       message = result.cancelled ? 'הפעולה בוטלה לפני שליחה. אפשר להתחיל קליטה חדשה.' : result.verified ? 'ההוצאה הקיימת תואמת לבקשה המקורית ואומתה.' : 'השחזור עדיין דורש בירור ב־Morning.';
     });
   }
+  function environmentNotice() {
+    const caps = catalog?.capabilities;
+    if (!caps) return 'יש לטעון ספקים וסיווגים כדי לבדוק את סביבת Morning והרשאותיה.';
+    let notice;
+    if (caps.environment === 'production') notice = caps.create ?
+      'חשבון Morning האמיתי · השמירה יוצרת הוצאה אמיתית. יש לבדוק כל פרט מול מסמך המקור.' : 'חשבון Morning האמיתי · יצירת הוצאות כבויה או אינה מורשית למשתמש זה.';
+    else notice = caps.create ? 'סביבת בדיקות Sandbox · יש לבדוק כל פרט מול מסמך המקור.' : 'סביבת Sandbox · שמירה דורשת הרשאה ושתי זהויות ספקי P שאומתו מול Morning.';
+    return notice + (caps.create && !caps.upload ? ' צירוף קבצים עדיין כבוי.' : '');
+  }
   function markup() {
     const disabled = busy || !!operationId, attrs = disabled ? 'disabled' : '';
     const option = (value, label, current, unavailable = false) => `<option value="${esc(value)}" ${String(current) === String(value) ? 'selected' : ''} ${unavailable ? 'disabled' : ''}>${esc(label)}</option>`;
@@ -318,7 +336,7 @@ export function createMorningExpenseIntake({request, captureRead, captureWrite, 
     return `<section class="morning-expense-intake" data-morning-expense-intake data-keydown="morning-expense-keyboard" data-paste="morning-expense-paste" dir="rtl">
       <button type="button" class="morning-expense-trigger" data-action="morning-expense-toggle" aria-expanded="${expanded}" ${busy ? 'disabled' : ''}><b>קליטת הוצאות ב־Morning</b><span>${expanded ? '⌃' : '⌄'}</span></button>
       ${expanded ? `<div class="morning-expense-content"><div class="morning-expense-toolbar"><button type="button" class="btn" data-action="morning-expense-command" data-expense-command="load" ${busy ? 'disabled' : ''}>${catalog ? 'רענון הצעות' : 'טעינת ספקים וסיווגים'}</button><a href="${catalog?.capabilities.environment === 'sandbox' ? 'https://app.sandbox.d.greeninvoice.co.il' : 'https://app.greeninvoice.co.il'}" target="_blank" rel="noopener noreferrer">פתיחת Morning</a></div>
-      <p class="morning-expense-notice">${catalog?.capabilities.create ? 'סביבת בדיקות Sandbox · יש לבדוק כל פרט מול מסמך המקור.' : catalog?.capabilities.environment === 'sandbox' ? 'סביבת Sandbox · שמירה דורשת הרשאה ושתי זהויות ספקי P שאומתו מול Morning.' : 'קליטה לייצור טרם הופעלה. אפשר לעיין ולהכין פרטים; שמירה זמינה ב־Sandbox מורשה בלבד.'}</p>
+      <p class="morning-expense-notice">${esc(environmentNotice())}</p>
       <p class="morning-expense-status" role="status" aria-live="polite" data-expense-message>${esc(busy ? 'הפעולה מתבצעת…' : message)}</p>
       ${catalog ? `<div class="morning-expense-workspace"><div class="morning-expense-fields">
       ${!operationId ? `
@@ -345,9 +363,9 @@ export function createMorningExpenseIntake({request, captureRead, captureWrite, 
       <small>תאריך החשבונית נשמר בנפרד. שתי אפשרויות החודש משתייכות לתקופת ${esc(period.label)}; ב־Morning נשלח תאריך חודשי מדויק.</small>
       ${shifted ? `<label class="morning-expense-report-confirm"><input type="checkbox" data-expense-field="reportingDateConfirmed" data-change="morning-expense-field" ${draft.reportingDateConfirmed ? 'checked' : ''} ${attrs}> בדקתי ואישרתי שיוך לחודש דיווח מאוחר מחודש החשבונית, בהתאם לכללי העבודה החשבונאיים.</label>` : ''}
       <div class="morning-expense-amounts">${textField('net')}${textField('vat')}${textField('gross')}</div>
-      <small>מע״מ מוקלד במפורש. סכום הנטו והמע״מ חייב להתאים לסכום הכולל. זיכוי מוקלד בסכומים חיוביים לבדיקת Sandbox.</small>
+      <small>מע״מ מוקלד במפורש. סכום הנטו והמע״מ חייב להתאים לסכום הכולל. זיכוי מוקלד בסכומים חיוביים; סוג המסמך קובע את ההפחתה בדוח.</small>
       ${textField('description')}${textField('allocationNumber')}
-      <div class="morning-expense-toolbar"><button type="button" class="btn primary" data-action="morning-expense-save" ${disabled || !catalog.capabilities.create || !eligibility.eligible || draft.pcnClassification === 'P' ? 'disabled' : ''}>בדיקה ושמירה ב־Sandbox</button></div>` : ''}
+      <div class="morning-expense-toolbar"><button type="button" class="btn primary" data-action="morning-expense-save" ${disabled || !catalog.capabilities.create || !eligibility.eligible || draft.pcnClassification === 'P' ? 'disabled' : ''}>${catalog.capabilities.environment === 'production' ? 'בדיקה ושמירה בחשבון האמיתי' : 'בדיקה ושמירה ב־Sandbox'}</button></div>` : ''}
       <div class="morning-expense-toolbar"><button type="button" class="btn" data-action="morning-expense-command" data-expense-command="next" ${busy || operationId && !result?.verified && !['not_found', 'cancelled'].includes(result?.state) ? 'disabled' : ''}>${queue.length ? 'לחשבונית הבאה בתור' : 'קליטה חדשה'}</button></div>
       ${operationId ? `<div class="morning-expense-operation"><b>${esc(stateLabels[result?.state] || 'מצב הפעולה טרם אומת')}</b><small>מזהה פעולה: <bdi>${esc(operationId)}</bdi></small><button type="button" class="btn" data-action="morning-expense-command" data-expense-command="status" ${busy ? 'disabled' : ''}>בדיקת מצב היצירה</button>
       ${result?.expenseId ? `<small>מזהה הוצאה ב־Morning: <bdi>${esc(result.expenseId)}</bdi></small>` : ''}

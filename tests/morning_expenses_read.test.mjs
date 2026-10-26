@@ -56,9 +56,11 @@ test('restored supplier preferences resolve canonical IDs without exposing suppl
 });
 test('expense and OCR ranges have distinct semantics; unsupported actions and local IDs never reach Morning', async () => {
   const calls = [], service = createExpenseService({environment:'sandbox', request:async (...args) => {calls.push(args); return page();}});
-  for (const body of [{action:'expenses', fromDate:'2026-10-02', toDate:'2026-10-30'}, {action:'expenses', fromDate:'2026-02-30', toDate:'2026-03-01'}, {action:'suppliers', page:-1}, {action:'get_expense', id:'local-supplier-1'}, {action:'create'}]) {
+  for (const body of [{action:'expenses', fromDate:'2026-10-02', toDate:'2026-10-30'}, {action:'expenses', fromDate:'2026-02-30', toDate:'2026-03-01'}, {action:'suppliers', page:-1}, {action:'get_expense', id:'local-supplier-1'}]) {
     assert.equal((await service(user, body)).status, 400);
   }
+  assert.equal((await service(user, {action:'create'})).status, 409);
+  assert.equal((await service(user, {action:'create', expectedEnvironment:'sandbox'})).status, 503);
   assert.equal(calls.length, 0);
   assert.equal((await service(user, {action:'drafts', fromDate:'2026-10-02', toDate:'2026-10-30'})).status, 200);
   assert.equal(JSON.parse(calls[0][1].body).fromDate, '2026-10-02');
@@ -88,4 +90,19 @@ test('transport refreshes read authentication but never retries a financial writ
   assert.equal(tokens, 2); assert.equal(reads, 2);
   await assert.rejects(request('/expenses', {method:'POST', body:'{}'})); assert.equal(writes, 1);
   assert.throws(() => createExpenseTransport({environment:'typo'}));
+});
+test('every financial and recovery command is pinned to the displayed environment before invoking a handler', async () => {
+  let calls = 0;
+  const handler = {handle:async () => {calls++; return {status:200, body:{ok:true}};}};
+  const service = createExpenseService({environment:'production', request:() => assert.fail('unexpected upstream'), writer:handler, uploader:handler});
+  for (const action of ['create', 'operation_status', 'reconcile', 'cancel_reserved', 'upload_prepare', 'upload_ticket', 'upload_ack', 'upload_status']) {
+    for (const expectedEnvironment of [undefined, 'sandbox', 'typo']) {
+      const value = await service(user, {action, expectedEnvironment});
+      assert.equal(value.status, 409); assert.equal(value.body.code, 'morning_expense_environment_changed');
+    }
+    const value = await service(user, {action, expectedEnvironment:'production'});
+    assert.equal(value.status, 200); assert.equal(value.body.environment, 'production'); assert.equal(value.body.version, 1);
+  }
+  assert.equal(calls, 8);
+  assert.equal((await service(user, {action:'suppliers', expectedEnvironment:'sandbox'})).status, 409);
 });

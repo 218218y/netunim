@@ -1,12 +1,13 @@
-import {expensePermission, expenseUuid, expenseClassification, expenseSupplier, expenseRecord, expensePage} from './service.js';
+import {expenseUuid, expenseClassification, expenseSupplier, expenseRecord, expensePage} from './service.js';
 import {expenseCents, normalizeExpenseInput} from './input.js';
 import {completePProfiles, verifyPProfiles} from './p-suppliers.js';
+import {expenseWriteAccess} from './write-access.js';
 
 const digest = async value => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(value)))), x => x.toString(16).padStart(2, '0')).join('');
 const response = (status, body) => ({status, body:{ok:status < 400, ...body}});
 const todayInIsrael = () => new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Jerusalem', year:'numeric', month:'2-digit', day:'2-digit'}).format(new Date());
-export function createExpenseWriter({request, ledger, environment, enabled = false, writeIds = () => '', pSuppliers = () => [], today = todayInIsrael}) {
-  const authorized = user => environment === 'sandbox' && expensePermission(user, 'write', writeIds());
+export function createExpenseWriter({request, ledger, environment, enabled = false, writeIds = () => '', productionUserId = '', pSuppliers = () => [], today = todayInIsrael}) {
+  const authorized = user => expenseWriteAccess(user, environment, writeIds(), productionUserId);
   const allowed = user => authorized(user) && enabled === true && completePProfiles(pSuppliers());
   async function canonical(input) {
     await verifyPProfiles(request, pSuppliers());
@@ -48,7 +49,7 @@ export function createExpenseWriter({request, ledger, environment, enabled = fal
     profiles:() => pSuppliers().map(profile => ({id:expenseUuid(profile?.id) ? profile.id : '', taxId:typeof profile?.taxId === 'string' ? profile.taxId : ''})).filter(profile => profile.id || profile.taxId),
     async handle(user, body) {
       const recovering = ['operation_status', 'reconcile', 'cancel_reserved'].includes(body?.action);
-      if (!(recovering ? authorized(user) : allowed(user))) return response(403, {code:'morning_expense_writes_unverified', message:'שמירת הוצאות דורשת Sandbox מורשה ושתי זהויות ספקי P מאומתות.'});
+      if (!(recovering ? authorized(user) : allowed(user))) return response(403, {code:'morning_expense_writes_unverified', message:'שמירת הוצאות דורשת הפעלה והרשאה בסביבת החשבון ושתי זהויות ספקי P מאומתות.'});
       try {
         if (!expenseUuid(body.operationId)) throw new Error('invalid_expense_input');
         const existing = await ledger.get(user.id, body.operationId);
