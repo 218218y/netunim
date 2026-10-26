@@ -1,5 +1,6 @@
 import {expenseUuid} from './service.js';
 import {expenseWriteAccess} from './write-access.js';
+import {expenseMatchesIntent} from './intent.js';
 
 const TYPES = new Set(['application/pdf', 'image/jpeg', 'image/png']);
 const MAX_BYTES = 20 * 1024 * 1024;
@@ -27,7 +28,7 @@ export function createExpenseUpload({request, ledger, environment, enabled = fal
       const row = await ledger.get(user.id, body.operationId);
       if (!row || row.state !== 'created' || !row.verified_at || !expenseUuid(row.expense_id)) throw new Error('invalid_expense_input');
       const expense = await request('/expenses/' + row.expense_id, {method:'GET'});
-      if (expense?.id !== row.expense_id) throw new Error('invalid_expense_upload_target');
+      if (expense?.id !== row.expense_id || !expenseMatchesIntent(expense, row.payload)) throw new Error('invalid_expense_upload_target');
       if (body.action === 'upload_status') {
         const linked = typeof expense.url === 'string' && !!expense.url;
         if (linked && row.file_state !== 'file_linked') await ledger.fileTransition(user.id, row, {file_state:'file_linked'});

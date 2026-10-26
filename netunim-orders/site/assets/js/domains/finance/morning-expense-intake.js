@@ -166,7 +166,11 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       const check = capture();
       if (!operationId) return false;
       try { result = await request('operation_status', {operationId}, check); check(); }
-      catch (error) { if (error.code === 'morning_expense_operation_missing') { check(); result = {state:'not_found', verified:false}; } else throw error; }
+      catch (error) {
+        check();
+        if (error.code === 'morning_expense_operation_missing') result = {state:'not_found', verified:false};
+        else {if (result?.verified) result = {...result, state:'created_unverified', verified:false}; throw error;}
+      }
       if (result.fileState) fileAttempted = !['not_started', 'prepared'].includes(result.fileState);
       message = result.verified ? 'היצירה אומתה. יש לוודא גם קישור קובץ מקור.' : result.state === 'not_found' ? 'השרת אישר שמזהה הפעולה אינו קיים. ניתן להתחיל קליטה חדשה.' : 'הפעולה עדיין דורשת בדיקה ב־Morning. אין ליצור את אותה חשבונית שוב.';
     });

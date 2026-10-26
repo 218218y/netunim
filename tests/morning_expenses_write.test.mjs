@@ -129,6 +129,16 @@ test('wrong VAT, interrupted readback and existing Morning invoice never produce
   assert.equal((await duplicate.writer.handle(user, input())).body.code, 'morning_expense_duplicate');
   assert.equal(duplicate.posts.length, 0); assert.equal(duplicate.rows.has(id(2)), false);
 });
+
+test('a later canonical edit revokes historical verification and cannot replay the original financial POST', async () => {
+  const f = fixture(); assert.equal((await f.writer.handle(user, input())).body.verified, true);
+  f.setMode('wrong-vat'); const changed = await f.writer.handle(user, {action:'operation_status', operationId:id(2)});
+  assert.equal(changed.status, 202); assert.equal(changed.body.verified, false);
+  assert.equal(f.rows.get(id(2)).state, 'created_unverified'); assert.equal(f.rows.get(id(2)).verified_at, null);
+  assert.equal((await f.writer.handle(user, input())).body.verified, false); assert.equal(f.posts.length, 1);
+  f.setMode(''); assert.equal((await f.writer.handle(user, {action:'operation_status', operationId:id(2)})).body.verified, true);
+  assert.equal(f.posts.length, 1);
+});
 test('failed read-only preflight can recover without leaving a permanent invoice lock', async () => {
   const f = fixture({mode:'preflight-down'});
   assert.equal((await f.writer.handle(user, input())).status, 503); assert.equal(f.rows.size, 0); assert.equal(f.posts.length, 0);

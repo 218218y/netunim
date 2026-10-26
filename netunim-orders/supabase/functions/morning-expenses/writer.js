@@ -1,7 +1,8 @@
 import {expenseUuid, expenseClassification, expenseSupplier, expenseRecord, expensePage} from './service.js';
-import {expenseCents, normalizeExpenseInput} from './input.js';
+import {normalizeExpenseInput} from './input.js';
 import {completePProfiles, verifyPProfiles} from './p-suppliers.js';
 import {expenseWriteAccess} from './write-access.js';
+import {expenseMatchesIntent} from './intent.js';
 
 const digest = async value => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(value)))), x => x.toString(16).padStart(2, '0')).join('');
 const response = (status, body) => ({status, body:{ok:status < 400, ...body}});
@@ -23,13 +24,6 @@ export function createExpenseWriter({request, ledger, environment, enabled = fal
       ...(input.allocationNumber ? {allocationNumber:input.allocationNumber} : {}),
       supplier:{name:supplier.name, taxId:supplier.taxId, country:'IL', add:false}, accountingClassification:{id:classification.id}};
   }
-  function matches(raw, payload) {
-    return expenseUuid(raw?.id) && raw.documentType === payload.documentType && raw.number === payload.number && raw.date === payload.date &&
-      raw.reportingDate === payload.reportingDate && raw.currency === 'ILS' && expenseCents(raw.amount) === expenseCents(payload.amount) &&
-      expenseCents(raw.vat) === expenseCents(payload.vat) && raw.supplier?.taxId === payload.supplier.taxId &&
-      raw.accountingClassification?.id === payload.accountingClassification.id && raw.data?.pcnClassification === 'T' &&
-      (!payload.allocationNumber || raw.allocationNumber === payload.allocationNumber) && [10, 20, 30, 40].includes(raw.status);
-  }
   const summary = row => ({operationId:row.operation_id, state:row.state, expenseId:row.expense_id || '', verified:row.state === 'created' && !!row.verified_at,
     cancelled:row.state === 'cancelled', intent:{number:row.payload.number, documentType:row.payload.documentType, date:row.payload.date,
       reportingDate:row.payload.reportingDate, supplierName:row.payload.supplier?.name, amount:row.payload.amount, vat:row.payload.vat},
@@ -38,7 +32,11 @@ export function createExpenseWriter({request, ledger, environment, enabled = fal
     if (row.state === 'cancelled') return response(200, summary(row));
     if (!row.expense_id) return response(202, {...summary(row), code:'morning_expense_reconciliation_required'});
     const raw = await request('/expenses/' + row.expense_id, {method:'GET'});
-    if (raw?.id !== row.expense_id || !matches(raw, row.payload)) return response(202, {...summary(row), code:'morning_expense_verification_pending'});
+    if (raw?.id !== row.expense_id || !expenseMatchesIntent(raw, row.payload)) {
+      const saved = row.state === 'created' ? await ledger.transition(user.id, row.operation_id, 'created', {state:'created_unverified', verified_at:null}) : row;
+      if (!saved) throw new Error('morning_expense_storage_failed');
+      return response(202, {...summary(saved), verified:false, code:'morning_expense_verification_pending'});
+    }
     const saved = row.state === 'created' ? row : await ledger.transition(user.id, row.operation_id, row.state, {state:'created', verified_at:new Date().toISOString()});
     if (!saved) throw new Error('morning_expense_storage_failed');
     return response(200, {...summary(saved), item:expenseRecord(raw), fileLinked:!!raw.url});
@@ -63,7 +61,7 @@ export function createExpenseWriter({request, ledger, environment, enabled = fal
         if (body.action === 'reconcile') {
           if (!existing || !['pending', 'needs_reconciliation'].includes(existing.state) || !expenseUuid(body.expenseId)) throw new Error('invalid_expense_input');
           const raw = await request('/expenses/' + body.expenseId, {method:'GET'});
-          if (raw?.id !== body.expenseId || !matches(raw, existing.payload)) throw new Error('invalid_expense_input');
+          if (raw?.id !== body.expenseId || !expenseMatchesIntent(raw, existing.payload)) throw new Error('invalid_expense_input');
           const saved = await ledger.transition(user.id, existing.operation_id, existing.state, {state:'created_unverified', expense_id:raw.id});
           if (!saved) throw new Error('morning_expense_storage_failed');
           return await verify(user, saved);

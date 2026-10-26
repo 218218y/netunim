@@ -17,7 +17,7 @@ FLOW = r"""(async()=>{
  const requests=[], capture=()=>{const saved=owner;return()=>check(saved===owner,'account changed')};
  const supplier={id:id(2),name:'ספק בדיקה <script>',taxId:'123456789',active:true,country:'IL'};
  const expense={id:id(3),kind:'expense',status:10,supplierId:id(2),sourceDocumentDate:'2026-10-20',pcnClassification:'T',classification:{id:id(4),title:'ציוד משרד',vat:100,income:100}};
- let catalogExpense=expense,directoryHidden=false,uploadEnabled=true,serverFileState='not_started';const confirmations=[];
+ let catalogExpense=expense,directoryHidden=false,uploadEnabled=true,statusUnavailable=false,serverFileState='not_started';const confirmations=[];
  const paged=items=>({ok:true,version:1,environment,page:0,pageSize:50,total:items.length,pages:items.length?1:0,items});
  const respond=async(action,body,assertCurrent)=>{
   assertCurrent();requests.push({action,body});if(held&&action==='suppliers')await held;
@@ -26,7 +26,7 @@ FLOW = r"""(async()=>{
   if(action==='get_supplier')return {ok:true,version:1,environment,item:supplier};
   if(action==='get_expense')return {ok:true,version:1,environment,item:{...expense,id:id(30)}};
   if(action==='create'){posts++;check(body.expense.vat==='160.00','manual VAT changed');return {ok:true,state:'created',verified:true,expenseId:id(8),fileLinked:false};}
-  if(action==='operation_status')return {ok:true,state:recoveryState,verified:recoveryState==='created',expenseId:recoveryState==='created'?id(8):'',fileLinked:linked,fileState:serverFileState,intent};
+  if(action==='operation_status'){if(statusUnavailable)throw Error('בדיקת מצב אינה זמינה');return {ok:true,state:recoveryState,verified:recoveryState==='created',expenseId:recoveryState==='created'?id(8):'',fileLinked:linked,fileState:serverFileState,intent};}
   if(action==='reconcile'){check(body.expenseId===id(8),'wrong canonical ID');recoveryState='created';return {ok:true,state:'created',verified:true,expenseId:id(8),fileLinked:linked,intent};}
   if(action==='cancel_reserved'){check(recoveryState==='reserved','nonreserved cancellation');recoveryState='cancelled';return {ok:true,state:'cancelled',verified:false,cancelled:true,intent};}
   if(action==='upload_prepare')return {ok:true,fileGeneration:id(10)};
@@ -97,6 +97,7 @@ FLOW = r"""(async()=>{
  check(!fixture.querySelector('[data-action="morning-expense-save"]'),'reload enabled blind replay');click('status');await settle();check(posts===1,'recovery created another expense');
  check(fixture.querySelector('[data-expense-receipt]').textContent.includes('RECOVERED-123'),'recovered operation details missing');
  check(!fixture.querySelector('[data-expense-field="number"]'),'recovery displayed an empty intake form');
+ statusUnavailable=true;click('status');await settle();check(!fixture.querySelector('[data-action="morning-expense-upload"]')&&fixture.textContent.includes('אימות הפרטים ממתין'),'failed read kept historical verification');statusUnavailable=false;click('status');await settle();
  recoveryState='needs_reconciliation';click('status');await settle();check(fixture.querySelector('[data-expense-field="reconciliationId"]'),'reconciliation control missing');
  field('reconciliationId',id(8));click('reconcile');await settle();check(posts===1&&!fixture.querySelector('[data-expense-field="reconciliationId"]'),'reconciliation created a new expense or stayed unresolved');
  linked=false;serverFileState='ticket_issued';click('status');await settle();click('next');check(fixture.querySelector('[data-expense-receipt]')&&!fixture.querySelector('[data-expense-field="number"]'),'reloaded pending file lost its recovery');serverFileState='not_started';
