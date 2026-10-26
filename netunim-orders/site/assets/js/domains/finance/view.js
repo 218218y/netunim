@@ -38,7 +38,7 @@ function creditRowMatchesSearch(row, query) {
         row?.card, row?.account, row?.ownerLabel, row?.description, row?.transactionDate, row?.transactionTime, row?.date, row?.part, row?.totalParts, row?.amount, row?.displayAmount, row?.displayCurrency, row?.originalAmount, row?.originalCurrency, row?.totalAmount, row?.provider, row?.source, row?.status, row?.status === 'pending' ? 'ממתינה' : '', row?.foreignCurrency ? 'מט״ח' : '', CREDIT_PROVIDER_LABELS[row?.provider] || ''
     ], [row?.transactionDate, row?.date]);
 }
-export function createDomainsFinanceView({ runFinance = withFinanceDerivations, ui, controller, checksView, dashboardView, morningReportsMarkup = () => '', mountViewLayout, modal, closeModal, downloadBankChequeImage = async () => null, confirmDialog, dateEditorMarkup, openBankMorningDocument = () => {
+export function createDomainsFinanceView({ runFinance = withFinanceDerivations, ui, controller, checksView, dashboardView, morningReportsMarkup = () => '', morningExpensesMarkup = () => '', mountViewLayout, modal, closeModal, downloadBankChequeImage = async () => null, confirmDialog, dateEditorMarkup, openBankMorningDocument = () => {
 }, isActive = () => true }) {
     function currentSection() {
         if (!KUPA_SECTIONS.includes(ui.kupaSubView))
@@ -575,7 +575,7 @@ export function createDomainsFinanceView({ runFinance = withFinanceDerivations, 
             return `${creditSyncPanelMarkup(s)}${creditMarkup(s)}`;
         if (section === 'checks')
             return checksView.checksMarkup({ embedded: true, showEmbeddedStatus: false, showBankActivity: false });
-        return `<button type="button" class="btn finance-tax-shortcut" data-action="tax-open"><span aria-hidden="true">▦</span> מחשבון מסים וארנונה</button>${morningReportsMarkup()}${dashboardView.summaryMarkup({ embedded: true })}`;
+        return `<button type="button" class="btn finance-tax-shortcut" data-action="tax-open"><span aria-hidden="true">▦</span> מחשבון מסים וארנונה</button>${morningReportsMarkup()}${morningExpensesMarkup()}${dashboardView.summaryMarkup({ embedded: true })}`;
     }
     function renderKupa(...args) {
         if (!isActive())

@@ -34,29 +34,29 @@ function requireMethods(name, port, methods) {
   }
 }
 
-function createLazyMorningReports(ports, notify) {
+function createLazyMorningPanel(kind, ports, notify) {
   let feature = null, flight = null, active = true;
+  const reports = kind === 'reports', stem = reports ? 'morning-report' : 'morning-expense', prefix = stem + '-';
   function markup() {
     if (feature) return feature.markup();
-    return `<section class="morning-reports" data-morning-reports><div class="morning-report-heading">
-      <button type="button" class="morning-report-trigger" data-action="morning-report-toggle" aria-expanded="false">
-      <span><b>דוחות מורנינג</b><small>תקבולים לפי אמצעי תשלום · רווח והפסד · מע״מ</small></span><span aria-hidden="true">⌄</span></button>
-      </div></section>`;
+    const panel = stem + (reports ? 's' : '-intake');
+    return `<section class="${panel}" data-${panel}><div class="${stem}-heading"><button type="button" class="${stem}-trigger" data-action="${prefix}toggle" aria-expanded="false"><span><b>${reports ? 'דוחות מורנינג' : 'קליטת הוצאות ב־Morning'}</b>${reports ? '<small>תקבולים לפי אמצעי תשלום · רווח והפסד · מע״מ</small>' : ''}</span><span aria-hidden="true">⌄</span></button></div></section>`;
   }
-  function ensure() {
-    if (!active || feature) return Promise.resolve(active ? feature : null);
-    if (!flight) flight = import('./morning-reports.js').then(module => {
-      if (active) feature = module.createFinanceMorningReports(ports);
+  async function ensure() {
+    if (!active || feature) return active ? feature : null;
+    if (!flight) flight = (reports ? import('./morning-reports.js') : import('./morning-expenses.js')).then(module => {
+      if (active) feature = (reports ? module.createFinanceMorningReports : module.createFinanceMorningExpenses)(ports);
       return feature;
     }).finally(() => { flight = null; });
     return flight;
   }
-  const names = 'toggle period option load cancel type detail detail-page record export pdf'.split(' ');
-  const actions = Object.fromEntries(names.map(name => [`morning-report-${name}`, (...args) => {
-    if (feature) return active ? feature.actions[`morning-report-${name}`](...args) : false;
-    return ensure().then(loaded => active ? loaded?.actions[`morning-report-${name}`](...args) : false)
-      .catch(() => { if (active) notify('הדוחות לא זמינים כרגע'); return false; });
+  const names = (reports ? 'toggle period option load cancel type detail detail-page record export pdf' : 'toggle load field save status next upload file-status files dragover drop keyboard paste').split(' ');
+  const actions = Object.fromEntries(names.map(name => [prefix + name, (...args) => {
+    if (feature) return active ? feature.actions[prefix + name](...args) : false;
+    return ensure().then(loaded => active ? loaded?.actions[prefix + name](...args) : false)
+      .catch(() => { if (active) notify('מסך Morning אינו זמין כרגע'); return false; });
   }]));
+  if (!reports) markMutationActions(actions, {finance:['save', 'upload', 'keyboard'].map(name => prefix + name)});
   return {markup, actions, runtime:{
     isPending:() => !!flight || feature?.runtime.isPending() === true,
     drain:async () => { await flight?.catch(() => {}); await feature?.runtime.drain(); },
@@ -274,14 +274,17 @@ export function createOrdersFinanceCapability({
       },
     };
     const notify = (...args) => { if (!disposed) toast(...args); };
-    const reports = morningOperationScope ? createLazyMorningReports({auth, morningOperationScope, modal:ownedModal.modal,
-      toast:notify, dateEditorMarkup:date.dateEditorMarkup, isActive:() => !disposed}, notify) : null;
+    const [reports, expenses] = morningOperationScope ? ['reports', 'expenses'].map(kind => createLazyMorningPanel(kind, {
+      auth, morningOperationScope, modal:ownedModal.modal, confirmDialog:ownedModal.confirmDialog, toast:notify,
+      dateEditorMarkup:date.dateEditorMarkup, isActive:() => !disposed,
+    }, notify)) : [null, null];
     const view = createDomainsFinanceView({
       ui, controller, checksView, dashboardView:dashboard, runFinance, isActive:() => !disposed,
       mountViewLayout:layout.mountViewLayout, modal:ownedModal.modal, closeModal:ownedModal.closeModal,
       confirmDialog:ownedModal.confirmDialog, dateEditorMarkup:date.dateEditorMarkup,
       downloadBankChequeImage:images.download, openBankMorningDocument,
       morningReportsMarkup:() => reports?.markup() || '',
+      morningExpensesMarkup:() => expenses?.markup() || '',
     });
     const importConnections = createFinanceConnectionImportCapability({
       bridge, getCreditProfiles:() => controller.snapshot().creditSync?.profiles || [],
@@ -301,6 +304,7 @@ export function createOrdersFinanceCapability({
     });
     const packs = [
       {name:'morning-reports', actions:reports?.actions || {}},
+      {name:'morning-expenses', actions:expenses?.actions || {}},
       {name:'credit-order', actions:markMutationActions(creditOrder.actions, {finance:['credit-card-order-save']})},
       {name:'finance-bank', actions:createFinanceBankActions({domainsFinanceController:controller, domainsFinanceView:view, importFinanceConnections:importConnections.commands.importConnections, ui, uiStatus:{toast:notify}})},
       {name:'finance-credit', actions:createFinanceCreditActions({domainsFinanceView:view, ui})},
@@ -314,7 +318,7 @@ export function createOrdersFinanceCapability({
         return [name, guarded];
       }),
     )}));
-    presentation = {view, importConnections, reports, packs:guardedPacks};
+    presentation = {view, packs:guardedPacks, runtimes:[reports?.runtime, expenses?.runtime, importConnections.runtime, view.connectionRuntime]};
   }
 
   const queries = {
@@ -343,10 +347,12 @@ export function createOrdersFinanceCapability({
     recomputeKupaNetFromCache:(...args) => readoutReady().recomputeKupaNetFromCache(...args),
     renderKupaDependentView:(...args) => readoutReady().renderKupaDependentView(...args),
   };
+  const ownedRuntimes = () => [...(presentation?.runtimes || []), archiveReconciliation?.runtime, bankSnapshots?.runtime, controller?.runtime,
+    connections?.runtime, bankConnections?.runtime, archive?.runtime].filter(Boolean);
   const runtime = {
-    isPending:() => !!(presentation?.reports?.runtime.isPending() || controller?.runtime.isPending() || archiveReconciliation?.runtime.isPending() || bankSnapshots?.runtime.isPending() || connections?.runtime.isPending() || bankConnections?.runtime.isPending() || archive?.runtime.isPending() || presentation?.view.connectionRuntime.isPending() || presentation?.importConnections.runtime.isPending()),
+    isPending:() => ownedRuntimes().some(owner => owner.isPending()),
     async drain() {
-      do { await Promise.all([presentation?.reports?.runtime.drain(), controller?.runtime.drain(), archiveReconciliation?.runtime.drain(), bankSnapshots?.runtime.drain(), connections?.runtime.drain(), bankConnections?.runtime.drain(), archive?.runtime.drain(), presentation?.view.connectionRuntime.drain(), presentation?.importConnections.runtime.drain()]); } while(runtime.isPending());
+      do { await Promise.all(ownedRuntimes().map(owner => owner.drain())); } while(runtime.isPending());
     },
     start() { uiReady(); return controller.startAutoSync(); },
     resume() { uiReady(); return controller.resumeAutoSync(); },
@@ -359,15 +365,7 @@ export function createOrdersFinanceCapability({
     dispose() {
       if (disposed) return false;
       disposed = true;
-      presentation?.reports?.runtime.dispose();
-      archiveReconciliation?.runtime.dispose();
-      bankSnapshots?.runtime.dispose();
-      presentation?.importConnections.runtime.dispose();
-      presentation?.view.connectionRuntime.dispose();
-      controller?.runtime.dispose();
-      connections?.runtime.dispose();
-      bankConnections?.runtime.dispose();
-      archive?.runtime.dispose();
+      ownedRuntimes().forEach(owner => owner.dispose());
       controller?.setFinanceStatusListener(() => {});
       effects.dispose();
       return true;

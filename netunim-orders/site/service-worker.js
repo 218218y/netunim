@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-8ba815a2942d';
+const CACHE='orders-app-shell-esm-706b268948ba';
 const SHELL=[
   './',
   './index.html',
@@ -34,6 +34,7 @@ const SHELL=[
   './assets/js/composition/finance.js',
   './assets/js/composition/folders.js',
   './assets/js/composition/main-sync.js',
+  './assets/js/composition/morning-expenses.js',
   './assets/js/composition/morning-media.js',
   './assets/js/composition/morning-reports.js',
   './assets/js/composition/service.js',
@@ -48,6 +49,7 @@ const SHELL=[
   './assets/js/core/money.js',
   './assets/js/core/morning-banks.js',
   './assets/js/core/morning-document-types.js',
+  './assets/js/core/morning-expense-input.js',
   './assets/js/core/morning-operation-scope.js',
   './assets/js/core/search.js',
   './assets/js/core/values.js',
@@ -148,6 +150,8 @@ const SHELL=[
   './assets/js/domains/finance/document-commands.js',
   './assets/js/domains/finance/document-publication.js',
   './assets/js/domains/finance/kupa-write-state.js',
+  './assets/js/domains/finance/morning-expense-catalog.js',
+  './assets/js/domains/finance/morning-expense-intake.js',
   './assets/js/domains/finance/morning-report-analysis-view.js',
   './assets/js/domains/finance/morning-report-analysis.js',
   './assets/js/domains/finance/morning-report-cache.js',
@@ -195,6 +199,7 @@ const SHELL=[
   './assets/js/integrations/bank-bridge.js',
   './assets/js/integrations/document-bridge.js',
   './assets/js/integrations/document-google-drive.js',
+  './assets/js/integrations/morning-expenses.js',
   './assets/js/integrations/morning.js',
   './assets/js/lifecycle.js',
   './assets/js/main.js',
@@ -203,6 +208,7 @@ const SHELL=[
   './assets/js/platform/calendar-delivery-owner.js',
   './assets/js/platform/calendar-oauth-return.js',
   './assets/js/platform/folder-picker.js',
+  './assets/js/platform/morning-expense-files.js',
   './assets/js/platform/morning-media-effects.js',
   './assets/js/platform/morning-media-presentation.js',
   './assets/js/runtime-events.js',

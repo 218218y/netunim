@@ -23,7 +23,7 @@ test('literal delegated actions rendered by Kupa have a registered owner',()=>{
   for(const file of sourceFiles(site)){
     if(file.includes(`${path.sep}vendor${path.sep}`))continue;
     const source=fs.readFileSync(file,'utf8');
-    for(const match of source.matchAll(/\bdata-(?:action|change|input|keydown|focus|blur|dragstart|dragover|drop|dragend)=["']([a-z][a-z0-9-]*)["']/g))referenced.add(match[1]);
+    for(const match of source.matchAll(/\bdata-(?:action|change|input|keydown|focus|blur|dragstart|dragover|drop|dragend|paste)=["']([a-z][a-z0-9-]*)["']/g))referenced.add(match[1]);
   }
   assert.deepEqual([...referenced].filter(name=>!registered.has(name)).sort(),[]);
   const renderSources=sourceFiles(site).filter(file=>!file.includes(`${path.sep}action-packs${path.sep}`)&&!file.endsWith(`${path.sep}ui${path.sep}actions.js`)&&!file.endsWith(`${path.sep}ui${path.sep}secondary-read-only-actions.js`)).map(file=>fs.readFileSync(file,'utf8'));

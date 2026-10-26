@@ -25,8 +25,10 @@ function fixture({environment = 'sandbox', enabled = true, mode = '', pSuppliers
   const request = async (path, init) => {
     if (path === '/suppliers/' + id(3)) return {id:id(3), name:'Supplier', active:true, country:'IL', taxId:'123456789'};
     if (path === '/expenses/' + id(4)) return {id:id(4), status:10, accountingClassification:{id:id(5), title:'Category', vat:100}};
-    if (path === '/expenses/search') return {page:1, pageSize:50, total:mode === 'duplicate' ? 1 : 0, pages:mode === 'duplicate' ? 1 : 0,
-      items:mode === 'duplicate' ? [{...canonicalExpense(), id:id(8)}] : []};
+    if (path === '/expenses/search') {
+      if (mode === 'preflight-down') throw new Error('read failed before any write');
+      return {page:1, pageSize:50, total:mode === 'duplicate' ? 1 : 0, pages:mode === 'duplicate' ? 1 : 0, items:mode === 'duplicate' ? [{...canonicalExpense(), id:id(8)}] : []};
+    }
     if (path === '/expenses') {
       posts.push(JSON.parse(init.body)); canonical = {...posts.at(-1), id:id(6), status:10, data:{pcnClassification:'T'}};
       if (mode === 'lost') throw new Error('timeout after write');
@@ -90,5 +92,11 @@ test('wrong VAT, interrupted readback and existing Morning invoice never produce
   }
   const duplicate = fixture({mode:'duplicate'});
   assert.equal((await duplicate.writer.handle(user, input())).body.code, 'morning_expense_duplicate');
-  assert.equal(duplicate.posts.length, 0); assert.equal(duplicate.rows.get(id(2)).state, 'blocked');
+  assert.equal(duplicate.posts.length, 0); assert.equal(duplicate.rows.has(id(2)), false);
+});
+test('failed read-only preflight can recover without leaving a permanent invoice lock', async () => {
+  const f = fixture({mode:'preflight-down'});
+  assert.equal((await f.writer.handle(user, input())).status, 503); assert.equal(f.rows.size, 0); assert.equal(f.posts.length, 0);
+  assert.equal((await f.writer.handle(user, {action:'operation_status', operationId:id(2)})).status, 404);
+  f.setMode(''); assert.equal((await f.writer.handle(user, input())).body.verified, true); assert.equal(f.posts.length, 1);
 });

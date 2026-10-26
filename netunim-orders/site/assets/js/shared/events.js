@@ -4,7 +4,7 @@ export function bindActionEvents(root,actions,{
   canRun=()=>true,
   onError=(error,context)=>console.error('UI action failed',context,error),
 }={}){
-  const types=['click','change','input','keydown','focus','blur','dragstart','dragover','drop','dragend'];
+  const types=['click','change','input','keydown','focus','blur','dragstart','dragover','drop','dragend','paste'];
   for(const type of types){
     root.addEventListener(type,event=>{
       const path=event.composedPath();
