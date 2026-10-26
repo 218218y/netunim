@@ -8,7 +8,8 @@ FLOW = r"""(async()=>{
  const fileEffects=await import('./assets/js/platform/morning-expense-files.js');
  const check=(value,message)=>{if(!value)throw Error(message)};
  const id=n=>'aaaaaaaa-aaaa-4aaa-aaaa-'+String(n).padStart(12,'0');
- let owner=id(1), listener=()=>{}, linked=false, posts=0, uploads=0, confirms=0, held=null, confirmWait=null;
+ let owner=id(1), listener=()=>{}, linked=false, posts=0, uploads=0, confirms=0, held=null, confirmWait=null, recoveryState='created';
+ const intent={number:'RECOVERED-123',documentType:305,date:'2026-09-20',reportingDate:'2026-10-01',supplierName:'ספק מהבקשה המקורית',amount:118,vat:18};
  const requests=[], capture=()=>{const saved=owner;return()=>check(saved===owner,'account changed')};
  const supplier={id:id(2),name:'ספק בדיקה <script>',taxId:'123456789',active:true,country:'IL'};
  const expense={id:id(3),kind:'expense',status:10,supplierId:id(2),sourceDocumentDate:'2026-10-20',pcnClassification:'T',classification:{id:id(4),title:'ציוד משרד',vat:100,income:100}};
@@ -18,7 +19,11 @@ FLOW = r"""(async()=>{
   if(action==='capabilities')return {ok:true,version:1,environment:'sandbox',create:true,upload:true};
   if(action==='suppliers')return paged([supplier]);if(action==='expenses')return paged([expense]);
   if(action==='create'){posts++;check(body.expense.vat==='160.00','manual VAT changed');return {ok:true,state:'created',verified:true,expenseId:id(8),fileLinked:false};}
-  if(action==='operation_status')return {ok:true,state:'created',verified:true,expenseId:id(8),fileLinked:linked};
+  if(action==='operation_status')return {ok:true,state:recoveryState,verified:recoveryState==='created',expenseId:recoveryState==='created'?id(8):'',fileLinked:linked,intent};
+  if(action==='reconcile'){check(body.expenseId===id(8),'wrong canonical ID');recoveryState='created';return {ok:true,state:'created',verified:true,expenseId:id(8),fileLinked:linked,intent};}
+  if(action==='cancel_reserved'){check(recoveryState==='reserved','nonreserved cancellation');recoveryState='cancelled';return {ok:true,state:'cancelled',verified:false,cancelled:true,intent};}
+  if(action==='upload_prepare')return {ok:true,fileGeneration:id(10)};
+  if(action==='upload_ack')return {ok:true,fileState:'file_accepted'};
   if(action==='upload_ticket')return {ok:true,url:'https://s3.eu-west-1.amazonaws.com/sandbox-file-upload-service-uploaded',maxFileSize:20971520,fields:{key:'test',Policy:'test'},expiresAt:Date.now()+55000};
   if(action==='upload_status')return {ok:true,fileLinked:linked,message:linked?'Morning מציגה קובץ מצורף להוצאה.':'קישור הקובץ טרם אומת ב־Morning.'};
   throw Error('unexpected '+action);
@@ -31,7 +36,7 @@ FLOW = r"""(async()=>{
  let uiFeature=createMorningExpenseIntake(ports);fixture.innerHTML=uiFeature.markup();
  bindActionEvents(fixture,new Proxy({}, {get:(_,name)=>(...args)=>uiFeature.actions[name]?.(...args)}));
  for(const name of ['click','input','change','keydown','drop','dragover','paste'])fixture.addEventListener(name,event=>event.stopPropagation());
- const click=name=>{const element=fixture.querySelector('[data-action="morning-expense-'+name+'"]');check(element,'missing '+name);element.click()};
+ const click=name=>{const element=fixture.querySelector('[data-action="morning-expense-'+name+'"], [data-expense-command="'+name+'"]');check(element,'missing '+name);element.click()};
  const settle=()=>uiFeature.runtime.drain();click('toggle');click('load');await settle();
  check(fixture.querySelectorAll('[data-expense-field="supplierId"] option').length===2,'suppliers missing');check(!fixture.querySelector('script'),'unescaped supplier');
  const field=(name,value,type='input')=>{const element=fixture.querySelector('[data-expense-field="'+name+'"]');check(element,'missing '+name);if(element.type==='checkbox')element.checked=value===true;else element.value=value;element.dispatchEvent(new Event(type,{bubbles:true}));return element};
@@ -61,7 +66,11 @@ FLOW = r"""(async()=>{
  const saving=uiFeature.actions['morning-expense-save']();await new Promise(resolve=>setTimeout(resolve,0));owner=id(9);listener();releaseConfirm(true);await saving;confirmWait=null;check(posts===1,'stale confirmation dispatched');owner=id(1);listener();
  localStorage.setItem('morningExpenseOperation:'+owner,recovery);uiFeature.runtime.dispose();uiFeature=createMorningExpenseIntake(ports);fixture.innerHTML=uiFeature.markup();click('toggle');click('load');await settle();
  check(fixture.querySelector('[data-action="morning-expense-save"]').disabled,'reload enabled blind replay');click('status');await settle();check(posts===1,'recovery created another expense');
- uiFeature.actions['morning-expense-next']();let release;held=new Promise(resolve=>release=resolve);const loading=uiFeature.actions['morning-expense-load']();await new Promise(resolve=>setTimeout(resolve,0));owner=id(9);listener();release();await loading;held=null;
+ check(fixture.querySelector('[data-expense-receipt]').textContent.includes('RECOVERED-123'),'recovered operation details missing');
+ recoveryState='needs_reconciliation';click('status');await settle();check(fixture.querySelector('[data-expense-field="reconciliationId"]'),'reconciliation control missing');
+ field('reconciliationId',id(8));click('reconcile');await settle();check(posts===1&&!fixture.querySelector('[data-expense-field="reconciliationId"]'),'reconciliation created a new expense or stayed unresolved');
+ recoveryState='reserved';click('status');await settle();click('cancel');await settle();check(posts===1&&fixture.textContent.includes('בוטלה לפני שליחה'),'reserved cancellation failed');
+ uiFeature.actions['morning-expense-command']({dataset:{expenseCommand:'next'}});let release;held=new Promise(resolve=>release=resolve);const loading=uiFeature.actions['morning-expense-command']({dataset:{expenseCommand:'load'}});await new Promise(resolve=>setTimeout(resolve,0));owner=id(9);listener();release();await loading;held=null;
  check(!fixture.textContent.includes(supplier.name)&&!fixture.querySelector('[data-expense-field="supplierId"]'),'old account catalog survived');check(!fixture.textContent.includes(id(8)),'old expense result survived');uiFeature.runtime.dispose();localStorage.removeItem('morningExpenseOperation:'+id(1));
  return {posts,uploads,confirms,requests:requests.length,desktop};
 })()"""

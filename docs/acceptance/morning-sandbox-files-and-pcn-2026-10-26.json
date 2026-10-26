@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "testedAt": "2026-10-26T09:33:05.794722+00:00",
+  "environment": "sandbox",
+  "productionTouched": false,
+  "scope": "Real provider API and S3 requests through the application uploader/client; local durable fixture ledger. Direct contract probe for P and draft creation; application P creation remains blocked.",
+  "pcnP": {
+    "documentType": 305,
+    "invoiceNumberDigits": 9,
+    "classification": "P",
+    "taxIdentityMatched": true,
+    "date": "2026-10-26",
+    "reportingDate": "2026-10-01",
+    "amount": 1160,
+    "vat": 160,
+    "userConfirmedVisibleInMorning": true,
+    "officialPCN874ExportVerified": false
+  },
+  "sourceFile": {
+    "contentType": "application/pdf",
+    "synthetic": true,
+    "accepted204": true,
+    "state": "file_linked",
+    "canonicalLinkObserved": true,
+    "byteIdentityVerified": false,
+    "approvalVerified": false
+  },
+  "ocrDraft": {
+    "accepted204": true,
+    "newDraftCount": 1,
+    "status": 10,
+    "hasFile": true,
+    "amount": 118,
+    "vat": 18,
+    "invoiceNumberMatchedSource": false,
+    "approved": false
+  },
+  "remaining": [
+    "Official PCN874 export acceptance",
+    "OCR draft approval via a documented supported API",
+    "Production rollout"
+  ],
+  "sourceLFHashes": {
+    "netunim-orders/supabase/functions/morning-expenses/upload.js": "9806628a15caed834b4312bd75e681335122209d54313bd3e5c9ecbd509fe30b",
+    "netunim-orders/supabase/functions/morning-expenses/ledger.js": "b23cf0895e4356b145af3382e385de79fdd138ecd3853e034ea9f3688dc73cc1",
+    "netunim-orders/site/assets/js/platform/morning-expense-files.js": "d7322e289246ae9a1f6ad9bb59e75fd4c841d0bd4e6228b686d64f4174249ba7",
+    "supabase/migrations/20261026100000_morning_expense_recovery.sql": "57e8a18b6b9ba23e23b64a02b96695a5c06426f6c29ce18202c2c41ebde358fb"
+  }
+}

@@ -61,8 +61,8 @@ export function createExpenseService({request, environment, readIds = () => '', 
       const action = body.action;
       if (action === 'capabilities') return {status:200, body:{ok:true, version:1, environment, read:true, create:await writer?.readiness(user) === true, upload:uploader?.allowed(user) === true, pcnP:false,
         draftApproval:false, classificationSource:'existing_expenses', pSuppliers:writer?.profiles() || []}};
-      if (['create', 'operation_status', 'reconcile'].includes(action) && writer) return writer.handle(user, body);
-      if (['upload_ticket', 'upload_status'].includes(action) && uploader) return uploader.handle(user, body);
+      if (['create', 'operation_status', 'reconcile', 'cancel_reserved'].includes(action) && writer) return writer.handle(user, body);
+      if (['upload_prepare', 'upload_ticket', 'upload_ack', 'upload_status'].includes(action) && uploader) return uploader.handle(user, body);
       let result;
       if (action === 'suppliers') {
         const {page, pageSize} = pageInput(body);

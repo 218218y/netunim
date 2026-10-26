@@ -191,6 +191,10 @@
     {
       "version": "20261026080000",
       "name": "morning_expense_operations"
+    },
+    {
+      "version": "20261026100000",
+      "name": "morning_expense_recovery"
     }
   ]
 }

@@ -14,12 +14,18 @@ function fixture({environment = 'sandbox', enabled = true, mode = '', pSuppliers
   const ledger = {
     get:async (owner, operation) => {const row = rows.get(operation); return row?.owner_id === owner ? structuredClone(row) : null;},
     reserve:async row => {
-      if (rows.has(row.operation_id) || [...rows.values()].some(other => other.invoice_identity === row.invoice_identity)) return null;
+      if (rows.has(row.operation_id) || [...rows.values()].some(other => other.state !== 'cancelled' && other.invoice_identity === row.invoice_identity)) return null;
       rows.set(row.operation_id, structuredClone(row)); return structuredClone(row);
     },
     transition:async (owner, operation, state, patch) => {
+      if (mode === 'reserve-only' && state === 'reserved') return null;
       const row = rows.get(operation); if (row?.owner_id !== owner || row.state !== state) return null;
       Object.assign(row, structuredClone(patch)); return structuredClone(row);
+    },
+    cancelReserved:async (owner, operation) => {
+      const row = rows.get(operation);
+      if (row?.owner_id !== owner || row.state !== 'reserved' || row.sent_at || row.expense_id) return null;
+      Object.assign(row, {state:'cancelled', cancelled_at:'2026-10-26'}); return structuredClone(row);
     },
   };
   let canonical = null;
@@ -112,4 +118,17 @@ test('failed read-only preflight can recover without leaving a permanent invoice
   assert.equal((await f.writer.handle(user, input())).status, 503); assert.equal(f.rows.size, 0); assert.equal(f.posts.length, 0);
   assert.equal((await f.writer.handle(user, {action:'operation_status', operationId:id(2)})).status, 404);
   f.setMode(''); assert.equal((await f.writer.handle(user, input())).body.verified, true); assert.equal(f.posts.length, 1);
+});
+
+test('only an unsent reservation can be cancelled; replay and a late sender never dispatch it', async () => {
+  const f = fixture({mode:'reserve-only'});
+  await f.writer.handle(user, input()); assert.equal(f.rows.get(id(2)).state, 'reserved'); assert.equal(f.posts.length, 0);
+  const cancelled = await f.writer.handle(user, {action:'cancel_reserved', operationId:id(2)});
+  assert.equal(cancelled.body.cancelled, true); assert.equal(cancelled.body.intent.number, '00123');
+  f.setMode(''); assert.equal((await f.writer.handle(user, input())).body.cancelled, true); assert.equal(f.posts.length, 0);
+  assert.equal((await f.writer.handle(user, input(7))).body.verified, true); assert.equal(f.posts.length, 1);
+  assert.equal((await f.writer.handle(user, {action:'cancel_reserved', operationId:id(7)})).status, 409);
+  const uncertain = fixture({mode:'lost'}); await uncertain.writer.handle(user, input());
+  assert.equal((await uncertain.writer.handle(user, {action:'cancel_reserved', operationId:id(2)})).status, 409);
+  assert.equal(uncertain.posts.length, 1);
 });

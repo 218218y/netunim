@@ -50,13 +50,13 @@ function createLazyMorningPanel(kind, ports, notify) {
     }).finally(() => { flight = null; });
     return flight;
   }
-  const names = (reports ? 'toggle period option load cancel type detail detail-page record export pdf' : 'toggle load field save status next upload file-status files dragover drop keyboard paste').split(' ');
+  const names = (reports ? 'toggle period option load cancel type detail detail-page record export pdf' : 'toggle field save upload files dragover drop keyboard paste command write').split(' ');
   const actions = Object.fromEntries(names.map(name => [prefix + name, (...args) => {
     if (feature) return active ? feature.actions[prefix + name](...args) : false;
     return ensure().then(loaded => active ? loaded?.actions[prefix + name](...args) : false)
       .catch(() => { if (active) notify('מסך Morning אינו זמין כרגע'); return false; });
   }]));
-  if (!reports) markMutationActions(actions, {finance:['save', 'upload', 'keyboard'].map(name => prefix + name)});
+  if (!reports) markMutationActions(actions, {finance:['save', 'upload', 'keyboard', 'write'].map(name => prefix + name)});
   return {markup, actions, runtime:{
     isPending:() => !!flight || feature?.runtime.isPending() === true,
     drain:async () => { await flight?.catch(() => {}); await feature?.runtime.drain(); },

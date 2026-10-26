@@ -30,8 +30,11 @@ export function createExpenseWriter({request, ledger, environment, enabled = fal
       (!payload.allocationNumber || raw.allocationNumber === payload.allocationNumber) && [10, 20, 30, 40].includes(raw.status);
   }
   const summary = row => ({operationId:row.operation_id, state:row.state, expenseId:row.expense_id || '', verified:row.state === 'created' && !!row.verified_at,
-    fileLinked:false, approvalVerified:false, reportingVerified:false});
+    cancelled:row.state === 'cancelled', intent:{number:row.payload.number, documentType:row.payload.documentType, date:row.payload.date,
+      reportingDate:row.payload.reportingDate, supplierName:row.payload.supplier?.name, amount:row.payload.amount, vat:row.payload.vat},
+    fileState:row.file_state || 'not_started', fileLinked:false, approvalVerified:false, reportingVerified:false});
   async function verify(user, row) {
+    if (row.state === 'cancelled') return response(200, summary(row));
     if (!row.expense_id) return response(202, {...summary(row), code:'morning_expense_reconciliation_required'});
     const raw = await request('/expenses/' + row.expense_id, {method:'GET'});
     if (raw?.id !== row.expense_id || !matches(raw, row.payload)) return response(202, {...summary(row), code:'morning_expense_verification_pending'});
@@ -44,11 +47,18 @@ export function createExpenseWriter({request, ledger, environment, enabled = fal
     async readiness(user) { if (!allowed(user)) return false; try {await verifyPProfiles(request, pSuppliers()); return true;} catch {return false;} },
     profiles:() => pSuppliers().map(profile => ({id:expenseUuid(profile?.id) ? profile.id : '', taxId:typeof profile?.taxId === 'string' ? profile.taxId : ''})).filter(profile => profile.id || profile.taxId),
     async handle(user, body) {
-      const recovering = ['operation_status', 'reconcile'].includes(body?.action);
+      const recovering = ['operation_status', 'reconcile', 'cancel_reserved'].includes(body?.action);
       if (!(recovering ? authorized(user) : allowed(user))) return response(403, {code:'morning_expense_writes_unverified', message:'שמירת הוצאות דורשת Sandbox מורשה ושתי זהויות ספקי P מאומתות.'});
       try {
         if (!expenseUuid(body.operationId)) throw new Error('invalid_expense_input');
         const existing = await ledger.get(user.id, body.operationId);
+        if (body.action === 'cancel_reserved') {
+          if (!existing) return response(404, {code:'morning_expense_operation_missing'});
+          if (existing.state === 'cancelled') return response(200, summary(existing));
+          const saved = await ledger.cancelReserved(user.id, body.operationId);
+          if (!saved) return response(409, {code:'morning_expense_cancel_conflict'});
+          return response(200, summary(saved));
+        }
         if (body.action === 'reconcile') {
           if (!existing || !['pending', 'needs_reconciliation'].includes(existing.state) || !expenseUuid(body.expenseId)) throw new Error('invalid_expense_input');
           const raw = await request('/expenses/' + body.expenseId, {method:'GET'});
