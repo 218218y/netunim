@@ -67,7 +67,9 @@ export function createExpenseService({request, environment, readIds = () => '', 
       if (action === 'suppliers') {
         const {page, pageSize} = pageInput(body);
         if (body.name !== undefined && (typeof body.name !== 'string' || body.name.length > 180)) throw new Error('invalid_expense_input');
-        result = expensePage(await request('/suppliers/search', {method:'POST', body:JSON.stringify({page:page + 1, pageSize, active:true, ...(body.name ? {name:body.name} : {})})}), page, expenseSupplier);
+        if (body.taxId !== undefined && (typeof body.taxId !== 'string' || !/^\d{9}$/.test(body.taxId))) throw new Error('invalid_expense_input');
+        result = expensePage(await request('/suppliers/search', {method:'POST', body:JSON.stringify({page:page + 1, pageSize, active:true,
+          ...(body.name ? {name:body.name} : {}), ...(body.taxId ? {taxId:body.taxId} : {})})}), page, expenseSupplier);
       } else if (action === 'expenses' || action === 'drafts') {
         const draft = action === 'drafts', {page, payload} = expenseSearchInput(body, draft);
         result = expensePage(await request(draft ? '/expenses/drafts/search' : '/expenses/search', {method:'POST', body:JSON.stringify(payload)}), page, draft ? draftRecord : expenseRecord);

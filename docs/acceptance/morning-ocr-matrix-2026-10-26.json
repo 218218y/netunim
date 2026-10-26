@@ -1,0 +1,36 @@
+{
+  "testedAt": "2026-10-26T09:56:37.778540+00:00",
+  "environment": "sandbox",
+  "productionTouched": false,
+  "scope": "Additional synthetic PDF OCR probes; observations of draft suggestions only",
+  "cases": [
+    {
+      "name": "p-manual-vat",
+      "accepted204": true,
+      "draftStatus": 10,
+      "documentType": 305,
+      "documentTypeMatched": true,
+      "numberMatched": true,
+      "amount": 1160,
+      "vat": 160,
+      "amountAndVatMatched": true,
+      "supplierIdentityMatched": false,
+      "pcnClassificationVerified": false
+    },
+    {
+      "name": "supplier-credit",
+      "accepted204": true,
+      "draftStatus": 10,
+      "documentType": 330,
+      "documentTypeMatched": true,
+      "numberMatched": true,
+      "amount": 59,
+      "vat": 9,
+      "amountAndVatMatched": true,
+      "supplierIdentityMatched": false,
+      "pcnClassificationVerified": false
+    }
+  ],
+  "approvalVerified": false,
+  "officialPCN874ExportVerified": false
+}

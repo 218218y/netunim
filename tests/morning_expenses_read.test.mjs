@@ -36,6 +36,14 @@ test('malformed and incomplete pages never become successful empty expense lists
     assert.throws(() => expensePage(data, 0, expenseRecord));
   }
 });
+
+test('supplier tax searches pass only a validated canonical identity and bounded page to Morning', async () => {
+  const calls = [], service = createExpenseService({environment:'sandbox', request:async (path, init) => {calls.push({path, body:JSON.parse(init.body)}); return page();}});
+  for (const taxId of ['123', 123456789, {}, '1234567890']) assert.equal((await service(user, {action:'suppliers', taxId})).status, 400);
+  assert.equal(calls.length, 0);
+  assert.equal((await service(user, {action:'suppliers', taxId:'123456789'})).status, 200);
+  assert.deepEqual(calls[0], {path:'/suppliers/search', body:{page:1, pageSize:50, active:true, taxId:'123456789'}});
+});
 test('expense and OCR ranges have distinct semantics; unsupported actions and local IDs never reach Morning', async () => {
   const calls = [], service = createExpenseService({environment:'sandbox', request:async (...args) => {calls.push(args); return page();}});
   for (const body of [{action:'expenses', fromDate:'2026-10-02', toDate:'2026-10-30'}, {action:'expenses', fromDate:'2026-02-30', toDate:'2026-03-01'}, {action:'suppliers', page:-1}, {action:'get_expense', id:'local-supplier-1'}, {action:'create'}]) {
