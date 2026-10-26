@@ -38,7 +38,7 @@ function fixture(t,site,body,{heads={revision:4,financeRevision:9}}={}){
   const ports={model,session:{connectionMode:'supabase',backendReady:true},checksSession,operationScope,autoScope:()=>null,tab:{primaryTab:true},loadSession:()=>({user:{id:'fixture'}}),toast:message=>messages.push(message),render(){},readRevision:()=>0,
     saveState:()=>assert.fail('cloud Bank receipt entered the local snapshot writer'),recoverLocalState:()=>assert.fail('cloud Bank receipt entered local recovery'),
     sharedChecksHaveLocalWork:()=>false,checksHaveLocalWork:()=>false,getSharedChecks:()=>[],saveSharedChecksToCloud:async()=>true,syncSharedChecksFromCloud:async()=>true,sharedChecksObservedSequence:()=>0,bridge,
-    refreshFinanceCloudSnapshot:async()=>{reads++;return {verified:true,state:model.state,...heads}},
+    refreshFinanceCloudSnapshot:async()=>{reads++;if(serverBank&&heads.revision>=4&&heads.financeRevision>=9)model.state.bank=structuredClone(serverBank);return {verified:true,state:model.state,...heads}},
     refreshKupaReadout:async()=>{reads++;if(serverBank)checksSession.kupaCloudReadState={...structuredClone(state),bank:structuredClone(serverBank)};return true},
     claimFinanceSyncLease:async(leaseName,leaseToken)=>({acquired:true,leaseName,leaseToken,fenceEpoch:1}),releaseFinanceSyncLease:async()=>true,
     saveBankSyncSnapshot:(...args)=>transport.saveBankSyncSnapshot(...args),syncBankTransactionsSnapshot:async()=>({sourcePayload:[],result:{total_count:0}}),
@@ -59,5 +59,5 @@ for(const site of ['kupa','orders'])for(const body of [JSON.stringify(receipt),J
 });
 for(const heads of [{revision:3,financeRevision:9},{revision:4,financeRevision:8}])test(`Kupa: confirmed Bank commit with an older readout ${JSON.stringify(heads)} retains its independent refresh warning`,async t=>{
   const f=fixture(t,'kupa',JSON.stringify(receipt),{heads});assert.equal(await f.run(),true,'the valid remote commit remains committed');
-  assert.equal(f.model.state.bank.currentBalance,500);assert.match(f.api.bankBridgeUiState().lastWarning,/לא אומת/);assert.equal(f.counts().calls,1);
+  assert.equal(f.model.state.bank.currentBalance,100);assert.match(f.api.bankBridgeUiState().lastWarning,/לא אומת/);assert.equal(f.counts().calls,1);
 });

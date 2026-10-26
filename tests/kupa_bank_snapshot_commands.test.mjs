@@ -116,7 +116,7 @@ test('snapshot command construction is inert and requires all six explicit ports
     checks: ['hasLocalWork', 'saveCloud', 'syncCloud'],
     local: ['state', 'save', 'retry'],
     cloud: ['publish', 'refresh'],
-    publication: ['bank', 'archive', 'data'],
+    publication: ['archive', 'data'],
   }))
     for (const method of methods) {
       const f = fixture();
@@ -188,7 +188,7 @@ test('atomic publication strips only Main metadata and retains the real lease an
   const result = await f.create().commands.publishCloud(f.candidate, archive, f.lease);
   assert.deepEqual(
     f.events.map((event) => (typeof event === 'string' ? event : event[0])),
-    ['atomic', 'bank-publish', 'archive-publish', 'data', 'refresh']
+    ['atomic', 'refresh', 'archive-publish', 'data']
   );
   const wire = f.events[0];
   assert.ok(!Object.hasOwn(wire[1], 'snapshotToken'));
@@ -196,7 +196,7 @@ test('atomic publication strips only Main metadata and retains the real lease an
   assert.ok(!Object.hasOwn(wire[1], 'adjustments'));
   assert.deepEqual(wire.slice(2), ['BANK-one', 7, f.lease]);
   assert.equal(wire[1].feed, f.candidate.feed);
-  assert.deepEqual(f.events.at(-1)[1], {
+  assert.deepEqual(f.events[1][1], {
     assertCurrent: f.guard,
     minimumRevision: 4,
     minimumFinanceRevision: 9,
@@ -230,7 +230,7 @@ test('stale independent readout keeps a confirmed commit distinct from display f
   assert.equal(result.remoteCommitted, true);
   assert.equal(result.readoutVerified, false);
   assert.equal(f.events.filter((event) => event[0] === 'atomic').length, 1);
-  assert.ok(f.events.some((event) => event[0] === 'bank-publish'));
+  assert.ok(!f.events.some((event) => ['bank-publish','archive-publish','data'].includes(event[0])));
 });
 test('scope loss during commit cannot publish and loss during readout cannot claim success', async () => {
   for (const phase of ['publish', 'refresh']) {
@@ -251,7 +251,7 @@ test('scope loss during commit cannot publish and loss during readout cannot cla
     else
       assert.deepEqual(
         f.events.map((event) => (typeof event === 'string' ? event : event[0])),
-        ['atomic', 'bank-publish', 'archive-publish', 'data']
+        ['atomic']
       );
   }
 });

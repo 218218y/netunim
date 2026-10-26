@@ -9,7 +9,7 @@ import {
 /** @typedef {{source?:string,accountNumber?:string|null,bankSyncAt?:string|null|undefined,bankFeed?:unknown,homeBankFeed?:unknown,message?:string}} ManualSnapshotOptions */
 /** @typedef {{leaseName:'bank',leaseToken:string,fenceEpoch:number,assertCurrent:SnapshotGuard,[field:string]:unknown}} SnapshotLease */
 /** @typedef {{phase:'saving'|'unconfirmed'|'blocked',canRetry:boolean,message:string}} LocalSnapshotState */
-/** @template Archive @typedef {{bank:(bank:BankSnapshot)=>undefined,archive:(candidate:Archive|null)=>boolean|undefined,data:()=>undefined}} SnapshotPublication */
+/** @template Archive @typedef {{archive:(candidate:Archive|null)=>boolean|undefined,data:()=>undefined}} SnapshotPublication */
 
 export const BANK_LOCAL_SAVE_WARNING =
   'לא התקבל אישור שמירה לנתוני הבנק. אין לסגור את החלון; יש לבדוק את מצב השמירה המקומית.';
@@ -53,7 +53,7 @@ export function createKupaBankSnapshotCommands({
     ['checks', checks, ['hasLocalWork', 'saveCloud', 'syncCloud']],
     ['local', local, ['state', 'save', 'retry']],
     ['cloud_snapshot', cloud, ['publish', 'refresh']],
-    ['publication', publication, ['bank', 'archive', 'data']],
+    ['publication', publication, ['archive', 'data']],
   ];
   for (const [name, port, methods] of required)
     for (const method of methods)
@@ -122,18 +122,23 @@ export function createKupaBankSnapshotCommands({
       )
     );
     assertCurrent();
-    publication.bank(nextBank);
-    publication.archive(candidate);
-    publication.data();
+    // The read owner commits Main/Finance to the journal before publishing it.
+    // Publishing this candidate first dirties Main's snapshot watermark outside
+    // its journal and makes its own committed server response look like a conflict.
     const refreshed = await cloud.refresh({
       assertCurrent,
       minimumRevision: committed.kupa_revision,
       minimumFinanceRevision: committed.finance_revision,
     });
     assertCurrent();
+    const readoutVerified = bankSnapshotReadoutIsCurrent(committed, refreshed);
+    if (readoutVerified) {
+      publication.archive(candidate);
+      publication.data();
+    }
     return {
       remoteCommitted: true,
-      readoutVerified: bankSnapshotReadoutIsCurrent(committed, refreshed),
+      readoutVerified,
       receipt: committed,
     };
   }

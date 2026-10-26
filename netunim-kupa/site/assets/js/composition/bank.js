@@ -91,7 +91,7 @@ export function createKupaBankCapability({
     checks:{hasLocalWork:(...args) => checks.hasLocalWork(...args),saveCloud:(...args) => checks.save(...args),syncCloud:(...args) => checks.sync(...args)},
     local:localSnapshot,
     cloud:{publish:(...args) => cloud.saveSnapshot(...args),refresh:(...args) => cloud.refreshFinance(...args)},
-    publication:{bank:value => { model.state.bank = value; },archive:archive.commands.publish,data:(...args) => { revisions.touchData(...args); }},
+    publication:{archive:archive.commands.publish,data:(...args) => { revisions.touchData(...args); }},
   });
   const syncLeases = createFinanceLeaseOwner({
     leases:{claim:(...args) => cloud.claimLease(...args),release:(...args) => cloud.releaseLease(...args)},
