@@ -44,9 +44,6 @@ export function createMorningExpenseIntake({request, captureRead, captureWrite, 
     if (!active()) return;
     const target = host(); if (!target) return;
     target.outerHTML = markup();
-    host()?.addEventListener('paste', event => {
-      if (event.clipboardData?.files.length) { event.preventDefault(); void chooseFiles(event.clipboardData.files); }
-    });
   }
   function updateMessage(value) { message = value; const output = host()?.querySelector('[data-expense-message]'); if (output) output.textContent = value; }
   function run(work) {
@@ -148,7 +145,7 @@ export function createMorningExpenseIntake({request, captureRead, captureWrite, 
     const disabled = busy || !!operationId, attrs = disabled ? 'disabled' : '';
     const option = (value, label, current) => `<option value="${esc(value)}" ${String(current) === String(value) ? 'selected' : ''}>${esc(label)}</option>`;
     const textField = (name, type = 'text') => `<label>${fieldLabels[name]}<input data-expense-field="${name}" data-input="morning-expense-field" type="${type}" ${['net', 'vat', 'gross'].includes(name) ? 'inputmode="decimal"' : ''} value="${esc(draft[name])}" ${attrs}></label>`;
-    return `<section class="morning-expense-intake" data-morning-expense-intake data-keydown="morning-expense-keyboard" dir="rtl">
+    return `<section class="morning-expense-intake" data-morning-expense-intake data-keydown="morning-expense-keyboard" data-paste="morning-expense-paste" dir="rtl">
       <button type="button" class="morning-expense-trigger" data-action="morning-expense-toggle" aria-expanded="${expanded}" ${busy ? 'disabled' : ''}><b>קליטת הוצאות ב־Morning</b><span>${expanded ? '⌃' : '⌄'}</span></button>
       ${expanded ? `<div class="morning-expense-content"><div class="morning-expense-toolbar"><button type="button" class="btn" data-action="morning-expense-load" ${busy ? 'disabled' : ''}>${catalog ? 'רענון ספקים וסיווגים' : 'טעינת ספקים וסיווגים'}</button><a href="https://app.greeninvoice.co.il" target="_blank" rel="noopener noreferrer">פתיחת Morning</a></div>
       <p class="morning-expense-notice">${catalog?.capabilities.create ? 'סביבת בדיקות Sandbox · יש לבדוק כל פרט מול מסמך המקור.' : 'קליטה לייצור טרם הופעלה. אפשר לעיין ולהכין פרטים; שמירה זמינה ב־Sandbox מורשה בלבד.'}</p>
@@ -175,12 +172,18 @@ export function createMorningExpenseIntake({request, captureRead, captureWrite, 
   }
   const actions = {
     'morning-expense-toggle':() => { if (busy) return false; expanded = !expanded; render(); return true; },
-    'morning-expense-load':load, 'morning-expense-field':setField, 'morning-expense-save':save, 'morning-expense-status':status,
-    'morning-expense-next':next, 'morning-expense-upload':upload, 'morning-expense-file-status':fileStatus,
+    'morning-expense-load':load,
+    'morning-expense-field':setField,
+    'morning-expense-save':save,
+    'morning-expense-status':status,
+    'morning-expense-next':next,
+    'morning-expense-upload':upload,
+    'morning-expense-file-status':fileStatus,
     'morning-expense-files':element => chooseFiles(element.files),
     'morning-expense-dragover':(_, event) => event.preventDefault(),
     'morning-expense-drop':(_, event) => { event.preventDefault(); return chooseFiles(event.dataTransfer?.files || []); },
     'morning-expense-keyboard':(_, event) => {if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {event.preventDefault(); return save();} return false;},
+    'morning-expense-paste':(_, event) => {if (!event.clipboardData?.files.length) return false; event.preventDefault(); return chooseFiles(event.clipboardData.files);},
   };
   return {markup, actions, runtime:{isPending:tasks.isPending, drain:tasks.drain, dispose:() => {if (!tasks.close()) return false; clear(); unsubscribe(); return true;}}};
 }

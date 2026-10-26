@@ -8,6 +8,7 @@ const site=path.join(root,'netunim-orders/site');
 const packs=path.join(site,'assets/js/ui/action-packs');
 const actionSources=[...fs.readdirSync(packs).map(name=>path.join(packs,name)),
   path.join(site,'assets/js/domains/finance/morning-reports.js'),
+  path.join(site,'assets/js/domains/finance/morning-expense-intake.js'),
   ...['notes-workbook.js','spreadsheet-workspace.js','credit-card-order-view.js'].map(name=>path.join(root,'shared',name))];
 const registered=new Set(actionSources.flatMap(file=>[...fs.readFileSync(file,'utf8').matchAll(/^\s*'([a-z][a-z0-9-]+)'\s*:/gm)].map(match=>match[1])));
 registered.add('orders-notes-sheet-search'); // Added to the workbook map by Orders notes composition.
@@ -25,7 +26,7 @@ test('literal delegated actions rendered by Orders have a registered owner',()=>
   for(const file of sourceFiles(site)){
     if(file.includes(`${path.sep}vendor${path.sep}`))continue;
     const source=fs.readFileSync(file,'utf8');
-    for(const match of source.matchAll(/\bdata-(?:action|change|input|keydown|focus|blur|dragstart|dragover|drop|dragend)=["']([a-z][a-z0-9-]*)["']/g))referenced.add(match[1]);
+    for(const match of source.matchAll(/\bdata-(?:action|change|input|keydown|focus|blur|dragstart|dragover|drop|dragend|paste)=["']([a-z][a-z0-9-]*)["']/g))referenced.add(match[1]);
   }
   assert.deepEqual([...referenced].filter(name=>!registered.has(name)).sort(),[]);
   const renderSources=sourceFiles(site).filter(file=>!file.includes(`${path.sep}action-packs${path.sep}`)&&!file.endsWith(`${path.sep}ui${path.sep}actions.js`)).map(file=>fs.readFileSync(file,'utf8'));

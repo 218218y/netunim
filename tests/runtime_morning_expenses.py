@@ -30,7 +30,7 @@ FLOW = r"""(async()=>{
  const ports={request,captureRead:capture,captureWrite:capture,accountId:()=>owner,subscribeAccountScope:fn=>{listener=fn;return()=>{}},confirmDialog:async()=>{confirms++;return confirmWait?await confirmWait:true},files:{validate:fileEffects.validateExpenseFile,upload}};
  let uiFeature=createMorningExpenseIntake(ports);fixture.innerHTML=uiFeature.markup();
  bindActionEvents(fixture,new Proxy({}, {get:(_,name)=>(...args)=>uiFeature.actions[name]?.(...args)}));
- for(const name of ['click','input','change','keydown','drop','dragover'])fixture.addEventListener(name,event=>event.stopPropagation());
+ for(const name of ['click','input','change','keydown','drop','dragover','paste'])fixture.addEventListener(name,event=>event.stopPropagation());
  const click=name=>{const element=fixture.querySelector('[data-action="morning-expense-'+name+'"]');check(element,'missing '+name);element.click()};
  const settle=()=>uiFeature.runtime.drain();click('toggle');click('load');await settle();
  check(fixture.querySelectorAll('[data-expense-field="supplierId"] option').length===2,'suppliers missing');check(!fixture.querySelector('script'),'unescaped supplier');
@@ -42,6 +42,7 @@ FLOW = r"""(async()=>{
  const png=Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jO2sAAAAASUVORK5CYII='),c=>c.charCodeAt(0));
  const selection=new DataTransfer();for(const name of ['first.png','second.png'])selection.items.add(new File([png],name,{type:'image/png'}));
  const input=fixture.querySelector('input[type="file"]');input.files=selection.files;input.dispatchEvent(new Event('change',{bubbles:true}));await settle();check(fixture.querySelector('img')?.src.startsWith('blob:'),'source preview missing');
+ fixture.innerHTML=uiFeature.markup();const paste=new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:selection});fixture.querySelector('[data-morning-expense-intake]').dispatchEvent(paste);await settle();check(paste.defaultPrevented&&fixture.querySelector('img'),'file paste failed after parent rerender');
  click('save');await settle();check(posts===1&&confirms===1,'save not exactly once');
  const recovery=localStorage.getItem('morningExpenseOperation:'+owner);check(recovery&&!recovery.includes('000123')&&!recovery.includes('first.png'),'recovery retained invoice data');
  check(fixture.querySelector('[data-action="morning-expense-save"]').disabled,'created invoice can save again');
