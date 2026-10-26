@@ -27,16 +27,20 @@ FLOW = r"""(async()=>{
  const upload=async(ticket,selected,assertCurrent)=>fileEffects.uploadExpenseFile(ticket,selected,assertCurrent,{fetch:async(url,init)=>{
   uploads++;check(init.credentials==='omit'&&!init.headers,'upload leaked auth');check([...init.body.keys()].at(-1)==='file','file not last');return new Response(null,{status:204});
  }});
- const ports={request,captureRead:capture,captureWrite:capture,accountId:()=>owner,subscribeAccountScope:fn=>{listener=fn;return()=>{}},confirmDialog:async()=>{confirms++;return confirmWait?await confirmWait:true},files:{validate:fileEffects.validateExpenseFile,upload}};
+ const ports={request,captureRead:capture,captureWrite:capture,accountId:()=>owner,todayISO:()=> '2026-10-26',subscribeAccountScope:fn=>{listener=fn;return()=>{}},confirmDialog:async()=>{confirms++;return confirmWait?await confirmWait:true},files:{validate:fileEffects.validateExpenseFile,upload}};
  let uiFeature=createMorningExpenseIntake(ports);fixture.innerHTML=uiFeature.markup();
  bindActionEvents(fixture,new Proxy({}, {get:(_,name)=>(...args)=>uiFeature.actions[name]?.(...args)}));
  for(const name of ['click','input','change','keydown','drop','dragover','paste'])fixture.addEventListener(name,event=>event.stopPropagation());
  const click=name=>{const element=fixture.querySelector('[data-action="morning-expense-'+name+'"]');check(element,'missing '+name);element.click()};
  const settle=()=>uiFeature.runtime.drain();click('toggle');click('load');await settle();
  check(fixture.querySelectorAll('[data-expense-field="supplierId"] option').length===2,'suppliers missing');check(!fixture.querySelector('script'),'unescaped supplier');
- const field=(name,value,type='input')=>{const element=fixture.querySelector('[data-expense-field="'+name+'"]');check(element,'missing '+name);element.value=value;element.dispatchEvent(new Event(type,{bubbles:true}));return element};
+ const field=(name,value,type='input')=>{const element=fixture.querySelector('[data-expense-field="'+name+'"]');check(element,'missing '+name);if(element.type==='checkbox')element.checked=value===true;else element.value=value;element.dispatchEvent(new Event(type,{bubbles:true}));return element};
+ check(fixture.querySelector('[data-expense-field="reportingPeriod"]').value==='2026-09','bimonth default missing');
+ field('date','2026-09-20','change');check(fixture.querySelector('[data-expense-field="reportingDate"]').value==='2026-09-01','September reporting month changed');
+ field('date','2026-10-20','change');check(fixture.querySelector('[data-expense-field="reportingDate"]').value==='2026-10-01','October reporting month changed');
  field('supplierId',id(2),'change');check(fixture.querySelector('[data-expense-field="classificationExpenseId"]').value===id(3),'last category missing');
  field('number','000123');field('net','1000.00');field('vat','160.00');field('gross','1160.00');check(field('description','הוצאה לבדיקה').isConnected,'typing replaced field');
+ field('date','2026-08-20','change');check(fixture.querySelector('[data-expense-field="reportingDateConfirmed"]'),'late-report confirmation missing');click('save');await settle();check(posts===0&&confirms===0,'late month bypassed explicit approval');field('reportingDateConfirmed',true,'change');field('date','2026-10-20','change');
  field('pcnClassification','P','change');check(fixture.querySelector('[data-action="morning-expense-save"]').disabled,'P write available');field('pcnClassification','T','change');
  field('gross','1180');click('save');await settle();check(posts===0&&confirms===0,'invalid totals reached write');field('gross','1160.00');
  const png=Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jO2sAAAAASUVORK5CYII='),c=>c.charCodeAt(0));

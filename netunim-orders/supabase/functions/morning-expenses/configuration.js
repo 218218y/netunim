@@ -1,4 +1,5 @@
 import {expenseUuid} from './service.js';
+import {completePProfiles} from './p-suppliers.js';
 
 export function expenseConfiguration(get) {
   const ownEnvironment = get('MORNING_EXPENSE_ENV');
@@ -15,5 +16,5 @@ export function expenseConfiguration(get) {
     }
   } catch { /* Invalid or missing supplier protection never opens a writer. */ }
   return {environment, clientId, clientSecret, valid:['production', 'sandbox'].includes(environment) && !!clientId && !!clientSecret,
-    sandboxWrites:environment === 'sandbox' && get('MORNING_EXPENSE_SANDBOX_WRITES') === 'true' && pSuppliers !== null, pSuppliers:pSuppliers || []};
+    sandboxWrites:environment === 'sandbox' && get('MORNING_EXPENSE_SANDBOX_WRITES') === 'true' && completePProfiles(pSuppliers), pSuppliers:pSuppliers || []};
 }

@@ -8,7 +8,8 @@ const user = {id:id(1), app_metadata:{morning_expenses_write:true}};
 const input = (operation = 2) => ({action:'create', operationId:id(operation), expense:{supplierId:id(3), classificationExpenseId:id(4),
   documentType:305, number:'00123', date:'2026-10-20', reportingDate:'2026-10-01', net:'1000.00', vat:'160.00', gross:'1160.00',
   pcnClassification:'T', description:'Test'}});
-function fixture({environment = 'sandbox', enabled = true, mode = '', pSuppliers = () => []} = {}) {
+const profiles = [{id:id(20), taxId:'123456780'}, {id:id(21), taxId:'123456781'}];
+function fixture({environment = 'sandbox', enabled = true, mode = '', pSuppliers = () => profiles} = {}) {
   const rows = new Map(), posts = [];
   const ledger = {
     get:async (owner, operation) => {const row = rows.get(operation); return row?.owner_id === owner ? structuredClone(row) : null;},
@@ -23,10 +24,13 @@ function fixture({environment = 'sandbox', enabled = true, mode = '', pSuppliers
   };
   let canonical = null;
   const request = async (path, init) => {
+    const guard = pSuppliers().find(profile => path === '/suppliers/' + profile.id && profile.id !== id(3));
+    if (guard) return {...guard, name:'P supplier', active:mode !== 'p-inactive', country:'PS'};
     if (path === '/suppliers/' + id(3)) return {id:id(3), name:'Supplier', active:true, country:'IL', taxId:'123456789'};
     if (path === '/expenses/' + id(4)) return {id:id(4), status:10, accountingClassification:{id:id(5), title:'Category', vat:100}};
     if (path === '/expenses/search') {
       if (mode === 'preflight-down') throw new Error('read failed before any write');
+      assert.equal(Object.hasOwn(JSON.parse(init.body), 'supplierId'), false, 'supplier ID searches miss real API-created supplier snapshots');
       return {page:1, pageSize:50, total:mode === 'duplicate' ? 1 : 0, pages:mode === 'duplicate' ? 1 : 0, items:mode === 'duplicate' ? [{...canonicalExpense(), id:id(8)}] : []};
     }
     if (path === '/expenses') {
@@ -52,14 +56,23 @@ test('decimal inputs are exact and VAT is never replaced by an assumed percentag
   assert.throws(() => normalizeExpenseInput({...body, expense:{...body.expense, gross:'1180'}}, '2026-10-26'), /invalid_expense_amounts/);
   assert.throws(() => normalizeExpenseInput({...body, expense:{...body.expense, date:'2026-10-27'}}, '2026-10-26'));
   assert.throws(() => normalizeExpenseInput({...body, expense:{...body.expense, pcnClassification:'P'}}, '2026-10-26'), /p_unverified/);
+  assert.throws(() => normalizeExpenseInput({...body, expense:{...body.expense, number:'X'.repeat(21)}}, '2026-10-26'), /invalid_expense_input/);
 });
 test('only an explicitly authorized Sandbox writer may create, including configured P supplier protection', async () => {
   for (const options of [{environment:'production'}, {enabled:false}]) {
     const f = fixture(options); assert.equal((await f.writer.handle(user, input())).status, 403); assert.equal(f.posts.length, 0);
   }
   const f = fixture(); assert.equal((await f.writer.handle({id:user.id}, input())).status, 403);
-  const p = fixture({pSuppliers:() => [{id:id(3), taxId:'123456789'}]});
+  const p = fixture({pSuppliers:() => [{id:id(3), taxId:'123456789'}, profiles[1]]});
   assert.equal((await p.writer.handle(user, input())).body.code, 'morning_expense_p_unverified'); assert.equal(p.posts.length, 0);
+});
+test('two distinct P identities must pass canonical readback before even a normal expense can be sent', async () => {
+  for (const options of [{pSuppliers:() => []}, {pSuppliers:() => [profiles[0]]}, {mode:'p-inactive'}]) {
+    const f = fixture(options); assert.equal(await f.writer.readiness(user), false);
+    assert.notEqual((await f.writer.handle(user, input())).status, 200); assert.equal(f.posts.length, 0);
+  }
+  const f = fixture({enabled:false});
+  assert.equal((await f.writer.handle(user, {action:'operation_status', operationId:id(2)})).status, 404, 'turning off creation must leave recovery readable');
 });
 test('creation requires canonical readback and exact manual VAT, supplier and category survive payload construction', async () => {
   const f = fixture(), result = await f.writer.handle(user, input());
