@@ -6,6 +6,6 @@ import {validateExpenseFile, uploadExpenseFile} from '../platform/morning-expens
 export function createFinanceMorningExpenses({auth, morningOperationScope, confirmDialog, isActive}) {
   return createMorningExpenseIntake({request:createExpenseRequest({supaFetch:(...args) => auth.supaFetch(...args)}),
     captureRead:() => morningOperationScope.captureRead(), captureWrite:() => morningOperationScope.capture(),
-    accountId:() => auth.getAccountScope()?.owner, subscribeAccountScope:listener => auth.subscribeAccountScope?.(listener) || (() => {}),
+    accountId:() => auth.getAccountScope()?.owner, subscribeAccountScope:listener => auth.subscribeAccountScope(listener),
     confirmDialog, files:{validate:validateExpenseFile, upload:uploadExpenseFile}, isActive});
 }

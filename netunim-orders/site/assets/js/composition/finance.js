@@ -64,8 +64,7 @@ function createLazyMorningPanel(kind, ports, notify) {
   }};
 }
 
-// Finance owns its adapters, readout, controller and presentation. Binding is
-// staged because Checks and the shell need readout ports before cloud/UI exist.
+// Checks needs the Finance readout before cloud and UI binding.
 export function createOrdersFinanceCapability({
   model, ui, checksSession, tab, auth, readAccess, revisions, runFinance, platform={},
 }) {
@@ -82,8 +81,7 @@ export function createOrdersFinanceCapability({
     const access = readAccess();
     return {...access, readable:access.readable && !disposed, writable:access.writable && !disposed};
   }});
-  // Cleanup retains account/storage authority independently of this capability's
-  // lifetime. A changed login or leadership still leaves the former lease to TTL.
+  // Cleanup keeps its original account/storage fence; changed owners leave leases to TTL.
   const leaseAuthority = createFinanceOperationScope({readAccess});
   const selectors = createDomainsBankSelectors({model});
   const images = createOrdersBankChequeImageRuntime({cloudAuth:auth, bridge, operationScope});
@@ -264,6 +262,7 @@ export function createOrdersFinanceCapability({
     requireMethods('checks_view', checksView, ['checksMarkup', 'checksHeaderContextMarkup', 'syncChecksBulkUi']);
     requireMethods('dashboard', dashboard, ['summaryMarkup']);
     if (typeof openBankMorningDocument !== 'function' || typeof toast !== 'function') throw new TypeError('orders_finance_ui_commands_required');
+    if (morningOperationScope) requireMethods('morning_auth', auth, ['getAccountScope', 'subscribeAccountScope']);
     const ownedModal = {
       modal:(...args) => { if (!disposed) return modal.modal(...args); },
       closeModal:(...args) => { if (!disposed) return modal.closeModal(...args); },

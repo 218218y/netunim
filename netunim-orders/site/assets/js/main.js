@@ -120,7 +120,8 @@ const checks=createOrdersChecksCapability({
 
 const finance=createOrdersFinanceCapability({
   model,ui,checksSession,tab,
-  auth:{loadSession:(...args)=>cloudAuth.loadSession(...args),supaFetch:(...args)=>cloudAuth.supaFetch(...args),ensureSession:(...args)=>cloudAuth.ensureSession(...args),subscribeAccountScope:(...args)=>cloudAuth.subscribeAccountScope(...args)},
+  auth:{loadSession:(...args)=>cloudAuth.loadSession(...args),supaFetch:(...args)=>cloudAuth.supaFetch(...args),ensureSession:(...args)=>cloudAuth.ensureSession(...args),
+    getAccountScope:()=>cloudAuth.getAccountScope(),subscribeAccountScope:(...args)=>cloudAuth.subscribeAccountScope(...args)},
   readAccess:()=>({
     account:cloudAuth.getAccountScope(),connectionMode:'supabase',storageOwner:storageOwner.current(),
     readable:storageOwner.ready&&!storagePreparationActive()&&!session.storageProtocolBlocked&&storageRecovery.isReady(),
