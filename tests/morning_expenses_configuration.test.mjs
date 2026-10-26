@@ -17,6 +17,9 @@ test('explicit P supplier protection is required before enabling any Sandbox exp
   for (const raw of [undefined, 'broken', '{}', '[{}]', '[{"id":"local-id","taxId":"123456789"}]']) {
     assert.equal(config({...enabled, MORNING_EXPENSE_P_SUPPLIERS:raw}).sandboxWrites, false);
   }
-  assert.equal(config({...enabled, MORNING_EXPENSE_P_SUPPLIERS:'[]'}).sandboxWrites, true);
+  assert.equal(config({...enabled, MORNING_EXPENSE_P_SUPPLIERS:'[]'}).sandboxWrites, false);
+  const profiles = [{id:'aaaaaaaa-aaaa-4aaa-aaaa-000000000020', taxId:'123456780'}, {id:'aaaaaaaa-aaaa-4aaa-aaaa-000000000021', taxId:'123456781'}];
+  assert.equal(config({...enabled, MORNING_EXPENSE_P_SUPPLIERS:JSON.stringify(profiles)}).sandboxWrites, true);
+  assert.equal(config({...enabled, MORNING_EXPENSE_P_SUPPLIERS:JSON.stringify([profiles[0], profiles[0]])}).sandboxWrites, false);
   assert.equal(config({MORNING_EXPENSE_SANDBOX_WRITES:'true', MORNING_EXPENSE_P_SUPPLIERS:'[]'}).sandboxWrites, false);
 });

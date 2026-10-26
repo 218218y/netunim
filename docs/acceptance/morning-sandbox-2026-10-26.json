@@ -1,0 +1,113 @@
+{
+  "version": 1,
+  "environment": "sandbox",
+  "testedAt": "2026-10-26T09:11:54.483013+00:00",
+  "scope": "Real Morning Sandbox API through the production writer and report model; a local durable fixture supplied the ledger port. PostgreSQL authorization/CAS contracts are verified separately.",
+  "productionTouched": false,
+  "pSupplierProfiles": {
+    "count": 2,
+    "canonicalReadback": true,
+    "identitiesOmitted": true
+  },
+  "cases": [
+    {
+      "name": "september-short",
+      "status": "passed",
+      "readback": {
+        "documentType": 305,
+        "date": "2026-09-20",
+        "reportingDate": "2026-09-01",
+        "currency": "ILS",
+        "amount": 118,
+        "vat": 18,
+        "pcnClassification": "T"
+      }
+    },
+    {
+      "name": "october-manual-vat",
+      "status": "passed",
+      "readback": {
+        "documentType": 305,
+        "date": "2026-10-20",
+        "reportingDate": "2026-10-01",
+        "currency": "ILS",
+        "amount": 1160,
+        "vat": 160,
+        "pcnClassification": "T"
+      }
+    },
+    {
+      "name": "credit",
+      "status": "passed",
+      "readback": {
+        "documentType": 330,
+        "date": "2026-10-20",
+        "reportingDate": "2026-10-01",
+        "currency": "ILS",
+        "amount": 59,
+        "vat": 9,
+        "pcnClassification": "T"
+      }
+    },
+    {
+      "name": "old-late-reporting",
+      "status": "passed",
+      "readback": {
+        "documentType": 305,
+        "date": "2026-08-20",
+        "reportingDate": "2026-10-01",
+        "currency": "ILS",
+        "amount": 11.8,
+        "vat": 1.8,
+        "pcnClassification": "T"
+      }
+    }
+  ],
+  "duplicateCheck": {
+    "status": 409,
+    "code": "morning_expense_duplicate",
+    "financialPostSent": false
+  },
+  "pGuard": {
+    "status": 400,
+    "code": "morning_expense_p_unverified",
+    "financialPostSent": false
+  },
+  "reportModel": {
+    "period": "09–10/2026",
+    "records": 4,
+    "buckets": 1,
+    "expensesCents": 106000,
+    "inputVatCents": 17080
+  },
+  "providerFindings": [
+    {
+      "case": "source-number-truncation",
+      "requestedLength": 21,
+      "returnedLength": 20,
+      "state": "created_unverified",
+      "automaticReplay": false,
+      "futureInputsLimitedTo": 20
+    },
+    {
+      "case": "supplier-snapshot-search",
+      "numberSearchCount": 1,
+      "directorySupplierIdSearchCount": 0,
+      "resolution": "Complete number search and canonical supplier tax-ID comparison"
+    }
+  ],
+  "notVerified": [
+    "Production deployment",
+    "Official PCN874 export",
+    "Automatic P creation",
+    "OCR approval",
+    "Source-file attachment"
+  ],
+  "sourceDigests": {
+    "netunim-orders/supabase/functions/morning-expenses/writer.js": "f541f6f924cf98bf03a8d28874da1bd2dc781e62ba20eb30f708a0b92e53b976",
+    "netunim-orders/supabase/functions/morning-expenses/p-suppliers.js": "8e68bde293c9b7412280f9c07f90f4f530d19a6f1b01b53a46bdb24b9fffb121",
+    "netunim-orders/site/assets/js/core/morning-expense-input.js": "446c7a6d4e6559f02a8de1c9224be33320069b93bec55dca5c46bb8ccd80f97e",
+    "netunim-orders/site/assets/js/core/morning-report-period.js": "27eace4a5b3d3e76916f4254aa13dac07e7c5979babcf3a45e3ddc1729065d59",
+    "netunim-orders/site/assets/js/domains/finance/morning-report-model.js": "f1710fb3e04ca69e71c85350485ddd182b21f7c9531186a6ec74ef8a870bc509"
+  }
+}

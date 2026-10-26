@@ -59,7 +59,7 @@ export function createExpenseService({request, environment, readIds = () => '', 
     try {
       if (!object(body)) throw new Error('invalid_expense_input');
       const action = body.action;
-      if (action === 'capabilities') return {status:200, body:{ok:true, version:1, environment, read:true, create:writer?.allowed(user) === true, upload:uploader?.allowed(user) === true, pcnP:false,
+      if (action === 'capabilities') return {status:200, body:{ok:true, version:1, environment, read:true, create:await writer?.readiness(user) === true, upload:uploader?.allowed(user) === true, pcnP:false,
         draftApproval:false, classificationSource:'existing_expenses', pSuppliers:writer?.profiles() || []}};
       if (['create', 'operation_status', 'reconcile'].includes(action) && writer) return writer.handle(user, body);
       if (['upload_ticket', 'upload_status'].includes(action) && uploader) return uploader.handle(user, body);

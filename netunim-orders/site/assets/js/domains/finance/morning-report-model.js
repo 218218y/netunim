@@ -1,16 +1,8 @@
 export const REPORT_METHODS = Object.freeze({credit:'אשראי', cash:'מזומן', cheque:'צ׳קים', bank:'העברה בנקאית', paypal:'PayPal', app:'אפליקציות תשלום', other:'אחר', withholding:'ניכוי במקור', unknown:'ללא פירוט'});
 const METHODS = {0:'withholding', 1:'cash', 2:'cheque', 3:'credit', 4:'bank', 5:'paypal', 10:'app', 11:'other'};
 export const REPORT_TYPES = {305:'חשבונית מס', 320:'חשבונית מס / קבלה', 330:'חשבונית זיכוי', 400:'קבלה', 405:'קבלה על תרומה', 410:'ביטול תרומה'};
-export function validReportDate(value) {
-  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
-}
-export function reportPeriod(mode, year, part = 1) {
-  year = Number(year); part = Number(part);
-  const lengths = {month:1, bimonth:2, quarter:3, year:12}, length = lengths[mode];
-  if (!Number.isInteger(year) || year < 2000 || year > 2099 || !length || !Number.isInteger(part) || part < 1 || part > 12 / length) throw new Error('יש לבחור תקופה תקינה');
-  const month = (part - 1) * length + 1;
-  return {fromDate:`${year}-${String(month).padStart(2, '0')}-01`, toDate:new Date(Date.UTC(year, month + length - 1, 0)).toISOString().slice(0, 10)};
-}
+import {validReportDate, reportPeriod} from '../../core/morning-report-period.js';
+export {validReportDate, reportPeriod};
 const SUM_FIELDS = ['incomeCents', 'expensesCents', 'expenseCostCents', 'unrecoverableVatCents', 'receiptsCents', 'outputVatCents', 'inputVatCents', 'deductibleExpensesCents'];
 const DOCUMENT_FIELDS = new Set(['incomeCents', 'receiptsCents', 'outputVatCents', 'methods']);
 const COMPLETENESS_FIELDS = [...SUM_FIELDS, 'methods'];

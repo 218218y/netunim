@@ -1,19 +1,21 @@
 import {esc} from '../../core/values.js';
 import {checkTodayISO} from '../../core/dates.js';
 import {normalizeExpenseInput} from '../../core/morning-expense-input.js';
+import {expenseBimonth, expenseReportingChoice} from '../../core/morning-report-period.js';
 import {createRuntimeTaskOwner} from '../../shared/runtime-task-owner.js';
 import {readExpenseCatalog} from './morning-expense-catalog.js';
 
 const stateLabels = {reserved:'ממתינה לבדיקה', pending:'נשלחה · טרם אומתה', created_unverified:'נוצרה · אימות הפרטים ממתין', created:'נוצרה והפרטים אומתו', needs_reconciliation:'תוצאה לא ברורה · נדרש בירור ב־Morning', blocked:'הפעולה נחסמה · נדרש בירור'};
 const fieldLabels = {number:'מספר חשבונית', date:'תאריך המסמך', net:'לפני מע״מ', vat:'מע״מ מהחשבונית', gross:'כולל מע״מ', description:'תיאור', allocationNumber:'מספר הקצאה, אם נדרש'};
-export function createMorningExpenseIntake({request, captureRead, captureWrite, accountId, subscribeAccountScope, confirmDialog, files, isActive = () => true}) {
+export function createMorningExpenseIntake({request, captureRead, captureWrite, accountId, subscribeAccountScope, confirmDialog, files, todayISO = checkTodayISO, isActive = () => true}) {
   const tasks = createRuntimeTaskOwner();
   let expanded = false, catalog = null, busy = false, generation = 0, reading = null, message = '', result = null, operationId = '', fileAttempted = false;
   let queue = [], selected = null, previewUrl = '', draft = defaults();
   function defaults(previous = {}) {
-    const today = checkTodayISO();
+    const today = todayISO();
     return {supplierId:previous.supplierId || '', classificationExpenseId:previous.classificationExpenseId || '', documentType:305, number:'',
-      date:today, reportingDate:today.slice(0, 7) + '-01', net:'', vat:'', gross:'', description:'', allocationNumber:'', pcnClassification:'T'};
+      date:today, reportingDate:today.slice(0, 7) + '-01', reportingPeriod:expenseBimonth(today).key, reportingDateConfirmed:false,
+      net:'', vat:'', gross:'', description:'', allocationNumber:'', pcnClassification:'T'};
   }
   const host = () => document.querySelector('[data-morning-expense-intake]');
   const active = () => tasks.isActive() && isActive();
@@ -51,14 +53,14 @@ export function createMorningExpenseIntake({request, captureRead, captureWrite, 
     const epoch = generation; busy = true; render();
     return tasks.run(async () => {
       try { return await work(); }
-      catch (error) { if (generation === epoch && active()) message = ({invalid_expense_input:'יש לבחור ספק וסיווג ולבדוק מספר חשבונית ותאריכים.', invalid_expense_amounts:'סכומי הנטו והמע״מ חייבים להתאים לסכום הכולל, בדיוק של אגורות.', morning_expense_p_unverified:'חשבוניות P ייקלטו ב־Morning עד לאימות המסלול.'})[error.message] || error.message || 'הפעולה לא הושלמה.'; return false; }
+      catch (error) { if (generation === epoch && active()) message = ({invalid_expense_input:'יש לבדוק ספק, סיווג, מספר חשבונית עד 20 תווים ותאריכים.', invalid_expense_amounts:'סכומי הנטו והמע״מ חייבים להתאים לסכום הכולל, בדיוק של אגורות.', invalid_expense_reporting_period:'חודש הדיווח חייב להשתייך לתקופה הנבחרת, לא להיות עתידי ולא להקדים את חודש החשבונית.', expense_reporting_confirmation_required:'יש לאשר במפורש את השיוך לחודש דיווח מאוחר מחודש החשבונית.', morning_expense_p_profiles_unverified:'שתי זהויות ספקי P עדיין לא אומתו מול Morning.', morning_expense_p_unverified:'חשבוניות P ייקלטו ב־Morning עד לאימות המסלול.'})[error.message] || error.message || 'הפעולה לא הושלמה.'; return false; }
       finally { if (generation === epoch && active()) { busy = false; render(); } }
     });
   }
   function load() {
     return run(async () => {
       const check = capture(), controller = new AbortController(); reading = controller;
-      const loaded = await readExpenseCatalog(request, check, checkTodayISO(), {signal:controller.signal}); check();
+      const loaded = await readExpenseCatalog(request, check, todayISO(), {signal:controller.signal}); check();
       catalog = loaded; reading = null; message = 'הספקים והסיווגים מההוצאות הקיימות עודכנו.';
       if (!operationId) restore();
     });
@@ -67,12 +69,20 @@ export function createMorningExpenseIntake({request, captureRead, captureWrite, 
     if (busy || operationId) return false;
     const name = element.dataset.expenseField;
     if (!Object.hasOwn(draft, name)) return false;
-    draft[name] = name === 'documentType' ? Number(element.value) : name === 'reportingDate' ? element.value + '-01' : element.value;
+    draft[name] = name === 'documentType' ? Number(element.value) : name === 'reportingDateConfirmed' ? element.checked : name === 'reportingDate' && element.value.length === 7 ? element.value + '-01' : element.value;
+    if (['date', 'reportingPeriod'].includes(name)) {
+      try {
+        draft.reportingDate = expenseReportingChoice(draft.date, draft.reportingPeriod, todayISO()).reportingDate;
+        draft.reportingDateConfirmed = false; render();
+      } catch {updateMessage('יש לבחור תאריך מסמך ותקופת דיווח תקינים.');}
+      return true;
+    }
+    if (name === 'reportingDate') {draft.reportingDateConfirmed = false; render(); return true;}
     if (name === 'supplierId') {
-      const history = catalog?.expenses.filter(row => row.supplierId === draft.supplierId && row.status !== 100).sort((a, b) => String(b.sourceDocumentDate).localeCompare(String(a.sourceDocumentDate)));
+      const supplier = catalog?.suppliers.find(row => row.id === draft.supplierId);
+      const history = catalog?.expenses.filter(row => row.status !== 100 && (row.supplierId === draft.supplierId || supplier?.taxId && row.supplierTaxId === supplier.taxId)).sort((a, b) => String(b.sourceDocumentDate).localeCompare(String(a.sourceDocumentDate)));
       const recent = history?.find(row => row.classification?.id);
       draft.classificationExpenseId = recent?.id || '';
-      const supplier = catalog?.suppliers.find(row => row.id === draft.supplierId);
       draft.pcnClassification = history?.some(row => row.pcnClassification === 'P') || catalog?.capabilities.pSuppliers?.some(profile => profile.id === supplier?.id || profile.taxId && profile.taxId === supplier?.taxId) ? 'P' : 'T';
       render();
     } else if (name === 'pcnClassification') render();
@@ -98,9 +108,9 @@ export function createMorningExpenseIntake({request, captureRead, captureWrite, 
       const check = capture(true);
       if (!catalog?.capabilities.create || operationId) throw new Error('שמירה אינה זמינה לפעולה זו.');
       const nextId = crypto.randomUUID(), snapshot = structuredClone(draft);
-      normalizeExpenseInput({operationId:nextId, expense:snapshot}, checkTodayISO());
+      normalizeExpenseInput({operationId:nextId, expense:snapshot}, todayISO());
       const surface = host(), supplier = catalog.suppliers.find(row => row.id === snapshot.supplierId);
-      const confirmed = await confirmDialog('שמירת הוצאה ב־Sandbox', `${supplier?.name || ''} · חשבונית ${snapshot.number} · סה״כ ${snapshot.gross} ₪ · מע״מ ${snapshot.vat} ₪. האם הפרטים תואמים למסמך המקור?`, {confirmText:'שמור ב־Morning'});
+      const confirmed = await confirmDialog('שמירת הוצאה ב־Sandbox', `${supplier?.name || ''} · חשבונית ${snapshot.number} · סה״כ ${snapshot.gross} ₪ · מע״מ ${snapshot.vat} ₪ · תקופה ${expenseBimonth(snapshot.reportingDate).label} · חודש דיווח ${snapshot.reportingDate.slice(0, 7)}. האם הפרטים תואמים למסמך המקור?`, {confirmText:'שמור ב־Morning'});
       check();
       if (!confirmed || !surface?.isConnected || host() !== surface) return false;
       operationId = nextId; result = {state:'pending', verified:false}; remember();
@@ -144,11 +154,18 @@ export function createMorningExpenseIntake({request, captureRead, captureWrite, 
   function markup() {
     const disabled = busy || !!operationId, attrs = disabled ? 'disabled' : '';
     const option = (value, label, current) => `<option value="${esc(value)}" ${String(current) === String(value) ? 'selected' : ''}>${esc(label)}</option>`;
-    const textField = (name, type = 'text') => `<label>${fieldLabels[name]}<input data-expense-field="${name}" data-input="morning-expense-field" type="${type}" ${['net', 'vat', 'gross'].includes(name) ? 'inputmode="decimal"' : ''} value="${esc(draft[name])}" ${attrs}></label>`;
+    const textField = (name, type = 'text') => `<label>${fieldLabels[name]}<input data-expense-field="${name}" data-${type === 'date' ? 'change' : 'input'}="morning-expense-field" type="${type}" ${name === 'number' ? 'maxlength="20"' : ''} ${['net', 'vat', 'gross'].includes(name) ? 'inputmode="decimal"' : ''} value="${esc(draft[name])}" ${attrs}></label>`;
+    const today = todayISO(), periods = [];
+    for (let year = Number(today.slice(0, 4)); year >= 2010; year--) for (let month = 11; month >= 1; month -= 2) {
+      const date = `${year}-${String(month).padStart(2, '0')}-01`;
+      if (date <= today) periods.push(expenseBimonth(date));
+    }
+    const period = periods.find(item => item.key === draft.reportingPeriod) || expenseBimonth(today);
+    const shifted = draft.reportingDate !== draft.date.slice(0, 7) + '-01';
     return `<section class="morning-expense-intake" data-morning-expense-intake data-keydown="morning-expense-keyboard" data-paste="morning-expense-paste" dir="rtl">
       <button type="button" class="morning-expense-trigger" data-action="morning-expense-toggle" aria-expanded="${expanded}" ${busy ? 'disabled' : ''}><b>קליטת הוצאות ב־Morning</b><span>${expanded ? '⌃' : '⌄'}</span></button>
       ${expanded ? `<div class="morning-expense-content"><div class="morning-expense-toolbar"><button type="button" class="btn" data-action="morning-expense-load" ${busy ? 'disabled' : ''}>${catalog ? 'רענון ספקים וסיווגים' : 'טעינת ספקים וסיווגים'}</button><a href="https://app.greeninvoice.co.il" target="_blank" rel="noopener noreferrer">פתיחת Morning</a></div>
-      <p class="morning-expense-notice">${catalog?.capabilities.create ? 'סביבת בדיקות Sandbox · יש לבדוק כל פרט מול מסמך המקור.' : 'קליטה לייצור טרם הופעלה. אפשר לעיין ולהכין פרטים; שמירה זמינה ב־Sandbox מורשה בלבד.'}</p>
+      <p class="morning-expense-notice">${catalog?.capabilities.create ? 'סביבת בדיקות Sandbox · יש לבדוק כל פרט מול מסמך המקור.' : catalog?.capabilities.environment === 'sandbox' ? 'סביבת Sandbox · שמירה דורשת הרשאה ושתי זהויות ספקי P שאומתו מול Morning.' : 'קליטה לייצור טרם הופעלה. אפשר לעיין ולהכין פרטים; שמירה זמינה ב־Sandbox מורשה בלבד.'}</p>
       <p class="morning-expense-status" role="status" aria-live="polite" data-expense-message>${esc(busy ? 'הפעולה מתבצעת…' : message)}</p>
       ${catalog ? `<div class="morning-expense-workspace"><div class="morning-expense-fields">
       <label>ספק ב־Morning<select data-expense-field="supplierId" data-change="morning-expense-field" ${attrs}>${option('', 'בחר ספק', draft.supplierId)}${catalog.suppliers.map(row => option(row.id, `${row.name} · ${row.taxId || 'ללא מספר עוסק'}`, draft.supplierId)).join('')}</select></label>
@@ -158,7 +175,10 @@ export function createMorningExpenseIntake({request, captureRead, captureWrite, 
       <label>סוג דיווח<select data-expense-field="pcnClassification" data-change="morning-expense-field" ${attrs}>${option('T', 'רגיל · T', draft.pcnClassification)}${option('P', 'חשבונית P', draft.pcnClassification)}</select></label></div>
       ${draft.pcnClassification === 'P' ? '<p class="morning-expense-notice">חשבונית P: המע״מ נשאר לפי מסמך המקור. הקליטה והסיווג לדוח יושלמו ב־Morning עד לאימות המסלול.</p>' : ''}
       <div class="morning-expense-pair">${textField('number')}${textField('date', 'date')}</div>
-      <label>חודש דיווח<input type="month" value="${esc(draft.reportingDate.slice(0, 7))}" data-expense-field="reportingDate" data-change="morning-expense-field" ${attrs}></label>
+      <label>תקופת דיווח מע״מ דו־חודשית<select data-expense-field="reportingPeriod" data-change="morning-expense-field" ${attrs}>${periods.map(item => option(item.key, item.label, draft.reportingPeriod)).join('')}</select></label>
+      <label>חודש הדיווח המדויק ב־Morning<select data-expense-field="reportingDate" data-change="morning-expense-field" ${attrs}>${period.months.map(month => `<option value="${month}" ${month === draft.reportingDate ? 'selected' : ''} ${month > today || month < draft.date.slice(0, 7) + '-01' ? 'disabled' : ''}>${month.slice(5, 7)}/${month.slice(0, 4)}</option>`).join('')}</select></label>
+      <small>תאריך החשבונית נשמר בנפרד. שתי אפשרויות החודש משתייכות לתקופת ${esc(period.label)}; ב־Morning נשלח תאריך חודשי מדויק.</small>
+      ${shifted ? `<label class="morning-expense-report-confirm"><input type="checkbox" data-expense-field="reportingDateConfirmed" data-change="morning-expense-field" ${draft.reportingDateConfirmed ? 'checked' : ''} ${attrs}> בדקתי ואישרתי שיוך לחודש דיווח מאוחר מחודש החשבונית, בהתאם לכללי העבודה החשבונאיים.</label>` : ''}
       <div class="morning-expense-amounts">${textField('net')}${textField('vat')}${textField('gross')}</div>
       <small>מע״מ מוקלד במפורש. סכום הנטו והמע״מ חייב להתאים לסכום הכולל. זיכוי מוקלד בסכומים חיוביים לבדיקת Sandbox.</small>
       ${textField('description')}${textField('allocationNumber')}
