@@ -43,29 +43,30 @@ FLOW = r"""(async()=>{
  const upload=async(ticket,selected,assertCurrent)=>fileEffects.uploadExpenseFile(ticket,selected,assertCurrent,{fetch:async(url,init)=>{
   uploads++;check(init.credentials==='omit'&&!init.headers,'upload leaked auth');check([...init.body.keys()].at(-1)==='file','file not last');return new Response(null,{status:204});
  }});
- const ports={request,captureRead:capture,captureWrite:capture,accountId:()=>owner,todayISO:()=> '2026-10-26',subscribeAccountScope:fn=>{listener=fn;return()=>{}},confirmDialog:async(title,text)=>{confirms++;confirmations.push(text);check(title.includes(environment==='production'?'האמיתי':'Sandbox')||!title.startsWith('שמירת'),'wrong environment approval');return confirmWait?await confirmWait:true},files:{validate:fileEffects.validateExpenseFile,upload}};
+ const {createUiDateEditor}=await import('./assets/js/ui/date-editor.js');
+ const ports={dateEditorMarkup:createUiDateEditor({}).dateEditorMarkup,request,captureRead:capture,captureWrite:capture,accountId:()=>owner,todayISO:()=> '2026-10-26',subscribeAccountScope:fn=>{listener=fn;return()=>{}},confirmDialog:async(title,text)=>{confirms++;confirmations.push(text);check(title.includes(environment==='production'?'האמיתי':'Sandbox')||!title.startsWith('שמירת'),'wrong environment approval');return confirmWait?await confirmWait:true},files:{validate:fileEffects.validateExpenseFile,upload}};
  let uiFeature=createMorningExpenseIntake(ports);fixture.innerHTML=uiFeature.markup();
  bindActionEvents(fixture,new Proxy({}, {get:(_,name)=>(...args)=>uiFeature.actions[name]?.(...args)}));
  for(const name of ['click','input','change','keydown','drop','dragover','paste'])fixture.addEventListener(name,event=>event.stopPropagation());
  const click=name=>{const element=fixture.querySelector('[data-action="morning-expense-'+name+'"], [data-expense-command="'+name+'"]');check(element,'missing '+name);element.click()};
  const settle=()=>uiFeature.runtime.drain();click('toggle');click('load');await settle();
- check(fixture.querySelectorAll('[data-expense-field="supplierId"] option').length===2,'suppliers missing');check(!fixture.querySelector('script'),'unescaped supplier');
+ check(fixture.querySelectorAll('[role="option"]').length===1,'suppliers missing');check(!fixture.querySelector('script'),'unescaped supplier');
  const field=(name,value,type='input')=>{const element=fixture.querySelector('[data-expense-field="'+name+'"]');check(element,'missing '+name);if(element.type==='checkbox')element.checked=value===true;else element.value=value;element.dispatchEvent(new Event(type,{bubbles:true}));return element};
  check(fixture.querySelector('[data-expense-field="reportingPeriod"]').value==='2026-09','bimonth default missing');
  field('date','2026-09-20','change');check(fixture.querySelector('[data-expense-field="reportingDate"]').value==='2026-09-01','September reporting month changed');
  field('date','2026-10-20','change');check(fixture.querySelector('[data-expense-field="reportingDate"]').value==='2026-10-01','October reporting month changed');
  field('supplierId',id(2),'change');check(fixture.querySelector('[data-expense-field="classificationExpenseId"]').value===id(3),'last category missing');
  field('historyYear','2015','change');click('classification-year');await settle();check(requests.at(-1).body.fromDate==='2015-01-01'&&requests.at(-1).body.toDate==='2015-12-01','historical category year unavailable');
- field('supplierQuery','123456789');click('search');await settle();check(requests.at(-1).body.taxId==='123456789','tax search not passed to provider');
- click('favorite');field('supplierQuery','missing');click('search');await settle();check(fixture.querySelector('[data-expense-field="supplierId"]').value===id(2),'search discarded selected favorite');
+ field('supplierQuery','123456789');await new Promise(resolve=>setTimeout(resolve,350));await settle();check(requests.at(-1).body.taxId==='123456789','tax search not passed to provider');
+ field('supplierId',id(2),'change');click('favorite');field('supplierQuery','missing');await new Promise(resolve=>setTimeout(resolve,350));await settle();check(!fixture.querySelector('[data-expense-field="supplierId"]').value,'unselected search text retained a supplier identity');
  click('use-favorite');check(fixture.querySelector('[data-expense-field="supplierId"]').value===id(2),'favorite did not restore supplier');
- field('number','000123');field('net','1000.00');field('vat','160.00');field('gross','1160.00');check(field('description','הוצאה לבדיקה').isConnected,'typing replaced field');
+ field('number','000123');field('net','1000.00');field('vat','160.00');check(field('description','הוצאה לבדיקה').isConnected,'typing replaced field');
  catalogExpense={...expense,id:id(30)};click('load');await settle();
  check(fixture.querySelector('[data-expense-field="classificationExpenseId"]').value==='','refresh retained invisible category');
  click('save');await settle();check(posts===0&&confirms===0,'invisible category reached creation');field('supplierId',id(2),'change');
- field('date','2026-08-20','change');check(fixture.querySelector('[data-expense-field="reportingDateConfirmed"]'),'late-report confirmation missing');click('save');await settle();check(posts===0&&confirms===0,'late month bypassed explicit approval');field('reportingDateConfirmed',true,'change');field('date','2026-10-20','change');
+ field('date','2026-08-20','change');check(!fixture.querySelector('[data-expense-field="reportingDateConfirmed"]'),'extra late-report checkbox remained');check(fixture.querySelector('[data-expense-field="reportingDate"]').value==='2026-10-01','later reporting month was not derived');field('date','2026-10-20','change');
  field('pcnClassification','P','change');check(fixture.querySelector('[data-action="morning-expense-save"]').disabled,'P write available');field('pcnClassification','T','change');
- field('gross','1180');click('save');await settle();check(posts===0&&confirms===0,'invalid totals reached write');field('gross','1160.00');
+ field('gross','');click('save');await settle();check(posts===0&&confirms===0,'invalid totals reached write');field('net','1000.00');field('vat','160.00');
  const png=Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jO2sAAAAASUVORK5CYII='),c=>c.charCodeAt(0));
  const selection=new DataTransfer();for(const name of ['first.png','second.png'])selection.items.add(new File([png],name,{type:'image/png'}));
  const input=fixture.querySelector('input[type="file"]');input.files=selection.files;input.dispatchEvent(new Event('change',{bubbles:true}));await settle();check(fixture.querySelector('img')?.src.startsWith('blob:'),'source preview missing');
@@ -91,7 +92,7 @@ FLOW = r"""(async()=>{
  click('toggle');click('load');await settle();check(fixture.querySelector('[data-expense-command="use-favorite"]'),'favorite did not survive reopening or canonical lookup');
  field('supplierId',id(2),'change');await settle();check(fixture.querySelector('[data-expense-field="classificationExpenseId"]').value===id(30),'saved category outside the history page was not revalidated');directoryHidden=false;
  // Account change while the approval dialog is open must prevent dispatch entirely.
- field('number','cancelled');field('net','1000.00');field('vat','160.00');field('gross','1160.00');let releaseConfirm;confirmWait=new Promise(resolve=>releaseConfirm=resolve);
+ field('number','cancelled');field('net','1000.00');field('vat','160.00');let releaseConfirm;confirmWait=new Promise(resolve=>releaseConfirm=resolve);
  const saving=uiFeature.actions['morning-expense-save']();await new Promise(resolve=>setTimeout(resolve,0));owner=id(9);listener();releaseConfirm(true);await saving;confirmWait=null;check(posts===1,'stale confirmation dispatched');owner=id(1);listener();
  localStorage.setItem('morningExpenseOperation:'+owner,recovery);uiFeature.runtime.dispose();uiFeature=createMorningExpenseIntake(ports);fixture.innerHTML=uiFeature.markup();click('toggle');click('load');await settle();
  check(!fixture.querySelector('[data-action="morning-expense-save"]'),'reload enabled blind replay');click('status');await settle();check(posts===1,'recovery created another expense');

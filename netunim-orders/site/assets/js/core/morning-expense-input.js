@@ -12,7 +12,7 @@ export function expenseCents(value) {
 export function normalizeExpenseInput(body, today) {
   const input = body?.expense;
   if (!expenseUuid(body?.operationId) || !input || !expenseUuid(input.supplierId) || !expenseUuid(input.classificationExpenseId)) throw new Error('invalid_expense_input');
-  if (![305, 330].includes(input.documentType) || typeof input.number !== 'string' || !input.number.trim() || input.number.length > 20 || /[\u0000-\u001f\u007f]/.test(input.number)) throw new Error('invalid_expense_input');
+  if (![305, 330, 320].includes(input.documentType) || typeof input.number !== 'string' || !input.number.trim() || input.number.length > 20 || /[\u0000-\u001f\u007f]/.test(input.number)) throw new Error('invalid_expense_input');
   if (!reportDate(input.date) || input.date < '2010-01-01' || input.date > today || !reportDate(input.reportingDate) || !input.reportingDate.endsWith('-01')) throw new Error('invalid_expense_input');
   const reporting = validateExpenseReporting(input, today);
   const net = expenseCents(input.net), vat = expenseCents(input.vat), gross = expenseCents(input.gross);

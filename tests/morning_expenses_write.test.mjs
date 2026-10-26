@@ -65,6 +65,14 @@ test('decimal inputs are exact and VAT is never replaced by an assumed percentag
   assert.throws(() => normalizeExpenseInput({...body, expense:{...body.expense, pcnClassification:'P'}}, '2026-10-26'), /p_unverified/);
   assert.throws(() => normalizeExpenseInput({...body, expense:{...body.expense, number:'X'.repeat(21)}}, '2026-10-26'), /invalid_expense_input/);
 });
+
+test('invoice receipt expenses retain type 320 through durable creation, readback and replay', async () => {
+  const f=fixture(),body=input();body.expense.documentType=320;
+  const result=await f.writer.handle(user,body);
+  assert.equal(result.body.verified,true);assert.equal(f.posts[0].documentType,320);
+  assert.equal(result.body.intent.documentType,320);
+  assert.equal((await f.writer.handle(user,body)).body.verified,true);assert.equal(f.posts.length,1);
+});
 test('Production pilot uses the same durable writer and manual VAT while all other writers and automatic P stay blocked', async () => {
   const f = fixture({environment:'production', productionUserId:user.id});
   assert.equal(await f.writer.readiness({id:id(9), app_metadata:user.app_metadata}), false);

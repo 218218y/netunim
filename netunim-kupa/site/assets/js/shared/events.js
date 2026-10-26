@@ -186,7 +186,7 @@ export function bindDismissibleDetails(root,{selector='details[data-dismiss-on-o
   win.visualViewport?.addEventListener('scroll',schedulePosition);
   const observer=new MutationObserver(records=>{
     if(active&&(!active.host.isConnected||!isOpen(active.host)))close();
-    for(const record of records)if(record.type==='attributes'&&record.target.matches(selector)&&isOpen(record.target))open(record.target);
+    for(const record of records)if(record.target.isConnected&&record.target.matches?.(selector)&&isOpen(record.target))open(record.target);
   });
   observer.observe(root,{subtree:true,childList:true,attributes:true,attributeFilter:['open','class']});
   const binding={close};menuBindings.set(root,binding);return binding;

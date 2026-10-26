@@ -26,7 +26,8 @@ FLOW = r"""(async()=>{
  };
  ui.currentView='kupa';ui.kupaSubView='summary';finance.presentation.renderKupa();
  check(document.querySelector('[data-action="set-kupa-section"][data-click-arg0="summary"]').textContent==='מאזן ודוחות','tab label');
- check(document.querySelector('.kupa-subcontent-summary > [data-action="tax-open"]')?.nextElementSibling?.matches('[data-morning-reports]'),'calculator not above reports');
+ const intake=document.querySelector('.kupa-subcontent-summary > [data-action="tax-open"]')?.nextElementSibling;
+ check(intake?.matches('[data-morning-expense-intake]')&&intake.nextElementSibling?.matches('[data-morning-reports]'),'summary order must be calculator, expense intake, reports');
  check(document.querySelector('.forecast-note').textContent.includes('לא חישוב רווח חשבונאי'),'cashflow forecast lost');
  const initial=document.querySelector('.morning-report-trigger');
  const heading=()=>({subtitle:document.querySelector('.morning-report-trigger small')?.textContent,arrow:document.querySelector('.morning-report-trigger>span:last-child')?.textContent});
