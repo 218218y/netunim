@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {assertFinanceRuntimeJoined} from './finance_runtime_ownership_fixture.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { parse } from 'acorn';
@@ -103,17 +104,17 @@ function awaitsArchiveRead(source){
   return false;
 }
 test('production composition wires current authority and transport and disposes the archive owner', () => {
-  const source = fs
+  const raw = fs
     .readFileSync(
       new URL('../netunim-orders/site/assets/js/composition/finance.js', import.meta.url),
       'utf8'
-    )
-    .replace(/\s+/g, '');
+    );
+  const source = raw.replace(/\s+/g, '');
   for (const wire of [
     'authority:operationScope',
     'transactions:(...args)=>cloud.readBankTransactions(...args)',
     'snapshot:(...args)=>cloud.readBankTransactionSnapshot(...args)',
-    'archive?.runtime.dispose()',
   ])
     assert.ok(source.includes(wire), wire);
+  assertFinanceRuntimeJoined(raw, 'archive?.runtime');
 });

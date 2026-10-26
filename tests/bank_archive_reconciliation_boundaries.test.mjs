@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {assertFinanceRuntimeJoined} from './finance_runtime_ownership_fixture.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { parse } from 'acorn';
@@ -107,7 +108,8 @@ test('compositions join separate archive owners and keep intentional application
     const composition = read(
       `netunim-${site}/site/assets/js/composition/${site === 'kupa' ? 'bank' : 'finance'}.js`
     );
-    for (const method of ['dispose', 'drain', 'isPending'])
+    if (site === 'orders') assertFinanceRuntimeJoined(composition, 'archiveReconciliation?.runtime');
+    else for (const method of ['dispose', 'drain', 'isPending'])
       assert.ok(
         composition.includes(
           `archiveReconciliation${site === 'orders' ? '?' : ''}.runtime.${method}()`

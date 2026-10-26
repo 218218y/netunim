@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {assertFinanceRuntimeJoined} from './finance_runtime_ownership_fixture.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { parse } from 'acorn';
@@ -54,8 +55,7 @@ test('Orders Bank connection has five required ports, strict code and no browser
 test('Finance closes and joins Bank request and confirmation owners, and both rendering paths bind the form owner', () => {
   const composition = read(base + 'composition/finance.js');
   for (const name of ['controller', 'connections', 'bankConnections', 'archive'])
-    for (const method of ['drain', 'dispose', 'isPending'])
-      assert.ok(composition.includes(`${name}?.runtime.${method}()`), name + method);
+    assertFinanceRuntimeJoined(composition, `${name}?.runtime`);
   const view = read(base + 'domains/finance/view.js'),
     status = read(base + 'domains/finance/status-view.js');
   assert.ok(view.includes('bankConnectionView.bind()'));

@@ -2,6 +2,7 @@ import {restoreBankMoneyBoundary} from './bank_balance_policy_fixture.mjs';
 import {restoreCreditAccountFeed} from './credit_account_authority_fixture.mjs';
 import {restoreFinanceAttemptClock} from './credit_cooldown_policy_fixture.mjs';
 import test from 'node:test';
+import {assertFinanceRuntimeJoined} from './finance_runtime_ownership_fixture.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -64,9 +65,8 @@ test('Orders connection owner has five required ports and only the canonical acc
 test('Orders Finance lifecycle joins local, financial, archive and confirmation owners', () => {
   const source = read('netunim-orders/site/assets/js/composition/finance.js');
   for (const name of ['controller', 'connections', 'archive'])
-    assert.ok(source.includes(`${name}?.runtime.drain()`), name);
-  assert.ok(source.includes('presentation?.view.connectionRuntime.drain()'));
-  assert.ok(source.includes('presentation?.view.connectionRuntime.dispose()'));
+    assertFinanceRuntimeJoined(source, `${name}?.runtime`);
+  assertFinanceRuntimeJoined(source, 'view.connectionRuntime');
   const view = read('netunim-orders/site/assets/js/domains/finance/credit-connection-view.js');
   assert.ok(view.includes('removeEventListener'));
   assert.ok(view.includes('saved === true && currentForm(form)'));

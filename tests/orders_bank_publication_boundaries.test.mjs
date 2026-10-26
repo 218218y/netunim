@@ -1,5 +1,6 @@
 import {archivePolicySource} from './bank_archive_reconciliation_policy_fixture.mjs';
 import test from 'node:test';
+import {assertFinanceRuntimeJoined} from './finance_runtime_ownership_fixture.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { parse } from 'acorn';
@@ -119,6 +120,5 @@ test('the publication owner has five required ports, two commands, and no direct
   assert.ok(controller.includes('bankRefresh.commands.refresh('));
   assert.ok(tokens(read(folder+'bank-refresh.js')).includes('publication.publish(candidate,'));
   const composition = read('netunim-orders/site/assets/js/composition/finance.js');
-  for (const method of ['isPending', 'drain', 'dispose'])
-    assert.ok(composition.includes('bankSnapshots?.runtime.' + method + '()'));
+  assertFinanceRuntimeJoined(composition, 'bankSnapshots?.runtime');
 });

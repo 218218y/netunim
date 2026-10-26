@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {assertFinanceRuntimeJoined} from './finance_runtime_ownership_fixture.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { parse } from 'acorn';
@@ -65,7 +66,8 @@ test('both capabilities join import lifecycle and retire the unowned callable fa
     'netunim-orders/site/assets/js/composition/finance.js',
   ]) {
     const source = read(file);
-    for (const method of ['runtime.isPending()', 'runtime.drain()', 'runtime.dispose()'])
+    if (file.includes('netunim-orders')) assertFinanceRuntimeJoined(source, 'importConnections.runtime');
+    else for (const method of ['runtime.isPending()', 'runtime.drain()', 'runtime.dispose()'])
       assert.ok(source.includes('importConnections.' + method), file + '/' + method);
   }
   for (const app of ['kupa', 'orders'])
