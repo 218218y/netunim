@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='kupa-app-shell-';
-const CACHE='kupa-app-shell-esm-c71343d187f9';
+const CACHE='kupa-app-shell-esm-45332555e3c2';
 const SHELL=[
   './',
   './index.html',
@@ -187,7 +187,6 @@ const SHELL=[
   './assets/js/shared/local-site-reset-page.js',
   './assets/js/shared/local-site-reset.js',
   './assets/js/shared/main-sync-browser.js',
-  './assets/js/shared/morning-expense-input.js',
   './assets/js/shared/notes-sheet-model.js',
   './assets/js/shared/notes-workbook-merge.js',
   './assets/js/shared/notes-workbook.css',

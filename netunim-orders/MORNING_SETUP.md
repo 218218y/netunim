@@ -1,6 +1,6 @@
 # Morning / חשבונית ירוקה — הגדרה ופריסה
 
-הפקת מסמכי הכנסה משתמשת ב־`morning-documents`. הרחבת קליטת הוצאות נפרדת נמצאת ב־`morning-expenses`; הגדרה, הרשאות ותנאי Sandbox מתוארים ב־[מדריך קליטת ההוצאות](../docs/morning-expense-intake.md).
+הפקת מסמכי הכנסה משתמשת ב־**Edge Function אחת בלבד** בשם `morning-documents`. הרחבת קליטת הוצאות נפרדת נמצאת ב־`morning-expenses`; הגדרה, הרשאות ותנאי Sandbox מתוארים ב־[מדריך קליטת ההוצאות](../docs/morning-expense-intake.md).
 
 `MORNING_CLIENT_ID`, `MORNING_CLIENT_SECRET` ו-`MORNING_ENV` **אינם שלוש פונקציות**. אלה משתני סביבה שהפונקציה היחידה קוראת בזמן ריצה:
 
