@@ -1,12 +1,12 @@
 {
   "project_id": "bupoidcurcxuypfrjqio",
-  "verified_at": "2026-10-18 11:09:17.898677+00",
+  "verified_at": "2026-10-26 11:58:16.646615+00",
   "production_postflight": "PASS",
   "text_hash_normalization": "lf-v1",
-  "source_audit": "audit/production-postflight-20261018T110917898677Z.json",
-  "source_audit_sha256": "52cd4e71ed3d4177f7a46cd3b59c81acf7f7bc8960fe943db8573b8ba84a6ccf",
+  "source_audit": "audit/production-postflight-20261026T115816646615Z.json",
+  "source_audit_sha256": "31ddc389ac484583395b07662f0902137281e277702de077500a9db8f975348e",
   "schema_snapshot": "audit/morning-schema-live.json",
-  "schema_snapshot_sha256": "2e9291f8c89c106b8d2ff31933f7980e2988048f8fc460f234fb8eae393e0ba2",
+  "schema_snapshot_sha256": "86d971737705fcde418974e68e5c7d9aef5c3853d9fac2691d9fd58bd7f18334",
   "migration_manifest": [
     {
       "version": "20260906200304",
@@ -212,6 +212,46 @@
       "version": "20261016140000",
       "name": "bank_snapshot_temporal_authority",
       "sha256": "2666ce8e136774c3a5dc82fc97e0b630b5dd8f134da9fb188c2e5da5ae199897"
+    },
+    {
+      "version": "20261018120000",
+      "name": "check_bank_refresh",
+      "sha256": "be83a97b224cb3ba675790d149987a87cd72b31c93549d848870b3b12c69c05e"
+    },
+    {
+      "version": "20261018121000",
+      "name": "morning_check_registration",
+      "sha256": "5134d2e00f116f700a2b67fae8a2c81115894de81099e37c51c7f4d9b83c18fb"
+    },
+    {
+      "version": "20261018180000",
+      "name": "sync_incidents",
+      "sha256": "a4b9cd667580fa31456eaece6cb88e075144e079712bc3295170dc82ace9c505"
+    },
+    {
+      "version": "20261019041407",
+      "name": "tax_calculator",
+      "sha256": "fad1e52f1f076a6aded0689094323db28368119892c8a44d39156209071d4991"
+    },
+    {
+      "version": "20261019064633",
+      "name": "tax_arnona_assessment_income",
+      "sha256": "1f99065e092adecb46c224286c54f7a542653091c4e971b255118fe9e0c8d2bb"
+    },
+    {
+      "version": "20261019110000",
+      "name": "tax_insurance_advances",
+      "sha256": "c1b51f8263b8f1959798f0c23dfa7905c000a6f7ed766c471cc92fb00365603a"
+    },
+    {
+      "version": "20261026080000",
+      "name": "morning_expense_operations",
+      "sha256": "df081703b20005d5ed3cb72faca1914940a24ab0f1a952c12cdedc9a1f570cd3"
+    },
+    {
+      "version": "20261026100000",
+      "name": "morning_expense_recovery",
+      "sha256": "57e8a18b6b9ba23e23b64a02b96695a5c06426f6c29ce18202c2c41ebde358fb"
     }
   ],
   "retention_jobs": [
