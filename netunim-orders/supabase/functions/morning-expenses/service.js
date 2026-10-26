@@ -78,6 +78,11 @@ export function createExpenseService({request, environment, readIds = () => '', 
         const raw = await request('/expenses/' + body.id, {method:'GET'});
         if (raw?.id !== body.id) throw new Error('invalid_expense_record');
         result = {item:expenseRecord(raw)};
+      } else if (action === 'get_supplier') {
+        if (!expenseUuid(body.id)) throw new Error('invalid_expense_input');
+        const raw = await request('/suppliers/' + body.id, {method:'GET'});
+        if (raw?.id !== body.id) throw new Error('invalid_expense_supplier');
+        result = {item:expenseSupplier(raw)};
       } else return {status:400, body:{ok:false, code:'morning_expenses_unknown_action', message:'פעולת הוצאות אינה מוכרת.'}};
       return {status:200, body:{ok:true, version:1, environment, ...result, readAt:new Date().toISOString()}};
     } catch (error) {

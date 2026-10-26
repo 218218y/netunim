@@ -8,17 +8,20 @@ FLOW = r"""(async()=>{
  const fileEffects=await import('./assets/js/platform/morning-expense-files.js');
  const check=(value,message)=>{if(!value)throw Error(message)};
  const id=n=>'aaaaaaaa-aaaa-4aaa-aaaa-'+String(n).padStart(12,'0');
+ localStorage.removeItem('morningExpensePreferences:sandbox:'+id(1));
  let owner=id(1), listener=()=>{}, linked=false, posts=0, uploads=0, confirms=0, held=null, confirmWait=null, recoveryState='created';
  const intent={number:'RECOVERED-123',documentType:305,date:'2026-09-20',reportingDate:'2026-10-01',supplierName:'ספק מהבקשה המקורית',amount:118,vat:18};
  const requests=[], capture=()=>{const saved=owner;return()=>check(saved===owner,'account changed')};
  const supplier={id:id(2),name:'ספק בדיקה <script>',taxId:'123456789',active:true,country:'IL'};
  const expense={id:id(3),kind:'expense',status:10,supplierId:id(2),sourceDocumentDate:'2026-10-20',pcnClassification:'T',classification:{id:id(4),title:'ציוד משרד',vat:100,income:100}};
- let catalogExpense=expense;const confirmations=[];
+ let catalogExpense=expense,directoryHidden=false;const confirmations=[];
  const paged=items=>({ok:true,version:1,environment:'sandbox',page:0,pageSize:50,total:items.length,pages:items.length?1:0,items});
  const request=async(action,body,assertCurrent)=>{
   assertCurrent();requests.push({action,body});if(held&&action==='suppliers')await held;
   if(action==='capabilities')return {ok:true,version:1,environment:'sandbox',create:true,upload:true};
-  if(action==='suppliers')return paged(body.name==='missing'?[]:[supplier]);if(action==='expenses')return paged([catalogExpense]);
+  if(action==='suppliers')return paged(body.name==='missing'||directoryHidden?[]:[supplier]);if(action==='expenses')return paged([catalogExpense]);
+  if(action==='get_supplier')return {ok:true,version:1,environment:'sandbox',item:supplier};
+  if(action==='get_expense')return {ok:true,version:1,environment:'sandbox',item:{...expense,id:id(30)}};
   if(action==='create'){posts++;check(body.expense.vat==='160.00','manual VAT changed');return {ok:true,state:'created',verified:true,expenseId:id(8),fileLinked:false};}
   if(action==='operation_status')return {ok:true,state:recoveryState,verified:recoveryState==='created',expenseId:recoveryState==='created'?id(8):'',fileLinked:linked,intent};
   if(action==='reconcile'){check(body.expenseId===id(8),'wrong canonical ID');recoveryState='created';return {ok:true,state:'created',verified:true,expenseId:id(8),fileLinked:linked,intent};}
@@ -45,6 +48,7 @@ FLOW = r"""(async()=>{
  field('date','2026-09-20','change');check(fixture.querySelector('[data-expense-field="reportingDate"]').value==='2026-09-01','September reporting month changed');
  field('date','2026-10-20','change');check(fixture.querySelector('[data-expense-field="reportingDate"]').value==='2026-10-01','October reporting month changed');
  field('supplierId',id(2),'change');check(fixture.querySelector('[data-expense-field="classificationExpenseId"]').value===id(3),'last category missing');
+ field('historyYear','2015','change');click('classification-year');await settle();check(requests.at(-1).body.fromDate==='2015-01-01'&&requests.at(-1).body.toDate==='2015-12-01','historical category year unavailable');
  field('supplierQuery','123456789');click('search');await settle();check(requests.at(-1).body.taxId==='123456789','tax search not passed to provider');
  click('favorite');field('supplierQuery','missing');click('search');await settle();check(fixture.querySelector('[data-expense-field="supplierId"]').value===id(2),'search discarded selected favorite');
  click('use-favorite');check(fixture.querySelector('[data-expense-field="supplierId"]').value===id(2),'favorite did not restore supplier');
@@ -74,6 +78,10 @@ FLOW = r"""(async()=>{
  linked=true;click('file-status');await settle();check(fixture.querySelector('.morning-expense-operation').textContent.includes('Morning מציגה קובץ'),'file linkage missing');
  const desktop={width:innerWidth,scroll:document.documentElement.scrollWidth};check(desktop.scroll<=desktop.width+1,'desktop overflow');
  click('next');check(fixture.querySelector('.morning-expense-source>b').textContent==='second.png','queue did not advance');check(fixture.querySelector('[data-expense-field="supplierId"]').value===id(2),'supplier default lost');
+ const preferenceText=localStorage.getItem('morningExpensePreferences:sandbox:'+owner);check(preferenceText&&!preferenceText.includes(supplier.name)&&!preferenceText.includes(supplier.taxId)&&!preferenceText.includes('000123'),'preferences leaked invoice or supplier data');
+ uiFeature.runtime.dispose();uiFeature=createMorningExpenseIntake(ports);fixture.innerHTML=uiFeature.markup();directoryHidden=true;catalogExpense={...expense,id:id(40),classification:{...expense.classification,id:id(44),title:'סיווג אחר'}};
+ click('toggle');click('load');await settle();check(fixture.querySelector('[data-expense-command="use-favorite"]'),'favorite did not survive reopening or canonical lookup');
+ field('supplierId',id(2),'change');await settle();check(fixture.querySelector('[data-expense-field="classificationExpenseId"]').value===id(30),'saved category outside the history page was not revalidated');directoryHidden=false;
  // Account change while the approval dialog is open must prevent dispatch entirely.
  field('number','cancelled');field('net','1000.00');field('vat','160.00');field('gross','1160.00');let releaseConfirm;confirmWait=new Promise(resolve=>releaseConfirm=resolve);
  const saving=uiFeature.actions['morning-expense-save']();await new Promise(resolve=>setTimeout(resolve,0));owner=id(9);listener();releaseConfirm(true);await saving;confirmWait=null;check(posts===1,'stale confirmation dispatched');owner=id(1);listener();
@@ -85,7 +93,7 @@ FLOW = r"""(async()=>{
  field('reconciliationId',id(8));click('reconcile');await settle();check(posts===1&&!fixture.querySelector('[data-expense-field="reconciliationId"]'),'reconciliation created a new expense or stayed unresolved');
  recoveryState='reserved';click('status');await settle();click('cancel');await settle();check(posts===1&&fixture.textContent.includes('בוטלה לפני שליחה'),'reserved cancellation failed');
  uiFeature.actions['morning-expense-command']({dataset:{expenseCommand:'next'}});let release;held=new Promise(resolve=>release=resolve);const loading=uiFeature.actions['morning-expense-command']({dataset:{expenseCommand:'load'}});await new Promise(resolve=>setTimeout(resolve,0));owner=id(9);listener();release();await loading;held=null;
- check(!fixture.textContent.includes(supplier.name)&&!fixture.querySelector('[data-expense-field="supplierId"]'),'old account catalog survived');check(!fixture.textContent.includes(id(8)),'old expense result survived');uiFeature.runtime.dispose();localStorage.removeItem('morningExpenseOperation:'+id(1));
+ check(!fixture.textContent.includes(supplier.name)&&!fixture.querySelector('[data-expense-field="supplierId"]'),'old account catalog survived');check(!fixture.textContent.includes(id(8)),'old expense result survived');uiFeature.runtime.dispose();localStorage.removeItem('morningExpenseOperation:'+id(1));localStorage.removeItem('morningExpensePreferences:sandbox:'+id(1));
  return {posts,uploads,confirms,requests:requests.length,desktop};
 })()"""
 
