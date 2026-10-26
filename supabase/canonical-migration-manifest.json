@@ -233,5 +233,10 @@
     "version": "20261019110000",
     "name": "tax_insurance_advances",
     "sha256": "c1b51f8263b8f1959798f0c23dfa7905c000a6f7ed766c471cc92fb00365603a"
+  },
+  {
+    "version": "20261026080000",
+    "name": "morning_expense_operations",
+    "sha256": "df081703b20005d5ed3cb72faca1914940a24ab0f1a952c12cdedc9a1f570cd3"
   }
 ]

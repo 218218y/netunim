@@ -53,14 +53,16 @@ export function expenseSearchInput(body, draft = false) {
   return {page, payload:{page:page + 1, pageSize, fromDate:from, toDate:to,
     ...(body.supplierId ? {supplierId:body.supplierId} : {}), ...(!draft && body.number ? {number:body.number} : {})}};
 }
-export function createExpenseService({request, environment, readIds = () => ''}) {
+export function createExpenseService({request, environment, readIds = () => '', writer = null, uploader = null}) {
   return async function handle(user, body) {
     if (!expensePermission(user, 'read', readIds())) return {status:403, body:{ok:false, code:'morning_expenses_forbidden', message:'אין הרשאה לצפייה בהוצאות Morning.'}};
     try {
       if (!object(body)) throw new Error('invalid_expense_input');
       const action = body.action;
-      if (action === 'capabilities') return {status:200, body:{ok:true, version:1, environment, read:true, create:false, upload:false, pcnP:false,
+      if (action === 'capabilities') return {status:200, body:{ok:true, version:1, environment, read:true, create:writer?.allowed(user) === true, upload:uploader?.allowed(user) === true, pcnP:false,
         draftApproval:false, classificationSource:'existing_expenses'}};
+      if (['create', 'operation_status', 'reconcile'].includes(action) && writer) return writer.handle(user, body);
+      if (['upload_ticket', 'upload_status'].includes(action) && uploader) return uploader.handle(user, body);
       let result;
       if (action === 'suppliers') {
         const {page, pageSize} = pageInput(body);

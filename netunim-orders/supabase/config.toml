@@ -8,3 +8,6 @@ verify_jwt = false
 # Browser preflight must reach the handler; authenticated POSTs are still
 # fail-closed by requireUser(req) -> auth.getUser() inside the function.
 verify_jwt = false
+
+[functions.morning-expenses]
+verify_jwt = false
