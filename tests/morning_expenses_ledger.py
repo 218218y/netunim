@@ -1,7 +1,7 @@
 """Actual PostgreSQL constraints and service-role access; no external services."""
 from isolated_sync_postgres import IsolatedPostgres, OWNER
 
-with IsolatedPostgres(schema_files=['supabase/migrations/20261026080000_morning_expense_operations.sql']) as db:
+with IsolatedPostgres(schema_files=['supabase/migrations/20261026080000_morning_expense_operations.sql', 'supabase/migrations/20261026100000_morning_expense_recovery.sql']) as db:
     def insert(operation, identity='a', owner=OWNER, environment='sandbox', state='reserved'):
         return ("insert into public.morning_expense_operations(operation_id,owner_id,environment,invoice_identity,request_fingerprint,state,payload) "
                 f"values('{operation}','{owner}','{environment}','{identity * 64}','{'b' * 64}','{state}','{{}}')")
@@ -30,4 +30,13 @@ with IsolatedPostgres(schema_files=['supabase/migrations/20261026080000_morning_
     rejects('set role service_role; delete from public.morning_expense_operations', 'permission denied')
     assert db.sql("select relrowsecurity from pg_class where oid='public.morning_expense_operations'::regclass").strip() == 't'
     assert db.sql("select count(*) from pg_constraint where conrelid='public.morning_expense_operations'::regclass and contype='f'").strip() == '0'
+    db.sql(f"update public.morning_expense_operations set state='cancelled',cancelled_at=now() where operation_id='{operation}' and state='reserved' and sent_at is null and expense_id is null")
+    assert not db.sql(f"update public.morning_expense_operations set state='pending',sent_at=now() where operation_id='{operation}' and state='reserved' returning operation_id").strip()
+    third = 'aaaaaaaa-aaaa-4aaa-aaaa-000000000003'
+    db.sql(insert(third))
+    rejects(insert(operation, identity='c'), 'duplicate key')
+    db.sql(f"update public.morning_expense_operations set state='pending',sent_at=now() where operation_id='{third}'")
+    assert not db.sql(f"update public.morning_expense_operations set state='cancelled',cancelled_at=now() where operation_id='{third}' and state='reserved' and sent_at is null returning operation_id").strip()
+    rejects(f"update public.morning_expense_operations set state='cancelled',cancelled_at=now() where operation_id='{third}'", 'check constraint')
+    rejects(f"update public.morning_expense_operations set file_state='prepared' where operation_id='{third}'", 'check constraint')
 print('PASS Morning expense ledger: operation and invoice uniqueness, verified-state checks, RLS and service-only access')

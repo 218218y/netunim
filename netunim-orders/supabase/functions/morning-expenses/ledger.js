@@ -13,7 +13,13 @@ export function createExpenseLedger(admin, environment) {
     },
     transition:(owner, operation, from, patch) => checked(table().update({...patch, updated_at:new Date().toISOString()}).eq('owner_id', owner)
       .eq('environment', environment).eq('operation_id', operation).eq('state', from).select('*').maybeSingle()),
-    claimFile:(owner, operation) => checked(table().update({file_state:'ticket_issued', file_requested_at:new Date().toISOString(), updated_at:new Date().toISOString()})
-      .eq('owner_id', owner).eq('environment', environment).eq('operation_id', operation).eq('state', 'created').eq('file_state', 'not_started').select('*').maybeSingle()),
+    cancelReserved:(owner, operation) => checked(table().update({state:'cancelled', cancelled_at:new Date().toISOString(), updated_at:new Date().toISOString()})
+      .eq('owner_id', owner).eq('environment', environment).eq('operation_id', operation).eq('state', 'reserved').is('sent_at', null).is('expense_id', null).select('*').maybeSingle()),
+    fileTransition:(owner, row, patch) => {
+      let query = table().update({...patch, updated_at:new Date().toISOString()}).eq('owner_id', owner).eq('environment', environment)
+        .eq('operation_id', row.operation_id).eq('state', 'created').eq('file_state', row.file_state);
+      query = row.file_generation ? query.eq('file_generation', row.file_generation) : query.is('file_generation', null);
+      return checked(query.select('*').maybeSingle());
+    },
   };
 }
