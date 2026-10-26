@@ -53,7 +53,14 @@ export function createMorningExpenseIntake({request, captureRead, captureWrite, 
     const epoch = generation; busy = true; render();
     return tasks.run(async () => {
       try { return await work(); }
-      catch (error) { if (generation === epoch && active()) message = ({invalid_expense_input:'יש לבדוק ספק, סיווג, מספר חשבונית עד 20 תווים ותאריכים.', invalid_expense_amounts:'סכומי הנטו והמע״מ חייבים להתאים לסכום הכולל, בדיוק של אגורות.', invalid_expense_reporting_period:'חודש הדיווח חייב להשתייך לתקופה הנבחרת, לא להיות עתידי ולא להקדים את חודש החשבונית.', expense_reporting_confirmation_required:'יש לאשר במפורש את השיוך לחודש דיווח מאוחר מחודש החשבונית.', morning_expense_p_profiles_unverified:'שתי זהויות ספקי P עדיין לא אומתו מול Morning.', morning_expense_p_unverified:'חשבוניות P ייקלטו ב־Morning עד לאימות המסלול.'})[error.message] || error.message || 'הפעולה לא הושלמה.'; return false; }
+      catch (error) { if (generation === epoch && active()) message = ({
+        invalid_expense_input:'יש לבדוק ספק, סיווג, מספר חשבונית עד 20 תווים ותאריכים.',
+        invalid_expense_amounts:'סכומי הנטו והמע״מ חייבים להתאים לסכום הכולל, בדיוק של אגורות.',
+        invalid_expense_reporting_period:'חודש הדיווח חייב להשתייך לתקופה הנבחרת, לא להיות עתידי ולא להקדים את חודש החשבונית.',
+        expense_reporting_confirmation_required:'יש לאשר במפורש את השיוך לחודש דיווח מאוחר מחודש החשבונית.',
+        morning_expense_p_profiles_unverified:'שתי זהויות ספקי P עדיין לא אומתו מול Morning.',
+        morning_expense_p_unverified:'חשבוניות P ייקלטו ב־Morning עד לאימות המסלול.'
+      })[error.message] || error.message || 'הפעולה לא הושלמה.'; return false; }
       finally { if (generation === epoch && active()) { busy = false; render(); } }
     });
   }
