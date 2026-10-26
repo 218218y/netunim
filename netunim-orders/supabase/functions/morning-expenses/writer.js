@@ -38,6 +38,7 @@ export function createExpenseWriter({request, ledger, environment, enabled = fal
   }
   return {
     allowed,
+    profiles:() => pSuppliers().map(profile => ({id:expenseUuid(profile?.id) ? profile.id : '', taxId:typeof profile?.taxId === 'string' ? profile.taxId : ''})).filter(profile => profile.id || profile.taxId),
     async handle(user, body) {
       if (!allowed(user)) return response(403, {code:'morning_expense_writes_unverified', message:'שמירת הוצאות פתוחה רק לבדיקת Sandbox עם הרשאה נפרדת.'});
       try {
@@ -63,28 +64,24 @@ export function createExpenseWriter({request, ledger, environment, enabled = fal
         }
         const payload = await canonical(input);
         const identity = await digest([payload.supplier.taxId, payload.documentType, payload.number, payload.date.slice(0, 4)]);
-        let row = await ledger.reserve({owner_id:user.id, operation_id:body.operationId, invoice_identity:identity, request_fingerprint:fingerprint, state:'reserved', payload});
-        if (!row) return response(409, {code:'morning_expense_duplicate_operation', message:'החשבונית או הפעולה כבר נבדקת. אין לשלוח שוב.'});
         // Search every matching page before any write. No reporting-month filter:
         // the same invoice may have been entered under another reporting month.
-        try {
-          let pages = 1, total = null;
-          const seen = new Set();
-          for (let page = 0; page < pages; page++) {
-            const data = await request('/expenses/search', {method:'POST', body:JSON.stringify({supplierId:input.supplierId, number:input.number, page:page + 1, pageSize:50})});
-            const found = expensePage(data, page, expenseRecord); pages = found.pages;
-            if (total !== null && total !== found.total || found.items.some(item => seen.has(item.id))) throw new Error('morning_expense_duplicate_check_incomplete');
-            total = found.total; found.items.forEach(item => seen.add(item.id));
-            if (pages > 20) throw new Error('morning_expense_duplicate_check_incomplete');
-            if (found.items.some(item => item.status !== 100 && item.number === input.number && item.type === input.documentType && (!item.sourceDocumentDate || item.sourceDocumentDate.slice(0, 4) === input.date.slice(0, 4)))) {
-              await ledger.transition(user.id, row.operation_id, 'reserved', {state:'blocked'});
-              return response(409, {code:'morning_expense_duplicate', message:'חשבונית עם אותו ספק, מספר, סוג ושנה כבר קיימת ב־Morning.'});
-            }
+        let pages = 1, total = null;
+        const seen = new Set();
+        for (let page = 0; page < pages; page++) {
+          const data = await request('/expenses/search', {method:'POST', body:JSON.stringify({supplierId:input.supplierId, number:input.number, page:page + 1, pageSize:50})});
+          const found = expensePage(data, page, expenseRecord); pages = found.pages;
+          if (total !== null && total !== found.total || found.items.some(item => seen.has(item.id))) throw new Error('morning_expense_duplicate_check_incomplete');
+          total = found.total; found.items.forEach(item => seen.add(item.id));
+          if (pages > 20) throw new Error('morning_expense_duplicate_check_incomplete');
+          if (found.items.some(item => item.status !== 100 && item.number === input.number && item.type === input.documentType && (!item.sourceDocumentDate || item.sourceDocumentDate.slice(0, 4) === input.date.slice(0, 4)))) {
+            return response(409, {code:'morning_expense_duplicate', message:'חשבונית עם אותו ספק, מספר, סוג ושנה כבר קיימת ב־Morning.'});
           }
-        } catch (error) {
-          await ledger.transition(user.id, row.operation_id, 'reserved', {state:'blocked'});
-          throw error;
         }
+        // Failed read-only preflight creates no permanent lock. Reserve atomically
+        // AFTER the reads and BEFORE POST; concurrent workers still have one winner.
+        let row = await ledger.reserve({owner_id:user.id, operation_id:body.operationId, invoice_identity:identity, request_fingerprint:fingerprint, state:'reserved', payload});
+        if (!row) return response(409, {code:'morning_expense_duplicate_operation', message:'החשבונית או הפעולה כבר נבדקת. אין לשלוח שוב.'});
         row = await ledger.transition(user.id, row.operation_id, 'reserved', {state:'pending', sent_at:new Date().toISOString()});
         if (!row) throw new Error('morning_expense_storage_failed');
         let raw;

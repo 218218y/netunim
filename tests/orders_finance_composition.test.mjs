@@ -74,7 +74,7 @@ test('Finance construction and each bind are inert, ordered and single use', t =
 test('Finance owns the exact action packs and retains their startup mutation metadata', t => {
   const f = fixture(t); f.cap.bindReadout(f.readout); f.cap.bindCore(f.core); f.cap.bindUi(f.view);
   const packs = f.cap.actionPacks(), actions = composeActionRegistry(packs);
-  assert.deepEqual(packs.map(pack => pack.name), ['morning-reports', 'credit-order', 'finance-bank', 'finance-credit']);
+  assert.deepEqual(packs.map(pack => pack.name), ['morning-reports', 'morning-expenses', 'credit-order', 'finance-bank', 'finance-credit']);
   for (const action of ['refresh-orders-bank','refresh-orders-credit','credit-card-order-save','orders-cashflow-minimum']) {
     assert.equal(actions[action].startupMutationDomain, 'finance', action);
   }

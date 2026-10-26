@@ -26,6 +26,7 @@ import {createCreditCardOrderView} from '../shared/credit-card-order-view.js';
 import {createFinanceBankActions} from '../ui/action-packs/finance-bank.js';
 import {createFinanceCreditActions} from '../ui/action-packs/finance-credit.js';
 import {markMutationActions} from '../shared/action-registry.js';
+import {createLazyMorningExpenses} from './morning-expenses.js';
 import {esc,uid} from '../core/values.js';
 
 function requireMethods(name, port, methods) {
@@ -276,12 +277,14 @@ export function createOrdersFinanceCapability({
     const notify = (...args) => { if (!disposed) toast(...args); };
     const reports = morningOperationScope ? createLazyMorningReports({auth, morningOperationScope, modal:ownedModal.modal,
       toast:notify, dateEditorMarkup:date.dateEditorMarkup, isActive:() => !disposed}, notify) : null;
+    const expenses = morningOperationScope ? createLazyMorningExpenses({auth, morningOperationScope, confirmDialog:ownedModal.confirmDialog, isActive:() => !disposed, notify}) : null;
     const view = createDomainsFinanceView({
       ui, controller, checksView, dashboardView:dashboard, runFinance, isActive:() => !disposed,
       mountViewLayout:layout.mountViewLayout, modal:ownedModal.modal, closeModal:ownedModal.closeModal,
       confirmDialog:ownedModal.confirmDialog, dateEditorMarkup:date.dateEditorMarkup,
       downloadBankChequeImage:images.download, openBankMorningDocument,
       morningReportsMarkup:() => reports?.markup() || '',
+      morningExpensesMarkup:() => expenses?.markup() || '',
     });
     const importConnections = createFinanceConnectionImportCapability({
       bridge, getCreditProfiles:() => controller.snapshot().creditSync?.profiles || [],
@@ -301,6 +304,7 @@ export function createOrdersFinanceCapability({
     });
     const packs = [
       {name:'morning-reports', actions:reports?.actions || {}},
+      {name:'morning-expenses', actions:expenses?.actions || {}},
       {name:'credit-order', actions:markMutationActions(creditOrder.actions, {finance:['credit-card-order-save']})},
       {name:'finance-bank', actions:createFinanceBankActions({domainsFinanceController:controller, domainsFinanceView:view, importFinanceConnections:importConnections.commands.importConnections, ui, uiStatus:{toast:notify}})},
       {name:'finance-credit', actions:createFinanceCreditActions({domainsFinanceView:view, ui})},
@@ -314,7 +318,7 @@ export function createOrdersFinanceCapability({
         return [name, guarded];
       }),
     )}));
-    presentation = {view, importConnections, reports, packs:guardedPacks};
+    presentation = {view, importConnections, reports, expenses, packs:guardedPacks};
   }
 
   const queries = {
@@ -344,9 +348,9 @@ export function createOrdersFinanceCapability({
     renderKupaDependentView:(...args) => readoutReady().renderKupaDependentView(...args),
   };
   const runtime = {
-    isPending:() => !!(presentation?.reports?.runtime.isPending() || controller?.runtime.isPending() || archiveReconciliation?.runtime.isPending() || bankSnapshots?.runtime.isPending() || connections?.runtime.isPending() || bankConnections?.runtime.isPending() || archive?.runtime.isPending() || presentation?.view.connectionRuntime.isPending() || presentation?.importConnections.runtime.isPending()),
+    isPending:() => !!(presentation?.expenses?.runtime.isPending() || presentation?.reports?.runtime.isPending() || controller?.runtime.isPending() || archiveReconciliation?.runtime.isPending() || bankSnapshots?.runtime.isPending() || connections?.runtime.isPending() || bankConnections?.runtime.isPending() || archive?.runtime.isPending() || presentation?.view.connectionRuntime.isPending() || presentation?.importConnections.runtime.isPending()),
     async drain() {
-      do { await Promise.all([presentation?.reports?.runtime.drain(), controller?.runtime.drain(), archiveReconciliation?.runtime.drain(), bankSnapshots?.runtime.drain(), connections?.runtime.drain(), bankConnections?.runtime.drain(), archive?.runtime.drain(), presentation?.view.connectionRuntime.drain(), presentation?.importConnections.runtime.drain()]); } while(runtime.isPending());
+      do { await Promise.all([presentation?.expenses?.runtime.drain(), presentation?.reports?.runtime.drain(), controller?.runtime.drain(), archiveReconciliation?.runtime.drain(), bankSnapshots?.runtime.drain(), connections?.runtime.drain(), bankConnections?.runtime.drain(), archive?.runtime.drain(), presentation?.view.connectionRuntime.drain(), presentation?.importConnections.runtime.drain()]); } while(runtime.isPending());
     },
     start() { uiReady(); return controller.startAutoSync(); },
     resume() { uiReady(); return controller.resumeAutoSync(); },
@@ -360,6 +364,7 @@ export function createOrdersFinanceCapability({
       if (disposed) return false;
       disposed = true;
       presentation?.reports?.runtime.dispose();
+      presentation?.expenses?.runtime.dispose();
       archiveReconciliation?.runtime.dispose();
       bankSnapshots?.runtime.dispose();
       presentation?.importConnections.runtime.dispose();
