@@ -82,6 +82,10 @@ export function createExpenseService({request, environment, readIds = () => '', 
       return {status:200, body:{ok:true, version:1, environment, ...result, readAt:new Date().toISOString()}};
     } catch (error) {
       const input = error.message === 'invalid_expense_input';
+      if (!input) console.error('morning_expenses_source_failed', {
+        code:['morning_auth_failed', 'morning_source_failed', 'morning_response_invalid', 'invalid_expense_page', 'invalid_expense_supplier', 'invalid_expense_record'].includes(error.message) ? error.message : 'unavailable',
+        status:Number.isSafeInteger(error.status) ? error.status : null,
+      });
       return {status:input ? 400 : 502, body:{ok:false, code:input ? 'invalid_expense_input' : 'morning_expenses_source_failed',
         message:input ? 'פרטי החיפוש אינם תקינים.' : 'לא ניתן לקרוא את ההוצאות מ־Morning. יש לנסות שוב.'}};
     }

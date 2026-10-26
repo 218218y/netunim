@@ -1,0 +1,52 @@
+{
+  "testedAt": "2026-10-26T11:57:39.375Z",
+  "project": "bupoidcurcxuypfrjqio",
+  "morningEnvironment": "sandbox",
+  "invalidTokenStatus": 401,
+  "capabilitiesStatus": 200,
+  "create": false,
+  "upload": false,
+  "supplierReadStatus": 200,
+  "supplierCount": 3,
+  "expenseReadStatus": 200,
+  "expenseCount": 7,
+  "writeAttemptStatus": 403,
+  "ledgerRows": 0,
+  "actualEdgeInvocation": true,
+  "actualAuthGetUser": true,
+  "userIdentityOmitted": true,
+  "unauthorized": {
+    "actualAuthenticatedUnauthorizedUser": true,
+    "edgeStatus": 403,
+    "directTableReadStatus": 403,
+    "directTableWriteStatus": 403,
+    "testUserRemoved": true
+  },
+  "secrets": {
+    "dedicatedEnvironment": "sandbox",
+    "writes": false,
+    "readUsers": 1,
+    "writeUsers": 0,
+    "pProfiles": 2,
+    "existingSecretDigestsUnchanged": true,
+    "names": [
+      "MORNING_EXPENSE_ENV",
+      "MORNING_EXPENSE_CLIENT_ID",
+      "MORNING_EXPENSE_CLIENT_SECRET",
+      "MORNING_EXPENSE_SANDBOX_WRITES",
+      "MORNING_EXPENSE_P_SUPPLIERS",
+      "MORNING_EXPENSE_READ_USER_IDS",
+      "MORNING_EXPENSE_WRITE_USER_IDS"
+    ]
+  },
+  "migrations": [
+    "20261026080000",
+    "20261026100000"
+  ],
+  "bundleIncludesSharedSiteValidators": true,
+  "postflight": "PASS",
+  "sourceLFHashes": {
+    "netunim-orders/supabase/functions/morning-expenses/index.ts": "ddbd8e18dda69dbfc3f6e56e9f4c7a88c83b82bed6f278560464f48038d4c32e",
+    "netunim-orders/supabase/functions/morning-expenses/transport.js": "1b9e33588359cb2b8839cbc7c093e51fb35229cb94fc2eceeb1be2e5aad361dc"
+  }
+}
