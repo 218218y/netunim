@@ -86,9 +86,6 @@ export function createKupaBankControllerFixture(ports) {
     local: localSnapshot,
     cloud: { publish: pick('saveBankSyncSnapshot', unexpected), refresh: readFinance },
     publication: {
-      bank: (value) => {
-        ports.model.state.bank = value;
-      },
       archive: archive.commands.publish,
       data: () => {
         ports.touchBankDataRevision?.();

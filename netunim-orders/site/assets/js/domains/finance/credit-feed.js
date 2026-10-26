@@ -21,9 +21,9 @@ function normalizeInstallments(value){const number=Math.trunc(Number(value?.numb
 export function creditCardMappingKey(profileId,accountNumber){return `${text(profileId,80)}:${text(accountNumber,80)}`}
 
 export function normalizeCreditTransaction(txn={}){
-  const charged=finite(txn.chargedAmount),original=finite(txn.originalAmount);
+  const charged=finite(txn.chargedAmount),original=finite(txn.originalAmount),category=text(txn.category,160);
   return {id:text(txn.id||txn.identifier||'',120),type:text(txn.type||'normal',30)||'normal',date:iso(txn.date),processedDate:iso(txn.processedDate),transactionDate:iso(txn.transactionDate),transactionTime:transactionTime(txn.transactionTime),originalAmount:original,originalCurrency:text(txn.originalCurrency||'',12),chargedAmount:charged,
-    ...(['reported','missing','not_billed'].includes(txn.chargeAmountStatus)?{chargeAmountStatus:txn.chargeAmountStatus}:{}),chargedCurrency:text(txn.chargedCurrency||txn.originalCurrency||'ILS',12)||'ILS',foreignTransaction:txn.foreignTransaction===true,description:text(txn.description||'עסקת אשראי',220)||'עסקת אשראי',memo:text(txn.memo||'',260),category:text(txn.category||'',160)||undefined,installments:normalizeInstallments(txn.installments),status:['pending','completed'].includes(String(txn.status))?String(txn.status):'completed'};
+    ...(['reported','missing','not_billed'].includes(txn.chargeAmountStatus)?{chargeAmountStatus:txn.chargeAmountStatus}:{}),chargedCurrency:text(txn.chargedCurrency||txn.originalCurrency||'ILS',12)||'ILS',foreignTransaction:txn.foreignTransaction===true,description:text(txn.description||'עסקת אשראי',220)||'עסקת אשראי',memo:text(txn.memo||'',260),...(category?{category}:{}),installments:normalizeInstallments(txn.installments),status:['pending','completed'].includes(String(txn.status))?String(txn.status):'completed'};
 }
 
 function transactionMonth(tx){const value=tx?.processedDate;return /^\d{4}-\d{2}/.test(String(value||''))?String(value).slice(0,7):''}

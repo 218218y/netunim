@@ -43,6 +43,7 @@ GROUPS = {
     "browser-database": ["runtime_sync_postgres.py"],
 }
 GROUPS["browser-sync"].append("runtime_auth_session_persistence.py")
+GROUPS["browser-sync"].append("runtime_finance_json_hydration.py")
 GROUPS["browser-morning"].append("runtime_morning_expenses.py")
 GROUPS["browser-morning"].append("runtime_morning_expense_composition.py")
 GROUPS["browser-lifecycle"].append("runtime_worker_release_cache.py")

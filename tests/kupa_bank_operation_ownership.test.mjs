@@ -22,7 +22,7 @@ test('Kupa Bank waits for an accepted lease renewal before release and controlle
 });
 function fixture(t,{hold=null,home=false}={}){
   t.mock.method(globalThis,'setTimeout',()=>1);t.mock.method(globalThis,'clearTimeout',()=>{});t.mock.method(console,'error',()=>{});
-  let owner='A',epoch=1,primary=true,financeReads=0,checks=0;const counts={},entered=deferred(),release=deferred();
+  let owner='A',epoch=1,primary=true,financeReads=0,checks=0,remoteBank=null;const counts={},entered=deferred(),release=deferred();
   const model={state:{bank:{source:'hapoalim',currentBalance:100,bankSyncAt:stamp,archiveInitialized:true,archiveVersion:2,adjustments:[],feed:{accountNumber:'same-account',balance:100,syncedAt:stamp,transactions:[]}},checks:[]}},before=structuredClone(model.state);
   const capture=()=>{const observed={owner,epoch};return ()=>{if(!owner||observed.owner!==owner||observed.epoch!==epoch||!primary)throw changed()}};
   const captureRead=()=>{const observed={owner,epoch};return ()=>{if(!owner||observed.owner!==owner||observed.epoch!==epoch)throw changed()}};
@@ -31,13 +31,18 @@ function fixture(t,{hold=null,home=false}={}){
     sharedChecksHaveLocalWork:()=>false,saveSharedChecksToCloud:async()=>true,syncSharedChecksFromCloud:()=>phase('checks-'+(++checks),true),sharedChecksObservedSequence:()=>7,
     saveState:()=>phase('local',true),bridge:{getBridgeToken:()=> 'fixture',autoEnabled:()=>true,autoAttemptDelayMs:()=>0,markAutoAttempt:()=>{},
       fetchBalance:()=>phase('provider',{fetchedAt:stamp,accounts:{business:{balance:500,accountId:'same-account',transactions:[]},...(home?{home:{balance:250,accountId:'home-account',transactions:[]}}:{})}})},
-    refreshFinanceCloudSnapshot:()=>phase('finance-'+(++financeReads),{verified:true,state:model.state}),
+    refreshFinanceCloudSnapshot:async(options={})=>{
+      await phase('finance-'+(++financeReads));options.assertCurrent?.();
+      // The cloud read owner adopts a confirmed server snapshot, never the writer.
+      if(remoteBank)model.state.bank=structuredClone(remoteBank);
+      return {verified:true,revision:2,financeRevision:2,state:model.state};
+    },
     claimFinanceSyncLease:async(leaseName,leaseToken)=>({acquired:true,leaseName,leaseToken,fenceEpoch:1}),releaseFinanceSyncLease:(_kind,_token,options)=>{options?.assertCurrent?.();return phase('release',true)},
-    saveFinancePatch:()=>phase('patch',{saved:true}),saveBankSyncSnapshot:()=>phase('atomic',{finance_revision:2,kupa_revision:2}),
+    saveFinancePatch:()=>phase('patch',{saved:true}),saveBankSyncSnapshot:async bank=>{const receipt=await phase('atomic',{finance_revision:2,kupa_revision:2});remoteBank=structuredClone(bank);return receipt;},
     syncBankTransactionsSnapshot:(_key,role)=>phase('archive-'+role,{sourcePayload:[],result:{total_count:0}}),syncBankChequeImages:()=>phase('images',{warnings:[]}),
     readBankTransactions:(_key,role)=>phase('read-'+role,[]),readBankTransactionSnapshot:()=>phase('read-snapshot',null),touchBankDataRevision:()=>{},touchBankDisplayRevision:()=>{},
   };
-  return {ports,model,before,counts,entered,release,create:()=>createDomainsBankController({...ports,effects:createFinanceBrowserEffects()}),handoff:()=>{owner='B';epoch++},logout:()=>{owner=null;epoch++},relogin:()=>{epoch++},secondary:()=>{primary=false}};
+  return {ports,model,before,counts,entered,release,remote:bank=>{remoteBank=structuredClone(bank)},create:()=>createDomainsBankController({...ports,effects:createFinanceBrowserEffects()}),handoff:()=>{owner='B';epoch++},logout:()=>{owner=null;epoch++},relogin:()=>{epoch++},secondary:()=>{primary=false}};
 }
 
 test('Kupa cloud Bank construction cannot enable a two-write fallback without the atomic writer',t=>{
@@ -142,7 +147,7 @@ test('bank failed atomic publication cannot replace the displayed archive cache'
 });
 test('bank committed snapshot with unverified refresh retains its operator warning',async t=>{
   const f=fixture(t);let reads=0;f.ports.refreshFinanceCloudSnapshot=async()=>++reads===1?{verified:true,state:f.model.state}:{verified:false,state:null};const api=f.create();
-  assert.equal(await api.refreshBankBalance(),true);assert.equal(f.model.state.bank.currentBalance,500);assert.match(api.bankBridgeUiState().lastWarning,/לא אומת/);
+  assert.equal(await api.refreshBankBalance(),true);assert.equal(f.model.state.bank.currentBalance,100,'unverified read must retain the previous display');assert.match(api.bankBridgeUiState().lastWarning,/לא אומת/);
   await api.refreshBankBridgeStatus();assert.match(api.bankBridgeUiState().lastWarning,/לא אומת/,'passive device availability cannot erase an unverified financial readout');
   await api.configureBankBridge({userCode:'',password:''});assert.match(api.bankBridgeUiState().lastWarning,/לא אומת/,'rejected local input cannot retire financial feedback');api.stopAutoSync();
 });
@@ -196,7 +201,7 @@ test('read scope remains usable by an authorized secondary tab and closes on rec
 for(const committed of [false,true])test(`bank retry after ${committed?'lost atomic response':'offline atomic failure'} retains transaction identity`,async t=>{
   const f=fixture(t),rows=[transaction('provider-transaction')];let fail=true,remote=f.model.state.bank;
   f.ports.readBankTransactions=async()=>rows;
-  f.ports.saveBankSyncSnapshot=async bank=>{if(!fail||committed)remote=structuredClone(bank);if(fail)throw Error('fixture missing response');return {finance_revision:2,kupa_revision:2}};
+  f.ports.saveBankSyncSnapshot=async bank=>{if(!fail||committed){remote=structuredClone(bank);f.remote(remote)}if(fail)throw Error('fixture missing response');return {finance_revision:2,kupa_revision:2}};
   const api=f.create();assert.equal(await api.refreshBankBalance(),false);assert.deepEqual(f.model.state,f.before);
   fail=false;assert.equal(await api.refreshBankBalance(),true);
   assert.equal(f.model.state.bank.feed.transactions.length,1);assert.equal(f.model.state.bank.feed.transactions[0].id,'provider-transaction');assert.deepEqual(f.model.state.bank.feed,remote.feed);api.stopAutoSync();

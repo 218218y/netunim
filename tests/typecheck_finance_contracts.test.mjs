@@ -120,7 +120,7 @@ test('the actual Bank archive verification cannot replace transaction rows with 
 
 test('the actual Bank command cannot replace atomic readout confirmation with operator text',()=>{
  const source=path.join(root,'netunim-kupa/site/assets/js/domains/bank/snapshot-commands.js'),original=readFileSync(source,'utf8');
- const changed=original.replace(/readoutVerified:\s*bankSnapshotReadoutIsCurrent\(committed, refreshed\)/,"readoutVerified:'confirmed'");assert.notEqual(changed,original);
+ const changed=original.replace(/readoutVerified,\s*receipt:/,"readoutVerified:'confirmed',receipt:");assert.notEqual(changed,original);
  const diagnostics=check(new Map([[source,changed]]));assert.ok(diagnostics.some(item=>item.file&&item.code===2322),describe(diagnostics));
 });
 

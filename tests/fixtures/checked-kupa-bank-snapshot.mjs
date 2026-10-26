@@ -15,7 +15,7 @@ const api = createKupaBankSnapshotCommands({
     publish: async () => ({ kupa_revision: 4, finance_revision: 9 }),
     refresh: async () => ({ verified: true, revision: 4, financeRevision: 9 }),
   },
-  publication: { bank: () => {}, archive: () => {}, data: () => {} },
+  publication: { archive: () => {}, data: () => {} },
 });
 await api.commands.prepare(guard);
 await api.commands.commitManual('500', { bankFeed: null, message: '' });

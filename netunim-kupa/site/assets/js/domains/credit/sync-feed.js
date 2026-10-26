@@ -21,7 +21,7 @@ function normalizeInstallments(value){const number=Math.trunc(Number(value?.numb
 export function creditCardMappingKey(profileId,accountNumber){return `${text(profileId,80)}:${text(accountNumber,80)}`}
 
 export function normalizeCreditTransaction(txn={}){
-  const charged=finite(txn.chargedAmount),original=finite(txn.originalAmount);
+  const charged=finite(txn.chargedAmount),original=finite(txn.originalAmount),category=text(txn.category,160);
   return {
     id:text(txn.id||txn.identifier||'',120),
     type:text(txn.type||'normal',30)||'normal',
@@ -37,7 +37,7 @@ export function normalizeCreditTransaction(txn={}){
     foreignTransaction:txn.foreignTransaction===true,
     description:text(txn.description||'עסקת אשראי',220)||'עסקת אשראי',
     memo:text(txn.memo||'',260),
-    category:text(txn.category||'',160)||undefined,
+    ...(category?{category}:{}),
     installments:normalizeInstallments(txn.installments),
     status:['pending','completed'].includes(String(txn.status))?String(txn.status):'completed',
   };

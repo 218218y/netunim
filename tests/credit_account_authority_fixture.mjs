@@ -8,6 +8,10 @@ export function restoreCreditPendingStatus(source){
 
 export function restoreCreditAccountFeed(source,{orders=false}={}){
   source=restoreCreditCooldown(restoreCreditPendingStatus(source));
+  // JSON-safe optional category serialization is covered by credit_storage_json.
+  // Project only that exact change out; retain the historical financial hashes.
+  source=source.replace(',original=finite(txn.originalAmount),category=text(txn.category,160);',',original=finite(txn.originalAmount);')
+    .replace('...(category?{category}:{}),','category:text(txn.category||\'\',160)||undefined,');
   source=source.replace(`const base=normalizeCreditSync(current),mappings={...base.cardMappings},
     byId=new Map(base.profiles.map(profile=>[profile.profileId,profile]));
   // Supported older responses can omit metadata without erasing a known issuer
