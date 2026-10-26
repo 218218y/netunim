@@ -53,7 +53,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
   }
   const supplierPicker = createExpenseSupplierPicker({
     rows:() => catalog?.suppliers || [], selectedId:() => draft.supplierId,
-    eligibility:row => expenseSupplierEligibility(row, catalog?.capabilities.pSuppliers), editable:() => active() && !!catalog && !busy && !operationId,
+    eligibility:eligibilityFor, editable:() => active() && !!catalog && !busy && !operationId,
     choose:id => setField({dataset:{expenseField:'supplierId'}, value:id}), run:tasks.run, report:updateMessage,
     invalidateSelection:() => {
       draft.supplierId = ''; draft.classificationExpenseId = '';
@@ -79,6 +79,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       catch (error) { if (generation === epoch && active()) message = ({
         invalid_expense_input:'יש לבדוק ספק, סיווג, מספר חשבונית עד 20 תווים ותאריכים.',
         invalid_expense_amounts:'סכומי הנטו והמע״מ חייבים להתאים לסכום הכולל, בדיוק של אגורות.',
+        invalid_expense_p_number:'יש להזין מספר חשבונית P של עד תשע ספרות. אפסים מובילים יושלמו אוטומטית.',
         invalid_expense_reporting_period:'חודש הדיווח חייב להשתייך לתקופה הנבחרת, לא להיות עתידי ולא להקדים את חודש החשבונית.',
         expense_reporting_confirmation_required:'יש לאשר במפורש את השיוך לחודש דיווח מאוחר מחודש החשבונית.',
         morning_expense_p_profiles_unverified:'שתי זהויות ספקי P עדיין לא אומתו מול Morning.',
@@ -132,18 +133,19 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       const history = catalog?.expenses.filter(row => row.status !== 100 && (row.supplierId === draft.supplierId || supplier?.taxId && row.supplierTaxId === supplier.taxId)).sort((a, b) => String(b.sourceDocumentDate).localeCompare(String(a.sourceDocumentDate)));
       const recent = history?.find(row => row.classification?.id);
       draft.classificationExpenseId = recent?.id || '';
-      draft.pcnClassification = history?.some(row => row.pcnClassification === 'P') || expenseSupplierEligibility(supplier, catalog?.capabilities.pSuppliers).p ? 'P' : 'T';
+      draft.pcnClassification = history?.some(row => row.pcnClassification === 'P') || eligibilityFor(supplier).p ? 'P' : 'T';
       if (previousRate !== vatRate()) calculate(lastAmountField);
       render();
       if (supplier && preferences?.classifications.some(row => row.supplierId === supplier.id)) return restoreClassification(supplier.id);
     } else if (name === 'pcnClassification') {
-      if (expenseSupplierEligibility(catalog?.suppliers.find(row => row.id === draft.supplierId), catalog?.capabilities.pSuppliers).p) draft.pcnClassification = 'P';
+      if (eligibilityFor(catalog?.suppliers.find(row => row.id === draft.supplierId)).p) draft.pcnClassification = 'P';
       calculate(lastAmountField); render();
     } else if (['net', 'vat', 'gross'].includes(name)) {lastAmountField = name; calculate(name);}
     else updateMessage('הפרטים טרם נשמרו. יש לבדוק מול מסמך המקור.');
     return true;
   }
   function vatRate() {return draft.pcnClassification === 'P' ? 16 : 18;}
+  function eligibilityFor(supplier) {return expenseSupplierEligibility(supplier, catalog?.capabilities.pSuppliers, catalog?.capabilities.pcnP === true);}
   function calculate(name) {
     const calculated = expenseAmountChange(draft, name, vatRate());
     Object.assign(draft, calculated);
@@ -175,10 +177,12 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       const check = capture(true);
       if (!catalog?.capabilities.create || operationId) throw new Error('שמירה אינה זמינה לפעולה זו.');
       if (selected && !catalog.capabilities.upload) throw new Error('צירוף קבצים עדיין כבוי בחשבון זה. אין לשמור הוצאה עם קובץ בתור עד להפעלתו.');
-      const eligibility = expenseSupplierEligibility(catalog.suppliers.find(row => row.id === draft.supplierId), catalog.capabilities.pSuppliers);
+      const eligibility = eligibilityFor(catalog.suppliers.find(row => row.id === draft.supplierId));
       if (!eligibility.eligible) throw new Error(eligibility.reason);
+      if (draft.pcnClassification === 'P' && !eligibility.p) throw new Error('קליטת P זמינה רק לשני הספקים שהוגדרו ואומתו.');
       const nextId = crypto.randomUUID(), snapshot = structuredClone(draft);
-      normalizeExpenseInput({operationId:nextId, expense:snapshot}, todayISO());
+      const normalized = normalizeExpenseInput({operationId:nextId, expense:snapshot}, todayISO(), {allowP:catalog.capabilities.pcnP === true});
+      snapshot.number = normalized.number;
       const classification = sourceExpenses().find(row => row.id === snapshot.classificationExpenseId)?.classification;
       if (!classification?.id) throw new Error('יש לבחור סיווג מתוך ההצעות המוצגות לפני שמירה.');
       const surface = host(), supplier = catalog.suppliers.find(row => row.id === snapshot.supplierId);
@@ -352,7 +356,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       if (date <= today) periods.push(expenseBimonth(date));
     }
     const supplier = catalog?.suppliers.find(row => row.id === draft.supplierId);
-    const eligibility = expenseSupplierEligibility(supplier, catalog?.capabilities.pSuppliers);
+    const eligibility = eligibilityFor(supplier);
     return `<section class="morning-expense-intake" data-morning-expense-intake data-keydown="morning-expense-keyboard" data-paste="morning-expense-paste" dir="rtl">
       <button type="button" class="morning-expense-trigger" data-action="morning-expense-toggle" aria-expanded="${expanded}" ${busy ? 'disabled' : ''}><b>קליטת הוצאות ב־Morning</b><span>${expanded ? '⌃' : '⌄'}</span></button>
       ${expanded ? `<div class="morning-expense-content"><div class="morning-expense-toolbar"><button type="button" class="btn" data-action="morning-expense-command" data-expense-command="load" ${busy ? 'disabled' : ''}>${catalog ? 'רענון הצעות' : 'טעינת ספקים וסיווגים'}</button><a href="${catalog?.capabilities.environment === 'sandbox' ? 'https://app.sandbox.d.greeninvoice.co.il' : 'https://app.greeninvoice.co.il'}" target="_blank" rel="noopener noreferrer">פתיחת Morning</a></div>
@@ -371,7 +375,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       <button type="button" class="btn" data-action="morning-expense-command" data-expense-command="classification-year" ${attrs}>טעינת סיווגים מהשנה הנבחרת</button>
       <div class="morning-expense-pair"><label>סוג מסמך<select data-expense-field="documentType" data-change="morning-expense-field" ${attrs}>${option(305, 'חשבונית מס', draft.documentType)}${option(330, 'חשבונית זיכוי', draft.documentType)}${option(320, 'חשבונית מס קבלה', draft.documentType)}</select></label>
       <label>סוג דיווח<select data-expense-field="pcnClassification" data-change="morning-expense-field" ${attrs}>${option('T', 'רגיל · T', draft.pcnClassification)}${option('P', 'חשבונית P', draft.pcnClassification)}</select></label></div>
-      ${draft.pcnClassification === 'P' ? '<p class="morning-expense-notice">חשבונית P: המע״מ נשאר לפי מסמך המקור. הקליטה והסיווג לדוח יושלמו ב־Morning עד לאימות המסלול.</p>' : ''}
+      ${draft.pcnClassification === 'P' ? `<p class="morning-expense-notice">${catalog.capabilities.pcnP ? 'חשבונית P: הספק וסיווג P מאומתים בשמירה. המע״מ נשאר לפי מסמך המקור ומספר החשבונית מושלם לתשע ספרות.' : 'חשבונית P: המע״מ נשאר לפי מסמך המקור. קליטת P באתר טרם הופעלה לחשבון זה.'}</p>` : ''}
       <div class="morning-expense-pair">${textField('number')}<div class="morning-expense-date"><span>תאריך החשבונית</span><fieldset ${attrs}>
       ${dateEditorMarkup('morningExpenseDate', draft.date, {label:'תאריך החשבונית', compact:true, maxDate:today,
         change:'morning-expense-field', data:{'expense-field':'date'}})}</fieldset></div></div>
@@ -380,7 +384,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       <div class="morning-expense-amounts">${textField('net')}${textField('vat')}${textField('gross')}</div>
       <small>הקלדת סה״כ מחשבת לפני מע״מ ומע״מ לפי ${vatRate()}%. אפשר לתקן לפי מסמך המקור. זיכוי מוקלד בסכומים חיוביים.</small>
       ${textField('description')}${textField('allocationNumber')}
-      <div class="morning-expense-toolbar"><button type="button" class="btn primary" data-action="morning-expense-save" ${disabled || !catalog.capabilities.create || !eligibility.eligible || draft.pcnClassification === 'P' ? 'disabled' : ''}>${catalog.capabilities.environment === 'production' ? 'בדיקה ושמירה בחשבון האמיתי' : 'בדיקה ושמירה ב־Sandbox'}</button></div>` : ''}
+      <div class="morning-expense-toolbar"><button type="button" class="btn primary" data-action="morning-expense-save" ${disabled || !catalog.capabilities.create || !eligibility.eligible || draft.pcnClassification === 'P' && (!catalog.capabilities.pcnP || !eligibility.p) ? 'disabled' : ''}>${catalog.capabilities.environment === 'production' ? 'בדיקה ושמירה בחשבון האמיתי' : 'בדיקה ושמירה ב־Sandbox'}</button></div>` : ''}
       <div class="morning-expense-toolbar"><button type="button" class="btn" data-action="morning-expense-command" data-expense-command="next" ${busy || operationId && !result?.verified && !['not_found', 'cancelled'].includes(result?.state) ? 'disabled' : ''}>${queue.length ? 'לחשבונית הבאה בתור' : 'קליטה חדשה'}</button></div>
       ${operationId ? `<div class="morning-expense-operation"><b>${esc(stateLabels[result?.state] || 'מצב הפעולה טרם אומת')}</b><small>מזהה פעולה: <bdi>${esc(operationId)}</bdi></small><button type="button" class="btn" data-action="morning-expense-command" data-expense-command="status" ${busy ? 'disabled' : ''}>בדיקת מצב היצירה</button>
       ${result?.expenseId ? `<small>מזהה הוצאה ב־Morning: <bdi>${esc(result.expenseId)}</bdi></small>` : ''}

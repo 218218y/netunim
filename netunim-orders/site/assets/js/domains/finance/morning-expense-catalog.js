@@ -20,8 +20,12 @@ export function expenseCatalogClassifications(expenses) {
   }
   return [...categories.values()];
 }
-export function expenseSupplierEligibility(supplier, profiles = []) {
-  if (profiles.some(profile => profile.id === supplier?.id || profile.taxId && profile.taxId === supplier?.taxId)) return {eligible:false, p:true, reason:'ספק P · קליטה ב־Morning'};
+export function expenseSupplierEligibility(supplier, profiles = [], allowP = false) {
+  const profile = profiles.find(row => row.id === supplier?.id || row.taxId && row.taxId === supplier?.taxId);
+  if (profile) {
+    const eligible = allowP && supplier.active && profile.id === supplier.id && profile.taxId === supplier.taxId && ['IL', 'PS'].includes(supplier.country);
+    return {eligible, p:true, reason:eligible ? 'ספק P · מע״מ מוצע 16%' : 'ספק P · קליטה ב־Morning'};
+  }
   if (!supplier?.active) return {eligible:false, reason:'ספק לא פעיל'};
   if (supplier.country !== 'IL') return {eligible:false, reason:'מדינת הספק אינה ישראל'};
   if (!/^\d{9}$/.test(supplier.taxId)) return {eligible:false, reason:'נדרש מספר עוסק בן 9 ספרות'};

@@ -7,22 +7,24 @@ import {expenseMatchesIntent} from './intent.js';
 const digest = async value => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(value)))), x => x.toString(16).padStart(2, '0')).join('');
 const response = (status, body) => ({status, body:{ok:status < 400, ...body}});
 const todayInIsrael = () => new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Jerusalem', year:'numeric', month:'2-digit', day:'2-digit'}).format(new Date());
-export function createExpenseWriter({request, ledger, environment, enabled = false, writeIds = () => '', productionUserId = '', pSuppliers = () => [], today = todayInIsrael}) {
+export function createExpenseWriter({request, ledger, environment, enabled = false, pcnP = false, writeIds = () => '', productionUserId = '', pSuppliers = () => [], today = todayInIsrael}) {
   const authorized = user => expenseWriteAccess(user, environment, writeIds(), productionUserId);
   const allowed = user => authorized(user) && enabled === true && completePProfiles(pSuppliers());
   async function canonical(input) {
     await verifyPProfiles(request, pSuppliers());
     const supplier = expenseSupplier(await request('/suppliers/' + input.supplierId, {method:'GET'}));
-    if (pSuppliers().some(profile => profile.id === supplier.id || profile.taxId === supplier.taxId)) throw new Error('morning_expense_p_unverified');
-    if (supplier.id !== input.supplierId || !supplier.active || supplier.country !== 'IL' || !/^\d{9}$/.test(supplier.taxId)) throw new Error('invalid_expense_supplier');
+    const protectedProfile = pSuppliers().find(profile => profile.id === supplier.id || profile.taxId === supplier.taxId), p = input.pcnClassification === 'P';
+    if (protectedProfile && !p) throw new Error('morning_expense_p_unverified');
+    if (p && (!pcnP || !protectedProfile || protectedProfile.id !== supplier.id || protectedProfile.taxId !== supplier.taxId)) throw new Error('morning_expense_p_unverified');
+    if (supplier.id !== input.supplierId || !supplier.active || !(p ? ['IL', 'PS'].includes(supplier.country) : supplier.country === 'IL') || !/^\d{9}$/.test(supplier.taxId)) throw new Error('invalid_expense_supplier');
     const evidence = await request('/expenses/' + input.classificationExpenseId, {method:'GET'});
     if (evidence?.id !== input.classificationExpenseId || evidence.status === 100) throw new Error('invalid_expense_classification');
     const classification = expenseClassification(evidence.accountingClassification);
     if (!classification) throw new Error('invalid_expense_classification');
     return {documentType:input.documentType, number:input.number, date:input.date, reportingDate:input.reportingDate,
-      currency:'ILS', currencyRate:1, amount:input.grossCents / 100, vat:input.vatCents / 100, pcnClassification:'T', description:input.description,
+      currency:'ILS', currencyRate:1, amount:input.grossCents / 100, vat:input.vatCents / 100, pcnClassification:input.pcnClassification, description:input.description,
       ...(input.allocationNumber ? {allocationNumber:input.allocationNumber} : {}),
-      supplier:{name:supplier.name, taxId:supplier.taxId, country:'IL', add:false}, accountingClassification:{id:classification.id}};
+      supplier:{name:supplier.name, taxId:supplier.taxId, country:supplier.country, add:false}, accountingClassification:{id:classification.id}};
   }
   const summary = row => ({operationId:row.operation_id, state:row.state, expenseId:row.expense_id || '', verified:row.state === 'created' && !!row.verified_at,
     cancelled:row.state === 'cancelled', intent:{number:row.payload.number, documentType:row.payload.documentType, date:row.payload.date,
@@ -44,6 +46,7 @@ export function createExpenseWriter({request, ledger, environment, enabled = fal
   return {
     allowed,
     async readiness(user) { if (!allowed(user)) return false; try {await verifyPProfiles(request, pSuppliers()); return true;} catch {return false;} },
+    pcnEnabled:user => allowed(user) && pcnP === true,
     profiles:() => pSuppliers().map(profile => ({id:expenseUuid(profile?.id) ? profile.id : '', taxId:typeof profile?.taxId === 'string' ? profile.taxId : ''})).filter(profile => profile.id || profile.taxId),
     async handle(user, body) {
       const recovering = ['operation_status', 'reconcile', 'cancel_reserved'].includes(body?.action);
@@ -70,7 +73,7 @@ export function createExpenseWriter({request, ledger, environment, enabled = fal
           if (!existing) return response(404, {code:'morning_expense_operation_missing', message:'פעולת הקליטה לא נמצאה.'});
           return await verify(user, existing);
         }
-        const input = normalizeExpenseInput(body, today());
+        const input = normalizeExpenseInput(body, today(), {allowP:pcnP === true});
         const fingerprint = await digest(input);
         if (existing) {
           if (existing.request_fingerprint !== fingerprint) return response(409, {code:'morning_expense_operation_conflict', message:'מזהה הפעולה כבר משויך לפרטים אחרים.'});
@@ -86,12 +89,13 @@ export function createExpenseWriter({request, ledger, environment, enabled = fal
           // API-created supplier snapshots can omit the directory supplier ID.
           // Sandbox proved supplierId filters miss those expenses. Match tax ID
           // after a complete number search, including expenses entered elsewhere.
-          const data = await request('/expenses/search', {method:'POST', body:JSON.stringify({number:input.number, page:page + 1, pageSize:50})});
+          const invoiceNumber = value => input.pcnClassification === 'P' ? value.replace(/^0+(?=\d)/, '') : value;
+          const data = await request('/expenses/search', {method:'POST', body:JSON.stringify({number:invoiceNumber(input.number), page:page + 1, pageSize:50})});
           const found = expensePage(data, page, expenseRecord); pages = found.pages;
           if (total !== null && total !== found.total || found.items.some(item => seen.has(item.id))) throw new Error('morning_expense_duplicate_check_incomplete');
           total = found.total; found.items.forEach(item => seen.add(item.id));
           if (pages > 20) throw new Error('morning_expense_duplicate_check_incomplete');
-          if (found.items.some(item => item.status !== 100 && item.number === input.number && item.type === input.documentType &&
+          if (found.items.some(item => item.status !== 100 && invoiceNumber(item.number) === invoiceNumber(input.number) && item.type === input.documentType &&
               (!item.supplierTaxId || item.supplierTaxId === payload.supplier.taxId) && (!item.sourceDocumentDate || item.sourceDocumentDate.slice(0, 4) === input.date.slice(0, 4)))) {
             return response(409, {code:'morning_expense_duplicate', message:'חשבונית עם אותו ספק, מספר, סוג ושנה כבר קיימת ב־Morning.'});
           }
@@ -116,7 +120,7 @@ export function createExpenseWriter({request, ledger, environment, enabled = fal
         if (!row) throw new Error('morning_expense_storage_failed');
         return await verify(user, row);
       } catch (error) {
-        const code = ['invalid_expense_input', 'invalid_expense_amounts', 'invalid_expense_supplier', 'invalid_expense_classification', 'invalid_expense_reporting_period', 'expense_reporting_confirmation_required', 'morning_expense_p_unverified', 'morning_expense_p_profiles_unverified'].includes(error.message) ? error.message : 'morning_expense_verification_unavailable';
+        const code = ['invalid_expense_input', 'invalid_expense_amounts', 'invalid_expense_p_number', 'invalid_expense_supplier', 'invalid_expense_classification', 'invalid_expense_reporting_period', 'expense_reporting_confirmation_required', 'morning_expense_p_unverified', 'morning_expense_p_profiles_unverified'].includes(error.message) ? error.message : 'morning_expense_verification_unavailable';
         return response(code.startsWith('invalid_') || code.endsWith('_unverified') || code === 'expense_reporting_confirmation_required' ? 400 : 503, {code,
           message:code === 'morning_expense_p_unverified' ? 'חשבוניות P מחייבות עדיין קליטה ואימות ב־Morning.' : 'הקליטה לא הושלמה או לא אומתה. יש לבדוק את מצב הפעולה לפני ניסיון נוסף.'});
       }

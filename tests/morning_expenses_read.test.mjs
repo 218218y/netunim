@@ -12,6 +12,15 @@ const raw = {id:id(2), documentType:305, number:'000123', date:'2026-10-20', rep
   accountingClassification:{id:id(4), title:'Classification', income:100, vat:66.67, mixed:100}, url:'https://private.example/file'};
 const page = (items = []) => ({page:1, pageSize:50, total:items.length, pages:items.length ? 1 : 0, items});
 
+test('P capability requires both canonical supplier readiness and explicit writer authorization',async()=>{
+ for(const ready of [false,true])for(const enabled of [false,true]){
+  const service=createExpenseService({environment:'production',request:()=>assert.fail('unexpected request'),
+   writer:{readiness:async()=>ready,pcnEnabled:()=>enabled,profiles:()=>[]}});
+  const result=await service(user,{action:'capabilities'});
+  assert.equal(result.body.pcnP,ready&&enabled);assert.equal(result.body.draftApproval,false);
+ }
+});
+
 test('expense read permission is independent of reports, income issuance and editable user metadata', async () => {
   for (const account of [null, {id:id(1)}, {id:id(1), user_metadata:{morning_expenses_read:true}}, {id:id(1), app_metadata:{morning_reports:true, morning_documents:true}}]) {
     assert.equal(expensePermission(account, 'read'), false);

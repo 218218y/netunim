@@ -9,7 +9,7 @@ const input = (operation = 2) => ({action:'create', operationId:id(operation), e
   documentType:305, number:'00123', date:'2026-10-20', reportingDate:'2026-10-01', net:'1000.00', vat:'160.00', gross:'1160.00',
   pcnClassification:'T', description:'Test'}});
 const profiles = [{id:id(20), taxId:'123456780'}, {id:id(21), taxId:'123456781'}];
-function fixture({environment = 'sandbox', enabled = true, mode = '', pSuppliers = () => profiles, productionUserId = ''} = {}) {
+function fixture({environment = 'sandbox', enabled = true, mode = '', pSuppliers = () => profiles, productionUserId = '', pcnP = false} = {}) {
   const rows = new Map(), posts = [];
   const ledger = {
     get:async (owner, operation) => {const row = rows.get(operation); return row?.owner_id === owner ? structuredClone(row) : null;},
@@ -40,7 +40,7 @@ function fixture({environment = 'sandbox', enabled = true, mode = '', pSuppliers
       return {page:1, pageSize:50, total:mode === 'duplicate' ? 1 : 0, pages:mode === 'duplicate' ? 1 : 0, items:mode === 'duplicate' ? [{...canonicalExpense(), id:id(8)}] : []};
     }
     if (path === '/expenses') {
-      posts.push(JSON.parse(init.body)); canonical = {...posts.at(-1), id:id(6), status:10, data:{pcnClassification:'T'}};
+      posts.push(JSON.parse(init.body)); canonical = {...posts.at(-1), id:id(6), status:10, data:{pcnClassification:mode === 'wrong-pcn' ? 'T' : posts.at(-1).pcnClassification, pcnTaxId:mode === 'wrong-pcn-tax' ? '999999999' : posts.at(-1).supplier.taxId}};
       if (mode === 'lost') throw new Error('timeout after write');
       return {id:id(6)};
     }
@@ -52,7 +52,7 @@ function fixture({environment = 'sandbox', enabled = true, mode = '', pSuppliers
   };
   const canonicalExpense = () => ({id:id(6), documentType:305, number:'00123', date:'2026-10-20', reportingDate:'2026-10-01',
     currency:'ILS', amount:1160, vat:160, status:10, supplier:{id:id(3), taxId:'123456789'}, accountingClassification:{id:id(5)}, data:{pcnClassification:'T'}});
-  const options = {environment, enabled, request, ledger, pSuppliers, productionUserId, today:() => '2026-10-26'};
+  const options = {environment, enabled, pcnP, request, ledger, pSuppliers, productionUserId, today:() => '2026-10-26'};
   const writer = createExpenseWriter(options);
   return {writer, rows, posts, options, setMode:value => {mode = value;}};
 }
@@ -72,6 +72,36 @@ test('invoice receipt expenses retain type 320 through durable creation, readbac
   assert.equal(result.body.verified,true);assert.equal(f.posts[0].documentType,320);
   assert.equal(result.body.intent.documentType,320);
   assert.equal((await f.writer.handle(user,body)).body.verified,true);assert.equal(f.posts.length,1);
+});
+
+const pProfiles=()=>[{id:id(3),taxId:'123456789'},profiles[1]];
+for(const documentType of [305,330,320])test(`verified P type ${documentType} retains explicit VAT, nine-digit identity and idempotent replay`,async()=>{
+  const f=fixture({pcnP:true,pSuppliers:pProfiles}),body=input();body.expense={...body.expense,pcnClassification:'P',documentType};
+  const result=await f.writer.handle(user,body);
+  assert.equal(result.body.verified,true);assert.equal(f.posts.length,1);
+  assert.equal(f.posts[0].pcnClassification,'P');assert.equal(f.posts[0].number,'000000123');assert.equal(f.posts[0].vat,160);
+  body.expense.number='000000123';assert.equal((await f.writer.handle(user,body)).body.verified,true);assert.equal(f.posts.length,1);
+  const stopped=createExpenseWriter({...f.options,pcnP:false});
+  assert.equal((await stopped.handle(user,{action:'operation_status',operationId:body.operationId})).body.verified,true);
+  assert.equal((await stopped.handle(user,{...body,operationId:id(8)})).status,400);assert.equal(f.posts.length,1);
+});
+test('P capability is explicit and neither protected T nor unprotected P can create',async()=>{
+  for(const options of [{},{pcnP:true}]){
+    const f=fixture(options),body=input();body.expense.pcnClassification='P';
+    assert.equal((await f.writer.handle(user,body)).status,400);assert.equal(f.posts.length,0);
+  }
+  const f=fixture({pcnP:true,pSuppliers:pProfiles});
+  assert.equal((await f.writer.handle(user,input())).status,400);assert.equal(f.posts.length,0);
+  assert.equal(f.writer.pcnEnabled(user),true);assert.equal(f.writer.pcnEnabled({id:id(90)}),false);
+  for(const number of ['P123','1234567890','000000000']){
+    const body=input();body.expense={...body.expense,pcnClassification:'P',number};
+    assert.equal((await f.writer.handle(user,body)).body.code,'invalid_expense_p_number');
+  }
+});
+for(const mode of ['wrong-pcn','wrong-pcn-tax'])test(`P ${mode} readback remains unverified and cannot replay a write`,async()=>{
+  const f=fixture({pcnP:true,pSuppliers:pProfiles,mode}),body=input();body.expense.pcnClassification='P';
+  assert.equal((await f.writer.handle(user,body)).body.verified,false);
+  assert.equal((await f.writer.handle(user,body)).body.verified,false);assert.equal(f.posts.length,1);
 });
 test('Production pilot uses the same durable writer and manual VAT while all other writers and automatic P stay blocked', async () => {
   const f = fixture({environment:'production', productionUserId:user.id});

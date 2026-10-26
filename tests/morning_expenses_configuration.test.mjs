@@ -30,6 +30,11 @@ test('Production requires a separate pair, an explicit environment, one pilot us
     MORNING_EXPENSE_PRODUCTION_WRITES:'true', MORNING_EXPENSE_PRODUCTION_USER_ID:profiles[0].id, MORNING_EXPENSE_P_SUPPLIERS:JSON.stringify(profiles)};
   assert.equal(config(complete).productionWrites, true); assert.equal(config(complete).writes, true);
   assert.equal(config(complete).uploads, false);
+  assert.equal(config(complete).pcnP, false);
+  assert.equal(config({...complete, MORNING_EXPENSE_PCN_P_WRITES:'true'}).pcnP, true);
+  const stoppedP = config({...complete, MORNING_EXPENSE_PCN_P_WRITES:'false'});
+  assert.equal(stoppedP.pcnP, false); assert.equal(stoppedP.productionWrites, true);
+  assert.equal(config({...complete, MORNING_EXPENSE_PCN_P_WRITES:'true', MORNING_EXPENSE_PRODUCTION_WRITES:'false'}).pcnP, false);
   assert.equal(config({...complete, MORNING_EXPENSE_PRODUCTION_UPLOADS:'true'}).uploads, true);
   for (const patch of [{MORNING_EXPENSE_ENV:undefined}, {MORNING_EXPENSE_CLIENT_ID:shared.MORNING_CLIENT_ID},
     {MORNING_EXPENSE_CLIENT_SECRET:shared.MORNING_CLIENT_SECRET}, {MORNING_EXPENSE_CLIENT_SECRET:''},

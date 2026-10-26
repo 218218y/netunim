@@ -9,10 +9,10 @@ const ticket = () => ({url:'https://s3.eu-west-1.amazonaws.com/sandbox-file-uplo
 const user = {id:id(3), app_metadata:{morning_expenses_write:true}};
 const prepare = {action:'upload_prepare', operationId:id(1), contentType:'application/pdf', size:100};
 function fixture() {
- const payload = {documentType:305, number:'123', date:'2026-10-20', reportingDate:'2026-10-01', currency:'ILS', amount:118, vat:18,
+ const payload = {documentType:305, number:'123', date:'2026-10-20', reportingDate:'2026-10-01', currency:'ILS', amount:118, vat:18, pcnClassification:'T',
   supplier:{taxId:'123456789'}, accountingClassification:{id:id(4)}};
  const row = {operation_id:id(1), expense_id:id(2), state:'created', verified_at:'2026-10-26', file_state:'not_started', payload};
- let linked = false, reported = false, failure = false, changed = false, count = 0, time = 1000000;
+ let linked = false, reported = false, failure = false, changed = false, wrongP = false, count = 0, time = 1000000;
  const ledger = {get:async owner => owner === user.id ? {...row} : null,
  fileTransition:async (_, before, patch) => {
   if (row.file_state !== before.file_state || row.file_generation !== before.file_generation) return null;
@@ -20,14 +20,26 @@ function fixture() {
  }};
  const options = {environment:'sandbox', enabled:true, now:() => time, ledger,
  request:async path => {
-  if (path === '/expenses/' + id(2)) return {...payload, id:id(2), status:reported ? 20 : 10, data:{pcnClassification:'T'},
+  if (path === '/expenses/' + id(2)) return {...payload, id:id(2), status:reported ? 20 : 10, data:{pcnClassification:payload.pcnClassification, pcnTaxId:wrongP?'999999999':payload.supplier.taxId},
    ...(changed ? {vat:19} : {}), ...(linked ? {url:'https://private.example'} : {})};
   count++; if (failure) throw new Error('ticket refused'); return ticket();
  }};
  const uploader = createExpenseUpload(options);
  const handle = (action, fields = {}) => uploader.handle(user, {action, operationId:id(1), ...fields});
- return {row, options, uploader, handle, count:() => count, link:() => {linked = true;}, report:() => {reported = true;}, edit:() => {changed = true;}, fail:value => {failure = value;}, advance:ms => {time += ms;}};
+ return {row, options, uploader, handle, count:() => count, link:() => {linked = true;}, report:() => {reported = true;}, edit:() => {changed = true;}, wrongP:()=>{wrongP=true}, fail:value => {failure = value;}, advance:ms => {time += ms;}};
 }
+
+test('P source files require the exact canonical PCN tax identity and remain recoverable after creation is disabled',async()=>{
+ const f=fixture();f.row.payload.pcnClassification='P';
+ const ready=await f.uploader.handle(user,prepare);assert.equal(ready.status,200);
+ const generation={fileGeneration:ready.body.fileGeneration};
+ assert.equal((await f.handle('upload_ticket',generation)).status,200);
+ assert.equal((await f.handle('upload_ack',generation)).status,200);f.link();
+ const closed=createExpenseUpload({...f.options,enabled:false});
+ assert.equal((await closed.handle(user,{action:'upload_status',operationId:id(1)})).body.fileLinked,true);
+ f.wrongP();assert.equal((await closed.handle(user,{action:'upload_status',operationId:id(1)})).status,503);
+ assert.equal(f.count(),1,'changed PCN identity must never issue another ticket');
+});
 test('signed upload tickets require the environment bucket and intact form fields', () => {
  assert.equal(expenseUploadTicket(ticket(), 'sandbox').fields.Policy, 'test');
  for (const raw of [{...ticket(), url:'https://attacker.example'}, {...ticket(), maxFileSize:1e10}, {...ticket(), fields:{...ticket().fields, file:'injected'}}]) assert.throws(() => expenseUploadTicket(raw, 'sandbox'));

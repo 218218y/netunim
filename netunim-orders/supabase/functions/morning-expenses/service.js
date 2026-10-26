@@ -62,8 +62,12 @@ export function createExpenseService({request, environment, readIds = () => '', 
       const command = ['create', 'operation_status', 'reconcile', 'cancel_reserved', 'upload_prepare', 'upload_ticket', 'upload_ack', 'upload_status'].includes(action);
       if ((command || body.expectedEnvironment !== undefined) && body.expectedEnvironment !== environment) return {status:409,
         body:{ok:false, code:'morning_expense_environment_changed', message:'סביבת Morning השתנתה מאז טעינת המסך. יש לרענן לפני המשך הפעולה.'}};
-      if (action === 'capabilities') return {status:200, body:{ok:true, version:1, environment, read:true, create:await writer?.readiness(user) === true, upload:uploader?.allowed(user) === true, pcnP:false,
-        draftApproval:false, classificationSource:'existing_expenses', pSuppliers:writer?.profiles() || []}};
+      if (action === 'capabilities') {
+        const ready = await writer?.readiness(user) === true;
+        return {status:200, body:{ok:true, version:1, environment, read:true, create:ready, upload:uploader?.allowed(user) === true,
+          pcnP:ready && writer?.pcnEnabled?.(user) === true, draftApproval:false,
+          classificationSource:'existing_expenses', pSuppliers:writer?.profiles() || []}};
+      }
       if (command) {
         const handler = action.startsWith('upload_') ? uploader : writer;
         if (!handler) return {status:503, body:{ok:false, code:'morning_expenses_not_configured', message:'יומן פעולות ההוצאות אינו זמין.'}};

@@ -107,6 +107,25 @@ FLOW = r"""(async()=>{
  return {actualLazyComposition:true,actualAuthObservation:true,actualStorageGuards:true,posts,accountIsolated:true,retainedJournals:true,width:innerWidth};
 })()"""
 
+P_FLOW = FLOW[:FLOW.index(" const period=")].replace('pcnP:false', 'pcnP:true').replace(
+    "check(request.expense.allocationNumber==='123456789','allocation number lost');check(request.expense.vat==='18.00','manual VAT changed');",
+    "check(request.expense.number==='000012345','P number not canonical');check(request.expense.vat==='150.00','manual P VAT changed');check(request.expense.pcnClassification==='P'&&request.expense.supplierId===pSupplier.id,'P identity lost');"
+) + r"""
+ field('supplierId',pSupplier.id,'change');field('classificationExpenseId',expense.id,'change');
+ field('number','12345');field('documentType','330','change');field('gross','1160.00');
+ check(document.querySelector('[data-expense-field="net"]').value==='1000.00'&&document.querySelector('[data-expense-field="vat"]').value==='160.00','enabled P VAT suggestion failed');
+ field('vat','150.00');
+ check(document.querySelector('[data-expense-field="gross"]').value==='1150.00','manual P VAT correction did not update total');
+ field('pcnClassification','T','change');
+ check(document.querySelector('[data-expense-field="pcnClassification"]').value==='P','protected P supplier could change to T');
+ check(!document.querySelector('[data-action="morning-expense-save"]').disabled,'verified P save remains blocked');
+ click('save');await finance.runtime.drain();
+ check(posts===1&&confirmations.length===1,'P save/confirmation failed');
+ check(confirmations[0].message.includes('P'),'P classification absent from final confirmation');
+ check(JSON.stringify(await db.load(owner+':orders'))===beforeMain&&JSON.stringify(await db.load(owner+':shared-checks'))===beforeShared,'P intake changed local journals');
+ finance.runtime.dispose();return {posts,protectedIdentity:true,manualVat:true,canonicalNumber:true};
+})()"""
+
 if __name__=='__main__':
     for width in [1440,390]:
         with BrowserSession(ROOT/'netunim-orders/site',f'morning-expense-composition-{width}') as browser:
@@ -115,3 +134,9 @@ if __name__=='__main__':
             assert result['posts']==1 and result['accountIsolated'],result
             assert not browser.drain_serious_errors()
             print('PASS composed expense UI, native auth, recovery and account isolation:',json.dumps(result),flush=True)
+        with BrowserSession(ROOT/'netunim-orders/site',f'morning-p-expense-composition-{width}') as browser:
+            browser.call('Emulation.setDeviceMetricsOverride',{'width':width,'height':1100,'deviceScaleFactor':1,'mobile':width<800})
+            result=browser.evaluate(P_FLOW,timeout=45)
+            assert result['posts']==1 and result['protectedIdentity'],result
+            assert not browser.drain_serious_errors()
+            print('PASS composed P intake, explicit VAT and canonical number:',json.dumps(result),flush=True)
