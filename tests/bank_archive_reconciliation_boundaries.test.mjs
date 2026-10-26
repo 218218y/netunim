@@ -131,7 +131,9 @@ test('compositions join separate archive owners and keep intentional application
     assert.ok(!controller.includes(retired));
   const snapshot = read(kp + 'snapshot-commands.js');
   assert.ok(snapshot.includes('publishLocal'));
-  assert.ok(snapshot.includes('publication.bank(nextBank)'));
+  assert.ok(!snapshot.includes('publication.bank('));
+  assert.ok(snapshot.includes('if (readoutVerified)'));
+  assert.ok(snapshot.indexOf('await cloud.refresh(') < snapshot.indexOf('publication.archive(candidate)'));
   const transport = read('netunim-orders/site/assets/js/cloud/transport.js');
   assert.ok(transport.includes('readBankMorningDocumentLinks'));
   assert.ok(transport.includes('documentLinks:links.get(Number(x.id))||[]'));
