@@ -575,7 +575,7 @@ export function createDomainsFinanceView({ runFinance = withFinanceDerivations, 
             return `${creditSyncPanelMarkup(s)}${creditMarkup(s)}`;
         if (section === 'checks')
             return checksView.checksMarkup({ embedded: true, showEmbeddedStatus: false, showBankActivity: false });
-        return `<button type="button" class="btn finance-tax-shortcut" data-action="tax-open"><span aria-hidden="true">▦</span> מחשבון מסים וארנונה</button>${morningReportsMarkup()}${morningExpensesMarkup()}${dashboardView.summaryMarkup({ embedded: true })}`;
+        return `<button type="button" class="btn finance-tax-shortcut" data-action="tax-open"><span aria-hidden="true">▦</span> מחשבון מסים וארנונה</button>${morningExpensesMarkup()}${morningReportsMarkup()}${dashboardView.summaryMarkup({ embedded: true })}`;
     }
     function renderKupa(...args) {
         if (!isActive())

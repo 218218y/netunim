@@ -12,7 +12,8 @@ export function expenseBimonth(date) {
   if (!validReportDate(date)) throw new Error('invalid_expense_reporting_period');
   const year = Number(date.slice(0, 4)), part = Math.ceil(Number(date.slice(5, 7)) / 2);
   const range = reportPeriod('bimonth', year, part), first = range.fromDate.slice(0, 7), second = range.toDate.slice(0, 7);
-  return {...range, key:first, label:`${first.slice(5)}–${second.slice(5)}/${year}`, months:[first + '-01', second + '-01']};
+  const monthName = value => new Intl.DateTimeFormat('he-IL', {month:'long', timeZone:'UTC'}).format(new Date(value + '-01'));
+  return {...range, key:first, label:`${monthName(first)}–${monthName(second)} ${year}`, months:[first + '-01', second + '-01']};
 }
 export function expenseReportingChoice(date, key, today) {
   if (!/^\d{4}-(?:01|03|05|07|09|11)$/.test(key)) throw new Error('invalid_expense_reporting_period');
@@ -27,6 +28,7 @@ export function validateExpenseReporting(input, today) {
   if (!validReportDate(date) || !date.endsWith('-01') || date < '2010-01-01' || date > today.slice(0, 7) + '-01' || date < input.date.slice(0, 7) + '-01') throw new Error('invalid_expense_reporting_period');
   const period = expenseBimonth(date);
   if (input.reportingPeriod !== undefined && input.reportingPeriod !== period.key) throw new Error('invalid_expense_reporting_period');
-  if (date !== input.date.slice(0, 7) + '-01' && input.reportingDateConfirmed !== true) throw new Error('expense_reporting_confirmation_required');
+  // The selected bimonth and the ordinary save confirmation express the choice.
+  // Retain the old flag in normalized requests for existing operation fingerprints.
   return {reportingPeriod:period.key, reportingDateConfirmed:input.reportingDateConfirmed === true};
 }

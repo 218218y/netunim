@@ -27,6 +27,10 @@ POPUP_CASES = r"""
  await open(first);trigger.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}));assert(document.activeElement.id==='popupAction','keyboard enters actions');
  first.querySelector('button').click();await wait();assert(!first.open,'completed action closes menu');
  await open(first);fixture.remove();await wait();assert(!document.querySelector('[data-menu-panel]:popover-open'),'removed screen leaves no floating panel');
+ const stale=document.createElement('div');stale.setAttribute('data-floating-menu','');
+ stale.innerHTML='<input data-menu-trigger><div data-menu-panel>Queued menu</div>';document.body.append(stale);
+ stale.classList.add('open');stale.remove();await wait();
+ assert(!document.querySelector('[data-menu-panel]:popover-open'),'a queued open resurrected a detached menu');
  const {creditHistoryMenuMarkup}=await import('./assets/js/shared/credit-detail-controls.js');
  const credit=document.createElement('div');credit.style.cssText='position:fixed;left:12px;bottom:20px;overflow:hidden;width:210px;height:44px;z-index:100';
  credit.innerHTML=creditHistoryMenuMarkup({months:Array.from({length:20},(_,n)=>({key:`2025-${String(n+1).padStart(2,'0')}`,total:100})),formatMoney:String,formatMonth:String,escapeHtml:String,monthAction:'close-modal',monthDayAction:'close-modal'});

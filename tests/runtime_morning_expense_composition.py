@@ -19,16 +19,20 @@ FLOW = r"""(async()=>{
  const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js'),db=createStorageJournalDb();
  const beforeMain=JSON.stringify(await db.load(owner+':orders')),beforeShared=JSON.stringify(await db.load(owner+':shared-checks'));
  const supplier={id:id(2),name:'ספק מסך הוצאות',taxId:'123456789',country:'IL',active:true};
+ const pSupplier={id:id(20),name:'ספק P לבדיקה',taxId:'123456780',country:'PS',active:true};
  const expense={id:id(3),kind:'expense',status:10,supplierId:supplier.id,supplierTaxId:supplier.taxId,sourceDocumentDate:'2026-10-20',pcnClassification:'T',classification:{id:id(4),title:'קניות סחורה בארץ',vat:100,income:100}};
- const calls=[],confirmations=[];let posts=0,hold=null,entered=null,operation=null;
+ const calls=[],confirmations=[];let posts=0,hold=null,entered=null,operation=null,heldQuery='';
  cloudAuth.supaFetch=async(path,options)=>{
   check(path==='/functions/v1/morning-expenses','wrong expense service');options.assertRequestScope();
   const request=JSON.parse(options.body);calls.push(request);
-  if(hold&&request.action==='suppliers'){entered();await hold}
+  if(hold&&request.action==='suppliers'&&(!heldQuery||request.name===heldQuery)){entered();await hold}
   const base={ok:true,version:1,environment:'production'};
-  if(request.action==='capabilities')return Response.json({...base,create:true,upload:true,pcnP:false,draftApproval:false,pSuppliers:[]});
+  if(request.action==='capabilities')return Response.json({...base,create:true,upload:true,pcnP:false,draftApproval:false,pSuppliers:[{id:pSupplier.id,taxId:pSupplier.taxId}]});
   check(request.expectedEnvironment==='production','request missing displayed environment');
-  if(request.action==='suppliers'||request.action==='expenses')return Response.json({...base,page:0,pageSize:50,total:1,pages:1,items:[request.action==='suppliers'?supplier:expense]});
+  if(request.action==='suppliers'||request.action==='expenses'){
+   const items=request.action==='suppliers'?(request.name==='ישן'?[pSupplier]:[supplier,pSupplier]):[expense];
+   return Response.json({...base,page:0,pageSize:50,total:items.length,pages:1,items});
+  }
   if(request.action==='create'){
    posts++;check(request.expense.allocationNumber==='123456789','allocation number lost');check(request.expense.vat==='18.00','manual VAT changed');
    check(request.expense.reportingDate===request.expense.date.slice(0,7)+'-01','reporting month changed');operation=request.operationId;
@@ -42,11 +46,47 @@ FLOW = r"""(async()=>{
  };
  uiModal.confirmDialog=async(title,message)=>{confirmations.push({title,message});return true};
  ui.currentView='kupa';ui.kupaSubView='summary';finance.presentation.renderKupa();
+ check(document.querySelector('[data-morning-expense-intake]').compareDocumentPosition(document.querySelector('[data-morning-reports]'))&Node.DOCUMENT_POSITION_FOLLOWING,'expense intake is below reports');
  check(calls.length===0,'expense panel made eager requests');click('toggle');
  await wait(()=>document.querySelector('[data-expense-command="load"]'));click('load');await finance.runtime.drain();
  check(document.querySelector('[data-expense-field="supplierId"]'),'actual app did not expose expense form: '+document.querySelector('[data-expense-message]')?.textContent);
  check(document.querySelector('.morning-expense-notice').textContent.includes('האמיתי'),'real account notice missing');
+ const period=document.querySelector('[data-expense-field="reportingPeriod"]');
+ check([...period.options].every(option=>option.value.startsWith('2026-')&&!/\d{2}–\d{2}/.test(option.text)),'old years or ambiguous numeric period labels remain');
+ check(document.querySelector('[data-expense-field="reportingDate"]').type==='hidden'&&!document.querySelector('[data-expense-field="reportingDateConfirmed"]'),'redundant reporting controls remain');
+ const datePart=part=>document.querySelector('#morningExpenseDate').closest('[data-date-editor]').querySelector('[data-date-part="'+part+'"]');
+ const inputDate=iso=>{for(const [part,value] of [['day',iso.slice(8)],['month',iso.slice(5,7)],['year',iso.slice(2,4)]]){const input=datePart(part);input.value=value;input.dispatchEvent(new Event('input',{bubbles:true}))}};
+ const day=datePart('day');day.focus();day.value='2';day.dispatchEvent(new Event('input',{bubbles:true}));
+ check(day.isConnected&&document.activeElement===day,'first date digit replaced or blurred the editor');
+ day.value='23';day.dispatchEvent(new Event('input',{bubbles:true}));
+ check(document.activeElement===datePart('month'),'two date digits did not advance to month');
+ inputDate('2026-09-23');
+ check(document.querySelector('[data-expense-field="reportingDate"]').value==='2026-09-01','same-period invoice did not preserve source month');
+ inputDate('2026-08-23');
+ check(document.querySelector('[data-expense-field="reportingDate"]').value==='2026-10-01','late-period month not automatic');
+ const supplierInput=()=>document.querySelector('#morningExpenseSupplier');
+ let releaseOld,enteredOld;heldQuery='ישן';hold=new Promise(resolve=>releaseOld=resolve);const oldSearch=new Promise(resolve=>enteredOld=resolve);entered=enteredOld;
+ supplierInput().click();field('supplierQuery','ישן');await oldSearch;
+ field('supplierQuery','מסך');await wait(()=>calls.some(request=>request.name==='מסך'));
+ await new Promise(resolve=>setTimeout(resolve,20));releaseOld();await finance.runtime.drain();hold=null;heldQuery='';
+ check(document.querySelector('[role="option"]').textContent.includes(supplier.name),'late supplier response replaced newer search results');
+ supplierInput().click();field('supplierQuery','מסך');
+ check(document.querySelectorAll('[role="option"]').length===1,'supplier list not filtered in place');
+ supplierInput().dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));await finance.runtime.drain();
+ check(document.querySelector('[data-expense-field="supplierId"]').value===supplier.id,'Enter failed to choose unique supplier');
+ field('gross','27582.50');
+ check(document.querySelector('[data-expense-field="net"]').value==='23375.00'&&document.querySelector('[data-expense-field="vat"]').value==='4207.50','ordinary gross VAT split incorrect');
+ supplierInput().click();field('supplierQuery','ספק P');
+ supplierInput().dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true,cancelable:true}));
+ check(supplierInput().getAttribute('aria-activedescendant'),'arrow selection missing');
+ supplierInput().dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));await finance.runtime.drain();
+ field('gross','1160.00');check(document.querySelector('[data-expense-field="net"]').value==='1000.00'&&document.querySelector('[data-expense-field="vat"]').value==='160.00','P gross VAT split incorrect');
+ check(document.querySelector('[data-action="morning-expense-save"]').disabled,'unverified P write opened');
+ check([...document.querySelector('[data-expense-field="documentType"]').options].map(option=>option.value).join(',')==='305,330,320','document types or priority incorrect');
  field('supplierId',supplier.id,'change');field('number','COMPOSITION-1');field('net','100.00');field('vat','18.00');field('gross','118.00');field('allocationNumber','123456789');
+ inputDate('2026-10-20');
+ datePart('day').value='32';datePart('day').dispatchEvent(new Event('input',{bubbles:true}));
+ click('save');await finance.runtime.drain();check(posts===0&&confirmations.length===0,'invalid date reused the previous valid date');inputDate('2026-10-20');
  click('favorite');click('save');await finance.runtime.drain();
  check(posts===1&&confirmations.length===1,'actual app confirmation/save did not execute exactly once');
  check(confirmations[0].title.includes('האמיתי')&&confirmations[0].message.includes(expense.classification.title),'actual confirmation missed account or category');
@@ -57,7 +97,7 @@ FLOW = r"""(async()=>{
  check(JSON.stringify(await db.load(owner+':orders'))===beforeMain&&JSON.stringify(await db.load(owner+':shared-checks'))===beforeShared,'expense flow changed local financial journals');
  click('next');
  let release,ready;hold=new Promise(resolve=>release=resolve);const waiting=new Promise(resolve=>ready=resolve);entered=ready;
- click('load');await waiting;
+ supplierInput().click();field('supplierQuery','ספק');await waiting;
  cloudAuth.saveSession({user:{id:id(9)},access_token:'synthetic-other-account',expires_at:9999999999});release();await finance.runtime.drain();hold=null;
  check(!document.querySelector('[data-expense-field="supplierId"]')&&!document.querySelector('.morning-expense-intake').textContent.includes(supplier.name),'old account result survived real auth notification');
  check(posts===1,'account replacement created another expense');
