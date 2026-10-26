@@ -1,6 +1,6 @@
 // Catalog pages are deliberately bounded suggestions, never a complete directory.
 export async function readExpenseCatalogPage(request, capabilities, action, filter, page, assertCurrent, {signal} = {}) {
-  const result = await request(action, {...filter, page}, assertCurrent, {signal}); assertCurrent();
+  const result = await request(action, {...filter, page, expectedEnvironment:capabilities.environment}, assertCurrent, {signal}); assertCurrent();
   if (result.version !== 1 || result.environment !== capabilities.environment || result.page !== page || result.pageSize !== 50 ||
       !Number.isSafeInteger(result.total) || result.total < 0 || !Number.isSafeInteger(result.pages) || result.pages < 0 ||
       result.pages !== Math.ceil(result.total / 50) && !(result.total === 0 && result.pages === 1) || !Array.isArray(result.items) ||

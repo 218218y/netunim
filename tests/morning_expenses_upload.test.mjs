@@ -9,8 +9,10 @@ const ticket = () => ({url:'https://s3.eu-west-1.amazonaws.com/sandbox-file-uplo
 const user = {id:id(3), app_metadata:{morning_expenses_write:true}};
 const prepare = {action:'upload_prepare', operationId:id(1), contentType:'application/pdf', size:100};
 function fixture() {
- const row = {operation_id:id(1), expense_id:id(2), state:'created', verified_at:'2026-10-26', file_state:'not_started'};
- let linked = false, reported = false, failure = false, count = 0, time = 1000000;
+ const payload = {documentType:305, number:'123', date:'2026-10-20', reportingDate:'2026-10-01', currency:'ILS', amount:118, vat:18,
+  supplier:{taxId:'123456789'}, accountingClassification:{id:id(4)}};
+ const row = {operation_id:id(1), expense_id:id(2), state:'created', verified_at:'2026-10-26', file_state:'not_started', payload};
+ let linked = false, reported = false, failure = false, changed = false, count = 0, time = 1000000;
  const ledger = {get:async owner => owner === user.id ? {...row} : null,
  fileTransition:async (_, before, patch) => {
   if (row.file_state !== before.file_state || row.file_generation !== before.file_generation) return null;
@@ -18,12 +20,13 @@ function fixture() {
  }};
  const options = {environment:'sandbox', enabled:true, now:() => time, ledger,
  request:async path => {
-  if (path === '/expenses/' + id(2)) return {id:id(2), status:reported ? 20 : 10, ...(linked ? {url:'https://private.example'} : {})};
+  if (path === '/expenses/' + id(2)) return {...payload, id:id(2), status:reported ? 20 : 10, data:{pcnClassification:'T'},
+   ...(changed ? {vat:19} : {}), ...(linked ? {url:'https://private.example'} : {})};
   count++; if (failure) throw new Error('ticket refused'); return ticket();
  }};
  const uploader = createExpenseUpload(options);
  const handle = (action, fields = {}) => uploader.handle(user, {action, operationId:id(1), ...fields});
- return {row, options, uploader, handle, count:() => count, link:() => {linked = true;}, report:() => {reported = true;}, fail:value => {failure = value;}, advance:ms => {time += ms;}};
+ return {row, options, uploader, handle, count:() => count, link:() => {linked = true;}, report:() => {reported = true;}, edit:() => {changed = true;}, fail:value => {failure = value;}, advance:ms => {time += ms;}};
 }
 test('signed upload tickets require the environment bucket and intact form fields', () => {
  assert.equal(expenseUploadTicket(ticket(), 'sandbox').fields.Policy, 'test');
@@ -64,4 +67,30 @@ test('undelivered ticket failure can retry; legacy tickets remain blocked and re
  const disabled = createExpenseUpload({...f.options, enabled:false});
  assert.equal((await disabled.handle(user, {action:'upload_status', operationId:id(1)})).status, 200);
  const reported = fixture(); reported.report(); assert.equal((await reported.uploader.handle(user, prepare)).status, 503); assert.equal(reported.count(), 0);
+});
+
+test('Production file activation requires the pilot identity; disabling it keeps canonical status readable', async () => {
+ const f = fixture(), options = {...f.options, environment:'production', productionUserId:user.id};
+ const closed = createExpenseUpload({...options, enabled:false});
+ assert.equal((await closed.handle(user, prepare)).status, 403);
+ assert.equal((await closed.handle(user, {action:'upload_status', operationId:id(1)})).status, 200);
+ const open = createExpenseUpload(options);
+ assert.equal((await open.handle({...user, id:id(9)}, prepare)).status, 403);
+ const ready = await open.handle(user, prepare); assert.equal(ready.status, 200);
+ // Sandbox tickets must fail even for a correctly authorized Production user.
+ assert.equal((await open.handle(user, {action:'upload_ticket', operationId:id(1), fileGeneration:ready.body.fileGeneration})).status, 503);
+ assert.equal(f.row.file_state, 'not_started');
+ const raw = ticket(); raw.url = raw.url.replace('sandbox-', ''); raw.fields.bucket = 'file-upload-service-uploaded';
+ assert.equal(expenseUploadTicket(raw, 'production').fields.bucket, 'file-upload-service-uploaded');
+ const accepted = createExpenseUpload({...options, request:async (path, ...args) => path.startsWith('/file-upload/') ? raw : f.options.request(path, ...args)});
+ const generation = (await accepted.handle(user, prepare)).body.fileGeneration;
+ assert.equal((await accepted.handle(user, {action:'upload_ticket', operationId:id(1), fileGeneration:generation})).status, 200);
+ assert.equal((await accepted.handle(user, {action:'upload_ack', operationId:id(1), fileGeneration:generation})).body.fileLinked, false);
+ f.link(); assert.equal((await closed.handle(user, {action:'upload_status', operationId:id(1)})).body.fileLinked, true);
+});
+
+test('a previously verified expense changed in Morning cannot receive a source file or claim linked status', async () => {
+ const f = fixture(); f.edit();
+ assert.equal((await f.uploader.handle(user, prepare)).status, 503); assert.equal(f.count(), 0);
+ f.link(); assert.equal((await f.handle('upload_status')).status, 503);
 });

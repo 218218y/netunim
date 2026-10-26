@@ -9,7 +9,7 @@ const input = (operation = 2) => ({action:'create', operationId:id(operation), e
   documentType:305, number:'00123', date:'2026-10-20', reportingDate:'2026-10-01', net:'1000.00', vat:'160.00', gross:'1160.00',
   pcnClassification:'T', description:'Test'}});
 const profiles = [{id:id(20), taxId:'123456780'}, {id:id(21), taxId:'123456781'}];
-function fixture({environment = 'sandbox', enabled = true, mode = '', pSuppliers = () => profiles} = {}) {
+function fixture({environment = 'sandbox', enabled = true, mode = '', pSuppliers = () => profiles, productionUserId = ''} = {}) {
   const rows = new Map(), posts = [];
   const ledger = {
     get:async (owner, operation) => {const row = rows.get(operation); return row?.owner_id === owner ? structuredClone(row) : null;},
@@ -52,8 +52,9 @@ function fixture({environment = 'sandbox', enabled = true, mode = '', pSuppliers
   };
   const canonicalExpense = () => ({id:id(6), documentType:305, number:'00123', date:'2026-10-20', reportingDate:'2026-10-01',
     currency:'ILS', amount:1160, vat:160, status:10, supplier:{id:id(3), taxId:'123456789'}, accountingClassification:{id:id(5)}, data:{pcnClassification:'T'}});
-  const writer = createExpenseWriter({environment, enabled, request, ledger, pSuppliers, today:() => '2026-10-26'});
-  return {writer, rows, posts, setMode:value => {mode = value;}};
+  const options = {environment, enabled, request, ledger, pSuppliers, productionUserId, today:() => '2026-10-26'};
+  const writer = createExpenseWriter(options);
+  return {writer, rows, posts, options, setMode:value => {mode = value;}};
 }
 test('decimal inputs are exact and VAT is never replaced by an assumed percentage', () => {
   assert.equal(expenseCents('0.29'), 29); assert.equal(expenseCents('1.001'), null);
@@ -63,6 +64,21 @@ test('decimal inputs are exact and VAT is never replaced by an assumed percentag
   assert.throws(() => normalizeExpenseInput({...body, expense:{...body.expense, date:'2026-10-27'}}, '2026-10-26'));
   assert.throws(() => normalizeExpenseInput({...body, expense:{...body.expense, pcnClassification:'P'}}, '2026-10-26'), /p_unverified/);
   assert.throws(() => normalizeExpenseInput({...body, expense:{...body.expense, number:'X'.repeat(21)}}, '2026-10-26'), /invalid_expense_input/);
+});
+test('Production pilot uses the same durable writer and manual VAT while all other writers and automatic P stay blocked', async () => {
+  const f = fixture({environment:'production', productionUserId:user.id});
+  assert.equal(await f.writer.readiness({id:id(9), app_metadata:user.app_metadata}), false);
+  assert.equal((await f.writer.handle({id:user.id, user_metadata:user.app_metadata}, input())).status, 403);
+  assert.equal((await f.writer.handle(user, input())).body.verified, true);
+  assert.equal((await f.writer.handle(user, input())).body.verified, true); assert.equal(f.posts.length, 1);
+  const stopped = createExpenseWriter({...f.options, enabled:false});
+  assert.equal((await stopped.handle(user, {action:'operation_status', operationId:id(2)})).body.verified, true);
+  assert.equal((await stopped.handle(user, input(7))).status, 403); assert.equal(f.posts.length, 1);
+  const p = fixture({environment:'production', productionUserId:user.id, pSuppliers:() => [{id:id(3), taxId:'123456789'}, profiles[1]]});
+  assert.equal((await p.writer.handle(user, input())).body.code, 'morning_expense_p_unverified'); assert.equal(p.posts.length, 0);
+  const disabled = fixture({environment:'production', productionUserId:user.id, enabled:false});
+  assert.equal((await disabled.writer.handle(user, input())).status, 403);
+  assert.equal((await disabled.writer.handle(user, {action:'operation_status', operationId:id(2)})).status, 404);
 });
 test('only an explicitly authorized Sandbox writer may create, including configured P supplier protection', async () => {
   for (const options of [{environment:'production'}, {enabled:false}]) {
@@ -112,6 +128,16 @@ test('wrong VAT, interrupted readback and existing Morning invoice never produce
   const duplicate = fixture({mode:'duplicate'});
   assert.equal((await duplicate.writer.handle(user, input())).body.code, 'morning_expense_duplicate');
   assert.equal(duplicate.posts.length, 0); assert.equal(duplicate.rows.has(id(2)), false);
+});
+
+test('a later canonical edit revokes historical verification and cannot replay the original financial POST', async () => {
+  const f = fixture(); assert.equal((await f.writer.handle(user, input())).body.verified, true);
+  f.setMode('wrong-vat'); const changed = await f.writer.handle(user, {action:'operation_status', operationId:id(2)});
+  assert.equal(changed.status, 202); assert.equal(changed.body.verified, false);
+  assert.equal(f.rows.get(id(2)).state, 'created_unverified'); assert.equal(f.rows.get(id(2)).verified_at, null);
+  assert.equal((await f.writer.handle(user, input())).body.verified, false); assert.equal(f.posts.length, 1);
+  f.setMode(''); assert.equal((await f.writer.handle(user, {action:'operation_status', operationId:id(2)})).body.verified, true);
+  assert.equal(f.posts.length, 1);
 });
 test('failed read-only preflight can recover without leaving a permanent invoice lock', async () => {
   const f = fixture({mode:'preflight-down'});
