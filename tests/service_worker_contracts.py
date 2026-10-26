@@ -70,6 +70,7 @@ const release=source.match(/const CACHE='([^']+)'/)[1],headers={get:()=>release}
   vm.createContext(context);vm.runInContext(source,context,{filename:process.argv[1]});
   const event=extra=>{const waits=[];let response=null;return Object.assign({waitUntil:p=>waits.push(Promise.resolve(p)),respondWith:p=>{response=Promise.resolve(p)},_waits:waits,_response:()=>response},extra)};
   const install=event({});handlers.install(install);await Promise.all(install._waits);
+  const installShell=[...calls.put];
   const currentCache=calls.open[0],prefix=currentCache.split('app-shell-')[0]+'app-shell-';context.caches.keys=async()=>[prefix+'old',currentCache,'unrelated-cache'];
   const activate=event({});handlers.activate(activate);await Promise.all(activate._waits);
   const onlineReq={method:'GET',url:'https://app.test/index.html',mode:'navigate'};
@@ -95,8 +96,8 @@ const release=source.match(/const CACHE='([^']+)'/)[1],headers={get:()=>release}
   const post=event({request:{method:'POST',url:'https://app.test/a',mode:'same-origin'}});handlers.fetch(post);
   const business=event({request:{method:'GET',url:'https://app.test/data/private.json',mode:'same-origin'}});handlers.fetch(business);
   process.stdout.write(JSON.stringify({
-    installShell:calls.addAll[0]||[],skip:calls.skip,claim:calls.claim,
-    deleted:calls.deleted,oldCache:prefix+'old',online:onlineRes&&onlineRes.tag,putCount:calls.put.length,
+    installShell,skip:calls.skip,claim:calls.claim,
+    deleted:calls.deleted,oldCache:prefix+'old',online:onlineRes&&onlineRes.tag,onlineCacheRefreshed:calls.put.includes(onlineReq.url),
     cached:cachedRes&&cachedRes.tag,fallback:fallbackRes&&fallbackRes.tag,
     currentMatches:calls.currentMatch,globalMatches:calls.globalMatch,
     lazyCached,lazyHeldUntilCacheWrite,crossResponded:!!cross._response(),postResponded:!!post._response(),businessResponded:!!business._response()
@@ -174,7 +175,7 @@ for label, site in APPS.items():
     # Both apps deliberately use network-first for same-origin GETs. This means a
     # deployment can refresh static files even if the cache name is not manually bumped.
     fetch_handler_pos = text.find("self.addEventListener('fetch'")
-    network_pos = text.find("fetch(event.request)", fetch_handler_pos)
+    network_pos = text.find("fetchRelease(event.request)", fetch_handler_pos)
     cache_pos = text.find("cache.match(event.request)", fetch_handler_pos)
     ok(fetch_handler_pos >= 0 and network_pos >= 0 and (cache_pos < 0 or network_pos < cache_pos),
        f"{label}: normal same-origin GET path is network-first")
@@ -187,7 +188,7 @@ for label, site in APPS.items():
         ok(probe.get("installShell") == shell, f"{label}: install actually pre-caches the declared shell")
         ok(probe.get("skip") == 1 and probe.get("claim") == 1, f"{label}: install/activate take control immediately")
         ok(probe.get("deleted") == [probe.get('oldCache')], f"{label}: activate deletes only this app's obsolete caches")
-        ok(probe.get("online") == "network" and probe.get("putCount", 0) >= 1, f"{label}: online GET returns network response and refreshes cache")
+        ok(probe.get("online") == "network" and probe.get("onlineCacheRefreshed") is True, f"{label}: online GET returns network response and refreshes cache")
         if label == 'orders':
             ok(probe.get('lazyCached') is True, 'orders: first local document runtime request is persisted by the lazy runtime cache')
             ok(probe.get('lazyHeldUntilCacheWrite') is True,
