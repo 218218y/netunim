@@ -18,7 +18,7 @@ const request = valid ? createExpenseTransport({environment, clientId, clientSec
 const secret = envKey('SUPABASE_SECRET_KEYS', 'SUPABASE_SERVICE_ROLE_KEY');
 const admin = url && secret ? createClient(url, secret, {auth:{persistSession:false, autoRefreshToken:false}}) : null;
 const writer = admin ? createExpenseWriter({request, environment, ledger:createExpenseLedger(admin, environment),
-  enabled:configuration.writes, productionUserId:configuration.productionUserId,
+  enabled:configuration.writes, pcnP:configuration.pcnP, productionUserId:configuration.productionUserId,
   writeIds:() => Deno.env.get('MORNING_EXPENSE_WRITE_USER_IDS') || '', pSuppliers:() => configuration.pSuppliers,
 }) : null;
 const uploader = admin ? createExpenseUpload({request, environment, ledger:createExpenseLedger(admin, environment),

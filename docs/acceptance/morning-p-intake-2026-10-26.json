@@ -1,0 +1,42 @@
+{
+  "checkedAt": "2026-10-26T19:59:52.772Z",
+  "environment": "sandbox",
+  "types": [
+    305,
+    330,
+    320
+  ],
+  "bothProtectedSuppliers": true,
+  "createdExpenses": 3,
+  "results": [
+    {
+      "type": 305,
+      "verified": true,
+      "pcnClassification": "P",
+      "taxIdMatches": true,
+      "explicitVat": 160,
+      "duplicateBlocked": true,
+      "replayCreatedNothing": true
+    },
+    {
+      "type": 330,
+      "verified": true,
+      "pcnClassification": "P",
+      "taxIdMatches": true,
+      "explicitVat": 160,
+      "duplicateBlocked": true,
+      "replayCreatedNothing": true
+    },
+    {
+      "type": 320,
+      "verified": true,
+      "pcnClassification": "P",
+      "taxIdMatches": true,
+      "explicitVat": 150,
+      "duplicateBlocked": true,
+      "replayCreatedNothing": true
+    }
+  ],
+  "fileLinked": true,
+  "productionWritesMade": 0
+}
