@@ -9,7 +9,6 @@ for(const app of ['orders','kupa'])test(app+': intermittent deploy cannot mix a 
   const urlOf=request=>new URL(typeof request==='string'?request:request.url,'https://app.test/').href;
   const response=(text,version=release)=>new Response(text,{headers:{'X-Netunim-Release':version}});
   const cache={
-    async addAll(paths){for(const path of paths){const relative=path==='./'?'index.html':path.slice(2);entries.set(urlOf(path),response(fs.readFileSync(new URL(relative,site),'utf8'),installMismatch?'wrong':release))}},
     async match(request){return entries.get(urlOf(request))?.clone()},
     async put(request,value){entries.set(urlOf(request),value.clone())},
     async keys(){return [...entries.keys()].map(url=>new Request(url))},
@@ -21,7 +20,7 @@ for(const app of ['orders','kupa'])test(app+': intermittent deploy cannot mix a 
     fetch:async request=>{
       if(offline)throw Error('offline');
       const relative=new URL(urlOf(request)).pathname.slice(1)||'index.html';
-      return future?response('export const incompatibleNextRelease=true;','next-release'):response(fs.readFileSync(new URL(relative,site),'utf8'));
+      return future?response('export const incompatibleNextRelease=true;','next-release'):response(fs.readFileSync(new URL(relative,site),'utf8'),installMismatch?'wrong':release);
     },
   };
   vm.runInNewContext(source,context);
@@ -39,7 +38,7 @@ for(const app of ['orders','kupa'])test(app+': intermittent deploy cannot mix a 
   assert.equal(await (await get(path)).text(),original);
   future=true;entries.delete(urlOf(path));
   await assert.rejects(get(path),/offline_and_not_cached/,'no cached release must fail closed');
-  context.self.registration={active:{}};
+  future=false;context.self.registration={active:{}};
   const waiting=[];handlers.install({waitUntil:value=>waiting.push(value)});await Promise.all(waiting);
   assert.equal(skips,1,'an update must wait for the existing page to close');
   installMismatch=true;

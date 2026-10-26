@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-6a9604cf29cf';
+const CACHE='orders-app-shell-esm-fe22c5cbe4e2';
 const SHELL=[
   './',
   './index.html',
@@ -498,11 +498,20 @@ const LAZY_RUNTIME_PREFIXES=['./assets/vendor/'].map(item=>new URL(item,self.loc
 const isLazyRuntimePath=pathname=>LAZY_RUNTIME_PREFIXES.some(prefix=>pathname.startsWith(prefix));
 const sameRelease=response=>response?.headers.get('X-Netunim-Release')===CACHE;
 
+async function fetchRelease(request){
+  const url=new URL(typeof request==='string'?request:request.url,self.location.href||self.location.origin+'/');
+  // CDN revalidation can retain an old release header for unchanged bytes. Bind
+  // transport URLs to this release; canonical cache keys remain unchanged.
+  url.searchParams.set('__netunim_release',CACHE);
+  const response=await fetch(url.href,{cache:'reload',...(typeof request==='string'?{}:{headers:request.headers,credentials:request.credentials})});
+  if(!response.ok||!sameRelease(response))throw new Error('shell_release_mismatch');
+  return response;
+}
+
 self.addEventListener('install',event=>{
   event.waitUntil((async()=>{
     const cache=await caches.open(CACHE);
-    await cache.addAll(SHELL);
-    for(const path of SHELL)if(!sameRelease(await cache.match(path)))throw new Error('shell_release_mismatch');
+    await Promise.all(SHELL.map(async path=>{await cache.put(path,await fetchRelease(path));}));
     // Existing tabs finish with their controlling release. The new worker waits
     // until those tabs close; it never swaps a running page's module graph.
     if(!self.registration?.active)await self.skipWaiting();
@@ -527,8 +536,7 @@ self.addEventListener('fetch',event=>{
   if(lazyRuntime){
     const lazyResponse=(async()=>{
       try{
-        const response=await fetch(event.request);
-        if(!response.ok||!sameRelease(response))throw new Error('shell_release_mismatch');
+        const response=await fetchRelease(event.request);
         if(response.ok){
           const cache=await caches.open(CACHE);
           await cache.put(event.request,response.clone());
@@ -549,10 +557,7 @@ self.addEventListener('fetch',event=>{
   // Network-first prevents a previously installed PWA from keeping stale HTML,
   // config or icons after a deployment. Offline remains fully supported by the
   // verified app-shell cache and navigation fallback.
-  const network=fetch(event.request).then(response=>{
-    if(!response.ok||!sameRelease(response))throw new Error('shell_release_mismatch');
-    return response;
-  });
+  const network=fetchRelease(event.request);
   const cacheWrite=network.then(response=>{
     if(!response.ok||!SHELL_PATHS.has(url.pathname))return;
     return caches.open(CACHE).then(cache=>cache.put(event.request,response.clone()));
