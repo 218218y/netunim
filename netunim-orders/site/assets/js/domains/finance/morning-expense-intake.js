@@ -72,6 +72,9 @@ export function createMorningExpenseIntake({request, captureRead, captureWrite, 
       const retained = catalog?.suppliers.filter(row => row.id === draft.supplierId) || [];
       catalog = loaded; catalog.suppliers = mergeSuppliers(loaded.suppliers, retained); searchedQuery = ''; supplierQuery = '';
       reading = null; message = 'נטען עמוד הצעות ראשוני. אפשר לחפש ספקים ולהוסיף סיווגים לפי הצורך.';
+      if (draft.classificationExpenseId && !loaded.expenses.some(row => row.id === draft.classificationExpenseId)) {
+        draft.classificationExpenseId = ''; message = 'ההצעות רועננו. יש לבחור שוב את סיווג ההוצאה לפני שמירה.';
+      }
       if (!operationId) restore();
     });
   }
@@ -124,8 +127,13 @@ export function createMorningExpenseIntake({request, captureRead, captureWrite, 
       if (!eligibility.eligible) throw new Error(eligibility.reason);
       const nextId = crypto.randomUUID(), snapshot = structuredClone(draft);
       normalizeExpenseInput({operationId:nextId, expense:snapshot}, todayISO());
+      const classification = catalog.expenses.find(row => row.id === snapshot.classificationExpenseId)?.classification;
+      if (!classification?.id) throw new Error('יש לבחור סיווג מתוך ההצעות המוצגות לפני שמירה.');
       const surface = host(), supplier = catalog.suppliers.find(row => row.id === snapshot.supplierId);
-      const confirmed = await confirmDialog('שמירת הוצאה ב־Sandbox', `${supplier?.name || ''} · חשבונית ${snapshot.number} · סה״כ ${snapshot.gross} ₪ · מע״מ ${snapshot.vat} ₪ · תקופה ${expenseBimonth(snapshot.reportingDate).label} · חודש דיווח ${snapshot.reportingDate.slice(0, 7)}. האם הפרטים תואמים למסמך המקור?`, {confirmText:'שמור ב־Morning'});
+      const details = `${supplier?.name || ''} · ${snapshot.documentType === 330 ? 'חשבונית זיכוי' : 'חשבונית מס'} ${snapshot.number} · תאריך ${snapshot.date} · סיווג ${classification.title}`;
+      const amounts = `לפני מע״מ ${snapshot.net} ₪ · מע״מ ${snapshot.vat} ₪ · סה״כ ${snapshot.gross} ₪`;
+      const period = `תקופה ${expenseBimonth(snapshot.reportingDate).label} · חודש דיווח ${snapshot.reportingDate.slice(0, 7)}`;
+      const confirmed = await confirmDialog('שמירת הוצאה ב־Sandbox', `${details} · ${amounts} · ${period}. האם הפרטים תואמים למסמך המקור?`, {confirmText:'שמור ב־Morning'});
       check();
       if (!confirmed || !surface?.isConnected || host() !== surface) return false;
       operationId = nextId; result = {state:'pending', verified:false}; remember();
@@ -252,6 +260,7 @@ export function createMorningExpenseIntake({request, captureRead, captureWrite, 
       <p class="morning-expense-notice">${catalog?.capabilities.create ? 'סביבת בדיקות Sandbox · יש לבדוק כל פרט מול מסמך המקור.' : catalog?.capabilities.environment === 'sandbox' ? 'סביבת Sandbox · שמירה דורשת הרשאה ושתי זהויות ספקי P שאומתו מול Morning.' : 'קליטה לייצור טרם הופעלה. אפשר לעיין ולהכין פרטים; שמירה זמינה ב־Sandbox מורשה בלבד.'}</p>
       <p class="morning-expense-status" role="status" aria-live="polite" data-expense-message>${esc(busy ? 'הפעולה מתבצעת…' : message)}</p>
       ${catalog ? `<div class="morning-expense-workspace"><div class="morning-expense-fields">
+      ${!operationId ? `
       <label>חיפוש ספק לפי שם או מספר עוסק<input data-expense-field="supplierQuery" data-input="morning-expense-field" maxlength="180" value="${esc(supplierQuery)}" ${attrs}></label>
       <div class="morning-expense-toolbar"><button type="button" class="btn" data-action="morning-expense-command" data-expense-command="search" ${attrs}>חיפוש ספקים</button>
       <button type="button" class="btn" data-action="morning-expense-command" data-expense-command="search" data-expense-step="-1" ${disabled || !catalog.supplierPage.page ? 'disabled' : ''}>עמוד קודם</button>
@@ -275,10 +284,11 @@ export function createMorningExpenseIntake({request, captureRead, captureWrite, 
       <div class="morning-expense-amounts">${textField('net')}${textField('vat')}${textField('gross')}</div>
       <small>מע״מ מוקלד במפורש. סכום הנטו והמע״מ חייב להתאים לסכום הכולל. זיכוי מוקלד בסכומים חיוביים לבדיקת Sandbox.</small>
       ${textField('description')}${textField('allocationNumber')}
-      <div class="morning-expense-toolbar"><button type="button" class="btn primary" data-action="morning-expense-save" ${disabled || !catalog.capabilities.create || !eligibility.eligible || draft.pcnClassification === 'P' ? 'disabled' : ''}>בדיקה ושמירה ב־Sandbox</button>
-      <button type="button" class="btn" data-action="morning-expense-command" data-expense-command="next" ${busy || operationId && !result?.verified && !['not_found', 'cancelled'].includes(result?.state) ? 'disabled' : ''}>${queue.length ? 'לחשבונית הבאה בתור' : 'קליטה חדשה'}</button></div>
+      <div class="morning-expense-toolbar"><button type="button" class="btn primary" data-action="morning-expense-save" ${disabled || !catalog.capabilities.create || !eligibility.eligible || draft.pcnClassification === 'P' ? 'disabled' : ''}>בדיקה ושמירה ב־Sandbox</button></div>` : ''}
+      <div class="morning-expense-toolbar"><button type="button" class="btn" data-action="morning-expense-command" data-expense-command="next" ${busy || operationId && !result?.verified && !['not_found', 'cancelled'].includes(result?.state) ? 'disabled' : ''}>${queue.length ? 'לחשבונית הבאה בתור' : 'קליטה חדשה'}</button></div>
       ${operationId ? `<div class="morning-expense-operation"><b>${esc(stateLabels[result?.state] || 'מצב הפעולה טרם אומת')}</b><small>מזהה פעולה: <bdi>${esc(operationId)}</bdi></small><button type="button" class="btn" data-action="morning-expense-command" data-expense-command="status" ${busy ? 'disabled' : ''}>בדיקת מצב היצירה</button>
-      ${result?.intent ? `<p data-expense-receipt>${esc(result.intent.supplierName)} · ${result.intent.documentType === 330 ? 'זיכוי' : 'חשבונית'} ${esc(result.intent.number)} · תאריך ${esc(result.intent.date)} · דיווח ${esc(result.intent.reportingDate?.slice(0, 7))} · סה״כ ${esc(result.intent.amount)} ₪ · מע״מ ${esc(result.intent.vat)} ₪</p>` : ''}
+      ${result?.intent ? `<p data-expense-receipt><strong>${result.verified ? 'פרטי ההוצאה שאומתו' : 'פרטי הבקשה המקורית'}</strong>
+      ${esc(result.intent.supplierName)} · ${result.intent.documentType === 330 ? 'זיכוי' : 'חשבונית'} ${esc(result.intent.number)} · תאריך ${esc(result.intent.date)} · דיווח ${esc(result.intent.reportingDate?.slice(0, 7))} · סה״כ ${esc(result.intent.amount)} ₪ · מע״מ ${esc(result.intent.vat)} ₪</p>` : '<p>פרטי הפעולה ייקראו מיומן השרת בבדיקת מצב. אין להזין את החשבונית מחדש.</p>'}
       ${result?.state === 'reserved' ? `<button type="button" class="btn" data-action="morning-expense-write" data-expense-command="cancel" ${busy ? 'disabled' : ''}>ביטול בטוח לפני שליחה</button>` : ''}
       ${['pending', 'needs_reconciliation'].includes(result?.state) ? `<label>מזהה הוצאה קיימת לבדיקה מול Morning<input data-expense-field="reconciliationId" data-input="morning-expense-field" value="${esc(reconciliationId)}" ${busy ? 'disabled' : ''}></label><button type="button" class="btn" data-action="morning-expense-write" data-expense-command="reconcile" ${busy ? 'disabled' : ''}>בדיקת התאמה ושחזור</button>` : ''}
       <span>קובץ מקור: ${result?.fileLinked ? fileLabels.file_linked : fileLabels[result?.fileState] || 'טרם אומת'} · אישור ודיווח נבדקים ב־Morning</span></div>` : ''}

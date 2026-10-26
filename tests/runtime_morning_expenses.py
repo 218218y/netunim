@@ -13,11 +13,12 @@ FLOW = r"""(async()=>{
  const requests=[], capture=()=>{const saved=owner;return()=>check(saved===owner,'account changed')};
  const supplier={id:id(2),name:'ספק בדיקה <script>',taxId:'123456789',active:true,country:'IL'};
  const expense={id:id(3),kind:'expense',status:10,supplierId:id(2),sourceDocumentDate:'2026-10-20',pcnClassification:'T',classification:{id:id(4),title:'ציוד משרד',vat:100,income:100}};
+ let catalogExpense=expense;const confirmations=[];
  const paged=items=>({ok:true,version:1,environment:'sandbox',page:0,pageSize:50,total:items.length,pages:items.length?1:0,items});
  const request=async(action,body,assertCurrent)=>{
   assertCurrent();requests.push({action,body});if(held&&action==='suppliers')await held;
   if(action==='capabilities')return {ok:true,version:1,environment:'sandbox',create:true,upload:true};
-  if(action==='suppliers')return paged(body.name==='missing'?[]:[supplier]);if(action==='expenses')return paged([expense]);
+  if(action==='suppliers')return paged(body.name==='missing'?[]:[supplier]);if(action==='expenses')return paged([catalogExpense]);
   if(action==='create'){posts++;check(body.expense.vat==='160.00','manual VAT changed');return {ok:true,state:'created',verified:true,expenseId:id(8),fileLinked:false};}
   if(action==='operation_status')return {ok:true,state:recoveryState,verified:recoveryState==='created',expenseId:recoveryState==='created'?id(8):'',fileLinked:linked,intent};
   if(action==='reconcile'){check(body.expenseId===id(8),'wrong canonical ID');recoveryState='created';return {ok:true,state:'created',verified:true,expenseId:id(8),fileLinked:linked,intent};}
@@ -32,7 +33,7 @@ FLOW = r"""(async()=>{
  const upload=async(ticket,selected,assertCurrent)=>fileEffects.uploadExpenseFile(ticket,selected,assertCurrent,{fetch:async(url,init)=>{
   uploads++;check(init.credentials==='omit'&&!init.headers,'upload leaked auth');check([...init.body.keys()].at(-1)==='file','file not last');return new Response(null,{status:204});
  }});
- const ports={request,captureRead:capture,captureWrite:capture,accountId:()=>owner,todayISO:()=> '2026-10-26',subscribeAccountScope:fn=>{listener=fn;return()=>{}},confirmDialog:async()=>{confirms++;return confirmWait?await confirmWait:true},files:{validate:fileEffects.validateExpenseFile,upload}};
+ const ports={request,captureRead:capture,captureWrite:capture,accountId:()=>owner,todayISO:()=> '2026-10-26',subscribeAccountScope:fn=>{listener=fn;return()=>{}},confirmDialog:async(_,text)=>{confirms++;confirmations.push(text);return confirmWait?await confirmWait:true},files:{validate:fileEffects.validateExpenseFile,upload}};
  let uiFeature=createMorningExpenseIntake(ports);fixture.innerHTML=uiFeature.markup();
  bindActionEvents(fixture,new Proxy({}, {get:(_,name)=>(...args)=>uiFeature.actions[name]?.(...args)}));
  for(const name of ['click','input','change','keydown','drop','dragover','paste'])fixture.addEventListener(name,event=>event.stopPropagation());
@@ -48,6 +49,9 @@ FLOW = r"""(async()=>{
  click('favorite');field('supplierQuery','missing');click('search');await settle();check(fixture.querySelector('[data-expense-field="supplierId"]').value===id(2),'search discarded selected favorite');
  click('use-favorite');check(fixture.querySelector('[data-expense-field="supplierId"]').value===id(2),'favorite did not restore supplier');
  field('number','000123');field('net','1000.00');field('vat','160.00');field('gross','1160.00');check(field('description','הוצאה לבדיקה').isConnected,'typing replaced field');
+ catalogExpense={...expense,id:id(30)};click('load');await settle();
+ check(fixture.querySelector('[data-expense-field="classificationExpenseId"]').value==='','refresh retained invisible category');
+ click('save');await settle();check(posts===0&&confirms===0,'invisible category reached creation');field('supplierId',id(2),'change');
  field('date','2026-08-20','change');check(fixture.querySelector('[data-expense-field="reportingDateConfirmed"]'),'late-report confirmation missing');click('save');await settle();check(posts===0&&confirms===0,'late month bypassed explicit approval');field('reportingDateConfirmed',true,'change');field('date','2026-10-20','change');
  field('pcnClassification','P','change');check(fixture.querySelector('[data-action="morning-expense-save"]').disabled,'P write available');field('pcnClassification','T','change');
  field('gross','1180');click('save');await settle();check(posts===0&&confirms===0,'invalid totals reached write');field('gross','1160.00');
@@ -61,8 +65,9 @@ FLOW = r"""(async()=>{
  queueClick('remove-file',2);queueClick('remove-file',2);queueClick('choose-file',1);
  check(fixture.querySelectorAll('.morning-expense-queue li').length===2&&fixture.querySelector('.morning-expense-source>b').textContent==='first.png','queue removal lost another file');
  click('save');await settle();check(posts===1&&confirms===1,'save not exactly once');
+ check(confirmations[0].includes('ציוד משרד')&&confirmations[0].includes('2026-10-20')&&confirmations[0].includes('חשבונית מס'),'approval omitted category, type or source date');
  const recovery=localStorage.getItem('morningExpenseOperation:'+owner);check(recovery&&!recovery.includes('000123')&&!recovery.includes('first.png'),'recovery retained invoice data');
- check(fixture.querySelector('[data-action="morning-expense-save"]').disabled,'created invoice can save again');
+ check(!fixture.querySelector('[data-action="morning-expense-save"]'),'created invoice can save again');
  click('next');check(fixture.querySelector('.morning-expense-source>b').textContent==='first.png','unlinked source discarded');
  click('upload');await settle();check(uploads===1,'upload missing');check(fixture.querySelector('.morning-expense-status').textContent.includes('טרם אומת'),'accepted upload claimed linked');
  click('file-status');await settle();check(!fixture.querySelector('.morning-expense-operation').textContent.includes('Morning מציגה קובץ'),'pending file claimed linked');
@@ -73,8 +78,9 @@ FLOW = r"""(async()=>{
  field('number','cancelled');field('net','1000.00');field('vat','160.00');field('gross','1160.00');let releaseConfirm;confirmWait=new Promise(resolve=>releaseConfirm=resolve);
  const saving=uiFeature.actions['morning-expense-save']();await new Promise(resolve=>setTimeout(resolve,0));owner=id(9);listener();releaseConfirm(true);await saving;confirmWait=null;check(posts===1,'stale confirmation dispatched');owner=id(1);listener();
  localStorage.setItem('morningExpenseOperation:'+owner,recovery);uiFeature.runtime.dispose();uiFeature=createMorningExpenseIntake(ports);fixture.innerHTML=uiFeature.markup();click('toggle');click('load');await settle();
- check(fixture.querySelector('[data-action="morning-expense-save"]').disabled,'reload enabled blind replay');click('status');await settle();check(posts===1,'recovery created another expense');
+ check(!fixture.querySelector('[data-action="morning-expense-save"]'),'reload enabled blind replay');click('status');await settle();check(posts===1,'recovery created another expense');
  check(fixture.querySelector('[data-expense-receipt]').textContent.includes('RECOVERED-123'),'recovered operation details missing');
+ check(!fixture.querySelector('[data-expense-field="number"]'),'recovery displayed an empty intake form');
  recoveryState='needs_reconciliation';click('status');await settle();check(fixture.querySelector('[data-expense-field="reconciliationId"]'),'reconciliation control missing');
  field('reconciliationId',id(8));click('reconcile');await settle();check(posts===1&&!fixture.querySelector('[data-expense-field="reconciliationId"]'),'reconciliation created a new expense or stayed unresolved');
  recoveryState='reserved';click('status');await settle();click('cancel');await settle();check(posts===1&&fixture.textContent.includes('בוטלה לפני שליחה'),'reserved cancellation failed');
