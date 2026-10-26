@@ -17,9 +17,10 @@ function fixture(t) {
   const previous = Object.getOwnPropertyDescriptor(globalThis, 'document');
   Object.defineProperty(globalThis, 'document', {configurable:true, value:{getElementById:() => null, querySelector:() => null}});
   t.after(() => { if (previous) Object.defineProperty(globalThis, 'document', previous); else delete globalThis.document; });
+  const auth = {loadSession:() => ({user:{id:'A'}}), supaFetch:unexpected, ensureSession:unexpected};
   const cap = createOrdersFinanceCapability({
     model, ui, checksSession:session, tab:{primaryTab:true},
-    auth:{loadSession:() => ({user:{id:'A'}}), supaFetch:unexpected, ensureSession:unexpected},
+    auth,
     readAccess:() => ({account:{owner:'A',epoch:1}, connectionMode:'supabase', storageOwner:'A', readable:true, writable:true}),
     revisions:{read:() => revision, touchFinance:() => revision++, touchBankDisplay:() => revision++},
     runFinance:run => run(),
@@ -43,8 +44,19 @@ function fixture(t) {
     dashboard:{summaryMarkup:unexpected}, openBankMorningDocument:unexpected, toast:noop,
   };
   t.after(() => cap.runtime.dispose());
-  return {cap, model, ui, session, cloud, preferences, jobs, readout, core, view, disposed:() => disposed, network:() => network};
+  return {cap, auth, model, ui, session, cloud, preferences, jobs, readout, core, view, disposed:() => disposed, network:() => network};
 }
+
+test('Morning UI binding requires explicit account identity and observation before enabling lazy panels', t => {
+  const f = fixture(t); f.cap.bindReadout(f.readout); f.cap.bindCore(f.core);
+  const view = {...f.view, morningOperationScope:{captureRead:() => noop, capture:() => noop}};
+  assert.throws(() => f.cap.bindUi(view), /morning_auth_getAccountScope_required/);
+  f.auth.getAccountScope = () => ({owner:'A', epoch:1});
+  assert.throws(() => f.cap.bindUi(view), /morning_auth_subscribeAccountScope_required/);
+  f.auth.subscribeAccountScope = () => noop;
+  f.cap.bindUi(view); assert.equal(f.cap.assertReady(), true);
+  assert.equal(f.network(), 0); assert.equal(f.jobs.size, 0);
+});
 
 test('Finance construction and each bind are inert, ordered and single use', t => {
   const f = fixture(t), {cap} = f;

@@ -6,5 +6,5 @@ export function createFinanceMorningReports({auth, morningOperationScope, modal,
   const request = createMorningRequest({supaFetch:(...args) => auth.supaFetch(...args), operationScope:morningOperationScope});
   const media = createMorningMediaComposition({request, modal, toast}).create({capture:() => morningOperationScope.captureRead(), onStandalone:() => {}});
   return createMorningReports({request:request.json, captureRead:() => morningOperationScope.captureRead(),
-    subscribeAccountScope:listener => auth.subscribeAccountScope?.(listener) || (() => {}), media, dateEditorMarkup, isActive});
+    subscribeAccountScope:listener => auth.subscribeAccountScope(listener), media, dateEditorMarkup, isActive});
 }
