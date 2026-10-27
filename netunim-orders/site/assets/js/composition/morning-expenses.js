@@ -8,5 +8,6 @@ export function createFinanceMorningExpenses({auth, morningOperationScope, confi
     captureRead:() => morningOperationScope.captureRead(), captureWrite:() => morningOperationScope.capture(),
     accountId:() => auth.getAccountScope()?.owner, subscribeAccountScope:listener => auth.subscribeAccountScope(listener),
     confirmDialog, dateEditorMarkup, files:{validate:validateExpenseFile, upload:uploadExpenseFile,
-      extract:async(file,options)=>(await import('../domains/finance/invoice-pdf.js')).extractInvoicePdf(file,options)}, isActive, onBack:back});
+      extract:async(file,options)=>(await import('../domains/finance/invoice-pdf.js')).extractInvoicePdf(file,options),
+      recognize:async(extraction)=>(await import('../core/invoice-recognition.js')).recognizeInvoice(extraction)}, isActive, onBack:back});
 }

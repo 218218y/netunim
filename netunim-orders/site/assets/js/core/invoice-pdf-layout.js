@@ -1,5 +1,5 @@
 // Search views retain character-to-source mappings; raw PDF text is never edited.
-export const invoiceLabelKey=value=>String(value).normalize('NFKC').replace(/ð/g,'נ').replace(/[\s\p{P}\p{Cf}]/gu,'').toLowerCase();
+export const invoiceLabelKey=value=>String(value).replace(/[ðª]/g,'נ').normalize('NFKC').replace(/[\s\p{P}\p{Cf}`]/gu,'').toLowerCase();
 function bounds(items){const x=Math.min(...items.map(item=>item.x)),y=Math.min(...items.map(item=>item.y));return {x,y,width:Math.max(...items.map(item=>item.x+item.width))-x,height:Math.max(...items.map(item=>item.height))};}
 function searchView(items){
   let text='',key='';const sources=[];
