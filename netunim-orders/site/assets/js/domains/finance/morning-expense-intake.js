@@ -216,7 +216,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     if (busy || operationId && !result?.verified || fileAttempted&&!result?.sourcePending) return false;
     return run(async () => {
       const check = capture(), list = Array.from(selection);
-      const existing = [...(selected ? [selected] : []), ...queue];
+      const existing = [...(!operationId&&selected ? [selected] : []), ...queue];
       if (!list.length || list.length + existing.length > 20 || list.reduce((sum, file) => sum + file.size, existing.reduce((sum, item) => sum + item.file.size, 0)) > 100 * 1024 * 1024) throw new Error('ניתן לבחור עד 20 קבצים ובסך הכול עד 100MB.');
       const validated = [];
       for (const file of list) { validated.push(await files.validate(file)); check(); }

@@ -11,10 +11,14 @@ SCENARIO = PREFIX + r"""
  await choose(original);
  const warnings=fixture.querySelector('[data-expense-review-warnings]');
  check(warnings&&!warnings.hidden&&warnings.textContent.includes('מחושב')&&warnings.textContent.includes('s0123456789'),'computed or normalized source hidden before save');
+ await uiFeature.actions['morning-expense-files']({files:Array.from({length:19},(_,n)=>new File([bytes,String(n)],'queued-'+n+'.pdf',{type:'application/pdf'}))});await settle();
  click('save');await settle();
  check(posts===1&&uploads===0&&sourceMetadata?.sha256?.length===64,'source intent missing before upload');
  check(sourceReview.mode==='extracted','matching extracted source forced manual source review');
  check(fixture.querySelector('[data-expense-command="next"]').disabled,'pending original can be abandoned');
+ await choose(new File([bytes,'wrong'],'replacement.pdf',{type:'application/pdf'}));
+ check(fixture.querySelector('.morning-expense-source>b').textContent==='replacement.pdf','full queue counts a replaced original twice');
+ await choose(original);check(fixture.querySelector('.morning-expense-source>b').textContent==='original.pdf','full queue prevents source recovery');
  const key='morningExpenseOperation:'+environment+':'+owner;
  uiFeature.runtime.dispose();localStorage.removeItem(key); // The server list survives even loss of the local pointer.
  uiFeature=createMorningExpenseIntake(ports);fixture.innerHTML=uiFeature.markup();click('toggle');await settle();
