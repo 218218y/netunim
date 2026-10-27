@@ -1,0 +1,100 @@
+{
+  "environment": "sandbox",
+  "readAt": "2026-10-27",
+  "source": "Canonical Sandbox responses for the existing synthetic PDFs; identity and URLs sanitized. No new upload or financial write.",
+  "items": [
+    {
+      "id": "cccccccc-cccc-4ccc-cccc-000000000001",
+      "status": 10,
+      "creationDate": 1793008487,
+      "lastUpdateDate": 1793008487,
+      "hasDefaultValues": false,
+      "expense": {
+        "currency": "ILS",
+        "currencyRate": 0,
+        "vat": 9,
+        "amount": 59,
+        "date": "2026-10-26T00:00:00",
+        "reportingDate": "2026-10-01T00:00:00",
+        "documentType": 330,
+        "number": "900000127",
+        "description": "",
+        "active": true,
+        "supplier": {
+          "active": true,
+          "name": "Synthetic OCR supplier",
+          "id": "aaaaaaaa-aaaa-4aaa-aaaa-000000000011"
+        },
+        "accountingClassification": {
+          "id": "bbbbbbbb-bbbb-4bbb-bbbb-000000000001",
+          "title": "Synthetic OCR classification"
+        }
+      },
+      "url": "https://private.invalid/source",
+      "thumbnail": "https://private.invalid/thumbnail"
+    },
+    {
+      "id": "cccccccc-cccc-4ccc-cccc-000000000002",
+      "status": 10,
+      "creationDate": 1793008473,
+      "lastUpdateDate": 1793008473,
+      "hasDefaultValues": true,
+      "expense": {
+        "currency": "ILS",
+        "currencyRate": 0,
+        "vat": 160,
+        "amount": 1160,
+        "date": "2026-10-26T00:00:00",
+        "reportingDate": "2026-10-01T00:00:00",
+        "documentType": 305,
+        "number": "900000126",
+        "description": "",
+        "active": true,
+        "supplier": {
+          "active": true,
+          "name": "Synthetic OCR supplier",
+          "id": "aaaaaaaa-aaaa-4aaa-aaaa-000000000012"
+        },
+        "accountingClassification": {
+          "income": 100,
+          "vat": 100,
+          "key": "1390",
+          "title": "Synthetic OCR classification"
+        }
+      },
+      "url": "https://private.invalid/source",
+      "thumbnail": "https://private.invalid/thumbnail"
+    },
+    {
+      "id": "cccccccc-cccc-4ccc-cccc-000000000003",
+      "status": 10,
+      "creationDate": 1793007003,
+      "lastUpdateDate": 1793007003,
+      "hasDefaultValues": true,
+      "expense": {
+        "currency": "ILS",
+        "currencyRate": 0,
+        "vat": 18,
+        "amount": 118,
+        "reportingDate": "2026-10-01T00:00:00",
+        "documentType": 305,
+        "number": "1048982",
+        "description": "",
+        "active": true,
+        "supplier": {
+          "active": true,
+          "country": "IL",
+          "name": "Synthetic OCR supplier"
+        },
+        "accountingClassification": {
+          "income": 100,
+          "vat": 100,
+          "key": "1390",
+          "title": "Synthetic OCR classification"
+        }
+      },
+      "url": "https://private.invalid/source",
+      "thumbnail": "https://private.invalid/thumbnail"
+    }
+  ]
+}

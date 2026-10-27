@@ -1,0 +1,20 @@
+{
+  "date": "2026-10-27",
+  "environment": "sandbox",
+  "productionTouched": false,
+  "syntheticUploads": 1,
+  "financialWrites": 0,
+  "s3Accepted204": true,
+  "draftsFound": 1,
+  "sourceDownloadStatus": 200,
+  "sourceBytes": 790,
+  "exactSourceSHA256Matched": true,
+  "exactSourceMD5Matched": true,
+  "providerFileHashMatchedMD5": false,
+  "providerFileKeyMatchedUploadKey": false,
+  "observedAmount": 118,
+  "observedVAT": 18,
+  "parsingCompletionVerified": false,
+  "draftApprovalVerified": false,
+  "scope": "Isolated direct provider contract probe with dedicated Sandbox transport. Durable application OCR lifecycle is validated separately. No Production settings or income credentials changed."
+}

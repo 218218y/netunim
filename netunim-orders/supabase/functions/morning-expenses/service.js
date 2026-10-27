@@ -1,4 +1,5 @@
 import {reportDate, reportExpense} from '../morning-documents/reports.js';
+import {expenseCents} from './input.js';
 
 export const expenseUuid = value => typeof value === 'string' && /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i.test(value);
 const text = (value, max = 180) => typeof value === 'string' ? value.slice(0, max) : '';
@@ -34,15 +35,29 @@ export function expenseRecord(raw) {
     supplierTaxId:text(raw.supplier?.taxId, 30), classification:expenseClassification(raw.accountingClassification),
     pcnClassification:text(raw.data?.pcnClassification, 1), pcnTaxId:text(raw.data?.pcnTaxId, 30), hasFile:typeof raw.url === 'string' && !!raw.url};
 }
-function draftRecord(raw) {
+export function draftRecord(raw) {
   if (!expenseUuid(raw?.id) || ![10, 50, 200].includes(raw.status)) throw new Error('invalid_expense_draft');
   const item = object(raw.expense) ? raw.expense : {};
   // Draft OCR values remain suggestions. Never coerce partial OCR into a saved expense.
+  const grossCents = expenseCents(item.amount), vatCents = expenseCents(item.vat);
+  const date = text(item.date, 30).slice(0, 10);
+  const missing = [!text(item.number, 60) && 'number', !reportDate(date) && 'date',
+    ![305, 330, 320].includes(item.documentType) && 'documentType',
+    grossCents === null && 'amount', vatCents === null && 'vat', !text(item.supplier?.name) && 'supplier'].filter(Boolean);
   return {id:raw.id, status:raw.status, number:text(item.number, 60), name:text(item.supplier?.name),
     description:text(item.description, 250), date:text(item.date, 30), reportingDate:text(item.reportingDate, 30),
     amount:typeof item.amount === 'number' && Number.isFinite(item.amount) ? item.amount : null,
     vat:typeof item.vat === 'number' && Number.isFinite(item.vat) ? item.vat : null,
-    currency:text(item.currency, 3), hasFile:typeof raw.url === 'string' && !!raw.url, approved:false};
+    documentType:[305, 330, 320].includes(item.documentType) ? item.documentType : null,
+    supplier:{id:expenseUuid(item.supplier?.id) ? item.supplier.id : '', name:text(item.supplier?.name), taxId:text(item.supplier?.taxId, 30),
+      country:text(item.supplier?.country, 2), verified:false},
+    classification:expenseClassification(item.accountingClassification),
+    grossCents, vatCents, netCents:grossCents !== null && vatCents !== null && vatCents <= grossCents ? grossCents - vatCents : null,
+    currency:text(item.currency, 3), hasFile:typeof raw.url === 'string' && !!raw.url, approved:false,
+    source:'morning_ocr', parsingVerified:false, reviewRequired:true, missingFields:missing,
+    // Neither status 10 nor observed hasDefaultValues proves parsing completion.
+    createdAt:Number.isSafeInteger(raw.creationDate) && raw.creationDate > 0 ? raw.creationDate : null,
+    updatedAt:Number.isSafeInteger(raw.lastUpdateDate) && raw.lastUpdateDate > 0 ? raw.lastUpdateDate : null};
 }
 export function expenseSearchInput(body, draft = false) {
   const {page, pageSize} = pageInput(body), from = body.fromDate, to = body.toDate;
