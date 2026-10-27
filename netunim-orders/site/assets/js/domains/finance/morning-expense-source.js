@@ -77,7 +77,7 @@ export function createExpenseSourceSupport({files,request,capture,run,capabiliti
   }
   function receipt(result,busy,reason){
     if(!result?.sourceExpected)return '';
-    return `<p class="morning-expense-notice" data-expense-source-state>${result.sourceVerified?
+    return `<p class="morning-expense-notice" data-expense-source-state>${result.cancelled?'הפעולה בוטלה לפני שליחה; אין מסמך מקור שממתין לצירוף.':result.sourceVerified?
       'הקובץ נקרא ממורנינג וטביעתו תואמת למקור שאושר.':result.sourceException?'חריגה ידנית מתועדת: '+esc(result.sourceExceptionReason):
         'ההוצאה או הפעולה שמורות בשרת, אך המקור עדיין דורש העלאה או אימות. לאחר רענון יש לבחור מחדש את המקור המקורי.'}</p>
       ${result.verified&&result.sourcePending?`<details><summary>תיעוד חריגה אם לא ניתן להשלים את המקור</summary>

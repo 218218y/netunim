@@ -6,7 +6,7 @@ export function expenseSourceSummary(row,{verified=!!row.source_verified_at}={})
   return {sourceExpected:expected,sourceMetadata:row.source_metadata||null,sourceReview:row.source_review||null,
     sourceVerified:expected&&verified,sourceVerifiedAt:verified?row.source_verified_at:null,
     sourceException:!!row.source_waived_at,sourceExceptionReason:row.source_waived_reason||'',
-    sourcePending:expected&&!verified&&!row.source_waived_at};
+    sourcePending:expected&&row.state!=='cancelled'&&!verified&&!row.source_waived_at};
 }
 export async function inspectExpenseSource(row,raw,environment,{verifySource=verifyOcrSource}={}) {
   let verified=false,code=row.file_requested_at?'legacy_unverified':'not_expected';

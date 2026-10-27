@@ -230,3 +230,12 @@ test('read-only duplicate check covers manual intake before reserving and distin
   const f=fixture({mode:'duplicate'}),result=await f.writer.handle(user,{...input(),action:'duplicate_check'});
   assert.equal(result.body.duplicate,true);assert.equal(result.body.match,'identical');assert.equal(f.rows.size,0);assert.equal(f.posts.length,0);
 });
+
+test('cancelling an unsent source-bound reservation releases the completion requirement',async()=>{
+  const f=fixture({mode:'reserve-only'}),body={...input(),sourceFile:{sha256:'a'.repeat(64),size:100,contentType:'application/pdf'},
+    sourceReview:{mode:'manual',reason:'Original manually compared to approved invoice'}};
+  await f.writer.handle(user,body);assert.equal(f.rows.get(id(2)).state,'reserved');assert.equal(f.posts.length,0);
+  const cancelled=await f.writer.handle(user,{action:'cancel_reserved',operationId:id(2)});
+  assert.equal(cancelled.body.cancelled,true);assert.equal(cancelled.body.sourcePending,false);
+  assert.equal((await f.writer.handle(user,{action:'source_pending'})).body.items.length,0);
+});
