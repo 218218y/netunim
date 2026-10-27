@@ -2,6 +2,7 @@
 .morning-expense-trigger{display:flex;align-items:center;justify-content:space-between;width:100%;padding:17px 20px;border:0;background:transparent;color:inherit;font:inherit;text-align:right;cursor:pointer}
 .morning-expense-content{padding:0 20px 20px}.morning-expense-toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:12px 0}.morning-expense-toolbar a{color:#35647c}
 .morning-expense-notice{padding:12px;border-radius:8px;background:#fff5df;color:#69450b;font-size:14px;line-height:1.6}.morning-expense-status{min-height:24px;font-size:14px;line-height:1.6}
+.morning-expense-status:empty{min-height:0;margin:0}
 .morning-expense-workspace{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px;align-items:start}.morning-expense-fields,.morning-expense-source{display:flex;flex-direction:column;gap:12px;min-width:0}
 .morning-expense-fields label,.morning-expense-drop{display:flex;flex-direction:column;gap:7px;font-size:14px;font-weight:600}.morning-expense-fields input,.morning-expense-fields select{box-sizing:border-box;width:100%;min-width:0;padding:10px;border:1px solid #bfc6c9;border-radius:7px;background:#fff;font:inherit;color:inherit}.morning-expense-fields input:focus,.morning-expense-fields select:focus{outline:2px solid #357d9b;outline-offset:2px}
 .morning-expense-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:end}.morning-expense-amounts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.morning-expense-amounts input{direction:ltr;text-align:right;font-variant-numeric:tabular-nums}
@@ -39,6 +40,7 @@
 .morning-expense-classification{align-items:end}.morning-expense-classification>.btn{min-height:42px}
 .morning-expense-history,.morning-expense-recent{margin-top:28px;padding-top:20px;border-top:1px solid var(--border,#ddd);min-width:0}
 .morning-expense-history-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.morning-expense-history h2,.morning-expense-recent h2{font-size:20px;margin:0}.morning-expense-history>p,.morning-expense-recent>p{font-size:14px;color:#505f64}
+.morning-expense-history-search{display:flex;align-items:end;flex-wrap:wrap;gap:10px;margin-bottom:20px}.morning-expense-history-search label{display:flex;flex:1 1 280px;min-width:0;flex-direction:column;gap:7px;font-size:14px;font-weight:600}.morning-expense-history-search input{box-sizing:border-box;width:100%;min-width:0;padding:10px;border:1px solid #bfc6c9;border-radius:7px;background:#fff;font:inherit;color:inherit}.morning-expense-history-search input:focus{outline:2px solid #357d9b;outline-offset:2px}.morning-expense-history-search .btn{min-height:42px}
 /* Opt out of the app-wide ledger minimum, including the mobile card layout. */
 .morning-expense-table{width:100%;min-width:0;max-width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed;color:#164a56;font-size:14px;text-align:right}
 .morning-expense-table th,.morning-expense-table td{padding:16px 12px;border:0;border-bottom:1px solid #eaf0f3;vertical-align:middle;overflow-wrap:anywhere;background:#fff}

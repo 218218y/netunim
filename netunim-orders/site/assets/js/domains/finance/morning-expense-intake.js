@@ -2,7 +2,7 @@ import {esc} from '../../core/values.js';
 import {checkTodayISO} from '../../core/dates.js';
 import {normalizeExpenseInput} from '../../core/morning-expense-input.js';
 import {expenseAmountChange,expenseAmountSanity} from '../../core/morning-expense-amounts.js';
-import {expenseBimonth, expenseReportingChoice} from '../../core/morning-report-period.js';
+import {expenseBimonth, expenseReportingChoice, expenseReportingYears} from '../../core/morning-report-period.js';
 import {createRuntimeTaskOwner} from '../../shared/runtime-task-owner.js';
 import {readExpenseCatalog, readExpenseCatalogPage, searchExpenseSuppliers, expenseCatalogClassifications, expenseSupplierEligibility} from './morning-expense-catalog.js';
 import {readExpensePreferences, writeExpensePreferences} from './morning-expense-preferences.js';
@@ -138,7 +138,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       check(); favorites = restored; extraExpenses = [];
       const retained = catalog?.suppliers.filter(row => row.id === draft.supplierId) || [];
       supplierPicker.reset(); catalog = loaded; catalog.suppliers = mergeSuppliers(loaded.suppliers, retained);
-      reading = null; message = 'נטען עמוד הצעות ראשוני. אפשר לחפש ספקים ולהוסיף סיווגים לפי הצורך.';
+      reading = null; message = '';
       if (draft.classificationExpenseId && !loaded.expenses.some(row => row.id === draft.classificationExpenseId)) {
         draft.classificationExpenseId = ''; message = 'ההצעות רועננו. יש לבחור שוב את סיווג ההוצאה לפני שמירה.';
       }
@@ -157,7 +157,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     const name = element.dataset.expenseField;
     if(name==='reportingYear'){
       const year=Number(element.value),today=todayISO();
-      if(!Number.isInteger(year)||year<2010||year>Number(today.slice(0,4)))return false;
+      if(!expenseReportingYears(today,draft.reportingPeriod).includes(year))return false;
       let key=String(year)+draft.reportingPeriod.slice(4);
       if(key+'-01'>today)key=expenseBimonth(today).key;
       draft.reportingPeriod=key;editVersion++;edited=true;
@@ -517,7 +517,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     if (!caps) return 'סביבת Morning, הספקים והסיווגים נטענים אוטומטית בפתיחת המסך.';
     let notice;
     if (caps.environment === 'production') notice = caps.create ?
-      'חשבון Morning האמיתי · השמירה יוצרת הוצאה אמיתית. יש לבדוק כל פרט מול מסמך המקור.' : 'חשבון Morning האמיתי · יצירת הוצאות כבויה או אינה מורשית למשתמש זה.';
+      '' : 'חשבון Morning האמיתי · יצירת הוצאות כבויה או אינה מורשית למשתמש זה.';
     else notice = caps.create ? 'סביבת בדיקות Sandbox · יש לבדוק כל פרט מול מסמך המקור.' : 'סביבת Sandbox · שמירה דורשת הרשאה ושתי זהויות ספקי P שאומתו מול Morning.';
     return notice + (caps.create && !caps.upload ? ' צירוף קבצים עדיין כבוי.' : '');
   }
@@ -526,8 +526,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     const option = (value, label, current, unavailable = false) => `<option value="${esc(value)}" ${String(current) === String(value) ? 'selected' : ''} ${unavailable ? 'disabled' : ''}>${esc(label)}</option>`;
     const textField = (name, type = 'text') => `<label>${fieldLabels[name]}<input data-expense-field="${name}" data-${type === 'date' ? 'change' : 'input'}="morning-expense-field" type="${type}" ${name === 'number' ? 'maxlength="20"' : ''} ${['net', 'vat', 'gross'].includes(name) ? 'inputmode="decimal"' : ''} value="${esc(draft[name])}" ${attrs}></label>`;
     const today = todayISO(), periods = [];
-    const year = Number(draft.reportingPeriod.slice(0,4)),years=[];
-    for(let current=Number(today.slice(0,4));current>=2010;current--)years.push(current);
+    const year = Number(draft.reportingPeriod.slice(0,4)), years = expenseReportingYears(today,draft.reportingPeriod);
     for (let month = 11; month >= 1; month -= 2) {
       const date = `${year}-${String(month).padStart(2, '0')}-01`;
       if (date <= today) periods.push(expenseBimonth(date));
@@ -539,7 +538,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       ${expanded ? `<div class="morning-expense-content"><div class="morning-expense-toolbar">
       <button type="button" class="btn" data-action="morning-expense-command" data-expense-command="load" ${busy ? 'disabled' : ''}>${catalog ? 'רענון ספקים וסיווגים' : busy ? 'טוען ספקים וסיווגים…' : 'ניסיון טעינה נוסף'}</button>
       <a href="${catalog?.capabilities.environment === 'sandbox' ? 'https://app.sandbox.d.greeninvoice.co.il' : 'https://app.greeninvoice.co.il'}" target="_blank" rel="noopener noreferrer">פתיחת Morning</a></div>
-      <p class="morning-expense-notice">${esc(environmentNotice())}</p>${ocr.markup()}
+      ${environmentNotice() ? `<p class="morning-expense-notice">${esc(environmentNotice())}</p>` : ''}${ocr.markup()}
       <p class="morning-expense-status" role="status" aria-live="polite" data-expense-message>${esc(busy ? 'הפעולה מתבצעת…' : message)}</p>
       ${catalog ? `<div class="morning-expense-workspace"><div class="morning-expense-fields">
       ${!operationId ? `
@@ -600,7 +599,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     'local-start':() => busy ? false : local.start(), 'local-fill':() => busy ? false : local.fill(), 'local-defer':deferLocal,
     'ocr-start':async () => {if (busy) return false; local.reset(); const value = await ocr.start(); if (!ocr.active()) local.start(); return value;},
     'ocr-status':ocr.status, 'ocr-fill':ocr.fill, 'ocr-defer':ocr.defer, 'ocr-resume':element => {if (busy) return false; local.reset(); return ocr.resume(element);},
-    'history-more':history.more, 'history-refresh':history.refresh, 'recent-refresh':recent.load,
+    'history-more':history.more, 'history-refresh':history.refresh, 'history-search':history.search, 'history-search-more':history.searchMore, 'history-search-clear':history.clearSearch, 'recent-refresh':recent.load,
     'use-favorite':element => setField({dataset:{expenseField:'supplierId'}, value:element.dataset.expenseSupplier}),
     'choose-file':queueChange, 'remove-file':queueChange, 'file-status':fileStatus};
   const writes = {cancel:() => recover('cancel_reserved'), reconcile:() => recover('reconcile'),'source-waive':sourceWaive};
@@ -610,6 +609,8 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     'morning-expense-command':element => Object.hasOwn(commands, element.dataset.expenseCommand) ? commands[element.dataset.expenseCommand](element) : false,
     'morning-expense-write':element => Object.hasOwn(writes, element.dataset.expenseCommand) ? writes[element.dataset.expenseCommand]() : false,
     'morning-expense-field':(element, event) => element.hasAttribute('data-expense-picker') ? supplierPicker.handle(element, event) : setField(element),
+    'morning-expense-history-query':element => history.setQuery(element.value),
+    'morning-expense-history-search-enter':(_, event) => {event.stopPropagation(); if (event.key === 'Enter' && !event.isComposing) {event.preventDefault(); return history.search();} return false;},
     'morning-expense-save':save,
     'morning-expense-upload':upload,
     'morning-expense-files':element => chooseFiles(element.files),
