@@ -105,7 +105,8 @@ FLOW = r"""(async()=>{
  check(fixture.querySelectorAll('.morning-expense-queue li').length===2&&fixture.querySelector('.morning-expense-source>b').textContent==='first.png','queue removal lost another file');
  uploadEnabled=false;click('load');await settle();click('save');await settle();check(posts===0&&fixture.textContent.includes('צירוף קבצים עדיין כבוי'),'file queue entered disabled upload path');uploadEnabled=true;click('load');await settle();
  click('save');await settle();check(posts===1&&confirms===1,'save not exactly once');
- check(fixture.querySelector('[data-expense-recent]').textContent.includes('000123'),'successful intake was not added to recent entries');
+ check(requests.every(({action,body})=>action!=='expenses'||body.fromDate!==undefined),'opening or saving scanned the entire account');
+ click('recent-refresh');await settle();check(fixture.querySelector('[data-expense-recent]').textContent.includes('000123'),'explicit recent loading missed saved intake');
  check(confirmations[0].includes('ציוד משרד')&&confirmations[0].includes('2026-10-20')&&confirmations[0].includes('חשבונית מס'),'approval omitted category, type or source date');
  const recovery=localStorage.getItem('morningExpenseOperation:'+environment+':'+owner);check(recovery&&!recovery.includes('000123')&&!recovery.includes('first.png'),'recovery retained invoice data');
  check(!fixture.querySelector('[data-action="morning-expense-save"]'),'created invoice can save again');
@@ -118,7 +119,8 @@ FLOW = r"""(async()=>{
  const preferenceText=localStorage.getItem('morningExpensePreferences:'+environment+':'+owner);check(preferenceText&&!preferenceText.includes(supplier.name)&&!preferenceText.includes(supplier.taxId)&&!preferenceText.includes('000123'),'preferences leaked invoice or supplier data');
  uiFeature.runtime.dispose();uiFeature=createMorningExpenseIntake(ports);fixture.innerHTML=uiFeature.markup();directoryHidden=true;catalogExpense={...expense,id:id(40),classification:{...expense.classification,id:id(44),title:'סיווג אחר'}};
  click('toggle');await settle();check(fixture.querySelector('[data-expense-command="use-favorite"]'),'favorite did not survive reopening or canonical lookup');
- check(fixture.querySelector('[data-expense-recent-id="'+id(8)+'"]'),'recent Morning expense did not survive reopening and account-wide lookup');
+ check(!fixture.querySelector('[data-expense-recent-id]'),'reopening automatically scanned the entire account');click('recent-refresh');await settle();
+ check(fixture.querySelector('[data-expense-recent-id="'+id(8)+'"]'),'explicit recent lookup missed saved intake');
  field('supplierId',id(2),'change');await settle();check(fixture.querySelector('[data-expense-field="classificationExpenseId"]').value===id(30),'saved category outside the history page was not revalidated');directoryHidden=false;
  // Account change while the approval dialog is open must prevent dispatch entirely.
  field('number','cancelled');field('net','1000.00');field('vat','160.00');let releaseConfirm;confirmWait=new Promise(resolve=>releaseConfirm=resolve);

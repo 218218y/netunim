@@ -112,7 +112,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
         draft.classificationExpenseId = ''; message = 'ההצעות רועננו. יש לבחור שוב את סיווג ההוצאה לפני שמירה.';
       }
       if (!operationId) restore();
-      recent.reset(); recent.load();
+      recent.record({verified:true});
       history.refresh();
     });
   }
@@ -402,7 +402,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     'choose-file':queueChange, 'remove-file':queueChange, 'file-status':fileStatus};
   const writes = {cancel:() => recover('cancel_reserved'), reconcile:() => recover('reconcile')};
   const actions = {
-    'morning-expense-toggle':() => {expanded = true; render(); if (catalog) {recent.load(); return true;} return load();},
+    'morning-expense-toggle':() => {expanded = true; render(); if (catalog) return true; return load();},
     'morning-expense-back':onBack,
     'morning-expense-command':element => Object.hasOwn(commands, element.dataset.expenseCommand) ? commands[element.dataset.expenseCommand](element) : false,
     'morning-expense-write':element => Object.hasOwn(writes, element.dataset.expenseCommand) ? writes[element.dataset.expenseCommand]() : false,
