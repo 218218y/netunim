@@ -1,3 +1,5 @@
+import {searchMatch} from '../../core/search.js';
+
 // Catalog pages are deliberately bounded suggestions, never a complete directory.
 export async function readExpenseCatalogPage(request, capabilities, action, filter, page, assertCurrent, {signal} = {}) {
   const result = await request(action, {...filter, page, expectedEnvironment:capabilities.environment}, assertCurrent, {signal}); assertCurrent();
@@ -30,6 +32,31 @@ export function expenseSupplierEligibility(supplier, profiles = [], allowP = fal
   if (supplier.country !== 'IL') return {eligible:false, reason:'מדינת הספק אינה ישראל'};
   if (!/^\d{9}$/.test(supplier.taxId)) return {eligible:false, reason:'נדרש מספר עוסק בן 9 ספרות'};
   return {eligible:true, reason:''};
+}
+// Morning's name filter does not provide our punctuation-insensitive matching.
+// Keep canonical pages in this account's catalog, and scan at most four new pages
+// per search. Subsequent searches reuse them; "more" resumes the directory scan.
+export async function searchExpenseSuppliers(request, catalog, query, more, assertCurrent, {signal} = {}) {
+  const term = query.trim(), tax = /^\d{9}$/.test(term);
+  const directory = catalog.supplierDirectory ||= {items:new Map(catalog.supplierPage.items.map(row => [row.id, row])),
+    seen:new Set(catalog.supplierPage.items.map(row => row.id)), nextPage:1, pages:catalog.supplierPage.pages, total:catalog.supplierPage.total};
+  const matches = () => [...directory.items.values()].filter(row => searchMatch(term, [row.name, row.taxId]));
+  if (!more) {
+    const result = await readExpenseCatalogPage(request, catalog.capabilities, 'suppliers', tax ? {taxId:term} : {name:term}, 0, assertCurrent, {signal});
+    for (const row of result.items) directory.items.set(row.id, row);
+  }
+  if (!tax && (more || !matches().length)) {
+    for (let count = 0; count < 4 && directory.nextPage < directory.pages; count++) {
+      const result = await readExpenseCatalogPage(request, catalog.capabilities, 'suppliers', {}, directory.nextPage, assertCurrent, {signal});
+      if (result.total !== directory.total || result.items.some(row => directory.seen.has(row.id))) {
+        throw new Error('רשימת הספקים השתנתה. יש לרענן את ההצעות.');
+      }
+      for (const row of result.items) {directory.items.set(row.id, row); directory.seen.add(row.id);}
+      directory.nextPage++;
+      if (!more && matches().length) break;
+    }
+  }
+  return {items:matches(), hasMore:!tax && directory.nextPage < directory.pages};
 }
 export async function readExpenseCatalog(request, assertCurrent, today, options = {}) {
   const capabilities = await request('capabilities', {}, assertCurrent, options); assertCurrent();

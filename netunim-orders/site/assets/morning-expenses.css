@@ -4,10 +4,10 @@
 .morning-expense-notice{padding:12px;border-radius:8px;background:#fff5df;color:#69450b;font-size:14px;line-height:1.6}.morning-expense-status{min-height:24px;font-size:14px;line-height:1.6}
 .morning-expense-workspace{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px;align-items:start}.morning-expense-fields,.morning-expense-source{display:flex;flex-direction:column;gap:12px;min-width:0}
 .morning-expense-fields label,.morning-expense-drop{display:flex;flex-direction:column;gap:7px;font-size:14px;font-weight:600}.morning-expense-fields input,.morning-expense-fields select{box-sizing:border-box;width:100%;min-width:0;padding:10px;border:1px solid #bfc6c9;border-radius:7px;background:#fff;font:inherit;color:inherit}.morning-expense-fields input:focus,.morning-expense-fields select:focus{outline:2px solid #357d9b;outline-offset:2px}
-.morning-expense-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.morning-expense-amounts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.morning-expense-amounts input{direction:ltr;text-align:right;font-variant-numeric:tabular-nums}
+.morning-expense-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:end}.morning-expense-amounts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.morning-expense-amounts input{direction:ltr;text-align:right;font-variant-numeric:tabular-nums}
 .morning-expense-intake small{display:block;font-size:12px;line-height:1.6;overflow-wrap:anywhere;color:#505f64}.morning-expense-operation{display:flex;flex-direction:column;align-items:start;gap:10px;padding:14px;border:1px solid #c9dcdf;border-radius:8px;background:#f1f8f8}.morning-expense-operation span{font-size:13px}
 .morning-expense-drop{padding:18px;border:2px dashed #a6b9bf;border-radius:10px;background:#f8fafb}.morning-expense-drop input{max-width:100%;font:inherit}.morning-expense-source>img{display:block;width:100%;height:auto;max-height:620px;object-fit:contain}.morning-expense-source>iframe{width:100%;height:620px;border:1px solid #d7dfe2;border-radius:8px}.morning-expense-source>b{overflow-wrap:anywhere}
-@media(max-width:800px){.morning-expense-workspace{grid-template-columns:minmax(0,1fr)}.morning-expense-content{padding:0 12px 16px}.morning-expense-source>iframe{height:420px}.morning-expense-amounts{grid-template-columns:minmax(0,1fr)}.morning-expense-pair{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:800px){.morning-expense-workspace{grid-template-columns:minmax(0,1fr)}.morning-expense-content{padding:0 12px 16px}.morning-expense-source>iframe{height:420px}.morning-expense-amounts{grid-template-columns:minmax(0,1fr)}.morning-expense-invoice{grid-template-columns:minmax(0,1fr)}}
 .morning-expense-date{display:flex;flex-direction:column;gap:7px;font-size:14px;font-weight:600}
 .morning-expense-date fieldset{border:0;padding:0;margin:0;min-width:0}
 .morning-expense-supplier{position:relative;min-width:0}
@@ -19,3 +19,14 @@
 .morning-expense-supplier-option:disabled{opacity:.6;cursor:default}
 .morning-expense-supplier-option[aria-selected=true]{font-weight:700}
 .morning-expense-queue{display:flex;flex-direction:column;gap:8px;margin:0;padding-inline-start:20px}.morning-expense-queue li{display:flex;gap:8px;align-items:center;min-width:0}.morning-expense-queue li>.btn:first-child{flex:1;min-width:0;overflow-wrap:anywhere;text-align:start}.morning-expense-queue [aria-pressed=true]{border:2px solid #357d9b;background:#edf7fa}
+.morning-expense-page{width:100%;min-width:0}.morning-expense-page>.morning-expense-intake{margin:0}
+.morning-expense-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px;flex-wrap:wrap}.morning-expense-heading h1{font-size:24px;margin:0}
+.morning-expense-reporting{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:end}
+.morning-expense-classification{align-items:end}.morning-expense-classification>.btn{min-height:42px}
+.morning-expense-history{margin-top:28px;padding-top:20px;border-top:1px solid var(--border,#ddd)}
+.morning-expense-history-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.morning-expense-history h2{font-size:20px;margin:0}.morning-expense-history>p{font-size:14px;color:#505f64}
+.morning-expense-history-list{max-height:440px;overflow:auto;overscroll-behavior:contain;border:1px solid var(--border,#ddd);border-radius:10px;padding:0 14px 14px}
+.morning-expense-history-period h3{position:sticky;top:0;z-index:1;background:var(--surface,#fff);font-size:16px;padding:12px 0;margin:0;border-bottom:1px solid var(--border,#ddd)}
+.morning-expense-history-period ol{list-style:none;padding:0;margin:0}.morning-expense-history-period li{display:flex;align-items:start;justify-content:space-between;gap:16px;padding:12px 0;border-bottom:1px solid var(--border,#eee)}
+.morning-expense-history-period li>div{display:flex;flex-direction:column;gap:5px;min-width:0;overflow-wrap:anywhere}.morning-expense-history-period li>div:last-child{flex-shrink:0;text-align:end}.morning-expense-history-period span,.morning-expense-history-period time{font-size:14px}
+@media(max-width:800px){.morning-expense-reporting{gap:8px}.morning-expense-reporting label{font-size:12px}.morning-expense-reporting select{padding:8px 3px;font-size:12px}.morning-expense-heading{padding:16px 12px}.morning-expense-history-period li{gap:8px}}

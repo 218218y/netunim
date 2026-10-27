@@ -2,13 +2,14 @@ import {esc} from '../../core/values.js';
 import {searchMatch} from '../../core/search.js';
 
 export function createExpenseSupplierPicker({rows, selectedId, eligibility, editable, choose, invalidateSelection, search, commit, run, report}) {
-  let query = null, activeId = '', revision = 0, timer = null, controller = null, page = null, busy = false;
+  let query = null, activeId = '', revision = 0, timer = null, controller = null, page = null, busy = false, limit = 50;
   const host = () => document.querySelector('[data-expense-supplier-picker]');
   const input = () => host()?.querySelector('[role="combobox"]');
-  const visible = () => rows().filter(row => searchMatch(query || '', [row.name, row.taxId]));
+  const matching = () => rows().filter(row => searchMatch(query || '', [row.name, row.taxId]));
+  const visible = () => matching().slice(0, limit);
   const selectable = () => visible().filter(row => {const check = eligibility(row); return check.eligible || check.p;});
   function cancel() {revision++; clearTimeout(timer); timer = null; controller?.abort(); controller = null; busy = false;}
-  function reset() {cancel(); query = null; activeId = ''; page = null;}
+  function reset() {cancel(); query = null; activeId = ''; page = null; limit = 50;}
   function options() {
     const found = visible(), choices = selectable();
     if (!choices.some(row => row.id === activeId)) activeId = choices.length === 1 ? choices[0].id : '';
@@ -20,13 +21,11 @@ export function createExpenseSupplierPicker({rows, selectedId, eligibility, edit
         <b>${esc(row.name)}</b><small>${esc(row.taxId || 'ללא מספר עוסק')}${check.reason ? ' · ' + esc(check.reason) : ''}</small></button>`;
     }).join('') || '<p>לא נמצאו ספקים מתאימים.</p>';
   }
-  function status() {return busy ? 'מחפש ב־Morning…' : page ? `נמצאו ${page.total} ספקים · עמוד ${page.page + 1}` : 'אפשר להקליד שם או מספר עוסק ולבחור בחצים וב־Enter.';}
+  function status() {return busy ? 'מחפש ב־Morning…' : page ? `מוצגות ${visible().length} התאמות${page.hasMore ? ' · אפשר להמשיך לחפש בספקים נוספים' : ' · החיפוש הושלם'}` : 'אפשר להקליד שם או מספר עוסק ולבחור בחצים וב־Enter.';}
   function panel() {
     return `<div role="listbox" id="morningExpenseSupplierOptions" aria-label="ספקי Morning">${options()}</div>
       <small role="status" data-supplier-search-status>${esc(status())}</small>
-      ${page?.pages > 1 ? `<div class="morning-expense-toolbar">
-      <button type="button" class="btn" data-action="morning-expense-field" data-expense-picker="page" data-expense-step="-1" ${busy || page.page === 0 ? 'disabled' : ''}>קודם</button>
-      <button type="button" class="btn" data-action="morning-expense-field" data-expense-picker="page" data-expense-step="1" ${busy || page.page + 1 >= page.pages || page.page >= 999 ? 'disabled' : ''}>הבא</button></div>` : ''}`;
+      ${page?.hasMore || matching().length > limit ? `<button type="button" class="btn" data-action="morning-expense-field" data-expense-picker="more" ${busy ? 'disabled' : ''}>${matching().length > limit ? 'הצגת ספקים נוספים' : 'חיפוש בספקים נוספים'}</button>` : ''}`;
   }
   function refresh() {
     const popup = host()?.querySelector('[data-menu-panel]'); if (!popup) return;
@@ -43,13 +42,13 @@ export function createExpenseSupplierPicker({rows, selectedId, eligibility, edit
     }
     host().classList.add('open'); field.setAttribute('aria-expanded', 'true'); return true;
   }
-  function remote(targetPage = 0) {
+  function remote(more = false) {
     cancel(); const epoch = revision, term = query || '';
     if (!editable()) return false;
     controller = new AbortController(); const signal = controller.signal; busy = true; refresh();
     return run(async () => {
       try {
-        const value = await search(term, targetPage, signal);
+        const value = await search(term, more, signal);
         if (epoch !== revision || !editable()) return false;
         commit(value); page = value; activeId = '';
       } catch (error) {
@@ -59,7 +58,7 @@ export function createExpenseSupplierPicker({rows, selectedId, eligibility, edit
   }
   function filter(element, event) {
     if (!editable()) return false;
-    cancel(); query = element.value; activeId = ''; page = null; invalidateSelection();
+    cancel(); query = element.value; activeId = ''; page = null; limit = 50; invalidateSelection();
     host()?.classList.add('open'); element.setAttribute('aria-expanded', 'true'); refresh();
     // Always search the directory as well: the initial list is intentionally paged.
     if (!event?.isComposing) timer = setTimeout(() => remote(), 300);
@@ -101,7 +100,10 @@ export function createExpenseSupplierPicker({rows, selectedId, eligibility, edit
   }
   function handle(element, event) {
     if (element.dataset.expensePicker === 'choose') return pick(element.dataset.expenseSupplier);
-    if (element.dataset.expensePicker === 'page') return remote((page?.page || 0) + Number(element.dataset.expenseStep));
+    if (element.dataset.expensePicker === 'more') {
+      if (matching().length > limit) {limit += 50; refresh(); return true;}
+      return remote(true);
+    }
     if (event?.type === 'keydown') return keyboard(element, event);
     return event?.type === 'input' ? filter(element, event) : open();
   }

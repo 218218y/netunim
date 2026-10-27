@@ -16,13 +16,22 @@ FLOW = r"""(async()=>{
  const intent={number:'RECOVERED-123',documentType:305,date:'2026-09-20',reportingDate:'2026-10-01',supplierName:'ספק מהבקשה המקורית',amount:118,vat:18};
  const requests=[], capture=()=>{const saved=owner;return()=>check(saved===owner,'account changed')};
  const supplier={id:id(2),name:'ספק בדיקה <script>',taxId:'123456789',active:true,country:'IL'};
- const expense={id:id(3),kind:'expense',status:10,supplierId:id(2),sourceDocumentDate:'2026-10-20',pcnClassification:'T',classification:{id:id(4),title:'ציוד משרד',vat:100,income:100}};
+ const expense={id:id(3),kind:'expense',status:10,supplierId:id(2),name:supplier.name,number:'HISTORY-1',grossCents:11800,reportingDate:'2026-10-01',sourceDocumentDate:'2026-10-20',pcnClassification:'T',classification:{id:id(4),title:'ציוד משרד',vat:100,income:100}};
  let catalogExpense=expense,directoryHidden=false,uploadEnabled=true,statusUnavailable=false,serverFileState='not_started';const confirmations=[];
+ let historyItems=[expense],historyUnavailable=false;
  const paged=items=>({ok:true,version:1,environment,page:0,pageSize:50,total:items.length,pages:items.length?1:0,items});
  const respond=async(action,body,assertCurrent)=>{
   assertCurrent();requests.push({action,body});if(held&&action==='suppliers')await held;
   if(action==='capabilities')return {ok:true,version:1,environment,create:true,upload:uploadEnabled};
-  if(action==='suppliers')return paged(body.name==='missing'||directoryHidden?[]:[supplier]);if(action==='expenses')return paged([catalogExpense]);
+  if(action==='suppliers')return paged(body.name==='missing'||directoryHidden?[]:[supplier]);
+  if(action==='expenses'){
+   if(body.fromDate==='2026-09-01'&&body.toDate==='2026-10-01'){
+    if(historyUnavailable)throw Error('history unavailable');
+    return {...paged(historyItems.slice(body.page*50,body.page*50+50)),page:body.page,total:historyItems.length,pages:Math.ceil(historyItems.length/50)};
+   }
+   if(body.fromDate==='2026-07-01'&&body.toDate==='2026-08-01')return paged([{...expense,id:id(500),number:'OLD-PERIOD',reportingDate:'2026-08-01',sourceDocumentDate:'2026-06-05'}]);
+   return paged([catalogExpense]);
+  }
   if(action==='get_supplier')return {ok:true,version:1,environment,item:supplier};
   if(action==='get_expense')return {ok:true,version:1,environment,item:{...expense,id:id(30)}};
   if(action==='create'){posts++;check(body.expense.vat==='160.00','manual VAT changed');return {ok:true,state:'created',verified:true,expenseId:id(8),fileLinked:false};}
@@ -49,14 +58,29 @@ FLOW = r"""(async()=>{
  bindActionEvents(fixture,new Proxy({}, {get:(_,name)=>(...args)=>uiFeature.actions[name]?.(...args)}));
  for(const name of ['click','input','change','keydown','drop','dragover','paste'])fixture.addEventListener(name,event=>event.stopPropagation());
  const click=name=>{const element=fixture.querySelector('[data-action="morning-expense-'+name+'"], [data-expense-command="'+name+'"]');check(element,'missing '+name);element.click()};
- const settle=()=>uiFeature.runtime.drain();click('toggle');click('load');await settle();
+ const settle=()=>uiFeature.runtime.drain();click('toggle');await settle();
  check(fixture.querySelectorAll('[role="option"]').length===1,'suppliers missing');check(!fixture.querySelector('script'),'unescaped supplier');
  const field=(name,value,type='input')=>{const element=fixture.querySelector('[data-expense-field="'+name+'"]');check(element,'missing '+name);if(element.type==='checkbox')element.checked=value===true;else element.value=value;element.dispatchEvent(new Event(type,{bubbles:true}));return element};
  check(fixture.querySelector('[data-expense-field="reportingPeriod"]').value==='2026-09','bimonth default missing');
  field('date','2026-09-20','change');check(fixture.querySelector('[data-expense-field="reportingDate"]').value==='2026-09-01','September reporting month changed');
  field('date','2026-10-20','change');check(fixture.querySelector('[data-expense-field="reportingDate"]').value==='2026-10-01','October reporting month changed');
  field('supplierId',id(2),'change');check(fixture.querySelector('[data-expense-field="classificationExpenseId"]').value===id(3),'last category missing');
- field('historyYear','2015','change');click('classification-year');await settle();check(requests.at(-1).body.fromDate==='2015-01-01'&&requests.at(-1).body.toDate==='2015-12-01','historical category year unavailable');
+ check(!fixture.querySelector('[data-expense-field="historyYear"]')&&!fixture.querySelector('[data-expense-command="classification-year"]'),'removed classification controls remain');
+ check(fixture.querySelector('[data-expense-history]').textContent.includes('HISTORY-1'),'history did not load automatically');
+ check(!fixture.querySelector('[data-expense-command="next"]'),'new intake offers a redundant reset button');
+ historyItems=Array.from({length:55},(_,index)=>({...expense,id:id(100+index),number:'HISTORY-'+index,sourceDocumentDate:index===54?'2026-10-26':'2026-08-01'}));
+ const editing=field('number','preserved');editing.focus();
+ await uiFeature.actions['morning-expense-command']({dataset:{expenseCommand:'history-refresh'}});await settle();
+ check(editing.isConnected&&document.activeElement===editing&&editing.value==='preserved','history refresh replaced or blurred the intake');
+ const historyRows=()=>[...fixture.querySelectorAll('[data-expense-history-id]')];
+ check(historyRows().length===20&&historyRows()[0].textContent.includes('HISTORY-54'),'history sorted API pages separately or did not limit the first display');
+ const historyList=fixture.querySelector('.morning-expense-history-list');check(historyList.scrollHeight>historyList.clientHeight,'history is not scrollable');historyList.scrollTop=historyList.scrollHeight;const historyTop=historyList.scrollTop;
+ click('history-more');await settle();check(historyRows().length===40,'history did not reveal the next 20 rows');check(Math.abs(fixture.querySelector('.morning-expense-history-list').scrollTop-historyTop)<2,'history pagination reset its scroll position');
+ click('history-more');await settle();check(historyRows().length===55,'history lost the last rows in its reporting period');
+ click('history-more');await settle();check(historyRows().length===56&&historyRows().at(-1).textContent.includes('OLD-PERIOD'),'history did not load the previous reporting period');
+ check(fixture.querySelectorAll('.morning-expense-history-period h3').length===2,'history failed to separate reporting periods');
+ historyUnavailable=true;click('history-refresh');await settle();check(fixture.querySelector('[data-expense-history]').textContent.includes('לא ניתן להשלים')&&fixture.querySelector('[data-expense-field="number"]').value==='preserved','history error erased intake data');
+ historyUnavailable=false;historyItems=[expense];click('history-refresh');await settle();
  field('supplierQuery','123456789');await new Promise(resolve=>setTimeout(resolve,350));await settle();check(requests.at(-1).body.taxId==='123456789','tax search not passed to provider');
  field('supplierId',id(2),'change');click('favorite');field('supplierQuery','missing');await new Promise(resolve=>setTimeout(resolve,350));await settle();check(!fixture.querySelector('[data-expense-field="supplierId"]').value,'unselected search text retained a supplier identity');
  click('use-favorite');check(fixture.querySelector('[data-expense-field="supplierId"]').value===id(2),'favorite did not restore supplier');
@@ -89,12 +113,12 @@ FLOW = r"""(async()=>{
  click('next');check(fixture.querySelector('.morning-expense-source>b').textContent==='second.png','queue did not advance');check(fixture.querySelector('[data-expense-field="supplierId"]').value===id(2),'supplier default lost');
  const preferenceText=localStorage.getItem('morningExpensePreferences:'+environment+':'+owner);check(preferenceText&&!preferenceText.includes(supplier.name)&&!preferenceText.includes(supplier.taxId)&&!preferenceText.includes('000123'),'preferences leaked invoice or supplier data');
  uiFeature.runtime.dispose();uiFeature=createMorningExpenseIntake(ports);fixture.innerHTML=uiFeature.markup();directoryHidden=true;catalogExpense={...expense,id:id(40),classification:{...expense.classification,id:id(44),title:'סיווג אחר'}};
- click('toggle');click('load');await settle();check(fixture.querySelector('[data-expense-command="use-favorite"]'),'favorite did not survive reopening or canonical lookup');
+ click('toggle');await settle();check(fixture.querySelector('[data-expense-command="use-favorite"]'),'favorite did not survive reopening or canonical lookup');
  field('supplierId',id(2),'change');await settle();check(fixture.querySelector('[data-expense-field="classificationExpenseId"]').value===id(30),'saved category outside the history page was not revalidated');directoryHidden=false;
  // Account change while the approval dialog is open must prevent dispatch entirely.
  field('number','cancelled');field('net','1000.00');field('vat','160.00');let releaseConfirm;confirmWait=new Promise(resolve=>releaseConfirm=resolve);
  const saving=uiFeature.actions['morning-expense-save']();await new Promise(resolve=>setTimeout(resolve,0));owner=id(9);listener();releaseConfirm(true);await saving;confirmWait=null;check(posts===1,'stale confirmation dispatched');owner=id(1);listener();
- localStorage.setItem('morningExpenseOperation:'+owner,recovery);uiFeature.runtime.dispose();uiFeature=createMorningExpenseIntake(ports);fixture.innerHTML=uiFeature.markup();click('toggle');click('load');await settle();
+ localStorage.setItem('morningExpenseOperation:'+owner,recovery);uiFeature.runtime.dispose();uiFeature=createMorningExpenseIntake(ports);fixture.innerHTML=uiFeature.markup();click('toggle');await settle();
  check(!fixture.querySelector('[data-action="morning-expense-save"]'),'reload enabled blind replay');click('status');await settle();check(posts===1,'recovery created another expense');
  check(fixture.querySelector('[data-expense-receipt]').textContent.includes('RECOVERED-123'),'recovered operation details missing');
  check(!fixture.querySelector('[data-expense-field="number"]'),'recovery displayed an empty intake form');
