@@ -18,7 +18,9 @@ export async function expenseNumberPolicy(taxId,number,pcn,profiles=INVOICE_SUPP
 }
 export async function findExpenseDuplicate(request,payload,{profiles}={}) {
   const policy=await expenseNumberPolicy(payload.supplier.taxId,payload.number,payload.pcnClassification,profiles);
-  const supplierTax=new Map(),checked=new Set();
+  const supplierTax=new Map(),checked=new Set();let detailReads=0;
+  const relevant=item=>item.status!==100&&policy.canonical(item.number)===policy.canonical(payload.number)&&item.type===payload.documentType&&
+    (!item.sourceDocumentDate||item.sourceDocumentDate.slice(0,4)===payload.date.slice(0,4));
   for(const number of policy.searches){
     let pages=1,total=null;const seen=new Set();
     for(let page=0;page<pages;page++){
@@ -26,10 +28,18 @@ export async function findExpenseDuplicate(request,payload,{profiles}={}) {
       const found=expensePage(raw,page,expenseRecord);pages=found.pages;
       if(pages>20||total!==null&&total!==found.total||found.items.some(row=>seen.has(row.id)))throw Error('morning_expense_duplicate_check_incomplete');
       total=found.total;
-      for(const item of found.items){
+      for(let item of found.items){
         seen.add(item.id);if(checked.has(item.id))continue;checked.add(item.id);
-        if(item.status===100||policy.canonical(item.number)!==policy.canonical(payload.number)||item.type!==payload.documentType||
-          item.sourceDocumentDate&&item.sourceDocumentDate.slice(0,4)!==payload.date.slice(0,4))continue;
+        if(!relevant(item))continue;
+        // Production search omits both supplier ID and tax ID for API-created
+        // snapshots. Resolve the canonical expense before declaring a match or
+        // blocking an unrelated issuer with the same document number.
+        if(!item.supplierTaxId||!item.sourceDocumentDate||item.grossCents===null||item.vatCents===null){
+          if(++detailReads>20)throw Error('morning_expense_duplicate_check_incomplete');
+          const full=expenseRecord(await request('/expenses/'+item.id,{method:'GET'}));
+          if(full.id!==item.id)throw Error('morning_expense_duplicate_check_incomplete');item=full;
+          if(!relevant(item))continue;
+        }
         let tax=item.supplierTaxId;
         if(!tax&&expenseUuid(item.supplierId)){
           if(!supplierTax.has(item.supplierId)){
