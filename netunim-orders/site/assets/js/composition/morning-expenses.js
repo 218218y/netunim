@@ -7,5 +7,6 @@ export function createFinanceMorningExpenses({auth, morningOperationScope, confi
   return createMorningExpenseIntake({request:createExpenseRequest({supaFetch:(...args) => auth.supaFetch(...args)}),
     captureRead:() => morningOperationScope.captureRead(), captureWrite:() => morningOperationScope.capture(),
     accountId:() => auth.getAccountScope()?.owner, subscribeAccountScope:listener => auth.subscribeAccountScope(listener),
-    confirmDialog, dateEditorMarkup, files:{validate:validateExpenseFile, upload:uploadExpenseFile}, isActive, onBack:back});
+    confirmDialog, dateEditorMarkup, files:{validate:validateExpenseFile, upload:uploadExpenseFile,
+      extract:async(file,options)=>(await import('../domains/finance/invoice-pdf.js')).extractInvoicePdf(file,options)}, isActive, onBack:back});
 }
