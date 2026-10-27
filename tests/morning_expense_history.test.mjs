@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {expenseBimonth} from '../netunim-orders/site/assets/js/core/morning-report-period.js';
-import {expenseHistoryRows, readExpenseHistoryPeriod} from '../netunim-orders/site/assets/js/domains/finance/morning-expense-history.js';
+import {expenseHistoryRows, readExpenseHistoryPeriod, createExpenseHistory} from '../netunim-orders/site/assets/js/domains/finance/morning-expense-history.js';
 import {searchExpenseSuppliers} from '../netunim-orders/site/assets/js/domains/finance/morning-expense-catalog.js';
 import {expenseTableTotals, expenseTableRow} from '../netunim-orders/site/assets/js/domains/finance/morning-expense-table.js';
 import {createExpenseRecent, readRecentExpenses, recentExpenseRows} from '../netunim-orders/site/assets/js/domains/finance/morning-expense-recent.js';
@@ -129,4 +129,16 @@ test('large reporting periods stop before unbounded reads or partial totals', as
   let calls = 0;
   await assert.rejects(readExpenseHistoryPeriod(async () => {calls++; return paged(all.slice(0, 50), 0, all);}, caps, period, () => {}), /1,000/);
   assert.equal(calls, 1);
+});
+
+test('an empty history viewport pauses after one year instead of automatically scanning to 2010', async () => {
+  globalThis.document = {querySelector:() => null};
+  let calls = 0;
+  const history = createExpenseHistory({request:async () => {calls++; return paged([]);}, capabilities:() => caps,
+    capture:() => () => {}, run:work => work(), todayISO:() => '2026-10-27'});
+  await history.more(); assert.equal(calls, 6);
+  assert.ok(!history.markup().includes('data-expense-history-more'));
+  assert.ok(history.markup().includes('בדיקת שנה קודמת'));
+  await history.more(); assert.equal(calls, 12);
+  history.reset(); assert.ok(!history.markup().includes('בדיקת שנה קודמת'));
 });
