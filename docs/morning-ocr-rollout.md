@@ -6,6 +6,8 @@ Implementation date: 2026-10-27. API findings and provider questions: [contract]
 
 The existing expense intake can upload its selected PDF to Morning OCR, show durable status, verify the source bytes, and fill the existing review form. The original preview and file queue remain available. No OCR text, invoice fields, file name or hash is persisted in browser storage: recovery retains only the version, application owner, environment and operation UUID. Data is fetched again from the server after reopening.
 
+Recovery restores this pointer before any history/status request. A failed OCR list, failed status read or older service cannot hide an unresolved operation and reopen ordinary expense creation. Optional OCR history failures do not interrupt manual intake when no active OCR pointer exists.
+
 The history reader also pauses after checking one empty year instead of letting an intersecting empty viewport automatically scan all periods back to 2010. Continuing older empty periods requires an explicit request. If a manual expense recovery and OCR recovery coexist, deferring OCR preserves the manual operation and its current source selection.
 
 The active OCR operation blocks both the ordinary save button and direct/keyboard save commands. Editing suggested values does not update a Morning draft. The UI explains that final edits and approval must be completed in Morning. Explicitly deferring a document records it as pending, advances the local queue and clears all invoice values from the next form. The latest 20 operations can be reopened from server history; knowing the operation UUID also permits recovery of older records. A known file restores its original owner-scoped operation instead of receiving a second upload form.

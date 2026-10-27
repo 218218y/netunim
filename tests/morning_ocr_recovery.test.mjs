@@ -30,3 +30,23 @@ test('failure to persist the OCR recovery pointer prevents every provider reques
     confirmDialog:async()=>true,apply:()=>{},advance:()=>{},busy:()=>false,canStart:()=>true,request:()=>assert.fail('request preceded persistence')});
   await assert.rejects(review.start(),/storage unavailable/);
 });
+
+test('list/status failure and an older service cannot hide an active OCR pointer on reopening', async () => {
+  for (const supported of [true,false]) {
+    const operationId='aaaaaaaa-aaaa-4aaa-aaaa-000000000002'; let calls=0;
+    globalThis.localStorage={getItem:()=>JSON.stringify({version:1,owner,environment:'sandbox',operationId})};
+    const review=createExpenseOcrReview({run:work=>work(),capture:()=>()=>{},capabilities:()=>({environment:'sandbox',ocr:false,ocrRecovery:supported}),accountId:()=>owner,
+      selected:()=>null,files:{},confirmDialog:async()=>true,apply:()=>{},advance:()=>{},busy:()=>false,canStart:()=>true,
+      request:async()=>{calls++;throw Error('offline');}});
+    await review.initialize(()=>{});
+    assert.equal(review.active(),true); assert.ok(review.markup().includes(operationId)); assert.equal(calls,supported?2:0);
+  }
+});
+
+test('optional OCR history failure leaves manual intake independent when there is no recovery pointer', async () => {
+  globalThis.localStorage={getItem:()=>null};
+  const review=createExpenseOcrReview({run:work=>work(),capture:()=>()=>{},capabilities:()=>({environment:'sandbox',ocrRecovery:true}),accountId:()=>owner,
+    selected:()=>null,files:{},confirmDialog:async()=>true,apply:()=>{},advance:()=>{},busy:()=>false,canStart:()=>true,
+    request:async()=>{throw Error('OCR history unavailable');}});
+  await review.initialize(()=>{}); assert.equal(review.active(),false);
+});

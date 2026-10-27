@@ -24,14 +24,24 @@ export function createExpenseOcrReview({request, capture, run, capabilities, acc
     }
   }
   async function initialize(check) {
-    if (!capabilities()?.ocrRecovery) return;
-    const list = await call('ocr_list', {}, check); check(); pending = Array.isArray(list.items) ? list.items : [];
+    // Restore the recovery boundary BEFORE any network request. A failed list
+    // must never hide an unresolved OCR operation and reopen ordinary creation.
     if (!operationId) {
       let saved;
       try {saved = JSON.parse(localStorage.getItem(key()) || 'null');} catch { /* no valid pointer */ }
       if (saved?.version === 1 && saved.owner === accountId() && saved.environment === capabilities().environment && uuid(saved.operationId)) operationId = saved.operationId;
     }
-    if (operationId) await readStatus(check);
+    if (!capabilities()?.ocrRecovery) {
+      if (operationId) message = 'נמצאה סריקה קודמת. נדרשת גרסת שירות התומכת בשחזור לפני המשך הקליטה.';
+      return;
+    }
+    try {const list = await call('ocr_list', {}, check); check(); pending = Array.isArray(list.items) ? list.items : [];}
+    catch {check(); message = 'רשימת הסריקות אינה זמינה כעת. אפשר לנסות שוב ברענון; מזהה פעיל נשמר לשחזור.';}
+    if (operationId) {
+      item = null;
+      try {await readStatus(check);}
+      catch {check(); message = 'לא ניתן לאמת כעת את הסריקה הקודמת. מזהה הפעולה נשמר ואין ליצור ממנה הוצאה נפרדת.';}
+    }
   }
   function start() {
     return run(async () => {
@@ -87,7 +97,7 @@ export function createExpenseOcrReview({request, capture, run, capabilities, acc
     });
   }
   function markup() {
-    if (!capabilities()?.ocr && !capabilities()?.ocrRecovery) return '';
+    if (!capabilities()?.ocr && !capabilities()?.ocrRecovery && !operationId) return '';
     const button = (command, label, disabled) => `<button type="button" class="btn" data-action="morning-expense-command" data-expense-command="ocr-${command}" ${disabled ? 'disabled' : ''}>${label}</button>`;
     return `<section class="morning-expense-operation" data-expense-ocr aria-label="סריקת מסמכי מקור">
       <b>סריקה באמצעות Morning · אישור סופי במורנינג</b>

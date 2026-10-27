@@ -4,8 +4,9 @@ from runtime_morning_expenses import FLOW
 
 PREFIX = FLOW[:FLOW.index(' const settle=')]
 PREFIX = PREFIX.replace('create:true,upload:uploadEnabled', 'create:true,upload:uploadEnabled,ocr:true,ocrRecovery:true')
-PREFIX = PREFIX.replace(' const respond=async', " let ocrOperation='',ocrHash='',ocrSize=0; const ocrBase=()=>({operationId:ocrOperation,approvalVerified:false,parsingVerified:false,fileSha256:ocrHash,fileSize:ocrSize});\n const respond=async")
+PREFIX = PREFIX.replace(' const respond=async', " let ocrOperation='',ocrHash='',ocrSize=0,ocrOffline=false; const ocrBase=()=>({operationId:ocrOperation,approvalVerified:false,parsingVerified:false,fileSha256:ocrHash,fileSize:ocrSize});\n const respond=async")
 PREFIX = PREFIX.replace("  throw Error('unexpected '+action);", r"""
+  if(ocrOffline&&['ocr_list','ocr_status'].includes(action))throw Error('OCR offline during reload');
   if(action==='ocr_list')return {items:ocrOperation?[{...ocrBase(),state:'review_required'}]:[]};
   if(action==='ocr_prepare'){ocrOperation=body.operationId;ocrHash=body.sha256;ocrSize=body.size;return {...ocrBase(),state:'reserved'}};
   if(action==='ocr_ticket')return {...ocrBase(),state:'ticket_issued',url:'https://s3.eu-west-1.amazonaws.com/sandbox-file-upload-service-uploaded',maxFileSize:20971520,fields:{key:'synthetic',Policy:'signed'},filename:'netunim-ocr-'+ocrOperation+'.pdf',expiresAt:Date.now()+55000};
@@ -41,9 +42,11 @@ SCENARIO = PREFIX + r"""
  fixture.querySelector('[data-expense-command="choose-file"][data-expense-index="1"]').click();await settle();
  await uiFeature.actions['morning-expense-save']();await settle();check(posts===0,'keyboard/command bypassed OCR duplicate protection');
  const first=ocrOperation;
- uiFeature.runtime.dispose();uiFeature=createMorningExpenseIntake(ports);fixture.innerHTML=uiFeature.markup();click('toggle');await settle();
+ ocrOffline=true;uiFeature.runtime.dispose();uiFeature=createMorningExpenseIntake(ports);fixture.innerHTML=uiFeature.markup();click('toggle');await settle();
  check(fixture.querySelector('[data-expense-ocr]').textContent.includes(first),'OCR did not recover after reopening');
+ check(fixture.querySelector('[data-action="morning-expense-save"]').disabled,'OCR lookup failure reopened ordinary creation');
  check(uploads===1&&posts===0,'recovery replayed upload or created expense');
+ ocrOffline=false;click('ocr-status');await settle();
  click('ocr-fill');await settle();check(value('number')==='000902727','recovered OCR could not refill suggestions');
  click('ocr-defer');await settle();check(!localStorage.getItem(recoveryKey),'explicit pending did not clear active recovery pointer');
  check(value('number')===''&&value('vat')==='','deferred OCR values leaked into the next manual invoice');
