@@ -142,7 +142,58 @@ P_FLOW = FLOW[:FLOW.index(" const period=")].replace('pcnP:false', 'pcnP:true').
  finance.runtime.dispose();return {posts,protectedIdentity:true,manualVat:true,canonicalNumber:true};
 })()"""
 
+LAYOUT_ASSERTIONS = r"""(async()=>{
+ await document.fonts.ready;
+ const check=(value,message)=>{if(!value)throw Error(message+' at '+innerWidth+'px')};
+ const bounds=element=>element.getBoundingClientRect();
+ const inside=(element,parent,message)=>{
+  const box=bounds(element),limit=bounds(parent);
+  check(box.width>0&&box.left>=limit.left-1&&box.right<=limit.right+1,message);
+ };
+ const tables=[...document.querySelectorAll('.morning-expense-table')];
+ check(tables.length===2,'recent/reporting tables missing');
+ for(const table of tables){
+  inside(table,table.parentElement,'expense table clipped by its section');
+  check(table.scrollWidth<=table.clientWidth+1,'expense table content overflows');
+  check(getComputedStyle(table.parentElement).overflowY==='visible','expense list has a separate vertical scroll');
+  for(const cell of table.querySelectorAll('th,td')){
+   if(cell.getClientRects().length)inside(cell,table,'expense column clipped');
+  }
+  for(const amount of table.querySelectorAll('td:nth-last-child(-n+2) bdi'))inside(amount,amount.closest('td'),'expense amount clipped');
+ }
+ const input=document.querySelector('#morningExpenseSupplier'),favorite=document.querySelector('[data-expense-command="favorite"]');
+ const field=bounds(input),button=bounds(favorite),row=input.closest('.morning-expense-supplier-row');
+ check(Math.abs(field.bottom-button.bottom)<1&&button.right<=field.left,'favorite is not on the left of the supplier in the same row');
+ inside(input,row,'supplier input clipped');inside(favorite,row,'favorite button clipped');
+ return {width:innerWidth,tables:tables.map(table=>bounds(table).width)};
+})()"""
+
+
+def verify_layout():
+    # Use the real lazy Finance composition and styles. Hidden outer overflow
+    # masks this regression from document.scrollWidth-only checks.
+    setup = FLOW[:FLOW.index(" click('back')")] + ' return true;})()'
+    setup = setup.replace('grossCents:11800,', 'grossCents:2758250,vatCents:420750,')
+    with BrowserSession(ROOT/'netunim-orders/site', 'morning-expense-layout') as browser:
+        browser.call('Emulation.setDeviceMetricsOverride', {'width':1440,'height':1100,'deviceScaleFactor':1,'mobile':False})
+        browser.evaluate(setup, timeout=45)
+        for favorite in [False, True]:
+            if favorite:
+                browser.evaluate(r"""(async()=>{
+                 const supplier=document.querySelector('[data-expense-field="supplierId"]');
+                 supplier.value='aaaaaaaa-aaaa-4aaa-aaaa-000000000002';supplier.dispatchEvent(new Event('change',{bubbles:true}));
+                 await finance.runtime.drain();document.querySelector('[data-expense-command="favorite"]').click();await finance.runtime.drain();
+                 if(!document.querySelector('[data-expense-command="use-favorite"]'))throw Error('favorite was not saved');
+                })()""")
+            for width in [1920,1440,1280,1025,1024,801,800,390,320]:
+                browser.call('Emulation.setDeviceMetricsOverride', {'width':width,'height':1100,'deviceScaleFactor':1,'mobile':width<800})
+                result = browser.evaluate(LAYOUT_ASSERTIONS)
+                print('PASS expense table bounds, amounts and supplier/favorite row:', json.dumps({'favorite':favorite, **result}), flush=True)
+        assert not browser.drain_serious_errors()
+
+
 if __name__=='__main__':
+    verify_layout()
     for width in [1440,390]:
         with BrowserSession(ROOT/'netunim-orders/site',f'morning-expense-composition-{width}') as browser:
             browser.call('Emulation.setDeviceMetricsOverride',{'width':width,'height':1100,'deviceScaleFactor':1,'mobile':width<800})

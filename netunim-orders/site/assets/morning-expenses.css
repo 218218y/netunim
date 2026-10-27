@@ -11,6 +11,7 @@
 .morning-expense-date{display:flex;flex-direction:column;gap:7px;font-size:14px;font-weight:600}
 .morning-expense-date fieldset{border:0;padding:0;margin:0;min-width:0}
 .morning-expense-supplier{position:relative;min-width:0}
+.morning-expense-supplier-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:end}.morning-expense-supplier-field{display:flex;flex-direction:column;gap:7px;min-width:0}.morning-expense-supplier-row>.btn{min-height:42px}
 .morning-expense-supplier-panel{display:none;width:min(520px,calc(100vw - 32px));max-height:340px;padding:8px;border:1px solid #bfc6c9;border-radius:8px;background:var(--surface,#fff);color:var(--text,#222);box-shadow:0 8px 24px #0002;direction:rtl}
 .morning-expense-supplier.open>.morning-expense-supplier-panel{display:block;position:absolute;z-index:20;overflow-y:auto}
 .morning-expense-supplier-panel [role=listbox]{display:flex;flex-direction:column;gap:3px}
@@ -25,16 +26,18 @@
 .morning-expense-classification{align-items:end}.morning-expense-classification>.btn{min-height:42px}
 .morning-expense-history,.morning-expense-recent{margin-top:28px;padding-top:20px;border-top:1px solid var(--border,#ddd);min-width:0}
 .morning-expense-history-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.morning-expense-history h2,.morning-expense-recent h2{font-size:20px;margin:0}.morning-expense-history>p,.morning-expense-recent>p{font-size:14px;color:#505f64}
-.morning-expense-table{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed;color:#164a56;font-size:14px;text-align:right}
+/* Opt out of the app-wide ledger minimum, including the mobile card layout. */
+.morning-expense-table{width:100%;min-width:0;max-width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed;color:#164a56;font-size:14px;text-align:right}
 .morning-expense-table th,.morning-expense-table td{padding:16px 12px;border:0;border-bottom:1px solid #eaf0f3;vertical-align:middle;overflow-wrap:anywhere;background:#fff}
 .morning-expense-table td{font-size:15px}
 .morning-expense-table thead th{font-weight:500;background:#f4f6fb;white-space:normal}.morning-expense-table th:nth-child(1){width:9%}.morning-expense-table th:nth-child(2){width:12%}.morning-expense-table th:nth-child(3){width:17%}.morning-expense-table th:nth-child(4){width:20%}.morning-expense-table th:nth-child(5){width:17%}.morning-expense-table th:nth-child(6){width:14%}.morning-expense-table th:nth-child(7){width:11%}
 .morning-expense-table .morning-expense-period-heading>th,.morning-expense-table .morning-expense-period-heading>td{background:#f4f8fa;border-top:18px solid var(--surface,#fff);font-size:17px;font-weight:700}
 .morning-expense-period-heading h3{margin:0;font-size:19px}.morning-expense-period-heading h3 small{display:inline;font-size:13px;font-weight:400}
-.morning-expense-table td:nth-last-child(-n+2),.morning-expense-table thead th:nth-last-child(-n+2){text-align:left;white-space:nowrap;font-variant-numeric:tabular-nums}
+.morning-expense-table td:nth-last-child(-n+2),.morning-expense-table thead th:nth-last-child(-n+2){text-align:left;white-space:normal;font-variant-numeric:tabular-nums}
 .morning-expense-table .morning-expense-gross{color:#e34c75}.morning-expense-table .morning-expense-gross.credit{color:#258369}.morning-expense-description>span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .morning-expense-table-compact td{padding-block:9px;font-size:13px}.morning-expense-table tbody tr:last-child td{border-bottom-color:#dbe6eb}[data-expense-history-more]{height:2px}
-@media(max-width:800px){.morning-expense-reporting{gap:8px}.morning-expense-reporting label{font-size:12px}.morning-expense-reporting select{padding:8px 3px;font-size:12px}.morning-expense-heading{padding:16px 12px}
+@media(max-width:800px){.morning-expense-reporting{gap:8px}.morning-expense-reporting label{font-size:12px}.morning-expense-reporting select{padding:8px 3px;font-size:12px}.morning-expense-heading{padding:16px 12px}}
+@media(max-width:1024px){
 .morning-expense-table,.morning-expense-table tbody{display:block}.morning-expense-table thead{display:none}.morning-expense-table tbody>tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border:1px solid #e3ebef;border-radius:10px;margin:10px 0;overflow:hidden}
 .morning-expense-table td,.morning-expense-table th{display:block;width:auto!important;padding:10px;text-align:right!important;white-space:normal!important;border:0}.morning-expense-table td:before{content:attr(data-label);display:block;font-size:11px;color:#687d85;margin-bottom:5px}.morning-expense-table tr:not(.morning-expense-period-heading)>td:nth-child(3),.morning-expense-table tr:not(.morning-expense-period-heading)>td:nth-child(4),.morning-expense-table tr:not(.morning-expense-period-heading)>td:nth-child(5){grid-column:1/-1}
 .morning-expense-table .morning-expense-period-heading>th{grid-column:1/-1}.morning-expense-table .morning-expense-period-heading>th,.morning-expense-table .morning-expense-period-heading>td{border-top:0;font-size:15px}.morning-expense-description>span{white-space:normal}.morning-expense-period-heading h3{font-size:17px}}
