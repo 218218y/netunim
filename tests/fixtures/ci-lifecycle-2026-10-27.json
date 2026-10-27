@@ -1,0 +1,216 @@
+{
+  "version": 1,
+  "description": "Successful suite completion timings extracted from GitHub Actions logs; latest attempt of each job.",
+  "runs": [
+    {
+      "url": "https://github.com/218218y/netunim/actions/runs/40436972191",
+      "jobs": [
+        {
+          "group": "browser-lifecycle-2",
+          "jobId": 121967916026,
+          "wallSeconds": 798.62,
+          "suiteSeconds": {
+            "runtime_loaded_data.py": 453.12,
+            "runtime_finance_connection_import_ownership.py": 127.88,
+            "runtime_orders_finance_preferences.py": 111.09,
+            "runtime_performance.py": 31.86,
+            "runtime_credit_connection_ownership.py": 33.32,
+            "runtime_bank_snapshot_confirmation.py": 25.85,
+            "runtime_data_integrity.py": 10.48,
+            "runtime_kupa_credit_capability.py": 5.01
+          }
+        },
+        {
+          "group": "browser-lifecycle-4",
+          "jobId": 121967916091,
+          "wallSeconds": 664.87,
+          "suiteSeconds": {
+            "runtime_bank_balance_evidence.py": 201.76,
+            "runtime_kupa_bank_archive_reconciliation.py": 151.88,
+            "runtime_orders_finance_ownership.py": 151.05,
+            "runtime_kupa_bank_connection_ownership.py": 53.33,
+            "runtime_credit_publication.py": 33.4,
+            "runtime_credit_preferences.py": 22.62,
+            "runtime_orders_bank_archive.py": 17.95,
+            "runtime_worker_release_cache.py": 21.1,
+            "runtime_orders_finance_capability.py": 6.42,
+            "runtime_kupa_bank_capability.py": 5.37
+          }
+        },
+        {
+          "group": "browser-lifecycle-3",
+          "jobId": 121967916101,
+          "wallSeconds": 867.16,
+          "suiteSeconds": {
+            "runtime_startup.py": 400.38,
+            "runtime_orders_bank_publication.py": 189.58,
+            "runtime_orders_bank_connection_ownership.py": 86.66,
+            "runtime_pwa.py": 63.97,
+            "runtime_finance_write_confirmation.py": 44.12,
+            "runtime_search_lazy.py": 37.33,
+            "runtime_bank_local_publication.py": 12.45,
+            "runtime_release_compatibility.py": 20.97,
+            "runtime_kupa_bank_snapshot_commands.py": 6.47,
+            "runtime_kupa_checks_ownership.py": 5.22
+          }
+        },
+        {
+          "group": "browser-lifecycle-1",
+          "jobId": 121967916078,
+          "wallSeconds": 629,
+          "suiteSeconds": {
+            "runtime_finance_lease_ownership.py": 261.07,
+            "runtime_finance_lease_confirmation.py": 115.15,
+            "runtime_orders_credit_connection_ownership.py": 72.08,
+            "runtime_credit_operation_ownership.py": 63.16,
+            "runtime_bank_operation_ownership.py": 38.54,
+            "runtime_kupa_bank_archive.py": 26.04,
+            "runtime_finance_automation.py": 20.11,
+            "runtime_document_lazy.py": 21.45,
+            "runtime_security.py": 11.39
+          }
+        }
+      ]
+    },
+    {
+      "url": "https://github.com/218218y/netunim/actions/runs/40392463816",
+      "jobs": [
+        {
+          "group": "browser-lifecycle-4",
+          "jobId": 121834053136,
+          "wallSeconds": 641.53,
+          "suiteSeconds": {
+            "runtime_bank_balance_evidence.py": 178.1,
+            "runtime_kupa_bank_archive_reconciliation.py": 157.25,
+            "runtime_orders_finance_ownership.py": 129.79,
+            "runtime_kupa_bank_connection_ownership.py": 67.03,
+            "runtime_credit_publication.py": 34.98,
+            "runtime_credit_preferences.py": 22.93,
+            "runtime_orders_bank_archive.py": 17.77,
+            "runtime_worker_release_cache.py": 22.32,
+            "runtime_orders_finance_capability.py": 5.92,
+            "runtime_kupa_bank_capability.py": 5.42
+          }
+        },
+        {
+          "group": "browser-lifecycle-1",
+          "jobId": 121834054958,
+          "wallSeconds": 617.48,
+          "suiteSeconds": {
+            "runtime_finance_lease_ownership.py": 247.75,
+            "runtime_finance_lease_confirmation.py": 116.33,
+            "runtime_orders_credit_connection_ownership.py": 67.26,
+            "runtime_credit_operation_ownership.py": 72.88,
+            "runtime_bank_operation_ownership.py": 36.54,
+            "runtime_kupa_bank_archive.py": 25.09,
+            "runtime_finance_automation.py": 19.43,
+            "runtime_document_lazy.py": 21.22,
+            "runtime_security.py": 10.99
+          }
+        },
+        {
+          "group": "browser-lifecycle-2",
+          "jobId": 121834055341,
+          "wallSeconds": 832.15,
+          "suiteSeconds": {
+            "runtime_loaded_data.py": 480.33,
+            "runtime_finance_connection_import_ownership.py": 137.74,
+            "runtime_orders_finance_preferences.py": 103.76,
+            "runtime_performance.py": 33.12,
+            "runtime_credit_connection_ownership.py": 34.92,
+            "runtime_bank_snapshot_confirmation.py": 26.61,
+            "runtime_data_integrity.py": 10.59,
+            "runtime_kupa_credit_capability.py": 5.07
+          }
+        },
+        {
+          "group": "browser-lifecycle-3",
+          "jobId": 121834113390,
+          "wallSeconds": 794.97,
+          "suiteSeconds": {
+            "runtime_startup.py": 376.8,
+            "runtime_orders_bank_publication.py": 166.93,
+            "runtime_orders_bank_connection_ownership.py": 71.01,
+            "runtime_pwa.py": 66.59,
+            "runtime_finance_write_confirmation.py": 36.79,
+            "runtime_search_lazy.py": 35.71,
+            "runtime_bank_local_publication.py": 10.69,
+            "runtime_release_compatibility.py": 20.71,
+            "runtime_kupa_bank_snapshot_commands.py": 5.27,
+            "runtime_kupa_checks_ownership.py": 4.47
+          }
+        }
+      ]
+    },
+    {
+      "url": "https://github.com/218218y/netunim/actions/runs/40391992463",
+      "jobs": [
+        {
+          "group": "browser-lifecycle-4",
+          "jobId": 121815136811,
+          "wallSeconds": 679.29,
+          "suiteSeconds": {
+            "runtime_bank_balance_evidence.py": 186.32,
+            "runtime_kupa_bank_archive_reconciliation.py": 182.88,
+            "runtime_orders_finance_ownership.py": 136.48,
+            "runtime_kupa_bank_connection_ownership.py": 58.99,
+            "runtime_credit_publication.py": 36.59,
+            "runtime_credit_preferences.py": 24.49,
+            "runtime_orders_bank_archive.py": 20.17,
+            "runtime_worker_release_cache.py": 22.11,
+            "runtime_orders_finance_capability.py": 6.13,
+            "runtime_kupa_bank_capability.py": 5.12
+          }
+        },
+        {
+          "group": "browser-lifecycle-1",
+          "jobId": 121815136907,
+          "wallSeconds": 627.5,
+          "suiteSeconds": {
+            "runtime_finance_lease_ownership.py": 273.56,
+            "runtime_finance_lease_confirmation.py": 110.16,
+            "runtime_orders_credit_connection_ownership.py": 66.76,
+            "runtime_credit_operation_ownership.py": 61.13,
+            "runtime_bank_operation_ownership.py": 37.53,
+            "runtime_kupa_bank_archive.py": 25.5,
+            "runtime_finance_automation.py": 19.93,
+            "runtime_document_lazy.py": 21.36,
+            "runtime_security.py": 11.54
+          }
+        },
+        {
+          "group": "browser-lifecycle-3",
+          "jobId": 121815136674,
+          "wallSeconds": 851.57,
+          "suiteSeconds": {
+            "runtime_startup.py": 396.79,
+            "runtime_orders_bank_publication.py": 177.86,
+            "runtime_orders_bank_connection_ownership.py": 82.05,
+            "runtime_pwa.py": 69.31,
+            "runtime_finance_write_confirmation.py": 41.9,
+            "runtime_search_lazy.py": 37.08,
+            "runtime_bank_local_publication.py": 12.65,
+            "runtime_release_compatibility.py": 22.58,
+            "runtime_kupa_bank_snapshot_commands.py": 6.37,
+            "runtime_kupa_checks_ownership.py": 4.97
+          }
+        },
+        {
+          "group": "browser-lifecycle-2",
+          "jobId": 121815136862,
+          "wallSeconds": 839.85,
+          "suiteSeconds": {
+            "runtime_loaded_data.py": 492.35,
+            "runtime_finance_connection_import_ownership.py": 132.51,
+            "runtime_orders_finance_preferences.py": 104.11,
+            "runtime_performance.py": 32.96,
+            "runtime_credit_connection_ownership.py": 35.27,
+            "runtime_bank_snapshot_confirmation.py": 26.79,
+            "runtime_data_integrity.py": 10.73,
+            "runtime_kupa_credit_capability.py": 5.12
+          }
+        }
+      ]
+    }
+  ]
+}

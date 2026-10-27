@@ -43,13 +43,30 @@ def collect_timings(roots, sources):
             "node_seconds": {name: max(.001, round(statistics.median(values), 3)) for name, values in sorted(nodes.items())}}
 
 
+def merge_timings(previous, fresh):
+    """Refresh a measured subset without discarding other reviewed estimates."""
+    if previous.get("version") != 1:
+        raise ValueError("Unsupported CI timing snapshot version")
+    merged = {**previous, **fresh, "sources": list(dict.fromkeys([*previous["sources"], *fresh["sources"]]))}
+    for kind in ("suite_seconds", "node_seconds"):
+        weights = previous[kind]
+        if not isinstance(weights, dict) or any(not isinstance(name, str) or type(seconds) not in (int, float)
+                                               or not math.isfinite(seconds) or seconds <= 0 for name, seconds in weights.items()):
+            raise ValueError(f"Invalid existing CI timing estimates: {kind}")
+        merged[kind] = dict(sorted({**weights, **fresh[kind]}.items()))
+    return merged
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--report-root", type=Path, action="append", required=True)
     parser.add_argument("--source", action="append", required=True, help="Run URL or description of the measured environment")
     parser.add_argument("--output", type=Path, default=Path(__file__).resolve().parents[1] / "tests/ci_timings.json")
+    parser.add_argument("--merge-existing", action="store_true", help="preserve estimates outside the measured report subset")
     args = parser.parse_args(argv)
     snapshot = collect_timings(args.report_root, args.source)
+    if args.merge_existing:
+        snapshot = merge_timings(json.loads(args.output.read_text(encoding="utf-8")), snapshot)
     args.output.write_text(json.dumps(snapshot, indent=2) + "\n", encoding="utf-8")
     print(f"Wrote {len(snapshot['suite_seconds'])} suite and {len(snapshot['node_seconds'])} Node file estimates to {args.output}")
 

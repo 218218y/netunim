@@ -24,7 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 import github_verification as gate
 import offline_deps
-from update_ci_timings import collect_timings
+from update_ci_timings import collect_timings, merge_timings
 
 
 def successful_fixture():
@@ -550,6 +550,42 @@ with patch.object(h, 'HOST_STATE_ROOT', root / 'host'), \\
             data = collect_timings([root, root / "0"], ["fixture"])
             self.assertEqual(data["suite_seconds"], {"a.py": 14})
             self.assertEqual(data["node_seconds"], {"tests/a.test.mjs": 4})
+
+    def test_partial_timing_refresh_preserves_unmeasured_groups_and_provenance(self):
+        previous = {"version": 1, "sources": ["old-run"], "suite_seconds": {"a.py": 1, "other.py": 10},
+                    "node_seconds": {"tests/existing.test.mjs": 2}}
+        fresh = {"version": 1, "recorded_on": "2026-10-27", "sources": ["new-run"],
+                 "suite_seconds": {"a.py": 5}, "node_seconds": {}}
+        result = merge_timings(previous, fresh)
+        self.assertEqual(result["suite_seconds"], {"a.py": 5, "other.py": 10})
+        self.assertEqual(result["node_seconds"], previous["node_seconds"])
+        self.assertEqual(result["sources"], ["old-run", "new-run"])
+        self.assertEqual(previous["suite_seconds"]["a.py"], 1)
+        with self.assertRaises(ValueError):
+            merge_timings({**previous, "suite_seconds": {"a.py": float("nan")}}, fresh)
+
+    def test_lifecycle_partition_replays_three_recent_github_runs_without_a_slow_shard(self):
+        fixture = json.loads((ROOT / "tests/fixtures/ci-lifecycle-2026-10-27.json").read_text(encoding="utf-8"))
+        parts = [part for name, part in ci_groups().items() if name.startswith("browser-lifecycle-")]
+        inventory = GROUPS["browser-lifecycle"]
+        snapshot = timing_weights("suite_seconds")
+        self.assertEqual(len(parts), 4)
+        self.assertCountEqual(sum(parts, []), inventory)
+        # Replay observations independently of the estimates. Allow runner noise
+        # in individual profiles, while requiring close balance of their medians.
+        samples = {}
+        for run in fixture["runs"]:
+            with self.subTest(run=run["url"]):
+                measured = {suite: seconds for job in run["jobs"] for suite, seconds in job["suiteSeconds"].items()}
+                self.assertCountEqual(measured, inventory)
+                self.assertTrue(all(name in snapshot for name in inventory))
+                for name, seconds in measured.items():
+                    samples.setdefault(name, []).append(seconds)
+                loads = [sum(measured[name] for name in part) for part in parts]
+                self.assertLessEqual(max(loads) / min(loads), 1.15, loads)
+        from statistics import median
+        loads = [sum(median(samples[name]) for name in part) for part in parts]
+        self.assertLessEqual(max(loads) / min(loads), 1.02, loads)
 
     def test_ci_dependency_installs_do_not_restore_cross_run_package_caches(self):
         workflow = (ROOT / '.github/workflows/verify.yml').read_text(encoding='utf8')
