@@ -69,7 +69,10 @@ export function createExpenseUpload({request, ledger, environment, enabled = fal
           if(!review)throw Error('expense_source_review_required');
           if(expense.url){
             const source=await inspectExpenseSource({...row,source_metadata:metadata},expense,environment,{verifySource});
-            if(!source.sourceVerified)throw Error('expense_source_mismatch');
+            if(!source.sourceVerified)return result(source.sourceCheck==='mismatch'?409:503,{
+              code:source.sourceCheck==='mismatch'?'expense_source_mismatch':'expense_source_verification_unavailable',sourceCheck:source.sourceCheck,
+              message:source.sourceCheck==='mismatch'?'הקובץ שנקרא ממורנינג שונה מהמקור שנבחר. לא הוחלף קובץ ולא נשמר שיוך חדש.':
+                'לא ניתן כרגע לקרוא ולאמת את המקור ממורנינג. כשל הורדה אינו מוכיח שהקובץ שגוי; אין להעלות אותו שוב.'});
             const saved=await ledger.fileTransition(user.id,row,{source_metadata:metadata,source_review:review,source_verified_at:new Date(now()).toISOString(),file_state:'file_linked'});
             if(!saved)throw Error('morning_expense_storage_failed');
             return result(200,{...expenseSourceSummary(saved),alreadyLinked:true,fileLinked:true,fileState:'file_linked'});

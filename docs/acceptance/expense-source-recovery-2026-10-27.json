@@ -43,5 +43,28 @@
     "Immutable bound source metadata and malformed metadata rejection",
     "Service-role-only access and function grants"
   ],
+  "productionPreviouslyEnteredSourceProbe": {
+    "canonicalDownloadOrigin": "https://www.greeninvoice.co.il",
+    "path": "/api/v1/expenses/download",
+    "httpStatus": 200,
+    "contentType": "application/pdf",
+    "bytes": 107679,
+    "sha256AndSizeMatchPreviouslyApprovedOriginal": true,
+    "sourceFieldsMatchFinancialIntent": true,
+    "temporaryInspectionFunctionRemoved": true,
+    "financialWrites": 0,
+    "fileUploads": 0,
+    "limitation": "Authenticated read-only inspection of an existing expense. No new business expense was created."
+  },
+  "pdfStress": {
+    "pages": 40,
+    "textItems": 8000,
+    "characters": 425600,
+    "normalElapsedMs": 1257,
+    "cpuThrottle4xElapsedMs": 2537,
+    "maximumTimerGapMsNormal": 36,
+    "maximumTimerGapMsThrottled": 86,
+    "limitation": "Synthetic native Chrome test on this machine; not a guarantee for every device or PDF."
+  },
   "remainingAcceptance": "Reviewed intake of a genuine not-yet-entered Production invoice, followed by readback, source attachment and reporting-period verification. Production OCR approval remains disabled."
 }
