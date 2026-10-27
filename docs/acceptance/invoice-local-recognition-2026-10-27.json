@@ -53,6 +53,17 @@
     "reported": 6
   },
   "acceptanceTotal": 96,
+  "nativeUiReplay": {
+    "files": 115,
+    "recognizedDigital": 110,
+    "canonicalSupplierMatches": 110,
+    "mappedFieldDiscrepancies": 0,
+    "imageOnlyManual": 5,
+    "knownExistingInvoiceBlocked": true,
+    "realFinancialWrites": 0,
+    "realUploads": 0,
+    "provider": "Previously authenticated read-only Morning responses replayed locally; actual pinned PDF core and recognizer"
+  },
   "notes": [
     "Roya raw s-prefix is retained separately; verified prefix stripping preserves leading zeros. One historical Morning record omitted a leading zero; it is a formatting discrepancy, not a normalization rule.",
     "Two training Gaber invoices differ from historical Morning VAT by one cent. Source VAT is preserved; reported records were not changed.",

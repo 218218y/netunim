@@ -97,7 +97,7 @@ export function createExpenseOcrReview({request, capture, run, capabilities, acc
     });
   }
   function markup() {
-    if (!capabilities()?.ocr && !capabilities()?.ocrRecovery && !operationId) return '';
+    if (!capabilities()?.ocr && !operationId && !pending.length) return '';
     const button = (command, label, disabled) => `<button type="button" class="btn" data-action="morning-expense-command" data-expense-command="ocr-${command}" ${disabled ? 'disabled' : ''}>${label}</button>`;
     return `<section class="morning-expense-operation" data-expense-ocr aria-label="סריקת מסמכי מקור">
       <b>סריקה באמצעות Morning · אישור סופי במורנינג</b>

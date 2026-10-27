@@ -75,14 +75,14 @@ export function createExpenseService({request, environment, readIds = () => '', 
     try {
       if (!object(body)) throw new Error('invalid_expense_input');
       const action = body.action;
-      const ocrCommand = ['ocr_prepare','ocr_ticket','ocr_ack','ocr_status','ocr_list','ocr_defer'].includes(action);
+      const ocrCommand = ['ocr_prepare','ocr_ticket','ocr_ack','ocr_status','ocr_list','ocr_defer','ocr_lookup'].includes(action);
       const command = ocrCommand || ['create', 'operation_status', 'reconcile', 'cancel_reserved', 'upload_prepare', 'upload_ticket', 'upload_ack', 'upload_status'].includes(action);
       if ((command || body.expectedEnvironment !== undefined) && body.expectedEnvironment !== environment) return {status:409,
         body:{ok:false, code:'morning_expense_environment_changed', message:'סביבת Morning השתנתה מאז טעינת המסך. יש לרענן לפני המשך הפעולה.'}};
       if (action === 'capabilities') {
         const ready = await writer?.readiness(user) === true;
         return {status:200, body:{ok:true, version:1, environment, read:true, create:ready, upload:uploader?.allowed(user) === true,
-          pcnP:ready && writer?.pcnEnabled?.(user) === true, draftApproval:false, ocr:ocr?.allowed(user) === true, ocrRecovery:ocr?.recoverable?.(user) === true,
+          pcnP:ready && writer?.pcnEnabled?.(user) === true, draftApproval:false, ocr:ocr?.allowed(user) === true, ocrRecovery:ocr?.recoverable?.(user) === true, ocrFileGuard:ocr?.recoverable?.(user) === true,
           classificationSource:'existing_expenses', pSuppliers:writer?.profiles() || []}};
       }
       if (command) {

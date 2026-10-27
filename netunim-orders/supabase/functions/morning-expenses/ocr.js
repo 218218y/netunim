@@ -31,6 +31,13 @@ export function createExpenseOcr({request, ledger, environment, enabled = false,
     let issuing = null;
     try {
       if (action === 'ocr_list') return response(200, {items:(await ledger.list(user.id)).map(summary)});
+      if (action === 'ocr_lookup') {
+        if (typeof body.sha256 !== 'string' || !/^[\da-f]{64}$/.test(body.sha256)) return response(400, {code:'invalid_ocr_input'});
+        const own = await ledger.byFile(user.id, body.sha256);
+        // Cross-owner existence is enough to stop a duplicate. Never disclose
+        // another owner's operation, draft, file metadata or recognized data.
+        return response(200, {hasOcrOperation:!!own || await ledger.hasFile(body.sha256), ...(own ? {operationId:own.operation_id} : {})});
+      }
       if (!expenseUuid(body.operationId)) return response(400, {code:'invalid_ocr_input'});
       let row = await ledger.get(user.id, body.operationId);
       if (action === 'ocr_prepare') {

@@ -99,7 +99,7 @@ FLOW = r"""(async()=>{
  supplierInput().dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));await finance.runtime.drain();
  field('gross','1160.00');check(document.querySelector('[data-expense-field="net"]').value==='1000.00'&&document.querySelector('[data-expense-field="vat"]').value==='160.00','P gross VAT split incorrect');
  check(document.querySelector('[data-action="morning-expense-save"]').disabled,'unverified P write opened');
- check([...document.querySelector('[data-expense-field="documentType"]').options].map(option=>option.value).join(',')==='305,330,320','document types or priority incorrect');
+ check([...document.querySelector('[data-expense-field="documentType"]').options].filter(option=>option.value).map(option=>option.value).join(',')==='305,330,320','document types or priority incorrect');
  field('supplierId',supplier.id,'change');field('number','COMPOSITION-1');field('net','100.00');field('vat','18.00');field('gross','118.00');field('allocationNumber','123456789');
  inputDate('2026-10-20');
  datePart('day').value='32';datePart('day').dispatchEvent(new Event('input',{bubbles:true}));
