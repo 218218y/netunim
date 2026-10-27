@@ -18,9 +18,10 @@ FLOW = r"""(async()=>{
  morningOperationScope.capture()(); // Keep the application's real auth/storage guards.
  const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js'),db=createStorageJournalDb();
  const beforeMain=JSON.stringify(await db.load(owner+':orders')),beforeShared=JSON.stringify(await db.load(owner+':shared-checks'));
- const supplier={id:id(2),name:'ספק מסך הוצאות',taxId:'123456789',country:'IL',active:true};
+ const supplier={id:id(2),name:'ת.ב.י ספק מסך הוצאות',taxId:'123456789',country:'IL',active:true};
  const pSupplier={id:id(20),name:'ספק P לבדיקה',taxId:'123456780',country:'PS',active:true};
- const expense={id:id(3),kind:'expense',status:10,supplierId:supplier.id,supplierTaxId:supplier.taxId,sourceDocumentDate:'2026-10-20',pcnClassification:'T',classification:{id:id(4),title:'קניות סחורה בארץ',vat:100,income:100}};
+ const expense={id:id(3),kind:'expense',status:10,supplierId:supplier.id,name:supplier.name,number:'HISTORY-1',grossCents:11800,supplierTaxId:supplier.taxId,reportingDate:'2026-10-01',sourceDocumentDate:'2026-10-20',createdAt:'2026-10-26T10:00:00.000Z',pcnClassification:'T',classification:{id:id(4),title:'קניות סחורה בארץ',vat:100,income:100}};
+ const accountExpenses=[expense,{...expense,id:id(99),number:'MORNING-EXTERNAL',sourceDocumentDate:'2019-06-01',reportingDate:'2020-01-01',createdAt:'2026-10-27T11:00:00.000Z'}];
  const calls=[],confirmations=[];let posts=0,hold=null,entered=null,operation=null,heldQuery='';
  cloudAuth.supaFetch=async(path,options)=>{
   check(path==='/functions/v1/morning-expenses','wrong expense service');options.assertRequestScope();
@@ -30,13 +31,14 @@ FLOW = r"""(async()=>{
   if(request.action==='capabilities')return Response.json({...base,create:true,upload:true,pcnP:false,draftApproval:false,pSuppliers:[{id:pSupplier.id,taxId:pSupplier.taxId}]});
   check(request.expectedEnvironment==='production','request missing displayed environment');
   if(request.action==='suppliers'||request.action==='expenses'){
-   const items=request.action==='suppliers'?(request.name==='ישן'?[pSupplier]:[supplier,pSupplier]):[expense];
+   const items=request.action==='suppliers'?(request.name==='תבי'?[]:request.name==='ישן'?[pSupplier]:[supplier,pSupplier]):request.fromDate?[expense]:accountExpenses;
    return Response.json({...base,page:0,pageSize:50,total:items.length,pages:1,items});
   }
   if(request.action==='create'){
    posts++;check(request.expense.allocationNumber==='123456789','allocation number lost');check(request.expense.vat==='18.00','manual VAT changed');
    check(request.expense.reportingDate===request.expense.date.slice(0,7)+'-01','reporting month changed');operation=request.operationId;
-   return Response.json({...base,state:'created',verified:true,expenseId:id(8),fileLinked:false});
+   const item={...expense,id:id(8),number:request.expense.number,createdAt:'2026-10-27T12:00:00.000Z'};accountExpenses.unshift(item);
+   return Response.json({...base,state:'created',verified:true,expenseId:id(8),fileLinked:false,item});
   }
   if(request.action==='operation_status'){
    check(request.operationId===operation,'recovery used another operation');
@@ -46,9 +48,20 @@ FLOW = r"""(async()=>{
  };
  uiModal.confirmDialog=async(title,message)=>{confirmations.push({title,message});return true};
  ui.currentView='kupa';ui.kupaSubView='summary';finance.presentation.renderKupa();
- check(document.querySelector('[data-morning-expense-intake]').compareDocumentPosition(document.querySelector('[data-morning-reports]'))&Node.DOCUMENT_POSITION_FOLLOWING,'expense intake is below reports');
+ check(document.querySelector('[data-morning-expense-launcher]').compareDocumentPosition(document.querySelector('[data-morning-reports]'))&Node.DOCUMENT_POSITION_FOLLOWING,'expense intake is below reports');
  check(calls.length===0,'expense panel made eager requests');click('toggle');
- await wait(()=>document.querySelector('[data-expense-command="load"]'));click('load');await finance.runtime.drain();
+ await wait(()=>document.querySelector('[data-expense-field="supplierId"]'));await finance.runtime.drain();
+ check(ui.kupaSubView==='expenses'&&!document.querySelector('[data-morning-reports]')&&!document.querySelector('[data-action="tax-open"]'),'expense page still contains unrelated sections');
+ check(document.querySelector('[data-expense-history]').textContent.includes('HISTORY-1'),'real composition omitted automatic history');
+ check(document.querySelector('[data-expense-recent]').textContent.includes('MORNING-EXTERNAL'),'recent list omitted an expense created elsewhere under another reporting period');
+ click('back');check(ui.kupaSubView==='summary'&&document.querySelector('[data-morning-reports]'),'back did not restore the summary');
+ const requestsBeforeReopen=calls.length;click('toggle');await finance.runtime.drain();check(calls.slice(requestsBeforeReopen).every(request=>request.action==='expenses'&&!request.fromDate),'reopening reloaded a ready catalog');
+ const rect=name=>document.querySelector('[data-expense-field="'+name+'"]').getBoundingClientRect();
+ const liveNumber=document.querySelector('[data-expense-field="number"]');liveNumber.focus();finance.presentation.renderKupa();
+ check(liveNumber.isConnected&&document.activeElement===liveNumber&&ui.kupaSubView==='expenses','Finance publication replaced the expense editor');
+ const reporting=['reportingPeriod','documentType','pcnClassification'].map(rect);
+ check(reporting.every(box=>Math.abs(box.top-reporting[0].top)<2)&&reporting[0].left>reporting[1].left&&reporting[1].left>reporting[2].left,'reporting controls are not one symmetric RTL row');
+ check(Math.abs(rect('description').top-rect('allocationNumber').top)<2,'description/allocation not paired');check(Math.abs(rect('classificationExpenseId').bottom-document.querySelector('[data-expense-command="more-classifications"]').getBoundingClientRect().bottom)<2,'classification controls not paired');
  check(document.querySelector('[data-expense-field="supplierId"]'),'actual app did not expose expense form: '+document.querySelector('[data-expense-message]')?.textContent);
  check(document.querySelector('.morning-expense-notice').textContent.includes('האמיתי'),'real account notice missing');
  const period=document.querySelector('[data-expense-field="reportingPeriod"]');
@@ -65,6 +78,8 @@ FLOW = r"""(async()=>{
  inputDate('2026-08-23');
  check(document.querySelector('[data-expense-field="reportingDate"]').value==='2026-10-01','late-period month not automatic');
  const supplierInput=()=>document.querySelector('#morningExpenseSupplier');
+ supplierInput().click();field('supplierQuery','תבי');await wait(()=>calls.some(request=>request.name==='תבי'));await finance.runtime.drain();
+ check(document.querySelectorAll('[role="option"]').length===1&&document.querySelector('[role="option"]').textContent.includes(supplier.name),'strict remote response erased punctuation-insensitive supplier match');
  let releaseOld,enteredOld;heldQuery='ישן';hold=new Promise(resolve=>releaseOld=resolve);const oldSearch=new Promise(resolve=>enteredOld=resolve);entered=enteredOld;
  supplierInput().click();field('supplierQuery','ישן');await oldSearch;
  field('supplierQuery','מסך');await wait(()=>calls.some(request=>request.name==='מסך'));
@@ -89,6 +104,7 @@ FLOW = r"""(async()=>{
  click('save');await finance.runtime.drain();check(posts===0&&confirmations.length===0,'invalid date reused the previous valid date');inputDate('2026-10-20');
  click('favorite');click('save');await finance.runtime.drain();
  check(posts===1&&confirmations.length===1,'actual app confirmation/save did not execute exactly once');
+ check(document.querySelector('[data-expense-recent]').textContent.includes('COMPOSITION-1'),'actual confirmed intake missing from recent entries');
  check(confirmations[0].title.includes('האמיתי')&&confirmations[0].message.includes(expense.classification.title),'actual confirmation missed account or category');
  const key='morningExpenseOperation:production:'+owner,preference='morningExpensePreferences:production:'+owner;
  check(JSON.parse(localStorage.getItem(key)).operationId===operation,'recovery pointer missing account identity');

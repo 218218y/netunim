@@ -37,8 +37,10 @@ function requireMethods(name, port, methods) {
 function createLazyMorningPanel(kind, ports, notify) {
   let feature = null, flight = null, active = true;
   const reports = kind === 'reports', stem = reports ? 'morning-report' : 'morning-expense', prefix = stem + '-';
-  function markup() {
+  function markup({page = false} = {}) {
+    if (!reports && !page) return `<section class="morning-expense-intake" data-morning-expense-launcher><button type="button" class="morning-expense-trigger" data-action="morning-expense-toggle"><b>קליטת הוצאות ב־Morning</b><span aria-hidden="true">←</span></button></section>`;
     if (feature) return feature.markup();
+    if (!reports && page) return `<section class="morning-expense-intake" data-morning-expense-intake><header class="morning-expense-heading"><h1>קליטת הוצאות ב־Morning</h1><button type="button" class="btn" data-action="morning-expense-back">חזרה למאזן ודוחות</button></header><p class="morning-expense-content" role="status">טוען את מסך ההוצאות…</p></section>`;
     const panel = stem + (reports ? 's' : '-intake');
     return `<section class="${panel}" data-${panel}><div class="${stem}-heading"><button type="button" class="${stem}-trigger" data-action="${prefix}toggle" aria-expanded="false"><span><b>${reports ? 'דוחות מורנינג' : 'קליטת הוצאות ב־Morning'}</b>${reports ? '<small>תקבולים לפי אמצעי תשלום · רווח והפסד · מע״מ</small>' : ''}</span><span aria-hidden="true">⌄</span></button></div></section>`;
   }
@@ -50,11 +52,21 @@ function createLazyMorningPanel(kind, ports, notify) {
     }).finally(() => { flight = null; });
     return flight;
   }
-  const names = (reports ? 'toggle period option load cancel type detail detail-page record export pdf' : 'toggle field save upload files dragover drop keyboard paste command write').split(' ');
+  const names = (reports ? 'toggle period option load cancel type detail detail-page record export pdf' : 'toggle back field save upload files dragover drop keyboard paste command write').split(' ');
   const actions = Object.fromEntries(names.map(name => [prefix + name, (...args) => {
+    if (!active) return false;
+    if (!reports && name === 'back') return active ? ports.back() : false;
+    if (!reports && name === 'toggle') ports.open();
     if (feature) return active ? feature.actions[prefix + name](...args) : false;
     return ensure().then(loaded => active ? loaded?.actions[prefix + name](...args) : false)
-      .catch(() => { if (active) notify('מסך Morning אינו זמין כרגע'); return false; });
+      .catch(() => {
+        if (active) {
+          notify('מסך Morning אינו זמין כרגע');
+          const output = !reports && !feature && document.querySelector('[data-morning-expense-intake] .morning-expense-content');
+          if (output) output.innerHTML = '<p role="alert">לא ניתן לטעון כרגע את מסך ההוצאות.</p><button type="button" class="btn" data-action="morning-expense-toggle">ניסיון נוסף</button>';
+        }
+        return false;
+      });
   }]));
   if (!reports) markMutationActions(actions, {finance:['save', 'upload', 'keyboard', 'write'].map(name => prefix + name)});
   return {markup, actions, runtime:{
@@ -276,6 +288,8 @@ export function createOrdersFinanceCapability({
     const [reports, expenses] = morningOperationScope ? ['reports', 'expenses'].map(kind => createLazyMorningPanel(kind, {
       auth, morningOperationScope, modal:ownedModal.modal, confirmDialog:ownedModal.confirmDialog, toast:notify,
       dateEditorMarkup:date.dateEditorMarkup, isActive:() => !disposed,
+      open:() => {ui.currentView = 'kupa'; ui.kupaSubView = 'expenses'; view.renderKupa({resetScroll:true});},
+      back:() => {ui.kupaSubView = 'summary'; view.renderKupa({resetScroll:true});},
     }, notify)) : [null, null];
     const view = createDomainsFinanceView({
       ui, controller, checksView, dashboardView:dashboard, runFinance, isActive:() => !disposed,
@@ -283,7 +297,7 @@ export function createOrdersFinanceCapability({
       confirmDialog:ownedModal.confirmDialog, dateEditorMarkup:date.dateEditorMarkup,
       downloadBankChequeImage:images.download, openBankMorningDocument,
       morningReportsMarkup:() => reports?.markup() || '',
-      morningExpensesMarkup:() => expenses?.markup() || '',
+      morningExpensesMarkup:options => expenses?.markup(options) || '',
     });
     const importConnections = createFinanceConnectionImportCapability({
       bridge, getCreditProfiles:() => controller.snapshot().creditSync?.profiles || [],

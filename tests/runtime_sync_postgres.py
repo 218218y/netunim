@@ -66,9 +66,22 @@ class SyncBrowser(BrowserSession):
                     body = json.loads(self.rfile.read(int(self.headers.get('Content-Length', '0'))))
                     result = proxy.post(self.path.rsplit('/', 1)[-1], body)
                     if result is None:
+                        # A bare connection reset can make Chrome transparently
+                        # replay the POST and receive its idempotent receipt. Lose
+                        # the ACK body after headers instead, so the caller must
+                        # retain its immutable flight and explicitly reconcile.
                         self.close_connection = True
-                        self.connection.shutdown(socket.SHUT_RDWR)
-                        self.connection.close()
+                        try:
+                            self.send_response(200)
+                            self.send_header('Content-Type', 'application/json')
+                            self.send_header('Content-Length', '1')
+                            self.end_headers()
+                            self.wfile.flush()
+                            self.connection.shutdown(socket.SHUT_RDWR)
+                        except OSError:
+                            pass  # The hard-crash scenario already closed its client.
+                        finally:
+                            self.connection.close()
                         return
                     data = json.dumps(result, ensure_ascii=False).encode()
                     self.send_response(200)
@@ -155,7 +168,10 @@ def run(db, app, shared, index):
                             'p_state': second, 'p_operation_id': 'fixture-B-' + str(index),
                             'p_audit': {}, **intents})['revision'] == 12
         proxy.release.set()
-        assert 'lost' in browser.evaluate('pgLost'), 'proxy did not withhold the first ACK'
+        lost = browser.evaluate('pgLost')
+        assert 'lost' in lost, {'message': 'proxy did not withhold the first ACK', 'response': lost,
+                                'calls': [{'operation': call['operation'], 'revision': call['result'].get('revision')} for call in proxy.calls],
+                                'errors': proxy.errors}
         browser._navigate()
         resume = js("""(async()=>{
           const {createStorageJournal}=await import('./assets/js/shared/storage-journal.js');

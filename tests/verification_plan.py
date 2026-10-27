@@ -62,10 +62,10 @@ RUNTIME_SUITES = [suite for group, suites in GROUPS.items() if group.startswith(
 # deployment authorization. Keep core-only's existing database coverage intact.
 REPAIR_SUITES = [suite for suite in CORE_SUITES if suite not in GROUPS["database"]]
 
-# October 19 recalibration includes loaded-data scenarios previously assigned a
-# median fallback: four lifecycle machines now estimate 265-267s each, versus
-# 289s for UI. Models split discovered files across two machines, each retaining
-# two isolated Node workers. Only checked-in cost estimates influence scheduling.
+# Lifecycle estimates were recalibrated on October 27 from three successful
+# GitHub runs. The fixture replays each measured run against the current split;
+# no previous result is used to skip tests. Models retain two isolated Node
+# workers per machine. Only checked-in cost estimates influence scheduling.
 CI_SHARDS = {"models": 2, "browser-lifecycle": 4, "browser-sync": 2}
 # These short groups share compatible setup and remain below the browser critical
 # path when combined. Only CI placement changes; local selections stay available.

@@ -40,6 +40,47 @@ class RunnerContracts(unittest.TestCase):
         report = json.loads((self.root / "report/results.json").read_text())
         return rc, report
 
+    def test_lost_ack_fixture_sends_headers_but_never_a_complete_receipt(self):
+        from http.client import HTTPConnection, IncompleteRead
+        from types import SimpleNamespace
+        from runtime_sync_postgres import FaultProxy, SyncBrowser
+
+        class Database:
+            def rpc(self, name, body):
+                return {"revision": 11, "operation_id": body["p_operation_id"]}
+
+        (self.root / "site").mkdir()
+        proxy = FaultProxy(Database())
+        proxy.release.set()
+        server = SimpleNamespace(tmp=self.root, proxy=proxy)
+        SyncBrowser._start_server(server)
+        body = json.dumps({"p_operation_id": "immutable-flight"})
+        try:
+            connection = HTTPConnection("127.0.0.1", server.httpd.server_port, timeout=3)
+            try:
+                connection.request("POST", "/rest/v1/rpc/fixture", body, {"Content-Type": "application/json"})
+                response = connection.getresponse()
+                self.assertEqual(response.status, 200)
+                self.assertEqual(response.getheader("Content-Length"), "1")
+                with self.assertRaises(IncompleteRead):
+                    response.read()
+            finally:
+                connection.close()
+            self.assertEqual(len(proxy.calls), 1)
+            # A distinct, explicit replay can receive the existing receipt.
+            connection = HTTPConnection("127.0.0.1", server.httpd.server_port, timeout=3)
+            try:
+                connection.request("POST", "/rest/v1/rpc/fixture", body, {"Content-Type": "application/json"})
+                self.assertEqual(json.loads(connection.getresponse().read())["revision"], 11)
+            finally:
+                connection.close()
+            self.assertEqual([call["operation"] for call in proxy.calls], ["immutable-flight"] * 2)
+            self.assertEqual(proxy.errors, [])
+        finally:
+            server.httpd.shutdown()
+            server.httpd.server_close()
+            server.http_thread.join(timeout=2)
+
     def test_two_real_children_must_meet_before_either_can_finish(self):
         # This cannot pass under a sequential executor, irrespective of machine speed.
         for name, other in (("a", "b"), ("b", "a")):

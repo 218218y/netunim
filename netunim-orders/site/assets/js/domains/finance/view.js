@@ -41,6 +41,7 @@ function creditRowMatchesSearch(row, query) {
 export function createDomainsFinanceView({ runFinance = withFinanceDerivations, ui, controller, checksView, dashboardView, morningReportsMarkup = () => '', morningExpensesMarkup = () => '', mountViewLayout, modal, closeModal, downloadBankChequeImage = async () => null, confirmDialog, dateEditorMarkup, openBankMorningDocument = () => {
 }, isActive = () => true }) {
     function currentSection() {
+        if (ui.kupaSubView === 'expenses') return 'expenses';
         if (!KUPA_SECTIONS.includes(ui.kupaSubView))
             ui.kupaSubView = 'bank';
         return ui.kupaSubView;
@@ -586,6 +587,14 @@ export function createDomainsFinanceView({ runFinance = withFinanceDerivations, 
         const main = document.getElementById('main');
         if (!main)
             return;
+        if (ui.kupaSubView === 'expenses') {
+            // The intake owns its form. Unrelated Finance publications must not
+            // replace focused inputs or the history's scroll container.
+            if (!resetScroll && main.querySelector('[data-morning-expense-intake]')) return;
+            main.innerHTML = `<div class="morning-expense-page">${morningExpensesMarkup({page:true})}</div>`;
+            mountViewLayout({sourceSelector:'.morning-expense-page', headCount:0, className:'morning-expense-view-shell', scrollKey:'kupa:expenses', resetTop:resetScroll});
+            return;
+        }
         const s = snapshot(), section = currentSection();
         lastRenderedData = s;
         main.innerHTML = `<div class="kupa-page"><section class="kupa-hero">${kupaTabsMarkup(section)}${headerContextMarkup(s, section)}</section><div class="kupa-subcontent kupa-subcontent-${section}">${contentMarkup(s, section)}</div></div>`;
