@@ -56,13 +56,14 @@ SCENARIO = PREFIX + r"""
 OWNERSHIP = PREFIX + r"""
  const settle=()=>uiFeature.runtime.drain();click('toggle');await settle();
  const bytes=new TextEncoder().encode('%PDF-1.4 cancellable local source');
+ const waitFor=async predicate=>{for(let n=0;n<200&&!predicate();n++)await new Promise(resolve=>setTimeout(resolve,10));check(predicate(),'local extraction did not enter the controlled pending state')};
  const transfer=new DataTransfer();for(const name of ['first.pdf','second.pdf'])transfer.items.add(new File([bytes],name,{type:'application/pdf'}));
  let release;extractionHold=new Promise(resolve=>release=resolve);
- await uiFeature.actions['morning-expense-files']({files:transfer.files});await new Promise(resolve=>setTimeout(resolve,20));
+ await uiFeature.actions['morning-expense-files']({files:transfer.files});await waitFor(()=>extractions===1);
  fixture.querySelector('[data-expense-command="choose-file"][data-expense-index="1"]').click();
  release();await settle();check(signalAborted&&extractions===2,'switching files failed to cancel old extraction');
  check(fixture.querySelector('.morning-expense-source>b').textContent==='second.pdf','wrong source selected after cancellation: '+fixture.querySelector('.morning-expense-source>b').textContent);
- signalAborted=false;extractionHold=new Promise(resolve=>release=resolve);click('local-start');await new Promise(resolve=>setTimeout(resolve,20));
+ signalAborted=false;extractionHold=new Promise(resolve=>release=resolve);click('local-start');await waitFor(()=>extractions===3);
  owner=id(9);listener();release();await settle();check(signalAborted&&!fixture.textContent.includes('s0123456789'),'account switch leaked or retained local work');
  click('load');await settle();extractionHold=null;
  let pdf='%PDF-1.4\n';const offsets=[0],objects=['<< /Type /Catalog /Pages 2 0 R >>','<< /Type /Pages /Kids [3 0 R 6 0 R] /Count 2 >>','<< /Type /Page /Parent 2 0 R /MediaBox [0 0 600 800] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>','<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'];

@@ -73,7 +73,7 @@ function invoiceNumber(cells,titles,profile){
   }
   const result=unique(candidates,'invoice_number');
   result.rawNumber=result.value;result.suggestedNumber=result.value;result.effectiveNumber=null;
-  const verifiedPrefix=profile.verifiedNumberPrefixes?.find(prefix=>result.value?.startsWith(prefix));
+  const verifiedPrefix=profile.verifiedNumberPrefixes?.find(prefix=>result.value?.startsWith(prefix)&&/^\d+$/.test(result.value.slice(prefix.length)));
   if(verifiedPrefix){result.value=result.value.slice(verifiedPrefix.length);result.suggestedNumber=result.value;result.method='verified_supplier_prefix';result.normalizationVerified=true;}
   else if(result.value&&/[a-z]/i.test(result.value)){result.status='review';result.reason='alphanumeric_number_review';}
   if(result.value&&profile.numberPrefixReview&&result.value.startsWith(profile.numberPrefixReview)){

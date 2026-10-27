@@ -29,6 +29,11 @@ test('only a verified supplier-specific prefix may be removed and zeroes are nev
  assert.equal(result.fields.invoiceNumber.rawNumber,'s000123');assert.equal(result.fields.invoiceNumber.suggestedNumber,'000123');assert.equal(result.fields.invoiceNumber.normalizationVerified,true);
  const other=await recognize([page([...header('AB000123'),...totals()])]);
  assert.equal(other.fields.invoiceNumber.value,'AB000123');assert.equal(other.fields.invoiceNumber.status,'review');
+ for(const number of ['SIX000123','SI000123-OTHER']){
+  const changedTemplate=await recognize([page([...header(number),...totals()])],{verifiedNumberPrefixes:['SI']});
+  assert.equal(changedTemplate.fields.invoiceNumber.suggestedNumber,number);
+  assert.equal(changedTemplate.fields.invoiceNumber.status,'review');assert.notEqual(changedTemplate.fields.invoiceNumber.normalizationVerified,true);
+ }
 });
 test('explicit monetary fields override line sums; detached VAT rate percentages never become VAT amounts',async()=>{
  const result=await recognize([page([...header(),['9,999.00',50,550],['סיכום שורות',150,550],...totals()])]);
