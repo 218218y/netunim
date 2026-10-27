@@ -23,12 +23,21 @@ export function expenseReportingChoice(date, key, today) {
   const reportingDate = period.months.includes(invoiceMonth) ? invoiceMonth : period.months.filter(month => month <= today).at(-1);
   return {period, reportingDate, requiresConfirmation:invoiceMonth !== reportingDate};
 }
-// Keep the previous reporting year during the first bimonth. A draft already
-// assigned to it stays selectable if the screen remains open into March.
+export function expenseReportingDefault(saved, today) {
+  if (typeof saved === 'string') {
+    try {return expenseReportingChoice('', saved, today).period.key;} catch { /* Ignore corrupt or future preferences. */ }
+  }
+  return expenseBimonth(today).key;
+}
+// A remembered period has no calendar expiry. Keep its year selectable without
+// bringing back the full historical year list.
 export function expenseReportingYears(today, selectedPeriod = '') {
   if (!validReportDate(today)) throw new Error('invalid_expense_reporting_period');
   const year = Number(today.slice(0, 4));
-  return Number(today.slice(5, 7)) <= 2 || selectedPeriod.startsWith(`${year - 1}-`) ? [year, year - 1] : [year];
+  const years = new Set([year]);
+  if (Number(today.slice(5, 7)) <= 2) years.add(year - 1);
+  if (selectedPeriod && expenseReportingDefault(selectedPeriod, today) === selectedPeriod) years.add(Number(selectedPeriod.slice(0, 4)));
+  return [...years].sort((a, b) => b - a);
 }
 export function validateExpenseReporting(input, today) {
   const date = input.reportingDate;

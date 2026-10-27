@@ -1,3 +1,5 @@
+import {expenseReportingDefault} from '../../core/morning-report-period.js';
+
 const uuid = value => typeof value === 'string' && /^[\da-f]{8}(-[\da-f]{4}){3}-[\da-f]{12}$/i.test(value);
 const empty = () => ({version:1, favorites:[], classifications:[]});
 function clean(raw) {
@@ -25,4 +27,21 @@ export function readExpensePreferences(storage, owner, environment) {
 export function writeExpensePreferences(storage, owner, environment, value) {
   try { storage.setItem(key(owner, environment), JSON.stringify(clean(value))); return true; }
   catch { return false; }
+}
+// Own this preference separately so an unrelated favorites/classification save
+// from another open tab cannot overwrite the last manual reporting choice.
+export function readExpenseReportingPeriod(storage, owner, environment, today) {
+  try {
+    const value = storage.getItem(key(owner, environment) + ':reportingPeriod');
+    if (!value || value.length > 100) return '';
+    const raw = JSON.parse(value);
+    return raw?.version === 1 && typeof raw.period === 'string' && expenseReportingDefault(raw.period, today) === raw.period ? raw.period : '';
+  } catch {return '';}
+}
+export function writeExpenseReportingPeriod(storage, owner, environment, period, today) {
+  try {
+    if (typeof period !== 'string' || expenseReportingDefault(period, today) !== period) return false;
+    storage.setItem(key(owner, environment) + ':reportingPeriod', JSON.stringify({version:1, period}));
+    return true;
+  } catch {return false;}
 }

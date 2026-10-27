@@ -2,10 +2,10 @@ import {esc} from '../../core/values.js';
 import {checkTodayISO} from '../../core/dates.js';
 import {normalizeExpenseInput} from '../../core/morning-expense-input.js';
 import {expenseAmountChange,expenseAmountSanity} from '../../core/morning-expense-amounts.js';
-import {expenseBimonth, expenseReportingChoice, expenseReportingYears} from '../../core/morning-report-period.js';
+import {expenseBimonth, expenseReportingChoice, expenseReportingDefault, expenseReportingYears} from '../../core/morning-report-period.js';
 import {createRuntimeTaskOwner} from '../../shared/runtime-task-owner.js';
 import {readExpenseCatalog, readExpenseCatalogPage, searchExpenseSuppliers, expenseCatalogClassifications, expenseSupplierEligibility} from './morning-expense-catalog.js';
-import {readExpensePreferences, writeExpensePreferences} from './morning-expense-preferences.js';
+import {readExpensePreferences, writeExpensePreferences, readExpenseReportingPeriod, writeExpenseReportingPeriod} from './morning-expense-preferences.js';
 import {readExpenseRecovery, writeExpenseRecovery, clearExpenseRecovery} from './morning-expense-recovery.js';
 import {createExpenseSupplierPicker} from './morning-expense-supplier-picker.js';
 import {createExpenseHistory} from './morning-expense-history.js';
@@ -21,6 +21,7 @@ const fieldLabels = {number:'מספר חשבונית', date:'תאריך המסמ
 const fileLabels = {not_started:'העלאה טרם התחילה', prepared:'הכנה הושלמה · אפשר להכין מחדש', upload_started:'הנפקת הרשאת העלאה בבדיקה', ticket_issued:'הרשאת העלאה נמסרה · נדרשת בדיקת קישור', file_accepted:'הקובץ התקבל לעיבוד · הקישור טרם אומת', file_linked:'Morning מציגה קובץ מצורף'};
 export function createMorningExpenseIntake({request:sendRequest, captureRead, captureWrite, accountId, subscribeAccountScope, confirmDialog, dateEditorMarkup, files, todayISO = checkTodayISO, isActive = () => true, onBack = () => false}) {
   const tasks = createRuntimeTaskOwner();
+  let rememberedPeriod = '';
   let expanded = false, catalog = null, busy = false, generation = 0, reading = null, message = '', result = null, operationId = '', fileAttempted = false;
   let queue = [], selected = null, previewUrl = '', reconciliationId = '', favorites = [], extraExpenses = [], preferences = null, lastAmountField = '', draft = defaults();
   let editVersion = 0,sourceReason='';
@@ -36,9 +37,9 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
   function beforeUnload(event){if(active()&&hasUnsavedWork()){event.preventDefault();event.returnValue='';}}
   globalThis.addEventListener?.('beforeunload',beforeUnload);
   function defaults(previous = {}) {
-    const today = todayISO();
+    const today = todayISO(), period = expenseReportingDefault(rememberedPeriod, today);
     return {supplierId:previous.supplierId || '', classificationExpenseId:previous.classificationExpenseId || '', documentType:305, number:'',
-      date:today, reportingDate:today.slice(0, 7) + '-01', reportingPeriod:expenseBimonth(today).key,
+      date:today, reportingDate:expenseReportingChoice(today, period, today).reportingDate, reportingPeriod:period,
       net:'', vat:'', gross:'', description:'', allocationNumber:'', pcnClassification:previous.pcnClassification || 'T'};
   }
   const host = () => document.querySelector('[data-morning-expense-intake]');
@@ -70,7 +71,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     sources.reset();workDrafts.clear();edited=false;sourceReason='';
     local.reset(); pdfPreview.reset(); editVersion++;
     reading?.abort(); reading = null; generation++; catalog = null; busy = false; message = ''; result = null; operationId = ''; fileAttempted = false;
-    supplierPicker.reset(); history.reset(); recent.reset(); ocr.reset(); queue = []; selected = null; reconciliationId = ''; lastAmountField = ''; favorites = []; extraExpenses = []; preferences = null; releasePreview(); draft = defaults();
+    supplierPicker.reset(); history.reset(); recent.reset(); ocr.reset(); queue = []; selected = null; reconciliationId = ''; lastAmountField = ''; favorites = []; extraExpenses = []; preferences = null; rememberedPeriod = ''; releasePreview(); draft = defaults();
   }
   const supplierPicker = createExpenseSupplierPicker({
     rows:() => catalog?.suppliers || [], selectedId:() => draft.supplierId,
@@ -128,6 +129,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       const check = capture(), controller = new AbortController(); reading = controller;
       const loaded = await readExpenseCatalog(request, check, todayISO(), {signal:controller.signal}); check();
       if (operationId && catalog?.capabilities.environment !== loaded.capabilities.environment) throw new Error('סביבת Morning השתנתה. הפעולה הקודמת נשמרה לשחזור בסביבתה; יש לפתוח מחדש את המסך.');
+      const restorePeriod = !catalog || catalog.capabilities.environment !== loaded.capabilities.environment;
       preferences = readExpensePreferences(localStorage, accountId(), loaded.capabilities.environment);
       const restored = [];
       for (const id of preferences.favorites) {
@@ -139,6 +141,15 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       const retained = catalog?.suppliers.filter(row => row.id === draft.supplierId) || [];
       supplierPicker.reset(); catalog = loaded; catalog.suppliers = mergeSuppliers(loaded.suppliers, retained);
       reading = null; message = '';
+      if (restorePeriod) {
+        const today = todayISO();
+        const savedPeriod = readExpenseReportingPeriod(localStorage, accountId(), loaded.capabilities.environment, today);
+        rememberedPeriod = expenseReportingDefault(savedPeriod, today);
+        applyReportingPeriod();
+        // Seed the initially displayed choice too: reselecting an already selected
+        // native option does not dispatch change, but must still survive reopening.
+        if (!savedPeriod && !writeExpenseReportingPeriod(localStorage, accountId(), loaded.capabilities.environment, rememberedPeriod, today)) message = periodStorageWarning();
+      }
       if (draft.classificationExpenseId && !loaded.expenses.some(row => row.id === draft.classificationExpenseId)) {
         draft.classificationExpenseId = ''; message = 'ההצעות רועננו. יש לבחור שוב את סיווג ההוצאה לפני שמירה.';
       }
@@ -150,6 +161,21 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       history.refresh();
     });
   }
+  function applyReportingPeriod() {
+    draft.reportingPeriod = rememberedPeriod || draft.reportingPeriod;
+    draft.reportingDate = expenseReportingChoice(draft.date, draft.reportingPeriod, todayISO()).reportingDate;
+  }
+  function periodStorageWarning() {return 'תקופת הדיווח נשמרה למסך זה בלבד. הדפדפן לא אפשר לשמור אותה לפתיחה הבאה.';}
+  function chooseReportingPeriod(key) {
+    if (!catalog) return false;
+    let choice;
+    try {choice = expenseReportingChoice(draft.date, key, todayISO());} catch {updateMessage('יש לבחור תקופת דיווח תקינה.'); return false;}
+    rememberedPeriod = key; draft.reportingPeriod = key; draft.reportingDate = choice.reportingDate;
+    editVersion++;
+    const saved = writeExpenseReportingPeriod(localStorage, accountId(), catalog.capabilities.environment, key, todayISO());
+    render(); updateMessage(saved ? 'תקופת הדיווח נזכרה לפתיחות הבאות ותשתנה רק בבחירה ידנית.' : periodStorageWarning());
+    updateSanity(); return true;
+  }
   function setField(element) {
     if(!busy&&element.dataset.expenseField==='sourceReason'){sourceReason=element.value.slice(0,250);return true;}
     if (!busy && element.dataset.expenseField === 'reconciliationId') {reconciliationId = element.value; return true;}
@@ -160,15 +186,14 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       if(!expenseReportingYears(today,draft.reportingPeriod).includes(year))return false;
       let key=String(year)+draft.reportingPeriod.slice(4);
       if(key+'-01'>today)key=expenseBimonth(today).key;
-      draft.reportingPeriod=key;editVersion++;edited=true;
-      draft.reportingDate=expenseReportingChoice(draft.date,key,today).reportingDate;
-      render();return true;
+      return chooseReportingPeriod(key);
     }
+    if (name === 'reportingPeriod') return chooseReportingPeriod(element.value);
     if (!Object.hasOwn(draft, name)) return false;
     editVersion++; edited=true; local.edited();
     if (local.blocked()) {const button = host()?.querySelector('[data-action="morning-expense-save"]'); if (button) button.disabled = true;}
     draft[name] = name === 'documentType' ? Number(element.value) : element.value;
-    if (['date', 'reportingPeriod'].includes(name)) {
+    if (name === 'date') {
       try {
         draft.reportingDate = expenseReportingChoice(draft.date, draft.reportingPeriod, todayISO()).reportingDate;
         const hidden = host()?.querySelector('[data-expense-field="reportingDate"]');
@@ -231,7 +256,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
   }
   function selectNextFile({saveCurrent=true,preserveDraft=false,carryPreferences=false}={}) {
     if(saveCurrent)rememberWork();
-    const period=draft.reportingPeriod,preferencesDraft=draft;
+    const preferencesDraft=draft;
     local.reset(); editVersion++;
     releasePreview(); selected = queue.shift() || null;
     if (selected && selected.type !== 'application/pdf') previewUrl = URL.createObjectURL(selected.file);
@@ -244,7 +269,8 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
         if(saved.supplier)catalog.suppliers=mergeSuppliers([saved.supplier],catalog.suppliers);
         if(saved.classification&&!sourceExpenses().some(row=>row.id===saved.classification.id))extraExpenses.push(saved.classification);
         catalog.classifications=expenseCatalogClassifications(sourceExpenses());
-      }else if(!preserveDraft){draft=defaults(carryPreferences?preferencesDraft:{});draft.reportingPeriod=period;lastAmountField='';edited=false;}
+      }else if(!preserveDraft){draft=defaults(carryPreferences?preferencesDraft:{});lastAmountField='';edited=false;}
+      applyReportingPeriod();
       supplierPicker.reset();
       if(local.available()){if(saved)local.restore(saved.local);else local.start({autoFill:!preserveDraft});}
     }
@@ -401,8 +427,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       }
     }
     check();
-    const period = draft.reportingPeriod;
-    draft = defaults(); draft.reportingPeriod = period; lastAmountField = ''; supplierPicker.reset();
+    draft = defaults(); lastAmountField = ''; supplierPicker.reset();
     const money = value => Number.isSafeInteger(value) && value >= 0 ? (value / 100).toFixed(2) : '';
     Object.assign(draft, {number:item.number, documentType:item.documentType || '', date:item.date?.slice(0, 10) || '',
       net:money(item.netCents), vat:money(item.vatCents), gross:money(item.grossCents), description:item.description || '', allocationNumber:item.allocationNumber || '',

@@ -12,11 +12,12 @@ SCENARIO = PREFIX + r"""
  await uiFeature.actions['morning-expense-files']({files});await settle();
  field('number','A-0007');field('date','2026-08-20','change');field('reportingPeriod','2026-07','change');
  field('net','1234.00');field('vat','167.03');field('description','manual A');
- const first=Object.fromEntries(['number','date','reportingPeriod','reportingDate','net','vat','gross','description','allocationNumber','supplierId','classificationExpenseId'].map(name=>[name,value(name)]));
+ const first=Object.fromEntries(['number','date','net','vat','gross','description','allocationNumber','supplierId','classificationExpenseId'].map(name=>[name,value(name)]));
  await command('choose-file',1);await settle();field('number','B-0008');field('reportingPeriod','2026-09','change');field('vat','151.02');
  const second=Object.fromEntries(['number','date','reportingPeriod','reportingDate','net','vat','gross'].map(name=>[name,value(name)]));
  await command('choose-file',1);await settle();
  for(const [name,expected]of Object.entries(first))check(value(name)===expected,'first draft lost '+name);
+ check(value('reportingPeriod')==='2026-09'&&value('reportingDate')==='2026-10-01','switching files replaced the last manual reporting choice with a draft-specific period');
  check(extractions===2,'returning to an unchanged source unnecessarily re-extracted or overwrote it');
  click('load');await settle();check(value('number')==='A-0007'&&value('vat')==='167.03','catalog refresh overwrote edited fields');
  await command('choose-file',1);await settle();for(const [name,expected]of Object.entries(second))check(value(name)===expected,'second draft lost '+name);
