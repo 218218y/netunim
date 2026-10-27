@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='kupa-app-shell-';
-const CACHE='kupa-app-shell-esm-cc652f806a76';
+const CACHE='kupa-app-shell-esm-56904ae186b5';
 const SHELL=[
   './',
   './index.html',
@@ -96,6 +96,7 @@ const SHELL=[
   './assets/js/main.js',
   './assets/js/platform/credit-preferences.js',
   './assets/js/shared/action-registry.js',
+  './assets/js/shared/app-release-startup.js',
   './assets/js/shared/authenticated-account-scope.js',
   './assets/js/shared/automatic-backup-runtime.js',
   './assets/js/shared/backup-browser-resources.js',
@@ -400,6 +401,18 @@ self.addEventListener('install',event=>{
 
 self.addEventListener('activate',event=>{
   event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key.startsWith(CACHE_PREFIX)&&key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim()));
+});
+
+// A waiting release can take over only when its requesting bootstrap is the
+// sole scoped window. All other tabs keep their original controller and cache.
+self.addEventListener('message',event=>{
+  if(event.data?.type!=='netunim-activate-single-client')return;
+  event.waitUntil((async()=>{
+    const windows=await self.clients.matchAll({type:'window',includeUncontrolled:true});
+    const allowed=windows.length===1&&windows[0].id===event.source?.id;
+    event.ports?.[0]?.postMessage({allowed});
+    if(allowed)await self.skipWaiting();
+  })());
 });
 
 self.addEventListener('fetch',event=>{

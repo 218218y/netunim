@@ -643,7 +643,7 @@ window.addEventListener('beforeunload',e=>{
   if(!tab.primaryTab||session.storageProtocolBlocked)return;
   if(mainStorageV2.durabilityAtRisk||sharedChecksV2.durabilityAtRisk||session.localUndurableGenerations?.size){e.preventDefault();e.returnValue=''}
 });
-if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js').catch(console.error));}
+
 uiEvents.bindActionEvents(document.getElementById('content'),uiActions);
 bindDismissibleDetails(document);
 bindNumberInputWheelGuard(document);

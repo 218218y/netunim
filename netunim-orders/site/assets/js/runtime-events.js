@@ -13,7 +13,6 @@ export function bindOrdersRuntimeEvents({uiModal,uiNavigation,domainsSuppliersNa
   });
   connectivity.start();
   window.addEventListener('beforeunload',event=>{if(!tab.primaryTab||!(storageV2?.durabilityAtRisk||sharedChecksV2?.durabilityAtRisk||session?.localUndurableGenerations?.size))return;event.preventDefault();event.returnValue=''});
-  if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js').catch(console.error));
   document.getElementById('folderAccessButton').addEventListener('click',uiFolders.handleTopFolderAccess);
   document.getElementById('alertCenterButton').addEventListener('click',()=>uiAlertCenter.openAlertCenter());
   document.getElementById('retryPrimaryTab').addEventListener('click',uiTabGuard.retryPrimaryTabLock);

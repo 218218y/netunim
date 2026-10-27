@@ -78,8 +78,8 @@ for label, project in APPS.items():
     ok(script_srcs == ["./assets/app.js"], f"{label}: entrypoint explicitly imports configuration")
     ok('export const supabaseConfig = Object.freeze(' in (site/'supabase/config.js').read_text(encoding='utf-8'),
        f'{label}: configuration is an immutable module export')
-    ok(any("navigator.serviceWorker.register('./service-worker.js')" in p.read_text(encoding="utf-8") for p in (site/'assets').rglob('*.js')),
-       f"{label}: service-worker registration moved with the application entrypoint")
+    ok("mayStartApp" in app_js.read_text(encoding="utf-8") and "serviceWorker.register('./service-worker.js'" in (site/"assets/js/shared/app-release-startup.js").read_text(encoding="utf-8"),
+       f"{label}: release update check owns service-worker registration before application boot")
 
     # Scan the complete source tree, including fragments inside JS strings and
     # templates. Never make this conditional on the current CSP allowance.
