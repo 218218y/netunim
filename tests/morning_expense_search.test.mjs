@@ -27,6 +27,16 @@ test('search covers visible text, invoice numbers and exact decimals including c
   assert.equal(expenseSearchMatcher('תבי')({...row, status:100}), false);
 });
 
+test('literal decimal-like text stays searchable independently of financial amounts', () => {
+  const item = {...row, number:'INV-123.456', description:'כבל 2.5 מטר', category:'ציוד 3.14159'};
+  for (const query of ['INV-123.456', 'כבל 2.5 מטר', 'ציוד 3.14159', 'תבי כבל 2.5 מטר', 'תבי INV-123.456']) {
+    assert.ok(expenseSearchMatcher(query)(item), query);
+  }
+  assert.equal(expenseSearchMatcher('2.50')(item), false);
+  assert.equal(expenseSearchMatcher('12.34')(item), false);
+  assert.ok(expenseSearchMatcher('15-9-26')({...item, number:'15-9-26', sourceDocumentDate:'2026-10-01'}));
+});
+
 test('account search includes later pages and older reporting periods, with bounded explicit continuation', async () => {
   const items = Array.from({length:251}, (_, n) => ({...row, id:String(n), name:n === 250 ? 'יעד' : 'אחר', sourceDocumentDate:'2022-12-15', reportingDate:'2023-01-01'}));
   const scan = newExpenseSearchScan(), calls = [];
