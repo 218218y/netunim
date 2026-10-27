@@ -12,6 +12,33 @@ An authenticated read-only Morning search found invoice 3383 with the expected d
 
 Five historical Roya records contain numeric invoice numbers with inconsistent leading zero handling. This is not a paired proof that the new document's `s` prefix must be removed. Preserve `rawNumber`, keep any alternative separate, and require explicit review until a supported normalization rule is verified. Never convert invoice identifiers to JavaScript numbers.
 
+### Reported July–August corpus and verified normalization
+
+The additional private folder contains 74 PDFs and 81 pages. Native browser extraction completed in 12,372 ms aggregate with a 378 ms maximum per file. Five PDFs contain no text and require manual review or an explicitly chosen supported OCR route. The combined corpus is 115 files and 127 pages.
+
+The first split was subsequently refined transparently: one initially unknown September–October layout and six July–August examples used to investigate missing fields, paired normalization and a trailing annex were moved to development. The final development set has 19 documents; the remaining 96 are acceptance documents. This is not a claim that failed cases remained untouched holdouts after rule changes.
+
+Paired source PDFs and authenticated, read-only Morning records verified these rules: Roya removes exactly lowercase `s`; Gaber removes exactly `SI` or `CR`. Prefix rules apply only to that supplier profile. The original string remains in `rawNumber`, the proposal in `suggestedNumber`, and `effectiveNumber` remains unset until user review. Leading zeros are retained, as explicitly requested by the user. One historical Roya record omitted a zero; this is a duplicate-comparison discrepancy, not permission to trim zeros or rewrite historical records. Unverified alphabetic formats retain their original value and require review.
+
+Ten profiles now share seven layout families. Public profiles contain business aliases and hashed issuer-tax fingerprints, not the source invoices, customer details or literal tax identifiers. Supplier identification checks issuer position, recurring recipient boundaries, name/template evidence and a known fingerprint. A logo-only Gaber template uses its explicitly labeled issuer footer and matching layout; the display name comes from the profile and remains a suggestion pending canonical supplier matching. SAP documents keep issuer and buyer columns separate.
+
+Each field carries its original value, proposed value, method, page, item index, bounding box and `verified`/`review`/`missing` extraction status. This is not financial approval or Tax Authority validation. VAT rates are excluded from monetary candidates, and explicit source VAT is preserved. The last complete summary page is selected rather than assuming a physical last-page annex is a financial summary. Totals from different pages are not combined. Multiple document identifiers, inconsistent amounts and ambiguous allocations require review. Derived net is explicitly labeled.
+
+### Acceptance measurements
+
+Sanitized measurements: [invoice-local-recognition-2026-10-27.json](acceptance/invoice-local-recognition-2026-10-27.json).
+
+| Reference group | Documents | Result |
+| --- | ---: | --- |
+| Original source holdout, independent PyMuPDF summary/word reference and operator-reviewed document families | 28 | Number, date, net, VAT, gross and allocation: 28/28 each; zero wrong values labeled verified in those comparisons |
+| Reported holdout with canonical Morning records | 63 | Date, type, net, VAT and gross: 63/63 each |
+| Reported holdout number formatting | 63 | 62 exact matches; one historical missing leading zero, preserved in the source-derived proposal |
+| Image-only holdout | 5 | No guessed fields; manual/OCR review required |
+
+Supplier canonical resolution remains a separate server read; allocation absence counts as correct only when the source reference is also empty. Two development Gaber invoices differ from historical Morning VAT by one cent. Their printed VAT was visually checked and is retained; no existing financial record was edited. The acceptance evidence separates source extraction from agreement with a historical entry. It does not imply coverage of every future supplier or legal scenario.
+
+Public synthetic regressions cover all ten profile layouts with fake identities and new values, multi-page and trailing-annex summaries, mixed documents, fragmented text, percent/amount separation, source provenance, ambiguous allocations, supplier-versus-buyer identity and dated allocation boundaries. No private PDF or full invoice text is committed or emitted in CI.
+
 ## Shared PDF runtime and resource ownership
 
 `shared/document-search/domains/documents/pdfjs-core.js` loads only the pinned core and worker, checks exact version/build and current-browser features, and retries a failed load. The search viewer reuses this loader before loading viewer components/CSS. The invoice extractor does not import the search viewer or its UI.

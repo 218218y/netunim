@@ -1,0 +1,61 @@
+{
+  "originalHoldout": {
+    "documents": 28,
+    "fields": {
+      "invoiceNumber": {
+        "correct": 28,
+        "total": 28,
+        "wrongVerified": 0
+      },
+      "date": {
+        "correct": 28,
+        "total": 28,
+        "wrongVerified": 0
+      },
+      "net": {
+        "correct": 28,
+        "total": 28,
+        "wrongVerified": 0
+      },
+      "vat": {
+        "correct": 28,
+        "total": 28,
+        "wrongVerified": 0
+      },
+      "gross": {
+        "correct": 28,
+        "total": 28,
+        "wrongVerified": 0
+      },
+      "allocationNumber": {
+        "correct": 28,
+        "total": 28,
+        "wrongVerified": 0
+      }
+    }
+  },
+  "reportedHoldout": {
+    "documents": 68,
+    "paired": 63,
+    "equal": {
+      "date": 63,
+      "net": 63,
+      "vat": 63,
+      "gross": 63,
+      "type": 63,
+      "number": 62
+    },
+    "manualImageOnly": 5,
+    "numberFormattingDifferences": 1
+  },
+  "development": {
+    "original": 13,
+    "reported": 6
+  },
+  "acceptanceTotal": 96,
+  "notes": [
+    "Roya raw s-prefix is retained separately; verified prefix stripping preserves leading zeros. One historical Morning record omitted a leading zero; it is a formatting discrepancy, not a normalization rule.",
+    "Two training Gaber invoices differ from historical Morning VAT by one cent. Source VAT is preserved; reported records were not changed.",
+    "Source references use independent PyMuPDF summary positions and operator-reviewed document families, not recognition output. Reported references come from authenticated read-only Morning records."
+  ]
+}
