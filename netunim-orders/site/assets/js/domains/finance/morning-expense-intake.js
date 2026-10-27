@@ -319,7 +319,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     return run(async () => {
       const check = capture(true);
       if (!catalog?.capabilities.upload || !result?.verified || !selected || fileAttempted) throw new Error('יש לבחור קובץ ולהשלים אימות הוצאה לפני העלאה.');
-      const source=await sources.prepare(sourceExpected(),check,{existingMetadata:result.sourceMetadata,existingReview:result.sourceReview,afterCreation:true});check();
+      const source=await sources.prepareOperation(result,check);check();
       fileAttempted = true; // An uncertain upload is never silently replayed.
       const preparation = await request('upload_prepare', {operationId, contentType:selected.type, size:selected.file.size,...source}, check); check();
       if(preparation.alreadyLinked){result={...result,...preparation};await sources.refresh();return true;}
@@ -341,14 +341,10 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       else if (!value.fileLinked) message += ' אין להעלות שוב: ייתכן שהקובץ עדיין בעיבוד. יש לבדוק את ההוצאה ב־Morning לפי המזהה המוצג ולפנות לתמיכה אם הקישור אינו מופיע.';
     });
   }
-  function sourceExpected(){
-    if(!result?.intent?.supplierTaxId)throw Error('יש לבדוק את מצב היצירה כדי לקרוא מהשרת את כל פרטי ההוצאה לפני התאמת מקור.');
-    return expenseSourceExpected({...result.intent,supplier:{taxId:result.intent.supplierTaxId}});
-  }
   function sourceVerify(){
     return run(async()=>{
       const check=capture();if(!result?.verified||!selected)throw Error('יש לקרוא את ההוצאה ולבחור את המקור המקורי לבדיקה.');
-      const source=await sources.prepare(sourceExpected(),check,{existingMetadata:result.sourceMetadata,existingReview:result.sourceReview,afterCreation:true});check();
+      const source=await sources.prepareOperation(result,check);check();
       const value=await request('source_verify',{operationId,contentType:selected.type,size:selected.file.size,...source},check);check();
       result={...result,...value};message=value.message||'טביעת המקור אומתה מול הקובץ שנקרא ממורנינג.';await sources.refresh();check();
     });
@@ -580,12 +576,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       ${result?.state === 'reserved' ? `<button type="button" class="btn" data-action="morning-expense-write" data-expense-command="cancel" ${busy ? 'disabled' : ''}>ביטול בטוח לפני שליחה</button>` : ''}
       ${['pending', 'needs_reconciliation'].includes(result?.state) ? `<label>מזהה הוצאה קיימת לבדיקה מול Morning<input data-expense-field="reconciliationId" data-input="morning-expense-field" value="${esc(reconciliationId)}" ${busy ? 'disabled' : ''}></label><button type="button" class="btn" data-action="morning-expense-write" data-expense-command="reconcile" ${busy ? 'disabled' : ''}>בדיקת התאמה ושחזור</button>` : ''}
       <span>קובץ מקור: ${result?.fileLinked ? fileLabels.file_linked : fileLabels[result?.fileState] || 'טרם אומת'} · אישור ודיווח נבדקים ב־Morning</span></div>` : ''}
-      ${result?.sourceExpected?`<p class="morning-expense-notice" data-expense-source-state>${result.sourceVerified?
-        'הקובץ נקרא ממורנינג וטביעתו תואמת למקור שאושר.':result.sourceException?'חריגה ידנית מתועדת: '+esc(result.sourceExceptionReason):
-          'ההוצאה או הפעולה שמורות בשרת, אך המקור עדיין דורש העלאה או אימות. לאחר רענון יש לבחור מחדש את המקור המקורי.'}</p>`:''}
-      ${result?.verified&&result.sourcePending?`<details><summary>תיעוד חריגה אם לא ניתן להשלים את המקור</summary>
-        <label>סיבת החריגה<input maxlength="250" data-expense-field="sourceReason" data-input="morning-expense-field" value="${esc(sourceReason)}" ${busy?'disabled':''}></label>
-        <button type="button" class="btn" data-action="morning-expense-write" data-expense-command="source-waive" ${busy?'disabled':''}>בדיקה ותיעוד החריגה</button></details>`:''}
+      ${sources.receipt(result,busy,sourceReason)}
       </div><div class="morning-expense-source" data-drop="morning-expense-drop" data-dragover="morning-expense-dragover">
       <label class="morning-expense-drop ${selected?'compact':''}">בחירת קובצי מקור · גרירה או הדבקה<input type="file" ${operationId?'':'multiple'} accept="application/pdf,image/jpeg,image/png"
         data-change="morning-expense-files" ${busy||fileAttempted&&!result?.sourcePending||operationId&&!result?.verified?'disabled':''}></label>

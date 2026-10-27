@@ -1,0 +1,47 @@
+{
+  "date": "2026-10-27",
+  "scope": "Source intent, recovery, exact-byte verification and duplicate arbitration",
+  "privateCorpusReplay": {
+    "files": 115,
+    "digitalRecognizedAndCanonicallyMapped": 110,
+    "imageOnlyManual": 5,
+    "formMappingMismatches": 0,
+    "knownPreviouslyEnteredInvoiceBlocked": true,
+    "financialWrites": 0,
+    "fileUploads": 0,
+    "limitation": "UI mapping replay is not independent verification of every accounting field or a live financial intake. Original documents and results remain private."
+  },
+  "morningSandbox": {
+    "productionConfigurationChanged": false,
+    "completedFinancialCases": 1,
+    "financialPostsInCompletedCase": 1,
+    "sourceIntentPersistedBeforePost": true,
+    "financialReplayCreatedNothing": true,
+    "wrongReselectedSourceBlockedBeforeTicket": true,
+    "fileLinked": true,
+    "downloadedOriginalSha256AndSizeMatch": true,
+    "recoveryAfterCreationDisabled": true,
+    "earlierHarnessAttempt": "One separate Sandbox expense was created before a harness-only missing-await error stopped upload before any HTTP request. Its missing source was explicitly recorded as an exception. It was not replayed or counted as a completed source case.",
+    "totalSandboxFinancialPostsIncludingHarnessAttempt": 2,
+    "productionFinancialWrites": 0,
+    "limitation": "Actual Morning transport/writer/upload with a private durable local test ledger; database concurrency is tested separately on real isolated PostgreSQL."
+  },
+  "browserScenarios": [
+    "Edited file A to B to A without losing fields or reporting period",
+    "First PDF attachment preserves manually entered fields",
+    "Refresh warning and account-scoped disposal",
+    "Server pending-source recovery after local pointer loss",
+    "Wrong reselected PDF rejected before upload preparation",
+    "Uncertain upload never silently replayed",
+    "Explicit auditable exception without claiming source verification",
+    "Computed net and normalized invoice number visible before Save",
+    "Previous reporting year without changing the invoice date"
+  ],
+  "postgresScenarios": [
+    "Both orderings of concurrent OCR and financial reservations",
+    "Concurrent canonical accounting aliases including legacy payloads",
+    "Immutable bound source metadata and malformed metadata rejection",
+    "Service-role-only access and function grants"
+  ],
+  "remainingAcceptance": "Reviewed intake of a genuine not-yet-entered Production invoice, followed by readback, source attachment and reporting-period verification. Production OCR approval remains disabled."
+}

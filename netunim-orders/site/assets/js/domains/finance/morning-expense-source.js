@@ -1,5 +1,5 @@
 import {esc} from '../../core/values.js';
-import {normalizeExpenseSource,expenseSourceFields,compareExpenseSource} from '../../core/morning-expense-source.js';
+import {normalizeExpenseSource,expenseSourceFields,compareExpenseSource,expenseSourceExpected} from '../../core/morning-expense-source.js';
 import {ocrFileHash} from './morning-expense-ocr.js';
 const labels={supplierTaxId:'מספר העוסק',number:'מספר החשבונית',documentType:'סוג המסמך',date:'תאריך החשבונית',
   netCents:'לפני מע״מ',vatCents:'מע״מ',grossCents:'סכום כולל',allocationNumber:'מספר הקצאה'};
@@ -70,5 +70,19 @@ export function createExpenseSourceSupport({files,request,capture,run,capabiliti
       ${more?'<button type="button" class="btn" data-action="morning-expense-command" data-expense-command="source-more">השלמות נוספות</button>':''}
     </section>`;
   }
-  return {prepare,refresh,markup,reset,more:()=>refresh(true)};
+  function prepareOperation(result,check){
+    if(!result?.intent?.supplierTaxId)throw Error('יש לבדוק את מצב היצירה כדי לקרוא מהשרת את כל פרטי ההוצאה לפני התאמת מקור.');
+    const expected=expenseSourceExpected({...result.intent,supplier:{taxId:result.intent.supplierTaxId}});
+    return prepare(expected,check,{existingMetadata:result.sourceMetadata,existingReview:result.sourceReview,afterCreation:true});
+  }
+  function receipt(result,busy,reason){
+    if(!result?.sourceExpected)return '';
+    return `<p class="morning-expense-notice" data-expense-source-state>${result.sourceVerified?
+      'הקובץ נקרא ממורנינג וטביעתו תואמת למקור שאושר.':result.sourceException?'חריגה ידנית מתועדת: '+esc(result.sourceExceptionReason):
+        'ההוצאה או הפעולה שמורות בשרת, אך המקור עדיין דורש העלאה או אימות. לאחר רענון יש לבחור מחדש את המקור המקורי.'}</p>
+      ${result.verified&&result.sourcePending?`<details><summary>תיעוד חריגה אם לא ניתן להשלים את המקור</summary>
+        <label>סיבת החריגה<input maxlength="250" data-expense-field="sourceReason" data-input="morning-expense-field" value="${esc(reason)}" ${busy?'disabled':''}></label>
+        <button type="button" class="btn" data-action="morning-expense-write" data-expense-command="source-waive" ${busy?'disabled':''}>בדיקה ותיעוד החריגה</button></details>`:''}`;
+  }
+  return {prepare,prepareOperation,receipt,refresh,markup,reset,more:()=>refresh(true)};
 }
