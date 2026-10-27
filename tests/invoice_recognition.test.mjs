@@ -40,6 +40,18 @@ test('explicit monetary fields override line sums; detached VAT rate percentages
  assert.equal(result.fields.net.value,100000);assert.equal(result.fields.vat.value,15000);assert.equal(result.fields.gross.value,115000);
  assert.equal(result.fields.net.status,'verified');assert.ok(result.fields.vat.sources.some(source=>source.text==='150.00'));
 });
+test('user-confirmed Cocktail and Comfort prefixes keep raw evidence and preserve leading zeroes',async()=>{
+ const {INVOICE_SUPPLIER_PROFILES}=await import('../netunim-orders/site/assets/js/core/invoice-supplier-profiles.js');
+ for(const [supplier,prefix]of [['cocktail','CR'],['yesharim','SI']]){
+  const actual=INVOICE_SUPPLIER_PROFILES.find(row=>row.id===supplier);
+  const candidate={...actual,issuerTaxHash:hash,aliases:['ספק בדיקה'],layout:'hash'};
+  const result=await recognizeInvoice({hasText:true,pages:[page([...header(prefix+'000123'),...totals()])]},{profiles:[candidate]});
+  assert.equal(result.fields.invoiceNumber.rawNumber,prefix+'000123');assert.equal(result.fields.invoiceNumber.value,'000123');
+  assert.equal(result.fields.invoiceNumber.suggestedNumber,'000123');assert.equal(result.fields.invoiceNumber.effectiveNumber,null);
+  const other=await recognize([page([...header(prefix+'000123'),...totals()])]);
+  assert.equal(other.fields.invoiceNumber.value,prefix+'000123','a supplier-specific prefix must not become a global removal rule');
+ }
+});
 test('credit notes use type 330 with positive amounts and keep the original financial sign convention',async()=>{
  const result=await recognize([page([...header('000124','חשבונית מס זיכוי'),...totals()])]);
  assert.equal(result.fields.documentType.value,330);assert.equal(result.fields.gross.value,115000);assert.equal(result.allocationPolicy.status,'separate_treatment');
