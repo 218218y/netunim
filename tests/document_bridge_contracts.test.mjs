@@ -409,9 +409,12 @@ test('preview stays local: filename Office preview stays native while content se
   assert.match(pdfViewer,/ensurePdfFormOverlay/);
   assert.match(pdfViewer,/convertToViewportPoint/);
   assert.doesNotMatch(pdfViewer,/\.convertToViewportRectangle\b/);
-  assert.match(pdfViewer,/assertModernBrowserFeatures/);
+  const pdfCore=read('shared/document-search/domains/documents/pdfjs-core.js');
+  assert.match(pdfViewer,/await loadPdfCore\(\)/);
+  assert.match(pdfCore,/typeof Promise\.try/);
   assert.doesNotMatch(pdfViewer,/Object\.defineProperty\((?:Math|Map|Promise|Uint8Array)/,'browser PDF.js must not mutate native APIs with private polyfills');
-  assert.match(pdfViewer,/Map\.prototype\.getOrInsertComputed/);
+  assert.match(pdfCore,/Map\.prototype\.getOrInsertComputed/);
+  assert.doesNotMatch(pdfCore,/Object\.defineProperty\((?:Math|Map|Promise|Uint8Array)/);
   assert.match(pdfViewer,/eventBus\.on\('pagerendered',renderFormLayerForEvent\)/);
   assert.match(css,/document-pdf-form-match-marker/);
   assert.match(pdfViewer,/updatefindmatchescount/);

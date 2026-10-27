@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-4e60288d2674';
+const CACHE='orders-app-shell-esm-f665c7d33097';
 const SHELL=[
   './',
   './index.html',
@@ -46,6 +46,7 @@ const SHELL=[
   './assets/js/contracts/note-reminder-date.js',
   './assets/js/core/bulk-selection.js',
   './assets/js/core/dates.js',
+  './assets/js/core/invoice-pdf-layout.js',
   './assets/js/core/money.js',
   './assets/js/core/morning-banks.js',
   './assets/js/core/morning-document-types.js',
@@ -112,6 +113,7 @@ const SHELL=[
   './assets/js/domains/documents/docx-search-viewer.js',
   './assets/js/domains/documents/pdf-search-viewer.js',
   './assets/js/domains/documents/pdf-text-fragments.js',
+  './assets/js/domains/documents/pdfjs-core.js',
   './assets/js/domains/documents/pdfjs-runtime-config.js',
   './assets/js/domains/documents/preview-modules.js',
   './assets/js/domains/documents/search-source.js',
@@ -151,6 +153,7 @@ const SHELL=[
   './assets/js/domains/finance/credit-status-view.js',
   './assets/js/domains/finance/document-commands.js',
   './assets/js/domains/finance/document-publication.js',
+  './assets/js/domains/finance/invoice-pdf.js',
   './assets/js/domains/finance/kupa-write-state.js',
   './assets/js/domains/finance/morning-expense-catalog.js',
   './assets/js/domains/finance/morning-expense-history.js',

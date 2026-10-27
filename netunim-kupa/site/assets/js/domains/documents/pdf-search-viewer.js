@@ -1,5 +1,6 @@
 import {buildTextMatchSnippet,buildViewerFindQuery,contentSearchTerms,findTextMatchOffsets,isWholeWordTextRange,normalizeContentSearch} from './document-search-navigator.js';
 import {PDFJS_VERSION,PDFJS_BUILD} from './pdfjs-runtime-config.js';
+import {loadPdfCore} from './pdfjs-core.js';
 const PDFJS_ROOT='../../../vendor/pdfjs/';
 
 export const PDF_SEARCH_RUNTIME=Object.freeze({
@@ -20,16 +21,6 @@ let runtimePromise=null;
 let stylesheetPromise=null;
 
 function runtimeUrl(relative){return new URL(relative,import.meta.url).href}
-
-function assertModernBrowserFeatures(){
-  const missing=[];
-  if(typeof Promise.try!=='function')missing.push('Promise.try');
-  if(typeof Uint8Array.prototype.toHex!=='function')missing.push('Uint8Array.toHex');
-  if(typeof Math.sumPrecise!=='function')missing.push('Math.sumPrecise');
-  if(typeof Map.prototype.getOrInsert!=='function')missing.push('Map.getOrInsert');
-  if(typeof Map.prototype.getOrInsertComputed!=='function')missing.push('Map.getOrInsertComputed');
-  if(missing.length)throw new Error(`PDF.js ${PDFJS_VERSION} requires a current browser (${missing.join(', ')} unavailable).`);
-}
 
 function assertPdfJsRuntimeContract(pdfjsLib,pdfjsViewer){
   const missing=[];
@@ -202,7 +193,6 @@ export class PdfJsFindControllerAdapter{
 async function loadRuntime(){
   if(runtimePromise)return runtimePromise;
   runtimePromise=(async()=>{
-    assertModernBrowserFeatures();
     // Keep both imports literal and local: the repository module-graph contract can
     // verify them statically, while the browser still downloads PDF.js lazily only
     // when a local PDF preview is opened.
@@ -211,7 +201,7 @@ async function loadRuntime(){
     // importing pdf.mjs itself.  Keep CSS parallel, but establish the core runtime
     // first; loading both modules in Promise.all creates a real evaluation race and
     // silently drops the UI back to the native iframe fallback.
-    const pdfjsLib=await import('../../../vendor/pdfjs/build/pdf.mjs');
+    const pdfjsLib=await loadPdfCore();
     const viewerTask=import('../../../vendor/pdfjs/web/pdf_viewer.mjs');
     const [pdfjsViewer]=await Promise.all([viewerTask,stylesheetTask]);
     assertPdfJsRuntimeContract(pdfjsLib,pdfjsViewer);
