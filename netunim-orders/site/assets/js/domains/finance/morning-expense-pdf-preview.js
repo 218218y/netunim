@@ -2,12 +2,12 @@ import {esc} from '../../core/values.js';
 
 // Raster-only preview: no PDF actions, links, forms, annotation layer or scripts.
 // Keep one bounded page image; release the document/worker after each render.
-export function createExpensePdfPreview({capture, run}) {
+export function createExpensePdfPreview({capture, run, isActive}) {
   let source=null, revision=0, controller=null, image='', page=1, pages=0, pending=false, message='';
   function release(){if(image)URL.revokeObjectURL(image);image='';}
   function reset(){controller?.abort();controller=null;revision++;source=null;release();page=1;pages=0;pending=false;message='';}
   function markup(){return `<div data-expense-pdf-preview>${source?`<div class="morning-expense-toolbar"><button type="button" class="btn" data-action="morning-expense-command" data-expense-command="pdf-prev" ${pending||page<=1?'disabled':''}>עמוד קודם</button><span>עמוד ${page}${pages?' מתוך '+pages:''}</span><button type="button" class="btn" data-action="morning-expense-command" data-expense-command="pdf-next" ${pending||!pages||page>=pages?'disabled':''}>עמוד הבא</button></div>${image?`<img src="${esc(image)}" alt="עמוד ${page} של חשבונית המקור">`:''}<p role="status">${esc(message)}</p>`:''}</div>`;}
-  function update(){const target=document.querySelector('[data-morning-expense-intake] [data-expense-pdf-preview]');if(target)target.outerHTML=markup();}
+  function update(){if(!isActive())return;const target=document.querySelector('[data-morning-expense-intake] [data-expense-pdf-preview]');if(target)target.outerHTML=markup();}
   function select(item){reset();if(item?.type==='application/pdf'){source=item;return draw();}}
   function draw(){
     if(!source||pending)return false;

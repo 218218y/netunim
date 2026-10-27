@@ -77,7 +77,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     files, confirmDialog, apply:applyOcr, advance:() => {if (operationId) return; supplierPicker.reset(); draft = defaults(); lastAmountField = ''; selectNextFile();}, busy:() => busy, canStart:() => !operationId});
   const local = createExpenseLocalReview({files, request, capture, capabilities:() => catalog?.capabilities, selected:() => selected,
     editVersion:() => editVersion, currentNumber:() => draft.number, apply:applyLocal, render, run:tasks.run, canStart:() => !!catalog && !operationId, ocrActive:ocr.active, confirmDialog});
-  const pdfPreview = createExpensePdfPreview({capture,run:tasks.run});
+  const pdfPreview = createExpensePdfPreview({capture,run:tasks.run,isActive:active});
   const unsubscribe = subscribeAccountScope(() => { clear(); render(); });
   function render() {
     if (!active()) return;
