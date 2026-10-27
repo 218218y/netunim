@@ -134,3 +134,12 @@ test('ambiguous delivery cannot replay and an explicit source exception remains 
  assert.equal(waived.body.sourceException,true);assert.equal(waived.body.sourceVerified,false);assert.equal(waived.body.sourcePending,false);
  assert.ok(f.row.source_waived_at);assert.equal(f.count(),0);
 });
+
+test('an unavailable canonical download does not mislabel the selected original as wrong or bind it',async()=>{
+ const f=fixture();f.link();
+ const source={sha256:'a'.repeat(64),size:100,contentType:'application/pdf'};
+ const uploader=createExpenseUpload({...f.options,verifySource:async()=>{throw Error('network unavailable');}});
+ const value=await uploader.handle(user,{...prepare,action:'source_verify',sourceFile:source,sourceReview:{mode:'manual',reason:'Original explicitly compared to the invoice'}});
+ assert.equal(value.status,503);assert.equal(value.body.code,'expense_source_verification_unavailable');assert.equal(value.body.sourceCheck,'unavailable');
+ assert.equal(f.row.source_metadata,undefined);assert.equal(f.count(),0);
+});

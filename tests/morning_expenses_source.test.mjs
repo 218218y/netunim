@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {normalizeExpenseSource,expenseSourceExpected,compareExpenseSource,normalizeExpenseSourceReview} from '../netunim-orders/site/assets/js/core/morning-expense-source.js';
 import {expenseNumberPolicy,findExpenseDuplicate} from '../netunim-orders/supabase/functions/morning-expenses/duplicates.js';
+import {inspectExpenseSource} from '../netunim-orders/supabase/functions/morning-expenses/source.js';
 const id=n=>`aaaaaaaa-aaaa-4aaa-aaaa-${String(n).padStart(12,'0')}`;
 const payload={documentType:305,number:'00123',date:'2026-10-20',reportingDate:'2026-10-01',currency:'ILS',amount:118,vat:18,pcnClassification:'T',supplier:{taxId:'123456789'}};
 const hash=async tax=>Buffer.from(await crypto.subtle.digest('SHA-256',new TextEncoder().encode('supplier-tax:'+tax))).toString('hex');
@@ -28,7 +29,7 @@ test('supplier prefix and zero aliases are comparison-only, scoped to verified p
  assert.equal(numeric.canonical('SI00123'),'00123');assert.equal(numeric.canonical('CR00123'),'CR00123');
 });
 test('duplicate check scans dates across reporting periods and distinguishes supplier snapshots without IDs',async()=>{
- const search=rows=>async path=>{assert.equal(path,'/expenses/search');return {page:1,pageSize:50,total:rows.length,pages:1,items:rows};};
+ const search=rows=>async path=>path==='/expenses/search'?{page:1,pageSize:50,total:rows.length,pages:1,items:rows}:rows.find(row=>path==='/expenses/'+row.id);
  const same=await findExpenseDuplicate(search([record({reportingDate:'2026-12-01'})]),payload);assert.equal(same.match,'identical');
  assert.equal((await findExpenseDuplicate(search([record({amount:119})]),payload)).match,'identity_conflict');
  assert.equal((await findExpenseDuplicate(search([record({supplier:{taxId:'999999999'}})]),payload)).duplicate,false);
@@ -38,7 +39,34 @@ test('duplicate check scans dates across reporting periods and distinguishes sup
 });
 test('duplicate supplier IDs are resolved canonically and unstable pagination fails closed',async()=>{
  const row=record({supplier:{id:id(4)}}),paths=[];
- const request=async path=>{paths.push(path);return path==='/expenses/search'?{page:1,pageSize:50,total:1,pages:1,items:[row]}:{id:id(4),name:'Other supplier',country:'IL',active:true,taxId:'999999999'};};
+ const request=async path=>{paths.push(path);return path==='/expenses/search'?{page:1,pageSize:50,total:1,pages:1,items:[row]}:path==='/expenses/'+row.id?row:{id:id(4),name:'Other supplier',country:'IL',active:true,taxId:'999999999'};};
  assert.equal((await findExpenseDuplicate(request,payload)).duplicate,false);assert.ok(paths.includes('/suppliers/'+id(4)));
  await assert.rejects(()=>findExpenseDuplicate(async()=>({page:1,pageSize:50,total:1050,pages:21,items:[row]}),payload));
+});
+
+test('canonical expense read resolves identity omitted by search and prevents false supplier collisions',async()=>{
+ const snapshot=record({supplier:{name:'Snapshot without identity'}});
+ const request=tax=>async path=>path==='/expenses/search'?{page:1,pageSize:50,total:1,pages:1,items:[snapshot]}:record({supplier:{taxId:tax}});
+ assert.equal((await findExpenseDuplicate(request(payload.supplier.taxId),payload)).match,'identical');
+ assert.equal((await findExpenseDuplicate(request('999999999'),payload)).duplicate,false);
+ await assert.rejects(()=>findExpenseDuplicate(async path=>{if(path==='/expenses/search')return {page:1,pageSize:50,total:1,pages:1,items:[snapshot]};throw Error('canonical read unavailable');},payload));
+});
+
+test('ambiguous provider search cannot trigger an unbounded canonical-detail scan',async()=>{
+ const snapshots=Array.from({length:21},(_,n)=>record({id:id(n+1),supplier:{}}));let reads=0;
+ const request=async path=>{if(path==='/expenses/search')return {page:1,pageSize:50,total:21,pages:1,items:snapshots};
+   reads++;return {...snapshots.find(row=>path==='/expenses/'+row.id),supplier:{taxId:'999999999'}};};
+ await assert.rejects(()=>findExpenseDuplicate(request,payload),/incomplete/);assert.equal(reads,20);
+});
+
+test('source download failure and mismatching bytes remain distinct without exposing URLs',async()=>{
+ const row={state:'created',source_metadata:{sha256:'a'.repeat(64),size:100,contentType:'application/pdf'}};
+ const raw={url:'https://api.greeninvoice.co.il/api/v1/expenses/download?secret=private-token'};
+ const redirected=await inspectExpenseSource(row,raw,'production',{verifySource:async()=>{throw Error('download failed');}});
+ assert.equal(redirected.sourceCheck,'unavailable');assert.equal(redirected.sourceVerified,false);
+ assert.ok(!JSON.stringify(redirected).includes('private-token'));assert.ok(!JSON.stringify(redirected).includes('private-name'));
+ const mismatch=await inspectExpenseSource(row,raw,'production',{verifySource:async()=>false});
+ assert.equal(mismatch.sourceCheck,'mismatch');assert.equal(mismatch.sourcePending,true);
+ const offline=await inspectExpenseSource(row,raw,'production',{verifySource:async()=>{throw Error('network unavailable');}});
+ assert.equal(offline.sourceCheck,'unavailable');assert.equal(offline.sourcePending,true);
 });

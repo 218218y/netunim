@@ -24,3 +24,18 @@ test('source verification bounds stalled streams and rejects malformed content l
   assert.equal(await verifyOcrSource(raw, expected, 'sandbox', {fetch:async () => new Response(bytes, {headers:{'Content-Length':'invalid'}})}), false);
   await assert.rejects(verifyOcrSource(raw, expected, 'sandbox', {fetch:async () => new Response(null,{status:403})}), /unavailable/);
 });
+
+test('observed www Production downloads are verified directly, without broadening environments, paths or redirects',async()=>{
+  for(const host of ['www.greeninvoice.co.il','api.greeninvoice.co.il']){
+    const url='https://'+host+'/api/v1/expenses/download?d=private';
+    assert.equal(await verifyOcrSource({url},expected,'production',{fetch:async(actual,init)=>{
+      assert.equal(actual,url);assert.equal(init.redirect,'error');assert.equal(init.credentials,'omit');return new Response(bytes);
+    }}),true);
+  }
+  for(const url of ['https://www.greeninvoice.co.il.attacker.test/api/v1/expenses/download','http://www.greeninvoice.co.il/api/v1/expenses/download',
+    'https://www.greeninvoice.co.il/api/v1/other','https://user:secret@www.greeninvoice.co.il/api/v1/expenses/download'])
+    await assert.rejects(verifyOcrSource({url},expected,'production',{fetch:()=>assert.fail('unsafe download')}));
+  const www={url:'https://www.greeninvoice.co.il/api/v1/expenses/download?d=private'};
+  await assert.rejects(verifyOcrSource(www,expected,'sandbox',{fetch:()=>assert.fail('cross-environment download')}));
+  await assert.rejects(verifyOcrSource(www,expected,'production',{fetch:async()=>new Response(null,{status:302,headers:{Location:'https://attacker.test'}})}),/unavailable/);
+});
