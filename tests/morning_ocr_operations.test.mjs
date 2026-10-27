@@ -11,6 +11,7 @@ function ocrFixture({environment = 'sandbox', enabled = true} = {}) {
   const ledger = {
     get:async (owner, operation) => {const row = rows.get(operation); return row?.owner_id === owner ? structuredClone(row) : null;},
     byFile:async (owner, hash) => {const row = [...rows.values()].find(row => row.owner_id === owner && row.file_sha256 === hash); return row ? structuredClone(row) : null;},
+    hasFile:async hash => [...rows.values()].some(row => row.file_sha256 === hash),
     list:async owner => [...rows.values()].filter(row => row.owner_id === owner).map(row => structuredClone(row)),
     reserve:async row => {if (rows.has(row.operation_id) || [...rows.values()].some(other => other.file_sha256 === row.file_sha256)) return null;
       const value = {...row,created_at:new Date(clock).toISOString()}; rows.set(row.operation_id, value); return structuredClone(value);},
@@ -90,4 +91,18 @@ test('OCR authorization, environment pinning and recovery remain separate from d
   const service=createExpenseService({request:f.options.request,environment:'sandbox',ocr:f.ocr});
   assert.equal((await service(user,{action:'ocr_list',expectedEnvironment:'production'})).status,409);
   const deferred=await stopped.handle(user,{action:'ocr_defer',operationId:id(2)}); assert.equal(deferred.body.deferred,true); assert.equal(deferred.body.approvalVerified,false);
+});
+test('file lookup is read-only after scans are disabled and protects cross-owner metadata', async () => {
+  const f=ocrFixture(); await f.ocr.handle(user,prepare);
+  const stopped=createExpenseOcr({...f.options,enabled:false});
+  const body={action:'ocr_lookup',sha256:prepare.sha256};
+  const own=await stopped.handle(user,body); assert.deepEqual(own.body,{ok:true,hasOcrOperation:true,operationId:prepare.operationId});
+  const other=await stopped.handle({...user,id:id(9)},body); assert.deepEqual(other.body,{ok:true,hasOcrOperation:true});
+  assert.deepEqual((await stopped.handle(user,{...body,sha256:'b'.repeat(64)})).body,{ok:true,hasOcrOperation:false});
+  assert.equal((await stopped.handle(user,{...body,sha256:'../bad'})).status,400);
+  assert.equal((await stopped.handle({id:user.id,app_metadata:{morning_expenses_read:true}},body)).status,403);
+  assert.equal(f.calls.length,0); assert.equal(f.rows.get(prepare.operationId).revision,0);
+  const service=createExpenseService({request:f.options.request,environment:'sandbox',ocr:stopped});
+  assert.equal((await service(user,{...body,expectedEnvironment:'production'})).status,409);
+  assert.equal((await service(user,{action:'capabilities'})).body.ocrFileGuard,true);
 });

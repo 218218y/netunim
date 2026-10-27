@@ -4,6 +4,7 @@ export function createOcrLedger(admin, environment) {
   return {
     get:(owner, operation) => checked(table().select('*').eq('owner_id', owner).eq('environment', environment).eq('operation_id', operation).maybeSingle()),
     byFile:(owner, hash) => checked(table().select('*').eq('owner_id', owner).eq('environment', environment).eq('file_sha256', hash).maybeSingle()),
+    hasFile:async hash => !!await checked(table().select('operation_id').eq('environment', environment).eq('file_sha256', hash).maybeSingle()),
     list:owner => checked(table().select('*').eq('owner_id', owner).eq('environment', environment).order('created_at', {ascending:false}).limit(20)),
     async reserve(row) {
       const {data,error} = await table().insert({...row,environment}).select('*').single();

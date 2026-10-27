@@ -10,7 +10,7 @@ The new extractor was then run in an isolated native Chrome browser on all 41 pr
 
 An authenticated read-only Morning search found invoice 3383 with the expected document date and gross amount. Its search projection omitted supplier tax ID; the existing writer treats a relevant number/type/year match with unknown supplier identity conservatively instead of silently skipping duplicate evidence. No real document was uploaded or created during this investigation.
 
-Five historical Roya records contain numeric invoice numbers with inconsistent leading zero handling. This is not a paired proof that the new document's `s` prefix must be removed. Preserve `rawNumber`, keep any alternative separate, and require explicit review until a supported normalization rule is verified. Never convert invoice identifiers to JavaScript numbers.
+The initial historical Roya search alone showed inconsistent leading zero handling and could not prove how the source prefix should be normalized. The paired July–August comparison below subsequently verified a prefix-only rule. Invoice identifiers always remain strings.
 
 ### Reported July–August corpus and verified normalization
 
@@ -58,3 +58,25 @@ The [Tax Authority's official allocation service](https://www.gov.il/he/service/
 3. Default local recognition in the existing intake, explicit review, canonical supplier matching and preservation of the existing financial writer and Morning OCR boundary.
 
 Morning OCR remains separate, explicitly confirmed and Sandbox-only. Local selection/extraction must perform no upload or financial write. An unresolved Morning OCR operation must continue blocking ordinary expense creation for that source.
+
+## Intake integration and final acceptance
+
+`morning-expense-local.js` owns the selected file's cancellable extraction and in-memory proposals. `morning-expense-intake.js` reuses its existing form, canonical supplier reader, reporting-period logic, financial confirmation, durable writer, receipt and file attachment. PDF selection starts local recognition by default; source details distinguish original/suggested invoice numbers, computed net, missing/ambiguous fields and page references. Exact tax identity must resolve to one active canonical Morning supplier before automatic selection. All financial fields remain editable. A mandatory source-review checkbox is invalidated by every field edit; direct and keyboard save paths use the same guard. Explicit refill cannot overwrite edits made during asynchronous canonical reads.
+
+`morning-expense-pdf-preview.js` renders one bounded page image through the same pinned core, with previous/next controls. It does not run PDF actions, links, annotation scripts or forms. The native browser/plugin iframe is replaced by raster-only images. Each render releases its document/worker; file/account/disposal cancellation releases the current image URL too. Canvas allocation is capped at three million pixels and 4,096 pixels per side, with the same file/page limits and a 20-second processing timeout. This also displays image-only PDFs for manual reading without adding OCR.
+
+`rawNumber` and `suggestedNumber` remain source evidence. The current string becomes `effectiveNumber` only on user review, and editing invalidates it. Roya's leading zero is retained in the financial payload. A bounded read-only duplicate probe additionally checks the historical zero-less spelling only for the same recognized Roya tax identity. Invoice 3383 is also blocked by the normal exact identity/number/type/year checks. The server's existing financial deduplication and recovery mechanism is unchanged.
+
+`ocr_lookup` reads the existing environment-scoped OCR journal by file SHA-256. It performs no reservation, revision change, upload, provider call or financial write. Owner-authorized recovery remains available with new scans disabled. Other owners' operations return only an existence flag. A known or uncertain OCR source blocks ordinary creation, including a deferred scan or a renamed file. The lookup is repeated before financial confirmation and immediately before dispatch. Selecting Morning OCR cancels local processing; it still requires its separate explicit confirmation. This check covers scans tracked by this application's journal, not drafts independently uploaded outside the application. Existing server invoice deduplication remains the final financial boundary.
+
+The private native-browser UI acceptance processed all 115 files using the actual pinned PDF core/worker and recognizer, with canonical Morning responses previously read from the account replayed as a read-only provider fixture: 110 recognized digital files, 110 exact canonical supplier matches, zero mapped-field discrepancies, five image-only manual outcomes, and successful blocking of the already-recorded invoice. There were zero real upload/financial calls. This validates the complete source-to-form path; it is not a financial Production acceptance test. Public desktop/mobile regressions separately exercise synthetic save/attachment, deferred OCR re-entry, edit/file/account races, native unknown-PDF fallback and cleanup. Sanitized UI metrics are in the acceptance JSON.
+
+### Deployment and rollback
+
+1. Retain/apply the existing `20261027110000_morning_expense_ocr_operations.sql` migration using the normal migration manifest/preflight. This stage requires no new SQL schema or changes to financial ledgers.
+2. Deploy the updated `morning-expenses` function first, with the existing environment, expense credentials and read/write/upload flags. Do not change income-document credentials or enable Production OCR. Confirm `capabilities.ocrFileGuard` and an authorized, environment-pinned `ocr_lookup` for an unused synthetic hash.
+3. Publish the matching Orders static assets/service worker through the existing deployment workflow. An older function still allows local text review but blocks PDF-backed creation until the durable OCR-source guard is available. Ordinary manual intake without a PDF remains available.
+4. Review a selected local source, canonical supplier, explicit VAT and preserved number. No live financial creation is required to verify extraction. Any actual expense is submitted only through the existing explicit financial confirmation and attachment/readback sequence.
+5. For rollback, restore the previous matching static release and retain a compatible recovery-capable function and all OCR/financial journal rows. Pending/uncertain uploads are never cleared or replayed. Disable new Sandbox OCR separately if needed. Finish existing Morning drafts in Morning; local-only extraction has no remote state to undo.
+
+The five image-only PDFs require manual entry or a separately authorized supported OCR path. No image OCR engine was added. Approval/editing of Morning drafts through API remains blocked pending the official contract and isolated acceptance; Production OCR remains hard disabled.
