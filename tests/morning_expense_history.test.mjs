@@ -95,3 +95,38 @@ test('recent account reads reject duplicate pages and never publish after an acc
   assert.ok(!recent.markup().includes('private old account'));
   assert.equal(recent.record({verified:false}), false); assert.equal(calls, 1);
 });
+
+test('large accounts require explicit bounded continuation and publish only complete snapshots', async () => {
+  const all = Array.from({length:10000}, (_, n) => ({...expense(n, '2026-10-01'), createdAt:new Date(1700000000000 + n * 1000).toISOString()}));
+  const scan = {next:0, pages:1, total:null, items:[], seen:new Set()};
+  let calls = 0;
+  const request = async (_, body) => {calls++; return paged(all.slice(body.page * 50, body.page * 50 + 50), body.page, all);};
+  assert.equal(await readRecentExpenses(request, caps, () => {}, {scan}), null);
+  assert.equal(calls, 4); assert.equal(scan.seen.size, 200); assert.equal(scan.items.length, 10);
+  assert.equal(await readRecentExpenses(request, caps, () => {}, {scan}), null);
+  assert.equal(calls, 8); assert.equal(scan.next, 8);
+  for (let n = 2; n < 49; n++) assert.equal(await readRecentExpenses(request, caps, () => {}, {scan}), null);
+  const found = await readRecentExpenses(request, caps, () => {}, {scan});
+  assert.equal(calls, 200); assert.equal(found[0].id, '9999');
+});
+
+test('recent snapshots use expiring memory cache; verified writes invalidate without provider reads', async () => {
+  globalThis.document = {querySelector:() => null};
+  let clock = 1000, calls = 0;
+  const row = {...expense('one', '2026-10-01'), number:'snapshot-invoice', createdAt:'2026-10-27T10:00:00Z'};
+  const recent = createExpenseRecent({request:async () => {calls++; return paged([row]);}, capabilities:() => caps,
+    capture:() => () => {}, run:work => work(), now:() => clock});
+  assert.equal(calls, 0); assert.ok(!recent.markup().includes('לא נמצאו'));
+  await recent.load(); await recent.load(); assert.equal(calls, 1);
+  clock += 120001; await recent.load(); assert.equal(calls, 2);
+  recent.record({verified:true}); assert.equal(calls, 2); assert.ok(recent.markup().includes('אינה מעודכנת'));
+  await recent.load(); assert.equal(calls, 3);
+  recent.reset(); assert.ok(!recent.markup().includes('snapshot-invoice'));
+});
+
+test('large reporting periods stop before unbounded reads or partial totals', async () => {
+  const all = Array.from({length:1001}, (_, n) => expense(n, '2026-10-01'));
+  let calls = 0;
+  await assert.rejects(readExpenseHistoryPeriod(async () => {calls++; return paged(all.slice(0, 50), 0, all);}, caps, period, () => {}), /1,000/);
+  assert.equal(calls, 1);
+});

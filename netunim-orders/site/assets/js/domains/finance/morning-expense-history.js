@@ -20,7 +20,7 @@ export function expenseHistoryRows(items, period) {
 export async function readExpenseHistoryPeriod(request, capabilities, period, check, options) {
   const filter = {fromDate:period.months[0], toDate:period.months[1]};
   const first = await readExpenseCatalogPage(request, capabilities, 'expenses', filter, 0, check, options);
-  if (first.pages > 1000) throw new Error('תקופת הדיווח חורגת ממגבלת הקריאה. יש לעיין בה ב־Morning.');
+  if (first.pages > 20) throw new Error('תקופת הדיווח חורגת ממגבלת 1,000 ההוצאות לקריאה במסך זה. יש לעיין בתקופה המלאה ב־Morning.');
   const items = [...first.items];
   for (let page = 1; page < first.pages; page++) {
     const result = await readExpenseCatalogPage(request, capabilities, 'expenses', filter, page, check, options);
