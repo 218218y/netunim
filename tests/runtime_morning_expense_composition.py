@@ -53,9 +53,11 @@ FLOW = r"""(async()=>{
  await wait(()=>document.querySelector('[data-expense-field="supplierId"]'));await finance.runtime.drain();
  check(ui.kupaSubView==='expenses'&&!document.querySelector('[data-morning-reports]')&&!document.querySelector('[data-action="tax-open"]'),'expense page still contains unrelated sections');
  check(document.querySelector('[data-expense-history]').textContent.includes('HISTORY-1'),'real composition omitted automatic history');
- check(document.querySelector('[data-expense-recent]').textContent.includes('MORNING-EXTERNAL'),'recent list omitted an expense created elsewhere under another reporting period');
+ check(calls.every(request=>request.action!=='expenses'||request.fromDate),'opening the intake scanned the entire account');
+ click('recent-refresh');await finance.runtime.drain();
+ check(document.querySelector('[data-expense-recent]').textContent.includes('MORNING-EXTERNAL'),'explicit recent loading omitted an expense created elsewhere under another reporting period');
  click('back');check(ui.kupaSubView==='summary'&&document.querySelector('[data-morning-reports]'),'back did not restore the summary');
- const requestsBeforeReopen=calls.length;click('toggle');await finance.runtime.drain();check(calls.slice(requestsBeforeReopen).every(request=>request.action==='expenses'&&!request.fromDate),'reopening reloaded a ready catalog');
+ const requestsBeforeReopen=calls.length;click('toggle');await finance.runtime.drain();check(calls.length===requestsBeforeReopen,'reopening made provider requests');
  const rect=name=>document.querySelector('[data-expense-field="'+name+'"]').getBoundingClientRect();
  const liveNumber=document.querySelector('[data-expense-field="number"]');liveNumber.focus();finance.presentation.renderKupa();
  check(liveNumber.isConnected&&document.activeElement===liveNumber&&ui.kupaSubView==='expenses','Finance publication replaced the expense editor');
@@ -104,7 +106,8 @@ FLOW = r"""(async()=>{
  click('save');await finance.runtime.drain();check(posts===0&&confirmations.length===0,'invalid date reused the previous valid date');inputDate('2026-10-20');
  click('favorite');click('save');await finance.runtime.drain();
  check(posts===1&&confirmations.length===1,'actual app confirmation/save did not execute exactly once');
- check(document.querySelector('[data-expense-recent]').textContent.includes('COMPOSITION-1'),'actual confirmed intake missing from recent entries');
+ check(document.querySelector('[data-expense-recent]').textContent.includes('החשבון עודכן'),'save did not invalidate the recent snapshot');
+ click('recent-refresh');await finance.runtime.drain();check(document.querySelector('[data-expense-recent]').textContent.includes('COMPOSITION-1'),'explicit refresh missed confirmed intake');
  check(confirmations[0].title.includes('האמיתי')&&confirmations[0].message.includes(expense.classification.title),'actual confirmation missed account or category');
  const key='morningExpenseOperation:production:'+owner,preference='morningExpensePreferences:production:'+owner;
  check(JSON.parse(localStorage.getItem(key)).operationId===operation,'recovery pointer missing account identity');
