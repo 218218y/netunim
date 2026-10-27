@@ -1,5 +1,5 @@
 const uuid = value => typeof value === 'string' && /^[\da-f]{8}(-[\da-f]{4}){3}-[\da-f]{12}$/i.test(value);
-const empty = () => ({version:1, favorites:[], classifications:[]});
+const empty = () => ({version:1, favorites:[], classifications:[], recentExpenses:[]});
 function clean(raw) {
   if (raw?.version !== 1 || !Array.isArray(raw.favorites) || !Array.isArray(raw.classifications)) return empty();
   const favorites = [...new Set(raw.favorites.filter(uuid))].slice(0, 8);
@@ -9,7 +9,8 @@ function clean(raw) {
     seen.add(row.supplierId); classifications.push({supplierId:row.supplierId, expenseId:row.expenseId});
     if (classifications.length === 32) break;
   }
-  return {version:1, favorites, classifications};
+  const recentExpenses = [...new Set((Array.isArray(raw.recentExpenses) ? raw.recentExpenses : []).filter(uuid))].slice(0, 10);
+  return {version:1, favorites, classifications, recentExpenses};
 }
 const key = (owner, environment) => {
   if (!uuid(owner) || !['production', 'sandbox'].includes(environment)) throw new Error('invalid_expense_preference_scope');

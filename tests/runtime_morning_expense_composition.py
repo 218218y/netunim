@@ -36,7 +36,7 @@ FLOW = r"""(async()=>{
   if(request.action==='create'){
    posts++;check(request.expense.allocationNumber==='123456789','allocation number lost');check(request.expense.vat==='18.00','manual VAT changed');
    check(request.expense.reportingDate===request.expense.date.slice(0,7)+'-01','reporting month changed');operation=request.operationId;
-   return Response.json({...base,state:'created',verified:true,expenseId:id(8),fileLinked:false});
+   return Response.json({...base,state:'created',verified:true,expenseId:id(8),fileLinked:false,item:{...expense,id:id(8),number:request.expense.number}});
   }
   if(request.action==='operation_status'){
    check(request.operationId===operation,'recovery used another operation');
@@ -101,6 +101,7 @@ FLOW = r"""(async()=>{
  click('save');await finance.runtime.drain();check(posts===0&&confirmations.length===0,'invalid date reused the previous valid date');inputDate('2026-10-20');
  click('favorite');click('save');await finance.runtime.drain();
  check(posts===1&&confirmations.length===1,'actual app confirmation/save did not execute exactly once');
+ check(document.querySelector('[data-expense-recent]').textContent.includes('COMPOSITION-1'),'actual confirmed intake missing from recent entries');
  check(confirmations[0].title.includes('האמיתי')&&confirmations[0].message.includes(expense.classification.title),'actual confirmation missed account or category');
  const key='morningExpenseOperation:production:'+owner,preference='morningExpensePreferences:production:'+owner;
  check(JSON.parse(localStorage.getItem(key)).operationId===operation,'recovery pointer missing account identity');

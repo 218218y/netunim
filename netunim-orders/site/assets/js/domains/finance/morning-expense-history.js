@@ -1,6 +1,7 @@
 import {esc} from '../../core/values.js';
 import {expenseBimonth, validReportDate} from '../../core/morning-report-period.js';
 import {readExpenseCatalogPage} from './morning-expense-catalog.js';
+import {expenseTableHead, expenseTableRow, expenseTableTotals, expenseMoney} from './morning-expense-table.js';
 
 export function expenseHistoryRows(items, period) {
   const seen = new Set();
@@ -30,15 +31,25 @@ export async function readExpenseHistoryPeriod(request, capabilities, period, ch
 }
 
 export function createExpenseHistory({request, capabilities, capture, run, todayISO}) {
-  let groups = [], visible = 0, next = '', busy = false, message = '', revision = 0, controller = null;
+  let groups = [], visible = 0, next = '', busy = false, message = '', revision = 0, controller = null, observer = null;
   const host = () => document.querySelector('[data-expense-history]');
   function render() {
     const target = host(); if (!target) return;
-    const top = target.querySelector('.morning-expense-history-list')?.scrollTop || 0;
+    const scroller = target.closest('.view-scroll'), top = scroller?.scrollTop;
     target.outerHTML = markup();
-    const list = host()?.querySelector('.morning-expense-history-list'); if (list) list.scrollTop = top;
+    if (scroller && Number.isFinite(top)) scroller.scrollTop = top;
+    bind();
   }
-  function reset() {revision++; controller?.abort(); controller = null; groups = []; visible = 0; next = expenseBimonth(todayISO()).months[0]; busy = false; message = '';}
+  function reset() {revision++; controller?.abort(); observer?.disconnect(); observer = null; controller = null; groups = []; visible = 0; next = expenseBimonth(todayISO()).months[0]; busy = false; message = '';}
+  function bind() {
+    observer?.disconnect(); observer = null;
+    const sentinel = host()?.querySelector('[data-expense-history-more]');
+    if (!sentinel || busy || message) return;
+    observer = new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting) && sentinel.isConnected && host()?.contains(sentinel)) more();
+    }, {root:sentinel.closest('.view-scroll'), rootMargin:'0px 0px 180px 0px'});
+    observer.observe(sentinel);
+  }
   function more() {
     if (busy || !capabilities()) return false;
     const loaded = groups.reduce((sum, group) => sum + group.items.length, 0);
@@ -68,17 +79,24 @@ export function createExpenseHistory({request, capabilities, capture, run, today
   function refresh() {reset(); return more();}
   function markup() {
     let remaining = visible;
-    const money = row => Number.isSafeInteger(row.grossCents) ? new Intl.NumberFormat('he-IL', {style:'currency', currency:'ILS'}).format(row.grossCents / 100) : 'סכום לא זמין';
-    const date = value => validReportDate(value) ? value.split('-').reverse().join('/') : 'תאריך לא זמין';
     const shown = groups.map(group => {
       const rows = group.items.slice(0, Math.max(0, remaining)); remaining -= rows.length;
-      return rows.length ? `<section class="morning-expense-history-period"><h3>דיווח ${esc(group.period.label)}</h3><ol>${rows.map(row =>
-        `<li data-expense-history-id="${esc(row.id)}"><div><strong>${esc(row.name)}</strong><span>${esc(row.type === 330 ? 'חשבונית זיכוי' : 'חשבונית')} ${esc(row.number)}</span><small>${esc(row.category || row.classification?.title || row.description)}</small></div><div><time datetime="${esc(row.sourceDocumentDate)}">${esc(date(row.sourceDocumentDate))}</time><bdi>${esc(money(row))}</bdi></div></li>`
-      ).join('')}</ol></section>` : '';
+      const totals = expenseTableTotals(group.items);
+      return rows.length ? `<tbody class="morning-expense-history-period"><tr class="morning-expense-period-heading">
+        <th colspan="5" scope="rowgroup"><h3>דיווח ${esc(group.period.label)} <small>(${group.items.length})</small></h3></th>
+        <td data-label="סה״כ כולל מע״מ"><bdi>${esc(expenseMoney(totals.grossCents))}</bdi></td>
+        <td data-label="סה״כ מע״מ"><bdi>${esc(expenseMoney(totals.vatCents))}</bdi></td></tr>
+        ${rows.map(row => expenseTableRow(row)).join('')}</tbody>` : '';
     }).join('');
     const loaded = groups.reduce((sum, group) => sum + group.items.length, 0), hasMore = visible < loaded || next >= '2010-01-01';
-    return `<section class="morning-expense-history" data-expense-history aria-label="הוצאות אחרונות מ־Morning"><div class="morning-expense-history-heading"><h2>הוצאות אחרונות מ־Morning</h2><button type="button" class="btn" data-action="morning-expense-command" data-expense-command="history-refresh" ${busy ? 'disabled' : ''}>רענון רשימה</button></div><p>לפי תקופת דיווח מע״מ · בכל תקופה תאריך החשבונית מהחדש לישן</p><div class="morning-expense-history-list" tabindex="0" aria-label="רשימת הוצאות לפי תקופות דיווח">${shown || (!busy && !message ? '<p>לא נמצאו הוצאות בתקופות שנבדקו.</p>' : '')}<p role="status" aria-live="polite">${esc(busy ? 'טוען הוצאות מ־Morning…' : message)}</p>${hasMore ? `<button type="button" class="btn" data-action="morning-expense-command" data-expense-command="history-more" ${busy ? 'disabled' : ''}>${message ? 'ניסיון נוסף' : 'הצגת הוצאות נוספות'}</button>` : ''}</div></section>`;
+    return `<section class="morning-expense-history" data-expense-history aria-label="הוצאות לפי תקופות דיווח">
+      <div class="morning-expense-history-heading"><h2>הוצאות לפי תקופות דיווח</h2>
+      <button type="button" class="btn" data-action="morning-expense-command" data-expense-command="history-refresh" ${busy ? 'disabled' : ''}>רענון רשימה</button></div>
+      <p>בכל תקופה תאריך החשבונית מהחדש לישן · הסיכומים כוללים את כל הוצאות התקופה</p>
+      ${shown ? `<table class="morning-expense-table" aria-label="הוצאות Morning לפי תקופות דיווח">${expenseTableHead()}${shown}</table>` : !busy && !message ? '<p>לא נמצאו הוצאות בתקופות שנבדקו.</p>' : ''}
+      <p role="status" aria-live="polite">${esc(busy ? 'טוען הוצאות מ־Morning…' : message)}</p>
+      ${message ? '<button type="button" class="btn" data-action="morning-expense-command" data-expense-command="history-more">ניסיון נוסף</button>' : hasMore && !busy ? '<div data-expense-history-more aria-hidden="true"></div>' : ''}</section>`;
   }
   reset();
-  return {markup, more, refresh, reset};
+  return {markup, more, refresh, reset, bind};
 }

@@ -33,8 +33,8 @@ FLOW = r"""(async()=>{
    return paged([catalogExpense]);
   }
   if(action==='get_supplier')return {ok:true,version:1,environment,item:supplier};
-  if(action==='get_expense')return {ok:true,version:1,environment,item:{...expense,id:id(30)}};
-  if(action==='create'){posts++;check(body.expense.vat==='160.00','manual VAT changed');return {ok:true,state:'created',verified:true,expenseId:id(8),fileLinked:false};}
+  if(action==='get_expense')return {ok:true,version:1,environment,item:{...expense,id:body.id}};
+  if(action==='create'){posts++;check(body.expense.vat==='160.00','manual VAT changed');return {ok:true,state:'created',verified:true,expenseId:id(8),fileLinked:false,item:{...expense,id:id(8),number:body.expense.number}};}
   if(action==='operation_status'){if(statusUnavailable)throw Error('בדיקת מצב אינה זמינה');return {ok:true,state:recoveryState,verified:recoveryState==='created',expenseId:recoveryState==='created'?id(8):'',fileLinked:linked,fileState:serverFileState,intent};}
   if(action==='reconcile'){check(body.expenseId===id(8),'wrong canonical ID');recoveryState='created';return {ok:true,state:'created',verified:true,expenseId:id(8),fileLinked:linked,intent};}
   if(action==='cancel_reserved'){check(recoveryState==='reserved','nonreserved cancellation');recoveryState='cancelled';return {ok:true,state:'cancelled',verified:false,cancelled:true,intent};}
@@ -48,7 +48,7 @@ FLOW = r"""(async()=>{
   if(action!=='capabilities')check(body.expectedEnvironment===environment,'request not pinned to environment');
   return {...await respond(action,body,assertCurrent),version:1,environment};
  };
- const fixture=document.createElement('div');fixture.id='expenseFixture';document.getElementById('main').replaceChildren(fixture);
+ const fixture=document.createElement('div');fixture.id='expenseFixture';fixture.className='view-scroll';fixture.style.height='calc(100vh - 80px)';document.getElementById('main').replaceChildren(fixture);
  const upload=async(ticket,selected,assertCurrent)=>fileEffects.uploadExpenseFile(ticket,selected,assertCurrent,{fetch:async(url,init)=>{
   uploads++;check(init.credentials==='omit'&&!init.headers,'upload leaked auth');check([...init.body.keys()].at(-1)==='file','file not last');return new Response(null,{status:204});
  }});
@@ -74,10 +74,11 @@ FLOW = r"""(async()=>{
  check(editing.isConnected&&document.activeElement===editing&&editing.value==='preserved','history refresh replaced or blurred the intake');
  const historyRows=()=>[...fixture.querySelectorAll('[data-expense-history-id]')];
  check(historyRows().length===20&&historyRows()[0].textContent.includes('HISTORY-54'),'history sorted API pages separately or did not limit the first display');
- const historyList=fixture.querySelector('.morning-expense-history-list');check(historyList.scrollHeight>historyList.clientHeight,'history is not scrollable');historyList.scrollTop=historyList.scrollHeight;const historyTop=historyList.scrollTop;
- click('history-more');await settle();check(historyRows().length===40,'history did not reveal the next 20 rows');check(Math.abs(fixture.querySelector('.morning-expense-history-list').scrollTop-historyTop)<2,'history pagination reset its scroll position');
- click('history-more');await settle();check(historyRows().length===55,'history lost the last rows in its reporting period');
- click('history-more');await settle();check(historyRows().length===56&&historyRows().at(-1).textContent.includes('OLD-PERIOD'),'history did not load the previous reporting period');
+ const historyList=fixture.querySelector('[data-expense-history]');check(getComputedStyle(historyList).overflowY==='visible','history has a nested vertical scroll');
+ check(!historyList.querySelector('[data-expense-command="history-more"]'),'history still requires a load-more click');
+ const scrollToCount=async count=>{fixture.scrollTop=fixture.scrollHeight;for(let i=0;i<120&&historyRows().length<count;i++)await new Promise(resolve=>setTimeout(resolve,20));await settle();check(historyRows().length===count,'infinite history scroll expected '+count+' rows, found '+historyRows().length)};
+ await scrollToCount(40);await scrollToCount(55);await scrollToCount(56);
+ check(historyRows().at(-1).textContent.includes('OLD-PERIOD'),'history did not load the previous reporting period');
  check(fixture.querySelectorAll('.morning-expense-history-period h3').length===2,'history failed to separate reporting periods');
  historyUnavailable=true;click('history-refresh');await settle();check(fixture.querySelector('[data-expense-history]').textContent.includes('לא ניתן להשלים')&&fixture.querySelector('[data-expense-field="number"]').value==='preserved','history error erased intake data');
  historyUnavailable=false;historyItems=[expense];click('history-refresh');await settle();
@@ -102,6 +103,7 @@ FLOW = r"""(async()=>{
  check(fixture.querySelectorAll('.morning-expense-queue li').length===2&&fixture.querySelector('.morning-expense-source>b').textContent==='first.png','queue removal lost another file');
  uploadEnabled=false;click('load');await settle();click('save');await settle();check(posts===0&&fixture.textContent.includes('צירוף קבצים עדיין כבוי'),'file queue entered disabled upload path');uploadEnabled=true;click('load');await settle();
  click('save');await settle();check(posts===1&&confirms===1,'save not exactly once');
+ check(fixture.querySelector('[data-expense-recent]').textContent.includes('000123'),'successful intake was not added to recent entries');
  check(confirmations[0].includes('ציוד משרד')&&confirmations[0].includes('2026-10-20')&&confirmations[0].includes('חשבונית מס'),'approval omitted category, type or source date');
  const recovery=localStorage.getItem('morningExpenseOperation:'+environment+':'+owner);check(recovery&&!recovery.includes('000123')&&!recovery.includes('first.png'),'recovery retained invoice data');
  check(!fixture.querySelector('[data-action="morning-expense-save"]'),'created invoice can save again');
@@ -114,6 +116,7 @@ FLOW = r"""(async()=>{
  const preferenceText=localStorage.getItem('morningExpensePreferences:'+environment+':'+owner);check(preferenceText&&!preferenceText.includes(supplier.name)&&!preferenceText.includes(supplier.taxId)&&!preferenceText.includes('000123'),'preferences leaked invoice or supplier data');
  uiFeature.runtime.dispose();uiFeature=createMorningExpenseIntake(ports);fixture.innerHTML=uiFeature.markup();directoryHidden=true;catalogExpense={...expense,id:id(40),classification:{...expense.classification,id:id(44),title:'סיווג אחר'}};
  click('toggle');await settle();check(fixture.querySelector('[data-expense-command="use-favorite"]'),'favorite did not survive reopening or canonical lookup');
+ check(fixture.querySelector('[data-expense-recent-id="'+id(8)+'"]'),'recent intake did not survive reopening and canonical lookup');
  field('supplierId',id(2),'change');await settle();check(fixture.querySelector('[data-expense-field="classificationExpenseId"]').value===id(30),'saved category outside the history page was not revalidated');directoryHidden=false;
  // Account change while the approval dialog is open must prevent dispatch entirely.
  field('number','cancelled');field('net','1000.00');field('vat','160.00');let releaseConfirm;confirmWait=new Promise(resolve=>releaseConfirm=resolve);
@@ -129,7 +132,7 @@ FLOW = r"""(async()=>{
  const originalEnvironment=environment;environment=environment==='sandbox'?'production':'sandbox';click('load');await settle();check(fixture.textContent.includes('סביבת Morning השתנתה')&&!fixture.querySelector('[data-action="morning-expense-save"]'),'environment switch reassigned pending operation');environment=originalEnvironment;
  recoveryState='reserved';click('status');await settle();click('cancel');await settle();check(posts===1&&fixture.textContent.includes('בוטלה לפני שליחה'),'reserved cancellation failed');
  uiFeature.actions['morning-expense-command']({dataset:{expenseCommand:'next'}});let release;held=new Promise(resolve=>release=resolve);const loading=uiFeature.actions['morning-expense-command']({dataset:{expenseCommand:'load'}});await new Promise(resolve=>setTimeout(resolve,0));owner=id(9);listener();release();await loading;held=null;
- check(!fixture.textContent.includes(supplier.name)&&!fixture.querySelector('[data-expense-field="supplierId"]'),'old account catalog survived');check(!fixture.textContent.includes(id(8)),'old expense result survived');uiFeature.runtime.dispose();localStorage.removeItem('morningExpenseOperation:'+id(1));localStorage.removeItem('morningExpenseOperation:'+environment+':'+id(1));localStorage.removeItem('morningExpensePreferences:'+environment+':'+id(1));
+ check(!fixture.textContent.includes(supplier.name)&&!fixture.querySelector('[data-expense-field="supplierId"]'),'old account catalog survived');check(!fixture.textContent.includes(id(8))&&!fixture.querySelector('[data-expense-recent-id]'),'old expense result or recent intake survived');uiFeature.runtime.dispose();localStorage.removeItem('morningExpenseOperation:'+id(1));localStorage.removeItem('morningExpenseOperation:'+environment+':'+id(1));localStorage.removeItem('morningExpensePreferences:'+environment+':'+id(1));
  return {posts,uploads,confirms,requests:requests.length,desktop};
 })()"""
 
