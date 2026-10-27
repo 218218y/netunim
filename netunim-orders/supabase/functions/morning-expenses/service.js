@@ -76,17 +76,18 @@ export function createExpenseService({request, environment, readIds = () => '', 
       if (!object(body)) throw new Error('invalid_expense_input');
       const action = body.action;
       const ocrCommand = ['ocr_prepare','ocr_ticket','ocr_ack','ocr_status','ocr_list','ocr_defer','ocr_lookup'].includes(action);
-      const command = ocrCommand || ['create', 'operation_status', 'reconcile', 'cancel_reserved', 'upload_prepare', 'upload_ticket', 'upload_ack', 'upload_status'].includes(action);
+      const command = ocrCommand || ['create', 'operation_status', 'reconcile', 'cancel_reserved','duplicate_check','source_pending','source_waive','source_verify', 'upload_prepare', 'upload_ticket', 'upload_ack', 'upload_status'].includes(action);
       if ((command || body.expectedEnvironment !== undefined) && body.expectedEnvironment !== environment) return {status:409,
         body:{ok:false, code:'morning_expense_environment_changed', message:'סביבת Morning השתנתה מאז טעינת המסך. יש לרענן לפני המשך הפעולה.'}};
       if (action === 'capabilities') {
         const ready = await writer?.readiness(user) === true;
         return {status:200, body:{ok:true, version:1, environment, read:true, create:ready, upload:uploader?.allowed(user) === true,
           pcnP:ready && writer?.pcnEnabled?.(user) === true, draftApproval:false, ocr:ocr?.allowed(user) === true, ocrRecovery:ocr?.recoverable?.(user) === true, ocrFileGuard:ocr?.recoverable?.(user) === true,
+          sourceIntent:writer?.sourceIntent===true,duplicateCheck:writer?.sourceIntent===true,
           classificationSource:'existing_expenses', pSuppliers:writer?.profiles() || []}};
       }
       if (command) {
-        const handler = ocrCommand ? ocr : action.startsWith('upload_') ? uploader : writer;
+        const handler = ocrCommand ? ocr : action.startsWith('upload_')||['source_waive','source_verify'].includes(action) ? uploader : writer;
         if (!handler) return {status:503, body:{ok:false, code:'morning_expenses_not_configured', message:'יומן פעולות ההוצאות אינו זמין.'}};
         const result = await handler.handle(user, body);
         return {...result, body:{...result.body, version:1, environment}};

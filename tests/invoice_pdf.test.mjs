@@ -49,3 +49,12 @@ test('cancellation, timeouts and account replacement fence all delayed PDF compl
 test('the shared PDF core fails closed on a mismatched pinned version or build',()=>{
   assert.throws(()=>assertPdfJsCore({version:'6.4.299',build:'different',getDocument(){},GlobalWorkerOptions:{}}),/contract/);
 });
+
+test('sixty-page extraction yields between pages and rejects excessive line density',async()=>{
+  const f=fixture({pages:60});let ticks=0;
+  const timer=setInterval(()=>ticks++,0);
+  try{assert.equal((await extractInvoicePdf(file(),{load:f.load})).pages.length,60);}finally{clearInterval(timer);}
+  assert.ok(ticks>=10,'long extraction starved other work');assert.equal(f.state().cleaned,60);assert.equal(f.state().destroyed,1);
+  const dense=Array.from({length:2001},(_,n)=>item(String(n),n*8));
+  assert.throws(()=>invoicePageGeometry(page(),{items:dense,styles:{}}),/layout_limit/);
+});

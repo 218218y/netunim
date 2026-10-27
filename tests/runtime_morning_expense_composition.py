@@ -28,7 +28,9 @@ FLOW = r"""(async()=>{
   const request=JSON.parse(options.body);calls.push(request);
   if(hold&&request.action==='suppliers'&&(!heldQuery||request.name===heldQuery)){entered();await hold}
   const base={ok:true,version:1,environment:'production'};
-  if(request.action==='capabilities')return Response.json({...base,create:true,upload:true,pcnP:false,draftApproval:false,pSuppliers:[{id:pSupplier.id,taxId:pSupplier.taxId}]});
+  if(request.action==='capabilities')return Response.json({...base,create:true,upload:true,sourceIntent:true,duplicateCheck:true,pcnP:false,draftApproval:false,pSuppliers:[{id:pSupplier.id,taxId:pSupplier.taxId}]});
+  if(request.action==='source_pending')return Response.json({...base,items:[],page:request.page||0,pageSize:20});
+  if(request.action==='duplicate_check')return Response.json({...base,duplicate:false});
   check(request.expectedEnvironment==='production','request missing displayed environment');
   if(request.action==='suppliers'||request.action==='expenses'){
    const items=request.action==='suppliers'?(request.name==='תבי'?[]:request.name==='ישן'?[pSupplier]:[supplier,pSupplier]):request.fromDate?[expense]:accountExpenses;

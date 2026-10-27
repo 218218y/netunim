@@ -248,5 +248,10 @@
     "version": "20261027110000",
     "name": "morning_expense_ocr_operations",
     "sha256": "815008f40baabc3a4e7aa9d285c793d0e9653f7dc47993826c113dba70cf9527"
+  },
+  {
+    "version": "20261027150000",
+    "name": "morning_expense_source_intent",
+    "sha256": "1d42b644f19722d94729ccceb975330ac78c47a0f309acc7eb0911b9759d10cf"
   }
 ]

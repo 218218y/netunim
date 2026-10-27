@@ -199,6 +199,10 @@
     {
       "version": "20261027110000",
       "name": "morning_expense_ocr_operations"
+    },
+    {
+      "version": "20261027150000",
+      "name": "morning_expense_source_intent"
     }
   ]
 }
