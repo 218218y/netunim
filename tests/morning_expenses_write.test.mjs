@@ -27,6 +27,11 @@ function fixture({environment = 'sandbox', enabled = true, mode = '', pSuppliers
       if (row?.owner_id !== owner || row.state !== 'reserved' || row.sent_at || row.expense_id) return null;
       Object.assign(row, {state:'cancelled', cancelled_at:'2026-10-26'}); return structuredClone(row);
     },
+    pendingSources:async owner => [...rows.values()].filter(row=>row.owner_id===owner&&row.source_metadata&&!row.source_verified_at&&!row.source_waived_at&&row.state!=='cancelled').map(row=>structuredClone(row)),
+    fileTransition:async (owner,before,patch) => {
+      const row=rows.get(before.operation_id);if(row?.owner_id!==owner)return null;
+      Object.assign(row,structuredClone(patch));return structuredClone(row);
+    },
   };
   let canonical = null;
   const request = async (path, init) => {
@@ -195,4 +200,33 @@ test('only an unsent reservation can be cancelled; replay and a late sender neve
   const uncertain = fixture({mode:'lost'}); await uncertain.writer.handle(user, input());
   assert.equal((await uncertain.writer.handle(user, {action:'cancel_reserved', operationId:id(2)})).status, 409);
   assert.equal(uncertain.posts.length, 1);
+});
+
+test('source intent survives a lost financial response and owner-scoped recovery with creation disabled',async()=>{
+  const f=fixture({mode:'lost'}),body={...input(),sourceFile:{sha256:'a'.repeat(64),size:100,contentType:'application/pdf'},
+    sourceReview:{mode:'manual',reason:'Original source manually compared to approved invoice'}};
+  const result=await f.writer.handle(user,body);
+  assert.equal(result.status,202);assert.equal(result.body.sourcePending,true);
+  assert.deepEqual(f.rows.get(id(2)).source_metadata,body.sourceFile);
+  assert.equal(f.rows.get(id(2)).source_review.mode,'manual');assert.equal(f.posts.length,1);
+  const stopped=createExpenseWriter({...f.options,enabled:false});
+  const pending=await stopped.handle(user,{action:'source_pending'});
+  assert.equal(pending.body.items.length,1);assert.equal(pending.body.items[0].intent.supplierTaxId,'123456789');
+  assert.equal((await stopped.handle({...user,id:id(9)},{action:'source_pending'})).body.items.length,0);
+  assert.equal((await f.writer.handle(user,body)).body.sourcePending,true);assert.equal(f.posts.length,1);
+  const changed={...body,sourceFile:{...body.sourceFile,sha256:'b'.repeat(64)}};
+  assert.equal((await f.writer.handle(user,changed)).status,409);assert.equal(f.posts.length,1);
+});
+
+test('source intent is rejected before dispatch without explicit valid source review',async()=>{
+  for(const patch of [{sourceReview:null},{sourceFile:{sha256:'bad',size:100,contentType:'application/pdf'}},
+    {sourceReview:{mode:'extracted',fields:{number:'wrong'}}}]){
+    const f=fixture(),body={...input(),sourceFile:{sha256:'a'.repeat(64),size:100,contentType:'application/pdf'},...patch};
+    assert.equal((await f.writer.handle(user,body)).status,400);assert.equal(f.posts.length,0);assert.equal(f.rows.size,0);
+  }
+});
+
+test('read-only duplicate check covers manual intake before reserving and distinguishes identical invoices',async()=>{
+  const f=fixture({mode:'duplicate'}),result=await f.writer.handle(user,{...input(),action:'duplicate_check'});
+  assert.equal(result.body.duplicate,true);assert.equal(result.body.match,'identical');assert.equal(f.rows.size,0);assert.equal(f.posts.length,0);
 });

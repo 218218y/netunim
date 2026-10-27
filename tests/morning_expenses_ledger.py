@@ -67,4 +67,67 @@ with IsolatedPostgres(schema_files=['supabase/migrations/20261027110000_morning_
     db.sql(f"update public.morning_expense_ocr_operations set state='review_required',draft_id='{OWNER}',source_verified_at=now() where operation_id='{operation}'")
     ocr_rejects('update public.morning_expense_ocr_operations set poll_count=21', 'check constraint')
     assert db.sql("select relrowsecurity from pg_class where oid='public.morning_expense_ocr_operations'::regclass").strip() == 't'
-print('PASS Morning expense and OCR ledgers: isolated identities, source proof constraints, CAS, RLS and service-only access')
+with IsolatedPostgres(schema_files=['supabase/migrations/'+name for name in [
+    '20261026080000_morning_expense_operations.sql','20261026100000_morning_expense_recovery.sql',
+    '20261027110000_morning_expense_ocr_operations.sql','20261027150000_morning_expense_source_intent.sql']]) as db:
+    import json
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+    def uid(n): return f'aaaaaaaa-aaaa-4aaa-aaaa-{n:012d}'
+    def expense(n, source=None, number=None, environment='sandbox'):
+        payload={'supplier':{'taxId':'123456789'},'documentType':305,'pcnClassification':'P','date':'2026-10-20','number':number or str(n)}
+        columns='operation_id,owner_id,environment,invoice_identity,request_fingerprint,state,payload'
+        values=f"'{uid(n)}','{OWNER}','{environment}','{n:064x}','{'b'*64}','reserved','{json.dumps(payload)}'"
+        if source is not None:
+            columns+=',source_metadata'
+            values+=f",'{json.dumps(source)}'"
+        return f'insert into public.morning_expense_operations({columns}) values({values})'
+    def source(n): return {'sha256':f'{n:064x}','size':100,'contentType':'application/pdf'}
+    def ocr(n, source_hash, environment='sandbox'):
+        return ("insert into public.morning_expense_ocr_operations(operation_id,owner_id,environment,file_sha256,file_size,content_type) "
+                f"values('{uid(n)}','{OWNER}','{environment}','{source_hash}',100,'application/pdf')")
+    def execute(sql):
+        try: db.sql(sql); return True
+        except RuntimeError as error:
+            assert any(message in str(error) for message in ['already reserved','duplicate key','check constraint','immutable','permission denied']),error
+            return False
+    # Legacy financial rows remain readable and their canonical identities still
+    # arbitrate new workers, even when the original hash used another spelling.
+    db.sql(expense(101,number='000000123'))
+    assert not execute(expense(102,number='123'))
+    db.sql(expense(103,number='123',environment='production'))
+    for invalid in [{}, {**source(1),'size':0}, {**source(1),'contentType':'text/html'}]:
+        assert not execute(expense(104,invalid))
+    db.sql(expense(105,source(105)))
+    assert not execute(f"update public.morning_expense_operations set source_metadata='{json.dumps(source(106))}' where operation_id='{uid(105)}'")
+    assert not execute(ocr(106,source(105)['sha256']))
+    db.sql(ocr(107,source(107)['sha256']))
+    assert not execute(expense(108,source(107)))
+    # Test both paths racing on real independent PostgreSQL connections. An
+    # uncommitted first reservation must block the second, not merely hide it.
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        for financial_first, base in [(True,120),(False,130)]:
+            financial=expense(base,source(base));scan=ocr(base+1,source(base)['sha256'])
+            first,second=(financial,scan) if financial_first else (scan,financial)
+            future=pool.submit(execute,'begin;'+first+';select pg_sleep(0.5);commit;')
+            time.sleep(0.15)
+            assert not execute(second)
+            assert future.result()
+        first=pool.submit(execute,'begin;'+expense(140,number='000000456')+';select pg_sleep(0.5);commit;')
+        time.sleep(0.15)
+        assert not execute(expense(141,number='456'))
+        assert first.result()
+    # Reviewed supplier-specific rules: no global prefix removal or change to
+    # submitted zeroes; the function returns a comparison key only.
+    policies=[('519266a7d546c1393e9f392d2eeadb67d07a80a60c91a223fa7b94878fcfa5f2','SI00123','00123'),
+              ('4ea2a48a89e99699f3d5ae50253ed265790f8292c5bba3b30e58a04d10c80b85','CR00123','00123'),
+              ('3048278b3ec7b2841cccebb31ce17340d5ea09b4d3f4ce0b9c4defa89d70c9b5','s00123','123'),
+              ('unknown','SI00123','SI00123')]
+    for issuer,number,expected in policies:
+        assert db.sql(f"select public.morning_expense_number_key('{issuer}','T','{number}')").strip()==expected
+    for role in ['anon','authenticated']:
+        assert not execute(f"set role {role};select public.morning_expense_number_key('unknown','T','123')")
+        assert not execute(f'set role {role};select source_metadata from public.morning_expense_operations')
+    db.sql('alter role service_role bypassrls')
+    assert db.sql('set role service_role;select count(*) from public.morning_expense_operations').strip()=='5'
+print('PASS Morning expense and OCR ledgers: source intent, cross-path races, legacy aliases, CAS, RLS and service-only access')

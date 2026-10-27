@@ -86,6 +86,26 @@ export function createExpenseLocalReview({files, request, capabilities, capture,
     }
   }
   function blocked() {return available() && (pending || !guard);}
+  function warnings(supplierTaxId) {
+    if(!proposal)return [];
+    const values=[];
+    if(!proposal.profile)values.push('הספק או התבנית לא זוהו. יש להשלים לפי המקור.');
+    for(const [name,field]of Object.entries(proposal.fields||{})){
+      if(field.status==='verified'||name==='supplier'&&field.value===supplierTaxId&&field.reason==='canonical_supplier_pending')continue;
+      values.push(`${titles[name]||name}: ${reasons[field.reason]||statuses[field.status]||statuses.review}.`);
+    }
+    const number=proposal.fields?.invoiceNumber;
+    if(number?.rawNumber&&number.rawNumber!==number.suggestedNumber)values.push(`מספר במקור: ${number.rawNumber} · הצעה לשמירה: ${number.suggestedNumber}. הספרות המובילות נשמרו.`);
+    if(proposal.allocationPolicy?.status==='check_business_conditions')values.push(proposal.fields.allocationNumber?.value?
+      'מספר ההקצאה חולץ מהמסמך. תשע ספרות אינן אימות מול רשות המסים.':
+      'לפי התאריך והסכום לפני מע״מ ייתכן שנדרש מספר הקצאה. יש לבדוק ולהשלים לפי תנאי העסקה.');
+    return values;
+  }
+  function warningsMarkup(supplierTaxId){
+    const items=warnings(supplierTaxId);
+    return `<aside class="morning-expense-notice" data-expense-review-warnings ${items.length?'':'hidden'}>
+      <strong>נתוני המקור לבדיקה לפני שמירה</strong><ul>${items.map(text=>`<li>${esc(text)}</li>`).join('')}</ul></aside>`;
+  }
   function markup() {
     if (!available() || !canStart() || ocrActive()) return '';
     const fields = proposal?.fields;
@@ -113,7 +133,7 @@ export function createExpenseLocalReview({files, request, capabilities, capture,
       <button type="button" class="btn" data-action="morning-expense-command" data-expense-command="local-defer" ${pending ? 'disabled' : ''}>הסרה מהתור ללא שמירה</button>
     </section>`;
   }
-  return {start, fill:() => fill(true), reset, markup, preflight, blocked, available,
+  return {start, fill:() => fill(true), reset, markup, preflight, blocked, available,warnings,warningsMarkup,
     snapshot:() => ({proposal:proposal?structuredClone(proposal):null,hash}),
     restore:saved => start({autoFill:false,cached:saved}),
     verifySource:check => available() ? lookup(check) : undefined,

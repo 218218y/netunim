@@ -28,6 +28,8 @@ SCENARIO = PREFIX + r"""
  owner=id(9);listener();click('load');await settle();field('supplierId',supplier.id,'change');field('number','MANUAL-001');field('net','1000');field('vat','170.09');
  await uiFeature.actions['morning-expense-files']({files:[files[0]]});await settle();
  check(value('number')==='MANUAL-001'&&value('vat')==='170.09','attaching the first PDF erased manual intake');
+ field('date','2025-08-20','change');field('reportingYear','2025','change');field('reportingPeriod','2025-07','change');
+ check(value('reportingDate')==='2025-08-01'&&value('number')==='MANUAL-001','previous-year reporting erased fields or assigned the wrong month');
  owner=id(10);listener();check(!uiFeature.runtime.hasUnsavedWork()&&!fixture.textContent.includes('MANUAL-001'),'drafts leaked across accounts');
  uiFeature.runtime.dispose();check(posts===0&&uploads===0,'work draft switching caused an external write');
  return {fileDrafts:true,manualAttachment:true,removeConfirmation:true,refreshWarning:true,isolated:true,posts,uploads};

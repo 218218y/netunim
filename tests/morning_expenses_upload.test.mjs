@@ -106,3 +106,31 @@ test('a previously verified expense changed in Morning cannot receive a source f
  assert.equal((await f.uploader.handle(user, prepare)).status, 503); assert.equal(f.count(), 0);
  f.link(); assert.equal((await f.handle('upload_status')).status, 503);
 });
+
+test('bound source rejects a different reselected PDF and verifies original bytes separately from file presence',async()=>{
+ const f=fixture(),source={sha256:'a'.repeat(64),size:100,contentType:'application/pdf'};
+ f.row.source_metadata=source;f.row.source_review={mode:'manual',reason:'Manually compared to source'};
+ const uploader=createExpenseUpload({...f.options,verifySource:async()=>false});
+ const wrong=await uploader.handle(user,{...prepare,sourceFile:{...source,sha256:'b'.repeat(64)}});
+ assert.equal(wrong.status,409);assert.equal(f.count(),0);assert.equal(f.row.file_state,'not_started');
+ f.link();const pending=await uploader.handle(user,{action:'upload_status',operationId:id(1)});
+ assert.equal(pending.body.fileLinked,true);assert.equal(pending.body.sourceVerified,false);assert.equal(pending.body.sourcePending,true);
+ const closed=createExpenseUpload({...f.options,enabled:false,verifySource:async()=>true});
+ const verified=await closed.handle(user,{action:'upload_status',operationId:id(1)});
+ assert.equal(verified.body.sourceVerified,true);assert.equal(verified.body.sourcePending,false);assert.ok(f.row.source_verified_at);
+ const revoked=await uploader.handle(user,{action:'upload_status',operationId:id(1)});
+ assert.equal(revoked.body.sourcePending,true);assert.equal(f.row.source_verified_at,null);assert.equal(f.count(),0);
+});
+
+test('ambiguous delivery cannot replay and an explicit source exception remains honest and auditable after kill switch',async()=>{
+ const f=fixture(),source={sha256:'a'.repeat(64),size:100,contentType:'application/pdf'};
+ f.row.source_metadata=source;f.row.source_review={mode:'manual',reason:'Source reviewed manually'};f.row.file_state='ticket_issued';
+ assert.equal((await f.uploader.handle(user,{...prepare,sourceFile:source})).status,409);
+ const closed=createExpenseUpload({...f.options,enabled:false});
+ const value=await closed.handle(user,{action:'source_verify',operationId:id(1),sourceFile:source,size:100,contentType:'application/pdf'});
+ assert.equal(value.body.sourcePending,true);assert.equal(f.count(),0);
+ assert.equal((await closed.handle(user,{action:'source_waive',operationId:id(1),reason:'short'})).status,409);
+ const waived=await closed.handle(user,{action:'source_waive',operationId:id(1),reason:'Original file unavailable; reviewed in accounting system'});
+ assert.equal(waived.body.sourceException,true);assert.equal(waived.body.sourceVerified,false);assert.equal(waived.body.sourcePending,false);
+ assert.ok(f.row.source_waived_at);assert.equal(f.count(),0);
+});
