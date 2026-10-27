@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-a33da7251181';
+const CACHE='orders-app-shell-esm-a1089496daa3';
 const SHELL=[
   './',
   './index.html',
@@ -168,6 +168,7 @@ const SHELL=[
   './assets/js/domains/finance/morning-expense-preferences.js',
   './assets/js/domains/finance/morning-expense-recent.js',
   './assets/js/domains/finance/morning-expense-recovery.js',
+  './assets/js/domains/finance/morning-expense-reporting.js',
   './assets/js/domains/finance/morning-expense-search.js',
   './assets/js/domains/finance/morning-expense-source.js',
   './assets/js/domains/finance/morning-expense-supplier-picker.js',

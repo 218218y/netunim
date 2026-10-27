@@ -10,6 +10,7 @@ FLOW = r"""(async()=>{
  const id=n=>'aaaaaaaa-aaaa-4aaa-aaaa-'+String(n).padStart(12,'0');
  let environment='sandbox';
  localStorage.removeItem('morningExpensePreferences:'+environment+':'+id(1));
+ localStorage.removeItem('morningExpensePreferences:'+environment+':'+id(1)+':reportingPeriod');
  localStorage.removeItem('morningExpenseOperation:'+environment+':'+id(1));
  localStorage.removeItem('morningExpenseOperation:'+id(1));
  let owner=id(1), listener=()=>{}, linked=false, posts=0, uploads=0, confirms=0, held=null, confirmWait=null, recoveryState='created';
@@ -163,6 +164,7 @@ FLOW = r"""(async()=>{
  check(!fixture.textContent.includes(supplier.name)&&!fixture.querySelector('[data-expense-field="supplierId"]'),'old account catalog survived');check(!fixture.textContent.includes(id(8))&&!fixture.querySelector('[data-expense-recent-id]'),'old expense result or recent intake survived');uiFeature.runtime.dispose();localStorage.removeItem('morningExpenseOperation:'+id(1));localStorage.removeItem('morningExpenseOperation:'+environment+':'+id(1));localStorage.removeItem('morningExpensePreferences:'+environment+':'+id(1));
  calendarTesting=true;
  for(const [date,period,years] of [['2026-10-31','2026-09','2026'],['2026-11-01','2026-11','2026'],['2027-01-01','2027-01','2027,2026'],['2027-02-28','2027-01','2027,2026'],['2027-03-01','2027-03','2027']]){
+  localStorage.removeItem('morningExpensePreferences:'+environment+':'+owner+':reportingPeriod');
   today=date;uiFeature=createMorningExpenseIntake(ports);fixture.innerHTML=uiFeature.markup();click('toggle');await settle();
   check(fixture.querySelector('[data-expense-field="reportingPeriod"]').value===period,'wrong calendar default on '+date);
   check([...fixture.querySelector('[data-expense-field="reportingYear"]').options].map(item=>item.value).join(',')===years,'wrong year choices on '+date);

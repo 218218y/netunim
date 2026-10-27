@@ -45,6 +45,7 @@ GROUPS = {
 GROUPS["browser-sync"].append("runtime_auth_session_persistence.py")
 GROUPS["browser-sync"].append("runtime_finance_json_hydration.py")
 GROUPS["browser-morning"].append("runtime_morning_expenses.py")
+GROUPS["browser-morning"].append("runtime_morning_expense_reporting_memory.py")
 GROUPS["browser-morning"].append("runtime_morning_expense_ocr.py")
 GROUPS["browser-morning"].append("runtime_morning_expense_local.py")
 GROUPS["browser-morning"].append("runtime_morning_expense_drafts.py")
