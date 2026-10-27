@@ -23,6 +23,13 @@ export function expenseReportingChoice(date, key, today) {
   const reportingDate = period.months.includes(invoiceMonth) ? invoiceMonth : period.months.filter(month => month <= today).at(-1);
   return {period, reportingDate, requiresConfirmation:invoiceMonth !== reportingDate};
 }
+// Keep the previous reporting year during the first bimonth. A draft already
+// assigned to it stays selectable if the screen remains open into March.
+export function expenseReportingYears(today, selectedPeriod = '') {
+  if (!validReportDate(today)) throw new Error('invalid_expense_reporting_period');
+  const year = Number(today.slice(0, 4));
+  return Number(today.slice(5, 7)) <= 2 || selectedPeriod.startsWith(`${year - 1}-`) ? [year, year - 1] : [year];
+}
 export function validateExpenseReporting(input, today) {
   const date = input.reportingDate;
   if (!validReportDate(date) || !date.endsWith('-01') || date < '2010-01-01' || date > today.slice(0, 7) + '-01' || date < input.date.slice(0, 7) + '-01') throw new Error('invalid_expense_reporting_period');

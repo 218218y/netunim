@@ -1,6 +1,22 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {expenseBimonth, expenseReportingChoice, validateExpenseReporting, reportPeriod} from '../netunim-orders/site/assets/js/core/morning-report-period.js';
+import {expenseBimonth, expenseReportingChoice, expenseReportingYears, validateExpenseReporting, reportPeriod} from '../netunim-orders/site/assets/js/core/morning-report-period.js';
+
+test('reporting year choices keep the previous year only during the first bimonth or for an open draft', () => {
+  assert.deepEqual(expenseReportingYears('2026-10-27'), [2026]);
+  assert.deepEqual(expenseReportingYears('2027-01-01'), [2027, 2026]);
+  assert.deepEqual(expenseReportingYears('2027-02-28'), [2027, 2026]);
+  assert.deepEqual(expenseReportingYears('2027-03-01'), [2027]);
+  assert.deepEqual(expenseReportingYears('2027-03-01', '2026-11'), [2027, 2026]);
+  assert.deepEqual(expenseReportingYears('2027-03-01', '2010-01'), [2027]);
+});
+
+test('the calendar default crosses into November on November 1, while a selected period stays explicit', () => {
+  assert.equal(expenseBimonth('2026-10-31').key, '2026-09');
+  assert.equal(expenseBimonth('2026-11-01').key, '2026-11');
+  assert.equal(expenseReportingChoice('2026-10-15', '2026-11', '2026-11-01').reportingDate, '2026-11-01');
+  assert.equal(expenseReportingChoice('2026-10-15', '2026-09', '2026-11-01').reportingDate, '2026-10-01');
+});
 test('expense periods use the same bimonthly calendar as reports, including year transitions', () => {
   assert.equal(expenseBimonth('2026-10-26').key, '2026-09');
   assert.equal(expenseBimonth('2026-10-26').label, 'ספטמבר–אוקטובר 2026');

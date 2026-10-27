@@ -20,7 +20,7 @@ FLOW = r"""(async()=>{
  const supplier={id:id(2),name:'ספק בדיקה <script>',taxId:'123456789',active:true,country:'IL'};
  const expense={id:id(3),kind:'expense',status:10,supplierId:id(2),name:supplier.name,number:'HISTORY-1',grossCents:11800,reportingDate:'2026-10-01',sourceDocumentDate:'2026-10-20',createdAt:'2026-10-26T10:00:00.000Z',pcnClassification:'T',classification:{id:id(4),title:'ציוד משרד',vat:100,income:100}};
  let catalogExpense=expense,directoryHidden=false,uploadEnabled=true,statusUnavailable=false,serverFileState='not_started';const confirmations=[];
- let historyItems=[expense],historyUnavailable=false;
+ let historyItems=[expense],historyUnavailable=false,searchItems=null,today='2026-10-26',calendarTesting=false;
  const accountRecent=[expense];
  const paged=items=>({ok:true,version:1,environment,page:0,pageSize:50,total:items.length,pages:items.length?1:0,items});
  const respond=async(action,body,assertCurrent)=>{
@@ -30,7 +30,8 @@ FLOW = r"""(async()=>{
   if(action==='duplicate_check')return {ok:true,duplicate:false};
   if(action==='suppliers')return paged(body.name==='missing'||directoryHidden?[]:[supplier]);
   if(action==='expenses'){
-   if(body.fromDate===undefined&&body.toDate===undefined)return paged(accountRecent);
+   if(calendarTesting)return paged([]);
+   if(body.fromDate===undefined&&body.toDate===undefined){const items=searchItems||accountRecent;return {...paged(items.slice(body.page*50,body.page*50+50)),page:body.page,total:items.length,pages:Math.ceil(items.length/50)};}
    if(body.fromDate==='2026-09-01'&&body.toDate==='2026-10-01'){
     if(historyUnavailable)throw Error('history unavailable');
     return {...paged(historyItems.slice(body.page*50,body.page*50+50)),page:body.page,total:historyItems.length,pages:Math.ceil(historyItems.length/50)};
@@ -60,7 +61,7 @@ FLOW = r"""(async()=>{
   uploads++;check(init.credentials==='omit'&&!init.headers,'upload leaked auth');check([...init.body.keys()].at(-1)==='file','file not last');return new Response(null,{status:204});
  }});
  const {createUiDateEditor}=await import('./assets/js/ui/date-editor.js');
- const ports={dateEditorMarkup:createUiDateEditor({}).dateEditorMarkup,request,captureRead:capture,captureWrite:capture,accountId:()=>owner,todayISO:()=> '2026-10-26',subscribeAccountScope:fn=>{listener=fn;return()=>{}},confirmDialog:async(title,text)=>{confirms++;confirmations.push(text);check(title.includes(environment==='production'?'האמיתי':'Sandbox')||!title.startsWith('שמירת'),'wrong environment approval');return confirmWait?await confirmWait:true},files:{validate:fileEffects.validateExpenseFile,upload}};
+ const ports={dateEditorMarkup:createUiDateEditor({}).dateEditorMarkup,request,captureRead:capture,captureWrite:capture,accountId:()=>owner,todayISO:()=>today,subscribeAccountScope:fn=>{listener=fn;return()=>{}},confirmDialog:async(title,text)=>{confirms++;confirmations.push(text);check(title.includes(environment==='production'?'האמיתי':'Sandbox')||!title.startsWith('שמירת'),'wrong environment approval');return confirmWait?await confirmWait:true},files:{validate:fileEffects.validateExpenseFile,upload}};
  let uiFeature=createMorningExpenseIntake(ports);fixture.innerHTML=uiFeature.markup();
  bindActionEvents(fixture,new Proxy({}, {get:(_,name)=>(...args)=>uiFeature.actions[name]?.(...args)}));
  for(const name of ['click','input','change','keydown','drop','dragover','paste'])fixture.addEventListener(name,event=>event.stopPropagation());
@@ -69,6 +70,8 @@ FLOW = r"""(async()=>{
  check(fixture.querySelectorAll('[role="option"]').length===1,'suppliers missing');check(!fixture.querySelector('script'),'unescaped supplier');
  const field=(name,value,type='input')=>{const element=fixture.querySelector('[data-expense-field="'+name+'"]');check(element,'missing '+name);if(element.type==='checkbox')element.checked=value===true;else element.value=value;element.dispatchEvent(new Event(type,{bubbles:true}));return element};
  check(fixture.querySelector('[data-expense-field="reportingPeriod"]').value==='2026-09','bimonth default missing');
+ check([...fixture.querySelector('[data-expense-field="reportingYear"]').options].map(item=>item.value).join(',')==='2026','obsolete reporting years remain');
+ check(!fixture.textContent.includes('השמירה יוצרת הוצאה אמיתית')&&!fixture.textContent.includes('נטען עמוד הצעות ראשוני'),'removed notices remain');
  field('date','2026-09-20','change');check(fixture.querySelector('[data-expense-field="reportingDate"]').value==='2026-09-01','September reporting month changed');
  field('date','2026-10-20','change');check(fixture.querySelector('[data-expense-field="reportingDate"]').value==='2026-10-01','October reporting month changed');
  field('supplierId',id(2),'change');check(fixture.querySelector('[data-expense-field="classificationExpenseId"]').value===id(3),'last category missing');
@@ -87,6 +90,21 @@ FLOW = r"""(async()=>{
  await scrollToCount(40);await scrollToCount(55);await scrollToCount(56);
  check(historyRows().at(-1).textContent.includes('OLD-PERIOD'),'history did not load the previous reporting period');
  check(fixture.querySelectorAll('.morning-expense-history-period h3').length===2,'history failed to separate reporting periods');
+ check(requests.every(({action,body})=>action!=='expenses'||body.fromDate!==undefined),'opening scanned the entire account');
+ searchItems=Array.from({length:251},(_,index)=>({...expense,id:id(1000+index),number:index===249?'OLDSEARCH':'SEARCH-'+index,name:index===250?'ת.ב.י הוצאות':'אחר',
+   description:'כיסאות',grossCents:123450,vatCents:18831,reportingDate:index===249?'2025-12-01':'2026-10-01',sourceDocumentDate:index===250?'2026-09-15':index===249?'2025-08-05':'2026-08-01'}));
+ for(const term of ['15-9-26','15-09-26','15/09/26','15.09.2026','תבי 1,234.50','SEARCH-250','OLDSEARCH']){
+  const input=fixture.querySelector('[data-input="morning-expense-history-query"]');input.value=term;input.focus();input.dispatchEvent(new Event('input',{bubbles:true}));
+  input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',ctrlKey:true,bubbles:true,cancelable:true}));await settle();
+  check(!historyRows().length&&fixture.querySelector('[data-expense-history]').textContent.includes('החיפוש עדיין חלקי'),'incomplete search presented a final empty result');
+  check(document.activeElement?.value===term,'search render lost input focus');
+  click('history-search-more');await settle();
+  check(historyRows().length===1&&historyRows()[0].textContent.includes(term==='OLDSEARCH'?'OLDSEARCH':'SEARCH-250'),'search missed a date/amount/text match beyond the initial pages');
+  check(fixture.querySelector('[data-expense-history]').textContent.includes(term==='OLDSEARCH'?'2025':'2026')&&fixture.querySelector('[data-expense-history]').textContent.includes('החיפוש הושלם בכל החשבון'),'search ignored old reporting periods or completion');
+  check(editing.isConnected&&editing.value==='preserved'&&posts===0&&confirms===0,'search changed the intake or dispatched a financial action');
+ }
+ click('history-search-clear');check(historyRows().length===56,'clearing search lost the browsed history');searchItems=null;
+ const explicitSearchReads=requests.filter(({action,body})=>action==='expenses'&&body.fromDate===undefined).length;
  historyUnavailable=true;click('history-refresh');await settle();check(fixture.querySelector('[data-expense-history]').textContent.includes('לא ניתן להשלים')&&fixture.querySelector('[data-expense-field="number"]').value==='preserved','history error erased intake data');
  historyUnavailable=false;historyItems=[expense];click('history-refresh');await settle();
  field('supplierQuery','123456789');await new Promise(resolve=>setTimeout(resolve,350));await settle();check(requests.at(-1).body.taxId==='123456789','tax search not passed to provider');
@@ -110,7 +128,7 @@ FLOW = r"""(async()=>{
  check(fixture.querySelectorAll('.morning-expense-queue li').length===2&&fixture.querySelector('.morning-expense-source>b').textContent==='first.png','queue removal lost another file');
  uploadEnabled=false;click('load');await settle();click('save');await settle();check(posts===0&&fixture.textContent.includes('צירוף קבצים עדיין כבוי'),'file queue entered disabled upload path');uploadEnabled=true;click('load');await settle();
  click('save');await settle();check(posts===1&&confirms===1,'save not exactly once');
- check(requests.every(({action,body})=>action!=='expenses'||body.fromDate!==undefined),'opening or saving scanned the entire account');
+ check(requests.filter(({action,body})=>action==='expenses'&&body.fromDate===undefined).length===explicitSearchReads,'saving scanned the entire account');
  click('recent-refresh');await settle();check(fixture.querySelector('[data-expense-recent]').textContent.includes('000123'),'explicit recent loading missed saved intake');
  check(confirmations[0].includes('ציוד משרד')&&confirmations[0].includes('2026-10-20')&&confirmations[0].includes('חשבונית מס'),'approval omitted category, type or source date');
  const recovery=localStorage.getItem('morningExpenseOperation:'+environment+':'+owner);check(recovery&&!recovery.includes('000123')&&!recovery.includes('first.png'),'recovery retained invoice data');
@@ -143,6 +161,22 @@ FLOW = r"""(async()=>{
  check(!fixture.querySelector('[data-expense-command="next"]').disabled,'cancelled source reservation still blocks the next invoice');
  uiFeature.actions['morning-expense-command']({dataset:{expenseCommand:'next'}});let release;held=new Promise(resolve=>release=resolve);const loading=uiFeature.actions['morning-expense-command']({dataset:{expenseCommand:'load'}});await new Promise(resolve=>setTimeout(resolve,0));owner=id(9);listener();release();await loading;held=null;
  check(!fixture.textContent.includes(supplier.name)&&!fixture.querySelector('[data-expense-field="supplierId"]'),'old account catalog survived');check(!fixture.textContent.includes(id(8))&&!fixture.querySelector('[data-expense-recent-id]'),'old expense result or recent intake survived');uiFeature.runtime.dispose();localStorage.removeItem('morningExpenseOperation:'+id(1));localStorage.removeItem('morningExpenseOperation:'+environment+':'+id(1));localStorage.removeItem('morningExpensePreferences:'+environment+':'+id(1));
+ calendarTesting=true;
+ for(const [date,period,years] of [['2026-10-31','2026-09','2026'],['2026-11-01','2026-11','2026'],['2027-01-01','2027-01','2027,2026'],['2027-02-28','2027-01','2027,2026'],['2027-03-01','2027-03','2027']]){
+  today=date;uiFeature=createMorningExpenseIntake(ports);fixture.innerHTML=uiFeature.markup();click('toggle');await settle();
+  check(fixture.querySelector('[data-expense-field="reportingPeriod"]').value===period,'wrong calendar default on '+date);
+  check([...fixture.querySelector('[data-expense-field="reportingYear"]').options].map(item=>item.value).join(',')===years,'wrong year choices on '+date);
+  if(date==='2026-11-01'){
+   field('date','2026-10-15','change');check(fixture.querySelector('[data-expense-field="reportingDate"]').value==='2026-11-01','old invoice silently changed the calendar default');
+   field('reportingPeriod','2026-09','change');check(fixture.querySelector('[data-expense-field="reportingDate"]').value==='2026-10-01','explicit previous period did not preserve October');
+  }
+  if(date==='2027-01-01'){
+   field('reportingYear','2026','change');check(fixture.querySelector('[data-expense-field="reportingYear"]').value==='2026','previous year not selectable in January');
+   field('reportingPeriod','2026-11','change');today='2027-03-01';field('supplierId',id(2),'change');
+   check(fixture.querySelector('[data-expense-field="reportingYear"]').value==='2026','an open previous-year draft was silently changed in March');
+  }
+  uiFeature.runtime.dispose();
+ }
  return {posts,uploads,confirms,requests:requests.length,desktop};
 })()"""
 

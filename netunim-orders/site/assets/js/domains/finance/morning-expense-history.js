@@ -2,6 +2,7 @@ import {esc} from '../../core/values.js';
 import {expenseBimonth, validReportDate} from '../../core/morning-report-period.js';
 import {readExpenseCatalogPage} from './morning-expense-catalog.js';
 import {expenseTableHead, expenseTableRow, expenseTableTotals, expenseMoney} from './morning-expense-table.js';
+import {newExpenseSearchScan, readExpenseSearch} from './morning-expense-search.js';
 
 export function expenseHistoryRows(items, period) {
   const seen = new Set();
@@ -32,25 +33,34 @@ export async function readExpenseHistoryPeriod(request, capabilities, period, ch
 
 export function createExpenseHistory({request, capabilities, capture, run, todayISO}) {
   let groups = [], visible = 0, next = '', busy = false, paused = false, message = '', revision = 0, controller = null, observer = null;
+  let query = '', searched = '', scan = null, searchVisible = 20;
   const host = () => document.querySelector('[data-expense-history]');
   function render() {
     const target = host(); if (!target) return;
     const scroller = target.closest('.view-scroll'), top = scroller?.scrollTop;
+    const input = target.querySelector('[data-input="morning-expense-history-query"]');
+    const focused = input && document.activeElement === input, selection = focused ? [input.selectionStart, input.selectionEnd] : null;
     target.outerHTML = markup();
+    if (focused) {
+      const replacement = host()?.querySelector('[data-input="morning-expense-history-query"]');
+      replacement?.focus({preventScroll:true}); replacement?.setSelectionRange(...selection);
+    }
     if (scroller && Number.isFinite(top)) scroller.scrollTop = top;
     bind();
   }
-  function reset() {revision++; controller?.abort(); observer?.disconnect(); observer = null; controller = null; groups = []; visible = 0; next = expenseBimonth(todayISO()).months[0]; busy = false; paused = false; message = '';}
+  function cancelRead() {revision++; controller?.abort(); observer?.disconnect(); observer = null; controller = null; busy = false; message = '';}
+  function reset() {cancelRead(); groups = []; visible = 0; next = expenseBimonth(todayISO()).months[0]; paused = false; query = ''; searched = ''; scan = null; searchVisible = 20;}
   function bind() {
     observer?.disconnect(); observer = null;
     const sentinel = host()?.querySelector('[data-expense-history-more]');
-    if (!sentinel || busy || message) return;
+    if (!sentinel || busy || message || searched) return;
     observer = new IntersectionObserver(entries => {
       if (entries.some(entry => entry.isIntersecting) && sentinel.isConnected && host()?.contains(sentinel)) more();
     }, {root:sentinel.closest('.view-scroll'), rootMargin:'0px 0px 180px 0px'});
     observer.observe(sentinel);
   }
   function more() {
+    if (searched) return false;
     if (busy || !capabilities()) return false;
     const loaded = groups.reduce((sum, group) => sum + group.items.length, 0);
     if (visible < loaded) {visible = Math.min(loaded, visible + 20); render(); return true;}
@@ -80,10 +90,48 @@ export function createExpenseHistory({request, capabilities, capture, run, today
       finally {if (epoch === revision) {busy = false; controller = null; render();}}
     });
   }
-  function refresh() {reset(); return more();}
+  function setQuery(value) {query = value.slice(0, 250); if (!query.trim() && searched) clearSearch();}
+  function clearSearch() {cancelRead(); query = ''; searched = ''; scan = null; render();}
+  function search() {
+    if (!query.trim()) {clearSearch(); return true;}
+    cancelRead(); searched = query.trim(); scan = newExpenseSearchScan(); searchVisible = 20;
+    return searchMore();
+  }
+  function searchMore() {
+    if (busy || !searched || !scan || !capabilities()) return false;
+    if (searchVisible < scan.items.length) {searchVisible += 20; render(); return true;}
+    if (scan.next >= scan.pages) return false;
+    let assertCurrent;
+    try {assertCurrent = capture();} catch (error) {message = error.message; render(); return false;}
+    const epoch = revision, currentScan = scan, term = searched;
+    const check = () => {assertCurrent(); if (epoch !== revision) throw new DOMException('הקריאה בוטלה', 'AbortError');};
+    controller = new AbortController(); const signal = controller.signal;
+    busy = true; message = ''; render();
+    return run(async () => {
+      try {
+        await readExpenseSearch(request, capabilities(), term, check, {signal, scan:currentScan}); check();
+      } catch (error) {
+        if (epoch === revision && error.name !== 'AbortError') {
+          scan = null; message = 'לא ניתן להשלים את החיפוש. ' + error.message;
+        }
+      } finally {if (epoch === revision) {busy = false; controller = null; render();}}
+    });
+  }
+  function refresh() {if (searched) {query = searched; return search();} reset(); return more();}
   function markup() {
-    let remaining = visible;
-    const shown = groups.map(group => {
+    let remaining = searched ? searchVisible : visible;
+    let displayedGroups = groups;
+    if (searched) {
+      const periods = new Map();
+      for (const item of scan?.items || []) {
+        const period = expenseBimonth(item.reportingDate);
+        if (!periods.has(period.key)) periods.set(period.key, {period, items:[]});
+        periods.get(period.key).items.push(item);
+      }
+      displayedGroups = [...periods.values()].sort((a, b) => b.period.key.localeCompare(a.period.key));
+      displayedGroups.forEach(group => {group.items = expenseHistoryRows(group.items, group.period);});
+    }
+    const shown = displayedGroups.map(group => {
       const rows = group.items.slice(0, Math.max(0, remaining)); remaining -= rows.length;
       const totals = expenseTableTotals(group.items);
       return rows.length ? `<tbody class="morning-expense-history-period"><tr class="morning-expense-period-heading">
@@ -93,14 +141,34 @@ export function createExpenseHistory({request, capabilities, capture, run, today
         ${rows.map(row => expenseTableRow(row)).join('')}</tbody>` : '';
     }).join('');
     const loaded = groups.reduce((sum, group) => sum + group.items.length, 0), hasMore = visible < loaded || next >= '2010-01-01';
+    const complete = scan && scan.next >= scan.pages;
+    const button = (command, label) => `<button type="button" class="btn" data-action="morning-expense-command" data-expense-command="${command}">${label}</button>`;
+    let navigation = '', empty = '';
+    if (!busy) {
+      if (searched) {
+        if (scan && searchVisible < scan.items.length) navigation = button('history-search-more', 'הצגת תוצאות נוספות');
+        else if (scan && !complete) navigation = button('history-search-more', 'המשך חיפוש בכל החשבון');
+        if (!message && complete) empty = '<p>לא נמצאו הוצאות התואמות לחיפוש.</p>';
+      } else {
+        if (message) navigation = button('history-more', 'ניסיון נוסף');
+        else if (hasMore) navigation = paused ? button('history-more', 'בדיקת שנה קודמת ללא הוצאות שהוצגו') : '<div data-expense-history-more aria-hidden="true"></div>';
+        if (!message) empty = '<p>לא נמצאו הוצאות בתקופות שנבדקו.</p>';
+      }
+    }
     return `<section class="morning-expense-history" data-expense-history aria-label="הוצאות לפי תקופות דיווח">
+      <div class="morning-expense-history-search" role="search" aria-label="חיפוש בהוצאות Morning">
+      <label>חיפוש הוצאה<input type="search" maxlength="250" value="${esc(query)}" placeholder="ספק, מספר חשבונית, תיאור, סיווג, סכום או תאריך"
+        data-input="morning-expense-history-query" data-keydown="morning-expense-history-search-enter"></label>
+      <button type="button" class="btn" data-action="morning-expense-command" data-expense-command="history-search">חיפוש</button>
+      ${searched ? '<button type="button" class="btn" data-action="morning-expense-command" data-expense-command="history-search-clear">ניקוי חיפוש</button>' : ''}</div>
       <div class="morning-expense-history-heading"><h2>הוצאות לפי תקופות דיווח</h2>
       <button type="button" class="btn" data-action="morning-expense-command" data-expense-command="history-refresh" ${busy ? 'disabled' : ''}>רענון רשימה</button></div>
-      <p>בכל תקופה תאריך החשבונית מהחדש לישן · הסיכומים כוללים את כל הוצאות התקופה</p>
-      ${shown ? `<table class="morning-expense-table" aria-label="הוצאות Morning לפי תקופות דיווח">${expenseTableHead()}${shown}</table>` : !busy && !message ? '<p>לא נמצאו הוצאות בתקופות שנבדקו.</p>' : ''}
+      <p>בכל תקופה תאריך החשבונית מהחדש לישן · ${searched ? 'הסיכומים כוללים רק את תוצאות החיפוש שנמצאו' : 'הסיכומים כוללים את כל הוצאות התקופה'}</p>
+      ${searched ? `<p role="status">חיפוש: ${esc(searched)} · ${scan ? `${scan.items.length} תוצאות · נבדקו ${scan.seen.size} מתוך ${scan.total ?? '…'} הוצאות${complete ? ' · החיפוש הושלם בכל החשבון' : ' · החיפוש עדיין חלקי'}` : 'החיפוש לא הושלם'}</p>` : ''}
+      ${shown ? `<table class="morning-expense-table" aria-label="הוצאות Morning לפי תקופות דיווח">${expenseTableHead()}${shown}</table>` : empty}
       <p role="status" aria-live="polite">${esc(busy ? 'טוען הוצאות מ־Morning…' : message)}</p>
-      ${message ? '<button type="button" class="btn" data-action="morning-expense-command" data-expense-command="history-more">ניסיון נוסף</button>' : hasMore && !busy ? paused ? '<button type="button" class="btn" data-action="morning-expense-command" data-expense-command="history-more">בדיקת שנה קודמת ללא הוצאות שהוצגו</button>' : '<div data-expense-history-more aria-hidden="true"></div>' : ''}</section>`;
+      ${navigation}</section>`;
   }
   reset();
-  return {markup, more, refresh, reset, bind};
+  return {markup, more, refresh, reset, bind, setQuery, search, searchMore, clearSearch};
 }

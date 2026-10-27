@@ -67,7 +67,12 @@ FLOW = r"""(async()=>{
  check(reporting.every(box=>Math.abs(box.top-reporting[0].top)<2)&&reporting[0].left>reporting[1].left&&reporting[1].left>reporting[2].left,'reporting controls are not one symmetric RTL row');
  check(Math.abs(rect('description').top-rect('allocationNumber').top)<2,'description/allocation not paired');check(Math.abs(rect('classificationExpenseId').bottom-document.querySelector('[data-expense-command="more-classifications"]').getBoundingClientRect().bottom)<2,'classification controls not paired');
  check(document.querySelector('[data-expense-field="supplierId"]'),'actual app did not expose expense form: '+document.querySelector('[data-expense-message]')?.textContent);
- check(document.querySelector('.morning-expense-notice').textContent.includes('האמיתי'),'real account notice missing');
+ check(!document.querySelector('.morning-expense-intake').textContent.includes('השמירה יוצרת הוצאה אמיתית')&&!document.querySelector('[data-expense-message]').textContent.includes('נטען עמוד הצעות ראשוני'),'removed notices remain in the real composition');
+ const historyQuery=document.querySelector('[data-input="morning-expense-history-query"]');historyQuery.value='1-6-19';historyQuery.dispatchEvent(new Event('input',{bubbles:true}));
+ historyQuery.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));await finance.runtime.drain();
+ check(document.querySelector('[data-expense-history]').textContent.includes('MORNING-EXTERNAL')&&!document.querySelector('[data-expense-history]').textContent.includes('HISTORY-1'),'real navigation failed to dispatch expense search');
+ check(liveNumber.isConnected&&posts===0&&confirmations.length===0,'real search replaced the editor or dispatched a save');
+ click('history-search-clear');check(document.querySelector('[data-expense-history]').textContent.includes('HISTORY-1'),'real search clear lost browsing');
  const period=document.querySelector('[data-expense-field="reportingPeriod"]');
  check([...period.options].every(option=>option.value.startsWith('2026-')&&!/\d{2}–\d{2}/.test(option.text)),'old years or ambiguous numeric period labels remain');
  check(document.querySelector('[data-expense-field="reportingDate"]').type==='hidden'&&!document.querySelector('[data-expense-field="reportingDateConfirmed"]'),'redundant reporting controls remain');
