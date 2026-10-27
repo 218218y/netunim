@@ -3,6 +3,12 @@ import {test} from 'node:test';
 import {expenseConfiguration} from '../netunim-orders/supabase/functions/morning-expenses/configuration.js';
 const shared = {MORNING_ENV:'production', MORNING_CLIENT_ID:'production-id', MORNING_CLIENT_SECRET:'production-secret'};
 const config = values => expenseConfiguration(key => ({...shared, ...values})[key]);
+test('OCR is a separate explicit dedicated Sandbox switch and cannot open Production', () => {
+  const sandbox={MORNING_EXPENSE_ENV:'sandbox',MORNING_EXPENSE_CLIENT_ID:'ocr-id',MORNING_EXPENSE_CLIENT_SECRET:'ocr-secret',MORNING_EXPENSE_SANDBOX_OCR:'true'};
+  assert.equal(config(sandbox).ocr,true); assert.equal(config(sandbox).writes,false);
+  for (const patch of [{MORNING_EXPENSE_SANDBOX_OCR:'false'},{MORNING_EXPENSE_ENV:'production'},{MORNING_EXPENSE_ENV:undefined},
+    {MORNING_EXPENSE_CLIENT_ID:shared.MORNING_CLIENT_ID},{MORNING_EXPENSE_CLIENT_SECRET:shared.MORNING_CLIENT_SECRET}]) assert.equal(config({...sandbox,...patch}).ocr,false);
+});
 test('dedicated expense Sandbox credentials never fall back to the live income credentials', () => {
   assert.equal(config({}).environment, 'production'); assert.equal(config({}).sandboxWrites, false);
   const missing = config({MORNING_EXPENSE_ENV:'sandbox'});

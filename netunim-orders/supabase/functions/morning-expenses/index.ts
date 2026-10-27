@@ -6,6 +6,8 @@ import {createExpenseLedger} from './ledger.js';
 import {createExpenseWriter} from './writer.js';
 import {createExpenseUpload} from './upload.js';
 import {expenseConfiguration} from './configuration.js';
+import {createOcrLedger} from './ocr-ledger.js';
+import {createExpenseOcr} from './ocr.js';
 
 function envKey(jsonName:string, legacyName:string) {
   try { const values = JSON.parse(Deno.env.get(jsonName) || '{}'); const key = values.default || Object.values(values).find(value => typeof value === 'string' && value); if (key) return String(key); } catch { /* legacy key */ }
@@ -24,7 +26,10 @@ const writer = admin ? createExpenseWriter({request, environment, ledger:createE
 const uploader = admin ? createExpenseUpload({request, environment, ledger:createExpenseLedger(admin, environment),
   enabled:configuration.uploads, productionUserId:configuration.productionUserId, writeIds:() => Deno.env.get('MORNING_EXPENSE_WRITE_USER_IDS') || '',
 }) : null;
-const service = createExpenseService({request, environment, readIds:() => Deno.env.get('MORNING_EXPENSE_READ_USER_IDS') || '', writer, uploader});
+const ocr = admin ? createExpenseOcr({request, environment, ledger:createOcrLedger(admin, environment), enabled:configuration.ocr,
+  productionUserId:configuration.productionUserId, writeIds:() => Deno.env.get('MORNING_EXPENSE_WRITE_USER_IDS') || '',
+}) : null;
+const service = createExpenseService({request, environment, readIds:() => Deno.env.get('MORNING_EXPENSE_READ_USER_IDS') || '', writer, uploader, ocr});
 Deno.serve(createExpenseHandler({
   getUser:async (token:string) => {
     if (!url || !key || !valid || !clientId || !clientSecret) throw new Error('morning_expenses_not_configured');

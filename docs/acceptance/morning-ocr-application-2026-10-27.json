@@ -1,0 +1,20 @@
+{
+  "date": "2026-10-27",
+  "environment": "sandbox",
+  "productionTouched": false,
+  "syntheticUploads": 1,
+  "financialWrites": 0,
+  "accepted204": true,
+  "status": 200,
+  "state": "review_required",
+  "sourceVerified": true,
+  "draftLinked": true,
+  "parsingCompletionVerified": false,
+  "approvalVerified": false,
+  "replayedTicketStatus": 409,
+  "recoveryWithScanningDisabled": true,
+  "lostAck": true,
+  "amount": 118,
+  "vat": 18,
+  "scope": "Actual application OCR handler and source verifier with real Sandbox transport and S3; local persistent JSON fixture ledger, not a deployed PostgreSQL/Staging end-to-end test."
+}

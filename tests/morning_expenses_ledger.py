@@ -39,4 +39,32 @@ with IsolatedPostgres(schema_files=['supabase/migrations/20261026080000_morning_
     assert not db.sql(f"update public.morning_expense_operations set state='cancelled',cancelled_at=now() where operation_id='{third}' and state='reserved' and sent_at is null returning operation_id").strip()
     rejects(f"update public.morning_expense_operations set state='cancelled',cancelled_at=now() where operation_id='{third}'", 'check constraint')
     rejects(f"update public.morning_expense_operations set file_state='prepared' where operation_id='{third}'", 'check constraint')
-print('PASS Morning expense ledger: operation and invoice uniqueness, verified-state checks, RLS and service-only access')
+with IsolatedPostgres(schema_files=['supabase/migrations/20261027110000_morning_expense_ocr_operations.sql']) as db:
+    operation = 'aaaaaaaa-aaaa-4aaa-aaaa-000000000010'
+    def ocr_insert(operation_id=operation, owner=OWNER):
+        return ("insert into public.morning_expense_ocr_operations(operation_id,owner_id,environment,file_sha256,file_size,content_type) "
+                f"values('{operation_id}','{owner}','sandbox','{'a'*64}',790,'application/pdf')")
+    def ocr_rejects(sql, expected):
+        try:
+            db.sql(sql)
+        except RuntimeError as error:
+            assert expected in str(error), error
+        else:
+            raise AssertionError('Unexpected OCR SQL success')
+    db.sql(ocr_insert())
+    ocr_rejects(ocr_insert('aaaaaaaa-aaaa-4aaa-aaaa-000000000011', 'aaaaaaaa-aaaa-4aaa-aaaa-000000000012'), 'duplicate key')
+    for role in ['anon', 'authenticated']:
+        for command in ['select * from', 'delete from']:
+            ocr_rejects(f'set role {role}; {command} public.morning_expense_ocr_operations', 'permission denied')
+    db.sql('alter role service_role bypassrls')
+    assert db.sql('set role service_role; select count(*) from public.morning_expense_ocr_operations').strip() == '1'
+    ocr_rejects('set role service_role; delete from public.morning_expense_ocr_operations', 'permission denied')
+    db.sql(f"update public.morning_expense_ocr_operations set state='issuing',revision=1 where operation_id='{operation}' and revision=0")
+    assert not db.sql(f"update public.morning_expense_ocr_operations set state='issuing',revision=1 where operation_id='{operation}' and revision=0 returning operation_id").strip()
+    ocr_rejects(f"update public.morning_expense_ocr_operations set state='ticket_issued' where operation_id='{operation}'", 'check constraint')
+    db.sql(f"update public.morning_expense_ocr_operations set state='ticket_issued',business_id='{OWNER}',ticket_issued_at=now() where operation_id='{operation}'")
+    ocr_rejects(f"update public.morning_expense_ocr_operations set draft_id='{OWNER}' where operation_id='{operation}'", 'check constraint')
+    db.sql(f"update public.morning_expense_ocr_operations set state='review_required',draft_id='{OWNER}',source_verified_at=now() where operation_id='{operation}'")
+    ocr_rejects('update public.morning_expense_ocr_operations set poll_count=21', 'check constraint')
+    assert db.sql("select relrowsecurity from pg_class where oid='public.morning_expense_ocr_operations'::regclass").strip() == 't'
+print('PASS Morning expense and OCR ledgers: isolated identities, source proof constraints, CAS, RLS and service-only access')

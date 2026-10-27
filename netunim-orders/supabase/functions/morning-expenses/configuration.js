@@ -25,6 +25,7 @@ export function expenseConfiguration(get) {
   const productionWrites = valid && independent && !!productionUserId && completePProfiles(pSuppliers) && get('MORNING_EXPENSE_PRODUCTION_WRITES') === 'true';
   return {environment, clientId, clientSecret, valid, sandboxWrites, productionWrites, productionUserId,
     writes:sandboxWrites || productionWrites,
+    ocr:valid && ownEnvironment?.trim().toLowerCase() === 'sandbox' && dedicated && clientId !== get('MORNING_CLIENT_ID') && clientSecret !== get('MORNING_CLIENT_SECRET') && get('MORNING_EXPENSE_SANDBOX_OCR') === 'true',
     pcnP:(sandboxWrites || productionWrites) && get('MORNING_EXPENSE_PCN_P_WRITES') === 'true',
     uploads:sandboxWrites || productionWrites && get('MORNING_EXPENSE_PRODUCTION_UPLOADS') === 'true', pSuppliers:pSuppliers || []};
 }
