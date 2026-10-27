@@ -22,6 +22,17 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
   let expanded = false, catalog = null, busy = false, generation = 0, reading = null, message = '', result = null, operationId = '', fileAttempted = false;
   let queue = [], selected = null, previewUrl = '', reconciliationId = '', favorites = [], extraExpenses = [], preferences = null, lastAmountField = '', draft = defaults();
   let editVersion = 0;
+  let edited = false;
+  const workDrafts = new Map();
+  const hasValues = (values=draft) => ['number','net','vat','gross','description','allocationNumber'].some(key=>!!values[key]);
+  function rememberWork() {
+    if(!selected||operationId)return;
+    workDrafts.set(selected,{draft:structuredClone(draft),lastAmountField,edited,local:local.snapshot(),
+      supplier:catalog?.suppliers.find(row=>row.id===draft.supplierId),classification:sourceExpenses().find(row=>row.id===draft.classificationExpenseId)});
+  }
+  function hasUnsavedWork(){return queue.length>0||!operationId&&(!!selected||edited||hasValues());}
+  function beforeUnload(event){if(active()&&hasUnsavedWork()){event.preventDefault();event.returnValue='';}}
+  globalThis.addEventListener?.('beforeunload',beforeUnload);
   function defaults(previous = {}) {
     const today = todayISO();
     return {supplierId:previous.supplierId || '', classificationExpenseId:previous.classificationExpenseId || '', documentType:305, number:'',
@@ -54,6 +65,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     } catch { /* No prior recovery metadata. */ }
   }
   function clear() {
+    workDrafts.clear(); edited=false;
     local.reset(); pdfPreview.reset(); editVersion++;
     reading?.abort(); reading = null; generation++; catalog = null; busy = false; message = ''; result = null; operationId = ''; fileAttempted = false;
     supplierPicker.reset(); history.reset(); recent.reset(); ocr.reset(); queue = []; selected = null; reconciliationId = ''; lastAmountField = ''; favorites = []; extraExpenses = []; preferences = null; releasePreview(); draft = defaults();
@@ -63,7 +75,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     eligibility:eligibilityFor, editable:() => active() && !!catalog && !busy && !operationId,
     choose:id => setField({dataset:{expenseField:'supplierId'}, value:id}), run:tasks.run, report:updateMessage,
     invalidateSelection:() => {
-      editVersion++; local.edited();
+      editVersion++; edited=true; local.edited();
       draft.supplierId = ''; draft.classificationExpenseId = '';
       for (const key of ['supplierId', 'classificationExpenseId']) {const field = host()?.querySelector(`[data-expense-field="${key}"]`); if (field) field.value = '';}
       const button = host()?.querySelector('[data-action="morning-expense-save"]'); if (button) button.disabled = true;
@@ -74,7 +86,8 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
   const history = createExpenseHistory({request, capabilities:() => catalog?.capabilities, capture, run:tasks.run, todayISO});
   const recent = createExpenseRecent({request, capabilities:() => catalog?.capabilities, capture, run:tasks.run});
   const ocr = createExpenseOcrReview({request, capture, run, capabilities:() => catalog?.capabilities, accountId, selected:() => selected,
-    files, confirmDialog, apply:applyOcr, advance:() => {if (operationId) return; supplierPicker.reset(); draft = defaults(); lastAmountField = ''; selectNextFile();}, busy:() => busy, canStart:() => !operationId});
+    files, confirmDialog, apply:applyOcr, advance:() => {if (operationId) return; workDrafts.delete(selected); draft=defaults(); edited=false; selectNextFile({saveCurrent:false});},
+    busy:() => busy, canStart:() => !operationId});
   const local = createExpenseLocalReview({files, request, capture, capabilities:() => catalog?.capabilities, selected:() => selected,
     editVersion:() => editVersion, onProposal:proposal => pdfPreview.setFields(proposal?.fields),
     apply:applyLocal, render, run:tasks.run, canStart:() => !!catalog && !operationId, ocrActive:ocr.active, confirmDialog});
@@ -105,6 +118,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     });
   }
   function load() {
+    const cachedLocal=local.snapshot();
     local.reset();
     return run(async () => {
       const check = capture(), controller = new AbortController(); reading = controller;
@@ -126,7 +140,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       }
       if (!operationId) restore();
       await ocr.initialize(check); check();
-      if (selected && !operationId && !ocr.active()) local.start();
+      if (selected && !operationId && !ocr.active()) local.restore(cachedLocal);
       recent.record({verified:true});
       history.refresh();
     });
@@ -136,7 +150,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     if (busy || operationId) return false;
     const name = element.dataset.expenseField;
     if (!Object.hasOwn(draft, name)) return false;
-    editVersion++; local.edited();
+    editVersion++; edited=true; local.edited();
     if (local.blocked()) {const button = host()?.querySelector('[data-action="morning-expense-save"]'); if (button) button.disabled = true;}
     draft[name] = name === 'documentType' ? Number(element.value) : element.value;
     if (['date', 'reportingPeriod'].includes(name)) {
@@ -191,17 +205,27 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       if (!list.length || list.length + existing.length > 20 || list.reduce((sum, file) => sum + file.size, existing.reduce((sum, item) => sum + item.file.size, 0)) > 100 * 1024 * 1024) throw new Error('ניתן לבחור עד 20 קבצים ובסך הכול עד 100MB.');
       const validated = [];
       for (const file of list) { validated.push(await files.validate(file)); check(); }
-      queue.push(...validated); if (!selected) selectNextFile(); message = 'הקבצים נוספו לתור לבדיקה מול מסמך המקור.';
+      queue.push(...validated); if (!selected) selectNextFile({preserveDraft:edited||hasValues()}); message = 'הקבצים נוספו לתור. טיוטות העבודה נשמרות בזיכרון עד לסגירת המסך.';
     });
   }
-  function selectNextFile() {
+  function selectNextFile({saveCurrent=true,preserveDraft=false,carryPreferences=false}={}) {
+    if(saveCurrent)rememberWork();
+    const period=draft.reportingPeriod,preferencesDraft=draft;
     local.reset(); editVersion++;
     releasePreview(); selected = queue.shift() || null;
     if (selected && selected.type !== 'application/pdf') previewUrl = URL.createObjectURL(selected.file);
     pdfPreview.select(selected);
-    if (!operationId && local.available()) {
-      const period = draft.reportingPeriod;
-      draft = defaults(); draft.reportingPeriod = period; lastAmountField = ''; supplierPicker.reset(); local.start();
+    if (!operationId) {
+      let saved=workDrafts.get(selected);
+      if(carryPreferences&&saved&&!saved.edited&&!hasValues(saved.draft))saved=null;
+      if(saved){
+        draft=structuredClone(saved.draft);lastAmountField=saved.lastAmountField;edited=saved.edited;
+        if(saved.supplier)catalog.suppliers=mergeSuppliers([saved.supplier],catalog.suppliers);
+        if(saved.classification&&!sourceExpenses().some(row=>row.id===saved.classification.id))extraExpenses.push(saved.classification);
+        catalog.classifications=expenseCatalogClassifications(sourceExpenses());
+      }else if(!preserveDraft){draft=defaults(carryPreferences?preferencesDraft:{});draft.reportingPeriod=period;lastAmountField='';edited=false;}
+      supplierPicker.reset();
+      if(local.available()){if(saved)local.restore(saved.local);else local.start({autoFill:!preserveDraft});}
     }
   }
   function save() {
@@ -289,8 +313,9 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     if (operationId && result?.verified && (selected || filePending) && !result.fileLinked) { updateMessage('יש לאמת את קישור קובץ המקור לפני המעבר לחשבונית הבאה.'); return false; }
     if (operationId) { try { clearExpenseRecovery(localStorage, accountId(), catalog.capabilities.environment); } catch { updateMessage('לא ניתן לנקות את מזהה הפעולה.'); return false; } }
     const completed = result?.verified;
+    if(completed)workDrafts.delete(selected);
     supplierPicker.reset(); operationId = ''; result = null; fileAttempted = false; reconciliationId = ''; lastAmountField = ''; draft = defaults(draft);
-    if (completed) selectNextFile(); message = 'מוכן לחשבונית הבאה.'; render(); return true;
+    edited=false;if (completed) selectNextFile({saveCurrent:false,carryPreferences:true}); message = 'מוכן לחשבונית הבאה.'; render(); return true;
   }
   function mergeSuppliers(found, retained = []) {
     return [...new Map([...favorites, ...retained, ...found].map(row => [row.id, row])).values()];
@@ -390,10 +415,23 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     if (busy || operationId || fileAttempted) return false;
     const index = Number(element.dataset.expenseIndex), remove = element.dataset.expenseCommand === 'remove-file';
     if (!Number.isInteger(index) || index < 0 || index > queue.length) return false;
-    const items = [...(selected ? [selected] : []), ...queue];
-    if (remove) items.splice(index, 1);
-    else {const [item] = items.splice(index, 1); if (!item) return false; items.unshift(item);}
-    queue = items; selectNextFile(); message = remove ? 'הקובץ הוסר מהתור המקומי.' : 'הקובץ נבחר לבדיקה. פרטי הטופס נשארו לבדיקה מול הקובץ.'; render(); return true;
+    const target=[...(selected?[selected]:[]),...queue][index];if(!target)return false;
+    const commit=()=>{
+      const items=[...(selected?[selected]:[]),...queue];if(items[index]!==target)return false;
+      if(remove&&index>0){items.splice(index,1);queue=items.slice(1);workDrafts.delete(target);}
+      else if(!remove&&index===0)return true;
+      else{
+        if(!remove)rememberWork();
+        const [item]=items.splice(index,1);if(!remove)items.unshift(item);else workDrafts.delete(item);
+        queue=items;selectNextFile({saveCurrent:false});
+      }
+      message=remove?'הקובץ וטיוטתו הוסרו מהתור המקומי.':'טיוטת העבודה של הקובץ שוחזרה.';render();return true;
+    };
+    if(remove&&(target===selected?edited:workDrafts.get(target)?.edited))return run(async()=>{
+      const check=capture(),approved=await confirmDialog('מחיקת טיוטת העבודה של הקובץ','התיקונים שהקלדת לקובץ זה יימחקו מהזיכרון. לא תימחק הוצאה ממורנינג.',{confirmText:'הסר את הקובץ והטיוטה'});
+      check();return approved?commit():false;
+    });
+    return commit();
   }
   function recover(action) {
     return run(async () => {
@@ -506,10 +544,13 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     return run(async () => {
       if (operationId || ocr.active() || !selected) return false;
       const check = capture(), source = selected();
-      const approved = await confirmDialog('השארת מסמך להשלמה ידנית', 'הקובץ יוסר מהתור המקומי בלבד. לא נשמרה הוצאה. יש לשמור את המקור ולהשלים את הטיפול בו בהמשך.', {confirmText:'סימון כממתין ומעבר'});
+      const approved = await confirmDialog('הסרת מסמך מהתור ללא שמירה', 'הקובץ והטיוטה יוסרו מהזיכרון. לא נשמרה הוצאה או משימה להמשך. יש לשמור את המקור ולטפל בו בנפרד.', {confirmText:'הסר ללא שמירה'});
       check(); if (!approved || selected !== source) return false;
-      draft = defaults(); supplierPicker.reset(); selectNextFile(); message = 'המסמך סומן כממתין; יש להשלים את הטיפול בו בהמשך.';
+      workDrafts.delete(selected);draft = defaults();edited=false;supplierPicker.reset();selectNextFile({saveCurrent:false});
+      message = 'הקובץ הוסר מהתור ללא שמירה להמשך. יש לשמור את המקור ולטפל בו בנפרד.';
     });
   }
-  return {markup, actions, runtime:{isPending:tasks.isPending, drain:tasks.drain, dispose:() => {local.reset(); pdfPreview.reset(); if (!tasks.close()) return false; clear(); unsubscribe(); return true;}}};
+  return {markup, actions, runtime:{isPending:tasks.isPending, drain:tasks.drain, hasUnsavedWork,dispose:() => {
+    local.reset();pdfPreview.reset();if(!tasks.close())return false;globalThis.removeEventListener?.('beforeunload',beforeUnload);clear();unsubscribe();return true;
+  }}};
 }

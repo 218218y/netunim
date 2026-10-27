@@ -49,7 +49,7 @@ SCENARIO = PREFIX + r"""
  ocrOffline=false;click('ocr-status');await settle();
  click('ocr-fill');await settle();check(value('number')==='000902727','recovered OCR could not refill suggestions');
  click('ocr-defer');await settle();check(!localStorage.getItem(recoveryKey),'explicit pending did not clear active recovery pointer');
- check(value('number')===''&&value('vat')==='','deferred OCR values leaked into the next manual invoice');
+ check(value('number')===''&&value('vat')==='','deferred OCR values leaked into the next manual invoice after reopening');
  check(fixture.querySelector('[data-expense-command="ocr-resume"]'),'deferred OCR missing from server history');
  click('ocr-resume');await settle();check(fixture.querySelector('[data-action="morning-expense-save"]').disabled,'resumed draft allowed a separate expense');
  owner=id(9);listener();check(!fixture.textContent.includes(first)&&!fixture.textContent.includes('OCR description'),'OCR leaked into another account');

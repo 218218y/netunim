@@ -37,7 +37,7 @@ export function createExpenseLocalReview({files, request, capabilities, capture,
       if (epoch === revision) render();
     });
   }
-  function start() {
+  function start({autoFill=true,cached=null}={}) {
     if (!available() || !canStart() || ocrActive()) return false;
     reset(); controller = new AbortController(); pending = true;
     const epoch = revision, source = selected(), version = editVersion(), base = capture(), signal = controller.signal;
@@ -47,11 +47,14 @@ export function createExpenseLocalReview({files, request, capabilities, capture,
       try {
         const digest = await ocrFileHash(source.file); check(); hash = digest;
         try {await lookup(check, signal);} catch (error) {check(); message = error.message; if (sourceConflict) throw error;}
-        const extracted = await files.extract(source.file, {signal, check}); check();
-        const recognized = await files.recognize(extracted); check(); proposal = recognized; onProposal(recognized);
+        let recognized;
+        if(cached?.hash===hash&&cached.proposal)recognized=structuredClone(cached.proposal);
+        else {const extracted = await files.extract(source.file, {signal, check}); check(); recognized = await files.recognize(extracted);}
+        check(); proposal = recognized; onProposal(recognized);
         pending = false;
         if (!guard) message = 'הזיהוי המקומי הסתיים. שמירה עם PDF דורשת עדכון שירות ובדיקת טיוטות קודמות.';
-        if (version === editVersion()) await fill(false, version);
+        if (!autoFill) message='טיוטת העבודה נשמרה. נתוני הזיהוי זמינים להשוואה או למילוי יזום.';
+        else if (version === editVersion()) await fill(false, version);
         else message = 'הזיהוי הסתיים בזמן שעריכת הטופס נמשכה. ההצעות זמינות למילוי יזום בלי לדרוס תיקונים.';
       } catch (error) {if (!signal.aborted && epoch === revision) message = ({PasswordException:'ה־PDF מוגן בסיסמה. יש לבחור עותק פתוח או להשלים ידנית.',
         InvalidPDFException:'ה־PDF אינו תקין. יש לבחור עותק תקין או להשלים ידנית.', TimeoutError:'הזיהוי המקומי הגיע למגבלת הזמן. אפשר לנסות שוב או להשלים ידנית.'})[error.name] ||
@@ -107,10 +110,12 @@ export function createExpenseLocalReview({files, request, capabilities, capture,
       </details>
       ${ocrOperation ? `<button type="button" class="btn" data-action="morning-expense-command" data-expense-command="ocr-resume"
         data-ocr-operation="${esc(ocrOperation)}">בירור סריקת Morning הקיימת</button>` : ''}
-      <button type="button" class="btn" data-action="morning-expense-command" data-expense-command="local-defer" ${pending ? 'disabled' : ''}>השארה להשלמה ומעבר לקובץ הבא</button>
+      <button type="button" class="btn" data-action="morning-expense-command" data-expense-command="local-defer" ${pending ? 'disabled' : ''}>הסרה מהתור ללא שמירה</button>
     </section>`;
   }
   return {start, fill:() => fill(true), reset, markup, preflight, blocked, available,
+    snapshot:() => ({proposal:proposal?structuredClone(proposal):null,hash}),
+    restore:saved => start({autoFill:false,cached:saved}),
     verifySource:check => available() ? lookup(check) : undefined,
     edited:() => {if (proposal?.fields.invoiceNumber) proposal.fields.invoiceNumber.effectiveNumber = null;},
     approve:number => {if (proposal?.fields.invoiceNumber) proposal.fields.invoiceNumber.effectiveNumber = number;}, pending:() => pending};
