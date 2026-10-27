@@ -23,15 +23,15 @@ SCENARIO = PREFIX + r"""
  const choose=async(name='invoice.pdf')=>{const input=fixture.querySelector('input[type="file"]'),transfer=new DataTransfer();transfer.items.add(new File([bytes,name],{type:'application/pdf'}));input.files=transfer.files;input.dispatchEvent(new Event('change',{bubbles:true}));await settle()};
  const value=name=>fixture.querySelector('[data-expense-field="'+name+'"]').value;
  const field=(name,value,type='input')=>{const el=fixture.querySelector('[data-expense-field="'+name+'"]');el.value=value;el.dispatchEvent(new Event(type,{bubbles:true}));return el};
- const review=()=>{const el=fixture.querySelector('[data-local-reviewed]');check(el&&!el.disabled,'review unavailable');el.checked=true;el.dispatchEvent(new Event('change',{bubbles:true}))};
+ const review=()=>check(!fixture.querySelector('[data-local-reviewed]'),'redundant source-review checkbox remains');
  await choose();check(extractions===1&&recognitions===1&&uploads===0&&posts===0,'selection caused uploads or financial effects');
  check(value('number')==='0123456789'&&value('supplierId')===supplier.id,'number zero or canonical supplier lost');
  check(value('vat')==='160.00'&&value('net')==='1000.00'&&value('gross')==='1160.00','explicit source amounts recalculated');
  check(value('allocationNumber')==='123456789'&&value('reportingPeriod')==='2026-09','allocation or reporting-period mapping lost');
  check(fixture.querySelector('[data-expense-pdf-preview]')&&!fixture.querySelector('iframe'),'PDF preview is not raster-only');
  check(fixture.textContent.includes('s0123456789')&&fixture.textContent.includes('0123456789'),'source/proposal provenance missing');
- await uiFeature.actions['morning-expense-save']();check(posts===0,'save bypassed mandatory source review');
- review();field('description','checked edit');check(!fixture.querySelector('[data-local-reviewed]').checked,'edit retained review approval');
+ confirmWait=Promise.resolve(false);click('save');await settle();check(posts===0,'cancelled final confirmation created an expense');confirmWait=null;
+ review();field('description','checked edit');check(fixture.querySelector('[data-expense-sanity]').textContent.includes('בדיקת סבירות'),'atypical VAT has no visible plausibility warning');
  review();localDuplicate=true;click('save');await settle();check(posts===0&&fixture.textContent.includes('כפילות'),'existing invoice was not stopped before POST');localDuplicate=false;
  // An edit while extraction is in flight must survive automatic completion.
  let release;extractionHold=new Promise(resolve=>release=resolve);click('local-start');
@@ -68,9 +68,11 @@ OWNERSHIP = PREFIX + r"""
  click('load');await settle();extractionHold=null;
  let pdf='%PDF-1.4\n';const offsets=[0],objects=['<< /Type /Catalog /Pages 2 0 R >>','<< /Type /Pages /Kids [3 0 R 6 0 R] /Count 2 >>','<< /Type /Page /Parent 2 0 R /MediaBox [0 0 600 800] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>','<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'];
  const stream='BT /F1 12 Tf 50 700 Td (Unknown synthetic supplier invoice 0001234567) Tj ET';objects.push('<< /Length '+stream.length+' >>\nstream\n'+stream+'\nendstream');
- objects.push(objects[2]);
+ objects.push(objects[2].replace('/Contents 5 0 R','/Contents 7 0 R'));
+ const summaryStream='BT /F1 12 Tf 50 150 Td (1000.00) Tj 0 -20 Td (160.00) Tj 0 -20 Td (1160.00) Tj ET';
+ objects.push('<< /Length '+summaryStream.length+' >>\nstream\n'+summaryStream+'\nendstream');
  for(let i=0;i<objects.length;i++){offsets.push(pdf.length);pdf+=(i+1)+' 0 obj\n'+objects[i]+'\nendobj\n';}
- const xref=pdf.length;pdf+='xref\n0 7\n0000000000 65535 f \n'+offsets.slice(1).map(n=>String(n).padStart(10,'0')+' 00000 n \n').join('')+'trailer\n<< /Size 7 /Root 1 0 R >>\nstartxref\n'+xref+'\n%%EOF';
+ const xref=pdf.length;pdf+='xref\n0 8\n0000000000 65535 f \n'+offsets.slice(1).map(n=>String(n).padStart(10,'0')+' 00000 n \n').join('')+'trailer\n<< /Size 8 /Root 1 0 R >>\nstartxref\n'+xref+'\n%%EOF';
  ports.files.extract=async(...args)=>(await import('./assets/js/domains/finance/invoice-pdf.js')).extractInvoicePdf(...args);
  ports.files.recognize=async(...args)=>(await import('./assets/js/core/invoice-recognition.js')).recognizeInvoice(...args);
  await uiFeature.actions['morning-expense-files']({files:[new File([pdf],'unknown.pdf',{type:'application/pdf'})]});await settle();
@@ -79,6 +81,24 @@ OWNERSHIP = PREFIX + r"""
  click('pdf-next');await settle();check(fixture.querySelector('[data-expense-pdf-preview]').textContent.includes('עמוד 2 מתוך 2'),'multi-page source navigation failed');
  check(fixture.querySelector('[data-expense-pdf-preview] img').src!==previewImage.src,'page image was not replaced');click('pdf-prev');await settle();
  check(fixture.querySelector('[data-expense-field="number"]').value===''&&posts===0&&uploads===0,'unknown native PDF guessed an invoice identity or wrote');
+ // Replay exact source runs into the form and preview: actual PDF coordinates,
+ // real renderer and scrolling/navigation, with a synthetic recognition result.
+ const extracted=await ports.files.extract(new Blob([pdf],{type:'application/pdf'}));
+ const {invoicePdfQuad}=await import('./assets/js/core/invoice-pdf-layout.js');
+ const replay=structuredClone(recognized);for(const field of Object.values(replay.fields))field.sources=[];
+ for(const [key,text]of [['net','1000.00'],['vat','160.00'],['gross','1160.00']]){
+  const item=extracted.pages[1].items.find(item=>item.text===text);check(item,'native summary source missing');
+  replay.fields[key].sources=[{page:2,quad:invoicePdfQuad(item)}];
+ }
+ ports.files.recognize=async()=>structuredClone(replay);click('local-start');await settle();
+ check(fixture.querySelector('[data-pdf-current-field]').textContent.includes('לפני מע״מ'),'first highlighted field did not follow form order');
+ check(fixture.querySelectorAll('.morning-expense-pdf-mark').length===3,'not all source amounts were highlighted');
+ check(fixture.querySelector('[data-expense-pdf-preview]').textContent.includes('עמוד 2 מתוך 2'),'result navigation did not jump to summary page');
+ click('pdf-match-next');await settle();check(fixture.querySelector('[data-pdf-current-field]').textContent.includes('מע״מ מהחשבונית'),'result navigation order is incorrect');
+ const marker=fixture.querySelector('.morning-expense-pdf-mark.current').getBoundingClientRect();
+ const view=fixture.querySelector('[data-invoice-pdf-viewport]').getBoundingClientRect();
+ check(marker.top>=view.top&&marker.bottom<=view.bottom,'current highlight was not scrolled into view');
+ click('pdf-zoom-in');check(fixture.querySelector('.morning-expense-pdf-page').style.width==='125%','PDF zoom did not preserve overlays');
  await uiFeature.actions['morning-expense-command']({dataset:{expenseCommand:'remove-file',expenseIndex:'0'}});await settle();
  // Disposal aborts cancellable extraction while its tracked promise drains.
  ports.files.extract=async(file,{signal})=>new Promise((_,reject)=>signal.addEventListener('abort',()=>{signalAborted=true;reject(new DOMException('Aborted','AbortError'));},{once:true}));

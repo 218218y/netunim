@@ -7,10 +7,10 @@ const statuses = {verified:'זוהה ואומת במסמך', review:'דורש ב
 const reasons = {computed_net:'מחושב מהסכום הכולל פחות המע״מ המפורש', canonical_supplier_pending:'נדרשת התאמה לספריית הספקים של Morning',
   amounts_inconsistent:'הסכומים אינם מתאימים זה לזה', document_identity_unresolved:'זהות המסמך דורשת בדיקה', supplier_prefix_not_verified:'תחילית המספר טרם אומתה',
   multiple_candidates:'נמצאו כמה ערכים אפשריים'};
-export function createExpenseLocalReview({files, request, capabilities, capture, selected, editVersion, currentNumber = () => '', apply, render, run, canStart, ocrActive, confirmDialog}) {
-  let controller = null, revision = 0, pending = false, proposal = null, reviewed = false, guard = false, hash = '', message = '', ocrOperation = '', sourceConflict = false;
+export function createExpenseLocalReview({files, request, capabilities, capture, selected, editVersion, onProposal = () => {}, apply, render, run, canStart, ocrActive, confirmDialog}) {
+  let controller = null, revision = 0, pending = false, proposal = null, guard = false, hash = '', message = '', ocrOperation = '', sourceConflict = false;
   const available = () => !!files?.extract && !!files?.recognize && selected()?.type === 'application/pdf';
-  function reset() {controller?.abort(); controller = null; revision++; pending = false; proposal = null; reviewed = false; guard = false; hash = ''; message = ''; ocrOperation = ''; sourceConflict = false;}
+  function reset() {controller?.abort(); controller = null; revision++; pending = false; proposal = null; onProposal(null); guard = false; hash = ''; message = ''; ocrOperation = ''; sourceConflict = false;}
   async function lookup(check, signal) {
     if (!capabilities()?.ocrFileGuard) throw new Error('יש לעדכן את שירות ההוצאות לבדיקת טיוטות קודמות לפני שמירה עם PDF.');
     const value = await request('ocr_lookup', {sha256:hash, expectedEnvironment:capabilities().environment}, check, {signal}); check();
@@ -31,7 +31,7 @@ export function createExpenseLocalReview({files, request, capabilities, capture,
           const approved = await confirmDialog('מילוי הצעות מה־PDF', 'פרטי החשבונית בטופס יוחלפו בהצעות המקומיות. יש לבדוק את כל השדות מול המסמך.', {confirmText:'מילוי לבדיקה'});
           check(); if (!approved) return false;
         }
-        await apply(proposal, check); check(); reviewed = false; message = 'ההצעות מולאו. יש לבדוק את השדות מול המקור ולאשר את הבדיקה לפני שמירה.';
+        await apply(proposal, check); check(); message = 'הנתונים מולאו בטופס. יש להשוות למקור לפני אישור השמירה.';
         if (!guard) message += ' שמירה עם PDF דורשת עדכון שירות ובדיקת טיוטות קודמות.';
       } catch (error) {if (epoch === revision) message = error.message;}
       if (epoch === revision) render();
@@ -48,7 +48,7 @@ export function createExpenseLocalReview({files, request, capabilities, capture,
         const digest = await ocrFileHash(source.file); check(); hash = digest;
         try {await lookup(check, signal);} catch (error) {check(); message = error.message; if (sourceConflict) throw error;}
         const extracted = await files.extract(source.file, {signal, check}); check();
-        const recognized = await files.recognize(extracted); check(); proposal = recognized;
+        const recognized = await files.recognize(extracted); check(); proposal = recognized; onProposal(recognized);
         pending = false;
         if (!guard) message = 'הזיהוי המקומי הסתיים. שמירה עם PDF דורשת עדכון שירות ובדיקת טיוטות קודמות.';
         if (version === editVersion()) await fill(false, version);
@@ -82,26 +82,36 @@ export function createExpenseLocalReview({files, request, capabilities, capture,
       }
     }
   }
-  function blocked() {return available() && (pending || !guard || !reviewed);}
+  function blocked() {return available() && (pending || !guard);}
   function markup() {
     if (!available() || !canStart() || ocrActive()) return '';
     const fields = proposal?.fields;
     const display = (name, field) => ['net','vat','gross'].includes(name) && Number.isSafeInteger(field.value) ? (field.value / 100).toFixed(2) + ' ₪' : field.value ?? '—';
-    const reviewFields = fields ? Object.entries(fields).filter(([name, field]) => field.status !== 'verified' && !(name === 'allocationNumber' && !field.value && proposal.allocationPolicy?.status !== 'check_business_conditions')).map(([name]) => titles[name]).filter(Boolean) : [];
-    return `<section class="morning-expense-operation" data-expense-local aria-label="זיהוי מקומי מהמסמך">
-      <b>זיהוי מקומי מה־PDF</b><p>הטקסט מזוהה בדפדפן. הקובץ אינו נשלח לסריקה ולא נוצרת טיוטה.</p>
-      <button type="button" class="btn" data-action="morning-expense-command" data-expense-command="local-start" ${pending ? 'disabled' : ''}>זיהוי מקומי מחדש</button>
-      ${proposal ? `<p>${proposal.profile ? 'המסמך זוהה; כל השדות דורשים בדיקה לפני שמירה.' : 'הספק או תבנית המסמך לא זוהו. יש להשלים ידנית לפי המקור.'}${reviewFields.length ? ' שדות להשלמה או לבדיקה: ' + esc(reviewFields.join(', ')) + '.' : ''}</p><button type="button" class="btn" data-action="morning-expense-command" data-expense-command="local-fill" ${pending ? 'disabled' : ''}>מילוי ההצעות בטופס</button><details><summary>מקורות השדות והבדיקות</summary><ul>${Object.entries(fields).map(([name, field]) => `<li>${esc(titles[name] || name)}: <bdi>${esc(display(name, field))}</bdi> · ${esc(statuses[field.status] || statuses.review)}${field.sources?.[0]?.page ? ` · עמוד ${field.sources[0].page}` : ''}${reasons[field.reason] ? ` · ${esc(reasons[field.reason])}` : ''}</li>`).join('')}</ul></details>
-      ${fields.invoiceNumber?.rawNumber ? `<small>מספר במקור: <bdi>${esc(fields.invoiceNumber.rawNumber)}</bdi> · הצעה: <bdi>${esc(fields.invoiceNumber.suggestedNumber)}</bdi> · המספר הסופי הוא הערך שבדקת בטופס.</small>` : ''}
-      ${proposal.allocationPolicy?.status === 'check_business_conditions' ? '<p>לפי התאריך והסכום לפני מע״מ במקור ייתכן שנדרש מספר הקצאה, בכפוף לתנאי העסקה. יש לבדוק את המספר במקור; תשע ספרות אינן אימות מול רשות המסים.</p>' : ''}` : ''}
-      ${ocrOperation ? `<button type="button" class="btn" data-action="morning-expense-command" data-expense-command="ocr-resume" data-ocr-operation="${esc(ocrOperation)}">בירור סריקת Morning הקיימת</button>` : ''}
+    return `<section class="morning-expense-local-summary" data-expense-local aria-label="תוצאות הזיהוי המקומי">
       <p role="status" aria-live="polite">${esc(message)}</p>
-      <label><input type="checkbox" data-change="morning-expense-local-review" data-local-reviewed ${reviewed ? 'checked' : ''} ${pending || !guard ? 'disabled' : ''}> בדקתי את הספק, המספר, סוג ותאריך המסמך, הסכומים ומספר ההקצאה מול ה־PDF, והשלמתי שדות חסרים. הסכומים בשקלים.</label>
-      <button type="button" class="btn" data-action="morning-expense-command" data-expense-command="local-defer" ${pending ? 'disabled' : ''}>סימון כממתין ומעבר לקובץ הבא</button>
-      </section>`;
+      ${proposal && !proposal.profile ? '<p>הספק או תבנית המסמך לא זוהו. יש להשלים ידנית לפי המקור.</p>' : ''}
+      <details><summary>פרטי הזיהוי המקומי ומקורות הנתונים</summary>
+        <p>הזיהוי מתבצע בדפדפן. הקובץ אינו נשלח לסריקה ולא נוצרת טיוטה.</p>
+        ${fields ? `<ul>${Object.entries(fields).map(([name, field]) => `<li>
+          ${esc(titles[name] || name)}: <bdi>${esc(display(name, field))}</bdi> · ${esc(statuses[field.status] || statuses.review)}
+          ${field.sources?.[0]?.page ? ` · עמוד ${field.sources[0].page}` : ''}
+          ${reasons[field.reason] ? ` · ${esc(reasons[field.reason])}` : ''}</li>`).join('')}</ul>` : ''}
+        ${fields?.invoiceNumber?.rawNumber ? `<small>מספר במקור: <bdi>${esc(fields.invoiceNumber.rawNumber)}</bdi>
+          · הצעה: <bdi>${esc(fields.invoiceNumber.suggestedNumber)}</bdi> · המספר הסופי הוא הערך שאישרת בטופס.</small>` : ''}
+        ${proposal?.allocationPolicy?.status === 'check_business_conditions' && !fields.allocationNumber.value ?
+          '<p>לפי התאריך והסכום במקור ייתכן שנדרש מספר הקצאה. יש לבדוק ולהשלים לפי תנאי העסקה.</p>' : ''}
+        <div class="morning-expense-toolbar">
+          <button type="button" class="btn" data-action="morning-expense-command" data-expense-command="local-start" ${pending ? 'disabled' : ''}>זיהוי מחדש</button>
+          ${proposal ? `<button type="button" class="btn" data-action="morning-expense-command" data-expense-command="local-fill" ${pending ? 'disabled' : ''}>מילוי ההצעות מחדש</button>` : ''}
+        </div>
+      </details>
+      ${ocrOperation ? `<button type="button" class="btn" data-action="morning-expense-command" data-expense-command="ocr-resume"
+        data-ocr-operation="${esc(ocrOperation)}">בירור סריקת Morning הקיימת</button>` : ''}
+      <button type="button" class="btn" data-action="morning-expense-command" data-expense-command="local-defer" ${pending ? 'disabled' : ''}>השארה להשלמה ומעבר לקובץ הבא</button>
+    </section>`;
   }
-  return {start, fill:() => fill(true), reset, markup, preflight, blocked, available, verifySource:check => available() ? lookup(check) : undefined,
-    edited:() => {reviewed = false; if (proposal?.fields.invoiceNumber) proposal.fields.invoiceNumber.effectiveNumber = null;},
-    review:element => {reviewed = element.checked === true && guard && !pending;
-      if (proposal?.fields.invoiceNumber) proposal.fields.invoiceNumber.effectiveNumber = reviewed ? currentNumber() : null;}, pending:() => pending};
+  return {start, fill:() => fill(true), reset, markup, preflight, blocked, available,
+    verifySource:check => available() ? lookup(check) : undefined,
+    edited:() => {if (proposal?.fields.invoiceNumber) proposal.fields.invoiceNumber.effectiveNumber = null;},
+    approve:number => {if (proposal?.fields.invoiceNumber) proposal.fields.invoiceNumber.effectiveNumber = number;}, pending:() => pending};
 }

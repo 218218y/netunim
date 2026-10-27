@@ -16,10 +16,11 @@ function fixture() {
     switchSource:()=>{source={type:'application/pdf',file:new Blob(['%PDF other file'])};local.reset();},switchAccount:()=>{scoped=false;local.reset();},
     conflict:()=>conflict=true,setRows:value=>rows=value,hold:promise=>hold=promise};
 }
-test('local selection only reads metadata; review is invalidated by edits and source changes',async()=>{
+test('local selection only reads metadata; approval is recorded only at final confirmation',async()=>{
   const f=fixture();await f.local.start();assert.equal(f.getDraft(),proposal);assert.equal(f.getUploads(),0);
-  assert.deepEqual(f.calls.map(row=>row.action),['ocr_lookup']);assert.equal(f.local.blocked(),true);
-  f.local.review({checked:true});assert.equal(f.local.blocked(),false);f.edit();assert.equal(f.local.blocked(),true);
+  assert.deepEqual(f.calls.map(row=>row.action),['ocr_lookup']);assert.equal(f.local.blocked(),false);
+  f.local.approve('0123456789');assert.equal(proposal.fields.invoiceNumber.effectiveNumber,'0123456789');
+  f.edit();assert.equal(f.local.blocked(),false);assert.equal(proposal.fields.invoiceNumber.effectiveNumber,null);
   assert.ok(!f.local.markup().includes('private invoice text'));f.switchSource();assert.equal(f.local.blocked(),true);
 });
 test('late extraction cannot overwrite edits, a different file or a different account',async()=>{
@@ -32,20 +33,20 @@ test('late extraction cannot overwrite edits, a different file or a different ac
 test('unknown OCR state and deferred OCR both prevent ordinary creation',async()=>{
   for(const mode of ['oldBackend','ocrConflict']){
     const f=fixture();if(mode==='oldBackend')f.caps.ocrFileGuard=false;else f.conflict();
-    await f.local.start();f.local.review({checked:true});assert.equal(f.local.blocked(),true);
+    await f.local.start();assert.equal(f.local.blocked(),true);
     await assert.rejects(()=>f.local.preflight(f.snapshot,f.supplier,()=>{}));
     assert.ok(f.calls.every(row=>row.action==='ocr_lookup'));
   }
 });
 test('legacy zero-less number is compared for duplicates without changing the proposed number',async()=>{
-  const f=fixture();await f.local.start();f.local.review({checked:true});
+  const f=fixture();await f.local.start();
   f.setRows([{id:'reported',kind:'expense',status:10,number:'123456789',type:305,sourceDocumentDate:'2026-07-02',supplierId:'canonical'}]);
   await assert.rejects(()=>f.local.preflight(f.snapshot,f.supplier,()=>{}),/הוצאה קיימת/);
   assert.deepEqual(f.calls.filter(row=>row.action==='expenses').map(row=>row.body.number),['0123456789','123456789']);
   assert.equal(f.snapshot.number,'0123456789');assert.equal(proposal.fields.invoiceNumber.value,'0123456789');
 });
 test('same number on another verified supplier/year/type does not falsely match',async()=>{
-  const f=fixture();await f.local.start();f.local.review({checked:true});
+  const f=fixture();await f.local.start();
   f.setRows([{id:'other',kind:'expense',status:10,number:f.snapshot.number,type:305,sourceDocumentDate:'2026-08-12',supplierId:'other',supplierTaxId:'987654321'},
     {id:'year',kind:'expense',status:10,number:f.snapshot.number,type:305,sourceDocumentDate:'2025-08-12',supplierId:f.supplier.id},
     {id:'credit',kind:'expense',status:10,number:f.snapshot.number,type:330,sourceDocumentDate:'2026-08-12',supplierId:f.supplier.id}]);

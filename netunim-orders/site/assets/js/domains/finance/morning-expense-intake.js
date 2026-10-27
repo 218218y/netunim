@@ -1,7 +1,7 @@
 import {esc} from '../../core/values.js';
 import {checkTodayISO} from '../../core/dates.js';
 import {normalizeExpenseInput} from '../../core/morning-expense-input.js';
-import {expenseAmountChange} from '../../core/morning-expense-amounts.js';
+import {expenseAmountChange,expenseAmountSanity} from '../../core/morning-expense-amounts.js';
 import {expenseBimonth, expenseReportingChoice} from '../../core/morning-report-period.js';
 import {createRuntimeTaskOwner} from '../../shared/runtime-task-owner.js';
 import {readExpenseCatalog, readExpenseCatalogPage, searchExpenseSuppliers, expenseCatalogClassifications, expenseSupplierEligibility} from './morning-expense-catalog.js';
@@ -76,7 +76,8 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
   const ocr = createExpenseOcrReview({request, capture, run, capabilities:() => catalog?.capabilities, accountId, selected:() => selected,
     files, confirmDialog, apply:applyOcr, advance:() => {if (operationId) return; supplierPicker.reset(); draft = defaults(); lastAmountField = ''; selectNextFile();}, busy:() => busy, canStart:() => !operationId});
   const local = createExpenseLocalReview({files, request, capture, capabilities:() => catalog?.capabilities, selected:() => selected,
-    editVersion:() => editVersion, currentNumber:() => draft.number, apply:applyLocal, render, run:tasks.run, canStart:() => !!catalog && !operationId, ocrActive:ocr.active, confirmDialog});
+    editVersion:() => editVersion, onProposal:proposal => pdfPreview.setFields(proposal?.fields),
+    apply:applyLocal, render, run:tasks.run, canStart:() => !!catalog && !operationId, ocrActive:ocr.active, confirmDialog});
   const pdfPreview = createExpensePdfPreview({capture,run:tasks.run,isActive:active});
   const unsubscribe = subscribeAccountScope(() => { clear(); render(); });
   function render() {
@@ -136,7 +137,6 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     const name = element.dataset.expenseField;
     if (!Object.hasOwn(draft, name)) return false;
     editVersion++; local.edited();
-    const reviewed = host()?.querySelector('[data-local-reviewed]'); if (reviewed) reviewed.checked = false;
     if (local.blocked()) {const button = host()?.querySelector('[data-action="morning-expense-save"]'); if (button) button.disabled = true;}
     draft[name] = name === 'documentType' ? Number(element.value) : element.value;
     if (['date', 'reportingPeriod'].includes(name)) {
@@ -146,7 +146,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
         if (hidden) hidden.value = draft.reportingDate;
         updateMessage('הפרטים טרם נשמרו. חודש הדיווח מותאם אוטומטית לתאריך ולתקופה שבחרת.');
       } catch {updateMessage('יש לבחור תאריך מסמך ותקופת דיווח תקינים.');}
-      return true;
+      updateSanity(); return true;
     }
     if (name === 'supplierId') {
       supplierPicker.reset();
@@ -164,8 +164,16 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       calculate(lastAmountField); render();
     } else if (['net', 'vat', 'gross'].includes(name)) {lastAmountField = name; calculate(name);}
     else updateMessage('הפרטים טרם נשמרו. יש לבדוק מול מסמך המקור.');
-    return true;
+    updateSanity(); return true;
   }
+  function sanityMessage() {
+    const value=expenseAmountSanity(draft,vatRate());
+    if(value.status==='inconsistent')return 'לפני מע״מ ומע״מ אינם מסתכמים לסכום הכולל. יש לבדוק את שלושת הסכומים מול המקור.';
+    if(value.status!=='different_rate')return '';
+    return `בדיקת סבירות: מע״מ לפי ${value.rate}% הוא ${(value.expectedVatCents/100).toFixed(2)} ₪, הפרש של ${
+      (Math.abs(value.differenceCents)/100).toFixed(2)} ₪ מהסכום בטופס. ייתכנו שיעורים מעורבים או עיגולים. סכום המקור לא שונה.`;
+  }
+  function updateSanity(){const target=host()?.querySelector('[data-expense-sanity]');if(target){const text=sanityMessage();target.textContent=text;target.hidden=!text;}}
   function vatRate() {return draft.pcnClassification === 'P' ? 16 : 18;}
   function eligibilityFor(supplier) {return expenseSupplierEligibility(supplier, catalog?.capabilities.pSuppliers, catalog?.capabilities.pcnP === true);}
   function calculate(name) {
@@ -198,7 +206,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
   }
   function save() {
     if (ocr.active()) {updateMessage('המסמך שייך לטיוטת OCR. יש להשלים את האישור במורנינג; יצירת הוצאה נפרדת חסומה למניעת כפילות.'); return false;}
-    if (local.blocked()) {updateMessage('יש להשלים את בדיקת ה־PDF ולאשר את הפרטים לפני שמירה.'); return false;}
+    if (local.blocked()) {updateMessage('יש להמתין להשלמת הזיהוי ובדיקת הטיוטות הקודמות לפני שמירה.'); return false;}
     if (!busy && !operationId) {
       const dateInput = host()?.querySelector('[data-expense-field="date"]');
       if (dateInput) draft.date = dateInput.value;
@@ -221,10 +229,13 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       const details = `${supplier?.name || ''} · ${typeTitle[snapshot.documentType]} ${snapshot.number} · תאריך ${snapshot.date} · סיווג ${classification.title}`;
       const amounts = `לפני מע״מ ${snapshot.net} ₪ · מע״מ ${snapshot.vat} ₪ · סה״כ ${snapshot.gross} ₪`;
       const period = `תקופת דיווח ${expenseBimonth(snapshot.reportingDate).label}`;
-      const confirmed = await confirmDialog(catalog.capabilities.environment === 'production' ? 'שמירת הוצאה בחשבון Morning האמיתי' : 'שמירת הוצאה ב־Sandbox', `${details} · ${amounts} · ${period}. האם הפרטים תואמים למסמך המקור?`, {confirmText:'שמור ב־Morning'});
+      const warning=sanityMessage();
+      const confirmed = await confirmDialog(catalog.capabilities.environment === 'production' ? 'שמירת הוצאה בחשבון Morning האמיתי' : 'שמירת הוצאה ב־Sandbox',
+        `${details} · ${amounts} · ${period}. ${warning} האם הפרטים תואמים למסמך המקור?`, {confirmText:'שמור ב־Morning'});
       check();
       if (!confirmed || !surface?.isConnected || host() !== surface) return false;
       await local.verifySource(check); check();
+      local.approve(snapshot.number);
       operationId = nextId; result = {state:'pending', verified:false}; remember();
       result = await request('create', {operationId, expense:snapshot}, check); check();
       if (result.verified) rememberClassification(snapshot.supplierId, snapshot.classificationExpenseId);
@@ -442,9 +453,12 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
         change:'morning-expense-field', data:{'expense-field':'date'}})}</fieldset></div></div>
       <input type="hidden" data-expense-field="reportingDate" value="${esc(draft.reportingDate)}">
       <div class="morning-expense-amounts">${textField('net')}${textField('vat')}${textField('gross')}</div>
+      <p class="morning-expense-notice" data-expense-sanity ${sanityMessage()?'':'hidden'}>${esc(sanityMessage())}</p>
       <small>הקלדת סה״כ מחשבת לפני מע״מ ומע״מ לפי ${vatRate()}%. אפשר לתקן לפי מסמך המקור. זיכוי מוקלד בסכומים חיוביים.</small>
       <div class="morning-expense-pair">${textField('description')}${textField('allocationNumber')}</div>
-      <div class="morning-expense-toolbar"><button type="button" class="btn primary" data-action="morning-expense-save" ${disabled || ocr.active() || local.blocked() || !catalog.capabilities.create || !eligibility.eligible || draft.pcnClassification === 'P' && (!catalog.capabilities.pcnP || !eligibility.p) ? 'disabled' : ''}>${ocr.active() ? 'טיוטת OCR · יש לאשר במורנינג' : catalog.capabilities.environment === 'production' ? 'בדיקה ושמירת הוצאה ב־Morning' : 'בדיקה ושמירה ב־Sandbox'}</button></div>` : ''}
+      <div class="morning-expense-toolbar"><button type="button" class="btn primary" data-action="morning-expense-save"
+        ${disabled || ocr.active() || local.blocked() || !catalog.capabilities.create || !eligibility.eligible || draft.pcnClassification === 'P' && (!catalog.capabilities.pcnP || !eligibility.p) ? 'disabled' : ''}>
+        ${ocr.active() ? 'טיוטת OCR · יש לאשר במורנינג' : catalog.capabilities.environment === 'production' ? 'בדיקה ושמירת הוצאה ב־Morning' : 'בדיקה ושמירה ב־Sandbox'}</button></div>` : ''}
       ${operationId ? `<div class="morning-expense-toolbar"><button type="button" class="btn" data-action="morning-expense-command" data-expense-command="next" ${busy || !result?.verified && !['not_found', 'cancelled'].includes(result?.state) ? 'disabled' : ''}>${queue.length ? 'לחשבונית הבאה בתור' : 'קליטת הוצאה נוספת'}</button></div>` : ''}
       ${operationId ? `<div class="morning-expense-operation"><b>${esc(stateLabels[result?.state] || 'מצב הפעולה טרם אומת')}</b><small>מזהה פעולה: <bdi>${esc(operationId)}</bdi></small><button type="button" class="btn" data-action="morning-expense-command" data-expense-command="status" ${busy ? 'disabled' : ''}>בדיקת מצב היצירה</button>
       ${result?.expenseId ? `<small>מזהה הוצאה ב־Morning: <bdi>${esc(result.expenseId)}</bdi></small>` : ''}
@@ -453,16 +467,20 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       ${result?.state === 'reserved' ? `<button type="button" class="btn" data-action="morning-expense-write" data-expense-command="cancel" ${busy ? 'disabled' : ''}>ביטול בטוח לפני שליחה</button>` : ''}
       ${['pending', 'needs_reconciliation'].includes(result?.state) ? `<label>מזהה הוצאה קיימת לבדיקה מול Morning<input data-expense-field="reconciliationId" data-input="morning-expense-field" value="${esc(reconciliationId)}" ${busy ? 'disabled' : ''}></label><button type="button" class="btn" data-action="morning-expense-write" data-expense-command="reconcile" ${busy ? 'disabled' : ''}>בדיקת התאמה ושחזור</button>` : ''}
       <span>קובץ מקור: ${result?.fileLinked ? fileLabels.file_linked : fileLabels[result?.fileState] || 'טרם אומת'} · אישור ודיווח נבדקים ב־Morning</span></div>` : ''}
-      </div><div class="morning-expense-source" data-drop="morning-expense-drop" data-dragover="morning-expense-dragover"><label class="morning-expense-drop">בחירת קובצי מקור · גרירה או הדבקה<input type="file" multiple accept="application/pdf,image/jpeg,image/png" data-change="morning-expense-files" ${busy || fileAttempted || operationId && !result?.verified ? 'disabled' : ''}></label>
+      </div><div class="morning-expense-source" data-drop="morning-expense-drop" data-dragover="morning-expense-dragover">
+      <label class="morning-expense-drop ${selected?'compact':''}">בחירת קובצי מקור · גרירה או הדבקה<input type="file" multiple accept="application/pdf,image/jpeg,image/png" data-change="morning-expense-files" ${busy || fileAttempted || operationId && !result?.verified ? 'disabled' : ''}></label>
       <small>PDF, JPG או PNG עד 20MB לקובץ · הקבצים נשארים בזיכרון עד להעלאה. ${queue.length ? `${queue.length} נוספים בתור` : ''}</small>
-      ${selected ? `<ol class="morning-expense-queue" aria-label="תור מסמכי המקור">${[selected, ...queue].map((item, index) => `<li>
+      ${selected ? `<b>${esc(selected.name)}</b>${selected.type === 'application/pdf' ? pdfPreview.markup() : `<img src="${esc(previewUrl)}" alt="חשבונית מקור לבדיקה">`}` : '<p>בחר קובץ להצגתו לצד השדות.</p>'}
+      ${local.markup()}
+      ${selected ? `<details class="morning-expense-queue-details"><summary>תור מסמכי המקור · ${queue.length+1} קבצים</summary><ol class="morning-expense-queue" aria-label="תור מסמכי המקור">${[selected, ...queue].map((item, index) => `<li>
       <button type="button" class="btn" data-action="morning-expense-command" data-expense-command="choose-file" data-expense-index="${index}" aria-pressed="${index === 0}" ${disabled || fileAttempted ? 'disabled' : ''}>${esc(item.name)}</button>
-      <button type="button" class="btn" data-action="morning-expense-command" data-expense-command="remove-file" data-expense-index="${index}" aria-label="הסרת ${esc(item.name)} מהתור" ${disabled || fileAttempted ? 'disabled' : ''}>הסרה</button></li>`).join('')}</ol>` : ''}
-      ${local.markup()}${selected ? `<b>${esc(selected.name)}</b>${selected.type === 'application/pdf' ? pdfPreview.markup() : `<img src="${esc(previewUrl)}" alt="חשבונית מקור לבדיקה">`}` : '<p>בחר קובץ להצגתו לצד השדות.</p>'}
+      <button type="button" class="btn" data-action="morning-expense-command" data-expense-command="remove-file" data-expense-index="${index}" aria-label="הסרת ${esc(item.name)} מהתור" ${disabled || fileAttempted ? 'disabled' : ''}>הסרה</button></li>`).join('')}</ol></details>` : ''}
       ${result?.verified ? `<button type="button" class="btn" data-action="morning-expense-upload" ${busy || fileAttempted || !selected || !catalog.capabilities.upload || result.fileLinked ? 'disabled' : ''}>העלאת הקובץ ל־Morning</button><button type="button" class="btn" data-action="morning-expense-command" data-expense-command="file-status" ${busy ? 'disabled' : ''}>בדיקת קישור הקובץ</button>` : ''}</div></div>${recent.markup()}${history.markup()}` : ''}</div>` : ''}</section>`;
   }
   const commands = {load, status, next, favorite, 'more-classifications':moreClassifications,
     'pdf-prev':pdfPreview.previous, 'pdf-next':pdfPreview.next,
+    'pdf-match-prev':pdfPreview.previousMatch, 'pdf-match-next':pdfPreview.nextMatch, 'pdf-target':pdfPreview.target,
+    'pdf-zoom-in':pdfPreview.zoomIn, 'pdf-zoom-out':pdfPreview.zoomOut,
     'local-start':() => busy ? false : local.start(), 'local-fill':() => busy ? false : local.fill(), 'local-defer':deferLocal,
     'ocr-start':async () => {if (busy) return false; local.reset(); const value = await ocr.start(); if (!ocr.active()) local.start(); return value;},
     'ocr-status':ocr.status, 'ocr-fill':ocr.fill, 'ocr-defer':ocr.defer, 'ocr-resume':element => {if (busy) return false; local.reset(); return ocr.resume(element);},
@@ -476,7 +494,6 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     'morning-expense-command':element => Object.hasOwn(commands, element.dataset.expenseCommand) ? commands[element.dataset.expenseCommand](element) : false,
     'morning-expense-write':element => Object.hasOwn(writes, element.dataset.expenseCommand) ? writes[element.dataset.expenseCommand]() : false,
     'morning-expense-field':(element, event) => element.hasAttribute('data-expense-picker') ? supplierPicker.handle(element, event) : setField(element),
-    'morning-expense-local-review':element => {if (busy || operationId) return false; local.review(element); render(); return true;},
     'morning-expense-save':save,
     'morning-expense-upload':upload,
     'morning-expense-files':element => chooseFiles(element.files),

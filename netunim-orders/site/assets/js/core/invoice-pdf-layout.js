@@ -1,5 +1,17 @@
 // Search views retain character-to-source mappings; raw PDF text is never edited.
 export const invoiceLabelKey=value=>String(value).replace(/[ðª]/g,'נ').normalize('NFKC').replace(/[\s\p{P}\p{Cf}`]/gu,'').toLowerCase();
+// PDF-space corners survive page rotation, crop offsets and viewport scaling.
+// They describe the source glyph run, never a text search guessed elsewhere.
+export function invoicePdfQuad(item){
+  const t=item.transform;
+  if(!Array.isArray(t)||t.length!==6||t.some(n=>!Number.isFinite(n))||!Number.isFinite(item.width)||!Number.isFinite(item.height)||item.height<=0)return null;
+  const horizontal=Math.hypot(t[0],t[1]),vertical=Math.hypot(t[2],t[3]);
+  if(!horizontal||!vertical)return null;
+  const u=[t[0]/horizontal,t[1]/horizontal],v=[t[2]/vertical,t[3]/vertical];
+  const ascent=Number.isFinite(item.ascent)?item.ascent:.8,descent=Number.isFinite(item.descent)?item.descent:-.2;
+  return [[0,descent],[item.width,descent],[item.width,ascent],[0,ascent]].flatMap(([x,y])=>[
+    t[4]+u[0]*x+v[0]*y*item.height,t[5]+u[1]*x+v[1]*y*item.height]);
+}
 function bounds(items){const x=Math.min(...items.map(item=>item.x)),y=Math.min(...items.map(item=>item.y));return {x,y,width:Math.max(...items.map(item=>item.x+item.width))-x,height:Math.max(...items.map(item=>item.height))};}
 function searchView(items){
   let text='',key='';const sources=[];
@@ -44,7 +56,8 @@ export function invoicePageGeometry(page,content){
   const items=raw.map((item,index)=>{
     const t=item.transform,a=rotate(point(t[4],t[5]));
     return {page:page.pageNumber,index,text:item.str,dir:item.dir,x:a.x-left,y:a.y-top,width:item.width,height:item.height,
-      fontName:item.fontName,hasEOL:item.hasEOL===true,transform:[...t],original:{x:t[4],y:t[5]}};
+      fontName:item.fontName,ascent:content.styles[item.fontName]?.ascent,descent:content.styles[item.fontName]?.descent,
+      hasEOL:item.hasEOL===true,transform:[...t],original:{x:t[4],y:t[5]}};
   });
   return {page:page.pageNumber,rotation:page.rotate,readingRotation:angle*90,width:Math.max(...corners.map(p=>p.x))-left,height:Math.max(...corners.map(p=>p.y))-top,
     styles:content.styles,items,lines:invoicePdfLines(items)};

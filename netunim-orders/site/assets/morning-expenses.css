@@ -20,6 +20,19 @@
 .morning-expense-supplier-option:disabled{opacity:.6;cursor:default}
 .morning-expense-supplier-option[aria-selected=true]{font-weight:700}
 .morning-expense-queue{display:flex;flex-direction:column;gap:8px;margin:0;padding-inline-start:20px}.morning-expense-queue li{display:flex;gap:8px;align-items:center;min-width:0}.morning-expense-queue li>.btn:first-child{flex:1;min-width:0;overflow-wrap:anywhere;text-align:start}.morning-expense-queue [aria-pressed=true]{border:2px solid #357d9b;background:#edf7fa}
+.morning-expense-drop.compact{padding:8px;border-width:1px;font-size:12px}
+.morning-expense-source{position:sticky;top:12px;align-self:start;gap:8px}
+.morning-expense-pdf-navigation,.morning-expense-match-navigation{margin:6px 0;gap:6px;font-size:13px}
+.morning-expense-match-navigation{justify-content:space-between;padding:6px;background:#fff7d6;border-radius:7px}
+.morning-expense-pdf-viewport{height:clamp(400px,65dvh,880px);overflow:auto;background:#e8ecee;border:1px solid #ccd5db;direction:ltr;overscroll-behavior:contain}
+.morning-expense-pdf-page{position:relative;min-width:100%;line-height:0}
+.morning-expense-pdf-page>img{display:block;width:100%;height:auto}
+.morning-expense-pdf-markers{position:absolute;inset:0;pointer-events:none}
+.morning-expense-pdf-mark{position:absolute;padding:0;border:1px solid #e4ba32;border-radius:2px;background:#ffe65345;pointer-events:auto;cursor:pointer}
+.morning-expense-pdf-mark.current{background:#ffd52d75;border:2px solid #b77705;box-shadow:0 0 0 1px #fff9}
+.morning-expense-local-summary{font-size:13px;line-height:1.6;border-top:1px solid #d6e0e4;padding-top:8px}
+.morning-expense-local-summary p{margin:4px 0}.morning-expense-local-summary summary,.morning-expense-queue-details summary{cursor:pointer;font-size:13px}
+@media(max-width:800px){.morning-expense-source{position:static}.morning-expense-pdf-viewport{height:56dvh;min-height:300px}}
 .morning-expense-page{width:100%;min-width:0}.morning-expense-page>.morning-expense-intake{margin:0}
 .morning-expense-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px;flex-wrap:wrap}.morning-expense-heading h1{font-size:24px;margin:0}
 .morning-expense-reporting{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:end}

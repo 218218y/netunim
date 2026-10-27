@@ -1,11 +1,11 @@
 import {INVOICE_SUPPLIER_PROFILES} from './invoice-supplier-profiles.js';
-import {invoiceLabelKey} from './invoice-pdf-layout.js';
+import {invoiceLabelKey,invoicePdfQuad} from './invoice-pdf-layout.js';
 import {expenseCents} from './morning-expense-input.js';
 import {validReportDate} from './morning-report-period.js';
 
 const digest=async value=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value))),n=>n.toString(16).padStart(2,'0')).join('');
 const missing=reason=>({value:null,rawValue:null,status:'missing',method:'none',reason,sources:[]});
-const source=item=>({page:item.page,item:item.index,text:item.text,bounds:{x:item.x,y:item.y,width:item.width,height:item.height}});
+const source=item=>({page:item.page,item:item.index,text:item.text,quad:invoicePdfQuad(item),bounds:{x:item.x,y:item.y,width:item.width,height:item.height}});
 const field=(value,items,method='label_geometry',status='verified',reason='')=>({value,rawValue:items.map(item=>item.text).join(' '),status,method,reason,sources:items.map(source)});
 export function invoiceMoneyCents(raw){
   const text=String(raw).replace(/[\p{Cf}]/gu,'').replace(/₪|ש["'`״]?ח|ILS/gu,'').trim();

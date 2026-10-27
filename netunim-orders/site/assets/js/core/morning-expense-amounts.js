@@ -21,3 +21,16 @@ export function expenseAmountChange(amounts, field, rate = 18) {
   }
   return {};
 }
+
+// A plausibility check, not a replacement for printed VAT. Mixed/exempt
+// transactions may legitimately differ. Ten agorot absorb small roundings;
+// larger differences remain visible and are repeated in the final confirmation.
+export function expenseAmountSanity(amounts, rate = 18) {
+  if (![16,18].includes(rate)) throw new Error('invalid_expense_vat_rate');
+  const net = expenseCents(amounts.net), vat = expenseCents(amounts.vat), gross = expenseCents(amounts.gross);
+  if ([net,vat,gross].some(value => value === null)) return {status:'incomplete',rate};
+  if (net + vat !== gross) return {status:'inconsistent',rate};
+  const expectedVatCents = Number((BigInt(net) * BigInt(rate) + 50n) / 100n);
+  const differenceCents = vat - expectedVatCents;
+  return {status:Math.abs(differenceCents) <= 10 ? 'plausible' : 'different_rate',rate,expectedVatCents,differenceCents};
+}
