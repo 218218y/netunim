@@ -66,7 +66,9 @@ export const INVOICE_SUPPLIER_PROFILES=Object.freeze([
     "aliases": [
       "קומפורט ישרים"
     ],
-    "layout": "priority"
+    "layout": "priority",
+    "verifiedNumberPrefixes": ["SI"],
+    "normalizationEvidence": "user-confirmed-source-number-2026-10-27"
   },
   {
     "id": "cocktail",
@@ -75,7 +77,9 @@ export const INVOICE_SUPPLIER_PROFILES=Object.freeze([
     "aliases": [
       "קוקטייל"
     ],
-    "layout": "priority"
+    "layout": "priority",
+    "verifiedNumberPrefixes": ["CR"],
+    "normalizationEvidence": "user-confirmed-source-number-2026-10-27"
   },
   {
     "id": "royal",
