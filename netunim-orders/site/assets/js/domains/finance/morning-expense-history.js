@@ -31,7 +31,7 @@ export async function readExpenseHistoryPeriod(request, capabilities, period, ch
 }
 
 export function createExpenseHistory({request, capabilities, capture, run, todayISO}) {
-  let groups = [], visible = 0, next = '', busy = false, message = '', revision = 0, controller = null, observer = null;
+  let groups = [], visible = 0, next = '', busy = false, paused = false, message = '', revision = 0, controller = null, observer = null;
   const host = () => document.querySelector('[data-expense-history]');
   function render() {
     const target = host(); if (!target) return;
@@ -40,7 +40,7 @@ export function createExpenseHistory({request, capabilities, capture, run, today
     if (scroller && Number.isFinite(top)) scroller.scrollTop = top;
     bind();
   }
-  function reset() {revision++; controller?.abort(); observer?.disconnect(); observer = null; controller = null; groups = []; visible = 0; next = expenseBimonth(todayISO()).months[0]; busy = false; message = '';}
+  function reset() {revision++; controller?.abort(); observer?.disconnect(); observer = null; controller = null; groups = []; visible = 0; next = expenseBimonth(todayISO()).months[0]; busy = false; paused = false; message = '';}
   function bind() {
     observer?.disconnect(); observer = null;
     const sentinel = host()?.querySelector('[data-expense-history-more]');
@@ -60,10 +60,11 @@ export function createExpenseHistory({request, capabilities, capture, run, today
     const epoch = revision;
     const check = () => {assertCurrent(); if (epoch !== revision) throw new DOMException('הקריאה בוטלה', 'AbortError');};
     controller = new AbortController(); const signal = controller.signal;
-    busy = true; message = ''; render();
+    busy = true; paused = false; message = ''; render();
     return run(async () => {
       try {
         // Skip up to a year of empty periods per click, then allow continuation.
+        const before = groups.length;
         for (let count = 0; count < 6 && next >= '2010-01-01'; count++) {
           const period = expenseBimonth(next);
           const items = await readExpenseHistoryPeriod(request, capabilities(), period, check, {signal});
@@ -72,6 +73,9 @@ export function createExpenseHistory({request, capabilities, capture, run, today
           next = date.toISOString().slice(0, 10);
           if (items.length) {groups.push({period, items}); visible = loaded + Math.min(20, items.length); break;}
         }
+        // An empty viewport keeps an IntersectionObserver intersecting. Pause
+        // explicitly after one empty year instead of scanning back to 2010.
+        paused = groups.length === before;
       } catch (error) {if (epoch === revision && error.name !== 'AbortError') message = 'לא ניתן להשלים את קריאת ההוצאות. ' + error.message;}
       finally {if (epoch === revision) {busy = false; controller = null; render();}}
     });
@@ -95,7 +99,7 @@ export function createExpenseHistory({request, capabilities, capture, run, today
       <p>בכל תקופה תאריך החשבונית מהחדש לישן · הסיכומים כוללים את כל הוצאות התקופה</p>
       ${shown ? `<table class="morning-expense-table" aria-label="הוצאות Morning לפי תקופות דיווח">${expenseTableHead()}${shown}</table>` : !busy && !message ? '<p>לא נמצאו הוצאות בתקופות שנבדקו.</p>' : ''}
       <p role="status" aria-live="polite">${esc(busy ? 'טוען הוצאות מ־Morning…' : message)}</p>
-      ${message ? '<button type="button" class="btn" data-action="morning-expense-command" data-expense-command="history-more">ניסיון נוסף</button>' : hasMore && !busy ? '<div data-expense-history-more aria-hidden="true"></div>' : ''}</section>`;
+      ${message ? '<button type="button" class="btn" data-action="morning-expense-command" data-expense-command="history-more">ניסיון נוסף</button>' : hasMore && !busy ? paused ? '<button type="button" class="btn" data-action="morning-expense-command" data-expense-command="history-more">בדיקת שנה קודמת ללא הוצאות שהוצגו</button>' : '<div data-expense-history-more aria-hidden="true"></div>' : ''}</section>`;
   }
   reset();
   return {markup, more, refresh, reset, bind};
