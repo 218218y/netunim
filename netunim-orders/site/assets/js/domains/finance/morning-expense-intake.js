@@ -66,8 +66,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     commit:value => {catalog.suppliers = mergeSuppliers(value.items, catalog.suppliers);},
   });
   const history = createExpenseHistory({request, capabilities:() => catalog?.capabilities, capture, run:tasks.run, todayISO});
-  const recent = createExpenseRecent({read:(id, check) => canonicalItem('get_expense', id, check), capture, run:tasks.run,
-    ids:() => preferences?.recentExpenses || [], remember:ids => {preferences.recentExpenses = ids; return persistPreferences();}});
+  const recent = createExpenseRecent({request, capabilities:() => catalog?.capabilities, capture, run:tasks.run});
   const unsubscribe = subscribeAccountScope(() => { clear(); render(); });
   function render() {
     if (!active()) return;
@@ -398,12 +397,12 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       ${result?.verified ? `<button type="button" class="btn" data-action="morning-expense-upload" ${busy || fileAttempted || !selected || !catalog.capabilities.upload || result.fileLinked ? 'disabled' : ''}>העלאת הקובץ ל־Morning</button><button type="button" class="btn" data-action="morning-expense-command" data-expense-command="file-status" ${busy ? 'disabled' : ''}>בדיקת קישור הקובץ</button>` : ''}</div></div>${recent.markup()}${history.markup()}` : ''}</div>` : ''}</section>`;
   }
   const commands = {load, status, next, favorite, 'more-classifications':moreClassifications,
-    'history-more':history.more, 'history-refresh':history.refresh,
+    'history-more':history.more, 'history-refresh':history.refresh, 'recent-refresh':recent.load,
     'use-favorite':element => setField({dataset:{expenseField:'supplierId'}, value:element.dataset.expenseSupplier}),
     'choose-file':queueChange, 'remove-file':queueChange, 'file-status':fileStatus};
   const writes = {cancel:() => recover('cancel_reserved'), reconcile:() => recover('reconcile')};
   const actions = {
-    'morning-expense-toggle':() => {expanded = true; render(); return catalog ? true : load();},
+    'morning-expense-toggle':() => {expanded = true; render(); if (catalog) {recent.load(); return true;} return load();},
     'morning-expense-back':onBack,
     'morning-expense-command':element => Object.hasOwn(commands, element.dataset.expenseCommand) ? commands[element.dataset.expenseCommand](element) : false,
     'morning-expense-write':element => Object.hasOwn(writes, element.dataset.expenseCommand) ? writes[element.dataset.expenseCommand]() : false,

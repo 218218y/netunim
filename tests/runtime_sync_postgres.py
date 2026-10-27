@@ -155,7 +155,10 @@ def run(db, app, shared, index):
                             'p_state': second, 'p_operation_id': 'fixture-B-' + str(index),
                             'p_audit': {}, **intents})['revision'] == 12
         proxy.release.set()
-        assert 'lost' in browser.evaluate('pgLost'), 'proxy did not withhold the first ACK'
+        lost = browser.evaluate('pgLost')
+        assert 'lost' in lost, {'message': 'proxy did not withhold the first ACK', 'response': lost,
+                                'calls': [{'operation': call['operation'], 'revision': call['result'].get('revision')} for call in proxy.calls],
+                                'errors': proxy.errors}
         browser._navigate()
         resume = js("""(async()=>{
           const {createStorageJournal}=await import('./assets/js/shared/storage-journal.js');

@@ -16,15 +16,17 @@ FLOW = r"""(async()=>{
  const intent={number:'RECOVERED-123',documentType:305,date:'2026-09-20',reportingDate:'2026-10-01',supplierName:'ספק מהבקשה המקורית',amount:118,vat:18};
  const requests=[], capture=()=>{const saved=owner;return()=>check(saved===owner,'account changed')};
  const supplier={id:id(2),name:'ספק בדיקה <script>',taxId:'123456789',active:true,country:'IL'};
- const expense={id:id(3),kind:'expense',status:10,supplierId:id(2),name:supplier.name,number:'HISTORY-1',grossCents:11800,reportingDate:'2026-10-01',sourceDocumentDate:'2026-10-20',pcnClassification:'T',classification:{id:id(4),title:'ציוד משרד',vat:100,income:100}};
+ const expense={id:id(3),kind:'expense',status:10,supplierId:id(2),name:supplier.name,number:'HISTORY-1',grossCents:11800,reportingDate:'2026-10-01',sourceDocumentDate:'2026-10-20',createdAt:'2026-10-26T10:00:00.000Z',pcnClassification:'T',classification:{id:id(4),title:'ציוד משרד',vat:100,income:100}};
  let catalogExpense=expense,directoryHidden=false,uploadEnabled=true,statusUnavailable=false,serverFileState='not_started';const confirmations=[];
  let historyItems=[expense],historyUnavailable=false;
+ const accountRecent=[expense];
  const paged=items=>({ok:true,version:1,environment,page:0,pageSize:50,total:items.length,pages:items.length?1:0,items});
  const respond=async(action,body,assertCurrent)=>{
   assertCurrent();requests.push({action,body});if(held&&action==='suppliers')await held;
   if(action==='capabilities')return {ok:true,version:1,environment,create:true,upload:uploadEnabled};
   if(action==='suppliers')return paged(body.name==='missing'||directoryHidden?[]:[supplier]);
   if(action==='expenses'){
+   if(body.fromDate===undefined&&body.toDate===undefined)return paged(accountRecent);
    if(body.fromDate==='2026-09-01'&&body.toDate==='2026-10-01'){
     if(historyUnavailable)throw Error('history unavailable');
     return {...paged(historyItems.slice(body.page*50,body.page*50+50)),page:body.page,total:historyItems.length,pages:Math.ceil(historyItems.length/50)};
@@ -34,7 +36,7 @@ FLOW = r"""(async()=>{
   }
   if(action==='get_supplier')return {ok:true,version:1,environment,item:supplier};
   if(action==='get_expense')return {ok:true,version:1,environment,item:{...expense,id:body.id}};
-  if(action==='create'){posts++;check(body.expense.vat==='160.00','manual VAT changed');return {ok:true,state:'created',verified:true,expenseId:id(8),fileLinked:false,item:{...expense,id:id(8),number:body.expense.number}};}
+  if(action==='create'){posts++;check(body.expense.vat==='160.00','manual VAT changed');const item={...expense,id:id(8),number:body.expense.number,createdAt:'2026-10-26T11:00:00.000Z'};accountRecent.unshift(item);return {ok:true,state:'created',verified:true,expenseId:id(8),fileLinked:false,item};}
   if(action==='operation_status'){if(statusUnavailable)throw Error('בדיקת מצב אינה זמינה');return {ok:true,state:recoveryState,verified:recoveryState==='created',expenseId:recoveryState==='created'?id(8):'',fileLinked:linked,fileState:serverFileState,intent};}
   if(action==='reconcile'){check(body.expenseId===id(8),'wrong canonical ID');recoveryState='created';return {ok:true,state:'created',verified:true,expenseId:id(8),fileLinked:linked,intent};}
   if(action==='cancel_reserved'){check(recoveryState==='reserved','nonreserved cancellation');recoveryState='cancelled';return {ok:true,state:'cancelled',verified:false,cancelled:true,intent};}
@@ -116,7 +118,7 @@ FLOW = r"""(async()=>{
  const preferenceText=localStorage.getItem('morningExpensePreferences:'+environment+':'+owner);check(preferenceText&&!preferenceText.includes(supplier.name)&&!preferenceText.includes(supplier.taxId)&&!preferenceText.includes('000123'),'preferences leaked invoice or supplier data');
  uiFeature.runtime.dispose();uiFeature=createMorningExpenseIntake(ports);fixture.innerHTML=uiFeature.markup();directoryHidden=true;catalogExpense={...expense,id:id(40),classification:{...expense.classification,id:id(44),title:'סיווג אחר'}};
  click('toggle');await settle();check(fixture.querySelector('[data-expense-command="use-favorite"]'),'favorite did not survive reopening or canonical lookup');
- check(fixture.querySelector('[data-expense-recent-id="'+id(8)+'"]'),'recent intake did not survive reopening and canonical lookup');
+ check(fixture.querySelector('[data-expense-recent-id="'+id(8)+'"]'),'recent Morning expense did not survive reopening and account-wide lookup');
  field('supplierId',id(2),'change');await settle();check(fixture.querySelector('[data-expense-field="classificationExpenseId"]').value===id(30),'saved category outside the history page was not revalidated');directoryHidden=false;
  // Account change while the approval dialog is open must prevent dispatch entirely.
  field('number','cancelled');field('net','1000.00');field('vat','160.00');let releaseConfirm;confirmWait=new Promise(resolve=>releaseConfirm=resolve);

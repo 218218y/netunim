@@ -9,7 +9,7 @@ test('expense preferences retain only bounded canonical IDs, scoped to account a
   assert.equal(writeExpensePreferences(storage,id(1),'sandbox',data),true);
   const restored = readExpensePreferences(storage,id(1),'sandbox');
   assert.equal(restored.favorites.length,8); assert.equal(restored.classifications.length,32);
-  assert.deepEqual(restored.recentExpenses, data.recentExpenses.slice(0,10));
+  assert.equal(Object.hasOwn(restored, 'recentExpenses'), false);
   assert.ok(!JSON.stringify(restored).includes('private')); assert.ok(!JSON.stringify(restored).includes('secret'));
   assert.equal(readExpensePreferences(storage,id(2),'sandbox').favorites.length,0);
   assert.equal(readExpensePreferences(storage,id(1),'production').favorites.length,0);

@@ -4,7 +4,7 @@ import {expenseBimonth} from '../netunim-orders/site/assets/js/core/morning-repo
 import {expenseHistoryRows, readExpenseHistoryPeriod} from '../netunim-orders/site/assets/js/domains/finance/morning-expense-history.js';
 import {searchExpenseSuppliers} from '../netunim-orders/site/assets/js/domains/finance/morning-expense-catalog.js';
 import {expenseTableTotals, expenseTableRow} from '../netunim-orders/site/assets/js/domains/finance/morning-expense-table.js';
-import {createExpenseRecent} from '../netunim-orders/site/assets/js/domains/finance/morning-expense-recent.js';
+import {createExpenseRecent, readRecentExpenses, recentExpenseRows} from '../netunim-orders/site/assets/js/domains/finance/morning-expense-recent.js';
 
 const caps = {version:1, environment:'production'}, period = expenseBimonth('2026-10-01');
 const paged = (items, page = 0, all = items) => ({...caps, items, page, pageSize:50, total:all.length, pages:Math.ceil(all.length / 50)});
@@ -66,23 +66,32 @@ test('expense table summaries preserve cents, reduce credits and never invent mi
   assert.ok(!markup.includes('אושרה לדוח') && !markup.includes('הופק דוח'));
 });
 
-test('recent successful intakes retain ten canonical IDs in intake order across reporting periods and reloads', async () => {
+test('recent expenses span the entire Morning account and sort by creation time across unordered pages', async () => {
+  const all = Array.from({length:102}, (_, n) => ({...expense(n, n === 101 ? '2002-01-01' : '2026-10-01', n % 2 ? '2010-01-01' : '2026-10-01'),
+    createdAt:new Date(Date.UTC(2026, 9, 27, 0, 0, n)).toISOString()}));
+  const calls = [], progress = [];
+  const rows = await readRecentExpenses(async (_, body) => {
+    calls.push(body); return paged(all.slice(body.page * 50, body.page * 50 + 50), body.page, all);
+  }, caps, () => {}, {progress:(count, total) => progress.push([count, total])});
+  assert.deepEqual(rows.map(row => row.id), Array.from({length:10}, (_, n) => String(101 - n)));
+  assert.equal(rows[0].sourceDocumentDate, '2002-01-01'); assert.equal(calls.length, 3);
+  assert.ok(calls.every(body => !Object.hasOwn(body, 'fromDate') && !Object.hasOwn(body, 'toDate') && body.expectedEnvironment === 'production'));
+  assert.deepEqual(progress, [[50,102], [100,102], [102,102]]);
+  assert.equal(recentExpenseRows([{...all[0], status:100}, all[1]]).length, 1);
+  assert.throws(() => recentExpenseRows([{...all[0], createdAt:''}]), /זמן יצירה/);
+});
+
+test('recent account reads reject duplicate pages and never publish after an account replacement', async () => {
+  const row = {...expense('one', '2026-10-01'), name:'private old account', createdAt:'2026-10-27T10:00:00.000Z'};
+  const all = Array.from({length:51}, (_, n) => ({...row, id:String(n)}));
+  await assert.rejects(readRecentExpenses(async (_, body) => paged(body.page ? [all[0]] : all.slice(0, 50), body.page, all), caps, () => {}), /השתנתה/);
   globalThis.document = {querySelector:() => null};
-  let saved = [], owner = 'first';
-  const id = n => `aaaaaaaa-aaaa-4aaa-aaaa-${String(n).padStart(12, '0')}`;
-  const row = n => ({...expense(id(n), '2026-01-01', n % 2 ? '2026-10-01' : '2026-08-01'), name:'ספק פרטי', number:'invoice-' + n});
-  const ports = {ids:() => saved, remember:ids => {saved = [...ids];}, run:work => work(),
-    capture:() => {const captured = owner; return () => assert.equal(owner, captured);}, read:async id => ({...row(0), id, number:'reloaded-' + id})};
-  const recent = createExpenseRecent(ports);
-  assert.equal(recent.record({verified:false, expenseId:id(0), item:row(0)}), false);
-  for (let n = 1; n <= 12; n++) recent.record({verified:true, expenseId:id(n), item:row(n)});
-  assert.deepEqual(saved, Array.from({length:10}, (_, n) => id(12 - n)));
-  const before = [...saved]; recent.record({verified:true, expenseId:id(5), item:row(5)});
-  assert.deepEqual(saved, before); assert.ok(!JSON.stringify(saved).includes('invoice') && !JSON.stringify(saved).includes('פרטי'));
-  const reopened = createExpenseRecent(ports); await reopened.load();
-  assert.ok(reopened.markup().includes('reloaded-' + id(12)));
-  let release; const held = new Promise(resolve => release = resolve);
-  const stale = createExpenseRecent({...ports, read:async id => {await held; return {...row(0), id};}});
-  const loading = stale.load(); owner = 'second'; stale.reset(); saved = []; release(); await loading;
-  assert.ok(!stale.markup().includes('ספק פרטי'));
+  let owner = 'first', release, calls = 0;
+  const held = new Promise(resolve => release = resolve);
+  const recent = createExpenseRecent({capabilities:() => caps, run:work => work(),
+    capture:() => {const captured = owner; return () => assert.equal(owner, captured);},
+    request:async () => {calls++; await held; return paged([row]);}});
+  const loading = recent.load(); owner = 'second'; recent.reset(); release(); await loading;
+  assert.ok(!recent.markup().includes('private old account'));
+  assert.equal(recent.record({verified:false}), false); assert.equal(calls, 1);
 });

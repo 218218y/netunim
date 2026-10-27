@@ -46,6 +46,18 @@ test('malformed and incomplete pages never become successful empty expense lists
   }
 });
 
+test('account-wide expense reads omit reporting dates while retaining page, permission and environment validation', async () => {
+  const calls = [], service = createExpenseService({environment:'production', request:async (_, init) => {calls.push(JSON.parse(init.body)); return page();}});
+  assert.equal((await service(user, {action:'expenses', expectedEnvironment:'production'})).status, 200);
+  assert.deepEqual(calls[0], {page:1, pageSize:50});
+  for (const body of [{action:'expenses', fromDate:'2026-01-01'}, {action:'expenses', toDate:'2026-10-01'}, {action:'drafts'}]) {
+    assert.equal((await service(user, body)).status, 400);
+  }
+  assert.equal((await service({id:id(9)}, {action:'expenses'})).status, 403);
+  assert.equal((await service(user, {action:'expenses', expectedEnvironment:'sandbox'})).status, 409);
+  assert.equal(calls.length, 1);
+});
+
 test('supplier tax searches pass only a validated canonical identity and bounded page to Morning', async () => {
   const calls = [], service = createExpenseService({environment:'sandbox', request:async (path, init) => {calls.push({path, body:JSON.parse(init.body)}); return page();}});
   for (const taxId of ['123', 123456789, {}, '1234567890']) assert.equal((await service(user, {action:'suppliers', taxId})).status, 400);

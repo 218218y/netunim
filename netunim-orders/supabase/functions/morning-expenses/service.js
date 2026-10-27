@@ -46,11 +46,12 @@ function draftRecord(raw) {
 }
 export function expenseSearchInput(body, draft = false) {
   const {page, pageSize} = pageInput(body), from = body.fromDate, to = body.toDate;
-  if (!reportDate(from) || !reportDate(to) || from > to || Number(to.slice(0, 4)) - Number(from.slice(0, 4)) > 10 ||
-      !draft && (!from.endsWith('-01') || !to.endsWith('-01'))) throw new Error('invalid_expense_input');
+  const unfiltered = !draft && from === undefined && to === undefined;
+  if (!unfiltered && (!reportDate(from) || !reportDate(to) || from > to || Number(to.slice(0, 4)) - Number(from.slice(0, 4)) > 10 ||
+      !draft && (!from.endsWith('-01') || !to.endsWith('-01')))) throw new Error('invalid_expense_input');
   if (body.supplierId && !expenseUuid(body.supplierId)) throw new Error('invalid_expense_input');
   if (body.number !== undefined && (typeof body.number !== 'string' || body.number.length > 60)) throw new Error('invalid_expense_input');
-  return {page, payload:{page:page + 1, pageSize, fromDate:from, toDate:to,
+  return {page, payload:{page:page + 1, pageSize, ...(!unfiltered ? {fromDate:from, toDate:to} : {}),
     ...(body.supplierId ? {supplierId:body.supplierId} : {}), ...(!draft && body.number ? {number:body.number} : {})}};
 }
 export function createExpenseService({request, environment, readIds = () => '', writer = null, uploader = null}) {

@@ -20,7 +20,8 @@ FLOW = r"""(async()=>{
  const beforeMain=JSON.stringify(await db.load(owner+':orders')),beforeShared=JSON.stringify(await db.load(owner+':shared-checks'));
  const supplier={id:id(2),name:'ת.ב.י ספק מסך הוצאות',taxId:'123456789',country:'IL',active:true};
  const pSupplier={id:id(20),name:'ספק P לבדיקה',taxId:'123456780',country:'PS',active:true};
- const expense={id:id(3),kind:'expense',status:10,supplierId:supplier.id,name:supplier.name,number:'HISTORY-1',grossCents:11800,supplierTaxId:supplier.taxId,reportingDate:'2026-10-01',sourceDocumentDate:'2026-10-20',pcnClassification:'T',classification:{id:id(4),title:'קניות סחורה בארץ',vat:100,income:100}};
+ const expense={id:id(3),kind:'expense',status:10,supplierId:supplier.id,name:supplier.name,number:'HISTORY-1',grossCents:11800,supplierTaxId:supplier.taxId,reportingDate:'2026-10-01',sourceDocumentDate:'2026-10-20',createdAt:'2026-10-26T10:00:00.000Z',pcnClassification:'T',classification:{id:id(4),title:'קניות סחורה בארץ',vat:100,income:100}};
+ const accountExpenses=[expense,{...expense,id:id(99),number:'MORNING-EXTERNAL',sourceDocumentDate:'2019-06-01',reportingDate:'2020-01-01',createdAt:'2026-10-27T11:00:00.000Z'}];
  const calls=[],confirmations=[];let posts=0,hold=null,entered=null,operation=null,heldQuery='';
  cloudAuth.supaFetch=async(path,options)=>{
   check(path==='/functions/v1/morning-expenses','wrong expense service');options.assertRequestScope();
@@ -30,13 +31,14 @@ FLOW = r"""(async()=>{
   if(request.action==='capabilities')return Response.json({...base,create:true,upload:true,pcnP:false,draftApproval:false,pSuppliers:[{id:pSupplier.id,taxId:pSupplier.taxId}]});
   check(request.expectedEnvironment==='production','request missing displayed environment');
   if(request.action==='suppliers'||request.action==='expenses'){
-   const items=request.action==='suppliers'?(request.name==='תבי'?[]:request.name==='ישן'?[pSupplier]:[supplier,pSupplier]):[expense];
+   const items=request.action==='suppliers'?(request.name==='תבי'?[]:request.name==='ישן'?[pSupplier]:[supplier,pSupplier]):request.fromDate?[expense]:accountExpenses;
    return Response.json({...base,page:0,pageSize:50,total:items.length,pages:1,items});
   }
   if(request.action==='create'){
    posts++;check(request.expense.allocationNumber==='123456789','allocation number lost');check(request.expense.vat==='18.00','manual VAT changed');
    check(request.expense.reportingDate===request.expense.date.slice(0,7)+'-01','reporting month changed');operation=request.operationId;
-   return Response.json({...base,state:'created',verified:true,expenseId:id(8),fileLinked:false,item:{...expense,id:id(8),number:request.expense.number}});
+   const item={...expense,id:id(8),number:request.expense.number,createdAt:'2026-10-27T12:00:00.000Z'};accountExpenses.unshift(item);
+   return Response.json({...base,state:'created',verified:true,expenseId:id(8),fileLinked:false,item});
   }
   if(request.action==='operation_status'){
    check(request.operationId===operation,'recovery used another operation');
@@ -51,8 +53,9 @@ FLOW = r"""(async()=>{
  await wait(()=>document.querySelector('[data-expense-field="supplierId"]'));await finance.runtime.drain();
  check(ui.kupaSubView==='expenses'&&!document.querySelector('[data-morning-reports]')&&!document.querySelector('[data-action="tax-open"]'),'expense page still contains unrelated sections');
  check(document.querySelector('[data-expense-history]').textContent.includes('HISTORY-1'),'real composition omitted automatic history');
+ check(document.querySelector('[data-expense-recent]').textContent.includes('MORNING-EXTERNAL'),'recent list omitted an expense created elsewhere under another reporting period');
  click('back');check(ui.kupaSubView==='summary'&&document.querySelector('[data-morning-reports]'),'back did not restore the summary');
- const requestsBeforeReopen=calls.length;click('toggle');await finance.runtime.drain();check(calls.length===requestsBeforeReopen,'reopening reloaded a ready catalog');
+ const requestsBeforeReopen=calls.length;click('toggle');await finance.runtime.drain();check(calls.slice(requestsBeforeReopen).every(request=>request.action==='expenses'&&!request.fromDate),'reopening reloaded a ready catalog');
  const rect=name=>document.querySelector('[data-expense-field="'+name+'"]').getBoundingClientRect();
  const liveNumber=document.querySelector('[data-expense-field="number"]');liveNumber.focus();finance.presentation.renderKupa();
  check(liveNumber.isConnected&&document.activeElement===liveNumber&&ui.kupaSubView==='expenses','Finance publication replaced the expense editor');
