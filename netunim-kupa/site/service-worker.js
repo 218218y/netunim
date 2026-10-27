@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='kupa-app-shell-';
-const CACHE='kupa-app-shell-esm-56904ae186b5';
+const CACHE='kupa-app-shell-esm-c3a94828a6d5';
 const SHELL=[
   './',
   './index.html',
@@ -76,6 +76,7 @@ const SHELL=[
   './assets/js/domains/documents/docx-search-viewer.js',
   './assets/js/domains/documents/pdf-search-viewer.js',
   './assets/js/domains/documents/pdf-text-fragments.js',
+  './assets/js/domains/documents/pdfjs-core.js',
   './assets/js/domains/documents/pdfjs-runtime-config.js',
   './assets/js/domains/documents/preview-modules.js',
   './assets/js/domains/documents/search-source.js',

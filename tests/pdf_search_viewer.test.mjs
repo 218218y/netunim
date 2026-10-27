@@ -499,10 +499,12 @@ test('global search routes ordinary local PDFs through the controlled PDF.js vie
 
 test('PDF runtime loading keeps the application module graph static, local and dependency-ordered',()=>{
   const source=fs.readFileSync(new URL('../netunim-orders/site/assets/js/domains/documents/pdf-search-viewer.js',import.meta.url),'utf8');
+  const core=fs.readFileSync(new URL('../netunim-orders/site/assets/js/domains/documents/pdfjs-core.js',import.meta.url),'utf8');
   const vendorViewer=fs.readFileSync(new URL('../netunim-orders/site/assets/vendor/pdfjs/web/pdf_viewer.mjs',import.meta.url),'utf8');
-  const coreImport="await import('../../../vendor/pdfjs/build/pdf.mjs')";
+  const coreImport='await loadPdfCore()';
   const viewerImport="import('../../../vendor/pdfjs/web/pdf_viewer.mjs')";
-  assert.match(source,/import\('\.\.\/\.\.\/\.\.\/vendor\/pdfjs\/build\/pdf\.mjs'\)/);
+  assert.match(core,/import\('\.\.\/\.\.\/\.\.\/vendor\/pdfjs\/build\/pdf\.mjs'\)/);
+  assert.doesNotMatch(source,/import\('\.\.\/\.\.\/\.\.\/vendor\/pdfjs\/build\/pdf\.mjs'\)/,'the viewer and invoice extractor share the core loader');
   assert.match(source,/import\('\.\.\/\.\.\/\.\.\/vendor\/pdfjs\/web\/pdf_viewer\.mjs'\)/);
   assert.ok(source.indexOf(coreImport)>=0&&source.indexOf(viewerImport)>source.indexOf(coreImport),'pdf.mjs must finish before pdf_viewer.mjs starts');
   assert.match(vendorViewer,/globalThis\.pdfjsLib/,'the pinned viewer really depends on the pdfjsLib global during evaluation');
