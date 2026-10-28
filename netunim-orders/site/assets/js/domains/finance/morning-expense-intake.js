@@ -18,9 +18,12 @@ import {createExpensePdfPreview} from './morning-expense-pdf-preview.js';
 import {createExpenseSourceSupport} from './morning-expense-source.js';
 import {expenseSourceExpected} from '../../core/morning-expense-source.js';
 
+const environmentChangedMessage = 'סביבת Morning השתנתה. המסך ננעל והטיוטה נשמרה בסביבתה; יש לפתוח מחדש את מסך ההוצאות לפני עבודה בסביבה החדשה.';
+
 export function createMorningExpenseIntake({request:sendRequest, captureRead, captureWrite, accountId, subscribeAccountScope, confirmDialog, dateEditorMarkup, files, todayISO = checkTodayISO, isActive = () => true, onBack = () => false}) {
   const tasks = createRuntimeTaskOwner();
   const reporting = createExpenseReporting({storage:() => localStorage, todayISO});
+  let environmentChanged = false;
   let expanded = false, catalog = null, busy = false, generation = 0, reading = null, message = '', result = null, operationId = '', fileAttempted = false;
   let queue = [], selected = null, previewUrl = '', reconciliationId = '', favorites = [], extraExpenses = [], preferences = null, lastAmountField = '', draft = defaults();
   let editVersion = 0,sourceReason='';
@@ -67,14 +70,14 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     } catch { /* No prior recovery metadata. */ }
   }
   function clear() {
-    sources.reset();workDrafts.clear();edited=false;sourceReason='';
+    environmentChanged = false; sources.reset();workDrafts.clear();edited=false;sourceReason='';
     local.reset(); pdfPreview.reset(); editVersion++;
     reading?.abort(); reading = null; generation++; catalog = null; busy = false; message = ''; result = null; operationId = ''; fileAttempted = false;
     supplierPicker.reset(); history.reset(); recent.reset(); ocr.reset(); reporting.reset(); queue = []; selected = null; reconciliationId = ''; lastAmountField = ''; favorites = []; extraExpenses = []; preferences = null; releasePreview(); draft = defaults();
   }
   const supplierPicker = createExpenseSupplierPicker({
     rows:() => catalog?.suppliers || [], selectedId:() => draft.supplierId,
-    eligibility:eligibilityFor, editable:() => active() && !!catalog && !busy && !operationId,
+    eligibility:eligibilityFor, editable:() => active() && !!catalog && !busy && !operationId && !environmentChanged,
     choose:id => setField({dataset:{expenseField:'supplierId'}, value:id}), run:tasks.run, report:updateMessage,
     invalidateSelection:() => {
       editVersion++; edited=true; local.edited('supplierId');
@@ -86,15 +89,15 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     search:(query, more, signal) => searchExpenseSuppliers(request, catalog, query, more, capture(), {signal}),
     commit:value => {catalog.suppliers = mergeSuppliers(value.items, catalog.suppliers);},
   });
-  const history = createExpenseHistory({request, capabilities:() => catalog?.capabilities, capture, run:tasks.run, todayISO});
-  const recent = createExpenseRecent({request, capabilities:() => catalog?.capabilities, capture, run:tasks.run});
+  const history = createExpenseHistory({request, capabilities:() => environmentChanged ? null : catalog?.capabilities, capture, run:tasks.run, todayISO});
+  const recent = createExpenseRecent({request, capabilities:() => environmentChanged ? null : catalog?.capabilities, capture, run:tasks.run});
   const ocr = createExpenseOcrReview({request, capture, run, capabilities:() => catalog?.capabilities, accountId, selected:() => selected,
     files, confirmDialog, apply:applyOcr, advance:() => {if (operationId) return; workDrafts.delete(selected); draft=defaults(); edited=false; selectNextFile({saveCurrent:false});},
-    busy:() => busy, canStart:() => !operationId});
+    busy:() => busy, canStart:() => !operationId && !environmentChanged});
   const local = createExpenseLocalReview({files, request, capture, capabilities:() => catalog?.capabilities, selected:() => selected,
     editVersion:() => editVersion, onProposal:proposal => pdfPreview.setFields(proposal?.fields),
     onReady:() => {if (!host()?.contains(document.activeElement)) review.focus();},
-    apply:(proposal, check) => applyExpenseLocalProposal(proposal, check, applySuggestions), render, run:tasks.run, canStart:() => !!catalog && !operationId, canApply:() => !busy && !operationId, ocrActive:ocr.active, confirmDialog});
+    apply:(proposal, check) => applyExpenseLocalProposal(proposal, check, applySuggestions), render, run:tasks.run, canStart:() => !!catalog && !operationId && !environmentChanged, canApply:() => !busy && !operationId && !environmentChanged, ocrActive:ocr.active, confirmDialog});
   const pdfPreview = createExpensePdfPreview({capture,run:tasks.run,isActive:active});
   const sources=createExpenseSourceSupport({files,request,capture,run:tasks.run,capabilities:()=>catalog?.capabilities,
     selected:()=>selected,proposal:local.snapshot,confirmDialog,activeOperation:()=>operationId,isActive:active});
@@ -106,7 +109,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
   }
   function updateMessage(value) { message = value; const output = host()?.querySelector('[data-expense-message]'); if (output) output.textContent = value; }
   function run(work) {
-    if (busy || !active()) return false;
+    if (busy || !active() || environmentChanged) return false;
     const epoch = generation; busy = true; render();
     return tasks.run(async () => {
       try { return await work(); }
@@ -128,7 +131,10 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     return run(async () => {
       const check = capture(), controller = new AbortController(); reading = controller;
       const loaded = await readExpenseCatalog(request, check, todayISO(), {signal:controller.signal}); check();
-      if (operationId && catalog?.capabilities.environment !== loaded.capabilities.environment) throw new Error('סביבת Morning השתנתה. הפעולה הקודמת נשמרה לשחזור בסביבתה; יש לפתוח מחדש את המסך.');
+      if (catalog && catalog.capabilities.environment !== loaded.capabilities.environment) {
+        environmentChanged = true; history.reset(); recent.reset(); sources.reset();
+        throw new Error(environmentChangedMessage);
+      }
       const restorePeriod = !catalog || catalog.capabilities.environment !== loaded.capabilities.environment;
       preferences = readExpensePreferences(localStorage, accountId(), loaded.capabilities.environment);
       const restored = [];
@@ -167,7 +173,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
   function setField(element) {
     if(!busy&&element.dataset.expenseField==='sourceReason'){sourceReason=element.value.slice(0,250);return true;}
     if (!busy && element.dataset.expenseField === 'reconciliationId') {reconciliationId = element.value; return true;}
-    if (busy || operationId) return false;
+    if (busy || operationId || environmentChanged) return false;
     const name = element.dataset.expenseField;
     if(name==='reportingYear'){
       try {return chooseReportingPeriod(reporting.yearKey(element.value));} catch {return false;}
@@ -255,6 +261,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     }
   }
   function save() {
+    if (environmentChanged) {updateMessage(environmentChangedMessage); return false;}
     if (ocr.active()) {updateMessage('המסמך שייך לטיוטת OCR. יש להשלים את האישור במורנינג; יצירת הוצאה נפרדת חסומה למניעת כפילות.'); return false;}
     if (local.blocked()) {updateMessage('יש להמתין להשלמת הזיהוי ובדיקת הטיוטות הקודמות לפני שמירה.'); return false;}
     if (!busy && !operationId) {
@@ -526,7 +533,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     reviewFields:() => local.fieldReview(draft, catalog?.suppliers.find(row => row.id === draft.supplierId)?.taxId),
     warningsMarkup:() => local.warningsMarkup(catalog?.suppliers.find(row => row.id === draft.supplierId)?.taxId, draft)});
   function markup() {
-    const disabled = busy || !!operationId, attrs = disabled ? 'disabled' : '';
+    const disabled = busy || !!operationId || environmentChanged, attrs = disabled ? 'disabled' : '';
     const option = (value, label, current, unavailable = false) => `<option value="${esc(value)}" ${String(current) === String(value) ? 'selected' : ''} ${unavailable ? 'disabled' : ''}>${esc(label)}</option>`;
 
     const {today, year, years, periods} = reporting.choices();
@@ -578,7 +585,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       ${sources.receipt(result,busy,sourceReason)}
       </div><div class="morning-expense-source" data-drop="morning-expense-drop" data-dragover="morning-expense-dragover">
       <label class="morning-expense-drop ${selected?'compact':''}">בחירת קובצי מקור · גרירה או הדבקה<input type="file" ${operationId?'':'multiple'} accept="application/pdf,image/jpeg,image/png"
-        data-change="morning-expense-files" ${busy||fileAttempted&&!result?.sourcePending||operationId&&!result?.verified?'disabled':''}></label>
+        data-change="morning-expense-files" ${busy||environmentChanged||fileAttempted&&!result?.sourcePending||operationId&&!result?.verified?'disabled':''}></label>
       <small>PDF, JPG או PNG עד 20MB לקובץ · הקבצים נשארים בזיכרון עד להעלאה. ${queue.length ? `${queue.length} נוספים בתור` : ''}</small>
       ${selected ? `<b>${esc(selected.name)}</b>${selected.type === 'application/pdf' ? pdfPreview.markup() : `<img src="${esc(previewUrl)}" alt="חשבונית מקור לבדיקה">`}` : '<p>בחר קובץ להצגתו לצד השדות.</p>'}
       ${local.markup()}

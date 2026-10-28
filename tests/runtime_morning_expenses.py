@@ -194,6 +194,25 @@ FLOW = r"""(async()=>{
  return {posts,uploads,confirms,requests:requests.length,desktop};
 })()"""
 
+ENVIRONMENT_SCOPE = FLOW[:FLOW.index(' const settle=')] + r"""
+ const settle=()=>uiFeature.runtime.drain();
+ for(const initial of ['sandbox','production']){
+  environment=initial;click('toggle');await settle();
+  const number=fixture.querySelector('[data-expense-field="number"]');number.value='PRIVATE-SCOPE';number.dispatchEvent(new Event('input',{bubbles:true}));
+  click('recent-refresh');await settle();check(fixture.querySelector('[data-expense-recent-id]'),'scope fixture has no recent snapshot');
+  environment=initial==='sandbox'?'production':'sandbox';click('load');await settle();
+  check(fixture.textContent.includes('סביבת Morning השתנתה')&&fixture.textContent.includes('יש לפתוח מחדש'),'environment change was silently adopted');
+  check(fixture.querySelector('[data-expense-field="number"]').value==='PRIVATE-SCOPE','environment fence discarded unsaved draft');
+  check(fixture.querySelector('[data-expense-field="number"]').disabled&&fixture.querySelector('[data-action="morning-expense-save"]').disabled,'stale environment remained writable');
+  check(!fixture.querySelector('[data-expense-recent-id]'),'old environment recent snapshot survived scope fence');
+  await uiFeature.actions['morning-expense-save']();await settle();check(posts===0&&uploads===0&&confirms===0,'scope fence dispatched a financial operation');
+  uiFeature.runtime.dispose();uiFeature=createMorningExpenseIntake(ports);fixture.innerHTML=uiFeature.markup();
+  click('toggle');await settle();check(!fixture.querySelector('[data-expense-field="number"]').disabled&&!fixture.querySelector('[data-expense-field="number"]').value,'reopening did not establish a clean environment');
+  uiFeature.runtime.dispose();uiFeature=createMorningExpenseIntake(ports);fixture.innerHTML=uiFeature.markup();
+ }
+ uiFeature.runtime.dispose();return {environmentFence:true,draftRetained:true,reopen:true,posts,uploads};
+})()"""
+
 if __name__ == '__main__':
     with BrowserSession(ROOT/'netunim-orders/site', 'morning-expenses') as browser:
         for environment in ['sandbox', 'production']:
@@ -201,5 +220,6 @@ if __name__ == '__main__':
                 browser.call('Emulation.setDeviceMetricsOverride', {'width':width,'height':1100,'deviceScaleFactor':1,'mobile':width < 800})
                 result = browser.evaluate(FLOW.replace("let environment='sandbox'", f"let environment='{environment}'"), timeout=45)
                 assert result['posts'] == 1 and result['uploads'] == 1, result
+        print('PASS Morning environment scope:',browser.evaluate(ENVIRONMENT_SCOPE,timeout=45),flush=True)
         assert not browser.drain_serious_errors()
         print('PASS Morning expense intake: VAT, confirmation, source preview, queue, recovery and account isolation', result, flush=True)

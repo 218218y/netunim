@@ -8,6 +8,8 @@
 - A delayed proposal fill could finish while financial saving was in progress. Its final check now includes the financial operation state, before draft mutation. Manual provenance for fields absent from an explicit partial refill is retained.
 - Provider transport already retries safe 429 reads and honors Retry-After. Client retries do not multiply those provider attempts. A cancelled older read's timer cannot abort a newer read.
 
+- Changing the configured Morning environment while intake is open now fences the existing screen before a new catalog can replace its scope. The old draft remains visible, fields/writes lock, old recent/history snapshots are removed, and reopening establishes a clean scope. Both Sandbox-to-Production and Production-to-Sandbox have browser regression coverage. This complements the existing server environment check without changing its financial protocol.
+
 ## User interface
 
 Each supplier/date/type/number/net/VAT/gross/allocation field has adjacent text and color: green `זוהה במסמך`, amber `דורש בדיקה`, red `לא זוהה`, blue `הושלם ידנית`. Computed amounts explain the calculation. Source buttons navigate to PDF coordinates when available. Supplier combobox and individual date parts reference descriptions through `aria-describedby`. One review-navigation button advances through uncertain/missing fields, including composite date input; initial automatic focus does not steal active editing. Final accounting confirmation includes current manual/calculated/missing warnings. Allocation labels explicitly do not claim tax-authority verification.
