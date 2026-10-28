@@ -178,3 +178,10 @@
 מתג `MORNING_EXPENSE_PCN_P_WRITES=true` פותח רק קליטת P ידנית לבעל הרשאת כתיבה קיימת, לאחר אימות שני פרופילי הספק המוגדרים ובכפוף למתגי הכתיבה והמשתמש היחיד של הייצור. ברירת המחדל כבויה. התאמה לפי מספר עוסק בלבד אינה מספיקה: מזהה Morning ומספר העוסק חייבים להתאים יחד. פרופילים קיימים בייצור עשויים להכיל `country=IL`; ה־PCN נקבע לפי הסיווג המפורש ומספר העוסק המאומת. ספק מוגן אינו רשאי להישלח כ־T. מספר P מנורמל לתשע ספרות לפני אישור המשתמש ולפני יצירת זהות הכפילות. כיבוי המתג אינו חוסם בדיקת מצב או אימות מחדש של הוצאה שכבר נוצרה.
 
 יש להשוות את חשבונית P הראשונה שתיקלט באתר גם לייצוא Morning הבא. כרגע קיימות ראיות נפרדות ליצירה ב־Sandbox ולייצוא של הוצאות ייצור קיימות; לא נטענת בדיקת ייצוא לחשבונית P חדשה שנוצרה באתר בייצור. המפרט הרשמי אינו מפרסם נתיב לייצוא PCN או לאישור טיוטת OCR. פעולות close/open של הוצאה קיימת אינן חוזה לאישור טיוטה. אישור OCR נשאר חסום.
+
+
+### Continuous recent-expense reads (2026-10-28)
+
+One click runs sequential four-page batches automatically, with progress and cancellation, independently of the editable form. Only complete results sorted by Morning creation time are published. A second full read compares SHA-256 page fingerprints and totals before publishing; changed, duplicate or incomplete pages fail closed. This is a consistency check, not an API transaction or a guarantee against a later external write. The short memory cache is invalidated by verified expense writes.
+
+Safe reads retry network errors and HTTP 429/502/503/504 at most twice (1s and 2s). Each run has a five-minute limit, at most 1,000 pages/50,000 expenses, and cancellable pauses between batches. Cancelled/timed-out scans can resume within ten minutes; completed pages are checked again before publishing. Financial writes retain their existing no-blind-retry policy. No schema or Edge Function deployment is needed.

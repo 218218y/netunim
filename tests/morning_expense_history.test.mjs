@@ -70,11 +70,12 @@ test('recent expenses span the entire Morning account and sort by creation time 
   const all = Array.from({length:102}, (_, n) => ({...expense(n, n === 101 ? '2002-01-01' : '2026-10-01', n % 2 ? '2010-01-01' : '2026-10-01'),
     createdAt:new Date(Date.UTC(2026, 9, 27, 0, 0, n)).toISOString()}));
   const calls = [], progress = [];
-  const rows = await readRecentExpenses(async (_, body) => {
+  const scan = {next:0, pages:1, total:null, items:[], seen:new Set()};
+  let rows; do {rows = await readRecentExpenses(async (_, body) => {
     calls.push(body); return paged(all.slice(body.page * 50, body.page * 50 + 50), body.page, all);
-  }, caps, () => {}, {progress:(count, total) => progress.push([count, total])});
+  }, caps, () => {}, {scan, progress:(count, total, phase) => {if (phase === 'reading') progress.push([count, total]);}});} while (!rows);
   assert.deepEqual(rows.map(row => row.id), Array.from({length:10}, (_, n) => String(101 - n)));
-  assert.equal(rows[0].sourceDocumentDate, '2002-01-01'); assert.equal(calls.length, 3);
+  assert.equal(rows[0].sourceDocumentDate, '2002-01-01'); assert.equal(calls.length, 6);
   assert.ok(calls.every(body => !Object.hasOwn(body, 'fromDate') && !Object.hasOwn(body, 'toDate') && body.expectedEnvironment === 'production'));
   assert.deepEqual(progress, [[50,102], [100,102], [102,102]]);
   assert.equal(recentExpenseRows([{...all[0], status:100}, all[1]]).length, 1);
@@ -96,18 +97,41 @@ test('recent account reads reject duplicate pages and never publish after an acc
   assert.equal(recent.record({verified:false}), false); assert.equal(calls, 1);
 });
 
-test('large accounts require explicit bounded continuation and publish only complete snapshots', async () => {
-  const all = Array.from({length:10000}, (_, n) => ({...expense(n, '2026-10-01'), createdAt:new Date(1700000000000 + n * 1000).toISOString()}));
-  const scan = {next:0, pages:1, total:null, items:[], seen:new Set()};
-  let calls = 0;
-  const request = async (_, body) => {calls++; return paged(all.slice(body.page * 50, body.page * 50 + 50), body.page, all);};
-  assert.equal(await readRecentExpenses(request, caps, () => {}, {scan}), null);
-  assert.equal(calls, 4); assert.equal(scan.seen.size, 200); assert.equal(scan.items.length, 10);
-  assert.equal(await readRecentExpenses(request, caps, () => {}, {scan}), null);
-  assert.equal(calls, 8); assert.equal(scan.next, 8);
-  for (let n = 2; n < 49; n++) assert.equal(await readRecentExpenses(request, caps, () => {}, {scan}), null);
-  const found = await readRecentExpenses(request, caps, () => {}, {scan});
-  assert.equal(calls, 200); assert.equal(found[0].id, '9999');
+test('one click automatically completes batches including stability verification for 20 through 1000 expenses', async () => {
+  globalThis.document = {querySelector:() => null};
+  for (const total of [0,20,50,199,200,201,250,278,1000]) {
+    const all = Array.from({length:total}, (_, n) => ({...expense(n, '2026-10-01'), number:'invoice-'+n, createdAt:new Date(1700000000000+n*1000).toISOString()}));
+    let calls=0, pauses=0;
+    const recent = createExpenseRecent({request:async (_, body) => {calls++; return paged(all.slice(body.page*50,body.page*50+50),body.page,all);},
+      capabilities:()=>caps, capture:()=>()=>{}, run:work=>work(), pause:async()=>{pauses++;}});
+    const work=recent.load(); assert.equal(recent.load(),false); await work;
+    assert.equal(calls,2*Math.max(1,Math.ceil(total/50)), String(total));
+    if(total>200)assert.ok(pauses>0);
+    assert.ok(recent.markup().includes('תמונת מצב מלאה'));
+    if(total)assert.ok(recent.markup().includes('invoice-'+(total-1)));
+  }
+});
+
+test('recent verification detects changed content with unchanged count, excessive accounts and safe-read retry limits', async () => {
+  const row={...expense('one','2026-10-01'),createdAt:'2026-10-27T10:00:00Z'};
+  let calls=0;
+  await assert.rejects(readRecentExpenses(async()=>paged([{...row,number:String(calls++)}]),caps,()=>{}),/השתנתה/);
+  const all=Array.from({length:50001},(_,n)=>({...row,id:String(n)}));
+  await assert.rejects(readRecentExpenses(async()=>paged(all.slice(0,50),0,all),caps,()=>{}),/50,000/);
+  calls=0;const waits=[];
+  const result=await readRecentExpenses(async()=>{if(calls++<2)throw Object.assign(Error('limited'),{status:429});return paged([row]);},caps,()=>{},{pause:async ms=>waits.push(ms)});
+  assert.equal(result[0].id,'one');assert.deepEqual(waits,[1000,2000]);
+  calls=0;await assert.rejects(readRecentExpenses(async()=>{calls++;throw new TypeError('offline');},caps,()=>{},{pause:async()=>{}}),/offline/);assert.equal(calls,3);
+});
+
+test('cancelled recent reads keep a resumable scan without publishing partial rows', async () => {
+  globalThis.document={querySelector:()=>null};
+  const all=Array.from({length:278},(_,n)=>({...expense(n,'2026-10-01'),number:'private-invoice',createdAt:'2026-10-27T10:00:00Z'}));
+  let calls=0, recent;
+  recent=createExpenseRecent({request:async(_,body)=>{calls++;if(calls===4)recent.cancel();return paged(all.slice(body.page*50,body.page*50+50),body.page,all);},
+    capabilities:()=>caps,capture:()=>()=>{},run:work=>work(),pause:async()=>{}});
+  await recent.load();assert.ok(!recent.markup().includes('private-invoice'));assert.ok(recent.markup().includes('אפשר להמשיך'));
+  await recent.load();assert.ok(recent.markup().includes('תמונת מצב מלאה'));assert.ok(recent.markup().includes('private-invoice'));
 });
 
 test('recent snapshots use expiring memory cache; verified writes invalidate without provider reads', async () => {
@@ -117,10 +141,10 @@ test('recent snapshots use expiring memory cache; verified writes invalidate wit
   const recent = createExpenseRecent({request:async () => {calls++; return paged([row]);}, capabilities:() => caps,
     capture:() => () => {}, run:work => work(), now:() => clock});
   assert.equal(calls, 0); assert.ok(!recent.markup().includes('לא נמצאו'));
-  await recent.load(); await recent.load(); assert.equal(calls, 1);
-  clock += 120001; await recent.load(); assert.equal(calls, 2);
-  recent.record({verified:true}); assert.equal(calls, 2); assert.ok(recent.markup().includes('אינה מעודכנת'));
-  await recent.load(); assert.equal(calls, 3);
+  await recent.load(); await recent.load(); assert.equal(calls, 2);
+  clock += 120001; await recent.load(); assert.equal(calls, 4);
+  recent.record({verified:true}); assert.equal(calls, 4); assert.ok(recent.markup().includes('אינה מעודכנת'));
+  await recent.load(); assert.equal(calls, 6);
   recent.reset(); assert.ok(!recent.markup().includes('snapshot-invoice'));
 });
 
