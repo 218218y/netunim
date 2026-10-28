@@ -196,6 +196,25 @@ POLISH = PREFIX + r"""
  return {duplicates:true,distinctBytes:true,manualPreserved:true,openQueue:true,compact:true,alignment:true,allocation:true,posts,uploads,width:innerWidth};
 })()"""
 
+WORKSPACE = PREFIX + r"""
+ const settle=()=>uiFeature.runtime.drain();click('toggle');await settle();
+ const source=fixture.querySelector('.morning-expense-source'),fields=fixture.querySelector('.morning-expense-fields');
+ const drop=source.querySelector('.morning-expense-drop'),input=drop.querySelector('input');
+ const empty=drop.getBoundingClientRect(),form=fields.getBoundingClientRect(),panel=source.getBoundingClientRect();
+ check(empty.height>=(innerWidth>800?300:220),'empty PDF drop area remains too small');
+ check(getComputedStyle(source).backgroundColor!==getComputedStyle(fields).backgroundColor,'form and PDF panels have no visual separation');
+ check(innerWidth>800?Math.abs(form.top-panel.top)<3:panel.top>=form.bottom,'workspace columns do not adapt to mobile');
+ input.focus();check(document.activeElement===input&&input.getAttribute('aria-label'),'file picker is not keyboard accessible');
+ check(fixture.scrollWidth<=fixture.clientWidth&&document.documentElement.scrollWidth<=innerWidth,'workspace overflows horizontally');
+ await uiFeature.actions['morning-expense-files']({files:[new File(['%PDF-1.4 workspace'],'workspace.pdf',{type:'application/pdf'})]});await settle();
+ check(!fixture.querySelector('.morning-expense-source-empty'),'empty drop reservation survived file selection');
+ check(fixture.querySelector('.morning-expense-drop').getBoundingClientRect().height<empty.height,'selected file still reserves the empty drop height');
+ check(fixture.querySelector('[data-invoice-pdf-viewport]').getBoundingClientRect().height>=300,'selected PDF viewport shrank');
+ check(fixture.scrollWidth<=fixture.clientWidth,'selected PDF overflows horizontally');
+ uiFeature.runtime.dispose();await settle();check(posts===0&&uploads===0,'workspace checks caused financial effects');
+ return {width:innerWidth,emptyHeight:empty.height,panels:true,keyboard:true,posts,uploads};
+})()"""
+
 CATEGORY_PREFIX = PREFIX.replace(' let extractionHold=', " let categoryMode='ok',categoryHold=null,categoryReads=0; let extractionHold=")
 CATEGORY_PREFIX = CATEGORY_PREFIX.replace("if(action==='expenses'){", "if(action==='expenses'){if(body.supplierId){categoryReads++;if(categoryHold)await categoryHold;if(categoryMode==='error')throw Error('history unavailable');return paged([{...expense,id:id(77),supplierId:supplier.id,supplierTaxId:supplier.taxId,classification:{...expense.classification,title:'סיווג מהיסטוריית הספק'}}]);}return paged([]);")
 CATEGORY = CATEGORY_PREFIX + r"""
@@ -237,6 +256,7 @@ if __name__ == '__main__':
         for width in [1440,390]:
             browser.call('Emulation.setDeviceMetricsOverride', {'width':width,'height':1100,'deviceScaleFactor':1,'mobile':width<800})
             print('PASS intake polish, content dedupe and allocation thresholds:',browser.evaluate(POLISH,timeout=45),flush=True)
+            print('PASS expense workspace sizing and accessibility:',browser.evaluate(WORKSPACE,timeout=45),flush=True)
         result = browser.evaluate(OWNERSHIP, timeout=45)
         assert result['posts'] == 0 and result['uploads'] == 0, result
         print('PASS local extraction cancellation, account ownership, native PDF fallback and disposal:', result, flush=True)
