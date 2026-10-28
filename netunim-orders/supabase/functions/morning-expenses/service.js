@@ -69,7 +69,7 @@ export function expenseSearchInput(body, draft = false) {
   return {page, payload:{page:page + 1, pageSize, ...(!unfiltered ? {fromDate:from, toDate:to} : {}),
     ...(body.supplierId ? {supplierId:body.supplierId} : {}), ...(!draft && body.number ? {number:body.number} : {})}};
 }
-export function createExpenseService({request, environment, readIds = () => '', writer = null, uploader = null, ocr = null}) {
+export function createExpenseService({request, environment, readIds = () => '', writer = null, uploader = null, ocr = null, ledger = null}) {
   return async function handle(user, body) {
     if (!expensePermission(user, 'read', readIds())) return {status:403, body:{ok:false, code:'morning_expenses_forbidden', message:'אין הרשאה לצפייה בהוצאות Morning.'}};
     try {
@@ -83,7 +83,7 @@ export function createExpenseService({request, environment, readIds = () => '', 
         const ready = await writer?.readiness(user) === true;
         return {status:200, body:{ok:true, version:1, environment, read:true, create:ready, upload:uploader?.allowed(user) === true,
           pcnP:ready && writer?.pcnEnabled?.(user) === true, draftApproval:false, ocr:ocr?.allowed(user) === true, ocrRecovery:ocr?.recoverable?.(user) === true, ocrFileGuard:ocr?.recoverable?.(user) === true,
-          sourceIntent:writer?.sourceIntent===true,duplicateCheck:writer?.sourceIntent===true,
+          sourceIntent:writer?.sourceIntent===true,duplicateCheck:writer?.sourceIntent===true,siteRecent:!!ledger,
           classificationSource:'existing_expenses', pSuppliers:writer?.profiles() || []}};
       }
       if (command) {
@@ -93,7 +93,15 @@ export function createExpenseService({request, environment, readIds = () => '', 
         return {...result, body:{...result.body, version:1, environment}};
       }
       let result;
-      if (action === 'suppliers') {
+      if (action === 'site_recent') {
+        if (body.expectedEnvironment !== environment) throw new Error('invalid_expense_input');
+        if (!ledger) throw new Error('morning_expense_storage_failed');
+        const rows = await ledger.recentCreated(user.id);
+        result = {source:'site', items:rows.map(row => {
+          if (!expenseUuid(row.expense_id) || !row.verified_at || !Number.isFinite(Date.parse(row.sent_at))) throw new Error('invalid_expense_record');
+          return {...expenseRecord({...row.payload, id:row.expense_id, status:10}), createdAt:row.sent_at};
+        })};
+      } else if (action === 'suppliers') {
         const {page, pageSize} = pageInput(body);
         if (body.name !== undefined && (typeof body.name !== 'string' || body.name.length > 180)) throw new Error('invalid_expense_input');
         if (body.taxId !== undefined && (typeof body.taxId !== 'string' || !/^\d{9}$/.test(body.taxId))) throw new Error('invalid_expense_input');

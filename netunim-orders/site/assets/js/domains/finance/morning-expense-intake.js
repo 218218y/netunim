@@ -161,7 +161,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       await ocr.initialize(check); check();
       await sources.refresh();check();
       if (selected && !operationId && !ocr.active()) local.restore(cachedLocal);
-      recent.record({verified:true});
+      recent.loadSite();
       history.refresh();
     });
   }

@@ -29,7 +29,8 @@ const uploader = admin ? createExpenseUpload({request, environment, ledger:creat
 const ocr = admin ? createExpenseOcr({request, environment, ledger:createOcrLedger(admin, environment), enabled:configuration.ocr,
   productionUserId:configuration.productionUserId, writeIds:() => Deno.env.get('MORNING_EXPENSE_WRITE_USER_IDS') || '',
 }) : null;
-const service = createExpenseService({request, environment, readIds:() => Deno.env.get('MORNING_EXPENSE_READ_USER_IDS') || '', writer, uploader, ocr});
+const service = createExpenseService({request, environment, readIds:() => Deno.env.get('MORNING_EXPENSE_READ_USER_IDS') || '', writer, uploader, ocr,
+  ledger:admin ? createExpenseLedger(admin, environment) : null});
 Deno.serve(createExpenseHandler({
   getUser:async (token:string) => {
     if (!url || !key || !valid || !clientId || !clientSecret) throw new Error('morning_expenses_not_configured');

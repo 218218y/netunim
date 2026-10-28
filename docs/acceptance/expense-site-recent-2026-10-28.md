@@ -1,0 +1,9 @@
+# Automatic recent site intakes
+
+The former all-account recent reader required two complete provider passes because the API does not promise creation-time order. It remains available through explicit refresh, including bounded batches, stability verification and cancellation. Repeated explicit refresh now really reads the provider.
+
+The default permanently visible list reads a single owner/environment-scoped ledger query limited to ten `created` operations, ordered by sent time and operation ID. A partial index supports that query. Only safe display fields from the previously verified payload leave the service; this is explicitly a historical intake snapshot, not a claim about subsequent Morning edits or approval. Older classification titles absent from the ledger are displayed as missing. New successful canonical readbacks enter the bounded in-memory list immediately, deduplicated by expense ID. An in-flight older read cannot overwrite that update. Account/environment reset clears both lists.
+
+The `siteRecent` capability allows frontend rollout before the new service: old services show an availability notice and still display new verified intakes. They never fall back to an automatic account-wide scan. Deploy the new index migration and `morning-expenses` Edge Function to enable durable site history, plus complete Orders frontend assets from the verified commit. No provider write protocol or financial approval policy changes.
+
+Focused verification covers query scoping, provider-free reading, safe projection, immediate insertion, ten-row bounds, cancellation and stale-response fencing. Browser acceptance verifies automatic site load and insertion without replacing focused form controls; full CI also checks PostgreSQL index use and the existing financial/source recovery suites. No live financial write is part of this change.
