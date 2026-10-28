@@ -96,7 +96,8 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     busy:() => busy, canStart:() => !operationId});
   const local = createExpenseLocalReview({files, request, capture, capabilities:() => catalog?.capabilities, selected:() => selected,
     editVersion:() => editVersion, onProposal:proposal => pdfPreview.setFields(proposal?.fields),
-    apply:applyLocal, render, run:tasks.run, canStart:() => !!catalog && !operationId, ocrActive:ocr.active, confirmDialog});
+    onReady:() => {if (!host()?.contains(document.activeElement)) focusReview();},
+    apply:applyLocal, render, run:tasks.run, canStart:() => !!catalog && !operationId, canApply:() => !busy && !operationId, ocrActive:ocr.active, confirmDialog});
   const pdfPreview = createExpensePdfPreview({capture,run:tasks.run,isActive:active});
   const sources=createExpenseSourceSupport({files,request,capture,run:tasks.run,capabilities:()=>catalog?.capabilities,
     selected:()=>selected,proposal:local.snapshot,confirmDialog,activeOperation:()=>operationId,isActive:active});
@@ -423,7 +424,11 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       }
     }
     check();
-    if (origin !== 'local') draft = defaults(); lastAmountField = ''; supplierPicker.reset();
+    if (origin !== 'local') draft = defaults();
+    // An unrecognized date/type must not silently inherit today's date or the
+    // default invoice type. Existing manual entries still survive partial fills.
+    else if (!edited) {draft.date = ''; draft.documentType = '';}
+    lastAmountField = ''; supplierPicker.reset();
     const money = value => Number.isSafeInteger(value) && value >= 0 ? (value / 100).toFixed(2) : '';
     const suggestions = {number:item.number, documentType:item.documentType || '', date:item.date?.slice(0, 10) || '',
       net:money(item.netCents), vat:money(item.vatCents), gross:money(item.grossCents), description:item.description || '', allocationNumber:item.allocationNumber || '',
@@ -568,7 +573,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
   }
   function focusReview() {
     const entries = Object.entries(reviewFields()).filter(([,field]) => ['missing','review'].includes(field.status));
-    const current = document.activeElement?.dataset.expenseField;
+    const current = document.activeElement?.dataset.datePart ? 'date' : document.activeElement?.dataset.expenseField;
     const index = entries.findIndex(([name]) => name === current || name === 'supplierId' && current === 'supplierQuery');
     const name = entries[(index + 1) % entries.length]?.[0];
     const control = name === 'supplierId' ? host()?.querySelector('[data-expense-field="supplierQuery"]') : name === 'date' ? host()?.querySelector('[data-date-part="day"]') : host()?.querySelector(`[data-expense-field="${name}"]`);

@@ -17,7 +17,11 @@ export function invoiceFieldReview(proposal, edits, draft, supplierTaxId) {
     const source = fields[key], value = draft[name];
     const expected = key === 'invoiceNumber' ? source?.suggestedNumber || source?.value : source?.value;
     const actual = key === 'supplier' ? supplierTaxId : ['net','vat','gross'].includes(key) ? expenseCents(value) : value;
-    let status = source?.status || 'missing', detail = '';
+    let status = source?.status || 'missing', detail = source?.reason?.startsWith('ambiguous_') ? 'נמצאו כמה ערכים אפשריים במסמך.' :
+      ({supplier_prefix_not_verified:'תחילית מספר החשבונית דורשת בדיקה לפי הספק.',
+        alphanumeric_number_review:'מספר החשבונית כולל אותיות; יש לבדוק את המספר המלא.',
+        canonical_supplier_pending:'נדרשת התאמה לספריית הספקים של Morning.',
+        document_identity_unresolved:'זהות המסמך טרם הושלמה; יש לבדוק את הנתון מול המקור.'})[source?.reason] || '';
     if (!present(value)) status = 'missing';
     else if (edits[name] === 'manual') {status = 'manual'; detail = 'הושלם או נבדק ידנית; יש להשוות למסמך המקור.';}
     else if (edits[name] === 'calculated') {status = 'review'; detail = 'חושב לאחר שינוי בסכומים; יש להשוות למקור.';}

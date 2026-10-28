@@ -114,6 +114,14 @@ REVIEW = PREFIX + r"""
  const field=(name,value,type='input')=>{const input=fixture.querySelector('[data-expense-field="'+name+'"]');input.value=value;input.dispatchEvent(new Event(type,{bubbles:true}));return input};
  const value=name=>fixture.querySelector('[data-expense-field="'+name+'"]').value;
  const status=name=>fixture.querySelector('[data-expense-review-field="'+name+'"]').dataset.reviewStatus;
+ const beforePartial=structuredClone(recognized);
+ recognized.fields.date.value=null;recognized.fields.date.status='missing';recognized.fields.documentType.value=null;recognized.fields.documentType.status='missing';
+ await choose(new File(['%PDF-1.4 partial review'],'partial.pdf',{type:'application/pdf'}));
+ check(value('date')===''&&value('documentType')==='','partial recognition silently kept today or default document type');
+ check(status('date')==='missing'&&status('documentType')==='missing','missing core fields not marked beside inputs');
+ check(document.activeElement.dataset.expenseField==='documentType','first missing field was not focused after partial recognition');
+ click('save');await settle();check(posts===0,'missing core fields reached financial writer');
+ await uiFeature.actions['morning-expense-command']({dataset:{expenseCommand:'remove-file',expenseIndex:'0'}});await settle();Object.assign(recognized,beforePartial);
  await choose(new File(['%PDF-1.4 review states'],'review.pdf',{type:'application/pdf'}));
  for(const name of ['supplierId','documentType','number','date','net','vat','gross','allocationNumber']){
   check(status(name)==='verified','recognized badge missing on '+name);
@@ -138,6 +146,9 @@ REVIEW = PREFIX + r"""
  check(fixture.querySelector('[data-recognition-outcome="extraction_error"]')&&!fixture.textContent.includes('private parser fault'),'technical PDF error leaked details or lost its classification');
  field('supplierId','other-supplier','change');check(status('number')==='manual'&&status('documentType')==='review','supplier change retained old recognition confidence');
  click('review-next');check(document.activeElement&&document.activeElement!==document.body,'review navigation did not focus a field');
+ for(let n=0;n<8&&document.activeElement.dataset.datePart!=='day';n++)click('review-next');
+ check(document.activeElement.dataset.datePart==='day','review navigation never reached date');click('review-next');
+ check(!document.activeElement.dataset.datePart,'review navigation got stuck on composite date field');
  await uiFeature.actions['morning-expense-command']({dataset:{expenseCommand:'remove-file',expenseIndex:'0'}});await settle();
  const png=Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZQAAAABJRU5ErkJggg=='),c=>c.charCodeAt(0));
  await choose(new File([png],'source.png',{type:'image/png'}));check(fixture.textContent.includes('אין זיהוי טקסט מקומי לקובצי JPG או PNG'),'image manual-entry notice missing');

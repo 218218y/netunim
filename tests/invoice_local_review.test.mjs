@@ -4,17 +4,17 @@ import {createExpenseLocalReview} from '../netunim-orders/site/assets/js/domains
 
 const proposal={profile:'roya',fields:{supplier:{value:'123456789'},invoiceNumber:{value:'0123456789'}}};
 function fixture({recognized=proposal,extractionError=null}={}) {
-  let source={type:'application/pdf',file:new Blob(['%PDF-1.4 local invoice'])}, version=0, scoped=true, draft=null, conflict=false, rows=[], hold=null, uploads=0;
+  let source={type:'application/pdf',file:new Blob(['%PDF-1.4 local invoice'])}, version=0, scoped=true, draft=null, conflict=false, rows=[], hold=null, applyHold=null, writing=false, applications=0, uploads=0;
   const calls=[],caps={environment:'sandbox',ocrFileGuard:true};
   const local=createExpenseLocalReview({files:{extract:async()=>{if(hold)await hold;if(extractionError)throw extractionError;return {text:'private invoice text'};},recognize:async()=>recognized,upload:()=>uploads++},
     selected:()=>source,capabilities:()=>caps,editVersion:()=>version,capture:()=>()=>{if(!scoped)throw Error('stale account');},
-    apply:async(value,check)=>{check();draft=value;},render:()=>{},run:work=>work(),canStart:()=>true,ocrActive:()=>false,confirmDialog:async()=>true,
+    apply:async(value,check)=>{if(applyHold)await applyHold;check();applications++;draft=value;},render:()=>{},run:work=>work(),canStart:()=>true,canApply:()=>!writing,ocrActive:()=>false,confirmDialog:async()=>true,
     request:async(action,body,check)=>{check();calls.push({action,body});if(action==='ocr_lookup')return {hasOcrOperation:conflict};
       assert.equal(action,'expenses');const items=rows.filter(row=>row.number===body.number);return {version:1,environment:'sandbox',page:0,pageSize:50,pages:items.length?1:0,total:items.length,items};}});
   const snapshot={number:'0123456789',documentType:305,date:'2026-08-12'},supplier={id:'canonical',taxId:'123456789'};
   return {local,calls,caps,snapshot,supplier,getDraft:()=>draft,getUploads:()=>uploads,edit:()=>{version++;local.edited();},
     switchSource:()=>{source={type:'application/pdf',file:new Blob(['%PDF other file'])};local.reset();},switchAccount:()=>{scoped=false;local.reset();},
-    conflict:()=>conflict=true,setRows:value=>rows=value,hold:promise=>hold=promise};
+    holdApply:value=>applyHold=value,beginWrite:()=>writing=true,applications:()=>applications,conflict:()=>conflict=true,setRows:value=>rows=value,hold:promise=>hold=promise};
 }
 test('local selection only reads metadata; approval is recorded only at final confirmation',async()=>{
   const f=fixture();await f.local.start();assert.equal(f.getDraft(),proposal);assert.equal(f.getUploads(),0);
@@ -76,4 +76,16 @@ test('manual provenance survives re-recognition and work-draft restoration witho
   f.local.reset();await f.local.restore(saved);assert.deepEqual(f.local.snapshot().edits,{number:'manual'});
   assert.equal(f.local.fieldReview({number:'manual'},'123456789').number.status,'manual');
   await f.local.fill();assert.deepEqual(f.local.snapshot().edits,{});
+});
+
+test('explicit partial refill keeps manual provenance for fields absent from the proposal',async()=>{
+  const f=fixture();await f.local.start();f.local.edited('allocationNumber');await f.local.fill();
+  assert.deepEqual(f.local.snapshot().edits,{allocationNumber:'manual'});
+});
+
+test('a late supplier lookup during proposal refill cannot change a form that started financial saving',async()=>{
+  const f=fixture();await f.local.start();assert.equal(f.applications(),1);
+  let release;f.holdApply(new Promise(resolve=>release=resolve));const work=f.local.fill();
+  await new Promise(resolve=>setTimeout(resolve,0));f.beginWrite();release();await work;
+  assert.equal(f.applications(),1);assert.match(f.local.markup(),/שמירה/);
 });

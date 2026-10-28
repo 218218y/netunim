@@ -1,4 +1,4 @@
-import {invoiceFieldReview} from '../../core/invoice-field-review.js';
+import {invoiceFieldReview, invoiceFormFields} from '../../core/invoice-field-review.js';
 import {invoiceRecognitionOutcome} from '../../core/invoice-recognition.js';
 import {esc} from '../../core/values.js';
 import {readExpenseCatalogPage} from './morning-expense-catalog.js';
@@ -9,7 +9,7 @@ const statuses = {verified:'זוהה ואומת במסמך', review:'דורש ב
 const reasons = {computed_net:'מחושב מהסכום הכולל פחות המע״מ המפורש', canonical_supplier_pending:'נדרשת התאמה לספריית הספקים של Morning',
   amounts_inconsistent:'הסכומים אינם מתאימים זה לזה', document_identity_unresolved:'זהות המסמך דורשת בדיקה', supplier_prefix_not_verified:'תחילית המספר טרם אומתה',
   multiple_candidates:'נמצאו כמה ערכים אפשריים'};
-export function createExpenseLocalReview({files, request, capabilities, capture, selected, editVersion, onProposal = () => {}, apply, render, run, canStart, ocrActive, confirmDialog}) {
+export function createExpenseLocalReview({files, request, capabilities, capture, selected, editVersion, onProposal = () => {}, onReady = () => {}, apply, render, run, canStart, canApply = () => true, ocrActive, confirmDialog}) {
   let controller = null, revision = 0, pending = false, proposal = null, guard = false, hash = '', message = '', ocrOperation = '', sourceConflict = false;
   let edits = {}, outcome = '';
   const outcomeMessages = {no_usable_text:'לא ניתן לזהות נתונים אוטומטית במסמך זה. ייתכן שה־PDF מכיל תמונה סרוקה או שאין בו טקסט שימושי. אפשר להקליד ידנית לפי המסמך.',
@@ -34,13 +34,18 @@ export function createExpenseLocalReview({files, request, capabilities, capture,
     return run(async () => {
       if (!useful() || !available() || !canStart() || ocrActive() || pending) return false;
       const epoch = revision, base = capture();
-      const check = () => {base(); if (epoch !== revision || expectedVersion !== editVersion()) throw new Error('הטופס השתנה במהלך הזיהוי. ההצעות זמינות למילוי יזום לאחר בדיקה.');};
+      const check = () => {base(); if (!canStart() || !canApply() || epoch !== revision || expectedVersion !== editVersion()) throw new Error('הטופס השתנה או שמתבצעת שמירה. ההצעות זמינות למילוי יזום לאחר סיום הפעולה ובדיקה.');};
       try {
         if (force) {
           const approved = await confirmDialog('מילוי הצעות מה־PDF', 'פרטי החשבונית בטופס יוחלפו בהצעות המקומיות. יש לבדוק את כל השדות מול המסמך.', {confirmText:'מילוי לבדיקה'});
           check(); if (!approved) return false;
         }
-        await apply(proposal, check); check(); if (force) edits = {}; message = (outcomeMessages[outcome] || '') + ' הנתונים מולאו בטופס. יש להשוות למקור לפני אישור השמירה.';
+        await apply(proposal, check); check();
+        if (force) for (const [name, key] of Object.entries(invoiceFormFields)) {
+          const value = proposal.fields[key]?.value;
+          if (value !== null && value !== undefined && value !== '') delete edits[name];
+        }
+        message = (outcomeMessages[outcome] || '') + ' הנתונים מולאו בטופס. יש להשוות למקור לפני אישור השמירה.';
         if (!guard) message += ' שמירה עם PDF דורשת עדכון שירות ובדיקת טיוטות קודמות.';
       } catch (error) {if (epoch === revision) message = error.message;}
       if (epoch === revision) render();
@@ -69,7 +74,7 @@ export function createExpenseLocalReview({files, request, capabilities, capture,
       } catch (error) {if (!signal.aborted && epoch === revision) {outcome = 'extraction_error'; message = ({PasswordException:'ה־PDF מוגן בסיסמה. יש לבחור עותק פתוח או להשלים ידנית.',
         InvalidPDFException:'ה־PDF אינו תקין. יש לבחור עותק תקין או להשלים ידנית.', TimeoutError:'הזיהוי המקומי הגיע למגבלת הזמן. אפשר לנסות שוב או להשלים ידנית.'})[error.name] ||
         (sourceConflict ? error.message : outcomeMessages.extraction_error);}}
-      finally {if (epoch === revision) {pending = false; render();}}
+      finally {if (epoch === revision) {pending = false; render(); if (autoFill && version === editVersion() && !Object.keys(edits).length) onReady();}}
     });
   }
   async function preflight(snapshot, supplier, check) {
