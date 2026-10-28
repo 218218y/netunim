@@ -1,7 +1,8 @@
 """Actual PostgreSQL constraints and service-role access; no external services."""
 from isolated_sync_postgres import IsolatedPostgres, OWNER
 
-with IsolatedPostgres(schema_files=['supabase/migrations/20261026080000_morning_expense_operations.sql', 'supabase/migrations/20261026100000_morning_expense_recovery.sql']) as db:
+with IsolatedPostgres(schema_files=['supabase/migrations/20261026080000_morning_expense_operations.sql', 'supabase/migrations/20261026100000_morning_expense_recovery.sql',
+                                  'supabase/migrations/20261028180000_morning_expense_recent_index.sql']) as db:
     def insert(operation, identity='a', owner=OWNER, environment='sandbox', state='reserved'):
         return ("insert into public.morning_expense_operations(operation_id,owner_id,environment,invoice_identity,request_fingerprint,state,payload) "
                 f"values('{operation}','{owner}','{environment}','{identity * 64}','{'b' * 64}','{state}','{{}}')")
@@ -30,6 +31,8 @@ with IsolatedPostgres(schema_files=['supabase/migrations/20261026080000_morning_
     rejects('set role service_role; delete from public.morning_expense_operations', 'permission denied')
     assert db.sql("select relrowsecurity from pg_class where oid='public.morning_expense_operations'::regclass").strip() == 't'
     assert db.sql("select count(*) from pg_constraint where conrelid='public.morning_expense_operations'::regclass and contype='f'").strip() == '0'
+    plan = db.sql(f"set enable_seqscan=off; explain select operation_id,expense_id,payload,sent_at,verified_at from public.morning_expense_operations where owner_id='{OWNER}' and environment='sandbox' and state='created' order by sent_at desc,operation_id desc limit 10")
+    assert 'morning_expense_recent_created_idx' in plan, plan
     db.sql(f"update public.morning_expense_operations set state='cancelled',cancelled_at=now() where operation_id='{operation}' and state='reserved' and sent_at is null and expense_id is null")
     assert not db.sql(f"update public.morning_expense_operations set state='pending',sent_at=now() where operation_id='{operation}' and state='reserved' returning operation_id").strip()
     third = 'aaaaaaaa-aaaa-4aaa-aaaa-000000000003'

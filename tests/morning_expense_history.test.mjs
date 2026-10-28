@@ -134,17 +134,20 @@ test('cancelled recent reads keep a resumable scan without publishing partial ro
   await recent.load();assert.ok(recent.markup().includes('תמונת מצב מלאה'));assert.ok(recent.markup().includes('private-invoice'));
 });
 
-test('recent snapshots use expiring memory cache; verified writes invalidate without provider reads', async () => {
+test('explicit Morning refresh reads again; verified site writes update immediately without provider reads', async () => {
   globalThis.document = {querySelector:() => null};
   let clock = 1000, calls = 0;
   const row = {...expense('one', '2026-10-01'), number:'snapshot-invoice', createdAt:'2026-10-27T10:00:00Z'};
   const recent = createExpenseRecent({request:async () => {calls++; return paged([row]);}, capabilities:() => caps,
     capture:() => () => {}, run:work => work(), now:() => clock});
   assert.equal(calls, 0); assert.ok(!recent.markup().includes('לא נמצאו'));
-  await recent.load(); await recent.load(); assert.equal(calls, 2);
-  clock += 120001; await recent.load(); assert.equal(calls, 4);
-  recent.record({verified:true}); assert.equal(calls, 4); assert.ok(recent.markup().includes('אינה מעודכנת'));
-  await recent.load(); assert.equal(calls, 6);
+  await recent.load(); await recent.load(); assert.equal(calls, 4);
+  clock += 120001; await recent.load(); assert.equal(calls, 6);
+  const item = {...row, id:'new', number:'new-site-invoice'};
+  recent.record({verified:true, expenseId:item.id, item}); assert.equal(calls, 6);
+  assert.match(recent.markup(), /new-site-invoice/); assert.match(recent.markup(), /קליטות האתר/);
+  assert.ok(!recent.markup().includes('snapshot-invoice'));
+  await recent.load(); assert.equal(calls, 8);
   recent.reset(); assert.ok(!recent.markup().includes('snapshot-invoice'));
 });
 

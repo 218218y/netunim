@@ -22,11 +22,12 @@ FLOW = r"""(async()=>{
  const expense={id:id(3),kind:'expense',status:10,supplierId:id(2),name:supplier.name,number:'HISTORY-1',grossCents:11800,reportingDate:'2026-10-01',sourceDocumentDate:'2026-10-20',createdAt:'2026-10-26T10:00:00.000Z',pcnClassification:'T',classification:{id:id(4),title:'ציוד משרד',vat:100,income:100}};
  let catalogExpense=expense,directoryHidden=false,uploadEnabled=true,statusUnavailable=false,serverFileState='not_started';const confirmations=[];
  let historyItems=[expense],historyUnavailable=false,searchItems=null,today='2026-10-26',calendarTesting=false;
- let recentHold=null; const accountRecent=[expense];
+ let recentHold=null; const accountRecent=[expense],siteRecent=[{...expense,id:id(7),number:'SITE-ONLY'}];
  const paged=items=>({ok:true,version:1,environment,page:0,pageSize:50,total:items.length,pages:items.length?1:0,items});
  const respond=async(action,body,assertCurrent)=>{
   assertCurrent();requests.push({action,body});if(held&&action==='suppliers')await held;
-  if(action==='capabilities')return {ok:true,version:1,environment,create:true,upload:uploadEnabled,sourceIntent:true,duplicateCheck:true};
+  if(action==='capabilities')return {ok:true,version:1,environment,create:true,upload:uploadEnabled,sourceIntent:true,duplicateCheck:true,siteRecent:true};
+  if(action==='site_recent')return {ok:true,version:1,environment,source:'site',items:siteRecent};
   if(action==='source_pending')return {ok:true,page:body.page||0,pageSize:20,items:sourceMetadata&&!linked&&!sourceException?[{operationId:id(90),verified:true,intent,...sourceState()}]:[]};
   if(action==='duplicate_check')return {ok:true,duplicate:false};
   if(action==='suppliers')return paged(body.name==='missing'||directoryHidden?[]:[supplier]);
@@ -81,6 +82,7 @@ FLOW = r"""(async()=>{
  check(!fixture.querySelector('[data-expense-command="next"]'),'new intake offers a redundant reset button');
  historyItems=Array.from({length:55},(_,index)=>({...expense,id:id(100+index),number:'HISTORY-'+index,sourceDocumentDate:index===54?'2026-10-26':'2026-08-01'}));
  check(requests.every(({action,body})=>action!=='expenses'||body.fromDate!==undefined),'opening scanned the entire account');
+ check(fixture.querySelector('[data-expense-recent]').textContent.includes('SITE-ONLY'),'site recent list did not load automatically');
  // Recent loading is independent of form editing, completes all 278 rows
  // from one click, and never replaces the focused form control.
  accountRecent.splice(0,accountRecent.length,...Array.from({length:278},(_,n)=>({...expense,id:id(1000+n),number:'RECENT-'+n,createdAt:new Date(1700000000000+n*1000).toISOString()})));
@@ -88,7 +90,7 @@ FLOW = r"""(async()=>{
  const recentInput=field('number','during recent');recentInput.focus();click('recent-refresh');
  check(!recentInput.disabled&&recentInput.isConnected,'recent loading locked the form');
  field('number','edited during recent');check(fixture.querySelector('[data-expense-command="recent-cancel"]'),'recent cancellation missing');
- check(!fixture.querySelector('[data-expense-recent-id]'),'partial recent rows were published');
+ check(!fixture.querySelector('[data-expense-recent]').textContent.includes('RECENT-'),'partial account rows were published');
  releaseRecent();recentHold=null;await settle();
  check(document.activeElement===recentInput&&recentInput.value==='edited during recent','recent progress lost focus or edits');
  check(fixture.querySelector('[data-expense-recent-id="'+id(1277)+'"]'),'one click did not finish 278 expenses');
@@ -144,6 +146,7 @@ FLOW = r"""(async()=>{
  check(fixture.querySelectorAll('.morning-expense-queue li').length===2&&fixture.querySelector('.morning-expense-source>b').textContent==='first.png','queue removal lost another file');
  uploadEnabled=false;click('load');await settle();click('save');await settle();check(posts===0&&fixture.textContent.includes('צירוף קבצים עדיין כבוי'),'file queue entered disabled upload path');uploadEnabled=true;click('load');await settle();
  click('save');await settle();check(posts===1&&confirms===1,'save not exactly once');
+ check(fixture.querySelector('[data-expense-recent]').textContent.includes('000123'),'verified intake was not immediately added to site recent');
  check(requests.filter(({action,body})=>action==='expenses'&&body.fromDate===undefined).length===explicitSearchReads,'saving scanned the entire account');
  click('recent-refresh');await settle();check(fixture.querySelector('[data-expense-recent]').textContent.includes('000123'),'explicit recent loading missed saved intake');
  check(confirmations[0].includes('ציוד משרד')&&confirmations[0].includes('2026-10-20')&&confirmations[0].includes('חשבונית מס'),'approval omitted category, type or source date');
@@ -158,7 +161,7 @@ FLOW = r"""(async()=>{
  const preferenceText=localStorage.getItem('morningExpensePreferences:'+environment+':'+owner);check(preferenceText&&!preferenceText.includes(supplier.name)&&!preferenceText.includes(supplier.taxId)&&!preferenceText.includes('000123'),'preferences leaked invoice or supplier data');
  uiFeature.runtime.dispose();uiFeature=createMorningExpenseIntake(ports);fixture.innerHTML=uiFeature.markup();directoryHidden=true;catalogExpense={...expense,id:id(40),classification:{...expense.classification,id:id(44),title:'סיווג אחר'}};
  click('toggle');await settle();check(fixture.querySelector('[data-expense-command="use-favorite"]'),'favorite did not survive reopening or canonical lookup');
- check(!fixture.querySelector('[data-expense-recent-id]'),'reopening automatically scanned the entire account');click('recent-refresh');await settle();
+ check(fixture.querySelector('[data-expense-recent]').textContent.includes('SITE-ONLY'),'reopening did not restore the bounded site list');click('recent-refresh');await settle();
  check(fixture.querySelector('[data-expense-recent-id="'+id(8)+'"]'),'explicit recent lookup missed saved intake');
  field('supplierId',id(2),'change');await settle();check(fixture.querySelector('[data-expense-field="classificationExpenseId"]').value===id(30),'saved category outside the history page was not revalidated');directoryHidden=false;
  // Account change while the approval dialog is open must prevent dispatch entirely.

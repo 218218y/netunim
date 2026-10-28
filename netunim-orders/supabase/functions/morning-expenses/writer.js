@@ -49,7 +49,7 @@ export function createExpenseWriter({request, ledger, environment, enabled = fal
       const marked=await ledger.fileTransition(user.id,saved,{source_verified_at:source.sourceVerified?new Date().toISOString():null});
       if(!marked)throw Error('morning_expense_storage_failed');source.sourceVerifiedAt=marked.source_verified_at;
     }
-    return response(200, {...summary(saved),...source,item:expenseRecord(raw),fileLinked:!!raw.url});
+    return response(200, {...summary(saved),...source,item:expenseRecord(raw),siteCreatedAt:saved.sent_at,fileLinked:!!raw.url});
   }
   return {
     allowed,
