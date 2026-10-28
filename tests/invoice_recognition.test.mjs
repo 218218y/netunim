@@ -42,7 +42,7 @@ test('explicit monetary fields override line sums; detached VAT rate percentages
 });
 test('user-confirmed Cocktail and Comfort prefixes keep raw evidence and preserve leading zeroes',async()=>{
  const {INVOICE_SUPPLIER_PROFILES}=await import('../netunim-orders/site/assets/js/core/invoice-supplier-profiles.js');
- for(const [supplier,prefix]of [['cocktail','CR'],['yesharim','SI']]){
+ for(const [supplier,prefix]of [['cocktail','CR'],['cocktail','SI'],['yesharim','SI']]){
   const actual=INVOICE_SUPPLIER_PROFILES.find(row=>row.id===supplier);
   const candidate={...actual,issuerTaxHash:hash,aliases:['ספק בדיקה'],layout:'hash'};
   const result=await recognizeInvoice({hasText:true,pages:[page([...header(prefix+'000123'),...totals()])]},{profiles:[candidate]});
@@ -90,7 +90,7 @@ test('shared summary rules cover each deployed layout with synthetic identities 
  for(const actual of INVOICE_SUPPLIER_PROFILES){
   const synthetic={...actual,issuerTaxHash:hash,aliases:['ספק בדיקה']};
   let head=header(actual.id==='roya'?'s000123':actual.id==='gaber'?'SI000123':'000123',actual.id==='gaber'?'חשבונית מס מרכזת':'חשבונית מס');
-  if(actual.layout==='sap')head=head.map(row=>row[0]===tax?[row[0],50,row[2]]:row);
+  if(actual.layout==='sap'||actual.issuerRegion==='left-column')head=head.map(row=>row[0]===tax?[row[0],50,row[2]]:row);
   if(actual.id==='gaber'){head=head.filter(row=>row[0]!==tax).map(row=>row[0]==='SI000123'?[row[0],60,145]:row);head.push(['ע.מ. '+tax,270,750]);}
   const netLabel=['tbi','morning'].includes(actual.layout)?'סה״כ':actual.layout==='priority'?'מחיר אחרי הנחה':actual.layout==='sap'?'סך הכול אחרי הנחה':'סה״כ לפני מע״מ';
   const grossLabel=actual.layout==='bina'?'לתשלום בש״ח':actual.layout==='priority'?'סה״כ כולל מע״מ':actual.layout==='sap'?'סכום לתשלום':actual.layout==='priority-print'?'סה״כ כללי':'סה״כ לתשלום';
@@ -99,6 +99,29 @@ test('shared summary rules cover each deployed layout with synthetic identities 
   assert.equal(result.profile,actual.id,actual.id);assert.equal(result.fields.invoiceNumber.value,'000123',actual.id);
   assert.equal(result.fields.net.value,100000,actual.id);assert.equal(result.fields.vat.value,15000,actual.id);assert.equal(result.fields.gross.value,115000,actual.id);
  }
+});
+
+test('older overlapping summary labels are profile-scoped and retain the original source evidence',async()=>{
+ const keys={net:['הסכ'],vat:['עממ'],gross:['הסכלתשלום','הסכהוחזר']};
+ const rows=totals().map(row=>row[0]==='סה״כ לפני מע״מ'?['ה ס ״כ',...row.slice(1)]:row[0]==='מע״מ'?['ע 18% מ״מ',...row.slice(1)]:row[0]==='סה״כ לתשלום'?['ה ס ״כ לתשלום',...row.slice(1)]:row);
+ const result=await recognize([page([...header(),...rows])],{summaryLabelKeys:keys});
+ assert.equal(result.fields.net.value,100000);assert.equal(result.fields.vat.value,15000);assert.equal(result.fields.gross.value,115000);
+ assert.ok(result.fields.vat.sources.some(row=>row.text==='ע 18% מ״מ'));
+ const other=await recognize([page([...header(),...rows])]);
+ assert.equal(other.fields.gross.value,null,'an unrelated supplier cannot use the legacy template keys');
+});
+
+test('side-by-side issuer columns require issuer identity on the left and exclude the buyer column',async()=>{
+ const head=[['ספק בדיקה',50,150],[tax,90,185],['לכבוד',450,150],[buyer,450,185],['חשבונית מס / קבלה',250,90],['000789',180,90],['14/03/2026',480,92]];
+ const result=await recognize([page([...head,...totals()])],{layout:'morning',issuerRegion:'left-column'});
+ assert.equal(result.profile,'synthetic');assert.equal(result.fields.documentType.value,320);assert.equal(result.fields.invoiceNumber.value,'000789');assert.equal(result.fields.date.value,'2026-03-14');
+ const wrong=await recognize([page(head.map(row=>row[0]===tax?[tax,450,185]:row))],{issuerRegion:'left-column'});
+ assert.equal(wrong.profile,null);
+});
+
+test('multiple summary totals remain ambiguous instead of selecting a convenient number',async()=>{
+ const result=await recognize([page([...header(),...totals(),['2,000.00',50,660],['סה״כ לתשלום',150,660]])]);
+ assert.equal(result.fields.gross.value,null);
 });
 
 test('no text and scan captions are distinct from useful text with an unknown supplier and partial recognition',async()=>{

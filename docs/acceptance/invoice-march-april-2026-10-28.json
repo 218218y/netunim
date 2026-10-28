@@ -1,0 +1,20 @@
+{
+  "date": "2026-10-28",
+  "corpus": {"documents": 91, "pages": 95, "digital": 83, "imageOnly": 8},
+  "baseline": {"recognizedSuppliers": 79, "unknownDigitalSuppliers": 4, "missingDigitalAmountSummaries": 19},
+  "afterRecognition": {"recognizedSuppliers": 83, "completeCoreFieldValues": 83, "zeroValueDocumentsRequiringReview": 1},
+  "morningReadOnlyComparison": {
+    "canonicalSuppliers": 12,
+    "recordsRead": 136,
+    "pairedDigitalDocuments": 80,
+    "exactTypeDateGrossMatches": 80,
+    "exactNetVatMatches": 74,
+    "oneCentPrintedVsHistoricalDifferences": 6,
+    "preservedLeadingZeroDifferences": 1,
+    "unpairedDigitalDocuments": 3,
+    "financialWrites": 0,
+    "uploads": 0
+  },
+  "privacy": "Original PDFs, extracted text, expected values, identities, screenshots and Morning responses remain in ignored local working files.",
+  "scope": "Diagnostic corpus, not an untouched holdout: baseline failures were examined to develop the new template rules. Historical agreement is measured separately from source correctness."
+}
