@@ -1,14 +1,8 @@
 import {esc} from '../../core/values.js';
 import {readExpenseCatalogPage} from './morning-expense-catalog.js';
 import {expenseTableHead, expenseTableRow} from './morning-expense-table.js';
-
-export function recentExpenseRows(items) {
-  const rows = items.filter(row => row.status !== 100);
-  if (rows.some(row => typeof row.createdAt !== 'string' || !row.createdAt || !Number.isFinite(Date.parse(row.createdAt)))) {
-    throw new Error('חסר זמן יצירה בחלק מההוצאות; לא ניתן לקבוע בוודאות את סדר הקליטה.');
-  }
-  return rows.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || a.id.localeCompare(b.id)).slice(0, 10);
-}
+import {recentExpenseRows,updateExpenseRecentSnapshot} from './morning-expense-recent-model.js';
+export {recentExpenseRows} from './morning-expense-recent-model.js';
 
 // A bounded batch is an internal scheduling unit. The UI continues batches
 // automatically. A second pass detects changed content even with the same total.
@@ -64,24 +58,35 @@ export async function readRecentExpenses(request, capabilities, check, {signal, 
   return scan.next >= scan.pages && scan.verified >= scan.pages ? scan.items : null;
 }
 
-export function createExpenseRecent({request, capabilities, capture, run, now = Date.now, pause = recentReadPause}) {
-  let rows = [], siteRows = [], mode = 'site', message = '', revision = 0, busy = false, progressText = '', controller = null, scan = null, started = 0, readAt = 0, stale = false;
+export function createExpenseRecent({request, capabilities, capture, run, accountId, cache = null, now = Date.now, pause = recentReadPause}) {
+  let rows = [], snapshot = null, mode = 'site', message = '', revision = 0, busy = false, progressText = '', controller = null, scan = null, started = 0, readAt = 0;
   const host = () => document.querySelector('[data-expense-recent]');
   function render() {const target = host(); if (target) target.outerHTML = markup();}
-  function reset() {revision++; controller?.abort(); controller = null; rows = []; siteRows = []; mode = 'site'; message = ''; busy = false; progressText = ''; scan = null; started = 0; readAt = 0; stale = false;}
+  function adopt(value) {snapshot = value; rows = value.items; mode = value.mode; readAt = value.readAt;}
+  const scope = () => ({owner:accountId(),environment:capabilities().environment});
+  const storageWarning = 'הרשימה מוצגת, אך לא ניתן לשמור אותה בדפדפן לפתיחה הבאה.';
+  function reset() {revision++; controller?.abort(); controller = null; rows = []; snapshot = null; mode = 'site'; message = ''; busy = false; progressText = ''; scan = null; started = 0; readAt = 0;}
   function loadSite() {
     if (busy || !capabilities()) return false;
-    if (!capabilities().siteRecent) {message = 'היסטוריית קליטות האתר תהיה זמינה לאחר עדכון שירות ההוצאות. קליטות חדשות יוצגו כאן מיד.'; render(); return false;}
-    const epoch = revision, assertCurrent = capture(), caps = capabilities();
+    const epoch = revision, assertCurrent = capture(), caps = capabilities(), savedScope = cache ? scope() : null;
     const currentController = new AbortController(); controller = currentController;
     const check = () => {assertCurrent(); currentController.signal.throwIfAborted(); if (epoch !== revision) throw new DOMException('Cancelled','AbortError');};
     busy = true; progressText = 'טוען את קליטות האתר האחרונות…'; render();
     return run(async () => {
       try {
+        let storageFailed = false;
+        if (cache) {
+          try {const saved = await cache.read(savedScope,check); check(); if (saved) {adopt(saved);message = 'הרשימה השמורה שוחזרה.';return true;}}
+          catch {check();storageFailed = true;}
+        }
+        if (!caps.siteRecent) {message = 'אפשר לרענן מכל Morning לשמירת הרשימה. קליטות חדשות יוצגו כאן מיד.';return false;}
         const value = await request('site_recent', {expectedEnvironment:caps.environment}, check, {signal:currentController.signal}); check();
         if (value.version !== 1 || value.environment !== caps.environment || value.source !== 'site' || !Array.isArray(value.items) || value.items.length > 10 ||
             value.items.some(row => row?.kind !== 'expense' || typeof row.id !== 'string') || new Set(value.items.map(row => row.id)).size !== value.items.length) throw new Error('תשובת קליטות האתר אינה תקינה.');
-        siteRows = recentExpenseRows(value.items); rows = siteRows; mode = 'site'; message = '';
+        const change = {kind:'site',items:value.items,at:now()};
+        adopt(updateExpenseRecentSnapshot(snapshot,change));
+        if (cache) {try {const saved = await cache.update(savedScope,change,check);check();adopt(saved);} catch {check();storageFailed = true;}}
+        message = storageFailed ? storageWarning : '';
       } catch (error) {if (epoch === revision) message = 'לא ניתן לטעון את קליטות האתר. ' + error.message;}
       finally {if (epoch === revision) {busy = false; controller = null; render();}}
     });
@@ -90,6 +95,7 @@ export function createExpenseRecent({request, capabilities, capture, run, now = 
     if (busy || !capabilities()) return false;
     if (!scan || now() - started >= 600000) {scan = {next:0, pages:1, total:null, items:[], seen:new Set()}; started = now();}
     const currentScan = scan;
+    const scanStartedAt = started;
     const epoch = revision;
     const currentController = new AbortController(); controller = currentController; const signal = currentController.signal;
     const timer = setTimeout(() => currentController.abort(new DOMException('Time limit', 'TimeoutError')), 300000);
@@ -99,6 +105,7 @@ export function createExpenseRecent({request, capabilities, capture, run, now = 
         const assertCurrent = capture();
         const check = () => {assertCurrent(); if (epoch !== revision) throw new DOMException('הקריאה בוטלה', 'AbortError');};
         const caps = capabilities();
+        const savedScope = cache ? scope() : null;
         let found = null;
         do {
           found = await readRecentExpenses(request, caps, check, {signal, scan:currentScan, pause, progress:(count, total, phase) => {
@@ -107,8 +114,10 @@ export function createExpenseRecent({request, capabilities, capture, run, now = 
           }});
           check(); if (!found) await pause(100, signal);
         } while (!found);
-        rows = found; mode = 'account'; readAt = now(); stale = false; scan = null;
-        message = 'תמונת מצב מלאה לפי זמן קליטה · ' + new Date(readAt).toLocaleTimeString('he-IL');
+        const change = {kind:'full',items:found,at:now(),startedAt:scanStartedAt};
+        adopt(updateExpenseRecentSnapshot(snapshot,change)); scan = null;
+        message = 'תמונת מצב מלאה לפי זמן קליטה';
+        if (cache) {try {const saved = await cache.update(savedScope,change,check);check();adopt(saved);message += ' · הרשימה נשמרה לפתיחה הבאה.';} catch {check();message += ' · ' + storageWarning;}}
       } catch (error) {
         if (epoch !== revision) return false;
         if (['AbortError','TimeoutError'].includes(error.name)) message = 'הטעינה נעצרה ללא הצגת תוצאה חלקית. אפשר להמשיך את הסריקה.';
@@ -118,13 +127,20 @@ export function createExpenseRecent({request, capabilities, capture, run, now = 
   }
   function record(result) {
     if (!result?.verified || !result.item || result.item.id !== result.expenseId) return false;
-    const item = {...result.item, createdAt:result.siteCreatedAt || result.item.createdAt};
+    const item = {...result.item, createdAt:result.item.createdAt || result.siteCreatedAt};
     // Only a canonical successful readback may enter the automatic list.
-    let updated;
-    try {updated = recentExpenseRows([item, ...siteRows.filter(row => row.id !== item.id)]);} catch {return false;}
-    revision++; controller?.abort(); controller = null; busy = false; scan = null; stale = true;
-    siteRows = updated; rows = siteRows; mode = 'site';
-    message = 'קליטות האתר עודכנו מיד לאחר אימות ההוצאה.'; render(); return true;
+    const change = {kind:'record',items:[item],at:now()};
+    let updated, check, savedScope;
+    try {updated = updateExpenseRecentSnapshot(snapshot,change);check = capture();savedScope = cache ? scope() : null;} catch {return false;}
+    revision++; controller?.abort(); controller = null; busy = false; scan = null;
+    adopt(updated); const epoch = revision;
+    message = 'הרשימה עודכנה מיד לאחר אימות ההוצאה.'; render();
+    if (cache) run(async () => {
+      try {const saved = await cache.update(savedScope,change,check);check();if (epoch === revision) {adopt(saved);message = 'ההוצאה נוספה לרשימה ונשמרה לפתיחה הבאה.';}}
+      catch {if (epoch === revision) message = storageWarning;}
+      finally {if (epoch === revision) render();}
+    });
+    return true;
   }
   function markup() {
     const content = rows.length ? `<table class="morning-expense-table morning-expense-table-compact" aria-label="עשר הקליטות האחרונות · ${mode === 'site' ? 'דרך האתר' : 'מכל חשבון Morning'}">
@@ -133,8 +149,8 @@ export function createExpenseRecent({request, capabilities, capture, run, now = 
     return `<section class="morning-expense-recent" data-expense-recent aria-label="הוצאות אחרונות שנקלטו במורנינג">
       <div class="morning-expense-history-heading"><h2>10 ההוצאות האחרונות · ${mode === 'site' ? 'קליטות האתר' : 'כל חשבון Morning'}</h2>
       <button type="button" class="btn" data-action="morning-expense-command" data-expense-command="recent-refresh" ${busy ? 'disabled' : ''}>${scan ? 'המשך רענון מכל Morning' : 'רענון מכל Morning ומהאתר'}</button>${busy ? '<button type="button" class="btn" data-action="morning-expense-command" data-expense-command="recent-cancel">ביטול טעינה</button>' : ''}</div>
-      <p>${mode === 'site' ? 'ברירת מחדל: קליטות מאומתות דרך האתר בלבד · נתונים כפי שנשמרו בעת הקליטה, ללא סריקת Morning' : 'תמונת מצב מכל החשבון, כולל קליטה ישירה במורנינג'} · לפי זמן הקליטה. קליטה חדשה באתר מעדכנת את הרשימה אוטומטית.</p>
-      ${mode === 'account' && readAt && (stale || now() - readAt >= 120000) ? '<p>תמונת המצב המוצגת אינה מעודכנת; נדרש רענון.</p>' : ''}
+      <p>${mode === 'site' ? 'קליטות מאומתות דרך האתר · לרשימה מלאה יש לרענן מכל Morning' : 'הרשימה השמורה מכל החשבון, כולל קליטה ישירה במורנינג'} · לפי זמן הקליטה. קליטה חדשה באתר מתווספת לרשימה בלי למחוק את ההוצאות האחרות.</p>
+      ${readAt ? `<p>רענון ${mode === 'account' ? 'מלא' : 'ראשוני'} אחרון: ${esc(new Date(readAt).toLocaleString('he-IL'))} · לשינויים שנעשו ישירות ב־Morning יש לרענן שוב.</p>` : ''}
       ${content}<p role="status" aria-live="polite" data-expense-recent-status>${esc(busy ? progressText : message)}</p></section>`;
   }
   return {markup, record, load, loadSite, reset, cancel:() => controller?.abort()};

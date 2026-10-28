@@ -52,7 +52,7 @@ function createLazyMorningPanel(kind, ports, notify) {
     }).finally(() => { flight = null; });
     return flight;
   }
-  const names = (reports ? 'toggle period option load cancel type detail detail-page record export pdf' : 'toggle back field save upload files dragover drop keyboard paste command write history-query history-search-enter').split(' ');
+  const names = (reports ? 'toggle period option load cancel type detail detail-page record export pdf' : 'toggle back field save upload files dragover drop keyboard paste command write history-query history-search-enter history-filter').split(' ');
   const actions = Object.fromEntries(names.map(name => [prefix + name, (...args) => {
     if (!active) return false;
     if (!reports && name === 'back') return active ? ports.back() : false;
