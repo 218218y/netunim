@@ -549,6 +549,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       ${environmentNotice() ? `<p class="morning-expense-notice">${esc(environmentNotice())}</p>` : ''}${ocr.markup()}
       <p class="morning-expense-status" role="status" aria-live="polite" data-expense-message>${esc(busy ? 'הפעולה מתבצעת…' : message)}</p>
       ${catalog ? `<div class="morning-expense-workspace"><div class="morning-expense-fields">
+      <h2 class="morning-expense-panel-title">פרטי ההוצאה</h2>
       ${!operationId ? `
       <div class="morning-expense-supplier-row"><div class="morning-expense-supplier-field">${supplierPicker.markup(disabled)}${review.slot('supplierId')}</div>
       <button type="button" class="btn" data-action="morning-expense-command" data-expense-command="favorite" ${disabled || !supplier ? 'disabled' : ''}>${favorites.some(row => row.id === draft.supplierId) ? 'הסרה מהמועדפים' : 'הוספה למועדפים שלי'}</button></div>
@@ -585,8 +586,9 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       ${['pending', 'needs_reconciliation'].includes(result?.state) ? `<label>מזהה הוצאה קיימת לבדיקה מול Morning<input data-expense-field="reconciliationId" data-input="morning-expense-field" value="${esc(reconciliationId)}" ${busy ? 'disabled' : ''}></label><button type="button" class="btn" data-action="morning-expense-write" data-expense-command="reconcile" ${busy ? 'disabled' : ''}>בדיקת התאמה ושחזור</button>` : ''}
       <span>קובץ מקור: ${result?.fileLinked ? fileLabels.file_linked : fileLabels[result?.fileState] || 'טרם אומת'} · אישור ודיווח נבדקים ב־Morning</span></div>` : ''}
       ${sources.receipt(result,busy,sourceReason)}
-      </div><div class="morning-expense-source" data-drop="morning-expense-drop" data-dragover="morning-expense-dragover">
-      <label class="morning-expense-drop ${selected?'compact':''}">בחירת קובצי מקור · גרירה או הדבקה<input type="file" ${operationId?'':'multiple'} accept="application/pdf,image/jpeg,image/png"
+      </div><div class="morning-expense-source ${selected?'':'morning-expense-source-empty'}" data-drop="morning-expense-drop" data-dragover="morning-expense-dragover">
+      <h2 class="morning-expense-panel-title">מסמך המקור</h2>
+      <label class="morning-expense-drop ${selected?'compact':''}"><span>בחירת קובצי מקור · גרירה או הדבקה</span>${selected?'':'<span class="morning-expense-drop-hint">בחרו חשבוניות להצגה ולזיהוי לצד הטופס</span>'}<input type="file" aria-label="בחירת קובצי מקור להוצאה" ${operationId?'':'multiple'} accept="application/pdf,image/jpeg,image/png"
         data-change="morning-expense-files" ${busy||environmentChanged||fileAttempted&&!result?.sourcePending||operationId&&!result?.verified?'disabled':''}></label>
       <small>PDF, JPG או PNG עד 20MB לקובץ · הקבצים נשארים בזיכרון עד להעלאה. ${queue.length ? `${queue.length} נוספים בתור` : ''}</small>
       <p class="morning-expense-notice" role="status" data-expense-file-notice ${fileNotice?'':'hidden'}>${esc(fileNotice)}</p>

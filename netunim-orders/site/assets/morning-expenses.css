@@ -1,14 +1,22 @@
-.morning-expense-intake{margin:16px 0;border:1px solid var(--border,#ddd);border-radius:14px;background:var(--surface,#fff);overflow:hidden}
+.morning-expense-intake{margin:16px 0;border:1px solid #dce6ea;border-radius:14px;background:linear-gradient(145deg,#f7fafb,#edf3f6);overflow:hidden}
 .morning-expense-trigger{display:flex;align-items:center;justify-content:space-between;width:100%;padding:17px 20px;border:0;background:transparent;color:inherit;font:inherit;text-align:right;cursor:pointer}
 .morning-expense-content{padding:0 20px 20px}.morning-expense-toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:12px 0}.morning-expense-toolbar a{color:#35647c}
 .morning-expense-notice{padding:12px;border-radius:8px;background:#fff5df;color:#69450b;font-size:14px;line-height:1.6}.morning-expense-status{min-height:24px;font-size:14px;line-height:1.6}
 .morning-expense-status:empty{min-height:0;margin:0}
-.morning-expense-workspace{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px;align-items:start}.morning-expense-fields,.morning-expense-source{display:flex;flex-direction:column;gap:12px;min-width:0}
+.morning-expense-workspace{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;align-items:start}.morning-expense-fields,.morning-expense-source{display:flex;flex-direction:column;gap:12px;min-width:0;padding:20px;border:1px solid #dce6ea;border-radius:14px;box-shadow:0 3px 14px #194f5c06}
+.morning-expense-fields{background:#fff}.morning-expense-source{background:#f1f6f8}
+.morning-expense-panel-title{font-size:17px;line-height:1.5;margin:0 0 4px;padding-bottom:10px;border-bottom:1px solid #dce6ea;color:#275866}
 .morning-expense-fields label,.morning-expense-drop{display:flex;flex-direction:column;gap:7px;font-size:14px;font-weight:600}.morning-expense-fields input,.morning-expense-fields select{box-sizing:border-box;width:100%;min-width:0;padding:10px;border:1px solid #bfc6c9;border-radius:7px;background:#fff;font:inherit;color:inherit}.morning-expense-fields input:focus,.morning-expense-fields select:focus{outline:2px solid #357d9b;outline-offset:2px}
 .morning-expense-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start}.morning-expense-amounts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.morning-expense-amounts input{direction:ltr;text-align:right;font-variant-numeric:tabular-nums}
 .morning-expense-intake small{display:block;font-size:12px;line-height:1.6;overflow-wrap:anywhere;color:#505f64}.morning-expense-operation{display:flex;flex-direction:column;align-items:start;gap:10px;padding:14px;border:1px solid #c9dcdf;border-radius:8px;background:#f1f8f8}.morning-expense-operation span{font-size:13px}
-.morning-expense-drop{padding:18px;border:2px dashed #a6b9bf;border-radius:10px;background:#f8fafb}.morning-expense-drop input{max-width:100%;font:inherit}.morning-expense-source>img{display:block;width:100%;height:auto;max-height:620px;object-fit:contain}.morning-expense-source>iframe{width:100%;height:620px;border:1px solid #d7dfe2;border-radius:8px}.morning-expense-source>b{overflow-wrap:anywhere}
-@media(max-width:800px){.morning-expense-workspace{grid-template-columns:minmax(0,1fr)}.morning-expense-content{padding:0 12px 16px}.morning-expense-source>iframe{height:420px}.morning-expense-amounts{grid-template-columns:minmax(0,1fr)}.morning-expense-invoice{grid-template-columns:minmax(0,1fr)}}
+.morning-expense-drop{padding:24px 16px;border:2px dashed #a6b9bf;border-radius:12px;background:#fbfdfe;align-items:center;justify-content:center;text-align:center;cursor:pointer;overflow-wrap:anywhere}
+.morning-expense-source-empty .morning-expense-drop{min-height:clamp(300px,48dvh,560px)}
+.morning-expense-drop:focus-within{outline:2px solid #357d9b;outline-offset:3px;background:#edf7fa}
+.morning-expense-drop-hint{font-size:13px;font-weight:400;line-height:1.6;color:#526b75}
+.morning-expense-drop input{max-width:100%;min-width:0;font:inherit;font-size:13px;cursor:pointer}
+.morning-expense-drop input::file-selector-button{min-height:42px;margin:8px;padding:8px 16px;border:1px solid #bad0da;border-radius:8px;background:#e8f1f5;color:#214f60;font:inherit;cursor:pointer}
+.morning-expense-source>img{display:block;width:100%;height:auto;max-height:620px;object-fit:contain}.morning-expense-source>iframe{width:100%;height:620px;border:1px solid #d7dfe2;border-radius:8px}.morning-expense-source>b{overflow-wrap:anywhere}
+@media(max-width:800px){.morning-expense-workspace{grid-template-columns:minmax(0,1fr);gap:16px}.morning-expense-fields,.morning-expense-source{padding:14px}.morning-expense-source-empty .morning-expense-drop{min-height:220px}.morning-expense-content{padding:0 12px 16px}.morning-expense-source>iframe{height:420px}.morning-expense-amounts{grid-template-columns:minmax(0,1fr)}.morning-expense-invoice{grid-template-columns:minmax(0,1fr)}}
 .morning-expense-date{display:flex;flex-direction:column;gap:7px;font-size:14px;font-weight:600}
 .morning-expense-date fieldset{border:0;padding:0;margin:0;min-width:0}
 .morning-expense-supplier{position:relative;min-width:0}
@@ -21,7 +29,7 @@
 .morning-expense-supplier-option:disabled{opacity:.6;cursor:default}
 .morning-expense-supplier-option[aria-selected=true]{font-weight:700}
 .morning-expense-queue{display:flex;flex-direction:column;gap:8px;margin:0;padding-inline-start:20px}.morning-expense-queue li{display:flex;gap:8px;align-items:center;min-width:0}.morning-expense-queue li>.btn:first-child{flex:1;min-width:0;overflow-wrap:anywhere;text-align:start}.morning-expense-queue [aria-pressed=true]{border:2px solid #357d9b;background:#edf7fa}
-.morning-expense-drop.compact{padding:8px;border-width:1px;font-size:12px}
+.morning-expense-drop.compact{padding:10px;border-width:1px;font-size:12px}
 .morning-expense-source{position:sticky;top:12px;align-self:start;gap:8px}
 .morning-expense-pdf-navigation,.morning-expense-match-navigation{margin:6px 0;gap:6px;font-size:13px}
 .morning-expense-match-navigation{justify-content:space-between;padding:6px;background:#fff7d6;border-radius:7px}
