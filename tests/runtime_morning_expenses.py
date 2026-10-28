@@ -22,7 +22,7 @@ FLOW = r"""(async()=>{
  const expense={id:id(3),kind:'expense',status:10,supplierId:id(2),name:supplier.name,number:'HISTORY-1',grossCents:11800,reportingDate:'2026-10-01',sourceDocumentDate:'2026-10-20',createdAt:'2026-10-26T10:00:00.000Z',pcnClassification:'T',classification:{id:id(4),title:'ציוד משרד',vat:100,income:100}};
  let catalogExpense=expense,directoryHidden=false,uploadEnabled=true,statusUnavailable=false,serverFileState='not_started';const confirmations=[];
  let historyItems=[expense],historyUnavailable=false,searchItems=null,today='2026-10-26',calendarTesting=false;
- const accountRecent=[expense];
+ let recentHold=null; const accountRecent=[expense];
  const paged=items=>({ok:true,version:1,environment,page:0,pageSize:50,total:items.length,pages:items.length?1:0,items});
  const respond=async(action,body,assertCurrent)=>{
   assertCurrent();requests.push({action,body});if(held&&action==='suppliers')await held;
@@ -32,7 +32,7 @@ FLOW = r"""(async()=>{
   if(action==='suppliers')return paged(body.name==='missing'||directoryHidden?[]:[supplier]);
   if(action==='expenses'){
    if(calendarTesting)return paged([]);
-   if(body.fromDate===undefined&&body.toDate===undefined){const items=searchItems||accountRecent;return {...paged(items.slice(body.page*50,body.page*50+50)),page:body.page,total:items.length,pages:Math.ceil(items.length/50)};}
+   if(body.fromDate===undefined&&body.toDate===undefined){if(recentHold)await recentHold;assertCurrent();const items=searchItems||accountRecent;return {...paged(items.slice(body.page*50,body.page*50+50)),page:body.page,total:items.length,pages:Math.ceil(items.length/50)};}
    if(body.fromDate==='2026-09-01'&&body.toDate==='2026-10-01'){
     if(historyUnavailable)throw Error('history unavailable');
     return {...paged(historyItems.slice(body.page*50,body.page*50+50)),page:body.page,total:historyItems.length,pages:Math.ceil(historyItems.length/50)};
@@ -80,6 +80,19 @@ FLOW = r"""(async()=>{
  check(fixture.querySelector('[data-expense-history]').textContent.includes('HISTORY-1'),'history did not load automatically');
  check(!fixture.querySelector('[data-expense-command="next"]'),'new intake offers a redundant reset button');
  historyItems=Array.from({length:55},(_,index)=>({...expense,id:id(100+index),number:'HISTORY-'+index,sourceDocumentDate:index===54?'2026-10-26':'2026-08-01'}));
+ check(requests.every(({action,body})=>action!=='expenses'||body.fromDate!==undefined),'opening scanned the entire account');
+ // Recent loading is independent of form editing, completes all 278 rows
+ // from one click, and never replaces the focused form control.
+ accountRecent.splice(0,accountRecent.length,...Array.from({length:278},(_,n)=>({...expense,id:id(1000+n),number:'RECENT-'+n,createdAt:new Date(1700000000000+n*1000).toISOString()})));
+ let releaseRecent;recentHold=new Promise(resolve=>releaseRecent=resolve);
+ const recentInput=field('number','during recent');recentInput.focus();click('recent-refresh');
+ check(!recentInput.disabled&&recentInput.isConnected,'recent loading locked the form');
+ field('number','edited during recent');check(fixture.querySelector('[data-expense-command="recent-cancel"]'),'recent cancellation missing');
+ check(!fixture.querySelector('[data-expense-recent-id]'),'partial recent rows were published');
+ releaseRecent();recentHold=null;await settle();
+ check(document.activeElement===recentInput&&recentInput.value==='edited during recent','recent progress lost focus or edits');
+ check(fixture.querySelector('[data-expense-recent-id="'+id(1277)+'"]'),'one click did not finish 278 expenses');
+ accountRecent.splice(0,accountRecent.length,expense);
  const editing=field('number','preserved');editing.focus();
  await uiFeature.actions['morning-expense-command']({dataset:{expenseCommand:'history-refresh'}});await settle();
  check(editing.isConnected&&document.activeElement===editing&&editing.value==='preserved','history refresh replaced or blurred the intake');
@@ -91,7 +104,6 @@ FLOW = r"""(async()=>{
  await scrollToCount(40);await scrollToCount(55);await scrollToCount(56);
  check(historyRows().at(-1).textContent.includes('OLD-PERIOD'),'history did not load the previous reporting period');
  check(fixture.querySelectorAll('.morning-expense-history-period h3').length===2,'history failed to separate reporting periods');
- check(requests.every(({action,body})=>action!=='expenses'||body.fromDate!==undefined),'opening scanned the entire account');
  searchItems=Array.from({length:251},(_,index)=>({...expense,id:id(1000+index),number:index===249?'OLDSEARCH':'SEARCH-'+index,name:index===250?'ת.ב.י הוצאות':'אחר',
    description:'כיסאות',grossCents:123450,vatCents:18831,reportingDate:index===249?'2025-12-01':'2026-10-01',sourceDocumentDate:index===250?'2026-09-15':index===249?'2025-08-05':'2026-08-01'}));
  for(const term of ['15-9-26','15-09-26','15/09/26','15.09.2026','תבי 1,234.50','SEARCH-250','OLDSEARCH']){

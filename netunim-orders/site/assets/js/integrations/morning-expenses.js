@@ -9,7 +9,7 @@ export function createExpenseRequest({supaFetch}) {
       check();
       const data = await response.json(); check();
       if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('תשובת שירות ההוצאות אינה תקינה.');
-      if (!response.ok || data.ok !== true) throw Object.assign(new Error(data.message || 'לא ניתן להשלים את הפעולה ב־Morning.'), {code:data.code, details:data});
+      if (!response.ok || data.ok !== true) throw Object.assign(new Error(data.message || 'לא ניתן להשלים את הפעולה ב־Morning.'), {code:data.code, status:response.status, details:data});
       return data;
     } catch (error) { check(); throw error; }
   };
