@@ -100,3 +100,12 @@ test('shared summary rules cover each deployed layout with synthetic identities 
   assert.equal(result.fields.net.value,100000,actual.id);assert.equal(result.fields.vat.value,15000,actual.id);assert.equal(result.fields.gross.value,115000,actual.id);
  }
 });
+
+test('no text and scan captions are distinct from useful text with an unknown supplier and partial recognition',async()=>{
+ for(const rows of [[],[['Scanned page cover - confidential',30,30]],[['Page 1 of 1',30,30]]]){
+  const result=await recognize([page(rows)]);assert.equal(result.outcome,'no_usable_text');assert.equal(result.profile,null);
+ }
+ const unknown=await recognize([page([['Invoice 000123 unknown supplier',30,30]])]);assert.equal(unknown.outcome,'unknown_supplier');
+ const partial=await recognize([page(header())]);assert.equal(partial.outcome,'partial_recognition');
+ const full=await recognize([page([...header(),...totals()])]);assert.equal(full.outcome,'recognized');
+});

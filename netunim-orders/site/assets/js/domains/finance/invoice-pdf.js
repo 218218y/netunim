@@ -5,7 +5,7 @@ export const INVOICE_PDF_LIMITS=Object.freeze({bytes:20*1024*1024,pages:60,items
 export const invoicePdfOptions=data=>({data,isEvalSupported:false,enableXfa:false,disableFontFace:true,useSystemFonts:false,stopAtErrors:true,verbosity:0,
   cMapUrl:pdfRuntimeUrl(PDF_CORE_RUNTIME.cmaps),cMapPacked:true,standardFontDataUrl:pdfRuntimeUrl(PDF_CORE_RUNTIME.standardFonts),
   iccUrl:pdfRuntimeUrl(PDF_CORE_RUNTIME.iccs),wasmUrl:pdfRuntimeUrl(PDF_CORE_RUNTIME.wasm)});
-export async function extractInvoicePdf(file,{signal,check=()=>{},load=loadPdfCore,timeoutMs=20000}={}){
+export async function extractInvoicePdf(file,{signal,check=()=>{},progress=()=>{},load=loadPdfCore,timeoutMs=20000}={}){
   if(!(file instanceof Blob)||file.size<=0||file.size>INVOICE_PDF_LIMITS.bytes)throw new Error('invoice_pdf_size');
   const controller=new AbortController();let task=null,destroyed=null;
   const destroy=()=>destroyed||=(task?Promise.resolve().then(()=>task.destroy()).catch(()=>{}):Promise.resolve());
@@ -35,6 +35,7 @@ export async function extractInvoicePdf(file,{signal,check=()=>{},load=loadPdfCo
         if(items>INVOICE_PDF_LIMITS.items||characters>INVOICE_PDF_LIMITS.characters)throw new Error('invoice_pdf_text_limit');
         pages.push(invoicePageGeometry(page,text));
       }finally{page.cleanup();}
+      progress(n,doc.numPages);assertCurrent();
       // Yield between pages without creating a background extraction queue.
       await bounded(new Promise(resolve=>setTimeout(resolve,0)));assertCurrent();
     }

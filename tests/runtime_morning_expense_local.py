@@ -108,6 +108,43 @@ OWNERSHIP = PREFIX + r"""
  return {cancelled:true,isolated:true,nativePdf:true,disposed:true,posts,uploads};
 })()"""
 
+REVIEW = PREFIX + r"""
+ const settle=()=>uiFeature.runtime.drain();click('toggle');await settle();
+ const choose=async(file)=>{await uiFeature.actions['morning-expense-files']({files:[file]});await settle()};
+ const field=(name,value,type='input')=>{const input=fixture.querySelector('[data-expense-field="'+name+'"]');input.value=value;input.dispatchEvent(new Event(type,{bubbles:true}));return input};
+ const value=name=>fixture.querySelector('[data-expense-field="'+name+'"]').value;
+ const status=name=>fixture.querySelector('[data-expense-review-field="'+name+'"]').dataset.reviewStatus;
+ await choose(new File(['%PDF-1.4 review states'],'review.pdf',{type:'application/pdf'}));
+ for(const name of ['supplierId','documentType','number','date','net','vat','gross','allocationNumber']){
+  check(status(name)==='verified','recognized badge missing on '+name);
+  const input=name==='supplierId'?fixture.querySelector('[data-expense-field="supplierQuery"]'):name==='date'?fixture.querySelector('[data-date-part="day"]'):fixture.querySelector('[data-expense-field="'+name+'"]');
+  check(input.getAttribute('aria-describedby')==='expense-review-'+name,'review is not accessible on '+name);
+ }
+ const edited=field('number','MANUAL-0009');edited.focus();click('local-start');await settle();
+ check(value('number')==='MANUAL-0009'&&status('number')==='manual'&&document.activeElement.dataset.expenseField==='number','re-recognition lost manual provenance or focus');
+ field('net','1200.00');check(status('net')==='manual'&&status('vat')==='review'&&status('gross')==='review','dependent amount provenance missing');
+ const beforeConfirm=confirms;confirmWait={then:resolve=>resolve(confirms===beforeConfirm+1)};click('save');await settle();check(posts===0&&confirmations.at(-1).includes('הושלם ידנית'),'final confirmation missed manual provenance: '+confirmations.at(-1));confirmWait=null;
+ field('number','');check(status('number')==='missing','cleared manual field still shown as completed');
+ field('number','MANUAL-0010');
+ const original=structuredClone(recognized);
+ for(const outcome of ['no_usable_text','unknown_supplier']){
+  recognized.profile=null;recognized.outcome=outcome;for(const field of Object.values(recognized.fields)){field.value=null;field.status='missing';}
+  click('local-start');await settle();
+  const local=fixture.querySelector('[data-expense-local]');check(local.dataset.recognitionOutcome===outcome,'recognition result is not distinct');
+  check(!local.textContent.includes('הנתונים מולאו')&&value('number')==='MANUAL-0010','empty recognition overwrote manual intake or reported success');
+  check(!fixture.querySelector('[data-action="morning-expense-save"]').disabled,'manual saving blocked by no-text PDF');
+ }
+ Object.assign(recognized,original);ports.files.extract=async()=>{throw Error('private parser fault')};click('local-start');await settle();
+ check(fixture.querySelector('[data-recognition-outcome="extraction_error"]')&&!fixture.textContent.includes('private parser fault'),'technical PDF error leaked details or lost its classification');
+ field('supplierId','other-supplier','change');check(status('number')==='manual'&&status('documentType')==='review','supplier change retained old recognition confidence');
+ click('review-next');check(document.activeElement&&document.activeElement!==document.body,'review navigation did not focus a field');
+ await uiFeature.actions['morning-expense-command']({dataset:{expenseCommand:'remove-file',expenseIndex:'0'}});await settle();
+ const png=Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZQAAAABJRU5ErkJggg=='),c=>c.charCodeAt(0));
+ await choose(new File([png],'source.png',{type:'image/png'}));check(fixture.textContent.includes('אין זיהוי טקסט מקומי לקובצי JPG או PNG'),'image manual-entry notice missing');
+ uiFeature.runtime.dispose();await settle();check(posts===0&&uploads===0,'review acceptance performed an external write');
+ return {badges:true,accessible:true,noText:true,unknown:true,technicalError:true,manualPreserved:true,images:true,posts,uploads,width:innerWidth};
+})()"""
+
 if __name__ == '__main__':
     with BrowserSession(ROOT/'netunim-orders/site', 'morning-expense-local') as browser:
         for width in [1440, 390]:
@@ -115,6 +152,9 @@ if __name__ == '__main__':
             result = browser.evaluate(SCENARIO, timeout=45)
             assert result['posts'] == 1 and result['uploads'] == 2, result
             print('PASS local invoice review, canonical fields, exact VAT, duplicate protection and OCR separation:', result, flush=True)
+        for width in [1440,390]:
+            browser.call('Emulation.setDeviceMetricsOverride', {'width':width,'height':1100,'deviceScaleFactor':1,'mobile':width<800})
+            print('PASS recognition field states and manual fallback:', browser.evaluate(REVIEW,timeout=45),flush=True)
         result = browser.evaluate(OWNERSHIP, timeout=45)
         assert result['posts'] == 0 and result['uploads'] == 0, result
         print('PASS local extraction cancellation, account ownership, native PDF fallback and disposal:', result, flush=True)

@@ -56,3 +56,11 @@
 .morning-expense-table,.morning-expense-table tbody{display:block}.morning-expense-table thead{display:none}.morning-expense-table tbody>tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border:1px solid #e3ebef;border-radius:10px;margin:10px 0;overflow:hidden}
 .morning-expense-table td,.morning-expense-table th{display:block;width:auto!important;padding:10px;text-align:right!important;white-space:normal!important;border:0}.morning-expense-table td:before{content:attr(data-label);display:block;font-size:11px;color:#687d85;margin-bottom:5px}.morning-expense-table tr:not(.morning-expense-period-heading)>td:nth-child(3),.morning-expense-table tr:not(.morning-expense-period-heading)>td:nth-child(4),.morning-expense-table tr:not(.morning-expense-period-heading)>td:nth-child(5){grid-column:1/-1}
 .morning-expense-table .morning-expense-period-heading>th{grid-column:1/-1}.morning-expense-table .morning-expense-period-heading>th,.morning-expense-table .morning-expense-period-heading>td{border-top:0;font-size:15px}.morning-expense-description>span{white-space:normal}.morning-expense-period-heading h3{font-size:17px}}
+
+.morning-expense-field-review{display:block;font-size:.8rem;line-height:1.5;padding:.35rem .5rem;border-inline-start:3px solid #b45309;background:#fff7ed;color:#713f12;margin-block:.25rem;overflow-wrap:anywhere}
+.morning-expense-field-review[hidden]{display:none}
+.morning-expense-field-review[data-review-status="verified"]{border-color:#15803d;background:#f0fdf4;color:#14532d}
+.morning-expense-field-review[data-review-status="manual"]{border-color:#2563eb;background:#eff6ff;color:#1e3a8a}
+.morning-expense-field-review[data-review-status="missing"]{border-color:#be123c;background:#fff1f2;color:#881337}
+.morning-expense-field-review .btn{font-size:inherit;white-space:normal;padding:.15rem .4rem}
+[data-recognition-status="review"],[data-recognition-status="missing"]{border-color:#b45309}

@@ -17,6 +17,7 @@ SCENARIO = PREFIX + r"""
  const second=Object.fromEntries(['number','date','reportingPeriod','reportingDate','net','vat','gross'].map(name=>[name,value(name)]));
  await command('choose-file',1);await settle();
  for(const [name,expected]of Object.entries(first))check(value(name)===expected,'first draft lost '+name);
+ check(fixture.querySelector('[data-expense-review-field="number"]').dataset.reviewStatus==='manual','manual provenance lost on draft restoration');
  check(value('reportingPeriod')==='2026-09'&&value('reportingDate')==='2026-10-01','switching files replaced the last manual reporting choice with a draft-specific period');
  check(extractions===2,'returning to an unchanged source unnecessarily re-extracted or overwrote it');
  click('load');await settle();check(value('number')==='A-0007'&&value('vat')==='167.03','catalog refresh overwrote edited fields');
