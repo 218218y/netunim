@@ -203,6 +203,10 @@
     {
       "version": "20261027150000",
       "name": "morning_expense_source_intent"
+    },
+    {
+      "version": "20261028180000",
+      "name": "morning_expense_recent_index"
     }
   ]
 }
