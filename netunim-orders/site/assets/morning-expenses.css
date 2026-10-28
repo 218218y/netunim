@@ -68,3 +68,7 @@
 .morning-expense-review-input{min-width:0}
 
 .morning-expense-queue-panel h3{font-size:13px;margin:6px 0 10px}
+.morning-expense-history-filters{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:16px}
+.morning-expense-history-filters label{display:flex;flex:1 1 220px;flex-direction:column;gap:7px;font-size:14px;font-weight:600;min-width:0}
+.morning-expense-history-filters select{box-sizing:border-box;width:100%;padding:10px;border:1px solid #bfc6c9;border-radius:7px;background:#fff;font:inherit;color:inherit}
+.morning-expense-history-filters select:focus{outline:2px solid #357d9b;outline-offset:2px}

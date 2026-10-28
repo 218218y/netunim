@@ -119,6 +119,15 @@ FLOW = r"""(async()=>{
   check(editing.isConnected&&editing.value==='preserved'&&posts===0&&confirms===0,'search changed the intake or dispatched a financial action');
  }
  click('history-search-clear');check(historyRows().length===56,'clearing search lost the browsed history');searchItems=null;
+ const chooseHistory=async(kind,value)=>{const input=fixture.querySelector('[data-expense-history-filter="'+kind+'"]');input.value=value;input.focus();input.dispatchEvent(new Event('change',{bubbles:true}));await settle();};
+ const intakePeriod=fixture.querySelector('[data-expense-field="reportingPeriod"]').value;
+ await chooseHistory('year','2026');await chooseHistory('period','2026-07');
+ check(historyRows().length===1&&historyRows()[0].textContent.includes('OLD-PERIOD'),'direct bimonth navigation missed reporting period');
+ check(document.activeElement?.dataset.expenseHistoryFilter==='period','history filter lost keyboard focus');
+ const beforePeriodRefresh=requests.length;click('history-refresh');await settle();
+ check(requests.slice(beforePeriodRefresh).filter(row=>row.action==='expenses').every(row=>row.body.fromDate==='2026-07-01'&&row.body.toDate==='2026-08-01'),'refresh escaped the selected period');
+ check(fixture.querySelector('[data-expense-field="reportingPeriod"]').value===intakePeriod&&editing.isConnected&&editing.value==='preserved','history filters changed the intake draft');
+ await chooseHistory('year','');check(historyRows()[0].textContent.includes('HISTORY-54'),'clearing year did not restore newest-first browsing');
  const explicitSearchReads=requests.filter(({action,body})=>action==='expenses'&&body.fromDate===undefined).length;
  historyUnavailable=true;click('history-refresh');await settle();check(fixture.querySelector('[data-expense-history]').textContent.includes('לא ניתן להשלים')&&fixture.querySelector('[data-expense-field="number"]').value==='preserved','history error erased intake data');
  historyUnavailable=false;historyItems=[expense];click('history-refresh');await settle();

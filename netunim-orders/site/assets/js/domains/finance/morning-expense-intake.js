@@ -619,6 +619,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     'morning-expense-write':element => Object.hasOwn(writes, element.dataset.expenseCommand) ? writes[element.dataset.expenseCommand]() : false,
     'morning-expense-field':(element, event) => element.hasAttribute('data-expense-picker') ? supplierPicker.handle(element, event) : setField(element),
     'morning-expense-history-query':element => history.setQuery(element.value),
+    'morning-expense-history-filter':element => history.chooseFilter(element),
     'morning-expense-history-search-enter':(_, event) => {event.stopPropagation(); if (event.key === 'Enter' && !event.isComposing) {event.preventDefault(); return history.search();} return false;},
     'morning-expense-save':save,
     'morning-expense-upload':upload,

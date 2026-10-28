@@ -45,10 +45,13 @@ export function newExpenseSearchScan() {return {next:0, pages:1, total:null, ite
 
 // The provider has no combined supplier/text/amount/source-date search. Read
 // canonical account pages, with an explicit bounded continuation for large accounts.
-export async function readExpenseSearch(request, capabilities, query, check, {signal, scan = newExpenseSearchScan()} = {}) {
+export async function readExpenseSearch(request, capabilities, query, check, {signal, scan = newExpenseSearchScan(), filter = {}} = {}) {
   const matches = expenseSearchMatcher(query);
   for (let count = 0; count < 4 && scan.next < scan.pages; count++) {
-    const value = await readExpenseCatalogPage(request, capabilities, 'expenses', {}, scan.next, check, {signal});
+    const value = await readExpenseCatalogPage(request, capabilities, 'expenses', filter, scan.next, check, {signal});
+    if (filter.fromDate && value.items.some(row => !validReportDate(row.reportingDate) || row.reportingDate < filter.fromDate || row.reportingDate > filter.toDate)) {
+      throw new Error('תוצאות החיפוש אינן שייכות לטווח הדיווח שנבחר. יש לרענן.');
+    }
     if (scan.total !== null && scan.total !== value.total || value.items.some(row => scan.seen.has(row.id))) {
       throw new Error('רשימת ההוצאות השתנתה בזמן החיפוש. יש להתחיל את החיפוש מחדש.');
     }

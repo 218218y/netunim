@@ -34,22 +34,47 @@ export async function readExpenseHistoryPeriod(request, capabilities, period, ch
 export function createExpenseHistory({request, capabilities, capture, run, todayISO}) {
   let groups = [], visible = 0, next = '', busy = false, paused = false, message = '', revision = 0, controller = null, observer = null;
   let query = '', searched = '', scan = null, searchVisible = 20;
+  let year = '', periodKey = '';
+  const lowerBound = () => periodKey ? periodKey + '-01' : year ? year + '-01-01' : '2010-01-01';
+  const withinRange = () => !!next && next >= lowerBound();
+  function searchFilter() {
+    if (periodKey) {const period = expenseBimonth(periodKey + '-01'); return {fromDate:period.months[0],toDate:period.months[1]};}
+    return year ? {fromDate:year + '-01-01',toDate:year + (year === todayISO().slice(0,4) ? todayISO().slice(4,7) : '-12') + '-01'} : {};
+  }
+  function resetBrowse() {
+    groups = []; visible = 0; paused = false;
+    next = periodKey ? periodKey + '-01' : year && year !== todayISO().slice(0,4) ? year + '-11-01' : expenseBimonth(todayISO()).months[0];
+  }
   const host = () => document.querySelector('[data-expense-history]');
   function render() {
     const target = host(); if (!target) return;
     const scroller = target.closest('.view-scroll'), top = scroller?.scrollTop;
     const input = target.querySelector('[data-input="morning-expense-history-query"]');
     const focused = input && document.activeElement === input, selection = focused ? [input.selectionStart, input.selectionEnd] : null;
+    const focusedFilter = target.contains(document.activeElement) ? document.activeElement.dataset.expenseHistoryFilter : '';
     target.outerHTML = markup();
     if (focused) {
       const replacement = host()?.querySelector('[data-input="morning-expense-history-query"]');
       replacement?.focus({preventScroll:true}); replacement?.setSelectionRange(...selection);
     }
+    if (focusedFilter) host()?.querySelector(`[data-expense-history-filter="${focusedFilter}"]`)?.focus({preventScroll:true});
     if (scroller && Number.isFinite(top)) scroller.scrollTop = top;
     bind();
   }
   function cancelRead() {revision++; controller?.abort(); observer?.disconnect(); observer = null; controller = null; busy = false; message = '';}
-  function reset() {cancelRead(); groups = []; visible = 0; next = expenseBimonth(todayISO()).months[0]; paused = false; query = ''; searched = ''; scan = null; searchVisible = 20;}
+  function reset() {cancelRead(); year = ''; periodKey = ''; resetBrowse(); query = ''; searched = ''; scan = null; searchVisible = 20;}
+  function chooseFilter(element) {
+    const kind = element.dataset.expenseHistoryFilter, value = element.value;
+    if (kind === 'year') {
+      if (value !== '' && (!/^\d{4}$/.test(value) || value < '2010' || value > todayISO().slice(0,4))) return false;
+      year = value; periodKey = '';
+    } else if (kind === 'period') {
+      if (value !== '' && (!year || !/^\d{4}-(01|03|05|07|09|11)$/.test(value) || value.slice(0,4) !== year || value + '-01' > todayISO())) return false;
+      periodKey = value;
+    } else return false;
+    cancelRead(); resetBrowse(); scan = null;
+    return searched ? search() : more();
+  }
   function bind() {
     observer?.disconnect(); observer = null;
     const sentinel = host()?.querySelector('[data-expense-history-more]');
@@ -64,7 +89,7 @@ export function createExpenseHistory({request, capabilities, capture, run, today
     if (busy || !capabilities()) return false;
     const loaded = groups.reduce((sum, group) => sum + group.items.length, 0);
     if (visible < loaded) {visible = Math.min(loaded, visible + 20); render(); return true;}
-    if (!next || next < '2010-01-01') return false;
+    if (!withinRange()) return false;
     let assertCurrent;
     try {assertCurrent = capture();} catch (error) {message = error.message; render(); return false;}
     const epoch = revision;
@@ -75,7 +100,7 @@ export function createExpenseHistory({request, capabilities, capture, run, today
       try {
         // Skip up to a year of empty periods per click, then allow continuation.
         const before = groups.length;
-        for (let count = 0; count < 6 && next >= '2010-01-01'; count++) {
+        for (let count = 0; count < 6 && withinRange(); count++) {
           const period = expenseBimonth(next);
           const items = await readExpenseHistoryPeriod(request, capabilities(), period, check, {signal});
           check(); if (epoch !== revision) return false;
@@ -85,7 +110,7 @@ export function createExpenseHistory({request, capabilities, capture, run, today
         }
         // An empty viewport keeps an IntersectionObserver intersecting. Pause
         // explicitly after one empty year instead of scanning back to 2010.
-        paused = groups.length === before;
+        paused = groups.length === before && withinRange();
       } catch (error) {if (epoch === revision && error.name !== 'AbortError') message = 'לא ניתן להשלים את קריאת ההוצאות. ' + error.message;}
       finally {if (epoch === revision) {busy = false; controller = null; render();}}
     });
@@ -109,7 +134,7 @@ export function createExpenseHistory({request, capabilities, capture, run, today
     busy = true; message = ''; render();
     return run(async () => {
       try {
-        await readExpenseSearch(request, capabilities(), term, check, {signal, scan:currentScan}); check();
+        await readExpenseSearch(request, capabilities(), term, check, {signal, scan:currentScan, filter:searchFilter()}); check();
       } catch (error) {
         if (epoch === revision && error.name !== 'AbortError') {
           scan = null; message = 'לא ניתן להשלים את החיפוש. ' + error.message;
@@ -117,7 +142,7 @@ export function createExpenseHistory({request, capabilities, capture, run, today
       } finally {if (epoch === revision) {busy = false; controller = null; render();}}
     });
   }
-  function refresh() {if (searched) {query = searched; return search();} reset(); return more();}
+  function refresh() {if (searched) {query = searched; return search();} cancelRead(); resetBrowse(); return more();}
   function markup() {
     let remaining = searched ? searchVisible : visible;
     let displayedGroups = groups;
@@ -140,14 +165,14 @@ export function createExpenseHistory({request, capabilities, capture, run, today
         <td data-label="סה״כ מע״מ"><bdi>${esc(expenseMoney(totals.vatCents))}</bdi></td></tr>
         ${rows.map(row => expenseTableRow(row)).join('')}</tbody>` : '';
     }).join('');
-    const loaded = groups.reduce((sum, group) => sum + group.items.length, 0), hasMore = visible < loaded || next >= '2010-01-01';
+    const loaded = groups.reduce((sum, group) => sum + group.items.length, 0), hasMore = visible < loaded || withinRange();
     const complete = scan && scan.next >= scan.pages;
     const button = (command, label) => `<button type="button" class="btn" data-action="morning-expense-command" data-expense-command="${command}">${label}</button>`;
     let navigation = '', empty = '';
     if (!busy) {
       if (searched) {
         if (scan && searchVisible < scan.items.length) navigation = button('history-search-more', 'הצגת תוצאות נוספות');
-        else if (scan && !complete) navigation = button('history-search-more', 'המשך חיפוש בכל החשבון');
+        else if (scan && !complete) navigation = button('history-search-more', year ? 'המשך חיפוש בטווח שנבחר' : 'המשך חיפוש בכל החשבון');
         if (!message && complete) empty = '<p>לא נמצאו הוצאות התואמות לחיפוש.</p>';
       } else {
         if (message) navigation = button('history-more', 'ניסיון נוסף');
@@ -155,7 +180,13 @@ export function createExpenseHistory({request, capabilities, capture, run, today
         if (!message) empty = '<p>לא נמצאו הוצאות בתקופות שנבדקו.</p>';
       }
     }
+    const option = (value, label, selected) => `<option value="${value}" ${value === selected ? 'selected' : ''}>${esc(label)}</option>`;
+    const years = Array.from({length:Number(todayISO().slice(0,4))-2009},(_,index) => String(Number(todayISO().slice(0,4))-index));
+    const periods = year ? [11,9,7,5,3,1].map(month => expenseBimonth(`${year}-${String(month).padStart(2,'0')}-01`)).filter(period => period.fromDate <= todayISO()) : [];
     return `<section class="morning-expense-history" data-expense-history aria-label="הוצאות לפי תקופות דיווח">
+      <div class="morning-expense-history-filters" role="group" aria-label="בחירת תקופות להצגת הוצאות">
+      <label>שנת דיווח<select data-expense-history-filter="year" data-change="morning-expense-history-filter">${option('','כל השנים · מהחדש לישן',year)}${years.map(value => option(value,value,year)).join('')}</select></label>
+      <label>תקופת דיווח דו־חודשית<select data-expense-history-filter="period" data-change="morning-expense-history-filter" ${year ? '' : 'disabled'}>${option('','כל התקופות בשנה',periodKey)}${periods.map(period => option(period.key,period.label,periodKey)).join('')}</select></label></div>
       <div class="morning-expense-history-search" role="search" aria-label="חיפוש בהוצאות Morning">
       <label>חיפוש הוצאה<input type="search" maxlength="250" value="${esc(query)}" placeholder="ספק, מספר חשבונית, תיאור, סיווג, סכום או תאריך"
         data-input="morning-expense-history-query" data-keydown="morning-expense-history-search-enter"></label>
@@ -164,11 +195,11 @@ export function createExpenseHistory({request, capabilities, capture, run, today
       <div class="morning-expense-history-heading"><h2>הוצאות לפי תקופות דיווח</h2>
       <button type="button" class="btn" data-action="morning-expense-command" data-expense-command="history-refresh" ${busy ? 'disabled' : ''}>רענון רשימה</button></div>
       <p>בכל תקופה תאריך החשבונית מהחדש לישן · ${searched ? 'הסיכומים כוללים רק את תוצאות החיפוש שנמצאו' : 'הסיכומים כוללים את כל הוצאות התקופה'}</p>
-      ${searched ? `<p role="status">חיפוש: ${esc(searched)} · ${scan ? `${scan.items.length} תוצאות · נבדקו ${scan.seen.size} מתוך ${scan.total ?? '…'} הוצאות${complete ? ' · החיפוש הושלם בכל החשבון' : ' · החיפוש עדיין חלקי'}` : 'החיפוש לא הושלם'}</p>` : ''}
+      ${searched ? `<p role="status">חיפוש: ${esc(searched)} · ${scan ? `${scan.items.length} תוצאות · נבדקו ${scan.seen.size} מתוך ${scan.total ?? '…'} הוצאות${complete ? (year ? ' · החיפוש הושלם בטווח שנבחר' : ' · החיפוש הושלם בכל החשבון') : ' · החיפוש עדיין חלקי'}` : 'החיפוש לא הושלם'}</p>` : ''}
       ${shown ? `<table class="morning-expense-table" aria-label="הוצאות Morning לפי תקופות דיווח">${expenseTableHead()}${shown}</table>` : empty}
       <p role="status" aria-live="polite">${esc(busy ? 'טוען הוצאות מ־Morning…' : message)}</p>
       ${navigation}</section>`;
   }
   reset();
-  return {markup, more, refresh, reset, bind, setQuery, search, searchMore, clearSearch};
+  return {markup, more, refresh, reset, bind, chooseFilter, setQuery, search, searchMore, clearSearch};
 }
