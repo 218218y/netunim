@@ -127,7 +127,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
   }
   function load() {
     const cachedLocal=local.snapshot();
-    local.reset();
+    local.reset(true);
     return run(async () => {
       const check = capture(), controller = new AbortController(); reading = controller;
       const loaded = await readExpenseCatalog(request, check, todayISO(), {signal:controller.signal}); check();
