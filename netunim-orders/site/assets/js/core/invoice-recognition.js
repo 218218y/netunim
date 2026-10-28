@@ -35,9 +35,9 @@ function unique(candidates,reason){
 function nearbyItems(cells,anchor,dy=3){return cells.filter(cell=>cell.page===anchor.page&&Math.abs(cell.lineY-anchor.lineY)<=dy).flatMap(cell=>cell.items);}
 function isPercent(item,nearby){return item.text.includes('%')||nearby.some(other=>other!==item&&other.text.includes('%')&&!/\d/.test(other.text)&&
   Math.min(Math.abs(other.x-item.x-item.width),Math.abs(item.x-other.x-other.width))<=Math.max(8,item.height*2));}
-function readMoney(cells,labels,{exclude=[],lastPageOnly=true}={}){
+function readMoney(cells,labels,{exclude=[],lastPageOnly=true,labelKeys=[]}={}){
   const maxPage=Math.max(...cells.map(cell=>cell.page));
-  for(const label of labels){
+  for(const label of [...labels,...labelKeys.map(key=>({test:value=>value===key}))]){
     const anchors=cells.filter(cell=>(!lastPageOnly||cell.page===maxPage)&&label.test(cell.key.replace(/\d/g,''))&&!exclude.some(label=>label.test(cell.key)));
     const candidates=[];
     for(const anchor of anchors){
@@ -140,7 +140,8 @@ export async function recognizeInvoice(extraction,{profiles=INVOICE_SUPPLIER_PRO
     const hash=await digest('supplier-tax:'+taxId);
     for(const profile of profiles){
       const footer=profile.issuerRegion==='footer';
-      const inRegion=footer?item.y>header.height*.8:item.y<header.height*.35&&(profile.layout==='sap'?item.x<200:item.y<recipientY);
+      const inRegion=footer?item.y>header.height*.8:item.y<header.height*.35&&
+        (profile.layout==='sap'||profile.issuerRegion==='left-column'?item.x<200:item.y<recipientY);
       const branded=profile.aliases.some(alias=>allKey.includes(invoiceLabelKey(alias)));
       const labeledFooter=footer&&cells.some(cell=>cell.page===1&&cell.items.includes(item)&&/עמ|עוסקמורשה/.test(cell.key))&&cells.some(cell=>cell.page===1&&cell.y<header.height*.1&&/^חשבונית(?:מס|זיכוי)מרכזת$/.test(cell.key));
       if(profile.issuerTaxHash===hash&&inRegion&&(branded||labeledFooter)&&!matched.some(row=>row.profile.id===profile.id))matched.push({profile,taxId,item});
@@ -159,8 +160,9 @@ export async function recognizeInvoice(extraction,{profiles=INVOICE_SUPPLIER_PRO
   let summary=null;
   for(const page of [...new Set(cells.map(cell=>cell.page))].sort((a,b)=>b-a)){
     const local=cells.filter(cell=>cell.page===page);
-    const vat=readMoney(local,[/^מעמ(?:\d|$)/,...(profile.layout==='hash'?[/^מע$/]:[])]),gross=readMoney(local,grossLabels);
-    if(vat.value!==null&&gross.value!==null){summary={net:profile.derivedNet?missing('net_requires_derivation'):readMoney(local,netLabels),vat,gross,page};break;}
+    const vat=readMoney(local,[/^מעמ(?:\d|$)/,...(profile.layout==='hash'?[/^מע$/]:[])],{labelKeys:profile.summaryLabelKeys?.vat}),
+      gross=readMoney(local,grossLabels,{labelKeys:profile.summaryLabelKeys?.gross});
+    if(vat.value!==null&&gross.value!==null){summary={net:profile.derivedNet?missing('net_requires_derivation'):readMoney(local,netLabels,{labelKeys:profile.summaryLabelKeys?.net}),vat,gross,page};break;}
   }
   const {net,vat,gross}=summary||{net:missing('summary'),vat:missing('summary'),gross:missing('summary')};
   output.summaryPage=summary?.page||null;

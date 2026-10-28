@@ -103,3 +103,15 @@ Empty proposals never fill the form. Re-recognition preserves manual changes; ex
 All eight core fields have adjacent textual status (`זוהה במסמך`, `דורש בדיקה`, `לא זוהה`, `הושלם ידנית`) with `aria-describedby`, a source jump when coordinates exist, and keyboard review navigation. Amount dependencies are marked calculated, not manually verified. One final confirmation includes current review warnings. Native date parts and supplier combobox are included. Field-status updates do not recreate the form while typing; general re-renders restore field focus/selection and scroll. Multi-page extraction reports progress; the existing lazy PDF.js core is reused.
 
 No database schema or financial write/attachment protocol changes are required.
+
+### March–April source audit (2026-10-28)
+
+The additional private folder contains 91 PDFs / 95 pages: 83 digital documents and eight image-only scans. The same native-browser PDF.js extractor processed all files without extraction errors (18,238 ms aggregate, including recognition). This was a diagnostic corpus: baseline failures were examined before template changes, so these results are not described as an untouched holdout.
+
+Yossi Tikshoret and Erotex add four digital sources. Both require the existing hashed issuer identity plus template/name evidence. Yossi places supplier and buyer in parallel columns; its issuer identity is constrained to the left column. Canonical read-only Morning records establish the existing classifications: Yossi uses `הוצאות דואר ותקשורת`; Erotex uses `קניות סחורה בארץ`. Classification remains account-specific and comes from canonical expense history, never a hardcoded category ID or financial write.
+
+Older Kualita PDFs contain overlapping Hebrew glyph runs, producing different search keys for net, VAT and gross labels. Profile-scoped exact label keys handle this encoding while retaining original text, item indices and source geometry. No global fuzzy text replacement is applied. A zero-valued document retains its printed zeroes and requires review under the existing financial validation. Two paired Cocktail invoices verify removing exactly `SI` before digits for that supplier; the raw string and leading zeroes remain intact.
+
+Authenticated, read-only Morning comparison paired 80 digital sources: type, date and gross agree in all 80; net and VAT agree in 74. Six sources differ by one cent from the historical entry, and printed VAT remains authoritative. One Roya record historically omits a leading zero; the source-derived proposal retains it. Three digital sources have no unique matching historical record in the queried reporting range. The scans include documents outside March–April, so folder membership is not treated as a document/reporting date. No expense, draft or attachment was created or changed.
+
+Sanitized measurements: [invoice-march-april-2026-10-28.json](acceptance/invoice-march-april-2026-10-28.json). All private evidence remains under ignored `.work/mar-apr/`.

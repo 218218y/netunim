@@ -25,7 +25,10 @@ export const INVOICE_SUPPLIER_PROFILES=Object.freeze([
     "aliases": [
       "קואליטה"
     ],
-    "layout": "morning"
+    "layout": "morning",
+    // Older issuer PDFs overlap Hebrew glyph runs in these summary labels.
+    // Match only these observed search keys; raw glyphs and source quads remain intact.
+    "summaryLabelKeys": {"net":["הסכ"],"vat":["עממ"],"gross":["הסכלתשלום","הסכהוחזר"]}
   },
   {
     "id": "freddy",
@@ -78,8 +81,8 @@ export const INVOICE_SUPPLIER_PROFILES=Object.freeze([
       "קוקטייל"
     ],
     "layout": "priority",
-    "verifiedNumberPrefixes": ["CR"],
-    "normalizationEvidence": "user-confirmed-source-number-2026-10-27"
+    "verifiedNumberPrefixes": ["CR","SI"],
+    "normalizationEvidence": "CR:user-confirmed-2026-10-27;SI:paired-reported-pdf-2026-03-04"
   },
   {
     "id": "royal",
@@ -90,6 +93,22 @@ export const INVOICE_SUPPLIER_PROFILES=Object.freeze([
     ],
     "layout": "hash",
     "numberBelowTitle": true
+  },
+  {
+    "id": "yossi",
+    "title": "יוסי תקשורת",
+    "issuerTaxHash": "8e1f6815e3652f6656fdd2f51fdf6c1bf49b8464cf013fc17438a6b9d932ca55",
+    "aliases": ["יוסי תקשורת"],
+    "layout": "morning",
+    "issuerRegion": "left-column"
+  },
+  {
+    "id": "erotex",
+    "title": "ארוטקס",
+    "issuerTaxHash": "6fb541ebb8118621a267a166a2ea580a56da7bb83bf5084cbd459fd8764ca8af",
+    "aliases": ["ארוטקס"],
+    "layout": "hash",
+    "summaryLabelKeys": {"net":["סהכחייבבמעמ"],"gross":["סכוםלתשלום"]}
   },
   {
     "id": "gaber",
