@@ -40,6 +40,12 @@ test('explicit monetary fields override line sums; detached VAT rate percentages
  assert.equal(result.fields.net.value,100000);assert.equal(result.fields.vat.value,15000);assert.equal(result.fields.gross.value,115000);
  assert.equal(result.fields.net.status,'verified');assert.ok(result.fields.vat.sources.some(source=>source.text==='150.00'));
 });
+test('a receipt total below the invoice summary does not replace its explicit pre-VAT amount',async()=>{
+ const summary=totals().map(row=>row[0]==='סה״כ לפני מע״מ'?['סה״כ',...row.slice(1)]:row);
+ const result=await recognize([page([...header('000123','חשבונית מס / קבלה'),...summary,['1,150.00',50,720],['סה״כ',150,720]])],{layout:'morning'});
+ assert.equal(result.fields.net.value,100000);assert.equal(result.fields.net.status,'verified');
+ assert.equal(result.fields.net.method,'label_geometry');assert.equal(result.fields.net.sources[0].bounds.y,600);
+});
 test('user-confirmed Cocktail and Comfort prefixes keep raw evidence and preserve leading zeroes',async()=>{
  const {INVOICE_SUPPLIER_PROFILES}=await import('../netunim-orders/site/assets/js/core/invoice-supplier-profiles.js');
  for(const [supplier,prefix]of [['cocktail','CR'],['cocktail','SI'],['yesharim','SI']]){
@@ -67,6 +73,14 @@ test('derived net is explicitly marked and inconsistent explicit totals require 
  assert.equal(computed.fields.net.value,100000);assert.equal(computed.fields.net.status,'review');assert.equal(computed.fields.net.method,'gross_minus_explicit_vat');
  const wrong=await recognize([page([...header(),...totals('999.00')])]);
  assert.ok(wrong.warnings.includes('amounts_inconsistent'));assert.ok(['net','vat','gross'].every(key=>wrong.fields[key].status==='review'));
+});
+test('SAP abbreviated after-discount net stays explicit even when the source totals disagree',async()=>{
+ const rows=totals('999.78','180.00','1,180.00').map(row=>row[0]==='סה״כ לפני מע״מ'?['סה״כ אחרי הנחה',...row.slice(1)]:row[0]==='סה״כ לתשלום'?['סכום לתשלום',...row.slice(1)]:row);
+ const head=header().map(row=>row[0]===tax?[tax,50,row[2]]:row);
+ const result=await recognize([page([...head,...rows])],{layout:'sap'});
+ assert.equal(result.fields.net.value,99978);assert.equal(result.fields.net.method,'label_geometry');
+ assert.ok(result.warnings.includes('amounts_inconsistent'));assert.equal(result.fields.net.status,'review');
+ assert.ok(result.fields.net.sources.some(row=>row.text==='סה״כ אחרי הנחה'));
 });
 test('ambiguous allocation candidates are never resolved by taking the last nine digits of an arbitrary string',async()=>{
  const result=await recognize([page([...header(),['מספר הקצאה',400,250],['111222333',300,250],['444555666',200,250],...totals()])]);

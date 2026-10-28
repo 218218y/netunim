@@ -1,7 +1,7 @@
 {
   "date": "2026-10-28",
   "corpus": {"documents": 91, "pages": 95, "digital": 83, "imageOnly": 8},
-  "baseline": {"recognizedSuppliers": 79, "unknownDigitalSuppliers": 4, "missingDigitalAmountSummaries": 19},
+  "baseline": {"recognizedSuppliers": 79, "unknownDigitalSuppliers": 4, "missingDigitalAmountSummaries": 20},
   "afterRecognition": {"recognizedSuppliers": 83, "completeCoreFieldValues": 83, "zeroValueDocumentsRequiringReview": 1},
   "morningReadOnlyComparison": {
     "canonicalSuppliers": 12,
@@ -9,11 +9,23 @@
     "pairedDigitalDocuments": 80,
     "exactTypeDateGrossMatches": 80,
     "exactNetVatMatches": 74,
-    "oneCentPrintedVsHistoricalDifferences": 6,
+    "oneCentPrintedVatVsHistoricalDifferences": 6,
+    "internallyInconsistentPrintedNetDocumentsRequiringReview": 2,
     "preservedLeadingZeroDifferences": 1,
     "unpairedDigitalDocuments": 3,
     "financialWrites": 0,
     "uploads": 0
+  },
+  "browserUiReplay": {"documents":91,"canonicalSupplierMatches":83,"imageOnlyManualOutcomes":8,"mappedFieldDiscrepancies":0,"existingInvoiceBlocked":true,"realFinancialWrites":0,"realUploads":0},
+  "regressionCorpus": {"documents":206,"unexpectedValueChanges":0,"reviewedPrintedNetCorrections":2,"explicitNetProvenanceImprovements":3},
+  "localOcrExperiment": {
+    "engine":"Tesseract v5.5.0.20241111 with installed heb+eng",
+    "dpi":300,
+    "documents":8,
+    "runs":32,
+    "allFiveReferenceTokensPresent":{"fullPsm3":4,"fullPsm6":4,"croppedPsm3":5,"croppedPsm11":7},
+    "measurement":"Upper-bound occurrence of issuer, invoice number, date, VAT and gross tokens. Does not prove field binding, uniqueness or acceptable automatic-fill accuracy.",
+    "decision":"Do not enable image OCR; retain manual review. Results apply only to this tested engine, preprocessing and corpus."
   },
   "privacy": "Original PDFs, extracted text, expected values, identities, screenshots and Morning responses remain in ignored local working files.",
   "scope": "Diagnostic corpus, not an untouched holdout: baseline failures were examined to develop the new template rules. Historical agreement is measured separately from source correctness."

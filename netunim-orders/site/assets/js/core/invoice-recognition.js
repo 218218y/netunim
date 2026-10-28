@@ -153,7 +153,7 @@ export async function recognizeInvoice(extraction,{profiles=INVOICE_SUPPLIER_PRO
   const {result,titles}=headerType(cells);output.fields.documentType=result;
   output.fields.invoiceNumber=invoiceNumber(cells,titles,profile);output.fields.date=invoiceDay(cells,titles,profile);
   output.fields.allocationNumber=allocation(cells);
-  const netLabels=profile.layout==='tbi'||profile.layout==='morning'?[/^סהכ$/]:profile.layout==='priority'?[/^מחיראחריהנחה$/,/^מחירכולל$/]:profile.layout==='sap'?[/^סךהכולאחריהנחה$/]:[/^סהכלפנימעמ$/];
+  const netLabels=profile.layout==='tbi'||profile.layout==='morning'?[/^סהכ$/]:profile.layout==='priority'?[/^מחיראחריהנחה$/,/^מחירכולל$/]:profile.layout==='sap'?[/^סךהכולאחריהנחה$/,/^סהכאחריהנחה$/]:[/^סהכלפנימעמ$/];
   const grossLabels=profile.layout==='bina'?[/^לתשלוםבשח$/]:profile.layout==='sap'?[/^סכוםלתשלום$/,/^סהכלתשלום$/]:profile.layout==='priority'?[/^סהככוללמעמ$/,/^סהכמחיר$/]:profile.layout==='priority-print'?[/^סהככללי$/]:[/^סהכלתשלום(?:בשח)?$/];
   // A trailing annex is not necessarily the invoice's summary page. Choose the
   // last page containing BOTH explicit VAT and gross, never mix page totals.
@@ -162,7 +162,13 @@ export async function recognizeInvoice(extraction,{profiles=INVOICE_SUPPLIER_PRO
     const local=cells.filter(cell=>cell.page===page);
     const vat=readMoney(local,[/^מעמ(?:\d|$)/,...(profile.layout==='hash'?[/^מע$/]:[])],{labelKeys:profile.summaryLabelKeys?.vat}),
       gross=readMoney(local,grossLabels,{labelKeys:profile.summaryLabelKeys?.gross});
-    if(vat.value!==null&&gross.value!==null){summary={net:profile.derivedNet?missing('net_requires_derivation'):readMoney(local,netLabels,{labelKeys:profile.summaryLabelKeys?.net}),vat,gross,page};break;}
+    if(vat.value!==null&&gross.value!==null){
+      // Payment receipts may repeat "total" below the invoice summary. Restrict
+      // explicit net to the financial block immediately preceding its VAT row.
+      const vatY=Math.min(...vat.sources.map(row=>row.bounds.y));
+      const netCells=local.filter(cell=>cell.lineY>=vatY-100&&cell.lineY<=vatY+3);
+      summary={net:profile.derivedNet?missing('net_requires_derivation'):readMoney(netCells,netLabels,{labelKeys:profile.summaryLabelKeys?.net}),vat,gross,page};break;
+    }
   }
   const {net,vat,gross}=summary||{net:missing('summary'),vat:missing('summary'),gross:missing('summary')};
   output.summaryPage=summary?.page||null;

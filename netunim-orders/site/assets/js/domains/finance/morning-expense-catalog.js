@@ -22,6 +22,30 @@ export function expenseCatalogClassifications(expenses) {
   }
   return [...categories.values()];
 }
+export function expenseSupplierCategory(expenses, supplier) {
+  if (!supplier?.id) return null;
+  const rows = expenses.filter(row => row.status !== 100 && row.classification?.id &&
+    (row.supplierId === supplier.id && (!row.supplierTaxId || row.supplierTaxId === supplier.taxId) ||
+      !row.supplierId && supplier.taxId && row.supplierTaxId === supplier.taxId))
+    .sort((a, b) => String(b.sourceDocumentDate).localeCompare(String(a.sourceDocumentDate)));
+  const latest = rows[0];
+  // Two different categories on the same latest date cannot establish a default.
+  return latest && !rows.some(row => row.sourceDocumentDate === latest.sourceDocumentDate && row.classification.id !== latest.classification.id) ? latest : null;
+}
+// The global first page may contain no expense for an infrequent supplier.
+// Read a bounded, complete supplier history before suggesting its last category.
+export async function readExpenseSupplierCategory(request, capabilities, supplier, assertCurrent) {
+  const rows = [], seen = new Set(); let pages = 1, total = null;
+  for (let page = 0; page < pages; page++) {
+    const result = await readExpenseCatalogPage(request, capabilities, 'expenses', {supplierId:supplier.id}, page, assertCurrent);
+    if (result.pages > 4 || total !== null && total !== result.total || result.items.some(row => seen.has(row.id) ||
+      row.supplierId !== supplier.id || row.supplierTaxId && row.supplierTaxId !== supplier.taxId)) throw new Error('לא ניתן לאמת היסטוריית סיווג מלאה לספק. יש לבחור סיווג ידנית.');
+    total = result.total; pages = result.pages;
+    for (const row of result.items) {seen.add(row.id); rows.push(row);}
+  }
+  assertCurrent();
+  return {rows, category:expenseSupplierCategory(rows, supplier)};
+}
 export function expenseSupplierEligibility(supplier, profiles = [], allowP = false) {
   const profile = profiles.find(row => row.id === supplier?.id || row.taxId && row.taxId === supplier?.taxId);
   if (profile) {
