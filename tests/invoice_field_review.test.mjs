@@ -12,7 +12,7 @@ test('field statuses distinguish source evidence, computed amounts, missing allo
   const result=review();
   assert.equal(result.supplierId.status,'verified');assert.equal(result.documentType.status,'verified');
   assert.equal(result.net.status,'review');assert.match(result.net.detail,/חושב/);
-  assert.equal(result.allocationNumber.status,'missing');assert.match(result.allocationNumber.detail,/ייתכן שנדרש/);
+  assert.equal(result.allocationNumber.status,'missing');assert.match(result.allocationNumber.detail,/מעל הסף/);
   assert.match(result.number.detail,/SI0007/);assert.match(result.number.detail,/0007/);
   const manual=review({number:'manual',net:'manual',allocationNumber:'manual'},{...draft,number:'0008',allocationNumber:'123456789'});
   assert.equal(manual.number.status,'manual');assert.equal(manual.net.status,'manual');assert.equal(manual.allocationNumber.status,'manual');
@@ -31,4 +31,17 @@ test('current date and amounts recalculate allocation applicability and monetary
   const changed=review({net:'manual',vat:'calculated'}, {...draft,net:'1000.00'});
   assert.equal(changed.net.status,'review');assert.equal(changed.vat.status,'review');assert.match(changed.gross.detail,/אינם תואמים/);
   assert.equal(proposal.fields.net.value,600000);
+});
+
+
+test('allocation notices follow dated strict thresholds and do not flag optional or separate-treatment fields',()=>{
+  const status=(net,date='2026-10-20',overrides={})=>review({}, {...draft,net,vat:'900.00',gross:(Number(net)+900).toFixed(2),date,...overrides}).allocationNumber;
+  for(const net of ['4999.99','5000.00']) assert.equal(status(net).status,'not_required');
+  assert.equal(status('5000.01').status,'missing');assert.match(status('5000.01').detail,/מעל הסף/);
+  assert.equal(status('10000.00','2026-01-20').status,'not_required');assert.equal(status('10000.01','2026-01-20').status,'missing');
+  assert.equal(status('20000.00','2025-10-20').status,'not_required');assert.equal(status('20000.01','2025-10-20').status,'missing');
+  assert.equal(status('6000.00','2026-10-20',{vat:'0.00',gross:'6000.00'}).status,'not_required');
+  assert.equal(status('6000.00','2026-10-20',{documentType:330}).status,'not_applicable');
+  assert.equal(status('6000.00','2026-10-20',{pcnClassification:'P'}).status,'not_applicable');
+  assert.equal(status('').status,'not_applicable');
 });

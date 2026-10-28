@@ -33,8 +33,15 @@ export function invoiceFieldReview(proposal, edits, draft, supplierTaxId) {
       detail += ` מספר במקור: ${source.rawNumber}; הצעה: ${source.suggestedNumber}.`;
     }
     if (key === 'allocationNumber') {
-      detail += present(value) ? ' מספר מהמסמך או מהקלדה; לא אומת מול רשות המסים.' :
-        policy.status === 'check_business_conditions' ? ' לפי התאריך והסכומים ייתכן שנדרש מספר הקצאה; יש לבדוק את תנאי העסקה.' : ' יש לבדוק אם נדרש לפי פרטי המסמך.';
+      if (present(value) && !/^\d{9}$/.test(value)) {
+        status = 'review'; detail = 'יש להזין מספר הקצאה בן תשע ספרות או לתקן לפי המקור.';
+      } else if (policy.status === 'below_threshold_or_no_vat') {
+        status = 'not_required'; detail = '';
+      } else if (!present(value) && policy.status === 'check_business_conditions') {
+        status = 'missing'; detail = 'לא נמצא מספר הקצאה והסכום לפני מע״מ מעל הסף לתאריך המסמך. יש לבדוק ולהשלים בהתאם לתנאי העסקה.';
+      } else if (!present(value)) {
+        status = 'not_applicable'; detail = '';
+      } else detail += ' מספר מהמסמך או מהקלדה; לא אומת מול רשות המסים.';
     }
     if (['net','vat','gross'].includes(key) && inconsistent) {status = 'review'; detail += ' סכומי הנטו והמע״מ אינם תואמים לסה״כ.';}
     return [name, {status, detail, sourceKey:key, sources:source?.sources || [], allocationPolicy:policy.status}];

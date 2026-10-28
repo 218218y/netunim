@@ -131,10 +131,13 @@ FLOW = r"""(async()=>{
  field('pcnClassification','P','change');check(fixture.querySelector('[data-action="morning-expense-save"]').disabled,'P write available');field('pcnClassification','T','change');
  field('gross','');click('save');await settle();check(posts===0&&confirms===0,'invalid totals reached write');field('net','1000.00');field('vat','160.00');
  const png=Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jO2sAAAAASUVORK5CYII='),c=>c.charCodeAt(0));
- const selection=new DataTransfer();for(const name of ['first.png','second.png'])selection.items.add(new File([png],name,{type:'image/png'}));
+ const selection=new DataTransfer();for(const name of ['first.png','second.png'])selection.items.add(new File([png,name],name,{type:'image/png'}));
  const input=fixture.querySelector('input[type="file"]');input.files=selection.files;input.dispatchEvent(new Event('change',{bubbles:true}));await settle();check(fixture.querySelector('img')?.src.startsWith('blob:'),'source preview missing');
  fixture.innerHTML=uiFeature.markup();const paste=new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:selection});fixture.querySelector('[data-morning-expense-intake]').dispatchEvent(paste);await settle();check(paste.defaultPrevented&&fixture.querySelector('img'),'file paste failed after parent rerender');
- check(fixture.querySelectorAll('.morning-expense-queue li').length===4,'paste replaced queued files');
+ check(fixture.querySelectorAll('.morning-expense-queue li').length===2&&fixture.querySelector('[data-expense-file-notice]').textContent.includes('כבר נוסף'),'pasting identical files duplicated work drafts');
+ const newSelection=new DataTransfer();for(const name of ['third.png','fourth.png'])newSelection.items.add(new File([png,name],name,{type:'image/png'}));
+ fixture.querySelector('[data-morning-expense-intake]').dispatchEvent(new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:newSelection}));await settle();
+ check(fixture.querySelectorAll('.morning-expense-queue li').length===4,'pasting distinct files replaced queued files');
  const queueClick=(name,index)=>fixture.querySelector('[data-expense-command="'+name+'"][data-expense-index="'+index+'"]').click();
  queueClick('choose-file',1);check(fixture.querySelector('.morning-expense-source>b').textContent==='second.png','queue selection failed');
  queueClick('remove-file',2);queueClick('remove-file',2);queueClick('choose-file',1);
