@@ -10,7 +10,7 @@ SCENARIO = PREFIX + r"""
  recognized.fields.net.status='review';recognized.fields.net.reason='computed_net';
  await choose(original);
  const warnings=fixture.querySelector('[data-expense-review-warnings]');
- check(warnings&&!warnings.hidden&&warnings.textContent.includes('מחושב')&&warnings.textContent.includes('s0123456789'),'computed or normalized source hidden before save');
+ check(warnings&&!warnings.hidden&&/מחושב|חושב/.test(warnings.textContent)&&warnings.textContent.includes('s0123456789')&&fixture.querySelector('[data-expense-review-field="net"]').dataset.reviewStatus==='review','computed or normalized source hidden before save');
  await uiFeature.actions['morning-expense-files']({files:Array.from({length:19},(_,n)=>new File([bytes,String(n)],'queued-'+n+'.pdf',{type:'application/pdf'}))});await settle();
  click('save');await settle();
  check(posts===1&&uploads===0&&sourceMetadata?.sha256?.length===64,'source intent missing before upload');

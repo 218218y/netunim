@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-7420e96bb0d9';
+const CACHE='orders-app-shell-esm-875b8452fe78';
 const SHELL=[
   './',
   './index.html',
@@ -46,6 +46,7 @@ const SHELL=[
   './assets/js/contracts/note-reminder-date.js',
   './assets/js/core/bulk-selection.js',
   './assets/js/core/dates.js',
+  './assets/js/core/invoice-field-review.js',
   './assets/js/core/invoice-highlights.js',
   './assets/js/core/invoice-pdf-layout.js',
   './assets/js/core/invoice-recognition.js',
@@ -169,6 +170,7 @@ const SHELL=[
   './assets/js/domains/finance/morning-expense-recent.js',
   './assets/js/domains/finance/morning-expense-recovery.js',
   './assets/js/domains/finance/morning-expense-reporting.js',
+  './assets/js/domains/finance/morning-expense-review-view.js',
   './assets/js/domains/finance/morning-expense-search.js',
   './assets/js/domains/finance/morning-expense-source.js',
   './assets/js/domains/finance/morning-expense-supplier-picker.js',

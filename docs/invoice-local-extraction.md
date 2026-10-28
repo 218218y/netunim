@@ -92,3 +92,14 @@ Recognition now retains PDF-space glyph-run corners (including font ascent/desce
 A pure integer-cent plausibility check compares explicit VAT with the existing 18% ordinary / 16% P estimate. Differences up to ten agorot are treated as small rounding differences. Larger differences are displayed beside the amounts and repeated in the existing final financial confirmation, including the estimate and difference. Mixed/exempt/atypical VAT is not overwritten or rejected solely for differing from that estimate. Net plus VAT must still equal gross exactly under the existing financial validation. Both historically observed one-cent discrepancies agree with the prior calculation from gross; printed source VAT remains authoritative.
 
 Public tests cover source-corner projection under rotation/cropping, field order, computed-net source evidence, exact VAT estimates/tolerance, no redundant checkbox, native multi-page source overlays, result scrolling and zoom, cancellation and final-confirmation behavior. Full CI remains mandatory before publishing. Original invoices and screenshots remain private.
+
+
+### Recognition and current-draft review (2026-10-28)
+
+Local results distinguish `no_usable_text`, `unknown_supplier`, `partial_recognition`, `recognized` and technical `extraction_error`. Character count is only an extraction signal: invoice/credit identity plus numeric evidence, or monetary totals with invoice labels, distinguish usable invoice text from scan captions and page numbers. No image OCR engine was added. JPG/PNG explicitly require manual entry.
+
+Empty proposals never fill the form. Re-recognition preserves manual changes; explicit refilling retains its existing confirmation. Partial local suggestions only copy present values. Source proposals retain raw and normalized document numbers, while a separate in-memory edit map records manual and calculated draft fields and survives file-draft restoration. Current draft supplier/date/amounts drive review and allocation notices; changing the supplier invalidates confidence in fields from the previous supplier. Nine-digit allocation numbers are never described as tax-authority verified.
+
+All eight core fields have adjacent textual status (`זוהה במסמך`, `דורש בדיקה`, `לא זוהה`, `הושלם ידנית`) with `aria-describedby`, a source jump when coordinates exist, and keyboard review navigation. Amount dependencies are marked calculated, not manually verified. One final confirmation includes current review warnings. Native date parts and supplier combobox are included. Field-status updates do not recreate the form while typing; general re-renders restore field focus/selection and scroll. Multi-page extraction reports progress; the existing lazy PDF.js core is reused.
+
+No database schema or financial write/attachment protocol changes are required.

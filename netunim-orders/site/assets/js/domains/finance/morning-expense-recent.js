@@ -39,7 +39,10 @@ export async function readRecentExpenses(request, capabilities, check, {signal, 
       catch (error) {
         assertCurrent();
         // Retry this read only; never move retry policy into the financial writer.
-        if (attempt >= 2 || !(error instanceof TypeError || [429,502,503,504].includes(error.status))) throw error;
+        // The Edge transport already bounded provider retries and honored its
+        // Retry-After. Do not multiply those attempts or bypass a long cooldown.
+        if (attempt >= 2 || error.code === 'morning_expenses_source_failed' ||
+            !(error instanceof TypeError || [429,502,503,504].includes(error.status))) throw error;
         await pause(1000 * 2 ** attempt, signal); assertCurrent();
       }
     }
@@ -72,8 +75,8 @@ export function createExpenseRecent({request, capabilities, capture, run, now = 
     if (!scan || now() - started >= 600000) {scan = {next:0, pages:1, total:null, items:[], seen:new Set()}; started = now();}
     const currentScan = scan;
     const epoch = revision;
-    controller = new AbortController(); const signal = controller.signal;
-    const timer = setTimeout(() => controller?.abort(new DOMException('Time limit', 'TimeoutError')), 300000);
+    const currentController = new AbortController(); controller = currentController; const signal = currentController.signal;
+    const timer = setTimeout(() => currentController.abort(new DOMException('Time limit', 'TimeoutError')), 300000);
     busy = true; message = ''; progressText = 'טוען הוצאות אחרונות מכל חשבון Morning…'; render();
     return run(async () => {
       try {

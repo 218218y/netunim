@@ -110,5 +110,6 @@ export function createExpensePdfPreview({capture,run,isActive}) {
   function resize(delta){zoom=Math.max(1,Math.min(2,zoom+delta));update(true);return true;}
   return {select,reset,markup,setFields,previous:()=>move(-1),next:()=>move(1),
     previousMatch:()=>match(-1),nextMatch:()=>match(1),target:element=>goTarget(Number(element.dataset.pdfTarget)),
+    field:key=>goTarget(targets.findIndex(target=>target.key===key)),
     zoomIn:()=>resize(.25),zoomOut:()=>resize(-.25)};
 }

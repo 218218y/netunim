@@ -3,18 +3,18 @@ import assert from 'node:assert/strict';
 import {createExpenseLocalReview} from '../netunim-orders/site/assets/js/domains/finance/morning-expense-local.js';
 
 const proposal={profile:'roya',fields:{supplier:{value:'123456789'},invoiceNumber:{value:'0123456789'}}};
-function fixture() {
-  let source={type:'application/pdf',file:new Blob(['%PDF-1.4 local invoice'])}, version=0, scoped=true, draft=null, conflict=false, rows=[], hold=null, uploads=0;
+function fixture({recognized=proposal,extractionError=null}={}) {
+  let source={type:'application/pdf',file:new Blob(['%PDF-1.4 local invoice'])}, version=0, scoped=true, draft=null, conflict=false, rows=[], hold=null, applyHold=null, writing=false, applications=0, uploads=0;
   const calls=[],caps={environment:'sandbox',ocrFileGuard:true};
-  const local=createExpenseLocalReview({files:{extract:async()=>{if(hold)await hold;return {text:'private invoice text'};},recognize:async()=>proposal,upload:()=>uploads++},
+  const local=createExpenseLocalReview({files:{extract:async()=>{if(hold)await hold;if(extractionError)throw extractionError;return {text:'private invoice text'};},recognize:async()=>recognized,upload:()=>uploads++},
     selected:()=>source,capabilities:()=>caps,editVersion:()=>version,capture:()=>()=>{if(!scoped)throw Error('stale account');},
-    apply:async(value,check)=>{check();draft=value;},render:()=>{},run:work=>work(),canStart:()=>true,ocrActive:()=>false,confirmDialog:async()=>true,
+    apply:async(value,check)=>{if(applyHold)await applyHold;check();applications++;draft=value;},render:()=>{},run:work=>work(),canStart:()=>true,canApply:()=>!writing,ocrActive:()=>false,confirmDialog:async()=>true,
     request:async(action,body,check)=>{check();calls.push({action,body});if(action==='ocr_lookup')return {hasOcrOperation:conflict};
       assert.equal(action,'expenses');const items=rows.filter(row=>row.number===body.number);return {version:1,environment:'sandbox',page:0,pageSize:50,pages:items.length?1:0,total:items.length,items};}});
   const snapshot={number:'0123456789',documentType:305,date:'2026-08-12'},supplier={id:'canonical',taxId:'123456789'};
   return {local,calls,caps,snapshot,supplier,getDraft:()=>draft,getUploads:()=>uploads,edit:()=>{version++;local.edited();},
     switchSource:()=>{source={type:'application/pdf',file:new Blob(['%PDF other file'])};local.reset();},switchAccount:()=>{scoped=false;local.reset();},
-    conflict:()=>conflict=true,setRows:value=>rows=value,hold:promise=>hold=promise};
+    holdApply:value=>applyHold=value,beginWrite:()=>writing=true,applications:()=>applications,conflict:()=>conflict=true,setRows:value=>rows=value,hold:promise=>hold=promise};
 }
 test('local selection only reads metadata; approval is recorded only at final confirmation',async()=>{
   const f=fixture();await f.local.start();assert.equal(f.getDraft(),proposal);assert.equal(f.getUploads(),0);
@@ -51,4 +51,41 @@ test('same number on another verified supplier/year/type does not falsely match'
     {id:'year',kind:'expense',status:10,number:f.snapshot.number,type:305,sourceDocumentDate:'2025-08-12',supplierId:f.supplier.id},
     {id:'credit',kind:'expense',status:10,number:f.snapshot.number,type:330,sourceDocumentDate:'2026-08-12',supplierId:f.supplier.id}]);
   await f.local.preflight(f.snapshot,f.supplier,()=>{});f.conflict();await assert.rejects(()=>f.local.verifySource(()=>{}),/פעולת OCR/);
+});
+
+test('unrecognized and scanned PDFs never fill empty suggestions, remain manual-editable, and still check duplicates',async()=>{
+  for (const outcome of ['no_usable_text','unknown_supplier']) {
+    const recognized={profile:null,outcome,fields:{invoiceNumber:{value:null,status:'missing'}},warnings:outcome==='no_usable_text'?['no_usable_text']:['unknown_supplier']};
+    const f=fixture({recognized});await f.local.start();
+    assert.equal(f.getDraft(),null);assert.equal(f.local.blocked(),false);assert.ok(f.local.markup().includes(outcome));
+    assert.ok(!f.local.markup().includes('הנתונים מולאו'));assert.ok(!f.local.markup().includes('data-expense-command="local-fill"'));
+    await f.local.preflight(f.snapshot,f.supplier,()=>{});assert.ok(f.calls.some(row=>row.action==='expenses'));
+  }
+});
+
+test('technical extraction errors stay separate from no-text outcomes and do not block checked manual saving',async()=>{
+  const f=fixture({extractionError:Error('private internal parser failure')});await f.local.start();
+  assert.equal(f.getDraft(),null);assert.equal(f.local.blocked(),false);assert.ok(f.local.markup().includes('extraction_error'));
+  assert.ok(f.local.markup().includes('ידנית'));assert.ok(!f.local.markup().includes('private internal'));
+  await f.local.preflight(f.snapshot,f.supplier,()=>{});
+});
+
+test('manual provenance survives re-recognition and work-draft restoration without automatic replacement',async()=>{
+  const f=fixture();await f.local.start();f.local.edited('number');const saved=f.local.snapshot();
+  await f.local.start();assert.deepEqual(f.local.snapshot().edits,{number:'manual'});
+  f.local.reset();await f.local.restore(saved);assert.deepEqual(f.local.snapshot().edits,{number:'manual'});
+  assert.equal(f.local.fieldReview({number:'manual'},'123456789').number.status,'manual');
+  await f.local.fill();assert.deepEqual(f.local.snapshot().edits,{});
+});
+
+test('explicit partial refill keeps manual provenance for fields absent from the proposal',async()=>{
+  const f=fixture();await f.local.start();f.local.edited('allocationNumber');await f.local.fill();
+  assert.deepEqual(f.local.snapshot().edits,{allocationNumber:'manual'});
+});
+
+test('a late supplier lookup during proposal refill cannot change a form that started financial saving',async()=>{
+  const f=fixture();await f.local.start();assert.equal(f.applications(),1);
+  let release;f.holdApply(new Promise(resolve=>release=resolve));const work=f.local.fill();
+  await new Promise(resolve=>setTimeout(resolve,0));f.beginWrite();release();await work;
+  assert.equal(f.applications(),1);assert.match(f.local.markup(),/שמירה/);
 });

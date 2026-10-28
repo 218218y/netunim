@@ -13,7 +13,8 @@ function fixture({pages=1,error=null,held=false}={}){
   return {load:async()=>engine,state:()=>({destroyed,cleaned,opened,options})};
 }
 test('local PDF extraction preserves source strings, font runs, positions and line evidence, then releases the worker',async()=>{
-  const f=fixture(),result=await extractInvoicePdf(file(),{load:f.load});
+  const progress=[];const f=fixture(),result=await extractInvoicePdf(file(),{load:f.load,progress:(page,total)=>progress.push([page,total])});
+  assert.deepEqual(progress,[[1,1]]);
   assert.equal(result.pages.length,1);assert.equal(result.pages[0].items[1].text,'000123');assert.equal(result.pages[0].items[1].original.y,700);
   assert.equal(result.pages[0].items[1].y,100);assert.equal(result.pages[0].items[1].fontName,'synthetic-font');
   assert.equal(f.state().destroyed,1);assert.equal(f.state().cleaned,1);

@@ -111,11 +111,25 @@ function allocation(cells){
   }
   const result=unique(candidates,'allocation_number');result.officiallyValidated=false;return result;
 }
+export function hasUsefulInvoiceText(extraction) {
+  if (!extraction.hasText) return false;
+  const text = extraction.pages.flatMap(page => page.items).map(item => item.text).join(' ');
+  const compact = invoiceLabelKey(text);
+  // A page number, watermark or short scan caption is not invoice evidence.
+  return /חשבונית|זיכוי|invoice|creditnote/iu.test(compact) && /\d{2,}/u.test(text) ||
+    /\d[.,]\d{2}/u.test(text) && /מעמ|סהכ|לתשלום|total|vat/iu.test(compact);
+}
+export function invoiceRecognitionOutcome(proposal) {
+  if (proposal.warnings?.includes('no_usable_text')) return 'no_usable_text';
+  if (!proposal.profile) return 'unknown_supplier';
+  return ['documentType','invoiceNumber','date','net','vat','gross'].every(key => proposal.fields[key]?.status === 'verified' &&
+    proposal.fields[key]?.value !== null && proposal.fields[key]?.value !== undefined) ? 'recognized' : 'partial_recognition';
+}
 export async function recognizeInvoice(extraction,{profiles=INVOICE_SUPPLIER_PROFILES}={}){
   const empty=()=>({supplier:missing('supplier'),documentType:missing('document_type'),invoiceNumber:missing('invoice_number'),date:missing('invoice_date'),
     net:missing('money'),vat:missing('money'),gross:missing('money'),allocationNumber:missing('allocation_number'),currency:missing('currency')});
   const output={version:1,source:'local_pdf',profile:null,fields:empty(),warnings:[],pageCount:extraction.pages.length,requiresReview:true};
-  if(!extraction.hasText){output.warnings.push('no_usable_text');return output;}
+  if(!hasUsefulInvoiceText(extraction)){output.warnings.push('no_usable_text');output.outcome='no_usable_text';return output;}
   const cells=cellsOf(extraction.pages),header=extraction.pages[0],possible=new Map(),allKey=cells.map(cell=>cell.key).join('');
   const recipientY=Math.min(...cells.filter(cell=>cell.page===1&&/^(?:לכבוד|לידי)/.test(cell.key)).map(cell=>cell.y));
   for(const item of header.items)for(const match of item.text.matchAll(/(?<!\d)\d{9}(?!\d)/g)){
@@ -132,7 +146,7 @@ export async function recognizeInvoice(extraction,{profiles=INVOICE_SUPPLIER_PRO
       if(profile.issuerTaxHash===hash&&inRegion&&(branded||labeledFooter)&&!matched.some(row=>row.profile.id===profile.id))matched.push({profile,taxId,item});
     }
   }
-  if(matched.length!==1){output.warnings.push(matched.length?'ambiguous_supplier':'unknown_supplier');return output;}
+  if(matched.length!==1){output.warnings.push(matched.length?'ambiguous_supplier':'unknown_supplier');output.outcome='unknown_supplier';return output;}
   const {profile,taxId,item}=matched[0];output.profile=profile.id;
   output.fields.supplier={...field(taxId,[item],'issuer_tax_and_profile','review','canonical_supplier_pending'),name:profile.title,nameSource:'profile',canonicalVerified:false};
   const {result,titles}=headerType(cells);output.fields.documentType=result;
@@ -163,5 +177,6 @@ export async function recognizeInvoice(extraction,{profiles=INVOICE_SUPPLIER_PRO
   output.allocationPolicy=allocationPolicy({date:output.fields.date.value,documentType:result.value,netCents:net.value,vatCents:vat.value});
   if(output.allocationPolicy.status==='check_business_conditions'&&!output.fields.allocationNumber.value)output.warnings.push('allocation_missing_check_conditions');
   for(const [name,row]of Object.entries(output.fields))if(row.status!=='verified'&&!(name==='allocationNumber'&&!row.value&&output.allocationPolicy.status!=='check_business_conditions'))output.warnings.push(name+':'+(row.reason||row.status));
+  output.outcome=invoiceRecognitionOutcome(output);
   return output;
 }

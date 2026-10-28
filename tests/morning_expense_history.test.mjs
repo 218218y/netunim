@@ -97,9 +97,9 @@ test('recent account reads reject duplicate pages and never publish after an acc
   assert.equal(recent.record({verified:false}), false); assert.equal(calls, 1);
 });
 
-test('one click automatically completes batches including stability verification for 20 through 1000 expenses', async () => {
+test('one click automatically completes batches including stability verification for 20 through 10000 expenses', async () => {
   globalThis.document = {querySelector:() => null};
-  for (const total of [0,20,50,199,200,201,250,278,1000]) {
+  for (const total of [0,20,50,199,200,201,250,278,1000,10000]) {
     const all = Array.from({length:total}, (_, n) => ({...expense(n, '2026-10-01'), number:'invoice-'+n, createdAt:new Date(1700000000000+n*1000).toISOString()}));
     let calls=0, pauses=0;
     const recent = createExpenseRecent({request:async (_, body) => {calls++; return paged(all.slice(body.page*50,body.page*50+50),body.page,all);},
@@ -165,4 +165,25 @@ test('an empty history viewport pauses after one year instead of automatically s
   assert.ok(history.markup().includes('בדיקת שנה קודמת'));
   await history.more(); assert.equal(calls, 12);
   history.reset(); assert.ok(!history.markup().includes('בדיקת שנה קודמת'));
+});
+
+test('provider backoff is not multiplied after the Edge transport has finished its bounded retries',async()=>{
+  let calls=0;
+  await assert.rejects(readRecentExpenses(async()=>{calls++;throw Object.assign(Error('provider cooldown'),{status:502,code:'morning_expenses_source_failed'});},caps,()=>{},{pause:async()=>assert.fail('must honor provider cooldown')}),/provider cooldown/);
+  assert.equal(calls,1);
+});
+
+test('an old scan timeout cannot cancel a replacement read while an aborted provider response is delayed',async()=>{
+  globalThis.document={querySelector:()=>null};
+  const original=globalThis.setTimeout, deadlines=[], releases=[];
+  globalThis.setTimeout=(callback,ms,...args)=>{if(ms===300000)deadlines.push(callback);return original(callback,ms,...args);};
+  const row={...expense('one','2026-10-01'),number:'replacement-read',createdAt:'2026-10-27T10:00:00Z'};
+  let calls=0;
+  try {
+    const recent=createExpenseRecent({request:async()=>{if(calls++<2)await new Promise(resolve=>releases.push(resolve));return paged([row]);},
+      capabilities:()=>caps,capture:()=>()=>{},run:work=>work(),pause:async()=>{}});
+    const old=recent.load();recent.reset();const current=recent.load();
+    deadlines[0]();releases.forEach(resolve=>resolve());await Promise.all([old,current]);
+    assert.match(recent.markup(),/תמונת מצב מלאה/);assert.match(recent.markup(),/replacement-read/);
+  } finally {globalThis.setTimeout=original;}
 });

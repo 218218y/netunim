@@ -17,9 +17,15 @@ SCENARIO = PREFIX + r"""
  const second=Object.fromEntries(['number','date','reportingPeriod','reportingDate','net','vat','gross'].map(name=>[name,value(name)]));
  await command('choose-file',1);await settle();
  for(const [name,expected]of Object.entries(first))check(value(name)===expected,'first draft lost '+name);
+ check(fixture.querySelector('[data-expense-review-field="number"]').dataset.reviewStatus==='manual','manual provenance lost on draft restoration');
  check(value('reportingPeriod')==='2026-09'&&value('reportingDate')==='2026-10-01','switching files replaced the last manual reporting choice with a draft-specific period');
  check(extractions===2,'returning to an unchanged source unnecessarily re-extracted or overwrote it');
  click('load');await settle();check(value('number')==='A-0007'&&value('vat')==='167.03','catalog refresh overwrote edited fields');
+ held=Promise.reject(Error('catalog offline'));click('load');await settle();held=null;
+ click('local-start');await settle();
+ check(value('number')==='A-0007'&&value('vat')==='167.03','recognition after failed catalog refresh overwrote manual fields');
+ check(fixture.querySelector('[data-expense-review-field="number"]').dataset.reviewStatus==='manual','failed catalog refresh lost manual provenance');
+
  await command('choose-file',1);await settle();for(const [name,expected]of Object.entries(second))check(value(name)===expected,'second draft lost '+name);
  confirmWait=Promise.resolve(false);await command('remove-file',1);await settle();check(fixture.querySelectorAll('.morning-expense-queue li').length===2,'cancelled removal discarded a draft');
  confirmWait=null;await command('remove-file',1);await settle();check(fixture.querySelectorAll('.morning-expense-queue li').length===1&&value('number')==='B-0008','removing another draft changed the active form');
