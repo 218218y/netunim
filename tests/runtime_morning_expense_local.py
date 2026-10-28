@@ -196,6 +196,34 @@ POLISH = PREFIX + r"""
  return {duplicates:true,distinctBytes:true,manualPreserved:true,openQueue:true,compact:true,alignment:true,allocation:true,posts,uploads,width:innerWidth};
 })()"""
 
+CATEGORY_PREFIX = PREFIX.replace(' let extractionHold=', " let categoryMode='ok',categoryHold=null,categoryReads=0; let extractionHold=")
+CATEGORY_PREFIX = CATEGORY_PREFIX.replace("if(action==='expenses'){", "if(action==='expenses'){if(body.supplierId){categoryReads++;if(categoryHold)await categoryHold;if(categoryMode==='error')throw Error('history unavailable');return paged([{...expense,id:id(77),supplierId:supplier.id,supplierTaxId:supplier.taxId,classification:{...expense.classification,title:'סיווג מהיסטוריית הספק'}}]);}return paged([]);")
+CATEGORY = CATEGORY_PREFIX + r"""
+ const settle=()=>uiFeature.runtime.drain();click('toggle');await settle();
+ const value=name=>fixture.querySelector('[data-expense-field="'+name+'"]').value;
+ const choose=async name=>{await uiFeature.actions['morning-expense-files']({files:[new File(['%PDF-1.4 '+name],name,{type:'application/pdf'})]});await settle()};
+ await choose('supplier-history.pdf');
+ check(categoryReads===1&&value('classificationExpenseId')===id(77),'supplier history outside the global page did not supply its category');
+ check(fixture.textContent.includes('סיווג מהיסטוריית הספק'),'supplier category is absent from selectable classifications');
+ // A fresh intake must still fill recognized fields when history is unavailable.
+ uiFeature.runtime.dispose();fixture.innerHTML='';categoryMode='error';
+ uiFeature=createMorningExpenseIntake(ports);fixture.innerHTML=uiFeature.markup();click('toggle');await settle();
+ await choose('unavailable-history.pdf');
+ check(value('number')==='0123456789'&&value('supplierId')===supplier.id&&!value('classificationExpenseId'),'category read failure discarded recognition or guessed a category');
+ check(fixture.textContent.includes('לבחור סיווג ידנית'),'unavailable category was not explained');
+ uiFeature.runtime.dispose();fixture.innerHTML='';categoryMode='ok';
+ uiFeature=createMorningExpenseIntake(ports);fixture.innerHTML=uiFeature.markup();click('toggle');await settle();
+ let release;categoryHold=new Promise(resolve=>release=resolve);const before=categoryReads;
+ const pending=uiFeature.actions['morning-expense-files']({files:[new File(['%PDF-1.4 delayed history'],'delayed-history.pdf',{type:'application/pdf'})]});
+ for(let n=0;n<200&&categoryReads===before;n++)await new Promise(resolve=>setTimeout(resolve,10));
+ check(categoryReads>before,'delayed category read never started');
+ const number=fixture.querySelector('[data-expense-field="number"]');number.value='manual-category-race';number.dispatchEvent(new Event('input',{bubbles:true}));
+ release();await pending;await settle();
+ check(value('number')==='manual-category-race'&&!value('classificationExpenseId'),'late supplier history overwrote manual work');
+ uiFeature.runtime.dispose();await settle();check(posts===0&&uploads===0,'category lookup wrote or uploaded a document');
+ return {categoryReads,posts,uploads,manualPreserved:true};
+})()"""
+
 if __name__ == '__main__':
     with BrowserSession(ROOT/'netunim-orders/site', 'morning-expense-local') as browser:
         for width in [1440, 390]:
@@ -212,4 +240,5 @@ if __name__ == '__main__':
         result = browser.evaluate(OWNERSHIP, timeout=45)
         assert result['posts'] == 0 and result['uploads'] == 0, result
         print('PASS local extraction cancellation, account ownership, native PDF fallback and disposal:', result, flush=True)
+        print('PASS supplier-specific classification, unavailable history and editing ownership:',browser.evaluate(CATEGORY,timeout=45),flush=True)
         assert not browser.drain_serious_errors()

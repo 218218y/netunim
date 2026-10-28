@@ -5,7 +5,7 @@ import {normalizeExpenseInput} from '../../core/morning-expense-input.js';
 import {expenseAmountChange} from '../../core/morning-expense-amounts.js';
 import {expenseBimonth} from '../../core/morning-report-period.js';
 import {createRuntimeTaskOwner} from '../../shared/runtime-task-owner.js';
-import {readExpenseCatalog, readExpenseCatalogPage, searchExpenseSuppliers, expenseCatalogClassifications, expenseSupplierEligibility} from './morning-expense-catalog.js';
+import {readExpenseCatalog, readExpenseCatalogPage, searchExpenseSuppliers, expenseCatalogClassifications, expenseSupplierEligibility, expenseSupplierCategory, readExpenseSupplierCategory} from './morning-expense-catalog.js';
 import {readExpensePreferences, writeExpensePreferences} from './morning-expense-preferences.js';
 import {createExpenseReporting, expenseReportingStorageWarning} from './morning-expense-reporting.js';
 import {readExpenseRecovery, writeExpenseRecovery, clearExpenseRecovery} from './morning-expense-recovery.js';
@@ -421,6 +421,16 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
         if (canonical.active && canonical.taxId === taxId && (!item.supplier.id || canonical.id === item.supplier.id)) supplier = canonical;
       }
     }
+    let category = null, categoryRows = [], categoryUnavailable = false;
+    if (supplier && origin === 'local') {
+      category = expenseSupplierCategory(sourceExpenses(), supplier);
+      if (!category) {
+        try {
+          const history = await readExpenseSupplierCategory(request, catalog.capabilities, supplier, check);
+          category = history.category; categoryRows = history.rows;
+        } catch {check(); categoryUnavailable = true;}
+      }
+    }
     check();
     if (origin !== 'local') draft = defaults();
     // An unrecognized date/type must not silently inherit today's date or the
@@ -434,11 +444,13 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     Object.assign(draft, origin === 'local' ? Object.fromEntries(Object.entries(suggestions).filter(([,value]) => value !== '' && value !== null && value !== undefined)) : suggestions);
     if (supplier) {catalog.suppliers = mergeSuppliers([supplier], catalog.suppliers); draft.supplierId = supplier.id; draft.pcnClassification = eligibilityFor(supplier).p ? 'P' : 'T';}
     if (supplier && origin === 'local') {
-      const category = sourceExpenses().filter(row => row.status !== 100 && row.classification?.id && (row.supplierId === supplier.id || row.supplierTaxId === supplier.taxId)).sort((a,b) => String(b.sourceDocumentDate).localeCompare(String(a.sourceDocumentDate)))[0];
+      extraExpenses = [...new Map([...extraExpenses, ...categoryRows].map(row => [row.id, row])).values()];
+      catalog.classifications = expenseCatalogClassifications(sourceExpenses());
       draft.classificationExpenseId = category?.id || '';
     }
     try {Object.assign(draft, reporting.fields(draft.date));} catch {draft.reportingDate = '';}
     message = supplier ? 'הספק אומת בספריית Morning לפי מספר עוסק ומזהה. יש לבדוק את נתוני החשבונית מול המקור.' : 'הצעות מולאו לבדיקה. זהות הספק לא אומתה; יש לבחור ספק ידנית.';
+    if (categoryUnavailable) message += ' היסטוריית הסיווג לא זמינה; יש לבחור סיווג ידנית.';
     return supplier;
   }
   function applyOcr(item, check) {return applySuggestions(item, check, 'ocr');}
