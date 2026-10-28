@@ -145,8 +145,8 @@ test('explicit Morning refresh reads again; verified site writes update immediat
   clock += 120001; await recent.load(); assert.equal(calls, 6);
   const item = {...row, id:'new', number:'new-site-invoice'};
   recent.record({verified:true, expenseId:item.id, item}); assert.equal(calls, 6);
-  assert.match(recent.markup(), /new-site-invoice/); assert.match(recent.markup(), /קליטות האתר/);
-  assert.ok(!recent.markup().includes('snapshot-invoice'));
+  assert.match(recent.markup(), /new-site-invoice/); assert.match(recent.markup(), /כל חשבון Morning/);
+  assert.ok(recent.markup().includes('snapshot-invoice'));
   await recent.load(); assert.equal(calls, 8);
   recent.reset(); assert.ok(!recent.markup().includes('snapshot-invoice'));
 });

@@ -3,6 +3,7 @@ from browser_harness import BrowserSession, ROOT
 
 FLOW = r"""(async()=>{
  await appReady; syncDocument.stopPolling(); finance.runtime.stop();
+ await new Promise((resolve,reject)=>{const request=indexedDB.deleteDatabase('netunim-morning-expense-recent');request.onsuccess=resolve;request.onerror=()=>reject(request.error);request.onblocked=()=>reject(Error('prior recent cache connection was not closed'));});
  const {createMorningExpenseIntake}=await import('./assets/js/domains/finance/morning-expense-intake.js');
  const {bindActionEvents}=await import('./assets/js/shared/events.js');
  const fileEffects=await import('./assets/js/platform/morning-expense-files.js');
@@ -170,7 +171,7 @@ FLOW = r"""(async()=>{
  const preferenceText=localStorage.getItem('morningExpensePreferences:'+environment+':'+owner);check(preferenceText&&!preferenceText.includes(supplier.name)&&!preferenceText.includes(supplier.taxId)&&!preferenceText.includes('000123'),'preferences leaked invoice or supplier data');
  uiFeature.runtime.dispose();uiFeature=createMorningExpenseIntake(ports);fixture.innerHTML=uiFeature.markup();directoryHidden=true;catalogExpense={...expense,id:id(40),classification:{...expense.classification,id:id(44),title:'סיווג אחר'}};
  click('toggle');await settle();check(fixture.querySelector('[data-expense-command="use-favorite"]'),'favorite did not survive reopening or canonical lookup');
- check(fixture.querySelector('[data-expense-recent]').textContent.includes('SITE-ONLY'),'reopening did not restore the bounded site list');click('recent-refresh');await settle();
+ check(fixture.querySelector('[data-expense-recent]').textContent.includes('000123'),'reopening did not restore the complete saved list');click('recent-refresh');await settle();
  check(fixture.querySelector('[data-expense-recent-id="'+id(8)+'"]'),'explicit recent lookup missed saved intake');
  field('supplierId',id(2),'change');await settle();check(fixture.querySelector('[data-expense-field="classificationExpenseId"]').value===id(30),'saved category outside the history page was not revalidated');directoryHidden=false;
  // Account change while the approval dialog is open must prevent dispatch entirely.

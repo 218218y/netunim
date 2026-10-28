@@ -13,6 +13,7 @@ import {readExpenseRecovery, writeExpenseRecovery, clearExpenseRecovery} from '.
 import {createExpenseSupplierPicker} from './morning-expense-supplier-picker.js';
 import {createExpenseHistory} from './morning-expense-history.js';
 import {createExpenseRecent} from './morning-expense-recent.js';
+import {createExpenseRecentCache} from './morning-expense-recent-cache.js';
 import {createExpenseFileQueue} from './morning-expense-file-queue.js';
 import {createExpenseOcrReview, ocrFileHash} from './morning-expense-ocr.js';
 import {createExpenseLocalReview, applyExpenseLocalProposal} from './morning-expense-local.js';
@@ -24,6 +25,7 @@ const environmentChangedMessage = 'סביבת Morning השתנתה. המסך נ�
 
 export function createMorningExpenseIntake({request:sendRequest, captureRead, captureWrite, accountId, subscribeAccountScope, confirmDialog, dateEditorMarkup, files, todayISO = checkTodayISO, isActive = () => true, onBack = () => false}) {
   const tasks = createRuntimeTaskOwner();
+  const recentCache = createExpenseRecentCache();
   const fileQueue = createExpenseFileQueue({validate:files.validate, hash:ocrFileHash});
   const reporting = createExpenseReporting({storage:() => localStorage, todayISO});
   let environmentChanged = false;
@@ -93,7 +95,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     commit:value => {catalog.suppliers = mergeSuppliers(value.items, catalog.suppliers);},
   });
   const history = createExpenseHistory({request, capabilities:() => environmentChanged ? null : catalog?.capabilities, capture, run:tasks.run, todayISO});
-  const recent = createExpenseRecent({request, capabilities:() => environmentChanged ? null : catalog?.capabilities, capture, run:tasks.run});
+  const recent = createExpenseRecent({request, capabilities:() => environmentChanged ? null : catalog?.capabilities, capture, run:tasks.run, accountId, cache:recentCache});
   const ocr = createExpenseOcrReview({request, capture, run, capabilities:() => catalog?.capabilities, accountId, selected:() => selected,
     files, confirmDialog, apply:applyOcr, advance:() => {if (operationId) return; workDrafts.delete(selected); draft=defaults(); edited=false; selectNextFile({saveCurrent:false});},
     busy:() => busy, canStart:() => !operationId && !environmentChanged});
@@ -642,6 +644,6 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     });
   }
   return {markup, actions, runtime:{isPending:tasks.isPending, drain:tasks.drain, hasUnsavedWork,dispose:() => {
-    local.reset();pdfPreview.reset();if(!tasks.close())return false;globalThis.removeEventListener?.('beforeunload',beforeUnload);clear();unsubscribe();return true;
+    local.reset();pdfPreview.reset();if(!tasks.close())return false;globalThis.removeEventListener?.('beforeunload',beforeUnload);clear();recentCache.close();unsubscribe();return true;
   }}};
 }

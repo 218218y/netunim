@@ -75,6 +75,13 @@ FLOW = r"""(async()=>{
  check(document.querySelector('[data-expense-history]').textContent.includes('MORNING-EXTERNAL')&&!document.querySelector('[data-expense-history]').textContent.includes('HISTORY-1'),'real navigation failed to dispatch expense search');
  check(liveNumber.isConnected&&posts===0&&confirmations.length===0,'real search replaced the editor or dispatched a save');
  click('history-search-clear');check(document.querySelector('[data-expense-history]').textContent.includes('HISTORY-1'),'real search clear lost browsing');
+ const chooseHistory=async(kind,value)=>{const control=document.querySelector('[data-expense-history-filter="'+kind+'"]');control.value=value;control.focus();control.dispatchEvent(new Event('change',{bubbles:true}));await finance.runtime.drain();};
+ await chooseHistory('year','2026');
+ check(!document.querySelector('[data-expense-history-filter="period"]').disabled,'real lazy composition did not enable bimonth selection');
+ check([...document.querySelector('[data-expense-history-filter="year"]').options].map(option=>option.value).join(',')===',2026','history exposes obsolete years');
+ await chooseHistory('period','2026-09');
+ check(document.querySelector('[data-expense-history-filter="period"]').value==='2026-09','real lazy composition did not dispatch bimonth selection');
+ await chooseHistory('year','');
  const period=document.querySelector('[data-expense-field="reportingPeriod"]');
  check([...period.options].every(option=>option.value.startsWith('2026-')&&!/\d{2}–\d{2}/.test(option.text)),'old years or ambiguous numeric period labels remain');
  check(document.querySelector('[data-expense-field="reportingDate"]').type==='hidden'&&!document.querySelector('[data-expense-field="reportingDateConfirmed"]'),'redundant reporting controls remain');
@@ -165,6 +172,11 @@ LAYOUT_ASSERTIONS = r"""(async()=>{
   check(box.width>0&&box.left>=limit.left-1&&box.right<=limit.right+1,message);
  };
  const tables=[...document.querySelectorAll('.morning-expense-table')];
+ const heading=document.querySelector('[data-expense-history] .morning-expense-history-heading');
+ const filters=heading.querySelector('.morning-expense-history-filters');
+ check(filters&&heading.contains(filters.querySelector('[data-expense-history-filter="year"]')),'history filters are detached from the heading');
+ for(const select of filters.querySelectorAll('select'))check(bounds(select).width<=220,'history filter is too wide');
+ if(innerWidth>=1024){const title=bounds(heading.querySelector('h2')),controls=bounds(filters);check(Math.abs((title.top+title.bottom-controls.top-controls.bottom)/2)<3,'history controls are not beside the title');}
  check(tables.length===2,'recent/reporting tables missing');
  for(const table of tables){
   inside(table,table.parentElement,'expense table clipped by its section');
@@ -181,6 +193,48 @@ LAYOUT_ASSERTIONS = r"""(async()=>{
  inside(input,row,'supplier input clipped');inside(favorite,row,'favorite button clipped');
  return {width:innerWidth,tables:tables.map(table=>bounds(table).width)};
 })()"""
+
+
+def verify_recent_persistence():
+    setup = r"""(async()=>{
+      await appReady;syncDocument.stopPolling();finance.runtime.stop();
+      const {createExpenseRecentCache}=await import('./assets/js/domains/finance/morning-expense-recent-cache.js');
+      const {createExpenseRecent}=await import('./assets/js/domains/finance/morning-expense-recent.js');
+      const {createRuntimeTaskOwner}=await import('./assets/js/shared/runtime-task-owner.js');
+      const check=(value,message)=>{if(!value)throw Error(message)},scope={owner:'aaaaaaaa-aaaa-4aaa-aaaa-000000000050',environment:'production'};
+      const row=n=>({id:String(n),kind:'expense',status:10,type:305,number:'PERSISTED-'+n,createdAt:new Date(1700000000000+n*1000).toISOString(),name:'safe display',url:'signed-secret',payload:{private:'secret'}});
+      const cache=createExpenseRecentCache(),other=createExpenseRecentCache(),tasks=createRuntimeTaskOwner();
+      const caps={version:1,environment:'production',siteRecent:true};let calls=0,clock=100;
+      const recent=createExpenseRecent({cache,accountId:()=>scope.owner,capabilities:()=>caps,capture:()=>()=>{},run:tasks.run,now:()=>clock,
+        request:async action=>{check(action==='expenses','unexpected provider action');calls++;return {...caps,page:0,pageSize:50,total:2,pages:1,items:[row(1),row(2)]};}});
+      await recent.load();clock=110;recent.record({verified:true,expenseId:'3',item:row(3)});await tasks.drain();check(calls===2,'write scanned the provider');
+      await other.update(scope,{kind:'record',items:[row(4)],at:120},()=>{});
+      await cache.update(scope,{kind:'full',items:[row(1),row(2),row(3)],at:140,startedAt:115},()=>{});
+      const saved=await cache.read(scope,()=>{});check(saved.items.map(item=>item.id).join(',')==='4,3,2,1','concurrent refresh erased a site intake');
+      check(!JSON.stringify(saved).includes('secret')&&!JSON.stringify(saved).includes('payload'),'snapshot retained non-display data');
+      cache.close();other.close();return {committed:true,providerReads:calls,concurrent:true};
+    })()"""
+    restore = r"""(async()=>{
+      await appReady;syncDocument.stopPolling();finance.runtime.stop();
+      const {createExpenseRecentCache}=await import('./assets/js/domains/finance/morning-expense-recent-cache.js');
+      const {createExpenseRecent}=await import('./assets/js/domains/finance/morning-expense-recent.js');
+      const check=(value,message)=>{if(!value)throw Error(message)},scope={owner:'aaaaaaaa-aaaa-4aaa-aaaa-000000000050',environment:'production'};
+      const cache=createExpenseRecentCache(),caps={version:1,environment:'production',siteRecent:true};
+      const recent=createExpenseRecent({cache,accountId:()=>scope.owner,capabilities:()=>caps,capture:()=>()=>{},run:work=>work(),
+        request:async()=>{throw Error('reload must not make provider requests')}});
+      await recent.loadSite();const markup=recent.markup();
+      for(const n of [1,2,3,4])check(markup.includes('PERSISTED-'+n),'reload lost saved expense '+n);
+      check(markup.includes('כל חשבון Morning')&&!markup.includes('<details'),'reload did not restore the open combined list');
+      check(!await cache.read({...scope,environment:'sandbox'},()=>{}),'snapshot leaked between environments');
+      check(!await cache.read({...scope,owner:'aaaaaaaa-aaaa-4aaa-aaaa-000000000051'},()=>{}),'snapshot leaked between accounts');
+      let stale=false;try{await cache.update(scope,{kind:'record',items:[],at:150},()=>{throw Error('stale owner')});}catch{stale=true;}
+      check(stale,'stale owner was allowed to persist');cache.close();return {reload:true,open:true,isolated:true,noProviderScan:true};
+    })()"""
+    with BrowserSession(ROOT/'netunim-orders/site', 'morning-expense-persistence') as browser:
+        print('PASS native recent snapshot commit:',browser.evaluate(setup,timeout=45),flush=True)
+        browser._navigate()
+        print('PASS native recent snapshot after real page reload:',browser.evaluate(restore,timeout=45),flush=True)
+        assert not browser.drain_serious_errors()
 
 
 def verify_layout():
@@ -207,6 +261,7 @@ def verify_layout():
 
 
 if __name__=='__main__':
+    verify_recent_persistence()
     verify_layout()
     for width in [1440,390]:
         with BrowserSession(ROOT/'netunim-orders/site',f'morning-expense-composition-{width}') as browser:
