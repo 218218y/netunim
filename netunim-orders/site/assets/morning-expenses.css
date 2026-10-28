@@ -5,7 +5,7 @@
 .morning-expense-status:empty{min-height:0;margin:0}
 .morning-expense-workspace{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px;align-items:start}.morning-expense-fields,.morning-expense-source{display:flex;flex-direction:column;gap:12px;min-width:0}
 .morning-expense-fields label,.morning-expense-drop{display:flex;flex-direction:column;gap:7px;font-size:14px;font-weight:600}.morning-expense-fields input,.morning-expense-fields select{box-sizing:border-box;width:100%;min-width:0;padding:10px;border:1px solid #bfc6c9;border-radius:7px;background:#fff;font:inherit;color:inherit}.morning-expense-fields input:focus,.morning-expense-fields select:focus{outline:2px solid #357d9b;outline-offset:2px}
-.morning-expense-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:end}.morning-expense-amounts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.morning-expense-amounts input{direction:ltr;text-align:right;font-variant-numeric:tabular-nums}
+.morning-expense-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start}.morning-expense-amounts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.morning-expense-amounts input{direction:ltr;text-align:right;font-variant-numeric:tabular-nums}
 .morning-expense-intake small{display:block;font-size:12px;line-height:1.6;overflow-wrap:anywhere;color:#505f64}.morning-expense-operation{display:flex;flex-direction:column;align-items:start;gap:10px;padding:14px;border:1px solid #c9dcdf;border-radius:8px;background:#f1f8f8}.morning-expense-operation span{font-size:13px}
 .morning-expense-drop{padding:18px;border:2px dashed #a6b9bf;border-radius:10px;background:#f8fafb}.morning-expense-drop input{max-width:100%;font:inherit}.morning-expense-source>img{display:block;width:100%;height:auto;max-height:620px;object-fit:contain}.morning-expense-source>iframe{width:100%;height:620px;border:1px solid #d7dfe2;border-radius:8px}.morning-expense-source>b{overflow-wrap:anywhere}
 @media(max-width:800px){.morning-expense-workspace{grid-template-columns:minmax(0,1fr)}.morning-expense-content{padding:0 12px 16px}.morning-expense-source>iframe{height:420px}.morning-expense-amounts{grid-template-columns:minmax(0,1fr)}.morning-expense-invoice{grid-template-columns:minmax(0,1fr)}}
@@ -32,7 +32,7 @@
 .morning-expense-pdf-mark{position:absolute;padding:0;border:1px solid #e4ba32;border-radius:2px;background:#ffe65345;pointer-events:auto;cursor:pointer}
 .morning-expense-pdf-mark.current{background:#ffd52d75;border:2px solid #b77705;box-shadow:0 0 0 1px #fff9}
 .morning-expense-local-summary{font-size:13px;line-height:1.6;border-top:1px solid #d6e0e4;padding-top:8px}
-.morning-expense-local-summary p{margin:4px 0}.morning-expense-local-summary summary,.morning-expense-queue-details summary{cursor:pointer;font-size:13px}
+.morning-expense-local-summary p{margin:4px 0}
 @media(max-width:800px){.morning-expense-source{position:static}.morning-expense-pdf-viewport{height:56dvh;min-height:300px}}
 .morning-expense-page{width:100%;min-width:0}.morning-expense-page>.morning-expense-intake{margin:0}
 .morning-expense-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px;flex-wrap:wrap}.morning-expense-heading h1{font-size:24px;margin:0}
@@ -59,10 +59,12 @@
 
 .morning-expense-field-review{display:block;font-size:.8rem;line-height:1.5;padding:.35rem .5rem;border-inline-start:3px solid #b45309;background:#fff7ed;color:#713f12;margin-block:.25rem;overflow-wrap:anywhere}
 .morning-expense-field-review[hidden]{display:none}
-.morning-expense-field-review[data-review-status="verified"]{border-color:#15803d;background:#f0fdf4;color:#14532d}
+.morning-expense-field-review[data-review-status="verified"],.morning-expense-field-review[data-review-status="not_required"]{border-color:#15803d;background:#f0fdf4;color:#14532d}
 .morning-expense-field-review[data-review-status="manual"]{border-color:#2563eb;background:#eff6ff;color:#1e3a8a}
 .morning-expense-field-review[data-review-status="missing"]{border-color:#be123c;background:#fff1f2;color:#881337}
 .morning-expense-field-review .btn{font-size:inherit;white-space:normal;padding:.15rem .4rem}
 [data-recognition-status="review"],[data-recognition-status="missing"]{border-color:#b45309}
 
 .morning-expense-review-input{min-width:0}
+
+.morning-expense-queue-panel h3{font-size:13px;margin:6px 0 10px}

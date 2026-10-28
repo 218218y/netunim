@@ -7,12 +7,13 @@ const fieldLabels = {number:'מספר חשבונית', date:'תאריך המסמ
 // Field presentation owns adjacent descriptions, accessibility and navigation;
 // accounting state and source evidence are supplied by the intake controller.
 export function createExpenseFieldReview({host, visible:isVisible, reviewFields, warningsMarkup}) {
-  const reviewLabels = {verified:'זוהה במסמך', review:'דורש בדיקה', missing:'לא זוהה', manual:'הושלם ידנית'};
+  const reviewLabels = {verified:'זוהה במסמך', review:'דורש בדיקה', missing:'לא זוהה', manual:'הושלם ידנית',
+    not_required:'לפי פרטי המסמך אין צורך במספר הקצאה', not_applicable:''};
   function reviewSlot(name, field = reviewFields()[name]) {
-    const visible = isVisible();
+    const visible = isVisible() && field.status !== 'not_applicable';
     const source = field.sources.some(item => item.page && item.quad?.length === 8);
     return `<span class="morning-expense-field-review" id="expense-review-${name}" data-expense-review-field="${name}" data-review-status="${field.status}" ${visible?'':'hidden'}>
-      <strong>${reviewLabels[field.status]}</strong> ${esc(field.detail)}
+      <strong>${reviewLabels[field.status]}</strong> ${name === 'number' ? '' : esc(field.detail)}
       ${source ? `<button type="button" class="btn" data-action="morning-expense-command" data-expense-command="review-source" data-review-source="${field.sourceKey}">למקור במסמך</button>` : ''}</span>`;
   }
   function updateReview() {
@@ -75,3 +76,18 @@ export function expenseSanityMessage(draft, rate) {
 export const stateLabels = {reserved:'טרם נשלחה · אפשר לבטל בבטחה', cancelled:'בוטלה לפני שליחה', pending:'נשלחה · טרם אומתה', created_unverified:'נוצרה · אימות הפרטים ממתין', created:'נוצרה והפרטים אומתו', needs_reconciliation:'תוצאה לא ברורה · נדרש בירור ב־Morning', blocked:'הפעולה נחסמה · נדרש בירור'};
 
 export const fileLabels = {not_started:'העלאה טרם התחילה', prepared:'הכנה הושלמה · אפשר להכין מחדש', upload_started:'הנפקת הרשאת העלאה בבדיקה', ticket_issued:'הרשאת העלאה נמסרה · נדרשת בדיקת קישור', file_accepted:'הקובץ התקבל לעיבוד · הקישור טרם אומת', file_linked:'Morning מציגה קובץ מצורף'};
+
+
+export function expenseQueueMarkup(selected, queue, disabled) {
+  const entries = [...(selected ? [{item:selected, index:0}] : []), ...queue.map((item, index) => ({item, index:index+1}))];
+  if (!entries.length) return '';
+  const attrs = disabled ? 'disabled' : '';
+  return `<section class="morning-expense-queue-panel" aria-label="תור מסמכי המקור">
+    <h3>תור מסמכי המקור · ${entries.length} קבצים</h3><ol class="morning-expense-queue">
+    ${entries.map(({item, index}) => `<li>
+      <button type="button" class="btn" data-action="morning-expense-command" data-expense-command="choose-file"
+        data-expense-index="${index}" aria-pressed="${index === 0}" ${attrs}>${esc(item.name)}</button>
+      <button type="button" class="btn" data-action="morning-expense-command" data-expense-command="remove-file"
+        data-expense-index="${index}" aria-label="הסרת ${esc(item.name)} מהתור" ${attrs}>הסרה</button></li>`).join('')}
+    </ol></section>`;
+}

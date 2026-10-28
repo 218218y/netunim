@@ -57,7 +57,7 @@ OWNERSHIP = PREFIX + r"""
  const settle=()=>uiFeature.runtime.drain();click('toggle');await settle();
  const bytes=new TextEncoder().encode('%PDF-1.4 cancellable local source');
  const waitFor=async predicate=>{for(let n=0;n<200&&!predicate();n++)await new Promise(resolve=>setTimeout(resolve,10));check(predicate(),'local extraction did not enter the controlled pending state')};
- const transfer=new DataTransfer();for(const name of ['first.pdf','second.pdf'])transfer.items.add(new File([bytes],name,{type:'application/pdf'}));
+ const transfer=new DataTransfer();for(const name of ['first.pdf','second.pdf'])transfer.items.add(new File([bytes,name],name,{type:'application/pdf'}));
  let release;extractionHold=new Promise(resolve=>release=resolve);
  await uiFeature.actions['morning-expense-files']({files:transfer.files});await waitFor(()=>extractions===1);
  fixture.querySelector('[data-expense-command="choose-file"][data-expense-index="1"]').click();
@@ -125,7 +125,7 @@ REVIEW = PREFIX + r"""
  await uiFeature.actions['morning-expense-command']({dataset:{expenseCommand:'remove-file',expenseIndex:'0'}});await settle();Object.assign(recognized,beforePartial);
  await choose(new File(['%PDF-1.4 review states'],'review.pdf',{type:'application/pdf'}));
  for(const name of ['supplierId','documentType','number','date','net','vat','gross','allocationNumber']){
-  check(status(name)==='verified','recognized badge missing on '+name);
+  check(status(name)===(name==='allocationNumber'?'not_required':'verified'),'recognized badge missing on '+name);
   const input=name==='supplierId'?fixture.querySelector('[data-expense-field="supplierQuery"]'):name==='date'?fixture.querySelector('[data-date-part="day"]'):fixture.querySelector('[data-expense-field="'+name+'"]');
   check(input.getAttribute('aria-describedby')==='expense-review-'+name,'review is not accessible on '+name);
  }
@@ -157,6 +157,45 @@ REVIEW = PREFIX + r"""
  return {badges:true,accessible:true,noText:true,unknown:true,technicalError:true,manualPreserved:true,images:true,posts,uploads,width:innerWidth};
 })()"""
 
+POLISH = PREFIX + r"""
+ const settle=()=>uiFeature.runtime.drain();click('toggle');await settle();
+ recognized.fields.allocationNumber.value=null;recognized.fields.allocationNumber.status='missing';
+ const bytes='%PDF-1.4 unique document A';const original=new File([bytes],'original.pdf',{type:'application/pdf'});
+ const choose=async files=>{await uiFeature.actions['morning-expense-files']({files});await settle()};
+ const field=(name,value,type='input')=>{const input=fixture.querySelector('[data-expense-field="'+name+'"]');input.value=value;input.dispatchEvent(new Event(type,{bubbles:true}));return input};
+ const badge=name=>fixture.querySelector('[data-expense-review-field="'+name+'"]');
+ await choose([original,new File([bytes],'renamed-copy.pdf',{type:'application/pdf'})]);
+ check(fixture.querySelectorAll('.morning-expense-queue li').length===1,'identical bytes entered work drafts twice');
+ check(fixture.querySelector('[data-expense-file-notice]').textContent.includes('כבר נוסף'),'duplicate notice was lost after recognition');
+ field('number','MANUAL-KEEP');await choose([original]);
+ check(fixture.querySelector('[data-expense-field="number"]').value==='MANUAL-KEEP'&&fixture.querySelectorAll('.morning-expense-queue li').length===1,'duplicate selection erased manual edits');
+ await choose([new File(['%PDF-1.4 unique document B'],'original.pdf',{type:'application/pdf'})]);
+ check(fixture.querySelectorAll('.morning-expense-queue li').length===2,'same name and size but different bytes were rejected');
+ check(!fixture.querySelector('.morning-expense-queue-details')&&fixture.querySelector('.morning-expense-queue').getBoundingClientRect().height>0,'source queue is still collapsed');
+ check(!fixture.querySelector('[data-expense-local] details')&&!fixture.textContent.includes('פרטי הזיהוי המקומי ומקורות הנתונים'),'old local details disclosure remains');
+ check(fixture.querySelector('[data-expense-command="local-start"]')&&fixture.querySelector('[data-expense-command="local-fill"]'),'recognition controls were removed with the disclosure');
+ check(!badge('number').textContent.includes('מספר במקור')&&!badge('number').textContent.includes('הצעה'),'invoice number still carries long provenance text');
+ const save=fixture.querySelector('[data-action="morning-expense-save"]'),warnings=fixture.querySelector('[data-expense-review-warnings]');
+ check(save.compareDocumentPosition(warnings)&Node.DOCUMENT_POSITION_FOLLOWING,'save button still follows warnings');
+ field('date','2026-10-20','change');field('documentType','305','change');
+ for(const net of ['4999.99','5000.00','5000.01']){
+  field('net',net);
+  const expected=net==='5000.01'?'missing':'not_required';check(badge('allocationNumber').dataset.reviewStatus===expected,'wrong allocation threshold at '+net);
+  check(fixture.querySelector('[data-expense-review-warnings]').textContent.includes('מספר הקצאה')===(expected==='missing'),'optional allocation produced a warning at '+net);
+ }
+ const number=fixture.querySelector('[data-expense-field="number"]').getBoundingClientRect();
+ const date=fixture.querySelector('.morning-expense-date fieldset').getBoundingClientRect();
+ const description=fixture.querySelector('[data-expense-field="description"]').getBoundingClientRect();
+ const allocation=fixture.querySelector('[data-expense-field="allocationNumber"]').getBoundingClientRect();
+ check(innerWidth<=800||Math.abs(number.top-date.top)<3,'number/date inputs shifted by source hints: '+JSON.stringify({number:number.top,date:date.top}));
+ check(Math.abs(description.top-allocation.top)<3&&Math.abs(description.height-allocation.height)<1,'description/allocation alignment differs with a warning');
+ field('vat','0.00');check(badge('allocationNumber').dataset.reviewStatus==='not_required','zero VAT still requires allocation');
+ field('vat','900.00');field('documentType','330','change');check(badge('allocationNumber').dataset.reviewStatus==='not_applicable','credit shows ordinary allocation warning');
+ field('documentType','305','change');field('date','2026-01-20','change');field('net','6000.00');check(badge('allocationNumber').dataset.reviewStatus==='not_required','old invoice used June threshold');
+ uiFeature.runtime.dispose();await settle();check(posts===0&&uploads===0,'polish acceptance dispatched an external operation');
+ return {duplicates:true,distinctBytes:true,manualPreserved:true,openQueue:true,compact:true,alignment:true,allocation:true,posts,uploads,width:innerWidth};
+})()"""
+
 if __name__ == '__main__':
     with BrowserSession(ROOT/'netunim-orders/site', 'morning-expense-local') as browser:
         for width in [1440, 390]:
@@ -167,6 +206,9 @@ if __name__ == '__main__':
         for width in [1440,390]:
             browser.call('Emulation.setDeviceMetricsOverride', {'width':width,'height':1100,'deviceScaleFactor':1,'mobile':width<800})
             print('PASS recognition field states and manual fallback:', browser.evaluate(REVIEW,timeout=45),flush=True)
+        for width in [1440,390]:
+            browser.call('Emulation.setDeviceMetricsOverride', {'width':width,'height':1100,'deviceScaleFactor':1,'mobile':width<800})
+            print('PASS intake polish, content dedupe and allocation thresholds:',browser.evaluate(POLISH,timeout=45),flush=True)
         result = browser.evaluate(OWNERSHIP, timeout=45)
         assert result['posts'] == 0 and result['uploads'] == 0, result
         print('PASS local extraction cancellation, account ownership, native PDF fallback and disposal:', result, flush=True)

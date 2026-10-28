@@ -106,9 +106,8 @@ export function createExpenseLocalReview({files, request, capabilities, capture,
     if (draft) {
       const fields = invoiceFieldReview(proposal, edits, draft, supplierTaxId);
       for (const field of Object.values(fields)) {
-        if (field.status !== 'verified') values.push(`${titles[field.sourceKey]}: ${statuses[field.status]}. ${field.detail}`);
+        if (!['verified','not_required','not_applicable'].includes(field.status)) values.push(`${titles[field.sourceKey]}: ${statuses[field.status]}. ${field.detail}`);
       }
-      if (fields.allocationNumber.allocationPolicy === 'check_business_conditions') values.push(fields.allocationNumber.detail);
     } else {
       for (const [name, field] of Object.entries(proposal?.fields || {})) {
         if (field.status !== 'verified') values.push(`${titles[name] || name}: ${reasons[field.reason] || statuses[field.status] || statuses.review}.`);
@@ -131,26 +130,13 @@ export function createExpenseLocalReview({files, request, capabilities, capture,
   function markup() {
     if (selected()?.type?.startsWith('image/')) return '<p class="morning-expense-notice" role="status">המסמך מוצג לעיון. אין זיהוי טקסט מקומי לקובצי JPG או PNG בתצורה הנוכחית; יש להשלים את הפרטים ידנית.</p>';
     if (!available() || !canStart() || ocrActive()) return '';
-    const fields = proposal?.fields;
-    const display = (name, field) => ['net','vat','gross'].includes(name) && Number.isSafeInteger(field.value) ? (field.value / 100).toFixed(2) + ' ₪' : field.value ?? '—';
     return `<section class="morning-expense-local-summary" data-expense-local data-recognition-outcome="${esc(outcome)}" aria-label="תוצאות הזיהוי המקומי">
       <p role="status" aria-live="polite">${esc(message)}</p>
       ${proposal && outcome === 'unknown_supplier' ? '<p>הספק או תבנית המסמך לא זוהו. יש להשלים ידנית לפי המקור.</p>' : ''}
-      <details><summary>פרטי הזיהוי המקומי ומקורות הנתונים</summary>
-        <p>הזיהוי מתבצע בדפדפן. הקובץ אינו נשלח לסריקה ולא נוצרת טיוטה.</p>
-        ${fields ? `<ul>${Object.entries(fields).map(([name, field]) => `<li>
-          ${esc(titles[name] || name)}: <bdi>${esc(display(name, field))}</bdi> · ${esc(statuses[field.status] || statuses.review)}
-          ${field.sources?.[0]?.page ? ` · עמוד ${field.sources[0].page}` : ''}
-          ${reasons[field.reason] ? ` · ${esc(reasons[field.reason])}` : ''}</li>`).join('')}</ul>` : ''}
-        ${fields?.invoiceNumber?.rawNumber ? `<small>מספר במקור: <bdi>${esc(fields.invoiceNumber.rawNumber)}</bdi>
-          · הצעה: <bdi>${esc(fields.invoiceNumber.suggestedNumber)}</bdi> · המספר הסופי הוא הערך שאישרת בטופס.</small>` : ''}
-        ${proposal?.allocationPolicy?.status === 'check_business_conditions' && !fields.allocationNumber.value ?
-          '<p>לפי התאריך והסכום במקור ייתכן שנדרש מספר הקצאה. יש לבדוק ולהשלים לפי תנאי העסקה.</p>' : ''}
         <div class="morning-expense-toolbar">
           <button type="button" class="btn" data-action="morning-expense-command" data-expense-command="local-start" ${pending ? 'disabled' : ''}>זיהוי מחדש</button>
           ${useful() ? `<button type="button" class="btn" data-action="morning-expense-command" data-expense-command="local-fill" ${pending ? 'disabled' : ''}>מילוי ההצעות מחדש</button>` : ''}
         </div>
-      </details>
       ${ocrOperation ? `<button type="button" class="btn" data-action="morning-expense-command" data-expense-command="ocr-resume"
         data-ocr-operation="${esc(ocrOperation)}">בירור סריקת Morning הקיימת</button>` : ''}
       <button type="button" class="btn" data-action="morning-expense-command" data-expense-command="local-defer" ${pending ? 'disabled' : ''}>הסרה מהתור ללא שמירה</button>
