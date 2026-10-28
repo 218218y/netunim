@@ -5,7 +5,8 @@ import {normalizeExpenseInput} from '../../core/morning-expense-input.js';
 import {expenseAmountChange} from '../../core/morning-expense-amounts.js';
 import {expenseBimonth} from '../../core/morning-report-period.js';
 import {createRuntimeTaskOwner} from '../../shared/runtime-task-owner.js';
-import {readExpenseCatalog, readExpenseCatalogPage, searchExpenseSuppliers, expenseCatalogClassifications, expenseSupplierEligibility, expenseSupplierCategory, readExpenseSupplierCategory} from './morning-expense-catalog.js';
+import {readExpenseCatalog, readExpenseCatalogPage, searchExpenseSuppliers, expenseCatalogClassifications, expenseSupplierEligibility} from './morning-expense-catalog.js';
+import {readExpenseProposal, expenseProposalFields} from './morning-expense-proposal.js';
 import {readExpensePreferences, writeExpensePreferences} from './morning-expense-preferences.js';
 import {createExpenseReporting, expenseReportingStorageWarning} from './morning-expense-reporting.js';
 import {readExpenseRecovery, writeExpenseRecovery, clearExpenseRecovery} from './morning-expense-recovery.js';
@@ -411,36 +412,15 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
   function sourceExpenses() {return [...(catalog?.expenses || []), ...extraExpenses];}
   async function applySuggestions(item, check, origin) {
     if (operationId || item.currency && item.currency !== 'ILS') throw new Error('ניתן למלא את הטופס רק במסמך בשקלים ובהיעדר פעולת יצירה קיימת.');
-    let supplier = null;
-    const taxId = item.supplier?.taxId;
-    if (/^\d{9}$/.test(taxId || '')) {
-      const found = await readExpenseCatalogPage(request, catalog.capabilities, 'suppliers', {taxId}, 0, check);
-      const exact = found.items.filter(row => row.taxId === taxId && row.active);
-      if (exact.length === 1 && found.total === 1) {
-        const canonical = await canonicalItem('get_supplier', exact[0].id, check);
-        if (canonical.active && canonical.taxId === taxId && (!item.supplier.id || canonical.id === item.supplier.id)) supplier = canonical;
-      }
-    }
-    let category = null, categoryRows = [], categoryUnavailable = false;
-    if (supplier && origin === 'local') {
-      category = expenseSupplierCategory(sourceExpenses(), supplier);
-      if (!category) {
-        try {
-          const history = await readExpenseSupplierCategory(request, catalog.capabilities, supplier, check);
-          category = history.category; categoryRows = history.rows;
-        } catch {check(); categoryUnavailable = true;}
-      }
-    }
+    const {supplier, category, categoryRows, categoryUnavailable} = await readExpenseProposal(item, {
+      request, capabilities:catalog.capabilities, canonicalItem, expenses:sourceExpenses(), local:origin === 'local', check});
     check();
     if (origin !== 'local') draft = defaults();
     // An unrecognized date/type must not silently inherit today's date or the
     // default invoice type. Existing manual entries still survive partial fills.
     else if (!edited) {draft.date = ''; draft.documentType = '';}
     lastAmountField = ''; supplierPicker.reset();
-    const money = value => Number.isSafeInteger(value) && value >= 0 ? (value / 100).toFixed(2) : '';
-    const suggestions = {number:item.number, documentType:item.documentType || '', date:item.date?.slice(0, 10) || '',
-      net:money(item.netCents), vat:money(item.vatCents), gross:money(item.grossCents), description:item.description || '', allocationNumber:item.allocationNumber || '',
-      classificationExpenseId:catalog.classifications.find(row => row.id === item.classification?.id)?.sourceExpenseId || ''};
+    const suggestions = expenseProposalFields(item, catalog.classifications);
     Object.assign(draft, origin === 'local' ? Object.fromEntries(Object.entries(suggestions).filter(([,value]) => value !== '' && value !== null && value !== undefined)) : suggestions);
     if (supplier) {catalog.suppliers = mergeSuppliers([supplier], catalog.suppliers); draft.supplierId = supplier.id; draft.pcnClassification = eligibilityFor(supplier).p ? 'P' : 'T';}
     if (supplier && origin === 'local') {
