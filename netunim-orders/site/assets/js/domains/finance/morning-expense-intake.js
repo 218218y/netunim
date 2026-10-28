@@ -1,8 +1,8 @@
-import {invoiceFormFields} from '../../core/invoice-field-review.js';
+import {createExpenseFieldReview, replaceExpenseSurface, expenseSanityMessage, stateLabels, fileLabels} from './morning-expense-review-view.js';
 import {esc} from '../../core/values.js';
 import {checkTodayISO} from '../../core/dates.js';
 import {normalizeExpenseInput} from '../../core/morning-expense-input.js';
-import {expenseAmountChange,expenseAmountSanity} from '../../core/morning-expense-amounts.js';
+import {expenseAmountChange} from '../../core/morning-expense-amounts.js';
 import {expenseBimonth} from '../../core/morning-report-period.js';
 import {createRuntimeTaskOwner} from '../../shared/runtime-task-owner.js';
 import {readExpenseCatalog, readExpenseCatalogPage, searchExpenseSuppliers, expenseCatalogClassifications, expenseSupplierEligibility} from './morning-expense-catalog.js';
@@ -13,14 +13,11 @@ import {createExpenseSupplierPicker} from './morning-expense-supplier-picker.js'
 import {createExpenseHistory} from './morning-expense-history.js';
 import {createExpenseRecent} from './morning-expense-recent.js';
 import {createExpenseOcrReview} from './morning-expense-ocr.js';
-import {createExpenseLocalReview} from './morning-expense-local.js';
+import {createExpenseLocalReview, applyExpenseLocalProposal} from './morning-expense-local.js';
 import {createExpensePdfPreview} from './morning-expense-pdf-preview.js';
 import {createExpenseSourceSupport} from './morning-expense-source.js';
 import {expenseSourceExpected} from '../../core/morning-expense-source.js';
 
-const stateLabels = {reserved:'טרם נשלחה · אפשר לבטל בבטחה', cancelled:'בוטלה לפני שליחה', pending:'נשלחה · טרם אומתה', created_unverified:'נוצרה · אימות הפרטים ממתין', created:'נוצרה והפרטים אומתו', needs_reconciliation:'תוצאה לא ברורה · נדרש בירור ב־Morning', blocked:'הפעולה נחסמה · נדרש בירור'};
-const fieldLabels = {number:'מספר חשבונית', date:'תאריך המסמך', net:'לפני מע״מ', vat:'מע״מ מהחשבונית', gross:'כולל מע״מ', description:'תיאור', allocationNumber:'מספר הקצאה, אם נדרש'};
-const fileLabels = {not_started:'העלאה טרם התחילה', prepared:'הכנה הושלמה · אפשר להכין מחדש', upload_started:'הנפקת הרשאת העלאה בבדיקה', ticket_issued:'הרשאת העלאה נמסרה · נדרשת בדיקת קישור', file_accepted:'הקובץ התקבל לעיבוד · הקישור טרם אומת', file_linked:'Morning מציגה קובץ מצורף'};
 export function createMorningExpenseIntake({request:sendRequest, captureRead, captureWrite, accountId, subscribeAccountScope, confirmDialog, dateEditorMarkup, files, todayISO = checkTodayISO, isActive = () => true, onBack = () => false}) {
   const tasks = createRuntimeTaskOwner();
   const reporting = createExpenseReporting({storage:() => localStorage, todayISO});
@@ -84,7 +81,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       draft.supplierId = ''; draft.classificationExpenseId = '';
       for (const key of ['supplierId', 'classificationExpenseId']) {const field = host()?.querySelector(`[data-expense-field="${key}"]`); if (field) field.value = '';}
       const button = host()?.querySelector('[data-action="morning-expense-save"]'); if (button) button.disabled = true;
-      updateReview();
+      review.update();
     },
     search:(query, more, signal) => searchExpenseSuppliers(request, catalog, query, more, capture(), {signal}),
     commit:value => {catalog.suppliers = mergeSuppliers(value.items, catalog.suppliers);},
@@ -96,8 +93,8 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     busy:() => busy, canStart:() => !operationId});
   const local = createExpenseLocalReview({files, request, capture, capabilities:() => catalog?.capabilities, selected:() => selected,
     editVersion:() => editVersion, onProposal:proposal => pdfPreview.setFields(proposal?.fields),
-    onReady:() => {if (!host()?.contains(document.activeElement)) focusReview();},
-    apply:applyLocal, render, run:tasks.run, canStart:() => !!catalog && !operationId, canApply:() => !busy && !operationId, ocrActive:ocr.active, confirmDialog});
+    onReady:() => {if (!host()?.contains(document.activeElement)) review.focus();},
+    apply:(proposal, check) => applyExpenseLocalProposal(proposal, check, applySuggestions), render, run:tasks.run, canStart:() => !!catalog && !operationId, canApply:() => !busy && !operationId, ocrActive:ocr.active, confirmDialog});
   const pdfPreview = createExpensePdfPreview({capture,run:tasks.run,isActive:active});
   const sources=createExpenseSourceSupport({files,request,capture,run:tasks.run,capabilities:()=>catalog?.capabilities,
     selected:()=>selected,proposal:local.snapshot,confirmDialog,activeOperation:()=>operationId,isActive:active});
@@ -105,16 +102,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
   function render() {
     if (!active()) return;
     const target = host(); if (!target) return;
-    const focused = document.activeElement, name = focused?.dataset.expenseField, part = focused?.dataset.datePart;
-    const selection = name && typeof focused.selectionStart === 'number' ? [focused.selectionStart, focused.selectionEnd] : null;
-    const scroller = target.closest('.view-scroll'), top = scroller?.scrollTop;
-    target.outerHTML = markup();
-    updateReview(); history.bind();
-    const replacement = name ? host()?.querySelector(`[data-expense-field="${name}"]`) : part ? host()?.querySelector(`[data-date-part="${part}"]`) : null;
-    if (replacement && !replacement.disabled && replacement.type !== 'hidden') {
-      replacement.focus({preventScroll:true}); if (selection) replacement.setSelectionRange(...selection);
-    }
-    if (scroller && Number.isFinite(top)) scroller.scrollTop = top;
+    replaceExpenseSurface(target, markup(), () => {review.update(); history.bind();});
   }
   function updateMessage(value) { message = value; const output = host()?.querySelector('[data-expense-message]'); if (output) output.textContent = value; }
   function run(work) {
@@ -196,7 +184,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
         if (hidden) hidden.value = draft.reportingDate;
         updateMessage('הפרטים טרם נשמרו. חודש הדיווח מותאם אוטומטית לתאריך ולתקופה שבחרת.');
       } catch {updateMessage('יש לבחור תאריך מסמך ותקופת דיווח תקינים.');}
-      updateSanity(); updateReview(); return true;
+      updateSanity(); review.update(); return true;
     }
     if (name === 'supplierId') {
       supplierPicker.reset();
@@ -214,15 +202,9 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       calculate(lastAmountField); render();
     } else if (['net', 'vat', 'gross'].includes(name)) {lastAmountField = name; calculate(name);}
     else updateMessage('הפרטים טרם נשמרו. יש לבדוק מול מסמך המקור.');
-    updateSanity(); updateReview(); return true;
+    updateSanity(); review.update(); return true;
   }
-  function sanityMessage() {
-    const value=expenseAmountSanity(draft,vatRate());
-    if(value.status==='inconsistent')return 'לפני מע״מ ומע״מ אינם מסתכמים לסכום הכולל. יש לבדוק את שלושת הסכומים מול המקור.';
-    if(value.status!=='different_rate')return '';
-    return `בדיקת סבירות: מע״מ לפי ${value.rate}% הוא ${(value.expectedVatCents/100).toFixed(2)} ₪, הפרש של ${
-      (Math.abs(value.differenceCents)/100).toFixed(2)} ₪ מהסכום בטופס. ייתכנו שיעורים מעורבים או עיגולים. סכום המקור לא שונה.`;
-  }
+  const sanityMessage = () => expenseSanityMessage(draft, vatRate());
   function updateSanity(){const target=host()?.querySelector('[data-expense-sanity]');if(target){const text=sanityMessage();target.textContent=text;target.hidden=!text;}}
   function vatRate() {return draft.pcnClassification === 'P' ? 16 : 18;}
   function eligibilityFor(supplier) {return expenseSupplierEligibility(supplier, catalog?.capabilities.pSuppliers, catalog?.capabilities.pcnP === true);}
@@ -444,14 +426,6 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     return supplier;
   }
   function applyOcr(item, check) {return applySuggestions(item, check, 'ocr');}
-  async function applyLocal(proposal, check) {
-    const f = proposal.fields;
-    const supplier = await applySuggestions({number:f.invoiceNumber.suggestedNumber || f.invoiceNumber.value || '', documentType:f.documentType.value,
-      date:f.date.value, netCents:f.net.value, vatCents:f.vat.value, grossCents:f.gross.value,
-      allocationNumber:f.allocationNumber.value, currency:f.currency.value, supplier:{taxId:f.supplier.value}}, check, 'local');
-    check();
-    if (supplier) Object.assign(f.supplier, {canonicalVerified:true,canonicalId:supplier.id,status:'verified',reason:''});
-  }
   async function canonicalItem(action, id, check, environment = catalog.capabilities.environment) {
     const value = await request(action, {id, expectedEnvironment:environment}, check); check();
     if (value.version !== 1 || value.environment !== environment || value.item?.id !== id) throw new Error('לא ניתן לאמת את ההעדפה בחשבון Morning הנוכחי.');
@@ -548,41 +522,13 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     else notice = caps.create ? 'סביבת בדיקות Sandbox · יש לבדוק כל פרט מול מסמך המקור.' : 'סביבת Sandbox · שמירה דורשת הרשאה ושתי זהויות ספקי P שאומתו מול Morning.';
     return notice + (caps.create && !caps.upload ? ' צירוף קבצים עדיין כבוי.' : '');
   }
-  const reviewLabels = {verified:'זוהה במסמך', review:'דורש בדיקה', missing:'לא זוהה', manual:'הושלם ידנית'};
-  const reviewFields = () => local.fieldReview(draft, catalog?.suppliers.find(row => row.id === draft.supplierId)?.taxId);
-  function reviewSlot(name, field = reviewFields()[name]) {
-    const visible = !!selected || !!local.snapshot().proposal;
-    const source = field.sources.some(item => item.page && item.quad?.length === 8);
-    return `<span class="morning-expense-field-review" id="expense-review-${name}" data-expense-review-field="${name}" data-review-status="${field.status}" ${visible?'':'hidden'}>
-      <strong>${reviewLabels[field.status]}</strong> ${esc(field.detail)}
-      ${source ? `<button type="button" class="btn" data-action="morning-expense-command" data-expense-command="review-source" data-review-source="${field.sourceKey}">למקור במסמך</button>` : ''}</span>`;
-  }
-  function updateReview() {
-    const fields = reviewFields();
-    for (const [name, field] of Object.entries(fields)) {
-      const slot = host()?.querySelector(`[data-expense-review-field="${name}"]`); if (!slot) continue;
-      slot.outerHTML = reviewSlot(name, field);
-      const control = name === 'supplierId' ? host()?.querySelector('[data-expense-field="supplierQuery"]') : host()?.querySelector(`[data-expense-field="${name}"]`);
-      const controls = name === 'date' ? host()?.querySelectorAll('.morning-expense-date input:not([type="hidden"]), .morning-expense-date fieldset') || [] : control ? [control] : [];
-      for (const input of controls) {input.setAttribute('aria-describedby', `expense-review-${name}`); input.dataset.recognitionStatus = field.status;}
-    }
-    const warnings = host()?.querySelector('[data-expense-review-warnings]');
-    if (warnings) warnings.outerHTML = local.warningsMarkup(catalog?.suppliers.find(row => row.id === draft.supplierId)?.taxId, draft);
-    const count = Object.values(fields).filter(field => ['missing','review'].includes(field.status)).length;
-    const summary = host()?.querySelector('[data-expense-review-count]'); if (summary) summary.textContent = `${count} שדות לבדיקה או השלמה`;
-  }
-  function focusReview() {
-    const entries = Object.entries(reviewFields()).filter(([,field]) => ['missing','review'].includes(field.status));
-    const current = document.activeElement?.dataset.datePart ? 'date' : document.activeElement?.dataset.expenseField;
-    const index = entries.findIndex(([name]) => name === current || name === 'supplierId' && current === 'supplierQuery');
-    const name = entries[(index + 1) % entries.length]?.[0];
-    const control = name === 'supplierId' ? host()?.querySelector('[data-expense-field="supplierQuery"]') : name === 'date' ? host()?.querySelector('[data-date-part="day"]') : host()?.querySelector(`[data-expense-field="${name}"]`);
-    control?.focus(); return !!control;
-  }
+  const review = createExpenseFieldReview({host, visible:() => !!selected || !!local.snapshot().proposal,
+    reviewFields:() => local.fieldReview(draft, catalog?.suppliers.find(row => row.id === draft.supplierId)?.taxId),
+    warningsMarkup:() => local.warningsMarkup(catalog?.suppliers.find(row => row.id === draft.supplierId)?.taxId, draft)});
   function markup() {
     const disabled = busy || !!operationId, attrs = disabled ? 'disabled' : '';
     const option = (value, label, current, unavailable = false) => `<option value="${esc(value)}" ${String(current) === String(value) ? 'selected' : ''} ${unavailable ? 'disabled' : ''}>${esc(label)}</option>`;
-    const textField = (name, type = 'text') => `<label>${fieldLabels[name]}<input data-expense-field="${name}" data-${type === 'date' ? 'change' : 'input'}="morning-expense-field" type="${type}" ${name === 'number' ? 'maxlength="20"' : ''} ${['net', 'vat', 'gross'].includes(name) ? 'inputmode="decimal"' : ''} value="${esc(draft[name])}" ${attrs}>${Object.hasOwn(invoiceFormFields, name) ? reviewSlot(name) : ''}</label>`;
+
     const {today, year, years, periods} = reporting.choices();
     const supplier = catalog?.suppliers.find(row => row.id === draft.supplierId);
     const eligibility = eligibilityFor(supplier);
@@ -595,7 +541,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       <p class="morning-expense-status" role="status" aria-live="polite" data-expense-message>${esc(busy ? 'הפעולה מתבצעת…' : message)}</p>
       ${catalog ? `<div class="morning-expense-workspace"><div class="morning-expense-fields">
       ${!operationId ? `
-      <div class="morning-expense-supplier-row"><div class="morning-expense-supplier-field">${supplierPicker.markup(disabled)}${reviewSlot('supplierId')}</div>
+      <div class="morning-expense-supplier-row"><div class="morning-expense-supplier-field">${supplierPicker.markup(disabled)}${review.slot('supplierId')}</div>
       <button type="button" class="btn" data-action="morning-expense-command" data-expense-command="favorite" ${disabled || !supplier ? 'disabled' : ''}>${favorites.some(row => row.id === draft.supplierId) ? 'הסרה מהמועדפים' : 'הוספה למועדפים שלי'}</button></div>
       ${supplier && !eligibility.eligible ? `<small>${esc(eligibility.reason)}</small>` : ''}
       ${favorites.length ? `<div class="morning-expense-toolbar">${favorites.map(row => `<button type="button" class="btn" data-action="morning-expense-command" data-expense-command="use-favorite" data-expense-supplier="${esc(row.id)}" ${attrs}>${esc(row.name)}</button>`).join('')}</div>` : ''}
@@ -604,17 +550,17 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       <small>הצעות מתוך ${catalog.expenses.length} הוצאות בטווח ${esc(catalog.fromDate)}–${esc(catalog.toDate)}. הרשימה אינה קטלוג מלא. אחוזי ההכרה מנוהלים ב־Morning.</small>
       <div class="morning-expense-reporting"><label>תקופת דיווח מע״מ<select aria-label="שנת דיווח מע״מ" data-expense-field="reportingYear" data-change="morning-expense-field" ${attrs}>${years.map(value=>option(value,value,year)).join('')}</select>
       <select data-expense-field="reportingPeriod" data-change="morning-expense-field" ${attrs}>${periods.map(item => option(item.key, item.label, draft.reportingPeriod)).join('')}</select></label>
-      <label>סוג מסמך<select data-expense-field="documentType" data-change="morning-expense-field" ${attrs}>${option('', 'בחר סוג מסמך', draft.documentType)}${option(305, 'חשבונית מס', draft.documentType)}${option(330, 'חשבונית זיכוי', draft.documentType)}${option(320, 'חשבונית מס קבלה', draft.documentType)}</select>${reviewSlot('documentType')}</label>
+      <div class="morning-expense-review-input"><label>סוג מסמך<select data-expense-field="documentType" data-change="morning-expense-field" ${attrs}>${option('', 'בחר סוג מסמך', draft.documentType)}${option(305, 'חשבונית מס', draft.documentType)}${option(330, 'חשבונית זיכוי', draft.documentType)}${option(320, 'חשבונית מס קבלה', draft.documentType)}</select></label>${review.slot('documentType')}</div>
       <label>סוג דיווח<select data-expense-field="pcnClassification" data-change="morning-expense-field" ${attrs}>${option('T', 'רגיל · T', draft.pcnClassification)}${option('P', 'חשבונית P', draft.pcnClassification)}</select></label></div>
       ${draft.pcnClassification === 'P' ? `<p class="morning-expense-notice">${catalog.capabilities.pcnP ? 'חשבונית P: הספק וסיווג P מאומתים בשמירה. המע״מ נשאר לפי מסמך המקור ומספר החשבונית מושלם לתשע ספרות.' : 'חשבונית P: המע״מ נשאר לפי מסמך המקור. קליטת P באתר טרם הופעלה לחשבון זה.'}</p>` : ''}
-      <div class="morning-expense-pair morning-expense-invoice">${textField('number')}<div class="morning-expense-date"><span>תאריך החשבונית</span><fieldset ${attrs}>
+      <div class="morning-expense-pair morning-expense-invoice">${review.textField('number', draft, disabled)}<div class="morning-expense-date"><span>תאריך החשבונית</span><fieldset ${attrs}>
       ${dateEditorMarkup('morningExpenseDate', draft.date, {label:'תאריך החשבונית', compact:true, maxDate:today,
-        change:'morning-expense-field', data:{'expense-field':'date'}})}</fieldset>${reviewSlot('date')}</div></div>
+        change:'morning-expense-field', data:{'expense-field':'date'}})}</fieldset>${review.slot('date')}</div></div>
       <input type="hidden" data-expense-field="reportingDate" value="${esc(draft.reportingDate)}">
-      <div class="morning-expense-amounts">${textField('net')}${textField('vat')}${textField('gross')}</div>
+      <div class="morning-expense-amounts">${review.textField('net', draft, disabled)}${review.textField('vat', draft, disabled)}${review.textField('gross', draft, disabled)}</div>
       <p class="morning-expense-notice" data-expense-sanity ${sanityMessage()?'':'hidden'}>${esc(sanityMessage())}</p>
       <small>הקלדת סה״כ מחשבת לפני מע״מ ומע״מ לפי ${vatRate()}%. אפשר לתקן לפי מסמך המקור. זיכוי מוקלד בסכומים חיוביים.</small>
-      <div class="morning-expense-pair">${textField('description')}${textField('allocationNumber')}</div>
+      <div class="morning-expense-pair">${review.textField('description', draft, disabled)}${review.textField('allocationNumber', draft, disabled)}</div>
       ${local.warningsMarkup(supplier?.taxId, draft)}
       ${selected ? '<div class="morning-expense-toolbar"><span data-expense-review-count></span><button type="button" class="btn" data-action="morning-expense-command" data-expense-command="review-next">לשדה הבא לבדיקה</button></div>' : ''}
       <div class="morning-expense-toolbar"><button type="button" class="btn primary" data-action="morning-expense-save"
@@ -647,7 +593,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
   }
   const commands = {load, status, next, favorite, 'more-classifications':moreClassifications,
     'source-refresh':()=>sources.refresh(),'source-more':sources.more,'source-resume':sourceResume,'source-verify':sourceVerify,
-    'review-next':focusReview, 'review-source':element => pdfPreview.field(element.dataset.reviewSource),
+    'review-next':review.focus, 'review-source':element => pdfPreview.field(element.dataset.reviewSource),
     'pdf-prev':pdfPreview.previous, 'pdf-next':pdfPreview.next,
     'pdf-match-prev':pdfPreview.previousMatch, 'pdf-match-next':pdfPreview.nextMatch, 'pdf-target':pdfPreview.target,
     'pdf-zoom-in':pdfPreview.zoomIn, 'pdf-zoom-out':pdfPreview.zoomOut,

@@ -93,6 +93,7 @@ OWNERSHIP = PREFIX + r"""
  ports.files.recognize=async()=>structuredClone(replay);click('local-start');await settle();
  check(fixture.querySelector('[data-pdf-current-field]').textContent.includes('לפני מע״מ'),'first highlighted field did not follow form order');
  check(fixture.querySelectorAll('.morning-expense-pdf-mark').length===3,'not all source amounts were highlighted');
+ check([...fixture.querySelectorAll('[data-expense-command="review-source"]')].every(button=>!button.closest('label')),'source navigation created multiple labelable controls inside one field label');
  check(fixture.querySelector('[data-expense-pdf-preview]').textContent.includes('עמוד 2 מתוך 2'),'result navigation did not jump to summary page');
  click('pdf-match-next');await settle();check(fixture.querySelector('[data-pdf-current-field]').textContent.includes('מע״מ מהחשבונית'),'result navigation order is incorrect');
  const marker=fixture.querySelector('.morning-expense-pdf-mark.current').getBoundingClientRect();

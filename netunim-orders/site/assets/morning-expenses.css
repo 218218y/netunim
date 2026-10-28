@@ -64,3 +64,5 @@
 .morning-expense-field-review[data-review-status="missing"]{border-color:#be123c;background:#fff1f2;color:#881337}
 .morning-expense-field-review .btn{font-size:inherit;white-space:normal;padding:.15rem .4rem}
 [data-recognition-status="review"],[data-recognition-status="missing"]{border-color:#b45309}
+
+.morning-expense-review-input{min-width:0}

@@ -164,3 +164,12 @@ export function createExpenseLocalReview({files, request, capabilities, capture,
     edited:(name, calculated = false) => {if (name) edits[name] = calculated ? 'calculated' : 'manual'; if (proposal?.fields.invoiceNumber) proposal.fields.invoiceNumber.effectiveNumber = null;},
     approve:number => {if (proposal?.fields.invoiceNumber) proposal.fields.invoiceNumber.effectiveNumber = number;}, pending:() => pending};
 }
+
+export async function applyExpenseLocalProposal(proposal, check, applySuggestions) {
+    const f = proposal.fields;
+    const supplier = await applySuggestions({number:f.invoiceNumber.suggestedNumber || f.invoiceNumber.value || '', documentType:f.documentType.value,
+      date:f.date.value, netCents:f.net.value, vatCents:f.vat.value, grossCents:f.gross.value,
+      allocationNumber:f.allocationNumber.value, currency:f.currency.value, supplier:{taxId:f.supplier.value}}, check, 'local');
+    check();
+    if (supplier) Object.assign(f.supplier, {canonicalVerified:true,canonicalId:supplier.id,status:'verified',reason:''});
+  }
