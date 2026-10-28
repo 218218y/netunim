@@ -28,7 +28,8 @@ FLOW = r"""(async()=>{
   const request=JSON.parse(options.body);calls.push(request);
   if(hold&&request.action==='suppliers'&&(!heldQuery||request.name===heldQuery)){entered();await hold}
   const base={ok:true,version:1,environment:'production'};
-  if(request.action==='capabilities')return Response.json({...base,create:true,upload:true,sourceIntent:true,duplicateCheck:true,pcnP:false,draftApproval:false,pSuppliers:[{id:pSupplier.id,taxId:pSupplier.taxId}]});
+  if(request.action==='capabilities')return Response.json({...base,create:true,upload:true,sourceIntent:true,duplicateCheck:true,siteRecent:true,pcnP:false,draftApproval:false,pSuppliers:[{id:pSupplier.id,taxId:pSupplier.taxId}]});
+  if(request.action==='site_recent')return Response.json({...base,source:'site',items:[expense]});
   if(request.action==='source_pending')return Response.json({...base,items:[],page:request.page||0,pageSize:20});
   if(request.action==='duplicate_check')return Response.json({...base,duplicate:false});
   check(request.expectedEnvironment==='production','request missing displayed environment');
@@ -56,6 +57,7 @@ FLOW = r"""(async()=>{
  check(ui.kupaSubView==='expenses'&&!document.querySelector('[data-morning-reports]')&&!document.querySelector('[data-action="tax-open"]'),'expense page still contains unrelated sections');
  check(document.querySelector('[data-expense-history]').textContent.includes('HISTORY-1'),'real composition omitted automatic history');
  check(calls.every(request=>request.action!=='expenses'||request.fromDate),'opening the intake scanned the entire account');
+ check(document.querySelector('[data-expense-recent]').textContent.includes('HISTORY-1')&&!document.querySelector('[data-expense-recent]').textContent.includes('MORNING-EXTERNAL'),'real composition omitted automatic site-only history');
  click('recent-refresh');await finance.runtime.drain();
  check(document.querySelector('[data-expense-recent]').textContent.includes('MORNING-EXTERNAL'),'explicit recent loading omitted an expense created elsewhere under another reporting period');
  click('back');check(ui.kupaSubView==='summary'&&document.querySelector('[data-morning-reports]'),'back did not restore the summary');
@@ -111,9 +113,11 @@ FLOW = r"""(async()=>{
  inputDate('2026-10-20');
  datePart('day').value='32';datePart('day').dispatchEvent(new Event('input',{bubbles:true}));
  click('save');await finance.runtime.drain();check(posts===0&&confirmations.length===0,'invalid date reused the previous valid date');inputDate('2026-10-20');
+ const accountReadsBeforeSave=calls.filter(request=>request.action==='expenses'&&!request.fromDate).length;
  click('favorite');click('save');await finance.runtime.drain();
  check(posts===1&&confirmations.length===1,'actual app confirmation/save did not execute exactly once');
- check(document.querySelector('[data-expense-recent]').textContent.includes('החשבון עודכן'),'save did not invalidate the recent snapshot');
+ check(document.querySelector('[data-expense-recent]').textContent.includes('COMPOSITION-1'),'save did not immediately insert the verified site intake');
+ check(calls.filter(request=>request.action==='expenses'&&!request.fromDate).length===accountReadsBeforeSave,'save triggered an all-account scan');
  click('recent-refresh');await finance.runtime.drain();check(document.querySelector('[data-expense-recent]').textContent.includes('COMPOSITION-1'),'explicit refresh missed confirmed intake');
  check(confirmations[0].title.includes('האמיתי')&&confirmations[0].message.includes(expense.classification.title),'actual confirmation missed account or category');
  const key='morningExpenseOperation:production:'+owner,preference='morningExpensePreferences:production:'+owner;
