@@ -37,7 +37,16 @@ export function createExpenseFieldReview({host, visible:isVisible, reviewFields,
     const control = name === 'supplierId' ? host()?.querySelector('[data-expense-field="supplierQuery"]') : name === 'date' ? host()?.querySelector('[data-date-part="day"]') : host()?.querySelector(`[data-expense-field="${name}"]`);
     control?.focus(); return !!control;
   }
-  const textField = (name, draft, disabled, type = 'text') => {const attrs = disabled ? 'disabled' : ''; return `<div class="morning-expense-review-input"><label>${fieldLabels[name]}<input data-expense-field="${name}" data-${type === 'date' ? 'change' : 'input'}="morning-expense-field" type="${type}" ${name === 'number' ? 'maxlength="20"' : ''} ${['net', 'vat', 'gross'].includes(name) ? 'inputmode="decimal"' : ''} value="${esc(draft[name])}" ${attrs}></label>${Object.hasOwn(invoiceFormFields, name) ? reviewSlot(name) : ''}</div>`;};
+  function textField(name, draft, disabled, type = 'text') {
+    const attrs = disabled ? 'disabled' : '';
+    return `<div class="morning-expense-review-input"><label>${fieldLabels[name]}<input
+      data-expense-field="${name}" data-${type === 'date' ? 'change' : 'input'}="morning-expense-field"
+      type="${type}" ${name === 'number' ? 'maxlength="20"' : ''}
+      ${['net', 'vat', 'gross'].includes(name) ? 'inputmode="decimal"' : ''}
+      value="${esc(draft[name])}" ${attrs}></label>
+      ${Object.hasOwn(invoiceFormFields, name) ? reviewSlot(name) : ''}</div>`;
+  }
+
   return {slot:reviewSlot, update:updateReview, focus:focusReview, textField};
 }
 
