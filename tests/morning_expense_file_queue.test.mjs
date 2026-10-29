@@ -37,6 +37,15 @@ test('hash caching is memory-only, reusable and reset for a new scope',async()=>
  queue.reset();await queue.prepare([original],[],check);assert.equal(calls,2);
 });
 
+test('selection and new batches retain the original queue order',async()=>{
+ const queue=createExpenseFileQueue({validate,hash});
+ const {accepted:[first,second,third]}=await queue.prepare(['first','second','third'].map(name=>file(name+'.pdf',name)),[],check);
+ assert.deepEqual(queue.items(third,[first,second]),[first,second,third]);
+ const {accepted:[fourth]}=await queue.prepare([file('fourth.pdf','fourth')],[third,first,second],check);
+ assert.deepEqual(queue.items(second,[fourth,third,first]),[first,second,third,fourth]);
+ assert.deepEqual(queue.items(null,[third,fourth,second]),[second,third,fourth]);
+});
+
 
 test('resource ceilings bound selection and unique retained bytes without allocating large file buffers',async()=>{
  const bytes=20*1024*1024;const virtual=n=>({name:n+'.pdf',size:bytes,key:n});

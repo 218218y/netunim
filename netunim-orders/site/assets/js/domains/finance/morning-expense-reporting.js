@@ -1,5 +1,6 @@
 import {expenseBimonth, expenseReportingChoice, expenseReportingDefault, expenseReportingYears} from '../../core/morning-report-period.js';
 import {readExpenseReportingPeriod, writeExpenseReportingPeriod} from './morning-expense-preferences.js';
+import {esc} from '../../core/values.js';
 
 export const expenseReportingStorageWarning = 'תקופת הדיווח נשמרה למסך זה בלבד. הדפדפן לא אפשר לשמור אותה לפתיחה הבאה.';
 
@@ -42,7 +43,14 @@ export function createExpenseReporting({storage, todayISO}) {
       const date = `${year}-${String(month).padStart(2, '0')}-01`;
       if (date <= today) periods.push(expenseBimonth(date));
     }
-    return {today, year, years:expenseReportingYears(today, selected), periods};
+    return {today, year, years:expenseReportingYears(today, selected), periods, previous:selected<expenseBimonth(today).key};
   }
-  return {reset, fields, restore, choose, yearKey, choices};
+  function markup(disabled) {
+    const {year,years,periods,previous}=choices(), selected=fields('').reportingPeriod;
+    const options=items=>items.map(([key,label])=>`<option value="${esc(key)}" ${String(key)===String(selected)?'selected':''}>${esc(label)}</option>`).join('');
+    return `<label class="morning-expense-period"><span class="morning-expense-field-label">תקופת דיווח מע״מ ${previous?'<span class="morning-expense-period-warning" data-expense-period-warning title="נבחרה תקופה קודמת לתקופה הנוכחית. יש לוודא שהבחירה מכוונת.">תקופה קודמת</span>':''}</span>
+      <select aria-label="שנת דיווח מע״מ" data-expense-field="reportingYear" data-change="morning-expense-field" ${disabled?'disabled':''}>${years.map(value=>`<option value="${value}" ${value===year?'selected':''}>${value}</option>`).join('')}</select>
+      <select aria-label="תקופת דיווח מע״מ" data-expense-field="reportingPeriod" data-change="morning-expense-field" ${previous?'aria-description="נבחרה תקופה קודמת; יש לוודא שהבחירה מכוונת."':''} ${disabled?'disabled':''}>${options(periods.map(item=>[item.key,item.label]))}</select></label>`;
+  }
+  return {reset, fields, restore, choose, yearKey, choices, markup};
 }

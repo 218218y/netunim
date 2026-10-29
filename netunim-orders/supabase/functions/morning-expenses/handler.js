@@ -1,5 +1,5 @@
 const cors = {'Access-Control-Allow-Origin':'*', 'Access-Control-Allow-Headers':'authorization, apikey, content-type, x-client-info, x-retry-count, traceparent, tracestate, baggage',
-  'Access-Control-Allow-Methods':'POST, OPTIONS', 'Access-Control-Max-Age':'86400'};
+  'Access-Control-Allow-Methods':'POST, OPTIONS', 'Access-Control-Expose-Headers':'X-Morning-Environment', 'Access-Control-Max-Age':'86400'};
 export function createExpenseHandler({getUser, service}) {
   const json = (body, status) => Response.json(body, {status, headers:{...cors, 'Cache-Control':'no-store'}});
   return async request => {
@@ -32,6 +32,8 @@ export function createExpenseHandler({getUser, service}) {
       try { body = binary?{action:'upload_source',operationId:params.get('operationId'),expectedEnvironment:params.get('expectedEnvironment'),
         retryGeneration:params.get('retryGeneration')||'',file:new Blob(chunks,{type:contentType})}:JSON.parse(value); } catch { return json({ok:false, code:'invalid_expense_input'}, 400); }
       const result = await service(user, body);
+      if(result.status===200&&result.body instanceof Blob)return new Response(result.body,{status:200,headers:{...cors,'Cache-Control':'no-store',
+        'Content-Type':result.body.type,'Content-Disposition':'inline','X-Content-Type-Options':'nosniff','X-Morning-Environment':result.environment}});
       return json(result.body, result.status);
     } catch { return json({ok:false, code:'morning_expenses_unavailable', message:'שירות ההוצאות אינו זמין כרגע.'}, 503); }
   };

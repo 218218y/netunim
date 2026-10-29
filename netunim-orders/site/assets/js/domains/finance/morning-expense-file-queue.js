@@ -1,7 +1,12 @@
 // Queue identity is based on validated bytes, never a filename or invoice guess.
 // Hashes stay in memory; the writer independently verifies the approved source.
 export function createExpenseFileQueue({validate, hash}) {
-  let cache = new WeakMap();
+  let cache = new WeakMap(), order = new WeakMap(), sequence = 0;
+  function items(selected, queue) {
+    const list = [...(selected ? [selected] : []), ...queue];
+    for (const item of list) if (!order.has(item)) order.set(item, sequence++);
+    return list.sort((a,b) => order.get(a)-order.get(b));
+  }
   function fingerprint(file) {
     if (!cache.has(file)) {
       const entries = cache;
@@ -27,7 +32,8 @@ export function createExpenseFileQueue({validate, hash}) {
       if (current.length + accepted.length >= 20 || bytes > 100 * 1024 * 1024) throw new Error('ניתן לשמור בתור עד 20 קבצים ובסך הכול עד 100MB.');
       seen.add(identity); accepted.push(item);
     }
+    items(null, [...current, ...accepted]);
     return {accepted, duplicates};
   }
-  return {prepare, reset:() => {cache = new WeakMap();}};
+  return {prepare, items, reset:() => {cache = new WeakMap(); order = new WeakMap(); sequence = 0;}};
 }

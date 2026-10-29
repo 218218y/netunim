@@ -39,7 +39,7 @@ SCENARIO = PREFIX + r"""
  const edited=fixture.querySelector('[data-expense-field="number"]');edited.value='kept-edit';edited.dispatchEvent(new Event('input',{bubbles:true}));
  click('ocr-fill');await settle();check(value('number')==='kept-edit','wrong source preview overwrote the edited OCR form');
  check(fixture.textContent.includes('אינו מסמך המקור'),'wrong source preview was not explained');
- fixture.querySelector('[data-expense-command="choose-file"][data-expense-index="1"]').click();await settle();
+ fixture.querySelector('[data-expense-command="choose-file"][data-expense-index="0"]').click();await settle();
  await uiFeature.actions['morning-expense-save']();await settle();check(posts===0,'keyboard/command bypassed OCR duplicate protection');
  const first=ocrOperation;
  ocrOffline=true;uiFeature.runtime.dispose();uiFeature=createMorningExpenseIntake(ports);fixture.innerHTML=uiFeature.markup();click('toggle');await settle();

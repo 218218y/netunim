@@ -20,11 +20,11 @@ import {createExpenseSourceSupport} from './morning-expense-source.js';
 import {completeExpenseSource} from './morning-expense-completion.js';
 import {approveExpenseDraft,approveSourceRetry} from './morning-expense-submit.js';
 import {createExpenseProgress} from './morning-expense-progress.js';
-import {openExpenseDocument} from './morning-expense-document.js';
+import {createExpenseDocumentViewer} from './morning-expense-document.js';
 
 const environmentChangedMessage = 'סביבת Morning השתנתה. המסך ננעל והטיוטה נשמרה בסביבתה; יש לפתוח מחדש את מסך ההוצאות לפני עבודה בסביבה החדשה.';
 
-export function createMorningExpenseIntake({request:sendRequest, captureRead, captureWrite, accountId, subscribeAccountScope, confirmDialog, dateEditorMarkup, files, sourceCompletion=completeExpenseSource, todayISO = checkTodayISO, isActive = () => true, onBack = () => false}) {
+export function createMorningExpenseIntake({request:sendRequest, captureRead, captureWrite, accountId, subscribeAccountScope, confirmDialog, dateEditorMarkup, files, toast=()=>{}, sourceCompletion=completeExpenseSource, todayISO = checkTodayISO, isActive = () => true, onBack = () => false}) {
   const tasks = createRuntimeTaskOwner();
   const recentCache = createExpenseRecentCache();
   const fileQueue = createExpenseFileQueue({validate:files.validate, hash:ocrFileHash});
@@ -33,7 +33,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
   let expanded = false, catalog = null, busy = false, generation = 0, reading = null, message = '', result = null, operationId = '', fileAttempted = false;
   let queue = [], selected = null, previewUrl = '', reconciliationId = '', favorites = [], extraExpenses = [], preferences = null, lastAmountField = '', draft = defaults();
   let editVersion = 0,sourceReason='',fileNotice='';
-  let edited = false,advanceReady=false,completionNotice='';
+  let edited = false,advanceReady=false,completionNotice='',announceNext=null;
   const workDrafts = new Map();
   const hasValues = (values=draft) => ['number','net','vat','gross','description','allocationNumber'].some(key=>!!values[key]);
   function rememberWork() {
@@ -78,7 +78,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     } catch { /* No prior recovery metadata. */ }
   }
   function clear() {
-    progress.reset();
+    progress.reset();documentViewer.reset();announceNext=null;
     environmentChanged = false; fileQueue.reset(); sources.reset();workDrafts.clear();edited=false;advanceReady=false;completionNotice='';sourceReason='';fileNotice='';
     local.reset(); pdfPreview.reset(); editVersion++;
     reading?.abort(); reading = null; generation++; catalog = null; busy = false; message = ''; result = null; operationId = ''; fileAttempted = false;
@@ -105,9 +105,10 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     busy:() => busy, canStart:() => !operationId && !environmentChanged});
   const local = createExpenseLocalReview({files, request, capture, capabilities:() => catalog?.capabilities, selected:() => selected,
     editVersion:() => editVersion, onProposal:proposal => pdfPreview.setFields(proposal?.fields),
-    onReady:() => {if (!host()?.contains(document.activeElement)) review.focus();},
+    onReady:({outcome}) => {if(!host()?.contains(document.activeElement))review.focus({preventScroll:true});if(announceNext&&announceNext===selected){announceNext=null;toast(outcome==='recognized'?'ה־PDF הבא זוהה ומוכן לבדיקה.':'ה־PDF הבא נטען. יש לבדוק ולהשלים את השדות המסומנים.');}},
     apply:(proposal, check) => applyExpenseLocalProposal(proposal, check, applySuggestions), render, run:tasks.run, canStart:() => !!catalog && !operationId && !environmentChanged, canApply:() => !busy && !operationId && !environmentChanged, ocrActive:ocr.active, confirmDialog});
   const pdfPreview = createExpensePdfPreview({capture,run:tasks.run,isActive:active});
+  const documentViewer=createExpenseDocumentViewer({request,capture,run:tasks.run,isActive:active,report:updateMessage,validate:files.validate});
   const sources=createExpenseSourceSupport({files,request,capture,run:tasks.run,capabilities:()=>catalog?.capabilities,
     selected:()=>selected,proposal:local.snapshot,confirmDialog,isActive:active,isBusy:()=>busy});
   const unsubscribe = subscribeAccountScope(() => { clear(); render(); });
@@ -133,8 +134,10 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       })[error.message] || error.message || 'הפעולה לא הושלמה.'; return false; }
       finally { if (generation === epoch && active()) {
         progress.reset();busy=false;
-        if(advanceReady){advanceReady=false;const notice=message;if(next())message=notice+' '+(selected?'החשבונית הבאה מוכנה לבדיקה.':'כל החשבוניות בתור הושלמו.');}
+        const completed=advanceReady;advanceReady=false;
+        if(completed){const notice=message;if(next()){announceNext=selected;message=notice+' '+(selected?'ה־PDF הבא נטען לזיהוי.':'כל החשבוניות בתור הושלמו.');toast(message);}}
         render();
+        if(completed)host()?.querySelector('.morning-expense-workspace')?.scrollIntoView({block:'start',behavior:'instant'});
       } }
     });
   }
@@ -259,12 +262,12 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
 
     });
   }
-  function selectNextFile({saveCurrent=true,preserveDraft=false,carryPreferences=false}={}) {
+  function selectNextFile({saveCurrent=true,preserveDraft=false,carryPreferences=false,target=null}={}) {
     fileNotice = "";
     if(saveCurrent)rememberWork();
     const preferencesDraft=draft;
     local.reset(preserveDraft); editVersion++;
-    releasePreview(); selected = queue.shift() || null;
+    releasePreview();queue=fileQueue.items(null,queue);selected=target||queue[0]||null;queue=queue.filter(item=>item!==selected);
     if (selected && selected.type !== 'application/pdf') previewUrl = URL.createObjectURL(selected.file);
     pdfPreview.select(selected);
     if (!operationId) {
@@ -388,7 +391,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
         message='חשבונית אחרת עדיין פתוחה להשלמה. יש להשלים אותה או לתעד חריגה לפני פתיחת חשבונית זו.';return false;
       }
       if(!operationId){
-        rememberWork();if(selected)queue.unshift(selected);selected=null;local.reset();pdfPreview.reset();releasePreview();
+        rememberWork();if(selected)queue=fileQueue.items(selected,queue);selected=null;local.reset();pdfPreview.reset();releasePreview();
         operationId=id;result={state:'needs_reconciliation',verified:false};remember();
       }
       result=await request('operation_status',{operationId},check);check();
@@ -496,17 +499,17 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
   function queueChange(element) {
     if (busy || operationId || fileAttempted) return false;
     const index = Number(element.dataset.expenseIndex), remove = element.dataset.expenseCommand === 'remove-file';
-    if (!Number.isInteger(index) || index < 0 || index > queue.length) return false;
-    const target=[...(selected?[selected]:[]),...queue][index];if(!target)return false;
+    if (!Number.isInteger(index) || index < 0) return false;
+    const target=fileQueue.items(selected,queue)[index];if(!target)return false;
     const commit=()=>{
       fileNotice = "";
-      const items=[...(selected?[selected]:[]),...queue];if(items[index]!==target)return false;
-      if(remove&&index>0){items.splice(index,1);queue=items.slice(1);workDrafts.delete(target);}
-      else if(!remove&&index===0)return true;
+      const items=fileQueue.items(selected,queue);if(items[index]!==target)return false;
+      if(remove&&target!==selected){queue=queue.filter(item=>item!==target);workDrafts.delete(target);}
+      else if(!remove&&target===selected)return true;
       else{
         if(!remove)rememberWork();
-        const [item]=items.splice(index,1);if(!remove)items.unshift(item);else workDrafts.delete(item);
-        queue=items;selectNextFile({saveCurrent:false});
+        if(remove){items.splice(index,1);workDrafts.delete(target);}
+        queue=items;selectNextFile({saveCurrent:false,target:remove?null:target});
       }
       message=remove?'הקובץ וטיוטתו הוסרו מהתור המקומי.':'טיוטת העבודה של הקובץ שוחזרה.';render();return true;
     };
@@ -544,7 +547,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     const disabled = busy || !!operationId || environmentChanged, attrs = disabled ? 'disabled' : '';
     const option = (value, label, current, unavailable = false) => `<option value="${esc(value)}" ${String(current) === String(value) ? 'selected' : ''} ${unavailable ? 'disabled' : ''}>${esc(label)}</option>`;
 
-    const {today, year, years, periods} = reporting.choices();
+    const {today} = reporting.choices();
     const supplier = catalog?.suppliers.find(row => row.id === draft.supplierId);
     const eligibility = eligibilityFor(supplier);
     return `<section class="morning-expense-intake" data-morning-expense-intake data-keydown="morning-expense-keyboard" data-paste="morning-expense-paste" dir="rtl">
@@ -566,9 +569,8 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       <div class="morning-expense-pair morning-expense-classification"><label>סיווג מהוצאות קיימות<select data-expense-field="classificationExpenseId" data-change="morning-expense-field" ${attrs}>${option('', 'בחר סיווג', draft.classificationExpenseId)}${catalog.classifications.map(row => option(row.sourceExpenseId, row.title, sourceExpenses().find(item => item.id === draft.classificationExpenseId)?.classification?.id === row.id ? row.sourceExpenseId : '')).join('')}</select></label>
       <button type="button" class="btn" data-action="morning-expense-command" data-expense-command="more-classifications" ${disabled || catalog.expensePage.page + 1 >= catalog.expensePage.pages || catalog.expensePage.page >= 19 ? 'disabled' : ''}>חיפוש סיווגים בהוצאות נוספות</button></div>
       <small>הצעות מתוך ${catalog.expenses.length} הוצאות בטווח ${esc(catalog.fromDate)}–${esc(catalog.toDate)}. הרשימה אינה קטלוג מלא. אחוזי ההכרה מנוהלים ב־Morning.</small>
-      <div class="morning-expense-reporting"><label>תקופת דיווח מע״מ<select aria-label="שנת דיווח מע״מ" data-expense-field="reportingYear" data-change="morning-expense-field" ${attrs}>${years.map(value=>option(value,value,year)).join('')}</select>
-      <select data-expense-field="reportingPeriod" data-change="morning-expense-field" ${attrs}>${periods.map(item => option(item.key, item.label, draft.reportingPeriod)).join('')}</select></label>
-      <div class="morning-expense-review-input"><label>סוג מסמך<select data-expense-field="documentType" data-change="morning-expense-field" ${attrs}>${option('', 'בחר סוג מסמך', draft.documentType)}${option(305, 'חשבונית מס', draft.documentType)}${option(330, 'חשבונית זיכוי', draft.documentType)}${option(320, 'חשבונית מס קבלה', draft.documentType)}</select></label>${review.slot('documentType')}</div>
+      <div class="morning-expense-reporting">${reporting.markup(disabled)}
+      <div class="morning-expense-review-input"><label><span class="morning-expense-field-label">סוג מסמך</span><select data-expense-field="documentType" data-change="morning-expense-field" ${attrs}>${option('', 'בחר סוג מסמך', draft.documentType)}${option(305, 'חשבונית מס', draft.documentType)}${option(330, 'חשבונית זיכוי', draft.documentType)}${option(320, 'חשבונית מס קבלה', draft.documentType)}</select></label>${review.slot('documentType')}</div>
       <label>סוג דיווח<select data-expense-field="pcnClassification" data-change="morning-expense-field" ${attrs}>${option('T', 'רגיל · T', draft.pcnClassification)}${option('P', 'חשבונית P', draft.pcnClassification)}</select></label></div>
       ${draft.pcnClassification === 'P' ? `<p class="morning-expense-notice">${catalog.capabilities.pcnP ? 'חשבונית P: הספק וסיווג P מאומתים בשמירה. המע״מ נשאר לפי מסמך המקור ומספר החשבונית מושלם לתשע ספרות.' : 'חשבונית P: המע״מ נשאר לפי מסמך המקור. קליטת P באתר טרם הופעלה לחשבון זה.'}</p>` : ''}
       <div class="morning-expense-pair morning-expense-invoice">${review.textField('number', draft, disabled)}<div class="morning-expense-date"><span>תאריך החשבונית</span><fieldset ${attrs}>
@@ -603,11 +605,11 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       <p class="morning-expense-notice" role="status" data-expense-file-notice ${fileNotice?'':'hidden'}>${esc(fileNotice)}</p>
       ${selected ? `<b>${esc(selected.name)}</b>${selected.type === 'application/pdf' ? pdfPreview.markup() : `<img src="${esc(previewUrl)}" alt="חשבונית מקור לבדיקה">`}` : '<p>בחר קובץ להצגתו לצד השדות.</p>'}
       ${local.markup()}
-      ${expenseQueueMarkup(selected, queue, disabled || fileAttempted)}
+      ${expenseQueueMarkup(selected, fileQueue.items(selected,queue), disabled || fileAttempted)}
       ${result?.verified&&result.sourcePending ? `<button type="button" class="btn" data-action="morning-expense-command" data-expense-command="file-status" ${busy?'disabled':''}>המשך בדיקה והשלמת המקור</button>`:''}</div></div>${sources.markup()}${recent.markup()}${history.markup()}` : ''}</div>` : ''}</section>`;
   }
   const commands = {load, status, next, favorite, 'more-classifications':moreClassifications,
-    'source-open':element=>tasks.run(()=>openExpenseDocument({id:element.dataset.expenseId,request,check:capture(),environment:catalog.capabilities.environment,report:updateMessage})),
+    'source-open':element=>documentViewer.open(element.dataset.expenseId,catalog.capabilities.environment),
     'source-refresh':()=>sources.refresh(),'source-more':sources.more,'source-resume':sourceResume,'source-verify':sourceVerify,
     'review-next':review.focus, 'review-source':element => pdfPreview.field(element.dataset.reviewSource),
     'pdf-prev':pdfPreview.previous, 'pdf-next':pdfPreview.next,

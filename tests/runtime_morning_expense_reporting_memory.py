@@ -14,8 +14,10 @@ SCENARIO = PREFIX + r"""
  check(value('reportingPeriod')==='2026-09'&&JSON.parse(localStorage.getItem(preference())).period==='2026-09','initial selection was not remembered');
  field('reportingPeriod','2026-09');check(!uiFeature.runtime.hasUnsavedWork(),'a saved reporting preference is incorrectly treated as an unsaved invoice');
  today='2026-11-01';await fresh();check(value('reportingPeriod')==='2026-09','calendar rollover changed the saved period');
+ check(fixture.querySelector('[data-expense-period-warning]'),'calendar rollover has no previous-period reminder');
  field('date','2026-10-15');check(value('reportingPeriod')==='2026-09'&&value('reportingDate')==='2026-10-01','invoice date changed the selected reporting period');
  field('reportingPeriod','2026-11');await fresh();check(value('reportingPeriod')==='2026-11','new manual choice was not persisted');
+ check(!fixture.querySelector('[data-expense-period-warning]'),'current period still has an old-period warning');
  field('reportingPeriod','2026-09');await fresh();check(value('reportingPeriod')==='2026-09','returning to a previous period was not persisted');
  field('reportingPeriod','2026-11');
  today='2027-01-05';await fresh();check(value('reportingPeriod')==='2026-11'&&value('reportingYear')==='2026','year rollover changed the saved selection');

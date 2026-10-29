@@ -74,7 +74,7 @@ export function createExpenseLocalReview({files, request, capabilities, capture,
       } catch (error) {if (!signal.aborted && epoch === revision) {outcome = 'extraction_error'; message = ({PasswordException:'ה־PDF מוגן בסיסמה. יש לבחור עותק פתוח או להשלים ידנית.',
         InvalidPDFException:'ה־PDF אינו תקין. יש לבחור עותק תקין או להשלים ידנית.', TimeoutError:'הזיהוי המקומי הגיע למגבלת הזמן. אפשר לנסות שוב או להשלים ידנית.'})[error.name] ||
         (sourceConflict ? error.message : outcomeMessages.extraction_error);}}
-      finally {if (epoch === revision) {pending = false; render(); if (autoFill && version === editVersion() && !Object.keys(edits).length) onReady();}}
+      finally {if (epoch === revision) {pending = false; render(); if (autoFill && version === editVersion() && !Object.keys(edits).length) onReady({outcome});}}
     });
   }
   async function preflight(snapshot, supplier, check) {
