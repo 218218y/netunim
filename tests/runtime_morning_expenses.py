@@ -28,7 +28,7 @@ FLOW = r"""(async()=>{
  const paged=items=>({ok:true,version:1,environment,page:0,pageSize:50,total:items.length,pages:items.length?1:0,items});
  const respond=async(action,body,assertCurrent)=>{
   assertCurrent();requests.push({action,body});if(held&&action==='suppliers')await held;
-  if(action==='capabilities')return {ok:true,version:1,environment,create:true,upload:uploadEnabled,sourceIntent:true,duplicateCheck:true,siteRecent:true};
+  if(action==='capabilities')return {ok:true,version:1,environment,create:true,upload:uploadEnabled,sourceIntent:true,duplicateCheck:true,siteRecent:true,sourceRelay:environment==='production'};
   if(action==='site_recent')return {ok:true,version:1,environment,source:'site',items:siteRecent};
   if(action==='source_pending')return {ok:true,page:body.page||0,pageSize:20,items:sourceMetadata&&!linked&&!sourceException?[{operationId:id(90),verified:true,intent,...sourceState()}]:[]};
   if(action==='duplicate_check')return {ok:true,duplicate:false};
@@ -50,6 +50,7 @@ FLOW = r"""(async()=>{
   if(action==='reconcile'){check(body.expenseId===id(8),'wrong canonical ID');recoveryState='created';return {ok:true,state:'created',verified:true,expenseId:id(8),fileLinked:linked,intent};}
   if(action==='cancel_reserved'){check(recoveryState==='reserved','nonreserved cancellation');recoveryState='cancelled';return {ok:true,state:'cancelled',verified:false,cancelled:true,intent,...sourceState()};}
   if(action==='upload_prepare')return {ok:true,fileGeneration:id(10)};
+  if(action==='upload_source'){await upload({url:'https://s3.eu-west-1.amazonaws.com/file-upload-service-uploaded',maxFileSize:20971520,fields:{key:'test',Policy:'test'},expiresAt:Date.now()+55000},{file:body.file,type:body.file.type,name:body.file.name},assertCurrent);serverFileState='file_accepted';return {ok:true,fileState:serverFileState,...sourceState()};}
   if(action==='upload_ack'){serverFileState='file_accepted';return {ok:true,fileState:serverFileState};}
   if(action==='upload_ticket'){serverFileState='ticket_issued';return {ok:true,url:'https://s3.eu-west-1.amazonaws.com/sandbox-file-upload-service-uploaded',maxFileSize:20971520,fields:{key:'test',Policy:'test'},expiresAt:Date.now()+55000};}
   if(action==='upload_status'||action==='source_verify')return {ok:true,fileLinked:linked,fileState:linked?'file_linked':serverFileState,...sourceState(),message:linked?'Morning מציגה קובץ מצורף להוצאה.':'קישור הקובץ טרם אומת ב־Morning.'};
@@ -160,7 +161,7 @@ FLOW = r"""(async()=>{
  check(fixture.querySelector('[data-expense-recent]').textContent.includes('000123'),'verified intake was not immediately added to site recent');
  check(requests.filter(({action,body})=>action==='expenses'&&body.fromDate===undefined).length===explicitSearchReads,'saving scanned the entire account');
  click('recent-refresh');await settle();check(fixture.querySelector('[data-expense-recent]').textContent.includes('000123'),'explicit recent loading missed saved intake');
- check(confirmations[0].includes('ציוד משרד')&&confirmations[0].includes('2026-10-20')&&confirmations[0].includes('חשבונית מס'),'approval omitted category, type or source date');
+ check(confirmations[0].includes('בדקת')&&!confirmations[0].includes('000123')&&!confirmations[0].includes('2026-10-20'),'approval is not concise and generic');
  const recovery=localStorage.getItem('morningExpenseOperation:'+environment+':'+owner);check(recovery&&!recovery.includes('000123')&&!recovery.includes('first.png'),'recovery retained invoice data');
  check(!fixture.querySelector('[data-action="morning-expense-save"]'),'created invoice can save again');
  click('next');check(fixture.querySelector('.morning-expense-source>b').textContent==='first.png','unlinked source discarded');

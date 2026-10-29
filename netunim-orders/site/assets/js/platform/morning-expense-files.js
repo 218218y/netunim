@@ -1,11 +1,16 @@
 export async function validateExpenseFile(file) {
   if (!(file instanceof Blob) || file.size <= 0 || file.size > 20 * 1024 * 1024) throw new Error('יש לבחור PDF, JPG או PNG עד 20MB.');
-  const bytes = new Uint8Array(await file.slice(0, 8).arrayBuffer());
+  let buffer;try{buffer=await file.arrayBuffer();}catch{throw Error('לא ניתן לקרוא את הקובץ. יש לבחור אותו מחדש לפני שמירת ההוצאה.');}
+  if(buffer.byteLength!==file.size)throw Error('תוכן הקובץ השתנה בזמן הקריאה. יש לבחור אותו מחדש.');
+  const bytes = new Uint8Array(buffer,0,Math.min(8,buffer.byteLength));
   const type = bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46 && bytes[4] === 0x2d ? 'application/pdf' :
     bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff ? 'image/jpeg' :
     [137, 80, 78, 71, 13, 10, 26, 10].every((value, index) => bytes[index] === value) ? 'image/png' : '';
   if (!type || file.type && file.type !== type) throw new Error('סוג הקובץ אינו תואם לתוכן. יש לבחור PDF, JPG או PNG תקין.');
-  return {file, type, name:typeof file.name === 'string' ? file.name.slice(0, 180) : 'invoice'};
+  // A disk-backed File can become unreadable after a move/delete. Own its bytes
+  // before putting it in the bounded queue; subsequent work never reopens disk.
+  const name=typeof file.name === 'string' ? file.name.slice(0,180) : 'invoice';
+  return {file:new File([buffer],name,{type}),type,name};
 }
 export async function uploadExpenseFile(ticket, selected, assertCurrent, {fetch:send = globalThis.fetch, now = Date.now, timeoutMs = 45000} = {}) {
   assertCurrent();

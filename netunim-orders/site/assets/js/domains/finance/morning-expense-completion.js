@@ -1,7 +1,7 @@
 // One financial operation, at most one delivered upload ticket, read-only
 // reconciliation afterwards. Never mistake an opaque S3 response for success.
 export async function completeExpenseSource({request, upload, prepare, selected, result, attempted, markAttempted, accept, check, progress,
-  uploadEnabled, delays=[0,1000,2000,3000,5000,8000,10000,15000,20000,25000],
+  uploadEnabled,relay=false,retryGeneration='',delays=[0,1000,2000,3000,5000,8000,10000,15000,20000,25000],
   sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms))}) {
   check();
   if (!result.verified) return false;
@@ -12,10 +12,20 @@ export async function completeExpenseSource({request, upload, prepare, selected,
     update(await request('source_verify',{contentType:selected.type,size:selected.file.size,...source},check));
     if(result.sourceVerified)return true;
   }
-  if (selected && !attempted && !result.fileLinked && ['not_started','prepared',undefined].includes(result.fileState)) {
+  if(relay&&selected&&!result.fileLinked&&(!attempted||retryGeneration)){
+    if(!uploadEnabled)throw Error('העלאת מקור כבויה כרגע; ההוצאה הקיימת נשמרה.');
+    if(!result.sourceMetadata){
+      const source=await prepare(check);check();
+      update(await request('upload_prepare',{contentType:selected.type,size:selected.file.size,...source},check));
+    }
+    progress('מצרף את המקור דרך השירות המאומת. אין צורך בהעלאה ישירה מהדפדפן למורנינג…','upload');
+    markAttempted();
+    try{update(await request('upload_source',{file:selected.file,...(retryGeneration?{retryGeneration}:{})},check));}
+    catch(error){check();if(['expense_source_mismatch','morning_expense_upload_pending','invalid_expense_upload_target'].includes(error.code))throw error;}
+  }else if (!relay&&selected && !attempted && !result.fileLinked && ['not_started','prepared',undefined].includes(result.fileState)) {
     if (!uploadEnabled) throw Error('ההוצאה נשמרה, אך העלאת המקור כבויה. יש להשלים את המקור לאחר הפעלתה.');
     const source=await prepare(check);check();
-    progress('ההוצאה נשמרה ואומתה. מצרף את מסמך המקור…');
+    progress('ההוצאה נשמרה ואומתה. מצרף את מסמך המקור…','upload');
     const ready=await request('upload_prepare',{contentType:selected.type,size:selected.file.size,...source},check);check();
     if (ready.alreadyLinked) {update(ready);return result.sourceVerified===true;}
     update({fileState:'prepared'});
@@ -30,7 +40,7 @@ export async function completeExpenseSource({request, upload, prepare, selected,
       }
     } catch { check(); /* Lost transport/ack response: reconcile, never replay. */ }
   }
-  progress('ההוצאה נשמרה. ממתין לקישור המקור ולאימות התאמת הקובץ במורנינג…');
+  progress('ההוצאה נשמרה. ממתין לקישור המקור ולאימות התאמת הקובץ במורנינג…','verify');
   for (const delay of delays) {
     for (let left=delay;left>0;left-=250) {check();await sleep(Math.min(left,250));}
     check();
