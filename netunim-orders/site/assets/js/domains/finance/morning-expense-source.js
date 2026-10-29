@@ -3,7 +3,7 @@ import {normalizeExpenseSource,expenseSourceFields,compareExpenseSource,expenseS
 import {ocrFileHash} from './morning-expense-ocr.js';
 const labels={supplierTaxId:'מספר העוסק',number:'מספר החשבונית',documentType:'סוג המסמך',date:'תאריך החשבונית',
   netCents:'לפני מע״מ',vatCents:'מע״מ',grossCents:'סכום כולל',allocationNumber:'מספר הקצאה'};
-export function createExpenseSourceSupport({files,request,capture,run,capabilities,selected,proposal,confirmDialog,activeOperation,isActive}) {
+export function createExpenseSourceSupport({files,request,capture,run,capabilities,selected,proposal,confirmDialog,isActive,isBusy}) {
   let rows=[],page=0,error='',more=false,controller=null,revision=0,readRevision=0;
   function reset(){revision++;readRevision++;controller?.abort();controller=null;rows=[];page=0;error='';more=false;}
   async function prepare(expected,check,{existingMetadata=null,existingReview=null,afterCreation=false}={}){
@@ -65,7 +65,7 @@ export function createExpenseSourceSupport({files,request,capture,run,capabiliti
         <bdi>${esc(row.intent?.number||'')}</bdi> · ${esc(row.intent?.date||'')} ·
         ${row.verified?'נוצרה הוצאה; המקור דורש טיפול':'הפעולה דורשת בדיקת מצב לפני המשך'}
         </span><button type="button" class="btn" data-action="morning-expense-command" data-expense-command="source-resume"
-        data-source-operation="${esc(row.operationId)}" ${activeOperation()&&activeOperation()!==row.operationId?'disabled':''}>פתיחה והשלמה</button></li>`).join('')}</ul>`:
+        data-source-operation="${esc(row.operationId)}" ${isBusy()?'disabled title="הפעולה מתבצעת כעת"':''}>פתיחה והשלמה</button></li>`).join('')}</ul>`:
         error?'<p>לא ניתן לאמת כרגע אם קיימות השלמות נוספות.</p>':'<p>לא נמצאו השלמות ממתינות בחיפוש זה.</p>'}
       ${more?'<button type="button" class="btn" data-action="morning-expense-command" data-expense-command="source-more">השלמות נוספות</button>':''}
     </section>`;

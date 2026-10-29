@@ -64,7 +64,7 @@ test('source files require valid magic bytes and uploads preserve fields, put fi
   const ticket = {url:'https://s3.eu-west-1.amazonaws.com/sandbox-file-upload-service-uploaded', fields:{key:'test', Policy:'exact-policy'}, maxFileSize:100, expiresAt:1000};
   let calls = 0;
   const result = await uploadExpenseFile(ticket, selected, () => {}, {now:() => 500, fetch:async (_, init) => {
-    calls++; assert.equal(init.credentials, 'omit'); assert.equal(init.redirect, 'error'); assert.equal(init.headers, undefined);
+    calls++; assert.equal(init.credentials, 'omit'); assert.equal(init.redirect, 'follow'); assert.equal(init.mode,'no-cors'); assert.equal(init.headers, undefined);
     assert.deepEqual([...init.body.keys()], ['key', 'Policy', 'file']); assert.equal(init.body.get('Policy'), 'exact-policy');
     return new Response(null, {status:204});
   }});

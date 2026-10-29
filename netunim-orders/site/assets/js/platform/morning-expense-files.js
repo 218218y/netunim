@@ -14,15 +14,22 @@ export async function uploadExpenseFile(ticket, selected, assertCurrent, {fetch:
       !Number.isFinite(ticket.expiresAt) || ticket.expiresAt <= now() || !Number.isSafeInteger(ticket.maxFileSize) || ticket.maxFileSize <= 0 || selected.file.size > ticket.maxFileSize) throw new Error('פרטי ההעלאה פגו או אינם תקינים. יש לבדוק את מצב הקובץ.');
   const form = new FormData();
   for (const [key, value] of Object.entries(ticket.fields)) {
-    if (key.toLowerCase() === 'file' || typeof value !== 'string') throw new Error('פרטי ההעלאה אינם תקינים.');
+    if (['file','success_action_redirect','redirect'].includes(key.toLowerCase()) || typeof value !== 'string' ||
+        key.toLowerCase()==='success_action_status'&&value!=='204') throw new Error('פרטי ההעלאה אינם תקינים.');
     form.append(key, value);
   }
   // The official flow requires file LAST. No Authorization header or cookies go to S3.
   form.append('file', selected.file, selected.name);
   const controller = new AbortController(), timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await send(ticket.url, {method:'POST', body:form, credentials:'omit', redirect:'error', signal:controller.signal});
+    // Morning's signed-form bucket does not grant our origin CORS read access.
+    // Send the official browser form once; an opaque reply is NOT acceptance.
+    // Completion is proved separately by canonical readback and source SHA-256.
+    // Fetch requires redirect:follow with no-cors (even when no redirect occurs).
+    // Reject S3 redirect form policies above; retain the site's connect-src CSP.
+    const response = await send(ticket.url, {method:'POST', mode:'no-cors', body:form, credentials:'omit', redirect:'follow', signal:controller.signal});
     assertCurrent();
+    if (response.type === 'opaque') return {accepted:false, fileLinked:false};
     if (response.status !== 204) throw new Error('הקובץ לא אושר לעיבוד. יש לבדוק את מצבו ב־Morning.');
     return {accepted:true, fileLinked:false};
   } finally { clearTimeout(timer); }

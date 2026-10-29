@@ -128,11 +128,12 @@ FLOW = r"""(async()=>{
  click('recent-refresh');await finance.runtime.drain();check(document.querySelector('[data-expense-recent]').textContent.includes('COMPOSITION-1'),'explicit refresh missed confirmed intake');
  check(confirmations[0].title.includes('האמיתי')&&confirmations[0].message.includes(expense.classification.title),'actual confirmation missed account or category');
  const key='morningExpenseOperation:production:'+owner,preference='morningExpensePreferences:production:'+owner;
- check(JSON.parse(localStorage.getItem(key)).operationId===operation,'recovery pointer missing account identity');
+ check(localStorage.getItem(key)===null,'completed manual intake retained a stale recovery pointer');
  check(JSON.parse(localStorage.getItem(preference)).favorites.includes(supplier.id),'favorites lost account identity');
- click('status');await finance.runtime.drain();check(document.querySelector('[data-expense-receipt]').textContent.includes('COMPOSITION-1'),'actual composed recovery failed');
+ check(document.querySelector('[data-expense-completed]').textContent.includes('COMPOSITION-1')&&document.querySelector('[data-expense-field="number"]').value==='','actual composition did not retain completion evidence and open the next manual intake');
  check(JSON.stringify(await db.load(owner+':orders'))===beforeMain&&JSON.stringify(await db.load(owner+':shared-checks'))===beforeShared,'expense flow changed local financial journals');
- click('next');
+ // Successful manual intake advances automatically; unresolved-source recovery
+ // remains covered by runtime_morning_expense_source.py.
  let release,ready;hold=new Promise(resolve=>release=resolve);const waiting=new Promise(resolve=>ready=resolve);entered=ready;
  supplierInput().click();field('supplierQuery','ספק');await waiting;
  cloudAuth.saveSession({user:{id:id(9)},access_token:'synthetic-other-account',expires_at:9999999999});release();await finance.runtime.drain();hold=null;

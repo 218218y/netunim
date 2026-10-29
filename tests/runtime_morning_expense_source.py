@@ -2,7 +2,7 @@
 from browser_harness import BrowserSession, ROOT
 from runtime_morning_expense_local import PREFIX
 
-SCENARIO = PREFIX + r"""
+SCENARIO = PREFIX.replace(' const respond=async', ' let blockPreparation=true; const respond=async').replace("  if(action==='upload_prepare')", "  if(action==='upload_prepare'&&blockPreparation)throw Error('preparation temporarily unavailable');\n  if(action==='upload_prepare')") + r"""
  const settle=()=>uiFeature.runtime.drain();click('toggle');await settle();
  const bytes=new TextEncoder().encode('%PDF-1.4 source recovery fixture');
  const original=new File([bytes],'original.pdf',{type:'application/pdf'});
@@ -26,12 +26,14 @@ SCENARIO = PREFIX + r"""
  await uiFeature.actions['morning-expense-command']({dataset:{expenseCommand:'source-resume',sourceOperation:id(90)}});await settle();
  check(localStorage.getItem(key)?.includes(id(90))&&posts===1,'recovery did not pin the original operation');
  check(!fixture.querySelector('[data-action="morning-expense-save"]')&&fixture.querySelector('[data-expense-command="next"]').disabled,'recovery permits another create');
+ await uiFeature.actions['morning-expense-command']({dataset:{expenseCommand:'source-resume',sourceOperation:id(99)}});await settle();
+ check(fixture.textContent.includes('חשבונית אחרת עדיין פתוחה')&&!requests.some(row=>row.action==='operation_status'&&row.body.operationId===id(99)),'another pending operation silently ignored or replaced the active source');
  await choose(new File([bytes,'different'],'wrong.pdf',{type:'application/pdf'}));
- click('upload');await settle();check(uploads===0&&!requests.some(row=>row.action==='upload_prepare'),'wrong reselected source received an upload form');
+ check(uploads===0&&!requests.some(row=>row.action==='upload_ticket'),'wrong reselected source received an upload form');
  check(fixture.textContent.includes('אינו המקור'),'wrong hash was not explained');
- await choose(original);click('upload');await settle();check(uploads===1&&posts===1,'original source could not resume');
+ blockPreparation=false;await choose(original);check(uploads===1&&posts===1,'original source could not resume automatically');
  serverFileState='ticket_issued';click('status');await settle();
- click('upload');await settle();check(uploads===1,'ambiguous source upload replayed');
+ click('file-status');await settle();check(uploads===1,'ambiguous source upload replayed');
  const reason=fixture.querySelector('[data-expense-field="sourceReason"]');check(reason&&!reason.disabled,'source exception cannot be edited during recovery');
  reason.value='המקור נבדק במורנינג, נדרשת השלמה חשבונאית ידנית';reason.dispatchEvent(new Event('input',{bubbles:true}));
  await uiFeature.actions['morning-expense-write']({dataset:{expenseCommand:'source-waive'}});await settle();
