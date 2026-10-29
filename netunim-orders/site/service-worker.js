@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-12cb078937e5';
+const CACHE='orders-app-shell-esm-f4533e0f2921';
 const SHELL=[
   './',
   './index.html',
@@ -46,6 +46,7 @@ const SHELL=[
   './assets/js/contracts/note-reminder-date.js',
   './assets/js/core/bulk-selection.js',
   './assets/js/core/dates.js',
+  './assets/js/core/invoice-allocation.js',
   './assets/js/core/invoice-field-review.js',
   './assets/js/core/invoice-highlights.js',
   './assets/js/core/invoice-pdf-layout.js',
@@ -160,14 +161,19 @@ const SHELL=[
   './assets/js/domains/finance/document-publication.js',
   './assets/js/domains/finance/invoice-pdf.js',
   './assets/js/domains/finance/kupa-write-state.js',
+  './assets/js/domains/finance/morning-expense-batch-recovery.js',
+  './assets/js/domains/finance/morning-expense-batch.js',
   './assets/js/domains/finance/morning-expense-catalog.js',
   './assets/js/domains/finance/morning-expense-completion.js',
   './assets/js/domains/finance/morning-expense-document.js',
   './assets/js/domains/finance/morning-expense-file-queue.js',
+  './assets/js/domains/finance/morning-expense-form-view.js',
   './assets/js/domains/finance/morning-expense-history.js',
   './assets/js/domains/finance/morning-expense-intake.js',
+  './assets/js/domains/finance/morning-expense-job.js',
   './assets/js/domains/finance/morning-expense-local.js',
   './assets/js/domains/finance/morning-expense-ocr.js',
+  './assets/js/domains/finance/morning-expense-operation-view.js',
   './assets/js/domains/finance/morning-expense-pdf-preview.js',
   './assets/js/domains/finance/morning-expense-preferences.js',
   './assets/js/domains/finance/morning-expense-progress.js',

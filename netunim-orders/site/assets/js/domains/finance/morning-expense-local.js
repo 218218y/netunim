@@ -143,6 +143,7 @@ export function createExpenseLocalReview({files, request, capabilities, capture,
     </section>`;
   }
   return {start, fill:() => fill(true), reset, markup, preflight, blocked, available,warnings,warningsMarkup,
+    adopt:saved=>{reset();proposal=saved.proposal?structuredClone(saved.proposal):null;hash=saved.hash;edits=structuredClone(saved.edits||{});guard=/^[a-f0-9]{64}$/.test(hash);onProposal(proposal);},
     snapshot:() => ({proposal:proposal?structuredClone(proposal):null,hash,edits:structuredClone(edits)}),
     fieldReview:(draft, taxId) => invoiceFieldReview(proposal, edits, draft, taxId),
     restore:saved => start({autoFill:false,cached:saved}),

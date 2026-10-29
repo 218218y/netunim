@@ -71,6 +71,13 @@ test('decimal inputs are exact and VAT is never replaced by an assumed percentag
   assert.throws(() => normalizeExpenseInput({...body, expense:{...body.expense, number:'X'.repeat(21)}}, '2026-10-26'), /invalid_expense_input/);
 });
 
+test('required allocation presence is enforced by the server before reservation or financial dispatch',async()=>{
+ const f=fixture(),body=input();Object.assign(body.expense,{net:'6000.00',vat:'1080.00',gross:'7080.00'});
+ const result=await f.writer.handle(user,body);assert.equal(result.status,400);assert.equal(result.body.code,'expense_allocation_required');
+ assert.equal(f.posts.length,0);assert.equal(f.rows.size,0);
+ body.expense.allocationNumber='123456789';assert.equal((await f.writer.handle(user,body)).body.verified,true);assert.equal(f.posts.length,1);
+});
+
 test('invoice receipt expenses retain type 320 through durable creation, readback and replay', async () => {
   const f=fixture(),body=input();body.expense.documentType=320;
   const result=await f.writer.handle(user,body);

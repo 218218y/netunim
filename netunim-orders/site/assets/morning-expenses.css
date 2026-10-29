@@ -65,21 +65,21 @@
 .morning-expense-table td,.morning-expense-table th{display:block;width:auto!important;padding:10px;text-align:right!important;white-space:normal!important;border:0}.morning-expense-table td:before{content:attr(data-label);display:block;font-size:11px;color:#687d85;margin-bottom:5px}.morning-expense-table tr:not(.morning-expense-period-heading)>td:nth-child(3),.morning-expense-table tr:not(.morning-expense-period-heading)>td:nth-child(4),.morning-expense-table tr:not(.morning-expense-period-heading)>td:nth-child(5){grid-column:1/-1}
 .morning-expense-table .morning-expense-period-heading>th{grid-column:1/-1}.morning-expense-table .morning-expense-period-heading>th,.morning-expense-table .morning-expense-period-heading>td{border-top:0;font-size:15px}.morning-expense-description>span{white-space:normal}.morning-expense-period-heading h3{font-size:17px}}
 
-.morning-expense-field-review{position:absolute;inset-inline-end:0;top:0;display:inline-flex;align-items:center;justify-content:center;width:26px;height:23px;border-radius:5px;background:#fff7ed;color:#92400e;font-size:17px;line-height:1}
+.morning-expense-field-review{position:absolute;inset-inline-end:0;top:-2px;display:inline-flex;align-items:center;justify-content:center;min-width:42px;height:27px;border:1px solid currentColor;box-sizing:border-box;border-radius:6px;background:#fff7ed;color:#92400e;font-size:20px;line-height:1}
 .morning-expense-field-review[hidden]{display:none}
 .morning-expense-field-review[data-review-status="verified"],.morning-expense-field-review[data-review-status="not_required"]{background:#f0fdf4;color:#15803d}
 .morning-expense-field-review[data-review-status="manual"]{background:#eff6ff;color:#2563eb}
 .morning-expense-field-review[data-review-status="missing"]{background:#fff1f2;color:#be123c}
 .morning-expense-field-review button{border:0;background:transparent;color:inherit;font:inherit;cursor:pointer;padding:0;width:100%;height:100%;border-radius:5px}
 .morning-expense-field-review button:focus-visible{outline:2px solid #357d9b;outline-offset:2px}
-.morning-expense-review-dot{font-size:12px}
+.morning-expense-review-dot{font-size:15px}
 [data-recognition-status="verified"],[data-recognition-status="not_required"]{border-color:#66a880!important}
 [data-recognition-status="review"],[data-recognition-status="missing"]{border-color:#b45309}
 
 .morning-expense-review-input,.morning-expense-date,.morning-expense-supplier-field{min-width:0;position:relative}
 .morning-expense-invoice{align-items:start}
-.morning-expense-review-input:has(>.morning-expense-field-review:not([hidden])) .morning-expense-field-label,.morning-expense-date>span:first-child{padding-inline-end:30px}
-.morning-expense-supplier-field .morning-expense-supplier>label{padding-inline-end:30px}
+.morning-expense-review-input:has(>.morning-expense-field-review:not([hidden])) .morning-expense-field-label,.morning-expense-date>span:first-child{padding-inline-end:48px}
+.morning-expense-supplier-field .morning-expense-supplier>label{padding-inline-end:48px}
 .morning-expense-sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
 .morning-expense-period-warning{display:inline-block;vertical-align:middle;font-size:10px;line-height:18px;padding:0 4px;border-radius:4px;background:#fff1bd;color:#795500;white-space:nowrap}
 .morning-expense-period .morning-expense-field-label{display:flex;align-items:center;justify-content:space-between;gap:3px;min-height:23px;white-space:nowrap}
@@ -92,6 +92,13 @@
 .morning-expense-document-dialog [data-source-content]>img{display:block;max-width:100%;max-height:70dvh;margin:auto;object-fit:contain}
 .morning-expense-document-dialog .morning-expense-pdf-viewport{height:65dvh;min-height:240px}
 .morning-expense-document-dialog>p:empty{display:none}
+.morning-expense-approved{display:inline-block;padding:2px 6px;border-radius:5px;background:#e5f5e9;color:#19623c;font-size:11px;white-space:nowrap}
+.morning-expense-batch{padding:16px;margin-block:20px;border:1px solid #bdd5df;border-radius:10px;background:#f1f7fa;scroll-margin-block-start:18px}
+.morning-expense-batch h3{margin:0 0 8px;font-size:17px}.morning-expense-batch p,.morning-expense-batch li{font-size:13px;line-height:1.7}.morning-expense-batch li{margin-block:7px;overflow-wrap:anywhere}
+.morning-expense-batch-dock{position:fixed;bottom:14px;inset-inline:20px;z-index:50;display:flex;justify-content:space-between;align-items:center;gap:12px;box-sizing:border-box;max-width:700px;margin-inline:auto;padding:10px 16px;border:1px solid #9ac1d3;border-radius:12px;background:#edf8ff;box-shadow:0 4px 22px #164a5633;color:#164a56;font-size:13px}
+.morning-expense-batch-dock.attention{border-color:#c09135;background:#fff2cf;color:#71450c}.morning-expense-batch-dock>div{min-width:0;display:flex;flex-direction:column;gap:3px}.morning-expense-batch-dock [data-expense-batch-stage]{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}.morning-expense-batch-dock small{display:inline}
+.morning-expense-batch-dock .btn{flex-shrink:0}.morning-expense-content:has(.morning-expense-batch-dock){padding-bottom:100px}
+@media(max-width:800px){.morning-expense-batch-dock{inset-inline:8px;bottom:8px;padding:8px 10px;gap:8px;font-size:12px}.morning-expense-batch-dock .btn{padding:7px;font-size:12px}}
 @media(max-width:800px){.morning-expense-period .morning-expense-field-label{flex-wrap:wrap;white-space:normal;position:relative;padding-inline-end:0}.morning-expense-period-warning{font-size:9px}.morning-expense-document-dialog{padding:10px;width:calc(100vw - 16px)}}
 
 .morning-expense-queue-panel h3{font-size:13px;margin:6px 0 10px}

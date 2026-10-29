@@ -122,9 +122,9 @@ export function createExpenseWriter({request, ledger, environment, enabled = fal
         if (!row) throw new Error('morning_expense_storage_failed');
         return await verify(user, row);
       } catch (error) {
-        const code = ['invalid_expense_source','expense_source_review_required','invalid_expense_input', 'invalid_expense_amounts', 'invalid_expense_p_number', 'invalid_expense_supplier', 'invalid_expense_classification', 'invalid_expense_reporting_period', 'expense_reporting_confirmation_required', 'morning_expense_p_unverified', 'morning_expense_p_profiles_unverified'].includes(error.message) ? error.message : 'morning_expense_verification_unavailable';
-        return response(code.startsWith('invalid_') || code.endsWith('_unverified') || code === 'expense_reporting_confirmation_required' || code==='expense_source_review_required' ? 400 : 503, {code,
-          message:code==='expense_source_review_required'?'יש לבדוק את התאמת קובץ המקור לפרטי החשבונית לפני שמירה.':
+        const code = ['expense_allocation_required','invalid_expense_source','expense_source_review_required','invalid_expense_input', 'invalid_expense_amounts', 'invalid_expense_p_number', 'invalid_expense_supplier', 'invalid_expense_classification', 'invalid_expense_reporting_period', 'expense_reporting_confirmation_required', 'morning_expense_p_unverified', 'morning_expense_p_profiles_unverified'].includes(error.message) ? error.message : 'morning_expense_verification_unavailable';
+        return response(code.startsWith('invalid_') || code.endsWith('_unverified') || code === 'expense_allocation_required' || code === 'expense_reporting_confirmation_required' || code==='expense_source_review_required' ? 400 : 503, {code,
+          message:code==='expense_allocation_required'?'יש להשלים את מספר ההקצאה מהמקור לפני שמירה.':code==='expense_source_review_required'?'יש לבדוק את התאמת קובץ המקור לפרטי החשבונית לפני שמירה.':
             code === 'morning_expense_p_unverified' ? 'חשבוניות P מחייבות עדיין קליטה ואימות ב־Morning.' : 'הקליטה לא הושלמה או לא אומתה. יש לבדוק את מצב הפעולה לפני ניסיון נוסף.'});
       }
     },

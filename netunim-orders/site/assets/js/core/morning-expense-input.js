@@ -1,5 +1,6 @@
 const expenseUuid = value => typeof value === 'string' && /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i.test(value);
 import {validReportDate as reportDate, validateExpenseReporting} from './morning-report-period.js';
+import {allocationPolicy} from './invoice-allocation.js';
 
 export function expenseCents(value) {
   if (typeof value !== 'string' && typeof value !== 'number') return null;
@@ -21,6 +22,7 @@ export function normalizeExpenseInput(body, today, {allowP = false} = {}) {
   if (input.pcnClassification !== 'T' && !(p && allowP)) throw new Error('morning_expense_p_unverified');
   if (p && (!/^\d{1,9}$/.test(input.number.trim()) || /^0+$/.test(input.number.trim()))) throw new Error('invalid_expense_p_number');
   if (typeof input.description !== 'string' || input.description.length > 250 || typeof (input.allocationNumber ?? '') !== 'string' || !/^(?:\d{9})?$/.test(input.allocationNumber ?? '')) throw new Error('invalid_expense_input');
+  if(/^0{9}$/.test(input.allocationNumber||'')||!input.allocationNumber&&allocationPolicy({date:input.date,documentType:input.documentType,netCents:net,vatCents:vat,pcnClassification:input.pcnClassification}).status==='check_business_conditions')throw Error('expense_allocation_required');
   return {supplierId:input.supplierId, classificationExpenseId:input.classificationExpenseId, documentType:input.documentType, number:p ? input.number.trim().padStart(9, '0') : input.number.trim(),
     date:input.date, reportingDate:input.reportingDate, netCents:net, vatCents:vat, grossCents:gross, pcnClassification:p ? 'P' : 'T',
     description:input.description.trim(), allocationNumber:input.allocationNumber || '', ...reporting};
