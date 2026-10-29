@@ -59,9 +59,9 @@ export function createExpenseOcrReview({request, capture, run, capabilities, acc
       accept(prepared);
       if (prepared.state !== 'reserved') {await readStatus(check); return;}
       const ticket = await call('ocr_ticket', {operationId}, check); check(); accept(ticket);
-      await files.upload(ticket, {...source, name:ticket.filename}, check); check();
-      accept(await call('ocr_ack', {operationId}, check)); check();
-      message = 'ה־PDF התקבל לעיבוד. בדיקת פענוח תנסה לאמת את קובץ המקור לפני הצגת ההצעות.';
+      const sent=await files.upload(ticket, {...source, name:ticket.filename}, check); check();
+      if(sent?.accepted===true) {accept(await call('ocr_ack', {operationId}, check));check();}
+      message = 'ה־PDF נשלח. בדיקת פענוח תאמת את קובץ המקור לפני הצגת ההצעות; אישור ההעלאה לבדו אינו הוכחת קליטה.';
     });
   }
   const status = () => run(async () => {if (!operationId) return false; item = null; await readStatus(capture());});

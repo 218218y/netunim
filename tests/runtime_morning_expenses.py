@@ -7,6 +7,7 @@ FLOW = r"""(async()=>{
  const {createMorningExpenseIntake}=await import('./assets/js/domains/finance/morning-expense-intake.js');
  const {bindActionEvents}=await import('./assets/js/shared/events.js');
  const fileEffects=await import('./assets/js/platform/morning-expense-files.js');
+ const {completeExpenseSource}=await import('./assets/js/domains/finance/morning-expense-completion.js');
  const check=(value,message)=>{if(!value)throw Error(message)};
  const id=n=>'aaaaaaaa-aaaa-4aaa-aaaa-'+String(n).padStart(12,'0');
  let environment='sandbox';
@@ -49,9 +50,9 @@ FLOW = r"""(async()=>{
   if(action==='reconcile'){check(body.expenseId===id(8),'wrong canonical ID');recoveryState='created';return {ok:true,state:'created',verified:true,expenseId:id(8),fileLinked:linked,intent};}
   if(action==='cancel_reserved'){check(recoveryState==='reserved','nonreserved cancellation');recoveryState='cancelled';return {ok:true,state:'cancelled',verified:false,cancelled:true,intent,...sourceState()};}
   if(action==='upload_prepare')return {ok:true,fileGeneration:id(10)};
-  if(action==='upload_ack')return {ok:true,fileState:'file_accepted'};
-  if(action==='upload_ticket')return {ok:true,url:'https://s3.eu-west-1.amazonaws.com/sandbox-file-upload-service-uploaded',maxFileSize:20971520,fields:{key:'test',Policy:'test'},expiresAt:Date.now()+55000};
-  if(action==='upload_status'||action==='source_verify')return {ok:true,fileLinked:linked,...sourceState(),message:linked?'Morning מציגה קובץ מצורף להוצאה.':'קישור הקובץ טרם אומת ב־Morning.'};
+  if(action==='upload_ack'){serverFileState='file_accepted';return {ok:true,fileState:serverFileState};}
+  if(action==='upload_ticket'){serverFileState='ticket_issued';return {ok:true,url:'https://s3.eu-west-1.amazonaws.com/sandbox-file-upload-service-uploaded',maxFileSize:20971520,fields:{key:'test',Policy:'test'},expiresAt:Date.now()+55000};}
+  if(action==='upload_status'||action==='source_verify')return {ok:true,fileLinked:linked,fileState:linked?'file_linked':serverFileState,...sourceState(),message:linked?'Morning מציגה קובץ מצורף להוצאה.':'קישור הקובץ טרם אומת ב־Morning.'};
   if(action==='source_waive'){sourceException=true;return {ok:true,...sourceState(),sourceExceptionReason:body.reason};}
   throw Error('unexpected '+action);
  };
@@ -64,7 +65,7 @@ FLOW = r"""(async()=>{
   uploads++;check(init.credentials==='omit'&&!init.headers,'upload leaked auth');check([...init.body.keys()].at(-1)==='file','file not last');return new Response(null,{status:204});
  }});
  const {createUiDateEditor}=await import('./assets/js/ui/date-editor.js');
- const ports={dateEditorMarkup:createUiDateEditor({}).dateEditorMarkup,request,captureRead:capture,captureWrite:capture,accountId:()=>owner,todayISO:()=>today,subscribeAccountScope:fn=>{listener=fn;return()=>{}},confirmDialog:async(title,text)=>{confirms++;confirmations.push(text);check(title.includes(environment==='production'?'האמיתי':'Sandbox')||!title.startsWith('שמירת'),'wrong environment approval');return confirmWait?await confirmWait:true},files:{validate:fileEffects.validateExpenseFile,upload}};
+ const ports={sourceCompletion:args=>completeExpenseSource({...args,delays:[0]}),dateEditorMarkup:createUiDateEditor({}).dateEditorMarkup,request,captureRead:capture,captureWrite:capture,accountId:()=>owner,todayISO:()=>today,subscribeAccountScope:fn=>{listener=fn;return()=>{}},confirmDialog:async(title,text)=>{confirms++;confirmations.push(text);check(title.includes(environment==='production'?'האמיתי':'Sandbox')||!title.startsWith('שמירת'),'wrong environment approval');return confirmWait?await confirmWait:true},files:{validate:fileEffects.validateExpenseFile,upload}};
  let uiFeature=createMorningExpenseIntake(ports);fixture.innerHTML=uiFeature.markup();
  bindActionEvents(fixture,new Proxy({}, {get:(_,name)=>(...args)=>uiFeature.actions[name]?.(...args)}));
  for(const name of ['click','input','change','keydown','drop','dragover','paste'])fixture.addEventListener(name,event=>event.stopPropagation());
@@ -163,11 +164,11 @@ FLOW = r"""(async()=>{
  const recovery=localStorage.getItem('morningExpenseOperation:'+environment+':'+owner);check(recovery&&!recovery.includes('000123')&&!recovery.includes('first.png'),'recovery retained invoice data');
  check(!fixture.querySelector('[data-action="morning-expense-save"]'),'created invoice can save again');
  click('next');check(fixture.querySelector('.morning-expense-source>b').textContent==='first.png','unlinked source discarded');
- click('upload');await settle();check(uploads===1,'upload missing');check(fixture.querySelector('.morning-expense-status').textContent.includes('טרם אומת'),'accepted upload claimed linked');
+ check(uploads===1,'save did not automatically upload');check(fixture.querySelector('.morning-expense-status').textContent.includes('טרם הושלם'),'accepted upload claimed linked');
  click('file-status');await settle();check(!fixture.querySelector('.morning-expense-operation').textContent.includes('Morning מציגה קובץ'),'pending file claimed linked');
- linked=true;click('file-status');await settle();check(fixture.querySelector('.morning-expense-operation').textContent.includes('Morning מציגה קובץ'),'file linkage missing');
+ linked=true;click('file-status');await settle();check(!fixture.querySelector('.morning-expense-operation'),'verified source did not finish automatically');
  const desktop={width:innerWidth,scroll:document.documentElement.scrollWidth};check(desktop.scroll<=desktop.width+1,'desktop overflow');
- click('next');check(fixture.querySelector('.morning-expense-source>b').textContent==='second.png','queue did not advance');check(fixture.querySelector('[data-expense-field="supplierId"]').value===id(2),'supplier default lost');
+ check(fixture.querySelector('.morning-expense-source>b').textContent==='second.png','queue did not advance automatically');check(fixture.querySelector('[data-expense-field="supplierId"]').value===id(2),'supplier default lost');
  const preferenceText=localStorage.getItem('morningExpensePreferences:'+environment+':'+owner);check(preferenceText&&!preferenceText.includes(supplier.name)&&!preferenceText.includes(supplier.taxId)&&!preferenceText.includes('000123'),'preferences leaked invoice or supplier data');
  uiFeature.runtime.dispose();uiFeature=createMorningExpenseIntake(ports);fixture.innerHTML=uiFeature.markup();directoryHidden=true;catalogExpense={...expense,id:id(40),classification:{...expense.classification,id:id(44),title:'סיווג אחר'}};
  click('toggle');await settle();check(fixture.querySelector('[data-expense-command="use-favorite"]'),'favorite did not survive reopening or canonical lookup');
@@ -177,7 +178,7 @@ FLOW = r"""(async()=>{
  // Account change while the approval dialog is open must prevent dispatch entirely.
  field('number','cancelled');field('net','1000.00');field('vat','160.00');let releaseConfirm;confirmWait=new Promise(resolve=>releaseConfirm=resolve);
  const saving=uiFeature.actions['morning-expense-save']();await new Promise(resolve=>setTimeout(resolve,0));owner=id(9);listener();releaseConfirm(true);await saving;confirmWait=null;check(posts===1,'stale confirmation dispatched');owner=id(1);listener();
- localStorage.setItem('morningExpenseOperation:'+owner,recovery);uiFeature.runtime.dispose();uiFeature=createMorningExpenseIntake(ports);fixture.innerHTML=uiFeature.markup();click('toggle');await settle();
+ linked=false;serverFileState='ticket_issued';localStorage.setItem('morningExpenseOperation:'+owner,recovery);uiFeature.runtime.dispose();uiFeature=createMorningExpenseIntake(ports);fixture.innerHTML=uiFeature.markup();click('toggle');await settle();
  check(!fixture.querySelector('[data-action="morning-expense-save"]'),'reload enabled blind replay');click('status');await settle();check(posts===1,'recovery created another expense');
  check(fixture.querySelector('[data-expense-receipt]').textContent.includes('RECOVERED-123'),'recovered operation details missing');
  check(!fixture.querySelector('[data-expense-field="number"]'),'recovery displayed an empty intake form');

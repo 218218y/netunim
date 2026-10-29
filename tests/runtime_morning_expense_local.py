@@ -38,9 +38,9 @@ SCENARIO = PREFIX + r"""
  await new Promise(resolve=>setTimeout(resolve,20));field('number','manual-0007');release();await settle();extractionHold=null;
  check(value('number')==='manual-0007','late recognition overwrote a manual edit');click('local-fill');await settle();check(value('number')==='0123456789','explicit refill unavailable');
  // The final path remains the existing writer, confirmation, upload and receipt.
- review();click('save');await settle();check(posts===1&&uploads===0,'local path did not use the existing writer exactly once');
+ review();click('save');await settle();check(posts===1&&uploads===1,'local path did not automatically create and upload exactly once');
  check(requests.find(row=>row.action==='create').body.expense.number==='0123456789','financial payload removed leading zero');
- click('upload');await settle();linked=true;click('file-status');await settle();click('next');await settle();
+ linked=true;click('file-status');await settle();
  check(uploads===1&&posts===1&&!value('number'),'verified file completion did not advance cleanly');
  // Morning OCR is explicit; a deferred draft still blocks local re-entry.
  await choose('ocr-source.pdf');click('ocr-start');await settle();check(uploads===2&&posts===1,'OCR separation failed');

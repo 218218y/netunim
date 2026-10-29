@@ -20,10 +20,11 @@ import {createExpenseLocalReview, applyExpenseLocalProposal} from './morning-exp
 import {createExpensePdfPreview} from './morning-expense-pdf-preview.js';
 import {createExpenseSourceSupport} from './morning-expense-source.js';
 import {expenseSourceExpected} from '../../core/morning-expense-source.js';
+import {completeExpenseSource} from './morning-expense-completion.js';
 
 const environmentChangedMessage = 'סביבת Morning השתנתה. המסך ננעל והטיוטה נשמרה בסביבתה; יש לפתוח מחדש את מסך ההוצאות לפני עבודה בסביבה החדשה.';
 
-export function createMorningExpenseIntake({request:sendRequest, captureRead, captureWrite, accountId, subscribeAccountScope, confirmDialog, dateEditorMarkup, files, todayISO = checkTodayISO, isActive = () => true, onBack = () => false}) {
+export function createMorningExpenseIntake({request:sendRequest, captureRead, captureWrite, accountId, subscribeAccountScope, confirmDialog, dateEditorMarkup, files, sourceCompletion=completeExpenseSource, todayISO = checkTodayISO, isActive = () => true, onBack = () => false}) {
   const tasks = createRuntimeTaskOwner();
   const recentCache = createExpenseRecentCache();
   const fileQueue = createExpenseFileQueue({validate:files.validate, hash:ocrFileHash});
@@ -32,7 +33,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
   let expanded = false, catalog = null, busy = false, generation = 0, reading = null, message = '', result = null, operationId = '', fileAttempted = false;
   let queue = [], selected = null, previewUrl = '', reconciliationId = '', favorites = [], extraExpenses = [], preferences = null, lastAmountField = '', draft = defaults();
   let editVersion = 0,sourceReason='',fileNotice='';
-  let edited = false;
+  let edited = false,advanceReady=false,completionNotice='';
   const workDrafts = new Map();
   const hasValues = (values=draft) => ['number','net','vat','gross','description','allocationNumber'].some(key=>!!values[key]);
   function rememberWork() {
@@ -40,7 +41,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     workDrafts.set(selected,{draft:structuredClone(draft),lastAmountField,edited,local:local.snapshot(),
       supplier:catalog?.suppliers.find(row=>row.id===draft.supplierId),classification:sourceExpenses().find(row=>row.id===draft.classificationExpenseId)});
   }
-  function hasUnsavedWork(){return queue.length>0||!operationId&&(!!selected||edited||hasValues());}
+  function hasUnsavedWork(){return queue.length>0||!!operationId&&busy||!operationId&&(!!selected||edited||hasValues());}
   function beforeUnload(event){if(active()&&hasUnsavedWork()){event.preventDefault();event.returnValue='';}}
   globalThis.addEventListener?.('beforeunload',beforeUnload);
   function defaults(previous = {}) {
@@ -75,7 +76,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     } catch { /* No prior recovery metadata. */ }
   }
   function clear() {
-    environmentChanged = false; fileQueue.reset(); sources.reset();workDrafts.clear();edited=false;sourceReason='';fileNotice='';
+    environmentChanged = false; fileQueue.reset(); sources.reset();workDrafts.clear();edited=false;advanceReady=false;completionNotice='';sourceReason='';fileNotice='';
     local.reset(); pdfPreview.reset(); editVersion++;
     reading?.abort(); reading = null; generation++; catalog = null; busy = false; message = ''; result = null; operationId = ''; fileAttempted = false;
     supplierPicker.reset(); history.reset(); recent.reset(); ocr.reset(); reporting.reset(); queue = []; selected = null; reconciliationId = ''; lastAmountField = ''; favorites = []; extraExpenses = []; preferences = null; releasePreview(); draft = defaults();
@@ -105,7 +106,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     apply:(proposal, check) => applyExpenseLocalProposal(proposal, check, applySuggestions), render, run:tasks.run, canStart:() => !!catalog && !operationId && !environmentChanged, canApply:() => !busy && !operationId && !environmentChanged, ocrActive:ocr.active, confirmDialog});
   const pdfPreview = createExpensePdfPreview({capture,run:tasks.run,isActive:active});
   const sources=createExpenseSourceSupport({files,request,capture,run:tasks.run,capabilities:()=>catalog?.capabilities,
-    selected:()=>selected,proposal:local.snapshot,confirmDialog,activeOperation:()=>operationId,isActive:active});
+    selected:()=>selected,proposal:local.snapshot,confirmDialog,isActive:active,isBusy:()=>busy});
   const unsubscribe = subscribeAccountScope(() => { clear(); render(); });
   function render() {
     if (!active()) return;
@@ -127,7 +128,11 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
         morning_expense_p_profiles_unverified:'שתי זהויות ספקי P עדיין לא אומתו מול Morning.',
         morning_expense_p_unverified:'חשבוניות P ייקלטו ב־Morning עד לאימות המסלול.'
       })[error.message] || error.message || 'הפעולה לא הושלמה.'; return false; }
-      finally { if (generation === epoch && active()) { busy = false; render(); } }
+      finally { if (generation === epoch && active()) {
+        busy=false;
+        if(advanceReady){advanceReady=false;const notice=message;if(next())message=notice+' '+(selected?'החשבונית הבאה מוכנה לבדיקה.':'כל החשבוניות בתור הושלמו.');}
+        render();
+      } }
     });
   }
   function load() {
@@ -240,7 +245,8 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
         }
         workDrafts.delete(selected);local.reset();releasePreview();selected=validated[0];
         if(selected.type!=='application/pdf')previewUrl=URL.createObjectURL(selected.file);pdfPreview.select(selected);
-        message='המקור נבחר לבדיקה מול ההוצאה הקיימת. לא תיווצר הוצאה נוספת.';return true;
+        message='המקור נבחר לבדיקה מול ההוצאה הקיימת. לא תיווצר הוצאה נוספת.';
+        await completeCurrent(check);return true;
       }
       const existing = [...(selected ? [selected] : []), ...queue];
       const {accepted, duplicates} = await fileQueue.prepare(list, existing, check); check();
@@ -306,12 +312,13 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       const period = `תקופת דיווח ${expenseBimonth(snapshot.reportingDate).label}`;
       const warning=sanityMessage();
       const confirmed = await confirmDialog(catalog.capabilities.environment === 'production' ? 'שמירת הוצאה בחשבון Morning האמיתי' : 'שמירת הוצאה ב־Sandbox',
-        `${details} · ${amounts} · ${period}. ${warning} ${local.warnings(supplier.taxId, snapshot).join(' ')} ${source?.notice||''} האם הפרטים תואמים למסמך המקור?`, {confirmText:'שמור ב־Morning'});
+        `${details} · ${amounts} · ${period}. ${selected?'מסמך המקור יצורף ויאומת אוטומטית; לאחר ההשלמה נעבור לחשבונית הבאה. ':''}${warning} ${local.warnings(supplier.taxId, snapshot).join(' ')} ${source?.notice||''} האם הפרטים תואמים למסמך המקור?`, {confirmText:'שמור ב־Morning'});
       check();
       if (!confirmed || !surface?.isConnected || host() !== surface) return false;
       await local.verifySource(check); check();
       local.approve(snapshot.number);
       operationId = nextId; result = {state:'pending', verified:false}; remember();
+      updateMessage('שומר את ההוצאה במורנינג ומאמת את פרטיה…');
       try{result = await request('create', {operationId, expense:snapshot,...(source?{sourceFile:source.sourceFile,sourceReview:source.sourceReview}:{})}, check);check();}
       catch(error){
         check();if(error.details?.notDispatched===true){clearExpenseRecovery(localStorage,accountId(),catalog.capabilities.environment);operationId='';result=null;}
@@ -319,8 +326,9 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       }
       if (result.verified) rememberClassification(snapshot.supplierId, snapshot.classificationExpenseId);
       if (result.verified) {recent.record(result); history.refresh();}
+      if(result.verified)await completeCurrent(check);
+      else message='השליחה טרם אומתה. נשארנו בחשבונית זו; יש לבדוק מצב ואין לשמור שוב.';
       await sources.refresh();check();
-      message = result.verified ? 'ההוצאה נוצרה והפרטים אומתו בקריאה חוזרת. קובץ המקור מטופל בנפרד.' : 'השליחה טרם אומתה. יש לבדוק מצב; אין לשמור שוב.';
     });
   }
   function status() {
@@ -336,33 +344,30 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       if (result.fileState) fileAttempted = !['not_started', 'prepared'].includes(result.fileState);
       recent.record(result);
       await sources.refresh();check();
-      message = result.verified ? 'היצירה אומתה. יש לוודא גם קישור קובץ מקור.' : result.state === 'not_found' ? 'השרת אישר שמזהה הפעולה אינו קיים. ניתן להתחיל קליטה חדשה.' : 'הפעולה עדיין דורשת בדיקה ב־Morning. אין ליצור את אותה חשבונית שוב.';
+      if(result.verified)await completeCurrent(check);
+      else message=result.state === 'not_found' ? 'השרת אישר שמזהה הפעולה אינו קיים. ניתן להתחיל קליטה חדשה.' : 'הפעולה עדיין דורשת בדיקה ב־Morning. אין ליצור את אותה חשבונית שוב.';
     });
   }
-  function upload() {
-    return run(async () => {
-      const check = capture(true);
-      if (!catalog?.capabilities.upload || !result?.verified || !selected || fileAttempted) throw new Error('יש לבחור קובץ ולהשלים אימות הוצאה לפני העלאה.');
-      const source=await sources.prepareOperation(result,check);check();
-      fileAttempted = true; // An uncertain upload is never silently replayed.
-      const preparation = await request('upload_prepare', {operationId, contentType:selected.type, size:selected.file.size,...source}, check); check();
-      if(preparation.alreadyLinked){result={...result,...preparation};await sources.refresh();return true;}
-      result = {...result, fileState:'prepared'};
-      const ticket = await request('upload_ticket', {operationId, fileGeneration:preparation.fileGeneration}, check); check();
-      result = {...result, fileState:'ticket_issued'};
-      await files.upload(ticket, selected, check); check();
-      await request('upload_ack', {operationId, fileGeneration:ticket.fileGeneration}, check); check();
-      result = {...result, fileState:'file_accepted'};
-      message = 'הקובץ התקבל לעיבוד. קישורו להוצאה טרם אומת; יש ללחוץ על בדיקת קובץ.';
-    });
+  async function completeCurrent(check){
+    if(!operationId||!result?.verified)return false;
+    const id=operationId,source=selected;
+    const current=()=>{check();if(id!==operationId||source!==selected)throw Error('פעולת המקור התחלפה.');};
+    const prepared=source?await sources.prepareOperation(result,current):null;current();
+    const completed=await sourceCompletion({request:(action,body,guard)=>request(action,{operationId:id,...body},guard),
+      upload:files.upload,prepare:async guard=>{guard();return prepared;},selected:source,result,attempted:fileAttempted,
+      markAttempted:()=>{current();fileAttempted=true;},accept:value=>{current();result=value;if(['not_started','prepared'].includes(value.fileState))fileAttempted=false;},check:current,
+      progress:updateMessage,uploadEnabled:catalog.capabilities.upload});current();
+    if(completed){
+      advanceReady=true;message='ההוצאה נשמרה ואומתה'+(source?' עם מסמך המקור':'')+'.';
+      completionNotice=`נשמרה: ${result.intent?.supplierName||''} · ${result.intent?.number||draft.number} · ${message}`;
+    }
+    await sources.refresh();check();return completed;
   }
+  function upload(){return run(()=>completeCurrent(capture(true)));}
   function fileStatus() {
     return run(async () => {
       const check = capture();
-      const value = await request('upload_status', {operationId}, check); check();
-      result = {...result,...value}; message = value.message;await sources.refresh();check();
-      if (!value.fileLinked && ['not_started', 'prepared'].includes(value.fileState)) fileAttempted = false;
-      else if (!value.fileLinked) message += ' אין להעלות שוב: ייתכן שהקובץ עדיין בעיבוד. יש לבדוק את ההוצאה ב־Morning לפי המזהה המוצג ולפנות לתמיכה אם הקישור אינו מופיע.';
+      return completeCurrent(check);
     });
   }
   function sourceVerify(){
@@ -370,7 +375,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       const check=capture();if(!result?.verified||!selected)throw Error('יש לקרוא את ההוצאה ולבחור את המקור המקורי לבדיקה.');
       const source=await sources.prepareOperation(result,check);check();
       const value=await request('source_verify',{operationId,contentType:selected.type,size:selected.file.size,...source},check);check();
-      result={...result,...value};message=value.message||'טביעת המקור אומתה מול הקובץ שנקרא ממורנינג.';await sources.refresh();check();
+      result={...result,...value};await completeCurrent(check);
     });
   }
   function sourceWaive(){
@@ -386,13 +391,20 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
   function sourceResume(element){
     return run(async()=>{
       const id=element.dataset.sourceOperation,check=capture();
-      if(!/^[\da-f]{8}(-[\da-f]{4}){3}-[\da-f]{12}$/i.test(id)||operationId&&operationId!==id)return false;
+      if(!/^[\da-f]{8}(-[\da-f]{4}){3}-[\da-f]{12}$/i.test(id))return false;
+      if(operationId&&operationId!==id){
+        message='חשבונית אחרת עדיין פתוחה להשלמה. יש להשלים אותה או לתעד חריגה לפני פתיחת חשבונית זו.';return false;
+      }
       if(!operationId){
         rememberWork();if(selected)queue.unshift(selected);selected=null;local.reset();pdfPreview.reset();releasePreview();
         operationId=id;result={state:'needs_reconciliation',verified:false};remember();
       }
       result=await request('operation_status',{operationId},check);check();
-      fileAttempted=!['not_started','prepared'].includes(result.fileState);sourceReason='';message='פרטי הפעולה נקראו מהשרת. יש להשלים את המקור או את בירור היצירה.';
+      fileAttempted=!['not_started','prepared'].includes(result.fileState);sourceReason='';
+      message='פרטי הפעולה נקראו מהשרת. בודק את המקור שכבר נשלח…';render();
+      host()?.querySelector('[data-expense-message]')?.scrollIntoView({block:'nearest'});
+      if(result.verified)await completeCurrent(check);
+      else message='פעולת היצירה עדיין דורשת בירור. לא נוצרה הוצאה נוספת.';
     });
   }
   function next() {
@@ -545,6 +557,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     const eligibility = eligibilityFor(supplier);
     return `<section class="morning-expense-intake" data-morning-expense-intake data-keydown="morning-expense-keyboard" data-paste="morning-expense-paste" dir="rtl">
       ${expanded ? `<header class="morning-expense-heading"><h1>קליטת הוצאות ב־Morning</h1><button type="button" class="btn" data-action="morning-expense-back">חזרה למאזן ודוחות</button></header>` : `<button type="button" class="morning-expense-trigger" data-action="morning-expense-toggle" aria-expanded="false"><b>קליטת הוצאות ב־Morning</b><span>←</span></button>`}
+      ${expanded&&completionNotice?`<p class="morning-expense-notice" role="status" data-expense-completed>${esc(completionNotice)}</p>`:''}
       ${expanded ? `<div class="morning-expense-content"><div class="morning-expense-toolbar">
       <button type="button" class="btn" data-action="morning-expense-command" data-expense-command="load" ${busy ? 'disabled' : ''}>${catalog ? 'רענון ספקים וסיווגים' : busy ? 'טוען ספקים וסיווגים…' : 'ניסיון טעינה נוסף'}</button>
       <a href="${catalog?.capabilities.environment === 'sandbox' ? 'https://app.sandbox.d.greeninvoice.co.il' : 'https://app.greeninvoice.co.il'}" target="_blank" rel="noopener noreferrer">פתיחת Morning</a></div>
@@ -576,7 +589,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       ${selected ? '<div class="morning-expense-toolbar"><span data-expense-review-count></span><button type="button" class="btn" data-action="morning-expense-command" data-expense-command="review-next">לשדה הבא לבדיקה</button></div>' : ''}
       <div class="morning-expense-toolbar"><button type="button" class="btn primary" data-action="morning-expense-save"
         ${disabled || ocr.active() || local.blocked() || !catalog.capabilities.create || !eligibility.eligible || draft.pcnClassification === 'P' && (!catalog.capabilities.pcnP || !eligibility.p) ? 'disabled' : ''}>
-        ${ocr.active() ? 'טיוטת OCR · יש לאשר במורנינג' : catalog.capabilities.environment === 'production' ? 'בדיקה ושמירת הוצאה ב־Morning' : 'בדיקה ושמירה ב־Sandbox'}</button></div>
+        ${ocr.active() ? 'טיוטת OCR · יש לאשר במורנינג' : selected?'שמירת ההוצאה וה־PDF ומעבר לבאה':catalog.capabilities.environment === 'production' ? 'בדיקה ושמירת הוצאה ב־Morning' : 'בדיקה ושמירה ב־Sandbox'}</button></div>
       ${local.warningsMarkup(supplier?.taxId, draft)}` : ''}
       ${operationId ? `<div class="morning-expense-toolbar"><button type="button" class="btn" data-action="morning-expense-command" data-expense-command="next"
         ${busy||result?.sourcePending||!result?.verified&&!['not_found','cancelled'].includes(result?.state)?'disabled':''}>${queue.length?'לחשבונית הבאה בתור':'קליטת הוצאה נוספת'}</button></div>` : ''}
@@ -597,11 +610,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       ${selected ? `<b>${esc(selected.name)}</b>${selected.type === 'application/pdf' ? pdfPreview.markup() : `<img src="${esc(previewUrl)}" alt="חשבונית מקור לבדיקה">`}` : '<p>בחר קובץ להצגתו לצד השדות.</p>'}
       ${local.markup()}
       ${expenseQueueMarkup(selected, queue, disabled || fileAttempted)}
-      ${result?.verified ? `<button type="button" class="btn" data-action="morning-expense-upload"
-        ${busy||fileAttempted||!selected||!catalog.capabilities.upload||result.fileLinked?'disabled':''}>העלאת הקובץ ל־Morning</button>
-        <button type="button" class="btn" data-action="morning-expense-command" data-expense-command="file-status" ${busy?'disabled':''}>בדיקת קישור הקובץ</button>
-        ${result.sourcePending?`<button type="button" class="btn" data-action="morning-expense-command" data-expense-command="source-verify"
-          ${busy||!selected?'disabled':''}>בדיקת המקור מול הקובץ שכבר נמצא במורנינג</button>`:''}`:''}</div></div>${sources.markup()}${recent.markup()}${history.markup()}` : ''}</div>` : ''}</section>`;
+      ${result?.verified&&result.sourcePending ? `<button type="button" class="btn" data-action="morning-expense-command" data-expense-command="file-status" ${busy?'disabled':''}>המשך בדיקה והשלמת המקור</button>`:''}</div></div>${sources.markup()}${recent.markup()}${history.markup()}` : ''}</div>` : ''}</section>`;
   }
   const commands = {load, status, next, favorite, 'more-classifications':moreClassifications,
     'source-refresh':()=>sources.refresh(),'source-more':sources.more,'source-resume':sourceResume,'source-verify':sourceVerify,
