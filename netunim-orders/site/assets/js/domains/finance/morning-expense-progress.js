@@ -12,12 +12,12 @@ export function createExpenseProgress({host,isActive}){
       <ol>${stages.map(([key,label],n)=>`<li ${n===index?'aria-current="step"':''} class="${n<index?'done':n===index?'current':''}">${n<index?'✓':n+1} · ${label}</li>`).join('')}</ol>
       <small>אין צורך ללחוץ שוב. אפשר להמשיך לעיין במסמך בזמן הבדיקה.</small></section>`;
   }
-  function show(key,value){
-    if(!isActive())return;const reveal=!stage;stage=key;text=value;
+  function show(key,value,{reveal=true}={}){
+    if(!isActive())return;const first=!stage;stage=key;text=value;
     if(!started)started=Date.now();
     const target=host()?.querySelector('[data-expense-progress]');if(target)target.outerHTML=markup();
-    if(reveal)host()?.querySelector('[data-expense-progress]')?.scrollIntoView({block:'start',behavior:'instant'});
-    if(!timer)timer=setInterval(()=>{const el=host()?.querySelector('[data-expense-elapsed]');if(el)el.textContent=`חלפו ${Math.floor((Date.now()-started)/1000)} שניות`;},1000);
+    if(reveal&&first)host()?.querySelector('[data-expense-progress]')?.scrollIntoView({block:'start',behavior:'instant'});
+    if(!timer)timer=setInterval(()=>{for(const el of host()?.querySelectorAll('[data-expense-elapsed]')||[])el.textContent=`חלפו ${Math.floor((Date.now()-started)/1000)} שניות`;},1000);
   }
   return {show,markup,reset};
 }

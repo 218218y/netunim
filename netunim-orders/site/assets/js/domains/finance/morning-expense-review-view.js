@@ -58,6 +58,7 @@ export function replaceExpenseSurface(target, markup, afterReplace) {
     const selection = name && typeof focused.selectionStart === 'number' ? [focused.selectionStart, focused.selectionEnd] : null;
     const scroller = target.closest('.view-scroll'), top = scroller?.scrollTop, windowTop=window.scrollY, windowLeft=window.scrollX;
     const queueTop=target.querySelector('.morning-expense-queue')?.scrollTop;
+    const pdf=target.querySelector('[data-invoice-pdf-viewport]'),pdfTop=pdf?.scrollTop,pdfLeft=pdf?.scrollLeft;
     const command=focused?.dataset.expenseCommand, index=focused?.dataset.expenseIndex;
     target.outerHTML = markup;
     afterReplace();
@@ -68,6 +69,7 @@ export function replaceExpenseSurface(target, markup, afterReplace) {
     }
     if (scroller && Number.isFinite(top)) scroller.scrollTop = top;
     const queue=host()?.querySelector('.morning-expense-queue');if(queue&&Number.isFinite(queueTop))queue.scrollTop=queueTop;
+    const preview=host()?.querySelector('[data-invoice-pdf-viewport]');if(preview&&Number.isFinite(pdfTop)){preview.scrollTop=pdfTop;preview.scrollLeft=pdfLeft;}
     if(window.scrollY!==windowTop||window.scrollX!==windowLeft)window.scrollTo({top:windowTop,left:windowLeft,behavior:'instant'});
 }
 
@@ -84,7 +86,7 @@ export const stateLabels = {reserved:'טרם נשלחה · אפשר לבטל ב�
 export const fileLabels = {not_started:'העלאה טרם התחילה', prepared:'הכנה הושלמה · אפשר להכין מחדש', upload_started:'הנפקת הרשאת העלאה בבדיקה', ticket_issued:'הרשאת העלאה נמסרה · נדרשת בדיקת קישור', file_accepted:'הקובץ התקבל לעיבוד · הקישור טרם אומת', file_linked:'Morning מציגה קובץ מצורף'};
 
 
-export function expenseQueueMarkup(selected, items, disabled) {
+export function expenseQueueMarkup(selected, items, disabled, status=()=> '') {
   const entries = items.map((item,index)=>({item,index}));
   if (!entries.length) return '';
   const attrs = disabled ? 'disabled' : '';
@@ -92,7 +94,7 @@ export function expenseQueueMarkup(selected, items, disabled) {
     <h3>תור מסמכי המקור · ${entries.length} קבצים</h3><ol class="morning-expense-queue">
     ${entries.map(({item, index}) => `<li>
       <button type="button" class="btn" data-action="morning-expense-command" data-expense-command="choose-file"
-        data-expense-index="${index}" aria-pressed="${item === selected}" ${item===selected?'aria-current="true"':''} ${attrs}>${esc(item.name)}</button>
+        data-expense-index="${index}" aria-pressed="${item === selected}" ${item===selected?'aria-current="true"':''} ${attrs}>${esc(item.name)}${status(item)?` <span class="morning-expense-approved">${esc(status(item))}</span>`:''}</button>
       <button type="button" class="btn" data-action="morning-expense-command" data-expense-command="remove-file"
         data-expense-index="${index}" aria-label="הסרת ${esc(item.name)} מהתור" ${attrs}>הסרה</button></li>`).join('')}
     </ol></section>`;

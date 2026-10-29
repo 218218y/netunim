@@ -2,6 +2,8 @@ import {INVOICE_SUPPLIER_PROFILES} from './invoice-supplier-profiles.js';
 import {invoiceLabelKey,invoicePdfQuad} from './invoice-pdf-layout.js';
 import {expenseCents} from './morning-expense-input.js';
 import {validReportDate} from './morning-report-period.js';
+import {allocationPolicy} from './invoice-allocation.js';
+export {allocationPolicy} from './invoice-allocation.js';
 
 const digest=async value=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value))),n=>n.toString(16).padStart(2,'0')).join('');
 const missing=reason=>({value:null,rawValue:null,status:'missing',method:'none',reason,sources:[]});
@@ -18,12 +20,6 @@ export function invoiceDate(raw){
   if(!match)return null;
   const value=`${match[3].length===2?'20'+match[3]:match[3]}-${match[2].padStart(2,'0')}-${match[1].padStart(2,'0')}`;
   return validReportDate(value)?value:null;
-}
-export function allocationPolicy({date,documentType,netCents,vatCents,pcnClassification='T'}){
-  if(!validReportDate(date)||!Number.isSafeInteger(netCents)||!Number.isSafeInteger(vatCents))return {status:'unknown',thresholdCents:null};
-  if(pcnClassification==='P'||![305,320].includes(documentType))return {status:'separate_treatment',thresholdCents:null};
-  const thresholdCents=date>='2026-06-01'?500000:date>='2026-01-01'?1000000:date>='2025-01-01'?2000000:null;
-  return {status:thresholdCents===null?'unknown':vatCents>0&&netCents>thresholdCents?'check_business_conditions':'below_threshold_or_no_vat',thresholdCents,officiallyValidated:false};
 }
 function cellsOf(pages){return pages.flatMap(page=>page.lines.flatMap(line=>line.cells.map(cell=>({...cell,key:invoiceLabelKey(cell.text),page:page.page,lineY:line.y,pageHeight:page.height}))));}
 function unique(candidates,reason){

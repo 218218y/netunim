@@ -85,7 +85,7 @@ export function createExpenseService({request, environment, readIds = () => '', 
         const ready = await writer?.readiness(user) === true;
         return {status:200, body:{ok:true, version:1, environment, read:true, create:ready, upload:uploader?.allowed(user) === true,
           pcnP:ready && writer?.pcnEnabled?.(user) === true, draftApproval:false, ocr:ocr?.allowed(user) === true, ocrRecovery:ocr?.recoverable?.(user) === true, ocrFileGuard:ocr?.recoverable?.(user) === true,
-          sourceIntent:writer?.sourceIntent===true,duplicateCheck:writer?.sourceIntent===true,siteRecent:!!ledger,sourceRelay:!!uploader,
+          sourceIntent:writer?.sourceIntent===true,duplicateCheck:writer?.sourceIntent===true,siteRecent:!!ledger,sourceRelay:!!uploader,backgroundQueue:writer?.sourceIntent===true&&!!uploader,
           classificationSource:'existing_expenses', pSuppliers:writer?.profiles() || []}};
       }
       if (command) {
