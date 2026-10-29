@@ -60,7 +60,9 @@ COMMON=r"""
  check(posts===1&&fixture.querySelector('[data-action="morning-expense-batch-send"]'),'approval alone dispatched or batch send absent');
  await uiFeature.actions['morning-expense-batch-send']();check(posts===1,'batch dispatched before previous expense completed');
  const fourth=field('description','fourth draft stays here');fourth.focus();fourth.setSelectionRange(7,7);
- const pdfView=fixture.querySelector('[data-invoice-pdf-viewport]');if(pdfView)pdfView.scrollTop=100;const pdfTop=pdfView?.scrollTop||0;
+ await waitFor(()=>{const image=fixture.querySelector('[data-expense-pdf-preview] img');return image?.complete&&image.naturalWidth>0;});
+ if(innerWidth<800)for(let n=0;n<4;n++)await uiFeature.actions['morning-expense-command']({dataset:{expenseCommand:'pdf-zoom-in'}});
+ const pdfView=fixture.querySelector('[data-invoice-pdf-viewport]');pdfView.scrollTop=100;const pdfTop=pdfView.scrollTop;check(pdfTop>0,'test source did not provide a real scroll position');
  const keys=Object.keys(localStorage).filter(key=>key.startsWith('morningExpenseApproved:'));
  check(keys.length===3,'batch operations are not durable before sending');
  check(keys.every(key=>Object.keys(JSON.parse(localStorage.getItem(key))).join(',')==='version,operationId,sha256,state'),'invoice data leaked to storage');
