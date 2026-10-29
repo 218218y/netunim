@@ -108,6 +108,7 @@ REFRESH=SETUP+COMMON+r"""
  uiFeature=createMorningExpenseIntake(ports);fixture.innerHTML=uiFeature.markup();click('toggle');await settle();
  check(posts===1&&uploads===1,'reopening automatically replayed a financial or source write');
  check(fixture.querySelector('[data-expense-batch]').textContent.includes('מעקב קודם'),'reopening hid pending background operations');
+ check(fixture.querySelector('.morning-expense-batch-dock.attention'),'reopening did not visibly surface unresolved operations');
  [...rows.values()][0].linked=true;
  const first=operations.find(op=>rows.has(op.operationId));await uiFeature.actions['morning-expense-command']({dataset:{expenseCommand:'batch-recover',batchOperation:first.operationId}});await settle();
  check(posts===1&&uploads===1,'refresh recovery replayed a completed operation');

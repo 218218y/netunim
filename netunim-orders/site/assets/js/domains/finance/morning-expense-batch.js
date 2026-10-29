@@ -12,7 +12,14 @@ export function createExpenseBatch({storage,capture,request,confirmDialog,run,re
   function reset(){revision++;entries.clear();recovery=null;scope='';running=false;paused=false;confirming=false;current=null;completed=0;notice='';warning='';stageText='';}
   function initialize(owner,environment){
     if(scope===environment+':'+owner)return;
-    reset();scope=environment+':'+owner;recovery=createExpenseBatchRecovery(storage(),owner,environment);recovery.list();
+    reset();scope=environment+':'+owner;recovery=createExpenseBatchRecovery(storage(),owner,environment);
+    if(recovery.list().some(row=>row.state!=='approved')){paused=true;warning='קיימות שליחות קודמות שדורשות בירור. יש לבדוק אותן לפני שליחה חדשה.';}
+  }
+  function recoveredState(){
+    if(running||attention())return;
+    const own=new Set([...entries.values()].map(row=>row.operationId));
+    if(recovery.list().some(row=>!own.has(row.operationId)&&row.state!=='approved'))return;
+    paused=queued().length>0;warning=paused?'הפעולה הושלמה. יש ללחוץ על המשך שליחת הממתינות.':'';
   }
   function record(entry,state){recovery.put({version:1,operationId:entry.operationId,sha256:entry.source.sourceFile.sha256,state});entry.state=state;}
   function invalidate(item,strict=false){
@@ -32,8 +39,7 @@ export function createExpenseBatch({storage,capture,request,confirmDialog,run,re
     const entry=[...entries.values()].find(row=>row.operationId===operationId);
     if(recovery?.get(operationId))recovery.remove(operationId);
     if(entry){entries.delete(entry.item);if(count)completed++;
-      if(!running&&!attention()){paused=queued().length>0;warning=paused?'הפעולה הושלמה. יש ללחוץ על המשך שליחת הממתינות.':'';}
-      return entry;}return null;
+      recoveredState();return entry;}recoveredState();return null;
   }
   function kick(){
     if(running||paused||attention()||!queued().length)return false;
@@ -105,6 +111,7 @@ export function createExpenseBatch({storage,capture,request,confirmDialog,run,re
           if(!missing)return openRecovery(operationId,entry);
           const approved=await confirmDialog('הוצאה שטרם נשלחה','השרת אישר שמזהה הפעולה אינו קיים. להסיר את האישור הישן ולהחזיר את המסמך לבדיקה ולאישור מחדש?',{confirmText:'החזרה לבדיקה'});guard();
           if(!approved)return false;recovery.remove(operationId);if(entry){entries.delete(entry.item);restoreUnsent(entry);}
+          recoveredState();
           notice='לא נמצאה יצירה בשרת. האישור הישן הוסר; יש לבדוק ולאשר מחדש את המקור.';report(notice);return true;
         });
       }catch(error){try{guard();warning=error.message;report(warning);}catch{/* Old account. */}return false;}
