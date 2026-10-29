@@ -3,11 +3,11 @@ import {createExpenseRequest} from '../integrations/morning-expenses.js';
 import {validateExpenseFile, uploadExpenseFile} from '../platform/morning-expense-files.js';
 
 // This entire composition is loaded only when its panel is first opened.
-export function createFinanceMorningExpenses({auth, morningOperationScope, confirmDialog, dateEditorMarkup, isActive, back}) {
+export function createFinanceMorningExpenses({auth, morningOperationScope, confirmDialog, dateEditorMarkup, toast, isActive, back}) {
   return createMorningExpenseIntake({request:createExpenseRequest({supaFetch:(...args) => auth.supaFetch(...args)}),
     captureRead:() => morningOperationScope.captureRead(), captureWrite:() => morningOperationScope.capture(),
     accountId:() => auth.getAccountScope()?.owner, subscribeAccountScope:listener => auth.subscribeAccountScope(listener),
-    confirmDialog, dateEditorMarkup, files:{validate:validateExpenseFile, upload:uploadExpenseFile,
+    confirmDialog, dateEditorMarkup, toast, files:{validate:validateExpenseFile, upload:uploadExpenseFile,
       extract:async(file,options)=>(await import('../domains/finance/invoice-pdf.js')).extractInvoicePdf(file,options),
       recognize:async(extraction)=>(await import('../core/invoice-recognition.js')).recognizeInvoice(extraction)}, isActive, onBack:back});
 }

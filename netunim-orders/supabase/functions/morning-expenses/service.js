@@ -1,6 +1,7 @@
 import {reportDate, reportExpense} from '../morning-documents/reports.js';
 import {expenseCents} from './input.js';
 import {expenseSourceUrl} from './ocr-source.js';
+import {readExpenseSource} from './source-file.js';
 
 export const expenseUuid = value => typeof value === 'string' && /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i.test(value);
 const text = (value, max = 180) => typeof value === 'string' ? value.slice(0, max) : '';
@@ -70,7 +71,7 @@ export function expenseSearchInput(body, draft = false) {
   return {page, payload:{page:page + 1, pageSize, ...(!unfiltered ? {fromDate:from, toDate:to} : {}),
     ...(body.supplierId ? {supplierId:body.supplierId} : {}), ...(!draft && body.number ? {number:body.number} : {})}};
 }
-export function createExpenseService({request, environment, readIds = () => '', writer = null, uploader = null, ocr = null, ledger = null}) {
+export function createExpenseService({request, environment, readIds = () => '', writer = null, uploader = null, ocr = null, ledger = null, sourceFetch=globalThis.fetch}) {
   return async function handle(user, body) {
     if (!expensePermission(user, 'read', readIds())) return {status:403, body:{ok:false, code:'morning_expenses_forbidden', message:'אין הרשאה לצפייה בהוצאות Morning.'}};
     try {
@@ -78,7 +79,7 @@ export function createExpenseService({request, environment, readIds = () => '', 
       const action = body.action;
       const ocrCommand = ['ocr_prepare','ocr_ticket','ocr_ack','ocr_status','ocr_list','ocr_defer','ocr_lookup'].includes(action);
       const command = ocrCommand || ['create', 'operation_status', 'reconcile', 'cancel_reserved','duplicate_check','source_pending','source_waive','source_verify', 'upload_source','upload_prepare', 'upload_ticket', 'upload_ack', 'upload_status'].includes(action);
-      if ((command || action==='source_link' || body.expectedEnvironment !== undefined) && body.expectedEnvironment !== environment) return {status:409,
+      if ((command || ['source_link','source_file'].includes(action) || body.expectedEnvironment !== undefined) && body.expectedEnvironment !== environment) return {status:409,
         body:{ok:false, code:'morning_expense_environment_changed', message:'סביבת Morning השתנתה מאז טעינת המסך. יש לרענן לפני המשך הפעולה.'}};
       if (action === 'capabilities') {
         const ready = await writer?.readiness(user) === true;
@@ -111,11 +112,12 @@ export function createExpenseService({request, environment, readIds = () => '', 
       } else if (action === 'expenses' || action === 'drafts') {
         const draft = action === 'drafts', {page, payload} = expenseSearchInput(body, draft);
         result = expensePage(await request(draft ? '/expenses/drafts/search' : '/expenses/search', {method:'POST', body:JSON.stringify(payload)}), page, draft ? draftRecord : expenseRecord);
-      } else if (action === 'source_link') {
+      } else if (action === 'source_link' || action === 'source_file') {
         if(!expenseUuid(body.id))throw Error('invalid_expense_input');
         const raw=await request('/expenses/'+body.id,{method:'GET'});
         if(raw?.id!==body.id)throw Error('invalid_expense_record');
         if(!raw.url)return {status:404,body:{ok:false,code:'expense_source_missing',message:'עדיין אין קובץ מקור מצורף להוצאה זו במורנינג.'}};
+        if(action==='source_file')return {status:200,body:await readExpenseSource(raw,environment,{fetch:sourceFetch}),environment};
         result={url:expenseSourceUrl(raw,environment)};
       } else if (action === 'get_expense') {
         if (!expenseUuid(body.id)) throw new Error('invalid_expense_input');

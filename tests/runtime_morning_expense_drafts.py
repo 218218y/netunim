@@ -15,7 +15,7 @@ SCENARIO = PREFIX + r"""
  const first=Object.fromEntries(['number','date','net','vat','gross','description','allocationNumber','supplierId','classificationExpenseId'].map(name=>[name,value(name)]));
  await command('choose-file',1);await settle();field('number','B-0008');field('reportingPeriod','2026-09','change');field('vat','151.02');
  const second=Object.fromEntries(['number','date','reportingPeriod','reportingDate','net','vat','gross'].map(name=>[name,value(name)]));
- await command('choose-file',1);await settle();
+ await command('choose-file',0);await settle();
  for(const [name,expected]of Object.entries(first))check(value(name)===expected,'first draft lost '+name);
  check(fixture.querySelector('[data-expense-review-field="number"]').dataset.reviewStatus==='manual','manual provenance lost on draft restoration');
  check(value('reportingPeriod')==='2026-09'&&value('reportingDate')==='2026-10-01','switching files replaced the last manual reporting choice with a draft-specific period');
@@ -27,8 +27,8 @@ SCENARIO = PREFIX + r"""
  check(fixture.querySelector('[data-expense-review-field="number"]').dataset.reviewStatus==='manual','failed catalog refresh lost manual provenance');
 
  await command('choose-file',1);await settle();for(const [name,expected]of Object.entries(second))check(value(name)===expected,'second draft lost '+name);
- confirmWait=Promise.resolve(false);await command('remove-file',1);await settle();check(fixture.querySelectorAll('.morning-expense-queue li').length===2,'cancelled removal discarded a draft');
- confirmWait=null;await command('remove-file',1);await settle();check(fixture.querySelectorAll('.morning-expense-queue li').length===1&&value('number')==='B-0008','removing another draft changed the active form');
+ confirmWait=Promise.resolve(false);await command('remove-file',0);await settle();check(fixture.querySelectorAll('.morning-expense-queue li').length===2,'cancelled removal discarded a draft');
+ confirmWait=null;await command('remove-file',0);await settle();check(fixture.querySelectorAll('.morning-expense-queue li').length===1&&value('number')==='B-0008','removing another draft changed the active form');
  const unload=new Event('beforeunload',{cancelable:true});dispatchEvent(unload);check(unload.defaultPrevented&&uiFeature.runtime.hasUnsavedWork(),'refresh has no unsaved-work warning');
  const stored=Object.keys(localStorage).filter(key=>key.startsWith('morningExpense')).map(key=>localStorage.getItem(key)).join('');
  check(!stored.includes('manual A')&&!stored.includes('A-0007'),'work drafts leaked into persistent browser storage');

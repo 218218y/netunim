@@ -13,9 +13,10 @@ export function createExpenseProgress({host,isActive}){
       <small>אין צורך ללחוץ שוב. אפשר להמשיך לעיין במסמך בזמן הבדיקה.</small></section>`;
   }
   function show(key,value){
-    if(!isActive())return;stage=key;text=value;
+    if(!isActive())return;const reveal=!stage;stage=key;text=value;
     if(!started)started=Date.now();
     const target=host()?.querySelector('[data-expense-progress]');if(target)target.outerHTML=markup();
+    if(reveal)host()?.querySelector('[data-expense-progress]')?.scrollIntoView({block:'start',behavior:'instant'});
     if(!timer)timer=setInterval(()=>{const el=host()?.querySelector('[data-expense-elapsed]');if(el)el.textContent=`חלפו ${Math.floor((Date.now()-started)/1000)} שניות`;},1000);
   }
   return {show,markup,reset};

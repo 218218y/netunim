@@ -2,7 +2,7 @@ import {esc} from '../../core/values.js';
 import {invoiceHighlightTargets,invoiceHighlightRects} from '../../core/invoice-highlights.js';
 
 // Raster-only preview and source-coordinate overlays. No PDF actions or forms.
-export function createExpensePdfPreview({capture,run,isActive}) {
+export function createExpensePdfPreview({capture,run,isActive,host=()=>document.querySelector('[data-morning-expense-intake]')}) {
   let source=null,revision=0,controller=null,image='',page=1,pages=0,pending=false,message='';
   let targets=[],current=0,viewportModel=null,focusAfterDraw=false,zoom=1;
   function release(){if(image)URL.revokeObjectURL(image);image='';viewportModel=null;}
@@ -36,10 +36,10 @@ export function createExpensePdfPreview({capture,run,isActive}) {
   }
   function update(focus=false){
     if(!isActive())return;
-    const target=document.querySelector('[data-morning-expense-intake] [data-expense-pdf-preview]');if(!target)return;
+    const target=host()?.querySelector('[data-expense-pdf-preview]');if(!target)return;
     const old=target.querySelector('[data-invoice-pdf-viewport]'),top=old?.scrollTop||0,left=old?.scrollLeft||0;
     target.outerHTML=markup();
-    const viewport=document.querySelector('[data-morning-expense-intake] [data-invoice-pdf-viewport]');if(!viewport)return;
+    const viewport=host()?.querySelector('[data-invoice-pdf-viewport]');if(!viewport)return;
     viewport.scrollTop=top;viewport.scrollLeft=left;
     if(focus){
       const mark=viewport.querySelector('.morning-expense-pdf-mark.current');
@@ -86,7 +86,7 @@ export function createExpensePdfPreview({capture,run,isActive}) {
         canvas.width=Math.max(1,Math.floor(viewport.width));canvas.height=Math.max(1,Math.floor(viewport.height));
         renderTask=pdfPage.render({canvas,viewport,annotationMode:0});await bounded(renderTask.promise);check();
         const blob=await bounded(new Promise(resolve=>canvas.toBlob(resolve,'image/png')));check();if(!blob)throw Error('image');
-        release();image=URL.createObjectURL(blob);viewportModel=viewport;message='הנתונים שזוהו מסומנים בצהוב. הנתון הנוכחי מסומן במסגרת כהה.';
+        release();image=URL.createObjectURL(blob);viewportModel=viewport;message=targets.length?'הנתונים שזוהו מסומנים בצהוב. הנתון הנוכחי מסומן במסגרת כהה.':'אפשר להגדיל את המסמך ולעבור בין העמודים.';
       }catch{if(epoch===revision&&!signal.aborted)message='לא ניתן להציג את העמוד. אפשר לבחור עותק תקין ולהשלים ידנית.';}
       finally{
         clearTimeout(timer);signal.removeEventListener('abort',abort);pdfPage?.cleanup();if(canvas){canvas.width=0;canvas.height=0;}

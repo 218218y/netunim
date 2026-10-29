@@ -154,7 +154,7 @@ FLOW = r"""(async()=>{
  check(fixture.querySelectorAll('.morning-expense-queue li').length===4,'pasting distinct files replaced queued files');
  const queueClick=(name,index)=>fixture.querySelector('[data-expense-command="'+name+'"][data-expense-index="'+index+'"]').click();
  queueClick('choose-file',1);check(fixture.querySelector('.morning-expense-source>b').textContent==='second.png','queue selection failed');
- queueClick('remove-file',2);queueClick('remove-file',2);queueClick('choose-file',1);
+ queueClick('remove-file',2);queueClick('remove-file',2);queueClick('choose-file',0);
  check(fixture.querySelectorAll('.morning-expense-queue li').length===2&&fixture.querySelector('.morning-expense-source>b').textContent==='first.png','queue removal lost another file');
  uploadEnabled=false;click('load');await settle();click('save');await settle();check(posts===0&&fixture.textContent.includes('צירוף קבצים עדיין כבוי'),'file queue entered disabled upload path');uploadEnabled=true;click('load');await settle();
  click('save');await settle();check(posts===1&&confirms===1,'save not exactly once');
