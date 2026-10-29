@@ -23,7 +23,7 @@ export function expenseTableHead() {
 export function expenseTableRow(row, kind = 'history') {
   const date = validReportDate(row.sourceDocumentDate) ? row.sourceDocumentDate.split('-').reverse().join('/') : '—';
   return `<tr data-expense-${kind}-id="${esc(row.id)}">
-    <td data-label="מספר"><bdi>${esc(row.number || '—')}</bdi>${row.type === 330 ? '<small>חשבונית זיכוי</small>' : ''}</td>
+    <td data-label="מספר"><bdi>${esc(row.number || '—')}</bdi> <button type="button" class="morning-expense-document" data-action="morning-expense-command" data-expense-command="source-open" data-expense-id="${esc(row.id)}" aria-label="פתיחת מסמך המקור של הוצאה ${esc(row.number||'')}" title="פתיחת המקור ממורנינג">▧</button>${row.type === 330 ? '<small>חשבונית זיכוי</small>' : ''}</td>
     <td data-label="תאריך המסמך"><time datetime="${esc(row.sourceDocumentDate)}">${esc(date)}</time></td>
     <td data-label="שם הספק">${esc(row.name || '—')}</td>
     <td data-label="תיאור" class="morning-expense-description"><span title="${esc(row.description || '')}">${esc(row.description || '(ללא תיאור)')}</span></td>

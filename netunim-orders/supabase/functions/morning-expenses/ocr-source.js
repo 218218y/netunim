@@ -1,18 +1,22 @@
 // Source URLs come only from a canonical draft read, never from client input.
 // Provider fileHash/fileKey were NOT hashes/keys of our uploaded PDF in Sandbox.
-export async function verifyOcrSource(raw, expected, environment, {fetch:send = globalThis.fetch, timeoutMs = 15000} = {}) {
+export function expenseSourceUrl(raw,environment){
   // Canonical Production expense reads returned www.greeninvoice.co.il; an
   // authenticated read-only probe verified the original PDF bytes there.
   const origins = environment === 'sandbox' ? ['https://sandbox.d.greeninvoice.co.il'] : environment === 'production' ?
     ['https://api.greeninvoice.co.il','https://www.greeninvoice.co.il'] : [];
   let url;
   try {url = new URL(raw?.url);} catch {throw new Error('morning_ocr_source_invalid');}
-  if (!origins.includes(url.origin) || url.pathname !== '/api/v1/expenses/download' || url.username || url.password || url.hash ||
-      !/^[\da-f]{64}$/.test(expected.sha256) || !Number.isSafeInteger(expected.size) || expected.size <= 0 || expected.size > 20 * 1024 * 1024) throw new Error('morning_ocr_source_invalid');
+  if (!origins.includes(url.origin) || url.pathname !== '/api/v1/expenses/download' || url.username || url.password || url.hash)throw Error('morning_ocr_source_invalid');
+  return url.href;
+}
+export async function verifyOcrSource(raw, expected, environment, {fetch:send = globalThis.fetch, timeoutMs = 15000} = {}) {
+  const url=expenseSourceUrl(raw,environment);
+  if(!/^[\da-f]{64}$/.test(expected.sha256)||!Number.isSafeInteger(expected.size)||expected.size<=0||expected.size>20*1024*1024)throw Error('morning_ocr_source_invalid');
   const controller = new AbortController(), timer = setTimeout(() => controller.abort(), timeoutMs);
   let reader;
   try {
-    const response = await send(url.href, {redirect:'error', credentials:'omit', signal:controller.signal});
+    const response = await send(url, {redirect:'error', credentials:'omit', signal:controller.signal});
     if (!response.ok || !response.body) throw new Error('morning_ocr_source_unavailable');
     const length = response.headers.get('Content-Length');
     if (length !== null && (!/^\d+$/.test(length) || Number(length) !== expected.size)) return false;

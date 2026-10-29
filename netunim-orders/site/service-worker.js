@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-d1fa7f0697e9';
+const CACHE='orders-app-shell-esm-bee9ca8acedf';
 const SHELL=[
   './',
   './index.html',
@@ -162,6 +162,7 @@ const SHELL=[
   './assets/js/domains/finance/kupa-write-state.js',
   './assets/js/domains/finance/morning-expense-catalog.js',
   './assets/js/domains/finance/morning-expense-completion.js',
+  './assets/js/domains/finance/morning-expense-document.js',
   './assets/js/domains/finance/morning-expense-file-queue.js',
   './assets/js/domains/finance/morning-expense-history.js',
   './assets/js/domains/finance/morning-expense-intake.js',
@@ -169,6 +170,7 @@ const SHELL=[
   './assets/js/domains/finance/morning-expense-ocr.js',
   './assets/js/domains/finance/morning-expense-pdf-preview.js',
   './assets/js/domains/finance/morning-expense-preferences.js',
+  './assets/js/domains/finance/morning-expense-progress.js',
   './assets/js/domains/finance/morning-expense-proposal.js',
   './assets/js/domains/finance/morning-expense-recent-cache.js',
   './assets/js/domains/finance/morning-expense-recent-model.js',
@@ -178,6 +180,7 @@ const SHELL=[
   './assets/js/domains/finance/morning-expense-review-view.js',
   './assets/js/domains/finance/morning-expense-search.js',
   './assets/js/domains/finance/morning-expense-source.js',
+  './assets/js/domains/finance/morning-expense-submit.js',
   './assets/js/domains/finance/morning-expense-supplier-picker.js',
   './assets/js/domains/finance/morning-expense-table.js',
   './assets/js/domains/finance/morning-report-analysis-view.js',

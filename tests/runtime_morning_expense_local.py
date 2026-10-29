@@ -132,7 +132,7 @@ REVIEW = PREFIX + r"""
  const edited=field('number','MANUAL-0009');edited.focus();click('local-start');await settle();
  check(value('number')==='MANUAL-0009'&&status('number')==='manual'&&document.activeElement.dataset.expenseField==='number','re-recognition lost manual provenance or focus');
  field('net','1200.00');check(status('net')==='manual'&&status('vat')==='review'&&status('gross')==='review','dependent amount provenance missing');
- const beforeConfirm=confirms;confirmWait={then:resolve=>resolve(confirms===beforeConfirm+1)};click('save');await settle();check(posts===0&&confirmations.at(-1).includes('הושלם ידנית'),'final confirmation missed manual provenance: '+confirmations.at(-1));confirmWait=null;
+ const beforeConfirm=confirms;confirmWait={then:resolve=>resolve(confirms===beforeConfirm+1)};click('save');await settle();check(posts===0&&confirmations.at(-1).includes('סתירה')&&status('number')==='manual','a material source conflict bypassed dedicated review');confirmWait=null;
  field('number','');check(status('number')==='missing','cleared manual field still shown as completed');
  field('number','MANUAL-0010');
  const original=structuredClone(recognized);

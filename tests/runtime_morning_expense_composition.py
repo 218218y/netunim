@@ -126,7 +126,7 @@ FLOW = r"""(async()=>{
  check(document.querySelector('[data-expense-recent]').textContent.includes('COMPOSITION-1'),'save did not immediately insert the verified site intake');
  check(calls.filter(request=>request.action==='expenses'&&!request.fromDate).length===accountReadsBeforeSave,'save triggered an all-account scan');
  click('recent-refresh');await finance.runtime.drain();check(document.querySelector('[data-expense-recent]').textContent.includes('COMPOSITION-1'),'explicit refresh missed confirmed intake');
- check(confirmations[0].title.includes('האמיתי')&&confirmations[0].message.includes(expense.classification.title),'actual confirmation missed account or category');
+ check(confirmations[0].title.includes('האמיתי')&&confirmations[0].message.includes('בדקת')&&!confirmations[0].message.includes(expense.classification.title),'actual confirmation must identify the account and stay generic');
  const key='morningExpenseOperation:production:'+owner,preference='morningExpensePreferences:production:'+owner;
  check(localStorage.getItem(key)===null,'completed manual intake retained a stale recovery pointer');
  check(JSON.parse(localStorage.getItem(preference)).favorites.includes(supplier.id),'favorites lost account identity');
@@ -159,7 +159,7 @@ P_FLOW = FLOW[:FLOW.index(" const period=")].replace('pcnP:false', 'pcnP:true').
  check(!document.querySelector('[data-action="morning-expense-save"]').disabled,'verified P save remains blocked');
  click('save');await finance.runtime.drain();
  check(posts===1&&confirmations.length===1,'P save/confirmation failed');
- check(confirmations[0].message.includes('P'),'P classification absent from final confirmation');
+ check(confirmations[0].message.includes('בדקת'),'P intake did not require final approval');
  check(JSON.stringify(await db.load(owner+':orders'))===beforeMain&&JSON.stringify(await db.load(owner+':shared-checks'))===beforeShared,'P intake changed local journals');
  finance.runtime.dispose();return {posts,protectedIdentity:true,manualVat:true,canonicalNumber:true};
 })()"""

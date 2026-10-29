@@ -2,6 +2,7 @@ import {expenseUuid} from './service.js';
 import {expenseWriteAccess} from './write-access.js';
 import {expenseMatchesIntent} from './intent.js';
 import {normalizeExpenseSource,normalizeExpenseSourceReview,expenseSourceExpected,expenseSourceSummary,inspectExpenseSource} from './source.js';
+import {relayExpenseSource} from './relay.js';
 
 const TYPES = new Set(['application/pdf', 'image/jpeg', 'image/png']);
 const MAX_BYTES = 20 * 1024 * 1024;
@@ -17,10 +18,10 @@ export function expenseUploadTicket(raw, environment) {
   if (raw.fields.bucket !== bucket || raw.fields['x-amz-meta-file-context'] !== 'expense') throw new Error('invalid_expense_upload_ticket');
   return {url:raw.url, fields:raw.fields, maxFileSize:raw.maxFileSize};
 }
-export function createExpenseUpload({request, ledger, environment, enabled = false, writeIds = () => '', productionUserId = '', now = Date.now,verifySource}) {
+export function createExpenseUpload({request, ledger, environment, enabled = false, writeIds = () => '', productionUserId = '', now = Date.now,verifySource,sendSource}) {
   const authorized = user => expenseWriteAccess(user, environment, writeIds(), productionUserId);
   const allowed = user => enabled === true && authorized(user);
-  return {allowed, async handle(user, body) {
+  const controller={allowed, async handle(user, body) {
     const result = (status, data) => ({status, body:{ok:status < 400, ...data}});
     if (!(['upload_status','source_waive','source_verify'].includes(body?.action) ? authorized(user) : allowed(user))) return result(403, {code:'morning_expense_upload_unverified', message:'צירוף קבצים לא הופעל למשתמש בסביבת החשבון. בדיקת מצב נשארת זמינה למשתמש המורשה.'});
     let issuing = null;
@@ -30,6 +31,8 @@ export function createExpenseUpload({request, ledger, environment, enabled = fal
       if (!row || row.state !== 'created' || !row.verified_at || !expenseUuid(row.expense_id)) throw new Error('invalid_expense_input');
       const expense = await request('/expenses/' + row.expense_id, {method:'GET'});
       if (expense?.id !== row.expense_id || !expenseMatchesIntent(expense, row.payload)) throw new Error('invalid_expense_upload_target');
+      if(body.action==='upload_source')return await relayExpenseSource({user,body,row,expense,ledger,now,send:sendSource,
+        command:(action,fields={})=>controller.handle(user,{action,operationId:row.operation_id,...fields})});
       if(body.action==='source_waive'){
         const reason=typeof body.reason==='string'?body.reason.trim():'';
         if(!expenseSourceSummary(row).sourceExpected||reason.length<10||reason.length>250)throw Error('invalid_expense_source');
@@ -47,7 +50,7 @@ export function createExpenseUpload({request, ledger, environment, enabled = fal
           if(!saved)throw Error('morning_expense_storage_failed');row=saved;source.sourceVerifiedAt=row.source_verified_at||null;
         }
         return result(200, {...source,operationId:row.operation_id, expenseId:row.expense_id, fileLinked:linked, fileState:linked ? 'file_linked' : row.file_state,
-          sourceStatus:expense.status, approvalVerified:false, reportingVerified:false,
+          sourceStatus:expense.status, sourceRetryAt:row.file_expires_at,sourceRetryGeneration:row.file_generation,approvalVerified:false, reportingVerified:false,
           message:source.sourceVerified?'קובץ המקור נקרא מ־Morning וטביעתו תואמת לקובץ שאושר.':linked?
             'Morning מציגה קובץ, אך עדיין לא הוכח שזה קובץ המקור שאושר. יש לבחור את המקור לבדיקה; אין להעלות שוב אם העלאה קודמת עדיין בבירור.':'קישור קובץ המקור טרם אומת ב־Morning.'});
       }
@@ -119,5 +122,5 @@ export function createExpenseUpload({request, ledger, environment, enabled = fal
         'קובץ המקור אינו תואם לקובץ שאושר לפעולה זו. יש לבחור את המקור הנכון; לא נמסרה הרשאת העלאה.':
         code==='expense_source_review_required'?'נדרשת בדיקת התאמה ייעודית של קובץ המקור לפני העלאה.':'לא ניתן להשלים את בקשת ההעלאה. יש לבדוק את מצב הקובץ לפני ניסיון נוסף.'});
     }
-  }};
+  }};return controller;
 }
