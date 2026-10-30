@@ -170,6 +170,10 @@ rollback, without resetting IndexedDB/LocalStorage or changing their schemas.
 The full disposable Supabase job additionally builds both real payloads, opens
 their unchanged HTML and emitted scripts in independent profiles, logs in through
 their normal password forms, and saves records through their actual UI controls.
+The bundler keeps `supabase/config.js` as an external runtime module, so the
+published mutable configuration is actually read rather than duplicated and
+silently inlined into a hashed bundle. Its bytes still participate in release
+identity and complete worker precaching, preventing mixed-release configuration.
 It verifies both profiles' writes in real PostgREST, persisted authentication and
 V2 hydration after a native process restart, and worker-offline startup while the
 separate Shared Checks head stays unchanged. Only configuration/CSP destinations

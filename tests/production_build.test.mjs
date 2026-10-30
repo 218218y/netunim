@@ -25,6 +25,8 @@ test('production payloads are deterministic, gated and independently verified', 
     }
     collect(entry);
     const metadata = JSON.parse(await fs.readFile(path.join(ROOT, '.work/production', app, 'metafile.json'), 'utf8'));
+    assert.equal(Object.keys(metadata.inputs).some(name => name.endsWith('supabase/config.js')), false, 'Runtime configuration was inlined into the build');
+    assert.ok(Object.values(metadata.outputs).some(row => row.imports.some(item => item.external && item.path === '../../supabase/config.js')), 'Compiled app does not read the published configuration');
     const privateDir = path.join(ROOT, '.work/production', app);
     for (const name of (await fs.readdir(privateDir)).filter(name => name.endsWith('.map'))) {
       const map = JSON.parse(await fs.readFile(path.join(privateDir, name), 'utf8'));

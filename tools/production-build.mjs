@@ -18,6 +18,13 @@ const workers = ['assets/js/domains/documents/spreadsheet-preview-worker.js', 'a
 
 export function browserAssets(site) {
   return {name: 'netunim-browser-assets', setup(build) {
+    build.onResolve({filter: /supabase\/config\.js$/}, args => {
+      if (path.resolve(args.resolveDir, args.path) !== path.join(site, 'supabase/config.js')) throw new Error('Unexpected Supabase configuration import');
+      // Keep the existing runtime configuration contract. Copying config.js
+      // while inlining its contents leaves a published but unused configuration
+      // file and prevents the same payload from targeting an isolated backend.
+      return {path: '../../supabase/config.js', external: true};
+    });
     build.onResolve({filter: /vendor\//}, args => {
       const resolved = path.resolve(args.resolveDir, args.path);
       const relative = path.relative(path.join(site, 'assets'), resolved).split(path.sep).join('/');
