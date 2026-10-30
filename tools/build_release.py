@@ -2,11 +2,17 @@
 import hashlib
 from pathlib import Path
 import re
+from build_validation import require
 
 
 def inventory(site: Path) -> dict[str, str]:
-    return {path.relative_to(site).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
-            for path in sorted(site.rglob('*'), key=lambda path: path.relative_to(site).as_posix()) if path.is_file()}
+    require(site.is_dir() and not site.is_symlink() and not getattr(site, 'is_junction', lambda: False)(), f'Invalid payload directory: {site}')
+    found = {}
+    for path in sorted(site.rglob('*'), key=lambda path: path.relative_to(site).as_posix()):
+        require(not path.is_symlink() and not getattr(path, 'is_junction', lambda: False)(), f'Linked public asset: {path}')
+        if path.is_file():
+            found[path.relative_to(site).as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return found
 
 
 def release_id(site: Path, app: str) -> str:

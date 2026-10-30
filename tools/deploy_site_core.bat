@@ -270,12 +270,6 @@ if /I "%~6"=="--preflight-only" (
   exit /b 0
 )
 
-python "%~dp0deployment-receipt.py" prepare "%BUILD_APP%"
-if errorlevel 1 (
-  echo ERROR: could not retain a verified rollback payload. No site was uploaded.
-  exit /b 2
-)
-
 rem Use a fresh isolated working directory on every run. Cloudflare documents that a
 rem functions folder where Wrangler is run can be uploaded, and Wrangler can also discover
 rem generated configuration by walking parent directories. Isolation prevents both classes
@@ -287,6 +281,18 @@ if not exist "%DEPLOY_WORK_DIR%\" (
   echo   %DEPLOY_WORK_DIR%
   exit /b 3
 )
+
+rem Bind the upload and its receipt to one retained, verified release. A later
+rem local build can replace dist without changing the bytes sent by this upload.
+python "%~dp0deployment-receipt.py" prepare "%BUILD_APP%" "%DEPLOY_WORK_DIR%\release.txt"
+if errorlevel 1 (
+  echo ERROR: could not retain a verified rollback payload. No site was uploaded.
+  exit /b 2
+)
+set "BUILD_RELEASE="
+set /p "BUILD_RELEASE="<"%DEPLOY_WORK_DIR%\release.txt"
+if not defined BUILD_RELEASE exit /b 2
+set "SITE_DIR=%~dp0..\.work\releases\%BUILD_APP%\%BUILD_RELEASE%\site"
 
 for /f "delims=" %%V in ('node --version 2^>nul') do set "NODE_VERSION=%%V"
 
@@ -317,7 +323,7 @@ set "DEPLOY_EXIT=%ERRORLEVEL%"
 type "%DEPLOY_WORK_DIR%\wrangler-output.txt"
 popd
 
-python "%~dp0deployment-receipt.py" record "%BUILD_APP%" "%DEPLOY_EXIT%" "%DEPLOY_WORK_DIR%\wrangler-output.txt"
+python "%~dp0deployment-receipt.py" record "%BUILD_APP%" "%DEPLOY_EXIT%" "%DEPLOY_WORK_DIR%\wrangler-output.txt" "%BUILD_RELEASE%"
 set "RECEIPT_EXIT=%ERRORLEVEL%"
 rmdir /S /Q "%DEPLOY_WORK_DIR%" >nul 2>&1
 

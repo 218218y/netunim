@@ -28,6 +28,7 @@ GROUPS = {
         "deploy_preflight.py",
         "public_asset_names_contracts.py",
         "service_worker_contracts.py",
+        "build_headers_contracts.py",
         "calendar_contracts.py",
         "google_drive_contracts.py",
         "morning_documents_contracts.py",
