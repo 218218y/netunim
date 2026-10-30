@@ -12,7 +12,7 @@ import sys
 import time
 from browser_harness import BrowserSession, ROOT
 from pwa_upgrade import wait_for_worker_control
-from production_runtime_scenarios import documents, compatibility, failed_install
+from production_runtime_scenarios import documents, compatibility, failed_install, reset_entry
 
 
 def ready(browser):
@@ -92,6 +92,7 @@ def run():
         print('STARTUP COMPARISON', app, json.dumps({kind: [{'cpu': row['cpuThrottleRate'], 'summary': row['summary']} for row in report[app][kind+'Profiles']] for kind in ('source', 'production')}), flush=True)
         report[app]['compatibility'] = compatibility(app, ready)
         report[app]['failedInstall'] = failed_install(app, ready)
+        report[app]['resetEntry'] = reset_entry(app, ready)
     output = ROOT/'.work/production/comparison.json'
     output.write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
 

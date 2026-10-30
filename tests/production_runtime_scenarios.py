@@ -171,3 +171,26 @@ def failed_install(app, ready):
         ready(browser)
         wait_for_worker_control(browser)
         return {'incompleteInstallRejected': True, 'partialCacheRemoved': True, 'subsequentInstallRecovered': True}
+
+
+def reset_entry(app, ready):
+    """Exercise the compiled reset entry in peer mode without clearing data."""
+    reset_module = module_path(app, 'shared/local-site-reset-page.js')
+    with BrowserSession(ROOT/'dist'/app, app+'-production-reset-entry', instrument=False, service_worker=True) as browser:
+        ready(browser)
+        browser.evaluate("localStorage.setItem('reset-peer-sentinel','preserved')")
+        main_url = browser.url
+        browser.url = main_url.replace('index.html', 'reset-local.html?peer=1')
+        browser._navigate()
+        result = browser.evaluate("""(()=>({status:document.getElementById('resetStatus').textContent,
+          preserved:localStorage.getItem('reset-peer-sentinel')==='preserved',
+          hasBusinessMarks:performance.getEntriesByType('mark').some(row=>row.name.startsWith('netunim-startup:')),
+          scripts:performance.getEntriesByType('resource').map(row=>new URL(row.name).pathname) }))()""")
+        assert result['status'] == 'הטאב הושהה לצורך איפוס', result
+        assert result['preserved'] and not result['hasBusinessMarks'], result
+        assert reset_module[1:] in result['scripts'], result
+        assert not browser.drain_serious_errors()
+        browser.url = main_url
+        browser._navigate()
+        ready(browser)
+        return {'compiledResetLoaded': True, 'peerModePreservesStorage': True, 'noBusinessBootInResetPage': True}
