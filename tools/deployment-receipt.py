@@ -2,9 +2,11 @@
 import argparse
 from datetime import datetime, timezone
 import json
+import os
 from pathlib import Path
 import re
 import shutil
+import time
 from build_release import inventory, release_id
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -35,11 +37,25 @@ def prepare(app):
     if not target.exists():
         # Stage next to the retained payload; a failed copy never looks complete.
         stage = target.with_name(target.name + '.preparing')
-        assert not stage.exists(), 'Previous incomplete snapshot requires inspection'
-        stage.mkdir(parents=True)
-        shutil.copytree(ROOT/'dist'/app, stage/'site')
-        shutil.copyfile(manifest_path, stage/'manifest.json')
-        stage.rename(target)
+        if stage.exists():
+            assert inventory(stage/'site') == manifest['files'], 'Previous incomplete snapshot requires inspection'
+            assert (stage/'manifest.json').read_bytes() == manifest_path.read_bytes(), 'Staged manifest requires inspection'
+        else:
+            stage.mkdir(parents=True)
+            shutil.copytree(ROOT/'dist'/app, stage/'site')
+            shutil.copyfile(manifest_path, stage/'manifest.json')
+        # Windows indexers can briefly retain a directory handle after copy2.
+        # Retry only the atomic publish operation, never relax byte verification
+        # or delete an existing retained release to force publication.
+        deadline = time.monotonic()+3
+        while True:
+            try:
+                stage.rename(target)
+                break
+            except PermissionError as error:
+                if os.name != 'nt' or error.winerror not in (5, 32) or time.monotonic() >= deadline:
+                    raise
+                time.sleep(.1)
     verify(app, manifest['release'])
     print('PASS retained independently verifiable rollback payload:', target)
     return manifest

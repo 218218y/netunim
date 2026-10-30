@@ -2,6 +2,7 @@
 import base64
 import io
 import json
+import os
 from pathlib import Path
 import re
 import shutil
@@ -120,6 +121,10 @@ def compatibility(app, ready):
         shutil.rmtree(site)
         shutil.copytree(ROOT/'dist'/app, site)
         (site/'supabase/config.js').write_bytes(isolated_config)
+        # copy2 retains archive timestamps. Model a fresh deployment timestamp,
+        # otherwise SimpleHTTPRequestHandler can incorrectly return 304 to a
+        # worker update whose previous response had the future file's newer mtime.
+        os.utime(site/'service-worker.js', None)
         wait_for_waiting_upgrade(browser)
         browser.restart_process()
         ready(browser)
