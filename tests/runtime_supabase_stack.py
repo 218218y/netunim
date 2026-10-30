@@ -7,6 +7,7 @@ Only transport failures and synthetic image bytes are supplied by the fixture.
 import hashlib
 import json
 import secrets
+import subprocess
 import time
 import uuid
 
@@ -369,11 +370,16 @@ def run_cron(stack, owner):
 def main():
     results = []
     try:
+        subprocess.run(['node', 'tools/production-build.mjs'], cwd=ROOT, check=True)
         with IsolatedSupabase() as stack:
             owner, foreign = create_user(stack, 1), create_user(stack, 2)
             for app in ('orders', 'kupa'):
                 results.append(run_app(stack, app, owner, foreign))
                 print('PASS', results[-1]['scenario'], flush=True)
+            from production_supabase_ui import run_compiled_ui
+            templates = {app: head(stack, owner, table, name)['state'] for app, table, name in
+                         [('orders', 'order_management_documents', 'suppliers'), ('kupa', 'kupa_documents', 'main')]}
+            results.extend(run_compiled_ui(stack, create_user(stack, 3), templates))
             for run in (run_storage, run_restore):
                 results.append(run(stack, owner, foreign))
                 print('PASS', results[-1]['scenario'], flush=True)
