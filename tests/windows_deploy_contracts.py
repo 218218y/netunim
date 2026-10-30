@@ -8,6 +8,7 @@ import re
 import shutil
 import socket
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -183,6 +184,13 @@ class WindowsDeploymentContracts(unittest.TestCase):
         self.assertEqual(result.stdout.count(wrangler_message), 2)
         self.assertNotIn('\ufffd', result.stdout)
         self.assertEqual(calls, ['remote', 'public', 'upload:bargig-orders', 'upload:bargig-kupa'])
+
+    def test_actual_log_display_preserves_unicode_in_an_owned_oem_console(self):
+        result = subprocess.run([sys.executable, str(ROOT/'tests/fixtures/deploy-console-unicode.py'),
+                                 str(self.root), str(ROOT/'tools/deploy_site_core.bat')],
+                                capture_output=True, encoding='utf8', errors='replace', timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+        self.assertIn('PASS real deployment display', result.stdout)
 
     def test_upload_and_receipt_use_the_selected_retained_release(self):
         release = 'orders-app-shell-build-' + 'a'*24
