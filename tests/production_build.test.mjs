@@ -35,8 +35,10 @@ test('production payloads are deterministic, gated and independently verified', 
     const target = path.join(site, entry);
     const original = await fs.readFile(target);
     await fs.appendFile(target, '\n// tampered\n');
-    const result = spawnSync('python', ['tools/verify-build.py', app], {cwd: ROOT, encoding: 'utf8'});
-    assert.notEqual(result.status, 0, 'Mutated production payload passed');
+    for (const flags of [[], ['-O']]) {
+      const result = spawnSync('python', [...flags, 'tools/verify-build.py', app], {cwd: ROOT, encoding: 'utf8'});
+      assert.notEqual(result.status, 0, 'Mutated production payload passed, including optimized Python');
+    }
     await fs.writeFile(target, original);
     for (const action of [['prepare', app], ['verify', app, first.release]]) {
       const receipt = spawnSync('python', ['tools/deployment-receipt.py', ...action], {cwd: ROOT, encoding: 'utf8'});
@@ -44,8 +46,20 @@ test('production payloads are deterministic, gated and independently verified', 
     }
     const retained = path.join(ROOT, '.work/releases', app, first.release, 'site', entry);
     await fs.appendFile(retained, '\n// damaged rollback artifact\n');
-    const rollback = spawnSync('python', ['tools/deployment-receipt.py', 'verify', app, first.release], {cwd: ROOT, encoding: 'utf8'});
+    const rollback = spawnSync('python', ['-O', 'tools/deployment-receipt.py', 'verify', app, first.release], {cwd: ROOT, encoding: 'utf8'});
     assert.notEqual(rollback.status, 0, 'Damaged rollback artifact passed verification');
     await fs.writeFile(retained, original);
+    const selected = path.join(ROOT, '.work/production', app, 'upload-selection.txt');
+    const selection = spawnSync('python', ['tools/deployment-receipt.py', 'prepare', app, selected], {cwd: ROOT, encoding: 'utf8'});
+    assert.equal(selection.status, 0, selection.stderr);
+    assert.equal((await fs.readFile(selected, 'utf8')).trim(), first.release);
+    const savedManifest = await fs.readFile(manifestPath);
+    const log = path.join(ROOT, '.work/production', app, 'wrangler-test.txt');
+    await fs.writeFile(log, `Upload succeeded https://fixture.bargig-${app}.pages.dev\n`);
+    try {
+      await fs.writeFile(manifestPath, '{}'); // A different build may replace current metadata.
+      const recorded = spawnSync('python', ['tools/deployment-receipt.py', 'record', app, '0', log, first.release], {cwd: ROOT, encoding: 'utf8'});
+      assert.equal(recorded.status, 0, recorded.stderr);
+    } finally {await fs.writeFile(manifestPath, savedManifest)}
   }
 });

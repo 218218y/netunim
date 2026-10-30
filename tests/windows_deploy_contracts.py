@@ -161,6 +161,27 @@ class WindowsDeploymentContracts(unittest.TestCase):
                     self.assertIn('Deployment failed. Wrangler exit code: 7', result.stdout)
                     self.assertEqual(result.stdout.count('Deployment completed successfully.'), len(uploaded)-1)
 
+    def test_upload_and_receipt_use_the_selected_retained_release(self):
+        release = 'orders-app-shell-build-' + 'a'*24
+        source = (ROOT/'tools/deploy_site_core.bat').read_text(encoding='utf8')
+        block = source[source.index('rem Bind the upload'):]
+        self.write('tools/frozen-upload.bat', '@echo off\nsetlocal\n'
+                   'set "BUILD_APP=orders"\nset "PROJECT_NAME=bargig-orders"\n'
+                   'set "DEPLOY_WORK_DIR=%~dp0..\\isolated-upload"\n'
+                   'mkdir "%DEPLOY_WORK_DIR%" >nul 2>&1\n' + block)
+        self.write('tools/deployment-receipt.py',
+                   "import os,sys\nfrom pathlib import Path\n"
+                   f"release={release!r}\n"
+                   "if sys.argv[1]=='prepare':Path(sys.argv[3]).write_text(release,encoding='ascii')\n"
+                   "else:\n assert sys.argv[-1]==release\n with Path(os.environ['CI_CALLS']).open('a') as log:log.write('record:'+sys.argv[-1]+'\\n')\n")
+        self.write('tools/npx.cmd', '@echo off\necho upload:%SITE_DIR%>>"%CI_CALLS%"\nexit /b 0\n')
+        self.env['PATH'] = str(self.root/'tools')+os.pathsep+self.env['PATH']
+        result, calls = self.run_bat('tools/frozen-upload.bat', '')
+        self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+        self.assertEqual(len(calls), 2, calls)
+        self.assertEqual(Path(calls[0].removeprefix('upload:')).resolve(), (self.root/'.work/releases/orders'/release/'site').resolve())
+        self.assertEqual(calls[1], 'record:'+release)
+
     def test_real_engine_database_gate_runs_before_preflight_success_and_stops_both_sites(self):
         shutil.copyfile(ROOT/'tools/deploy_site_core.bat', self.root/'tools/deploy_site_core.bat')
         shutil.copyfile(ROOT/'tools/wrangler-version.txt', self.root/'tools/wrangler-version.txt')

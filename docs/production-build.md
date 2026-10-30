@@ -5,6 +5,11 @@ The source `site` trees remain the development and source-contract targets.
 `npm run build:orders`, `npm run build:kupa` and `npm run build:check` are
 available separately. Do not upload `.work`: private source maps, module graphs,
 bundler metadata and release manifests live in `.work/production/<app>`.
+Each app has an exclusive build lock and a temporary staging directory. Failed
+compilation/validation leaves the last verified public/private output in place;
+publication restores the previous pair if a move fails. Linked output parents
+are rejected before writing. If publication recovery itself fails, the staging
+directory and lock remain for inspection instead of deleting recovery copies.
 
 ## Tool decision (2026-10-30)
 
@@ -57,7 +62,9 @@ account recovery or network latency. Existing source business suites remain.
 
 Both normal and fast entrypoints retain their source verification and security
 guards, then compile the selected application and validate the final output
-before the live Supabase gate. Only `dist/<app>` is passed to Wrangler.
+before the live Supabase gate. Wrangler receives the exact retained copy of the
+verified `dist/<app>` payload selected for that upload, so a concurrent later
+build cannot replace the uploaded bytes or change the receipt's release identity.
 `--preflight-only` also builds and validates, but exits before retaining a release
 or starting Wrangler. Fast deploy still requires full CI for the exact clean
 commit; it does not skip output or live database validation. Install the locked
@@ -102,9 +109,18 @@ cached and offline starts passed. Worker installation inventories fell from 524
 to 54 resources in Orders and from 371 to 39 in Kupa. These are measurements and
 inventories from this revision, not a promise of seconds saved on user hardware.
 Existing startup suites independently measure recovery, first view, command
-readiness and CPU-throttled starts; output runtime evidence is retained alongside
-them. Broader real-account, weak-hardware and filtered-network acceptance remains
+readiness and CPU-throttled starts. The production comparison repeats three cold,
+cached and offline samples for both source and output at normal and 4x CPU
+throttling. It retains raw marks/CPU counters, per-profile medians and maxima,
+without inferring exact parse times from elapsed module evaluation. Output
+runtime evidence is retained alongside the source suites. Broader real-account,
+physical weak-hardware and filtered-network acceptance remains
 a rollout gate before a live deployment, not something inferred from byte sizes.
+
+Production validators use explicit exceptions rather than Python assertions;
+`python -O` and `PYTHONOPTIMIZE` cannot disable their checks. Contracts inject
+tampered current and retained assets under optimized Python. Build-lock, failed
+publication, linked-output and frozen-upload scenarios are tested separately.
 
 References: [esbuild API](https://esbuild.github.io/api/),
 [Vite production builds](https://vite.dev/guide/build),

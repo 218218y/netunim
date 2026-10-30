@@ -6,6 +6,7 @@ import {fileURLToPath, pathToFileURL} from 'node:url';
 import {createHash} from 'node:crypto';
 import {spawnSync} from 'node:child_process';
 import {walk, graph} from './build-graph.mjs';
+import {withBuildOutput} from './build-output.mjs';
 
 export const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const dependencies = process.env.NETUNIM_OFFLINE_NODE_MODULES || path.join(ROOT, 'node_modules');
@@ -48,13 +49,7 @@ export async function buildApp(app) {
     if (checked.status !== 0) throw new Error(`Vendor integrity failed: ${script}`);
   }
   const site = path.join(ROOT, `netunim-${app}/site`);
-  const out = path.join(ROOT, 'dist', app);
-  const privateDir = path.join(ROOT, '.work', 'production', app);
-  // These are fixed, owned build directories, never caller-supplied paths.
-  await fs.rm(out, {recursive: true, force: true});
-  await fs.rm(privateDir, {recursive: true, force: true});
-  await fs.mkdir(out, {recursive: true});
-  await fs.mkdir(privateDir, {recursive: true});
+  return withBuildOutput(ROOT, app, async ({out, privateDir}) => {
   const write = async (name, bytes) => {
     await fs.mkdir(path.dirname(path.join(out, name)), {recursive: true});
     await fs.writeFile(path.join(out, name), bytes);
@@ -107,11 +102,15 @@ export async function buildApp(app) {
   await write('_headers', text(await fs.readFile(path.join(site, '_headers'))));
   await write('service-worker.js', text(await fs.readFile(path.join(site, 'service-worker.js'))));
   await fs.writeFile(path.join(privateDir, 'modules.json'), JSON.stringify(await graph(site), null, 2) + '\n');
-  await fs.writeFile(path.join(privateDir, 'metafile.json'), JSON.stringify(result.metafile, null, 2) + '\n');
+  const canonicalOutput = name => path.relative(site, path.join(ROOT, 'dist', app, path.relative(out, path.resolve(site, name)))).split(path.sep).join('/');
+  const metadata = {...result.metafile, outputs: Object.fromEntries(Object.entries(result.metafile.outputs).map(([name, row]) => [canonicalOutput(name), {
+    ...row, imports: row.imports.map(item => item.external ? item : {...item, path: canonicalOutput(item.path)}),
+  }]))};
+  await fs.writeFile(path.join(privateDir, 'metafile.json'), JSON.stringify(metadata, null, 2) + '\n');
   // Python owns the existing release hash/header/SW security contract.
-  const finalized = spawnSync('python', [path.join(ROOT, 'tools/finalize-build.py'), app], {stdio: 'inherit', cwd: ROOT});
+  const finalized = spawnSync('python', [path.join(ROOT, 'tools/finalize-build.py'), app, out, privateDir], {stdio: 'inherit', cwd: ROOT});
   if (finalized.status !== 0) throw new Error(`Build validation failed: ${app}`);
-  return out;
+  });
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
