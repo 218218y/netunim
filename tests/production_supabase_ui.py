@@ -87,8 +87,20 @@ def run_compiled_ui(stack, account, templates):
         table = 'order_management_documents' if app == 'orders' else 'kupa_documents'
         document = 'suppliers' if app == 'orders' else 'main'
         rpc = 'save_order_management_document_v6' if app == 'orders' else 'save_kupa_document_v6'
+        # The component fault-injection fixture intentionally retains legacy
+        # embedded workbooks. Current full UI uses the migrated, independent
+        # workbook contract; seed both documents instead of manufacturing a
+        # post-migration Main head which still embeds legacy workbook children.
+        state = {key: value for key, value in templates[app].items() if key != 'notesSheet'}
+        state['notesWorkbookExternal'] = 1
+        workbook = templates[app].get('notesSheet')
+        if workbook is not None:
+            code, _ = stack.request('/rest/v1/rpc/save_spreadsheet_document_v1', {'p_domain': app, 'p_document_name': 'main',
+                'p_expected_revision': 0, 'p_state': workbook, 'p_operation_id': 'compiled-workbook-seed',
+                'p_delete_intents': {}, 'p_kind': 'edit'}, token=account['token'])
+            assert code == 200
         code, _ = stack.request('/rest/v1/rpc/'+rpc, {'p_document_name': document, 'p_expected_revision': 0,
-            'p_state': templates[app], 'p_operation_id': 'compiled-'+app+'-seed', 'p_delete_intents': {}, 'p_audit': {}}, token=account['token'])
+            'p_state': state, 'p_operation_id': 'compiled-'+app+'-seed', 'p_delete_intents': {}, 'p_audit': {}}, token=account['token'])
         assert code == 200
         collection, field = ('suppliers', 'name') if app == 'orders' else ('cash', 'description')
         def cloud_rows():
@@ -130,6 +142,9 @@ def run_compiled_ui(stack, account, templates):
             assert cloud_rows() == complete
             code, rows = stack.request('/rest/v1/shared_checks_documents?document_name=eq.main&select=state,revision', token=account['token'])
             assert code == 200 and rows == [{'state': shared, 'revision': 1}]
+            if workbook is not None:
+                code, rows = stack.request('/rest/v1/spreadsheet_documents?domain=eq.'+app+'&document_name=eq.main&select=state,revision', token=account['token'])
+                assert code == 200 and rows == [{'state': workbook, 'revision': 1}]
             assert not a.drain_serious_errors() and not b.drain_serious_errors()
         results.append({'scenario': app+' compiled UI and real Supabase', 'status': 'PASS', 'realPasswordLogin': True,
             'twoIndependentCompiledProfiles': True, 'bothUiWritesInPostgREST': True, 'authAndV2SurviveProcessRestart': True,

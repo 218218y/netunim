@@ -35,7 +35,7 @@ def fetch(url, origin):
                 'headers': {key.lower(): value for key, value in response.headers.items()}, 'body': body}
 
 
-def check_response(name, row, digest, release):
+def check_response(name, row, digest, release, expected_csp):
     require(row['status'] == 200, 'Non-success response: '+name)
     require(hashlib.sha256(row['body']).hexdigest() == digest, 'Published byte mismatch: '+name)
     headers = row['headers']
@@ -53,8 +53,7 @@ def check_response(name, row, digest, release):
     if suffix in accepted:
         require(content_type in accepted[suffix], 'Incorrect Content-Type for '+name+': '+content_type)
     csp = headers.get('content-security-policy', '')
-    require(re.search(r"(?:^|;)\s*script-src 'self'\s*(?:;|$)", csp) and "'unsafe-eval'" not in csp and
-            re.search(r"(?:^|;)\s*worker-src 'self'(?: blob:)?\s*(?:;|$)", csp), 'Missing/unsafe preview CSP: '+name)
+    require(csp == expected_csp and "'unsafe-eval'" not in csp, 'Preview CSP differs from the verified payload: '+name)
     require(headers.get('x-frame-options', '').upper() == 'DENY', 'Missing framing protection: '+name)
     return {'path': name, 'sha256': digest, 'bytes': len(row['body']), 'contentType': content_type, 'cacheControl': headers['cache-control']}
 
@@ -63,10 +62,14 @@ def audit(app, url, manifest, loader=fetch):
     origin = preview_origin(app, url)
     require(manifest['app'] == app, 'Manifest application mismatch')
     release = manifest['release']
+    header_bytes = (ROOT/'dist'/app/'_headers').read_bytes()
+    require(hashlib.sha256(header_bytes).hexdigest() == manifest['files']['_headers'], 'Local header policy differs from audited manifest')
+    policies = re.findall(r'^  Content-Security-Policy: ([^\n]+)$', header_bytes.decode('utf-8'), flags=re.M)
+    require(len(policies) == 1, 'Expected one verified global CSP')
     names = sorted(set(manifest['files'])-{'_headers'})
     def inspect(name):
         row = loader(origin+'/'+urllib.parse.quote(name, safe='/'), origin)
-        result = check_response(name, row, manifest['files'][name], release)
+        result = check_response(name, row, manifest['files'][name], release, policies[0])
         if name.endswith('.html'):
             expected = '/' if name == 'index.html' else '/'+name[:-5]
             require(urllib.parse.urlsplit(row['url']).path == expected, 'Unexpected canonical HTML redirect: '+name)

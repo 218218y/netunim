@@ -28,13 +28,17 @@ class PreviewContracts(unittest.TestCase):
         headers = {'x-netunim-release': 'release', 'cache-control': 'public, max-age=31536000, immutable',
                    'content-type': 'text/javascript; charset=utf-8', 'content-security-policy': "script-src 'self'; worker-src 'self';", 'x-frame-options': 'DENY'}
         row = {'status': 200, 'body': content, 'headers': headers}
-        check_response('assets/build/app-HASH.js', row, digest, 'release')
+        check_response('assets/build/app-HASH.js', row, digest, 'release', headers['content-security-policy'])
         for key, value in [('x-netunim-release', 'future'), ('cache-control', headers['cache-control']+', no-cache'),
                            ('content-type', 'text/html'), ('content-security-policy', "script-src 'self' 'unsafe-eval';")]:
             with self.subTest(key=key), self.assertRaises(ValueError):
-                check_response('assets/build/app-HASH.js', {**row, 'headers': {**headers, key: value}}, digest, 'release')
+                check_response('assets/build/app-HASH.js', {**row, 'headers': {**headers, key: value}}, digest, 'release', headers['content-security-policy'])
         with self.assertRaises(ValueError):
-            check_response('assets/build/app-HASH.js', {**row, 'body': b'corrupted'}, digest, 'release')
+            check_response('assets/build/app-HASH.js', {**row, 'body': b'corrupted'}, digest, 'release', headers['content-security-policy'])
+        reviewed = "script-src 'self' https://static.cloudflareinsights.com; worker-src 'self' blob:;"
+        check_response('assets/build/app-HASH.js', {**row, 'headers': {**headers, 'content-security-policy': reviewed}}, digest, 'release', reviewed)
+        with self.assertRaises(ValueError):
+            check_response('assets/build/app-HASH.js', row, digest, 'release', reviewed)
 
     def test_remote_browser_requires_complete_audited_bytes_and_does_not_loosen_local_preflight(self):
         with tempfile.TemporaryDirectory(prefix='netunim-preview-contract-') as root, tempfile.TemporaryDirectory(prefix='netunim-preview-profile-') as profile:
