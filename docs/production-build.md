@@ -53,20 +53,58 @@ comparison as a CI artifact, along with original startup marks and CPU counters.
 Empty synthetic local stores are used: these numbers cannot predict production
 account recovery or network latency. Existing source business suites remain.
 
-## Rollout status
+## Deployment and rollback
 
-The first stage introduces and verifies the build alongside existing deployment.
-Deployment remains on the existing path until the output and update-compatibility
-gates have passed. No Cloudflare Production deployment is authorized by a build
-success alone. The two Cloudflare projects have independent deployments and
-independent rollback histories; they are never an atomic pair.
+Both normal and fast entrypoints retain their source verification and security
+guards, then compile the selected application and validate the final output
+before the live Supabase gate. Only `dist/<app>` is passed to Wrangler.
+`--preflight-only` also builds and validates, but exits before retaining a release
+or starting Wrangler. Fast deploy still requires full CI for the exact clean
+commit; it does not skip output or live database validation. Install the locked
+dependencies with `npm ci --ignore-scripts` before using the build/deploy tools.
 
-Production rollout requires actual document viewer/worker probes, an old active
+Before an upload, `.work/releases/<app>/<release>/site` retains the exact payload
+alongside its private manifest. A modified or incomplete snapshot fails closed.
+`python tools/deployment-receipt.py verify orders <release>` (or `kupa`) prints
+the verified rollback directory without rebuilding it against newer sources.
+After upload, `.work/deployments/<app>` records commit, release, project, exit
+status and the deployment URLs printed by Wrangler. Wrangler output is displayed
+when the upload finishes; authenticate the CLI before starting a deployment.
+An upload failure remains a failure even if a receipt was recorded. A successful
+upload whose receipt failed is explicitly reported for inspection before retry.
+
+For rollback, first verify the retained release and run the existing live
+Supabase gate. From an isolated directory, deploy that retained `site` directory
+using the repository-pinned Wrangler version and the matching `bargig-orders` or
+`bargig-kupa` project. Never rebuild old sources using current dependencies to
+approximate the old payload. Retain previous Cloudflare deployment IDs/URLs from
+the receipts as an additional provider rollback route. Local data needs no reset.
+
+No Cloudflare Production deployment is authorized by a build success alone.
+The two Cloudflare projects have independent deployments and independent rollback
+histories; they are never an atomic pair. This migration does not deploy either.
+
+The production runtime gate includes actual document viewer/worker probes, an old active
 release opening a previously unused chunk after replacement, failure-injection
 of worker installation, and preservation of local data across updates. Existing
 live Supabase verification must remain immediately before each upload. Retain
 the exact previously deployed payload and its receipt for rollback; never clear
-IndexedDB or LocalStorage to make an upgrade succeed.
+IndexedDB or LocalStorage to make an upgrade succeed. The source tree remains
+available for development and existing source contracts; the uploaded payload
+contains only its compiled runtime and required public resources.
+
+## Observed baseline and build comparison
+
+The first GitHub Chromium comparison (run 40996716543) measured 415 to 16 initial
+JavaScript requests in Orders and 319 to 11 in Kupa, a reduction above 96% for
+both synthetic empty-store starts. Decoded JavaScript bytes also decreased, and
+cached and offline starts passed. Worker installation inventories fell from 524
+to 54 resources in Orders and from 371 to 39 in Kupa. These are measurements and
+inventories from this revision, not a promise of seconds saved on user hardware.
+Existing startup suites independently measure recovery, first view, command
+readiness and CPU-throttled starts; output runtime evidence is retained alongside
+them. Broader real-account, weak-hardware and filtered-network acceptance remains
+a rollout gate before a live deployment, not something inferred from byte sizes.
 
 References: [esbuild API](https://esbuild.github.io/api/),
 [Vite production builds](https://vite.dev/guide/build),

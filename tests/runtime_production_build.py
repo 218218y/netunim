@@ -9,7 +9,7 @@ import sys
 import time
 from browser_harness import BrowserSession, ROOT
 from pwa_upgrade import wait_for_worker_control
-from production_runtime_scenarios import documents, compatibility
+from production_runtime_scenarios import documents, compatibility, failed_install
 
 
 def ready(browser):
@@ -67,6 +67,7 @@ def run():
         assert built['decodedBytes'] < source['decodedBytes'], (app, source['decodedBytes'], built['decodedBytes'])
         print('PASS', app, 'actual production cold/cached/offline startup:', source['requests'], '->', built['requests'], 'JS requests', flush=True)
         report[app]['compatibility'] = compatibility(app, ready)
+        report[app]['failedInstall'] = failed_install(app, ready)
     output = ROOT/'.work/production/comparison.json'
     output.write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
 

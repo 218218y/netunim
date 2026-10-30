@@ -120,7 +120,9 @@ class WindowsDeploymentContracts(unittest.TestCase):
                    'if not "%NETUNIM_DEPLOY_VERIFIED%"=="1" exit /b 99\n'
                    'if /I "%~6"=="--preflight-only" exit /b 0\n'
                    'set "PROJECT_NAME=%~2"\nset "SITE_DIR=%~1\\site"\n'
-                   'set "DEPLOY_WORK_DIR=%~dp0..\\isolated-upload"\n'+tail)
+                   'set "DEPLOY_WORK_DIR=%~dp0..\\isolated-upload"\nmkdir "%DEPLOY_WORK_DIR%" >nul 2>&1\n'+tail)
+        self.write('tools/deployment-receipt.py', 'raise SystemExit(0)\n')
+        (self.root/'isolated-upload').mkdir(exist_ok=True)
         self.write('tools/npx.cmd', '@echo off\necho upload:%PROJECT_NAME%>>"%CI_CALLS%"\n'
                    'if "%PROJECT_NAME%"=="%FAIL_UPLOAD_SITE%" exit /b 7\nexit /b 0\n')
         self.env['PATH'] = str(self.root/'tools')+os.pathsep+self.env['PATH']
@@ -173,17 +175,29 @@ class WindowsDeploymentContracts(unittest.TestCase):
         shutil.copytree(ROOT/'netunim-orders/document-bridge/pdfjs', self.root/'netunim-orders/document-bridge/pdfjs')
         for app in ('orders', 'kupa'):
             shutil.copytree(ROOT/f'netunim-{app}/site', self.root/f'netunim-{app}/site')
+        # Actual production payloads have their own native browser and integrity
+        # gates. Here tiny build/output stubs expose the BAT's ordering and target
+        # selection without repeating compilation in every source failure case.
+        self.write('tools/production-build.mjs', "import fs from 'node:fs';import path from 'node:path';const app=process.argv[2];fs.appendFileSync(process.env.CI_CALLS,'build:'+app+'\\n');process.exit(Number(process.env.BUILD_EXIT||0));\n")
+        self.write('tools/verify-build.py', "import os,sys\nfrom pathlib import Path\nwith Path(os.environ['CI_CALLS']).open('a') as f:f.write('output:'+sys.argv[1]+'\\n')\nraise SystemExit(int(os.environ.get('OUTPUT_EXIT','0')))\n")
         self.write('tools/supabase_deploy_gate.py', "import os\nfrom pathlib import Path\nwith Path(os.environ['CI_CALLS']).open('a') as f: f.write('database\\n')\nraise SystemExit(int(os.environ['DATABASE_EXIT']))\n")
         self.env['DATABASE_EXIT'] = '2'
         result, calls = self.run_bat('deploy_all_fast.bat')
         self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertEqual(calls, ['remote', 'public', 'database'], result.stdout + result.stderr)
+        self.assertEqual(calls, ['remote', 'public', 'build:orders', 'output:orders', 'database'], result.stdout + result.stderr)
         self.assertIn('No site was uploaded', result.stdout)
         self.env['DATABASE_EXIT'] = '0'
         result, calls = self.run_bat('deploy_all_fast.bat')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertEqual(calls, ['remote', 'public', 'database', 'database'], result.stdout + result.stderr)
+        self.assertEqual(calls, ['remote', 'public', 'build:orders', 'output:orders', 'database', 'build:kupa', 'output:kupa', 'database'], result.stdout + result.stderr)
         self.assertNotIn('Deploying the verified static site', result.stdout)
+
+        for failure, expected in [('BUILD_EXIT', ['build:orders']), ('OUTPUT_EXIT', ['build:orders', 'output:orders'])]:
+            self.env[failure] = '2'
+            result, calls = self.run_bat('deploy_all_fast.bat')
+            self.assertNotEqual(result.returncode, 0, result.stdout+result.stderr)
+            self.assertEqual(calls, ['remote', 'public', *expected])
+            self.env[failure] = '0'
 
         vendor = self.root/'netunim-orders/site/assets/vendor/document-viewers/jszip/jszip.min.js'
         original_vendor = vendor.read_bytes()

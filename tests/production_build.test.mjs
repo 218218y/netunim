@@ -38,5 +38,14 @@ test('production payloads are deterministic, gated and independently verified', 
     const result = spawnSync('python', ['tools/verify-build.py', app], {cwd: ROOT, encoding: 'utf8'});
     assert.notEqual(result.status, 0, 'Mutated production payload passed');
     await fs.writeFile(target, original);
+    for (const action of [['prepare', app], ['verify', app, first.release]]) {
+      const receipt = spawnSync('python', ['tools/deployment-receipt.py', ...action], {cwd: ROOT, encoding: 'utf8'});
+      assert.equal(receipt.status, 0, receipt.stderr);
+    }
+    const retained = path.join(ROOT, '.work/releases', app, first.release, 'site', entry);
+    await fs.appendFile(retained, '\n// damaged rollback artifact\n');
+    const rollback = spawnSync('python', ['tools/deployment-receipt.py', 'verify', app, first.release], {cwd: ROOT, encoding: 'utf8'});
+    assert.notEqual(rollback.status, 0, 'Damaged rollback artifact passed verification');
+    await fs.writeFile(retained, original);
   }
 });

@@ -371,6 +371,11 @@ mkdir_pos = deploy_core.find('mkdir "%DEPLOY_WORK_DIR%"')
 ok(0 <= dry_run < mkdir_pos < wrangler_pos, "deploy core: read-only preflight exits before deployment setup and Wrangler")
 ok('exit /b 0' in deploy_core[dry_run:mkdir_pos], "deploy core: preflight cannot fall through to upload")
 database_gate_pos = deploy_core.find('supabase_deploy_gate.py"')
+build_pos = deploy_core.find('production-build.mjs"')
+output_gate_pos = deploy_core.find('verify-build.py"')
+output_root_pos = deploy_core.find('set "SITE_DIR=%~dp0..\\dist\\%BUILD_APP%"')
+ok(0 <= build_pos < output_gate_pos < output_root_pos < database_gate_pos,
+   "deploy core: both paths compile, verify and select production output before the live database gate")
 ok(0 <= database_gate_pos < dry_run < wrangler_pos,
    "deploy core: live database verification precedes both preflight success and upload")
 ok('if errorlevel 1 (' in deploy_core[database_gate_pos:dry_run]

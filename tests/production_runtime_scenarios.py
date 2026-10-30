@@ -4,10 +4,13 @@ import io
 import json
 from pathlib import Path
 import re
+import shutil
 import sys
 import time
 import zipfile
-from browser_harness import BrowserSession, ROOT
+from functools import partial
+from urllib.parse import urlparse
+from browser_harness import BrowserSession, ROOT, _QuietHandler
 from pwa_upgrade import wait_for_worker_control, wait_for_waiting_upgrade
 
 sys.path.insert(0, str(ROOT/'tools'))
@@ -76,15 +79,23 @@ def publish_future(site, app, old_chunk):
 def compatibility(app, ready):
     path = module_path(app, 'domains/documents/text-search-viewer.js')
     with BrowserSession(ROOT/'dist'/app, app+'-production-update', instrument=False, service_worker=True) as browser:
+        isolated_config = (browser.tmp/'site/supabase/config.js').read_bytes()
         ready(browser)
         wait_for_worker_control(browser)
         assert browser.evaluate('!performance.getEntriesByType("resource").some(row=>new URL(row.name).pathname===' + json.dumps(path[1:]) + ')')
         browser.evaluate("localStorage.setItem('production-update-sentinel','preserved')")
         browser.evaluate("""(async()=>{const db=await new Promise((resolve,reject)=>{const task=indexedDB.open('production-build-sentinel',1);task.onupgradeneeded=()=>task.result.createObjectStore('values');task.onsuccess=()=>resolve(task.result);task.onerror=()=>reject(task.error)});await new Promise((resolve,reject)=>{const tx=db.transaction('values','readwrite');tx.objectStore('values').put('preserved','fixture');tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error)});db.close();return true})()""")
+        network_paths = []
+        class ObservedNetwork(_QuietHandler):
+            def do_GET(self):
+                network_paths.append(urlparse(self.path).path)
+                super().do_GET()
+        browser.httpd.RequestHandlerClass = partial(ObservedNetwork, directory=str(browser.tmp/'site'))
         future = publish_future(browser.tmp/'site', app, path)
         wait_for_waiting_upgrade(browser)
         result = browser.evaluate("""(async()=>{const module=await import(PATH),host=document.createElement('div');const viewer=await module.createTextSearchViewer({host,text:'old needle',query:'needle'});const matches=viewer.matchState().total;await viewer.destroy();return {matches,future:module.futureRelease===true,preference:localStorage.getItem('production-update-sentinel')}})()""".replace('PATH', json.dumps(path)))
         assert result == {'matches': 1, 'future': False, 'preference': 'preserved'}, result
+        assert path[1:] not in network_paths, 'Hashed chunk cache hit revalidated against the new deployment'
         # Another scoped window must deny single-client activation.
         target = browser.call('Target.createTarget', {'url': browser.url})['result']['targetId']
         try:
@@ -102,5 +113,56 @@ def compatibility(app, ready):
         assert browser.evaluate("""(async()=>{const db=await new Promise(resolve=>{const task=indexedDB.open('production-build-sentinel',1);task.onsuccess=()=>resolve(task.result)});const value=await new Promise(resolve=>{db.transaction('values').objectStore('values').get('fixture').onsuccess=event=>resolve(event.target.result)});db.close();return value})()""") == 'preserved'
         current = browser.evaluate("caches.keys()")
         assert future in current, current
+        # Restore the exact prior payload independently of the newer source or
+        # dependencies, then exercise the same waiting/activation protocol.
+        site = browser.tmp/'site'
+        assert site.resolve().is_relative_to(browser.tmp.resolve()) and site.name == 'site'
+        shutil.rmtree(site)
+        shutil.copytree(ROOT/'dist'/app, site)
+        (site/'supabase/config.js').write_bytes(isolated_config)
+        wait_for_waiting_upgrade(browser)
+        browser.restart_process()
+        ready(browser)
+        wait_for_worker_control(browser)
+        assert browser.evaluate("localStorage.getItem('production-update-sentinel')") == 'preserved'
+        original_release = json.loads((ROOT/'.work/production'/app/'manifest.json').read_text(encoding='utf-8'))['release']
+        assert original_release in browser.evaluate('caches.keys()')
         assert not browser.drain_serious_errors()
-        return {'oldUnusedChunkSurvivedDeletion': True, 'multitabActivationDenied': True, 'localStorageAndIndexedDBPreserved': True}
+        return {'oldUnusedChunkSurvivedDeletion': True, 'multitabActivationDenied': True, 'localStorageAndIndexedDBPreserved': True, 'exactPayloadRollback': True}
+
+
+def failed_install(app, ready):
+    """A missing lazy resource may not leave a partial controlling release."""
+    path = module_path(app, 'domains/documents/text-search-viewer.js')[1:]
+    with BrowserSession(ROOT/'dist'/app, app+'-production-incomplete', instrument=False, service_worker=True, auto_navigate=False) as browser:
+        reject = {'active': True}
+        class MismatchedLazyChunk(_QuietHandler):
+            def send_header(self, name, value):
+                if reject['active'] and name.lower() == 'x-netunim-release' and urlparse(self.path).path == path:
+                    value = 'deliberately-wrong-release'
+                super().send_header(name, value)
+        browser.httpd.RequestHandlerClass = partial(MismatchedLazyChunk, directory=str(browser.tmp/'site'))
+        browser._navigate()
+        ready(browser)
+        deadline = time.monotonic()+45
+        state = None
+        while time.monotonic() < deadline:
+            state = browser.worker_state()
+            if not state['registration'] and not state['controller']:
+                break
+            time.sleep(.1)
+        else:
+            raise AssertionError({'incompleteReleaseStillRegistered': state})
+        assert not browser.evaluate('caches.keys()'), 'Failed install left partial cache behind'
+        browser.save_worker_evidence('expected-incomplete-install')
+        # Retain the expected rejection above as evidence; a second installation
+        # must be judged on its own native worker events.
+        browser.call('ServiceWorker.disable')
+        browser.events = [event for event in browser.events if event.get('method') != 'ServiceWorker.workerErrorReported']
+        # Toggle the actual handler too: keep-alive HTTP connections retain their
+        # original handler instance even after RequestHandlerClass is replaced.
+        reject['active'] = False
+        browser._navigate()
+        ready(browser)
+        wait_for_worker_control(browser)
+        return {'incompleteInstallRejected': True, 'partialCacheRemoved': True, 'subsequentInstallRecovered': True}
