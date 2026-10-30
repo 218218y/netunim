@@ -6,6 +6,7 @@ import subprocess
 import sys
 from build_release import inventory, release_id, shell_paths
 from build_validation import require
+from build_headers import production_headers
 
 ROOT = Path(__file__).resolve().parents[1]
 app = sys.argv[1]
@@ -23,8 +24,7 @@ source, count = re.subn(r'(const\s+SHELL\s*=\s*)\[[\s\S]*?\]',
 require(count == 1, 'Missing SHELL declaration')
 worker.write_bytes(source.encode('utf-8'))
 headers = site / '_headers'
-header = headers.read_text(encoding='utf-8')
-header += '\n/assets/build/*\n  Cache-Control: public, max-age=31536000, immutable\n'
+header = production_headers(headers.read_text(encoding='utf-8'), inventory(site))
 headers.write_bytes(header.encode('utf-8'))
 release = release_id(site, app)
 worker.write_bytes(re.sub(r"const CACHE='[^']+';", f"const CACHE='{release}';", source).encode('utf-8'))

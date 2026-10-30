@@ -121,6 +121,11 @@ Production validators use explicit exceptions rather than Python assertions;
 `python -O` and `PYTHONOPTIMIZE` cannot disable their checks. Contracts inject
 tampered current and retained assets under optimized Python. Build-lock, failed
 publication, linked-output and frozen-upload scenarios are tested separately.
+Cloudflare combines duplicate header values across matching rules, so the source
+global `no-cache` policy is narrowed to mutable output paths. The global security
+headers remain intact, hashed assets inherit only the immutable cache policy,
+and vendor/HTML/config/worker paths retain `no-cache`. Effective merged headers
+are covered by a dedicated contract. See [Cloudflare header rules](https://developers.cloudflare.com/pages/configuration/headers/).
 
 References: [esbuild API](https://esbuild.github.io/api/),
 [Vite production builds](https://vite.dev/guide/build),

@@ -8,6 +8,7 @@ import sys
 from build_release import inventory, release_id, shell_paths
 from public_asset_names import asset_name_issue
 from build_validation import require
+from build_headers import production_headers
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -34,8 +35,7 @@ def verify(app, site=None, manifest_path=None):
     require("'unsafe-eval'" not in headers and "script-src 'self' 'unsafe-inline'" not in headers, 'Unsafe script CSP')
     require("connect-src 'self'" in headers and 'X-Frame-Options: DENY' in headers, 'Missing security headers')
     expected_headers = (ROOT/f'netunim-{app}/site/_headers').read_text(encoding='utf-8')
-    expected_headers = re.sub(r'^  X-Netunim-Release: [^\n]+', '  X-Netunim-Release: '+release, expected_headers, flags=re.M)
-    expected_headers += '\n/assets/build/*\n  Cache-Control: public, max-age=31536000, immutable\n'
+    expected_headers = production_headers(expected_headers, files, release)
     require(headers == expected_headers, 'Build changed source security/cache policy')
     for name in files:
         file = site/name
