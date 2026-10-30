@@ -29,7 +29,9 @@ def run():
 
         def save(value,revision,op,intents=None,kind='edit',domain='kupa'):
             args=[quote(domain),"'main'",str(revision),quote(json.dumps(value))+'::jsonb',quote(op),quote(json.dumps(intents or {}))+'::jsonb',quote(kind)]
-            return json.loads(db.auth_sql('select row_to_json(r) from public.save_spreadsheet_document_v1('+','.join(args)+') r'))
+            # Capture the server transaction's actual bucket. Independent RPCs
+            # can straddle a ten-minute boundary even during a fast CI run.
+            return json.loads(db.auth_sql("select row_to_json(result) from (select r.*,date_bin(interval '10 minutes',now(),'2020-01-01'::timestamptz) as test_bucket from public.save_spreadsheet_document_v1("+','.join(args)+') r) result'))
 
         def rejects(fn,message):
             try:fn()
@@ -37,15 +39,18 @@ def run():
             else:raise AssertionError('Expected rejection: '+message)
 
         changed=copy.deepcopy(book);changed['rows'][0]['cells']['C']='24'
-        assert save(changed,1,'edit-1')['revision']==2
+        edited=save(changed,1,'edit-1')
+        assert edited['revision']==2
+        edit_buckets={edited['test_bucket']}
         assert save(changed,1,'edit-1')['operation_replayed']
         rejects(lambda:save(book,1,'edit-1'),'idempotency_key_reuse')
         rejects(lambda:save(book,1,'stale'),'revision_conflict')
         assert save(changed,2,'noop')['revision']==2
         for i in range(30):
             changed['rows'][0]['cells']['C']=str(i)
-            save(changed,2+i,'rapid-'+str(i))
-        assert db.auth_sql("select count(*) from public.spreadsheet_backups where domain='kupa' and kind='edit'").strip()=='1'
+            edit_buckets.add(save(changed,2+i,'rapid-'+str(i))['test_bucket'])
+        backups=json.loads(db.auth_sql("select coalesce(json_agg(bucket order by bucket),'[]') from public.spreadsheet_backups where domain='kupa' and kind='edit'"))
+        assert sorted(backups)==sorted(edit_buckets), (backups,edit_buckets)
         for invalid,message in [(None,'invalid_spreadsheet_row'),([], 'invalid_spreadsheet_row'),({'missing':'3'},'orphan_spreadsheet_cell')]:
             broken=copy.deepcopy(book);broken['rows'][0]['cells']=invalid
             rejects(lambda:save(broken,32,'bad-cells'),message)
