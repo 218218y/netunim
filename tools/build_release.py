@@ -33,3 +33,7 @@ def release_id(site: Path, app: str) -> str:
 def shell_paths(site: Path) -> list[str]:
     return ['./'] + ['./' + name for name in inventory(site)
                      if name not in ('_headers', 'service-worker.js') and not name.startswith('assets/vendor/')]
+
+
+def vendor_hashes(site: Path) -> dict[str, str]:
+    return {'./'+name: digest for name, digest in inventory(site).items() if name.startswith('assets/vendor/')}

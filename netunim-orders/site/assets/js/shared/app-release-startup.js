@@ -86,3 +86,17 @@ export function showAppReleaseBlocked({document,location}){
   retry.addEventListener('click',()=>location.reload());
   panel.append(heading,detail,retry);document.body.replaceChildren(panel);retry.focus();
 }
+
+export function watchVendorCompatibility({serviceWorker,document}){
+  serviceWorker?.addEventListener('message',event=>{
+    if(event.source!==serviceWorker.controller||event.data?.type!=='netunim-vendor-unavailable')return;
+    if(document.getElementById('vendor-version-notice'))return;
+    const notice=document.createElement('dialog'),text=document.createElement('p'),close=document.createElement('button');
+    notice.id='vendor-version-notice';notice.setAttribute('aria-label','פתיחת מסמכים');
+    text.textContent='לא ניתן לטעון את ספריית המסמכים המתאימה לגרסה הפתוחה. יש לבדוק את החיבור ולנסות שוב. אם התקלה נמשכת, יש לשמור את העבודה, לסגור את כל טאבי האתר ולפתוח אותו מחדש. אין צורך למחוק נתונים מקומיים.';
+    close.type='button';close.textContent='הבנתי';
+    close.addEventListener('click',()=>notice.remove());
+    notice.addEventListener('cancel',()=>notice.remove(),{once:true});
+    notice.append(text,close);document.body.append(notice);notice.showModal();
+  });
+}

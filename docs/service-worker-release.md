@@ -1,12 +1,27 @@
 # Static release cache integrity
 
-Both sites keep an application's public shell in a release-specific Service Worker cache. A response is accepted only when `X-Netunim-Release` matches the worker's release. Existing tabs retain their controller, and a newly installed worker waits until those tabs close. Financial requests, business-data paths and cross-origin requests bypass this cache.
+Both sites keep an application's public shell in a release-specific Service Worker cache. First-party shell responses require `X-Netunim-Release` to match the controlling worker. Pinned lazy vendor responses instead require SHA-256 of their complete actual bytes to match that worker's generated inventory. Existing tabs retain their controller, and a newly installed worker waits until those tabs close. Financial requests, business-data paths and cross-origin requests bypass this cache.
 
 On 26.10.2026, the public custom domain returned historical release headers for unchanged assets after CDN revalidation, while a fresh query URL returned the current release. This made cold worker installation fail with `shell_release_mismatch`. Cloudflare documents that custom-domain caching can serve stale assets after a Pages deployment. [Cloudflare Pages serving behavior](https://developers.cloudflare.com/pages/configuration/serving-pages/).
 
 Worker network requests now carry `__netunim_release=<this worker's release>` and request browser revalidation. The header must still match exactly. Responses are written under their original canonical cache keys, including during installation, so offline lookup and old cache cleanup retain the same behavior. The install promise completes only after every shell response has been validated and stored. A failed install cannot activate a partial shell. Lazy vendor responses still wait for their cache write before resolving.
 
 The query parameter does not select an old server deployment: if an old running worker receives newer-release bytes, it rejects them and uses its own validated cache. This maintains the existing release fence.
+
+Document runtimes remain lazy. Their transport URL uses `__netunim_vendor=<sha256>`;
+each network or cached response is fully consumed and cryptographically verified.
+An unchanged file is safe across different application release headers. Accepted
+bytes are tagged with the controlling release and stored under the canonical URL.
+Changed/unknown files, corrupt cached bodies and interrupted downloads cannot
+enter that cache. A verified cache hit works even if newer server bytes changed.
+If matching bytes are unavailable, controlled windows receive a document-loading
+notice explaining retry, saving work and closing/reopening tabs. No data is reset
+and the application is never forcibly reloaded during work.
+
+This protocol cannot retrofit an already installed historical worker. The first
+rollout from workers lacking content hashes therefore needs a separately verified
+migration and a maintenance procedure for closing old tabs before new document
+runtimes are needed. Do not treat bundle-to-bundle tests as that historical proof.
 
 `runtime_worker_release_cache.py` uses real Chromium with synthetic stale headers on ordinary URLs and current headers on release-bound URLs. It verifies cold installation, canonical cache keys, lazy loading and identical offline bytes. `runtime_release_compatibility.py` continues to verify rejection of a newer incompatible deployment and retention of local preferences. The Node cold-install checks verify that an incorrect response header remains rejected even on a release-bound URL.
 

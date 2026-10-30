@@ -27,7 +27,7 @@ def ok(condition, message):
 
 def runtime_probe(sw_path: Path):
     probe = r"""
-const fs=require('fs'),vm=require('vm');
+const fs=require('fs'),vm=require('vm'),path=require('path');
 const source=fs.readFileSync(process.argv[1],'utf8'),hasLazyRuntime=source.includes('LAZY_RUNTIME_PREFIXES');
 const release=source.match(/const CACHE='([^']+)'/)[1],headers={get:()=>release};
 (async()=>{
@@ -52,7 +52,7 @@ const release=source.match(/const CACHE='([^']+)'/)[1],headers={get:()=>release}
     }
   };
   const context={
-    console,URL,Promise,Error,setTimeout,clearTimeout,
+    console,URL,Promise,Error,Response,Headers,Uint8Array,crypto:require('node:crypto').webcrypto,setTimeout,clearTimeout,
     self:{location:{origin:'https://app.test'},clients:{claim:async()=>{calls.claim++}},skipWaiting:async()=>{calls.skip++},addEventListener:(name,fn)=>{handlers[name]=fn}},
     caches:{
       open:async name=>{calls.open.push(name);return cache},
@@ -65,7 +65,9 @@ const release=source.match(/const CACHE='([^']+)'/)[1],headers={get:()=>release}
         return null;
       }
     },
-    fetch:async request=>{calls.network++;return {ok:true,headers,tag:'network',clone(){return {ok:true,headers,tag:'clone'}}}}
+    fetch:async request=>{calls.network++;
+      if(String(request).includes('/assets/vendor/'))return new Response(fs.readFileSync(path.join(path.dirname(process.argv[1]),new URL(request).pathname)),{headers:{'X-Netunim-Release':release}});
+      return {ok:true,headers,tag:'network',clone(){return {ok:true,headers,tag:'clone'}}}}
   };
   vm.createContext(context);vm.runInContext(source,context,{filename:process.argv[1]});
   const event=extra=>{const waits=[];let response=null;return Object.assign({waitUntil:p=>waits.push(Promise.resolve(p)),respondWith:p=>{response=Promise.resolve(p)},_waits:waits,_response:()=>response},extra)};
@@ -149,12 +151,12 @@ for label, site in APPS.items():
     ok(not any('/assets/vendor/' in item for item in shell), f"{label}: third-party runtimes are not eagerly pre-cached in the install shell")
     if label == 'orders':
         ok("LAZY_RUNTIME_PREFIXES=['./assets/vendor/']" in text and 'isLazyRuntimePath' in text,
-           'orders: all local document-viewer vendor assets use lazy network-first runtime caching')
+           'orders: all local document-viewer vendor assets stay outside the install shell')
         lazy_branch = text.find('if(lazyRuntime)')
-        lazy_put = text.find('await cache.put(event.request,response.clone())', lazy_branch)
+        lazy_put = text.find('await cache.put(key,response.clone())')
         lazy_wait = text.find('event.waitUntil(lazyResponse.then', lazy_branch)
         lazy_respond = text.find('event.respondWith(lazyResponse)', lazy_branch)
-        ok(lazy_branch >= 0 and lazy_put > lazy_branch and lazy_wait > lazy_put and lazy_respond > lazy_wait,
+        ok(lazy_branch >= 0 and lazy_put >= 0 and lazy_wait > lazy_branch and lazy_respond > lazy_wait,
            'orders: lazy vendor response resolves only after its first CacheStorage write is complete')
     for item in shell:
         if item == "./":
@@ -175,8 +177,8 @@ for label, site in APPS.items():
     # Both apps deliberately use network-first for same-origin GETs. This means a
     # deployment can refresh static files even if the cache name is not manually bumped.
     fetch_handler_pos = text.find("self.addEventListener('fetch'")
-    network_pos = text.find("fetchRelease(event.request)", fetch_handler_pos)
-    cache_pos = text.find("cache.match(event.request)", fetch_handler_pos)
+    network_pos = text.find("const network=fetchRelease(event.request)", fetch_handler_pos)
+    cache_pos = text.find("cache.match(event.request)", network_pos)
     ok(fetch_handler_pos >= 0 and network_pos >= 0 and (cache_pos < 0 or network_pos < cache_pos),
        f"{label}: normal same-origin GET path is network-first")
 

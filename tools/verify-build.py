@@ -5,7 +5,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
-from build_release import inventory, release_id, shell_paths
+from build_release import inventory, release_id, shell_paths, vendor_hashes
 from public_asset_names import asset_name_issue
 from build_validation import require
 from build_headers import production_headers
@@ -29,6 +29,8 @@ def verify(app, site=None, manifest_path=None):
     require(f"const CACHE='{release}';" in worker, 'Worker release mismatch')
     shell = json.loads(re.search(r'const SHELL=(\[[\s\S]*?\]);', worker)[1])
     require(shell == shell_paths(site), 'Incomplete offline shell')
+    vendors = json.loads(re.search(r'const VENDOR_HASHES=(\{[\s\S]*?\});', worker)[1])
+    require(vendors == vendor_hashes(site), 'Worker vendor content hashes differ from published bytes')
     headers = (site/'_headers').read_text(encoding='utf-8')
     require(f'  X-Netunim-Release: {release}\n' in headers, 'Header release mismatch')
     require("script-src 'self'" in headers and "worker-src 'self'" in headers, 'Missing CSP')
