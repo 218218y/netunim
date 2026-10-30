@@ -249,3 +249,49 @@ def pending_activation(app, ready):
         assert browser.evaluate("localStorage.getItem('pending-activation-sentinel')") == 'preserved'
         assert not browser.drain_serious_errors()
         return {'activationDeadlineBlocksBusinessImports': True, 'lateNativeTakeoverRemainsPaused': True, 'reloadRecoversWithoutDataReset': True}
+
+
+def pages_navigation(app, ready):
+    """Pages redirects HTML filenames and serves canonical extensionless URLs."""
+    with BrowserSession(ROOT/'dist'/app, app+'-production-pages-urls', instrument=False, service_worker=True, auto_navigate=False) as browser:
+        disconnected = {'active': False}
+        class PagesURLs(_QuietHandler):
+            def do_GET(self):
+                if disconnected['active']:
+                    self.close_connection = True
+                    return
+                parsed = urlparse(self.path)
+                if parsed.path in ('/index.html', '/reset-local.html'):
+                    canonical = '/' if parsed.path == '/index.html' else '/reset-local'
+                    self.send_response(301)
+                    self.send_header('Location', canonical+('?' + parsed.query if parsed.query else ''))
+                    self.send_header('Content-Length', '0')
+                    self.end_headers()
+                    return
+                super().do_GET()
+
+            def translate_path(self, target):
+                if urlparse(target).path == '/reset-local':
+                    return str(Path(self.directory)/'reset-local.html')
+                return super().translate_path(target)
+        browser.httpd.RequestHandlerClass = partial(PagesURLs, directory=str(browser.tmp/'site'))
+        browser.url = browser.url.replace('index.html', '')
+        browser._navigate()
+        ready(browser)
+        wait_for_worker_control(browser)
+        browser.url += 'reset-local?peer=1'
+        browser._navigate()
+        expected = browser.evaluate("document.getElementById('resetStatus')?.textContent||''")
+        assert expected == 'הטאב הושהה לצורך איפוס', expected
+        browser.call('Network.enable')
+        offline = {'offline': True, 'latency': 0, 'downloadThroughput': -1, 'uploadThroughput': -1, 'connectionType': 'none'}
+        browser.call('Network.emulateNetworkConditions', offline)
+        browser.call('Network.overrideNetworkState', offline)
+        # Page-target CDP emulation alone need not cut off worker fetches.
+        # The server refuses connections too, so only CacheStorage can recover.
+        disconnected['active'] = True
+        browser._navigate()
+        actual = browser.evaluate("document.getElementById('resetStatus')?.textContent||''")
+        assert actual == expected, {'offlineCanonicalReset': actual, 'expected': expected}
+        assert not browser.drain_serious_errors()
+        return {'canonicalHtmlRedirectsInstall': True, 'canonicalResetWithQueryWorksOffline': True}

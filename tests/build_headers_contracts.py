@@ -1,5 +1,4 @@
 """Effective Cloudflare cache rules, including duplicate-header merge semantics."""
-import fnmatch
 from pathlib import Path
 import sys
 import unittest
@@ -7,20 +6,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tools'))
 from build_headers import production_headers
-
-
-def effective(source, pathname):
-    result = {}
-    matched = False
-    for line in source.splitlines():
-        if not line or line.startswith('#'):
-            continue
-        if not line[0].isspace():
-            matched = fnmatch.fnmatchcase(pathname, line)
-        elif matched:
-            key, value = line.strip().split(': ', 1)
-            result[key] = result[key]+', '+value if key in result else value
-    return result
+from pages_headers import response_headers as effective
 
 
 class BuildHeadersContracts(unittest.TestCase):

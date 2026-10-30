@@ -10,9 +10,10 @@ import statistics
 import subprocess
 import sys
 import time
-from browser_harness import BrowserSession, ROOT
+from functools import partial
+from browser_harness import BrowserSession, ROOT, _QuietHandler
 from pwa_upgrade import wait_for_worker_control
-from production_runtime_scenarios import documents, compatibility, failed_install, reset_entry, pending_activation
+from production_runtime_scenarios import documents, compatibility, failed_install, reset_entry, pending_activation, pages_navigation
 
 
 def ready(browser):
@@ -47,6 +48,14 @@ def run():
                 for repetition in range(report['repetitions']):
                     label = f'{app}-{kind}-cpu{cpu_rate}-{repetition}'
                     with BrowserSession(site, label, instrument=False, service_worker=True, auto_navigate=False) as browser:
+                        connection = {'enabled': True}
+                        class StartupNetwork(_QuietHandler):
+                            def do_GET(self):
+                                if not connection['enabled']:
+                                    self.close_connection = True
+                                    return
+                                super().do_GET()
+                        browser.httpd.RequestHandlerClass = partial(StartupNetwork, directory=str(browser.tmp/'site'))
                         browser.call('Performance.enable')
                         browser.call('Emulation.setCPUThrottlingRate', {'rate': cpu_rate})
                         report['environment']['browser'] = browser.call('Browser.getVersion')['result']['product']
@@ -61,6 +70,7 @@ def run():
                         offline = {'offline': True, 'latency': 0, 'downloadThroughput': -1, 'uploadThroughput': -1, 'connectionType': 'none'}
                         browser.call('Network.emulateNetworkConditions', offline)
                         browser.call('Network.overrideNetworkState', offline)
+                        connection['enabled'] = False
                         browser._navigate()
                         samples['offline'] = sample(browser)
                         assert browser.evaluate("localStorage.getItem('build-sentinel')") == 'preserved'
@@ -72,6 +82,7 @@ def run():
                                 online = {**offline, 'offline': False, 'connectionType': 'wifi'}
                                 browser.call('Network.emulateNetworkConditions', online)
                                 browser.call('Network.overrideNetworkState', online)
+                                connection['enabled'] = True
                                 report[app]['documents'] = documents(browser, app)
                 summary = {}
                 for mode in ('cold', 'cached', 'offline'):
@@ -94,6 +105,7 @@ def run():
         report[app]['failedInstall'] = failed_install(app, ready)
         report[app]['resetEntry'] = reset_entry(app, ready)
         report[app]['pendingActivation'] = pending_activation(app, ready)
+        report[app]['pagesNavigation'] = pages_navigation(app, ready)
     output = ROOT/'.work/production/comparison.json'
     output.write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
 

@@ -80,6 +80,7 @@ class WorktreeSnapshot:
         for label in APPS:
             site = root / f'netunim-{label}/site'
             paths.extend((site / 'assets').rglob('*.js'))
+            paths.extend((site / 'assets').rglob('*.css'))
             paths.extend((site / 'assets/js/shared').rglob('*.css'))
             vendor = site / 'assets/vendor'
             if vendor.is_dir():
@@ -214,10 +215,10 @@ def render_worker(label: str, snapshot: OverlaySnapshot, worker_path: str) -> by
     # first use by the worker instead of being part of the installation shell.
     assets = sorted(
         path for path in snapshot.files
-        if path.startswith(asset_prefix) and (path.lower().endswith('.js') or path.startswith(asset_prefix+'js/shared/') and path.lower().endswith('.css'))
+        if path.startswith(asset_prefix) and path.lower().endswith(('.js', '.css'))
         and not path.startswith(asset_prefix+'vendor/')
     )
-    shell = ['./', './index.html', './reset-local.html', './assets/app.css']
+    shell = ['./', './index.html', './reset-local.html']
     shell += ['./' + PurePosixPath(path).relative_to(site).as_posix() for path in assets]
     shell += [
         './manifest.webmanifest', './supabase/config.js', './favicon.ico',
