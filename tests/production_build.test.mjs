@@ -25,6 +25,15 @@ test('production payloads are deterministic, gated and independently verified', 
     }
     collect(entry);
     const metadata = JSON.parse(await fs.readFile(path.join(ROOT, '.work/production', app, 'metafile.json'), 'utf8'));
+    const privateDir = path.join(ROOT, '.work/production', app);
+    for (const name of (await fs.readdir(privateDir)).filter(name => name.endsWith('.map'))) {
+      const map = JSON.parse(await fs.readFile(path.join(privateDir, name), 'utf8'));
+      for (const source of map.sources) {
+        const resolved = path.resolve(privateDir, source);
+        assert.ok(resolved.startsWith(path.join(ROOT, `netunim-${app}/site`) + path.sep));
+        assert.ok((await fs.stat(resolved)).isFile(), 'Private source map cannot locate original module');
+      }
+    }
     for (const [output, row] of Object.entries(metadata.outputs)) {
       const relative = path.relative(site, path.resolve(ROOT, `netunim-${app}/site`, output)).split(path.sep).join('/');
       if (!staticNames.has(relative)) continue;

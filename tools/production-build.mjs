@@ -65,8 +65,14 @@ export async function buildApp(app) {
   });
   for (const file of result.outputFiles) {
     const relative = path.relative(out, file.path);
-    if (relative.endsWith('.map')) await fs.writeFile(path.join(privateDir, path.basename(relative)), file.contents);
-    else await write(relative, file.contents);
+    if (relative.endsWith('.map')) {
+      const map = JSON.parse(file.text);
+      // Maps live privately, outside the JS output directory. Resolve their
+      // source paths against the final private location, not the transient stage.
+      const finalPrivate = path.join(ROOT, '.work/production', app);
+      map.sources = map.sources.map(source => path.relative(finalPrivate, path.resolve(path.dirname(file.path), source)).split(path.sep).join('/'));
+      await fs.writeFile(path.join(privateDir, path.basename(relative)), JSON.stringify(map) + '\n');
+    } else await write(relative, file.contents);
   }
   const entries = {};
   for (const [name, row] of Object.entries(result.metafile.outputs)) {
