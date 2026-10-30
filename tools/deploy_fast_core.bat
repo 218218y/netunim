@@ -1,5 +1,8 @@
 @echo off
 setlocal EnableExtensions DisableDelayedExpansion
+rem Keep captured Python output consistent with Node/Wrangler UTF-8 logs.
+set "PYTHONUTF8=1"
+set "PYTHONIOENCODING=utf-8"
 cd /d "%~dp0.."
 if errorlevel 1 exit /b 2
 set "TARGET=%~1"
