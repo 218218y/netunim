@@ -98,7 +98,57 @@ the receipts as an additional provider rollback route. Local data needs no reset
 
 No Cloudflare Production deployment is authorized by a build success alone.
 The two Cloudflare projects have independent deployments and independent rollback
-histories; they are never an atomic pair. This migration does not deploy either.
+histories; they are never an atomic pair.
+
+## Immutable Cloudflare Preview acceptance
+
+The output validator audits fetched module imports, dynamically imported chunks,
+classic/module Worker references, HTML assets and CSS font/image/import paths
+against the actual published inventory, including exact case on Windows. Pinned
+vendor scripts are validated by their existing runtime manifests rather than
+rewritten or parsed as first-party code.
+
+After complete push CI passes, run each site's existing fast entrypoint with
+`--preflight-only`. This retains source security, vendor integrity, shared-module,
+compiled-output and live Supabase gates. It performs no upload. Prepare the
+verified release with `python tools/deployment-receipt.py prepare orders` (or
+`kupa`), then resolve its retained directory using the `verify` action. From an
+empty temporary directory use the repository-pinned Wrangler version:
+
+```text
+npx --yes wrangler@<tools/wrangler-version.txt> pages deploy <retained-site-directory> --project-name bargig-orders --branch bundle-preview-<verified-commit-prefix> --commit-hash <verified-40-character-commit> --commit-dirty=false
+```
+
+Use `bargig-kupa` for the other project. The explicit Preview branch must differ
+from the project's configured Production branch (`main`). Save the exit status,
+Wrangler log, selected release and immutable deployment URL using the receipt
+`record` action. Upload the retained snapshot, never a later mutable `dist`.
+Neither a preview upload nor the audit modifies Production or database schemas.
+
+`python tests/pages_preview_browser.py orders https://<deployment-id>.bargig-orders.pages.dev`
+audits every deployed file against the private build manifest, including release,
+cache policy, MIME, CSP and canonical HTML redirects, then opens real Chromium.
+It accepts only an immutable URL of the selected project. Its fresh disposable
+profile and origin-only deny proxy block Production Supabase, OAuth, installed
+Bridges and all other hosts. It checks compiled startup, actual PDF/DOCX/CSV
+viewers, and offline startup after proving `ERR_INTERNET_DISCONNECTED` inside
+the worker itself. The same worker-disconnection helper runs in normal CI.
+
+The manual **Immutable Pages preview acceptance** workflow performs the same
+checks independently on a GitHub runner, requires full CI for that exact commit,
+and compares the retained historical fixture with the actual previous immutable
+deployments. Provide both new Preview URLs as inputs on the verified branch.
+It needs no Cloudflare write credential. Public payloads, manifests and reports
+are retained as artifacts for 90 days; source maps are explicitly excluded from
+all public CI artifacts and remain local diagnostic files. Download
+and archive them before expiry for long-term recovery. Verify downloaded public
+payloads against their manifests before using them as rollback copies. Previous
+Cloudflare deployment IDs provide a second independent rollback route.
+
+An unfiltered runner passing does not establish access through the user's local
+filter. Filtered-network access, physical weak-hardware behavior and authenticated
+business acceptance remain separate rollout gates. The automated public probe
+does not log in, create cloud documents, or claim those gates have passed.
 
 ## First migration from the historical module deployment
 
