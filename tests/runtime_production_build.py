@@ -12,7 +12,7 @@ import sys
 import time
 from browser_harness import BrowserSession, ROOT
 from pwa_upgrade import wait_for_worker_control
-from production_runtime_scenarios import documents, compatibility, failed_install, reset_entry
+from production_runtime_scenarios import documents, compatibility, failed_install, reset_entry, pending_activation
 
 
 def ready(browser):
@@ -93,6 +93,7 @@ def run():
         report[app]['compatibility'] = compatibility(app, ready)
         report[app]['failedInstall'] = failed_install(app, ready)
         report[app]['resetEntry'] = reset_entry(app, ready)
+        report[app]['pendingActivation'] = pending_activation(app, ready)
     output = ROOT/'.work/production/comparison.json'
     output.write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
 

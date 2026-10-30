@@ -194,3 +194,58 @@ def reset_entry(app, ready):
         browser._navigate()
         ready(browser)
         return {'compiledResetLoaded': True, 'peerModePreservesStorage': True, 'noBusinessBootInResetPage': True}
+
+
+def pending_activation(app, ready):
+    """A late native takeover cannot open a timed-out document's business graph."""
+    path = module_path(app, 'domains/documents/text-search-viewer.js')
+    with BrowserSession(ROOT/'dist'/app, app+'-production-pending-activation', instrument=False, service_worker=True) as browser:
+        ready(browser)
+        wait_for_worker_control(browser)
+        browser.evaluate("localStorage.setItem('pending-activation-sentinel','preserved')")
+        publish_future(browser.tmp/'site', app, path)
+        wait_for_waiting_upgrade(browser)
+        # Delay only the bootstrap's activation message. The install, worker,
+        # permission check, takeover and compiled bootstrap remain native/real.
+        browser.call('Page.addScriptToEvaluateOnNewDocument', {'source': """
+          const send=ServiceWorker.prototype.postMessage;
+          ServiceWorker.prototype.postMessage=function(data,ports){
+            if(data?.type==='netunim-activate-single-client'){
+              window.__beforeLateActivation=navigator.serviceWorker.controller;
+              window.__releaseLateActivation=()=>{
+                // The sender closes its timed-out ports. Deliver the held
+                // request with a fresh reply endpoint; only the real worker
+                // decides whether this scoped client may activate it.
+                const late=new MessageChannel();
+                late.port1.onmessage=()=>late.port1.close();
+                send.call(this,data,[late.port2]);
+              };
+              return;
+            }
+            return send.call(this,data,ports);
+          };
+        """})
+        browser._navigate()
+        deadline = time.monotonic()+35
+        while time.monotonic()<deadline:
+            state = browser.evaluate("({blocked:document.querySelector('main[role=alert] h1')?.textContent||'',business:performance.getEntriesByType('mark').some(row=>row.name.startsWith('netunim-startup:')),held:typeof window.__releaseLateActivation==='function'})")
+            if state['blocked']:
+                break
+            time.sleep(.1)
+        else:
+            raise AssertionError({'activationDidNotStopAtDeadline': state})
+        assert state == {'blocked': 'עדכון המערכת טרם הושלם', 'business': False, 'held': True}, state
+        browser.evaluate('window.__releaseLateActivation();true')
+        deadline = time.monotonic()+15
+        while time.monotonic()<deadline:
+            if browser.evaluate('navigator.serviceWorker.controller!==window.__beforeLateActivation'):
+                break
+            time.sleep(.1)
+        else:
+            raise AssertionError('Late native activation fixture never replaced the controller')
+        assert browser.evaluate("!performance.getEntriesByType('mark').some(row=>row.name.startsWith('netunim-startup:'))")
+        browser._navigate()
+        ready(browser)
+        assert browser.evaluate("localStorage.getItem('pending-activation-sentinel')") == 'preserved'
+        assert not browser.drain_serious_errors()
+        return {'activationDeadlineBlocksBusinessImports': True, 'lateNativeTakeoverRemainsPaused': True, 'reloadRecoversWithoutDataReset': True}
