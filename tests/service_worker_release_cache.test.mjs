@@ -10,7 +10,7 @@ for (const app of ['orders','kupa']) test(`${app}: release-bound requests never 
   const context={URL,Promise,Error,console,
     self:{location:{origin:'https://fixture.test',href:'https://fixture.test/service-worker.js'},
       addEventListener:(name,handler)=>{handlers[name]=handler},skipWaiting:async()=>{skips++}},
-    caches:{open:async()=>({put:async key=>{puts.push(key)}})},
+    caches:{open:async()=>({put:async key=>{puts.push(key)}}),delete:async name=>{assert.equal(name,release);return true}},
     fetch:async (url,options)=>{
       requests.push({url,options});return {ok:true,headers:{get:()=>'unexpected-future-release'}};
     },

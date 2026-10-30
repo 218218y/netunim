@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-f4533e0f2921';
+const CACHE='orders-app-shell-esm-c127b561b711';
 const SHELL=[
   './',
   './index.html',
@@ -546,7 +546,12 @@ async function fetchRelease(request){
 self.addEventListener('install',event=>{
   event.waitUntil((async()=>{
     const cache=await caches.open(CACHE);
-    await Promise.all(SHELL.map(async path=>{await cache.put(path,await fetchRelease(path));}));
+    const results=await Promise.allSettled(SHELL.map(async path=>{await cache.put(path,await fetchRelease(path));}));
+    const failed=results.find(result=>result.status==='rejected');
+    if(failed){
+      await caches.delete(CACHE);
+      throw failed.reason;
+    }
     // Existing tabs finish with their controlling release. The new worker waits
     // until those tabs close; it never swaps a running page's module graph.
     if(!self.registration?.active)await self.skipWaiting();
@@ -598,6 +603,22 @@ self.addEventListener('fetch',event=>{
     })();
     event.waitUntil(lazyResponse.then(()=>undefined,()=>undefined));
     event.respondWith(lazyResponse);
+    return;
+  }
+
+  // Every hashed chunk was verified during installation, including chunks not
+  // yet opened by this tab. An old tab must never depend on the next deployment
+  // retaining its hashed filenames. Cache hits also avoid needless revalidation.
+  if(SHELL_PATHS.has(url.pathname)&&url.pathname.includes('/assets/build/')){
+    const immutableResponse=(async()=>{
+      const cache=await caches.open(CACHE),cached=await cache.match(event.request);
+      if(sameRelease(cached))return cached;
+      const response=await fetchRelease(event.request);
+      await cache.put(event.request,response.clone());
+      return response;
+    })();
+    event.waitUntil(immutableResponse.then(()=>undefined,()=>undefined));
+    event.respondWith(immutableResponse);
     return;
   }
 

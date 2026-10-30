@@ -9,6 +9,7 @@ import sys
 import time
 from browser_harness import BrowserSession, ROOT
 from pwa_upgrade import wait_for_worker_control
+from production_runtime_scenarios import documents, compatibility
 
 
 def ready(browser):
@@ -54,10 +55,18 @@ def run():
                 assert browser.evaluate("localStorage.getItem('build-sentinel')") == 'preserved'
                 assert not browser.drain_serious_errors()
                 report[app][kind] = samples
+                if kind == 'production':
+                    # Vendor payloads are still lazy: explicitly return online,
+                    # then exercise the emitted adapters and actual workers.
+                    online = {**offline, 'offline': False, 'connectionType': 'wifi'}
+                    browser.call('Network.emulateNetworkConditions', online)
+                    browser.call('Network.overrideNetworkState', online)
+                    report[app]['documents'] = documents(browser, app)
         source, built = report[app]['source']['cold'], report[app]['production']['cold']
         assert built['requests'] <= source['requests']*.2, (app, source['requests'], built['requests'])
         assert built['decodedBytes'] < source['decodedBytes'], (app, source['decodedBytes'], built['decodedBytes'])
         print('PASS', app, 'actual production cold/cached/offline startup:', source['requests'], '->', built['requests'], 'JS requests', flush=True)
+        report[app]['compatibility'] = compatibility(app, ready)
     output = ROOT/'.work/production/comparison.json'
     output.write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
 
