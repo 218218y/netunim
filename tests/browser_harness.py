@@ -487,7 +487,7 @@ class BrowserSession:
         try:
             self._prepare_site()
             self._start_server()
-            browser_preflight(self)
+            self._network_preflight()
             self.network_guard = DenyProxy()
             self._start_browser()
             if self.auto_navigate:
@@ -641,11 +641,14 @@ class BrowserSession:
         self.http_thread.start()
         self.url = f"http://127.0.0.1:{port}/index.html"
 
+    def _network_preflight(self):
+        return browser_preflight(self)
+
     def _start_browser(self):
         if self.browser_owner:
             self.browser_owner.close()
             self.browser_owner = None
-        allowed = browser_preflight(self)
+        allowed = self._network_preflight()
         _seed_windows_profile(self.browser, self.profile)
         # Let Chromium bind its own port, then trust only the browser UUID it
         # publishes inside this private profile. A free IPv4 port alone cannot
@@ -776,14 +779,17 @@ class BrowserSession:
             self.ws, self.seq, self.events = original
             self.call('Target.closeTarget', {'targetId':target})
 
-    def call(self, method: str, params: dict | None = None, *, timeout: float | None = None):
+    def call(self, method: str, params: dict | None = None, *, timeout: float | None = None, session_id: str | None = None):
         self.seq += 1
         ident = self.seq
         previous_timeout = self.ws.gettimeout()
         if timeout is not None:
             self.ws.settimeout(timeout)
         try:
-            self.ws.send(json.dumps({"id": ident, "method": method, "params": params or {}}))
+            request = {"id": ident, "method": method, "params": params or {}}
+            if session_id is not None:
+                request['sessionId'] = session_id
+            self.ws.send(json.dumps(request))
             while True:
                 message = json.loads(self.ws.recv())
                 if message.get("id") == ident:

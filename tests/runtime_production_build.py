@@ -16,6 +16,7 @@ from pwa_upgrade import wait_for_worker_control
 from production_runtime_scenarios import documents, compatibility, failed_install, reset_entry, pending_activation, pages_navigation
 from production_vendor_scenarios import vendor_upgrade
 from production_legacy_migration import prebundle_upgrade
+from pages_preview_browser import offline_probe
 
 
 def ready(browser):
@@ -86,6 +87,9 @@ def run():
                                 browser.call('Network.overrideNetworkState', online)
                                 connection['enabled'] = True
                                 report[app]['documents'] = documents(browser, app)
+                                browser.evaluate("localStorage.setItem('preview-sentinel','preserved')")
+                                browser.events.clear()
+                                report[app]['workerOfflineTransport'] = offline_probe(browser)
                 summary = {}
                 for mode in ('cold', 'cached', 'offline'):
                     summary[mode] = {}

@@ -1,0 +1,88 @@
+name: Immutable Pages preview acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      orders_url:
+        description: Immutable Orders Pages deployment URL
+        required: true
+        type: string
+      kupa_url:
+        description: Immutable Kupa Pages deployment URL
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  PYTHONUTF8: '1'
+  PYTHONUNBUFFERED: '1'
+
+jobs:
+  preview:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14'
+      - name: Require complete push CI for this exact clean commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python tools/github_verification.py
+      - name: Install locked dependencies and build both real payloads
+        run: |
+          npm ci --cache "$RUNNER_TEMP/netunim-npm-cache" --ignore-scripts --no-audit --no-fund
+          python -m pip install --no-cache-dir -r tests/requirements-ci.txt
+          echo "NETUNIM_BROWSER=$(command -v google-chrome)" >> "$GITHUB_ENV"
+          node tools/production-build.mjs
+      - name: Audit all live bytes and headers, then Chromium with backend access blocked
+        env:
+          ORDERS_PREVIEW_URL: ${{ inputs.orders_url }}
+          KUPA_PREVIEW_URL: ${{ inputs.kupa_url }}
+        run: |
+          python tests/pages_preview_browser.py orders "$ORDERS_PREVIEW_URL"
+          python tests/pages_preview_browser.py kupa "$KUPA_PREVIEW_URL"
+      - name: Preserve independently recoverable public payloads and map-free evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: immutable-pages-payloads-and-evidence
+          path: |
+            dist/
+            .work/production/
+            .work/pages-preview/
+            !.work/production/**/*.map
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 90
+  historical:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14'
+      - name: Compare retained historical source against the real immutable deployed files
+        run: python tools/pages_legacy_audit.py
+      - name: Preserve live historical identity evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: historical-deployment-identity
+          path: .work/pages-preview/
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 90

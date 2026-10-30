@@ -64,6 +64,7 @@ def verify(app, site=None, manifest_path=None):
                        for file in vendor_root.rglob('*') if file.is_file() and file.suffix != '.map'}
     require(expected_vendor == {name for name in files if name.startswith('assets/vendor/')}, 'Incomplete vendor runtime')
     subprocess.run([sys.executable, str(ROOT/'tools/public_js_guard.py'), str(site)], check=True)
+    subprocess.run(['node', str(ROOT/'tools/build-asset-references.mjs'), str(site)], check=True)
     print(f'PASS {app}: verified production build, {len(files)} files, {len(shell)} offline resources, {release}', flush=True)
 
 

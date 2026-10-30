@@ -87,6 +87,7 @@ jobs:
             .work/startup-performance/latest.json
             .work/loaded-performance/latest.json
             .work/production/
+            !.work/production/**/*.map
           include-hidden-files: true
           if-no-files-found: warn
           retention-days: 14
