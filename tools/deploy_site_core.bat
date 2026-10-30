@@ -1,5 +1,8 @@
 @echo off
 setlocal EnableExtensions DisableDelayedExpansion
+rem Scoped to deployment; do not change the user's console/system code page.
+set "PYTHONUTF8=1"
+set "PYTHONIOENCODING=utf-8"
 
 rem Internal per-site deployment engine. Verification is intentionally owned by
 rem normal entrypoints (local full suite) or fast entrypoints (full GitHub CI
@@ -244,6 +247,7 @@ if not defined BUILD_APP (
   echo ERROR: unknown production build target: %PROJECT_NAME%
   exit /b 2
 )
+echo Building and validating production bundles for %BUILD_APP%...
 node "%~dp0production-build.mjs" "%BUILD_APP%"
 if errorlevel 1 (
   echo ERROR: Production build failed. No site was uploaded.
@@ -302,6 +306,7 @@ echo Project:
  echo   %PROJECT_NAME%
 echo Static root:
  echo   %SITE_DIR%
+echo Only this public site snapshot is uploaded; its parent .work folder stays local.
 echo Isolated Wrangler working directory:
  echo   %DEPLOY_WORK_DIR%
 echo Node.js:
@@ -320,7 +325,9 @@ if errorlevel 1 (
 )
 call npx --yes wrangler@%WRANGLER_VERSION% pages deploy "%SITE_DIR%" --project-name "%PROJECT_NAME%" > "%DEPLOY_WORK_DIR%\wrangler-output.txt" 2>&1
 set "DEPLOY_EXIT=%ERRORLEVEL%"
-type "%DEPLOY_WORK_DIR%\wrangler-output.txt"
+rem TYPE replays UTF-8 bytes using the console's OEM code page. Node decodes
+rem the log explicitly and its Windows terminal writer renders Unicode.
+node -e "process.stdout.write(require('node:fs').readFileSync(process.argv[1],'utf8'))" "%DEPLOY_WORK_DIR%\wrangler-output.txt"
 popd
 
 python "%~dp0deployment-receipt.py" record "%BUILD_APP%" "%DEPLOY_EXIT%" "%DEPLOY_WORK_DIR%\wrangler-output.txt" "%BUILD_RELEASE%"

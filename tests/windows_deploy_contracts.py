@@ -161,6 +161,29 @@ class WindowsDeploymentContracts(unittest.TestCase):
                     self.assertIn('Deployment failed. Wrangler exit code: 7', result.stdout)
                     self.assertEqual(result.stdout.count('Deployment completed successfully.'), len(uploaded)-1)
 
+    def test_fast_upload_keeps_hebrew_paths_and_utf8_wrangler_output_readable(self):
+        self.install_real_upload_tail()
+        # Reproduce a Hebrew Windows locale inherited by captured Python output.
+        # The public fast entrypoint must normalise child encodings itself.
+        self.env['PYTHONUTF8'] = '0'
+        self.env['PYTHONIOENCODING'] = 'cp1255'
+        python_message = 'Verified path: C:\\Users\\יעקב\\אתרים\n'
+        wrangler_message = 'Cloudflare: שלום — הועלה בהצלחה ☁\n'
+        self.write('tools/github_verification.py',
+                   'import os\nfrom pathlib import Path\n'
+                   'with Path(os.environ["CI_CALLS"]).open("a") as log:log.write("remote\\n")\n'
+                   f'print({python_message!r},end="")\n')
+        codepoints = ','.join(str(ord(char)) for char in wrangler_message)
+        self.write('tools/npx.cmd', '@echo off\n'
+                   f'node -e "process.stdout.write(String.fromCodePoint({codepoints}))"\n'
+                   'echo upload:%PROJECT_NAME%>>"%CI_CALLS%"\nexit /b 0\n')
+        result, calls = self.run_bat('deploy_all_fast.bat', '')
+        self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+        self.assertIn(python_message, result.stdout)
+        self.assertEqual(result.stdout.count(wrangler_message), 2)
+        self.assertNotIn('\ufffd', result.stdout)
+        self.assertEqual(calls, ['remote', 'public', 'upload:bargig-orders', 'upload:bargig-kupa'])
+
     def test_upload_and_receipt_use_the_selected_retained_release(self):
         release = 'orders-app-shell-build-' + 'a'*24
         source = (ROOT/'tools/deploy_site_core.bat').read_text(encoding='utf8')

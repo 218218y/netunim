@@ -89,6 +89,16 @@ when the upload finishes; authenticate the CLI before starting a deployment.
 An upload failure remains a failure even if a receipt was recorded. A successful
 upload whose receipt failed is explicitly reported for inspection before retry.
 
+Every deployment builds production bundles; the fast entrypoint replaces the
+full local test run with exact-commit GitHub verification, while retaining build,
+output and live database checks. The paired fast path preflights both sites and
+repeats the per-site build/guards immediately before its individual upload.
+The `.work/releases/.../site` upload directory is the frozen public snapshot;
+its parent manifests, diagnostic files and private source maps are not uploaded.
+Deployment child processes use consistent UTF-8 output. Wrangler logs are decoded
+and displayed with Node's Unicode terminal writer, preserving Hebrew paths and
+Unicode symbols without changing the user's Windows console/system code page.
+
 For rollback, first verify the retained release and run the existing live
 Supabase gate. From an isolated directory, deploy that retained `site` directory
 using the repository-pinned Wrangler version and the matching `bargig-orders` or
