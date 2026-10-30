@@ -100,6 +100,30 @@ No Cloudflare Production deployment is authorized by a build success alone.
 The two Cloudflare projects have independent deployments and independent rollback
 histories; they are never an atomic pair. This migration does not deploy either.
 
+## First migration from the historical module deployment
+
+`tests/fixtures/prebundle` retains source and worker bytes from `4d8e17d3497`,
+the source commit reported by both current Production deployments. Its public
+trees equal the pre-build repository baseline. Archive/file hashes are checked,
+and historical vendor trees are reconstructed only from matching pinned bytes.
+Direct deployment-byte verification is still an external rollout gate; provider
+commit metadata alone does not prove the exact uploaded files.
+
+The native compiled suite runs historical code without probes, creates 1,000
+synthetic Main records plus 100 Shared Checks, and leaves an emergency-durable
+write whose IndexedDB append was deliberately interrupted. It swaps the server
+deployment pointer, verifies an old cached feature in the retained old tab, then
+closes all old windows and starts the compiled release. It compares complete
+logical Main/Shared state and verifies interrupted-write recovery and historical
+rollback, without resetting IndexedDB/LocalStorage or changing their schemas.
+
+Historical workers lack content-verified vendor loading and cannot be retrofitted
+from the new deployment. For the first live transition, arrange a maintenance
+boundary: finish and save work, close every old tab and installed-app window on
+each machine, reopen online, and verify the new release before reopening document
+features. Keep the previous provider deployment and retained payload for rollback.
+Do not promise uninterrupted first-time document loading from a legacy worker.
+
 The production runtime gate includes actual document viewer/worker probes, an old active
 release opening a previously unused chunk after replacement, failure-injection
 of worker installation, and preservation of local data across updates. Existing
