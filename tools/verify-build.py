@@ -28,6 +28,10 @@ def verify(app):
     assert "script-src 'self'" in headers and "worker-src 'self'" in headers, 'Missing CSP'
     assert "'unsafe-eval'" not in headers and "script-src 'self' 'unsafe-inline'" not in headers, 'Unsafe script CSP'
     assert "connect-src 'self'" in headers and 'X-Frame-Options: DENY' in headers, 'Missing security headers'
+    expected_headers = (ROOT/f'netunim-{app}/site/_headers').read_text(encoding='utf-8')
+    expected_headers = re.sub(r'^  X-Netunim-Release: [^\n]+', '  X-Netunim-Release: '+release, expected_headers, flags=re.M)
+    expected_headers += '\n/assets/build/*\n  Cache-Control: public, max-age=31536000, immutable\n'
+    assert headers == expected_headers, 'Build changed source security/cache policy'
     for name in files:
         file = site/name
         assert asset_name_issue(name) is None, f'Unapproved public name: {name}'

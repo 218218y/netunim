@@ -235,6 +235,27 @@ for %%F in (_worker.js _routes.json wrangler.toml wrangler.json wrangler.jsonc) 
   exit /b 2
 )
 
+rem Source contracts above intentionally keep source paths. Upload contracts below
+rem operate only on freshly compiled, independently verified production outputs.
+set "BUILD_APP="
+if /I "%PROJECT_NAME%"=="bargig-orders" set "BUILD_APP=orders"
+if /I "%PROJECT_NAME%"=="bargig-kupa" set "BUILD_APP=kupa"
+if not defined BUILD_APP (
+  echo ERROR: unknown production build target: %PROJECT_NAME%
+  exit /b 2
+)
+node "%~dp0production-build.mjs" "%BUILD_APP%"
+if errorlevel 1 (
+  echo ERROR: Production build failed. No site was uploaded.
+  exit /b 2
+)
+python "%~dp0verify-build.py" "%BUILD_APP%"
+if errorlevel 1 (
+  echo ERROR: Production output verification failed. No site was uploaded.
+  exit /b 2
+)
+set "SITE_DIR=%~dp0..\dist\%BUILD_APP%"
+
 rem Check live Production before deciding that an old saved receipt blocks upload.
 rem The shared gate derives pending upgrades from the reviewed migration chain;
 rem it never applies SQL or rewrites tracked evidence during a fast deployment.
@@ -247,6 +268,12 @@ if errorlevel 1 (
 if /I "%~6"=="--preflight-only" (
   echo Deployment preflight and Supabase verification passed. No deployment requested.
   exit /b 0
+)
+
+python "%~dp0deployment-receipt.py" prepare "%BUILD_APP%"
+if errorlevel 1 (
+  echo ERROR: could not retain a verified rollback payload. No site was uploaded.
+  exit /b 2
 )
 
 rem Use a fresh isolated working directory on every run. Cloudflare documents that a
@@ -285,16 +312,23 @@ if errorlevel 1 (
   rmdir /S /Q "%DEPLOY_WORK_DIR%" >nul 2>&1
   exit /b 3
 )
-call npx --yes wrangler@%WRANGLER_VERSION% pages deploy "%SITE_DIR%" --project-name "%PROJECT_NAME%"
+call npx --yes wrangler@%WRANGLER_VERSION% pages deploy "%SITE_DIR%" --project-name "%PROJECT_NAME%" > "%DEPLOY_WORK_DIR%\wrangler-output.txt" 2>&1
 set "DEPLOY_EXIT=%ERRORLEVEL%"
+type "%DEPLOY_WORK_DIR%\wrangler-output.txt"
 popd
 
+python "%~dp0deployment-receipt.py" record "%BUILD_APP%" "%DEPLOY_EXIT%" "%DEPLOY_WORK_DIR%\wrangler-output.txt"
+set "RECEIPT_EXIT=%ERRORLEVEL%"
 rmdir /S /Q "%DEPLOY_WORK_DIR%" >nul 2>&1
 
 if not "%DEPLOY_EXIT%"=="0" (
   echo.
   echo Deployment failed. Wrangler exit code: %DEPLOY_EXIT%
   exit /b %DEPLOY_EXIT%
+)
+if not "%RECEIPT_EXIT%"=="0" (
+  echo ERROR: upload succeeded but its receipt could not be retained. Inspect Cloudflare before retrying.
+  exit /b 3
 )
 
 rem Wrangler's exit code is the upload result. Display the permanent public
