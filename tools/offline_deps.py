@@ -410,6 +410,8 @@ def install_is_ready(root: Path, stamp_value: str) -> bool:
         and (root / "node_modules" / "typescript" / "lib" / "tsc.js").is_file()
         and (root / "node_modules" / "typescript" / "lib" / "_tsc.js").is_file()
         and (root / "node_modules" / "typescript" / "lib" / "typescript.js").is_file()
+        and (root / "node_modules" / "esbuild-wasm" / "lib" / "main.js").is_file()
+        and (root / "node_modules" / "esbuild-wasm" / "esbuild.wasm").is_file()
     )
 
 

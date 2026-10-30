@@ -26,10 +26,15 @@
     "pdfjs:install": "python tools/pdfjs-runtime.py install && python tools/sync-assets.py && node --test tests/pdfjs_corpus.test.mjs",
     "pdfjs:check": "python tools/pdfjs-runtime.py check && python tools/sync-assets.py --check && node --test tests/pdfjs_corpus.test.mjs",
     "document-viewers:install": "python tools/document-viewers-runtime.py install && python tools/sync-assets.py",
-    "document-viewers:check": "python tools/document-viewers-runtime.py check && python tools/sync-assets.py --check"
+    "document-viewers:check": "python tools/document-viewers-runtime.py check && python tools/sync-assets.py --check",
+    "build": "node tools/production-build.mjs",
+    "build:orders": "node tools/production-build.mjs orders",
+    "build:kupa": "node tools/production-build.mjs kupa",
+    "build:check": "python tools/verify-build.py"
   },
   "devDependencies": {
     "acorn": "^8.18.0",
+    "esbuild-wasm": "0.28.2",
     "eslint": "^10.11.0",
     "eslint-scope": "^9.1.2",
     "globals": "^17.12.0",

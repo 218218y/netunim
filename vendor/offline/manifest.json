@@ -6,7 +6,7 @@
     "machine": "x86_64",
     "libc": "glibc"
   },
-  "npmClosureSha256": "87354dc0d968b8951087352fe7963e1981f386975d6801075918698fe4f7d6d4",
+  "npmClosureSha256": "fb98dbc17099b050ddfdcf870e551421939f4a684f298593b6d49c90ecd3e916",
   "configSemanticSha256": "2c9fa55342f48f0a61ffc00398aabad13083a3c5cedccf0937861f363d4b1ba7",
   "node": {
     "version": "24.21.0",
@@ -246,6 +246,14 @@
       "url": "https://registry.npmjs.org/deep-is/-/deep-is-0.1.4.tgz",
       "integrity": "sha512-oIPzksmTg4/MriiaYGO+okXDT7ztn/w3Eptv/+gSIdMdKsJo0u4CfYNFJPy+4SKMuCqGw2wxnA+URMg3t8a/bQ==",
       "file": "npm/deep-is-0.1.4.tgz"
+    },
+    {
+      "lockPath": "node_modules/esbuild-wasm",
+      "name": "esbuild-wasm",
+      "version": "0.28.2",
+      "url": "https://registry.npmjs.org/esbuild-wasm/-/esbuild-wasm-0.28.2.tgz",
+      "integrity": "sha512-GccVwhv3mmOUVQHCQm2Ox/rby8n/EqUwvZxE6Pjfikrq/lWw9g9WX/u9EykWnpot3Ko6j426DgQdea2xWKIAQA==",
+      "file": "npm/esbuild-wasm-0.28.2.tgz"
     },
     {
       "lockPath": "node_modules/escape-string-regexp",

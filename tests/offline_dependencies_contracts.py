@@ -82,6 +82,7 @@ def _exercise_external_cache(module) -> None:
         node_archive = vendor / 'node/node.tar.gz'
         npm_archive = vendor / 'npm/eslint.tgz'
         typescript_archive = vendor / 'npm/typescript.tgz'
+        bundler_archive = vendor / 'npm/esbuild-wasm.tgz'
         _write_tar(node_archive, {
             'node-v1.2.3-linux-x64/bin/node': (b'#!/bin/sh\necho v1.2.3\n', 0o755),
         })
@@ -96,6 +97,11 @@ def _exercise_external_cache(module) -> None:
             'package/lib/typescript.js': (b'// tiny compiler contract\n', 0o644),
             'package/package.json': (b'{"name":"typescript"}\n', 0o644),
         })
+        _write_tar(bundler_archive, {
+            'package/lib/main.js': (b'// tiny portable build contract\n', 0o644),
+            'package/esbuild.wasm': (b'\x00asm', 0o644),
+            'package/package.json': (b'{"name":"esbuild-wasm"}\n', 0o644),
+        })
         manifest = {
             'schema': 1,
             'profile': 'contract-linux-x64-glibc',
@@ -103,6 +109,7 @@ def _exercise_external_cache(module) -> None:
             'npm': [
                 {'lockPath': 'node_modules/eslint', 'file': 'npm/eslint.tgz'},
                 {'lockPath': 'node_modules/typescript', 'file': 'npm/typescript.tgz'},
+                {'lockPath': 'node_modules/esbuild-wasm', 'file': 'npm/esbuild-wasm.tgz'},
             ],
             'python': [],
         }
@@ -138,6 +145,11 @@ def _exercise_external_cache(module) -> None:
                 (root / 'node_modules/typescript' / compiler_file).unlink()
                 module.install()
                 ok((root / 'node_modules/typescript' / compiler_file).is_file(), f'offline deps: missing {compiler_file} invalidates and rebuilds the compiler cache')
+
+            for bundler_file in ('lib/main.js', 'esbuild.wasm'):
+                (root / 'node_modules/esbuild-wasm' / bundler_file).unlink()
+                module.install()
+                ok((root / 'node_modules/esbuild-wasm' / bundler_file).is_file(), f'offline deps: missing {bundler_file} invalidates and rebuilds the bundler cache')
 
             env = module.offline_env(manifest)
             ok(Path(env['NETUNIM_OFFLINE_NODE_MODULES']) == root / 'node_modules' and Path(env['NETUNIM_OFFLINE_INSTALL_ROOT']) == root, 'offline deps: child verification processes receive the external cache paths explicitly')
