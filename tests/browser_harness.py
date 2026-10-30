@@ -22,6 +22,7 @@ import urllib.request
 import urllib.parse
 from acceptance_safety import browser_preflight, sandbox_config, DenyProxy, OwnedHTTPServer
 from suite_process import SuiteProcess
+from pages_headers import response_headers
 
 try:
     import websocket
@@ -376,10 +377,8 @@ class _QuietHandler(http.server.SimpleHTTPRequestHandler):
         # Exercise the same security headers as the static deployment.
         headers = Path(self.directory) / '_headers'
         if headers.is_file():
-            for line in headers.read_text(encoding='utf-8').splitlines():
-                if line.startswith('  ') and ':' in line:
-                    name, value = line.strip().split(':', 1)
-                    self.send_header(name, value.strip())
+            for name, value in response_headers(headers.read_text(encoding='utf-8'), urllib.parse.urlparse(self.path).path).items():
+                self.send_header(name, value)
         super().end_headers()
 
 

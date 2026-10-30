@@ -113,7 +113,11 @@ readiness and CPU-throttled starts. The production comparison repeats three cold
 cached and offline samples for both source and output at normal and 4x CPU
 throttling. It retains raw marks/CPU counters, per-profile medians and maxima,
 without inferring exact parse times from elapsed module evaluation. Output
-runtime evidence is retained alongside the source suites. Broader real-account,
+runtime evidence is retained alongside the source suites. Offline samples also
+disconnect the test server, because page-level CDP network emulation alone does
+not necessarily cut off a Service Worker's network requests. The source shell
+includes every first-party stylesheet as well as the application modules.
+Broader real-account,
 physical weak-hardware and filtered-network acceptance remains
 a rollout gate before a live deployment, not something inferred from byte sizes.
 
@@ -126,6 +130,10 @@ global `no-cache` policy is narrowed to mutable output paths. The global securit
 headers remain intact, hashed assets inherit only the immutable cache policy,
 and vendor/HTML/config/worker paths retain `no-cache`. Effective merged headers
 are covered by a dedicated contract. See [Cloudflare header rules](https://developers.cloudflare.com/pages/configuration/headers/).
+The native HTTP harness applies only matching rules and joins duplicate values,
+matching Pages behavior. Redirected HTML responses are normalized before caching
+and canonical extensionless HTML URLs (including query parameters on the reset
+page) recover their own document offline rather than falling back to the index.
 
 References: [esbuild API](https://esbuild.github.io/api/),
 [Vite production builds](https://vite.dev/guide/build),

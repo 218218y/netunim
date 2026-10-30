@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='kupa-app-shell-';
-const CACHE='kupa-app-shell-esm-641db825e8f3';
+const CACHE='kupa-app-shell-esm-a79ac23b4d49';
 const SHELL=[
   './',
   './index.html',
@@ -376,6 +376,12 @@ const SHELL=[
 ];
 
 const SHELL_PATHS=new Set(SHELL.map(item=>new URL(item,self.location.href||self.location.origin+'/').pathname));
+const NAVIGATION_PAGES=new Map(SHELL.filter(item=>item.endsWith('.html')).flatMap(item=>{
+  const path=new URL(item,self.location.href||self.location.origin+'/').pathname;
+  const aliases=[[path,item],[path.slice(0,-5),item]];
+  if(path.endsWith('/index.html'))aliases.push([path.slice(0,-10),item]);
+  return aliases;
+}));
 const LAZY_RUNTIME_PREFIXES=['./assets/vendor/'].map(item=>new URL(item,self.location.href||self.location.origin+'/').pathname);
 const isLazyRuntimePath=pathname=>LAZY_RUNTIME_PREFIXES.some(prefix=>pathname.startsWith(prefix));
 const sameRelease=response=>response?.headers.get('X-Netunim-Release')===CACHE;
@@ -387,6 +393,9 @@ async function fetchRelease(request){
   url.searchParams.set('__netunim_release',CACHE);
   const response=await fetch(url.href,{cache:'reload',...(typeof request==='string'?{}:{headers:request.headers,credentials:request.credentials})});
   if(!response.ok||!sameRelease(response))throw new Error('shell_release_mismatch');
+  // Pages canonicalizes *.html URLs. A followed response cannot be returned to
+  // a navigation request in manual redirect mode, including from CacheStorage.
+  if(response.redirected)return new Response(response.body,{status:response.status,statusText:response.statusText,headers:response.headers});
   return response;
 }
 
@@ -484,6 +493,8 @@ self.addEventListener('fetch',event=>{
       const cached=await cache.match(event.request);
       if(sameRelease(cached))return cached;
       if(event.request.mode==='navigate'){
+        const page=NAVIGATION_PAGES.get(url.pathname);
+        if(page){const document=await cache.match(page);if(sameRelease(document))return document;}
         const index=await cache.match('./index.html');
         if(sameRelease(index))return index;
       }
