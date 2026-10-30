@@ -45,6 +45,15 @@ to break self-reference. Release headers, worker identity and the private file
 manifest must agree. Vendor source maps are omitted from the public payload;
 all remaining vendor bytes match the integrity-pinned source runtimes.
 
+Every vendor file also has a generated SHA-256 entry in the worker. Lazy network
+and cached bodies are fully verified against that content hash, independently of
+a newer deployment's global release header. Identical bytes remain compatible;
+changed, incomplete, unknown or corrupt bytes fail closed. Verified cache hits
+avoid network access. Controlled tabs receive a non-destructive recovery notice
+when the matching runtime is unavailable. Native compiled tests exercise initial
+vendor use after deployment, a previously disconnected computer, changed and
+interrupted responses, multiple tabs, offline reuse and rollback.
+
 `tools/verify-build.py` rejects modified or extra files, missing HTML references,
 incomplete offline shells, secrets, dynamic execution, public source maps,
 unexpected file types and Cloudflare's 25 MiB/file and 20,000-file limits.

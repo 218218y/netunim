@@ -11,6 +11,7 @@ from pathlib import Path, PurePosixPath
 from typing import NamedTuple
 import argparse
 import hashlib
+import json
 import re
 import subprocess
 import sys
@@ -232,6 +233,13 @@ def render_worker(label: str, snapshot: OverlaySnapshot, worker_path: str) -> by
     )
     if count != 1:
         raise ValueError(f'{label}: expected exactly one SHELL declaration')
+    vendor_prefix = f'{site}/assets/vendor/'
+    vendors = {'./'+PurePosixPath(path).relative_to(site).as_posix(): hashlib.sha256(snapshot.read(path)).hexdigest()
+               for path in sorted(snapshot.files) if path.startswith(vendor_prefix)}
+    updated, count = re.subn(r'const VENDOR_HASHES=\{[\s\S]*?\};',
+                            lambda _: 'const VENDOR_HASHES='+json.dumps(vendors, separators=(',', ':'))+';', updated)
+    if count != 1:
+        raise ValueError(f'{label}: expected exactly one vendor integrity declaration')
     digest = hashlib.sha256()
     for item in shell[1:] + ['./_headers']:
         relative = f'{site}/{item[2:]}'

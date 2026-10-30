@@ -32,9 +32,9 @@ def copy_fixture_tree(relative: str, destination_root: Path) -> None:
     """Copy only assets that sync-assets actually consumes in contract fixtures.
 
     Vendored PDF/document-viewer runtimes are validated by dedicated runtime
-    contracts. sync-assets hashes only each runtime manifest, so copying hundreds
-    of vendor files into every temporary fixture adds I/O without increasing
-    coverage.
+    contracts. These fixtures deliberately use a minimal vendor tree; dedicated
+    tests add small binary runtimes to check actual content-hash regeneration.
+    Full pinned trees are covered by the production build and vendor gates.
     """
     source = ROOT / relative
     target = destination_root / relative
@@ -180,6 +180,23 @@ class SyncAssetContracts(unittest.TestCase):
         headers = (self.root/'netunim-kupa/site/_headers').read_text()
         self.assertEqual(headers.count('X-Netunim-Release:'), 1)
         self.assertIn('X-Netunim-Release: '+self.hashes()[0], headers)
+        self.run_sync(check=True)
+
+    def test_vendor_bytes_bind_integrity_without_eager_precache(self):
+        import hashlib
+        import json
+        file = self.root/'netunim-kupa/site/assets/vendor/pdfjs/probe.wasm'
+        file.write_bytes(b'\x00asm\r\nfirst')
+        self.run_sync()
+        before = self.hashes()[0]
+        file.write_bytes(b'\x00asm\nfirst')
+        self.run_sync()
+        self.assertNotEqual(self.hashes()[0], before)
+        worker = (self.root/'netunim-kupa/site/service-worker.js').read_text(encoding='utf-8')
+        vendors = json.loads(re.search(r'const VENDOR_HASHES=(\{[\s\S]*?\});', worker)[1])
+        self.assertEqual(vendors['./assets/vendor/pdfjs/probe.wasm'], hashlib.sha256(file.read_bytes()).hexdigest())
+        shell = re.search(r'const SHELL=(\[[\s\S]*?\]);', worker)[1]
+        self.assertNotIn('probe.wasm', shell)
         self.run_sync(check=True)
 
     def test_release_header_preserves_trailing_lines_and_needs_only_one_generation(self):

@@ -4,7 +4,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
-from build_release import inventory, release_id, shell_paths
+from build_release import inventory, release_id, shell_paths, vendor_hashes
 from build_validation import require
 from build_headers import production_headers
 
@@ -22,6 +22,9 @@ source, count = re.subn(r'(const\s+SHELL\s*=\s*)\[[\s\S]*?\]',
                         lambda match: match[1] + json.dumps(shell_paths(site), ensure_ascii=True),
                         worker.read_text(encoding='utf-8'))
 require(count == 1, 'Missing SHELL declaration')
+source, count = re.subn(r'const VENDOR_HASHES=\{[\s\S]*?\};',
+                        lambda _: 'const VENDOR_HASHES='+json.dumps(vendor_hashes(site), separators=(',', ':'))+';', source)
+require(count == 1, 'Missing vendor integrity declaration')
 worker.write_bytes(source.encode('utf-8'))
 headers = site / '_headers'
 header = production_headers(headers.read_text(encoding='utf-8'), inventory(site))

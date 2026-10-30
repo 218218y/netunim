@@ -11,14 +11,17 @@ for app in ['orders','kupa']:
         observed=[]
         stale={'/assets/app.css','/assets/js/shared/spreadsheet-store.js','/assets/vendor/pdfjs/build/pdf.mjs'}
         expected=re.search(r"const CACHE='([^']+)'",(browser.tmp/'site/service-worker.js').read_text(encoding='utf-8'))[1]
+        vendor_hashes=json.loads(re.search(r'const VENDOR_HASHES=(\{[\s\S]*?\});',(browser.tmp/'site/service-worker.js').read_text(encoding='utf-8'))[1])
         class StaleEdgeHeaders(_QuietHandler):
             release=expected
             responses=observed
             def send_header(self,name,value):
                 parsed=urlparse(self.path)
                 if name.lower()=='x-netunim-release' and parsed.path in stale:
-                    bound=parse_qs(parsed.query).get('__netunim_release')==[self.release]
+                    query=parse_qs(parsed.query)
+                    bound=query.get('__netunim_release')==[self.release] or query.get('__netunim_vendor')==[vendor_hashes.get('.'+parsed.path)]
                     if not bound:value='older-edge-release'
+                    if '/assets/vendor/' in parsed.path:value='different-deployment-release'
                     self.responses.append({'path':parsed.path,'bound':bound,'release':value})
                 super().send_header(name,value)
         browser.httpd.RequestHandlerClass=partial(StaleEdgeHeaders,directory=str(browser.tmp/'site'))
