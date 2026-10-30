@@ -15,6 +15,7 @@ from browser_harness import BrowserSession, ROOT, _QuietHandler
 from pwa_upgrade import wait_for_worker_control
 from production_runtime_scenarios import documents, compatibility, failed_install, reset_entry, pending_activation, pages_navigation
 from production_vendor_scenarios import vendor_upgrade
+from production_legacy_migration import prebundle_upgrade
 
 
 def ready(browser):
@@ -108,6 +109,7 @@ def run():
         report[app]['pendingActivation'] = pending_activation(app, ready)
         report[app]['pagesNavigation'] = pages_navigation(app, ready)
         report[app]['vendorUpgrade'] = vendor_upgrade(app, ready)
+        report[app]['prebundleMigration'] = prebundle_upgrade(app, ready)
     output = ROOT/'.work/production/comparison.json'
     output.write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
 
