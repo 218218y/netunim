@@ -284,6 +284,61 @@ async function pdfPageAppearanceMetrics(pdfPage,pdfjsLib){
   pdfAppearanceMetricsCache.set(pdfPage,task);return task;
 }
 
+// The pdf-lib export of the wardrobe form intentionally relies on Acrobat's
+// form-field appearance regeneration. PDF.js synthesizes its own canvas glyphs
+// for this kind of Hebrew form and may paint logical RTL text backwards.
+// Use the PDF.js HTML form renderer for text-only AcroForms containing Hebrew;
+// this keeps the original file untouched and avoids changing ordinary PDFs.
+export async function pdfUsesHtmlHebrewTextWidgets(pdfDocument, pdfjsLib){
+  if(!pdfDocument?.getPage || pdfjsLib?.AnnotationMode?.ENABLE_FORMS===undefined)return false;
+  const pages=Number(pdfDocument.numPages)||0;
+  if(!Number.isSafeInteger(pages)||pages<1)return false;
+  // The common case is a non-form PDF. Avoid loading every page just to
+  // discover that it contains no interactive fields at all.
+  try{if((await pdfDocument.getMetadata?.())?.info?.IsAcroFormPresent===false)return false}catch{}
+  let foundHebrew=false;
+  // Scan in bounded-concurrency batches; a multi-page order can contain its
+  // fields on a later page. No arbitrary document/field-count cutoff.
+  try{
+    for(let start=1;start<=pages;start+=6){
+      const batch=await Promise.all(Array.from({length:Math.min(6,pages-start+1)},async(_,index)=>{
+        const page=await pdfDocument.getPage(start+index);
+        return page.getAnnotations({intent:'display'});
+      }));
+      for(const annotations of batch){
+        if(!Array.isArray(annotations))return false;
+        for(const annotation of annotations){
+          const type=String(annotation?.fieldType||'');
+          if(type && type!==PDF_TEXT_FIELD)return false;
+          if(type===PDF_TEXT_FIELD && /[\u05d0-\u05ea]/u.test(String(annotation.fieldValue??'')))foundHebrew=true;
+        }
+      }
+    }
+  }catch{return false}
+  return foundHebrew;
+}
+
+// PDF.js may prefer a field's /AP textContent to /V when building its HTML
+// control. The appearance itself can contain visually reordered Hebrew even
+// though /V is correct. Preview must display /V, never the appearance text.
+export async function applyPdfHtmlHebrewFields(pageView, isCurrent=()=>true){
+  const page=pageView?.pdfPage,root=pageView?.div;
+  if(!page?.getAnnotations||!root)return 0;
+  let annotations;
+  try{annotations=await page.getAnnotations({intent:'display'})}catch{return 0}
+  if(!isCurrent()||pageView.div!==root)return 0;
+  const byId=new Map((annotations||[]).filter(a=>a?.fieldType===PDF_TEXT_FIELD&&a?.id)
+    .map(a=>[String(a.id),String(a.fieldValue??'')]));
+  let count=0;
+  for(const control of root.querySelectorAll?.('.annotationLayer .textWidgetAnnotation input[data-element-id], .annotationLayer .textWidgetAnnotation textarea[data-element-id]')||[]){
+    const id=control.getAttribute?.('data-element-id');
+    if(!byId.has(id))continue;
+    control.value=byId.get(id);control.readOnly=true;control.tabIndex=-1;control.dir='auto';
+    control.setAttribute('aria-readonly','true');count++;
+  }
+  return count;
+}
+
 function normalizedFieldValue(annotation){
   const value=annotation?.fieldValue;
   if(value===null||value===undefined)return '';
@@ -564,16 +619,14 @@ export async function createPdfSearchViewer({host,url='',blob=null,data=null,que
   const findAdapter=new PdfJsFindControllerAdapter(findController,eventBus,linkService);
   const customPdfTextMatch=findAdapter.installMatcher(needle,search);
   const viewerOptions={container,eventBus,linkService,findController};
-  // Preview is never an editor. Always paint the PDF-authored AcroForm appearance
-  // streams so custom/legacy Hebrew fonts are rendered exactly as the PDF saved them.
-  // Local files get a separate transparent read-only text layer for selection/copy,
-  // plus a search marker layer for AcroForm values that PDF.js text search cannot see.
+  // Default to PDF-authored appearance streams. Text-only Hebrew forms whose
+  // synthetic PDF.js glyph order is unreliable use read-only DOM widgets.
+  // Form search/copy logic remains separate and uses the original values.
   const annotationMode=pdfjsLib.AnnotationMode?.ENABLE;
   if(annotationMode!==undefined)viewerOptions.annotationMode=annotationMode;
   if(pdfjsLib.AnnotationEditorType?.DISABLE!==undefined)viewerOptions.annotationEditorMode=pdfjsLib.AnnotationEditorType.DISABLE;
-  const pdfViewer=new pdfjsViewer.PDFViewer(viewerOptions);
-  linkService.setViewer(pdfViewer);
-  let destroyed=false,loadingTask=null,pdfDocument=null,lastState={current:0,total:0},pagesReady=false,lastFitWidth=0,resizeTimer=null,resizeFrame=null,resizeObserver=null,combinedRefreshQueued=false;
+  let pdfViewer=null;
+  let htmlHebrewForms=false,destroyed=false,loadingTask=null,pdfDocument=null,lastState={current:0,total:0},pagesReady=false,lastFitWidth=0,resizeTimer=null,resizeFrame=null,resizeObserver=null,combinedRefreshQueued=false;
   let formSearchReady=!hasFindQuery||!interactiveForms,formSearchCapped=false,combinedReady=false,combinedMatches=[],combinedIndex=-1,externalFormMatchesApplied=false;
   const formMatchesByPage=new Map(),copyFieldGeneration=new Map();
   const removeCopyHandler=installPdfCopyHandler(container,pdfjsLib.normalizeUnicode||((value)=>value));
@@ -586,7 +639,14 @@ export async function createPdfSearchViewer({host,url='',blob=null,data=null,que
   const pageFieldMatches=pageNumber=>formMatchesByPage.get(Number(pageNumber)||0)||null;
   async function refreshRenderedFormLayers(){if(!interactiveForms||!pdfDocument)return;const current=currentFormEntry();for(let pageNumber=1;pageNumber<=pdfDocument.numPages;pageNumber+=1){const pageView=pdfViewer.getPageView?.(pageNumber-1);if(!pageView?.div||!pageView?.pdfPage)continue;const generation=(copyFieldGeneration.get(pageNumber)||0)+1;copyFieldGeneration.set(pageNumber,generation);await renderCopyablePdfFields(pageView,{isCurrent:()=>!destroyed&&copyFieldGeneration.get(pageNumber)===generation,formMatchesByField:pageFieldMatches(pageNumber),currentFormFieldKey:current?.pageNumber===pageNumber?current.fieldKey:'',pdfjsLib}).catch(()=>{})}}
   const renderFormLayerForEvent=event=>{if(!interactiveForms)return;const pageNumber=Number(event?.pageNumber)||0,pageView=event?.source;if(!pageNumber||!pageView?.div)return;const generation=(copyFieldGeneration.get(pageNumber)||0)+1;copyFieldGeneration.set(pageNumber,generation);const current=currentFormEntry();renderCopyablePdfFields(pageView,{isCurrent:()=>!destroyed&&copyFieldGeneration.get(pageNumber)===generation,formMatchesByField:pageFieldMatches(pageNumber),currentFormFieldKey:current?.pageNumber===pageNumber?current.fieldKey:'',pdfjsLib}).then(()=>{if(current?.pageNumber===pageNumber)scrollCurrentFormMatch(current,{behavior:'auto'})}).catch(()=>{})};
-  if(interactiveForms){eventBus.on('pagerendered',renderFormLayerForEvent);eventBus.on('annotationlayerrendered',renderFormLayerForEvent)}
+  if(interactiveForms)eventBus.on('pagerendered',renderFormLayerForEvent);
+  eventBus.on('annotationlayerrendered',event=>{
+    if(htmlHebrewForms){
+      const pageView=event?.source;
+      void applyPdfHtmlHebrewFields(pageView,()=>!destroyed&&pageView?.div?.isConnected!==false).catch(()=>{});
+    }
+    if(interactiveForms)renderFormLayerForEvent(event);
+  });
   const dispatch=(type='',findPrevious=false)=>{if(destroyed||!hasFindQuery)return;const request=buildPdfFindRequest(findQuery,{type,findPrevious,entireWord:search.wordMatch==='whole'&&!customPdfTextMatch});request.source=container;eventBus.dispatch('find',request)};
   const cancelScheduledResize=()=>{if(resizeTimer!==null){clearTimeout(resizeTimer);resizeTimer=null}if(resizeFrame!==null){if(typeof cancelAnimationFrame==='function')cancelAnimationFrame(resizeFrame);else clearTimeout(resizeFrame);resizeFrame=null}};
   const measuredWidth=()=>Math.round(Number(container.clientWidth)||Number(container.getBoundingClientRect?.().width)||0);
@@ -632,6 +692,13 @@ export async function createPdfSearchViewer({host,url='',blob=null,data=null,que
     loadingTask=pdfjsLib.getDocument(await documentRuntimeOptions({url,blob,data}));
     pdfDocument=await loadingTask.promise;
     if(destroyed){await pdfDocument.destroy?.();throw new Error('PDF preview was closed before loading finished.')}
+    htmlHebrewForms=await pdfUsesHtmlHebrewTextWidgets(pdfDocument,pdfjsLib);
+    if(destroyed)throw new Error('PDF preview was closed before loading finished.');
+    if(htmlHebrewForms){
+      viewerOptions.annotationMode=pdfjsLib.AnnotationMode.ENABLE_FORMS;
+      container.classList.add('document-pdfjs-html-hebrew-forms');
+    }
+    pdfViewer=new pdfjsViewer.PDFViewer(viewerOptions);linkService.setViewer(pdfViewer);
     pdfViewer.setDocument(pdfDocument);linkService.setDocument(pdfDocument,null);void collectFormSearchMatches();
   }catch(error){host.innerHTML='';throw error}
   return {
@@ -642,7 +709,7 @@ export async function createPdfSearchViewer({host,url='',blob=null,data=null,que
     setExternalMatchInfo(info){return applyExternalFormMatchInfo(info)},
     async destroy(){
       if(destroyed)return;destroyed=true;removeCopyHandler();copyFieldGeneration.clear();formMatchesByPage.clear();cancelScheduledResize();resizeObserver?.disconnect?.();resizeObserver=null;
-      try{pdfViewer.setDocument(null)}catch{}
+      try{pdfViewer?.setDocument(null)}catch{}
       try{linkService.setDocument(null,null)}catch{}
       try{await loadingTask?.destroy?.()}catch{}
       try{await pdfDocument?.destroy?.()}catch{}

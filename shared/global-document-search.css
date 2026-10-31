@@ -48,3 +48,7 @@
 .document-search-load-more{display:flex;align-items:center;justify-content:center;gap:8px;min-height:44px;margin:6px 0 2px;color:#756b64;font-size:10px;font-weight:750}.document-search-load-more.loading{color:#5f544d}.document-search-load-more .document-search-spinner{display:inline-grid;place-items:center;width:18px;height:18px;border:1px solid #d8cec6;border-radius:50%;background:#fff}
 
 .document-preview-viewer-host{position:relative;width:100%;height:100%;min-height:0;overflow:auto}
+
+/* PDF.js must not paint synthesized Hebrew text into the canvas. For plain
+   text-only Hebrew AcroForms, display logical /V in read-only HTML widgets. */
+.document-pdfjs-container.document-pdfjs-html-hebrew-forms .annotationLayer .textWidgetAnnotation :is(input,textarea){unicode-bidi:plaintext;pointer-events:none!important;caret-color:transparent!important;background:transparent!important;box-shadow:none!important;outline:0!important;border:0!important}

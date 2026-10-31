@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {parse} from 'acorn';
-import {buildPdfFindRequest,copyablePdfTextFieldModel,createPdfSearchViewer,findPdfFormFieldMatches,joinPdfTextSelectionSegments,matchPdfTextWithNativeNormalization,pdfAnnotationAppearanceMetrics,pdfFieldKey,PdfJsFindControllerAdapter,PDF_SEARCH_RUNTIME} from '../netunim-orders/site/assets/js/domains/documents/pdf-search-viewer.js';
+import {buildPdfFindRequest,copyablePdfTextFieldModel,createPdfSearchViewer,findPdfFormFieldMatches,joinPdfTextSelectionSegments,matchPdfTextWithNativeNormalization,pdfAnnotationAppearanceMetrics,pdfFieldKey,pdfUsesHtmlHebrewTextWidgets,applyPdfHtmlHebrewFields,PdfJsFindControllerAdapter,PDF_SEARCH_RUNTIME} from '../netunim-orders/site/assets/js/domains/documents/pdf-search-viewer.js';
 import {collectPdfFormFields} from '../netunim-orders/document-bridge/pdf_form_index.mjs';
 import {contentMatchRanges} from '../netunim-orders/document-bridge/lib.mjs';
 import {spawnSync} from 'node:child_process';
@@ -47,21 +47,61 @@ test('PDF proximity with a present but unreachable suffix avoids quadratic candi
   assert.ifError(result.error);assert.equal(result.status,0,result.stderr);
 });
 
-function fakeRuntime(){
+function fakeRuntime(annotations=[]){
   const state={eventBus:null,viewer:null,linkService:null,findController:null,setDocumentCalls:0,scaleValues:[],updateCalls:0,documentOptions:null};
   class EventBus extends FakeEventBus{constructor(){super();state.eventBus=this}}
   class PDFLinkService{constructor(){state.linkService=this}setViewer(viewer){this.viewer=viewer}setDocument(document){this.document=document}}
   class PDFFindController{constructor(options){this.options=options;this.pageMatches=[];this.pageMatchesLength=[];this.selected={pageIdx:-1,matchIdx:-1};this._scrollMatches=false;state.findController=this}match(query,pageContent){const queries=Array.isArray(query)?query:[query],rows=[];for(const value of queries){const needle=String(value||'');if(!needle)continue;let offset=0,index;while((index=String(pageContent||'').indexOf(needle,offset))>=0){rows.push({index,length:needle.length});offset=index+Math.max(1,needle.length)}}return rows.sort((a,b)=>a.index-b.index||b.length-a.length)}}
   class PDFViewer{constructor(options){this.options=options;state.viewer=this}setDocument(document){this.document=document;state.setDocumentCalls+=1}getPageView(){return null}set currentScaleValue(value){this.scale=value;state.scaleValues.push(value)}update(){state.updateCalls+=1}}
-  const pdfDocument={numPages:1,getPage:async()=>({getAnnotations:async()=>[]}),destroy:async()=>{state.documentDestroyed=true}};
+  const pdfDocument={numPages:1,getPage:async()=>({getAnnotations:async()=>annotations}),destroy:async()=>{state.documentDestroyed=true}};
   const loadingTask={promise:Promise.resolve(pdfDocument),destroy:async()=>{state.loadingDestroyed=true}};
   return {state,runtime:{pdfjsLib:{AnnotationMode:{ENABLE:1,ENABLE_FORMS:2},AnnotationEditorType:{DISABLE:-1},getDocument:options=>{state.documentOptions=options;return loadingTask}},pdfjsViewer:{EventBus,PDFLinkService,PDFFindController,PDFViewer}}};
 }
 
 function fakeHost(fields=[]){
-  const container={clientWidth:640,getBoundingClientRect(){return {width:this.clientWidth}},querySelectorAll(){return fields.filter(field=>field.disabled)}};
+  const classes=new Set(),container={clientWidth:640,classList:{add:name=>classes.add(name),contains:name=>classes.has(name)},getBoundingClientRect(){return {width:this.clientWidth}},querySelectorAll(){return fields.filter(field=>field.disabled)}};
   return {container,innerHTML:'',querySelector(selector){assert.equal(selector,'.document-pdfjs-container');return container}};
 }
+
+test('Hebrew text-only AcroForms use a document-wide HTML mode regardless of filename, word length or number of pages',async()=>{
+  const lib={AnnotationMode:{ENABLE:1,ENABLE_FORMS:2}};
+  const doc=pages=>({numPages:pages.length,getPage:async page=>({getAnnotations:async()=>pages[page-1]})});
+  const field=value=>({id:'field',fieldType:'Tx',fieldValue:value});
+  assert.equal(await pdfUsesHtmlHebrewTextWidgets(doc([[field('אב')]]),lib),true,'two-letter Hebrew must not be excluded');
+  assert.equal(await pdfUsesHtmlHebrewTextWidgets(doc(Array.from({length:16},(_,i)=>i===15?[field('הזמנה')]:[])),lib),true,'later pages must not be skipped');
+  assert.equal(await pdfUsesHtmlHebrewTextWidgets(doc([[field('1234')],[field('PDF sample')]]),lib),false);
+  assert.equal(await pdfUsesHtmlHebrewTextWidgets({numPages:500,getMetadata:async()=>({info:{IsAcroFormPresent:false}}),getPage:async()=>{throw new Error('should never parse an ordinary PDF')}},lib),false,'ordinary PDFs use metadata fast path');
+  assert.equal(await pdfUsesHtmlHebrewTextWidgets(doc([[field('יהודה'),{fieldType:'Btn',fieldValue:'Yes'}]]),lib),false,'mixed forms retain their authored painting');
+  assert.equal(await pdfUsesHtmlHebrewTextWidgets(doc([[{subtype:'Link',url:'https://example.com'},field('חני')]]),lib),true,'non-form annotations do not exclude text fields');
+  assert.equal(await pdfUsesHtmlHebrewTextWidgets(doc([[field('עברית')]]),{AnnotationMode:{ENABLE:1}}),false,'unsupported forms mode is not selected');
+  assert.equal(await pdfUsesHtmlHebrewTextWidgets({numPages:1,getPage:async()=>{throw new Error('broken')}},lib),false,'safe fallback on parsing error');
+});
+
+test('HTML form preview restores /V instead of reversed /AP text and does not mutate source annotations',async()=>{
+  const original='\u200fבדיקת PDF';
+  const annotation={id:'8R',fieldType:'Tx',fieldValue:original};
+  const widget={value:'FDP תקידב',readOnly:false,tabIndex:0,dir:'ltr',attrs:{'data-element-id':'8R'},getAttribute(name){return this.attrs[name]},setAttribute(name,value){this.attrs[name]=value}};
+  const untouched={value:'text',getAttribute(){return 'another'},setAttribute(){}};
+  const div={isConnected:true,querySelectorAll(){return [widget,untouched]}};
+  const pageView={pdfPage:{getAnnotations:async()=>[annotation]},div};
+  assert.equal(await applyPdfHtmlHebrewFields(pageView),1);
+  assert.equal(widget.value,original);assert.equal(widget.readOnly,true);assert.equal(widget.tabIndex,-1);assert.equal(widget.dir,'auto');assert.equal(widget.attrs['aria-readonly'],'true');
+  assert.equal(untouched.value,'text');assert.equal(annotation.fieldValue,original);
+  div.isConnected=false;assert.equal(await applyPdfHtmlHebrewFields(pageView,()=>div.isConnected),0);
+});
+
+test('viewer enables editable-widget rendering only for Hebrew text forms but keeps controls read-only',async()=>{
+  const {state,runtime}=fakeRuntime([{id:'a',fieldType:'Tx',fieldValue:'\u200fשם הלקוח'}]);
+  const host=fakeHost();
+  await createPdfSearchViewer({host,data:new Uint8Array([37,80,68,70]),runtime});
+  assert.equal(state.viewer.options.annotationMode,2);
+  assert.equal(host.container.classList.contains('document-pdfjs-html-hebrew-forms'),true);
+  const normal=fakeRuntime([{id:'a',fieldType:'Tx',fieldValue:'English'}]);
+  const normalHost=fakeHost();
+  await createPdfSearchViewer({host:normalHost,data:new Uint8Array([37,80,68,70]),runtime:normal.runtime});
+  assert.equal(normal.state.viewer.options.annotationMode,1);
+  assert.equal(normalHost.container.classList.contains('document-pdfjs-html-hebrew-forms'),false);
+});
 
 const tick=()=>new Promise(resolve=>setTimeout(resolve,8));
 
