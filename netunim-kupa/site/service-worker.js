@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='kupa-app-shell-';
-const CACHE='kupa-app-shell-esm-1554bbcacc18';
+const CACHE='kupa-app-shell-esm-80b2901205c6';
 const SHELL=[
   './',
   './index.html',
@@ -379,7 +379,11 @@ const VENDOR_HASHES={"./assets/vendor/document-viewers/_runtime-manifest.txt":"d
 const VENDOR_DIGESTS=new Map(Object.entries(VENDOR_HASHES).map(([path,digest])=>[new URL(path,self.location.href||self.location.origin+'/').pathname,digest]));
 
 async function verifiedVendor(response,expected){
-  if(!response?.ok)throw new Error('vendor_unavailable');
+  if(!response?.ok){
+    const error=new Error('vendor_unavailable');
+    error.httpStatus=response?.status||0;
+    throw error;
+  }
   const bytes=await response.arrayBuffer();
   const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),value=>value.toString(16).padStart(2,'0')).join('');
   if(digest!==expected)throw new Error('vendor_integrity_mismatch');
@@ -406,9 +410,11 @@ async function loadVendor(request,url){
   return response;
 }
 
-async function notifyVendorFailure(error){
+async function notifyVendorFailure(error,url){
   const windows=await self.clients?.matchAll?.({type:'window',includeUncontrolled:false})||[];
-  for(const client of windows)client.postMessage({type:'netunim-vendor-unavailable',reason:error?.message==='vendor_integrity_mismatch'?'changed':'unavailable'});
+  const httpStatus=Number(error?.httpStatus)||0;
+  const reason=error?.message==='vendor_integrity_mismatch'?'changed':[401,403,418,451].includes(httpStatus)?'blocked':'unavailable';
+  for(const client of windows)client.postMessage({type:'netunim-vendor-unavailable',reason,httpStatus,resource:url.pathname});
 }
 
 const SHELL_PATHS=new Set(SHELL.map(item=>new URL(item,self.location.href||self.location.origin+'/').pathname));
@@ -478,7 +484,7 @@ self.addEventListener('fetch',event=>{
   // the entire response has been read and verified, including cached responses.
   if(lazyRuntime){
     const lazyResponse=loadVendor(event.request,url).catch(async error=>{
-      try{await notifyVendorFailure(error)}catch{/* Notification cannot change the integrity decision. */}
+      try{await notifyVendorFailure(error,url)}catch{/* Notification cannot change the integrity decision. */}
       throw error;
     });
     event.waitUntil(lazyResponse.then(()=>undefined,()=>undefined));

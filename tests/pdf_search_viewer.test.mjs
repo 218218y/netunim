@@ -444,6 +444,7 @@ test('controlled PDF viewer uses PDFFindController, local support assets and rea
   assert.equal('url' in state.documentOptions,false,'controlled PDF preview does not fetch its blob URL through connect-src');
   assert.equal(state.documentOptions.cMapPacked,true);
   assert.equal(state.documentOptions.useWorkerFetch,true);
+  assert.equal(state.documentOptions.isEvalSupported,false,'WASM support does not authorize JavaScript string evaluation');
   assert.match(state.documentOptions.cMapUrl,/assets\/vendor\/pdfjs\/cmaps\/$/);
   assert.match(state.documentOptions.iccUrl,/assets\/vendor\/pdfjs\/iccs\/$/);
   assert.match(state.documentOptions.standardFontDataUrl,/assets\/vendor\/pdfjs\/standard_fonts\/$/);

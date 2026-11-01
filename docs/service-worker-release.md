@@ -18,6 +18,13 @@ If matching bytes are unavailable, controlled windows receive a document-loading
 notice explaining retry, saving work and closing/reopening tabs. No data is reset
 and the application is never forcibly reloaded during work.
 
+Access-denied HTTP statuses (401/403/418/451) retain their status and public
+vendor path in the owned-controller notification. They produce an access/filter
+notice instead of suggesting that closing tabs resolves a network denial.
+Denied bodies are never cached and no alternative transport bypass is attempted.
+See [PDF runtime diagnostics](pdf-runtime-troubleshooting.md) for the separate
+WASM CSP and internal PDF Name-token cases.
+
 This protocol cannot retrofit an already installed historical worker. The first
 rollout from workers lacking content hashes therefore needs a separately verified
 migration and a maintenance procedure for closing old tabs before new document

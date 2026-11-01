@@ -94,9 +94,14 @@ export function watchVendorCompatibility({serviceWorker,document}){
     const notice=document.createElement('dialog'),text=document.createElement('p'),close=document.createElement('button');
     notice.id='vendor-version-notice';notice.setAttribute('aria-label','פתיחת מסמכים');
     text.textContent='לא ניתן לטעון את ספריית המסמכים המתאימה לגרסה הפתוחה. יש לבדוק את החיבור ולנסות שוב. אם התקלה נמשכת, יש לשמור את העבודה, לסגור את כל טאבי האתר ולפתוח אותו מחדש. אין צורך למחוק נתונים מקומיים.';
+    if(event.data.reason==='blocked'){
+      text.textContent=`טעינת קובץ עזר לתצוגת מסמכים נחסמה בגישה לרשת (HTTP ${Number(event.data.httpStatus)||403}). יש לבדוק הרשאות גישה או לבקש מספק הסינון לאפשר את הכתובת המוצגת, ולאחר מכן לפתוח שוב את המסמך. רענון או סגירת טאבים לא יסירו חסימת רשת. אין צורך למחוק נתונים מקומיים.`;
+    }
+    const resource=document.createElement('p');
+    if(typeof event.data.resource==='string'&&event.data.resource.startsWith('/assets/vendor/'))resource.textContent=event.data.resource;
     close.type='button';close.textContent='הבנתי';
     close.addEventListener('click',()=>notice.remove());
     notice.addEventListener('cancel',()=>notice.remove(),{once:true});
-    notice.append(text,close);document.body.append(notice);notice.showModal();
+    notice.append(text,resource,close);document.body.append(notice);notice.showModal();
   });
 }

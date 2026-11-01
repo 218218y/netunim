@@ -598,6 +598,7 @@ async function documentRuntimeOptions({url='',blob=null,data=null}={}){
     standardFontDataUrl:runtimeUrl(PDF_SEARCH_RUNTIME.standardFonts),
     wasmUrl:runtimeUrl(PDF_SEARCH_RUNTIME.wasm),
     useWorkerFetch:true,
+    isEvalSupported:false,
   };
   if(data)options.data=data instanceof Uint8Array?data:new Uint8Array(data);
   else if(blob?.arrayBuffer)options.data=new Uint8Array(await blob.arrayBuffer());

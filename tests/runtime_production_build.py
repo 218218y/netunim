@@ -17,6 +17,8 @@ from production_runtime_scenarios import documents, compatibility, failed_instal
 from production_vendor_scenarios import vendor_upgrade
 from production_legacy_migration import prebundle_upgrade
 from pages_preview_browser import offline_probe
+from pdf_wasm_scenarios import wasm_runtime, render_colors
+from production_runtime_scenarios import module_path
 
 
 def ready(browser):
@@ -87,9 +89,10 @@ def run():
                                 browser.call('Network.overrideNetworkState', online)
                                 connection['enabled'] = True
                                 report[app]['documents'] = documents(browser, app)
+                                report[app]['pdfWasm'] = wasm_runtime(browser, module_path(app, 'domains/documents/pdf-search-viewer.js'))
                                 browser.evaluate("localStorage.setItem('preview-sentinel','preserved')")
                                 browser.events.clear()
-                                report[app]['workerOfflineTransport'] = offline_probe(browser)
+                                report[app]['workerOfflineTransport'] = offline_probe(browser, lambda: render_colors(browser, module_path(app, 'domains/documents/pdf-search-viewer.js')))
                 summary = {}
                 for mode in ('cold', 'cached', 'offline'):
                     summary[mode] = {}

@@ -11,7 +11,7 @@ function fixture(app) {
   const hashes = `const VENDOR_HASHES=${JSON.stringify({'./assets/vendor/pdfjs/build/pdf.mjs': digest})};`;
   source = source.includes('const VENDOR_HASHES=') ? source.replace(/const VENDOR_HASHES=\{[\s\S]*?\};/, hashes) : hashes+'\n'+source;
   const release = source.match(/const CACHE='([^']+)'/)[1], handlers = {}, entries = new Map(), requests = [], notices = [];
-  let online = true, body = bytes, interrupted = false;
+  let online = true, body = bytes, interrupted = false, status = 200;
   const cache = {match: async key => entries.get(typeof key === 'string' ? key : key.url)?.clone(),
     put: async (key, response) => entries.set(typeof key === 'string' ? key : key.url, response.clone()),
     delete: async key => entries.delete(typeof key === 'string' ? key : key.url)};
@@ -23,7 +23,7 @@ function fixture(app) {
       requests.push(url);
       if (!online) throw Error('offline');
       if (interrupted) return new Response(new ReadableStream({start(controller) {controller.error(Error('interrupted download'))}}), {headers: {'X-Netunim-Release': 'new-release'}});
-      return new Response(body, {headers: {'X-Netunim-Release': 'new-release'}});
+      return new Response(body, {status, headers: {'X-Netunim-Release': 'new-release'}});
     },
   });
   async function get(url = asset) {
@@ -32,10 +32,19 @@ function fixture(app) {
     try {return await result} finally {await Promise.all(work)}
   }
   return {asset, bytes, digest, entries, requests, notices, release, get,
-    offline: () => {online = false}, changed: () => {body = 'incompatible vendor'}, interrupted: () => {interrupted = true}};
+    offline: () => {online = false}, changed: () => {body = 'incompatible vendor'}, interrupted: () => {interrupted = true}, deny: code => {status = code}};
 }
 
 for (const app of ['orders', 'kupa']) {
+  test(`${app}: denied HTTP responses report access restrictions without accepting or retrying blocked bytes`, async () => {
+    for (const status of [401,403,418,451]) {
+      const f=fixture(app);f.deny(status);
+      await assert.rejects(f.get(),error=>error.message==='vendor_unavailable'&&error.httpStatus===status);
+      assert.equal(f.entries.size,0);assert.equal(f.requests.length,1);
+      assert.equal(f.notices[0].reason,'blocked');assert.equal(f.notices[0].httpStatus,status);
+      assert.equal(f.notices[0].resource,new URL(f.asset).pathname);
+    }
+  });
   test(`${app}: identical uncached vendor survives a different deployment release header`, async () => {
     const f = fixture(app), response = await f.get();
     assert.equal(await response.text(), f.bytes);

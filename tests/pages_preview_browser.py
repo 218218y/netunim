@@ -65,7 +65,7 @@ def cdp(browser, method, params=None, session=None):
     return result['result']
 
 
-def offline_probe(browser):
+def offline_probe(browser, document_probe=None):
     # Emulating only the page does not disconnect the worker's own fetches.
     # Attach the running worker too, keep it alive, and prove a real network
     # request fails inside that execution context before testing cached startup.
@@ -90,7 +90,10 @@ def offline_probe(browser):
         require(any(row.get('method') == 'Network.responseReceived' and row.get('params', {}).get('type') == 'Document' and
                     row['params']['response'].get('fromServiceWorker') is True for row in browser.events),
                 'Offline document was not served by its installed worker')
-        return {'workerNetworkDisconnected': True, 'cachedBootComplete': True, 'localStatePreserved': True}
+        if document_probe is not None:
+            document_probe()
+        return {'workerNetworkDisconnected': True, 'cachedBootComplete': True, 'localStatePreserved': True,
+                **({'cachedDocumentRendered': True} if document_probe is not None else {})}
     finally:
         cdp(browser, 'Network.emulateNetworkConditions', {**condition, 'offline': False}, session=session)
         cdp(browser, 'Network.emulateNetworkConditions', {**condition, 'offline': False})
