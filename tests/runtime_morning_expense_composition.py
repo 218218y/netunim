@@ -1,6 +1,29 @@
 """Actual Finance navigation/auth/IDB and lazy expense composition; synthetic HTTP only."""
 import json
+from contextlib import contextmanager
 from browser_harness import BrowserSession, ROOT
+
+# This scenario's invoices, reporting-period expectations and recovery receipts
+# are deliberately dated October 2026. Keep only its owned browser wall clock in
+# that period; elapsed time and native timers still advance normally.
+FIXTURE_CLOCK = r"""(()=>{
+ const NativeDate=Date,started=NativeDate.now(),instant=NativeDate.UTC(2026,9,27,12);
+ const now=()=>instant+NativeDate.now()-started;
+ globalThis.Date=new Proxy(NativeDate,{
+  get(target,key){return key==='now'?now:Reflect.get(target,key)},
+  construct(target,args,newTarget){return Reflect.construct(target,args.length?args:[now()],newTarget)},
+  apply(){return new NativeDate(now()).toString()}
+ });
+})()"""
+
+
+@contextmanager
+def composition_session(label):
+    with BrowserSession(ROOT/'netunim-orders/site', label, auto_navigate=False) as browser:
+        browser.call('Emulation.setTimezoneOverride', {'timezoneId': 'UTC'})
+        browser.call('Page.addScriptToEvaluateOnNewDocument', {'source': FIXTURE_CLOCK})
+        browser._navigate()
+        yield browser
 
 FLOW = r"""(async()=>{
  await appReady;syncDocument.stopPolling();finance.runtime.stop();
@@ -34,7 +57,7 @@ FLOW = r"""(async()=>{
   if(request.action==='duplicate_check')return Response.json({...base,duplicate:false});
   check(request.expectedEnvironment==='production','request missing displayed environment');
   if(request.action==='suppliers'||request.action==='expenses'){
-   const items=request.action==='suppliers'?(request.name==='תבי'?[]:request.name==='ישן'?[pSupplier]:[supplier,pSupplier]):request.fromDate?[expense]:accountExpenses;
+   const items=request.action==='suppliers'?(request.name==='תבי'?[]:request.name==='ישן'?[pSupplier]:[supplier,pSupplier]):request.fromDate?[expense].filter(row=>row.reportingDate>=request.fromDate&&row.reportingDate<=request.toDate):accountExpenses;
    return Response.json({...base,page:0,pageSize:50,total:items.length,pages:1,items});
   }
   if(request.action==='create'){
@@ -243,7 +266,7 @@ def verify_layout():
     # masks this regression from document.scrollWidth-only checks.
     setup = FLOW[:FLOW.index(" click('back')")] + ' return true;})()'
     setup = setup.replace('grossCents:11800,', 'grossCents:2758250,vatCents:420750,')
-    with BrowserSession(ROOT/'netunim-orders/site', 'morning-expense-layout') as browser:
+    with composition_session('morning-expense-layout') as browser:
         browser.call('Emulation.setDeviceMetricsOverride', {'width':1440,'height':1100,'deviceScaleFactor':1,'mobile':False})
         browser.evaluate(setup, timeout=45)
         for favorite in [False, True]:
@@ -265,7 +288,7 @@ if __name__=='__main__':
     verify_recent_persistence()
     verify_layout()
     for width in [1440,390]:
-        with BrowserSession(ROOT/'netunim-orders/site',f'morning-expense-composition-{width}') as browser:
+        with composition_session(f'morning-expense-composition-{width}') as browser:
             browser.call('Emulation.setDeviceMetricsOverride',{'width':width,'height':1100,'deviceScaleFactor':1,'mobile':width<800})
             result=browser.evaluate(FLOW,timeout=45)
             assert result['posts']==1 and result['accountIsolated'],result
