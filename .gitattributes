@@ -8,6 +8,7 @@ netunim-orders/site/assets/vendor/pdfjs/** -text
 netunim-kupa/site/assets/vendor/pdfjs/** -text
 netunim-orders/document-bridge/pdfjs/** -text -diff
 tests/fixtures/pdf-corpus/*.pdf -text -diff
+tests/fixtures/prebundle/*.zip -text -diff
 
 # Original diagnostic job logs retain their manifest's byte hashes on Windows.
 docs/evidence/crash-history/*.txt -text

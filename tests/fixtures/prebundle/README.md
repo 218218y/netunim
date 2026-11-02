@@ -5,10 +5,11 @@
 `manifest.json` pins the archive and every included file. Reproduce it with
 `python tools/capture-prebundle-fixture.py` from a checkout containing that commit.
 
-Vendor binary trees are omitted to avoid duplicating the pinned runtimes. The
-original runtime manifests are included. The restorer only reuses current vendor
-trees when their manifest bytes and every declared file SHA-256 match the original
-fixture; a later runtime upgrade must retain its genuine historical tree instead.
+`vendors.zip` retains the genuine historical vendor trees, deduplicated between
+applications by the SHA-256 of their original runtime manifests. `manifest.json`
+pins this archive too. The restorer verifies each tree's exact file set and every
+declared SHA-256 before restoring it. It never reads current application vendors,
+so runtime upgrades cannot alter the historical migration or rollback baseline.
 
 The browser scenario runs historical modules and the historical worker without
 instrumenting them, seeds synthetic Main/Shared V2 records through their existing

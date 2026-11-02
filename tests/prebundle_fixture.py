@@ -1,14 +1,49 @@
 """Restore exact historical source, never replace it with current source code."""
 import hashlib
+import io
 import json
 from pathlib import Path, PurePosixPath
 import re
-import shutil
 import zipfile
-from browser_harness import ROOT
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def restore_vendors(destination, payload):
+    """Restore only the exact vendor trees declared by historical manifests."""
+    with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+        names = archive.namelist()
+        if len(names) != len(set(names)):
+            raise ValueError('Duplicate historical vendor archive entry')
+        for manifest in (destination/'assets/vendor').rglob('_runtime-manifest.txt'):
+            original = manifest.read_bytes()
+            tree = hashlib.sha256(original).hexdigest()+'/'
+            entries = re.findall(r'^([a-f0-9]{64})  (.+)$', original.decode('utf-8'), re.M)
+            expected = {name for _, name in entries} | {'_runtime-manifest.txt'}
+            if not entries or len(expected) != len(entries)+1:
+                raise ValueError('Invalid historical vendor manifest')
+            if {name[len(tree):] for name in names if name.startswith(tree)} != expected:
+                raise ValueError('Historical vendor archive differs from manifest')
+            if archive.read(tree+'_runtime-manifest.txt') != original:
+                raise ValueError('Historical vendor manifest bytes changed')
+            verified = {}
+            for digest, name in entries:
+                path = PurePosixPath(name)
+                if path.is_absolute() or '..' in path.parts or '\\' in name or ':' in name:
+                    raise ValueError('Unsafe historical vendor path')
+                content = archive.read(tree+name)
+                if hashlib.sha256(content).hexdigest() != digest:
+                    raise ValueError('Historical vendor digest mismatch: '+name)
+                verified[name] = content
+            for name, content in verified.items():
+                output = manifest.parent/name
+                output.parent.mkdir(parents=True, exist_ok=True)
+                output.write_bytes(content)
 
 
 def restore_prebundle(app, destination):
+    if app not in ('orders', 'kupa'):
+        raise ValueError('Unknown historical application')
     metadata = json.loads((ROOT/'tests/fixtures/prebundle/manifest.json').read_text())
     payload = ROOT/'tests/fixtures/prebundle/source.zip'
     assert hashlib.sha256(payload.read_bytes()).hexdigest() == metadata['archiveSha256']
@@ -25,12 +60,8 @@ def restore_prebundle(app, destination):
             output = destination/name[len(prefix):]
             output.parent.mkdir(parents=True, exist_ok=True)
             output.write_bytes(content)
-    vendor = ROOT/f'netunim-{app}/site/assets/vendor'
-    for manifest in (destination/'assets/vendor').rglob('_runtime-manifest.txt'):
-        relative = manifest.relative_to(destination/'assets/vendor')
-        assert manifest.read_bytes() == (vendor/relative).read_bytes(), 'Historical vendor changed; retain its original pinned tree'
-        for digest, name in re.findall(r'^([a-f0-9]{64})  (.+)$', manifest.read_text(encoding='utf-8'), re.M):
-            source = vendor/relative.parent/name
-            assert hashlib.sha256(source.read_bytes()).hexdigest() == digest, source
-        shutil.copytree(vendor/relative.parent, manifest.parent, dirs_exist_ok=True)
+    vendors = (ROOT/'tests/fixtures/prebundle/vendors.zip').read_bytes()
+    if hashlib.sha256(vendors).hexdigest() != metadata['vendorArchiveSha256']:
+        raise ValueError('Historical vendor archive integrity mismatch')
+    restore_vendors(destination, vendors)
     return metadata

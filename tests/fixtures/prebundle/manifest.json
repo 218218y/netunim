@@ -3,6 +3,7 @@
   "sourceCommit": "4d8e17d34974799ad3666204d349ed198a2fa4cb",
   "deployedIdentityVerified": false,
   "archiveSha256": "d72e37021a508f6c9e6fb62570343e2eb75b9c9141723ddba8008e9827dc7d8a",
+  "vendorArchiveSha256": "3aee497d02296b55ad62cc417e6d44c6beddccc865a135468cb7ccd217fe2645",
   "releases": {
     "orders": "orders-app-shell-esm-f4533e0f2921",
     "kupa": "kupa-app-shell-esm-c3a94828a6d5"

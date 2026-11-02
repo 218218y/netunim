@@ -1,9 +1,12 @@
 """Public preview audits reject cross-project URLs, altered bytes and unsafe headers."""
 import hashlib
+import io
 from pathlib import Path
 import sys
 import unittest
 import tempfile
+from unittest.mock import patch
+import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tools'))
@@ -11,9 +14,55 @@ from pages_preview_audit import check_response, preview_origin
 from pages_legacy_audit import normalized
 from pages_preview_browser import PreviewSession
 from acceptance_safety import browser_preflight
+import prebundle_fixture
 
 
 class PreviewContracts(unittest.TestCase):
+    def test_historical_rollback_restores_original_vendors_without_current_source(self):
+        with tempfile.TemporaryDirectory() as root:
+            # This root deliberately has no current netunim-*/site/vendor tree.
+            fixture = Path(root)/'tests/fixtures/prebundle'
+            fixture.mkdir(parents=True)
+            for name in ('source.zip', 'vendors.zip', 'manifest.json'):
+                (fixture/name).write_bytes((ROOT/'tests/fixtures/prebundle'/name).read_bytes())
+            with patch.object(prebundle_fixture, 'ROOT', Path(root)):
+                for app in ('orders', 'kupa'):
+                    destination = Path(root)/app
+                    metadata = prebundle_fixture.restore_prebundle(app, destination)
+                    self.assertEqual(metadata['sourceCommit'], '4d8e17d34974799ad3666204d349ed198a2fa4cb')
+                    manifest = (destination/'assets/vendor/pdfjs/_runtime-manifest.txt').read_text()
+                    self.assertIn('version=6.4.299\n', manifest)
+                    self.assertIn('build=d0991a0d5\n', manifest)
+                    self.assertIn('pdfjsVersion = 6.4.299', (destination/'assets/vendor/pdfjs/build/pdf.mjs').read_text())
+            (fixture/'vendors.zip').write_bytes(b'corrupted')
+            with patch.object(prebundle_fixture, 'ROOT', Path(root)), self.assertRaisesRegex(ValueError, 'archive integrity'):
+                prebundle_fixture.restore_prebundle('orders', Path(root)/'corrupted')
+
+    def test_historical_vendor_restore_rejects_altered_missing_extra_and_unsafe_files(self):
+        original = b'original runtime'
+        digest = hashlib.sha256(original).hexdigest()
+        for name, entries in (
+            ('runtime.mjs', {'runtime.mjs': b'altered'}),
+            ('runtime.mjs', {}),
+            ('runtime.mjs', {'runtime.mjs': original, 'unexpected.mjs': original}),
+            ('../escape.mjs', {'../escape.mjs': original}),
+        ):
+            with self.subTest(entries=entries), tempfile.TemporaryDirectory() as root:
+                destination = Path(root)
+                manifest = destination/'assets/vendor/pdfjs/_runtime-manifest.txt'
+                manifest.parent.mkdir(parents=True)
+                content = f'{digest}  {name}\n'.encode()
+                manifest.write_bytes(content)
+                tree = hashlib.sha256(content).hexdigest()+'/'
+                payload = io.BytesIO()
+                with zipfile.ZipFile(payload, 'w') as archive:
+                    archive.writestr(tree+'_runtime-manifest.txt', content)
+                    for relative, data in entries.items():
+                        archive.writestr(tree+relative, data)
+                with self.assertRaises(ValueError):
+                    prebundle_fixture.restore_vendors(destination, payload.getvalue())
+                self.assertEqual(list(manifest.parent.iterdir()), [manifest])
+
     def test_only_the_selected_immutable_https_project_can_be_audited(self):
         self.assertEqual(preview_origin('orders', 'https://abcd1234.bargig-orders.pages.dev/'), 'https://abcd1234.bargig-orders.pages.dev')
         for url in ('http://abcd1234.bargig-orders.pages.dev', 'https://abcd1234.bargig-kupa.pages.dev',
