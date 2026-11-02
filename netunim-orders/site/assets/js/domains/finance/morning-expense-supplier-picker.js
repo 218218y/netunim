@@ -1,11 +1,11 @@
 import {esc} from '../../core/values.js';
-import {searchMatch} from '../../core/search.js';
+import {supplierSearchMatch} from '../../core/morning-supplier-search.js';
 
 export function createExpenseSupplierPicker({rows, selectedId, eligibility, editable, choose, invalidateSelection, search, commit, run, report}) {
   let query = null, activeId = '', revision = 0, timer = null, controller = null, page = null, busy = false, limit = 50;
   const host = () => document.querySelector('[data-expense-supplier-picker]');
   const input = () => host()?.querySelector('[role="combobox"]');
-  const matching = () => rows().filter(row => searchMatch(query || '', [row.name, row.taxId]));
+  const matching = () => rows().filter(row => supplierSearchMatch(query || '', row));
   const visible = () => matching().slice(0, limit);
   const selectable = () => visible().filter(row => {const check = eligibility(row); return check.eligible || check.p;});
   function cancel() {revision++; clearTimeout(timer); timer = null; controller?.abort(); controller = null; busy = false;}

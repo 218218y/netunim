@@ -42,9 +42,10 @@ FLOW = r"""(async()=>{
  const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js'),db=createStorageJournalDb();
  const beforeMain=JSON.stringify(await db.load(owner+':orders')),beforeShared=JSON.stringify(await db.load(owner+':shared-checks'));
  const supplier={id:id(2),name:'ת.ב.י ספק מסך הוצאות',taxId:'123456789',country:'IL',active:true};
- const pSupplier={id:id(20),name:'ספק P לבדיקה',taxId:'123456780',country:'PS',active:true};
+ const pSupplier={id:id(20),name:'חרבאוי',taxId:'123456780',country:'PS',active:true};
  const expense={id:id(3),kind:'expense',status:10,supplierId:supplier.id,name:supplier.name,number:'HISTORY-1',grossCents:11800,supplierTaxId:supplier.taxId,reportingDate:'2026-10-01',sourceDocumentDate:'2026-10-20',createdAt:'2026-10-26T10:00:00.000Z',pcnClassification:'T',classification:{id:id(4),title:'קניות סחורה בארץ',vat:100,income:100}};
- const accountExpenses=[expense,{...expense,id:id(99),number:'MORNING-EXTERNAL',sourceDocumentDate:'2019-06-01',reportingDate:'2020-01-01',createdAt:'2026-10-27T11:00:00.000Z'}];
+ const pExpense={...expense,id:id(21),number:'P-SPELLING',supplierId:pSupplier.id,supplierTaxId:pSupplier.taxId,name:pSupplier.name,pcnClassification:'P'};
+ const accountExpenses=[expense,pExpense,{...expense,id:id(99),number:'MORNING-EXTERNAL',sourceDocumentDate:'2019-06-01',reportingDate:'2020-01-01',createdAt:'2026-10-27T11:00:00.000Z'}];
  const calls=[],confirmations=[];let posts=0,hold=null,entered=null,operation=null,heldQuery='';
  cloudAuth.supaFetch=async(path,options)=>{
   check(['/functions/v1/morning-expenses','/functions/v1/morning-documents'].includes(path),'wrong expense service');options.assertRequestScope();
@@ -106,6 +107,10 @@ FLOW = r"""(async()=>{
  check(document.querySelector('[data-expense-history]').textContent.includes('MORNING-EXTERNAL')&&!document.querySelector('[data-expense-history]').textContent.includes('HISTORY-1'),'real navigation failed to dispatch expense search');
  check(liveNumber.isConnected&&posts===0&&confirmations.length===0,'real search replaced the editor or dispatched a save');
  click('history-search-clear');check(document.querySelector('[data-expense-history]').textContent.includes('HISTORY-1'),'real search clear lost browsing');
+ const nameQuery=document.querySelector('[data-input="morning-expense-history-query"]');nameQuery.value='חרבאווי';nameQuery.dispatchEvent(new Event('input',{bubbles:true}));
+ nameQuery.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));await finance.runtime.drain();
+ check(document.querySelector('[data-expense-history]').textContent.includes('P-SPELLING')&&!document.querySelector('[data-expense-history]').textContent.includes('HISTORY-1'),'expense search did not match the canonical supplier spelling');
+ click('history-search-clear');
  const chooseHistory=async(kind,value)=>{const control=document.querySelector('[data-expense-history-filter="'+kind+'"]');control.value=value;control.focus();control.dispatchEvent(new Event('change',{bubbles:true}));await finance.runtime.drain();};
  await chooseHistory('year','2026');
  check(!document.querySelector('[data-expense-history-filter="period"]').disabled,'real lazy composition did not enable bimonth selection');
@@ -145,7 +150,7 @@ FLOW = r"""(async()=>{
  check(document.querySelector('[data-expense-field="supplierId"]').value===supplier.id,'Enter failed to choose unique supplier');
  field('gross','27582.50');
  check(document.querySelector('[data-expense-field="net"]').value==='23375.00'&&document.querySelector('[data-expense-field="vat"]').value==='4207.50','ordinary gross VAT split incorrect');
- supplierInput().click();field('supplierQuery','ספק P');
+ supplierInput().click();field('supplierQuery','חרבאווי');
  supplierInput().dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true,cancelable:true}));
  check(supplierInput().getAttribute('aria-activedescendant'),'arrow selection missing');
  supplierInput().dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));await finance.runtime.drain();

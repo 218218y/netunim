@@ -4,6 +4,8 @@ import {recognizeInvoice} from '../netunim-orders/site/assets/js/core/invoice-re
 import {INVOICE_SUPPLIER_PROFILES} from '../netunim-orders/site/assets/js/core/invoice-supplier-profiles.js';
 import {invoicePdfLines} from '../netunim-orders/site/assets/js/core/invoice-pdf-layout.js';
 import {invoiceFieldReview} from '../netunim-orders/site/assets/js/core/invoice-field-review.js';
+import {normalizeExpenseInput} from '../netunim-orders/site/assets/js/core/morning-expense-input.js';
+import {compareExpenseSource,expenseSourceFields} from '../netunim-orders/site/assets/js/core/morning-expense-source.js';
 
 const tax='123456782',buyer='987654324';
 const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode('supplier-tax:'+tax))),n=>n.toString(16).padStart(2,'0')).join('');
@@ -51,14 +53,25 @@ test('Bisan tax invoices and plural credit titles retain source numbers, positiv
  for(const [title,type]of [['חשבונית מס',305],['חשבונות זיכוי',330]]){
   const result=await recognize('herbawi',[bisan(title)]);
   assert.equal(result.profile,'herbawi');assert.equal(result.fields.documentType.value,type);assert.equal(result.outcome,'recognized');
-  assert.equal(result.fields.invoiceNumber.rawNumber,'10/27/00042');assert.equal(result.fields.invoiceNumber.value,'102700042');
-  assert.equal(result.fields.invoiceNumber.suggestedNumber,'102700042');assert.equal(result.fields.invoiceNumber.effectiveNumber,null);
+  assert.equal(result.fields.invoiceNumber.rawNumber,'10/27/00042');assert.equal(result.fields.invoiceNumber.value,'00042');
+  assert.equal(result.fields.invoiceNumber.suggestedNumber,'00042');assert.equal(result.fields.invoiceNumber.effectiveNumber,null);
   assert.equal(result.fields.date.value,'2027-06-09');assert.equal(result.fields.net.value,201150);
   assert.equal(result.fields.vat.value,32184);assert.equal(result.fields.gross.value,233334);assert.equal(result.fields.currency.value,'ILS');
   assert.ok(result.fields.date.sources.every(source=>source.bounds.y<200));assert.equal(result.fields.allocationNumber.value,null);
+  const id=n=>'aaaaaaaa-aaaa-4aaa-aaaa-'+String(n).padStart(12,'0');
+  const input=normalizeExpenseInput({operationId:id(1),expense:{supplierId:id(2),classificationExpenseId:id(3),documentType:type,
+   number:result.fields.invoiceNumber.value,date:'2027-06-09',reportingDate:'2027-06-01',pcnClassification:'P',
+   net:'2011.50',vat:'321.84',gross:'2333.34',description:'source checked',allocationNumber:''}},'2027-06-10',{allowP:true});
+  assert.equal(input.number,'000000042','existing P transport padding cannot reintroduce the document prefix');
+  const fields=expenseSourceFields(result);
+  assert.equal(compareExpenseSource(fields,{...fields,number:input.number,pcnClassification:'P'}).matched,true);
  }
- const unusual=await recognize('herbawi',[bisan('חשבונית מס','10/27/42')]);
- assert.equal(unusual.fields.invoiceNumber.value,'10/27/42');assert.equal(unusual.fields.invoiceNumber.status,'review');
+ for(const number of ['18/28/73','09/29/000001234','12/30/04567']){
+  const result=await recognize('herbawi',[bisan('חשבונית מס',number)]);
+  assert.equal(result.fields.invoiceNumber.value,number.split('/').at(-1));assert.equal(result.fields.invoiceNumber.rawNumber,number);
+ }
+ const unusual=await recognize('herbawi',[bisan('חשבונית מס','10/2027/42')]);
+ assert.equal(unusual.fields.invoiceNumber.value,'10/2027/42');assert.equal(unusual.fields.invoiceNumber.status,'review');
 });
 
 test('new supplier templates require issuer evidence and never add OCR or normalize unrelated numbers',async()=>{

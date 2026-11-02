@@ -133,7 +133,8 @@ export const INVOICE_SUPPLIER_PROFILES=Object.freeze([
     "layout": "bisan",
     "creditTitleKey": "חשבונותזיכוי",
     "datePlacement": {"minDy":0,"maxDy":25,"minX":0,"maxX":120},
-    "numberFormat": "p-slash-nine"
+    "numberFormat": "p-final-segment",
+    "numberFormatEvidence": "user-confirmed-final-segment-2026-11-02"
   },
   {
     "id": "gaber",

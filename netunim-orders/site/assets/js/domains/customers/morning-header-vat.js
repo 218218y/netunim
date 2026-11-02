@@ -26,9 +26,10 @@ export function createMorningHeaderVat({request,capture,run,isActive,todayISO}){
     const label=status==='ready'&&cents<0?'מע״מ להחזר':'מע״מ לתשלום';
     const period=periodKey?expenseBimonth(periodKey+'-01').label:'';
     element.hidden=false;element.dataset.status=status;
-    element.innerHTML=`${label}: <bdi>${status==='ready'?esc(expenseMoney(Math.abs(cents))):'—'}</bdi>`;
-    element.title=status==='ready'?period:status==='loading'?'טוען סיכום מע״מ · '+period:'סיכום המע״מ אינו זמין';
-    element.setAttribute('aria-label',element.textContent+' · '+element.title);
+    element.innerHTML=`<span>${label}: <bdi>${status==='ready'?esc(expenseMoney(Math.abs(cents))):'—'}</bdi></span>${period?` <small data-morning-vat-period>${esc(period)}</small>`:''}`;
+    const message=status==='ready'?'':status==='loading'?'טוען סיכום מע״מ':'סיכום המע״מ אינו זמין';
+    element.title=message?message+' · '+period:period;
+    element.setAttribute('aria-label',element.textContent+(message?' · '+message:''));
   }
   function refresh(owner=generation){
     if(owner!==generation||!current()||!environment)return false;
