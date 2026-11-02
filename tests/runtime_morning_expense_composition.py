@@ -189,21 +189,26 @@ FLOW = r"""(async()=>{
 P_FLOW = FLOW[:FLOW.index(" const period=")].replace('pcnP:false', 'pcnP:true').replace("title:'קניות סחורה בארץ'", "title:'אוטונומיה-רכישת סחורה'").replace(
     "check(request.expense.allocationNumber==='123456789','allocation number lost');check(request.expense.vat==='18.00','manual VAT changed');",
     "check(request.expense.number==='000012345','P number not canonical');check(request.expense.vat==='150.00','manual P VAT changed');check(request.expense.pcnClassification==='P'&&request.expense.supplierId===pSupplier.id,'P identity lost');"
+).replace(
+    "check(request.expense.reportingDate===request.expense.date.slice(0,7)+'-01','reporting month changed');",
+    "check(request.expense.date==='2026-07-21'&&request.expense.reportingDate==='2026-10-01'&&request.expense.reportingPeriod==='2026-09','late P source/reporting dates changed');check(request.expense.documentType===305,'P invoice type changed');"
 ) + r"""
  field('supplierId',pSupplier.id,'change');
  check(document.querySelector('[data-expense-field="classificationExpenseId"]').value===expense.id,'verified P autonomy category was not selected automatically');
- field('number','12345');field('documentType','330','change');field('gross','1160.00');
+ field('number','12345');field('documentType','305','change');field('date','2026-07-21','change');field('reportingPeriod','2026-09','change');field('gross','1160.00');
  check(document.querySelector('[data-expense-field="net"]').value==='1000.00'&&document.querySelector('[data-expense-field="vat"]').value==='160.00','enabled P VAT suggestion failed');
  field('vat','150.00');
  check(document.querySelector('[data-expense-field="gross"]').value==='1150.00','manual P VAT correction did not update total');
  field('pcnClassification','T','change');
  check(document.querySelector('[data-expense-field="pcnClassification"]').value==='P','protected P supplier could change to T');
+ check(document.querySelector('.morning-expense-intake').textContent.includes('שישה חודשים מתאריך הוצאתה')&&!document.querySelector('.morning-expense-intake').textContent.includes('15 יום מתום תקופת הדוח'),'P late-receipt notice is missing or still asserts an issue-period deadline');
+ check(document.querySelector('[data-expense-approval-problem]').hidden,'valid late P invoice still has a form problem');
  check(!document.querySelector('[data-action="morning-expense-save"]').disabled,'verified P save remains blocked');
  click('save');await finance.runtime.drain();
  check(posts===1&&confirmations.length===1,'P save/confirmation failed');
  check(confirmations[0].message.includes('בדקת'),'P intake did not require final approval');
  check(JSON.stringify(await db.load(owner+':orders'))===beforeMain&&JSON.stringify(await db.load(owner+':shared-checks'))===beforeShared,'P intake changed local journals');
- finance.runtime.dispose();return {posts,protectedIdentity:true,manualVat:true,canonicalNumber:true};
+ finance.runtime.dispose();return {posts,protectedIdentity:true,manualVat:true,canonicalNumber:true,latePReporting:true};
 })()"""
 
 LAYOUT_ASSERTIONS = r"""(async()=>{
@@ -322,7 +327,7 @@ if __name__=='__main__':
             assert result['posts']==1 and result['accountIsolated'],result
             assert not browser.drain_serious_errors()
             print('PASS composed expense UI, native auth, recovery and account isolation:',json.dumps(result),flush=True)
-        with BrowserSession(ROOT/'netunim-orders/site',f'morning-p-expense-composition-{width}') as browser:
+        with composition_session(f'morning-p-expense-composition-{width}') as browser:
             browser.call('Emulation.setDeviceMetricsOverride',{'width':width,'height':1100,'deviceScaleFactor':1,'mobile':width<800})
             result=browser.evaluate(P_FLOW,timeout=45)
             assert result['posts']==1 and result['protectedIdentity'],result
