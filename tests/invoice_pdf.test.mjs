@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {extractInvoicePdf} from '../netunim-orders/site/assets/js/domains/finance/invoice-pdf.js';
 import {invoicePageGeometry} from '../netunim-orders/site/assets/js/core/invoice-pdf-layout.js';
 import {assertPdfJsCore} from '../netunim-orders/site/assets/js/domains/documents/pdfjs-core.js';
+import {PDFJS_VERSION,PDFJS_BUILD} from '../shared/document-search/domains/documents/pdfjs-runtime-config.js';
 const item=(str,x,y=700)=>({str,dir:/[א-ת]/.test(str)?'rtl':'ltr',transform:[10,0,0,10,x,y],width:str.length*5,height:10,fontName:'synthetic-font',hasEOL:false});
 const page=()=>({pageNumber:1,rotate:0,getViewport:()=>({width:600,height:800,transform:[1,0,0,-1,0,800]}),cleanup:()=>{}});
 const file=()=>new Blob(['%PDF-1.4 synthetic'],{type:'application/pdf'});
@@ -48,7 +49,10 @@ test('cancellation, timeouts and account replacement fence all delayed PDF compl
   const stale=fixture();await assert.rejects(extractInvoicePdf(file(),{load:stale.load,check:()=>{throw Error('account replaced');}}),/account replaced/);assert.equal(stale.state().opened,0);
 });
 test('the shared PDF core fails closed on a mismatched pinned version or build',()=>{
-  assert.throws(()=>assertPdfJsCore({version:'6.4.299',build:'different',getDocument(){},GlobalWorkerOptions:{}}),/contract/);
+  const runtime={version:PDFJS_VERSION,build:PDFJS_BUILD,getDocument(){},GlobalWorkerOptions:{}};
+  assert.doesNotThrow(()=>assertPdfJsCore(runtime));
+  assert.throws(()=>assertPdfJsCore({...runtime,version:'wrong-version'}),/contract/);
+  assert.throws(()=>assertPdfJsCore({...runtime,build:'wrong-build'}),/contract/);
 });
 
 test('sixty-page extraction yields between pages and rejects excessive line density',async()=>{
