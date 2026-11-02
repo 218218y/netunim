@@ -7,13 +7,11 @@ export function validateExpenseDraft({draft,classification,operationId,today,cap
   if(!classification?.id)throw Error('יש לבחור סיווג מתוך ההצעות לפני שמירה.');
   return snapshot;
 }
-export function expenseDraftProblem(options){
-  const labels={supplierId:'ספק',classificationExpenseId:'סיווג',documentType:'סוג מסמך',number:'מספר חשבונית',date:'תאריך חשבונית',net:'סכום לפני מע״מ',vat:'מע״מ מהמקור',gross:'סכום כולל'};
-  const missing=Object.entries(labels).filter(([key])=>options.draft[key]===null||options.draft[key]===undefined||String(options.draft[key]).trim()==='').map(([,label])=>label);
-  if(missing.length)return 'יש להשלים לפני אישור: '+missing.join(', ')+'.';
-  try{validateExpenseDraft({...options,operationId:'00000000-0000-4000-8000-000000000001'});return '';}
-  catch(error){return ({expense_allocation_required:'יש להשלים מספר הקצאה מהמקור לפני אישור החשבונית.',invalid_expense_amounts:'לפני מע״מ ומע״מ חייבים להסתכם לסכום הכולל, בדיוק של אגורות.',invalid_expense_input:'יש לבדוק את מספר החשבונית, סוג המסמך והתאריכים.',invalid_expense_reporting_period:'יש לבדוק את תאריך החשבונית ותקופת הדיווח.',invalid_expense_p_number:'יש להשלים מספר חשבונית P תקין.'})[error.message]||'יש להשלים ולבדוק את הפרטים לפני אישור.';}
+export function expenseDraftIssues(options){
+  try{validateExpenseDraft({...options,operationId:'00000000-0000-4000-8000-000000000001'});return [];}
+  catch(error){return error.issues || [{fields:['classificationExpenseId'],message:error.message}];}
 }
+export function expenseDraftProblem(options){return expenseDraftIssues(options).map(issue=>issue.message).join(' ');}
 export async function prepareExpenseApproval({draft,classification,supplier,capabilities,today,eligibility,sendNow,paused,confirmDialog,check,prepareSource}){
   if(!capabilities.backgroundQueue||!capabilities.create||!capabilities.upload)throw Error('שליחת הוצאות ומקורות אינה זמינה כרגע.');
   if(sendNow&&paused)throw Error('השליחה הקודמת דורשת טיפול. אפשר להמשיך לבדוק ולסמן מסמכים כמאושרים בלי לשלוח אותם.');

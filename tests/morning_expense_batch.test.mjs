@@ -80,11 +80,11 @@ test('detached job preserves reviewed fields and bytes through canonical checks 
  assert.equal(calls.filter(action=>action==='create').length,1);assert.equal(result.verified,true);assert.equal(entry.result.sourceVerified,true);
 });
 test('required fields, exact money and date-dependent allocation presence block approval before any write',()=>{
- const normalize=values=>normalizeExpenseInput({operationId:id(2),expense:{...draft,...values}},'2026-10-29',{allowP:true});
+ const normalize=(values,today='2026-10-29')=>normalizeExpenseInput({operationId:id(2),expense:{...draft,...values}},today,{allowP:true});
  assert.throws(()=>normalize({number:''}),/invalid_expense_input/);assert.throws(()=>normalize({date:''}),/invalid_expense_input/);assert.throws(()=>normalize({gross:'1160.01'}),/invalid_expense_amounts/);
  assert.throws(()=>normalize({net:'5000.01',vat:'900.00',gross:'5900.01'}),/expense_allocation_required/);
  assert.equal(normalize({net:'5000.00',vat:'900.00',gross:'5900.00'}).allocationNumber,'');
- assert.equal(normalize({date:'2026-01-20',net:'6000.00',vat:'1080.00',gross:'7080.00'}).allocationNumber,'');
+ assert.equal(normalize({date:'2026-01-20',reportingDate:'2026-01-01',reportingPeriod:'2026-01',net:'6000.00',vat:'1080.00',gross:'7080.00'},'2026-02-01').allocationNumber,'');
  assert.equal(normalize({documentType:330,net:'6000.00',vat:'1080.00',gross:'7080.00'}).documentType,330);
  assert.equal(normalize({pcnClassification:'P',net:'6000.00',vat:'960.00',gross:'6960.00'}).vatCents,96000);
  assert.equal(normalize({net:'6000.00',vat:'1080.00',gross:'7080.00',allocationNumber:'123456789'}).allocationNumber,'123456789');

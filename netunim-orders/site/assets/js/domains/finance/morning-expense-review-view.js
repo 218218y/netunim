@@ -1,3 +1,4 @@
+import {updateExpenseValidation} from './morning-expense-validation-view.js';
 import {expenseAmountSanity} from '../../core/morning-expense-amounts.js';
 import {esc} from '../../core/values.js';
 import {invoiceFormFields} from '../../core/invoice-field-review.js';
@@ -6,7 +7,7 @@ const fieldLabels = {number:'מספר חשבונית', date:'תאריך המסמ
 
 // Field presentation owns adjacent descriptions, accessibility and navigation;
 // accounting state and source evidence are supplied by the intake controller.
-export function createExpenseFieldReview({host, visible:isVisible, reviewFields, warningsMarkup}) {
+export function createExpenseFieldReview({host, visible:isVisible, reviewFields, warningsMarkup, validationIssues = () => []}) {
   const reviewLabels = {verified:'זוהה במסמך', review:'דורש בדיקה', missing:'לא זוהה', manual:'הושלם ידנית',
     not_required:'לפי פרטי המסמך אין צורך במספר הקצאה', not_applicable:''};
   function reviewSlot(name, field = reviewFields()[name]) {
@@ -30,6 +31,7 @@ export function createExpenseFieldReview({host, visible:isVisible, reviewFields,
     if (warnings) warnings.outerHTML = warningsMarkup();
     const count = Object.values(fields).filter(field => ['missing','review'].includes(field.status)).length;
     const summary = host()?.querySelector('[data-expense-review-count]'); if (summary) summary.textContent = `${count} שדות לבדיקה או השלמה`;
+    updateExpenseValidation(host(), validationIssues());
   }
   function focusReview({preventScroll=false}={}) {
     const entries = Object.entries(reviewFields()).filter(([,field]) => ['missing','review'].includes(field.status));

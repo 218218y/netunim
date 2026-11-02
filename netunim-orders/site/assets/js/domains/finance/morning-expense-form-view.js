@@ -12,13 +12,13 @@ export function expenseFormMarkup({model,review,reporting,dateEditorMarkup}){
       <button type="button" class="btn" data-action="morning-expense-command" data-expense-command="favorite" ${disabled || !supplier ? 'disabled' : ''}>${favorites.some(row => row.id === draft.supplierId) ? 'הסרה מהמועדפים' : 'הוספה למועדפים שלי'}</button></div>
       ${supplier && !eligibility.eligible ? `<small>${esc(eligibility.reason)}</small>` : ''}
       ${favorites.length ? `<div class="morning-expense-toolbar">${favorites.map(row => `<button type="button" class="btn" data-action="morning-expense-command" data-expense-command="use-favorite" data-expense-supplier="${esc(row.id)}" ${attrs}>${esc(row.name)}</button>`).join('')}</div>` : ''}
-      <div class="morning-expense-pair morning-expense-classification"><label>סיווג מהוצאות קיימות<select data-expense-field="classificationExpenseId" data-change="morning-expense-field" ${attrs}>${option('', 'בחר סיווג', draft.classificationExpenseId)}${catalog.classifications.map(row => option(row.sourceExpenseId, row.title, expenses.find(item => item.id === draft.classificationExpenseId)?.classification?.id === row.id ? row.sourceExpenseId : '')).join('')}</select></label>
+      <div class="morning-expense-pair morning-expense-classification"><label><span>סיווג מהוצאות קיימות</span><select data-expense-field="classificationExpenseId" data-change="morning-expense-field" ${attrs}>${option('', 'בחר סיווג', draft.classificationExpenseId)}${catalog.classifications.map(row => option(row.sourceExpenseId, row.title, expenses.find(item => item.id === draft.classificationExpenseId)?.classification?.id === row.id ? row.sourceExpenseId : '')).join('')}</select></label>
       <button type="button" class="btn" data-action="morning-expense-command" data-expense-command="more-classifications" ${disabled || catalog.expensePage.page + 1 >= catalog.expensePage.pages || catalog.expensePage.page >= 19 ? 'disabled' : ''}>חיפוש סיווגים בהוצאות נוספות</button></div>
-      <small>הצעות מתוך ${catalog.expenses.length} הוצאות בטווח ${esc(catalog.fromDate)}–${esc(catalog.toDate)}. הרשימה אינה קטלוג מלא. אחוזי ההכרה מנוהלים ב־Morning.</small>
+      <small>הצעות מהוצאות שנבדקו ב־Morning, כולל היסטוריית הספק. הכפתור מחפש סיווגים בעמודים נוספים של ההוצאות בטווח ${esc(catalog.fromDate)}–${esc(catalog.toDate)}; הוא אינו מרענן את ספריית הסיווגים. רענון ספקים וסיווגים טוען מחדש את ההצעות. אחוזי ההכרה מנוהלים ב־Morning.</small>
       <div class="morning-expense-reporting">${reporting.markup(disabled)}
       <div class="morning-expense-review-input"><label><span class="morning-expense-field-label">סוג מסמך</span><select data-expense-field="documentType" data-change="morning-expense-field" ${attrs}>${option('', 'בחר סוג מסמך', draft.documentType)}${option(305, 'חשבונית מס', draft.documentType)}${option(330, 'חשבונית זיכוי', draft.documentType)}${option(320, 'חשבונית מס קבלה', draft.documentType)}</select></label>${review.slot('documentType')}</div>
       <label>סוג דיווח<select data-expense-field="pcnClassification" data-change="morning-expense-field" ${attrs}>${option('T', 'רגיל · T', draft.pcnClassification)}${option('P', 'חשבונית P', draft.pcnClassification)}</select></label></div>
-      ${draft.pcnClassification === 'P' ? `<p class="morning-expense-notice">${catalog.capabilities.pcnP ? 'חשבונית P: הספק וסיווג P מאומתים בשמירה. המע״מ נשאר לפי מסמך המקור ומספר החשבונית מושלם לתשע ספרות.' : 'חשבונית P: המע״מ נשאר לפי מסמך המקור. קליטת P באתר טרם הופעלה לחשבון זה.'}</p>` : ''}
+      ${draft.pcnClassification === 'P' ? `<p class="morning-expense-notice">${catalog.capabilities.pcnP ? 'חשבונית P: הספק וסיווג P מאומתים בשמירה. המע״מ נשאר לפי מסמך המקור ומספר החשבונית מושלם לתשע ספרות.' : 'חשבונית P: המע״מ נשאר לפי מסמך המקור. קליטת P באתר טרם הופעלה לחשבון זה.'} לפי מדריך רשות המסים, ניכוי תשומות P נעשה בתוך 15 יום מתום תקופת הדוח של החשבונית. שמירה כאן אינה הגשת הדוח; אם המועד חלף יש לברר עם המייצג לפני הדיווח.</p>` : ''}
       <div class="morning-expense-pair morning-expense-invoice">${review.textField('number', draft, disabled)}<div class="morning-expense-date"><span>תאריך החשבונית</span><fieldset ${attrs}>
       ${dateEditorMarkup('morningExpenseDate', draft.date, {label:'תאריך החשבונית', compact:true, maxDate:today,
         change:'morning-expense-field', data:{'expense-field':'date'}})}</fieldset>${review.slot('date')}</div></div>
@@ -35,6 +35,15 @@ export function expenseFormMarkup({model,review,reporting,dateEditorMarkup}){
         ${selected&&catalog.capabilities.backgroundQueue?`<button type="button" class="btn" data-action="morning-expense-batch-mark" data-expense-approve-control="mark" ${unavailable||problem?'disabled':''}>סמן אישור ומעבר להוצאה הבאה</button>
           ${approved?'<button type="button" class="btn" data-action="morning-expense-command" data-expense-command="batch-unmark">ביטול סימון האישור</button>':''}
           ${approvedCount?`<button type="button" class="btn" data-action="morning-expense-batch-send" ${disabled||batchPaused?'disabled':''}>שמירת כל ההוצאות המאושרות (${approvedCount})</button>`:''}`:''}</div>
-      ${selected&&catalog.capabilities.backgroundQueue?`<p class="morning-expense-notice" data-expense-approval-problem role="alert" ${problem?'':'hidden'}>${esc(problem)}</p>`:''}
+      <p class="morning-expense-validation-summary" data-expense-approval-problem role="alert" ${problem?'':'hidden'}>${esc(problem)}</p>
       ${warnings}`;
 }
+
+export function expenseEnvironmentNotice(caps) {
+    if (!caps) return 'סביבת Morning, הספקים והסיווגים נטענים אוטומטית בפתיחת המסך.';
+    let notice;
+    if (caps.environment === 'production') notice = caps.create ?
+      '' : 'חשבון Morning האמיתי · יצירת הוצאות כבויה או אינה מורשית למשתמש זה.';
+    else notice = caps.create ? 'סביבת בדיקות Sandbox · יש לבדוק כל פרט מול מסמך המקור.' : 'סביבת Sandbox · שמירה דורשת הרשאה ושתי זהויות ספקי P שאומתו מול Morning.';
+    return notice + (caps.create && !caps.upload ? ' צירוף קבצים עדיין כבוי.' : '');
+  }

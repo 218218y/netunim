@@ -1,6 +1,13 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {expenseBimonth, expenseReportingChoice, expenseReportingDefault, expenseReportingYears, validateExpenseReporting, reportPeriod} from '../netunim-orders/site/assets/js/core/morning-report-period.js';
+import {expenseInputTaxDeadline} from '../netunim-orders/site/assets/js/core/morning-expense-validation.js';
+
+test('input-tax deadline uses calendar months and clamps leap and month ends',()=>{
+ assert.equal(expenseInputTaxDeadline('2024-08-31'),'2025-02-28');
+ assert.equal(expenseInputTaxDeadline('2023-08-31'),'2024-02-29');
+ assert.equal(expenseInputTaxDeadline('2026-05-02'),'2026-11-02');
+});
 
 test('reporting years include the current year, the first-bimonth previous year and any remembered year', () => {
   assert.deepEqual(expenseReportingYears('2026-10-27'), [2026]);

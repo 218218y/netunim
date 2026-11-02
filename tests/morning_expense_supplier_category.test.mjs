@@ -1,10 +1,28 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {expenseSupplierCategory,readExpenseSupplierCategory} from '../netunim-orders/site/assets/js/domains/finance/morning-expense-catalog.js';
+import {expenseSupplierCategory,readExpenseSupplierCategory,expensePreferredCategory,resolveExpenseSupplierCategory} from '../netunim-orders/site/assets/js/domains/finance/morning-expense-catalog.js';
 
 const supplier={id:'supplier-one',taxId:'123456782'},caps={version:1,environment:'production'};
 const expense=(n,extra={})=>({id:'expense-'+n,kind:'expense',supplierId:supplier.id,supplierTaxId:'',status:20,sourceDocumentDate:'2026-04-12',classification:{id:'communication',title:'תקשורת'},...extra});
 const paged=(items,page)=>({...caps,page,pageSize:50,total:items.length,pages:Math.ceil(items.length/50),items:items.slice(page*50,page*50+50)});
+
+test('both configured P identities automatically use the exact autonomy category even in supplier snapshots',async()=>{
+ const other={id:'supplier-two',taxId:'987654324'}, capabilities={...caps,pSuppliers:[supplier,other]};
+ const goods=expense(80,{supplierId:'',supplierTaxId:'',classification:{id:'autonomy',title:'אוטונומיה-רכישת סחורה'}});
+ const items=[...Array.from({length:50},(_,n)=>expense(n)),goods];
+ for(const selected of [supplier,other]){
+  const calls=[];
+  const result=await resolveExpenseSupplierCategory(async(action,body)=>{calls.push({action,body});return paged(items,body.page);},capabilities,selected,[],()=>{});
+  assert.equal(result.category.id,goods.id);assert.equal(calls.length,2);
+  assert.ok(calls.every(row=>row.action==='expenses'&&!row.body.supplierId&&!row.body.fromDate));
+  assert.equal(expensePreferredCategory([goods],{...selected,taxId:'wrong'},capabilities).required,false);
+ }
+});
+test('P category lookup never substitutes a different category or silently trusts a changing history',async()=>{
+ const capabilities={...caps,pSuppliers:[supplier]},items=Array.from({length:51},(_,n)=>expense(n));
+ await assert.rejects(resolveExpenseSupplierCategory(async(_action,body)=>paged(items,body.page),capabilities,supplier,items,()=>{}),/אוטונומיה/);
+ await assert.rejects(resolveExpenseSupplierCategory(async(_action,body)=>{const result=paged(items,body.page);if(body.page)result.total=52;return result;},capabilities,supplier,[],()=>{}));
+});
 
 test('supplier-specific category lookup finds older history beyond the global suggestions without financial calls',async()=>{
  const items=Array.from({length:51},(_,n)=>expense(n,{classification:n===50?{id:'goods',title:'סחורה'}:null})),calls=[];
