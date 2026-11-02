@@ -66,7 +66,16 @@ test('summary lookup crosses pages and ignores a trailing annex without mixing p
  const last=await recognize([page(header()),page(totals(),2),page([['נספח תנאים',200,50]],3)]);
  assert.equal(last.summaryPage,2);assert.equal(last.fields.gross.value,115000);assert.equal(last.fields.gross.sources[0].page,2);
  const mixed=await recognize([page([...header('000123'),...totals()]),page([...header('000124'),...totals()],2)]);
- assert.equal(mixed.fields.invoiceNumber.value,null);assert.equal(mixed.fields.gross.status,'review');
+ assert.equal(mixed.fields.invoiceNumber.value,null);assert.equal(mixed.documents.blocked,true);assert.equal(mixed.outcome,'multiple_invoices');
+});
+test('distinct invoices are blocked before cross-page field fill; only one complete identity per page can split',async()=>{
+ const separate=await recognize(Array.from({length:7},(_,n)=>page([...header('000'+(123+n)),...totals()],n+1)));
+ assert.equal(separate.documents.blocked,true);assert.equal(separate.documents.canSplit,true);assert.equal(separate.documents.count,7);
+ assert.ok(Object.values(separate.fields).every(field=>field.value===null));
+ const repeated=await recognize([page([...header(),...totals()]),page([...header(),...totals()],2)]);
+ assert.equal(repeated.documents.blocked,false);
+ const annex=await recognize([page([...header('000123'),...totals()]),page([...header('000124'),...totals()],2),page([['נספח',30,20]],3)]);
+ assert.equal(annex.documents.blocked,true);assert.equal(annex.documents.canSplit,false);
 });
 test('derived net is explicitly marked and inconsistent explicit totals require review',async()=>{
  const computed=await recognize([page([...header(),...totals()])],{derivedNet:true});

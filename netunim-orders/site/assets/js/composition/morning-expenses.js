@@ -9,5 +9,6 @@ export function createFinanceMorningExpenses({auth, morningOperationScope, confi
     accountId:() => auth.getAccountScope()?.owner, subscribeAccountScope:listener => auth.subscribeAccountScope(listener),
     confirmDialog, dateEditorMarkup, toast, files:{validate:validateExpenseFile, upload:uploadExpenseFile,
       extract:async(file,options)=>(await import('../domains/finance/invoice-pdf.js')).extractInvoicePdf(file,options),
+      split:async(file,pages,options)=>(await import('../domains/finance/invoice-pdf-split.js')).splitInvoicePdf(file,pages,options),
       recognize:async(extraction)=>(await import('../core/invoice-recognition.js')).recognizeInvoice(extraction)}, isActive, onBack:back});
 }

@@ -1,4 +1,5 @@
 import {readRetainedExpenseCategory,readSavedExpenseCategory,readMoreExpenseClassifications} from './morning-expense-category-state.js';
+import {prepareExpenseSplit} from './morning-expense-split.js';
 import {updateExpenseDraftPresentation} from './morning-expense-validation-view.js';
 import {expenseFormMarkup,expenseEnvironmentNotice} from './morning-expense-form-view.js';
 import {expenseOperationMarkup} from './morning-expense-operation-view.js';
@@ -108,7 +109,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
   const recent = createExpenseRecent({request, capabilities:() => environmentChanged ? null : catalog?.capabilities, capture, run:tasks.run, accountId, cache:recentCache});
   const ocr = createExpenseOcrReview({request, capture, run, capabilities:() => catalog?.capabilities, accountId, selected:() => selected,
     files, confirmDialog, apply:applyOcr, advance:() => {if (operationId) return; workDrafts.delete(selected); draft=defaults(); edited=false; selectNextFile({saveCurrent:false});},
-    busy:() => busy, canStart:() => !operationId && !environmentChanged});
+    busy:() => busy, canStart:() => !operationId && !environmentChanged && !local.multiple()});
   const local = createExpenseLocalReview({files, request, capture, capabilities:() => catalog?.capabilities, selected:() => selected,
     editVersion:() => editVersion, onProposal:proposal => pdfPreview.setFields(proposal?.fields),
     onReady:({outcome}) => {if(!host()?.contains(document.activeElement))review.focus({preventScroll:true});if(announceNext&&announceNext===selected){announceNext=null;toast(outcome==='recognized'?'ה־PDF הבא זוהה ומוכן לבדיקה.':'ה־PDF הבא נטען. יש לבדוק ולהשלים את השדות המסומנים.');}},
@@ -288,6 +289,20 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       message = accepted.length ? 'הקבצים נוספו לתור. טיוטות העבודה נשמרות בזיכרון עד לסגירת המסך.' : '';
       if (duplicates.length) fileNotice = `עותק זהה של ${duplicates[0].name} כבר נוסף לתור ולא נוסף שוב${duplicates.length>1?' · '+duplicates.length+' עותקים זהים':''}.`;
 
+    });
+  }
+  function splitInvoices() {
+    if (busy || operationId || environmentChanged || !files.split || !local.splitPlan()) return false;
+    return run(async () => {
+      const source = selected, plan = local.splitPlan(), base = capture(), version = editVersion;
+      const check = () => {base();if (selected !== source || version !== editVersion) throw Error('המסמך או הטופס השתנו. יש לבדוק מחדש את הפיצול.');};
+      const existing=[...new Set([...queue,...batch.files()])].filter(item=>item!==source);
+      const prepared=await prepareExpenseSplit({source,plan,files,confirmDialog,check,prepareQueue:fileQueue.prepare,existing});check();if(!prepared)return false;
+      const {accepted,duplicates}=prepared;
+      batch.invalidate(source);workDrafts.delete(source);local.reset();pdfPreview.reset();releasePreview();selected=null;
+      queue=[...queue.filter(item=>item!==source),...accepted];draft=defaults();edited=false;
+      selectNextFile({saveCurrent:false});
+      message=`ה־PDF פוצל ונבדק: ${accepted.length} חשבוניות נוספו לתור${duplicates.length?`, ${duplicates.length} חלקים זהים כבר נמצאים בתור`:''}. יש לבדוק ולאשר כל חשבונית בנפרד.`;
     });
   }
   function selectNextFile({saveCurrent=true,preserveDraft=false,carryPreferences=false,target=null}={}) {
@@ -589,7 +604,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
   }
   const review = createExpenseFieldReview({host, visible:() => !!selected || !!local.snapshot().proposal,
     reviewFields:() => local.fieldReview(draft, catalog?.suppliers.find(row => row.id === draft.supplierId)?.taxId),
-    validationIssues:() => catalog ? expenseDraftIssues({draft,classification:sourceExpenses().find(row=>row.id===draft.classificationExpenseId)?.classification,today:todayISO(),capabilities:catalog.capabilities}) : [],
+    validationIssues:() => catalog ? expenseDraftIssues({draft,eligibility:eligibilityFor(catalog.suppliers.find(row=>row.id===draft.supplierId)),classification:sourceExpenses().find(row=>row.id===draft.classificationExpenseId)?.classification,today:todayISO(),capabilities:catalog.capabilities}) : [],
     warningsMarkup:() => local.warningsMarkup(catalog?.suppliers.find(row => row.id === draft.supplierId)?.taxId, draft)});
   function markup() {
     const disabled = busy || !!operationId || environmentChanged;
@@ -634,7 +649,8 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     'pdf-match-prev':pdfPreview.previousMatch, 'pdf-match-next':pdfPreview.nextMatch, 'pdf-target':pdfPreview.target,
     'pdf-zoom-in':pdfPreview.zoomIn, 'pdf-zoom-out':pdfPreview.zoomOut,
     'local-start':() => busy ? false : local.start(), 'local-fill':() => busy ? false : local.fill(), 'local-defer':deferLocal,
-    'ocr-start':async () => {if (busy) return false; local.reset(); const value = await ocr.start(); if (!ocr.active()) local.start(); return value;},
+    'split-invoices':splitInvoices,
+    'ocr-start':async () => {if (busy || local.multiple() || local.pending()) return false; local.reset(); const value = await ocr.start(); if (!ocr.active()) local.start(); return value;},
     'ocr-status':ocr.status, 'ocr-fill':ocr.fill, 'ocr-defer':ocr.defer, 'ocr-resume':element => {if (busy) return false; local.reset(); return ocr.resume(element);},
     'history-more':history.more, 'history-refresh':history.refresh, 'history-search':history.search, 'history-search-more':history.searchMore, 'history-search-clear':history.clearSearch, 'recent-refresh':recent.load, 'recent-cancel':recent.cancel,
     'use-favorite':element => setField({dataset:{expenseField:'supplierId'}, value:element.dataset.expenseSupplier}),

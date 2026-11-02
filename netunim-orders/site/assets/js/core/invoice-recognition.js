@@ -116,10 +116,25 @@ export function hasUsefulInvoiceText(extraction) {
     /\d[.,]\d{2}/u.test(text) && /מעמ|סהכ|לתשלום|total|vat/iu.test(compact);
 }
 export function invoiceRecognitionOutcome(proposal) {
+  if (proposal.documents?.blocked) return 'multiple_invoices';
   if (proposal.warnings?.includes('no_usable_text')) return 'no_usable_text';
   if (!proposal.profile) return 'unknown_supplier';
   return ['documentType','invoiceNumber','date','net','vat','gross'].every(key => proposal.fields[key]?.status === 'verified' &&
     proposal.fields[key]?.value !== null && proposal.fields[key]?.value !== undefined) ? 'recognized' : 'partial_recognition';
+}
+export function inspectInvoiceDocuments(extraction, profile = {}) {
+  const pages = extraction.pages.map(page => {
+    const cells = cellsOf([{...page,page:1}]), {titles,result} = headerType(cells);
+    const number = invoiceNumber(cells,titles,profile);
+    return {page:page.page, number:number.rawNumber, documentType:result.value,
+      candidates:number.candidates || [], hasTitle:titles.length > 0};
+  });
+  const identities = new Set(pages.flatMap(row => row.number ? [String(row.documentType)+':'+row.number] : row.candidates));
+  const blocked = identities.size > 1;
+  // Only offer automatic splitting when EVERY page has its own distinct invoice.
+  // Continuation pages and annexes require manual grouping and remain blocked.
+  const canSplit = blocked && pages.length <= 20 && pages.every(row => row.number && row.documentType) && identities.size === pages.length;
+  return {blocked,canSplit,count:identities.size,pages};
 }
 export async function recognizeInvoice(extraction,{profiles=INVOICE_SUPPLIER_PROFILES}={}){
   const empty=()=>({supplier:missing('supplier'),documentType:missing('document_type'),invoiceNumber:missing('invoice_number'),date:missing('invoice_date'),
@@ -143,6 +158,8 @@ export async function recognizeInvoice(extraction,{profiles=INVOICE_SUPPLIER_PRO
       if(profile.issuerTaxHash===hash&&inRegion&&(branded||labeledFooter)&&!matched.some(row=>row.profile.id===profile.id))matched.push({profile,taxId,item});
     }
   }
+  output.documents=inspectInvoiceDocuments(extraction,matched.length===1?matched[0].profile:{});
+  if(output.documents.blocked){output.profile=matched.length===1?matched[0].profile.id:null;output.warnings.push('multiple_invoices');output.outcome='multiple_invoices';return output;}
   if(matched.length!==1){output.warnings.push(matched.length?'ambiguous_supplier':'unknown_supplier');output.outcome='unknown_supplier';return output;}
   const {profile,taxId,item}=matched[0];output.profile=profile.id;
   output.fields.supplier={...field(taxId,[item],'issuer_tax_and_profile','review','canonical_supplier_pending'),name:profile.title,nameSource:'profile',canonicalVerified:false};

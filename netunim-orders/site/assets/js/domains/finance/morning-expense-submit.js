@@ -8,8 +8,14 @@ export function validateExpenseDraft({draft,classification,operationId,today,cap
   return snapshot;
 }
 export function expenseDraftIssues(options){
-  try{validateExpenseDraft({...options,operationId:'00000000-0000-4000-8000-000000000001'});return [];}
-  catch(error){return error.issues || [{fields:['classificationExpenseId'],message:error.message}];}
+  let issues=[];
+  try{validateExpenseDraft({...options,operationId:'00000000-0000-4000-8000-000000000001'});}
+  catch(error){issues=error.issues || [{fields:['classificationExpenseId'],message:error.message}];}
+  if(options.draft.supplierId && options.eligibility){
+    if(!options.eligibility.eligible)issues.push({fields:['supplierId'],message:options.eligibility.reason||'הספק אינו זמין לקליטה באתר.'});
+    else if(options.draft.pcnClassification==='P'&&!options.eligibility.p)issues.push({fields:['supplierId','pcnClassification'],message:'דיווח P זמין רק לספקי P שהוגדרו ואומתו. יש לבחור ספק וסוג דיווח מתאימים.'});
+  }
+  return issues;
 }
 export function expenseDraftProblem(options){return expenseDraftIssues(options).map(issue=>issue.message).join(' ');}
 export async function prepareExpenseApproval({draft,classification,supplier,capabilities,today,eligibility,sendNow,paused,confirmDialog,check,prepareSource}){

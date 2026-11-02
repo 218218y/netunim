@@ -13,6 +13,7 @@ export function createExpenseLocalReview({files, request, capabilities, capture,
   let controller = null, revision = 0, pending = false, proposal = null, guard = false, hash = '', message = '', ocrOperation = '', sourceConflict = false;
   let edits = {}, outcome = '';
   const outcomeMessages = {no_usable_text:'לא ניתן לזהות נתונים אוטומטית במסמך זה. ייתכן שה־PDF מכיל תמונה סרוקה או שאין בו טקסט שימושי. אפשר להקליד ידנית לפי המסמך.',
+    multiple_invoices:'נמצאו כמה חשבוניות באותו PDF. השמירה כחשבונית אחת חסומה כדי למנוע אובדן הוצאות. יש לפצל את המסמך ולבדוק כל חשבונית בנפרד.',
     unknown_supplier:'נמצא טקסט במסמך, אך הספק או התבנית לא זוהו. אפשר לבחור ספק ולהשלים ידנית לפי המקור.',
     partial_recognition:'חלק מפרטי החשבונית זוהו. השדות החסרים או הלא ודאיים מסומנים לבדיקה.',
     recognized:'שדות הליבה זוהו. יש לבדוק את הפרטים מול המקור לפני שמירה.',
@@ -32,7 +33,7 @@ export function createExpenseLocalReview({files, request, capabilities, capture,
   }
   function fill(force = false, expectedVersion = editVersion()) {
     return run(async () => {
-      if (!useful() || !available() || !canStart() || ocrActive() || pending) return false;
+      if (proposal?.documents?.blocked || !useful() || !available() || !canStart() || ocrActive() || pending) return false;
       const epoch = revision, base = capture();
       const check = () => {base(); if (!canStart() || !canApply() || epoch !== revision || expectedVersion !== editVersion()) throw new Error('הטופס השתנה או שמתבצעת שמירה. ההצעות זמינות למילוי יזום לאחר סיום הפעולה ובדיקה.');};
       try {
@@ -68,6 +69,7 @@ export function createExpenseLocalReview({files, request, capabilities, capture,
         pending = false;
         if (!guard) message += ' שמירה עם PDF דורשת עדכון שירות ובדיקת טיוטות קודמות.';
         if (!useful()) return false;
+        if (proposal.documents?.blocked) return false;
         if (!autoFill || Object.keys(edits).length) message='טיוטת העבודה נשמרה. נתוני הזיהוי זמינים להשוואה או למילוי יזום.';
         else if (version === editVersion()) await fill(false, version);
         else message = 'הזיהוי הסתיים בזמן שעריכת הטופס נמשכה. ההצעות זמינות למילוי יזום בלי לדרוס תיקונים.';
@@ -100,7 +102,7 @@ export function createExpenseLocalReview({files, request, capabilities, capture,
       }
     }
   }
-  function blocked() {return available() && (pending || !guard);}
+  function blocked() {return available() && (pending || !guard || proposal?.documents?.blocked === true);}
   function warnings(supplierTaxId, draft) {
     const values=[];
     if (draft) {
@@ -132,6 +134,9 @@ export function createExpenseLocalReview({files, request, capabilities, capture,
     if (!available() || !canStart() || ocrActive()) return '';
     return `<section class="morning-expense-local-summary" data-expense-local data-recognition-outcome="${esc(outcome)}" aria-label="תוצאות הזיהוי המקומי">
       <p role="status" aria-live="polite">${esc(message)}</p>
+      ${proposal?.documents?.blocked ? `<aside class="morning-expense-validation-summary" role="alert"><strong>${outcomeMessages.multiple_invoices}</strong>
+        <ul>${proposal.documents.pages.filter(row=>row.number).map(row=>`<li>עמוד ${row.page}: חשבונית ${esc(row.number)}</li>`).join('')}</ul>
+        ${proposal.documents.canSplit && files.split ? '<button type="button" class="btn" data-action="morning-expense-command" data-expense-command="split-invoices">בדיקה ופיצול לחשבוניות נפרדות</button>' : '<p>לא ניתן לקבוע חלוקה בטוחה לכל העמודים. יש לפצל ידנית ולצרף את החשבוניות בנפרד.</p>'}</aside>` : ''}
       ${proposal && outcome === 'unknown_supplier' ? '<p>הספק או תבנית המסמך לא זוהו. יש להשלים ידנית לפי המקור.</p>' : ''}
         <div class="morning-expense-toolbar">
           <button type="button" class="btn" data-action="morning-expense-command" data-expense-command="local-start" ${pending ? 'disabled' : ''}>זיהוי מחדש</button>
@@ -143,6 +148,8 @@ export function createExpenseLocalReview({files, request, capabilities, capture,
     </section>`;
   }
   return {start, fill:() => fill(true), reset, markup, preflight, blocked, available,warnings,warningsMarkup,
+    multiple:() => proposal?.documents?.blocked === true,
+    splitPlan:() => proposal?.documents?.blocked && proposal.documents.canSplit ? structuredClone(proposal.documents) : null,
     adopt:saved=>{reset();proposal=saved.proposal?structuredClone(saved.proposal):null;hash=saved.hash;edits=structuredClone(saved.edits||{});guard=/^[a-f0-9]{64}$/.test(hash);onProposal(proposal);},
     snapshot:() => ({proposal:proposal?structuredClone(proposal):null,hash,edits:structuredClone(edits)}),
     fieldReview:(draft, taxId) => invoiceFieldReview(proposal, edits, draft, taxId),

@@ -38,6 +38,15 @@ test('unknown OCR state and deferred OCR both prevent ordinary creation',async()
     assert.ok(f.calls.every(row=>row.action==='ocr_lookup'));
   }
 });
+
+test('a PDF containing several invoices cannot be filled, manually approved or restored as a single expense',async()=>{
+ const f=fixture({recognized:{...proposal,documents:{blocked:true,canSplit:true,count:2,pages:[{page:1,number:'1'},{page:2,number:'2'}]}}});
+ await f.local.start();assert.equal(f.local.blocked(),true);assert.equal(f.applications(),0);
+ await f.local.fill();assert.equal(f.applications(),0);
+ assert.ok(f.local.markup().includes('השמירה כחשבונית אחת חסומה'));
+ await assert.rejects(()=>f.local.preflight(f.snapshot,f.supplier,()=>{}));
+ const saved=f.local.snapshot();f.local.adopt(saved);assert.equal(f.local.blocked(),true);assert.equal(f.local.splitPlan().pages.length,2);
+});
 test('legacy zero-less number is compared for duplicates without changing the proposed number',async()=>{
   const f=fixture();await f.local.start();
   f.setRows([{id:'reported',kind:'expense',status:10,number:'123456789',type:305,sourceDocumentDate:'2026-07-02',supplierId:'canonical'}]);

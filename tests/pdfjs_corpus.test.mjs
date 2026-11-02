@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import crypto from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {LocalPdfBinaryDataFactory,extractInteractivePdfText} from '../netunim-orders/document-bridge/pdf_form_index.mjs';
+import {splitInvoicePdf} from '../netunim-orders/site/assets/js/domains/finance/invoice-pdf-split.js';
 
 const corpusRoot=fileURLToPath(new URL('./fixtures/pdf-corpus/',import.meta.url));
 const vendorRoot=new URL('../netunim-orders/document-bridge/pdfjs/',import.meta.url);
@@ -141,4 +142,16 @@ test('annotation-heavy PDF stays within browser-scan and Bridge extraction budge
   const bridgeMs=performance.now()-start;
   assert.equal(result.hasForm,false);
   assert.ok(bridgeMs<fixture.expect.bridgeExtractBudgetMs,`Bridge extraction took ${bridgeMs.toFixed(0)} ms (budget ${fixture.expect.bridgeExtractBudgetMs} ms)`);
+});
+
+test('native invoice splitting keeps the selected page text in separate real PDFs',async()=>{
+ const pdfjs=await loadPdfJs(),original=await fileBytes(byKind('large').file);
+ const task=pdfjs.getDocument({data:original,isEvalSupported:false,verbosity:0});
+ let twoPages;
+ try{twoPages=await (await task.promise).extractPages([{document:null,includePages:[0,1]}]);}finally{await task.destroy();}
+ const files=await splitInvoicePdf(new File([twoPages],'two-invoices.pdf',{type:'application/pdf'}),[1,2],{load:async()=>pdfjs});
+ for(let index=0;index<files.length;index++){
+  const part=pdfjs.getDocument({data:new Uint8Array(await files[index].arrayBuffer()),isEvalSupported:false,verbosity:0});
+  try{const document=await part.promise;assert.equal(document.numPages,1);const text=await pageText(document,1);assert.ok(text.includes(`PAGE ${String(index+1).padStart(3,'0')} OF 120`),text);}finally{await part.destroy();}
+ }
 });
