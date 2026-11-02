@@ -1,5 +1,6 @@
 import {createClient} from 'npm:@supabase/supabase-js@2.112.4';
 import {readJsonBodyBounded, JsonBodyError} from '../_shared/http-input.js';
+import {createGoogleHttp, GoogleHttpError} from '../_shared/google-http.js';
 
 const CLIENT_ID='113139579639-jo09d2gts6kujig6rcaeid3bu40ojjqm.apps.googleusercontent.com';
 const SCOPES='https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.calendarlist.readonly';
@@ -43,9 +44,23 @@ async function sha256(value:string){const bytes=new TextEncoder().encode(value);
 function appendOAuthResult(returnUrl:string,status:string,code=''){const url=new URL(returnUrl);url.searchParams.set('calendar_oauth',status);if(code)url.searchParams.set('calendar_oauth_code',code);else url.searchParams.delete('calendar_oauth_code');return url.toString()}
 function safeReturnUrl(value:unknown,origin:string){const candidate=new URL(String(value||origin||''));if(!origin||candidate.origin!==origin)throw new Error('invalid_return_url');if(candidate.protocol!=='https:'&&!['localhost','127.0.0.1'].includes(candidate.hostname))throw new Error('invalid_return_url');candidate.hash='';candidate.searchParams.delete('calendar_oauth');candidate.searchParams.delete('calendar_oauth_code');return candidate.toString()}
 async function requireUser(req:Request){const authorization=req.headers.get('Authorization')||'';const token=authorization.match(/^Bearer\s+(.+)$/i)?.[1]||'';if(!token)return null;const client=createClient(SUPABASE_URL,PUBLISHABLE_KEY,{auth:{persistSession:false,autoRefreshToken:false},global:{headers:{Authorization:`Bearer ${token}`}}});const {data,error}=await client.auth.getUser(token);if(error||!data.user?.id)return null;return data.user}
-async function googleToken(params:Record<string,string>){const body=new URLSearchParams(params);const response=await fetch(GOOGLE_TOKEN_URL,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});const data=await response.json().catch(()=>({}));if(!response.ok){const error=new Error(String(data?.error_description||data?.error||'google_token_error'));(error as Error&{code?:string}).code=String(data?.error||'google_token_error');throw error}return data}
-async function googleAccountId(accessToken:string){const response=await fetch(CALENDAR_LIST_URL,{headers:{Authorization:`Bearer ${accessToken}`}});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(String(data?.error?.message||'Google Calendar account verification failed'));const items=Array.isArray(data?.items)?data.items:[];const primary=items.find((item:any)=>item?.primary)||items.find((item:any)=>item?.accessRole==='owner')||items[0];const accountId=String(primary?.id||'').trim();if(!accountId)throw new Error('Google did not return an active calendar account');return accountId}
-async function revokeGoogleToken(token:string){if(!token)return;try{await fetch(GOOGLE_REVOKE_URL,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({token})})}catch{/* local unlink must still complete */}}
+const googleHttp=createGoogleHttp();
+async function googleToken(params:Record<string,string>){
+  return googleHttp(GOOGLE_TOKEN_URL,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(params)});
+}
+async function googleAccountId(accessToken:string){
+  const data:any=await googleHttp(CALENDAR_LIST_URL,{headers:{Authorization:`Bearer ${accessToken}`}});
+  const items=Array.isArray(data?.items)?data.items:[];const primary=items.find((item:any)=>item?.primary)||items.find((item:any)=>item?.accessRole==='owner')||items[0];const accountId=String(primary?.id||'').trim();if(!accountId)throw new Error('Google did not return an active calendar account');return accountId}
+async function revokeGoogleToken(token:string){
+  if(!token)return 'not_needed';
+  try{
+    await googleHttp(GOOGLE_REVOKE_URL,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({token})},true);
+    return 'confirmed';
+  }catch{return 'unconfirmed'; /* local unlink must still complete */}
+}
+function googleFailure(error:unknown){
+  return error instanceof GoogleHttpError?error.kind:'response';
+}
 
 async function start(req:Request,userId:string,body:any){
   if(!GOOGLE_CLIENT_SECRET)return json({code:'calendar_backend_not_configured',message:'GOOGLE_CALENDAR_CLIENT_SECRET חסר ב-Supabase Edge Function'},503);
@@ -75,7 +90,7 @@ async function token(userId:string){
   if(error)return adminError(error,'calendar_connection_read_failed');
   if(!connection?.refresh_token)return json({code:'calendar_not_connected'},404);
   try{
-    const refreshed=await googleToken({client_id:CLIENT_ID,client_secret:GOOGLE_CLIENT_SECRET,refresh_token:String(connection.refresh_token),grant_type:'refresh_token'});
+    const refreshed:any=await googleToken({client_id:CLIENT_ID,client_secret:GOOGLE_CLIENT_SECRET,refresh_token:String(connection.refresh_token),grant_type:'refresh_token'});
     const rotated=String(refreshed?.refresh_token||'').trim();
     if(rotated&&rotated!==connection.refresh_token)await admin.from('google_calendar_connections').update({refresh_token:rotated,updated_at:new Date().toISOString()}).eq('owner_id',userId);
     return json({access_token:String(refreshed.access_token||''),expires_in:Number(refreshed.expires_in||3600),account_id:String(connection.google_account_id||''),scope:String(refreshed.scope||SCOPES)});
@@ -85,17 +100,17 @@ async function token(userId:string){
       await admin.from('google_calendar_connections').delete().eq('owner_id',userId);
       return json({code:'calendar_reconnect_required',reason:'google_invalid_grant'},409);
     }
-    return json({code:'calendar_refresh_failed',message:String((error as Error)?.message||error)},502);
+    return json({code:'calendar_refresh_failed',reason:googleFailure(error)},error instanceof GoogleHttpError&&error.kind==='timeout'?504:502);
   }
 }
 
 async function disconnect(userId:string){
   const {data:connection,error:readError}=await admin.from('google_calendar_connections').select('refresh_token').eq('owner_id',userId).maybeSingle();
   if(readError)return adminError(readError,'calendar_connection_read_failed');
-  if(connection?.refresh_token)await revokeGoogleToken(String(connection.refresh_token));
+  const revocation=await revokeGoogleToken(String(connection?.refresh_token||''));
   const {error}=await admin.from('google_calendar_connections').delete().eq('owner_id',userId);
   if(error)return adminError(error,'calendar_disconnect_failed');
-  return json({ok:true});
+  return json({ok:true,revocation});
 }
 
 async function callback(url:URL){
@@ -114,7 +129,7 @@ async function callback(url:URL){
   if(!code)return Response.redirect(appendOAuthResult(returnUrl,'error','missing_code'),303);
   if(!GOOGLE_CLIENT_SECRET)return Response.redirect(appendOAuthResult(returnUrl,'error','backend_not_configured'),303);
   try{
-    const exchanged=await googleToken({code,client_id:CLIENT_ID,client_secret:GOOGLE_CLIENT_SECRET,redirect_uri:REDIRECT_URI,grant_type:'authorization_code'});
+    const exchanged:any=await googleToken({code,client_id:CLIENT_ID,client_secret:GOOGLE_CLIENT_SECRET,redirect_uri:REDIRECT_URI,grant_type:'authorization_code'});
     const refreshToken=String(exchanged?.refresh_token||'').trim(),accessToken=String(exchanged?.access_token||'').trim();
     if(!refreshToken||!accessToken)throw new Error('Google did not return the required offline credentials');
     const accountId=await googleAccountId(accessToken);
@@ -125,8 +140,8 @@ async function callback(url:URL){
     if(previous?.refresh_token&&previous.refresh_token!==refreshToken)await revokeGoogleToken(String(previous.refresh_token));
     return Response.redirect(appendOAuthResult(returnUrl,'connected'),303);
   }catch(error){
-    console.error('google calendar oauth callback',error);
-    return Response.redirect(appendOAuthResult(returnUrl,'error','exchange_failed'),303);
+    console.error('google calendar oauth callback',googleFailure(error));
+    return Response.redirect(appendOAuthResult(returnUrl,'error',error instanceof GoogleHttpError?'google_'+error.kind:'exchange_failed'),303);
   }
 }
 
