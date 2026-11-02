@@ -18,7 +18,7 @@ export function expenseFormMarkup({model,review,reporting,dateEditorMarkup}){
       <div class="morning-expense-reporting">${reporting.markup(disabled)}
       <div class="morning-expense-review-input"><label><span class="morning-expense-field-label">סוג מסמך</span><select data-expense-field="documentType" data-change="morning-expense-field" ${attrs}>${option('', 'בחר סוג מסמך', draft.documentType)}${option(305, 'חשבונית מס', draft.documentType)}${option(330, 'חשבונית זיכוי', draft.documentType)}${option(320, 'חשבונית מס קבלה', draft.documentType)}</select></label>${review.slot('documentType')}</div>
       <label>סוג דיווח<select data-expense-field="pcnClassification" data-change="morning-expense-field" ${attrs}>${option('T', 'רגיל · T', draft.pcnClassification)}${option('P', 'חשבונית P', draft.pcnClassification)}</select></label></div>
-      ${draft.pcnClassification === 'P' ? `<p class="morning-expense-notice">${catalog.capabilities.pcnP ? 'חשבונית P: הספק וסיווג P מאומתים בשמירה. המע״מ נשאר לפי מסמך המקור ומספר החשבונית מושלם לתשע ספרות.' : 'חשבונית P: המע״מ נשאר לפי מסמך המקור. קליטת P באתר טרם הופעלה לחשבון זה.'}</p>` : ''}
+      ${draft.pcnClassification === 'P' ? `<p class="morning-expense-notice">${catalog.capabilities.pcnP ? 'חשבונית P: הספק וסיווג P מאומתים בשמירה. המע״מ נשאר לפי מסמך המקור ומספר החשבונית מושלם לתשע ספרות.' : 'חשבונית P: המע״מ נשאר לפי מסמך המקור. קליטת P באתר טרם הופעלה לחשבון זה.'} לפי מדריך רשות המסים, ניכוי תשומות P נעשה בתוך 15 יום מתום תקופת הדוח של החשבונית. שמירה כאן אינה הגשת הדוח; אם המועד חלף יש לברר עם המייצג לפני הדיווח.</p>` : ''}
       <div class="morning-expense-pair morning-expense-invoice">${review.textField('number', draft, disabled)}<div class="morning-expense-date"><span>תאריך החשבונית</span><fieldset ${attrs}>
       ${dateEditorMarkup('morningExpenseDate', draft.date, {label:'תאריך החשבונית', compact:true, maxDate:today,
         change:'morning-expense-field', data:{'expense-field':'date'}})}</fieldset>${review.slot('date')}</div></div>
@@ -35,6 +35,6 @@ export function expenseFormMarkup({model,review,reporting,dateEditorMarkup}){
         ${selected&&catalog.capabilities.backgroundQueue?`<button type="button" class="btn" data-action="morning-expense-batch-mark" data-expense-approve-control="mark" ${unavailable||problem?'disabled':''}>סמן אישור ומעבר להוצאה הבאה</button>
           ${approved?'<button type="button" class="btn" data-action="morning-expense-command" data-expense-command="batch-unmark">ביטול סימון האישור</button>':''}
           ${approvedCount?`<button type="button" class="btn" data-action="morning-expense-batch-send" ${disabled||batchPaused?'disabled':''}>שמירת כל ההוצאות המאושרות (${approvedCount})</button>`:''}`:''}</div>
-      ${selected&&catalog.capabilities.backgroundQueue?`<p class="morning-expense-notice" data-expense-approval-problem role="alert" ${problem?'':'hidden'}>${esc(problem)}</p>`:''}
+      <p class="morning-expense-validation-summary" data-expense-approval-problem role="alert" ${problem?'':'hidden'}>${esc(problem)}</p>
       ${warnings}`;
 }

@@ -80,6 +80,14 @@ FLOW = r"""(async()=>{
  field('date','2026-09-20','change');check(fixture.querySelector('[data-expense-field="reportingDate"]').value==='2026-09-01','September reporting month changed');
  field('date','2026-10-20','change');check(fixture.querySelector('[data-expense-field="reportingDate"]').value==='2026-10-01','October reporting month changed');
  field('supplierId',id(2),'change');check(fixture.querySelector('[data-expense-field="classificationExpenseId"]').value===id(3),'last category missing');
+ field('number','checking');
+ check(!fixture.querySelector('[data-expense-field="number"]').hasAttribute('aria-invalid'),'valid ordinary number marked invalid');
+ field('pcnClassification','P','change');field('number','12x');
+ check(fixture.querySelector('[data-expense-field="number"]').getAttribute('aria-invalid')==='true','invalid P number is not visibly identified');
+ check(fixture.querySelector('#expense-error-number')?.textContent.includes('1–9'),'specific P number error missing');
+ check(!fixture.querySelector('[data-expense-approval-problem]').hidden,'validation explanation hidden');
+ field('pcnClassification','T','change');field('number','checking');
+ check(!fixture.querySelector('#expense-error-number'),'corrected number retains stale error');
  check(!fixture.querySelector('[data-expense-field="historyYear"]')&&!fixture.querySelector('[data-expense-command="classification-year"]'),'removed classification controls remain');
  check(fixture.querySelector('[data-expense-history]').textContent.includes('HISTORY-1'),'history did not load automatically');
  check(!fixture.querySelector('[data-expense-command="next"]'),'new intake offers a redundant reset button');

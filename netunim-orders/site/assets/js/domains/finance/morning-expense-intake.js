@@ -20,7 +20,7 @@ import {createExpenseLocalReview, applyExpenseLocalProposal} from './morning-exp
 import {createExpensePdfPreview} from './morning-expense-pdf-preview.js';
 import {createExpenseSourceSupport} from './morning-expense-source.js';
 import {completeExpenseSource} from './morning-expense-completion.js';
-import {approveExpenseDraft,approveSourceRetry,prepareExpenseApproval,expenseDraftProblem} from './morning-expense-submit.js';
+import {approveExpenseDraft,approveSourceRetry,prepareExpenseApproval,expenseDraftProblem,expenseDraftIssues} from './morning-expense-submit.js';
 import {createExpenseBatch} from './morning-expense-batch.js';
 import {executeExpenseJob} from './morning-expense-job.js';
 import {createExpenseProgress} from './morning-expense-progress.js';
@@ -246,9 +246,9 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
   const sanityMessage = () => expenseSanityMessage(draft, vatRate());
   function updateSanity(){
     const target=host()?.querySelector('[data-expense-sanity]');if(target){const text=sanityMessage();target.textContent=text;target.hidden=!text;}
-    if(!catalog?.capabilities.backgroundQueue||!selected)return;
     const problem=expenseDraftProblem({draft,classification:sourceExpenses().find(row=>row.id===draft.classificationExpenseId)?.classification,today:todayISO(),capabilities:catalog.capabilities});
     const warning=host()?.querySelector('[data-expense-approval-problem]');if(warning){warning.textContent=problem;warning.hidden=!problem;}
+    if(!catalog?.capabilities.backgroundQueue||!selected)return;
     const eligibility=eligibilityFor(catalog.suppliers.find(row=>row.id===draft.supplierId));
     const disabled=busy||!!operationId||environmentChanged||ocr.active()||local.blocked()||!catalog.capabilities.create||!catalog.capabilities.upload||!eligibility.eligible||draft.pcnClassification==='P'&&(!catalog.capabilities.pcnP||!eligibility.p);
     for(const button of host()?.querySelectorAll('[data-expense-approve-control]')||[])button.disabled=disabled||!!problem||button.dataset.expenseApproveControl==='save'&&batch.paused();
@@ -606,6 +606,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
   }
   const review = createExpenseFieldReview({host, visible:() => !!selected || !!local.snapshot().proposal,
     reviewFields:() => local.fieldReview(draft, catalog?.suppliers.find(row => row.id === draft.supplierId)?.taxId),
+    validationIssues:() => catalog ? expenseDraftIssues({draft,classification:sourceExpenses().find(row=>row.id===draft.classificationExpenseId)?.classification,today:todayISO(),capabilities:catalog.capabilities}) : [],
     warningsMarkup:() => local.warningsMarkup(catalog?.suppliers.find(row => row.id === draft.supplierId)?.taxId, draft)});
   function markup() {
     const disabled = busy || !!operationId || environmentChanged;

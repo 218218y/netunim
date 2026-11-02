@@ -78,6 +78,30 @@ test('required allocation presence is enforced by the server before reservation 
  body.expense.allocationNumber='123456789';assert.equal((await f.writer.handle(user,body)).body.verified,true);assert.equal(f.posts.length,1);
 });
 
+test('field issues identify P numbers, date/period conflicts and expired input tax before any dispatch',async()=>{
+ for(const [patch,code,fields] of [
+  [{pcnClassification:'P',number:'12x'},'invalid_expense_p_number',['number']],
+  [{date:'2026-11-01'},'invalid_expense_input',['date']],
+  [{date:'2026-10-20',reportingDate:'2026-08-01'},'invalid_expense_reporting_period',['date','reportingPeriod']],
+  [{date:'2026-04-25'},'invalid_expense_input_tax_expired',['date']],
+  [{pcnClassification:'P',date:'2026-08-20'},'invalid_expense_p_reporting_period',['date','reportingPeriod']],
+ ]){
+  const f=fixture({pcnP:true,pSuppliers:pProfiles}),body=input();Object.assign(body.expense,patch);
+  const result=await f.writer.handle(user,body);
+  assert.equal(result.status,400);assert.equal(result.body.code,code);
+  assert.deepEqual(result.body.issues[0].fields,fields);assert.ok(result.body.message.length>15);
+  assert.equal(f.posts.length,0);assert.equal(f.rows.size,0);
+ }
+});
+
+test('six calendar months include the boundary day and do not prohibit zero-VAT expense records',()=>{
+ const body=input();body.expense.date='2026-04-26';
+ assert.equal(normalizeExpenseInput(body,'2026-10-26').date,'2026-04-26');
+ assert.throws(()=>normalizeExpenseInput(body,'2026-10-27'),/input_tax_expired/);
+ Object.assign(body.expense,{vat:'0',gross:'1000.00'});
+ assert.equal(normalizeExpenseInput(body,'2026-10-27').vatCents,0);
+});
+
 test('invoice receipt expenses retain type 320 through durable creation, readback and replay', async () => {
   const f=fixture(),body=input();body.expense.documentType=320;
   const result=await f.writer.handle(user,body);
