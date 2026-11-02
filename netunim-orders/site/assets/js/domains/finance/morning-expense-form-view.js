@@ -4,7 +4,7 @@ import {expenseDraftProblem} from './morning-expense-submit.js';
 export function expenseFormMarkup({model,review,reporting,dateEditorMarkup}){
   const {disabled,draft,supplier,eligibility,catalog,favorites,expenses,today,selected,ocrActive,localBlocked,sanity,rate,warnings,approvedCount,batchPaused,approved,supplierMarkup}=model;
   const attrs=disabled?'disabled':'';
-  const problem=expenseDraftProblem({draft,classification:expenses.find(row=>row.id===draft.classificationExpenseId)?.classification,today,capabilities:catalog.capabilities});
+  const problem=expenseDraftProblem({draft,eligibility,classification:expenses.find(row=>row.id===draft.classificationExpenseId)?.classification,today,capabilities:catalog.capabilities});
   const unavailable=disabled||ocrActive||localBlocked||!catalog.capabilities.create||selected&&!catalog.capabilities.upload||!eligibility.eligible||draft.pcnClassification==='P'&&(!catalog.capabilities.pcnP||!eligibility.p);
     const option = (value, label, current, unavailable = false) => `<option value="${esc(value)}" ${String(current) === String(value) ? 'selected' : ''} ${unavailable ? 'disabled' : ''}>${esc(label)}</option>`;
   return `

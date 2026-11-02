@@ -243,10 +243,33 @@ CATEGORY = CATEGORY_PREFIX + r"""
  return {categoryReads,posts,uploads,manualPreserved:true};
 })()"""
 
+MULTI = PREFIX.replace(' let uiFeature=createMorningExpenseIntake(ports);', r"""
+ let splitCalls=0,splitMode='ok';
+ const plan={blocked:true,canSplit:true,count:2,pages:[{page:1,number:'10001',documentType:305},{page:2,number:'10002',documentType:305}]};
+ ports.files.extract=async(file,{check})=>{check();return {pages:[{}],part:file.name.match(/part-(\d)/)?.[1]||''}};
+ ports.files.recognize=async extraction=>extraction.part?{...structuredClone(recognized),documents:{blocked:false},fields:{...structuredClone(recognized.fields),invoiceNumber:suggestion('1000'+extraction.part,{rawNumber:'1000'+extraction.part,suggestedNumber:'1000'+extraction.part})}}:{...structuredClone(recognized),documents:plan,outcome:'multiple_invoices'};
+ ports.files.split=async()=>{splitCalls++;if(splitMode==='fail')throw Error('split failed; original retained');return [1,2].map(n=>new File(['%PDF-1.4 unique part '+n],'part-'+n+'.pdf',{type:'application/pdf'}))};
+ let uiFeature=createMorningExpenseIntake(ports);
+""") + r"""
+ const settle=()=>uiFeature.runtime.drain();click('toggle');await settle();
+ await uiFeature.actions['morning-expense-files']({files:[new File(['%PDF-1.4 combined'],'combined.pdf',{type:'application/pdf'})]});await settle();
+ check(fixture.textContent.includes('השמירה כחשבונית אחת חסומה'),'multiple invoice explanation missing');
+ check(fixture.querySelector('[data-action="morning-expense-save"]').disabled,'combined PDF can be saved');
+ click('save');click('ocr-start');await settle();check(posts===0&&uploads===0,'combined PDF escaped through ordinary save or OCR');
+ confirmWait=Promise.resolve(false);click('split-invoices');await settle();check(splitCalls===0&&fixture.textContent.includes('combined.pdf'),'cancellation removed original');confirmWait=null;
+ splitMode='fail';click('split-invoices');await settle();check(splitCalls===1&&fixture.textContent.includes('combined.pdf'),'failed split removed original');
+ splitMode='ok';click('split-invoices');await settle();
+ check(splitCalls===2&&fixture.querySelectorAll('.morning-expense-queue li').length===2,'split did not replace the original with both parts');
+ check(fixture.querySelector('[data-expense-field="number"]').value==='10001','first split invoice was not independently recognized');
+ check(!fixture.textContent.includes('combined.pdf')&&posts===0&&uploads===0,'split uploaded or kept the combined source');
+ uiFeature.runtime.dispose();await settle();return {splitCalls,parts:2,posts,uploads};
+})()"""
+
 if __name__ == '__main__':
     with BrowserSession(ROOT/'netunim-orders/site', 'morning-expense-local') as browser:
         for width in [1440, 390]:
             browser.call('Emulation.setDeviceMetricsOverride', {'width':width,'height':1100,'deviceScaleFactor':1,'mobile':width<800})
+            print('PASS multi-invoice guard, cancellation, atomic split and independent recognition:',browser.evaluate(MULTI,timeout=45),flush=True)
             result = browser.evaluate(SCENARIO, timeout=45)
             assert result['posts'] == 1 and result['uploads'] == 2, result
             print('PASS local invoice review, canonical fields, exact VAT, duplicate protection and OCR separation:', result, flush=True)

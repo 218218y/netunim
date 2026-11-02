@@ -26,6 +26,7 @@ export function createExpenseSourceSupport({files,request,capture,run,capabiliti
         catch{current();}
       }
     }
+    if(found?.proposal?.documents?.blocked)throw Error('מסמך המקור כולל כמה חשבוניות. יש לפצל ולצרף כל חשבונית להוצאה המתאימה; לא ניתן לאשר את הקובץ כמקור לחשבונית אחת.');
     const fields=expenseSourceFields(found?.proposal),comparison=compareExpenseSource(fields,expected);
     const detail=`מספר ${expected.number}, תאריך ${expected.date}, עוסק ${expected.supplierTaxId}, סה״כ ${(expected.grossCents/100).toFixed(2)} ₪ ומע״מ ${(expected.vatCents/100).toFixed(2)} ₪`;
     let mode='extracted',reason='',notice='';

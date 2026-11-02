@@ -3,10 +3,21 @@ import {test} from 'node:test';
 import {normalizeExpenseSource,expenseSourceExpected,compareExpenseSource,normalizeExpenseSourceReview} from '../netunim-orders/site/assets/js/core/morning-expense-source.js';
 import {expenseNumberPolicy,findExpenseDuplicate} from '../netunim-orders/supabase/functions/morning-expenses/duplicates.js';
 import {inspectExpenseSource} from '../netunim-orders/supabase/functions/morning-expenses/source.js';
+import {createExpenseSourceSupport} from '../netunim-orders/site/assets/js/domains/finance/morning-expense-source.js';
 const id=n=>`aaaaaaaa-aaaa-4aaa-aaaa-${String(n).padStart(12,'0')}`;
 const payload={documentType:305,number:'00123',date:'2026-10-20',reportingDate:'2026-10-01',currency:'ILS',amount:118,vat:18,pcnClassification:'T',supplier:{taxId:'123456789'}};
 const hash=async tax=>Buffer.from(await crypto.subtle.digest('SHA-256',new TextEncoder().encode('supplier-tax:'+tax))).toString('hex');
 const record=patch=>({...payload,id:id(1),status:10,...patch});
+
+test('source approval cannot override a recognized multi-invoice PDF through manual confirmation',async()=>{
+ const file=new File(['%PDF-1.4 multi invoice'],'combined.pdf',{type:'application/pdf'});
+ const sha256=Buffer.from(await crypto.subtle.digest('SHA-256',await file.arrayBuffer())).toString('hex');
+ let dialogs=0;
+ const selected={file,type:'application/pdf'};
+ const guarded=createExpenseSourceSupport({files:{},capabilities:()=>({sourceIntent:true}),selected:()=>selected,
+  proposal:()=>({hash:sha256,proposal:{documents:{blocked:true}}}),confirmDialog:async()=>{dialogs++;return true;}});
+ await assert.rejects(guarded.prepare(expenseSourceExpected(payload),()=>{}),/כמה חשבוניות/);assert.equal(dialogs,0);
+});
 test('source metadata is bounded, exact and contains no file name or contents',()=>{
  const valid={sha256:'a'.repeat(64),size:100,contentType:'application/pdf'};
  assert.deepEqual(normalizeExpenseSource({...valid,name:'private.pdf'}),valid);
