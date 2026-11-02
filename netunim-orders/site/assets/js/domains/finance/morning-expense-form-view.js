@@ -38,3 +38,12 @@ export function expenseFormMarkup({model,review,reporting,dateEditorMarkup}){
       <p class="morning-expense-validation-summary" data-expense-approval-problem role="alert" ${problem?'':'hidden'}>${esc(problem)}</p>
       ${warnings}`;
 }
+
+export function expenseEnvironmentNotice(caps) {
+    if (!caps) return 'סביבת Morning, הספקים והסיווגים נטענים אוטומטית בפתיחת המסך.';
+    let notice;
+    if (caps.environment === 'production') notice = caps.create ?
+      '' : 'חשבון Morning האמיתי · יצירת הוצאות כבויה או אינה מורשית למשתמש זה.';
+    else notice = caps.create ? 'סביבת בדיקות Sandbox · יש לבדוק כל פרט מול מסמך המקור.' : 'סביבת Sandbox · שמירה דורשת הרשאה ושתי זהויות ספקי P שאומתו מול Morning.';
+    return notice + (caps.create && !caps.upload ? ' צירוף קבצים עדיין כבוי.' : '');
+  }
