@@ -20,6 +20,11 @@ export function createDocumentOperations({registry,preview,pdf,native,search,pla
   function normalizePreviewGeometry(value){
     const source=value&&typeof value==='object'?value:{};
     const integer=(name,fallback,min,max)=>Math.max(min,Math.min(max,Math.round(Number(source[name])||fallback)));
+    if(source.coordinateSpace==='viewport'){
+      const keys=['x','y','width','height','viewportWidth','viewportHeight'];
+      if(keys.some(key=>!Number.isSafeInteger(source[key]))||source.x<0||source.y<0||source.width<1||source.height<1||source.viewportWidth<1||source.viewportHeight<1||source.viewportWidth>20000||source.viewportHeight>20000||source.x+source.width>source.viewportWidth+2||source.y+source.height>source.viewportHeight+2)throw Error('Invalid native preview viewport geometry.');
+      return {coordinateSpace:'viewport',...Object.fromEntries(keys.map(key=>[key,source[key]]))};
+    }
     return {
       x:integer('x',0,-20000,20000),
       y:integer('y',0,-20000,20000),
@@ -33,14 +38,14 @@ export function createDocumentOperations({registry,preview,pdf,native,search,pla
     const extension=documentExtension(row.fullPath),officeKind=officePreviewKind(extension);
     if(!officeKind){const e=new Error('תצוגת Windows המקורית מופעלת כרגע למסמכי Office בלבד.');e.code='NATIVE_PREVIEW_UNSUPPORTED';throw e}
     const box=normalizePreviewGeometry(geometry),encoded=Buffer.from(row.fullPath,'utf8').toString('base64');
-    const response=await nativePreviewCommand('OPEN',[encoded,box.x,box.y,box.width,box.height],9000);
+    const response=await nativePreviewCommand(box.coordinateSpace==='viewport'?'OPEN_VIEWPORT':'OPEN',[encoded,box.x,box.y,box.width,box.height,...(box.coordinateSpace==='viewport'?[box.viewportWidth,box.viewportHeight]:[])],9000);
     await appendLog(`NATIVE_PREVIEW_OPEN kind=${officeKind} geometry=${box.x},${box.y},${box.width}x${box.height} handler=${JSON.stringify(response)} path=${JSON.stringify(row.fullPath)}`);
     return {ok:true,kind:'native',officeKind};
   }
   async function moveNativePreview(geometry){
     const box=normalizePreviewGeometry(geometry);
     if(!nativePreviewSession.isRunning())return {ok:true,visible:false};
-    await nativePreviewCommand('MOVE',[box.x,box.y,box.width,box.height],2500);
+    await nativePreviewCommand(box.coordinateSpace==='viewport'?'MOVE_VIEWPORT':'MOVE',[box.x,box.y,box.width,box.height,...(box.coordinateSpace==='viewport'?[box.viewportWidth,box.viewportHeight]:[])],2500);
     return {ok:true,visible:true}
   }
   async function hideNativePreview(){if(!nativePreviewSession.isRunning())return {ok:true};try{await nativePreviewCommand('HIDE',[],2500)}catch{}return {ok:true}}

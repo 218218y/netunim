@@ -73,10 +73,10 @@ export function createExpenseLocalReview({files, request, capabilities, capture,
         if (!autoFill || Object.keys(edits).length) message='טיוטת העבודה נשמרה. נתוני הזיהוי זמינים להשוואה או למילוי יזום.';
         else if (version === editVersion()) await fill(false, version);
         else message = 'הזיהוי הסתיים בזמן שעריכת הטופס נמשכה. ההצעות זמינות למילוי יזום בלי לדרוס תיקונים.';
-      } catch (error) {if (!signal.aborted && epoch === revision) {outcome = 'extraction_error'; message = ({PasswordException:'ה־PDF מוגן בסיסמה. יש לבחור עותק פתוח או להשלים ידנית.',
+      } catch (error) {if (!signal.aborted && epoch === revision) {outcome = sourceConflict?'ocr_conflict':'extraction_error'; message = ({PasswordException:'ה־PDF מוגן בסיסמה. יש לבחור עותק פתוח או להשלים ידנית.',
         InvalidPDFException:'ה־PDF אינו תקין. יש לבחור עותק תקין או להשלים ידנית.', TimeoutError:'הזיהוי המקומי הגיע למגבלת הזמן. אפשר לנסות שוב או להשלים ידנית.'})[error.name] ||
         (sourceConflict ? error.message : outcomeMessages.extraction_error);}}
-      finally {if (epoch === revision) {pending = false; render(); if (autoFill && version === editVersion() && !Object.keys(edits).length) onReady({outcome});}}
+      finally {if (epoch === revision) {pending = false; render();onReady({outcome,focus:autoFill && version === editVersion() && !Object.keys(edits).length});}}
     });
   }
   async function preflight(snapshot, supplier, check) {
@@ -116,7 +116,7 @@ export function createExpenseLocalReview({files, request, capabilities, capture,
       }
     }
     if (!proposal) return values;
-    if(!proposal.profile)values.push('הספק או התבנית לא זוהו. יש להשלים לפי המקור.');
+    if(!proposal.profile && outcome !== 'unknown_supplier' && outcome !== 'multiple_invoices')values.push('הספק או התבנית לא זוהו. יש להשלים לפי המקור.');
     const number=proposal.fields?.invoiceNumber;
     if(number?.rawNumber&&number.rawNumber!==number.suggestedNumber)values.push(`מספר במקור: ${number.rawNumber} · הצעה לשמירה: ${number.suggestedNumber}. הספרות המובילות נשמרו.`);
     if(!draft && proposal.allocationPolicy?.status==='check_business_conditions')values.push(proposal.fields.allocationNumber?.value?
@@ -133,11 +133,11 @@ export function createExpenseLocalReview({files, request, capabilities, capture,
     if (selected()?.type?.startsWith('image/')) return '<p class="morning-expense-notice" role="status">המסמך מוצג לעיון. אין זיהוי טקסט מקומי לקובצי JPG או PNG בתצורה הנוכחית; יש להשלים את הפרטים ידנית.</p>';
     if (!available() || !canStart() || ocrActive()) return '';
     return `<section class="morning-expense-local-summary" data-expense-local data-recognition-outcome="${esc(outcome)}" aria-label="תוצאות הזיהוי המקומי">
-      <p role="status" aria-live="polite">${esc(message)}</p>
+      <p role="status" aria-live="polite" ${proposal?.documents?.blocked?'hidden':''}>${esc(message)}</p>
       ${proposal?.documents?.blocked ? `<aside class="morning-expense-validation-summary" role="alert"><strong>${outcomeMessages.multiple_invoices}</strong>
         <ul>${proposal.documents.pages.filter(row=>row.number).map(row=>`<li>עמוד ${row.page}: חשבונית ${esc(row.number)}</li>`).join('')}</ul>
         ${proposal.documents.canSplit && files.split ? '<button type="button" class="btn" data-action="morning-expense-command" data-expense-command="split-invoices">בדיקה ופיצול לחשבוניות נפרדות</button>' : '<p>לא ניתן לקבוע חלוקה בטוחה לכל העמודים. יש לפצל ידנית ולצרף את החשבוניות בנפרד.</p>'}</aside>` : ''}
-      ${proposal && outcome === 'unknown_supplier' ? '<p>הספק או תבנית המסמך לא זוהו. יש להשלים ידנית לפי המקור.</p>' : ''}
+
         <div class="morning-expense-toolbar">
           <button type="button" class="btn" data-action="morning-expense-command" data-expense-command="local-start" ${pending ? 'disabled' : ''}>זיהוי מחדש</button>
           ${useful() ? `<button type="button" class="btn" data-action="morning-expense-command" data-expense-command="local-fill" ${pending ? 'disabled' : ''}>מילוי ההצעות מחדש</button>` : ''}

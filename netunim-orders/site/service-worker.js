@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-8859163199b2';
+const CACHE='orders-app-shell-esm-1e628f32fa2d';
 const SHELL=[
   './',
   './index.html',
@@ -184,6 +184,7 @@ const SHELL=[
   './assets/js/domains/finance/morning-expense-recent-cache.js',
   './assets/js/domains/finance/morning-expense-recent-model.js',
   './assets/js/domains/finance/morning-expense-recent.js',
+  './assets/js/domains/finance/morning-expense-recognition-notice.js',
   './assets/js/domains/finance/morning-expense-recovery.js',
   './assets/js/domains/finance/morning-expense-reporting.js',
   './assets/js/domains/finance/morning-expense-review-view.js',
@@ -194,6 +195,7 @@ const SHELL=[
   './assets/js/domains/finance/morning-expense-supplier-picker.js',
   './assets/js/domains/finance/morning-expense-table.js',
   './assets/js/domains/finance/morning-expense-validation-view.js',
+  './assets/js/domains/finance/morning-expense-vat-summary.js',
   './assets/js/domains/finance/morning-report-analysis-view.js',
   './assets/js/domains/finance/morning-report-analysis.js',
   './assets/js/domains/finance/morning-report-cache.js',
@@ -347,6 +349,7 @@ const SHELL=[
   './assets/js/shared/local-site-reset-page.js',
   './assets/js/shared/local-site-reset.js',
   './assets/js/shared/main-sync-browser.js',
+  './assets/js/shared/native-preview-geometry.js',
   './assets/js/shared/notes-sheet-model.js',
   './assets/js/shared/notes-workbook-merge.js',
   './assets/js/shared/notes-workbook.css',
