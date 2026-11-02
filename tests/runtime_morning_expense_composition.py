@@ -168,11 +168,12 @@ FLOW = r"""(async()=>{
  return {actualLazyComposition:true,actualAuthObservation:true,actualStorageGuards:true,posts,accountIsolated:true,retainedJournals:true,width:innerWidth};
 })()"""
 
-P_FLOW = FLOW[:FLOW.index(" const period=")].replace('pcnP:false', 'pcnP:true').replace(
+P_FLOW = FLOW[:FLOW.index(" const period=")].replace('pcnP:false', 'pcnP:true').replace("title:'קניות סחורה בארץ'", "title:'אוטונומיה-רכישת סחורה'").replace(
     "check(request.expense.allocationNumber==='123456789','allocation number lost');check(request.expense.vat==='18.00','manual VAT changed');",
     "check(request.expense.number==='000012345','P number not canonical');check(request.expense.vat==='150.00','manual P VAT changed');check(request.expense.pcnClassification==='P'&&request.expense.supplierId===pSupplier.id,'P identity lost');"
 ) + r"""
- field('supplierId',pSupplier.id,'change');field('classificationExpenseId',expense.id,'change');
+ field('supplierId',pSupplier.id,'change');
+ check(document.querySelector('[data-expense-field="classificationExpenseId"]').value===expense.id,'verified P autonomy category was not selected automatically');
  field('number','12345');field('documentType','330','change');field('gross','1160.00');
  check(document.querySelector('[data-expense-field="net"]').value==='1000.00'&&document.querySelector('[data-expense-field="vat"]').value==='160.00','enabled P VAT suggestion failed');
  field('vat','150.00');
