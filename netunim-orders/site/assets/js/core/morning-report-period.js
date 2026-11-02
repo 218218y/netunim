@@ -15,6 +15,18 @@ export function expenseBimonth(date) {
   const monthName = value => new Intl.DateTimeFormat('he-IL', {month:'long', timeZone:'UTC'}).format(new Date(value + '-01'));
   return {...range, key:first, label:`${monthName(first)}–${monthName(second)} ${year}`, months:[first + '-01', second + '-01']};
 }
+// Display default only: switch reporting bimonths on the 15th of odd months.
+// Keep invoice intake preferences and the history's browsing range independent.
+export function expenseVatSummaryPeriod(today, year = '') {
+  if (!validReportDate(today)) throw new Error('invalid_expense_reporting_period');
+  const date = new Date(today + 'T00:00:00Z');
+  date.setUTCDate(date.getUTCDate() - 14);
+  const current = expenseBimonth(date.toISOString().slice(0, 10)).key;
+  if (!year) return current;
+  if (!/^\d{4}$/.test(year) || year < '2000' || year > today.slice(0, 4)) throw new Error('invalid_expense_reporting_period');
+  const selected = year + current.slice(4);
+  return selected + '-01' <= today ? selected : expenseBimonth(today).key;
+}
 export function expenseReportingChoice(date, key, today) {
   if (!/^\d{4}-(?:01|03|05|07|09|11)$/.test(key)) throw new Error('invalid_expense_reporting_period');
   const period = expenseBimonth(key + '-01');

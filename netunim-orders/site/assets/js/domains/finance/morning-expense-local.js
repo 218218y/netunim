@@ -144,7 +144,6 @@ export function createExpenseLocalReview({files, request, capabilities, capture,
         </div>
       ${ocrOperation ? `<button type="button" class="btn" data-action="morning-expense-command" data-expense-command="ocr-resume"
         data-ocr-operation="${esc(ocrOperation)}">בירור סריקת Morning הקיימת</button>` : ''}
-      <button type="button" class="btn" data-action="morning-expense-command" data-expense-command="local-defer" ${pending ? 'disabled' : ''}>הסרה מהתור ללא שמירה</button>
     </section>`;
   }
   return {start, fill:() => fill(true), reset, markup, preflight, blocked, available,warnings,warningsMarkup,

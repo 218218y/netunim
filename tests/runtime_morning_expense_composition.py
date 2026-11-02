@@ -85,6 +85,8 @@ FLOW = r"""(async()=>{
  await wait(()=>document.querySelector('[data-expense-field="supplierId"]'));await finance.runtime.drain();
  check(ui.kupaSubView==='expenses'&&!document.querySelector('[data-morning-reports]')&&!document.querySelector('[data-action="tax-open"]'),'expense page still contains unrelated sections');
  check(document.querySelector('[data-expense-history]').textContent.includes('HISTORY-1'),'real composition omitted automatic history');
+ check(document.querySelector('[data-expense-vat-summary]').textContent.includes('13.50')&&document.querySelector('[data-expense-vat-summary]').textContent.includes('ספטמבר–אוקטובר 2026'),'default VAT summary missing on opening');
+ check(calls.filter(request=>request.action==='report_page').every(request=>request.fromDate==='2026-09-01'&&request.toDate==='2026-10-31'),'default VAT used a different reporting range');
  check(calls.every(request=>request.action!=='expenses'||request.fromDate),'opening the intake scanned the entire account');
  check(document.querySelector('[data-expense-recent]').textContent.includes('HISTORY-1')&&!document.querySelector('[data-expense-recent]').textContent.includes('MORNING-EXTERNAL'),'real composition omitted automatic site-only history');
  click('recent-refresh');await finance.runtime.drain();
@@ -212,6 +214,13 @@ LAYOUT_ASSERTIONS = r"""(async()=>{
  const filters=heading.querySelector('.morning-expense-history-filters');
  check(filters&&heading.contains(filters.querySelector('[data-expense-history-filter="year"]')),'history filters are detached from the heading');
  for(const select of filters.querySelectorAll('select'))check(bounds(select).width<=220,'history filter is too wide');
+ const refresh=filters.querySelector('[data-expense-command="history-refresh"]'),controls=[...filters.querySelectorAll('select'),refresh];
+ check(refresh,'refresh is detached from the filter row');
+ for(const control of controls){inside(control,filters,'history filter clipped');check(Math.abs(bounds(control).height-bounds(refresh).height)<1,'refresh and filters have different heights');}
+ if(innerWidth>=801)for(const control of controls)check(Math.abs(bounds(control).bottom-bounds(refresh).bottom)<1,'refresh and filters are not bottom-aligned');
+ const search=document.querySelector('.morning-expense-history-search'),query=search.querySelector('input[type="search"]');
+ check(query.getAttribute('aria-label')==='חיפוש הוצאה'&&!search.querySelector('label'),'search caption remains or accessible name was lost');
+ check(!document.querySelector('[data-expense-history]').textContent.includes('בכל תקופה תאריך החשבונית מהחדש לישן'),'redundant history description remains');
  const titleRow=document.querySelector('.morning-expense-history-title');
  inside(titleRow.querySelector('h2'),titleRow,'history title clipped');inside(titleRow.querySelector('[data-expense-vat-summary]'),titleRow,'VAT summary clipped');
  if(innerWidth>=1024){const title=bounds(titleRow.querySelector('h2')),summary=bounds(titleRow.querySelector('[data-expense-vat-summary]'));check(summary.right<=title.left&&Math.abs((title.top+title.bottom-summary.top-summary.bottom)/2)<3,'VAT summary is not at the left end of the title row');}
