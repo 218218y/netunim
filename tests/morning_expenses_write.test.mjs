@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {createExpenseWriter} from '../netunim-orders/supabase/functions/morning-expenses/writer.js';
 import {normalizeExpenseInput, expenseCents} from '../netunim-orders/supabase/functions/morning-expenses/input.js';
+import {expenseDraftIssues} from '../netunim-orders/site/assets/js/domains/finance/morning-expense-submit.js';
 
 const id = n => `aaaaaaaa-aaaa-4aaa-aaaa-${String(n).padStart(12, '0')}`;
 const user = {id:id(1), app_metadata:{morning_expenses_write:true}};
@@ -9,7 +10,7 @@ const input = (operation = 2) => ({action:'create', operationId:id(operation), e
   documentType:305, number:'00123', date:'2026-10-20', reportingDate:'2026-10-01', net:'1000.00', vat:'160.00', gross:'1160.00',
   pcnClassification:'T', description:'Test'}});
 const profiles = [{id:id(20), taxId:'123456780'}, {id:id(21), taxId:'123456781'}];
-function fixture({environment = 'sandbox', enabled = true, mode = '', pSuppliers = () => profiles, productionUserId = '', pcnP = false} = {}) {
+function fixture({environment = 'sandbox', enabled = true, mode = '', pSuppliers = () => profiles, productionUserId = '', pcnP = false, today = '2026-10-26'} = {}) {
   const rows = new Map(), posts = [];
   const ledger = {
     get:async (owner, operation) => {const row = rows.get(operation); return row?.owner_id === owner ? structuredClone(row) : null;},
@@ -57,7 +58,7 @@ function fixture({environment = 'sandbox', enabled = true, mode = '', pSuppliers
   };
   const canonicalExpense = () => ({id:id(6), documentType:305, number:'00123', date:'2026-10-20', reportingDate:'2026-10-01',
     currency:'ILS', amount:1160, vat:160, status:10, supplier:{id:id(3), taxId:'123456789'}, accountingClassification:{id:id(5)}, data:{pcnClassification:'T'}});
-  const options = {environment, enabled, pcnP, request, ledger, pSuppliers, productionUserId, today:() => '2026-10-26'};
+  const options = {environment, enabled, pcnP, request, ledger, pSuppliers, productionUserId, today:() => today};
   const writer = createExpenseWriter(options);
   return {writer, rows, posts, options, setMode:value => {mode = value;}};
 }
@@ -84,7 +85,8 @@ test('field issues identify P numbers, date/period conflicts and expired input t
   [{date:'2026-11-01'},'invalid_expense_input',['date']],
   [{date:'2026-10-20',reportingDate:'2026-08-01'},'invalid_expense_reporting_period',['date','reportingPeriod']],
   [{date:'2026-04-25'},'invalid_expense_input_tax_expired',['date']],
-  [{pcnClassification:'P',date:'2026-08-20'},'invalid_expense_p_reporting_period',['date','reportingPeriod']],
+  [{pcnClassification:'P',date:'2026-04-25'},'invalid_expense_input_tax_expired',['date']],
+  [{pcnClassification:'P',date:'2026-10-20',reportingDate:'2026-08-01'},'invalid_expense_reporting_period',['date','reportingPeriod']],
  ]){
   const f=fixture({pcnP:true,pSuppliers:pProfiles}),body=input();Object.assign(body.expense,patch);
   const result=await f.writer.handle(user,body);
@@ -111,6 +113,34 @@ test('invoice receipt expenses retain type 320 through durable creation, readbac
 });
 
 const pProfiles=()=>[{id:id(3),taxId:'123456789'},profiles[1]];
+for(const documentType of [305,320])test(`late P type ${documentType} keeps the July source date and September-October reporting period through create and replay`,async()=>{
+ const f=fixture({pcnP:true,pSuppliers:pProfiles,today:'2026-11-02'}),body=input();
+ Object.assign(body.expense,{pcnClassification:'P',documentType,number:'24317',date:'2026-07-21',reportingPeriod:'2026-09'});
+ assert.deepEqual(expenseDraftIssues({draft:body.expense,classification:{id:id(5)},today:'2026-11-02',capabilities:{pcnP:true},eligibility:{eligible:true,p:true}}),[]);
+ const result=await f.writer.handle(user,body);
+ assert.equal(result.body.verified,true);assert.equal(f.posts.length,1);
+ assert.equal(f.posts[0].date,'2026-07-21');assert.equal(f.posts[0].reportingDate,'2026-10-01');
+ assert.equal(f.posts[0].pcnClassification,'P');assert.equal(f.posts[0].number,'000024317');
+ assert.equal(result.body.intent.date,'2026-07-21');assert.equal(result.body.intent.reportingDate,'2026-10-01');
+ assert.equal((await f.writer.handle(user,body)).body.verified,true);assert.equal(f.posts.length,1);
+ const duplicate=structuredClone(body);duplicate.operationId=id(8);duplicate.expense.reportingDate='2026-11-01';duplicate.expense.reportingPeriod='2026-11';
+ assert.equal((await f.writer.handle(user,duplicate)).status,409,'changing the reporting period must not permit a second copy');
+ assert.equal(f.posts.length,1);
+});
+
+test('P late reporting crosses years but its six-month limit uses the actual day, not the selected period',async()=>{
+ const body=input();Object.assign(body.expense,{pcnClassification:'P',date:'2026-07-21',reportingPeriod:'2027-01',reportingDate:'2027-01-01'});
+ const before=fixture({pcnP:true,pSuppliers:pProfiles,today:'2027-01-21'});
+ assert.equal((await before.writer.handle(user,body)).body.verified,true);
+ assert.equal(before.posts[0].date,'2026-07-21');assert.equal(before.posts[0].reportingDate,'2027-01-01');
+ const after=fixture({pcnP:true,pSuppliers:pProfiles,today:'2027-01-22'});
+ body.expense.reportingPeriod='2026-09';body.expense.reportingDate='2026-10-01';
+ const result=await after.writer.handle(user,body);
+ assert.equal(result.body.code,'invalid_expense_input_tax_expired');assert.deepEqual(result.body.issues[0].fields,['date']);
+ assert.equal(after.posts.length,0);assert.equal(after.rows.size,0);
+ assert.equal(expenseDraftIssues({draft:body.expense,classification:{id:id(5)},today:'2027-01-22',capabilities:{pcnP:true},eligibility:{eligible:true,p:true}})[0].code,'invalid_expense_input_tax_expired');
+});
+
 for(const documentType of [305,330,320])test(`verified P type ${documentType} retains explicit VAT, nine-digit identity and idempotent replay`,async()=>{
   const f=fixture({pcnP:true,pSuppliers:pProfiles}),body=input();body.expense={...body.expense,pcnClassification:'P',documentType};
   const result=await f.writer.handle(user,body);

@@ -1,4 +1,4 @@
-import {validReportDate, validateExpenseReporting, expenseBimonth} from './morning-report-period.js';
+import {validReportDate, validateExpenseReporting} from './morning-report-period.js';
 import {allocationPolicy} from './invoice-allocation.js';
 
 const uuid = value => typeof value === 'string' && /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i.test(value);
@@ -34,9 +34,10 @@ export function expenseInputIssues(input, today, {allowP = false, cents} = {}) {
   if (typeof (input.allocationNumber ?? '') !== 'string' || !/^(?:\d{9})?$/.test(input.allocationNumber ?? '')) add(['allocationNumber'], 'invalid_expense_input', 'מספר הקצאה חייב להכיל תשע ספרות, או להישאר ריק כשאינו נדרש.');
   else if (/^0{9}$/.test(input.allocationNumber || '') || !input.allocationNumber && net !== null && vat !== null && allocationPolicy({date:input.date,documentType:input.documentType,netCents:net,vatCents:vat,pcnClassification:input.pcnClassification}).status === 'check_business_conditions') add(['allocationNumber'], 'expense_allocation_required', 'יש להשלים מספר הקצאה תקין ממסמך המקור.');
   if (vat > 0 && [305,320].includes(input.documentType) && validReportDate(input.date)) {
+    // VAT Law 38(c)(1) also allows P input tax within six months of issue.
+    // Late receipt does not require the invoice and reporting bimonths to match.
     const deadline = expenseInputTaxDeadline(input.date);
     if (today > deadline) add(['date'], 'invalid_expense_input_tax_expired', `חלפו שישה חודשים מתאריך החשבונית (המועד הרגיל לניכוי: ${deadline}). ניכוי מע״מ באתר חסום; יש להסדיר הארכה או טיפול מתאים עם המייצג ומשרד מע״מ. רישום הוצאה לצורכי מס הכנסה הוא עניין נפרד.`);
-    if (p && validReportDate(input.reportingDate) && expenseBimonth(input.date).key !== expenseBimonth(input.reportingDate).key) add(['date','reportingPeriod'], 'invalid_expense_p_reporting_period', 'חשבונית P דורשת דיווח בתקופת החשבונית. אין להעבירה לתקופה מאוחרת ללא בירור עם המייצג.');
   }
   return issues;
 }
