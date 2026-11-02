@@ -649,7 +649,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     'pdf-prev':pdfPreview.previous, 'pdf-next':pdfPreview.next,
     'pdf-match-prev':pdfPreview.previousMatch, 'pdf-match-next':pdfPreview.nextMatch, 'pdf-target':pdfPreview.target,
     'pdf-zoom-in':pdfPreview.zoomIn, 'pdf-zoom-out':pdfPreview.zoomOut,
-    'local-start':() => busy ? false : local.start(), 'local-fill':() => busy ? false : local.fill(), 'local-defer':deferLocal,
+    'local-start':() => busy ? false : local.start(), 'local-fill':() => busy ? false : local.fill(),
     'split-invoices':splitInvoices,
     'ocr-start':async () => {if (busy || local.multiple() || local.pending()) return false; local.reset(); const value = await ocr.start(); if (!ocr.active()) local.start(); return value;},
     'ocr-status':ocr.status, 'ocr-fill':ocr.fill, 'ocr-defer':ocr.defer, 'ocr-resume':element => {if (busy) return false; local.reset(); return ocr.resume(element);},
@@ -676,17 +676,6 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     'morning-expense-keyboard':(_, event) => {if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {event.preventDefault(); return save();} return false;},
     'morning-expense-paste':(_, event) => {if (!event.clipboardData?.files.length) return false; event.preventDefault(); return chooseFiles(event.clipboardData.files);},
   };
-  function deferLocal() {
-    return run(async () => {
-      if (operationId || ocr.active() || !selected) return false;
-      const check = capture(), source = selected();
-      const approved = await confirmDialog('הסרת מסמך מהתור ללא שמירה', 'הקובץ והטיוטה יוסרו מהזיכרון. לא נשמרה הוצאה או משימה להמשך. יש לשמור את המקור ולטפל בו בנפרד.', {confirmText:'הסר ללא שמירה'});
-      check(); if (!approved || selected !== source) return false;
-      batch.invalidate(selected);
-      workDrafts.delete(selected);draft = defaults();edited=false;supplierPicker.reset();selectNextFile({saveCurrent:false});
-      message = 'הקובץ הוסר מהתור ללא שמירה להמשך. יש לשמור את המקור ולטפל בו בנפרד.';
-    });
-  }
   return {markup, actions, runtime:{isPending:tasks.isPending, drain:tasks.drain, hasUnsavedWork,dispose:() => {
     local.reset();pdfPreview.reset();if(!tasks.close())return false;globalThis.removeEventListener?.('beforeunload',beforeUnload);clear();recentCache.close();unsubscribe();return true;
   }}};

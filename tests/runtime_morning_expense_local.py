@@ -196,6 +196,15 @@ POLISH = PREFIX + r"""
  field('vat','0.00');check(badge('allocationNumber').dataset.reviewStatus==='not_required','zero VAT still requires allocation');
  field('vat','900.00');field('documentType','330','change');check(badge('allocationNumber').dataset.reviewStatus==='not_applicable','credit shows ordinary allocation warning');
  field('documentType','305','change');field('date','2026-01-20','change');field('net','6000.00');check(badge('allocationNumber').dataset.reviewStatus==='not_required','old invoice used June threshold');
+ check(!fixture.querySelector('[data-expense-command="local-defer"]'),'duplicate broken removal action remains');
+ const remove=async index=>{fixture.querySelector('[data-expense-command="remove-file"][data-expense-index="'+index+'"]').click();await settle()};
+ confirmWait=Promise.resolve(false);await remove(0);
+ check(fixture.querySelectorAll('.morning-expense-queue li').length===2,'cancelled removal lost an edited draft');
+ confirmWait=null;await remove(0);
+ check(fixture.querySelectorAll('.morning-expense-queue li').length===1,'removal did not advance to the remaining PDF');
+ await remove(0);check(!fixture.querySelector('.morning-expense-queue')&&!fixture.querySelector('[data-expense-pdf-preview]'),'last PDF remained in the queue or preview');
+ await choose([new File(['%PDF-1.4 single removal'],'single.pdf',{type:'application/pdf'})]);await remove(0);
+ check(!fixture.querySelector('.morning-expense-queue')&&!fixture.querySelector('[data-expense-local]'),'single PDF removal left queue or recognition state');
  uiFeature.runtime.dispose();await settle();check(posts===0&&uploads===0,'polish acceptance dispatched an external operation');
  return {duplicates:true,distinctBytes:true,manualPreserved:true,openQueue:true,compact:true,alignment:true,allocation:true,posts,uploads,width:innerWidth};
 })()"""

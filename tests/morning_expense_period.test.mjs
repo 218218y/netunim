@@ -1,7 +1,30 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {expenseBimonth, expenseReportingChoice, expenseReportingDefault, expenseReportingYears, validateExpenseReporting, reportPeriod} from '../netunim-orders/site/assets/js/core/morning-report-period.js';
+import {expenseBimonth, expenseVatSummaryPeriod, expenseReportingChoice, expenseReportingDefault, expenseReportingYears, validateExpenseReporting, reportPeriod} from '../netunim-orders/site/assets/js/core/morning-report-period.js';
 import {expenseInputTaxDeadline} from '../netunim-orders/site/assets/js/core/morning-expense-validation.js';
+
+test('VAT summary default switches on the 15th of each odd month and crosses years', () => {
+  for (const month of [1,3,5,7,9,11]) {
+    const start = `2026-${String(month).padStart(2,'0')}`;
+    const previous = month === 1 ? '2025-11' : `2026-${String(month-2).padStart(2,'0')}`;
+    assert.equal(expenseVatSummaryPeriod(start+'-01'), previous);
+    assert.equal(expenseVatSummaryPeriod(start+'-14'), previous);
+    assert.equal(expenseVatSummaryPeriod(start+'-15'), start);
+    assert.equal(expenseVatSummaryPeriod(`2026-${String(month+1).padStart(2,'0')}-01`), start);
+  }
+  assert.equal(expenseVatSummaryPeriod('2026-09-15'), '2026-09');
+  assert.equal(expenseVatSummaryPeriod('2026-11-14'), '2026-09');
+  assert.equal(expenseVatSummaryPeriod('2026-11-15'), '2026-11');
+  assert.equal(expenseVatSummaryPeriod('2027-01-14'), '2026-11');
+  assert.equal(expenseVatSummaryPeriod('2027-01-15'), '2027-01');
+  assert.equal(expenseVatSummaryPeriod('2028-02-29'), '2028-01');
+  assert.equal(expenseVatSummaryPeriod('2028-03-14'), '2028-01');
+  assert.equal(expenseVatSummaryPeriod('2028-11-14','2026'), '2026-09');
+  assert.equal(expenseVatSummaryPeriod('2027-01-01','2026'), '2026-11');
+  assert.equal(expenseVatSummaryPeriod('2027-01-01','2027'), '2027-01');
+  for (const date of ['2026-02-30','invalid','']) assert.throws(() => expenseVatSummaryPeriod(date));
+  for (const year of ['1999','2027','bad']) assert.throws(() => expenseVatSummaryPeriod('2026-11-02',year));
+});
 
 test('input-tax deadline uses calendar months and clamps leap and month ends',()=>{
  assert.equal(expenseInputTaxDeadline('2024-08-31'),'2025-02-28');

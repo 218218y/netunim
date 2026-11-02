@@ -1,6 +1,6 @@
 import {createExpenseVatSummary} from './morning-expense-vat-summary.js';
 import {esc} from '../../core/values.js';
-import {expenseBimonth, validReportDate} from '../../core/morning-report-period.js';
+import {expenseBimonth, expenseVatSummaryPeriod, validReportDate} from '../../core/morning-report-period.js';
 import {readExpenseCatalogPage} from './morning-expense-catalog.js';
 import {expenseTableHead, expenseTableRow, expenseTableTotals, expenseMoney} from './morning-expense-table.js';
 import {newExpenseSearchScan, readExpenseSearch} from './morning-expense-search.js';
@@ -37,6 +37,7 @@ export function createExpenseHistory({request, capabilities, capture, run, today
   let query = '', searched = '', scan = null, searchVisible = 20;
   let year = '', periodKey = '';
   const vat=createExpenseVatSummary({request:reportRequest,capabilities,capture,run,render});
+  const vatPeriod=()=>periodKey||expenseVatSummaryPeriod(todayISO(),year);
   const filterYear=()=>year||todayISO().slice(0,4);
   const lowerBound = () => periodKey ? periodKey + '-01' : year ? year + '-01-01' : '2010-01-01';
   const withinRange = () => !!next && next >= lowerBound();
@@ -76,7 +77,7 @@ export function createExpenseHistory({request, capabilities, capture, run, today
       periodKey = value;
     } else return false;
     cancelRead(); resetBrowse(); scan = null;
-    return Promise.all([searched ? search() : more(),vat.load(periodKey)]);
+    return Promise.all([searched ? search() : more(),vat.load(vatPeriod())]);
   }
   function bind() {
     observer?.disconnect(); observer = null;
@@ -145,7 +146,7 @@ export function createExpenseHistory({request, capabilities, capture, run, today
       } finally {if (epoch === revision) {busy = false; controller = null; render();}}
     });
   }
-  function refresh() {const summary=vat.load(periodKey);if(searched){query=searched;return Promise.all([search(),summary]);}cancelRead();resetBrowse();return Promise.all([more(),summary]);}
+  function refresh() {const summary=vat.load(vatPeriod());if(searched){query=searched;return Promise.all([search(),summary]);}cancelRead();resetBrowse();return Promise.all([more(),summary]);}
   function markup() {
     let remaining = searched ? searchVisible : visible;
     let displayedGroups = groups;
@@ -191,14 +192,14 @@ export function createExpenseHistory({request, capabilities, capture, run, today
       <div class="morning-expense-history-heading">
       <div class="morning-expense-history-filters" role="group" aria-label="בחירת תקופות להצגת הוצאות">
       <label>שנת דיווח<select data-expense-history-filter="year" data-change="morning-expense-history-filter">${option('','כל השנים · מהחדש לישן',year)}${years.map(value => option(value,value,year)).join('')}</select></label>
-      <label>תקופת דיווח דו־חודשית<select data-expense-history-filter="period" data-change="morning-expense-history-filter">${option('',year?'כל התקופות בשנה':'כל התקופות · כל השנים',periodKey)}${periods.map(period => option(period.key,period.label,periodKey)).join('')}</select></label></div>
+      <label>תקופת דיווח דו־חודשית<select data-expense-history-filter="period" data-change="morning-expense-history-filter">${option('',year?'כל התקופות בשנה':'כל התקופות · כל השנים',periodKey)}${periods.map(period => option(period.key,period.label,periodKey)).join('')}</select></label>
       <button type="button" class="btn" data-action="morning-expense-command" data-expense-command="history-refresh" ${busy ? 'disabled' : ''}>רענון רשימה</button></div>
+      </div>
       <div class="morning-expense-history-search" role="search" aria-label="חיפוש בהוצאות Morning">
-      <label>חיפוש הוצאה<input type="search" maxlength="250" value="${esc(query)}" placeholder="ספק, מספר חשבונית, תיאור, סיווג, סכום או תאריך"
-        data-input="morning-expense-history-query" data-keydown="morning-expense-history-search-enter"></label>
+      <input type="search" aria-label="חיפוש הוצאה" maxlength="250" value="${esc(query)}" placeholder="ספק, מספר חשבונית, תיאור, סיווג, סכום או תאריך"
+        data-input="morning-expense-history-query" data-keydown="morning-expense-history-search-enter">
       <button type="button" class="btn" data-action="morning-expense-command" data-expense-command="history-search">חיפוש</button>
       ${searched ? '<button type="button" class="btn" data-action="morning-expense-command" data-expense-command="history-search-clear">ניקוי חיפוש</button>' : ''}</div>
-      <p>בכל תקופה תאריך החשבונית מהחדש לישן · ${searched ? 'הסיכומים כוללים רק את תוצאות החיפוש שנמצאו' : 'הסיכומים כוללים את כל הוצאות התקופה'}</p>
       ${searched ? `<p role="status">חיפוש: ${esc(searched)} · ${scan ? `${scan.items.length} תוצאות · נבדקו ${scan.seen.size} מתוך ${scan.total ?? '…'} הוצאות${complete ? (year ? ' · החיפוש הושלם בטווח שנבחר' : ' · החיפוש הושלם בכל החשבון') : ' · החיפוש עדיין חלקי'}` : 'החיפוש לא הושלם'}</p>` : ''}
       ${shown ? `<table class="morning-expense-table" aria-label="הוצאות Morning לפי תקופות דיווח">${expenseTableHead()}${shown}</table>` : empty}
       <p role="status" aria-live="polite">${esc(busy ? 'טוען הוצאות מ־Morning…' : message)}</p>

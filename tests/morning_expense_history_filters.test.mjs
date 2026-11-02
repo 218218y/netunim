@@ -6,10 +6,31 @@ import {readExpenseSearch} from '../netunim-orders/site/assets/js/domains/financ
 const caps={version:1,environment:'sandbox'};
 const paged=items=>({...caps,page:0,pageSize:50,pages:items.length?1:0,total:items.length,items});
 const filter=(kind,value)=>({dataset:{expenseHistoryFilter:kind},value});
-function fixture(request) {
+function fixture(request, {todayISO=()=> '2028-10-28',reportRequest}={}) {
   globalThis.document={querySelector:()=>null};
-  return createExpenseHistory({request,capabilities:()=>caps,capture:()=>()=>{},run:work=>work(),todayISO:()=> '2028-10-28'});
+  return createExpenseHistory({request,reportRequest,capabilities:()=>caps,capture:()=>()=>{},run:work=>work(),todayISO});
 }
+
+test('default VAT reads the active reporting bimonth without restricting history and manual periods win',async()=>{
+  const reads=[],reports=[];let today='2026-11-14';
+  const history=fixture(async(_,body)=>{reads.push(body);return paged([]);},{todayISO:()=>today,
+    reportRequest:async(action,body)=>{assert.equal(action,'report_page');reports.push(body);
+      return {...caps,...body,pageSize:50,total:0,pages:0,readAt:'2026-11-14T08:00:00Z',items:[]};}});
+  await history.refresh();
+  assert.equal(reads[0].fromDate,'2026-11-01');
+  assert.ok(reports.length===2&&reports.every(r=>r.fromDate==='2026-09-01'&&r.toDate==='2026-10-31'));
+  assert.match(history.markup(),/ספטמבר–אוקטובר 2026/);
+  assert.match(history.markup(),/value="" selected>כל התקופות/);
+  await history.chooseFilter(filter('period','2026-03'));today='2026-11-15';await history.refresh();
+  assert.equal(reports.at(-1).fromDate,'2026-03-01');
+  await history.chooseFilter(filter('period',''));
+  assert.equal(reports.at(-1).fromDate,'2026-11-01');
+  today='2027-01-14';await history.refresh();assert.equal(reports.at(-1).fromDate,'2026-11-01');
+  today='2027-01-15';await history.refresh();assert.equal(reports.at(-1).fromDate,'2027-01-01');
+  await history.chooseFilter(filter('year','2026'));assert.equal(reports.at(-1).fromDate,'2026-01-01');
+  await history.chooseFilter(filter('period','2026-07'));assert.equal(reports.at(-1).fromDate,'2026-07-01');
+  await history.chooseFilter(filter('year',''));assert.equal(reports.at(-1).fromDate,'2027-01-01');
+});
 
 test('year navigation reads at most its six periods; exact empty period never scans adjacent months',async()=>{
   const calls=[],history=fixture(async(_,body)=>{calls.push(body);return paged([]);});
