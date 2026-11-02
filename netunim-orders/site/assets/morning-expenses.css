@@ -119,5 +119,7 @@
 @media(prefers-reduced-motion:reduce){.morning-expense-spinner{animation:none}}
 
 [data-morning-expense-intake] [aria-invalid="true"]{border-color:#b42318!important;outline-color:#b42318;background-color:#fff6f5}
-.morning-expense-field-error{display:block;color:#a11b12;font-size:12px;line-height:1.5;margin-block-start:4px;font-weight:400}
+.morning-expense-pair:has(>.morning-expense-review-input){align-items:start}
+.morning-expense-pair:not(.morning-expense-invoice)>.morning-expense-review-input .morning-expense-field-label{min-block-size:3em}
+.morning-expense-intake .morning-expense-field-error{display:block;color:#a11b12;font-size:12px;line-height:1.5;margin-block-start:4px;font-weight:400}
 .morning-expense-validation-summary{border-inline-start:3px solid #b42318;padding:8px 12px;background:#fff1f0;color:#8e1b14;border-radius:5px;line-height:1.6}
