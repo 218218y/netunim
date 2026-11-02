@@ -1,4 +1,5 @@
 import {createClient} from 'npm:@supabase/supabase-js@2.112.4';
+import {readJsonBodyBounded, JsonBodyError} from '../_shared/http-input.js';
 
 const CLIENT_ID='113139579639-jo09d2gts6kujig6rcaeid3bu40ojjqm.apps.googleusercontent.com';
 const SCOPES='https://www.googleapis.com/auth/drive.readonly';
@@ -138,7 +139,10 @@ Deno.serve(async(req:Request)=>{
   if(req.method!=='POST')return json({code:'method_not_allowed'},405);
   const user=await requireUser(req);
   if(!user)return json({code:'google_drive_cloud_auth_required'},401);
-  const body=await req.json().catch(()=>({})),action=String(body?.action||'');
+  let body;
+  try { body=await readJsonBodyBounded(req,16*1024); }
+  catch(error) { if(error instanceof JsonBodyError)return json({code:error.code},error.status);throw error; }
+  const action=String(body.action||'');
   if(action==='start')return start(req,user.id,body);
   if(action==='token')return token(user.id);
   if(action==='disconnect')return disconnect(user.id);

@@ -20,6 +20,7 @@
     "types": []
   },
   "files": [
+    "netunim-orders/supabase/functions/_shared/http-input.js",
     "tests/fixtures/checked-credit-http-policy.mjs",
     "netunim-kupa/bank-bridge/credit-http-policy.mjs",
     "tests/fixtures/checked-finance-automation.mjs",
