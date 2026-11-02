@@ -32,6 +32,34 @@ export function expenseSupplierCategory(expenses, supplier) {
   // Two different categories on the same latest date cannot establish a default.
   return latest && !rows.some(row => row.sourceDocumentDate === latest.sourceDocumentDate && row.classification.id !== latest.classification.id) ? latest : null;
 }
+export function expensePreferredCategory(expenses, supplier, capabilities) {
+  const protectedP = capabilities.pSuppliers?.some(row => row.id === supplier?.id && row.taxId === supplier?.taxId);
+  if (!protectedP) return {required:false, category:null};
+  const key = value => String(value || '').normalize('NFKC').replace(/[^\p{L}\p{N}]/gu, '');
+  const matches = expenses.filter(row => row.status !== 100 && row.classification?.id && key(row.classification.title) === 'אוטונומיהרכישתסחורה');
+  return {required:true, category:matches.sort((a,b) => String(b.sourceDocumentDate).localeCompare(String(a.sourceDocumentDate)))[0] || null};
+}
+export async function resolveExpenseSupplierCategory(request, capabilities, supplier, expenses, check) {
+  const preferred = expensePreferredCategory(expenses, supplier, capabilities);
+  if (preferred.category) return {category:preferred.category, rows:[]};
+  if (!preferred.required) {
+    const known = expenseSupplierCategory(expenses, supplier);
+    return known ? {category:known, rows:[]} : readExpenseSupplierCategory(request, capabilities, supplier, check);
+  }
+  // API-created expenses can contain supplier snapshots without supplierId. A
+  // supplierId-only search cannot find their classifications. Search the actual
+  // account history by pages and use an exact, existing classification title.
+  const rows = [], seen = new Set(); let total = null, pages = 1;
+  for (let page = 0; page < pages && page < 20; page++) {
+    const result = await readExpenseCatalogPage(request, capabilities, 'expenses', {}, page, check);
+    if (total !== null && total !== result.total || result.items.some(row => seen.has(row.id))) throw Error('רשימת הסיווגים השתנתה בזמן הבדיקה. יש לרענן ולנסות שוב.');
+    total = result.total; pages = result.pages;
+    for (const row of result.items) {seen.add(row.id); rows.push(row);}
+    const found = expensePreferredCategory(rows, supplier, capabilities).category;
+    if (found) return {category:found, rows};
+  }
+  throw Error('לא נמצא סיווג מאומת בשם אוטונומיה-רכישת סחורה בהוצאות שנבדקו. יש לוודא שהוא קיים ב־Morning ולרענן ספקים וסיווגים. לא נבחר סיווג חלופי.');
+}
 // The global first page may contain no expense for an infrequent supplier.
 // Read a bounded, complete supplier history before suggesting its last category.
 export async function readExpenseSupplierCategory(request, capabilities, supplier, assertCurrent) {

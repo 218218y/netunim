@@ -5,7 +5,7 @@ import {esc} from '../../core/values.js';
 import {checkTodayISO} from '../../core/dates.js';
 import {expenseAmountChange} from '../../core/morning-expense-amounts.js';
 import {createRuntimeTaskOwner} from '../../shared/runtime-task-owner.js';
-import {readExpenseCatalog, readExpenseCatalogPage, searchExpenseSuppliers, expenseCatalogClassifications, expenseSupplierEligibility} from './morning-expense-catalog.js';
+import {readExpenseCatalog, readExpenseCatalogPage, searchExpenseSuppliers, expenseCatalogClassifications, expenseSupplierEligibility, expensePreferredCategory, resolveExpenseSupplierCategory} from './morning-expense-catalog.js';
 import {readExpenseProposal, expenseProposalFields} from './morning-expense-proposal.js';
 import {readExpensePreferences, writeExpensePreferences} from './morning-expense-preferences.js';
 import {createExpenseReporting, expenseReportingStorageWarning} from './morning-expense-reporting.js';
@@ -172,7 +172,8 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
         if (!supplier) {try {supplier = await canonicalItem('get_supplier', id, check, loaded.capabilities.environment);} catch {check();}}
         if (supplier?.id === id && supplier.active) restored.push(supplier);
       }
-      check(); favorites = restored; extraExpenses = [];
+      const retainedClassification = sourceExpenses().find(row => row.id === draft.classificationExpenseId);
+      check(); favorites = restored; extraExpenses = retainedClassification ? [retainedClassification] : [];
       const retained = catalog?.suppliers.filter(row => row.id === draft.supplierId) || [];
       supplierPicker.reset(); catalog = loaded; catalog.suppliers = mergeSuppliers(loaded.suppliers, retained);
       batch.initialize(accountId(),loaded.capabilities.environment);
@@ -181,7 +182,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
         if (!reporting.restore(accountId(), loaded.capabilities.environment)) message = expenseReportingStorageWarning;
         Object.assign(draft, reporting.fields(draft.date));
       }
-      if (draft.classificationExpenseId && !loaded.expenses.some(row => row.id === draft.classificationExpenseId)) {
+      if (draft.classificationExpenseId && !sourceExpenses().some(row => row.id === draft.classificationExpenseId)) {
         batch.invalidate(selected);
         draft.classificationExpenseId = ''; message = 'ההצעות רועננו. יש לבחור שוב את סיווג ההוצאה לפני שמירה.';
       }
@@ -235,7 +236,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       draft.pcnClassification = history?.some(row => row.pcnClassification === 'P') || eligibilityFor(supplier).p ? 'P' : 'T';
       if (previousRate !== vatRate()) calculate(lastAmountField);
       render();
-      if (supplier && preferences?.classifications.some(row => row.supplierId === supplier.id)) return restoreClassification(supplier.id);
+      if (supplier) return restoreClassification(supplier.id);
     } else if (name === 'pcnClassification') {
       if (eligibilityFor(catalog?.suppliers.find(row => row.id === draft.supplierId)).p) draft.pcnClassification = 'P';
       calculate(lastAmountField); render();
@@ -524,8 +525,18 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
   }
   function restoreClassification(supplierId) {
     return run(async () => {
-      const check = capture(), saved = preferences?.classifications.find(row => row.supplierId === supplierId);
-      if (!saved) return false;
+      const base = capture(), version = editVersion;
+      const check = () => {base(); if (draft.supplierId !== supplierId || version !== editVersion) throw Error('expense_category_selection_changed');};
+      const supplier = catalog.suppliers.find(row => row.id === supplierId);
+      const preferred = expensePreferredCategory(sourceExpenses(), supplier, catalog.capabilities);
+      const saved = !preferred.required && preferences?.classifications.find(row => row.supplierId === supplierId);
+      if (!saved) {
+        const value = await resolveExpenseSupplierCategory(request, catalog.capabilities, supplier, sourceExpenses(), check); check();
+        extraExpenses = [...new Map([...extraExpenses, ...value.rows].map(row => [row.id,row])).values()];
+        catalog.classifications = expenseCatalogClassifications(sourceExpenses());
+        draft.classificationExpenseId = value.category?.id || '';
+        return true;
+      }
       let item = sourceExpenses().find(row => row.id === saved.expenseId);
       if (!item) {try {item = await canonicalItem('get_expense', saved.expenseId, check);} catch {check(); message = 'לא ניתן לאמת כעת את הסיווג השמור. אפשר לבחור סיווג מההצעות ולנסות שוב בהמשך.'; return false;}}
       if (draft.supplierId !== supplierId) return false;

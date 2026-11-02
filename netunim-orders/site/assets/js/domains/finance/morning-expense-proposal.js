@@ -1,4 +1,4 @@
-import {readExpenseCatalogPage, expenseSupplierCategory, readExpenseSupplierCategory} from './morning-expense-catalog.js';
+import {readExpenseCatalogPage, resolveExpenseSupplierCategory} from './morning-expense-catalog.js';
 
 // Resolve source suggestions before the intake mutates its current draft. The
 // caller's check fences account, environment, file, edit and financial ownership.
@@ -15,13 +15,10 @@ export async function readExpenseProposal(item, {request, capabilities, canonica
   }
   let category = null, categoryRows = [], categoryUnavailable = false;
   if (supplier && local) {
-    category = expenseSupplierCategory(expenses, supplier);
-    if (!category) {
-      try {
-        const history = await readExpenseSupplierCategory(request, capabilities, supplier, check);
-        category = history.category; categoryRows = history.rows;
-      } catch {check(); categoryUnavailable = true;}
-    }
+    try {
+      const history = await resolveExpenseSupplierCategory(request, capabilities, supplier, expenses, check);
+      category = history.category; categoryRows = history.rows;
+    } catch {check(); categoryUnavailable = true;}
   }
   check();
   return {supplier, category, categoryRows, categoryUnavailable};
