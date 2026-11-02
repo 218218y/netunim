@@ -81,7 +81,12 @@ export function createGlobalDocumentSearch({documentBridge=null,siteSearch,siteR
   function nativeGeometryKey(value){return value?`${value.x}:${value.y}:${value.width}:${value.height}:${value.viewportWidth}:${value.viewportHeight}:${window.screenX}:${window.screenY}`:''}
   function stopNativePreviewPolling(){if(nativePreviewPoll){clearInterval(nativePreviewPoll);nativePreviewPoll=null}}
   function deactivateNativePreview({forget=true}={}){nativePreviewActive=false;nativePreviewGeometryKey='';stopNativePreviewPolling();if(forget)nativePreviewWantedId='';documentBridge?.hideNativePreview?.().catch(()=>{})}
-  async function syncNativePreviewGeometry({force=false}={}){if(!nativePreviewActive||!documentBridge?.moveNativePreview)return;const geometry=nativePreviewGeometry();if(!geometry){deactivateNativePreview({forget:false});return;}const key=nativeGeometryKey(geometry);if(!force&&key===nativePreviewGeometryKey)return;try{await documentBridge.moveNativePreview(geometry);if(nativePreviewActive&&key===nativeGeometryKey(nativePreviewGeometry()))nativePreviewGeometryKey=key}catch{nativePreviewGeometryKey=''}}
+  async function syncNativePreviewGeometry({force=false}={}){
+    if(!nativePreviewActive||!documentBridge?.moveNativePreview)return;
+    const geometry=nativePreviewGeometry();if(!geometry){deactivateNativePreview({forget:false});return;}
+    const key=nativeGeometryKey(geometry);if(!force&&key===nativePreviewGeometryKey)return;
+    try{await documentBridge.moveNativePreview(geometry);if(nativePreviewActive&&key===nativeGeometryKey(nativePreviewGeometry()))nativePreviewGeometryKey=key}catch{nativePreviewGeometryKey=''}
+  }
   function startNativePreviewPolling(){stopNativePreviewPolling();nativePreviewPoll=setInterval(()=>{syncNativePreviewGeometry()},350)}
   async function showNativePreview(id,sequence){if(!documentBridge?.nativePreview)return false;const geometry=nativePreviewGeometry();if(!geometry)throw new Error('אזור התצוגה המקדימה אינו זמין.');nativePreviewWantedId=String(id);await documentBridge.nativePreview(id,geometry);if(sequence!==previewSequence||selectedDocumentId!==String(id)){documentBridge.hideNativePreview?.().catch(()=>{});
   return false}nativePreviewActive=true;nativePreviewGeometryKey=nativeGeometryKey(geometry);startNativePreviewPolling();return true}
