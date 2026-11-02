@@ -1,11 +1,14 @@
-import {expenseFormMarkup} from './morning-expense-form-view.js';
+import {readRetainedExpenseCategory,readSavedExpenseCategory,readMoreExpenseClassifications} from './morning-expense-category-state.js';
+import {prepareExpenseSplit} from './morning-expense-split.js';
+import {updateExpenseDraftPresentation} from './morning-expense-validation-view.js';
+import {expenseFormMarkup,expenseEnvironmentNotice} from './morning-expense-form-view.js';
 import {expenseOperationMarkup} from './morning-expense-operation-view.js';
 import {createExpenseFieldReview, replaceExpenseSurface, expenseSanityMessage, expenseQueueMarkup} from './morning-expense-review-view.js';
 import {esc} from '../../core/values.js';
 import {checkTodayISO} from '../../core/dates.js';
 import {expenseAmountChange} from '../../core/morning-expense-amounts.js';
 import {createRuntimeTaskOwner} from '../../shared/runtime-task-owner.js';
-import {readExpenseCatalog, readExpenseCatalogPage, searchExpenseSuppliers, expenseCatalogClassifications, expenseSupplierEligibility, expensePreferredCategory, resolveExpenseSupplierCategory} from './morning-expense-catalog.js';
+import {readExpenseCatalog, searchExpenseSuppliers, expenseCatalogClassifications, expenseSupplierEligibility, expensePreferredCategory} from './morning-expense-catalog.js';
 import {readExpenseProposal, expenseProposalFields} from './morning-expense-proposal.js';
 import {readExpensePreferences, writeExpensePreferences} from './morning-expense-preferences.js';
 import {createExpenseReporting, expenseReportingStorageWarning} from './morning-expense-reporting.js';
@@ -172,13 +175,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
         if (!supplier) {try {supplier = await canonicalItem('get_supplier', id, check, loaded.capabilities.environment);} catch {check();}}
         if (supplier?.id === id && supplier.active) restored.push(supplier);
       }
-      let retainedClassification = null;
-      if (draft.classificationExpenseId) {
-        try {
-          const item = await canonicalItem('get_expense',draft.classificationExpenseId,check,loaded.capabilities.environment);
-          if (item.kind === 'expense' && item.status !== 100 && item.classification?.id) retainedClassification = item;
-        } catch {check();}
-      }
+      const retainedClassification=await readRetainedExpenseCategory(draft.classificationExpenseId,canonicalItem,check,loaded.capabilities.environment);
       check(); favorites = restored; extraExpenses = retainedClassification ? [retainedClassification] : [];
       const retained = catalog?.suppliers.filter(row => row.id === draft.supplierId) || [];
       supplierPicker.reset(); catalog = loaded; catalog.suppliers = mergeSuppliers(loaded.suppliers, retained);
@@ -253,18 +250,12 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
   }
   const sanityMessage = () => expenseSanityMessage(draft, vatRate());
   function updateSanity(){
-    const target=host()?.querySelector('[data-expense-sanity]');if(target){const text=sanityMessage();target.textContent=text;target.hidden=!text;}
-    const problem=expenseDraftProblem({draft,eligibility:eligibilityFor(catalog.suppliers.find(row=>row.id===draft.supplierId)),classification:sourceExpenses().find(row=>row.id===draft.classificationExpenseId)?.classification,today:todayISO(),capabilities:catalog.capabilities});
-    const warning=host()?.querySelector('[data-expense-approval-problem]');if(warning){warning.textContent=problem;warning.hidden=!problem;}
-    if(!catalog?.capabilities.backgroundQueue||!selected)return;
+    if(!catalog)return;
     const eligibility=eligibilityFor(catalog.suppliers.find(row=>row.id===draft.supplierId));
+    const problem=expenseDraftProblem({draft,eligibility,classification:sourceExpenses().find(row=>row.id===draft.classificationExpenseId)?.classification,today:todayISO(),capabilities:catalog.capabilities});
     const disabled=busy||!!operationId||environmentChanged||ocr.active()||local.blocked()||!catalog.capabilities.create||!catalog.capabilities.upload||!eligibility.eligible||draft.pcnClassification==='P'&&(!catalog.capabilities.pcnP||!eligibility.p);
-    for(const button of host()?.querySelectorAll('[data-expense-approve-control]')||[])button.disabled=disabled||!!problem||button.dataset.expenseApproveControl==='save'&&batch.paused();
-    const panel=host()?.querySelector('[data-expense-batch]');if(panel){host()?.querySelector('.morning-expense-batch-dock')?.remove();panel.outerHTML=batch.markup(busy||!!operationId||environmentChanged);}
-    const items=fileQueue.items(selected,queue);
-    for(const badge of host()?.querySelectorAll('.morning-expense-queue .morning-expense-approved')||[])if(!batch.label(items[Number(badge.closest('button').dataset.expenseIndex)]))badge.remove();
-    for(const button of host()?.querySelectorAll('[data-action="morning-expense-batch-send"]')||[]){button.textContent=`שמירת כל ההוצאות המאושרות (${batch.count()})`;button.disabled=busy||!!operationId||environmentChanged||batch.paused()||!batch.count();}
-    if(!batch.label(selected))host()?.querySelector('[data-expense-command="batch-unmark"]')?.remove();
+    updateExpenseDraftPresentation(host(),{sanity:sanityMessage(),problem,backgroundQueue:catalog.capabilities.backgroundQueue,selected,approvalDisabled:disabled,
+      batchDisabled:busy||!!operationId||environmentChanged,batch,items:fileQueue.items(selected,queue)});
   }
   function vatRate() {return draft.pcnClassification === 'P' ? 16 : 18;}
   function eligibilityFor(supplier) {return expenseSupplierEligibility(supplier, catalog?.capabilities.pSuppliers, catalog?.capabilities.pcnP === true);}
@@ -305,20 +296,9 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     return run(async () => {
       const source = selected, plan = local.splitPlan(), base = capture(), version = editVersion;
       const check = () => {base();if (selected !== source || version !== editVersion) throw Error('המסמך או הטופס השתנו. יש לבדוק מחדש את הפיצול.');};
-      const approved = await confirmDialog('פיצול PDF לכמה חשבוניות',
-        `נמצאו ${plan.pages.length} עמודים עם מספרי חשבוניות שונים. הקובץ יפוצל מקומית, וכל חלק ייבדק מחדש וייכנס לתור. פרטי הטופס הנוכחי יוחלפו; לא תישמר ולא תישלח הוצאה בשלב זה.`, {confirmText:'פיצול והכנה לבדיקה'});
-      check();if (!approved) return false;
-      const split = await files.split(source.file,plan.pages.map(row=>row.page),{check});check();
-      if (!Array.isArray(split) || split.length !== plan.pages.length) throw Error('הפיצול לא החזיר את כל החשבוניות. המקור נשאר בתור.');
-      // Do not remove the original until every output is readable and retains
-      // exactly the invoice identity approved in the split plan.
-      for (let index=0;index<split.length;index++) {
-        const extracted = await files.extract(split[index],{check});check();
-        const recognized = await files.recognize(extracted);check();
-        if (extracted.pages.length !== 1 || recognized.documents?.blocked || recognized.fields.invoiceNumber.rawNumber !== plan.pages[index].number || recognized.fields.documentType.value !== plan.pages[index].documentType) throw Error('לא ניתן לאמת את כל חלקי הפיצול. המקור נשאר בתור; יש לפצל ידנית.');
-      }
-      const existing = [...new Set([...queue,...batch.files()])].filter(item=>item!==source);
-      const {accepted,duplicates} = await fileQueue.prepare(split,existing,check);check();
+      const existing=[...new Set([...queue,...batch.files()])].filter(item=>item!==source);
+      const prepared=await prepareExpenseSplit({source,plan,files,confirmDialog,check,prepareQueue:fileQueue.prepare,existing});check();if(!prepared)return false;
+      const {accepted,duplicates}=prepared;
       batch.invalidate(source);workDrafts.delete(source);local.reset();pdfPreview.reset();releasePreview();selected=null;
       queue=[...queue.filter(item=>item!==source),...accepted];draft=defaults();edited=false;
       selectNextFile({saveCurrent:false});
@@ -560,36 +540,20 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       const base = capture(), version = editVersion;
       const check = () => {base(); if (draft.supplierId !== supplierId || version !== editVersion) throw Error('expense_category_selection_changed');};
       const supplier = catalog.suppliers.find(row => row.id === supplierId);
-      const preferred = expensePreferredCategory(sourceExpenses(), supplier, catalog.capabilities);
-      const saved = !preferred.required && preferences?.classifications.find(row => row.supplierId === supplierId);
-      if (!saved) {
-        const value = await resolveExpenseSupplierCategory(request, catalog.capabilities, supplier, sourceExpenses(), check); check();
-        extraExpenses = [...new Map([...extraExpenses, ...value.rows].map(row => [row.id,row])).values()];
-        catalog.classifications = expenseCatalogClassifications(sourceExpenses());
-        draft.classificationExpenseId = value.category?.id || '';
-        return true;
-      }
-      let item = sourceExpenses().find(row => row.id === saved.expenseId);
-      if (!item) {try {item = await canonicalItem('get_expense', saved.expenseId, check);} catch {check(); message = 'לא ניתן לאמת כעת את הסיווג השמור. אפשר לבחור סיווג מההצעות ולנסות שוב בהמשך.'; return false;}}
-      if (draft.supplierId !== supplierId) return false;
-      if (item?.id !== saved.expenseId || item.kind !== 'expense' || item.status === 100 || !item.classification?.id) {
-        preferences.classifications = preferences.classifications.filter(row => row.supplierId !== supplierId); persistPreferences();
-        message = 'הסיווג השמור אינו זמין לאימות. יש לבחור סיווג מההצעות.'; return false;
-      }
-      if (!sourceExpenses().some(row => row.id === item.id)) extraExpenses.push(item);
-      catalog.classifications = expenseCatalogClassifications(sourceExpenses());
-      draft.classificationExpenseId = catalog.classifications.find(row => row.id === item.classification.id).sourceExpenseId;
-      message = 'הסיווג ששימש אותך אומת מחדש מול Morning ומוצע לבחירתך.';
+      const value=await readSavedExpenseCategory({supplier,capabilities:catalog.capabilities,expenses:sourceExpenses(),preferences,request,canonicalItem,check});check();
+      if(value.unavailable){message=value.message;return false;}
+      if(value.forget){preferences.classifications=preferences.classifications.filter(row=>row.supplierId!==supplierId);persistPreferences();}
+      extraExpenses=[...new Map([...extraExpenses,...value.rows].map(row=>[row.id,row])).values()];
+      catalog.classifications=expenseCatalogClassifications(sourceExpenses());
+      draft.classificationExpenseId=value.category?.id||'';
+      if(value.message)message=value.message;
+      return true;
     });
   }
   function moreClassifications() {
     if (!catalog || operationId) return false;
     return run(async () => {
-      const check = capture(), page = catalog.expensePage.page + 1;
-      if (page >= catalog.expensePage.pages || page >= 20) return false;
-      const value = await readExpenseCatalogPage(request, catalog.capabilities, 'expenses', {fromDate:catalog.fromDate, toDate:catalog.toDate}, page, check); check();
-      const seen = new Set(catalog.expenses.map(row => row.id));
-      if (value.total !== catalog.expensePage.total || value.items.some(row => seen.has(row.id))) throw new Error('רשימת ההוצאות השתנתה. יש לרענן את ההצעות.');
+      const check=capture(),value=await readMoreExpenseClassifications(request,catalog,check);check();if(!value)return false;
       catalog.expenses.push(...value.items); catalog.classifications = expenseCatalogClassifications(sourceExpenses()); catalog.expensePage = value;
       message = `הצעות הסיווגים מבוססות כעת על ${catalog.expenses.length} הוצאות. הרשימה אינה קטלוג מלא.`;
     });
@@ -638,15 +602,6 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       message = result.cancelled ? 'הפעולה בוטלה לפני שליחה. אפשר להתחיל קליטה חדשה.' : result.verified ? 'ההוצאה הקיימת תואמת לבקשה המקורית ואומתה.' : 'השחזור עדיין דורש בירור ב־Morning.';
     });
   }
-  function environmentNotice() {
-    const caps = catalog?.capabilities;
-    if (!caps) return 'סביבת Morning, הספקים והסיווגים נטענים אוטומטית בפתיחת המסך.';
-    let notice;
-    if (caps.environment === 'production') notice = caps.create ?
-      '' : 'חשבון Morning האמיתי · יצירת הוצאות כבויה או אינה מורשית למשתמש זה.';
-    else notice = caps.create ? 'סביבת בדיקות Sandbox · יש לבדוק כל פרט מול מסמך המקור.' : 'סביבת Sandbox · שמירה דורשת הרשאה ושתי זהויות ספקי P שאומתו מול Morning.';
-    return notice + (caps.create && !caps.upload ? ' צירוף קבצים עדיין כבוי.' : '');
-  }
   const review = createExpenseFieldReview({host, visible:() => !!selected || !!local.snapshot().proposal,
     reviewFields:() => local.fieldReview(draft, catalog?.suppliers.find(row => row.id === draft.supplierId)?.taxId),
     validationIssues:() => catalog ? expenseDraftIssues({draft,eligibility:eligibilityFor(catalog.suppliers.find(row=>row.id===draft.supplierId)),classification:sourceExpenses().find(row=>row.id===draft.classificationExpenseId)?.classification,today:todayISO(),capabilities:catalog.capabilities}) : [],
@@ -663,7 +618,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       ${expanded ? `<div class="morning-expense-content"><div class="morning-expense-toolbar">
       <button type="button" class="btn" data-action="morning-expense-command" data-expense-command="load" ${busy ? 'disabled' : ''}>${catalog ? 'רענון ספקים וסיווגים' : busy ? 'טוען ספקים וסיווגים…' : 'ניסיון טעינה נוסף'}</button>
       <a href="${catalog?.capabilities.environment === 'sandbox' ? 'https://app.sandbox.d.greeninvoice.co.il' : 'https://app.greeninvoice.co.il'}" target="_blank" rel="noopener noreferrer">פתיחת Morning</a></div>
-      ${environmentNotice() ? `<p class="morning-expense-notice">${esc(environmentNotice())}</p>` : ''}${ocr.markup()}
+      ${expenseEnvironmentNotice(catalog?.capabilities) ? `<p class="morning-expense-notice">${esc(expenseEnvironmentNotice(catalog?.capabilities))}</p>` : ''}${ocr.markup()}
       <p class="morning-expense-status" role="status" aria-live="polite" data-expense-message>${esc(busy ? 'הפעולה מתבצעת…' : message)}</p>
       ${!catalog?.capabilities.backgroundQueue?progress.markup():''}
       ${catalog ? `<div class="morning-expense-workspace"><div class="morning-expense-fields">

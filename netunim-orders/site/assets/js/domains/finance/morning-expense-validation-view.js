@@ -29,3 +29,14 @@ export function updateExpenseValidation(host, issues) {
   const summary = host.querySelector('[data-expense-approval-problem]');
   if (summary) {summary.textContent = issues.map(issue => issue.message).join(' '); summary.hidden = !issues.length;}
 }
+
+export function updateExpenseDraftPresentation(host,{sanity,problem,backgroundQueue,selected,approvalDisabled,batchDisabled,batch,items}) {
+  const target=host?.querySelector('[data-expense-sanity]');if(target){target.textContent=sanity;target.hidden=!sanity;}
+  const warning=host?.querySelector('[data-expense-approval-problem]');if(warning){warning.textContent=problem;warning.hidden=!problem;}
+  if(!backgroundQueue||!selected)return;
+  for(const button of host?.querySelectorAll('[data-expense-approve-control]')||[])button.disabled=approvalDisabled||!!problem||button.dataset.expenseApproveControl==='save'&&batch.paused();
+  const panel=host?.querySelector('[data-expense-batch]');if(panel){host?.querySelector('.morning-expense-batch-dock')?.remove();panel.outerHTML=batch.markup(batchDisabled);}
+  for(const badge of host?.querySelectorAll('.morning-expense-queue .morning-expense-approved')||[])if(!batch.label(items[Number(badge.closest('button').dataset.expenseIndex)]))badge.remove();
+  for(const button of host?.querySelectorAll('[data-action="morning-expense-batch-send"]')||[]){button.textContent=`שמירת כל ההוצאות המאושרות (${batch.count()})`;button.disabled=batchDisabled||batch.paused()||!batch.count();}
+  if(!batch.label(selected))host?.querySelector('[data-expense-command="batch-unmark"]')?.remove();
+}
