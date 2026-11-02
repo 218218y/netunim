@@ -76,7 +76,10 @@ test('history search replaces only the list, marks partial results and restores 
   await history.searchMore();
   assert.ok(history.markup().includes('החיפוש הושלם בכל החשבון'));
   assert.ok(history.markup().includes('data-expense-history-id="200"'));
-  assert.ok(history.markup().includes('רק את תוצאות החיפוש'));
+  const totals = history.markup().match(/class="morning-expense-period-heading"[\s\S]*?<\/tr>/)?.[0] || '';
+  assert.match(totals, /1,234\.50/); assert.match(totals, /188\.31/);
+  assert.ok(!history.markup().includes('data-expense-history-id="0"'));
+  assert.ok(!history.markup().includes('הסיכומים כוללים'));
   history.clearSearch(); assert.ok(!history.markup().includes('data-expense-history-id="200"'));
   assert.ok(!history.markup().includes('החיפוש הושלם'));
   history.setQuery('יעד'); await history.search(); history.setQuery('');
