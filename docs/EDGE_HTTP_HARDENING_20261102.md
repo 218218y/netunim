@@ -59,3 +59,31 @@ Twelve deterministic tests cover pre-header/post-header/account/revoke stalls,
 explicit later retry, network/HTTP/protocol classification, oversized responses,
 late responses after deadline and resource disposal. Existing JSON admission and
 Google source contracts also pass locally. No live provider receipt is claimed.
+
+## Stage 3: verified OAuth receipts and grant preservation
+
+New entrypoint tests reproduced HTTP 200 with an empty token, ignored rotation
+storage errors, ignored invalid-grant cleanup errors, coerced Calendar identity
+objects and revocation immediately after replacement. Nine of ten regression
+cases failed before this stage; all now pass.
+
+Token/account JSON stays unknown until the checked implementation validates it.
+Token publication requires a nonempty string access token and a positive integer
+expiry; optional refresh token, scope and token type cannot have malformed values.
+Rotation and invalid-grant deletion errors are observed before reporting their
+outcome. Failed verification or persistence preserves the previous connection.
+Actual body type mutations and negative consumers enforce the decoded contracts.
+An additional interleaving regression reproduced an old refresh overwriting (or
+deleting on invalid-grant) replacement credentials. Both mutations now compare
+the captured refresh token in the database statement and require a returned row;
+a changed connection produces 409 rather than changing replacement credentials.
+These checks add no migration and no second credential store.
+
+The callback no longer revokes a replaced token. Google explicitly documents
+that [revocation removes project-wide OAuth grants and invalidates issued tokens](https://developers.google.com/identity/protocols/oauth2/web-server#tokenrevoke).
+Thus the previous cleanup could invalidate the newly connected credentials and
+the sibling integration using this same client/project. Replacing the stored
+credential does not call revoke; explicit disconnect retains the existing revoke
+behavior. No old secret is retained in a second store. Live consent/revocation
+acceptance remains NOT RUN; the regression proves request behavior with synthetic
+credentials, not a new live Google grant.

@@ -22,6 +22,8 @@
   "files": [
     "netunim-orders/supabase/functions/_shared/http-input.js",
     "netunim-orders/supabase/functions/_shared/google-http.js",
+    "netunim-orders/supabase/functions/_shared/google-receipts.js",
+    "tests/fixtures/checked-edge-http.mjs",
     "tests/fixtures/checked-credit-http-policy.mjs",
     "netunim-kupa/bank-bridge/credit-http-policy.mjs",
     "tests/fixtures/checked-finance-automation.mjs",

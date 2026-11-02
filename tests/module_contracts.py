@@ -19,7 +19,8 @@ for command in (
     [sys.executable, 'tests/sync_assets_contracts.py'],
     ['node', 'tests/module_graph.cjs'],
     ['node', 'tools/typecheck.mjs'],
-    ['node', str(DEV_NODE_MODULES / 'eslint/bin/eslint.js'), 'netunim-kupa/site', 'netunim-orders/site', 'shared'],
+    ['node', str(DEV_NODE_MODULES / 'eslint/bin/eslint.js'), 'netunim-kupa/site', 'netunim-orders/site', 'shared',
+     'netunim-orders/supabase/functions/_shared'],
 
 ):
     result = subprocess.run(command, cwd=ROOT)
