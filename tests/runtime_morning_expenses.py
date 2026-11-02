@@ -147,8 +147,9 @@ FLOW = r"""(async()=>{
  click('use-favorite');check(fixture.querySelector('[data-expense-field="supplierId"]').value===id(2),'favorite did not restore supplier');
  field('number','000123');field('net','1000.00');field('vat','160.00');check(field('description','הוצאה לבדיקה').isConnected,'typing replaced field');
  catalogExpense={...expense,id:id(30)};click('load');await settle();
- check(fixture.querySelector('[data-expense-field="classificationExpenseId"]').value==='','refresh retained invisible category');
- click('save');await settle();check(posts===0&&confirms===0,'invisible category reached creation');field('supplierId',id(2),'change');
+ check(fixture.querySelector('[data-expense-field="classificationExpenseId"]').value===id(30),'refresh lost the visible canonically verified category');
+ check(requests.some(row=>row.action==='get_expense'&&row.body.id===expense.id),'refresh did not revalidate retained category');
+ field('supplierId',id(2),'change');
  field('date','2026-08-20','change');check(!fixture.querySelector('[data-expense-field="reportingDateConfirmed"]'),'extra late-report checkbox remained');check(fixture.querySelector('[data-expense-field="reportingDate"]').value==='2026-10-01','later reporting month was not derived');field('date','2026-10-20','change');
  field('pcnClassification','P','change');check(fixture.querySelector('[data-action="morning-expense-save"]').disabled,'P write available');field('pcnClassification','T','change');
  field('gross','');click('save');await settle();check(posts===0&&confirms===0,'invalid totals reached write');field('net','1000.00');field('vat','160.00');

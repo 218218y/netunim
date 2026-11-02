@@ -172,7 +172,13 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
         if (!supplier) {try {supplier = await canonicalItem('get_supplier', id, check, loaded.capabilities.environment);} catch {check();}}
         if (supplier?.id === id && supplier.active) restored.push(supplier);
       }
-      const retainedClassification = sourceExpenses().find(row => row.id === draft.classificationExpenseId);
+      let retainedClassification = null;
+      if (draft.classificationExpenseId) {
+        try {
+          const item = await canonicalItem('get_expense',draft.classificationExpenseId,check,loaded.capabilities.environment);
+          if (item.kind === 'expense' && item.status !== 100 && item.classification?.id) retainedClassification = item;
+        } catch {check();}
+      }
       check(); favorites = restored; extraExpenses = retainedClassification ? [retainedClassification] : [];
       const retained = catalog?.suppliers.filter(row => row.id === draft.supplierId) || [];
       supplierPicker.reset(); catalog = loaded; catalog.suppliers = mergeSuppliers(loaded.suppliers, retained);
