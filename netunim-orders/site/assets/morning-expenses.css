@@ -41,6 +41,12 @@
 .morning-expense-pdf-mark.current{background:#ffd52d75;border:2px solid #b77705;box-shadow:0 0 0 1px #fff9}
 .morning-expense-local-summary{font-size:13px;line-height:1.6;border-top:1px solid #d6e0e4;padding-top:8px}
 .morning-expense-local-summary p{margin:4px 0}
+.morning-expense-source>.morning-expense-local-summary{border:1px solid #d6e0e4;border-radius:8px;padding:10px;background:#fff;scroll-margin-block-start:16px}
+.morning-expense-local-summary[data-recognition-outcome="multiple_invoices"],.morning-expense-local-summary[data-recognition-outcome="unknown_supplier"],.morning-expense-local-summary[data-recognition-outcome="no_usable_text"],.morning-expense-local-summary[data-recognition-outcome="extraction_error"]{border-color:#c98d30;background:#fff8e8}
+.morning-expense-history-title{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-block-end:12px}
+.morning-expense-history-title h2{margin:0;font-size:20px}
+.morning-expense-vat-summary{margin-inline-start:auto;text-align:end;line-height:1.5;padding:8px 12px;border-radius:8px;background:#eef6f9;color:#164a56;max-width:100%;box-sizing:border-box}
+.morning-expense-vat-summary strong{font-size:16px}.morning-expense-vat-summary small{font-weight:400}
 @media(max-width:800px){.morning-expense-source{position:static}.morning-expense-pdf-viewport{height:56dvh;min-height:300px}}
 .morning-expense-page{width:100%;min-width:0}.morning-expense-page>.morning-expense-intake{margin:0}
 .morning-expense-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px;flex-wrap:wrap}.morning-expense-heading h1{font-size:24px;margin:0}

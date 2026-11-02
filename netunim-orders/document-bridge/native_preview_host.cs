@@ -431,6 +431,42 @@ namespace NetunimPreview
         }
     }
 
+    // Browser chrome and docked DevTools are outside the page viewport. Resolve
+    // the real render HWND by its measured physical client size, never by frame
+    // insets inferred from outerWidth/outerHeight. Ambiguous matches fail closed.
+    internal static class BrowserViewportGeometry
+    {
+        private delegate bool EnumWindowProc(IntPtr window, IntPtr parameter);
+        [DllImport("user32.dll")] private static extern bool EnumChildWindows(IntPtr owner, EnumWindowProc callback, IntPtr parameter);
+        [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr window);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetClassName(IntPtr window, StringBuilder name, int capacity);
+        [DllImport("user32.dll")] private static extern bool GetClientRect(IntPtr window, out RECT rect);
+        [DllImport("user32.dll")] private static extern bool ClientToScreen(IntPtr window, ref POINT point);
+
+        internal static Rectangle Resolve(IntPtr owner, int x, int y, int width, int height, int viewportWidth, int viewportHeight)
+        {
+            if (owner == IntPtr.Zero || x < 0 || y < 0 || width < 1 || height < 1 || viewportWidth < 1 || viewportHeight < 1 || viewportWidth > 20000 || viewportHeight > 20000 || (long)x + width > viewportWidth + 2L || (long)y + height > viewportHeight + 2L)
+                throw new InvalidOperationException("Invalid browser viewport geometry.");
+            IntPtr match = IntPtr.Zero;
+            int matches = 0;
+            EnumChildWindows(owner, delegate(IntPtr window, IntPtr parameter)
+            {
+                if (!IsWindowVisible(window)) return true;
+                StringBuilder name = new StringBuilder(256);
+                GetClassName(window, name, name.Capacity);
+                if (name.ToString() != "Chrome_RenderWidgetHostHWND") return true;
+                RECT rect;
+                if (GetClientRect(window, out rect) && Math.Abs(rect.Right - viewportWidth) <= 2 && Math.Abs(rect.Bottom - viewportHeight) <= 2)
+                { match = window; matches++; }
+                return true;
+            }, IntPtr.Zero);
+            if (matches != 1) throw new InvalidOperationException("The browser page viewport could not be uniquely located. Resize the preview pane and try again.");
+            POINT origin = new POINT();
+            if (!ClientToScreen(match, ref origin)) throw new InvalidOperationException("The browser page viewport is unavailable.");
+            return new Rectangle(origin.X + x, origin.Y + y, width, height);
+        }
+    }
+
     internal sealed class PreviewForm : Form
     {
         private const int GWL_HWNDPARENT = -8;
@@ -438,6 +474,7 @@ namespace NetunimPreview
         private const uint SWP_NOACTIVATE = 0x0010;
         private const uint SWP_SHOWWINDOW = 0x0040;
         private readonly PreviewPanel previewPanel;
+        private IntPtr browserOwner;
 
         [DllImport("user32.dll")]
         private static extern IntPtr GetForegroundWindow();
@@ -524,6 +561,24 @@ namespace NetunimPreview
             return true;
         }
 
+        public bool OpenViewport(string path, int x, int y, int width, int height, int viewportWidth, int viewportHeight, out string handlerId, out string error)
+        {
+            browserOwner = GetForegroundWindow();
+            Rectangle box = BrowserViewportGeometry.Resolve(browserOwner, x, y, width, height, viewportWidth, viewportHeight);
+            return Open(path, box.X, box.Y, box.Width, box.Height, out handlerId, out error);
+        }
+
+        public void MoveViewport(int x, int y, int width, int height, int viewportWidth, int viewportHeight)
+        {
+            if (previewPanel.CurrentHandlerId == null) return;
+            Rectangle box;
+            try { box = BrowserViewportGeometry.Resolve(browserOwner, x, y, width, height, viewportWidth, viewportHeight); }
+            catch { Hide(); throw; }
+            if (!Visible) Show();
+            ApplyBounds(box.X, box.Y, box.Width, box.Height);
+            previewPanel.SynchronizePreviewBounds();
+        }
+
         public void MovePreview(int x, int y, int width, int height)
         {
             if (!Visible) return;
@@ -533,8 +588,8 @@ namespace NetunimPreview
 
         private void ApplyBounds(int x, int y, int width, int height)
         {
-            width = Math.Max(200, Math.Min(5000, width));
-            height = Math.Max(160, Math.Min(4000, height));
+            width = Math.Max(1, Math.Min(20000, width));
+            height = Math.Max(1, Math.Min(20000, height));
             SetWindowPos(Handle, HWND_TOP, x, y, width, height, SWP_NOACTIVATE | SWP_SHOWWINDOW);
         }
 
@@ -617,6 +672,13 @@ namespace NetunimPreview
                     Reply(id, true, "MOVED " + form.Diagnostics);
                     return;
                 }
+                if (command == "MOVE_VIEWPORT")
+                {
+                    if (parts.Length != 8) throw new InvalidOperationException("MOVE_VIEWPORT requires x y width height viewportWidth viewportHeight.");
+                    form.MoveViewport(ParseInt(parts[2]), ParseInt(parts[3]), ParseInt(parts[4]), ParseInt(parts[5]), ParseInt(parts[6]), ParseInt(parts[7]));
+                    Reply(id, true, "MOVED " + form.Diagnostics);
+                    return;
+                }
                 if (command == "PICK_FOLDER")
                 {
                     IntPtr ownerHandle = PreviewForm.CurrentForegroundWindow();
@@ -637,6 +699,15 @@ namespace NetunimPreview
                     string handlerId, error;
                     bool ok = form.Open(path, ParseInt(parts[3]), ParseInt(parts[4]), ParseInt(parts[5]), ParseInt(parts[6]), out handlerId, out error);
                     if (!ok) throw new InvalidOperationException(error ?? "Preview handler failed.");
+                    Reply(id, true, "OPENED " + (handlerId ?? String.Empty) + " " + form.Diagnostics);
+                    return;
+                }
+                if (command == "OPEN_VIEWPORT")
+                {
+                    if (parts.Length != 9) throw new InvalidOperationException("OPEN_VIEWPORT requires path x y width height viewportWidth viewportHeight.");
+                    string path = Encoding.UTF8.GetString(Convert.FromBase64String(parts[2]));
+                    string handlerId, error;
+                    if (!form.OpenViewport(path, ParseInt(parts[3]), ParseInt(parts[4]), ParseInt(parts[5]), ParseInt(parts[6]), ParseInt(parts[7]), ParseInt(parts[8]), out handlerId, out error)) throw new InvalidOperationException(error ?? "Preview handler failed.");
                     Reply(id, true, "OPENED " + (handlerId ?? String.Empty) + " " + form.Diagnostics);
                     return;
                 }

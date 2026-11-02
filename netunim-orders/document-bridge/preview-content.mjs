@@ -19,7 +19,7 @@ const STRUCTURED_PREVIEW_MIME = new Map([['docx','application/vnd.openxmlformats
  * {ok: true, kind: 'binary', mime: string, source: 'file'} |
  * {ok: true, kind: 'structured', documentKind: string, mime: string, source: 'local-renderer'} |
  * {ok: true, kind: 'text', source: 'file' | 'office-text-fallback' | 'everything-content', text: string, truncated: boolean} |
- * {ok: true, kind: 'native', source: 'windows-preview-handler', officeKind: string} |
+ * {ok: true, kind: 'native', source: 'windows-preview-handler', nativeGeometryVersion: 2, officeKind: string} |
  * {ok: true, kind: 'unavailable', reason: 'too-large' | 'no-preview-handler'})} PreviewResult
  */
 
@@ -64,7 +64,7 @@ export function createDocumentPreview({resolve, files, indexedText}) {
       const indexed = await indexedText(meta.fullPath);
       if (indexed) return {ok: true, kind: 'text', source: 'office-text-fallback', ...meta, ...indexed};
     }
-    if (officeKind) return {ok: true, kind: 'native', source: 'windows-preview-handler', officeKind, ...meta};
+    if (officeKind) return {ok: true, kind: 'native', source: 'windows-preview-handler', nativeGeometryVersion:2, officeKind, ...meta};
     const indexed = await indexedText(meta.fullPath);
     if (indexed) return {ok: true, kind: 'text', source: 'everything-content', ...meta, ...indexed};
     if (mime || structuredKind) return {ok: true, kind: 'unavailable', reason: 'too-large', ...meta};

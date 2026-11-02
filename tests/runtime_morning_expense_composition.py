@@ -47,10 +47,16 @@ FLOW = r"""(async()=>{
  const accountExpenses=[expense,{...expense,id:id(99),number:'MORNING-EXTERNAL',sourceDocumentDate:'2019-06-01',reportingDate:'2020-01-01',createdAt:'2026-10-27T11:00:00.000Z'}];
  const calls=[],confirmations=[];let posts=0,hold=null,entered=null,operation=null,heldQuery='';
  cloudAuth.supaFetch=async(path,options)=>{
-  check(path==='/functions/v1/morning-expenses','wrong expense service');options.assertRequestScope();
+  check(['/functions/v1/morning-expenses','/functions/v1/morning-documents'].includes(path),'wrong expense service');options.assertRequestScope();
   const request=JSON.parse(options.body);calls.push(request);
   if(hold&&request.action==='suppliers'&&(!heldQuery||request.name===heldQuery)){entered();await hold}
   const base={ok:true,version:1,environment:'production'};
+  if(request.action==='report_page'){
+   check(path==='/functions/v1/morning-documents','VAT summary bypassed report service');
+   const document=request.source==='documents';
+   const items=[{id:id(document?300:301),kind:document?'document':'expense',type:305,date:request.fromDate,status:10,businessType:1,grossCents:document?11800:5900,vatCents:document?1800:900,deductibleVatCents:450}];
+   return Response.json({...base,...request,pageSize:50,total:1,pages:1,readAt:'2026-11-02T08:00:00Z',items});
+  }
   if(request.action==='capabilities')return Response.json({...base,create:true,upload:true,sourceIntent:true,duplicateCheck:true,siteRecent:true,pcnP:false,draftApproval:false,pSuppliers:[{id:pSupplier.id,taxId:pSupplier.taxId}]});
   if(request.action==='site_recent')return Response.json({...base,source:'site',items:[expense]});
   if(request.action==='source_pending')return Response.json({...base,items:[],page:request.page||0,pageSize:20});
@@ -104,6 +110,11 @@ FLOW = r"""(async()=>{
  check([...document.querySelector('[data-expense-history-filter="year"]').options].map(option=>option.value).join(',')===',2026','history exposes obsolete years');
  await chooseHistory('period','2026-09');
  check(document.querySelector('[data-expense-history-filter="period"]').value==='2026-09','real lazy composition did not dispatch bimonth selection');
+ check(document.querySelector('[data-expense-vat-summary]').textContent.includes('13.50'),'VAT summary did not use output VAT less deductible inputs');
+ await chooseHistory('year','');
+ check(!document.querySelector('[data-expense-history-filter="period"]').disabled,'all-years selection disabled current-year bimonths');
+ await chooseHistory('period','2026-09');
+ check(document.querySelector('[data-expense-history-filter="year"]').value===''&&document.querySelector('[data-expense-vat-summary]').textContent.includes('13.50'),'bimonth without explicit year failed');
  await chooseHistory('year','');
  const period=document.querySelector('[data-expense-field="reportingPeriod"]');
  check([...period.options].every(option=>option.value.startsWith('2026-')&&!/\d{2}–\d{2}/.test(option.text)),'old years or ambiguous numeric period labels remain');
@@ -201,7 +212,9 @@ LAYOUT_ASSERTIONS = r"""(async()=>{
  const filters=heading.querySelector('.morning-expense-history-filters');
  check(filters&&heading.contains(filters.querySelector('[data-expense-history-filter="year"]')),'history filters are detached from the heading');
  for(const select of filters.querySelectorAll('select'))check(bounds(select).width<=220,'history filter is too wide');
- if(innerWidth>=1024){const title=bounds(heading.querySelector('h2')),controls=bounds(filters);check(Math.abs((title.top+title.bottom-controls.top-controls.bottom)/2)<3,'history controls are not beside the title');}
+ const titleRow=document.querySelector('.morning-expense-history-title');
+ inside(titleRow.querySelector('h2'),titleRow,'history title clipped');inside(titleRow.querySelector('[data-expense-vat-summary]'),titleRow,'VAT summary clipped');
+ if(innerWidth>=1024){const title=bounds(titleRow.querySelector('h2')),summary=bounds(titleRow.querySelector('[data-expense-vat-summary]'));check(summary.right<=title.left&&Math.abs((title.top+title.bottom-summary.top-summary.bottom)/2)<3,'VAT summary is not at the left end of the title row');}
  check(tables.length===2,'recent/reporting tables missing');
  for(const table of tables){
   inside(table,table.parentElement,'expense table clipped by its section');

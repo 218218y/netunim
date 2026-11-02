@@ -1,3 +1,4 @@
+import {createExpenseVatSummary} from './morning-expense-vat-summary.js';
 import {esc} from '../../core/values.js';
 import {expenseBimonth, validReportDate} from '../../core/morning-report-period.js';
 import {readExpenseCatalogPage} from './morning-expense-catalog.js';
@@ -31,10 +32,12 @@ export async function readExpenseHistoryPeriod(request, capabilities, period, ch
   return expenseHistoryRows(items, period);
 }
 
-export function createExpenseHistory({request, capabilities, capture, run, todayISO}) {
+export function createExpenseHistory({request, capabilities, capture, run, todayISO, reportRequest}) {
   let groups = [], visible = 0, next = '', busy = false, paused = false, message = '', revision = 0, controller = null, observer = null;
   let query = '', searched = '', scan = null, searchVisible = 20;
   let year = '', periodKey = '';
+  const vat=createExpenseVatSummary({request:reportRequest,capabilities,capture,run,render});
+  const filterYear=()=>year||todayISO().slice(0,4);
   const lowerBound = () => periodKey ? periodKey + '-01' : year ? year + '-01-01' : '2010-01-01';
   const withinRange = () => !!next && next >= lowerBound();
   function searchFilter() {
@@ -62,18 +65,18 @@ export function createExpenseHistory({request, capabilities, capture, run, today
     bind();
   }
   function cancelRead() {revision++; controller?.abort(); observer?.disconnect(); observer = null; controller = null; busy = false; message = '';}
-  function reset() {cancelRead(); year = ''; periodKey = ''; resetBrowse(); query = ''; searched = ''; scan = null; searchVisible = 20;}
+  function reset() {vat.reset();cancelRead(); year = ''; periodKey = ''; resetBrowse(); query = ''; searched = ''; scan = null; searchVisible = 20;}
   function chooseFilter(element) {
     const kind = element.dataset.expenseHistoryFilter, value = element.value;
     if (kind === 'year') {
       if (value !== '' && (!/^\d{4}$/.test(value) || value < '2026' || value > todayISO().slice(0,4))) return false;
       year = value; periodKey = '';
     } else if (kind === 'period') {
-      if (value !== '' && (!year || !/^\d{4}-(01|03|05|07|09|11)$/.test(value) || value.slice(0,4) !== year || value + '-01' > todayISO())) return false;
+      if (value !== '' && (!/^\d{4}-(01|03|05|07|09|11)$/.test(value) || value.slice(0,4) !== filterYear() || value + '-01' > todayISO())) return false;
       periodKey = value;
     } else return false;
     cancelRead(); resetBrowse(); scan = null;
-    return searched ? search() : more();
+    return Promise.all([searched ? search() : more(),vat.load(periodKey)]);
   }
   function bind() {
     observer?.disconnect(); observer = null;
@@ -142,7 +145,7 @@ export function createExpenseHistory({request, capabilities, capture, run, today
       } finally {if (epoch === revision) {busy = false; controller = null; render();}}
     });
   }
-  function refresh() {if (searched) {query = searched; return search();} cancelRead(); resetBrowse(); return more();}
+  function refresh() {const summary=vat.load(periodKey);if(searched){query=searched;return Promise.all([search(),summary]);}cancelRead();resetBrowse();return Promise.all([more(),summary]);}
   function markup() {
     let remaining = searched ? searchVisible : visible;
     let displayedGroups = groups;
@@ -182,12 +185,13 @@ export function createExpenseHistory({request, capabilities, capture, run, today
     }
     const option = (value, label, selected) => `<option value="${value}" ${value === selected ? 'selected' : ''}>${esc(label)}</option>`;
     const years = Array.from({length:Math.max(0,Number(todayISO().slice(0,4))-2025)},(_,index) => String(Number(todayISO().slice(0,4))-index));
-    const periods = year ? [11,9,7,5,3,1].map(month => expenseBimonth(`${year}-${String(month).padStart(2,'0')}-01`)).filter(period => period.fromDate <= todayISO()) : [];
+    const periods = [11,9,7,5,3,1].map(month => expenseBimonth(`${filterYear()}-${String(month).padStart(2,'0')}-01`)).filter(period => period.fromDate <= todayISO());
     return `<section class="morning-expense-history" data-expense-history aria-label="הוצאות לפי תקופות דיווח">
-      <div class="morning-expense-history-heading"><h2>הוצאות לפי תקופות דיווח</h2>
+      <div class="morning-expense-history-title"><h2>הוצאות לפי תקופות דיווח</h2>${vat.markup()}</div>
+      <div class="morning-expense-history-heading">
       <div class="morning-expense-history-filters" role="group" aria-label="בחירת תקופות להצגת הוצאות">
       <label>שנת דיווח<select data-expense-history-filter="year" data-change="morning-expense-history-filter">${option('','כל השנים · מהחדש לישן',year)}${years.map(value => option(value,value,year)).join('')}</select></label>
-      <label>תקופת דיווח דו־חודשית<select data-expense-history-filter="period" data-change="morning-expense-history-filter" ${year ? '' : 'disabled'}>${option('','כל התקופות בשנה',periodKey)}${periods.map(period => option(period.key,period.label,periodKey)).join('')}</select></label></div>
+      <label>תקופת דיווח דו־חודשית<select data-expense-history-filter="period" data-change="morning-expense-history-filter">${option('',year?'כל התקופות בשנה':'כל התקופות · כל השנים',periodKey)}${periods.map(period => option(period.key,period.label,periodKey)).join('')}</select></label></div>
       <button type="button" class="btn" data-action="morning-expense-command" data-expense-command="history-refresh" ${busy ? 'disabled' : ''}>רענון רשימה</button></div>
       <div class="morning-expense-history-search" role="search" aria-label="חיפוש בהוצאות Morning">
       <label>חיפוש הוצאה<input type="search" maxlength="250" value="${esc(query)}" placeholder="ספק, מספר חשבונית, תיאור, סיווג, סכום או תאריך"

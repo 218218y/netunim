@@ -338,6 +338,18 @@ class WindowsBankVaultContracts(unittest.TestCase):
 
 @unittest.skipUnless(os.name == "nt", "Production Document Bridge startup runs in the required Windows CI job")
 class WindowsDocumentBridgeRuntimeContracts(unittest.TestCase):
+    def test_native_preview_resolves_actual_browser_viewport(self):
+        compiler = Path(os.environ['WINDIR'])/'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
+        with tempfile.TemporaryDirectory(prefix='netunim-viewport-') as directory:
+            binary = Path(directory)/'viewport-tests.exe'
+            result = subprocess.run([str(compiler), '/nologo', '/target:exe', '/main:NetunimPreview.ViewportGeometryTests',
+                '/reference:System.dll', '/reference:System.Core.dll', '/reference:System.Drawing.dll', '/reference:System.Windows.Forms.dll',
+                '/out:'+str(binary), str(ROOT/'netunim-orders/document-bridge/native_preview_host.cs'),
+                str(ROOT/'tests/fixtures/native_preview_viewport.cs')],capture_output=True,timeout=30,creationflags=subprocess.CREATE_NO_WINDOW)
+            self.assertEqual(result.returncode,0,(result.stdout+result.stderr).decode('utf8',errors='replace'))
+            result = subprocess.run([str(binary)],capture_output=True,timeout=20,creationflags=subprocess.CREATE_NO_WINDOW)
+            self.assertEqual(result.returncode,0,(result.stdout+result.stderr).decode('utf8',errors='replace'))
+
     def test_staged_runtime_uses_its_http_modules_and_preserves_private_file_gates(self):
         # Only the copied runtime's port changes. A working installation no
         # longer prevents this native test or participates in its shutdown.

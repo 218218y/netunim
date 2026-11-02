@@ -1,3 +1,4 @@
+import {expenseRecognitionReady} from './morning-expense-recognition-notice.js';
 import {readRetainedExpenseCategory,readSavedExpenseCategory,readMoreExpenseClassifications} from './morning-expense-category-state.js';
 import {prepareExpenseSplit} from './morning-expense-split.js';
 import {updateExpenseDraftPresentation} from './morning-expense-validation-view.js';
@@ -31,7 +32,7 @@ import {createExpenseDocumentViewer} from './morning-expense-document.js';
 
 const environmentChangedMessage = 'סביבת Morning השתנתה. המסך ננעל והטיוטה נשמרה בסביבתה; יש לפתוח מחדש את מסך ההוצאות לפני עבודה בסביבה החדשה.';
 
-export function createMorningExpenseIntake({request:sendRequest, captureRead, captureWrite, accountId, subscribeAccountScope, confirmDialog, dateEditorMarkup, files, toast=()=>{}, sourceCompletion=completeExpenseSource, todayISO = checkTodayISO, isActive = () => true, onBack = () => false}) {
+export function createMorningExpenseIntake({request:sendRequest, captureRead, captureWrite, accountId, subscribeAccountScope, confirmDialog, dateEditorMarkup, files, reportRequest, toast=()=>{}, sourceCompletion=completeExpenseSource, todayISO = checkTodayISO, isActive = () => true, onBack = () => false}) {
   const tasks = createRuntimeTaskOwner();
   const recentCache = createExpenseRecentCache();
   const fileQueue = createExpenseFileQueue({validate:files.validate, hash:ocrFileHash});
@@ -105,14 +106,14 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     search:(query, more, signal) => searchExpenseSuppliers(request, catalog, query, more, capture(), {signal}),
     commit:value => {catalog.suppliers = mergeSuppliers(value.items, catalog.suppliers);},
   });
-  const history = createExpenseHistory({request, capabilities:() => environmentChanged ? null : catalog?.capabilities, capture, run:tasks.run, todayISO});
+  const history = createExpenseHistory({request, capabilities:() => environmentChanged ? null : catalog?.capabilities, capture, run:tasks.run, todayISO,reportRequest});
   const recent = createExpenseRecent({request, capabilities:() => environmentChanged ? null : catalog?.capabilities, capture, run:tasks.run, accountId, cache:recentCache});
   const ocr = createExpenseOcrReview({request, capture, run, capabilities:() => catalog?.capabilities, accountId, selected:() => selected,
     files, confirmDialog, apply:applyOcr, advance:() => {if (operationId) return; workDrafts.delete(selected); draft=defaults(); edited=false; selectNextFile({saveCurrent:false});},
     busy:() => busy, canStart:() => !operationId && !environmentChanged && !local.multiple()});
   const local = createExpenseLocalReview({files, request, capture, capabilities:() => catalog?.capabilities, selected:() => selected,
     editVersion:() => editVersion, onProposal:proposal => pdfPreview.setFields(proposal?.fields),
-    onReady:({outcome}) => {if(!host()?.contains(document.activeElement))review.focus({preventScroll:true});if(announceNext&&announceNext===selected){announceNext=null;toast(outcome==='recognized'?'ה־PDF הבא זוהה ומוכן לבדיקה.':'ה־PDF הבא נטען. יש לבדוק ולהשלים את השדות המסומנים.');}},
+    onReady:({outcome,focus}) => {if(expenseRecognitionReady(host(),{outcome,focus,toast,advance:!!announceNext&&announceNext===selected,review}))announceNext=null;},
     apply:(proposal, check) => applyExpenseLocalProposal(proposal, check, applySuggestions), render, run:tasks.run, canStart:() => !!catalog && !operationId && !environmentChanged, canApply:() => !busy && !operationId && !environmentChanged, ocrActive:ocr.active, confirmDialog});
   const pdfPreview = createExpensePdfPreview({capture,run:tasks.run,isActive:active});
   const documentViewer=createExpenseDocumentViewer({request,capture,run:tasks.run,isActive:active,report:updateMessage,validate:files.validate});
@@ -633,8 +634,8 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
         data-change="morning-expense-files" ${busy||environmentChanged||fileAttempted&&!result?.sourcePending||operationId&&!result?.verified?'disabled':''}></label>
       <small>PDF, JPG או PNG עד 20MB לקובץ · הקבצים נשארים בזיכרון עד להעלאה. ${queue.length ? `${queue.length} נוספים בתור` : ''}</small>
       <p class="morning-expense-notice" role="status" data-expense-file-notice ${fileNotice?'':'hidden'}>${esc(fileNotice)}</p>
-      ${selected ? `<b>${esc(selected.name)}</b>${selected.type === 'application/pdf' ? pdfPreview.markup() : `<img src="${esc(previewUrl)}" alt="חשבונית מקור לבדיקה">`}` : '<p>בחר קובץ להצגתו לצד השדות.</p>'}
       ${local.markup()}
+      ${selected ? `<b>${esc(selected.name)}</b>${selected.type === 'application/pdf' ? pdfPreview.markup() : `<img src="${esc(previewUrl)}" alt="חשבונית מקור לבדיקה">`}` : '<p>בחר קובץ להצגתו לצד השדות.</p>'}
       ${expenseQueueMarkup(selected, fileQueue.items(selected,queue), disabled || fileAttempted, batch.label)}
       ${result?.verified&&result.sourcePending ? `<button type="button" class="btn" data-action="morning-expense-command" data-expense-command="file-status" ${busy?'disabled':''}>המשך בדיקה והשלמת המקור</button>`:''}</div></div>${batch.markup(disabled)}${catalog.capabilities.backgroundQueue?progress.markup():''}${sources.markup()}${recent.markup()}${history.markup()}` : ''}</div>` : ''}</section>`;
   }

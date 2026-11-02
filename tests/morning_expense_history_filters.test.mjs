@@ -40,7 +40,10 @@ test('filter changes fence delayed pages, preserve matching searches and restore
   assert.match(history.markup(),/matching/);
   history.clearSearch();await history.chooseFilter(filter('year',''));
   assert.equal(calls.at(-6).fromDate,'2028-09-01');assert.match(history.markup(),/כל השנים · מהחדש לישן/);
-  history.reset();assert.ok(history.markup().includes('data-expense-history-filter="period" data-change="morning-expense-history-filter" disabled'));
+  history.reset();assert.ok(!history.markup().includes('data-expense-history-filter="period" data-change="morning-expense-history-filter" disabled'));
+  calls.length=0;await history.chooseFilter(filter('period','2028-03'));
+  assert.equal(calls[0].fromDate,'2028-03-01');assert.equal(calls[0].toDate,'2028-04-01');
+  assert.match(history.markup(),/value="" selected>כל השנים/);assert.equal(history.chooseFilter(filter('period','2027-03')),false);
 });
 
 test('search rejects provider rows outside the selected reporting range before publishing',async()=>{

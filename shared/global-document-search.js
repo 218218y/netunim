@@ -1,3 +1,4 @@
+import {nativePreviewGeometry as viewportPreviewGeometry} from './native-preview-geometry.js';
 import {createDocumentPreviewModules} from '../domains/documents/preview-modules.js';
 import {esc} from '../core/values.js';
 import {createRuntimeResources} from './runtime-resources.js';
@@ -75,16 +76,17 @@ export function createGlobalDocumentSearch({documentBridge=null,siteSearch,siteR
   function cleanupPreviewObject(){destroySearchPreviewViewer();if(previewObjectUrl){URL.revokeObjectURL(previewObjectUrl);previewObjectUrl=''}}
   function nativePreviewGeometry(){
     const {previewBody}=refs();if(!previewBody||previewBody.hidden)return null;const rect=previewBody.getBoundingClientRect();if(rect.width<80||rect.height<80)return null;
-    const scale=Math.max(.5,Math.min(5,Number(window.devicePixelRatio)||1));
-    const sideInset=Math.max(0,(Number(window.outerWidth)||0)-(Number(window.innerWidth)||0))/2;
-    const topInset=Math.max(0,(Number(window.outerHeight)||0)-(Number(window.innerHeight)||0)-sideInset);
-    const physical=value=>Math.round(Number(value||0)*scale);
-    return {x:physical((Number(window.screenX)||0)+sideInset+rect.left),y:physical((Number(window.screenY)||0)+topInset+rect.top),width:Math.max(1,physical(rect.width)),height:Math.max(1,physical(rect.height)),scale};
+    return viewportPreviewGeometry(rect,{devicePixelRatio:window.devicePixelRatio,innerWidth:window.innerWidth,innerHeight:window.innerHeight});
   }
-  function nativeGeometryKey(value){return value?`${value.x}:${value.y}:${value.width}:${value.height}`:''}
+  function nativeGeometryKey(value){return value?`${value.x}:${value.y}:${value.width}:${value.height}:${value.viewportWidth}:${value.viewportHeight}:${window.screenX}:${window.screenY}`:''}
   function stopNativePreviewPolling(){if(nativePreviewPoll){clearInterval(nativePreviewPoll);nativePreviewPoll=null}}
   function deactivateNativePreview({forget=true}={}){nativePreviewActive=false;nativePreviewGeometryKey='';stopNativePreviewPolling();if(forget)nativePreviewWantedId='';documentBridge?.hideNativePreview?.().catch(()=>{})}
-  async function syncNativePreviewGeometry({force=false}={}){if(!nativePreviewActive||!documentBridge?.moveNativePreview)return;const geometry=nativePreviewGeometry();if(!geometry)return;const key=nativeGeometryKey(geometry);if(!force&&key===nativePreviewGeometryKey)return;nativePreviewGeometryKey=key;try{await documentBridge.moveNativePreview(geometry)}catch{}}
+  async function syncNativePreviewGeometry({force=false}={}){
+    if(!nativePreviewActive||!documentBridge?.moveNativePreview)return;
+    const geometry=nativePreviewGeometry();if(!geometry){deactivateNativePreview({forget:false});return;}
+    const key=nativeGeometryKey(geometry);if(!force&&key===nativePreviewGeometryKey)return;
+    try{await documentBridge.moveNativePreview(geometry);if(nativePreviewActive&&key===nativeGeometryKey(nativePreviewGeometry()))nativePreviewGeometryKey=key}catch{nativePreviewGeometryKey=''}
+  }
   function startNativePreviewPolling(){stopNativePreviewPolling();nativePreviewPoll=setInterval(()=>{syncNativePreviewGeometry()},350)}
   async function showNativePreview(id,sequence){if(!documentBridge?.nativePreview)return false;const geometry=nativePreviewGeometry();if(!geometry)throw new Error('אזור התצוגה המקדימה אינו זמין.');nativePreviewWantedId=String(id);await documentBridge.nativePreview(id,geometry);if(sequence!==previewSequence||selectedDocumentId!==String(id)){documentBridge.hideNativePreview?.().catch(()=>{});
   return false}nativePreviewActive=true;nativePreviewGeometryKey=nativeGeometryKey(geometry);startNativePreviewPolling();return true}
@@ -144,7 +146,7 @@ export function createGlobalDocumentSearch({documentBridge=null,siteSearch,siteR
   reason=String(data.previewReason||'לא ניתן להציג את סוג הקובץ הזה ישירות בתוך האתר.');previewBody.innerHTML=`<div class="document-preview-cloud"><span>DRIVE</span><b>${esc(name)}</b><p>${esc(reason)}</p>${url?`<a class="document-preview-open" data-document-open-link href="${esc(url)}" target="_blank" rel="noopener noreferrer">${
   esc(action)}</a>`:'<div class="document-preview-open-error">Google Drive לא החזיר קישור צפייה תקין.</div>'}${previewDetailsHtml(data)}</div>`;return}
       if(data.kind==='folder'){if(previewMatches){previewMatches.hidden=true;previewMatches.innerHTML=''}previewBody.innerHTML=`<div class="document-preview-folder"><div class="document-preview-folder-icon"></div><b>${esc(data.name||item?.name||'תיקייה')}</b><p>לחיצה כפולה על התוצאה תפתח את התיקייה בסייר הקבצים.</p>${previewDetailsHtml(data)}</div>`;return}
-      if(data.kind==='native'){startPreviewMatches();previewBody.innerHTML='<div class="document-preview-native"><span>OFFICE</span><b>Windows Preview</b><p>נטענת התצוגה המקורית שמותקנת ב-Windows…</p></div>';await showNativePreview(id,sequence);return}
+      if(data.kind==='native'){if(data.nativeGeometryVersion!==2)throw Error('יש לעדכן את Document Bridge כדי להציג מסמכי Office בתוך אזור התצוגה המקדימה.');startPreviewMatches();previewBody.innerHTML='<div class="document-preview-native"><span>OFFICE</span><b>Windows Preview</b><p>נטענת התצוגה המקורית שמותקנת ב-Windows…</p></div>';await showNativePreview(id,sequence);return}
       if(data.kind==='structured'){
         const blob=await documentBridge.previewFile(id,{signal:controller.signal});if(sequence!==previewSequence||selectedDocumentId!==String(id))return;
         previewBody.innerHTML=`<div class="document-preview-loading"><span></span><b>${data.documentKind==='word'?'מכין מסמך Word עם כל ההתאמות…':'קורא את חוברת Excel ומאתר התאמות…'}</b></div>`;

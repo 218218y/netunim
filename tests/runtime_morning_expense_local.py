@@ -15,6 +15,7 @@ PREFIX = PREFIX.replace(' let uiFeature=createMorningExpenseIntake(ports);', r""
   allocationNumber:suggestion('123456789'),currency:suggestion('ILS')},warnings:[]};
  ports.files.extract=async(file,{signal,check})=>{extractions++;if(extractionHold)await Promise.race([extractionHold,new Promise((_,reject)=>signal.addEventListener('abort',()=>{signalAborted=true;reject(new DOMException('Aborted','AbortError'));},{once:true}))]);check();return {source:'local_pdf',pages:[],hasText:true}};
  ports.files.recognize=async()=>{recognitions++;return structuredClone(recognized)};
+ const recognitionNotices=[];ports.toast=text=>recognitionNotices.push(text);
  let uiFeature=createMorningExpenseIntake(ports);
 """)
 SCENARIO = PREFIX + r"""
@@ -77,6 +78,9 @@ OWNERSHIP = PREFIX + r"""
  ports.files.recognize=async(...args)=>(await import('./assets/js/core/invoice-recognition.js')).recognizeInvoice(...args);
  await uiFeature.actions['morning-expense-files']({files:[new File([pdf],'unknown.pdf',{type:'application/pdf'})]});await settle();
  check(fixture.querySelector('[data-expense-local]').textContent.includes('לא זוהו'),'real PDF core failed to report unknown supplier safely');
+ check(fixture.querySelector('[data-expense-local]').getBoundingClientRect().top<fixture.querySelector('[data-expense-pdf-preview]').getBoundingClientRect().top,'unknown recognition feedback is below the PDF');
+ check(fixture.querySelector('[data-expense-local]').textContent.split('הספק או תבנית המסמך לא זוהו').length<=2,'unknown supplier explanation duplicated');
+ check(recognitionNotices.some(text=>text.includes('לא זוהו')),'unknown supplier outcome was not announced');
  const previewImage=fixture.querySelector('[data-expense-pdf-preview] img');check(previewImage,'native raster preview missing');await previewImage.decode();check(previewImage.naturalWidth>0,'native page image is empty');
  click('pdf-next');await settle();check(fixture.querySelector('[data-expense-pdf-preview]').textContent.includes('עמוד 2 מתוך 2'),'multi-page source navigation failed');
  check(fixture.querySelector('[data-expense-pdf-preview] img').src!==previewImage.src,'page image was not replaced');click('pdf-prev');await settle();
@@ -254,6 +258,10 @@ MULTI = PREFIX.replace(' let uiFeature=createMorningExpenseIntake(ports);', r"""
  const settle=()=>uiFeature.runtime.drain();click('toggle');await settle();
  await uiFeature.actions['morning-expense-files']({files:[new File(['%PDF-1.4 combined'],'combined.pdf',{type:'application/pdf'})]});await settle();
  check(fixture.textContent.includes('השמירה כחשבונית אחת חסומה'),'multiple invoice explanation missing');
+ const notice=fixture.querySelector('[data-expense-local]'),pane=notice.closest('.view-scroll').getBoundingClientRect(),bounds=notice.getBoundingClientRect();
+ check(bounds.top>=pane.top-2&&bounds.top<Math.min(pane.bottom,innerHeight),'multi-invoice outcome is outside the visible scroll area');
+ check(bounds.top<fixture.querySelector('[data-expense-pdf-preview]').getBoundingClientRect().top,'multi-invoice result is below the PDF');
+ check(recognitionNotices.some(text=>text.includes('כמה חשבוניות')),'multi-invoice outcome did not produce a short notice');
  check(fixture.querySelector('[data-action="morning-expense-save"]').disabled,'combined PDF can be saved');
  click('save');click('ocr-start');await settle();check(posts===0&&uploads===0,'combined PDF escaped through ordinary save or OCR');
  confirmWait=Promise.resolve(false);click('split-invoices');await settle();check(splitCalls===0&&fixture.textContent.includes('combined.pdf'),'cancellation removed original');confirmWait=null;
