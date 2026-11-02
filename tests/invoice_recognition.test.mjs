@@ -108,9 +108,10 @@ test('allocation checks use dated net thresholds and preserve the separate busin
  assert.equal(invoiceDate('31/02/26'),null);assert.equal(invoiceDate('01/06/26'),'2026-06-01');
 });
 
-test('shared summary rules cover each deployed layout with synthetic identities and fresh invoice values',async()=>{
+test('shared summary rules cover the established layouts with synthetic identities and fresh invoice values',async()=>{
  const {INVOICE_SUPPLIER_PROFILES}=await import('../netunim-orders/site/assets/js/core/invoice-supplier-profiles.js');
- for(const actual of INVOICE_SUPPLIER_PROFILES){
+ // Utility bills and Bisan have dedicated header/summary regressions.
+ for(const actual of INVOICE_SUPPLIER_PROFILES.filter(profile=>!['bezeq','bisan'].includes(profile.layout))){
   const synthetic={...actual,issuerTaxHash:hash,aliases:['ספק בדיקה']};
   let head=header(actual.id==='roya'?'s000123':actual.id==='gaber'?'SI000123':'000123',actual.id==='gaber'?'חשבונית מס מרכזת':'חשבונית מס');
   if(actual.layout==='sap'||actual.issuerRegion==='left-column')head=head.map(row=>row[0]===tax?[row[0],50,row[2]]:row);

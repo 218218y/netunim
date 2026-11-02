@@ -20,6 +20,8 @@ export function invoiceFieldReview(proposal, edits, draft, supplierTaxId) {
     let status = source?.status || 'missing', detail = source?.reason?.startsWith('ambiguous_') ? 'נמצאו כמה ערכים אפשריים במסמך.' :
       ({supplier_prefix_not_verified:'תחילית מספר החשבונית דורשת בדיקה לפי הספק.',
         alphanumeric_number_review:'מספר החשבונית כולל אותיות; יש לבדוק את המספר המלא.',
+        payment_conditional_invoice:'במקור מצוין שתוקף חשבונית המס מותנה בתשלום. יש לבדוק שהתשלום בוצע ולבחור את סוג המסמך המתאים.',
+        unsupported_p_number_format:'מבנה מספר חשבונית P אינו מוכר בתבנית זו; יש להשוות למספר המקורי.',
         canonical_supplier_pending:'נדרשת התאמה לספריית הספקים של Morning.',
         document_identity_unresolved:'זהות המסמך טרם הושלמה; יש לבדוק את הנתון מול המקור.'})[source?.reason] || '';
     if (!present(value)) status = 'missing';

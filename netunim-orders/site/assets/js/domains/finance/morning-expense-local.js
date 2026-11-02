@@ -8,6 +8,8 @@ const titles = {supplier:'ספק', invoiceNumber:'מספר חשבונית', docu
 const statuses = {verified:'זוהה ואומת במסמך', review:'דורש בדיקה', missing:'לא זוהה', manual:'הושלם ידנית'};
 const reasons = {computed_net:'מחושב מהסכום הכולל פחות המע״מ המפורש', canonical_supplier_pending:'נדרשת התאמה לספריית הספקים של Morning',
   amounts_inconsistent:'הסכומים אינם מתאימים זה לזה', document_identity_unresolved:'זהות המסמך דורשת בדיקה', supplier_prefix_not_verified:'תחילית המספר טרם אומתה',
+  payment_conditional_invoice:'במקור מצוין שתוקף חשבונית המס מותנה בתשלום. יש לבדוק שהתשלום בוצע ולבחור את סוג המסמך המתאים',
+  unsupported_p_number_format:'מבנה מספר חשבונית P אינו מוכר; יש להשוות למספר המקורי',
   multiple_candidates:'נמצאו כמה ערכים אפשריים'};
 export function createExpenseLocalReview({files, request, capabilities, capture, selected, editVersion, onProposal = () => {}, onReady = () => {}, apply, render, run, canStart, canApply = () => true, ocrActive, confirmDialog}) {
   let controller = null, revision = 0, pending = false, proposal = null, guard = false, hash = '', message = '', ocrOperation = '', sourceConflict = false;

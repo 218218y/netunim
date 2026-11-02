@@ -31,14 +31,15 @@ function unique(candidates,reason){
 function nearbyItems(cells,anchor,dy=3){return cells.filter(cell=>cell.page===anchor.page&&Math.abs(cell.lineY-anchor.lineY)<=dy).flatMap(cell=>cell.items);}
 function isPercent(item,nearby){return item.text.includes('%')||nearby.some(other=>other!==item&&other.text.includes('%')&&!/\d/.test(other.text)&&
   Math.min(Math.abs(other.x-item.x-item.width),Math.abs(item.x-other.x-other.width))<=Math.max(8,item.height*2));}
-function readMoney(cells,labels,{exclude=[],lastPageOnly=true,labelKeys=[]}={}){
+function readMoney(cells,labels,{exclude=[],lastPageOnly=true,labelKeys=[],outsideLabel=false}={}){
   const maxPage=Math.max(...cells.map(cell=>cell.page));
   for(const label of [...labels,...labelKeys.map(key=>({test:value=>value===key}))]){
     const anchors=cells.filter(cell=>(!lastPageOnly||cell.page===maxPage)&&label.test(cell.key.replace(/\d/g,''))&&!exclude.some(label=>label.test(cell.key)));
     const candidates=[];
     for(const anchor of anchors){
     const nearby=nearbyItems(cells,anchor,3);
-    const amounts=nearby.map(item=>({item,cents:invoiceMoneyCents(item.text)})).filter(row=>row.cents!==null&&!isPercent(row.item,nearby)&&row.item.x<anchor.x+anchor.width+2);
+    const amounts=nearby.map(item=>({item,cents:invoiceMoneyCents(item.text)})).filter(row=>row.cents!==null&&!isPercent(row.item,nearby)&&
+      (!outsideLabel||!anchor.items.includes(row.item))&&row.item.x<anchor.x+anchor.width+2);
     const same=amounts.filter(row=>anchor.items.includes(row.item));
     const left=amounts.filter(row=>row.item.x+row.item.width<=anchor.x+3).sort((a,b)=>b.item.x-a.item.x);
     const found=same.length===1?same[0]:left[0];
@@ -48,10 +49,13 @@ function readMoney(cells,labels,{exclude=[],lastPageOnly=true,labelKeys=[]}={}){
   }
   return missing('money');
 }
-function headerType(cells){
-  const titles=cells.filter(cell=>cell.y<cell.pageHeight*.5&&/^חשבונית(?:מס|זיכוי)/.test(cell.key));
+function headerType(cells,profile={}){
+  const titles=cells.filter(cell=>cell.y<cell.pageHeight*.5&&(/^חשבונית(?:מס|זיכוי)/.test(cell.key)||profile.creditTitleKey&&cell.key.startsWith(profile.creditTitleKey)));
   const found=titles.map(cell=>({cell,type:cell.key.includes('זיכוי')?330:cell.key.includes('קבלה')?320:305}));
   const result=unique(found.map(row=>field(row.type,row.cell.items,'document_title')),'document_type');
+  if(result.value&&profile.paymentConditional&&cells.some(cell=>cell.page===1&&cell.key.startsWith('מסמךזהאינומהווהחשבוניתמס'))){
+    result.status='review';result.reason='payment_conditional_invoice';
+  }
   return {result,titles:found};
 }
 function invoiceNumber(cells,titles,profile){
@@ -62,13 +66,20 @@ function invoiceNumber(cells,titles,profile){
     for(const item of items){
       if(invoiceDate(item.text)||/\d{1,2}:\d{2}/.test(item.text)||/@/.test(item.text))continue;
       for(const match of item.text.matchAll(/(?<![\da-z])[a-z]{0,3}\d+(?:[-/][a-z\d]+)*(?![\da-z])/gi)){
-        if(match[0].length>20||match[0].length<2||item.x<placement.minX||item.x>placement.maxX)continue;
+        if(match[0].length>20||match[0].length<2||item.x<placement.minX||item.x>placement.maxX||
+          profile.numberDigits&&(!/^\d+$/.test(match[0])||match[0].length!==profile.numberDigits))continue;
         candidates.push(field(match[0],[item,...cell.items.filter(other=>other!==item)],'invoice_title_geometry'));
       }
     }
   }
   const result=unique(candidates,'invoice_number');
   result.rawNumber=result.value;result.suggestedNumber=result.value;result.effectiveNumber=null;
+  if(result.value&&profile.numberFormat==='p-slash-nine'){
+    if(/^\d{2}\/\d{2}\/\d{5}$/.test(result.value)){
+      result.value=result.value.replaceAll('/','');result.suggestedNumber=result.value;
+      result.method='printed_p_number_groups';result.normalizationVerified=true;
+    }else if(!/^\d{9}$/.test(result.value)){result.status='review';result.reason='unsupported_p_number_format';}
+  }
   const verifiedPrefix=profile.verifiedNumberPrefixes?.find(prefix=>result.value?.startsWith(prefix)&&/^\d+$/.test(result.value.slice(prefix.length)));
   if(verifiedPrefix){result.value=result.value.slice(verifiedPrefix.length);result.suggestedNumber=result.value;result.method='verified_supplier_prefix';result.normalizationVerified=true;}
   else if(result.value&&/[a-z]/i.test(result.value)){result.status='review';result.reason='alphanumeric_number_review';}
@@ -78,7 +89,7 @@ function invoiceNumber(cells,titles,profile){
   return result;
 }
 function invoiceDay(cells,titles,profile){
-  const preferred=['תאריךחשבונית','תאריךהזיכוי','תאריךרישום','תאריך'];
+  const preferred=[...(profile.dateLabelKeys||[]),'תאריךחשבונית','תאריךהזיכוי','תאריךרישום','תאריך'];
   for(const key of preferred){
     const anchors=cells.filter(cell=>cell.page===1&&cell.y<cell.pageHeight*.5&&(cell.key===key||cell.key.startsWith(key)&&/\d/.test(cell.key.slice(key.length))));
     const candidates=[];
@@ -88,6 +99,12 @@ function invoiceDay(cells,titles,profile){
       if(items[0])candidates.push(field(invoiceDate(items[0].text),[items[0],...anchor.items.filter(item=>item!==items[0])]));
     }
     if(candidates.length)return unique(candidates,'invoice_date');
+  }
+  if(profile.datePlacement){
+    const position=profile.datePlacement,titleY=Math.min(...titles.filter(row=>row.cell.page===1).map(row=>row.cell.lineY));
+    return unique(cells.filter(cell=>cell.page===1&&cell.lineY-titleY>=position.minDy&&cell.lineY-titleY<=position.maxDy).flatMap(cell=>cell.items)
+      .filter(item=>item.x>=position.minX&&item.x<=position.maxX&&invoiceDate(item.text))
+      .map(item=>field(invoiceDate(item.text),[item],'issuer_header_date')),'invoice_date');
   }
   if(profile.layout==='morning'){
     const titleY=Math.min(...titles.map(row=>row.cell.y));
@@ -124,7 +141,7 @@ export function invoiceRecognitionOutcome(proposal) {
 }
 export function inspectInvoiceDocuments(extraction, profile = {}) {
   const pages = extraction.pages.map(page => {
-    const cells = cellsOf([{...page,page:1}]), {titles,result} = headerType(cells);
+    const cells = cellsOf([{...page,page:1}]), {titles,result} = headerType(cells,profile);
     const number = invoiceNumber(cells,titles,profile);
     return {page:page.page, number:number.rawNumber, documentType:result.value,
       candidates:number.candidates || [], hasTitle:titles.length > 0};
@@ -163,17 +180,17 @@ export async function recognizeInvoice(extraction,{profiles=INVOICE_SUPPLIER_PRO
   if(matched.length!==1){output.warnings.push(matched.length?'ambiguous_supplier':'unknown_supplier');output.outcome='unknown_supplier';return output;}
   const {profile,taxId,item}=matched[0];output.profile=profile.id;
   output.fields.supplier={...field(taxId,[item],'issuer_tax_and_profile','review','canonical_supplier_pending'),name:profile.title,nameSource:'profile',canonicalVerified:false};
-  const {result,titles}=headerType(cells);output.fields.documentType=result;
+  const {result,titles}=headerType(cells,profile);output.fields.documentType=result;
   output.fields.invoiceNumber=invoiceNumber(cells,titles,profile);output.fields.date=invoiceDay(cells,titles,profile);
   output.fields.allocationNumber=allocation(cells);
-  const netLabels=profile.layout==='tbi'||profile.layout==='morning'?[/^סהכ$/]:profile.layout==='priority'?[/^מחיראחריהנחה$/,/^מחירכולל$/]:profile.layout==='sap'?[/^סךהכולאחריהנחה$/,/^סהכאחריהנחה$/]:[/^סהכלפנימעמ$/];
+  const netLabels=['tbi','morning','bisan'].includes(profile.layout)?[/^סהכ$/]:profile.layout==='priority'?[/^מחיראחריהנחה$/,/^מחירכולל$/]:profile.layout==='sap'?[/^סךהכולאחריהנחה$/,/^סהכאחריהנחה$/]:[/^סהכלפנימעמ$/];
   const grossLabels=profile.layout==='bina'?[/^לתשלוםבשח$/]:profile.layout==='sap'?[/^סכוםלתשלום$/,/^סהכלתשלום$/]:profile.layout==='priority'?[/^סהככוללמעמ$/,/^סהכמחיר$/]:profile.layout==='priority-print'?[/^סהככללי$/]:[/^סהכלתשלום(?:בשח)?$/];
   // A trailing annex is not necessarily the invoice's summary page. Choose the
   // last page containing BOTH explicit VAT and gross, never mix page totals.
   let summary=null;
-  for(const page of [...new Set(cells.map(cell=>cell.page))].sort((a,b)=>b-a)){
+  for(const page of profile.summaryFirstPage?[1]:[...new Set(cells.map(cell=>cell.page))].sort((a,b)=>b-a)){
     const local=cells.filter(cell=>cell.page===page);
-    const vat=readMoney(local,[/^מעמ(?:\d|$)/,...(profile.layout==='hash'?[/^מע$/]:[])],{labelKeys:profile.summaryLabelKeys?.vat}),
+    const vat=readMoney(local,[/^מעמ(?:\d|$)/,...(profile.layout==='hash'?[/^מע$/]:[])],{labelKeys:profile.summaryLabelKeys?.vat,outsideLabel:profile.vatAmountOutsideLabel}),
       gross=readMoney(local,grossLabels,{labelKeys:profile.summaryLabelKeys?.gross});
     if(vat.value!==null&&gross.value!==null){
       // Payment receipts may repeat "total" below the invoice summary. Restrict
@@ -193,7 +210,7 @@ export async function recognizeInvoice(extraction,{profiles=INVOICE_SUPPLIER_PRO
   if([net,vat,gross].every(row=>Number.isSafeInteger(row.value))&&(net.value<0||vat.value<0||gross.value<=0||net.value+vat.value!==gross.value)){
     for(const row of [net,vat,gross]){row.status='review';row.reason='amounts_inconsistent';}output.warnings.push('amounts_inconsistent');
   }
-  const currency=extraction.pages.flatMap(page=>page.items).find(item=>/₪|ש["'`״]?ח|\bILS\b/u.test(item.text));
+  const currency=extraction.pages.flatMap(page=>page.items).find(item=>/₪|ש["'`״]?ח|\b(?:ILS|NIS)\b/u.test(item.text));
   if(currency)output.fields.currency=field('ILS',[currency],'printed_currency');
   output.allocationPolicy=allocationPolicy({date:output.fields.date.value,documentType:result.value,netCents:net.value,vatCents:vat.value});
   if(output.allocationPolicy.status==='check_business_conditions'&&!output.fields.allocationNumber.value)output.warnings.push('allocation_missing_check_conditions');

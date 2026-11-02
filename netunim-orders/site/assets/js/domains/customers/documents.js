@@ -41,10 +41,11 @@ let issuanceInterruptionEpoch=0;
 const lifetime=createMorningLifetime({operationScope,getPendingOperationId:()=>pendingRecovery?.operationId,recover:recoverPendingMorningOperation,onInterrupt:()=>{issuanceInterruptionEpoch++}});
 const captureScope=lifetime.capture,scheduleRecoveryCheck=lifetime.scheduleRecovery;
 let pendingRecovery=loadMorningDebtRecoveryContext();
+let headerVat,vatStatusRevision=0;
 const modalSession=createMorningModalSession({
   authority:{captureRead:()=>captureScope(true)},account:{subscribe:subscribeAccountScope},
   surface:{find:generation=>document.querySelector(`#modal [data-morning-generation="${generation}"]`),isOpen:()=>$('#modalBackdrop')?.classList.contains('open')===true},
-  presentation:{render:modal,clear:owned=>{clearMorningDisplay(owned,modal)}},
+  presentation:{render:modal,clear:owned=>{headerVat?.reset();clearMorningDisplay(owned,modal)}},
 });
 function modalAssert(){modalSession.assert()}
 function currentRoot(){return modalSession.element}
@@ -127,7 +128,7 @@ const recoveryDecision=createMorningRecoveryDecision({
 const issueCommand=createMorningIssueCommand({
   session:{read:()=>({createBusy,blocked,completed}),update:next=>{if('createBusy' in next)createBusy=next.createBusy;if('blocked' in next)blocked=next.blocked;if('completed' in next)completed=next.completed},
     reject:()=>activeDebtId?rejectSecondaryMutation?.()===true:rejectSecondaryIssuance?.()===true,assertModal:modalAssert,capture:captureScope,generation:()=>modalSession.generation,signal:()=>modalSession.signal,
-    interruptionEpoch:()=>issuanceInterruptionEpoch,operationId:()=>issuanceContext?.operationId||activeOperationId,isActive,scopeChanged,cancelStatus:()=>statusFlow.cancelPending()},
+    interruptionEpoch:()=>issuanceInterruptionEpoch,operationId:()=>issuanceContext?.operationId||activeOperationId,isActive,scopeChanged,cancelStatus:()=>{vatStatusRevision++;statusFlow.cancelPending()}},
   form:{read:readForm,policy:debtUpdatePolicy,context:recoveryContext,confirmation:debtImpactConfirmation},issuance,application:debtApplication,
   recovery:{settle:settleVerifiedRecovery,notify:notifyBankVerified,adopt:adoptRecoveryOperationId,reset:resetOperationAfterTerminal,schedule:scheduleRecoveryCheck},
   display:{confirmDialog:confirmDialog,busy:setBusy,operation:renderOperation,status:connectionStatus,markSaved:()=>markModalDraftSaved?.()},media:documentsBrowser,feedback:{toast},
@@ -172,8 +173,8 @@ async function openMorningDocumentModal({prefill=null,debtId='',source=null,init
   if(blocked&&requestedKey!==sourceKey(activeSource)){toast('יש ניסיון הפקה קודם שעדיין ממתין לאימות. יש להשלים את בדיקת ההפקה שלו לפני פתיחת מקור מסמך אחר.');return}
   if(!blocked){activeOperationId=newOperationId();activeDebtId=requestedDebtId;activeSource=requestedSource;bankTransactionLinker.reset(requestedSource);issuanceContext=null;completed=false}else if(issuanceContext?.operationId===activeOperationId){activeDebtId=issuanceContext.debtId;activeSource=hydrateRecoveredSource(sourceFromRecovery(issuanceContext),requestedSource);bankTransactionLinker.reset(activeSource)}
   const safeType=activeSource.kind==='bank'&&![320,400].includes(Number(initialType))?320:Number(initialType)||DEFAULT_DOCUMENT_TYPE;
-  modalSession.open('בודק חיבור ל-Morning…',()=>formBody(prefill||{},safeType,dateEditorMarkup,{source:activeSource}),foot());
-  mountMorningConnectionStatus();
+  const generation=modalSession.open('בודק חיבור ל-Morning…',()=>formBody(prefill||{},safeType,dateEditorMarkup,{source:activeSource}),foot());
+  await mountMorningConnectionStatus();if(!isActive(generation))return false;
   syncDocumentType();syncPaymentType();syncPaymentTotal();syncBankDebtPickerSelection();if(currentField('morningBankTransactionRows'))void lifetime.run(()=>bankTransactionLinker.refresh());await refreshStatus();
 }
 function isActive(generation){return !disposed&&modalSession.isActive(generation)}
@@ -224,7 +225,18 @@ function settleVerifiedRecovery(operationId,result,{serverLinkPending=false}={})
 }
 function notifyBankVerified(context,bankLink){if(context?.sourceKind!=='bank'||!context.bankTransactionId||!bankLink||bankLink.pending===true)return;try{onBankDocumentVerified(Number(context.bankTransactionId),bankLink)}catch(error){console.error('Bank Morning local projection update failed',error)}}
 
-function mountMorningConnectionStatus(){const panel=modalSession.element?.closest('#modal'),heading=panel?.querySelector('.modal-head h3');if(!heading||!panel.querySelector('.morning-document-dialog'))return;heading.id='morningConnectionStatus';heading.className='morning-connection morning-modal-connection loading';heading.innerHTML='<span class="morning-dot"></span><span>בודק חיבור ל-Morning…</span>'}
+async function mountMorningConnectionStatus(){
+  const panel=modalSession.element?.closest('#modal'),heading=panel?.querySelector('.modal-head h3');if(!heading||!panel.querySelector('.morning-document-dialog'))return;
+  heading.id='morningConnectionStatus';heading.className='morning-connection morning-modal-connection loading';
+  heading.innerHTML='<span class="morning-dot"></span><span>בודק חיבור ל-Morning…</span>';
+  const generation=modalSession.generation,check=captureScope(true);
+  try{
+    const {createMorningHeaderVat}=await import('./morning-header-vat.js');check();
+    if(!isActive(generation)||currentField('morningConnectionStatus')!==heading)return;
+    headerVat??=createMorningHeaderVat({request:request.json,capture:()=>captureScope(true),run:lifetime.run,isActive,todayISO:todayLocal});
+    headerVat.mount(heading,generation);
+  }catch{ /* The optional report cannot prevent the existing connection check. */ }
+}
 function connectionStatus(kind,text){const el=currentField('morningConnectionStatus');if(!el)return;const inHeader=el.matches('#modal .modal-head h3');el.className=`morning-connection ${inHeader?'morning-modal-connection ':''}${kind}`;el.innerHTML=`<span class="morning-dot"></span><span>${esc(text)}</span>`}
 function renderOperation(op){const result=currentField('morningOperationResult'),markup=morningOperationMarkup(op);if(result&&markup!==null)result.innerHTML=markup}
 function resetOperationAfterTerminal(operationId){
@@ -236,7 +248,14 @@ async function abandonRecoveredReservation(operationId,{quiet=false,assertCurren
   if(data.abandoned===true){const cleared=resetOperationAfterTerminal(operationId);if(cleared&&!quiet)toast('ניסיון ההפקה הקודם נעצר לפני שנשלח ל-Morning. לא הופק מסמך ולא בוצע שינוי בחוב.');return {abandoned:cleared,operation:data.operation}}
   return {abandoned:false,operation:data.operation||null};
 }
-function refreshStatus(...args){return statusFlow.refresh(...args)}
+async function refreshStatus(...args){
+  const generation=modalSession.generation,revision=++vatStatusRevision,data=await statusFlow.refresh(...args);
+  if(revision===vatStatusRevision&&isActive(generation))headerVat?.update(data,generation);return data;
+}
+async function issueAndRefresh(...args){
+  const generation=modalSession.generation,previous=completed,result=await issueCommand.create(...args);
+  if(!previous&&completed&&isActive(generation))headerVat?.refresh(generation);return result;
+}
 
 function recoverPendingMorningOperation(...args){return recoveryFlow.recover(...args)}
 
@@ -250,10 +269,10 @@ async function previewMorningDocument(button){
 function openExistingDocument(documentId,button,operationId){try{captureScope(true)()}catch(error){toast(error.message);return false}return documentId?documentsBrowser.viewDocument(documentId,button):documentsBrowser.viewVerifiedOperation(operationId,button)}
 async function reconcile(button){if(createBusy)return;setBusy(button,true,'בודק…');try{await refreshStatus({reconcile:true})}finally{setBusy(button,false)}}
 
-function dispose(){if(disposed)return false;disposed=true;lifetime.dispose();modalSession.dispose();return true}
+function dispose(){if(disposed)return false;disposed=true;headerVat?.reset();lifetime.dispose();modalSession.dispose();return true}
 function editCommand(run,args){return disposed||!isActive(modalSession.generation)?false:run(...args)}
 function command(run,args){return disposed?Promise.resolve(false):lifetime.run(()=>run(...args))}
-const runtime={dispose,cancelPending:()=>{lifetime.cancelPending();statusFlow.cancelPending()},drain:lifetime.drain,isPending:lifetime.isPending};
+const runtime={dispose,cancelPending:()=>{vatStatusRevision++;headerVat?.clear();lifetime.cancelPending();statusFlow.cancelPending()},drain:lifetime.drain,isPending:lifetime.isPending};
 return {
   dispose,runtime,isDebtRecoveryPending,rejectDebtRecoveryMutation,documentButton,recoverPendingMorningOperation,
   saveRecoveryChoice:(...args)=>disposed?false:recoveryDecision.save(...args),
@@ -274,7 +293,7 @@ return {
   syncPaymentType:(...args)=>editCommand(syncPaymentType,args),
   syncPaymentBank:(...args)=>editCommand(syncPaymentBank,args),
   previewMorningDocument:(...args)=>command(previewMorningDocument,args),
-  createMorningDocument:(...args)=>command(issueCommand.create,args),
+  createMorningDocument:(...args)=>command(issueAndRefresh,args),
   openExistingDocument:(...args)=>command(openExistingDocument,args),
   reconcile:(...args)=>command(reconcile,args),
   refreshStatus:(...args)=>command(refreshStatus,args),
