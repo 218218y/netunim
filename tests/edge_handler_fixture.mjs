@@ -24,7 +24,8 @@ export async function edgeFixture(name, options = {}) {
     return (...args) => { operations.push({key, args}); return database(); };
   }}));
   const context = vm.createContext({...imports, console:{error() {}}, Response, Request, URL, URLSearchParams,
-    AbortController, TextEncoder, TextDecoder, crypto:globalThis.crypto, atob, setTimeout, clearTimeout,
+    AbortController, TextEncoder, TextDecoder, crypto:globalThis.crypto, atob,
+    setTimeout:options.timers?.setTimer ?? setTimeout, clearTimeout:options.timers?.clearTimer ?? clearTimeout,
     fetch:fetchRequest,
     createClient:() => ({from:database, auth:{getUser:async () => ({data:{user:options.user === null ? null : {id:'test-owner'}}})}}),
     Deno:{env:{get:key => ({SUPABASE_URL:'https://example.supabase.co', SUPABASE_ANON_KEY:'test', SUPABASE_SERVICE_ROLE_KEY:'test',

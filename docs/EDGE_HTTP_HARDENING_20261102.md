@@ -87,3 +87,22 @@ credential does not call revoke; explicit disconnect retains the existing revoke
 behavior. No old secret is retained in a second store. Live consent/revocation
 acceptance remains NOT RUN; the regression proves request behavior with synthetic
 credentials, not a new live Google grant.
+
+## Stage 4: PDF body lifetime and native transport evidence
+
+An additional read-only regression proved Morning's PDF deadline ended at response
+headers, leaving a stalled body unbounded in time. Its existing timeout helper
+now accepts a response consumer; the PDF path alone uses it to keep the existing
+20 second deadline active through the 20 MiB bounded read. Failed/oversized reads
+cancel the body and release its reader, even if the sender's cancellation promise
+never settles. Valid PDF/no-store/size/error behavior remains covered. Both new
+PDF cases failed before this stage and pass afterward. This changes neither
+issuance/financial retries nor the provider hostname/redirect policy. Morning's
+other JSON transport consumers retain their previous timeout behavior in this
+slice; changing their post-header timeout needs financial uncertainty coverage.
+
+Two additional tests exercise the Google helper against an actual loopback HTTP
+server with the real native fetch implementation, before and after headers.
+Both prove timeout rejection, connection close and timer disposal; they use no
+provider account or business data. Local Node 24.21.0 on Windows passes these
+cases. They join the full CI model inventory automatically.
