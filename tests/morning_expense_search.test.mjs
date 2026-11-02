@@ -37,6 +37,17 @@ test('literal decimal-like text stays searchable independently of financial amou
   assert.ok(expenseSearchMatcher('15-9-26')({...item, number:'15-9-26', sourceDocumentDate:'2026-10-01'}));
 });
 
+test('supplier spelling aliases match names while dates, amounts and identifiers keep their meaning',()=>{
+ const expense={...row,name:'חרבאוי'};
+ for(const name of ['חרבאוי','חרבאווי','חרבאוויי','חַרְבָּאוִי'])assert.equal(expenseSearchMatcher(name)(expense),true,name);
+ assert.equal(expenseSearchMatcher('חרבאווי 1234.50 15/9/26')(expense),true);
+ assert.equal(expenseSearchMatcher('חרבאווי 1234.51')(expense),false);
+ assert.equal(expenseSearchMatcher('חרבאווי 15/9/25')(expense),false);
+ assert.equal(expenseSearchMatcher('חרבאווי')({...expense,name:'ספק אחר',description:'חרבאוי'}),false);
+ assert.equal(expenseSearchMatcher('ABחרבאוי99')({...expense,name:'ספק אחר',number:'ABחרבאווי99'}),false);
+ assert.equal(expenseSearchMatcher('חרבאווי')({...expense,status:100}),false);
+});
+
 test('account search includes later pages and older reporting periods, with bounded explicit continuation', async () => {
   const items = Array.from({length:251}, (_, n) => ({...row, id:String(n), name:n === 250 ? 'יעד' : 'אחר', sourceDocumentDate:'2022-12-15', reportingDate:'2023-01-01'}));
   const scan = newExpenseSearchScan(), calls = [];

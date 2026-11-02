@@ -74,11 +74,11 @@ function invoiceNumber(cells,titles,profile){
   }
   const result=unique(candidates,'invoice_number');
   result.rawNumber=result.value;result.suggestedNumber=result.value;result.effectiveNumber=null;
-  if(result.value&&profile.numberFormat==='p-slash-nine'){
-    if(/^\d{2}\/\d{2}\/\d{5}$/.test(result.value)){
-      result.value=result.value.replaceAll('/','');result.suggestedNumber=result.value;
-      result.method='printed_p_number_groups';result.normalizationVerified=true;
-    }else if(!/^\d{9}$/.test(result.value)){result.status='review';result.reason='unsupported_p_number_format';}
+  if(result.value&&profile.numberFormat==='p-final-segment'){
+    if(/^\d{2}\/\d{2}\/\d{1,9}$/.test(result.value)){
+      result.value=result.value.split('/').at(-1);result.suggestedNumber=result.value;
+      result.method='supplier_document_sequence';result.normalizationVerified=true;
+    }else if(!/^\d{1,9}$/.test(result.value)){result.status='review';result.reason='unsupported_p_number_format';}
   }
   const verifiedPrefix=profile.verifiedNumberPrefixes?.find(prefix=>result.value?.startsWith(prefix)&&/^\d+$/.test(result.value.slice(prefix.length)));
   if(verifiedPrefix){result.value=result.value.slice(verifiedPrefix.length);result.suggestedNumber=result.value;result.method='verified_supplier_prefix';result.normalizationVerified=true;}

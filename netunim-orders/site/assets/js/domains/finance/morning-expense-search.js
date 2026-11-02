@@ -1,4 +1,4 @@
-import {searchMatch} from '../../core/search.js';
+import {supplierSearchMatch} from '../../core/morning-supplier-search.js';
 import {expenseBimonth, validReportDate} from '../../core/morning-report-period.js';
 import {readExpenseCatalogPage} from './morning-expense-catalog.js';
 
@@ -37,7 +37,7 @@ export function expenseSearchMatcher(query) {
     // text matching, which would discard the decimal point.
     if (unmatched) return false;
     values.push(...amounts.map(cents => String(cents / 100)));
-    return searchMatch(rest.replace(/(\d),(?=\d{3}(?:\D|$))/g, '$1').replace(/₪/g, ''), values);
+    return supplierSearchMatch(rest.replace(/(\d),(?=\d{3}(?:\D|$))/g, '$1').replace(/₪/g, ''), row, values);
   };
 }
 

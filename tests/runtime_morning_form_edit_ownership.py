@@ -35,6 +35,9 @@ FLOW=r"""(async()=>{
   check(status.textContent.includes('Production')&&vat.textContent.includes('13.50'),'issuance header shows the complete default VAT');
   check(reportCalls.length===2&&reportCalls.every(row=>row.fromDate==='2026-09-01'&&row.toDate==='2026-10-31'),'issuance header uses the default September–October cycle');
   check(getComputedStyle(status).fontSize===getComputedStyle(vat).fontSize&&getComputedStyle(status).fontWeight===getComputedStyle(vat).fontWeight,'header VAT matches connection typography');
+  const period=vat.querySelector('[data-morning-vat-period]');
+  check(period?.textContent==='ספטמבר–אוקטובר 2026'&&rect(period).height>0,'VAT reporting months are not visibly displayed');
+  check(parseFloat(getComputedStyle(period).fontSize)<parseFloat(getComputedStyle(vat).fontSize),'VAT reporting months are not smaller than the amount');
   check(rect(vat).right<=rect(status).left&&Math.abs((rect(vat).top+rect(vat).bottom-rect(status).top-rect(status).bottom)/2)<2,'header VAT is not aligned at the left of connection status');
   check(document.getElementById('modal').scrollWidth<=document.getElementById('modal').clientWidth+1,'header VAT overflows the modal');
   const suffix=trap.querySelector('[data-payment-field="cardNum"]'),invoice=trap.querySelector('input[type="radio"]');documents.syncPaymentType();check(suffix.value==='','active editor leaves external card suffix untouched');

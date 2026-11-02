@@ -1,4 +1,4 @@
-import {searchMatch} from '../../core/search.js';
+import {supplierSearchMatch} from '../../core/morning-supplier-search.js';
 
 // Catalog pages are deliberately bounded suggestions, never a complete directory.
 export async function readExpenseCatalogPage(request, capabilities, action, filter, page, assertCurrent, {signal} = {}) {
@@ -85,14 +85,14 @@ export function expenseSupplierEligibility(supplier, profiles = [], allowP = fal
   if (!/^\d{9}$/.test(supplier.taxId)) return {eligible:false, reason:'נדרש מספר עוסק בן 9 ספרות'};
   return {eligible:true, reason:''};
 }
-// Morning's name filter does not provide our punctuation-insensitive matching.
+// Morning's name filter does not provide our punctuation/spelling name aliases.
 // Keep canonical pages in this account's catalog, and scan at most four new pages
 // per search. Subsequent searches reuse them; "more" resumes the directory scan.
 export async function searchExpenseSuppliers(request, catalog, query, more, assertCurrent, {signal} = {}) {
   const term = query.trim(), tax = /^\d{9}$/.test(term);
   const directory = catalog.supplierDirectory ||= {items:new Map(catalog.supplierPage.items.map(row => [row.id, row])),
     seen:new Set(catalog.supplierPage.items.map(row => row.id)), nextPage:1, pages:catalog.supplierPage.pages, total:catalog.supplierPage.total};
-  const matches = () => [...directory.items.values()].filter(row => searchMatch(term, [row.name, row.taxId]));
+  const matches = () => [...directory.items.values()].filter(row => supplierSearchMatch(term, row));
   if (!more) {
     const result = await readExpenseCatalogPage(request, catalog.capabilities, 'suppliers', tax ? {taxId:term} : {name:term}, 0, assertCurrent, {signal});
     for (const row of result.items) directory.items.set(row.id, row);
