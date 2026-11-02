@@ -236,7 +236,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       draft.pcnClassification = history?.some(row => row.pcnClassification === 'P') || eligibilityFor(supplier).p ? 'P' : 'T';
       if (previousRate !== vatRate()) calculate(lastAmountField);
       render();
-      if (supplier) return restoreClassification(supplier.id);
+      if (supplier && (eligibilityFor(supplier).p || !recent || preferences?.classifications.some(row => row.supplierId === supplier.id))) return restoreClassification(supplier.id);
     } else if (name === 'pcnClassification') {
       if (eligibilityFor(catalog?.suppliers.find(row => row.id === draft.supplierId)).p) draft.pcnClassification = 'P';
       calculate(lastAmountField); render();
