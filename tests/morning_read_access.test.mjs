@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {stripTypeScriptTypes} from 'node:module';
 import vm from 'node:vm';
+import {readJsonBodyBounded, JsonBodyError} from '../netunim-orders/supabase/functions/_shared/http-input.js';
 import {createMorningReportsHandler, reportPermission, reportDocument, reportExpense} from '../netunim-orders/supabase/functions/morning-documents/reports.js';
 
 const owner='00000000-0000-4000-8000-000000000001', other='00000000-0000-4000-8000-000000000002';
@@ -51,7 +52,7 @@ const fetch=async(url,init={})=>{
   if(url.includes('/documents/'))return Response.json(rawDocument);
   throw new Error('Unexpected upstream request '+url);
 };
-const makeContext=()=>vm.createContext({console,Response,Request,URL,AbortController,TextEncoder,crypto:globalThis.crypto,atob:globalThis.atob,setTimeout,clearTimeout,fetch,createMorningReportsHandler,reportPermission,createClient:()=>({from:()=>new Query(),auth:{getUser:async()=>({data:{user}})}}),Deno:{env:{get:key=>env[key]},serve:handler=>{servedHandler=handler}}});
+const makeContext=()=>vm.createContext({readJsonBodyBounded,JsonBodyError,console,Response,Request,URL,AbortController,TextEncoder,crypto:globalThis.crypto,atob:globalThis.atob,setTimeout,clearTimeout,fetch,createMorningReportsHandler,reportPermission,createClient:()=>({from:()=>new Query(),auth:{getUser:async()=>({data:{user}})}}),Deno:{env:{get:key=>env[key]},serve:handler=>{servedHandler=handler}}});
 const context=makeContext();
 const source=readFileSync(new URL('../netunim-orders/supabase/functions/morning-documents/index.ts',import.meta.url),'utf8').replace(/^import .*?;\r?\n/gm,'');
 vm.runInContext(stripTypeScriptTypes(source),context);

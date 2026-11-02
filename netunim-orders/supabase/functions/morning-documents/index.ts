@@ -1,4 +1,5 @@
 import {createClient} from 'npm:@supabase/supabase-js@2.112.4';
+import {readJsonBodyBounded, JsonBodyError} from '../_shared/http-input.js';
 import {createMorningReportsHandler, reportPermission} from './reports.js';
 
 const corsHeaders={
@@ -402,7 +403,11 @@ async function mayReadDocument(user:any,body:any){
 function documentReadForbidden(){return json({ok:false,code:'morning_documents_forbidden',message:'אין הרשאה לצפייה במסמכי העסק במורנינג. יש לפנות למנהל המערכת.'},403)}
 Deno.serve(async(req:Request)=>{
   if(req.method==='OPTIONS')return new Response('ok',{headers:corsHeaders});if(req.method!=='POST')return json({ok:false,code:'method_not_allowed'},405);if(!SUPABASE_URL||!PUBLISHABLE_KEY||!SECRET_KEY)return json({ok:false,code:'supabase_backend_not_configured',message:'Supabase Edge Function configuration is incomplete'},503);
-  const user=await requireUser(req);if(!user)return json({ok:false,code:'morning_cloud_auth_required',message:'נדרשת התחברות לענן לפני שימוש ב-Morning'},401);const body=await req.json().catch(()=>({})),action=String(body?.action||'');
+  const user=await requireUser(req);if(!user)return json({ok:false,code:'morning_cloud_auth_required',message:'נדרשת התחברות לענן לפני שימוש ב-Morning'},401);
+  let body;
+  try { body=await readJsonBodyBounded(req,256*1024); }
+  catch(error) { if(error instanceof JsonBodyError)return json({ok:false,code:error.code},error.status);throw error; }
+  const action=String(body.action||'');
   if(action==='report_page'){if(!MORNING_ENV_VALID)return json({ok:false,code:'morning_environment_invalid',message:'סביבת מורנינג אינה מוגדרת כראוי'},503);const result=await morningReports(user,body);return json(result.body,result.status)}
   if(['search_documents','get_document','document_links','document_pdf'].includes(action)&&!MORNING_ENV_VALID)return json({ok:false,code:'morning_environment_invalid',message:'סביבת מורנינג אינה מוגדרת כראוי'},503);
   if(action==='search_documents'&&!documentReadPermission(user))return documentReadForbidden();

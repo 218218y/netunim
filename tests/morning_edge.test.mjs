@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {stripTypeScriptTypes} from 'node:module';
 import vm from 'node:vm';
+import {readJsonBodyBounded, JsonBodyError} from '../netunim-orders/supabase/functions/_shared/http-input.js';
 import {createMorningReportsHandler} from '../netunim-orders/supabase/functions/morning-documents/reports.js';
 
 const rows=[],requests=[];
@@ -37,6 +38,7 @@ const mockFetch=async(url,init={})=>{
 };
 const context=vm.createContext({console,Response,Request,URL,AbortController,TextEncoder,crypto:globalThis.crypto,atob:globalThis.atob,setTimeout,clearTimeout,fetch:mockFetch,createClient:()=>({from:()=>new Query(),auth:{getUser:async()=>({data:{user:{id:owner}}})}}),Deno:{env:{get:key=>({SUPABASE_URL:'https://example.supabase.co',SUPABASE_ANON_KEY:'test',SUPABASE_SERVICE_ROLE_KEY:'test',MORNING_CLIENT_ID:'test',MORNING_CLIENT_SECRET:'test',MORNING_ENV:'sandbox'})[key]},serve:handler=>{servedHandler=handler}}});
 context.createMorningReportsHandler=createMorningReportsHandler;
+Object.assign(context,{readJsonBodyBounded,JsonBodyError});
 const source=readFileSync(new URL('../netunim-orders/supabase/functions/morning-documents/index.ts',import.meta.url),'utf8').replace(/^import .*?;\r?\n/gm,'');
 vm.runInContext(stripTypeScriptTypes(source)+`\nglobalThis.api={create,status,reserve,abandonReservation,searchInput,searchDocuments,getDocument,getDocumentPdf,normalizeInput,amountCents,sameAmount,matchesCheckPayments,validateBankSource,validateLinkedDocument,readResponseBytesBounded,validatePreviewPdfBase64,sha256};`,context);
 const api=context.api;
