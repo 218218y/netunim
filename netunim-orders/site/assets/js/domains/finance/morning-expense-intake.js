@@ -238,11 +238,12 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       const supplier = catalog?.suppliers.find(row => row.id === draft.supplierId);
       const history = catalog?.expenses.filter(row => row.status !== 100 && (row.supplierId === draft.supplierId || supplier?.taxId && row.supplierTaxId === supplier.taxId)).sort((a, b) => String(b.sourceDocumentDate).localeCompare(String(a.sourceDocumentDate)));
       const recent = history?.find(row => row.classification?.id);
-      draft.classificationExpenseId = recent?.id || '';
+      const preferred = expensePreferredCategory(sourceExpenses(), supplier, catalog.capabilities);
+      draft.classificationExpenseId = preferred.required ? preferred.category?.id || '' : recent?.id || '';
       draft.pcnClassification = history?.some(row => row.pcnClassification === 'P') || eligibilityFor(supplier).p ? 'P' : 'T';
       if (previousRate !== vatRate()) calculate(lastAmountField);
       render();
-      if (supplier && (eligibilityFor(supplier).p || !recent || preferences?.classifications.some(row => row.supplierId === supplier.id))) return restoreClassification(supplier.id);
+      if (supplier && !preferred.category && (preferred.required || !recent || preferences?.classifications.some(row => row.supplierId === supplier.id))) return restoreClassification(supplier.id);
     } else if (name === 'pcnClassification') {
       if (eligibilityFor(catalog?.suppliers.find(row => row.id === draft.supplierId)).p) draft.pcnClassification = 'P';
       calculate(lastAmountField); render();
