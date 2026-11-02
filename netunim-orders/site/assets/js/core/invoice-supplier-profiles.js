@@ -111,6 +111,31 @@ export const INVOICE_SUPPLIER_PROFILES=Object.freeze([
     "summaryLabelKeys": {"net":["סהכחייבבמעמ"],"gross":["סכוםלתשלום"]}
   },
   {
+    "id": "bezeq",
+    "title": "בזק",
+    "issuerTaxHash": "80c7aad77688bcb6d8c8c76c5030926a2dfdb17f0ae3b8ba07510faede9534f9",
+    "aliases": ["בזק החברה הישראלית לתקשורת"],
+    "layout": "bezeq",
+    "issuerRegion": "left-column",
+    "numberPlacement": {"minDy":5,"maxDy":20,"minX":0,"maxX":230},
+    "numberDigits": 9,
+    "dateLabelKeys": ["תאריךעריכתהחשבון"],
+    "summaryLabelKeys": {"net":["סהכהחשבוניתלפנימעמ"],"vat":["מעמעל"],"gross":["סהכלתשלוםכוללמעמ"]},
+    "summaryFirstPage": true,
+    "vatAmountOutsideLabel": true,
+    "paymentConditional": true
+  },
+  {
+    "id": "herbawi",
+    "title": "חרבאווי",
+    "issuerTaxHash": "4b662be9ee841138e9aabe4c5ff1d532bea397f30bf3ccdd1104bb16c7d5720e",
+    "aliases": ["Herbawi Industrial Trading Company"],
+    "layout": "bisan",
+    "creditTitleKey": "חשבונותזיכוי",
+    "datePlacement": {"minDy":0,"maxDy":25,"minX":0,"maxX":120},
+    "numberFormat": "p-slash-nine"
+  },
+  {
     "id": "gaber",
     "title": "א.מ. גבר",
     "issuerTaxHash": "e098e4875ada13457d0f4e32665585e2f77bac0a331bed94bd7f3631f057707a",
