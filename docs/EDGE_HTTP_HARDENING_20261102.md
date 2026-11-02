@@ -39,3 +39,23 @@ synthetic CI, staged Windows and disposable Supabase tests do not close those
 items. Historical LevelDB corruption remains UNRESOLVED. Bank Origin stays opt-in.
 Production schema/grants/RLS verification remains mandatory before deployment;
 branch CI is not a production postflight receipt.
+
+## Stage 2: Google provider deadlines
+
+Both OAuth functions now use one strictly checked HTTP implementation. Each
+token exchange, refresh, account verification or revoke has a 15 second deadline
+covering headers and body consumption. Timeouts abort the request, cancel readers
+and return 504 for refresh; network/HTTP/protocol failures return 502 with a safe
+reason. Callback failures redirect with a classified code and never upsert a
+connection. No automatic retry is introduced. Explicit later attempts remain
+possible. Provider response bodies are capped at 2 MiB, including chunked bodies.
+
+Disconnect preserves its existing local-unlink contract; an additive `revocation`
+receipt distinguishes confirmed provider revocation from timeout/failure. An
+unconfirmed provider action is never represented as confirmed. Logs carry only
+failure categories, not tokens or provider response bodies.
+
+Twelve deterministic tests cover pre-header/post-header/account/revoke stalls,
+explicit later retry, network/HTTP/protocol classification, oversized responses,
+late responses after deadline and resource disposal. Existing JSON admission and
+Google source contracts also pass locally. No live provider receipt is claimed.
