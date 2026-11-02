@@ -106,3 +106,17 @@ server with the real native fetch implementation, before and after headers.
 Both prove timeout rejection, connection close and timer disposal; they use no
 provider account or business data. Local Node 24.21.0 on Windows passes these
 cases. They join the full CI model inventory automatically.
+
+## Stage 5: Morning JSON deadlines with uncertainty coverage
+
+Follow-up tests reproduced the same header-only deadline in Morning token/read/
+write JSON consumption. The existing response consumer now covers these reads
+too, preserving the existing 20 second budget and interruption classification.
+The preceding Stage 4 limitation is closed by this stage.
+
+Three direct transport regressions and an additional real issuance-handler case
+failed before the change. They now prove that a stalled create response becomes
+durable `needs_reconciliation`, and an explicit replay remains blocked without
+another POST. Existing reservation, exactly-once, reconciliation, cents and
+provider rejection tests pass. Token failure cannot produce an access token.
+No amount, journal, operation-state schema or financial retry rule changes.

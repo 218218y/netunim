@@ -96,17 +96,27 @@ async function readResponseBytesBounded(response:Response,maxBytes=MAX_DOCUMENT_
 async function morningToken(force=false){
   if(!force&&tokenCache.value&&tokenCache.expiresAt>Date.now()+60_000)return tokenCache.value;
   if(!MORNING_CLIENT_ID||!MORNING_CLIENT_SECRET)throw new MorningHttpError('Morning API credentials are not configured',503,null,false);
-  let response:Response;
-  try{response=await fetchWithTimeout(TOKEN_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({grant_type:'client_credentials',client_id:MORNING_CLIENT_ID,client_secret:MORNING_CLIENT_SECRET})})}
+  let result:{response:Response,data:any};
+  try{result=await fetchWithTimeout(TOKEN_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({grant_type:'client_credentials',client_id:MORNING_CLIENT_ID,client_secret:MORNING_CLIENT_SECRET})},async response=>({response,data:await response.json().catch(()=>({}))}));}
   catch(error){throw new MorningHttpError('לא ניתן להגיע לשרת ההזדהות של Morning',0,error,false)}
-  const data=await response.json().catch(()=>({}));
+  const {response,data}=result;
   if(!response.ok)throw new MorningHttpError(String(data?.error_description||data?.message||data?.error||'Morning authentication failed'),response.status,data,false);
   const token=String(data?.accessToken||data?.access_token||'').trim();if(!token)throw new MorningHttpError('Morning did not return an access token',502,data,false);
   const rawExpiresAt=Number(data?.expiresAt||0),rawExpiresIn=Number(data?.expiresIn||data?.expires_in||0);let expiresAt=Date.now()+60*60_000;if(Number.isFinite(rawExpiresAt)&&rawExpiresAt>0)expiresAt=rawExpiresAt>1_000_000_000_000?rawExpiresAt:rawExpiresAt*1000;else if(Number.isFinite(rawExpiresIn)&&rawExpiresIn>0)expiresAt=Date.now()+Math.max(60,rawExpiresIn)*1000;
   tokenCache={value:token,expiresAt};return token;
 }
 async function morningRequest(path:string,init:RequestInit={},authRetry=true,rateLimitRetry=true){
-  const request=async(token:string)=>{let response:Response;try{response=await fetchWithTimeout(API_BASE+path,{...init,headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json',...(init.headers||{})}})}catch(error){throw new MorningHttpError('החיבור ל-Morning נותק במהלך הבקשה',0,error,true)}let text:string;try{text=await response.text()}catch(error){throw new MorningHttpError('Morning response interrupted',response.status,error,true)}let data:any=null;try{data=text?JSON.parse(text):null}catch{data=text}return {response,data}};
+  const request=async(token:string)=>{
+    try{return await fetchWithTimeout(API_BASE+path,{...init,headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json',...(init.headers||{})}},async response=>{
+      let text:string;
+      try{text=await response.text()}catch(error){throw new MorningHttpError('Morning response interrupted',response.status,error,true)}
+      let data:any=null;try{data=text?JSON.parse(text):null}catch{data=text}
+      return {response,data};
+    })}catch(error){
+      if(error instanceof MorningHttpError)throw error;
+      throw new MorningHttpError('Morning request interrupted',0,error,true);
+    }
+  };
   let token=await morningToken(),authRetried=false,rateLimitAttempts=0;
   while(true){
     const result=await request(token);
