@@ -71,7 +71,7 @@ export function expenseSearchInput(body, draft = false) {
   return {page, payload:{page:page + 1, pageSize, ...(!unfiltered ? {fromDate:from, toDate:to} : {}),
     ...(body.supplierId ? {supplierId:body.supplierId} : {}), ...(!draft && body.number ? {number:body.number} : {})}};
 }
-export function createExpenseService({request, environment, readIds = () => '', writer = null, uploader = null, ocr = null, ledger = null, sourceFetch=globalThis.fetch}) {
+export function createExpenseService({request, environment, readIds = () => '', writer = null, uploader = null, ocr = null, ledger = null, supplierWriter = null, sourceFetch=globalThis.fetch}) {
   return async function handle(user, body) {
     if (!expensePermission(user, 'read', readIds())) return {status:403, body:{ok:false, code:'morning_expenses_forbidden', message:'אין הרשאה לצפייה בהוצאות Morning.'}};
     try {
@@ -79,14 +79,18 @@ export function createExpenseService({request, environment, readIds = () => '', 
       const action = body.action;
       const ocrCommand = ['ocr_prepare','ocr_ticket','ocr_ack','ocr_status','ocr_list','ocr_defer','ocr_lookup'].includes(action);
       const command = ocrCommand || ['create', 'operation_status', 'reconcile', 'cancel_reserved','duplicate_check','source_pending','source_waive','source_verify', 'upload_source','upload_prepare', 'upload_ticket', 'upload_ack', 'upload_status'].includes(action);
-      if ((command || ['source_link','source_file'].includes(action) || body.expectedEnvironment !== undefined) && body.expectedEnvironment !== environment) return {status:409,
+      if ((command || ['source_link','source_file','create_supplier','supplier_status'].includes(action) || body.expectedEnvironment !== undefined) && body.expectedEnvironment !== environment) return {status:409,
         body:{ok:false, code:'morning_expense_environment_changed', message:'סביבת Morning השתנתה מאז טעינת המסך. יש לרענן לפני המשך הפעולה.'}};
       if (action === 'capabilities') {
         const ready = await writer?.readiness(user) === true;
-        return {status:200, body:{ok:true, version:1, environment, read:true, create:ready, upload:uploader?.allowed(user) === true,
+        return {status:200, body:{ok:true, version:1, environment, read:true, create:ready, createSupplier:supplierWriter?.allowed(user)===true, upload:uploader?.allowed(user) === true,
           pcnP:ready && writer?.pcnEnabled?.(user) === true, draftApproval:false, ocr:ocr?.allowed(user) === true, ocrRecovery:ocr?.recoverable?.(user) === true, ocrFileGuard:ocr?.recoverable?.(user) === true,
           sourceIntent:writer?.sourceIntent===true,duplicateCheck:writer?.sourceIntent===true,siteRecent:!!ledger,sourceRelay:!!uploader,backgroundQueue:writer?.sourceIntent===true&&!!uploader,
           classificationSource:'existing_expenses', pSuppliers:writer?.profiles() || []}};
+      }
+      if(['create_supplier','supplier_status'].includes(action)){
+        const value=supplierWriter?await supplierWriter.handle(user,body):{status:503,body:{ok:false,code:'morning_supplier_unavailable',message:'הוספת ספקים עדיין אינה זמינה.'}};
+        return {...value,body:{...value.body,version:1,environment}};
       }
       if (command) {
         const handler = ocrCommand ? ocr : action.startsWith('upload_')||['source_waive','source_verify'].includes(action) ? uploader : writer;

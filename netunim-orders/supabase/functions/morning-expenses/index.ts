@@ -8,6 +8,8 @@ import {createExpenseUpload} from './upload.js';
 import {expenseConfiguration} from './configuration.js';
 import {createOcrLedger} from './ocr-ledger.js';
 import {createExpenseOcr} from './ocr.js';
+import {createSupplierLedger} from './supplier-ledger.js';
+import {createSupplierWriter} from './supplier-writer.js';
 
 function envKey(jsonName:string, legacyName:string) {
   try { const values = JSON.parse(Deno.env.get(jsonName) || '{}'); const key = values.default || Object.values(values).find(value => typeof value === 'string' && value); if (key) return String(key); } catch { /* legacy key */ }
@@ -30,6 +32,8 @@ const ocr = admin ? createExpenseOcr({request, environment, ledger:createOcrLedg
   productionUserId:configuration.productionUserId, writeIds:() => Deno.env.get('MORNING_EXPENSE_WRITE_USER_IDS') || '',
 }) : null;
 const service = createExpenseService({request, environment, readIds:() => Deno.env.get('MORNING_EXPENSE_READ_USER_IDS') || '', writer, uploader, ocr,
+  supplierWriter:admin?createSupplierWriter({request,environment,ledger:createSupplierLedger(admin,environment),enabled:configuration.writes,
+    productionUserId:configuration.productionUserId,writeIds:()=>Deno.env.get('MORNING_EXPENSE_WRITE_USER_IDS')||''}):null,
   ledger:admin ? createExpenseLedger(admin, environment) : null});
 Deno.serve(createExpenseHandler({
   getUser:async (token:string) => {

@@ -2,7 +2,8 @@
 from isolated_sync_postgres import IsolatedPostgres, OWNER
 
 with IsolatedPostgres(schema_files=['supabase/migrations/20261026080000_morning_expense_operations.sql', 'supabase/migrations/20261026100000_morning_expense_recovery.sql',
-                                  'supabase/migrations/20261028180000_morning_expense_recent_index.sql']) as db:
+                                  'supabase/migrations/20261028180000_morning_expense_recent_index.sql',
+                                  'supabase/migrations/20261103143000_morning_supplier_operations.sql']) as db:
     def insert(operation, identity='a', owner=OWNER, environment='sandbox', state='reserved'):
         return ("insert into public.morning_expense_operations(operation_id,owner_id,environment,invoice_identity,request_fingerprint,state,payload) "
                 f"values('{operation}','{owner}','{environment}','{identity * 64}','{'b' * 64}','{state}','{{}}')")
@@ -14,6 +15,17 @@ with IsolatedPostgres(schema_files=['supabase/migrations/20261026080000_morning_
             assert expected in str(error), error
         else:
             raise AssertionError('Unexpected SQL success')
+
+    supplier_insert = ("insert into public.morning_supplier_operations(environment,tax_id,owner_id,name) "
+                       f"values('sandbox','012345678','{OWNER}','Synthetic supplier')")
+    db.sql(supplier_insert)
+    rejects(supplier_insert, 'duplicate key')
+    for role in ('anon', 'authenticated'):
+        rejects(f'set role {role}; select * from public.morning_supplier_operations', 'permission denied')
+    claimed=db.sql("update public.morning_supplier_operations set state='sending',sent_at=now() where state='reserved' returning tax_id")
+    assert '012345678' in claimed
+    assert not db.sql("update public.morning_supplier_operations set state='sending',sent_at=now() where state='reserved' returning tax_id").strip()
+    rejects("update public.morning_supplier_operations set state='verified'", 'check constraint')
 
     operation = 'aaaaaaaa-aaaa-4aaa-aaaa-000000000001'
     other = 'aaaaaaaa-aaaa-4aaa-aaaa-000000000002'

@@ -2,14 +2,16 @@ import {esc} from '../../core/values.js';
 import {expenseDraftProblem} from './morning-expense-submit.js';
 
 export function expenseFormMarkup({model,review,reporting,dateEditorMarkup}){
-  const {disabled,draft,supplier,eligibility,catalog,favorites,expenses,today,selected,ocrActive,localBlocked,sanity,rate,warnings,approvedCount,batchPaused,approved,supplierMarkup}=model;
+  const {disabled,draft,supplier,eligibility,catalog,favorites,expenses,today,selected,ocrActive,localBlocked,sanity,rate,warnings,approvedCount,batchPaused,approved,supplierMarkup,supplierCreateMarkup=''}=model;
   const attrs=disabled?'disabled':'';
   const problem=expenseDraftProblem({draft,eligibility,classification:expenses.find(row=>row.id===draft.classificationExpenseId)?.classification,today,capabilities:catalog.capabilities});
   const unavailable=disabled||ocrActive||localBlocked||!catalog.capabilities.create||selected&&!catalog.capabilities.upload||!eligibility.eligible||draft.pcnClassification==='P'&&(!catalog.capabilities.pcnP||!eligibility.p);
     const option = (value, label, current, unavailable = false) => `<option value="${esc(value)}" ${String(current) === String(value) ? 'selected' : ''} ${unavailable ? 'disabled' : ''}>${esc(label)}</option>`;
   return `
       <div class="morning-expense-supplier-row"><div class="morning-expense-supplier-field">${supplierMarkup}${review.slot('supplierId')}</div>
-      <button type="button" class="btn" data-action="morning-expense-command" data-expense-command="favorite" ${disabled || !supplier ? 'disabled' : ''}>${favorites.some(row => row.id === draft.supplierId) ? 'הסרה מהמועדפים' : 'הוספה למועדפים שלי'}</button></div>
+      <div class="morning-expense-supplier-actions">${catalog.capabilities.createSupplier?`<button type="button" class="btn" data-action="morning-expense-command" data-expense-command="supplier-new" ${disabled?'disabled':''}>הוספת ספק חדש</button>`:''}
+      <button type="button" class="btn" data-action="morning-expense-command" data-expense-command="favorite" ${disabled || !supplier ? 'disabled' : ''}>${favorites.some(row => row.id === draft.supplierId) ? 'הסרה מהמועדפים' : 'הוספה למועדפים שלי'}</button></div></div>
+      ${supplierCreateMarkup}
       ${supplier && !eligibility.eligible ? `<small>${esc(eligibility.reason)}</small>` : ''}
       ${favorites.length ? `<div class="morning-expense-toolbar">${favorites.map(row => `<button type="button" class="btn" data-action="morning-expense-command" data-expense-command="use-favorite" data-expense-supplier="${esc(row.id)}" ${attrs}>${esc(row.name)}</button>`).join('')}</div>` : ''}
       <div class="morning-expense-pair morning-expense-classification"><label><span>סיווג מהוצאות קיימות</span><select data-expense-field="classificationExpenseId" data-change="morning-expense-field" ${attrs}>${option('', 'בחר סיווג', draft.classificationExpenseId)}${catalog.classifications.map(row => option(row.sourceExpenseId, row.title, expenses.find(item => item.id === draft.classificationExpenseId)?.classification?.id === row.id ? row.sourceExpenseId : '')).join('')}</select></label>

@@ -33,3 +33,13 @@ test('name variants beyond strict remote results use bounded canonical directory
  assert.deepEqual(calls.map(row=>row.page),[0,1,2]);
  await searchExpenseSuppliers(request,catalog,'חרבאוויי',false,()=>{});assert.equal(calls.length,4);
 });
+
+test('supplier creation refreshes directory pagination before later searches without losing the selected supplier',async()=>{
+ const caps={version:1,environment:'sandbox'},selected={id:'new',name:'ספק חדש',taxId:'012345678',active:true};
+ const rows=Array.from({length:51},(_,n)=>({id:String(n),name:n===50?'יעד':'אחר',active:true}));
+ const catalog={capabilities:caps,suppliers:[selected],supplierPage:{items:[],pages:0,total:0},supplierDirectoryStale:true};
+ const calls=[],request=async(_,body)=>{calls.push(body);return {...caps,page:body.page,pageSize:50,pages:body.name?0:2,total:body.name?0:51,items:body.name?[]:rows.slice(body.page*50,body.page*50+50)};};
+ const result=await searchExpenseSuppliers(request,catalog,'יעד',false,()=>{});
+ assert.deepEqual(calls.map(row=>row.page),[0,0,1]);assert.equal(result.items[0].id,'50');
+ assert.equal(catalog.supplierDirectoryStale,false);assert.equal(catalog.supplierDirectory.items.get('new'),selected);
+});
