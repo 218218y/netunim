@@ -219,6 +219,7 @@ def run_app(stack, app, owner, foreign):
                 'offline': True, 'http_503': 'injected before send', 'lost_ack': 'real HTTP response withheld after DB commit',
                 'hard_process_failure': crash['hard_process_failure'], 'restart_snapshots': snapshots,
                 'operation_ledger': ledger, 'foreign_user_unchanged': True, 'shared_unchanged': True,
+                'flights': {'A': flight_a, 'B': flight_b, 'merged': merged['flight']},
                 'token_rotation_restart_logout': True, 'native_401_refresh_retry': True, 'financial_record_count': 1}
 
 

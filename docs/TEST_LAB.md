@@ -7,6 +7,7 @@ Supabase fixtures through one entry point:
 python tools/test_lab.py list
 python tools/test_lab.py run --scenario isolation --scenario local-save-abort
 python tools/test_lab.py run --scenario concurrent-edits --scenario restore-and-crash
+python tools/test_lab.py run --scenario local-save-crash
 python tools/test_lab.py run --scenario old-tab --scenario bridge
 python tools/test_lab.py run --all
 ```
@@ -28,6 +29,14 @@ offline/reconnect, concurrent changes, lost HTTP ACK after commit and hard resta
 Other browser scenarios are component integration; they do not prove live cloud
 behavior. `local-save-abort` tests native request-success/transaction-abort authority;
 it does not alone prove physical power loss during a write.
+
+`local-save-crash` pauses in the real IndexedDB Journal request-success event,
+proves that the production completion receipt has not been issued, and kills the
+owned Chromium process tree. Orders, Kupa and Shared Checks reopen twice. Only a
+whole pre-write or whole committed transaction is accepted; Journal/metadata must
+agree and cloud revision/ACK must remain unchanged. Stopped IndexedDB files and
+their hashes are retained before recovery. This proves the tested native process
+failure boundary; it does not emulate a hardware power failure or disk controller.
 
 ## Offline isolated Windows
 

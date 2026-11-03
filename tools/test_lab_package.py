@@ -12,10 +12,30 @@ import zipfile
 import xml.etree.ElementTree as ET
 
 
-def reject_links(root):
-    for path in (root, *root.rglob('*')):
-        if path.is_symlink() or getattr(path, 'is_junction', lambda: False)():
+def files(root):
+    """One metadata read per entry, including Windows reparse-point rejection."""
+    def inspect(path, info):
+        if stat.S_ISLNK(info.st_mode) or getattr(info, 'st_file_attributes', 0) & getattr(stat, 'FILE_ATTRIBUTE_REPARSE_POINT', 0):
             raise RuntimeError('package input contains a link or junction')
+    inspect(root, root.lstat())
+    pending = [root]
+    while pending:
+        with os.scandir(pending.pop()) as entries:
+            for entry in entries:
+                info = entry.stat(follow_symlinks=False)
+                path = Path(entry.path)
+                inspect(path, info)
+                if stat.S_ISDIR(info.st_mode):
+                    pending.append(path)
+                elif stat.S_ISREG(info.st_mode):
+                    yield path
+                else:
+                    raise RuntimeError('package contains unsupported special file')
+
+
+def reject_links(root):
+    for _path in files(root):
+        pass
 
 
 def extract_snapshot(archive, target):
@@ -30,9 +50,16 @@ def extract_snapshot(archive, target):
 
 
 def hashes(root):
-    reject_links(root)
-    return {p.relative_to(root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
-            for p in sorted(root.rglob('*')) if p.is_file() and p != root/'package-manifest.json'}
+    result = {}
+    for path in files(root):
+        if path == root/'package-manifest.json':
+            continue
+        digest = hashlib.sha256()
+        with path.open('rb') as source:
+            for chunk in iter(lambda: source.read(1024*1024), b''):
+                digest.update(chunk)
+        result[path.relative_to(root).as_posix()] = digest.hexdigest()
+    return result
 
 
 def verify(root):

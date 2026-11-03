@@ -1,12 +1,36 @@
 # Current architecture backlog
 
-This is the single current backlog, updated against the 2026-10-25 continuation.
+This is the single current backlog, updated against the 2026-11-03 continuation.
 [Completion stages](COMPLETION_STAGES_20261015.md) and the focused design notes
 are historical implementation/evidence records, not competing remaining-work lists.
 A passed synthetic gate is not evidence of live providers or physical machines.
-On 2026-10-25 the operator reconfirmed there is no separate Bridge/test-account
-environment, only the working-data connection. Installed interruption, destructive
-restore and live-provider release exercises therefore remain explicitly unverified.
+On 2026-11-03 the operator enabled Windows Sandbox and a VM. The new
+[test lab](TEST_LAB.md) prepares an offline synthetic guest without mapping work
+data. Availability of a VM is not acceptance evidence: installed interruption,
+global installer/update/removal and live-provider exercises remain unverified until
+their own retained reports pass. Separate provider test accounts are still required.
+
+The Google callback/scope repair in [PR 398](https://github.com/218218y/netunim/pull/398)
+merged after all 16 required checks passed for `5881e506`. Intent metadata and
+service-role RPCs fence disconnect/new-start/publication atomically; credentials
+remain in the original tables. Both callback and refresh require actual granted
+scopes. The additive migration is **not deployed**. Its paused-OAuth rollout and
+rollback requirements are in [the lifecycle note](GOOGLE_OAUTH_INTENT_AUTHORITY.md).
+Project-wide revocation remains unchanged pending an explicit product decision.
+
+[PR 399](https://github.com/218218y/netunim/pull/399) supplies the unified scenario
+runner, checkpointed evidence and offline Windows package. The subsequent native
+crash suite adds process termination inside a real Journal write callback, retains
+stopped IndexedDB bytes, checks atomic Journal/metadata and unchanged cloud ACK,
+and reopens twice for Orders/Kupa/Shared Checks. These are test-harness changes;
+Storage V2, Journal/ACK protocols, sync writers and financial models are unchanged.
+Every implementation PR is gated on its exact-head full CI before merge. Native
+process termination is distinct from a physical power-loss test.
+
+Further broad refactoring is paused. Remaining work is the explicit disconnect
+policy decision, real isolated installation/upgrade/removal evidence, physical
+hardware and separate Google/Morning/Bank/Credit test environments. The lab reports
+NOT RUN/BLOCKED/UNRESOLVED directly; automatic success cannot close those rows.
 
 ## Completed foundations
 
