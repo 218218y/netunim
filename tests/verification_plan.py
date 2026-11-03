@@ -13,6 +13,7 @@ TESTS = Path(__file__).resolve().parent
 GROUPS = {
     "contracts": [
         "acceptance_safety_contracts.py",
+        "test_lab_contracts.py",
         "ci_contracts.py",
         "startup_evidence_contracts.py",
         "runner_contracts.py",
