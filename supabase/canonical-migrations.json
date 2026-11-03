@@ -211,6 +211,10 @@
     {
       "version": "20261103120000",
       "name": "google_oauth_intent_authority"
+    },
+    {
+      "version": "20261103143000",
+      "name": "morning_supplier_operations"
     }
   ]
 }

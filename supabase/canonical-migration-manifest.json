@@ -263,5 +263,10 @@
     "version": "20261103120000",
     "name": "google_oauth_intent_authority",
     "sha256": "567f8e6b963406967484ae46ffb3cedb3d76de48958c688f17358fb085955064"
+  },
+  {
+    "version": "20261103143000",
+    "name": "morning_supplier_operations",
+    "sha256": "43f4806e38927a4827eb88ce5df6b086838dcebbb89809b84d6e5809602fbfa1"
   }
 ]
