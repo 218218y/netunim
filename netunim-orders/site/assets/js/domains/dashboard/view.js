@@ -1,6 +1,7 @@
 import {esc} from '../../core/values.js';
 import {money} from '../../core/money.js';
 import {financeMoneySum} from '../../shared/business-position.js';
+import {businessPositionDetailsMarkup} from '../../shared/business-position-view.js';
 import {$} from '../../state/constants.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
@@ -39,6 +40,7 @@ function summaryMarkup({embedded=false}={}){
     <div class="kpi kupa-net-kpi"><div class="label">בנק, צ׳קים והתחייבויות${partial?' · חלקי':''}</div><div class="value ${esc(kupaNet===null?'':kupaNet<0?'badtext':'goodtext')}">${kupaNet===null?'—':money(kupaNet)}</div><div class="sub">עו״ש + כל הצ׳קים העסקיים שבקופה − כל האשראי העסקי שנותר − הוצאות ${esc(expenseMonth)}${kupaNet===null?' · ממתין לנתוני בנק מהענן':''}</div></div>
   </div>
 </section>
+${businessPositionDetailsMarkup(kupaReadout,{customerOpen:cst.openTotal,supplierNet:st.net,total:expected})}
 <section class="summary-section customer-summary-section"><div class="summary-section-head"><div><h2>סיכום חובות לקוחות</h2><p>הסיכום כולל רק חובות שטרם שולמו; חוב שסומן כשולם יוצא מהחישוב.</p></div></div><div class="customer-summary-grid">
   <div class="customer-summary-stat"><span>חוב שסופק</span><b class="badtext">${money(cst.openSuppliedTotal)}</b><small>${esc(cst.openSupplied)} חובות פתוחים שסופקו</small></div>
   <div class="customer-summary-stat"><span>חוב שלא סופק</span><b class="warntext">${money(cst.openUnsuppliedTotal)}</b><small>${esc(cst.openUnsupplied)} חובות פתוחים שטרם סופקו</small></div>

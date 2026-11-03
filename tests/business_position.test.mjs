@@ -7,6 +7,7 @@ import {bankLongTermPositionData} from '../netunim-kupa/site/assets/js/domains/b
 import {dashboardNetPositionData} from '../netunim-kupa/site/assets/js/domains/dashboard/model.js';
 import {createDomainsDashboardView} from '../netunim-orders/site/assets/js/domains/dashboard/view.js';
 import {money} from '../netunim-orders/site/assets/js/core/money.js';
+import {businessPositionDetailsMarkup} from '../shared/business-position-view.js';
 
 function fixture(){return {bank:{currentBalance:1000.01,asOfDate:'2026-09-01',source:'manual',adjustments:[{amount:0.02},{type:'check_deposit',amount:999}]},
   credits:[{id:'business',account:'עסקי',active:true,totalAmount:300.03,installments:3,firstChargeDate:'2026-09-10'},
@@ -62,4 +63,15 @@ test('Orders dashboard sums actual cents and displays the same components it add
   assert.ok(html.includes(money(1.47)),'rounding each component to whole shekels would incorrectly show zero');
   assert.ok(html.includes('כל האשראי העסקי שטרם נפרע'));
   assert.ok(html.includes('מזומן בקופה אינו כלול'));
+});
+
+test('balance details escape imported descriptions and show unknown amounts as unavailable',()=>{
+  const p=kupaBusinessPositionData(fixture(),'2026-09-01');
+  p.checkRows[0].name='<img src=x onerror=alert(1)>';
+  p.forecastIncomplete=true;p.incompleteCreditRows=[{card:'Unknown',amount:0,amountStatus:'unknown',date:''}];
+  const html=businessPositionDetailsMarkup(p,{total:p.netWithoutCash});
+  assert.ok(html.includes('&lt;img'));
+  assert.ok(!html.includes('<img'));
+  assert.match(html,/Unknown.*?dir="ltr">—/s);
+  assert.ok(html.includes('30/09/2026'));
 });

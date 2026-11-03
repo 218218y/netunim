@@ -2,6 +2,7 @@ import json
 
 from browser_harness import BrowserSession, ROOT
 from credit_detail_cases import run_credit_detail
+from dashboard_position_cases import run_dashboard_position
 
 
 def run(label, site, expression, expected):
@@ -313,4 +314,6 @@ run_cashflow_warning_layout('kupa')
 run_cashflow_warning_layout('orders')
 run_credit_detail('kupa')
 run_credit_detail('orders')
+run_dashboard_position('orders')
+run_dashboard_position('kupa')
 raise SystemExit(0 if ok else 1)
