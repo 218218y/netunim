@@ -103,7 +103,10 @@ complete installer/updater/uninstaller on a persistent VM. Origin allowlist rema
 opt-in. The lab does not install a root certificate, invoke a provider account,
 schedule work, deploy or touch the active Bank/Document Bridge.
 
-On 2026-11-03 the first local CLI browser probes recorded UNRESOLVED: installed
-Chrome did not publish its owned DevTools identity. The diagnostics and proxy-deny
-evidence are retained locally; they are not evidence of an application storage
-failure. Required GitHub Windows/browser gates remain independent.
+On 2026-11-03 the first local CLI probes and required Windows CI reproduced a
+missing Known Folder path under the synthetic USERPROFILE. A fresh-child native
+Shell API regression failed before repair. The runner now creates coherent
+AppData/Local and AppData/Roaming paths before any child starts; Chromium's
+non-default-profile protection remains enabled. Original failed reports remain
+UNRESOLVED and are never rewritten. This was a lab environment defect, not evidence
+of an application storage failure.

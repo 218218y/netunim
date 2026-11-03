@@ -72,10 +72,13 @@ def environment():
             'PROGRAMFILES(X86)', 'PROGRAMW6432', 'USERNAME', 'COMPUTERNAME', 'LANG',
             'GITHUB_ACTIONS', 'RUNNER_ENVIRONMENT', 'RUNNER_OS', 'NETUNIM_BROWSER')
     clean = {key: value for key, value in original.items() if key.upper() in {k.upper() for k in keep}}
-    for name in ('home', 'local', 'roaming', 'temp'):
-        (scratch/name).mkdir()
+    # Windows expands Known Folder registry paths through USERPROFILE. These
+    # directories must exist before the first Shell API call in a fresh child;
+    # otherwise Chrome cannot distinguish its explicit profile from the default.
+    for name in ('home/AppData/Local', 'home/AppData/Roaming', 'home/Documents', 'home/Downloads', 'temp'):
+        (scratch/name).mkdir(parents=True, exist_ok=True)
     clean.update(HOME=str(scratch/'home'), USERPROFILE=str(scratch/'home'),
-                 LOCALAPPDATA=str(scratch/'local'), APPDATA=str(scratch/'roaming'),
+                 LOCALAPPDATA=str(scratch/'home/AppData/Local'), APPDATA=str(scratch/'home/AppData/Roaming'),
                  TEMP=str(scratch/'temp'), TMP=str(scratch/'temp'), TMPDIR=str(scratch/'temp'),
                  GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL=os.devnull, GIT_TERMINAL_PROMPT='0',
                  PYTHONUTF8='1')

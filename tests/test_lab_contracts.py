@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import sys
 import tempfile
+import subprocess
 import unittest
 from contextlib import redirect_stdout
 from unittest.mock import patch
@@ -19,6 +20,21 @@ import test_lab_package as package
 
 
 class TestLabContracts(unittest.TestCase):
+    @unittest.skipUnless(os.name == 'nt', 'Windows Known Folder API')
+    def test_fresh_windows_child_resolves_only_owned_known_folders(self):
+        probe = """import ctypes,os
+from pathlib import Path
+for csidl in (0x001c,0x001a):
+ value=ctypes.create_unicode_buffer(260)
+ rc=ctypes.windll.shell32.SHGetFolderPathW(None,csidl,None,0,value)
+ assert rc==0, ('known_folder_failed',rc)
+ assert Path(value.value).is_relative_to(Path(os.environ['USERPROFILE']))
+ assert Path(value.value).is_dir()
+"""
+        with lab.environment():
+            result = subprocess.run([sys.executable, '-c', probe], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+
     def test_scenarios_use_only_checked_in_fixtures(self):
         for suites in lab.SCENARIOS.values():
             self.assertTrue(suites)
