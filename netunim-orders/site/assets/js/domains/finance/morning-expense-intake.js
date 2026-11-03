@@ -15,6 +15,7 @@ import {readExpensePreferences, writeExpensePreferences} from './morning-expense
 import {createExpenseReporting, expenseReportingStorageWarning} from './morning-expense-reporting.js';
 import {readExpenseRecovery, writeExpenseRecovery, clearExpenseRecovery} from './morning-expense-recovery.js';
 import {createExpenseSupplierPicker} from './morning-expense-supplier-picker.js';
+import {createExpenseSupplierForm} from './morning-expense-supplier-create.js';
 import {createExpenseHistory} from './morning-expense-history.js';
 import {createExpenseRecent} from './morning-expense-recent.js';
 import {createExpenseRecentCache} from './morning-expense-recent-cache.js';
@@ -49,7 +50,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     workDrafts.set(selected,{draft:structuredClone(draft),lastAmountField,edited,local:local.snapshot(),
       supplier:catalog?.suppliers.find(row=>row.id===draft.supplierId),classification:sourceExpenses().find(row=>row.id===draft.classificationExpenseId)});
   }
-  function hasUnsavedWork(){return batch.running()||batch.files().length>0||queue.length>0||!!operationId&&busy||!operationId&&(!!selected||edited||hasValues());}
+  function hasUnsavedWork(){return supplierForm.hasWork()||batch.running()||batch.files().length>0||queue.length>0||!!operationId&&busy||!operationId&&(!!selected||edited||hasValues());}
   function beforeUnload(event){if(active()&&hasUnsavedWork()){event.preventDefault();event.returnValue='';}}
   globalThis.addEventListener?.('beforeunload',beforeUnload);
   function defaults(previous = {}) {
@@ -90,8 +91,17 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     environmentChanged = false; fileQueue.reset(); sources.reset();workDrafts.clear();edited=false;advanceReady=false;completionNotice='';sourceReason='';fileNotice='';
     local.reset(); pdfPreview.reset(); editVersion++;
     reading?.abort(); reading = null; generation++; catalog = null; busy = false; message = ''; result = null; operationId = ''; fileAttempted = false;
-    supplierPicker.reset(); history.reset(); recent.reset(); ocr.reset(); reporting.reset(); queue = []; selected = null; reconciliationId = ''; lastAmountField = ''; favorites = []; extraExpenses = []; preferences = null; releasePreview(); draft = defaults();
+    supplierForm.reset();supplierPicker.reset(); history.reset(); recent.reset(); ocr.reset(); reporting.reset(); queue = []; selected = null; reconciliationId = ''; lastAmountField = ''; favorites = []; extraExpenses = []; preferences = null; releasePreview(); draft = defaults();
   }
+  const supplierForm=createExpenseSupplierForm({request,capabilities:()=>catalog?.capabilities,capture,run,render,
+    editable:()=>active()&&!!catalog&&!busy&&!operationId&&!environmentChanged,
+    choose:(supplier,existing)=>{
+      catalog.suppliers=mergeSuppliers([supplier],catalog.suppliers);
+      catalog.supplierDirectory?.items.set(supplier.id,supplier);
+      const value=setField({dataset:{expenseField:'supplierId'},value:supplier.id});
+      updateMessage(existing?'הספק כבר קיים במורנינג ונבחר בטופס.':'הספק נוסף למורנינג ונבחר בטופס. יש לבחור סיווג להוצאה.');
+      return value;
+    }});
   const supplierPicker = createExpenseSupplierPicker({
     rows:() => catalog?.suppliers || [], selectedId:() => draft.supplierId,
     eligibility:eligibilityFor, editable:() => active() && !!catalog && !busy && !operationId && !environmentChanged,
@@ -624,7 +634,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       ${!catalog?.capabilities.backgroundQueue?progress.markup():''}
       ${catalog ? `<div class="morning-expense-workspace"><div class="morning-expense-fields">
       <h2 class="morning-expense-panel-title">פרטי ההוצאה</h2>
-      ${!operationId ? expenseFormMarkup({model:{disabled,busy,draft,supplierMarkup:supplierPicker.markup(disabled),supplier,eligibility,catalog,favorites,expenses:sourceExpenses(),today,selected,ocrActive:ocr.active(),localBlocked:local.blocked(),sanity:sanityMessage(),rate:vatRate(),warnings:local.warningsMarkup(supplier?.taxId,draft),approvedCount:batch.count(),batchPaused:batch.paused(),approved:batch.label(selected)==='מאושרת לשליחה'},review,reporting,dateEditorMarkup}) : ''}
+      ${!operationId ? expenseFormMarkup({model:{disabled,busy,draft,supplierMarkup:supplierPicker.markup(disabled),supplierCreateMarkup:supplierForm.markup(disabled),supplier,eligibility,catalog,favorites,expenses:sourceExpenses(),today,selected,ocrActive:ocr.active(),localBlocked:local.blocked(),sanity:sanityMessage(),rate:vatRate(),warnings:local.warningsMarkup(supplier?.taxId,draft),approvedCount:batch.count(),batchPaused:batch.paused(),approved:batch.label(selected)==='מאושרת לשליחה'},review,reporting,dateEditorMarkup}) : ''}
       ${expenseOperationMarkup({operationId,result,busy,queueLength:queue.length,reconciliationId})}
       ${sources.receipt(result,busy,sourceReason)}
       ${result?.verified&&result.sourcePending&&result.sourceRetryGeneration?`<button type="button" class="btn" data-action="morning-expense-write" data-expense-command="source-retry" ${busy?'disabled':''}>צירוף המקור מחדש לאותה הוצאה</button>`:''}
@@ -640,6 +650,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       ${result?.verified&&result.sourcePending ? `<button type="button" class="btn" data-action="morning-expense-command" data-expense-command="file-status" ${busy?'disabled':''}>המשך בדיקה והשלמת המקור</button>`:''}</div></div>${batch.markup(disabled)}${catalog.capabilities.backgroundQueue?progress.markup():''}${sources.markup()}${recent.markup()}${history.markup()}` : ''}</div>` : ''}</section>`;
   }
   const commands = {load, status, next, favorite, 'more-classifications':moreClassifications,
+    'supplier-new':supplierForm.open,'supplier-close':supplierForm.close,'supplier-create':()=>tasks.run(supplierForm.submit),
     'batch-show':()=>host()?.querySelector('[data-expense-batch]')?.scrollIntoView({block:'start',behavior:'instant'}),
     'batch-resume':batch.resume,'batch-recover':element=>batch.recover(element.dataset.batchOperation),
     'batch-unmark':()=>{if(busy||operationId)return false;batch.invalidate(selected);render();return true;},
@@ -662,7 +673,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     'morning-expense-back':onBack,
     'morning-expense-command':element => Object.hasOwn(commands, element.dataset.expenseCommand) ? commands[element.dataset.expenseCommand](element) : false,
     'morning-expense-write':element => Object.hasOwn(writes, element.dataset.expenseCommand) ? writes[element.dataset.expenseCommand]() : false,
-    'morning-expense-field':(element, event) => element.hasAttribute('data-expense-picker') ? supplierPicker.handle(element, event) : setField(element),
+    'morning-expense-field':(element, event) => element.hasAttribute('data-expense-supplier-field')?supplierForm.field(element):element.hasAttribute('data-expense-picker') ? supplierPicker.handle(element, event) : setField(element),
     'morning-expense-history-query':element => history.setQuery(element.value),
     'morning-expense-history-filter':element => history.chooseFilter(element),
     'morning-expense-history-search-enter':(_, event) => {event.stopPropagation(); if (event.key === 'Enter' && !event.isComposing) {event.preventDefault(); return history.search();} return false;},

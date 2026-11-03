@@ -20,6 +20,9 @@
 .morning-expense-date{display:flex;flex-direction:column;gap:7px;font-size:14px;font-weight:600}
 .morning-expense-date fieldset{border:0;padding:0;margin:0;min-width:0}
 .morning-expense-supplier{position:relative;min-width:0}
+.morning-expense-supplier-actions{display:flex;flex-direction:column;gap:8px}.morning-expense-supplier-actions>.btn{min-height:42px}
+.morning-expense-supplier-create{min-width:0;margin:12px 0;padding:14px;border:1px solid #bfc6c9;border-radius:8px}
+.morning-expense-supplier-create label{display:flex;flex-direction:column;gap:6px;min-width:0}
 .morning-expense-supplier-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:end}.morning-expense-supplier-field{display:flex;flex-direction:column;gap:7px;min-width:0}.morning-expense-supplier-row>.btn{min-height:42px}
 .morning-expense-supplier-panel{display:none;width:min(520px,calc(100vw - 32px));max-height:340px;padding:8px;border:1px solid #bfc6c9;border-radius:8px;background:var(--surface,#fff);color:var(--text,#222);box-shadow:0 8px 24px #0002;direction:rtl}
 .morning-expense-supplier.open>.morning-expense-supplier-panel{display:block;position:absolute;z-index:20;overflow-y:auto}
