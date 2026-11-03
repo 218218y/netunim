@@ -90,7 +90,11 @@ export function expenseSupplierEligibility(supplier, profiles = [], allowP = fal
 // per search. Subsequent searches reuse them; "more" resumes the directory scan.
 export async function searchExpenseSuppliers(request, catalog, query, more, assertCurrent, {signal} = {}) {
   const term = query.trim(), tax = /^\d{9}$/.test(term);
-  const directory = catalog.supplierDirectory ||= {items:new Map(catalog.supplierPage.items.map(row => [row.id, row])),
+  if(catalog.supplierDirectoryStale){
+    const first=await readExpenseCatalogPage(request,catalog.capabilities,'suppliers',{},0,assertCurrent,{signal});assertCurrent();
+    catalog.supplierPage=first;catalog.supplierDirectory=null;catalog.supplierDirectoryStale=false;
+  }
+  const directory = catalog.supplierDirectory ||= {items:new Map([...(catalog.suppliers||[]),...catalog.supplierPage.items].map(row => [row.id, row])),
     seen:new Set(catalog.supplierPage.items.map(row => row.id)), nextPage:1, pages:catalog.supplierPage.pages, total:catalog.supplierPage.total};
   const matches = () => [...directory.items.values()].filter(row => supplierSearchMatch(term, row));
   if (!more) {

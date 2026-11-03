@@ -98,6 +98,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     choose:(supplier,existing)=>{
       catalog.suppliers=mergeSuppliers([supplier],catalog.suppliers);
       catalog.supplierDirectory?.items.set(supplier.id,supplier);
+      catalog.supplierDirectoryStale=true;
       const value=setField({dataset:{expenseField:'supplierId'},value:supplier.id});
       updateMessage(existing?'הספק כבר קיים במורנינג ונבחר בטופס.':'הספק נוסף למורנינג ונבחר בטופס. יש לבחור סיווג להוצאה.');
       return value;
