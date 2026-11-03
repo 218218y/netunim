@@ -55,6 +55,7 @@ export function createSuppliersActions({ domainsSuppliersBulk, domainsSuppliersE
     'filter-mode': (element, event) => { supplierUi.filterMode = 'all'; return renderSupplier({ scrollMode: 'end' }); },
     'filter-mode-2': (element, event) => { supplierUi.filterMode = 'pending'; return renderSupplier({ scrollMode: 'end' }); },
     'filter-mode-3': (element, event) => { supplierUi.filterMode = 'invoice'; return renderSupplier({ scrollMode: 'end' }); },
+    'filter-supplied-no-invoice': (element, event) => { supplierUi.filterMode = 'supplied-no-invoice'; return renderSupplier({ scrollMode: 'end' }); },
     'toggle-supplier-bulk-mode': (element, event) => { return toggleSupplierBulkMode(); },
     'open-selected-supplier-year-boundary': (element, event) => { return openSelectedSupplierYearBoundary(); },
     'delete-selected-transactions': (element, event) => { return deleteSelectedTransactions(); },

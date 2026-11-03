@@ -60,6 +60,7 @@ export function supplierViewRowsData(state,supplierIds=[],yearView='current',fil
       else if(yearView!=='all'&&assignedYear!==validSupplierYear(yearView))continue;
       if(filterMode==='pending'&&t.supplied!==false)continue;
       if(filterMode==='invoice'&&t.invoiceReceived!==false)continue;
+      if(filterMode==='supplied-no-invoice'&&(t.invoiceReceived!==false||t.supplied!==true))continue;
       rows.push({supplier,t,balance,assignedYear});
     }
   }

@@ -176,7 +176,7 @@ export function createDomainsSuppliersView({ model, supplierUi, mountViewLayout,
                 ` data-action="filter-mode">הכל</button><button class="chip-filter ${esc(supplierUi.filterMode === 'pending' ? 'active' : '')}" ${moveLocked ? 'disabled' : ''} data-action="filter-mode-2">טרם סופק</button><button class="chip-filter ` +
                 `${esc(supplierUi.filterMode === 'invoice' ? 'active' : '')}" ${moveLocked ? 'disabled' : ''}`
             ) +
-            ` data-action="filter-mode-3">חשבונית חסרה</button></div>
+            ` data-action="filter-mode-3">חשבונית חסרה</button><button class="chip-filter ${esc(supplierUi.filterMode === 'supplied-no-invoice' ? 'active' : '')}" ${moveLocked ? 'disabled' : ''} data-action="filter-supplied-no-invoice">סופק ללא חשבונית</button></div>
     ${bulkActions}
   </section>
   <div class="panel supplier-table-panel ${esc(moveLocked ? 'supplier-move-mode' : '')}">${moveGuide}<div class="table-wrap"><table class="supplier-data-table ${allMode ? 'supplier-all-table' : ''}"><thead><tr>` +
