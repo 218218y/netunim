@@ -74,7 +74,13 @@ async function requireUser(req:Request){const authorization=req.headers.get('Aut
 async function sha256(value:string){const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value));return Array.from(new Uint8Array(digest),item=>item.toString(16).padStart(2,'0')).join('')}
 
 class MorningHttpError extends Error{status:number;payload:any;ambiguous:boolean;constructor(message:string,status=0,payload:any=null,ambiguous=false){super(message);this.status=status;this.payload=payload;this.ambiguous=ambiguous}}
-async function fetchWithTimeout(url:string,init:RequestInit){const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),REQUEST_TIMEOUT_MS);try{return await fetch(url,{...init,signal:controller.signal})}finally{clearTimeout(timer)}}
+async function fetchWithTimeout(url:string,init:RequestInit):Promise<Response>;
+async function fetchWithTimeout<T>(url:string,init:RequestInit,consume:(response:Response)=>Promise<T>):Promise<T>;
+async function fetchWithTimeout<T>(url:string,init:RequestInit,consume?:(response:Response)=>Promise<T>){
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),REQUEST_TIMEOUT_MS);
+  try{const response=await fetch(url,{...init,signal:controller.signal});return consume?await consume(response):response}
+  finally{clearTimeout(timer);if(consume)controller.abort()}
+}
 function sleep(ms:number){return new Promise(resolve=>setTimeout(resolve,ms))}
 function retryAfterMs(response:Response,attempt:number){const raw=(response.headers.get('retry-after')||'').trim();if(raw){const seconds=Number(raw);if(Number.isFinite(seconds)&&seconds>=0)return Math.min(MAX_RATE_LIMIT_DELAY_MS,seconds*1000);const at=Date.parse(raw);if(Number.isFinite(at))return Math.max(0,Math.min(MAX_RATE_LIMIT_DELAY_MS,at-Date.now()))}return Math.min(MAX_RATE_LIMIT_DELAY_MS,350*(2**attempt))}
 function timestampMs(value:unknown){if(typeof value==='number'&&Number.isFinite(value))return value>1_000_000_000_000?value:value*1000;const text=String(value??'').trim();if(!text)return NaN;if(/^\d+(?:\.\d+)?$/.test(text)){const number=Number(text);if(Number.isFinite(number))return number>1_000_000_000_000?number:number*1000}return Date.parse(text)}
@@ -82,9 +88,9 @@ function ambiguousWriteStatus(status:unknown){const value=Number(status||0);retu
 function base64ByteLength(value:string){const normalized=value.replace(/\s/g,'');if(!normalized)return 0;const padding=normalized.endsWith('==')?2:normalized.endsWith('=')?1:0;return Math.max(0,Math.floor(normalized.length*3/4)-padding)}
 function validatePreviewPdfBase64(value:string){const normalized=value.replace(/\s/g,'');if(!normalized||base64ByteLength(normalized)>MAX_DOCUMENT_PDF_BYTES)throw new MorningHttpError('קובץ התצוגה המקדימה גדול מדי',413,null,false);try{if(!atob(normalized.slice(0,12)).startsWith('%PDF-'))throw new Error('not pdf')}catch{throw new MorningHttpError('Morning החזירה תצוגה מקדימה שאינה PDF',502,null,false)}return normalized}
 async function readResponseBytesBounded(response:Response,maxBytes=MAX_DOCUMENT_PDF_BYTES){
-  const declared=Number(response.headers.get('content-length')||0);if(Number.isFinite(declared)&&declared>maxBytes)throw new MorningHttpError('קובץ המסמך גדול מדי לתצוגה באתר',413,null,false);
+  const declared=Number(response.headers.get('content-length')||0);if(Number.isFinite(declared)&&declared>maxBytes){void response.body?.cancel().catch(()=>{});throw new MorningHttpError('קובץ המסמך גדול מדי לתצוגה באתר',413,null,false)}
   if(!response.body){const bytes=new Uint8Array(await response.arrayBuffer());if(bytes.length>maxBytes)throw new MorningHttpError('קובץ המסמך גדול מדי לתצוגה באתר',413,null,false);return bytes}
-  const reader=response.body.getReader(),chunks:Uint8Array[]=[];let total=0;try{while(true){const {done,value}=await reader.read();if(done)break;if(!value?.length)continue;total+=value.length;if(total>maxBytes){await reader.cancel().catch(()=>{});throw new MorningHttpError('קובץ המסמך גדול מדי לתצוגה באתר',413,null,false)}chunks.push(value)}}finally{reader.releaseLock()}
+  const reader=response.body.getReader(),chunks:Uint8Array[]=[];let total=0;try{while(true){const {done,value}=await reader.read();if(done)break;if(!value?.length)continue;total+=value.length;if(total>maxBytes){void reader.cancel().catch(()=>{});throw new MorningHttpError('קובץ המסמך גדול מדי לתצוגה באתר',413,null,false)}chunks.push(value)}}finally{void reader.cancel().catch(()=>{});reader.releaseLock()}
   const bytes=new Uint8Array(total);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length}return bytes
 }
 async function morningToken(force=false){
@@ -378,9 +384,10 @@ async function getDocumentPdf(body:any){
   const id=clean(body?.document_id,80);if(!isUuid(id))return json({ok:false,code:'invalid_document_id',message:'מזהה המסמך אינו תקין'},400);
   try{
     const links=await morningRequest(`/documents/${encodeURIComponent(id)}/download/links`,{method:'GET'}),url=documentUrl(links);if(!url)throw new MorningHttpError('Morning לא החזירה קישור PDF תקין',502,links,false);
-    let response:Response;try{response=await fetchWithTimeout(url,{method:'GET',headers:{Accept:'application/pdf'}})}catch(error){throw new MorningHttpError('הורדת קובץ המסמך מ-Morning נכשלה',0,error,false)}
-    if(!response.ok)throw new MorningHttpError(`Morning PDF HTTP ${response.status}`,response.status,null,false);
-    const bytes=await readResponseBytesBounded(response);if(!bytes.length)throw new MorningHttpError('Morning החזירה קובץ PDF ריק',502,null,false);
+    const bytes=await fetchWithTimeout(url,{method:'GET',headers:{Accept:'application/pdf'}},async response=>{
+      if(!response.ok)throw new MorningHttpError(`Morning PDF HTTP ${response.status}`,response.status,null,false);
+      return readResponseBytesBounded(response);
+    });if(!bytes.length)throw new MorningHttpError('Morning החזירה קובץ PDF ריק',502,null,false);
     if(bytes.length<5||bytes[0]!==0x25||bytes[1]!==0x50||bytes[2]!==0x44||bytes[3]!==0x46||bytes[4]!==0x2d)throw new MorningHttpError('Morning החזירה קובץ שאינו PDF',502,null,false);
     return new Response(bytes,{status:200,headers:{...corsHeaders,'Content-Type':'application/pdf','Content-Disposition':'inline; filename="morning-document.pdf"','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
   }catch(error:any){return json({ok:false,code:'morning_document_pdf_failed',message:clean(error?.message,250)},error?.status===404?404:error?.status===413?413:502)}
