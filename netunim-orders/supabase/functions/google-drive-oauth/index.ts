@@ -101,6 +101,11 @@ async function token(userId:string){
       const {data:rotation,error:rotationError}=await admin.from('google_drive_connections').update({refresh_token:rotated,updated_at:new Date().toISOString()}).eq('owner_id',userId).eq('refresh_token',connection.refresh_token).select('google_account_id').maybeSingle();
       if(rotationError)return adminError(rotationError,'google_drive_token_rotation_failed');
       if(!rotation)return json({code:'google_drive_refresh_failed',reason:'connection_changed'},409);
+    }else{
+      // A non-rotating refresh still needs a receipt from the captured connection.
+      const {data:current,error:currentError}=await admin.from('google_drive_connections').select('google_account_id').eq('owner_id',userId).eq('refresh_token',connection.refresh_token).maybeSingle();
+      if(currentError)return adminError(currentError,'google_drive_connection_read_failed');
+      if(!current)return json({code:'google_drive_refresh_failed',reason:'connection_changed'},409);
     }
     return json({access_token:refreshed.access_token,expires_in:refreshed.expires_in,account_id:String(connection.google_account_id||''),scope:String(refreshed.scope||connection.scope||SCOPES)});
   }catch(error){
@@ -118,20 +123,21 @@ async function token(userId:string){
 async function disconnect(userId:string){
   const {data:connection,error:readError}=await admin.from('google_drive_connections').select('refresh_token').eq('owner_id',userId).maybeSingle();
   if(readError)return adminError(readError,'google_drive_connection_read_failed');
+  if(!connection?.refresh_token)return json({ok:true,revocation:'not_needed'});
   const revocation=await revokeGoogleToken(String(connection?.refresh_token||''));
-  const {error}=await admin.from('google_drive_connections').delete().eq('owner_id',userId);
+  const {data:deleted,error}=await admin.from('google_drive_connections').delete().eq('owner_id',userId).eq('refresh_token',connection.refresh_token).select('google_account_id').maybeSingle();
   if(error)return adminError(error,'google_drive_disconnect_failed');
+  if(!deleted)return json({code:'google_drive_disconnect_failed',reason:'connection_changed',revocation},409);
   return json({ok:true,revocation});
 }
 
 async function callback(url:URL){
   const state=String(url.searchParams.get('state')||''),stateHash=state?await sha256(state):'';
   if(!stateHash)return new Response('Invalid OAuth state',{status:400});
-  const {data:stateRow,error:stateError}=await admin.from('google_drive_oauth_states').select('owner_id,return_url,expires_at').eq('state_hash',stateHash).maybeSingle();
-  if(stateError){if(dataApiUnavailable(stateError))return json({code:'google_drive_data_api_unavailable',message:'Drive OAuth storage is temporarily unavailable'},503);return new Response('Invalid or expired OAuth state',{status:400})}
+  // DELETE RETURNING is the single-use authority, including across Edge isolates.
+  const {data:stateRow,error:stateError}=await admin.from('google_drive_oauth_states').delete().eq('state_hash',stateHash).select('owner_id,return_url,expires_at').maybeSingle();
+  if(stateError)return adminError(stateError,'google_drive_state_consume_failed');
   if(!stateRow)return new Response('Invalid or expired OAuth state',{status:400});
-  const {error:consumeError}=await admin.from('google_drive_oauth_states').delete().eq('state_hash',stateHash);
-  if(consumeError)return adminError(consumeError,'google_drive_state_consume_failed');
   const returnUrl=String(stateRow.return_url||'');
   if(new Date(String(stateRow.expires_at||0)).getTime()<Date.now())return Response.redirect(appendOAuthResult(returnUrl,'error','state_expired'),303);
   const oauthError=String(url.searchParams.get('error')||'');
