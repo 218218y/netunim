@@ -42,11 +42,18 @@ for (const name of ['google-drive-oauth', 'google-calendar-oauth']) {
     assert.equal(f.requests.length, 2);
     assert.equal(f.clock.timers.size, 0);
   });
-  test(`${name}: account timeout never publishes a newly connected session`, async () => {
-    const f = await oauthFixture(name, {fetch:async url => url.endsWith('/token') ?
-      Response.json({access_token:'new-access', refresh_token:'new-refresh', expires_in:3600}) : new Promise(() => {})});
+  test(`${name}: account timeout never publishes a newly connected session`, {timeout:10000}, async () => {
+    const accountEntered = Promise.withResolvers();
+    const f = await oauthFixture(name, {fetch:async url => {
+      if (url.endsWith('/token')) return Response.json({access_token:'new-access', refresh_token:'new-refresh', expires_in:3600});
+      accountEntered.resolve();
+      return new Promise(() => {});
+    }});
     const pending = f.callback();
-    await tick(); await tick();
+    // State hashing uses WebCrypto's worker pool. Inject expiry only once the
+    // account request has actually started, regardless of hashing/scheduling.
+    await accountEntered.promise;
+    assert.equal(f.clock.timers.size, 1);
     f.clock.expire();
     const response = await pending;
     assert.equal(response.status, 303);

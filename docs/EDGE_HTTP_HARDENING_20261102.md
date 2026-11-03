@@ -169,3 +169,14 @@ not provider or deployed Edge-runtime acceptance. Run only on the attested
 disposable Linux CI stack, never the workstation or a linked project. This stage
 is NOT RUN until its exact source passes that job; compilation and local safety
 contracts alone cannot certify it. Revert the added probe to roll back.
+
+## Stage 8: provider deadline fixture admission
+
+The same bounded local WebCrypto-delay experiment exposed two more scheduling
+assumptions in the existing Google account-timeout tests: two event-loop turns
+could expire before state hashing and before the account deadline existed. Both
+cases timed out under a 100-turn digest delay. They now await observed account
+request entry before injecting expiry, with a ten-second test bound. The same
+delayed-digest experiment then passes all twelve deadline cases. No runtime code,
+provider timeout or expected outcome changes. This preserves deterministic failure
+injection rather than retrying flaky tests. Full branch CI is required to merge.
