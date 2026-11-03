@@ -1,6 +1,7 @@
 import {createClient} from 'npm:@supabase/supabase-js@2.112.4';
 import {readJsonBodyBounded, JsonBodyError} from '../_shared/http-input.js';
 import {createGoogleHttp, GoogleHttpError} from '../_shared/google-http.js';
+import {decodeGoogleToken, decodeGoogleAccount} from '../_shared/google-receipts.js';
 
 const CLIENT_ID='113139579639-jo09d2gts6kujig6rcaeid3bu40ojjqm.apps.googleusercontent.com';
 const SCOPES='https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.calendarlist.readonly';
@@ -46,11 +47,11 @@ function safeReturnUrl(value:unknown,origin:string){const candidate=new URL(Stri
 async function requireUser(req:Request){const authorization=req.headers.get('Authorization')||'';const token=authorization.match(/^Bearer\s+(.+)$/i)?.[1]||'';if(!token)return null;const client=createClient(SUPABASE_URL,PUBLISHABLE_KEY,{auth:{persistSession:false,autoRefreshToken:false},global:{headers:{Authorization:`Bearer ${token}`}}});const {data,error}=await client.auth.getUser(token);if(error||!data.user?.id)return null;return data.user}
 const googleHttp=createGoogleHttp();
 async function googleToken(params:Record<string,string>){
-  return googleHttp(GOOGLE_TOKEN_URL,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(params)});
+  return decodeGoogleToken(await googleHttp(GOOGLE_TOKEN_URL,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(params)}));
 }
 async function googleAccountId(accessToken:string){
-  const data:any=await googleHttp(CALENDAR_LIST_URL,{headers:{Authorization:`Bearer ${accessToken}`}});
-  const items=Array.isArray(data?.items)?data.items:[];const primary=items.find((item:any)=>item?.primary)||items.find((item:any)=>item?.accessRole==='owner')||items[0];const accountId=String(primary?.id||'').trim();if(!accountId)throw new Error('Google did not return an active calendar account');return accountId}
+  return decodeGoogleAccount(await googleHttp(CALENDAR_LIST_URL,{headers:{Authorization:`Bearer ${accessToken}`}}),'calendar');
+}
 async function revokeGoogleToken(token:string){
   if(!token)return 'not_needed';
   try{
@@ -90,14 +91,20 @@ async function token(userId:string){
   if(error)return adminError(error,'calendar_connection_read_failed');
   if(!connection?.refresh_token)return json({code:'calendar_not_connected'},404);
   try{
-    const refreshed:any=await googleToken({client_id:CLIENT_ID,client_secret:GOOGLE_CLIENT_SECRET,refresh_token:String(connection.refresh_token),grant_type:'refresh_token'});
+    const refreshed=await googleToken({client_id:CLIENT_ID,client_secret:GOOGLE_CLIENT_SECRET,refresh_token:String(connection.refresh_token),grant_type:'refresh_token'});
     const rotated=String(refreshed?.refresh_token||'').trim();
-    if(rotated&&rotated!==connection.refresh_token)await admin.from('google_calendar_connections').update({refresh_token:rotated,updated_at:new Date().toISOString()}).eq('owner_id',userId);
-    return json({access_token:String(refreshed.access_token||''),expires_in:Number(refreshed.expires_in||3600),account_id:String(connection.google_account_id||''),scope:String(refreshed.scope||SCOPES)});
+    if(rotated&&rotated!==connection.refresh_token){
+      const {data:rotation,error:rotationError}=await admin.from('google_calendar_connections').update({refresh_token:rotated,updated_at:new Date().toISOString()}).eq('owner_id',userId).eq('refresh_token',connection.refresh_token).select('google_account_id').maybeSingle();
+      if(rotationError)return adminError(rotationError,'calendar_token_rotation_failed');
+      if(!rotation)return json({code:'calendar_refresh_failed',reason:'connection_changed'},409);
+    }
+    return json({access_token:refreshed.access_token,expires_in:refreshed.expires_in,account_id:String(connection.google_account_id||''),scope:String(refreshed.scope||SCOPES)});
   }catch(error){
     const code=String((error as Error&{code?:string})?.code||'');
     if(code==='invalid_grant'){
-      await admin.from('google_calendar_connections').delete().eq('owner_id',userId);
+      const {data:deleted,error:deleteError}=await admin.from('google_calendar_connections').delete().eq('owner_id',userId).eq('refresh_token',connection.refresh_token).select('google_account_id').maybeSingle();
+      if(deleteError)return adminError(deleteError,'calendar_disconnect_failed');
+      if(!deleted)return json({code:'calendar_refresh_failed',reason:'connection_changed'},409);
       return json({code:'calendar_reconnect_required',reason:'google_invalid_grant'},409);
     }
     return json({code:'calendar_refresh_failed',reason:googleFailure(error)},error instanceof GoogleHttpError&&error.kind==='timeout'?504:502);
@@ -129,15 +136,14 @@ async function callback(url:URL){
   if(!code)return Response.redirect(appendOAuthResult(returnUrl,'error','missing_code'),303);
   if(!GOOGLE_CLIENT_SECRET)return Response.redirect(appendOAuthResult(returnUrl,'error','backend_not_configured'),303);
   try{
-    const exchanged:any=await googleToken({code,client_id:CLIENT_ID,client_secret:GOOGLE_CLIENT_SECRET,redirect_uri:REDIRECT_URI,grant_type:'authorization_code'});
+    const exchanged=await googleToken({code,client_id:CLIENT_ID,client_secret:GOOGLE_CLIENT_SECRET,redirect_uri:REDIRECT_URI,grant_type:'authorization_code'});
     const refreshToken=String(exchanged?.refresh_token||'').trim(),accessToken=String(exchanged?.access_token||'').trim();
     if(!refreshToken||!accessToken)throw new Error('Google did not return the required offline credentials');
     const accountId=await googleAccountId(accessToken);
-    const {data:previous,error:previousError}=await admin.from('google_calendar_connections').select('refresh_token').eq('owner_id',stateRow.owner_id).maybeSingle();
-    if(previousError)return adminError(previousError,'calendar_connection_read_failed');
     const {error:upsertError}=await admin.from('google_calendar_connections').upsert({owner_id:stateRow.owner_id,google_account_id:accountId,refresh_token:refreshToken,scope:String(exchanged?.scope||SCOPES),updated_at:new Date().toISOString()},{onConflict:'owner_id'});
     if(upsertError){if(dataApiUnavailable(upsertError))return json({code:'calendar_data_api_unavailable',message:'Calendar storage is temporarily unavailable'},503);throw new Error(upsertError.message)}
-    if(previous?.refresh_token&&previous.refresh_token!==refreshToken)await revokeGoogleToken(String(previous.refresh_token));
+    // Google revocation is project-wide: revoking the previous credential here
+    // can invalidate the newly verified grant (and the sibling integration).
     return Response.redirect(appendOAuthResult(returnUrl,'connected'),303);
   }catch(error){
     console.error('google calendar oauth callback',googleFailure(error));

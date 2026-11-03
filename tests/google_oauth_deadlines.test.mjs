@@ -44,7 +44,7 @@ for (const name of ['google-drive-oauth', 'google-calendar-oauth']) {
   });
   test(`${name}: account timeout never publishes a newly connected session`, async () => {
     const f = await oauthFixture(name, {fetch:async url => url.endsWith('/token') ?
-      Response.json({access_token:'new-access', refresh_token:'new-refresh'}) : new Promise(() => {})});
+      Response.json({access_token:'new-access', refresh_token:'new-refresh', expires_in:3600}) : new Promise(() => {})});
     const pending = f.callback();
     await tick(); await tick();
     f.clock.expire();

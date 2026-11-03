@@ -12,19 +12,22 @@ export async function oauthFixture(name, options = {}) {
   const state = {owner_id:'test-owner', return_url:'https://app.example.test/', expires_at:new Date(Date.now() + 60000).toISOString()};
   const connection = {value:old};
   function database(table) {
-    let mode = 'select', patch;
+    let mode = 'select', patch, expectedRefresh;
     const query = new Proxy({}, {get(_target, key) {
       if (key === 'then') return resolve => {
         if (mode !== 'select') writes.push({table, mode, patch});
         if (options.dbError?.(table, mode)) return resolve({data:null, error:{message:'test storage failure'}});
         const isState = table.endsWith('_states');
+        if (!isState && expectedRefresh !== undefined && connection.value?.refresh_token !== expectedRefresh) return resolve({data:null, error:null});
+        const previous = connection.value;
         if (!isState && mode === 'upsert') connection.value = {...patch};
         if (!isState && mode === 'update') connection.value = {...connection.value, ...patch};
         if (!isState && mode === 'delete') connection.value = null;
-        return resolve({data:isState ? state : connection.value, error:null});
+        return resolve({data:isState ? state : mode === 'delete' ? previous : connection.value, error:null});
       };
       return (...args) => {
-        if (['select','insert','update','upsert','delete'].includes(key)) { mode = key; patch = args[0]; }
+        if (['insert','update','upsert','delete'].includes(key)) { mode = key; patch = args[0]; }
+        if (key === 'eq' && args[0] === 'refresh_token') expectedRefresh = args[1];
         return query;
       };
     }});

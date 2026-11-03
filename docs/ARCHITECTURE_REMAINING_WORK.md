@@ -49,6 +49,14 @@ restore and live-provider release exercises therefore remain explicitly unverifi
 
 ## Prioritized remaining work
 
+### Edge review continuation, 2026-11-02
+
+Authenticated JSON byte limits, Google provider deadlines and verified OAuth
+receipts now have focused entrypoint regressions and checked shared bodies. See
+[Edge hardening evidence](EDGE_HTTP_HARDENING_20261102.md). These are independent
+of physical acceptance. Signed Morning PDF host/redirect compatibility remains
+NOT RUN; no speculative hostname allowlist or Bank Origin default change is made.
+
 ### Operational completion after PR #325
 
 1. **Windows crash evidence:** [bounded investigation](WINDOWS_CRASH_INVESTIGATION.md)
