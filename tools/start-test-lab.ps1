@@ -14,9 +14,14 @@ try {
     $evidence = (Resolve-Path -LiteralPath $EvidencePath).Path
     if (-not (Test-Path -LiteralPath (Join-Path $evidence 'lab-owner.json'))) { throw 'Evidence destination is not owned by the lab.' }
     if ($package -eq $evidence -or $evidence.StartsWith($package + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Evidence overlaps source.' }
+    function Checkpoint([string]$Stage) {
+        @{complete=$false; stage=$Stage; kind=$Kind; physical_acceptance=$false} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $evidence 'guest-bootstrap.json') -Encoding UTF8
+    }
+    Checkpoint 'verifying-offline-package'
     # Verify before copying; code is mapped read-only, with no host checkout/profile.
     & (Join-Path $package 'runtime\python\python.exe') -I (Join-Path $package 'source\tools\test_lab_package.py') --verify $package
     if ($LASTEXITCODE -ne 0) { throw 'Offline package verification failed.' }
+    Checkpoint 'copying-to-owned-guest-directory'
     Copy-Item -LiteralPath $package -Destination $runRoot -Recurse
     @{kind=$Kind; virtual_machine=$virtual; model=$machine.Model} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $runRoot 'guest-attestation.json') -Encoding UTF8
     $env:PATH = "$runRoot\runtime\node;$runRoot\runtime\git;$env:SystemRoot\System32;$env:SystemRoot"
@@ -25,7 +30,11 @@ try {
     $env:GIT_TERMINAL_PROMPT = '0'
     $env:PYTHONNOUSERSITE = '1'
     $env:PYTHONUTF8 = '1'
+    $browser = @('chrome.exe', 'msedge.exe') | ForEach-Object { Join-Path $runRoot ('runtime\browser\' + $_) } | Where-Object { Test-Path -LiteralPath $_ }
+    if (@($browser).Count -ne 1) { throw 'Exactly one verified offline browser runtime is required.' }
+    $env:NETUNIM_BROWSER = [string]$browser
     Set-Location -LiteralPath (Join-Path $runRoot 'source')
+    Checkpoint 'initializing-synthetic-snapshot'
     # A new local synthetic Git repository supports the existing evidence helpers.
     # Its commit is distinct from the original package source SHA recorded above.
     git -c init.templateDir= init -q
@@ -34,7 +43,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Guest Git snapshot failed.' }
     git -c user.name=NetunimLab -c user.email=lab@example.invalid -c commit.gpgsign=false commit -q -m 'Synthetic isolated lab snapshot'
     if ($LASTEXITCODE -ne 0) { throw 'Guest Git commit failed.' }
-    $process = Start-Process -FilePath "$runRoot\runtime\python\python.exe" -ArgumentList @('-u', 'tools/test_lab.py', 'run', '--guest', '--scenario', 'isolation', '--scenario', 'local-save-abort', '--scenario', 'restore-and-crash', '--scenario', 'old-tab', '--scenario', 'bridge') -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $evidence 'guest-output.txt') -RedirectStandardError (Join-Path $evidence 'guest-errors.txt')
+    Checkpoint 'running-synthetic-scenarios'
+    $process = Start-Process -FilePath "$runRoot\runtime\python\python.exe" -ArgumentList @('-u', 'tools/test_lab.py', 'run', '--guest', '--scenario', 'isolation', '--scenario', 'local-save-abort', '--scenario', 'local-save-crash', '--scenario', 'restore-and-crash', '--scenario', 'old-tab', '--scenario', 'bridge') -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $evidence 'guest-output.txt') -RedirectStandardError (Join-Path $evidence 'guest-errors.txt')
     do {
         Start-Sleep -Seconds 3
         $reports = Join-Path $runRoot 'source\.work\test-lab'
@@ -44,7 +54,13 @@ try {
     $process.WaitForExit()
     @{complete=$true; exit_code=$process.ExitCode; kind=$Kind; physical_acceptance=$false} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $evidence 'guest-completion.json') -Encoding UTF8
 } catch {
-    $failure = @{complete=$false; status='BLOCKED'; message=$_.Exception.Message; physical_acceptance=$false}
+    $status = 'BLOCKED'
+    if ($null -ne $process) {
+        $status = 'UNRESOLVED'
+        $process.Refresh()
+        if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force }
+    }
+    $failure = @{complete=$false; status=$status; message=$_.Exception.Message; physical_acceptance=$false}
     if (Test-Path -LiteralPath $EvidencePath) {
         $failure | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $EvidencePath 'guest-blocked.json') -Encoding UTF8
     }

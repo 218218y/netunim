@@ -12,10 +12,30 @@ import zipfile
 import xml.etree.ElementTree as ET
 
 
-def reject_links(root):
-    for path in (root, *root.rglob('*')):
-        if path.is_symlink() or getattr(path, 'is_junction', lambda: False)():
+def files(root):
+    """One metadata read per entry, including Windows reparse-point rejection."""
+    def inspect(path, info):
+        if stat.S_ISLNK(info.st_mode) or getattr(info, 'st_file_attributes', 0) & getattr(stat, 'FILE_ATTRIBUTE_REPARSE_POINT', 0):
             raise RuntimeError('package input contains a link or junction')
+    inspect(root, root.lstat())
+    pending = [root]
+    while pending:
+        with os.scandir(pending.pop()) as entries:
+            for entry in entries:
+                info = entry.stat(follow_symlinks=False)
+                path = Path(entry.path)
+                inspect(path, info)
+                if stat.S_ISDIR(info.st_mode):
+                    pending.append(path)
+                elif stat.S_ISREG(info.st_mode):
+                    yield path
+                else:
+                    raise RuntimeError('package contains unsupported special file')
+
+
+def reject_links(root):
+    for _path in files(root):
+        pass
 
 
 def extract_snapshot(archive, target):
@@ -30,9 +50,16 @@ def extract_snapshot(archive, target):
 
 
 def hashes(root):
-    reject_links(root)
-    return {p.relative_to(root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
-            for p in sorted(root.rglob('*')) if p.is_file() and p != root/'package-manifest.json'}
+    result = {}
+    for path in files(root):
+        if path == root/'package-manifest.json':
+            continue
+        digest = hashlib.sha256()
+        with path.open('rb') as source:
+            for chunk in iter(lambda: source.read(1024*1024), b''):
+                digest.update(chunk)
+        result[path.relative_to(root).as_posix()] = digest.hexdigest()
+    return result
 
 
 def verify(root):
@@ -86,6 +113,23 @@ def copy_runtimes(root, payload):
         if not package_json.is_file() or json.loads(package_json.read_text(encoding='utf8')).get('version') != entry['version']:
             raise RuntimeError('host Node dependencies differ from lockfile: '+name)
     shutil.copytree(modules, payload/'source/node_modules', ignore=shutil.ignore_patterns('.cache', '.bin'))
+    from browser_harness import find_browser
+    browser = Path(find_browser() or '')
+    if not browser.is_file() or browser.name.lower() not in ('chrome.exe', 'msedge.exe'):
+        raise RuntimeError('an installed Chrome or Edge application runtime is required')
+    library = 'chrome.dll' if browser.name.lower() == 'chrome.exe' else 'msedge.dll'
+    versions = [p for p in browser.parent.iterdir()
+                if p.is_dir() and all(v.isdigit() for v in p.name.split('.')) and (p/library).is_file()]
+    if not versions:
+        raise RuntimeError('browser application version directory was not found')
+    # Select executable application files only. Profiles, updater state and user
+    # data are outside this allowlist, even for a per-user browser installation.
+    browser_out = runtime/'browser'
+    browser_out.mkdir()
+    shutil.copy2(browser, browser_out/browser.name.lower())
+    for version in versions:
+        reject_links(version)
+        shutil.copytree(version, browser_out/version.name, ignore=shutil.ignore_patterns('Installer'))
 
 
 def sandbox_config(payload, evidence):

@@ -25,6 +25,7 @@ SCENARIOS = {
     'concurrent-edits': ['runtime_sync_two_computers.py'],
     'network-and-lost-ack': ['runtime_supabase_stack.py'],
     'local-save-abort': ['runtime_idb_receipts.py'],
+    'local-save-crash': ['runtime_lab_local_crash.py'],
     'restore-and-crash': ['lab_restore_acceptance.py'],
     'old-tab': ['runtime_release_compatibility.py', 'runtime_pwa.py'],
     'bridge': ['lab_bridge_acceptance.py'],

@@ -7,6 +7,7 @@ Supabase fixtures through one entry point:
 python tools/test_lab.py list
 python tools/test_lab.py run --scenario isolation --scenario local-save-abort
 python tools/test_lab.py run --scenario concurrent-edits --scenario restore-and-crash
+python tools/test_lab.py run --scenario local-save-crash
 python tools/test_lab.py run --scenario old-tab --scenario bridge
 python tools/test_lab.py run --all
 ```
@@ -29,6 +30,14 @@ Other browser scenarios are component integration; they do not prove live cloud
 behavior. `local-save-abort` tests native request-success/transaction-abort authority;
 it does not alone prove physical power loss during a write.
 
+`local-save-crash` pauses in the real IndexedDB Journal request-success event,
+proves that the production completion receipt has not been issued, and kills the
+owned Chromium process tree. Orders, Kupa and Shared Checks reopen twice. Only a
+whole pre-write or whole committed transaction is accepted; Journal/metadata must
+agree and cloud revision/ACK must remain unchanged. Stopped IndexedDB files and
+their hashes are retained before recovery. This proves the tested native process
+failure boundary; it does not emulate a hardware power failure or disk controller.
+
 ## Offline isolated Windows
 
 From a **clean committed** Windows checkout with the locked Node dependencies and
@@ -40,7 +49,10 @@ python tools/test_lab.py prepare-windows
 
 The command prints the absolute `NetunimLab.wsb` path under a newly owned temporary
 directory. Open that file to start a new Sandbox. Only an exported Git snapshot and
-offline runtimes are mapped read-only. Only its separate empty evidence folder is
+offline runtimes, including the installed Chrome/Edge executable and versioned
+application libraries, are mapped read-only. Browser profiles and updater data are
+excluded; the guest uses the copied browser with fresh fixture profiles. No browser
+installation or download is needed in the guest. Only its separate empty evidence folder is
 writable. The working checkout, `.git` history/config, browser profiles, vaults,
 installed Bridge data and inherited credentials are never mapped. The package
 contains hashes for all included bytes; altered or extra files reject launch.
@@ -69,7 +81,7 @@ A new Sandbox run starts from a fresh guest. For a persistent isolated VM, copy
 powershell -NoProfile -ExecutionPolicy Bypass -File C:\NetunimLabPackage\source\tools\start-test-lab.ps1 -Kind vm
 ```
 
-The VM must be isolated from work accounts/data and have a Chromium browser. The
+The VM must be isolated from work accounts/data. The packaged browser is used. The
 launcher rejects physical hosts and an existing guest run directory. Preserve and
 rename the old lab directory before another VM run. It never deletes existing VM
 data to force a rerun. Offline runtimes are copied from the host installation;

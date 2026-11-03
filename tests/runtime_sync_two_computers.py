@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 
 from browser_harness import BrowserSession, ROOT
+from acceptance_safety import write_evidence
+from crash_evidence import snapshot_digest
 
 
 def js(value):
@@ -122,6 +124,12 @@ def run(app, same_record):
             b._navigate()
             b.evaluate("appReady.then(()=>true)")
             assert create_journal(b,app)['notes']==merged['notes']
+
+        snapshots = {name: browser.evaluate('(async()=>({journal:await fixtureJournal.recover(),cloud:await fixtureJournal.cloudState()}))()')
+                     for name, browser in [('A', a), ('B', b)]}
+        write_evidence(label, [{'scenario': label, 'status': 'PASS', 'transport': 'synthetic compare-and-swap head',
+            'operation_ids': [first_id, b_pending['flight']['operationId']], 'snapshots': snapshots,
+            'snapshot_sha256': {name: snapshot_digest(value) for name, value in snapshots.items()}}])
 
         legacy_key='orders.management.state.v1' if app=='orders' else 'kupa.browser.state.v1'
         legacy_outbox='orders.supabase.pending.v1' if app=='orders' else 'kupa.cloud.pending.local.v1'
