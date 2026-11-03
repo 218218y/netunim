@@ -144,3 +144,28 @@ that a concurrent Google grant survives external revocation. No distributed lock
 second credential store or new schema is introduced. Live concurrent consent/
 revocation remains NOT RUN. Revert this stage for code rollback; no data conversion
 is needed. Full branch verification remains required before merge.
+
+CI exposed a timing flaw in the preceding Morning issuance regression: fifty
+event-loop turns could expire before worker-pool WebCrypto finished. The fixture
+now observes the real POST entry with a bounded ten-second wait before injecting
+the deadline. It retains the same durable-uncertainty/replay assertions and does
+not change production issuance or extend its timeout.
+
+## Stage 7: actual OAuth database/API acceptance
+
+The required full Supabase job now probes the same Google tables through real
+PostgREST with disposable service credentials. Two simultaneous DELETE RETURNING
+requests must return exactly one consumed state, and replay must return no row.
+After replacement, stale credential reads/rotation/deletion must each return no
+row while the new credential remains; a current disconnect must return its row.
+Anonymous, owning-browser and foreign-browser roles are denied before the fixture
+is removed. No migration, grant or production configuration changes are made.
+
+The existing request port gains only an opt-in return=representation preference;
+destination validation, redirects, isolation preflight and per-request deadlines
+are retained. Reports record booleans and service names, never token values or
+signed URLs. These are actual local Supabase API receipts with synthetic secrets,
+not provider or deployed Edge-runtime acceptance. Run only on the attested
+disposable Linux CI stack, never the workstation or a linked project. This stage
+is NOT RUN until its exact source passes that job; compilation and local safety
+contracts alone cannot certify it. Revert the added probe to roll back.
