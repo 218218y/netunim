@@ -267,6 +267,7 @@ assert all(fragment in bank_merge['definition'] for fragment in required_bank_me
 with IsolatedPostgres(schema_files=all_files) as db:
     clean = json.loads(db.sql((ROOT / 'supabase/schema_inventory.sql').read_text(encoding='utf8')))
     assert_morning_schema_contract(clean)
+    db.sql((ROOT / 'tests/google_oauth_intents_server.sql').read_text(encoding='utf8'))
     clean_bank_merge = one_function(clean, bank_merge_key)
     assert clean_bank_merge == bank_merge, \
         'Production-upgrade replay and clean install disagree on the bank merge function contract'

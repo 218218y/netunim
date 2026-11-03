@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {oauthFixture, tick} from './google_oauth_fixture.mjs';
+import {GOOGLE_TEST_SCOPES, oauthFixture, tick} from './google_oauth_fixture.mjs';
 
 for (const name of ['google-drive-oauth', 'google-calendar-oauth']) {
-  const credentials = {access_token:'new-access', refresh_token:'new-refresh', expires_in:3600};
+  const credentials = {access_token:'new-access', refresh_token:'new-refresh', expires_in:3600, scope:GOOGLE_TEST_SCOPES};
   const account = name === 'google-drive-oauth' ? {user:{permissionId:'new-account'}} : {items:[{primary:true, id:'new-account'}]};
 
   test(`${name}: a consumed state authorizes exactly one concurrent callback`, async () => {
@@ -36,7 +36,7 @@ for (const name of ['google-drive-oauth', 'google-calendar-oauth']) {
       let f;
       f = await oauthFixture(name, {fetch:async () => {
         f.connection.value = replacement;
-        return Response.json({access_token:'late-access', expires_in:3600});
+        return Response.json({access_token:'late-access', expires_in:3600, scope:GOOGLE_TEST_SCOPES});
       }});
       const response = await f.invoke('token');
       assert.equal(response.status, 409);
@@ -48,7 +48,7 @@ for (const name of ['google-drive-oauth', 'google-calendar-oauth']) {
 
   test(`${name}: failed current-connection verification cannot publish a token`, async () => {
     let reads = 0;
-    const f = await oauthFixture(name, {fetch:async () => Response.json({access_token:'new-access', expires_in:3600}),
+    const f = await oauthFixture(name, {fetch:async () => Response.json({access_token:'new-access', expires_in:3600, scope:GOOGLE_TEST_SCOPES}),
       dbError:(table, mode) => table.endsWith('_connections') && mode === 'select' && ++reads === 2});
     const response = await f.invoke('token');
     assert.equal(response.status, 500);
@@ -66,18 +66,19 @@ for (const name of ['google-drive-oauth', 'google-calendar-oauth']) {
       f.connection.value = {...replacement};
       if (result === 'timeout') f.clock.expire(); else release(new Response(''));
       const response = await pending;
-      assert.equal(response.status, 409);
-      assert.equal((await response.json()).reason, 'connection_changed');
+      assert.equal(response.status, 200);
+      assert.equal((await response.json()).ok, true);
       assert.deepEqual(f.connection.value, replacement);
       assert.equal(f.clock.timers.size, 0);
     }
   });
 
-  test(`${name}: repeated disconnect of an absent connection has no provider or deletion side effects`, async () => {
+  test(`${name}: disconnect of an absent connection still invalidates pending intent without calling Google`, async () => {
     const f = await oauthFixture(name);
     f.connection.value = null;
     assert.deepEqual(await (await f.invoke('disconnect')).json(), {ok:true, revocation:'not_needed'});
     assert.equal(f.requests.length, 0);
-    assert.equal(f.writes.length, 0);
+    assert.equal(f.intent.value, null);
+    assert.equal(f.writes.length, 1);
   });
 }

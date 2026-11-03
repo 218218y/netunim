@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {oauthFixture} from './google_oauth_fixture.mjs';
+import {GOOGLE_TEST_SCOPES, oauthFixture} from './google_oauth_fixture.mjs';
 
-const credentials = {access_token:'new-access', refresh_token:'new-refresh', expires_in:3600, token_type:'Bearer'};
+const credentials = {access_token:'new-access', refresh_token:'new-refresh', expires_in:3600, token_type:'Bearer', scope:GOOGLE_TEST_SCOPES};
 for (const name of ['google-drive-oauth', 'google-calendar-oauth']) {
   test(`${name}: incomplete or malformed HTTP 200 token replies never become success`, async () => {
     for (const body of [{}, {error:'invalid_grant'}, {...credentials, access_token:''}, {...credentials, access_token:[]},
