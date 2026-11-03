@@ -635,7 +635,10 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
       ${!catalog?.capabilities.backgroundQueue?progress.markup():''}
       ${catalog ? `<div class="morning-expense-workspace"><div class="morning-expense-fields">
       <h2 class="morning-expense-panel-title">פרטי ההוצאה</h2>
-      ${!operationId ? expenseFormMarkup({model:{disabled,busy,draft,supplierMarkup:supplierPicker.markup(disabled),supplierCreateMarkup:supplierForm.markup(disabled),supplier,eligibility,catalog,favorites,expenses:sourceExpenses(),today,selected,ocrActive:ocr.active(),localBlocked:local.blocked(),sanity:sanityMessage(),rate:vatRate(),warnings:local.warningsMarkup(supplier?.taxId,draft),approvedCount:batch.count(),batchPaused:batch.paused(),approved:batch.label(selected)==='מאושרת לשליחה'},review,reporting,dateEditorMarkup}) : ''}
+      ${!operationId ? expenseFormMarkup({model:{disabled,busy,draft,supplierMarkup:supplierPicker.markup(disabled),supplierCreateMarkup:supplierForm.markup(disabled),
+        supplier,eligibility,catalog,favorites,expenses:sourceExpenses(),today,selected,ocrActive:ocr.active(),localBlocked:local.blocked(),
+        sanity:sanityMessage(),rate:vatRate(),warnings:local.warningsMarkup(supplier?.taxId,draft),approvedCount:batch.count(),batchPaused:batch.paused(),
+        approved:batch.label(selected)==='מאושרת לשליחה'},review,reporting,dateEditorMarkup}) : ''}
       ${expenseOperationMarkup({operationId,result,busy,queueLength:queue.length,reconciliationId})}
       ${sources.receipt(result,busy,sourceReason)}
       ${result?.verified&&result.sourcePending&&result.sourceRetryGeneration?`<button type="button" class="btn" data-action="morning-expense-write" data-expense-command="source-retry" ${busy?'disabled':''}>צירוף המקור מחדש לאותה הוצאה</button>`:''}
