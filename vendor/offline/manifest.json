@@ -6,7 +6,7 @@
     "machine": "x86_64",
     "libc": "glibc"
   },
-  "npmClosureSha256": "fb98dbc17099b050ddfdcf870e551421939f4a684f298593b6d49c90ecd3e916",
+  "npmClosureSha256": "16ba1984ce2fd5d598c0ac0f3ceba3f8cdc910b241caf27c37d4031501aca5a7",
   "configSemanticSha256": "2c9fa55342f48f0a61ffc00398aabad13083a3c5cedccf0937861f363d4b1ba7",
   "node": {
     "version": "24.21.0",
@@ -162,10 +162,10 @@
     {
       "lockPath": "node_modules/@types/estree",
       "name": "@types/estree",
-      "version": "1.0.9",
-      "url": "https://registry.npmjs.org/@types/estree/-/estree-1.0.9.tgz",
-      "integrity": "sha512-GhdPgy1el4/ImP05X05Uw4cw2/M93BCUmnEvWZNStlCzEKME4Fkk+YpoA5OiHNQmoS7Cafb8Xa3Pya8m1Qrzeg==",
-      "file": "npm/types__estree-1.0.9.tgz"
+      "version": "1.0.10",
+      "url": "https://registry.npmjs.org/@types/estree/-/estree-1.0.10.tgz",
+      "integrity": "sha512-lTyOMnOcmRBzdCv6/4zUZCrEhV0xrqQiUZBZtVcbmLHBXKLnN8q89v/wKRF/Q0HbwVsqbIG3o5HDoFl9sduM+g==",
+      "file": "npm/types__estree-1.0.10.tgz"
     },
     {
       "lockPath": "node_modules/@types/json-schema",
@@ -266,10 +266,10 @@
     {
       "lockPath": "node_modules/eslint",
       "name": "eslint",
-      "version": "10.13.0",
-      "url": "https://registry.npmjs.org/eslint/-/eslint-10.13.0.tgz",
-      "integrity": "sha512-UohDjD4zSzEwhf58M3O7vc/ycc8O1I7dNlhtD0WxE8Px8EHNJKtUwzBqrzeGhisRuv2ag4sAYswszCJRgKXYUg==",
-      "file": "npm/eslint-10.13.0.tgz"
+      "version": "10.14.0",
+      "url": "https://registry.npmjs.org/eslint/-/eslint-10.14.0.tgz",
+      "integrity": "sha512-T0pNsxkb9IKmtQjhpK3d7nWOpFv+YHuMbTJnSVMoQblF0onvXfErrtp4V1jHtsQPan7dKaGVD0q1WCXnzMF31A==",
+      "file": "npm/eslint-10.14.0.tgz"
     },
     {
       "lockPath": "node_modules/eslint-scope",
@@ -394,10 +394,10 @@
     {
       "lockPath": "node_modules/globals",
       "name": "globals",
-      "version": "17.13.0",
-      "url": "https://registry.npmjs.org/globals/-/globals-17.13.0.tgz",
-      "integrity": "sha512-RwMTC61u7hrG3ZJMkZQOK4JLJrKS8QtoTii63EmWvFXHqycY9FObBJQCbsLxSO8kjKhWE5kV1GC+Vb1g3RI0Zg==",
-      "file": "npm/globals-17.13.0.tgz"
+      "version": "17.14.0",
+      "url": "https://registry.npmjs.org/globals/-/globals-17.14.0.tgz",
+      "integrity": "sha512-UtdkTVyAJePQv0J2M9Xe4L0ruNSDV314XiIJsADI2Zf40bcdAonE/D/OhAU8AT99oij9mhLByb+NvA3QWZYgCg==",
+      "file": "npm/globals-17.14.0.tgz"
     },
     {
       "lockPath": "node_modules/hashery",
