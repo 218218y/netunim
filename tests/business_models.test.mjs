@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {rawCreditSchedule, creditProgress, inactiveCreditExpired} from '../netunim-kupa/site/assets/js/domains/credit/model.js';
 import {futureCheckMonthsData as kupaFutureCheckMonthsData, normalizeSharedChecks as normalizeKupaChecks, checksBalanceData} from '../netunim-kupa/site/assets/js/domains/checks/model.js';
 import {futureCheckMonthsData as ordersFutureCheckMonthsData, normalizeSharedChecks as normalizeOrdersChecks} from '../netunim-orders/site/assets/js/domains/checks/model.js';
-import {expenseOccurrencesForMonthData} from '../netunim-kupa/site/assets/js/domains/expenses/model.js';
+import {kupaExpenseOccurrencesForMonthData as expenseOccurrencesForMonthData} from '../netunim-kupa/site/assets/js/shared/kupa-cashflow.js';
 import {bankCurrentBalanceData} from '../netunim-kupa/site/assets/js/domains/bank/model.js';
 import {computeKupaNetReadoutData, kupaAllInstallments, kupaBusinessInstallments} from '../netunim-orders/site/assets/js/domains/bank/readout.js';
 import {mergeRecordArray, comparePendingFreshness} from '../netunim-kupa/site/assets/js/sync/merge-records.js';

@@ -1,0 +1,15 @@
+.business-position-details{min-width:0;margin-top:12px;padding:10px 12px;border:1px solid var(--line,#d8e1dd);border-radius:12px;background:var(--panel,#fff);font-size:12px;text-align:right;line-height:1.6}
+.business-position-details>summary,.position-rows>summary{cursor:pointer;font-weight:750;padding:4px 0}
+.business-position-details table{width:100%;min-width:0;table-layout:fixed;border-collapse:collapse;font-size:12px}
+.business-position-details th,.business-position-details td{padding:7px 8px;border-bottom:1px solid var(--line,#d8e1dd);overflow-wrap:anywhere}
+.business-position-details th{width:65%;font-weight:600;text-align:right}
+.business-position-details td{text-align:left;font-variant-numeric:tabular-nums;white-space:normal}
+.business-position-details tfoot{font-weight:800;background:var(--panel-soft,#f4f7f5)}
+.business-position-details .position-rows{margin-top:8px}
+.position-rows ul{list-style:none;margin:0;padding:0}
+.position-rows li{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid var(--line,#d8e1dd)}
+.position-rows li>span{min-width:0;overflow-wrap:anywhere}
+.position-rows li>b{flex-shrink:0;font-variant-numeric:tabular-nums}
+.dashboard-net-summary+.business-position-details{margin-bottom:16px}
+.bank-details-link{margin-top:6px;font-size:12px;font-weight:750;text-decoration:underline;text-underline-offset:3px}
+.dashboard-net-summary .net-total>b.badtext{color:#b42318}

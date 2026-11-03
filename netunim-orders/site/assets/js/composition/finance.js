@@ -2,7 +2,7 @@ import {createFinanceBridgeIntegration} from '../integrations/bank-bridge.js';
 import {createFinanceBrowserEffects} from '../shared/finance-browser-effects.js';
 import {createFinanceOperationScope} from '../shared/finance-fence.js';
 import {createFinanceLeaseOwner} from '../shared/finance-lease-owner.js';
-import {createDomainsBankSelectors} from '../domains/bank/selectors.js';
+import {computeKupaNetReadoutData} from '../domains/bank/readout.js';
 import {createDomainsBankCache} from '../domains/bank/cache.js';
 import {createDomainsFinanceController} from '../domains/finance/controller.js';
 import {createOrdersCreditConnectionOwner} from '../domains/finance/credit-connection-owner.js';
@@ -95,7 +95,7 @@ export function createOrdersFinanceCapability({
   }});
   // Cleanup keeps its original account/storage fence; changed owners leave leases to TTL.
   const leaseAuthority = createFinanceOperationScope({readAccess});
-  const selectors = createDomainsBankSelectors({model});
+  const selectors = {computeKupaNetReadout:(...args)=>computeKupaNetReadoutData(model.state,...args)};
   const images = createOrdersBankChequeImageRuntime({cloudAuth:auth, bridge, operationScope});
 
   function active() { if (disposed) throw new Error('orders_finance_disposed'); }

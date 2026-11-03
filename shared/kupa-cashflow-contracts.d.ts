@@ -91,6 +91,7 @@ export interface CashflowCalculation {
   reconciledCreditRowsForAccount(kupa:CashflowState,account:string,reference:string,options?:ReconciliationOptions):Reconciliation;
   calculateReconciledCreditRows(kupa:CashflowState,account:string,reference:string,options:Required<ReconciliationOptions>):Reconciliation;
   kupaReconciledCreditRowsData(kupa:CashflowState,account?:string,reference?:string):ReconciledRow[];
+  kupaOutstandingCreditRowsData(kupa:CashflowState,account?:string,reference?:string):ReconciledRow[];
   kupaReconciledCreditDetailRowsData(kupa:CashflowState,account?:string,reference?:string):ReconciledRow[];
   creditDetailRowSort(a:ReconciledRow,b:ReconciledRow):number;
   creditAccountDisplayContext(kupa:CashflowState,rows:ReconciledRow[]):DisplayContext;
