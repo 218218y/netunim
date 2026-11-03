@@ -29,7 +29,7 @@ export async function edgeFixture(name, options = {}) {
     fetch:fetchRequest,
     createClient:() => ({from:database, auth:{getUser:async () => ({data:{user:options.user === null ? null : {id:'test-owner'}}})}}),
     Deno:{env:{get:key => ({SUPABASE_URL:'https://example.supabase.co', SUPABASE_ANON_KEY:'test', SUPABASE_SERVICE_ROLE_KEY:'test',
-      GOOGLE_DRIVE_CLIENT_SECRET:'test', GOOGLE_CALENDAR_CLIENT_SECRET:'test', MORNING_ENV:'sandbox'})[key]}, serve:value => { handler = value; }}});
+      GOOGLE_DRIVE_CLIENT_SECRET:'test', GOOGLE_CALENDAR_CLIENT_SECRET:'test', MORNING_ENV:'sandbox', ...options.env})[key]}, serve:value => { handler = value; }}});
   vm.runInContext(stripTypeScriptTypes(source.replace(/^import .*?;\r?\n/gm, '')), context);
   return {handler, context, operations, requests};
 }

@@ -27,6 +27,13 @@ class Query{
 }
 const mockFetch=async(url,init={})=>{
   requests.push({url,init});
+  if(url.endsWith('/documents')&&failure==='body-timeout'){
+    postCount++;
+    return new Response(new ReadableStream({start(controller){
+      controller.enqueue(new TextEncoder().encode('{"partial":'));
+      init.signal.addEventListener('abort',()=>controller.error(new DOMException('aborted','AbortError')),{once:true});
+    }}));
+  }
   if(url.includes('oauth/token')){tokenCount++;return Response.json({access_token:'test-only',expires_in:3600})};
   if(url.includes('/documents/types')){if(failure==='status-down')return Response.json({message:'down'},{status:503});return Response.json([{id:305,name:'Invoice'}])};
   if(url.endsWith('/documents/search')){lastSearch=JSON.parse(init.body);return Response.json({items:lookupItems,total:lookupItems.length,pages:lookupItems.length?1:0,page:1})}
@@ -240,3 +247,24 @@ const forbiddenReport=await servedHandler(new Request('https://example.supabase.
 assert.equal(forbiddenReport.status,403);
 assert.equal((await forbiddenReport.json()).code,'morning_reports_forbidden');
 assert.equal(requests.length,reportRequestsBefore,'a regular login cannot read the global business reports without an explicit server grant');
+
+// A stalled successful create response is uncertain. Only reconciliation may
+// resolve it; neither the transport nor a repeated command may issue again.
+const deadlineTimers=new Map();let deadlineId=0;
+context.setTimeout=callback=>{deadlineTimers.set(++deadlineId,callback);return deadlineId};
+context.clearTimeout=id=>deadlineTimers.delete(id);
+failure='body-timeout';
+const stalledCreate=body(71.17,'Stalled JSON receipt after external issuance'),beforeStalled=postCount;
+const pendingCreate=api.create(owner,stalledCreate);
+for(let turn=0;turn<50&&postCount===beforeStalled;turn++)await new Promise(resolve=>setImmediate(resolve));
+assert.equal(postCount,beforeStalled+1);
+assert.equal(deadlineTimers.size,1,'the create body must retain its deadline');
+for(const expire of deadlineTimers.values())expire();
+const uncertainCreate=await decode(await pendingCreate);
+assert.equal(uncertainCreate.uncertain,true);
+assert.equal(rows.find(row=>row.operation_id===stalledCreate.operation_id).state,'needs_reconciliation');
+assert.equal((await decode(await api.create(owner,stalledCreate))).status,409);
+assert.equal(postCount,beforeStalled+1,'lost body receipt and replay cannot send another create');
+assert.equal(deadlineTimers.size,0);
+context.setTimeout=setTimeout;context.clearTimeout=clearTimeout;failure='';
+console.log('PASS Morning stalled create body: deadline, durable uncertainty and replay block without another POST');
