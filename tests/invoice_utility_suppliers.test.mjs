@@ -33,6 +33,28 @@ const bisan=(title='חשבונית מס',number='10/27/00042')=>page([
  ['Bisan Systems 01/11/2030 09:20:00 UTC',200,820],
 ]);
 
+test('Kahtan Hash documents use issuer identity, title sequence and explicit post-rounding totals for invoices and credits',async()=>{
+ for(const [title,type,vatLabel,rate] of [['חשבונית מס מס׳',305,'"מע:',18],['חשבונית מס זיכוי מס׳',330,'מע״מ:',17]]){
+  const net=10003,vat=Math.round(net*rate/100),money=n=>(n/100).toFixed(2);
+  const rows=[['ספק בדיקה',395,71],[tax,30,105],['ח.פ.',101,105],['העתק נאמן למקור',75,149],
+   ['007341',195,175],[title,272,175],['לכבוד',485,214],[buyer,201,234],['ע.מ.',267,234],
+   ['12:48',105,209],['שעה',159,209],['09/06/2027',83,224],['תאריך',153,224],
+   ['133187',102,287],['מזהה',154,287],['99.99',83,433],['סה״כ:',124,433],
+   ['-0.04',97,447],['הנחה:',124,447],['-0.01',171,446],['%',196,446],
+   [money(net),83,461],['סה״כ לפני מע״מ:',124,461],
+   [money(vat),90,475],[vatLabel,124,475],[rate+'.00',170,475],['%',197,475],
+   [money(net+vat),75,491],['סה״כ לתשלום:',124,491],['₪',300,700]];
+  const result=await recognize('kahtan',[page(rows)]);
+  assert.equal(result.outcome,'recognized');assert.equal(result.fields.documentType.value,type);
+  assert.equal(result.fields.invoiceNumber.value,'007341');assert.equal(result.fields.date.value,'2027-06-09');
+  assert.deepEqual(['net','vat','gross'].map(key=>result.fields[key].value),[net,vat,net+vat]);
+  assert.equal(result.fields.supplier.canonicalVerified,false);assert.equal(result.fields.supplier.value,tax);
+  const recipientOnly=rows.map(row=>row[0]===tax?[buyer,...row.slice(1)]:row[0]===buyer?[tax,...row.slice(1)]:row);
+  assert.equal((await recognize('kahtan',[page(recipientOnly)])).outcome,'unknown_supplier');
+  assert.equal((await recognize('kahtan',[page(rows.filter(row=>row[0]!=='ספק בדיקה'))])).outcome,'unknown_supplier');
+ }
+});
+
 test('utility account summary excludes payment dates, billing cycles, VAT bases and trailing annex totals',async()=>{
  const annex=page([['210.13',310,228],['סה״כ החשבונית לפני מע״מ',400,228],['999.99',310,246],['מע״מ על',495,246],
   ['₪ 1,210.12',280,284],['סה״כ לתשלום כולל מע״מ',350,284]],2);

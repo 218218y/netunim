@@ -1,6 +1,13 @@
 // Public layout metadata only. Private source invoices and literal tax identifiers are not fixtures.
 export const INVOICE_SUPPLIER_PROFILES=Object.freeze([
   {
+    "id": "kahtan",
+    "title": "קחטן",
+    "issuerTaxHash": "0ad72a7020a64fe869a28e3c4cf57ce85fdcae11cb2900b3cbbcf4c02ceff9c0",
+    "aliases": ["קחטן עבודות מתכת"],
+    "layout": "hash"
+  },
+  {
     "id": "tbi",
     "title": "ת.ב.י.",
     "issuerTaxHash": "1dd6d18803af5aad290bc6f08a02c3c1b1f29d94276ac7101d9c80b50acd6cbc",
