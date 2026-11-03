@@ -30,6 +30,9 @@ try {
     $env:GIT_TERMINAL_PROMPT = '0'
     $env:PYTHONNOUSERSITE = '1'
     $env:PYTHONUTF8 = '1'
+    $browser = @('chrome.exe', 'msedge.exe') | ForEach-Object { Join-Path $runRoot ('runtime\browser\' + $_) } | Where-Object { Test-Path -LiteralPath $_ }
+    if (@($browser).Count -ne 1) { throw 'Exactly one verified offline browser runtime is required.' }
+    $env:NETUNIM_BROWSER = [string]$browser
     Set-Location -LiteralPath (Join-Path $runRoot 'source')
     Checkpoint 'initializing-synthetic-snapshot'
     # A new local synthetic Git repository supports the existing evidence helpers.

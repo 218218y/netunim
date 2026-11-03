@@ -113,6 +113,23 @@ def copy_runtimes(root, payload):
         if not package_json.is_file() or json.loads(package_json.read_text(encoding='utf8')).get('version') != entry['version']:
             raise RuntimeError('host Node dependencies differ from lockfile: '+name)
     shutil.copytree(modules, payload/'source/node_modules', ignore=shutil.ignore_patterns('.cache', '.bin'))
+    from browser_harness import find_browser
+    browser = Path(find_browser() or '')
+    if not browser.is_file() or browser.name.lower() not in ('chrome.exe', 'msedge.exe'):
+        raise RuntimeError('an installed Chrome or Edge application runtime is required')
+    library = 'chrome.dll' if browser.name.lower() == 'chrome.exe' else 'msedge.dll'
+    versions = [p for p in browser.parent.iterdir()
+                if p.is_dir() and all(v.isdigit() for v in p.name.split('.')) and (p/library).is_file()]
+    if not versions:
+        raise RuntimeError('browser application version directory was not found')
+    # Select executable application files only. Profiles, updater state and user
+    # data are outside this allowlist, even for a per-user browser installation.
+    browser_out = runtime/'browser'
+    browser_out.mkdir()
+    shutil.copy2(browser, browser_out/browser.name.lower())
+    for version in versions:
+        reject_links(version)
+        shutil.copytree(version, browser_out/version.name, ignore=shutil.ignore_patterns('Installer'))
 
 
 def sandbox_config(payload, evidence):
