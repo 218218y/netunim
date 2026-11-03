@@ -49,6 +49,26 @@ restore and live-provider release exercises therefore remain explicitly unverifi
 
 ## Prioritized remaining work
 
+### Edge review closeout, 2026-11-03
+
+The continuation adds single-use OAuth state consumption, captured-connection
+receipts for late refresh/disconnect, and actual PostgREST acceptance for both
+Google tables. The existing Morning issuance test now observes POST entry rather
+than counting event-loop turns before injecting its deadline. Implementation,
+before/after regressions and rollback are recorded in
+[Edge hardening evidence](EDGE_HTTP_HARDENING_20261102.md), stages 1-7.
+PRs #392-394 are merged; #395-396 require their current full branch gates before
+merge. Their GitHub checks and source-bound artifacts determine execution PASS.
+
+The operator reconfirmed on 2026-11-03 that no separate physical installation or
+provider-account environment exists. Physical Storage/Windows, installed Bridge
+Origin/PWA/ACL, real PDF host/redirect samples and live provider acceptance remain
+NOT RUN. Bank Origin default rollout is BLOCKED on that environment and remains
+opt-in. Historical LevelDB corruption remains UNRESOLVED. Representative hardware
+measurements remain unavailable; no speculative performance or broad type rewrite
+is queued. Production deployment retains its fresh schema/grants/RLS and separate
+site rollout gates; a merge is not a production release receipt.
+
 ### Edge review continuation, 2026-11-02
 
 Authenticated JSON byte limits, Google provider deadlines and verified OAuth

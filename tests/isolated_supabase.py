@@ -332,12 +332,14 @@ enabled = false
         self.preflight()
         return self._sql(sql)
 
-    def request(self, path, body=None, *, token=None, method=None, raw=False, content_type='application/json'):
+    def request(self, path, body=None, *, token=None, method=None, raw=False, content_type='application/json', representation=False):
         if not path.startswith(('/auth/v1/', '/rest/v1/', '/storage/v1/')) or '..' in path:
             raise RuntimeError('unrecognized local Supabase API path')
         loopback_url(self.url, self.api_port)
         self.preflight()
         headers = {'apikey': self.anon, 'Content-Type': content_type}
+        if representation:
+            headers['Prefer'] = 'return=representation'
         if token:
             headers['Authorization'] = 'Bearer '+token
         data = body if isinstance(body, bytes) else json.dumps(body).encode() if body is not None else None

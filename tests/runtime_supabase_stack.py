@@ -10,6 +10,9 @@ import secrets
 import subprocess
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta, timezone
+from threading import Barrier
 
 from acceptance_safety import write_evidence
 from browser_harness import BrowserSession, ROOT
@@ -239,6 +242,69 @@ def wait_pause(browser):
     raise RuntimeError('the controlled HTTP interception did not pause')
 
 
+def run_oauth_receipts(stack, owner, foreign):
+    # Exercise the actual DELETE RETURNING / compare-and-mutate API authority.
+    # Credentials are synthetic and never sent to Google or emitted as evidence.
+    for service in ('drive', 'calendar'):
+        connections, states = f'google_{service}_connections', f'google_{service}_oauth_states'
+        connection_path = f"/rest/v1/{connections}?owner_id=eq.{owner['id']}"
+        old_token, new_token = secrets.token_hex(32), secrets.token_hex(32)
+        state_hash = hashlib.sha256(secrets.token_bytes(32)).hexdigest()
+        state_path = f'/rest/v1/{states}?state_hash=eq.{state_hash}&select=owner_id,return_url,expires_at'
+        state = {'state_hash': state_hash, 'owner_id': owner['id'],
+                 'return_url': 'https://example.invalid/',
+                 'expires_at': (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()}
+        code, _ = stack.request('/rest/v1/'+states, state, token=stack.service)
+        assert code == 201, ('OAuth state fixture', service, code)
+
+        # Both authenticated browser roles and anonymous callers remain denied.
+        # Probe before consumption, so an empty table cannot manufacture denial.
+        for token in (None, owner['token'], foreign['token']):
+            for method in ('GET', 'DELETE'):
+                code, _ = stack.request(state_path, token=token, method=method, representation=True)
+                assert code in (401, 403), ('OAuth state admission', service, method, code)
+        barrier = Barrier(2)
+
+        def consume(_index):
+            barrier.wait(timeout=30)
+            return stack.request(state_path, token=stack.service, method='DELETE', representation=True)
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            receipts = list(executor.map(consume, range(2)))
+        assert all(code == 200 and isinstance(rows, list) for code, rows in receipts), ('OAuth state consume', service)
+        assert sorted(len(rows) for _, rows in receipts) == [0, 1], ('OAuth state single-use', service)
+        winner = next(rows[0] for _, rows in receipts if rows)
+        assert winner['owner_id'] == owner['id'] and winner['return_url'] == state['return_url']
+        code, rows = stack.request(state_path, token=stack.service, method='DELETE', representation=True)
+        assert code == 200 and rows == [], ('OAuth state replay', service)
+
+        connection = {'owner_id': owner['id'], 'google_account_id': 'synthetic-account', 'refresh_token': old_token}
+        code, _ = stack.request('/rest/v1/'+connections, connection, token=stack.service)
+        assert code == 201, ('OAuth connection fixture', service, code)
+        for token in (None, owner['token'], foreign['token']):
+            for method, body in (('GET', None), ('PATCH', {'refresh_token': 'forged'}), ('DELETE', None)):
+                code, _ = stack.request(connection_path, body, token=token, method=method, representation=True)
+                assert code in (401, 403), ('OAuth credential admission', service, method, code)
+        code, rows = stack.request(connection_path+'&select=google_account_id', {'refresh_token': new_token},
+                                  token=stack.service, method='PATCH', representation=True)
+        assert code == 200 and rows == [{'google_account_id': 'synthetic-account'}], ('OAuth replacement receipt', service)
+        stale_path = connection_path+f'&refresh_token=eq.{old_token}&select=google_account_id'
+        for method, body in (('GET', None), ('PATCH', {'refresh_token': 'stale-rotation'}), ('DELETE', None)):
+            code, rows = stack.request(stale_path, body, token=stack.service, method=method, representation=True)
+            assert code == 200 and rows == [], ('OAuth stale receipt', service, method)
+        current_path = connection_path+f'&refresh_token=eq.{new_token}&select=google_account_id'
+        code, rows = stack.request(current_path, token=stack.service)
+        assert code == 200 and rows == [{'google_account_id': 'synthetic-account'}], ('OAuth replacement preserved', service)
+        code, rows = stack.request(current_path, token=stack.service, method='DELETE', representation=True)
+        assert code == 200 and rows == [{'google_account_id': 'synthetic-account'}], ('OAuth disconnect receipt', service)
+        code, rows = stack.request(current_path, token=stack.service)
+        assert code == 200 and rows == [], ('OAuth disconnected receipt', service)
+    return {'scenario': 'real OAuth PostgREST single-use and captured-credential receipts', 'status': 'PASS',
+            'services': ['drive', 'calendar'], 'concurrent_state_single_use': True, 'state_replay_denied': True,
+            'stale_read_update_delete_empty': True, 'replacement_preserved': True,
+            'browser_roles_denied': True, 'provider': 'NOT RUN: synthetic credentials, no Google requests'}
+
+
 def run_storage(stack, owner, foreign):
     with StackBrowser(stack, 'orders', 'storage') as browser:
         browser.auth(owner['email'], owner['password'])
@@ -380,7 +446,7 @@ def main():
             templates = {app: head(stack, owner, table, name)['state'] for app, table, name in
                          [('orders', 'order_management_documents', 'suppliers'), ('kupa', 'kupa_documents', 'main')]}
             results.extend(run_compiled_ui(stack, create_user(stack, 3), templates))
-            for run in (run_storage, run_restore):
+            for run in (run_oauth_receipts, run_storage, run_restore):
                 results.append(run(stack, owner, foreign))
                 print('PASS', results[-1]['scenario'], flush=True)
             results.append(run_cron(stack, owner))
