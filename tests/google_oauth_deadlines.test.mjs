@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createGoogleHttp} from '../netunim-orders/supabase/functions/_shared/google-http.js';
-import {oauthFixture, manualTimers, tick} from './google_oauth_fixture.mjs';
+import {GOOGLE_TEST_SCOPES, oauthFixture, manualTimers, tick} from './google_oauth_fixture.mjs';
 
 for (const name of ['google-drive-oauth', 'google-calendar-oauth']) {
   for (const phase of ['headers', 'body']) test(`${name}: ${phase} timeout aborts once and preserves the connection`, async () => {
@@ -29,7 +29,7 @@ for (const name of ['google-drive-oauth', 'google-calendar-oauth']) {
     let failing = true;
     const f = await oauthFixture(name, {fetch:async () => {
       if (failing) throw new Error('network unavailable');
-      return Response.json({access_token:'new-access', expires_in:3600});
+      return Response.json({access_token:'new-access', expires_in:3600, scope:GOOGLE_TEST_SCOPES});
     }});
     let response = await f.invoke('token');
     assert.equal(response.status, 502);
@@ -45,7 +45,7 @@ for (const name of ['google-drive-oauth', 'google-calendar-oauth']) {
   test(`${name}: account timeout never publishes a newly connected session`, {timeout:10000}, async () => {
     const accountEntered = Promise.withResolvers();
     const f = await oauthFixture(name, {fetch:async url => {
-      if (url.endsWith('/token')) return Response.json({access_token:'new-access', refresh_token:'new-refresh', expires_in:3600});
+      if (url.endsWith('/token')) return Response.json({access_token:'new-access', refresh_token:'new-refresh', expires_in:3600, scope:GOOGLE_TEST_SCOPES});
       accountEntered.resolve();
       return new Promise(() => {});
     }});

@@ -305,6 +305,71 @@ def run_oauth_receipts(stack, owner, foreign):
             'browser_roles_denied': True, 'provider': 'NOT RUN: synthetic credentials, no Google requests'}
 
 
+def run_oauth_intents(stack, owner, foreign):
+    def rpc(action, body, token=None):
+        return stack.request('/rest/v1/rpc/google_oauth_'+action, body, token=token or stack.service)
+
+    def begin(service):
+        state = secrets.token_hex(32)
+        args = {'p_service': service, 'p_owner_id': owner['id'], 'p_state_hash': state,
+                'p_return_url': 'https://app.example.invalid/',
+                'p_expires_at': (datetime.now(timezone.utc)+timedelta(minutes=10)).isoformat()}
+        assert rpc('start', args)[0] == 204
+        return state, args
+
+    def publish(service, state, credential):
+        return {'p_service': service, 'p_owner_id': owner['id'], 'p_state_hash': state,
+                'p_account_id': credential, 'p_refresh_token': credential, 'p_scope': 'synthetic-verified-scope'}
+
+    for service in ('calendar', 'drive'):
+        old, start_args = begin(service)
+        # Consume state exactly as the Edge handler does, then delay publication.
+        code, consumed = stack.request(f'/rest/v1/google_{service}_oauth_states?state_hash=eq.{old}',
+            token=stack.service, method='DELETE', representation=True)
+        assert code == 200 and len(consumed) == 1
+        stop = {'p_service': service, 'p_owner_id': owner['id']}
+        assert rpc('disconnect', stop)[0] == 200
+        assert rpc('publish', publish(service, old, 'late-disconnected')) == (200, False)
+        assert rpc('disconnect', stop) == (200, '')  # absent connection still fenced
+        old, _ = begin(service)
+        new, _ = begin(service)
+        assert rpc('publish', publish(service, old, 'late-old')) == (200, False)
+        assert rpc('publish', publish(service, new, 'new-account')) == (200, True)
+        assert rpc('publish', publish(service, old, 'late-other-account')) == (200, False)
+        assert rpc('publish', publish(service, new, 'replayed')) == (200, False)
+        # Force an error after the credential write. The row and consumed intent
+        # must roll back together; a later valid attempt can still publish.
+        pending, _ = begin(service)
+        stack.sql("""create function public.test_oauth_fail() returns trigger language plpgsql as $$
+          begin if new.state_hash is null then raise exception 'synthetic storage failure'; end if;
+          return new; end $$;
+          create trigger test_oauth_fail before update on public.google_oauth_intents
+          for each row execute function public.test_oauth_fail();""")
+        try:
+            assert rpc('publish', publish(service, pending, 'failed-write'))[0] == 400
+            code, rows = stack.request(f'/rest/v1/google_{service}_connections?owner_id=eq.{owner["id"]}&select=google_account_id', token=stack.service)
+            assert code == 200 and rows == [{'google_account_id': 'new-account'}]
+        finally:
+            stack.sql('drop trigger test_oauth_fail on public.google_oauth_intents; drop function public.test_oauth_fail();')
+        assert rpc('publish', publish(service, pending, 'after-storage-recovery')) == (200, True)
+        # Real concurrent transactions must have one publication winner.
+        pending, _ = begin(service)
+        barrier = Barrier(2)
+        def race(index):
+            barrier.wait(timeout=30)
+            return rpc('publish', publish(service, pending, 'race-'+str(index)))
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            results = list(executor.map(race, range(2)))
+        assert sorted(results) == [(200, False), (200, True)]
+        for token in (owner['token'], foreign['token']):
+            for action, body in [('start', start_args), ('disconnect', stop), ('publish', publish(service, pending, 'forged'))]:
+                assert rpc(action, body, token)[0] in (401, 403)
+        assert rpc('disconnect', stop)[0] == 200
+    return {'scenario': 'Google intent publication and disconnect through real PostgREST', 'status': 'PASS',
+            'rollback_after_write': True, 'concurrent_publication_single_winner': True,
+            'late_callbacks_fenced': True, 'browser_roles_denied': True, 'provider': 'NOT RUN'}
+
+
 def run_storage(stack, owner, foreign):
     with StackBrowser(stack, 'orders', 'storage') as browser:
         browser.auth(owner['email'], owner['password'])
@@ -446,7 +511,7 @@ def main():
             templates = {app: head(stack, owner, table, name)['state'] for app, table, name in
                          [('orders', 'order_management_documents', 'suppliers'), ('kupa', 'kupa_documents', 'main')]}
             results.extend(run_compiled_ui(stack, create_user(stack, 3), templates))
-            for run in (run_oauth_receipts, run_storage, run_restore):
+            for run in (run_oauth_receipts, run_oauth_intents, run_storage, run_restore):
                 results.append(run(stack, owner, foreign))
                 print('PASS', results[-1]['scenario'], flush=True)
             results.append(run_cron(stack, owner))

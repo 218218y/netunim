@@ -71,7 +71,7 @@ async function start(req:Request,userId:string,body:any){
   const state=randomState(),stateHash=await sha256(state),expiresAt=new Date(Date.now()+STATE_TTL_MS).toISOString();
   const {error:cleanupError}=await admin.from('google_calendar_oauth_states').delete().lt('expires_at',new Date().toISOString());
   if(cleanupError&&dataApiUnavailable(cleanupError))return adminError(cleanupError,'calendar_state_cleanup_failed');
-  const {error}=await admin.from('google_calendar_oauth_states').insert({state_hash:stateHash,owner_id:userId,return_url:returnUrl,expires_at:expiresAt});
+  const {error}=await admin.rpc('google_oauth_start',{p_service:'calendar',p_owner_id:userId,p_state_hash:stateHash,p_return_url:returnUrl,p_expires_at:expiresAt});
   if(error)return adminError(error,'calendar_state_store_failed');
   const url=new URL(GOOGLE_AUTH_URL);
   url.searchParams.set('client_id',CLIENT_ID);
@@ -85,13 +85,17 @@ async function start(req:Request,userId:string,body:any){
   return json({authorize_url:url.toString()});
 }
 
+function hasRequiredScopes(value:unknown){const granted=new Set(String(value||'').split(/\s+/).filter(Boolean));return SCOPES.split(' ').every(scope=>granted.has(scope))}
+
 async function token(userId:string){
   if(!GOOGLE_CLIENT_SECRET)return json({code:'calendar_backend_not_configured',message:'GOOGLE_CALENDAR_CLIENT_SECRET חסר ב-Supabase Edge Function'},503);
-  const {data:connection,error}=await admin.from('google_calendar_connections').select('google_account_id,refresh_token').eq('owner_id',userId).maybeSingle();
+  const {data:connection,error}=await admin.from('google_calendar_connections').select('google_account_id,refresh_token,scope').eq('owner_id',userId).maybeSingle();
   if(error)return adminError(error,'calendar_connection_read_failed');
   if(!connection?.refresh_token)return json({code:'calendar_not_connected'},404);
+  if(!hasRequiredScopes(connection.scope))return json({code:'calendar_reconnect_required',reason:'scope_upgrade_required'},409);
   try{
     const refreshed=await googleToken({client_id:CLIENT_ID,client_secret:GOOGLE_CLIENT_SECRET,refresh_token:String(connection.refresh_token),grant_type:'refresh_token'});
+    if(!hasRequiredScopes(refreshed.scope))return json({code:'calendar_reconnect_required',reason:'scope_upgrade_required'},409);
     const rotated=String(refreshed?.refresh_token||'').trim();
     if(rotated&&rotated!==connection.refresh_token){
       const {data:rotation,error:rotationError}=await admin.from('google_calendar_connections').update({refresh_token:rotated,updated_at:new Date().toISOString()}).eq('owner_id',userId).eq('refresh_token',connection.refresh_token).select('google_account_id').maybeSingle();
@@ -103,7 +107,7 @@ async function token(userId:string){
       if(currentError)return adminError(currentError,'calendar_connection_read_failed');
       if(!current)return json({code:'calendar_refresh_failed',reason:'connection_changed'},409);
     }
-    return json({access_token:refreshed.access_token,expires_in:refreshed.expires_in,account_id:String(connection.google_account_id||''),scope:String(refreshed.scope||SCOPES)});
+    return json({access_token:refreshed.access_token,expires_in:refreshed.expires_in,account_id:String(connection.google_account_id||''),scope:refreshed.scope});
   }catch(error){
     const code=String((error as Error&{code?:string})?.code||'');
     if(code==='invalid_grant'){
@@ -117,13 +121,10 @@ async function token(userId:string){
 }
 
 async function disconnect(userId:string){
-  const {data:connection,error:readError}=await admin.from('google_calendar_connections').select('refresh_token').eq('owner_id',userId).maybeSingle();
-  if(readError)return adminError(readError,'calendar_connection_read_failed');
-  if(!connection?.refresh_token)return json({ok:true,revocation:'not_needed'});
-  const revocation=await revokeGoogleToken(String(connection?.refresh_token||''));
-  const {data:deleted,error}=await admin.from('google_calendar_connections').delete().eq('owner_id',userId).eq('refresh_token',connection.refresh_token).select('google_account_id').maybeSingle();
+  // Commit local unlink and fence callbacks before waiting on Google revocation.
+  const {data:credential,error}=await admin.rpc('google_oauth_disconnect',{p_service:'calendar',p_owner_id:userId});
   if(error)return adminError(error,'calendar_disconnect_failed');
-  if(!deleted)return json({code:'calendar_disconnect_failed',reason:'connection_changed',revocation},409);
+  const revocation=await revokeGoogleToken(String(credential||''));
   return json({ok:true,revocation});
 }
 
@@ -145,9 +146,11 @@ async function callback(url:URL){
     const exchanged=await googleToken({code,client_id:CLIENT_ID,client_secret:GOOGLE_CLIENT_SECRET,redirect_uri:REDIRECT_URI,grant_type:'authorization_code'});
     const refreshToken=String(exchanged?.refresh_token||'').trim(),accessToken=String(exchanged?.access_token||'').trim();
     if(!refreshToken||!accessToken)throw new Error('Google did not return the required offline credentials');
+    if(!hasRequiredScopes(exchanged.scope))throw new Error('Google did not grant the required Calendar scopes');
     const accountId=await googleAccountId(accessToken);
-    const {error:upsertError}=await admin.from('google_calendar_connections').upsert({owner_id:stateRow.owner_id,google_account_id:accountId,refresh_token:refreshToken,scope:String(exchanged?.scope||SCOPES),updated_at:new Date().toISOString()},{onConflict:'owner_id'});
-    if(upsertError){if(dataApiUnavailable(upsertError))return json({code:'calendar_data_api_unavailable',message:'Calendar storage is temporarily unavailable'},503);throw new Error(upsertError.message)}
+    const {data:published,error:upsertError}=await admin.rpc('google_oauth_publish',{p_service:'calendar',p_owner_id:stateRow.owner_id,p_state_hash:stateHash,p_account_id:accountId,p_refresh_token:refreshToken,p_scope:exchanged.scope});
+    if(upsertError){if(dataApiUnavailable(upsertError))return adminError(upsertError,'calendar_connection_store_failed');throw new Error(upsertError.message)}
+    if(published!==true)return Response.redirect(appendOAuthResult(returnUrl,'error','connection_changed'),303);
     // Google revocation is project-wide: revoking the previous credential here
     // can invalidate the newly verified grant (and the sibling integration).
     return Response.redirect(appendOAuthResult(returnUrl,'connected'),303);
