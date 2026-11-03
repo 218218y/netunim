@@ -7,7 +7,7 @@ import {bankLongTermPositionData} from '../netunim-kupa/site/assets/js/domains/b
 import {dashboardNetPositionData} from '../netunim-kupa/site/assets/js/domains/dashboard/model.js';
 import {createDomainsDashboardView} from '../netunim-orders/site/assets/js/domains/dashboard/view.js';
 import {money} from '../netunim-orders/site/assets/js/core/money.js';
-import {businessPositionDetailsMarkup} from '../shared/business-position-view.js';
+import {businessPositionDetailsMarkup} from '../shared/cashflow-breakdown.js';
 
 function fixture(){return {bank:{currentBalance:1000.01,asOfDate:'2026-09-01',source:'manual',adjustments:[{amount:0.02},{type:'check_deposit',amount:999}]},
   credits:[{id:'business',account:'עסקי',active:true,totalAmount:300.03,installments:3,firstChargeDate:'2026-09-10'},

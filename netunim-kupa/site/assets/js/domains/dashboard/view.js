@@ -2,8 +2,7 @@ import {withFinanceDerivations} from '../../shared/finance-derivations.js';
 import {esc} from '../../core/values.js';
 import {moneyWithCents} from '../../core/money.js';
 import {dateFmt, daysFromToday} from '../../core/dates.js';
-import {cashflowBreachMarkup} from '../../shared/cashflow-breakdown.js';
-import {businessPositionDetailsMarkup} from '../../shared/business-position-view.js';
+import {cashflowBreachMarkup,businessPositionDetailsMarkup} from '../../shared/cashflow-breakdown.js';
 import {dashboardNetPositionData} from './model.js';
 import {bankLocalSnapshotNotice} from '../bank/local-snapshot-view.js';
 

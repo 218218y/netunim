@@ -1,7 +1,7 @@
 import {esc} from '../../core/values.js';
 import {money} from '../../core/money.js';
 import {financeMoneySum} from '../../shared/business-position.js';
-import {businessPositionDetailsMarkup} from '../../shared/business-position-view.js';
+import {businessPositionDetailsMarkup} from '../../shared/cashflow-breakdown.js';
 import {$} from '../../state/constants.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.

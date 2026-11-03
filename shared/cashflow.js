@@ -55,3 +55,12 @@ export function cashflowAlerts(projectedByAccount,settings){
   const values=/** @type {Record<string,unknown>} */ (projectedByAccount&&typeof projectedByAccount==='object'?projectedByAccount:{});
   return [cashflowAlertForAccount(values.business,settings,'עסקי'),cashflowAlertForAccount(values.home,settings,'ביתי')];
 }
+
+/** Keep the same unpaid elapsed cycles in dated forecasts and all-future
+ * positions. A diagnostic timeout is not evidence of bank settlement.
+ * @param {Pick<import('./kupa-cashflow-contracts.js').Reconciliation,'rows'|'start'>} reconciliation
+ * @param {boolean} hasFeed
+ */
+export function outstandingCashflowCreditRows({rows,start},hasFeed){
+  return rows.filter(row=>row.date&&(row.date>=start||(hasFeed&&['awaiting','expired'].includes(row.bankSettlementState||''))||(!row.includedInIlsTotal||row.coverageIncomplete)));
+}

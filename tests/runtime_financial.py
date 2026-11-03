@@ -53,13 +53,14 @@ kexpected = {
     "explicitDeleteCount": 0,
 }
 
-oexpr = r"""(()=>{
+oexpr = r"""(async()=>{
+ const {computeKupaNetReadoutData}=await import('./assets/js/domains/bank/readout.js');
  const ev=(seq,delta,id='C1')=>({seq,at:'2026-08-26T10:01:00Z',delta,kind:'check_effect_delta',checkId:id});
  state.checks=[];checksCloudBase=[];checksBankEvents=[ev(11,100),ev(12,-100)];
  const k={bank:{currentBalance:1000,updatedAt:'2026-08-26T10:00:00Z',asOfDate:'2026-08-26',snapshotSeq:11,adjustments:[]},credits:[],expenses:[],cash:[]};
- const a=computeKupaNetReadout(k).bank;
+ const a=computeKupaNetReadoutData(state,k).bank;
  state.checks=[{id:'C1',amount:100,status:'הופקד - במעקב',dueDate:'2026-09-01'}];checksCloudBase=[{id:'C1',amount:100,status:'בקופה',dueDate:'2026-09-01'}];checksBankEvents=[];
- const b=computeKupaNetReadout({bank:{currentBalance:1000,updatedAt:'2026-08-26T10:00:00Z',asOfDate:'2026-08-26',snapshotSeq:10,adjustments:[]},credits:[],expenses:[],cash:[]}).bank;
+ const b=computeKupaNetReadoutData(state,{bank:{currentBalance:1000,updatedAt:'2026-08-26T10:00:00Z',asOfDate:'2026-08-26',snapshotSeq:10,adjustments:[]},credits:[],expenses:[],cash:[]}).bank;
  return {returnAfterSnapshot:a,pendingDeposit:b};
 })()"""
 oexpected = {"returnAfterSnapshot": 1000, "pendingDeposit": 1000}
