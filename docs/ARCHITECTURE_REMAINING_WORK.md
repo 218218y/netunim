@@ -14,8 +14,11 @@ The Google callback/scope repair in [PR 398](https://github.com/218218y/netunim/
 merged after all 16 required checks passed for `5881e506`. Intent metadata and
 service-role RPCs fence disconnect/new-start/publication atomically; credentials
 remain in the original tables. Both callback and refresh require actual granted
-scopes. The additive migration is **not deployed**. Its paused-OAuth rollout and
-rollback requirements are in [the lifecycle note](GOOGLE_OAUTH_INTENT_AUTHORITY.md).
+scopes. The additive migration and fenced Edge functions were deployed on
+2026-11-03 after a paused-OAuth drain. All 53 migration identities/SQL hashes and
+the full live schema passed postflight; both static sites were published and their
+permanent-domain entry assets checked. See [production deployment evidence](PRODUCTION_POSTFLIGHT_20261103.md).
+Rollout and rollback requirements remain in [the lifecycle note](GOOGLE_OAUTH_INTENT_AUTHORITY.md).
 Project-wide revocation remains unchanged pending an explicit product decision.
 
 [PR 399](https://github.com/218218y/netunim/pull/399) supplies the unified scenario

@@ -1,12 +1,12 @@
 {
   "project_id": "bupoidcurcxuypfrjqio",
-  "verified_at": "2026-10-26 11:58:16.646615+00",
+  "verified_at": "2026-11-03 07:06:03.670813+00",
   "production_postflight": "PASS",
   "text_hash_normalization": "lf-v1",
-  "source_audit": "audit/production-postflight-20261026T115816646615Z.json",
-  "source_audit_sha256": "31ddc389ac484583395b07662f0902137281e277702de077500a9db8f975348e",
+  "source_audit": "audit/production-postflight-20261103T070603670813Z.json",
+  "source_audit_sha256": "f402d191bfadd5407ce491011ec8ff89db737e7fa6b92eae37a20d7b1a31a34d",
   "schema_snapshot": "audit/morning-schema-live.json",
-  "schema_snapshot_sha256": "86d971737705fcde418974e68e5c7d9aef5c3853d9fac2691d9fd58bd7f18334",
+  "schema_snapshot_sha256": "c6c2316c2547dc6d6c75f1474999bdf2768e4c5a122dfddd84a2d43935b4d4e2",
   "migration_manifest": [
     {
       "version": "20260906200304",
@@ -252,6 +252,26 @@
       "version": "20261026100000",
       "name": "morning_expense_recovery",
       "sha256": "57e8a18b6b9ba23e23b64a02b96695a5c06426f6c29ce18202c2c41ebde358fb"
+    },
+    {
+      "version": "20261027110000",
+      "name": "morning_expense_ocr_operations",
+      "sha256": "815008f40baabc3a4e7aa9d285c793d0e9653f7dc47993826c113dba70cf9527"
+    },
+    {
+      "version": "20261027150000",
+      "name": "morning_expense_source_intent",
+      "sha256": "1d42b644f19722d94729ccceb975330ac78c47a0f309acc7eb0911b9759d10cf"
+    },
+    {
+      "version": "20261028180000",
+      "name": "morning_expense_recent_index",
+      "sha256": "3f138927db59c5e483de405fb84155fd8dd4e286a7a20197b7875f521e3e3555"
+    },
+    {
+      "version": "20261103120000",
+      "name": "google_oauth_intent_authority",
+      "sha256": "567f8e6b963406967484ae46ffb3cedb3d76de48958c688f17358fb085955064"
     }
   ],
   "retention_jobs": [

@@ -26,7 +26,10 @@ credentials and never revokes the project grant as compensation for storage erro
 Migration `20261103120000` is necessary for cross-isolate fencing. It changes no
 business, Journal, ACK, Storage V2 or financial schema. Existing connections remain
 readable; old pending states have no intent and require a new start. No production
-migration or Edge deployment is authorized by this change.
+migration or Edge deployment was authorized by the implementation PR itself.
+The operator subsequently authorized Production deployment on 2026-11-03; the
+paused rollout, authenticated postflight and publication are recorded in
+[production evidence](PRODUCTION_POSTFLIGHT_20261103.md).
 
 For a future deployment, pause OAuth start/callback/disconnect traffic, drain old
 Edge invocations, apply the additive migration, deploy both updated functions,
