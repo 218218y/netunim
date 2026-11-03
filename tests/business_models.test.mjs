@@ -24,6 +24,19 @@ import {cashflowWarningItems} from '../netunim-orders/site/assets/js/domains/ban
 import {dueCheckWarningItems} from '../netunim-orders/site/assets/js/domains/checks/alerts.js';
 import {createUiAlertCenter} from '../netunim-orders/site/assets/js/ui/alert-center.js';
 
+test('supplier delivered-without-invoice filter requires explicit delivery in individual, all and archived views',()=>{
+ const state={suppliers:[{id:'a',name:'A'},{id:'b',name:'B'}],transactions:[
+  {id:'old',supplierId:'a',sequence:1,supplied:true,invoiceReceived:false,yearEnd:2025},
+  ...[true,false,null,undefined].flatMap((supplied,i)=>[false,true,null,undefined].map((invoiceReceived,j)=>({id:`a${i}${j}`,supplierId:'a',sequence:2+i*4+j,supplied,invoiceReceived}))),
+  {id:'b',supplierId:'b',sequence:1,supplied:true,invoiceReceived:false},
+ ]};
+ const ids=(suppliers,year)=>supplierViewRowsData(state,suppliers,year,'supplied-no-invoice').map(row=>row.t.id);
+ assert.deepEqual(ids(['a'],'all'),['old','a00']);
+ assert.deepEqual(ids(['a','b'],'current'),['old','a00','b']);
+ assert.deepEqual(ids(['a','b'],'2025'),['old']);
+ assert.deepEqual(ids(['b'],'all'),['b']);
+});
+
 test('Orders restore rejects future metadata even with a supported top-level version',()=>{
  const {normalizeState,validateRestoreJson}=createOrderNormalization({});
  const raw=normalizeState({});
