@@ -120,3 +120,27 @@ durable `needs_reconciliation`, and an explicit replay remains blocked without
 another POST. Existing reservation, exactly-once, reconciliation, cents and
 provider rejection tests pass. Token failure cannot produce an access token.
 No amount, journal, operation-state schema or financial retry rule changes.
+
+## Stage 6: single-use OAuth admission and captured connection lifetime
+
+The 2026-11-03 continuation adds twelve entrypoint regressions. Ten failed on
+`d7bc1fed`: concurrent callbacks both consumed one state, a non-rotating refresh
+published after disconnection/replacement, and a delayed disconnect deleted a
+replacement connection. An absent connection also caused an unnecessary delete.
+The fixture forces the callback read interleaving and models atomic database
+mutations; this is deterministic synthetic evidence, not live Google acceptance.
+
+Both callbacks now use one DELETE RETURNING receipt for state consumption before
+contacting Google. Only the request that removed the row may continue. Refreshes
+without rotation verify the captured credential still exists before publishing
+an access token; verification errors fail closed. Disconnect compares the captured
+refresh token in its DELETE and requires a returned row. A replacement yields
+409/connection_changed instead of false success or deletion. No connection means
+idempotent success without Google or a write. Storage errors remain observable.
+
+Explicit disconnect still invokes Google's existing project-wide revocation.
+The local comparison protects stored replacement credentials; it cannot guarantee
+that a concurrent Google grant survives external revocation. No distributed lock,
+second credential store or new schema is introduced. Live concurrent consent/
+revocation remains NOT RUN. Revert this stage for code rollback; no data conversion
+is needed. Full branch verification remains required before merge.

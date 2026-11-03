@@ -7,6 +7,7 @@ import {createMorningReportsHandler} from '../netunim-orders/supabase/functions/
 
 const rows=[],requests=[];
 let failure='',postCount=0,tokenCount=0,linkCount=0,rateLimitHits=0,lookupItems=[],lastSearch,servedHandler=null;
+let stalledCreateStarted;
 const owner='00000000-0000-4000-8000-000000000001',otherOwner='00000000-0000-4000-8000-000000000009',documentId='00000000-0000-4000-8000-000000000002';
 const sample={id:documentId,number:123,type:305,amount:100,documentDate:'2026-09-08',creationDate:Math.floor(Date.now()/1000),client:{name:'Test'},description:'Test document',currency:'ILS',status:0,url:{he:'https://example.org/private-signed.pdf'},allocationNumber:'allocation-123'};
 const morningDocs=new Map([[documentId,sample]]);
@@ -29,6 +30,7 @@ const mockFetch=async(url,init={})=>{
   requests.push({url,init});
   if(url.endsWith('/documents')&&failure==='body-timeout'){
     postCount++;
+    stalledCreateStarted?.();
     return new Response(new ReadableStream({start(controller){
       controller.enqueue(new TextEncoder().encode('{"partial":'));
       init.signal.addEventListener('abort',()=>controller.error(new DOMException('aborted','AbortError')),{once:true});
@@ -255,8 +257,13 @@ context.setTimeout=callback=>{deadlineTimers.set(++deadlineId,callback);return d
 context.clearTimeout=id=>deadlineTimers.delete(id);
 failure='body-timeout';
 const stalledCreate=body(71.17,'Stalled JSON receipt after external issuance'),beforeStalled=postCount;
+const createEntered=Promise.withResolvers();
+stalledCreateStarted=createEntered.resolve;
 const pendingCreate=api.create(owner,stalledCreate);
-for(let turn=0;turn<50&&postCount===beforeStalled;turn++)await new Promise(resolve=>setImmediate(resolve));
+// WebCrypto runs on a worker pool: event-loop turns cannot prove the POST has
+// started, especially on a busy CI runner. Observe the actual transport entry.
+const entryDeadline=setTimeout(()=>createEntered.reject(new Error('create POST did not start within 10 seconds')),10_000);
+try{await createEntered.promise}finally{clearTimeout(entryDeadline);stalledCreateStarted=undefined}
 assert.equal(postCount,beforeStalled+1);
 assert.equal(deadlineTimers.size,1,'the create body must retain its deadline');
 for(const expire of deadlineTimers.values())expire();
