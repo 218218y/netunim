@@ -1,0 +1,141 @@
+"""Export a clean Git snapshot and offline runtimes, never a host profile or vault."""
+from pathlib import Path, PurePosixPath
+import hashlib
+import json
+import os
+import shutil
+import stat
+import subprocess
+import sys
+import tempfile
+import zipfile
+import xml.etree.ElementTree as ET
+
+
+def reject_links(root):
+    for path in (root, *root.rglob('*')):
+        if path.is_symlink() or getattr(path, 'is_junction', lambda: False)():
+            raise RuntimeError('package input contains a link or junction')
+
+
+def extract_snapshot(archive, target):
+    with zipfile.ZipFile(archive) as zipped:
+        for info in zipped.infolist():
+            name = PurePosixPath(info.filename)
+            if name.is_absolute() or '..' in name.parts or '\\' in info.filename or ':' in info.filename:
+                raise RuntimeError('archive path escapes snapshot')
+            if stat.S_ISLNK(info.external_attr >> 16):
+                raise RuntimeError('archive contains symlink')
+        zipped.extractall(target)
+
+
+def hashes(root):
+    reject_links(root)
+    return {p.relative_to(root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in sorted(root.rglob('*')) if p.is_file() and p != root/'package-manifest.json'}
+
+
+def verify(root):
+    root = Path(root).resolve()
+    expected = json.loads((root/'package-manifest.json').read_text(encoding='utf8'))
+    if expected.get('format') != 1 or hashes(root) != expected.get('files'):
+        raise RuntimeError('offline package bytes differ from manifest')
+    return expected
+
+
+def copy_runtimes(root, payload):
+    runtime = payload/'runtime'
+    runtime.mkdir()
+    python = Path(sys.base_prefix)
+    out = runtime/'python'
+    out.mkdir()
+    for name in ('python.exe', 'pythonw.exe', 'python3.dll'):
+        shutil.copy2(python/name, out/name)
+    for pattern in ('python3*.dll', 'vcruntime*.dll'):
+        for path in python.glob(pattern):
+            shutil.copy2(path, out/path.name)
+    for folder in ('DLLs', 'Lib'):
+        reject_links(python/folder)
+        shutil.copytree(python/folder, out/folder,
+                        ignore=shutil.ignore_patterns('site-packages', '__pycache__', 'test', 'tests', 'sitecustomize.py', 'usercustomize.py', '*.pth'))
+    import websocket
+    package = Path(websocket.__file__).parent
+    reject_links(package)
+    shutil.copytree(package, out/'Lib/site-packages/websocket', ignore=shutil.ignore_patterns('__pycache__', 'tests'))
+    node = Path(shutil.which('node') or '')
+    if not node.is_file() or node.name.lower() != 'node.exe':
+        raise RuntimeError('Windows Node executable is required')
+    (runtime/'node').mkdir()
+    shutil.copy2(node, runtime/'node/node.exe')
+    # Only the Git binary and its DLLs, never host config, credentials or history.
+    git = Path(shutil.which('git') or '').resolve().parent.parent/'mingw64/bin'
+    if not (git/'git.exe').is_file():
+        raise RuntimeError('standard Git for Windows runtime is required')
+    (runtime/'git').mkdir()
+    for path in [git/'git.exe', *git.glob('*.dll')]:
+        shutil.copy2(path, runtime/'git'/path.name)
+    modules = root/'node_modules'
+    reject_links(modules)
+    lock = json.loads((root/'package-lock.json').read_text(encoding='utf8'))
+    for name, entry in lock['packages'].items():
+        if not name:
+            continue
+        package_json = root/name/'package.json'
+        if not package_json.exists() and entry.get('optional'):
+            continue
+        if not package_json.is_file() or json.loads(package_json.read_text(encoding='utf8')).get('version') != entry['version']:
+            raise RuntimeError('host Node dependencies differ from lockfile: '+name)
+    shutil.copytree(modules, payload/'source/node_modules', ignore=shutil.ignore_patterns('.cache', '.bin'))
+
+
+def sandbox_config(payload, evidence):
+    xml = ET.Element('Configuration')
+    for tag in ('VGpu', 'Networking', 'AudioInput', 'VideoInput', 'PrinterRedirection', 'ClipboardRedirection'):
+        ET.SubElement(xml, tag).text = 'Disable'
+    ET.SubElement(xml, 'MemoryInMB').text = '4096'
+    folders = ET.SubElement(xml, 'MappedFolders')
+    for host, guest, readonly in [(payload, 'C:\\NetunimLabPackage', 'true'),
+                                 (evidence, 'C:\\NetunimLabEvidence', 'false')]:
+        folder = ET.SubElement(folders, 'MappedFolder')
+        ET.SubElement(folder, 'HostFolder').text = str(host)
+        ET.SubElement(folder, 'SandboxFolder').text = guest
+        ET.SubElement(folder, 'ReadOnly').text = readonly
+    ET.SubElement(ET.SubElement(xml, 'LogonCommand'), 'Command').text = (
+        'powershell.exe -NoProfile -ExecutionPolicy Bypass -File '
+        'C:\\NetunimLabPackage\\source\\tools\\start-test-lab.ps1')
+    return ET.tostring(xml, encoding='unicode')
+
+
+def prepare(root):
+    if os.name != 'nt':
+        raise RuntimeError('offline Windows preparation requires a Windows host')
+    def git(*args):
+        return subprocess.check_output(['git', *args], cwd=root, text=True, encoding='utf8').strip()
+    if git('status', '--porcelain'):
+        raise RuntimeError('commit the reviewed source before preparing the lab')
+    directory = Path(tempfile.mkdtemp(prefix='netunim-windows-lab-')).resolve()
+    payload, evidence = directory/'payload', directory/'evidence'
+    payload.mkdir()
+    evidence.mkdir()
+    identity = {'format': 1, 'source_sha': git('rev-parse', 'HEAD'), 'source_tree': git('rev-parse', 'HEAD^{tree}'),
+                'synthetic_only': True, 'networking': 'disabled'}
+    (directory/'lab-owner.json').write_text(json.dumps(identity), encoding='utf8')
+    (evidence/'lab-owner.json').write_text(json.dumps(identity), encoding='utf8')
+    archive = directory/'source.zip'
+    subprocess.run(['git', 'archive', '--format=zip', '-o', str(archive), 'HEAD'], cwd=root, check=True)
+    extract_snapshot(archive, payload/'source')
+    archive.unlink()
+    copy_runtimes(root, payload)
+    (payload/'package-source.json').write_text(json.dumps(identity), encoding='utf8')
+    manifest = {'format': 1, 'files': hashes(payload)}
+    (payload/'package-manifest.json').write_text(json.dumps(manifest, indent=2), encoding='utf8')
+    verify(payload)
+    (directory/'NetunimLab.wsb').write_text(sandbox_config(payload, evidence), encoding='utf8')
+    return directory/'NetunimLab.wsb'
+
+
+if __name__ == '__main__':
+    if len(sys.argv) != 3 or sys.argv[1] != '--verify':
+        raise SystemExit('usage: test_lab_package.py --verify PACKAGE')
+    verify(Path(sys.argv[2]))
+    print('PASS offline package manifest')

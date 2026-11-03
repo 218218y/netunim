@@ -120,6 +120,8 @@ jobs:
           python tests/windows_deploy_contracts.py
       - name: Exercise Windows parallel scheduling and process cleanup
         run: python tests/runner_contracts.py
+      - name: Exercise the unified synthetic lab entrypoint on Windows
+        run: python tools/test_lab.py run --scenario local-save-abort
       - name: Exercise staged asset hooks and captured Git objects on Windows
         run: python tests/sync_assets_contracts.py StagedAssetContracts
       - name: Preserve isolated Windows acceptance logs and evidence
@@ -127,7 +129,9 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: windows-isolated-acceptance
-          path: .work/ci/windows-acceptance/
+          path: |
+            .work/ci/windows-acceptance/
+            .work/test-lab/
           include-hidden-files: true
           if-no-files-found: warn
           retention-days: 14
