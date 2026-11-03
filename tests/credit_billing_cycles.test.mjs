@@ -285,11 +285,11 @@ test('stale and missing issuer month coverage remains an explicit best-effort pa
   assert.equal(ordersOctober.partial,true);assert.equal(ordersOctober.coverageGapCount,1);assert.equal(ordersOctober.total,0,'Orders keeps a zero-known missing cycle visible instead of silently skipping it');
 });
 
-test('Orders dashboard readout is a thin adapter over the exact shared cash-flow horizon',()=>{
-  const kupa=structuredClone(twoCards);kupa.bank.asOfDate='2026-09-11';kupa.bank.feed.syncedAt='2026-09-11T08:00:00Z';kupa.expenses=[{id:'sep',active:true,recurring:false,account:'עסקי',date:'2026-09-20',amount:100},{id:'oct-in',active:true,recurring:false,account:'עסקי',date:'2026-10-05',amount:200},{id:'oct-out',active:true,recurring:false,account:'עסקי',date:'2026-10-11',amount:300}];
-  const checks=[{id:'in',status:'בקופה',account:'עסקי',dueDate:'2026-10-09',amount:400},{id:'out',status:'בקופה',account:'עסקי',dueDate:'2026-10-11',amount:500}],reference=checkTodayISO(),readout=computeKupaNetReadoutData({checks},kupa),shared=ordersCashflow({...kupa,checks},'עסקי',reference);
-  assert.equal(readout.targetDate,shared.targetDate);assert.equal(readout.credit,shared.credit);assert.equal(readout.expenses,shared.expenses);assert.equal(readout.checks,shared.checks);assert.equal(readout.net,shared.projected);
-  assert.deepEqual(readout.nextCreditCycles,shared.nextCreditCycles,'Orders dashboard and its main Bank view consume the same cycles, not parallel formulas');
+test('Orders dashboard uses the shared all-future position while dated Bank forecasts remain bounded',()=>{
+  const kupa=structuredClone(twoCards);kupa.bank.asOfDate='2026-09-11';kupa.bank.feed.syncedAt='2026-09-11T08:00:00Z';kupa.expenses=[];
+  const checks=[{id:'far',status:'בקופה',account:'עסקי',dueDate:'2099-10-09',amount:400}],reference=checkTodayISO(),readout=computeKupaNetReadoutData({checks},kupa),position=bankLongTermPositionData({...kupa,checks,cash:[]},reference);
+  assert.equal(readout.credit,position.credit);assert.equal(readout.expenses,position.expenses);assert.equal(readout.checks,400);assert.equal(readout.net,position.net);
+  assert.equal(ordersCashflow({...kupa,checks},'עסקי',reference).checks,0,'the bank forecast still excludes cheques beyond its date');
 });
 
 test('expenses and checks obey the same exact horizon across intervening months',()=>{

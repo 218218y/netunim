@@ -485,6 +485,20 @@ export function kupaReconciledCreditRowsData(kupa,account='all',reference=localT
   return reconciledCreditRowsForAccount(kupa,account,reference).rows;
 }
 
+// Both the dated forecast and the all-future position must retain the same
+// unpaid elapsed cycles. A diagnostic timeout is not proof of settlement.
+/** @type {Calculation['outstandingCashflowCreditRows']} */
+function outstandingCashflowCreditRows(kupa,role,reconciliation){
+  const hasFeed=!!bankObservationDay(bankFeedForAccount(kupa,role)?.syncedAt);
+  return reconciliation.rows.filter(row=>row.date&&(row.date>=reconciliation.start||(hasFeed&&['awaiting','expired'].includes(row.bankSettlementState||''))||(!row.includedInIlsTotal||row.coverageIncomplete)));
+}
+
+/** @type {Calculation['kupaOutstandingCreditRowsData']} */
+export function kupaOutstandingCreditRowsData(kupa,account='עסקי',reference=localTodayISO()){
+  const reconciliation=reconciledCreditRowsForAccount(kupa,account,reference,{monthlySettlement:true});
+  return [...outstandingCashflowCreditRows(kupa,accountRole(account),reconciliation),...reconciliation.unassignedRows];
+}
+
 /** @type {Calculation['kupaReconciledCreditDetailRowsData']} */
 export function kupaReconciledCreditDetailRowsData(kupa,account='all',reference=localTodayISO()){
   const options={retainSettledCompleted:true,includeHidden:false};
@@ -695,8 +709,7 @@ function calculateAccountCashflow(kupa,account,reference,options){
   const role=accountRole(account),ref=isoDay(reference)||localTodayISO(),balance=kupaAccountBankBalanceData(kupa,role);
   const reconciliation=reconciledCreditRowsForAccount(kupa,role,ref,{monthlySettlement:true});
   const {start,forecastStart,unassignedRows}=reconciliation;
-  const hasFeed=!!bankObservationDay(bankFeedForAccount(kupa,role)?.syncedAt);
-  const remaining=reconciliation.rows.filter(row=>row.date&&(row.date>=start||(hasFeed&&['awaiting','expired'].includes(row.bankSettlementState||''))||(!row.includedInIlsTotal||row.coverageIncomplete)));
+  const remaining=outstandingCashflowCreditRows(kupa,role,reconciliation);
   const automatic=automaticCashflowHorizon(kupa,role,reconciliation,remaining);
   const requested=options.targetDate?isoDay(options.targetDate):'';
   if(options.targetDate&&(!requested||requested<forecastStart))throw new RangeError('תאריך התחזית חייב להיות תקין ולא מוקדם מתאריך החישוב או יתרת הבסיס');

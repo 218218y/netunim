@@ -847,11 +847,12 @@ kupa_dashboard_controller=(K / "site/assets/js/domains/dashboard/controller.js")
 kupa_cloud_transport=(K / "site/assets/js/cloud/transport.js").read_text(encoding="utf-8")
 kupa_sync_document=sync_document_source(K)
 kupa_css=(K / "site/assets/app.css").read_text(encoding="utf-8")
-ok("sharedKupaAccountCashflowData({...kupa,checks},'עסקי',checkTodayISO())" in orders_bank_readout
-   and 'net:cashflow.projected' in orders_bank_readout and 'kupa:cashflow.checks' in orders_bank_readout
-   and "עו״ש − אשראי והוצאות עד האופק + צ'קים עד האופק" in orders_dashboard_view
-   and "קופה מזומן וצ'קים" not in orders_dashboard_view,
-   "Orders balance: the primary dashboard delegates exact-horizon business cash-flow to the shared engine, excludes cash and includes shared checks")
+shared_business_position=(ROOT / 'shared/business-position.js').read_text(encoding='utf-8')
+ok('kupaBusinessPositionData({...kupa,checks},checkTodayISO())' in orders_bank_readout
+   and 'net:position.netWithoutCash' in orders_bank_readout and 'kupaBusinessPositionData(state,reference)' in bank_model
+   and 'kupaOutstandingCreditRowsData' in shared_business_position
+   and 'כל האשראי העסקי שטרם נפרע' in orders_dashboard_view and 'מזומן בקופה אינו כלול' in orders_dashboard_view,
+   "Orders and Kupa positions share all unpaid business credit and all held business checks, with cash excluded from Orders")
 ok("ordersFinanceSummaryData" in orders_finance_shared
    and (K / "site/assets/js/shared/orders-finance.js").read_text(encoding="utf-8") == orders_finance_shared
    and (O / "site/assets/js/shared/orders-finance.js").read_text(encoding="utf-8") == orders_finance_shared

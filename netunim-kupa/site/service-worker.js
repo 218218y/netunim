@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='kupa-app-shell-';
-const CACHE='kupa-app-shell-esm-0838bad5fff6';
+const CACHE='kupa-app-shell-esm-dfa6dad12085';
 const SHELL=[
   './',
   './index.html',
@@ -123,6 +123,7 @@ const SHELL=[
   './assets/js/shared/browser-google-drive-platform.js',
   './assets/js/shared/browser-tab-lock-platform.js',
   './assets/js/shared/business-field-merge.js',
+  './assets/js/shared/business-position.js',
   './assets/js/shared/calendar.js',
   './assets/js/shared/cashflow-breakdown.js',
   './assets/js/shared/cashflow-notification.js',

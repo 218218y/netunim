@@ -1,13 +1,10 @@
 import {num} from '../../core/money.js';
-import {todayISO, monthKey} from '../../core/dates.js';
-import {normalizeSharedBankEvents, checksBalanceData} from '../checks/model.js';
-import {expenseOccurrencesForMonthData} from '../expenses/model.js';
-import {cashBalanceData} from '../cash/model.js';
-import {kupaAccountCashflowData, kupaReconciledCreditRowsData, kupaAccountBankAsOfDateData} from '../../shared/kupa-cashflow.js';
-import {bankRecurringExpensesData} from '../../shared/bank-recurring-debits.js';
+import {todayISO} from '../../core/dates.js';
+import {normalizeSharedBankEvents} from '../checks/model.js';
+import {kupaAccountCashflowData, kupaAccountBankAsOfDateData} from '../../shared/kupa-cashflow.js';
+import {kupaBusinessPositionData} from '../../shared/business-position.js';
 
 function accountRole(account){return account==='ביתי'?'ביתי':'עסקי'}
-function expenseBelongsTo(row,account){return accountRole(row?.account)===accountRole(account)}
 function finiteNullable(value){if(value===null||value===undefined||value==='')return null;const n=Number(value);return Number.isFinite(n)?n:null}
 
 export function bankBaseBalanceData(state){return state.bank?.currentBalance===null||state.bank?.currentBalance===undefined?null:num(state.bank.currentBalance)}
@@ -41,17 +38,7 @@ export function bankNextCycleCommitmentsData(state,reference=todayISO()){return 
 
 export function bankHomeNextCycleCommitmentsData(state,reference=todayISO()){return bankAccountNextCycleCommitmentsData(state,'ביתי',reference)}
 
-export function bankLongTermPositionData(state,reference=todayISO()){
-  const asOf=reference||todayISO(),b=bankCurrentBalanceData(state),start=bankAsOfDateData(state,asOf),cycle=kupaAccountCashflowData(state,'עסקי',asOf);
-  const reconciledRows=kupaReconciledCreditRowsData(state,'עסקי',asOf),remainingRows=reconciledRows.filter(row=>row.date&&row.date>=start),creditRows=remainingRows.filter(row=>row.includedInIlsTotal&&Math.abs(row.amount)>0.004);
-  const incompleteCreditRows=[...reconciledRows.filter(row=>(!row.date||row.date>=start)&&row.bankSettlementState!=='expired'&&row.bankSettlementState!=='settled'&&(!row.includedInIlsTotal||row.coverageIncomplete)),...cycle.elapsedIncompleteCreditRows].filter((row,index,all)=>all.findIndex(candidate=>candidate.creditId===row.creditId&&candidate.part===row.part)===index);
-  const credit=creditRows.reduce((a,x)=>a+x.amount,0);
-  const [targetYear,targetMonth]=cycle.targetMonth.split('-').map(Number),monthEnd=`${cycle.targetMonth}-${new Date(Date.UTC(targetYear,targetMonth,0)).getUTCDate()}`,recurring=bankRecurringExpensesData(state,'עסקי',asOf,monthEnd);
-  const expenseRows=[...expenseOccurrencesForMonthData(state,cycle.targetMonth,false).filter(x=>expenseBelongsTo(x,'עסקי')&&(cycle.targetMonth!==monthKey(start)||x.dueDate>=start)),...recurring.rows];
-  const expenses=expenseRows.reduce((a,x)=>a+num(x.amount),0);
-  const cash=cashBalanceData(state),checks=checksBalanceData(state),kupa=cash+checks;
-  return {bank:b,credit,expenses,cash,checks,kupa,net:b===null?null:b-credit-expenses+kupa,targetMonth:cycle.targetMonth,elapsedIncompleteCreditRows:cycle.elapsedIncompleteCreditRows,expiredSettlementWarnings:cycle.expiredSettlementWarnings,forecastIncomplete:incompleteCreditRows.length>0||recurring.incomplete,recurringExpenseWarnings:recurring.warnings,incompleteCreditCount:incompleteCreditRows.length,missingAmountCount:incompleteCreditRows.filter(row=>row.amountStatus!=='known_ils').length,coverageGapCount:incompleteCreditRows.filter(row=>row.coverageIncomplete).length,unassignedCount:incompleteCreditRows.filter(row=>!row.date).length};
-}
+export function bankLongTermPositionData(state,reference=todayISO()){return kupaBusinessPositionData(state,reference)}
 
 export function bankProjectedAccountCycleData(state,account='עסקי',reference=todayISO()){return kupaAccountCashflowData(state,account,reference).projected}
 
