@@ -226,6 +226,18 @@ table{width:100%;border-collapse:collapse}th{padding:7px 9px;text-align:right;co
 
 /* הערות / גליון — גליון חופשי הנשמר כחלק ממסמך הקופה */
 
+/* Credit detail tables use the same calm ledger treatment as bank transactions. */
+.credit-detail-table-wrap{border:1px solid #d9e0dc;border-radius:0 0 12px 12px;background:#fff}
+.credit-detail-table{border-collapse:separate;border-spacing:0;background:#fff}
+.credit-detail-table th{background:#eef1f0;color:#465852;font-size:11px;font-weight:850;border-bottom:1px solid #d9e0dc;padding:8px 9px}
+.credit-detail-table td{background:#fff;border-bottom:1px solid #e7ece9;padding:8px 9px;vertical-align:middle}
+.credit-detail-table th:not(:last-child),.credit-detail-table td:not(:last-child){border-left:1px solid #dfe5e1}
+.credit-detail-table tbody tr:nth-child(even):not(.credit-detail-cycle-divider):not(.credit-pending-detail-row) td{background:#fbfcfc}
+.credit-detail-table tbody tr:hover:not(.credit-detail-cycle-divider) td{background:#f6f9f7}
+.credit-detail-table tbody tr.credit-pending-detail-row td{background:#fff8e6}
+.credit-detail-table tbody tr.credit-pending-detail-row:hover td{background:#fff3d8}
+.credit-detail-table tbody tr.credit-pending-detail-row.stale td{background:#fff1cf}
+
 /* Bank transaction date scope */
 .bank-transactions-caption{position:relative;overflow:visible}.bank-transactions-caption>.bank-caption-account{min-width:0;display:flex;align-items:center;gap:8px;flex-wrap:wrap}.bank-transactions-caption>.bank-caption-account>b{font-size:14px;white-space:nowrap}.bank-date-filter{position:relative;display:inline-block;flex:0 0 auto;min-width:0}.bank-date-filter>summary{list-style:none}.bank-date-filter>summary::-webkit-details-marker{display:none}.bank-date-filter-trigger{height:30px;display:inline-flex;align-items:center;gap:7px;border:1px solid #d4ddd8;border-radius:8px;background:#fff;color:var(--text);padding:4px 8px;font:inherit;font-size:11px;font-weight:800;cursor:pointer;user-select:none;white-space:nowrap}.bank-date-filter-trigger:hover{background:#f7faf8;border-color:#bccbc5}.bank-date-filter-trigger:focus-visible{outline:none;border-color:#91aaa3;box-shadow:0 0 0 3px rgba(95,124,119,.10)}.bank-date-filter-chevron{font-size:13px;color:var(--muted);transition:transform .16s ease}.bank-date-filter[open] .bank-date-filter-chevron{transform:rotate(180deg)}.bank-date-menu{position:absolute;top:calc(100% + 7px);inset-inline-end:0;z-index:80;width:292px;padding:8px;border:1px solid #d6dfda;border-radius:11px;background:#fff;box-shadow:0 14px 34px rgba(45,65,58,.16);direction:rtl}.bank-date-menu-all{appearance:none;width:100%;min-height:35px;display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--text);padding:7px 9px;font:inherit;font-size:11px;font-weight:800;text-align:right;cursor:pointer}.bank-date-menu-all:hover{background:#f5f8f6}.bank-date-menu-all.active{background:#edf5f1;color:#45685a}.bank-date-range-card{display:grid;gap:8px;margin-top:6px;padding:9px;border-top:1px solid #e8eeeb}.bank-date-range-card.active{background:#f8fbf9;border-radius:8px}.bank-date-range-title{display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--text);font-size:11px;font-weight:850}.bank-date-range-fields{display:grid;grid-template-columns:1fr;gap:7px}.bank-date-range-field{display:grid;gap:4px;color:var(--muted);font-size:10px;font-weight:750}.bank-date-range-fields .date-editor{min-width:0}.bank-date-apply{width:100%;min-height:33px;padding-block:5px}
 @media(max-width:700px){.bank-transactions-caption>.bank-caption-account{flex:1 1 auto}.bank-date-filter{flex:0 0 auto}.bank-date-menu{width:min(292px,calc(100vw - 24px))}}

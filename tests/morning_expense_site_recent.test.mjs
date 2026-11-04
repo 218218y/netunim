@@ -21,8 +21,8 @@ test('site recent uses one bounded, owner and environment scoped indexed ledger 
 });
 
 test('site read authorizes before storage, fences environments and projects only historical display fields', async () => {
-  let reads=0;
-  const service=createExpenseService({environment:'sandbox',request:()=>assert.fail('no Morning request'),ledger:{recentCreated:async owner=>{
+  let reads=0;const requests=[];
+  const service=createExpenseService({environment:'sandbox',request:async(path)=>{requests.push(path);if(path==='/expenses/'+id(3))return {id:id(3),accountingClassification:{id:id(5),title:'Saved category'}};assert.fail('unexpected Morning request');},ledger:{recentCreated:async owner=>{
     reads++;assert.equal(owner,user.id);return [{...stored,payload:{...payload,secret:'private',url:'https://signed.example/file'},invoice_identity:'private'}];
   }}});
   assert.equal((await service({id:id(9)},{action:'site_recent',expectedEnvironment:'sandbox'})).status,403);
@@ -31,7 +31,17 @@ test('site read authorizes before storage, fences environments and projects only
   const result=await service(user,{action:'site_recent',expectedEnvironment:'sandbox'});
   assert.equal(reads,1);assert.equal(result.status,200);assert.equal(result.body.items[0].createdAt,stored.sent_at);
   assert.equal(result.body.items[0].grossCents,11800);assert.equal(result.body.items[0].number,'00123');
+  assert.equal(result.body.items[0].classification.title,'Saved category');assert.equal(result.body.items[0].categoryLoaded,true);
+  assert.deepEqual(requests,['/expenses/'+id(3)]);
   assert.ok(!JSON.stringify(result).includes('private')&&!JSON.stringify(result).includes('signed.example'));
+});
+
+test('site read uses the verified classification title retained with new ledger entries',async()=>{
+  const saved={...stored,payload:{...payload,siteRecentCategoryTitle:'Saved category'}};
+  const service=createExpenseService({environment:'sandbox',request:()=>assert.fail('stored category must avoid a Morning lookup'),ledger:{recentCreated:async()=>[saved]}});
+  const result=await service(user,{action:'site_recent',expectedEnvironment:'sandbox'});
+  assert.equal(result.status,200);assert.equal(result.body.items[0].classification.title,'Saved category');
+  assert.equal(result.body.items[0].categoryLoaded,true);
 });
 
 test('automatic site reads and immediate verified records stay at ten and ignore delayed old snapshots', async () => {

@@ -10,10 +10,10 @@ export function recentExpenseRows(items) {
 function displayRows(items) {
   if (!Array.isArray(items) || items.length > 20 || items.some(row => !row || row.kind !== 'expense' || typeof row.id !== 'string' || !row.id || row.id.length > 80 || ![10,20,30,40,100].includes(row.status))) throw Error('invalid_expense_recent_snapshot');
   const text = (value, max = 250) => typeof value === 'string' ? value.slice(0,max) : '';
-  return recentExpenseRows(items).map(row => ({id:row.id,kind:'expense',status:row.status,type:Number.isSafeInteger(row.type) ? row.type : null,
+  return recentExpenseRows(items).map(row => {const category=text(row.category || row.classification?.title);return {id:row.id,kind:'expense',status:row.status,type:Number.isSafeInteger(row.type) ? row.type : null,
     createdAt:row.createdAt,sourceDocumentDate:text(row.sourceDocumentDate,10),reportingDate:text(row.reportingDate,10),
-    number:text(row.number,60),name:text(row.name,180),description:text(row.description),category:text(row.category || row.classification?.title),
-    grossCents:Number.isSafeInteger(row.grossCents) ? row.grossCents : null,vatCents:Number.isSafeInteger(row.vatCents) ? row.vatCents : null}));
+    number:text(row.number,60),name:text(row.name,180),description:text(row.description),category,categoryLoaded:row.categoryLoaded===true||!!category,
+    grossCents:Number.isSafeInteger(row.grossCents) ? row.grossCents : null,vatCents:Number.isSafeInteger(row.vatCents) ? row.vatCents : null};});
 }
 const mergeRows = (before, after) => displayRows([...new Map([...before,...after].map(row => [row.id,row])).values()]);
 export function expenseRecentSnapshot(value) {
@@ -35,7 +35,7 @@ export function updateExpenseRecentSnapshot(prior, change) {
     // refresh otherwise replaces the snapshot, including removals and edits.
     items = mergeRows(items,updates.filter(update => update.at >= change.startedAt).map(update => update.item));
   } else {
-    items = change.kind === 'record' ? mergeRows(before.items,items) : mergeRows(items,before.items);
+    items = mergeRows(before.items,items);
     if (change.kind === 'record') updates = [...updates.filter(update => !change.items.some(row => row.id === update.item.id)),
       ...displayRows(change.items).map(item => ({item,at:change.at}))];
   }

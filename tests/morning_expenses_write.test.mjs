@@ -112,6 +112,13 @@ test('invoice receipt expenses retain type 320 through durable creation, readbac
   assert.equal((await f.writer.handle(user,body)).body.verified,true);assert.equal(f.posts.length,1);
 });
 
+test('verified site category is retained in the ledger projection and excluded from Morning writes',async()=>{
+ const f=fixture(),body=input(88),result=await f.writer.handle(user,body);
+ assert.equal(result.body.verified,true);assert.equal(result.body.item.classification.title,'Category');
+ assert.equal(f.rows.get(body.operationId).payload.siteRecentCategoryTitle,'Category');
+ assert.equal(Object.hasOwn(f.posts[0],'siteRecentCategoryTitle'),false);
+});
+
 const pProfiles=()=>[{id:id(3),taxId:'123456789'},profiles[1]];
 for(const documentType of [305,320])test(`late P type ${documentType} keeps the July source date and September-October reporting period through create and replay`,async()=>{
  const f=fixture({pcnP:true,pSuppliers:pProfiles,today:'2026-11-02'}),body=input();

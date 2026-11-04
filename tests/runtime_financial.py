@@ -283,6 +283,13 @@ def run_cashflow_warning_layout(app):
                   const fixture={bank:{source:'hapoalim',currentBalance:272.27,asOfDate:today,feed,homeFeed:feed},checks:[],credits:[],expenses:[],cash:[],cards:[],cashflowSettings:{businessMinimum:5000,homeMinimum:5000}};
                 """+setup+r"""
                   const caption=document.querySelector('.bank-transactions-caption');
+                  let table=document.querySelector('.bank-transactions-table'),probeOnly=!table;
+                  if(probeOnly){table=document.createElement('table');table.className='bank-transactions-table';table.innerHTML='<thead><tr><th>Date</th><th>Action</th><th>Debit</th><th>Credit</th><th>Balance</th></tr></thead><tbody></tbody>';document.body.append(table);}
+                  const body=table.tBodies[0],probe=()=>{const row=document.createElement('tr');for(const _ of table.querySelectorAll('thead th'))row.insertCell().textContent='probe';body.append(row);return row;},stripeRows=[probe(),probe()];
+                  const headerColor=getComputedStyle(table.querySelector('thead th')).backgroundColor,stripeColor=getComputedStyle(stripeRows[1].cells[0]).backgroundColor;
+                  stripeRows.forEach(row=>row.remove());
+                  if(probeOnly)table.remove();
+                  if(headerColor!=='rgb(238, 241, 240)'||stripeColor!=='rgb(251, 252, 252)')throw new Error('Bank table is missing its Kupa-style header and alternating ledger rows');
                   const warning=caption.nextElementSibling;
                   if(!warning?.matches('.bank-cashflow-warning-row')||!warning.textContent.includes('5,000'))throw new Error('Warning must occupy its own row below the bank caption');
                   if(caption.querySelector('.cashflow-breach'))throw new Error('Warning is still inside the metrics/filter row');

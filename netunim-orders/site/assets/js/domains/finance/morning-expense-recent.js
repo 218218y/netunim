@@ -76,7 +76,7 @@ export function createExpenseRecent({request, capabilities, capture, run, accoun
       try {
         let storageFailed = false;
         if (cache) {
-          try {const saved = await cache.read(savedScope,check); check(); if (saved) {adopt(saved);message = 'הרשימה השמורה שוחזרה.';return true;}}
+          try {const saved = await cache.read(savedScope,check); check(); if (saved) {adopt(saved);const needsCategoryHydration=saved.mode==='site'&&saved.items.some(item=>!item.categoryLoaded);if(!needsCategoryHydration){message = 'הרשימה השמורה שוחזרה.';return true;}}}
           catch {check();storageFailed = true;}
         }
         if (!caps.siteRecent) {message = 'אפשר לרענן מכל Morning לשמירת הרשימה. קליטות חדשות יוצגו כאן מיד.';return false;}
@@ -151,7 +151,7 @@ export function createExpenseRecent({request, capabilities, capture, run, accoun
       <button type="button" class="btn" data-action="morning-expense-command" data-expense-command="recent-refresh" ${busy ? 'disabled' : ''}>${scan ? 'המשך רענון מכל Morning' : 'רענון מכל Morning ומהאתר'}</button>${busy ? '<button type="button" class="btn" data-action="morning-expense-command" data-expense-command="recent-cancel">ביטול טעינה</button>' : ''}</div>
       <p>${mode === 'site' ? 'קליטות מאומתות דרך האתר · לרשימה מלאה יש לרענן מכל Morning' : 'הרשימה השמורה מכל החשבון, כולל קליטה ישירה במורנינג'} · לפי זמן הקליטה. קליטה חדשה באתר מתווספת לרשימה בלי למחוק את ההוצאות האחרות.</p>
       ${readAt ? `<p>רענון ${mode === 'account' ? 'מלא' : 'ראשוני'} אחרון: ${esc(new Date(readAt).toLocaleString('he-IL'))} · לשינויים שנעשו ישירות ב־Morning יש לרענן שוב.</p>` : ''}
-      ${content}<p role="status" aria-live="polite" data-expense-recent-status>${esc(busy ? progressText : message)}</p></section>`;
+      <p role="status" aria-live="polite" data-expense-recent-status>${esc(busy ? progressText : message)}</p>${content}</section>`;
   }
   return {markup, record, load, loadSite, reset, cancel:() => controller?.abort()};
 }

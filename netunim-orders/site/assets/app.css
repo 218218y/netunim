@@ -612,6 +612,33 @@ td.tri-status-no{background:var(--status-bad-strong)!important}td.tri-status-yes
 
 @media(max-width:560px){.cashflow-settings-grid{grid-template-columns:1fr}}
 
+/* Finance ledgers share the clear headers, dividers and row rhythm used in Kupa. */
+.bank-transactions-caption{min-height:46px;gap:7px 18px;flex-wrap:wrap;background:#fff}
+.bank-transactions-caption>.bank-caption-account{min-width:0;display:flex;align-items:baseline;gap:7px 9px;flex:1 1 390px;flex-wrap:wrap}
+.bank-transactions-caption small{font-size:11px;line-height:1.35}
+.bank-transactions-table{table-layout:fixed;border-collapse:separate;border-spacing:0;background:#fff}
+.bank-transactions-table th{background:#eef1f0;color:#465852;font-size:11px;font-weight:850;border-bottom:1px solid #d9e0dc;padding:7px 9px}
+.bank-transactions-table th:first-child:not(.bank-transaction-actions-head){width:125px}
+.bank-transactions-table th.bank-transaction-actions-head{width:76px;min-width:76px;max-width:76px}
+.bank-transactions-table th.bank-transaction-actions-head+th{width:125px}
+.bank-transactions-table th:nth-last-child(3),.bank-transactions-table th:nth-last-child(2){width:96px;text-align:left}
+.bank-transactions-table th:last-child{width:138px;text-align:left}
+.bank-transactions-table td{background:#fff;padding:7px 9px;border-bottom:1px solid #e7ece9}
+.bank-transactions-table th:not(:last-child),.bank-transactions-table td:not(:last-child){border-left:1px solid #dfe5e1}
+.bank-transactions-table tbody tr:nth-child(even) td{background:#fbfcfc}
+.bank-transactions-table tbody tr:hover td{background:#f6f9f7}
+.bank-transactions-table tbody tr.pending td{background:#fffdf8}
+.credit-detail-table-wrap{border:1px solid #d9e0dc;border-radius:0 0 12px 12px;background:#fff}
+.credit-detail-table{border-collapse:separate;border-spacing:0;background:#fff}
+.credit-detail-table th{background:#eef1f0;color:#465852;font-size:11px;font-weight:850;border-bottom:1px solid #d9e0dc;padding:8px 9px}
+.credit-detail-table td{background:#fff;border-bottom:1px solid #e7ece9;padding:8px 9px;vertical-align:middle}
+.credit-detail-table th:not(:last-child),.credit-detail-table td:not(:last-child){border-left:1px solid #dfe5e1}
+.credit-detail-table tbody tr:nth-child(even):not(.credit-detail-cycle-divider):not(.credit-pending-detail-row) td{background:#fbfcfc}
+.credit-detail-table tbody tr:hover:not(.credit-detail-cycle-divider) td{background:#f6f9f7}
+.credit-detail-table tbody tr.credit-pending-detail-row td{background:#fff8e6}
+.credit-detail-table tbody tr.credit-pending-detail-row:hover td{background:#fff3d8}
+.credit-detail-table tbody tr.credit-pending-detail-row.stale td{background:#fff1cf}
+
 /* Bank transaction date scope */
 .bank-transactions-caption{position:relative;overflow:visible;border-radius:14px 14px 0 0}.bank-date-filter{position:relative;display:inline-block;flex:0 0 auto;min-width:0}.bank-date-filter>summary{list-style:none}.bank-date-filter>summary::-webkit-details-marker{display:none}.bank-date-filter-trigger{height:30px;display:inline-flex;align-items:center;gap:7px;border:1px solid #d5dee4;border-radius:8px;background:#fff;color:var(--text);padding:4px 8px;font:inherit;font-size:10px;font-weight:800;cursor:pointer;user-select:none;white-space:nowrap}.bank-date-filter-trigger:hover{background:#fafbfc;border-color:#c8d3d9}.bank-date-filter-trigger:focus-visible{outline:none;border-color:#b8c9d3;box-shadow:0 0 0 3px rgba(143,109,85,.08)}.bank-date-filter-chevron{font-size:13px;color:var(--muted);transition:transform .16s ease}.bank-date-filter[open] .bank-date-filter-chevron{transform:rotate(180deg)}.bank-date-menu{position:absolute;top:calc(100% + 7px);inset-inline-end:0;z-index:80;width:286px;padding:8px;border:1px solid #d8e1e6;border-radius:11px;background:#fff;box-shadow:0 14px 34px rgba(39,55,66,.16);direction:rtl}.bank-date-menu-all{appearance:none;width:100%;min-height:34px;display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--text);padding:7px 9px;font:inherit;font-size:10px;font-weight:800;text-align:right;cursor:pointer}.bank-date-menu-all:hover{background:#f7f9fa}.bank-date-menu-all.active{background:var(--primary-soft);color:var(--primary-strong)}.bank-date-range-card{display:grid;gap:8px;margin-top:6px;padding:9px;border-top:1px solid #edf0f2}.bank-date-range-card.active{background:#fcfaf8;border-radius:8px}.bank-date-range-title{display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--text);font-size:10px;font-weight:850}.bank-date-range-fields{display:grid;grid-template-columns:1fr;gap:7px}.bank-date-range-field{display:grid;gap:4px;color:var(--muted);font-size:9px;font-weight:750}.bank-date-range-fields .date-editor{min-width:0}.bank-date-apply{width:100%;min-height:32px;padding-block:5px}.bank-transactions-table-wrap{border-radius:0 0 14px 14px}
 @media(max-width:760px){.bank-transactions-caption>.bank-caption-account{flex-wrap:wrap}.bank-date-filter{flex:0 0 auto}.bank-date-menu{width:min(286px,calc(100vw - 24px))}}

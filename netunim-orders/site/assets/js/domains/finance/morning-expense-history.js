@@ -235,5 +235,12 @@ export function createExpenseHistory({request, capabilities, capture, run, today
       ${navigation}</section>`;
   }
   reset();
-  return {markup, more, refresh, reset, bind, chooseFilter, setQuery, search, searchMore, clearSearch, chooseSort, setSort};
+  return {markup, more, refresh, reset, bind, chooseFilter, setQuery, search, searchMore, clearSearch, chooseSort, setSort,
+    commands:{'history-more':more,'history-refresh':refresh,'history-sort':element=>chooseSort(element.dataset.expenseSortField),
+      'history-search':search,'history-search-more':searchMore,'history-search-clear':clearSearch},
+    actions:{
+      'morning-expense-history-query':element=>setQuery(element.value),
+      'morning-expense-history-filter':element=>chooseFilter(element),
+      'morning-expense-history-sort-select':element=>setSort(element.value),
+      'morning-expense-history-search-enter':(_,event)=>{event.stopPropagation();if(event.key==='Enter'&&!event.isComposing){event.preventDefault();return search();}return false;}}};
 }
