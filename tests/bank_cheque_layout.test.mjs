@@ -20,10 +20,13 @@ assert.doesNotMatch(css, /\.bank-transactions-table\s+th:first-child:not\(\.bank
 assert.doesNotMatch(css, /\.bank-transactions-table\s+th:nth-last-child/);
 assert.doesNotMatch(css, /\.bank-transactions-table\s+th:last-child/);
 
-assert.match(declarations('.bank-cheque-items-wrap'), /max-width:480px/);
+assert.match(declarations('.bank-cheque-items-wrap'), /max-width:440px/);
+assert.match(declarations('.bank-cheque-items-wrap'), /justify-self:end/);
 assert.match(declarations('.bank-cheque-items-wrap'), /overflow:hidden/);
 assert.doesNotMatch(declarations('.bank-cheque-items-wrap'), /overflow-x:\s*(auto|scroll)/);
 assert.match(declarations('.bank-cheque-items'), /table-layout:fixed!important/);
+assert.match(declarations('.bank-cheque-items th,.bank-cheque-items td'), /text-align:center!important/);
+assert.match(declarations('.bank-cheque-image-actions'), /justify-content:center/);
 
 const widths = Array.from({length: 6}, (_, index) => {
   const rule = declarations(`.bank-cheque-items th:nth-child(${index + 1}),.bank-cheque-items td:nth-child(${index + 1})`);
