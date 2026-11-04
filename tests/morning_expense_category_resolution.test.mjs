@@ -2,11 +2,19 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {resolveExpenseSupplierCategory} from '../netunim-orders/site/assets/js/domains/finance/morning-expense-catalog.js';
 import {readExpenseProposal} from '../netunim-orders/site/assets/js/domains/finance/morning-expense-proposal.js';
+import {expenseCategoryRows,retainExpenseCategoryEvidence} from '../netunim-orders/site/assets/js/domains/finance/morning-expense-category-state.js';
 
 const supplier={id:'supplier-one',name:'ספק בדיקה',taxId:'123456782',active:true,country:'IL'};
 const capabilities={version:1,environment:'production'};
 const expense=(id,extra={})=>({id,kind:'expense',status:10,name:supplier.name,supplierId:'',supplierTaxId:'',sourceDocumentDate:'2026-10-29',classification:{id:'goods',title:'קניות סחורה בארץ'},...extra});
 const page=(items,n=0)=>({...capabilities,page:n,pageSize:50,pages:Math.ceil(items.length/50),total:items.length,items:items.slice(n*50,n*50+50)});
+test('canonical category evidence replaces its search snapshot in both category choices and the selected expense',()=>{
+ const snapshot=expense('same'),canonical={...snapshot,supplierTaxId:supplier.taxId,classification:{id:'verified',title:'סיווג מאומת'}};
+ const catalog={expenses:[snapshot]};
+ const retained=retainExpenseCategoryEvidence(catalog,[],[canonical]);
+ assert.deepEqual(expenseCategoryRows(catalog,retained),[canonical]);
+ assert.deepEqual(catalog.classifications.map(row=>row.id),['verified']);
+});
 test('identity-free search snapshots are resolved by canonical expense tax identity beyond the first page',async()=>{
  const target=expense('target'),items=[...Array.from({length:50},(_,i)=>expense('other-'+i,{name:'אחר'})),target],calls=[];
  const request=async(action,body)=>{
