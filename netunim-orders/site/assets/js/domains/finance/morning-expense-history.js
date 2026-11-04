@@ -2,8 +2,11 @@ import {createExpenseVatSummary} from './morning-expense-vat-summary.js';
 import {esc} from '../../core/values.js';
 import {expenseBimonth, expenseVatSummaryPeriod, validReportDate} from '../../core/morning-report-period.js';
 import {readExpenseCatalogPage} from './morning-expense-catalog.js';
-import {expenseTableHead, expenseTableRow, expenseTableTotals, expenseMoney, nextExpenseSort, sortedExpenseRows} from './morning-expense-table.js';
+import {compareExpenseRows, expenseTableHead, expenseTableRow, expenseTableTotals, expenseMoney, nextExpenseSort, sortedExpenseRows} from './morning-expense-table.js';
 import {newExpenseSearchScan, readExpenseSearch} from './morning-expense-search.js';
+
+const defaultHistoryDateSort = Object.freeze({field:'date', direction:'desc'});
+const defaultHistoryNumberSort = Object.freeze({field:'number', direction:'desc'});
 
 export function expenseHistoryRows(items, period) {
   const seen = new Set();
@@ -14,7 +17,9 @@ export function expenseHistoryRows(items, period) {
     seen.add(row.id);
   }
   return items.filter(row => row.status !== 100).sort((a, b) =>
-    String(b.sourceDocumentDate).localeCompare(String(a.sourceDocumentDate)) || a.id.localeCompare(b.id));
+    compareExpenseRows(a, b, defaultHistoryDateSort) ||
+    compareExpenseRows(a, b, defaultHistoryNumberSort) ||
+    a.id.localeCompare(b.id));
 }
 
 // Finish reading a reporting period before publishing it: Morning has no
