@@ -31,7 +31,11 @@ export function renderGlobalDocumentSource(mode,raw,{state,label,filter,document
     return {total:count,settledEmpty:state.status==='done'&&count===0&&!state.partial,html:`<section class="global-search-source-section" data-search-source="${esc(mode)}">${header}<div class="global-search-source-body">${notice}${body}</div></section>`};
   }
 
-export function recentDocumentLabels(type){return type==='all'?{label:'\u05e4\u05e8\u05d9\u05d8\u05d9\u05dd \u05d0\u05d7\u05e8\u05d5\u05e0\u05d9\u05dd',emptyLabel:'\u05dc\u05d0 \u05e0\u05de\u05e6\u05d0\u05d5 \u05e4\u05e8\u05d9\u05d8\u05d9\u05dd'}:type==='folders'?{label:'\u05ea\u05d9\u05e7\u05d9\u05d5\u05ea \u05d0\u05d7\u05e8\u05d5\u05e0\u05d5\u05ea',emptyLabel:'\u05dc\u05d0 \u05e0\u05de\u05e6\u05d0\u05d5 \u05ea\u05d9\u05e7\u05d9\u05d5\u05ea'}:{label:'\u05e7\u05d1\u05e6\u05d9\u05dd \u05d0\u05d7\u05e8\u05d5\u05e0\u05d9\u05dd',emptyLabel:'\u05dc\u05d0 \u05e0\u05de\u05e6\u05d0\u05d5 \u05e7\u05d1\u05e6\u05d9\u05dd'}}
+export function recentDocumentLabels(type){
+  if(type==='all')return {label:'\u05e4\u05e8\u05d9\u05d8\u05d9\u05dd \u05d0\u05d7\u05e8\u05d5\u05e0\u05d9\u05dd',emptyLabel:'\u05dc\u05d0 \u05e0\u05de\u05e6\u05d0\u05d5 \u05e4\u05e8\u05d9\u05d8\u05d9\u05dd'};
+  if(type==='folders')return {label:'\u05ea\u05d9\u05e7\u05d9\u05d5\u05ea \u05d0\u05d7\u05e8\u05d5\u05e0\u05d5\u05ea',emptyLabel:'\u05dc\u05d0 \u05e0\u05de\u05e6\u05d0\u05d5 \u05ea\u05d9\u05e7\u05d9\u05d5\u05ea'};
+  return {label:'\u05e7\u05d1\u05e6\u05d9\u05dd \u05d0\u05d7\u05e8\u05d5\u05e0\u05d9\u05dd',emptyLabel:'\u05dc\u05d0 \u05e0\u05de\u05e6\u05d0\u05d5 \u05e7\u05d1\u05e6\u05d9\u05dd'};
+}
 export function renderGlobalRecentDocumentBody(state,rows,{label,emptyLabel,provider,documentPairing,documentErrorHtml,renderDocumentTable,recentDocumentSort}){
     let body='';
     if(state.status==='loading')body=`<div class="global-search-source-progress"><span class="document-search-spinner">⌕</span>טוען ${esc(label)} מ־${esc(provider)}…</div>`;
