@@ -21,6 +21,9 @@ def run_credit_detail(app):
           check(region().querySelector('.credit-future-menu [data-click-arg0="2026-10"]'),'October must remain reachable while the nearest open cycles are still September');
           check(region().querySelector('.credit-future-menu [data-click-arg0="2026-11"]'),'November missing from future');
           check(rows().length===73&&rows().every(row=>row.textContent.includes('2026-09 transaction')),'Elapsed September debits disappeared without bank settlement evidence');
+          const table=region().querySelector('.credit-detail-table'),striped=table.querySelector('tbody tr:nth-child(even):not(.credit-detail-cycle-divider):not(.credit-pending-detail-row) td');
+          check(getComputedStyle(table.querySelector('thead th')).backgroundColor==='rgb(238, 241, 240)','Credit table header does not match the bank ledger surface');
+          check(striped&&getComputedStyle(striped).backgroundColor==='rgb(251, 252, 252)','Credit table is missing its alternating ledger row');
           check(region().querySelector('.credit-cycle-explanation')?.textContent.includes('טרם אומת'),'Nearest-cycle explanation does not disclose unverified settlement');
           check(rows()[0].textContent.includes('ב קודם לפי בחירה'),'Custom card order was ignored');
           let menu=region().querySelector('.credit-date-filter'),future=region().querySelector('.credit-future-menu');

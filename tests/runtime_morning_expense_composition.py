@@ -235,6 +235,8 @@ LAYOUT_ASSERTIONS = r"""(async()=>{
  inside(titleRow.querySelector('h2'),titleRow,'history title clipped');inside(titleRow.querySelector('[data-expense-vat-summary]'),titleRow,'VAT summary clipped');
  if(innerWidth>=1024){const title=bounds(titleRow.querySelector('h2')),summary=bounds(titleRow.querySelector('[data-expense-vat-summary]'));check(summary.right<=title.left&&Math.abs((title.top+title.bottom-summary.top-summary.bottom)/2)<3,'VAT summary is not at the left end of the title row');}
  check(tables.length===2,'recent/reporting tables missing');
+ const historyTable=document.querySelector('[data-expense-history] .morning-expense-table'),firstSummary=historyTable?.querySelector('tbody:first-of-type .morning-expense-period-heading > th');
+ check(firstSummary&&getComputedStyle(firstSummary).borderTopWidth==='0px','first reporting summary has an unwanted white gap below the table headers');
  for(const table of tables){
   inside(table,table.parentElement,'expense table clipped by its section');
   check(table.scrollWidth<=table.clientWidth+1,'expense table content overflows');

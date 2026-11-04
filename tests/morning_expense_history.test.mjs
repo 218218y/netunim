@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {expenseBimonth} from '../netunim-orders/site/assets/js/core/morning-report-period.js';
 import {expenseHistoryRows, readExpenseHistoryPeriod, createExpenseHistory} from '../netunim-orders/site/assets/js/domains/finance/morning-expense-history.js';
 import {searchExpenseSuppliers} from '../netunim-orders/site/assets/js/domains/finance/morning-expense-catalog.js';
-import {expenseTableTotals, expenseTableRow} from '../netunim-orders/site/assets/js/domains/finance/morning-expense-table.js';
+import {expenseTableHead, expenseTableTotals, expenseTableRow, nextExpenseSort, sortedExpenseRows} from '../netunim-orders/site/assets/js/domains/finance/morning-expense-table.js';
 import {createExpenseRecent, readRecentExpenses, recentExpenseRows} from '../netunim-orders/site/assets/js/domains/finance/morning-expense-recent.js';
 
 const caps = {version:1, environment:'production'}, period = expenseBimonth('2026-10-01');
@@ -64,6 +64,64 @@ test('expense table summaries preserve cents, reduce credits and never invent mi
   const markup = expenseTableRow({...invoice, number:'<script>', name:'שם ספק', description:'תיאור מלא', category:'סיווג'});
   assert.ok(markup.includes('&lt;script&gt;') && markup.includes('תיאור מלא') && markup.includes('מע״מ'));
   assert.ok(!markup.includes('אושרה לדוח') && !markup.includes('הופק דוח'));
+});
+
+test('expense sorting follows field-appropriate directions, natural invoice order and displayed credit values', () => {
+  const rows = [
+    {...expense('newer','2026-10-20'), number:'2', name:'אלף', category:'ב', grossCents:11800, vatCents:1800},
+    {...expense('older','2026-09-10'), number:'10', name:'תמר', category:'א', grossCents:5900, vatCents:900},
+    {...expense('credit','2026-10-10'), type:330, number:'3', name:'דוד', category:'ג', grossCents:1000, vatCents:180},
+    {...expense('unknown','2026-09-01'), number:'', name:'', category:'', grossCents:null, vatCents:null},
+  ];
+  const ids = (field, direction) => sortedExpenseRows(rows, {field, direction}).map(row => row.id);
+  assert.deepEqual(ids('number','desc'), ['older','credit','newer','unknown']);
+  assert.deepEqual(ids('number','asc'), ['newer','credit','older','unknown']);
+  assert.deepEqual(ids('date','desc'), ['newer','credit','older','unknown']);
+  assert.deepEqual(ids('date','asc'), ['unknown','older','credit','newer']);
+  assert.deepEqual(ids('supplier','asc'), ['newer','credit','older','unknown']);
+  assert.deepEqual(ids('category','desc'), ['credit','newer','older','unknown']);
+  assert.deepEqual(ids('gross','desc'), ['newer','older','credit','unknown']);
+  assert.deepEqual(ids('gross','asc'), ['credit','older','newer','unknown']);
+  assert.deepEqual(ids('vat','desc'), ['newer','older','credit','unknown']);
+  assert.deepEqual(nextExpenseSort(null,'gross'), {field:'gross',direction:'desc'});
+  assert.deepEqual(nextExpenseSort({field:'supplier',direction:'asc'},'supplier'), {field:'supplier',direction:'desc'});
+  assert.equal(nextExpenseSort(null,'unsupported'), null);
+  assert.match(expenseTableHead({sortable:true, sort:{field:'gross',direction:'desc'}}), /aria-sort="descending"/);
+  assert.match(expenseTableHead({sortable:true}), /data-expense-sort-field="date"/);
+  assert.ok(!expenseTableHead().includes('data-expense-sort-field'));
+});
+
+test('history sorting changes rows inside the reporting period and leaves the default order available', async () => {
+  globalThis.document = {querySelector:() => null};
+  const items = [
+    {...expense('first','2026-10-20'), number:'2', category:'ציוד', grossCents:11800, vatCents:1800},
+    {...expense('second','2026-10-10'), number:'10', category:'שירות', grossCents:5900, vatCents:900},
+  ];
+  const history = createExpenseHistory({request:async () => paged(items), capabilities:() => caps,
+    capture:() => () => {}, run:work => work(), todayISO:() => '2026-10-27'});
+  await history.more();
+  const ids = () => [...history.markup().matchAll(/data-expense-history-id="([^"]+)"/g)].map(match => match[1]);
+  assert.deepEqual(ids(), ['first','second']);
+  const initial = history.markup();
+  assert.match(initial, /class="morning-expense-period-heading"/);
+  assert.ok(history.chooseSort('number'));
+  assert.deepEqual(ids(), ['second','first']);
+  assert.ok(history.chooseSort('gross'));
+  assert.deepEqual(ids(), ['first','second']);
+  assert.ok(history.chooseSort('gross'));
+  assert.deepEqual(ids(), ['second','first']);
+  assert.ok(history.chooseSort('date'));
+  assert.deepEqual(ids(), ['first','second']);
+  assert.ok(history.chooseSort('date'));
+  assert.deepEqual(ids(), ['second','first']);
+  assert.ok(history.markup().includes('value="date:asc" selected'));
+  assert.ok(history.setSort('gross:asc'));
+  assert.deepEqual(ids(), ['second','first']);
+  assert.ok(history.markup().includes('value="gross:asc" selected'));
+  assert.ok(history.setSort(''));
+  assert.deepEqual(ids(), ['first','second']);
+  assert.ok(!history.chooseSort('invalid'));
+  assert.ok(!history.setSort('gross:sideways'));
 });
 
 test('recent expenses span the entire Morning account and sort by creation time across unordered pages', async () => {

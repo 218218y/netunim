@@ -22,6 +22,18 @@ test('concurrent site commits survive older scans; an older full scan cannot ove
   assert.deepEqual(value.items.map(item=>item.id),['3','2']);
   assert.deepEqual(updateExpenseRecentSnapshot(value,full([row(1)],150,105)),value);
 });
+test('site refresh replaces old category projections and hydrates cached site rows',async()=>{
+  let value=updateExpenseRecentSnapshot(null,{kind:'site',items:[row(1)],at:100});
+  value=updateExpenseRecentSnapshot(value,{kind:'site',items:[{...row(1),category:'נסיעות',categoryLoaded:true}],at:110});
+  assert.equal(value.items[0].category,'נסיעות');assert.equal(value.items[0].categoryLoaded,true);
+  globalThis.document={querySelector:()=>null};const caps={version:1,environment:'production',siteRecent:true};let stored=updateExpenseRecentSnapshot(null,{kind:'site',items:[row(2)],at:100});
+  const recent=createExpenseRecent({cache:{read:async()=>stored,update:async(_,change)=>{stored=updateExpenseRecentSnapshot(stored,change);return stored;}},
+    accountId:()=> 'owner',capabilities:()=>caps,capture:()=>()=>{},run:work=>work(),now:()=>120,
+    request:async(action)=>{assert.equal(action,'site_recent');return {...caps,source:'site',items:[{...row(2),category:'ציוד',categoryLoaded:true}]};}});
+  await recent.loadSite();assert.equal(stored.items[0].category,'ציוד');
+  const markup=recent.markup();assert.ok(markup.includes('ציוד'));
+  assert.ok(markup.indexOf('data-expense-recent-status')<markup.indexOf('<table'),'refresh status should precede the rows table');
+});
 test('saved snapshots retain only ten projected display rows and reject corrupt data',()=>{
   let value = updateExpenseRecentSnapshot(null,full([{...row(1),url:'signed-secret',payload:{bank:'private'}}]));
   for(let n=2;n<30;n++) value = updateExpenseRecentSnapshot(value,{kind:'record',items:[row(n)],at:100+n});

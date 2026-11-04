@@ -103,10 +103,21 @@ export function createExpenseService({request, environment, readIds = () => '', 
         if (body.expectedEnvironment !== environment) throw new Error('invalid_expense_input');
         if (!ledger) throw new Error('morning_expense_storage_failed');
         const rows = await ledger.recentCreated(user.id);
-        result = {source:'site', items:rows.map(row => {
+        const items=await Promise.all(rows.map(async row => {
           if (!expenseUuid(row.expense_id) || !row.verified_at || !Number.isFinite(Date.parse(row.sent_at))) throw new Error('invalid_expense_record');
-          return {...expenseRecord({...row.payload, id:row.expense_id, status:10}), createdAt:row.sent_at};
-        })};
+          const payload=row.payload,classificationId=expenseUuid(payload?.accountingClassification?.id)?payload.accountingClassification.id:'';
+          if(!classificationId)throw new Error('invalid_expense_record');
+          let title=typeof payload.siteRecentCategoryTitle==='string'?payload.siteRecentCategoryTitle:'';
+          if(!title.trim()){
+            const raw=await request('/expenses/'+row.expense_id,{method:'GET'});
+            const classification=expenseClassification(raw?.accountingClassification);
+            if(raw?.id!==row.expense_id||classification?.id!==classificationId)throw new Error('invalid_expense_record');
+            title=classification.title;
+          }
+          const accountingClassification={...payload.accountingClassification,...(title.trim()?{title}:{})};
+          return {...expenseRecord({...payload,accountingClassification,id:row.expense_id,status:10}),categoryLoaded:true,createdAt:row.sent_at};
+        }));
+        result = {source:'site', items};
       } else if (action === 'suppliers') {
         const {page, pageSize} = pageInput(body);
         if (body.name !== undefined && (typeof body.name !== 'string' || body.name.length > 180)) throw new Error('invalid_expense_input');

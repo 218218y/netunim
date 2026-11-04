@@ -9,6 +9,12 @@ import {normalizeExpenseSource,normalizeExpenseSourceReview,expenseSourceExpecte
 const digest = async value => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(value)))), x => x.toString(16).padStart(2, '0')).join('');
 const response = (status, body) => ({status, body:{ok:status < 400, ...body}});
 const todayInIsrael = () => new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Jerusalem', year:'numeric', month:'2-digit', day:'2-digit'}).format(new Date());
+function savedExpenseRecord(raw, payload) {
+  const classification=raw?.accountingClassification,title=payload?.siteRecentCategoryTitle;
+  const accountingClassification=typeof title==='string'&&title.trim()&&classification?.id===payload?.accountingClassification?.id
+    ? {...classification,title} : classification;
+  return expenseRecord({...raw,accountingClassification});
+}
 export function createExpenseWriter({request, ledger, environment, enabled = false, pcnP = false, writeIds = () => '', productionUserId = '', pSuppliers = () => [], today = todayInIsrael, verifySource}) {
   const authorized = user => expenseWriteAccess(user, environment, writeIds(), productionUserId);
   const allowed = user => authorized(user) && enabled === true && completePProfiles(pSuppliers());
@@ -23,10 +29,11 @@ export function createExpenseWriter({request, ledger, environment, enabled = fal
     if (evidence?.id !== input.classificationExpenseId || evidence.status === 100) throw new Error('invalid_expense_classification');
     const classification = expenseClassification(evidence.accountingClassification);
     if (!classification) throw new Error('invalid_expense_classification');
-    return {documentType:input.documentType, number:input.number, date:input.date, reportingDate:input.reportingDate,
+    const payload={documentType:input.documentType, number:input.number, date:input.date, reportingDate:input.reportingDate,
       currency:'ILS', currencyRate:1, amount:input.grossCents / 100, vat:input.vatCents / 100, pcnClassification:input.pcnClassification, description:input.description,
       ...(input.allocationNumber ? {allocationNumber:input.allocationNumber} : {}),
       supplier:{name:supplier.name, taxId:supplier.taxId, country:supplier.country, add:false}, accountingClassification:{id:classification.id}};
+    return {payload,classificationTitle:classification.title};
   }
   const summary = row => ({operationId:row.operation_id, state:row.state, expenseId:row.expense_id || '', verified:row.state === 'created' && !!row.verified_at,
     cancelled:row.state === 'cancelled', intent:{number:row.payload.number, documentType:row.payload.documentType, date:row.payload.date,
@@ -49,7 +56,7 @@ export function createExpenseWriter({request, ledger, environment, enabled = fal
       const marked=await ledger.fileTransition(user.id,saved,{source_verified_at:source.sourceVerified?new Date().toISOString():null});
       if(!marked)throw Error('morning_expense_storage_failed');source.sourceVerifiedAt=marked.source_verified_at;
     }
-    return response(200, {...summary(saved),...source,item:expenseRecord(raw),siteCreatedAt:saved.sent_at,fileLinked:!!raw.url});
+    return response(200, {...summary(saved),...source,item:savedExpenseRecord(raw,saved.payload),siteCreatedAt:saved.sent_at,fileLinked:!!raw.url});
   }
   return {
     allowed,
@@ -87,14 +94,14 @@ export function createExpenseWriter({request, ledger, environment, enabled = fal
           return await verify(user, existing);
         }
         const input = normalizeExpenseInput(body, today(), {allowP:pcnP === true});
-        if(body.action==='duplicate_check')return response(200,await findExpenseDuplicate(request,await canonical(input)));
+        if(body.action==='duplicate_check')return response(200,await findExpenseDuplicate(request,(await canonical(input)).payload));
         const source=normalizeExpenseSource(body.sourceFile);
         const fingerprint = await digest(source?{...input,sourceFile:source}:input);
         if (existing) {
           if (existing.request_fingerprint !== fingerprint) return response(409, {code:'morning_expense_operation_conflict', message:'מזהה הפעולה כבר משויך לפרטים אחרים.'});
           return await verify(user, existing); // Never POST again, even after a lost response.
         }
-        const payload = await canonical(input);
+        const {payload,classificationTitle} = await canonical(input);
         const sourceReview=source?{...normalizeExpenseSourceReview(body.sourceReview,expenseSourceExpected(payload)),reviewedAt:new Date().toISOString()}:null;
         const identity = await digest([payload.supplier.taxId, payload.documentType, payload.number, payload.date.slice(0, 4)]);
         // Search every matching page before any write. No reporting-month filter:
@@ -103,7 +110,8 @@ export function createExpenseWriter({request, ledger, environment, enabled = fal
         if(duplicate.duplicate)return response(409,{...duplicate,notDispatched:true,code:'morning_expense_duplicate'});
         // Failed read-only preflight creates no permanent lock. Reserve atomically
         // AFTER the reads and BEFORE POST; concurrent workers still have one winner.
-        let row = await ledger.reserve({owner_id:user.id, operation_id:body.operationId, invoice_identity:identity, request_fingerprint:fingerprint, state:'reserved', payload,
+        let row = await ledger.reserve({owner_id:user.id, operation_id:body.operationId, invoice_identity:identity, request_fingerprint:fingerprint, state:'reserved',
+          payload:{...payload,siteRecentCategoryTitle:classificationTitle},
           ...(source?{source_metadata:source,source_review:sourceReview}:{})});
         if (!row) return response(409, {notDispatched:true,code:'morning_expense_duplicate_operation', message:'החשבונית, הקובץ או הפעולה כבר משויכים לקליטה קיימת. יש לבדוק את הפעולות הממתינות; לא נשלחה יצירה נוספת.'});
         row = await ledger.transition(user.id, row.operation_id, 'reserved', {state:'pending', sent_at:new Date().toISOString()});

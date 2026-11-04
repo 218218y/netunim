@@ -2,7 +2,7 @@ import {createExpenseVatSummary} from './morning-expense-vat-summary.js';
 import {esc} from '../../core/values.js';
 import {expenseBimonth, expenseVatSummaryPeriod, validReportDate} from '../../core/morning-report-period.js';
 import {readExpenseCatalogPage} from './morning-expense-catalog.js';
-import {expenseTableHead, expenseTableRow, expenseTableTotals, expenseMoney} from './morning-expense-table.js';
+import {expenseTableHead, expenseTableRow, expenseTableTotals, expenseMoney, nextExpenseSort, sortedExpenseRows} from './morning-expense-table.js';
 import {newExpenseSearchScan, readExpenseSearch} from './morning-expense-search.js';
 
 export function expenseHistoryRows(items, period) {
@@ -36,6 +36,7 @@ export function createExpenseHistory({request, capabilities, capture, run, today
   let groups = [], visible = 0, next = '', busy = false, paused = false, message = '', revision = 0, controller = null, observer = null;
   let query = '', searched = '', scan = null, searchVisible = 20;
   let year = '', periodKey = '';
+  let sort = null;
   const vat=createExpenseVatSummary({request:reportRequest,capabilities,capture,run,render});
   const vatPeriod=()=>periodKey||expenseVatSummaryPeriod(todayISO(),year);
   const filterYear=()=>year||todayISO().slice(0,4);
@@ -56,17 +57,21 @@ export function createExpenseHistory({request, capabilities, capture, run, today
     const input = target.querySelector('[data-input="morning-expense-history-query"]');
     const focused = input && document.activeElement === input, selection = focused ? [input.selectionStart, input.selectionEnd] : null;
     const focusedFilter = target.contains(document.activeElement) ? document.activeElement.dataset.expenseHistoryFilter : '';
+    const focusedSort = target.contains(document.activeElement) ? document.activeElement.dataset.expenseSortField : '';
+    const focusedMobileSort = target.contains(document.activeElement) && document.activeElement.dataset.change === 'morning-expense-history-sort-select';
     target.outerHTML = markup();
     if (focused) {
       const replacement = host()?.querySelector('[data-input="morning-expense-history-query"]');
       replacement?.focus({preventScroll:true}); replacement?.setSelectionRange(...selection);
     }
     if (focusedFilter) host()?.querySelector(`[data-expense-history-filter="${focusedFilter}"]`)?.focus({preventScroll:true});
+    if (focusedSort) host()?.querySelector(`[data-expense-sort-field="${focusedSort}"]`)?.focus({preventScroll:true});
+    if (focusedMobileSort) host()?.querySelector('[data-change="morning-expense-history-sort-select"]')?.focus({preventScroll:true});
     if (scroller && Number.isFinite(top)) scroller.scrollTop = top;
     bind();
   }
   function cancelRead() {revision++; controller?.abort(); observer?.disconnect(); observer = null; controller = null; busy = false; message = '';}
-  function reset() {vat.reset();cancelRead(); year = ''; periodKey = ''; resetBrowse(); query = ''; searched = ''; scan = null; searchVisible = 20;}
+  function reset() {vat.reset();cancelRead(); year = ''; periodKey = ''; sort = null; resetBrowse(); query = ''; searched = ''; scan = null; searchVisible = 20;}
   function chooseFilter(element) {
     const kind = element.dataset.expenseHistoryFilter, value = element.value;
     if (kind === 'year') {
@@ -120,6 +125,21 @@ export function createExpenseHistory({request, capabilities, capture, run, today
     });
   }
   function setQuery(value) {query = value.slice(0, 250); if (!query.trim() && searched) clearSearch();}
+  function chooseSort(field) {
+    const nextSort = nextExpenseSort(sort, field);
+    if (!nextSort) return false;
+    sort = nextSort;
+    render();
+    return true;
+  }
+  function setSort(value) {
+    if (value === '') {sort = null; render(); return true;}
+    const [field, direction] = String(value).split(':');
+    if (!nextExpenseSort(null, field) || !['asc','desc'].includes(direction)) return false;
+    sort = {field, direction};
+    render();
+    return true;
+  }
   function clearSearch() {cancelRead(); query = ''; searched = ''; scan = null; render();}
   function search() {
     if (!query.trim()) {clearSearch(); return true;}
@@ -161,7 +181,8 @@ export function createExpenseHistory({request, capabilities, capture, run, today
       displayedGroups.forEach(group => {group.items = expenseHistoryRows(group.items, group.period);});
     }
     const shown = displayedGroups.map(group => {
-      const rows = group.items.slice(0, Math.max(0, remaining)); remaining -= rows.length;
+      const orderedItems = sort ? sortedExpenseRows(group.items, sort) : group.items;
+      const rows = orderedItems.slice(0, Math.max(0, remaining)); remaining -= rows.length;
       const totals = expenseTableTotals(group.items);
       return rows.length ? `<tbody class="morning-expense-history-period"><tr class="morning-expense-period-heading">
         <th colspan="5" scope="rowgroup"><h3>דיווח ${esc(group.period.label)} <small>(${group.items.length})</small></h3></th>
@@ -185,6 +206,13 @@ export function createExpenseHistory({request, capabilities, capture, run, today
       }
     }
     const option = (value, label, selected) => `<option value="${value}" ${value === selected ? 'selected' : ''}>${esc(label)}</option>`;
+    const mobileSortOptions = [['number','desc','מספר חשבונית · מהגבוה לנמוך'],['number','asc','מספר חשבונית · מהנמוך לגבוה'],
+      ['date','desc','תאריך · מהחדש לישן'],['date','asc','תאריך · מהישן לחדש'],['supplier','asc','שם ספק · מא׳ עד ת׳'],
+      ['supplier','desc','שם ספק · מת׳ עד א׳'],['description','asc','תיאור · מא׳ עד ת׳'],['description','desc','תיאור · מת׳ עד א׳'],
+      ['category','asc','סוג הוצאה · מא׳ עד ת׳'],['category','desc','סוג הוצאה · מת׳ עד א׳'],
+      ['gross','desc','סכום כולל מע״מ · מהגבוה לנמוך'],['gross','asc','סכום כולל מע״מ · מהנמוך לגבוה'],
+      ['vat','desc','מע״מ · מהגבוה לנמוך'],['vat','asc','מע״מ · מהנמוך לגבוה']];
+    const selectedMobileSort = sort ? `${sort.field}:${sort.direction}` : '';
     const years = Array.from({length:Math.max(0,Number(todayISO().slice(0,4))-2025)},(_,index) => String(Number(todayISO().slice(0,4))-index));
     const periods = [11,9,7,5,3,1].map(month => expenseBimonth(`${filterYear()}-${String(month).padStart(2,'0')}-01`)).filter(period => period.fromDate <= todayISO());
     return `<section class="morning-expense-history" data-expense-history aria-label="הוצאות לפי תקופות דיווח">
@@ -201,10 +229,18 @@ export function createExpenseHistory({request, capabilities, capture, run, today
       <button type="button" class="btn" data-action="morning-expense-command" data-expense-command="history-search">חיפוש</button>
       ${searched ? '<button type="button" class="btn" data-action="morning-expense-command" data-expense-command="history-search-clear">ניקוי חיפוש</button>' : ''}</div>
       ${searched ? `<p role="status">חיפוש: ${esc(searched)} · ${scan ? `${scan.items.length} תוצאות · נבדקו ${scan.seen.size} מתוך ${scan.total ?? '…'} הוצאות${complete ? (year ? ' · החיפוש הושלם בטווח שנבחר' : ' · החיפוש הושלם בכל החשבון') : ' · החיפוש עדיין חלקי'}` : 'החיפוש לא הושלם'}</p>` : ''}
-      ${shown ? `<table class="morning-expense-table" aria-label="הוצאות Morning לפי תקופות דיווח">${expenseTableHead()}${shown}</table>` : empty}
+      ${shown ? `<label class="morning-expense-mobile-sort">מיון תוצאות<select data-change="morning-expense-history-sort-select">${option('','סדר ברירת מחדל · תאריך אחרון',selectedMobileSort)}${mobileSortOptions.map(([field,direction,label]) => option(`${field}:${direction}`,label,selectedMobileSort)).join('')}</select></label>
+        <table class="morning-expense-table" aria-label="הוצאות Morning לפי תקופות דיווח">${expenseTableHead({sortable:true, sort})}${shown}</table>` : empty}
       <p role="status" aria-live="polite">${esc(busy ? 'טוען הוצאות מ־Morning…' : message)}</p>
       ${navigation}</section>`;
   }
   reset();
-  return {markup, more, refresh, reset, bind, chooseFilter, setQuery, search, searchMore, clearSearch};
+  return {markup, more, refresh, reset, bind, chooseFilter, setQuery, search, searchMore, clearSearch, chooseSort, setSort,
+    commands:{'history-more':more,'history-refresh':refresh,'history-sort':element=>chooseSort(element.dataset.expenseSortField),
+      'history-search':search,'history-search-more':searchMore,'history-search-clear':clearSearch},
+    actions:{
+      'morning-expense-history-query':element=>setQuery(element.value),
+      'morning-expense-history-filter':element=>chooseFilter(element),
+      'morning-expense-history-sort-select':element=>setSort(element.value),
+      'morning-expense-history-search-enter':(_,event)=>{event.stopPropagation();if(event.key==='Enter'&&!event.isComposing){event.preventDefault();return search();}return false;}}};
 }
