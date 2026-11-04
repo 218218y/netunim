@@ -296,6 +296,7 @@ test('preview stays local: filename Office preview stays native while content se
   const server=serverOwners();
   const lib=read('netunim-orders/document-bridge/lib.mjs');
   const ui=read('shared/global-document-search.js');
+  const sourceView=read('shared/global-document-search-source-view.js');
   const documentView=read('netunim-orders/site/assets/js/ui/document-search-view.js');
   const folderScope=read('netunim-orders/site/assets/js/ui/document-search-folder-scope.js');
   const contentOptions=read('netunim-orders/site/assets/js/ui/document-search-content-options.js');
@@ -371,7 +372,7 @@ test('preview stays local: filename Office preview stays native while content se
   assert.match(read('netunim-orders/document-bridge/http-routes.mjs'),/body\.offset/);
   assert.match(read('netunim-orders/document-bridge/search-owner.mjs'),/hasMore/);
   assert.match(client,/limit=150,offset=0/);
-  assert.match(ui,/function recentDocumentLabel\(\).*?'פריטים אחרונים'.*?'תיקיות אחרונות'.*?'קבצים אחרונים'/s);
+  assert.match(sourceView,/recentDocumentLabels/);
 
   assert.match(client,/const recent=async\(\{limit=150,scopePath='',fileType='all',signal=null\}=\{\}\)=>/);
   assert.match(server,/RECENT_RESULT_LIMIT/);
@@ -451,6 +452,7 @@ test('unified search uses a full-screen header search, four result filters and a
   const html=read('netunim-orders/site/index.html');
   const css=read('shared/global-document-search.css');
   const ui=read('shared/global-document-search.js');
+  const sourceView=read('shared/global-document-search-source-view.js');
   const documentView=read('netunim-orders/site/assets/js/ui/document-search-view.js');
   const folderScope=read('netunim-orders/site/assets/js/ui/document-search-folder-scope.js');
   const contentOptions=read('netunim-orders/site/assets/js/ui/document-search-content-options.js');
@@ -503,15 +505,15 @@ test('unified search uses a full-screen header search, four result filters and a
   assert.match(folderScope,/supportsFolderScope/);
   assert.match(folderScope,/documentBridge\.selectFolder\(\)/);
   assert.match(contentOptions,/MATCH_MODES=new Set\(\['phrase','all','any','proximity'\]\)/);
-  assert.match(ui,/function recentDocumentLabel\(\).*?'פריטים אחרונים'.*?'תיקיות אחרונות'.*?'קבצים אחרונים'/s);
+  assert.match(sourceView,/recentDocumentLabels/);
   assert.match(ui,/RECENT_DOCUMENT_TTL_MS=15000/);
   assert.match(documentView,/documentIconKind/);
   assert.match(ui,/documentResultsTableHtml/);
   assert.match(ui,/document-search-view\.js/);
-  assert.match(ui,/settledEmpty:data\.total===0/);
-  assert.match(ui,/settledEmpty:state\.status==='done'&&count===0/);
+  assert.match(sourceView,/settledEmpty:data\.total===0/);
+  assert.match(sourceView,/settledEmpty:state\.status==='done'&&count===0/);
   assert.match(ui,/hideEmptySources=filter==='all'/);
-  assert.match(ui,/const header=hasRows\?'':sourceHeader/);
+  assert.match(sourceView,/const header=hasRows\?'':sourceHeader/);
   assert.match(ui,/sections\.join\(''\)\|\|\(loading\?/);
   assert.match(ui,/setPointerCapture/);
 });

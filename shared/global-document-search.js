@@ -1,10 +1,11 @@
 import {nativePreviewGeometry as viewportPreviewGeometry} from './native-preview-geometry.js';
+import {renderGlobalDocumentSource,renderGlobalSiteSource,renderGlobalRecentDocumentBody,recentDocumentLabels} from './global-document-search-source-view.js';
 import {createDocumentPreviewModules} from '../domains/documents/preview-modules.js';
 import {esc} from '../core/values.js';
 import {createRuntimeResources} from './runtime-resources.js';
 import {createDocumentResultMenu,deleteLocalDocumentResult} from '../ui/document-result-menu.js';
 import {buildPdfPreviewSrc} from '../domains/documents/pdf-text-fragments.js';
-import {documentResultsTableHtml,documentSearchEmptyHtml,documentSearchPartialHtml,previewDetailsHtml,previewMatchBarPresentation,previewTextLabel,safeCloudViewUrl} from '../ui/document-search-view.js';
+import {documentResultsTableHtml,previewDetailsHtml,previewMatchBarPresentation,previewTextLabel,safeCloudViewUrl} from '../ui/document-search-view.js';
 import {createDocumentSearchFolderScope} from '../ui/document-search-folder-scope.js';
 import {createDocumentFileTypeFilter} from '../ui/document-search-file-type.js';
 import {createDocumentIndexRefresh} from '../ui/document-index-refresh.js';
@@ -71,7 +72,6 @@ export function createGlobalDocumentSearch({documentBridge=null,siteSearch,siteR
   function documentPairing({compact=false}={}){return documentPairingHtml({provider:documentBridge?.provider,fallbackFromLocal:documentBridge?.fallbackFromLocal,compact})}
   function documentIntro(mode){return documentIntroHtml({provider:documentBridge?.provider,mode})}
 
-  function resultMeta(item){const parts=siteResultMeta?.(item);return Array.isArray(parts)?parts.filter(Boolean):[]}
   function destroySearchPreviewViewer(){const viewer=previewSearchViewer;previewSearchViewer=null;previewSearchState={current:0,total:0};viewer?.destroy?.().catch?.(()=>{})}
   function cleanupPreviewObject(){destroySearchPreviewViewer();if(previewObjectUrl){URL.revokeObjectURL(previewObjectUrl);previewObjectUrl=''}}
   function nativePreviewGeometry(){
@@ -173,51 +173,20 @@ export function createGlobalDocumentSearch({documentBridge=null,siteSearch,siteR
   }
 
 
-  function sourceHeader(label,count,{loading=false}={}){return `<header class="global-search-source-head"><b>${esc(label)}</b>${loading?'<span class="global-search-source-loading">מחפש…</span>':`<span>${esc(count)}</span>`}</header>`}
-  function renderSiteSource(raw){
-    const data=siteSearch?.(raw,{limitPerGroup:siteResultLimit})||{total:0,groups:[]},visibleGroups=(data.groups||[]).filter(group=>group.total>0);
-    let hiddenTotal=0;
-    const groups=visibleGroups.map(group=>{const rows=group.items.map((item,index)=>{const key=`${group.key}:${item.kind}:${item.id}:${index}`;resultByKey.set(key,item);const metaParts=resultMeta(item);return `<button class="global-search-result" type="button" data-global-result-key="${esc(key)}"><span class="global-search-result-main"><span class="global-search-result-kicker">${
-  esc(item.context||group.label)} · ${esc(item.badge||group.label)}</span><b>${esc(item.title||'תוצאה')}</b>${item.subtitle?`<span class="global-search-result-subtitle">${esc(item.subtitle)}</span>`:''}</span>${metaParts.length?`<span class="global-search-result-meta">${metaParts.map(x=>`<em>${
-  esc(x)}</em>`).join('')}</span>`:''}<span class="global-search-result-arrow" aria-hidden="true">←</span></button>`}).join('');const hidden=Math.max(0,Number(group.total||0)-group.items.length);hiddenTotal+=hidden;return `<section class="global-search-group"><header><b>${esc(group.label)}</b><span>${esc(group.total)}</span></header><div class="global-search-group-results">${rows}</div>${
-  hidden>0?`<div class="global-search-more">מוצגות ${esc(group.items.length)} מתוך ${esc(group.total)} תוצאות בקבוצה.</div>`:''}</section>`}).join('');
-    const canLoadMore=hiddenTotal>0&&siteResultLimit<SITE_RESULT_MAX,loadMore=canLoadMore?`<div class="document-search-load-more" data-site-load-more>גלול להמשך תוצאות האתר</div>`:'';
-    const body=groups?`${groups}${loadMore}`:'<div class="global-search-source-empty">לא נמצאו תוצאות באתר.</div>';
-    return {total:data.total,settledEmpty:data.total===0,hasMore:canLoadMore,html:`<section class="global-search-source-section" data-search-source="site">${sourceHeader('חיפוש באתר',data.total)}<div class="global-search-source-body">${body}</div></section>`};
-  }
+  function renderSiteSource(raw){return renderGlobalSiteSource(raw,{siteSearch,siteResultMeta,siteResultLimit,siteResultMax:SITE_RESULT_MAX,
+    registerResult:(key,item)=>resultByKey.set(key,item)});}
   function documentErrorHtml(error,retry='recent'){if(documentAuthError(error))return documentPairing();return documentSearchErrorHtml(error,{provider:documentBridge?.provider,retry})}
-  function renderDocumentSource(mode,raw){
-    const state=documentStates[mode],label=sourceLabel(mode),count=state.rows.length,hasRows=state.status==='done'&&count>0;
-    let body='';
-    if(state.status==='loading')body=`<div class="global-search-source-progress"><span class="document-search-spinner">⌕</span>מחפש דרך ${esc(documentProviderLabel())}…</div>`;
-    else if(state.status==='pairing')body=documentPairing({compact:filter==='all'&&mode==='content'});
-    else if(state.status==='unavailable'||state.status==='error')body=documentErrorHtml(state.error||{message:'רכיב החיפוש המקומי אינו זמין.'},`search:${mode}`);
-    else if(state.status==='short')body=documentIntro(mode);
-    else if(state.status==='done'){
-      body=hasRows?renderDocumentTable(state.rows,mode,{hasMore:state.hasMore}):documentSearchEmptyHtml(label,state.partial);
-      if(hasRows&&(state.loadingMore||state.hasMore))body+=state.loadingMore?'<div class="document-search-load-more loading"><span class="document-search-spinner">⌕</span>טוען עוד תוצאות…</div>':`<div class="document-search-load-more" data-document-load-more="${esc(mode)}">גלול להמשך התוצאות</div>`;
-      body+=documentSearchPartialHtml(state.partial);
-      if(state.error)body+=documentErrorHtml(state.error,`more:${mode}`);
-    }else body=raw?'<div class="global-search-source-empty">החיפוש המקומי עדיין לא הופעל.</div>':documentIntro(mode);
-    const header=hasRows?'':sourceHeader(label,count,{loading:state.status==='loading'}),notice=providerNoticeHtml();
-    return {total:count,settledEmpty:state.status==='done'&&count===0&&!state.partial,html:`<section class="global-search-source-section" data-search-source="${esc(mode)}">${header}<div class="global-search-source-body">${notice}${body}</div></section>`};
-  }
+  function renderDocumentSource(mode,raw){return renderGlobalDocumentSource(mode,raw,{state:documentStates[mode],label:sourceLabel(mode),filter,
+    documentProviderLabel,documentPairing,documentErrorHtml,documentIntro,renderDocumentTable,providerNoticeHtml});}
   function updateMeta(siteTotal,documentTotal,loading){const {meta}=refs();if(!meta)return;const total=siteTotal+documentTotal;if(loading){meta.textContent=total?`${total} תוצאות עד כה · החיפוש דרך ${documentProviderLabel()} ממשיך…`:`מחפש דרך ${documentProviderLabel()}…`;return}const partial=requestedDocumentModes().some(mode=>documentStates[mode].partial);meta.textContent=partial?`${total} תוצאות · חיפוש חלקי`:total?`${total} תוצאות`:'לא נמצאו תוצאות'}
-  function recentDocumentLabel(){const type=documentFileType.value();return type==='all'?'פריטים אחרונים':type==='folders'?'תיקיות אחרונות':'קבצים אחרונים'}
-  function recentDocumentEmptyLabel(){const type=documentFileType.value();return type==='all'?'לא נמצאו פריטים':type==='folders'?'לא נמצאו תיקיות':'לא נמצאו קבצים'}
   function renderRecentDocuments(){
     const {results,meta}=refs();if(!results)return;resultByKey=new Map();documentResultByKey=new Map();
     if(!includesRecentDocuments()){setPreviewLayout(false);if(meta)meta.textContent='';const intro=filter==='content'?documentIntro('content'):scopeIntro();results.innerHTML=`${requestedDocumentModes().length?localDocumentPairingHtml():''}${intro}`;return}
-    const state=recentDocumentState,rows=sortedDocumentRows(state.rows,recentDocumentSort);let body='';
-    if(state.status==='loading')body=`<div class="global-search-source-progress"><span class="document-search-spinner">⌕</span>טוען ${esc(recentDocumentLabel())} מ־${esc(documentProviderLabel())}…</div>`;
-    else if(state.status==='pairing')body=documentPairing();
-    else if(state.status==='unavailable'||state.status==='error')body=documentErrorHtml(state.error||{message:'רכיב החיפוש המקומי אינו זמין.'});
-    else if(state.status==='done'&&rows.length)body=renderDocumentTable(rows,'everything',{label:recentDocumentLabel(),hint:'לחיצה על כותרת ממיינת · לחיצה אחת לתצוגה · לחיצה כפולה לפתיחה',sortScope:'recent',sort:recentDocumentSort});
-    else if(state.status==='done')body=`<div class="global-search-source-empty">${esc(recentDocumentEmptyLabel())} ב־${esc(documentProviderLabel())}.</div>`;
-    else body='<div class="global-search-source-progress"><span class="document-search-spinner">⌕</span>טוען קבצים אחרונים…</div>';
+    const {label,emptyLabel}=recentDocumentLabels(documentFileType.value()),provider=documentProviderLabel(),state=recentDocumentState,rows=sortedDocumentRows(state.rows,recentDocumentSort);
+    const body=renderGlobalRecentDocumentBody(state,rows,{label,emptyLabel,provider,documentPairing,documentErrorHtml,renderDocumentTable,recentDocumentSort});
     results.innerHTML=`${localDocumentPairingHtml()}<section class="global-search-source-section" data-search-source="recent"><div class="global-search-source-body">${providerNoticeHtml()}${body}</div></section>`;
     setPreviewLayout(rows.length>0);if(selectedDocumentKey&&!documentResultByKey.has(selectedDocumentKey))resetDocumentPreview();
-    if(meta)meta.textContent=state.status==='loading'?`טוען ${recentDocumentLabel()}…`:rows.length?`${rows.length} ${recentDocumentLabel()}`:state.status==='done'?recentDocumentEmptyLabel():'';
+    if(meta)meta.textContent=state.status==='loading'?`טוען ${label}…`:rows.length?`${rows.length} ${label}`:state.status==='done'?emptyLabel:'';
   }
   function renderCombinedResults(value=''){
     const {results}=refs();if(!results)return;documentContentOptions.update();documentFolderScope.update();const raw=String(value||'').trim();resultByKey=new Map();documentResultByKey=new Map();if(!raw){renderRecentDocuments();return}
