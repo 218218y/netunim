@@ -1,4 +1,15 @@
-import {expensePreferredCategory,resolveExpenseSupplierCategory,readExpenseCatalogPage} from './morning-expense-catalog.js';
+import {expensePreferredCategory,resolveExpenseSupplierCategory,readExpenseCatalogPage,expenseCatalogClassifications} from './morning-expense-catalog.js';
+
+export function expenseCategoryRows(catalog,retained){
+  // Canonical detail evidence supersedes an earlier search snapshot of the
+  // same expense, including its classification and supplier identity.
+  return [...new Map([...(catalog?.expenses||[]),...retained].map(row=>[row.id,row])).values()];
+}
+export function retainExpenseCategoryEvidence(catalog,retained,rows){
+  const merged=[...new Map([...retained,...rows].map(row=>[row.id,row])).values()];
+  catalog.classifications=expenseCatalogClassifications(expenseCategoryRows(catalog,merged));
+  return merged;
+}
 
 export async function readRetainedExpenseCategory(id, canonicalItem, check, environment) {
   if (!id) return null;

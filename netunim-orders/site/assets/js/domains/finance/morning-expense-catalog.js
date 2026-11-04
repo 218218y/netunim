@@ -72,7 +72,35 @@ export async function readExpenseSupplierCategory(request, capabilities, supplie
     for (const row of result.items) {seen.add(row.id); rows.push(row);}
   }
   assertCurrent();
-  return {rows, category:expenseSupplierCategory(rows, supplier)};
+  const category=expenseSupplierCategory(rows,supplier);
+  return category ? {rows,category} : readExpenseSnapshotHistory(request,capabilities,supplier,assertCurrent);
+}
+async function readExpenseSnapshotHistory(request,capabilities,supplier,check){
+  const key=value=>String(value||'').normalize('NFKC').replace(/[\s\p{P}\p{Cf}]/gu,'').toLowerCase();
+  const rows=[],seen=new Set();let pages=1,total=null,candidates=0;
+  for(let page=0;page<pages;page++){
+    const result=await readExpenseCatalogPage(request,capabilities,'expenses',{},page,check);
+    if(result.pages>20||total!==null&&total!==result.total||result.items.some(row=>seen.has(row.id))){
+      throw Error('לא ניתן לאמת היסטוריית סיווג מלאה לספק. יש לבחור סיווג ידנית.');
+    }
+    total=result.total;pages=result.pages;
+    for(const row of result.items){
+      seen.add(row.id);
+      if(row.status===100||row.supplierId&&row.supplierId!==supplier.id||row.supplierTaxId&&row.supplierTaxId!==supplier.taxId)continue;
+      const identity=row.supplierId===supplier.id||row.supplierTaxId===supplier.taxId;
+      // Search snapshots can omit BOTH supplier identifiers. A name is only a
+      // lookup hint: the detail's tax identity must match before using its category.
+      if(!identity&&(!key(supplier.name)||key(row.name)!==key(supplier.name)))continue;
+      if(++candidates>200)throw Error('היסטוריית הספק גדולה מדי לאימות אוטומטי. יש לבחור סיווג ידנית.');
+      const value=await request('get_expense',{id:row.id,expectedEnvironment:capabilities.environment},check);check();
+      const item=value.item;
+      if(value.version!==1||value.environment!==capabilities.environment||item?.id!==row.id||item.kind!=='expense'){
+        throw Error('לא ניתן לאמת את פרטי הוצאת המקור לסיווג.');
+      }
+      if(item.status!==100&&(!item.supplierId||item.supplierId===supplier.id)&&item.supplierTaxId===supplier.taxId)rows.push(item);
+    }
+  }
+  check();return {rows,category:expenseSupplierCategory(rows,supplier)};
 }
 export function expenseSupplierEligibility(supplier, profiles = [], allowP = false) {
   const profile = profiles.find(row => row.id === supplier?.id || row.taxId && row.taxId === supplier?.taxId);
