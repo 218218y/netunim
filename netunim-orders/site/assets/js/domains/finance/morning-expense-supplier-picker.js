@@ -38,7 +38,9 @@ export function createExpenseSupplierPicker({rows, selectedId, eligibility, edit
     if (!editable()) return false;
     const field = input(); if (!field) return false;
     if (!host().classList.contains('open')) {
-      query = ''; field.value = rows().find(row => row.id === selectedId())?.name || ''; field.select(); activeId = ''; refresh();
+      // Opening is not an edit. Only input events may replace the selected
+      // supplier's display value with a search query across subsequent renders.
+      field.value = query ?? rows().find(row => row.id === selectedId())?.name ?? ''; field.select(); activeId = ''; refresh();
     }
     host().classList.add('open'); field.setAttribute('aria-expanded', 'true'); return true;
   }

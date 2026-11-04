@@ -509,8 +509,8 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
   function sourceExpenses() {return [...(catalog?.expenses || []), ...extraExpenses];}
   async function applySuggestions(item, check, origin) {
     if (operationId || item.currency && item.currency !== 'ILS') throw new Error('ניתן למלא את הטופס רק במסמך בשקלים ובהיעדר פעולת יצירה קיימת.');
-    const {supplier, category, categoryRows, categoryUnavailable} = await readExpenseProposal(item, {
-      request, capabilities:catalog.capabilities, canonicalItem, expenses:sourceExpenses(), local:origin === 'local', check});
+    const {supplier, category, categoryRows, categoryUnavailable, forgetCategory} = await readExpenseProposal(item, {
+      request, capabilities:catalog.capabilities, canonicalItem, expenses:sourceExpenses(), preferences, local:origin === 'local', check});
     check();
     batch.invalidate(selected);
     if (origin !== 'local') draft = defaults();
@@ -522,6 +522,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     Object.assign(draft, origin === 'local' ? Object.fromEntries(Object.entries(suggestions).filter(([,value]) => value !== '' && value !== null && value !== undefined)) : suggestions);
     if (supplier) {catalog.suppliers = mergeSuppliers([supplier], catalog.suppliers); draft.supplierId = supplier.id; draft.pcnClassification = eligibilityFor(supplier).p ? 'P' : 'T';}
     if (supplier && origin === 'local') {
+      if(forgetCategory){preferences.classifications=preferences.classifications.filter(row=>row.supplierId!==supplier.id);persistPreferences();}
       extraExpenses = [...new Map([...extraExpenses, ...categoryRows].map(row => [row.id, row])).values()];
       catalog.classifications = expenseCatalogClassifications(sourceExpenses());
       draft.classificationExpenseId = category?.id || '';

@@ -1,8 +1,9 @@
-import {readExpenseCatalogPage, resolveExpenseSupplierCategory} from './morning-expense-catalog.js';
+import {readExpenseCatalogPage} from './morning-expense-catalog.js';
+import {readSavedExpenseCategory} from './morning-expense-category-state.js';
 
 // Resolve source suggestions before the intake mutates its current draft. The
 // caller's check fences account, environment, file, edit and financial ownership.
-export async function readExpenseProposal(item, {request, capabilities, canonicalItem, expenses, local, check}) {
+export async function readExpenseProposal(item, {request, capabilities, canonicalItem, expenses, preferences, local, check}) {
   let supplier = null;
   const taxId = item.supplier?.taxId;
   if (/^\d{9}$/.test(taxId || '')) {
@@ -13,15 +14,16 @@ export async function readExpenseProposal(item, {request, capabilities, canonica
       if (canonical.active && canonical.taxId === taxId && (!item.supplier.id || canonical.id === item.supplier.id)) supplier = canonical;
     }
   }
-  let category = null, categoryRows = [], categoryUnavailable = false;
+  let category = null, categoryRows = [], categoryUnavailable = false, forgetCategory = false;
   if (supplier && local) {
     try {
-      const history = await resolveExpenseSupplierCategory(request, capabilities, supplier, expenses, check);
-      category = history.category; categoryRows = history.rows;
+      const history = await readSavedExpenseCategory({supplier,capabilities,expenses,preferences,request,canonicalItem,check});
+      category = history.category; categoryRows = history.rows || [];
+      categoryUnavailable = history.unavailable === true; forgetCategory = history.forget === true;
     } catch {check(); categoryUnavailable = true;}
   }
   check();
-  return {supplier, category, categoryRows, categoryUnavailable};
+  return {supplier, category, categoryRows, categoryUnavailable, forgetCategory};
 }
 
 export function expenseProposalFields(item, classifications) {
