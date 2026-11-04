@@ -897,14 +897,19 @@ ok("tr.pending td{background:var(--marker-yellow)}" in orders_css
    and "tr.pending:hover td{background:var(--marker-yellow-hover)}" in orders_css
    and ".credit-pending-detail-row td{background:var(--marker-yellow)}" in orders_css
    and ".credit-pending-detail-row:hover td{background:var(--marker-yellow-hover)}" in orders_css
+   and "--marker-yellow:#fff6ac" in orders_css
+   and "--marker-yellow-hover:#fff39a" in orders_css
    and ".bank-transaction-pending{display:inline-flex;padding:2px 6px;border-radius:999px;background:var(--warn-soft);color:var(--warn)" in orders_css
    and ".credit-transaction-pending{background:var(--warn-soft);color:var(--warn)}" in orders_css
-   and ".bank-transactions-table tbody tr.pending td{background:#fffdf8}" in kupa_css
-   and ".credit-detail-table tbody tr.credit-pending-detail-row td{background:#fffdf8}" in kupa_css
-   and ".credit-detail-table tbody tr.credit-pending-detail-row:hover td{background:#fffdf8}" in kupa_css
+   and ".bank-transactions-table>tbody>tr.pending>td{background:var(--marker-yellow)}" in kupa_css
+   and ".bank-transactions-table>tbody>tr.pending:hover>td{background:var(--marker-yellow-hover)}" in kupa_css
+   and ".credit-detail-table tbody tr.credit-pending-detail-row td{background:var(--marker-yellow)}" in kupa_css
+   and ".credit-detail-table tbody tr.credit-pending-detail-row:hover td{background:var(--marker-yellow-hover)}" in kupa_css
+   and "--marker-yellow:#fff6ac" in kupa_css
+   and "--marker-yellow-hover:#fff39a" in kupa_css
    and ".bank-transaction-pending{display:inline-flex;align-items:center;padding:3px 6px;border-radius:999px;background:#fff3d8;color:#866622" in kupa_css
    and ".credit-transaction-pending{background:#fff3d8;color:#866622}" in kupa_css,
-   "credit pending visual parity: each app reuses its bank pending row and badge styling instead of a separate credit-only yellow")
+   "credit pending visual parity: both apps use the shared supplier marker-yellow and matching hover for bank/credit rows while retaining matching status badges")
 orders_finance_composition=(O / "site/assets/js/composition/finance.js").read_text(encoding="utf-8")
 orders_finance_composition_compact=re.sub(r"\s+", "", orders_finance_composition)
 ok("createOrdersFinanceCapability" in orders_main and "finance.presentation.renderKupa" in orders_main and "kupaSubView:'bank'" in orders_contexts,
