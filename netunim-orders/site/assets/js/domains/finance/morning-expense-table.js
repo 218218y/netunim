@@ -2,9 +2,49 @@ import {esc} from '../../core/values.js';
 import {validReportDate} from '../../core/morning-report-period.js';
 
 const currency = new Intl.NumberFormat('he-IL', {style:'currency', currency:'ILS'});
+const expenseSortCollator = new Intl.Collator('he-IL', {numeric:true, sensitivity:'base'});
+const EXPENSE_SORT_FIELDS = new Set(['number','date','supplier','description','category','gross','vat']);
 export const expenseMoney = cents => Number.isSafeInteger(cents) ? currency.format(cents / 100) : '—';
 // Match the existing Morning report policy: credit invoices reduce expenses.
 const signed = (row, cents) => Number.isSafeInteger(cents) ? row.type === 330 ? -Math.abs(cents) : cents : null;
+
+export function defaultExpenseSortDirection(field) {
+  return ['supplier','description','category'].includes(field) ? 'asc' : 'desc';
+}
+
+export function nextExpenseSort(current, field) {
+  if (!EXPENSE_SORT_FIELDS.has(field)) return null;
+  if (current?.field !== field) return {field, direction:defaultExpenseSortDirection(field)};
+  return {field, direction:current.direction === 'asc' ? 'desc' : 'asc'};
+}
+
+function expenseSortValue(row, field) {
+  if (field === 'number') return String(row.number || '').trim() || null;
+  if (field === 'date') return validReportDate(row.sourceDocumentDate) ? row.sourceDocumentDate : null;
+  if (field === 'supplier') return String(row.name || '').trim() || null;
+  if (field === 'description') return String(row.description || '').trim() || null;
+  if (field === 'category') return String(row.category || row.classification?.title || '').trim() || null;
+  if (field === 'gross') return signed(row, row.grossCents);
+  if (field === 'vat') return signed(row, row.vatCents);
+  return null;
+}
+
+export function compareExpenseRows(a, b, sort) {
+  if (!EXPENSE_SORT_FIELDS.has(sort?.field) || !['asc','desc'].includes(sort?.direction)) return 0;
+  const left = expenseSortValue(a, sort.field), right = expenseSortValue(b, sort.field);
+  if (left === null || right === null) return left === right ? 0 : left === null ? 1 : -1;
+  const result = typeof left === 'number' && typeof right === 'number'
+    ? left - right
+    : sort.field === 'date'
+      ? left.localeCompare(right)
+      : expenseSortCollator.compare(left, right);
+  return sort.direction === 'desc' ? -result : result;
+}
+
+export function sortedExpenseRows(items, sort) {
+  return [...items].sort((a, b) => compareExpenseRows(a, b, sort));
+}
+
 export function expenseTableTotals(items) {
   return Object.fromEntries(['grossCents', 'vatCents'].map(key => {
     let sum = 0;
@@ -16,9 +56,20 @@ export function expenseTableTotals(items) {
     return [key, sum];
   }));
 }
-export function expenseTableHead() {
-  return `<thead><tr><th scope="col">מספר</th><th scope="col">תאריך המסמך</th><th scope="col">שם הספק</th>
-    <th scope="col">תיאור</th><th scope="col">סוג ההוצאה</th><th scope="col">סכום כולל מע״מ</th><th scope="col">מע״מ</th></tr></thead>`;
+export function expenseTableHead({sortable=false, sort=null}={}) {
+  const columns = [['מספר','number'],['תאריך המסמך','date'],['שם הספק','supplier'],['תיאור','description'],
+    ['סוג ההוצאה','category'],['סכום כולל מע״מ','gross'],['מע״מ','vat']];
+  const headers = columns.map(([label, field]) => {
+    if (!sortable) return `<th scope="col">${label}</th>`;
+    const active = sort?.field === field, direction = active ? sort.direction : '';
+    const ariaSort = active ? direction === 'asc' ? 'ascending' : 'descending' : 'none';
+    const indicator = active ? direction === 'asc' ? '▲' : '▼' : '';
+    const current = active ? `, כעת בסדר ${direction === 'asc' ? 'עולה' : 'יורד'}` : '';
+    return `<th scope="col" aria-sort="${ariaSort}"><button type="button" class="morning-expense-sort${active ? ' active' : ''}"
+      data-action="morning-expense-command" data-expense-command="history-sort" data-expense-sort-field="${field}"
+      aria-label="מיין לפי ${label}${current}">${label}<span aria-hidden="true">${indicator}</span></button></th>`;
+  }).join('');
+  return `<thead><tr>${headers}</tr></thead>`;
 }
 export function expenseTableRow(row, kind = 'history') {
   const date = validReportDate(row.sourceDocumentDate) ? row.sourceDocumentDate.split('-').reverse().join('/') : '—';

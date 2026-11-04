@@ -97,6 +97,27 @@ test('history search replaces only the list, marks partial results and restores 
   assert.ok(!history.markup().includes('החיפוש עדיין חלקי'));
 });
 
+test('history sorting keeps reporting periods in order and sorts independently inside each period', async () => {
+  globalThis.document = {querySelector:() => null};
+  const items = [
+    {...row, id:'new-low', number:'1', category:'sort-scope', grossCents:10000, reportingDate:'2026-10-01', sourceDocumentDate:'2026-10-10'},
+    {...row, id:'new-high', number:'2', category:'sort-scope', grossCents:20000, reportingDate:'2026-09-01', sourceDocumentDate:'2026-09-20'},
+    {...row, id:'old-high', number:'99', category:'sort-scope', grossCents:990000, reportingDate:'2026-07-01', sourceDocumentDate:'2026-08-01'},
+  ];
+  const history = createExpenseHistory({request:async () => page(items), capabilities:() => caps,
+    capture:() => () => {}, run:work => work(), todayISO:() => '2026-10-27'});
+  history.setQuery('sort-scope');
+  await history.search();
+  const ids = () => [...history.markup().matchAll(/data-expense-history-id="([^"]+)"/g)].map(match => match[1]);
+  assert.deepEqual(ids(), ['new-low','new-high','old-high']);
+  history.chooseSort('gross');
+  assert.deepEqual(ids(), ['new-high','new-low','old-high']);
+  const markup = history.markup();
+  assert.ok(markup.indexOf('דיווח ספטמבר–אוקטובר 2026') < markup.indexOf('דיווח יולי–אוגוסט 2026'));
+  assert.match(markup, /\(2\)/);
+  assert.match(markup, /\(1\)/);
+});
+
 test('replaced searches and account resets cannot publish old results', async () => {
   globalThis.document = {querySelector:() => null};
   let release, block = true;

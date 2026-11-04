@@ -667,7 +667,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     'split-invoices':splitInvoices,
     'ocr-start':async () => {if (busy || local.multiple() || local.pending()) return false; local.reset(); const value = await ocr.start(); if (!ocr.active()) local.start(); return value;},
     'ocr-status':ocr.status, 'ocr-fill':ocr.fill, 'ocr-defer':ocr.defer, 'ocr-resume':element => {if (busy) return false; local.reset(); return ocr.resume(element);},
-    'history-more':history.more, 'history-refresh':history.refresh, 'history-search':history.search, 'history-search-more':history.searchMore, 'history-search-clear':history.clearSearch, 'recent-refresh':recent.load, 'recent-cancel':recent.cancel,
+    'history-more':history.more, 'history-refresh':history.refresh, 'history-sort':element => history.chooseSort(element.dataset.expenseSortField), 'history-search':history.search, 'history-search-more':history.searchMore, 'history-search-clear':history.clearSearch, 'recent-refresh':recent.load, 'recent-cancel':recent.cancel,
     'use-favorite':element => setField({dataset:{expenseField:'supplierId'}, value:element.dataset.expenseSupplier}),
     'choose-file':queueChange, 'remove-file':queueChange, 'file-status':fileStatus};
   const writes = {cancel:() => recover('cancel_reserved'), reconcile:() => recover('reconcile'),'source-waive':sourceWaive,'source-retry':retrySource};
@@ -679,6 +679,7 @@ export function createMorningExpenseIntake({request:sendRequest, captureRead, ca
     'morning-expense-field':(element, event) => element.hasAttribute('data-expense-supplier-field')?supplierForm.field(element):element.hasAttribute('data-expense-picker') ? supplierPicker.handle(element, event) : setField(element),
     'morning-expense-history-query':element => history.setQuery(element.value),
     'morning-expense-history-filter':element => history.chooseFilter(element),
+    'morning-expense-history-sort-select':element => history.setSort(element.value),
     'morning-expense-history-search-enter':(_, event) => {event.stopPropagation(); if (event.key === 'Enter' && !event.isComposing) {event.preventDefault(); return history.search();} return false;},
     'morning-expense-save':save,
     'morning-expense-batch-mark':()=>approveFile(false),
