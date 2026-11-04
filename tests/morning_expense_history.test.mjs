@@ -33,6 +33,20 @@ test('history rejects shifted pages, duplicates, other periods and old account r
   await assert.rejects(readExpenseHistoryPeriod(async () => paged([row]), caps, period, () => {throw Error('account changed');}), /account changed/);
 });
 
+test('default history order uses newest date, natural invoice number and stable identity fallback', () => {
+  const rows = [
+    {...expense('invoice-2', '2026-10-20'), number:'2'},
+    {...expense('invoice-10-b', '2026-10-20'), number:'10'},
+    {...expense('invoice-10-a', '2026-10-20'), number:'10'},
+    {...expense('invoice-missing', '2026-10-20'), number:''},
+    {...expense('newer-date', '2026-10-21'), number:'1'},
+    {...expense('missing-date', ''), number:'99'},
+  ];
+  assert.deepEqual(expenseHistoryRows(rows, period).map(row => row.id), [
+    'newer-date','invoice-10-a','invoice-10-b','invoice-2','invoice-missing','missing-date',
+  ]);
+});
+
 test('smart supplier search finds punctuation variants outside the initial directory page and reuses canonical pages', async () => {
   const all = Array.from({length:101}, (_, i) => ({id:String(i), name:i === 100 ? 'ת.ב.י רהיטים' : 'ספק אחר', active:true, taxId:'123456789'}));
   const catalog = {capabilities:caps, supplierPage:paged(all.slice(0, 50), 0, all)};
