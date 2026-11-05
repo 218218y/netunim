@@ -104,7 +104,7 @@ export function creditDetailMonthlySections(items=[]){
 }
 
 /** @param {DetailRow} row */
-function creditDetailCycleOwnerKey(row){
+export function creditDetailAccountGroupKey(row){
   if(row?.creditAccountKey)return String(row.creditAccountKey);
   if(row?.profileId&&row?.accountNumber)return `sync:${String(row.profileId)}:${String(row.accountNumber)}`;
   if(row?.source==='manual'||row?.card)return `manual:${String(row?.card||'')}:${String(row?.account||'')}:${String(row?.ownerLabel||'')}`;
@@ -113,7 +113,7 @@ function creditDetailCycleOwnerKey(row){
 
 /** @param {DetailRow} row */
 function creditDetailUpcomingCycleKey(row){
-  const owner=creditDetailCycleOwnerKey(row),date=creditDetailCycleDisplayDate(row);
+  const owner=creditDetailAccountGroupKey(row),date=creditDetailCycleDisplayDate(row);
   return owner&&date?`${owner}\u0000${date}`:'';
 }
 

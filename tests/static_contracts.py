@@ -778,6 +778,17 @@ ok(all('grid-template-columns:minmax(0,1fr) 68px' in css
    and '.credit-detail-cycle-divider td{padding:5px 11px!important' in kupa_css
    and '.credit-detail-cycle-divider td b{font-size:12px;font-weight:900}' in kupa_css,
    "credit cycle controls: both apps keep the same compact 38px controls, 10/15 choices, billing dividers and RTL menu behavior")
+credit_detail_sections=(ROOT/'shared/credit-detail-sections.js').read_text(encoding='utf-8')
+credit_detail_policy=(ROOT/'shared/credit-detail-policy.js').read_text(encoding='utf-8')
+ok('createCreditCardBoundaryRowMarkup(creditDetailRowMarkup)' in orders_finance_view
+   and 'createCreditCardBoundaryRowMarkup(creditMonthlyDetailRow)' in kupa_credit_view
+   and 'foreignItems.map(rowMarkup)' in orders_finance_view and 'uncertainItems.map(rowMarkup)' in orders_finance_view and 'regularItems.map(rowMarkup)' in orders_finance_view
+   and 'foreignItems.map(rowMarkup)' in kupa_credit_view and 'uncertainItems.map(rowMarkup)' in kupa_credit_view and 'regularItems.map(rowMarkup)' in kupa_credit_view
+   and 'creditDetailAccountGroupKey(row)' in credit_detail_sections
+   and 'export function creditDetailAccountGroupKey(row)' in credit_detail_policy
+   and '.credit-detail-table tbody tr.credit-card-boundary>td{border-top:2px solid #89a49a}' in orders_css
+   and '.credit-detail-table tbody tr.credit-card-boundary>td{border-top:2px solid #89a49a}' in kupa_css,
+   "credit card detail boundary: both apps mark only account identity transitions with a contiguous, zero-gap divider and preserve it across billing sections")
 ok('.credit-filter-toolbar{display:grid;gap:8px;padding:5px 10px}' in orders_css
    and '.credit-primary-report .credit-detail-section-head{padding:6px 11px}' in orders_css
    and '.credit-cycle-menu-trigger{box-sizing:border-box;width:168px;height:38px' in orders_css

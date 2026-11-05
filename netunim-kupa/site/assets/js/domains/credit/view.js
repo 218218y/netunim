@@ -19,7 +19,7 @@ import {
   creditHistoryMenuMarkup,
   creditFutureMenuMarkup,
   creditDetailChargeHeadingMarkup} from '../../shared/credit-detail-controls.js';
-import {creditCycleRowsMarkup,creditUpcomingSectionsMarkup} from '../../shared/credit-detail-sections.js';
+import {createCreditCardBoundaryRowMarkup,creditCycleRowsMarkup,creditUpcomingSectionsMarkup} from '../../shared/credit-detail-sections.js';
 import {creditSyncHeadlineState,creditSyncHeadlineMarkup,creditSyncDiagnosticsMarkup} from './sync-view.js';
 export {creditSyncHeadlineState} from './sync-view.js';
 function creditSearchValues(row){
@@ -164,7 +164,7 @@ function creditDetailSectionMarkup(){
   searching&&focusedCount?
   'אין עסקאות או תשלומים המתאימים לחיפוש.':
   upcoming?'אין חיוב קרוב להצגה במסנן הנוכחי.':detailMonths.length||historyMonths.length?'אין עסקאות להצגה בחודש שנבחר.':`אין עסקאות ידועות ב-${esc(CREDIT_DETAIL_HISTORY_MONTHS)} החודשים הקודמים או בחודשים העתידיים במסנן הנוכחי.`;
-  const rowPresentation={colspan,rowMarkup:creditMonthlyDetailRow,escapeHtml:esc,formatDate:dateFmt};
+  const rowMarkup=createCreditCardBoundaryRowMarkup(creditMonthlyDetailRow),rowPresentation={colspan,rowMarkup,escapeHtml:esc,formatDate:dateFmt};
   const focusMonthLabel=detailFocus?.monthKey==='unassigned'?'מחזור לא ודאי':monthLabel(detailFocus?.monthKey||''),
   rowsMarkup=detailItems.length?(
   upcoming?
@@ -173,15 +173,15 @@ function creditDetailSectionMarkup(){
   creditCycleRowsMarkup(page.rows,rowPresentation):(
   `${foreignItems.length?(
   `<tr class="credit-detail-cycle-divider certain foreign"><td colspan="${colspan}"><b>עסקאות חו״ל / מט״ח</b><small>עסקאות בחיוב מיידי משויכות למחזור הכרטיס שבין חיוב חודשי אחד לבא; בשורה נשמר מועד החיוב בפועל.</small></td></tr>` +
-  `${foreignItems.map(creditMonthlyDetailRow).join('')}`):
+  `${foreignItems.map(rowMarkup).join('')}`):
   ''}` +
   `${uncertainItems.length?(
   `<tr class="credit-detail-cycle-divider uncertain"><td colspan="${colspan}"><b>מחזור לא ודאי</b><small>עסקאות ממתינות שמועד החיוב הסופי שלהן טרם נקבע; מוצגות כאן ליד החיוב הסמוך של אותו כרטיס.</small></td></tr>` +
-  `${uncertainItems.map(creditMonthlyDetailRow).join('')}`):
+  `${uncertainItems.map(rowMarkup).join('')}`):
   ''}` +
   `${regularItems.length?(
   `${foreignItems.length||uncertainItems.length?`<tr class="credit-detail-cycle-divider certain"><td colspan="${colspan}"><b>חיוב ${esc(focusMonthLabel)}</b></td></tr>`:''}` +
-  `${regularItems.map(creditMonthlyDetailRow).join('')}`):
+  `${regularItems.map(rowMarkup).join('')}`):
   ''}`)):
   `<tr><td colspan="${colspan}"><div class="empty compact">${emptyText}</div></td></tr>`;
   const selectedMonthKey=upcoming?'':detailFocus?.monthKey||'';
@@ -476,12 +476,13 @@ function creditFrameMarkup(status){
   `מתוך ${money(status.frame)} · חיובים עתידיים ידועים ${money(status.commitments)}${Math.abs(pending)>0.004?` · אישורים ממתינים ${money(pending)}`:''}`;
   return `<div class="credit-live-frame"><span>${label}</span><b>${money(status.available)}</b>${detail?`<small>${detail}</small>`:''}</div>`;
 }
-function creditMonthlyDetailRow(item){
-  if(item.source==='manual')return manualMonthlyCreditRow(item);
-  if(item.source==='credit_pending')return pendingMonthlyCreditRow(item);
-  if(item.source==='credit_foreign')return foreignMonthlyCreditRow(item);
-  if(item.source==='credit_unknown')return unknownMonthlyCreditRow(item);
-  return syncedMonthlyCreditRow(item)
+function creditMonthlyDetailRow(item,{cardBoundary=false}={}){
+  const boundaryClass=cardBoundary?' credit-card-boundary':'';
+  if(item.source==='manual')return manualMonthlyCreditRow(item,boundaryClass);
+  if(item.source==='credit_pending')return pendingMonthlyCreditRow(item,boundaryClass);
+  if(item.source==='credit_foreign')return foreignMonthlyCreditRow(item,boundaryClass);
+  if(item.source==='credit_unknown')return unknownMonthlyCreditRow(item,boundaryClass);
+  return syncedMonthlyCreditRow(item,boundaryClass)
 }
 function chargeStatus(date,bankSettlementState=''){
   const today=todayISO();
@@ -528,7 +529,7 @@ function creditDescriptionCell(item){
   return (`<td class="credit-detail-description" title="${esc(item.description||'')}"><div class="credit-detail-description-line"><span>${esc(item.description)||'—'}</span>` +
   `${fx}${missing}${coverage}</div></td>`);
 }
-function syncedMonthlyCreditRow(item){
+function syncedMonthlyCreditRow(item,boundaryClass=''){
   const series=item.series||{},
   status=item.date?chargeStatus(item.date,item.bankSettlementState):{label:'מחזור לא ודאי',cls:'orange'},
   partial=!item.date||(series.partial&&item.date>=todayISO())||item.coverageIncomplete,
@@ -536,7 +537,7 @@ function syncedMonthlyCreditRow(item){
   chargeAmount=item.amountSource==='issuer_not_billed'?
   '<div class="muted credit-month-charge-amount">לא נכלל בחיוב לפי כאל</div>':
   item.includedInIlsTotal?`<div class="amount credit-month-charge-amount">${money(item.amount)}</div>`:'<div class="muted credit-month-charge-amount">לא נכלל בסה״כ ₪</div>';
-  return (`<tr class="credit-synced-detail-row" data-credit-search-id="${esc(creditDetailItemIdentity(item))}">${syncedBulkPlaceholder()}${creditCardDetailCell(item,CREDIT_PROVIDER_LABELS[item.provider]||'מסונכרן')}` +
+  return (`<tr class="credit-synced-detail-row${boundaryClass}" data-credit-search-id="${esc(creditDetailItemIdentity(item))}">${syncedBulkPlaceholder()}${creditCardDetailCell(item,CREDIT_PROVIDER_LABELS[item.provider]||'מסונכרן')}` +
   `${creditDescriptionCell(item)}<td class="credit-detail-transaction-date">${transactionDateCell(item.transactionDate,item.transactionTime)}</td><td class="amount credit-detail-total">` +
   `${money(series.totalAmount)}</td><td class="credit-detail-installment">${installmentCell(item)}</td><td class="credit-detail-charge"><b>${esc(chargeDate)}</b>` +
   `${chargeAmount}${statementCycleMarkup(item)}${billingDateEstimateMarkup(item)}</td><td class="credit-detail-status"><span class="badge ${esc(status.cls)}">` +
@@ -551,7 +552,7 @@ function pendingAmountMarkup(item){
   if(item.pending?.isShekel)return money(amount);
   const formatted=new Intl.NumberFormat('he-IL',{maximumFractionDigits:2}).format(amount);return `${formatted} ${esc(item.displayCurrency||'')}`;
 }
-function pendingMonthlyCreditRow(item){
+function pendingMonthlyCreditRow(item,boundaryClass=''){
   const estimates={
   issuer_next_charge:'משוער לפי מועד החיוב הבא',
   known_future_cycle:'משוער לפי מחזור עתידי ידוע',
@@ -563,35 +564,35 @@ function pendingMonthlyCreditRow(item){
   estimate=estimates[item.chargeDateSource]||'שיוך זמני עד אישור סופי',
   stale=item.pendingFresh===false,
   chargeDate=item.date?dateFmt(item.date):'לא נקבע';
-  return (`<tr class="credit-synced-detail-row credit-pending-detail-row${stale?' stale':''}" data-credit-search-id="${esc(creditDetailItemIdentity(item))}">${syncedBulkPlaceholder()}` +
+  return (`<tr class="credit-synced-detail-row credit-pending-detail-row${stale?' stale':''}${boundaryClass}" data-credit-search-id="${esc(creditDetailItemIdentity(item))}">${syncedBulkPlaceholder()}` +
   `${creditCardDetailCell(item,CREDIT_PROVIDER_LABELS[item.provider]||'מסונכרן')}${creditDescriptionCell(item)}<td class="credit-detail-transaction-date">` +
   `${transactionDateCell(item.transactionDate,item.transactionTime)}</td><td class="amount credit-detail-total">${pendingAmountMarkup(item)}</td><td class="credit-detail-installment"><span class="muted">אישור</span></td><td class="credit-detail-charge"><b>` +
   `${esc(chargeDate)}</b>${item.includedInIlsTotal?`<div class="amount credit-month-charge-amount">${money(item.amount)}</div>`:'<div class="muted credit-month-charge-amount">לא נכלל בסה״כ ₪</div>'}<small class="credit-pending-estimate">` +
   `${esc(estimate)}</small></td><td class="credit-detail-status"><span class="credit-transaction-pending">ממתינה</span>${stale?'<div class="muted credit-detail-partial">נתון קודם</div>':''}</td><td class="credit-detail-actions"></td></tr>`);
 }
-function foreignMonthlyCreditRow(item){
+function foreignMonthlyCreditRow(item,boundaryClass=''){
   const status=item.date?chargeStatus(item.date,item.bankSettlementState):{label:'מחזור לא ודאי',cls:'orange'},
   formatted=new Intl.NumberFormat('he-IL',{maximumFractionDigits:2}).format(Number(item.displayAmount)||0),
   display=`${formatted} ${esc(item.displayCurrency||item.originalCurrency||'')}`,
   chargeDate=item.date?dateFmt(item.date):'לא נקבע';
-  return (`<tr class="credit-synced-detail-row credit-foreign-detail-row" data-credit-search-id="${esc(creditDetailItemIdentity(item))}">${syncedBulkPlaceholder()}` +
+  return (`<tr class="credit-synced-detail-row credit-foreign-detail-row${boundaryClass}" data-credit-search-id="${esc(creditDetailItemIdentity(item))}">${syncedBulkPlaceholder()}` +
   `${creditCardDetailCell(item,CREDIT_PROVIDER_LABELS[item.provider]||'מסונכרן')}${creditDescriptionCell(item)}<td class="credit-detail-transaction-date">` +
   `${transactionDateCell(item.transactionDate,item.transactionTime)}</td><td class="amount credit-detail-total">${display}</td><td class="credit-detail-installment">` +
   `${installmentCell(item)}</td><td class="credit-detail-charge"><b>${esc(chargeDate)}</b><div class="muted credit-month-charge-amount">לא נכלל בסה״כ ₪</div>` +
   `${statementCycleMarkup(item)}${billingDateEstimateMarkup(item)}</td><td class="credit-detail-status"><span class="badge ${esc(status.cls)}">${esc(status.label)}</span></td><td class="credit-detail-actions"></td></tr>`);
 }
-function unknownMonthlyCreditRow(item){
+function unknownMonthlyCreditRow(item,boundaryClass=''){
   const status=item.date?chargeStatus(item.date,item.bankSettlementState):{label:'מחזור לא ודאי',cls:'orange'},chargeDate=item.date?dateFmt(item.date):'לא נקבע';
-  return (`<tr class="credit-synced-detail-row credit-pending-detail-row" data-credit-search-id="${esc(creditDetailItemIdentity(item))}">${syncedBulkPlaceholder()}` +
+  return (`<tr class="credit-synced-detail-row credit-pending-detail-row${boundaryClass}" data-credit-search-id="${esc(creditDetailItemIdentity(item))}">${syncedBulkPlaceholder()}` +
   `${creditCardDetailCell(item,CREDIT_PROVIDER_LABELS[item.provider]||'מסונכרן')}${creditDescriptionCell(item)}<td class="credit-detail-transaction-date">` +
   `${transactionDateCell(item.transactionDate,item.transactionTime)}</td><td class="amount credit-detail-total">${item.originalAmount===null?'—':item.foreignCurrency?`${new Intl.NumberFormat('he-IL',{maximumFractionDigits:2}).format(item.originalAmount)} ${esc(item.originalCurrency)}`:money(item.originalAmount)}</td><td class="credit-detail-installment">` +
   `${installmentCell(item)}</td><td class="credit-detail-charge"><b>${esc(chargeDate)}</b><div class="muted credit-month-charge-amount">${item.coverageIncomplete?'נתוני החברה לחודש אינם מלאים':'הסכום השקלי טרם נמסר'}</div>` +
   `${statementCycleMarkup(item)}${billingDateEstimateMarkup(item)}</td><td class="credit-detail-status"><span class="badge ${esc(status.cls)}">${esc(status.label)}</span>` +
   `${item.coverageIncomplete?'<div class="muted credit-detail-partial">כיסוי LKG/חסר</div>':''}</td><td class="credit-detail-actions"></td></tr>`);
 }
-function manualMonthlyCreditRow(item){
+function manualMonthlyCreditRow(item,boundaryClass=''){
   const record=item.record,status=chargeStatus(item.date,item.bankSettlementState);
-  return (`<tr data-bulk-collection="credits" data-bulk-id="${esc(record.id)}" data-credit-search-id="${esc(creditDetailItemIdentity(item))}" class="${esc(ui.bulkSelected.has(record.id)?'bulk-selected-row':'')}">` +
+  return (`<tr data-bulk-collection="credits" data-bulk-id="${esc(record.id)}" data-credit-search-id="${esc(creditDetailItemIdentity(item))}" class="${esc(ui.bulkSelected.has(record.id)?'bulk-selected-row':'')}${boundaryClass}">` +
   `${bulkCell('credits',record.id)}${creditCardDetailCell(item,'תוספת ידנית')}${creditDescriptionCell(item)}<td class="credit-detail-transaction-date">${transactionDateCell(item.transactionDate)}</td><td class="amount credit-detail-total">` +
   `${money(record.totalAmount)}</td><td class="credit-detail-installment">${installmentCell(item)}</td><td class="credit-detail-charge"><b>${dateFmt(item.date)}</b><div class="amount credit-month-charge-amount">` +
   `${money(item.amount)}</div></td><td class="credit-detail-status"><span class="badge ${esc(status.cls)}">${esc(status.label)}</span></td><td class="credit-detail-actions"><button class="iconbtn" data-action="open-credit-modal-2" data-click-arg0="` +
