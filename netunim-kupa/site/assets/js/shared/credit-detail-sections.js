@@ -1,4 +1,14 @@
 import {creditDetailChargeCycleKey,creditDetailMonthlySections,creditUpcomingCycleHeadingData} from './credit-detail-controls.js';
+import {creditDetailAccountGroupKey} from './credit-detail-policy.js';
+
+export function createCreditCardBoundaryRowMarkup(rowMarkup){
+  let previousCardKey='';
+  return row=>{
+    const cardKey=creditDetailAccountGroupKey(row),cardBoundary=!!cardKey&&!!previousCardKey&&cardKey!==previousCardKey;
+    if(cardKey)previousCardKey=cardKey;
+    return rowMarkup(row,{cardBoundary});
+  };
+}
 
 // Applications own the row contents and column count; this renderer owns only
 // the common cycle headings and the ordering of foreign/uncertain/known rows.

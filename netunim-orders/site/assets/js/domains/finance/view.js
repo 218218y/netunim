@@ -22,7 +22,7 @@ import { createCreditConnectionView, creditMappingRow } from './credit-connectio
 import { creditDetailRowMarkup } from './credit-detail-view.js';
 import { bankHeadlineState, bankSyncPanelMarkup } from './bank-connection-view.js';
 import { creditDateRangeMarkup, replaceCreditDetailMarkup, creditDetailMonthlySections, creditUpcomingSelectorMarkup, creditHistoryMenuMarkup, creditFutureMenuMarkup, creditDetailChargeHeadingMarkup } from '../../shared/credit-detail-controls.js';
-import { creditCycleRowsMarkup, creditUpcomingSectionsMarkup } from '../../shared/credit-detail-sections.js';
+import { createCreditCardBoundaryRowMarkup, creditCycleRowsMarkup, creditUpcomingSectionsMarkup } from '../../shared/credit-detail-sections.js';
 import { CREDIT_DETAIL_HISTORY_MONTHS } from '../../shared/credit-history.js';
 import { attachBankArchiveMetadata } from './bank-morning.js';
 import { bankMorningActionCell, bankMorningLinkedDocumentsMarkup, createBankMorningDocumentActions } from './bank-morning-view.js';
@@ -409,7 +409,7 @@ export function createDomainsFinanceView({ runFinance = withFinanceDerivations, 
         );
     }
     function creditDetailMarkup(detail) {
-        const rowPresentation = { colspan: 7, rowMarkup: creditDetailRowMarkup, escapeHtml: esc, formatDate: checkDateFmt };
+        const rowMarkup = createCreditCardBoundaryRowMarkup(creditDetailRowMarkup), rowPresentation = { colspan: 7, rowMarkup, escapeHtml: esc, formatDate: checkDateFmt };
         const {mode,items,focusedCount,selected,focus}=detail,
             monthLabelFor=key=>key==='unassigned'?'מחזור לא ודאי':checkMonthLabel(key),
             quickPeriod=mode==='all'||mode==='recent3',upcoming=mode==='upcoming',query=ui.creditSearchValue||'';
@@ -428,9 +428,9 @@ export function createDomainsFinanceView({ runFinance = withFinanceDerivations, 
         const { foreign: foreignItems, uncertain: uncertainItems, regular: regularItems } = creditDetailMonthlySections(items),
             focusRow = focus.cardKey ? selected.items.find(row => rowCardKey(row) === focus.cardKey) : null,
             focusLabel = focusRow?.card || '',
-            rowsMarkup = items.length ? (`${foreignItems.length ? `<tr class="credit-detail-cycle-divider certain foreign"><td colspan="7"><b>עסקאות חו״ל / מט״ח</b><small>עסקאות בחיוב מיידי משויכות למחזור הכרטיס שבין חיוב חודשי אחד לבא; בשורה נשמר מועד החיוב בפועל.</small></td></tr>${foreignItems.map(creditDetailRowMarkup).join('')}` : ''}` +
-            `${uncertainItems.length ? `<tr class="credit-detail-cycle-divider uncertain"><td colspan="7"><b>מחזור לא ודאי</b><small>עסקאות ממתינות שמועד החיוב הסופי שלהן טרם נקבע; מוצגות כאן ליד החיוב הסמוך של אותו כרטיס.</small></td></tr>${uncertainItems.map(creditDetailRowMarkup).join('')}` : ''}` +
-            `${regularItems.length ? `${foreignItems.length || uncertainItems.length ? `<tr class="credit-detail-cycle-divider certain"><td colspan="7"><b>חיוב ${esc(monthLabelFor(selected.key))}</b></td></tr>` : ''}${regularItems.map(creditDetailRowMarkup).join('')}` : ''}`) : `<tr><td colspan="7"><div class="empty compact">${query.trim() && focusedCount ? 'אין עסקאות המתאימות לחיפוש במיקוד שנבחר.' : 'אין עסקאות להצגה במיקוד שנבחר.'}</div></td></tr>`;
+            rowsMarkup = items.length ? (`${foreignItems.length ? `<tr class="credit-detail-cycle-divider certain foreign"><td colspan="7"><b>עסקאות חו״ל / מט״ח</b><small>עסקאות בחיוב מיידי משויכות למחזור הכרטיס שבין חיוב חודשי אחד לבא; בשורה נשמר מועד החיוב בפועל.</small></td></tr>${foreignItems.map(rowMarkup).join('')}` : ''}` +
+            `${uncertainItems.length ? `<tr class="credit-detail-cycle-divider uncertain"><td colspan="7"><b>מחזור לא ודאי</b><small>עסקאות ממתינות שמועד החיוב הסופי שלהן טרם נקבע; מוצגות כאן ליד החיוב הסמוך של אותו כרטיס.</small></td></tr>${uncertainItems.map(rowMarkup).join('')}` : ''}` +
+            `${regularItems.length ? `${foreignItems.length || uncertainItems.length ? `<tr class="credit-detail-cycle-divider certain"><td colspan="7"><b>חיוב ${esc(monthLabelFor(selected.key))}</b></td></tr>` : ''}${regularItems.map(rowMarkup).join('')}` : ''}`) : `<tr><td colspan="7"><div class="empty compact">${query.trim() && focusedCount ? 'אין עסקאות המתאימות לחיפוש במיקוד שנבחר.' : 'אין עסקאות להצגה במיקוד שנבחר.'}</div></td></tr>`;
         return (`${focus.cardKey ? (
             `<div class="credit-detail-focus"><span><b>${esc(focusLabel)}</b><small>${esc(monthLabelFor(focus.monthKey))} · מיקוד בכרטיס מתוך התחזית</small></span>` +
             `<button type="button" class="iconbtn" data-action="clear-orders-credit-detail-focus" data-click-arg0="${esc(focus.monthKey)}">כל הכרטיסים ×</button></div>`

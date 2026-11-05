@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {creditCycleRowsMarkup,creditUpcomingSectionsMarkup} from '../shared/credit-detail-sections.js';
+import {createCreditCardBoundaryRowMarkup,creditCycleRowsMarkup,creditUpcomingSectionsMarkup} from '../shared/credit-detail-sections.js';
 
 const escapeHtml=value=>String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
 const formatDate=value=>value.split('-').reverse().join('.');
@@ -15,6 +15,23 @@ test('nearest sections preserve every row once while separating foreign, uncerta
   assert.ok(markup.indexOf('data-row="uncertain"')<markup.indexOf('data-row="regular"'));
   assert.match(markup,/colspan="9"/);
   assert.match(markup,/10\.09\.2026/);
+});
+
+test('credit detail rows mark only transitions between account identities, including across section headings',()=>{
+  const rows=[
+    {id:'foreign-a1',card:'Same visible label',creditAccountKey:'account-a',foreignCurrency:true},
+    {id:'foreign-a2',card:'Same visible label',creditAccountKey:'account-a',foreignCurrency:true},
+    {id:'uncertain-b',card:'Same visible label',profileId:'profile-b',accountNumber:'123',detailCycleUncertain:true},
+    {id:'regular-a',card:'Same visible label',creditAccountKey:'account-a'},
+  ];
+  const markup=creditUpcomingSectionsMarkup(rows,{
+    colspan:8,
+    escapeHtml,
+    formatDate,
+    rowMarkup:createCreditCardBoundaryRowMarkup((row,{cardBoundary})=>`<tr${cardBoundary?' class="credit-card-boundary"':''} data-row="${row.id}"></tr>`),
+  });
+  assert.deepEqual([...markup.matchAll(/<tr class="credit-card-boundary" data-row="([^"]+)"/g)].map(match=>match[1]),['uncertain-b','regular-a']);
+  assert.equal((markup.match(/credit-card-boundary/g)||[]).length,2,'repeated rows for one account stay together, and both card changes get one boundary');
 });
 
 test('cycle headings keep card ordering and distinguish actual months without changing nominal-day grouping',()=>{
