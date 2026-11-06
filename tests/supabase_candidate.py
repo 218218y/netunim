@@ -6,6 +6,7 @@ from supabase_authorization import run as authorization
 from morning_schema_contract import assert_morning_schema_contract
 from check_bank_reconciliation import run as check_bank_reconciliation
 from check_bank_items import run as check_bank_items
+from bank_instant_credit_name_prefix import run as bank_instant_credit_name_prefix
 from check_notification_retention import run as check_notification_retention
 from notes_workbook_delete import run as notes_workbook_delete
 from checks_upgrade import run as checks_upgrade
@@ -93,8 +94,22 @@ cheque_pending_transition_pending = any(row['name'] == 'bank_cheque_deposit_pend
 pending_date_rollover_pending = any(row['name'] == 'bank_pending_direct_deposit_date_rollover' for row in receipt_pending)
 pending_batch_completion_pending = any(row['name'] == 'bank_pending_cheque_batch_completion' for row in receipt_pending)
 pending_insert_identity_pending = any(row['name'] == 'bank_merge_inserted_identity' for row in receipt_pending)
+name_prefix_pending = any(row['name'] == 'bank_instant_credit_name_prefix' for row in receipt_pending)
 candidate_definition = normalized_sql_text(bank_merge['definition'])
 reviewed_definition = normalized_sql_text(reviewed_bank_merge['definition'])
+name_prefix_clause = """              or (
+                v_balance is not null and b.balance_after=v_balance
+                and v_activity is not null and b.activity_type_code=v_activity
+                and b.bank_serial in ('','0')
+                and (b.transaction_date at time zone 'Asia/Jerusalem')::date
+                  =(v_date at time zone 'Asia/Jerusalem')::date
+                and netunim_internal.bank_instant_credit_name_prefix_variant(
+                  hints.pending_party_norm,v_party_norm)
+              )
+"""
+if name_prefix_pending:
+    assert candidate_definition.count(name_prefix_clause) == 1, \
+        'the new prefix reconciliation must add exactly one narrowly guarded name identity branch'
 if bank_migration_pending:
     assert candidate_definition != reviewed_definition, \
         'instant-credit migration did not replace the reviewed merge function body'
@@ -225,6 +240,11 @@ else:
             definition=definition.replace(",r->'creditSettlementDetails');\n",");\n")
             definition=definition.replace("        credit_settlement_details=coalesce(r->'creditSettlementDetails',b.credit_settlement_details),\n",'')
             definition=definition.replace("        or b.credit_settlement_details is distinct from coalesce(r->'creditSettlementDetails',b.credit_settlement_details)\n",'')
+        if name_prefix_pending:
+            # The authenticated Production receipt predates the new, additive and
+            # independently tested single-letter name variant. Normalize only its
+            # precisely reviewed OR branch, never the established identity gates.
+            definition=definition.replace(name_prefix_clause,'',1)
         return definition
     assert without_pending_upgrade_fragments(
         candidate_definition, expect_batch_completion=pending_batch_completion_pending, expect_insert_identity=pending_insert_identity_pending
@@ -275,6 +295,7 @@ with IsolatedPostgres(schema_files=all_files) as db:
     db.sql((ROOT / 'tests/bank_transaction_evidence_server.sql').read_text(encoding='utf8'))
     from bank_identity_pipeline import run as bank_identity_pipeline
     bank_identity_pipeline(db)
+    bank_instant_credit_name_prefix(db)
     temporal_sql = (ROOT / 'tests/bank_temporal_authority_server.sql').read_text(encoding='utf8')
     db.sql(temporal_sql)
     # Remove the actual installed guard: the durable T1/future/T2 regression must

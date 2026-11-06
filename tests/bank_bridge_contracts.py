@@ -186,6 +186,10 @@ pending_reconciliation_sql=(ROOT/'netunim-kupa/supabase/bank_pending_reconciliat
 instant_credit_reconciliation_sql=(ROOT/'supabase/migrations/20260910211500_bank_instant_credit_reconciliation.sql').read_text(encoding='utf-8')
 kupa_instant_credit_upgrade=(ROOT/'netunim-kupa/supabase/bank_instant_credit_reconciliation_v2_upgrade.sql').read_text(encoding='utf-8')
 orders_instant_credit_upgrade=(ROOT/'netunim-orders/supabase/bank_instant_credit_reconciliation_v2_upgrade.sql').read_text(encoding='utf-8')
+name_prefix_sql=(ROOT/'supabase/migrations/20261106120000_bank_instant_credit_name_prefix.sql').read_text(encoding='utf-8')
+name_prefix_kupa_upgrade=(ROOT/'netunim-kupa/supabase/bank_instant_credit_name_prefix_v1_upgrade.sql').read_text(encoding='utf-8')
+name_prefix_orders_upgrade=(ROOT/'netunim-orders/supabase/bank_instant_credit_name_prefix_v1_upgrade.sql').read_text(encoding='utf-8')
+prior_bank_merge=(ROOT/'supabase/migrations/20260923070000_bank_merge_inserted_identity.sql').read_text(encoding='utf-8')
 cheque_image_storage_sql=(ROOT/'supabase/migrations/20260914160000_bank_cheque_image_storage_v1.sql').read_text(encoding='utf-8')
 kupa_cheque_image_storage_upgrade=(ROOT/'netunim-kupa/supabase/bank_cheque_image_storage_v1_upgrade.sql').read_text(encoding='utf-8')
 orders_cheque_image_storage_upgrade=(ROOT/'netunim-orders/supabase/bank_cheque_image_storage_v1_upgrade.sql').read_text(encoding='utf-8')
@@ -472,6 +476,24 @@ ok('b.transaction_date::date=v_date::date and b.bank_serial=v_serial' in finance
 ok("v_reference not in ('','0')" in pending_reconciliation_sql and 'v_balance is not null and v_activity is not null' in pending_reconciliation_sql and 'b.balance_after is not distinct from v_balance' in pending_reconciliation_sql and 'v_pending_in_source' in pending_reconciliation_sql and 'connector upgrades are allowed to change derived client identities' in pending_reconciliation_sql and 'delete from public.bank_transactions b' in pending_reconciliation_sql and 'security definer' in pending_reconciliation_sql and 'grant delete on table public.bank_transactions' not in pending_reconciliation_sql, 'bank pending reconciliation: settlement enrichment uses connector-preserved reference/balance/activity facts, heals only a unique stale placeholder, survives merge-key changes, and keeps DELETE private to the RPC')
 ok((ROOT/'netunim-orders/supabase/bank_pending_reconciliation_upgrade.sql').read_text(encoding='utf-8')==pending_reconciliation_sql, 'bank pending reconciliation distribution: Kupa and Orders carry the same connector-compatible migration')
 ok(kupa_instant_credit_upgrade==instant_credit_reconciliation_sql and orders_instant_credit_upgrade==instant_credit_reconciliation_sql, 'instant-credit reconciliation distribution: canonical migration and both operator upgrade scripts are byte-identical')
+ok(name_prefix_sql==name_prefix_kupa_upgrade==name_prefix_orders_upgrade, 'instant-credit prefix upgrade: canonical migration and both operator upgrade scripts are byte-identical')
+name_prefix_branch="""              or (
+                v_balance is not null and b.balance_after=v_balance
+                and v_activity is not null and b.activity_type_code=v_activity
+                and b.bank_serial in ('','0')
+                and (b.transaction_date at time zone 'Asia/Jerusalem')::date
+                  =(v_date at time zone 'Asia/Jerusalem')::date
+                and netunim_internal.bank_instant_credit_name_prefix_variant(
+                  hints.pending_party_norm,v_party_norm)
+              )
+"""
+function_header='create or replace function netunim_internal.merge_bank_transactions('
+prior_merge=prior_bank_merge[prior_bank_merge.index(function_header):]
+new_merge=name_prefix_sql[name_prefix_sql.index(function_header):]
+ok(new_merge.count(name_prefix_branch)==1 and new_merge.replace(name_prefix_branch,'')==prior_merge, 'instant-credit prefix upgrade changes exactly one guarded name matching branch while preserving every old merge identity and fence')
+ok('revoke all on function netunim_internal.bank_instant_credit_name_prefix_variant(text,text)' in name_prefix_sql and 'word_count<3' in name_prefix_sql and 'pending_words[2:word_count] is distinct from completed_words[2:word_count]' in name_prefix_sql, 'name-prefix matcher permits only one Hebrew mem on the first of at least three name words; internal helper is not publicly callable')
+for label,sql in [('Kupa',kupa_setup_sql),('Orders',(ROOT/'netunim-orders/supabase/setup.sql').read_text(encoding='utf-8'))]:
+    ok("and b.bank_serial in ('','0')" in sql and "split_part(v_party_norm,' ',1)='מ'||split_part(hints.pending_party_norm,' ',1)" in sql and "array_length(regexp_split_to_array(v_party_norm,'[[:space:]]+'),1)>=3" in sql and "regexp_replace(v_party_norm,'^[^ ]+','')" in sql, f'{label} clean-install SQL has the same exact-facts single-prefix reconciliation policy')
 cheque_image_storage_body=cheque_image_storage_sql.split('begin;',1)[1].rsplit('commit;',1)[0].strip()
 ok(cheque_image_storage_sql==kupa_cheque_image_storage_upgrade==orders_cheque_image_storage_upgrade and cheque_image_storage_body in kupa_setup_sql and cheque_image_storage_body in (ROOT/'netunim-orders/supabase/setup.sql').read_text(encoding='utf-8'), 'cheque image Storage source-of-truth: canonical migration, both operator upgrades and both clean-install setup files carry the same private bucket/RLS contract')
 ok("'bank-cheque-images','bank-cheque-images',false,5242880" in cheque_image_storage_sql and "(storage.foldername(name))[1]=(select auth.uid()::text)" in cheque_image_storage_sql and 'for update' not in cheque_image_storage_sql.lower(), 'cheque image Storage security: private 5 MiB image bucket is owner-folder scoped and immutable without UPDATE policy')

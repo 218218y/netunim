@@ -758,6 +758,27 @@ begin
             and (
               position(' '||v_party_norm||' ' in ' '||hints.pending_party_norm||' ')>0
               or position(' '||hints.pending_party_norm||' ' in ' '||v_party_norm||' ')>0
+              or (
+                -- A bank may add/drop a single leading mem on the surname between
+                -- pending and settled views. Require independent exact balance/day,
+                -- activity and account-number evidence before accepting that variation.
+                v_balance is not null and b.balance_after=v_balance
+                and v_activity is not null and b.activity_type_code=v_activity
+                and b.bank_serial in ('','0')
+                and (b.transaction_date at time zone 'Asia/Jerusalem')::date
+                  =(v_date at time zone 'Asia/Jerusalem')::date
+                and array_length(regexp_split_to_array(v_party_norm,'[[:space:]]+'),1)>=3
+                and array_length(regexp_split_to_array(v_party_norm,'[[:space:]]+'),1)
+                  =array_length(regexp_split_to_array(hints.pending_party_norm,'[[:space:]]+'),1)
+                and length(split_part(v_party_norm,' ',1))>=3
+                and length(split_part(hints.pending_party_norm,' ',1))>=3
+                and regexp_replace(v_party_norm,'^[^ ]+','')
+                  =regexp_replace(hints.pending_party_norm,'^[^ ]+','')
+                and (
+                  split_part(v_party_norm,' ',1)='מ'||split_part(hints.pending_party_norm,' ',1)
+                  or split_part(hints.pending_party_norm,' ',1)='מ'||split_part(v_party_norm,' ',1)
+                )
+              )
             )
             and length(v_detail_digits)>=8 and length(hints.pending_detail_digits)>=8
             and right(v_detail_digits,least(length(v_detail_digits),length(hints.pending_detail_digits)))
