@@ -363,6 +363,8 @@ ok('set "NODE_USE_SYSTEM_CA=1"' in deploy_core[:wrangler_pos]
    and 'NODE_TLS_REJECT_UNAUTHORIZED' not in deploy_core,
    "deploy core: uses trusted system certificates without disabling TLS verification")
 ok(wrangler_pos >= 0, "deploy core: contains the only Wrangler Pages upload command")
+ok("--branch main" in deploy_core[wrangler_pos:],
+   "deploy core: publishes verified site payloads to the configured Production branch")
 ok("verify.bat" not in deploy_core.lower(), "deploy core: does not own or bypass the repository verification gate")
 ok('if not "%NETUNIM_DEPLOY_VERIFIED%"=="1" (' in deploy_core,
    "deploy core: refuses accidental direct invocation without a verified parent entrypoint")

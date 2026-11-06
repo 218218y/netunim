@@ -323,7 +323,7 @@ if errorlevel 1 (
   rmdir /S /Q "%DEPLOY_WORK_DIR%" >nul 2>&1
   exit /b 3
 )
-call npx --yes wrangler@%WRANGLER_VERSION% pages deploy "%SITE_DIR%" --project-name "%PROJECT_NAME%" > "%DEPLOY_WORK_DIR%\wrangler-output.txt" 2>&1
+call npx --yes wrangler@%WRANGLER_VERSION% pages deploy "%SITE_DIR%" --project-name "%PROJECT_NAME%" --branch main > "%DEPLOY_WORK_DIR%\wrangler-output.txt" 2>&1
 set "DEPLOY_EXIT=%ERRORLEVEL%"
 rem TYPE replays UTF-8 bytes using the console's OEM code page. Node decodes
 rem the log explicitly and its Windows terminal writer renders Unicode.
