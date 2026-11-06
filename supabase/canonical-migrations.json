@@ -215,6 +215,10 @@
     {
       "version": "20261103143000",
       "name": "morning_supplier_operations"
+    },
+    {
+      "version": "20261106120000",
+      "name": "bank_instant_credit_name_prefix"
     }
   ]
 }

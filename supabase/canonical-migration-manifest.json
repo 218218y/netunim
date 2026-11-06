@@ -268,5 +268,10 @@
     "version": "20261103143000",
     "name": "morning_supplier_operations",
     "sha256": "43f4806e38927a4827eb88ce5df6b086838dcebbb89809b84d6e5809602fbfa1"
+  },
+  {
+    "version": "20261106120000",
+    "name": "bank_instant_credit_name_prefix",
+    "sha256": "32dcdf894fdabcb8dcf06a894a804ec1e3639a542d62a5a603c48c59bbcf11a4"
   }
 ]

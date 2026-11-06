@@ -7,7 +7,8 @@ for(const site of ['orders','kupa']){
     const root=new URL(`../netunim-${site}/site/`,import.meta.url);
     const html=readFileSync(new URL('index.html',root),'utf8');
     const main=readFileSync(new URL('assets/js/main.js',root),'utf8');
-    const link=html.match(/<a\b[^>]*\bid="weatherTrigger"[^>]*>[\s\S]*?<\/a>/)?.[0];
+    const weatherId=site==='orders'?'weatherLink':'weatherTrigger';
+    const link=html.match(new RegExp(`<a\\b[^>]*\\bid="${weatherId}"[^>]*>[\\s\\S]*?<\\/a>`))?.[0];
     assert.ok(link,'weather entry must be a real link, usable without JavaScript');
     assert.match(link,/href="https:\/\/ims\.gov\.il\/he"/);
     assert.match(link,/target="_blank"/);
@@ -16,9 +17,14 @@ for(const site of ['orders','kupa']){
     assert.match(link,/<span>מזג אוויר<\/span>/);
     assert.doesNotMatch(link,/aria-haspopup|aria-expanded/);
     assert.doesNotMatch(main,/installImsWeatherViewer|ims-weather-viewer\.js/);
-    assert.match(html,/assets\/js\/shared\/ims-weather-viewer\.css/);
-    const css=readFileSync(new URL('assets/js/shared/ims-weather-viewer.css',root),'utf8');
-    const canonical=readFileSync(new URL('../shared/ims-weather-viewer.css',import.meta.url),'utf8');
-    assert.equal(css,canonical,'site styles must be synchronized from shared CSS');
+    const cssPath=site==='orders'?'assets/weather-link.css':'assets/js/shared/ims-weather-viewer.css';
+    assert.ok(html.includes(cssPath),`${site}: weather link stylesheet must be loaded`);
+    const css=readFileSync(new URL(cssPath,root),'utf8');
+    if(site==='orders'){
+      assert.match(css,/\.topbar-actions \.weather-link/);
+    }else{
+      const canonical=readFileSync(new URL('../shared/ims-weather-viewer.css',import.meta.url),'utf8');
+      assert.equal(css,canonical,'Kupa weather styles must be synchronized from shared CSS');
+    }
   });
 }
