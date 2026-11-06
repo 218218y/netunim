@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-0e8b6237e437';
+const CACHE='orders-app-shell-esm-c67ffb9b7ff5';
 const SHELL=[
   './',
   './index.html',
@@ -536,6 +536,7 @@ const SHELL=[
   './assets/js/ui/status.js',
   './assets/js/ui/tab-guard.js',
   './assets/morning-expenses.css',
+  './assets/weather-link.css',
   './manifest.webmanifest',
   './supabase/config.js',
   './favicon.ico',

@@ -15,11 +15,11 @@
 <link rel="manifest" href="./manifest.webmanifest">
 <meta name="theme-color" content="#f6f3f0">
 <link rel="stylesheet" href="./assets/app.css" />
+<link rel="stylesheet" href="./assets/weather-link.css" />
 <link rel="stylesheet" href="./assets/js/shared/business-position.css" />
 <link rel="stylesheet" href="./assets/morning-expenses.css" />
 <link rel="stylesheet" href="./assets/js/shared/global-document-search.css" />
 <link rel="stylesheet" href="./assets/js/shared/notes-workbook.css" />
-<link rel="stylesheet" href="./assets/js/shared/ims-weather-viewer.css" />
 <link rel="stylesheet" href="./assets/js/shared/sync-incidents.css" />
 <link rel="stylesheet" href="./assets/js/shared/tax-calculator/style.css" />
 </head>
@@ -39,12 +39,12 @@
       <button data-view="calendar">יומן</button>
       <button class="global-search-trigger" id="globalSearchButton" type="button" aria-label="חיפוש בכל המאגר" aria-haspopup="dialog" aria-expanded="false" title="חיפוש בכל המאגר (Ctrl+K)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.35-4.35m1.35-5.15a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0Z"/></svg></button>
     </nav>
-    <a class="ims-weather-trigger" id="weatherTrigger" href="https://ims.gov.il/he" target="_blank" rel="noopener noreferrer" aria-label="פתיחת אתר השירות המטאורולוגי בלשונית חדשה" title="פתיחת אתר השירות המטאורולוגי בלשונית חדשה"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg><span>מזג אוויר</span></a>
     <div class="alert-center-slot" id="alertCenterSlot" hidden>
       <button class="alert-center-trigger" id="alertCenterButton" type="button" aria-label="אין אזהרות פעילות" aria-haspopup="dialog" title="אין אזהרות פעילות"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2.8 19h18.4L12 3Z"/><path d="M12 8v5"/><path d="M12 16.5h.01"/></svg><span class="alert-center-count" id="alertCenterCount" hidden>0</span></button>
     </div>
   </div>
   <div class="topbar-actions">
+    <a class="weather-link" id="weatherLink" href="https://ims.gov.il/he" target="_blank" rel="noopener noreferrer" aria-label="פתיחת אתר השירות המטאורולוגי בלשונית חדשה" title="פתיחת אתר השירות המטאורולוגי בלשונית חדשה"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg><span>מזג אוויר</span></a>
     <span class="folder-access-slot"><button class="top-settings-btn folder-access-button" id="folderAccessButton" type="button" hidden>אשר תיקייה</button></span>
     <div class="topbar-status" aria-label="מצב שמירה וסנכרון">
       <div class="save-pill" id="savePill">מקומי: שמור</div>
