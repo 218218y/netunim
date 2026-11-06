@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-8f87f3ab5d5f';
+const CACHE='orders-app-shell-esm-0e8b6237e437';
 const SHELL=[
   './',
   './index.html',
@@ -349,6 +349,7 @@ const SHELL=[
   './assets/js/shared/google-drive-client.js',
   './assets/js/shared/google-drive-document-policy.js',
   './assets/js/shared/html.js',
+  './assets/js/shared/ims-weather-viewer.css',
   './assets/js/shared/indexed-db-connection.js',
   './assets/js/shared/kupa-cashflow-domain.js',
   './assets/js/shared/kupa-cashflow.js',

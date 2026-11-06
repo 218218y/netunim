@@ -15,6 +15,7 @@
 <link rel="stylesheet" href="./assets/js/shared/business-position.css" />
 <link rel="stylesheet" href="./assets/js/shared/global-document-search.css" />
 <link rel="stylesheet" href="./assets/js/shared/notes-workbook.css" />
+<link rel="stylesheet" href="./assets/js/shared/ims-weather-viewer.css" />
 <link rel="stylesheet" href="./assets/js/shared/sync-incidents.css" />
 <link rel="stylesheet" href="./assets/js/shared/tax-calculator/style.css" />
 </head>
@@ -42,6 +43,7 @@
         <button class="global-search-trigger" id="globalSearchButton" type="button" aria-label="חיפוש בכל נתוני הקופה" aria-haspopup="dialog" aria-expanded="false" title="חיפוש בכל הקופה (Ctrl+K)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.35-4.35m1.35-5.15a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0Z"/></svg></button>
       </div>
       <div class="top-actions">
+        <a class="ims-weather-trigger" id="weatherTrigger" href="https://ims.gov.il/he" target="_blank" rel="noopener noreferrer" aria-label="פתיחת אתר השירות המטאורולוגי בלשונית חדשה" title="פתיחת אתר השירות המטאורולוגי בלשונית חדשה"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg><span>מזג אוויר</span></a>
         <span class="cloud-head-status hide-mobile" id="cloudHeaderStatus" title="מצב סנכרון ענן"><i></i> ענן: לא מחובר</span><span class="file-status off hide-mobile" id="dbStatus"><i></i> קובץ לא נבחר</span><span class="save-indicator hide-mobile" id="saveIndicator"></span><button class="btn hide-mobile" id="backupTop">גיבוי עכשיו</button>
         <button class="btn" id="checkBankAlerts" type="button" hidden>התראות צ׳קים</button>
       </div>
