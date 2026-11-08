@@ -7,3 +7,14 @@ updates:
     groups:
       actions:
         patterns: ['*']
+  - package-ecosystem: npm
+    directories:
+      - /
+      - /netunim-kupa/bank-bridge
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      compatible-security:
+        applies-to: security-updates
+        update-types: [patch, minor]

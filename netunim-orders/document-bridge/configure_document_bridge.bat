@@ -15,7 +15,7 @@ if /I not "%RUNTIMENAME:~0,5%"=="app-v" goto :not_installed
 if not "%RUNTIMENAME:\=%"=="%RUNTIMENAME%" goto :not_installed
 if not "%RUNTIMENAME:/=%"=="%RUNTIMENAME%" goto :not_installed
 if not "%RUNTIMENAME:..=%"=="%RUNTIMENAME%" goto :not_installed
-if /I not "%NODERUNTIME:~0,22%"=="node-v24.21.0-win-x64-" goto :not_installed
+if /I not "%NODERUNTIME:~0,22%"=="node-v24.22.2-win-x64-" goto :not_installed
 if not "%NODERUNTIME:\=%"=="%NODERUNTIME%" goto :not_installed
 if not "%NODERUNTIME:/=%"=="%NODERUNTIME%" goto :not_installed
 if not "%NODERUNTIME:..=%"=="%NODERUNTIME%" goto :not_installed

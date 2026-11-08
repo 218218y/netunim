@@ -1,4 +1,4 @@
-﻿import test from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -24,7 +24,7 @@ test('BOM config readers preserve historical optional settings and invalid JSON 
 test('default runtime roots respect the explicit home and local application directory',()=>{
  assert.equal(bridgeDataRoot({NETUNIM_DOCUMENT_BRIDGE_HOME:'explicit'},'unused'),'explicit');assert.equal(bridgeDataRoot({LOCALAPPDATA:'local'},'unused'),path.join('local','NetunimDocumentBridge'));
 });
-function nodeFixture({pointer='node-v24.21.0-win-x64-20261015-000000-1-1234abcd',version=BRIDGE_NODE_VERSION,missing=false,actual,readError=false}={},factory=createBridgeRuntimeFiles){
+function nodeFixture({pointer='node-v24.22.2-win-x64-20261015-000000-1-1234abcd',version=BRIDGE_NODE_VERSION,missing=false,actual,readError=false}={},factory=createBridgeRuntimeFiles){
  const root=path.resolve('synthetic-runtime'),expected=path.join(root,pointer,'node.exe'),reads=[];
  const runtime=factory({root,host:{platform:'win32',versions:{node:version},execPath:actual||expected},syncFiles:{existsSync:()=>!missing,readFileSync:file=>{reads.push(file);if(readError)throw Error('no pointer');return file.endsWith('node-runtime.txt')?'\uFEFF'+pointer+'\n':Buffer.from('unreviewed executable')}}});
  return {runtime,reads};

@@ -369,11 +369,11 @@ class WindowsDocumentBridgeRuntimeContracts(unittest.TestCase):
             lib_source = staged_lib.read_text(encoding="utf8")
             self.assertEqual(lib_source.count("BRIDGE_PORT=8766;"), 1)
             staged_lib.write_text(lib_source.replace("BRIDGE_PORT=8766;", f"BRIDGE_PORT={test_port};"), encoding="utf8")
-            private_name = "node-v24.21.0-win-x64-20261011-000000-1-1234abcd"
+            private_name = "node-v24.22.2-win-x64-20261011-000000-1-1234abcd"
             private = app / private_name
             private.mkdir()
-            with zipfile.ZipFile(source / "node-v24.21.0-win-x64.zip") as archive:
-                binary = archive.read("node-v24.21.0-win-x64/node.exe")
+            with zipfile.ZipFile(source / "node-v24.22.2-win-x64.zip") as archive:
+                binary = archive.read("node-v24.22.2-win-x64/node.exe")
             expected = re.search(r"BRIDGE_NODE_WIN_X64_SHA256='([a-f0-9]+)'", (source / "lib.mjs").read_text(encoding="utf8")).group(1)
             self.assertEqual(hashlib.sha256(binary).hexdigest(), expected)
             executable = private / "node.exe"

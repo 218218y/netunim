@@ -10,7 +10,7 @@ import {createDomainsDocumentSearch} from '../netunim-orders/site/assets/js/doma
 
 
 test('Windows Bridge Node runtime contract is an exact reviewed pin',()=>{
-  assert.equal(bridgeNodeVersionSupported('24.21.0'),true);
+  assert.equal(bridgeNodeVersionSupported('24.22.2'),true);
   assert.equal(bridgeNodeVersionSupported('24.21.1'),false);
   assert.equal(bridgeNodeVersionSupported('24.20.0'),false);
   assert.equal(bridgeNodeVersionSupported('22.22.0'),false);

@@ -713,5 +713,31 @@ class GithubGateContracts(unittest.TestCase):
                 gate.clean_head(root)
 
 
+class SecurityReportContracts(unittest.TestCase):
+    def test_reviewed_codeql_constraint_does_not_exempt_changed_source_or_another_rule(self):
+        import hashlib
+        from security_codeql_gate import reviewed_constraint
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root / "case.js"
+            target.write_bytes(b"reviewed synthetic source\n")
+            entries = [{"rule": "test/rule", "path": "case.js", "sha256": hashlib.sha256(target.read_bytes()).hexdigest(), "reason": "Synthetic constraint"}]
+            self.assertTrue(reviewed_constraint("test/rule", "case.js", root, entries))
+            self.assertFalse(reviewed_constraint("other/rule", "case.js", root, entries))
+            self.assertFalse(reviewed_constraint("test/rule", "../case.js", root, entries))
+            target.write_bytes(b"changed synthetic source\n")
+            self.assertFalse(reviewed_constraint("test/rule", "case.js", root, entries))
+
+    def test_codeql_gate_resolves_extension_rules_and_ignores_nonsecurity_diagnostics(self):
+        from security_codeql_gate import high_findings
+        document = {"runs": [{"tool": {"driver": {"rules": []}, "extensions": [{"rules": [
+            {"id": "language/diagnostic"},
+            {"id": "language/medium", "properties": {"security-severity": "6.9"}},
+            {"id": "language/high", "properties": {"security-severity": "7.0"}},
+        ]}]}, "results": [{"ruleId": name} for name in
+                           ("language/diagnostic", "language/medium", "language/high")]}]}
+        self.assertEqual(high_findings(document), [("language/high", "unknown", 0)])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

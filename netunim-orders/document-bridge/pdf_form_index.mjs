@@ -1,10 +1,12 @@
 import fs from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
+import {createPreviewFilePlatform} from './preview-file-platform.mjs';
 import {contentMatchRanges,normalizeContentSearchOptions,normalizeSearchText} from './lib.mjs';
 
 export const PDF_FORM_MAX_BYTES=64*1024*1024;
 export const PDF_FORM_EXTRACT_TIMEOUT_MS=12*1000;
+const pdfFiles=createPreviewFilePlatform();
 
 export class LocalPdfBinaryDataFactory{
   constructor({cMapUrl=null,standardFontDataUrl=null,wasmUrl=null}={}){
@@ -192,11 +194,13 @@ function throwIfAborted(signal){if(signal?.aborted)throw abortError()}
 
 export async function extractInteractivePdfText(fullPath,{maxBytes=PDF_FORM_MAX_BYTES,timeoutMs=PDF_FORM_EXTRACT_TIMEOUT_MS,signal=null,includePageText=true,onBytesRead=null}={}){
   throwIfAborted(signal);
-  const stat=await fs.stat(fullPath);
-  throwIfAborted(signal);
-  if(!stat.isFile())return {hasForm:false,formFieldCount:0,text:'',formText:'',pageText:'',formFields:[],size:Number(stat.size)||0,skipped:'not-file'};
-  if(stat.size>maxBytes)return {hasForm:false,formFieldCount:0,text:'',formText:'',pageText:'',formFields:[],size:Number(stat.size)||0,skipped:'too-large'};
-  const data=new Uint8Array(await fs.readFile(fullPath,signal?{signal}:undefined));
+  let captured;
+  try{captured=await pdfFiles.readBinaryDetails(fullPath,maxBytes,{signal})}
+  catch(error){
+    if(!['PREVIEW_NOT_FILE','PREVIEW_TOO_LARGE'].includes(error?.code))throw error;
+    return {hasForm:false,formFieldCount:0,text:'',formText:'',pageText:'',formFields:[],size:Number(error.size)||0,skipped:error.code==='PREVIEW_NOT_FILE'?'not-file':'too-large'};
+  }
+  const {stat}=captured,data=new Uint8Array(captured.buffer);
   if(typeof onBytesRead==='function')onBytesRead(data.byteLength);
   throwIfAborted(signal);
   const pdfjs=await loadPdfJs();

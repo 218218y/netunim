@@ -10,7 +10,7 @@ if not exist "%NODEPOINTER%" (
   exit /b 1
 )
 set /p "NODERUNTIME="<"%NODEPOINTER%"
-if /I not "%NODERUNTIME:~0,22%"=="node-v24.21.0-win-x64-" goto :bad_node
+if /I not "%NODERUNTIME:~0,22%"=="node-v24.22.2-win-x64-" goto :bad_node
 if not "%NODERUNTIME:\=%"=="%NODERUNTIME%" goto :bad_node
 if not "%NODERUNTIME:/=%"=="%NODERUNTIME%" goto :bad_node
 if not "%NODERUNTIME:..=%"=="%NODERUNTIME%" goto :bad_node
@@ -21,5 +21,5 @@ cd /d "%APPROOT%"
 exit /b %ERRORLEVEL%
 
 :bad_node
->> "%APPROOT%\bridge-console.log" echo ERROR: Pinned private Node.js 24.21.0 runtime is invalid or missing. Reinstall Document Bridge.
+>> "%APPROOT%\bridge-console.log" echo ERROR: Pinned private Node.js 24.22.2 runtime is invalid or missing. Reinstall Document Bridge.
 exit /b 1

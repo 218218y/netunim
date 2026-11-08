@@ -19,7 +19,7 @@ test('old and current ES/application discovery preserve every ordered candidate,
 });
 test('native platform retains exact default path strings before host path normalization',()=>{
  const source=fs.readFileSync(new URL('../netunim-orders/document-bridge/everything-process-platform.mjs',import.meta.url),'utf8');
- const pattern=/env\.PROGRAMFILES\s*\|\|\s*('(?:\\.|[^'])*')/;
+ const pattern=/env\.PROGRAMFILES\s*\|\|\s*('(?:\\.|[^'\\])*')/;
  assert.equal(vm.runInNewContext(source.match(pattern)[1]),vm.runInNewContext(baseline.functions.whereEs.source.match(pattern)[1]));
 });
 test('ES PATH reply retains first nonempty line and subsequent cache; application PATH verifies each returned target',async()=>{

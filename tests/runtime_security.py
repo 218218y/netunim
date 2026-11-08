@@ -30,6 +30,11 @@ for label in ('kupa','orders'):
  switchView('service');clean();openServiceModal(attack);clean();closeModal();
  state.inventoryItems=[{id:attack,name:attack,category:attack,active:true,note:attack}];
  state.inventoryEvents=[];state.inventoryCategoryOrder=[attack];switchView('warehouse');clean();openInventoryItemModal(attack);clean();closeModal();
+ openInventoryDetails(attack);clean();closeModal();
+ openStockAdjustmentModal(attack);clean();closeModal();
+ openStockTransfer(attack);clean();closeModal();
+ openInventoryEventModal(attack,'order');clean();closeModal();
+ openInventoryEventModal(attack,'reserve');clean();closeModal();
  state.warehouseOrders=[{id:attack,customerName:attack,details:attack,status:'to_order',note:attack}];
  setWarehouseTab('orders');clean();openWarehouseOrderModal(attack);clean();closeModal();
  state.notes=[{id:attack,content:attack,createdAt:'2026-08-27'}];switchView('notes');clean();

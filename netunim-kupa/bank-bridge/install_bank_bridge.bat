@@ -2,6 +2,18 @@
 setlocal EnableExtensions DisableDelayedExpansion
 cd /d "%~dp0"
 
+set "APPROOT=%LOCALAPPDATA%\NetunimKupaBankBridge"
+powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "%~dp0install_node_runtime.ps1" -AppRoot "%APPROOT%"
+if errorlevel 1 exit /b 1
+set "NODERUNTIME="
+set /p "NODERUNTIME="<"%APPROOT%\node-runtime.txt"
+if /I not "%NODERUNTIME:~0,22%"=="node-v24.22.2-win-x64-" exit /b 1
+if not "%NODERUNTIME:\=%"=="%NODERUNTIME%" exit /b 1
+if not "%NODERUNTIME:/=%"=="%NODERUNTIME%" exit /b 1
+if not "%NODERUNTIME:..=%"=="%NODERUNTIME%" exit /b 1
+if not exist "%APPROOT%\%NODERUNTIME%\node.exe" exit /b 1
+set "PATH=%APPROOT%\%NODERUNTIME%;%PATH%"
+
 where node >nul 2>nul || (
   echo ERROR: Node.js was not found. Install Node.js 22.22.2 or newer first.
   pause
@@ -45,24 +57,12 @@ pushd "%STAGING%"
 echo Installing the pinned bank and credit-card scraper dependency...
 rem The bridge uses Chrome/Edge already installed on Windows. Puppeteer must not download its own browser.
 set "PUPPETEER_SKIP_DOWNLOAD=true"
-call npm ci --omit=dev --no-audit --no-fund
+call npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 set "PUPPETEER_SKIP_DOWNLOAD="
 if errorlevel 1 (
   popd
   rmdir /S /Q "%STAGING%" >nul 2>nul
-  echo ERROR: npm install failed. The existing Bank Bridge was not changed.
-  pause
-  exit /b 1
-)
-
-echo Installing the pinned browser runtimes used by DigitalV3 and American Express...
-set "PUPPETEER_SKIP_DOWNLOAD=true"
-call npm install --no-save --package-lock=false --no-audit --no-fund puppeteer-modern@npm:puppeteer@25.12.0 camoufox-js@0.12.0 playwright-core@1.60.0 fingerprint-generator@2.1.86
-set "PUPPETEER_SKIP_DOWNLOAD="
-if errorlevel 1 (
-  popd
-  rmdir /S /Q "%STAGING%" >nul 2>nul
-  echo ERROR: Browser runtime installation failed. The existing Bank Bridge was not changed.
+  echo ERROR: Locked dependency installation failed. The existing Bank Bridge was not changed.
   pause
   exit /b 1
 )

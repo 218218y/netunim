@@ -1,0 +1,8 @@
+name: Netunim security analysis
+queries:
+  - uses: security-extended
+paths-ignore:
+  - '**/vendor/**'
+  - '**/pdfjs/**'
+  - '**/pdfjs-legacy/**'
+  - 'dist/**'

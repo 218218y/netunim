@@ -25,7 +25,7 @@ def ok(condition, message: str):
 
 def executable_inline_scripts(html: str) -> list[str]:
     found = []
-    for match in re.finditer(r"<script(?P<attrs>[^>]*)>(?P<body>.*?)</script>", html, re.I | re.S):
+    for match in re.finditer(r"<script\b(?P<attrs>[^>]*)>(?P<body>.*?)</script>", html, re.I | re.S):
         attrs = match.group("attrs") or ""
         if re.search(r"\bsrc\s*=", attrs, re.I):
             continue

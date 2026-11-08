@@ -139,15 +139,15 @@ Office preview size behind.
 Node runtime baseline
 ---------------------
 The Windows Document Bridge does not depend on a machine-wide Node installation.
-The installer provisions the reviewed Windows x64 Node.js 24.21.0 executable into
+The installer provisions the reviewed Windows x64 Node.js 24.22.2 executable into
 a versioned private runtime under %LOCALAPPDATA%\NetunimDocumentBridge and
 activates it through node-runtime.txt only after verification. The official
 node.exe is pinned to SHA-256:
-  ba4e6d110e8c1592a1ecd390f6b05f3da124b13871a5be62b341a07a853c6c32
+  1c331340fa6cac5e4294725959070a143fa0507195a78ad77eed7943f719aac9
 
 The download URL contains the exact release number; it never follows latest/LTS
-aliases. The official node-v24.21.0-win-x64.zip archive is pinned to SHA-256
-158f7685b44de51f6c0df1d153526cbcd3e1bc739a8dfc607721cef75de9e541; the
+aliases. The official node-v24.22.2-win-x64.zip archive is pinned to SHA-256
+ca1bff5d8ead13c9f2ea404a176db46bd430704d5b5113734049fa365e7799e2; the
 extracted node.exe is independently pinned to the SHA-256 shown above. The
 installer first prefers a verified local archive next to the installer, in the
 user Downloads folder or under the Bridge downloads folder, then uses the exact
@@ -248,7 +248,7 @@ client against the same local Everything instance/database.
 Installation
 ------------
 Run install_document_bridge.bat on each PC. The installer:
-- installs/reuses the exact private Node.js 24.21.0 runtime and verifies its pinned
+- installs/reuses the exact private Node.js 24.22.2 runtime and verifies its pinned
   SHA-256 before changing node-runtime.txt;
 - builds NetunimPreviewHost.exe locally;
 - upgrades the Bridge and stages the already-bundled local PDF.js runtime;

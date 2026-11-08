@@ -26,8 +26,6 @@ Tests exercise the actual Edge handler with denied users, forged grants, readers
 reporters and exact issuer IDs, proving denial before database or Morning access.
 Existing issuance/recovery and read-scope tests remain mandatory.
 
-## Live configuration and remaining work
-
 ## Local origins, installation secrets and bank disconnect
 
 Bank defaults to allowlisting exactly `https://bargig-furniture.com`,
@@ -97,6 +95,56 @@ The two supplied Supabase CSV exports both record `2026-11-08T14:00:05.222Z`:
 not proof of exposed data or a live audit of function bodies/Auth settings.
 Do not add permissive policies or revoke application RPCs just to clear lints.
 
+## Locked runtimes and automated scans
+
+All Bank runtime packages now belong to the ordinary dependency list and one
+integrity-protected lockfile. The second unlocked `npm install --no-save
+--package-lock=false` step is removed. Installation uses `npm ci --ignore-scripts`
+and explicit browser provisioning/doctor checks. Both Bridges use the same
+checksum-verified private Node 24.22.2 installer; the Bank startup launcher selects
+that private runtime rather than relying on the global Windows Node installation.
+The shared-asset generator keeps the two installer copies synchronized.
+
+The registry audit initially reported 11 high and five moderate Bank package
+findings. A locked Puppeteer 25.16.0 upgrade, including the scraper's transitive
+Puppeteer resolution, removed all high/critical findings. Compatibility is tested
+with the actual `israeli-bank-scrapers` package initializing, using and closing a
+real Chromium in a disposable profile. External provider navigation is blocked.
+This is package/browser compatibility evidence, not a successful live bank login
+or issuer WAF canary. The existing production bank/session/provider tests remain.
+Four moderate Bank findings and three moderate build-tool findings remain in the
+registry snapshot and must be tracked; no claim of zero known vulnerabilities is
+made. Avoid `npm audit fix --force` downgrades of the financial scraper.
+
+Security CI scans redacted Git history with checksum-verified Gitleaks, runs
+extended CodeQL for JavaScript/TypeScript and Python, audits both lockfiles, and
+exercises the real installed package/browser contract. High/critical npm and
+CodeQL findings block their jobs. The scanners run on PRs, main and weekly, with
+read-only repository access except the CodeQL result upload permission. Dependabot
+now includes both npm manifests and limits concurrent update PRs. Branch rules
+still need to require these named checks for future merges; adding a workflow by
+itself does not change GitHub branch protection.
+
+See [the exported RPC inventory](SUPABASE_EXPORTED_SECURITY_INVENTORY_20261108.md)
+for all 27 function locations from the supplied Supabase CSV. Live definitions
+and grants still require access to the correct project.
+
+The initial full-history Gitleaks run reported 65 generic-key matches. Each was
+checked against its exact committed source: 48 policy/integrity SHA-256 digests,
+four generated vendor digests, six synthetic fixtures/storage labels, three
+storage-key source expressions, two public Supabase publishable keys, one
+ciphertext-variable source expression and one public storage-key label. These
+are recorded as exact commit-bound fingerprints in `.gitleaksignore`; there is
+no blanket exclusion for test files, hash-shaped tokens or config files. A new
+secret in a later commit remains detectable. The subsequent local redacted scan
+covered 1,383 commits / 70 MB and found no additional matches. This is scanner
+evidence, not a guarantee that no secret has ever appeared in repository history.
+
+All authorized Morning write routes now reject invalid environment settings,
+including reservation abandonment, before reading or mutating any operation.
+
+## Live configuration and remaining work
+
 The connected Supabase tool refused the security-advisor read with a permission
 error on this run. Live Auth settings, users, MFA and deployment state are **not
 verified or changed**. The review's previous snapshot is not current evidence.
@@ -105,13 +153,64 @@ leaked-password protection and disable public signup in the live project after
 checking its supported plan/settings. Do not revoke all sessions without an
 account recovery path.
 
-Further boundaries to implement/verify: production-only Bridge origins, document
-filesystem scope, complete local session deletion, diagnostics minimization and
-retention, key rotation/scopes, Google token encryption/PKCE, internal SQL grants,
-isolated staging, and automated secret/dependency scanning. HttpOnly auth requires
+Remaining boundaries: MFA and live Auth configuration, per-site scoped pairing
+keys and one-time pairing/rotation UX, Google token encryption/PKCE, complete
+private SQL grant/function review, isolated staging, preview access controls and
+release branch protection for the new security jobs. HttpOnly auth requires
 a separately tested server/session architecture; browser encryption with a key
 stored beside the ciphertext does not solve XSS.
 
 Every computer running a Bridge needs its own runtime update after these changes.
 Windows encryption, Defender, account privileges, lock timeout and installed ACLs
 must be checked on each computer; code or CI cannot certify those settings.
+
+
+## Additional CodeQL review and rollout actions
+
+A genuine PDF stat/read growth gap was replaced with the existing bounded
+single-handle preview reader, including a one-byte overflow check, cancellation
+and guaranteed handle closure. The AcroForm/worker suite passed against the
+checksum-verified private Node 24.22.2 executable; the Windows native runtime test also verifies the archive and executable hashes.
+
+CodeQL's reviewed constraints are stored by rule, exact repository path and
+normalized source SHA-256. The record explains static contract assertions,
+intentional file-growth attack tests, local calendar connection preferences
+(which grant no Google/backend authority), and lock-owner observation inside the
+private application directory. The last remains a local filesystem race
+constraint against an attacker already able to modify that Windows account's
+private application files; it is not represented as hostile same-user isolation.
+There is no global rule exclusion or blanket test-directory exception. Source
+changes invalidate the review record and unreviewed high/critical results fail.
+
+On the current computer, read-only checks found Defender antivirus and real-time
+protection enabled, signatures updated 2026-11-07T22:48:46Z, and no Allow ACL rows
+for Everyone, Authenticated Users or BUILTIN Users on either Bridge data root.
+BitLocker could not be verified without supported tools/administrator access.
+No machine settings or installed runtime were changed by these checks.
+
+After the merged code is pulled on each of the three computers, reinstall Bank
+and Document Bridges, select only business folders in the local configurator,
+and pair explicitly using that computer's local token file. Do not send token
+files in support exports. Verify local disk encryption, screen lock, Windows
+account protection and Defender on every computer. A Git pull alone does not
+update the stable installed runtime folders or Startup launchers.
+
+Cloud release separately requires the authorized issuer grant and explicit
+production environment before deploying Morning, plus MFA enrollment and Auth
+configuration on project bupoidcurcxuypfrjqio. These live steps were not performed
+through the unavailable/mismatched Supabase connection.
+
+
+The pinned Node runtime was advanced to 24.22.2 on Windows and in the offline
+Linux bundle. This includes the high-severity TLS/DNS/Brotli fixes in the
+[official 24.22.1 security release](https://nodejs.org/en/blog/release/v24.22.1)
+and the later fixes in [24.22.2](https://nodejs.org/en/blog/release/v24.22.2).
+Archive and executable hashes were checked against the official Node SHASUMS;
+old 24.21.0 distribution archives were removed from the current tree. Existing
+installed runtimes are updated only when the operator reinstalls the Bridges.
+
+The additional scanner review distinguishes retry jitter from credential
+randomness, read-only file handles from temporary-file creation, and Windows
+password-age timestamps from actual passwords. Inventory modal escaping is
+covered by expanded real Chromium injection tests. Each reviewed rule/path is
+bound to the complete source digest; these are not directory-wide exclusions.

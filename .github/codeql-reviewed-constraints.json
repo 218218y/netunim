@@ -1,0 +1,86 @@
+[
+  {
+    "rule": "js/file-system-race",
+    "path": "netunim-orders/document-bridge/file-lock-platform.mjs",
+    "sha256": "fd451567ba061cc036a65699df78b9ac489aa38198382b2c4739e3b1682858a0",
+    "reason": "The lock files live in the private application directory, paths are restricted to direct children, and owner metadata is used only by local coordination. Concurrent stale-owner changes are rejected by token/PID checks. An attacker able to replace these files already controls the same Windows account; no HTTP caller controls the lock path or receives its raw contents. This remains a documented local-filesystem race constraint, not a claim of hostile same-user isolation."
+  },
+  {
+    "rule": "js/file-system-race",
+    "path": "tests/document_preview_files.test.mjs",
+    "sha256": "aa7ecac47dd8ce88d8574ba4f49dca2689b5c81de8f51eca169e6e179b61c1ca",
+    "reason": "This isolated test intentionally changes a disposable file between handle.stat and handle.read to prove that the production bounded reader rejects growth and closes the handle. No business path or external input is used."
+  },
+  {
+    "rule": "js/user-controlled-bypass",
+    "path": "netunim-orders/site/assets/js/calendar/session-runtime.js",
+    "sha256": "e9ff204f0dd70c27b28b501425ddbe061f50bfa666857d7b8a866f621c2231c4",
+    "reason": "OAuth return and persisted autoConnect values are connection/display preferences. They only schedule resume/sync; authenticated token acquisition and authenticated Google API requests remain mandatory. They grant no server identity, calendar scope or user-data access. Existing owner-lifetime and calendar auth tests exercise the independent gates."
+  },
+  {
+    "rule": "py/bad-tag-filter",
+    "path": "tests/asset_contracts.py",
+    "sha256": "47c62db5f52ec344350645dc104d5607f3af7bdf2cf2d5b1e070a51e4d065f06",
+    "reason": "The expression extracts scripts from checked-in site HTML for a source contract; it never sanitizes or returns user HTML. Runtime XSS defenses are tested separately in real Chromium."
+  },
+  {
+    "rule": "py/bad-tag-filter",
+    "path": "tests/static_contracts.py",
+    "sha256": "acf7777488f0c1eb25200e1dad7c9fe73c1a6818787ce9739698853224f33574",
+    "reason": "This source-only contract extracts checked-in inline script units for static validation. It is not a production sanitizer or an authorization decision."
+  },
+  {
+    "rule": "py/incomplete-url-substring-sanitization",
+    "path": "tests/calendar_contracts.py",
+    "sha256": "ac7613ce561c7df377c778be377543e8061f9368273397c9c65921542bd1d53d",
+    "reason": "Assertions inspect checked-in CSP/OAuth source configuration. They do not admit caller URLs or perform network navigation; exact CSP source token checks are used for the Google API origin."
+  },
+  {
+    "rule": "py/incomplete-url-substring-sanitization",
+    "path": "tests/google_drive_contracts.py",
+    "sha256": "ae7e110bfbbbc23678d8318c01e94b6cc5687e0ae64758c1f33c1b3ce8d1ca69",
+    "reason": "Assertions inspect checked-in CSP tokens and read-only OAuth source constants. This is not a URL admission/sanitization routine and receives no external URL."
+  },
+  {
+    "rule": "js/bad-tag-filter",
+    "path": "tests/check_bank_review.test.mjs",
+    "sha256": "f3549871fcec3f5c6e4c4be3958458fd746c0f97886e34f66d77bcf8a8ca50fb",
+    "reason": "Negative markup assertions exercise escaping of deliberately hostile synthetic labels. These regexes inspect test output and do not sanitize production HTML; browser XSS tests remain independent."
+  },
+  {
+    "rule": "js/xss-through-dom",
+    "path": "netunim-orders/site/assets/js/domains/inventory/editor.js",
+    "sha256": "dc6bc2ec2397d5c2755281669e69c0fcc3cb7db7ab8ea50af386f81c9d0c2808",
+    "reason": "Inventory text/attribute values pass through the canonical esc helper; quantities pass through numeric formatting; modal titles are escaped by ui/modal.js and confirmation messages use textContent. Expanded runtime_security.py exercised item/details/count/transfer/order/reservation dialogs with hostile data in real Chromium with no injected markup or executable attributes."
+  },
+  {
+    "rule": "py/clear-text-storage-sensitive-data",
+    "path": "tests/browser_harness.py",
+    "sha256": "13dd7cdac1a3c866f6330c1878806e2c30702a7def180e85a00ab03811c90921",
+    "reason": "Windows host-state seeding persists only os_password_blank=false and the NetUserGetInfo password-age timestamp. The ctypes password pointer exists to match the native structure layout but is never read. No Windows password or account credential is retrieved or written."
+  },
+  {
+    "rule": "js/insecure-temporary-file",
+    "path": "netunim-orders/document-bridge/preview-file-platform.mjs",
+    "sha256": "ed4af769dc1137e46c1d93fffc8dfd9463cc5b225fc253e898ab81cefa184d78",
+    "reason": "The injected open port is always called with the literal read-only r flag. This reader never creates, truncates or writes a file. A single handle performs stat and bounded reads, returns only bytesRead slices and closes in finally; dedicated growth-race tests verify the byte limit."
+  },
+  {
+    "rule": "js/insecure-randomness",
+    "path": "shared/sync-incident-monitor.js",
+    "sha256": "b186edb1e0ba65d496a3bc4dd7d7bb1a8be36fb5b67a3e7c7c71e5d917d037e9",
+    "reason": "Math.random controls retry-backoff jitter only. Incident identity uses the separate crypto.randomUUID id port, and ownership/lease/backend authorization is independent of retry timing. No pairing key, session token or security decision derives from this jitter."
+  },
+  {
+    "rule": "js/insecure-randomness",
+    "path": "netunim-kupa/site/assets/js/shared/sync-incident-monitor.js",
+    "sha256": "b186edb1e0ba65d496a3bc4dd7d7bb1a8be36fb5b67a3e7c7c71e5d917d037e9",
+    "reason": "Math.random controls retry-backoff jitter only. Incident identity uses the separate crypto.randomUUID id port, and ownership/lease/backend authorization is independent of retry timing. No pairing key, session token or security decision derives from this jitter."
+  },
+  {
+    "rule": "js/insecure-randomness",
+    "path": "netunim-orders/site/assets/js/shared/sync-incident-monitor.js",
+    "sha256": "b186edb1e0ba65d496a3bc4dd7d7bb1a8be36fb5b67a3e7c7c71e5d917d037e9",
+    "reason": "Math.random controls retry-backoff jitter only. Incident identity uses the separate crypto.randomUUID id port, and ownership/lease/backend authorization is independent of retry timing. No pairing key, session token or security decision derives from this jitter."
+  }
+]

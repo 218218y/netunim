@@ -50,7 +50,7 @@ const sample=()=>({id:'c1',name:'<script>bad()</script>',account:'ביתי',amou
   assert.equal(checkBankReviewMarkup([c]),'');assert.match(checkBankStatusMarkup(c),/אושרה אוטומטית/);
   c.bankHistory=[{...c.bankMatch,recordedAt:'2026-08-03T12:00:00Z',checkName:c.name,checkAmount:300}];
   let html=checkBankActivityMarkup([c],'ביתי');assert.match(html,/הודעות ופעולות אוטומטיות בבנק \(צ׳ק אחד\)/);
-  assert.match(html,/&lt;script&gt;/);assert.doesNotMatch(html,/<script>|אשר התאמה|role="status"/);
+  assert.match(html,/&lt;script&gt;/);assert.doesNotMatch(html,/<script\b|אשר התאמה|role="status"/i);
   assert.match(html,/ההתאמה שגויה/,'A quiet current association can still be inspected and rejected');
   c.bankMatch={...c.bankMatch,phase:'cleared',eventId:'17:cleared'};
   assert.equal(checkBankReviewItems([c]).length,0,'Routine settlement is a notification, not a warning');
@@ -66,7 +66,7 @@ const sample=()=>({id:'c1',name:'<script>bad()</script>',account:'ביתי',amou
 }
 {
   const c=sample();assert.equal(checkBankReviewItems([c]).length,1);
-  const html=checkBankReviewMarkup([c]);assert.match(html,/קבוצה של 2 צ׳קים/);assert.match(html,/אשר התאמה/);assert.match(html,/&lt;script&gt;/);assert.doesNotMatch(html,/<script>/);
+  const html=checkBankReviewMarkup([c]);assert.match(html,/קבוצה של 2 צ׳קים/);assert.match(html,/אשר התאמה/);assert.match(html,/&lt;script&gt;/);assert.doesNotMatch(html,/<script\b/i);
   assert.equal(checkBankReviewMarkup([c],'עסקי'),'');
   assert.equal(applyCheckBankReview([c],c.id,'stale-event','accept'),false);
   assert.equal(applyCheckBankReview([c],c.id,c.bankMatch.eventId,'accept'),true);

@@ -38,3 +38,11 @@ test('missing Morning environment never selects production',async()=>{
   assert.equal((await response.json()).environment,'sandbox');
   assert.equal(f.requests.length,0);
 });
+test('an invalid environment cannot abandon a production reservation or enter any issuance route',async()=>{
+  const f=await edgeFixture('morning-documents',{user:{id:owner,app_metadata:{morning_documents_write:true}},env:{MORNING_ENV:'produciton'}});
+  for(const action of ['reserve','preview','create','abandon_reservation']){
+    const response=await invoke(f,action);
+    assert.equal(response.status,503);assert.equal((await response.json()).code,'morning_environment_invalid');
+  }
+  assert.equal(f.requests.length,0);assert.equal(f.operations.length,0);
+});
