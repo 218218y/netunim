@@ -19,6 +19,9 @@ test('staged Bank runtime starts its real HTTP capabilities with isolated files 
   const binary=await request('/bank/cheque-image/'+key);assert.equal(binary.status,200);assert.deepEqual(Buffer.from(await binary.arrayBuffer()),image);assert.equal(binary.headers.get('x-content-type-options'),'nosniff');
   if(process.platform==='win32'){
     assert.equal((await request('/credentials',{method:'POST',body:{userCode:'0012',password:' synthetic bank secret ',branchNumber:'001',accountNumber:'000123'}})).status,200);
+    assert.equal((await request('/bank/cheque-image/'+key)).status,404,'credential replacement clears old account images');
+    const cache=path.join(app,'cheque-image-cache'),now=new Date(),eventDate=String(now.getFullYear())+String(now.getMonth()+1).padStart(2,'0')+String(now.getDate()).padStart(2,'0');
+    await fs.mkdir(cache,{recursive:true});await fs.writeFile(path.join(cache,key+'.bin'),image);await fs.writeFile(path.join(cache,key+'.json'),JSON.stringify({key,contentType:'image/png',size:image.length,eventDate}));
     const bank=await (await request('/status')).json();assert.equal(bank.businessAccountNumber,'000123');assert.ok(!JSON.stringify(bank).includes('secret'));
     const profiles=await Promise.all(['first','second'].map(profileId=>request('/credit/profiles',{method:'POST',body:{profileId,provider:'max',username:profileId,password:' synthetic credit secret '}})));
     assert.deepEqual(profiles.map(response=>response.status),[200,200]);assert.equal((await (await request('/v2/credit/status')).json()).profiles.length,2);

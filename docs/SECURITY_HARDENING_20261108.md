@@ -28,6 +28,37 @@ Existing issuance/recovery and read-scope tests remain mandatory.
 
 ## Live configuration and remaining work
 
+## Local origins, installation secrets and bank disconnect
+
+Bank defaults to allowlisting exactly `https://bargig-furniture.com`,
+`https://bargig-orders.pages.dev`, and `https://bargig-kupa.pages.dev`.
+Local native clients still require a token for private actions. Development and
+custom origins must be explicitly listed in `origin-policy.json`; previews and
+localhost are not implicitly trusted. An explicitly configured `legacy-reflect`
+remains an administrator compatibility escape hatch, never an automatic fallback.
+Document Bridge also defaults to these three exact origins, and historical
+wildcard entries in persisted configuration no longer grant access. Add only
+individual necessary origins locally; do not authorize production credentials
+for preview deployments. Existing pairing tokens are preserved by upgrades.
+
+Neither installer copies a token to the clipboard. Document installation reports
+no longer include a token. Pairing is an explicit local action using
+`bridge-token.txt`; that file must never accompany a support report. Previously
+exported installation reports/backups may still contain the old token; remove
+them and rotate a potentially exposed token. This is not yet a one-time pairing
+protocol or separate per-site scoped credentials.
+
+Bank disconnect now clears the saved session URL, stops only Chrome/Edge
+processes launched for the exact private bank profile, waits for exit, removes
+the profile with bounded retries and verifies its absence. Cleanup failure is
+an error, not a successful disconnect. Credential replacement/import also clears
+the old browser identity before installing another identity. This deletes local
+session state; it does not revoke a session at the bank's servers.
+
+The Supabase reconnection later succeeded but exposed a different project
+(`paqzrxrvowwndevqptdk`), not this application's `bupoidcurcxuypfrjqio`.
+The application project still denied access; no unrelated project was changed.
+
 The connected Supabase tool refused the security-advisor read with a permission
 error on this run. Live Auth settings, users, MFA and deployment state are **not
 verified or changed**. The review's previous snapshot is not current evidence.

@@ -1,3 +1,5 @@
+> Superseded for the default Origin policy by [2026-11-08 hardening](SECURITY_HARDENING_20261108.md). Production now defaults to exact origins; development/preview require explicit configuration.
+
 # Bank Bridge v75 origin rollout
 
 The v75 server accepts an optional persisted `origin-policy.json` in

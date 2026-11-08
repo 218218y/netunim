@@ -165,7 +165,6 @@ if not "%ERRORLEVEL%"=="0" goto :activate_error
 
 "%NODE_EXE%" "%RUNTIME%\server.mjs" --write-install-summary >nul
 if not "%ERRORLEVEL%"=="0" goto :activate_error
-if exist "%APPROOT%\bridge-token.txt" type "%APPROOT%\bridge-token.txt" | clip >nul 2>nul
 
 if exist "%CONFIGBACKUP%" del /Q "%CONFIGBACKUP%" >nul 2>nul
 if exist "%ACTIVEBACKUP%" del /Q "%ACTIVEBACKUP%" >nul 2>nul
@@ -187,7 +186,7 @@ echo ============================================================
 echo Document Bridge installed successfully on THIS computer.
 echo Everything will be started automatically in background mode
 echo whenever the Bridge starts. No Everything search window is needed.
-echo Notepad will open with the key and diagnostics.
+echo Notepad will open with diagnostics. Pair explicitly using bridge-token.txt in the local Bridge folder.
 echo ============================================================
 echo.
 start "" notepad.exe "%SUMMARY%"

@@ -25,13 +25,8 @@ export function assertBridgeNodeVersion(value=process.versions.node){
 
 export const DEFAULT_ALLOWED_ORIGINS=[
   'https://bargig-furniture.com',
-  'https://*.bargig-furniture.com',
   'https://bargig-orders.pages.dev',
-  'https://*.bargig-orders.pages.dev',
   'https://bargig-kupa.pages.dev',
-  'https://*.bargig-kupa.pages.dev',
-  'http://localhost:*',
-  'http://127.0.0.1:*',
 ];
 
 function text(value){return String(value??'').trim()}
@@ -419,11 +414,10 @@ export function parseRegistryInstallLocation(stdout,valueName='InstallLocation')
   return '';
 }
 
-function wildcardToRegExp(pattern){
-  const escaped=String(pattern||'').replace(/[.+?^${}()|[\]\\]/g,'\\$&').replaceAll('*','.*');
-  return new RegExp(`^${escaped}$`,'i');
-}
 export function originAllowed(origin,patterns=DEFAULT_ALLOWED_ORIGINS){
   if(!origin)return true;
-  return (Array.isArray(patterns)?patterns:[]).some(pattern=>wildcardToRegExp(pattern).test(origin));
+  try{const parsed=new URL(origin);if(!['http:','https:'].includes(parsed.protocol)||parsed.origin!==origin)return false}catch{return false}
+  // Historical installation defaults contained wildcard previews/localhost.
+  // They no longer grant access, even in an existing persisted configuration.
+  return (Array.isArray(patterns)?patterns:[]).some(pattern=>pattern===origin);
 }

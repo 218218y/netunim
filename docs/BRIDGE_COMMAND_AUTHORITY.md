@@ -1,3 +1,5 @@
+> Superseded for the default Origin policy by [2026-11-08 hardening](SECURITY_HARDENING_20261108.md). Production now defaults to exact origins; development/preview require explicit configuration.
+
 # Bank Bridge command authority decision, 2026-10-25
 
 Decision: retain the existing single pairing-token authority for supported
