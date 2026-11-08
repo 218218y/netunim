@@ -61,7 +61,7 @@ for (const name of ['google-drive-oauth', 'google-calendar-oauth']) {
       let release;
       const f = await oauthFixture(name, {fetch:() => new Promise(resolve => { release = resolve; })});
       const pending = f.invoke('disconnect');
-      await tick();
+      await f.waitForRequests();
       const replacement = {refresh_token:'replacement-refresh', google_account_id:'replacement-account'};
       f.connection.value = {...replacement};
       if (result === 'timeout') f.clock.expire(); else release(new Response(''));

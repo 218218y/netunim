@@ -56,7 +56,8 @@ for (const name of ['google-drive-oauth', 'google-calendar-oauth']) {
     assert.equal(response.status, 303);
     assert.match(response.headers.get('Location'), /oauth=connected/);
     assert.equal(f.connection.value.google_account_id, 'new-account');
-    assert.equal(f.connection.value.refresh_token, 'new-refresh');
+    assert.notEqual(f.connection.value.refresh_token, 'new-refresh');
+    assert.equal(await f.vault.open(f.connection.value.refresh_token, f.credentialContext), 'new-refresh');
     assert.equal(revoked, false, 'Google revocation invalidates project-wide grants, including replacement credentials');
   });
   test(`${name}: malformed account identities and failed upserts preserve the old connection`, async () => {

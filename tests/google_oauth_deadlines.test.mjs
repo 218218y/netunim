@@ -12,7 +12,7 @@ for (const name of ['google-drive-oauth', 'google-calendar-oauth']) {
       return new Response(new ReadableStream({start(controller) { controller.enqueue(new TextEncoder().encode('{"access_token":')); }, cancel() { cancelled = true; }}));
     }});
     const pending = f.invoke('token');
-    await tick();
+    await f.waitForRequests();
     assert.equal(f.clock.timers.size, 1);
     f.clock.expire();
     const response = await pending;
@@ -66,7 +66,7 @@ for (const name of ['google-drive-oauth', 'google-calendar-oauth']) {
   test(`${name}: revoke timeout permits local unlink but never claims confirmed revocation`, async () => {
     const f = await oauthFixture(name, {fetch:async () => new Promise(() => {})});
     const pending = f.invoke('disconnect');
-    await tick(); f.clock.expire();
+    await f.waitForRequests(); f.clock.expire();
     const response = await pending;
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), {ok:true, revocation:'unconfirmed'});
