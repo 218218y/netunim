@@ -274,7 +274,7 @@ class WindowsBankInstallerRollbackContracts(unittest.TestCase):
     def test_startup_failure_cannot_swap_a_runtime_without_confirmed_shutdown(self):
         source = (ROOT/'netunim-kupa/bank-bridge/install_bank_bridge.bat').read_text(encoding='utf8')
         start = source.index('if errorlevel 1 (', source.index('start "" wscript.exe "%AUTOSTART%"'))
-        end = source.index('\nif exist "%APPROOT%\\bridge-token.txt"', start)
+        end = source.index('\necho Bank Bridge was installed successfully', start)
         block = source[start:end].replace('start "" wscript.exe "%AUTOSTART%"', 'echo restarted>>"%CI_CALLS%"')
         for stop_exit in (1, 0):
             with self.subTest(stop_exit=stop_exit), tempfile.TemporaryDirectory(prefix='bank rollback spaces ') as scratch:
