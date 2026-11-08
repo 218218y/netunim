@@ -36,7 +36,7 @@ for (const [label, module, endpoint, document, anchor, replacement] of [
             path.join(diagnostics, document),
             JSON.stringify({
               profileId: 'native-artifact-fixture',
-              schemaVersion: 3,
+              schemaVersion: 4,
               stage: 'Fixture',
             }) + '\n'
           );
@@ -44,12 +44,14 @@ for (const [label, module, endpoint, document, anchor, replacement] of [
             source = await fs.readFile(filename, 'utf8');
           assert.ok(source.includes(anchor));
           const adapter = module === 'bridge-artifacts.mjs' ? 'files' : 'fs';
-          const held = `await ${adapter}.writeFile(path.join(directory,'fixture-read-entered'),'entered');
+          const held = `if(await ${adapter}.access(path.join(directory,'fixture-enable-held-read')).then(()=>true,()=>false)){await ${adapter}.writeFile(path.join(directory,'fixture-read-entered'),'entered');
       while(true){try{await ${adapter}.access(path.join(directory,'fixture-read-release'));break}catch(error){if(error.code!=='ENOENT')throw error;await new Promise(resolve=>setTimeout(resolve,10))}};
-      `;
+      }`;
           await fs.writeFile(filename, source.replace(anchor, held + replacement));
         },
       });
+      const markerDirectory=module==='bridge-artifacts.mjs'?f.app:path.join(f.app,'diagnostics');
+      await fs.writeFile(path.join(markerDirectory,'fixture-enable-held-read'),'enabled');
       const reading = http.request(
         f.base + endpoint,
         { agent: false, headers: { Authorization: 'Bearer native-fixture-token' } },

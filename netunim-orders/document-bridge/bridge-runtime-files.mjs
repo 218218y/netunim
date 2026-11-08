@@ -26,13 +26,14 @@ async function ensureToken(){await ensureRoot();try{const token=(await fs.readFi
 async function loadConfig(){
   const raw=await readJsonFile(CONFIG_PATH,{});
   return {
+    roots:Array.isArray(raw.roots)?raw.roots:[],
     everythingInstance:String(raw.everythingInstance||'').trim(),
     everythingExecutable:String(raw.everythingExecutable||'').trim(),
     allowedOrigins:Array.isArray(raw.allowedOrigins)&&raw.allowedOrigins.length?raw.allowedOrigins.map(String):DEFAULT_ALLOWED_ORIGINS,
     searchTimeoutMs:Math.max(3000,Math.min(30000,Number(raw.searchTimeoutMs)||15000)),
   };
 }
-async function saveConfig(config){await writeJsonFile(CONFIG_PATH,{everythingInstance:String(config.everythingInstance||'').trim(),everythingExecutable:String(config.everythingExecutable||'').trim(),allowedOrigins:Array.isArray(config.allowedOrigins)&&config.allowedOrigins.length?config.allowedOrigins:DEFAULT_ALLOWED_ORIGINS,searchTimeoutMs:Math.max(3000,Math.min(30000,Number(config.searchTimeoutMs)||15000))})}
+async function saveConfig(config){await writeJsonFile(CONFIG_PATH,{roots:Array.isArray(config.roots)?config.roots:[],everythingInstance:String(config.everythingInstance||'').trim(),everythingExecutable:String(config.everythingExecutable||'').trim(),allowedOrigins:Array.isArray(config.allowedOrigins)&&config.allowedOrigins.length?config.allowedOrigins:DEFAULT_ALLOWED_ORIGINS,searchTimeoutMs:Math.max(3000,Math.min(30000,Number(config.searchTimeoutMs)||15000))})}
 async function init(){await ensureToken();const existing=await loadConfig();if(!fsSync.existsSync(CONFIG_PATH))await saveConfig(existing);return existing}
 async function existsFile(candidate){if(!candidate)return false;try{return (await fs.stat(candidate)).isFile()}catch{return false}}
 function normalizedRuntimePath(value){return path.resolve(String(value||'')).replace(/[\\/]+$/,'').toLocaleLowerCase('en-US')}

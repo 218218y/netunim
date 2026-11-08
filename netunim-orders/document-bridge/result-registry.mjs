@@ -14,7 +14,7 @@
  * size: number | null, attributes: string, expiresAt: number} & ResultContext} StoredResult
  * @typedef {{size: number, mtimeMs: number, mtime: Date, isDirectory: () => boolean}} ResultStat
  * @typedef {{clock: {now: () => number, ttlMs: number}, identity: {next: () => string},
- * files: {stat: (fullPath: string) => Promise<ResultStat>}}} ResultRegistryPorts
+ * files: {stat: (fullPath: string) => Promise<ResultStat>, authorize?: (fullPath:string) => Promise<string>}}} ResultRegistryPorts
  */
 
 /** @param {ResultRegistryPorts} ports */
@@ -71,14 +71,15 @@ export function createDocumentResultRegistry({ clock, identity, files }) {
         code: 'RESULT_EXPIRED'
       });
     let stat;
+    const fullPath=files.authorize?await files.authorize(row.fullPath):row.fullPath;
     try {
-      stat = await files.stat(row.fullPath);
+      stat = await files.stat(fullPath);
     } catch {
       throw Object.assign(new Error('הקובץ כבר אינו קיים או שאינו נגיש.'), {
         code: 'OPEN_TARGET_MISSING'
       });
     }
-    return { row, stat };
+    return { row:{...row,fullPath}, stat };
   }
   /** @param {unknown} fullPath */
   function invalidate(fullPath) {

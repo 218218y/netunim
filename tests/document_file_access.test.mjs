@@ -1,0 +1,33 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import os from 'node:os';
+import {createDocumentFileAccess} from '../netunim-orders/document-bridge/file-access-policy.mjs';
+import {createDocumentResultRegistry} from '../netunim-orders/document-bridge/result-registry.mjs';
+
+test('document access checks real files, sibling prefixes, junction escapes and permission revocation',async t=>{
+  const temporary=await fs.mkdtemp(path.join(os.tmpdir(),'document-access-'));
+  t.after(()=>fs.rm(temporary,{recursive:true,force:true}));
+  const root=path.join(temporary,'business'),outside=path.join(temporary,'business-private');
+  await fs.mkdir(root);await fs.mkdir(outside);
+  const invoice=path.join(root,'invoice.txt'),secret=path.join(outside,'private.txt');
+  await fs.writeFile(invoice,'synthetic invoice');await fs.writeFile(secret,'private synthetic file');
+  let config={roots:[{path:root}]};
+  const access=createDocumentFileAccess({loadConfig:async()=>config});
+  assert.equal(await access.authorize(invoice),await fs.realpath(invoice));
+  await assert.rejects(access.authorize(secret),{code:'DOCUMENT_PATH_FORBIDDEN'});
+  await assert.rejects(access.authorize(path.join(root,'..','business-private','private.txt')),{code:'DOCUMENT_PATH_FORBIDDEN'});
+  const link=path.join(root,'escape');await fs.symlink(outside,link,process.platform==='win32'?'junction':'dir');
+  await assert.rejects(access.authorize(path.join(link,'private.txt')),{code:'DOCUMENT_PATH_FORBIDDEN'});
+  assert.deepEqual((await access.admit([{fullPath:invoice},{fullPath:secret},{fullPath:path.join(link,'private.txt')}])).map(row=>row.fullPath),[await fs.realpath(invoice)]);
+  const registry=createDocumentResultRegistry({clock:{now:()=>1,ttlMs:100},identity:{next:()=> 'opaque'},files:{stat:fs.stat,authorize:access.authorize}});
+  const result=registry.publish({fullPath:invoice,name:'invoice',relativePath:'business',modified:'',size:0,extension:'txt'},{query:'invoice',mode:'everything',contentSearch:{matchMode:'phrase',wordMatch:'partial',proximityWords:0}});
+  await registry.resolve(result.id);
+  config={roots:[]};
+  await assert.rejects(registry.resolve(result.id),{code:'DOCUMENT_ROOTS_NOT_CONFIGURED'});
+  await assert.rejects(access.admit([]),{code:'DOCUMENT_ROOTS_NOT_CONFIGURED'});
+  config={roots:[{path:outside}]};
+  await assert.rejects(registry.resolve(result.id),{code:'DOCUMENT_PATH_FORBIDDEN'});
+  assert.equal(await fs.readFile(secret,'utf8'),'private synthetic file');
+});

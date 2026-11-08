@@ -29,7 +29,7 @@
  * search: (request: SearchPlan, limit: number) => DocumentRow[]},
  * ordering: {merge: (groups: DocumentRow[][], limit: number, ceiling: number) => DocumentRow[],
  * compare: (left: DocumentRow, right: DocumentRow, sort: DocumentSort) => number},
- * publication: {prune: () => void, publish: (row: DocumentRow, context: ResultContext) => PublicDocumentRow},
+ * publication: {prune: () => void, publish: (row: DocumentRow, context: ResultContext) => PublicDocumentRow, admit?: (rows:DocumentRow[])=>Promise<DocumentRow[]>},
  * audit: {write: (message: string) => Promise<void>}}} SearchPorts
  * @typedef {{bridgeVersion: number, maxResults: number, defaultLimit: number,
  * recentLimit: number}} SearchLimits
@@ -189,7 +189,9 @@ export function createDocumentSearch(
     }
     assertActive(plan.signal);
     publication.prune();
-    const results = pageRows.map(row =>
+    const admitted=publication.admit?await publication.admit(pageRows):pageRows;
+    assertActive(plan.signal);
+    const results = admitted.map(row =>
       publication.publish(row, {
         query: String(query || ''),
         mode,
@@ -217,7 +219,10 @@ export function createDocumentSearch(
     });
     assertActive(signal);
     publication.prune();
-    const results = ordering.merge([rows], boundedLimit, recentLimit).map(row =>
+    const candidates=ordering.merge([rows], boundedLimit, recentLimit);
+    const admitted=publication.admit?await publication.admit(candidates):candidates;
+    assertActive(signal);
+    const results = admitted.map(row =>
       publication.publish(row, {
         query: '',
         mode: 'everything',
