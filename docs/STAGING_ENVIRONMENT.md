@@ -35,11 +35,11 @@ copies seeds, updates Vault secrets or targets the production project.
 Cloudflare Access still requires the account's Access configuration; the build
 guard is not an Access policy. A separately registered staging Google OAuth
 client and Morning sandbox credentials are required before enabling those
-integrations. Do not reuse production OAuth/Morning secrets. Test users and
+integrations. Do not reuse production OAuth/Morning secrets.
 Set `GOOGLE_CALENDAR_CLIENT_ID` and `GOOGLE_DRIVE_CLIENT_ID` to their separately
 registered staging OAuth clients. The legacy client-ID fallback is restricted to
 the exact production Supabase project; other projects fail closed without an ID.
-fixtures must remain synthetic. The free project may pause when inactive.
+Test users and fixtures must remain synthetic. The free project may pause when inactive.
 
 Routine patch/minor Dependabot updates are grouped into one open npm update PR
 to bound verification load. Security update scanning remains enabled. Upstream
