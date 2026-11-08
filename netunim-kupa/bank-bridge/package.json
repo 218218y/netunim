@@ -15,7 +15,7 @@
     "puppeteer-modern": "npm:puppeteer@25.16.0",
     "camoufox-js": "0.12.0",
     "playwright-core": "1.60.0",
-    "fingerprint-generator": "2.1.86"
+    "fingerprint-generator": "2.1.89"
   },
   "overrides": {
     "puppeteer": "$puppeteer"
