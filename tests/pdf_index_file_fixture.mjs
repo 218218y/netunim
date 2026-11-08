@@ -27,7 +27,7 @@ export async function indexFixture(t, {ioHook = value => value, journal} = {}) {
   const variables = program.body.filter(node => node.type === 'VariableDeclaration' && node.declarations.some(item => variableNames.has(item.id.name)));
   const io = ioHook(fs), invalidated = [], writes = [];
   const locks=createFileLockOwner({...createFileLockPlatform({root:dir}),clock:()=>performance.now(),wait:ms=>new Promise(resolve=>setTimeout(resolve,ms))});
-  const context = {fs: io, path, PDF_FORM_INDEX_PATH: snapshotPath, PDF_FORM_INDEX_JOURNAL_PATH: journalPath, PDF_FORM_INDEX_LOCK_PATH: path.join(dir, 'lock'),
+  const context = {publication:{},documentAccess:{authorize:async value=>value,admit:async rows=>rows},fs: io, path, PDF_FORM_INDEX_PATH: snapshotPath, PDF_FORM_INDEX_JOURNAL_PATH: journalPath, PDF_FORM_INDEX_LOCK_PATH: path.join(dir, 'lock'),
     createPdfIndexReader, createPdfIndexFilePlatform: options => createPdfIndexFilePlatform({...options, io}),
     createPdfIndexWriter,createPdfIndexWritePlatform:options=>{
       const files=createPdfIndexWritePlatform({...options,io});return {...files,replaceSnapshot:async text=>{writes.push(snapshotPath);await files.replaceSnapshot(text)},clearJournal:async()=>{writes.push(journalPath);await files.clearJournal()}};
