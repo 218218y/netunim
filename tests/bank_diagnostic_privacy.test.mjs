@@ -8,10 +8,10 @@ import {createBridgeArtifacts} from '../netunim-kupa/bank-bridge/bridge-artifact
 
 test('structural diagnostics remove named and unknown personal/financial leaves and URLs',()=>{
   const sample={accountNumber:105012322,branchNumber:183,checkNumber:'4463454',beneficiary:{name:'private beneficiary'},
-    rows:[{unknownValue:'sensitive free text',unknownNumber:7654321}],details:'https://example.org/private-person/123?account=456',
+    maskedDecoy:'•••• 1234 private-after-mask',rows:[{unknownValue:'sensitive free text',unknownNumber:7654321}],details:'https://example.org/private-person/123?account=456',
     eventActivityTypeCode:1,hasDetails:true};
   const sanitized=sanitizeBankDiagnosticValue(sample),encoded=JSON.stringify(sanitized);
-  for(const value of ['105012322','183','4463454','private beneficiary','sensitive free text','7654321','private-person','456'])assert.equal(encoded.includes(value),false,value);
+  for(const value of ['105012322','183','4463454','private beneficiary','sensitive free text','7654321','private-person','456','private-after-mask'])assert.equal(encoded.includes(value),false,value);
   assert.equal(sanitized.eventActivityTypeCode,1);assert.equal(sanitized.hasDetails,true);
   assert.deepEqual(Object.keys(sanitized),Object.keys(sample));
 });
