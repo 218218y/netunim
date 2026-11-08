@@ -72,3 +72,5 @@ ebe28da267639e660a19870ef878fd186f2db80f:tests/runtime_morning_resolution.py:gen
 # Supabase public publishable browser key
 a8988a7eb4cceebecd7eb31739453ec64cbb8dcf:netunim-kupa/site/supabase/config.js:generic-api-key:5
 a8988a7eb4cceebecd7eb31739453ec64cbb8dcf:netunim-orders/site/supabase/config.js:generic-api-key:5
+# Reviewed expression awaiting AES-GCM sealing of a synthetic wrong-owner fixture; no credential literal.
+72018deb883f91f49bd64e093a5c702edd300ebd:tests/google_oauth_security.test.mjs:generic-api-key:99
