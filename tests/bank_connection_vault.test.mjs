@@ -81,7 +81,7 @@ test('import validation retains placeholder/duplicate/provider/role error codes'
 test('import ownership includes cleanup, and the next edit sees the replaced persisted profiles',async t=>{
   const f=await fixture(t),operations=createBridgeOperationOwner();let release,entered;
   const held=new Promise(resolve=>{release=resolve}),cleaning=new Promise(resolve=>{entered=resolve});
-  const artifacts={clearImported:async()=>{entered();await held;return ['fixture-cleanup-warning']},clearCreditData:async()=>{},creditIdentity:p=>p.profileId,deleteCreditIdentity:async()=>{}};
+  const artifacts={clearBank:async()=>{},writeBankMeta:async()=>{},clearImported:async()=>{entered();await held;return ['fixture-cleanup-warning']},clearCreditData:async()=>{},creditIdentity:p=>p.profileId,deleteCreditIdentity:async()=>{}};
   const commands=createConnectionCommands({operations,vault:f.vault,artifacts});
   const importing=commands.importConnectionSettings(importDocument());await cleaning;
   const editing=commands.saveCreditProfile({profileId:'later',provider:'max',username:'later',password:'later'});
