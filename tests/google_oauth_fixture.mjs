@@ -4,6 +4,7 @@ import {createGoogleCredentialVault} from '../netunim-orders/supabase/functions/
 
 export const GOOGLE_TEST_SCOPES = 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.calendarlist.readonly';
 export const GOOGLE_TEST_ENV = {GOOGLE_OAUTH_TOKEN_KEYS:JSON.stringify({test:Buffer.alloc(32, 7).toString('base64')}),
+  GOOGLE_CALENDAR_CLIENT_ID:'synthetic-calendar.apps.googleusercontent.com', GOOGLE_DRIVE_CLIENT_ID:'synthetic-drive.apps.googleusercontent.com',
   GOOGLE_OAUTH_TOKEN_ACTIVE_KEY:'test', GOOGLE_OAUTH_ALLOWED_ORIGINS:'https://app.example.test'};
 
 export const tick = () => new Promise(resolve => setImmediate(resolve));

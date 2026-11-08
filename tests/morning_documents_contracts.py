@@ -135,7 +135,7 @@ ok("async function getDocument(body:any" in edge and "document_links" in edge an
    'Morning document open: document IDs are checked with the authenticated current Morning business')
 config=(ROOT/'netunim-orders/supabase/config.toml').read_text(encoding='utf-8')
 morning_config=config.split('[functions.morning-documents]',1)[1]
-ok('verify_jwt = false' in morning_config and 'requireUser(req)' in edge and 'client.auth.getUser(token)' in edge and "if(req.method==='OPTIONS')" in edge and "'Access-Control-Allow-Origin':'*'" in edge,
+ok('verify_jwt = false' in morning_config and 'requireUser(req)' in edge and 'client.auth.getUser(token)' in edge and "if(req.method==='OPTIONS')" in edge and 'withEdgeOrigins' in edge and 'FINANCIAL_EDGE_ALLOWED_ORIGINS' in edge and "'Access-Control-Allow-Origin':'*'" not in edge,
    'Morning function auth/CORS: preflight reaches the handler while every POST still requires a Supabase-authenticated user')
 customer_pack=(SITE/'assets/js/ui/action-packs/customers.js').read_text(encoding='utf-8')
 ok('const domainsCustomers=createOrdersCustomersRuntime({' in main and 'const renderCustomers=' not in main

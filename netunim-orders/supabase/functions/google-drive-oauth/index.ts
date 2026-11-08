@@ -5,7 +5,7 @@ import {decodeGoogleToken, decodeGoogleAccount} from '../_shared/google-receipts
 import {createGoogleCredentialVault, GoogleCredentialError} from '../_shared/google-credentials.js';
 import {googleOAuthOrigins, googleOAuthResponse} from '../_shared/google-origins.js';
 
-const CLIENT_ID='113139579639-jo09d2gts6kujig6rcaeid3bu40ojjqm.apps.googleusercontent.com';
+const CLIENT_ID=Deno.env.get('GOOGLE_DRIVE_CLIENT_ID')||Deno.env.get('GOOGLE_CALENDAR_CLIENT_ID')||(Deno.env.get('SUPABASE_URL')==='https://bupoidcurcxuypfrjqio.supabase.co'?'113139579639-jo09d2gts6kujig6rcaeid3bu40ojjqm.apps.googleusercontent.com':'');
 const SCOPES='https://www.googleapis.com/auth/drive.readonly';
 const GOOGLE_AUTH_URL='https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_URL='https://oauth2.googleapis.com/token';
@@ -69,7 +69,7 @@ function googleFailure(error:unknown){
 }
 
 async function start(req:Request,userId:string,body:any){
-  if(!GOOGLE_CLIENT_SECRET)return json({code:'google_drive_backend_not_configured',message:'GOOGLE_DRIVE_CLIENT_SECRET/GOOGLE_CALENDAR_CLIENT_SECRET חסר ב-Supabase Edge Function'},503);
+  if(!GOOGLE_CLIENT_SECRET||!CLIENT_ID)return json({code:'google_drive_backend_not_configured',message:'GOOGLE_DRIVE_CLIENT_SECRET/GOOGLE_CALENDAR_CLIENT_SECRET חסר ב-Supabase Edge Function'},503);
   const origin=req.headers.get('Origin')||'';
   let returnUrl='';
   try{returnUrl=safeReturnUrl(body?.return_url,origin)}catch{return json({code:'google_drive_invalid_return_url',message:'כתובת החזרה של Google Drive אינה תקינה'},400)}
@@ -98,7 +98,7 @@ async function start(req:Request,userId:string,body:any){
 function hasRequiredScopes(value:unknown){const granted=new Set(String(value||'').split(/\s+/).filter(Boolean));return SCOPES.split(' ').every(scope=>granted.has(scope))}
 
 async function token(userId:string){
-  if(!GOOGLE_CLIENT_SECRET)return json({code:'google_drive_backend_not_configured',message:'Google Drive OAuth secret חסר ב-Supabase Edge Function'},503);
+  if(!GOOGLE_CLIENT_SECRET||!CLIENT_ID)return json({code:'google_drive_backend_not_configured',message:'Google Drive OAuth secret חסר ב-Supabase Edge Function'},503);
   const {data:connection,error}=await admin.from('google_drive_connections').select('google_account_id,refresh_token,scope').eq('owner_id',userId).maybeSingle();
   if(error)return adminError(error,'google_drive_connection_read_failed');
   if(!connection?.refresh_token)return json({code:'google_drive_not_connected'},404);
@@ -158,7 +158,7 @@ async function callback(url:URL){
   if(oauthError)return Response.redirect(appendOAuthResult(returnUrl,'error',oauthError),303);
   const code=String(url.searchParams.get('code')||'');
   if(!code)return Response.redirect(appendOAuthResult(returnUrl,'error','missing_code'),303);
-  if(!GOOGLE_CLIENT_SECRET)return Response.redirect(appendOAuthResult(returnUrl,'error','backend_not_configured'),303);
+  if(!GOOGLE_CLIENT_SECRET||!CLIENT_ID)return Response.redirect(appendOAuthResult(returnUrl,'error','backend_not_configured'),303);
   try{
     const vault=oauthSecurity(),proof=await vault.proof(state,ownerContext(stateRow.owner_id),REDIRECT_URI);
     const exchanged=await googleToken({code,code_verifier:proof.verifier,client_id:CLIENT_ID,client_secret:GOOGLE_CLIENT_SECRET,redirect_uri:REDIRECT_URI,grant_type:'authorization_code'});

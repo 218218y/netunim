@@ -52,6 +52,13 @@ test('server-only PKCE verifiers satisfy S256 and change with state, service, ow
 for (const name of ['google-drive-oauth', 'google-calendar-oauth']) {
   const credentials = {access_token:'synthetic-access', refresh_token:'synthetic-refresh', expires_in:3600, scope:GOOGLE_TEST_SCOPES};
   const account = name.includes('drive') ? {user:{permissionId:'verified-account'}} : {items:[{primary:true, id:'verified-account'}]};
+  test(`${name}: isolated projects require an explicitly configured OAuth client ID`, async () => {
+    const f = await oauthFixture(name, {env:{GOOGLE_CALENDAR_CLIENT_ID:undefined, GOOGLE_DRIVE_CLIENT_ID:undefined}});
+    assert.equal((await f.invoke('start')).status, 503);
+    assert.equal((await f.invoke('token')).status, 503);
+    assert.equal(f.requests.length, 0);
+    assert.equal(f.writes.length, 0);
+  });
   test(`${name}: the actual handler sends the matching server-only PKCE proof and stores ciphertext`, async () => {
     let authorization;
     const f = await oauthFixture(name, {fetch:async (url, init) => {
@@ -60,6 +67,7 @@ for (const name of ['google-drive-oauth', 'google-calendar-oauth']) {
       const verifier = params.get('code_verifier');
       assert.equal(createHash('sha256').update(verifier).digest('base64url'), authorization.searchParams.get('code_challenge'));
       assert.equal(params.get('grant_type'), 'authorization_code');
+      assert.equal(params.get('client_id'), authorization.searchParams.get('client_id'));
       assert.equal(params.get('redirect_uri'), project + `/functions/v1/${name}/callback`);
       return Response.json(credentials);
     }});
@@ -67,6 +75,7 @@ for (const name of ['google-drive-oauth', 'google-calendar-oauth']) {
     assert.equal(start.status, 200);
     authorization = new URL((await start.json()).authorize_url);
     assert.equal(authorization.searchParams.get('code_challenge_method'), 'S256');
+    assert.equal(authorization.searchParams.get('client_id'), name.includes('drive') ? GOOGLE_TEST_ENV.GOOGLE_DRIVE_CLIENT_ID : GOOGLE_TEST_ENV.GOOGLE_CALENDAR_CLIENT_ID);
     assert.equal(authorization.searchParams.has('code_verifier'), false);
     assert.equal(f.state.value.code_verifier, undefined);
     const response = await f.callback(authorization.searchParams.get('state'));

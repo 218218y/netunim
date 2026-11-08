@@ -1,3 +1,4 @@
+import {edgeOrigins,withEdgeOrigins} from '../netunim-orders/supabase/functions/_shared/edge-origins.js';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {stripTypeScriptTypes} from 'node:module';
@@ -45,7 +46,7 @@ const mockFetch=async(url,init={})=>{
   if(url.includes('/documents/')){if(failure==='readback')return Response.json({message:'read-back unavailable'},{status:503});if(failure==='read429'&&rateLimitHits++===0)return Response.json({message:'rate limited'},{status:429,headers:{'Retry-After':'0'}});const id=decodeURIComponent(url.split('/documents/')[1].split('/')[0]),doc=morningDocs.get(id)||sample;if(failure==='mismatch')return Response.json({...doc,amount:999});if(failure==='wrapped-read')return Response.json({data:doc});return Response.json(doc)};
   throw new Error('Unexpected request '+url);
 };
-const context=vm.createContext({console,Response,Request,URL,AbortController,TextEncoder,crypto:globalThis.crypto,atob:globalThis.atob,setTimeout,clearTimeout,fetch:mockFetch,createClient:()=>({from:()=>new Query(),auth:{getUser:async()=>({data:{user:{id:owner}}})}}),Deno:{env:{get:key=>({SUPABASE_URL:'https://example.supabase.co',SUPABASE_ANON_KEY:'test',SUPABASE_SERVICE_ROLE_KEY:'test',MORNING_CLIENT_ID:'test',MORNING_CLIENT_SECRET:'test',MORNING_ENV:'sandbox'})[key]},serve:handler=>{servedHandler=handler}}});
+const context=vm.createContext({edgeOrigins,withEdgeOrigins,console,Response,Request,URL,AbortController,TextEncoder,crypto:globalThis.crypto,atob:globalThis.atob,setTimeout,clearTimeout,fetch:mockFetch,createClient:()=>({from:()=>new Query(),auth:{getUser:async()=>({data:{user:{id:owner}}})}}),Deno:{env:{get:key=>({SUPABASE_URL:'https://example.supabase.co',SUPABASE_ANON_KEY:'test',SUPABASE_SERVICE_ROLE_KEY:'test',MORNING_CLIENT_ID:'test',MORNING_CLIENT_SECRET:'test',MORNING_ENV:'sandbox'})[key]},serve:handler=>{servedHandler=handler}}});
 context.createMorningReportsHandler=createMorningReportsHandler;
 Object.assign(context,{readJsonBodyBounded,JsonBodyError});
 const source=readFileSync(new URL('../netunim-orders/supabase/functions/morning-documents/index.ts',import.meta.url),'utf8').replace(/^import .*?;\r?\n/gm,'');
@@ -155,8 +156,8 @@ rows.push({owner_id:otherOwner,operation_id:staleOperationId,environment:'sandbo
 const beforeStale=postCount,staleRecovered=await decode(await api.create(owner,staleRequest));assert.equal(staleRecovered.verified,true);assert.equal(postCount,beforeStale+1,'stale pre-POST reservation is released and replaced without duplicate issuance');const staleRow=rows.find(r=>r.operation_id===staleOperationId);assert.equal(staleRow.state,'failed');assert.equal(staleRow.error_code,'reservation_abandoned');assert.equal(staleRow.client_name,'');assert.equal(staleRow.description,'');
 assert.ok(rows.every(r=>!JSON.stringify(r).includes('https://')));
 assert.ok(servedHandler,'Edge handler is registered');
-const preflight=await servedHandler(new Request('https://example.supabase.co/functions/v1/morning-documents',{method:'OPTIONS',headers:{Origin:'http://localhost:3000','Access-Control-Request-Method':'POST','Access-Control-Request-Headers':'authorization,apikey,content-type'}}));
-assert.equal(preflight.status,200);assert.equal(preflight.headers.get('Access-Control-Allow-Origin'),'*');assert.match(preflight.headers.get('Access-Control-Allow-Headers')||'',/authorization/i);
+const preflight=await servedHandler(new Request('https://example.supabase.co/functions/v1/morning-documents',{method:'OPTIONS',headers:{Origin:'https://bargig-orders.pages.dev','Access-Control-Request-Method':'POST','Access-Control-Request-Headers':'authorization,apikey,content-type'}}));
+assert.equal(preflight.status,200);assert.equal(preflight.headers.get('Access-Control-Allow-Origin'),'https://bargig-orders.pages.dev');assert.match(preflight.headers.get('Access-Control-Allow-Headers')||'',/authorization/i);
 const anonymous=await decode(await servedHandler(new Request('https://example.supabase.co/functions/v1/morning-documents',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'status'})})));
 assert.equal(anonymous.status,401);assert.equal(anonymous.code,'morning_cloud_auth_required');
 failure='timeout';

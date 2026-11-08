@@ -1,4 +1,5 @@
-const cors = {'Access-Control-Allow-Origin':'*', 'Access-Control-Allow-Headers':'authorization, apikey, content-type, x-client-info, x-retry-count, traceparent, tracestate, baggage',
+// The public Edge entrypoint supplies the exact approved request Origin.
+const cors = {'Access-Control-Allow-Headers':'authorization, apikey, content-type, x-client-info, x-retry-count, traceparent, tracestate, baggage',
   'Access-Control-Allow-Methods':'POST, OPTIONS', 'Access-Control-Expose-Headers':'X-Morning-Environment', 'Access-Control-Max-Age':'86400'};
 export function createExpenseHandler({getUser, service}) {
   const json = (body, status) => Response.json(body, {status, headers:{...cors, 'Cache-Control':'no-store'}});
