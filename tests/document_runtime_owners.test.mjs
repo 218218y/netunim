@@ -60,8 +60,8 @@ test('doctor reports readiness and rejects an unready scheduled task by default'
 test('allow-unready-task never suppresses failed Everything diagnostics',async()=>{
  const f=installFixture({taskReady:false,indexError:'ES failure'});await assert.rejects(f.diagnostics.printDoctor({allowUnreadyScheduledTask:true}),{code:'INDEX_DIAGNOSTICS_FAILED'});
 });
-test('installation report retains local pairing and errors in its owned file',async()=>{
- const f=installFixture({nodeError:true});await f.diagnostics.writeInstallSummary();assert.equal(f.written.length,1);assert.equal(f.written[0][0],'synthetic/summary');assert.match(f.written[0][1],/private-local-token/);assert.match(f.written[0][1],/bad private node/);assert.equal(f.lines.includes('private-local-token'),false);assert.equal(f.lines.at(-1),'synthetic/summary');
+test('installation report excludes pairing secrets and retains diagnostic errors',async()=>{
+ const f=installFixture({nodeError:true});await f.diagnostics.writeInstallSummary();assert.equal(f.written.length,1);assert.equal(f.written[0][0],'synthetic/summary');assert.doesNotMatch(f.written[0][1],/private-local-token/);assert.match(f.written[0][1],/bad private node/);assert.equal(f.lines.includes('private-local-token'),false);assert.equal(f.lines.at(-1),'synthetic/summary');
 });
 
 async function mutatedFactory(file,from,to,name){
