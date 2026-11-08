@@ -10,6 +10,11 @@ const DOCUMENT_ID_KEY_RE=/^(?:imageId|documentId|scanId)$/i;
 const DOCUMENT_LINK_KEY_RE=/^(?:imageFrontLink|imageBackLink|documentLink)$/i;
 const SENSITIVE_QUERY_RE=/(?:accountid|token|session|auth|authorization|xsrf|csrf|cookie|password|passwd|usercode|username|userid|secret|credential|otp|pin)/i;
 const CARD_NUMBER_KEY_RE=/(?:credit.?card|card).*(?:number|no|num|pan)|(?:number|no|num|pan).*(?:credit.?card|card)|(?:מספר|מס)(?:[ _.-]*)(?:כרטיס)|(?:כרטיס)(?:[ _.-]*)(?:מספר|מס)/i;
+// JSON dictionaries can put account identifiers or names in property names.
+// Retain only reviewed schema labels; unknown keys still contribute shape/counts.
+const STRUCTURAL_FIELDS=new Set(`accountNumber accountId branchNumber bankNumber balance availableBalance creditLimit creditLimitUsed creditLimitUsedPercent transactionCoverage transactionWarning normalizedTransactionCount eventActivityTypeCode activityTypeCode textCode activityDescription englishActionDesc transactionType referenceNumber referenceCatenatedNumber contraBankNumber contraBranchNumber contraAccountNumber beneficiaryDetailsData beneficiary beneficiaryName name partyName messageDetail pfmDetails details description amount bankReference bankSerial memo date processedDate currency status cheque checkDetails creditSettlementDetails kind checkNumbers checkItems bank branch account number checkNumber hasDocumentReference imageId documentId scanId imageFrontLink imageBackLink documentLink cardNumber rows list label value hasDetails hasPfmDetails complete from to days httpStatus code stage message result data transactions items`.split(' '));
+const SOURCE_LABELS=new Set(['פרטי אסמכתת חיוב אשראי','פירוט הרשאת חיוב אשראי','פרטי אסמכתה','פירוט שיקים']);
+const CHEQUE_KINDS=new Set(['','deposit','returned','returned_credit']);
 
 function text(value,max=MAX_STRING_LENGTH){return String(value??'').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g,'').trim().slice(0,max)}
 function maskCardLikeValue(value){const raw=String(value??'');const digits=raw.replace(/\D/g,'');return digits.length>=4?`•••• ${digits.slice(-4)}`:'[REDACTED_CARD]' }
@@ -87,7 +92,10 @@ export function sanitizeBankDiagnosticValue(value,{key='',depth=0}={}){
   }
   if(typeof value==='object'){
     const out={},entries=Object.entries(value).slice(0,MAX_OBJECT_KEYS);
-    for(const [childKey,child] of entries)out[childKey]=sanitizeBankDiagnosticValue(child,{key:childKey,depth:depth+1});
+    for(const [index,[childKey,child]] of entries.entries()){
+      const safeKey=STRUCTURAL_FIELDS.has(childKey)?childKey:`field_${index}`;
+      out[safeKey]=sanitizeBankDiagnosticValue(child,{key:childKey,depth:depth+1});
+    }
     if(Object.keys(value).length>MAX_OBJECT_KEYS)out.__truncatedKeys=Object.keys(value).length-MAX_OBJECT_KEYS;
     return out;
   }
@@ -96,7 +104,7 @@ export function sanitizeBankDiagnosticValue(value,{key='',depth=0}={}){
 
 export function createBankDiagnosticRun({bridgeVersion=0}={}){
   return {
-    schemaVersion:4,bridgeVersion:Number(bridgeVersion)||0,startedAt:new Date().toISOString(),finishedAt:null,
+    schemaVersion:5,bridgeVersion:Number(bridgeVersion)||0,startedAt:new Date().toISOString(),finishedAt:null,
     scope:{source:'latest-bank-sync',maxTransactionsPerRole:MAX_TRANSACTIONS_PER_ROLE,includesAllTransactionTypes:true,chequeDetailResponses:true,creditSettlementDetailResponses:true},
     security:{structuralOnly:true,localOnly:true,synchronizedToSupabase:false,credentialsRedacted:true,sessionSecretsRedacted:true,binaryPayloadsRedacted:true,documentLinksRedacted:true},
     accounts:{business:emptyAccount(),home:emptyAccount()},failure:null,
@@ -108,10 +116,10 @@ export function recordBankTransactionDiagnostic(run,event){
   const account=ensureAccount(run,event?.role);account.totalSeen++;
   if(account.transactions.length>=MAX_TRANSACTIONS_PER_ROLE){account.truncated++;return false}
   const detailSources=(Array.isArray(event?.detailSources)?event.detailSources:[]).slice(0,MAX_DETAIL_SOURCES).map(source=>({
-    source:text(source?.source,60),request:sanitizeUrl(String(source?.request||'')),response:sanitizeBankDiagnosticValue(source?.response),normalized:sanitizeBankDiagnosticValue(source?.normalized),error:source?.error?sanitizeBankDiagnosticValue(source.error):null,
+    source:SOURCE_LABELS.has(source?.source)?source.source:'[REDACTED_LABEL]',request:sanitizeUrl(String(source?.request||'')),response:sanitizeBankDiagnosticValue(source?.response),normalized:sanitizeBankDiagnosticValue(source?.normalized),error:source?.error?sanitizeBankDiagnosticValue(source.error):null,
   }));
   account.transactions.push({
-    capturedAt:new Date().toISOString(),chequeKind:text(event?.chequeKind,40),rawTransaction:sanitizeBankDiagnosticValue(event?.transaction),normalizedTransaction:sanitizeBankDiagnosticValue(event?.normalizedTransaction),detailSources,mergedAdditionalDetails:sanitizeBankDiagnosticValue(event?.mergedAdditionalDetails),
+    capturedAt:new Date().toISOString(),chequeKind:CHEQUE_KINDS.has(event?.chequeKind)?event.chequeKind:'[REDACTED_LABEL]',rawTransaction:sanitizeBankDiagnosticValue(event?.transaction),normalizedTransaction:sanitizeBankDiagnosticValue(event?.normalizedTransaction),detailSources,mergedAdditionalDetails:sanitizeBankDiagnosticValue(event?.mergedAdditionalDetails),
   });
   account.captured=account.transactions.length;return true;
 }

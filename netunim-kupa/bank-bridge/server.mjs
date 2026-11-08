@@ -39,7 +39,7 @@ import {createBankDiagnosticRun,finishBankDiagnosticRun,recordBankAccountDiagnos
 
 const HOST='127.0.0.1';
 const PORT=8765;
-const BRIDGE_VERSION=76;
+const BRIDGE_VERSION=77;
 const BROWSER_IDENTITY_PROBE_URL=`http://${HOST}:${PORT}/health`;
 const APP_DIR=path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimKupaBankBridge');
 const TOKEN_FILE=path.join(APP_DIR,'bridge-token.txt');
@@ -192,7 +192,7 @@ if(args.has('--clear-diagnostics')){await settleConnectionJobs([deleteBankDiagno
 // Discard older detailed payloads on upgrade; never export them through the new
 // structural diagnostic route. Periodic reads expire files through their owner.
 const previousDiagnostic=await readBankDiagnostic();
-if(previousDiagnostic&&previousDiagnostic.schemaVersion!==4)await deleteBankDiagnostic();
+if(previousDiagnostic&&previousDiagnostic.schemaVersion!==5)await deleteBankDiagnostic();
 setInterval(()=>{void readBankDiagnostic().catch(()=>console.error('Bank diagnostic expiration failed'))},60*60*1000).unref();
 
 const originPolicy=await fs.readFile(path.join(APP_DIR,'origin-policy.json'),'utf8')
