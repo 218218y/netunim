@@ -1,3 +1,4 @@
+import {hasUserMfaAssurance} from '../_shared/mfa-assurance.js';
 import {edgeOrigins, withEdgeOrigins} from '../_shared/edge-origins.js';
 import {createClient} from 'npm:@supabase/supabase-js@2.112.4';
 import {readJsonBodyBounded, JsonBodyError} from '../_shared/http-input.js';
@@ -70,7 +71,7 @@ function normalizeText(value:unknown){return String(value??'').trim().replace(/\
 function digits(value:unknown,max=80){return clean(value,max).replace(/\D/g,'')}
 function bankCheckSourceKey(item:any){const bank=digits(item?.bankNumber,20),branch=digits(item?.branchNumber,20),account=digits(item?.accountNumber,40),check=digits(item?.checkNumber,80),price=amountNumber(item?.amount),cents=Math.round(price*100);return bank&&branch&&account&&check&&Number.isFinite(price)&&price>0?`check:${bank}:${branch}:${account}:${check}:${cents}`:''}
 function validateTaxId(value:unknown){const digits=String(value||'').replace(/\D/g,'');if(!digits)return'';if(digits.length>9)throw new Error('invalid_tax_id');const padded=digits.padStart(9,'0');let sum=0;for(let i=0;i<9;i++){let product=Number(padded[i])*((i%2)+1);if(product>9)product-=9;sum+=product}if(sum%10!==0)throw new Error('invalid_tax_id');return padded}
-async function requireUser(req:Request){const authorization=req.headers.get('Authorization')||'',token=authorization.match(/^Bearer\s+(.+)$/i)?.[1]||'';if(!token)return null;const client=createClient(SUPABASE_URL,PUBLISHABLE_KEY,{auth:{persistSession:false,autoRefreshToken:false},global:{headers:{Authorization:`Bearer ${token}`}}});const {data,error}=await client.auth.getUser(token);if(error||!data.user?.id)return null;return data.user}
+async function requireUser(req:Request){const authorization=req.headers.get('Authorization')||'',token=authorization.match(/^Bearer\s+(.+)$/i)?.[1]||'';if(!token)return null;const client=createClient(SUPABASE_URL,PUBLISHABLE_KEY,{auth:{persistSession:false,autoRefreshToken:false},global:{headers:{Authorization:`Bearer ${token}`}}});const {data,error}=await client.auth.getUser(token);if(error||!data.user?.id||!hasUserMfaAssurance(data.user,token))return null;return data.user}
 async function sha256(value:string){const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value));return Array.from(new Uint8Array(digest),item=>item.toString(16).padStart(2,'0')).join('')}
 
 class MorningHttpError extends Error{status:number;payload:any;ambiguous:boolean;constructor(message:string,status=0,payload:any=null,ambiguous=false){super(message);this.status=status;this.payload=payload;this.ambiguous=ambiguous}}

@@ -50,7 +50,9 @@ class IsolatedPostgres:
             self.sql('''create role anon;create role authenticated;create role service_role;
 create role supabase_admin;
 create schema auth;create table auth.users(id uuid primary key);
+create table auth.mfa_factors(id uuid primary key default gen_random_uuid(),user_id uuid not null references auth.users(id) on delete cascade,status text not null,factor_type text not null default 'totp');
 create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
+create function auth.jwt() returns jsonb language sql stable as $$select coalesce(nullif(current_setting('request.jwt.claims',true),'')::jsonb,'{}'::jsonb)$$;
 create function auth.role() returns text language sql stable as $$select nullif(current_setting('request.jwt.claim.role',true),'')$$;
 grant usage on schema auth to public;grant execute on function auth.uid() to public;grant execute on function auth.role() to public;
 -- Minimal Supabase Storage platform prerequisite. Storage is a platform schema,

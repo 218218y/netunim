@@ -219,6 +219,10 @@
     {
       "version": "20261106120000",
       "name": "bank_instant_credit_name_prefix"
+    },
+    {
+      "version": "20261108210000",
+      "name": "financial_mfa_boundaries"
     }
   ]
 }

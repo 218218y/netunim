@@ -1,3 +1,4 @@
+import {hasUserMfaAssurance} from '../netunim-orders/supabase/functions/_shared/mfa-assurance.js';
 import {edgeOrigins,withEdgeOrigins} from '../netunim-orders/supabase/functions/_shared/edge-origins.js';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -46,7 +47,7 @@ const mockFetch=async(url,init={})=>{
   if(url.includes('/documents/')){if(failure==='readback')return Response.json({message:'read-back unavailable'},{status:503});if(failure==='read429'&&rateLimitHits++===0)return Response.json({message:'rate limited'},{status:429,headers:{'Retry-After':'0'}});const id=decodeURIComponent(url.split('/documents/')[1].split('/')[0]),doc=morningDocs.get(id)||sample;if(failure==='mismatch')return Response.json({...doc,amount:999});if(failure==='wrapped-read')return Response.json({data:doc});return Response.json(doc)};
   throw new Error('Unexpected request '+url);
 };
-const context=vm.createContext({edgeOrigins,withEdgeOrigins,console,Response,Request,URL,AbortController,TextEncoder,crypto:globalThis.crypto,atob:globalThis.atob,setTimeout,clearTimeout,fetch:mockFetch,createClient:()=>({from:()=>new Query(),auth:{getUser:async()=>({data:{user:{id:owner}}})}}),Deno:{env:{get:key=>({SUPABASE_URL:'https://example.supabase.co',SUPABASE_ANON_KEY:'test',SUPABASE_SERVICE_ROLE_KEY:'test',MORNING_CLIENT_ID:'test',MORNING_CLIENT_SECRET:'test',MORNING_ENV:'sandbox'})[key]},serve:handler=>{servedHandler=handler}}});
+const context=vm.createContext({hasUserMfaAssurance,edgeOrigins,withEdgeOrigins,console,Response,Request,URL,AbortController,TextEncoder,crypto:globalThis.crypto,atob:globalThis.atob,setTimeout,clearTimeout,fetch:mockFetch,createClient:()=>({from:()=>new Query(),auth:{getUser:async()=>({data:{user:{id:owner}}})}}),Deno:{env:{get:key=>({SUPABASE_URL:'https://example.supabase.co',SUPABASE_ANON_KEY:'test',SUPABASE_SERVICE_ROLE_KEY:'test',MORNING_CLIENT_ID:'test',MORNING_CLIENT_SECRET:'test',MORNING_ENV:'sandbox'})[key]},serve:handler=>{servedHandler=handler}}});
 context.createMorningReportsHandler=createMorningReportsHandler;
 Object.assign(context,{readJsonBodyBounded,JsonBodyError});
 const source=readFileSync(new URL('../netunim-orders/supabase/functions/morning-documents/index.ts',import.meta.url),'utf8').replace(/^import .*?;\r?\n/gm,'');

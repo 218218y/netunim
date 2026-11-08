@@ -43,7 +43,7 @@ still reference its metadata/tables. No blanket privilege revocation was applied
 ## Isolated staging actually provisioned
 
 `netunim-staging` (`nckszremdktftbhimgxc`) was quoted at $0/month in the same Free
-organization. All 55 application migrations were applied using the documented
+organization. The 55 baseline application migrations were applied using the documented
 fresh-project platform-ACL adapter. Production migration files were unchanged.
 Public signup is disabled. Two synthetic users and two clearly marked synthetic
 bank rows were created, with no production data or provider secrets copied.
@@ -64,13 +64,41 @@ Cloudflare deployments. Access policies for those URLs still need Cloudflare
 account configuration. Staging Google clients and Morning sandbox credentials
 remain intentionally unconfigured.
 
+## MFA boundary and owner enrollment
+
+Both applications now accept a TOTP code at ordinary and reset-only login.
+`security.html` provides explicit enrollment, verification and factor management;
+its temporary Auth session, QR/seed and OTPs never enter app storage. Closing the
+page clears them and blocks delayed verification from republishing credentials.
+Production-bundled and source pages were exercised in real isolated Chromium.
+
+The new migration retains the exact business bodies of all 27 privileged public
+functions and adds a first-statement assurance guard. Restrictive RLS policies
+also guard directly readable financial tables and private Storage objects.
+Lower assurance raises 42501 rather than presenting an empty cloud document.
+All four financial Edge functions check assurance after Auth verifies identity.
+Unenrolled owners keep existing behavior during rollout; MFA is enforced once a
+verified factor exists, based on Auth's factor catalog, never editable metadata.
+
+The migration was applied to isolated staging. Its synthetic enrolled user was
+denied direct financial SELECT, RPC and private image reads at AAL1, and succeeded
+at AAL2 after real TOTP verification. The other synthetic unenrolled owner still
+worked. Auth separately rejected deletion of a verified factor at AAL1 with
+`insufficient_aal` (HTTP 422). Local isolated PostgreSQL checks all 27 entrypoints,
+unchanged business bodies, owner isolation and Storage RLS.
+
 ## Remaining work and computer rollout
 
 The owner chose to retain Free. Supabase rejected leaked-password protection
 with HTTP 402 because it requires Pro or higher; it remains disabled. The live
-account still has zero verified MFA factors. MFA enrollment, the application's
-challenge/recovery flow and enforcement of elevated assurance must be completed
-and tested before claiming MFA protection. They were not enabled silently.
+account still has zero verified MFA factors. After deploying both updated sites
+and letting pending writes finish on all three computers, the owner must open
+`security.html`, sign in, scan the QR in their own authenticator and verify its
+code. Enrollment may end other sessions; reconnect with the code on each device.
+Keep an encrypted/offline recovery copy away from Bridge machines. Recovery after
+losing all factors requires the Supabase project owner to verify identity and
+reset the factor through Auth administration. No secret or bypass is sent to
+support. The real account was not enrolled silently.
 
 Other open boundaries are scoped per-site pairing/one-time pairing UX, complete
 internal-grant reduction, Cloudflare Access for existing previews, and the tested

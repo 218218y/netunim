@@ -1,10 +1,11 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-85c8a5574754';
+const CACHE='orders-app-shell-esm-4b7613cb9b65';
 const SHELL=[
   './',
   './index.html',
   './reset-local.html',
+  './security.html',
   './assets/app.css',
   './assets/app.js',
   './assets/js/calendar/api.js',
@@ -260,6 +261,8 @@ const SHELL=[
   './assets/js/platform/morning-media-effects.js',
   './assets/js/platform/morning-media-presentation.js',
   './assets/js/runtime-events.js',
+  './assets/js/shared/account-security-page.js',
+  './assets/js/shared/account-security.css',
   './assets/js/shared/action-registry.js',
   './assets/js/shared/app-release-startup.js',
   './assets/js/shared/authenticated-account-scope.js',
@@ -425,6 +428,7 @@ const SHELL=[
   './assets/js/shared/storage-v2-runtime.js',
   './assets/js/shared/storage-v2-schema.js',
   './assets/js/shared/storage-v2-server-protocol.js',
+  './assets/js/shared/supabase-mfa.js',
   './assets/js/shared/sync-capabilities.js',
   './assets/js/shared/sync-incident-adapters.js',
   './assets/js/shared/sync-incident-feature.js',
@@ -536,6 +540,7 @@ const SHELL=[
   './assets/js/ui/status.js',
   './assets/js/ui/tab-guard.js',
   './assets/morning-expenses.css',
+  './assets/security.js',
   './assets/weather-link.css',
   './manifest.webmanifest',
   './supabase/config.js',

@@ -56,7 +56,7 @@ def verify(app, site=None, manifest_path=None):
         if file.suffix in {'.js', '.mjs', '.html', '.css', '.webmanifest'}:
             content = file.read_text(encoding='utf-8')
             require(not re.search(r'sb_secret_|SUPABASE_SERVICE_ROLE_KEY|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY|eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+', content, re.I), f'Secret in {name}')
-    for page in ('index.html', 'reset-local.html'):
+    for page in ('index.html', 'reset-local.html', 'security.html'):
         source = (site/page).read_text(encoding='utf-8')
         for reference in re.findall(r'(?:src|href)="\./([^"#?]+)"', source):
             require(reference in files, f'Missing {page} resource: {reference}')
