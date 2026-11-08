@@ -74,7 +74,7 @@ export function sanitizeBankDiagnosticValue(value,{key='',depth=0}={}){
     if(looksHtml(value))return marker('HTML',value);
     if(looksBinaryString(value))return marker('BINARY',value);
     const clean=maskPotentialPanText(String(value));
-    return clean.startsWith('•••• ')?clean:'[REDACTED_TEXT]';
+    return /^•••• \d{4}$/.test(clean)?clean:'[REDACTED_TEXT]';
   }
   if(typeof value==='number')return /^(?:eventActivityTypeCode|activityTypeCode|textCode|normalizedTransactionCount|httpStatus)$/.test(keyText)&&Number.isSafeInteger(value)&&Math.abs(value)<100000?value:'[REDACTED_NUMBER]';
   if(typeof value==='boolean')return value;
@@ -98,7 +98,7 @@ export function createBankDiagnosticRun({bridgeVersion=0}={}){
   return {
     schemaVersion:4,bridgeVersion:Number(bridgeVersion)||0,startedAt:new Date().toISOString(),finishedAt:null,
     scope:{source:'latest-bank-sync',maxTransactionsPerRole:MAX_TRANSACTIONS_PER_ROLE,includesAllTransactionTypes:true,chequeDetailResponses:true,creditSettlementDetailResponses:true},
-    security:{structuralOnly:true,localOnly:true,synchronizedToSupabase:false,credentialsRedacted:true,sessionSecretsRedacted:true,binaryPayloadsRedacted:true,documentLinksPathOnly:true},
+    security:{structuralOnly:true,localOnly:true,synchronizedToSupabase:false,credentialsRedacted:true,sessionSecretsRedacted:true,binaryPayloadsRedacted:true,documentLinksRedacted:true},
     accounts:{business:emptyAccount(),home:emptyAccount()},failure:null,
   };
 }

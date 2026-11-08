@@ -713,5 +713,17 @@ class GithubGateContracts(unittest.TestCase):
                 gate.clean_head(root)
 
 
+class SecurityReportContracts(unittest.TestCase):
+    def test_codeql_gate_resolves_extension_rules_and_ignores_nonsecurity_diagnostics(self):
+        from security_codeql_gate import high_findings
+        document = {"runs": [{"tool": {"driver": {"rules": []}, "extensions": [{"rules": [
+            {"id": "language/diagnostic"},
+            {"id": "language/medium", "properties": {"security-severity": "6.9"}},
+            {"id": "language/high", "properties": {"security-severity": "7.0"}},
+        ]}]}, "results": [{"ruleId": name} for name in
+                           ("language/diagnostic", "language/medium", "language/high")]}]}
+        self.assertEqual(high_findings(document), [("language/high", "unknown")])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

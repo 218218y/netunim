@@ -430,6 +430,7 @@ Deno.serve(async(req:Request)=>{
   catch(error) { if(error instanceof JsonBodyError)return json({ok:false,code:error.code},error.status);throw error; }
   const action=String(body.action||'');
   if(['reserve','preview','create','abandon_reservation'].includes(action)&&!documentWritePermission(user))return json({ok:false,code:'morning_document_write_forbidden',message:'אין הרשאה להפקת מסמכים במורנינג. יש לפנות למנהל המערכת.'},403);
+  if(['reserve','preview','create','abandon_reservation'].includes(action)&&!MORNING_ENV_VALID)return json({ok:false,code:'morning_environment_invalid',message:'סביבת מורנינג אינה מוגדרת כראוי'},503);
   if(action==='report_page'){if(!MORNING_ENV_VALID)return json({ok:false,code:'morning_environment_invalid',message:'סביבת מורנינג אינה מוגדרת כראוי'},503);const result=await morningReports(user,body);return json(result.body,result.status)}
   if(['search_documents','get_document','document_links','document_pdf'].includes(action)&&!MORNING_ENV_VALID)return json({ok:false,code:'morning_environment_invalid',message:'סביבת מורנינג אינה מוגדרת כראוי'},503);
   if(action==='search_documents'&&!documentReadPermission(user))return documentReadForbidden();

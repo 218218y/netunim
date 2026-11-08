@@ -131,6 +131,20 @@ See [the exported RPC inventory](SUPABASE_EXPORTED_SECURITY_INVENTORY_20261108.m
 for all 27 function locations from the supplied Supabase CSV. Live definitions
 and grants still require access to the correct project.
 
+The initial full-history Gitleaks run reported 65 generic-key matches. Each was
+checked against its exact committed source: 48 policy/integrity SHA-256 digests,
+four generated vendor digests, six synthetic fixtures/storage labels, three
+storage-key source expressions, two public Supabase publishable keys, one
+ciphertext-variable source expression and one public storage-key label. These
+are recorded as exact commit-bound fingerprints in `.gitleaksignore`; there is
+no blanket exclusion for test files, hash-shaped tokens or config files. A new
+secret in a later commit remains detectable. The subsequent local redacted scan
+covered 1,383 commits / 70 MB and found no additional matches. This is scanner
+evidence, not a guarantee that no secret has ever appeared in repository history.
+
+All authorized Morning write routes now reject invalid environment settings,
+including reservation abandonment, before reading or mutating any operation.
+
 The connected Supabase tool refused the security-advisor read with a permission
 error on this run. Live Auth settings, users, MFA and deployment state are **not
 verified or changed**. The review's previous snapshot is not current evidence.

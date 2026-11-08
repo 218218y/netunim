@@ -7,7 +7,8 @@ import sys
 def high_findings(document):
     findings = []
     for run in document.get("runs", []):
-        rules = {rule["id"]: rule for rule in run["tool"]["driver"].get("rules", [])}
+        components = [run["tool"]["driver"], *run["tool"].get("extensions", [])]
+        rules = {rule["id"]: rule for component in components for rule in component.get("rules", [])}
         for result in run.get("results", []):
             rule = rules[result["ruleId"]]
             score = float(rule.get("properties", {}).get("security-severity", 0))

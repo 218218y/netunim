@@ -1,0 +1,74 @@
+# Exact historical false positives reviewed against their committed source.
+# Commit-bound fingerprints do not exempt future secrets in these files.
+# Generated public vendor integrity digest
+b3cdf13c10c86092d53effe176260d0b6522b253:netunim-kupa/site/service-worker.js:generic-api-key:378
+b3cdf13c10c86092d53effe176260d0b6522b253:netunim-orders/site/service-worker.js:generic-api-key:532
+cfded12ebda0935eca227fd716c91ddbfb9444d0:netunim-kupa/site/service-worker.js:generic-api-key:378
+cfded12ebda0935eca227fd716c91ddbfb9444d0:netunim-orders/site/service-worker.js:generic-api-key:537
+# Public local-storage key label, not a stored credential
+3e032939206c7421e712afb6a1ffcaa44a7aee46:netunim-orders/site/assets/js/domains/customers/morning-debt-recovery.js:generic-api-key:1
+# Reviewed SHA-256 integrity or frozen-policy digest
+1483ac01a58e6330213139575f8e3582d1be85d0:tests/fixtures/bank-session-policy.json:generic-api-key:7
+21982a8e87a0ba7bff2144db2148a4246ae623e0:docs/acceptance/2026-10-23/evidence/posix/full-supabase-stack.json:generic-api-key:214
+21982a8e87a0ba7bff2144db2148a4246ae623e0:docs/acceptance/2026-10-23/evidence/posix/full-supabase-stack.json:generic-api-key:244
+40d2dd24860664328f7dcf102d67e8f90f169e86:tests/fixtures/bank-artifact-policy.json:generic-api-key:9
+4289c420049f5a12673090308be57cf8c235e138:tests/fixtures/bank-snapshot-transports-policy.json:generic-api-key:18
+4d929684aca5a5de178dfbc0b97a31586400c7e2:tests/fixtures/bank-read-policy.json:generic-api-key:15
+4d929684aca5a5de178dfbc0b97a31586400c7e2:tests/fixtures/bank-read-policy.json:generic-api-key:18
+66ea268827ee944496afd48380382868f4f42580:tests/fixtures/calendar-preserved-policy.json:generic-api-key:5
+68c40cf891460ea649409556c396d845429a737d:tests/fixtures/orders-credit-connection-policy.json:generic-api-key:10
+68c40cf891460ea649409556c396d845429a737d:tests/fixtures/orders-credit-connection-policy.json:generic-api-key:16
+9d45d564e38b0ad5c331f6cc686654e9a8ac1386:tests/fixtures/credit-adapter-policy.json:generic-api-key:17
+9d45d564e38b0ad5c331f6cc686654e9a8ac1386:tests/fixtures/credit-adapter-policy.json:generic-api-key:18
+9d45d564e38b0ad5c331f6cc686654e9a8ac1386:tests/fixtures/credit-adapter-policy.json:generic-api-key:25
+9d45d564e38b0ad5c331f6cc686654e9a8ac1386:tests/fixtures/credit-adapter-policy.json:generic-api-key:73
+9d45d564e38b0ad5c331f6cc686654e9a8ac1386:tests/fixtures/credit-adapter-policy.json:generic-api-key:74
+9d45d564e38b0ad5c331f6cc686654e9a8ac1386:tests/fixtures/credit-adapter-policy.json:generic-api-key:96
+a2cdaab79d0e835c6c4e161327c718c0e85b6282:tests/fixtures/prebundle/manifest.json:generic-api-key:17
+a2cdaab79d0e835c6c4e161327c718c0e85b6282:tests/fixtures/prebundle/manifest.json:generic-api-key:206
+a2cdaab79d0e835c6c4e161327c718c0e85b6282:tests/fixtures/prebundle/manifest.json:generic-api-key:346
+a2cdaab79d0e835c6c4e161327c718c0e85b6282:tests/fixtures/prebundle/manifest.json:generic-api-key:391
+a2cdaab79d0e835c6c4e161327c718c0e85b6282:tests/fixtures/prebundle/manifest.json:generic-api-key:392
+a2cdaab79d0e835c6c4e161327c718c0e85b6282:tests/fixtures/prebundle/manifest.json:generic-api-key:396
+a2cdaab79d0e835c6c4e161327c718c0e85b6282:tests/fixtures/prebundle/manifest.json:generic-api-key:408
+a2cdaab79d0e835c6c4e161327c718c0e85b6282:tests/fixtures/prebundle/manifest.json:generic-api-key:627
+a2cdaab79d0e835c6c4e161327c718c0e85b6282:tests/fixtures/prebundle/manifest.json:generic-api-key:733
+a2cdaab79d0e835c6c4e161327c718c0e85b6282:tests/fixtures/prebundle/manifest.json:generic-api-key:874
+aa12f2f3e642458249e321619ca0ca27ba633405:tests/fixtures/pdf-preview-policy.json:generic-api-key:10
+aa12f2f3e642458249e321619ca0ca27ba633405:tests/fixtures/pdf-preview-policy.json:generic-api-key:14
+aa12f2f3e642458249e321619ca0ca27ba633405:tests/fixtures/pdf-preview-policy.json:generic-api-key:18
+aa12f2f3e642458249e321619ca0ca27ba633405:tests/fixtures/pdf-preview-policy.json:generic-api-key:22
+aa12f2f3e642458249e321619ca0ca27ba633405:tests/fixtures/pdf-preview-policy.json:generic-api-key:6
+b8c5a1e1b5e96f9123e7b0e183df5024275ff051:tests/fixtures/credit-core-policy.json:generic-api-key:29
+b8c5a1e1b5e96f9123e7b0e183df5024275ff051:tests/fixtures/credit-core-policy.json:generic-api-key:32
+b8c5a1e1b5e96f9123e7b0e183df5024275ff051:tests/fixtures/credit-core-policy.json:generic-api-key:33
+b8c5a1e1b5e96f9123e7b0e183df5024275ff051:tests/fixtures/credit-core-policy.json:generic-api-key:34
+b8c5a1e1b5e96f9123e7b0e183df5024275ff051:tests/fixtures/credit-core-policy.json:generic-api-key:35
+b8c5a1e1b5e96f9123e7b0e183df5024275ff051:tests/fixtures/credit-core-policy.json:generic-api-key:36
+b8c5a1e1b5e96f9123e7b0e183df5024275ff051:tests/fixtures/credit-core-policy.json:generic-api-key:37
+b8c5a1e1b5e96f9123e7b0e183df5024275ff051:tests/fixtures/credit-core-policy.json:generic-api-key:38
+b8c5a1e1b5e96f9123e7b0e183df5024275ff051:tests/fixtures/credit-core-policy.json:generic-api-key:39
+b8c5a1e1b5e96f9123e7b0e183df5024275ff051:tests/fixtures/credit-core-policy.json:generic-api-key:4
+b8c5a1e1b5e96f9123e7b0e183df5024275ff051:tests/fixtures/credit-core-policy.json:generic-api-key:40
+b8c5a1e1b5e96f9123e7b0e183df5024275ff051:tests/fixtures/credit-core-policy.json:generic-api-key:41
+b8c5a1e1b5e96f9123e7b0e183df5024275ff051:tests/fixtures/credit-core-policy.json:generic-api-key:42
+b8c5a1e1b5e96f9123e7b0e183df5024275ff051:tests/fixtures/credit-core-policy.json:generic-api-key:44
+b8c5a1e1b5e96f9123e7b0e183df5024275ff051:tests/fixtures/credit-core-policy.json:generic-api-key:5
+b8c5a1e1b5e96f9123e7b0e183df5024275ff051:tests/fixtures/credit-core-policy.json:generic-api-key:52
+b8c5a1e1b5e96f9123e7b0e183df5024275ff051:tests/fixtures/credit-core-policy.json:generic-api-key:67
+# Reviewed ciphertext variable expression, not ciphertext or plaintext
+73bf2db97746bf47ea0d15616f1c1cb57e6f162e:netunim-kupa/bank-bridge/server.mjs:generic-api-key:242
+# Reviewed source expression for a storage key
+40651e2763f9f0fa338ff039cc8c5631998394a1:netunim-kupa/site/assets/js/shared/cloud-sync.js:generic-api-key:118
+40651e2763f9f0fa338ff039cc8c5631998394a1:netunim-orders/site/assets/js/shared/cloud-sync.js:generic-api-key:118
+40651e2763f9f0fa338ff039cc8c5631998394a1:shared/cloud-sync.js:generic-api-key:118
+# Reviewed synthetic fixture or browser storage-key label
+009624adebe9bebd758045f865b3b564bc335749:tests/check_bank_items.py:generic-api-key:270
+213fd8bd176b482985d5f239e5973a84e4653ae9:tests/runtime_morning_audit.py:generic-api-key:105
+213fd8bd176b482985d5f239e5973a84e4653ae9:tests/runtime_morning_audit.py:generic-api-key:142
+ebe28da267639e660a19870ef878fd186f2db80f:tests/runtime_morning_resolution.py:generic-api-key:172
+ebe28da267639e660a19870ef878fd186f2db80f:tests/runtime_morning_resolution.py:generic-api-key:225
+ebe28da267639e660a19870ef878fd186f2db80f:tests/runtime_morning_resolution.py:generic-api-key:265
+# Supabase public publishable browser key
+a8988a7eb4cceebecd7eb31739453ec64cbb8dcf:netunim-kupa/site/supabase/config.js:generic-api-key:5
+a8988a7eb4cceebecd7eb31739453ec64cbb8dcf:netunim-orders/site/supabase/config.js:generic-api-key:5
