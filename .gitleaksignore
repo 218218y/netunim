@@ -74,3 +74,5 @@ a8988a7eb4cceebecd7eb31739453ec64cbb8dcf:netunim-kupa/site/supabase/config.js:ge
 a8988a7eb4cceebecd7eb31739453ec64cbb8dcf:netunim-orders/site/supabase/config.js:generic-api-key:5
 # Reviewed expression awaiting AES-GCM sealing of a synthetic wrong-owner fixture; no credential literal.
 72018deb883f91f49bd64e093a5c702edd300ebd:tests/google_oauth_security.test.mjs:generic-api-key:99
+# Browser-only publishable key of the isolated staging project; no server credential.
+86e6f838f83e2d19a7ea00dbe4e5e1dcaecd7514:config/staging-supabase.json:generic-api-key:3

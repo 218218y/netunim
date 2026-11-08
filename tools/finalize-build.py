@@ -7,9 +7,12 @@ import sys
 from build_release import inventory, release_id, shell_paths, vendor_hashes
 from build_validation import require
 from build_headers import production_headers
+from build_environment import environment_headers
 
 ROOT = Path(__file__).resolve().parents[1]
 app = sys.argv[1]
+environment = sys.argv[4] if len(sys.argv) > 4 else 'production'
+environment_headers('', environment)
 if app not in ('orders', 'kupa'):
     raise SystemExit('Unknown application')
 site = Path(sys.argv[2]).resolve()
@@ -34,5 +37,6 @@ worker.write_bytes(re.sub(r"const CACHE='[^']+';", f"const CACHE='{release}';", 
 headers.write_bytes(re.sub(r'^  X-Netunim-Release: [^\n]+', '  X-Netunim-Release: ' + release, header, flags=re.M).encode('utf-8'))
 commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
 manifest = {'schema': 1, 'app': app, 'commit': commit, 'release': release, 'files': inventory(site)}
+manifest['environment'] = environment
 (private/'manifest.json').write_bytes((json.dumps(manifest, indent=2) + '\n').encode())
 subprocess.run([sys.executable, str(ROOT/'tools/verify-build.py'), app, '--site', str(site), '--manifest', str(private/'manifest.json')], cwd=ROOT, check=True)

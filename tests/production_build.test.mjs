@@ -74,3 +74,19 @@ test('production payloads are deterministic, gated and independently verified', 
     } finally {await fs.writeFile(manifestPath, savedManifest)}
   }
 });
+
+test('staging payload keeps its own backend and verifies independently', {timeout:300000}, async () => {
+  try {
+    await buildApp('orders', {env:{CF_PAGES_BRANCH:'preview'}});
+    const manifest = JSON.parse(await fs.readFile(path.join(ROOT, '.work/production/orders/manifest.json'), 'utf8'));
+    assert.equal(manifest.environment, 'staging');
+    const site = path.join(ROOT, 'dist/orders');
+    const config = await fs.readFile(path.join(site, 'supabase/config.js'), 'utf8');
+    assert.match(config, /nckszremdktftbhimgxc/);
+    assert.equal(config.includes('bupoidcurcxuypfrjqio'), false);
+    const headers = await fs.readFile(path.join(site, '_headers'), 'utf8');
+    assert.equal(headers.includes('bupoidcurcxuypfrjqio.supabase.co'), false);
+    const verified = spawnSync('python', ['tools/verify-build.py', 'orders'], {cwd:ROOT, encoding:'utf8'});
+    assert.equal(verified.status, 0, verified.stderr);
+  } finally {await buildApp('orders', {env:{}})}
+});

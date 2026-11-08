@@ -7,6 +7,7 @@ import {createHash} from 'node:crypto';
 import {spawnSync} from 'node:child_process';
 import {walk, graph} from './build-graph.mjs';
 import {withBuildOutput} from './build-output.mjs';
+import {buildEnvironment, stagingConfigSource, stagingHeaders} from './build-environment.mjs';
 
 export const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const dependencies = process.env.NETUNIM_OFFLINE_NODE_MODULES || path.join(ROOT, 'node_modules');
@@ -49,8 +50,11 @@ export function browserAssets(site) {
   }};
 }
 
-export async function buildApp(app) {
+export async function buildApp(app, {env = process.env} = {}) {
   if (!['orders', 'kupa'].includes(app)) throw new Error('Expected orders or kupa');
+  const environment = buildEnvironment(env);
+  const stagingConfig = environment === 'staging' ? JSON.parse(await fs.readFile(path.join(ROOT, 'config/staging-supabase.json'), 'utf8')) : null;
+  if (stagingConfig) stagingConfigSource(stagingConfig); // Validate before creating output.
   for (const script of ['pdfjs-runtime.py', 'document-viewers-runtime.py']) {
     const checked = spawnSync('python', [path.join(ROOT, 'tools', script), 'check'], {stdio: 'inherit', cwd: ROOT});
     if (checked.status !== 0) throw new Error(`Vendor integrity failed: ${script}`);
@@ -91,7 +95,7 @@ export async function buildApp(app) {
     const relative = path.relative(site, path.join(item.parentPath, item.name)).split(path.sep).join('/');
     if (relative.endsWith('.map')) continue;
     if (relative.startsWith('assets/vendor/') || /\.(png|ico|webmanifest)$/.test(relative) || relative === 'supabase/config.js') {
-      const bytes = await fs.readFile(path.join(site, relative));
+      const bytes = relative === 'supabase/config.js' && stagingConfig ? Buffer.from(stagingConfigSource(stagingConfig)) : await fs.readFile(path.join(site, relative));
       await write(relative, relative.startsWith('assets/vendor/') || /\.(png|ico)$/.test(relative) ? bytes : text(bytes));
     }
   }
@@ -112,7 +116,8 @@ export async function buildApp(app) {
     for (const [entry, output] of Object.entries(entries)) source = source.replace(`src="./${entry}"`, `src="./${output}"`);
     await write(html, source);
   }
-  await write('_headers', text(await fs.readFile(path.join(site, '_headers'))));
+  const sourceHeaders = text(await fs.readFile(path.join(site, '_headers')));
+  await write('_headers', stagingConfig ? stagingHeaders(sourceHeaders, stagingConfig) : sourceHeaders);
   await write('service-worker.js', text(await fs.readFile(path.join(site, 'service-worker.js'))));
   await fs.writeFile(path.join(privateDir, 'modules.json'), JSON.stringify(await graph(site), null, 2) + '\n');
   const canonicalOutput = name => path.relative(site, path.join(ROOT, 'dist', app, path.relative(out, path.resolve(site, name)))).split(path.sep).join('/');
@@ -121,7 +126,7 @@ export async function buildApp(app) {
   }]))};
   await fs.writeFile(path.join(privateDir, 'metafile.json'), JSON.stringify(metadata, null, 2) + '\n');
   // Python owns the existing release hash/header/SW security contract.
-  const finalized = spawnSync('python', [path.join(ROOT, 'tools/finalize-build.py'), app, out, privateDir], {stdio: 'inherit', cwd: ROOT});
+  const finalized = spawnSync('python', [path.join(ROOT, 'tools/finalize-build.py'), app, out, privateDir, environment], {stdio: 'inherit', cwd: ROOT});
   if (finalized.status !== 0) throw new Error(`Build validation failed: ${app}`);
   });
 }
