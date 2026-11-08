@@ -51,6 +51,8 @@ function Save-Roots($config, [string[]]$roots) {
   [System.IO.File]::WriteAllText($configPath, $json + [Environment]::NewLine, $utf8NoBom)
 }
 
+if ($FirstRun -and @((Existing-Roots (Read-Config))).Count -gt 0) { exit 0 }
+
 $form = New-Object System.Windows.Forms.Form
 $form.Text = Decode-UiText '15TXkteT16jXqiDXl9eZ16TXldepINen15HXpteZ150g15HXnteX16nXkQ=='
 $form.StartPosition = 'CenterScreen'

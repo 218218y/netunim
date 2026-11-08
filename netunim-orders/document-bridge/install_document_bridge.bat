@@ -4,7 +4,7 @@ cd /d "%~dp0"
 
 set "APPROOT=%LOCALAPPDATA%\NetunimDocumentBridge"
 set "LEGACYAPP=%APPROOT%\app"
-set "RUNTIMENAME=app-v45-%RANDOM%-%RANDOM%"
+set "RUNTIMENAME=app-v46-%RANDOM%-%RANDOM%"
 set "RUNTIME=%APPROOT%\%RUNTIMENAME%"
 set "STAGING=%APPROOT%\app-staging-%RANDOM%-%RANDOM%"
 set "ACTIVEFILE=%APPROOT%\active-runtime.txt"
@@ -61,7 +61,7 @@ if errorlevel 1 goto :node_error
 if not "%ERRORLEVEL%"=="0" goto :node_error
 if exist "%STAGING%" rmdir /S /Q "%STAGING%" >nul 2>nul
 mkdir "%STAGING%" >nul 2>nul || goto :stage_error
-for %%F in (server.mjs document-command-owner.mjs document-operations.mjs bridge-service.mjs pdf-index-coordinator.mjs everything-search-coordinator.mjs windows-process-control.mjs bridge-replacement-command.mjs bridge-runtime-files.mjs pdf-maintenance-task-diagnostics.mjs bridge-installation-diagnostics.mjs pdf-inventory-reconciliation.mjs lib.mjs document-text-search.mjs everything-session.mjs everything-discovery.mjs everything-process.mjs everything-process-platform.mjs everything-result-codec.mjs everything-inventory-source.mjs pdf-inventory.mjs pdf-maintenance-operation.mjs pdf-maintenance-platform.mjs http-handler.mjs http-routes.mjs search-owner.mjs result-registry.mjs maintenance-process-owner.mjs maintenance-process-platform.mjs file-lock-owner.mjs file-lock-platform.mjs preview-content.mjs preview-file-platform.mjs preview-text-cache.mjs native-preview-session.mjs native-preview-platform.mjs pdf_form_index.mjs pdf-index-policy.mjs pdf-index-reader.mjs pdf-index-file-platform.mjs pdf-index-writer.mjs pdf-index-write-platform.mjs pdf-extract-worker.mjs pdf-extraction-result.mjs pdf-extraction-process.mjs pdf-extraction-platform.mjs pdf-preview-operation.mjs start_document_bridge.bat) do (
+for %%F in (server.mjs file-access-policy.mjs document-command-owner.mjs document-operations.mjs bridge-service.mjs pdf-index-coordinator.mjs everything-search-coordinator.mjs windows-process-control.mjs bridge-replacement-command.mjs bridge-runtime-files.mjs pdf-maintenance-task-diagnostics.mjs bridge-installation-diagnostics.mjs pdf-inventory-reconciliation.mjs lib.mjs document-text-search.mjs everything-session.mjs everything-discovery.mjs everything-process.mjs everything-process-platform.mjs everything-result-codec.mjs everything-inventory-source.mjs pdf-inventory.mjs pdf-maintenance-operation.mjs pdf-maintenance-platform.mjs http-handler.mjs http-routes.mjs search-owner.mjs result-registry.mjs maintenance-process-owner.mjs maintenance-process-platform.mjs file-lock-owner.mjs file-lock-platform.mjs preview-content.mjs preview-file-platform.mjs preview-text-cache.mjs native-preview-session.mjs native-preview-platform.mjs pdf_form_index.mjs pdf-index-policy.mjs pdf-index-reader.mjs pdf-index-file-platform.mjs pdf-index-writer.mjs pdf-index-write-platform.mjs pdf-extract-worker.mjs pdf-extraction-result.mjs pdf-extraction-process.mjs pdf-extraction-platform.mjs pdf-preview-operation.mjs start_document_bridge.bat) do (
   copy /Y "%~dp0%%F" "%STAGING%\%%F" >nul || goto :stage_error
 )
 if exist "%STAGING%\pdfjs" rmdir /S /Q "%STAGING%\pdfjs" >nul 2>nul
@@ -88,9 +88,12 @@ if exist "%ACTIVEFILE%" (
   set "ACTIVEWASNEW=yes"
 )
 
+copy /Y "%~dp0configure_document_bridge.ps1" "%STAGING%\configure_document_bridge.ps1" >nul || goto :stage_error
 "%NODE_EXE%" "%STAGING%\server.mjs" --init
 if not "%ERRORLEVEL%"=="0" goto :stage_error
 if not exist "%CONFIG%" goto :stage_error
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0configure_document_bridge.ps1" -AppRoot "%APPROOT%" -FirstRun
+if not "%ERRORLEVEL%"=="0" goto :stage_error
 
 echo Ensuring Everything is running in background mode - no search window...
 "%NODE_EXE%" "%STAGING%\server.mjs" --ensure-everything
@@ -99,7 +102,7 @@ if not "%ERRORLEVEL%"=="0" goto :everything_error
 echo Preserving local interactive PDF text index...
 echo Existing PDF index progress is reused; scheduled maintenance runs separately from the Bridge.
 
-rem Search scope is the complete Everything index. Configure indexed locations in Everything itself.
+rem Search scope is restricted by the locally configured business folder allowlist.
 rem The new runtime is validated before the old runtime is stopped.
 "%NODE_EXE%" "%STAGING%\server.mjs" --write-install-summary >nul 2>nul
 "%NODE_EXE%" "%STAGING%\server.mjs" --doctor --allow-unready-task

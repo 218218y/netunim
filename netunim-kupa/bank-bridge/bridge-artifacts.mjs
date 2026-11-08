@@ -31,10 +31,12 @@ export function createBridgeArtifacts({
   directory,
   files = nativeFiles,
   stamp = () => `${process.pid}.${randomUUID()}`,
+  diagnosticMaxAgeMs = 0,
+  now = Date.now,
 }) {
   if (typeof directory !== 'string' || !directory || typeof stamp !== 'function')
     throw new Error('bridge_artifact_ports_required');
-  function artifact(primary, { legacy = [], fallback = null } = {}) {
+  function artifact(primary, { legacy = [], fallback = null, maxAgeMs = 0 } = {}) {
     const paths = [primary, ...legacy].map((relative) => path.join(directory, relative)),
       file = paths[0];
     const owner = createJsonArtifactOwner({
@@ -42,6 +44,7 @@ export function createBridgeArtifacts({
         async read() {
           for (const candidate of paths) {
             try {
+              if(maxAgeMs>0&&now()-(await files.stat(candidate)).mtimeMs>=maxAgeMs){await files.rm(candidate,{force:true});continue}
               return JSON.parse(await files.readFile(candidate, 'utf8'));
             } catch (error) {
               if (fallback) return fallback();
@@ -75,6 +78,7 @@ export function createBridgeArtifacts({
   const creditStatus = artifact('credit-card-status.json', { fallback: emptyCreditStatus });
   const bankData = artifact(path.join('diagnostics', 'bank-latest.json'), {
     legacy: [path.join('diagnostics', 'bank-cheque-latest.json')],
+    maxAgeMs: diagnosticMaxAgeMs,
   });
   const creditData = artifact(path.join('diagnostics', 'credit-data-latest.json'));
   const diagnostic = (owner) =>

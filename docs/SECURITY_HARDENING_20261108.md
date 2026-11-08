@@ -59,6 +59,44 @@ The Supabase reconnection later succeeded but exposed a different project
 (`paqzrxrvowwndevqptdk`), not this application's `bupoidcurcxuypfrjqio`.
 The application project still denied access; no unrelated project was changed.
 
+## Document file authority and diagnostic privacy
+
+Document Bridge v46 requires a local `roots` list in `config.json`; the installer
+opens the existing local folder configurator when it is missing. The installed
+configuration launcher now supports current versioned runtimes. No website API
+can enlarge this list. Configuration saves preserve the roots list.
+
+Native Everything searches/counts/PDF inventory receive a root path expression
+before pagination. This is an efficiency layer, not the security decision: rows
+are independently checked against both the selected path and its current
+`realpath` before publishing an opaque ID. Every file command rechecks current
+permission and resolves its filesystem target again. Sibling-prefix paths,
+traversal, device paths, alternate streams, revoked roots and escaping Windows
+junctions are rejected. PDF maintenance only extracts admitted rows. Root target
+changes during the process lifetime fail closed. The filesystem tests run on
+Windows and Linux with real files/junctions or symlinks. This does not claim
+protection from arbitrary malware running as the same Windows account or a
+complete Windows filesystem race-proof sandbox.
+
+Bank Bridge v76 writes schema-v4 structural diagnostics: field names, bounded
+sample structures, activity type codes and boolean presence indicators. Arbitrary
+text, account/branch/check/reference numbers, amounts and URLs are redacted;
+existing card masking retains at most the final four digits. Samples are capped
+at 64 per account role. Previous detailed schema versions are purged at startup.
+The latest file expires after 24 hours, with physical deletion on startup/read
+and an hourly sweep while the Bridge is running. When the service is stopped,
+deletion occurs on its next start. `node server.mjs --clear-diagnostics` explicitly
+removes bank and credit-data diagnostic snapshots. Stop the service before using
+the maintenance command. These controls do not retroactively remove exported
+copies or operator backups.
+
+The two supplied Supabase CSV exports both record `2026-11-08T14:00:05.222Z`:
+16 `rls_enabled_no_policy` INFO rows; 27
+`authenticated_security_definer_function_executable` WARN rows; one
+`auth_leaked_password_protection` WARN row. They are a current exported snapshot,
+not proof of exposed data or a live audit of function bodies/Auth settings.
+Do not add permissive policies or revoke application RPCs just to clear lints.
+
 The connected Supabase tool refused the security-advisor read with a permission
 error on this run. Live Auth settings, users, MFA and deployment state are **not
 verified or changed**. The review's previous snapshot is not current evidence.

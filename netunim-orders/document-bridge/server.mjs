@@ -39,6 +39,7 @@ import {createEverythingProcess} from './everything-process.mjs';
 import {createEverythingDiscovery} from './everything-discovery.mjs';
 import {createEverythingProcessPlatform,createEverythingDiscoveryPlatform} from './everything-process-platform.mjs';
 import {createDocumentResultRegistry} from './result-registry.mjs';
+import {createDocumentFileAccess} from './file-access-policy.mjs';
 import {createPdfPreviewOperation} from './pdf-preview-operation.mjs';
 import {createPdfExtractionProcess} from './pdf-extraction-process.mjs';
 import {createPdfExtractionPlatform} from './pdf-extraction-platform.mjs';
@@ -49,6 +50,7 @@ const {waitForProcessExit,processAlive,forceStopProcessTree}=processControl;
 const bridgeRuntime=createBridgeRuntimeFiles();
 const {APP_ROOT,TOKEN_PATH}=bridgeRuntime.paths;
 const {appendLog,writeJsonFile,ensureToken,loadConfig,saveConfig}=bridgeRuntime;
+const documentAccess=createDocumentFileAccess({loadConfig});
 const RUNTIME_ROOT=fileURLToPath(new URL('.',import.meta.url));
 const PDF_MAINTENANCE_TASK_NAME='NetunimDocumentBridgePdfMaintenance';
 const PDF_FORM_INDEX_PATH=path.join(APP_ROOT,'pdf-form-index.json');
@@ -58,7 +60,7 @@ const NATIVE_PREVIEW_HOST=path.join(RUNTIME_ROOT,'NetunimPreviewHost.exe');
 const documentResults=createDocumentResultRegistry({
   clock:{now:Date.now,ttlMs:RESULT_TTL_MS},
   identity:{next:()=>crypto.randomUUID()},
-  files:{stat:fullPath=>fs.stat(fullPath)},
+  files:{stat:fullPath=>fs.stat(fullPath),authorize:documentAccess.authorize},
 });
 
 const PREVIEW_TEXT_CACHE_TTL_MS=10*60*1000;
@@ -81,7 +83,7 @@ const everythingProcesses=createEverythingProcess(createEverythingProcessPlatfor
 const everythingDiscovery=createEverythingDiscovery(createEverythingDiscoveryPlatform({root:APP_ROOT,processes:everythingProcesses}));
 async function whereEs(){return everythingDiscovery.es()}
 
-async function runEs(file,args,options={}){return everythingProcesses.es(file,args,options)}
+async function runEs(file,args,options={}){const scoped=args.includes('--')?await documentAccess.scopeArguments(args):args;return everythingProcesses.es(file,scoped,options)}
 
 async function findEverythingExecutable(config){return everythingDiscovery.executable(config)}
 
@@ -125,15 +127,15 @@ const searchRuntime=createEverythingSearchCoordinator({
   session:{probe:probeEverything,executable:findEverythingExecutable,invalidate:()=>everythingSession.invalidate()},
   process:{run:runEs},
   pdf:{prepare:preparePdfFormIndexForSearch,search:searchPdfFormIndex},
-  publication:{prune:pruneResults,publish:publicResult},
+  publication:{prune:pruneResults,publish:publicResult,admit:documentAccess.admit},
   audit:{write:appendLog},
 });
 const {diagnoseIndex,searchDocuments,recentDocuments,runtime:documentSearch}=searchRuntime;
 
 const pdfMaintenanceOperation=createPdfMaintenanceOperation({
   index:pdfIndexRuntime.index,
-  inventory:pdfIndexRuntime.inventory,
-  extraction:{read:extractInteractivePdfText,stat:fullPath=>fs.stat(fullPath),fields:normalizePdfFormFields},
+  inventory:{rebuild:async(...args)=>{const batch=await pdfIndexRuntime.inventory.rebuild(...args);return {...batch,rows:await documentAccess.admit(batch.rows)}}},
+  extraction:{read:async(fullPath,...args)=>extractInteractivePdfText(await documentAccess.authorize(fullPath),...args),stat:async fullPath=>fs.stat(await documentAccess.authorize(fullPath)),fields:normalizePdfFormFields},
   metadata:{read:()=>readPdfMaintenanceMetadata(PDF_FORM_MAINTENANCE_PATH),write:record=>writeJsonFile(PDF_FORM_MAINTENANCE_PATH,record)},
   policy:{
     plan:pdfMaintenanceInventoryPlan,

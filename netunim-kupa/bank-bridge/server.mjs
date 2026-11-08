@@ -39,7 +39,7 @@ import {createBankDiagnosticRun,finishBankDiagnosticRun,recordBankAccountDiagnos
 
 const HOST='127.0.0.1';
 const PORT=8765;
-const BRIDGE_VERSION=75;
+const BRIDGE_VERSION=76;
 const BROWSER_IDENTITY_PROBE_URL=`http://${HOST}:${PORT}/health`;
 const APP_DIR=path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimKupaBankBridge');
 const TOKEN_FILE=path.join(APP_DIR,'bridge-token.txt');
@@ -50,7 +50,7 @@ const CHEQUE_IMAGE_CACHE_DIR=path.join(APP_DIR,'cheque-image-cache');
 const creditDiagnostics=createCreditDiagnosticLog({directory:path.join(APP_DIR,'diagnostics'),bridgeVersion:BRIDGE_VERSION,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION});
 process.env.CAMOUFOX_INSTALL_DIR=process.env.CAMOUFOX_INSTALL_DIR||CAMOUFOX_INSTALL_DIR;
 const operations=createBridgeOperationOwner();
-const artifacts=createBridgeArtifacts({directory:APP_DIR});
+const artifacts=createBridgeArtifacts({directory:APP_DIR,diagnosticMaxAgeMs:24*60*60*1000});
 const readMeta=artifacts.bankMeta.read,writeMeta=artifacts.bankMeta.write;
 const readCreditMeta=artifacts.creditMeta.read,writeCreditMeta=artifacts.creditMeta.write;
 const readBankDiagnostic=artifacts.bankDiagnostic.read,writeBankDiagnostic=artifacts.bankDiagnostic.write,deleteBankDiagnostic=artifacts.bankDiagnostic.clear;
@@ -188,6 +188,12 @@ if(args.has('--doctor')){
 
 const token=await ensureToken();
 if(args.has('--init')||args.has('--print-token')){console.log('Bank Bridge key:');console.log(token);console.log(`Credentials directory: ${APP_DIR}`);process.exit(0)}
+if(args.has('--clear-diagnostics')){await settleConnectionJobs([deleteBankDiagnostic(),deleteCreditDataDiagnostic()]);process.exit(0)}
+// Discard older detailed payloads on upgrade; never export them through the new
+// structural diagnostic route. Periodic reads expire files through their owner.
+const previousDiagnostic=await readBankDiagnostic();
+if(previousDiagnostic&&previousDiagnostic.schemaVersion!==4)await deleteBankDiagnostic();
+setInterval(()=>{void readBankDiagnostic().catch(()=>console.error('Bank diagnostic expiration failed'))},60*60*1000).unref();
 
 const originPolicy=await fs.readFile(path.join(APP_DIR,'origin-policy.json'),'utf8')
   .then(source=>createBankOriginPolicy(JSON.parse(source)))

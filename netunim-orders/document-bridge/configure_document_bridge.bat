@@ -11,7 +11,7 @@ if not exist "%ACTIVEFILE%" goto :not_installed
 if not exist "%NODEPOINTER%" goto :not_installed
 set /p "RUNTIMENAME="<"%ACTIVEFILE%"
 set /p "NODERUNTIME="<"%NODEPOINTER%"
-if /I not "%RUNTIMENAME:~0,6%"=="app-v3" goto :not_installed
+if /I not "%RUNTIMENAME:~0,5%"=="app-v" goto :not_installed
 if not "%RUNTIMENAME:\=%"=="%RUNTIMENAME%" goto :not_installed
 if not "%RUNTIMENAME:/=%"=="%RUNTIMENAME%" goto :not_installed
 if not "%RUNTIMENAME:..=%"=="%RUNTIMENAME%" goto :not_installed
@@ -25,9 +25,9 @@ if not exist "%APPDIR%\server.mjs" goto :not_installed
 if not exist "%NODE_EXE%" goto :not_installed
 
 echo.
-echo Document Bridge searches the COMPLETE Everything index.
-echo There is no separate folder list in the Bridge.
-echo Add/remove indexed drives and folders directly in Everything Options.
+echo Select the business folders the website may access.
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%APPDIR%\configure_document_bridge.ps1" -AppRoot "%APPROOT%"
+if errorlevel 1 exit /b 1
 echo.
 "%NODE_EXE%" "%APPDIR%\server.mjs" --ensure-everything
 if errorlevel 1 goto :diagnostic_error

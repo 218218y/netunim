@@ -2,7 +2,7 @@ const MAX_DEPTH=8;
 const MAX_ARRAY_ITEMS=120;
 const MAX_OBJECT_KEYS=160;
 const MAX_STRING_LENGTH=1200;
-const MAX_TRANSACTIONS_PER_ROLE=500;
+const MAX_TRANSACTIONS_PER_ROLE=64;
 const MAX_DETAIL_SOURCES=8;
 const SECRET_KEY_RE=/(?:password|passwd|passcode|authorization|cookie|xsrf|csrf|token|session(?:id|key|token)?|secret|credential|otp|one.?time|pin|usercode|username|userid)/i;
 const BINARY_KEY_RE=/(?:scan|base64|binary|blob|pdf|documentbytes|filebytes|rawhtml|htmlbody|imagebytes|imagedata|imagecontent)/i;
@@ -16,13 +16,8 @@ function maskCardLikeValue(value){const raw=String(value??'');const digits=raw.r
 function maskPotentialPanText(value){return String(value??'').replace(/(?<!\d)(?:\d[ -]?){11,18}\d(?!\d)/g,match=>maskCardLikeValue(match))}
 function marker(kind,value){const size=typeof value==='string'?value.length:ArrayBuffer.isView(value)?value.byteLength:0;return `[REDACTED_${kind}${size?` length=${size}`:''}]`}
 function maybeUrl(value){const raw=String(value||'').trim();return /^(?:https?:\/\/|\/)/i.test(raw)?raw:''}
-function sanitizeUrl(raw){
-  try{
-    const absolute=/^https?:\/\//i.test(raw),url=new URL(raw,'https://login.bankhapoalim.co.il');
-    for(const key of [...url.searchParams.keys()])if(SENSITIVE_QUERY_RE.test(key))url.searchParams.set(key,'[REDACTED]');
-    return absolute?`${url.origin}${url.pathname}${url.search}`:`${url.pathname}${url.search}`;
-  }catch{return text(raw)}
-}
+function sanitizeUrl(){return '[REDACTED_URL]'}
+
 function looksBinaryString(value){const raw=String(value||'');if(raw.length<300)return false;return /^data:/i.test(raw)||(/^[A-Za-z0-9+/=\r\n]+$/.test(raw)&&raw.replace(/\s/g,'').length>600)}
 function looksHtml(value){return /<\s*(?:!doctype\s+html|html|body|script|iframe)\b/i.test(String(value||''))}
 function roleKey(role){return role==='home'?'home':'business'}
@@ -47,7 +42,7 @@ function buildActivitySummary(account){
     current.count++;
     if(Number(raw?.eventActivityTypeCode)===2)current.debitCount++;else if(Number(raw?.eventActivityTypeCode)===1)current.creditCount++;
     current.hasPfmDetails=current.hasPfmDetails||!!raw?.pfmDetails;current.hasDetails=current.hasDetails||!!raw?.details;
-    const reference=text(raw?.referenceNumber,100);if(reference&&!current.sampleReferences.includes(reference)&&current.sampleReferences.length<3)current.sampleReferences.push(reference);
+    // References and free text are deliberately absent from structural diagnostics.
     grouped.set(signature,current);
   }
   return [...grouped.values()].sort((a,b)=>b.count-a.count||String(a.activityDescription).localeCompare(String(b.activityDescription),'he'));
@@ -78,12 +73,12 @@ export function sanitizeBankDiagnosticValue(value,{key='',depth=0}={}){
     const url=maybeUrl(value);if(url)return sanitizeUrl(url);
     if(looksHtml(value))return marker('HTML',value);
     if(looksBinaryString(value))return marker('BINARY',value);
-    const clean=maskPotentialPanText(String(value).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g,''));
-    return clean.length>MAX_STRING_LENGTH?`${clean.slice(0,MAX_STRING_LENGTH)}… [TRUNCATED ${clean.length-MAX_STRING_LENGTH}]`:clean;
+    const clean=maskPotentialPanText(String(value));
+    return /^•••• \d{4}$/.test(clean)?clean:'[REDACTED_TEXT]';
   }
-  if(typeof value==='number'){const raw=String(value);return /^\d{12,19}$/.test(raw)?maskCardLikeValue(raw):value}
+  if(typeof value==='number')return /^(?:eventActivityTypeCode|activityTypeCode|textCode|normalizedTransactionCount|httpStatus)$/.test(keyText)&&Number.isSafeInteger(value)&&Math.abs(value)<100000?value:'[REDACTED_NUMBER]';
   if(typeof value==='boolean')return value;
-  if(typeof value==='bigint')return value.toString();
+  if(typeof value==='bigint')return '[REDACTED_NUMBER]';
   if(ArrayBuffer.isView(value))return marker('BINARY',value);
   if(Array.isArray(value)){
     const out=value.slice(0,MAX_ARRAY_ITEMS).map(child=>sanitizeBankDiagnosticValue(child,{depth:depth+1}));
@@ -101,9 +96,9 @@ export function sanitizeBankDiagnosticValue(value,{key='',depth=0}={}){
 
 export function createBankDiagnosticRun({bridgeVersion=0}={}){
   return {
-    schemaVersion:3,bridgeVersion:Number(bridgeVersion)||0,startedAt:new Date().toISOString(),finishedAt:null,
+    schemaVersion:4,bridgeVersion:Number(bridgeVersion)||0,startedAt:new Date().toISOString(),finishedAt:null,
     scope:{source:'latest-bank-sync',maxTransactionsPerRole:MAX_TRANSACTIONS_PER_ROLE,includesAllTransactionTypes:true,chequeDetailResponses:true,creditSettlementDetailResponses:true},
-    security:{localOnly:true,synchronizedToSupabase:false,credentialsRedacted:true,sessionSecretsRedacted:true,binaryPayloadsRedacted:true,documentLinksPathOnly:true},
+    security:{structuralOnly:true,localOnly:true,synchronizedToSupabase:false,credentialsRedacted:true,sessionSecretsRedacted:true,binaryPayloadsRedacted:true,documentLinksRedacted:true},
     accounts:{business:emptyAccount(),home:emptyAccount()},failure:null,
   };
 }

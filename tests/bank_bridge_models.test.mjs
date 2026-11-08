@@ -70,14 +70,14 @@ recordBankTransactionDiagnostic(bankDiagnostic,{role:'business',chequeKind:'depo
 recordBankAccountDiagnostic(bankDiagnostic,{role:'business',branchNumber:'613',accountNumber:'634063',balance:10000,availableBalance:9000,transactionCoverage:{complete:true,from:'2026-08-16',to:'2026-09-14',days:30},normalizedTransactionCount:2});
 finishBankDiagnosticRun(bankDiagnostic);
 const bankDiagnosticPayload=bankDiagnosticExportPayload(bankDiagnostic),bankDiagnosticText=JSON.stringify(bankDiagnosticPayload,null,2);
-assert.equal(bankDiagnosticPayload.schemaVersion,3,'bank diagnostics use the structured all-transaction JSON schema with credit-settlement detail coverage');
+assert.equal(bankDiagnosticPayload.schemaVersion,4,'bank diagnostics use the structured all-transaction JSON schema with credit-settlement detail coverage');
 assert.equal(bankDiagnosticPayload.accounts.business.captured,2,'bank diagnostics retain non-cheque and cheque transactions from the same sync');
-assert.equal(bankDiagnosticPayload.accounts.business.activitySummary.some(row=>row.activityDescription==='העברה נכנסת'&&row.sampleReferences.includes('123456789')),true,'bank diagnostics summarize incoming credits with their bank reference');
+assert.equal(bankDiagnosticPayload.accounts.business.activitySummary.every(row=>row.sampleReferences.length===0),true,'structural diagnostics exclude references');
 assert.equal(bankDiagnosticPayload.accounts.business.fieldInventory.rawTransactionFields.includes('referenceCatenatedNumber'),true,'bank diagnostics inventory raw fields that are intentionally not part of the normal feed');
 assert.equal(bankDiagnosticPayload.accounts.business.fieldInventory.beneficiaryDetailsFields.includes('messageDetail'),true,'bank diagnostics inventory nested beneficiary fields for transfer diagnosis');
-assert.match(bankDiagnosticText,/4463454/,'bank diagnostics preserve bank-provided cheque identifiers needed for schema diagnosis');
-assert.match(bankDiagnosticText,/105012322/,'bank diagnostics preserve cheque row values needed to map the correct account field');
-assert.match(bankDiagnosticText,/current-account\/cheques\/image\/front/,'bank diagnostics preserve sanitized cheque-document endpoint paths for image feasibility analysis');
+assert.doesNotMatch(bankDiagnosticText,/4463454/,'diagnostics redact cheque identifiers');
+assert.doesNotMatch(bankDiagnosticText,/105012322/,'diagnostics redact account numbers');
+assert.doesNotMatch(bankDiagnosticText,/current-account\/cheques\/image\/front/,'diagnostics exclude URLs with opaque or personal path segments');
 assert.equal(bankDiagnosticText.includes('12-613-678542'),false,'bank diagnostics redact source accountId query values');
 assert.equal(bankDiagnosticText.includes('do-not-export'),false,'bank diagnostics redact credential-shaped keys');
 assert.equal(bankDiagnosticText.includes('session-secret'),false,'bank diagnostics redact cookie/session-shaped keys');
@@ -85,7 +85,7 @@ assert.equal(bankDiagnosticText.includes('secret challenge'),false,'bank diagnos
 assert.equal(bankDiagnosticText.includes('A'.repeat(300)),false,'bank diagnostics never retain cheque images or binary payloads');
 assert.equal(bankDiagnosticText.includes('session=secret'),false,'bank diagnostics strip session query values from document links');
 assert.equal(bankDiagnosticText.includes('token=secret'),false,'bank diagnostics strip token query values from document links');
-assert.equal(sanitizeBankDiagnosticValue({Authorization:'Bearer abc',referenceNumber:4463454}).referenceNumber,4463454,'diagnostic sanitizer redacts secrets without erasing bank business fields');
+assert.equal(sanitizeBankDiagnosticValue({Authorization:'Bearer abc',referenceNumber:4463454}).referenceNumber,'[REDACTED_NUMBER]','diagnostics retain field names without personal financial values');
 const sanitizedCardDiagnostic=sanitizeBankDiagnosticValue({cardNumber:'4580123412345678',rows:[{label:'מספר כרטיס',value:'4580 1234 1234 9876'}]});
 assert.equal(sanitizedCardDiagnostic.cardNumber,'•••• 5678','explicit card-number keys retain only last four digits in local diagnostics');
 assert.equal(sanitizedCardDiagnostic.rows[0].value,'•••• 9876','card-like PAN values are masked even when the semantic label and value are stored in separate fields');
