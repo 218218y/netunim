@@ -70,7 +70,7 @@ recordBankTransactionDiagnostic(bankDiagnostic,{role:'business',chequeKind:'depo
 recordBankAccountDiagnostic(bankDiagnostic,{role:'business',branchNumber:'613',accountNumber:'634063',balance:10000,availableBalance:9000,transactionCoverage:{complete:true,from:'2026-08-16',to:'2026-09-14',days:30},normalizedTransactionCount:2});
 finishBankDiagnosticRun(bankDiagnostic);
 const bankDiagnosticPayload=bankDiagnosticExportPayload(bankDiagnostic),bankDiagnosticText=JSON.stringify(bankDiagnosticPayload,null,2);
-assert.equal(bankDiagnosticPayload.schemaVersion,4,'bank diagnostics use the structured all-transaction JSON schema with credit-settlement detail coverage');
+assert.equal(bankDiagnosticPayload.schemaVersion,5,'bank diagnostics use the structured all-transaction JSON schema with credit-settlement detail coverage');
 assert.equal(bankDiagnosticPayload.accounts.business.captured,2,'bank diagnostics retain non-cheque and cheque transactions from the same sync');
 assert.equal(bankDiagnosticPayload.accounts.business.activitySummary.every(row=>row.sampleReferences.length===0),true,'structural diagnostics exclude references');
 assert.equal(bankDiagnosticPayload.accounts.business.fieldInventory.rawTransactionFields.includes('referenceCatenatedNumber'),true,'bank diagnostics inventory raw fields that are intentionally not part of the normal feed');

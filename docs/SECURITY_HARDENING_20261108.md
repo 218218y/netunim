@@ -129,9 +129,12 @@ Windows and Linux with real files/junctions or symlinks. This does not claim
 protection from arbitrary malware running as the same Windows account or a
 complete Windows filesystem race-proof sandbox.
 
-Bank Bridge v76 writes schema-v4 structural diagnostics: field names, bounded
+Bank Bridge v77 writes schema-v5 structural diagnostics: reviewed field names, bounded
 sample structures, activity type codes and boolean presence indicators. Arbitrary
 text, account/branch/check/reference numbers, amounts and URLs are redacted;
+unreviewed dictionary keys become anonymous field positions, and source/cheque
+labels come only from explicit internal enums. This also removes personal data
+placed in property names. Schema v4 files are purged on startup after upgrading.
 existing card masking retains at most the final four digits. Samples are capped
 at 64 per account role. Previous detailed schema versions are purged at startup.
 The latest file expires after 24 hours, with physical deletion on startup/read

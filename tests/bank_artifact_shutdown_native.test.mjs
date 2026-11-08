@@ -36,7 +36,7 @@ for (const [label, module, endpoint, document, anchor, replacement] of [
             path.join(diagnostics, document),
             JSON.stringify({
               profileId: 'native-artifact-fixture',
-              schemaVersion: 4,
+              schemaVersion: 5,
               stage: 'Fixture',
             }) + '\n'
           );
