@@ -2,6 +2,18 @@
 setlocal EnableExtensions DisableDelayedExpansion
 cd /d "%~dp0"
 
+set "APPROOT=%LOCALAPPDATA%\NetunimKupaBankBridge"
+powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "%~dp0install_node_runtime.ps1" -AppRoot "%APPROOT%"
+if errorlevel 1 exit /b 1
+set "NODERUNTIME="
+set /p "NODERUNTIME="<"%APPROOT%\node-runtime.txt"
+if /I not "%NODERUNTIME:~0,22%"=="node-v24.21.0-win-x64-" exit /b 1
+if not "%NODERUNTIME:\=%"=="%NODERUNTIME%" exit /b 1
+if not "%NODERUNTIME:/=%"=="%NODERUNTIME%" exit /b 1
+if not "%NODERUNTIME:..=%"=="%NODERUNTIME%" exit /b 1
+if not exist "%APPROOT%\%NODERUNTIME%\node.exe" exit /b 1
+set "PATH=%APPROOT%\%NODERUNTIME%;%PATH%"
+
 where node >nul 2>nul || (
   echo ERROR: Node.js was not found. Install Node.js 22.22.2 or newer first.
   pause
@@ -32,7 +44,7 @@ mkdir "%STAGING%" >nul 2>nul || (
 )
 
 rem Build the new runtime first. The currently installed bridge stays untouched until all checks pass.
-for %%F in (server.mjs bank-browser-identity.mjs bank-money-value.mjs credit-value-codec.mjs credit-month-plan.mjs credit-sync-scope.mjs credit-http-policy.mjs credit-http.mjs credit-scheduler.mjs visa-cal-model.mjs credit-coverage.mjs visa-cal-session.mjs credit-adapter-base.mjs visa-cal-adapter.mjs max-model.mjs credit-monthly-projection.mjs max-adapter.mjs isracard-group-adapter.mjs credit-adapter-factory.mjs credit-adapter-wire.mjs json-artifact-owner.mjs bridge-artifacts.mjs credit-diagnostic-model.mjs credit-diagnostic-log.mjs hapoalim-wire.mjs hapoalim-json.mjs hapoalim-enrichment.mjs hapoalim-accounts.mjs cheque-images.mjs file-task-owner.mjs browser-locator.mjs windows-browser.mjs provider-errors.mjs hapoalim-session.mjs hapoalim-provider.mjs credit-session.mjs credit-provider.mjs shutdown-owner.mjs replacement-command.mjs loopback-port.mjs http-handler.mjs origin-policy.mjs http-routes.mjs wire-errors.mjs finance-commands.mjs connection-queries.mjs diagnostic-queries.mjs operation-owner.mjs connection-commands.mjs connection-settings.mjs connection-vault.mjs windows-platform.mjs hapoalim-policy.mjs hapoalim-navigation-policy.mjs hapoalim-login-runtime.mjs hapoalim-account-selector.mjs hapoalim-account-model.mjs hapoalim-detail-values.mjs hapoalim-detail-keys.mjs hapoalim-cheque-model.mjs hapoalim-credit-settlement-model.mjs hapoalim-additional-details-model.mjs hapoalim-date-codec.mjs hapoalim-transaction-model.mjs hapoalim-failure-policy.mjs bank-diagnostics.mjs credit-core-values.mjs credit-profile-model.mjs credit-transaction-model.mjs credit-transaction-evidence.mjs credit-failure-policy.mjs observation-time.mjs credit-cooldown-policy.mjs credit-data-diagnostics.mjs credit-identity.mjs amex-digitalv3.mjs isracard-digitalv3.mjs isracard-group-utils.mjs isracard-camoufox.mjs provision-camoufox.mjs package.json package-lock.json start_bank_bridge.bat) do (
+for %%F in (server.mjs bank-money-value.mjs bank-browser-identity.mjs credit-value-codec.mjs credit-month-plan.mjs credit-sync-scope.mjs credit-http-policy.mjs credit-http.mjs credit-scheduler.mjs visa-cal-model.mjs credit-coverage.mjs visa-cal-session.mjs credit-adapter-base.mjs visa-cal-adapter.mjs max-model.mjs credit-monthly-projection.mjs max-adapter.mjs isracard-group-adapter.mjs credit-adapter-factory.mjs credit-adapter-wire.mjs json-artifact-owner.mjs bridge-artifacts.mjs credit-diagnostic-model.mjs credit-diagnostic-log.mjs hapoalim-wire.mjs hapoalim-json.mjs hapoalim-enrichment.mjs hapoalim-accounts.mjs cheque-images.mjs file-task-owner.mjs browser-locator.mjs windows-browser.mjs provider-errors.mjs hapoalim-session.mjs hapoalim-provider.mjs credit-session.mjs credit-provider.mjs shutdown-owner.mjs replacement-command.mjs loopback-port.mjs http-handler.mjs origin-policy.mjs http-routes.mjs wire-errors.mjs finance-commands.mjs connection-queries.mjs diagnostic-queries.mjs operation-owner.mjs connection-commands.mjs connection-settings.mjs connection-vault.mjs windows-platform.mjs hapoalim-policy.mjs hapoalim-navigation-policy.mjs hapoalim-login-runtime.mjs hapoalim-account-selector.mjs hapoalim-account-model.mjs hapoalim-detail-values.mjs hapoalim-detail-keys.mjs hapoalim-cheque-model.mjs hapoalim-credit-settlement-model.mjs hapoalim-additional-details-model.mjs hapoalim-date-codec.mjs hapoalim-transaction-model.mjs hapoalim-failure-policy.mjs bank-diagnostics.mjs credit-core-values.mjs credit-profile-model.mjs credit-transaction-model.mjs credit-transaction-evidence.mjs credit-failure-policy.mjs observation-time.mjs credit-cooldown-policy.mjs credit-data-diagnostics.mjs credit-identity.mjs amex-digitalv3.mjs isracard-digitalv3.mjs isracard-group-utils.mjs isracard-camoufox.mjs provision-camoufox.mjs package.json package-lock.json start_bank_bridge.bat) do (
   copy /Y "%~dp0%%F" "%STAGING%\%%F" >nul || (
     echo ERROR: Could not copy %%F into the Bank Bridge staging folder.
     rmdir /S /Q "%STAGING%" >nul 2>nul
@@ -45,24 +57,12 @@ pushd "%STAGING%"
 echo Installing the pinned bank and credit-card scraper dependency...
 rem The bridge uses Chrome/Edge already installed on Windows. Puppeteer must not download its own browser.
 set "PUPPETEER_SKIP_DOWNLOAD=true"
-call npm ci --omit=dev --no-audit --no-fund
+call npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 set "PUPPETEER_SKIP_DOWNLOAD="
 if errorlevel 1 (
   popd
   rmdir /S /Q "%STAGING%" >nul 2>nul
-  echo ERROR: npm install failed. The existing Bank Bridge was not changed.
-  pause
-  exit /b 1
-)
-
-echo Installing the pinned browser runtimes used by DigitalV3 and American Express...
-set "PUPPETEER_SKIP_DOWNLOAD=true"
-call npm install --no-save --package-lock=false --no-audit --no-fund puppeteer-modern@npm:puppeteer@25.12.0 camoufox-js@0.12.0 playwright-core@1.60.0 fingerprint-generator@2.1.86
-set "PUPPETEER_SKIP_DOWNLOAD="
-if errorlevel 1 (
-  popd
-  rmdir /S /Q "%STAGING%" >nul 2>nul
-  echo ERROR: Browser runtime installation failed. The existing Bank Bridge was not changed.
+  echo ERROR: Locked dependency installation failed. The existing Bank Bridge was not changed.
   pause
   exit /b 1
 )

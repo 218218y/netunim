@@ -97,6 +97,40 @@ The two supplied Supabase CSV exports both record `2026-11-08T14:00:05.222Z`:
 not proof of exposed data or a live audit of function bodies/Auth settings.
 Do not add permissive policies or revoke application RPCs just to clear lints.
 
+## Locked runtimes and automated scans
+
+All Bank runtime packages now belong to the ordinary dependency list and one
+integrity-protected lockfile. The second unlocked `npm install --no-save
+--package-lock=false` step is removed. Installation uses `npm ci --ignore-scripts`
+and explicit browser provisioning/doctor checks. Both Bridges use the same
+checksum-verified private Node 24.21.0 installer; the Bank startup launcher selects
+that private runtime rather than relying on the global Windows Node installation.
+The shared-asset generator keeps the two installer copies synchronized.
+
+The registry audit initially reported 11 high and five moderate Bank package
+findings. A locked Puppeteer 25.16.0 upgrade, including the scraper's transitive
+Puppeteer resolution, removed all high/critical findings. Compatibility is tested
+with the actual `israeli-bank-scrapers` package initializing, using and closing a
+real Chromium in a disposable profile. External provider navigation is blocked.
+This is package/browser compatibility evidence, not a successful live bank login
+or issuer WAF canary. The existing production bank/session/provider tests remain.
+Four moderate Bank findings and three moderate build-tool findings remain in the
+registry snapshot and must be tracked; no claim of zero known vulnerabilities is
+made. Avoid `npm audit fix --force` downgrades of the financial scraper.
+
+Security CI scans redacted Git history with checksum-verified Gitleaks, runs
+extended CodeQL for JavaScript/TypeScript and Python, audits both lockfiles, and
+exercises the real installed package/browser contract. High/critical npm and
+CodeQL findings block their jobs. The scanners run on PRs, main and weekly, with
+read-only repository access except the CodeQL result upload permission. Dependabot
+now includes both npm manifests and limits concurrent update PRs. Branch rules
+still need to require these named checks for future merges; adding a workflow by
+itself does not change GitHub branch protection.
+
+See [the exported RPC inventory](SUPABASE_EXPORTED_SECURITY_INVENTORY_20261108.md)
+for all 27 function locations from the supplied Supabase CSV. Live definitions
+and grants still require access to the correct project.
+
 The connected Supabase tool refused the security-advisor read with a permission
 error on this run. Live Auth settings, users, MFA and deployment state are **not
 verified or changed**. The review's previous snapshot is not current evidence.

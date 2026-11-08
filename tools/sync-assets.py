@@ -24,6 +24,7 @@ from public_asset_names import asset_name_violations
 ROOT = Path(__file__).resolve().parents[1]
 APPS = ('kupa', 'orders')
 BRIDGE_SHARED_SOURCES = {
+    'netunim-orders/document-bridge/install_node_runtime.ps1': 'netunim-kupa/bank-bridge/install_node_runtime.ps1',
     'shared/document-text-search.js': 'netunim-orders/document-bridge/document-text-search.mjs',
     'shared/bank-money-value.js': 'netunim-kupa/bank-bridge/bank-money-value.mjs',
     'shared/credit-transaction-evidence.js': 'netunim-kupa/bank-bridge/credit-transaction-evidence.mjs',
@@ -67,6 +68,7 @@ class WorktreeSnapshot:
         }
         paths = list((root / 'shared').glob('*.js')) + list((root / 'shared').glob('*.css'))
         paths.extend(root / target for target in BRIDGE_SHARED_SOURCES.values() if (root / target).is_file())
+        paths.extend(root / source for source in BRIDGE_SHARED_SOURCES if (root / source).is_file())
         document_search = root / DOCUMENT_SEARCH_SHARED_ROOT
         if document_search.is_dir():
             paths.extend(path for path in document_search.rglob('*.js') if path.is_file())
