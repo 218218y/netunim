@@ -41,7 +41,7 @@ const PUBLISHABLE_KEY=envKey('SUPABASE_PUBLISHABLE_KEYS','SUPABASE_ANON_KEY');
 const SECRET_KEY=envKey('SUPABASE_SECRET_KEYS','SUPABASE_SERVICE_ROLE_KEY');
 const MORNING_CLIENT_ID=Deno.env.get('MORNING_CLIENT_ID')||'';
 const MORNING_CLIENT_SECRET=Deno.env.get('MORNING_CLIENT_SECRET')||'';
-const MORNING_ENV_RAW=(Deno.env.get('MORNING_ENV')||'production').trim().toLowerCase();
+const MORNING_ENV_RAW=(Deno.env.get('MORNING_ENV')||'sandbox').trim().toLowerCase();
 const MORNING_ENV_VALID=MORNING_ENV_RAW==='production'||MORNING_ENV_RAW==='sandbox';
 const MORNING_ENV=MORNING_ENV_RAW==='sandbox'?'sandbox':'production';
 const TOKEN_URL=MORNING_ENV==='sandbox'?'https://api.sandbox.morning.dev/idp/v1/oauth/token':'https://api.morning.co/idp/v1/oauth/token';
@@ -404,6 +404,10 @@ async function getDocumentPdf(body:any){
 }
 
 const morningReports=createMorningReportsHandler({request:morningRequest,environment:MORNING_ENV,allowedIds:()=>Deno.env.get('MORNING_REPORT_USER_IDS')||''});
+function documentWritePermission(user:any){
+  // Only server-managed claims or deployment secrets may grant issuance.
+  return !!user?.id&&(user.app_metadata?.morning_documents_write===true||(Deno.env.get('MORNING_DOCUMENT_WRITE_USER_IDS')||'').split(',').map(id=>id.trim()).filter(Boolean).includes(user.id));
+}
 function documentReadPermission(user:any){
   // app_metadata is set by the server. User-editable user_metadata is ignored.
   return reportPermission(user,Deno.env.get('MORNING_REPORT_USER_IDS')||'')||!!user?.id&&(user.app_metadata?.morning_documents===true||(Deno.env.get('MORNING_DOCUMENT_USER_IDS')||'').split(',').map(id=>id.trim()).filter(Boolean).includes(user.id));
@@ -425,6 +429,7 @@ Deno.serve(async(req:Request)=>{
   try { body=await readJsonBodyBounded(req,256*1024); }
   catch(error) { if(error instanceof JsonBodyError)return json({ok:false,code:error.code},error.status);throw error; }
   const action=String(body.action||'');
+  if(['reserve','preview','create','abandon_reservation'].includes(action)&&!documentWritePermission(user))return json({ok:false,code:'morning_document_write_forbidden',message:'אין הרשאה להפקת מסמכים במורנינג. יש לפנות למנהל המערכת.'},403);
   if(action==='report_page'){if(!MORNING_ENV_VALID)return json({ok:false,code:'morning_environment_invalid',message:'סביבת מורנינג אינה מוגדרת כראוי'},503);const result=await morningReports(user,body);return json(result.body,result.status)}
   if(['search_documents','get_document','document_links','document_pdf'].includes(action)&&!MORNING_ENV_VALID)return json({ok:false,code:'morning_environment_invalid',message:'סביבת מורנינג אינה מוגדרת כראוי'},503);
   if(action==='search_documents'&&!documentReadPermission(user))return documentReadForbidden();
