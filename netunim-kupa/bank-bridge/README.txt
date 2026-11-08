@@ -9,12 +9,12 @@ It logs in locally, returns the selected account's current balance plus a bounde
 
 Installation / upgrade (Windows)
 --------------------------------
-1. Install Node.js 22.22.2 or newer and keep Google Chrome or Microsoft Edge installed/up to date.
+1. Keep Google Chrome or Microsoft Edge installed/up to date. The installer provisions a checksum-verified private Node.js 24.22.2 runtime.
 2. Run install_bank_bridge.bat.
 3. The installer first builds and validates a staged runtime. Only after it succeeds does it stop an older Netunim bridge and activate the new runtime under:
    %LOCALAPPDATA%\NetunimKupaBankBridge\app
 4. The Startup entry is a fixed ASCII-only VBS launcher. It resolves %LOCALAPPDATA% when Windows starts; it never stores the path of the ZIP/project folder and therefore is not broken by Hebrew/non-ASCII Windows paths or by moving the project folder.
-5. The installer starts the bridge hidden, verifies /health, and copies this computer's random Bridge key to the clipboard.
+5. The installer starts the bridge hidden and verifies /health. Pair explicitly using this computer's local bridge-token.txt; no key is copied to the clipboard.
 6. Open Kupa -> Bank, paste that key, enter the Hapoalim user code/password and, when more than one account exists, enter BOTH branch number and account number. Hapoalim account IDs are built exactly as 12-branch-account; the Bridge never guesses a branch from an account-number suffix.
 7. Click "Refresh now" for a silent test. If the bank requires extra verification, use "Open bank verification"; only that button opens a visible Chrome/Edge window.
 

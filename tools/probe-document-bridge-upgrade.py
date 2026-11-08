@@ -46,11 +46,11 @@ with tempfile.TemporaryDirectory(prefix='bridge-upgrade-', dir=ROOT / '.work') a
         reserved.bind(('127.0.0.1', 0))
         port = reserved.getsockname()[1]
     report['disposablePort'] = port
-    private_name = 'node-v24.21.0-win-x64-20261022-000000-1-1234abcd'
+    private_name = 'node-v24.22.2-win-x64-20261022-000000-1-1234abcd'
     private = app / private_name
     private.mkdir()
-    with zipfile.ZipFile(SOURCE / 'node-v24.21.0-win-x64.zip') as archive:
-        binary = archive.read('node-v24.21.0-win-x64/node.exe')
+    with zipfile.ZipFile(SOURCE / 'node-v24.22.2-win-x64.zip') as archive:
+        binary = archive.read('node-v24.22.2-win-x64/node.exe')
     expected = re.search(r"BRIDGE_NODE_WIN_X64_SHA256='([a-f0-9]+)'", (SOURCE / 'lib.mjs').read_text(encoding='utf8')).group(1)
     assert sha(binary) == expected
     executable = private / 'node.exe'

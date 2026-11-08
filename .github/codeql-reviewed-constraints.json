@@ -46,5 +46,41 @@
     "path": "tests/check_bank_review.test.mjs",
     "sha256": "f3549871fcec3f5c6e4c4be3958458fd746c0f97886e34f66d77bcf8a8ca50fb",
     "reason": "Negative markup assertions exercise escaping of deliberately hostile synthetic labels. These regexes inspect test output and do not sanitize production HTML; browser XSS tests remain independent."
+  },
+  {
+    "rule": "js/xss-through-dom",
+    "path": "netunim-orders/site/assets/js/domains/inventory/editor.js",
+    "sha256": "dc6bc2ec2397d5c2755281669e69c0fcc3cb7db7ab8ea50af386f81c9d0c2808",
+    "reason": "Inventory text/attribute values pass through the canonical esc helper; quantities pass through numeric formatting; modal titles are escaped by ui/modal.js and confirmation messages use textContent. Expanded runtime_security.py exercised item/details/count/transfer/order/reservation dialogs with hostile data in real Chromium with no injected markup or executable attributes."
+  },
+  {
+    "rule": "py/clear-text-storage-sensitive-data",
+    "path": "tests/browser_harness.py",
+    "sha256": "13dd7cdac1a3c866f6330c1878806e2c30702a7def180e85a00ab03811c90921",
+    "reason": "Windows host-state seeding persists only os_password_blank=false and the NetUserGetInfo password-age timestamp. The ctypes password pointer exists to match the native structure layout but is never read. No Windows password or account credential is retrieved or written."
+  },
+  {
+    "rule": "js/insecure-temporary-file",
+    "path": "netunim-orders/document-bridge/preview-file-platform.mjs",
+    "sha256": "ed4af769dc1137e46c1d93fffc8dfd9463cc5b225fc253e898ab81cefa184d78",
+    "reason": "The injected open port is always called with the literal read-only r flag. This reader never creates, truncates or writes a file. A single handle performs stat and bounded reads, returns only bytesRead slices and closes in finally; dedicated growth-race tests verify the byte limit."
+  },
+  {
+    "rule": "js/insecure-randomness",
+    "path": "shared/sync-incident-monitor.js",
+    "sha256": "b186edb1e0ba65d496a3bc4dd7d7bb1a8be36fb5b67a3e7c7c71e5d917d037e9",
+    "reason": "Math.random controls retry-backoff jitter only. Incident identity uses the separate crypto.randomUUID id port, and ownership/lease/backend authorization is independent of retry timing. No pairing key, session token or security decision derives from this jitter."
+  },
+  {
+    "rule": "js/insecure-randomness",
+    "path": "netunim-kupa/site/assets/js/shared/sync-incident-monitor.js",
+    "sha256": "b186edb1e0ba65d496a3bc4dd7d7bb1a8be36fb5b67a3e7c7c71e5d917d037e9",
+    "reason": "Math.random controls retry-backoff jitter only. Incident identity uses the separate crypto.randomUUID id port, and ownership/lease/backend authorization is independent of retry timing. No pairing key, session token or security decision derives from this jitter."
+  },
+  {
+    "rule": "js/insecure-randomness",
+    "path": "netunim-orders/site/assets/js/shared/sync-incident-monitor.js",
+    "sha256": "b186edb1e0ba65d496a3bc4dd7d7bb1a8be36fb5b67a3e7c7c71e5d917d037e9",
+    "reason": "Math.random controls retry-backoff jitter only. Incident identity uses the separate crypto.randomUUID id port, and ownership/lease/backend authorization is independent of retry timing. No pairing key, session token or security decision derives from this jitter."
   }
 ]

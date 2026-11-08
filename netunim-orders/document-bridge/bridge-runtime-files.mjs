@@ -17,7 +17,7 @@ const LOG_PATH=path.join(APP_ROOT,'bridge.log');
 const SUMMARY_PATH=path.join(APP_ROOT,'INSTALLATION-LOG.txt');
 const NODE_RUNTIME_POINTER_PATH=path.join(APP_ROOT,'node-runtime.txt');
 
-const PRIVATE_NODE_RUNTIME_PATTERN=/^node-v24\.21\.0-win-x64-[0-9]{8}-[0-9]{6}-[0-9]+-[0-9a-f]{8}$/i;
+const PRIVATE_NODE_RUNTIME_PATTERN=/^node-v24\.22\.2-win-x64-[0-9]{8}-[0-9]{6}-[0-9]+-[0-9a-f]{8}$/i;
 async function ensureRoot(){await fs.mkdir(APP_ROOT,{recursive:true})}
 async function appendLog(message){try{await ensureRoot();await fs.appendFile(LOG_PATH,`${new Date().toISOString()} ${message}\n`,'utf8')}catch{}}
 async function readJsonFile(file,fallback){try{return JSON.parse((await fs.readFile(file,'utf8')).replace(/^\uFEFF/,''))}catch{return fallback}}

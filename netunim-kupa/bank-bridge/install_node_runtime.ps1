@@ -4,7 +4,7 @@ Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
-$version = '24.21.0'
+$version = '24.22.2'
 $arch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant()
 if ($arch -ne 'x64') { throw "Unsupported Windows architecture for pinned Document Bridge Node runtime: $arch" }
 
@@ -12,8 +12,8 @@ $asset = "node-v$version-win-x64.zip"
 $runtimePrefix = "node-v$version-win-x64-"
 $pointerPath = Join-Path $AppRoot 'node-runtime.txt'
 $downloadUrl = "https://nodejs.org/download/release/v$version/$asset"
-$expectedArchiveSha256 = '158f7685b44de51f6c0df1d153526cbcd3e1bc739a8dfc607721cef75de9e541'
-$expectedNodeSha256 = 'ba4e6d110e8c1592a1ecd390f6b05f3da124b13871a5be62b341a07a853c6c32'
+$expectedArchiveSha256 = 'ca1bff5d8ead13c9f2ea404a176db46bd430704d5b5113734049fa365e7799e2'
+$expectedNodeSha256 = '1c331340fa6cac5e4294725959070a143fa0507195a78ad77eed7943f719aac9'
 $logPath = Join-Path $AppRoot 'install-node.log'
 
 function Write-InstallLog([string]$Message) {

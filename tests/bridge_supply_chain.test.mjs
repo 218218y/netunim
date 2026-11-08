@@ -26,7 +26,7 @@ test('both Bridge installers use the same checksum-verified private Node runtime
   assert.match(bank,/expectedArchiveSha256/);assert.match(bank,/expectedNodeSha256/);assert.match(bank,/Get-FileHash/);
   for(const name of ['install_bank_bridge.bat','start_bank_bridge.bat']){
     const script=read('netunim-kupa/bank-bridge/'+name);
-    assert.match(script,/node-runtime\.txt/);assert.match(script,/node-v24\.21\.0-win-x64-/);
+    assert.match(script,/node-runtime\.txt/);assert.match(script,/node-v24\.22\.2-win-x64-/);
     assert.match(script,/PATH=%APPROOT%\\%NODERUNTIME%;%PATH%/);
   }
 });

@@ -51,13 +51,13 @@ if exist "%NODEPOINTER%" (
   set "NODEPOINTERWASNEW=yes"
 )
 
-echo Installing/verifying pinned private Node.js 24.21.0 runtime...
+echo Installing/verifying pinned private Node.js 24.22.2 runtime...
 powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "%~dp0install_node_runtime.ps1" -AppRoot "%APPROOT%"
 if not "%ERRORLEVEL%"=="0" goto :node_error
 set /p "NODERUNTIME="<"%NODEPOINTER%"
 call :resolve_private_node "%NODERUNTIME%"
 if errorlevel 1 goto :node_error
-"%NODE_EXE%" -e "process.exit(process.versions.node==='24.21.0'?0:1)" >nul 2>nul
+"%NODE_EXE%" -e "process.exit(process.versions.node==='24.22.2'?0:1)" >nul 2>nul
 if not "%ERRORLEVEL%"=="0" goto :node_error
 if exist "%STAGING%" rmdir /S /Q "%STAGING%" >nul 2>nul
 mkdir "%STAGING%" >nul 2>nul || goto :stage_error
@@ -198,7 +198,7 @@ exit /b 0
 
 :node_error
 echo.
-echo ERROR: Could not install or verify the pinned private Node.js 24.21.0 runtime.
+echo ERROR: Could not install or verify the pinned private Node.js 24.22.2 runtime.
 echo Detailed log: %APPROOT%\install-node.log
 echo The previous Document Bridge runtime pointer was preserved.
 call :restore_state
@@ -298,7 +298,7 @@ exit /b 0
 :resolve_private_node
 set "CANDIDATE_NODE_RUNTIME=%~1"
 if not defined CANDIDATE_NODE_RUNTIME exit /b 1
-if /I not "%CANDIDATE_NODE_RUNTIME:~0,22%"=="node-v24.21.0-win-x64-" exit /b 1
+if /I not "%CANDIDATE_NODE_RUNTIME:~0,22%"=="node-v24.22.2-win-x64-" exit /b 1
 if not "%CANDIDATE_NODE_RUNTIME:\=%"=="%CANDIDATE_NODE_RUNTIME%" exit /b 1
 if not "%CANDIDATE_NODE_RUNTIME:/=%"=="%CANDIDATE_NODE_RUNTIME%" exit /b 1
 if not "%CANDIDATE_NODE_RUNTIME:..=%"=="%CANDIDATE_NODE_RUNTIME%" exit /b 1

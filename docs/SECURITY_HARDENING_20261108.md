@@ -101,7 +101,7 @@ All Bank runtime packages now belong to the ordinary dependency list and one
 integrity-protected lockfile. The second unlocked `npm install --no-save
 --package-lock=false` step is removed. Installation uses `npm ci --ignore-scripts`
 and explicit browser provisioning/doctor checks. Both Bridges use the same
-checksum-verified private Node 24.21.0 installer; the Bank startup launcher selects
+checksum-verified private Node 24.22.2 installer; the Bank startup launcher selects
 that private runtime rather than relying on the global Windows Node installation.
 The shared-asset generator keeps the two installer copies synchronized.
 
@@ -170,8 +170,7 @@ must be checked on each computer; code or CI cannot certify those settings.
 A genuine PDF stat/read growth gap was replaced with the existing bounded
 single-handle preview reader, including a one-byte overflow check, cancellation
 and guaranteed handle closure. The AcroForm/worker suite passed against the
-checksum-verified private Node 24.21.0 executable; the global Node installation
-has a different patch version and cannot certify that pinned worker contract.
+checksum-verified private Node 24.22.2 executable; the Windows native runtime test also verifies the archive and executable hashes.
 
 CodeQL's reviewed constraints are stored by rule, exact repository path and
 normalized source SHA-256. The record explains static contract assertions,
@@ -200,3 +199,18 @@ Cloud release separately requires the authorized issuer grant and explicit
 production environment before deploying Morning, plus MFA enrollment and Auth
 configuration on project bupoidcurcxuypfrjqio. These live steps were not performed
 through the unavailable/mismatched Supabase connection.
+
+
+The pinned Node runtime was advanced to 24.22.2 on Windows and in the offline
+Linux bundle. This includes the high-severity TLS/DNS/Brotli fixes in the
+[official 24.22.1 security release](https://nodejs.org/en/blog/release/v24.22.1)
+and the later fixes in [24.22.2](https://nodejs.org/en/blog/release/v24.22.2).
+Archive and executable hashes were checked against the official Node SHASUMS;
+old 24.21.0 distribution archives were removed from the current tree. Existing
+installed runtimes are updated only when the operator reinstalls the Bridges.
+
+The additional scanner review distinguishes retry jitter from credential
+randomness, read-only file handles from temporary-file creation, and Windows
+password-age timestamps from actual passwords. Inventory modal escaping is
+covered by expanded real Chromium injection tests. Each reviewed rule/path is
+bound to the complete source digest; these are not directory-wide exclusions.

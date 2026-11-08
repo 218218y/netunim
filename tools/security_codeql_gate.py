@@ -16,7 +16,7 @@ def high_findings(document):
             if score >= 7:
                 locations = result.get("locations", [])
                 location = locations[0].get("physicalLocation", {}) if locations else {}
-                findings.append((rule["id"], location.get("artifactLocation", {}).get("uri", "unknown")))
+                findings.append((rule["id"], location.get("artifactLocation", {}).get("uri", "unknown"), location.get("region", {}).get("startLine", 0)))
     return findings
 
 
@@ -38,8 +38,8 @@ if __name__ == "__main__":
     findings = [finding for report in reports for finding in high_findings(json.loads(report.read_text(encoding="utf8")))]
     triage_path = Path(".github/codeql-reviewed-constraints.json")
     entries = json.loads(triage_path.read_text(encoding="utf8")) if triage_path.exists() else []
-    findings = [(rule, location) for rule, location in findings
+    findings = [(rule, location, line) for rule, location, line in findings
                 if not reviewed_constraint(rule, location, Path.cwd(), entries)]
-    for rule, location in findings:
-        print(f"High/critical CodeQL security finding: {rule} in {location}")
+    for rule, location, line in findings:
+        print(f"High/critical CodeQL security finding: {rule} in {location}:{line}")
     raise SystemExit(1 if findings else 0)

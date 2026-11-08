@@ -736,7 +736,7 @@ class SecurityReportContracts(unittest.TestCase):
             {"id": "language/high", "properties": {"security-severity": "7.0"}},
         ]}]}, "results": [{"ruleId": name} for name in
                            ("language/diagnostic", "language/medium", "language/high")]}]}
-        self.assertEqual(high_findings(document), [("language/high", "unknown")])
+        self.assertEqual(high_findings(document), [("language/high", "unknown", 0)])
 
 
 if __name__ == "__main__":

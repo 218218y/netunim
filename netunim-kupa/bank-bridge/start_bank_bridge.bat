@@ -8,7 +8,7 @@ set "APPROOT=%LOCALAPPDATA%\NetunimKupaBankBridge"
 set "NODERUNTIME="
 if not exist "%APPROOT%\node-runtime.txt" exit /b 1
 set /p "NODERUNTIME="<"%APPROOT%\node-runtime.txt"
-if /I not "%NODERUNTIME:~0,22%"=="node-v24.21.0-win-x64-" exit /b 1
+if /I not "%NODERUNTIME:~0,22%"=="node-v24.22.2-win-x64-" exit /b 1
 if not "%NODERUNTIME:\=%"=="%NODERUNTIME%" exit /b 1
 if not "%NODERUNTIME:/=%"=="%NODERUNTIME%" exit /b 1
 if not "%NODERUNTIME:..=%"=="%NODERUNTIME%" exit /b 1

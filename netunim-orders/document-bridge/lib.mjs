@@ -5,8 +5,8 @@ import {decodeEverythingCount,decodeEverythingRows} from './everything-result-co
 export const BRIDGE_PORT=8766;
 export const BRIDGE_SERVICE='netunim-orders-document-bridge';
 export const BRIDGE_VERSION=46;
-export const BRIDGE_NODE_VERSION='24.21.0';
-export const BRIDGE_NODE_WIN_X64_SHA256='ba4e6d110e8c1592a1ecd390f6b05f3da124b13871a5be62b341a07a853c6c32';
+export const BRIDGE_NODE_VERSION='24.22.2';
+export const BRIDGE_NODE_WIN_X64_SHA256='1c331340fa6cac5e4294725959070a143fa0507195a78ad77eed7943f719aac9';
 export const MAX_QUERY_CHARS=240;
 export const MAX_RESULTS=5000;
 export const RECENT_RESULT_LIMIT=150;
