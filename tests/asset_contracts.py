@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from html.parser import HTMLParser
 from presentation_sources import presentation_contains
 from pathlib import Path
 import re
@@ -24,18 +25,39 @@ def ok(condition, message: str):
 
 
 def executable_inline_scripts(html: str) -> list[str]:
-    found = []
-    for match in re.finditer(r"<script\b(?P<attrs>[^>]*)>(?P<body>.*?)</script>", html, re.I | re.S):
-        attrs = match.group("attrs") or ""
-        if re.search(r"\bsrc\s*=", attrs, re.I):
-            continue
-        script_type = re.search(r"\btype\s*=\s*[\"']([^\"']+)[\"']", attrs, re.I)
-        typ = script_type.group(1).strip().lower() if script_type else ""
-        if typ and typ not in ("text/javascript", "application/javascript", "module"):
-            continue
-        if match.group("body").strip():
-            found.append(match.group("body"))
-    return found
+    class Scripts(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=False)
+            self.found, self.parts = [], None
+
+        def handle_starttag(self, tag, attrs):
+            if tag != 'script':
+                return
+            values = dict(attrs)
+            typ = (values.get('type') or '').strip().lower()
+            self.parts = [] if 'src' not in values and typ in ('', 'text/javascript', 'application/javascript', 'module') else None
+
+        def handle_data(self, data):
+            if self.parts is not None:
+                self.parts.append(data)
+
+        def handle_endtag(self, tag):
+            if tag == 'script' and self.parts is not None:
+                body = ''.join(self.parts)
+                if body.strip():
+                    self.found.append(body)
+                self.parts = None
+
+    parser = Scripts()
+    parser.feed(html)
+    parser.close()
+    return parser.found
+
+
+assert executable_inline_scripts('<SCRIPT TYPE=module>run()</SCRIPT>') == ['run()']
+assert executable_inline_scripts('<script data-note=\"a>b\">run()</script>') == ['run()']
+assert executable_inline_scripts('<script type=\"text&#x2f;javascript\">run()</script>') == ['run()']
+assert executable_inline_scripts('<script src=\"app.js\">ignored()</script><script type=\"application/json\">{}</script>') == []
 
 
 for label, project in APPS.items():
