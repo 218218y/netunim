@@ -21,6 +21,9 @@ set "CONFIGUREWASNEW=no"
 set "RUNNERTARGET=%APPROOT%\run_pdf_maintenance.ps1"
 set "RUNNERBACKUP=%APPROOT%\run_pdf_maintenance.before-install.ps1"
 set "RUNNERWASNEW=no"
+set "MAINTENANCELAUNCHER=%APPROOT%\run_pdf_maintenance_hidden.vbs"
+set "MAINTENANCELAUNCHERBACKUP=%APPROOT%\run_pdf_maintenance_hidden.before-install.vbs"
+set "MAINTENANCELAUNCHERWASNEW=no"
 set "TASKUPDATED=no"
 set "SUMMARY=%APPROOT%\INSTALLATION-LOG.txt"
 set "CONFIG=%APPROOT%\config.json"
@@ -37,7 +40,7 @@ if not exist "%APPROOT%" mkdir "%APPROOT%" >nul 2>nul
 rem A new installation transaction never consumes stale rollback artifacts from an
 rem earlier interrupted run. Each backup below is recreated immediately before
 rem the corresponding live state is changed.
-for %%B in ("%CONFIGBACKUP%" "%ACTIVEBACKUP%" "%AUTOSTARTBACKUP%" "%CONFIGUREBACKUP%" "%RUNNERBACKUP%" "%APPROOT%\pdf-maintenance-task.before-install.xml" "%APPROOT%\pdf-maintenance-task.before-install.missing") do (
+for %%B in ("%CONFIGBACKUP%" "%ACTIVEBACKUP%" "%AUTOSTARTBACKUP%" "%CONFIGUREBACKUP%" "%RUNNERBACKUP%" "%MAINTENANCELAUNCHERBACKUP%" "%APPROOT%\pdf-maintenance-task.before-install.xml" "%APPROOT%\pdf-maintenance-task.before-install.missing") do (
   if exist "%%~B" del /Q "%%~B" >nul 2>nul
 )
 if exist "%NODEPOINTERBACKUP%" del /Q "%NODEPOINTERBACKUP%" >nul 2>nul
@@ -135,12 +138,19 @@ if exist "%RUNNERTARGET%" (
 ) else (
   set "RUNNERWASNEW=yes"
 )
+if exist "%MAINTENANCELAUNCHERBACKUP%" del /Q "%MAINTENANCELAUNCHERBACKUP%" >nul 2>nul
+if exist "%MAINTENANCELAUNCHER%" (
+  copy /Y "%MAINTENANCELAUNCHER%" "%MAINTENANCELAUNCHERBACKUP%" >nul || goto :activate_error
+) else (
+  set "MAINTENANCELAUNCHERWASNEW=yes"
+)
 
 > "%ACTIVETMP%" echo %RUNTIMENAME%
 move /Y "%ACTIVETMP%" "%ACTIVEFILE%" >nul || goto :activate_error
 copy /Y "%~dp0launch_hidden.vbs" "%AUTOSTART%" >nul || goto :activate_error
 copy /Y "%~dp0configure_document_bridge.bat" "%CONFIGURETARGET%" >nul || goto :activate_error
 copy /Y "%~dp0run_pdf_maintenance.ps1" "%RUNNERTARGET%" >nul || goto :activate_error
+copy /Y "%~dp0run_pdf_maintenance_hidden.vbs" "%MAINTENANCELAUNCHER%" >nul || goto :activate_error
 start "" wscript.exe "%AUTOSTART%"
 timeout /t 2 /nobreak >nul
 "%NODE_EXE%" "%RUNTIME%\server.mjs" --check-running
@@ -163,6 +173,7 @@ if exist "%NODEPOINTERBACKUP%" del /Q "%NODEPOINTERBACKUP%" >nul 2>nul
 if exist "%AUTOSTARTBACKUP%" del /Q "%AUTOSTARTBACKUP%" >nul 2>nul
 if exist "%CONFIGUREBACKUP%" del /Q "%CONFIGUREBACKUP%" >nul 2>nul
 if exist "%RUNNERBACKUP%" del /Q "%RUNNERBACKUP%" >nul 2>nul
+if exist "%MAINTENANCELAUNCHERBACKUP%" del /Q "%MAINTENANCELAUNCHERBACKUP%" >nul 2>nul
 if exist "%APPROOT%\pdf-maintenance-task.before-install.xml" del /Q "%APPROOT%\pdf-maintenance-task.before-install.xml" >nul 2>nul
 if exist "%APPROOT%\pdf-maintenance-task.before-install.missing" del /Q "%APPROOT%\pdf-maintenance-task.before-install.missing" >nul 2>nul
 
@@ -321,6 +332,7 @@ if /I "%TASKUPDATED%"=="yes" (
 call :restore_helper "%AUTOSTARTBACKUP%" "%AUTOSTART%" "%AUTOSTARTWASNEW%"
 call :restore_helper "%CONFIGUREBACKUP%" "%CONFIGURETARGET%" "%CONFIGUREWASNEW%"
 call :restore_helper "%RUNNERBACKUP%" "%RUNNERTARGET%" "%RUNNERWASNEW%"
+call :restore_helper "%MAINTENANCELAUNCHERBACKUP%" "%MAINTENANCELAUNCHER%" "%MAINTENANCELAUNCHERWASNEW%"
 if exist "%CONFIGBACKUP%" (
   copy /Y "%CONFIGBACKUP%" "%CONFIG%" >nul 2>nul
   del /Q "%CONFIGBACKUP%" >nul 2>nul

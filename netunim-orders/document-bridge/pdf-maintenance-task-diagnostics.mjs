@@ -12,7 +12,7 @@ function taskResultLabel(value){
 }
 async function pdfMaintenanceTaskDiagnostics(){
   if(process.platform!=='win32')return {exists:false,unsupported:true,state:'',enabled:false,triggerEnabled:false,lastRunTime:'',lastResult:null,nextRunTime:'',missedRuns:0,actionExecuteValid:false,actionRunnerValid:false,actionWorkingDirectoryValid:false,actionValid:false,scheduleActive:false,error:''};
-  const expectedRunner=path.join(APP_ROOT,'run_pdf_maintenance.ps1');
+  const expectedRunner=path.join(APP_ROOT,'run_pdf_maintenance_hidden.vbs');
   const script=[
     "$ErrorActionPreference='Stop'",
     '[Console]::OutputEncoding=New-Object System.Text.UTF8Encoding($false)',
@@ -26,7 +26,7 @@ async function pdfMaintenanceTaskDiagnostics(){
     '$arguments=[string]$action.Arguments',
     "$registeredWorkingDirectory=([string]$action.WorkingDirectory).TrimEnd('\\')",
     "$actualWorkingDirectory=if($registeredWorkingDirectory){([System.IO.Path]::GetFullPath($registeredWorkingDirectory)).TrimEnd('\\')}else{''}",
-    "$executeValid=($executeLeaf -ieq 'powershell.exe')",
+    "$executeValid=($executeLeaf -ieq 'wscript.exe')",
     '$runnerValid=($expectedRunner.Length -gt 0 -and $arguments.IndexOf($expectedRunner,[System.StringComparison]::OrdinalIgnoreCase) -ge 0)',
     '$workingDirectoryValid=($actualWorkingDirectory -ieq $expectedWorkingDirectory)',
     "$lastRun=if($info.LastRunTime.Year -gt 1900){$info.LastRunTime.ToString('o')}else{''}",

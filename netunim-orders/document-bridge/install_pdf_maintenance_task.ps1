@@ -8,6 +8,7 @@ $ErrorActionPreference = 'Stop'
 
 $taskName = 'NetunimDocumentBridgePdfMaintenance'
 $script = Join-Path $AppRoot 'run_pdf_maintenance.ps1'
+$launcher = Join-Path $AppRoot 'run_pdf_maintenance_hidden.vbs'
 $backupPath = Join-Path $AppRoot 'pdf-maintenance-task.before-install.xml'
 $missingMarker = Join-Path $AppRoot 'pdf-maintenance-task.before-install.missing'
 
@@ -37,6 +38,7 @@ if ($RestoreBackup) {
 }
 
 if (-not (Test-Path -LiteralPath $script -PathType Leaf)) { throw 'PDF maintenance runner is missing.' }
+if (-not (Test-Path -LiteralPath $launcher -PathType Leaf)) { throw 'PDF maintenance hidden launcher is missing.' }
 
 Clear-TaskBackup
 $existing = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
@@ -49,8 +51,9 @@ if ($existing) {
 }
 
 try {
-  $arguments = '-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + $script + '"'
-  $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $arguments -WorkingDirectory $AppRoot
+  # wscript.exe starts without a console; it waits for PowerShell and returns its exit code.
+  $arguments = '//B //Nologo "' + $launcher + '"'
+  $action = New-ScheduledTaskAction -Execute (Join-Path $env:WINDIR 'System32\wscript.exe') -Argument $arguments -WorkingDirectory $AppRoot
   $trigger = New-ScheduledTaskTrigger -Daily -At '12:00'
   $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 20) -Priority 9
   $principal = New-ScheduledTaskPrincipal -UserId ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Limited
@@ -69,8 +72,8 @@ try {
   if ($task.State -eq 'Disabled') { throw 'PDF maintenance task was registered disabled.' }
   if (-not $triggerEnabled) { throw 'PDF maintenance task has no enabled trigger.' }
   if ($info.NextRunTime.Year -le 1900) { throw 'PDF maintenance task has no next run time.' }
-  if ($executeLeaf -ine 'powershell.exe') { throw "PDF maintenance task action executable is unexpected: $($registeredAction.Execute)" }
-  if (([string]$registeredAction.Arguments).IndexOf($script, [System.StringComparison]::OrdinalIgnoreCase) -lt 0) { throw 'PDF maintenance task action does not point to the installed maintenance runner.' }
+  if ($executeLeaf -ine 'wscript.exe') { throw "PDF maintenance task action executable is unexpected: $($registeredAction.Execute)" }
+  if (([string]$registeredAction.Arguments).IndexOf($launcher, [System.StringComparison]::OrdinalIgnoreCase) -lt 0) { throw 'PDF maintenance task action does not point to the hidden launcher.' }
   if ($actualWorkingDirectory -ine $expectedWorkingDirectory) { throw 'PDF maintenance task working directory is incorrect.' }
   if (-not $task.Settings.DisallowStartIfOnBatteries -or -not $task.Settings.StopIfGoingOnBatteries) { throw 'PDF maintenance task must require AC power.' }
 

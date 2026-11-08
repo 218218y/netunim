@@ -189,6 +189,9 @@ Each scheduled run handles at most 300 changed PDFs or 15 minutes, whichever com
 A manual Force refresh is intentionally unbounded by file count or elapsed time and continues
 until every currently changed candidate has been inspected, unless the user stops it. The
 process exits when the run finishes. A second run cannot overlap the first.
+The scheduled action uses wscript.exe and run_pdf_maintenance_hidden.vbs to
+launch PowerShell without a visible console; it waits and forwards the worker's
+exit code to Task Scheduler. Manual PowerShell runs remain interactive.
 
 Each normal daily maintenance window performs a full PDF metadata reconciliation
 against Everything so newly copied or moved PDFs are discovered even when their
@@ -220,7 +223,8 @@ bridge.log records trigger, bytes read, CPU time and elapsed time.
 `server.mjs --doctor` also queries Task Scheduler and prints State, enabled/trigger
 status, whether the schedule is active, Last Run Time, Last Result, Next Run Time
 and missed-run count. It validates that the registered action points to the
-expected run_pdf_maintenance.ps1 under the Bridge home. This Task Scheduler query
+expected run_pdf_maintenance_hidden.vbs under the Bridge home (which then
+launches run_pdf_maintenance.ps1). This Task Scheduler query
 is diagnostic-only (doctor/install summary); normal startup/search requests never
 run Get-ScheduledTask/Get-ScheduledTaskInfo or schtasks.
 

@@ -176,10 +176,15 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.match(task,/Export-ScheduledTask -TaskName/,'task replacement must snapshot an existing registration before changing it');
   assert.match(task,/Restore-TaskBackup/,'task installer must have an explicit rollback path');
   assert.match(task,/Get-ScheduledTaskInfo -TaskName/,'task installer must validate runtime scheduling metadata after registration');
+  assert.match(task,/New-ScheduledTaskAction -Execute \(Join-Path \$env:WINDIR 'System32\\wscript\.exe'\)/, 'scheduled maintenance must use a windowless script host');
   assert.match(task,/NextRunTime/,'task installer must reject a task that has no actual next run');
   assert.match(installer,/set "TASKUPDATED=yes"/,'parent installer must remember when Task Scheduler state became part of the transaction');
   assert.match(installer,/-RestoreBackup/,'parent rollback must restore Task Scheduler when a later activation check fails');
   assert.match(installer,/run_pdf_maintenance\.before-install\.ps1/,'maintenance runner must be backed up transactionally');
+  assert.match(installer,/run_pdf_maintenance_hidden\.before-install\.vbs/, 'hidden launcher must be backed up transactionally');
+  const silentLauncher=read('netunim-orders/document-bridge/run_pdf_maintenance_hidden.vbs');
+  assert.match(silentLauncher,/shell\.Run\(command, 0, True\)/, 'hidden launcher must await the maintenance process and forward its exit code');
+  assert.ok(installer.indexOf('copy /Y "%~dp0run_pdf_maintenance_hidden.vbs"') < installer.indexOf('install_pdf_maintenance_task.ps1" -AppRoot "%APPROOT%"'), 'hidden launcher must be installed before Task Scheduler registration');
   assert.match(installer,/configure_document_bridge\.before-install\.bat/,'manual configuration helper must be backed up transactionally');
   assert.match(installer,/:restore_helper/,'top-level helper files must have a rollback routine');
   assert.doesNotMatch(task,/-AllowStartIfOnBatteries/);
