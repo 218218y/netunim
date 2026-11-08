@@ -1,5 +1,58 @@
 # Financial system security hardening — 2026-11-08
 
+## Latest live verification and Google credential phase
+
+The connection was re-established later on November 8. Both the Supabase connector
+and the authenticated CLI now reach the correct project `bupoidcurcxuypfrjqio`
+(`netunim`, ACTIVE_HEALTHY). Earlier connection-limit notes below describe the
+initial work, not the current access state. Live inspection found one user, no
+verified MFA factor, one Calendar connection and one Drive connection, and RLS on
+every public table. The live Advisor confirms the exported 16 INFO / 27 RPC WARN
+findings and disabled leaked-password protection. No credential values are
+included in this report.
+
+Both Google OAuth handlers now encrypt refresh credentials using AES-256-GCM,
+fresh 96-bit IVs and authenticated project/service/owner/key-ID binding. Key
+material is held only in Edge secrets. HKDF separates the encryption and PKCE
+keys. New authorization requests use S256; the server derives the unpredictable
+verifier from a fresh 256-bit random state using HMAC, bound to the owner, service,
+project and exact redirect URI. Only the challenge goes to the browser. The
+existing single-use state consumption, current-intent publication and connection
+compare-and-set fencing remain authoritative. There is no extra plaintext
+verifier column or schema migration.
+
+Configure `GOOGLE_OAUTH_TOKEN_KEYS` as a JSON object mapping a short key ID to a
+base64-encoded, cryptographically random 32-byte key, and
+`GOOGLE_OAUTH_TOKEN_ACTIVE_KEY` to that ID. Retain old keys while credentials or
+in-flight states still depend on them. Changing the active key re-encrypts an old
+credential after a successful refresh, with compare-and-set confirmation before
+returning an access token. Back up keys separately in the operator's secret
+manager; losing them requires reconnecting Google.
+
+Plaintext credentials are rejected by default. For a controlled migration only,
+`GOOGLE_OAUTH_ALLOW_LEGACY_TOKENS=true` permits existing plaintext and upgrades it
+on the next successful refresh; remove this temporary permission after verifying
+both tables contain only `ngc1` envelopes. Corrupted envelopes never fall back to
+plaintext. Alternatively migrate credentials with trusted operator tooling or
+reconnect each integration. Old, pre-PKCE pending authorization attempts must be
+restarted after deployment. Disconnect still commits local unlink if key recovery
+or remote revocation fails and reports revocation as unconfirmed.
+
+Google handlers admit only the three exact production origins listed below.
+Additional exact origins require explicit `GOOGLE_OAUTH_ALLOWED_ORIGINS`; public
+preview and localhost origins receive no implicit access. Native calls still
+require user authentication. Errors expose fixed diagnostics, never database
+error messages or credential contents. Scope requirements remain Calendar event
+editing/list discovery and read-only Drive; narrowing Drive to `drive.file` would
+change the existing whole-drive document search feature.
+
+Acceptance tests exercise real WebCrypto and production handlers, ciphertext
+tampering, cross-owner/service/project substitution, absent keys, plaintext
+rejection, key rotation, controlled migration, PKCE exchange/replay and foreign
+origin denial, alongside the existing concurrent disconnect/replacement tests.
+Deployment and live ciphertext conversion must be recorded separately; a Git
+merge does not update Edge functions.
+
 ## Issuance authority and browser headers
 
 `morning-documents` now denies reserve, preview, create and reservation abandonment
