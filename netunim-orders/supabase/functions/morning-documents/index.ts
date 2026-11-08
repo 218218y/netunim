@@ -1,9 +1,9 @@
+import {edgeOrigins, withEdgeOrigins} from '../_shared/edge-origins.js';
 import {createClient} from 'npm:@supabase/supabase-js@2.112.4';
 import {readJsonBodyBounded, JsonBodyError} from '../_shared/http-input.js';
 import {createMorningReportsHandler, reportPermission} from './reports.js';
 
 const corsHeaders={
-  'Access-Control-Allow-Origin':'*',
   'Access-Control-Allow-Headers':'authorization, apikey, content-type, x-client-info, x-retry-count, traceparent, tracestate, baggage',
   'Access-Control-Allow-Methods':'POST, OPTIONS',
   'Access-Control-Max-Age':'86400',
@@ -422,7 +422,7 @@ async function mayReadDocument(user:any,body:any){
   return !!(data?.verified_at&&data.owner_id===user.id&&data.environment===MORNING_ENV&&data.document_id===id&&data.state==='created');
 }
 function documentReadForbidden(){return json({ok:false,code:'morning_documents_forbidden',message:'אין הרשאה לצפייה במסמכי העסק במורנינג. יש לפנות למנהל המערכת.'},403)}
-Deno.serve(async(req:Request)=>{
+Deno.serve(withEdgeOrigins(async(req:Request)=>{
   if(req.method==='OPTIONS')return new Response('ok',{headers:corsHeaders});if(req.method!=='POST')return json({ok:false,code:'method_not_allowed'},405);if(!SUPABASE_URL||!PUBLISHABLE_KEY||!SECRET_KEY)return json({ok:false,code:'supabase_backend_not_configured',message:'Supabase Edge Function configuration is incomplete'},503);
   const user=await requireUser(req);if(!user)return json({ok:false,code:'morning_cloud_auth_required',message:'נדרשת התחברות לענן לפני שימוש ב-Morning'},401);
   let body;
@@ -438,4 +438,4 @@ Deno.serve(async(req:Request)=>{
     try{if(!await mayReadDocument(user,body))return documentReadForbidden()}catch(error){return dbError(error,'morning_document_permission_failed')}
   }
   if(action==='status')return status(user.id,body);if(action==='reserve')return reserve(user.id,body);if(action==='abandon_reservation')return abandonReservation(user.id,body);if(action==='preview')return preview(user.id,body);if(action==='create')return create(user.id,body);if(action==='search_documents')return searchDocuments(body);if(action==='get_document')return getDocument(body);if(action==='document_links')return getDocument(body,true);if(action==='document_pdf')return getDocumentPdf(body);return json({ok:false,code:'morning_unknown_action',message:'פעולת Morning אינה מוכרת'},400);
-});
+},edgeOrigins(Deno.env.get('FINANCIAL_EDGE_ALLOWED_ORIGINS')||'')));

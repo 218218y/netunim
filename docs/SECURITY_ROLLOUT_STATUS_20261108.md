@@ -34,6 +34,9 @@ EXECUTE access to privileged public/internal functions, explicit search paths on
 the 27 authenticated public SECURITY DEFINER entrypoints, and no browser SELECT
 grants on the Google credential/state tables or Morning operation ledger.
 Identity checks are direct or delegated through writer/incident authorities.
+The Management API separately confirmed that Data API exposes only `public` and
+`graphql_public`, with `public, extensions` as its extra search path;
+`netunim_internal` is not exposed through that interface.
 The internal schema cannot simply lose USAGE: two existing public invoker RPCs
 still reference its metadata/tables. No blanket privilege revocation was applied.
 
