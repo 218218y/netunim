@@ -9,6 +9,7 @@ from build_release import inventory, release_id, shell_paths, vendor_hashes
 from public_asset_names import asset_name_issue
 from build_validation import require
 from build_headers import production_headers
+from build_environment import environment_headers
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -37,6 +38,8 @@ def verify(app, site=None, manifest_path=None):
     require("'unsafe-eval'" not in headers and "script-src 'self' 'unsafe-inline'" not in headers, 'Unsafe script CSP')
     require("connect-src 'self'" in headers and 'X-Frame-Options: DENY' in headers, 'Missing security headers')
     expected_headers = (ROOT/f'netunim-{app}/site/_headers').read_text(encoding='utf-8')
+    environment = manifest.get('environment', 'production')
+    expected_headers = environment_headers(expected_headers, environment)
     expected_headers = production_headers(expected_headers, files, release)
     require(headers == expected_headers, 'Build changed source security/cache policy')
     for name in files:
@@ -59,6 +62,10 @@ def verify(app, site=None, manifest_path=None):
             require(reference in files, f'Missing {page} resource: {reference}')
         require(re.search(r'<script type="module" src="\./assets/build/[^\"]+\.js"', source), page)
     require('publishableKey' in (site/'supabase/config.js').read_text(encoding='utf-8'), 'Build validation failed')
+    if environment == 'staging':
+        config = (site/'supabase/config.js').read_text(encoding='utf-8')
+        staging = json.loads((ROOT/'config/staging-supabase.json').read_text(encoding='utf-8'))
+        require(staging['url'] in config and staging['publishableKey'] in config and 'bupoidcurcxuypfrjqio' not in config, 'Staging config uses the wrong backend')
     vendor_root = ROOT/f'netunim-{app}/site/assets/vendor'
     expected_vendor = {'assets/vendor/' + file.relative_to(vendor_root).as_posix()
                        for file in vendor_root.rglob('*') if file.is_file() and file.suffix != '.map'}
