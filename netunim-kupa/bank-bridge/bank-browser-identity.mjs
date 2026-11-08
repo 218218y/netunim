@@ -20,6 +20,7 @@ export function createBankBrowserIdentity({directory,files=fs,stop=async target=
   const target=path.resolve(directory);
   if(path.basename(target)!=='browser-profile'||path.basename(path.dirname(target))!=='NetunimKupaBankBridge')throw new Error('BANK_IDENTITY_PATH_INVALID');
   return Object.freeze({clear:async()=>{
+    try{await files.access(target)}catch(error){if(error?.code==='ENOENT')return;throw error}
     await stop(target);
     await files.rm(target,{recursive:true,force:true,maxRetries:5,retryDelay:100});
     try{await files.access(target)}catch(error){if(error?.code==='ENOENT')return;throw error}

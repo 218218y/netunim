@@ -17,7 +17,7 @@ test('local bank disconnect waits for browser exit and deletes cookies/session f
 });
 test('failed browser shutdown or deletion is observable and never reports disconnect success',async()=>{
   const directory=path.resolve('NetunimKupaBankBridge/browser-profile');let deletions=0;
-  await assert.rejects(createBankBrowserIdentity({directory,stop:async()=>{throw Error('still running')},files:{rm:async()=>{deletions++}}}).clear(),/still running/);
+  await assert.rejects(createBankBrowserIdentity({directory,stop:async()=>{throw Error('still running')},files:{access:async()=>{},rm:async()=>{deletions++}}}).clear(),/still running/);
   assert.equal(deletions,0);
   await assert.rejects(createBankBrowserIdentity({directory,stop:async()=>{},files:{rm:async()=>{},access:async()=>{}}}).clear(),/DELETE_INCOMPLETE/);
   assert.throws(()=>createBankBrowserIdentity({directory:path.resolve('unrelated')}),/PATH_INVALID/);
