@@ -14,6 +14,7 @@ import {createBridgeReplacementCommand} from './replacement-command.mjs';
 import {isLoopbackPortClosed} from './loopback-port.mjs';
 import {createBankBridgeHttpHandler} from './http-handler.mjs';
 import {createBankOriginPolicy} from './origin-policy.mjs';
+import {createBankBrowserIdentity} from './bank-browser-identity.mjs';
 import {createBankBridgeRoutes} from './http-routes.mjs';
 import {createConnectionQueries} from './connection-queries.mjs';
 import {createFinanceCommands} from './finance-commands.mjs';
@@ -58,12 +59,13 @@ const readCreditDataDiagnostic=artifacts.creditData.read,writeCreditDataDiagnost
 const images=createChequeImages({directory:CHEQUE_IMAGE_CACHE_DIR,clock:{date:()=>new Date(),now:()=>Date.now()},reporter:(label,error)=>console.error(label,error)});
 const browserLocator=createInstalledBrowserLocator({platform:{os:process.platform,candidates:browserCandidates,access:filename=>fs.access(filename),where:name=>runProcess('where.exe',[name])},metadata:{read:readMeta,write:writeMeta}});
 const vault=createConnectionVault({directory:APP_DIR,protectText,unprotectText});
+const bankIdentity=createBankBrowserIdentity({directory:BROWSER_PROFILE_DIR});
 const connections=createConnectionCommands({operations,vault,artifacts:{
   writeBankMeta:writeMeta,
   clearCreditData:deleteCreditDataDiagnostic,
   creditIdentity:profile=>creditIdentityDirectory(CREDIT_IDENTITIES_DIR,profile),
   deleteCreditIdentity:profile=>deleteCreditIdentity(CREDIT_IDENTITIES_DIR,profile),
-  clearBank:()=>settleConnectionJobs([deleteBankDiagnostic(),images.clear()]),
+  clearBank:()=>settleConnectionJobs([bankIdentity.clear(),deleteBankDiagnostic(),images.clear()]),
   resetCredit:()=>settleConnectionJobs([artifacts.creditMeta.clear(),deleteCreditDataDiagnostic(),resetCreditIdentities(CREDIT_IDENTITIES_DIR)]),
   clearImported:clearImportedConnectionArtifacts,
 }});
@@ -80,7 +82,8 @@ async function ensureToken(){
 
 async function clearImportedConnectionArtifacts(){
   const cleanupJobs=[
-    ['bank-meta',writeMeta({lastScrapeAt:null,lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:'',lastWarningCode:'',lastWarningStage:'',lastWarningHttpStatus:0,lastAvailableAccounts:[],lastAccountRole:''})],
+    ['bank-meta',writeMeta({sessionUrl:'',lastScrapeAt:null,lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:'',lastWarningCode:'',lastWarningStage:'',lastWarningHttpStatus:0,lastAvailableAccounts:[],lastAccountRole:''})],
+    ['bank-browser-identity',bankIdentity.clear()],
     ['credit-meta',artifacts.creditMeta.clear()],
     ['credit-data-diagnostic',deleteCreditDataDiagnostic()],
     ['bank-diagnostic',deleteBankDiagnostic()],

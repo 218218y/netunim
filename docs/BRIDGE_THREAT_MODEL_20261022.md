@@ -1,3 +1,5 @@
+> Superseded for the default Origin policy by [2026-11-08 hardening](SECURITY_HARDENING_20261108.md). Production now defaults to exact origins; development/preview require explicit configuration.
+
 # Bridge origin and pairing threat model, 2026-10-22
 
 This is a source review plus isolated real-HTTP characterization. No installed

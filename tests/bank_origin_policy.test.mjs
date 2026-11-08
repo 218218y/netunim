@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createBankOriginPolicy,decodeBankOriginConfiguration} from '../netunim-kupa/bank-bridge/origin-policy.mjs';
 
-test('an absent Bank origin configuration preserves the deployed mode while explicit invalid data fails closed',()=>{
-  assert.equal(createBankOriginPolicy().mode,'legacy-reflect');
-  assert.equal(createBankOriginPolicy().allows('https://foreign.example'),true);
+test('an absent Bank origin configuration enforces production allowlisting while explicit invalid data fails closed',()=>{
+  assert.equal(createBankOriginPolicy().mode,'allowlist');
+  assert.equal(createBankOriginPolicy().allows('https://foreign.example'),false);
   for(const value of [null,[],{},true,{version:2,mode:'allowlist'},{version:1,mode:'typo'},
     {version:1,mode:'allowlist',allowedOrigins:null},{version:1,mode:'allowlist',allowedOrigins:'*'},
     {version:1,mode:'allowlist',allowedOrigins:Array(65).fill('https://custom.example')}]){

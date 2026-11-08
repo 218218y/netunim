@@ -56,7 +56,7 @@ test('public health/preflight and private token gates preserve existing Bank COR
   for(const method of ['GET','POST','DELETE']){
     const response=await f.request('/credentials',{method,token:'wrong',body:'not JSON'});
     assert.equal(response.status,401);assert.deepEqual(response.data,{ok:false,code:'UNAUTHORIZED',message:'מפתח Bank Bridge שגוי'});
-    assert.equal(response.headers['access-control-allow-origin'],'https://fixture.example');assert.equal(response.headers['cache-control'],'no-store');assert.equal(response.headers.vary,'Origin');
+    assert.equal(response.headers['access-control-allow-origin'],'https://bargig-kupa.pages.dev');assert.equal(response.headers['cache-control'],'no-store');assert.equal(response.headers.vary,'Origin');
   }
   assert.equal(reads,0);assert.deepEqual((await f.request('/health',{method:'POST'})).data,missing);
   assert.equal((await f.request('/health',{origin:''})).headers['access-control-allow-origin'],'*');

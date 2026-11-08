@@ -27,21 +27,20 @@ export function decodeBankOriginConfiguration(value){
 
 /** @param {URL} origin */
 function defaultOriginAllowed(origin){
-  if(origin.protocol==='http:'&&['localhost','127.0.0.1'].includes(origin.hostname))return true;
   if(origin.protocol!=='https:'||origin.port)return false;
   return ['bargig-furniture.com','bargig-orders.pages.dev','bargig-kupa.pages.dev']
-    .some(host=>origin.hostname===host||origin.hostname.endsWith('.'+host));
+    .some(host=>origin.hostname===host);
 }
 
 /**
- * Capture an immutable policy once at startup. Missing configuration retains
- * the deployed policy; malformed explicit configuration never restores it.
+ * Capture an immutable production policy once at startup. Development origins
+ * require explicit configuration; malformed configuration never opens access.
  * @param {unknown} [configuration]
  * @returns {OriginPolicy}
  */
 export function createBankOriginPolicy(configuration){
   /** @type {Pick<OriginConfiguration,'mode'|'allowedOrigins'>} */
-  const config=configuration===undefined?{mode:'legacy-reflect',allowedOrigins:[]}
+  const config=configuration===undefined?{mode:'allowlist',allowedOrigins:[]}
     :decodeBankOriginConfiguration(configuration);
   const custom=new Set(config.allowedOrigins);
   /** @param {unknown} value */

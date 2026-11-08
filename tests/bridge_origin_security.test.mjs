@@ -27,7 +27,7 @@ async function fixture(t,kind,originPolicy){
 }
 
 test('arbitrary Bank origins cannot bypass Bearer admission, including destructive and binary route shapes',async t=>{
-  const f=await fixture(t,'bank');
+  const f=await fixture(t,'bank',createBankOriginPolicy({version:1,mode:'legacy-reflect'}));
   for(const origin of ['https://unrelated.example','null','http://localhost:3000',undefined]){
     const preflight=await f.request(origin,{method:'OPTIONS',token:''});
     assert.equal(preflight.status,204);
@@ -44,7 +44,8 @@ test('Bank allowlist rejects foreign/null/spoofed origins before private entry, 
   const f=await fixture(t,'bank',createBankOriginPolicy({version:1,mode:'allowlist'}));
   for(const origin of ['null','https://unrelated.example','https://bargig-kupa.pages.dev.unrelated.example',
     'https://bargig-furniture.com.unrelated.example','http://localhost.unrelated.example:3000',
-    'https://bargig-kupa.pages.dev:8443','https://bargig-kupa.pages.dev/']){
+    'https://bargig-kupa.pages.dev:8443','https://bargig-kupa.pages.dev/',
+    'https://preview.bargig-kupa.pages.dev','https://preview.bargig-orders.pages.dev','https://app.bargig-furniture.com','http://localhost:3000','http://127.0.0.1:8080']){
     for(const [method,path] of [['OPTIONS','/private'],['GET','/health'],['DELETE','/credentials'],
       ['POST','/settings/import'],['POST','/credit/reset'],['POST','/shutdown'],['GET','/bank/cheque-image/'+'a'.repeat(64)]]){
       const response=await f.request(origin,{method,path,body:'not JSON'});
@@ -60,9 +61,7 @@ test('Bank opt-in allowlist retains deployment families, native clients and exac
   const config={version:1,mode:'allowlist',allowedOrigins:['https://custom.example:8443']};
   const f=await fixture(t,'bank',createBankOriginPolicy(config));
   config.allowedOrigins.push('https://late-untrusted.example');
-  const origins=['https://bargig-furniture.com','https://app.bargig-furniture.com','https://bargig-orders.pages.dev',
-    'https://preview.bargig-orders.pages.dev','https://bargig-kupa.pages.dev','https://preview.bargig-kupa.pages.dev',
-    'http://localhost:3000','http://127.0.0.1:8080','https://custom.example:8443',undefined];
+  const origins=['https://bargig-furniture.com','https://bargig-orders.pages.dev','https://bargig-kupa.pages.dev','https://custom.example:8443',undefined];
   for(const origin of origins){
     const preflight=await f.request(origin,{method:'OPTIONS'});
     assert.equal(preflight.status,204);
@@ -78,7 +77,7 @@ test('Bank opt-in allowlist retains deployment families, native clients and exac
 });
 
 test('Bank reflected CORS deliberately supplies no origin barrier after a pairing-token compromise',async t=>{
-  const f=await fixture(t,'bank'),origin='https://unrelated.example';
+  const f=await fixture(t,'bank',createBankOriginPolicy({version:1,mode:'legacy-reflect'})),origin='https://unrelated.example';
   const response=await f.request(origin);
   assert.equal(response.status,200);
   assert.equal(response.headers.get('access-control-allow-origin'),origin);
@@ -89,7 +88,8 @@ test('Bank reflected CORS deliberately supplies no origin barrier after a pairin
 test('Document origins reject foreign/null/suffix-spoofed sources before token and private entry',async t=>{
   const f=await fixture(t,'document');
   for(const origin of ['https://unrelated.example','null','https://bargig-furniture.com.unrelated.example',
-    'https://bargig-orders.pages.dev.unrelated.example','http://localhost.unrelated.example:3000']){
+    'https://bargig-orders.pages.dev.unrelated.example','http://localhost.unrelated.example:3000',
+    'https://preview.bargig-orders.pages.dev','https://preview.bargig-kupa.pages.dev','http://localhost:3000','http://127.0.0.1:8080']){
     for(const method of ['OPTIONS','POST']){
       const response=await f.request(origin,{method});
       assert.equal(response.status,403,origin);
@@ -101,9 +101,7 @@ test('Document origins reject foreign/null/suffix-spoofed sources before token a
 
 test('Document default deployment families, local development and configured exact origins retain private authentication',async t=>{
   const f=await fixture(t,'document');
-  const origins=['https://bargig-furniture.com','https://app.bargig-furniture.com','https://bargig-orders.pages.dev',
-    'https://preview.bargig-orders.pages.dev','https://bargig-kupa.pages.dev','https://preview.bargig-kupa.pages.dev',
-    'http://localhost:3000','http://127.0.0.1:8080',undefined];
+  const origins=['https://bargig-furniture.com','https://bargig-orders.pages.dev','https://bargig-kupa.pages.dev',undefined];
   for(const origin of origins){
     assert.equal((await f.request(origin,{token:'wrong'})).status,401);
     assert.equal((await f.request(origin)).status,200);
