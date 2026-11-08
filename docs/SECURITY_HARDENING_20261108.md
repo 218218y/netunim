@@ -26,8 +26,6 @@ Tests exercise the actual Edge handler with denied users, forged grants, readers
 reporters and exact issuer IDs, proving denial before database or Morning access.
 Existing issuance/recovery and read-scope tests remain mandatory.
 
-## Live configuration and remaining work
-
 ## Local origins, installation secrets and bank disconnect
 
 Bank defaults to allowlisting exactly `https://bargig-furniture.com`,
@@ -145,6 +143,8 @@ evidence, not a guarantee that no secret has ever appeared in repository history
 All authorized Morning write routes now reject invalid environment settings,
 including reservation abandonment, before reading or mutating any operation.
 
+## Live configuration and remaining work
+
 The connected Supabase tool refused the security-advisor read with a permission
 error on this run. Live Auth settings, users, MFA and deployment state are **not
 verified or changed**. The review's previous snapshot is not current evidence.
@@ -153,13 +153,50 @@ leaked-password protection and disable public signup in the live project after
 checking its supported plan/settings. Do not revoke all sessions without an
 account recovery path.
 
-Further boundaries to implement/verify: production-only Bridge origins, document
-filesystem scope, complete local session deletion, diagnostics minimization and
-retention, key rotation/scopes, Google token encryption/PKCE, internal SQL grants,
-isolated staging, and automated secret/dependency scanning. HttpOnly auth requires
+Remaining boundaries: MFA and live Auth configuration, per-site scoped pairing
+keys and one-time pairing/rotation UX, Google token encryption/PKCE, complete
+private SQL grant/function review, isolated staging, preview access controls and
+release branch protection for the new security jobs. HttpOnly auth requires
 a separately tested server/session architecture; browser encryption with a key
 stored beside the ciphertext does not solve XSS.
 
 Every computer running a Bridge needs its own runtime update after these changes.
 Windows encryption, Defender, account privileges, lock timeout and installed ACLs
 must be checked on each computer; code or CI cannot certify those settings.
+
+
+## Additional CodeQL review and rollout actions
+
+A genuine PDF stat/read growth gap was replaced with the existing bounded
+single-handle preview reader, including a one-byte overflow check, cancellation
+and guaranteed handle closure. The AcroForm/worker suite passed against the
+checksum-verified private Node 24.21.0 executable; the global Node installation
+has a different patch version and cannot certify that pinned worker contract.
+
+CodeQL's reviewed constraints are stored by rule, exact repository path and
+normalized source SHA-256. The record explains static contract assertions,
+intentional file-growth attack tests, local calendar connection preferences
+(which grant no Google/backend authority), and lock-owner observation inside the
+private application directory. The last remains a local filesystem race
+constraint against an attacker already able to modify that Windows account's
+private application files; it is not represented as hostile same-user isolation.
+There is no global rule exclusion or blanket test-directory exception. Source
+changes invalidate the review record and unreviewed high/critical results fail.
+
+On the current computer, read-only checks found Defender antivirus and real-time
+protection enabled, signatures updated 2026-11-07T22:48:46Z, and no Allow ACL rows
+for Everyone, Authenticated Users or BUILTIN Users on either Bridge data root.
+BitLocker could not be verified without supported tools/administrator access.
+No machine settings or installed runtime were changed by these checks.
+
+After the merged code is pulled on each of the three computers, reinstall Bank
+and Document Bridges, select only business folders in the local configurator,
+and pair explicitly using that computer's local token file. Do not send token
+files in support exports. Verify local disk encryption, screen lock, Windows
+account protection and Defender on every computer. A Git pull alone does not
+update the stable installed runtime folders or Startup launchers.
+
+Cloud release separately requires the authorized issuer grant and explicit
+production environment before deploying Morning, plus MFA enrollment and Auth
+configuration on project bupoidcurcxuypfrjqio. These live steps were not performed
+through the unavailable/mismatched Supabase connection.

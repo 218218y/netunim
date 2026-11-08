@@ -29,7 +29,7 @@ def browser_js_units(html: Path) -> list[tuple[str, str]]:
     """Return executable classic/module scripts in document order, including local src files."""
     text = html.read_text(encoding="utf-8")
     units: list[tuple[str, str]] = []
-    pattern = re.compile(r"<script(?P<attrs>[^>]*)>(?P<body>.*?)</script>", re.I | re.S)
+    pattern = re.compile(r"<script\b(?P<attrs>[^>]*)>(?P<body>.*?)</script>", re.I | re.S)
     for index, match in enumerate(pattern.finditer(text), 1):
         attrs = match.group("attrs") or ""
         script_type = re.search(r"\btype\s*=\s*[\"']([^\"']+)[\"']", attrs, re.I)
