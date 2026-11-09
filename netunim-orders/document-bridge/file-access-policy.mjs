@@ -88,8 +88,11 @@ export function createDocumentFileAccess({loadConfig,files=fs,protectedPaths=[],
       if(!(await visibility([match]))[0])throw forbidden();
       return match.canonical;
     },
-    async admit(rows){
+    async admit(rows,timings){
+      let stage=performance.now();
       const allowed=await roots(),matches=[],accepted=[];
+      if(timings)timings.rootValidationMs+=performance.now()-stage;
+      stage=performance.now();
       const inspect=async row=>{
         try{return await check(row.fullPath,allowed)}
         catch(error){
@@ -105,7 +108,10 @@ export function createDocumentFileAccess({loadConfig,files=fs,protectedPaths=[],
           matches.push(checked[index]);accepted.push(batch[index]);
         }
       }
+      if(timings)timings.pathValidationMs+=performance.now()-stage;
+      stage=performance.now();
       const permitted=await visibility(matches);
+      if(timings)timings.hiddenValidationMs+=performance.now()-stage;
       // Preserve the indexed path, including mapped drive letters. File
       // operations resolve it again against the same selected root.
       return accepted.filter((_,index)=>permitted[index]);

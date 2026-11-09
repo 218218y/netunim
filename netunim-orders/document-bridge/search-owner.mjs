@@ -18,13 +18,13 @@
  * @typedef {{ok: true, bridgeVersion: number, query: string, mode: 'everything' | 'content',
  * contentSearch: ContentSearch, fileType: string, scopePath: string, sort: DocumentSort,
  * offset: number, limit: number, results: PublicDocumentRow[], hasMore: boolean,
- * maxResults: number, elapsedMs: number, partial: boolean, rootErrors: unknown[]}} SearchPage
+ * maxResults: number, elapsedMs: number, timings: Record<string, number>, partial: boolean, rootErrors: unknown[]}} SearchPage
  * @typedef {{ok: true, bridgeVersion: number, mode: 'recent', fileType: string,
- * scopePath: string, results: PublicDocumentRow[], elapsedMs: number,
+ * scopePath: string, results: PublicDocumentRow[], elapsedMs: number, timings: Record<string, number>,
  * partial: boolean, rootErrors: unknown[]}} RecentPage
  * @typedef {{everything: {
- * search: (request: SearchRead) => Promise<{rows: DocumentRow[], elapsedMs: number, partial?: boolean}>,
- * recent: (request: RecentPlan & {limit: number}) => Promise<{rows: DocumentRow[], elapsedMs: number, partial?: boolean}>},
+ * search: (request: SearchRead) => Promise<{rows: DocumentRow[], elapsedMs: number, timings?: Record<string, number>, partial?: boolean}>,
+ * recent: (request: RecentPlan & {limit: number}) => Promise<{rows: DocumentRow[], elapsedMs: number, timings?: Record<string, number>, partial?: boolean}>},
  * pdf: {prepare: () => Promise<{partial: boolean}>,
  * search: (request: SearchPlan, limit: number) => DocumentRow[] | Promise<DocumentRow[]>},
  * ordering: {merge: (groups: DocumentRow[][], limit: number, ceiling: number) => DocumentRow[],
@@ -114,6 +114,7 @@ export function createDocumentSearch(
   }
   /** @param {SearchPlan} plan @param {unknown} limit @param {unknown} offset @returns {Promise<SearchPage>} */
   async function searchPage(plan, limit, offset) {
+    const started = performance.now(), timings = {everythingMs:0, candidateAdmissionMs:0, pdfPrepareMs:0, pdfSearchMs:0, publicationMs:0, auditMs:0};
     assertActive(plan.signal);
     const {
       query,
@@ -149,6 +150,7 @@ export function createDocumentSearch(
       hasMore,
       maxResults,
       elapsedMs,
+      timings,
       partial,
       rootErrors: []
     });
@@ -165,7 +167,7 @@ export function createDocumentSearch(
         request(plan, Math.min(boundedLimit + 1, available), pageOffset)
       );
       rows = result.rows;
-      elapsedMs = result.elapsedMs;
+      Object.assign(timings, result.timings || {everythingMs:result.elapsedMs});
       pageRows = rows.slice(0, boundedLimit);
       partial = result.partial === true;
       hasMore =
@@ -173,12 +175,18 @@ export function createDocumentSearch(
     } else {
       const [result, indexState] = await readTogether(
         () => everything.search(request(plan, wanted, 0)),
-        () => plan.includePdf ? pdf.prepare() : Promise.resolve({partial:false})
+        async () => {
+          const stage = performance.now();
+          try { return plan.includePdf ? await pdf.prepare() : {partial:false}; }
+          finally { timings.pdfPrepareMs = performance.now()-stage; }
+        }
       );
       assertActive(plan.signal);
       rows = result.rows;
-      elapsedMs = result.elapsedMs;
+      Object.assign(timings, result.timings || {everythingMs:result.elapsedMs});
+      const pdfStarted = performance.now();
       supplemental = plan.includePdf ? await pdf.search(plan, wanted) : [];
+      timings.pdfSearchMs = performance.now()-pdfStarted;
       const merged = ordering
         .merge([rows, supplemental], wanted, maxResults)
         .sort((a, b) => ordering.compare(a, b, sort));
@@ -189,6 +197,7 @@ export function createDocumentSearch(
       partial = indexState.partial || result.partial === true;
     }
     assertActive(plan.signal);
+    const publicationStarted = performance.now();
     publication.prune();
     const admitted=publication.admit?await publication.admit(pageRows):pageRows;
     assertActive(plan.signal);
@@ -199,26 +208,33 @@ export function createDocumentSearch(
         contentSearch
       })
     );
+    timings.publicationMs = performance.now()-publicationStarted;
+    const auditStarted = performance.now();
+    elapsedMs = Math.round(auditStarted-started);
     await audit.write(
       `SEARCH mode=${mode} offset=${pageOffset} limit=${boundedLimit} hasMore=${hasMore} partial=${partial} contentSearch=${JSON.stringify(contentSearch)} fileType=${fileType} sort=${sort.field}:${sort.direction} scope=everything-index+interactive-pdf scopePath=${JSON.stringify(scopePath)} results=${results.length} everythingResults=${rows.length} pdfSupplemental=${supplemental.length} elapsedMs=${elapsedMs} input=${JSON.stringify(String(query || ''))} everythingQuery=${JSON.stringify(everythingQuery)}`
     );
     assertActive(plan.signal);
-    return page(results, hasMore, elapsedMs, partial);
+    timings.auditMs = performance.now()-auditStarted;
+    return page(results, hasMore, Math.round(performance.now()-started), partial);
   }
   /** @param {RecentPlan} plan @param {unknown} limit @returns {Promise<RecentPage>} */
   async function recentPage({ scopePath, fileType, signal }, limit) {
+    const started = performance.now();
     assertActive(signal);
     const boundedLimit = Math.min(
       recentLimit,
       Math.max(1, Number(limit) || recentLimit)
     );
-    const { rows, elapsedMs, partial } = await everything.recent({
+    const { rows, elapsedMs: engineElapsedMs, timings: readTimings, partial } = await everything.recent({
       limit: boundedLimit,
       scopePath,
       fileType,
       ...(signal ? {signal} : {})
     });
+    const timings = {...(readTimings || {everythingMs:engineElapsedMs}), publicationMs:0, auditMs:0};
     assertActive(signal);
+    const publicationStarted = performance.now();
     publication.prune();
     const candidates=ordering.merge([rows], boundedLimit, recentLimit);
     const admitted=publication.admit?await publication.admit(candidates):candidates;
@@ -234,10 +250,13 @@ export function createDocumentSearch(
         }
       })
     );
+    timings.publicationMs = performance.now()-publicationStarted;
+    const auditStarted = performance.now(), elapsedMs = Math.round(auditStarted-started);
     await audit.write(
       `RECENT scope=everything-index scopePath=${JSON.stringify(scopePath)} fileType=${fileType} sort=date-modified-descending results=${results.length} elapsedMs=${elapsedMs}`
     );
     assertActive(signal);
+    timings.auditMs = performance.now()-auditStarted;
     return {
       ok: true,
       bridgeVersion,
@@ -245,7 +264,8 @@ export function createDocumentSearch(
       fileType,
       scopePath,
       results,
-      elapsedMs,
+      elapsedMs: Math.round(performance.now()-started),
+      timings,
       partial: partial === true,
       rootErrors: []
     };

@@ -256,7 +256,7 @@ test('shutdown sends its response before starting listener teardown', async t =>
   assert.deepEqual(f.calls, [['shutdown'], ['shutdown-after-response']]);
   const writes = [];
   await f.handler({method: 'POST', url: '/shutdown', headers: {authorization: 'Bearer private-pairing-token'}}, {
-    writeHead: () => writes.push('headers'), end: () => { writes.push('response'); assert.deepEqual(f.calls.at(-1), ['shutdown']); },
+    setHeader: () => {}, writeHead: () => writes.push('headers'), end: () => { writes.push('response'); assert.deepEqual(f.calls.at(-1), ['shutdown']); },
   });
   assert.deepEqual(writes, ['headers', 'response']);
   assert.deepEqual(f.calls.at(-1), ['shutdown-after-response']);

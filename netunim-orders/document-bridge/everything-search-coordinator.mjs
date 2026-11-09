@@ -34,9 +34,9 @@ export function createEverythingSearchCoordinator({configuration,session,process
   }
   async function runEverythingJson(buildArgs,{signal=null,decode=parseEsJson,deadline=Infinity}={}){
     signal?.throwIfAborted();
+    const started=performance.now();
     const config=await loadConfig();
     let probe=await probeEverything({autoStart:true});
-    const started=Date.now();
     const runSearch=currentProbe=>{
       signal?.throwIfAborted();
       return runEs(currentProbe.esPath,buildArgs(config,currentProbe),{timeout:Math.max(1,Math.min(config.searchTimeoutMs+5000,Math.ceil(deadline-performance.now()))),signal});
@@ -50,12 +50,13 @@ export function createEverythingSearchCoordinator({configuration,session,process
       output=await runSearch(probe);
     }
     signal?.throwIfAborted();
-    return {rows:decode(output.stdout),elapsedMs:Date.now()-started};
+    return {rows:decode(output.stdout),elapsedMs:performance.now()-started};
   }
   async function readAdmittedPages(request,build,verifyContent=false){
     if(!publication.admit&&!verifyContent)return runEverythingJson((config,probe)=>build(request,config,probe),{signal:request.signal});
     const config=await loadConfig(),started=performance.now(),deadline=started+config.searchTimeoutMs+5000;
     const wanted=request.offset+Math.trunc(request.limit),rows=[],verifiedPaths=new Set();
+    const timings={everythingMs:0,candidateAdmissionMs:0,rootValidationMs:0,pathValidationMs:0,hiddenValidationMs:0};
     let candidateOffset=0,partial=false,batchSize=verifyContent?100:Math.min(250,wanted);
     // Everything keeps the indexed sort. Live Windows attributes and
     // canonical paths are checked on candidate pages, before result offsets.
@@ -80,6 +81,7 @@ export function createEverythingSearchCoordinator({configuration,session,process
         if(error?.code!=='ES_TIMEOUT'||error?.name==='AbortError'||!rows.length)throw error;
         partial=true;break;
       }
+      timings.everythingMs+=result.elapsedMs;
       let candidates=result.rows;
       if(verifyContent){
         candidates=[];
@@ -94,12 +96,14 @@ export function createEverythingSearchCoordinator({configuration,session,process
           if(!publication.admit&&rows.length+candidates.length>=wanted)break;
         }
       }
-      rows.push(...(publication.admit?await publication.admit(candidates):candidates));
+      const admissionStarted=performance.now();
+      rows.push(...(publication.admit?await publication.admit(candidates,timings):candidates));
+      timings.candidateAdmissionMs+=performance.now()-admissionStarted;
       request.signal?.throwIfAborted();
       candidateOffset+=result.rows.length;
       if(partial||result.rows.length<limit)break;
     }
-    return {rows:rows.slice(request.offset,wanted),elapsedMs:Math.round(performance.now()-started),partial};
+    return {rows:rows.slice(request.offset,wanted),elapsedMs:Math.round(performance.now()-started),timings,partial};
   }
   async function searchEverything(request){
     const verifyContent=request.mode==='content'&&contentQueryRequiresVerification(request.query,request.contentSearch);
