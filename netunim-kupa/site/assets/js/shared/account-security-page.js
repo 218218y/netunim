@@ -3,8 +3,10 @@ import {completeSupabaseMfa,verifySupabaseFactor,verifiedFactors} from './supaba
 function enrollmentQrUrl(value) {
   // Auth returns a verbose SVG with an XML declaration, which can exceed 350 KB.
   if(typeof value!=='string'||value.length>1_048_576)return '';
-  const svg=value.trim().replace(/^<\?xml\s+[^?]*\?>\s*/i,'');
-  return /^<svg(?:\s|>)/i.test(svg)?'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg):'';
+  const source=value.trim().replace(/^<\?xml\s+[^?]*\?>/i,'');
+  const start=source.search(/<svg(?:\s|>)/i);
+  if(start<0||source.slice(0,start).replace(/<!--[\s\S]*?-->/g,'').trim())return '';
+  return 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(source.slice(start));
 }
 
 // This page owns only a temporary Auth session. It never opens business data,
