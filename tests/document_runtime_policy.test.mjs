@@ -22,9 +22,10 @@ const runtime=new Set(['ensureRoot','appendLog','readJsonFile','writeJsonFile','
 const windowsProcesses=new Set(['bridgeListenerPid','processAlive','forceStopProcessTree','waitForProcessExit']);
 const replacements=new Set(['loopbackRequest','checkRunning','bridgeListenerPid','processAlive','forceStopProcessTree','waitForProcessExit','stopExisting']);
 const tasks=new Set(['taskResultLabel','pdfMaintenanceTaskDiagnostics','taskActionDiagnosticLabel','printPdfMaintenanceTaskDiagnostics']);
-for(const [name,expected] of Object.entries(baseline.functions))test('Document runtime preserves '+name,()=>{
+for(const [name,expected] of Object.entries(baseline.functions).filter(([name])=>name!=='appendLog'))test('Document runtime preserves '+name,()=>{
  const file=windowsProcesses.has(name)?'windows-process-control.mjs':replacements.has(name)?'bridge-replacement-command.mjs':runtime.has(name)?'bridge-runtime-files.mjs':tasks.has(name)?'pdf-maintenance-task-diagnostics.mjs':name==='rebuildPdfFormIndexBacklog'?'pdf-inventory-reconciliation.mjs':'bridge-installation-diagnostics.mjs';
  const source=readFileSync(new URL(file,root),'utf8'),node=declaration(source,name);let actual=tokens(source.slice(node.start,node.end));
+ if(name==='init')actual=actual.replace('await auditLog.prune();','');
  if(name==='rebuildPdfFormIndexBacklog')actual=actual.replaceAll('clock.now()','Date.now()').replace('index.publish({pending:changed.length,pdfCount:full?rows.length:index.view().pdfCount});','pdfFormIndexPending=changed.length;pdfFormIndexInventoryCount=full?rows.length:pdfFormIndexInventoryCount;');
  assert.equal(createHash('sha256').update(tokens(expected.source)).digest('hex'),expected.digest);
  if(name==='loadConfig')assert.equal(actual,tokens(expectedLoadConfig));
@@ -56,4 +57,12 @@ test('each extracted Document runtime factory keeps a focused capability surface
  for(const [file,name] of [['windows-process-control.mjs','createWindowsProcessControl'],['bridge-runtime-files.mjs','createBridgeRuntimeFiles'],['pdf-maintenance-task-diagnostics.mjs','createPdfMaintenanceTaskDiagnostics'],['bridge-installation-diagnostics.mjs','createBridgeInstallationDiagnostics'],['pdf-inventory-reconciliation.mjs','createPdfInventoryReconciliation'],['bridge-replacement-command.mjs','createBridgeReplacementCommand']]){
   const node=declaration(readFileSync(new URL(file,root),'utf8'),name),parameter=node.params[0].type==='AssignmentPattern'?node.params[0].left:node.params[0];assert.equal(parameter.type,'ObjectPattern');assert.ok(parameter.properties.length<=5,file+': use focused runtime capabilities');
  }
+});
+
+test('runtime log policy delegates to the bounded privacy owner instead of the historical raw append',()=>{
+ const source=readFileSync(new URL('bridge-runtime-files.mjs',root),'utf8');
+ assert.match(source,/const appendLog=auditLog\.append/);
+ assert.match(source,/async function init\(\)\{await auditLog\.prune\(\)/);
+ const expected=baseline.functions.appendLog;
+ assert.equal(createHash('sha256').update(tokens(expected.source)).digest('hex'),expected.digest);
 });
