@@ -199,7 +199,12 @@ export function createDocumentSearch(
     const publicationStarted = performance.now();
     publication.prune();
     const admitted=publication.admit?await publication.admit(pageRows):pageRows;
-    if(admitted.length!==pageRows.length)partial=true;
+    if(admitted.length!==pageRows.length){
+      // The visible offsets may have shifted during this page. Retry from the
+      // start rather than advertise a continuation based on a stale count.
+      partial=true;
+      hasMore=false;
+    }
     assertActive(plan.signal);
     const results = admitted.map(row =>
       publication.publish(row, {

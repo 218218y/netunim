@@ -73,7 +73,7 @@ table{width:100%;border-collapse:collapse}th{padding:7px 9px;text-align:right;co
 
 /* ===== אישורים מעוצבים מעל חלונות העריכה ===== */
 .confirm-backdrop{position:fixed;inset:0;z-index:2300;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(247,248,246,.66);backdrop-filter:blur(6px);opacity:0;visibility:hidden;pointer-events:none;transition:opacity .18s ease,visibility .18s ease}
-.confirm-backdrop.open{opacity:1;visibility:visible;pointer-events:auto}
+.confirm-backdrop.open{opacity:1;visibility:visible;pointer-events:auto;transition-property:opacity}
 .confirm-dialog{width:min(370px,100%);padding:25px 24px 22px;border:1px solid var(--line);border-radius:18px;background:#fff;box-shadow:0 28px 85px rgba(53,72,68,.24);text-align:center;transform:scale(.92) translateY(5px);transition:transform .2s cubic-bezier(.34,1.56,.64,1)}
 .confirm-backdrop.open .confirm-dialog{transform:scale(1) translateY(0)}
 .confirm-icon{display:grid;place-items:center;width:42px;height:42px;margin:0 auto 12px;border-radius:50%;background:#fff0ef;border:1px solid #efcfcc;color:var(--red);font-size:22px;font-weight:900;line-height:1}

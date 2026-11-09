@@ -293,7 +293,7 @@ test('local document results expose Explorer reveal and recycle-bin delete throu
   assert.match(menu,/data-document-menu-action="delete"/);
   assert.match(ui,/event\.key==='Delete'/);
   assert.match(menu,/confirmDialog\('למחוק את הקובץ\?'/);
-  assert.match(menu,/defaultFocus:'confirm',confirmOnEnter:true/);
+  assert.match(menu,/defaultFocus:'cancel',confirmOnEnter:false/);
   assert.match(modal,/event\.key==='Enter'&&activeConfirm\.options\.confirmOnEnter===true/);
   assert.match(modal,/document\.addEventListener\('keydown',[\s\S]*\},true\);/);
   assert.match(css,/document-result-context-menu/);

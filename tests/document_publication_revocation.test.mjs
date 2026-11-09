@@ -28,3 +28,37 @@ test('revocation of the entire root after the native read fails without publishi
   await assert.rejects(owner.searchDocuments('file',1),{code:'DOCUMENT_ROOTS_NOT_CONFIGURED'});
   assert.equal(published,0);await owner.runtime.dispose();
 });
+
+test('a revocation with lookahead stops pagination and a fresh search rebuilds visible offsets',async()=>{
+  const indexed=['hidden.txt','remaining.txt'];
+  let hidden=false,admissions=0;
+  const owner=createEverythingSearchCoordinator({
+    configuration:{load:async()=>({searchTimeoutMs:1000})},
+    session:{probe:async()=>({esPath:'inert',instance:'synthetic'}),invalidate:()=>{}},
+    process:{run:async(_file,args)=>{
+      const offset=Number(args[args.indexOf('-offset')+1])||0;
+      const limit=Number(args[args.indexOf('-max-results')+1]);
+      const rows=indexed.slice(offset,offset+limit).map(name=>({name,path:'C:\\business'}));
+      return {stdout:JSON.stringify(rows)};
+    }},
+    pdf:{prepare:async()=>({partial:false}),search:()=>[]},
+    publication:{
+      prune:()=>{},
+      admit:async rows=>{
+        if(++admissions===2)hidden=true;
+        return rows.filter(row=>!hidden||row.name!=='hidden.txt');
+      },
+      publish:row=>({id:row.name}),
+    },
+    audit:{write:async()=>{}},
+  });
+  const interrupted=await owner.searchDocuments('txt',1);
+  assert.deepEqual(interrupted.results,[]);
+  assert.equal(interrupted.partial,true);
+  assert.equal(interrupted.hasMore,false);
+  const refreshed=await owner.searchDocuments('txt',1);
+  assert.deepEqual(refreshed.results,[{id:'remaining.txt'}]);
+  assert.equal(refreshed.partial,false);
+  assert.equal(refreshed.hasMore,false);
+  await owner.runtime.dispose();
+});

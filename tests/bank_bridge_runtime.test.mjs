@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
 import {bankStage} from './bank_stage_fixture.mjs';
 
 test('staged Bank runtime starts its real HTTP capabilities with isolated files and no provider login',{timeout:process.platform==='win32'?120000:30000},async t=>{
@@ -11,6 +13,20 @@ test('staged Bank runtime starts its real HTTP capabilities with isolated files 
     await fs.mkdir(cache);await fs.writeFile(path.join(cache,key+'.bin'),image);await fs.writeFile(path.join(cache,key+'.json'),JSON.stringify({key,contentType:'image/png',size:image.length,eventDate}));
   }});
   const {app,request,exited}=f;
+  const cliRoot=path.join(f.directory,'fresh-cli-install');
+  const cliToken=path.join(cliRoot,'NetunimKupaBankBridge','bridge-token.txt');
+  const runCli=flag=>promisify(execFile)(process.execPath,[path.join(f.runtime,'server.mjs'),flag],{
+    cwd:f.runtime,env:{...process.env,LOCALAPPDATA:cliRoot},windowsHide:true,timeout:10000,
+  });
+  const freshInit=await runCli('--init');
+  assert.equal(freshInit.stdout+freshInit.stderr,'','installer initialization must be silent');
+  const initialKey=await fs.readFile(cliToken,'utf8');
+  assert.match(initialKey.trim(),/^[A-Za-z0-9_-]{43}$/);
+  const repeatedInit=await runCli('--init');
+  assert.equal(repeatedInit.stdout+repeatedInit.stderr,'','upgrade initialization must be silent');
+  assert.equal(await fs.readFile(cliToken,'utf8'),initialKey);
+  const explicitPrint=await runCli('--print-token');
+  assert.ok(explicitPrint.stdout.split(/\r?\n/).includes(initialKey.trim()));
   assert.deepEqual(await (await request('/health?probe=1',{token:'wrong'})).json(),{ok:true,service:'netunim-kupa-bank-bridge',version:79,creditContractVersion:2});
   assert.equal((await request('/credentials',{method:'POST',body:{password:'never-save-this'},token:'wrong'})).status,401);await assert.rejects(fs.access(path.join(app,'hapoalim-credentials.dpapi')),{code:'ENOENT'});
   const status=await (await request('/status')).json();assert.equal(status.configured,false);assert.equal(status.branchNumber,'');
