@@ -9,6 +9,6 @@ import {createDocumentBridgeIntegration} from './js/integrations/document-bridge
 const bank = createBankBridgeIntegration();
 const documents = createDocumentBridgeIntegration();
 mountBridgePairing(document.getElementById('bridgePairing'), {
-  bank: {get: bank.getBridgeToken, set: bank.setBridgeToken, redeem: bank.redeemPairing},
-  documentBridge: {get: documents.getToken, set: documents.setToken, redeem: documents.redeemPairing},
+  bank: {get: bank.getBridgeToken, set: bank.setBridgeToken},
+  documentBridge: {get: documents.getToken, set: documents.setToken},
 });

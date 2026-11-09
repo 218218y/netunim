@@ -73,6 +73,5 @@ export function createDocumentBridgeClient({tokenStore,fetchRequest,timers,creat
   const fileAction=async(path,id,timeoutMs)=>{try{return await request(path,{method:'POST',body:{id},timeoutMs})}catch(error){if(error?.code==='NOT_FOUND'||error?.httpStatus===404)throw bridgeError('Document Bridge במחשב זה ישן. הרץ מחדש את install_document_bridge.bat מהגרסה המעודכנת.','DOCUMENT_BRIDGE_UPGRADE_REQUIRED');throw error}};
   const revealDocument=id=>fileAction('/documents/reveal',id,7000);
   const deleteDocument=id=>fileAction('/documents/delete',id,35000);
-  const redeemPairing=code=>request('/pairing/exchange',{method:'POST',body:{code},auth:false,timeoutMs:5000});
-  return {provider:'everything',providerLabel:'Everything',getToken,setToken,redeemPairing,health,status,warm,pdfIndexStatus,startPdfIndex,stopPdfIndex,selectFolder,recent,search,preview,matches,previewFile,nativePreview,moveNativePreview,hideNativePreview,openDocument,revealDocument,deleteDocument};
+  return {provider:'everything',providerLabel:'Everything',getToken,setToken,health,status,warm,pdfIndexStatus,startPdfIndex,stopPdfIndex,selectFolder,recent,search,preview,matches,previewFile,nativePreview,moveNativePreview,hideNativePreview,openDocument,revealDocument,deleteDocument};
 }
