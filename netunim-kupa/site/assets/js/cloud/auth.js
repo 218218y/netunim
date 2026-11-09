@@ -3,9 +3,8 @@ async function completeAuthMfa(...args){
   const {completeSupabaseMfa}=await import('../shared/supabase-mfa.js');
   return completeSupabaseMfa(...args);
 }
-import {createAuthenticatedAccountScope} from '../shared/authenticated-account-scope.js';
+import {createAuthenticatedAccountScope,temporaryAuthRefreshError,assertRefreshTokenCurrent,assertRefreshReceipt} from '../shared/authenticated-account-scope.js';
 import {createBrowserAccountObservation} from '../shared/browser-account-observation.js';
-import {temporaryAuthRefreshError,assertRefreshTokenCurrent,assertRefreshReceipt} from '../shared/supabase-auth-refresh.js';
 import {createAuthSessionPersistence} from './session-store.js';
 import {createSyncCapabilityGate,syncRequestNeedsCapabilities,isSyncIncidentRpc} from '../shared/sync-capabilities.js';
 import {supabaseConfig as SUPA_CONFIG} from '../../../supabase/config.js';
