@@ -31,8 +31,8 @@ test('local document delete requires confirmation and invalidates only returned 
     assert.equal(title,'למחוק את הקובץ?');
     assert.match(message,/report\.pdf/);
     assert.equal(settings.tone,'danger');
-    assert.equal(settings.defaultFocus,'confirm');
-    assert.equal(settings.confirmOnEnter,true);
+    assert.equal(settings.defaultFocus,'cancel');
+    assert.equal(settings.confirmOnEnter,false);
     calls.push(['confirmed']);return true;
   }});
   assert.deepEqual(calls.slice(0,4),[['confirmed'],['preview-closed'],['delete','opaque-7'],['invalidated',['opaque-7','opaque-8']]]);

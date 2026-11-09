@@ -35,7 +35,7 @@ function pumpConfirmQueue(){
   els.accept.className=`btn ${tone==='primary'?'primary':'danger'}`;
   els.backdrop.classList.add('open');
   els.backdrop.setAttribute('aria-hidden','false');
-  requestAnimationFrame(()=>els.cancel.focus());
+  els.cancel.focus({preventScroll:true});
 }
 
 function settleConfirm(result){

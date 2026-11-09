@@ -186,7 +186,7 @@ export function createGlobalDocumentSearch({documentBridge=null,siteSearch,siteR
     const body=renderGlobalRecentDocumentBody(state,rows,{label,emptyLabel,provider,documentPairing,documentErrorHtml,renderDocumentTable,recentDocumentSort});
     results.innerHTML=`${localDocumentPairingHtml()}<section class="global-search-source-section" data-search-source="recent"><div class="global-search-source-body">${providerNoticeHtml()}${body}</div></section>`;
     setPreviewLayout(rows.length>0);if(selectedDocumentKey&&!documentResultByKey.has(selectedDocumentKey))resetDocumentPreview();
-    if(meta)meta.textContent=state.status==='loading'?`טוען ${label}…`:rows.length?`${rows.length} ${label}`:state.status==='done'?emptyLabel:'';
+    if(meta)meta.textContent=state.status==='loading'?`טוען ${label}…`:state.partial?`${rows.length} ${label} · תוצאות חלקיות`:rows.length?`${rows.length} ${label}`:state.status==='done'?emptyLabel:'';
   }
   function renderCombinedResults(value=''){
     const {results}=refs();if(!results)return;documentContentOptions.update();documentFolderScope.update();const raw=String(value||'').trim();resultByKey=new Map();documentResultByKey=new Map();if(!raw){renderRecentDocuments();return}
@@ -217,7 +217,7 @@ export function createGlobalDocumentSearch({documentBridge=null,siteSearch,siteR
     if(!documentBridge?.recent||sequence!==documentSequence||activeQuery)return;const controller=new AbortController();documentAbort=controller;
     try{
       const data=await documentBridge.recent({limit:RECENT_DOCUMENT_LIMIT,scopePath:documentFolderScope.path,fileType:documentFileType.value(),signal:controller.signal});if(controller.signal.aborted||sequence!==documentSequence||activeQuery||!includesRecentDocuments())return;
-      recentDocumentState={status:'done',rows:Array.isArray(data.results)?data.results:[],error:null,elapsedMs:Math.max(0,Number(data.elapsedMs)||0),loadedAt:Date.now()};renderCombinedResults('');
+      recentDocumentState={status:'done',rows:Array.isArray(data.results)?data.results:[],error:null,elapsedMs:Math.max(0,Number(data.elapsedMs)||0),partial:!!data.partial,loadedAt:Date.now()};renderCombinedResults('');
     }catch(error){if(controller.signal.aborted||sequence!==documentSequence||error?.code==='DOCUMENT_BRIDGE_ABORTED'||activeQuery)return;if(String(error?.code)==='UNAUTHORIZED')documentBridge.setToken?.('');recentDocumentState={...emptyRecentDocumentState(),status:documentAuthError(error)?'pairing':'error',error};renderCombinedResults('')}
     finally{if(documentAbort===controller)documentAbort=null}
   }

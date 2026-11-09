@@ -187,7 +187,8 @@ if(args.has('--doctor')){
 }
 
 const token=await ensureToken();
-if(args.has('--init')||args.has('--print-token')){console.log('Bank Bridge key:');console.log(token);console.log(`Credentials directory: ${APP_DIR}`);process.exit(0)}
+if(args.has('--init'))process.exit(0);
+if(args.has('--print-token')){console.log('Bank Bridge key:');console.log(token);console.log(`Credentials directory: ${APP_DIR}`);process.exit(0)}
 if(args.has('--clear-diagnostics')){await settleConnectionJobs([deleteBankDiagnostic(),deleteCreditDataDiagnostic()]);process.exit(0)}
 // Discard older detailed payloads on upgrade; never export them through the new
 // structural diagnostic route. Periodic reads expire files through their owner.

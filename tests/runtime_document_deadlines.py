@@ -39,6 +39,12 @@ FLOW = r"""(async()=>{
   await eventually(()=>results.querySelector('[data-search-source="content"] .document-search-partial'),'partial empty search lost its visible notice');
   check(!results.querySelector('[data-search-source="content"] .global-search-source-empty')?.textContent.includes('לא נמצאו תוצאות'),'partial content search falsely claimed no matches');
   await eventually(()=>byId('globalSearchMeta').textContent.includes('חיפוש חלקי'),'partial search metadata falsely claimed completion');
+  const retry=results.querySelector('[data-document-retry="search:content"]');
+  check(retry&&!results.querySelector('[data-document-load-more]'),'interrupted search must restart instead of continuing its offsets');
+  partial=false;empty=false;retry.click();
+  await eventually(()=>results.querySelector('[data-search-source="content"] [data-document-result-id]'),'fresh search did not restore authorized results');
+  check(calls.at(-1).body.offset===0,'fresh search resumed a stale offset');
+  partial=true;
   empty=false;hasMore=true;await start('partial-rows','content');
   await eventually(()=>results.querySelector('[data-document-load-more]'),'partial rows fixture missing');
   partial=false;results.dispatchEvent(new Event('scroll'));
@@ -48,7 +54,14 @@ FLOW = r"""(async()=>{
   for(const [query,filter,path,label] of [['','files','/documents/recent','recent'],['query','files','/documents/search','file search'],['query','content','/documents/search','content search']]){
    const pending=await deadline(path);await start(query,filter);await pending.fire();
    await assertError(results,'.document-search-spinner',label);done.push(label);
-   failPath='';results.querySelector('[data-document-retry]').click();await eventually(()=>results.querySelector('[data-document-result-id]'),'retry did not recover '+label);
+   failPath='';
+   if(label==='recent'){
+    partial=true;empty=true;results.querySelector('[data-document-retry="recent"]').click();
+    await eventually(()=>results.querySelector('.document-search-partial'),'partial recent lost its notice');
+    check(!results.querySelector('.global-search-source-empty'),'partial recent incorrectly claimed an empty result');
+    partial=false;empty=false;
+   }
+   results.querySelector('[data-document-retry]').click();await eventually(()=>results.querySelector('[data-document-result-id]'),'retry did not recover '+label);
   }
   failPath='';hasMore=true;await start('query');await eventually(()=>results.querySelector('[data-document-load-more]'),'paging fixture missing');
   const paging=await deadline('/documents/search');results.dispatchEvent(new Event('scroll'));await paging.fire();
@@ -79,5 +92,38 @@ FLOW = r"""(async()=>{
 for app in ('kupa', 'orders'):
     with BrowserSession(ROOT / f'netunim-{app}/site', f'{app}-document-deadlines') as browser:
         result = browser.evaluate(FLOW, timeout=45)
+        focused = browser.evaluate(r"""(async()=>{
+          await appReady;
+          await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+          const {deleteLocalDocumentResult}=await import('./assets/js/ui/document-result-menu.js');
+          window.fileDeleteRequests=0;
+          window.beginFileDelete=()=>{
+            window.fileDeleteSettled=false;
+            void deleteLocalDocumentResult({id:'synthetic',item:{name:'fixture.pdf'},
+              bridge:{deleteDocument:async()=>{window.fileDeleteRequests++;return {}}},
+              confirmDialog:(...args)=>uiModal.confirmDialog(...args),beforeDelete:async()=>{},
+              afterDelete:()=>{},showStatus:()=>{}}).then(()=>{window.fileDeleteSettled=true});
+          };
+          window.beginFileDelete();
+          const end=performance.now()+2000;
+          while(document.activeElement.id!=='confirmCancel'&&performance.now()<end)await new Promise(requestAnimationFrame);
+          return document.activeElement.id;
+        })()""")
+        assert focused == 'confirmCancel', (app, focused)
+        enter = {'key': 'Enter', 'code': 'Enter', 'windowsVirtualKeyCode': 13}
+        browser.call('Input.dispatchKeyEvent', {**enter, 'type': 'keyDown', 'text': '\r', 'unmodifiedText': '\r'})
+        browser.call('Input.dispatchKeyEvent', {**enter, 'type': 'keyUp'})
+        assert browser.evaluate('window.fileDeleteRequests===0')
+        browser.evaluate("window.fileDeleteSettled || document.getElementById('confirmCancel').click()")
+        browser.evaluate(r"""(async()=>{
+          window.beginFileDelete();
+          const end=performance.now()+2000;
+          while(!document.getElementById('confirmBackdrop').classList.contains('open')){
+            if(performance.now()>end)throw Error('confirmation failed to reopen');
+            await new Promise(requestAnimationFrame);
+          }
+          document.getElementById('confirmAccept').click();
+        })()""")
+        assert browser.evaluate('window.fileDeleteSettled && window.fileDeleteRequests===1')
         assert not browser.drain_serious_errors()
         print(f'PASS {app} client/source/search deadlines: {json.dumps(result)}', flush=True)

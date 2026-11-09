@@ -25,6 +25,7 @@ export function renderGlobalDocumentSource(mode,raw,{state,label,filter,document
       body=hasRows?renderDocumentTable(state.rows,mode,{hasMore:state.hasMore}):documentSearchEmptyHtml(label,state.partial);
       if(hasRows&&(state.loadingMore||state.hasMore))body+=state.loadingMore?'<div class="document-search-load-more loading"><span class="document-search-spinner">⌕</span>טוען עוד תוצאות…</div>':`<div class="document-search-load-more" data-document-load-more="${esc(mode)}">גלול להמשך התוצאות</div>`;
       body+=documentSearchPartialHtml(state.partial);
+      if(state.partial&&!state.hasMore)body+=`<button type="button" class="btn" data-document-retry="search:${esc(mode)}">חפש מחדש</button>`;
       if(state.error)body+=documentErrorHtml(state.error,`more:${mode}`);
     }else body=raw?'<div class="global-search-source-empty">החיפוש המקומי עדיין לא הופעל.</div>':documentIntro(mode);
     const header=hasRows?'':sourceHeader(label,count,{loading:state.status==='loading'}),notice=providerNoticeHtml();
@@ -42,7 +43,8 @@ export function renderGlobalRecentDocumentBody(state,rows,{label,emptyLabel,prov
     else if(state.status==='pairing')body=documentPairing();
     else if(state.status==='unavailable'||state.status==='error')body=documentErrorHtml(state.error||{message:'רכיב החיפוש המקומי אינו זמין.'});
     else if(state.status==='done'&&rows.length)body=renderDocumentTable(rows,'everything',{label:label,hint:'לחיצה על כותרת ממיינת · לחיצה אחת לתצוגה · לחיצה כפולה לפתיחה',sortScope:'recent',sort:recentDocumentSort});
-    else if(state.status==='done')body=`<div class="global-search-source-empty">${esc(emptyLabel)} ב־${esc(provider)}.</div>`;
-    else body='<div class="global-search-source-progress"><span class="document-search-spinner">⌕</span>טוען קבצים אחרונים…</div>';
+    else if(state.status==='done'&&!state.partial)body=`<div class="global-search-source-empty">${esc(emptyLabel)} ב־${esc(provider)}.</div>`;
+    if(state.status==='done'&&state.partial)return body+documentSearchPartialHtml(true)+'<button type="button" class="btn" data-document-retry="recent">טען מחדש</button>';
+    if(!body)body='<div class="global-search-source-progress"><span class="document-search-spinner">⌕</span>טוען קבצים אחרונים…</div>';
     return body;
 }

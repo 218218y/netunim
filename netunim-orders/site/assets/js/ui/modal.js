@@ -92,7 +92,7 @@ function pumpConfirmQueue(){
   els.back.classList.add('open');
   els.back.setAttribute('aria-hidden','false');
   const preferred=request.options.defaultFocus==='confirm'?els.accept:els.cancel;
-  requestAnimationFrame(()=>{if(activeConfirm?.resolve===request.resolve)preferred?.focus()});
+  preferred.focus({preventScroll:true});
 }
 
 function settleConfirmation(confirmed){
