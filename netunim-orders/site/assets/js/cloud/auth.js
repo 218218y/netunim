@@ -3,7 +3,7 @@ async function completeAuthMfa(...args){
   const {completeSupabaseMfa}=await import('../shared/supabase-mfa.js');
   return completeSupabaseMfa(...args);
 }
-import {createAuthenticatedAccountScope} from '../shared/authenticated-account-scope.js';
+import {createAuthenticatedAccountScope,temporaryAuthRefreshError,assertRefreshTokenCurrent,assertRefreshReceipt} from '../shared/authenticated-account-scope.js';
 import {createBrowserAccountObservation} from '../shared/browser-account-observation.js';
 import {createSyncCapabilityGate,syncRequestNeedsCapabilities,isSyncIncidentRpc} from '../shared/sync-capabilities.js';
 import {supabaseConfig as SUPA_CONFIG} from '../../../supabase/config.js';
@@ -23,7 +23,6 @@ let supaDataApiBackgroundFailures=0;
 let supaDataApiBlockedUntil=0;
 let supaDataApiBlockCode='';
 let supaIncidentBlockedUntil=0,supaIncidentFailures=0;
-let refreshPromise=null;
 let cloudAuthInstanceSequence=0;
 
 function isSupaDataApiPath(path){return /^\/rest\/v1(?:\/|\?|$)/.test(String(path||''))}
@@ -82,6 +81,7 @@ async function fetchSupaNetwork(url,options,{retry=false,timeoutMs=SUPA_NETWORK_
 }
 
 export function createCloudAuth({session={},assertSessionOwner=()=>true}){
+let refreshFlight=null;
 const capabilityGate=createSyncCapabilityGate(async()=>{const response=await supaFetch('/rest/v1/rpc/get_netunim_sync_capabilities',{method:'POST',body:'{}',dataPriority:'high'});if(!response.ok)throw Object.assign(new Error('ה־DB אינו תואם לגרסת האתר; יש להשלים את עדכון מסד הנתונים.'),{code:'netunim_sync_capabilities_missing'});return response.json()});
 async function ensureSyncCapabilities(){session.syncCapabilitiesChecking=true;try{const ready=await capabilityGate.ensure();session.syncCapabilitiesError=null;return ready}catch(error){session.syncCapabilitiesError=error;throw error}finally{session.syncCapabilitiesChecking=false}}
 function supaConfigured(){return /^https:\/\//.test(SUPA_CONFIG.url||'')&&String(SUPA_CONFIG.publishableKey||'').length>20}
@@ -112,7 +112,42 @@ async function authPasswordForLocalReset(email,password,mfa={}){if(!supaConfigur
 
 async function localResetReadOnlyFetch(resetSession,path){const token=String(resetSession?.access_token||'').trim(),safePath=String(path||'');if(!token)throw Object.assign(new Error('נדרשת התחברות מחדש לענן לצורך האיפוס'),{code:'local_reset_auth_required'});if(!safePath.startsWith('/rest/v1/')||safePath.includes('/rpc/'))throw new Error('local_reset_read_only_path_rejected');const r=await fetchSupaNetwork(SUPA_CONFIG.url+safePath,{method:'GET',headers:supaHeaders(token)},{retry:true,timeoutMs:SUPA_NETWORK_TIMEOUT_MS});if(r.status===401)throw Object.assign(new Error('פג תוקף אימות הענן לצורך האיפוס'),{code:'local_reset_auth_required'});return r}
 
-async function refreshSession({force=true,observedAccessToken=''}={}){if(refreshPromise)return refreshPromise;refreshPromise=(async()=>{const refresh=async()=>{const scope=accountScope.current();const s=loadSession();if(!s?.refresh_token)throw cloudAuthRequired('נדרשת התחברות מחדש לענן');assertSessionOwner(s);if(observedAccessToken&&s.access_token&&s.access_token!==observedAccessToken)return s;if(!force&&Number(s.expires_at||0)>=Math.floor(Date.now()/1000)+60)return s;const r=await fetch(`${SUPA_CONFIG.url}/auth/v1/token?grant_type=refresh_token`,{method:'POST',headers:supaHeaders(),body:JSON.stringify({refresh_token:s.refresh_token})});const j=await r.json().catch(()=>({}));accountScope.assertCurrent(scope);if(!r.ok){saveSession(null);throw cloudAuthRequired('פג תוקף ההתחברות לענן')};j.expires_at=Math.floor(Date.now()/1000)+Number(j.expires_in||3600);assertSessionOwner(j);saveSession(j,{refresh:true});return j};return globalThis.navigator?.locks?.request?navigator.locks.request('netunim-orders-auth-refresh',{mode:'exclusive'},refresh):refresh()})().finally(()=>{refreshPromise=null});return refreshPromise}
+async function refreshSession({force=true,observedAccessToken=''}={}){
+  const scope=accountScope.current();
+  if(!scope.owner)throw cloudAuthRequired('נדרשת התחברות מחדש לענן');
+  if(refreshFlight?.scope.owner===scope.owner&&refreshFlight.scope.epoch===scope.epoch)return refreshFlight.promise;
+  const refresh=async()=>{
+    accountScope.assertCurrent(scope);
+    const s=loadSession();
+    if(!s?.refresh_token)throw cloudAuthRequired('נדרשת התחברות מחדש לענן');
+    assertSessionOwner(s);
+    if(observedAccessToken&&s.access_token&&s.access_token!==observedAccessToken)return s;
+    if(!force&&Number(s.expires_at||0)>=Math.floor(Date.now()/1000)+60)return s;
+    const r=await fetch(`${SUPA_CONFIG.url}/auth/v1/token?grant_type=refresh_token`,{
+      method:'POST',headers:supaHeaders(),body:JSON.stringify({refresh_token:s.refresh_token}),
+    });
+    const j=await r.json().catch(()=>({}));
+    accountScope.assertCurrent(scope);
+    assertRefreshTokenCurrent(s.refresh_token,loadSession()?.refresh_token);
+    if(!r.ok){
+      const temporary=temporaryAuthRefreshError(r,j);
+      if(temporary)throw temporary;
+      saveSession(null);
+      throw cloudAuthRequired('פג תוקף ההתחברות לענן');
+    }
+    assertRefreshReceipt(j,scope.owner);
+    j.expires_at=Math.floor(Date.now()/1000)+Number(j.expires_in||3600);
+    assertSessionOwner(j);
+    saveSession(j,{refresh:true});
+    return j;
+  };
+  const flight={scope,promise:null};
+  flight.promise=(globalThis.navigator?.locks?.request
+    ?navigator.locks.request('netunim-orders-auth-refresh',{mode:'exclusive'},refresh):refresh())
+    .finally(()=>{if(refreshFlight===flight)refreshFlight=null});
+  refreshFlight=flight;
+  return flight.promise;
+}
 
 async function ensureSession(){let s=loadSession();if(!s)throw cloudAuthRequired();assertSessionOwner(s);if(Number(s.expires_at||0)<Math.floor(Date.now()/1000)+60)s=await refreshSession({force:false,observedAccessToken:s.access_token});return s}
 

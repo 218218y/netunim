@@ -3,7 +3,7 @@ async function completeAuthMfa(...args){
   const {completeSupabaseMfa}=await import('../shared/supabase-mfa.js');
   return completeSupabaseMfa(...args);
 }
-import {createAuthenticatedAccountScope} from '../shared/authenticated-account-scope.js';
+import {createAuthenticatedAccountScope,temporaryAuthRefreshError,assertRefreshTokenCurrent,assertRefreshReceipt} from '../shared/authenticated-account-scope.js';
 import {createBrowserAccountObservation} from '../shared/browser-account-observation.js';
 import {createAuthSessionPersistence} from './session-store.js';
 import {createSyncCapabilityGate,syncRequestNeedsCapabilities,isSyncIncidentRpc} from '../shared/sync-capabilities.js';
@@ -171,11 +171,15 @@ async function supaRefresh({force=true,observedAccessToken=''}={}){
     });
     const j=await r.json().catch(()=>({}));
     accountScope.assertCurrent(scope);
+    assertRefreshTokenCurrent(s.refresh_token,loadSupaSession()?.refresh_token);
     if(!r.ok){
+      const temporary=temporaryAuthRefreshError(r,j);
+      if(temporary)throw temporary;
       storeSupaSession(null);
       setCloudHeaderStatus('off','ענן: נדרשת התחברות');
       throw new Error('פג תוקף ההתחברות לענן');
     }
+    assertRefreshReceipt(j,scope.owner);
     j.expires_at=Math.floor(Date.now()/1000)+Number(j.expires_in||3600);
     assertSessionOwner(j);
     storeSupaSession(j,{refresh:true});
