@@ -20,7 +20,7 @@ test('document access checks real files, sibling prefixes, junction escapes and 
   await assert.rejects(access.authorize(path.join(root,'..','business-private','private.txt')),{code:'DOCUMENT_PATH_FORBIDDEN'});
   const link=path.join(root,'escape');await fs.symlink(outside,link,process.platform==='win32'?'junction':'dir');
   await assert.rejects(access.authorize(path.join(link,'private.txt')),{code:'DOCUMENT_PATH_FORBIDDEN'});
-  assert.deepEqual((await access.admit([{fullPath:invoice},{fullPath:secret},{fullPath:path.join(link,'private.txt')}])).map(row=>row.fullPath),[await fs.realpath(invoice)]);
+  assert.deepEqual((await access.admit([{fullPath:invoice},{fullPath:secret},{fullPath:path.join(link,'private.txt')}])).map(row=>row.fullPath),[invoice]);
   const registry=createDocumentResultRegistry({clock:{now:()=>1,ttlMs:100},identity:{next:()=> 'opaque'},files:{stat:fs.stat,authorize:access.authorize}});
   const result=registry.publish({fullPath:invoice,name:'invoice',relativePath:'business',modified:'',size:0,extension:'txt'},{query:'invoice',mode:'everything',contentSearch:{matchMode:'phrase',wordMatch:'partial',proximityWords:0}});
   await registry.resolve(result.id);
@@ -53,4 +53,22 @@ test('whole-drive consent, protected directories and live visibility also gate s
   await registry.resolve(result.id);
   hiddenNow=true;
   await assert.rejects(registry.resolve(result.id),{code:'DOCUMENT_PATH_FORBIDDEN'});
+});
+
+test('mapped drive rows retain their indexed path and reauthorize the live UNC target', {skip:process.platform!=='win32'}, async()=>{
+  const root='Y:\\',file='Y:\\Documents\\report.pdf',share='\\\\server\\share\\',target=share+'Documents\\report.pdf';
+  let configured=true;
+  const access=createDocumentFileAccess({
+    loadConfig:async()=>({roots:configured?[root]:[],allowDriveRoots:true}),
+    files:{realpath:async candidate=>candidate===root?share:target,stat:async()=>({isDirectory:()=>true})}
+  });
+  const [row]=await access.admit([{fullPath:file}]);
+  assert.equal(row.fullPath,file);
+  const registry=createDocumentResultRegistry({clock:{now:()=>1,ttlMs:100},identity:{next:()=> 'opaque'},files:{stat:async()=>({}),authorize:access.authorize}});
+  const result=registry.publish(row,{query:'report',mode:'everything',contentSearch:{}});
+  const resolved=await registry.resolve(result.id);
+  assert.equal(resolved.row.fullPath,target);
+  assert.equal(resolved.row.indexedPath,file);
+  configured=false;
+  await assert.rejects(registry.resolve(result.id),{code:'DOCUMENT_ROOTS_NOT_CONFIGURED'});
 });

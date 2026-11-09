@@ -22,8 +22,8 @@ search.search(/** @type {unknown} */({query:'document'}),2,0);
 createDocumentResultRegistry({clock:{now:Date.now,ttlMs:10},identity:{next:async()=> 'opaque'},files:{stat:async()=>({size:1,mtimeMs:0,mtime:new Date(),isDirectory:()=>false})}});
 // @ts-expect-error only a complete public result can be minted synchronously
 createDocumentSearch({...ports,publication:{...registry,publish:async()=>registry.publish(row,context)}},limits);
-// @ts-expect-error PDF rows cannot be an unjoined deferred read
-createDocumentSearch({...ports,pdf:{...ports.pdf,search:async()=>[row]}},limits);
+// @ts-expect-error PDF reads must resolve to validated document rows
+createDocumentSearch({...ports,pdf:{...ports.pdf,search:async()=>({results:[row]})}},limits);
 // @ts-expect-error read elapsed time is numeric evidence
 createDocumentSearch({...ports,everything:{...ports.everything,search:async()=>({rows:[row],elapsedMs:'17'})}},limits);
 // @ts-expect-error result TTL cannot be a formatted timestamp

@@ -21,12 +21,12 @@
  * maxResults: number, elapsedMs: number, partial: boolean, rootErrors: unknown[]}} SearchPage
  * @typedef {{ok: true, bridgeVersion: number, mode: 'recent', fileType: string,
  * scopePath: string, results: PublicDocumentRow[], elapsedMs: number,
- * partial: false, rootErrors: unknown[]}} RecentPage
+ * partial: boolean, rootErrors: unknown[]}} RecentPage
  * @typedef {{everything: {
  * search: (request: SearchRead) => Promise<{rows: DocumentRow[], elapsedMs: number, partial?: boolean}>,
- * recent: (request: RecentPlan & {limit: number}) => Promise<{rows: DocumentRow[], elapsedMs: number}>},
+ * recent: (request: RecentPlan & {limit: number}) => Promise<{rows: DocumentRow[], elapsedMs: number, partial?: boolean}>},
  * pdf: {prepare: () => Promise<{partial: boolean}>,
- * search: (request: SearchPlan, limit: number) => DocumentRow[]},
+ * search: (request: SearchPlan, limit: number) => DocumentRow[] | Promise<DocumentRow[]>},
  * ordering: {merge: (groups: DocumentRow[][], limit: number, ceiling: number) => DocumentRow[],
  * compare: (left: DocumentRow, right: DocumentRow, sort: DocumentSort) => number},
  * publication: {prune: () => void, publish: (row: DocumentRow, context: ResultContext) => PublicDocumentRow, admit?: (rows:DocumentRow[])=>Promise<DocumentRow[]>},
@@ -167,6 +167,7 @@ export function createDocumentSearch(
       rows = result.rows;
       elapsedMs = result.elapsedMs;
       pageRows = rows.slice(0, boundedLimit);
+      partial = result.partial === true;
       hasMore =
         rows.length > boundedLimit && pageOffset + boundedLimit < maxResults;
     } else {
@@ -177,7 +178,7 @@ export function createDocumentSearch(
       assertActive(plan.signal);
       rows = result.rows;
       elapsedMs = result.elapsedMs;
-      supplemental = plan.includePdf ? pdf.search(plan, wanted) : [];
+      supplemental = plan.includePdf ? await pdf.search(plan, wanted) : [];
       const merged = ordering
         .merge([rows, supplemental], wanted, maxResults)
         .sort((a, b) => ordering.compare(a, b, sort));
@@ -211,7 +212,7 @@ export function createDocumentSearch(
       recentLimit,
       Math.max(1, Number(limit) || recentLimit)
     );
-    const { rows, elapsedMs } = await everything.recent({
+    const { rows, elapsedMs, partial } = await everything.recent({
       limit: boundedLimit,
       scopePath,
       fileType,
@@ -245,7 +246,7 @@ export function createDocumentSearch(
       scopePath,
       results,
       elapsedMs,
-      partial: false,
+      partial: partial === true,
       rootErrors: []
     };
   }

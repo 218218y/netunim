@@ -80,7 +80,6 @@ export function createDocumentFileAccess({loadConfig,files=fs,protectedPaths=[],
         '<'+paths.map(ancestor).join('|')+'>',
         ...protectedAncestors.map(value=>'!'+ancestor(value)),
         ...privateFolders.map(name=>'!whole:ancestor-name:'+name),
-        '!attributes:H','!attributes:S',
       ].join(' ');
       return [...args.slice(0,index+1),expression+' <'+args[index+1]+'>'];
     },
@@ -91,12 +90,25 @@ export function createDocumentFileAccess({loadConfig,files=fs,protectedPaths=[],
     },
     async admit(rows){
       const allowed=await roots(),matches=[],accepted=[];
-      for(const row of rows){
-        try{matches.push(await check(row.fullPath,allowed));accepted.push(row)}
-        catch(error){if(error?.code!=='DOCUMENT_PATH_FORBIDDEN'&&!unavailable.has(error?.code))throw error}
+      const inspect=async row=>{
+        try{return await check(row.fullPath,allowed)}
+        catch(error){
+          if(error?.code==='DOCUMENT_PATH_FORBIDDEN'||unavailable.has(error?.code))return null;
+          throw error;
+        }
+      };
+      for(let start=0;start<rows.length;start+=16){
+        const batch=rows.slice(start,start+16);
+        const checked=await Promise.all(batch.map(inspect));
+        for(let index=0;index<batch.length;index++){
+          if(!checked[index])continue;
+          matches.push(checked[index]);accepted.push(batch[index]);
+        }
       }
       const permitted=await visibility(matches);
-      return accepted.flatMap((row,index)=>permitted[index]?[{...row,fullPath:matches[index].canonical}]:[]);
+      // Preserve the indexed path, including mapped drive letters. File
+      // operations resolve it again against the same selected root.
+      return accepted.filter((_,index)=>permitted[index]);
     }
   });
 }

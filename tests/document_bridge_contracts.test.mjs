@@ -558,7 +558,7 @@ test('document search rejects stale bridge runtimes instead of silently using a 
   assert.match(server,/bridgeVersion:BRIDGE_VERSION/);
   assert.match(server,/normalizeDocumentFileType\(fileType\)/);
   assert.match(server,/includePdf:documentFileTypeIncludesPdf\(normalizedFileType\)/,'interactive-PDF eligibility must come from the normalized type filter');
-  assert.match(read('netunim-orders/document-bridge/search-owner.mjs').replace(/\s+/g,''),/plan\.includePdf\?pdf\.search\(plan,wanted\):\[\]/,'interactive-PDF supplemental results must obey the active type filter');
+  assert.match(read('netunim-orders/document-bridge/search-owner.mjs').replace(/\s+/g,''),/plan\.includePdf\?awaitpdf\.search\(plan,wanted\):\[\]/,'interactive-PDF supplemental results must obey the active type filter');
   assert.match(server,/Number\(response\.data\?\.version\)!==BRIDGE_VERSION/);
   assert.match(client,/EXPECTED_BRIDGE_VERSION=47/);
   assert.match(client,/DOCUMENT_BRIDGE_UPGRADE_REQUIRED/);

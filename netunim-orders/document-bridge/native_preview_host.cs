@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -608,20 +609,26 @@ namespace NetunimPreview
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
         private static extern uint GetFileAttributesW(string path);
 
-        private static bool IsVisiblePath(string path)
+        private static bool IsVisiblePath(string path, Dictionary<string, bool> batch)
         {
             string root = Path.GetPathRoot(path);
             if (String.IsNullOrEmpty(root)) return false;
+            var checkedPaths = new List<string>();
+            bool visible = true;
             // The volume root itself can carry system attributes. Inspect its
-            // descendants, including every directory leading to the file.
+            // descendants and reuse parent checks within this request only.
             while (path.Length > root.Length)
             {
+                if (batch.TryGetValue(path, out visible)) break;
                 uint attributes = GetFileAttributesW(path);
-                if (attributes == UInt32.MaxValue || (attributes & 0x6) != 0) return false;
+                checkedPaths.Add(path);
+                visible = attributes != UInt32.MaxValue && (attributes & 0x6) == 0;
+                if (!visible) break;
                 path = Path.GetDirectoryName(path);
                 if (String.IsNullOrEmpty(path)) return false;
             }
-            return true;
+            foreach (string checkedPath in checkedPaths) batch[checkedPath] = visible;
+            return visible;
         }
 
         [STAThread]
@@ -632,7 +639,8 @@ namespace NetunimPreview
             if (args.Length == 1 && args[0] == "--check-visible-paths")
             {
                 string path;
-                while ((path = Console.ReadLine()) != null) Console.WriteLine(IsVisiblePath(path) ? "1" : "0");
+                var batch = new Dictionary<string, bool>(StringComparer.Ordinal);
+                while ((path = Console.ReadLine()) != null) Console.WriteLine(IsVisiblePath(path, batch) ? "1" : "0");
                 return;
             }
             NativeDpi.Enable();

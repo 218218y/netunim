@@ -326,9 +326,9 @@ export function buildEsSearchArgs({query,mode='everything',contentSearch={},file
   return args;
 }
 
-export function buildEsRecentFilesArgs({limit=RECENT_RESULT_LIMIT,timeoutMs=15000,instance='',scopePath='',fileType='all'}={}){
+export function buildEsRecentFilesArgs({limit=RECENT_RESULT_LIMIT,offset=0,timeoutMs=15000,instance='',scopePath='',fileType='all'}={}){
   const search=applyDocumentFileType('*',fileType);
-  return buildEsRawSearchArgs({search,limit,timeoutMs,instance,filesOnly:false,maxResults:RECENT_RESULT_LIMIT,scopePath,sort:{field:'modified',direction:'desc'}});
+  return buildEsRawSearchArgs({search,limit,offset,timeoutMs,instance,filesOnly:false,maxResults:RECENT_RESULT_LIMIT,scopePath,sort:{field:'modified',direction:'desc'}});
 }
 
 export function buildEsPdfInventoryArgs({limit=250,offset=0,timeoutMs=15000,instance='',scopePath='',modifiedSince=''}={}){

@@ -240,7 +240,7 @@ test('binary preview preserves bytes, MIME, encoded filename, length and authent
   assert.deepEqual(f.calls, [['binary', 'opaque-binary']]);
 });
 
-for (const [code, status] of [['QUERY_TOO_SHORT', 400], ['RESULT_EXPIRED', 410], ['ES_EXIT_ERROR', 503]]) {
+for (const [code, status] of [['QUERY_TOO_SHORT', 400], ['RESULT_EXPIRED', 410], ['DOCUMENT_PATH_FORBIDDEN', 403], ['ES_EXIT_ERROR', 503]]) {
   test(`capability errors preserve ${code} HTTP status, body and diagnostics`, async t => {
     const f = await fixture(t, {files: {open: async () => { throw Object.assign(new Error('classified error'), {code, rootErrors: ['root']}); }, reveal: async () => ({}), delete: async () => ({})}});
     const response = await f.request('/documents/open');

@@ -52,24 +52,24 @@ export function createEverythingSearchCoordinator({configuration,session,process
     signal?.throwIfAborted();
     return {rows:decode(output.stdout),elapsedMs:Date.now()-started};
   }
-  async function searchEverything(request){
-    const build=(read,config,probe)=>buildEsSearchArgs({...read,timeoutMs:config.searchTimeoutMs,instance:probe.instance});
-    if(request.mode!=='content'||!contentQueryRequiresVerification(request.query,request.contentSearch))return runEverythingJson((config,probe)=>build(request,config,probe),{signal:request.signal});
+  async function readAdmittedPages(request,build,verifyContent=false){
+    if(!publication.admit&&!verifyContent)return runEverythingJson((config,probe)=>build(request,config,probe),{signal:request.signal});
     const config=await loadConfig(),started=performance.now(),deadline=started+config.searchTimeoutMs+5000;
-    const wanted=request.offset+request.limit,rows=[],verifiedPaths=new Set();
-    let candidateOffset=0,partial=false,batchSize=100;
-    // Candidates retain native sorting and scope. Filter before applying the
-    // result offset; a rejected candidate must never consume a result slot.
+    const wanted=request.offset+Math.trunc(request.limit),rows=[],verifiedPaths=new Set();
+    let candidateOffset=0,partial=false,batchSize=verifyContent?100:Math.min(250,wanted);
+    // Everything keeps the indexed sort. Live Windows attributes and
+    // canonical paths are checked on candidate pages, before result offsets.
     while(rows.length<wanted){
       request.signal?.throwIfAborted();
       if(candidateOffset>=MAX_RESULTS||performance.now()>=deadline){partial=true;break}
-      const limit=Math.min(batchSize,MAX_RESULTS-candidateOffset);
+      const remaining=verifyContent?batchSize:Math.max(16,wanted-rows.length);
+      const limit=Math.min(batchSize,remaining,MAX_RESULTS-candidateOffset);
       let result;
       try{
-        result=await runEverythingJson((current,probe)=>build({...request,offset:candidateOffset,limit},current,probe),{decode:parseEsContentRows,deadline,signal:request.signal});
+        result=await runEverythingJson((current,probe)=>build({...request,offset:candidateOffset,limit},current,probe),{decode:verifyContent?parseEsContentRows:parseEsJson,deadline,signal:request.signal});
       }catch(error){
         request.signal?.throwIfAborted();
-        if(error?.code==='ES_OUTPUT_LIMIT'&&error?.name!=='AbortError'){
+        if(verifyContent&&error?.code==='ES_OUTPUT_LIMIT'&&error?.name!=='AbortError'){
           // Retain the same native cursor and deadline. Failed output is never
           // decoded or published; successful batches alone advance the cursor.
           if(limit===1)throw Object.assign(new Error('תוכן מסמך יחיד חורג ממגבלת האימות של החיפוש. אפשר לצמצם לתיקייה או לסוג קבצים אחר.'),{code:'ES_CONTENT_TOO_LARGE'});
@@ -80,35 +80,48 @@ export function createEverythingSearchCoordinator({configuration,session,process
         if(error?.code!=='ES_TIMEOUT'||error?.name==='AbortError'||!rows.length)throw error;
         partial=true;break;
       }
-      for(const {content,...row} of result.rows){
-        const identity=row.fullPath.toLocaleLowerCase('en-US');
-        const matches=!verifiedPaths.has(identity)&&contentSearchMatches(content,request.query,request.contentSearch);
-        // Give disconnects, sibling reads and health requests an event-loop turn
-        // after each bounded document verification, before granting any result.
-        await setImmediate();
-        request.signal?.throwIfAborted();
-        if(matches){
-          verifiedPaths.add(identity);rows.push(row);
+      let candidates=result.rows;
+      if(verifyContent){
+        candidates=[];
+        for(const {content,...row} of result.rows){
+          const identity=row.fullPath.toLocaleLowerCase('en-US');
+          if(!verifiedPaths.has(identity)&&contentSearchMatches(content,request.query,request.contentSearch)){
+            verifiedPaths.add(identity);candidates.push(row);
+          }
+          await setImmediate();
+          request.signal?.throwIfAborted();
+          if(performance.now()>=deadline){partial=true;break}
+          if(!publication.admit&&rows.length+candidates.length>=wanted)break;
         }
-        if(performance.now()>=deadline){partial=true;break}
-        if(rows.length>=wanted)break;
       }
+      rows.push(...(publication.admit?await publication.admit(candidates):candidates));
+      request.signal?.throwIfAborted();
       candidateOffset+=result.rows.length;
       if(partial||result.rows.length<limit)break;
     }
     return {rows:rows.slice(request.offset,wanted),elapsedMs:Math.round(performance.now()-started),partial};
   }
+  async function searchEverything(request){
+    const verifyContent=request.mode==='content'&&contentQueryRequiresVerification(request.query,request.contentSearch);
+    return readAdmittedPages(request,(read,config,probe)=>buildEsSearchArgs({...read,timeoutMs:config.searchTimeoutMs,instance:probe.instance}),verifyContent);
+  }
+  function recentEverything(request){
+    return readAdmittedPages({...request,offset:0},(read,config,probe)=>buildEsRecentFilesArgs({...read,timeoutMs:config.searchTimeoutMs,instance:probe.instance}));
+  }
   const documentSearch=createDocumentSearch({
     everything:{
       search:searchEverything,
-      recent:request=>runEverythingJson((config,probe)=>buildEsRecentFilesArgs({...request,timeoutMs:config.searchTimeoutMs,instance:probe.instance}),{signal:request.signal}),
+      recent:recentEverything,
     },
     pdf:{
       prepare:preparePdfFormIndexForSearch,
-      search:(plan,limit)=>searchPdfFormIndex(plan.query,plan.contentSearch,plan.scopePath,limit,plan.sort)
+      async search(plan,limit){
+        const rows=searchPdfFormIndex(plan.query,plan.contentSearch,plan.scopePath,limit,plan.sort);
+        return publication.admit?publication.admit(rows):rows;
+      }
     },
     ordering:{merge:mergeDocumentResults,compare:compareDocumentRows},
-    publication:{prune:pruneResults,publish:publicResult,admit:publication.admit},
+    publication:{prune:pruneResults,publish:publicResult},
     audit:{write:appendLog},
   },{bridgeVersion:BRIDGE_VERSION,maxResults:MAX_RESULTS,defaultLimit:DEFAULT_RESULT_LIMIT,recentLimit:RECENT_RESULT_LIMIT});
   async function searchDocuments(query,limit,mode='everything',contentSearch={},scopePath='',offset=0,sort={},fileType='all',signal=null){

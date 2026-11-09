@@ -17,7 +17,7 @@ for(const entry of Object.values(baseline.functions)) {
 const {source,ast:ast}=documentBridgeSource();
 const pdfPreparation=ast.body.find(node=>node.type==='FunctionDeclaration'&&node.id.name==='preparePdfFormIndexForSearch');
 const prepareScript=new vm.Script(source.slice(pdfPreparation.start,pdfPreparation.end)+'\npreparePdfFormIndexForSearch');
-const names=['searchDocuments','recentDocuments','searchEverything','pruneResults','publicResult','resolveResult','invalidateResultPath','prepareShutdown'];
+const names=['searchDocuments','recentDocuments','readAdmittedPages','searchEverything','recentEverything','pruneResults','publicResult','resolveResult','invalidateResultPath','prepareShutdown'];
 const compositions=ast.body.filter(node=>node.type==='VariableDeclaration'&&node.declarations.some(item=>['documentSearch','documentResults'].includes(item.id.name)));
 const declarations=ast.body.filter(node=>node.type==='FunctionDeclaration'&&names.includes(node.id.name));
 const expose='\n({search:searchDocuments,recent:recentDocuments,resolve:resolveResult,invalidate:invalidateResultPath,shutdown:typeof prepareShutdown===\'function\'?prepareShutdown:null})';
@@ -33,7 +33,7 @@ export const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)
 export function serverFixture(version='current',options={}) {
  let time=10_000,id=0;const calls=[],logs=[],stats=[],invalidations=[];
  const stat={size:20,mtimeMs:50,mtime:new Date(50),isDirectory:()=>false};
- const context={documentAccess:{authorize:async value=>value,admit:async rows=>rows},publication:{},...lib,createDocumentSearch,createDocumentResultRegistry,performance,setImmediate,
+ const context={documentAccess:{authorize:async value=>value,admit:async rows=>rows},publication:{admit:options.admit},...lib,createDocumentSearch,createDocumentResultRegistry,performance,setImmediate,
   Date:{now:()=>time},everythingSession:{dispose:async()=>{}},everythingDiscovery:{dispose:async()=>{}},everythingProcesses:{dispose:async()=>{}},crypto:{randomUUID:()=>`opaque-${++id}`},fs:{stat:async fullPath=>{stats.push(fullPath);return options.stat?options.stat(fullPath):stat}},
   requestResults:new Map(),pdfFormIndex:new Map(),previewTextCache:{invalidate:key=>invalidations.push(key),dispose:()=>{}},
   loadPdfFormIndex:async()=>{if(options.pdfLoad){calls.push(['pdf-prepare']);await options.pdfLoad()}},appendPdfIndexJournal:async()=>{},
