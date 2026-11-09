@@ -39,8 +39,9 @@
 
 1. להמתין לסיום שמירות/העלאות בכל מחשב ולבדוק שאין שינוי מקומי שלא נשמר.
    למשוך main נקי, ולהתקין מחדש Document Bridge 48 במחשב הראשון דרך
-   `netunim-orders\document-bridge\install_document_bridge.bat`. Bank Bridge 78
-   נשאר הגרסה הקודמת בשלב זה; אם שוחרר עדכון תלויות נפרד, לפעול לפי דוחו.
+   `netunim-orders\document-bridge\install_document_bridge.bat`. להתקין גם Bank Bridge 79 דרך
+   `netunim-kupa\bank-bridge\install_bank_bridge.bat`; עדכון התלויות מתועד
+   ב־BANK_DEPENDENCY_SECURITY_20261109.md.
    git pull לבדו אינו מחליף runtime מותקן. לפרוס את האתרים המעודכנים דרך
    תהליך הפריסה הרגיל; הלקוח דורש התאמת גרסה.
 2. לוודא Allowlist בשני המחברים ורק Origins שנבחרו במפורש. לבדוק שהתיקיות

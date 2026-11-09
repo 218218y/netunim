@@ -18,6 +18,12 @@
     "fingerprint-generator": "2.1.89"
   },
   "overrides": {
-    "puppeteer": "$puppeteer"
+    "puppeteer": "$puppeteer",
+    "camoufox-js": {
+      "glob": {
+        ".": "14.0.2",
+        "minimatch": "11.0.5"
+      }
+    }
   }
 }
