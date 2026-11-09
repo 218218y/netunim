@@ -9,9 +9,9 @@ export function bridgeDataRoot(env=process.env,home=os.homedir()){return env.NET
 
 // This concrete platform owns local configuration, token, logging and pinned
 // executable verification. Construction performs no filesystem work.
-export function createBridgeRuntimeFiles({root=bridgeDataRoot(),host=process,files=fs,syncFiles=fsSync}={}){
+export function createBridgeRuntimeFiles({root=bridgeDataRoot(),host=process,files=fs,syncFiles=fsSync,configPath=path.join(root,'config.json')}={}){
 const APP_ROOT=root,process=host,fs=files,fsSync=syncFiles;
-const CONFIG_PATH=path.join(APP_ROOT,'config.json');
+const CONFIG_PATH=configPath;
 const TOKEN_PATH=path.join(APP_ROOT,'bridge-token.txt');
 const LOG_PATH=path.join(APP_ROOT,'bridge.log');
 const SUMMARY_PATH=path.join(APP_ROOT,'INSTALLATION-LOG.txt');
@@ -27,13 +27,14 @@ async function loadConfig(){
   const raw=await readJsonFile(CONFIG_PATH,{});
   return {
     roots:Array.isArray(raw.roots)?raw.roots:[],
+    allowDriveRoots:raw.allowDriveRoots===true,
     everythingInstance:String(raw.everythingInstance||'').trim(),
     everythingExecutable:String(raw.everythingExecutable||'').trim(),
     allowedOrigins:configuredDocumentOrigins(raw.allowedOrigins),
     searchTimeoutMs:Math.max(3000,Math.min(30000,Number(raw.searchTimeoutMs)||15000)),
   };
 }
-async function saveConfig(config){await writeJsonFile(CONFIG_PATH,{roots:Array.isArray(config.roots)?config.roots:[],everythingInstance:String(config.everythingInstance||'').trim(),everythingExecutable:String(config.everythingExecutable||'').trim(),allowedOrigins:Array.isArray(config.allowedOrigins)&&config.allowedOrigins.length?config.allowedOrigins:DEFAULT_ALLOWED_ORIGINS,searchTimeoutMs:Math.max(3000,Math.min(30000,Number(config.searchTimeoutMs)||15000))})}
+async function saveConfig(config){await writeJsonFile(CONFIG_PATH,{roots:Array.isArray(config.roots)?config.roots:[],allowDriveRoots:config.allowDriveRoots===true,everythingInstance:String(config.everythingInstance||'').trim(),everythingExecutable:String(config.everythingExecutable||'').trim(),allowedOrigins:Array.isArray(config.allowedOrigins)&&config.allowedOrigins.length?config.allowedOrigins:DEFAULT_ALLOWED_ORIGINS,searchTimeoutMs:Math.max(3000,Math.min(30000,Number(config.searchTimeoutMs)||15000))})}
 async function init(){await ensureToken();const existing=await loadConfig();if(!fsSync.existsSync(CONFIG_PATH))await saveConfig(existing);return existing}
 async function existsFile(candidate){if(!candidate)return false;try{return (await fs.stat(candidate)).isFile()}catch{return false}}
 function normalizedRuntimePath(value){return path.resolve(String(value||'')).replace(/[\\/]+$/,'').toLocaleLowerCase('en-US')}

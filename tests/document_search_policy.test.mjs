@@ -43,6 +43,19 @@ test('old and current recent results preserve historical fractional/default limi
  assert.equal(cases,108);
 });
 
+test('hidden candidates do not consume visible search or recent result slots',async()=>{
+ const options={rows:[row(1),row(2),row(3),row(4),row(5),row(6)],admit:async rows=>rows.filter(item=>![1,3].some(index=>item.name===row(index).name))};
+ const f=serverFixture('current',options);
+ const first=await f.search('document',2);
+ assert.deepEqual(plain(first.results.map(item=>item.name)),[row(2).name,row(4).name]);
+ assert.equal(first.hasMore,true);
+ const second=await f.search('document',2,'everything',{},'',2);
+ assert.deepEqual(plain(second.results.map(item=>item.name)),[row(5).name,row(6).name]);
+ assert.equal(second.hasMore,false);
+ const recent=await f.recent(2);
+ assert.deepEqual(plain(recent.results.map(item=>item.name)),[row(2).name,row(4).name]);
+});
+
 test('query rejection, capped empty pages and read failures cannot mint opaque IDs or log success',async()=>{
  for(const mode of ['everything','content'])for(const query of ['',null,{},'x']){
   const old=serverFixture('baseline'),current=serverFixture();

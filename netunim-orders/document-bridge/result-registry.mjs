@@ -79,7 +79,7 @@ export function createDocumentResultRegistry({ clock, identity, files }) {
         code: 'OPEN_TARGET_MISSING'
       });
     }
-    return { row:{...row,fullPath}, stat };
+    return { row:{...row,fullPath,...(fullPath===row.fullPath?{}:{indexedPath:row.fullPath})}, stat };
   }
   /** @param {unknown} fullPath */
   function invalidate(fullPath) {

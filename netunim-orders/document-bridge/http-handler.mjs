@@ -106,7 +106,10 @@ export function createDocumentBridgeHttpHandler({loadConfig, readToken, routes, 
       if (res.destroyed && cancelledRead) return;
       await appendLog(`${req.method} ${req.url} ${error?.code || 'ERROR'} ${error?.message || error}`);
       if (res.destroyed) return;
-      const status = error?.code === 'QUERY_TOO_SHORT' ? 400 : error?.code === 'RESULT_EXPIRED' ? 410 : 503;
+      let status = 503;
+      if (error?.code === 'QUERY_TOO_SHORT') status = 400;
+      else if (error?.code === 'RESULT_EXPIRED') status = 410;
+      else if (error?.code === 'DOCUMENT_PATH_FORBIDDEN') status = 403;
       sendJson(req, res, status, documentBridgeErrorResponse(error), config);
     }
   };

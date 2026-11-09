@@ -31,5 +31,5 @@ test('Windows installer stages the complete static server module dependency grap
   visit('server.mjs');
   assert.ok(seen.has('http-handler.mjs') && seen.has('http-routes.mjs'));
   for(const file of ['bridge-replacement-command.mjs','windows-process-control.mjs','bridge-runtime-files.mjs','pdf-maintenance-task-diagnostics.mjs','bridge-installation-diagnostics.mjs','pdf-inventory-reconciliation.mjs'])assert.ok(seen.has(file),'listener must compose '+file);
-  assert.ok(installer.indexOf('for %%F in') < installer.indexOf('"%STAGING%\\server.mjs" --init'));
+  assert.ok(installer.indexOf('for %%F in') < installer.indexOf('"%STAGING%\\server.mjs" --doctor'));
 });

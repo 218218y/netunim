@@ -1,7 +1,7 @@
 // @ts-check
 import { decodePdfExtractionResult } from './pdf-extraction-result.mjs';
 /** @typedef {import('./pdf-maintenance-operation.mjs').PdfEntry} PdfEntry
- * @typedef {import('./result-registry.mjs').StoredResult} PreviewRow
+ * @typedef {import('./result-registry.mjs').StoredResult & {indexedPath?: string}} PreviewRow
  * @typedef {import('./preview-text-cache.mjs').PreviewFormField} FormField
  * @typedef {{size:number,mtimeMs:number,mtime:Date}} PreviewStat
  * @typedef {{text:string,truncated:boolean,formFields:FormField[]}} PdfPreviewData
@@ -43,9 +43,10 @@ export function createPdfPreviewOperation({
   /** @param {PreviewRow} row @param {PreviewStat} stat @returns {import('./pdf-maintenance-operation.mjs').WorkRow} */
   function baseRow(row, stat) {
     const modified = row.modified || stat.mtime.toISOString();
+    const fullPath = row.indexedPath || row.fullPath;
     return {
       ...row,
-      fullPath: row.fullPath,
+      fullPath,
       name: row.name || paths.basename(row.fullPath),
       relativePath: row.relativePath || paths.dirname(row.fullPath),
       modified,
@@ -65,7 +66,7 @@ export function createPdfPreviewOperation({
       return null;
     }
     if (disposed || signal.aborted) return null;
-    const cached = index.get(fullPath.toLocaleLowerCase('en-US')),
+    const cached = index.get((row.indexedPath || fullPath).toLocaleLowerCase('en-US')),
       detectionCurrent =
         Number(cached?.detectionRevision) === policy.detectionRevision;
     const cachedDate =
@@ -169,7 +170,7 @@ export function createPdfPreviewOperation({
         () => {}
       ),
       flight = {
-        key: row.fullPath.toLocaleLowerCase('en-US'),
+        key: (row.indexedPath || row.fullPath).toLocaleLowerCase('en-US'),
         controller,
         done
       };

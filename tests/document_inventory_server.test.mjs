@@ -33,7 +33,7 @@ async function fixture(t,{count='0',page='',abortPhase='',handoffAbort=false,abo
   });
   if(abortAfterAppend){const append=f.context.appendPdfIndexJournal;f.context.appendPdfIndexJournal=async records=>{await append(records);controller.abort()}}
   const reconciliation=ast.body.find(node=>node.type==='VariableDeclaration'&&node.declarations.some(value=>value.id.name==='pdfReconciliation'));
-  const functions=ast.body.filter(node=>node.type==='FunctionDeclaration'&&['rebuildPdfFormIndexBacklog','runEverythingJson','searchEverything','searchDocuments'].includes(node.id.name));
+  const functions=ast.body.filter(node=>node.type==='FunctionDeclaration'&&['rebuildPdfFormIndexBacklog','runEverythingJson','readAdmittedPages','searchEverything','recentEverything','searchDocuments'].includes(node.id.name));
   const variable=ast.body.find(node=>node.type==='VariableDeclaration'&&node.declarations.some(value=>value.id.name==='pdfInventory'));
   const search=ast.body.find(node=>node.type==='VariableDeclaration'&&node.declarations.some(value=>value.id.name==='documentSearch'));
   const root=vm.runInNewContext([source.slice(variable.start,variable.end),source.slice(reconciliation.start,reconciliation.end),source.slice(search.start,search.end),...functions.map(node=>source.slice(node.start,node.end)),'({rebuild:rebuildPdfFormIndexBacklog,search:searchDocuments})'].join('\n'),f.context);

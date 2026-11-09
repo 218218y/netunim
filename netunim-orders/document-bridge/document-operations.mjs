@@ -75,12 +75,13 @@ export function createDocumentOperations({registry,preview,pdf,native,search,pla
 }
   async function loadSearchablePreviewText(row,stat){
     const extension=documentExtension(row.fullPath);
+    const indexedPath=row.indexedPath||row.fullPath;
     let data=null;
     if(isTextPreview(extension)){const direct=await previewFiles.readText(row.fullPath);data={...direct,source:'file'}}
   else if(extension==='pdf'){
-      const [everythingText,pdfData]=await joinDocumentReads([readEverythingContentPreview(row.fullPath),supplementalPdfData(row,stat)]);
+      const [everythingText,pdfData]=await joinDocumentReads([readEverythingContentPreview(indexedPath),supplementalPdfData(row,stat)]);
       if(pdfData?.text)data={...pdfData,source:'pdfjs-acroform'};else if(everythingText?.text)data={...everythingText,source:'everything-content'};
-    }else{const extracted=await readEverythingContentPreview(row.fullPath);if(extracted)data={...extracted,source:'everything-content'}}
+    }else{const extracted=await readEverythingContentPreview(indexedPath);if(extracted)data={...extracted,source:'everything-content'}}
     return data;
   }
   function searchablePreviewText(row,stat){
@@ -184,7 +185,9 @@ export function createDocumentOperations({registry,preview,pdf,native,search,pla
     let missing=false;
     try{await fs.stat(row.fullPath)}catch(error){if(error?.code==='ENOENT')missing=true;else throw error}
     if(!missing){const e=new Error('Windows לא אישר שהקובץ נמחק.');e.code='DELETE_TARGET_REMAINS';throw e}
-    const invalidatedIds=await invalidateResultPath(row.fullPath);
+    const indexedPath=row.indexedPath||row.fullPath;
+    if(indexedPath!==row.fullPath)previewTextCache.invalidate(row.fullPath.toLocaleLowerCase('en-US'));
+    const invalidatedIds=await invalidateResultPath(indexedPath);
     await appendLog(`DELETE type=${stat.isDirectory()?'folder':'file'} recycle=SendToRecycleBin invalidated=${invalidatedIds.length} path=${JSON.stringify(row.fullPath)}`);
     return {ok:true,type:stat.isDirectory()?'folder':'file',invalidatedIds};
   }

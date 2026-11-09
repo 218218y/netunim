@@ -1,6 +1,6 @@
 param(
   [Parameter(Mandatory=$true)][string]$AppRoot,
-  [switch]$FirstRun
+  [string]$DraftPath
 )
 
 Set-StrictMode -Version 2.0
@@ -34,7 +34,7 @@ function Existing-Roots($config) {
   $values = New-Object System.Collections.Generic.List[string]
   if ($config.PSObject.Properties.Name -contains 'roots' -and $config.roots) {
     foreach ($item in @($config.roots)) {
-      $value = if ($item -is [string]) { [string]$item } elseif ($item.PSObject.Properties.Name -contains 'path') { [string]$item.path } else { '' }
+      $value = if ($item -is [string]) { [string]$item } elseif ($item -and $item.PSObject.Properties.Name -contains 'path') { [string]$item.path } else { '' }
       $value = $value.Trim().Trim('"')
       if ($value -and -not $values.Contains($value)) { $values.Add($value) }
     }
@@ -46,25 +46,38 @@ function Save-Roots($config, [string[]]$roots) {
   $rows = @($roots | ForEach-Object { [pscustomobject]@{ path = $_ } })
   if ($config.PSObject.Properties.Name -contains 'roots') { $config.roots = $rows }
   else { $config | Add-Member -NotePropertyName roots -NotePropertyValue $rows }
+  $driveScope = @($roots | Where-Object { $_ -match '^[a-z]:\\$' }).Count -gt 0
+  $config | Add-Member -Force -NotePropertyName allowDriveRoots -NotePropertyValue $driveScope
   $json = $config | ConvertTo-Json -Depth 8
   [System.IO.Directory]::CreateDirectory($AppRoot) | Out-Null
-  [System.IO.File]::WriteAllText($configPath, $json + [Environment]::NewLine, $utf8NoBom)
+  $destination = if ($DraftPath) { $DraftPath } else { $configPath }
+  $temporary = "$destination.$([Guid]::NewGuid().ToString('N')).tmp"
+  try {
+    [IO.File]::WriteAllText($temporary, $json + [Environment]::NewLine, $utf8NoBom)
+    if ([IO.File]::Exists($destination)) {
+      $backup = "$temporary.previous"
+      [IO.File]::Replace($temporary, $destination, $backup)
+      [IO.File]::Delete($backup)
+    } else {
+      [IO.File]::Move($temporary, $destination)
+    }
+  } finally {
+    [IO.File]::Delete($temporary)
+  }
 }
-
-if ($FirstRun -and @((Existing-Roots (Read-Config))).Count -gt 0) { exit 0 }
 
 $form = New-Object System.Windows.Forms.Form
 $form.Text = Decode-UiText '15TXkteT16jXqiDXl9eZ16TXldepINen15HXpteZ150g15HXnteX16nXkQ=='
 $form.StartPosition = 'CenterScreen'
-$form.Size = New-Object System.Drawing.Size(720, 500)
-$form.MinimumSize = New-Object System.Drawing.Size(650, 430)
+$form.Size = New-Object System.Drawing.Size(720, 530)
+$form.MinimumSize = $form.Size
 $form.RightToLeft = [System.Windows.Forms.RightToLeft]::Yes
 $form.RightToLeftLayout = $true
 $form.Font = New-Object System.Drawing.Font('Segoe UI', 10)
 $form.MaximizeBox = $false
 
 $title = New-Object System.Windows.Forms.Label
-$title.Text = Decode-UiText '15HXl9eoINeQ16og15TXqteZ16fXmdeV16og16nXkdeU158g16DXntem15DXmdedINeU16fXkdem15nXnSDXnNeX15nXpNeV16k='
+$title.Text = (Decode-UiText '15HXl9eZ16jXqiDXqteZ16fXmdeV16og15XXm9eV16DXoNeZ150g15zXnteX15HXqCDXlNee16HXnteb15nXnQ==')
 $title.AutoSize = $false
 $title.Location = New-Object System.Drawing.Point(24, 20)
 $title.Size = New-Object System.Drawing.Size(650, 28)
@@ -72,7 +85,7 @@ $title.Font = New-Object System.Drawing.Font('Segoe UI', 13, [System.Drawing.Fon
 $form.Controls.Add($title)
 
 $help = New-Object System.Windows.Forms.Label
-$help.Text = Decode-UiText '15DXpNep16gg15zXkdeX15XXqCDXqteZ16fXmdeZ15Qg157Xp9eV157XmdeqLCDXqteZ16fXmdeZ16ogRHJpdmUg15DXlSDXm9eV16DXnyDXqNep16og157XnteV16TXlC4g15DXpNep16gg15zXlNeV16HXmdejINeZ15XXqteoINee16rXmden15nXmdeUINeQ15fXqi4g15vXnCDXnteX16nXkSDXoNep157XqCDXkdeg16TXqNeTLg=='
+$help.Text = (Decode-UiText '15HXl9eoINeb157XlCDXqteZ16fXmdeV16osINeQ16og16rXmden15nXmdeqINeU157Xqdeq157XqSDXkNeVINeb15XXoNeg15nXnS4g16DXqteZ15HXmSDXntei16jXm9eqLCDXoNeq15XXoNeZINee15fXkdeo15nXnSDXlden15HXpteZ150g157Xldeh16rXqNeZ150g157XldeX16jXkteZ150u')
 $help.AutoSize = $false
 $help.Location = New-Object System.Drawing.Point(24, 52)
 $help.Size = New-Object System.Drawing.Size(650, 48)
@@ -134,14 +147,31 @@ $cancel.Size = New-Object System.Drawing.Size(100, 36)
 $cancel.Anchor = 'Bottom,Right'
 $form.Controls.Add($cancel)
 
+function Get-SelectablePath([string]$candidate) {
+  if ($candidate -notmatch '^(?:[a-z]:[\\/]|\\\\[^?.\\])') { return }
+  try { $directory = Get-Item -LiteralPath $candidate -Force -ErrorAction Stop } catch { return }
+  if ($directory -isnot [IO.DirectoryInfo]) { return }
+  $systemNames = @('Windows','Program Files','Program Files (x86)','ProgramData','WindowsApps','WpSystem','System Volume Information','$Recycle.Bin','Recovery','PerfLogs')
+  $privateNames = @('AppData','NetunimDocumentBridge','NetunimKupaBankBridge','NetunimSecurity')
+  $protected = @($AppRoot,$env:WINDIR,$env:ProgramData,$env:ProgramFiles,${env:ProgramFiles(x86)},$env:LOCALAPPDATA,$env:APPDATA)
+  for ($part = $directory; $part.Parent; $part = $part.Parent) {
+    if ($part.Name.StartsWith('.') -or $part.Name -in $privateNames -or $part.FullName -in $protected) { return }
+    if ($null -eq $part.Parent.Parent -and $part.Name -in $systemNames) { return }
+    if ($part.Attributes -band ([IO.FileAttributes]::Hidden -bor [IO.FileAttributes]::System)) { return }
+  }
+  return $directory.FullName
+}
+
 function Add-Path([string]$candidate) {
   $candidate = ([string]$candidate).Trim().Trim('"')
   if (-not $candidate) { return }
-  if (-not (Test-Path -LiteralPath $candidate -PathType Container)) {
-    $message = (Decode-UiText '15TXqteZ16fXmdeZ15Qg15DXmdeg15Qg15bXnteZ16DXlCDXm9eo15LXojo=') + "`n$candidate`n`n" + (Decode-UiText '15XXk9eQINep15TXm9eV16DXny9Ecml2ZSDXnteX15XXkdeoINeV16DXodeUINep15XXkS4=')
+  $selectedPath = Get-SelectablePath $candidate
+  if (-not $selectedPath) {
+    $message = (Decode-UiText '15TXqteZ16fXmdeZ15Qg15DXmdeg15Qg15bXnteZ16DXlCDXkNeVINeg157XpteQ16og15HXkNeW15XXqCDXnteV15LXny4=') + [Environment]::NewLine + $candidate
     [System.Windows.Forms.MessageBox]::Show($form, $message, (Decode-UiText '16rXmden15nXmdeUINec15Ag15bXnteZ16DXlA=='), 'OK', 'Warning') | Out-Null
     return
   }
+  $candidate = $selectedPath
   foreach ($item in $list.Items) { if ([string]::Equals([string]$item, $candidate, [System.StringComparison]::OrdinalIgnoreCase)) { $pathBox.Clear(); return } }
   [void]$list.Items.Add($candidate)
   $pathBox.Clear()
@@ -159,9 +189,45 @@ $add.Add_Click({ Add-Path $pathBox.Text })
 $pathBox.Add_KeyDown({ if ($_.KeyCode -eq [System.Windows.Forms.Keys]::Enter) { $_.SuppressKeyPress = $true; Add-Path $pathBox.Text } })
 $remove.Add_Click({ if ($list.SelectedIndex -ge 0) { $list.Items.RemoveAt($list.SelectedIndex) } })
 $cancel.Add_Click({ $form.DialogResult = [System.Windows.Forms.DialogResult]::Cancel; $form.Close() })
+$homeButton = New-Object System.Windows.Forms.Button
+$homeButton.Text = (Decode-UiText '16rXmden15nXmdeqINeU157Xqdeq157XqQ==')
+$homeButton.Location = New-Object System.Drawing.Point(24, 413)
+$homeButton.Size = New-Object System.Drawing.Size(150, 34)
+$homeButton.Anchor = 'Bottom,Left'
+$homeButton.Add_Click({ Add-Path $env:USERPROFILE })
+$form.Controls.Add($homeButton)
+
+$drivesButton = New-Object System.Windows.Forms.Button
+$drivesButton.Text = (Decode-UiText '15vXnCDXlNeb15XXoNeg15nXnSDXlNee16fXldee15nXmded')
+$drivesButton.Location = New-Object System.Drawing.Point(185, 413)
+$drivesButton.Size = New-Object System.Drawing.Size(195, 34)
+$drivesButton.Anchor = 'Bottom,Left'
+$drivesButton.Add_Click({
+  foreach ($drive in [IO.DriveInfo]::GetDrives()) {
+    if ($drive.IsReady -and $drive.DriveType -eq [IO.DriveType]::Fixed) { Add-Path $drive.RootDirectory.FullName }
+  }
+})
+$form.Controls.Add($drivesButton)
+
 $save.Add_Click({
   if ($list.Items.Count -lt 1) {
     [System.Windows.Forms.MessageBox]::Show($form, (Decode-UiText '15nXqSDXnNeU15XXodeZ16Mg15zXpNeX15XXqiDXqteZ16fXmdeZ15Qg15DXl9eqLg=='), (Decode-UiText '15fXodeo15Qg16rXmden15nXmdeU'), 'OK', 'Information') | Out-Null
+    return
+  }
+  $selected = @($list.Items | ForEach-Object { Get-SelectablePath ([string]$_) })
+  if ($selected.Count -ne $list.Items.Count) {
+    [System.Windows.Forms.MessageBox]::Show($form, (Decode-UiText '15DXl9eqINeU15HXl9eZ16jXldeqINeQ15nXoNeUINeW157Xmdeg15Qg15DXlSDXnteV15LXoNeqLiDXlNeh16gg15DXldeq15Qg157XlNeo16nXmdee15Qg15XXkdeX16gg16rXmden15nXmdeUINeQ15fXqNeqLg=='), 'Document Bridge', 'OK', 'Warning') | Out-Null
+    return
+  }
+  if (@($selected | Where-Object { $_ -match '^[a-z]:\\$' }).Count -gt 0) {
+    $message = Decode-UiText '16DXkdeX16gg15zXpNeX15XXqiDXm9eV16DXnyDXqdec150uDQoNCteU15DXqteoINeZ15XXm9ecINec15fXpNepLCDXnNek16rXldeXINeV15zXlNei15HXmdeoINec16HXnCDXlNee15nXl9eW15XXqCDXp9eR16bXmdedINeS15zXldeZ15nXnSDXqdeU157Xl9eR16gg16jXqdeQ15kg15zXktep16og15DXnNeZ15TXnSDXkdeb15XXoNefLiDXqteZ16fXmdeV16og157Xoteo15vXqiDXldeg16rXldeg15kg15TXnteX15HXqNeZ150g157XldeX16jXkteZ150uDQoNCteb158g4oCUINep157XldeoINeQ16og15TXkdeX15nXqNeULg0K15zXkCDigJQg15fXlteV16gg15zXqNep15nXnteUINeb15PXmSDXnNep16DXldeqINeQ16og15TXkdeX15nXqNeULg=='
+    $caption = Decode-UiText '15DXmdep15XXqCDXkteZ16nXlCDXnNeb15XXoNefINep15zXnQ=='
+    $rtl = [System.Windows.Forms.MessageBoxOptions]::RightAlign -bor [System.Windows.Forms.MessageBoxOptions]::RtlReading
+    $choice = [System.Windows.Forms.MessageBox]::Show($form, $message, $caption, 'YesNo', 'Warning', 'Button2', $rtl)
+    if ($choice -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+  }
+  try { Save-Roots $config $selected } catch {
+    [System.Windows.Forms.MessageBox]::Show($form, ($_.Exception.Message), 'Document Bridge', 'OK', 'Error') | Out-Null
     return
   }
   $form.DialogResult = [System.Windows.Forms.DialogResult]::OK
@@ -169,13 +235,5 @@ $save.Add_Click({
 })
 
 $result = $form.ShowDialog()
-if ($result -ne [System.Windows.Forms.DialogResult]::OK) {
-  if ($FirstRun -and $list.Items.Count -eq 0) { exit 2 }
-  exit 1
-}
-
-$selected = @($list.Items | ForEach-Object { [string]$_ })
-Save-Roots $config $selected
-$savedMessage = (Decode-UiText '16DXqdee16jXlSA=') + $selected.Count + (Decode-UiText 'INeq15nXp9eZ15XXqiDXnNeX15nXpNeV16ku')
-[System.Windows.Forms.MessageBox]::Show($form, $savedMessage, 'Document Bridge', 'OK', 'Information') | Out-Null
+if ($result -ne [System.Windows.Forms.DialogResult]::OK) { exit 1 }
 exit 0
