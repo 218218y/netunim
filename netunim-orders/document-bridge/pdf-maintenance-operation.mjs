@@ -297,7 +297,7 @@ export function createPdfMaintenanceOperation({
           };
           failed += 1;
           await audit.write(
-            `PDF_FORM_INDEX_FILE_FAILED path=${JSON.stringify(row.fullPath)} error=${JSON.stringify(String(errorField(error, 'message') || error))}`
+            `PDF_FORM_INDEX_FILE_FAILED code=${errorField(error,'code')||'ERROR'}`
           );
         }
         await index.append([{ op: 'upsert', entry: index.serialize(entry) }]);
@@ -401,7 +401,7 @@ export function createPdfMaintenanceOperation({
       maintenance.lastFailure = String(errorField(error, 'message') || error);
       await metadata.write(maintenance).catch(() => {});
       await audit.write(
-        `PDF_FORM_INDEX_MAINTENANCE_FAILED trigger=${reason} error=${JSON.stringify(maintenance.lastFailure)}`
+        `PDF_FORM_INDEX_MAINTENANCE_FAILED trigger=${reason} code=${errorField(error,'code')||'ERROR'}`
       );
       throw error;
     } finally {

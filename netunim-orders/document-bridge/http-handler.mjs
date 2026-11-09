@@ -63,6 +63,7 @@ export function createDocumentBridgeHttpHandler({loadConfig, readToken, routes, 
     throw new Error('document_bridge_http_ports_required');
   }
   return async function handle(req, res) {
+    const started = performance.now();
     const config = await loadConfig(), origin = String(req.headers.origin || '');
     if (origin && !originAllowed(origin, config.allowedOrigins)) {
       res.writeHead(403, {'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'Vary': 'Origin'});
@@ -93,8 +94,11 @@ export function createDocumentBridgeHttpHandler({loadConfig, readToken, routes, 
         const body = route.readBody ? await readJson(req) : {};
         if (res.destroyed) disconnected();
         controller?.signal.throwIfAborted();
+        const routeStarted = performance.now();
         const result = await route.run(body, controller ? {signal:controller.signal} : undefined);
         if (!res.destroyed) {
+          res.setHeader('Server-Timing', `bridge;dur=${(performance.now()-started).toFixed(2)}, operation;dur=${(performance.now()-routeStarted).toFixed(2)}`);
+          res.setHeader('Access-Control-Expose-Headers', 'Server-Timing');
           if (route.response === 'binary') sendBinary(req, res, result, config);
           else sendJson(req, res, 200, result, config);
         }
@@ -104,7 +108,7 @@ export function createDocumentBridgeHttpHandler({loadConfig, readToken, routes, 
       }
     } catch (error) {
       if (res.destroyed && cancelledRead) return;
-      await appendLog(`${req.method} ${req.url} ${error?.code || 'ERROR'} ${error?.message || error}`);
+      await appendLog(`HTTP_ERROR code=${error?.code || 'ERROR'}`);
       if (res.destroyed) return;
       let status = 503;
       if (error?.code === 'QUERY_TOO_SHORT') status = 400;

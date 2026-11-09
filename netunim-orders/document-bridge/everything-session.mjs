@@ -162,7 +162,7 @@ export function createEverythingSession({
         config.everythingInstance || (/1\.5a/i.test(executable) ? '1.5a' : '');
       const args = [...instanceArgs(instance), '-startup', '-first-instance'];
       await audit.write(
-        `EVERYTHING_START exe=${executable} instance=${instance || '(default)'}`
+        `EVERYTHING_START `
       );
       assertActive();
       await host.start(executable, args);

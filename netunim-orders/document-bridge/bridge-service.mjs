@@ -159,13 +159,15 @@ export function createBridgeService({files,search,pdf,documents,maintenance,inst
     await init();
     const handle=createRequestHandler();
     server=http.createServer((req,res)=>{handle(req,res).catch(async error=>{
-        await appendLog(`UNHANDLED ${error?.stack||error}`);
+        await appendLog(`UNHANDLED code=${error?.code||'ERROR'}`);
         try{res.writeHead(500,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(safeError(error)))}catch{}
       })});
-    server.on('error',error=>appendLog(`SERVER ${error?.code||''} ${error?.message||error}`));
+    server.on('error',error=>appendLog(`SERVER code=${error?.code||'ERROR'}`));
     server.listen(BRIDGE_PORT,'127.0.0.1',()=>{
+      const cleanup=setInterval(()=>{void files.pruneLogs?.()},60*60*1000);
+      cleanup.unref();
       appendLog(`START ${BRIDGE_SERVICE} v${BRIDGE_VERSION} node=${process.versions.node} on 127.0.0.1:${BRIDGE_PORT}`);
-      probeEverything({fresh:true,autoStart:true}).then(probe=>appendLog(`EVERYTHING_READY version=${probe.everythingVersion} instance=${probe.instance||'(default)'}`)).catch(error=>appendLog(`EVERYTHING_BACKGROUND_START_FAILED ${error?.code||'ERROR'} ${error?.message||error}`))
+      probeEverything({fresh:true,autoStart:true}).then(()=>appendLog('EVERYTHING_READY')).catch(error=>appendLog(`EVERYTHING_BACKGROUND_START_FAILED code=${error?.code||'ERROR'}`))
     });
   }
   return {

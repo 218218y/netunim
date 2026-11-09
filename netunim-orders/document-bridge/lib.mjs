@@ -4,7 +4,7 @@ import {decodeEverythingCount,decodeEverythingRows} from './everything-result-co
 
 export const BRIDGE_PORT=8766;
 export const BRIDGE_SERVICE='netunim-orders-document-bridge';
-export const BRIDGE_VERSION=47;
+export const BRIDGE_VERSION=48;
 export const BRIDGE_NODE_VERSION='24.22.2';
 export const BRIDGE_NODE_WIN_X64_SHA256='1c331340fa6cac5e4294725959070a143fa0507195a78ad77eed7943f719aac9';
 export const MAX_QUERY_CHARS=240;

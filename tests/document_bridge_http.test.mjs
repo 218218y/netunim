@@ -246,7 +246,7 @@ for (const [code, status] of [['QUERY_TOO_SHORT', 400], ['RESULT_EXPIRED', 410],
     const response = await f.request('/documents/open');
     assert.equal(response.status, status);
     assert.deepEqual(response.data, {ok: false, code, message: 'classified error', rootErrors: ['root']});
-    assert.deepEqual(f.logs, [`POST /documents/open ${code} classified error`]);
+    assert.deepEqual(f.logs, [`HTTP_ERROR code=${code}`]);
   });
 }
 
@@ -256,7 +256,7 @@ test('shutdown sends its response before starting listener teardown', async t =>
   assert.deepEqual(f.calls, [['shutdown'], ['shutdown-after-response']]);
   const writes = [];
   await f.handler({method: 'POST', url: '/shutdown', headers: {authorization: 'Bearer private-pairing-token'}}, {
-    writeHead: () => writes.push('headers'), end: () => { writes.push('response'); assert.deepEqual(f.calls.at(-1), ['shutdown']); },
+    setHeader: () => {}, writeHead: () => writes.push('headers'), end: () => { writes.push('response'); assert.deepEqual(f.calls.at(-1), ['shutdown']); },
   });
   assert.deepEqual(writes, ['headers', 'response']);
   assert.deepEqual(f.calls.at(-1), ['shutdown-after-response']);

@@ -38,8 +38,8 @@ export function createDocumentOperations({registry,preview,pdf,native,search,pla
     const extension=documentExtension(row.fullPath),officeKind=officePreviewKind(extension);
     if(!officeKind){const e=new Error('תצוגת Windows המקורית מופעלת כרגע למסמכי Office בלבד.');e.code='NATIVE_PREVIEW_UNSUPPORTED';throw e}
     const box=normalizePreviewGeometry(geometry),encoded=Buffer.from(row.fullPath,'utf8').toString('base64');
-    const response=await nativePreviewCommand(box.coordinateSpace==='viewport'?'OPEN_VIEWPORT':'OPEN',[encoded,box.x,box.y,box.width,box.height,...(box.coordinateSpace==='viewport'?[box.viewportWidth,box.viewportHeight]:[])],9000);
-    await appendLog(`NATIVE_PREVIEW_OPEN kind=${officeKind} geometry=${box.x},${box.y},${box.width}x${box.height} handler=${JSON.stringify(response)} path=${JSON.stringify(row.fullPath)}`);
+    await nativePreviewCommand(box.coordinateSpace==='viewport'?'OPEN_VIEWPORT':'OPEN',[encoded,box.x,box.y,box.width,box.height,...(box.coordinateSpace==='viewport'?[box.viewportWidth,box.viewportHeight]:[])],9000);
+    await appendLog(`NATIVE_PREVIEW_OPEN kind=${officeKind}`);
     return {ok:true,kind:'native',officeKind};
   }
   async function moveNativePreview(geometry){
@@ -60,7 +60,7 @@ export function createDocumentOperations({registry,preview,pdf,native,search,pla
     const normalized=normalizeSearchScopePath(selected);
     if(!normalized){const e=new Error('לא נבחרה תיקייה תקינה.');e.code='FOLDER_PICKER_INVALID_PATH';throw e}
     const label=path.win32.basename(normalized)||path.win32.parse(normalized).root.replace(/[\\]+$/,'')||normalized;
-    await appendLog(`SEARCH_SCOPE_PICK path=${JSON.stringify(normalized)}`);
+    await appendLog('SEARCH_SCOPE_PICK');
     return {ok:true,bridgeVersion:BRIDGE_VERSION,cancelled:false,path:normalized,label};
   }
   async function readEverythingContentPreview(fullPath){
@@ -71,7 +71,7 @@ export function createDocumentOperations({registry,preview,pdf,native,search,pla
       const content=parseEsContentPreview(stdout);
       if(!content)return null;
       return trimPreviewText(content);
-    }catch(error){await appendLog(`PREVIEW_CONTENT_FAILED path=${JSON.stringify(fullPath)} error=${JSON.stringify(String(error?.message||error))}`);return null}
+    }catch(error){await appendLog(`PREVIEW_CONTENT_FAILED code=${error?.code||'ERROR'}`);return null}
 }
   async function loadSearchablePreviewText(row,stat){
     const extension=documentExtension(row.fullPath);
@@ -106,7 +106,7 @@ export function createDocumentOperations({registry,preview,pdf,native,search,pla
     const extension=documentExtension(row.fullPath);
     const search=normalizeContentSearchOptions(row.contentSearch),matches=extension==='pdf'?buildContentMatchInfo(content.text,query,{...search,contextChars:96,maxSnippets:500,maxMatches:500}):buildContentMatchInfo(content.text,query,search);
     const canBuildFormAnchors=extension==='pdf'&&Array.isArray(content.formFields),formMatchInfo=canBuildFormAnchors?buildPdfFormMatchAnchors(content.formFields,query,search,5000):{anchors:[],capped:false},formAnchorsAuthoritative=formMatchInfo.anchors.length>0;
-    await appendLog(`PREVIEW_MATCHES count=${matches.count} snippets=${matches.snippets.length} formAnchors=${formMatchInfo.anchors.length} authoritative=${formAnchorsAuthoritative} source=${content.source} elapsedMs=${Date.now()-started} path=${JSON.stringify(row.fullPath)}`);
+    await appendLog(`PREVIEW_MATCHES count=${matches.count} snippets=${matches.snippets.length} formAnchors=${formMatchInfo.anchors.length} authoritative=${formAnchorsAuthoritative} source=${content.source} elapsedMs=${Date.now()-started}`);
     return {
       ok:true,
       bridgeVersion:BRIDGE_VERSION,
@@ -156,7 +156,7 @@ export function createDocumentOperations({registry,preview,pdf,native,search,pla
   // interactive shell and does not wait for explorer.exe to exit.
     const script='$p=$env:NETUNIM_OPEN_TARGET; $psi=New-Object System.Diagnostics.ProcessStartInfo; $psi.FileName=$p; $psi.UseShellExecute=$true; [void][System.Diagnostics.Process]::Start($psi)';
     await execFile('powershell.exe',['-NoProfile','-NonInteractive','-Command',script],{windowsHide:true,timeout:7000,env});
-    await appendLog(`OPEN type=${stat.isDirectory()?'folder':'file'} shell=UseShellExecute path=${JSON.stringify(row.fullPath)}`);
+    await appendLog(`OPEN type=${stat.isDirectory()?'folder':'file'} shell=UseShellExecute`);
     return {ok:true,type:stat.isDirectory()?'folder':'file'};
   }
   async function revealDocument(id){
@@ -165,7 +165,7 @@ export function createDocumentOperations({registry,preview,pdf,native,search,pla
     const env={...process.env,NETUNIM_REVEAL_TARGET:row.fullPath};
     const script=`$p=$env:NETUNIM_REVEAL_TARGET; $psi=New-Object System.Diagnostics.ProcessStartInfo; $psi.FileName='explorer.exe'; $psi.Arguments=('/select,"{0}"' -f $p); $psi.UseShellExecute=$true; [void][System.Diagnostics.Process]::Start($psi)`;
     await execFile('powershell.exe',['-NoProfile','-NonInteractive','-Command',script],{windowsHide:true,timeout:7000,env});
-    await appendLog(`REVEAL type=${stat.isDirectory()?'folder':'file'} shell=ExplorerSelect path=${JSON.stringify(row.fullPath)}`);
+    await appendLog(`REVEAL type=${stat.isDirectory()?'folder':'file'} shell=ExplorerSelect`);
     return {ok:true,type:stat.isDirectory()?'folder':'file'};
   }
   async function invalidateResultPath(fullPath){
@@ -188,7 +188,7 @@ export function createDocumentOperations({registry,preview,pdf,native,search,pla
     const indexedPath=row.indexedPath||row.fullPath;
     if(indexedPath!==row.fullPath)previewTextCache.invalidate(row.fullPath.toLocaleLowerCase('en-US'));
     const invalidatedIds=await invalidateResultPath(indexedPath);
-    await appendLog(`DELETE type=${stat.isDirectory()?'folder':'file'} recycle=SendToRecycleBin invalidated=${invalidatedIds.length} path=${JSON.stringify(row.fullPath)}`);
+    await appendLog(`DELETE type=${stat.isDirectory()?'folder':'file'} recycle=SendToRecycleBin invalidated=${invalidatedIds.length}`);
     return {ok:true,type:stat.isDirectory()?'folder':'file',invalidatedIds};
   }
   return {

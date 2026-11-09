@@ -252,4 +252,4 @@ const service=createBridgeService({
   installation:{printDoctor,writeInstallSummary,stopExisting,checkRunning},
   listener:{host:process,createServer:(...args)=>http.createServer(...args),handler:createRequestHandler},
 });
-service.main().catch(async error=>{await appendLog(`FATAL ${error?.stack||error}`);console.error(error?.message||error);process.exitCode=1});
+service.main().catch(async error=>{await appendLog(`FATAL code=${error?.code||'ERROR'}`);console.error('Document Bridge failed. See bridge.log for the diagnostic code.');process.exitCode=1});

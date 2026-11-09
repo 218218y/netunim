@@ -60,6 +60,8 @@ jobs:
         env:
           PUPPETEER_SKIP_DOWNLOAD: 'true'
         run: npm ci --prefix netunim-kupa/bank-bridge --ignore-scripts --no-audit --no-fund
+      - name: Exercise patched Camoufox dependency APIs and aborted traversal
+        run: node tests/runtime_camoufox_dependencies.mjs
       - name: Exercise actual scraper and Puppeteer packages against isolated Chromium
         run: NETUNIM_BROWSER="$(command -v google-chrome)" node tests/runtime_bank_dependencies.mjs
 

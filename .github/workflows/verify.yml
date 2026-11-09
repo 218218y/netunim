@@ -118,6 +118,8 @@ jobs:
           python -m pip install --no-cache-dir -r tests/requirements-ci.txt
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python tests/windows_deploy_contracts.py
+      - name: Exercise document mapped-drive authorization, revocation and private diagnostics
+        run: node --test tests/document_file_access.test.mjs tests/document_telemetry.test.mjs tests/document_log_privacy.test.mjs tests/document_search_http.test.mjs
       - name: Exercise Windows parallel scheduling and process cleanup
         run: python tests/runner_contracts.py
       - name: Exercise the unified synthetic lab entrypoint on Windows

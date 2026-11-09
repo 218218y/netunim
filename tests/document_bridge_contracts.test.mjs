@@ -75,7 +75,7 @@ test('bridge searches Everything with server-side folder authorization and Unico
   assert.match(installer,/--ensure-everything/);
   assert.match(installer,/configure_document_bridge\.ps1/);
   const searchOwner=read('netunim-orders/document-bridge/search-owner.mjs');
-  assert.match(searchOwner,/scope=everything-index/);
+  assert.match(searchOwner,/SEARCH mode=/);
   assert.match(read('netunim-orders/document-bridge/bridge-runtime-files.mjs'),/roots:Array\.isArray\(raw\.roots\)/);
   assert.match(server,/documentAccess\.authorize/);
   assert.match(server,/admit:documentAccess\.admit/);
@@ -97,12 +97,12 @@ test('bridge searches Everything with server-side folder authorization and Unico
   assert.match(read('netunim-orders/document-bridge/http-routes.mjs'),/documents\/recent/);
   assert.match(read('netunim-orders/document-bridge/http-routes.mjs'),/documents\/select-folder/);
   assert.match(server,/PICK_FOLDER/);
-  assert.match(searchOwner,/RECENT scope=everything-index scopePath=.* fileType=\$\{fileType\} sort=date-modified-descending/);
+  assert.match(searchOwner,/RECENT fileType=\$\{fileType\} results=/);
   assert.match(read('netunim-orders/document-bridge/everything-discovery.mjs'),/cachedEsPath/);
   assert.match(server,/listen\(BRIDGE_PORT,'127\.0\.0\.1'/);
   assert.match(server,/refreshPdfFormIndex/);
   assert.match(server,/searchPdfFormIndex/);
-  assert.match(searchOwner,/scope=everything-index\+interactive-pdf/);
+  assert.doesNotMatch(searchOwner,/scopePath=|input=|everythingQuery=/);
   assert.match(server,/extractInteractivePdfText/);
   assert.match(server,/buildPdfFormMatchAnchors/,'interactive PDF preview matches must retain Bridge-known page geometry');
   assert.match(server,/formAnchorsAuthoritative=formMatchInfo\.anchors\.length>0/,'an empty Bridge geometry payload must never suppress the browser PDF annotation fallback');
@@ -230,8 +230,8 @@ test('bridge searches Everything with server-side folder authorization and Unico
   assert.match(pdfIndex,/fileURLToPath/);
   assert.match(pdfIndex,/BinaryDataFactory:LocalPdfBinaryDataFactory/);
   assert.match(pdfIndex,/VerbosityLevel\?\.ERRORS/);
-  assert.match(lib,/BRIDGE_VERSION=47/);
-  assert.match(client,/EXPECTED_BRIDGE_VERSION=47/);
+  assert.match(lib,/BRIDGE_VERSION=48/);
+  assert.match(client,/EXPECTED_BRIDGE_VERSION=48/);
   assert.match(client,/requireBridgeVersion\(data\?\.bridgeVersion,'לקבל מיקומי התאמות בתוך PDF אינטראקטיבי'\)/,'preview-match geometry refuses a stale local Bridge runtime');
 });
 
@@ -554,12 +554,12 @@ test('document search rejects stale bridge runtimes instead of silently using a 
   const lib=read('netunim-orders/document-bridge/lib.mjs');
   const server=serverOwners();
   const client=read('shared/document-bridge-client.js');
-  assert.match(lib,/BRIDGE_VERSION=47/);
+  assert.match(lib,/BRIDGE_VERSION=48/);
   assert.match(server,/bridgeVersion:BRIDGE_VERSION/);
   assert.match(server,/normalizeDocumentFileType\(fileType\)/);
   assert.match(server,/includePdf:documentFileTypeIncludesPdf\(normalizedFileType\)/,'interactive-PDF eligibility must come from the normalized type filter');
   assert.match(read('netunim-orders/document-bridge/search-owner.mjs').replace(/\s+/g,''),/plan\.includePdf\?awaitpdf\.search\(plan,wanted\):\[\]/,'interactive-PDF supplemental results must obey the active type filter');
   assert.match(server,/Number\(response\.data\?\.version\)!==BRIDGE_VERSION/);
-  assert.match(client,/EXPECTED_BRIDGE_VERSION=47/);
+  assert.match(client,/EXPECTED_BRIDGE_VERSION=48/);
   assert.match(client,/DOCUMENT_BRIDGE_UPGRADE_REQUIRED/);
 });

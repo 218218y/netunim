@@ -1,6 +1,8 @@
+import {privateAuditLine} from '../netunim-orders/document-bridge/private-audit-log.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {fixture,plain,deferred} from './everything_session_fixture.mjs';
+function structural(value){return {...value,logs:value.logs.map(privateAuditLine)}}
 const failure=exitCode=>Object.assign(new Error('synthetic failure'),{exitCode});
 test('original and current instance preference, version tolerance, auto-start and cache policy match in 96 scenarios',async()=>{
  let cases=0;
@@ -13,8 +15,8 @@ test('original and current instance preference, version tolerance, auto-start an
   }};
   const old=fixture('baseline',options),current=fixture('current',options);
   async function observe(f){try{return {result:plain(await f.owner.probe({autoStart,fresh}))}}catch(error){return {error:{code:error.code,message:error.message}}}}
-  assert.deepEqual(await observe(current),await observe(old));assert.deepEqual(current.observation(),old.observation());
-  if(outcome==='success'){await current.owner.probe();await old.owner.probe();assert.deepEqual(current.observation(),old.observation())}
+  assert.deepEqual(await observe(current),await observe(old));assert.deepEqual(structural(current.observation()),structural(old.observation()));
+  if(outcome==='success'){await current.owner.probe();await old.owner.probe();assert.deepEqual(structural(current.observation()),structural(old.observation()))}
   await current.owner.dispose();cases++;
  }
  assert.equal(cases,96);
@@ -39,5 +41,5 @@ test('original and current startup retain the 15-second polling deadline and one
  const options={run:async(_file,args)=>{if(args[0]==='-version')return{stdout:'ES'};throw failure(8)}};
  const old=fixture('baseline',options),current=fixture('current',options);
  for(const f of [old,current])await assert.rejects(f.owner.probe(),{code:'EVERYTHING_START_TIMEOUT'});
- assert.deepEqual(current.observation(),old.observation());assert.equal(current.starts(),1);await current.owner.dispose();
+ assert.deepEqual(structural(current.observation()),structural(old.observation()));assert.equal(current.starts(),1);await current.owner.dispose();
 });

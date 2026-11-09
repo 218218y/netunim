@@ -39,7 +39,7 @@ import {createBankDiagnosticRun,finishBankDiagnosticRun,recordBankAccountDiagnos
 
 const HOST='127.0.0.1';
 const PORT=8765;
-const BRIDGE_VERSION=78;
+const BRIDGE_VERSION=79;
 const BROWSER_IDENTITY_PROBE_URL=`http://${HOST}:${PORT}/health`;
 const APP_DIR=path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimKupaBankBridge');
 const TOKEN_FILE=path.join(APP_DIR,'bridge-token.txt');

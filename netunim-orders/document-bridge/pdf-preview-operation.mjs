@@ -62,7 +62,7 @@ export function createPdfPreviewOperation({
     try {
       await index.load();
     } catch (error) {
-      await audit.write(`PDF_FORM_INDEX_LOAD_FAILED ${errorText(error)}`);
+      await audit.write(`PDF_FORM_INDEX_LOAD_FAILED code=${error && typeof error==='object' ? Reflect.get(error,'code')||'ERROR' : 'ERROR'}`);
       return null;
     }
     if (disposed || signal.aborted) return null;
@@ -152,7 +152,7 @@ export function createPdfPreviewOperation({
     } catch (error) {
       if (!disposed && !signal.aborted)
         await audit.write(
-          `PDF_FORM_PREVIEW_FAILED path=${JSON.stringify(fullPath)} error=${JSON.stringify(errorText(error))}`
+          `PDF_FORM_PREVIEW_FAILED code=${error && typeof error==='object' ? Reflect.get(error,'code')||'ERROR' : 'ERROR'}`
         );
       return null;
     }

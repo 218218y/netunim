@@ -15,7 +15,7 @@ test('runtime file ownership preserves private token identity and config normali
  const root=await directory(t),runtime=createBridgeRuntimeFiles({root});await runtime.init();const token=await runtime.ensureToken();assert.match(token,/^[a-f0-9]{64}$/);assert.equal(await runtime.ensureToken(),token);
  await runtime.saveConfig({everythingInstance:'  Private  ',everythingExecutable:' C:\\Everything.exe ',searchTimeoutMs:999999,allowedOrigins:['http://localhost:8766']});
  const config=await runtime.loadConfig();assert.equal(config.everythingInstance,'Private');assert.equal(config.searchTimeoutMs,30000);assert.deepEqual(config.allowedOrigins,['http://localhost:8766']);
- await runtime.appendLog('synthetic event');assert.match(await fs.readFile(runtime.paths.LOG_PATH,'utf8'),/synthetic event/);assert.equal((await fs.readdir(root)).some(name=>name.endsWith('.tmp')),false);
+ await runtime.appendLog('SEARCH results=1');assert.match(await fs.readFile(runtime.paths.LOG_PATH,'utf8'),/SEARCH results=1/);assert.equal((await fs.readdir(root)).some(name=>name.endsWith('.tmp')),false);
 });
 test('BOM config readers preserve historical optional settings and invalid JSON bytes',async t=>{
  const runtime=createBridgeRuntimeFiles({root:await directory(t)});await fs.writeFile(runtime.paths.CONFIG_PATH,'\uFEFF{"everythingInstance":"legacy"}');const config=await runtime.loadConfig();assert.equal(config.everythingInstance,'legacy');assert.deepEqual(config.allowedOrigins,DEFAULT_ALLOWED_ORIGINS);
