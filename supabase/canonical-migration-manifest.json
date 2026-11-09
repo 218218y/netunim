@@ -273,5 +273,10 @@
     "version": "20261106120000",
     "name": "bank_instant_credit_name_prefix",
     "sha256": "32dcdf894fdabcb8dcf06a894a804ec1e3639a542d62a5a603c48c59bbcf11a4"
+  },
+  {
+    "version": "20261108210000",
+    "name": "financial_mfa_boundaries",
+    "sha256": "2508b7f766a88aa1006cbeba69214624d1856a573dc3b4a5cdf353341306eb3c"
   }
 ]

@@ -66,7 +66,7 @@ export async function buildApp(app, {env = process.env} = {}) {
     await fs.writeFile(path.join(out, name), bytes);
   };
   const result = await esbuild.build({
-    absWorkingDir: site, entryPoints: {app: 'assets/app.js', reset: 'assets/js/shared/local-site-reset-page.js'},
+    absWorkingDir: site, entryPoints: {app: 'assets/app.js', reset: 'assets/js/shared/local-site-reset-page.js', security: 'assets/security.js'},
     outdir: path.join(out, 'assets/build'), bundle: true, splitting: true,
     format: 'esm', platform: 'browser', target: 'es2022', minify: true,
     // Conservative first migration: do not remove exports or declarations.
@@ -104,7 +104,7 @@ export async function buildApp(app, {env = process.env} = {}) {
     const compiled = await esbuild.transform(source, {minify: true, target: 'es2022', legalComments: 'eof'});
     await write(worker, compiled.code);
   }
-  for (const html of ['index.html', 'reset-local.html']) {
+  for (const html of ['index.html', 'reset-local.html', 'security.html']) {
     let source = text(await fs.readFile(path.join(site, html)));
     const links = [...source.matchAll(/<link\b[^>]*rel="stylesheet"[^>]*href="([^\"]+)"[^>]*>/g)];
     const css = await esbuild.build({absWorkingDir: site, stdin: {contents: links.map(match => `@import ${JSON.stringify(match[1])};`).join('\n'), resolveDir: site, loader: 'css'}, bundle: true, minify: true, write: false});

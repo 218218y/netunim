@@ -1,10 +1,11 @@
 'use strict';
 const CACHE_PREFIX='kupa-app-shell-';
-const CACHE='kupa-app-shell-esm-c7e5d64e84f7';
+const CACHE='kupa-app-shell-esm-fb9d99b160ec';
 const SHELL=[
   './',
   './index.html',
   './reset-local.html',
+  './security.html',
   './assets/app.css',
   './assets/app.js',
   './assets/js/cloud/auth.js',
@@ -95,6 +96,8 @@ const SHELL=[
   './assets/js/lifecycle.js',
   './assets/js/main.js',
   './assets/js/platform/credit-preferences.js',
+  './assets/js/shared/account-security-page.js',
+  './assets/js/shared/account-security.css',
   './assets/js/shared/action-registry.js',
   './assets/js/shared/app-release-startup.js',
   './assets/js/shared/authenticated-account-scope.js',
@@ -260,6 +263,7 @@ const SHELL=[
   './assets/js/shared/storage-v2-runtime.js',
   './assets/js/shared/storage-v2-schema.js',
   './assets/js/shared/storage-v2-server-protocol.js',
+  './assets/js/shared/supabase-mfa.js',
   './assets/js/shared/sync-capabilities.js',
   './assets/js/shared/sync-incident-adapters.js',
   './assets/js/shared/sync-incident-feature.js',
@@ -370,6 +374,7 @@ const SHELL=[
   './assets/js/ui/settings.js',
   './assets/js/ui/sidebar.js',
   './assets/js/ui/status.js',
+  './assets/security.js',
   './manifest.webmanifest',
   './supabase/config.js',
   './favicon.ico',

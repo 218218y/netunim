@@ -103,7 +103,7 @@ def run(db):
              "netunim_internal.record_operation_audit(" + quote(OWNER) + ",'kupa','main','seed','{}','{}','{}','{}',null)",
              *writes, *internal_contract_calls]
     for expression in calls:
-        code = 'P0002' if expression.startswith('public.apply_restore_group_v6(') else '42501'
+        code = '42501'
         denied(db, '', expression, code)
         denied(db, '', expression, role='anon')
     capabilities = auth(db, OTHER, 'select public.get_netunim_sync_capabilities()')

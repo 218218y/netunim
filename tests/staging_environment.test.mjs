@@ -47,7 +47,7 @@ for (const app of ['orders','kupa']) test(`${app}: production config denies prev
     assert.equal(evaluate(source, host).publishableKey, '');
     assert.equal(evaluate(stagingConfigSource(config), host).url, config.url);
   }
-  for (const host of ['bargig-orders.pages.dev','bargig-kupa.pages.dev','bargig-furniture.com','localhost','127.0.0.1']) {
+  for (const host of ['bargig-orders.pages.dev','bargig-kupa.pages.dev','bargig-furniture.com','orders.bargig-furniture.com','kupa.bargig-furniture.com','localhost','127.0.0.1']) {
     assert.equal(evaluate(source, host).url, 'https://bupoidcurcxuypfrjqio.supabase.co');
   }
   const headers = stagingHeaders(await fs.readFile(new URL(`../netunim-${app}/site/_headers`, import.meta.url), 'utf8'), config);

@@ -1,4 +1,4 @@
-const productionOrigins = ['https://bargig-furniture.com', 'https://bargig-orders.pages.dev', 'https://bargig-kupa.pages.dev'];
+const productionOrigins = ['https://bargig-furniture.com', 'https://bargig-orders.pages.dev', 'https://bargig-kupa.pages.dev', 'https://orders.bargig-furniture.com', 'https://kupa.bargig-furniture.com'];
 export function edgeOrigins(extra = '') {
   const origins = new Set(productionOrigins);
   for (const entry of extra.split(',').map(x => x.trim()).filter(Boolean)) {

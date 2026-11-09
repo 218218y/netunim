@@ -3,6 +3,12 @@ import assert from 'node:assert/strict';
 import {edgeFixture} from './edge_handler_fixture.mjs';
 import {edgeOrigins,withEdgeOrigins} from '../netunim-orders/supabase/functions/_shared/edge-origins.js';
 
+test('verified custom production domains work exactly without admitting sibling/preview origins',()=>{
+  const origins=edgeOrigins();
+  for(const origin of ['https://orders.bargig-furniture.com','https://kupa.bargig-furniture.com'])assert.ok(origins.has(origin));
+  for(const origin of ['http://orders.bargig-furniture.com','https://orders.bargig-furniture.com.evil.example','https://preview.orders.bargig-furniture.com','https://preview.bargig-orders.pages.dev'])assert.equal(origins.has(origin),false);
+});
+
 for(const name of ['morning-documents','morning-expenses'])test(`${name}: actual entrypoint rejects foreign origins before auth, storage or provider actions`,async()=>{
   const f=await edgeFixture(name);
   for(const origin of ['https://evil.example','https://preview.bargig-orders.pages.dev','http://localhost:9000','null']){

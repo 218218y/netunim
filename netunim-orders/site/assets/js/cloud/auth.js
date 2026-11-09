@@ -1,3 +1,8 @@
+// Password/MFA code is loaded only during login, outside the cold startup graph.
+async function completeAuthMfa(...args){
+  const {completeSupabaseMfa}=await import('../shared/supabase-mfa.js');
+  return completeSupabaseMfa(...args);
+}
 import {createAuthenticatedAccountScope} from '../shared/authenticated-account-scope.js';
 import {createBrowserAccountObservation} from '../shared/browser-account-observation.js';
 import {createSyncCapabilityGate,syncRequestNeedsCapabilities,isSyncIncidentRpc} from '../shared/sync-capabilities.js';
@@ -97,12 +102,13 @@ const accountObservation=createBrowserAccountObservation({scope:accountScope,ses
 function loadSession(){try{return JSON.parse(localStorage.getItem(CLOUD_SESSION_KEY)||'null')}catch(e){return null}}
 
 function saveSession(s,{refresh=false}={}){capabilityGate.reset();if(s)localStorage.setItem(CLOUD_SESSION_KEY,JSON.stringify(s));else localStorage.removeItem(CLOUD_SESSION_KEY);accountScope.replace(s,{refresh})}
+function assertLoginCurrent(observed){const current=accountScope.current();if(current.epoch!==observed.epoch||current.owner!==observed.owner)throw Object.assign(new Error('ההתחברות השתנתה במהלך הכניסה. יש לנסות שוב.'),{code:'cloud_auth_scope_changed'})}
 
 function cloudAuthRequired(message='נדרשת התחברות לענן'){const error=new Error(message);error.code='cloud_auth_required';return error}
 
-async function authPassword(email,password){const r=await fetch(`${SUPA_CONFIG.url}/auth/v1/token?grant_type=password`,{method:'POST',headers:supaHeaders(),body:JSON.stringify({email,password})});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error_description||j.msg||j.message||'התחברות נכשלה');j.expires_at=Math.floor(Date.now()/1000)+Number(j.expires_in||3600);assertSessionOwner(j);saveSession(j);localStorage.setItem(CLOUD_EMAIL_KEY,email);return j}
+async function authPassword(email,password,mfa={}){const observed=accountScope.current();const r=await fetch(`${SUPA_CONFIG.url}/auth/v1/token?grant_type=password`,{method:'POST',headers:supaHeaders(),body:JSON.stringify({email,password})});let j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error_description||j.msg||j.message||'התחברות נכשלה');j=await completeAuthMfa(j,{...mfa,url:SUPA_CONFIG.url,headers:supaHeaders});j.expires_at=Math.floor(Date.now()/1000)+Number(j.expires_in||3600);assertLoginCurrent(observed);assertSessionOwner(j);saveSession(j);localStorage.setItem(CLOUD_EMAIL_KEY,email);return j}
 
-async function authPasswordForLocalReset(email,password){if(!supaConfigured())throw new Error('הגדרת Supabase חסרה');const r=await fetch(`${SUPA_CONFIG.url}/auth/v1/token?grant_type=password`,{method:'POST',headers:supaHeaders(),body:JSON.stringify({email,password})});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error_description||j.msg||j.message||'התחברות נכשלה');if(!String(j?.access_token||'').trim())throw new Error('Supabase לא החזיר token תקין לאימות האיפוס');j.expires_at=Math.floor(Date.now()/1000)+Number(j.expires_in||3600);return j}
+async function authPasswordForLocalReset(email,password,mfa={}){if(!supaConfigured())throw new Error('הגדרת Supabase חסרה');const r=await fetch(`${SUPA_CONFIG.url}/auth/v1/token?grant_type=password`,{method:'POST',headers:supaHeaders(),body:JSON.stringify({email,password})});let j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error_description||j.msg||j.message||'התחברות נכשלה');if(!String(j?.access_token||'').trim())throw new Error('Supabase לא החזיר token תקין לאימות האיפוס');j=await completeAuthMfa(j,{...mfa,url:SUPA_CONFIG.url,headers:supaHeaders});j.expires_at=Math.floor(Date.now()/1000)+Number(j.expires_in||3600);return j}
 
 async function localResetReadOnlyFetch(resetSession,path){const token=String(resetSession?.access_token||'').trim(),safePath=String(path||'');if(!token)throw Object.assign(new Error('נדרשת התחברות מחדש לענן לצורך האיפוס'),{code:'local_reset_auth_required'});if(!safePath.startsWith('/rest/v1/')||safePath.includes('/rpc/'))throw new Error('local_reset_read_only_path_rejected');const r=await fetchSupaNetwork(SUPA_CONFIG.url+safePath,{method:'GET',headers:supaHeaders(token)},{retry:true,timeoutMs:SUPA_NETWORK_TIMEOUT_MS});if(r.status===401)throw Object.assign(new Error('פג תוקף אימות הענן לצורך האיפוס'),{code:'local_reset_auth_required'});return r}
 

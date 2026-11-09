@@ -3,7 +3,7 @@ import fsSync from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import {assertBridgeNodeVersion,BRIDGE_NODE_WIN_X64_SHA256,DEFAULT_ALLOWED_ORIGINS} from './lib.mjs';
+import {assertBridgeNodeVersion,BRIDGE_NODE_WIN_X64_SHA256,DEFAULT_ALLOWED_ORIGINS,configuredDocumentOrigins} from './lib.mjs';
 
 export function bridgeDataRoot(env=process.env,home=os.homedir()){return env.NETUNIM_DOCUMENT_BRIDGE_HOME||path.join(env.LOCALAPPDATA||path.join(home,'AppData','Local'),'NetunimDocumentBridge')}
 
@@ -29,7 +29,7 @@ async function loadConfig(){
     roots:Array.isArray(raw.roots)?raw.roots:[],
     everythingInstance:String(raw.everythingInstance||'').trim(),
     everythingExecutable:String(raw.everythingExecutable||'').trim(),
-    allowedOrigins:Array.isArray(raw.allowedOrigins)&&raw.allowedOrigins.length?raw.allowedOrigins.map(String):DEFAULT_ALLOWED_ORIGINS,
+    allowedOrigins:configuredDocumentOrigins(raw.allowedOrigins),
     searchTimeoutMs:Math.max(3000,Math.min(30000,Number(raw.searchTimeoutMs)||15000)),
   };
 }

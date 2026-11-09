@@ -4,7 +4,7 @@ import {decodeEverythingCount,decodeEverythingRows} from './everything-result-co
 
 export const BRIDGE_PORT=8766;
 export const BRIDGE_SERVICE='netunim-orders-document-bridge';
-export const BRIDGE_VERSION=46;
+export const BRIDGE_VERSION=47;
 export const BRIDGE_NODE_VERSION='24.22.2';
 export const BRIDGE_NODE_WIN_X64_SHA256='1c331340fa6cac5e4294725959070a143fa0507195a78ad77eed7943f719aac9';
 export const MAX_QUERY_CHARS=240;
@@ -27,7 +27,20 @@ export const DEFAULT_ALLOWED_ORIGINS=[
   'https://bargig-furniture.com',
   'https://bargig-orders.pages.dev',
   'https://bargig-kupa.pages.dev',
+  'https://orders.bargig-furniture.com',
+  'https://kupa.bargig-furniture.com',
 ];
+
+// Upgrade only complete, previously shipped defaults. An operator's custom
+// restriction remains authoritative; old wildcard/default development entries
+// are replaced by exact production Origins rather than carried forward.
+export function configuredDocumentOrigins(value){
+  const origins=Array.isArray(value)&&value.length?value.map(String):[];
+  const previous=['https://bargig-furniture.com','https://bargig-orders.pages.dev','https://bargig-kupa.pages.dev'];
+  const legacy=[...previous,'https://*.bargig-furniture.com','https://*.bargig-orders.pages.dev','https://*.bargig-kupa.pages.dev','http://localhost:*','http://127.0.0.1:*'];
+  const same=expected=>origins.length===expected.length&&new Set(origins).size===expected.length&&origins.every(origin=>expected.includes(origin));
+  return !origins.length||same(previous)||same(legacy)?[...DEFAULT_ALLOWED_ORIGINS]:origins;
+}
 
 function text(value){return String(value??'').trim()}
 

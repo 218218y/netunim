@@ -19,12 +19,6 @@
   },
   {
     "rule": "py/bad-tag-filter",
-    "path": "tests/asset_contracts.py",
-    "sha256": "47c62db5f52ec344350645dc104d5607f3af7bdf2cf2d5b1e070a51e4d065f06",
-    "reason": "The expression extracts scripts from checked-in site HTML for a source contract; it never sanitizes or returns user HTML. Runtime XSS defenses are tested separately in real Chromium."
-  },
-  {
-    "rule": "py/bad-tag-filter",
     "path": "tests/static_contracts.py",
     "sha256": "acf7777488f0c1eb25200e1dad7c9fe73c1a6818787ce9739698853224f33574",
     "reason": "This source-only contract extracts checked-in inline script units for static validation. It is not a production sanitizer or an authorization decision."

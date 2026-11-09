@@ -3,8 +3,20 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {declaration,tokens} from './bank_policy_ast_fixture.mjs';
+import {createBridgeRuntimeFiles} from '../netunim-orders/document-bridge/bridge-runtime-files.mjs';
+import {DEFAULT_ALLOWED_ORIGINS} from '../netunim-orders/document-bridge/lib.mjs';
 const root=new URL('../netunim-orders/document-bridge/',import.meta.url),baseline=JSON.parse(readFileSync(new URL('./fixtures/document-runtime-policies.json',import.meta.url),'utf8'));
-const securityPolicies={"loadConfig": "4ebf203449be72170b06ccc58bde228342d1be3444086dcd77e2f86b2e94233c", "saveConfig": "e81f25fa03ecbc7deacdf1c2ab920e3fdd290c5552094f0033cf9d865115b516", "printDoctor": "bb0159eabd319e077dc6174519c6b6dc5bb3226aed712398f66b79a4bf5fb631", "writeInstallSummary": "ab91197a93a18a882407a5c03fdfcc5fc2f18d6d416cf452977ccc9af1102e27"};
+const securityPolicies={"saveConfig": "e81f25fa03ecbc7deacdf1c2ab920e3fdd290c5552094f0033cf9d865115b516", "printDoctor": "bb0159eabd319e077dc6174519c6b6dc5bb3226aed712398f66b79a4bf5fb631", "writeInstallSummary": "ab91197a93a18a882407a5c03fdfcc5fc2f18d6d416cf452977ccc9af1102e27"};
+const expectedLoadConfig=`async function loadConfig(){
+  const raw=await readJsonFile(CONFIG_PATH,{});
+  return {
+    roots:Array.isArray(raw.roots)?raw.roots:[],
+    everythingInstance:String(raw.everythingInstance||'').trim(),
+    everythingExecutable:String(raw.everythingExecutable||'').trim(),
+    allowedOrigins:configuredDocumentOrigins(raw.allowedOrigins),
+    searchTimeoutMs:Math.max(3000,Math.min(30000,Number(raw.searchTimeoutMs)||15000)),
+  };
+}`;
 const runtime=new Set(['ensureRoot','appendLog','readJsonFile','writeJsonFile','ensureToken','loadConfig','saveConfig','init','existsFile','normalizedRuntimePath','privateNodeRuntimeInfoSync']);
 const windowsProcesses=new Set(['bridgeListenerPid','processAlive','forceStopProcessTree','waitForProcessExit']);
 const replacements=new Set(['loopbackRequest','checkRunning','bridgeListenerPid','processAlive','forceStopProcessTree','waitForProcessExit','stopExisting']);
@@ -13,7 +25,23 @@ for(const [name,expected] of Object.entries(baseline.functions))test('Document r
  const file=windowsProcesses.has(name)?'windows-process-control.mjs':replacements.has(name)?'bridge-replacement-command.mjs':runtime.has(name)?'bridge-runtime-files.mjs':tasks.has(name)?'pdf-maintenance-task-diagnostics.mjs':name==='rebuildPdfFormIndexBacklog'?'pdf-inventory-reconciliation.mjs':'bridge-installation-diagnostics.mjs';
  const source=readFileSync(new URL(file,root),'utf8'),node=declaration(source,name);let actual=tokens(source.slice(node.start,node.end));
  if(name==='rebuildPdfFormIndexBacklog')actual=actual.replaceAll('clock.now()','Date.now()').replace('index.publish({pending:changed.length,pdfCount:full?rows.length:index.view().pdfCount});','pdfFormIndexPending=changed.length;pdfFormIndexInventoryCount=full?rows.length:pdfFormIndexInventoryCount;');
- assert.equal(createHash('sha256').update(tokens(expected.source)).digest('hex'),expected.digest);if(securityPolicies[name])assert.equal(createHash('sha256').update(actual).digest('hex'),securityPolicies[name],'reviewed security change with runtime behavior tests');else assert.equal(actual,tokens(expected.source));
+ assert.equal(createHash('sha256').update(tokens(expected.source)).digest('hex'),expected.digest);
+ if(name==='loadConfig')assert.equal(actual,tokens(expectedLoadConfig));
+ else if(securityPolicies[name])assert.equal(createHash('sha256').update(actual).digest('hex'),securityPolicies[name],'reviewed security change with runtime behavior tests');
+ else assert.equal(actual,tokens(expected.source));
+});
+
+test('actual configuration loader upgrades shipped Origins while preserving business roots and custom restrictions',async()=>{
+ const previous=['https://bargig-furniture.com','https://bargig-orders.pages.dev','https://bargig-kupa.pages.dev'];
+ const legacy=[...previous,'https://*.bargig-furniture.com','https://*.bargig-orders.pages.dev','https://*.bargig-kupa.pages.dev','http://localhost:*','http://127.0.0.1:*'];
+ const roots=['C:\\Business\\Documents'];
+ for(const allowedOrigins of [previous,legacy,['https://custom.example']]){
+  let reads=0;
+  const files={readFile:async file=>{assert.match(file,/config\.json$/);reads++;return JSON.stringify({allowedOrigins,roots,everythingInstance:' business ',searchTimeoutMs:1})}};
+  const runtime=createBridgeRuntimeFiles({root:'isolated-config-fixture',files}),config=await runtime.loadConfig();
+  assert.equal(reads,1);assert.deepEqual(config.roots,roots);assert.equal(config.everythingInstance,'business');assert.equal(config.searchTimeoutMs,3000);
+  assert.deepEqual(config.allowedOrigins,allowedOrigins===previous||allowedOrigins===legacy?DEFAULT_ALLOWED_ORIGINS:allowedOrigins);
+ }
 });
 test('the listener composes runtime diagnostics and inventory instead of owning their policies',()=>{
  const source=readFileSync(new URL('server.mjs',root),'utf8');for(const name of [...runtime,...tasks,...replacements,'printDoctor','writeInstallSummary','main','prepareShutdown','finishShutdown','documentBridgeStatus','loadPdfFormIndex','searchDocuments','deleteDocument','openDocument','previewMatches'])assert.equal(source.includes('function '+name+'('),false);

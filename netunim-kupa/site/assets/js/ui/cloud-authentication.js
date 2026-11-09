@@ -11,23 +11,69 @@ export function createCloudAuthentication({auth={},view={},storage={},transfer,o
   const enableCloudFromCurrentState=(...args)=>opening.enableCloudFromCurrentState(...args);
   const resetLocalSiteStorage=(...args)=>reset.resetLocalSiteStorage(...args);
 
+
+function mfaLoginOptions(){const code=document.getElementById?.('supaOtp')?.value.trim()||'',factorId=document.getElementById?.('supaMfaFactor')?.value||'';
+  return code||factorId?{code,factorId}:null}
+function mfaLoginArguments(email,password){const mfa=mfaLoginOptions();
+  return mfa?[email,password,mfa]:[email,password]}
+function showMfaFactors(error){if(!Array.isArray(error?.factors)||!error.factors.length)return;
+  const select=document.getElementById?.('supaMfaFactor'),group=document.getElementById?.('supaMfaChoice');
+  if(!select||!group)return;
+  select.replaceChildren();
+  if(error.factors.length>1){const option=document.createElement('option');
+  option.value='';
+  option.textContent='בחר אפליקציית אימות';
+  select.append(option)}for(const factor of error.factors){const option=document.createElement('option');
+  option.value=factor.id;
+  option.textContent=factor.name;
+  select.append(option)}group.hidden=error.factors.length<2}
+
 function openSupabaseLoginModal(mode='open'){
   if(!supaConfigured())return alert('קובץ הגדרת Supabase חסר או לא תקין.');
   const email=localStorage.getItem(SUPA_EMAIL_KEY)||'',resetMode=mode==='reset';
-  modal(resetMode?'אימות ענן לפני איפוס מקומי':mode==='upload'?'הפעלת סנכרון Supabase':'פתיחת קופה מהענן',`<div class="form-grid"><div class="form-group full"><div class="notice">${resetMode?'ההתחברות כאן משמשת רק לאימות שהקופה והצ׳קים קיימים ונגישים בענן לפני מחיקת האחסון המקומי. היא אינה פותחת, ממזגת או מעלה נתונים.':'הנתונים העסקיים נשמרים ב־Supabase ולא בזיכרון הדפדפן. בדפדפן נשמרים רק פרטי התחברות/Session כדי שלא תצטרך להתחבר בכל פתיחה.'}</div></div><div class="form-group full"><label>אימייל משתמש Supabase Auth</label><input id="supaEmail" type="email" value="${esc(email)}" autocomplete="username"></div><div class="form-group full"><label>סיסמה</label><input id="supaPassword" type="password" autocomplete="current-password"></div><div class="form-group full"><div id="supaLoginError" class="notice warn" style="display:none"></div></div>${resetMode?'':`<div class="form-group full"><div class="soft-note">${mode==='upload'?'אם עדיין אין קופה בענן, הנתונים הפתוחים כרגע יועלו כעותק הראשי. אם כבר קיימת קופה בענן, המערכת לא תדרוס אותה.':'המערכת תפתח את הקופה הקיימת בענן. אם עוד לא הועלתה קופה, פתח קודם את התיקייה המקומית והפעל ענן מתוך ההגדרות.'}</div></div>`}</div>`,resetMode?'אמת והמשך לאיפוס':mode==='upload'?'התחבר והפעל ענן':'התחבר ופתח',()=>connectSupabaseFromLogin(mode))
+  modal(resetMode?'אימות ענן לפני איפוס מקומי':mode==='upload'?'הפעלת סנכרון Supabase':'פתיחת קופה מהענן',`<div class="form-grid">
+<div class="form-group full">
+<div class="notice">${resetMode?'ההתחברות כאן משמשת רק לאימות שהקופה והצ׳קים קיימים ונגישים בענן לפני מחיקת האחסון המקומי. היא אינה פותחת, ממזגת או מעלה נתונים.':'הנתונים העסקיים נשמרים ב־Supabase ולא בזיכרון הדפדפן. בדפדפן נשמרים רק פרטי התחברות/Session כדי שלא תצטרך להתחבר בכל פתיחה.'}</div>
+</div>
+<div class="form-group full">
+<label>אימייל משתמש Supabase Auth</label>
+<input id="supaEmail" type="email" value="${esc(email)}" autocomplete="username">
+</div>
+<div class="form-group full">
+<label>סיסמה</label>
+<input id="supaPassword" type="password" autocomplete="current-password">
+</div>
+<div class="form-group full">
+<label for="supaOtp">קוד מאפליקציית האימות (אם מופעל)</label>
+<input id="supaOtp" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code">
+</div>
+<div class="form-group full" id="supaMfaChoice" hidden>
+<label for="supaMfaFactor">אפליקציית אימות</label>
+<select id="supaMfaFactor">
+</select>
+</div>
+<div class="form-group full">
+<a href="./security.html" target="_blank" rel="noopener">ניהול אימות דו־שלבי ושחזור</a>
+</div>
+<div class="form-group full">
+<div id="supaLoginError" class="notice warn" style="display:none">
+</div>
+</div>${resetMode?'':`<div class="form-group full">
+<div class="soft-note">${mode==='upload'?'אם עדיין אין קופה בענן, הנתונים הפתוחים כרגע יועלו כעותק הראשי. אם כבר קיימת קופה בענן, המערכת לא תדרוס אותה.':'המערכת תפתח את הקופה הקיימת בענן. אם עוד לא הועלתה קופה, פתח קודם את התיקייה המקומית והפעל ענן מתוך ההגדרות.'}</div>
+</div>`}</div>`,resetMode?'אמת והמשך לאיפוס':mode==='upload'?'התחבר והפעל ענן':'התחבר ופתח',()=>connectSupabaseFromLogin(mode))
 }
 
 async function connectSupabaseFromLogin(mode){
-  const email=document.getElementById('supaEmail')?.value.trim();
-  const password=document.getElementById('supaPassword')?.value||'';
+  const email=document.getElementById?.('supaEmail')?.value.trim();
+  const password=document.getElementById?.('supaPassword')?.value||'';
   if(!email||!password)return toast('יש להזין אימייל וסיסמה');
   try{
     if(mode==='reset'){
-      const resetSession=await supaAuthPasswordForLocalReset(email,password);
+      const resetSession=await supaAuthPasswordForLocalReset(...mfaLoginArguments(email,password));
       closeModal();
       return resetLocalSiteStorage({allowAuthPrompt:false,resetSession});
     }
-    await supaAuthPassword(email,password);
+    await supaAuthPassword(...mfaLoginArguments(email,password));
     if(mode==='upload'){
       const ok=await enableCloudFromCurrentState();
       if(ok)closeModal();
@@ -43,10 +89,12 @@ async function connectSupabaseFromLogin(mode){
     if(ok)closeModal();
     return ok;
   }catch(error){
+    showMfaFactors(error);
     console.error(error);
     const message='לא ניתן להתחבר ל-Supabase: '+friendlySupabaseError(error);
-    const box=document.getElementById('supaLoginError');
-    if(box){box.textContent=message;box.style.display='block'}else alert(message);
+    const box=document.getElementById?.('supaLoginError');
+    if(box){box.textContent=message;
+  box.style.display='block'}else alert(message);
     return false;
   }
 }

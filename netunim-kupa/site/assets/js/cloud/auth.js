@@ -1,3 +1,8 @@
+// Password/MFA code is loaded only during login, outside the cold startup graph.
+async function completeAuthMfa(...args){
+  const {completeSupabaseMfa}=await import('../shared/supabase-mfa.js');
+  return completeSupabaseMfa(...args);
+}
 import {createAuthenticatedAccountScope} from '../shared/authenticated-account-scope.js';
 import {createBrowserAccountObservation} from '../shared/browser-account-observation.js';
 import {createAuthSessionPersistence} from './session-store.js';
@@ -124,21 +129,21 @@ function friendlySupabaseError(e){const m=String(e?.message||e||'');if(/invalid 
 
 function supaBaseHeaders(token){const h={'apikey':SUPA_CONFIG.publishableKey,'Content-Type':'application/json'};if(token)h.Authorization=`Bearer ${token}`;return h}
 
-async function supaAuthPassword(email,password){
+async function supaAuthPassword(email,password,mfa={}){
   if(!supaConfigured())throw new Error('הגדרת Supabase חסרה');
   const observed=accountScope.current();
   const r=await fetch(`${SUPA_CONFIG.url}/auth/v1/token?grant_type=password`,{method:'POST',headers:supaBaseHeaders(),body:JSON.stringify({email,password})});
-  const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j?.error_description||j?.msg||j?.message||'התחברות Supabase נכשלה');
+  let j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j?.error_description||j?.msg||j?.message||'התחברות Supabase נכשלה');
   assertLoginCurrent(observed);
-  j.expires_at=Math.floor(Date.now()/1000)+Number(j.expires_in||3600);assertSessionOwner(j);storeSupaSession(j);localStorage.setItem(SUPA_EMAIL_KEY,email);localStorage.setItem(SUPA_AUTO_KEY,'1');session.cloudAuthNoDocument=false;setCloudHeaderStatus('auth','ענן: מחובר לחשבון');return j
+  j=await completeAuthMfa(j,{...mfa,url:SUPA_CONFIG.url,headers:supaBaseHeaders});j.expires_at=Math.floor(Date.now()/1000)+Number(j.expires_in||3600);assertLoginCurrent(observed);assertSessionOwner(j);storeSupaSession(j);localStorage.setItem(SUPA_EMAIL_KEY,email);localStorage.setItem(SUPA_AUTO_KEY,'1');session.cloudAuthNoDocument=false;setCloudHeaderStatus('auth','ענן: מחובר לחשבון');return j
 }
 
-async function supaAuthPasswordForLocalReset(email,password){
+async function supaAuthPasswordForLocalReset(email,password,mfa={}){
   if(!supaConfigured())throw new Error('הגדרת Supabase חסרה');
   const r=await fetch(`${SUPA_CONFIG.url}/auth/v1/token?grant_type=password`,{method:'POST',headers:supaBaseHeaders(),body:JSON.stringify({email,password})});
-  const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j?.error_description||j?.msg||j?.message||'התחברות Supabase נכשלה');
+  let j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j?.error_description||j?.msg||j?.message||'התחברות Supabase נכשלה');
   if(!String(j?.access_token||'').trim())throw new Error('Supabase לא החזיר token תקין לאימות האיפוס');
-  j.expires_at=Math.floor(Date.now()/1000)+Number(j.expires_in||3600);return j
+  j=await completeAuthMfa(j,{...mfa,url:SUPA_CONFIG.url,headers:supaBaseHeaders});j.expires_at=Math.floor(Date.now()/1000)+Number(j.expires_in||3600);return j
 }
 
 async function localResetReadOnlyFetch(resetSession,path){

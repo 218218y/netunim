@@ -76,7 +76,7 @@ class WorktreeSnapshot:
         if tax_root.is_dir():
             paths.extend(path for path in tax_root.rglob('*') if path.is_file() and path.suffix in {'.js', '.css'})
         fixed = (
-            'service-worker.js', 'index.html', 'assets/app.css', 'manifest.webmanifest',
+            'service-worker.js', 'index.html', 'security.html', 'assets/app.css', 'manifest.webmanifest',
             'supabase/config.js', 'favicon.ico', 'favicon-16x16.png', 'favicon-32x32.png',
             'apple-touch-icon.png', 'android-chrome-192x192.png', 'android-chrome-512x512.png', '_headers',
         )
@@ -221,7 +221,7 @@ def render_worker(label: str, snapshot: OverlaySnapshot, worker_path: str) -> by
         if path.startswith(asset_prefix) and path.lower().endswith(('.js', '.css'))
         and not path.startswith(asset_prefix+'vendor/')
     )
-    shell = ['./', './index.html', './reset-local.html']
+    shell = ['./', './index.html', './reset-local.html', './security.html']
     shell += ['./' + PurePosixPath(path).relative_to(site).as_posix() for path in assets]
     shell += [
         './manifest.webmanifest', './supabase/config.js', './favicon.ico',
