@@ -38,8 +38,11 @@ export function configuredDocumentOrigins(value){
   const origins=Array.isArray(value)&&value.length?value.map(String):[];
   const previous=['https://bargig-furniture.com','https://bargig-orders.pages.dev','https://bargig-kupa.pages.dev'];
   const legacy=[...previous,'https://*.bargig-furniture.com','https://*.bargig-orders.pages.dev','https://*.bargig-kupa.pages.dev','http://localhost:*','http://127.0.0.1:*'];
+  // Before Kupa shared this service, v19 and earlier shipped these six entries.
+  // Those persisted files survive reinstall and have no Kupa entries at all.
+  const ordersOnlyLegacy=legacy.filter(origin=>!origin.includes('bargig-kupa.pages.dev'));
   const same=expected=>origins.length===expected.length&&new Set(origins).size===expected.length&&origins.every(origin=>expected.includes(origin));
-  return !origins.length||same(previous)||same(legacy)?[...DEFAULT_ALLOWED_ORIGINS]:origins;
+  return !origins.length||[previous,legacy,ordersOnlyLegacy].some(same)?[...DEFAULT_ALLOWED_ORIGINS]:origins;
 }
 
 function text(value){return String(value??'').trim()}
