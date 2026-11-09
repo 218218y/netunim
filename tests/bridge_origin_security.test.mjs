@@ -11,8 +11,9 @@ test('Document Origin upgrades replace only shipped defaults and retain intentio
   const legacy=[...previous,'https://*.bargig-furniture.com','https://*.bargig-orders.pages.dev','https://*.bargig-kupa.pages.dev','http://localhost:*','http://127.0.0.1:*'];
   for(const value of [undefined,[],previous,legacy])assert.deepEqual(configuredDocumentOrigins(value),DEFAULT_ALLOWED_ORIGINS);
   for(const value of [['https://custom.example'],['https://bargig-orders.pages.dev'],[...legacy,'https://custom.example']])assert.deepEqual(configuredDocumentOrigins(value),value);
-  const result=configuredDocumentOrigins(previous);result.push('https://late.example');
-  assert.equal(DEFAULT_ALLOWED_ORIGINS.includes('https://late.example'),false);
+  const original=[...DEFAULT_ALLOWED_ORIGINS],result=configuredDocumentOrigins(previous);
+  result.push('https://late.example');
+  assert.deepEqual(DEFAULT_ALLOWED_ORIGINS,original);
 });
 
 async function fixture(t,kind,originPolicy){
