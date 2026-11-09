@@ -24,6 +24,8 @@ from public_asset_names import asset_name_violations
 ROOT = Path(__file__).resolve().parents[1]
 APPS = ('kupa', 'orders')
 BRIDGE_SHARED_SOURCES = {
+    'netunim-orders/document-bridge/scoped-pairing.mjs': 'netunim-kupa/bank-bridge/scoped-pairing.mjs',
+    'netunim-orders/document-bridge/pairing-console.mjs': 'netunim-kupa/bank-bridge/pairing-console.mjs',
     'netunim-orders/document-bridge/install_node_runtime.ps1': 'netunim-kupa/bank-bridge/install_node_runtime.ps1',
     'shared/document-text-search.js': 'netunim-orders/document-bridge/document-text-search.mjs',
     'shared/bank-money-value.js': 'netunim-kupa/bank-bridge/bank-money-value.mjs',

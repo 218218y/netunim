@@ -5,6 +5,7 @@ import path from 'node:path';
 import {arrayBuffer, json} from 'node:stream/consumers';
 import {pathToFileURL} from 'node:url';
 import {bridgeDataRoot} from '../netunim-orders/document-bridge/bridge-runtime-files.mjs';
+import {readPairingAdminToken} from '../netunim-orders/document-bridge/scoped-pairing.mjs';
 
 const operations = new Map([
   ['search', '/documents/search'], ['recent', '/documents/recent'],
@@ -65,9 +66,10 @@ function canonicalJson(value) {
   return JSON.stringify(value);
 }
 
-function scenarioFingerprint(key, {machine, origin, warmups}, {id, operation, search, resultIndex}) {
+function scenarioFingerprint(key, {machine, origin, warmups, native}, {id, operation, search, resultIndex}) {
   return createHmac('sha256', key).update(canonicalJson({
     contract: 'netunim-document-measurement-v2', machine, origin, warmups, id, operation,
+    ...(native ? {transport: 'native'} : {}),
     search: search ?? {}, resultIndex: previewOperations.has(operation) ? resultIndex ?? 0 : null,
   })).digest('hex');
 }
@@ -124,7 +126,7 @@ function classifySamples(samples) {
 
 // Only fixed loopback read routes are used. Reports keep an opaque HMAC and
 // numeric summaries. Bodies, selected IDs and credentials stay in memory.
-export async function measurePlan(plan, {token, fingerprintKey, port = 8766, fetchRequest = requestDirectly, signal} = {}) {
+export async function measurePlan(plan, {token, fingerprintKey, port = 8766, fetchRequest = requestDirectly, signal, native = false} = {}) {
   if (!/^computer-[1-3]$/.test(plan.machine) || !Array.isArray(plan.scenarios) ||
       !plan.scenarios.length || plan.scenarios.length > 50) throw Error('invalid_measurement_plan');
   if (!Number.isSafeInteger(port) || port < 1024 || port > 65535 || !token) throw Error('invalid_loopback_configuration');
@@ -155,7 +157,7 @@ export async function measurePlan(plan, {token, fingerprintKey, port = 8766, fet
       requestSignal.throwIfAborted();
       const response = await fetchRequest(base + route, {
         method: 'POST', redirect: 'error', signal: requestSignal,
-        headers: {Origin: plan.origin, Authorization: 'Bearer ' + token, 'Content-Type': 'application/json'},
+        headers: {...(native ? {} : {Origin: plan.origin}), Authorization: 'Bearer ' + token, 'Content-Type': 'application/json'},
         body: JSON.stringify(body),
       });
       status = response.status;
@@ -176,7 +178,7 @@ export async function measurePlan(plan, {token, fingerprintKey, port = 8766, fet
   const report = {schema: 2, machine: plan.machine, measuredAt: new Date().toISOString(), repetitions, warmups, scenarios: []};
   for (const scenario of plan.scenarios) {
     const {id, operation} = scenario;
-    const fingerprint = scenarioFingerprint(fingerprintKey, {...plan, warmups}, scenario);
+    const fingerprint = scenarioFingerprint(fingerprintKey, {...plan, warmups, native}, scenario);
     const route = operations.get(operation);
     let body = scenario.search ?? {};
     if (previewOperations.has(operation)) {
@@ -230,18 +232,22 @@ async function loadFingerprintKey(root) {
 }
 
 async function main() {
-  const [planFile, outputFile, baselineFile] = process.argv.slice(2);
+  const args = process.argv.slice(2);
+  const native = args[0] === '--native';
+  if (native) args.shift();
+  const [planFile, outputFile, baselineFile] = args;
   if (!planFile || !outputFile) throw Error('usage');
   const root = bridgeDataRoot();
   const plan = JSON.parse(await fs.readFile(planFile, 'utf8'));
-  const token = (await fs.readFile(path.join(root, 'bridge-token.txt'), 'utf8')).trim();
+  const token = native ? await readPairingAdminToken(root) :
+    (await fs.readFile(path.join(root, 'bridge-token.txt'), 'utf8')).trim();
   const fingerprintKey = await loadFingerprintKey(root);
   const controller = new AbortController();
   const cancel = () => controller.abort();
   process.on('SIGINT', cancel);
   let report;
   try {
-    report = await measurePlan(plan, {token, fingerprintKey, signal: controller.signal});
+    report = await measurePlan(plan, {token, fingerprintKey, signal: controller.signal, native});
   } finally {
     process.off('SIGINT', cancel);
   }

@@ -33,7 +33,7 @@ export const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)
 export function serverFixture(version='current',options={}) {
  let time=10_000,id=0;const calls=[],logs=[],stats=[],invalidations=[];
  const stat={size:20,mtimeMs:50,mtime:new Date(50),isDirectory:()=>false};
- const context={documentAccess:{authorize:async value=>value,admit:async rows=>rows},publication:{admit:options.admit},...lib,createDocumentSearch,createDocumentResultRegistry,performance,setImmediate,
+ const context={pairing:undefined,documentAccess:{authorize:async value=>value,admit:async rows=>rows},publication:{admit:options.admit},...lib,createDocumentSearch,createDocumentResultRegistry,performance,setImmediate,
   Date:{now:()=>time},everythingSession:{dispose:async()=>{}},everythingDiscovery:{dispose:async()=>{}},everythingProcesses:{dispose:async()=>{}},crypto:{randomUUID:()=>`opaque-${++id}`},fs:{stat:async fullPath=>{stats.push(fullPath);return options.stat?options.stat(fullPath):stat}},
   requestResults:new Map(),pdfFormIndex:new Map(),previewTextCache:{invalidate:key=>invalidations.push(key),dispose:()=>{}},
   loadPdfFormIndex:async()=>{if(options.pdfLoad){calls.push(['pdf-prepare']);await options.pdfLoad()}},appendPdfIndexJournal:async()=>{},

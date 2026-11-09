@@ -11,8 +11,8 @@ const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 test('the actual replacement CLI cannot mistake an unanswered health probe for an absent process',{timeout:15000},async t=>{
   const f=await bankStage(t,{prepare:async({runtime})=>{
     const entry=path.join(runtime,'server.mjs'),source=await fs.readFile(entry,'utf8');
-    const anchor='activeServer=http.createServer(handler);';assert.ok(source.includes(anchor));
-    await fs.writeFile(entry,source.replace(anchor,"activeServer=http.createServer((req,res)=>req.url==='/health'?undefined:handler(req,res));"));
+    const anchor='activeServer=http.createServer((req,res)=>{';assert.ok(source.includes(anchor));
+    await fs.writeFile(entry,source.replace(anchor,anchor+"\n  if(req.url==='/health')return;"));
   }});
   let output='';const cli=spawn(process.execPath,[path.join(f.runtime,'server.mjs'),'--stop-existing'],{cwd:f.runtime,env:{...process.env,LOCALAPPDATA:f.directory},windowsHide:true,stdio:['ignore','pipe','pipe']});const exited=once(cli,'exit');
   cli.stdout.on('data',chunk=>{output+=chunk});cli.stderr.on('data',chunk=>{output+=chunk});t.after(async()=>{if(cli.exitCode===null)cli.kill();await exited});

@@ -27,6 +27,7 @@ const tasks=new Set(['taskResultLabel','pdfMaintenanceTaskDiagnostics','taskActi
 for(const [name,expected] of Object.entries(baseline.functions).filter(([name])=>name!=='appendLog'))test('Document runtime preserves '+name,()=>{
  const file=windowsProcesses.has(name)?'windows-process-control.mjs':replacements.has(name)?'bridge-replacement-command.mjs':runtime.has(name)?'bridge-runtime-files.mjs':tasks.has(name)?'pdf-maintenance-task-diagnostics.mjs':name==='rebuildPdfFormIndexBacklog'?'pdf-inventory-reconciliation.mjs':'bridge-installation-diagnostics.mjs';
  const source=readFileSync(new URL(file,root),'utf8'),node=declaration(source,name);let actual=tokens(source.slice(node.start,node.end));
+ if(name==='stopExisting')actual=actual.replaceAll('credential','token').replace("health.data?.pairingProtocol===1?await token.readAdmin():await fs.readFile(TOKEN_PATH,'utf8')","await fs.readFile(TOKEN_PATH,'utf8')").replace('token:token,timeoutMs','token,timeoutMs');
  if(name==='init')actual=actual.replace('await auditLog.prune();','');
  if(name==='rebuildPdfFormIndexBacklog')actual=actual.replaceAll('clock.now()','Date.now()').replace('index.publish({pending:changed.length,pdfCount:full?rows.length:index.view().pdfCount});','pdfFormIndexPending=changed.length;pdfFormIndexInventoryCount=full?rows.length:pdfFormIndexInventoryCount;');
  assert.equal(createHash('sha256').update(tokens(expected.source)).digest('hex'),expected.digest);

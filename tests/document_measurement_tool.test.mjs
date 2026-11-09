@@ -80,6 +80,16 @@ test('failed and partial responses are counted and never used as latency samples
   assert.throws(() => compareReports(report, report), /baseline_insufficient_complete_samples/);
 });
 
+test('native measurement omits Origin and cannot be compared to the site transport', async () => {
+  const ordinary = await measurePlan(single(), {...options, fetchRequest: async () => json()});
+  const native = await measurePlan(single(), {...options, native:true, fetchRequest: async (_url, {headers}) => {
+    assert.equal(headers.Origin, undefined);
+    return json();
+  }});
+  assert.equal(native.scenarios[0].sampleCount, 20);
+  assert.throws(() => compareReports(native, ordinary), /baseline_scenario_changed/);
+});
+
 test('cancellation during response decoding records the attempt without retrying', async () => {
   const controller = new AbortController();
   let calls = 0;

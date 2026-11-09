@@ -11,14 +11,15 @@
  * size: number | null, extension: string, attributes: string, isDirectory: boolean,
  * rootId: 'everything', rootLabel: 'Everything'}} PublicDocumentRow
  * @typedef {{fullPath: string, name: string, relativePath: string, modified: string,
- * size: number | null, attributes: string, expiresAt: number} & ResultContext} StoredResult
+ * size: number | null, attributes: string, expiresAt: number, principal?: string} & ResultContext} StoredResult
  * @typedef {{size: number, mtimeMs: number, mtime: Date, isDirectory: () => boolean}} ResultStat
  * @typedef {{clock: {now: () => number, ttlMs: number}, identity: {next: () => string},
- * files: {stat: (fullPath: string) => Promise<ResultStat>, authorize?: (fullPath:string) => Promise<string>}}} ResultRegistryPorts
+ * files: {stat: (fullPath: string) => Promise<ResultStat>, authorize?: (fullPath:string) => Promise<string>},
+ * authority?: {principal:()=>string|undefined, assertCurrent:()=>void}}} ResultRegistryPorts
  */
 
 /** @param {ResultRegistryPorts} ports */
-export function createDocumentResultRegistry({ clock, identity, files }) {
+export function createDocumentResultRegistry({ clock, identity, files, authority }) {
   /** @type {Map<string, StoredResult>} */ const entries = new Map();
   let disposed = false;
   function assertActive() {
@@ -35,6 +36,8 @@ export function createDocumentResultRegistry({ clock, identity, files }) {
   /** @param {DocumentRow} row @param {ResultContext} context @returns {PublicDocumentRow} */
   function publish(row, context) {
     assertActive();
+    authority?.assertCurrent();
+    const principal = authority?.principal();
     const id = identity.next();
     entries.set(id, {
       fullPath: row.fullPath,
@@ -46,6 +49,7 @@ export function createDocumentResultRegistry({ clock, identity, files }) {
       query: context.query,
       mode: context.mode,
       contentSearch: context.contentSearch,
+      ...(principal ? {principal} : {}),
       expiresAt: clock.now() + clock.ttlMs
     });
     return {
@@ -66,7 +70,7 @@ export function createDocumentResultRegistry({ clock, identity, files }) {
     assertActive();
     prune();
     const row = entries.get(String(id || ''));
-    if (!row)
+    if (!row || row.principal !== authority?.principal())
       throw Object.assign(new Error('תוצאת החיפוש פגה. חפש שוב את הקובץ.'), {
         code: 'RESULT_EXPIRED'
       });
@@ -79,6 +83,7 @@ export function createDocumentResultRegistry({ clock, identity, files }) {
         code: 'OPEN_TARGET_MISSING'
       });
     }
+    authority?.assertCurrent();
     return { row:{...row,fullPath,...(fullPath===row.fullPath?{}:{indexedPath:row.fullPath})}, stat };
   }
   /** @param {unknown} fullPath */
@@ -89,7 +94,7 @@ export function createDocumentResultRegistry({ clock, identity, files }) {
       if (String(row.fullPath || '').toLocaleLowerCase('en-US') !== target)
         continue;
       entries.delete(id);
-      invalidatedIds.push(id);
+      if (row.principal === authority?.principal()) invalidatedIds.push(id);
     }
     return invalidatedIds;
   }
@@ -97,5 +102,5 @@ export function createDocumentResultRegistry({ clock, identity, files }) {
     disposed = true;
     entries.clear();
   }
-  return { prune, publish, resolve, invalidate, dispose };
+  return { prune, publish, resolve, invalidate, dispose, assertAuthorized:()=>authority?.assertCurrent() };
 }

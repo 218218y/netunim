@@ -157,17 +157,29 @@ export function createBridgeService({files,search,pdf,documents,maintenance,inst
     if(arg==='--write-install-summary'){await writeInstallSummary();return}
     if(process.platform!=='win32')throw new Error('Document Bridge is intended for Windows.');
     await init();
-    const handle=createRequestHandler();
-    server=http.createServer((req,res)=>{handle(req,res).catch(async error=>{
+    let handle, startup;
+    server=http.createServer((req,res)=>{
+      const response=handle?handle(req,res):startup.then(handler=>handler(req,res));
+      void response.catch(async error=>{
         await appendLog(`UNHANDLED code=${error?.code||'ERROR'}`);
         try{res.writeHead(500,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(safeError(error)))}catch{}
-      })});
+      });
+    });
     server.on('error',error=>appendLog(`SERVER code=${error?.code||'ERROR'}`));
     server.listen(BRIDGE_PORT,'127.0.0.1',()=>{
-      const cleanup=setInterval(()=>{void files.pruneLogs?.()},60*60*1000);
-      cleanup.unref();
-      appendLog(`START ${BRIDGE_SERVICE} v${BRIDGE_VERSION} node=${process.versions.node} on 127.0.0.1:${BRIDGE_PORT}`);
-      probeEverything({fresh:true,autoStart:true}).then(()=>appendLog('EVERYTHING_READY')).catch(error=>appendLog(`EVERYTHING_BACKGROUND_START_FAILED code=${error?.code||'ERROR'}`))
+      // A concurrent startup that loses the port cannot initialize the registry.
+      startup=Promise.resolve().then(createRequestHandler);
+      void startup.then(handler=>{
+        handle=handler;
+        const cleanup=setInterval(()=>{void files.pruneLogs?.()},60*60*1000);
+        cleanup.unref();
+        appendLog(`START ${BRIDGE_SERVICE} v${BRIDGE_VERSION} node=${process.versions.node} on 127.0.0.1:${BRIDGE_PORT}`);
+        probeEverything({fresh:true,autoStart:true}).then(()=>appendLog('EVERYTHING_READY')).catch(error=>appendLog(`EVERYTHING_BACKGROUND_START_FAILED code=${error?.code||'ERROR'}`))
+      },async()=>{
+        await appendLog('PAIRING_STARTUP_FAILED');
+        server.close();
+        process.exitCode=1;
+      });
     });
   }
   return {

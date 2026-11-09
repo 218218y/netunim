@@ -31,6 +31,7 @@ export function createConnectionCommands({ operations, vault, artifacts }) {
         if (duplicate)
             throw Object.assign(new Error(`כבר קיים חיבור ${creditProfilePublic(duplicate).label} לאותה זהות בחברה. חיבור אחד מחזיר את כל הכרטיסים של אותה זהות; אין ליצור חיבור נפרד לכל כרטיס.`), { code: 'CREDIT_DUPLICATE_LOGIN' });
         const next = existing ? profiles.map(p => p.profileId === existing.profileId ? normalized : p) : [...profiles, normalized];
+        operations.assertAuthorized?.();
         await vault.writeCreditProfiles(next);
         await artifacts.clearCreditData();
         if (existing && artifacts.creditIdentity(existing) !== artifacts.creditIdentity(normalized))
@@ -42,6 +43,7 @@ export function createConnectionCommands({ operations, vault, artifacts }) {
         if (!profileId)
             throw Object.assign(new Error('חסר מזהה חיבור אשראי למחיקה'), { code: 'MISSING_PROFILE_ID' });
         const removed = profiles.find(p => p.profileId === profileId), next = profiles.filter(p => p.profileId !== profileId);
+        operations.assertAuthorized?.();
         await vault.writeCreditProfiles(next);
         await artifacts.clearCreditData();
         if (removed)
@@ -60,6 +62,7 @@ export function createConnectionCommands({ operations, vault, artifacts }) {
             throw Object.assign(new Error('לחשבון הביתי יש להזין גם סניף וגם מספר חשבון'), { code: 'INCOMPLETE_ACCOUNT_SELECTOR', accountRole: 'home' });
         if (businessBranchNumber && homeBranchNumber && businessBranchNumber === homeBranchNumber && businessAccountNumber === homeAccountNumber)
             throw Object.assign(new Error('החשבון העסקי והחשבון הביתי חייבים להיות שני חשבונות שונים'), { code: 'DUPLICATE_ACCOUNT_ROLE', accountRole: 'home' });
+        operations.assertAuthorized?.();
         await settleConnectionJobs([artifacts.clearBank(), artifacts.writeBankMeta({sessionUrl:''})]);
         await vault.writeCredentials({ userCode, password, businessBranchNumber, businessAccountNumber, homeBranchNumber, homeAccountNumber });
         await artifacts.writeBankMeta({ sessionUrl: '', lastError: '', lastErrorAt: null, lastErrorCode: '', lastErrorStage: '', lastErrorHttpStatus: 0, lastWarning: '', lastWarningCode: '', lastWarningStage: '', lastWarningHttpStatus: 0, lastAvailableAccounts: [], lastAccountRole: '' });
@@ -76,20 +79,24 @@ export function createConnectionCommands({ operations, vault, artifacts }) {
         const next = normalizeStoredCredentials({ ...credentials, ...patch });
         if (next.businessBranchNumber && next.homeBranchNumber && next.businessBranchNumber === next.homeBranchNumber && next.businessAccountNumber === next.homeAccountNumber)
             throw Object.assign(new Error('החשבון העסקי והחשבון הביתי חייבים להיות שני חשבונות שונים'), { code: 'DUPLICATE_ACCOUNT_ROLE', accountRole: role });
+        operations.assertAuthorized?.();
         await vault.writeCredentials(next);
         await artifacts.writeBankMeta({ lastError: '', lastErrorAt: null, lastErrorCode: '', lastErrorStage: '', lastErrorHttpStatus: 0, lastWarning: '', lastWarningCode: '', lastWarningStage: '', lastWarningHttpStatus: 0, lastAvailableAccounts: [], lastAccountRole: '' });
         return { configured: true, role, branchNumber, accountNumber, businessBranchNumber: next.businessBranchNumber, businessAccountNumber: next.businessAccountNumber, homeBranchNumber: next.homeBranchNumber, homeAccountNumber: next.homeAccountNumber };
     });
     const deleteCredentials = () => operations.configuration(async () => {
+        operations.assertAuthorized?.();
         await settleConnectionJobs([vault.deleteCredentials(), artifacts.clearBank(), artifacts.writeBankMeta({sessionUrl:''})]);
         await artifacts.writeBankMeta({ lastError: '', lastErrorAt: null, lastErrorCode: '', lastErrorStage: '', lastErrorHttpStatus: 0, lastWarning: '', lastWarningCode: '', lastWarningStage: '', lastWarningHttpStatus: 0, lastAvailableAccounts: [], lastAccountRole: '' });
         return { configured: false };
     });
     const resetCreditProfiles = () => operations.configuration(async () => {
+        operations.assertAuthorized?.();
         await settleConnectionJobs([vault.deleteCreditProfiles(), artifacts.resetCredit()]);
     });
     const importConnectionSettings = (body) => operations.configuration(async () => {
         const normalized = normalizeConnectionImportDocument(body);
+        operations.assertAuthorized?.();
         await settleConnectionJobs([artifacts.clearBank(), artifacts.writeBankMeta({sessionUrl:''})]);
         await vault.replaceConnections(normalized);
         const cleanupWarnings = await artifacts.clearImported();

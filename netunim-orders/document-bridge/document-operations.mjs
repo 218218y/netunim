@@ -38,6 +38,7 @@ export function createDocumentOperations({registry,preview,pdf,native,search,pla
     const extension=documentExtension(row.fullPath),officeKind=officePreviewKind(extension);
     if(!officeKind){const e=new Error('תצוגת Windows המקורית מופעלת כרגע למסמכי Office בלבד.');e.code='NATIVE_PREVIEW_UNSUPPORTED';throw e}
     const box=normalizePreviewGeometry(geometry),encoded=Buffer.from(row.fullPath,'utf8').toString('base64');
+    documentResults.assertAuthorized?.();
     await nativePreviewCommand(box.coordinateSpace==='viewport'?'OPEN_VIEWPORT':'OPEN',[encoded,box.x,box.y,box.width,box.height,...(box.coordinateSpace==='viewport'?[box.viewportWidth,box.viewportHeight]:[])],9000);
     await appendLog(`NATIVE_PREVIEW_OPEN kind=${officeKind}`);
     return {ok:true,kind:'native',officeKind};
@@ -155,6 +156,7 @@ export function createDocumentOperations({registry,preview,pdf,native,search,pla
   // registered default "open" action for a directory/document in the user's
   // interactive shell and does not wait for explorer.exe to exit.
     const script='$p=$env:NETUNIM_OPEN_TARGET; $psi=New-Object System.Diagnostics.ProcessStartInfo; $psi.FileName=$p; $psi.UseShellExecute=$true; [void][System.Diagnostics.Process]::Start($psi)';
+    documentResults.assertAuthorized?.();
     await execFile('powershell.exe',['-NoProfile','-NonInteractive','-Command',script],{windowsHide:true,timeout:7000,env});
     await appendLog(`OPEN type=${stat.isDirectory()?'folder':'file'} shell=UseShellExecute`);
     return {ok:true,type:stat.isDirectory()?'folder':'file'};
@@ -164,6 +166,7 @@ export function createDocumentOperations({registry,preview,pdf,native,search,pla
     if(process.platform!=='win32'){const e=new Error('פתיחת מיקום נתמכת רק ב-Windows.');e.code='WINDOWS_REQUIRED';throw e}
     const env={...process.env,NETUNIM_REVEAL_TARGET:row.fullPath};
     const script=`$p=$env:NETUNIM_REVEAL_TARGET; $psi=New-Object System.Diagnostics.ProcessStartInfo; $psi.FileName='explorer.exe'; $psi.Arguments=('/select,"{0}"' -f $p); $psi.UseShellExecute=$true; [void][System.Diagnostics.Process]::Start($psi)`;
+    documentResults.assertAuthorized?.();
     await execFile('powershell.exe',['-NoProfile','-NonInteractive','-Command',script],{windowsHide:true,timeout:7000,env});
     await appendLog(`REVEAL type=${stat.isDirectory()?'folder':'file'} shell=ExplorerSelect`);
     return {ok:true,type:stat.isDirectory()?'folder':'file'};
@@ -185,6 +188,7 @@ export function createDocumentOperations({registry,preview,pdf,native,search,pla
     await hideNativePreview();
     const env={...process.env,NETUNIM_DELETE_TARGET:row.fullPath};
     const script='Add-Type -AssemblyName Microsoft.VisualBasic; $p=$env:NETUNIM_DELETE_TARGET; $ui=[Microsoft.VisualBasic.FileIO.UIOption]::OnlyErrorDialogs; $recycle=[Microsoft.VisualBasic.FileIO.RecycleOption]::SendToRecycleBin; $cancel=[Microsoft.VisualBasic.FileIO.UICancelOption]::ThrowException; if([System.IO.File]::Exists($p)){[Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($p,$ui,$recycle,$cancel)}else{throw "Target is not an existing file."}';
+    documentResults.assertAuthorized?.();
     await execFile('powershell.exe',['-NoProfile','-NonInteractive','-Command',script],{windowsHide:true,timeout:30000,env});
     let missing=false;
     try{await fs.stat(row.fullPath)}catch(error){if(error?.code==='ENOENT')missing=true;else throw error}

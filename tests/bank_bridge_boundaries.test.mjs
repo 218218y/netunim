@@ -27,7 +27,8 @@ test('Bank HTTP/capability boundaries have explicit dependency and collaborator 
     ['credit-provider',['node:crypto','./credit-profile-model.mjs','./credit-failure-policy.mjs','./credit-adapter-wire.mjs','./credit-sync-scope.mjs','./credit-diagnostic-model.mjs'],'createCreditProvider',3],
     ['shutdown-owner',[],'createBridgeShutdownOwner',3],
     ['replacement-command',[],'createBridgeReplacementCommand',4],
-    ['http-handler',['node:crypto','./wire-errors.mjs','./origin-policy.mjs'],'createBankBridgeHttpHandler',5],
+    // Pairing is a single injected authority port. The handler has no registry or platform access.
+    ['http-handler',['node:crypto','./wire-errors.mjs','./origin-policy.mjs'],'createBankBridgeHttpHandler',6],
     ['http-routes',[],'createBankBridgeRoutes',8],
     ['finance-commands',["./hapoalim-policy.mjs","./credit-sync-scope.mjs","./credit-data-diagnostics.mjs"],'createFinanceCommands',3],
     ['connection-queries',['./connection-commands.mjs'],'createConnectionQueries',3],

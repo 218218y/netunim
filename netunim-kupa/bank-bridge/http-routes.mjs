@@ -7,8 +7,8 @@
  * @typedef {Record<string,unknown>} JsonResult
  * @typedef {{bank:Record<string,string>,profiles:readonly unknown[],cleanupWarnings:readonly string[]}} ConnectionImportResult
  * @typedef {{data:Uint8Array,size:number,contentType:string}} ChequeImage
- * @typedef {{response:'json',readBody:boolean,run:(body:unknown)=>Promise<unknown>|unknown,afterResponse?:()=>void} |
- * {response:'binary',readBody:false,run:()=>Promise<ChequeImage|null>}} BankBridgeRoute
+ * @typedef {{permission:string|string[],response:'json',readBody:boolean,run:(body:unknown)=>Promise<unknown>|unknown,afterResponse?:()=>void} |
+ * {permission:string,response:'binary',readBody:false,run:()=>Promise<ChequeImage|null>}} BankBridgeRoute
  * @typedef {{version:number,contractVersion:number,
  * service:{bankStatus:()=>Promise<JsonResult>,creditStatus:()=>Promise<JsonResult>},
  * connections:{saveCreditProfile:(body:unknown)=>Promise<JsonResult>,deleteCreditProfile:(body:unknown)=>Promise<JsonResult>,
@@ -36,26 +36,26 @@ export function createBankBridgeRoutes({version,contractVersion,service,connecti
   }
   /** @type {Map<string,BankBridgeRoute>} */
   const routes=new Map();
-  /** @param {string} key @param {(body:unknown)=>Promise<unknown>|unknown} run @param {boolean} [readBody] */
-  const json=(key,run,readBody=false)=>routes.set(key,Object.freeze({response:'json',readBody,run}));
-  json('GET /status',async()=>({ok:true,bridgeVersion:version,...await service.bankStatus()}));
-  json('GET /credit/status',async()=>({ok:true,bridgeVersion:version,contractVersion,...await service.creditStatus()}));
-  json('POST /settings/import',async body=>{
+  /** @param {string} key @param {string|string[]} permission @param {(body:unknown)=>Promise<unknown>|unknown} run @param {boolean} [readBody] */
+  const json=(key,permission,run,readBody=false)=>routes.set(key,Object.freeze({response:'json',permission,readBody,run}));
+  json('GET /status','bank.read',async()=>({ok:true,bridgeVersion:version,...await service.bankStatus()}));
+  json('GET /credit/status','bank.read',async()=>({ok:true,bridgeVersion:version,contractVersion,...await service.creditStatus()}));
+  json('POST /settings/import',['bank.configure','bank.remove'],async body=>{
     const imported=await connections.importConnectionSettings(body);
     return {ok:true,bridgeVersion:version,configured:true,bank:imported.bank,credit:{contractVersion,profiles:imported.profiles},cleanupWarnings:imported.cleanupWarnings};
   },true);
-  json('GET /credit/diagnostics',async()=>({ok:true,contractVersion,events:await diagnostics.credit()}));
-  json('GET /credit/data-diagnostics',()=>diagnostics.creditData());
-  json('GET /bank/diagnostics',()=>diagnostics.bank());
-  json('POST /credit/profiles',async body=>({ok:true,contractVersion,...await connections.saveCreditProfile(body)}),true);
-  json('DELETE /credit/profiles',async body=>({ok:true,contractVersion,...await connections.deleteCreditProfile(body)}),true);
-  json('POST /credit/reset',async()=>{await connections.resetCreditProfiles();return {ok:true,profiles:[],lastSyncAt:null,lastErrors:[]}});
-  json('POST /credentials',async body=>({ok:true,...await connections.saveCredentials(body)}),true);
-  json('POST /account-selection',async body=>({ok:true,...await connections.selectAccount(body)}),true);
-  json('DELETE /credentials',async()=>({ok:true,...await connections.deleteCredentials()}));
-  json('POST /balance',async body=>({ok:true,...await finance.balance(body)}),true);
-  json('POST /credit/sync',async body=>({ok:true,...await finance.syncCredit(body)}),true);
-  routes.set('POST /shutdown',Object.freeze({response:'json',readBody:false,run:()=>({ok:true}),afterResponse:()=>shutdown.afterResponse()}));
+  json('GET /credit/diagnostics','bank.read',async()=>({ok:true,contractVersion,events:await diagnostics.credit()}));
+  json('GET /credit/data-diagnostics','bank.read',()=>diagnostics.creditData());
+  json('GET /bank/diagnostics','bank.read',()=>diagnostics.bank());
+  json('POST /credit/profiles','bank.configure',async body=>({ok:true,contractVersion,...await connections.saveCreditProfile(body)}),true);
+  json('DELETE /credit/profiles','bank.remove',async body=>({ok:true,contractVersion,...await connections.deleteCreditProfile(body)}),true);
+  json('POST /credit/reset','bank.remove',async()=>{await connections.resetCreditProfiles();return {ok:true,profiles:[],lastSyncAt:null,lastErrors:[]}});
+  json('POST /credentials','bank.configure',async body=>({ok:true,...await connections.saveCredentials(body)}),true);
+  json('POST /account-selection','bank.configure',async body=>({ok:true,...await connections.selectAccount(body)}),true);
+  json('DELETE /credentials','bank.remove',async()=>({ok:true,...await connections.deleteCredentials()}));
+  json('POST /balance','bank.refresh',async body=>({ok:true,...await finance.balance(body)}),true);
+  json('POST /credit/sync','bank.refresh',async body=>({ok:true,...await finance.syncCredit(body)}),true);
+  routes.set('POST /shutdown',Object.freeze({response:'json',permission:'native.admin',readBody:false,run:()=>({ok:true}),afterResponse:()=>shutdown.afterResponse()}));
 
   /** @param {string|undefined} method @param {string} pathname @returns {BankBridgeRoute|undefined} */
   function resolve(method,pathname) {
@@ -63,7 +63,7 @@ export function createBankBridgeRoutes({version,contractVersion,service,connecti
     const image=method==='GET'?pathname.match(/^\/bank\/cheque-image\/([a-f0-9]{64})$/):null;
     if(image?.[1]) {
       const key=image[1];
-      return Object.freeze({response:'binary',readBody:false,run:()=>cheques.read(key)});
+      return Object.freeze({response:'binary',permission:'bank.read',readBody:false,run:()=>cheques.read(key)});
     }
     return routes.get(`${method} ${route}`);
   }

@@ -13,6 +13,8 @@ import {createBridgeShutdownOwner} from './shutdown-owner.mjs';
 import {createBridgeReplacementCommand} from './replacement-command.mjs';
 import {isLoopbackPortClosed} from './loopback-port.mjs';
 import {createBankBridgeHttpHandler} from './http-handler.mjs';
+import {createScopedPairing, readPairingAdminToken} from './scoped-pairing.mjs';
+import {requestLocalJson, runPairingConsole} from './pairing-console.mjs';
 import {createBankOriginPolicy} from './origin-policy.mjs';
 import {createBankBrowserIdentity} from './bank-browser-identity.mjs';
 import {createBankBridgeRoutes} from './http-routes.mjs';
@@ -49,7 +51,8 @@ const CREDIT_IDENTITIES_DIR=path.join(APP_DIR,'credit-identities');
 const CHEQUE_IMAGE_CACHE_DIR=path.join(APP_DIR,'cheque-image-cache');
 const creditDiagnostics=createCreditDiagnosticLog({directory:path.join(APP_DIR,'diagnostics'),bridgeVersion:BRIDGE_VERSION,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION});
 process.env.CAMOUFOX_INSTALL_DIR=process.env.CAMOUFOX_INSTALL_DIR||CAMOUFOX_INSTALL_DIR;
-const operations=createBridgeOperationOwner();
+const pairing=createScopedPairing({root:APP_DIR,permissions:['bank.read','bank.refresh','bank.configure','bank.remove']});
+const operations=createBridgeOperationOwner({assertAuthorized:pairing.assertCurrent});
 const artifacts=createBridgeArtifacts({directory:APP_DIR,diagnosticMaxAgeMs:24*60*60*1000});
 const readMeta=artifacts.bankMeta.read,writeMeta=artifacts.bankMeta.write;
 const readCreditMeta=artifacts.creditMeta.read,writeCreditMeta=artifacts.creditMeta.write;
@@ -108,18 +111,14 @@ async function doctorModernPuppeteer(browserPath){
 }
 
 async function fetchLocal(pathname,{method='GET',token='',timeoutMs=1200}={}){
-  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
-  try{
-    const response=await fetch(`http://${HOST}:${PORT}${pathname}`,{method,headers:token?{Authorization:`Bearer ${token}`}:{},cache:'no-store',signal:controller.signal});
-    const text=await response.text();let data={};try{data=text?JSON.parse(text):{}}catch{}
-    return {response,data};
-  }finally{clearTimeout(timer)}
+  return requestLocalJson(PORT,pathname,{method,token,timeoutMs});
 }
 async function waitForPortToClose(timeoutMs=5000){
   const deadline=Date.now()+timeoutMs;while(Date.now()<deadline){if(await isLoopbackPortClosed({host:HOST,port:PORT}))return true;await new Promise(r=>setTimeout(r,150))}return false;
 }
 const replacement=createBridgeReplacementCommand({
-  probe:async()=>{try{return await fetchLocal('/health')}catch(error){if(await isLoopbackPortClosed({host:HOST,port:PORT}))return null;throw error}},readToken:()=>fs.readFile(TOKEN_FILE,'utf8'),
+  probe:async()=>{try{return await fetchLocal('/health')}catch(error){if(await isLoopbackPortClosed({host:HOST,port:PORT}))return null;throw error}},
+  readToken:health=>health.data.pairingProtocol===1?readPairingAdminToken(APP_DIR):fs.readFile(TOKEN_FILE,'utf8'),
   shutdown:token=>fetchLocal('/shutdown',{method:'POST',token,timeoutMs:1500}),
   waitUntilStopped:()=>waitForPortToClose(),
 });
@@ -167,6 +166,10 @@ const creditProvider=createCreditProvider({
 });
 
 const args=new Set(process.argv.slice(2));
+if(process.argv[2]==='--pairing'){
+  try { await runPairingConsole({root:APP_DIR,port:PORT,args:process.argv.slice(3)}); process.exit(0); }
+  catch { console.error('Pairing failed. Check the command, local approval, Bridge status and exact Origin.'); process.exit(1); }
+}
 if(args.has('--stop-existing')){try{await replacement.stop();process.exit(0)}catch(e){console.error(e?.message||e);process.exit(1)}}
 if(args.has('--doctor')){
   try{
@@ -202,14 +205,13 @@ const originPolicy=await fs.readFile(path.join(APP_DIR,'origin-policy.json'),'ut
     if(error?.code==='ENOENT')return createBankOriginPolicy();
     throw error;
   });
-
 const service=createConnectionQueries({operations,vault,metadata:{bank:readMeta,credit:readCreditMeta}});
 const finance=createFinanceCommands({operations,
   bank:{readCredentials:vault.readCredentials,scrape:bankProvider.read,writeMeta},
   credit:{readProfiles:vault.readCreditProfiles,readMeta:readCreditMeta,scrape:creditProvider.scrape,writeDataDiagnostic:writeCreditDataDiagnostic,writeMeta:writeCreditMeta},
 });
 const diagnostics=createDiagnosticQueries({creditLog:creditDiagnostics,read:{bank:readBankDiagnostic,creditData:readCreditDataDiagnostic}});
-const shutdown=createBridgeShutdownOwner({operations,diagnostics:{drain:async()=>{await Promise.all([creditDiagnostics.drain(),images.drain(),artifacts.drain()])}},platform:{
+const shutdown=createBridgeShutdownOwner({operations:{close:()=>{void pairing.close();return operations.close()},drain:operations.drain},diagnostics:{drain:async()=>{await Promise.all([pairing.close(),creditDiagnostics.drain(),images.drain(),artifacts.drain()])}},platform:{
   schedule:(run,delayMs)=>{const timer=setTimeout(run,delayMs);return ()=>clearTimeout(timer)},
   subscribeStop:listener=>{process.on('SIGINT',listener);process.on('SIGTERM',listener);return ()=>{process.off('SIGINT',listener);process.off('SIGTERM',listener)}},
   closeListener:()=>new Promise((resolve,reject)=>activeServer.close(error=>error?reject(error):resolve())),
@@ -220,8 +222,22 @@ const routes=createBankBridgeRoutes({version:BRIDGE_VERSION,contractVersion:CRED
   cheques:{read:async key=>{const image=await images.read(key);return image&&images.inRetention(image.eventDate)?image:null}},
   shutdown:{afterResponse:()=>{void shutdown.request()}},
 });
-const handler=createBankBridgeHttpHandler({token,routes,originPolicy,admission:{assertAccepting:operations.assertAccepting},health:()=>({ok:true,service:'netunim-kupa-bank-bridge',version:BRIDGE_VERSION,creditContractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION})});
-activeServer=http.createServer(handler);
+const handler=createBankBridgeHttpHandler({token,routes,originPolicy,pairing,admission:{assertAccepting:operations.assertAccepting},health:()=>({ok:true,service:'netunim-kupa-bank-bridge',version:BRIDGE_VERSION,creditContractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION})});
+let pairingReady=false, pairingStartup;
+activeServer=http.createServer((req,res)=>{
+  if(pairingReady)return handler(req,res);
+  void pairingStartup.then(()=>handler(req,res),()=>res.destroy());
+});
 shutdown.start();
 activeServer.on('error',e=>{if(e?.code==='EADDRINUSE'){console.error(`Bank Bridge already appears to be running on ${HOST}:${PORT}`);process.exit(0)}console.error(e);process.exit(1)});
-activeServer.listen(PORT,HOST,()=>console.log(`Netunim Kupa Bank Bridge v${BRIDGE_VERSION} listening on http://${HOST}:${PORT}`));
+activeServer.listen(PORT,HOST,()=>{
+  // Only the process holding the listener may open the writable registry.
+  pairingStartup=pairing.initialize();
+  void pairingStartup.then(()=>{
+    pairingReady=true;
+    console.log(`Netunim Kupa Bank Bridge v${BRIDGE_VERSION} listening on http://${HOST}:${PORT}`);
+  },()=>{
+    console.error('Bank Bridge could not initialize local pairing storage.');
+    process.exit(1);
+  });
+});
