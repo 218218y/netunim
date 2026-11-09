@@ -28,12 +28,12 @@ export async function measurePlan(plan,{token,port=8766,fetchRequest=fetch}={}){
     ids.add(scenario.id);
   }
   const base=`http://127.0.0.1:${port}`;
-  async function request(route,body,binary=false){
+  async function request(route,body,binary=false,keepSelection=false){
     const started=performance.now();
     try{
       const response=await fetchRequest(base+route,{method:'POST',headers:{Origin:plan.origin,Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(35000)});
       const payload=binary&&response.ok?await response.arrayBuffer():await response.json();
-      const result={wallMs:performance.now()-started,status:response.status,partial:payload?.partial===true,timings:{},payload};
+      const result={wallMs:performance.now()-started,status:response.status,partial:payload?.partial===true,timings:{},...(keepSelection?{payload}:{})};
       for(const [key,value] of Object.entries(payload?.timings||{}))if(/^[a-zA-Z]+Ms$/.test(key)&&typeof value==='number'&&Number.isFinite(value)&&value>=0)result.timings[key]=value;
       return result;
     }catch{return {wallMs:performance.now()-started,status:0,partial:false,timings:{},payload:null}}
@@ -43,7 +43,7 @@ export async function measurePlan(plan,{token,port=8766,fetchRequest=fetch}={}){
     const operation=scenario.operation,route=operations.get(operation);
     let body=scenario.search||{};
     if(['preview','matches','binary'].includes(operation)){
-      const selection=await request('/documents/search',scenario.search||{});
+      const selection=await request('/documents/search',scenario.search||{},false,true);
       const selected=selection.status===200&&!selection.partial?selection.payload?.results?.[scenario.resultIndex??0]:null;
       if(!selected?.id)throw Error('preview_selection_unavailable');
       body={id:selected.id};
