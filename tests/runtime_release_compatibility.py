@@ -5,7 +5,11 @@ import json
 
 for app in ['orders', 'kupa']:
     with BrowserSession(ROOT/f'netunim-{app}/site', app+'-release-fence', instrument=False, service_worker=True) as browser:
-        assert browser.evaluate("import('./assets/js/main.js').then(m=>m.appReady).then(()=>true)")
+        # This functional fence waits for a cold native ESM graph before testing
+        # worker bytes. Windows CI timed out in the CDP transport during that
+        # import; use the same bounded 30s readiness window as native navigation.
+        # Startup's separate measured CPU/boot/performance ceilings stay intact.
+        assert browser.evaluate("import('./assets/js/main.js').then(m=>m.appReady).then(()=>true)",timeout=30)
         wait_for_worker_control(browser)
         assert browser.evaluate("""(async()=>{
           await import('./assets/js/main.js').then(m=>m.appReady);

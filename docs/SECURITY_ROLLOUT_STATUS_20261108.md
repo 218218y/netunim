@@ -93,7 +93,22 @@ All four financial Edge functions check assurance after Auth verifies identity.
 Unenrolled owners keep existing behavior during rollout; MFA is enforced once a
 verified factor exists, based on Auth's factor catalog, never editable metadata.
 
-The migration was applied to isolated staging. Its synthetic enrolled user was
+The migration was applied to isolated staging and then production after the full
+verification and security checks passed. Production catalog checks confirmed
+56 migrations, all 27 guarded public entrypoints and 23 restrictive MFA policies;
+no write-only permissive browser table bypass was found. The real account still
+has no enrolled factor. All four production Edge handlers were deployed, and
+live probes confirmed exact custom-Origin preflight admission and rejection of
+foreign/preview/spoofed Origins and missing/invalid bearer tokens.
+
+Both Pages production payloads were published from verified commit `4978ff5`,
+after the live schema, migration history and SQL hashes passed the deployment
+gate. Cloudflare shows both custom domains as Active with SSL enabled. Direct
+public-page requests from the agent environment were blocked (CLI HTTP 418 and
+browser navigation failure), so live header/page rendering was not independently
+verified there; actual source/bundled pages were exercised in isolated Chromium.
+
+The synthetic enrolled staging user was
 denied direct financial SELECT, RPC and private image reads at AAL1, and succeeded
 at AAL2 after real TOTP verification. The other synthetic unenrolled owner still
 worked. Auth separately rejected deletion of a verified factor at AAL1 with
