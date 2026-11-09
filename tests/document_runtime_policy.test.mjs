@@ -6,11 +6,12 @@ import {declaration,tokens} from './bank_policy_ast_fixture.mjs';
 import {createBridgeRuntimeFiles} from '../netunim-orders/document-bridge/bridge-runtime-files.mjs';
 import {DEFAULT_ALLOWED_ORIGINS} from '../netunim-orders/document-bridge/lib.mjs';
 const root=new URL('../netunim-orders/document-bridge/',import.meta.url),baseline=JSON.parse(readFileSync(new URL('./fixtures/document-runtime-policies.json',import.meta.url),'utf8'));
-const securityPolicies={"saveConfig": "e81f25fa03ecbc7deacdf1c2ab920e3fdd290c5552094f0033cf9d865115b516", "printDoctor": "bb0159eabd319e077dc6174519c6b6dc5bb3226aed712398f66b79a4bf5fb631", "writeInstallSummary": "ab91197a93a18a882407a5c03fdfcc5fc2f18d6d416cf452977ccc9af1102e27"};
+const securityPolicies={"saveConfig": "0fc1e36b92f0f768eb427fb865fd992516ef9fe04799d9ad15dff628994be432", "printDoctor": "bb0159eabd319e077dc6174519c6b6dc5bb3226aed712398f66b79a4bf5fb631", "writeInstallSummary": "ab91197a93a18a882407a5c03fdfcc5fc2f18d6d416cf452977ccc9af1102e27"};
 const expectedLoadConfig=`async function loadConfig(){
   const raw=await readJsonFile(CONFIG_PATH,{});
   return {
     roots:Array.isArray(raw.roots)?raw.roots:[],
+    allowDriveRoots:raw.allowDriveRoots===true,
     everythingInstance:String(raw.everythingInstance||'').trim(),
     everythingExecutable:String(raw.everythingExecutable||'').trim(),
     allowedOrigins:configuredDocumentOrigins(raw.allowedOrigins),

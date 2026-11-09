@@ -9,9 +9,9 @@ export function bridgeDataRoot(env=process.env,home=os.homedir()){return env.NET
 
 // This concrete platform owns local configuration, token, logging and pinned
 // executable verification. Construction performs no filesystem work.
-export function createBridgeRuntimeFiles({root=bridgeDataRoot(),host=process,files=fs,syncFiles=fsSync}={}){
+export function createBridgeRuntimeFiles({root=bridgeDataRoot(),host=process,files=fs,syncFiles=fsSync,configPath=path.join(root,'config.json')}={}){
 const APP_ROOT=root,process=host,fs=files,fsSync=syncFiles;
-const CONFIG_PATH=process.env.NETUNIM_DOCUMENT_BRIDGE_SETUP_CONFIG||path.join(APP_ROOT,'config.json');
+const CONFIG_PATH=configPath;
 const TOKEN_PATH=path.join(APP_ROOT,'bridge-token.txt');
 const LOG_PATH=path.join(APP_ROOT,'bridge.log');
 const SUMMARY_PATH=path.join(APP_ROOT,'INSTALLATION-LOG.txt');

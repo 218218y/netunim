@@ -24,6 +24,16 @@ test('BOM config readers preserve historical optional settings and invalid JSON 
 test('default runtime roots respect the explicit home and local application directory',()=>{
  assert.equal(bridgeDataRoot({NETUNIM_DOCUMENT_BRIDGE_HOME:'explicit'},'unused'),'explicit');assert.equal(bridgeDataRoot({LOCALAPPDATA:'local'},'unused'),path.join('local','NetunimDocumentBridge'));
 });
+test('setup writes its draft and retains drive consent without altering live config',async t=>{
+ const root=await directory(t),live=createBridgeRuntimeFiles({root});
+ const draft=createBridgeRuntimeFiles({root,configPath:path.join(root,'draft.json')});
+ await live.saveConfig({roots:['C:\\Docs'],allowDriveRoots:'true'});
+ const original=await fs.readFile(live.paths.CONFIG_PATH,'utf8');
+ await draft.saveConfig({roots:['C:\\'],allowDriveRoots:true});
+ assert.equal((await draft.loadConfig()).allowDriveRoots,true);
+ assert.equal((await live.loadConfig()).allowDriveRoots,false);
+ assert.equal(await fs.readFile(live.paths.CONFIG_PATH,'utf8'),original);
+});
 function nodeFixture({pointer='node-v24.22.2-win-x64-20261015-000000-1-1234abcd',version=BRIDGE_NODE_VERSION,missing=false,actual,readError=false}={},factory=createBridgeRuntimeFiles){
  const root=path.resolve('synthetic-runtime'),expected=path.join(root,pointer,'node.exe'),reads=[];
  const runtime=factory({root,host:{platform:'win32',versions:{node:version},execPath:actual||expected},syncFiles:{existsSync:()=>!missing,readFileSync:file=>{reads.push(file);if(readError)throw Error('no pointer');return file.endsWith('node-runtime.txt')?'\uFEFF'+pointer+'\n':Buffer.from('unreviewed executable')}}});
