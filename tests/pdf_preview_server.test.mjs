@@ -119,7 +119,7 @@ test('actual server retains both native index files when worker evidence is malf
     before = await f.capture();
   assert.equal(await f.read(f.row, f.stat), null);
   assert.deepEqual(await f.capture(), before);
-  assert.ok(f.logs.some(text => text.includes('PDF worker result is invalid')));
+  assert.ok(f.logs.some(text => text.includes('PDF_EXTRACTION_RESULT_INVALID')));
   await f.stop();
 });
 

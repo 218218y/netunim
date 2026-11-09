@@ -134,7 +134,7 @@ export function createPdfIndexCoordinator({files,locking,everything,cache,runtim
   });
   async function rebuildPdfFormIndexBacklog(options={}){return pdfReconciliation.rebuild(options)}
   async function preparePdfFormIndexForSearch(){
-    try{await loadPdfFormIndex()}catch(error){await appendLog(`PDF_FORM_INDEX_LOAD_FAILED ${error?.message||error}`);return {partial:true}}
+    try{await loadPdfFormIndex()}catch(error){await appendLog(`PDF_FORM_INDEX_LOAD_FAILED code=${error?.code||'ERROR'}`);return {partial:true}}
     return {partial:!pdfFormIndexLastRefresh||pdfFormIndexPending>0};
   }
   function searchPdfFormIndex(query,contentSearch,scopePath,limit,sort={}){

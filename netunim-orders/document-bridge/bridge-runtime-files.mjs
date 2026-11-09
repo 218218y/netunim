@@ -1,3 +1,4 @@
+import {createPrivateAuditLog} from './private-audit-log.mjs';
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
 import os from 'node:os';
@@ -19,7 +20,8 @@ const NODE_RUNTIME_POINTER_PATH=path.join(APP_ROOT,'node-runtime.txt');
 
 const PRIVATE_NODE_RUNTIME_PATTERN=/^node-v24\.22\.2-win-x64-[0-9]{8}-[0-9]{6}-[0-9]+-[0-9a-f]{8}$/i;
 async function ensureRoot(){await fs.mkdir(APP_ROOT,{recursive:true})}
-async function appendLog(message){try{await ensureRoot();await fs.appendFile(LOG_PATH,`${new Date().toISOString()} ${message}\n`,'utf8')}catch{}}
+const auditLog=createPrivateAuditLog({root:APP_ROOT,files:fs});
+const appendLog=auditLog.append;
 async function readJsonFile(file,fallback){try{return JSON.parse((await fs.readFile(file,'utf8')).replace(/^\uFEFF/,''))}catch{return fallback}}
 async function writeJsonFile(file,value){await ensureRoot();const tmp=`${file}.tmp`;await fs.writeFile(tmp,JSON.stringify(value,null,2)+'\n',{encoding:'utf8',mode:0o600});await fs.rename(tmp,file)}
 async function ensureToken(){await ensureRoot();try{const token=(await fs.readFile(TOKEN_PATH,'utf8')).trim();if(token)return token}catch{}const token=crypto.randomBytes(32).toString('hex');await fs.writeFile(TOKEN_PATH,token+'\n',{encoding:'utf8',mode:0o600});return token}
@@ -35,7 +37,7 @@ async function loadConfig(){
   };
 }
 async function saveConfig(config){await writeJsonFile(CONFIG_PATH,{roots:Array.isArray(config.roots)?config.roots:[],allowDriveRoots:config.allowDriveRoots===true,everythingInstance:String(config.everythingInstance||'').trim(),everythingExecutable:String(config.everythingExecutable||'').trim(),allowedOrigins:Array.isArray(config.allowedOrigins)&&config.allowedOrigins.length?config.allowedOrigins:DEFAULT_ALLOWED_ORIGINS,searchTimeoutMs:Math.max(3000,Math.min(30000,Number(config.searchTimeoutMs)||15000))})}
-async function init(){await ensureToken();const existing=await loadConfig();if(!fsSync.existsSync(CONFIG_PATH))await saveConfig(existing);return existing}
+async function init(){await auditLog.prune();await ensureToken();const existing=await loadConfig();if(!fsSync.existsSync(CONFIG_PATH))await saveConfig(existing);return existing}
 async function existsFile(candidate){if(!candidate)return false;try{return (await fs.stat(candidate)).isFile()}catch{return false}}
 function normalizedRuntimePath(value){return path.resolve(String(value||'')).replace(/[\\/]+$/,'').toLocaleLowerCase('en-US')}
 function privateNodeRuntimeInfoSync({verifyHash=false}={}){
@@ -49,5 +51,5 @@ function privateNodeRuntimeInfoSync({verifyHash=false}={}){
   let sha256='';if(verifyHash){sha256=crypto.createHash('sha256').update(fsSync.readFileSync(actualPath)).digest('hex');if(sha256!==BRIDGE_NODE_WIN_X64_SHA256){const e=new Error(`Pinned private Node runtime failed SHA-256 verification: ${sha256}.`);e.code='NODE_RUNTIME_INTEGRITY_MISMATCH';throw e}}
   return {runtimeName,expectedPath,actualPath,sha256,verified:!verifyHash||sha256===BRIDGE_NODE_WIN_X64_SHA256};
 }
-return {appendLog,readJsonFile,writeJsonFile,ensureToken,loadConfig,saveConfig,init,existsFile,privateNodeRuntimeInfoSync,paths:Object.freeze({APP_ROOT,CONFIG_PATH,TOKEN_PATH,LOG_PATH,SUMMARY_PATH,NODE_RUNTIME_POINTER_PATH})};
+return {appendLog,pruneLogs:auditLog.prune,drainLogs:auditLog.drain,readJsonFile,writeJsonFile,ensureToken,loadConfig,saveConfig,init,existsFile,privateNodeRuntimeInfoSync,paths:Object.freeze({APP_ROOT,CONFIG_PATH,TOKEN_PATH,LOG_PATH,SUMMARY_PATH,NODE_RUNTIME_POINTER_PATH})};
 }

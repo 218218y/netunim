@@ -246,7 +246,7 @@ for (const [code, status] of [['QUERY_TOO_SHORT', 400], ['RESULT_EXPIRED', 410],
     const response = await f.request('/documents/open');
     assert.equal(response.status, status);
     assert.deepEqual(response.data, {ok: false, code, message: 'classified error', rootErrors: ['root']});
-    assert.deepEqual(f.logs, [`POST /documents/open ${code} classified error`]);
+    assert.deepEqual(f.logs, [`HTTP_ERROR code=${code}`]);
   });
 }
 

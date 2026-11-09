@@ -1,3 +1,4 @@
+import {privateAuditLine} from '../netunim-orders/document-bridge/private-audit-log.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {plain,row,serverFixture} from './document_search_server_fixture.mjs';
@@ -12,7 +13,7 @@ import {plain,row,serverFixture} from './document_search_server_fixture.mjs';
 
 // Timing is now observational wall time, independent of the immutable engine fixture.
 function businessPage(value){const {elapsedMs,timings,...page}=plain(value);return page}
-function stableObservation(value){return {...value,logs:value.logs.map(line=>line.replace(/elapsedMs=[\d.]+/g,'elapsedMs=<measured>'))}}
+function stableObservation(value){return {...value,logs:value.logs.map(line=>privateAuditLine(line).replace(/ (?:elapsedMs|everythingMs|candidateAdmissionMs|rootValidationMs|pathValidationMs|hiddenValidationMs|pdfPrepareMs|pdfSearchMs|publicationMs)=[\d.]+/g,''))}}
 
 test('old and current search preserve 4,608 pagination, filter, order and partial-PDF combinations',async()=>{
  let cases=0;

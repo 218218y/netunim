@@ -122,8 +122,7 @@ export function createDocumentSearch(
       contentSearch,
       scopePath,
       sort,
-      fileType,
-      everythingQuery
+      fileType
     } = plan;
     const pageOffset = Math.max(
       0,
@@ -212,7 +211,7 @@ export function createDocumentSearch(
     const auditStarted = performance.now();
     elapsedMs = Math.round(auditStarted-started);
     await audit.write(
-      `SEARCH mode=${mode} offset=${pageOffset} limit=${boundedLimit} hasMore=${hasMore} partial=${partial} contentSearch=${JSON.stringify(contentSearch)} fileType=${fileType} sort=${sort.field}:${sort.direction} scope=everything-index+interactive-pdf scopePath=${JSON.stringify(scopePath)} results=${results.length} everythingResults=${rows.length} pdfSupplemental=${supplemental.length} elapsedMs=${elapsedMs} input=${JSON.stringify(String(query || ''))} everythingQuery=${JSON.stringify(everythingQuery)}`
+      `SEARCH mode=${mode} offset=${pageOffset} limit=${boundedLimit} hasMore=${hasMore} partial=${partial} fileType=${fileType} results=${results.length} everythingResults=${rows.length} pdfSupplemental=${supplemental.length} elapsedMs=${elapsedMs} ${Object.entries(timings).map(([key,value])=>`${key}=${Math.round(value)}`).join(' ')}`
     );
     assertActive(plan.signal);
     timings.auditMs = performance.now()-auditStarted;
@@ -253,7 +252,7 @@ export function createDocumentSearch(
     timings.publicationMs = performance.now()-publicationStarted;
     const auditStarted = performance.now(), elapsedMs = Math.round(auditStarted-started);
     await audit.write(
-      `RECENT scope=everything-index scopePath=${JSON.stringify(scopePath)} fileType=${fileType} sort=date-modified-descending results=${results.length} elapsedMs=${elapsedMs}`
+      `RECENT fileType=${fileType} results=${results.length} elapsedMs=${elapsedMs}`
     );
     assertActive(signal);
     timings.auditMs = performance.now()-auditStarted;

@@ -215,7 +215,7 @@ test('malformed and contradictory worker evidence never replaces historical posi
         f.events.some(event => event[0] === 'append'),
         false
       );
-      assert.match(f.logs[0], /PDF worker result is invalid/);
+      assert.match(f.logs[0], /PDF_EXTRACTION_RESULT_INVALID/);
       await owner.dispose();
     }
   }
