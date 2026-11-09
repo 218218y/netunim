@@ -195,6 +195,7 @@ export function normalizeCloudError(input){
   if(code==='PT429'||lower.includes('save_busy'))kind='busy';
   else if(code==='PT409'||lower.includes('revision_conflict'))kind='revision_conflict';
   else if(status===429||code==='SUPABASE_DATA_API_RATE_LIMIT')kind='rate_limited';
+  else if(code==='SUPABASE_AUTH_REFRESH_UNAVAILABLE')kind='service_unavailable';
   else if(status===409)kind='conflict';
   else if(status!==null&&[500,502,503,504].includes(status)||['PGRST002','PGRST003','SUPABASE_DATA_API_BACKOFF'].includes(code))kind='service_unavailable';
   else if(status===401||status===403||code==='42501'||code==='cloud_auth_required')kind='auth';

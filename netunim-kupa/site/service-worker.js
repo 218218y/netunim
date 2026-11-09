@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='kupa-app-shell-';
-const CACHE='kupa-app-shell-esm-97e2120cf3f7';
+const CACHE='kupa-app-shell-esm-950c0ecebf66';
 const SHELL=[
   './',
   './index.html',
@@ -264,6 +264,7 @@ const SHELL=[
   './assets/js/shared/storage-v2-runtime.js',
   './assets/js/shared/storage-v2-schema.js',
   './assets/js/shared/storage-v2-server-protocol.js',
+  './assets/js/shared/supabase-auth-refresh.js',
   './assets/js/shared/supabase-mfa.js',
   './assets/js/shared/sync-capabilities.js',
   './assets/js/shared/sync-incident-adapters.js',

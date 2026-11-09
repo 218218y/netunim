@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-b01a371f405a';
+const CACHE='orders-app-shell-esm-0cf8e9efd804';
 const SHELL=[
   './',
   './index.html',
@@ -429,6 +429,7 @@ const SHELL=[
   './assets/js/shared/storage-v2-runtime.js',
   './assets/js/shared/storage-v2-schema.js',
   './assets/js/shared/storage-v2-server-protocol.js',
+  './assets/js/shared/supabase-auth-refresh.js',
   './assets/js/shared/supabase-mfa.js',
   './assets/js/shared/sync-capabilities.js',
   './assets/js/shared/sync-incident-adapters.js',

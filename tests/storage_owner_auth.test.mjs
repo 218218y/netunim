@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createCloudAuth as createOrdersAuth} from '../netunim-orders/site/assets/js/cloud/auth.js';
 import {createCloudAuth as createKupaAuth} from '../netunim-kupa/site/assets/js/cloud/auth.js';
+import {normalizeCloudError} from '../shared/cloud-sync.js';
 
 function memoryStorage(){
   const values=new Map();
@@ -80,6 +81,71 @@ test('Kupa auth expiry clears credentials but cannot change the durable storage 
   const restored=await api.supaAuthPassword('a@example.test','pw');
   assert.equal(restored.user.id,'account-A');
   assert.equal(api.loadSupaSession().user.id,'account-A');
+}));
+
+for(const app of ['orders','kupa'])test(`${app} temporary Auth failures preserve the existing login and allow recovery`,async()=>withGlobals(async()=>{
+  const api=app==='orders'?createOrdersAuth({}):createKupaAuth({session:{},idbGet:async()=>null,idbPut:async()=>{},idbDelete:async()=>{},supaProjectRef:()=> 'fixture',setCloudHeaderStatus:()=>{}});
+  const store=app==='orders'?api.saveSession:api.storeSupaSession;
+  const load=app==='orders'?api.loadSession:api.loadSupaSession;
+  const refresh=app==='orders'?api.refreshSession:api.supaRefresh;
+  const existing=sessionFor('A');
+  store(existing);
+  const scope=api.getAccountScope();
+  for(const status of [408,429,500,503]){
+    globalThis.fetch=async()=>response(false,{message:'untrusted auth details'},status);
+    await assert.rejects(refresh(),error=>error.status===status&&!error.message.includes('untrusted'));
+    assert.deepEqual(load(),existing);
+    assert.deepEqual(api.getAccountScope(),scope);
+  }
+  globalThis.fetch=async()=>response(false,{error_code:'conflict'},409);
+  await assert.rejects(refresh(),error=>normalizeCloudError(error).kind==='service_unavailable');
+  assert.deepEqual(load(),existing);
+  for (const invalid of [{}, sessionFor('B'), sessionFor('A',{refresh_token:''})]) {
+    globalThis.fetch=async()=>response(true,invalid);
+    await assert.rejects(refresh(),{code:'SUPABASE_AUTH_REFRESH_UNAVAILABLE'});
+    assert.deepEqual(load(),existing);
+  }
+  globalThis.fetch=async()=>response(true,sessionFor('A',{access_token:'refreshed-A'}));
+  assert.equal((await refresh()).access_token,'refreshed-A');
+  assert.deepEqual(api.getAccountScope(),scope);
+}));
+
+test('Orders refresh waiting for the browser lock cannot run under a newer login',async()=>withGlobals(async()=>{
+  const api=createOrdersAuth({});
+  let release,requests=0;
+  const gate=new Promise(resolve=>{release=resolve});
+  navigator.locks={request:async(_key,_options,work)=>{await gate;return work()}};
+  globalThis.fetch=async(_url,options)=>{
+    requests++;
+    return response(true,sessionFor(JSON.parse(options.body).refresh_token.slice(-1)));
+  };
+  api.saveSession(sessionFor('A'));
+  const old=assert.rejects(api.refreshSession(),{code:'cloud_auth_scope_changed'});
+  api.saveSession(null);
+  api.saveSession(sessionFor('B'));
+  release();
+  await old;
+  assert.equal(requests,0);
+  assert.equal((await api.refreshSession()).user.id,'B');
+  assert.equal(requests,1);
+}));
+
+for(const app of ['orders','kupa'])test(`${app} a late rejection cannot erase a replacement credential for the same user`,async()=>withGlobals(async()=>{
+  const make=()=>app==='orders'?createOrdersAuth({}):createKupaAuth({session:{},idbGet:async()=>null,idbPut:async()=>{},idbDelete:async()=>{},supaProjectRef:()=> 'fixture',setCloudHeaderStatus:()=>{}});
+  const first=make(),other=make();
+  const store=app==='orders'?'saveSession':'storeSupaSession';
+  const load=app==='orders'?'loadSession':'loadSupaSession';
+  const refresh=app==='orders'?'refreshSession':'supaRefresh';
+  let release;
+  const pending=new Promise(resolve=>{release=resolve});
+  first[store](sessionFor('A'));
+  globalThis.fetch=()=>pending;
+  const stale=assert.rejects(first[refresh](),{code:'cloud_auth_scope_changed'});
+  const replacement=sessionFor('A',{refresh_token:'replacement'});
+  other[store](replacement);
+  release(response(false,{code:'refresh_token_not_found'},400));
+  await stale;
+  assert.deepEqual(first[load](),replacement);
 }));
 
 for(const app of ['orders','kupa'])test(`${app} auth scope survives refresh and fences logout plus same-user login`,async()=>withGlobals(async()=>{
