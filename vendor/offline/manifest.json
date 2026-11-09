@@ -6,7 +6,7 @@
     "machine": "x86_64",
     "libc": "glibc"
   },
-  "npmClosureSha256": "16ba1984ce2fd5d598c0ac0f3ceba3f8cdc910b241caf27c37d4031501aca5a7",
+  "npmClosureSha256": "f80a4f778864875f431cdf21d651edc81a94a5ffeaefac91a1754994609fb9a2",
   "configSemanticSha256": "07fe01a8ca6f4de72c828c3ed0f26bcc13754522ba2c10cbca1aa58c1ca542a9",
   "node": {
     "version": "24.22.2",
@@ -134,6 +134,14 @@
       "url": "https://registry.npmjs.org/@humanwhocodes/retry/-/retry-0.4.3.tgz",
       "integrity": "sha512-bV0Tgo9K4hfPCek+aMAn81RppFKv2ySDQeMoSZuvTASywNTnVJCArCZE2FWqpvIatKu7VMRLWlR1EazvVhDyhQ==",
       "file": "npm/humanwhocodes__retry-0.4.3.tgz"
+    },
+    {
+      "lockPath": "node_modules/@isaacs/nonrecursive-glob-match",
+      "name": "@isaacs/nonrecursive-glob-match",
+      "version": "1.1.0",
+      "url": "https://registry.npmjs.org/@isaacs/nonrecursive-glob-match/-/nonrecursive-glob-match-1.1.0.tgz",
+      "integrity": "sha512-GPm/Dbvk5RLmhRnxXIa7nTpK0xtl4E0wj0MslsuNiJ1FIROU+2+9lgUC/dgF7Ey4QCWhfEsgxilMRMCdHPfDfw==",
+      "file": "npm/isaacs__nonrecursive-glob-match-1.1.0.tgz"
     },
     {
       "lockPath": "node_modules/@keyv/bigmap",
@@ -498,10 +506,10 @@
     {
       "lockPath": "node_modules/minimatch",
       "name": "minimatch",
-      "version": "10.2.6",
-      "url": "https://registry.npmjs.org/minimatch/-/minimatch-10.2.6.tgz",
-      "integrity": "sha512-vpLQEs+VLCr1nU0BXS07maYoFwlDAH0gngQuuttxIwutDFEMHq2blX+8vpgxDdK3J1PwjCJiep77OitTZ4Ll1A==",
-      "file": "npm/minimatch-10.2.6.tgz"
+      "version": "11.0.5",
+      "url": "https://registry.npmjs.org/minimatch/-/minimatch-11.0.5.tgz",
+      "integrity": "sha512-snPlVppFcYWfLLFQGhDxUyBcHNtMlWmn3jtj7pEaO+DP8pqL0IvAzXhMYmn1z9ASNtgmwLBdFxSf4tMUB0OTKA==",
+      "file": "npm/minimatch-11.0.5.tgz"
     },
     {
       "lockPath": "node_modules/ms",
