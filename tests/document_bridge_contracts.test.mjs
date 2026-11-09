@@ -166,7 +166,7 @@ test('bridge searches Everything with server-side folder authorization and Unico
   assert.doesNotMatch(startBridge,/(?:^|[\s"])(?:node|node\.exe)[ \t]+"%~dp0server\.mjs"/im,'normal startup must not use a PATH-resolved Node executable');
   assert.match(configureBridge,/active-runtime\.txt/,'manual configuration must resolve the active side-by-side Bridge runtime');
   assert.doesNotMatch(configureBridge,/set "APPDIR=%APPROOT%\\app"/i,'manual configuration must not use the removed legacy app directory');
-  assert.match(configureBridge,/node-runtime\.txt/,'manual configuration must use the same private Node pointer');
+  assert.doesNotMatch(configureBridge,/node-runtime\.txt/,'the folder picker must work after an unsuccessful or legacy installation');
   assert.match(maintenanceRunner,/node-runtime\.txt/,'scheduled PDF maintenance must use the same private Node pointer');
   assert.doesNotMatch(maintenanceRunner,/Get-Command node\.exe/i,'scheduled maintenance must never fall back to PATH');
   assert.match(installer,/--doctor --allow-unready-task/,'pre-activation doctor may inspect a missing, disabled or stale Task Scheduler registration without accepting it after activation');
@@ -438,11 +438,11 @@ test('preview stays local: filename Office preview stays native while content se
   assert.match(server,/extension==='pdf'\?buildContentMatchInfo\(content\.text,query,\{\.\.\.search,contextChars:96,maxSnippets:500,maxMatches:500\}\)/);
 });
 
-test('installer keeps Everything hidden background startup and no longer asks for Bridge roots',()=>{
+test('installer picks local scope before checking Everything in background mode',()=>{
   const installer=read('netunim-orders/document-bridge/install_document_bridge.bat');
   const server=serverOwners();
   assert.match(installer,/background mode/);
-  assert.match(installer,/business folder allowlist/i);
+  assert.match(installer,/draft search scope/i);
   assert.match(installer,/--doctor/);
   assert.match(installer,/--check-running/);
   assert.match(read('netunim-orders/document-bridge/everything-session.mjs').replace(/\s+/g,''),/'-startup','-first-instance'/);
@@ -450,7 +450,7 @@ test('installer keeps Everything hidden background startup and no longer asks fo
   assert.match(server,/SERVER-AUTHORIZED BUSINESS FOLDERS/);
 });
 
-test('PowerShell configurator remains code-page independent even though v4 no longer uses it during install',()=>{
+test('PowerShell configurator remains code-page independent during install and later edits',()=>{
   const bytes=fs.readFileSync(new URL('../netunim-orders/document-bridge/configure_document_bridge.ps1',import.meta.url));
   assert.equal([...bytes].some(byte=>byte>0x7f),false,'configure_document_bridge.ps1 must remain ASCII-only');
 });

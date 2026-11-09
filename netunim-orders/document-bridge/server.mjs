@@ -50,13 +50,24 @@ const {waitForProcessExit,processAlive,forceStopProcessTree}=processControl;
 const bridgeRuntime=createBridgeRuntimeFiles();
 const {APP_ROOT,TOKEN_PATH}=bridgeRuntime.paths;
 const {appendLog,writeJsonFile,ensureToken,loadConfig,saveConfig}=bridgeRuntime;
-const documentAccess=createDocumentFileAccess({loadConfig});
 const RUNTIME_ROOT=fileURLToPath(new URL('.',import.meta.url));
 const PDF_MAINTENANCE_TASK_NAME='NetunimDocumentBridgePdfMaintenance';
 const PDF_FORM_INDEX_PATH=path.join(APP_ROOT,'pdf-form-index.json');
 const PDF_FORM_INDEX_JOURNAL_PATH=path.join(APP_ROOT,'pdf-form-index.journal.jsonl');
 
 const NATIVE_PREVIEW_HOST=path.join(RUNTIME_ROOT,'NetunimPreviewHost.exe');
+async function checkWindowsVisibility(paths){
+  const result=execFile(NATIVE_PREVIEW_HOST,['--check-visible-paths'],{windowsHide:true,timeout:8000});
+  result.child.stdin.on('error',()=>{}); // The child result reports an early exit.
+  result.child.stdin.end(paths.join('\n')+'\n','utf8');
+  const {stdout}=await result;
+  return stdout.trim().split(/\r?\n/).map(value=>value==='1');
+}
+const documentAccess=createDocumentFileAccess({
+  loadConfig,
+  protectedPaths:[APP_ROOT,process.env.WINDIR,process.env.ProgramData,process.env.ProgramFiles,process.env['ProgramFiles(x86)'],process.env.LOCALAPPDATA,process.env.APPDATA],
+  visible:process.platform==='win32'?checkWindowsVisibility:undefined,
+});
 const documentResults=createDocumentResultRegistry({
   clock:{now:Date.now,ttlMs:RESULT_TTL_MS},
   identity:{next:()=>crypto.randomUUID()},

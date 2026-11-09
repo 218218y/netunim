@@ -16,7 +16,7 @@ export function createEverythingSearchCoordinator({configuration,session,process
     return parseEsCount(stdout);
   }
   async function sampleIndex({esPath,instance},config){
-    const args=buildEsRawSearchArgs({search:'*',limit:1,timeoutMs:config.searchTimeoutMs,instance,filesOnly:false});
+    const args=buildEsRawSearchArgs({search:'*',limit:1,timeoutMs:config.searchTimeoutMs,instance,filesOnly:true});
     const {stdout}=await runEs(esPath,args,{timeout:config.searchTimeoutMs+3000});
     return parseEsJson(stdout);
   }

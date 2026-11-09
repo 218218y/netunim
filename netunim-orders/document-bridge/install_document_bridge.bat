@@ -89,11 +89,10 @@ if exist "%ACTIVEFILE%" (
 )
 
 copy /Y "%~dp0configure_document_bridge.ps1" "%STAGING%\configure_document_bridge.ps1" >nul || goto :stage_error
-"%NODE_EXE%" "%STAGING%\server.mjs" --init
+set "NETUNIM_DOCUMENT_BRIDGE_SETUP_CONFIG=%STAGING%\config.setup.json"
+powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File "%~dp0configure_document_bridge.ps1" -AppRoot "%APPROOT%" -DraftPath "%NETUNIM_DOCUMENT_BRIDGE_SETUP_CONFIG%"
 if not "%ERRORLEVEL%"=="0" goto :stage_error
-if not exist "%CONFIG%" goto :stage_error
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0configure_document_bridge.ps1" -AppRoot "%APPROOT%" -FirstRun
-if not "%ERRORLEVEL%"=="0" goto :stage_error
+if not exist "%NETUNIM_DOCUMENT_BRIDGE_SETUP_CONFIG%" goto :stage_error
 
 echo Ensuring Everything is running in background mode - no search window...
 "%NODE_EXE%" "%STAGING%\server.mjs" --ensure-everything
@@ -102,11 +101,12 @@ if not "%ERRORLEVEL%"=="0" goto :everything_error
 echo Preserving local interactive PDF text index...
 echo Existing PDF index progress is reused; scheduled maintenance runs separately from the Bridge.
 
-rem Search scope is restricted by the locally configured business folder allowlist.
+rem Validate the draft search scope without exposing it to the previous runtime.
 rem The new runtime is validated before the old runtime is stopped.
 "%NODE_EXE%" "%STAGING%\server.mjs" --write-install-summary >nul 2>nul
 "%NODE_EXE%" "%STAGING%\server.mjs" --doctor --allow-unready-task
 if not "%ERRORLEVEL%"=="0" goto :doctor_error
+set "NETUNIM_DOCUMENT_BRIDGE_SETUP_CONFIG="
 
 rem Stop the current listener first. v39 activation is side-by-side, so a stale
 rem Windows handle in an older runtime can never block installation of the new one.
@@ -119,6 +119,7 @@ rem as part of activation: Windows may legally keep executable/current-directory
 rem handles alive for a short time after shutdown.
 call :move_dir_with_retry "%STAGING%" "%RUNTIME%"
 if errorlevel 1 goto :activate_error
+move /Y "%RUNTIME%\config.setup.json" "%CONFIG%" >nul || goto :activate_error
 
 rem Top-level helpers and the Startup launcher are also transactional. The new
 rem maintenance runner depends on node-runtime.txt, so leaving it behind after a

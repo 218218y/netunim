@@ -1,53 +1,27 @@
 @echo off
 setlocal EnableExtensions DisableDelayedExpansion
 set "APPROOT=%LOCALAPPDATA%\NetunimDocumentBridge"
+set "CONFIGURATOR=%~dp0configure_document_bridge.ps1"
+if exist "%CONFIGURATOR%" goto :configure
+
+rem The installed shortcut resolves the configuration UI from the active app.
 set "ACTIVEFILE=%APPROOT%\active-runtime.txt"
-set "NODEPOINTER=%APPROOT%\node-runtime.txt"
-set "SUMMARY=%APPROOT%\INSTALLATION-LOG.txt"
 set "RUNTIMENAME="
-set "NODERUNTIME="
-
-if not exist "%ACTIVEFILE%" goto :not_installed
-if not exist "%NODEPOINTER%" goto :not_installed
+if not exist "%ACTIVEFILE%" goto :missing
 set /p "RUNTIMENAME="<"%ACTIVEFILE%"
-set /p "NODERUNTIME="<"%NODEPOINTER%"
-if /I not "%RUNTIMENAME:~0,5%"=="app-v" goto :not_installed
-if not "%RUNTIMENAME:\=%"=="%RUNTIMENAME%" goto :not_installed
-if not "%RUNTIMENAME:/=%"=="%RUNTIMENAME%" goto :not_installed
-if not "%RUNTIMENAME:..=%"=="%RUNTIMENAME%" goto :not_installed
-if /I not "%NODERUNTIME:~0,22%"=="node-v24.22.2-win-x64-" goto :not_installed
-if not "%NODERUNTIME:\=%"=="%NODERUNTIME%" goto :not_installed
-if not "%NODERUNTIME:/=%"=="%NODERUNTIME%" goto :not_installed
-if not "%NODERUNTIME:..=%"=="%NODERUNTIME%" goto :not_installed
-set "APPDIR=%APPROOT%\%RUNTIMENAME%"
-set "NODE_EXE=%APPROOT%\%NODERUNTIME%\node.exe"
-if not exist "%APPDIR%\server.mjs" goto :not_installed
-if not exist "%NODE_EXE%" goto :not_installed
+if /I not "%RUNTIMENAME:~0,5%"=="app-v" goto :missing
+if not "%RUNTIMENAME:\=%"=="%RUNTIMENAME%" goto :missing
+if not "%RUNTIMENAME:/=%"=="%RUNTIMENAME%" goto :missing
+if not "%RUNTIMENAME:..=%"=="%RUNTIMENAME%" goto :missing
+set "CONFIGURATOR=%APPROOT%\%RUNTIMENAME%\configure_document_bridge.ps1"
+if not exist "%CONFIGURATOR%" goto :missing
 
-echo.
-echo Select the business folders the website may access.
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%APPDIR%\configure_document_bridge.ps1" -AppRoot "%APPROOT%"
-if errorlevel 1 exit /b 1
-echo.
-"%NODE_EXE%" "%APPDIR%\server.mjs" --ensure-everything
-if errorlevel 1 goto :diagnostic_error
-"%NODE_EXE%" "%APPDIR%\server.mjs" --doctor
-if errorlevel 1 goto :diagnostic_error
-"%NODE_EXE%" "%APPDIR%\server.mjs" --write-install-summary >nul 2>nul
-if errorlevel 1 goto :diagnostic_error
-if exist "%SUMMARY%" start "" notepad.exe "%SUMMARY%"
-pause
-exit /b 0
+:configure
+powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File "%CONFIGURATOR%" -AppRoot "%APPROOT%"
+exit /b %ERRORLEVEL%
 
-:diagnostic_error
-"%NODE_EXE%" "%APPDIR%\server.mjs" --write-install-summary >nul 2>nul
-if exist "%SUMMARY%" start "" notepad.exe "%SUMMARY%"
-echo ERROR: Document Bridge diagnostics failed. See INSTALLATION-LOG.txt and bridge-console.log.
-pause
-exit /b 1
-
-:not_installed
-echo ERROR: Document Bridge or its pinned private Node runtime is not installed correctly on this computer.
-echo Run install_document_bridge.bat again.
+:missing
+echo The installed folder picker was not found.
+echo Run configure_document_bridge.bat from the updated repository, or run install_document_bridge.bat.
 pause
 exit /b 1

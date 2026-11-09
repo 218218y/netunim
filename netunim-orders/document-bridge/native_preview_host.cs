@@ -605,12 +605,37 @@ namespace NetunimPreview
         private static PreviewForm form;
         private static readonly object outputLock = new object();
 
-        [STAThread]
-        private static void Main()
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+        private static extern uint GetFileAttributesW(string path);
+
+        private static bool IsVisiblePath(string path)
         {
+            string root = Path.GetPathRoot(path);
+            if (String.IsNullOrEmpty(root)) return false;
+            // The volume root itself can carry system attributes. Inspect its
+            // descendants, including every directory leading to the file.
+            while (path.Length > root.Length)
+            {
+                uint attributes = GetFileAttributesW(path);
+                if (attributes == UInt32.MaxValue || (attributes & 0x6) != 0) return false;
+                path = Path.GetDirectoryName(path);
+                if (String.IsNullOrEmpty(path)) return false;
+            }
+            return true;
+        }
+
+        [STAThread]
+        private static void Main(string[] args)
+        {
+            Console.InputEncoding = new UTF8Encoding(false);
+            Console.OutputEncoding = new UTF8Encoding(false);
+            if (args.Length == 1 && args[0] == "--check-visible-paths")
+            {
+                string path;
+                while ((path = Console.ReadLine()) != null) Console.WriteLine(IsVisiblePath(path) ? "1" : "0");
+                return;
+            }
             NativeDpi.Enable();
-            Console.InputEncoding = Encoding.UTF8;
-            Console.OutputEncoding = Encoding.UTF8;
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             form = new PreviewForm();

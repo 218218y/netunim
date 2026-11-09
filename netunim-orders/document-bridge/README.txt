@@ -1,6 +1,9 @@
 Document Bridge v46 security update (2026-11-08)
 ==============================================
-The website can access only business folders selected in the local configurator.
+The website can access files under the folders or local drives selected in the
+local configurator. Whole-drive access requires confirmation. Windows and
+program directories, Bridge data, and hidden or system files are excluded.
+The configurator in this repository works even before a successful installation.
 Install/update the Bridge on every computer and select those folders when asked.
 No folders configured means no file search/access. Drive roots are rejected.
 Real filesystem targets are checked before publishing results and again before
