@@ -1,13 +1,14 @@
-Document Bridge v46 security update (2026-11-08)
+Document Bridge v48 security boundaries
 ==============================================
 The website can access files under the folders or local drives selected in the
 local configurator. Whole-drive access requires confirmation. Windows and
 program directories, Bridge data, and hidden or system files are excluded.
 The configurator in this repository works even before a successful installation.
 Install/update the Bridge on every computer and select those folders when asked.
-No folders configured means no file search/access. Drive roots are rejected.
+No folders configured means no file search/access. Drive roots require consent.
 Real filesystem targets are checked before publishing results and again before
 every read/open/reveal/delete; links escaping the approved roots are rejected.
+The website may remove individual files. Use Windows Explorer to remove folders.
 Production origins are exact; previews/localhost need explicit local permission.
 Pair manually using bridge-token.txt. Installation reports contain no pairing key.
 The following older feature notes are subject to these security boundaries.

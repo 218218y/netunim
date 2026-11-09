@@ -1,5 +1,14 @@
 import {completeSupabaseMfa,verifySupabaseFactor,verifiedFactors} from './supabase-mfa.js';
 
+function enrollmentQrUrl(value) {
+  // Auth returns a verbose SVG with an XML declaration, which can exceed 350 KB.
+  if(typeof value!=='string'||value.length>1_048_576)return '';
+  const svg=value.trim();
+  if(!/^(?:<svg(?:\s|>)|<\?xml\s)/i.test(svg))return '';
+  // Preserve the XML document. The browser parses it only as an SVG image.
+  try{return 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg)}catch{return ''}
+}
+
 // This page owns only a temporary Auth session. It never opens business data,
 // writes app credentials, or persists passwords, OTPs or enrollment secrets.
 export function mountAccountSecurity(root, config, {fetchRequest=globalThis.fetch, confirmAction=null}={}) {
@@ -22,7 +31,8 @@ export function mountAccountSecurity(root, config, {fetchRequest=globalThis.fetc
   }
   const headers=token=>({apikey:config.publishableKey,'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})});
   function message(text,error=false){find('securityMessage').textContent=text;find('securityMessage').classList.toggle('error',error)}
-  function clearSecret(){pendingFactor=null;find('securityQr').removeAttribute('src');find('securitySecret').textContent='';find('securitySetupCode').value='';find('securitySetup').hidden=true}
+  function clearSecret(){pendingFactor=null;find('securityQr').hidden=true;find('securityQr').removeAttribute('src');find('securitySecret').textContent='';find('securitySetupCode').value='';find('securitySetup').hidden=true}
+  find('securityQr').addEventListener('error',()=>{find('securityQr').hidden=true});
   function reset(){cancelConfirmation?.();session=null;pendingLogin=null;clearSecret();find('securityPassword').value='';find('securityLoginCode').value='';find('securityEmail').readOnly=false;find('securityPasswordGroup').hidden=false;find('securityLoginButton').textContent='התחבר';find('securityLogin').hidden=false;find('securityManage').hidden=true;find('securityFactors').replaceChildren()}
   async function request(route,body,token=session?.access_token,method=body===undefined?'GET':'POST'){
     const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);
@@ -65,7 +75,7 @@ export function mountAccountSecurity(root, config, {fetchRequest=globalThis.fetc
     if(busy||disposed)return;
     busy=true;controls.forEach(button=>{button.disabled=true});root.setAttribute('aria-busy','true');
     try{await action()}catch(error){if(!disposed){factorChoices(error);message(error?.message||'האימות לא הושלם. יש לנסות שוב.',true)}}
-    finally{busy=false;controls.forEach(button=>{button.disabled=false});root.removeAttribute('aria-busy')}
+    finally{busy=false;controls.forEach(button=>{button.disabled=false});find('securityEnroll').disabled=!!pendingFactor;root.removeAttribute('aria-busy')}
   }
   find('securityLogin').addEventListener('submit',event=>{event.preventDefault();run(async()=>{
     if(!config.url||!config.publishableKey)throw Error('גישה לענן אינה זמינה בכתובת זו. יש לפתוח את האתר המאושר.');
@@ -84,14 +94,22 @@ export function mountAccountSecurity(root, config, {fetchRequest=globalThis.fetc
     pendingLogin=null;find('securityLoginCode').value='';await refresh();message('החשבון אומת. פרטי הכניסה נשמרים בעמוד זה בלבד.');
   })});
   find('securityEnroll').addEventListener('click',()=>run(async()=>{
+    if(pendingFactor)return;
     const factor=await request('factors',{factor_type:'totp',friendly_name:'נתונים '+new Date().toISOString()});
-    if(!uuid.test(factor?.id)||typeof factor.totp?.secret!=='string'||factor.totp.secret.length>256||typeof factor.totp?.qr_code!=='string'||factor.totp.qr_code.length>131072)throw Error('לא התקבל גורם אימות תקין.');
-    const qr=factor.totp.qr_code;
-    if(!qr.startsWith('data:image/svg+xml')&&!/^\s*<svg\b/i.test(qr))throw Error('לא התקבל קוד רישום תקין.');
+    const created=factor?.type==='totp'&&typeof factor.id==='string'&&uuid.test(factor.id);
+    const secret=factor?.totp?.secret;
+    if(!created||typeof secret!=='string'||!/^[A-Z2-7]{16,128}$/.test(secret)){
+      if(created){
+        try{await request('factors/'+factor.id,undefined,session.access_token,'DELETE');await refresh()}catch{}
+      }
+      throw Error('לא התקבל מפתח רישום תקין. אפשר לבטל רישום שלא הושלם ולנסות שוב.');
+    }
+    const qr=enrollmentQrUrl(factor.totp.qr_code);
     // Render provider SVG only as an inert image, never HTML or a remote QR service.
-    find('securityQr').src=qr.startsWith('data:image/svg+xml')?qr:'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(qr);
-    find('securitySecret').textContent=factor.totp.secret;pendingFactor=factor.id;
-    find('securitySetup').hidden=false;message('סרוק בטלפון, שמור אפשרות שחזור במקום בטוח והזן קוד לאישור.');
+    if(qr)find('securityQr').src=qr;
+    find('securityQr').hidden=!qr;
+    find('securitySecret').textContent=secret;pendingFactor=factor.id;
+    find('securitySetup').hidden=false;message('הוסף את החשבון באפליקציה באמצעות סריקה או מפתח ההגדרה, והזן את הקוד שקיבלת.');
   }));
   find('securitySetup').addEventListener('submit',event=>{event.preventDefault();run(async()=>{
     if(!pendingFactor)throw Error('יש להתחיל רישום של אפליקציית אימות.');

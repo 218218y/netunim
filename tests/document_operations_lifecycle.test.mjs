@@ -27,11 +27,18 @@ function serviceFixture({commands=createDocumentCommandOwner(),manual=disposable
 }
 async function operationsFixture(t,{kind='text',execute,content,pdfRead,factory=createDocumentOperations}={}) {
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'document-commands-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));
-  const file=path.join(root,kind==='pdf'?'file.pdf':'file.txt');await fs.writeFile(file,'synthetic');
+  const file=path.join(root,kind==='pdf'?'file.pdf':'file.txt');
+  if(kind==='directory'){await fs.mkdir(file);await fs.writeFile(path.join(file,'.protected'),'synthetic')}
+  else await fs.writeFile(file,'synthetic');
   const stat=await fs.stat(file),events=[],row={fullPath:file,query:'synthetic',mode:'content',contentSearch:{}};
   const owner=factory({registry:{resolve:async id=>{assert.equal(id,'opaque');return {row,stat}},invalidate:()=>{events.push('invalidate');return ['opaque']}},preview:{files:{readText:async()=>({text:'synthetic',truncated:false}),readBinary:async()=>new Uint8Array()},cache:createPreviewTextCache({clock:Date.now,ttlMs:10000,maxEntries:2})},pdf:{index:{remove:async target=>{events.push('index');await fs.appendFile(path.join(root,'journal'),target)}},preview:{read:pdfRead??(async()=>null),invalidate:async()=>events.push('pdf-invalidate')},policy:{PDF_FORM_SEARCH_TEXT_REVISION:2,PDF_FORM_GEOMETRY_REVISION:1}},native:{isRunning:()=>false},search:{loadConfig:async()=>({searchTimeoutMs:100}),probeEverything:async()=>({}),runEs:content??(async()=>({stdout:''}))},platform:{host:{platform:'win32',env:{}},execFile:execute??(async()=>{await fs.unlink(file)}),stat:target=>fs.stat(target)},audit:{write:async text=>events.push(text)}});
   return {owner,file,root,events};
 }
+test('directory removal cannot reach recursive Windows file operations',async t=>{
+  const f=await operationsFixture(t,{kind:'directory',execute:()=>assert.fail('the Windows delete process must not run')});
+  await assert.rejects(f.owner.files.delete('opaque'),{code:'DOCUMENT_PATH_FORBIDDEN'});
+  assert.equal(await fs.readFile(path.join(f.file,'.protected'),'utf8'),'synthetic');
+});
 test('actual shutdown joins accepted recycle command, native absence verification, index invalidation and audit',async t=>{
   const entered=gate(),release=gate();let f;
   f=await operationsFixture(t,{execute:async()=>{entered.resolve();await release.promise;await fs.unlink(f.file)}});
