@@ -125,7 +125,7 @@ export function createEverythingSearchCoordinator({configuration,session,process
       }
     },
     ordering:{merge:mergeDocumentResults,compare:compareDocumentRows},
-    publication:{prune:pruneResults,publish:publicResult},
+    publication:{prune:pruneResults,publish:publicResult,admit:publication.admit},
     audit:{write:appendLog},
   },{bridgeVersion:BRIDGE_VERSION,maxResults:MAX_RESULTS,defaultLimit:DEFAULT_RESULT_LIMIT,recentLimit:RECENT_RESULT_LIMIT});
   async function searchDocuments(query,limit,mode='everything',contentSearch={},scopePath='',offset=0,sort={},fileType='all',signal=null){

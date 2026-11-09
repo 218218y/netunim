@@ -199,6 +199,7 @@ export function createDocumentSearch(
     const publicationStarted = performance.now();
     publication.prune();
     const admitted=publication.admit?await publication.admit(pageRows):pageRows;
+    if(admitted.length!==pageRows.length)partial=true;
     assertActive(plan.signal);
     const results = admitted.map(row =>
       publication.publish(row, {
@@ -265,7 +266,7 @@ export function createDocumentSearch(
       results,
       elapsedMs: Math.round(performance.now()-started),
       timings,
-      partial: partial === true,
+      partial: partial === true || admitted.length!==candidates.length,
       rootErrors: []
     };
   }

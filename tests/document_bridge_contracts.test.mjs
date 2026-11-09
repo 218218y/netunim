@@ -230,8 +230,8 @@ test('bridge searches Everything with server-side folder authorization and Unico
   assert.match(pdfIndex,/fileURLToPath/);
   assert.match(pdfIndex,/BinaryDataFactory:LocalPdfBinaryDataFactory/);
   assert.match(pdfIndex,/VerbosityLevel\?\.ERRORS/);
-  assert.match(lib,/BRIDGE_VERSION=47/);
-  assert.match(client,/EXPECTED_BRIDGE_VERSION=47/);
+  assert.match(lib,/BRIDGE_VERSION=48/);
+  assert.match(client,/EXPECTED_BRIDGE_VERSION=48/);
   assert.match(client,/requireBridgeVersion\(data\?\.bridgeVersion,'לקבל מיקומי התאמות בתוך PDF אינטראקטיבי'\)/,'preview-match geometry refuses a stale local Bridge runtime');
 });
 
@@ -554,12 +554,12 @@ test('document search rejects stale bridge runtimes instead of silently using a 
   const lib=read('netunim-orders/document-bridge/lib.mjs');
   const server=serverOwners();
   const client=read('shared/document-bridge-client.js');
-  assert.match(lib,/BRIDGE_VERSION=47/);
+  assert.match(lib,/BRIDGE_VERSION=48/);
   assert.match(server,/bridgeVersion:BRIDGE_VERSION/);
   assert.match(server,/normalizeDocumentFileType\(fileType\)/);
   assert.match(server,/includePdf:documentFileTypeIncludesPdf\(normalizedFileType\)/,'interactive-PDF eligibility must come from the normalized type filter');
   assert.match(read('netunim-orders/document-bridge/search-owner.mjs').replace(/\s+/g,''),/plan\.includePdf\?awaitpdf\.search\(plan,wanted\):\[\]/,'interactive-PDF supplemental results must obey the active type filter');
   assert.match(server,/Number\(response\.data\?\.version\)!==BRIDGE_VERSION/);
-  assert.match(client,/EXPECTED_BRIDGE_VERSION=47/);
+  assert.match(client,/EXPECTED_BRIDGE_VERSION=48/);
   assert.match(client,/DOCUMENT_BRIDGE_UPGRADE_REQUIRED/);
 });
