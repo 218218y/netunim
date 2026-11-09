@@ -114,6 +114,38 @@ test('a real 307 cannot send measurement details to a second endpoint', async t 
   assert.equal(report.scenarios[0].p95Ms, null);
 });
 
+test('the measurement client bypasses a Node global proxy', {skip: typeof http.setGlobalProxyFromEnv !== 'function'}, async t => {
+  let forwarded = 0;
+  const proxy = http.createServer((req, res) => {
+    forwarded++;
+    res.writeHead(502).end('{}');
+  });
+  proxy.on('connect', (_request, socket) => {
+    forwarded++;
+    socket.end('HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n');
+  });
+  const bridge = http.createServer((req, res) => {
+    req.resume();
+    req.once('end', () => res.writeHead(200, {'Content-Type': 'application/json'}).end('{"ok":true}'));
+  });
+  for (const server of [proxy, bridge]) {
+    server.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    t.after(() => {server.closeAllConnections(); server.close()});
+  }
+  const restore = http.setGlobalProxyFromEnv({HTTP_PROXY: 'http://127.0.0.1:' + proxy.address().port});
+  try {
+    const probe = await fetch('http://127.0.0.1:' + bridge.address().port, {signal: AbortSignal.timeout(2000)}).catch(() => null);
+    if (probe) await probe.arrayBuffer();
+    assert.equal(forwarded, 1, 'control request must use the global proxy');
+    const report = await measurePlan(single(), {...options, port: bridge.address().port});
+    assert.equal(forwarded, 1, 'only the control request should use the proxy');
+    assert.equal(report.scenarios[0].sampleCount, 20);
+  } finally {
+    restore();
+  }
+});
+
 test('measurement refuses mutations and insufficient samples before sending a request', async () => {
   let calls = 0;
   const opts = {...options, fetchRequest: async () => {calls++; throw Error('unexpected')}};

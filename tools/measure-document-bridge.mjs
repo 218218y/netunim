@@ -1,6 +1,8 @@
 import {createHmac, randomBytes} from 'node:crypto';
 import fs from 'node:fs/promises';
+import {Agent, request as httpRequest} from 'node:http';
 import path from 'node:path';
+import {arrayBuffer, json} from 'node:stream/consumers';
 import {pathToFileURL} from 'node:url';
 import {bridgeDataRoot} from '../netunim-orders/document-bridge/bridge-runtime-files.mjs';
 
@@ -16,6 +18,26 @@ const searchPhases = [
 const minimumSamples = 20;
 const caseId = /^case-\d{2}$/;
 const digest = /^[a-f0-9]{64}$/;
+const directAgent = new Agent({keepAlive: true});
+
+function requestDirectly(url, {method, headers, body, signal}) {
+  // An explicit agent avoids the environment's global proxy. Node's HTTP
+  // client returns redirects as responses and never follows them.
+  return new Promise((resolve, reject) => {
+    const request = httpRequest(url, {
+      agent: directAgent, method, headers: {...headers, 'Content-Length': Buffer.byteLength(body)}, signal,
+    }, response => {
+      const status = response.statusCode;
+      resolve({
+        status, ok: status >= 200 && status < 300,
+        headers: {get: name => response.headers[name.toLowerCase()]},
+        arrayBuffer: () => arrayBuffer(response), json: () => json(response),
+      });
+    });
+    request.once('error', reject);
+    request.end(body);
+  });
+}
 
 export function percentile(values, fraction) {
   const sorted = [...values].sort((a, b) => a - b);
@@ -102,7 +124,7 @@ function classifySamples(samples) {
 
 // Only fixed loopback read routes are used. Reports keep an opaque HMAC and
 // numeric summaries. Bodies, selected IDs and credentials stay in memory.
-export async function measurePlan(plan, {token, fingerprintKey, port = 8766, fetchRequest = fetch, signal} = {}) {
+export async function measurePlan(plan, {token, fingerprintKey, port = 8766, fetchRequest = requestDirectly, signal} = {}) {
   if (!/^computer-[1-3]$/.test(plan.machine) || !Array.isArray(plan.scenarios) ||
       !plan.scenarios.length || plan.scenarios.length > 50) throw Error('invalid_measurement_plan');
   if (!Number.isSafeInteger(port) || port < 1024 || port > 65535 || !token) throw Error('invalid_loopback_configuration');
