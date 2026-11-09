@@ -220,7 +220,10 @@ $save.Add_Click({
     return
   }
   if (@($selected | Where-Object { $_ -match '^[a-z]:\\$' }).Count -gt 0) {
-    $choice = [System.Windows.Forms.MessageBox]::Show($form, (Decode-UiText '15HXl9eZ16jXlCDXkdeQ15XXnNeV16og15zXl9eZ16TXldepINeU15zXkCDXnteQ16TXqdeo16og15zXkNeq16gg15zXpNeq15XXlyDXldeU16LXmdeR16gg16fXkdem15nXnSDXnNeh15wg15TXnteZ15fXlteV16guINec16nXnteV16gg15DXqiDXlNeR15fXmdeo15Q/'), 'Document Bridge', 'YesNo', 'Warning', 'Button2')
+    $message = Decode-UiText '16DXkdeX16gg15zXpNeX15XXqiDXm9eV16DXnyDXqdec150uDQoNCteU15DXqteoINeZ15XXm9ecINec15fXpNepLCDXnNek16rXldeXINeV15zXlNei15HXmdeoINec16HXnCDXlNee15nXl9eW15XXqCDXp9eR16bXmdedINeS15zXldeZ15nXnSDXqdeU157Xl9eR16gg16jXqdeQ15kg15zXktep16og15DXnNeZ15TXnSDXkdeb15XXoNefLiDXqteZ16fXmdeV16og157Xoteo15vXqiDXldeg16rXldeg15kg15TXnteX15HXqNeZ150g157XldeX16jXkteZ150uDQoNCteb158g4oCUINep157XldeoINeQ16og15TXkdeX15nXqNeULg0K15zXkCDigJQg15fXlteV16gg15zXqNep15nXnteUINeb15PXmSDXnNep16DXldeqINeQ16og15TXkdeX15nXqNeULg=='
+    $caption = Decode-UiText '15DXmdep15XXqCDXkteZ16nXlCDXnNeb15XXoNefINep15zXnQ=='
+    $rtl = [System.Windows.Forms.MessageBoxOptions]::RightAlign -bor [System.Windows.Forms.MessageBoxOptions]::RtlReading
+    $choice = [System.Windows.Forms.MessageBox]::Show($form, $message, $caption, 'YesNo', 'Warning', 'Button2', $rtl)
     if ($choice -ne [System.Windows.Forms.DialogResult]::Yes) { return }
   }
   try { Save-Roots $config $selected } catch {
