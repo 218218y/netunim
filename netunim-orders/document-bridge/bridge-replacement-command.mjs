@@ -1,22 +1,37 @@
-import {BRIDGE_SERVICE,BRIDGE_VERSION} from './lib.mjs';
+import {BRIDGE_SERVICE,BRIDGE_VERSION,originAllowed} from './lib.mjs';
 
 // Installer stop/check commands own their loopback client and process policy.
 // They can never borrow the listener's accepted-work drain or start a provider.
 export function createBridgeReplacementCommand({token,listener,processes,runtime}){
-if(typeof token?.read!=='function'||typeof token.path!=='string'||!token.path||typeof listener?.request!=='function'||!Number.isSafeInteger(listener.port)||listener.port<1||listener.port>65535||typeof processes?.bridgeListenerPid!=='function'||typeof processes.forceStopProcessTree!=='function'||typeof processes.waitForProcessExit!=='function'||typeof runtime?.now!=='function'||typeof runtime.setTimeout!=='function'||typeof runtime.log!=='function')throw new TypeError('document_replacement_ports_required');
+if(typeof token?.read!=='function'||typeof token.path!=='string'||!token.path||typeof listener?.request!=='function'||typeof listener.allowedOrigins!=='function'||!Number.isSafeInteger(listener.port)||listener.port<1||listener.port>65535||typeof processes?.bridgeListenerPid!=='function'||typeof processes.forceStopProcessTree!=='function'||typeof processes.waitForProcessExit!=='function'||typeof runtime?.now!=='function'||typeof runtime.setTimeout!=='function'||typeof runtime.log!=='function')throw new TypeError('document_replacement_ports_required');
 const TOKEN_PATH=token.path,fs={readFile:token.read},http={request:listener.request},BRIDGE_PORT=listener.port;
 const {bridgeListenerPid,forceStopProcessTree,waitForProcessExit}=processes;
 const appendLog=runtime.log,Date={now:runtime.now},setTimeout=runtime.setTimeout;
 const SHUTDOWN_REQUEST_TIMEOUT_MS=120000;
-function loopbackRequest(urlPath,{method='GET',token='',timeoutMs=2500}={}){
+function loopbackRequest(urlPath,{method='GET',token='',timeoutMs=2500,headers={}}={}){
   return new Promise((resolve,reject)=>{
-    const req=http.request({host:'127.0.0.1',port:BRIDGE_PORT,path:urlPath,method,headers:{Accept:'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},agent:false},res=>{
-      let size=0;const chunks=[];res.on('data',chunk=>{size+=chunk.length;if(size<=65536)chunks.push(chunk)});res.on('end',()=>{let data={};try{data=JSON.parse(Buffer.concat(chunks).toString('utf8')||'{}')}catch{}resolve({statusCode:Number(res.statusCode)||0,data})});
+    const req=http.request({host:'127.0.0.1',port:BRIDGE_PORT,path:urlPath,method,headers:{Accept:'application/json',...headers,...(token?{Authorization:`Bearer ${token}`}:{})},agent:false},res=>{
+      let size=0;const chunks=[];res.on('data',chunk=>{size+=chunk.length;if(size<=65536)chunks.push(chunk)});res.on('end',()=>{let data={};try{data=JSON.parse(Buffer.concat(chunks).toString('utf8')||'{}')}catch{}resolve({statusCode:Number(res.statusCode)||0,data,headers:res.headers})});
     });
     req.setTimeout(timeoutMs,()=>req.destroy(Object.assign(new Error('Loopback request timed out'),{code:'ETIMEDOUT'})));req.on('error',reject);req.end();
   });
 }
-async function checkRunning(){const response=await loopbackRequest('/health',{timeoutMs:2500});if(response.statusCode!==200||response.data?.service!==BRIDGE_SERVICE||Number(response.data?.version)!==BRIDGE_VERSION){const e=new Error('Document Bridge health check failed.');e.code='HEALTHCHECK_FAILED';throw e}return response.data}
+async function checkRunning(){
+  const response=await loopbackRequest('/health',{timeoutMs:2500});
+  if(response.statusCode!==200||response.data?.service!==BRIDGE_SERVICE||Number(response.data?.version)!==BRIDGE_VERSION){const e=new Error('Document Bridge health check failed.');e.code='HEALTHCHECK_FAILED';throw e}
+  const configured=await listener.allowedOrigins();
+  const origins=[...new Set((Array.isArray(configured)?configured:[]).filter(origin=>typeof origin==='string'&&origin&&!origin.includes('*')&&originAllowed(origin,[origin])))];
+  if(!origins.length){const e=new Error('Document Bridge has no exact website Origins configured. Review allowedOrigins in config.json.');e.code='ORIGIN_CONFIGURATION_INVALID';throw e}
+  for(const origin of origins){
+    const preflight=await loopbackRequest('/documents/search',{method:'OPTIONS',headers:{Origin:origin,'Access-Control-Request-Method':'POST','Access-Control-Request-Headers':'authorization,content-type','Access-Control-Request-Private-Network':'true'}});
+    const headers=preflight.headers||{},includes=(name,value)=>String(headers[name]||'').toLowerCase().split(',').map(part=>part.trim()).includes(value);
+    const health=await loopbackRequest('/health',{headers:{Origin:origin}});
+    if(preflight.statusCode!==204||headers['access-control-allow-origin']!==origin||!includes('access-control-allow-methods','post')||!includes('access-control-allow-headers','authorization')||!includes('access-control-allow-headers','content-type')||headers['access-control-allow-private-network']!=='true'||health.statusCode!==200||health.headers?.['access-control-allow-origin']!==origin||health.data?.service!==BRIDGE_SERVICE||Number(health.data?.version)!==BRIDGE_VERSION){
+      const e=new Error(`Document Bridge browser access check failed for ${origin}. Review allowedOrigins in config.json and reinstall the current Bridge.`);e.code='ORIGIN_PREFLIGHT_FAILED';throw e;
+    }
+  }
+  return response.data;
+}
 
 
 

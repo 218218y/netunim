@@ -214,7 +214,7 @@ function createRequestHandler(){
 
 const {stopExisting,checkRunning}=createBridgeReplacementCommand({
   token:{path:TOKEN_PATH,read:(file,encoding)=>fs.readFile(file,encoding)},
-  listener:{port:BRIDGE_PORT,request:http.request},
+  listener:{port:BRIDGE_PORT,request:http.request,allowedOrigins:async()=>(await loadConfig()).allowedOrigins},
   processes:processControl,
   runtime:{now:Date.now,setTimeout,log:appendLog},
 });

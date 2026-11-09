@@ -72,7 +72,7 @@ test('actual installer stop client grants the joined shutdown its own deadline b
  const reading=h.request('/documents/search',{query:'document',limit:1});await entered.promise;
  const deadlines=[];
  const replacement=createBridgeReplacementCommand({
-  listener:{port:h.port,request:(options,listener)=>{const req=http.request(options,listener),set=req.setTimeout.bind(req);req.setTimeout=(ms,...args)=>{deadlines.push([options.path,ms]);return set(ms,...args)};return req}},
+  listener:{port:h.port,allowedOrigins:async()=>{throw Error('stop must not load website configuration')},request:(options,listener)=>{const req=http.request(options,listener),set=req.setTimeout.bind(req);req.setTimeout=(ms,...args)=>{deadlines.push([options.path,ms]);return set(ms,...args)};return req}},
   token:{path:'unused-synthetic-path',read:async()=> 'test-key'},processes:{bridgeListenerPid:async()=>0,forceStopProcessTree:async()=>{throw Error('unexpected forced termination')},waitForProcessExit:async()=>{throw Error('unexpected unrelated process')}},runtime:{now:Date.now,setTimeout,log:async()=>{}},
  });
  const stop=replacement.stopExisting;

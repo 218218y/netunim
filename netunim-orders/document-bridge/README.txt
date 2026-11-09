@@ -266,6 +266,9 @@ Run install_document_bridge.bat on each PC. The installer:
   side-by-side versioned runtime through active-runtime.txt. The installer never
   renames or deletes the currently active runtime as a prerequisite for success,
   so a short-lived Windows file/current-directory handle cannot block an upgrade;
+- verifies browser-Origin health and Authorization/JSON/private-network preflight
+  for each configured website before committing activation. A healthy origin-less
+  loopback response alone is not sufficient; failed browser access rolls back;
 - cleans up verified old Bridge cmd/Node/NetunimPreviewHost helper processes and
   removes inactive Bridge/Node runtimes only as best-effort maintenance after
   the new v39 runtime has passed its health check;
@@ -289,7 +292,11 @@ Security
 --------
 - Bridge binds only to 127.0.0.1.
 - Requests require the per-computer Bridge token.
-- CORS is limited to configured website origins/local development.
+- CORS is limited to exact configured website Origins.
+- Complete historical default Origin lists (including the original Orders-only
+  six-entry list) migrate to the current exact production sites on configuration
+  load. Explicit custom restrictions remain authoritative; old wildcard entries
+  do not grant preview/development websites access.
 - Open and preview operations accept only an unexpired result ID produced by an
   authenticated search. The browser cannot submit an arbitrary filesystem path.
 - Files and preview content stay on the local computer.

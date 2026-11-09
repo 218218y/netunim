@@ -8,10 +8,10 @@ const refused=()=>Object.assign(Error('not listening'),{code:'ECONNREFUSED'});
 const health=(pid=42)=>({statusCode:200,data:{service:BRIDGE_SERVICE,version:BRIDGE_VERSION,pid}});
 function fixture(replies,{alive=false,token='private-token',shutdown=200,platform='win32'}={}){
  const requests=[],processes=[],logs=[];let now=0,tokenReads=0;
- const ports={token:{path:'synthetic-token',read:async()=>{tokenReads++;return token}},listener:{port:8766,request:(options,receive)=>{
+ const ports={token:{path:'synthetic-token',read:async()=>{tokenReads++;return token}},listener:{port:8766,allowedOrigins:async()=>['https://orders.bargig-furniture.com'],request:(options,receive)=>{
   requests.push(options);const request=new EventEmitter();request.setTimeout=(ms)=>{request.deadline=ms;return request};request.destroy=error=>request.emit('error',error);request.end=()=>queueMicrotask(()=>{
    const next=replies.length?replies.shift():options.path==='/shutdown'?{statusCode:shutdown,data:{ok:true}}:refused();if(next instanceof Error){request.emit('error',next);return}
-   const response=new EventEmitter();response.statusCode=next.statusCode;receive(response);response.emit('data',Buffer.from(JSON.stringify(next.data)));response.emit('end');
+   const response=new EventEmitter();response.statusCode=next.statusCode;response.headers=next.headers;receive(response);response.emit('data',Buffer.from(JSON.stringify(next.data)));response.emit('end');
   });return request;
  }},processes:{platform,execute:async(command,args,options)=>{
   processes.push({command,args,options});if(command==='taskkill.exe'){alive=false;return {stdout:''}}if(command==='tasklist.exe')return {stdout:alive?'"node.exe","42","Console"':''};if(command==='netstat.exe')return {stdout:' TCP 127.0.0.1:8766 0.0.0.0:0 LISTENING 42\r\n'};throw Error('unexpected process command');
@@ -51,4 +51,37 @@ for(const response of [{statusCode:503,data:{service:BRIDGE_SERVICE,version:BRID
 test('replacement command rejects incomplete I/O capabilities before any work',()=>{
  const f=fixture([]);assert.throws(()=>createBridgeReplacementCommand({...f.ports,listener:{...f.ports.listener,port:0}}),/document_replacement_ports_required/);
  assert.throws(()=>createBridgeReplacementCommand({...f.ports,token:{path:'synthetic'}}),/document_replacement_ports_required/);assert.deepEqual(f.requests,[]);assert.deepEqual(f.processes,[]);
+ assert.throws(()=>createBridgeReplacementCommand({...f.ports,listener:{...f.ports.listener,allowedOrigins:null}}),/document_replacement_ports_required/);
+});
+
+const website='https://orders.bargig-furniture.com';
+const cors={'access-control-allow-origin':website,'access-control-allow-methods':'GET,POST,OPTIONS','access-control-allow-headers':'Authorization,Content-Type','access-control-allow-private-network':'true'};
+const preflight=()=>({statusCode:204,data:{},headers:{...cors}});
+const websiteHealth=()=>({...health(),headers:{'access-control-allow-origin':website}});
+test('check-running proves browser preflight and health without reading the private token or entering a capability',async()=>{
+ const f=fixture([health(),preflight(),websiteHealth()]);assert.deepEqual(await f.api.checkRunning(),health().data);
+ assert.deepEqual(f.requests.map(row=>[row.method,row.path,row.headers.Origin]),[['GET','/health',undefined],['OPTIONS','/documents/search',website],['GET','/health',website]]);
+ assert.equal(f.requests[1].headers['Access-Control-Request-Headers'],'authorization,content-type');
+ assert.equal(f.requests.some(row=>row.headers.Authorization),false);assert.equal(f.tokenReads(),0);assert.deepEqual(f.processes,[]);
+});
+for(const [label,alter] of [
+ ['rejected preflight',reply=>{reply.statusCode=403}],
+ ['missing CORS',reply=>{delete reply.headers['access-control-allow-origin']}],
+ ['foreign CORS',reply=>{reply.headers['access-control-allow-origin']='https://other.example'}],
+ ['missing POST',reply=>{reply.headers['access-control-allow-methods']='GET,OPTIONS'}],
+ ['missing Bearer header',reply=>{reply.headers['access-control-allow-headers']='Content-Type'}],
+ ['missing JSON header',reply=>{reply.headers['access-control-allow-headers']='Authorization'}],
+ ['missing private network grant',reply=>{delete reply.headers['access-control-allow-private-network']}],
+])test('check-running rejects '+label+' even after healthy loopback response',async()=>{
+ const reply=preflight();alter(reply);const f=fixture([health(),reply,websiteHealth()]);
+ await assert.rejects(f.api.checkRunning(),{code:'ORIGIN_PREFLIGHT_FAILED'});assert.equal(f.tokenReads(),0);
+});
+for(const reply of [health(),{...websiteHealth(),statusCode:403},{...websiteHealth(),data:{service:'other',version:BRIDGE_VERSION}}])test('check-running rejects unreadable or foreign browser health '+JSON.stringify(reply),async()=>{
+ const f=fixture([health(),preflight(),reply]);await assert.rejects(f.api.checkRunning(),{code:'ORIGIN_PREFLIGHT_FAILED'});
+});
+test('check-running retains explicit custom websites and rejects configurations with no usable website',async()=>{
+ const f=fixture([health(),preflight(),websiteHealth()]);f.ports.listener.allowedOrigins=async()=>['https://custom.example'];
+ await assert.rejects(f.api.checkRunning(),{code:'ORIGIN_PREFLIGHT_FAILED'});assert.equal(f.requests[1].headers.Origin,'https://custom.example');
+ const g=fixture([health()]);g.ports.listener.allowedOrigins=async()=>['https://*.bargig-furniture.com','null'];
+ await assert.rejects(g.api.checkRunning(),{code:'ORIGIN_CONFIGURATION_INVALID'});assert.equal(g.requests.length,1);
 });

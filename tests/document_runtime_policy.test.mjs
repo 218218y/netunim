@@ -6,7 +6,9 @@ import {declaration,tokens} from './bank_policy_ast_fixture.mjs';
 import {createBridgeRuntimeFiles} from '../netunim-orders/document-bridge/bridge-runtime-files.mjs';
 import {DEFAULT_ALLOWED_ORIGINS} from '../netunim-orders/document-bridge/lib.mjs';
 const root=new URL('../netunim-orders/document-bridge/',import.meta.url),baseline=JSON.parse(readFileSync(new URL('./fixtures/document-runtime-policies.json',import.meta.url),'utf8'));
-const securityPolicies={"saveConfig": "0fc1e36b92f0f768eb427fb865fd992516ef9fe04799d9ad15dff628994be432", "printDoctor": "bb0159eabd319e077dc6174519c6b6dc5bb3226aed712398f66b79a4bf5fb631", "writeInstallSummary": "ab91197a93a18a882407a5c03fdfcc5fc2f18d6d416cf452977ccc9af1102e27"};
+const securityPolicies={"saveConfig": "0fc1e36b92f0f768eb427fb865fd992516ef9fe04799d9ad15dff628994be432", "printDoctor": "bb0159eabd319e077dc6174519c6b6dc5bb3226aed712398f66b79a4bf5fb631", "writeInstallSummary": "ab91197a93a18a882407a5c03fdfcc5fc2f18d6d416cf452977ccc9af1102e27",
+ "loopbackRequest":"83298355bc220e6762cdbbd3f9dcf6e5f72f3b0821ed044786c01a5d85c9282e",
+ "checkRunning":"f0795adbf57ad7c8e75586f9ab7594b245c75b02d68cbdc25f30610b05201450"};
 const expectedLoadConfig=`async function loadConfig(){
   const raw=await readJsonFile(CONFIG_PATH,{});
   return {
@@ -36,13 +38,14 @@ for(const [name,expected] of Object.entries(baseline.functions).filter(([name])=
 test('actual configuration loader upgrades shipped Origins while preserving business roots and custom restrictions',async()=>{
  const previous=['https://bargig-furniture.com','https://bargig-orders.pages.dev','https://bargig-kupa.pages.dev'];
  const legacy=[...previous,'https://*.bargig-furniture.com','https://*.bargig-orders.pages.dev','https://*.bargig-kupa.pages.dev','http://localhost:*','http://127.0.0.1:*'];
+ const ordersOnlyLegacy=legacy.filter(origin=>!origin.includes('bargig-kupa.pages.dev'));
  const roots=['C:\\Business\\Documents'];
- for(const allowedOrigins of [previous,legacy,['https://custom.example']]){
+ for(const allowedOrigins of [previous,legacy,ordersOnlyLegacy,['https://custom.example']]){
   let reads=0;
   const files={readFile:async file=>{assert.match(file,/config\.json$/);reads++;return JSON.stringify({allowedOrigins,roots,everythingInstance:' business ',searchTimeoutMs:1})}};
   const runtime=createBridgeRuntimeFiles({root:'isolated-config-fixture',files}),config=await runtime.loadConfig();
   assert.equal(reads,1);assert.deepEqual(config.roots,roots);assert.equal(config.everythingInstance,'business');assert.equal(config.searchTimeoutMs,3000);
-  assert.deepEqual(config.allowedOrigins,allowedOrigins===previous||allowedOrigins===legacy?DEFAULT_ALLOWED_ORIGINS:allowedOrigins);
+  assert.deepEqual(config.allowedOrigins,allowedOrigins===previous||allowedOrigins===legacy||allowedOrigins===ordersOnlyLegacy?DEFAULT_ALLOWED_ORIGINS:allowedOrigins);
  }
 });
 test('the listener composes runtime diagnostics and inventory instead of owning their policies',()=>{

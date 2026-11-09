@@ -9,8 +9,9 @@ import {DEFAULT_ALLOWED_ORIGINS,configuredDocumentOrigins} from '../netunim-orde
 test('Document Origin upgrades replace only shipped defaults and retain intentional custom restrictions',()=>{
   const previous=['https://bargig-furniture.com','https://bargig-orders.pages.dev','https://bargig-kupa.pages.dev'];
   const legacy=[...previous,'https://*.bargig-furniture.com','https://*.bargig-orders.pages.dev','https://*.bargig-kupa.pages.dev','http://localhost:*','http://127.0.0.1:*'];
-  for(const value of [undefined,[],previous,legacy])assert.deepEqual(configuredDocumentOrigins(value),DEFAULT_ALLOWED_ORIGINS);
-  for(const value of [['https://custom.example'],['https://bargig-orders.pages.dev'],[...legacy,'https://custom.example']])assert.deepEqual(configuredDocumentOrigins(value),value);
+  const ordersOnlyLegacy=legacy.filter(origin=>!origin.includes('bargig-kupa.pages.dev'));
+  for(const value of [undefined,[],previous,legacy,ordersOnlyLegacy,[...ordersOnlyLegacy].reverse()])assert.deepEqual(configuredDocumentOrigins(value),DEFAULT_ALLOWED_ORIGINS);
+  for(const value of [['https://custom.example'],['https://bargig-orders.pages.dev'],[...legacy,'https://custom.example'],ordersOnlyLegacy.slice(1),[...ordersOnlyLegacy,'https://custom.example'],[...ordersOnlyLegacy,ordersOnlyLegacy[0]]])assert.deepEqual(configuredDocumentOrigins(value),value);
   const original=[...DEFAULT_ALLOWED_ORIGINS],result=configuredDocumentOrigins(previous);
   result.push('https://late.example');
   assert.deepEqual(DEFAULT_ALLOWED_ORIGINS,original);
