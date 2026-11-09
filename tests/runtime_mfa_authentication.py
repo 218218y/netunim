@@ -7,7 +7,7 @@ AUTH = r"""(()=>{
  const owner='11111111-1111-4111-8111-111111111111',id='33333333-3333-4333-8333-333333333333';
  const factor={id,factor_type:'totp',status:'verified',friendly_name:'<img src=x onerror=window.mfaXss=true>'};
  const jwt=aal=>[btoa('{}'),btoa(JSON.stringify({sub:owner,aal})),'synthetic'].join('.');
- const state=window.mfaFixture={factors:[factor],calls:[],hold:false,entered:false};
+ const state=window.mfaFixture={factors:[factor],calls:[],hold:false,entered:false,qrAvailable:true};
  const session=aal=>({user:{id:owner,factors:state.factors},access_token:jwt(aal),refresh_token:'synthetic-refresh',expires_in:3600});
  window.fetch=async(url,init={})=>{
   const path=new URL(url).pathname,body=init.body?JSON.parse(init.body):null;state.calls.push({path,method:init.method,body});
@@ -20,7 +20,9 @@ AUTH = r"""(()=>{
    state.factors=state.factors.map(f=>({...f,status:'verified'}));result=session('aal2');
   }else if(path.endsWith('/factors')&&init.method==='POST'){
    state.factors=[{...factor,status:'unverified'}];
-   result={id,totp:{secret:'SYNTHETIC-ENROLLMENT-SECRET',qr_code:'<svg xmlns="http://www.w3.org/2000/svg" onload="window.mfaXss=true"/>'}};
+   const qr='<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" onload="window.mfaXss=true">'+
+    '<rect x="1" y="1" width="1" height="1" fill="black"/>'.repeat(7300)+'</svg>';
+   result={id,type:'totp',totp:{secret:'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567',qr_code:state.qrAvailable?qr:null}};
   }else if(init.method==='DELETE'){state.factors=[];result={id}}
   else throw Error('Unexpected synthetic Auth route: '+path);
   return Response.json(result);
@@ -46,13 +48,17 @@ FLOW = r"""(async()=>{
  [...document.querySelectorAll('dialog button')].find(button=>button.textContent==='ביטול').click();await idle();
  check(deletions()===before&&!document.querySelector('dialog'),'cancel preserves the factor and closes confirmation');
  $('securityEnroll').click();await idle();
- check(!$('securitySetup').hidden&&$('securitySecret').textContent==='SYNTHETIC-ENROLLMENT-SECRET','enrollment secret appears only during explicit setup');
+ check(!$('securitySetup').hidden&&$('securitySecret').textContent==='ABCDEFGHIJKLMNOPQRSTUVWXYZ234567','enrollment secret appears only during explicit setup');
+ check($('securityEnroll').disabled,'pending enrollment blocks duplicate factors');
+ await until(()=>$('securityQr').naturalWidth===200);
  check($('securityQr').src.startsWith('data:image/svg+xml'),'QR stays an inert image on this page');
  $('securitySetupCode').value='012345';$('securitySetup').requestSubmit();await idle();
  check($('securitySetup').hidden&&!$('securityQr').hasAttribute('src')&&!$('securitySecret').textContent&&!$('securitySetupCode').value,'successful enrollment clears QR, secret and OTP');
  check(!window.mfaXss,'provider strings cannot execute script');
  check(localStorage.length===0&&sessionStorage.length===0&&(await indexedDB.databases()).length===0,'security page never persists credentials or opens app databases');
+ mfaFixture.qrAvailable=false;
  $('securityEnroll').click();await idle();mfaFixture.hold=true;
+ check(!$('securitySetup').hidden&&$('securityQr').hidden&&!$('securityQr').hasAttribute('src')&&$('securitySecret').textContent.length===32,'manual enrollment works when the QR is missing');
  $('securitySetupCode').value='012345';$('securitySetup').requestSubmit();await until(()=>mfaFixture.entered);
  dispatchEvent(new Event('pagehide'));mfaFixture.release();await idle();
  check($('securityManage').hidden&&$('securitySetup').hidden&&!$('securitySecret').textContent&&!$('securityQr').hasAttribute('src'),'page close clears secrets and rejects delayed verification publication');

@@ -1,6 +1,6 @@
 // Local file actions stay separate from search result composition. The bridge
 // accepts opaque result IDs; no path from the browser is trusted or sent here.
-export function createDocumentResultMenu({results,available,open,reveal,remove,select}){
+export function createDocumentResultMenu({results,available,canRemove,open,reveal,remove,select}){
   let menu=null,current=null;
   function findButton(id,key){
     return [...(results()?.querySelectorAll('[data-document-result-id]')||[])]
@@ -20,7 +20,7 @@ export function createDocumentResultMenu({results,available,open,reveal,remove,s
       const {id,key,mode}=current,button=findButton(id,key);hide();
       if(action==='open')void open(id,button);
       else if(action==='reveal')void reveal(id,button);
-      else if(action==='delete')void remove(id,button,mode);
+      else if(action==='delete'&&canRemove(key))void remove(id,button,mode);
     });
     document.body.appendChild(menu);return menu;
   }
@@ -29,7 +29,9 @@ export function createDocumentResultMenu({results,available,open,reveal,remove,s
     const id=String(button.dataset.documentResultId),mode=button.dataset.documentSearchMode==='content'?'content':'everything';
     current={id,key:String(button.dataset.documentResultKey||''),mode};
     select(id,button,mode);
-    const node=ensure();node.hidden=false;
+    const node=ensure();
+    node.querySelector('[data-document-menu-action="delete"]').hidden=!canRemove(current.key);
+    node.hidden=false;
     const anchor=button.getBoundingClientRect();
     const x=Number.isFinite(clientX)?clientX:Math.min(window.innerWidth-8,anchor.left+Math.min(anchor.width,180));
     const y=Number.isFinite(clientY)?clientY:Math.min(window.innerHeight-8,anchor.top+Math.min(anchor.height,28));
@@ -45,6 +47,7 @@ export function createDocumentResultMenu({results,available,open,reveal,remove,s
 
 export async function deleteLocalDocumentResult({id,button,item,bridge,confirmDialog,beforeDelete,afterDelete,showStatus}){
   if(!bridge?.deleteDocument||!id)return;
+  if(item?.isDirectory){showStatus('לניהול תיקיות יש להשתמש בסייר Windows.');return}
   const name=String(item?.name||'הפריט הנבחר'),kind=item?.isDirectory?'התיקייה':'הקובץ';
   const message=`${kind} “${name}” יישלח לסל המיחזור של Windows.\nבכונן רשת או מיקום שאינו תומך בסל המיחזור, אופן המחיקה נקבע על־ידי Windows.`;
   const approved=confirmDialog?await confirmDialog('למחוק את הקובץ?',message,{confirmText:'מחק',cancelText:'ביטול',tone:'danger',defaultFocus:'confirm',confirmOnEnter:true}):globalThis.confirm?.(message);
