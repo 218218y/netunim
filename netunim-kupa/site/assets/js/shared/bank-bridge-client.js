@@ -23,13 +23,13 @@ function bridgeError(message,code='BRIDGE_ERROR',stage='',extra={}){
 export function createBankBridgeClient({tokenStore,fetchRequest,timers,createAbortController,messages={}}){
   if([tokenStore?.get,tokenStore?.set,fetchRequest,timers?.setTimeout,timers?.clearTimeout,createAbortController].some(port=>typeof port!=='function'))throw new Error('bank_bridge_ports_required');
   const text={...DEFAULT_MESSAGES,...messages};
-  async function withResponse(path,{method='GET',body=null,timeoutMs=5000,image=false}={},consume){
-    const token=tokenStore.get();
-    if(!token)throw bridgeError(image?text.imageNotPaired:text.notPaired,'BRIDGE_NOT_PAIRED');
+  async function withResponse(path,{method='GET',body=null,timeoutMs=5000,image=false,auth=true}={},consume){
+    const token=auth?tokenStore.get():'';
+    if(auth&&!token)throw bridgeError(image?text.imageNotPaired:text.notPaired,'BRIDGE_NOT_PAIRED');
     const controller=createAbortController(),timer=timers.setTimeout(()=>controller.abort(),timeoutMs);
     try{
       const response=await fetchRequest(BRIDGE_URL+path,{method,
-        headers:{Authorization:`Bearer ${token}`,...(image?{Accept:'image/*'}:{}),...(body?{'Content-Type':'application/json'}:{})},
+        headers:{...(auth?{Authorization:`Bearer ${token}`}:{}),...(image?{Accept:'image/*'}:{}),...(body?{'Content-Type':'application/json'}:{})},
         body:body?JSON.stringify(body):undefined,signal:controller.signal,cache:'no-store',redirect:'error'});
       return await consume(response);
     }catch(error){
@@ -78,6 +78,7 @@ export function createBankBridgeClient({tokenStore,fetchRequest,timers,createAbo
   function syncCreditCards({interactive=false,syncMode='quick',selection=[]}={}){const mode=normalizeCreditFetchMode(syncMode);return creditRequest('/sync',{method:'POST',body:{interactive:!!interactive,syncMode:mode,selection:Array.isArray(selection)?selection:[]},timeoutMs:INTERACTIVE_BRIDGE_TIMEOUT_MS})}
   return {
     getBridgeToken:()=>tokenStore.get(),setBridgeToken:value=>tokenStore.set(value),
+    redeemPairing:code=>request('/pairing/exchange',{method:'POST',body:{code},auth:false}),
     status:()=>request('/status',{timeoutMs:3500}),
     importConnectionSettings:payload=>request('/settings/import',{method:'POST',body:payload,timeoutMs:20000}),
     configureCredentials,selectAccount,fetchBalance,fetchChequeImage,

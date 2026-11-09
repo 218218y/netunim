@@ -1,6 +1,6 @@
 // @ts-check
 /** @typedef {{response:{ok:boolean},data:{service?:unknown,ok?:unknown,code?:unknown}}} LoopbackResponse
- * @typedef {{probe:()=>Promise<LoopbackResponse|null>,readToken:()=>Promise<string>,
+ * @typedef {{probe:()=>Promise<LoopbackResponse|null>,readToken:(health:LoopbackResponse)=>Promise<string>,
  * shutdown:(token:string)=>Promise<LoopbackResponse>,waitUntilStopped:()=>Promise<boolean>}} ReplacementPorts */
 /**
  * An acknowledgement is a request to drain, not permission to force-kill after
@@ -24,7 +24,7 @@ export function createBridgeReplacementCommand({ probe, readToken, shutdown, wai
             throw failure('BRIDGE_PORT_OCCUPIED', 'Bank Bridge port is occupied by another local service');
         let token = '';
         try {
-            token = (await readToken()).trim();
+            token = (await readToken(health)).trim();
         }
         catch { }
         if (!token)

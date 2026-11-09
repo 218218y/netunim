@@ -1,92 +1,109 @@
-# Scoped Bridge pairing — implementation proposal
+# Scoped Bridge pairing
 
-Status: design only. The current deployed protocol still uses one bearer key per
-Bridge. This document is not evidence that site separation or local user presence
-is already enforced. Implement in its own release after measurement/Windows
-acceptance of Document Bridge 48, with a compatible browser and both installers.
+The scoped protocol is opt-in per Bridge on each computer. Install both updated
+web clients and runtimes before activating it. The runtime versions remain Bank
+79 and Document 48 for wire compatibility. Use the release commit, rather than
+the version number alone, to distinguish these builds. Updated listeners also
+report `pairingProtocol: 1` on loopback `/health`. The security page at
+`/security.html` on each site accepts one-time pairing codes.
 
-## Current authority and target
+## Authority
 
-Bank `http-handler.mjs` captures its token at startup; Document reloads it through
-`ensureToken`. Both gates already require an approved Origin for browser callers.
-Browser `bridge-pairing-scope.js` fences changed local credentials but is not a
-server permission boundary. Neither HTTP gate currently distinguishes the two
-websites or read access from destructive commands. UI confirmation is not local
-user presence. The new gate must precede body reads and capability execution.
+Each site Origin has its own key and explicit permissions. The Origin must
+also pass the existing allowlist on every browser request. Pages aliases and
+custom domains are separate Origins and require separate approval. Scoped keys
+are never accepted without an Origin or for native administration.
 
-| Credential | Origin binding | Allowed capabilities |
-| --- | --- | --- |
-| Orders document reader | Exact locally approved Orders origin | search/recent, matches, preview/binary/native preview, open/reveal |
-| Kupa document reader | Exact locally approved Kupa origin | Same reader capabilities, separate key/revocation |
-| Document deletion grant | Same origin as its reader | Optional delete, explicitly approved locally; default absent |
-| Orders/Kupa bank client | Separate record for each exact origin | status/images, refresh and the existing explicitly approved connection commands |
-| Native administration | No browser Origin; separate local credential | shutdown, pairing administration, vault import/reset and credential removal |
+| Permission | Access granted |
+| --- | --- |
+| `document.read` | Status, search, folder picker, open, reveal, and previews |
+| `document.delete` | Send authorized files to the Recycle Bin |
+| `document.maintenance` | Inspect or change PDF index maintenance |
+| `bank.read` | Status, structural diagnostics, and retained cheque images |
+| `bank.refresh` | Bank and credit provider refresh |
+| `bank.configure` | Set credentials, select an account, or save a credit profile |
+| `bank.remove` | Delete connections and reset local profiles |
 
-The local operator chooses each capability; the website cannot promote itself.
-Refresh/provider login and connection edits must be separately named capabilities,
-not grouped as harmless reads. Unknown route/capability is denied by default.
-Pages and custom-domain aliases require their own exact-origin records/approval;
-there is no wildcard or common parent-domain credential. No cookie credentials
-are introduced on the loopback listener. Origin checks remain independent of keys.
+Grant permissions only where required. Connection import can replace existing
+connections and requires both `bank.configure` and `bank.remove`. Native
+administration uses a separate credential and includes shutdown.
+Existing authorization of real paths, hidden files, and
+authorized roots is still enforced. Opaque document IDs are scoped to the key
+that published them. A changed or revoked grant blocks queued work at its
+authorization boundary. Effects already submitted to Windows or to a provider
+finish through the existing owners.
 
-## Local approval and enrollment protocol
+## Canary procedure
 
-The configurator opens a local Windows UI through the existing native host, with
-an ACL-restricted local transport. A web-originated pairing request can only create
-a bounded pending request; it cannot approve it or open an unlimited sequence of
-prompts. Show the exact Origin, application, capabilities and expiration locally.
-Limit pending requests (three), attempts and request rate. Bind them to the exact
-origin and a 32-byte cryptographic nonce, expiring after two minutes by monotonic
-clock. A six-digit display code alone is insufficient authentication.
+1. In the first Windows computer, run the updated installers while the existing
+   clients are still paired. Confirm search, preview, bank and credit use before
+   changing permissions. Confirm that each intended site has received the
+   updated `/security.html`. Choose its canonical HTTPS Origin.
+2. Open an interactive terminal as the Windows user that runs the Bridge.
+   Use its installed Node executable and active `server.mjs`. Bank uses
+   `%LOCALAPPDATA%\NetunimKupaBankBridge\app\server.mjs`. Document uses
+   the active runtime directory named by
+   `%LOCALAPPDATA%\NetunimDocumentBridge\active-runtime.txt`.
+3. Run `node server.mjs --pairing status` for the selected Bridge.
+   Run `node server.mjs --pairing begin` and type `APPROVE` to open a
+   seven-day overlap. A Bank runtime configured in legacy-reflect mode must
+   first be switched to the existing allowlist mode.
+4. Issue a code for one Origin, for example
+   `node server.mjs --pairing issue https://orders.bargig-furniture.com document.read`
+   or `node server.mjs --pairing issue https://kupa.bargig-furniture.com bank.read bank.refresh`.
+   Type `APPROVE`. Paste the code on the exact site's security page within
+   two minutes, selecting the correct Bridge. Keep the code out of terminal
+   transcripts and support tickets. Repeat for each site, Bridge, and
+   required permission set. A new issue/exchange rotates the previous key
+   for that exact Origin.
+5. Confirm the paired site works and that disallowed actions are blocked.
+   Verify the other site independently. Run
+   `node server.mjs --pairing revoke ORIGIN` to revoke only that Origin
+   or cancel its pending first pairing. Reissue locally if required.
+6. Run `node server.mjs --pairing finish` after accepting all sites for this
+   Bridge. This permanently closes its overlap. Keep the old installer and
+   the recorded release commit for recovery. Repeat on the other computers
+   after the canary, including cold and warm search/preview on C: and Y:,
+   mapped-drive failures, and the normal bank/credit workflow.
 
-After explicit local approval, generate a one-use 32-byte pairing secret. Deliver
-it through the local UI to the operator (explicit paste into the chosen site),
-never URL/query, command-line arguments, support logs or public health. The site
-POSTs it with its exact Origin; atomically consume the nonce before returning one
-new 32-byte random site key. Parallel/replayed, expired, foreign-origin and
-unapproved requests fail. Rejection/expiry cancels pending material. Keep only a
-key digest, random record ID, origin, capabilities and revocation generation in an
-ACL-restricted local registry; comparison is constant-time. Never list key values.
+Pairing codes are 32-byte random values. The registry contains only digests,
+exact origins, record IDs and permissions. A local admin credential is stored
+separately under the Windows user/SYSTEM ACL in `pairing-v1`. Codes are
+limited to three pending Origins and five valid-format guesses per code.
+They expire on the monotonic clock, are consumed once and are lost on restart.
+The registry is committed before the Bridge returns a site key. An initialized
+installation with a missing or corrupt registry fails closed. Ordinary scoped
+requests check an in-memory committed snapshot, with no registry reads.
 
-Record replacement uses atomic writes under the existing PID/token lock. Corrupt
-or unavailable registry fails closed. Refresh the registry/generation at every
-request and fence accepted operations before irreversible commands. Revoking one
-site cancels its pending work/opaque grants without changing the other site's
-key, provider profiles, vault, sync data, roots or Everything configuration. Check
-authority again when opening old result IDs, in addition to filesystem authority.
+The first successful pairing disables the legacy key for that Origin
+immediately. An unpaired allowed Origin can still use it during overlap.
+`status` lists the registered Origins, capabilities and deadline, without
+showing credentials or asserting which browser is currently connected.
 
-## Compatibility and rollback
+## Performance and recovery
 
-First ship both servers and clients understanding scoped records, with migration
-explicitly inactive. A local migration command preserves the existing key and
-configuration as an ACL-protected recovery artifact, pairs one computer/site,
-then starts a visible seven-day legacy overlap for that computer. No unattended
-switch or deletion of old browser data. Show which site still uses legacy mode
-using record IDs only. At the end disable browser use of the shared key; retain
-separate native administration. An installation that has not begun migration keeps
-its old protocol and is clearly reported as unscoped, not silently secured.
+Collect local timing on both sides of the update with the same test plan and
+transport. Use at least 20 warm repetitions per scenario and record cold
+requests separately. The timing CLI can still exercise read routes after
+cutover with `node tools/measure-document-bridge.mjs --native plan.json report.json`.
+Native and legacy-site measurements use different baseline identities. For the
+actual scoped browser path collect the request duration and Server-Timing in
+DevTools. Only share aggregate timings and counts.
 
-Rollback is an explicit local action restoring protocol compatibility and the
-previous installer without touching provider/sync data. It never resurrects a
-revoked key automatically: either keep scoped authorization on the server or issue
-a new legacy credential with local consent and a deadline. Back up configuration
-and registry outside public diagnostics. Reinstallation must preserve records.
+For a deliberate downgrade, complete the transition and run
+`node server.mjs --pairing prepare-rollback` while the scoped runtime is
+running. This prepares a fresh legacy credential without re-enabling the old
+one on the scoped listener. Use the current runtime's `--stop-existing`
+(or the Bank rollback helper) to drain it before installing/starting the
+previous runtime. An older runtime uses the fresh local legacy key, so pair
+its browser clients explicitly if needed. When restoring the scoped release,
+the preserved registry will recognize previously active scoped keys. Reissue
+locally if a browser was re-paired to the legacy key. Do not delete pairing
+state, DPAPI files, provider profiles, Everything settings, browser data or
+offline queues. A downgrade restores the legacy trust model while in use.
 
-## Release tests and approval gates
-
-Test both site origins/custom aliases against both servers with real loopback
-HTTP and browser PNA prompts; deny foreign/missing browser origins, wrong key,
-correct key from the other site, unknown capabilities, bodies before auth and
-every destructive route. Native administration has a separate matrix. Test nonce
-expiry/replay/concurrent consume, prompt rejection/rate limiting, corrupted files,
-write interruption, restart, upgrade, rollback and revocation during queued work.
-Test old result IDs after site revocation, root removal, hidden changes and drive
-remapping. Prove vault/profile/index bytes unchanged and demonstrate one-site
-revocation with the other still syncing. Do not change search/sync engines here.
-
-Stage on one synthetic computer, then one real computer with both sites; roll out
-the other two only after normal bank/credit/search/preview acceptance. Planning
-estimate: 5–10 engineering days plus operator acceptance, with no new cloud
-service. This is a scope estimate, not a delivery commitment. Local-user malware
-and malicious code already executing within an approved site remain residual
-risks; per-site grants limit their reach but do not isolate the Windows account.
+Automated tests cover the HTTP and production wiring, enrollment/replay,
+cross-Origin access, capability denial, restart, failed registry writes, key
+rotation for downgrade, document ID ownership and Bank admission. Canary
+acceptance requires the actual Windows browsers, Origin/CORS permission
+prompts, installation, providers, drives and performance measurements.

@@ -5,7 +5,7 @@
  * read. Provider sessions fail fast while any command is reserved, and retain
  * ownership through diagnostic/status publication, not just browser work.
  */
-export function createBridgeOperationOwner() {
+export function createBridgeOperationOwner({assertAuthorized=()=>{}}={}) {
   let tail = Promise.resolve();
   let pendingConfigurations = 0;
   let providerActive = false;
@@ -31,7 +31,7 @@ export function createBridgeOperationOwner() {
   /** @template T @param {() => T | PromiseLike<T>} command @param {boolean} [mutating=false] @returns {Promise<T>} */
   function enqueue(command, mutating = false) {
     if (mutating) pendingConfigurations++;
-    const task = tail.then(command).finally(() => { if (mutating) pendingConfigurations--; });
+    const task = tail.then(() => { assertAuthorized(); return command(); }).finally(() => { if (mutating) pendingConfigurations--; });
     // A rejected command releases ownership without poisoning later commands.
     tail = task.then(() => {}, () => {});
     return track(task);
@@ -56,7 +56,7 @@ export function createBridgeOperationOwner() {
     if (closed) return Promise.reject(stopping());
     if (providerActive || pendingConfigurations) return Promise.reject(busy());
     providerActive = true;
-    return track(Promise.resolve().then(command).finally(() => { providerActive = false; }));
+    return track(Promise.resolve().then(() => { assertAuthorized(); return command(); }).finally(() => { providerActive = false; }));
   }
 
   function close() {
@@ -69,5 +69,5 @@ export function createBridgeOperationOwner() {
     while (tasks.size) await Promise.allSettled([...tasks]);
   }
 
-  return Object.freeze({configuration, provider, read, assertAccepting, close, drain});
+  return Object.freeze({configuration, provider, read, assertAccepting, assertAuthorized, close, drain});
 }

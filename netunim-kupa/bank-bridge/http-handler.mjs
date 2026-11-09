@@ -40,7 +40,7 @@ async function readJson(req) {
 function authToken(req) { const value = String(req.headers.authorization || ''); return value.startsWith('Bearer ') ? value.slice(7).trim() : ''; }
 // One entry gate precedes all private routes, body consumption and capability
 // entry. Bank pathname/query aliases remain compatible with installed clients.
-export function createBankBridgeHttpHandler({ token, routes, health, admission, originPolicy=legacyOriginPolicy }) {
+export function createBankBridgeHttpHandler({ token, routes, health, admission, originPolicy=legacyOriginPolicy, pairing }) {
     if (typeof token !== 'string' || !token || typeof routes?.resolve !== 'function' || typeof health !== 'function' || typeof admission?.assertAccepting !== 'function') {
         throw new Error('bank_bridge_http_ports_required');
     }
@@ -58,38 +58,56 @@ export function createBankBridgeHttpHandler({ token, routes, health, admission, 
             return;
         }
         if (req.method === 'GET' && pathname === '/health') {
-            send(req, res, 200, health());
-            return;
-        }
-        if (!tokenEqual(token, authToken(req))) {
-            send(req, res, 401, { ok: false, code: 'UNAUTHORIZED', message: 'מפתח Bank Bridge שגוי' });
+            const data = health();
+            send(req, res, 200, pairing ? {...data, pairingProtocol: pairing.protocol} : data);
             return;
         }
         try {
+            const bearer = authToken(req);
+            const originAllowed = origin => originPolicy.mode === 'allowlist' && originPolicy.allows(origin);
+            const control = pairing?.respond({pathname, req, res, bearer, readBody:readJson,
+                send:(status,data)=>send(req,res,status,data), originAllowed, canActivate:originPolicy.mode==='allowlist'});
+            if (control) { await control; return; }
+            let grant;
+            if (pairing) grant = await pairing.capture({origin:req.headers.origin, bearer, originAllowed, readLegacy:()=>token});
+            else if (!tokenEqual(token, bearer)) {
+                send(req, res, 401, { ok: false, code: 'UNAUTHORIZED', message: 'מפתח Bank Bridge שגוי' });
+                return;
+            }
             if(pathname!=='/shutdown')admission.assertAccepting();
             const route = routes.resolve(req.method, pathname);
             if (!route) {
                 send(req, res, 404, { ok: false, code: 'NOT_FOUND', message: 'נתיב Bank Bridge לא קיים' });
                 return;
             }
-            if (route.response === 'binary') {
-                const image = await route.run();
-                if (!image) {
-                    send(req, res, 404, { ok: false, code: 'CHEQUE_IMAGE_NOT_FOUND', message: 'תמונת השיק אינה זמינה עוד ב-Bank Bridge המקומי' });
-                    return;
-                }
-                res.writeHead(200, {
-                    ...corsHeaders(req,originPolicy), 'Content-Type': image.contentType, 'Content-Length': String(image.size), 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff'
-                });
-                res.end(image.data);
-                return;
-            }
-            const result = await route.run(route.readBody ? await readJson(req) : {});
-            send(req, res, 200, result);
-            route.afterResponse?.();
+            grant?.authorize?.(route.permission);
+            const run = async () => {
+              if (route.response === 'binary') {
+                  grant?.assert();
+                  const image = await route.run();
+                  grant?.assert();
+                  if (!image) {
+                      send(req, res, 404, { ok: false, code: 'CHEQUE_IMAGE_NOT_FOUND', message: 'תמונת השיק אינה זמינה עוד ב-Bank Bridge המקומי' });
+                      return;
+                  }
+                  res.writeHead(200, {
+                      ...corsHeaders(req,originPolicy), 'Content-Type': image.contentType, 'Content-Length': String(image.size), 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff'
+                  });
+                  res.end(image.data);
+                  return;
+              }
+              const body = route.readBody ? await readJson(req) : {};
+              grant?.assert();
+              const result = await route.run(body);
+              grant?.assert();
+              send(req, res, 200, result);
+              route.afterResponse?.();
+            };
+            if (grant) await pairing.run(grant, run);
+            else await run();
         }
         catch (error) {
-            send(req, res, error?.code === 'REQUEST_TOO_LARGE' ? 413 : 400, bankBridgeErrorResponse(error));
+            send(req, res, error?.status || (error?.code === 'REQUEST_TOO_LARGE' ? 413 : 400), bankBridgeErrorResponse(error));
         }
     }
     return function listener(req, res) {

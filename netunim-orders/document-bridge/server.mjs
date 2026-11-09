@@ -33,6 +33,8 @@ import {createPreviewFilePlatform} from './preview-file-platform.mjs';
 import {createNativePreviewSession} from './native-preview-session.mjs';
 import {createNativePreviewHostPlatform} from './native-preview-platform.mjs';
 import {createDocumentBridgeHttpHandler} from './http-handler.mjs';
+import {createScopedPairing, readPairingAdminToken} from './scoped-pairing.mjs';
+import {runPairingConsole} from './pairing-console.mjs';
 
 import {createEverythingSession} from './everything-session.mjs';
 import {createEverythingProcess} from './everything-process.mjs';
@@ -51,6 +53,7 @@ const setupCommands=['--doctor','--ensure-everything','--write-install-summary']
 const configPath=setupCommands.includes(process.argv[2])?process.env.NETUNIM_DOCUMENT_BRIDGE_SETUP_CONFIG:undefined;
 const bridgeRuntime=createBridgeRuntimeFiles({configPath});
 const {APP_ROOT,TOKEN_PATH}=bridgeRuntime.paths;
+const pairing=createScopedPairing({root:APP_ROOT,permissions:['document.read','document.delete','document.maintenance']});
 const {appendLog,writeJsonFile,ensureToken,loadConfig,saveConfig}=bridgeRuntime;
 const RUNTIME_ROOT=fileURLToPath(new URL('.',import.meta.url));
 const PDF_MAINTENANCE_TASK_NAME='NetunimDocumentBridgePdfMaintenance';
@@ -71,6 +74,7 @@ const documentAccess=createDocumentFileAccess({
   visible:process.platform==='win32'?checkWindowsVisibility:undefined,
 });
 const documentResults=createDocumentResultRegistry({
+  authority:pairing,
   clock:{now:Date.now,ttlMs:RESULT_TTL_MS},
   identity:{next:()=>crypto.randomUUID()},
   files:{stat:fullPath=>fs.stat(fullPath),authorize:documentAccess.authorize},
@@ -199,7 +203,8 @@ const nativePreviewSession=createNativePreviewSession({
   timers:{setTimeout,clearTimeout},
   log:appendLog,
 });
-function createRequestHandler(){
+async function createRequestHandler(){
+  await pairing.initialize();
   const routes=createDocumentBridgeRoutes({
     service:service.service,
     maintenance:service.maintenance,
@@ -207,14 +212,19 @@ function createRequestHandler(){
     preview:documents.preview,
     nativePreview:documents.native,
     files:documents.files,
-    shutdown:service.shutdown,
+    shutdown:{...service.shutdown,prepare:async()=>{
+      const [,result]=await Promise.all([pairing.close(),service.shutdown.prepare()]);
+      return result;
+    }},
   });
-  return createDocumentBridgeHttpHandler({loadConfig,readToken:ensureToken,routes,health:service.health,appendLog});
+  return createDocumentBridgeHttpHandler({loadConfig,readToken:ensureToken,routes,health:service.health,appendLog,pairing});
 }
 
+const replacementAgent=new http.Agent({keepAlive:false});
 const {stopExisting,checkRunning}=createBridgeReplacementCommand({
-  token:{path:TOKEN_PATH,read:(file,encoding)=>fs.readFile(file,encoding)},
-  listener:{port:BRIDGE_PORT,request:http.request,allowedOrigins:async()=>(await loadConfig()).allowedOrigins},
+  token:{path:TOKEN_PATH,read:(file,encoding)=>fs.readFile(file,encoding),readAdmin:()=>readPairingAdminToken(APP_ROOT)},
+  listener:{port:BRIDGE_PORT,request:(options,callback)=>http.request({...options,agent:replacementAgent},callback),
+    allowedOrigins:async()=>(await loadConfig()).allowedOrigins},
   processes:processControl,
   runtime:{now:Date.now,setTimeout,log:appendLog},
 });
@@ -252,4 +262,7 @@ const service=createBridgeService({
   installation:{printDoctor,writeInstallSummary,stopExisting,checkRunning},
   listener:{host:process,createServer:(...args)=>http.createServer(...args),handler:createRequestHandler},
 });
-service.main().catch(async error=>{await appendLog(`FATAL code=${error?.code||'ERROR'}`);console.error('Document Bridge failed. See bridge.log for the diagnostic code.');process.exitCode=1});
+const main=process.argv[2]==='--pairing'
+  ?runPairingConsole({root:APP_ROOT,port:BRIDGE_PORT,args:process.argv.slice(3)})
+  :service.main();
+main.catch(async error=>{await appendLog(`FATAL code=${error?.code||'ERROR'}`);console.error('Document Bridge failed. See bridge.log for the diagnostic code.');process.exitCode=1});

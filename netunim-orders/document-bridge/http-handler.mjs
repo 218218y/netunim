@@ -58,7 +58,7 @@ export function documentBridgeErrorResponse(error) {
 
 // All private routes pass the same origin/token gate, before body consumption or
 // capability entry. Configuration and token ownership stay with the runtime.
-export function createDocumentBridgeHttpHandler({loadConfig, readToken, routes, health, appendLog}) {
+export function createDocumentBridgeHttpHandler({loadConfig, readToken, routes, health, appendLog, pairing}) {
   if ([loadConfig, readToken, health, appendLog].some(port => typeof port !== 'function') || !(routes instanceof Map)) {
     throw new Error('document_bridge_http_ports_required');
   }
@@ -71,46 +71,63 @@ export function createDocumentBridgeHttpHandler({loadConfig, readToken, routes, 
       return;
     }
     if (req.method === 'OPTIONS') { res.writeHead(204, corsHeaders(req, config)); res.end(); return; }
-    if (req.method === 'GET' && req.url === '/health') { sendJson(req, res, 200, health(), config); return; }
-    if (!tokenEqual(await readToken(), authToken(req))) {
+    if (req.method === 'GET' && req.url === '/health') {
+      const data = health();
+      sendJson(req, res, 200, pairing ? {...data, pairingProtocol:pairing.protocol} : data, config);
+      return;
+    }
+    const bearer = authToken(req);
+    const allows = value => config.allowedOrigins.includes(value) && originAllowed(value, config.allowedOrigins);
+    const control = pairing?.respond({pathname:req.url,req,res,bearer,readBody:readJson,
+      send:(status,data)=>sendJson(req,res,status,data,config),originAllowed:allows});
+    if (control) { await control; return; }
+    if (!pairing && !tokenEqual(await readToken(), bearer)) {
       sendJson(req, res, 401, {ok: false, code: 'UNAUTHORIZED', message: 'מפתח Document Bridge שגוי או חסר.'}, config);
       return;
     }
     let cancelledRead = false;
     try {
+      const grant = await pairing?.capture({origin:req.headers.origin,bearer,originAllowed:allows,readLegacy:readToken});
       // Match the exact method and request target, preserving the wire contract:
       // query strings, trailing slashes and alternate methods are not aliases.
       const route = routes.get(`${req.method} ${req.url}`);
       if (!route) { sendJson(req, res, 404, {ok: false, code: 'NOT_FOUND', message: 'נתיב לא קיים'}, config); return; }
-      // A response closes on caller cancellation even after the request body
-      // completed. IncomingMessage's normal close is not a cancellation signal.
-      // Commands/previews retain their accepted-work drain independently.
-      const controller = route.cancellable ? new AbortController() : null;
-      const disconnected = () => {
-        if (controller && !res.writableFinished) { cancelledRead = true; controller.abort(); }
-      };
-      if (controller) res.once('close', disconnected);
-      try {
-        const body = route.readBody ? await readJson(req) : {};
-        if (res.destroyed) disconnected();
-        controller?.signal.throwIfAborted();
-        const routeStarted = performance.now();
-        const result = await route.run(body, controller ? {signal:controller.signal} : undefined);
-        if (!res.destroyed) {
-          res.setHeader('Server-Timing', `bridge;dur=${(performance.now()-started).toFixed(2)}, operation;dur=${(performance.now()-routeStarted).toFixed(2)}`);
-          res.setHeader('Access-Control-Expose-Headers', 'Server-Timing');
-          if (route.response === 'binary') sendBinary(req, res, result, config);
-          else sendJson(req, res, 200, result, config);
+      grant?.authorize?.(route.permission);
+      const run = async () => {
+        // A response closes on caller cancellation even after the request body
+        // completed. IncomingMessage's normal close is not a cancellation signal.
+        // Commands/previews retain their accepted-work drain independently.
+        const controller = route.cancellable ? new AbortController() : null;
+        const disconnected = () => {
+          if (controller && !res.writableFinished) { cancelledRead = true; controller.abort(); }
+        };
+        if (controller) res.once('close', disconnected);
+        try {
+          const body = route.readBody ? await readJson(req) : {};
+          if (res.destroyed) disconnected();
+          controller?.signal.throwIfAborted();
+          grant?.assert();
+          const routeStarted = performance.now();
+          const result = await route.run(body, controller ? {signal:controller.signal} : undefined);
+          grant?.assert();
+          if (!res.destroyed) {
+            res.setHeader('Server-Timing', `bridge;dur=${(performance.now()-started).toFixed(2)}, operation;dur=${(performance.now()-routeStarted).toFixed(2)}`);
+            res.setHeader('Access-Control-Expose-Headers', 'Server-Timing');
+            if (route.response === 'binary') sendBinary(req, res, result, config);
+            else sendJson(req, res, 200, result, config);
+          }
+          route.afterResponse?.();
+        } finally {
+          if (controller) res.off('close', disconnected);
         }
-        route.afterResponse?.();
-      } finally {
-        if (controller) res.off('close', disconnected);
-      }
+      };
+      if (grant) await pairing.run(grant, run);
+      else await run();
     } catch (error) {
       if (res.destroyed && cancelledRead) return;
       await appendLog(`HTTP_ERROR code=${error?.code || 'ERROR'}`);
       if (res.destroyed) return;
-      let status = 503;
+      let status = error?.status || 503;
       if (error?.code === 'QUERY_TOO_SHORT') status = 400;
       else if (error?.code === 'RESULT_EXPIRED') status = 410;
       else if (error?.code === 'DOCUMENT_PATH_FORBIDDEN') status = 403;

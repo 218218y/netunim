@@ -7,9 +7,13 @@ AUTH = r"""(()=>{
  const owner='11111111-1111-4111-8111-111111111111',id='33333333-3333-4333-8333-333333333333';
  const factor={id,factor_type:'totp',status:'verified',friendly_name:'<img src=x onerror=window.mfaXss=true>'};
  const jwt=aal=>[btoa('{}'),btoa(JSON.stringify({sub:owner,aal})),'synthetic'].join('.');
- const state=window.mfaFixture={factors:[factor],calls:[],hold:false,entered:false,qrAvailable:true};
+ const state=window.mfaFixture={factors:[factor],calls:[],hold:false,entered:false,qrAvailable:true,pairing:[]};
  const session=aal=>({user:{id:owner,factors:state.factors},access_token:jwt(aal),refresh_token:'synthetic-refresh',expires_in:3600});
  window.fetch=async(url,init={})=>{
+  if(new URL(url).pathname==='/pairing/exchange'){
+   state.pairing.push({url,headers:init.headers,body:JSON.parse(init.body)});
+   return Response.json({ok:true,token:'ntk1.'+'b'.repeat(43)});
+  }
   const path=new URL(url).pathname,body=init.body?JSON.parse(init.body):null;state.calls.push({path,method:init.method,body});
   let result;
   if(path.endsWith('/token'))result=session('aal1');
@@ -56,6 +60,18 @@ FLOW = r"""(async()=>{
  check($('securitySetup').hidden&&!$('securityQr').hasAttribute('src')&&!$('securitySecret').textContent&&!$('securitySetupCode').value,'successful enrollment clears QR, secret and OTP');
  check(!window.mfaXss,'provider strings cannot execute script');
  check(localStorage.length===0&&sessionStorage.length===0&&(await indexedDB.databases()).length===0,'security page never persists credentials or opens app databases');
+ const pairing=$('bridgePairing'),pairCode=$('pairCode'),pairBridge=$('pairBridge');
+ const pairButton=pairing.querySelector('button[type=submit]');
+ check(!pairCode.hasAttribute('name')&&pairing.method==='post','one-time code cannot become a form URL or payload');
+ for(const [bridge,port] of [['bank',8765],['document',8766]]){
+   pairBridge.value=bridge;pairCode.value='ntp1.'+'a'.repeat(43);pairing.requestSubmit();
+   await until(()=>!pairButton.disabled);
+   const sent=mfaFixture.pairing.at(-1);
+   check(sent?.url==='http://127.0.0.1:'+port+'/pairing/exchange'&&!sent.headers.Authorization,'pairing uses fixed loopback without the existing bearer');
+   check(sent.body.code.startsWith('ntp1.')&&!pairCode.value&&!pairing.textContent.includes('ntk1.'),'one-time code is cleared and the bearer stays out of DOM');
+ }
+ check(Object.values(localStorage).filter(value=>value==='ntk1.'+'b'.repeat(43)).length===2,'site stores a distinct entry for each connector');
+ localStorage.clear();
  mfaFixture.qrAvailable=false;
  $('securityEnroll').click();await idle();mfaFixture.hold=true;
  check(!$('securitySetup').hidden&&$('securityQr').hidden&&!$('securityQr').hasAttribute('src')&&$('securitySecret').textContent.length===32,'manual enrollment works when the QR is missing');
