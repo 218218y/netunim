@@ -2,15 +2,28 @@ import {completeSupabaseMfa,verifySupabaseFactor,verifiedFactors} from './supaba
 
 // This page owns only a temporary Auth session. It never opens business data,
 // writes app credentials, or persists passwords, OTPs or enrollment secrets.
-export function mountAccountSecurity(root, config, {fetchRequest=globalThis.fetch, confirmAction=message=>globalThis.confirm(message)}={}) {
+export function mountAccountSecurity(root, config, {fetchRequest=globalThis.fetch, confirmAction=null}={}) {
   const find=id=>root.querySelector('#'+id);
   const controls=[...root.querySelectorAll('button')];
   const uuid=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
-  let session=null,pendingLogin=null,pendingFactor=null,disposed=false,busy=false;
+  let session=null,pendingLogin=null,pendingFactor=null,disposed=false,busy=false,cancelConfirmation=null;
+  function confirmRemoval(text){
+    return new Promise(resolve=>{
+      const dialog=document.createElement('dialog'),label=document.createElement('p');
+      const accept=document.createElement('button'),cancel=document.createElement('button');
+      let settled=false;
+      function finish(accepted){if(settled)return;settled=true;cancelConfirmation=null;dialog.close();dialog.remove();resolve(accepted)}
+      label.textContent=text;dialog.setAttribute('aria-label','אישור הסרת גורם אימות');
+      accept.type=cancel.type='button';accept.textContent='הסר';cancel.textContent='ביטול';
+      accept.addEventListener('click',()=>finish(true));cancel.addEventListener('click',()=>finish(false));
+      dialog.addEventListener('cancel',event=>{event.preventDefault();finish(false)});
+      cancelConfirmation=()=>finish(false);dialog.append(label,accept,cancel);root.append(dialog);dialog.showModal();cancel.focus();
+    });
+  }
   const headers=token=>({apikey:config.publishableKey,'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})});
   function message(text,error=false){find('securityMessage').textContent=text;find('securityMessage').classList.toggle('error',error)}
   function clearSecret(){pendingFactor=null;find('securityQr').removeAttribute('src');find('securitySecret').textContent='';find('securitySetupCode').value='';find('securitySetup').hidden=true}
-  function reset(){session=null;pendingLogin=null;clearSecret();find('securityPassword').value='';find('securityLoginCode').value='';find('securityEmail').readOnly=false;find('securityPasswordGroup').hidden=false;find('securityLoginButton').textContent='התחבר';find('securityLogin').hidden=false;find('securityManage').hidden=true;find('securityFactors').replaceChildren()}
+  function reset(){cancelConfirmation?.();session=null;pendingLogin=null;clearSecret();find('securityPassword').value='';find('securityLoginCode').value='';find('securityEmail').readOnly=false;find('securityPasswordGroup').hidden=false;find('securityLoginButton').textContent='התחבר';find('securityLogin').hidden=false;find('securityManage').hidden=true;find('securityFactors').replaceChildren()}
   async function request(route,body,token=session?.access_token,method=body===undefined?'GET':'POST'){
     const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);
     try{
@@ -40,7 +53,8 @@ export function mountAccountSecurity(root, config, {fetchRequest=globalThis.fetc
       label.textContent=String(factor.friendly_name||'אפליקציית אימות')+' — '+(factor.status==='verified'?'מאומת':'רישום שלא הושלם');
       remove.type='button';remove.textContent=factor.status==='verified'?'הסר גורם':'בטל רישום';
       remove.addEventListener('click',()=>run(async()=>{
-        if(!confirmAction(factor.status==='verified'?'הסרת גורם האימות מפחיתה את ההגנה על החשבון. להסיר?':'לבטל את הרישום שלא הושלם?'))return;
+        const accepted=await (confirmAction||confirmRemoval)(factor.status==='verified'?'הסרת גורם האימות מפחיתה את ההגנה על החשבון. להסיר?':'לבטל את הרישום שלא הושלם?');
+        if(!accepted||disposed)return;
         await request('factors/'+factor.id,undefined,session.access_token,'DELETE');await refresh();message('גורם האימות הוסר.');
       }));
       item.append(label,remove);list.append(item);

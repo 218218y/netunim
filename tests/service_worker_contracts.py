@@ -134,6 +134,7 @@ for label, site in APPS.items():
         "./",
         "./index.html",
         "./reset-local.html",
+        "./security.html",
         "./assets/app.css",
         "./assets/app.js",
         "./manifest.webmanifest",

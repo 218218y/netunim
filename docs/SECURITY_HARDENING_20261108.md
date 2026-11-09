@@ -112,7 +112,7 @@ The application project still denied access; no unrelated project was changed.
 
 ## Document file authority and diagnostic privacy
 
-Document Bridge v46 requires a local `roots` list in `config.json`; the installer
+Document Bridge v47 requires a local `roots` list in `config.json`; the installer
 opens the existing local folder configurator when it is missing. The installed
 configuration launcher now supports current versioned runtimes. No website API
 can enlarge this list. Configuration saves preserve the roots list.
@@ -129,7 +129,7 @@ Windows and Linux with real files/junctions or symlinks. This does not claim
 protection from arbitrary malware running as the same Windows account or a
 complete Windows filesystem race-proof sandbox.
 
-Bank Bridge v77 writes schema-v5 structural diagnostics: reviewed field names, bounded
+Bank Bridge v78 writes schema-v5 structural diagnostics: reviewed field names, bounded
 sample structures, activity type codes and boolean presence indicators. Arbitrary
 text, account/branch/check/reference numbers, amounts and URLs are redacted;
 unreviewed dictionary keys become anonymous field positions, and source/cheque

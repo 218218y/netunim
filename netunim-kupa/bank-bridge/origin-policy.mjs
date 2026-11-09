@@ -28,7 +28,7 @@ export function decodeBankOriginConfiguration(value){
 /** @param {URL} origin */
 function defaultOriginAllowed(origin){
   if(origin.protocol!=='https:'||origin.port)return false;
-  return ['bargig-furniture.com','bargig-orders.pages.dev','bargig-kupa.pages.dev']
+  return ['bargig-furniture.com','bargig-orders.pages.dev','bargig-kupa.pages.dev','orders.bargig-furniture.com','kupa.bargig-furniture.com']
     .some(host=>origin.hostname===host);
 }
 

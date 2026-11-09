@@ -4,7 +4,16 @@ import http from 'node:http';
 import {createBankBridgeHttpHandler} from '../netunim-kupa/bank-bridge/http-handler.mjs';
 import {createBankOriginPolicy} from '../netunim-kupa/bank-bridge/origin-policy.mjs';
 import {createDocumentBridgeHttpHandler} from '../netunim-orders/document-bridge/http-handler.mjs';
-import {DEFAULT_ALLOWED_ORIGINS} from '../netunim-orders/document-bridge/lib.mjs';
+import {DEFAULT_ALLOWED_ORIGINS,configuredDocumentOrigins} from '../netunim-orders/document-bridge/lib.mjs';
+
+test('Document Origin upgrades replace only shipped defaults and retain intentional custom restrictions',()=>{
+  const previous=['https://bargig-furniture.com','https://bargig-orders.pages.dev','https://bargig-kupa.pages.dev'];
+  const legacy=[...previous,'https://*.bargig-furniture.com','https://*.bargig-orders.pages.dev','https://*.bargig-kupa.pages.dev','http://localhost:*','http://127.0.0.1:*'];
+  for(const value of [undefined,[],previous,legacy])assert.deepEqual(configuredDocumentOrigins(value),DEFAULT_ALLOWED_ORIGINS);
+  for(const value of [['https://custom.example'],['https://bargig-orders.pages.dev'],[...legacy,'https://custom.example']])assert.deepEqual(configuredDocumentOrigins(value),value);
+  const result=configuredDocumentOrigins(previous);result.push('https://late.example');
+  assert.equal(DEFAULT_ALLOWED_ORIGINS.includes('https://late.example'),false);
+});
 
 async function fixture(t,kind,originPolicy){
   let entries=0,tokenReads=0;
@@ -61,7 +70,7 @@ test('Bank opt-in allowlist retains deployment families, native clients and exac
   const config={version:1,mode:'allowlist',allowedOrigins:['https://custom.example:8443']};
   const f=await fixture(t,'bank',createBankOriginPolicy(config));
   config.allowedOrigins.push('https://late-untrusted.example');
-  const origins=['https://bargig-furniture.com','https://bargig-orders.pages.dev','https://bargig-kupa.pages.dev','https://custom.example:8443',undefined];
+  const origins=['https://bargig-furniture.com','https://bargig-orders.pages.dev','https://bargig-kupa.pages.dev','https://orders.bargig-furniture.com','https://kupa.bargig-furniture.com','https://custom.example:8443',undefined];
   for(const origin of origins){
     const preflight=await f.request(origin,{method:'OPTIONS'});
     assert.equal(preflight.status,204);
@@ -101,7 +110,7 @@ test('Document origins reject foreign/null/suffix-spoofed sources before token a
 
 test('Document default deployment families, local development and configured exact origins retain private authentication',async t=>{
   const f=await fixture(t,'document');
-  const origins=['https://bargig-furniture.com','https://bargig-orders.pages.dev','https://bargig-kupa.pages.dev',undefined];
+  const origins=['https://bargig-furniture.com','https://bargig-orders.pages.dev','https://bargig-kupa.pages.dev','https://orders.bargig-furniture.com','https://kupa.bargig-furniture.com',undefined];
   for(const origin of origins){
     assert.equal((await f.request(origin,{token:'wrong'})).status,401);
     assert.equal((await f.request(origin)).status,200);

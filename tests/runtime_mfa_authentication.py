@@ -1,5 +1,6 @@
 """Actual source/bundled security pages in isolated Chromium, synthetic Auth only."""
 import json
+import subprocess
 from browser_harness import BrowserSession, ROOT
 
 AUTH = r"""(()=>{
@@ -39,6 +40,11 @@ FLOW = r"""(async()=>{
  check(!$('securityManage').hidden,'MFA verified session enters account management');
  check($('securityLoginCode').value==='','used login OTP is cleared');
  check($('securityFactors').textContent.includes('<img')&&!$('securityFactors img'),'factor names render as text');
+ const deletions=()=>mfaFixture.calls.filter(call=>call.method==='DELETE').length,before=deletions();
+ $('securityFactors').querySelector('button').click();await until(()=>document.querySelector('dialog[open]'));
+ check(deletions()===before,'factor deletion waits for local styled confirmation');
+ [...document.querySelectorAll('dialog button')].find(button=>button.textContent==='ביטול').click();await idle();
+ check(deletions()===before&&!document.querySelector('dialog'),'cancel preserves the factor and closes confirmation');
  $('securityEnroll').click();await idle();
  check(!$('securitySetup').hidden&&$('securitySecret').textContent==='SYNTHETIC-ENROLLMENT-SECRET','enrollment secret appears only during explicit setup');
  check($('securityQr').src.startsWith('data:image/svg+xml'),'QR stays an inert image on this page');
@@ -52,6 +58,10 @@ FLOW = r"""(async()=>{
  check($('securityManage').hidden&&$('securitySetup').hidden&&!$('securitySecret').textContent&&!$('securityQr').hasAttribute('src'),'page close clears secrets and rejects delayed verification publication');
  return done;
 })()"""
+
+# CI shards and focused invocations have independent output directories. Always
+# build the reviewed source here; another job's dist is never a prerequisite.
+subprocess.run(['node',str(ROOT/'tools/production-build.mjs')],cwd=ROOT,check=True)
 
 for app in ('orders','kupa'):
     for mode,site in [('source',ROOT/f'netunim-{app}/site'),('production',ROOT/'dist'/app)]:

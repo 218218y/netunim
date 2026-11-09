@@ -60,9 +60,22 @@ and the row stays unchanged; this was checked alongside successful owner calls.
 New Preview builds select staging automatically, with separate config/CSP and
 artifact verification. Production config disables its backend on unknown public
 hosts. This protects new builds; it does not retroactively replace old immutable
-Cloudflare deployments. Access policies for those URLs still need Cloudflare
-account configuration. Staging Google clients and Morning sandbox credentials
+Cloudflare deployments. Cloudflare Access now protects preview URLs for both
+Pages projects, with the account owner's exact email as the allow rule. The live
+dashboard confirmed each policy and wildcard preview destination; production
+Pages/custom domains are outside those Access applications. Staging Google clients and Morning sandbox credentials
 remain intentionally unconfigured.
+
+Authenticated Wrangler project inventory also confirmed the deployed custom
+domains `orders.bargig-furniture.com` and `kupa.bargig-furniture.com`. Both exact
+HTTPS Origins are included alongside the exact Pages production hosts and the
+historical apex compatibility entry in backend, browser and Bridge policies.
+Wildcard siblings, public previews and implicit development Origins remain
+denied. Document Bridge upgrades only the two known shipped default Origin
+lists; an operator's custom restrictive list is preserved. The Cloudflare CLI
+has Pages deployment access but no Access permissions. After the owner connected
+the browser, both preview policies were enabled there and their membership rules
+were checked. No paid plan or production-domain access restriction was added.
 
 ## MFA boundary and owner enrollment
 
@@ -101,7 +114,7 @@ reset the factor through Auth administration. No secret or bypass is sent to
 support. The real account was not enrolled silently.
 
 Other open boundaries are scoped per-site pairing/one-time pairing UX, complete
-internal-grant reduction, Cloudflare Access for existing previews, and the tested
+internal-grant reduction, and the tested
 HttpOnly/server-session architecture discussed in the original review. Pairing
 rotation by replacing the local token and restarting is covered by native tests,
 but it is not a per-site credential protocol. Known moderate dependency findings
@@ -109,8 +122,8 @@ remain tracked; high/critical audit gates are enabled. Do not describe this stat
 as zero vulnerabilities or a completed penetration test.
 
 After the final main updates, pull the repository on all three computers and
-reinstall both Bridges. The final Bank release is v77 (diagnostic schema v5) and
-Document is v46. Choose only business folders in the local Document configurator.
+reinstall both Bridges. The final Bank release is v78 (diagnostic schema v5) and
+Document is v47. Choose only business folders in the local Document configurator.
 Git pull alone does not replace installed runtime directories or Startup entries.
 Preserve pairing files locally; do not include them in support reports. Previously
 exported diagnostics and installation reports need separate cleanup/rotation if
