@@ -48,6 +48,15 @@ const withinViewport=element=>{
   const rect=element.getBoundingClientRect(),style=getComputedStyle(element);
   return style.display!=='none'&&style.visibility!=='hidden'&&rect.left>=-1&&rect.right<=innerWidth+1&&rect.top>=-1&&rect.bottom<=innerHeight+1;
 };
+const assertCloudMfaLink=sectionSelector=>{
+  const sections=[...document.querySelectorAll(sectionSelector)];
+  const cloud=sections.find(section=>section.querySelector('h3')?.textContent.includes('Supabase'));
+  const link=cloud?.querySelector('a[href="./security.html"]');
+  if(!link?.getClientRects().length||link.href!==new URL('./security.html',location.href).href||
+     link.target!=='_blank'||!link.relList.contains('noopener')||!link.textContent.includes('MFA')){
+    throw Error('Supabase settings must provide a visible same-site MFA link in a separate tab');
+  }
+};
 const horizontalScrollOwner=element=>{
   for(let node=element.parentElement;node&&node!==document.body;node=node.parentElement){
     const style=getComputedStyle(node);
@@ -100,6 +109,7 @@ def check_orders(browser: BrowserSession) -> list[dict]:
               const routeResults=[];
               for(const route of routes){
                 document.querySelector(`[data-view="${route}"]`)?.click();await frame();
+                if(route==='settings')assertCloudMfaLink('.settings-card');
                 if(route==='warehouse'){
                   const table=document.querySelector('.inventory-table'),scroll=document.querySelector('.warehouse-view-shell .view-scroll');
                   if(table&&table.getBoundingClientRect().width>scroll.clientWidth+2)throw new Error('Inventory table overflows the warehouse viewport');
@@ -208,6 +218,7 @@ def check_kupa(browser: BrowserSession) -> list[dict]:
               const cashDesktopStretch=innerWidth>1180?[...document.querySelectorAll('.cash-ledger-column')].every(column=>{const section=column.querySelector('.cash-ledger-section');return Math.abs(section.getBoundingClientRect().bottom-column.getBoundingClientRect().bottom)<=1;}):true;
               const mobileCashRow=innerWidth<=600?getComputedStyle(document.querySelector('.cash-table tbody tr')).display:null;
               document.querySelector('[data-page="settings"]')?.click();await frame();
+              assertCloudMfaLink('.cloud-section');
               const settingsRow=innerWidth<=600?getComputedStyle(document.querySelector('.settings-table tbody tr')).display:null;
               return {width:innerWidth,height:innerHeight,routeResults,drawer,modalVisible,cashColumns,cashHorizontalOverflow,cashDesktopStretch,mobileCashRow,settingsRow};
             })()"""
