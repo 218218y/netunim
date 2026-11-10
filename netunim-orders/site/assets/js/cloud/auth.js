@@ -3,7 +3,7 @@ async function completeAuthMfa(...args){
   const {completeSupabaseMfa}=await import('../shared/supabase-mfa.js');
   return completeSupabaseMfa(...args);
 }
-import {createAuthenticatedAccountScope,temporaryAuthRefreshError,assertRefreshTokenCurrent,assertRefreshReceipt} from '../shared/authenticated-account-scope.js';
+import {createAuthenticatedAccountScope,requestAuthRefresh,recoverableAuthRefreshError,assertRefreshTokenCurrent,assertRefreshReceipt} from '../shared/authenticated-account-scope.js';
 import {createBrowserAccountObservation} from '../shared/browser-account-observation.js';
 import {createSyncCapabilityGate,syncRequestNeedsCapabilities,isSyncIncidentRpc} from '../shared/sync-capabilities.js';
 import {supabaseConfig as SUPA_CONFIG} from '../../../supabase/config.js';
@@ -116,22 +116,23 @@ async function refreshSession({force=true,observedAccessToken=''}={}){
   const scope=accountScope.current();
   if(!scope.owner)throw cloudAuthRequired('נדרשת התחברות מחדש לענן');
   if(refreshFlight?.scope.owner===scope.owner&&refreshFlight.scope.epoch===scope.epoch)return refreshFlight.promise;
+  const observedRefreshToken=loadSession()?.refresh_token;
   const refresh=async()=>{
     accountScope.assertCurrent(scope);
     const s=loadSession();
     if(!s?.refresh_token)throw cloudAuthRequired('נדרשת התחברות מחדש לענן');
     assertSessionOwner(s);
+    if(s.refresh_token!==observedRefreshToken)return s;
     if(observedAccessToken&&s.access_token&&s.access_token!==observedAccessToken)return s;
     if(!force&&Number(s.expires_at||0)>=Math.floor(Date.now()/1000)+60)return s;
-    const r=await fetch(`${SUPA_CONFIG.url}/auth/v1/token?grant_type=refresh_token`,{
-      method:'POST',headers:supaHeaders(),body:JSON.stringify({refresh_token:s.refresh_token}),
+    const {response:r,body:j}=await requestAuthRefresh(SUPA_CONFIG.url,supaHeaders(),s.refresh_token,{
+      fetchRequest:fetch,createController:()=>new AbortController(),setTimer:setTimeout,clearTimer:clearTimeout,
     });
-    const j=await r.json().catch(()=>({}));
     accountScope.assertCurrent(scope);
     assertRefreshTokenCurrent(s.refresh_token,loadSession()?.refresh_token);
     if(!r.ok){
-      const temporary=temporaryAuthRefreshError(r,j);
-      if(temporary)throw temporary;
+      const recoverable=recoverableAuthRefreshError(r,j);
+      if(recoverable)throw recoverable;
       saveSession(null);
       throw cloudAuthRequired('פג תוקף ההתחברות לענן');
     }
