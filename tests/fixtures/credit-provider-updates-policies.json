@@ -1,0 +1,22 @@
+{
+  "CAL_TRANSACTION_TYPES": {
+    "before": "c85e6d22504f01de68919ca378ec499cc31ca2c74b9730d13dbbf2019b2eb9ca",
+    "after": "16906af8dce9fa72f0a27d6c6ea0e6a760adc7a4b26f63808a8ebbdbc9378fd3"
+  },
+  "MAX_PROVIDER_SCHEMA_VERSION": {
+    "before": "1c213e1a2db5b7e99d4f75bd5b19e639686a73faa68dfa5ca8f0322229c5b804",
+    "after": "04b5df43523442fe5917dc22f8788b6783e4cc2827171a20956fa749c846d12c"
+  },
+  "VISA_CAL_PROVIDER_SCHEMA_VERSION": {
+    "before": "5370affe2c82c794f62eb95032b5d7d66b1534ca1802d106759575489c3b03ef",
+    "after": "ff7332d2a9dd2f3116f20271cdca43f1775ee1d22371daf099f559077c4b6953"
+  },
+  "normalizeVisaCalTransaction": {
+    "before": "733f5f65652b9ec5629612b78c340ac898de711ff7cba811d759958cd7b40edd",
+    "after": "5320946b46924e4275368015bbb9a311681349f6ce5a5fa834833fb5151789a1"
+  },
+  "maxMemo": {
+    "before": "a49a8e15c88e0e70f6698ac91bff44f63ae8c976dbea716487950557e92b7dbc",
+    "after": "044e620cc0df03b6cef8f13b7033b1125b667e169565c1d4bbbf93e44f8e6f37"
+  }
+}

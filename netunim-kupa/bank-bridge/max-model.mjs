@@ -68,8 +68,12 @@ function maxMemo(raw = {}) {
   const comments = text(raw.comments, 180),
     receiver = text(raw.fundsTransferReceiverOrTransfer, 120),
     detail = text(raw.fundsTransferComment, 120),
-    base = [comments, receiver].filter(Boolean).join(' ');
-  return detail ? [base, detail].filter(Boolean).join(': ') : base;
+    base = [comments, receiver].filter(Boolean).join(' '),
+    memo = detail ? [base, detail].filter(Boolean).join(': ') : base,
+    promotion = [text(raw.promotionClub, 180), text(raw.promotionAmount, 60)]
+      .filter(Boolean)
+      .join(': ');
+  return promotion ? [memo, promotion].filter(Boolean).join(' | ') : memo;
 }
 
 function maxRawIdentifier(raw = {}, installments = null) {

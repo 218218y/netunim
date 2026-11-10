@@ -97,6 +97,10 @@ test(
       account.months.find((row) => row.month === '2026-10').transactions[0].chargedAmount,
       -25
     );
+    assert.equal(
+      account.months.find((row) => row.month === '2026-10').transactions[0].memo,
+      'Synthetic club: -5'
+    );
     assert.equal(result._dataDiagnostics, undefined);
     assert.ok(!JSON.stringify(result).includes('rawTransaction'));
     assert.ok(!JSON.stringify(result).includes('synthetic secret'));
