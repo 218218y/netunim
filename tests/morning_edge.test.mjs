@@ -1,4 +1,5 @@
-import {hasUserMfaAssurance} from '../netunim-orders/supabase/functions/_shared/mfa-assurance.js';
+import {edgeAuthorization} from './edge_handler_fixture.mjs';
+import {getMfaAssuredUser} from '../netunim-orders/supabase/functions/_shared/mfa-assurance.js';
 import {edgeOrigins,withEdgeOrigins} from '../netunim-orders/supabase/functions/_shared/edge-origins.js';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -47,7 +48,7 @@ const mockFetch=async(url,init={})=>{
   if(url.includes('/documents/')){if(failure==='readback')return Response.json({message:'read-back unavailable'},{status:503});if(failure==='read429'&&rateLimitHits++===0)return Response.json({message:'rate limited'},{status:429,headers:{'Retry-After':'0'}});const id=decodeURIComponent(url.split('/documents/')[1].split('/')[0]),doc=morningDocs.get(id)||sample;if(failure==='mismatch')return Response.json({...doc,amount:999});if(failure==='wrapped-read')return Response.json({data:doc});return Response.json(doc)};
   throw new Error('Unexpected request '+url);
 };
-const context=vm.createContext({hasUserMfaAssurance,edgeOrigins,withEdgeOrigins,console,Response,Request,URL,AbortController,TextEncoder,crypto:globalThis.crypto,atob:globalThis.atob,setTimeout,clearTimeout,fetch:mockFetch,createClient:()=>({from:()=>new Query(),auth:{getUser:async()=>({data:{user:{id:owner}}})}}),Deno:{env:{get:key=>({SUPABASE_URL:'https://example.supabase.co',SUPABASE_ANON_KEY:'test',SUPABASE_SERVICE_ROLE_KEY:'test',MORNING_CLIENT_ID:'test',MORNING_CLIENT_SECRET:'test',MORNING_ENV:'sandbox'})[key]},serve:handler=>{servedHandler=handler}}});
+const context=vm.createContext({getMfaAssuredUser,edgeOrigins,withEdgeOrigins,console,Response,Request,URL,AbortController,TextEncoder,crypto:globalThis.crypto,atob:globalThis.atob,setTimeout,clearTimeout,fetch:mockFetch,createClient:()=>({from:()=>new Query(),auth:{getUser:async()=>({data:{user:{id:owner,factors:[]}}})}}),Deno:{env:{get:key=>({SUPABASE_URL:'https://example.supabase.co',SUPABASE_ANON_KEY:'test',SUPABASE_SERVICE_ROLE_KEY:'test',MORNING_CLIENT_ID:'test',MORNING_CLIENT_SECRET:'test',MORNING_ENV:'sandbox'})[key]},serve:handler=>{servedHandler=handler}}});
 context.createMorningReportsHandler=createMorningReportsHandler;
 Object.assign(context,{readJsonBodyBounded,JsonBodyError});
 const source=readFileSync(new URL('../netunim-orders/supabase/functions/morning-documents/index.ts',import.meta.url),'utf8').replace(/^import .*?;\r?\n/gm,'');
@@ -247,7 +248,7 @@ await assert.rejects(api.validateBankSource(owner,bankInput),/bank_payment_misma
 bankInput.bankSourcePayments[0].line.price=5.01;await api.validateBankSource(owner,bankInput);
 
 const reportRequestsBefore=requests.length;
-const forbiddenReport=await servedHandler(new Request('https://example.supabase.co/functions/v1/morning-documents',{method:'POST',headers:{Authorization:'Bearer test','Content-Type':'application/json'},body:JSON.stringify({action:'report_page',source:'documents',fromDate:'2026-01-01',toDate:'2026-02-28'})}));
+const forbiddenReport=await servedHandler(new Request('https://example.supabase.co/functions/v1/morning-documents',{method:'POST',headers:{Authorization:edgeAuthorization(owner),'Content-Type':'application/json'},body:JSON.stringify({action:'report_page',source:'documents',fromDate:'2026-01-01',toDate:'2026-02-28'})}));
 assert.equal(forbiddenReport.status,403);
 assert.equal((await forbiddenReport.json()).code,'morning_reports_forbidden');
 assert.equal(requests.length,reportRequestsBefore,'a regular login cannot read the global business reports without an explicit server grant');

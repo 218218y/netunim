@@ -1,4 +1,5 @@
-import {hasUserMfaAssurance} from '../netunim-orders/supabase/functions/_shared/mfa-assurance.js';
+import {edgeAuthorization} from './edge_handler_fixture.mjs';
+import {getMfaAssuredUser} from '../netunim-orders/supabase/functions/_shared/mfa-assurance.js';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {stripTypeScriptTypes} from 'node:module';
@@ -54,11 +55,11 @@ const fetch=async(url,init={})=>{
   if(url.includes('/documents/'))return Response.json(rawDocument);
   throw new Error('Unexpected upstream request '+url);
 };
-const makeContext=()=>vm.createContext({hasUserMfaAssurance,edgeOrigins,withEdgeOrigins,readJsonBodyBounded,JsonBodyError,console,Response,Request,URL,AbortController,TextEncoder,crypto:globalThis.crypto,atob:globalThis.atob,setTimeout,clearTimeout,fetch,createMorningReportsHandler,reportPermission,createClient:()=>({from:()=>new Query(),auth:{getUser:async()=>({data:{user}})}}),Deno:{env:{get:key=>env[key]},serve:handler=>{servedHandler=handler}}});
+const makeContext=()=>vm.createContext({getMfaAssuredUser,edgeOrigins,withEdgeOrigins,readJsonBodyBounded,JsonBodyError,console,Response,Request,URL,AbortController,TextEncoder,crypto:globalThis.crypto,atob:globalThis.atob,setTimeout,clearTimeout,fetch,createMorningReportsHandler,reportPermission,createClient:()=>({from:()=>new Query(),auth:{getUser:async()=>({data:{user:{factors:[],...user}}})}}),Deno:{env:{get:key=>env[key]},serve:handler=>{servedHandler=handler}}});
 const context=makeContext();
 const source=readFileSync(new URL('../netunim-orders/supabase/functions/morning-documents/index.ts',import.meta.url),'utf8').replace(/^import .*?;\r?\n/gm,'');
 vm.runInContext(stripTypeScriptTypes(source),context);
-const invoke=(action,extra={})=>servedHandler(new Request('https://example.supabase.co/functions/v1/morning-documents',{method:'POST',headers:{Authorization:'Bearer verified-test-user','Content-Type':'application/json'},body:JSON.stringify({action,document_id:documentId,fromDate:'2026-07-01',toDate:'2026-08-31',source:'documents',...extra})}));
+const invoke=(action,extra={})=>servedHandler(new Request('https://example.supabase.co/functions/v1/morning-documents',{method:'POST',headers:{Authorization:edgeAuthorization(user.id),'Content-Type':'application/json'},body:JSON.stringify({action,document_id:documentId,fromDate:'2026-07-01',toDate:'2026-08-31',source:'documents',...extra})}));
 const assertBlocked=async(actions=['search_documents','get_document','document_links','document_pdf','report_page'],extra={})=>{
   for(const action of actions){const before=requests.length,response=await invoke(action,extra);assert.equal(response.status,403,action+' must be forbidden');assert.equal(requests.length,before,action+' must be denied before any Morning fetch')}
 };

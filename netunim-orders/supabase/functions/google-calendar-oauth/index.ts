@@ -1,4 +1,4 @@
-import {hasUserMfaAssurance} from '../_shared/mfa-assurance.js';
+import {getMfaAssuredUser} from '../_shared/mfa-assurance.js';
 import {createClient} from 'npm:@supabase/supabase-js@2.112.4';
 import {readJsonBodyBounded, JsonBodyError} from '../_shared/http-input.js';
 import {createGoogleHttp, GoogleHttpError} from '../_shared/google-http.js';
@@ -50,7 +50,7 @@ function adminError(error:any,fallbackCode:string){if(dataApiUnavailable(error))
 async function sha256(value:string){const bytes=new TextEncoder().encode(value);const digest=await crypto.subtle.digest('SHA-256',bytes);return Array.from(new Uint8Array(digest),item=>item.toString(16).padStart(2,'0')).join('')}
 function appendOAuthResult(returnUrl:string,status:string,code=''){const url=new URL(returnUrl);url.searchParams.set('calendar_oauth',status);if(code)url.searchParams.set('calendar_oauth_code',code);else url.searchParams.delete('calendar_oauth_code');return url.toString()}
 function safeReturnUrl(value:unknown,origin:string){const candidate=new URL(String(value||origin||''));if(!origin||candidate.origin!==origin)throw new Error('invalid_return_url');if(candidate.protocol!=='https:'&&!['localhost','127.0.0.1'].includes(candidate.hostname))throw new Error('invalid_return_url');candidate.hash='';candidate.searchParams.delete('calendar_oauth');candidate.searchParams.delete('calendar_oauth_code');return candidate.toString()}
-async function requireUser(req:Request){const authorization=req.headers.get('Authorization')||'';const token=authorization.match(/^Bearer\s+(.+)$/i)?.[1]||'';if(!token)return null;const client=createClient(SUPABASE_URL,PUBLISHABLE_KEY,{auth:{persistSession:false,autoRefreshToken:false},global:{headers:{Authorization:`Bearer ${token}`}}});const {data,error}=await client.auth.getUser(token);if(error||!data.user?.id||!hasUserMfaAssurance(data.user,token))return null;return data.user}
+async function requireUser(req:Request){const authorization=req.headers.get('Authorization')||'';const token=authorization.match(/^Bearer\s+(.+)$/i)?.[1]||'';if(!token)return null;const client=createClient(SUPABASE_URL,PUBLISHABLE_KEY,{auth:{persistSession:false,autoRefreshToken:false},global:{headers:{Authorization:`Bearer ${token}`}}});return getMfaAssuredUser(client.auth,admin.auth.admin,token)}
 const googleHttp=createGoogleHttp();
 async function googleToken(params:Record<string,string>){
   return decodeGoogleToken(await googleHttp(GOOGLE_TOKEN_URL,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(params)}));
