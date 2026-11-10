@@ -180,6 +180,36 @@ for(const app of ['orders','kupa']){
     assert.equal(attempts,1);
   }));
 
+  test(`${app} a lost rotation receipt preserves the active token's parent for later recovery`,async t=>withGlobals(async()=>{
+    t.mock.timers.enable({apis:['Date']});
+    serialBrowserLock();
+    const {store,load,refresh}=authTab(app);
+    const parent=sessionFor('A');
+    const active=sessionFor('A',{access_token:'rotated-access',refresh_token:'rotated-refresh'});
+    store(parent);
+    const presented=[];
+    let serverActive=parent;
+    globalThis.fetch=async(_url,{body})=>{
+      const token=JSON.parse(body).refresh_token;
+      presented.push(token);
+      assert.equal(token,parent.refresh_token);
+      if(serverActive===parent){
+        serverActive=active;
+        throw new TypeError('rotation committed but response was lost');
+      }
+      // Supabase returns the active token for its direct parent, even after
+      // the normal reuse interval has expired.
+      return Response.json(serverActive);
+    };
+    await assert.rejects(refresh(),{code:'SUPABASE_NETWORK_UNAVAILABLE'});
+    assert.deepEqual(presented,[parent.refresh_token]);
+    assert.deepEqual(load(),parent);
+    t.mock.timers.tick(30_000);
+    assert.equal((await refresh()).refresh_token,active.refresh_token);
+    assert.equal(load().refresh_token,active.refresh_token);
+    assert.deepEqual(presented,[parent.refresh_token,parent.refresh_token]);
+  }));
+
   test(`${app} reconnect sends a cloud operation once after refreshing its expired session`,async t=>withGlobals(async()=>{
     t.mock.timers.enable({apis:['Date']});
     const {store,load,request}=authTab(app),existing=sessionFor('A');

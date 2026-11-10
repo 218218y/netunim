@@ -72,6 +72,7 @@ test('allow-unready-task never suppresses failed Everything diagnostics',async()
 });
 test('installation report excludes pairing secrets and retains diagnostic errors',async()=>{
  const f=installFixture({nodeError:true});await f.diagnostics.writeInstallSummary();assert.equal(f.written.length,1);assert.equal(f.written[0][0],'synthetic/summary');assert.doesNotMatch(f.written[0][1],/private-local-token/);assert.match(f.written[0][1],/bad private node/);assert.equal(f.lines.includes('private-local-token'),false);assert.equal(f.lines.at(-1),'synthetic/summary');
+ assert.match(f.written[0][1],/README\.txt beside the installer for the local pairing console/);
 });
 
 async function mutatedFactory(file,from,to,name){

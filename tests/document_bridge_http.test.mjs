@@ -242,15 +242,40 @@ test('binary preview preserves bytes, MIME, encoded filename, length and authent
   assert.deepEqual(f.calls, [['binary', 'opaque-binary']]);
 });
 
-for (const [code, status] of [['QUERY_TOO_SHORT', 400], ['RESULT_EXPIRED', 410], ['DOCUMENT_PATH_FORBIDDEN', 403], ['ES_EXIT_ERROR', 503]]) {
-  test(`capability errors preserve ${code} HTTP status, body and diagnostics`, async t => {
-    const f = await fixture(t, {files: {open: async () => { throw Object.assign(new Error('classified error'), {code, rootErrors: ['root']}); }, reveal: async () => ({}), delete: async () => ({})}});
+for (const [code, status, message] of [
+  ['QUERY_TOO_SHORT', 400, 'יש להקליד לפחות תו אחד לחיפוש שם, או שני תווים לחיפוש בתוכן.'],
+  ['RESULT_EXPIRED', 410, 'תוצאת החיפוש פגה. חפש שוב את הקובץ.'],
+  ['DOCUMENT_PATH_FORBIDDEN', 403, 'הנתיב מחוץ להיקף החיפוש המורשה או מוגן בהגדרות המחבר.'],
+  ['ENOENT', 503, 'הקובץ, התיקייה או הכונן אינם זמינים. בדוק את הזמינות במחשב ונסה שוב.'],
+  ['ES_EXIT_ERROR', 503, 'החיפוש ב־Everything נכשל. בדוק את מצב המחבר במחשב.'],
+]) {
+  test(`capability errors expose only the safe ${code} contract`, async t => {
+    const privateFile = 'C:\\Users\\SyntheticAlice\\Documents\\invoice.pdf';
+    const privateRoot = 'Y:\\PrivateShare\\CustomerNames';
+    const f = await fixture(t, {files: {open: async () => {
+      throw Object.assign(new Error(`open '${privateFile}' failed`), {
+        code, rootErrors: [{path: privateRoot, message: 'synthetic.alice@example.test'}],
+      });
+    }, reveal: async () => ({}), delete: async () => ({})}});
     const response = await f.request('/documents/open');
     assert.equal(response.status, status);
-    assert.deepEqual(response.data, {ok: false, code, message: 'classified error', rootErrors: ['root']});
+    assert.deepEqual(response.data, {ok: false, code, message, rootErrors: []});
     assert.deepEqual(f.logs, [`HTTP_ERROR code=${code}`]);
   });
 }
+
+test('unclassified errors never expose a native code, status, message or root details', async t => {
+  const secret = 'Y:\\Mapped\\SyntheticAlice\\payroll.xlsx';
+  const error = Object.assign(new Error(secret), {code: secret, status: 201, rootErrors: [secret]});
+  const f = await fixture(t, {service: {status: async () => { throw error; }, warm: async () => ({})}});
+  const response = await f.request('/status', {method: 'GET'});
+  assert.equal(response.status, 503);
+  assert.deepEqual(response.data, {
+    ok: false, code: 'DOCUMENT_BRIDGE_ERROR',
+    message: 'הפעולה ב־Document Bridge נכשלה. אפשר לבדוק את יומן המחבר במחשב.', rootErrors: [],
+  });
+  assert.deepEqual(f.logs, ['HTTP_ERROR code=ERROR']);
+});
 
 test('shutdown sends its response before starting listener teardown', async t => {
   const f = await fixture(t);

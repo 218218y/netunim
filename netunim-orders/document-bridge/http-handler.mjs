@@ -52,9 +52,61 @@ async function readJson(req) {
   catch { throw Object.assign(new Error('JSON לא תקין'), {code: 'INVALID_JSON'}); }
 }
 
+// This is the browser error contract. Native errors can embed paths, command
+// lines, filenames and account details even when their code is recognized.
+const publicErrors = new Map([
+  ['UNAUTHORIZED', [401, 'המפתח או קוד ההצמדה שגוי, בוטל או פג.']],
+  ['BRIDGE_CAPABILITY_REQUIRED', [403, 'יש לאשר מקומית הרשאה לפעולה זו במחבר.']],
+  ['BRIDGE_PAIRING_INVALID', [400, 'פרטי ההצמדה אינם תקינים.']],
+  ['BRIDGE_PAIRING_STORAGE', [503, 'לא ניתן לקרוא או לעדכן את הגדרות ההצמדה המקומיות.']],
+  ['BRIDGE_PAIRING_INACTIVE', [409, 'יש להתחיל מעבר מקומי לפני הצמדה.']],
+  ['BRIDGE_PAIRING_BUSY', [429, 'יש להשלים הצמדה ממתינה או להמתין לפקיעתה.']],
+  ['QUERY_TOO_SHORT', [400, 'יש להקליד לפחות תו אחד לחיפוש שם, או שני תווים לחיפוש בתוכן.']],
+  ['RESULT_EXPIRED', [410, 'תוצאת החיפוש פגה. חפש שוב את הקובץ.']],
+  ['DOCUMENT_PATH_FORBIDDEN', [403, 'הנתיב מחוץ להיקף החיפוש המורשה או מוגן בהגדרות המחבר.']],
+  ['DOCUMENT_ROOTS_NOT_CONFIGURED', [503, 'יש לבחור לפחות תיקייה או כונן זמינים בהגדרות Document Bridge במחשב.']],
+  ['DOCUMENT_SEARCH_DISPOSED', [503, 'המחבר נסגר. אפשר לנסות שוב לאחר הפעלתו.']],
+  ['DOCUMENT_COMMANDS_DISPOSED', [503, 'המחבר נסגר. אפשר לנסות שוב לאחר הפעלתו.']],
+  ['PDF_MAINTENANCE_DRAIN_TIMEOUT', [503, 'המחבר ממתין לסיום עדכון אינדקס ה־PDF.']],
+  ['OPEN_TARGET_MISSING', [503, 'הקובץ כבר אינו קיים או שאינו נגיש.']],
+  ['ENOENT', [503, 'הקובץ, התיקייה או הכונן אינם זמינים. בדוק את הזמינות במחשב ונסה שוב.']],
+  ['ENOTDIR', [503, 'התיקייה או הכונן אינם זמינים.']],
+  ['EACCES', [503, 'למחבר אין גישה לקובץ או לתיקייה.']],
+  ['EPERM', [503, 'Windows חסם את הפעולה בקובץ או בתיקייה.']],
+  ['ES_NOT_FOUND', [503, 'כלי החיפוש של Everything אינו זמין. בדוק את ההתקנה במחשב.']],
+  ['EVERYTHING_EXE_NOT_FOUND', [503, 'Everything אינו זמין. בדוק את ההתקנה במחשב.']],
+  ['EVERYTHING_START_TIMEOUT', [503, 'Everything לא היה מוכן בזמן. נסה שוב.']],
+  ['ES_TIMEOUT', [503, 'החיפוש לא הסתיים בזמן. אפשר לצמצם אותו ולנסות שוב.']],
+  ['ES_EXIT_ERROR', [503, 'החיפוש ב־Everything נכשל. בדוק את מצב המחבר במחשב.']],
+  ['ES_OUTPUT_LIMIT', [503, 'תוצאות החיפוש חורגות מהמגבלה. אפשר לצמצם את החיפוש.']],
+  ['ES_CONTENT_TOO_LARGE', [503, 'תוכן המסמך חורג ממגבלת האימות. אפשר לצמצם את החיפוש.']],
+  ['ES_CONTENT_UNAVAILABLE', [503, 'תוכן המסמך אינו זמין לאימות החיפוש.']],
+  ['PREVIEW_TOO_LARGE', [503, 'הקובץ גדול מדי לתצוגה מקדימה מהירה.']],
+  ['PREVIEW_NOT_FILE', [503, 'תיקייה אינה קובץ לתצוגה מקדימה.']],
+  ['PREVIEW_UNSUPPORTED', [503, 'סוג הקובץ אינו נתמך בתצוגה מקדימה.']],
+  ['NATIVE_PREVIEW_NOT_FILE', [503, 'לתיקייה אין תצוגת מסמך של Windows.']],
+  ['NATIVE_PREVIEW_UNSUPPORTED', [503, 'תצוגת Windows זמינה למסמכי Office נתמכים.']],
+  ['NATIVE_PREVIEW_FAILED', [503, 'לא ניתן לפתוח את התצוגה המקדימה של Windows.']],
+  ['WINDOWS_REQUIRED', [503, 'הפעולה נתמכת ב־Windows בלבד.']],
+  ['DELETE_TARGET_REMAINS', [503, 'Windows לא אישר שהקובץ הועבר לסל המיחזור.']],
+  ['INVALID_JSON', [503, 'JSON לא תקין']],
+  ['REQUEST_TOO_LARGE', [503, 'הבקשה גדולה מדי']],
+]);
+
 export function documentBridgeErrorResponse(error) {
-  return {ok: false, code: error?.code || 'DOCUMENT_BRIDGE_ERROR',
-    message: error?.message || 'שגיאת Document Bridge', rootErrors: Array.isArray(error?.rootErrors) ? error.rootErrors : []};
+  const code = error?.code;
+  const known = publicErrors.get(code);
+  return {
+    ok: false,
+    code: known ? code : 'DOCUMENT_BRIDGE_ERROR',
+    message: known?.[1] ?? 'הפעולה ב־Document Bridge נכשלה. אפשר לבדוק את יומן המחבר במחשב.',
+    rootErrors: [],
+  };
+}
+
+export function documentBridgeDiagnosticCode(error) {
+  const code = error?.code;
+  return typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(code) ? code : 'ERROR';
 }
 
 // All private routes pass the same origin/token gate, before body consumption or
@@ -80,7 +132,7 @@ export function createDocumentBridgeHttpHandler({loadConfig, readToken, routes, 
     const bearer = authToken(req);
     const allows = value => config.allowedOrigins.includes(value) && originAllowed(value, config.allowedOrigins);
     const control = pairing?.respond({pathname:req.url,req,res,bearer,readBody:readJson,
-      send:(status,data)=>sendJson(req,res,status,data,config),originAllowed:allows});
+      send:(status,data)=>sendJson(req,res,status,status >= 400 ? documentBridgeErrorResponse(data) : data,config),originAllowed:allows});
     if (control) { await control; return; }
     if (!pairing && !tokenEqual(await readToken(), bearer)) {
       sendJson(req, res, 401, {ok: false, code: 'UNAUTHORIZED', message: 'מפתח Document Bridge שגוי או חסר.'}, config);
@@ -126,13 +178,11 @@ export function createDocumentBridgeHttpHandler({loadConfig, readToken, routes, 
       else await run();
     } catch (error) {
       if (res.destroyed && cancelledRead) return;
-      await appendLog(`HTTP_ERROR code=${error?.code || 'ERROR'}`);
+      const data = documentBridgeErrorResponse(error);
+      const known = publicErrors.get(data.code);
+      await appendLog(`HTTP_ERROR code=${documentBridgeDiagnosticCode(error)}`);
       if (res.destroyed) return;
-      let status = error?.status || 503;
-      if (error?.code === 'QUERY_TOO_SHORT') status = 400;
-      else if (error?.code === 'RESULT_EXPIRED') status = 410;
-      else if (error?.code === 'DOCUMENT_PATH_FORBIDDEN') status = 403;
-      sendJson(req, res, status, documentBridgeErrorResponse(error), config);
+      sendJson(req, res, known?.[0] ?? 503, data, config);
     }
   };
 }

@@ -225,7 +225,7 @@ async function createRequestHandler(){
 }
 
 const replacementAgent=new http.Agent({keepAlive:false});
-const {stopExisting,checkRunning}=createBridgeReplacementCommand({
+const {stopExisting,checkRunning,waitForStartup}=createBridgeReplacementCommand({
   token:{path:TOKEN_PATH,read:(file,encoding)=>fs.readFile(file,encoding),readAdmin:()=>readPairingAdminToken(APP_ROOT)},
   listener:{port:BRIDGE_PORT,request:(options,callback)=>http.request({...options,agent:replacementAgent},callback),
     allowedOrigins:async()=>(await loadConfig()).allowedOrigins,installationId},
@@ -263,7 +263,7 @@ const service=createBridgeService({
   },
   documents:{documentCommands:documents.runtime,documentResults,previewTextCache,nativePreviewSession},
   maintenance:{manualMaintenance,activePdfMaintenanceLock},
-  installation:{printDoctor,writeInstallSummary,stopExisting,checkRunning},
+  installation:{printDoctor,writeInstallSummary,stopExisting,checkRunning,waitForStartup},
   listener:{host:process,createServer:(...args)=>http.createServer(...args),handler:createRequestHandler},
 });
 const main=process.argv[2]==='--pairing'

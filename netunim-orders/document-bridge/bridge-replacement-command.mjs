@@ -36,9 +36,18 @@ async function checkRunning(){
   }
   return response.data;
 }
-
-
-
+// A hidden launcher returns before the listener binds. Retry transport
+// failures only. A response from another service or installation is final.
+async function waitForStartup(){
+  const deadline=Date.now()+10000;
+  for(;;){
+    try{return await checkRunning()}
+    catch(error){
+      if(Date.now()>=deadline||!['ECONNREFUSED','ETIMEDOUT'].includes(error?.code))throw error;
+      await new Promise(resolve=>setTimeout(resolve,150));
+    }
+  }
+}
 
 async function stopExisting(){
   let health;try{health=await loopbackRequest('/health',{timeoutMs:900})}catch(error){if(error?.code==='ECONNREFUSED')return;throw error}
@@ -50,5 +59,5 @@ async function stopExisting(){
   if(listenerPid&&!(await waitForProcessExit(listenerPid,1500))){await appendLog(`INSTALL_STOP_FORCE pid=${listenerPid} reason=${JSON.stringify(portClosed?'listener-closed-process-still-running':'shutdown-timeout')}`);await forceStopProcessTree(listenerPid);if(!(await waitForProcessExit(listenerPid,2500))){const e=new Error(`Existing Document Bridge process ${listenerPid} could not be terminated.`);e.code='SHUTDOWN_PROCESS_STUCK';throw e}}
   try{await loopbackRequest('/health',{timeoutMs:500});const e=new Error('Existing Document Bridge listener is still active after shutdown.');e.code='SHUTDOWN_TIMEOUT';throw e}catch(error){if(error?.code==='ECONNREFUSED')return;throw error}
 }
-return {stopExisting,checkRunning};
+return {stopExisting,checkRunning,waitForStartup};
 }

@@ -589,23 +589,18 @@ class WindowsDocumentBridgeRuntimeContracts(unittest.TestCase):
                     connection.close()
 
             try:
-                deadline = time.monotonic() + 10
-                while True:
-                    try:
-                        status, health, _ = request("/health")
-                        break
-                    except OSError:
-                        if process.poll() is not None or time.monotonic() >= deadline:
-                            self.fail("Staged Document Bridge did not start its listener")
-                        # Readiness probing only, never a synchronization fence.
-                        time.sleep(0.025)
+                check_args = [str(executable), str(runtime / "server.mjs"), "--check-running"]
+                startup = subprocess.run([*check_args, "--wait-for-startup"], env=env, cwd=app,
+                                         stdin=subprocess.DEVNULL, capture_output=True, timeout=18,
+                                         creationflags=subprocess.CREATE_NO_WINDOW)
+                self.assertEqual(startup.returncode, 0, startup.stderr.decode("utf8", errors="replace"))
+                status, health, _ = request("/health")
                 self.assertEqual(status, 200)
                 self.assertEqual(health["service"], "netunim-orders-document-bridge")
                 self.assertEqual(health["version"], 48)
                 self.assertEqual(health["pid"], process.pid)
                 self.assertEqual(health["pairingProtocol"], 1)
                 self.assertEqual(health["installationId"], "a" * 32)
-                check_args = [str(executable), str(runtime / "server.mjs"), "--check-running"]
                 for expected, code in (("a" * 32, 0), ("b" * 32, 1)):
                     marker.write_text(expected, encoding="ascii")
                     check = subprocess.run(check_args, env=env, cwd=app, capture_output=True,

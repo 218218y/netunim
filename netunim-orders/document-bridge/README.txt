@@ -12,9 +12,11 @@ The website may remove individual files. Use Windows Explorer to remove folders.
 Production origins are exact; previews/localhost need explicit local permission.
 The installer checks the active installation ID and pairingProtocol 1. Pair
 each exact site Origin using a one-time local console code on its Security
-page. Follow docs/BRIDGE_SCOPED_PAIRING_DESIGN_20261109.md for begin, issue,
-status and finish. bridge-token.txt is reserved for legacy compatibility
-and documented recovery. Keep pairing credentials out of diagnostics.
+page. From the repository root, follow docs/BRIDGE_SCOPED_PAIRING_DESIGN_20261109.md
+(Local console) for commands using the verified private Node executable.
+The guide covers initial pairing, key replacement, revocation and finishing
+the transition. To roll back, reinstall from the prior release checkout.
+Keep bridge-token.txt and pairing credentials local.
 The following older feature notes are subject to these security boundaries.
 
 NETUNIM Document Bridge v39 - paged Everything search + AcroForm-aware PDF content + native preview

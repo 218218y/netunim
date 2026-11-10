@@ -81,6 +81,23 @@ test('check-running proves browser preflight and health without reading the priv
  assert.equal(f.requests[1].headers['Access-Control-Request-Headers'],'authorization,content-type');
  assert.equal(f.requests.some(row=>row.headers.Authorization),false);assert.equal(f.tokenReads(),0);assert.deepEqual(f.processes,[]);
 });
+test('installer waits for a late listener and then verifies its identity and browser preflight',async()=>{
+ const timedOut=Object.assign(new Error('fixture stalled'),{code:'ETIMEDOUT'});
+ const f=fixture([refused(),timedOut,health(),preflight(),websiteHealth()]);
+ assert.deepEqual(await f.api.waitForStartup(),health().data);
+ assert.deepEqual(f.requests.map(({method,path})=>[method,path]),[
+  ['GET','/health'],['GET','/health'],['GET','/health'],['OPTIONS','/documents/search'],['GET','/health'],
+ ]);
+ assert.equal(f.tokenReads(),0);
+});
+test('installer waiting is bounded and never retries a different installation',async()=>{
+ const offline=fixture([]);
+ await assert.rejects(offline.api.waitForStartup(),{code:'ECONNREFUSED'});
+ assert.ok(offline.ports.runtime.now()>=10000&&offline.ports.runtime.now()<10200);
+ const stale=fixture([{...health(),data:{...health().data,installationId:'b'.repeat(32)}}]);
+ await assert.rejects(stale.api.waitForStartup(),{code:'INSTALLATION_MISMATCH'});
+ assert.equal(stale.requests.length,1);
+});
 for(const [label,alter] of [
  ['rejected preflight',reply=>{reply.statusCode=403}],
  ['missing CORS',reply=>{delete reply.headers['access-control-allow-origin']}],

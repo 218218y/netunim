@@ -14,17 +14,34 @@ import {createPreviewTextCache} from '../netunim-orders/document-bridge/preview-
 function gate(){let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no});return {promise,resolve,reject}}
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 const noop=()=>{},disposable=()=>({dispose:async()=>{}});
-function serviceFixture({commands=createDocumentCommandOwner(),manual=disposable(),host={platform:'linux',argv:[],pid:10}}={}) {
+function serviceFixture({commands=createDocumentCommandOwner(),manual=disposable(),host={platform:'linux',argv:[],pid:10},privateDiagnostic=''}={}) {
   const events=[];
   const service=createBridgeService({
-    files:{init:async()=>events.push('init'),ensureToken:async()=> 'token',readJsonFile:async()=>({}),privateNodeRuntimeInfoSync:noop,appendLog:async text=>events.push(text)},
-    search:{probeEverything:async()=>({}),diagnoseIndex:async()=>({probe:{},diagnostics:{}}),documentSearch:disposable(),everythingSession:disposable(),everythingDiscovery:disposable(),everythingProcesses:disposable()},
-    pdf:{index:{index:{load:async()=>{}},view:()=>({interactive:0,inspected:0,pending:0,updatedAt:0})},operation:disposable(),preview:disposable(),extraction:disposable(),paths:{},policy:{}},
+    files:{init:async()=>events.push('init'),ensureToken:async()=> 'token',readJsonFile:async()=>({lastFailure:privateDiagnostic}),privateNodeRuntimeInfoSync:noop,appendLog:async text=>events.push(text)},
+    search:{probeEverything:async()=>({}),diagnoseIndex:async()=>({probe:{everythingExecutable:privateDiagnostic},diagnostics:{error:privateDiagnostic}}),documentSearch:disposable(),everythingSession:disposable(),everythingDiscovery:disposable(),everythingProcesses:disposable()},
+    pdf:{index:{index:{load:async()=>{if(privateDiagnostic)throw new Error(privateDiagnostic)}},view:()=>({interactive:0,inspected:0,pending:0,updatedAt:0})},operation:disposable(),preview:disposable(),extraction:disposable(),paths:{},policy:{}},
     documents:{documentCommands:commands,documentResults:{dispose:noop},previewTextCache:{dispose:noop},nativePreviewSession:disposable()},
     maintenance:{manualMaintenance:manual,activePdfMaintenanceLock:async()=>false},installation:{printDoctor:async()=>events.push('doctor'),writeInstallSummary:async()=>events.push('summary'),stopExisting:async()=>events.push('stop'),checkRunning:async()=>events.push('check')},listener:{host,createServer:()=>assert.fail('construction cannot start listener'),handler:noop},
   });
   return {service,events};
 }
+
+test('Document status summarizes native index and maintenance failures without exposing diagnostics',async()=>{
+  const privateDiagnostic='C:\\Users\\SyntheticAlice\\private.pdf and Y:\\Sensitive\\index.json';
+  const {service,events}=serviceFixture({
+    privateDiagnostic,manual:{view:()=>({manual:{running:false,error:privateDiagnostic},cancelable:false})},
+  });
+  const status=await service.service.status();
+  const maintenance=await service.maintenance.status();
+  assert.equal(status.ok,true);
+  assert.ok(status.index.error.includes('Everything'));
+  assert.ok(status.index.error.includes('PDF'));
+  assert.ok(status.index.maintenanceLastFailure);
+  assert.ok(maintenance.lastError);
+  assert.ok(maintenance.lastFailure);
+  assert.doesNotMatch(JSON.stringify({status,maintenance,events}),/SyntheticAlice|Sensitive|private\.pdf|index\.json/);
+});
+
 async function operationsFixture(t,{kind='text',execute,content,pdfRead,factory=createDocumentOperations}={}) {
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'document-commands-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));
   const file=path.join(root,kind==='pdf'?'file.pdf':'file.txt');

@@ -2,7 +2,7 @@ import {BRIDGE_PORT,BRIDGE_SERVICE,BRIDGE_VERSION} from './lib.mjs';
 import {runMaintenanceWorker} from './maintenance-process-owner.mjs';
 import {createMaintenanceWorkerPlatform} from './maintenance-process-platform.mjs';
 import {pdfMaintenanceRunLimits} from './pdf-index-policy.mjs';
-import {documentBridgeErrorResponse as safeError} from './http-handler.mjs';
+import {documentBridgeDiagnosticCode,documentBridgeErrorResponse as safeError} from './http-handler.mjs';
 import {joinDocumentReads} from './document-command-owner.mjs';
 
 // Service state and HTTP/CLI lifetime compose explicit owners. Construction starts
@@ -15,7 +15,7 @@ export function createBridgeService({files,search,pdf,documents,maintenance,inst
   const {PDF_FORM_MAINTENANCE_MAX_FILES,PDF_FORM_MAINTENANCE_MAX_MS}=pdf.policy;
   const loadPdfFormIndex=pdfIndexRuntime.index.load,withFileLock=pdf.withFileLock;
   const {manualMaintenance,activePdfMaintenanceLock}=maintenance;
-  const {printDoctor,writeInstallSummary,stopExisting,checkRunning}=installation;
+  const {printDoctor,writeInstallSummary,stopExisting,checkRunning,waitForStartup}=installation;
   const {documentCommands,documentResults,previewTextCache,nativePreviewSession}=documents;
   const process=listener.host,http={createServer:listener.createServer},createRequestHandler=listener.handler;
   let server=null,shuttingDown=false,pdfMaintenanceStopRequested=false;
@@ -34,9 +34,9 @@ export function createBridgeService({files,search,pdf,documents,maintenance,inst
       phase:manual?.running?manual.phase||'starting':'',
       progress:manual?.running?manual.progress||null:null,
       lastRun:!manual?.running?manual?.result||null:null,
-      lastError:!manual?.running?manual?.error||'':'',
+      lastError:!manual?.running&&manual?.error?'עדכון אינדקס ה־PDF נכשל. בדוק את יומן המחבר במחשב.':'',
       lastResult:maintenance.lastResult||null,
-      lastFailure:maintenance.lastFailure||''
+      lastFailure:maintenance.lastFailure?'העדכון האחרון של אינדקס ה־PDF נכשל.':''
     };
   }
   async function startManualPdfMaintenance(){
@@ -53,7 +53,10 @@ export function createBridgeService({files,search,pdf,documents,maintenance,inst
   async function documentBridgeStatus(){
     const {probe,diagnostics}=await diagnoseIndex({freshProbe:true});
     let pdfIndexError='';
-    try{await loadPdfFormIndex()}catch(error){pdfIndexError=String(error?.message||error)}
+    try{await loadPdfFormIndex()}catch(error){
+      pdfIndexError='לא ניתן לטעון את אינדקס ה־PDF המקומי.';
+      await appendLog(`PDF_FORM_INDEX_LOAD_FAILED code=${documentBridgeDiagnosticCode(error)}`);
+    }
     const pdfView=pdfIndexRuntime.view(),interactivePdfCount=pdfView.interactive,maintenance=await readJsonFile(PDF_FORM_MAINTENANCE_PATH,{});
     return {
       ok:true,
@@ -61,13 +64,12 @@ export function createBridgeService({files,search,pdf,documents,maintenance,inst
       version:BRIDGE_VERSION,
       esVersion:probe.esVersion,
       everythingVersion:probe.everythingVersion,
-      everythingExecutable:probe.everythingExecutable||'',
       instance:probe.instance,
       index:{
         fileCount:diagnostics.fileCount,
         indexedContentCount:diagnostics.indexedContentCount,
         sampleOk:diagnostics.sampleOk,
-        error:[diagnostics.error,pdfIndexError].filter(Boolean).join('; '),
+        error:[diagnostics.error?'בדיקת האינדקס של Everything נכשלה.':null,pdfIndexError].filter(Boolean).join(' '),
         interactivePdfCount,
         inspectedPdfCount:pdfView.inspected,
         interactivePdfPending:pdfView.pending,
@@ -75,7 +77,7 @@ export function createBridgeService({files,search,pdf,documents,maintenance,inst
         maintenanceLastAttemptAt:maintenance.lastAttemptAt||'',
         maintenanceLastSuccessfulAt:maintenance.lastSuccessfulAt||'',
         maintenanceLastFailureAt:maintenance.lastFailureAt||'',
-        maintenanceLastFailure:maintenance.lastFailure||'',
+        maintenanceLastFailure:maintenance.lastFailure?'העדכון האחרון של אינדקס ה־PDF נכשל.':'',
         maintenanceLastResult:maintenance.lastResult||null
       }
     };
@@ -153,7 +155,10 @@ export function createBridgeService({files,search,pdf,documents,maintenance,inst
   }
     if(arg==='--print-token'){console.log(await ensureToken());return}
     if(arg==='--stop-existing'){await stopExisting();return}
-    if(arg==='--check-running'){await checkRunning();return}
+    if(arg==='--check-running'){
+      await (process.argv.includes('--wait-for-startup')?waitForStartup():checkRunning());
+      return;
+    }
     if(arg==='--write-install-summary'){await writeInstallSummary();return}
     if(process.platform!=='win32')throw new Error('Document Bridge is intended for Windows.');
     await init();
@@ -161,8 +166,9 @@ export function createBridgeService({files,search,pdf,documents,maintenance,inst
     server=http.createServer((req,res)=>{
       const response=handle?handle(req,res):startup.then(handler=>handler(req,res));
       void response.catch(async error=>{
-        await appendLog(`UNHANDLED code=${error?.code||'ERROR'}`);
-        try{res.writeHead(500,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(safeError(error)))}catch{}
+        const data=safeError(error);
+        await appendLog(`UNHANDLED code=${documentBridgeDiagnosticCode(error)}`);
+        try{res.writeHead(500,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(data))}catch{}
       });
     });
     server.on('error',error=>appendLog(`SERVER code=${error?.code||'ERROR'}`));
